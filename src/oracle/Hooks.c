@@ -77,8 +77,14 @@ void ALLOCATE_REGISTERS(Object *function)
 /* The inliner: whether a call is to be inlined (can_inline), what the body costs where the automatic inliner asks
  * (fn_0055e540, the recursion over the callees' bodies) and what happens to the call (inline_call_expression, which
  * leaves the call as it was when the body is not usable yet). The functions are named as the sources do in 1.3; in
- * 1.3.2 they changed and are not matched, and the original's own names are used. */
-#if VERSION >= VERSION_GC_1_3_2
+ * 1.3.2 they changed and are not matched, and the original's own names are used (in 2.7, those of its addresses: the
+ * code is 1.3.2's, but for where CInlineInfo's kind is). */
+#if VERSION >= VERSION_GC_2_7
+#define CAN_INLINE fn_00560c80
+#define CAN_INLINE_RETAIL fn_00560c80__retail
+#define INLINE_CALL fn_00561260
+#define INLINE_CALL_RETAIL fn_00561260__retail
+#elif VERSION >= VERSION_GC_1_3_2
 #define CAN_INLINE fn_0055ed70
 #define CAN_INLINE_RETAIL fn_0055ed70__retail
 #define INLINE_CALL fn_0055f350
@@ -90,11 +96,27 @@ void ALLOCATE_REGISTERS(Object *function)
 #define INLINE_CALL_RETAIL inline_call_expression__retail
 #endif
 
-/* 1.3.2 put three bytes into the options before alwaysinline (0xd5 in 1.3, 0xd8 in 1.3.2). */
-#if VERSION >= VERSION_GC_1_3_2
+/* 1.3.2 put three bytes into the options before alwaysinline (0xd5 in 1.3, 0xd8 in 1.3.2), and 2.7 four more before
+ * inlineLimit (0x68 in 1.3.2, 0x6c in 2.7; everything from there on moved by four). CInlineInfo's kind is two bytes
+ * further on in each (0xa0 in 1.3, as the sources lay it out, 0xa2 in 1.3.2, 0xa4 in 2.7: inline_call_expression's
+ * read of it). */
+#if VERSION >= VERSION_GC_2_7
+#define ALWAYS_INLINE (*((unsigned char *)&copts + 0xdc))
+#define INLINE_AUTO (*((unsigned char *)&copts + 0x76))
+#define INLINE_LIMIT (*(SInt16 *)((unsigned char *)&copts + 0x6c))
+#define INFO_KIND(info) (*((unsigned char *)(info) + 0xa4))
+#elif VERSION >= VERSION_GC_1_3_2
 #define ALWAYS_INLINE (*((unsigned char *)&copts + 0xd8))
+#define INFO_KIND(info) (*((unsigned char *)(info) + 0xa2))
 #else
 #define ALWAYS_INLINE copts.alwaysinline
+#endif
+#ifndef INLINE_AUTO
+#define INLINE_AUTO copts.inlineAuto
+#define INLINE_LIMIT copts.inlineLimit
+#endif
+#ifndef INFO_KIND
+#define INFO_KIND(info) ((info)->kind)
 #endif
 
 #ifdef CAN_INLINE
@@ -130,8 +152,8 @@ Boolean CAN_INLINE(ENode *node)
     result = CAN_INLINE_RETAIL(node);
     OracleTrace_Printf("inl.can function=%s result=%d depth=%d inline_bit=%d always=%d auto=%d limit=%d body=%d "
                        "nstmts=%d\n", callee_name(function), (int)result, (int)data_00582468,
-                       (int)((function->qual & Q_INLINE) != 0), (int)ALWAYS_INLINE, (int)copts.inlineAuto,
-                       (int)copts.inlineLimit, info != NULL, info != NULL ? (int)info->nstmts : -1);
+                       (int)((function->qual & Q_INLINE) != 0), (int)ALWAYS_INLINE, (int)INLINE_AUTO,
+                       (int)INLINE_LIMIT, info != NULL, info != NULL ? (int)info->nstmts : -1);
     return result;
 }
 
@@ -160,7 +182,7 @@ ENode *INLINE_CALL(ENode *expr)
         info = (CInlineInfo *)function->u.func.u;
 
     OracleTrace_Printf("inl.begin function=%s depth=%d body=%d kind=%d\n", callee_name(function), (int)data_00582468,
-                       info != NULL, info != NULL ? (int)info->kind : -1);
+                       info != NULL, info != NULL ? (int)INFO_KIND(info) : -1);
     result = INLINE_CALL_RETAIL(expr);
     OracleTrace_Printf("inl.end function=%s expanded=%d\n", callee_name(function), result != expr);
     return result;

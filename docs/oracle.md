@@ -1,9 +1,9 @@
-# The oracle executable (GC 1.3 and 1.3.2)
+# The oracle executable (GC 1.3, 1.3.2 and 2.7)
 
 The oracle is the original `mwcceppc.exe` relinked with trace wrappers around the register allocation and the inliner.
 It writes the same objects, messages and exit code as the original (the wrappers only print), and says why it
 assigned the registers it did and which calls it inlined. It is **not** built from this repository's C sources of the
-allocator and inliner: those are not byte-exact for 1.3/1.3.2, so the original's own code runs and the wrappers
+allocator and inliner: those are not byte-exact for 1.3/1.3.2 (2.7 has no sources at all), so the original's own code runs and the wrappers
 (`src/oracle/Hooks.c`, `src/oracle/OracleTrace.c`) are linked around it.
 
 It needs the original compiler, which `ninja` downloads to `build/compilers/GC/<version>/` (do not
@@ -17,7 +17,7 @@ python configure.py --version GC_1_3_2 --mode link --oracle
 ninja build/GC_1_3_2/oracle/mwcceppc.exe
 ```
 
-`GC_1_3` works the same way. `configure.py` writes `build.ninja` for one version, so re-run it when switching.
+`GC_1_3` and `GC_2_7` work the same way. `configure.py` writes `build.ninja` for one version, so re-run it when switching.
 Which functions are wrapped is `oracle.hooks` in `config/<version>/config.json` (retail symbol names; keep the
 wrappers in `src/oracle/Hooks.c` and that list consistent). The licence stub `lmgr326b.dll` (`tools/lmgr_stub`) is
 copied beside the executable, on every platform: to run the oracle on another Windows machine, copy
@@ -70,8 +70,8 @@ size of `.bss`), the messages and the exit code; prints `DIFF name: ...` per dif
 `--canaries` takes a directory of small programs (a first line `// flags: ...` overrides the baseline flags), `--prime`
 a decomp project whose `build.ninja` rules that use this version's compiler are compiled with their own flags.
 `--limit`, `--list FILE` and `--keep DIR` narrow the input or keep the objects of the inputs that differ. The exit
-status is 0 when nothing differs. Last result: 2313/2313 canaries on both versions; Prime 604/604 (1.3.2) and 64/64
-(1.3).
+status is 0 when nothing differs. Last result: 2313/2313 canaries on all three versions; Prime 604/604 (1.3.2) and 64/64
+(1.3); Metroid Prime 2: Echoes 729/729 (2.7).
 
 ## Other tools
 
@@ -81,3 +81,4 @@ status is 0 when nothing differs. Last result: 2313/2313 canaries on both versio
 * `tools/disasm.py VERSION ADDRESS [SIZE]`: annotated disassembly of the original executable.
 * `tools/gates.sh`: every version's relink/compare gate, one after the other.
 * `docs/gc132-differences.md`: what changed between 1.3 and 1.3.2.
+* `docs/gc27-differences.md`: what changed between 1.3.2 and 2.7, and how 2.7's configuration was made.

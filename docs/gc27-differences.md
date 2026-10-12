@@ -13,7 +13,7 @@ python configure.py --version GC_2_7 --mode link --split-only && ninja build/GC_
 ```
 
 `--symbols` also carries the 231 functions that 1.3.2's `symbols.txt` names but its `functions.json` does not list
-(`fn_XXXXXXXX`, named by address). A function carried that way
+(`fn_XXXXXXXX`, named by address, among them three of the four functions the oracle hooks). A function carried that way
 is named by its address in 2.7: a name made from its 1.3.2 address can be the address of another function in 2.7. That
 happened with `fn_0055ed70`, which made both of them local.
 
@@ -45,3 +45,53 @@ The 343, by the source file the function had in 1.3.2:
 | src/optimizer/LoopDetection.c | 1 | 1921 |
 | the other 25 files | 44 | 13516 |
 | total | 343 | 367234 |
+
+## What this means for the oracle
+
+**Register allocator**
+
+* `Coloring_AllocateRegisters` (`_fn_00506cd0`, at 0x508530) is the same code as in 1.3 and 1.3.2, and so are the
+  interference graph and the spill code.
+* The changes near it are in `CodeGen.c`: `allocate_saved_gprs`, `allocate_saved_vrs`, `bind_object_register`,
+  `CodeGen_EnumerateArgumentRegisters`. There are also three small `Registers.c` helpers (`fn_004ced60`, `fn_004cfb10`,
+  `fn_004cfb90`). These choose which callee-saved registers a function uses and how arguments are bound. They are the
+  first place to look when 2.7 assigns registers differently from 1.3.2.
+* The PCode opcode numbers are those of 1.3.2: the assembler's mnemonic table maps all 1058 mnemonics to the same
+  `PC_` numbers. `tools/oracle.py`'s opcode names therefore apply.
+
+**Inliner**
+
+| function | 2.7 symbol | address | relation to 1.3.2 |
+| --- | --- | ---: | --- |
+| `can_inline` | `_fn_00560c80` | 0x560C80 | the same code as 1.3.2's `_fn_0055ed70` |
+| the body-cost walk | `_fn_0055e540` | 0x560FB0 | the same code |
+| `inline_call_expression` | `_fn_00561260` | 0x561260 | changed in one place only |
+
+  The one change in `inline_call_expression` is that it reads `CInlineInfo`'s `kind` at 0xa4: 0xa0 in 1.3 (where the
+  sources put it), 0xa2 in 1.3.2. `remap.py` does not find the function, because of that operand. It has the same size
+  as 1.3.2's and the same instructions (a mnemonic comparison gives a ratio of 1.0).
+
+**Options (`copts`, at 0x5EF092)**
+
+* Four one-byte fields were added between offsets 0x51 and 0x68. Fields from 0x53 on moved by one to four bytes, and
+  everything from 0x68 on moved by four.
+* So, against 1.3.2, the fields the inliner reads moved as follows:
+
+  | field | 1.3.2 | 2.7 |
+  | --- | ---: | ---: |
+  | `inlineLimit` | 0x68 | 0x6c |
+  | `inlineAuto` | 0x72 | 0x76 |
+  | `alwaysinline` | 0xd8 | 0xdc |
+
+* These were found by pairing the operands of the functions matched between the two versions that fall in `copts`'s
+  range (`remap.data_pairs`).
+* Their values were checked through the oracle: `-inline level=5` gives `limit=5`, and `#pragma always_inline on`
+  gives `always=1`.
+* The globals `data_00582468` (the inline depth, at 0x5E3B4C) and `data_005dfb68` (the cost threshold, at 0x5E3AE0)
+  are carried.
+
+## Status
+
+* `python tools/corpus.py --version GC_2_7 --canaries …`: 2313/2313 identical.
+* `python tools/corpus.py --version GC_2_7 --prime path/to/echoes`: 729/729 identical. Metroid Prime 2: Echoes builds
+  most of its units with 2.7. `--prime` takes the plain `mwcc` rules whose `mw_version` is `GC/2.7`.

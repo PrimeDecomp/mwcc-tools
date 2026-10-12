@@ -3,7 +3,7 @@
 executable and report every input whose object (the sections that are not debug information), messages or exit code
 differ.
 
-  --version V       GC_1_3 or GC_1_3_2 (default GC_1_3_2); the original is build/compilers/GC/<version>/mwcceppc.exe and
+  --version V       GC_1_3, GC_1_3_2 or GC_2_7 (default GC_1_3_2); the original is build/compilers/GC/<version>/mwcceppc.exe and
                     the other build/V/oracle/mwcceppc.exe (or --exe)
   --canaries DIR    a directory of small programs (zcanann/mwcc-rs's canaries/): each is compiled with the baseline flags
                     of that project's harness, those a `// flags:` line on top names replacing the baseline's
