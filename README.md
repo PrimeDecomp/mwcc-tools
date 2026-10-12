@@ -24,6 +24,8 @@ Supported versions:
 - `GC_1_2_5`: GameCube 1.2.5
 - `GC_1_2_5n`: GameCube 1.2.5n (1.2.5 with Ninji's patch)
 - `GC_1_3`: GameCube 1.3
+- `GC_1_3_2`: GameCube 1.3.2 (split and relinked; no sources of its own)
+- `GC_2_7`: GameCube 2.7 (split and relinked from 1.3.2's symbols; no sources of its own, see `docs/gc27-differences.md`)
 
 Dependencies
 ============

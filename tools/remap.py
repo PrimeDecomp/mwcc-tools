@@ -8,7 +8,11 @@ differ in (or one that is not listed). The data FROM binds is carried over by th
 relocate (the same operand holds the address in FROM and in TO), and the rest by the distance between the nearest
 known pairs when it is the same on both sides.
 
-config/TO/functions.json and bindings.json are written, and the differing functions listed on standard output."""
+config/TO/functions.json and bindings.json are written, and the differing functions listed on standard output.
+
+--symbols also carries the functions config/FROM/symbols.txt has that the function list does not (the ones a derived
+split named by address, with no source): a version further on (2.7 from 1.3.2) needs them to find the functions the
+oracle hooks. Those named by their address in FROM are named by their address in TO."""
 import json
 import re
 import struct
@@ -114,12 +118,20 @@ def data_pairs(functions, found, pe_a, fix_a, pe_b):
 
 
 def main():
-    from_version, to_version = sys.argv[1:3]
+    arguments = [a for a in sys.argv[1:] if a != "--symbols"]
+    from_version, to_version = arguments[:2]
     pe_a = PEFile(Path(f"{COMPILERS}/{from_version}/mwcceppc.exe"))
     pe_b = PEFile(Path(f"{COMPILERS}/{to_version}/mwcceppc.exe"))
     fix_a, fix_b = base_relocations(pe_a), base_relocations(pe_b)
     source = Path(f"config/{folder(from_version)}")
     functions = json.loads((source / "functions.json").read_text())
+    if "--symbols" in sys.argv[1:]:
+        listed = {int(f["address"], 16) for f in functions}
+        for line in (source / "symbols.txt").read_text().splitlines():
+            m = re.match(r"(\S+) = \.text:0x([0-9A-Fa-f]+);.*type:function size:0x([0-9A-Fa-f]+)", line)
+            if m and int(m[2], 16) not in listed:
+                functions.append({"name": m[1].removeprefix("_"), "address": f"0x{int(m[2], 16):08x}",
+                                  "size": int(m[3], 16), "carried": True})
     bindings = json.loads((source / "bindings.json").read_text())
     found, missing = match_functions(functions, pe_a, fix_a, pe_b, fix_b)
     pairs = data_pairs(functions, found, pe_a, fix_a, pe_b)
@@ -142,7 +154,12 @@ def main():
     for f in functions:
         address = int(f["address"], 16)
         if address in found:
-            out.append({**f, "address": f"0x{found[address]:08x}"})
+            moved = {**f, "address": f"0x{found[address]:08x}"}
+            if moved.pop("carried", False) and re.fullmatch(r"fn_[0-9a-f]{8}", f["name"]):
+                # (named by its address, as a derived split names a function it has no name for: the address in TO, or
+                # the name would be another function's there)
+                moved["name"] = f"fn_{found[address]:08x}"
+            out.append(moved)
     out.sort(key=lambda f: int(f["address"], 16))
     target = Path(f"config/{folder(to_version)}")
     target.mkdir(parents=True, exist_ok=True)

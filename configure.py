@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).parent / "tools"))
 from split import read_splits
 
 # (in release order: the index is VERSION in include/version.h)
-VERSIONS = ["GC_1_0", "GC_1_1", "GC_1_1p1", "GC_1_2_5", "GC_1_2_5n", "GC_1_3", "GC_1_3_2"]
+VERSIONS = ["GC_1_0", "GC_1_1", "GC_1_1p1", "GC_1_2_5", "GC_1_2_5n", "GC_1_3", "GC_1_3_2", "GC_2_7"]
 # (the version the build is configured for unless one is named)
 PRIMARY = "GC_1_2_5"
 # (units the runtime library ships as objects)

@@ -1,0 +1,28 @@
+{
+  "original": "build/compilers/GC/2.7/mwcceppc.exe",
+  "sha1": "100dd3a2898a1ece55462801d42ff5de8b42e29f",
+  "mode": "link",
+  "validate_units": true,
+  "imports": [
+    "config/kernel32_27.def",
+    "config/version.def"
+  ],
+  "compilers": {
+    "pro53": "pro6",
+    "pro5": "pro53"
+  },
+  "matching": [],
+  "compiler_overrides": {
+    "src/driver/CLStaticMain.c": "pro53",
+    "src/driver/cc-eabi-ppc-mw.c": "pro53"
+  },
+  "sym_on": [
+    "src/driver/CWParserPluginsPrivate.c",
+    "src/driver/CWParserPluginsPrivate13.cpp",
+    "src/driver/libimp-eabi-ppc.c"
+  ],
+  "sym_off": [
+    "src/backend/MachineSimulation603.c",
+    "src/frontend/CError.c"
+  ]
+}

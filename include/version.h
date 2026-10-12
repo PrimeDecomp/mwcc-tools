@@ -8,6 +8,8 @@
 #define VERSION_GC_1_2_5N 4
 #define VERSION_GC_1_3 5
 #define VERSION_GC_1_3_2 6
+/* (2.0 to 2.6 are not built: 2.7 follows 1.3.2 here; insert them before it if they are added) */
+#define VERSION_GC_2_7 7
 
 /* configure.py passes -DVERSION=<index> */
 #ifndef VERSION
