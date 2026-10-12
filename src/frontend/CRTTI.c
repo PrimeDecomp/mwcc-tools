@@ -53,24 +53,70 @@ static inline Boolean IsZero(CInt64 *v)
 
 void CRTTI_FillWords(UInt32 *words, int bitCount, unsigned int value)
 {
+#if VERSION >= VERSION_GC_1_3
+    UInt32 v;
+    UInt32 *p;
+    int wordCount;
+
+    p = words;
+    v = value;
+    for (wordCount = (bitCount + 31) >> 5; wordCount != 0; --wordCount) {
+        *p = v;
+        ++p;
+    }
+#else
     int wordCount;
 
     for (wordCount = (bitCount + 31) >> 5; wordCount != 0; --wordCount) {
         *words = value;
         ++words;
     }
+#endif
 }
+
+#if VERSION >= VERSION_GC_1_3
+int fn_0057ac60(const UInt32 *a, const UInt32 *b, int bitCount)
+{
+    int wordCount = (bitCount + 31) >> 5;
+    if (wordCount != 0) {
+        do {
+            if (*a & *b)
+                return 0;
+            a++;
+            b++;
+            wordCount--;
+        } while (wordCount != 0);
+    }
+    return 1;
+}
+#endif
 
 void CRTTI_IntersectBitVectors(UInt32 *dst, UInt32 *src, SInt32 nbits)
 {
     int wordCount;
     wordCount = (nbits + 31) >> 5;
     while (wordCount != 0) {
-        *dst++ &= *src++;
+        *dst &= *src;
+        dst++;
+        src++;
         wordCount = wordCount - 1;
     }
 }
 
+#if VERSION >= VERSION_GC_1_3
+void CRTTI_OrBitVector(UInt32 *destination, const UInt32 *source, unsigned int bitCount)
+{
+    int wordCount;
+
+    wordCount = (int)(bitCount + 31) >> 5;
+    while (wordCount != 0) {
+        *destination |= *source;
+        destination++;
+        source++;
+        wordCount--;
+    }
+}
+#else
 void CRTTI_OrBitVector(UInt32 *destination, const UInt32 *source, unsigned int bitCount)
 {
     UInt32 word;
@@ -88,11 +134,12 @@ void CRTTI_OrBitVector(UInt32 *destination, const UInt32 *source, unsigned int b
         do {
             word = *sourceWord;
             *destinationWord |= word;
-            ++sourceWord;
             ++destinationWord;
+            ++sourceWord;
         } while (--wordCount);
     }
 }
+#endif
 
 struct VBasePath *build_vbase_path_list(TypeClass *from, TypeClass *cls, struct VBasePath *list, SInt32 offset,
                                         Boolean isPrivate)
@@ -229,8 +276,14 @@ void *create_rtti_base_records(TypeClass *theclass)
     object = CParser_NewCompilerDefDataObject();
     object->name = CParser_GetUniqueName();
     object->type = CDecl_NewStructType(size, 4);
+#if VERSION >= VERSION_GC_1_3
+    object->qual = Q_CONST;
+    object->sclass = TK_STATIC;
+    references = NULL;
+#else
     references = NULL;
     object->sclass = TK_STATIC;
+#endif
     record = (RTTIBaseRecord *)buffer;
     if (publicCount != 0) {
         for (path = paths; path != NULL; path = path->next) {
@@ -282,6 +335,9 @@ Object *get_or_create_type_object(Type *type, SInt32 flags)
     HashNameNode *namehash;
     UInt8 buf[8];
     TypePointer typ;
+#if VERSION >= VERSION_GC_1_3
+    TypeMemberPointer tmemb;
+#endif
     Object *obj;
     NameSpaceObjectList *found;
     char *s;
@@ -292,6 +348,26 @@ Object *get_or_create_type_object(Type *type, SInt32 flags)
     Object *result;
 
     do {
+#if VERSION >= VERSION_GC_1_3
+        switch ((char)type->type) {
+            case TYPEPOINTER:
+                if ((TYPE_POINTER(type)->qual & Q_CV) != 0) {
+                    typ = *TYPE_POINTER(type);
+                    typ.qual &= ~Q_CV;
+                    type = (Type *)&typ;
+                }
+                break;
+            case TYPEMEMBERPOINTER:
+                if ((TYPE_MEMBER_POINTER(type)->qual & Q_CV) != 0) {
+                    tmemb = *TYPE_MEMBER_POINTER(type);
+                    tmemb.qual &= ~Q_CV;
+                    type = (Type *)&tmemb;
+                }
+                break;
+            default:
+                flags = 0;
+        }
+#else
         if (type->type == TYPEPOINTER) {
             if ((TYPE_POINTER(type)->qual & Q_CV) != 0) {
                 typ = *TYPE_POINTER(type);
@@ -301,6 +377,7 @@ Object *get_or_create_type_object(Type *type, SInt32 flags)
         } else {
             flags = 0;
         }
+#endif
 
         if (type->type == TYPECLASS && TYPE_CLASS(type)->size == 0) {
             CDecl_CompleteType(type);
@@ -329,6 +406,9 @@ Object *get_or_create_type_object(Type *type, SInt32 flags)
         obj = CParser_NewCompilerDefDataObject();
         obj->name = namehash;
         obj->type = CDecl_NewStructType(8, 4);
+#if VERSION >= VERSION_GC_1_3
+        obj->qual = Q_CONST;
+#endif
         obj->sclass = TK_STATIC;
 
         rec = lalloc(sizeof(DataReference));
@@ -385,7 +465,7 @@ void build_rtti_offset_table(TypeClass *rootClass, TypeClass *cls, Object *key, 
             baseObjectOffset = entry->offset;
             baseVTableOffset = CTool_EndianConvertWord32(-objectOffset);
             if (baseObjectOffset != baseVTableOffset)
-                CError_Internal("CRTTI.c", 0x17e);
+                CError_Internal("CRTTI.c", BY_VERSION(0x17e, 404));
         }
     }
 
@@ -623,9 +703,9 @@ ENode *explicit_typecast(register ENode *expr, register Type *type, UInt32 flags
                 if (mode != 2)
                     break;
                 if (TPTR_TARGET(type)->type == TYPECLASS && expr->rtype->type == TYPECLASS) {
-                    if (CClass_FindBasePath((TypeClass *)TPTR_TARGET(type), (TypeClass *)expr->rtype, 0, 1))
+                    if (CCLASS_FIND_BASE_PATH((TypeClass *)TPTR_TARGET(type), (TypeClass *)expr->rtype, 0, 1))
                         break;
-                    if (CClass_FindBasePath((TypeClass *)expr->rtype, (TypeClass *)TPTR_TARGET(type), 0, 1))
+                    if (CCLASS_FIND_BASE_PATH((TypeClass *)expr->rtype, (TypeClass *)TPTR_TARGET(type), 0, 1))
                         break;
                 }
             } else if (expr->rtype->type == TYPEPOINTER) {
@@ -637,10 +717,10 @@ ENode *explicit_typecast(register ENode *expr, register Type *type, UInt32 flags
                 if (mode != 2)
                     break;
                 if (TPTR_TARGET(type)->type == TYPECLASS && TPTR_TARGET(expr->rtype)->type == TYPECLASS) {
-                    if (CClass_FindBasePath((TypeClass *)TPTR_TARGET(type), (TypeClass *)TPTR_TARGET(expr->rtype), 0,
+                    if (CCLASS_FIND_BASE_PATH((TypeClass *)TPTR_TARGET(type), (TypeClass *)TPTR_TARGET(expr->rtype), 0,
                                             1))
                         break;
-                    if (CClass_FindBasePath((TypeClass *)TPTR_TARGET(expr->rtype), (TypeClass *)TPTR_TARGET(type), 0,
+                    if (CCLASS_FIND_BASE_PATH((TypeClass *)TPTR_TARGET(expr->rtype), (TypeClass *)TPTR_TARGET(type), 0,
                                             1))
                         break;
                 }
@@ -717,7 +797,7 @@ ENode *CRTTI_ParseDynamicCast(void)
         }
         sourceClass = (TypeClass *)expr->rtype;
         if (targetClass != NULL && (sourceClass == TYPE_CLASS(targetClass) ||
-                                    CClass_FindBasePath(sourceClass, TYPE_CLASS(targetClass), 0, 1) != 0))
+                                    CCLASS_FIND_BASE_PATH(sourceClass, TYPE_CLASS(targetClass), 0, 1) != 0))
             return do_typecast(expr, parsed.thetype, parsed.qual);
         expr = getnodeaddress(expr, 1);
     } else {
@@ -727,7 +807,7 @@ ENode *CRTTI_ParseDynamicCast(void)
         }
         sourceClass = (TypeClass *)((TypePointer *)expr->rtype)->target;
         if (targetClass != NULL && (sourceClass == TYPE_CLASS(targetClass) ||
-                                    CClass_FindBasePath(sourceClass, TYPE_CLASS(targetClass), 0, 1) != 0))
+                                    CCLASS_FIND_BASE_PATH(sourceClass, TYPE_CLASS(targetClass), 0, 1) != 0))
             return do_typecast(expr, parsed.thetype, parsed.qual);
     }
     if ((sourceClass->flags & CLASS_COMPLETED) == 0) {

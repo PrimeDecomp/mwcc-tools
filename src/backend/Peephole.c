@@ -16,6 +16,9 @@
 #include "compiler/MachineSimulation7400.h"
 #include "compiler/PCode.h"
 #include "compiler/PCodeUtilities.h"
+#if VERSION >= VERSION_GC_1_3
+#include "compiler/Registers.h"
+#endif
 
 #include <string.h>
 
@@ -28,6 +31,27 @@ static struct RegisterBlockLiveness *data_005813ac;
 static struct PeepHandler *CodeGen_PeepholeHandlers_005813b0[466];
 static struct PCodeInstruction **CodeGen_ReachingDefTable_00581af8;
 
+#if VERSION >= VERSION_GC_1_3
+#define BF_FINDUSE(e, o) ((e)->kind == 0 && (e)->arg == (o)->arg)
+#else
+#define BF_FINDUSE(e, o) ((e)->kind == (o)->kind)
+#endif
+#define OPIMM(x) BY_VERSION((x).value.signed_value, (x).imm32)
+#define OPOBJ(x) BY_VERSION((x).object, (x).altobject)
+#define PEEP_ADDMOVE(p) BY_VERSION((p)->flags |= fIsMove, (void)0)
+#define PEEP_ISGPR(o) BY_VERSION((o)->kind == PCOp_GPR, ((o)->kind == 0 && (o)->arg == 4))
+#define PEEP_SETGPR(o) BY_VERSION((o).kind = PCOp_GPR, ((o).kind = 0, (o).arg = 4))
+#define PEEP_FLM(f) BY_VERSION((f) & 0x28400, ((((f) & 9) ? 0 : (f)) & 0x2000180))
+#define PEEP_FLI(f) BY_VERSION((int)(signed char)(f), (int)(f))
+#define PEEP_FL(f) BY_VERSION((SInt8)(f), (f))
+#define PEEP_ISCR(o) BY_VERSION((o).kind == PCOp_CRFIELD, ((o).kind == 0 && (o).arg == 1))
+#define PEEP_IMMEDIATE BY_VERSION(PCOp_IMMEDIATE, 2)
+#define PEEP_MEMORY BY_VERSION(PCOp_MEMORY, 3)
+#if VERSION >= VERSION_GC_1_3
+#define PEEP_MASK(m) ((m)[4])
+#else
+#define PEEP_MASK(m) (m)
+#endif
 typedef int (*PeepholeRuleProc)(PCodeInstruction *, UInt32, UInt32, UInt32, UInt32);
 static const int kNumRegs = 32;
 
@@ -57,8 +81,8 @@ static inline int has_intervening_definition(PCodeInstruction *instruction, PCod
         PCodeOperand *operand = previous->operandData.operands;
         int operandCount = (int)previous->operand_count;
         while (operandCount--) {
-            if (operand->kind == definition->operandData.operands[1].kind && operand->value.reg == reg &&
-                ((int)(signed char)operand->flags & PCodeOperand_Definition) != 0)
+            if (BF_FINDUSE(operand, &definition->operandData.operands[1]) && operand->value.reg == reg &&
+                (PEEP_FLI(operand->flags) & PCodeOperand_Definition) != 0)
                 return 1;
             operand++;
         }
@@ -67,13 +91,34 @@ static inline int has_intervening_definition(PCodeInstruction *instruction, PCod
     return 0;
 }
 
+#if VERSION >= VERSION_GC_1_3
+#pragma dont_inline on
+static int stwbrx_scan(PCodeInstruction *start, PCodeInstruction *limit, PCodeOperand *ref, int bit)
+{
+    PCodeInstruction *p;
+    PCodeOperand *r;
+    SInt32 c;
+    for (p = start; p != limit; p = p->previous) {
+        r = p->operandData.operands;
+        c = p->operand_count;
+        while (c--) {
+            if (r->kind == 0 && r->arg == ref->arg && r->value.reg == ref->value.reg && (r->flags & bit))
+                return 1;
+            r++;
+        }
+    }
+    return 0;
+}
+#pragma dont_inline reset
+#endif
+
 static inline int fn_004c8f00_inline1(PCodeInstruction *cursor, PCodeInstruction *end, PCodeOperand *operand, int mask)
 {
     while (cursor != end) {
         PCodeOperand *p = cursor->operandData.operands;
         int count = cursor->operand_count;
         while (count--) {
-            if (p->kind == operand->kind && p->value.reg == operand->value.reg && (p->flags & mask) != 0)
+            if (BF_FINDUSE(p, operand) && p->value.reg == operand->value.reg && (p->flags & mask) != 0)
                 return 1;
             p++;
         }
@@ -82,6 +127,16 @@ static inline int fn_004c8f00_inline1(PCodeInstruction *cursor, PCodeInstruction
     return 0;
 }
 
+#if VERSION >= VERSION_GC_1_3
+#define PEEP_SCANKIND(op) BF_FINDUSE(op, &in->operandData.operands[which ? 2 : 1])
+#else
+#define PEEP_SCANKIND(op) (op->kind == (which ? in->operandData.operands[2].kind : in->operandData.operands[1].kind))
+#endif
+#if VERSION >= VERSION_GC_1_3
+#define PEEP_SCAN2ARG in->operandData.operands[2].arg
+#else
+#define PEEP_SCAN2ARG in, 1
+#endif
 static inline int scan(PCodeInstruction *p, PCodeInstruction *end, PCodeInstruction *in, int which, SInt16 val)
 {
     PCodeOperand *op;
@@ -91,14 +146,30 @@ static inline int scan(PCodeInstruction *p, PCodeInstruction *end, PCodeInstruct
         do {
             n = cur->operand_count;
             for (op = cur->operandData.operands; n--; op++) {
-                if (op->kind == (which ? in->operandData.operands[2].kind : in->operandData.operands[1].kind) &&
-                    op->value.reg == val && ((SInt8)op->flags & 2))
+                if (PEEP_SCANKIND(op) &&
+                    op->value.reg == val && (PEEP_FL(op->flags) & 2))
                     return 1;
             }
         } while ((cur = cur->previous) != end);
     return 0;
 }
 
+#if VERSION >= VERSION_GC_1_3
+static inline int scan2(PCodeInstruction *p, PCodeInstruction *end, SInt8 arg, SInt16 val)
+{
+    PCodeOperand *op;
+    int n;
+    for (; p != end; p = p->previous) {
+        op = p->operandData.operands;
+        n = p->operand_count;
+        for (; n--; op++) {
+            if (op->kind == 0 && op->arg == arg && op->value.reg == val && (op->flags & 2))
+                return 1;
+        }
+    }
+    return 0;
+}
+#else
 static inline int scan2(PCodeInstruction *p, PCodeInstruction *end, PCodeInstruction *in, int which, SInt16 val)
 {
     PCodeOperand *op;
@@ -107,13 +178,14 @@ static inline int scan2(PCodeInstruction *p, PCodeInstruction *end, PCodeInstruc
         op = p->operandData.operands;
         n = p->operand_count;
         for (; n--; op++) {
-            if (op->kind == (which ? in->operandData.operands[2].kind : in->operandData.operands[1].kind) &&
-                op->value.reg == val && ((SInt8)op->flags & 2))
+            if (PEEP_SCANKIND(op) &&
+                op->value.reg == val && (PEEP_FL(op->flags) & 2))
                 return 1;
         }
     }
     return 0;
 }
+#endif
 
 static inline int fn_004c9e70_inline1(PCodeInstruction *instruction, PCodeInstruction *next)
 {
@@ -122,7 +194,7 @@ static inline int fn_004c9e70_inline1(PCodeInstruction *instruction, PCodeInstru
         PCodeOperand *operand = scan->operandData.operands;
         int count = scan->operand_count;
         while (count--) {
-            if (operand->kind == next->operandData.operands[0].kind &&
+            if (BF_FINDUSE(operand, &next->operandData.operands[0]) &&
                 operand->value.reg == next->operandData.operands[0].value.reg && (operand->flags & 1) != 0)
                 return 1;
             operand++;
@@ -142,7 +214,7 @@ static inline int fn_004c9f80_inline1(PCodeInstruction *instruction, PCodeInstru
         operand = scan->operandData.operands;
         count = scan->operand_count;
         while (count--) {
-            if (operand->kind == definition->operandData.operands[0].kind &&
+            if (BF_FINDUSE(operand, &definition->operandData.operands[0]) &&
                 operand->value.reg == definition->operandData.operands[0].value.reg && (operand->flags & 1) != 0)
                 return 1;
             operand++;
@@ -159,7 +231,7 @@ static inline int hasTailKind(const PCodeInstruction *instruction, UInt8 kind)
 
 static inline int haveSameTailValue(const PCodeInstruction *first, const PCodeInstruction *second)
 {
-    return first->operandData.operands[2].value.signed_value == second->operandData.operands[2].value.signed_value;
+    return OPIMM(first->operandData.operands[2]) == OPIMM(second->operandData.operands[2]);
 }
 
 static inline void advanceInstructionOpcode(PCodeInstruction *instruction)
@@ -174,7 +246,7 @@ static inline SInt16 instructionOpcode(const PCodeInstruction *instruction)
 
 static inline void setInstructionOpcode(PCodeInstruction *instruction, SInt16 opcode)
 {
-    instruction->opcode = opcode;
+    PC_SETOPCODE(instruction, opcode);
 }
 
 static inline int fn_004cad40_inline1(PCodeInstruction *instruction, PCodeInstruction *definition, int mask)
@@ -187,7 +259,7 @@ static inline int fn_004cad40_inline1(PCodeInstruction *instruction, PCodeInstru
         count = cursor->operand_count;
         index = 0;
         while (count--) {
-            if (cursor->operandData.operands[index].kind == definition->operandData.operands[0].kind &&
+            if (BF_FINDUSE(&cursor->operandData.operands[index], &definition->operandData.operands[0]) &&
                 cursor->operandData.operands[index].value.reg == definition->operandData.operands[0].value.reg &&
                 (cursor->operandData.operands[index].flags & mask) != 0)
                 return 1;
@@ -208,7 +280,7 @@ static inline int fn_004cad40_scan(PCodeInstruction *instruction, PCodeInstructi
         operand = cursor->operandData.operands;
         count = cursor->operand_count;
         while (count--) {
-            if (operand->kind == definition->operandData.operands[0].kind &&
+            if (BF_FINDUSE(operand, &definition->operandData.operands[0]) &&
                 operand->value.reg == definition->operandData.operands[0].value.reg && (operand->flags & mask) != 0)
                 return 1;
             operand++;
@@ -228,7 +300,7 @@ static inline int fn_004ca790_inline1(PCodeInstruction *current, PCodeInstructio
         operand = scan->operandData.operands;
         count = scan->operand_count;
         while (count--) {
-            if (operand->kind == previous->operandData.operands[0].kind &&
+            if (BF_FINDUSE(operand, &previous->operandData.operands[0]) &&
                 operand->value.reg == previous->operandData.operands[0].value.reg && (operand->flags & 1) != 0)
                 return 1;
             operand++;
@@ -248,7 +320,7 @@ static inline int fn_004cb330_inline1(PCodeInstruction *l20, PCodeInstruction *v
         v3 = (PCodeOperand *)((int)&v2->operandData.operands[0]);
         v4 = (int)v2->operand_count;
         while (v4--) {
-            if (v3->kind == v1p->kind && v3->value.reg == (short)v1p->value.reg && ((int)v3->flags & k3) != 0) {
+            if (BF_FINDUSE(v3, v1p) && v3->value.reg == (short)v1p->value.reg && ((int)v3->flags & k3) != 0) {
                 return 1;
             }
             v3++;
@@ -265,7 +337,7 @@ static inline int fn_004cb190_inline1(PCodeInstruction *start, PCodeInstruction 
         PCodeOperand *current = scan->operandData.operands;
         int count = scan->operand_count;
         while (count--) {
-            if (current->kind == operand->kind && current->value.reg == operand->value.reg &&
+            if (BF_FINDUSE(current, operand) && current->value.reg == operand->value.reg &&
                 (current->flags & mask) != 0)
                 return 1;
             current++;
@@ -285,7 +357,7 @@ static inline int fn_004cb890_inline1(int l20, PCodeInstruction *v1, PCodeOperan
         v3 = (PCodeOperand *)((int)&v2->operandData.operands[0]);
         v4 = (int)v2->operand_count;
         while (v4--) {
-            if (v3->kind == v1p->kind && v3->value.reg == (short)v1p->value.reg && ((int)v3->flags & k3) != 0) {
+            if (BF_FINDUSE(v3, v1p) && v3->value.reg == (short)v1p->value.reg && ((int)v3->flags & k3) != 0) {
                 return 1;
             }
             v3++;
@@ -306,7 +378,7 @@ static inline int fn_004cb4d0_inline1(struct PCodeInstruction *l20, struct PCode
         v3 = v2->operandData.operands;
         v4 = (int)v2->operand_count;
         while (v4--) {
-            if (v3->kind == v1p->kind && v3->value.reg == v1p->value.reg && ((int)(signed char)v3->flags & k3) != 0) {
+            if (BF_FINDUSE(v3, v1p) && v3->value.reg == v1p->value.reg && (PEEP_FLI(v3->flags) & k3) != 0) {
                 return 1;
             }
             v3++;
@@ -322,9 +394,9 @@ static inline unsigned int RotatedMask(struct PCodeInstruction *pc)
     int mb;
     int me;
     unsigned int m;
-    sh = pc->operandData.operands[2].value.signed_value;
-    mb = pc->operandData.operands[3].value.signed_value;
-    me = pc->operandData.operands[4].value.signed_value;
+    sh = OPIMM(pc->operandData.operands[2]);
+    mb = OPIMM(pc->operandData.operands[3]);
+    me = OPIMM(pc->operandData.operands[4]);
     if (mb <= me)
         m = ((mb > 31) ? 0 : (0xFFFFFFFF >> mb)) & ~(((me + 1) > 31) ? 0 : (0xFFFFFFFF >> (me + 1)));
     else
@@ -338,7 +410,7 @@ static inline int fn_004cb6b0_inline1(PCodeInstruction *cursor, PCodeInstruction
         PCodeOperand *p = cursor->operandData.operands;
         int count = cursor->operand_count;
         while (count--) {
-            if (p->kind == operand->kind && p->value.reg == operand->value.reg && (p->flags & mask) != 0)
+            if (BF_FINDUSE(p, operand) && p->value.reg == operand->value.reg && (p->flags & mask) != 0)
                 return 1;
             p++;
         }
@@ -357,9 +429,15 @@ static inline int HasMatchingEntry(PCodeInstruction *p, PCodeInstruction *s)
         e = l->operandData.operands;
         i = l->operand_count;
         while (i--) {
-            if (e->kind == p->operandData.operands[0].kind && e->value.reg == p->operandData.operands[0].value.reg &&
+#if VERSION >= VERSION_GC_1_3
+            if (e->kind == 0 && e->arg == p->operandData.operands[0].arg &&
+                e->value.reg == p->operandData.operands[0].value.reg && (e->flags & 2))
+                return 1;
+#else
+            if (BF_FINDUSE(e, &p->operandData.operands[0]) && e->value.reg == p->operandData.operands[0].value.reg &&
                 (e->flags & 2))
                 return 1;
+#endif
             e++;
         }
     }
@@ -398,7 +476,7 @@ void initialize_register_block_liveness(void)
                 for (operand = instruction->operandData.operands,
                     use_count = definition_count = instruction->operand_count;
                      use_count--; operand++) {
-                    if (operand->kind == PCOp_GPR && (flags = operand->flags, flags & PCodeOperand_Use) != 0 &&
+                    if (PEEP_ISGPR(operand) && (flags = operand->flags, flags & PCodeOperand_Use) != 0 &&
                         (defs0 & (bit = 1 << operand->value.reg)) == 0)
                         uses0 = (bit = uses0 | bit);
                     else if (operand->kind == PCOp_FPR && (flags = operand->flags, flags & PCodeOperand_Use) != 0 &&
@@ -413,7 +491,7 @@ void initialize_register_block_liveness(void)
                 }
                 operand = instruction->operandData.operands;
                 while (definition_count--) {
-                    if (operand->kind == PCOp_GPR && (flags = operand->flags, flags & PCodeOperand_Definition) != 0 &&
+                    if (PEEP_ISGPR(operand) && (flags = operand->flags, flags & PCodeOperand_Definition) != 0 &&
                         (uses0 & (bit = 1 << operand->value.reg)) == 0)
                         defs0 |= bit;
                     else if (operand->kind == PCOp_FPR &&
@@ -456,6 +534,64 @@ void initialize_register_block_liveness(void)
     }
     return;
 }
+
+#if VERSION >= VERSION_GC_1_3
+int fn_00506260(void)
+{
+    return 0;
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+extern int (*data_005ce994)(int);
+extern int (*data_005cf9bc)(int);
+
+/* (1.3 defines it after its callers, so it is called, not inlined) */
+#pragma dont_inline on
+int fn_00506270(int arg)
+{
+    SInt32 tgt = copts.processorModel;
+
+    if (tgt == 10)
+        return data_005ce994(arg);
+    if (copts.altivec_model || tgt == 7)
+        return data_005cf9bc(arg);
+    return 0;
+}
+#pragma dont_inline reset
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+extern int fn_004f5f00(void *operand);
+
+Boolean fn_004f5c90(UInt8 *operand, int offset)
+{
+    if (operand[2] != 1)
+        return 0;
+    if ((short)fn_004f5f00(operand) == fn_004f5f00(operand) && (short)(fn_004f5f00(operand) + offset) == fn_004f5f00(operand) + offset)
+        return 1;
+    return 0;
+}
+
+Boolean fn_004e66a0(UInt32 a, UInt32 b)
+{
+    int result;
+
+    if ((a & 1) && !(b & 1)) {
+        result = 1;
+        if (!(a & 2) && (b & 2))
+            result = 0;
+        return result;
+    }
+    if ((a & 2) && !(b & 2)) {
+        result = 1;
+        if (!(a & 1) && (b & 1))
+            result = 0;
+        return result;
+    }
+    return 0;
+}
+#endif
 
 void compute_register_block_liveness(RegisterBlockLiveness *data, UInt32 mask)
 {
@@ -529,6 +665,47 @@ void build_register_block_liveness(Object *object)
     compute_register_block_liveness(data_005813ac, 0);
 }
 
+#if VERSION >= VERSION_GC_1_3
+void build_reaching_def_table(PCodeBlock *block)
+{
+    PCodeInstruction *defs[5][32];
+    PCodeInstruction *instruction;
+    PCodeOperand *operand;
+    PCodeInstruction *initialDefinition;
+    SInt32 i;
+    SInt32 useStart;
+    SInt32 operandCount;
+    SInt8 cls;
+
+    initialDefinition = PCodeUtilities_CreateInstruction(0x8c);
+    for (cls = 0; cls < 5; cls++) {
+        for (i = 0; i < 32; i++)
+            defs[cls][i] = initialDefinition;
+    }
+    operandCount = 0;
+    for (instruction = block->instructions; instruction != NULL; instruction = instruction->next)
+        operandCount += instruction->operand_count;
+    if (operandCount != 0) {
+        CodeGen_ReachingDefTable_00581af8 = (PCodeInstruction **)CompilerTools_AllocatePoolMemory(
+            operandCount * sizeof(*CodeGen_ReachingDefTable_00581af8));
+        for (i = 0; i < operandCount; i++)
+            CodeGen_ReachingDefTable_00581af8[i] = initialDefinition;
+        useStart = 0;
+        for (instruction = block->instructions; instruction != NULL; instruction = instruction->next) {
+            instruction->useStart = useStart;
+            for (i = 0, operand = instruction->operandData.operands; i < instruction->operand_count; i++, operand++) {
+                if (operand->kind == 0 && (operand->flags & 1))
+                    CodeGen_ReachingDefTable_00581af8[useStart + i] = defs[operand->arg][operand->value.reg];
+            }
+            for (i = 0, operand = instruction->operandData.operands; i < instruction->operand_count; i++, operand++) {
+                if (operand->kind == 0 && (operand->flags & 2))
+                    defs[operand->arg][operand->value.reg] = instruction;
+            }
+            useStart += instruction->operand_count;
+        }
+    }
+}
+#else
 void build_reaching_def_table(PCodeBlock *block)
 {
     PCodeInstruction *integerDefs[32];
@@ -565,7 +742,7 @@ void build_reaching_def_table(PCodeBlock *block)
         for (instruction = block->instructions; instruction != NULL; instruction = instruction->next) {
             instruction->useStart = useStart;
             for (i = 0, operand = instruction->operandData.operands; i < instruction->operand_count; i++, operand++) {
-                if (operand->kind == PCOp_GPR && (operand->flags & 1)) {
+                if (PEEP_ISGPR(operand) && (operand->flags & 1)) {
                     CodeGen_ReachingDefTable_00581af8[useStart + i] = integerDefs[operand->value.reg];
                 } else if (operand->kind == PCOp_FPR && (operand->flags & 1)) {
                     CodeGen_ReachingDefTable_00581af8[useStart + i] = floatDefs[operand->value.reg];
@@ -576,7 +753,7 @@ void build_reaching_def_table(PCodeBlock *block)
                 }
             }
             for (i = 0, operand = instruction->operandData.operands; i < instruction->operand_count; i++, operand++) {
-                if (operand->kind == PCOp_GPR && (operand->flags & 2)) {
+                if (PEEP_ISGPR(operand) && (operand->flags & 2)) {
                     integerDefs[operand->value.reg] = instruction;
                 } else if (operand->kind == PCOp_FPR && (operand->flags & 2)) {
                     floatDefs[operand->value.reg] = instruction;
@@ -590,6 +767,7 @@ void build_reaching_def_table(PCodeBlock *block)
         }
     }
 }
+#endif
 
 int fn_004cc040(PCodeInstruction *instruction, UInt32 gprMask, UInt32 fprMask, UInt32 crFieldMask, UInt32 vectorMask,
                 Boolean checkSpecialRegisterZero)
@@ -607,7 +785,7 @@ int fn_004cc040(PCodeInstruction *instruction, UInt32 gprMask, UInt32 fprMask, U
     remainingOperands = instruction->operand_count;
     operand = instruction->operandData.operands;
     while (remainingOperands--) {
-        if (operand->kind == PCOp_GPR && (operand->flags & 2) && ((1 << operand->value.reg) & gprMask))
+        if (PEEP_ISGPR(operand) && (operand->flags & 2) && ((1 << operand->value.reg) & gprMask))
             return 0;
         if (operand->kind == PCOp_FPR && (operand->flags & 2) && ((1 << operand->value.reg) & fprMask))
             return 0;
@@ -621,6 +799,11 @@ int fn_004cc040(PCodeInstruction *instruction, UInt32 gprMask, UInt32 fprMask, U
     }
     return 1;
 }
+#if VERSION >= VERSION_GC_1_3
+#define BF_SPR(e) ((e)->kind == 0 && (e)->arg == 0)
+#else
+#define BF_SPR(e) ((e)->kind == PCOp_SPR)
+#endif
 
 int has_reg_flag_one_before_flag_two(PCodeInstruction *list, int hash)
 {
@@ -633,9 +816,9 @@ int has_reg_flag_one_before_flag_two(PCodeInstruction *list, int hash)
         do {
             e = node->operandData.operands;
             for (i = node->operand_count; i--; e++) {
-                if (e->kind == PCOp_SPR && e->value.reg == hash && (e->flags & 1))
+                if (BF_SPR(e) && e->value.reg == hash && (e->flags & 1))
                     return 1;
-                if (e->kind == PCOp_SPR && e->value.reg == hash && (e->flags & 2))
+                if (BF_SPR(e) && e->value.reg == hash && (e->flags & 2))
                     return 0;
             }
             node = node->next;
@@ -731,7 +914,7 @@ int fn_004cbe40(PCodeBlock *node, PCodeInstruction *item, int instructionCount, 
                 if (branchCount > 2)
                     return 1;
                 for (operandIndex = 0; operandIndex < item->operand_count; operandIndex++) {
-                    if (item->operandData.operands[operandIndex].kind == PCOp_CRFIELD) {
+                    if (PEEP_ISCR(item->operandData.operands[operandIndex])) {
                         targetCount++;
                         break;
                     }
@@ -758,7 +941,7 @@ unsigned int unlink_equal_reg_instruction(PCodeInstruction *record)
     unsigned short second_value = record->operandData.operands[1].value.reg;
     unsigned short first_value = record->operandData.operands[0].value.reg;
     if (first_value == second_value) {
-        if (!(record->flags & 128U)) {
+        if (!(BY_VERSION(record->flags & 128U, PCODE_RECORD(record->flags)))) {
             PCode_UnlinkInstruction(record);
             return 1;
         }
@@ -769,7 +952,7 @@ unsigned int unlink_equal_reg_instruction(PCodeInstruction *record)
 int unlink_same_reg_instruction(PCodeInstruction *object)
 {
     if (object->operandData.operands[0].value.reg == object->operandData.operands[1].value.reg &&
-        !(object->flags & fRecordBit)) {
+        !(PCODE_RECORD(object->flags))) {
         PCode_UnlinkInstruction(object);
         return 1;
     }
@@ -779,7 +962,7 @@ int unlink_same_reg_instruction(PCodeInstruction *object)
 int unlink_same_reg_move(PCodeInstruction *instruction)
 {
     PCodeInstruction *move = instruction;
-    if (move->operandData.operands[0].value.reg == move->operandData.operands[1].value.reg && !(move->flags & 0x80U)) {
+    if (move->operandData.operands[0].value.reg == move->operandData.operands[1].value.reg && !(BY_VERSION(move->flags & 0x80U, PCODE_RECORD(move->flags)))) {
         PCode_UnlinkInstruction(move);
         return 1;
     }
@@ -795,7 +978,7 @@ int unlink_instruction_with_matching_mr_def(PCodeInstruction *p)
     def = tbl[p->useStart + 1];
 
     if (def->opcode == PC_MR && p->operandData.operands[0].value.reg == def->operandData.operands[1].value.reg &&
-        !PCode_InstUses(p->previous, def, p) && !(p->flags & fRecordBit)) {
+        !PCode_InstUses(p->previous, def, p) && !(PCODE_RECORD(p->flags))) {
         PCode_UnlinkInstruction(p);
         return 1;
     }
@@ -812,7 +995,7 @@ int unlink_instruction_for_unmatched_fmr(PCodeInstruction *p)
     table = CodeGen_ReachingDefTable_00581af8;
     s = table[idx + 1];
     if (s->opcode == PC_FMR && p->operandData.operands[0].value.reg == s->operandData.operands[1].value.reg &&
-        (p->flags & fRecordBit) == 0) {
+        (PCODE_RECORD(p->flags)) == 0) {
         if (!HasMatchingEntry(p, s)) {
             PCode_UnlinkInstruction(p);
             return 1;
@@ -830,7 +1013,7 @@ int unlink_instruction_matching_vmr_source(PCodeInstruction *p)
     def = tbl[p->useStart + 1];
 
     if (def->opcode == PC_VMR && p->operandData.operands[0].value.reg == def->operandData.operands[1].value.reg &&
-        !(p->flags & fRecordBit)) {
+        !(PCODE_RECORD(p->flags))) {
         if (!PCode_InstUses(p->previous, def, p)) {
             PCode_UnlinkInstruction(p);
             return 1;
@@ -838,6 +1021,11 @@ int unlink_instruction_matching_vmr_source(PCodeInstruction *p)
     }
     return 0;
 }
+#if VERSION >= VERSION_GC_1_3
+#define PEEP_SETERR(c) fn_00528030((PCodeInstruction *)(c), 0x192)
+#else
+#define PEEP_SETERR(c) ((c)->errorCode = 0x18f)
+#endif
 
 int fn_004cba60(CmpCtx *ctx)
 {
@@ -848,35 +1036,35 @@ int fn_004cba60(CmpCtx *ctx)
     int flagA = 0;
     int retA = 0;
     if (b != NULL) {
-        flagB = (((SInt32)b->flags & 3) == 3);
-        retB = fn_0052f370(b);
+        flagB = (((SInt32)b->flags & BY_VERSION(3, 0xc0000000)) == BY_VERSION(3, 0xc0000000));
+        retB = BY_VERSION(fn_0052f370(b), fn_00506270((int)b));
     }
     if (a != NULL) {
-        flagA = (((SInt32)a->flags & 3) == 3);
-        retA = fn_0052f370(a);
+        flagA = (((SInt32)a->flags & BY_VERSION(3, 0xc0000000)) == BY_VERSION(3, 0xc0000000));
+        retA = BY_VERSION(fn_0052f370(a), fn_00506270((int)a));
     }
     if (b != NULL) {
         if (a != NULL) {
             if (flagB && !retB) {
                 if (flagA) {
                     if (!retA) {
-                        ctx->errorCode = 0x18f;
+                        PEEP_SETERR(ctx);
                         return 1;
                     }
                 } else {
-                    ctx->errorCode = 0x18f;
+                    PEEP_SETERR(ctx);
                     return 1;
                 }
             }
         } else {
             if (flagB && !retB) {
-                ctx->errorCode = 0x18f;
+                PEEP_SETERR(ctx);
                 return 1;
             }
         }
     } else {
         if (a != NULL && flagA && !retA) {
-            ctx->errorCode = 0x18f;
+            PEEP_SETERR(ctx);
             return 1;
         }
     }
@@ -894,7 +1082,7 @@ int make_record_form_and_unlink_instruction(PCodeInstruction *instruction)
 
     record = CodeGen_ReachingDefTable_00581af8[instruction->useStart + 1];
     if (instruction->operandData.operands[0].value.reg == 0 &&
-        instruction->operandData.operands[2].value.signed_value == 0 && (record->flags & 0x601) == 0x201) {
+        OPIMM(instruction->operandData.operands[2]) == 0 && (record->flags & 0x601) == 0x201) {
         firstMatch = fn_004cb890_inline1((int)instruction->previous, record, &instruction->operandData.operands[0], 1);
         if (firstMatch == 0) {
             secondMatch =
@@ -919,14 +1107,14 @@ int make_record_form_and_unlink_instruction(PCodeInstruction *instruction)
     return 0;
 }
 
-int bypass_extsb_for_low_byte_rotated_mask(PCodeInstruction *instruction, int register_mask)
+int bypass_extsb_for_low_byte_rotated_mask(PCodeInstruction *instruction, PEEP_LIVE_T register_mask)
 {
     PCodeInstruction *previous = CodeGen_ReachingDefTable_00581af8[instruction->useStart + 1];
 
     if (previous->opcode == PC_EXTSB &&
         ((short)previous->operandData.operands[0].value.reg == instruction->operandData.operands[0].value.reg ||
-         (register_mask & (1 << (short)previous->operandData.operands[0].value.reg)) == 0) &&
-        (previous->flags & PCodeInstruction_CloneExtraOperandExcluded) == 0 &&
+         (PEEP_MASK(register_mask) & (1 << (short)previous->operandData.operands[0].value.reg)) == 0) &&
+        (BY_VERSION(previous->flags & PCodeInstruction_CloneExtraOperandExcluded, PCODE_RECORD(previous->flags))) == 0 &&
         fn_004cb6b0_inline1(instruction->previous, previous, &previous->operandData.operands[1], 2) == 0 &&
         fn_004cb6b0_inline1(instruction->previous, previous, &previous->operandData.operands[0], 1) == 0 &&
         (RotatedMask(instruction) & 0xFFFFFF00) == 0) {
@@ -939,14 +1127,14 @@ int bypass_extsb_for_low_byte_rotated_mask(PCodeInstruction *instruction, int re
     return 0;
 }
 
-int bypass_extsh_for_rotated_mask(struct PCodeInstruction *pattern, int registerMask)
+int bypass_extsh_for_rotated_mask(struct PCodeInstruction *pattern, PEEP_LIVE_T registerMask)
 {
     struct PCodeInstruction *instruction = CodeGen_ReachingDefTable_00581af8[pattern->useStart + 1];
 
     if (instruction->opcode == PC_EXTSH &&
         (instruction->operandData.operands[0].value.reg == pattern->operandData.operands[0].value.reg ||
-         ((1 << instruction->operandData.operands[0].value.reg) & registerMask) == 0) &&
-        (instruction->flags & fRecordBit) == 0 &&
+         ((1 << instruction->operandData.operands[0].value.reg) & PEEP_MASK(registerMask)) == 0) &&
+        (PCODE_RECORD(instruction->flags)) == 0 &&
         fn_004cb4d0_inline1(pattern->previous, instruction, &instruction->operandData.operands[1], 2) == 0 &&
         fn_004cb4d0_inline1(pattern->previous, instruction, &instruction->operandData.operands[0], 1) == 0 &&
         (RotatedMask(pattern) & 0xFFFF0000) == 0) {
@@ -959,18 +1147,18 @@ int bypass_extsh_for_rotated_mask(struct PCodeInstruction *pattern, int register
     return 0;
 }
 
-int fold_lbz_lbzx_mask(PCodeInstruction *instruction, int register_mask)
+int fold_lbz_lbzx_mask(PCodeInstruction *instruction, PEEP_LIVE_T register_mask)
 {
     PCodeInstruction *previous_instruction = CodeGen_ReachingDefTable_00581af8[instruction->useStart + 1];
 
     if ((((PCodeInstruction *)previous_instruction)->opcode == PC_LBZ ||
          ((PCodeInstruction *)previous_instruction)->opcode == PC_LBZX) &&
-        instruction->operandData.operands[2].value.signed_value == 0 &&
-        instruction->operandData.operands[3].value.signed_value <= 24 &&
-        instruction->operandData.operands[4].value.signed_value == 31 &&
-        (((PCodeInstruction *)instruction)->flags & fRecordBit) == 0) {
+        OPIMM(instruction->operandData.operands[2]) == 0 &&
+        OPIMM(instruction->operandData.operands[3]) <= 24 &&
+        OPIMM(instruction->operandData.operands[4]) == 31 &&
+        (PCODE_RECORD(((PCodeInstruction *)instruction)->flags)) == 0) {
         if (previous_instruction->operandData.operands[0].value.reg == instruction->operandData.operands[0].value.reg ||
-            ((1 << previous_instruction->operandData.operands[0].value.reg) & register_mask) == 0) {
+            ((1 << previous_instruction->operandData.operands[0].value.reg) & PEEP_MASK(register_mask)) == 0) {
             if (fn_004cb330_inline1(instruction->previous, previous_instruction,
                                     &previous_instruction->operandData.operands[0], 1) == 0 &&
                 fn_004cb330_inline1(instruction->previous, previous_instruction, &instruction->operandData.operands[0],
@@ -987,15 +1175,15 @@ int fold_lbz_lbzx_mask(PCodeInstruction *instruction, int register_mask)
     return 0;
 }
 
-int fold_lhz_lhzx_mask(PCodeInstruction *instruction, int register_mask)
+int fold_lhz_lhzx_mask(PCodeInstruction *instruction, PEEP_LIVE_T register_mask)
 {
     PCodeInstruction *producer = CodeGen_ReachingDefTable_00581af8[instruction->useStart + 1];
     if ((producer->opcode == PC_LHZ || producer->opcode == PC_LHZX) &&
-        instruction->operandData.operands[2].value.signed_value == 0 &&
-        instruction->operandData.operands[3].value.signed_value <= 16 &&
-        instruction->operandData.operands[4].value.signed_value == 31 && (instruction->flags & fRecordBit) == 0 &&
+        OPIMM(instruction->operandData.operands[2]) == 0 &&
+        OPIMM(instruction->operandData.operands[3]) <= 16 &&
+        OPIMM(instruction->operandData.operands[4]) == 31 && (PCODE_RECORD(instruction->flags)) == 0 &&
         (producer->operandData.operands[0].value.reg == instruction->operandData.operands[0].value.reg ||
-         ((1 << producer->operandData.operands[0].value.reg) & register_mask) == 0) &&
+         ((1 << producer->operandData.operands[0].value.reg) & PEEP_MASK(register_mask)) == 0) &&
         fn_004cb190_inline1(instruction->previous, producer, &producer->operandData.operands[0], 1) == 0 &&
         fn_004cb190_inline1(instruction->previous, producer, &instruction->operandData.operands[0], 2) == 0 &&
         fn_004cb190_inline1(instruction->previous, producer, &instruction->operandData.operands[0], 1) == 0) {
@@ -1006,15 +1194,15 @@ int fold_lhz_lhzx_mask(PCodeInstruction *instruction, int register_mask)
     return 0;
 }
 
-int fold_reaching_lha_or_extsb(PCodeInstruction *p, UInt32 mask)
+int fold_reaching_lha_or_extsb(PCodeInstruction *p, PEEP_LIVE_T mask)
 {
     PCodeInstruction *q;
 
     q = CodeGen_ReachingDefTable_00581af8[p->useStart + 1];
 
-    if (q->opcode == PC_LHA && (p->flags & fRecordBit) == 0) {
+    if (q->opcode == PC_LHA && (PCODE_RECORD(p->flags)) == 0) {
         if (q->operandData.operands[0].value.reg == p->operandData.operands[0].value.reg ||
-            (mask & (1 << q->operandData.operands[0].value.reg)) == 0) {
+            (PEEP_MASK(mask) & (1 << q->operandData.operands[0].value.reg)) == 0) {
             if (!HasDef(p->previous, q, &q->operandData.operands[0], 1)) {
                 if (!HasDef(p->previous, q, &p->operandData.operands[0], 2)) {
                     if (!HasDef(p->previous, q, &p->operandData.operands[0], 1)) {
@@ -1027,22 +1215,22 @@ int fold_reaching_lha_or_extsb(PCodeInstruction *p, UInt32 mask)
         }
     }
 
-    if (q->opcode == PC_EXTSB && (p->flags & fRecordBit) == 0) {
+    if (q->opcode == PC_EXTSB && (PCODE_RECORD(p->flags)) == 0) {
         if (q->operandData.operands[0].value.reg == q->operandData.operands[1].value.reg) {
-            if ((mask & (1 << q->operandData.operands[0].value.reg)) == 0) {
+            if ((PEEP_MASK(mask) & (1 << q->operandData.operands[0].value.reg)) == 0) {
                 if (!HasDef(p->previous, q, &q->operandData.operands[0], 1)) {
-                    p->opcode = PC_EXTSB;
+                    PC_SETOPCODE(p, PC_EXTSB);
                     PCode_UnlinkInstruction(q);
                     return 1;
                 }
             }
         } else {
             if (!HasDef(p->previous, q, &q->operandData.operands[1], 2)) {
-                p->opcode = PC_EXTSB;
+                PC_SETOPCODE(p, PC_EXTSB);
                 p->operandData.operands[1] = q->operandData.operands[1];
             } else {
-                p->opcode = PC_MR;
-                p->flags |= fIsMove;
+                PC_SETOPCODE(p, PC_MR);
+                PEEP_ADDMOVE(p);
             }
             return 1;
         }
@@ -1050,24 +1238,27 @@ int fold_reaching_lha_or_extsb(PCodeInstruction *p, UInt32 mask)
     return 0;
 }
 
-int fold_li_operand(PCodeInstruction *instruction, int register_mask)
+int fold_li_operand(PCodeInstruction *instruction, PEEP_LIVE_T register_mask)
 {
     PCodeInstruction *previous;
     int result;
     int second_result;
     previous = CodeGen_ReachingDefTable_00581af8[instruction->useStart + 1];
-    if (previous->opcode == PC_LI && previous->operandData.operands[1].kind == PCOp_MEMORY &&
-        instruction->operandData.operands[2].kind == PCOp_IMMEDIATE &&
-        instruction->operandData.operands[2].value.signed_value == 0 &&
+    if (previous->opcode == PC_LI && previous->operandData.operands[1].kind == PEEP_MEMORY &&
+        instruction->operandData.operands[2].kind == PEEP_IMMEDIATE &&
+        BY_VERSION(OPIMM(instruction->operandData.operands[2]), instruction->operandData.operands[2].imm32) == 0 &&
         previous->operandData.operands[0].value.reg == instruction->operandData.operands[1].value.reg) {
         result = fn_004cad40_scan(instruction, previous, 2);
         if (result == 0) {
             instruction->operandData.operands[1].value.reg = 0;
+#if VERSION >= VERSION_GC_1_3
+            instruction->operandData.operands[1].flags &= ~3;
+#endif
             instruction->operandData.operands[2] = previous->operandData.operands[1];
             CodeGen_ReachingDefTable_00581af8[instruction->useStart + 1] =
                 CodeGen_ReachingDefTable_00581af8[previous->useStart + 1];
             second_result = fn_004cad40_scan(instruction, previous, 1);
-            if (second_result == 0 && (1 << previous->operandData.operands[0].value.reg & register_mask) == 0) {
+            if (second_result == 0 && (1 << previous->operandData.operands[0].value.reg & PEEP_MASK(register_mask)) == 0) {
                 PCode_UnlinkInstruction(previous);
             }
             return 1;
@@ -1078,20 +1269,20 @@ int fold_li_operand(PCodeInstruction *instruction, int register_mask)
 
 /* An addi whose base register comes from another addi (or an li/la-style definition): the two offsets folded into
    one instruction on the first's base, or the first removed when its result is dead. */
-int fold_addi_or_mr_reaching_def(PCodeInstruction *pc, UInt32 mask)
+int fold_addi_or_mr_reaching_def(PCodeInstruction *pc, PEEP_LIVE_T mask)
 {
     PCodeInstruction *def;
     SInt32 offset, sum;
 
     def = CodeGen_ReachingDefTable_00581af8[pc->useStart + 1];
-    if (def->opcode == PC_ADDI && pc->operandData.operands[2].kind == PCOp_IMMEDIATE) {
-        if (!(pc->operandData.operands[0].kind == PCOp_GPR &&
+    if (def->opcode == PC_ADDI && pc->operandData.operands[2].kind == PEEP_IMMEDIATE) {
+        if (!(PEEP_ISGPR(&pc->operandData.operands[0]) &&
               pc->operandData.operands[0].value.reg == pc->operandData.operands[1].value.reg)) {
-            if (pc->operandData.operands[2].value.signed_value == 0 &&
+            if (OPIMM(pc->operandData.operands[2]) == 0 &&
                 def->operandData.operands[0].value.reg == def->operandData.operands[1].value.reg &&
                 !PCode_UsedBetween(pc, def, &def->operandData.operands[0]) &&
-                (!(mask & (1 << def->operandData.operands[0].value.reg)) || PCode_LiveAfter(pc))) {
-                if (mask & (1 << def->operandData.operands[0].value.reg)) {
+                (!(PEEP_MASK(mask) & (1 << def->operandData.operands[0].value.reg)) || PCode_LiveAfter(pc))) {
+                if (PEEP_MASK(mask) & (1 << def->operandData.operands[0].value.reg)) {
                     pc->opcode++;
                     pc->operandData.operands[1].flags |= 2;
                     pc->operandData.operands[2] = def->operandData.operands[2];
@@ -1103,13 +1294,13 @@ int fold_addi_or_mr_reaching_def(PCodeInstruction *pc, UInt32 mask)
                 PCode_UnlinkInstruction(def);
                 return 1;
             }
-            offset = pc->operandData.operands[2].value.signed_value;
+            offset = OPIMM(pc->operandData.operands[2]);
             sum = 0x1ffff;
-            if (def->operandData.operands[2].kind == PCOp_IMMEDIATE)
-                sum = def->operandData.operands[2].value.signed_value;
-            else if (def->operandData.operands[2].kind == PCOp_MEMORY) {
+            if (def->operandData.operands[2].kind == PEEP_IMMEDIATE)
+                sum = OPIMM(def->operandData.operands[2]);
+            else if (def->operandData.operands[2].kind == PEEP_MEMORY) {
                 if (def->operandData.operands[2].object->datatype == DLOCAL) {
-                    sum = def->operandData.operands[2].value.signed_value;
+                    sum = OPIMM(def->operandData.operands[2]);
                     sum += def->operandData.operands[2].object->u.var.uid;
                 } else if (offset == 0)
                     sum = 0;
@@ -1118,17 +1309,17 @@ int fold_addi_or_mr_reaching_def(PCodeInstruction *pc, UInt32 mask)
             }
             if (sum + offset != (short)(sum + offset))
                 return 0;
-            if (!(mask & (1 << def->operandData.operands[0].value.reg))) {
+            if (!(PEEP_MASK(mask) & (1 << def->operandData.operands[0].value.reg))) {
                 if (!PCode_UsedBetween(pc, def, &def->operandData.operands[0])) {
                     if (!PCode_DefinedBetween(pc, def, &def->operandData.operands[1])) {
                         pc->operandData.operands[1].value.reg = def->operandData.operands[1].value.reg;
                         CodeGen_ReachingDefTable_00581af8[pc->useStart + 1] =
                             CodeGen_ReachingDefTable_00581af8[def->useStart + 1];
-                        if (def->operandData.operands[2].kind == PCOp_MEMORY) {
+                        if (def->operandData.operands[2].kind == PEEP_MEMORY) {
                             pc->operandData.operands[2] = def->operandData.operands[2];
-                            pc->operandData.operands[2].value.signed_value += offset;
+                            OPIMM(pc->operandData.operands[2]) += offset;
                         } else
-                            pc->operandData.operands[2].value.signed_value = sum + offset;
+                            OPIMM(pc->operandData.operands[2]) = sum + offset;
                         PCode_UnlinkInstruction(def);
                         return 1;
                     }
@@ -1136,21 +1327,21 @@ int fold_addi_or_mr_reaching_def(PCodeInstruction *pc, UInt32 mask)
             }
             if (pc->operandData.operands[1].value.reg != def->operandData.operands[1].value.reg &&
                 !PCode_DefinedBetween(pc, def, &def->operandData.operands[1])) {
-                if (def->operandData.operands[2].kind == PCOp_MEMORY &&
+                if (def->operandData.operands[2].kind == PEEP_MEMORY &&
                     def->operandData.operands[2].object->datatype != DLOCAL)
                     return 0;
                 pc->operandData.operands[1].value.reg = def->operandData.operands[1].value.reg;
                 CodeGen_ReachingDefTable_00581af8[pc->useStart + 1] =
                     CodeGen_ReachingDefTable_00581af8[def->useStart + 1];
-                if (def->operandData.operands[2].kind == PCOp_MEMORY) {
+                if (def->operandData.operands[2].kind == PEEP_MEMORY) {
                     pc->operandData.operands[2] = def->operandData.operands[2];
-                    pc->operandData.operands[2].value.signed_value += offset;
+                    OPIMM(pc->operandData.operands[2]) += offset;
                 } else
-                    pc->operandData.operands[2].value.signed_value = sum + offset;
+                    OPIMM(pc->operandData.operands[2]) = sum + offset;
                 return 1;
             }
         }
-    } else if (def->opcode == PC_MR && def->operandData.operands[1].kind == PCOp_GPR &&
+    } else if (def->opcode == PC_MR && PEEP_ISGPR(&def->operandData.operands[1]) &&
                def->operandData.operands[1].value.reg != 0) {
         if (!PCode_DefinedBetween(pc, def, &def->operandData.operands[1])) {
             pc->operandData.operands[1].value.reg = def->operandData.operands[1].value.reg;
@@ -1175,7 +1366,7 @@ static int PCode_DefinedBetween(PCodeInstruction *instr, PCodeInstruction *def, 
 
     for (scan = instr->previous; scan != def; scan = scan->previous) {
         for (op = scan->operandData.operands, n = scan->operand_count; n--; op++) {
-            if (op->kind == arg->kind && op->value.reg == arg->value.reg && (op->flags & 2))
+            if (BF_FINDUSE(op, arg) && op->value.reg == arg->value.reg && (op->flags & 2))
                 return 1;
         }
     }
@@ -1191,7 +1382,7 @@ static int PCode_UsedBetween(PCodeInstruction *instr, PCodeInstruction *def, PCo
 
     for (scan = instr->previous; scan != def; scan = scan->previous) {
         for (op = scan->operandData.operands, n = scan->operand_count; n--; op++) {
-            if (op->kind == arg->kind && op->value.reg == arg->value.reg && (op->flags & 1))
+            if (BF_FINDUSE(op, arg) && op->value.reg == arg->value.reg && (op->flags & 1))
                 return 1;
         }
     }
@@ -1213,26 +1404,26 @@ int fold_reaching_addi(PCodeInstruction *current)
     kind = current->operandData.operands[2].kind;
     table = CodeGen_ReachingDefTable_00581af8;
     previous = table[current->useStart + 1];
-    if (kind == PCOp_IMMEDIATE && previous->operandData.operands[2].kind == PCOp_IMMEDIATE &&
+    if (kind == PEEP_IMMEDIATE && previous->operandData.operands[2].kind == PEEP_IMMEDIATE &&
         previous->opcode == PC_ADDI &&
         previous->operandData.operands[0].value.reg == previous->operandData.operands[1].value.reg &&
-        (current->operandData.operands[0].kind != current->operandData.operands[1].kind ||
+        (BY_VERSION(current->operandData.operands[0].kind, current->operandData.operands[0].arg) != BY_VERSION(current->operandData.operands[1].kind, current->operandData.operands[1].arg) ||
          current->operandData.operands[0].value.reg != current->operandData.operands[1].value.reg)) {
         if (fn_004ca790_inline1(current, previous) == 0) {
-            if (current->operandData.operands[2].value.signed_value +
-                    previous->operandData.operands[2].value.signed_value ==
-                (short)(current->operandData.operands[2].value.signed_value +
-                        previous->operandData.operands[2].value.signed_value)) {
-                if ((long)current->operandData.operands[2].value.signed_value +
-                        previous->operandData.operands[2].value.signed_value ==
+            if (OPIMM(current->operandData.operands[2]) +
+                    OPIMM(previous->operandData.operands[2]) ==
+                (short)(OPIMM(current->operandData.operands[2]) +
+                        OPIMM(previous->operandData.operands[2]))) {
+                if ((long)OPIMM(current->operandData.operands[2]) +
+                        OPIMM(previous->operandData.operands[2]) ==
                     0) {
                     current->opcode--;
                     current->operandData.operands[1].flags &= ~2;
-                    current->operandData.operands[2].value.signed_value = 0;
+                    OPIMM(current->operandData.operands[2]) = 0;
                 } else {
-                    combined = current->operandData.operands[2].value.signed_value;
-                    combined += previous->operandData.operands[2].value.signed_value;
-                    current->operandData.operands[2].value.signed_value = combined;
+                    combined = OPIMM(current->operandData.operands[2]);
+                    combined += OPIMM(previous->operandData.operands[2]);
+                    OPIMM(current->operandData.operands[2]) = combined;
                 }
                 table = CodeGen_ReachingDefTable_00581af8;
                 table[current->useStart + 1] = table[previous->useStart + 1];
@@ -1244,14 +1435,14 @@ int fold_reaching_addi(PCodeInstruction *current)
     return 0;
 }
 
-int eliminate_matching_addi(PCodeInstruction *instruction, UInt32 registerMask)
+int eliminate_matching_addi(PCodeInstruction *instruction, PEEP_LIVE_T registerMask)
 {
     PCodeOperand *operand;
     PCodeInstruction *nextInstruction;
     int sourceRegister;
     SInt32 operandsRemaining;
 
-    if (instruction->operandData.operands[2].kind != PCOp_IMMEDIATE)
+    if (instruction->operandData.operands[2].kind != PEEP_IMMEDIATE)
         return 0;
     sourceRegister = instruction->operandData.operands[1].value.reg;
     if (fn_004cbe40(instruction->block, instruction->next, 0, 0, 0, 0, 0) == 0)
@@ -1261,21 +1452,21 @@ int eliminate_matching_addi(PCodeInstruction *instruction, UInt32 registerMask)
         operand = nextInstruction->operandData.operands;
         operandsRemaining = nextInstruction->operand_count;
         while (operandsRemaining--) {
-            if (operand->kind == PCOp_GPR && operand->value.reg == sourceRegister && ((SInt8)operand->flags & 1))
+            if (PEEP_ISGPR(operand) && operand->value.reg == sourceRegister && (PEEP_FL(operand->flags) & 1))
                 return 0;
-            if (operand->kind == PCOp_GPR && operand->value.reg == sourceRegister && ((SInt8)operand->flags & 2)) {
+            if (PEEP_ISGPR(operand) && operand->value.reg == sourceRegister && (PEEP_FL(operand->flags) & 2)) {
                 if (nextInstruction->opcode != PC_ADDI)
                     return 0;
-                if (nextInstruction->operandData.operands[2].kind != PCOp_IMMEDIATE)
+                if (nextInstruction->operandData.operands[2].kind != PEEP_IMMEDIATE)
                     return 0;
-                if (instruction->operandData.operands[2].value.signed_value ==
-                        nextInstruction->operandData.operands[2].value.signed_value &&
+                if (OPIMM(instruction->operandData.operands[2]) ==
+                        OPIMM(nextInstruction->operandData.operands[2]) &&
                     nextInstruction->operandData.operands[0].value.reg ==
                         nextInstruction->operandData.operands[1].value.reg &&
-                    (instruction->operandData.operands[0].kind != instruction->operandData.operands[1].kind ||
+                    (BY_VERSION(instruction->operandData.operands[0].kind, instruction->operandData.operands[0].arg) != BY_VERSION(instruction->operandData.operands[1].kind, instruction->operandData.operands[1].arg) ||
                      instruction->operandData.operands[0].value.reg !=
                          instruction->operandData.operands[1].value.reg)) {
-                    if ((1 << nextInstruction->operandData.operands[0].value.reg) & registerMask) {
+                    if ((1 << nextInstruction->operandData.operands[0].value.reg) & PEEP_MASK(registerMask)) {
                         instruction->opcode++;
                         instruction->operandData.operands[1].flags |= 2;
                         memcpy(&instruction->operandData.operands[2], &nextInstruction->operandData.operands[2],
@@ -1284,8 +1475,8 @@ int eliminate_matching_addi(PCodeInstruction *instruction, UInt32 registerMask)
                         memcpy(&instruction->operandData.operands[2], &nextInstruction->operandData.operands[2],
                                sizeof(instruction->operandData.operands[2]));
                     }
-                    nextInstruction->opcode = PC_NOP;
-                    nextInstruction->operand_count = 0;
+                    PC_SETOPCODE(nextInstruction, PC_NOP);
+                    PC_SETCOUNT(nextInstruction, 0);
                     PCode_UnlinkInstruction(nextInstruction);
                     return 1;
                 }
@@ -1305,17 +1496,23 @@ SInt32 fold_constant_compare_branch(PCodeInstruction *node)
     PCodeBlockLink *edge;
     PCodeBlockLink **link;
 
-    if (node->operandData.operands[1].value.signed_value == 2) {
+    if (OPIMM(node->operandData.operands[1]) == 2) {
         definition = CodeGen_ReachingDefTable_00581af8[node->useStart];
         if ((definition->opcode == PC_CMPLI || definition->opcode == PC_CMPI) &&
             definition->operandData.operands[0].value.reg == 0) {
             rhs = CodeGen_ReachingDefTable_00581af8[definition->useStart + 1];
-            if (rhs->opcode == PC_LI && rhs->operandData.operands[1].kind == PCOp_IMMEDIATE &&
-                (node->opcode == PC_BT) == (rhs->operandData.operands[1].value.signed_value ==
-                                            definition->operandData.operands[2].value.signed_value)) {
-                node->opcode = PC_B;
-                node->operand_count = 1;
+            if (rhs->opcode == PC_LI && rhs->operandData.operands[1].kind == PEEP_IMMEDIATE &&
+                (node->opcode == PC_BT) == (OPIMM(rhs->operandData.operands[1]) ==
+                                            OPIMM(definition->operandData.operands[2]))) {
+#if VERSION >= VERSION_GC_1_3
+                fn_00528030(node, PC_B);
                 node->operandData.operands[0] = node->operandData.operands[2];
+                fn_00528090(node, 1);
+#else
+                PC_SETOPCODE(node, PC_B);
+                PC_SETCOUNT(node, 1);
+                node->operandData.operands[0] = node->operandData.operands[2];
+#endif
                 CodeGen_ReachingDefTable_00581af8[node->useStart] =
                     CodeGen_ReachingDefTable_00581af8[node->useStart + 1];
 
@@ -1347,11 +1544,11 @@ SInt32 bypass_cmpli_zero(PCodeInstruction *p)
     PCodeInstruction *inst;
     PCodeInstruction *src;
 
-    if (p->operandData.operands[1].value.signed_value == 2) {
+    if (OPIMM(p->operandData.operands[1]) == 2) {
         inst = CodeGen_ReachingDefTable_00581af8[p->useStart];
         if (inst->opcode == PC_CMPLI) {
             if (inst->operandData.operands[0].value.reg == 0) {
-                if (inst->operandData.operands[2].value.signed_value == 0) {
+                if (OPIMM(inst->operandData.operands[2]) == 0) {
                     src = CodeGen_ReachingDefTable_00581af8[inst->useStart + 1];
                     if ((src->flags & 0x601) == 0x201) {
                         if (!FindOp(inst->previous, src, inst, 1)) {
@@ -1371,20 +1568,26 @@ SInt32 bypass_cmpli_zero(PCodeInstruction *p)
     return 0;
 }
 
-int remove_redundant_extsb(PCodeInstruction *self, UInt32 mask)
+int remove_redundant_extsb(PCodeInstruction *self, PEEP_LIVE_T mask)
 {
     PCodeInstruction *compare;
     PCodeInstruction *signExtend;
 
-    if (self->operandData.operands[1].value.signed_value == 2) {
+    if (OPIMM(self->operandData.operands[1]) == 2) {
         compare = CodeGen_ReachingDefTable_00581af8[self->useStart];
+#if VERSION >= VERSION_GC_1_3
+        if (((compare->opcode == PC_CMPI || compare->opcode == PC_CMPLI) &&
+             OPIMM(compare->operandData.operands[2]) >= 0 && OPIMM(compare->operandData.operands[2]) <= 0x7f) ||
+            ((compare->opcode == PC_EXTSB || compare->opcode == PC_EXTSH) && PCODE_RECORD(compare->flags))) {
+#else
         if ((compare->opcode == PC_CMPI || compare->opcode == PC_CMPLI) &&
-            compare->operandData.operands[2].value.signed_value >= 0 &&
-            compare->operandData.operands[2].value.signed_value <= 0x7f) {
+            OPIMM(compare->operandData.operands[2]) >= 0 &&
+            OPIMM(compare->operandData.operands[2]) <= 0x7f) {
+#endif
             signExtend = CodeGen_ReachingDefTable_00581af8[compare->useStart + 1];
             if (signExtend->opcode == PC_EXTSB) {
                 if (CodeGen_ReachingDefTable_00581af8[signExtend->useStart + 1]->opcode == PC_LBZ &&
-                    !((1 << signExtend->operandData.operands[0].value.reg) & mask)) {
+                    !((1 << signExtend->operandData.operands[0].value.reg) & PEEP_MASK(mask))) {
                     if (!Contains(self->previous, compare, &signExtend->operandData.operands[0], 1) &&
                         !Contains(compare->previous, signExtend, &signExtend->operandData.operands[0], 1) &&
                         !Contains(compare->previous, signExtend, &signExtend->operandData.operands[1], 2)) {
@@ -1401,7 +1604,7 @@ int remove_redundant_extsb(PCodeInstruction *self, UInt32 mask)
     return 0;
 }
 
-unsigned int fold_not_into_andc(PCodeInstruction *pc, UInt32 mask)
+unsigned int fold_not_into_andc(PCodeInstruction *pc, PEEP_LIVE_T mask)
 {
     PCodeInstruction *def;
     PCodeInstruction **table = CodeGen_ReachingDefTable_00581af8;
@@ -1410,15 +1613,15 @@ unsigned int fold_not_into_andc(PCodeInstruction *pc, UInt32 mask)
     def = table[pc->useStart + 2];
     if (def->opcode == PC_NOT) {
         if ((def->operandData.operands[0].value.reg) == pc->operandData.operands[0].value.reg ||
-            !(mask & (1 << (def->operandData.operands[0].value.reg)))) {
-            if (!(def->flags & fRecordBit)) {
+            !(PEEP_MASK(mask) & (1 << (def->operandData.operands[0].value.reg)))) {
+            if (!(PCODE_RECORD(def->flags))) {
                 if (!PCode_FindUse(pc->previous, def, &def->operandData.operands[1], 2) &&
                     !PCode_FindUse(pc->previous, def, &def->operandData.operands[0], 1)) {
                     pc->operandData.operands[2].value.reg = def->operandData.operands[1].value.reg;
                     table = CodeGen_ReachingDefTable_00581af8;
                     source = CodeGen_ReachingDefTable_00581af8;
                     table[pc->useStart + 2] = source[def->useStart + 1];
-                    pc->opcode = PC_ANDC;
+                    PC_SETOPCODE(pc, PC_ANDC);
                     PCode_UnlinkInstruction(def);
                     return 1;
                 }
@@ -1428,7 +1631,7 @@ unsigned int fold_not_into_andc(PCodeInstruction *pc, UInt32 mask)
     return 0;
 }
 
-int replace_with_reaching_li(PCodeInstruction *instruction, int register_mask)
+int replace_with_reaching_li(PCodeInstruction *instruction, PEEP_LIVE_T register_mask)
 {
     PCodeInstruction *previous;
     int result;
@@ -1436,11 +1639,11 @@ int replace_with_reaching_li(PCodeInstruction *instruction, int register_mask)
     previous = CodeGen_ReachingDefTable_00581af8[instruction->useStart + 1];
     if (previous->opcode == PC_LI &&
         (previous->operandData.operands[0].value.reg == instruction->operandData.operands[0].value.reg ||
-         ((1 << previous->operandData.operands[0].value.reg) & register_mask) == 0) &&
-        (instruction->flags & PCodeInstruction_CloneExtraOperandExcluded) == 0) {
+         ((1 << previous->operandData.operands[0].value.reg) & PEEP_MASK(register_mask)) == 0) &&
+        (BY_VERSION(instruction->flags & PCodeInstruction_CloneExtraOperandExcluded, PCODE_RECORD(instruction->flags))) == 0) {
         result = fn_004c9f80_inline1(instruction, previous);
         if (result == 0) {
-            instruction->opcode = PC_LI;
+            PC_SETOPCODE(instruction, PC_LI);
             instruction->operandData.operands[1] = previous->operandData.operands[1];
             CodeGen_ReachingDefTable_00581af8[instruction->useStart + 1] =
                 CodeGen_ReachingDefTable_00581af8[previous->useStart + 1];
@@ -1451,18 +1654,22 @@ int replace_with_reaching_li(PCodeInstruction *instruction, int register_mask)
     return 0;
 }
 
+#if VERSION >= VERSION_GC_1_3
+int merge_reaching_def_instruction(PCodeInstruction *instruction, UInt32 *live)
+#else
 int merge_reaching_def_instruction(PCodeInstruction *instruction, int operand1, int operand2, int operand3,
                                    int registerMask)
+#endif
 {
     PCodeInstruction *next = CodeGen_ReachingDefTable_00581af8[instruction->useStart + 1];
     short opcode;
 
-    if ((unsigned short)((opcode = next->opcode) - 350) <= 2 &&
+    if ((unsigned short)((opcode = next->opcode) - BY_VERSION(350, 353)) <= 2 &&
         (next->operandData.operands[0].value.reg == instruction->operandData.operands[0].value.reg ||
-         ((1 << next->operandData.operands[0].value.reg) & registerMask) == 0) &&
-        (instruction->flags & fRecordBit) == 0) {
+         ((1 << next->operandData.operands[0].value.reg) & BY_VERSION(registerMask, live[2])) == 0) &&
+        (PCODE_RECORD(instruction->flags)) == 0) {
         if (fn_004c9e70_inline1(instruction, next) == 0) {
-            instruction->opcode = opcode;
+            PC_SETOPCODE(instruction, opcode);
             instruction->operandData.operands[1] = next->operandData.operands[1];
             CodeGen_ReachingDefTable_00581af8[instruction->useStart + 1] =
                 CodeGen_ReachingDefTable_00581af8[next->useStart + 1];
@@ -1473,14 +1680,18 @@ int merge_reaching_def_instruction(PCodeInstruction *instruction, int operand1, 
     return 0;
 }
 
+#if VERSION >= VERSION_GC_1_3
+unsigned int retarget_reaching_def_register(PCodeInstruction *instruction, UInt32 *live)
+#else
 unsigned int retarget_reaching_def_register(PCodeInstruction *instruction, UInt32 unavailableRegisters,
                                             SInt32 registerClass)
+#endif
 {
     PCodeInstruction *reachingDef = CodeGen_ReachingDefTable_00581af8[instruction->useStart + 1];
 
     if (reachingDef->flags & fIsRead) {
-        if (((1 << reachingDef->operandData.operands[0].value.reg) & unavailableRegisters) == 0) {
-            if ((instruction->flags & fRecordBit) == 0) {
+        if (((1 << reachingDef->operandData.operands[0].value.reg) & BY_VERSION(unavailableRegisters, live[4])) == 0) {
+            if ((PCODE_RECORD(instruction->flags)) == 0) {
                 if (!FindMember(instruction->previous, reachingDef, reachingDef, 1)) {
                     if (!FindMember(instruction->previous, reachingDef, instruction, 1)) {
                         if (!FindMember(instruction->previous, reachingDef, instruction, 2)) {
@@ -1497,13 +1708,17 @@ unsigned int retarget_reaching_def_register(PCodeInstruction *instruction, UInt3
     return 0;
 }
 
+#if VERSION >= VERSION_GC_1_3
+unsigned int rewrite_reaching_def_reg(PCodeInstruction *instruction, UInt32 *live)
+#else
 unsigned int rewrite_reaching_def_reg(PCodeInstruction *instruction, SInt32 registerClass, UInt32 unavailableRegisters)
+#endif
 {
     PCodeInstruction *definition = CodeGen_ReachingDefTable_00581af8[instruction->useStart + 1];
 
     if (definition->flags & fIsRead) {
-        if (((1 << definition->operandData.operands[0].value.reg) & unavailableRegisters) == 0) {
-            if ((instruction->flags & fRecordBit) == 0) {
+        if (((1 << definition->operandData.operands[0].value.reg) & BY_VERSION(unavailableRegisters, live[3])) == 0) {
+            if ((PCODE_RECORD(instruction->flags)) == 0) {
                 if (!FindMember(instruction->previous, definition, definition, 1)) {
                     if (!FindMember(instruction->previous, definition, instruction, 1)) {
                         if (!FindMember(instruction->previous, definition, instruction, 2)) {
@@ -1531,26 +1746,26 @@ int eliminate_redundant_store(PCodeInstruction *in)
     int loadSize, storeSize, offset;
 
     def = CodeGen_ReachingDefTable_00581af8[in->useStart];
-    if (in->flags & 0x28400)
+    if (PEEP_FLM(in->flags))
         return 0;
-    if (def->flags & 0x28400)
+    if (PEEP_FLM(def->flags))
         return 0;
 
-    if ((def->flags & fIsRead) && def->operandData.operands[1].kind == PCOp_GPR &&
+    if ((def->flags & fIsRead) && PEEP_ISGPR(&def->operandData.operands[1]) &&
         def->operandData.operands[1].value.reg == (baseReg = in->operandData.operands[1].value.reg) &&
         def->operandData.operands[2].kind == in->operandData.operands[2].kind) {
         scanStart = cursor = in->previous;
         if (!scan(scanStart, def, in, 0, baseReg)) {
-            if (in->operandData.operands[2].kind == PCOp_IMMEDIATE) {
-                if (in->operandData.operands[2].value.signed_value != def->operandData.operands[2].value.signed_value)
+            if (in->operandData.operands[2].kind == PEEP_IMMEDIATE) {
+                if (OPIMM(in->operandData.operands[2]) != OPIMM(def->operandData.operands[2]))
                     return 0;
-            } else if (in->operandData.operands[2].kind == PCOp_MEMORY) {
-                if (in->operandData.operands[2].value.signed_value != def->operandData.operands[2].value.signed_value ||
-                    in->operandData.operands[2].object != def->operandData.operands[2].object)
+            } else if (in->operandData.operands[2].kind == PEEP_MEMORY) {
+                if (OPIMM(in->operandData.operands[2]) != OPIMM(def->operandData.operands[2]) ||
+                    OPOBJ(in->operandData.operands[2]) != OPOBJ(def->operandData.operands[2]))
                     return 0;
-            } else if (in->operandData.operands[2].kind == PCOp_GPR) {
+            } else if (PEEP_ISGPR(&in->operandData.operands[2])) {
                 if (in->operandData.operands[2].value.reg != def->operandData.operands[2].value.reg ||
-                    scan2(cursor, def, in, 1, in->operandData.operands[2].value.reg))
+                    scan2(cursor, def, PEEP_SCAN2ARG, in->operandData.operands[2].value.reg))
                     return 0;
             } else
                 return 0;
@@ -1664,20 +1879,20 @@ int eliminate_redundant_store(PCodeInstruction *in)
                         return 0;
                     if (cursor->operandData.operands[2].kind != def->operandData.operands[2].kind)
                         return 0;
-                    if (cursor->operandData.operands[2].kind == PCOp_MEMORY) {
+                    if (cursor->operandData.operands[2].kind == PEEP_MEMORY) {
                         if (in->operandData.operands[2].object == cursor->operandData.operands[2].object) {
-                            if (in->operandData.operands[2].value.signed_value ==
-                                (loadOffset = def->operandData.operands[2].value.signed_value))
+                            if (OPIMM(in->operandData.operands[2]) ==
+                                (loadOffset = OPIMM(def->operandData.operands[2])))
                                 return 0;
-                            storeOffset = cursor->operandData.operands[2].value.signed_value;
+                            storeOffset = OPIMM(cursor->operandData.operands[2]);
                         }
-                    } else if (cursor->operandData.operands[2].kind == PCOp_IMMEDIATE) {
+                    } else if (cursor->operandData.operands[2].kind == PEEP_IMMEDIATE) {
                         if (baseReg != cursor->operandData.operands[1].value.reg)
                             return 0;
-                        if (in->operandData.operands[2].value.signed_value ==
-                            (storeOffset = cursor->operandData.operands[2].value.signed_value))
+                        if (OPIMM(in->operandData.operands[2]) ==
+                            (storeOffset = OPIMM(cursor->operandData.operands[2])))
                             return 0;
-                        loadOffset = offset = def->operandData.operands[2].value.signed_value;
+                        loadOffset = offset = OPIMM(def->operandData.operands[2]);
                     } else
                         return 0;
                     switch (cursor->opcode) {
@@ -1722,7 +1937,7 @@ int eliminate_redundant_store(PCodeInstruction *in)
     return 0;
 }
 
-int fold_rlwinm_or_mr_reaching_def(PCodeInstruction *pc, UInt32 mask)
+int fold_rlwinm_or_mr_reaching_def(PCodeInstruction *pc, PEEP_LIVE_T mask)
 {
     SInt16 maskStart, maskEnd;
     SInt32 shift;
@@ -1730,33 +1945,42 @@ int fold_rlwinm_or_mr_reaching_def(PCodeInstruction *pc, UInt32 mask)
     PCodeInstruction *def;
 
     def = CodeGen_ReachingDefTable_00581af8[pc->useStart + 1];
-    if (def->opcode == PC_RLWINM && (def->flags & fRecordBit) == 0 &&
+    if (def->opcode == PC_RLWINM && (PCODE_RECORD(def->flags)) == 0 &&
         !PCode_FindOperand(pc->previous, def, &def->operandData.operands[1], 2) &&
         (def->operandData.operands[0].value.reg != def->operandData.operands[1].value.reg ||
          ((def->operandData.operands[0].value.reg == pc->operandData.operands[0].value.reg ||
-           (mask & (1 << def->operandData.operands[0].value.reg)) == 0) &&
+           (PEEP_MASK(mask) & (1 << def->operandData.operands[0].value.reg)) == 0) &&
           !PCode_FindOperand(pc->previous, def, &def->operandData.operands[0], 1)))) {
-        SInt32 end = pc->operandData.operands[4].value.signed_value;
-        SInt32 start = pc->operandData.operands[3].value.signed_value;
-        shift = pc->operandData.operands[2].value.signed_value;
-        sourceMask = PCode_RangeMask(def->operandData.operands[3].value.signed_value,
-                                     def->operandData.operands[4].value.signed_value);
+        SInt32 end = OPIMM(pc->operandData.operands[4]);
+        SInt32 start = OPIMM(pc->operandData.operands[3]);
+        shift = OPIMM(pc->operandData.operands[2]);
+        sourceMask = PCode_RangeMask(OPIMM(def->operandData.operands[3]),
+                                     OPIMM(def->operandData.operands[4]));
         currentMask = PCode_RangeMask(start, end);
         rotatedMask = (sourceMask << shift) | (sourceMask >> (32 - shift));
 
         if (InstrSelection_GetMaskRange(rotatedMask & currentMask, &maskStart, &maskEnd) != 0) {
-            if (pc->opcode == PC_RLWIMI && (maskStart != pc->operandData.operands[3].value.signed_value ||
-                                            maskEnd != pc->operandData.operands[4].value.signed_value))
+#if VERSION >= VERSION_GC_1_3
+            if (pc->opcode == PC_RLWIMI) {
+                if (pc->operandData.operands[0].value.reg == def->operandData.operands[0].value.reg)
+                    return 0;
+                if (maskStart != OPIMM(pc->operandData.operands[3]) || maskEnd != OPIMM(pc->operandData.operands[4]))
+                    return 0;
+            }
+#else
+            if (pc->opcode == PC_RLWIMI && (maskStart != OPIMM(pc->operandData.operands[3]) ||
+                                            maskEnd != OPIMM(pc->operandData.operands[4])))
                 return 0;
+#endif
             pc->operandData.operands[1].value.reg = def->operandData.operands[1].value.reg;
             CodeGen_ReachingDefTable_00581af8[pc->useStart + 1] = CodeGen_ReachingDefTable_00581af8[def->useStart + 1];
-            pc->operandData.operands[2].value.signed_value =
-                (pc->operandData.operands[2].value.signed_value + def->operandData.operands[2].value.signed_value) &
+            OPIMM(pc->operandData.operands[2]) =
+                (OPIMM(pc->operandData.operands[2]) + OPIMM(def->operandData.operands[2])) &
                 0x1F;
-            pc->operandData.operands[3].value.signed_value = maskStart;
-            pc->operandData.operands[4].value.signed_value = maskEnd;
+            OPIMM(pc->operandData.operands[3]) = maskStart;
+            OPIMM(pc->operandData.operands[4]) = maskEnd;
             if (def->operandData.operands[0].value.reg == pc->operandData.operands[0].value.reg ||
-                (mask & (1 << def->operandData.operands[0].value.reg)) == 0) {
+                (PEEP_MASK(mask) & (1 << def->operandData.operands[0].value.reg)) == 0) {
                 if (!PCode_FindOperand(pc->previous, def, &def->operandData.operands[0], 1))
                     PCode_UnlinkInstruction(def);
             }
@@ -1769,8 +1993,8 @@ int fold_rlwinm_or_mr_reaching_def(PCodeInstruction *pc, UInt32 mask)
             pc->operandData.operands[1].value.reg = def->operandData.operands[1].value.reg;
             CodeGen_ReachingDefTable_00581af8[pc->useStart + 1] = CodeGen_ReachingDefTable_00581af8[def->useStart + 1];
             if ((def->operandData.operands[0].value.reg == pc->operandData.operands[0].value.reg ||
-                 (mask & (1 << def->operandData.operands[0].value.reg)) == 0) &&
-                (def->flags & fRecordBit) == 0) {
+                 (PEEP_MASK(mask) & (1 << def->operandData.operands[0].value.reg)) == 0) &&
+                (PCODE_RECORD(def->flags)) == 0) {
                 if (!PCode_FindOperand2(pc->previous, def, &def->operandData.operands[0], 1))
                     PCode_UnlinkInstruction(def);
             }
@@ -1780,7 +2004,7 @@ int fold_rlwinm_or_mr_reaching_def(PCodeInstruction *pc, UInt32 mask)
     return 0;
 }
 
-int combine_mulli(struct PCodeInstruction *state, int register_mask)
+int combine_mulli(struct PCodeInstruction *state, PEEP_LIVE_T register_mask)
 {
     PCodeInstruction *instruction;
     int result;
@@ -1789,23 +2013,23 @@ int combine_mulli(struct PCodeInstruction *state, int register_mask)
     if (instruction->opcode == PC_MULLI) {
         PCodeInstruction *rewrite = state;
         if ((instruction->operandData.operands[0].value.reg == rewrite->operandData.operands[0].value.reg ||
-             (1 << instruction->operandData.operands[0].value.reg & register_mask) == 0) &&
-            (instruction->flags & PCodeInstruction_CloneExtraOperandExcluded) == 0) {
+             (1 << instruction->operandData.operands[0].value.reg & PEEP_MASK(register_mask)) == 0) &&
+            (BY_VERSION(instruction->flags & PCodeInstruction_CloneExtraOperandExcluded, PCODE_RECORD(instruction->flags))) == 0) {
             result = fn_004c8f00_inline1(state->previous, instruction, &instruction->operandData.operands[1],
                                          PCodeOperand_Definition);
             if (result == 0) {
                 source_result = fn_004c8f00_inline1(state->previous, instruction, &instruction->operandData.operands[0],
                                                     PCodeOperand_Use);
-                if (source_result == 0 && state->operandData.operands[2].value.signed_value *
-                                                  instruction->operandData.operands[2].value.signed_value ==
-                                              (short)(state->operandData.operands[2].value.signed_value *
-                                                      instruction->operandData.operands[2].value.signed_value)) {
+                if (source_result == 0 && OPIMM(state->operandData.operands[2]) *
+                                                  OPIMM(instruction->operandData.operands[2]) ==
+                                              (short)(OPIMM(state->operandData.operands[2]) *
+                                                      OPIMM(instruction->operandData.operands[2]))) {
                     state->operandData.operands[1].value.reg = instruction->operandData.operands[1].value.reg;
                     CodeGen_ReachingDefTable_00581af8[state->useStart + 1] =
                         CodeGen_ReachingDefTable_00581af8[instruction->useStart + 1];
-                    state->operandData.operands[2].value.signed_value =
-                        state->operandData.operands[2].value.signed_value *
-                        instruction->operandData.operands[2].value.signed_value;
+                    OPIMM(state->operandData.operands[2]) =
+                        OPIMM(state->operandData.operands[2]) *
+                        OPIMM(instruction->operandData.operands[2]);
                     PCode_UnlinkInstruction(instruction);
                     return 1;
                 }
@@ -1825,9 +2049,15 @@ static int PCode_InstUses(PCodeInstruction *inst, PCodeInstruction *stop, PCodeI
         op = inst->operandData.operands;
         n = (UInt32)inst->operand_count;
         while (n--) {
-            if (op->kind == p->operandData.operands[0].kind && op->value.reg == p->operandData.operands[0].value.reg &&
+#if VERSION >= VERSION_GC_1_3
+            if (op->kind == 0 && op->arg == p->operandData.operands[0].arg &&
+                op->value.reg == p->operandData.operands[0].value.reg && (op->flags & 2))
+                return 1;
+#else
+            if (BF_FINDUSE(op, &p->operandData.operands[0]) && op->value.reg == p->operandData.operands[0].value.reg &&
                 (op->flags & 2))
                 return 1;
+#endif
             op++;
         }
         inst = inst->previous;
@@ -1841,7 +2071,7 @@ static int HasDef(PCodeInstruction *r, PCodeInstruction *stop, PCodeOperand *tar
     int i;
     for (; r != stop; r = r->previous) {
         for (i = r->operand_count, e = r->operandData.operands; i--; e++) {
-            if (e->kind == target->kind && e->value.reg == target->value.reg && (e->flags & mask) != 0)
+            if (BF_FINDUSE(e, target) && e->value.reg == target->value.reg && (e->flags & mask) != 0)
                 return 1;
         }
     }
@@ -1855,7 +2085,7 @@ static SInt32 FindOp(PCodeInstruction *first, PCodeInstruction *last, PCodeInstr
 
     for (; first != last; first = first->previous) {
         for (op = &first->operandData.operands[0], n = first->operand_count; n--; op++) {
-            if (op->kind == inst->operandData.operands[0].kind &&
+            if (BF_FINDUSE(op, &inst->operandData.operands[0]) &&
                 op->value.reg == inst->operandData.operands[0].value.reg && (op->flags & bit))
                 return 1;
         }
@@ -1873,7 +2103,7 @@ static int Contains(PCodeInstruction *start, PCodeInstruction *stop, PCodeOperan
         e = q->operandData.operands;
         n = q->operand_count;
         while (n--) {
-            if (e->kind == ref->kind && e->value.reg == ref->value.reg && ((SInt8)e->flags & flag))
+            if (BF_FINDUSE(e, ref) && e->value.reg == ref->value.reg && (PEEP_FL(e->flags) & flag))
                 return 1;
             e++;
         }
@@ -1888,7 +2118,7 @@ static int FindMember(PCodeInstruction *t, PCodeInstruction *stop, PCodeInstruct
     while (t != stop) {
         m = t->operandData.operands;
         for (i = t->operand_count; i--; m++) {
-            if (m->kind == target->operandData.operands[0].kind &&
+            if (BF_FINDUSE(m, &target->operandData.operands[0]) &&
                 m->value.reg == target->operandData.operands[0].value.reg && (m->flags & flag))
                 return 1;
         }
@@ -1920,7 +2150,7 @@ static SInt32 PCode_FindOperand2(PCodeInstruction *from, PCodeInstruction *stop,
         op = q->operandData.operands;
         n = q->operand_count;
         while (n--) {
-            if (op->kind == ref->kind && op->value.reg == ref->value.reg && ((SInt8)op->flags & flag) != 0)
+            if (BF_FINDUSE(op, ref) && op->value.reg == ref->value.reg && (PEEP_FL(op->flags) & flag) != 0)
                 return 1;
             op++;
         }
@@ -1937,7 +2167,7 @@ static SInt32 PCode_FindOperand(PCodeInstruction *from, PCodeInstruction *stop, 
         op = q->operandData.operands;
         n = q->operand_count;
         while (n--) {
-            if (op->kind == ref->kind && op->value.reg == ref->value.reg && ((SInt8)op->flags & flag) != 0)
+            if (BF_FINDUSE(op, ref) && op->value.reg == ref->value.reg && (PEEP_FL(op->flags) & flag) != 0)
                 return 1;
             op++;
         }
@@ -1945,7 +2175,7 @@ static SInt32 PCode_FindOperand(PCodeInstruction *from, PCodeInstruction *stop, 
     return 0;
 }
 
-unsigned int combine_addi(PCodeInstruction *pc, UInt32 mask)
+unsigned int combine_addi(PCodeInstruction *pc, PEEP_LIVE_T mask)
 {
     PCodeInstruction *def;
     PCodeInstruction **table;
@@ -1955,22 +2185,22 @@ unsigned int combine_addi(PCodeInstruction *pc, UInt32 mask)
     def = table[pc->useStart + 1];
     if (def->opcode == PC_ADDI) {
         if ((def->operandData.operands[0].value.reg) == pc->operandData.operands[0].value.reg ||
-            !(mask & (1 << (def->operandData.operands[0].value.reg)))) {
-            if (!(def->flags & fRecordBit)) {
+            !(PEEP_MASK(mask) & (1 << (def->operandData.operands[0].value.reg)))) {
+            if (!(PCODE_RECORD(def->flags))) {
                 if (!PCode_FindUse(pc->previous, def, &def->operandData.operands[1], 2)) {
                     if (!PCode_FindUse(pc->previous, def, &def->operandData.operands[0], 1)) {
-                        if (pc->operandData.operands[2].kind == PCOp_IMMEDIATE &&
-                            def->operandData.operands[2].kind == PCOp_IMMEDIATE &&
-                            (pc->operandData.operands[2].value.signed_value +
-                             def->operandData.operands[2].value.signed_value) ==
-                                (short)(pc->operandData.operands[2].value.signed_value +
-                                        def->operandData.operands[2].value.signed_value)) {
+                        if (pc->operandData.operands[2].kind == PEEP_IMMEDIATE &&
+                            def->operandData.operands[2].kind == PEEP_IMMEDIATE &&
+                            (OPIMM(pc->operandData.operands[2]) +
+                             OPIMM(def->operandData.operands[2])) ==
+                                (short)(OPIMM(pc->operandData.operands[2]) +
+                                        OPIMM(def->operandData.operands[2]))) {
                             pc->operandData.operands[1].value.reg = def->operandData.operands[1].value.reg;
                             table = CodeGen_ReachingDefTable_00581af8;
                             source = CodeGen_ReachingDefTable_00581af8;
                             table[pc->useStart + 1] = source[def->useStart + 1];
-                            pc->operandData.operands[2].value.signed_value +=
-                                def->operandData.operands[2].value.signed_value;
+                            OPIMM(pc->operandData.operands[2]) +=
+                                OPIMM(def->operandData.operands[2]);
                             PCode_UnlinkInstruction(def);
                             return 1;
                         }
@@ -1982,7 +2212,7 @@ unsigned int combine_addi(PCodeInstruction *pc, UInt32 mask)
     return 0;
 }
 
-unsigned int combine_srawi(PCodeInstruction *pc, UInt32 mask)
+unsigned int combine_srawi(PCodeInstruction *pc, PEEP_LIVE_T mask)
 {
     PCodeInstruction *def;
     PCodeInstruction **table;
@@ -1993,24 +2223,23 @@ unsigned int combine_srawi(PCodeInstruction *pc, UInt32 mask)
     def = table[pc->useStart + 1];
     if (def->opcode == PC_SRAWI) {
         if (def->operandData.operands[0].value.reg == pc->operandData.operands[0].value.reg ||
-            !(mask & (1 << def->operandData.operands[0].value.reg))) {
-            if (!(def->flags & fRecordBit)) {
+            !(PEEP_MASK(mask) & (1 << def->operandData.operands[0].value.reg))) {
+            if (!(PCODE_RECORD(def->flags))) {
                 if (!PCode_FindUse(pc->previous, def, &def->operandData.operands[1], 2)) {
                     if (!PCode_FindUse(pc->previous, def, &def->operandData.operands[0], 1)) {
-                        if (pc->operandData.operands[2].kind == PCOp_IMMEDIATE &&
-                            def->operandData.operands[2].kind == PCOp_IMMEDIATE &&
-                            pc->operandData.operands[2].value.signed_value +
-                                    def->operandData.operands[2].value.signed_value <
+                        if (pc->operandData.operands[2].kind == PEEP_IMMEDIATE &&
+                            def->operandData.operands[2].kind == PEEP_IMMEDIATE &&
+                            OPIMM(pc->operandData.operands[2]) +
+                                    OPIMM(def->operandData.operands[2]) <
                                 0x20 &&
-                            pc->operandData.operands[2].value.signed_value +
-                                    def->operandData.operands[2].value.signed_value >
+                            OPIMM(pc->operandData.operands[2]) +
+                                    OPIMM(def->operandData.operands[2]) >
                                 0) {
                             pc->operandData.operands[1].value.reg = def->operandData.operands[1].value.reg;
-                            table = CodeGen_ReachingDefTable_00581af8;
-                            destination = CodeGen_ReachingDefTable_00581af8;
-                            destination[pc->useStart + 1] = table[def->useStart + 1];
-                            pc->operandData.operands[2].value.signed_value +=
-                                def->operandData.operands[2].value.signed_value;
+                            CodeGen_ReachingDefTable_00581af8[pc->useStart + 1] =
+                                CodeGen_ReachingDefTable_00581af8[def->useStart + 1];
+                            OPIMM(pc->operandData.operands[2]) +=
+                                OPIMM(def->operandData.operands[2]);
                             PCode_UnlinkInstruction(def);
                             return 1;
                         }
@@ -2025,51 +2254,72 @@ unsigned int combine_srawi(PCodeInstruction *pc, UInt32 mask)
 static int PCode_FindUse(PCodeInstruction *p, PCodeInstruction *end, PCodeOperand *arg, SInt32 flag)
 {
     PCodeOperand *e;
-    UInt32 n;
+    BY_VERSION(UInt32, SInt32) n;
 
     for (; p != end; p = p->previous) {
-        n = p->operand_count;
         e = p->operandData.operands;
+        n = p->operand_count;
         while (n--) {
-            if (e->kind == arg->kind && e->value.reg == arg->value.reg && (e->flags & flag))
+            if (BF_FINDUSE(e, arg) && e->value.reg == arg->value.reg && (e->flags & flag))
                 return 1;
             e++;
         }
     }
     return 0;
 }
-
+#if VERSION >= VERSION_GC_1_3
+#define data_005e70e4 (*(short *)((char *)&copts + 0x2))
+#endif
 int rewrite_as_addi(PCodeInstruction *record)
 {
     PCodeInstruction *link4 = record->previous;
     PCodeInstruction *link0 = record->next;
     unsigned int link4Matches = 0;
     unsigned int link0Matches = 0;
+#if VERSION >= VERSION_GC_1_3
+    struct PCodeOperandAlt *alt;
+    if (data_005e70e4 == 8) {
+        if (link4 != NULL)
+            link4Matches = ((link4->flags & 0xC0000000) == 0x80000000);
+        if (link0 != NULL)
+            link0Matches = ((link0->flags & 0xC0000000) == 0x80000000);
+        if (PCODE_RECORD(record->flags) == 0 && record->operand_count >= 2 &&
+            record->operandData.operands[1].value.reg != 0 && (link4Matches || link0Matches)) {
+            fn_00528030(record, PC_ADDI);
+            record->operandData.operands[2].kind = 2;
+            record->operandData.operands[2].imm32 = 0;
+            record->operandData.operands[2].altobject = NULL;
+            fn_00528090(record, 3);
+        }
+    }
+    return 0;
+#else
     if (link4 != NULL)
         link4Matches = ((link4->flags & 3) == 1);
     if (link0 != NULL)
         link0Matches = ((link0->flags & 3) == 1);
-    if ((record->flags & fRecordBit) == 0 && record->operand_count >= 2 &&
+    if ((PCODE_RECORD(record->flags)) == 0 && record->operand_count >= 2 &&
         record->operandData.operands[1].value.reg != 0 && (link4Matches || link0Matches)) {
-        record->operand_count = 3;
-        record->opcode = PC_ADDI;
-        record->operandData.operands[2].kind = PCOp_IMMEDIATE;
-        record->operandData.operands[2].value.signed_value = 0;
-        record->operandData.operands[2].object = NULL;
+        PC_SETCOUNT(record, 3);
+        PC_SETOPCODE(record, PC_ADDI);
+        record->operandData.operands[2].kind = PEEP_IMMEDIATE;
+        OPIMM(record->operandData.operands[2]) = 0;
+        OPOBJ(record->operandData.operands[2]) = NULL;
     }
     return 0;
+#endif
 }
 
-int has_register_conflict(UInt32 mask, PCodeInstruction *group, PCodeInstruction *operand, PCodeInstruction *other,
+int has_register_conflict(PEEP_LIVE_T mask, PCodeInstruction *group, PCodeInstruction *operand, PCodeInstruction *other,
                           PCodeInstruction *target)
 {
+    PCodeInstruction *link;
     PCodeOperand *record;
     int remaining;
-    PCodeInstruction *link;
     SInt16 operandId;
     SInt16 relatedId;
 
-    if ((mask & (1 << target->operandData.operands[0].value.reg)) != 0 &&
+    if ((PEEP_MASK(mask) & (1 << target->operandData.operands[0].value.reg)) != 0 &&
         target->operandData.operands[0].value.reg != group->operandData.operands[0].value.reg &&
         target->operandData.operands[0].value.reg != operand->operandData.operands[2].value.reg)
         return 1;
@@ -2085,7 +2335,7 @@ int has_register_conflict(UInt32 mask, PCodeInstruction *group, PCodeInstruction
         record = group->operandData.operands;
         remaining = group->operand_count;
         while (remaining--) {
-            if (record->kind == PCOp_GPR &&
+            if (PEEP_ISGPR(record) &&
                 (((record->value.reg == operandId || record->value.reg == relatedId) && (record->flags & 2)) ||
                  (record->value.reg == target->operandData.operands[0].value.reg && (record->flags & 1)))) {
                 if (link != operand && link != other && link != target)
@@ -2098,7 +2348,7 @@ int has_register_conflict(UInt32 mask, PCodeInstruction *group, PCodeInstruction
     return 0;
 }
 
-unsigned int fold_to_rlwnm(unsigned int instruction, unsigned int liveRegisters)
+unsigned int fold_to_rlwnm(unsigned int instruction, PEEP_LIVE_T liveRegisters)
 {
     PCodeInstruction *first;
     PCodeInstruction *second;
@@ -2111,14 +2361,14 @@ unsigned int fold_to_rlwnm(unsigned int instruction, unsigned int liveRegisters)
     first = CodeGen_ReachingDefTable_00581af8[index + 1];
     second = CodeGen_ReachingDefTable_00581af8[index + 2];
 
-    if ((((PCodeInstruction *)instruction)->flags & fRecordBit) != 0)
+    if ((PCODE_RECORD(((PCodeInstruction *)instruction)->flags)) != 0)
         return 0;
 
-    if (((1 << ((PCodeInstruction *)instruction)->operandData.operands[1].value.reg) & liveRegisters) != 0 &&
+    if (((1 << ((PCodeInstruction *)instruction)->operandData.operands[1].value.reg) & PEEP_MASK(liveRegisters)) != 0 &&
         ((PCodeInstruction *)instruction)->operandData.operands[1].value.reg !=
             ((PCodeInstruction *)instruction)->operandData.operands[0].value.reg)
         return 0;
-    if (((1 << ((PCodeInstruction *)instruction)->operandData.operands[2].value.reg) & liveRegisters) != 0 &&
+    if (((1 << ((PCodeInstruction *)instruction)->operandData.operands[2].value.reg) & PEEP_MASK(liveRegisters)) != 0 &&
         ((PCodeInstruction *)instruction)->operandData.operands[1].value.reg !=
             ((PCodeInstruction *)instruction)->operandData.operands[0].value.reg)
         return 0;
@@ -2138,22 +2388,22 @@ unsigned int fold_to_rlwnm(unsigned int instruction, unsigned int liveRegisters)
         shift = CodeGen_ReachingDefTable_00581af8[first->useStart + 2];
         if (shift->opcode == PC_SUBFIC &&
             shift->operandData.operands[1].value.reg == second->operandData.operands[2].value.reg &&
-            shift->operandData.operands[2].value.unsigned_value == 0x20) {
+            OPIMM(shift->operandData.operands[2]) == 0x20) {
             if (has_register_conflict(liveRegisters, (PCodeInstruction *)instruction, second, first, shift) != 0)
                 return 0;
-            ((PCodeInstruction *)instruction)->opcode = PC_RLWNM;
+            PC_SETOPCODE((PCodeInstruction *)instruction, PC_RLWNM);
             ((PCodeInstruction *)instruction)->operandData.operands[1] = first->operandData.operands[1];
             CodeGen_ReachingDefTable_00581af8[((PCodeInstruction *)instruction)->useStart + 1] =
                 CodeGen_ReachingDefTable_00581af8[first->useStart + 1];
             ((PCodeInstruction *)instruction)->operandData.operands[2] = second->operandData.operands[2];
             CodeGen_ReachingDefTable_00581af8[((PCodeInstruction *)instruction)->useStart + 2] =
                 CodeGen_ReachingDefTable_00581af8[second->useStart + 2];
-            ((PCodeInstruction *)instruction)->operandData.operands[3].kind = PCOp_IMMEDIATE;
-            ((PCodeInstruction *)instruction)->operandData.operands[3].value.signed_value = 0;
-            ((PCodeInstruction *)instruction)->operandData.operands[3].object = NULL;
-            ((PCodeInstruction *)instruction)->operandData.operands[4].kind = PCOp_IMMEDIATE;
-            ((PCodeInstruction *)instruction)->operandData.operands[4].value.signed_value = 0x1f;
-            ((PCodeInstruction *)instruction)->operandData.operands[4].object = NULL;
+            ((PCodeInstruction *)instruction)->operandData.operands[3].kind = PEEP_IMMEDIATE;
+            OPIMM(((PCodeInstruction *)instruction)->operandData.operands[3]) = 0;
+            OPOBJ(((PCodeInstruction *)instruction)->operandData.operands[3]) = NULL;
+            ((PCodeInstruction *)instruction)->operandData.operands[4].kind = PEEP_IMMEDIATE;
+            OPIMM(((PCodeInstruction *)instruction)->operandData.operands[4]) = 0x1f;
+            OPOBJ(((PCodeInstruction *)instruction)->operandData.operands[4]) = NULL;
             PCode_UnlinkInstruction(first);
             PCode_UnlinkInstruction(second);
             PCode_UnlinkInstruction(shift);
@@ -2162,22 +2412,22 @@ unsigned int fold_to_rlwnm(unsigned int instruction, unsigned int liveRegisters)
         shift = CodeGen_ReachingDefTable_00581af8[second->useStart + 2];
         if (shift->opcode == PC_SUBFIC &&
             shift->operandData.operands[1].value.reg == first->operandData.operands[2].value.reg &&
-            shift->operandData.operands[2].value.unsigned_value == 0x20) {
+            OPIMM(shift->operandData.operands[2]) == 0x20) {
             if (has_register_conflict(liveRegisters, (PCodeInstruction *)instruction, second, first, shift) != 0)
                 return 0;
-            ((PCodeInstruction *)instruction)->opcode = PC_RLWNM;
+            PC_SETOPCODE((PCodeInstruction *)instruction, PC_RLWNM);
             ((PCodeInstruction *)instruction)->operandData.operands[1] = first->operandData.operands[1];
             CodeGen_ReachingDefTable_00581af8[((PCodeInstruction *)instruction)->useStart + 1] =
                 CodeGen_ReachingDefTable_00581af8[first->useStart + 1];
             ((PCodeInstruction *)instruction)->operandData.operands[2] = second->operandData.operands[2];
             CodeGen_ReachingDefTable_00581af8[((PCodeInstruction *)instruction)->useStart + 2] =
                 CodeGen_ReachingDefTable_00581af8[second->useStart + 2];
-            ((PCodeInstruction *)instruction)->operandData.operands[3].kind = PCOp_IMMEDIATE;
-            ((PCodeInstruction *)instruction)->operandData.operands[3].value.signed_value = 0;
-            ((PCodeInstruction *)instruction)->operandData.operands[3].object = NULL;
-            ((PCodeInstruction *)instruction)->operandData.operands[4].kind = PCOp_IMMEDIATE;
-            ((PCodeInstruction *)instruction)->operandData.operands[4].value.signed_value = 0x1f;
-            ((PCodeInstruction *)instruction)->operandData.operands[4].object = NULL;
+            ((PCodeInstruction *)instruction)->operandData.operands[3].kind = PEEP_IMMEDIATE;
+            OPIMM(((PCodeInstruction *)instruction)->operandData.operands[3]) = 0;
+            OPOBJ(((PCodeInstruction *)instruction)->operandData.operands[3]) = NULL;
+            ((PCodeInstruction *)instruction)->operandData.operands[4].kind = PEEP_IMMEDIATE;
+            OPIMM(((PCodeInstruction *)instruction)->operandData.operands[4]) = 0x1f;
+            OPOBJ(((PCodeInstruction *)instruction)->operandData.operands[4]) = NULL;
             PCode_UnlinkInstruction(first);
             PCode_UnlinkInstruction(second);
             return 1;
@@ -2187,22 +2437,22 @@ unsigned int fold_to_rlwnm(unsigned int instruction, unsigned int liveRegisters)
         shift = CodeGen_ReachingDefTable_00581af8[first->useStart + 2];
         if (shift->opcode == PC_SUBFIC &&
             shift->operandData.operands[1].value.reg == second->operandData.operands[2].value.reg &&
-            shift->operandData.operands[2].value.unsigned_value == 0x20) {
+            OPIMM(shift->operandData.operands[2]) == 0x20) {
             if (has_register_conflict(liveRegisters, (PCodeInstruction *)instruction, first, second, shift) != 0)
                 return 0;
-            ((PCodeInstruction *)instruction)->opcode = PC_RLWNM;
+            PC_SETOPCODE((PCodeInstruction *)instruction, PC_RLWNM);
             ((PCodeInstruction *)instruction)->operandData.operands[1] = first->operandData.operands[1];
             CodeGen_ReachingDefTable_00581af8[((PCodeInstruction *)instruction)->useStart + 1] =
                 CodeGen_ReachingDefTable_00581af8[first->useStart + 1];
             ((PCodeInstruction *)instruction)->operandData.operands[2] = first->operandData.operands[2];
             CodeGen_ReachingDefTable_00581af8[((PCodeInstruction *)instruction)->useStart + 2] =
                 CodeGen_ReachingDefTable_00581af8[first->useStart + 2];
-            ((PCodeInstruction *)instruction)->operandData.operands[3].kind = PCOp_IMMEDIATE;
-            ((PCodeInstruction *)instruction)->operandData.operands[3].value.signed_value = 0;
-            ((PCodeInstruction *)instruction)->operandData.operands[3].object = NULL;
-            ((PCodeInstruction *)instruction)->operandData.operands[4].kind = PCOp_IMMEDIATE;
-            ((PCodeInstruction *)instruction)->operandData.operands[4].value.signed_value = 0x1f;
-            ((PCodeInstruction *)instruction)->operandData.operands[4].object = NULL;
+            ((PCodeInstruction *)instruction)->operandData.operands[3].kind = PEEP_IMMEDIATE;
+            OPIMM(((PCodeInstruction *)instruction)->operandData.operands[3]) = 0;
+            OPOBJ(((PCodeInstruction *)instruction)->operandData.operands[3]) = NULL;
+            ((PCodeInstruction *)instruction)->operandData.operands[4].kind = PEEP_IMMEDIATE;
+            OPIMM(((PCodeInstruction *)instruction)->operandData.operands[4]) = 0x1f;
+            OPOBJ(((PCodeInstruction *)instruction)->operandData.operands[4]) = NULL;
             PCode_UnlinkInstruction(first);
             PCode_UnlinkInstruction(second);
             return 1;
@@ -2210,22 +2460,22 @@ unsigned int fold_to_rlwnm(unsigned int instruction, unsigned int liveRegisters)
         shift = CodeGen_ReachingDefTable_00581af8[second->useStart + 2];
         if (shift->opcode == PC_SUBFIC &&
             shift->operandData.operands[1].value.reg == first->operandData.operands[2].value.reg &&
-            shift->operandData.operands[2].value.unsigned_value == 0x20) {
+            OPIMM(shift->operandData.operands[2]) == 0x20) {
             if (has_register_conflict(liveRegisters, (PCodeInstruction *)instruction, first, second, shift) != 0)
                 return 0;
-            ((PCodeInstruction *)instruction)->opcode = PC_RLWNM;
+            PC_SETOPCODE((PCodeInstruction *)instruction, PC_RLWNM);
             ((PCodeInstruction *)instruction)->operandData.operands[1] = first->operandData.operands[1];
             CodeGen_ReachingDefTable_00581af8[((PCodeInstruction *)instruction)->useStart + 1] =
                 CodeGen_ReachingDefTable_00581af8[first->useStart + 1];
             ((PCodeInstruction *)instruction)->operandData.operands[2] = first->operandData.operands[2];
             CodeGen_ReachingDefTable_00581af8[((PCodeInstruction *)instruction)->useStart + 2] =
                 CodeGen_ReachingDefTable_00581af8[first->useStart + 2];
-            ((PCodeInstruction *)instruction)->operandData.operands[3].kind = PCOp_IMMEDIATE;
-            ((PCodeInstruction *)instruction)->operandData.operands[3].value.signed_value = 0;
-            ((PCodeInstruction *)instruction)->operandData.operands[3].object = NULL;
-            ((PCodeInstruction *)instruction)->operandData.operands[4].kind = PCOp_IMMEDIATE;
-            ((PCodeInstruction *)instruction)->operandData.operands[4].value.signed_value = 0x1f;
-            ((PCodeInstruction *)instruction)->operandData.operands[4].object = NULL;
+            ((PCodeInstruction *)instruction)->operandData.operands[3].kind = PEEP_IMMEDIATE;
+            OPIMM(((PCodeInstruction *)instruction)->operandData.operands[3]) = 0;
+            OPOBJ(((PCodeInstruction *)instruction)->operandData.operands[3]) = NULL;
+            ((PCodeInstruction *)instruction)->operandData.operands[4].kind = PEEP_IMMEDIATE;
+            OPIMM(((PCodeInstruction *)instruction)->operandData.operands[4]) = 0x1f;
+            OPOBJ(((PCodeInstruction *)instruction)->operandData.operands[4]) = NULL;
             PCode_UnlinkInstruction(first);
             PCode_UnlinkInstruction(second);
             PCode_UnlinkInstruction(shift);
@@ -2243,7 +2493,7 @@ static int find_in_list(PCodeInstruction *list, PCodeInstruction *sent)
     for (p = list; p != sent; p = p->previous) {
         e = p->operandData.operands, n = p->operand_count;
         while (n--) {
-            if (e->kind == sent->operandData.operands[0].kind &&
+            if (BF_FINDUSE(e, &sent->operandData.operands[0]) &&
                 e->value.reg == sent->operandData.operands[0].value.reg && (e->flags & 1) != 0)
                 return 1;
             e++;
@@ -2252,6 +2502,130 @@ static int find_in_list(PCodeInstruction *list, PCodeInstruction *sent)
     return 0;
 }
 
+#if VERSION >= VERSION_GC_1_3
+
+SInt32 fold_rlwimi_store_to_stwbrx(PCodeInstruction *node, UInt32 *mask)
+{
+    PCodeInstruction *nodes[4];
+    PCodeInstruction *n;
+    PCodeInstruction *prev;
+    PCodeInstruction *last;
+    PCodeInstruction *add;
+    SInt16 opcode;
+    Boolean zeroOffset;
+    SInt32 i;
+    SInt32 flags;
+
+    flags = 0;
+    zeroOffset = 0;
+    opcode = node->opcode;
+    if (opcode == PC_STW && node->operandData.operands[2].kind == 2 && node->operandData.operands[2].imm32 == 0)
+        zeroOffset = 1;
+
+    n = node;
+    i = 0;
+    do {
+        if (n->opcode == PC_RLWINM)
+            nodes[i] = CodeGen_ReachingDefTable_00581af8[n->useStart + 1];
+        else
+            nodes[i] = CodeGen_ReachingDefTable_00581af8[n->useStart];
+        n = nodes[i];
+        if (nodes[0]->operandData.operands[1].value.reg != nodes[i]->operandData.operands[1].value.reg)
+            return 0;
+        if (i < 3) {
+            if (nodes[i]->opcode != PC_RLWIMI)
+                return 0;
+        } else {
+            if (nodes[i]->opcode != PC_RLWINM)
+                return 0;
+        }
+        if (OPIMM(nodes[i]->operandData.operands[2]) == 8) {
+            if (OPIMM(nodes[i]->operandData.operands[3]) == 0x18 &&
+                OPIMM(nodes[i]->operandData.operands[4]) == 0x1f) {
+                if (flags & 1)
+                    return 0;
+                flags |= 1;
+            } else if (OPIMM(nodes[i]->operandData.operands[3]) == 8 &&
+                       OPIMM(nodes[i]->operandData.operands[4]) == 0xf) {
+                if (flags & 4)
+                    return 0;
+                flags |= 4;
+            } else
+                return 0;
+        } else if (OPIMM(nodes[i]->operandData.operands[2]) == 0x18) {
+            if (OPIMM(nodes[i]->operandData.operands[3]) == 0 &&
+                OPIMM(nodes[i]->operandData.operands[4]) == 7) {
+                if (flags & 8)
+                    return 0;
+                flags |= 8;
+            } else if (OPIMM(nodes[i]->operandData.operands[3]) == 0x10 &&
+                       OPIMM(nodes[i]->operandData.operands[4]) == 0x17) {
+                if (flags & 2)
+                    return 0;
+                flags |= 2;
+            } else
+                return 0;
+        } else
+            return 0;
+        i++;
+    } while (i < 4);
+
+    last = nodes[3];
+    prev = node->previous;
+    if (stwbrx_scan(prev, last, &nodes[0]->operandData.operands[1], 2))
+        return 0;
+
+    if (opcode == PC_STWX) {
+        PC_SETOPCODE(node, PC_STWBRX);
+        node->operandData.operands[0] = nodes[0]->operandData.operands[1];
+        CodeGen_ReachingDefTable_00581af8[node->useStart] = CodeGen_ReachingDefTable_00581af8[last->useStart + 1];
+        return 1;
+    }
+    if (opcode != PC_STW)
+        return 0;
+
+    if (!zeroOffset) {
+        if ((1 << nodes[0]->operandData.operands[0].value.reg) & mask[4])
+            return 0;
+        if (stwbrx_scan(nodes[2]->previous, last, &nodes[0]->operandData.operands[0], 1))
+            return 0;
+        if (stwbrx_scan(nodes[1]->previous, nodes[2], &nodes[0]->operandData.operands[0], 1))
+            return 0;
+        if (stwbrx_scan(nodes[0]->previous, nodes[1], &nodes[0]->operandData.operands[0], 1))
+            return 0;
+        if (stwbrx_scan(prev, nodes[0], &nodes[0]->operandData.operands[0], 1))
+            return 0;
+    }
+
+    CodeGen_ReachingDefTable_00581af8[node->useStart] = CodeGen_ReachingDefTable_00581af8[last->useStart + 1];
+    if (zeroOffset) {
+        PC_SETOPCODE(node, PC_STWBRX);
+        node->operandData.operands[0] = nodes[0]->operandData.operands[1];
+        node->operandData.operands[2] = node->operandData.operands[1];
+        CodeGen_ReachingDefTable_00581af8[node->useStart + 2] =
+            CodeGen_ReachingDefTable_00581af8[node->useStart + 1];
+        PEEP_SETGPR(node->operandData.operands[1]);
+        node->operandData.operands[1].value.reg = 0;
+        node->operandData.operands[1].flags = 0;
+    } else {
+        add = PCodeUtilities_CreateInstruction(PC_STWBRX, last->operandData.operands[1].value.reg, 0,
+                                               node->operandData.operands[0].value.reg);
+        add->f18[0] = node->f18[0];
+        PC_SETOPCODE(node, PC_ADDI);
+        PCode_InsertInstructionAfter(node, add);
+        mask[4] |= 1 << add->operandData.operands[0].value.reg;
+        mask[4] |= 1 << add->operandData.operands[2].value.reg;
+        node->operandData.operands[0].flags &= ~1;
+        node->operandData.operands[0].flags |= 2;
+        CodeGen_ReachingDefTable_00581af8[node->useStart] = node;
+        PCode_UnlinkInstruction(nodes[0]);
+        PCode_UnlinkInstruction(nodes[1]);
+        PCode_UnlinkInstruction(nodes[2]);
+        PCode_UnlinkInstruction(last);
+    }
+    return 1;
+}
+#else
 SInt32 fold_rlwimi_store_to_stwbrx(PCodeInstruction *node, UInt32 mask)
 {
     PCodeInstruction *nodes[4];
@@ -2261,7 +2635,7 @@ SInt32 fold_rlwimi_store_to_stwbrx(PCodeInstruction *node, UInt32 mask)
 
     flags = 0;
 
-    if (node->opcode == PC_STW && node->operandData.operands[2].kind != PCOp_IMMEDIATE)
+    if (node->opcode == PC_STW && node->operandData.operands[2].kind != PEEP_IMMEDIATE)
         return 0;
 
     i = 0;
@@ -2281,27 +2655,27 @@ SInt32 fold_rlwimi_store_to_stwbrx(PCodeInstruction *node, UInt32 mask)
             if (nodes[i]->opcode != PC_RLWINM)
                 return 0;
         }
-        if (nodes[i]->operandData.operands[2].value.signed_value == 8) {
-            if (nodes[i]->operandData.operands[3].value.signed_value == 0x18 &&
-                nodes[i]->operandData.operands[4].value.signed_value == 0x1f) {
+        if (OPIMM(nodes[i]->operandData.operands[2]) == 8) {
+            if (OPIMM(nodes[i]->operandData.operands[3]) == 0x18 &&
+                OPIMM(nodes[i]->operandData.operands[4]) == 0x1f) {
                 if (flags & 1)
                     return 0;
                 flags |= 1;
-            } else if (nodes[i]->operandData.operands[3].value.signed_value == 8 &&
-                       nodes[i]->operandData.operands[4].value.signed_value == 0xf) {
+            } else if (OPIMM(nodes[i]->operandData.operands[3]) == 8 &&
+                       OPIMM(nodes[i]->operandData.operands[4]) == 0xf) {
                 if (flags & 4)
                     return 0;
                 flags |= 4;
             } else
                 return 0;
-        } else if (nodes[i]->operandData.operands[2].value.signed_value == 0x18) {
-            if (nodes[i]->operandData.operands[3].value.signed_value == 0 &&
-                nodes[i]->operandData.operands[4].value.signed_value == 7) {
+        } else if (OPIMM(nodes[i]->operandData.operands[2]) == 0x18) {
+            if (OPIMM(nodes[i]->operandData.operands[3]) == 0 &&
+                OPIMM(nodes[i]->operandData.operands[4]) == 7) {
                 if (flags & 8)
                     return 0;
                 flags |= 8;
-            } else if (nodes[i]->operandData.operands[3].value.signed_value == 0x10 &&
-                       nodes[i]->operandData.operands[4].value.signed_value == 0x17) {
+            } else if (OPIMM(nodes[i]->operandData.operands[3]) == 0x10 &&
+                       OPIMM(nodes[i]->operandData.operands[4]) == 0x17) {
                 if (flags & 2)
                     return 0;
                 flags |= 2;
@@ -2316,33 +2690,33 @@ SInt32 fold_rlwimi_store_to_stwbrx(PCodeInstruction *node, UInt32 mask)
         return 0;
 
     if (node->opcode == PC_STWX) {
-        node->opcode = PC_STWBRX;
+        PC_SETOPCODE(node, PC_STWBRX);
         node->operandData.operands[0] = nodes[0]->operandData.operands[1];
         CodeGen_ReachingDefTable_00581af8[node->useStart] = CodeGen_ReachingDefTable_00581af8[nodes[3]->useStart + 1];
         return 1;
     }
 
     if (node->opcode == PC_STW) {
-        SInt32 k = node->operandData.operands[2].value.signed_value;
+        SInt32 k = OPIMM(node->operandData.operands[2]);
         if (k != 0 && ((1 << nodes[0]->operandData.operands[0].value.reg) & mask))
             return 0;
-        node->opcode = PC_STWBRX;
+        PC_SETOPCODE(node, PC_STWBRX);
         node->operandData.operands[0] = nodes[0]->operandData.operands[1];
         CodeGen_ReachingDefTable_00581af8[node->useStart] = CodeGen_ReachingDefTable_00581af8[nodes[3]->useStart + 1];
         if (k != 0) {
-            nodes[0]->opcode = PC_ADDI;
-            nodes[0]->operand_count = 3;
-            nodes[0]->operandData.operands[1].kind = PCOp_GPR;
-            nodes[0]->operandData.operands[1].kind = PCOp_GPR;
+            PC_SETOPCODE(nodes[0], PC_ADDI);
+            PC_SETCOUNT(nodes[0], 3);
+            PEEP_SETGPR(nodes[0]->operandData.operands[1]);
+            PEEP_SETGPR(nodes[0]->operandData.operands[1]);
             nodes[0]->operandData.operands[1].value.reg = node->operandData.operands[1].value.reg;
             nodes[0]->operandData.operands[1].flags = (SInt8)node->operandData.operands[1].flags;
-            nodes[0]->operandData.operands[2].kind = PCOp_IMMEDIATE;
-            nodes[0]->operandData.operands[2].kind = PCOp_IMMEDIATE;
-            nodes[0]->operandData.operands[2].value.signed_value = k;
-            node->operandData.operands[1].kind = PCOp_GPR;
+            nodes[0]->operandData.operands[2].kind = PEEP_IMMEDIATE;
+            nodes[0]->operandData.operands[2].kind = PEEP_IMMEDIATE;
+            OPIMM(nodes[0]->operandData.operands[2]) = k;
+            PEEP_SETGPR(node->operandData.operands[1]);
             node->operandData.operands[1].value.reg = 0;
             node->operandData.operands[1].flags = 0;
-            node->operandData.operands[2].kind = PCOp_GPR;
+            PEEP_SETGPR(node->operandData.operands[2]);
             node->operandData.operands[2].value.reg = nodes[0]->operandData.operands[0].value.reg;
             node->operandData.operands[2].flags = (SInt8)nodes[0]->operandData.operands[0].flags;
             CodeGen_ReachingDefTable_00581af8[node->useStart + 2] = nodes[0];
@@ -2353,7 +2727,7 @@ SInt32 fold_rlwimi_store_to_stwbrx(PCodeInstruction *node, UInt32 mask)
             node->operandData.operands[2] = node->operandData.operands[1];
             CodeGen_ReachingDefTable_00581af8[node->useStart + 2] =
                 CodeGen_ReachingDefTable_00581af8[node->useStart + 1];
-            node->operandData.operands[1].kind = PCOp_GPR;
+            PEEP_SETGPR(node->operandData.operands[1]);
             node->operandData.operands[1].value.reg = 0;
             node->operandData.operands[1].flags = 0;
         }
@@ -2361,6 +2735,7 @@ SInt32 fold_rlwimi_store_to_stwbrx(PCodeInstruction *node, UInt32 mask)
     } else
         return 0;
 }
+#endif
 
 static int fn_004c8010_find(PCodeInstruction *p, PCodeInstruction *limit, PCodeInstruction *ref)
 {
@@ -2370,8 +2745,8 @@ static int fn_004c8010_find(PCodeInstruction *p, PCodeInstruction *limit, PCodeI
         c = p->operand_count;
         r = p->operandData.operands;
         while (c--) {
-            if (r->kind == ref->operandData.operands[1].kind &&
-                r->value.reg == ref->operandData.operands[1].value.reg && ((SInt8)r->flags & 2))
+            if (BF_FINDUSE(r, &ref->operandData.operands[1]) &&
+                r->value.reg == ref->operandData.operands[1].value.reg && (PEEP_FL(r->flags) & 2))
                 return 1;
             r++;
         }
@@ -2379,8 +2754,134 @@ static int fn_004c8010_find(PCodeInstruction *p, PCodeInstruction *limit, PCodeI
     }
     return 0;
 }
+#if VERSION >= VERSION_GC_1_3
+#define STWBRX_SCAN(res, start, limit, ref, bit)                                                                       \
+    res = 0;                                                                                                           \
+    for (sp = (start); sp != (limit) && !res; sp = sp->previous) {                                                     \
+        sr = sp->operandData.operands;                                                                                 \
+        sc = sp->operand_count;                                                                                        \
+        while (sc--) {                                                                                                 \
+            if (sr->kind == 0 && sr->arg == (ref)->arg && sr->value.reg == (ref)->value.reg &&                         \
+            (sr->flags & (bit))) {                                                                                     \
+                res = 1;                                                                                               \
+                break;                                                                                                 \
+            }                                                                                                          \
+            sr++;                                                                                                      \
+        }                                                                                                              \
+    }
 
-int fold_rlwimi_rlwinm_to_sthbrx(PCodeInstruction *instruction, int mask)
+int fold_rlwimi_rlwinm_to_sthbrx(PCodeInstruction *node, UInt32 *mask)
+{
+    PCodeInstruction *nodes[2];
+    PCodeInstruction *n;
+    PCodeInstruction *last;
+    PCodeInstruction *add;
+    PCodeInstruction *sp;
+    PCodeOperand *sr;
+    SInt32 sc;
+    SInt32 found;
+    SInt16 opcode;
+    Boolean zeroOffset;
+    SInt32 i;
+    SInt32 flags;
+
+    flags = 0;
+    zeroOffset = 0;
+    opcode = node->opcode;
+    if (opcode == 44 && node->operandData.operands[2].kind == 2 && node->operandData.operands[2].imm32 == 0)
+        zeroOffset = 1;
+
+    n = node;
+    i = 0;
+    do {
+        if (n->opcode == PC_RLWINM)
+            nodes[i] = CodeGen_ReachingDefTable_00581af8[n->useStart + 1];
+        else
+            nodes[i] = CodeGen_ReachingDefTable_00581af8[n->useStart];
+        n = nodes[i];
+        if (nodes[0]->operandData.operands[1].value.reg != nodes[i]->operandData.operands[1].value.reg)
+            return 0;
+        if (i < 1) {
+            if (nodes[i]->opcode != PC_RLWIMI)
+                return 0;
+        } else {
+            if (nodes[i]->opcode != PC_RLWINM)
+                return 0;
+        }
+        if (OPIMM(nodes[i]->operandData.operands[2]) == 8) {
+            if (OPIMM(nodes[i]->operandData.operands[3]) == 0x10 &&
+                OPIMM(nodes[i]->operandData.operands[4]) == 0x17) {
+                if (flags & 2)
+                    return 0;
+                flags |= 2;
+            } else
+                return 0;
+        } else if (OPIMM(nodes[i]->operandData.operands[2]) == 0x18) {
+            if (OPIMM(nodes[i]->operandData.operands[3]) == 0x18 &&
+                OPIMM(nodes[i]->operandData.operands[4]) == 0x1f) {
+                if (flags & 1)
+                    return 0;
+                flags |= 1;
+            } else
+                return 0;
+        } else
+            return 0;
+        i++;
+    } while (i < 2);
+
+    last = nodes[1];
+    STWBRX_SCAN(found, node->previous, last, &nodes[0]->operandData.operands[1], 2)
+    if (found)
+        return 0;
+
+    if (opcode == 46) {
+        PC_SETOPCODE(node, PC_STHBRX);
+        node->operandData.operands[0] = nodes[0]->operandData.operands[1];
+        CodeGen_ReachingDefTable_00581af8[node->useStart] = CodeGen_ReachingDefTable_00581af8[last->useStart + 1];
+        return 1;
+    }
+    if (opcode != 44)
+        return 0;
+
+    if (!zeroOffset) {
+        if ((1 << nodes[0]->operandData.operands[0].value.reg) & mask[4])
+            return 0;
+        STWBRX_SCAN(found, nodes[0]->previous, last, &nodes[0]->operandData.operands[0], 1)
+    if (found)
+            return 0;
+        STWBRX_SCAN(found, node->previous, nodes[0], &nodes[0]->operandData.operands[0], 1)
+    if (found)
+            return 0;
+    }
+
+    CodeGen_ReachingDefTable_00581af8[node->useStart] = CodeGen_ReachingDefTable_00581af8[last->useStart + 1];
+    if (zeroOffset) {
+        PC_SETOPCODE(node, PC_STHBRX);
+        node->operandData.operands[0] = nodes[0]->operandData.operands[1];
+        node->operandData.operands[2] = node->operandData.operands[1];
+        CodeGen_ReachingDefTable_00581af8[node->useStart + 2] =
+            CodeGen_ReachingDefTable_00581af8[node->useStart + 1];
+        PEEP_SETGPR(node->operandData.operands[1]);
+        node->operandData.operands[1].value.reg = 0;
+        node->operandData.operands[1].flags = 0;
+    } else {
+        add = PCodeUtilities_CreateInstruction(PC_STHBRX, last->operandData.operands[1].value.reg, 0,
+                                               node->operandData.operands[0].value.reg);
+        add->f18[0] = node->f18[0];
+        PC_SETOPCODE(node, PC_ADDI);
+        PCode_InsertInstructionAfter(node, add);
+        mask[4] |= 1 << add->operandData.operands[0].value.reg;
+        mask[4] |= 1 << add->operandData.operands[2].value.reg;
+        node->operandData.operands[0].flags &= ~1;
+        node->operandData.operands[0].flags |= 2;
+        CodeGen_ReachingDefTable_00581af8[node->useStart] = node;
+        PCode_UnlinkInstruction(nodes[0]);
+        PCode_UnlinkInstruction(last);
+    }
+    return 1;
+}
+#else
+int fold_rlwimi_rlwinm_to_sthbrx(PCodeInstruction *instruction, PEEP_LIVE_T mask)
 {
     PCodeInstruction *definition;
     int index;
@@ -2398,7 +2899,7 @@ int fold_rlwimi_rlwinm_to_sthbrx(PCodeInstruction *instruction, int mask)
     matched = 0;
     if ((opcode = instruction->opcode) == 44) {
         thirdOperand = instruction;
-        if (thirdOperand->operandData.operands[2].kind != PCOp_IMMEDIATE)
+        if (thirdOperand->operandData.operands[2].kind != PEEP_IMMEDIATE)
             return 0;
     }
     index = 0;
@@ -2417,9 +2918,9 @@ int fold_rlwimi_rlwinm_to_sthbrx(PCodeInstruction *instruction, int mask)
                 return 0;
         } else if (definitions[index]->opcode != PC_RLWINM)
             return 0;
-        if (definitions[index]->operandData.operands[2].value.signed_value == 8) {
-            if (definitions[index]->operandData.operands[3].value.signed_value == 16 &&
-                definitions[index]->operandData.operands[4].value.signed_value == 23) {
+        if (OPIMM(definitions[index]->operandData.operands[2]) == 8) {
+            if (OPIMM(definitions[index]->operandData.operands[3]) == 16 &&
+                OPIMM(definitions[index]->operandData.operands[4]) == 23) {
                 if (matched & 2)
                     return 0;
                 matched |= 2;
@@ -2427,9 +2928,9 @@ int fold_rlwimi_rlwinm_to_sthbrx(PCodeInstruction *instruction, int mask)
             }
             return 0;
         }
-        if (definitions[index]->operandData.operands[2].value.signed_value == 24) {
-            if (definitions[index]->operandData.operands[3].value.signed_value == 24 &&
-                definitions[index]->operandData.operands[4].value.signed_value == 31) {
+        if (OPIMM(definitions[index]->operandData.operands[2]) == 24) {
+            if (OPIMM(definitions[index]->operandData.operands[3]) == 24 &&
+                OPIMM(definitions[index]->operandData.operands[4]) == 31) {
                 if (matched & 1)
                     return 0;
                 matched |= 1;
@@ -2444,34 +2945,34 @@ int fold_rlwimi_rlwinm_to_sthbrx(PCodeInstruction *instruction, int mask)
     if (hasDefinition != 0)
         return 0;
     if (opcode == 46) {
-        instruction->opcode = PC_STHBRX;
+        PC_SETOPCODE(instruction, PC_STHBRX);
         instruction->operandData.operands[0] = definitions[0]->operandData.operands[1];
         CodeGen_ReachingDefTable_00581af8[instruction->useStart] =
             CodeGen_ReachingDefTable_00581af8[lastDefinition->useStart + 1];
         return 1;
     }
     if (opcode == 44) {
-        immediate = instruction->operandData.operands[2].value.signed_value;
-        if (immediate != 0 && ((1 << definitions[0]->operandData.operands[0].value.reg) & mask) != 0)
+        immediate = OPIMM(instruction->operandData.operands[2]);
+        if (immediate != 0 && ((1 << definitions[0]->operandData.operands[0].value.reg) & PEEP_MASK(mask)) != 0)
             return 0;
-        instruction->opcode = PC_STHBRX;
+        PC_SETOPCODE(instruction, PC_STHBRX);
         instruction->operandData.operands[0] = definitions[0]->operandData.operands[1];
         CodeGen_ReachingDefTable_00581af8[instruction->useStart] =
             CodeGen_ReachingDefTable_00581af8[lastDefinition->useStart + 1];
         if (immediate != 0) {
-            definitions[0]->opcode = PC_ADDI;
-            definitions[0]->operand_count = 3;
-            definitions[0]->operandData.operands[1].kind = PCOp_GPR;
-            definitions[0]->operandData.operands[1].kind = PCOp_GPR;
+            PC_SETOPCODE(definitions[0], PC_ADDI);
+            PC_SETCOUNT(definitions[0], 3);
+            PEEP_SETGPR(definitions[0]->operandData.operands[1]);
+            PEEP_SETGPR(definitions[0]->operandData.operands[1]);
             definitions[0]->operandData.operands[1].value.reg = instruction->operandData.operands[1].value.reg;
             definitions[0]->operandData.operands[1].flags = instruction->operandData.operands[1].flags;
-            definitions[0]->operandData.operands[2].kind = PCOp_IMMEDIATE;
-            definitions[0]->operandData.operands[2].kind = PCOp_IMMEDIATE;
-            definitions[0]->operandData.operands[2].value.signed_value = immediate;
-            instruction->operandData.operands[1].kind = PCOp_GPR;
+            definitions[0]->operandData.operands[2].kind = PEEP_IMMEDIATE;
+            definitions[0]->operandData.operands[2].kind = PEEP_IMMEDIATE;
+            OPIMM(definitions[0]->operandData.operands[2]) = immediate;
+            PEEP_SETGPR(instruction->operandData.operands[1]);
             instruction->operandData.operands[1].value.reg = 0;
             instruction->operandData.operands[1].flags = 0;
-            instruction->operandData.operands[2].kind = PCOp_GPR;
+            PEEP_SETGPR(instruction->operandData.operands[2]);
             instruction->operandData.operands[2].value.reg = definitions[0]->operandData.operands[0].value.reg;
             instruction->operandData.operands[2].flags = definitions[0]->operandData.operands[0].flags;
             CodeGen_ReachingDefTable_00581af8[instruction->useStart + 2] = definitions[0];
@@ -2480,7 +2981,7 @@ int fold_rlwimi_rlwinm_to_sthbrx(PCodeInstruction *instruction, int mask)
             instruction->operandData.operands[2] = instruction->operandData.operands[1];
             CodeGen_ReachingDefTable_00581af8[instruction->useStart + 2] =
                 CodeGen_ReachingDefTable_00581af8[instruction->useStart + 1];
-            instruction->operandData.operands[1].kind = PCOp_GPR;
+            PEEP_SETGPR(instruction->operandData.operands[1]);
             instruction->operandData.operands[1].value.reg = 0;
             instruction->operandData.operands[1].flags = 0;
         }
@@ -2488,7 +2989,80 @@ int fold_rlwimi_rlwinm_to_sthbrx(PCodeInstruction *instruction, int mask)
     }
     return 0;
 }
+#endif
 
+#if VERSION >= VERSION_GC_1_3
+extern struct RegisterBlockLiveness *data_005dd8e8[];
+static inline int peep_is_dead(PCodeInstruction *instruction, UInt32 *live)
+{
+    PCodeOperand *operand;
+    int remaining;
+
+    if ((instruction->block->flags & 3) != 0)
+        return 0;
+    if ((instruction->flags & 0x18d) != 0)
+        return 0;
+    if (instruction->block->predecessors != NULL) {
+        operand = instruction->operandData.operands;
+        remaining = instruction->operand_count;
+        while (remaining--) {
+            if (operand->kind == 0 && (operand->flags & 2) && ((1 << operand->value.reg) & live[operand->arg]))
+                return 0;
+            operand++;
+        }
+    }
+    return 1;
+}
+
+#pragma opt_unroll_loops off
+void peephole_optimize_block(PCodeBlock *scope)
+{
+    UInt32 live[5];
+    RegClass13 cls;
+    PCodeInstruction *block;
+
+    for (cls = 0; cls < RegClass13_Max; cls++)
+        live[cls] = data_005dd8e8[cls][scope->index].live_out;
+
+    for (block = scope->reverse_instructions; block != NULL; block = block->previous) {
+        PeepHandler *handler;
+        PCodeOperand *p;
+        SInt32 n;
+
+        if (peep_is_dead(block, live)) {
+            PCode_UnlinkInstruction(block);
+            continue;
+        }
+        handler = CodeGen_PeepholeHandlers_005813b0[block->opcode];
+        while (handler != NULL) {
+            if (((int (*)(PCodeInstruction *, UInt32 *))handler->func)(block, live) != 0) {
+                if (block->block == NULL)
+                    break;
+                handler = CodeGen_PeepholeHandlers_005813b0[block->opcode];
+            } else {
+                handler = handler->next;
+            }
+        }
+        if (block->block != NULL) {
+            p = block->operandData.operands;
+            n = block->operand_count;
+            while (n--) {
+                if (p->kind == 0 && (p->flags & 2))
+                    live[p->arg] &= ~(1 << p->value.reg);
+                p++;
+            }
+            p = block->operandData.operands;
+            n = block->operand_count;
+            while (n--) {
+                if (p->kind == 0 && (p->flags & 1))
+                    live[p->arg] |= 1 << p->value.reg;
+                p++;
+            }
+        }
+    }
+}
+#pragma opt_unroll_loops reset
+#else
 void peephole_optimize_block(PCodeBlock *scope)
 {
     UInt32 a, b, c, d;
@@ -2524,7 +3098,7 @@ void peephole_optimize_block(PCodeBlock *scope)
             p = block->operandData.operands;
             i = block->operand_count;
             while (i--) {
-                if (p->kind == PCOp_GPR && (p->flags & 2))
+                if (PEEP_ISGPR(p) && (p->flags & 2))
                     a &= ~(1 << p->value.reg);
                 else if (p->kind == PCOp_FPR && (p->flags & 2))
                     b &= ~(1 << p->value.reg);
@@ -2539,7 +3113,7 @@ void peephole_optimize_block(PCodeBlock *scope)
             p = block->operandData.operands;
             i = block->operand_count;
             while (i--) {
-                if (p->kind == PCOp_GPR && (p->flags & 1))
+                if (PEEP_ISGPR(p) && (p->flags & 1))
                     a |= 1 << p->value.reg;
                 else if (p->kind == PCOp_FPR && (p->flags & 1))
                     b |= 1 << p->value.reg;
@@ -2554,6 +3128,7 @@ void peephole_optimize_block(PCodeBlock *scope)
         }
     }
 }
+#endif
 
 SInt32 compute_register_mask(PCodeInstruction *node, SInt16 registerNumber)
 {
@@ -2562,10 +3137,15 @@ SInt32 compute_register_mask(PCodeInstruction *node, SInt16 registerNumber)
     SInt32 entryCount;
 
     while (node != NULL) {
+#if VERSION >= VERSION_GC_1_3
+        entry = node->operandData.operands;
+        entryCount = node->operand_count;
+#else
         entryCount = node->operand_count;
         entry = node->operandData.operands;
+#endif
         while (entryCount--) {
-            if (entry->kind == PCOp_GPR && entry->value.reg == registerNumber && (entry->flags & 2)) {
+            if (PEEP_ISGPR(entry) && entry->value.reg == registerNumber && (entry->flags & 2)) {
                 switch (node->opcode) {
                     case PC_LBZ:
                     case PC_LBZU:
@@ -2735,98 +3315,98 @@ void optimize_rlwinm_and_addi(PCodeBlock *block)
 
             resultRegister = instr->operandData.operands[0].value.reg;
             sourceRegister = instr->operandData.operands[1].value.reg;
-            maskBegin = instr->operandData.operands[3].value.signed_value;
-            maskEnd = instr->operandData.operands[4].value.signed_value;
+            maskBegin = OPIMM(instr->operandData.operands[3]);
+            maskEnd = OPIMM(instr->operandData.operands[4]);
 
             for (scan = instr->next; scan; scan = scan->next) {
                 scanOperands = scan->operandData.operands;
                 if (scan->opcode == PC_RLWINM && scanOperands[1].value.reg == resultRegister) {
-                    if ((scanMaskBegin = scanOperands[3].value.signed_value) == (maskBegin = maskBegin) &&
-                        scanOperands[4].value.signed_value == maskEnd && scanOperands[2].value.signed_value == 0) {
-                        if (scan->flags & fRecordBit) {
+                    if ((scanMaskBegin = OPIMM(scanOperands[3])) == (maskBegin = maskBegin) &&
+                        OPIMM(scanOperands[4]) == maskEnd && OPIMM(scanOperands[2]) == 0) {
+                        if (PCODE_RECORD(scan->flags)) {
                             if (!conditionRegisterUsed) {
                                 PCodeUtilities_MakeRecordForm(instr);
                                 scan->flags &= ~fRecordBit;
-                                scan->flags |= fIsMove;
-                                scan->opcode = PC_MR;
-                                scan->operand_count = 2;
+                                PEEP_ADDMOVE(scan);
+                                PC_SETOPCODE(scan, PC_MR);
+                                PC_SETCOUNT(scan, 2);
                             } else {
-                                scan->flags |= fIsMove;
-                                scan->opcode = PC_MR;
-                                scan->operand_count = 3;
+                                PEEP_ADDMOVE(scan);
+                                PC_SETOPCODE(scan, PC_MR);
+                                PC_SETCOUNT(scan, 3);
                                 scan->operandData.operands[2] = scan->operandData.operands[5];
                             }
                         } else {
-                            scan->flags |= fIsMove;
-                            scan->opcode = PC_MR;
-                            scan->operand_count = 2;
+                            PEEP_ADDMOVE(scan);
+                            PC_SETOPCODE(scan, PC_MR);
+                            PC_SETCOUNT(scan, 2);
                         }
                     } else if (resultRegister != sourceRegister && !sourceRegisterChanged &&
-                               canmergemasks(maskBegin, maskEnd, scanOperands[2].value.signed_value, scanMaskBegin,
-                                             scanOperands[4].value.signed_value, &mergedBegin, &mergedEnd)) {
+                               canmergemasks(maskBegin, maskEnd, OPIMM(scanOperands[2]), scanMaskBegin,
+                                             OPIMM(scanOperands[4]), &mergedBegin, &mergedEnd)) {
                         scan->operandData.operands[1].value.reg = sourceRegister;
-                        scan->operandData.operands[2].value.signed_value =
-                            (scan->operandData.operands[2].value.signed_value +
-                             instr->operandData.operands[2].value.signed_value) &
+                        OPIMM(scan->operandData.operands[2]) =
+                            (OPIMM(scan->operandData.operands[2]) +
+                             OPIMM(instr->operandData.operands[2])) &
                             31;
-                        scan->operandData.operands[3].value.signed_value = mergedBegin;
-                        scan->operandData.operands[4].value.signed_value = mergedEnd;
+                        OPIMM(scan->operandData.operands[3]) = mergedBegin;
+                        OPIMM(scan->operandData.operands[4]) = mergedEnd;
                     }
                 } else if (scan->opcode == PC_SRAWI && scanOperands[1].value.reg == resultRegister &&
-                           resultRegister != sourceRegister && instr->operandData.operands[2].value.signed_value == 0 &&
+                           resultRegister != sourceRegister && OPIMM(instr->operandData.operands[2]) == 0 &&
                            !(compute_register_mask(instr, resultRegister) & 0x80000000) && !sourceRegisterChanged &&
-                           canmergemasks(maskBegin, maskEnd, 32 - scanOperands[2].value.signed_value,
-                                         scanOperands[2].value.signed_value, 31, &mergedBegin, &mergedEnd) &&
+                           canmergemasks(maskBegin, maskEnd, 32 - OPIMM(scanOperands[2]),
+                                         OPIMM(scanOperands[2]), 31, &mergedBegin, &mergedEnd) &&
                            !has_reg_flag_one_before_flag_two(scan, 0)) {
                     PCode_InsertInstructionAfter(
                         scan, PCodeUtilities_CreateInstruction(0x67, scanOperands[0].value.reg, sourceRegister,
-                                                               32 - scanOperands[2].value.signed_value, mergedBegin,
+                                                               32 - OPIMM(scanOperands[2]), mergedBegin,
                                                                mergedEnd));
-                    if (scan->flags & fRecordBit)
+                    if (PCODE_RECORD(scan->flags))
                         PCodeUtilities_MakeRecordForm(scan->next);
                     PCode_UnlinkInstruction(scan);
                 } else if (scan->opcode == PC_OR && !sourceRegisterChanged && resultRegister != sourceRegister &&
-                           !(scan->flags & fRecordBit) && !(instr->flags & fRecordBit) &&
+                           !(PCODE_RECORD(scan->flags)) && !(PCODE_RECORD(instr->flags)) &&
                            scan->operandData.operands[0].value.reg != instr->operandData.operands[1].value.reg) {
                     if (scanOperands[1].value.reg == resultRegister &&
                         masks_disjoint(instr, scan, scanOperands[2].value.reg)) {
-                        scan->opcode = PC_MR;
-                        scan->flags |= fIsMove;
-                        scan->operand_count = 2;
+                        PC_SETOPCODE(scan, PC_MR);
+                        PEEP_ADDMOVE(scan);
+                        PC_SETCOUNT(scan, 2);
                         scan->operandData.operands[1] = scan->operandData.operands[2];
                         clone = PCode_CloneInstruction(instr);
-                        clone->opcode = PC_RLWIMI;
+                        PC_SETOPCODE(clone, PC_RLWIMI);
                         clone->operandData.operands[0] = scan->operandData.operands[0];
                         clone->operandData.operands[0].flags |= 1;
                         if (InstrSelection_GetMaskRange(make_contiguous_mask(compute_register_mask(
                                                             instr, instr->operandData.operands[0].value.reg)),
                                                         &mergedBegin, &mergedEnd)) {
-                            clone->operandData.operands[3].value.signed_value = mergedBegin;
-                            clone->operandData.operands[4].value.signed_value = mergedEnd;
+                            OPIMM(clone->operandData.operands[3]) = mergedBegin;
+                            OPIMM(clone->operandData.operands[4]) = mergedEnd;
                         }
                         PCode_InsertInstructionAfter(scan, clone);
                         break;
                     }
                     if (scanOperands[2].value.reg == resultRegister &&
                         masks_disjoint(instr, scan, scanOperands[1].value.reg)) {
-                        scan->opcode = PC_MR;
-                        scan->flags |= fIsMove;
-                        scan->operand_count = 2;
+                        PC_SETOPCODE(scan, PC_MR);
+                        PEEP_ADDMOVE(scan);
+                        PC_SETCOUNT(scan, 2);
                         clone = PCode_CloneInstruction(instr);
-                        clone->opcode = PC_RLWIMI;
+                        PC_SETOPCODE(clone, PC_RLWIMI);
                         clone->operandData.operands[0] = scan->operandData.operands[0];
                         clone->operandData.operands[0].flags |= 1;
                         if (InstrSelection_GetMaskRange(make_contiguous_mask(compute_register_mask(
                                                             instr, instr->operandData.operands[0].value.reg)),
                                                         &mergedBegin, &mergedEnd)) {
-                            clone->operandData.operands[3].value.signed_value = mergedBegin;
-                            clone->operandData.operands[4].value.signed_value = mergedEnd;
+                            OPIMM(clone->operandData.operands[3]) = mergedBegin;
+                            OPIMM(clone->operandData.operands[4]) = mergedEnd;
                         }
                         PCode_InsertInstructionAfter(scan, clone);
                         break;
                     }
                 } else if (!sourceRegisterChanged && resultRegister != sourceRegister && maskEnd == 31 &&
-                           instr->operandData.operands[2].value.signed_value == 0 &&
+                           OPIMM(instr->operandData.operands[2]) == 0 &&
                            (((scan->opcode == PC_STB || scan->opcode == PC_STBX) && maskBegin <= 24) ||
                             ((scan->opcode == PC_STH || scan->opcode == PC_STHX) && maskBegin <= 16)) &&
                            scan->operandData.operands[0].value.reg == resultRegister) {
@@ -2836,11 +3416,11 @@ void optimize_rlwinm_and_addi(PCodeBlock *block)
                 operand = scan->operandData.operands;
                 operandCount = scan->operand_count;
                 while (operandCount--) {
-                    if (operand->kind == PCOp_GPR && operand->value.reg == resultRegister && (operand->flags & 2)) {
+                    if (PEEP_ISGPR(operand) && operand->value.reg == resultRegister && (operand->flags & 2)) {
                         scan = block->reverse_instructions;
                         break;
                     }
-                    if (operand->kind == PCOp_GPR && operand->value.reg == sourceRegister && (operand->flags & 2))
+                    if (PEEP_ISGPR(operand) && operand->value.reg == sourceRegister && (operand->flags & 2))
                         sourceRegisterChanged = 1;
                     if (operand->kind == PCOp_CRFIELD && operand->value.reg == 0)
                         conditionRegisterUsed = 1;
@@ -2849,22 +3429,22 @@ void optimize_rlwinm_and_addi(PCodeBlock *block)
             }
         } else if (instr->opcode == PC_ADDI &&
                    instr->operandData.operands[0].value.reg == instr->operandData.operands[1].value.reg &&
-                   instr->operandData.operands[2].kind == PCOp_IMMEDIATE) {
+                   instr->operandData.operands[2].kind == PEEP_IMMEDIATE) {
             registerUsed = 0;
-            addend = instr->operandData.operands[2].value.signed_value;
+            addend = OPIMM(instr->operandData.operands[2]);
             passedNonAdd = 0;
             addRegister = instr->operandData.operands[0].value.reg;
             for (scan = instr->next; scan; scan = scan->next) {
                 if ((scan->flags & fIsWrite) && scan->operandData.operands[0].value.reg == addRegister)
                     break;
                 if ((scan->flags & (fIsRead | fIsWrite)) && scan->operandData.operands[1].value.reg == addRegister &&
-                    scan->operandData.operands[2].kind == PCOp_IMMEDIATE &&
-                    addend + scan->operandData.operands[2].value.signed_value ==
-                        (SInt16)(addend + scan->operandData.operands[2].value.signed_value)) {
-                    scan->operandData.operands[2].value.signed_value += addend;
+                    scan->operandData.operands[2].kind == PEEP_IMMEDIATE &&
+                    addend + OPIMM(scan->operandData.operands[2]) ==
+                        (SInt16)(addend + OPIMM(scan->operandData.operands[2]))) {
+                    OPIMM(scan->operandData.operands[2]) += addend;
                     previousInstruction = instr->previous;
                     if ((scan->flags & fIsRead) && scan->operandData.operands[0].value.reg == addRegister &&
-                        scan->operandData.operands[0].kind == PCOp_GPR) {
+                        PEEP_ISGPR(&scan->operandData.operands[0])) {
                         PCode_UnlinkInstruction(instr);
                     } else {
                         PCode_UnlinkInstruction(instr);
@@ -2874,10 +3454,10 @@ void optimize_rlwinm_and_addi(PCodeBlock *block)
                     break;
                 }
                 if (scan->opcode == PC_ADDI && scan->operandData.operands[1].value.reg == addRegister &&
-                    scan->operandData.operands[2].kind == PCOp_IMMEDIATE &&
-                    addend + scan->operandData.operands[2].value.signed_value ==
-                        (SInt16)(addend + scan->operandData.operands[2].value.signed_value)) {
-                    scan->operandData.operands[2].value.signed_value += addend;
+                    scan->operandData.operands[2].kind == PEEP_IMMEDIATE &&
+                    addend + OPIMM(scan->operandData.operands[2]) ==
+                        (SInt16)(addend + OPIMM(scan->operandData.operands[2]))) {
+                    OPIMM(scan->operandData.operands[2]) += addend;
                     previousInstruction = instr->previous;
                     if (scan->operandData.operands[0].value.reg == addRegister) {
                         PCode_UnlinkInstruction(instr);
@@ -2900,7 +3480,7 @@ void optimize_rlwinm_and_addi(PCodeBlock *block)
                 operand = scan->operandData.operands;
                 operandCount = scan->operand_count;
                 while (operandCount--) {
-                    if (operand->kind == PCOp_GPR && operand->value.reg == addRegister && (operand->flags & 3)) {
+                    if (PEEP_ISGPR(operand) && operand->value.reg == addRegister && (operand->flags & 3)) {
                         if (passedNonAdd && scan->previous != instr) {
                             previousInstruction = instr->previous;
                             PCode_UnlinkInstruction(instr);
@@ -3089,15 +3669,23 @@ void Peephole_MergeAdjacentBlocks(Object *object, Boolean mergePrologue)
         if (block->instruction_count <= 0)
             continue;
         for (insn = block->instructions; insn != NULL; insn = insn->next) {
-            if (insn->flags & 0x420)
+            if (insn->flags & BY_VERSION(0x420, 0x108))
                 break;
         }
         if (insn != NULL)
             continue;
         if (block->reverse_instructions != NULL && block->reverse_instructions->opcode == PC_B) {
+#if VERSION >= VERSION_GC_1_3
+            if (block->reverse_instructions->operandData.operands[0].kind != 4)
+                continue;
+            if (((PCodeBlockLink *)block->reverse_instructions->operandData.operands[0].imm32)->payload.block !=
+                nextBlock)
+                continue;
+#else
             if (((PCodeBlockLink *)block->reverse_instructions->operandData.operands[0].value.unsigned_value)
                     ->payload.block != nextBlock)
                 continue;
+#endif
             PCode_UnlinkInstruction(block->reverse_instructions);
         }
         if (block->reverse_instructions != NULL && (block->reverse_instructions->flags & fIsBranch) != 0 &&
@@ -3105,18 +3693,23 @@ void Peephole_MergeAdjacentBlocks(Object *object, Boolean mergePrologue)
             continue;
         while (block->successors->payload.block == nextBlock && block->successors->next == NULL &&
                nextBlock->predecessors->payload.block == block && nextBlock->predecessors->next == NULL &&
-               !nextIsPrologue && (nextBlock->flags & 0x20) == 0 &&
+               !nextIsPrologue && (nextBlock->flags & BY_VERSION(0x20, 0x8000)) == 0 &&
                block->instruction_count + nextBlock->instruction_count <= 100) {
             if (nextBlock->instruction_count > 0) {
                 nextInsn = nextBlock->instructions;
                 while (nextInsn != NULL) {
                     savedNextInsn = nextInsn->next;
-                    if (nextInsn->flags & 0x420)
+                    if (nextInsn->flags & BY_VERSION(0x420, 0x108))
                         break;
                     PCode_UnlinkInstruction(nextInsn);
+#if VERSION >= VERSION_GC_1_3
+                    if (nextInsn->opcode != PC_B || nextInsn->operandData.operands[0].kind != 4 ||
+                        ((PCodeBlockLink *)nextInsn->operandData.operands[0].imm32)->payload.block != nextBlock->next)
+#else
                     if (nextInsn->opcode != PC_B ||
                         ((PCodeBlockLink *)nextInsn->operandData.operands[0].value.unsigned_value)->payload.block !=
                             nextBlock->next)
+#endif
                         PCode_AppendInstruction(block, nextInsn);
                     nextInsn = savedNextInsn;
                 }
@@ -3134,7 +3727,7 @@ void Peephole_MergeAdjacentBlocks(Object *object, Boolean mergePrologue)
             block->next = nextBlock->next;
             if (block->next != NULL)
                 block->next->prev = block;
-            nextBlock->flags |= 0x10;
+            nextBlock->flags |= BY_VERSION(0x10, 0x20);
             nextBlock = block->next;
             if (!mergePrologue)
                 nextIsPrologue = (nextBlock != NULL && (nextBlock->flags & 2) != 0);

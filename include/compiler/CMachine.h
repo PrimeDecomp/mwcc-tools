@@ -15,6 +15,9 @@ extern long CMach_StructLayoutGetOffset(Type *type, int flags);
 extern void CMach_StructLayoutInitOffset(unsigned int offset);
 extern void CMachine_ResetMaximumAlignment(void);
 extern SInt16 CMachine_GetTypeAlignment(Type *type);
+#if VERSION >= VERSION_GC_1_3
+extern SInt16 CMachine_GetTypeAlignmentImpl(Type *type, SInt32 flag);
+#endif
 extern UInt16 CMach_GetStructAlign(TypeStruct *str);
 extern SInt16 CMach_MemberAlignValue(Type *type, SInt32 offset);
 extern int CMach_StructLayoutGetCurSize(void);

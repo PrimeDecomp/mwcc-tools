@@ -11,6 +11,9 @@ extern "C" {
 #pragma options align = mac68k
 struct IRODef {
     int index;
+#if VERSION >= VERSION_GC_1_3
+    UInt32 f04; /* 0x04: the definition's flow-graph node (an IRONode *) */
+#endif
     struct IROLinear *linear;
     VarRecord *var;
     struct IRODef *globalnext;
@@ -19,6 +22,9 @@ struct IRODef {
     UInt8 global;
     UInt8 noregister;
     UInt8 definite;
+#if VERSION >= VERSION_GC_1_3
+    UInt8 f1d;
+#endif
 };
 #pragma options align = reset
 /* A use of a variable. */
@@ -45,7 +51,13 @@ extern CInt64 get_update_delta(IROLinear *node);
 extern void mark_var_used_at_call(Object *obj);
 extern IROLinear *find_type_one_linear(IROLinear *e);
 extern void build_use_def_records(void);
+#if VERSION >= VERSION_GC_1_3
+extern void create_def_record(VarRecord *var, struct IROLinear *linear, struct IRONode *node, unsigned char definite);
+#define CREATE_DEF_RECORD(var, linear, node, definite) create_def_record(var, linear, node, definite)
+#else
 extern void create_def_record(VarRecord *var, struct IROLinear *linear, unsigned char definite);
+#define CREATE_DEF_RECORD(var, linear, node, definite) create_def_record(var, linear, definite)
+#endif
 extern struct BitVector *data_0058711c;
 extern struct BitVector *data_00587174;
 extern struct BitVector *data_00587f70;

@@ -28,8 +28,14 @@ static SInt32 def_count;
 static struct IRODef *def_list;
 static struct IRODef *global_def_tail;
 static int data_00580624;
+#if VERSION >= VERSION_GC_1_3
+/* (1.3: IroPropagate.c uses these) */
+struct IROUse *allocated_uses;
+struct IROUse *global_use_tail;
+#else
 static struct IROUse *allocated_uses;
 static struct IROUse *global_use_tail;
+#endif
 static struct BitVector *use_def_in;
 static struct BitVector *used_defs_bitvector;
 static SInt32 data_00580638;
@@ -92,6 +98,245 @@ void fn_0045ac60(IROLinear *p, int flag)
     }
 }
 
+#if VERSION >= VERSION_GC_1_3
+extern UInt8 data13_005e7380[];
+
+/* initialize a table of 0x4d per-node-type entries */
+void fn_0045f8c0(void)
+{
+    int i;
+
+    for (i = 0; i < 0x4d; i++)
+        data13_005e7380[i] = 77;
+    data13_005e7380[0] = 77;
+    data13_005e7380[1] = 77;
+    data13_005e7380[2] = 77;
+    data13_005e7380[3] = 77;
+    data13_005e7380[4] = 77;
+    data13_005e7380[5] = 77;
+    data13_005e7380[6] = 77;
+    data13_005e7380[7] = 77;
+    data13_005e7380[8] = 77;
+    data13_005e7380[9] = 77;
+    data13_005e7380[10] = 77;
+    data13_005e7380[11] = 77;
+    data13_005e7380[12] = 77;
+    data13_005e7380[13] = 77;
+    data13_005e7380[14] = 77;
+    data13_005e7380[15] = 77;
+    data13_005e7380[16] = 77;
+    data13_005e7380[17] = 77;
+    data13_005e7380[18] = 77;
+    data13_005e7380[19] = 77;
+    data13_005e7380[20] = 77;
+    data13_005e7380[21] = 77;
+    data13_005e7380[22] = 77;
+    data13_005e7380[23] = 77;
+    data13_005e7380[24] = 77;
+    data13_005e7380[25] = 77;
+    data13_005e7380[26] = 77;
+    data13_005e7380[27] = 77;
+    data13_005e7380[28] = 77;
+    data13_005e7380[29] = 77;
+    data13_005e7380[30] = 77;
+    data13_005e7380[31] = 9;
+    data13_005e7380[32] = 11;
+    data13_005e7380[33] = 12;
+    data13_005e7380[34] = 15;
+    data13_005e7380[35] = 16;
+    data13_005e7380[36] = 17;
+    data13_005e7380[37] = 18;
+    data13_005e7380[38] = 25;
+    data13_005e7380[39] = 26;
+    data13_005e7380[40] = 27;
+    data13_005e7380[41] = 77;
+    data13_005e7380[42] = 77;
+    data13_005e7380[43] = 77;
+    data13_005e7380[44] = 77;
+    data13_005e7380[45] = 77;
+    data13_005e7380[46] = 77;
+    data13_005e7380[47] = 77;
+    data13_005e7380[48] = 77;
+    data13_005e7380[49] = 77;
+    data13_005e7380[50] = 77;
+    data13_005e7380[51] = 77;
+    data13_005e7380[52] = 77;
+    data13_005e7380[53] = 77;
+    data13_005e7380[54] = 77;
+    data13_005e7380[55] = 77;
+    data13_005e7380[56] = 77;
+    data13_005e7380[57] = 77;
+    data13_005e7380[58] = 77;
+    data13_005e7380[59] = 77;
+    data13_005e7380[60] = 77;
+    data13_005e7380[61] = 77;
+    data13_005e7380[62] = 77;
+    data13_005e7380[63] = 77;
+    data13_005e7380[64] = 77;
+    data13_005e7380[65] = 77;
+    data13_005e7380[66] = 77;
+    data13_005e7380[68] = 77;
+    data13_005e7380[69] = 77;
+    data13_005e7380[70] = 77;
+    data13_005e7380[71] = 77;
+    data13_005e7380[72] = 77;
+    data13_005e7380[73] = 77;
+    data13_005e7380[74] = 77;
+    data13_005e7380[75] = 77;
+    data13_005e7380[76] = 77;
+}
+extern Boolean fn_0045e110(IRODef *def);
+
+/* can the use be rewritten without crossing a reference to its variable */
+Boolean fn_0045e1a0(IROUse *use)
+{
+    VarRecord *vr = use->var;
+    IROLinear *l;
+    IROLinear *right;
+
+    if (vr != NULL) {
+        l = use->linear;
+        if (l != NULL && (l->flags & 0x4000))
+            return 0;
+        while (l != NULL && (l->flags & 2))
+            l = l->next;
+        if (l != NULL && (UInt8)fn_0044d460(l) && IroVars_GetOperandVarRecord(l) == vr && !fn_0044be00(l->u.diadic.left)) {
+            right = (l->type == IROLinearOp1Arg) ? NULL : l->u.diadic.right;
+            if (right == NULL || !fn_0044be00(right))
+                return 1;
+        }
+    }
+    return 0;
+}
+
+/* every use reached by a loop definition of the variable must also be inside a loop and pass fn_0045e1a0 */
+Boolean fn_0045e110(IRODef *def)
+{
+    VarRecord *vr = def->var;
+    IRODef *d;
+    IROUse *u;
+
+    if (vr != NULL) {
+        for (d = vr->defs; d != NULL; d = d->varnext) {
+            if (d->f04 != 0 && ((IRONode *)d->f04)->loopdepth != 0) {
+                for (u = vr->uses; u != NULL; u = u->varnext) {
+                    if ((d->index >> 5) < u->reachingDefs->size && ((1 << d->index) & u->reachingDefs->bits[d->index >> 5])) {
+                        if (u->node == NULL || u->node->loopdepth == 0 || !fn_0045e1a0(u))
+                            return 0;
+                    }
+                }
+            }
+        }
+        return 1;
+    }
+    return 0;
+}
+
+/* flag the other definitions of variables whose loop definitions can all be forwarded */
+void fn_0045e090(void)
+{
+    IRODef *d;
+    IRODef *x;
+
+    for (d = def_list; d != NULL; d = d->globalnext) {
+        if (!d->global && !d->noregister && d->f04 != 0 && ((IRONode *)d->f04)->loopdepth != 0 && !d->f1d &&
+            fn_0045e110(d) && d->var != NULL) {
+            for (x = d->var->defs; x != NULL; x = x->varnext) {
+                if (x->f04 != 0 && ((IRONode *)x->f04)->loopdepth != 0)
+                    x->f1d = 1;
+            }
+        }
+    }
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+extern char *data_005dc070[0x4d];
+void fn_0045f520(void)
+{
+    int i;
+
+    for (i = 0; i < 0x4d; i++)
+        data_005dc070[i] = 0;
+    data_005dc070[0] = 0;
+    data_005dc070[1] = 0;
+    data_005dc070[2] = 0;
+    data_005dc070[3] = 0;
+    data_005dc070[4] = 0;
+    data_005dc070[5] = 0;
+    data_005dc070[6] = 0;
+    data_005dc070[7] = 0;
+    data_005dc070[8] = 0;
+    data_005dc070[9] = 0;
+    data_005dc070[10] = 0;
+    data_005dc070[11] = 0;
+    data_005dc070[12] = 0;
+    data_005dc070[13] = 0;
+    data_005dc070[14] = 0;
+    data_005dc070[15] = 0;
+    data_005dc070[16] = 0;
+    data_005dc070[17] = 0;
+    data_005dc070[18] = 0;
+    data_005dc070[19] = 0;
+    data_005dc070[20] = 0;
+    data_005dc070[21] = 0;
+    data_005dc070[22] = 0;
+    data_005dc070[23] = 0;
+    data_005dc070[24] = 0;
+    data_005dc070[25] = 0;
+    data_005dc070[26] = 0;
+    data_005dc070[27] = 0;
+    data_005dc070[28] = 0;
+    data_005dc070[29] = 0;
+    data_005dc070[30] = 0;
+    data_005dc070[31] = (char *)CInt64_Mul;
+    data_005dc070[32] = (char *)CInt64_Mul;
+    data_005dc070[33] = 0;
+    data_005dc070[34] = (char *)CInt64_Add;
+    data_005dc070[35] = (char *)CInt64_Add;
+    data_005dc070[36] = (char *)CInt64_Add;
+    data_005dc070[37] = (char *)CInt64_Add;
+    data_005dc070[38] = (char *)CInt64_And;
+    data_005dc070[39] = (char *)CInt64_Xor;
+    data_005dc070[40] = (char *)CInt64_Or;
+    data_005dc070[41] = 0;
+    data_005dc070[42] = 0;
+    data_005dc070[43] = 0;
+    data_005dc070[44] = 0;
+    data_005dc070[45] = 0;
+    data_005dc070[46] = 0;
+    data_005dc070[47] = 0;
+    data_005dc070[48] = 0;
+    data_005dc070[49] = 0;
+    data_005dc070[50] = 0;
+    data_005dc070[51] = 0;
+    data_005dc070[52] = 0;
+    data_005dc070[53] = 0;
+    data_005dc070[54] = 0;
+    data_005dc070[55] = 0;
+    data_005dc070[56] = 0;
+    data_005dc070[57] = 0;
+    data_005dc070[58] = 0;
+    data_005dc070[59] = 0;
+    data_005dc070[60] = 0;
+    data_005dc070[61] = 0;
+    data_005dc070[62] = 0;
+    data_005dc070[63] = 0;
+    data_005dc070[64] = 0;
+    data_005dc070[65] = 0;
+    data_005dc070[66] = 0;
+    data_005dc070[68] = 0;
+    data_005dc070[69] = 0;
+    data_005dc070[70] = 0;
+    data_005dc070[71] = 0;
+    data_005dc070[72] = 0;
+    data_005dc070[73] = 0;
+    data_005dc070[74] = 0;
+    data_005dc070[75] = 0;
+    data_005dc070[76] = 0;
+}
+#endif
+
 static int has_side_effect(IROLinear *p)
 {
     return is_side_effect_node(p) || is_volatile_object_ref(p);
@@ -122,13 +367,20 @@ static int is_call_or_assignment(IROLinear *p)
     return p->type == IROLinearFunccall || fn_0044d460(p);
 }
 
+#if VERSION >= VERSION_GC_1_3
+void create_def_record(VarRecord *var, struct IROLinear *linear, struct IRONode *node, unsigned char definite)
+#else
 void create_def_record(VarRecord *var, struct IROLinear *linear, unsigned char definite)
+#endif
 {
     IRODef *def;
 
     def = oalloc(sizeof(IRODef));
     def->index = def_count;
     def_count++;
+#if VERSION >= VERSION_GC_1_3
+    def->f04 = (UInt32)node;
+#endif
     def->linear = linear;
     def->var = var;
     def->globalnext = NULL;
@@ -136,6 +388,9 @@ void create_def_record(VarRecord *var, struct IROLinear *linear, unsigned char d
     def->global = (var->object->datatype == DDATA);
     def->noregister = var->noregister;
     def->definite = definite;
+#if VERSION >= VERSION_GC_1_3
+    def->f1d = 0;
+#endif
     if (def_list != NULL) {
         global_def_tail->globalnext = def;
     } else {
@@ -181,7 +436,7 @@ void build_use_def_records(void)
             if (fn_0044d460(member)) {
                 entry = IroVars_GetOperandVarRecord(member);
                 if (entry)
-                    create_def_record(entry, member, member->rtype->size == (UInt32)entry->object->type->size);
+                    CREATE_DEF_RECORD(entry, member, owner, member->rtype->size == (UInt32)entry->object->type->size);
             }
             if (member->type == IROLinearAsm) {
                 fn_00462d70(member->u.asm_stmt, &list);
@@ -192,12 +447,12 @@ void build_use_def_records(void)
                             AddUse(owner, member, entry);
                             break;
                         case 1:
-                            create_def_record(entry, member,
+                            CREATE_DEF_RECORD(entry, member, owner,
                                               list.operands[index].offset == 0 &&
                                                   list.operands[index].size == (UInt32)entry->object->type->size);
                             break;
                         case 2:
-                            create_def_record(entry, member, 0);
+                            CREATE_DEF_RECORD(entry, member, owner, 0);
                             break;
                     }
                 }
@@ -208,7 +463,7 @@ void build_use_def_records(void)
     }
 
     for (entry = var_records; entry; entry = entry->next)
-        create_def_record(entry, NULL, 1);
+        CREATE_DEF_RECORD(entry, NULL, NULL, 1);
 }
 
 /* (IroVars_VisitExceptionOperands visitor at a call) the object's reaching definitions are used there. */
@@ -249,7 +504,7 @@ CInt64 get_update_delta(IROLinear *node)
                 r.hi = -1;
                 break;
             default:
-                CError_FATAL(399);
+                CError_FATAL(BY_VERSION(399, 445));
         }
         if (node->rtype->type == TYPEPOINTER) {
             size = ((TypePointer *)node->rtype)->target->size;
@@ -269,7 +524,7 @@ CInt64 get_update_delta(IROLinear *node)
                 CError_FATAL(424);
         }
     } else {
-        CError_FATAL(429);
+        CError_FATAL(BY_VERSION(429, 496));
     }
     return r;
 }
@@ -331,6 +586,9 @@ void add_constant_to_next_use(IROLinear *expression, CInt64 value, Type *type)
         constant = IroVars_CreateIntConstant(value, type);
         constantNode = constant;
         operation = IrOptimizer_NewLinear(IROLinearOp2Arg);
+#if VERSION >= VERSION_GC_1_3
+        operation->index = ++linear_index_counter;
+#endif
         operation->nodetype = EADD;
         operation->u.diadic.left = expression;
         operation->u.diadic.right = constant;
@@ -633,10 +891,10 @@ IROLinear *fn_00459940(IROLinear *node)
     } else if (node->type == IROLinearOp1Arg) {
         node = node->u.monadic;
     } else {
-        CError_Internal("IROUseDef.c", 1153u);
+        CError_Internal("IROUseDef.c", BY_VERSION(1153u, 2338u));
     }
     if (node->type != IROLinearOp1Arg || node->nodetype != EINDIRECT) {
-        CError_Internal("IROUseDef.c", 1160u);
+        CError_Internal("IROUseDef.c", BY_VERSION(1160u, 2351u));
     }
     node = node->u.monadic;
     if (node->type == IROLinearOp2Arg && node->nodetype == EADD) {
@@ -702,7 +960,7 @@ void split_variable_range(VarRecord *entry)
             use->linear != NULL) {
             useReference = entry->object;
             useNode = fn_00459940(use->linear);
-            CError_ASSERT(1277, !(useNode == 0 || useNode->type != IROLinearOperand ||
+            CError_ASSERT(BY_VERSION(1277, 2459), !(useNode == 0 || useNode->type != IROLinearOperand ||
                                   useNode->u.node->type != EOBJREF || useNode->u.node->data.objref != useReference));
             useNode->u.node->data.objref = object;
         }
@@ -714,11 +972,11 @@ void split_variable_range(VarRecord *entry)
             (1 << definition->index & connected_defs_and_uses_bits->bits[definition->index >> 5]) != 0) {
             definitionReference = entry->object;
             definitionNode = definition->linear;
-            CError_ASSERT(1300, !(definitionNode->type != IROLinearOperand || definitionNode->u.node->type != EOBJREF));
+            CError_ASSERT(BY_VERSION(1300, 2482), !(definitionNode->type != IROLinearOperand || definitionNode->u.node->type != EOBJREF));
             if (definitionNode->u.node->data.objref == definitionReference) {
                 definitionNode->u.node->data.objref = object;
             } else
-                CError_ASSERT(1312, definitionNode->u.node->data.objref == object);
+                CError_ASSERT(BY_VERSION(1312, 2494), definitionNode->u.node->data.objref == object);
         }
     }
 }

@@ -27,7 +27,7 @@ void __stdcall MacFileTypes_AppendTable(struct MacFileTypeNode **list, SInt32 va
     }
     *pp = (struct MacFileTypeNode *)malloc(8);
     if (*pp == NULL) {
-        CLIO_ReportAssertionFailure("*scan != NULL", "MacFileTypes.c", 0x2b);
+        CLIO_ReportAssertionFailure("*scan != NULL", "MacFileTypes.c", BY_VERSION(0x2b, 0x28));
     }
     (*pp)->table = (struct OpcodeDescriptorTable *)value;
     (*pp)->next = NULL;
@@ -40,8 +40,8 @@ void __stdcall fn_00421a80(int value, unsigned int *result)
     int index;
     group = *mac_file_types;
     while (group != NULL) {
-        index = 0;
         records = group->table;
+        index = 0;
         while (index < records->count) {
             if (value == records->patterns[index].result) {
                 memset(result, 0, sizeof(*result));

@@ -24,6 +24,9 @@
 #include "driver/COSToolsCLT.h"
 #include "driver/CWPluginsPrivate.h"
 #include "driver/cc-eabi-ppc.h"
+#if VERSION >= VERSION_GC_1_3
+#include "compiler/IROUseDef.h"
+#endif
 
 struct VarRecord *var_records;
 SInt32 data_00587ef4;
@@ -67,8 +70,10 @@ static inline int fn_0044a6f0_inline1(VarRecord *a1)
 IROAddrRecord *IroVars_CreateAddrRecord(struct IROLinear *linear)
 {
     IROAddrRecord *record;
-    record = (IROAddrRecord *)oalloc(28U);
+    record = (IROAddrRecord *)oalloc(BY_VERSION(28U, 26U));
+#if VERSION < VERSION_GC_1_3
     record->x4 = 0U;
+#endif
     record->numObjRefs = 0U;
     record->objRefs = 0U;
     record->numMisc = 0U;
@@ -79,6 +84,314 @@ IROAddrRecord *IroVars_CreateAddrRecord(struct IROLinear *linear)
     record->linear = linear;
     return record;
 }
+
+#if VERSION >= VERSION_GC_1_3
+extern SInt32 data_005dc1d8;
+Boolean fn_004672c0(void)
+{
+    return 0;
+}
+
+void fn_004672b0(void)
+{
+    data_005dc1d8 = 0;
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+void fn_00462200(void)
+{
+    VarRecord *record;
+
+    for (record = var_records; record != NULL; record = record->next) {
+        Object *object;
+        VarInfo *info;
+
+        record->noregister = 0;
+        object = record->object;
+        if (object != NULL && object->datatype == DLOCAL && (info = object->u.var.info) != NULL &&
+            info->noregister == 2)
+            info->noregister = 0;
+    }
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+IROLinear *fn_004672d0(Float value, Type *rtype)
+{
+    ENode *constant;
+    IROLinear *linear;
+
+    constant = IrOptimizer_NewENode(EFLOATCONST);
+    constant->data.floatval = value;
+    constant->rtype = rtype;
+    linear = IrOptimizer_NewLinear(IROLinearOperand);
+    linear->index = ++linear_index_counter;
+    linear->rtype = rtype;
+    linear->u.node = constant;
+    return linear;
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+#pragma pack(push, 1)
+struct Fn00467370Type {
+    UInt8 pad[2];
+    UInt8 kind;
+};
+struct Fn00467370Inner {
+    UInt8 type;
+    UInt8 pad[0xd];
+    struct Fn00467370Type *operand;
+};
+struct Fn00467370Mid {
+    UInt8 type;
+    UInt8 pad[0x1f];
+    struct Fn00467370Inner *inner;
+};
+struct Fn00467370Node {
+    UInt8 type;
+    UInt8 pad1[5];
+    UInt16 flags;
+    UInt8 pad2[0x20];
+    struct Fn00467370Mid *mid;
+};
+#pragma pack(pop)
+extern char fn_005213e0(struct Fn00467370Type *type, int flag);
+
+Boolean fn_00467370(struct Fn00467370Node *node)
+{
+    struct Fn00467370Type *type;
+    int flag;
+
+    if (node->type == 0xb) {
+        type = NULL;
+        if (node->mid->type == 1 && node->mid->inner->type == 0x38)
+            type = node->mid->inner->operand;
+        if (type != NULL) {
+            flag = 0;
+            if (type->kind == 4 && (node->flags & 0x80) == 0)
+                flag = 1;
+            if (fn_005213e0(type, flag))
+                return 1;
+        }
+    }
+    return 0;
+}
+extern UInt8 data_00551d6c[];
+extern UInt8 data13_005e72c7[];
+
+/* initialize a table of 0x4d per-node-type entries */
+void fn_00462310(void)
+{
+    int i;
+
+    for (i = 0; i < 0x4d; i++)
+        data_00551d6c[i] = 0;
+    data_00551d6c[0] = 1;
+    data_00551d6c[1] = 1;
+    data_00551d6c[2] = 1;
+    data_00551d6c[3] = 1;
+    data_00551d6c[4] = 0;
+    data_00551d6c[5] = 0;
+    data_00551d6c[6] = 0;
+    data_00551d6c[7] = 0;
+    data_00551d6c[8] = 0;
+    data_00551d6c[9] = 0;
+    data_00551d6c[10] = 0;
+    data_00551d6c[11] = 0;
+    data_00551d6c[12] = 0;
+    data_00551d6c[13] = 0;
+    data_00551d6c[14] = 0;
+    data_00551d6c[15] = 0;
+    data_00551d6c[16] = 0;
+    data_00551d6c[17] = 0;
+    data_00551d6c[18] = 0;
+    data_00551d6c[19] = 0;
+    data_00551d6c[20] = 0;
+    data_00551d6c[21] = 0;
+    data_00551d6c[22] = 0;
+    data_00551d6c[23] = 0;
+    data_00551d6c[24] = 0;
+    data_00551d6c[25] = 0;
+    data_00551d6c[26] = 0;
+    data_00551d6c[27] = 0;
+    data_00551d6c[28] = 0;
+    data_00551d6c[29] = 0;
+    data_00551d6c[30] = 1;
+    data_00551d6c[31] = 1;
+    data_00551d6c[32] = 1;
+    data_00551d6c[33] = 1;
+    data_00551d6c[34] = 1;
+    data_00551d6c[35] = 1;
+    data_00551d6c[36] = 1;
+    data_00551d6c[37] = 1;
+    data_00551d6c[38] = 1;
+    data_00551d6c[39] = 1;
+    data_00551d6c[40] = 1;
+    data_00551d6c[41] = 0;
+    data_00551d6c[42] = 1;
+    data_00551d6c[43] = 1;
+    data_00551d6c[44] = 1;
+    data_00551d6c[45] = 1;
+    data_00551d6c[46] = 1;
+    data_00551d6c[47] = 1;
+    data_00551d6c[48] = 0;
+    data_00551d6c[49] = 0;
+    data_00551d6c[50] = 0;
+    data_00551d6c[51] = 0;
+    data_00551d6c[52] = 0;
+    data_00551d6c[53] = 0;
+    data_00551d6c[54] = 0;
+    data_00551d6c[55] = 0;
+    data_00551d6c[56] = 0;
+    data_00551d6c[57] = 0;
+    data_00551d6c[58] = 0;
+    data_00551d6c[59] = 0;
+    data_00551d6c[60] = 0;
+    data_00551d6c[61] = 0;
+    data_00551d6c[62] = 0;
+    data_00551d6c[63] = 0;
+    data_00551d6c[64] = 0;
+    data_00551d6c[65] = 0;
+    data_00551d6c[66] = 0;
+    data_00551d6c[68] = 0;
+    data_00551d6c[69] = 0;
+    data_00551d6c[70] = 0;
+    data_00551d6c[71] = 0;
+    data_00551d6c[72] = 0;
+    data_00551d6c[73] = 0;
+    data_00551d6c[74] = 0;
+    data_00551d6c[75] = 0;
+    data_00551d6c[76] = 1;
+}
+
+/* initialize a table of 0x4d per-node-type entries */
+void fn_004625b0(void)
+{
+    int i;
+
+    for (i = 0; i < 0x4d; i++)
+        data13_005e72c7[i] = 0;
+    data13_005e72c7[0] = 1;
+    data13_005e72c7[1] = 1;
+    data13_005e72c7[2] = 1;
+    data13_005e72c7[3] = 1;
+    data13_005e72c7[4] = 0;
+    data13_005e72c7[5] = 0;
+    data13_005e72c7[6] = 0;
+    data13_005e72c7[7] = 0;
+    data13_005e72c7[8] = 0;
+    data13_005e72c7[9] = 0;
+    data13_005e72c7[10] = 0;
+    data13_005e72c7[11] = 0;
+    data13_005e72c7[12] = 0;
+    data13_005e72c7[13] = 0;
+    data13_005e72c7[14] = 0;
+    data13_005e72c7[15] = 0;
+    data13_005e72c7[16] = 0;
+    data13_005e72c7[17] = 0;
+    data13_005e72c7[18] = 0;
+    data13_005e72c7[19] = 0;
+    data13_005e72c7[20] = 0;
+    data13_005e72c7[21] = 0;
+    data13_005e72c7[22] = 0;
+    data13_005e72c7[23] = 0;
+    data13_005e72c7[24] = 0;
+    data13_005e72c7[25] = 0;
+    data13_005e72c7[26] = 0;
+    data13_005e72c7[27] = 0;
+    data13_005e72c7[28] = 0;
+    data13_005e72c7[29] = 0;
+    data13_005e72c7[30] = 0;
+    data13_005e72c7[31] = 1;
+    data13_005e72c7[32] = 1;
+    data13_005e72c7[33] = 1;
+    data13_005e72c7[34] = 1;
+    data13_005e72c7[35] = 1;
+    data13_005e72c7[36] = 1;
+    data13_005e72c7[37] = 1;
+    data13_005e72c7[38] = 1;
+    data13_005e72c7[39] = 1;
+    data13_005e72c7[40] = 1;
+    data13_005e72c7[41] = 0;
+    data13_005e72c7[42] = 1;
+    data13_005e72c7[43] = 1;
+    data13_005e72c7[44] = 1;
+    data13_005e72c7[45] = 1;
+    data13_005e72c7[46] = 1;
+    data13_005e72c7[47] = 1;
+    data13_005e72c7[48] = 0;
+    data13_005e72c7[49] = 0;
+    data13_005e72c7[50] = 0;
+    data13_005e72c7[51] = 0;
+    data13_005e72c7[52] = 0;
+    data13_005e72c7[53] = 0;
+    data13_005e72c7[54] = 0;
+    data13_005e72c7[55] = 0;
+    data13_005e72c7[56] = 0;
+    data13_005e72c7[57] = 0;
+    data13_005e72c7[58] = 0;
+    data13_005e72c7[59] = 0;
+    data13_005e72c7[60] = 0;
+    data13_005e72c7[61] = 0;
+    data13_005e72c7[62] = 0;
+    data13_005e72c7[63] = 0;
+    data13_005e72c7[64] = 0;
+    data13_005e72c7[65] = 0;
+    data13_005e72c7[66] = 0;
+    data13_005e72c7[68] = 0;
+    data13_005e72c7[69] = 0;
+    data13_005e72c7[70] = 0;
+    data13_005e72c7[71] = 0;
+    data13_005e72c7[72] = 0;
+    data13_005e72c7[73] = 0;
+    data13_005e72c7[74] = 0;
+    data13_005e72c7[75] = 0;
+    data13_005e72c7[76] = 1;
+}
+/* rewrite `*p++` style updates into a separate store of `*p + delta` */
+void fn_00460f90(void)
+{
+    IROLinear *l;
+    IROLinear *target;
+    IROLinear *c;
+    IROLinear *add;
+    CInt64 delta;
+    IROList list;
+
+    for (l = linear_head; l != NULL; l = l->next) {
+        if (l->type != 2 || (l->nodetype != 0 && l->nodetype != 1) || (l->flags & 2))
+            continue;
+        target = l->u.diadic.left;
+        if (target->type != 2 || target->nodetype != 4)
+            continue;
+        if (target->u.diadic.left->type != 2 || target->u.diadic.left->nodetype != 0x31)
+            continue;
+        delta = get_update_delta(l);
+        IroUtil_InitList(&list);
+        l->type = 3;
+        l->nodetype = 0x1e;
+        l->u.diadic.left = target;
+        IroUtil_CopyLinearToList(target, &list);
+        c = IroVars_CreateIntConstant(delta, target->rtype);
+        c->flags |= 0x12;
+        add = IrOptimizer_NewLinear(3);
+        add->nodetype = 0xf;
+        add->u.diadic.left = list.tail;
+        add->u.diadic.left->flags = 0;
+        add->u.diadic.left->flags |= 0x12;
+        add->u.diadic.right = c;
+        add->rtype = target->rtype;
+        add->flags = 0;
+        add->flags |= 0x12;
+        l->u.diadic.right = add;
+        IroUtil_AppendLinear(c, &list);
+        IroUtil_AppendLinear(add, &list);
+        IroUtil_InsertLinearRangeAfter(list.head, list.tail, target);
+    }
+}
+#endif
 
 IROLinear *fn_0044be00(IROLinear *node)
 {
@@ -106,6 +419,14 @@ IROLinear *fn_0044be00(IROLinear *node)
             if (r == NULL)
                 r = fn_0044be00(node->u.diadic.right);
             return r;
+#if VERSION >= VERSION_GC_1_3
+        case IROLinearCond:
+            if ((r = fn_0044be00(node->u.args3.a)))
+                return r;
+            if ((r = fn_0044be00(node->u.args3.b)))
+                return r;
+            return fn_0044be00(node->u.args3.c);
+#endif
         case IROLinearFunccall:
             return node;
         default:
@@ -157,6 +478,16 @@ IROLinear *IroVars_NopOutWithSideEffectsChecking(IROLinear *node)
                     result = right;
             }
             break;
+#if VERSION >= VERSION_GC_1_3
+        case IROLinearCond:
+            {
+                IROLinear *a = IroVars_NopOutWithSideEffectsChecking(node->u.args3.a);
+                IROLinear *b = IroVars_NopOutWithSideEffectsChecking(node->u.args3.b);
+                IROLinear *c = IroVars_NopOutWithSideEffectsChecking(node->u.args3.c);
+                result = a ? a : b ? b : c;
+            }
+            break;
+#endif
         case IROLinearFunccall:
             node->flags &= ~IROLF_Reffed;
             return node;
@@ -226,6 +557,9 @@ IROLinear *IroVars_CreateIntConstant(CInt64 value, Type *type)
     record->data.intval = value;
     record->rtype = type;
     linear = IrOptimizer_NewLinear(IROLinearOperand);
+#if VERSION >= VERSION_GC_1_3
+    linear->index = ++linear_index_counter;
+#endif
     linear->rtype = type;
     linear->u.node = record;
     return linear;
@@ -247,12 +581,12 @@ void IroVars_CheckTimedLongjmp(void)
 }
 #pragma auto_inline reset
 
-VarRecord *fn_0044ba70(Object *object, unsigned int create, unsigned int mode)
+VarRecord *fn_0044ba70(Object *object, BY_VERSION(unsigned int, Boolean) create, BY_VERSION(unsigned int, Boolean) mode)
 {
     VarRecord *entry = object->aliasOrVarRecord.varRecord;
     VarInfo *info;
 
-    if (entry == NULL && create == 1) {
+    if (entry == NULL && create BY_VERSION(== 1, != 0)) {
         info = NULL;
         if (object->datatype == DLOCAL)
             info = object->u.var.info;
@@ -284,7 +618,12 @@ VarRecord *fn_0044ba70(Object *object, unsigned int create, unsigned int mode)
         if (object->datatype == DLOCAL) {
             info = object->u.var.info;
             if (info != NULL)
+#if VERSION >= VERSION_GC_1_3
+                if (info->noregister == 0)
+                    info->noregister = 2;
+#else
                 info->noregister = 1;
+#endif
         }
     }
     return entry;
@@ -564,7 +903,7 @@ VarRecord *IroVars_GetOperandVarRecord(IROLinear *node)
     else if (node->type == IROLinearOp1Arg)
         node = node->u.monadic;
     else
-        CError_FATAL(646);
+        CError_FATAL( BY_VERSION( 646, 817));
 
     if (node->type == IROLinearOp1Arg && node->nodetype == EINDIRECT)
         node = node->u.monadic;
@@ -635,6 +974,16 @@ void fn_0044b2d0(IROLinear *p)
 
 void IroVars_CheckVariablesInitializedBeforeUse(void)
 {
+#if VERSION >= VERSION_GC_1_3
+    IRONode *block;
+    ObjectList *local;
+    BitVector *temporary;
+    IROLinear *statement;
+    SInt32 changed;
+    SInt32 predecessor;
+    SInt32 i;
+    AsmOut buffer;
+#else
     SInt32 changed;
     ObjectList *local;
     BitVector *temporary;
@@ -643,6 +992,7 @@ void IroVars_CheckVariablesInitializedBeforeUse(void)
     IRONode *block;
     SInt32 i;
     AsmOut buffer;
+#endif
 
     IroJump_MarkReachable(iro_flowgraph_head);
     block = iro_flowgraph_head;
@@ -676,6 +1026,9 @@ void IroVars_CheckVariablesInitializedBeforeUse(void)
                     switch (buffer.operands[i].type) {
                         case 1:
                         case 2:
+#if VERSION >= VERSION_GC_1_3
+                        case 4:
+#endif
                             IroBitVect_SetBit(variable->index, block->gen);
                             break;
                     }
@@ -735,9 +1088,9 @@ void RewriteBitFieldTemps(void)
             IROLinear *q;
             IROList pair;
 
-            CError_ASSERT(1108, p != 0);
+            CError_ASSERT(BY_VERSION(1108, 1525), p != 0);
             q = p->bitFieldReplacement;
-            CError_ASSERT(1114, q != 0);
+            CError_ASSERT(BY_VERSION(1114, 1531), q != 0);
 
             IroUtil_InitList(&pair);
             IroUtil_CopyLinearToList(q, &pair);

@@ -11,7 +11,12 @@ extern "C" {
 struct AsmOperandPattern {
     char *name;
     unsigned int opcode;
+#if VERSION >= VERSION_GC_1_3
+    /* (1.3: a format string such as "=r,r" in place of the operand kinds) */
+    char *operands;
+#else
     unsigned char operands[6];
+#endif
     unsigned int processorMask;
     unsigned int instruction;
 };
@@ -21,7 +26,7 @@ struct NameLookupLink {
     struct AsmOperandPattern *record;
 };
 
-extern struct NameLookupLink *asmOperandPatternLookup[256];
+extern struct NameLookupLink *asmOperandPatternLookup[BY_VERSION(256, 1024)];
 extern AsmOperandPattern *CTemplateNew_FindAsmOperandPattern(char *name);
 extern void CTemplateNew_InitAsmOperandPatternLookup(void);
 

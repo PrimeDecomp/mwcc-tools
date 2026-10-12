@@ -10,12 +10,20 @@
 struct MachineInfo machine604 = {
     4,
     1,
+#if VERSION >= VERSION_GC_1_3
+    0,
+#endif
     (SInt32 (*)(void *))get_size_rec_latency,
     fn_0052eb60,
     (SInt32 (*)(void *))can_issue_instruction,
     (void (*)(void *))assign_instruction_to_execution_unit,
     advance_instruction_stages_and_retire,
+#if VERSION >= VERSION_GC_1_3
+    (SInt32 (*)(void *))fn_005777a0,
+    (SInt32 (*)(void *))fn_00506260,
+#else
     (SInt32 (*)(void *))get_opcode_table_value,
+#endif
 };
 
 /* Each opcode's execution unit, latency and cycles in each stage of the pipeline. */
@@ -524,7 +532,7 @@ static void ZeroEntries(CompletionEntry *entries, SInt32 n)
 SInt32 get_size_rec_latency(PCodeInstruction *p)
 {
     SInt32 n = machineOpcodeInfo604[p->opcode].latency;
-    if (p->flags & fRecordBit) {
+    if (PCODE_RECORD(p->flags)) {
         n += 2;
     }
     if (p->opcode == 0x27 || p->opcode == 0x36) {
@@ -545,6 +553,43 @@ void fn_0052eb60(void)
     data_00582ddc = NULL;
 }
 
+#if VERSION >= VERSION_GC_1_3
+int can_issue_instruction(struct PCodeInstruction *instruction)
+{
+    unsigned int category;
+    PCodeInstruction *candidate;
+    int firstMissing;
+    int secondMissing;
+
+    category = machineOpcodeInfo604[(int)instruction->opcode].executionUnit;
+    if (data_00582de0 == 0)
+        return 0;
+    if (category == 0) {
+        firstMissing = 0;
+        if ((&execution_unit_instructions)[0].instr == NULL)
+            firstMissing = 1;
+        secondMissing = 0;
+        candidate = (&execution_unit_instructions)[1].instr;
+        if (candidate == NULL)
+            secondMissing = 1;
+        if (!firstMissing && !secondMissing)
+            return 0;
+        if (firstMissing && secondMissing)
+            return 1;
+        if (!firstMissing)
+            candidate = (&execution_unit_instructions)[0].instr;
+        if (Scheduler_ReturnZero(instruction, candidate, 4))
+            return 0;
+        if (Scheduler_ReturnZero(instruction, data_00582dd8, 4))
+            return 0;
+        if (Scheduler_ReturnZero(instruction, data_00582ddc, 4))
+            return 0;
+    } else if ((&execution_unit_instructions)[category].instr != NULL) {
+        return 0;
+    }
+    return 1;
+}
+#else
 int can_issue_instruction(struct PCodeInstruction *instruction)
 {
     unsigned int category;
@@ -582,6 +627,7 @@ int can_issue_instruction(struct PCodeInstruction *instruction)
     }
     return 1;
 }
+#endif
 
 void assign_instruction_to_execution_unit(struct PCodeInstruction *instruction)
 {
@@ -704,7 +750,11 @@ void advance_instruction_stages_and_retire(void)
         SInt32 ringIndex;
         PCodeInstruction *object;
         if ((object = data_00582da8.instr) != NULL && data_00582da8.remaining == 0 &&
+            #if VERSION >= VERSION_GC_1_3
+            (((PCodeInstruction *)object)->opcode == 0xa8 || ((PCodeInstruction *)object)->opcode == 0xa9)) {
+#else
             (object->opcode == 0xa8 || object->opcode == 0xa9)) {
+#endif
             PCodeInstruction *slotObject;
             slotObject = data_00582da8.instr;
             ringIndex = 0;

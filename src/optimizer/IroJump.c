@@ -16,7 +16,7 @@
 #include "compiler/IroVars.h"
 #include "compiler/Switch.h"
 
-SInt32 chain_label(CLabel **label)
+BY_VERSION(SInt32, Boolean) chain_label(CLabel **label)
 {
     IRONode *node;
     IROLinear *p;
@@ -44,9 +44,13 @@ SInt32 chain_label(CLabel **label)
     return 0;
 }
 
-SInt32 IRO_DoJumpChaining(void)
+#if VERSION >= VERSION_GC_1_3
+extern void fn_0049dcf0(void *call);
+#endif
+
+BY_VERSION(SInt32, Boolean) IRO_DoJumpChaining(void)
 {
-    SInt32 changed = 0;
+    BY_VERSION(SInt32, Boolean) changed = 0;
     Boolean didChange;
     IRONode *block;
     SwitchInfo *targets;
@@ -114,11 +118,11 @@ void IroJump_MarkReachable(IRONode *param)
     } while (changed);
 }
 
-SInt32 IRO_RemoveUnreachable(void)
+BY_VERSION(SInt32, UInt8) IRO_RemoveUnreachable(void)
 {
     IRONode *previous;
     IRONode *current;
-    SInt32 changed = 0;
+    BY_VERSION(SInt32, UInt8) changed = 0;
     IROLinear *block;
     IROLinear *entry;
     ExceptionAction **link;
@@ -260,10 +264,10 @@ int IRO_RemoveRedundantJumps(void)
     return changed;
 }
 
-int IRO_RemoveLabels(void)
+BY_VERSION(int, Boolean) IRO_RemoveLabels(void)
 {
     IRONode *p;
-    unsigned int changed = 0;
+    BY_VERSION(unsigned int, Boolean) changed = 0;
 
     IroFlowgraph_RebuildSuccPred();
     for (p = iro_flowgraph_head; p != NULL; p = p->nextnode) {

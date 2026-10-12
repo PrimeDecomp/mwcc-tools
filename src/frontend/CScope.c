@@ -212,6 +212,15 @@ static ObjectList *Scope_FindList(NameSpace *sc, HashNameNode *nm)
     return NULL;
 }
 
+#if VERSION >= VERSION_GC_1_3
+struct Fn004d9e40Table;
+extern SInt32 *fn_004d9ea0(struct Fn004d9e40Table *table, struct HashNameNode *key);
+
+static NameSpaceObjectList *ListSearch(NameSpace *scope, HashNameNode *key)
+{
+    return (NameSpaceObjectList *)fn_004d9ea0((struct Fn004d9e40Table *)scope, key);
+}
+#else
 static NameSpaceObjectList *ListSearch(NameSpace *scope, HashNameNode *key)
 {
     NameSpaceName *n;
@@ -225,6 +234,7 @@ static NameSpaceObjectList *ListSearch(NameSpace *scope, HashNameNode *key)
             return &n->first;
     return NULL;
 }
+#endif
 
 #define OBJ(o) ((Object *)(o))
 
@@ -346,7 +356,7 @@ static inline NameSpaceLookupList *CScope_FindUsingScope(NameSpaceLookupList *sc
             if (scope->nspace == ancestor)
                 return scope;
     }
-    CError_FATAL(835);
+    CError_FATAL(BY_VERSION(835, 853));
     return scope;
 }
 
@@ -396,7 +406,21 @@ static inline int CScope_0049b0e0_inline1(NameSpace *v2, HashNameNode *a1)
 
 void CScope_Setup(void)
 {
+#if VERSION >= VERSION_GC_1_3
+    NameSpaceName **hash;
+    NameSpace *nspace;
+    hash = (NameSpaceName **)galloc(4096U);
+    memclrw(hash, 4096U);
+    nspace = (NameSpace *)galloc(sizeof(NameSpace));
+    memclrw(nspace, sizeof(NameSpace));
+    nspace->name = NULL;
+    nspace->data.hash = hash;
+    nspace->is_hash = 1;
+    nspace->is_global = 1;
+    cscope_current = (cscope_root = nspace);
+#else
     cscope_current = cscope_root = CScope_NewHashNameSpace(NULL);
+#endif
     cscope_currentclass = NULL;
     cscope_currentfunc = NULL;
     cscope_is_member_func = 0;
@@ -469,6 +493,61 @@ void CScope_SetFunctionScope(Object *function, CScopeSave *saved)
         cscope_current = function->nspace;
     }
 }
+
+
+#if VERSION >= VERSION_GC_1_3
+struct Fn004d9e40Node {
+    struct Fn004d9e40Node *next;
+    struct HashNameNode *key;
+    SInt32 value;
+};
+
+struct Fn004d9e40Table {
+    char pad[0x10];
+    struct Fn004d9e40Node *recent;
+    struct Fn004d9e40Node *chain;
+    char pad2[4];
+    UInt8 hashed;
+};
+
+struct Fn004d9e40Node *fn_004d9e40(struct Fn004d9e40Table *table, struct HashNameNode *key)
+{
+    struct Fn004d9e40Node *node;
+
+    for (node = table->recent; node != NULL; node = node->next) {
+        if (node->key == key)
+            return node;
+    }
+    if (table->hashed == 0)
+        node = table->chain;
+    else
+        node = ((struct Fn004d9e40Node **)table->chain)[key->hashval & 0x3ff];
+    for (; node != NULL; node = node->next) {
+        if (node->key == key)
+            return node;
+    }
+    return NULL;
+}
+
+SInt32 *fn_004d9ea0(struct Fn004d9e40Table *table, struct HashNameNode *key)
+{
+    struct Fn004d9e40Node *node;
+
+    for (node = table->recent; node != NULL; node = node->next) {
+        if (node->key == key)
+            return &node->value;
+    }
+    if (table->hashed == 0)
+        node = table->chain;
+    else
+        node = ((struct Fn004d9e40Node **)table->chain)[key->hashval & 0x3ff];
+    for (; node != NULL; node = node->next) {
+        if (node->key == key)
+            return &node->value;
+    }
+    return NULL;
+}
+#endif
 
 /* Enters member function FUNCTION of THECLASS (static when IS_STATIC), saving the current scope in SAVE. */
 void CScope_SetMethodScope(Object *cls, TypeClass *ns, unsigned char flag, CScopeSave *save)
@@ -588,7 +667,7 @@ NameSpaceObjectList *CScope_InsertName(NameSpace *scope, HashNameNode *name)
     NameSpaceName *tail;
     target = scope;
     if (target->is_hash != 0) {
-        CError_FATAL(369);
+        CError_FATAL(BY_VERSION(369, 387));
     }
     if (target->is_global != 0) {
         entry = (NameSpaceName *)galloc(16U);
@@ -674,7 +753,7 @@ NameSpaceList *collect_type_namespaces(NameSpaceList *acc, Type *type)
             case TYPETEMPLDEPEXPR:
                 break;
             default:
-                CError_FATAL(476);
+                CError_FATAL(BY_VERSION(476, 494));
                 break;
         }
         break;
@@ -802,7 +881,7 @@ Boolean CScope_IsStdNameSpace(NameSpace *nspace)
 UInt8 CScope_IsEmptyNameSpace(NameSpace *nameSpace)
 {
     if (nameSpace->is_hash != '\0') {
-        CError_FATAL(646);
+        CError_FATAL(BY_VERSION(646, 664));
     }
     return nameSpace->data.list == NULL;
 }
@@ -811,7 +890,7 @@ void CScope_MergeNameSpace(NameSpace *dest, NameSpace *source)
 {
     NameSpaceName *last;
     if (dest->is_hash != 0 || source->is_hash != 0) {
-        CError_FATAL(660);
+        CError_FATAL(BY_VERSION(660, 678));
     }
     if (dest->data.list != NULL) {
         last = dest->data.list;
@@ -889,7 +968,7 @@ found:;
                 return;
             }
             if (first->next)
-                CError_FATAL(721);
+                CError_FATAL(BY_VERSION(721, 739));
             newItem->object = first->object;
             newItem->next = NULL;
             first->object = object;
@@ -977,8 +1056,8 @@ struct NameSpaceLookupList *build_namespace_scope_rec(NameSpace *nspace)
     if (nspace->parent)
         rec->next = build_namespace_scope_rec(nspace->parent);
     if (nspace->usings) {
-        head.next = NULL;
         head.nspace = nspace;
+        head.next = NULL;
         for (scope = &head; scope; scope = scope->next) {
             for (u = scope->nspace->usings; u; u = u->next) {
                 for (p = &head; p; p = p->next)
@@ -1016,8 +1095,13 @@ NameSpaceLookupList *CScope_BuildNameSpaceLookupList(NameSpace *ns)
     NameSpaceList *usingEntry;
 
     root.nspace = ns;
+#if VERSION >= VERSION_GC_1_3
+    root.namespaces = NULL;
+    root.next = NULL;
+#else
     root.next = NULL;
     root.namespaces = NULL;
+#endif
     for (scope = &root; scope != NULL; scope = scope->next) {
         if (scope->nspace != NULL) {
             for (usingEntry = scope->nspace->usings; usingEntry != NULL; usingEntry = usingEntry->next) {
@@ -1065,7 +1149,7 @@ NameSpace *get_object_list_nspace(ObjectList *objects, Boolean *flag)
             case OT_NAMESPACE:
                 return ((ObjNameSpace *)objects->object)->nspace;
             default:
-                CError_FATAL(1032);
+                CError_FATAL(BY_VERSION(1032, 1052));
                 break;
             case OT_ENUMCONST:
             case OT_MEMBERVAR:
@@ -1176,7 +1260,7 @@ BClassList *find_class_member_path(NameResult *result, TypeClass *tclass, SInt32
                 }
                 break;
             default:
-                CError_FATAL(1182);
+                CError_FATAL(BY_VERSION(1182, 1202));
         }
     }
     for (base = tclass->bases, bestBase = NULL; base; base = base->next) {
@@ -1468,7 +1552,7 @@ UInt8 CScope_FindQualifiedClassMember(NameResult *holder, TypeClass *type, HashN
     success = find_and_append_class_member_path(holder, type->nspace, name, 0);
     if (success) {
         if ((objects = holder->objects) == NULL) {
-            CError_FATAL(1723);
+            CError_FATAL(BY_VERSION(1723, 1780));
         }
         holder->objects = NULL;
         success = set_parse_result_from_objects(holder, objects, name);
@@ -1589,8 +1673,12 @@ Boolean find_type_name_in_scope(NameResult *out, NameSpace *scope, HashNameNode 
         offset = 0;
         for (nl = CScope_BuildNameSpaceLookupList(scope); nl != NULL; nl = nl->next) {
             for (ol = nl->namespaces; ol != NULL; ol = ol->next) {
+#if VERSION >= VERSION_GC_1_3
+                for (p = FindInScope(obj = ol->nspace, name); p != NULL; p = p->next) {
+#else
                 obj = ol->nspace;
                 for (p = FindInScope((NameSpace *)(void *)obj, name); p != NULL; p = p->next) {
+#endif
                     if (p->object->otype == OT_TYPETAG) {
                         if (offset != 0 && offset != (SInt32)((ObjType *)p->object)->type) {
                             if (!(name == NULL || obj == lastobj)) {
@@ -1696,11 +1784,11 @@ Boolean parse_qualified_templdep_type(NameResult *context, Type *qualifier, Bool
     SInt32 savedState;
 
     CPrep_GetBufferedTokenPosition(&savedState);
-    CError_ASSERT(1967, CPrepTokenizer_GetNextToken() == 0x174);
+    CError_ASSERT(BY_VERSION(1967, 2026), CPrepTokenizer_GetNextToken() == 0x174);
     for (;;) {
         token = CPrepTokenizer_GetNextToken();
         if (token == 0x148 && allowToken328) {
-            if (!CParser_ParseOperatorName(NULL, 1))
+            if (!CPARSER_PARSE_OPERATOR_NAME(NULL, 1, 1))
                 return 0;
             node = CDecl_NewTemplDepType(1);
             node->u.qual.type = (TypeTemplDep *)qualifier;
@@ -1771,7 +1859,7 @@ Boolean parse_name_in_namespace(NameResult *scope, NameSpace *ns)
                 }
                 break;
             case TK_OPERATOR:
-                if (!CParser_ParseOperatorName(NULL, 1))
+                if (!CPARSER_PARSE_OPERATOR_NAME(NULL, 1, 1))
                     return 0;
                 CPrep_UngetToken();
                 name = data_00587fa0;
@@ -1891,11 +1979,11 @@ Boolean CScope_ParseExprName(NameResult *scope)
         return 1;
     }
 
-    if ((tk == TK_COLON_COLON || tk == TK_IDENTIFIER) && CScope_ParseQualifiedNameSpace(scope, 1)) {
+    if ((tk == TK_COLON_COLON || tk == TK_IDENTIFIER) && CSCOPE_PARSE_QUALIFIED_SCOPE(scope, 1, 1)) {
         if (scope->type != NULL)
             return 1;
         if (scope->nspace == NULL)
-            CError_FATAL(2185);
+            CError_FATAL(BY_VERSION(2185, 2313));
     } else {
         memclrw(scope, sizeof(*scope));
         scope->nspace = cscope_current;
@@ -1906,7 +1994,7 @@ Boolean CScope_ParseExprName(NameResult *scope)
             name = data_00587fa0;
             break;
         case TK_OPERATOR:
-            if (!CParser_ParseOperatorName(NULL, 1))
+            if (!CPARSER_PARSE_OPERATOR_NAME(NULL, 1, 1))
                 return 0;
             name = data_00587fa0;
             CPrep_UngetToken();
@@ -2048,12 +2136,12 @@ Boolean CScope_ParseDeclName(NameResult *lookup)
         CError_ReportError(ERR_IDENTIFIER_EXPECTED);
         return 0;
     }
-    if (!CScope_ParseQualifiedNameSpace(lookup, 0))
+    if (!CSCOPE_PARSE_QUALIFIED_SCOPE(lookup, 0, 0))
         goto unqualified;
     if (lookup->type != NULL)
         return 1;
     if ((scope = lookup->nspace) == NULL)
-        CError_FATAL(2305);
+        CError_FATAL(BY_VERSION(2305, 2435));
     switch (tk) {
         case TK_OPERATOR: {
             NameSpace *savedScope = cscope_current;
@@ -2065,7 +2153,7 @@ Boolean CScope_ParseDeclName(NameResult *lookup)
             cscope_currentclass = scope->theclass;
             cscope_currentfunc = NULL;
             cscope_is_member_func = 0;
-            if (!CParser_ParseOperatorName(NULL, 1)) {
+            if (!CPARSER_PARSE_OPERATOR_NAME(NULL, 1, 1)) {
                 cscope_current = savedScope;
                 cscope_currentclass = savedObject;
                 cscope_currentfunc = savedOffset;
@@ -2148,7 +2236,11 @@ Boolean CScope_ParseDeclName(NameResult *lookup)
 
 #define TCE(t) ((TemplClassInst *)(t))
 
+#if VERSION >= VERSION_GC_1_3
+Boolean CScope_ParseQualifiedNameSpace(NameResult *result, SInt32 flag, SInt32 flag2)
+#else
 Boolean CScope_ParseQualifiedNameSpace(NameResult *result, SInt32 flag)
+#endif
 {
     Type *classType;
     HashNameNode *name;
@@ -2197,7 +2289,7 @@ restart:
         for (objects = find_scope_object_list(&iterator, name); objects != NULL; objects = objects->next) {
             if (objects->object->otype == OT_NAMESPACE) {
                 if (found != NULL && found->theclass != NULL)
-                    CError_FATAL(2423);
+                    CError_FATAL(BY_VERSION(2423, 2565));
                 result->nspace = found = ((ObjNameSpace *)objects->object)->nspace;
                 tk = CPrepTokenizer_GetNextToken();
                 if (tk != TK_COLON_COLON) {
@@ -2227,7 +2319,7 @@ restart:
                 tk = CPrepTokenizer_GetNextToken();
                 if (tk == '<') {
                     if ((TCE(classType)->theclass.flags & CLASS_IS_TEMPL) == 0)
-                        CError_FATAL(2467);
+                        CError_FATAL(BY_VERSION(2467, 2609));
                     templateClass = (TemplClass *)classType;
                     templateType = fn_004ef5d0(templateClass);
                     if (templateType->type == TYPETEMPLATE) {
@@ -2250,7 +2342,7 @@ restart:
                     if (tk != TK_COLON_COLON)
                         CError_FATAL(2490);
                     if ((TCE(classType)->theclass.flags & CLASS_IS_TEMPL) == 0 ||
-                        CParser_CheckTemplateClassScope(classType)) {
+                        CParser_CheckTemplateClassScopeReporting(classType)) {
                         result->nspace = found = TCE(classType)->theclass.nspace;
                     }
                 }
@@ -2275,7 +2367,7 @@ restart:
                     return 1;
                 }
                 if (tk != TK_COLON_COLON)
-                    CError_FATAL(2525);
+                    CError_FATAL(BY_VERSION(2525, 2686));
                 if (objectType->size == 0)
                     CDecl_CompleteType(objectType);
                 result->nspace = found = TCE(objectType)->theclass.nspace;
@@ -2363,7 +2455,7 @@ Boolean CScope_ParseElaborateName(NameResult *result)
         CError_ReportError(ERR_IDENTIFIER_EXPECTED);
         return 0;
     }
-    if (CScope_ParseQualifiedNameSpace(result, 0) == 0) {
+    if (CSCOPE_PARSE_QUALIFIED_SCOPE(result, 0, 0) == 0) {
         result->nspace = cscope_current;
         if (tk != TK_IDENTIFIER) {
             CError_ReportError(ERR_IDENTIFIER_EXPECTED);
@@ -2374,7 +2466,7 @@ Boolean CScope_ParseElaborateName(NameResult *result)
         if (result->type != NULL)
             return 1;
         if (result->nspace == NULL)
-            CError_FATAL(2600);
+            CError_FATAL(BY_VERSION(2600, 2760));
         if (tk != TK_IDENTIFIER) {
             CError_ReportError(ERR_IDENTIFIER_EXPECTED);
             return 0;
@@ -2771,7 +2863,7 @@ BClassList *CScope_GetClassAccessPath(BClassList *classes, TypeClass *base)
             }
             tail = tail->next;
         }
-        CError_FATAL(3053);
+        CError_FATAL(BY_VERSION(3053, 3217));
     }
     return NULL;
 }
@@ -2991,7 +3083,7 @@ void CScope_ParseUsingDeclaration(NameSpace *nspace, AccessType flag, Boolean un
             return;
         }
         if (info.type != NULL && info.type->type == TYPETEMPLATE && ((TypeTemplDep *)info.type)->dtype == 1) {
-            CError_ASSERT(3390, isVirtual);
+            CError_ASSERT(BY_VERSION(3390, 3578), isVirtual);
             if (consumedToken) {
                 ObjType *record = galloc(10);
                 memclrw(record, 10);

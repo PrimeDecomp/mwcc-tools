@@ -8,10 +8,18 @@
 extern "C" {
 #endif
 
-extern void *xmalloc(const char *text, unsigned int size);
-extern void *xcalloc(const char *pool, unsigned int size);
-extern void *xrealloc(const char *detail, void *block, unsigned int size);
-extern char *xstrdup(const char *s);
+#if VERSION >= VERSION_GC_1_3
+#define XMEMCALL __stdcall
+#else
+#define XMEMCALL
+#endif
+extern void *XMEMCALL xmalloc(const char *text, unsigned int size);
+extern void *XMEMCALL xcalloc(const char *pool, unsigned int size);
+extern void *XMEMCALL xrealloc(const char *detail, void *block, unsigned int size);
+extern char *XMEMCALL xstrdup(const char *s);
+#if VERSION >= VERSION_GC_1_3
+extern void __stdcall xfree(void *block);
+#endif
 extern int __stdcall MemUtils_CallPluginEntry(Plugin *entry);
 
 #ifdef __cplusplus

@@ -6,6 +6,10 @@
 #include "driver/ParserGlue-eabi-ppc-cc.h"
 #include "driver/ParserHelpers.h"
 #include <stdio.h>
+#if VERSION >= VERSION_GC_1_3
+/* (1.2.5 leaves it to the linker's COMMON block) */
+short data_00588530;
+#endif
 #define OPTION_ASSERT(cond, line) ((cond) ? (void)0 : CLIO_ReportAssertionFailure(#cond, "ParserHelpers-cc.c", line))
 #define PR_UNSET 0
 int fn_0040d283(int unused, char *first, char *second)
@@ -20,7 +24,11 @@ int fn_0040d283(int unused, char *first, char *second)
 int append_define_directive(char *name, char *value)
 {
     char buf[0x400];
+#if VERSION >= VERSION_GC_1_3
+    if (pTool->lang == 'c++ ' || pTool->lang == 'Asm ' || pTool->lang == 'rez ')
+#else
     if (pTool->lang == 'c++ ' || pTool->lang == 'Asm ')
+#endif
         sprintf(buf, "#define %s %s\n", name, value ? value : "1");
     else if (pTool->lang == 'pasc')
         sprintf(buf, "{$definec %s %s}\n", name, value ? value : "1");
@@ -32,6 +40,15 @@ int append_define_directive(char *name, char *value)
     ParserHelpers_AppendText(&directive_storage, buf);
     return 1;
 }
+
+#if VERSION >= VERSION_GC_1_3
+extern int fn_0040d107(char *a, char *b, int c);
+
+int fn_0040d1c9(char *a, char *b)
+{
+    return fn_0040d107(a, b, strlen(b));
+}
+#endif
 
 int append_undef_directive(char *option, int unused, char *symbol)
 {
@@ -49,6 +66,9 @@ int append_undef_directive(char *option, int unused, char *symbol)
     return 1;
 }
 
+#if VERSION >= VERSION_GC_1_3
+extern int fn_0040d1c9(char *a, char *b);
+#endif
 int append_include_directive(char *option, void *handle, char *filename)
 {
     char buf[300];
@@ -58,16 +78,30 @@ int append_include_directive(char *option, void *handle, char *filename)
     else
         storage = (struct StorageHandle **)handle;
     if (*filename) {
+#if VERSION >= VERSION_GC_1_3
+        if (pTool->lang == 'c++ ' || pTool->lang == 'Asm ') {
+            if (*filename == '<' && filename[strlen(filename) - 1] == '>')
+                snprintf(buf, sizeof(buf), "#include %s\n", filename);
+            else
+                snprintf(buf, sizeof(buf), "#include \"%s\"\n", filename);
+        } else if (pTool->lang == 'pasc')
+            snprintf(buf, sizeof(buf), "{$I+}\n{$I %s}\n{$I-}\n", filename);
+#else
         if (pTool->lang == 'c++ ' || pTool->lang == 'Asm ')
             sprintf(buf, "#include \"%s\"\n", filename);
         else if (pTool->lang == 'pasc')
             sprintf(buf, "{$I+}\n{$I %s}\n{$I-}\n", filename);
+#endif
         else {
             sprintf(buf, "Option -%s is not supported with this plugin", option);
             fn_0040ecb1(0x1c, buf);
             return 0;
         }
+#if VERSION >= VERSION_GC_1_3
+        fn_0040d1c9((char *)storage, buf);
+#else
         ParserHelpers_AppendText(storage, buf);
+#endif
     }
     return 1;
 }
@@ -96,13 +130,17 @@ int ParserHelpers_cc_EmitPragmas(Pragma *pragmas)
             else if (PragmaHasSetting(pragmas, 4))
                 value = "reset";
             else
-                OPTION_ASSERT(*((char *)pragmas->value) == PR_UNSET, 181);
+                OPTION_ASSERT(*((char *)pragmas->value) == PR_UNSET, BY_VERSION(181, 186));
             if (value) {
+#if VERSION >= VERSION_GC_1_3
+                snprintf(buf, sizeof(buf), "#pragma %s %s\n", pragmas->pragma, value);
+#else
                 sprintf(buf, "#pragma %s %s\n", pragmas->pragma, value);
+#endif
                 ParserHelpers_AppendText(&directive_storage, buf);
             }
         } else {
-            OPTION_ASSERT(!"Can't handle pragma", 190);
+            OPTION_ASSERT(!"Can't handle pragma", BY_VERSION(190, 195));
         }
     }
     return 1;

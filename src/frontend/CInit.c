@@ -304,7 +304,11 @@ ENode *parse_initializer_expression(ENode *node)
             break;
         }
     }
+#if VERSION >= VERSION_GC_1_3
+    node = assignment_expression();
+#else
     node = conv_assignment_expression();
+#endif
     CPrep_ResetBufferedTokenPosition();
     return node;
 }
@@ -466,7 +470,11 @@ void append_initializer_entry(InitializerData *ctx, Type *type, ENode *expr)
     }
 }
 
+#if VERSION >= VERSION_GC_1_3
+Boolean CInit_RelocInitCheck(ENode *node, Object **pobj, CInt64 *pval, Boolean flag)
+#else
 Boolean CInit_RelocInitCheck(ENode *node, Object **pobj, CInt64 *pval)
+#endif
 {
     Object *obj;
     Object *lbase;
@@ -484,7 +492,7 @@ Boolean CInit_RelocInitCheck(ENode *node, Object **pobj, CInt64 *pval)
             case EOBJREF:
                 obj = node->data.objref;
                 if (obj->datatype == DALIAS) {
-                    CError_ASSERT(496, obj->u.alias.offset == 0);
+                    CError_ASSERT(BY_VERSION(496, 521), obj->u.alias.offset == 0);
                     obj = obj->u.alias.object;
                 }
                 lbase = obj;
@@ -504,9 +512,9 @@ Boolean CInit_RelocInitCheck(ENode *node, Object **pobj, CInt64 *pval)
                 } while (node->type == ETYPCON);
                 break;
             case EADD:
-                if (!CInit_RelocInitCheck(node->data.diadic.left, &lbase, &lval))
+                if (!EVALUATE_INT_OR_RELOCATION(node->data.diadic.left, &lbase, &lval, flag))
                     return 0;
-                if (!CInit_RelocInitCheck(node->data.diadic.right, &rbase, &rval))
+                if (!EVALUATE_INT_OR_RELOCATION(node->data.diadic.right, &rbase, &rval, flag))
                     return 0;
                 if (lbase != NULL && rbase != NULL)
                     return 0;
@@ -514,9 +522,9 @@ Boolean CInit_RelocInitCheck(ENode *node, Object **pobj, CInt64 *pval)
                 *pval = CMach_CalcIntDiadic((Type *)&stunsignedlong, lval, '+', rval);
                 return 1;
             case ESUB:
-                if (!CInit_RelocInitCheck(node->data.diadic.left, &lbase, &lval))
+                if (!EVALUATE_INT_OR_RELOCATION(node->data.diadic.left, &lbase, &lval, flag))
                     return 0;
-                if (!CInit_RelocInitCheck(node->data.diadic.right, &rbase, &rval))
+                if (!EVALUATE_INT_OR_RELOCATION(node->data.diadic.right, &rbase, &rval, flag))
                     return 0;
                 if (rbase != NULL)
                     return 0;
@@ -537,7 +545,7 @@ void initialize_pointer_or_intconst(InitializerData *ctx, ENode *node, Type *ns,
 
     node = oldassignmentpromotion(node, ns, qual & Q_CV, 1);
     if (node->rtype->type == TYPEPOINTER || node->type == EINTCONST) {
-        if (CInit_RelocInitCheck(node, &flag, &val)) {
+        if (EVALUATE_INT_OR_RELOCATION(node, &flag, &val, 0)) {
             if (flag) {
                 p = (OLinkList *)lalloc(16);
                 p->next = ctx->owner->relocations;
@@ -1097,7 +1105,7 @@ int initialize_typed_data(InitializerData *data, CInit *init, Type *type, UInt32
                     break;
                 }
                 default:
-                    CError_FATAL(1474);
+                    CError_FATAL(BY_VERSION(1474, 1542));
                     break;
             }
             if (braced != 0) {
@@ -1126,7 +1134,7 @@ int initialize_typed_data(InitializerData *data, CInit *init, Type *type, UInt32
             break;
 
         default:
-            CError_FATAL(1505);
+            CError_FATAL(BY_VERSION(1505, 1573));
             break;
     }
 }
@@ -1179,7 +1187,7 @@ void fn_004d2700(InitializerData *data, Type *type, UInt32 qual, Boolean flag)
             buffer = lalloc(size);
             block = data;
             while (block != NULL) {
-                CError_ASSERT(1577, block->offset + block->size <= size);
+                CError_ASSERT(BY_VERSION(1577, 1647), block->offset + block->size <= size);
                 memcpy(buffer + block->offset, block->buffer, block->size);
                 block = block->next;
             }
@@ -1375,9 +1383,8 @@ Boolean fn_004d20e0(Type *type, ENode *initializer, SInt32 offset, char parseArg
             arguments = lalloc(sizeof(CInit_ArgumentList));
             arguments->next = NULL;
             tk = CPrepTokenizer_GetNextToken();
-            expression = conv_assignment_expression();
+            arguments->node = conv_assignment_expression();
             flag = 0;
-            arguments->node = expression;
         }
         if (classInfo == NULL) {
             node = create_objectrefnode(cinit_state->emitObject);
@@ -1410,7 +1417,7 @@ void init_int_or_relocation(Type *type, ENode *expression)
     Object *object;
     CInt64 value;
 
-    if (CInit_RelocInitCheck(expression, &object, &value)) {
+    if (EVALUATE_INT_OR_RELOCATION(expression, &object, &value, 0)) {
         if (object != NULL) {
             relocation = lalloc(sizeof(OLinkList));
             relocation->next = cinit_state->list;
@@ -1497,7 +1504,7 @@ void fn_004d1d90(Type *type, ENode *node)
             return;
 
         default:
-            CError_FATAL(2012);
+            CError_FATAL(BY_VERSION(2012, 2082));
             return;
     }
 }
@@ -1852,7 +1859,7 @@ void initialize_data_by_type(Type *node, UInt32 mode, Boolean flag)
             return;
 
         default:
-            CError_FATAL(2411);
+            CError_FATAL(BY_VERSION(2411, 2482));
             return;
     }
 }
@@ -1898,7 +1905,7 @@ void fn_004d1170(Type *type, ENode *expr, Boolean flag)
             arrayType = (TypePointer *)galloc(sizeof(TypePointer));
             *arrayType = *(TypePointer *)type;
             type = (Type *)arrayType;
-            arrayType->size++;
+            type->size++;
         }
         node = create_objectrefnode(cinit_state->emitObject);
         if (node->rtype->type != TYPEPOINTER) {
@@ -1979,7 +1986,7 @@ ENode *fn_004d0ae0(Object *obj, Type *type, UInt32 qual, void (*contextOffset)(T
                     InitBuffer(type->size);
                     initialize_data_by_type(type, obj->qual, 1);
                     if (obj->type->size != (size = cinit_state->bufferSize))
-                        CError_FATAL(2567);
+                        CError_FATAL(BY_VERSION(2567, 2639));
                     if (cinit_state->list != NULL || !IsZeroed(cinit_state->buffer, size))
                         emit_object(obj, cinit_state->buffer, cinit_state->list, size = obj->type->size, 0);
                     else
@@ -2061,7 +2068,7 @@ ENode *fn_004d0ae0(Object *obj, Type *type, UInt32 qual, void (*contextOffset)(T
             if (obj) {
                 CanAllocObject(obj->type);
                 if (obj->type->size != type->size)
-                    CError_FATAL(2675);
+                    CError_FATAL(BY_VERSION(2675, 2750));
                 emit_object(obj, NULL, NULL, obj->type->size, 0);
             }
             return result;
@@ -2069,7 +2076,7 @@ ENode *fn_004d0ae0(Object *obj, Type *type, UInt32 qual, void (*contextOffset)(T
         InitBuffer(type->size);
         fn_004d1d90(type, result);
         if (obj->type->size != cinit_state->bufferSize)
-            CError_FATAL(2684);
+            CError_FATAL(BY_VERSION(2684, 2759));
         CanAllocObject(obj->type);
         inlineData = !cinit_state->hasRuntimeInitialization && is_const_object(targetObject);
         if (cinit_state->list != NULL || !IsZeroed(cinit_state->buffer, obj->type->size)) {
@@ -2085,7 +2092,7 @@ ENode *fn_004d0ae0(Object *obj, Type *type, UInt32 qual, void (*contextOffset)(T
         }
         break;
     fatal:
-        CError_FATAL(2704);
+        CError_FATAL(BY_VERSION(2704, 2779));
     } while (0);
     return NULL;
 }
@@ -2109,7 +2116,7 @@ void CInit_ExportConst(Object *obj)
             CMach_InitFloatMem(obj->type, *(Float *)obj->u.data.u.string, buf);
             break;
         default:
-            CError_FATAL(2735);
+            CError_FATAL(BY_VERSION(2735, 2810));
             break;
     }
     if (is_const_object(obj))
@@ -2354,13 +2361,13 @@ Boolean initialize_from_assignment(Object *obj, Boolean flag)
         data_0058757c = NULL;
         if (flag) {
             type = obj->type;
-            CError_ASSERT(3042, type->type == TYPEPOINTER);
+            CError_ASSERT(BY_VERSION(3042, 3167), type->type == TYPEPOINTER);
             if (TYPE_POINTER(type)->target->type == TYPECLASS) {
                 data_00581ba0 = NULL;
                 data_00581ba4 = 0;
                 find_dtor_temp_arg(initializer);
                 if (data_00581ba0 != NULL) {
-                    CError_ASSERT(3050, data_00581ba4 == 0);
+                    CError_ASSERT(BY_VERSION(3050, 3175), data_00581ba4 == 0);
                     temporary = create_temp_object(data_00581ba0->node->data.temp.type);
                     cinit_state->register_object_cb(data_00581ba0->node->data.temp.type, temporary, 0, 0);
                     data_00581ba0->node = create_objectrefnode(temporary);
@@ -2378,7 +2385,7 @@ Boolean initialize_from_assignment(Object *obj, Boolean flag)
             cinit_state->bufferUsed = bufferSize;
             memclrw(cinit_state->buffer, bufferSize);
             init_int_or_relocation(obj->type, initializer);
-            CError_ASSERT(3091, obj->type->size == cinit_state->bufferSize);
+            CError_ASSERT(BY_VERSION(3091, 3216), obj->type->size == cinit_state->bufferSize);
             if (cinit_state->list != NULL || !CInit_IsZero(cinit_state->buffer, obj->type->size)) {
                 CanAllocObject(obj->type);
                 (void)obj->type->size;
@@ -2514,9 +2521,15 @@ void fn_004cfc50(Object *object)
     if (initData.entries != NULL) {
         entry = initData.entries;
         for (expr = NULL; entry != NULL; entry = entry->next) {
-            expr = build_init_assignment(expr, objectExpr, entry->offset, entry->type, entry->expression);
+#if VERSION >= VERSION_GC_1_3
+            if (entry->expression->type != EVECTOR128CONST)
+#endif
+                expr = build_init_assignment(expr, objectExpr, entry->offset, entry->type, entry->expression);
         }
-        InitExpr_Register(expr, object);
+#if VERSION >= VERSION_GC_1_3
+        if (expr != NULL)
+#endif
+            InitExpr_Register(expr, object);
     }
 }
 
@@ -2953,7 +2966,7 @@ NameEntry *CInit_DeclarePooledString(const char *name, SInt32 length, SInt8 unsi
     return entry;
 }
 
-NameEntry *CInit_DeclarePooledWString(char *string, UInt32 length)
+NameEntry *CInit_DeclarePooledWString(char *string, BY_VERSION( UInt32, SInt32) length)
 {
     Type *type;
     HashNameNode *name;
@@ -3009,7 +3022,7 @@ void CInit_RewriteString(ENode *node, SInt32 flag_arg)
     if (cprep_cu[0xe0] == 1)
         CError_ReportError(ERR_ILLEGAL_USE_PRECOMPILED_HEADER);
 
-    CError_ASSERT(4019, node->rtype->type == TYPEPOINTER);
+    CError_ASSERT(BY_VERSION(4019, 4223), node->rtype->type == TYPEPOINTER);
 
     flag = (TPTR_TARGET(node->rtype)->size != 1);
 

@@ -27,6 +27,10 @@ extern "C" {
 
 #include <string.h>
 #include "mwcc/Plugins.h"
+#if VERSION >= VERSION_GC_1_3
+#include "driver/MemUtils.h"
+#define free xfree
+#endif
 
 }
 
@@ -187,7 +191,7 @@ Boolean insert_dependency_from_path(DropinRequest *descriptor, char *argument, D
         }
         entry = CLFiles_FindFileByIndex(&default_target->files, acceptedDescriptor->requestData.fileIndex);
         if (entry == 0) {
-            CLIO_ReportAssertionFailure("file != NULL", "CLDropinCallbacks_V10.cpp", 496);
+            CLIO_ReportAssertionFailure("file != NULL", "CLDropinCallbacks_V10.cpp", BY_VERSION(496, 486));
         }
         OS_MakeSpecWithPath(&entry->inputPath.path, argument, 1, context);
         flag = state->enableDependencyLookup != 0 || optsCompiler.noSysPath != 0;
@@ -280,7 +284,7 @@ int __stdcall UCBGetFileText(void *context, CWFileSpec *file, void **result1, un
     StorageHandle *object = 0;
     UInt8 flag;
     OSSpec path;
-    char fileName[0x40];
+    char fileName[BY_VERSION(0x40, 256)];
     int error;
     ChainRecord *lookup;
 
@@ -299,10 +303,24 @@ int __stdcall UCBGetFileText(void *context, CWFileSpec *file, void **result1, un
         *status = 1;
         OS_MakeFileSpec(fileName, &path);
     } else {
+#if VERSION >= VERSION_GC_1_3
+        /* (text already cached is handed out in place) */
+        if (object != 0) {
+            if (flag == 0) {
+                CLLoadAndCache_CopyStorageHandleData(object, result1, result2);
+                CLBrowser_ReleaseBuffer(object);
+            } else {
+                fn_00413a00(object);
+                *result1 = object->data;
+                *result2 = Memory_GetHandleSize(object);
+            }
+        }
+#else
         if (object != 0) {
             CLLoadAndCache_CopyStorageHandleData(object, result1, result2);
             CLBrowser_ReleaseBuffer(object);
         }
+#endif
         if (object != 0) {
             if (flag == 0)
                 *status = 1;
@@ -336,15 +354,34 @@ static inline void SetCallbackStorageHandle(DropinRequest *request, StorageHandl
     UCBSecretDetachHandle((unsigned int)request, (unsigned int)data, storage);
 }
 
+#if VERSION >= VERSION_GC_1_3
+/* (1.3 keeps the main source text, which the request still holds at 0x152) */
+struct DropinRequestMainText {
+    char pad[0x152];
+    void *text;
+};
+#endif
+
 unsigned int __stdcall UCBReleaseFileText(struct DropinRequest *request, void *memory)
 {
     unsigned int result = 0U;
+#if VERSION >= VERSION_GC_1_3
+    struct DropinRequestMainText *req = (struct DropinRequestMainText *)request;
+#endif
     if (optsCmdLine.verbose > 3)
         CLIO_FormatAndDispatchText("Callback: %s\n", (unsigned char *)"UCBReleaseFileText");
+#if VERSION >= VERSION_GC_1_3
+    if (memory != NULL) {
+        if (memory != req->text)
+            free(memory);
+    } else
+        result = 3U;
+#else
     if (memory != NULL)
         free(memory);
     else
         result = 3U;
+#endif
     return (short)result;
 }
 
@@ -568,7 +605,9 @@ unsigned int __stdcall UCBGetNamedPreferences(unsigned int context, char *name, 
     if (handle != 0) {
         if (optsCmdLine.verbose > 2)
             CLErrors_ForwardMessage(0x53U, name);
+#if VERSION < VERSION_GC_1_3
         UCBSecretDetachHandle(context, *result, &local);
+#endif
         local = (unsigned int)CLPrefs_CopyDestinationToTemporary(handle);
         UCBSecretAttachHandle(context, local, result);
         return 0U;
@@ -583,7 +622,7 @@ unsigned int __stdcall UCBStorePluginData(unsigned int pluginContext, unsigned i
 {
     if (optsCmdLine.verbose > 3)
         CLIO_FormatAndDispatchText("Callback: %s\n", (unsigned char *)"UCBStorePluginData");
-    CLErrors_ReportInternalError("CLDropinCallbacks_V10.cpp", 1261, "UCBStorePluginData not implemented");
+    CLErrors_ReportInternalError("CLDropinCallbacks_V10.cpp", BY_VERSION(1261, 1267), "UCBStorePluginData not implemented");
     return 2U;
 }
 
@@ -592,7 +631,7 @@ unsigned int __stdcall UCBGetPluginData(unsigned int context, unsigned int plugi
     if (optsCmdLine.verbose > 3) {
         CLIO_FormatAndDispatchText("Callback: %s\n", (unsigned char *)"UCBGetPluginData");
     }
-    CLErrors_ReportInternalError("CLDropinCallbacks_V10.cpp", 1280, "UCBGetPluginData not implemented");
+    CLErrors_ReportInternalError("CLDropinCallbacks_V10.cpp", BY_VERSION(1280, 1286), "UCBGetPluginData not implemented");
     return 2U;
 }
 
@@ -1021,7 +1060,7 @@ unsigned int __stdcall UCBPreFileAction(unsigned int action, unsigned int fileRe
     if (optsCmdLine.verbose > 3) {
         CLIO_FormatAndDispatchText("Callback: %s\n", (unsigned char *)"UCBPreFileAction");
     }
-    CLErrors_ReportInternalError("CLDropinCallbacks_V10.cpp", 1907, "UCBPreFileAction not implemented");
+    CLErrors_ReportInternalError("CLDropinCallbacks_V10.cpp", BY_VERSION(1907, 1963), "UCBPreFileAction not implemented");
     return 2U;
 }
 
@@ -1029,7 +1068,7 @@ unsigned int __stdcall UCBPostFileAction(unsigned int file, unsigned int action)
 {
     if (optsCmdLine.verbose > 3)
         CLIO_FormatAndDispatchText("Callback: %s\n", (unsigned char *)"UCBPostFileAction");
-    CLErrors_ReportInternalError("CLDropinCallbacks_V10.cpp", 1921, "UCBPostFileAction not implemented");
+    CLErrors_ReportInternalError("CLDropinCallbacks_V10.cpp", BY_VERSION(1921, 1977), "UCBPostFileAction not implemented");
     return 2U;
 }
 
@@ -1060,7 +1099,7 @@ int __stdcall UCBCacheAccessPathList(CWPluginPrivateContext *request)
             entry0 = cache->entries0 + index;
             source0 = CLAccessPaths_GetEntry(&default_target->systemPaths, index);
             if (source0 == 0) {
-                CLIO_ReportAssertionFailure("path", "CLDropinCallbacks_V10.cpp", 1954);
+                CLIO_ReportAssertionFailure("path", "CLDropinCallbacks_V10.cpp", BY_VERSION(1954, 2010));
             }
             OS_MakeSpecWithPath(source0->path, 0, 0, &buffer0);
             OS_OSSpec_To_FSSpec(&buffer0, &entry0->file);
@@ -1075,7 +1114,7 @@ int __stdcall UCBCacheAccessPathList(CWPluginPrivateContext *request)
             entry1 = cache->entries1 + index;
             source1 = CLAccessPaths_GetEntry(&default_target->userPaths, index);
             if (source1 == 0) {
-                CLIO_ReportAssertionFailure("path", "CLDropinCallbacks_V10.cpp", 1988);
+                CLIO_ReportAssertionFailure("path", "CLDropinCallbacks_V10.cpp", BY_VERSION(1988, 2044));
             }
             OS_MakeSpecWithPath(source1->path, 0, 0, &buffer1);
             OS_OSSpec_To_FSSpec(&buffer1, &entry1->file);
@@ -1158,7 +1197,7 @@ unsigned int __stdcall UCBCheckinLicense(unsigned int unused, unsigned int value
 unsigned int __stdcall UCBResolveRelativePath(unsigned int clientContext, unsigned int basePath,
                                               unsigned int relativePath, unsigned int resolvedPath)
 {
-    CLErrors_ReportInternalError("CLDropinCallbacks_V10.cpp", 2196, "UCBResolveRelativePath not implemented");
+    CLErrors_ReportInternalError("CLDropinCallbacks_V10.cpp", BY_VERSION(2196, 2255), "UCBResolveRelativePath not implemented");
     return 2U;
 }
 }

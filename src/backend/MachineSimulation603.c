@@ -11,12 +11,26 @@
 struct MachineInfo machine603 = {
     2,
     1,
+#if VERSION >= VERSION_GC_1_3
+    0,
+    (SInt32 (*)(void *))fn_005771e0,
+#else
     (SInt32 (*)(void *))get_adjusted_latency,
+#endif
     fn_0052e000,
+#if VERSION >= VERSION_GC_1_3
+    (SInt32 (*)(void *))fn_005770d0,
+#else
     (SInt32 (*)(void *))fn_0052dfa0,
+#endif
     (void (*)(void *))assign_entry_to_execution_unit,
     retire_and_advance_pending_instructions,
+#if VERSION >= VERSION_GC_1_3
+    (SInt32 (*)(void *))fn_00576d10,
+    (SInt32 (*)(void *))fn_00506260,
+#else
     (SInt32 (*)(void *))get_opcode_table_entry,
+#endif
 };
 
 /* Each opcode's execution unit, latency and cycles in each stage of the pipeline. */
@@ -513,12 +527,22 @@ static void RemovePending(PCodeInstruction *instr)
         ;
     data_00582cf0[i].completed = 1;
 }
-
+#if VERSION >= VERSION_GC_1_3
+/* 1.3: the 603 model has its own opcode table (10-byte rows, latency at +3) at 0x5ce9b0, inside raw data */
+typedef struct MachineOpcodeInfo603 {
+    UInt8 executionUnit;
+    UInt8 pad1[2];
+    SInt8 latency;
+    UInt8 pad4[6];
+} MachineOpcodeInfo603;
+extern char at_005ce9a5[];
+#define machine_opcode_info_603 ((MachineOpcodeInfo603 *)(at_005ce9a5 + 11))
+#endif
 SInt32 get_adjusted_latency(PCodeInstruction *p)
 {
-    SInt32 n = machine_opcode_info[p->opcode].latency;
-    if (p->flags & fRecordBit) {
-        n += 2;
+    SInt32 n = BY_VERSION(machine_opcode_info, machine_opcode_info_603)[p->opcode].latency;
+    if (PCODE_RECORD(p->flags)) {
+        n += BY_VERSION(2, 1);
     }
     if (p->opcode == 0x27 || p->opcode == 0x36) {
         n += p->operand_count - 2;
@@ -546,6 +570,7 @@ void fn_0052e000(void)
     data_00582cf0[3].instr = NULL;
     data_00582cf0[4].instr = NULL;
 }
+
 
 int fn_0052dfa0(PCodeInstruction *instruction)
 {
@@ -664,5 +689,10 @@ void retire_and_advance_pending_instructions(void)
 
 int get_opcode_table_entry(PCodeInstruction *instruction)
 {
+#if VERSION >= VERSION_GC_1_3
+    /* 1.3 reads the 603 table's byte at +8 of the opcode's 10-byte row (0x5ce9b8 = at_005ce9a5 + 0x13) */
+    return (at_005ce9a5 + 0x13)[instruction->opcode * 10];
+#else
     return machine_opcode_info[instruction->opcode].stageCycles[3];
+#endif
 }

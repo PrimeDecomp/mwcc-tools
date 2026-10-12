@@ -382,3 +382,50 @@ void COpt_CopyPropagation(SInt32 mode)
     }
     freeoheap();
 }
+
+#if VERSION >= VERSION_GC_1_3
+struct Fn00569110 {
+    struct Fn00569110 *next;
+};
+
+int fn_00569110(void **p, void *target)
+{
+    p = (void **)*p;
+    while (p != NULL) {
+        if ((void *)p == target)
+            return 1;
+        p = (void **)*p;
+    }
+    return 0;
+}
+
+extern void fn_00568f00(void *a, void *b, int c, int d);
+extern SInt32 data_005dfc04;
+extern SInt32 data_005e6ab8;
+extern SInt32 data_005e662c;
+extern char data_005ce5f8[];
+
+void fn_00568c20(void *a, SInt32 b)
+{
+    data_005dfc04 = b;
+    fn_00568f00(a, data_005ce5f8, 1, 0);
+    data_005e662c = data_005e6ab8;
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+#if VERSION >= VERSION_GC_1_3
+extern struct COpts copts;
+#define data_005e71c3 (*(SInt8 *)((char *)&copts + 0xe1))
+#else
+extern SInt8 data_005e71c3;
+#endif
+extern SInt32 data_005e6910;
+extern char data_005ce644[];
+
+void fn_005699e0(void *a)
+{
+    fn_00568f00(a, data_005ce644, data_005e71c3 >= 4 ? 4 : 1, 1);
+    data_005e6910 = data_005e6ab8;
+}
+#endif

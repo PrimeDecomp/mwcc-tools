@@ -101,6 +101,9 @@ struct TypeDeduce {
     DefAction *defActions;
     Boolean processingClassTypes;
     Boolean processingArgument;
+#if VERSION >= VERSION_GC_1_3
+    Boolean f16;
+#endif
     Boolean hasNewVBases;
     UInt8 nindex;
 };

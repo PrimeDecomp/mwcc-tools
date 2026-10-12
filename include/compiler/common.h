@@ -1,5 +1,6 @@
 #ifndef COMPILER_COMMON_H
 #define COMPILER_COMMON_H
+#include "version.h"
 
 #ifdef __cplusplus
 extern "C" {

@@ -118,7 +118,7 @@ struct TemplFuncInstance *find_or_create_template_specialization(Object *func, T
             lastArgument->next = NULL;
             if (lastArgument->pid.type == 0) {
                 if (lastArgument->data.typeparam.type == NULL)
-                    CError_FATAL(106);
+                    CError_FATAL(BY_VERSION(106, 114));
                 lastArgument->data.paramdecl.expr = fn_00513040(lastArgument->data.paramdecl.expr, 1);
             }
             argumentIndex++;
@@ -155,6 +155,15 @@ struct TemplFuncInstance *find_or_create_template_specialization(Object *func, T
     }
     return instance;
 }
+
+#if VERSION >= VERSION_GC_1_3
+extern Boolean fn_00565860(Object *a, Object *b);
+
+Boolean fn_00565820(Object *a, Object *b)
+{
+    return fn_00565860(a, b) && !fn_00565860(b, a);
+}
+#endif
 
 #pragma auto_inline off
 struct TemplFuncInstance *CTemplateFunc_FindOrCreateMatchedSpecialization(Object *func, Type *matchedType,
@@ -340,7 +349,7 @@ Object *select_unique_undominated_match(Object *func, struct ObjectList *funcs, 
     count = 1;
 
     for (link = funcs; link != NULL; link = link->next) {
-        if (link->object->type->type == TYPEFUNC && (TYPE_FUNC(link->object->type)->flags & 0x400) != 0)
+        if (link->object->type->type == TYPEFUNC && (TYPE_FUNC(link->object->type)->flags & TFUNC_TEMPLATE) != 0)
             count++;
     }
 
@@ -352,7 +361,7 @@ Object *select_unique_undominated_match(Object *func, struct ObjectList *funcs, 
     candidates[0] = func;
 
     for (index = 1, link = funcs; link != NULL; link = link->next) {
-        if (link->object->type->type == TYPEFUNC && (TYPE_FUNC(link->object->type)->flags & 0x400) != 0)
+        if (link->object->type->type == TYPEFUNC && (TYPE_FUNC(link->object->type)->flags & TFUNC_TEMPLATE) != 0)
             candidates[index++] = link->object;
     }
 
@@ -392,8 +401,8 @@ Object *select_unique_undominated_match(Object *func, struct ObjectList *funcs, 
 int CTemplateFunc_GetArgumentParameterIndex(TemplArg *argument)
 {
     if (argument->data.paramdecl.expr == NULL)
-        CError_FATAL(515);
-    if (argument->data.paramdecl.expr->type == 69U && argument->data.paramdecl.expr->data.templdep.subtype == TDE_PARAM)
+        CError_FATAL(BY_VERSION(515, 531));
+    if (argument->data.paramdecl.expr->type == BY_VERSION( 69U, 70U) && argument->data.paramdecl.expr->data.templdep.subtype == TDE_PARAM)
         return argument->data.paramdecl.expr->data.templdep.u.pid.index;
     return -1;
 }
@@ -418,7 +427,7 @@ Boolean match_state_elem_arguments(TemplArg *a, TemplArg *b, TemplArg *r, char f
                 return 0;
             if (CTemplTool_IsTemplateArgumentDependentExpression(a->data.paramdecl.expr) != 0) {
                 if (a->data.paramdecl.expr == NULL)
-                    CError_FATAL(515);
+                    CError_FATAL(BY_VERSION(515, 531));
                 idx = CTF_GetIndex(a);
                 if (idx < 0)
                     return 0;
@@ -638,7 +647,7 @@ Boolean fn_00514970(Type *ty)
                         return 1;
                     case 5:
                     default:
-                        CError_FATAL(904);
+                        CError_FATAL(BY_VERSION(904, 1359));
                 }
             case TYPEVOID:
             case TYPEINT:
@@ -667,7 +676,7 @@ Boolean fn_00514970(Type *ty)
                     r = 1;
                 return r;
             default:
-                CError_FATAL(936);
+                CError_FATAL(BY_VERSION(936, 1391));
                 continue;
         }
     }
@@ -727,12 +736,12 @@ Boolean match_template_function_args(Object *obj, DeduceInfo *state, FuncArg *ar
                 targetType = CParser_RemoveTopMostQualifiers(resolvedType, &argQual);
                 resolvedType = CParser_RemoveTopMostQualifiers(exprType, &exprQual);
                 if (exprs->node->type == EOBJREF && exprs->node->data.objref->type->type == TYPEFUNC &&
-                    (((TypeFunc *)exprs->node->data.objref->type)->flags & 1024))
+                    (((TypeFunc *)exprs->node->data.objref->type)->flags & TFUNC_TEMPLATE))
                     return 0;
                 if (exprs->node->type == EOBJLIST) {
                     for (candidate = exprs->node->data.overloadCandidates; candidate; candidate = candidate->next) {
                         if (candidate->object->otype == OT_OBJECT && candidate->object->type->type == TYPEFUNC &&
-                            (((TypeFunc *)candidate->object->type)->flags & 1024))
+                            (((TypeFunc *)candidate->object->type)->flags & TFUNC_TEMPLATE))
                             break;
                     }
                     if (candidate)
@@ -782,8 +791,8 @@ Boolean match_template_function_args(Object *obj, DeduceInfo *state, FuncArg *ar
 
 void fn_00514380(ObjectList *list, void *ptype, ENodeList *args, struct ArgMatch *ctx, ENode *flag)
 {
-    Object *found = NULL;
     Object *savedObject = ctx->object;
+    Object *found = NULL;
     MemberCallArguments match;
     DeduceInfo conversion;
     DeduceInfo bestConversion;
@@ -792,7 +801,7 @@ void fn_00514380(ObjectList *list, void *ptype, ENodeList *args, struct ArgMatch
     while (list != NULL) {
         Object *object;
         if ((object = list->object)->otype == OT_OBJECT && object->type->type == TYPEFUNC &&
-            (TYPE_FUNC(object->type)->flags & 0x400)) {
+            (TYPE_FUNC(object->type)->flags & TFUNC_TEMPLATE)) {
             if (CExpr_GetFuncMatchArgs(object, args, flag, &match)) {
                 if (CTemplTool_InitDeduceInfo(&conversion, CTemplTool_GetFuncTempl(object)->params, ptype, 0)) {
                     if (match_template_function_args(object, &conversion, match.parameters, match.arguments, ctx)) {
@@ -812,8 +821,8 @@ void fn_00514380(ObjectList *list, void *ptype, ENodeList *args, struct ArgMatch
             int count = 0;
             Object *result;
             while (arg != NULL) {
-                arg = arg->next;
                 count++;
+                arg = arg->next;
             }
             result = select_unique_undominated_match(ctx->object, ctx->list, count);
             if (result == NULL) {
@@ -848,7 +857,7 @@ Object *CTemplateFunc_FindSpecializationObject(DeclInfo *search, ObjectList *can
     if (search->requireTemplateClassMember != 0 || search->has_expltargs != 0) {
         for (; candidates != NULL; candidates = candidates->next) {
             if (candidates->object->otype == OT_OBJECT && candidates->object->type->type == TYPEFUNC &&
-                (((TypeFunc *)candidates->object->type)->flags & 1024) != 0) {
+                (((TypeFunc *)candidates->object->type)->flags & TFUNC_TEMPLATE) != 0) {
                 context = search->expltargs;
                 value = search->thetype;
                 candidate = (Object *)(int)candidates->object;

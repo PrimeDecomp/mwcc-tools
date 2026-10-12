@@ -53,6 +53,37 @@ void StructMoves_PrepareOperandForOffset(Operand *operand, unsigned int offset, 
     }
 }
 
+#if VERSION >= VERSION_GC_1_3
+struct Fn005102d0 {
+    struct Fn005102d0 *next;
+    char pad[0x1c - 4];
+    SInt32 index;
+    SInt32 zero;
+};
+extern struct Fn005102d0 *data_005df08c;
+extern SInt32 data_005e6abc;
+
+void fn_005102d0(void)
+{
+    struct Fn005102d0 *p;
+    for (p = data_005df08c; p != NULL; p = p->next) {
+        p->index = data_005e6abc++;
+        p->zero = 0;
+    }
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+extern void fn_00508910(void *node, int flag);
+
+void fn_00510050(void)
+{
+    struct Fn005102d0 *p;
+    for (p = data_005df08c; p != NULL; p = p->next)
+        fn_00508910(p, 0);
+}
+#endif
+
 void fn_0051aee0(Operand *node, SInt32 offset)
 {
     SInt32 resultReg = gUsedVirtualRegistersGPR++;
@@ -72,7 +103,7 @@ void fn_0051aee0(Operand *node, SInt32 offset)
         PCodeUtilities_EmitInstruction(PC_ADD, resultReg, node->reg, node->secondary_reg);
         PCodeUtilities_EmitInstruction(PC_ADDI, resultReg, resultReg, 0, offset);
     } else {
-        CError_FATAL(80);
+        CError_FATAL(BY_VERSION(80, 104));
     }
 
     node->kind = OpndType_IndirectGPR_ImmOffset;
@@ -363,10 +394,10 @@ void StructMoves_EmitCopy(Operand *sourceOperand, Operand *targetOperand, unsign
     destination = targetOperand;
     copySize = size;
     if (operandCopy.kind < 9U) {
-        CError_FATAL(458);
+        CError_FATAL(BY_VERSION(458, 448));
     }
     if (destination->kind < 9U) {
-        CError_FATAL(460);
+        CError_FATAL(BY_VERSION(460, 450));
     }
     sizeMinusOne = copySize;
     sizeMinusOne -= 1U;

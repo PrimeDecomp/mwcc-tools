@@ -183,7 +183,7 @@ unsigned int __stdcall Files_CreateFile(CWFileSpec *input, unsigned int secondAr
 {
     union {
         OSSpec spec;
-        char bytes[324];
+        char bytes[BY_VERSION(324, 516)];
     } path;
     union {
         RecordData data;
@@ -498,7 +498,7 @@ int __stdcall Files_MakeFileSpecFromPath(short volume, int directory, unsigned c
         OS_PathSpecToString(&location.path, fullPath, sizeof(fullPath));
     } else {
         if (volume == 0) {
-            CLIO_ReportAssertionFailure("vRefNum!=0", "Files.c", 839);
+            CLIO_ReportAssertionFailure("vRefNum!=0", "Files.c", BY_VERSION(839, 840));
         }
         base.vRefNum = volume;
         base.parID = directory == 0 ? 2 : directory;

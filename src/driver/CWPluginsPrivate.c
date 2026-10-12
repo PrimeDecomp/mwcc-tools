@@ -434,3 +434,14 @@ unsigned int __stdcall fn_0041bc50(CWPluginPrivateContext *object, unsigned int 
     }
     return ((unsigned int(__stdcall *)(int *, unsigned int))object->callbacks[41])((int *)object, argument);
 }
+
+#if VERSION >= VERSION_GC_1_3
+int __stdcall fn_0041ee60(CWPluginPrivateContext *context, char *a, int b)
+{
+    if (is_valid_context(context) != 0 || is_valid_plugin_context(context) == 0)
+        return 3;
+    if (context->apiVersion >= 8)
+        return ((int(__stdcall *)(CWPluginPrivateContext *, char *, int))context->callbacks[0x22])(context, a, b);
+    return 2;
+}
+#endif

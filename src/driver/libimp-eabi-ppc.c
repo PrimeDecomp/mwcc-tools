@@ -173,8 +173,8 @@ int __stdcall fn_0041ec70(CWPluginPrivateContext *context)
             result = 0;
             break;
         case 0:
-            memset(&copts, 0, 240);
-            memset(data_0058770c, 0, 1364);
+            memset(&copts, 0, BY_VERSION(240, 260));
+            memset(data_0058770c, 0, BY_VERSION(1364, 1432));
             reference60 = NULL;
             DropInCompilerLinkerPrivate_CallArgumentValue(context, "PPC EABI Project", &reference60);
             if (reference60 != NULL) {
@@ -545,6 +545,14 @@ void accumulate_section_sizes(FileInputNode *input, char *option1, char *option2
 #pragma optimization_level reset
 
 #pragma optimization_level 2
+#if VERSION >= VERSION_GC_1_3
+/* the C library's inline isdigit */
+static inline int archive_isdigit(int c)
+{
+    return __ctype_map[(unsigned char)c] & 16;
+}
+#endif
+
 char *resolve_archive_member_name(char **baseOffset, char *text)
 {
     char *base;
@@ -565,7 +573,7 @@ char *resolve_archive_member_name(char **baseOffset, char *text)
         }
     }
 
-    if (text[0] == '/' && base != NULL && (__ctype_map[(unsigned char)text[1]] & 16) != 0) {
+    if (text[0] == '/' && base != NULL && BY_VERSION((__ctype_map[(unsigned char)text[1]] & 16) != 0, archive_isdigit(text[1]))) {
         sscanf(text + 1, "%ld", &index);
         return base + index;
     }

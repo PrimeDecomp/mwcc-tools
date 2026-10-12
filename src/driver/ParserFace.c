@@ -28,10 +28,18 @@ int lookup_value_count;
 char **lookup_names;
 unsigned char data_00587cfc[4];
 unsigned char data_00587d00[4];
+#if VERSION >= VERSION_GC_1_3
+UInt32 parser_panel_extra;
+#endif
 char data_00587e1d;
 Boolean data_00587e1e;
 char data_00587e1f;
 Boolean tool_checks_passed;
+#if VERSION >= VERSION_GC_1_3
+/* (1.3: the option table's storage in the raw data) */
+extern char at_005e73e1[];
+#define data_0058851b (*(unsigned char *)at_005e73e1)
+#endif
 PtrList data_00588044;
 
 #define B3(x) (((x) & 0xff000000) >> 24)
@@ -78,7 +86,7 @@ int initialize_cmdline_environment(struct CWPluginPrivateContext *context)
     EnvInfo info;
     int err;
     int i;
-    memset(&pluginPrivateContext, 0, 0x194);
+    memset(&pluginPrivateContext, 0, BY_VERSION(0x194, 0x198));
     pluginPrivateContext = context;
     if ((err = DropInCompilerLinkerPrivate_CallArgumentValue(context, "CmdLine Environment", &h)) != 0)
         return err;
@@ -88,6 +96,10 @@ int initialize_cmdline_environment(struct CWPluginPrivateContext *context)
     help_width = info.width;
     if ((err = CWParserPluginsPrivate_GetEnvironment(context, &cmdline_environment)) != 0)
         return err;
+#if VERSION >= VERSION_GC_1_3
+    if ((err = CWParserPluginsPrivate_GetPanelExtra(context, &parser_panel_extra)) != 0)
+        return err;
+#endif
     if ((err = CWParserPluginsPrivate_GetOutputValues(context, data_00587cfc, data_00587d00)) != 0)
         return err;
     if ((err = CWParserPluginsPrivate_GetLookupValues(context, &lookup_value_count, &lookup_names)) != 0)
@@ -149,7 +161,7 @@ void **copy_resource_by_name(char *name)
     int index;
     struct StorageHandle *handle;
     for (index = 0; index < pTool->numPrefDataPanels; index++) {
-        if (!ClientGlue_CompareLowercaseStrings(name, pTool->prefDataPanels[index].name)) {
+        if (CLIO_STRINGS_EQUAL(name, pTool->prefDataPanels[index].name)) {
             handle = (struct StorageHandle *)Memory_NewHandle(pTool->prefDataPanels[index].size);
             if (!handle)
                 return NULL;

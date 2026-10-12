@@ -24,6 +24,16 @@ int option_list_count;
 char *data_00587eec;
 int option_count;
 int option_capacity;
+#if VERSION >= VERSION_GC_1_3
+struct Option **data_005da85c;
+int option_pending_count;
+int data_005da858;
+#endif
+#if VERSION >= VERSION_GC_1_3
+#include "driver/MemUtils.h"
+#define ClientGlue_DuplicateString xstrdup
+#define ToolHelpers_ResizeBuffer xrealloc
+#endif
 
 static struct OptionList *option_lists[32];
 static OptionList optionList;
@@ -79,10 +89,10 @@ int fn_0041c1eb(void)
 
 void Option_Push(short flags, void *a, char *b)
 {
-    OPTION_ASSERT(oStackPtr<MAXSTACK, 103);
+    OPTION_ASSERT(oStackPtr<MAXSTACK, BY_VERSION(103, 104));
     if (oStackPtr > 0) {
         short prev = (flags & 1) ? 2 : (flags & 2) ? 1 : (flags & 4) ? 2 : -1;
-        OPTION_ASSERT((oStack[oStackPtr-1].flags & prev), 110);
+        OPTION_ASSERT((oStack[oStackPtr-1].flags & prev), BY_VERSION(110, 111));
     }
     oStack[oStackPtr].name = a;
     oStack[oStackPtr].value = b;
@@ -96,9 +106,9 @@ void Option_Push(short flags, void *a, char *b)
     CLIO_ReportAssertionFailure(#cond, "Option.c", line)
 OStack *Option_PopStack(short flags)
 {
-    OPTION_ASSERT(oStackPtr>0, 121);
+    OPTION_ASSERT(oStackPtr>0, BY_VERSION(121, 122));
     --oStackPtr;
-    OPTION_ASSERT((oStack[oStackPtr].flags & flags), 123);
+    OPTION_ASSERT((oStack[oStackPtr].flags & flags), BY_VERSION(123, 124));
     return &oStack[oStackPtr];
 }
 
@@ -166,6 +176,23 @@ void Option_FormatOStackToList(void *list)
 
 void Option_ResetOptionLists(void)
 {
+#if VERSION >= VERSION_GC_1_3
+    option_list_count = 0;
+    option_capacity = 0;
+    option_count = 0;
+    option_pending_count = 0;
+    if (optionList.list)
+        free(optionList.list);
+    if (data_005da85c)
+        free(data_005da85c);
+    optionList.list = NULL;
+    optionList.flags = ((fn_0041c8ba() & 0x100) ? 0x100 : 0) | ((fn_0041c8ba() & 0x40) ? 0x200 : 0) |
+                    ((fn_0041c8ba() & 0x80) ? 0x400 : 0);
+    data_005da85c = NULL;
+    data_005da858 = ((fn_0041c8ba() & 0x100) ? 0x100 : 0) | ((fn_0041c8ba() & 0x40) ? 0x200 : 0) |
+                    ((fn_0041c8ba() & 0x80) ? 0x400 : 0);
+    fn_0041c1e2();
+#else
     option_list_count = 0;
     option_capacity = 0;
     option_count = 0;
@@ -175,6 +202,7 @@ void Option_ResetOptionLists(void)
     optionList.flags = ((fn_0041c8ba() & 0x100) ? 0x100 : 0) | ((fn_0041c8ba() & 0x40) ? 0x200 : 0) |
                        ((fn_0041c8ba() & 0x80) ? 0x400 : 0);
     fn_0041c1e2();
+#endif
 }
 
 OptionList *Option_GetOptionList(void)
@@ -182,6 +210,44 @@ OptionList *Option_GetOptionList(void)
     return &optionList;
 }
 
+#if VERSION >= VERSION_GC_1_3
+void add_option(Option *option)
+{
+    if (option_pending_count >= option_capacity) {
+        option_capacity += 32;
+        data_005da85c = (Option **)xrealloc("options", data_005da85c, (option_capacity + 1) * 4);
+    }
+    data_005da85c[option_pending_count] = option;
+    option_pending_count++;
+    data_005da85c[option_pending_count] = NULL;
+}
+
+void Option_FinalizeOptionLists(void)
+{
+    int i;
+
+    if (option_pending_count > 0) {
+        optionList.list = (Option **)xrealloc("options", optionList.list, (option_pending_count + 1) * 4);
+        for (i = 0; i < option_pending_count; i++) {
+            if (data_005da85c[i]->avail & 6) {
+                optionList.list[option_count] = data_005da85c[i];
+                option_count++;
+            }
+        }
+        for (i = 0; i < option_pending_count; i++) {
+            if (!(data_005da85c[i]->avail & 6)) {
+                optionList.list[option_count] = data_005da85c[i];
+                option_count++;
+            }
+        }
+        optionList.list[option_count] = NULL;
+        if (data_005da85c)
+            free(data_005da85c);
+        data_005da85c = NULL;
+        option_pending_count = 0;
+    }
+}
+#else
 void add_option(Option *option)
 {
     Option *opt = option;
@@ -204,6 +270,7 @@ void add_option(Option *option)
     option_count++;
     optionList.list[option_count] = NULL;
 }
+#endif
 
 int Option_RegisterOptionList(OptionList *list)
 {
@@ -841,7 +908,7 @@ int parse_option_list(OptionList *options, UInt32 flags)
             if (node == NULL)
                 node = Targets_DecrementCountAndGetTokenText();
             if (node == NULL)
-                CLIO_ReportAssertionFailure("tok", "Option.c", 0x532);
+                CLIO_ReportAssertionFailure("tok", "Option.c", BY_VERSION(0x532, 1335));
         }
         if (handled == 0)
             break;

@@ -144,7 +144,7 @@ unsigned int __stdcall OS_MakeSpecWithPath(OSPathSpec *basePath, char *path, UIn
         else
             buffer[0] = 0;
         {
-            char *appendAt = buffer + 0x104 - strlen(path);
+            char *appendAt = buffer + BY_VERSION(0x104, 0x103) - strlen(path);
             char *end = buffer + strlen(buffer);
             if (end <= appendAt)
                 appendAt = end;
@@ -157,7 +157,7 @@ unsigned int __stdcall OS_MakeSpecWithPath(OSPathSpec *basePath, char *path, UIn
 
 unsigned int __stdcall OS_NameSpecChangeExtension(OSNameSpec *file, const char *extensionAddress, unsigned char append)
 {
-    char buffer[64];
+    char buffer[BY_VERSION(64, 256)];
     char *extensionStart;
     OS_NameSpecToString(file, buffer, 260U);
     if (!append) {
@@ -180,7 +180,7 @@ unsigned int __stdcall OS_NameSpecChangeExtension(OSNameSpec *file, const char *
 
 unsigned int __stdcall OS_NameSpecSetExtension(OSNameSpec *file, const char *extensionAddress)
 {
-    char path[64];
+    char path[BY_VERSION(64, 256)];
     char *suffix;
     OS_NameSpecToString(file, path, 260U);
     if (*extensionAddress != '.') {
@@ -244,8 +244,13 @@ char *__stdcall OS_SpecToStringRelative(OSSpec *source, OSPathSpec *base, char *
         return destination;
     }
     while (baseCursor > basePath) {
+#if VERSION >= VERSION_GC_1_3
+        sourceCursor--;
+        baseCursor--;
+#else
         baseCursor--;
         sourceCursor--;
+#endif
         if (*baseCursor == '\\') {
             break;
         }
@@ -314,7 +319,11 @@ int __stdcall OS_FindProgram(char *name, void *param2)
 
     strncpy(buf, name, 0x104);
     buf[0x103] = 0;
+#if VERSION >= VERSION_GC_1_3
+    if ((UInt32)strlen(buf) < 4 || CLIO_CompareStringsIgnoreCase(buf + strlen(buf) - 4, ".exe") != 0)
+#else
     if ((UInt32)strlen(buf) < 4 || ClientGlue_CompareLowercaseStrings(buf + strlen(buf) - 4, ".exe") != 0)
+#endif
         CLProj_AppendString(buf, ".exe", 0x104);
 
     if (strchr(buf, '\\') == 0) {

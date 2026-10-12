@@ -32,7 +32,7 @@ public:
     UInt32 first;                 /* 0x108 */
     UInt32 second;                /* 0x10c */
     UInt32 third;                 /* 0x110 */
-    UInt8 intermediateState[8];   /* 0x114 */
+    UInt8 intermediateState[BY_VERSION(8, 12)];   /* 0x114 */
     UInt32 fourth;                /* 0x11c */
     UInt32 fifth;                 /* 0x120 */
     UInt32 sixth;                 /* 0x124 */

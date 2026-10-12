@@ -1,18 +1,27 @@
 #define CERROR_FILE "unknown.c"
+#include "version.h"
 #include "compiler/common.h"
 #include "driver/CLStaticPlugins.h"
 #include "driver/libimp-eabi-ppc-mw.h"
 
 unsigned int CLStaticPlugins_SetIdentifiers(SInt32 *architectureIdentifier, SInt32 *abiIdentifier)
 {
+#if VERSION >= VERSION_GC_1_3
+    *architectureIdentifier = 0x65505043U;
+#else
     *(unsigned int *)architectureIdentifier = 0x65505043U;
+#endif
     *abiIdentifier = 0x45414249U;
     return (unsigned int)abiIdentifier;
 }
 
 unsigned int fn_004053a0(SInt32 *pluginType, SInt32 *pluginSubtype)
 {
+#if VERSION >= VERSION_GC_1_3
+    *pluginType = '****';
+#else
     *(unsigned int *)pluginType = '****';
+#endif
     *pluginSubtype = 'Comp';
     return (unsigned int)pluginSubtype;
 }

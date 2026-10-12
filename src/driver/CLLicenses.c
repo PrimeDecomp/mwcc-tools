@@ -8,6 +8,10 @@
 
 char *license_path;
 
+#if VERSION >= VERSION_GC_1_3
+#include <stdlib.h>
+#endif
+
 static struct License *data_0057ef08;
 /* An opaque license value paired with its signed identifier. */
 static UInt32 license_slots[32][2];
@@ -39,7 +43,7 @@ int allocate_license_slot(int licenseData, int negateId)
         }
         return license_id_counter;
     }
-    CLErrors_ReportInternalError("CLLicenses.c", 0x5b, "Out of license space");
+    CLErrors_ReportInternalError("CLLicenses.c", BY_VERSION(0x5b, 0x61), "Out of license space");
     return 0;
 }
 
@@ -53,7 +57,7 @@ int find_license(unsigned int identifier, unsigned int *license)
             return index;
         }
     }
-    CLErrors_ReportInternalError("CLLicenses.c", 111, "Searched license not found");
+    CLErrors_ReportInternalError("CLLicenses.c", BY_VERSION(111, 117), "Searched license not found");
     return -1;
 }
 
@@ -79,7 +83,7 @@ int delete_license(int licenseIndex)
         }
         return 1;
     }
-    CLErrors_ReportInternalError("CLLicenses.c", 0x94, "Deleted license not valid");
+    CLErrors_ReportInternalError("CLLicenses.c", BY_VERSION(0x94, 0x9a), "Deleted license not valid");
     return 0;
 }
 
@@ -101,12 +105,25 @@ void CLLicenses_ReleaseLicenses(void)
     unsigned int firstValue;
     int count;
     release_negative_license_values();
+#if VERSION >= VERSION_GC_1_3
+    index = 0;
+    if (index < (int)((long (*)(void))get_license_slot_count)()) {
+        do {
+            if (((long (*)(int, unsigned int *, int *))get_license_slot_values)(index, &firstValue, &count) != 0 &&
+                count > 0) {
+                CLLicenses_DeleteLicense(count);
+            }
+            index++;
+        } while (index < (int)((long (*)(void))get_license_slot_count)());
+    }
+#else
     for (index = 0; index < (int)((long (*)(void))get_license_slot_count)(); index++) {
         if (((long (*)(int, unsigned int *, int *))get_license_slot_values)(index, &firstValue, &count) != 0 &&
             count > 0) {
             CLLicenses_DeleteLicense(count);
         }
     }
+#endif
     if (data_0057ef08 != NULL) {
         memset(data_0057ef08, 0, 40);
         data_0057ef08 = NULL;
@@ -115,13 +132,50 @@ void CLLicenses_ReleaseLicenses(void)
 
 int CLLicenses_RequestLicense(int request, int options, int cookieKind, char *errorMessage)
 {
-    char licensePath[256];
+    char licensePath[BY_VERSION(256, 0x104)];
     MWInfo licenseInfo;
     int licenseHandle = 0;
     OSSpec alternatePath;
     int result = 0;
     int status;
 
+#if VERSION >= VERSION_GC_1_3
+    {
+        char *environmentPath;
+
+        licensePath[0] = 0;
+        if (license_path != NULL)
+            strcpy(licensePath, license_path);
+        if (licensePath[0] == 0) {
+            environmentPath = getenv("LM_LICENSE_FILE");
+            if (environmentPath != NULL) {
+                strcpy(licensePath, environmentPath);
+                if (OS_MakeFileSpec(licensePath, &alternatePath) != 0 || OS_Status(&alternatePath) != 0) {
+                    if (OS_ResolveLink(&clState.programSpec, &alternatePath) == 0) {
+                        OS_PathSpecToString(&alternatePath.path, licensePath, sizeof(alternatePath.path.s));
+                        strcat(licensePath, "license.dat");
+                    } else {
+                        licensePath[0] = 0;
+                    }
+                }
+            }
+        }
+        if (licensePath[0] == 0) {
+            OS_PathSpecToString(&clState.programSpec.path, licensePath, sizeof(clState.programSpec.path.s));
+            strcat(licensePath, "license.dat");
+            if (OS_MakeFileSpec(licensePath, &alternatePath) != 0 || OS_Status(&alternatePath) != 0) {
+                if (OS_ResolveLink(&clState.programSpec, &alternatePath) == 0) {
+                    OS_PathSpecToString(&alternatePath.path, licensePath, sizeof(alternatePath.path.s));
+                    strcat(licensePath, "license.dat");
+                } else {
+                    licensePath[0] = 0;
+                }
+            }
+        }
+        if (licensePath[0] == 0)
+            strcpy(licensePath, "license.dat");
+    }
+#else
     if (license_path != NULL) {
         strcpy(licensePath, license_path);
     } else {
@@ -135,6 +189,7 @@ int CLLicenses_RequestLicense(int request, int options, int cookieKind, char *er
             }
         }
     }
+#endif
     if (data_0057ef08 == NULL) {
         data_0057ef08 = xmalloc(NULL, sizeof(struct License));
         data_0057ef08->type = 4;

@@ -32,7 +32,13 @@ extern DWORD redirect_standard_handle_to_file(HANDLE *previousHandle, DWORD stan
 extern char *__stdcall OS_GetDirPtr(char *path);
 extern unsigned int OS_CanonPath(const char *src, char *dst);
 extern unsigned int __stdcall OS_IsFullPath(char *path);
+#if VERSION >= VERSION_GC_1_3
+/* 1.3 compares paths with the case-insensitive string compare */
+extern int __stdcall fn_00412660(const char *left, const char *right);
+#define OS_EqualPath fn_00412660
+#else
 extern int __stdcall OS_EqualPath(const char *left, const char *right);
+#endif
 extern int __stdcall OS_MakeSpec(const char *path, OSSpec *output, Boolean *is_file);
 extern SInt32 __stdcall OS_MakeFileSpec(const char *input, OSSpec *output);
 extern __stdcall UInt32 OS_MakePathSpec(char *directory, char *path, OSPathSpec *spec);
@@ -68,7 +74,11 @@ extern unsigned char __ctype_map[];
 extern int __stdcall OS_Write(unsigned int handle, LPCVOID buffer, DWORD *size);
 extern int __stdcall OS_Execute(OSSpec *name, char **args, char **arg3, char *in, char *out, UInt32 *exitcode);
 extern char *__stdcall OS_GetErrText(DWORD errorCode);
+#if VERSION >= VERSION_GC_1_3
+extern int __stdcall fn_00411980(int *a0, char ***a1);
+#else
 extern unsigned int __stdcall OS_InitProgram(int *argc, char ***argv);
+#endif
 
 extern unsigned int data_0054b770;
 extern int OS_MacToRef(short value);

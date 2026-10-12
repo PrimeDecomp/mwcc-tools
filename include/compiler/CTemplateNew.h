@@ -29,18 +29,32 @@ extern void CTemplateNew_CompileObject(struct TemplClass *templateClass, TemplCl
                                        TemplateMember *source, Object *object, Boolean reset);
 extern Boolean CTemplateNew_InstantiateFunction(TemplateFunction *definition, TemplFuncInstance *specialization,
                                                 Boolean report);
+#if VERSION >= VERSION_GC_1_3
+extern void CTemplateNew_ParseTemplateDeclaration(TypeClass *templateClass, AccessType access);
+#else
 extern void CTemplateNew_ParseTemplateDeclaration(TypeClass *templateClass);
+#endif
 extern void parse_explicit_template_specialization(void);
 extern void parse_explicit_template_instantiation(void);
+#if VERSION >= VERSION_GC_1_3
+extern void parse_function_template_declaration(TemplateScopeState *stack, TemplParam *params,
+                                                TypeClass *tclass, SInt32 *startOffset, AccessType access,
+                                                Boolean flag);
+#else
 extern void parse_function_template_declaration(TemplateScopeState *stack, TemplParam *params, TypeClass *tclass,
                                                 SInt32 *startOffset);
+#endif
 extern void parse_template_member_definition(void *context, TypeClass *template_info, DeclInfo *declaration,
                                              SInt32 *position);
 extern unsigned char instantiate_members(struct TemplClass *templ, TemplClassInst *state, char force);
 extern void CTemplateNew_ParseFuncDef(Object *object, TemplClassInst *context, TypeClass *tclass);
 extern Boolean CTemplateNew_InstantiateInlineTemplateObject(Object *obj);
 extern UInt8 CTemplateNew_LinkTemplateScope(DeclInfo *context, TypeTemplDep *request, NameSpace **destination);
+#if VERSION >= VERSION_GC_1_3
+extern TemplParam *parse_template_parameter_list(NameSpace *parserState, char mode);
+#else
 extern TemplParam *parse_template_parameter_list(NameSpace *parserState, unsigned char mode);
+#endif
 extern TemplParam *parse_template_parameter(NameSpace *owner, TemplParam *value, short memberValue, char memberByte);
 extern void fn_004f0000(void);
 extern void CTemplateNew_Reset(void);

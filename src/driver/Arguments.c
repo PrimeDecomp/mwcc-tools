@@ -26,6 +26,11 @@
 #include <stdio.h>
 #include <setjmp.h>
 #include <string.h>
+#if VERSION >= VERSION_GC_1_3
+#include "driver/MemUtils.h"
+#define ClientGlue_DuplicateString xstrdup
+#define ToolHelpers_ResizeBuffer xrealloc
+#endif
 
 int data_005876ac;
 char *data_00587eb0;
@@ -119,10 +124,20 @@ void initialize_arguments(unsigned int value, char **otherValue)
     arg_index = 1;
 }
 
+#if VERSION >= VERSION_GC_1_3
+static inline int ctype_is_space(int c)
+{
+    return __ctype_map[(unsigned char)c] & 6;
+}
+#define IS_TOKEN_SPACE(c) ctype_is_space(c)
+#else
+#define IS_TOKEN_SPACE(c) (__ctype_map[(unsigned char)c] & 6)
+#endif
+
 void skip_whitespace_and_comments(void)
 {
     for (;;) {
-        while (*token_cursor && (__ctype_map[(unsigned char)*token_cursor] & 6))
+        while (*token_cursor && IS_TOKEN_SPACE(*token_cursor))
             token_cursor++;
         if (*token_cursor == 0x1a)
             token_cursor = data_0057e1d0 + data_0057e1d4 - 1;
@@ -145,7 +160,7 @@ void skip_whitespace_and_comments(void)
 
 Boolean initialize_file_token_cursor(char *name)
 {
-    char buffer[0x144];
+    char buffer[BY_VERSION(0x144, 0x204)];
     unsigned int error;
     Boolean result;
 
@@ -154,7 +169,11 @@ Boolean initialize_file_token_cursor(char *name)
         (error = OS_AppendHandle(&operation_record.buffer, "", 1)) != 0 ||
         (error = TargetOptimizer_ppc_eabi_GetMemBufferPtrAndSize((unsigned char *)&operation_record, &token_cursor,
                                                                  &data_0057e1d4)) != 0) {
+#if VERSION >= VERSION_GC_1_3
+        Targets_ReportOperatingSystemError(0x4a, error, "response ", name);
+#else
         Targets_ReportOperatingSystemError(0x4a, error, name);
+#endif
         result = 0;
     } else {
         data_0057e1d0 = token_cursor;
@@ -175,14 +194,20 @@ unsigned int fn_0040f1df(void)
 
 char *get_next_token(void)
 {
+#if VERSION >= VERSION_GC_1_3
+    char *d;
+    char *start;
+    int quoted = 0;
+#else
     int quoted = 0;
     char *start;
     char *d;
+#endif
     if (!*token_cursor)
         return NULL;
     start = d = token_cursor;
     while (*token_cursor) {
-        if (!quoted && (__ctype_map[(unsigned char)*token_cursor] & 6))
+        if (!quoted && IS_TOKEN_SPACE(*token_cursor))
             break;
         if (*token_cursor == '"') {
             quoted = !quoted;
@@ -550,9 +575,15 @@ void append_text_to_ptrlist_item(struct PtrList *list, char *text)
     if (!*slot) {
         *slot = ClientGlue_DuplicateString(value);
     } else {
+#if VERSION >= VERSION_GC_1_3
+        int length = strlen(*slot);
+        *slot = ToolHelpers_ResizeBuffer("command line", *slot, length + strlen(value) + 1);
+        strcpy(*slot + length, value);
+#else
         char *string = value;
         *slot = ToolHelpers_ResizeBuffer("command line", *slot, strlen(*slot) + strlen(string) + 1);
         strcpy(*slot + strlen(*slot), string);
+#endif
     }
 }
 
@@ -599,3 +630,7 @@ void Targets_InitIntegerSequenceResult(PtrList *source, IntegerSequenceResult *r
     result->value = value;
     return;
 }
+
+#if VERSION >= VERSION_GC_1_3
+extern UInt32 parser_panel_extra; /* (parseopts.toolVersion) */
+#endif

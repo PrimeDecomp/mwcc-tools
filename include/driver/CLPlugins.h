@@ -35,6 +35,9 @@ struct Plugin {
     struct PlugAux *cl_cb;
     struct PluginQueryTable *pr_cb;
     struct CWPluginPrivateContext *object;
+#if VERSION >= VERSION_GC_1_3
+    void *f10;
+#endif
     struct Plugin *next;
 };
 #pragma pack(push, 1)
@@ -138,7 +141,11 @@ extern char *CLPlugins_GetName(Plugin *plugin);
 extern PluginDesc *CLPlugins_GetPluginDesc(Plugin *provider);
 extern TargetInfo *get_target_info(Plugin *entry);
 extern UInt8 query_plugin(Plugin *plugin, unsigned int queryArgument, char **queryKind);
+#if VERSION >= VERSION_GC_1_3
+extern char *format_plugin_version(Plugin *plugin);
+#else
 extern char *format_plugin_version(Plugin *plugin, char *buffer);
+#endif
 extern Boolean fn_00409700(Plugin *plugin);
 extern UInt8 CLPlugins_FindFileMapValue(Plugin *plugin, int mode, char *name, unsigned int *result);
 extern struct Plugin *CLPlugins_CreatePluginDataCopy(PluginRequiredInputRecord *record36, PluginOptionalData *record24,

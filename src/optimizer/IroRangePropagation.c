@@ -515,21 +515,113 @@ int initialize_linear_range(IROLinear *nd)
         case IROLinearEndCatch:
         case IROLinearEndCatchDtor:
         case IROLinearAsm:
-        case 17:
-        case 18:
+        case BY_VERSION(17, 18):
+        case BY_VERSION(18, 19):
         case IROLinearEnd:
             break;
     }
     return 0;
 }
 
-SInt32 IRO_RangePropagateInFNode(void)
+#if VERSION >= VERSION_GC_1_3
+extern UInt8 data_005536f0[];
+
+/* initialize a table of 0x4d per-node-type entries */
+void fn_00456800(void)
+{
+    int i;
+
+    for (i = 0; i < 0x4d; i++)
+        data_005536f0[i] = 0;
+    data_005536f0[0] = 0;
+    data_005536f0[1] = 0;
+    data_005536f0[2] = 0;
+    data_005536f0[3] = 0;
+    data_005536f0[4] = 0;
+    data_005536f0[5] = 0;
+    data_005536f0[6] = 0;
+    data_005536f0[7] = 0;
+    data_005536f0[8] = 0;
+    data_005536f0[9] = 1;
+    data_005536f0[10] = 1;
+    data_005536f0[11] = 0;
+    data_005536f0[12] = 0;
+    data_005536f0[13] = 1;
+    data_005536f0[14] = 0;
+    data_005536f0[15] = 1;
+    data_005536f0[16] = 0;
+    data_005536f0[17] = 0;
+    data_005536f0[18] = 0;
+    data_005536f0[19] = 0;
+    data_005536f0[20] = 0;
+    data_005536f0[21] = 0;
+    data_005536f0[22] = 0;
+    data_005536f0[23] = 0;
+    data_005536f0[24] = 0;
+    data_005536f0[25] = 1;
+    data_005536f0[26] = 1;
+    data_005536f0[27] = 1;
+    data_005536f0[28] = 0;
+    data_005536f0[29] = 0;
+    data_005536f0[30] = 0;
+    data_005536f0[31] = 0;
+    data_005536f0[32] = 0;
+    data_005536f0[33] = 0;
+    data_005536f0[34] = 0;
+    data_005536f0[35] = 0;
+    data_005536f0[36] = 0;
+    data_005536f0[37] = 0;
+    data_005536f0[38] = 0;
+    data_005536f0[39] = 0;
+    data_005536f0[40] = 0;
+    data_005536f0[41] = 0;
+    data_005536f0[42] = 0;
+    data_005536f0[43] = 0;
+    data_005536f0[44] = 0;
+    data_005536f0[45] = 0;
+    data_005536f0[46] = 0;
+    data_005536f0[47] = 0;
+    data_005536f0[48] = 0;
+    data_005536f0[49] = 0;
+    data_005536f0[50] = 0;
+    data_005536f0[51] = 0;
+    data_005536f0[52] = 0;
+    data_005536f0[53] = 0;
+    data_005536f0[54] = 0;
+    data_005536f0[55] = 0;
+    data_005536f0[56] = 0;
+    data_005536f0[57] = 0;
+    data_005536f0[58] = 0;
+    data_005536f0[59] = 0;
+    data_005536f0[60] = 0;
+    data_005536f0[61] = 0;
+    data_005536f0[62] = 0;
+    data_005536f0[63] = 0;
+    data_005536f0[64] = 0;
+    data_005536f0[65] = 0;
+    data_005536f0[66] = 0;
+    data_005536f0[68] = 0;
+    data_005536f0[69] = 0;
+    data_005536f0[70] = 0;
+    data_005536f0[71] = 0;
+    data_005536f0[72] = 0;
+    data_005536f0[73] = 0;
+    data_005536f0[74] = 0;
+    data_005536f0[75] = 0;
+    data_005536f0[76] = 0;
+}
+#endif
+
+BY_VERSION(SInt32, Boolean) IRO_RangePropagateInFNode(void)
 {
     Boolean changed;
     IRONode *ns;
     IROLinear *nd;
     struct ERangeVar *t;
 
+#if VERSION >= VERSION_GC_1_3
+    changed = 0;
+#endif
     for (ns = iro_flowgraph_head; ns != NULL; ns = ns->nextnode) {
         range_vars = first_range_var = NULL;
         for (nd = ns->first; nd != ns->last; nd = nd->next) {
@@ -560,7 +652,14 @@ SInt32 IRO_RangePropagateInFNode(void)
                 case IROLinearOp2Arg:
                     IroRangePropagation_PropagateRangeInLinear(nd);
                     break;
+#if VERSION >= VERSION_GC_1_3
                 case IROLinearFunccall:
+                    fn_0049dcf0(nd);
+                    break;
+                case IROLinearAsm:
+#else
+                case IROLinearFunccall:
+#endif
                     for (t = range_vars; t != NULL; t = t->next)
                         t->range->type = 3;
                     break;
@@ -596,7 +695,14 @@ SInt32 IRO_RangePropagateInFNode(void)
             case IROLinearOp2Arg:
                 IroRangePropagation_PropagateRangeInLinear(nd);
                 break;
+#if VERSION >= VERSION_GC_1_3
             case IROLinearFunccall:
+                fn_0049dcf0(nd);
+                break;
+            case IROLinearAsm:
+#else
+            case IROLinearFunccall:
+#endif
                 for (t = range_vars; t != NULL; t = t->next)
                     t->range->type = 3;
                 break;

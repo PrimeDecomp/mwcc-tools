@@ -7,6 +7,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#if VERSION >= VERSION_GC_1_3
+#include "driver/MemUtils.h"
+#define free xfree
+#endif
 
 #define OS_ASSERT(line, cond)                                                                                          \
     if (!(cond))                                                                                                       \
@@ -83,8 +87,13 @@ struct CLOverlayEntry *CLOverlays_GetGroupByIndex(struct Overlays *list, int ind
 
     record = list->groups;
     while (record && count < index) {
+#if VERSION >= VERSION_GC_1_3
+        record = record->next;
+        ++count;
+#else
         ++count;
         record = record->next;
+#endif
     }
     if (count == index)
         return record;
@@ -101,8 +110,13 @@ unsigned int CLOverlays_CountGroups(struct Overlays *list)
     record = list->groups;
     if (record) {
         do {
+#if VERSION >= VERSION_GC_1_3
+            count += 1U;
+            record = record->next;
+#else
             record = record->next;
             count += 1U;
+#endif
         } while (record);
     }
     return count;
@@ -198,8 +212,13 @@ struct OverlayAllocation *CLOverlays_GetOverlayAtIndex(struct CLOverlayEntry *li
         CLIO_ReportAssertionFailure("this", "CLOverlays.c", 234U);
     entry = list->firstOverlay;
     while (entry != NULL && position < index) {
+#if VERSION >= VERSION_GC_1_3
+        entry = entry->next;
+        position += 1;
+#else
         position += 1;
         entry = entry->next;
+#endif
     }
     if (position == index)
         return entry;
@@ -218,8 +237,13 @@ unsigned int CLOverlays_CountOverlays(CLOverlayEntry *record)
     link = record->firstOverlay;
     if (link != NULL) {
         do {
+#if VERSION >= VERSION_GC_1_3
+            count += 1U;
+            link = link->next;
+#else
             link = link->next;
             count += 1U;
+#endif
         } while (link != NULL);
     }
     return count;

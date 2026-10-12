@@ -32,7 +32,7 @@ static inline void emitobj12(Object *obj, Operand *o, unsigned int a, unsigned i
 {
     if ((int)o->reg != 0xc)
         PCodeUtilities_EmitInstruction(PC_MR, 0xc, (int)o->reg);
-    PCodeUtilities_EmitObjectInstructionWithPayload(obj, 1, a | 0x1000, b, t);
+    PCodeUtilities_EmitObjectInstructionWithRegisterMasks(obj, 1, a | 0x1000, b, t);
 }
 
 static ArgumentContext *NewParm(ENode *e)
@@ -284,6 +284,63 @@ ArgumentContext *assign_argument_locations(ENode *thisArg, ENodeList *args, Func
         outgoing_argument_size = stackOffset;
     return head;
 }
+
+#if VERSION >= VERSION_GC_1_3
+extern SInt32 data_005df1a0;
+
+void fn_00529700(void)
+{
+    data_005df1a0 = 0;
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+extern int fn_00421a50(char *s);
+extern unsigned char __ctype_map[];
+
+int fn_00529510(const char *src, int *out)
+{
+    char buf[0x20];
+    int i;
+    char c;
+
+    i = 0;
+    while (i < 30 && ((c = src[i]), (__ctype_map[(UInt8)(int)c] & 0x10))) {
+        buf[i] = c;
+        i++;
+    }
+    buf[i] = 0;
+    *out = fn_00421a50(buf);
+    return i;
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+extern SInt32 data_005df1a0;
+extern SInt32 data_005df1a4[13];
+
+/* one-time clearing of the call-site state table */
+void fn_00529710(void)
+{
+
+    if (data_005df1a0 == 0) {
+        data_005df1a4[0] = 0;
+        data_005df1a4[1] = 0;
+        data_005df1a4[2] = 0;
+        data_005df1a4[3] = 0;
+        data_005df1a4[4] = 0;
+        data_005df1a4[5] = 0;
+        data_005df1a4[6] = 0;
+        data_005df1a4[7] = 0;
+        data_005df1a4[8] = 0;
+        data_005df1a4[9] = 0;
+        data_005df1a4[10] = 0;
+        data_005df1a4[11] = 0;
+        data_005df1a4[12] = 0;
+        data_005df1a0 = 1;
+    }
+}
+#endif
 
 void store_argument_on_stack(ArgumentContext *arg)
 {
@@ -661,7 +718,7 @@ void FunctionCalls_GenerateCall(ENode *item, Operand *result)
                     Operands_ForceGPR(&op, (Type *)&void_ptr, 12);
                 emit12(&op, callArgument20, callArgument1c, callArgument18);
             } else
-                PCodeUtilities_EmitObjectInstructionWithPayload(expr->data.objref, 0, callArgument20, callArgument1c,
+                PCodeUtilities_EmitObjectInstructionWithRegisterMasks(expr->data.objref, 0, callArgument20, callArgument1c,
                                                                 callArgument18);
         }
     } else {

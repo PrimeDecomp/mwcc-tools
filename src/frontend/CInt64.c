@@ -1,9 +1,9 @@
 #include "compiler/common.h"
 #include "compiler/CInt64.h"
 
-CInt64 cint64_negone = {0xFFFFFFFF, 0xFFFFFFFF};
-CInt64 cint64_zero = {0, 0};
-CInt64 cint64_one = {0, 1};
+CONST_13 CInt64 cint64_negone = {0xFFFFFFFF, 0xFFFFFFFF};
+CONST_13 CInt64 cint64_zero = {0, 0};
+CONST_13 CInt64 cint64_one = {0, 1};
 CInt64 cint64_max = {0x7FFFFFFF, 0xFFFFFFFF};
 CInt64 cint64_min = {0x80000000, 0};
 
@@ -79,7 +79,11 @@ CInt64 CInt64_MulU(CInt64 lhs, CInt64 rhs)
     UInt32 dddd;
     UInt32 eeee;
 
+#if VERSION >= VERSION_GC_1_3
+    dddd = eeee = rhs.lo;
+#else
     eeee = dddd = rhs.lo;
+#endif
     result.lo = 0;
     result.hi = 0;
     bbbb = lhs.lo;
@@ -93,8 +97,13 @@ CInt64 CInt64_MulU(CInt64 lhs, CInt64 rhs)
         cccc <<= 1;
         if (dddd & 0x80000000)
             cccc |= 1;
+#if VERSION >= VERSION_GC_1_3
+        dddd <<= 1;
+        bbbb >>= 1;
+#else
         bbbb >>= 1;
         dddd <<= 1;
+#endif
     }
     aaaa = lhs.hi;
     while (aaaa != 0 && eeee != 0) {
@@ -139,10 +148,15 @@ void CInt64_DivMod(const CInt64 *lhs, const CInt64 *rhs, CInt64 *pDiv, CInt64 *p
         return;
 
     workF = 0;
+#if VERSION >= VERSION_GC_1_3
+    workE = 0;
+#endif
     workB = lhs->hi;
     workA = lhs->lo;
     workC = rhs->hi;
+#if VERSION < VERSION_GC_1_3
     workE = 0;
+#endif
     workD = rhs->lo;
     workG = 0;
     workH = 0;
@@ -265,8 +279,13 @@ CInt64 CInt64_Shl(CInt64 v, CInt64 count)
 CInt64 CInt64_Shr(CInt64 value, CInt64 count)
 {
     if (count.hi == 0 && count.lo < 64) {
+#if VERSION >= VERSION_GC_1_3
+        SInt32 hi;
+        UInt32 lo;
+#else
         UInt32 lo;
         SInt32 hi;
+#endif
         UInt32 n;
         hi = value.hi;
         lo = value.lo;
@@ -317,7 +336,11 @@ CInt64 CInt64_ShrU(CInt64 value, CInt64 count)
     return value;
 }
 
+#if VERSION >= VERSION_GC_1_3
+static inline int CInt64_UnsignedCompare(const CInt64 *lhs, const CInt64 *rhs)
+#else
 int CInt64_UnsignedCompare(const CInt64 *lhs, const CInt64 *rhs)
+#endif
 {
     if (lhs->hi == rhs->hi) {
         if (lhs->lo < rhs->lo)
@@ -569,6 +592,42 @@ void CInt64_ConvertFromLongDouble(CInt64 *pResult, double value)
 
 double CInt64_ConvertUToLongDouble(const CInt64 *value)
 {
+#if VERSION >= VERSION_GC_1_3
+    double result;
+    Boolean bad;
+    SInt32 work;
+    int counter;
+
+    bad = (value->hi == 0 && value->lo == 0);
+    if (bad)
+        return 0.0;
+
+    result = 0.0;
+
+    work = value->hi;
+    if (work != 0) {
+        counter = 0;
+        do {
+            result += result;
+            if (work & 0x80000000)
+                result += 1.0;
+            work <<= 1;
+            counter++;
+        } while (counter < 32);
+    }
+
+    counter = 0;
+    work = value->lo;
+    do {
+        result += result;
+        if (work & 0x80000000)
+            result = 1.0f + result;
+        work <<= 1;
+        counter++;
+    } while (counter < 32);
+
+    return result;
+#else
     Boolean bad;
     SInt32 work;
     int counter;
@@ -598,6 +657,7 @@ double CInt64_ConvertUToLongDouble(const CInt64 *value)
     }
 
     return result;
+#endif
 }
 
 double CInt64_ConvertToLongDouble(const CInt64 *value)
@@ -722,8 +782,13 @@ char *CInt64_ScanHexString(CInt64 *value, char *p, Boolean *overflow)
         else
             break;
 
+#if VERSION >= VERSION_GC_1_3
+        p++;
+        hi = value->hi;
+#else
         hi = value->hi;
         p++;
+#endif
         lo = value->lo;
         if (hi & 0xf0000000)
             *overflow = 1;
@@ -771,8 +836,13 @@ char *CInt64_ScanBinString(CInt64 *value, char *digits, Boolean *overflow)
             bit = TRUE;
         else
             break;
+#if VERSION >= VERSION_GC_1_3
+        ++digits;
+        high = value->hi;
+#else
         high = value->hi;
         ++digits;
+#endif
         low = value->lo;
         if ((high & 0x80000000) != 0)
             *overflow = 1;

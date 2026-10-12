@@ -19,19 +19,32 @@
 #include "compiler/PPCError.h"
 #include "compiler/StackFrameEABI.h"
 #include "compiler/StructMoves.h"
+#if VERSION >= VERSION_GC_1_3
+#include "compiler/CABI.h"
+#include "compiler/CExpr.h"
+#include "compiler/CExpr2.h"
+#include "compiler/CParser.h"
+#endif
 
 struct Object *data_00587fc0;
-SInt16 gUsedVirtualRegistersVR;
+BY_VERSION(SInt16, SInt32) gUsedVirtualRegistersVR;
 
 #define false 0
 #define true 1
+
+/* (1.3 also passes through array types) */
+#define INTRINSIC_INDIRECT(t) BY_VERSION((t)->type == TYPEPOINTER, ((t)->type == TYPEPOINTER || (t)->type == TYPEARRAY))
+
+#if VERSION >= VERSION_GC_1_3
+extern void fn_004f6d70(int reg);
+#endif
 
 typedef void (*GenNodeProc)(ENode *node, SInt32 a, SInt32 b, Operand *op);
 
 typedef void (*PCodeFn)(void *, int, int, void *);
 
 /* Each intrinsic's function object, by its number (the function's u.intconst.hi). */
-static Object *intrinsics[313];
+static Object *intrinsics[BY_VERSION(313, 315)];
 /* The intrinsic whose call is being generated. */
 static Object *current_intrinsic = NULL;
 
@@ -2511,7 +2524,7 @@ static union IntrinsicTableEntry intrinsic_tables[272] = {
     {NULL},
 };
 
-static short intrinsic_opcodes[313] = {
+static short intrinsic_opcodes[BY_VERSION(313, 315)] = {
     PC_EIEIO,   PC_SYNC,  PC_ISYNC,  0,          0,        PC_FABS,   PC_FNABS,  0,         0,         PC_CNTLZW,
     PC_LHBRX,   PC_LWBRX, PC_STHBRX, PC_STWBRX,  PC_DCBF,  PC_DCBT,   PC_DCBST,  PC_DCBTST, PC_DCBZ,   PC_MULHW,
     PC_MULHWU,  PC_DIVW,  PC_DIVWU,  PC_FMADD,   PC_FMSUB, PC_FNMADD, PC_FNMSUB, PC_FMADDS, PC_FMSUBS, PC_FNMADDS,
@@ -2580,7 +2593,7 @@ static inline void Intrinsics_00487090_inline1(ENode *p0, Operand *p1)
 
 static inline void unwrapIntrinsicPointerTypes(Type **expected, Type **actual)
 {
-    if ((*expected)->type == TYPEPOINTER && (*actual)->type == TYPEPOINTER) {
+    if (INTRINSIC_INDIRECT(*expected) && INTRINSIC_INDIRECT(*actual)) {
         *expected = ((TypePointer *)*expected)->target;
         *actual = ((TypePointer *)*actual)->target;
     }
@@ -2615,6 +2628,382 @@ unsigned int Intrinsics_IsMonadicObjrefTypeFuncFlag200Set(ENode *expression)
     }
     return result;
 }
+
+#if VERSION >= VERSION_GC_1_3
+extern SInt32 data_005e6794[];
+extern SInt32 data_005e674c[];
+extern SInt32 data_005e0ef0[];
+extern UInt8 data_005e2bf0[];
+#if VERSION >= VERSION_GC_1_3
+#define data_005e713d (*(UInt8 *)((char *)&copts + 0x5b))
+#else
+extern UInt8 data_005e713d;
+#endif
+
+/* build a call to the intrinsic function `intrinsic` returning `rtype`, decaying array arguments to pointers */
+ENode *fn_004ce100(Object *intrinsic, ENodeList *args, Type *rtype)
+{
+    TypeFunc *functionType;
+    ENodeList *arg;
+    ENode *call;
+
+    functionType = (TypeFunc *)intrinsic->type;
+    if (functionType->type != TYPEFUNC)
+        CError_Internal("Intrinsics.c", 0xeb9);
+    for (arg = args; arg != NULL; arg = arg->next) {
+        if (arg->node->rtype->type == 0xc)
+            arg->node = CExpr_PointerGeneration(arg->node);
+    }
+    call = (ENode *)CompilerTools_AllocatePool(sizeof(*call));
+    call->type = EFUNCCALL;
+    call->cost = 4;
+    call->rtype = rtype;
+    call->ignored = 0;
+    call->flags = functionType->qual & Q_CV;
+    call->data.funccall.funcref = create_objectrefnode(intrinsic);
+    call->data.funccall.args = args;
+    call->data.funccall.functype = functionType;
+    return CExpr_AdjustFunctionCall(call);
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+/* the per-variable info record of a data object, or NULL */
+char *fn_004cfb60(Object *obj)
+{
+    if (obj == NULL)
+        return NULL;
+    switch (obj->datatype) {
+    case 0:
+        return (char *)obj + 0x36;
+    default:
+        return NULL;
+    }
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+#if VERSION >= VERSION_GC_1_3
+#define data_005e70f5 (*(UInt8 *)((char *)&copts + 0x13))
+#else
+extern UInt8 data_005e70f5;
+#endif
+extern SInt32 data_005e6778[];
+extern SInt32 data_005e6c00[];
+
+/* bit mask of the condition/special registers referenced by instructions in `block` and its successors in the list */
+UInt32 fn_004cee00(PCodeBlock *block)
+{
+    PCodeBlock *b;
+    PCodeInstruction *instr;
+    UInt32 mask;
+    int i;
+
+    mask = 0;
+    if (data_005e70f5 == 2)
+        return 0xFFFFFFFF;
+    if (data_005e70f5 == 0)
+        return 0;
+
+    for (b = block; b; b = b->next) {
+        for (instr = b->instructions; instr; instr = instr->next) {
+            if (instr->flags & 0xc0000000) {
+                for (i = 0; i < instr->operand_count; i++) {
+                    if (instr->operandData.operands[i].kind == 0 && instr->operandData.operands[i].arg == 2)
+                        mask |= 1 << (31 - instr->operandData.operands[i].value.reg);
+                }
+            }
+        }
+    }
+
+    return mask;
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+/* build a call to `func` passing `arg` and, optionally, the size of `type` as a size_t constant */
+ENode *fn_004b6a30(Object *func, ENodeList *arg, Type *type, Boolean withSize)
+{
+    ENode *call;
+    ENodeList *list;
+    ENode *size;
+
+    call = (ENode *)CompilerTools_AllocatePool(0x1e);
+    call->type = EFUNCCALL;
+    call->cost = 4;
+    call->flags = 0;
+    call->rtype = (Type *)&stvoid;
+    call->data.funccall.funcref = create_objectrefnode(func);
+    call->data.funccall.functype = (TypeFunc *)func->type;
+    func->flags |= 1;
+    list = (ENodeList *)CompilerTools_AllocatePool(8);
+    list->node = (ENode *)arg;
+    call->data.funccall.args = list;
+    if (withSize) {
+        list->next = (ENodeList *)CompilerTools_AllocatePool(8);
+        size = (ENode *)CompilerTools_AllocatePool(0x1e);
+        memclrw(size, 0x1e);
+        size->type = EINTCONST;
+        size->rtype = (Type *)&stsignedlong;
+        list->next->node = size;
+        size->data.intval.lo = type->size;
+        size->data.intval.hi = type->size < 0 ? -1 : 0;
+        size->rtype = CABI_GetSizeTType();
+        list->next->next = NULL;
+    } else {
+        list->next = NULL;
+    }
+    return call;
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+/* convert the arguments of a call to `func` to its parameter types and build the call node */
+ENode *fn_004b8760(Object *func, TypeFunc *ftype, ENodeList *args)
+{
+    ENodeList *arg;
+    FuncArg *param;
+    ENode *n;
+
+    arg = args;
+    param = ftype->args;
+    if (args != NULL) {
+        do {
+            if (param == NULL) {
+                CError_ReportError(0xa2);
+                n = (ENode *)CompilerTools_AllocatePool(0x1e);
+                memclrw(n, 0x1e);
+                n->type = EINTCONST;
+                n->rtype = (Type *)&stsignedlong;
+                return n;
+            }
+            if (param != &elipsis && param != &oldstyle) {
+                arg->node = argumentpromotion(arg->node, param->type, param->qual, 1);
+                param = param->next;
+            } else {
+                arg->node = CExpr_VarArgPromotion(arg->node, param == &elipsis);
+            }
+            arg = arg->next;
+        } while (arg != NULL);
+    }
+    if (param != NULL) {
+#if VERSION >= VERSION_GC_1_3
+        /* 1.3 keeps a remaining parameter with a default argument so the defaults get filled in */
+        if (param != &elipsis && param != &oldstyle) {
+            if (param->dexpr == NULL) {
+                CError_ReportError(0xa2);
+                param = NULL;
+            }
+        } else {
+            param = NULL;
+        }
+#else
+        if (param != &elipsis && param != &oldstyle && param->dexpr == NULL)
+            CError_ReportError(0xa2);
+        param = NULL;
+#endif
+    }
+    return ((ENode * (*)(ENode *, ENodeList *, TypeFunc *, FuncArg *))make_funccall_with_dexprs)(
+        create_objectrefnode(func), args, ftype, param);
+}
+
+/* build a call to `func` with five fixed arguments and an optional sixth */
+ENode *fn_004bbe80(Object *func, ENode *a1, ENode *a2, ENode *a3, ENode *a4, ENode *a5, ENode *a6)
+{
+    ENode *call;
+    ENodeList *list;
+    TypeFunc *ftype;
+
+    ftype = (TypeFunc *)func->type;
+    if (ftype->type != TYPEFUNC)
+        CError_Internal("CExpr2.c", 0x5b4);
+    call = (ENode *)CompilerTools_AllocatePool(0x1e);
+    call->type = EFUNCCALL;
+    call->cost = 4;
+    call->rtype = ftype->functype;
+    call->flags = ftype->qual & 3;
+    call->data.funccall.funcref = create_objectrefnode(func);
+    call->data.funccall.functype = ftype;
+    list = (ENodeList *)CompilerTools_AllocatePool(8);
+    call->data.funccall.args = list;
+    list->node = a1;
+    list->next = (ENodeList *)CompilerTools_AllocatePool(8);
+    list = list->next;
+    list->node = a2;
+    list->next = (ENodeList *)CompilerTools_AllocatePool(8);
+    list = list->next;
+    list->node = a3;
+    list->next = (ENodeList *)CompilerTools_AllocatePool(8);
+    list = list->next;
+    list->node = a4;
+    list->next = (ENodeList *)CompilerTools_AllocatePool(8);
+    list = list->next;
+    list->node = a5;
+    if (a6 != NULL) {
+        list->next = (ENodeList *)CompilerTools_AllocatePool(8);
+        list = list->next;
+        list->node = a6;
+    }
+    list->next = NULL;
+    return CExpr_AdjustFunctionCall(call);
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+extern Object *fn_004e7240(void *a0, FuncArg *param, void *a3, void *a4, UInt8 *flag);
+
+/* turn an operand into a temporary object reference when it is not already addressable */
+ENode *fn_004b6990(ENodeList *arg)
+{
+    typedef Object *(*CreateLocalFn)(ENode *, unsigned int);
+    ENode *node = arg->node;
+    ENode *child;
+    Object *obj;
+
+    switch (node->type) {
+    case 4:
+        child = node->data.monadic;
+        if (child->type == EOBJREF) {
+            obj = child->data.objref;
+            if (obj->datatype == 1 || is_const_object(obj))
+                return (ENode *)((CreateLocalFn)create_local_object)(arg->node, 0);
+        }
+        break;
+    case 0x32:
+    case 0x33:
+    case 0x34:
+    case 0x38:
+    case 0x3d:
+    case 0x3e:
+    case 0x44:
+    case 0x4b:
+        return (ENode *)((CreateLocalFn)create_local_object)(arg->node, 0);
+    }
+    switch (arg->node->rtype->type) {
+    case 1:
+    case 2:
+    case 3:
+    case 4:
+    case 5:
+    case 10:
+    case 11:
+    case 13:
+        break;
+    default:
+        CError_Internal("CExpr2.c", 0x1297);
+        break;
+    }
+    return CExpr_GetETEMPCopy(arg->node);
+}
+
+/* build the helper call replacing a call expression, converting its remaining operands to temporaries */
+ENode *fn_004b6860(void *a0, ENode *expr, Object *a2, void *a3, void *a4)
+{
+    ENode *call;
+    ENodeList *list;
+    ENodeList *arg;
+    Object *helper;
+    TypeFunc *ftype;
+    UInt8 flag;
+
+    if (expr->type != EFUNCCALL || expr->data.funccall.funcref->type != EOBJREF)
+        CError_Internal("CExpr2.c", 0x12b1);
+    helper = expr->data.funccall.funcref->data.objref;
+    ftype = (TypeFunc *)helper->type;
+    if (ftype->type != TYPEFUNC || ftype->args == NULL || ftype->args->next == NULL)
+        CError_Internal("CExpr2.c", 0x12b5);
+    helper = fn_004e7240(a0, ((TypeFunc *)helper->type)->args->next, a3, a4, &flag);
+    if (helper == NULL)
+        return NULL;
+    call = (ENode *)CompilerTools_AllocatePool(0x1e);
+    memclrw(call, 0x1e);
+    call->type = EFUNCCALL;
+    call->type = EFUNCCALL;
+    call->cost = 4;
+    call->rtype = (Type *)&stvoid;
+    call->data.funccall.funcref = create_objectrefnode(helper);
+    call->data.funccall.functype = (TypeFunc *)helper->type;
+    helper->flags |= 1;
+    list = (ENodeList *)CompilerTools_AllocatePool(8);
+    list->node = create_objectnode(a2);
+    call->data.funccall.args = list;
+    arg = expr->data.funccall.args;
+    if (arg == NULL || (arg = arg->next) == NULL)
+        CError_Internal("CExpr2.c", 0x12cd);
+    do {
+        list->next = (ENodeList *)CompilerTools_AllocatePool(8);
+        list = list->next;
+        list->node = fn_004b6990(arg);
+        arg = arg->next;
+    } while (arg != NULL);
+    list->next = NULL;
+    return call;
+}
+#if VERSION >= VERSION_GC_1_3
+void fn_004ce810(SInt16 op, ENode *first, ENode *second)
+{
+    Operand firstOperand;
+    Operand secondOperand;
+
+    memclrw(&firstOperand, sizeof(firstOperand));
+    memclrw(&secondOperand, sizeof(secondOperand));
+    if (second->type == EINTCONST && second->data.intval.lo == 0) {
+        data_00560648[first->type](first, 0, 0, &firstOperand);
+        if (firstOperand.kind == OpndType_GPR_Indexed) {
+            PCodeUtilities_EmitInstruction(op, firstOperand.reg, firstOperand.secondary_reg);
+        } else {
+            if (firstOperand.kind != OpndType_GPR)
+                Operands_ForceGPR(&firstOperand, first->rtype, 0);
+            PCodeUtilities_EmitInstruction(op, 0, firstOperand.reg);
+        }
+    } else {
+        data_00560648[first->type](first, 0, 0, &firstOperand);
+        if (firstOperand.kind)
+            Operands_ForceGPR(&firstOperand, first->rtype, 0);
+        data_00560648[second->type](second, 0, 0, &secondOperand);
+        if (secondOperand.kind)
+            Operands_ForceGPR(&secondOperand, second->rtype, 0);
+        PCodeUtilities_EmitInstruction(op, firstOperand.reg, secondOperand.reg);
+    }
+}
+
+void fn_004ce920(SInt16 op, ENode *first, ENode *second, ENode *third)
+{
+    Operand firstOperand;
+    Operand secondOperand;
+    Operand thirdOperand;
+
+    memclrw(&firstOperand, sizeof(firstOperand));
+    memclrw(&secondOperand, sizeof(secondOperand));
+    memclrw(&thirdOperand, sizeof(thirdOperand));
+    if (third->type == EINTCONST && third->data.intval.lo == 0) {
+        data_00560648[first->type](first, 0, 0, &firstOperand);
+        if (firstOperand.kind)
+            Operands_ForceGPR(&firstOperand, first->rtype, 0);
+        data_00560648[second->type](second, 0, 0, &secondOperand);
+        if (secondOperand.kind == OpndType_GPR_Indexed) {
+            PCodeUtilities_EmitInstruction(op, firstOperand.reg, secondOperand.reg, secondOperand.secondary_reg);
+        } else {
+            if (secondOperand.kind != OpndType_GPR)
+                Operands_ForceGPR(&secondOperand, second->rtype, 0);
+            PCodeUtilities_EmitInstruction(op, firstOperand.reg, 0, secondOperand.reg);
+        }
+    } else {
+        data_00560648[first->type](first, 0, 0, &firstOperand);
+        if (firstOperand.kind)
+            Operands_ForceGPR(&firstOperand, first->rtype, 0);
+        data_00560648[second->type](second, 0, 0, &secondOperand);
+        if (secondOperand.kind)
+            Operands_ForceGPR(&secondOperand, second->rtype, 0);
+        data_00560648[third->type](third, 0, 0, &thirdOperand);
+        if (thirdOperand.kind)
+            Operands_ForceGPR(&thirdOperand, third->rtype, 0);
+        PCodeUtilities_EmitInstruction(op, firstOperand.reg, secondOperand.reg, thirdOperand.reg);
+    }
+    Operands_AllocateGPR(((firstOperand.flags | secondOperand.flags | thirdOperand.flags) & 0xc0) | 0x100);
+}
+#endif
+#endif
 
 void emit_two_operand_gpr_instruction(SInt16 opcode, ENode *left, ENode *right, SInt16 requestedReg, Operand *result)
 {
@@ -2793,9 +3182,14 @@ Type *find_matching_op_result(UInt16 token, ENodeList *args, HashNameNode *name)
 
     node = args->node;
     for (entry = intrinsic_tables[OpIndex(token)].op; entry->result; entry++) {
+#if VERSION >= VERSION_GC_1_3
+        argumentType = node->rtype;
+        operandType = entry->operandType;
+#else
         operandType = entry->operandType;
         argumentType = node->rtype;
-        if (operandType->type == TYPEPOINTER && argumentType->type == TYPEPOINTER) {
+#endif
+        if (INTRINSIC_INDIRECT(operandType) && INTRINSIC_INDIRECT(argumentType)) {
             operandType = TPTR_TARGET(operandType);
             argumentType = TPTR_TARGET(argumentType);
         }
@@ -2818,7 +3212,7 @@ SInt32 select_altivec_mangle_result(UInt16 intrinsicCode, ENodeList *arguments, 
 {
     ENode *node = arguments->node;
     SInt32 index = intrinsicCode - 0x2a;
-    MangleEntry *entry = (MangleEntry *)intrinsic_tables[index].op;
+    MangleEntry *entry = BY_VERSION((MangleEntry *)intrinsic_tables[index].op, intrinsic_tables[index].mangle);
     SInt32 value;
     SInt32 result;
 
@@ -2826,7 +3220,7 @@ SInt32 select_altivec_mangle_result(UInt16 intrinsicCode, ENodeList *arguments, 
         Type *argumentType = node->rtype;
         Type *expectedType = entry->type;
         unsigned char matches;
-        if (expectedType->type == TYPEPOINTER && argumentType->type == TYPEPOINTER) {
+        if (INTRINSIC_INDIRECT(expectedType) && INTRINSIC_INDIRECT(argumentType)) {
             expectedType = TPTR_TARGET(expectedType);
             argumentType = TPTR_TARGET(argumentType);
         }
@@ -2922,11 +3316,11 @@ Type *check_binary_intrinsic_args(UInt16 op, ENodeList *args, HashNameNode *opna
         rightType = rightOperand->rtype;
         expectedLeftType = entry->leftType;
         expectedRightType = entry->rightType;
-        if (expectedLeftType->type == TYPEPOINTER && leftType->type == TYPEPOINTER) {
+        if (INTRINSIC_INDIRECT(expectedLeftType) && INTRINSIC_INDIRECT(leftType)) {
             expectedLeftType = ((TypePointer *)expectedLeftType)->target;
             leftType = ((TypePointer *)leftType)->target;
         }
-        if (expectedRightType->type == TYPEPOINTER && rightType->type == TYPEPOINTER) {
+        if (INTRINSIC_INDIRECT(expectedRightType) && INTRINSIC_INDIRECT(rightType)) {
             expectedRightType = ((TypePointer *)expectedRightType)->target;
             rightType = ((TypePointer *)rightType)->target;
         }
@@ -2938,6 +3332,16 @@ Type *check_binary_intrinsic_args(UInt16 op, ENodeList *args, HashNameNode *opna
         PPCError_ReportError(0x69, opname->name, opname->name, leftOperand->rtype, 0, rightOperand->rtype, 0);
         return NULL;
     }
+#if VERSION >= VERSION_GC_1_3
+    switch (op) {
+        case 66:
+        case 67:
+        case 68:
+            if (rightOperand->flags & ENODE_FLAG_VOLATILE)
+                PPCError_ReportDiagnostic(178, opname->name);
+            break;
+    }
+#endif
     return entry->result;
 }
 
@@ -2957,9 +3361,24 @@ Type *match_intrinsic_triple(UInt16 id, ENodeList *args, HashNameNode *name)
         firstExpected = entry->type1;
         secondExpected = entry->type2;
         thirdExpected = entry->type3;
+#if VERSION >= VERSION_GC_1_3
+        if (INTRINSIC_INDIRECT(firstExpected) && INTRINSIC_INDIRECT(firstActual)) {
+            firstExpected = ((TypePointer *)firstExpected)->target;
+            firstActual = ((TypePointer *)firstActual)->target;
+        }
+        if (INTRINSIC_INDIRECT(secondExpected) && INTRINSIC_INDIRECT(secondActual)) {
+            secondExpected = ((TypePointer *)secondExpected)->target;
+            secondActual = ((TypePointer *)secondActual)->target;
+        }
+        if (INTRINSIC_INDIRECT(thirdExpected) && INTRINSIC_INDIRECT(thirdActual)) {
+            thirdExpected = ((TypePointer *)thirdExpected)->target;
+            thirdActual = ((TypePointer *)thirdActual)->target;
+        }
+#else
         unwrapIntrinsicPointerTypes(&firstExpected, &firstActual);
         unwrapIntrinsicPointerTypes(&secondExpected, &secondActual);
         unwrapIntrinsicPointerTypes(&thirdExpected, &thirdActual);
+#endif
         if (is_same_type_or_signedint_compatible(firstExpected, firstActual) &&
             is_same_type_or_signedint_compatible(secondExpected, secondActual) &&
             is_same_type_or_signedint_compatible(thirdExpected, thirdActual))
@@ -2998,6 +3417,16 @@ Type *match_intrinsic_triple(UInt16 id, ENodeList *args, HashNameNode *name)
         PPCError_ReportError(106, name->name, name->name, firstArg->rtype, 0, secondArg->rtype, 0, thirdArg->rtype, 0);
         return NULL;
     }
+#if VERSION >= VERSION_GC_1_3
+    switch (id) {
+        case 114:
+        case 115:
+        case 116:
+            if (thirdArg->flags & ENODE_FLAG_VOLATILE)
+                PPCError_ReportDiagnostic(178, name->name);
+            break;
+    }
+#endif
     return entry->result;
 }
 
@@ -3010,7 +3439,7 @@ UInt16 find_unary_intrinsic_code(UInt16 id, ENode *unused, ENode *expression)
     for (entry = intrinsic_tables[index].unary; entry->result != NULL; entry++) {
         expressionType = expression->rtype;
         candidateType = entry->type;
-        if (candidateType->type == TYPEPOINTER && expressionType->type == TYPEPOINTER) {
+        if (INTRINSIC_INDIRECT(candidateType) && INTRINSIC_INDIRECT(expressionType)) {
             candidateType = ((TypePointer *)candidateType)->target;
             expressionType = ((TypePointer *)expressionType)->target;
         }
@@ -3018,7 +3447,7 @@ UInt16 find_unary_intrinsic_code(UInt16 id, ENode *unused, ENode *expression)
             break;
     }
     if (entry->result == NULL)
-        CError_FATAL(4054);
+        CError_FATAL(BY_VERSION(4054, 4133));
     return entry->code;
 }
 
@@ -3033,11 +3462,11 @@ UInt16 find_binary_intrinsic_code(UInt16 id, ENode *unused, ENode *left, ENode *
         rightType = right->rtype;
         expectedLeft = record->leftType;
         expectedRight = record->rightType;
-        if (expectedLeft->type == TYPEPOINTER && leftType->type == TYPEPOINTER) {
+        if (INTRINSIC_INDIRECT(expectedLeft) && INTRINSIC_INDIRECT(leftType)) {
             expectedLeft = ((TypePointer *)expectedLeft)->target;
             leftType = ((TypePointer *)leftType)->target;
         }
-        if (expectedRight->type == TYPEPOINTER && rightType->type == TYPEPOINTER) {
+        if (INTRINSIC_INDIRECT(expectedRight) && INTRINSIC_INDIRECT(rightType)) {
             expectedRight = ((TypePointer *)expectedRight)->target;
             rightType = ((TypePointer *)rightType)->target;
         }
@@ -3046,7 +3475,7 @@ UInt16 find_binary_intrinsic_code(UInt16 id, ENode *unused, ENode *left, ENode *
             break;
     }
     if (record->result == NULL)
-        CError_FATAL(4093);
+        CError_FATAL(BY_VERSION(4093, 4172));
     return record->code;
 }
 
@@ -3054,8 +3483,13 @@ UInt16 find_intrinsic_triple_code(UInt16 id, ENode *unused, ENode *firstOperand,
                                   ENode *thirdOperand)
 {
     IntrinsicTripleEntry *entry;
+#if VERSION >= VERSION_GC_1_3
+    Type *firstActualType, *secondActualType, *thirdActualType;
+    Type *firstExpectedType, *secondExpectedType, *thirdExpectedType;
+#else
     Type *firstActualType, *secondActualType, *firstExpectedType, *secondExpectedType, *thirdExpectedType,
         *thirdActualType;
+#endif
     UInt32 intrinsicIndex;
 
     intrinsicIndex = id - 0x2a;
@@ -3066,15 +3500,15 @@ UInt16 find_intrinsic_triple_code(UInt16 id, ENode *unused, ENode *firstOperand,
         firstExpectedType = entry->type1;
         secondExpectedType = entry->type2;
         thirdExpectedType = entry->type3;
-        if (firstExpectedType->type == TYPEPOINTER && firstActualType->type == TYPEPOINTER) {
+        if (INTRINSIC_INDIRECT(firstExpectedType) && INTRINSIC_INDIRECT(firstActualType)) {
             firstExpectedType = TPTR_TARGET(firstExpectedType);
             firstActualType = TPTR_TARGET(firstActualType);
         }
-        if (secondExpectedType->type == TYPEPOINTER && secondActualType->type == TYPEPOINTER) {
+        if (INTRINSIC_INDIRECT(secondExpectedType) && INTRINSIC_INDIRECT(secondActualType)) {
             secondExpectedType = TPTR_TARGET(secondExpectedType);
             secondActualType = TPTR_TARGET(secondActualType);
         }
-        if (thirdExpectedType->type == TYPEPOINTER && thirdActualType->type == TYPEPOINTER) {
+        if (INTRINSIC_INDIRECT(thirdExpectedType) && INTRINSIC_INDIRECT(thirdActualType)) {
             thirdExpectedType = TPTR_TARGET(thirdExpectedType);
             thirdActualType = TPTR_TARGET(thirdActualType);
         }
@@ -3084,7 +3518,7 @@ UInt16 find_intrinsic_triple_code(UInt16 id, ENode *unused, ENode *firstOperand,
             break;
     }
     if (entry->result == NULL)
-        CError_FATAL(4140);
+        CError_FATAL(BY_VERSION(4140, 4219));
     return entry->code;
 }
 
@@ -3092,7 +3526,7 @@ void emit_three_vr_instruction(ENode *firstExpression, ENode *secondExpression, 
                                SInt16 targetReg, Operand *result, SInt16 opcode)
 {
     Operand firstOperand, secondOperand, thirdOperand;
-    SInt16 resultReg;
+    BY_VERSION(SInt16, SInt32) resultReg;
 
     memclrw(&firstOperand, sizeof(firstOperand));
     memclrw(&secondOperand, sizeof(secondOperand));
@@ -3115,7 +3549,7 @@ void emit_three_vr_instruction(ENode *firstExpression, ENode *secondExpression, 
     else
         resultReg = gUsedVirtualRegistersVR++;
 
-    PCodeUtilities_EmitInstruction(opcode, resultReg, firstOperand.reg, secondOperand.reg, thirdOperand.reg);
+    PCodeUtilities_EmitInstruction(opcode, BY_VERSION(resultReg, (SInt16)resultReg), firstOperand.reg, secondOperand.reg, thirdOperand.reg);
 
     result->kind = OpndType_VR;
     result->reg = resultReg;
@@ -3123,6 +3557,35 @@ void emit_three_vr_instruction(ENode *firstExpression, ENode *secondExpression, 
 
 /* Operand/register descriptor filled by the per-enode emit routines. */
 
+#if VERSION >= VERSION_GC_1_3
+void emit_two_gpr_immediate_instruction(ENode *destination, ENode *source, ENode *immediate, SInt16 op)
+{
+    Operand destinationOperand;
+    Operand sourceOperand;
+
+    memclrw(&destinationOperand, sizeof(destinationOperand));
+    memclrw(&sourceOperand, sizeof(sourceOperand));
+    CError_ASSERT(4473, immediate->type == EINTCONST);
+    data_00560648[destination->type](destination, 0, 0, &destinationOperand);
+    if (destinationOperand.kind)
+        Operands_ForceGPR(&destinationOperand, destination->rtype, 0);
+    data_00560648[source->type](source, 0, 0, &sourceOperand);
+    if (sourceOperand.kind)
+        Operands_ForceGPR(&sourceOperand, source->rtype, 0);
+    switch (op) {
+        case 0xf1:
+        case 0xf3:
+            PCodeUtilities_EmitInstruction(op, destinationOperand.reg, sourceOperand.reg, immediate->data.intval.lo, 0);
+            break;
+        case 0xf2:
+        case 0xf4:
+            PCodeUtilities_EmitInstruction(op, destinationOperand.reg, sourceOperand.reg, immediate->data.intval.lo);
+            break;
+        default:
+            CError_FATAL(4491);
+    }
+}
+#else
 void emit_two_gpr_immediate_instruction(ENode *destination, ENode *source, ENode *immediate, SInt16 op)
 {
     Operand destinationOperand;
@@ -3152,6 +3615,7 @@ void emit_two_gpr_immediate_instruction(ENode *destination, ENode *source, ENode
     }
     PCodeUtilities_ResolveLabel(PCode_NewLabel());
 }
+#endif
 
 void emit_instruction_with_vr_result(ENode *expression, ENode *left, ENode *right, short opcode, Operand *result,
                                      int instruction)
@@ -3172,8 +3636,28 @@ void emit_instruction_with_vr_result(ENode *expression, ENode *left, ENode *righ
     if (value.kind != OpndType_VR) {
         Operands_ForceVR(&value, expression->rtype, 0);
     }
+#if VERSION >= VERSION_GC_1_3
+    /* (a zero immediate becomes register 0, which the right operand cannot be) */
+    data_00560648[left->type](left, 0, 0, &leftValue.legacy);
+    if (leftValue.operand.kind == OpndType_Immediate && leftValue.operand.immediate == 0) {
+        leftValue.operand.kind = OpndType_GPR;
+        leftValue.operand.reg = 0;
+    } else if (leftValue.operand.kind != OpndType_GPR) {
+        Operands_ForceGPR(&leftValue.legacy, left->rtype, 0);
+    }
+    data_00560648[right->type](right, 0, 0, &rightValue.legacy);
+    if (rightValue.operand.kind == OpndType_Immediate && rightValue.operand.immediate == 0 &&
+        leftValue.operand.reg != 0) {
+        rightValue.operand = leftValue.operand;
+        leftValue.operand.kind = OpndType_GPR;
+        leftValue.operand.reg = 0;
+    } else if (rightValue.operand.kind != OpndType_GPR) {
+        Operands_ForceGPR(&rightValue.legacy, right->rtype, 0);
+    }
+#else
     Intrinsics_00487090_inline1(left, &leftValue.legacy);
     Intrinsics_00487090_inline1(right, &rightValue.legacy);
+#endif
     ((unsigned int (*)(unsigned int, int, int, int))PCodeUtilities_EmitInstruction)(
         instruction, value.reg, leftValue.operand.reg, rightValue.operand.reg);
     result->kind = OpndType_VR;
@@ -3195,7 +3679,7 @@ void generate_unary_vector_intrinsic(UInt16 token, ENode *unused, ENode *node, S
         Type *argumentType = node->rtype;
         Type *variantType = variant->type;
 
-        if (variantType->type == TYPEPOINTER && argumentType->type == TYPEPOINTER) {
+        if (INTRINSIC_INDIRECT(variantType) && INTRINSIC_INDIRECT(argumentType)) {
             variantType = ((TypePointer *)variantType)->target;
             argumentType = ((TypePointer *)argumentType)->target;
         }
@@ -3204,9 +3688,14 @@ void generate_unary_vector_intrinsic(UInt16 token, ENode *unused, ENode *node, S
         }
     }
     if (variant->resultType == NULL) {
-        CError_FATAL(4548);
+        CError_FATAL(BY_VERSION(4548, 4645));
     }
 
+#if VERSION >= VERSION_GC_1_3
+    { int reg = gUsedVirtualRegistersVR++; constantReg = reg; }
+    { int reg = gUsedVirtualRegistersVR++; temporaryReg = reg; }
+    { int reg = requestedReg ? requestedReg : gUsedVirtualRegistersVR++; resultReg = reg; }
+#else
     constantReg = gUsedVirtualRegistersVR++;
     temporaryReg = gUsedVirtualRegistersVR++;
     if (requestedReg != 0) {
@@ -3214,6 +3703,7 @@ void generate_unary_vector_intrinsic(UInt16 token, ENode *unused, ENode *node, S
     } else {
         resultReg = gUsedVirtualRegistersVR++;
     }
+#endif
 
     memclrw(&operand, sizeof(operand));
     data_00560648[node->type](node, 0, 0, &operand);
@@ -3248,7 +3738,7 @@ void fn_00486db0(UInt16 token, ENode *unused, ENode *node, SInt16 requestedReg, 
         Type *resultType = node->rtype;
         Type *variantType = variant->type;
 
-        if (variantType->type == TYPEPOINTER && resultType->type == TYPEPOINTER) {
+        if (INTRINSIC_INDIRECT(variantType) && INTRINSIC_INDIRECT(resultType)) {
             variantType = ((TypePointer *)variantType)->target;
             resultType = ((TypePointer *)resultType)->target;
         }
@@ -3257,9 +3747,14 @@ void fn_00486db0(UInt16 token, ENode *unused, ENode *node, SInt16 requestedReg, 
         }
     }
     if (variant->resultType == NULL) {
-        CError_FATAL(4614);
+        CError_FATAL(BY_VERSION(4614, 4711));
     }
 
+#if VERSION >= VERSION_GC_1_3
+    { int reg = gUsedVirtualRegistersVR++; zeroReg = reg; }
+    { int reg = gUsedVirtualRegistersVR++; intermediateReg = reg; }
+    { int reg = requestedReg ? requestedReg : gUsedVirtualRegistersVR++; resultReg = reg; }
+#else
     zeroReg = gUsedVirtualRegistersVR++;
     intermediateReg = gUsedVirtualRegistersVR++;
     if (requestedReg != 0) {
@@ -3267,6 +3762,7 @@ void fn_00486db0(UInt16 token, ENode *unused, ENode *node, SInt16 requestedReg, 
     } else {
         resultReg = gUsedVirtualRegistersVR++;
     }
+#endif
 
     memclrw(&operand, sizeof(operand));
     data_00560648[node->type](node, 0, 0, &operand);
@@ -3388,7 +3884,14 @@ void fn_00486ad0(ENode *node, short unused, Operand *result, short target, unsig
     if (operand.kind != OpndType_VR) {
         Operands_ForceVR(&operand, node->rtype, 0);
     }
+#if VERSION >= VERSION_GC_1_3
+    {
+        int reg = gUsedVirtualRegistersVR++;
+        PCodeUtilities_EmitInstruction(target, (SInt16)reg, operand.reg, operand.reg);
+    }
+#else
     PCodeUtilities_EmitInstruction(target, gUsedVirtualRegistersVR++, operand.reg, operand.reg);
+#endif
     PCodeUtilities_MakeRecordForm(gCurrentBlock->reverse_instructions);
     switch (kind) {
         case 0x8f:
@@ -3404,7 +3907,7 @@ void fn_00486ad0(ENode *node, short unused, Operand *result, short target, unsig
             secondaryReg = 0x18;
             break;
         default:
-            CError_FATAL(4809);
+            CError_FATAL(BY_VERSION(4809, 4906));
             break;
     }
     result->kind = OpndType_CRField;
@@ -4188,7 +4691,7 @@ void Intrinsics_GenerateIntrinsicCall(ENode *node, short requestedReg, Operand *
             memclrw(&leftOperand, sizeof(leftOperand));
             memclrw(&rightOperand, sizeof(rightOperand));
             if (*immediateExpr != '2') {
-                CError_FATAL(4435);
+                CError_FATAL(BY_VERSION(4435, 4507));
             }
             GenVR(leftExpr, &leftOperand);
             GenVR(rightExpr, &rightOperand);
@@ -4448,7 +4951,7 @@ void Intrinsics_GenerateIntrinsicCall(ENode *node, short requestedReg, Operand *
                 expr = (unsigned char *)args->node;
                 memclrw(&operand, sizeof(operand));
                 if (*expr != 0x32) {
-                    CError_FATAL(4202);
+                    CError_FATAL(BY_VERSION(4202, 4305));
                 }
                 data_00560648[*expr](expr, 0, 0, &operand);
                 selected = requestedReg ? requestedReg : gUsedVirtualRegistersVR++;
@@ -4466,7 +4969,7 @@ void Intrinsics_GenerateIntrinsicCall(ENode *node, short requestedReg, Operand *
                 expr = (unsigned char *)args->node;
                 memclrw(&operand, sizeof(operand));
                 if (*expr != 0x32) {
-                    CError_FATAL(4226);
+                    CError_FATAL(BY_VERSION(4226, 4329));
                 }
                 data_00560648[*expr](expr, 0, 0, &operand);
                 selected = requestedReg ? requestedReg : gUsedVirtualRegistersVR++;
@@ -4484,7 +4987,7 @@ void Intrinsics_GenerateIntrinsicCall(ENode *node, short requestedReg, Operand *
                 expr = (unsigned char *)args->node;
                 memclrw(&operand, sizeof(operand));
                 if (*expr != 0x32) {
-                    CError_FATAL(4250);
+                    CError_FATAL(BY_VERSION(4250, 4353));
                 }
                 data_00560648[*expr](expr, 0, 0, &operand);
                 selected = requestedReg ? requestedReg : gUsedVirtualRegistersVR++;
@@ -4673,12 +5176,27 @@ void Intrinsics_GenerateIntrinsicCall(ENode *node, short requestedReg, Operand *
                     result[0].kind = OpndType_VR, result[0].reg = selected;
             }
         } break;
+#if VERSION >= VERSION_GC_1_3
+        case 0x137: {
+            Operand stackOperand;
+            memclrw(&stackOperand, sizeof(stackOperand));
+            GenGPR((UInt8 *)args->node, &stackOperand);
+            fn_004f6d70(stackOperand.reg);
+        } break;
+        case 0x138:
+            PCodeUtilities_EmitInstruction(PC_LWZ, 1, 1, 0, 0);
+            Operands_AllocateGPR(0x100);
+            break;
+        case 0x139:
+        case 0x13a:
+#else
         case 0x137:
         case 0x138:
+#endif
             PPCError_EmitClassTypeUpdate(intrinsic_opcodes[intrinsic], args->node, requestedReg, result);
             break;
         default:
-            CError_FATAL(6087);
+            CError_FATAL(BY_VERSION(6087, 6190));
     }
 }
 
@@ -4689,7 +5207,7 @@ void Intrinsics_RegisterIntrinsics(void)
     TypeFunc *function;
 
     copts.cplusplus = 0;
-    for (i = 0; i < 313; i++)
+    for (i = 0; i < BY_VERSION(313, 315); i++)
         intrinsics[i] = NULL;
     intrinsics[0] = CParser_NewRTFunc(&stvoid, GetHashNameNode("__eieio"), 0, 0);
     intrinsics[1] = CParser_NewRTFunc(&stvoid, GetHashNameNode("__sync"), 0, 0);
@@ -4761,36 +5279,36 @@ void Intrinsics_RegisterIntrinsics(void)
     intrinsics[39] = CParser_NewRTFunc((Type *)&stsignedint, GetHashNameNode("__rlwnm"), 0, 4, &stsignedint,
                                        &stsignedint, &stsignedint, &stsignedint);
     intrinsics[42] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_add"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_add"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[43] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_addc"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_addc"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[44] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_adds"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_adds"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[45] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_and"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_and"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[46] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_andc"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_andc"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[47] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_avg"), 0, 2, TYPE(&stvector), TYPE(&stvector));
-    intrinsics[48] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_ceil"), 0, 1, TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_avg"), 0, 2, TYPE(&stvector), TYPE( &stvector));
+    intrinsics[48] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_ceil"), 0, 1, TYPE( &stvector));
     intrinsics[49] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_cmpb"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_cmpb"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[50] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_cmpeq"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_cmpeq"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[51] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_cmpge"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_cmpge"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[52] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_cmple"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_cmple"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[53] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_cmpgt"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_cmpgt"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[54] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_cmplt"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_cmplt"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[55] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_ctf"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_ctf"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[56] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_cts"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_cts"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[57] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_ctu"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_ctu"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[58] = CParser_NewRTFunc(&stvoid, GetHashNameNode("vec_dss"), 0, 1, &stsignedint);
     intrinsics[59] = CParser_NewRTFunc(&stvoid, GetHashNameNode("vec_dssall"), 0, 0);
     intrinsics[60] =
@@ -4801,465 +5319,472 @@ void Intrinsics_RegisterIntrinsics(void)
         CParser_NewRTFunc(&stvoid, GetHashNameNode("vec_dststt"), 0, 3, TYPE(&stvector), &stsignedint, &stsignedint);
     intrinsics[63] =
         CParser_NewRTFunc(&stvoid, GetHashNameNode("vec_dstt"), 0, 3, TYPE(&stvector), &stsignedint, &stsignedint);
-    intrinsics[64] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_expte"), 0, 1, TYPE(&stvector));
-    intrinsics[65] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_floor"), 0, 1, TYPE(&stvector));
+    intrinsics[64] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_expte"), 0, 1, TYPE( &stvector));
+    intrinsics[65] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_floor"), 0, 1, TYPE( &stvector));
     intrinsics[66] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_ld"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_ld"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[67] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_lde"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_lde"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[68] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_ldl"), 0, 2, TYPE(&stvector), TYPE(&stvector));
-    intrinsics[69] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_loge"), 0, 1, TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_ldl"), 0, 2, TYPE(&stvector), TYPE( &stvector));
+    intrinsics[69] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_loge"), 0, 1, TYPE( &stvector));
     intrinsics[70] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_lvsl"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_lvsl"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[71] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_lvsr"), 0, 2, TYPE(&stvector), TYPE(&stvector));
-    intrinsics[72] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_madd"), 0, 3, TYPE(&stvector),
-                                       TYPE(&stvector), TYPE(&stvector));
-    intrinsics[73] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_madds"), 0, 3, TYPE(&stvector),
-                                       TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_lvsr"), 0, 2, TYPE(&stvector), TYPE( &stvector));
+    intrinsics[72] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_madd"), 0, 3, TYPE( &stvector),
+                                       TYPE(&stvector), TYPE( &stvector));
+    intrinsics[73] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_madds"), 0, 3, TYPE( &stvector),
+                                       TYPE(&stvector), TYPE( &stvector));
     intrinsics[74] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_max"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_max"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[75] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_mergeh"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_mergeh"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[76] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_mergel"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_mergel"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[77] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_mfvscr"), 0, 0);
     intrinsics[78] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_min"), 0, 2, TYPE(&stvector), TYPE(&stvector));
-    intrinsics[79] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_mladd"), 0, 3, TYPE(&stvector),
-                                       TYPE(&stvector), TYPE(&stvector));
-    intrinsics[80] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_mradds"), 0, 3, TYPE(&stvector),
-                                       TYPE(&stvector), TYPE(&stvector));
-    intrinsics[81] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_msum"), 0, 3, TYPE(&stvector),
-                                       TYPE(&stvector), TYPE(&stvector));
-    intrinsics[82] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_msums"), 0, 3, TYPE(&stvector),
-                                       TYPE(&stvector), TYPE(&stvector));
-    intrinsics[83] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_mtvscr"), 0, 1, TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_min"), 0, 2, TYPE(&stvector), TYPE( &stvector));
+    intrinsics[79] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_mladd"), 0, 3, TYPE( &stvector),
+                                       TYPE(&stvector), TYPE( &stvector));
+    intrinsics[80] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_mradds"), 0, 3, TYPE( &stvector),
+                                       TYPE(&stvector), TYPE( &stvector));
+    intrinsics[81] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_msum"), 0, 3, TYPE( &stvector),
+                                       TYPE(&stvector), TYPE( &stvector));
+    intrinsics[82] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_msums"), 0, 3, TYPE( &stvector),
+                                       TYPE(&stvector), TYPE( &stvector));
+    intrinsics[83] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_mtvscr"), 0, 1, TYPE( &stvector));
     intrinsics[84] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_mule"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_mule"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[85] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_mulo"), 0, 2, TYPE(&stvector), TYPE(&stvector));
-    intrinsics[86] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_nmsub"), 0, 2, TYPE(&stvector),
-                                       TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_mulo"), 0, 2, TYPE(&stvector), TYPE( &stvector));
+    intrinsics[86] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_nmsub"), 0, 2, TYPE( &stvector),
+                                       TYPE(&stvector), TYPE( &stvector));
     intrinsics[87] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_nor"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_nor"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[88] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_or"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_or"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[89] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_pack"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_pack"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[90] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_packpx"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_packpx"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[91] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_packs"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_packs"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[92] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_packsu"), 0, 2, TYPE(&stvector), TYPE(&stvector));
-    intrinsics[93] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_perm"), 0, 3, TYPE(&stvector),
-                                       TYPE(&stvector), TYPE(&stvector));
-    intrinsics[94] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_re"), 0, 1, TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_packsu"), 0, 2, TYPE(&stvector), TYPE( &stvector));
+    intrinsics[93] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_perm"), 0, 3, TYPE( &stvector),
+                                       TYPE(&stvector), TYPE( &stvector));
+    intrinsics[94] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_re"), 0, 1, TYPE( &stvector));
     intrinsics[95] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_rl"), 0, 2, TYPE(&stvector), TYPE(&stvector));
-    intrinsics[96] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_round"), 0, 1, TYPE(&stvector));
-    intrinsics[97] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_rsqrte"), 0, 1, TYPE(&stvector));
-    intrinsics[98] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_sel"), 0, 3, TYPE(&stvector),
-                                       TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_rl"), 0, 2, TYPE(&stvector), TYPE( &stvector));
+    intrinsics[96] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_round"), 0, 1, TYPE( &stvector));
+    intrinsics[97] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_rsqrte"), 0, 1, TYPE( &stvector));
+    intrinsics[98] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_sel"), 0, 3, TYPE( &stvector),
+                                       TYPE(&stvector), TYPE( &stvector));
     intrinsics[99] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_sl"), 0, 2, TYPE(&stvector), TYPE(&stvector));
-    intrinsics[100] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_sld"), 0, 3, TYPE(&stvector),
-                                        TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_sl"), 0, 2, TYPE(&stvector), TYPE( &stvector));
+    intrinsics[100] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_sld"), 0, 3, TYPE( &stvector),
+                                        TYPE(&stvector), TYPE( &stvector));
     intrinsics[101] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_sll"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_sll"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[102] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_slo"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_slo"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[103] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_splat"), 0, 2, TYPE(&stvector), TYPE(&stvector));
-    intrinsics[104] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_splat_s8"), 0, 1, TYPE(&stvector));
-    intrinsics[105] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_splat_s16"), 0, 1, TYPE(&stvector));
-    intrinsics[106] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_splat_s32"), 0, 1, TYPE(&stvector));
-    intrinsics[107] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_splat_u8"), 0, 1, TYPE(&stvector));
-    intrinsics[108] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_splat_u16"), 0, 1, TYPE(&stvector));
-    intrinsics[109] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_splat_u32"), 0, 1, TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_splat"), 0, 2, TYPE(&stvector), TYPE( &stvector));
+    intrinsics[104] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_splat_s8"), 0, 1, TYPE( &stvector));
+    intrinsics[105] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_splat_s16"), 0, 1, TYPE( &stvector));
+    intrinsics[106] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_splat_s32"), 0, 1, TYPE( &stvector));
+    intrinsics[107] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_splat_u8"), 0, 1, TYPE( &stvector));
+    intrinsics[108] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_splat_u16"), 0, 1, TYPE( &stvector));
+    intrinsics[109] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_splat_u32"), 0, 1, TYPE( &stvector));
     intrinsics[110] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_sr"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_sr"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[111] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_sra"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_sra"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[112] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_srl"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_srl"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[113] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_sro"), 0, 2, TYPE(&stvector), TYPE(&stvector));
-    intrinsics[114] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_st"), 0, 3, TYPE(&stvector),
-                                        TYPE(&stvector), TYPE(&stvector));
-    intrinsics[115] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_ste"), 0, 3, TYPE(&stvector),
-                                        TYPE(&stvector), TYPE(&stvector));
-    intrinsics[116] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_stl"), 0, 3, TYPE(&stvector),
-                                        TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_sro"), 0, 2, TYPE(&stvector), TYPE( &stvector));
+    intrinsics[114] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_st"), 0, 3, TYPE( &stvector),
+                                        TYPE(&stvector), TYPE( &stvector));
+    intrinsics[115] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_ste"), 0, 3, TYPE( &stvector),
+                                        TYPE(&stvector), TYPE( &stvector));
+    intrinsics[116] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_stl"), 0, 3, TYPE( &stvector),
+                                        TYPE(&stvector), TYPE( &stvector));
     intrinsics[117] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_sub"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_sub"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[118] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_subc"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_subc"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[119] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_subs"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_subs"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[120] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_sum4s"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_sum4s"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[121] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_sum2s"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_sum2s"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[122] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_sums"), 0, 2, TYPE(&stvector), TYPE(&stvector));
-    intrinsics[123] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_trunc"), 0, 1, TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_sums"), 0, 2, TYPE(&stvector), TYPE( &stvector));
+    intrinsics[123] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_trunc"), 0, 1, TYPE( &stvector));
     intrinsics[124] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_unpack2sh"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_unpack2sh"), 0, 2, TYPE( &stvector), TYPE( &stvector));
     intrinsics[125] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_unpack2sl"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_unpack2sl"), 0, 2, TYPE( &stvector), TYPE( &stvector));
     intrinsics[126] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_unpack2uh"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_unpack2uh"), 0, 2, TYPE( &stvector), TYPE( &stvector));
     intrinsics[127] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_unpack2ul"), 0, 2, TYPE(&stvector), TYPE(&stvector));
-    intrinsics[128] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_unpackh"), 0, 1, TYPE(&stvector));
-    intrinsics[129] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_unpackl"), 0, 1, TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_unpack2ul"), 0, 2, TYPE( &stvector), TYPE( &stvector));
+    intrinsics[128] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_unpackh"), 0, 1, TYPE( &stvector));
+    intrinsics[129] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_unpackl"), 0, 1, TYPE( &stvector));
     intrinsics[130] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_xor"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_xor"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[131] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_all_eq"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_all_eq"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[132] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_all_ge"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_all_ge"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[133] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_all_gt"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_all_gt"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[134] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_all_in"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_all_in"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[135] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_all_le"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_all_le"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[136] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_all_lt"), 0, 2, TYPE(&stvector), TYPE(&stvector));
-    intrinsics[137] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_all_nan"), 0, 1, TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_all_lt"), 0, 2, TYPE(&stvector), TYPE( &stvector));
+    intrinsics[137] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_all_nan"), 0, 1, TYPE( &stvector));
     intrinsics[138] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_all_ne"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_all_ne"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[139] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_all_nge"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_all_nge"), 0, 2, TYPE( &stvector), TYPE( &stvector));
     intrinsics[140] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_all_ngt"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_all_ngt"), 0, 2, TYPE( &stvector), TYPE( &stvector));
     intrinsics[141] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_all_nle"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_all_nle"), 0, 2, TYPE( &stvector), TYPE( &stvector));
     intrinsics[142] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_all_nlt"), 0, 2, TYPE(&stvector), TYPE(&stvector));
-    intrinsics[143] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_all_numeric"), 0, 1, TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_all_nlt"), 0, 2, TYPE( &stvector), TYPE( &stvector));
+    intrinsics[143] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_all_numeric"), 0, 1, TYPE( &stvector));
     intrinsics[144] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_any_eq"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_any_eq"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[145] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_any_ge"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_any_ge"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[146] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_any_gt"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_any_gt"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[147] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_any_le"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_any_le"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[148] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_any_lt"), 0, 2, TYPE(&stvector), TYPE(&stvector));
-    intrinsics[149] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_any_nan"), 0, 1, TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_any_lt"), 0, 2, TYPE(&stvector), TYPE( &stvector));
+    intrinsics[149] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_any_nan"), 0, 1, TYPE( &stvector));
     intrinsics[150] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_any_ne"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_any_ne"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[151] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_any_nge"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_any_nge"), 0, 2, TYPE( &stvector), TYPE( &stvector));
     intrinsics[152] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_any_ngt"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_any_ngt"), 0, 2, TYPE( &stvector), TYPE( &stvector));
     intrinsics[153] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_any_nle"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_any_nle"), 0, 2, TYPE( &stvector), TYPE( &stvector));
     intrinsics[154] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_any_nlt"), 0, 2, TYPE(&stvector), TYPE(&stvector));
-    intrinsics[155] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_any_numeric"), 0, 1, TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_any_nlt"), 0, 2, TYPE( &stvector), TYPE( &stvector));
+    intrinsics[155] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_any_numeric"), 0, 1, TYPE( &stvector));
     intrinsics[156] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_any_out"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_any_out"), 0, 2, TYPE( &stvector), TYPE( &stvector));
     intrinsics[157] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vaddubm"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vaddubm"), 0, 2, TYPE( &stvector), TYPE( &stvector));
     intrinsics[158] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vadduhm"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vadduhm"), 0, 2, TYPE( &stvector), TYPE( &stvector));
     intrinsics[159] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vadduwm"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vadduwm"), 0, 2, TYPE( &stvector), TYPE( &stvector));
     intrinsics[160] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vaddfp"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vaddfp"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[161] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vaddcuw"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vaddcuw"), 0, 2, TYPE( &stvector), TYPE( &stvector));
     intrinsics[162] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vaddubs"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vaddubs"), 0, 2, TYPE( &stvector), TYPE( &stvector));
     intrinsics[163] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vaddsbs"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vaddsbs"), 0, 2, TYPE( &stvector), TYPE( &stvector));
     intrinsics[164] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vadduhs"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vadduhs"), 0, 2, TYPE( &stvector), TYPE( &stvector));
     intrinsics[165] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vaddshs"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vaddshs"), 0, 2, TYPE( &stvector), TYPE( &stvector));
     intrinsics[166] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vadduws"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vadduws"), 0, 2, TYPE( &stvector), TYPE( &stvector));
     intrinsics[167] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vaddsws"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vaddsws"), 0, 2, TYPE( &stvector), TYPE( &stvector));
     intrinsics[168] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vand"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vand"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[169] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vandc"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vandc"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[170] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vavgub"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vavgub"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[171] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vavgsb"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vavgsb"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[172] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vavguh"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vavguh"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[173] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vavgsh"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vavgsh"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[174] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vavguw"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vavguw"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[175] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vavgsw"), 0, 2, TYPE(&stvector), TYPE(&stvector));
-    intrinsics[176] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vrfip"), 0, 1, TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vavgsw"), 0, 2, TYPE(&stvector), TYPE( &stvector));
+    intrinsics[176] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vrfip"), 0, 1, TYPE( &stvector));
     intrinsics[177] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vcmpbfp"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vcmpbfp"), 0, 2, TYPE( &stvector), TYPE( &stvector));
     intrinsics[178] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vcmpequb"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vcmpequb"), 0, 2, TYPE( &stvector), TYPE( &stvector));
     intrinsics[179] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vcmpequh"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vcmpequh"), 0, 2, TYPE( &stvector), TYPE( &stvector));
     intrinsics[180] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vcmpequw"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vcmpequw"), 0, 2, TYPE( &stvector), TYPE( &stvector));
     intrinsics[181] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vcmpeqfp"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vcmpeqfp"), 0, 2, TYPE( &stvector), TYPE( &stvector));
     intrinsics[182] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vcmpgefp"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vcmpgefp"), 0, 2, TYPE( &stvector), TYPE( &stvector));
     intrinsics[183] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vcmpgtub"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vcmpgtub"), 0, 2, TYPE( &stvector), TYPE( &stvector));
     intrinsics[184] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vcmpgtsb"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vcmpgtsb"), 0, 2, TYPE( &stvector), TYPE( &stvector));
     intrinsics[185] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vcmpgtuh"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vcmpgtuh"), 0, 2, TYPE( &stvector), TYPE( &stvector));
     intrinsics[186] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vcmpgtsh"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vcmpgtsh"), 0, 2, TYPE( &stvector), TYPE( &stvector));
     intrinsics[187] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vcmpgtuw"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vcmpgtuw"), 0, 2, TYPE( &stvector), TYPE( &stvector));
     intrinsics[188] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vcmpgtsw"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vcmpgtsw"), 0, 2, TYPE( &stvector), TYPE( &stvector));
     intrinsics[189] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vcmpgtfp"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vcmpgtfp"), 0, 2, TYPE( &stvector), TYPE( &stvector));
     intrinsics[190] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vcfux"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vcfux"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[191] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vcfsx"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vcfsx"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[192] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vctsxs"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vctsxs"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[193] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vctuxs"), 0, 2, TYPE(&stvector), TYPE(&stvector));
-    intrinsics[194] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vexptefp"), 0, 1, TYPE(&stvector));
-    intrinsics[195] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vrfim"), 0, 1, TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vctuxs"), 0, 2, TYPE(&stvector), TYPE( &stvector));
+    intrinsics[194] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vexptefp"), 0, 1, TYPE( &stvector));
+    intrinsics[195] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vrfim"), 0, 1, TYPE( &stvector));
     intrinsics[196] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_lvx"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_lvx"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[197] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_lvebx"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_lvebx"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[198] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_lvehx"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_lvehx"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[199] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_lvewx"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_lvewx"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[200] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_lvxl"), 0, 2, TYPE(&stvector), TYPE(&stvector));
-    intrinsics[201] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vlogefp"), 0, 1, TYPE(&stvector));
-    intrinsics[202] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vmaddfp"), 0, 3, TYPE(&stvector),
-                                        TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_lvxl"), 0, 2, TYPE(&stvector), TYPE( &stvector));
+    intrinsics[201] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vlogefp"), 0, 1, TYPE( &stvector));
+    intrinsics[202] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vmaddfp"), 0, 3, TYPE( &stvector),
+                                        TYPE(&stvector), TYPE( &stvector));
     intrinsics[203] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vmhaddshs"), 0, 3, TYPE(&stvector),
-                                        TYPE(&stvector), TYPE(&stvector));
+                                        TYPE( &stvector), TYPE( &stvector));
     intrinsics[204] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vmaxub"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vmaxub"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[205] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vmaxsb"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vmaxsb"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[206] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vmaxuh"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vmaxuh"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[207] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vmaxsh"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vmaxsh"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[208] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vmaxuw"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vmaxuw"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[209] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vmaxsw"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vmaxsw"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[210] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vmaxfp"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vmaxfp"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[211] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vmrghb"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vmrghb"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[212] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vmrghh"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vmrghh"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[213] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vmrghw"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vmrghw"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[214] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vmrglb"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vmrglb"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[215] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vmrglh"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vmrglh"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[216] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vmrglw"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vmrglw"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[217] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vminub"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vminub"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[218] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vminsb"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vminsb"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[219] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vminuh"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vminuh"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[220] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vminsh"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vminsh"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[221] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vminuw"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vminuw"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[222] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vminsw"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vminsw"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[223] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vminfp"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vminfp"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[224] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vmladduhm"), 0, 3, TYPE(&stvector),
-                                        TYPE(&stvector), TYPE(&stvector));
+                                        TYPE( &stvector), TYPE( &stvector));
     intrinsics[225] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vmhraddshs"), 0, 3, TYPE(&stvector),
-                                        TYPE(&stvector), TYPE(&stvector));
-    intrinsics[226] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vmsumubm"), 0, 3, TYPE(&stvector),
-                                        TYPE(&stvector), TYPE(&stvector));
-    intrinsics[227] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vmsumuhm"), 0, 3, TYPE(&stvector),
-                                        TYPE(&stvector), TYPE(&stvector));
-    intrinsics[228] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vmsummbm"), 0, 3, TYPE(&stvector),
-                                        TYPE(&stvector), TYPE(&stvector));
-    intrinsics[229] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vmsumshm"), 0, 3, TYPE(&stvector),
-                                        TYPE(&stvector), TYPE(&stvector));
-    intrinsics[230] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vmsumuhs"), 0, 3, TYPE(&stvector),
-                                        TYPE(&stvector), TYPE(&stvector));
-    intrinsics[231] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vmsumshs"), 0, 3, TYPE(&stvector),
-                                        TYPE(&stvector), TYPE(&stvector));
+                                        TYPE( &stvector), TYPE( &stvector));
+    intrinsics[226] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vmsumubm"), 0, 3, TYPE( &stvector),
+                                        TYPE(&stvector), TYPE( &stvector));
+    intrinsics[227] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vmsumuhm"), 0, 3, TYPE( &stvector),
+                                        TYPE(&stvector), TYPE( &stvector));
+    intrinsics[228] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vmsummbm"), 0, 3, TYPE( &stvector),
+                                        TYPE(&stvector), TYPE( &stvector));
+    intrinsics[229] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vmsumshm"), 0, 3, TYPE( &stvector),
+                                        TYPE(&stvector), TYPE( &stvector));
+    intrinsics[230] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vmsumuhs"), 0, 3, TYPE( &stvector),
+                                        TYPE(&stvector), TYPE( &stvector));
+    intrinsics[231] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vmsumshs"), 0, 3, TYPE( &stvector),
+                                        TYPE(&stvector), TYPE( &stvector));
     intrinsics[232] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vmuleub"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vmuleub"), 0, 2, TYPE( &stvector), TYPE( &stvector));
     intrinsics[233] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vmulesb"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vmulesb"), 0, 2, TYPE( &stvector), TYPE( &stvector));
     intrinsics[234] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vmuleuh"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vmuleuh"), 0, 2, TYPE( &stvector), TYPE( &stvector));
     intrinsics[235] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vmulesh"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vmulesh"), 0, 2, TYPE( &stvector), TYPE( &stvector));
     intrinsics[236] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vmuloub"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vmuloub"), 0, 2, TYPE( &stvector), TYPE( &stvector));
     intrinsics[237] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vmulosb"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vmulosb"), 0, 2, TYPE( &stvector), TYPE( &stvector));
     intrinsics[238] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vmulouh"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vmulouh"), 0, 2, TYPE( &stvector), TYPE( &stvector));
     intrinsics[239] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vmulosh"), 0, 2, TYPE(&stvector), TYPE(&stvector));
-    intrinsics[240] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vnmsubfp"), 0, 2, TYPE(&stvector),
-                                        TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vmulosh"), 0, 2, TYPE( &stvector), TYPE( &stvector));
+    intrinsics[240] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vnmsubfp"), 0, 2, TYPE( &stvector),
+                                        TYPE(&stvector), TYPE( &stvector));
     intrinsics[241] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vnor"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vnor"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[242] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vor"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vor"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[243] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vpkuhum"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vpkuhum"), 0, 2, TYPE( &stvector), TYPE( &stvector));
     intrinsics[244] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vpkuwum"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vpkuwum"), 0, 2, TYPE( &stvector), TYPE( &stvector));
     intrinsics[245] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vpkpx"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vpkpx"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[246] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vpkuhus"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vpkuhus"), 0, 2, TYPE( &stvector), TYPE( &stvector));
     intrinsics[247] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vpkshss"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vpkshss"), 0, 2, TYPE( &stvector), TYPE( &stvector));
     intrinsics[248] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vpkuwus"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vpkuwus"), 0, 2, TYPE( &stvector), TYPE( &stvector));
     intrinsics[249] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vpkswss"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vpkswss"), 0, 2, TYPE( &stvector), TYPE( &stvector));
     intrinsics[250] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vpkshus"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vpkshus"), 0, 2, TYPE( &stvector), TYPE( &stvector));
     intrinsics[251] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vpkswus"), 0, 2, TYPE(&stvector), TYPE(&stvector));
-    intrinsics[252] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vperm"), 0, 3, TYPE(&stvector),
-                                        TYPE(&stvector), TYPE(&stvector));
-    intrinsics[253] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vrefp"), 0, 1, TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vpkswus"), 0, 2, TYPE( &stvector), TYPE( &stvector));
+    intrinsics[252] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vperm"), 0, 3, TYPE( &stvector),
+                                        TYPE(&stvector), TYPE( &stvector));
+    intrinsics[253] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vrefp"), 0, 1, TYPE( &stvector));
     intrinsics[254] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vrlb"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vrlb"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[255] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vrlh"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vrlh"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[256] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vrlw"), 0, 2, TYPE(&stvector), TYPE(&stvector));
-    intrinsics[257] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vrfin"), 0, 1, TYPE(&stvector));
-    intrinsics[258] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vrsqrtefp"), 0, 1, TYPE(&stvector));
-    intrinsics[259] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vsel"), 0, 3, TYPE(&stvector),
-                                        TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vrlw"), 0, 2, TYPE(&stvector), TYPE( &stvector));
+    intrinsics[257] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vrfin"), 0, 1, TYPE( &stvector));
+    intrinsics[258] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vrsqrtefp"), 0, 1, TYPE( &stvector));
+    intrinsics[259] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vsel"), 0, 3, TYPE( &stvector),
+                                        TYPE(&stvector), TYPE( &stvector));
     intrinsics[260] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vslb"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vslb"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[261] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vslh"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vslh"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[262] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vslw"), 0, 2, TYPE(&stvector), TYPE(&stvector));
-    intrinsics[263] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vsldoi"), 0, 3, TYPE(&stvector),
-                                        TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vslw"), 0, 2, TYPE(&stvector), TYPE( &stvector));
+    intrinsics[263] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vsldoi"), 0, 3, TYPE( &stvector),
+                                        TYPE(&stvector), TYPE( &stvector));
     intrinsics[264] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vsl"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vsl"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[265] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vslo"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vslo"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[266] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vspltb"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vspltb"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[267] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vsplth"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vsplth"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[268] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vspltw"), 0, 2, TYPE(&stvector), TYPE(&stvector));
-    intrinsics[269] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vspltisb"), 0, 1, TYPE(&stvector));
-    intrinsics[270] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vspltish"), 0, 1, TYPE(&stvector));
-    intrinsics[271] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vspltisw"), 0, 1, TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vspltw"), 0, 2, TYPE(&stvector), TYPE( &stvector));
+    intrinsics[269] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vspltisb"), 0, 1, TYPE( &stvector));
+    intrinsics[270] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vspltish"), 0, 1, TYPE( &stvector));
+    intrinsics[271] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vspltisw"), 0, 1, TYPE( &stvector));
     intrinsics[272] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vsrb"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vsrb"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[273] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vsrh"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vsrh"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[274] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vsrw"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vsrw"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[275] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vsrab"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vsrab"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[276] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vsrah"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vsrah"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[277] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vsraw"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vsraw"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[278] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vsr"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vsr"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[279] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vsro"), 0, 2, TYPE(&stvector), TYPE(&stvector));
-    intrinsics[280] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_stvx"), 0, 3, TYPE(&stvector),
-                                        TYPE(&stvector), TYPE(&stvector));
-    intrinsics[281] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_stvebx"), 0, 3, TYPE(&stvector),
-                                        TYPE(&stvector), TYPE(&stvector));
-    intrinsics[282] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_stvehx"), 0, 3, TYPE(&stvector),
-                                        TYPE(&stvector), TYPE(&stvector));
-    intrinsics[283] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_stvewx"), 0, 3, TYPE(&stvector),
-                                        TYPE(&stvector), TYPE(&stvector));
-    intrinsics[284] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_stvxl"), 0, 3, TYPE(&stvector),
-                                        TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vsro"), 0, 2, TYPE(&stvector), TYPE( &stvector));
+    intrinsics[280] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_stvx"), 0, 3, TYPE( &stvector),
+                                        TYPE(&stvector), TYPE( &stvector));
+    intrinsics[281] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_stvebx"), 0, 3, TYPE( &stvector),
+                                        TYPE(&stvector), TYPE( &stvector));
+    intrinsics[282] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_stvehx"), 0, 3, TYPE( &stvector),
+                                        TYPE(&stvector), TYPE( &stvector));
+    intrinsics[283] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_stvewx"), 0, 3, TYPE( &stvector),
+                                        TYPE(&stvector), TYPE( &stvector));
+    intrinsics[284] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_stvxl"), 0, 3, TYPE( &stvector),
+                                        TYPE(&stvector), TYPE( &stvector));
     intrinsics[285] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vsububm"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vsububm"), 0, 2, TYPE( &stvector), TYPE( &stvector));
     intrinsics[286] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vsubuhm"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vsubuhm"), 0, 2, TYPE( &stvector), TYPE( &stvector));
     intrinsics[287] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vsubuwm"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vsubuwm"), 0, 2, TYPE( &stvector), TYPE( &stvector));
     intrinsics[288] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vsubfp"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vsubfp"), 0, 2, TYPE(&stvector), TYPE( &stvector));
     intrinsics[289] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vsubcuw"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vsubcuw"), 0, 2, TYPE( &stvector), TYPE( &stvector));
     intrinsics[290] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vsububs"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vsububs"), 0, 2, TYPE( &stvector), TYPE( &stvector));
     intrinsics[291] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vsubsbs"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vsubsbs"), 0, 2, TYPE( &stvector), TYPE( &stvector));
     intrinsics[292] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vsubuhs"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vsubuhs"), 0, 2, TYPE( &stvector), TYPE( &stvector));
     intrinsics[293] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vsubshs"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vsubshs"), 0, 2, TYPE( &stvector), TYPE( &stvector));
     intrinsics[294] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vsubuws"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vsubuws"), 0, 2, TYPE( &stvector), TYPE( &stvector));
     intrinsics[295] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vsubsws"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vsubsws"), 0, 2, TYPE( &stvector), TYPE( &stvector));
     intrinsics[296] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vsum4ubs"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vsum4ubs"), 0, 2, TYPE( &stvector), TYPE( &stvector));
     intrinsics[297] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vsum4sbs"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vsum4sbs"), 0, 2, TYPE( &stvector), TYPE( &stvector));
     intrinsics[298] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vsum4shs"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vsum4shs"), 0, 2, TYPE( &stvector), TYPE( &stvector));
     intrinsics[299] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vsum2sws"), 0, 2, TYPE(&stvector), TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vsum2sws"), 0, 2, TYPE( &stvector), TYPE( &stvector));
     intrinsics[300] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vsumsws"), 0, 2, TYPE(&stvector), TYPE(&stvector));
-    intrinsics[301] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vrfiz"), 0, 1, TYPE(&stvector));
-    intrinsics[302] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vupkhsb"), 0, 1, TYPE(&stvector));
-    intrinsics[303] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vupklsb"), 0, 1, TYPE(&stvector));
-    intrinsics[304] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vupkhpx"), 0, 1, TYPE(&stvector));
-    intrinsics[305] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vupklpx"), 0, 1, TYPE(&stvector));
-    intrinsics[306] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vupkhsh"), 0, 1, TYPE(&stvector));
-    intrinsics[307] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vupklsh"), 0, 1, TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vsumsws"), 0, 2, TYPE( &stvector), TYPE( &stvector));
+    intrinsics[301] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vrfiz"), 0, 1, TYPE( &stvector));
+    intrinsics[302] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vupkhsb"), 0, 1, TYPE( &stvector));
+    intrinsics[303] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vupklsb"), 0, 1, TYPE( &stvector));
+    intrinsics[304] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vupkhpx"), 0, 1, TYPE( &stvector));
+    intrinsics[305] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vupklpx"), 0, 1, TYPE( &stvector));
+    intrinsics[306] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vupkhsh"), 0, 1, TYPE( &stvector));
+    intrinsics[307] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vupklsh"), 0, 1, TYPE( &stvector));
     intrinsics[308] =
-        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vxor"), 0, 2, TYPE(&stvector), TYPE(&stvector));
-    intrinsics[309] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_abs"), 0, 1, TYPE(&stvector));
-    intrinsics[310] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_abss"), 0, 1, TYPE(&stvector));
+        CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_vxor"), 0, 2, TYPE(&stvector), TYPE( &stvector));
+    intrinsics[309] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_abs"), 0, 1, TYPE( &stvector));
+    intrinsics[310] = CParser_NewRTFunc(TYPE(&stvector), GetHashNameNode("vec_abss"), 0, 1, TYPE( &stvector));
+#if VERSION >= VERSION_GC_1_3
+    intrinsics[311] = CParser_NewRTFunc(&stvoid, GetHashNameNode("__rtos_change_stack"), 0, 1, &void_ptr);
+    intrinsics[312] = CParser_NewRTFunc(&stvoid, GetHashNameNode("__rtos_pop_stack"), 0, 0);
+    intrinsics[313] = CParser_NewRTFunc(&stvoid, GetHashNameNode("__va_setup"), 0, 1, &void_ptr);
+    intrinsics[314] = CParser_NewRTFunc(&stvoid, GetHashNameNode("__builtin_va_info"), 0, 1, &void_ptr);
+#else
     intrinsics[311] = CParser_NewRTFunc(&stvoid, GetHashNameNode("__va_setup"), 0, 1, &void_ptr);
     intrinsics[312] = CParser_NewRTFunc(&stvoid, GetHashNameNode("__builtin_va_info"), 0, 1, &void_ptr);
-    for (i = 0; i < 313; i++) {
+#endif
+    for (i = 0; i < BY_VERSION(313, 315); i++) {
         if (!intrinsics[i])
-            CError_FATAL(6535);
+            CError_FATAL(BY_VERSION(6535, 6644));
         intrinsics[i]->u.data.u.intconst.hi = i;
         function = (TypeFunc *)intrinsics[i]->type;
         function->flags |= FUNC_INTRINSIC;
@@ -5879,9 +6404,15 @@ unsigned char Intrinsics_InitRegistrations(unsigned char active)
             return 0;
         if (!(intrinsics[310] = registration_find("vec_abss")))
             return 0;
-        if (!(intrinsics[311] = registration_find("__va_setup")))
+#if VERSION >= VERSION_GC_1_3
+        if (!(intrinsics[311] = registration_find("__rtos_change_stack")))
             return 0;
-        if (!(intrinsics[312] = registration_find("__builtin_va_info")))
+        if (!(intrinsics[312] = registration_find("__rtos_pop_stack")))
+            return 0;
+#endif
+        if (!(intrinsics[BY_VERSION(311, 313)] = registration_find("__va_setup")))
+            return 0;
+        if (!(intrinsics[BY_VERSION(312, 314)] = registration_find("__builtin_va_info")))
             return 0;
     }
     return 1;
@@ -5920,7 +6451,7 @@ static void GenGPR(UInt8 *node, Operand *op)
 char Intrinsics_IsRegisteredObject(ObjBase *object)
 {
     int i;
-    for (i = 0; i < 313; i++) {
+    for (i = 0; i < BY_VERSION(313, 315); i++) {
         if (object == (ObjBase *)intrinsics[i])
             return 1;
     }

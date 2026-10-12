@@ -41,10 +41,12 @@ static DWORD open_access_modes[4] = {0x80000000, 0x40000000, 0xC0000000, 0x40000
 static char zero_fill[32] = {0};
 static DWORD seek_origins[3] = {1, 0, 2};
 
+#if VERSION < VERSION_GC_1_3
 unsigned int __stdcall OS_InitProgram(int *argc, char ***argv)
 {
     return 0U;
 }
+#endif
 
 DWORD __stdcall OS_Create(OSSpec *spec, const unsigned int *options)
 {
@@ -469,6 +471,12 @@ int __stdcall OS_Execute(OSSpec *name, char **args, char **environment, char *in
     return GetLastError();
 }
 
+#if VERSION >= VERSION_GC_1_3
+/* (the library's isalpha, as a function) */
+extern int(isalpha)(int c);
+#define fn_00405830 isalpha
+#endif
+
 char *__stdcall OS_GetDirPtr(char *path)
 {
     if (*path == '\\' && path[1] == '\\') {
@@ -477,13 +485,83 @@ char *__stdcall OS_GetDirPtr(char *path)
             separator = path + strlen(path);
         return separator;
     }
+#if VERSION >= VERSION_GC_1_3
+    if (fn_00405830(*path) != 0 && path[1] == ':')
+#else
     if ((__ctype_map[(unsigned char)*path] & 0xc0) != 0 && path[1] == ':')
+#endif
         return path + 2;
     if (*path == '\\')
         return path;
     return path;
 }
 
+#if VERSION >= VERSION_GC_1_3
+extern char *data_005d9494;
+extern int __stdcall fn_004050e0(char *left, char *right, int count);
+
+/* convert a path to native form; `//x/`, `/cygdrive/x/` and the MW_CYGDRIVE_PREFIX form give drive letters */
+unsigned int OS_CanonPath(const char *src, char *dst)
+{
+    const char *read;
+    char *write;
+    const char *rest;
+    char ch;
+
+    if (strlen(src) > 259)
+        return 111;
+    if (dst == NULL)
+        dst = (char *)src; /* (canonicalised in place) */
+
+    read = src;
+    write = dst;
+
+    if (data_005d9494 != NULL && fn_004050e0(data_005d9494, (char *)src, strlen(data_005d9494)) == 0) {
+        rest = src + strlen(data_005d9494);
+        if (*rest == '/' || *rest == '\\')
+            rest++;
+        if (fn_00405830(*rest) != 0 && (rest[1] == '/' || rest[1] == '\\')) {
+            dst[0] = toupper(*rest);
+            dst[1] = ':';
+            dst[2] = '\\';
+            write += 3;
+            rest += 2;
+            read = rest;
+        }
+    }
+
+    if (read[0] == '/' && read[1] == '/' && fn_00405830(read[2]) != 0 && (read[3] == '/' || read[3] == 0)) {
+        write[0] = read[2];
+        write[1] = ':';
+        write += 2;
+        read += 3;
+    } else if (fn_004050e0((char *)read, "/cygdrive/", 10) == 0) {
+        if (fn_00405830(read[10]) != 0 && (read[11] == '/' || read[11] == 0)) {
+            write[0] = read[10];
+            write[1] = ':';
+            write += 2;
+            read += 11;
+        }
+    }
+    if (fn_00405830(*read) != 0 && read[1] == ':') {
+        write[0] = toupper(*read);
+        write[1] = ':';
+        write += 2;
+        read += 2;
+    }
+
+    while ((ch = *read) != 0) {
+        if (ch == '/')
+            *write = '\\';
+        else
+            *write = ch;
+        write++;
+        read++;
+    }
+    *write = 0;
+    return 0;
+}
+#else
 unsigned int OS_CanonPath(const char *src, char *dst)
 {
     const char *read;
@@ -527,6 +605,8 @@ unsigned int OS_CanonPath(const char *src, char *dst)
     return 0;
 }
 
+#endif
+
 unsigned int __stdcall OS_IsFullPath(char *path)
 {
     unsigned int isAbsolute;
@@ -541,7 +621,11 @@ unsigned int __stdcall OS_IsFullPath(char *path)
     if (!hasPrefix) {
         hasDriveRoot = 0;
         hasPrefix = 0;
+#if VERSION >= VERSION_GC_1_3
+        if (fn_00405830(path[0]) != 0 && path[1] == ':') {
+#else
         if ((__ctype_map[(unsigned char)path[0]] & 0xc0) != 0 && path[1] == ':') {
+#endif
             hasPrefix = 1;
         }
         if (hasPrefix && path[2] == '\\') {
@@ -554,6 +638,7 @@ unsigned int __stdcall OS_IsFullPath(char *path)
     return isAbsolute;
 }
 
+#if VERSION < VERSION_GC_1_3
 int __stdcall OS_EqualPath(const char *left, const char *right)
 {
     int index;
@@ -570,6 +655,7 @@ int __stdcall OS_EqualPath(const char *left, const char *right)
     }
     return equal;
 }
+#endif
 
 int __stdcall OS_MakeSpec(const char *path, OSSpec *output, Boolean *is_file)
 {
@@ -781,7 +867,7 @@ char *__stdcall OS_NameSpecToString(const OSNameSpec *spec, char *buffer, unsign
     int length;
 
     if (capacity == 0) {
-        capacity = 0x40;
+        capacity = BY_VERSION(0x40, 0x100);
     }
     if (buffer == NULL) {
         buffer = malloc(capacity);
@@ -1174,10 +1260,18 @@ unsigned int __stdcall OS_RefToMac(unsigned int value)
     {
         int ref = value;
         if (ref >= 65535)
-            CLIO_ReportAssertionFailure("(long)ref < 0xffff", "MsDos.c", 1560U);
+            CLIO_ReportAssertionFailure("(long)ref < 0xffff", "MsDos.c", BY_VERSION(1560U, 1642U));
     }
     return value + 1U;
 }
+
+#if VERSION >= VERSION_GC_1_3
+int __stdcall fn_00411980(int *a, char ***b)
+{
+    data_005d9494 = getenv("MW_CYGDRIVE_PREFIX");
+    return 0;
+}
+#endif
 
 
 int OS_MacToRef(short value)

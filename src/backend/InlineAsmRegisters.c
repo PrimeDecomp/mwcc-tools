@@ -37,7 +37,11 @@ void *find_register_binding_key(unsigned int *key)
     struct RegisterBinding *binding = register_binding_hash[CHash((const char *)key) & 0x3f];
     while (binding) {
         unsigned int *bindingKey = &binding->key;
+#if VERSION >= VERSION_GC_1_3
+        if (strcmp((const char *)*bindingKey, (const char *)key) == 0)
+#else
         if (strcmp((const char *)binding->key, (const char *)key) == 0)
+#endif
             return bindingKey;
         binding = binding->next;
     }

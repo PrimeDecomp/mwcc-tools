@@ -7,7 +7,11 @@
 #include "driver/MacSpecs.h"
 #include "driver/MemUtils.h"
 #include <string.h>
-#include <stdlib.h>
+#include <stdlib.h>
+#if VERSION >= VERSION_GC_1_3
+#include "driver/MemUtils.h"
+#define free xfree
+#endif
 
 AccessPathEntry *init_access_path_entry(OSPathSpec *src, AccessPathEntry *result)
 {
@@ -15,6 +19,9 @@ AccessPathEntry *init_access_path_entry(OSPathSpec *src, AccessPathEntry *result
     *result->path = *src;
     result->children = NULL;
     result->auxiliary2 = 0;
+#if VERSION >= VERSION_GC_1_3
+    result->auxiliary3 = 0;
+#endif
     return result;
 }
 
@@ -40,6 +47,7 @@ void free_access_path_entry(AccessPathEntry *blocks)
     }
 }
 
+
 unsigned char CLAccessPaths_Init(AccessPaths *paths)
 {
     if (paths == NULL) {
@@ -49,6 +57,7 @@ unsigned char CLAccessPaths_Init(AccessPaths *paths)
     paths->items = NULL;
     return 1;
 }
+
 
 unsigned char CLAccessPaths_FreeItems(AccessPaths *paths)
 {
@@ -77,6 +86,16 @@ Boolean allocate_slot(AccessPaths *table, UInt16 *slotIndex)
     return 1;
 }
 
+#if VERSION >= VERSION_GC_1_3
+unsigned char fn_00428b30(AccessPaths *list, UInt16 index)
+{
+    if (index >= list->count)
+        return 0;
+    free_access_path_entry(list->items[index]);
+    return remove_access_path(list, index);
+}
+#endif
+
 unsigned char CLAccessPaths_StoreItem(AccessPaths *ctx, void *value)
 {
     UInt16 idx;
@@ -92,7 +111,11 @@ Boolean CLAccessPaths_InsertItem(AccessPaths *paths, UInt16 index, void *value)
     UInt16 n;
     if (allocate_slot(paths, &n)) {
         if (index > n)
+#if VERSION >= VERSION_GC_1_3
+            index = n ? n - 1 : 0;
+#else
             index = n - 1;
+#endif
         memmove(&paths->items[index + 1], &paths->items[index], (UInt32)(paths->count - index) * 4);
         paths->items[index] = value;
         return 1;
@@ -104,8 +127,12 @@ unsigned char remove_access_path(AccessPaths *list, UInt16 index)
 {
     if (index >= list->count)
         return 0;
+#if VERSION >= VERSION_GC_1_3
+    memmove(&list->items[index], &list->items[index + 1], (list->count - index - 1) * sizeof(*list->items));
+#else
     free_access_path_entry(list->items[index]);
     memmove(&list->items[index], &list->items[index + 1], (list->count - index) * sizeof(*list->items));
+#endif
     list->count--;
     return 1;
 }
@@ -113,7 +140,7 @@ unsigned char remove_access_path(AccessPaths *list, UInt16 index)
 AccessPathEntry *CLAccessPaths_GetEntry(AccessPaths *table, unsigned short index)
 {
     if (table == NULL)
-        CLIO_ReportAssertionFailure("paths != NULL", "CLAccessPaths.c", 142U);
+        CLIO_ReportAssertionFailure("paths != NULL", "CLAccessPaths.c", BY_VERSION(142U, 151U));
     if ((unsigned short)index < table->count)
         return table->items[(unsigned short)index];
     return 0U;
@@ -122,10 +149,11 @@ AccessPathEntry *CLAccessPaths_GetEntry(AccessPaths *table, unsigned short index
 unsigned short CLAccessPaths_GetCount(AccessPaths *table)
 {
     if (!table) {
-        CLIO_ReportAssertionFailure("paths != NULL", "CLAccessPaths.c", 152U);
+        CLIO_ReportAssertionFailure("paths != NULL", "CLAccessPaths.c", BY_VERSION(152U, 161U));
     }
     return table->count;
 }
+
 
 AccessPathEntry *CLAccessPaths_FindPath(AccessPaths *table, OSPathSpec *value)
 {
@@ -133,7 +161,7 @@ AccessPathEntry *CLAccessPaths_FindPath(AccessPaths *table, OSPathSpec *value)
     AccessPathEntry *entry;
 
     if (!table)
-        CLIO_ReportAssertionFailure("paths != NULL", "CLAccessPaths.c", 173U);
+        CLIO_ReportAssertionFailure("paths != NULL", "CLAccessPaths.c", BY_VERSION( 173U, 182U));
     for (index = 0; (unsigned short)index < table->count; ++index) {
         entry = table->items[(unsigned short)index];
         if (OS_EqualPathSpec(entry->path, value))
@@ -183,6 +211,7 @@ Boolean add_subdirectory_access_paths(AccessPaths *ctx, AccessPathEntry *param2)
     return count > 0;
 }
 
+
 unsigned char CLAccessPaths_InitializeChildren(AccessPathEntry *path)
 {
     path->children = xcalloc(0U, 8U);
@@ -200,7 +229,7 @@ int count_access_paths_recursive(AccessPaths *accessPaths)
     for (index = 0; index < count; index++) {
         entry = CLAccessPaths_GetEntry(accessPaths, index);
         if (entry == NULL)
-            CLIO_ReportAssertionFailure("path", "CLAccessPaths.c", 0x146);
+            CLIO_ReportAssertionFailure("path", "CLAccessPaths.c", BY_VERSION(0x146, 0x150));
         if (entry->children)
             count += count_access_paths_recursive(entry->children);
     }
@@ -222,11 +251,11 @@ void copy_access_paths_to_file_specs(CWFileSpec **destination, AccessPaths *path
             validEntry = 1;
         }
         if (!validEntry) {
-            CLIO_ReportAssertionFailure("path && *count > 0", "CLAccessPaths.c", 0x157);
+            CLIO_ReportAssertionFailure("path && *count > 0", "CLAccessPaths.c", BY_VERSION(0x157, 0x161));
         }
         OS_MakeSpecWithPath(entry->path, NULL, '\0', &spec);
         if (OS_OSSpec_To_FSSpec(&spec, *destination) == 0) {
-            CLIO_ReportAssertionFailure("OS_OSSpec_To_FSSpec(&spec, *list)", "CLAccessPaths.c", 0x159);
+            CLIO_ReportAssertionFailure("OS_OSSpec_To_FSSpec(&spec, *list)", "CLAccessPaths.c", BY_VERSION(0x159, 0x163));
         }
         *destination += 1;
         *remaining -= 1;
@@ -241,5 +270,5 @@ void copy_access_paths_to_file_specs_checked(CWFileSpec *path, AccessPaths *valu
 {
     copy_access_paths_to_file_specs(&path, value, &result);
     if ((unsigned short)result != 0)
-        CLIO_ReportAssertionFailure("count == 0", "CLAccessPaths.c", 357U);
+        CLIO_ReportAssertionFailure("count == 0", "CLAccessPaths.c", BY_VERSION(357U, 367U));
 }

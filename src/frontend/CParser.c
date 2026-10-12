@@ -25,6 +25,14 @@
 #include "driver/COSToolsCLT.h"
 #include <string.h>
 
+#if VERSION >= VERSION_GC_1_3
+extern int pointer_size;
+extern Object *data_005e6924;
+extern void fn_0052a190(void);
+extern void fn_004c17a0(void);
+extern Type *fn_004bf0a0(short token, short a, short b);
+#endif
+
 struct TStreamElement declaration_token;
 FuncArg oldstyle;
 struct Object *data_005870d8;
@@ -118,7 +126,7 @@ static inline Boolean CheckVectorKeyword(void)
         case 0x10b:
         case 0x10d:
         case 0x10e:
-        case 0x11c:
+        case TKN(0x11c):
             bVar3 = 1;
             break;
         case -3:
@@ -169,9 +177,17 @@ Object *CParser_NewRTFunc(Type *returnType, HashNameNode *name, char mangleName,
     FuncArg *argument;
     TypeFunc *function;
     Object *result;
+#if VERSION >= VERSION_GC_1_3
+    char *base;
+#endif
     arguments = NULL;
     if (argumentCount != 0) {
+#if VERSION >= VERSION_GC_1_3
+        base = (char *)&argumentCount;
+        ap = base + (((char *)(&argumentCount + 1) - base) + 3) / 4 * 4;
+#else
         va_start(ap, argumentCount);
+#endif
         for (argumentCount = argumentCount - 1; argumentCount >= 0; argumentCount = argumentCount - 1) {
             if (arguments != NULL) {
                 argument = galloc(sizeof(FuncArg));
@@ -191,7 +207,11 @@ Object *CParser_NewRTFunc(Type *returnType, HashNameNode *name, char mangleName,
     function->type = TYPEFUNC;
     function->functype = returnType;
     function->args = arguments;
+#if VERSION >= VERSION_GC_1_3
+    fn_00504240(function, 0);
+#else
     fn_00504240(function);
+#endif
     result->name = name;
     result->type = (Type *)function;
     if (mangleName == '\x01') {
@@ -200,6 +220,173 @@ Object *CParser_NewRTFunc(Type *returnType, HashNameNode *name, char mangleName,
     CodeGen_SetObjectSectionAndInterruptInfo(result);
     return result;
 }
+
+#if VERSION >= VERSION_GC_1_3
+extern int fn_004bf100(void *a);
+
+#pragma options align = mac68k
+struct Fn004e6610 {
+    char type;
+    char pad[0xd];
+    void *inner;
+};
+#pragma options align = reset
+
+int fn_004e6610(struct Fn004e6610 *a)
+{
+    if (a->type == 3)
+        a = a->inner;
+    return fn_004bf100(a);
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+struct Fn004e32f0 {
+    struct Fn004e32f0 *next;
+    int a;
+    int zero;
+    int b;
+};
+extern struct Fn004e32f0 *data_005dcc60;
+
+void fn_004e32f0(int a, int b)
+{
+    struct Fn004e32f0 *p = (struct Fn004e32f0 *)lalloc(0x10);
+    p->next = data_005dcc60;
+    p->a = a;
+    p->zero = 0;
+    p->b = b;
+    data_005dcc60 = p;
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+void fn_004e58b0(DeclInfo *info, Type *type, UInt32 quals)
+{
+    if (type->type == TYPEPOINTER) {
+        if (TYPE_POINTER(type)->qual & 0x20) {
+            info->thetype = type;
+            info->qual &= 0xffdfffdc;
+            info->qual |= quals;
+            return;
+        }
+        info->thetype = (Type *)galloc(sizeof(TypePointer));
+        *TYPE_POINTER(info->thetype) = *TYPE_POINTER(type);
+        TYPE_POINTER(info->thetype)->qual |= info->qual & 0x200023;
+        info->qual &= 0xffdfffdc;
+        info->qual |= quals & 0x1e00002b;
+    } else if (type->type == TYPEMEMBERPOINTER) {
+        info->thetype = (Type *)galloc(sizeof(TypeMemberPointer));
+        *TYPE_MEMBER_POINTER(info->thetype) = *TYPE_MEMBER_POINTER(type);
+        TYPE_MEMBER_POINTER(info->thetype)->qual |= info->qual & 0x200023;
+        info->qual &= 0xffdfffdc;
+        info->qual |= quals & 0x1e00002b;
+    } else {
+        info->thetype = type;
+        info->qual |= quals & 0x1e00002b;
+        if (info->thetype->type == TYPEARRAY && info->thetype->size == 0) {
+            info->thetype = (Type *)galloc(sizeof(TypePointer));
+            *TYPE_POINTER(info->thetype) = *TYPE_POINTER(type);
+        }
+    }
+    info->isType = 1;
+}
+
+void fn_004e50e0(DeclInfo *info)
+{
+    DeclInfo typeInfo;
+    ENode *expr;
+
+    tk = CPrepTokenizer_GetNextToken();
+    if (tk == '(' && islookaheaddeclaration()) {
+        tk = CPrepTokenizer_GetNextToken();
+        memclrw(&typeInfo, sizeof(typeInfo));
+        CParser_GetDeclSpecs(&typeInfo, 0);
+        scandeclarator(&typeInfo);
+        if (typeInfo.name != NULL)
+            CError_ReportError(0x79);
+        if (tk != ')')
+            CError_ReportErrorAndUpdateToken(0x73);
+        else
+            tk = CPrepTokenizer_GetNextToken();
+        fn_004e58b0(info, typeInfo.thetype, typeInfo.qual);
+    } else {
+        expr = unary_expression();
+        if (expr->type == 4 && expr->data.monadic->type == 0x31)
+            CError_ReportError(0x90);
+        fn_004e58b0(info, expr->rtype, expr->flags & 3);
+    }
+}
+#if VERSION >= VERSION_GC_1_3
+/* is a value qualified as `a` at least as qualified as one qualified as `b` (bit 0 = const, bit 1 = volatile)? */
+Boolean fn_004e6630(UInt32 a, UInt32 b)
+{
+    Boolean r;
+
+    if ((a & 3) == (b & 3))
+        return 1;
+    if ((a & 1) && !(b & 1)) {
+        r = 1;
+        if (!(a & 2) && (b & 2))
+            r = 0;
+        return r;
+    }
+    if ((a & 2) && !(b & 2)) {
+        r = 1;
+        if (!(a & 1) && (b & 1))
+            r = 0;
+        return r;
+    }
+    return 0;
+}
+
+/* copy the declaration's section and alignment attributes onto the object, then finish it */
+void fn_004e7880(Object *obj, DeclInfo *decl)
+{
+    if (decl != NULL && *(UInt16 *)((char *)decl + 0x42) != 0)
+        *(UInt16 *)((char *)obj + 4) = *(UInt16 *)((char *)decl + 0x42);
+    if (decl != NULL && *((UInt8 *)obj + 2) == 0 && *((UInt8 *)obj + 0x37) == 0)
+        *(UInt16 *)((char *)obj + 0x36) = *(UInt16 *)((char *)decl + 0x68);
+    if (decl != NULL && (*((UInt8 *)obj + 2) == 3 || *((UInt8 *)obj + 2) == 4) && *((UInt8 *)obj + 0x42) == 0)
+        *((UInt8 *)obj + 0x42) = *((UInt8 *)decl + 0x67);
+    fn_00490210(obj, decl);
+    CodeGen_SetObjectSectionAndInterruptInfo(obj);
+}
+#endif
+#if VERSION >= VERSION_GC_1_3
+extern HashNameNode *data_005dcc70;
+
+/* the name of this file's unnamed namespace: "@unnamed@" followed by the file name with non-alphanumerics replaced */
+HashNameNode *fn_004e7990(void)
+{
+    char fileName[0x100];
+    char name[0x100];
+    char c;
+    char *out;
+    int n;
+    int i;
+    char *src;
+
+    if (data_005dcc70 == NULL) {
+        strcpy(name, "@unnamed@");
+        out = name + strlen(name);
+        COS_FileGetFSSpecInfo((CWFileSpec *)(cprep_cu + 0x92), NULL, NULL, fileName);
+        src = fileName + 1;
+        n = (UInt8)fileName[0];
+        for (i = 0; i < n && out < name + 0xfe; i++) {
+            c = *src++;
+            if (!(c >= 'a' && c <= 'z') && !(c >= 'A' && c <= 'Z') && !(c >= '0' && c <= '9'))
+                c = '_';
+            *out++ = c;
+        }
+        *out++ = '@';
+        *out = 0;
+        data_005dcc70 = GetHashNameNode(name);
+    }
+    return data_005dcc70;
+}
+#endif
+#endif
 
 Boolean CParser_IsPublicRuntimeObject(ObjBase *object)
 {
@@ -232,6 +419,9 @@ Boolean CParser_ReInitRuntimeObjects(Boolean flag)
     newh_func->name = GetHashNameNode("__new_hdl");
     data_00587ed0->name = GetHashNameNode("__del_hdl");
     data_005870d8->name = GetHashNameNode("__copy");
+#if VERSION >= VERSION_GC_1_3
+    data_005e6924->name = GetHashNameNode("__clear");
+#endif
     typeid_func->name = GetHashNameNode("__get_typeid");
     dynamic_cast_object->name = GetHashNameNode("__dynamic_cast");
     cast_member_pointer_func->name = GetHashNameNode("__ptmf_cast");
@@ -252,7 +442,7 @@ Boolean CParser_ReInitRuntimeObjects(Boolean flag)
     array_allocation_runtime_function->name = GetHashNameNode("__construct_new_array");
     data_0058717c->name = GetHashNameNode("__destroy_arr");
     destructor_aware_call_rtfunc->name = GetHashNameNode("__destroy_new_array");
-    destructor_aware_call_func->name = GetHashNameNode("__destroy_new_array2");
+    destructor_aware_call_func->name = GetHashNameNode(BY_VERSION("__destroy_new_array2", "__destroy_new_array3"));
     destructor_registration_func->name = GetHashNameNode("__register_global_object");
     throw_func->name = GetHashNameNode("__throw");
     data_005882a4->name = GetHashNameNode("__init__catch");
@@ -267,7 +457,6 @@ Boolean CParser_ReInitRuntimeObjects(Boolean flag)
     CSOM_Init(flag);
     fn_00434660(flag);
 }
-
 void initialize_runtime_objects(void)
 {
     Type *sizeType;
@@ -285,13 +474,13 @@ void initialize_runtime_objects(void)
     CScope_AddGlobalObject(runtimeObject);
     runtimeObject = CParser_NewRTFunc(&stvoid, CMangler_OperatorName(TK_DELETE), 1, 1, &void_ptr);
     if (runtimeObject->type->type != TYPEFUNC)
-        CError_FATAL(368);
+        CError_FATAL(BY_VERSION(368, 379));
     functionType = (TypeFunc *)runtimeObject->type;
     functionType->exspecs = emptyExceptionSpecs;
     CScope_AddGlobalObject(runtimeObject);
     runtimeObject = CParser_NewRTFunc(&stvoid, CMangler_OperatorName(0x183), 1, 1, &void_ptr);
     if (runtimeObject->type->type != TYPEFUNC)
-        CError_FATAL(376);
+        CError_FATAL(BY_VERSION(376, 387));
     functionType = (TypeFunc *)runtimeObject->type;
     functionType->exspecs = emptyExceptionSpecs;
     CScope_AddGlobalObject(runtimeObject);
@@ -302,6 +491,9 @@ void initialize_runtime_objects(void)
     dynamic_cast_object = CParser_NewRTFunc((Type *)&void_ptr, NULL, 0, 5, &void_ptr, &stsignedlong, &void_ptr,
                                             &void_ptr, &stsignedshort);
     data_005870d8 = CParser_NewRTFunc((Type *)&void_ptr, NULL, 2, 3, &void_ptr, &void_ptr, sizeType);
+#if VERSION >= VERSION_GC_1_3
+    data_005e6924 = CParser_NewRTFunc((Type *)&void_ptr, NULL, 2, 2, &void_ptr, sizeType);
+#endif
     cast_member_pointer_func = CParser_NewRTFunc((Type *)&void_ptr, NULL, 2, 3, &stsignedlong, &void_ptr, &void_ptr);
     rt_memberpointercompare = CParser_NewRTFunc((Type *)&stsignedlong, NULL, 2, 2, &void_ptr, &void_ptr);
     memberpointercompare_func = CParser_NewRTFunc((Type *)&stsignedlong, NULL, 2, 1, &void_ptr);
@@ -323,7 +515,11 @@ void initialize_runtime_objects(void)
         CParser_NewRTFunc((Type *)&void_ptr, NULL, 0, 5, &void_ptr, &void_ptr, &void_ptr, sizeType, sizeType);
     data_0058717c = CParser_NewRTFunc(&stvoid, NULL, 0, 4, &void_ptr, &void_ptr, sizeType, sizeType);
     destructor_aware_call_rtfunc = CParser_NewRTFunc(&stvoid, NULL, 0, 2, &void_ptr, &void_ptr);
+#if VERSION >= VERSION_GC_1_3
+    destructor_aware_call_func = CParser_NewRTFunc(&stvoid, NULL, 0, 4, &void_ptr, &void_ptr, &void_ptr, &stsignedshort);
+#else
     destructor_aware_call_func = CParser_NewRTFunc((Type *)&void_ptr, NULL, 0, 2, &void_ptr, &void_ptr);
+#endif
     destructor_registration_func = CParser_NewRTFunc((Type *)&void_ptr, NULL, 0, 3, &void_ptr, &void_ptr, &void_ptr);
     throw_func = CParser_NewRTFunc(&stvoid, NULL, 0, 3, &void_ptr, &void_ptr, &void_ptr);
     data_005882a4 = CParser_NewRTFunc(&stvoid, NULL, 0, 1, &void_ptr);
@@ -332,7 +528,7 @@ void initialize_runtime_objects(void)
 
     CodeGen_InitializeLists();
     if (!CParser_ReInitRuntimeObjects(0))
-        CError_FATAL(508);
+        CError_FATAL(BY_VERSION(508, 534));
 }
 
 void CParser_Setup(void)
@@ -342,24 +538,29 @@ void CParser_Setup(void)
     if (InitGList(&data_00583548, 0x100) != 0) {
         CError_LongJump();
     }
+#if VERSION >= VERSION_GC_1_3
+    pointer_size = 4;
+#endif
     fn_00449dc0();
     CInit_Init();
     CClass_Init();
-    fn_0051b810();
+    BY_VERSION(fn_0051b810, fn_0052a190)();
     CObjCModern_ResetGlobals();
     fn_00514220();
     data_005884fd = 0;
     in_parameter_type_list = 0;
     data_00580dc0 = 1;
     data_0058852e = 0;
-    copts.sideeffects = 1;
+    BY_VERSION(copts.sideeffects, copts.profile) = 1;
     class_type_links = NULL;
     data_00587fd8 = NULL;
     pending_object_classes = NULL;
     pending_functions = NULL;
     single_expr_functions = NULL;
     trychain = NULL;
+#if VERSION < VERSION_GC_1_3
     cached_objects = NULL;
+#endif
     class_parse_recs = NULL;
     memclrw(&function_fileinfo, sizeof(function_fileinfo));
     memclrw(&exception_temp_object_type, sizeof(TypeStruct));
@@ -372,8 +573,11 @@ void CParser_Setup(void)
     _DAT_0058847e = 0xc;
     data_0058848a = 0;
     _DAT_0058848c = 4;
-    fn_004a9c70();
+    BY_VERSION(fn_004a9c70, fn_004c17a0)();
     CTemplateNew_Reset();
+#if VERSION >= VERSION_GC_1_3
+    data_005dcc70 = NULL;
+#endif
     non_type_template_argument_mode = 0;
     initialize_runtime_objects();
 }
@@ -424,7 +628,11 @@ SInt16 GetPrec(short token)
     return 0;
 }
 
+#if VERSION >= VERSION_GC_1_3
+Boolean CParser_ParseOperatorName(SInt16 *operatorToken, Boolean allowConversion, Boolean parseConversion)
+#else
 Boolean CParser_ParseOperatorName(SInt16 *operatorToken, Boolean allowConversion)
+#endif
 {
     HashNameNode *name;
     DeclInfo nameData;
@@ -466,9 +674,17 @@ Boolean CParser_ParseOperatorName(SInt16 *operatorToken, Boolean allowConversion
         return 1;
     }
     if (allowConversion) {
+#if VERSION >= VERSION_GC_1_3
+        if (parseConversion) {
+            memclrw(&nameData, sizeof(nameData));
+            conversion_type_name(&nameData);
+            data_00587fa0 = CMangler_ConversionFuncName(nameData.thetype, nameData.qual);
+        }
+#else
         memclrw(&nameData, sizeof(nameData));
         conversion_type_name(&nameData);
         data_00587fa0 = CMangler_ConversionFuncName(nameData.thetype, nameData.qual);
+#endif
         if (operatorToken != NULL)
             *operatorToken = 0;
         return 1;
@@ -522,9 +738,14 @@ HashNameNode *CParser_GetUniqueName(void)
     SInt32 id;
 
     buf[0] = '@';
+#if VERSION >= VERSION_GC_1_3
+    p = buf + 1;
+    q = tmp;
+#else
     p = buf;
     q = tmp;
     p++;
+#endif
     id = data_00580dc0++;
     n = id;
     while (n) {
@@ -558,6 +779,7 @@ HashNameNode *CParser_NameConcat(char *first, char *second)
 
     return GetHashNameNode(name);
 }
+
 
 HashNameNode *CParser_AppendUniqueName(char *name)
 {
@@ -630,8 +852,13 @@ HashNameNode *CParser_AppendUniqueNameFile(char *prefix)
         len++;
     }
     COS_FileGetFSSpecInfo(&((CPrepCU *)cprep_cu)->mainFile, NULL, NULL, (UInt8 *)name);
+#if VERSION >= VERSION_GC_1_3
+    p_s = name + 1;
+    n = (UInt8)name[0];
+#else
     n = (UInt8)name[0];
     p_s = name + 1;
+#endif
     i = 0;
     while (i < n && len < 0xff) {
         c = *p_s++;
@@ -689,6 +916,7 @@ void fn_00490210(Object *object, volatile DeclInfo *record)
     }
 }
 
+#if VERSION < VERSION_GC_1_3
 void CParser_UpdateObject(Object *object, volatile DeclInfo *record)
 {
     if (record && record->section)
@@ -696,6 +924,7 @@ void CParser_UpdateObject(Object *object, volatile DeclInfo *record)
     fn_00490210(object, record);
     CodeGen_SetObjectSectionAndInterruptInfo(object);
 }
+#endif
 
 Object *CParser_NewObject(struct DeclInfo *record)
 {
@@ -710,12 +939,16 @@ Object *CParser_NewObject(struct DeclInfo *record)
     return object;
 }
 
+#if VERSION >= VERSION_GC_1_3
+extern HashNameNode *data_005dcc70;
+#endif
+
 Object *CParser_NewLocalDataObject(DeclInfo *declaration, unsigned int addToList)
 {
     Object *object;
     ObjectList *entry;
-    object = (Object *)lalloc(54U);
-    memclrw(object, 54U);
+    object = (Object *)lalloc(BY_VERSION(54U, 68U));
+    memclrw(object, BY_VERSION( 54U, 68U));
     object->otype = OT_OBJECT;
     object->access = 0U;
     object->datatype = DLOCAL;
@@ -758,6 +991,12 @@ Object *CParser_NewGlobalDataObject(DeclInfo *declaration)
     if (declaration != NULL && declaration->section != 0) {
         object->section = alignmentDeclaration->section;
     }
+#if VERSION >= VERSION_GC_1_3
+    if (declaration != NULL && object->datatype == DDATA && object->u.data.f36hi == 0)
+        object->u.data.f36 = declaration->f68;
+    if (declaration != NULL && (object->datatype == DFUNC || object->datatype == DVFUNC) && object->u.f1_3[24] == 0)
+        object->u.f1_3[24] = declaration->f67;
+#endif
     fn_00490210(object, declaration);
     CodeGen_SetObjectSectionAndInterruptInfo(object);
     return object;
@@ -800,6 +1039,12 @@ Object *CParser_NewFunctionObject(volatile DeclInfo *decl)
         if (decl->section != 0)
             obj->section = decl->section;
     }
+#if VERSION >= VERSION_GC_1_3
+    if (decl != NULL && obj->datatype == DDATA && obj->u.data.f36hi == 0)
+        obj->u.data.f36 = decl->f68;
+    if (decl != NULL && (obj->datatype == DFUNC || obj->datatype == DVFUNC) && obj->u.f1_3[24] == 0)
+        obj->u.f1_3[24] = decl->f67;
+#endif
     fn_00490210(obj, decl);
     CodeGen_SetObjectSectionAndInterruptInfo(obj);
     return obj;
@@ -846,7 +1091,7 @@ TypeIntegral *atomtype(void)
 {
     switch (token_value_kind_or_string_length) {
         default:
-            CError_FATAL(1060);
+            CError_FATAL(BY_VERSION(1060, 1145));
         case 1:
             return (TypeIntegral *)&stvoid;
         case 2:
@@ -998,7 +1243,7 @@ unsigned short is_memberpointerequal(Type *type, Type *other)
 
     if (!is_typesame(function_type(type)->functype, function_type(other)->functype))
         return 0;
-    if ((function_type(type)->flags & 0x17000001u) != (function_type(other)->flags & 0x17000001u))
+    if ((function_type(type)->flags & BY_VERSION(0x17000001u, TFUNC_COMPARE_MASK)) != (function_type(other)->flags & BY_VERSION(0x17000001u, TFUNC_COMPARE_MASK)))
         return 0;
 
     args = function_type(type)->args->next;
@@ -1055,14 +1300,14 @@ SInt16 is_typesame(Type *left, Type *right)
                             return 0;
                     } else if (!iscpp_typeequal(TYPE_FUNC(left)->functype, TYPE_FUNC(right)->functype))
                         return 0;
-                    if ((TYPE_FUNC(left)->flags & 0x17000001) != (TYPE_FUNC(right)->flags & 0x17000001))
+                    if ((TYPE_FUNC(left)->flags & TFUNC_COMPARE_MASK) != (TYPE_FUNC(right)->flags & TFUNC_COMPARE_MASK))
                         return 0;
                 }
                 return is_funcarg_list_same(TYPE_FUNC(left)->args, TYPE_FUNC(right)->args);
             case TYPETEMPLATE:
                 return CTemplTool_TemplDepTypeCompare((TypeTemplDep *)left, (TypeTemplDep *)right);
             default:
-                CError_FATAL(1276);
+                CError_FATAL(BY_VERSION(1276, 1441));
                 return 0;
         }
     }
@@ -1110,13 +1355,13 @@ SInt16 is_typeequal(Type *leftType, Type *rightType)
             case TYPEFUNC:
                 if (iscpp_typeequal(TYPE_FUNC(leftType)->functype, TYPE_FUNC(rightType)->functype) == 0)
                     return 0;
-                if ((TYPE_FUNC(leftType)->flags & 0x17000001) != (TYPE_FUNC(rightType)->flags & 0x17000001))
+                if ((TYPE_FUNC(leftType)->flags & TFUNC_COMPARE_MASK) != (TYPE_FUNC(rightType)->flags & TFUNC_COMPARE_MASK))
                     return 0;
                 return is_funcarg_list_same(TYPE_FUNC(leftType)->args, TYPE_FUNC(rightType)->args);
             case TYPETEMPLATE:
                 return CTemplTool_TemplDepTypeCompare((TypeTemplDep *)leftType, (TypeTemplDep *)rightType);
             default:
-                CError_FATAL(1335);
+                CError_FATAL(BY_VERSION(1335, 1500));
                 return 0;
         }
     }
@@ -1275,11 +1520,11 @@ SInt16 iscpp_typeequal(Type *leftType, Type *rightType)
                     return 0;
                 if (TYPE_FUNC(leftType)->qual != TYPE_FUNC(rightType)->qual)
                     return 0;
-                if ((TYPE_FUNC(leftType)->flags & 0x17000001) != (TYPE_FUNC(rightType)->flags & 0x17000001))
+                if ((TYPE_FUNC(leftType)->flags & TFUNC_COMPARE_MASK) != (TYPE_FUNC(rightType)->flags & TFUNC_COMPARE_MASK))
                     return 0;
                 return is_arglistsame(TYPE_FUNC(leftType)->args, TYPE_FUNC(rightType)->args);
             default:
-                CError_FATAL(1548);
+                CError_FATAL(BY_VERSION(1548, 1709));
                 return 0;
         }
     }
@@ -1305,7 +1550,7 @@ SInt32 CParser_GetOperator(UInt8 kind)
 {
     switch ((unsigned char)kind) {
         default:
-            CError_FATAL(1587);
+            CError_FATAL(BY_VERSION(1587, 1748));
         case 5:
             return 45U;
         case 6:
@@ -1415,8 +1660,8 @@ unsigned char test_declaration(Boolean parseDeclaration, Boolean requireValue, B
         case 280:
         case 281:
         case 282:
-        case 284:
-        case 285:
+        case BY_VERSION(284, 285):
+        case BY_VERSION(285, 286):
             if (CPrepTokenizer_GetNextTokenAndRestorePosition() == 40) {
                 break;
             }
@@ -1718,6 +1963,47 @@ UInt8 CParserIsVolatileExpr(ENode *node)
     return (qualifiers & Q_VOLATILE) != 0;
 }
 
+#if VERSION >= VERSION_GC_1_3
+char CParser_CheckInternalLinkage(Object *obj)
+{
+    if (obj->datatype == 1) {
+        return 1;
+    }
+    if ((obj->qual & 0x60000U) != 0) {
+        return 0;
+    }
+    if (obj->sclass == TK_STATIC) {
+        return 1;
+    }
+    if ((obj->qual & 0x10U) != 0) {
+        obj->qual |= 0x20000U;
+    }
+    return 0;
+}
+
+char CParser_HasInternalLinkage(Object *obj)
+{
+    NameSpace *nspace;
+    for (nspace = obj->nspace; nspace != NULL; nspace = nspace->parent) {
+        if (nspace->is_unnamed != 0) {
+            return 1;
+        }
+    }
+    if (obj->datatype == 1) {
+        return 1;
+    }
+    if ((obj->qual & 0x60000U) != 0) {
+        return 0;
+    }
+    if (obj->sclass == TK_STATIC) {
+        return 1;
+    }
+    if ((obj->qual & 0x10U) != 0) {
+        obj->qual |= 0x20000U;
+    }
+    return 0;
+}
+#else
 char CParser_HasInternalLinkage(Object *obj)
 {
     if (obj->nspace != NULL) {
@@ -1736,6 +2022,7 @@ char CParser_HasInternalLinkage(Object *obj)
     }
     return 0;
 }
+#endif
 
 Boolean CParser_IsVirtualFunction(Object *object, TypeClass **firstValue, UInt32 *secondValue)
 {
@@ -1758,7 +2045,6 @@ Boolean is_pascal_object(Object *object)
     }
     return isPascal;
 }
-
 TypeIntegral *select_builtin_type(SInt16 token, SInt16 lengthModifier, SInt16 signModifier)
 {
     switch (token) {
@@ -1786,9 +2072,20 @@ TypeIntegral *select_builtin_type(SInt16 token, SInt16 lengthModifier, SInt16 si
                 default:
                     return &stsignedint;
             }
-        case 0x11c:
+#if VERSION >= VERSION_GC_1_3
+        case 0x113:
+        case 0x114:
+        case 0x115:
+        case 0x116:
+        case 0x117:
+        case 0x118:
+        case 0x119:
+        case 0x11a:
+            return (TypeIntegral *)fn_004bf0a0(token, lengthModifier, signModifier);
+#endif
+        case TKN(0x11c):
             return &stbool;
-        case 0x11d:
+        case TKN(0x11d):
             return &stwchar;
         case 0x107:
             switch (signModifier) {
@@ -1846,6 +2143,7 @@ void TypedefDeclInfo(DeclInfo *slot, Type *type, UInt32 quals)
     }
     slot->isType = 1;
 }
+
 
 void CParser_ParseAttribute(Type *type, DeclInfo *function)
 {
@@ -1959,7 +2257,7 @@ void CParser_ParseAttribute(Type *type, DeclInfo *function)
                         function->qual |= Q_ALIGNED_8192;
                         break;
                     default:
-                        CError_FATAL(2423);
+                        CError_FATAL(BY_VERSION(2423, 2779));
                         break;
                 }
             } else {
@@ -2503,7 +2801,11 @@ int parse_dtype_specifiers(DeclInfo *state)
     return 0;
 }
 
+#if VERSION >= VERSION_GC_1_3
+unsigned char CParser_CheckTemplateClassScope(Type *type, Boolean reportError)
+#else
 unsigned char CParser_CheckTemplateClassScope(Type *type)
+#endif
 {
     NameSpace *space;
     TemplClass *classType = (TemplClass *)type;
@@ -2511,7 +2813,10 @@ unsigned char CParser_CheckTemplateClassScope(Type *type)
         space = cscope_current;
         for (;;) {
             if (space == NULL) {
-                CError_ReportError(230U);
+#if VERSION >= VERSION_GC_1_3
+                if (reportError)
+#endif
+                    CError_ReportError(230U);
                 return 0;
             }
             if (space->theclass == TYPE_CLASS(type))
@@ -2712,7 +3017,7 @@ void CParser_GetDeclSpecs(DeclInfo *state, Boolean allowObject)
                 if (tk == TK_UU_ATTRIBUTE)
                     CParser_ParseAttribute(state->thetype, NULL);
                 if ((tokenValue = tk) == TK_CONST || tokenValue == TK_VOLATILE || tokenValue == TK_UU_FAR ||
-                    tokenValue == 0x124) {
+                    tokenValue == TKN(0x124)) {
                     typeToken = -1;
                     continue;
                 }
@@ -2725,7 +3030,7 @@ void CParser_GetDeclSpecs(DeclInfo *state, Boolean allowObject)
                 if (tk == TK_UU_ATTRIBUTE)
                     CParser_ParseAttribute(state->thetype, NULL);
                 if ((tokenValue = tk) == TK_CONST || tokenValue == TK_VOLATILE || tokenValue == TK_UU_FAR ||
-                    tokenValue == 0x124) {
+                    tokenValue == TKN(0x124)) {
                     typeToken = -1;
                     continue;
                 }
@@ -2738,7 +3043,7 @@ void CParser_GetDeclSpecs(DeclInfo *state, Boolean allowObject)
                 if (tk == TK_UU_ATTRIBUTE)
                     CParser_ParseAttribute(state->thetype, NULL);
                 if ((tokenValue = tk) == TK_CONST || tokenValue == TK_VOLATILE || tokenValue == TK_UU_FAR ||
-                    tokenValue == 0x124) {
+                    tokenValue == TKN(0x124)) {
                     typeToken = -1;
                     continue;
                 }
@@ -2751,7 +3056,7 @@ void CParser_GetDeclSpecs(DeclInfo *state, Boolean allowObject)
                 if (tk == TK_UU_ATTRIBUTE)
                     CParser_ParseAttribute(state->thetype, NULL);
                 if ((tokenValue = tk) == TK_CONST || tokenValue == TK_VOLATILE || tokenValue == TK_UU_FAR ||
-                    tokenValue == 0x124) {
+                    tokenValue == TKN(0x124)) {
                     typeToken = -1;
                     continue;
                 }
@@ -2957,8 +3262,15 @@ void CParser_RegisterSingleExprFunction(Object *object, ENode *expr)
     entry->next = previous;
     entry->object = object;
     entry->expr = expr;
+#if VERSION >= VERSION_GC_1_3
+    entry->extra = 0;
+#endif
     single_expr_functions = entry;
 }
+
+#if VERSION >= VERSION_GC_1_3
+extern void fn_004eda40(Object *func, ENode *expr);
+#endif
 
 void fn_0048c290(void)
 {
@@ -2968,7 +3280,14 @@ void fn_0048c290(void)
     while (single_expr_functions != NULL) {
         node = single_expr_functions;
         single_expr_functions = node->next;
+#if VERSION >= VERSION_GC_1_3
+        if (node->extra)
+            CFunc_GenerateSingleExprFunc(node->object, (ENode *)node->extra);
+        else
+            fn_004eda40(node->object, node->expr);
+#else
         CFunc_GenerateSingleExprFunc(node->object, node->expr);
+#endif
     }
 
     if (class_parse_recs != NULL) {
@@ -2994,7 +3313,9 @@ void fn_0048c220(char processInput)
         fn_0048c290();
         repeat = 0;
         if (processInput != 0) {
+#if VERSION < VERSION_GC_1_3
             freelheap();
+#endif
             if (class_type_links != NULL) {
                 input = class_type_links;
                 CClass_ClassAction(input->type);
@@ -3025,6 +3346,10 @@ Boolean CParser_IsAnonymousUnion(Type **ptype, Boolean flag)
     }
     return result;
 }
+/* 0x580dcc: linked list of records with two pointer payloads. */
+
+/* 0x580dc8: linked list whose payload points at a structure holding a
+ * list head pointer at +6. */
 
 void CParser_CheckAnonymousUnion(DeclInfo *context, char flag)
 {
@@ -3127,7 +3452,7 @@ void CParser_CallBackAction(Object *key)
             entry = entry->next;
         } while (entry != NULL);
     }
-    CError_FATAL(3854);
+    CError_FATAL(BY_VERSION(3854, 4551));
 }
 
 static void restore(ParserTryBlock *s)
@@ -3146,10 +3471,15 @@ static void restore(ParserTryBlock *s)
 static void save(ParserTryBlock *s, unsigned char *flag)
 {
     NameSpace *x;
+#if VERSION >= VERSION_GC_1_3
+    *flag = 0;
+#endif
     x = cscope_current;
     s->cscope_current = x;
     s->cscope_currentclass = cscope_currentclass;
+#if VERSION < VERSION_GC_1_3
     *flag = 0;
+#endif
     s->cscope_currentfunc = cscope_currentfunc;
     s->ctempl_curinstance = ctempl_curinstance;
     s->cerror_locktoken = cerror_locktoken;
@@ -3322,7 +3652,11 @@ void parse_namespace_declaration(void *declarationData)
             CError_ReportError(ERR_IDENTIFIER_EXPECTED);
             return;
         }
+#if VERSION >= VERSION_GC_1_3
+        name = fn_004e7990();
+#else
         name = GetHashNameNode("@unnamed@");
+#endif
         isUnnamed = 1;
     }
     nspace = cscope_current;
@@ -3404,7 +3738,11 @@ void parse_declaration(DeclInfo *p)
                 return;
             }
         case TK_TEMPLATE:
+#if VERSION >= VERSION_GC_1_3
+            CTemplateNew_ParseTemplateDeclaration(NULL, ACCESSPUBLIC);
+#else
             CTemplateNew_ParseTemplateDeclaration(NULL);
+#endif
             return;
         case TK_USING:
             tk = CPrepTokenizer_GetNextToken();
@@ -3426,12 +3764,23 @@ void parse_declaration(DeclInfo *p)
             }
         default:
             CParser_GetDeclSpecs(p, 1);
+#if VERSION >= VERSION_GC_1_3
+            if ((Boolean)(p->storageclass == TK_AUTO)) {
+#else
             if ((SInt32)p->storageclass == TK_REGISTER || (SInt32)p->storageclass == TK_AUTO) {
+#endif
                 CError_ReportError(ERR_ILLEGAL_STORAGE_CLASS);
                 p->storageclass = TK_EOF;
             }
             if (tk != ';') {
                 CDecl_ScanDeclarator(p);
+#if VERSION >= VERSION_GC_1_3
+                /* (byte 0x69 of the DeclInfo, the high byte of f68) */
+                if (p->storageclass == TK_REGISTER && !((UInt8 *)p)[0x69]) {
+                    CError_ReportError(ERR_ILLEGAL_STORAGE_CLASS);
+                    p->storageclass = TK_EOF;
+                }
+#endif
             } else {
                 CParser_CheckAnonymousUnion(p, 0);
             }

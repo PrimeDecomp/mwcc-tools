@@ -528,8 +528,8 @@ char *unmangle_qualified_name(int *context, MOutBuf *output, char *cursor, char 
     char *lastComponent;
     if (*cursor == 'Q') {
         componentCount = (int)cursor[1];
-        cursor += 2;
         componentCount = componentCount - '0';
+        cursor += 2;
         if (componentCount < 1 || componentCount > 9) {
             longjmp(context, 1);
         }
@@ -553,8 +553,8 @@ char *unmangle_qualified_name(int *context, MOutBuf *output, char *cursor, char 
         lastComponent = cursor;
         lastLength = length;
         next = scan_component(context, output, cursor, length, output);
-        component = component + 1;
         cursor = next;
+        component = component + 1;
     }
     if (append != 0 && output != NULL) {
         if (alternate != 0) {
@@ -1115,8 +1115,9 @@ void Unmangle_UnmangleName(char *name, char *out, UInt32 size)
             return;
         }
     }
+    p = name;
     templ = 0;
-    for (p = name;; p++) {
+    for (;; p++) {
         switch (*p) {
             case 0:
                 break;

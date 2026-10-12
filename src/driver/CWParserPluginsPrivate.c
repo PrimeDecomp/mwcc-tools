@@ -116,6 +116,7 @@ int __stdcall CWParserPluginsPrivate_GetLookupValues(void *context, int *firstVa
     return 0;
 }
 
+#if VERSION < VERSION_GC_1_3
 int __stdcall CWParserPluginsPrivate_SetParserEntry(void *ctx, int index, IntegerSequenceResult *value)
 {
     CWPluginPrivateContext *collection;
@@ -133,6 +134,7 @@ int __stdcall CWParserPluginsPrivate_SetParserEntry(void *ctx, int index, Intege
     collection->contextData.parser.entries[index] = *value;
     return 0;
 }
+#endif
 
 int __stdcall fn_0041bfd0(void *context, char *name, void **value)
 {
@@ -147,7 +149,7 @@ int __stdcall fn_0041bfd0(void *context, char *name, void **value)
         return 3;
     }
     result = ((int(__stdcall *)(CWPluginPrivateContext *, char *,
-                                void **))object->contextData.parser.parserCallbacks[1])(object, name, value);
+                                void **))object->contextData.parser.parserCallbacks[BY_VERSION(1, 2)])(object, name, value);
     return result;
 }
 
@@ -177,9 +179,10 @@ int __stdcall CWParserPluginsPrivate_CallFileInfo(CWPluginPrivateContext *ctx, C
     if (info == NULL) {
         return 3;
     }
-    return ((FileInfoMethod)object->contextData.parser.parserCallbacks[3])(object, info);
+    return ((FileInfoMethod)object->contextData.parser.parserCallbacks[BY_VERSION(3, 4)])(object, info);
 }
 
+#if VERSION < VERSION_GC_1_3
 int __stdcall CWParserPluginsPrivate_CallParserTextCallback(CWPluginPrivateContext *request, int argument2,
                                                             int argument3, char *text)
 {
@@ -192,8 +195,9 @@ int __stdcall CWParserPluginsPrivate_CallParserTextCallback(CWPluginPrivateConte
     if (text == NULL) {
         return 3;
     }
-    return ((ParserTextCallback)object->contextData.parser.parserCallbacks[2])(object, argument2, argument3, text);
+    return ((ParserTextCallback)object->contextData.parser.parserCallbacks[BY_VERSION(2, 3)])(object, argument2, argument3, text);
 }
+#endif
 
 int __stdcall CWParserPluginsPrivate_PassValuePair(CWPluginPrivateContext *target, char *firstValue,
                                                    unsigned int secondValue)

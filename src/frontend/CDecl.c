@@ -417,9 +417,38 @@ TypeTemplDep *CDecl_NewTemplDepType(UInt8 templateKind)
     templateType->dtype = templateKind;
     return templateType;
 }
+#if VERSION >= VERSION_GC_1_3
+void fn_0053a5b0(TypeFunc *func);
+#endif
 
 void CDecl_NewConvFuncType(DeclInfo *state)
 {
+#if VERSION >= VERSION_GC_1_3
+    TypeFunc *functionType;
+
+    if (tk != '(')
+        CError_ReportError(ERR_LPAREN_EXPECTED);
+    else
+        tk = CPrepTokenizer_GetNextToken();
+    if (tk == TK_VOID)
+        tk = CPrepTokenizer_GetNextToken();
+    if (tk != ')')
+        CError_ReportError(ERR_RPAREN_EXPECTED);
+    else
+        tk = CPrepTokenizer_GetNextToken();
+    functionType = (TypeFunc *)galloc(26U);
+    memclrw(functionType, 26U);
+    state->name = CMangler_ConversionFuncName(state->thetype, state->qual);
+    functionType->type = TYPEFUNC;
+    functionType->functype = state->thetype;
+    functionType->qual = state->qual & Q_CV;
+    functionType->flags = FUNC_CONVERSION;
+    state->isType = 0U;
+    fn_0053a5b0(functionType);
+    state->thetype = (Type *)functionType;
+    state->qual &= ~Q_CV;
+    state->storageclass = 0U;
+#else
     TypeFunc *functionType;
     Type *originalType;
     unsigned int qualifiers;
@@ -440,11 +469,14 @@ void CDecl_NewConvFuncType(DeclInfo *state)
     state->isType = 0U;
     state->thetype = (Type *)functionType;
     state->storageclass = 0U;
+#endif
 }
 
 int CDecl_CompleteType(Type *type)
 {
+#if VERSION < VERSION_GC_1_3
     int result;
+#endif
     TypeClass *classType;
     switch ((signed char)type->type) {
         case TYPEPOINTER:
@@ -464,16 +496,25 @@ int CDecl_CompleteType(Type *type)
             }
             return;
         default:
+#if VERSION < VERSION_GC_1_3
             return result;
+#else
+            return;
+#endif
         case TYPECLASS:
             break;
     }
     classType = (TypeClass *)type;
+#if VERSION < VERSION_GC_1_3
     if ((result = classType->flags & (0x800 | CLASS_COMPLETED)) == 0x800) {
+#else
+    if ((classType->flags & (0x800 | CLASS_COMPLETED)) == 0x800) {
+#endif
         CTemplateClass_InstantiateClass((TypeClass *)type);
     }
     return;
 }
+
 
 Boolean CanAllocObject(Type *theclass)
 {
@@ -620,10 +661,10 @@ void CDecl_AddThisPointerArgument(TypeFunc *owner, TypeClass *classType, char pa
     argument->name = this_arg_name;
     if (parseModifiers != '\0') {
         while (1) {
-            if ((token = tk) == 0x121) {
+            if ((token = tk) == TKN(0x121)) {
                 tk = CPrepTokenizer_GetNextToken();
                 argument->qual |= Q_CONST;
-            } else if (token == 0x122) {
+            } else if (token == TKN(0x122)) {
                 tk = CPrepTokenizer_GetNextToken();
                 argument->qual |= Q_VOLATILE;
             } else {
@@ -667,10 +708,10 @@ void CDecl_MakePTMFuncType(TypeFunc *func)
     arg->type = (Type *)tp;
     for (;;) {
         q = tk;
-        if (q == 0x121) {
+        if (q == TKN(0x121)) {
             tk = CPrepTokenizer_GetNextToken();
             arg->qual |= Q_CONST;
-        } else if (q == 0x122) {
+        } else if (q == TKN(0x122)) {
             tk = CPrepTokenizer_GetNextToken();
             arg->qual |= Q_VOLATILE;
         } else {
@@ -794,7 +835,12 @@ Boolean check_function_return_type(Type *type)
     return checkClass(type, result);
 }
 
+#if VERSION >= VERSION_GC_1_3
+/* (1.3: CDecl_SetFuncFlags, whose only work, setting the result register, does nothing) */
+void fn_00504240(TypeFunc *type, UInt32 flags)
+#else
 void fn_00504240(TypeFunc *type)
+#endif
 {
     return;
 }
@@ -806,11 +852,13 @@ void CDecl_ParseDirectFuncDecl(DeclInfo *d)
     FuncArg *args;
     Boolean ok;
 
+#if VERSION < VERSION_GC_1_3
     if (copts.cplusplus != 0 && d->name != NULL && d->thetype->type != TYPEVOID &&
         !CParser_TryParamList(d->thetype->type != TYPECLASS))
         return;
 
     tk = CPrepTokenizer_GetNextToken();
+#endif
     if (tk == ')') {
         if (copts.cplusplus == 0)
             args = &oldstyle;
@@ -904,7 +952,7 @@ void scandirectdecl1(DeclInfo *decl)
                     CError_ReportError(ERR_ILLEGAL_CONSTANT_EXPRESSION);
                     count = cint64_one;
                 } else if (CInt64_IsZero(&count)) {
-                    if (copts.ANSIstrict == 0 && decl->isStructMemberDeclarator != 0) {
+                    if (copts.ANSIstrict == 0 && BY_VERSION(decl->isStructMemberDeclarator != 0, 0)) {
                         unsized = 1;
                     } else {
                         CError_ReportError(ERR_ILLEGAL_CONSTANT_EXPRESSION);
@@ -942,6 +990,12 @@ void scandirectdecl1(DeclInfo *decl)
         TYPE_POINTER(array)->qual = 0;
         decl->thetype = array;
     } else if (tk == '(') {
+#if VERSION >= VERSION_GC_1_3
+        if (copts.cplusplus != 0 && decl->name != NULL && decl->thetype->type != TYPEVOID &&
+            !CParser_TryParamList(decl->thetype->type != TYPECLASS))
+            return;
+        tk = CPrepTokenizer_GetNextToken();
+#endif
         CDecl_ParseDirectFuncDecl(decl);
     }
 }
@@ -1473,7 +1527,7 @@ void parse_direct_declarator(DeclInfo *state, NameSpace *function)
             if (state->name != NULL) {
                 CError_ReportError(ERR_DECLARATION_SYNTAX_ERROR);
             }
-            CDecl_ParseDirectFuncDecl(state);
+            CDecl_ParseDirectFuncDeclFromParen(state);
         } else {
             parse_parenthesized_declarator(state);
         }
@@ -1493,7 +1547,7 @@ void parse_direct_declarator(DeclInfo *state, NameSpace *function)
                 if (state->parserOption != 0 && cscope_current->theclass != NULL) {
                     parserOption = 1;
                 }
-                parsed = CParser_ParseOperatorName(&state->operator_token, parserOption);
+                parsed = CPARSER_PARSE_OPERATOR_NAME(&state->operator_token, parserOption, 0);
             }
             if (parsed == 0) {
                 CScope_RestoreScope(&save);
@@ -1535,7 +1589,7 @@ void parse_direct_declarator(DeclInfo *state, NameSpace *function)
                 if (state->parserOption != 0 && cscope_current->theclass != NULL) {
                     parserOption = 1;
                 }
-                parsed = CParser_ParseOperatorName(&state->operator_token, parserOption);
+                parsed = CPARSER_PARSE_OPERATOR_NAME(&state->operator_token, parserOption, 0);
             }
             if (parsed == 0) {
                 return;
@@ -1631,7 +1685,7 @@ void CDecl_ScanPointer(DeclInfo *declarator, NameSpace *nspace, char finish)
                     break;
                 }
             case TK_COLON_COLON:
-                if (!CScope_ParseQualifiedNameSpace(&lookup, 1))
+                if (!CSCOPE_PARSE_QUALIFIED_SCOPE(&lookup, 1, 0))
                     break;
                 nspace = lookup.nspace;
                 foundNamespace = nspace;
@@ -1681,7 +1735,7 @@ void scandeclarator(DeclInfo *decl)
                 break;
             /* fall through */
         case TK_COLON_COLON:
-            if (CScope_ParseQualifiedNameSpace(&info, 1)) {
+            if (CSCOPE_PARSE_QUALIFIED_SCOPE(&info, 1, 0)) {
                 nspace = info.nspace;
                 if (info.nspace != NULL) {
                     if (info.nspace->theclass != NULL && tk == '*')
@@ -1733,6 +1787,18 @@ void scandeclarator(DeclInfo *decl)
         CParser_ParseAttribute(NULL, decl);
 }
 
+#if VERSION >= VERSION_GC_1_3
+/* Entry for callers positioned on the '(' token. */
+void CDecl_ParseDirectFuncDeclFromParen(DeclInfo *d)
+{
+    if (copts.cplusplus != 0 && d->name != NULL && d->thetype->type != TYPEVOID &&
+        !CParser_TryParamList(d->thetype->type != TYPECLASS))
+        return;
+    tk = CPrepTokenizer_GetNextToken();
+    CDecl_ParseDirectFuncDecl(d);
+}
+#endif
+
 void conversion_type_name(DeclInfo *result)
 {
     DeclInfo declaration;
@@ -1749,7 +1815,7 @@ void conversion_type_name(DeclInfo *result)
         case TK_IDENTIFIER:
         case TK_COLON_COLON: {
             NameSpace *object;
-            if (CScope_ParseQualifiedNameSpace(&lookup, 0)) {
+            if (CSCOPE_PARSE_QUALIFIED_SCOPE(&lookup, 0, 0)) {
                 object = lookup.nspace;
                 if (object != NULL && object->theclass != NULL && tk == '*')
                     CDecl_ScanPointer(&declaration, object, 0);
@@ -1793,7 +1859,7 @@ Object *find_or_create_function_object(ObjectList *list, DeclInfo *ref, Boolean 
             continue;
         func = (TypeMemberFunc *)obj->type;
         args = func->args;
-        if (func->flags & 0x400)
+        if (func->flags & TFUNC_TEMPLATE)
             flag = 1;
         if (func->flags & Q_INLINE) {
             switch (m) {
@@ -1827,7 +1893,7 @@ Object *find_or_create_function_object(ObjectList *list, DeclInfo *ref, Boolean 
             NameSpaceName *entry4;
             if (iscpp_typeequal(newfunc->functype, func->functype) == 0 ||
                 (newfunc->qual & (Q_CONST | Q_PASCAL)) != (func->qual & (Q_CONST | Q_PASCAL)) ||
-                (newfunc->flags & 0x17000001) != (func->flags & 0x17000001)) {
+                (newfunc->flags & TFUNC_COMPARE_MASK) != (func->flags & TFUNC_COMPARE_MASK)) {
                 CError_ReportError(ERR_ILLEGAL_FUNCTION_OVERLOADING);
                 break;
             }
@@ -2002,7 +2068,7 @@ Object *CDecl_GetFunctionObject(DeclInfo *decl, NameSpace *target_scope, Boolean
     }
     if (scope->theclass) {
         if (!decl->name)
-            CError_FATAL(1877);
+            CError_FATAL(BY_VERSION(1877, 2018));
         lookup = CScope_GetLocalObject(scope, decl->name);
         if (!lookup) {
             CError_ReportError(ERR_UNDEFINED_IDENTIFIER, decl->name->name);
@@ -2170,7 +2236,7 @@ void CDecl_TypedefDeclarator(DeclInfo *decl)
                 CError_ReportError(ERR_ILLEGAL_NAME_OVERLOADING);
                 return;
             default:
-                CError_FATAL(2046);
+                CError_FATAL(BY_VERSION(2046, 2214));
         }
     }
 
@@ -2257,7 +2323,7 @@ void declare_object(DeclInfo *d, UInt8 b, Boolean c)
                 CError_ReportError(ERR_ILLEGAL_USE_NON_STATIC_MEMBER);
                 break;
             default:
-                CError_FATAL(2171);
+                CError_FATAL(BY_VERSION(2171, 2339));
                 break;
         }
     }
@@ -2372,7 +2438,7 @@ void declare_object(DeclInfo *d, UInt8 b, Boolean c)
         p = CExpr_IntegralConstOrDepExpr();
         if (found->type->type == TYPETEMPLATE || p->type != EINTCONST) {
             if (nspace->theclass == NULL || (TYPE_CLASS(nspace->theclass)->flags & CLASS_IS_TEMPL) == 0)
-                CError_FATAL(2300);
+                CError_FATAL(BY_VERSION(2300, 2484));
             templateClass = (TemplClass *)nspace->theclass;
             CTemplateClass_AppendExpressionRecord(templateClass, found, p);
         } else if ((found->qual & Q_CONST) != 0 && (found->type->type == TYPEINT || found->type->type == TYPEENUM)) {
@@ -2430,11 +2496,11 @@ void parse_resolved_member_function_decl(DeclInfo *di, Boolean define)
 
     if ((obj = OBJECT(di->resolvedObject)) == NULL) {
         if (!di->resolvedObjects)
-            CError_FATAL(2410);
+            CError_FATAL(BY_VERSION(2410, 2602));
         tclass = (TypeClass *)((NameSpaceObjectList *)di->resolvedObjects)->object;
         obj = (Object *)tclass;
         if (((Object *)tclass)->otype != OT_OBJECT)
-            CError_FATAL(2412);
+            CError_FATAL(BY_VERSION(2412, 2604));
     }
     if (!(tclass = obj->nspace->theclass)) {
         CError_ReportError(ERR_DECLARATION_SYNTAX_ERROR);
@@ -2453,7 +2519,7 @@ void parse_resolved_member_function_decl(DeclInfo *di, Boolean define)
             tk = CPrepTokenizer_GetNextToken();
             save = cscope_current;
             cscope_current = obj->nspace;
-            CDecl_ParseDirectFuncDecl(di);
+            CDecl_ParseDirectFuncDeclFromParen(di);
             cscope_current = save;
             if (di->thetype->type == TYPEFUNC) {
                 if (TYPE_FUNC(obj->type)->flags & FUNC_IS_DTOR) {
@@ -2474,7 +2540,7 @@ void parse_resolved_member_function_decl(DeclInfo *di, Boolean define)
             di->nspace = obj->nspace;
             di->name = obj->name;
             tk = CPrepTokenizer_GetNextToken();
-            CDecl_ParseDirectFuncDecl(di);
+            CDecl_ParseDirectFuncDeclFromParen(di);
             if (di->thetype->type == TYPEFUNC) {
                 if (define)
                     CDecl_FunctionDeclarator(di, NULL, 1, 1);
@@ -2488,7 +2554,7 @@ void parse_resolved_member_function_decl(DeclInfo *di, Boolean define)
             di->name = obj->name;
             save = cscope_current;
             cscope_current = obj->nspace;
-            CDecl_ParseDirectFuncDecl(di);
+            CDecl_ParseDirectFuncDeclFromParen(di);
             cscope_current = save;
             if (di->thetype->type == TYPEFUNC) {
                 if (define)
@@ -2512,7 +2578,7 @@ void CDecl_ScanDeclarator(DeclInfo *p)
     }
     CScope_GetScope(&save);
     if (p->thetype == NULL)
-        CError_FATAL(2559);
+        CError_FATAL(BY_VERSION(2559, 2765));
     first = 1;
     for (;;) {
         Type *node;
@@ -3071,7 +3137,7 @@ void scanenum(DeclInfo *result)
             return;
         } else {
             if (copts.cplusplus != 0 && tk == ';')
-                CError_FATAL(3280);
+                CError_FATAL(BY_VERSION(3280, 3909));
             data_00587fa0 = saved;
         }
     }
@@ -3087,7 +3153,7 @@ void scanenum(DeclInfo *result)
             goto checktype;
         }
         if (info.name == NULL)
-            CError_FATAL(3294);
+            CError_FATAL(BY_VERSION(3294, 3923));
         tk = CPrepTokenizer_GetNextToken();
         if (tk == '{') {
             decl = parse_enum_definition(NULL, info.name);
@@ -3121,7 +3187,9 @@ void CDecl_ScanStructDeclarator(BigDeclInfo *member)
             member->declinfo2.name = unnamed_name;
             unnamed = 1;
         } else {
+#if VERSION < VERSION_GC_1_3
             member->declinfo2.isStructMemberDeclarator = 1;
+#endif
             scandeclarator(&member->declinfo2);
             if (member->declinfo2.name == NULL) {
                 CError_ReportError(ERR_ILLEGAL_STRUCT_UNION_ENUM_CLASS_DEFINITION);
@@ -3253,7 +3321,7 @@ void compute_struct_layout(Type *str)
             has_anon = 1;
         if (member->name == NULL) {
             if (member->type->type != TYPESTRUCT)
-                CError_FATAL(3483);
+                CError_FATAL(BY_VERSION(3483, 4122));
             base = member->offset;
             inner = TYPE_STRUCT(member->type)->members;
             first = 1;
@@ -3312,8 +3380,7 @@ void compute_struct_layout(Type *str)
     }
     if (copts.warn_padding && TYPE_STRUCT(str)->stype != STRUCT_TYPE_UNION) {
         StructMember *previous;
-        previous = NULL;
-        for (member = TYPE_STRUCT(str)->members; member != NULL; member = member->next) {
+        for (member = TYPE_STRUCT(str)->members, previous = NULL; member != NULL; member = member->next) {
             if (previous != NULL && previous->offset + previous->type->size < member->offset)
                 CError_Warning(ERR_PAD_BYTES_INSERTED_AFTER_DATA_MEMBER,
                                member->offset - (previous->offset + previous->type->size), previous->name->name);
@@ -3535,7 +3602,7 @@ void scan_inline_definition(Object *object, TypeClass *classType)
     if (declaration.tokens != 0) {
         if (((((TypeFunc *)object->type)->flags & FUNC_METHOD) != 0) &&
             ((((TypeMemberFunc *)object->type)->theclass->flags & CLASS_IS_TEMPL) != 0)) {
-            ((TypeFunc *)object->type)->flags |= 0x8000000;
+            ((TypeFunc *)object->type)->flags |= BY_VERSION( 0x8000000, 0x800000);
             CTemplateClass_AddTemplateArgumentOverride((TemplClass *)((TypeMemberFunc *)object->type)->theclass, object,
                                                        &member_foi, &declaration);
         } else {
@@ -3545,7 +3612,8 @@ void scan_inline_definition(Object *object, TypeClass *classType)
     parseResult = CPrep_GetPFile();
     if (parseResult->recordbrowseinfo != '\0') {
         position = CPrep_GetCurrentTextOffset();
-        CBrowse_ForwardObjectFileRange(object, parseResult, member_foi.file, member_foi.tokenline + 1, position);
+        CBrowse_ForwardObjectFileRange(object, parseResult, member_foi.file,
+                                       BY_VERSION(member_foi.tokenline, fn_00436580(&member_foi)) + 1, position);
     }
     token = CPrepTokenizer_GetNextTokenAndRestorePosition();
     if (token == 0x3b) {
@@ -3639,7 +3707,7 @@ void declare_member_function(ClassLayout *layout, TypeClass *cls, struct DeclInf
             info->exportflags |= 0x40;
     }
 
-    CError_ASSERT(4010, cscope_current == cls->nspace);
+    CError_ASSERT(BY_VERSION(4010, 4655), cscope_current == cls->nspace);
 
     if (found != NULL) {
         UInt8 kind;
@@ -3696,7 +3764,7 @@ void declare_member_function(ClassLayout *layout, TypeClass *cls, struct DeclInf
         }
     }
     if (parseBody != 0) {
-        if (tk == '{' || tk == TK_TRY || (tk == ':' && CClass_IsDestructor(member)))
+        if (tk == '{' || tk == TK_TRY || (tk == ':' && CClass_IsCtor(member)))
             scan_inline_definition(member, NULL);
     }
     {
@@ -3872,7 +3940,7 @@ void parse_friend_declaration(TemplClass *cls)
             CError_ReportError(ERR_ILLEGAL_FRIEND_DECLARATION);
         if (decl.thetype->type == TYPECLASS) {
             if ((((TypeClass *)decl.thetype)->flags & CLASS_IS_TEMPL) == 0 ||
-                CParser_CheckTemplateClassScope(decl.thetype) != 0) {
+                CParser_CheckTemplateClassScopeReporting(decl.thetype) != 0) {
                 if (!isTemplateClass)
                     CDecl_AddFriend(&cls->theclass, NULL, TYPE_CLASS(decl.thetype));
                 else
@@ -3960,7 +4028,7 @@ ObjMemberVar *add_member_var(ClassLayout *declaration, TypeClass *cls, Type *typ
             case OT_TYPETAG:
                 break;
             default:
-                CError_FATAL(4406);
+                CError_FATAL(BY_VERSION(4406, 5047));
         }
     }
     member = (ObjMemberVar *)galloc(sizeof(ObjMemberVar));
@@ -3989,7 +4057,7 @@ ObjMemberVar *add_member_var(ClassLayout *declaration, TypeClass *cls, Type *typ
             CPrepCU *compilationUnit = (CPrepCU *)cprep_cu;
             if (compilationUnit->browseOptions.browseOption != 0) {
                 position = CPrep_GetCurrentTextOffset();
-                CBrowse_WriteObjMemberVar(member, member_foi.tokenline + 1, position);
+                CBrowse_WriteObjMemberVar(member, BY_VERSION(member_foi.tokenline, fn_00436580(&member_foi)) + 1, position);
             }
         }
     }
@@ -4038,7 +4106,11 @@ void parse_class_members(ClassLayout *decle, TypeClass *tclass, SInt16 mode)
                     }
                 }
             }
+#if VERSION >= VERSION_GC_1_3
+            CTemplateNew_ParseTemplateDeclaration(tclass, access);
+#else
             CTemplateNew_ParseTemplateDeclaration(tclass);
+#endif
             tk = CPrepTokenizer_GetNextToken();
             continue;
         }
@@ -5135,8 +5207,8 @@ void fill_class_layout_entries(ClassLayout *table, TypeClass *type, ObjBase **en
             if ((slot = ((TypeMemberFunc *)obj->type)->vtbl_index) > 0) {
                 --slot;
                 if (slot >= table->lex_order_count || entries[slot] != NULL)
-                    CError_FATAL(5811);
-                entries[slot] = OBJ_BASE(obj);
+                    CError_FATAL(BY_VERSION(5811, 6425));
+                entries[slot] = OBJ_BASE( obj);
                 ++filled;
                 if (obj->datatype != DVFUNC && !((TypeMemberFunc *)obj->type)->is_static) {
                     if (CClass_OverridesBaseMember(type, obj->name, obj)) {
@@ -5160,7 +5232,7 @@ void fill_class_layout_entries(ClassLayout *table, TypeClass *type, ObjBase **en
                     ((TypeFunc *)obj->type)->flags &= ~FUNC_PURE;
                 }
             } else if (slot != 0) {
-                CError_FATAL(5860);
+                CError_FATAL(BY_VERSION(5860, 6474));
             }
             if (type->sominfo == NULL)
                 ((TypeMemberFunc *)obj->type)->vtbl_index = 0;
@@ -5182,17 +5254,17 @@ void fill_class_layout_entries(ClassLayout *table, TypeClass *type, ObjBase **en
         for (; i < table->lex_order_count; ++i) {
             if (entries[i] == NULL) {
                 if (variable == NULL)
-                    CError_FATAL(5897);
-                entries[i] = OBJ_BASE(variable);
+                    CError_FATAL(BY_VERSION(5897, 6511));
+                entries[i] = OBJ_BASE (variable);
                 variable = variable->next;
                 ++filled;
             }
         }
         if (variable != NULL)
-            CError_FATAL(5903);
+            CError_FATAL(BY_VERSION(5903, 6517));
     }
     if (filled != table->lex_order_count)
-        CError_FATAL(5906);
+        CError_FATAL(BY_VERSION(5906, 6520));
 }
 
 void CDecl_CompleteClass(ClassLayout *ctx, TypeClass *cls)
@@ -5207,7 +5279,9 @@ void CDecl_CompleteClass(ClassLayout *ctx, TypeClass *cls)
     }
 
     if (cls->sominfo == NULL) {
+#if VERSION < VERSION_GC_1_3
         fn_004ebae0(cls);
+#endif
         declare_auto_generated_destructor(ctx, cls);
         generate_copy_constructor(ctx, cls);
         make_auto_generated_dtor(ctx, cls);
@@ -5239,7 +5313,7 @@ TypeClass *CDecl_DefineClass(struct NameSpace *nspace, struct HashNameNode *name
     struct NameSpace *classSpace;
     struct ObjType *typeObject;
     if (type == NULL && nspace->theclass != NULL && (nspace->theclass->flags & CLASS_IS_TEMPL) != 0) {
-        CError_ASSERT(6004, flag4 == 0);
+        CError_ASSERT(BY_VERSION(6004, 6618), flag4 == 0);
         return &CTemplateClass_CreateClassTemplateDeclaration(nspace->theclass, name, mode)->theclass;
     }
     classSpace = CScope_NewListNameSpace(name, 1);
@@ -5286,24 +5360,33 @@ TypeClass *CDecl_DefineClass(struct NameSpace *nspace, struct HashNameNode *name
     return type;
 }
 
+#if VERSION >= VERSION_GC_1_3
+#define ATTR_FLAGS (*flags)
+void CDecl_ParseDeclarationAttributeFlags(UInt8 *flags)
+{
+    DeclInfo declaration;
+
+#else
+#define ATTR_FLAGS flags
 UInt8 CDecl_ParseClassDeclSpec(void)
 {
     UInt8 flags;
     DeclInfo declaration;
 
     flags = 0;
+#endif
     tk = CPrepTokenizer_GetNextToken();
     if (tk == '(') {
         memclrw(&declaration, sizeof(declaration));
         CParser_ParseDeclSpec(&declaration, 1);
         if ((declaration.exportflags & 0x10) != 0) {
-            flags |= 1;
+            ATTR_FLAGS |= 1;
         }
         if ((declaration.exportflags & 0x20) != 0) {
-            flags |= 2;
+            ATTR_FLAGS |= 2;
         }
         if ((declaration.exportflags & 0x40) != 0) {
-            flags |= 4;
+            ATTR_FLAGS |= 4;
         }
         tk = CPrepTokenizer_GetNextToken();
         if (tk != ')') {
@@ -5314,7 +5397,9 @@ UInt8 CDecl_ParseClassDeclSpec(void)
     } else {
         CError_ReportError(ERR_LPAREN_EXPECTED);
     }
+#if VERSION < VERSION_GC_1_3
     return flags;
+#endif
 }
 
 void CDecl_ParseClass(DeclInfo *ctx, SInt16 kind, Boolean advanceToken, UInt8 extraFlags)
@@ -5333,7 +5418,11 @@ void CDecl_ParseClass(DeclInfo *ctx, SInt16 kind, Boolean advanceToken, UInt8 ex
     FileOffsetInfo nameSave;
     memclrw(&declarationState, 14);
     if (tk == TK_UU_DECLSPEC)
+#if VERSION >= VERSION_GC_1_3
+        CDecl_ParseDeclarationAttributeFlags(&        extraFlags);
+#else
         extraFlags |= CDecl_ParseClassDeclSpec();
+#endif
     if ((obj = ctx->pendingClass) == NULL) {
         switch (tk) {
             case ':':
@@ -5390,7 +5479,7 @@ void CDecl_ParseClass(DeclInfo *ctx, SInt16 kind, Boolean advanceToken, UInt8 ex
                 tk = CPrepTokenizer_GetNextToken();
                 if ((existing = spec.type) != NULL)
                     goto resolveDeclaration;
-                CError_ASSERT(6192, spec.name != NULL);
+                CError_ASSERT(BY_VERSION(6192, 6862), spec.name != NULL);
                 obj = CDecl_DefineClass(CScope_FindNonClassNonFunctionNS(cscope_current), spec.name, NULL, kind, 0, 1);
                 obj->eflags |= extraFlags;
         }
@@ -5417,7 +5506,7 @@ void CDecl_ParseClass(DeclInfo *ctx, SInt16 kind, Boolean advanceToken, UInt8 ex
     if ((obj->flags & CLASS_IS_TEMPL_INST) != 0)
         begin_class_instantiation((TemplClassInst *)obj, ctx);
     if (copts.structalignment < 0 || copts.structalignment > 0xe)
-        CError_FATAL(6245);
+        CError_FATAL(BY_VERSION(6245, 6932));
     obj->eflags |= ((copts.structalignment + 1) << 4) & CLASS_EFLAGS_F0;
     if (tk == ':')
         parse_class_bases((TemplClass *)obj, kind, isTemplate);

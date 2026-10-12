@@ -2,8 +2,8 @@
 """python tools/implib.py DEF OUTPUT: an import library for the DLL a module-definition file describes, in the format
 Microsoft's LIB writes (a descriptor, the null descriptor and null thunk objects, then one short import per export).
 
-Only what the executable imports by ordinal is supported: `EXPORTS name @ordinal NONAME`, imported as data (an __imp_
-pointer and no thunk)."""
+What the executable imports is supported, as data (an __imp_ pointer and no thunk): `EXPORTS name @ordinal NONAME` by
+ordinal, and `EXPORTS name@bytes @hint` by name (the stdcall decoration is the symbol's; the name imported is undecorated)."""
 import re
 import struct
 import sys
@@ -54,10 +54,11 @@ def library(dll, exports):
         (coff([(".idata$5", 0xC0300040, bytes(4), []), (".idata$4", 0xC0300040, bytes(4), [])],
               [(null_thunk, 0, 1, 2)]), [null_thunk]),
     ]
-    for symbol, ordinal in exports:
+    for symbol, ordinal, named in exports:
         strings = f"_{symbol}".encode() + b"\0" + dll.encode() + b"\0"
-        # (IMPORT_OBJECT_HEADER: data, imported by ordinal)
-        header = struct.pack("<HHHHIIHH", 0, 0xFFFF, 0, 0x14C, 0, len(strings), ordinal, 1 | 0 << 2)
+        # (IMPORT_OBJECT_HEADER: data, imported by ordinal, or by name with its hint, the name undecorated: 3)
+        header = struct.pack("<HHHHIIHH", 0, 0xFFFF, 0, 0x14C, 0, len(strings), ordinal,
+                             1 | (3 if named else 0) << 2)
         members.append((header + strings, [f"__imp__{symbol}"]))
 
     # The archive: the first linker member (big-endian offsets, symbol order), the second (member indices, sorted
@@ -90,7 +91,7 @@ def main():
     text = Path(definition).read_text()
     dll = re.search(r"^LIBRARY\s+(\S+)", text, re.M)[1]
     dll = dll if "." in dll else dll + ".dll"
-    exports = [(m[1], int(m[2])) for m in re.finditer(r"^\s+(\w+)\s+@(\d+)\s+NONAME\b", text, re.M)]
+    exports = [(m[1], int(m[2]), not m[3]) for m in re.finditer(r"^\s+([\w@]+)\s+@(\d+)(\s+NONAME)?\s*$", text, re.M)]
     Path(output).write_bytes(library(dll, exports))
 
 

@@ -24,7 +24,7 @@ struct PtrList {
 extern int Targets_SetTool(ParserTool *tool);
 extern Boolean Targets_MatchTool(UInt32 type, UInt32 lang, UInt32 cpu, UInt32 os);
 extern Boolean Targets_MatchCommandLineOptions(int argc, char **argv);
-extern int Targets_RegisterOptionLists(void);
+extern BY_VERSION( int, char) Targets_RegisterOptionLists(void);
 extern int data_005876ac;
 extern char *data_00587eb0;
 extern char *data_00587eec;

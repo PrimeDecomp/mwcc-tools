@@ -16,6 +16,10 @@
 #include <stdio.h>
 
 static struct AccessPathEntry *data_0054d898 = NULL;
+#if VERSION >= VERSION_GC_1_3
+#include "driver/MemUtils.h"
+#define free xfree
+#endif
 
 #define EMPTYS ("")
 
@@ -45,6 +49,9 @@ void CLDependencies_FreeDeps(Deps *block)
     }
     paths = block->scope;
     CLAccessPaths_FreeItems(paths);
+#if VERSION >= VERSION_GC_1_3
+    free(block->scope);
+#endif
 }
 
 unsigned char get_record_flag(Deps *table, unsigned int index)
@@ -129,7 +136,7 @@ Boolean find_dependency_access_path_entry(AccessPaths *dependencies, char *compa
     for (index = 0; index < CLAccessPaths_GetCount(dependencies); index++) {
         dependency = CLAccessPaths_GetEntry(dependencies, index);
         if (dependency == NULL)
-            CLIO_ReportAssertionFailure("path", "CLDependencies.c", 0x9b);
+            CLIO_ReportAssertionFailure("path", "CLDependencies.c", BY_VERSION(0x9b, 0xaf));
         if (find_access_path_entry(dependency, comparison, result, path))
             return 1;
     }
@@ -168,7 +175,7 @@ void append_dep_record(Deps *deps, char *name, UInt8 flag, AccessPathEntry *obj,
         resolvedType = find_or_create_access_path_entry(deps->scope, obj->path);
     } else {
         OS_MakeFileSpec(name, &buf);
-        resolvedType = find_or_create_access_path_entry(deps->scope, &buf.path);
+        resolvedType = find_or_create_access_path_entry(deps->scope, & buf.path);
     }
     rec->resolvedPath = resolvedType;
     rec->contextPath = get_access_path_entry();
@@ -266,7 +273,7 @@ SInt32 CLDependencies_SetAccessPath(OSSpec *name, Boolean flag)
             if (!flag)
                 return 1;
             OS_GetCWD(&buffer);
-            path = &buffer;
+            path = & buffer;
             break;
         case 1:
             if (!flag)
@@ -274,10 +281,10 @@ SInt32 CLDependencies_SetAccessPath(OSSpec *name, Boolean flag)
             /* fall through */
         case 3:
             if (name != NULL) {
-                path = &name->path;
+                path = & name->path;
             } else {
                 OS_GetCWD(&buffer);
-                path = &buffer;
+                path = & buffer;
             }
             break;
         default:
@@ -375,8 +382,8 @@ void CLDependencies_WriteDependencies(Deps *ctx, DropinFileRecord *file, OSHandl
     char line[520];
     char target[260];
     char dependency[260];
-    char escaped[324];
-    char path[324];
+    char escaped[BY_VERSION(324, 516)];
+    char path[BY_VERSION(324, 516)];
     Boolean hasSpace;
     SInt32 i;
     int *items;
@@ -428,6 +435,10 @@ void CLDependencies_WriteDependencies(Deps *ctx, DropinFileRecord *file, OSHandl
         return;
     } while (0);
 out_of_memory:
+#if VERSION >= VERSION_GC_1_3
+    CLIO_OutOfMemory();
+#else
     CLIO_FormatAndDispatchText("\nOut of memory\n");
     longjmp(driver_jmp_buf, 1);
+#endif
 }

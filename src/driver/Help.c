@@ -542,8 +542,13 @@ void Help_InitColumns(void)
     short thirdColumn;
     short lastColumn;
     if (!(help_output = (struct StorageHandle *)Memory_NewHandle(0))) {
+#if VERSION >= VERSION_GC_1_3
+        fprintf(stderr, "\n*** Out of memory\n");
+        exit(-23);
+#else
         Targets_ForwardVarArgsAndLongjmp("Out of memory");
         longjmp(plugin_request_jmp_buf, 7);
+#endif
     }
     firstColumn = help_width / 40;
     secondColumn = help_width / 3 + firstColumn;

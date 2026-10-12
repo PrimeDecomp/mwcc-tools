@@ -16,9 +16,11 @@ int TargetOptimizer_ppc_eabi_SetOption(short option, char enabled)
         case 20581:
             pBackEnd.peephole = enabled;
             break;
+#if VERSION < VERSION_GC_1_3
         case 19831:
             pBackEnd.use_lmw_stmw = enabled;
             break;
+#endif
         case 21358:
             pBackEnd.schedule = 0;
             break;
@@ -192,15 +194,15 @@ int __stdcall TargetOptimizer_ppc_eabi_GetMemBufferPtrAndSize(unsigned char *sta
                                                               int *secondResult)
 {
     HGLOBAL result;
-    OSHandle *buffer = (OSHandle *)(state + 324);
+    OSHandle *buffer = (OSHandle *)(state + BY_VERSION( 324, 516));
     *secondResult = 0;
     if (!OS_ValidHandle(buffer)) {
         return 8;
     }
-    result = OS_LockHandle((OSHandle *)(state + 324));
+    result = OS_LockHandle((OSHandle *)(state + BY_VERSION( 324, 516)));
     *firstResult = result;
     {
-        OSHandle *sizeBuffer = (OSHandle *)(state + 324);
+        OSHandle *sizeBuffer = (OSHandle *)(state + BY_VERSION( 324, 516));
         OS_GetHandleSize(sizeBuffer, (DWORD *)secondResult);
     }
     return 0;

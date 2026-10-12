@@ -83,6 +83,18 @@ static inline struct AggregateRecord *fn_0052d460_inline1(struct AggregateRecord
     return NULL;
 }
 
+#if VERSION >= VERSION_GC_1_3
+static inline struct AggregateRecord *lookup_vector_array_object(struct AggregateRecord *arrays, Object *object)
+{
+    while (arrays) {
+        if (arrays->object == object)
+            return arrays;
+        arrays = arrays->next;
+    }
+    return NULL;
+}
+#endif
+
 struct AggregateRecord *VectorArraysToRegs_BuildAggregateRecords(void)
 {
     ObjectList *candidate;
@@ -122,6 +134,21 @@ struct AggregateRecord *VectorArraysToRegs_BuildAggregateRecords(void)
     }
     return records;
 }
+
+#if VERSION >= VERSION_GC_1_3
+struct Fn00575b20 {
+    char pad[0x20];
+    SInt16 index;
+};
+
+extern unsigned char data_005ce9b2[];
+
+Boolean fn_00575b20(struct Fn00575b20 *a)
+{
+    SInt16 i = a->index;
+    return data_005ce9b2[i * 10] == 0x10;
+}
+#endif
 
 void fn_0052d8d0(struct AggregateRecord *analysis)
 {
@@ -289,16 +316,20 @@ void VectorArraysToRegs_ComputeGenKill(struct AggregateRecord *entries)
         object_index = block_entry_start[block->index];
         instruction = block->instructions;
         while (instruction != NULL) {
-            if ((instruction->flags & PCodeInstruction_SkipCodeMotion) == 0 && instruction->operand_count != 0) {
+            if ((instruction->flags & fIsBranch) == 0 && instruction->operand_count != 0) {
                 reference = &instruction->operandData.operands[0];
                 reference_count = instruction->operand_count;
                 while (reference_count--) {
-                    if (reference->kind == PCOp_GPR && (reference->flags & PCodeOperand_Definition) != 0) {
+                    if (PCOP_IS_GPR(reference) && (reference->flags & PCodeOperand_Definition) != 0) {
                         definition_index = 0;
                         definition = load_index_entries;
                         while (definition_index < load_index_count) {
                             if (definition->array != NULL &&
+#if VERSION >= VERSION_GC_1_3
+                                definition->array->operandData.operands[0].arg == reference->arg &&
+#else
                                 definition->array->operandData.operands[0].kind == reference->kind &&
+#endif
                                 definition->array->operandData.operands[0].value.reg == reference->value.reg) {
                                 if (definition->array->block == block) {
                                     local_bits[definition_index >> 5] &= ~(1 << (definition_index & 31));
@@ -314,6 +345,15 @@ void VectorArraysToRegs_ComputeGenKill(struct AggregateRecord *entries)
                 }
                 if (instruction->opcode == PC_ADDI) {
                     object_operand = &instruction->operandData.operands[2];
+#if VERSION >= VERSION_GC_1_3
+                    if (object_operand->kind == PCOp_MEMORY && object_operand->arg == 1) {
+                        entry = lookup_vector_array_object(entries, object_operand->object);
+                        if (entry && !entry->flag) {
+                            local_bits[object_index >> 5] |= 1 << object_index;
+                            object_index = object_index + 1;
+                        }
+                    }
+#else
                     if (instruction->operandData.operands[2].kind == PCOp_MEMORY &&
                         object_operand->flags == PCodeOperand_Use) {
                         entry = fn_0052d460_inline1(entries, object_operand);
@@ -322,6 +362,7 @@ void VectorArraysToRegs_ComputeGenKill(struct AggregateRecord *entries)
                             object_index = object_index + 1;
                         }
                     }
+#endif
                 }
             }
             instruction = instruction->next;
@@ -355,7 +396,15 @@ void VectorArraysToRegs_ComputeInOutBits(void)
         qq = bits->out;
         pp = bits->kill;
         for (j = 0; j < nwords; j++)
+#if VERSION >= VERSION_GC_1_3
+        {
+            *qq = ~*pp;
+            qq++;
+            pp++;
+        }
+#else
             *qq++ = ~*pp++;
+#endif
     }
     do {
         changed = 0;
@@ -466,7 +515,7 @@ void VectorArraysToRegs_ReplaceArrayUsesWithVMR(struct AggregateRecord *register
                 instruction->operandData.operands[0].value.reg = vectorRegister;
                 instruction->operandData.operands[0].flags = 2;
             } else {
-                CError_Internal("VectorArraysToRegs.c", 674);
+                CError_Internal("VectorArraysToRegs.c", BY_VERSION(674, 661));
             }
             use = use->next;
         } while (use != NULL);
@@ -605,13 +654,21 @@ int fn_0052ce10(void)
             COpt_SetLoopCodeMotionMode(0);
             VectorArraysToRegs_BuildLoadIndexEntries(analysis);
             codeMotionBits = oalloc(gPCodeBlockCount * sizeof(CodeMotionBits));
+#if VERSION >= VERSION_GC_1_3
+            index = 0;
+            bitsets = codeMotionBits;
+            for (; index < gPCodeBlockCount; ++index, bitsets++) {
+#else
             bitsets = codeMotionBits;
             for (index = 0; index < gPCodeBlockCount; ++index) {
+#endif
                 bitsets->gen = oalloc(((load_index_count + 31) >> 5) * sizeof(*bitsets->gen));
                 bitsets->kill = oalloc(((load_index_count + 31) >> 5) * sizeof(*bitsets->kill));
                 bitsets->in = oalloc(((load_index_count + 31) >> 5) * sizeof(*bitsets->in));
                 bitsets->out = oalloc(((load_index_count + 31) >> 5) * sizeof(*bitsets->out));
+#if VERSION < VERSION_GC_1_3
                 bitsets++;
+#endif
             }
             VectorArraysToRegs_ComputeGenKill(analysis);
             SpillCode_BuildBlockOrder();

@@ -55,7 +55,11 @@ void fn_004d6ed0(void)
     }
 }
 
+#if VERSION >= VERSION_GC_1_3
+void CPreprocess_EmitLineDirective(Boolean flag)
+#else
 void CPreprocess_EmitLineDirective(void)
+#endif
 {
     char buffer[512];
     SInt32 fileValue;
@@ -93,13 +97,12 @@ void CPreprocess_EmitLineDirective(void)
 
 void output_escaped_wide_chars(char *data, SInt16 count)
 {
-    UInt16 *p = (UInt16 *)data;
     SInt32 j, i;
 
     while (count--) {
-        if (*p < 0x20) {
+        if (*(UInt16 *)data < 0x20) {
             outchar('\\');
-            switch (*p) {
+            switch (*(UInt16 *)data) {
                 case 7:
                     outchar('a');
                     break;
@@ -125,41 +128,40 @@ void output_escaped_wide_chars(char *data, SInt16 count)
                     outchar('v');
                     break;
                 default:
-                    if (*p >= 8)
-                        outchar(*p / 8 + '0');
-                    outchar(*p % 8 + '0');
+                    if (*(UInt16 *)data >= 8)
+                        outchar(*(UInt16 *)data / 8 + '0');
+                    outchar(*(UInt16 *)data % 8 + '0');
                     break;
             }
-        } else if (*p > 0xff) {
+        } else if (*(UInt16 *)data > 0xff) {
             outchar('\\');
             outchar('x');
             j = 0x1000;
             i = 0;
             do {
-                outchar("0123456789ABCDEF"[(*p / j) % 16]);
-                i++;
+                outchar("0123456789ABCDEF"[(*(UInt16 *)data / j) % 16]);
                 j /= 16;
+                i++;
             } while (i < 4);
         } else {
-            switch (*p) {
+            switch (*(UInt16 *)data) {
                 case '"':
                 case '\\':
                     outchar('\\');
                     break;
             }
-            outchar((char)*p);
+            outchar((char)*(UInt16 *)data);
         }
-        p++;
+        data += 2;
     }
 }
 
 void append_escaped_text(const char *text, UInt16 n)
 {
-    const UInt8 *p = (const UInt8 *)text;
     while (n--) {
-        if (*p < 0x20) {
+        if (*(const UInt8 *)text < 0x20) {
             AppendGListByte(&data_00586da8.list, '\\');
-            switch (*p) {
+            switch (*(const UInt8 *)text) {
                 case '\a':
                     AppendGListByte(&data_00586da8.list, 'a');
                     break;
@@ -182,21 +184,21 @@ void append_escaped_text(const char *text, UInt16 n)
                     AppendGListByte(&data_00586da8.list, 'v');
                     break;
                 default:
-                    if (*p >= 8)
-                        AppendGListByte(&data_00586da8.list, *p / 8 + '0');
-                    AppendGListByte(&data_00586da8.list, (*p % 8) + '0');
+                    if (*(const UInt8 *)text >= 8)
+                        AppendGListByte(&data_00586da8.list, *(const UInt8 *)text / 8 + '0');
+                    AppendGListByte(&data_00586da8.list, (*(const UInt8 *)text % 8) + '0');
                     break;
             }
         } else {
-            switch (*p) {
+            switch (*(const UInt8 *)text) {
                 case '"':
                 case '\\':
                     AppendGListByte(&data_00586da8.list, '\\');
                     break;
             }
-            AppendGListByte(&data_00586da8.list, *p);
+            AppendGListByte(&data_00586da8.list, *(const UInt8 *)text);
         }
-        p++;
+        text++;
     }
 }
 
@@ -292,13 +294,13 @@ void CPreprocess_OutputPreprocessedText(void)
             case 0x112:
                 AppendGListData(&data_00586da8.list, "class", 5);
                 break;
-            case 0x121:
+            case TKN( 0x121):
                 AppendGListData(&data_00586da8.list, "const", 5);
                 break;
-            case 0x122:
+            case TKN( 0x122):
                 AppendGListData(&data_00586da8.list, "volatile", 8);
                 break;
-            case 0x123:
+            case TKN( 0x123):
                 AppendGListData(&data_00586da8.list, "pascal", 6);
                 break;
             case 0x129:
@@ -430,10 +432,10 @@ void CPreprocess_OutputPreprocessedText(void)
             case 0x157:
                 AppendGListData(&data_00586da8.list, "using", 5);
                 break;
-            case 0x11d:
+            case TKN( 0x11d):
                 AppendGListData(&data_00586da8.list, "wchar_t", 7);
                 break;
-            case 0x120:
+            case TKN( 0x120):
                 AppendGListData(&data_00586da8.list, "typename", 8);
                 break;
             case 0x158:
@@ -448,19 +450,21 @@ void CPreprocess_OutputPreprocessedText(void)
             case 0x15b:
                 AppendGListData(&data_00586da8.list, "export", 6);
                 break;
-            case 0x125:
+            case TKN( 0x125):
                 AppendGListData(&data_00586da8.list, "__stdcall", 9);
                 break;
-            case 0x126:
+            case TKN( 0x126):
                 AppendGListData(&data_00586da8.list, "__cdecl", 7);
                 break;
-            case 0x127:
+            case TKN( 0x127):
                 AppendGListData(&data_00586da8.list, "__fastcall", 10);
                 break;
+#if VERSION < VERSION_GC_1_3
             case 0x128:
                 AppendGListData(&data_00586da8.list, "__floatcall", 11);
                 break;
-            case 0x124:
+#endif
+            case TKN( 0x124):
                 AppendGListData(&data_00586da8.list, "__declspec", 10);
                 break;
             case 0x15c:
@@ -577,13 +581,13 @@ void CPreprocess_OutputPreprocessedText(void)
             case 0x181:
                 AppendGListData(&data_00586da8.list, "super", 5);
                 break;
-            case 0x11c:
+            case TKN(0x11c):
                 if (copts.cplusplus == '\0' && CPreprocess_UseC99Keywords())
                     AppendGListData(&data_00586da8.list, "_Bool", 5);
                 else
                     AppendGListData(&data_00586da8.list, "bool", 4);
                 break;
-            case 0x184:
+            case TKN(0x184):
                 if (CPreprocess_UseC99Keywords())
                     AppendGListData(&data_00586da8.list, "restrict", 8);
                 else
@@ -592,16 +596,16 @@ void CPreprocess_OutputPreprocessedText(void)
             case 0x11b:
                 AppendGListData(&data_00586da8.list, "__vector", 8);
                 break;
-            case 0x185:
+            case TKN( 0x185):
                 AppendGListData(&data_00586da8.list, "__attribute__", 13);
                 break;
-            case 0x186:
+            case TKN( 0x186):
                 AppendGListData(&data_00586da8.list, "__uuidof", 8);
                 break;
-            case 0x11e:
+            case TKN( 0x11e):
                 AppendGListData(&data_00586da8.list, "_Complex", 8);
                 break;
-            case 0x11f:
+            case TKN( 0x11f):
                 AppendGListData(&data_00586da8.list, "_Imaginary", 10);
                 break;
             case -4:

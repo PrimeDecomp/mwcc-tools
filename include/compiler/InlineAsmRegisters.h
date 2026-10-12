@@ -7,11 +7,19 @@
 extern "C" {
 #endif
 
+#if VERSION >= VERSION_GC_1_3
+#pragma options align = mac68k /* (1.3: 18 bytes, the int at +0xA) */
+#endif
 struct RegisterBinding {
     struct RegisterBinding *next;
     unsigned int key;
+#if VERSION >= VERSION_GC_1_3
+    unsigned char attribute1;
+    int registerNumber;
+#else
     unsigned short attribute1;
     unsigned short registerNumber;
+#endif
     struct Object *object;
 };
 

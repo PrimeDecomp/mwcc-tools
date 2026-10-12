@@ -28,6 +28,9 @@ int gConstantPropagationChanged;
 static int constantPropagationChanged;
 static struct PCodeInstruction **unique_definitions;
 static struct PCodeInstruction **virtual_register_definitions;
+#if VERSION >= VERSION_GC_1_3
+struct PCodeInstruction ** fpr_definitions;
+#endif
 
 static int GetMask(int index, unsigned int *out);
 static int GetKind2(int index);
@@ -75,6 +78,32 @@ void COpt_LoadDeletion(void)
     }
     freeoheap();
 }
+
+#if VERSION >= VERSION_GC_1_3
+int fn_00574cb0(void)
+{
+    return 0;
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+extern void fn_00568f00(void *a, void *b, int c, int d);
+#if VERSION >= VERSION_GC_1_3
+/* copts is declared in CodeGen.h */
+#define data_005e71c3 (*(SInt8 *)((char *)&copts + 0xe1))
+#else
+extern SInt8 data_005e71c3;
+#endif
+extern SInt32 data_005e6ab8;
+extern SInt32 data_005e5ffc;
+extern char data_005ce810[];
+
+void fn_00574c20(void *a)
+{
+    fn_00568f00(a, data_005ce810, data_005e71c3 >= 4 ? 4 : 1, 0);
+    data_005e5ffc = data_005e6ab8;
+}
+#endif
 
 void ConstantPropagation_FindUniqueDefinitions(struct PCodeBlock *state)
 {
@@ -573,6 +602,9 @@ void COpt_ConstantPropagation(void)
     gConstantPropagationChanged = 0;
     COpt_SetLoopCodeMotionMode(0);
     unique_definitions = galloc(gUsedVirtualRegistersGPR * 4);
+#if VERSION >= VERSION_GC_1_3
+    fpr_definitions = galloc(gUsedVirtualRegistersFPR * 4);
+#endif
     virtual_register_definitions = galloc(gUsedVirtualRegistersVR * 4);
     do {
         constantPropagationChanged = 0;

@@ -14,7 +14,7 @@ static char data_00565458[76] = {
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 };
 
-unsigned int fn_004f0040(IROLinear *node)
+BY_VERSION(unsigned int, Boolean) fn_004f0040(IROLinear *node)
 {
     Object *localObject;
     VarInfo *registerInfo;
@@ -57,7 +57,11 @@ unsigned int fn_004f0040(IROLinear *node)
                 return 1;
             }
             if (node->nodetype == 48 && node->rtype->type == TYPEINT &&
+#if VERSION >= VERSION_GC_1_3
+                node->rtype->size >= node->u.monadic->rtype->size) {
+#else
                 node->rtype->size > node->u.monadic->rtype->size) {
+#endif
                 return 1;
             }
             return 0;

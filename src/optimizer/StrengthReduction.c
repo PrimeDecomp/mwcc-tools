@@ -86,7 +86,7 @@ static int StrengthDefsValid(Loop *cm, SInt16 reg, SInt32 off)
                 return 0;
             if (d->operandData.operands[1].value.reg != reg)
                 return 0;
-            if (d->operandData.operands[2].value.signed_value != off)
+            if (BY_VERSION(d->operandData.operands[2].value.signed_value, d->operandData.thirdImmediateWord.value) != off)
                 return 0;
         }
     }
@@ -170,7 +170,7 @@ void find_addi_code_motion_candidates(Loop *cm)
             if (d->opcode == PC_ADDI) {
                 reg = d->operandData.operands[0].value.reg;
                 if (reg >= 0x20 && d->operandData.operands[1].value.reg == reg) {
-                    off = d->operandData.operands[2].value.reg;
+                    off = BY_VERSION(d->operandData.operands[2].value.reg, d->operandData.thirdImmediate.imm);
                     if (StrengthDefsValid(cm, reg, off))
                         add_code_motion_search(cm, reg, off);
                 }
@@ -266,7 +266,7 @@ SInt32 check_strength_reduction_use(CMRegisterNode *info, SInt32 useIndex, SInt3
             if (use->operandData.operands[4].value.immediate_value !=
                 0x1f - use->operandData.operands[2].value.immediate_value)
                 return 0;
-            if (use->flags & fRecordBit)
+            if (PCODE_RECORD(use->flags))
                 return 0;
             *value = 1 << use->operandData.operands[2].value.immediate_value;
             break;
@@ -450,7 +450,7 @@ void initialize_candidate_register(CodeMotionCandidate *candidate)
     short immediate;
 
     motion = candidate->owner;
-    preheader = candidate->owner->loop->preheader;
+    preheader = BY_VERSION(candidate->owner, motion)->loop->preheader;
     if (candidate->source_operand != 0) {
         source_register = candidate->instruction->operandData.operands[candidate->source_operand].value.reg;
         base_register = candidate->instruction->operandData.operands[candidate->base_operand].value.reg;
@@ -546,7 +546,8 @@ void insert_scaled_increment(CodeMotionCandidate *request)
 }
 
 int matches_redundancy_without_prior_reg_use(CodeMotionCandidate *entry, SInt32 stride, unsigned int reg,
-                                             unsigned int displacement, Loop *outerLoop, Loop *innerLoop)
+                                             BY_VERSION(unsigned int, int) displacement, Loop *outerLoop,
+                                             Loop *innerLoop)
 {
     PCodeInstruction *instruction;
     int operandCount;
@@ -567,10 +568,16 @@ int matches_redundancy_without_prior_reg_use(CodeMotionCandidate *entry, SInt32 
             while (blockLink != NULL && blockLink->payload.block != innerLoop->blocks->payload.block) {
                 block = blockLink->payload.block;
                 for (instruction = block->instructions; instruction != NULL; instruction = instruction->next) {
+#if VERSION >= VERSION_GC_1_3
+                    operand = instruction->operandData.operands;
+                    operandCount = instruction->operand_count;
+#else
                     operandCount = instruction->operand_count;
                     operand = instruction->operandData.operands;
+#endif
                     while (operandCount--) {
-                        if (operand->kind == PCOp_GPR && operand->value.reg == reg)
+                        if (BY_VERSION(operand->kind == PCOp_GPR, operand->kind == PCOp_GPR && operand->arg == 4) &&
+                            operand->value.reg == reg)
                             return 0;
                         operand++;
                     }
@@ -585,6 +592,17 @@ int matches_redundancy_without_prior_reg_use(CodeMotionCandidate *entry, SInt32 
 
 void hoist_child_code_motion_instructions(SInt16 operandIndex, int mode, void *destination, Loop *context)
 {
+#if VERSION >= VERSION_GC_1_3
+    PCodeInstruction *operands;
+    SInt32 index;
+    CMRegisterNode *block;
+    CodeMotionCandidate *entry;
+    PCodeOperand *operand;
+    SInt32 remaining;
+    Loop *candidate;
+    PCodeBlock *destinations;
+    PCodeInstruction *first;
+#else
     Loop *candidate;
     SInt32 index;
     CMRegisterNode *block;
@@ -594,6 +612,7 @@ void hoist_child_code_motion_instructions(SInt16 operandIndex, int mode, void *d
     PCodeBlock *destinations;
     PCodeOperand *operand;
     PCodeInstruction *first;
+#endif
 
     for (candidate = context->children; candidate != NULL; candidate = candidate->sibling) {
         if (candidate->isKnownCountingLoop == 0 || candidate->skip_leaf_pass_4f == 0)
@@ -614,7 +633,7 @@ void hoist_child_code_motion_instructions(SInt16 operandIndex, int mode, void *d
                             for (operands = first; operands != NULL; operands = operands->previous) {
                                 operand = operands->operandData.operands;
                                 for (remaining = operands->operand_count; remaining--; operand++) {
-                                    if (operand->kind == PCOp_GPR && (operand->flags & PCodeOperand_Definition) != 0 &&
+                                    if (PCOP_IS_GPR(operand) && (operand->flags & PCodeOperand_Definition) != 0 &&
                                         operand->value.reg == operandIndex)
                                         break;
                                 }
@@ -656,7 +675,14 @@ void rewrite_code_motion_candidates(CMRegisterNode *func)
         if (node->source_operand != 0 && node->instruction->operandData.operands[2].kind == PCOp_IMMEDIATE)
             continue;
         if (node->destination_register == -1) {
+#if VERSION >= VERSION_GC_1_3
+            {
+                int reg = gUsedVirtualRegistersGPR++;
+                node->destination_register = reg;
+            }
+#else
             node->destination_register = gUsedVirtualRegistersGPR++;
+#endif
             initialize_candidate_register(node);
             insert_scaled_increment(node);
             if (node->scale == 1) {
@@ -704,10 +730,15 @@ void fn_005275a0(CMRegisterNode *input, ClassLookupResult *result)
         if (instruction->operandData.operands[1].value.reg == input->reg) {
             result->value = instruction->operandData.operands[2].value.signed_value;
             for (instruction = instruction->previous; instruction != NULL; instruction = instruction->previous) {
+#if VERSION >= VERSION_GC_1_3
+                operand = instruction->operandData.operands;
+                operandCount = instruction->operand_count;
+#else
                 operandCount = instruction->operand_count;
                 operand = instruction->operandData.operands;
+#endif
                 while (operandCount--) {
-                    if (operand->kind == PCOp_GPR && operand->value.reg == input->reg && (operand->flags & 2)) {
+                    if (PCOP_IS_GPR(operand) && operand->value.reg == input->reg && (operand->flags & 2)) {
                         if (instruction->opcode == PC_ADD) {
                             result->index = instruction->operandData.operands[1].value.reg;
                             result->kind60Value = instruction->operandData.operands[2].value.reg;
@@ -738,10 +769,15 @@ void fn_005275a0(CMRegisterNode *input, ClassLookupResult *result)
         if (instruction->operandData.operands[1].value.reg == input->reg) {
             result->kind60Value = instruction->operandData.operands[2].value.reg;
             for (instruction = instruction->previous; instruction != NULL; instruction = instruction->previous) {
+#if VERSION >= VERSION_GC_1_3
+                operand = instruction->operandData.operands;
+                operandCount = instruction->operand_count;
+#else
                 operandCount = instruction->operand_count;
                 operand = instruction->operandData.operands;
+#endif
                 while (operandCount--) {
-                    if (operand->kind == PCOp_GPR && operand->value.reg == input->reg && (operand->flags & 2) &&
+                    if (PCOP_IS_GPR(operand) && operand->value.reg == input->reg && (operand->flags & 2) &&
                         instruction->opcode == PC_ADDI) {
                         if (instruction->operandData.operands[2].kind == PCOp_IMMEDIATE) {
                             result->index = instruction->operandData.operands[1].value.reg;
@@ -780,9 +816,9 @@ void rewrite_and_relocate_addi_definition(Loop *obj, CMRegisterNode *firstId, CM
     secondDefinition = NULL;
 
     firstReg = firstId->reg;
-    CError_ASSERT(932, 0 <= firstReg);
+    CError_ASSERT(BY_VERSION(932, 930), 0 <= firstReg);
     secondReg = secondId->reg;
-    CError_ASSERT(936, 0 <= secondReg);
+    CError_ASSERT(BY_VERSION(936, 934), 0 <= secondReg);
 
     if (offset != (SInt16)offset)
         return;
@@ -795,7 +831,7 @@ void rewrite_and_relocate_addi_definition(Loop *obj, CMRegisterNode *firstId, CM
                 operand = instruction->operandData.operands;
                 i = instruction->operand_count;
                 while (i--) {
-                    if (operand->kind == PCOp_GPR && operand->value.reg == firstReg)
+                    if (BY_VERSION(operand->kind == PCOp_GPR, operand->kind == PCOp_GPR && operand->arg == 4) && operand->value.reg == firstReg)
                         return;
                     operand++;
                 }

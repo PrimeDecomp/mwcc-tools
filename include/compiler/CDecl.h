@@ -39,6 +39,9 @@ struct DeclInfo {
     struct TemplArg *expltargs;
     struct TemplParam *templateParameters;
     struct TemplateScopeState *templateScope;
+#if VERSION >= VERSION_GC_1_3
+    UInt8 f38[6];
+#endif
     SInt16 operator_token;
     SInt16 storageclass;
     SInt16 section;
@@ -56,13 +59,23 @@ struct DeclInfo {
     UInt8 requireMangledName;
     UInt8 isNewTypeId;
     UInt8 requireTemplateClassMember;
+#if VERSION < VERSION_GC_1_3
     UInt8 isStructMemberDeclarator;
+#endif
     Boolean allowTemplateArguments;
     Boolean has_expltargs;
     UInt8 hasTypename;
+#if VERSION >= VERSION_GC_1_3
+    UInt8 fMid[5];
+#endif
     struct CPrepFileInfo *file;
     struct CPrepFileInfo *file2;
     SInt32 sourceoffset;
+#if VERSION >= VERSION_GC_1_3
+    UInt8 pad66;
+    UInt8 f67;
+    UInt16 f68;
+#endif
 };
 #pragma options align = reset
 struct DefArgCtorInfo {
@@ -82,7 +95,11 @@ struct BigDeclInfo {
 };
 #pragma pack(pop)
 extern TypeIntegral stunsignedint;
+#if VERSION >= VERSION_GC_1_3
+extern void CDecl_ParseDeclarationAttributeFlags(UInt8 *flags);
+#else
 extern UInt8 CDecl_ParseClassDeclSpec(void);
+#endif
 extern TypeClass *CDecl_DefineClass(struct NameSpace *nspace, struct HashNameNode *name, struct TypeClass *type,
                                     short mode, char flag4, char flag5);
 extern void CDecl_CompleteClass(ClassLayout *ctx, TypeClass *cls);
@@ -143,7 +160,19 @@ extern Boolean check_operator_declaration(DeclInfo *declaration, Boolean isMembe
 extern unsigned int parse_parenthesized_declarator(DeclInfo *args);
 extern void replace_nested_type(Type *oldtype, Type *ty, Type *newtype);
 extern void CDecl_ParseDirectFuncDecl(DeclInfo *d);
+#if VERSION >= VERSION_GC_1_3
+extern void CDecl_ParseDirectFuncDeclFromParen(DeclInfo *d);
+#else
+#define CDecl_ParseDirectFuncDeclFromParen CDecl_ParseDirectFuncDecl
+#endif
+#if VERSION >= VERSION_GC_1_3
+extern void fn_00504240(TypeFunc *type, UInt32 flags);
+#else
 extern void fn_00504240(TypeFunc *type);
+#endif
+#if VERSION >= VERSION_GC_1_3
+extern void fn_0053a650(TypeFunc *type);
+#endif
 extern Boolean check_function_return_type(Type *type);
 extern Boolean CDecl_CheckArrayIntegr(Type *type);
 extern void CDecl_PrependFuncArg(TypeFunc *type, TypeIntegral *argtype);

@@ -47,6 +47,35 @@ Object *get_or_create_type_name_object(CIRTypeName *entry, Type *ty)
     return obj;
 }
 
+#if VERSION >= VERSION_GC_1_3
+void fn_0052a180(void)
+{
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+void fn_0052a190(void)
+{
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+struct Fn0052a1a0 {
+    UInt32 count;
+    SInt32 items[1];
+};
+
+Boolean fn_0052a1a0(struct Fn0052a1a0 *a)
+{
+    UInt32 i;
+    for (i = 0; i < a->count; i++) {
+        if (a->items[i] != 0)
+            return 0;
+    }
+    return 1;
+}
+#endif
+
 ENode *expand_compound_assignment(ENode *expr)
 {
     ENode *left;
@@ -70,7 +99,7 @@ ENode *expand_compound_assignment(ENode *expr)
     memclrw(&state, sizeof(state));
     state.type = left->rtype;
     if (left->type != EINDIRECT) {
-        CError_FATAL(518);
+        CError_FATAL(BY_VERSION(518, 527));
     }
     target = left->data.diadic.left;
     target->rtype = CDecl_NewPointerType(state.type);

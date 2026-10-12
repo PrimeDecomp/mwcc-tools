@@ -20,7 +20,11 @@ StorageHandle *CLPrefs_CopyDestinationToTemporary(NameTableEntry *preferences)
     unsigned int size;
     copy = preferences;
     size = Memory_GetHandleSize(copy->handles.storage.destination);
+#if VERSION >= VERSION_GC_1_3
+    if (copy->handles.storage.temporary == NULL || copy->handles.storage.temporary->data == NULL) {
+#else
     if (copy->handles.storage.temporary == NULL) {
+#endif
         copy->handles.storage.temporary = (StorageHandle *)Memory_NewHandle(size);
     } else {
         Memory_ResizeStorageHandle(copy->handles.storage.temporary, size);

@@ -29,7 +29,7 @@ extern SInt32 ToolHelpers_cc_AddProjectEntry(OSSpec *path, SInt16 mode, char *na
 extern UInt8 data_00587e26;
 extern UInt8 data_00587e27;
 extern UInt8 data_00587e28;
-extern int ToolHelpers_cc_AddAccessPath(OSPathSpec *path, char use_first, int value, unsigned char option);
+extern int ToolHelpers_cc_AddAccessPath(OSPathSpec *path, BY_VERSION(char, int) use_first, int value, unsigned char option);
 extern void ToolHelpers_cc_PassVirtualFileValuePair(char *fileData, struct StorageHandle **virtualFile);
 extern void ToolHelpers_cc_GetOutputFileDirectory(CWFileSpec *directory);
 extern void ToolHelpers_cc_CallFileInfoForDirectory(OSSpec *input);

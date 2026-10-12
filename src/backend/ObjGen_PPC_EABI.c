@@ -29,6 +29,11 @@
 
 #include <string.h>
 
+#if VERSION >= VERSION_GC_1_3
+extern void fn_0042e150(void);
+extern void fn_004cf620(void);
+#endif
+
 struct CNameNode *data_005870e8;
 SInt32 output_buffer_length;
 struct ObjGenRelocation *relocation_list;
@@ -549,12 +554,214 @@ void emit_dwarf_arguments_and_locals(void)
     }
 }
 
+#if VERSION >= VERSION_GC_1_3
+extern SInt32 data_005e6714;
+extern UInt8 data_005e73ec;
+extern void *interrupt_generation_records;
+extern void fn_004b4740(void);
+
+void fn_004b4710(void)
+{
+    data_005e6714 = 0;
+    interrupt_generation_records = 0;
+    DWARF_Init();
+    BE_symbol_Init();
+    BE_elf_InitSectionsAndFileSymbol();
+}
+
+void fn_004b22d0(void)
+{
+    if (data_005e73ec == 0)
+        CError_Internal("ObjGen_PPC_EABI.c", 0x795);
+    fn_004b4740();
+    DWARF_RestoreFunctionState();
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+Boolean fn_004b3fc0(Object *obj)
+{
+    UInt8 value = PCodeUtilities_Require(obj);
+
+    if ((UInt8)(value - 6) <= 2 || value == 2) {
+        return 1;
+    }
+    return 0;
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+short fn_004b1d10(short key)
+{
+    InterruptGenerationRecord *record;
+
+    if (key < 0) {
+        record = CodeGen_FindInterruptGenerationRecord(key);
+        if (record != NULL) {
+            switch (record->kind) {
+            case 1:
+            case 2:
+                return record->sectionIndex;
+            case 0:
+            case 3:
+            default:
+                CError_FATAL(0x8f0);
+            }
+        }
+    }
+    return key;
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+extern SInt32 data_005dcda0;
+extern SInt32 data_005dcd90;
+
+/* update_frame_align: raise the frame alignment to ALIGN */
+void fn_004f6050(SInt32 align)
+{
+    if (data_005dcda0 < align)
+        data_005dcda0 = align;
+}
+
+/* estimate_out_param_size: raise the estimate of the outgoing parameter area to SIZE */
+void fn_004f6070(SInt32 size)
+{
+    if (data_005dcd90 < size)
+        data_005dcd90 = size;
+}
+
+extern SInt32 data_005dcd94;
+
+void fn_004f6090(SInt32 value)
+{
+    if (value < 0)
+        value = 0;
+    if (data_005dcd94 < value)
+        data_005dcd94 = value;
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+extern int fn_004f5df0(Object *obj);
+
+int fn_004b3170(Object *obj)
+{
+    switch (PCodeUtilities_Require(obj)) {
+    case 1:
+    case 2:
+    case 8:
+    case 10:
+    case 11:
+    case 12:
+        return 0;
+    case 6:
+        return 0xd;
+    case 3:
+    case 4:
+    case 7:
+        return 2;
+    case 9:
+        return fn_004f5df0(obj);
+    default:
+        PCodeUtilities_Require(obj);
+        CError_Internal("ObjGen_PPC_EABI.c", 0x4f3);
+        return 2;
+    }
+}
+/* reset the pending-section state before emitting a new function body */
+void fn_004b4370(void)
+{
+    if (!data_005e73ec)
+        CError_Internal("ObjGen_PPC_EABI.c", 0x1be);
+    if (!data_0058849e) {
+        DWARF_SetSectionAndState(dwarf_info_section, dwarf_line_section);
+        DWARF_SetupSectionDebugState(BE_ELF_FIND_SECTION(".text", 0, 0));
+        data_0058849e = 1;
+    }
+    data_00580da8 = -1;
+    data_00587ff8->flags = -1;
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+struct IntrReg {
+    char pad[8];
+    UInt16 number;
+};
+struct IntrSrc {
+    char pad[0x18];
+    struct IntrReg *reg;
+};
+struct IntrRec {
+    struct IntrRec *next;
+    UInt8 kind;
+    UInt8 pad5;
+    UInt16 pad6;
+    UInt16 id;
+    UInt16 r0;
+    UInt16 r1;
+    UInt16 r2;
+    UInt16 r3;
+    UInt16 r4;
+};
+#if VERSION >= VERSION_GC_1_3
+#define data_005e710a (*(struct IntrSrc * *)((char *)&copts + 0x28))
+#else
+extern struct IntrSrc * data_005e710a;
+#endif
+#if VERSION >= VERSION_GC_1_3
+#define data_005e710e (*(struct IntrSrc * *)((char *)&copts + 0x2c))
+#else
+extern struct IntrSrc * data_005e710e;
+#endif
+#if VERSION >= VERSION_GC_1_3
+#define data_005e7112 (*(struct IntrSrc * *)((char *)&copts + 0x30))
+#else
+extern struct IntrSrc * data_005e7112;
+#endif
+#if VERSION >= VERSION_GC_1_3
+#define data_005e711a (*(struct IntrSrc * *)((char *)&copts + 0x38))
+#else
+extern struct IntrSrc * data_005e711a;
+#endif
+#if VERSION >= VERSION_GC_1_3
+#define data_005e7116 (*(struct IntrSrc * *)((char *)&copts + 0x34))
+#else
+extern struct IntrSrc * data_005e7116;
+#endif
+
+/* find or create the interrupt generation record matching the current interrupt pragma state */
+InterruptGenerationRecord *fn_004b1c00(void)
+{
+    struct IntrRec *rec;
+
+    rec = (struct IntrRec *)CodeGen_FindInterruptGenerationRecord(data_005e6714);
+    if (rec != NULL && rec->r0 == data_005e710a->reg->number && rec->r1 == data_005e710e->reg->number &&
+        rec->r2 == data_005e7112->reg->number && rec->r3 == data_005e711a->reg->number &&
+        rec->r4 == data_005e7116->reg->number)
+        return (InterruptGenerationRecord *)rec;
+    rec = (struct IntrRec *)galloc(0x16);
+    memclrw(rec, 0x16);
+    rec->next = (struct IntrRec *)interrupt_generation_records;
+    interrupt_generation_records = rec;
+    data_005e6714--;
+    rec->id = data_005e6714;
+    rec->kind = 3;
+    rec->r0 = data_005e710a->reg->number;
+    rec->r1 = data_005e710e->reg->number;
+    rec->r2 = data_005e7112->reg->number;
+    rec->r3 = data_005e711a->reg->number;
+    rec->r4 = data_005e7116->reg->number;
+    return (InterruptGenerationRecord *)rec;
+}
+#endif
+
 void fn_0048b500(void)
 {
     BE_symbol_Init();
     BE_elf_InitSectionsAndFileSymbol();
 }
-
 void fn_0048b3f0(void)
 {
     struct CNameNode *p;
@@ -565,8 +772,15 @@ void fn_0048b3f0(void)
     pending_buffer_updates = NULL;
     data_00587ff8 = data_005870e8 = NULL;
     uid_counter = 0;
+#if VERSION >= VERSION_GC_1_3
+    {
+        extern UInt8 data_005e73ec;
+        data_005e73ec = 0;
+    }
+#else
     data_005876b4 = 0;
     interrupt_generation_records = NULL;
+#endif
     result = InitGList(&data_00583ae8.buffer, 40000);
     if (result) {
         CError_LongJump();
@@ -591,8 +805,10 @@ void fn_0048b3f0(void)
     data_00587ff8->flags = -1;
     data_00580d80 = 0;
     output_buffer_length = object_storage_size = object_data_size = data_00580da4 = 0;
+#if VERSION >= VERSION_GC_1_3
+    fn_0042e150();
+#endif
 }
-
 void ObjGen_PPC_EABI_FinalizeOutputBuffers(void)
 {
     BufferUpdate *update;
@@ -627,6 +843,9 @@ void ObjGen_PPC_EABI_FinalizeOutputBuffers(void)
         unit = (CPrepCU *)cprep_cu;
         unit->idataSize = object_data_size;
     }
+#if VERSION >= VERSION_GC_1_3
+    fn_004cf620();
+#endif
 }
 
 void fn_0048b2e0(void)
@@ -658,13 +877,13 @@ void ObjGen_PPC_EABI_SetObjectSectionIndex(Object *object)
 
     if (data_0058849e == 0) {
         DWARF_SetSectionAndState(dwarf_info_section, dwarf_line_section);
-        DWARF_SetupSectionDebugState(BE_elf_FindSection(".text", 0));
+        DWARF_SetupSectionDebugState(BE_ELF_FIND_SECTION(".text", 0, 0));
         data_0058849e = 1;
     }
     data_00580da8 = -1;
     if (data_00587ff8 != data_005870e8) {
         mapping = select_object_section(object, 0, 1, 1, 1);
-        result = BE_elf_FindSection(mapping->name, data_00587ff8->uid);
+        result = BE_ELF_FIND_SECTION(mapping->name, data_00587ff8->uid, 0);
         if (result == NULL) {
             result = fn_0049c540(mapping, data_00587ff8->uid);
         }
@@ -772,7 +991,7 @@ void ObjGen_PPC_EABI_EmitObjectWithDebugEntry(Object *object, const void *data, 
         if (name->name[0] != 64) {
             if (!data_0058849e) {
                 DWARF_SetSectionAndState(dwarf_info_section, dwarf_line_section);
-                DWARF_SetupSectionDebugState(BE_elf_FindSection(".text", 0));
+                DWARF_SetupSectionDebugState(BE_ELF_FIND_SECTION(".text", 0, 0));
                 data_0058849e = 1;
             }
             DWARF_CreateObjectDebugEntry(object);
@@ -790,7 +1009,7 @@ unsigned int ObjGen_PPC_EABI_EmitObject(Object *object, const void *context, OLi
     if (copts.filesyminfo != 0 && object->name->name[0] != '@') {
         if (data_0058849e == 0) {
             DWARF_SetSectionAndState(dwarf_info_section, dwarf_line_section);
-            DWARF_SetupSectionDebugState(BE_elf_FindSection(".text", 0));
+            DWARF_SetupSectionDebugState(BE_ELF_FIND_SECTION(".text", 0, 0));
             data_0058849e = 1;
         }
         DWARF_CreateObjectDebugEntry(object);
@@ -815,7 +1034,7 @@ char *ObjGen_PPC_EABI_GetSectionName(struct ObjGenSection *descriptor)
         }
         entry = entry->next;
     }
-    CError_FATAL(630);
+    CError_FATAL(BY_VERSION(630, 662));
     return NULL;
 }
 
@@ -899,6 +1118,16 @@ Boolean ObjGen_PPC_EABI_0048ac10(Object *obj)
     return 0;
 }
 
+#if VERSION >= VERSION_GC_1_3
+extern unsigned char __lower_map[256];
+static inline int OBJGEN_LOWER(int c)
+{
+    return (c == -1) ? -1 : (int)__lower_map[(unsigned char)c];
+}
+#define OBJGEN_TOLOWER(c) OBJGEN_LOWER(c)
+#else
+#define OBJGEN_TOLOWER(c) tolower(c)
+#endif
 Boolean ObjGen_PPC_EABI_IsInvalidAbsName(char *name)
 {
     char *p;
@@ -914,7 +1143,7 @@ Boolean ObjGen_PPC_EABI_IsInvalidAbsName(char *name)
     while (*p != 0) {
         ch = *p;
         p++;
-        switch (tolower(ch)) {
+        switch (OBJGEN_TOLOWER(ch)) {
             case '0':
             case '1':
             case '2':
@@ -1048,8 +1277,8 @@ void ObjGen_PPC_EABI_SetSectionOptions(SectionRec *section)
         SetDataSectionOptions(section, NULL, 1);
         return;
     }
-    symbol = BE_elf_FindSection(section->sectionName, 0);
-    objectSymbol = BE_elf_FindSection(section->linkedSectionName, 0);
+    symbol = BE_ELF_FIND_SECTION(section->sectionName, 0, 0);
+    objectSymbol = BE_ELF_FIND_SECTION(section->linkedSectionName, 0, 0);
     if (symbol == NULL) {
         SecKind initialFlags;
         if (section->far_reloc == SK_5) {
@@ -1254,7 +1483,7 @@ short ObjGen_PPC_EABI_GetHeaderIndex(short kind)
             value = copts.smallDataSection->header->index;
             break;
         default:
-            CError_FATAL(1103);
+            CError_FATAL(BY_VERSION(1103, 1108));
     }
     return value;
 }
@@ -1364,10 +1593,10 @@ ObjGenSection *select_object_section(Object *obj, SInt32 section, Boolean usePri
             entry = entry->next;
         } while (entry);
     }
-    CError_ASSERT(1266, entry);
+    CError_ASSERT(BY_VERSION(1266, 1281), entry);
 
     record = entry->target;
-    CError_ASSERT(1268, record);
+    CError_ASSERT(BY_VERSION(1268, 1283), record);
 
     if (!usePrimary) {
         if (!(alternate = entry->linkedSymbol)) {
@@ -1559,7 +1788,7 @@ void ObjGen_PPC_EABI_EmitFloatObject(Object *node)
         CTool_EndianConvertMem(&value, 8);
         AppendGListData(&output->buffer, &value, 8);
     } else {
-        CError_FATAL(1527);
+        CError_FATAL(BY_VERSION(1527, 1541));
     }
 
     object_data_size += object->type->size;
@@ -1614,7 +1843,7 @@ void ObjGen_PPC_EABI_EmitSwitchTable(Object *gl, Object *func)
 
 void fn_00489360(Object *object, int size, void *data)
 {
-    CError_FATAL(1686);
+    CError_FATAL(BY_VERSION(1686, 1698));
 }
 
 ObjGenSection *fn_004892a0(Object *object, int size)
@@ -1732,8 +1961,17 @@ void emit_relocation(SInt32 op, SInt32 offset, Object *obj, ObjGenSection *ctx, 
 
 void fn_00488ee0(SInt32 entry, SInt32 value)
 {
+#if VERSION >= VERSION_GC_1_3
+    extern UInt8 data_005e73ec;
+
+    if (!data_005e73ec)
+        CError_FATAL(1880);
+    if (entry == data_00587ff8->flags)
+        return;
+#else
     if ((entry == data_00587ff8->flags && value == data_00580da8) || entry == 0)
         return;
+#endif
     if (value <= data_00580da8) {
         if (value == data_00580da8)
             DWARF_ReplaceTrailingLongWordLong(data_00587ff8->flags = entry, value + data_00580dac);
@@ -1930,7 +2168,7 @@ void ObjGen_PPC_EABI_EmitObjectRelocation(Object *object)
     value = CTool_EndianConvertWord32(0);
     output = (ObjGenSection *)*(int *)&data_005884ae;
     if (output == NULL) {
-        CError_FATAL(2219);
+        CError_FATAL(BY_VERSION(2219, 2242));
     }
     position = output->buffer.size;
     AppendGListData(&output->buffer, &value, 4);
@@ -1942,8 +2180,13 @@ void ObjGen_PPC_EABI_EmitObjectRelocation(Object *object)
     record->section = records;
     record->index = records->relocationCount - 1;
     header[0] = position;
+#if VERSION >= VERSION_GC_1_3
+    header[2] = 0;
+    header[1] = record->kind & 0xff;
+#else
     header[1] = record->kind & 0xff;
     header[2] = 0;
+#endif
     AppendGListData(&records->buffer, header, 12);
     record->next = relocation_list;
     relocation_list = record;
@@ -1974,7 +2217,7 @@ InterruptGenerationRecord *fn_00488750(Object *object, BE_SymNode *linkage)
     InterruptGenerationRecord *previous;
 
     resolved = CodeGen_FindInterruptGenerationRecord(object->section);
-    CError_ASSERT(2299, resolved->sectionIndex != 0);
+    CError_ASSERT(BY_VERSION(2299, 2341), resolved->sectionIndex != 0);
     if ((previous = linkage->interruptInfo) == NULL) {
         linkage->interruptInfo = resolved;
         object->section = resolved->sectionIndex;
@@ -2012,8 +2255,8 @@ InterruptGenerationRecord *fn_00488750(Object *object, BE_SymNode *linkage)
                 lookup = lookup->next;
             } while (lookup != NULL);
         }
-        CError_ASSERT(2320, lookup != 0);
-        CError_ASSERT(2321, lookup->target != 0);
+        CError_ASSERT(BY_VERSION(2320, 2361), lookup != 0);
+        CError_ASSERT(BY_VERSION(2321, 2362), lookup->target != 0);
         PPCError_ReportError(129, linkage->nameData.hashName->name, lookup->target->name);
     }
     object->section = previous->sectionIndex;
@@ -2024,7 +2267,7 @@ InterruptGenerationRecord *ObjGen_PPC_EABI_GetInterruptInfo(Object *obj)
 {
     BE_SymNode *node;
     InterruptGenerationRecord *info = (node = BE_symbol_GetOrCreateFunctionObjectSymbol(obj))->interruptInfo;
-    CError_ASSERT(2333, info != NULL);
+    CError_ASSERT(BY_VERSION(2333, 2383), info != NULL);
     return info;
 }
 
@@ -2071,7 +2314,7 @@ void create_main_file_object(void)
     if (copts.filesyminfo && obj->name->name[0] != '@') {
         if (!data_0058849e) {
             DWARF_SetSectionAndState(dwarf_info_section, dwarf_line_section);
-            DWARF_SetupSectionDebugState(BE_elf_FindSection(".text", 0));
+            DWARF_SetupSectionDebugState(BE_ELF_FIND_SECTION(".text", 0, 0));
             data_0058849e = 1;
         }
         DWARF_CreateObjectDebugEntry(obj);
@@ -2134,7 +2377,7 @@ void ObjGen_PPC_EABI_AppendOutputEntry(ObjGenSection *context, unsigned int valu
         memset(entries->last, 0, 8U);
         entries->last->value = value;
         if (entries->count > 32767)
-            CError_FATAL(2466);
+            CError_FATAL(BY_VERSION(2466, 2515));
         entries->count += 1;
     }
 }

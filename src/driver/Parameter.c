@@ -420,9 +420,9 @@ unsigned int fn_004297bf(void)
 int parse_on_off(ONOFF_T *opt, char *arg, int flags)
 {
     unsigned char on = (flags & 8) == 0;
-    if (!ClientGlue_CompareLowercaseStrings(arg, "on"))
+    if (BY_VERSION(STRINGS_EQUAL(arg, "on"), CLIO_STRINGS_EQUAL(arg, "on")))
         *opt->var = on;
-    else if (!ClientGlue_CompareLowercaseStrings(arg, "off"))
+    else if (BY_VERSION(STRINGS_EQUAL(arg, "off"), CLIO_STRINGS_EQUAL(arg, "off")))
         *opt->var = !on;
     else {
         Parameter_ForwardVarArgs(12, arg);
@@ -459,9 +459,9 @@ unsigned int fn_00429896(void)
 int set_on_off(OFFON_T *opt, char *arg, int flags)
 {
     unsigned char on = (flags & 8) == 0;
-    if (!ClientGlue_CompareLowercaseStrings(arg, "off"))
+    if (BY_VERSION(STRINGS_EQUAL(arg, "off"), CLIO_STRINGS_EQUAL(arg, "off")))
         *opt->var = on;
-    else if (!ClientGlue_CompareLowercaseStrings(arg, "on"))
+    else if (BY_VERSION(STRINGS_EQUAL(arg, "on"), CLIO_STRINGS_EQUAL(arg, "on")))
         *opt->var = !on;
     else {
         Parameter_ForwardVarArgs(12, arg);
@@ -749,7 +749,7 @@ int const_matches_dest(SET_T *constant)
     }
 }
 
-Boolean store_constrec_val(SET_T *rec, void *unused, UInt32 flags)
+BY_VERSION(Boolean, int) store_constrec_val(SET_T *rec, void *unused, UInt32 flags)
 {
     if (rec->size == 1) {
         UInt8 value = rec->value;
@@ -1047,7 +1047,7 @@ int dispatch_param_by_which(PARAM_T *param, char *a, int b)
     if (!param)
         Targets_ForwardVarArgsAndLongjmp("PARAM_T is NULL");
     if (param->which >= 0 && param->which < 16)
-        result = data_0054dbdc[param->which](param, (int)a, b);
+        BY_VERSION(result =, return) data_0054dbdc[param->which](param, (int)a, b);
     else {
         Targets_ForwardVarArgsAndLongjmp("Unhandled PARAM_T (%d)", param->which);
         result = 0;
@@ -1238,6 +1238,15 @@ int parse_parameter_value(PARAM_T *parameter, char **value, UInt32 flags)
     }
 
     if (pTool->tool == 'Comp' && (flags & 2) != 0 && *value != NULL) {
+#if VERSION >= VERSION_GC_1_3
+        if ((flags & 0x10) == 0) {
+            if (alternate)
+                fn_0040fbe1(data_005876fc, 4, NULL);
+            else
+                fn_0040fbe1(data_005876fc, 5, NULL);
+        }
+        push_argument_option(*value);
+#else
         if ((flags & 0x10) == 0) {
             if (alternate)
                 Parameter_EmitValue(value, 4);
@@ -1246,6 +1255,7 @@ int parse_parameter_value(PARAM_T *parameter, char **value, UInt32 flags)
         } else {
             push_argument_option(*value);
         }
+#endif
         Option_FormatOStackToList(&data_005876fc);
         fn_0042a797();
     }

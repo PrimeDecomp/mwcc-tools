@@ -49,6 +49,10 @@ struct DropinFileRecord {
     UInt8 fileOpenFlag2;
     UInt8 fileOpenFlag3;
     UInt8 fileOpenFlag1;
+#if VERSION >= VERSION_GC_1_3
+    UInt8 objectDataFlushed; /* 0x664: write_object_file reports writing flushed object data */
+    UInt8 pad665[3];
+#endif
     struct DependencyCollection dependencies;
     UInt8 dependencyStatusNegative;
     UInt8 reserved4f5;

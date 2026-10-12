@@ -18,6 +18,13 @@
 
 struct BE_SymNode *be_symbol_list;
 struct BE_SymNode *symbol_tail;
+/* Declarations gathered from the merged files. */
+
+/* Back-end symbol records and their associated data. */
+
+#if VERSION >= VERSION_GC_1_3
+extern Boolean fn_004df030(Object *obj);
+#endif
 struct ObjGenSection *data_005884aa;
 
 static struct BE_SymNode *data_0055da80 = NULL;
@@ -125,7 +132,7 @@ BE_SymNode *BE_symbol_AdvanceSymbolTail(void)
 {
     BE_SymNode *entry;
     if (symbol_tail == NULL)
-        CError_FATAL(57);
+        CError_FATAL(BY_VERSION(57, 54));
     entry = symbol_tail;
     symbol_tail = entry->next;
     return symbol_tail;
@@ -500,6 +507,11 @@ unsigned int BE_symbol_GetOffset(BE_SymNode *symbol)
     return symbol->offset;
 }
 
+#if VERSION >= VERSION_GC_1_3
+#define data_005e7102 (*(UInt8 *)((char *)&copts + 0x20))
+extern Boolean fn_004b3fc0(Object *obj);
+#endif
+
 Object *BE_symbol_GetFunctionSymbolLinkData(Object *func)
 {
     BE_SymNode *node;
@@ -507,6 +519,9 @@ Object *BE_symbol_GetFunctionSymbolLinkData(Object *func)
     HashNameNode *obj;
     Boolean b;
     ObjGenSymbolLink *value;
+#if VERSION >= VERSION_GC_1_3
+    ObjGenSymbolLink *link;
+#endif
 
     obj = COptimizer_GetFunctionObject(func);
     if (CParser_HasInternalLinkage(func))
@@ -537,13 +552,24 @@ Object *BE_symbol_GetFunctionSymbolLinkData(Object *func)
     if ((func->qual & Q_TENTATIVE) && node->size == 0)
         ObjGen_PPC_EABI_EmitObjectWithDebugEntry(func, NULL, NULL, func->type->size);
 
+#if VERSION >= VERSION_GC_1_3
+    link = node->sectionData.section->symbolLink;
+    value = link;
+    if (data_005e7102 && link != NULL && link->f08 != 0 && !(func->qual & Q_IMPLICIT_WEAK) &&
+        !(func->qual & Q_WEAK) && func->datatype != DFUNC && (UInt8)(func->datatype - DVFUNC) > 1 &&
+        !fn_004b3fc0(func))
+        return value->object;
+    return NULL;
+#else
     value = node->sectionData.section->symbolLink;
     if (!(func->qual & Q_IMPLICIT_WEAK) && !(func->qual & Q_WEAK) && value != NULL) {
         if (value->object != NULL)
             return value->object;
     }
     return NULL;
+#endif
 }
+
 
 Boolean fn_004913b0(Object *obj)
 {
@@ -592,8 +618,15 @@ Boolean fn_004913b0(Object *obj)
     }
 
     data = symbol->sectionData.section;
-    CError_ASSERT(499, data != NULL);
+    CError_ASSERT(BY_VERSION(499, 372), data != NULL);
 
+#    if VERSION >= VERSION_GC_1_3
+    if (fn_004df030(obj)) {
+        Boolean oldFlag = data->symbolLink->value;
+        data->symbolLink->value = 1;
+        return (oldFlag == 0);
+    }
+#else
     if (copts.usedatapool != 0 && data->symbolLink != NULL && data->symbolLink->symbol != NULL &&
         (obj->qual & Q_IMPLICIT_WEAK) == 0 && (obj->qual & Q_WEAK) == 0 && !PCodeUtilities_Require(obj) &&
         TOC_HasObjectReferenceWithoutExpression(data->symbolLink->object)) {
@@ -601,5 +634,6 @@ Boolean fn_004913b0(Object *obj)
         data->symbolLink->value = 1;
         return (oldFlag == 0);
     }
+#endif
     return 1;
 }

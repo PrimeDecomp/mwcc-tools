@@ -19,6 +19,9 @@
 #include "driver/StringExtras.h"
 #include "driver/cc-eabi-ppc-mw.h"
 #include <string.h>
+#if VERSION >= VERSION_GC_1_3
+#include "driver/ResourceStrings.h"
+#endif
 
 char input_name[32];
 char output_name[32];
@@ -53,19 +56,30 @@ unsigned int __stdcall get_data_and_size(unsigned char **data, unsigned int *siz
     return 0U;
 }
 
+#if VERSION >= VERSION_GC_1_3
+/* (read from memory, not folded: named for the binding) */
+SInt32 data_00541e44 = (SInt32)"Command-Line Driver";
+#define driver_name data_00541e44
+#else
 static const char *driver_name = "Command-Line Driver";
+#endif
 
-unsigned int __stdcall copy_global_value_to_address(unsigned int destinationAddress)
+unsigned int __stdcall copy_global_value_to_address(BY_VERSION(unsigned int, SInt32 *) destinationAddress)
 {
-    *(const char **)destinationAddress = driver_name;
+    *(SInt32 *)destinationAddress = (SInt32)driver_name;
     return 0;
 }
 
+#if VERSION >= VERSION_GC_1_3
+SInt32 data_00541e48 = (SInt32)"Command-Line Driver";
+#define driver_display_name data_00541e48
+#else
 static const char *driver_display_name = "Command-Line Driver";
+#endif
 
-unsigned int __stdcall copy_global_value(unsigned int valueAddress)
+unsigned int __stdcall copy_global_value(BY_VERSION(unsigned int, SInt32 *) valueAddress)
 {
-    *(const char **)valueAddress = driver_display_name;
+    *(SInt32 *)valueAddress = (SInt32)driver_display_name;
     return 0;
 }
 
@@ -257,19 +271,37 @@ Boolean latch_flag(Boolean pre, char *argument)
     return clState.pluginDebug;
 }
 
+#if VERSION >= VERSION_GC_1_3
+/* (1.3: the option's own string setting (--stdout), not the license path) */
+char *data_005e656c;
+#endif
+
 Boolean is_enabled_or_global_nonzero(Boolean pre, char *argument)
 {
     if (pre) {
         return 1;
     }
+#if VERSION >= VERSION_GC_1_3
+    return data_005e656c != NULL;
+#else
     return license_path != NULL;
+#endif
 }
 
 /* The options the driver takes before its parser sees the command line; the first is named at run time. */
-static struct DriverCommandLineOption driver_options[3] = {
+#if VERSION >= VERSION_GC_1_3
+Boolean fn_0040aaf0(Boolean pre, char *argument);
+#endif
+static struct DriverCommandLineOption driver_options[BY_VERSION(3, 4)] = {
     {"", NULL, invoke_if_requested},
+#if VERSION >= VERSION_GC_1_3
+    {"--use-license-file", &license_path, fn_0040aaf0},
+    {"--plugin-debug", NULL, latch_flag},
+    {"--stdout", &data_005e656c, is_enabled_or_global_nonzero},
+#else
     {"--use-license-file", &license_path, is_enabled_or_global_nonzero},
     {"--plugin-debug", NULL, latch_flag},
+#endif
 };
 
 void consume_driver_command_line_options(int *argc, char ***argv)
@@ -304,8 +336,8 @@ void consume_driver_command_line_options(int *argc, char ***argv)
             }
             ++optionIndex;
             ++option;
-        } while (optionIndex < 3);
-    } while ((*argc > 1) && (optionIndex < 3));
+        } while (optionIndex < BY_VERSION(3, 4));
+    } while ((*argc > 1) && (optionIndex < BY_VERSION(3, 4)));
 }
 
 void CLMain_AppendEnabledCommandLineOptions(int *first, char ***second)
@@ -321,16 +353,66 @@ void CLMain_AppendEnabledCommandLineOptions(int *first, char ***second)
         if (enabled != '\0') {
             CLToolExec_AppendArgument(first, second, entry->name);
             if (entry->value != NULL) {
+#if VERSION >= VERSION_GC_1_3
+                CLToolExec_AppendArgument(first, second, *entry->value ? *entry->value : "");
+#else
                 CLToolExec_AppendArgument(first, second, *entry->value);
+#endif
             }
         }
         index = 1 + index;
         entry = entry + 1;
-    } while (index < 3);
+    } while (index < BY_VERSION(3, 4));
 }
 
 static int did_init = 0;
 
+#if VERSION >= VERSION_GC_1_3
+int CLMain_Initialize(int argc, char **argv)
+{
+    static char secret[8];
+    char buf[260];
+
+    fn_00411980(&argc, &argv);
+    memset(&clState, 0, 0x544);
+    driver_options[0].name = secret;
+    secret[7] = 0;
+    secret[4] = 'b';
+    secret[1] = '-';
+    secret[5] = 'u';
+    secret[2] = 'd';
+    secret[0] = '-';
+    secret[3] = 'e';
+    secret[6] = 'g';
+    consume_driver_command_line_options(&argc, &argv);
+    clState.argc = argc;
+    clState.argv = argv;
+
+    CLProj_CopyStringBounded(buf, *argv, strlen(*argv), sizeof(buf));
+    buf[sizeof(buf) - 1] = 0;
+    if (strlen(buf) < 4 || CLIO_CompareStringsIgnoreCase(buf + strlen(buf) - 4, ".exe") != 0)
+        CLProj_AppendString(buf, ".exe", sizeof(buf));
+
+    CLIO_InitializeStreamBuffering();
+    if (fn_0040a7d0() == 0)
+        CLErrors_FatalError("Could not initialize resource strings");
+    if (OS_IsFullPath(*argv) == 0)
+        clState.programName = *argv;
+    else
+        clState.programName = OS_GetFileNamePtr(*argv);
+
+    if (OS_FindProgram(buf, clState.programSpec.path.s) != 0)
+        CLErrors_EmitDiagnostic(2, buf);
+    fn_004098d0();
+    if (fn_0040a7c0() == 0)
+        CLErrors_FatalError("Could not initialize built-in plugins");
+    CLProj_InitializeCWD(gProj);
+    Resources_OpenResourceFile(&clState.programSpec);
+    fn_00417750();
+    did_init = 1;
+    return 0;
+}
+#else
 int CLMain_Initialize(int argc, char **argv)
 {
     static char secret[8];
@@ -376,6 +458,8 @@ int CLMain_Initialize(int argc, char **argv)
     return 0;
 }
 
+#endif
+
 unsigned int CLMain_FreePlugins(unsigned int result)
 {
     if (did_init != 0) {
@@ -417,7 +501,11 @@ int parse_command_line(void)
     env = default_target;
     if (!CLPluginRequests_ParseCommandLine(parser, env, &info, env->cpu, env->os, plugin_request_count, plugin_requests,
                                            unique_plugin_name_count, unique_plugin_names, tool_argument_sets,
-                                           file_argument_sets, &input_name, &output_name)) {
+                                           file_argument_sets, &input_name, &output_name
+#if VERSION >= VERSION_GC_1_3
+                                           , fn_00408f30()
+#endif
+                                           )) {
         UInt8 status;
         if (fn_004151f0())
             status = 2;
@@ -455,8 +543,29 @@ int parse_command_line(void)
 int delete_file_and_make_path_spec(void)
 {
     DWORD error;
+#if VERSION >= VERSION_GC_1_3
+    char *firstName;
+    OSSpec *resolvedName;
+    char *secondName;
+#endif
 
     data_0054bf48(NULL);
+#if VERSION >= VERSION_GC_1_3
+    if (optsCompiler.outMakefile[0] != '\0') {
+        error = OS_MakeFileSpec(firstName = optsCompiler.outMakefile, resolvedName = &clState.makefileSpec);
+        if (error > 0) {
+            CLErrors_ReportOSError(8, error, firstName);
+            return 1;
+        }
+        OS_Delete(resolvedName);
+    }
+    if (optsCompiler.sbmPath[0] != '\0') {
+        error = OS_MakePathSpec(NULL, secondName = optsCompiler.sbmPath, &clState.sbmPathSpec);
+        if (error > 0) {
+            CLErrors_ReportOSError(0x17, error, secondName);
+            return 1;
+        }
+#else
     if (optsCompiler.outMakefile[0] != '\0') {
         error = OS_MakeFileSpec(optsCompiler.outMakefile, &clState.makefileSpec);
         if (error > 0) {
@@ -471,6 +580,7 @@ int delete_file_and_make_path_spec(void)
             CLErrors_ReportOSError(0x17, error, optsCompiler.sbmPath);
             return 1;
         }
+#endif
     } else {
         OS_GetCWD(&clState.sbmPathSpec);
     }
@@ -494,6 +604,10 @@ SInt32 fn_0040aed0(void)
         if (r != 0)
             return r;
     }
+#if VERSION >= VERSION_GC_1_3
+    if (!CLToolExec_DeleteTemporaryOutputs())
+        return 1;
+#endif
     end = CLFileOps_GetScaledTicks();
     if (optsCmdLine.timeWorking != 0)
         CLErrors_ForwardMessage(0x18, (end - start) / 60.0, "resolve", "", "project", "");
@@ -524,14 +638,94 @@ int fn_0040af70(PCmdLine *message, PCmdLine *result)
 
 unsigned int copy_environment_code_record(PCmdLineEnvir *record, PCmdLineEnvir *result)
 {
+#if VERSION >= VERSION_GC_1_3
+    short version = record->version;
+
+    *result = *record;
+    if ((clState.pluginDebug && version < 0x1000) || version > 0x1000) {
+        CLErrors_EmitDiagnostic(104U, "CmdLine Environment");
+        return 0U;
+    }
+    result->version = 0x1000;
+    return 1U;
+#else
     if (record->version == 4096U) {
         *result = *record;
         return 1U;
     }
     CLErrors_EmitDiagnostic(104U, "CmdLine Environment");
     return 0U;
+#endif
 }
 
+#if VERSION >= VERSION_GC_1_3
+extern UInt8 data_005d89e5;
+extern UInt8 data_005d89e6;
+
+/* bring the compiler panel settings of an older version up to date, warning once about it */
+int convert_command_line_panel_settings(PCmdLineCompiler *source, PCmdLineCompiler *destination)
+{
+    short version = source->version;
+
+    *destination = *source;
+    if (clState.pluginDebug && version < 0x1005 && !data_005d89e5) {
+        CLErrors_ForwardMessageArguments(0x68, "CmdLine Compiler Panel");
+        data_005d89e5 = 1;
+    }
+    if (version == 0x1001) {
+        destination->ignoreMissingFiles = 0;
+        destination->printHeaderNames = 0;
+        version++;
+    }
+    if (version == 0x1002) {
+        destination->sbmState = 0;
+        destination->sbmPath[0] = 0;
+        version++;
+    }
+    if (version == 0x1003) {
+        destination->canonicalIncludes = 0;
+        version++;
+    }
+    if (version == 0x1004) {
+        destination->keepObjects = 0;
+        version++;
+    }
+    if (version <= 0x1000 || version > 0x1005) {
+        CLErrors_EmitDiagnostic(0x68, "CmdLine Compiler Panel");
+        return 0;
+    }
+    destination->version = 0x1005;
+    return 1;
+}
+
+/* bring the linker panel settings of an older version up to date, warning once about it */
+int convert_linker_panel_settings(PCmdLineLinker *input, PCmdLineLinker *output)
+{
+    short version = input->version;
+
+    *output = *input;
+    if (clState.pluginDebug && version < 0x1002 && !data_005d89e6) {
+        CLErrors_ForwardMessageArguments(0x68, "CmdLine Linker Panel");
+        data_005d89e6 = 1;
+    }
+    if (version == 0x1000) {
+        output->callPreLinker = 1;
+        output->callPostLinker = 1;
+        output->keepLinkerOutput = 1;
+        version++;
+    }
+    if (version == 0x1001) {
+        output->callLinker = 1;
+        version++;
+    }
+    if (version < 0x1000 || version > 0x1002) {
+        CLErrors_EmitDiagnostic(0x68, "CmdLine Linker Panel");
+        return 0;
+    }
+    output->version = 0x1002;
+    return 1;
+}
+#else
 int convert_command_line_panel_settings(PCmdLineCompiler *source, PCmdLineCompiler *destination)
 {
     if (source->version == 0x1004) {
@@ -600,11 +794,13 @@ int convert_linker_panel_settings(PCmdLineLinker *input, PCmdLineLinker *output)
     return 0;
 }
 
+#endif
+
 unsigned int check_cmdline_entries(char *context)
 {
     NameTableEntry *entry;
     StorageHandle *handle;
-    if (!context || !ClientGlue_CompareLowercaseStrings(context, "CmdLine Panel")) {
+    if (!context || BY_VERSION(!ClientGlue_CompareLowercaseStrings(context, "CmdLine Panel"), CLIO_STRINGS_EQUAL(context, "CmdLine Panel"))) {
         entry = CLPrefs_FindNameTableEntry("CmdLine Panel");
         if (entry && (handle = CLPrefs_CopyDestinationToTemporary(entry)) != NULL) {
             if (context && !((int (*)(void *, void *))fn_0040af70)((PCmdLine *)handle->data, &optsCmdLine))
@@ -614,7 +810,7 @@ unsigned int check_cmdline_entries(char *context)
             return 0;
         }
     }
-    if (!context || !ClientGlue_CompareLowercaseStrings(context, "CmdLine Environment")) {
+    if (!context || BY_VERSION(!ClientGlue_CompareLowercaseStrings(context, "CmdLine Environment"), CLIO_STRINGS_EQUAL(context, "CmdLine Environment"))) {
         entry = CLPrefs_FindNameTableEntry("CmdLine Environment");
         if (entry && (handle = CLPrefs_CopyDestinationToTemporary(entry)) != NULL) {
             if (context &&
@@ -625,7 +821,7 @@ unsigned int check_cmdline_entries(char *context)
             return 0;
         }
     }
-    if (!context || !ClientGlue_CompareLowercaseStrings(context, "CmdLine Compiler Panel")) {
+    if (!context || BY_VERSION(!ClientGlue_CompareLowercaseStrings(context, "CmdLine Compiler Panel"), CLIO_STRINGS_EQUAL(context, "CmdLine Compiler Panel"))) {
         entry = CLPrefs_FindNameTableEntry("CmdLine Compiler Panel");
         if (entry && (handle = CLPrefs_CopyDestinationToTemporary(entry)) != NULL) {
             if (context && !((int (*)(void *, void *))convert_command_line_panel_settings)(
@@ -636,7 +832,7 @@ unsigned int check_cmdline_entries(char *context)
             return 0;
         }
     }
-    if (!context || !ClientGlue_CompareLowercaseStrings(context, "CmdLine Linker Panel")) {
+    if (!context || BY_VERSION(!ClientGlue_CompareLowercaseStrings(context, "CmdLine Linker Panel"), CLIO_STRINGS_EQUAL(context, "CmdLine Linker Panel"))) {
         entry = CLPrefs_FindNameTableEntry("CmdLine Linker Panel");
         if (entry && (handle = CLPrefs_CopyDestinationToTemporary(entry)) != NULL) {
             if (context &&
@@ -737,3 +933,15 @@ unsigned int CLMain_InitializeAndParseCommandLine(void)
     }
     return result;
 }
+
+#pragma auto_inline reset
+
+#if VERSION >= VERSION_GC_1_3
+/* (1.3: the --use-license-file option's check, of the license path) */
+Boolean fn_0040aaf0(Boolean pre, char *argument)
+{
+    if (pre)
+        return 1;
+    return license_path != NULL;
+}
+#endif

@@ -1,0 +1,1128 @@
+Sections:
+	.text       type:code align:16
+	.rdata      type:rodata align:4
+	.exc        type:rodata align:4
+	.data       type:data align:8
+	.idata      type:data align:4
+	.CRT        type:data align:4
+	.tls        type:data align:4
+	.bss        type:bss align:8
+
+src/runtime/maincrt.c:
+	.text       start:0x00401000 end:0x00401070
+	.rdata      start:0x0057D000 end:0x0057D004
+	.exc        start:0x0057E000 end:0x0057E008 rename:.exc$BBB
+	.data       start:0x0057F000 end:0x0057F030
+
+src/runtime/exchand.cpp:
+	.text       start:0x00401070 end:0x00401110
+	.rdata      start:0x0057D004 end:0x0057D008
+	.exc        start:0x0057E008 end:0x0057E010 rename:.exc$BBB
+	.data       start:0x0057F030 end:0x0057F068
+
+src/runtime/ExceptionX86.cpp:
+	.text       start:0x00401110 end:0x00401DD0
+	.rdata      start:0x0057D008 end:0x0057D150
+	.exc        start:0x0057E010 end:0x0057E0F0 rename:.exc$BBB
+	.data       start:0x0057F068 end:0x0057F238
+	.bss        start:0x005D8000 end:0x005D8008
+
+cexc.obj:
+	.exc        start:0x0057E000 end:0x0057E000 rename:.exc$AAA
+	.exc        start:0x0057E1B8 end:0x0057E1BC rename:.exc$CCC
+
+src/msl/startup.win32.c:
+	.text       start:0x00401DD0 end:0x00401FB0
+	.data       start:0x0057F238 end:0x0057F240
+	.bss        start:0x005D8008 end:0x005D8010
+
+src/msl/ThreadLocalData.c:
+	.text       start:0x00401FB0 end:0x00402120
+	.data       start:0x0057F240 end:0x0057F270
+
+src/msl/abort_exit.c:
+	.text       start:0x00402120 end:0x00402260
+	.data       start:0x0057F270 end:0x0057F288
+	.bss        start:0x005D8010 end:0x005D8210
+
+src/runtime/setupargs.c:
+	.text       start:0x00402260 end:0x004024C0
+	.rdata      start:0x0057D150 end:0x0057D15C
+	.exc        start:0x0057E0F0 end:0x0057E108 rename:.exc$BBB
+	.data       start:0x0057F288 end:0x0057F298
+
+src/runtime/runinit.c:
+	.text       start:0x004024C0 end:0x004024F0
+	.rdata      start:0x0057D15C end:0x0057D160
+	.exc        start:0x0057E108 end:0x0057E110 rename:.exc$BBB
+
+ccinit.obj:
+	.CRT        start:0x005D6000 end:0x005D6004 rename:.CRT$XCA
+	.CRT        start:0x005D6004 end:0x005D6008 rename:.CRT$XCZ
+
+src/driver/CLStaticMain.c:
+	.text       start:0x004024F0 end:0x00402620
+	.data       start:0x0057F298 end:0x0057F380
+
+src/runtime/NMWException.cpp:
+	.text       start:0x00402620 end:0x00402780
+	.rdata      start:0x0057D160 end:0x0057D174
+	.exc        start:0x0057E110 end:0x0057E138 rename:.exc$BBB
+	.data       start:0x0057F380 end:0x0057F388
+
+src/msl/printf.c:
+	.text       start:0x00402780 end:0x00403D70
+	.data       start:0x0057F388 end:0x0057F678
+
+src/runtime/arrcondes.cpp:
+	.text       start:0x00403D70 end:0x00403DE0
+	.rdata      start:0x0057D174 end:0x0057D178
+	.exc        start:0x0057E138 end:0x0057E140 rename:.exc$BBB
+
+src/runtime/delop.cpp:
+	.text       start:0x00403DE0 end:0x00403E10
+	.rdata      start:0x0057D178 end:0x0057D1A4
+	.exc        start:0x0057E140 end:0x0057E148 rename:.exc$BBB
+
+src/msl/critical_regions.win32.c:
+	.text       start:0x00403E10 end:0x00403EB0
+	.bss        start:0x005D8210 end:0x005D8288
+
+src/msl/alloc.c:
+	.text       start:0x00403EB0 end:0x00404990
+	.data       start:0x0057F678 end:0x0057F690
+	.bss        start:0x005D8288 end:0x005D8288
+
+src/msl/unistd.win32.c:
+	.text       start:0x00404990 end:0x00404C70
+	.data       start:0x0057F690 end:0x0057F6A0
+
+src/msl/mem.c:
+	.text       start:0x00404C70 end:0x00404DC0
+
+src/msl/signal.c:
+	.text       start:0x00404DC0 end:0x00404E80
+	.bss        start:0x005D8288 end:0x005D82A8
+
+src/runtime/globdest.c:
+	.text       start:0x00404E80 end:0x00404EB0
+	.rdata      start:0x0057D1A4 end:0x0057D1A8
+	.exc        start:0x0057E148 end:0x0057E150 rename:.exc$BBB
+
+src/msl/string.c:
+	.text       start:0x00404EB0 end:0x004051B0
+	.data       start:0x0057F6A0 end:0x0057F780
+	.bss        start:0x005D82A8 end:0x005D85C8
+
+src/driver/ClientGlue.c:
+	.text       start:0x004051B0 end:0x0040532E
+	.data       start:0x0057F780 end:0x0057F7B8
+
+src/driver/StaticParserGlue.c:
+	.text       start:0x0040532E end:0x00405360 align:2
+	.data       start:0x0057F7B8 end:0x005806F0
+
+src/driver/CLStaticPlugins.c:
+	.text       start:0x00405360 end:0x004053F0
+
+src/msl/ansi_files.c:
+	.text       start:0x004053F0 end:0x00405650
+	.data       start:0x005806F0 end:0x00580840
+
+src/driver/ParserGlue-eabi-ppc-cc.c:
+	.text       start:0x00405650 end:0x00405830
+	.data       start:0x00580840 end:0x0058A290
+
+src/msl/ctype.c:
+	.text       start:0x00405830 end:0x00405890
+	.data       start:0x0058A290 end:0x0058A740
+
+src/runtime/LongLongx86.c:
+	.text       start:0x00405890 end:0x00405A10
+	.rdata      start:0x0057D1A8 end:0x0057D1BC
+	.exc        start:0x0057E150 end:0x0057E178 rename:.exc$BBB
+
+src/msl/ansifp_x86.c:
+	.text       start:0x00405A10 end:0x00405A6D
+	.text       start:0x00405A6D end:0x00405B0C align:1
+	.text       start:0x00405B0C end:0x00405CD0 align:4
+	.data       start:0x0058A740 end:0x0058A770
+	.bss        start:0x005D85C8 end:0x005D85D0
+
+src/msl/mbstring.c:
+	.text       start:0x00405CD0 end:0x00405D60
+
+src/msl/direct_io.c:
+	.text       start:0x00405D60 end:0x00406320
+
+src/msl/wchar_io.c:
+	.text       start:0x00406320 end:0x00406490
+	.data       start:0x0058A770 end:0x0058A7B0
+
+src/runtime/delarrop.cpp:
+	.text       start:0x00406490 end:0x004064C0
+	.rdata      start:0x0057D1BC end:0x0057D1E8
+	.exc        start:0x0057E178 end:0x0057E180 rename:.exc$BBB
+
+src/msl/pool_alloc.win32.c:
+	.text       start:0x004064C0 end:0x00406530
+
+src/msl/extras.c:
+	.text       start:0x00406530 end:0x004065F0
+
+src/msl/sysenv.win32.c:
+	.text       start:0x004065F0 end:0x00406650
+
+src/driver/Resources.c:
+	.text       start:0x00406650 end:0x004087B0
+	.data       start:0x0058A7B0 end:0x0058AA08
+	.bss        start:0x005D85D0 end:0x005D85E8
+
+src/driver/CLErrors.c:
+	.text       start:0x004087B0 end:0x00408B20
+	.data       start:0x0058AA08 end:0x0058AA40
+	.bss        start:0x005D85E8 end:0x005D87E8
+
+src/driver/ResourceStrings.c:
+	.text       start:0x00408B20 end:0x00408F50
+	.data       start:0x0058AA40 end:0x0058ABA8
+	.bss        start:0x005D87E8 end:0x005D89E0
+
+src/driver/CLPlugins.c:
+	.text       start:0x00408F50 end:0x0040A960
+	.data       start:0x0058ABA8 end:0x0058B2B8
+
+src/driver/CLMain.c:
+	.text       start:0x0040A960 end:0x0040B968
+	.data       start:0x0058B2B8 end:0x0058C918
+	.bss        start:0x005D89E0 end:0x005D8A00
+
+src/driver/ParserFace.c:
+	.text       start:0x0040B968 end:0x0040BA62 align:8
+	.text       start:0x0040BA62 end:0x0040BA79 align:2
+	.text       start:0x0040BA79 end:0x0040BC14 align:1
+	.text       start:0x0040BC14 end:0x0040BCAD align:4
+	.text       start:0x0040BCAD end:0x0040BCF8 align:1
+	.text       start:0x0040BCF8 end:0x0040BE50 align:8
+	.text       start:0x0040BE50 end:0x0040BE69
+	.text       start:0x0040BE69 end:0x0040BE7C align:1
+	.text       start:0x0040BE7C end:0x0040BE8F align:4
+	.text       start:0x0040BE8F end:0x0040BE9E align:1
+	.text       start:0x0040BE9E end:0x0040BEAD align:2
+	.text       start:0x0040BEAD end:0x0040BFC0 align:1
+	.data       start:0x0058C918 end:0x0058C9D0
+
+src/driver/cc-eabi-ppc-mw.c:
+	.text       start:0x0040BFC0 end:0x0040C1A0
+	.data       start:0x0058C9D0 end:0x005948F0
+
+src/driver/libimp-eabi-ppc-mw.c:
+	.text       start:0x0040C1A0 end:0x0040C260
+	.data       start:0x005948F0 end:0x00594B08
+
+src/msl/file_io.win32.c:
+	.text       start:0x0040C260 end:0x0040C450
+	.bss        start:0x005D8A00 end:0x005D8B18
+
+src/msl/buffer_io.c:
+	.text       start:0x0040C450 end:0x0040C6C0
+
+src/msl/string_io.c:
+	.text       start:0x0040C6C0 end:0x0040C6F0
+
+src/msl/file_io.c:
+	.text       start:0x0040C6F0 end:0x0040CA90
+	.tls        start:0x005D7000 end:0x005D7200 rename:.tls$
+
+src/driver/ParserHelpers.c:
+	.text       start:0x0040CA90 end:0x0040CAD9
+	.text       start:0x0040CAD9 end:0x0040CB36 align:1
+	.text       start:0x0040CB36 end:0x0040CBBB align:2
+	.text       start:0x0040CBBB end:0x0040CC98 align:1
+	.text       start:0x0040CC98 end:0x0040CD33 align:8
+	.text       start:0x0040CD33 end:0x0040CF3A align:1
+	.text       start:0x0040CF3A end:0x0040D107 align:2
+	.text       start:0x0040D107 end:0x0040D1EE align:1
+	.text       start:0x0040D1EE end:0x0040D20A align:2
+	.data       start:0x00594B08 end:0x00594B48
+	.bss        start:0x005D8B18 end:0x005D8C20
+
+src/driver/ToolHelpers.c:
+	.text       start:0x0040D20A end:0x0040D225 align:2
+	.text       start:0x0040D225 end:0x0040D727 align:1
+	.data       start:0x00594B48 end:0x00594B90
+	.bss        start:0x005D8C20 end:0x005D8C28
+
+src/driver/ParserHelpers-cc.c:
+	.text       start:0x0040D727 end:0x0040D752 align:1
+	.text       start:0x0040D752 end:0x0040D80D align:2
+	.text       start:0x0040D80D end:0x0040D8A4 align:1
+	.text       start:0x0040D8A4 end:0x0040D983 align:4
+	.text       start:0x0040D983 end:0x0040DA9D align:1
+	.data       start:0x00594B90 end:0x00594D00
+
+src/driver/ToolHelpers-cc.c:
+	.text       start:0x0040DA9D end:0x0040DAB0 align:1
+	.text       start:0x0040DAB0 end:0x0040DB50
+	.data       start:0x00594D00 end:0x00594D50
+
+src/driver/OptimizerHelpers.c:
+	.text       start:0x0040DB50 end:0x0040E090
+	.data       start:0x00594D50 end:0x00595008
+
+src/driver/WarningHelpers.c:
+	.text       start:0x0040E090 end:0x0040E260
+	.data       start:0x00595008 end:0x005950D8
+
+src/driver/TargetWarningHelpers-ppc-cc.c:
+	.text       start:0x0040E260 end:0x0040E607
+	.data       start:0x005950D8 end:0x005953F8
+
+src/driver/Projects.c:
+	.text       start:0x0040E607 end:0x0040E878 align:1
+	.text       start:0x0040E878 end:0x0040E8C3 align:8
+	.text       start:0x0040E8C3 end:0x0040EA04 align:1
+	.text       start:0x0040EA04 end:0x0040EB60 align:4
+	.text       start:0x0040EB60 end:0x0040EBBD
+	.text       start:0x0040EBBD end:0x0040EC20 align:1
+	.data       start:0x005953F8 end:0x005955E0
+
+src/driver/StringUtils.c:
+	.text       start:0x0040EC20 end:0x0040EED6
+	.data       start:0x005955E0 end:0x00595610
+	.bss        start:0x005D8C28 end:0x005D8D28
+
+src/driver/ParserErrors.c:
+	.text       start:0x0040EED6 end:0x0040EF0B align:2
+	.text       start:0x0040EF0B end:0x0040EFC2 align:1
+	.text       start:0x0040EFC2 end:0x0040EFF9 align:2
+	.text       start:0x0040EFF9 end:0x0040F1F9 align:1
+	.data       start:0x00595610 end:0x00595628
+	.bss        start:0x005D8D28 end:0x005D9128
+
+src/driver/Arguments.c:
+	.text       start:0x0040F1F9 end:0x0040F3AC align:1
+	.text       start:0x0040F3AC end:0x0040F468 align:4
+	.text       start:0x0040F468 end:0x0040F500 align:8
+	.text       start:0x0040F500 end:0x0040F513
+	.text       start:0x0040F513 end:0x0040F5C0 align:1
+	.text       start:0x0040F5C0 end:0x0040F6C4
+	.text       start:0x0040F6C4 end:0x0040F702 align:4
+	.text       start:0x0040F702 end:0x0040F9E1 align:2
+	.text       start:0x0040F9E1 end:0x0040FC0E align:1
+	.text       start:0x0040FC0E end:0x0040FC5B align:2
+	.text       start:0x0040FC5B end:0x0040FC64 align:1
+	.text       start:0x0040FC64 end:0x0040FC9E align:4
+	.text       start:0x0040FC9E end:0x0040FCB5 align:2
+	.text       start:0x0040FCB5 end:0x0040FDF4 align:1
+	.text       start:0x0040FDF4 end:0x0040FE40 align:4
+	.text       start:0x0040FE40 end:0x0040FEA5
+	.text       start:0x0040FEA5 end:0x0040FF8C align:1
+	.data       start:0x00595628 end:0x005957C0
+	.bss        start:0x005D9128 end:0x005D9368
+
+src/driver/Targets.c:
+	.text       start:0x0040FF8C end:0x00410079 align:4
+	.text       start:0x00410079 end:0x004100E4 align:1
+	.text       start:0x004100E4 end:0x00410120 align:4
+	.data       start:0x005957C0 end:0x00595840
+
+src/msl/misc_io.c:
+	.text       start:0x00410120 end:0x00410140
+
+src/msl/file_pos.c:
+	.text       start:0x00410140 end:0x00410300
+
+src/msl/time.c:
+	.text       start:0x00410300 end:0x00411220
+	.data       start:0x00595840 end:0x00595C30
+	.bss        start:0x005D9368 end:0x005D9388
+
+src/msl/wcstoul.c:
+	.text       start:0x00411220 end:0x004118B0
+	.data       start:0x00595C30 end:0x00595CB0
+
+src/msl/wctype.c:
+	.text       start:0x004118B0 end:0x00411900
+	.data       start:0x00595CB0 end:0x0059E308
+
+src/driver/MsDos.c:
+	.text       start:0x00411900 end:0x00413930
+	.data       start:0x0059E308 end:0x0059E440
+	.bss        start:0x005D9388 end:0x005D9598
+
+src/driver/MacSpecs.c:
+	.text       start:0x00413930 end:0x004143D0
+	.data       start:0x0059E440 end:0x0059E4D0
+	.bss        start:0x005D9598 end:0x005D9CE8
+
+src/driver/Memory.c:
+	.text       start:0x004143D0 end:0x004146B0
+	.bss        start:0x005D9CE8 end:0x005D9CF0
+
+src/driver/Files.c:
+	.text       start:0x004146B0 end:0x00415600
+	.data       start:0x0059E4D0 end:0x0059E4F8
+
+src/driver/AssertionFailure.c:
+	.text       start:0x00415600 end:0x00415630
+	.data       start:0x0059E4F8 end:0x0059E528
+
+src/driver/TextUtils.c:
+	.text       start:0x00415630 end:0x00415840
+	.data       start:0x0059E528 end:0x0059E558
+
+src/driver/CLIO.c:
+	.text       start:0x00415840 end:0x0041721E
+	.data       start:0x0059E558 end:0x0059E850
+	.bss        start:0x005D9CF0 end:0x005DA210
+
+version.dll_stubs_0041721E:
+	.text       start:0x0041721E end:0x00417230 align:2
+
+src/runtime/stackall.c:
+	.text       start:0x00417230 end:0x00417280
+	.rdata      start:0x0057D1E8 end:0x0057D1F0
+	.exc        start:0x0057E180 end:0x0057E190 rename:.exc$BBB
+
+version.dll_stubs_00417280:
+	.text       start:0x00417280 end:0x00417286
+	.text       start:0x00417286 end:0x00417290 align:2
+
+src/driver/MemUtils.c:
+	.text       start:0x00417290 end:0x00417410
+	.data       start:0x0059E850 end:0x0059E8C8
+
+src/driver/StringExtras.c:
+	.text       start:0x00417410 end:0x004174A0
+
+src/driver/CLPrefs.c:
+	.text       start:0x004174A0 end:0x00417800
+	.data       start:0x0059E8C8 end:0x0059E920
+	.bss        start:0x005DA210 end:0x005DA218
+
+src/driver/CLPluginRequests.cpp:
+	.text       start:0x00417800 end:0x00418390
+	.data       start:0x0059E920 end:0x0059E988
+
+src/driver/CLLicenses.c:
+	.text       start:0x00418390 end:0x00418990
+	.data       start:0x0059E988 end:0x0059EA58
+	.bss        start:0x005DA218 end:0x005DA328
+
+src/driver/CLToolExec.c:
+	.text       start:0x00418990 end:0x004192F0
+	.data       start:0x0059EA58 end:0x0059EB10
+
+src/driver/Generic.c:
+	.text       start:0x004192F0 end:0x00419ED0
+	.data       start:0x0059EB10 end:0x0059EB40
+	.bss        start:0x005DA328 end:0x005DA840
+
+src/driver/CLProj.c:
+	.text       start:0x00419ED0 end:0x00419F30
+	.data       start:0x0059EB40 end:0x0059EB60
+
+src/driver/CLFileOps.cpp:
+	.text       start:0x00419F30 end:0x0041C530
+	.data       start:0x0059EB60 end:0x0059EE20
+	.bss        start:0x005DA840 end:0x005DA848
+
+src/driver/CLTarg.c:
+	.text       start:0x0041C530 end:0x0041C750
+	.data       start:0x0059EE20 end:0x0059EF80
+
+src/msl/setjmp.x86.c:
+	.text       start:0x0041C750 end:0x0041C790
+
+src/driver/DropInCompilerLinkerPrivate.c:
+	.text       start:0x0041C790 end:0x0041C880
+
+src/driver/CWParserPluginsPrivate.c:
+	.text       start:0x0041C880 end:0x0041CCDD
+
+src/driver/Option.c:
+	.text       start:0x0041CCDD end:0x0041CCEE align:1
+	.text       start:0x0041CCEE end:0x0041CD3B align:2
+	.text       start:0x0041CD3B end:0x0041CD66 align:1
+	.text       start:0x0041CD66 end:0x0041CD6F align:2
+	.text       start:0x0041CD6F end:0x0041CD78 align:1
+	.text       start:0x0041CD78 end:0x0041CD7E align:8
+	.text       start:0x0041CD7E end:0x0041CE48 align:2
+	.text       start:0x0041CE48 end:0x0041CEB1 align:8
+	.text       start:0x0041CEB1 end:0x0041D038 align:1
+	.text       start:0x0041D038 end:0x0041D0A4 align:8
+	.text       start:0x0041D0A4 end:0x0041D18F align:4
+	.text       start:0x0041D18F end:0x0041D26A align:1
+	.text       start:0x0041D26A end:0x0041D2CF align:2
+	.text       start:0x0041D2CF end:0x0041D336 align:1
+	.text       start:0x0041D336 end:0x0041D4E0 align:2
+	.text       start:0x0041D4E0 end:0x0041D4FD
+	.text       start:0x0041D4FD end:0x0041D518 align:1
+	.text       start:0x0041D518 end:0x0041D556 align:8
+	.text       start:0x0041D556 end:0x0041D627 align:2
+	.text       start:0x0041D627 end:0x0041DA84 align:1
+	.text       start:0x0041DA84 end:0x0041DC43 align:4
+	.text       start:0x0041DC43 end:0x0041DD9A align:1
+	.text       start:0x0041DD9A end:0x0041E7F7 align:2
+	.text       start:0x0041E7F7 end:0x0041EB8C align:1
+	.text       start:0x0041EB8C end:0x0041EC72 align:4
+	.text       start:0x0041EC72 end:0x0041ECA0 align:2
+	.data       start:0x0059EF80 end:0x0059F0D0
+	.bss        start:0x005DA848 end:0x005DA8E0
+
+src/driver/CWPluginsPrivate.c:
+	.text       start:0x0041ECA0 end:0x0041F5D0
+
+src/driver/cc-eabi-ppc.c:
+	.text       start:0x0041F5D0 end:0x0041FE30
+	.data       start:0x0059F0D0 end:0x0059F190
+	.bss        start:0x005DA8E0 end:0x005DA9A0
+
+src/driver/libimp-eabi-ppc.c:
+	.text       start:0x0041FE30 end:0x00420D50
+	.data       start:0x0059F190 end:0x0059F210
+	.bss        start:0x005DA9A0 end:0x005DAAC0
+
+src/msl/fcntl.win32.c:
+	.text       start:0x00420D50 end:0x00420F4A
+
+src/driver/Utils.c:
+	.text       start:0x00420F4A end:0x00420F61 align:2
+	.text       start:0x00420F61 end:0x004212FA align:1
+	.text       start:0x004212FA end:0x004213C0 align:2
+	.data       start:0x0059F210 end:0x0059F218
+
+src/msl/strtoul.c:
+	.text       start:0x004213C0 end:0x00421A70
+	.data       start:0x0059F218 end:0x0059F298
+
+src/driver/TargetOptimizer-ppc-eabi.c:
+	.text       start:0x00421A70 end:0x00421F80
+	.data       start:0x0059F298 end:0x0059F380
+
+src/msl/arith.c:
+	.text       start:0x00421F80 end:0x00422200
+
+src/msl/time.win32.c:
+	.text       start:0x00422200 end:0x00422450
+	.data       start:0x0059F380 end:0x0059F3E8
+
+src/msl/wscanf.c:
+	.text       start:0x00422450 end:0x00423070
+	.data       start:0x0059F3E8 end:0x005A1528
+
+src/driver/MacFileTypes.c:
+	.text       start:0x00423070 end:0x00423380
+	.data       start:0x005A1528 end:0x005A1550
+
+src/msl/scanf.c:
+	.text       start:0x00423380 end:0x00423FC0
+	.data       start:0x005A1550 end:0x005A16B8
+
+src/driver/CLFiles.c:
+	.text       start:0x00423FC0 end:0x00424310
+	.data       start:0x005A16B8 end:0x005A16F8
+
+src/driver/CLOverlays.c:
+	.text       start:0x00424310 end:0x00424C10
+	.data       start:0x005A16F8 end:0x005A17B8
+
+src/driver/CLDropinCallbacks_V10.cpp:
+	.text       start:0x00424C10 end:0x00427250
+	.data       start:0x005A17B8 end:0x005A1E50
+
+src/runtime/newop.cpp:
+	.text       start:0x00427250 end:0x00427340
+	.rdata      start:0x0057D1F0 end:0x0057D200
+	.exc        start:0x0057E190 end:0x0057E1B0 rename:.exc$BBB
+	.data       start:0x005A1E50 end:0x005A1EA0
+
+src/driver/CLCompilerLinkerDropin_V10.cpp:
+	.text       start:0x00427340 end:0x0042885C
+	.data       start:0x005A1EA0 end:0x005A2518
+
+lmgr326b:
+	.text       start:0x0042885C end:0x00428862 align:4
+	.text       start:0x00428862 end:0x00428868 align:2
+	.text       start:0x00428868 end:0x00428870 align:8
+
+src/driver/CLAccessPaths.c:
+	.text       start:0x00428870 end:0x00428F70
+	.data       start:0x005A2518 end:0x005A2598
+
+src/driver/CLSegs.c:
+	.text       start:0x00428F70 end:0x004291D0
+	.data       start:0x005A2598 end:0x005A25E8
+
+src/driver/CLDependencies.c:
+	.text       start:0x004291D0 end:0x00429ED0
+	.data       start:0x005A25E8 end:0x005A26B8
+	.bss        start:0x005DAAC0 end:0x005DAAC8
+
+src/driver/CLWriteObjectFile.c:
+	.text       start:0x00429ED0 end:0x00429FC0
+	.data       start:0x005A26B8 end:0x005A2700
+
+src/driver/CLBrowser.c:
+	.text       start:0x00429FC0 end:0x0042A88D
+	.data       start:0x005A2700 end:0x005A27A0
+	.bss        start:0x005DAAC8 end:0x005DAAD8
+
+src/driver/Parameter.c:
+	.text       start:0x0042A88D end:0x0042A8B0 align:1
+	.text       start:0x0042A8B0 end:0x0042A8B3
+	.text       start:0x0042A8B3 end:0x0042AA40 align:1
+	.text       start:0x0042AA40 end:0x0042AD1C
+	.text       start:0x0042AD1C end:0x0042AD91 align:4
+	.text       start:0x0042AD91 end:0x0042AD94 align:1
+	.text       start:0x0042AD94 end:0x0042AE6E align:4
+	.text       start:0x0042AE6E end:0x0042AEF9 align:2
+	.text       start:0x0042AEF9 end:0x0042AEFC align:1
+	.text       start:0x0042AEFC end:0x0042AF63 align:4
+	.text       start:0x0042AF63 end:0x0042AFFE align:1
+	.text       start:0x0042AFFE end:0x0042B001 align:2
+	.text       start:0x0042B001 end:0x0042B090 align:1
+	.text       start:0x0042B090 end:0x0042B0EC
+	.text       start:0x0042B0EC end:0x0042B0EF align:4
+	.text       start:0x0042B0EF end:0x0042B15E align:1
+	.text       start:0x0042B15E end:0x0042B1BD align:2
+	.text       start:0x0042B1BD end:0x0042B22C align:1
+	.text       start:0x0042B22C end:0x0042B268 align:4
+	.text       start:0x0042B268 end:0x0042B26B align:8
+	.text       start:0x0042B26B end:0x0042B35A align:1
+	.text       start:0x0042B35A end:0x0042B5F4 align:2
+	.text       start:0x0042B5F4 end:0x0042B613 align:4
+	.text       start:0x0042B613 end:0x0042B7A8 align:1
+	.text       start:0x0042B7A8 end:0x0042B7C7 align:8
+	.text       start:0x0042B7C7 end:0x0042B864 align:1
+	.text       start:0x0042B864 end:0x0042B9BB align:4
+	.text       start:0x0042B9BB end:0x0042B9DA align:1
+	.text       start:0x0042B9DA end:0x0042BA19 align:2
+	.text       start:0x0042BA19 end:0x0042BA98 align:1
+	.text       start:0x0042BA98 end:0x0042BAB5 align:8
+	.text       start:0x0042BAB5 end:0x0042BB5E align:1
+	.text       start:0x0042BB5E end:0x0042BB61 align:2
+	.text       start:0x0042BB61 end:0x0042BC0C align:1
+	.text       start:0x0042BC0C end:0x0042BF35 align:4
+	.text       start:0x0042BF35 end:0x0042BF38 align:1
+	.text       start:0x0042BF38 end:0x0042BF6A align:8
+	.text       start:0x0042BF6A end:0x0042BFC4 align:2
+	.text       start:0x0042BFC4 end:0x0042C080 align:4
+	.text       start:0x0042C080 end:0x0042C091
+	.text       start:0x0042C091 end:0x0042C09A align:1
+	.text       start:0x0042C09A end:0x0042C11C align:2
+	.text       start:0x0042C11C end:0x0042C436 align:4
+	.text       start:0x0042C436 end:0x0042C4F5 align:2
+	.text       start:0x0042C4F5 end:0x0042C570 align:1
+	.data       start:0x005A27A0 end:0x005A2A60
+
+src/driver/Help.c:
+	.text       start:0x0042C570 end:0x0042C63B
+	.text       start:0x0042C63B end:0x0042C64C align:1
+	.text       start:0x0042C64C end:0x0042C6BD align:4
+	.text       start:0x0042C6BD end:0x0042C706 align:1
+	.text       start:0x0042C706 end:0x0042CA24 align:2
+	.text       start:0x0042CA24 end:0x0042CAB6 align:4
+	.text       start:0x0042CAB6 end:0x0042CB01 align:2
+	.text       start:0x0042CB01 end:0x0042CB2A align:1
+	.text       start:0x0042CB2A end:0x0042D4A4 align:2
+	.text       start:0x0042D4A4 end:0x0042D6C9 align:4
+	.text       start:0x0042D6C9 end:0x0042D920 align:1
+	.data       start:0x005A2A60 end:0x005A3568
+	.bss        start:0x005DAAD8 end:0x005DAC18
+
+src/driver/TargetPanels-eabi-ppc.c:
+	.text       start:0x0042D920 end:0x0042E0B0
+	.data       start:0x005A3568 end:0x005A3768
+	.bss        start:0x005DAC18 end:0x005DAC20
+
+src/backend/CodeGen.c:
+	.text       start:0x0042E0B0 end:0x00436460
+	.data       start:0x005A3768 end:0x005A4F30
+	.bss        start:0x005DAC20 end:0x005DAD38
+
+src/frontend/CPrep.c:
+	.text       start:0x00436460 end:0x004406D0
+	.data       start:0x005A4F30 end:0x005A5AC8
+	.bss        start:0x005DAD38 end:0x005DB510
+
+src/frontend/CompilerTools.c:
+	.text       start:0x004406D0 end:0x00441DF0
+	.data       start:0x005A5AC8 end:0x005A5AE8
+	.bss        start:0x005DB510 end:0x005DB580
+
+src/driver/LibImportMessages.c:
+	.text       start:0x00441DF0 end:0x004421A0
+	.data       start:0x005A5AE8 end:0x005A5CF0
+	.bss        start:0x005DB580 end:0x005DBD80
+
+src/driver/COSToolsCLT.c:
+	.text       start:0x004421A0 end:0x00442540
+
+src/backend/ELF_Endian.c:
+	.text       start:0x00442540 end:0x00442EA0
+	.data       start:0x005A5CF0 end:0x005A5D48
+	.bss        start:0x005DBD80 end:0x005DBD88
+
+src/msl/wcstold.c:
+	.text       start:0x00442EA0 end:0x00443500
+	.data       start:0x005A5D48 end:0x005A5D90
+
+src/msl/strtold.c:
+	.text       start:0x00443500 end:0x00443BF0
+	.data       start:0x005A5D90 end:0x005A5DD8
+
+src/msl/char_io.c:
+	.text       start:0x00443BF0 end:0x00443F40
+
+src/driver/CLLoadAndCache.c:
+	.text       start:0x00443F40 end:0x00444120
+	.data       start:0x005A5DD8 end:0x005A5E00
+
+src/runtime/NewHand.cpp:
+	.text       start:0x00444120 end:0x00444170
+	.rdata      start:0x0057D200 end:0x0057D22D
+	.exc        start:0x0057E1B0 end:0x0057E1B8 rename:.exc$BBB
+	.data       start:0x005A5E00 end:0x005A5E28
+
+src/driver/ErrMgr.c:
+	.text       start:0x00444170 end:0x00444410
+	.data       start:0x005A5E28 end:0x005A6270
+
+src/backend/InstrSelection.c:
+	.text       start:0x00444410 end:0x00453FE0
+	.data       start:0x005A6270 end:0x005A6848
+
+src/optimizer/IroDump.c:
+	.text       start:0x00453FE0 end:0x00454DE0
+	.data       start:0x005A6848 end:0x005A7010
+	.bss        start:0x005DBD88 end:0x005DBEC0
+
+src/optimizer/IroEval.c:
+	.text       start:0x00454DE0 end:0x00456600
+	.data       start:0x005A7010 end:0x005A7170
+
+src/optimizer/IroSubable.c:
+	.text       start:0x00456600 end:0x00456BD0
+	.data       start:0x005A7170 end:0x005A7198
+	.bss        start:0x005DBEC0 end:0x005DBF10
+
+src/optimizer/IroTransform.c:
+	.text       start:0x00456BD0 end:0x0045D090
+	.data       start:0x005A7198 end:0x005A7EC0
+	.bss        start:0x005DBF10 end:0x005DC048
+
+src/optimizer/IROUseDef.c:
+	.text       start:0x0045D090 end:0x004601F0
+	.data       start:0x005A7EC0 end:0x005A8120
+	.bss        start:0x005DC048 end:0x005DC1A8
+
+src/optimizer/IroVars.c:
+	.text       start:0x004601F0 end:0x00462850
+	.data       start:0x005A8120 end:0x005A82F0
+	.bss        start:0x005DC1A8 end:0x005DC1B8
+
+src/frontend/CError.c:
+	.text       start:0x00462850 end:0x00467270
+	.data       start:0x005A82F0 end:0x005A86D8
+	.bss        start:0x005DC1B8 end:0x005DC1C8
+
+src/optimizer/IroUtil.c:
+	.text       start:0x00467270 end:0x00469640
+	.data       start:0x005A86D8 end:0x005A8C68
+	.bss        start:0x005DC1C8 end:0x005DC1E0
+
+src/optimizer/IroCSE.c:
+	.text       start:0x00469640 end:0x0046AC20
+	.data       start:0x005A8C68 end:0x005A8D68
+	.bss        start:0x005DC1E0 end:0x005DC1E8
+
+src/optimizer/IrOptimizer.c:
+	.text       start:0x0046AC20 end:0x0046ED40
+	.data       start:0x005A8D68 end:0x005A9378
+	.bss        start:0x005DC1E8 end:0x005DC1F8
+
+src/optimizer/IroPropagate.c:
+	.text       start:0x0046ED40 end:0x00470640
+	.data       start:0x005A9378 end:0x005A9460
+
+src/optimizer/IroFlowgraph.c:
+	.text       start:0x00470640 end:0x00470F70
+	.data       start:0x005A9460 end:0x005A9518
+
+src/optimizer/IroPointerAnalysis.c:
+	.text       start:0x00470F70 end:0x0049C420
+	.data       start:0x005A9518 end:0x005AB6D8
+	.bss        start:0x005DC1F8 end:0x005DC2D8
+
+src/optimizer/IroJump.c:
+	.text       start:0x0049C420 end:0x0049C990
+	.data       start:0x005AB6D8 end:0x005AB7C0
+
+src/optimizer/IroRangePropagation.c:
+	.text       start:0x0049C990 end:0x0049DCF0
+	.data       start:0x005AB7C0 end:0x005AB8F8
+
+src/optimizer/IroEmptyLoop.c:
+	.text       start:0x0049DCF0 end:0x0049F560
+	.data       start:0x005AB8F8 end:0x005AC380
+	.bss        start:0x005DC2D8 end:0x005DC2E0
+
+src/optimizer/IroLoop.c:
+	.text       start:0x0049F560 end:0x004AB820
+	.data       start:0x005AC380 end:0x005ACFE0
+	.bss        start:0x005DC2E0 end:0x005DC358
+
+src/backend/InlineAsmPPC.c:
+	.text       start:0x004AB820 end:0x004B1560
+	.data       start:0x005ACFE0 end:0x005AD518
+	.bss        start:0x005DC358 end:0x005DC360
+
+src/backend/ObjGen_PPC_EABI.c:
+	.text       start:0x004B1560 end:0x004B1E2A
+	.text       start:0x004B1E2A end:0x004B1E50 align:2
+	.text       start:0x004B1E50 end:0x004B26DA
+	.text       start:0x004B26DA end:0x004B2700 align:2
+	.text       start:0x004B2700 end:0x004B4740
+	.data       start:0x005AD518 end:0x005AD788
+	.bss        start:0x005DC360 end:0x005DC3A0
+
+src/frontend/CExpr2.c:
+	.text       start:0x004B4740 end:0x004BDCE0
+	.data       start:0x005AD788 end:0x005ADCC8
+	.bss        start:0x005DC3A0 end:0x005DC460
+
+src/backend/CMachine.c:
+	.text       start:0x004BDCE0 end:0x004C17B0
+	.data       start:0x005ADCC8 end:0x005AEA80
+	.bss        start:0x005DC460 end:0x005DC470
+
+src/frontend/CInt64.c:
+	.text       start:0x004C17B0 end:0x004C3430
+	.data       start:0x005AEA80 end:0x005B4850
+	.bss        start:0x005DC470 end:0x005DC580
+
+src/backend/Intrinsics.c:
+	.text       start:0x004C3430 end:0x004CEC70
+	.data       start:0x005B4850 end:0x005B6828
+	.bss        start:0x005DC580 end:0x005DCA70
+
+src/backend/Registers.c:
+	.text       start:0x004CEC70 end:0x004CFF10
+	.data       start:0x005B6828 end:0x005B6998
+	.bss        start:0x005DCA70 end:0x005DCA98
+
+src/backend/BE_symbol.c:
+	.text       start:0x004CFF10 end:0x004D09A0
+	.data       start:0x005B6998 end:0x005B69B0
+	.bss        start:0x005DCA98 end:0x005DCAA0
+
+src/frontend/CPrepTokenizer.c:
+	.text       start:0x004D09A0 end:0x004D58C0
+	.data       start:0x005B69B0 end:0x005B7648
+	.bss        start:0x005DCAA0 end:0x005DCAA8
+
+src/frontend/CScope.c:
+	.text       start:0x004D58C0 end:0x004DA230
+	.data       start:0x005B7648 end:0x005B7720
+	.bss        start:0x005DCAA8 end:0x005DCAC0
+
+src/backend/BE_elf.c:
+	.text       start:0x004DA230 end:0x004DB840
+	.data       start:0x005B7720 end:0x005B7790
+	.bss        start:0x005DCAC0 end:0x005DCC50
+
+src/backend/PCode.c:
+	.text       start:0x004DB840 end:0x004DBBC0
+	.bss        start:0x005DCC50 end:0x005DCC50
+
+src/backend/TOC.c:
+	.text       start:0x004DBBC0 end:0x004DF400
+	.data       start:0x005B7790 end:0x005B7EE0
+	.bss        start:0x005DCC50 end:0x005DCC60
+
+src/backend/Operands.c:
+	.text       start:0x004DF400 end:0x004E2460
+	.data       start:0x005B7EE0 end:0x005B8158
+
+src/frontend/CParser.c:
+	.text       start:0x004E2460 end:0x004E8AE0
+	.data       start:0x005B8158 end:0x005B8750
+	.bss        start:0x005DCC60 end:0x005DCC78
+
+src/backend/PCodeUtilities.c:
+	.text       start:0x004E8AE0 end:0x004E9770
+	.data       start:0x005B8750 end:0x005B8780
+
+src/backend/PCodeAssembly.c:
+	.text       start:0x004E9770 end:0x004EB740
+	.data       start:0x005B8780 end:0x005B8FB0
+	.bss        start:0x005DCC78 end:0x005DCC80
+
+src/backend/SFPE_PPC_EABI.c:
+	.text       start:0x004EB740 end:0x004EDA40
+	.data       start:0x005B8FB0 end:0x005B90B0
+
+src/frontend/CFunc.c:
+	.text       start:0x004EDA40 end:0x004F4B60
+	.data       start:0x005B90B0 end:0x005B9290
+	.bss        start:0x005DCC80 end:0x005DCCB0
+
+src/backend/PPCError.c:
+	.text       start:0x004F4B60 end:0x004F5F00
+	.data       start:0x005B9290 end:0x005B9298
+
+src/backend/StackFrameEABI.c:
+	.text       start:0x004F5F00 end:0x004F7470
+	.data       start:0x005B9298 end:0x005B92D0
+
+src/backend/Switch.c:
+	.text       start:0x004F7470 end:0x004F9F60
+	.data       start:0x005B92D0 end:0x005B9330
+	.bss        start:0x005DCCB0 end:0x005DCDF0
+
+src/backend/Exceptions.c:
+	.text       start:0x004F9F60 end:0x004FBF70
+	.data       start:0x005B9330 end:0x005B9D58
+	.bss        start:0x005DCDF0 end:0x005DCE28
+
+src/backend/DumpIR.c:
+	.text       start:0x004FBF70 end:0x004FBF90
+
+src/optimizer/COptimizer.c:
+	.text       start:0x004FBF90 end:0x004FCBA0
+	.data       start:0x005B9D58 end:0x005B9F38
+	.bss        start:0x005DCE28 end:0x005DD190
+
+src/frontend/CMangler.c:
+	.text       start:0x004FCBA0 end:0x004FEBC0
+	.data       start:0x005B9F38 end:0x005BA590
+
+src/optimizer/GlobalOptimizer.c:
+	.text       start:0x004FEBC0 end:0x004FF290
+	.data       start:0x005BA590 end:0x005BA770
+
+src/backend/PCodeListing.c:
+	.text       start:0x004FF290 end:0x004FF2F0
+	.data       start:0x005BA770 end:0x005BA968
+
+src/backend/Peephole.c:
+	.text       start:0x004FF2F0 end:0x005062B0
+	.bss        start:0x005DD190 end:0x005DD900
+
+src/backend/Scheduler.c:
+	.text       start:0x005062B0 end:0x00506750
+
+src/backend/Coloring.c:
+	.text       start:0x00506750 end:0x00508910
+	.data       start:0x005BA968 end:0x005BA9C0
+	.bss        start:0x005DD900 end:0x005DD950
+
+src/frontend/CInit.c:
+	.text       start:0x00508910 end:0x0050E2A0
+	.data       start:0x005BA9C0 end:0x005BAD20
+	.bss        start:0x005DD950 end:0x005DE0E8
+
+src/optimizer/StructMoves.c:
+	.text       start:0x0050E2A0 end:0x00510300
+	.data       start:0x005BAD20 end:0x005BADA8
+
+src/frontend/CBrowse.c:
+	.text       start:0x00510300 end:0x005132E0
+	.data       start:0x005BADA8 end:0x005BB090
+	.bss        start:0x005DE0E8 end:0x005DF0C8
+
+src/frontend/CPreprocess.c:
+	.text       start:0x005132E0 end:0x005147B0
+	.data       start:0x005BB090 end:0x005BBBB0
+
+src/frontend/CPrec.c:
+	.text       start:0x005147B0 end:0x0051E490
+	.data       start:0x005BBBB0 end:0x005BBF68
+	.bss        start:0x005DF0C8 end:0x005DF118
+
+src/frontend/CException.c:
+	.text       start:0x0051E490 end:0x005214F0
+	.data       start:0x005BBF68 end:0x005BC428
+	.bss        start:0x005DF118 end:0x005DF138
+
+src/frontend/CSOM.c:
+	.text       start:0x005214F0 end:0x00524400
+	.data       start:0x005BC428 end:0x005BC668
+	.bss        start:0x005DF138 end:0x005DF148
+
+src/backend/FuncLevelAsmPPC.c:
+	.text       start:0x00524400 end:0x00524CC0
+	.data       start:0x005BC668 end:0x005BC730
+	.bss        start:0x005DF148 end:0x005DF180
+
+src/frontend/Unmangle.c:
+	.text       start:0x00524CC0 end:0x005267C0
+	.data       start:0x005BC730 end:0x005BCFF0
+
+src/optimizer/FunctionCalls.c:
+	.text       start:0x005267C0 end:0x005297B0
+	.data       start:0x005BCFF0 end:0x005BD578
+	.bss        start:0x005DF180 end:0x005DF1F8
+
+src/optimizer/CIRTransform.c:
+	.text       start:0x005297B0 end:0x0052A1D0
+	.data       start:0x005BD578 end:0x005BD620
+
+src/optimizer/IroBitVect.c:
+	.text       start:0x0052A1D0 end:0x0052A450
+	.data       start:0x005BD620 end:0x005BD630
+
+src/frontend/CClass.c:
+	.text       start:0x0052A450 end:0x0052DC20
+	.data       start:0x005BD630 end:0x005BD848
+	.bss        start:0x005DF1F8 end:0x005DF230
+
+src/backend/InlineAsm.c:
+	.text       start:0x0052DC20 end:0x0052F070
+	.data       start:0x005BD848 end:0x005BD938
+	.bss        start:0x005DF230 end:0x005DF638
+
+src/frontend/CTemplateNew.c:
+	.text       start:0x0052F070 end:0x00531E80
+	.data       start:0x005BD938 end:0x005BDA08
+	.bss        start:0x005DF638 end:0x005DF668
+
+src/frontend/CDecl.c:
+	.text       start:0x00531E80 end:0x0053A770
+	.data       start:0x005BDA08 end:0x005BDCF0
+
+src/backend/InlineAsmMnemonicsPPC.c:
+	.text       start:0x0053A770 end:0x0053A880
+	.data       start:0x005BDCF0 end:0x005C8C10
+
+src/backend/InlineAsmRegisters.c:
+	.text       start:0x0053A880 end:0x0053A990
+	.bss        start:0x005DF668 end:0x005DF768
+
+src/backend/InlineAsmRegistersPPC.c:
+	.text       start:0x0053A990 end:0x0053B0A0
+	.data       start:0x005C8C10 end:0x005CBBB8
+	.bss        start:0x005DF768 end:0x005DF9A0
+
+src/frontend/CExpr.c:
+	.text       start:0x0053B0A0 end:0x00545F40
+	.data       start:0x005CBBB8 end:0x005CC480
+
+src/backend/DWARF.c:
+	.text       start:0x00545F40 end:0x0054AAE0
+	.data       start:0x005CC480 end:0x005CC678
+	.bss        start:0x005DF9A0 end:0x005DFB40
+
+src/frontend/CObjC.c:
+	.text       start:0x0054AAE0 end:0x00554D50
+	.data       start:0x005CC678 end:0x005CCC18
+	.bss        start:0x005DFB40 end:0x005DFB48
+
+src/frontend/CObjCModern.c:
+	.text       start:0x00554D50 end:0x00555020
+	.data       start:0x005CCC18 end:0x005CCC40
+
+src/frontend/CABI.c:
+	.text       start:0x00555020 end:0x00559A20
+	.data       start:0x005CCC40 end:0x005CCD00
+	.bss        start:0x005DFB48 end:0x005DFB60
+
+src/frontend/CInline.c:
+	.text       start:0x00559A20 end:0x00560410
+	.data       start:0x005CCD00 end:0x005CDFE8
+	.bss        start:0x005DFB60 end:0x005DFBF0
+
+src/frontend/CTemplateTools.c:
+	.text       start:0x00560410 end:0x005638E0
+	.data       start:0x005CDFE8 end:0x005CE428
+
+src/frontend/CTemplateFunc.c:
+	.text       start:0x005638E0 end:0x00565E30
+	.data       start:0x005CE428 end:0x005CE518
+	.bss        start:0x005DFBF0 end:0x005DFBF8
+
+src/frontend/CTemplateClass.c:
+	.text       start:0x00565E30 end:0x00568AC0
+	.data       start:0x005CE518 end:0x005CE5F8
+
+src/msl/qsort.c:
+	.text       start:0x00568AC0 end:0x00568C20
+
+src/optimizer/CopyPropagation.c:
+	.text       start:0x00568C20 end:0x00569A20
+	.data       start:0x005CE5F8 end:0x005CE660
+	.bss        start:0x005DFBF8 end:0x005DFC08
+
+src/optimizer/LoopDetection.c:
+	.text       start:0x00569A20 end:0x0056BF60
+	.data       start:0x005CE660 end:0x005CE688
+	.bss        start:0x005DFC08 end:0x005DFC18
+
+src/optimizer/CodeMotion.c:
+	.text       start:0x0056BF60 end:0x0056F2C0
+	.data       start:0x005CE688 end:0x005CE6A8
+	.bss        start:0x005DFC18 end:0x005DFC20
+
+src/optimizer/StrengthReduction.c:
+	.text       start:0x0056F2C0 end:0x00570B30
+	.data       start:0x005CE6A8 end:0x005CE6C0
+
+src/optimizer/LoopOptimization.c:
+	.text       start:0x00570B30 end:0x005737A0
+	.data       start:0x005CE6C0 end:0x005CE6D0
+	.bss        start:0x005DFC20 end:0x005DFC30
+
+src/optimizer/ConstantPropagation.c:
+	.text       start:0x005737A0 end:0x00574CC0
+	.data       start:0x005CE6D0 end:0x005CE830
+	.bss        start:0x005DFC30 end:0x005DFC40
+
+src/optimizer/VectorArraysToRegs.c:
+	.text       start:0x00574CC0 end:0x00575B40
+	.data       start:0x005CE830 end:0x005CE970
+	.bss        start:0x005DFC40 end:0x005DFC58
+
+src/backend/MachineSimulation7400.c:
+	.text       start:0x00575B40 end:0x00577250
+	.data       start:0x005CE970 end:0x005D11C0
+	.bss        start:0x005DFC58 end:0x005DFF40
+
+src/backend/MachineSimulation603e.c:
+	.text       start:0x00577250 end:0x00577750
+	.data       start:0x005D11C0 end:0x005D1D50
+	.bss        start:0x005DFF40 end:0x005DFFB8
+
+src/backend/MachineSimulation604.c:
+	.text       start:0x00577750 end:0x00577D80
+	.data       start:0x005D1D50 end:0x005D2878
+	.bss        start:0x005DFFB8 end:0x005E0098
+
+src/backend/MachineSimulation750.c:
+	.text       start:0x00577D80 end:0x005783C0
+	.data       start:0x005D2878 end:0x005D33A0
+	.bss        start:0x005E0098 end:0x005E0128
+
+src/backend/MachineSimulation601.c:
+	.text       start:0x005783C0 end:0x00578630
+	.data       start:0x005D33A0 end:0x005D3EC8
+	.bss        start:0x005E0128 end:0x005E0158
+
+src/backend/MachineSimulation821.c:
+	.text       start:0x00578630 end:0x00578A00
+	.data       start:0x005D3EC8 end:0x005D49F0
+	.bss        start:0x005E0158 end:0x005E01C8
+
+src/backend/InterferenceGraph.c:
+	.text       start:0x00578A00 end:0x0057A100
+	.data       start:0x005D49F0 end:0x005D4A08
+	.bss        start:0x005E01C8 end:0x005E01D8
+
+common:
+	.bss        start:0x005E01D8 end:0x005E7400
+	.bss        start:0x005E7400 end:0x005E7404 common:1
+
+src/frontend/CRTTI.c:
+	.text       start:0x0057A100 end:0x0057C88C
+	.data       start:0x005D4A08 end:0x005D4CDC

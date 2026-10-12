@@ -409,7 +409,9 @@ void TargetPanels_eabi_ppc_LoadCompilerOptions(void)
     copts.constsmalldatathreshold = settings.sdata2threshold;
     copts.nonconstsmalldatathreshold = settings.sdatathreshold;
     copts.f27 = settings.unk37;
+#if VERSION < VERSION_GC_1_3
     copts.f1e = 0;
+#endif
     copts.fd3 = 0;
     copts.fd5 = 1;
     copts.fd4 = 1;

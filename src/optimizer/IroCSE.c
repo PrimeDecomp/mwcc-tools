@@ -1,4 +1,8 @@
 #define CERROR_FILE "IroCSE.c"
+#include "version.h"
+#if VERSION >= VERSION_GC_1_3
+#include <string.h>
+#endif
 #include "compiler/common.h"
 #include "compiler/IroCSE.h"
 #include "compiler/enode.h"
@@ -23,13 +27,13 @@
 
 CInt64 data_005834f8;
 unsigned int expression_count;
-unsigned int data_005870f8;
+BY_VERSION(unsigned int, Boolean) data_005870f8;
 int data_005871b8;
-unsigned int data_00587630;
+BY_VERSION(unsigned int, Boolean) data_00587630;
 struct IROExpr *expr_tail;
 struct IROExpr *expr_list;
-int data_00587e58;
-SInt32 data_005880a4;
+BY_VERSION(int, Boolean) data_00587e58;
+BY_VERSION(SInt32, Boolean) data_005880a4;
 ENode *data_005881ec;
 BitVector *killed_exprs;
 char nested_bitwise_expressions_rewritten;
@@ -485,7 +489,7 @@ void fn_0044f350(IROLinear *expression)
     fn_0044f6a0(expression, 0);
 }
 
-void set_global_if_zero_value_and_flag(IROLinear *type, int value)
+void set_global_if_zero_value_and_flag(IROLinear *type, BY_VERSION(int, Boolean) value)
 {
     if (value == 0U && (type->flags & 0x10000U) != 0U)
         data_005870f8 = 1U;
@@ -500,18 +504,23 @@ void fn_0044f230(IROLinear *expression, IRONode *value)
     if (expression->flags & IROLF_Reffed) {
         if (fn_004f0040(expression)) {
             data_005870f8 = 0;
-            IroUtil_VisitLinearTree(expression, set_global_if_zero_value_and_flag);
+            IroUtil_VisitLinearTree(expression, BY_VERSION(set_global_if_zero_value_and_flag, (void (*)(IROLinear *, int))set_global_if_zero_value_and_flag));
             eligible = 0;
             if (data_005870f8 == 0)
-                eligible = 1;
-            if (eligible) {
+                BY_VERSION(eligible = 1, eligible++);
+            if (BY_VERSION(eligible, (Boolean)eligible)) {
                 entry = oalloc(sizeof(*entry));
+#if VERSION >= VERSION_GC_1_3
+                entry->state = 0;
+#endif
                 expression_count++;
                 entry->index = expression_count;
                 entry->linear = expression;
                 entry->temp = NULL;
                 entry->node = value;
+#if VERSION < VERSION_GC_1_3
                 entry->state = 0;
+#endif
                 IroBitVect_AllocateBitVector(&data_00552b88, iroVarCount + 1);
                 data_00587e58 = 0;
                 data_00587630 = 0;
@@ -590,7 +599,7 @@ void IroCSE_RemoveExpr(IROExpr *entry)
             previous = current;
             current = current->next;
             if (current == NULL) {
-                CError_FATAL(470);
+                CError_FATAL(BY_VERSION(470, 809));
             }
         } while (current != entry);
     }
@@ -810,6 +819,7 @@ void IroCSE_ReplaceReference(IROLinear *target, Object *object, IROLinear *refer
     IroDump_Print("Oh, oh, did not find reference to replace\n");
 }
 
+#if VERSION < VERSION_GC_1_3 /* (1.3 has it in IroUtil.c) */
 /* Makes the node using FROM as an operand use TO instead. */
 void fn_0044e560(IROLinear *from, IROLinear *to)
 {
@@ -899,8 +909,13 @@ void fn_0044e560(IROLinear *from, IROLinear *to)
     }
     IroDump_Print("Oh, oh, did not find reference to replace\n");
 }
+#endif
 
 /* Makes EXPRESSION's temporary. */
+#if VERSION >= VERSION_GC_1_3
+/* (1.3 defines it after its caller, so it is called there, not inlined) */
+#pragma dont_inline on
+#endif
 void IroCSE_CreateTemp(IROExpr *mapping)
 {
     IROLinear *original;
@@ -914,6 +929,9 @@ void IroCSE_CreateTemp(IROExpr *mapping)
     mappedObject = mapping->temp;
     fn_0044ba70(mappedObject, 1U, 1U);
 }
+#if VERSION >= VERSION_GC_1_3
+#pragma dont_inline reset
+#endif
 
 /* The assignment of PAIR's temporary to PAIR's expression, inserted before the expression. */
 IROLinear *IroCSE_CreateTempAssignment(IROExpr *pair)
@@ -957,8 +975,12 @@ void create_replacement_temp_assignment(IROExpr *replacement)
     IROLinear *conversion;
     IROLinear *assignment;
 
+#if VERSION >= VERSION_GC_1_3
+    IroCSE_CreateTemp(replacement);
+#else
     replacement->temp = create_temp_object(replacement->linear->rtype);
     fn_0044ba70(replacement->temp, 1, 1);
+#endif
     reference = IrOptimizer_NewLinear(IROLinearOperand);
     reference->u.node = create_objectrefnode(replacement->temp);
     reference->rtype = reference->u.node->data.objref->type;
@@ -981,8 +1003,12 @@ void create_replacement_temp_assignment(IROExpr *replacement)
     fn_0044e560(replacement->linear, assignment);
     IroUtil_InsertLinearRangeAfter(reference, assignment, replacement->linear);
 }
+#if VERSION >= VERSION_GC_1_3
+IROLinear *fn_0044e360(IROLinear *type, Boolean clearBit)
+#else
 
 IROLinear *fn_0044e360(IROLinear *type, unsigned int clearBit)
+#endif
 {
     if (clearBit != 0U) {
         type->flags &= ~8U;
@@ -1129,7 +1155,7 @@ void IRO_CommonSubs(void)
                         prev = cse;
                         cse = cse->next;
                         if (cse == NULL)
-                            CError_FATAL(470);
+                            CError_FATAL(BY_VERSION(470, 809));
                     }
                     def->linear->expr = NULL;
                     if (prev != NULL)

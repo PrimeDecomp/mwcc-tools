@@ -50,7 +50,11 @@ extern int fn_00432480(MethRec *record);
 extern unsigned int CodeGen_GetMethRecRTypeSize(MethRec *record);
 extern void bind_object_register(Object *object, SInt16 reg);
 extern void fn_00436390(ENode *expression);
+#if VERSION >= VERSION_GC_1_3
+extern void CodeGen_EnumerateArgumentRegisters(void (*cb)(Object *, SInt16), Boolean flag);
+#else
 extern void CodeGen_EnumerateArgumentRegisters(void (*cb)(Object *, SInt16));
+#endif
 extern ENode *CodeGen_MakeAltivecCall(Object *object, ENodeList *arguments);
 extern void CodeGen_AllocateArgumentSlots(Object *arg1, Boolean arg2, Boolean arg3);
 extern ENode *CodeGen_MakeAltivecStructCast(ENode *a, Type *type, UInt32 qual);

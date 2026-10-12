@@ -76,6 +76,9 @@ typedef enum ENodeType {
     ESETCONST,
     ENEWEXCEPTION,
     ENEWEXCEPTIONARRAY,
+#if VERSION >= VERSION_GC_1_3
+    ENODE_13_INSERTED,
+#endif
     EOBJLIST,
     EMEMBER,
     ETEMPLDEP,
@@ -84,6 +87,9 @@ typedef enum ENodeType {
     EREUSE,
     EASSBLK,
     EVECTOR128CONST,
+#if VERSION >= VERSION_GC_1_3
+    ECONDASS, /* (1.3: a conditional assignment, operands as ECOND's) */
+#endif
 } ENodeType;
 enum {
     ENODE_FLAG_CONST = Q_CONST,
@@ -179,6 +185,14 @@ union ENodeUnion {
         Object *pointertemp;
         Object *deletefunc;
     } newexception;
+#if VERSION >= VERSION_GC_1_3
+    struct {
+        ENode *initexpr;
+        ENode *tryexpr;
+        ENode *catchexpr;
+        ENode *result;
+    } itc; /* (1.3) ENODE_13_INSERTED: init/try/catch */
+#endif
     struct {
         ENode *allocationAssignment;
         ENode *initialization;
@@ -219,6 +233,9 @@ struct ENode {
     Boolean ignored;
     Boolean hascall;
     Type *rtype;
+#if VERSION >= VERSION_GC_1_3
+    UInt32 f0a;
+#endif
     ENodeUnion data;
 };
 #pragma options align = reset

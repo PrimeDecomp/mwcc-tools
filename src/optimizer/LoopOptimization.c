@@ -53,6 +53,9 @@ int gLoopTransformChanged;
 static UInt32 *registers_used_outside_loop;
 static UInt32 *self_addi_candidate_regs;
 static SInt32 data_00582c70;
+#if VERSION >= VERSION_GC_1_3
+extern int data_005e6778[];
+#endif
 
 #define NULL 0
 
@@ -155,7 +158,6 @@ void mark_registers_used_outside_loop(Loop *state)
         }
     }
 }
-
 void remove_unused_self_addi(Loop *loop)
 {
     int mask;
@@ -186,18 +188,50 @@ void remove_unused_self_addi(Loop *loop)
                 operand = instruction->operandData.operands;
                 operandCount = instruction->operand_count;
                 while (operandCount--) {
+#if VERSION >= VERSION_GC_1_3
+                    if (operand->kind == PCOp_GPR && operand->arg == 4) {
+                        operandReg = operand->value.reg;
+                        if (operandReg >= data_005e6778[4] && operandReg < data_00582c70) {
+                            self_addi_candidate_regs[operand->value.reg >> 5] &= ~(1 << (operand->value.reg & 31));
+                        }
+                    }
+#else
                     if (operand->kind == PCOp_GPR) {
                         operandReg = operand->value.reg;
                         if (operandReg >= 32 && operandReg < data_00582c70) {
                             self_addi_candidate_regs[operand->value.reg >> 5] &= ~(1 << (operand->value.reg & 31));
                         }
                     }
+#endif
                     operand++;
                 }
             } while ((instruction = instruction->next) != NULL);
         }
         scan = scan->next;
     }
+#if VERSION >= VERSION_GC_1_3
+    if (loop->parent != NULL) {
+        int rg2;
+        instruction = loop->preheader->instructions;
+        if (instruction != NULL) {
+            do {
+                nextInstruction = instruction->next;
+                operand = instruction->operandData.operands;
+                operandCount = instruction->operand_count;
+                while (operandCount--) {
+                    if (operand->kind == PCOp_GPR && operand->arg == 4) {
+                        rg2 = operand->value.reg;
+                        if (rg2 >= data_005e6778[4] && rg2 < data_00582c70) {
+                            registers_used_outside_loop[operand->value.reg >> 5] |= 1 << operand->value.reg;
+                        }
+                    }
+                    operand++;
+                }
+                instruction = nextInstruction;
+            } while (instruction != NULL);
+        }
+    }
+#endif
     link = loop->blocks;
     if (link != NULL) {
         do {
@@ -299,8 +333,8 @@ void unroll_counting_loop(Loop *loop)
     copies = (PCodeBlock *)oalloc(sizeof(PCodeBlock));
     copies->instructions = copies->reverse_instructions = NULL;
     for (iteration = 0; iteration < factor - 1; ++iteration) {
-        CError_ASSERT(378, (first = loop->body->instructions) != 0);
-        CError_ASSERT(380, !((opcode = first->opcode) != 83 && opcode != 85 && opcode != 82 && opcode != 84));
+        CError_ASSERT(BY_VERSION(378, 448), (first = loop->body->instructions) != 0);
+        CError_ASSERT(BY_VERSION(380, 450), !((opcode = first->opcode) != 83 && opcode != 85 && opcode != 82 && opcode != 84));
         body = first->next;
         while (body && !(body->flags & PCodeInstruction_SkipCodeMotion)) {
             PCode_AppendInstruction(copies, PCode_CloneInstruction(body));
@@ -337,7 +371,7 @@ void LoopOptimization_AddMissingSuccessorPredecessors(PCodeBlock *block)
     successor = block->successors;
     while (successor != NULL) {
         if (successor->payload.block == NULL) {
-            CError_FATAL(426);
+            CError_FATAL(BY_VERSION(426, 496));
         } else {
             predecessor = successor->payload.block->predecessors;
             while (predecessor != NULL) {
@@ -365,7 +399,7 @@ PCodeBlock *insert_block_after(PCodeBlock *list, int execution_weight)
     PCodeBlockLink *edge;
 
     label = PCode_NewLabel();
-    block = (PCodeBlock *)lalloc(sizeof(PCodeBlock));
+    block = (PCodeBlock *)lalloc(BY_VERSION(sizeof(PCodeBlock), 0x2c));
     successor = list->next;
     block->next = successor;
     list->next = block;
@@ -374,7 +408,9 @@ PCodeBlock *insert_block_after(PCodeBlock *list, int execution_weight)
     block->labels = NULL;
     block->predecessors = block->successors = NULL;
     block->instructions = block->reverse_instructions = NULL;
+#if VERSION < VERSION_GC_1_3
     block->line = -1;
+#endif
     block->instruction_count = 0;
     block->execution_weight = execution_weight;
     block->flags = 0;
@@ -508,9 +544,9 @@ void unroll_loop_by_factor(Loop *loop)
             }
         }
         if (!(pc = loop->body->instructions))
-            CError_FATAL(692);
+            CError_FATAL(BY_VERSION(692, 762));
         if (pc->opcode != PC_CMP && pc->opcode != PC_CMPL && pc->opcode != PC_CMPI && pc->opcode != PC_CMPLI)
-            CError_FATAL(694);
+            CError_FATAL(BY_VERSION(694, 764));
         for (pc = pc->next; pc && !(pc->flags & fIsBranch); pc = pc->next)
             PCode_AppendInstruction(copy[n - 1], PCode_CloneInstruction(pc));
         for (i = 0; i < n; i++) {
@@ -631,10 +667,15 @@ void unroll_ctr_loop(Loop *loop)
     for (currentInstruction = unrolledBody->instructions; currentInstruction != NULL;
          currentInstruction = currentInstruction->next) {
         if (currentInstruction != clonedUpdate) {
+#if VERSION >= VERSION_GC_1_3
+            operand = currentInstruction->operandData.operands;
+            operandCount = currentInstruction->operand_count;
+#else
             operandCount = currentInstruction->operand_count;
             operand = currentInstruction->operandData.operands;
+#endif
             while (operandCount--) {
-                if (operand->kind == PCOp_GPR &&
+                if (BY_VERSION(operand->kind == PCOp_GPR, PCOP_IS_GPR(operand)) &&
                     operand->value.reg == loop->inductionUpdate->operandData.operands[0].value.reg &&
                     (operand->flags & (PCodeOperand_Use | PCodeOperand_Definition)) != 0) {
                     updateUse = currentInstruction;
@@ -735,19 +776,24 @@ void unroll_ctr_loop(Loop *loop)
     }
 }
 
+#if VERSION >= VERSION_GC_1_3
+#define BDNZ_LABEL(instruction) ((instruction)->operandData.countLoopBranch.label)
+#else
+#define BDNZ_LABEL(instruction) instruction->operandData.operands[2].value.label
+#endif
 void unlink_loop_body_edge_and_instructions(Loop *p)
 {
     PCodeBlockLink *node;
     PCodeBlockLink **pp;
 
     for (pp = &p->body->successors; (node = *pp) != NULL; pp = &node->next) {
-        if (node->payload.block == p->body->reverse_instructions->operandData.operands[2].value.label->target.block) {
+        if (node->payload.block == BDNZ_LABEL(p->body->reverse_instructions)->target.block) {
             *pp = node->next;
             break;
         }
     }
 
-    for (pp = &p->body->reverse_instructions->operandData.operands[2].value.label->target.block->predecessors;
+    for (pp = &BDNZ_LABEL(p->body->reverse_instructions)->target.block->predecessors;
          (node = *pp) != NULL; pp = &node->next) {
         if (node->payload.block == p->body) {
             *pp = node->next;
@@ -782,7 +828,7 @@ void convert_to_count_register_loop(Loop *loop)
         loop->preheader->reverse_instructions,
         PCodeUtilities_CreateInstruction(PC_MTCTR, instruction->operandData.operands[0].value.reg));
     instruction = PCodeUtilities_CreateInstruction(
-        PC_BDNZ, loop->body->reverse_instructions->operandData.operands[2].value.label);
+        PC_BDNZ, BDNZ_LABEL(loop->body->reverse_instructions));
     PCode_UnlinkInstruction(loop->body->instructions);
     PCode_UnlinkInstruction(loop->body->reverse_instructions);
     PCode_AppendInstruction(loop->body, instruction);
@@ -970,7 +1016,7 @@ void convert_loop_to_count_register(struct Loop *loop)
     }
 
     for (;;) {
-        CError_ASSERT(1778, pc = (PCodeInstruction *)loop->body->instructions);
+        CError_ASSERT(BY_VERSION(1778, 1857), pc = (PCodeInstruction *)loop->body->instructions);
         if (pc->opcode == PC_CMP || pc->opcode == PC_CMPI || pc->opcode == PC_CMPLI || pc->opcode == PC_CMPL)
             break;
         PCode_UnlinkInstruction(pc);
@@ -1399,7 +1445,7 @@ void COpt_ArrayToRegister(void)
                 n--;
             }
             if (g > 8 || f > 8)
-                CError_FATAL(2315);
+                CError_FATAL(BY_VERSION(2315, 2394));
             a = head;
             if (!a)
                 return;
@@ -1459,7 +1505,7 @@ void COpt_ArrayToRegister(void)
                                     newpc = PCodeUtilities_CreateInstruction(0x9e, reg, src);
                                     break;
                                 default:
-                                    CError_FATAL(2415);
+                                    CError_FATAL(BY_VERSION(2415, 2494));
                             }
                             if (newpc) {
                                 PCode_InsertInstructionBefore(pc, newpc);
@@ -1541,8 +1587,12 @@ void fn_005289b0(void)
     gArrayToRegisterChanged = 0;
     if (data_0058763c != NULL) {
         COpt_SetLoopCodeMotionMode(0);
+#if VERSION >= VERSION_GC_1_3
+        data_00582c70 = registerCount = gUsedVirtualRegistersGPR;
+#else
         registerCount = gUsedVirtualRegistersGPR;
         data_00582c70 = registerCount;
+#endif
         allocationSize = ((registerCount + 31) >> 5) * sizeof(*registers_used_outside_loop);
         registers_used_outside_loop = oalloc(allocationSize);
         registerCount = data_00582c70;
@@ -1560,3 +1610,38 @@ static inline void clonefirst(PCodeBlock *v2, PCodeInstruction *v5)
         v5 = v5->next;
     }
 }
+
+#if VERSION >= VERSION_GC_1_3
+#pragma pack(push, 1)
+struct Fn00574c60Entry {
+    PCodeInstruction *instr;
+    int pending;
+};
+struct Fn00574c60Instr {
+    UInt8 pad0[0x14];
+    UInt32 flags;
+    UInt8 pad1[0x0d];
+    SInt8 cls;
+    UInt8 pad2[2];
+    SInt16 limit;
+};
+#pragma pack(pop)
+extern struct Fn00574c60Entry *data_005e5f34;
+extern int data_005e6778[];
+extern int data_005e5ffc;
+
+void fn_00574c60(int index)
+{
+    struct Fn00574c60Instr *instr;
+
+    if (data_005e5f34[index].pending != 0)
+        return;
+    instr = (struct Fn00574c60Instr *)data_005e5f34[index].instr;
+    if (instr->flags & 0x100)
+        return;
+    if (instr->limit < data_005e6778[instr->cls])
+        return;
+    PCode_UnlinkInstruction((PCodeInstruction *)instr);
+    data_005e5ffc = 1;
+}
+#endif

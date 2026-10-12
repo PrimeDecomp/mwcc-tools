@@ -49,7 +49,11 @@ extern Boolean CLPluginRequests_ParseCommandLine(Plugin *func, struct CLTarget *
                                                  struct CommandParseInfo *value1, SInt32 value2, SInt32 value3,
                                                  SInt32 value4, void *value5, SInt32 value6, char **value7,
                                                  struct ToolArgumentSet *value8, struct ToolArgumentSet *value9,
-                                                 void *value10, void *value11);
+                                                 void *value10, void *value11
+#if VERSION >= VERSION_GC_1_3
+                                                 , void *value12
+#endif
+                                                 );
 extern Boolean CLPluginRequests_SetupFileRequest(Plugin *job, DropinFileRecord *input, short flags);
 extern Boolean CLPluginRequests_UpdateTargetSettings(Plugin *record, UInt32 flags, struct TgtRec *snapshot);
 extern int fn_00417440(Plugin *obj, Boolean flag);

@@ -17,7 +17,11 @@ struct PCodeOpcodeDescriptor {
     const char *operand_format;
     unsigned char operand_count;
     unsigned char rank;
+#if VERSION >= VERSION_GC_1_3
+    unsigned int flags;
+#else
     unsigned short flags;
+#endif
     SInt32 encoding;
 };
 #pragma pack(pop)
@@ -68,13 +72,23 @@ struct InlineAsmExpression {
 #pragma options align = reset
 #pragma pack(push, 1)
 struct ParsedAsmInstruction {
+#if VERSION >= VERSION_GC_1_3
+    unsigned short opcode;
+    unsigned char specialFlags;
+    unsigned char branch_flags;
+    short operand_count;
+#else
     unsigned int opcode;
     unsigned char specialFlags;
     unsigned char branch_flags;
     short operand_count;
+#endif
     union {
         EncodedOperand operands[1];
         struct {
+#if VERSION >= VERSION_GC_1_3
+            short pad;
+#endif
             struct Object *object;
             SInt32 size;
         } directive;
@@ -111,7 +125,13 @@ extern void parse_expression(InlineAsmExpression *op, int x);
 extern void parse_binary_expression_tail(InlineAsmExpression *result, int parseMode);
 extern void report_register_error(unsigned int value, unsigned char kind);
 extern void report_binary_expression_error(HashNameNode *name1, HashNameNode *name2, SInt16 kind);
+#if VERSION >= VERSION_GC_1_3
+extern EncodedOperand *parse_displacement_operand(EncodedOperand *p, struct ParsedAsmInstruction *ctx, int flags);
+#define PARSE_DISPLACEMENT_OPERAND(p, ctx, flags) parse_displacement_operand(p, ctx, flags)
+#else
 extern EncodedOperand *parse_displacement_operand(EncodedOperand *p, struct ParsedAsmInstruction *ctx);
+#define PARSE_DISPLACEMENT_OPERAND(p, ctx, flags) parse_displacement_operand(p, ctx)
+#endif
 extern void parse_expression_operand(EncodedOperand *dest, struct ParsedAsmInstruction *instruction,
                                      Boolean allowAddress);
 extern int check_register_value_range(void);

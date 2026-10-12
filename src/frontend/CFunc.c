@@ -41,6 +41,9 @@ struct CLabel *Labels;
 Object *cscope_currentfunc;
 FileOffsetInfo function_fileinfo;
 unsigned char in_parameter_type_list;
+#if VERSION >= VERSION_GC_1_3
+SInt32 data_005e669c;
+#endif
 
 #pragma options align = mac68k
 static UInt8 data_00580868[8];
@@ -71,6 +74,22 @@ static void CFunc_InitVariableInfo(Object *obj);
 
 inline void RestoreBlock(void *block)
 {
+#if VERSION >= VERSION_GC_1_3
+    /* (a block that leaves an exception scope ends with an empty statement in the scope it leaves) */
+    if (curstmt != NULL && curstmt->dobjstack != cexcept_dobjstack) {
+        Statement *s = (Statement *)lalloc(0x1e);
+        s->next = NULL;
+        s->type = ST_EXPRESSION;
+        s->value = curstmtvalue;
+        s->flags = 0;
+        s->sourceoffset = sourceoffset;
+        s->f1a = data_005e669c;
+        s->dobjstack = cexcept_dobjstack;
+        curstmt->next = s;
+        curstmt = s;
+        s->expr = nullnode();
+    }
+#endif
     cscope_current = ((struct DeclBlock *)block)->parent_nspace;
     cexcept_dobjstack = ((struct DeclBlock *)block)->dobjstack;
 }
@@ -86,7 +105,11 @@ inline void ScopedBody(StatementContext *ctx)
         while (tk != '}') {
             parse_statement(ctx);
         }
+#if VERSION >= VERSION_GC_1_3
+        UPDATE_STATEMENT_LINE();
+#else
         sourceoffset = CPrep_UpdateTokenLine(&function_fileinfo);
+#endif
         tk = (short)CPrepTokenizer_GetNextToken();
     } else {
         parse_statement(ctx);
@@ -117,6 +140,9 @@ static inline Statement *CFunc_NewStatement(UInt8 kind)
     stmt->value = curstmtvalue;
     stmt->flags = 0;
     stmt->sourceoffset = sourceoffset;
+#if VERSION >= VERSION_GC_1_3
+    stmt->f1a = data_005e669c;
+#endif
     stmt->dobjstack = cexcept_dobjstack;
     curstmt->next = stmt;
     curstmt = stmt;
@@ -125,12 +151,15 @@ static inline Statement *CFunc_NewStatement(UInt8 kind)
 
 static inline Statement *MakeCaseStatement(void)
 {
-    Statement *statement = lalloc(0x1a);
+    Statement *statement = lalloc(BY_VERSION(0x1a, 0x1e));
     statement->next = NULL;
     statement->type = ST_LABEL;
     statement->value = curstmtvalue;
     statement->flags = 0;
     statement->sourceoffset = sourceoffset;
+#if VERSION >= VERSION_GC_1_3
+    statement->f1a = data_005e669c;
+#endif
     statement->dobjstack = cexcept_dobjstack;
     curstmt->next = statement;
     curstmt = statement;
@@ -229,13 +258,16 @@ static inline Statement *CFunc_EmitAllCleanups(Statement *stmt, ExceptionAction 
 static inline Statement *CFunc_0047b880_inline1(char type, Statement *after)
 {
     Statement *stmt;
-    stmt = (Statement *)lalloc(26);
+    stmt = (Statement *)lalloc(BY_VERSION(26, 30));
     stmt->next = after->next;
     after->next = stmt;
     stmt->type = type;
     stmt->value = after->value;
     stmt->flags = 0;
     stmt->sourceoffset = after->sourceoffset;
+#if VERSION >= VERSION_GC_1_3
+    stmt->f1a = after->f1a;
+#endif
     stmt->dobjstack = after->dobjstack;
     return stmt;
 }
@@ -378,6 +410,53 @@ void CFunc_SetupLocalVarInfo(Object *object)
     if (object->type != NULL && is_volatile_object(object) != 0U)
         object->u.var.info->noregister = 1;
 }
+
+#if VERSION >= VERSION_GC_1_3
+void fn_004c3430(void)
+{
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+#pragma options align = mac68k
+struct Fn004f2700 {
+    char pad[0x12];
+    SInt32 f12;
+    UInt8 f16;
+};
+#pragma options align = reset
+extern UInt8 data_005dcc80;
+
+void fn_004f2700(struct Fn004f2700 *a)
+{
+    if (a->f16 || a->f12)
+        data_005dcc80 = 1;
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+/* leave a scope: when the exception state changed, emit a statement that unwinds it, then restore the saved state */
+void fn_004f4a60(struct DeclBlock *block)
+{
+    Statement *s;
+
+    if (curstmt != NULL && curstmt->dobjstack != cexcept_dobjstack) {
+        s = (Statement *)lalloc(0x1e);
+        s->next = NULL;
+        s->type = 4;
+        s->value = curstmtvalue;
+        s->flags = 0;
+        s->sourceoffset = sourceoffset;
+        s->f1a = data_005e669c;
+        s->dobjstack = cexcept_dobjstack;
+        curstmt->next = s;
+        curstmt = s;
+        s->expr = nullnode();
+    }
+    cscope_current = block->parent_nspace;
+    cexcept_dobjstack = block->dobjstack;
+}
+#endif
 #pragma auto_inline reset
 
 void fn_0047ca70(Type **pt)
@@ -689,17 +768,19 @@ CLabel *newlabel(void)
     label->name = label->uniquename;
     return label;
 }
-
 Statement *CFunc_AppendStatement(int kind)
 {
     Statement *stmt;
 
-    stmt = (Statement *)lalloc(sizeof(Statement));
+    stmt = (Statement *)lalloc(BY_VERSION(sizeof(Statement), 30U));
     stmt->next = NULL;
-    stmt->type = kind;
+    stmt->type =kind;
     stmt->value = curstmtvalue;
     stmt->flags = 0;
     stmt->sourceoffset = sourceoffset;
+#if VERSION >= VERSION_GC_1_3
+    stmt->f1a = data_005e669c;
+#endif
     stmt->dobjstack = cexcept_dobjstack;
     curstmt->next = stmt;
     curstmt = stmt;
@@ -710,16 +791,34 @@ Statement *CFunc_AppendStatement(int kind)
 Statement *CFunc_InsertAfterStatement(int type, Statement *after)
 {
     Statement *stmt;
-    stmt = (Statement *)lalloc(26U);
+    stmt = (Statement *)lalloc(BY_VERSION(26U, 30U));
     stmt->next = after->next;
     after->next = stmt;
     stmt->type = type;
     stmt->value = after->value;
     stmt->flags = 0;
     stmt->sourceoffset = after->sourceoffset;
+#if VERSION >= VERSION_GC_1_3
+    stmt->f1a = after->f1a;
+#endif
     stmt->dobjstack = after->dobjstack;
     return stmt;
 }
+
+#if VERSION >= VERSION_GC_1_3
+/* The statement STMT becomes a new statement of kind KIND, and its previous contents move to a copy that follows it. */
+Statement *CFunc_SplitStatement(int kind, Statement *stmt)
+{
+    Statement *copy;
+    copy = (Statement *)lalloc(30U);
+    *copy = *stmt;
+    stmt->next = copy;
+    stmt->type = kind;
+    stmt->flags = 0;
+    return stmt;
+}
+
+#endif
 
 void CheckCLabels(void)
 {
@@ -1137,8 +1236,13 @@ Statement *insert_conditional_goto_cleanup(Statement *statement)
     data->name = data->uniquename = CParser_GetUniqueName();
     candidate = statement->label->stmt->dobjstack;
     FindStatementReference(statement, &candidate, &match);
+#if VERSION >= VERSION_GC_1_3
+    reference = statement->dobjstack;
+    tail = statement;
+#else
     tail = statement;
     reference = statement->dobjstack;
+#endif
     while (reference != NULL) {
         tail = CExcept_ActionCleanup(reference, tail);
         if (reference == match) {
@@ -1188,7 +1292,7 @@ void CFunc_DestructorCleanup(Statement *first)
             case ST_ASM:
                 break;
             default:
-                CError_FATAL(1246);
+                CError_FATAL(BY_VERSION(1246, 1045));
                 break;
         }
     }
@@ -1234,7 +1338,7 @@ void CFunc_DestructorCleanup(Statement *first)
                     case ST_GOTOEXPR:
                         break;
                     default:
-                        CError_FATAL(1310);
+                        CError_FATAL(BY_VERSION(1310, 1109));
                         break;
                 }
                 switch (next->type) {
@@ -1257,7 +1361,7 @@ void CFunc_DestructorCleanup(Statement *first)
                             stmt = next;
                         break;
                     default:
-                        CError_FATAL(1339);
+                        CError_FATAL(BY_VERSION(1339, 1138));
                         break;
                 }
         }
@@ -1351,6 +1455,9 @@ void append_or_defer_expression_statement(ENode *node)
             record->value = curstmtvalue;
             record->flags = 0U;
             record->sourceoffset = sourceoffset;
+#if VERSION >= VERSION_GC_1_3
+            record->f1a = data_005e669c;
+#endif
             record->dobjstack = cexcept_dobjstack;
             curstmt->next = record;
             curstmt = record;
@@ -1364,6 +1471,9 @@ void append_or_defer_expression_statement(ENode *node)
         record->value = curstmtvalue;
         record->flags = 0U;
         record->sourceoffset = sourceoffset;
+#if VERSION >= VERSION_GC_1_3
+        record->f1a = data_005e669c;
+#endif
         record->dobjstack = cexcept_dobjstack;
         curstmt->next = record;
         curstmt = record;
@@ -1409,7 +1519,7 @@ void declare_local_object(DeclInfo *declaration, TStreamElement *declarationToke
                 CError_ReportError(ERR_ILLEGAL_NAME_OVERLOADING);
                 break;
             default:
-                CError_FATAL(1541);
+                CError_FATAL(BY_VERSION(1541, 1344));
                 break;
             case OT_TYPETAG:
                 break;
@@ -1435,7 +1545,7 @@ void declare_local_object(DeclInfo *declaration, TStreamElement *declarationToke
                     CError_ReportError(ERR_ILLEGAL_NAME_OVERLOADING);
                     break;
                 default:
-                    CError_FATAL(1578);
+                    CError_FATAL(BY_VERSION(1578, 1381));
                     break;
                 case OT_TYPETAG:
                     break;
@@ -1500,10 +1610,13 @@ void declare_local_object(DeclInfo *declaration, TStreamElement *declarationToke
                     statement->value = curstmtvalue;
                     statement->flags = 0;
                     statement->sourceoffset = sourceoffset;
+#if VERSION >= VERSION_GC_1_3
+                    statement->f1a = data_005e669c;
+#endif
                     statement->dobjstack = cexcept_dobjstack, curstmt->next = statement;
                     curstmt = statement;
                     statement->expr = makediadicnode(create_objectnode(localstatic_init_guard),
-                                                     intconstnode((Type *)&stsignedchar, 1), EASS);
+                                                                intconstnode((Type *)&stsignedchar, 1), EASS);
                     statement = allocate_and_append_statement(2);
                     statement->label = data_0058087e;
                     data_0058087e->stmt = statement;
@@ -1540,11 +1653,11 @@ void declare_local_object(DeclInfo *declaration, TStreamElement *declarationToke
                                                  register_destructor_object);
                         if (object->type != declaration->thetype) {
                             if (object->type->type == TYPESTRUCT || object->type->type == TYPECLASS) {
-                                CError_ASSERT(1675, cscope_current->is_hash == 0);
+                                CError_ASSERT(BY_VERSION(1675, 1478), cscope_current->is_hash == 0);
                                 entry = CScope_FindNameSpaceName(cscope_current, object->name);
-                                CError_ASSERT(1676, entry != 0);
-                                CError_ASSERT(1677, entry->first.object == (ObjBase *)object);
-                                CError_ASSERT(1678, entry->first.next == 0);
+                                CError_ASSERT(BY_VERSION(1676, 1479), entry != 0);
+                                CError_ASSERT(BY_VERSION(1677, 1480), entry->first.object == (ObjBase *)object);
+                                CError_ASSERT(BY_VERSION(1678, 1481), entry->first.next == 0);
                                 entry->name = CParser_AppendUniqueName(object->name->name);
                                 found = CParser_NewAliasObject(object, 0);
                                 found->type = declaration->thetype;
@@ -1563,18 +1676,21 @@ void declare_local_object(DeclInfo *declaration, TStreamElement *declarationToke
             break;
         }
         default:
-            CError_FATAL(1701);
+            CError_FATAL(BY_VERSION(1701, 1504));
     }
 }
 
 static Statement *allocate_and_append_statement(UInt8 type)
 {
-    Statement *stmt = (Statement *)lalloc(0x1a);
+    Statement *stmt = (Statement *)lalloc(BY_VERSION(0x1a, 0x1e));
     stmt->next = NULL;
     stmt->type = type;
     stmt->value = curstmtvalue;
     stmt->flags = 0;
     stmt->sourceoffset = sourceoffset;
+#if VERSION >= VERSION_GC_1_3
+    stmt->f1a = data_005e669c;
+#endif
     stmt->dobjstack = cexcept_dobjstack;
     curstmt->next = stmt;
     curstmt = stmt;
@@ -1591,7 +1707,11 @@ ENode *parse_declarations(char mode, int singleDeclaration, char allowEmpty, cha
     deferred_expression = NULL;
     data_00580882 = singleDeclaration;
     while ((char)singleDeclaration != 0 || isdeclaration(copts.cplusplus, 0, 0, 0)) {
+#if VERSION >= VERSION_GC_1_3
+        UPDATE_STATEMENT_LINE();
+#else
         sourceoffset = CPrep_UpdateTokenLine(&function_fileinfo);
+#endif
         memclrw(&declarationState, sizeof(declarationState));
         declarationState.requireMangledName = data_0058088c;
         CParser_GetDeclSpecs(&declarationState, 0);
@@ -1741,6 +1861,9 @@ static Statement *NewStmt(UInt8 type)
     stmt->value = curstmtvalue;
     stmt->flags = 0;
     stmt->sourceoffset = sourceoffset;
+#if VERSION >= VERSION_GC_1_3
+    stmt->f1a = data_005e669c;
+#endif
     stmt->dobjstack = cexcept_dobjstack;
     curstmt->next = stmt;
     curstmt = stmt;
@@ -1760,7 +1883,7 @@ ENode *initialize_argument_object(ENode *initData, Type *type, UInt32 flags)
             break;
     }
     if (argument == NULL)
-        CError_FATAL(1958);
+        CError_FATAL(BY_VERSION(1958, 1907));
     object = argument->object;
 
     node = CExpr_IsTempConstruction(initData, type, &local);
@@ -1774,12 +1897,22 @@ ENode *initialize_argument_object(ENode *initData, Type *type, UInt32 flags)
         info = lalloc(sizeof(ENodeList));
         info->next = NULL;
         info->node = initData;
+#if VERSION >= VERSION_GC_1_3
+        node = CExpr_ConstructObject(type, node, info, 1, 1, 0, 1, 0);
+    } else {
+        node = makemonadicnode(create_objectnode(object), EINDIRECT);
+        node->rtype = type;
+        node = makediadicnode(node, oldassignmentpromotion(initData, type, flags, 1), EASS);
+    }
+    return node;
+#else
         return CExpr_ConstructObject(type, node, info, 1, 1, 0, 1, 0);
     }
 
     node = makemonadicnode(create_objectnode(object), EINDIRECT);
     node->rtype = type;
     return makediadicnode(node, oldassignmentpromotion(initData, type, flags, 1), EASS);
+#endif
 }
 
 void check_function_result_automatic_variable(ENode *e)
@@ -1828,12 +1961,16 @@ void parse_statement(StatementContext *context)
     CLabel *breakLabel;
     CLabel *continueLabel;
 
+#if VERSION >= VERSION_GC_1_3
+    UPDATE_STATEMENT_LINE();
+#else
     sourceoffset = CPrep_UpdateTokenLine(&function_fileinfo);
+#endif
     switch (tk) {
         case TK_RETURN:
             tk = CPrepTokenizer_GetNextToken();
-            if (((context->thetype == &stvoid && !copts.cplusplus) || CClass_IsDestructor(cscope_currentfunc)) ||
-                CClass_HasTypeFuncFlag16384(cscope_currentfunc)) {
+            if (((context->thetype == &stvoid && !copts.cplusplus) || CClass_IsCtor(cscope_currentfunc)) ||
+                CClass_IsDtor(cscope_currentfunc)) {
                 if (tk != ';') {
                     CError_ReportError(ERR_ILLEGAL_RETURN_VALUE_VOID_CONSTRUCTOR_DESTRUCTOR);
                     s_expression();
@@ -1853,7 +1990,11 @@ void parse_statement(StatementContext *context)
                 tk = CPrepTokenizer_GetNextToken();
                 return;
             }
+#if VERSION >= VERSION_GC_1_3
+            expr = copts.f9b == 0 ? CExpr_ParseCommaExpression() : s_expression();
+#else
             expr = s_expression();
+#endif
             if (context->thetype == &stvoid) {
                 if (expr->rtype != &stvoid)
                     CError_ReportError(ERR_ILLEGAL_RETURN_VALUE_VOID_CONSTRUCTOR_DESTRUCTOR);
@@ -2400,12 +2541,15 @@ static void CondJump(ENode *expr, CLabel *truelabel, char a, char b)
 
 static Statement *AppendStmt(unsigned char kind)
 {
-    Statement *s = (Statement *)lalloc(0x1a);
+    Statement *s = (Statement *)lalloc(BY_VERSION(0x1a, 0x1e));
     s->next = NULL;
     s->type = kind;
     s->value = curstmtvalue;
     s->flags = 0;
     s->sourceoffset = sourceoffset;
+#if VERSION >= VERSION_GC_1_3
+    s->f1a = data_005e669c;
+#endif
     s->dobjstack = cexcept_dobjstack;
     curstmt->next = s;
     curstmt = s;
@@ -2455,7 +2599,11 @@ void CFunc_CompoundStatement(struct StatementContext *context)
         while (tk != '}') {
             parse_statement(context);
         }
+#if VERSION >= VERSION_GC_1_3
+        UPDATE_STATEMENT_LINE();
+#else
         sourceoffset = CPrep_UpdateTokenLine(&function_fileinfo);
+#endif
         tk = CPrepTokenizer_GetNextToken();
     } else {
         parse_statement(context);
@@ -2506,7 +2654,7 @@ void create_local_object_copy(Object *func, TypeIntegral *type, Type *type2, Boo
     func->type = flag ? CDecl_NewPointerType((Type *)type) : (Type *)type;
     list = CScope_FindName(cscope_current, newfunc->name);
     if (list == NULL || list->object != (ObjBase *)func)
-        CError_FATAL(2577);
+        CError_FATAL(BY_VERSION(2577, 2527));
     list->object = (ObjBase *)newfunc;
     listnode = (ObjectList *)lalloc(sizeof(ObjectList));
     listnode->object = newfunc;
@@ -2533,6 +2681,9 @@ static struct Statement *CFunc_NewAssignmentStatement(void)
     stmt->value = curstmtvalue;
     stmt->flags = 0;
     stmt->sourceoffset = sourceoffset;
+#if VERSION >= VERSION_GC_1_3
+    stmt->f1a = data_005e669c;
+#endif
     stmt->dobjstack = cexcept_dobjstack;
     curstmt->next = stmt;
     curstmt = stmt;
@@ -2575,7 +2726,7 @@ void CFunc_SetupNewFuncArgs(Object *func, FuncArg *args)
             if ((obj->type->type == TYPECLASS && CClass_ReferenceArgument(TYPE_CLASS(obj->type))) ||
                 CMach_PassResultInHiddenArg(obj->type)) {
                 obj->type = CDecl_NewPointerType(obj->type);
-                TYPE_POINTER(obj->type)->qual = Q_REFERENCE;
+                TYPE_POINTER(obj->type)->qual = BY_VERSION(Q_REFERENCE, Q_REFERENCE | 0x200000);
             }
             if (obj->name == unnamed_name && copts.ANSIstrict != 0 && copts.cplusplus == 0 &&
                 (func->qual & Q_MANGLE_NAME) == 0)
@@ -2749,7 +2900,7 @@ void setup_function_arguments(Object *function, DeclInfo *body, Statement *state
         newEntry->object = result;
         if (CInline_ReturnZero(function->type) != 0) {
             if (arguments == NULL)
-                CError_FATAL(2846);
+                CError_FATAL(BY_VERSION(2846, 2797));
             newEntry->next = (arguments)->next;
             (arguments)->next = newEntry;
         } else {
@@ -2800,7 +2951,7 @@ void CFunc_Gen(Statement *context, Object *object, unsigned int options)
 
     flags = TYPE_METHOD(object->type)->flags;
 
-    if ((flags & 0x20000000U) != 0U && anyerrors == 0U) {
+    if ((flags & BY_VERSION(0x20000000U, TFUNC_VIRTUAL_OVERRIDE)) != 0U && anyerrors == 0U) {
         CInline_SaveInfo(&buf, context, object);
         flag = 1;
     } else {
@@ -3010,9 +3161,55 @@ void parse_ctor_initializers(void)
     } while (tk == ',');
 }
 
+#if VERSION >= VERSION_GC_1_3
+/* declares the static character array behind __func__, __FUNCTION__ or __PRETTY_FUNCTION__ and returns its alias */
+static inline Object *CFunc_DeclareFunctionNameObject(const char *identifier, const char *value)
+{
+    DeclInfo decl;
+    char buffer[64];
+    Object *object;
+    Object *alias;
+    HashNameNode *node;
+    char *name;
+
+    node = GetHashNameNodeExport(identifier);
+    memclrw(&decl, sizeof(DeclInfo));
+    decl.name = node;
+    decl.storageclass = 0x102;
+    decl.qual = Q_CONST;
+    decl.thetype = CDecl_NewArrayType((Type *)&stchar, strlen(value) + 1);
+    object = CParser_NewGlobalDataObject(&decl);
+    alias = CParser_NewAliasObject(object, 0);
+    object->nspace = cscope_root;
+    object->datatype = DDATA;
+    name = object->name->name;
+    if (cscope_currentfunc == NULL || (cscope_currentfunc->qual & Q_INLINE) == 0 || CParser_HasInternalLinkage(cscope_currentfunc) != 0) {
+        object->name = CParser_AppendUniqueName(name);
+    } else {
+        sprintf(buffer, "$localstatic%ld$", local_name_counter++);
+        object->name = CParser_NameConcat(name, CParser_NameConcat(buffer, COptimizer_GetFunctionObject(cscope_currentfunc)->name)->name);
+        object->qual |= Q_IMPLICIT_WEAK;
+        object->sclass = TK_EOF;
+    }
+    return alias;
+}
+
+static inline void CFunc_EmitFunctionNameData(Object *alias, const char *value)
+{
+    if (alias != NULL && (alias->flags & 1))
+        CInit_DeclareData(alias->u.alias.object, (void *)value, NULL, strlen(value) + 1);
+}
+#endif
+
 void CFunc_ParseFuncDef(Object *func, DeclInfo *definition, TypeClass *scopeObject, Boolean isMember,
                         unsigned char scopeFlag, NameSpace *scope)
 {
+#if VERSION >= VERSION_GC_1_3
+    Object *funcNameAlias = NULL;
+    Object *functionNameAlias = NULL;
+    Object *prettyFunctionNameAlias = NULL;
+    char *prettyFunctionName = NULL;
+#endif
     Boolean isSpecialMember;
     Boolean functionTryBlock;
     Statement *previousStatement;
@@ -3028,7 +3225,7 @@ void CFunc_ParseFuncDef(Object *func, DeclInfo *definition, TypeClass *scopeObje
     Boolean oldStyleArguments;
 
     if (func->type->type != TYPEFUNC)
-        (void)CError_FATAL(3402);
+        (void)CError_FATAL(BY_VERSION(3402, 3373));
     if (TYPE_FUNC(func->type)->flags & FUNC_AUTO_GENERATED)
         CError_ReportError(ERR_OBJECT_REDEFINED, func);
     if ((TYPE_FUNC(func->type)->flags & FUNC_DEFINED) && func->datatype != DINLINEFUNC)
@@ -3048,7 +3245,7 @@ void CFunc_ParseFuncDef(Object *func, DeclInfo *definition, TypeClass *scopeObje
         CClass_MemberDef(func, cscope_currentclass);
     func_errors = 0;
     data_0058088c = definition->requireMangledName;
-    CError_ASSERT(3421, func->type->type == TYPEFUNC);
+    CError_ASSERT(BY_VERSION(3421, 3392), func->type->type == TYPEFUNC);
     if (definition->oldStyleParameters && (func->qual & Q_ASM))
         CError_ReportError(ERR_ILLEGAL_TYPE_QUALIFIERS);
     if (cprep_cu[0xe0] == 1 && !(func->qual & Q_INLINE))
@@ -3059,7 +3256,14 @@ void CFunc_ParseFuncDef(Object *func, DeclInfo *definition, TypeClass *scopeObje
     if (TYPE_FUNC(func->type)->functype->type != TYPEVOID)
         CanAllocObject(TYPE_FUNC(func->type)->functype);
     setup_function_arguments(func, definition, &state);
+#if VERSION >= VERSION_GC_1_3
+    fn_0043dad0(function_fileinfo.file);
+    UPDATE_STATEMENT_LINE();
+    state.sourceoffset = function_tokenoffset = sourceoffset;
+    state.f1a = function_token_line = data_005e669c;
+#else
     state.sourceoffset = function_tokenoffset = sourceoffset = CPrep_UpdateTokenLine(&function_fileinfo);
+#endif
     if (definition->oldStyleParameters) {
         argument = arguments;
         while (argument != NULL) {
@@ -3080,9 +3284,9 @@ void CFunc_ParseFuncDef(Object *func, DeclInfo *definition, TypeClass *scopeObje
     } else {
         functionTryBlock = 0;
     }
-    if (CClass_IsDestructor(func)) {
+    if (CClass_IsCtor(func)) {
         if (cscope_currentclass == NULL)
-            CError_FATAL(3466);
+            CError_FATAL(BY_VERSION(3466, 3445));
         parse_ctor_initializers();
         fn_00476e70(cscope_currentclass, ctor_chain);
     }
@@ -3095,6 +3299,14 @@ void CFunc_ParseFuncDef(Object *func, DeclInfo *definition, TypeClass *scopeObje
             CError_ReportErrorAndUpdateToken(ERR_LBRACE_EXPECTED);
             functionTryBlock = 0;
         }
+#if VERSION >= VERSION_GC_1_3
+        if (func->name != NULL) {
+            funcNameAlias = CFunc_DeclareFunctionNameObject("__func__", func->name->name);
+            functionNameAlias = CFunc_DeclareFunctionNameObject("__FUNCTION__", func->name->name);
+            prettyFunctionName = (char *)CError_GetObjectString(func);
+            prettyFunctionNameAlias = CFunc_DeclareFunctionNameObject("__PRETTY_FUNCTION__", prettyFunctionName);
+        }
+#endif
         if (!copts.cplusplus)
             parse_declarations(0, 0, 0, 0);
         gen.switchinfo = NULL;
@@ -3103,7 +3315,7 @@ void CFunc_ParseFuncDef(Object *func, DeclInfo *definition, TypeClass *scopeObje
         gen.thetype = TYPE_FUNC(func->type)->functype;
         gen.qual = TYPE_FUNC(func->type)->qual;
         if (functionTryBlock) {
-            isSpecialMember = CClass_IsDestructor(func) || CClass_HasTypeFuncFlag16384(func);
+            isSpecialMember = CClass_IsCtor(func) || CClass_IsDtor(func);
             CExcept_ScanTryBlock(&gen, isSpecialMember);
             if (tk != 0)
                 CPrep_UngetToken();
@@ -3115,13 +3327,20 @@ void CFunc_ParseFuncDef(Object *func, DeclInfo *definition, TypeClass *scopeObje
         }
         if (curstmt->type != ST_RETURN && curstmt->type != ST_GOTO) {
             previousStatement = curstmt;
+#if VERSION >= VERSION_GC_1_3
+            UPDATE_STATEMENT_LINE();
+#else
             sourceoffset = CPrep_UpdateTokenLine(&function_fileinfo);
+#endif
             returnStatement = (Statement *)lalloc(sizeof(*returnStatement));
             returnStatement->next = NULL;
             returnStatement->type = ST_RETURN;
             returnStatement->value = curstmtvalue;
             returnStatement->flags = 0;
             returnStatement->sourceoffset = sourceoffset;
+#if VERSION >= VERSION_GC_1_3
+            returnStatement->f1a = data_005e669c;
+#endif
             returnStatement->dobjstack = cexcept_dobjstack;
             curstmt->next = returnStatement;
             curstmt = returnStatement;
@@ -3143,10 +3362,15 @@ void CFunc_ParseFuncDef(Object *func, DeclInfo *definition, TypeClass *scopeObje
             if (label->stmt == NULL)
                 CError_ReportError(ERR_UNDEFINED_LABEL, label->name->name);
         }
+#if VERSION >= VERSION_GC_1_3
+        CFunc_EmitFunctionNameData(funcNameAlias, func->name->name);
+        CFunc_EmitFunctionNameData(functionNameAlias, func->name->name);
+        CFunc_EmitFunctionNameData(prettyFunctionNameAlias, prettyFunctionName);
+#endif
         if (!func_errors) {
-            if (CClass_IsDestructor(func))
+            if (CClass_IsCtor(func))
                 CABI_InsertConstructorInitialization(func, &state, cscope_currentclass, NULL, functionTryBlock);
-            if (CClass_HasTypeFuncFlag16384(func))
+            if (CClass_IsDtor(func))
                 CABI_TransDestructor(func, func, &state, cscope_currentclass, 0);
             CFunc_DestructorCleanup(&state);
             if (cscope_currentclass != NULL && cscope_currentclass->sominfo != NULL)
@@ -3155,7 +3379,7 @@ void CFunc_ParseFuncDef(Object *func, DeclInfo *definition, TypeClass *scopeObje
             CExcept_ExceptionTansform(&state);
             function_token_line = CPrep_UpdateTokenLine(&function_fileinfo);
             oldStyleArguments = definition->oldStyleParameters;
-            if ((TYPE_FUNC(func->type)->flags & 0x20000000) && !anyerrors) {
+            if ((TYPE_FUNC(func->type)->flags & TFUNC_VIRTUAL_OVERRIDE) && !anyerrors) {
                 CInline_SaveInfo(&savedState, &state, func);
                 hasSavedState = savedStateCopy = 1;
             } else {
@@ -3208,6 +3432,7 @@ void InitExpr_Register(ENode *expr, Object *cls)
     }
 }
 
+
 void CFunc_GenerateDummyFunction(Object *functionObject)
 {
     Boolean restoreInlineState;
@@ -3227,7 +3452,7 @@ void CFunc_GenerateDummyFunction(Object *functionObject)
     }
     CFunc_WarnUnused();
     CExcept_ExceptionTansform(&statements);
-    if ((TYPE_FUNC(functionObject->type)->flags & 0x20000000) != 0 && anyerrors == '\0') {
+    if ((TYPE_FUNC(functionObject->type)->flags & TFUNC_VIRTUAL_OVERRIDE) != 0 && anyerrors == '\0') {
         CInline_SaveInfo(&inlineState, &statements, functionObject);
         restoreInlineState = TRUE;
     } else {
@@ -3256,12 +3481,15 @@ void CFunc_GenerateSingleExprFunc(Object *func, ENode *expr)
         savedNamespace = CFunc_FuncGenSetup(&stmt, func);
         oldflag = copts.filesyminfo;
         copts.filesyminfo = 0;
-        node = (Statement *)lalloc(0x1a);
+        node = (Statement *)lalloc(BY_VERSION(0x1a, 0x1e));
         node->next = NULL;
         node->type = ST_EXPRESSION;
         node->value = curstmtvalue;
         node->flags = 0;
         node->sourceoffset = sourceoffset;
+#if VERSION >= VERSION_GC_1_3
+        node->f1a = data_005e669c;
+#endif
         node->dobjstack = cexcept_dobjstack;
         curstmt->next = node;
         curstmt = node;

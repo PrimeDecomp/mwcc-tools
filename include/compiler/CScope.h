@@ -64,7 +64,13 @@ extern int CScope_InitObjectIterator(CScopeObjectIterator *save, NameSpace *obj)
 extern Boolean CScope_PossibleTypeName(HashNameNode *arg);
 extern NameSpaceObjectList *CScope_FindObjectList(NameResult *result, HashNameNode *arg);
 extern Boolean CScope_ParseElaborateName(NameResult *s);
+#if VERSION >= VERSION_GC_1_3
+extern Boolean CScope_ParseQualifiedNameSpace(NameResult *result, SInt32 flag, SInt32 flag2);
+#define CSCOPE_PARSE_QUALIFIED_SCOPE(result, flag, flag2) CScope_ParseQualifiedNameSpace(result, flag, flag2)
+#else
 extern Boolean CScope_ParseQualifiedNameSpace(NameResult *result, SInt32 flag);
+#define CSCOPE_PARSE_QUALIFIED_SCOPE(result, flag, flag2) CScope_ParseQualifiedNameSpace(result, flag)
+#endif
 extern Boolean CScope_ParseDeclName(NameResult *lookup);
 extern Boolean CScope_ParseExprName(NameResult *scope);
 extern Boolean parse_name_in_namespace(NameResult *scope, NameSpace *ns);

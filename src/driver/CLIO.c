@@ -22,6 +22,20 @@
 #include <string.h>
 #include <stdlib.h>
 
+#if VERSION >= VERSION_GC_1_3
+/* the Pro 5.3 MSL keeps errno in the second word of the thread's local data */
+#define CLIO_ERRNO (((int *)_GetThreadLocalData())[1])
+/* MSL's table of the open handles' file records (lib/msl/MSL_Win32/Include/crtl.h) */
+struct MSLFileStruct {
+    void *handle;
+    char translate;
+    char append;
+};
+extern struct MSLFileStruct *_HandleTable[256];
+#else
+#define CLIO_ERRNO errno
+#endif
+
 char data_005880e0[260];
 
 static char data_0057eb68;
@@ -39,7 +53,11 @@ static char data_0057edfd[256];
 /* The lines written since the last page prompt. */
 static int data_0054b988 = 0;
 
+#if VERSION >= VERSION_GC_1_3
+int __stdcall report_user_break(unsigned int value)
+#else
 int report_user_break(unsigned int value)
+#endif
 {
     if (value <= 1) {
         CLIO_WriteFormattedText("\nUser break, cancelled...\n");
@@ -71,6 +89,11 @@ void initialize_console(void)
             optsEnvir.cols = 256;
         }
     }
+#if VERSION >= VERSION_GC_1_3
+    _HandleTable[0]->translate = 0;
+    _HandleTable[1]->translate = 0;
+    _HandleTable[2]->translate = 0;
+#endif
 }
 
 void clear_global(void)
@@ -131,14 +154,14 @@ static inline Boolean writeBufferLines(struct _FILE *fp, StorageHandle *bufp, ch
             lineLength = lineEnd - cursor;
             if (lineLength != 0) {
                 if (fwrite(cursor, lineLength, 1, fp) != 1) {
-                    CLErrors_ReportFormattedOSError(10, errno);
+                    CLErrors_ReportFormattedOSError(10, CLIO_ERRNO);
                     return 0;
                 }
             }
             if (fn_004151f0())
                 break;
             if (fwrite("\r\n", 2, 1, fp) != 1) {
-                CLErrors_ReportFormattedOSError(10, errno);
+                CLErrors_ReportFormattedOSError(10, CLIO_ERRNO);
                 return 0;
             }
             if (*lineEnd != 0) {
@@ -193,7 +216,7 @@ Boolean CLIO_WriteTextFile(OSSpec *fileRef, StorageHandle *text, SInt32 textLeng
     OS_SpecToString(fileRef, path, 0x104);
     file = fopen(path, "w+b");
     if (file == NULL) {
-        CLErrors_ReportFormattedOSError(8, errno, path);
+        CLErrors_ReportFormattedOSError(8, CLIO_ERRNO, path);
         return 0;
     }
     write_text_buffer(file, text, textLength);
@@ -225,7 +248,7 @@ unsigned char CLIO_AppendStorageToFile(OSSpec *fileSpec, struct StorageHandle *s
     OS_SpecToString(fileSpec, path, 0x104);
     file = fopen(path, "a+b");
     if (file == NULL) {
-        CLErrors_ReportFormattedOSError(8, errno, path);
+        CLErrors_ReportFormattedOSError(8, CLIO_ERRNO, path);
         return 0;
     }
     write_text_buffer(file, storage, textLength);
@@ -403,7 +426,12 @@ char *format_prefixed_text(char *output, int remaining, char *prefix, char *form
 
 char *forward_format_arguments(char *output, int size, char *prefix, char *format, ...)
 {
+#if VERSION >= VERSION_GC_1_3
+    char *base = (char *)&format;
+    char **arguments = (char **)(base + (((char *)(&format + 1) - base + 3) / 4 * 4));
+#else
     char **arguments = &format + (((char *)(&format + 1) - (char *)&format + 3) / 4);
+#endif
     return format_prefixed_text(output, size, prefix, format, arguments);
 }
 
@@ -423,7 +451,7 @@ unsigned int write_text_to_stdout_or_stderr(int unused, short messageType, const
     } else if (type == 2 || type == 3 || type == 4) {
         output = stderr;
     } else {
-        CLIO_ReportAssertionFailure("0", "CLIO.c", 845);
+        CLIO_ReportAssertionFailure("0", "CLIO.c", BY_VERSION(845, 847));
     }
     if (data_0054b9dc == 0 && data_0057eb68 == 0) {
         data_0054b9dc = 1;
@@ -498,7 +526,7 @@ char *make_source_position_carets(DiagnosticSourcePosition *sourcePosition)
     if ((column >= 0) && ((unsigned)column < 0x100)) {
         length = (int)sourcePosition->length;
         if (0x100 < (unsigned)(length + column)) {
-            length = 0x100 - column;
+            length = 0x100 - BY_VERSION(column, (int)(unsigned)column);
         }
         if (length == 0) {
             length = 1;
@@ -760,12 +788,18 @@ void emit_formatted_message(short kind, char *format, ...)
 {
     char buffer[256];
     char *message;
+#if VERSION >= VERSION_GC_1_3
+    char *base;
+
+    message = mvprintf(buffer, sizeof(buffer), format, (((char *)(&format + 1) - (base = (char *)&format)) + 3) / 4 * 4 + base);
+#else
     int argumentSize;
     va_list args;
 
     argumentSize = (va_list)(&format + 1) - (va_list)&format;
     args = (va_list)&format + ((argumentSize + 3) / 4) * 4;
     message = mvprintf(buffer, sizeof(buffer), format, args);
+#endif
     write_text_to_stdout_or_stderr(0, kind, message);
     if (message != buffer)
         free(message);
@@ -776,8 +810,16 @@ void CLIO_FormatAndDispatchText(char *fmt, ...)
     char buf[256];
     char *text;
     va_list args;
+#if VERSION >= VERSION_GC_1_3
+    char *base;
+#endif
 
+#if VERSION >= VERSION_GC_1_3
+    base = (char *)&fmt;
+    args = base + (((va_list)(&fmt + 1) - base + 3) / 4 * 4);
+#else
     args = (va_list)&fmt + (((va_list)(&fmt + 1) - (va_list)&fmt + 3) / 4 * 4);
+#endif
     text = mvprintf(buf, sizeof(buf), fmt, args);
     write_text_to_stdout_or_stderr(0, 1, text);
     if (text != buf)
@@ -788,9 +830,17 @@ void CLIO_WriteFormattedText(const char *format, ...)
 {
     char buffer[256];
     va_list args;
+#if VERSION >= VERSION_GC_1_3
+    char *base;
+#endif
     char *text;
 
+#if VERSION >= VERSION_GC_1_3
+    base = (char *)&format;
+    args = base + (((va_list)(&format + 1) - base) + 3) / 4 * 4;
+#else
     args = (va_list)&format + (((va_list)(&format + 1) - (va_list)&format) + 3) / 4 * 4;
+#endif
     text = mvprintf(buffer, sizeof(buffer), format, args);
     write_text_to_stdout_or_stderr(0, 3, text);
     if (text != buffer)
@@ -904,6 +954,22 @@ short CLIO_ReportDiagnostic(Plugin *type, DiagnosticSourcePosition *record, int 
     return severity;
 }
 
+#if VERSION >= VERSION_GC_1_3
+int __stdcall CLIO_CompareStringsIgnoreCase(char *left, char *right)
+{
+    unsigned int rightValue;
+    unsigned int leftValue;
+
+    do {
+        rightValue = tolower((int)*right++);
+        leftValue = tolower((int)*left);
+        if (leftValue - rightValue != 0) {
+            return leftValue - rightValue;
+        }
+    } while (*left++ != '\0');
+    return 0;
+}
+#else
 int CLIO_CompareStringsIgnoreCase(char *left, char *right)
 {
     do {
@@ -913,6 +979,7 @@ int CLIO_CompareStringsIgnoreCase(char *left, char *right)
     } while (*left++ != '\0');
     return 0;
 }
+#endif
 
 static int data_0054bc34 = 0; /* (its users were stripped) */
 
@@ -932,8 +999,12 @@ NameTableEntry *create_data_block(char *name, const void *source, unsigned int s
     block->name = xstrdup(name);
     block->handles.storage.destination = (StorageHandle *)Memory_NewHandle(size);
     if (!block->handles.storage.destination) {
+#if VERSION >= VERSION_GC_1_3
+        CLIO_OutOfMemory();
+#else
         CLIO_FormatAndDispatchText("\nOut of memory\n");
         longjmp(driver_jmp_buf, 1U);
+#endif
     }
     block->handles.storage.temporary = NULL;
     fn_00413a00(block->handles.storage.destination);

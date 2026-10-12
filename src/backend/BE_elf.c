@@ -171,9 +171,9 @@ void BE_elf_AlignRecord(GList *record, SInt32 alignment)
     paddingSize = (paddingSize + alignment - 1) & ~(alignment - 1);
     paddingSize -= record->size;
     if (paddingSize > max_padding_size) {
-        data_0055e528 = galloc(paddingSize);
+        data_0055e528 = galloc(BY_VERSION(paddingSize, (UInt32)paddingSize));
         memset(data_0055e528, 0, paddingSize);
-        max_padding_size = paddingSize;
+        max_padding_size = BY_VERSION(paddingSize, (UInt32)paddingSize);
     }
     AppendGListData(record, data_0055e528, paddingSize);
 }
@@ -191,18 +191,30 @@ void assign_symbol_order(void)
     symbol_order_tail = tail;
     for (record = BE_symbol_ResetSymbolTail(); record != NULL; record = BE_symbol_AdvanceSymbolTail()) {
         if ((record->symbolKind >> 4) == 0 && (record->flags & 0x40) == 0) {
+#if VERSION >= VERSION_GC_1_3
+            tail->orderNext = record;
+            tail = record;
+            count++;
+#else
             count++;
             tail->orderNext = record;
             tail = record;
+#endif
             record->order = count;
         }
     }
     symbol_order_count = count;
     for (record = BE_symbol_ResetSymbolTail(); record != NULL; record = BE_symbol_AdvanceSymbolTail()) {
         if ((record->symbolKind >> 4) > 0) {
+#if VERSION >= VERSION_GC_1_3
+            tail->orderNext = record;
+            tail = record;
+            count++;
+#else
             count++;
             tail->orderNext = record;
             tail = record;
+#endif
             record->order = count;
         }
     }
@@ -212,6 +224,15 @@ void assign_symbol_order(void)
 SectionSymbolAttributes *find_section_symbol_attributes(ObjGenSection *key, UInt8 byte10, UInt8 byte11,
                                                         ObjGenSection *key12, ObjGenSection *key16)
 {
+#if VERSION >= VERSION_GC_1_3
+    SectionSymbolAttributes *entry;
+    for (entry = section_symbol_attributes; entry; entry = entry->next) {
+        if (entry->target == key && entry->kind == byte10 && entry->alignment == byte11 &&
+            entry->linkedSymbol == key12 && entry->auxiliary == key16)
+            break;
+    }
+    return entry;
+#else
     SectionSymbolAttributes *entry;
     SectionSymbolAttributes *head;
     entry = head = section_symbol_attributes;
@@ -224,6 +245,7 @@ SectionSymbolAttributes *find_section_symbol_attributes(ObjGenSection *key, UInt
         } while (entry);
     }
     return entry;
+#endif
 }
 #pragma auto_inline reset
 
@@ -401,6 +423,20 @@ ObjGenSection *BE_elf_CreateSection(char *name, UInt8 kind, SInt8 attribute, SIn
     return node;
 }
 
+#if VERSION >= VERSION_GC_1_3
+ObjGenSection *BE_elf_FindSection(const char *name, SInt32 hashval, UInt8 flags)
+{
+    ObjGenSection *entry;
+
+    if (name == NULL || *name == 0)
+        return NULL;
+    for (entry = section_list; entry; entry = entry->next) {
+        if ((SInt32)entry->context == hashval && strcmp(entry->name, name) == 0 && flags == entry->flags)
+            return entry;
+    }
+    return NULL;
+}
+#else
 ObjGenSection *BE_elf_FindSection(const char *name, SInt32 hashval)
 {
     ObjGenSection *entry;
@@ -418,6 +454,7 @@ ObjGenSection *BE_elf_FindSection(const char *name, SInt32 hashval)
     }
     return NULL;
 }
+#endif
 
 ObjGenSection *BE_elf_CreateSectionWithRelocations(SectionRec *rawObject, short kind, char flags, int size,
                                                    int relocationSize, unsigned char attributes, char allocateData,
@@ -523,19 +560,28 @@ void fn_0049c510(char *value1, UInt8 value2, SInt8 value3, SInt32 value4)
 
 void BE_elf_SetDeclSection(char *name, DeclInfo *declaration)
 {
+#if VERSION >= VERSION_GC_1_3
+    ObjGenSection *head;
+    InterruptGenerationRecord *record = NULL;
+    ObjGenSection *section;
+#else
     ObjGenSection *section;
     ObjGenSection *head;
     InterruptGenerationRecord *record = NULL;
+#endif
     UInt16 targetIndex;
 
     if (declaration->section != 0) {
-        CError_FATAL(489);
+        CError_FATAL(BY_VERSION(489, 494));
     } else {
-        record = galloc(sizeof(*record));
-        memclrw(record, sizeof(*record));
+        record = galloc(BY_VERSION(sizeof(*record), 0x16));
+        memclrw(record, BY_VERSION(sizeof(*record), 0x16));
         record->next = interrupt_generation_records;
         interrupt_generation_records = record;
         record->id = declaration->section = --data_005876b4;
+#if VERSION >= VERSION_GC_1_3
+        record->kind = 2;
+#endif
     }
 
     head = section_list;
@@ -546,7 +592,7 @@ void BE_elf_SetDeclSection(char *name, DeclInfo *declaration)
                     PPCError_ReportError(0x8f, name);
                     return;
                 }
-                targetIndex = ObjGen_PPC_EABI_GetSectionIndex(declaration->section);
+                targetIndex = BY_VERSION(ObjGen_PPC_EABI_GetSectionIndex, fn_004b1d10)(declaration->section);
                 if (targetIndex != 0 && targetIndex != section->header->index) {
                     PPCError_ReportError(0x81, declaration->name->name, section->name);
                     return;
@@ -697,15 +743,15 @@ void write_sym_nodes(void)
     padding = position;
     padding = (~(alignment - 1) & padding + alignment - 1) - position;
     if (padding > max_padding_size) {
-        data_0055e528 = galloc(padding);
+        data_0055e528 = galloc(BY_VERSION(padding, (UInt32)padding));
         memset(data_0055e528, 0, padding);
-        max_padding_size = padding;
+        max_padding_size = BY_VERSION(padding, (UInt32)padding);
     }
     AppendGListData(&data_00583ae8.buffer, data_0055e528, padding);
     record = BE_symbol_GetSymbolOrderTail();
     while (record != NULL) {
         if ((record->flags & 64) == 0) {
-            record->attributes = record->sectionData.section->index;
+            record->attributes = record->sectionData.section->BY_VERSION(index, symbolSectionIndex);
             if (copts.f27 != 0) {
                 record->flags = 0;
             } else {
@@ -737,8 +783,13 @@ void build_symbol_string_table(void)
             entry->stringOffset = 0U;
         } else {
             entry->stringOffset = offset;
+#if VERSION >= VERSION_GC_1_3
+            name = (const char *)entry->nameData.hashName + 10U;
+            base = &symbol_string_table_section->buffer;
+#else
             base = &symbol_string_table_section->buffer;
             name = (const char *)entry->nameData.hashName + 10U;
+#endif
             length = strlen(name) + 1U;
             AppendGListData(base, name, length);
             offset += length;
@@ -756,6 +807,10 @@ void BE_elf_AppendGList(GList *dst, GList *src)
     memcpy(*dst->data + dst->size, *src->data, src->size);
     dst->size += src->size;
 }
+
+#if VERSION >= VERSION_GC_1_3
+extern int maximumAlignment;
+#endif
 
 void write_codewarrior_version_record(void)
 {
@@ -791,10 +846,10 @@ void write_codewarrior_version_record(void)
     record.name[8] = 'i';
     record.name[9] = 'o';
     record.name[10] = 'r';
-    record.majorVersion = 8;
+    record.majorVersion = BY_VERSION(8, 10);
     record.minorVersion = 2;
-    record.patchVersion = 3;
-    record.reservedVersion = 0;
+    record.patchVersion = BY_VERSION(3, 4);
+    record.reservedVersion = BY_VERSION(0, 2);
     record.versionFormat = 1;
 
     record.abiOption = copts.usedatapool ? 1 : 0;
@@ -818,6 +873,10 @@ void write_codewarrior_version_record(void)
         flags++;
     if (copts.incompatible_sfpe_double_params != 0)
         flags += 2;
+#if VERSION >= VERSION_GC_1_3
+    if (copts.f5cEarly != 0 && maximumAlignment != 0)
+        flags += 4;
+#endif
     record.options = flags;
 
     record.reservedBytes[0] = 0;
@@ -1018,8 +1077,13 @@ ObjGenRelocation *BE_elf_AddRelocation(ObjGenSection *context, int offset, Objec
     ObjGenRelocation *entry;
     int kind;
     entry = NULL;
+#if VERSION >= VERSION_GC_1_3
+    kind = 1;
+    writer = context->relocations;
+#else
     writer = context->relocations;
     kind = 1;
+#endif
     if (copts.fd5 != 0) {
         struct EABIRelocationRecord payload;
         writer->relocationCount += 1;
@@ -1039,8 +1103,13 @@ ObjGenRelocation *BE_elf_AddRelocation(ObjGenSection *context, int offset, Objec
         entry->section = writer;
         entry->index = writer->relocationCount - 1;
         payload.offset = offset;
+#if VERSION >= VERSION_GC_1_3
+        payload.value = value;
+        payload.kind = kind & 255;
+#else
         payload.kind = kind & 255;
         payload.value = value;
+#endif
         AppendGListData(&writer->buffer, &payload, sizeof(payload));
         entry->next = relocation_list;
         relocation_list = entry;

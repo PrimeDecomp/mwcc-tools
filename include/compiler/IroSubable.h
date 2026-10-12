@@ -7,7 +7,7 @@
 extern "C" {
 #endif
 
-extern unsigned int fn_004f0040(IROLinear *node);
+extern BY_VERSION(unsigned int, Boolean) fn_004f0040(IROLinear *node);
 
 #ifdef __cplusplus
 }

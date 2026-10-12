@@ -243,6 +243,13 @@ __declspec(dllimport) BOOL __stdcall FileTimeToSystemTime(const FILETIME *lpFile
 __declspec(dllimport) BOOL __stdcall FindClose(HANDLE hFindFile);
 __declspec(dllimport) HANDLE __stdcall FindFirstFileA(LPCSTR lpFileName, LPWIN32_FIND_DATAA lpFindFileData);
 __declspec(dllimport) BOOL __stdcall FindNextFileA(HANDLE hFindFile, LPWIN32_FIND_DATAA lpFindFileData);
+#if VERSION >= VERSION_GC_1_3
+DWORD __stdcall GetFileVersionInfoSizeA(LPCSTR lptstrFilename, LPDWORD lpdwHandle);
+BOOL __stdcall GetFileVersionInfoA(LPCSTR lptstrFilename, DWORD dwHandle, DWORD dwLen,
+                                                         LPVOID lpData);
+BOOL __stdcall VerQueryValueA(const void *pBlock, LPCSTR lpSubBlock, LPVOID *lplpBuffer,
+                                                    UINT *puLen);
+#endif
 __declspec(dllimport) HRSRC __stdcall FindResourceA(HMODULE hModule, LPCSTR lpName, LPCSTR lpType);
 __declspec(dllimport) DWORD __stdcall FormatMessageA(DWORD dwFlags, LPCVOID lpSource, DWORD dwMessageId,
                                                      DWORD dwLanguageId, LPSTR lpBuffer, DWORD nSize,

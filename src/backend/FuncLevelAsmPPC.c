@@ -262,7 +262,11 @@ void FuncLevelAsmPPC_GenerateFunction(Object *func)
     if (data_005871a0 != 0)
         outgoing_argument_size = data_005871a0;
     if (data_005884f4 == 0)
+#if VERSION >= VERSION_GC_1_3
+        CodeGen_EnumerateArgumentRegisters(emit_dlocal_initialization, 0);
+#else
         CodeGen_EnumerateArgumentRegisters(emit_dlocal_initialization);
+#endif
     PCodeUtilities_ResolveLabel(PCode_NewLabel());
     CodeGen_AssignMissingEntryValues(list->next);
     copts.warn_unusedvar = savedOptionC2;
@@ -313,7 +317,7 @@ void FuncLevelAsmPPC_GenerateFunction(Object *func)
                 break;
 
             default:
-                CError_FATAL(597);
+                CError_FATAL(BY_VERSION(597, 530));
         }
     }
 

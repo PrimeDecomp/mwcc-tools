@@ -27,7 +27,7 @@ struct ReplacementCandidate {
 #pragma options align = reset
 extern void IroPropagate_PropagateExpressions(void);
 extern void IRO_CopyAndConstantPropagation(void);
-extern int fn_004592e0(IROLinear *node);
+extern BY_VERSION( int, Boolean) fn_004592e0(IROLinear *node);
 extern SInt32 propagationIndex;
 extern struct BitVector *data_00588018;
 extern struct BitVector *availableExpressions;

@@ -114,6 +114,9 @@ struct Object {
     UInt16 sclass;
     UInt8 flags;
     UInt8 unk19;
+#if VERSION >= VERSION_GC_1_3
+    struct ExtendedParam *extParam; /* 1.3: pointer analysis */
+#endif
     union {
         struct Object *toc;
         struct DwarfNode *pendingEntry;
@@ -140,16 +143,33 @@ struct Object {
                 VarInfo *info;
                 struct InterruptGenerationRecord *interruptInfo;
             };
+#if VERSION >= VERSION_GC_1_3
+            union {
+                UInt16 f36;
+                struct {
+                    UInt8 f36lo;
+                    UInt8 f36hi;
+                };
+            };
+#endif
             HashNameNode *linkname;
         } data;
         struct {
             struct CInlineInfo *u;
             struct DefArgCtorInfo *defargdata;
             HashNameNode *linkname;
+#if VERSION >= VERSION_GC_1_3
+            void *inst;
+            struct PTFList *ptfList; /* pointer analysis: the function's partial transfer functions */
+            ObjectList *argList;     /* pointer analysis: the function's argument objects */
+#endif
         } func;
         struct {
             VarInfo *info;
             SInt32 uid;
+#if VERSION >= VERSION_GC_1_3
+            struct Object *realObj; /* pointer analysis: the argument object an argument copy stands for */
+#endif
         } var;
         struct {
             UInt8 *data;
@@ -164,6 +184,9 @@ struct Object {
         struct TemplateFunction *templateFunction;
         SInt16 intrinsic;
         ENode *expr;
+#if VERSION >= VERSION_GC_1_3
+        UInt8 f1_3[26];
+#endif
     } u;
 };
 /* An object instantiated from a class template's member (Q_IS_TEMPLATED): the member it came from */

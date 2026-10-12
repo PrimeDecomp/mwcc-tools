@@ -23,6 +23,11 @@ ENodeList *eadd_terms_tail;
 
 /* Links in the expression work list. */
 
+#if VERSION >= VERSION_GC_1_3
+/* (1.3: these two are the tables the program fills in at startup, not constants) */
+extern UInt8 nodetype_map[];
+extern UInt8 data_00552d8c[];
+#else
 /* The compound assignment of each binary operator; 0 for none. */
 static UInt8 nodetype_map[68] = {
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1F, 0x00, 0x20, 0x21, 0x00, 0x00, 0x22, 0x23,
@@ -38,6 +43,7 @@ static UInt8 data_00552d8c[68] = {
     0x23, 0x22, 0x25, 0x24, 0x28, 0x4B, 0x26, 0x4B, 0x4B, 0x2C, 0x2B, 0x4B, 0x4B, 0x4B, 0x4B, 0x4B, 0x4B,
     0x4B, 0x4B, 0x4B, 0x4B, 0x4B, 0x4B, 0x4B, 0x4B, 0x4B, 0x4B, 0x4B, 0x4B, 0x4B, 0x4B, 0x4B, 0x4B, 0x4B,
 };
+#endif
 
 /* The operator of each comparison or logical operator's negation; 0x4B for none. */
 static UInt8 data_00552dd0[68] = {
@@ -98,7 +104,9 @@ static inline UInt16 isFalseConstant(IROLinear *node)
 
 static inline void recordSimplification(IROLinear *node)
 {
+#if VERSION < VERSION_GC_1_3
     IroDump_Print("ReplaceExprWithLeftChild: expr= %d\n", node->index);
+#endif
 }
 
 static void ReplaceExprWithLeftChild(IROLinear *expr)
@@ -118,7 +126,9 @@ static void ReplaceExprWithLeftChild(IROLinear *expr)
         expr->u.monadic = left;
         IroUtil_ClearZeroOperands(right);
     }
+#if VERSION < VERSION_GC_1_3
     IroDump_Print("ReplaceExprWithLeftChild: expr= %d\n", expr->index);
+#endif
 }
 
 static void ReplaceExprWithRightChild(IROLinear *expr)
@@ -144,28 +154,36 @@ static void RemoveCommonOpLeftLeft(IROLinear *expr)
 {
     rotate_left_child(expr, 0);
     ReplaceExprWithRightChild(expr->u.diadic.right);
+#if VERSION < VERSION_GC_1_3
     IroDump_Print("remove common op(left-left) at: %d\n", expr->index);
+#endif
 }
 
 static void RemoveCommonOpRightLeft(IROLinear *expr)
 {
     rotate_left_child(expr, 1);
     ReplaceExprWithRightChild(expr->u.diadic.right);
+#if VERSION < VERSION_GC_1_3
     IroDump_Print("remove common op(right-left) at: %d\n", expr->index);
+#endif
 }
 
 static void RemoveCommonOpLeftRight(IROLinear *expr)
 {
     rotate_left_child(expr, 0);
     ReplaceExprWithLeftChild(expr->u.diadic.right);
+#if VERSION < VERSION_GC_1_3
     IroDump_Print("remove common op(right-right) at: %d\n", expr->index);
+#endif
 }
 
 static void RemoveCommonOpRightRight(IROLinear *expr)
 {
     rotate_left_child(expr, 1);
     ReplaceExprWithLeftChild(expr->u.diadic.right);
+#if VERSION < VERSION_GC_1_3
     IroDump_Print("remove common op(right-right) at: %d\n", expr->index);
+#endif
 }
 
 static void TransformExpr(IROLinear *nd)
@@ -180,6 +198,24 @@ static void TransformExpr(IROLinear *nd)
     fn_004507d0(nd);
 }
 
+#if VERSION >= VERSION_GC_1_3
+/* the reference's ReplaceExprWithConst */
+static void replace_const(IROLinear *node, CInt64 value)
+{
+    IroUtil_ClearZeroOperands(node);
+    node->type = IROLinearOperand;
+    node->nodetype = EINTCONST;
+    node->u.node = IrOptimizer_NewENode(0x32);
+    node->u.node->data.intval = value;
+    node->u.node->flags = node->nodeflags;
+    node->u.node->rtype = node->rtype;
+    if (node->rtype->type == TYPEFLOAT) {
+        node->nodetype = node->u.node->type = EFLOATCONST;
+        node->u.node->data.floatval = CMach_CalcFloatConvertFromInt((Type *)&stsignedlong, value);
+    }
+}
+#define REPLACE_CONST(node, value) replace_const(node, value)
+#else
 static void replace_const(IROLinear *node, SInt32 hi, UInt32 lo)
 {
     CInt64 value;
@@ -196,8 +232,12 @@ static void replace_const(IROLinear *node, SInt32 hi, UInt32 lo)
         node->nodetype = node->u.node->type = EFLOATCONST;
         node->u.node->data.floatval = CMach_CalcFloatConvertFromInt((Type *)&stsignedlong, value);
     }
+#if VERSION < VERSION_GC_1_3
     IroDump_Print("ReplaceExprWithConst: expr= %d,\tconst= %d\n", node->index, value.lo);
+#endif
 }
+#define REPLACE_CONST(node, value) replace_const(node, value.hi, value.lo)
+#endif
 
 static void replace_left(IROLinear *node)
 {
@@ -215,7 +255,9 @@ static void replace_left(IROLinear *node)
         node->u.monadic = child;
         IroUtil_ClearZeroOperands(other);
     }
+#if VERSION < VERSION_GC_1_3
     IroDump_Print("ReplaceExprWithLeftChild: expr= %d\n", node->index);
+#endif
 }
 
 static void replace_right(IROLinear *node)
@@ -257,10 +299,27 @@ static void CopyTypeInfo(IROLinear *dst, IROLinear *src)
     dst->nodeflags = src->nodeflags;
 }
 
+#if VERSION >= VERSION_GC_1_3
+void fn_0045b490(IROLinear *nd);
+extern Type *get_unsigned_type(Type *type);
+#endif
+
 static inline void set_shift_constant(IROLinear *operand, int shift)
 {
     CInt64_SetLong(&operand->u.node->data.intval, shift);
 }
+
+#if VERSION >= VERSION_GC_1_3
+/* 1.3 copies the shift into a local first, loading it before the operand */
+static inline void set_shift_constant13(IROLinear *operand, int shift)
+{
+    CInt64 *p;
+    SInt32 n = shift;
+    p = &operand->u.node->data.intval;
+    p->lo = n;
+    p->hi = (n < 0) ? -1 : 0;
+}
+#endif
 
 void simplify_diadic_nodes(IROLinear *nd)
 {
@@ -276,7 +335,7 @@ void simplify_diadic_nodes(IROLinear *nd)
         switch (nd->nodetype) {
             case EASS:
                 right = nd->u.diadic.right;
-                if (right->type == IROLinearOp2Arg && nodetype_map[right->nodetype] &&
+                if (right->type == IROLinearOp2Arg && BY_VERSION(nodetype_map[right->nodetype], nodetype_map[right->nodetype] < 0x4d) &&
                     IroUtil_AreTypesEqual(nd->rtype, right->rtype)) {
                     left = nd->u.diadic.left;
                     if (IroDump_GetObjRef(left) && !(left->flags & 0x80000) &&
@@ -290,6 +349,46 @@ void simplify_diadic_nodes(IROLinear *nd)
                     }
                 }
                 break;
+#if VERSION >= VERSION_GC_1_3
+            case EMUL:
+                if (nd->rtype->type == TYPEINT && IroDump_IsPowerOfTwo(nd->u.diadic.right, &shift)) {
+                    nd->nodetype = ESHL;
+                    set_shift_constant13(nd->u.diadic.right, shift);
+                }
+                break;
+            case EDIV:
+                if (nd->rtype->type == TYPEINT && IroDump_IsPowerOfTwo(nd->u.diadic.right, &shift)) {
+                    if (is_unsigned(nd->rtype)) {
+                        nd->nodetype = ESHR;
+                        set_shift_constant13(nd->u.diadic.right, shift);
+                    } else if (!is_unsigned(nd->rtype) && TYPE_INTEGRAL(nd->rtype)->integral != IT_BOOL &&
+                               nd->u.diadic.left->nodetype == ETYPCON &&
+                               nd->u.diadic.left->u.monadic->rtype->type == TYPEINT &&
+                               is_unsigned(nd->u.diadic.left->u.monadic->rtype) &&
+                               nd->u.diadic.left->u.monadic->rtype->size < nd->u.diadic.left->rtype->size) {
+                        Type *newtype;
+                        nd->nodetype = ESHR;
+                        set_shift_constant13(nd->u.diadic.right, shift);
+                        if (nd->flags & IROLF_Reffed) {
+                            IROLinear *copy = IrOptimizer_NewLinear(IROLinearOp1Arg);
+                            memcpy(copy, nd, sizeof(IROLinear));
+                            copy->type = IROLinearOp1Arg;
+                            copy->nodetype = ETYPCON;
+                            copy->index = linear_index_counter++;
+                            copy->rtype = nd->rtype;
+                            IroUtil_InsertLinearRangeAfter(copy, copy, nd);
+                            IroUtil_ReplaceNextReference(nd, copy);
+                            copy->u.monadic = nd;
+                            nd->flags |= IROLF_Reffed;
+                        }
+                        nd->rtype = get_unsigned_type(nd->rtype);
+                        newtype = get_unsigned_type(nd->u.diadic.right->rtype);
+                        nd->u.diadic.right->rtype = nd->u.diadic.right->u.node->rtype = newtype;
+                        nd->u.diadic.left->rtype = get_unsigned_type(nd->u.diadic.left->rtype);
+                    }
+                }
+                break;
+#else
             case EMUL:
                 if (nd->rtype->size <= 4 && nd->rtype->type == TYPEINT &&
                     IroDump_IsPowerOfTwo(nd->u.diadic.right, &shift)) {
@@ -297,6 +396,8 @@ void simplify_diadic_nodes(IROLinear *nd)
                     set_shift_constant(nd->u.diadic.right, shift);
                 }
                 break;
+#endif
+#if VERSION < VERSION_GC_1_3
             case EDIV:
                 if (nd->rtype->type == TYPEINT && is_unsigned(nd->rtype) && nd->rtype->size <= 4 &&
                     IroDump_IsPowerOfTwo(nd->u.diadic.right, &shift)) {
@@ -304,8 +405,9 @@ void simplify_diadic_nodes(IROLinear *nd)
                     set_shift_constant(nd->u.diadic.right, shift);
                 }
                 break;
+#endif
             case EMODULO:
-                if (nd->rtype->type == TYPEINT && is_unsigned(nd->rtype) && nd->rtype->size <= 4 &&
+                if (nd->rtype->type == TYPEINT && is_unsigned(nd->rtype) && BY_VERSION( nd->rtype->size <= 4, 1) &&
                     IroDump_IsPowerOfTwo(nd->u.diadic.right, &shift)) {
                     nd->nodetype = EAND;
                     nd->u.diadic.right->u.node->data.intval =
@@ -330,6 +432,267 @@ void simplify_diadic_nodes(IROLinear *nd)
         }
     }
 }
+
+#if VERSION >= VERSION_GC_1_3
+extern UInt8 data13_005dbfad[];
+extern UInt8 data_00552d8c[];
+extern UInt8 nodetype_map[];
+
+/* initialize a table of 0x4d per-node-type entries */
+void fn_0045c8b0(void)
+{
+    int i;
+
+    for (i = 0; i < 0x4d; i++)
+        data13_005dbfad[i] = 77;
+    data13_005dbfad[0] = 77;
+    data13_005dbfad[1] = 77;
+    data13_005dbfad[2] = 77;
+    data13_005dbfad[3] = 77;
+    data13_005dbfad[4] = 77;
+    data13_005dbfad[5] = 77;
+    data13_005dbfad[6] = 77;
+    data13_005dbfad[7] = 7;
+    data13_005dbfad[8] = 77;
+    data13_005dbfad[9] = 77;
+    data13_005dbfad[10] = 77;
+    data13_005dbfad[11] = 77;
+    data13_005dbfad[12] = 77;
+    data13_005dbfad[13] = 77;
+    data13_005dbfad[14] = 77;
+    data13_005dbfad[15] = 77;
+    data13_005dbfad[16] = 77;
+    data13_005dbfad[17] = 77;
+    data13_005dbfad[18] = 77;
+    data13_005dbfad[19] = 22;
+    data13_005dbfad[20] = 21;
+    data13_005dbfad[21] = 20;
+    data13_005dbfad[22] = 19;
+    data13_005dbfad[23] = 24;
+    data13_005dbfad[24] = 23;
+    data13_005dbfad[25] = 77;
+    data13_005dbfad[26] = 77;
+    data13_005dbfad[27] = 77;
+    data13_005dbfad[28] = 29;
+    data13_005dbfad[29] = 28;
+    data13_005dbfad[30] = 77;
+    data13_005dbfad[31] = 77;
+    data13_005dbfad[32] = 77;
+    data13_005dbfad[33] = 77;
+    data13_005dbfad[34] = 77;
+    data13_005dbfad[35] = 77;
+    data13_005dbfad[36] = 77;
+    data13_005dbfad[37] = 77;
+    data13_005dbfad[38] = 77;
+    data13_005dbfad[39] = 77;
+    data13_005dbfad[40] = 77;
+    data13_005dbfad[41] = 77;
+    data13_005dbfad[42] = 77;
+    data13_005dbfad[43] = 77;
+    data13_005dbfad[44] = 77;
+    data13_005dbfad[45] = 77;
+    data13_005dbfad[46] = 77;
+    data13_005dbfad[47] = 77;
+    data13_005dbfad[48] = 77;
+    data13_005dbfad[49] = 77;
+    data13_005dbfad[50] = 77;
+    data13_005dbfad[51] = 77;
+    data13_005dbfad[52] = 77;
+    data13_005dbfad[53] = 77;
+    data13_005dbfad[54] = 77;
+    data13_005dbfad[55] = 77;
+    data13_005dbfad[56] = 77;
+    data13_005dbfad[57] = 77;
+    data13_005dbfad[58] = 77;
+    data13_005dbfad[59] = 77;
+    data13_005dbfad[60] = 77;
+    data13_005dbfad[61] = 77;
+    data13_005dbfad[62] = 77;
+    data13_005dbfad[63] = 77;
+    data13_005dbfad[64] = 77;
+    data13_005dbfad[65] = 77;
+    data13_005dbfad[66] = 77;
+    data13_005dbfad[68] = 77;
+    data13_005dbfad[69] = 77;
+    data13_005dbfad[70] = 77;
+    data13_005dbfad[71] = 77;
+    data13_005dbfad[72] = 77;
+    data13_005dbfad[73] = 77;
+    data13_005dbfad[74] = 77;
+    data13_005dbfad[75] = 77;
+    data13_005dbfad[76] = 77;
+}
+
+/* initialize a table of 0x4d per-node-type entries */
+void fn_0045cb50(void)
+{
+    int i;
+
+    for (i = 0; i < 0x4d; i++)
+        data_00552d8c[i] = 77;
+    data_00552d8c[0] = 1;
+    data_00552d8c[1] = 0;
+    data_00552d8c[2] = 3;
+    data_00552d8c[3] = 2;
+    data_00552d8c[4] = 77;
+    data_00552d8c[5] = 5;
+    data_00552d8c[6] = 6;
+    data_00552d8c[7] = 7;
+    data_00552d8c[8] = 77;
+    data_00552d8c[9] = 11;
+    data_00552d8c[10] = 77;
+    data_00552d8c[11] = 9;
+    data_00552d8c[12] = 77;
+    data_00552d8c[13] = 14;
+    data_00552d8c[14] = 13;
+    data_00552d8c[15] = 16;
+    data_00552d8c[16] = 15;
+    data_00552d8c[17] = 18;
+    data_00552d8c[18] = 17;
+    data_00552d8c[19] = 20;
+    data_00552d8c[20] = 19;
+    data_00552d8c[21] = 22;
+    data_00552d8c[22] = 21;
+    data_00552d8c[23] = 24;
+    data_00552d8c[24] = 23;
+    data_00552d8c[25] = 27;
+    data_00552d8c[26] = 77;
+    data_00552d8c[27] = 25;
+    data_00552d8c[28] = 29;
+    data_00552d8c[29] = 28;
+    data_00552d8c[30] = 77;
+    data_00552d8c[31] = 32;
+    data_00552d8c[32] = 31;
+    data_00552d8c[33] = 77;
+    data_00552d8c[34] = 35;
+    data_00552d8c[35] = 34;
+    data_00552d8c[36] = 37;
+    data_00552d8c[37] = 36;
+    data_00552d8c[38] = 40;
+    data_00552d8c[39] = 77;
+    data_00552d8c[40] = 38;
+    data_00552d8c[41] = 77;
+    data_00552d8c[42] = 77;
+    data_00552d8c[43] = 44;
+    data_00552d8c[44] = 43;
+    data_00552d8c[45] = 77;
+    data_00552d8c[46] = 77;
+    data_00552d8c[47] = 77;
+    data_00552d8c[48] = 77;
+    data_00552d8c[49] = 77;
+    data_00552d8c[50] = 77;
+    data_00552d8c[51] = 77;
+    data_00552d8c[52] = 77;
+    data_00552d8c[53] = 77;
+    data_00552d8c[54] = 77;
+    data_00552d8c[55] = 77;
+    data_00552d8c[56] = 77;
+    data_00552d8c[57] = 77;
+    data_00552d8c[58] = 77;
+    data_00552d8c[59] = 77;
+    data_00552d8c[60] = 77;
+    data_00552d8c[61] = 77;
+    data_00552d8c[62] = 77;
+    data_00552d8c[63] = 77;
+    data_00552d8c[64] = 77;
+    data_00552d8c[65] = 77;
+    data_00552d8c[66] = 77;
+    data_00552d8c[68] = 77;
+    data_00552d8c[69] = 77;
+    data_00552d8c[70] = 77;
+    data_00552d8c[71] = 77;
+    data_00552d8c[72] = 77;
+    data_00552d8c[73] = 77;
+    data_00552d8c[74] = 77;
+    data_00552d8c[75] = 77;
+    data_00552d8c[76] = 77;
+}
+
+/* initialize a table of 0x4d per-node-type entries */
+void fn_0045cdf0(void)
+{
+    int i;
+
+    for (i = 0; i < 0x4d; i++)
+        nodetype_map[i] = 77;
+    nodetype_map[0] = 77;
+    nodetype_map[1] = 77;
+    nodetype_map[2] = 77;
+    nodetype_map[3] = 77;
+    nodetype_map[4] = 77;
+    nodetype_map[5] = 77;
+    nodetype_map[6] = 77;
+    nodetype_map[7] = 77;
+    nodetype_map[8] = 77;
+    nodetype_map[9] = 31;
+    nodetype_map[10] = 77;
+    nodetype_map[11] = 32;
+    nodetype_map[12] = 33;
+    nodetype_map[13] = 77;
+    nodetype_map[14] = 77;
+    nodetype_map[15] = 34;
+    nodetype_map[16] = 35;
+    nodetype_map[17] = 36;
+    nodetype_map[18] = 37;
+    nodetype_map[19] = 77;
+    nodetype_map[20] = 77;
+    nodetype_map[21] = 77;
+    nodetype_map[22] = 77;
+    nodetype_map[23] = 77;
+    nodetype_map[24] = 77;
+    nodetype_map[25] = 38;
+    nodetype_map[26] = 39;
+    nodetype_map[27] = 40;
+    nodetype_map[28] = 77;
+    nodetype_map[29] = 77;
+    nodetype_map[30] = 77;
+    nodetype_map[31] = 77;
+    nodetype_map[32] = 77;
+    nodetype_map[33] = 77;
+    nodetype_map[34] = 77;
+    nodetype_map[35] = 77;
+    nodetype_map[36] = 77;
+    nodetype_map[37] = 77;
+    nodetype_map[38] = 77;
+    nodetype_map[39] = 77;
+    nodetype_map[40] = 77;
+    nodetype_map[41] = 77;
+    nodetype_map[42] = 77;
+    nodetype_map[43] = 77;
+    nodetype_map[44] = 77;
+    nodetype_map[45] = 77;
+    nodetype_map[46] = 77;
+    nodetype_map[47] = 77;
+    nodetype_map[48] = 77;
+    nodetype_map[49] = 77;
+    nodetype_map[50] = 77;
+    nodetype_map[51] = 77;
+    nodetype_map[52] = 77;
+    nodetype_map[53] = 77;
+    nodetype_map[54] = 77;
+    nodetype_map[55] = 77;
+    nodetype_map[56] = 77;
+    nodetype_map[57] = 77;
+    nodetype_map[58] = 77;
+    nodetype_map[59] = 77;
+    nodetype_map[60] = 77;
+    nodetype_map[61] = 77;
+    nodetype_map[62] = 77;
+    nodetype_map[63] = 77;
+    nodetype_map[64] = 77;
+    nodetype_map[65] = 77;
+    nodetype_map[66] = 77;
+    nodetype_map[68] = 77;
+    nodetype_map[69] = 77;
+    nodetype_map[70] = 77;
+    nodetype_map[71] = 77;
+    nodetype_map[72] = 77;
+    nodetype_map[73] = 77;
+    nodetype_map[74] = 77;
+    nodetype_map[75] = 77;
+    nodetype_map[76] = 77;
+}
+#endif
 
 void rewrite_diadic_as_monadic(IROLinear *node)
 {
@@ -415,6 +778,228 @@ IROLinear *rotate_left_child(IROLinear *nd, int isleft)
     return IroUtil_MoveLinearRangeBeforeObject(IroUtil_GetFirstLinear(other), otherObject, ndObject);
 }
 
+#if VERSION >= VERSION_GC_1_3
+void simplify_diadic_constants(IROLinear *node)
+{
+    IROLinear *left;
+    IROLinear *right;
+    int changed;
+    int compare;
+    Type *type;
+    SInt32 tmp1;
+    SInt32 tmp2;
+    CInt64 val;
+
+    if (node->type == IROLinearOp2Arg) {
+        left = node->u.diadic.left;
+        right = node->u.diadic.right;
+        if (node->rtype->type == TYPEFLOAT || left->rtype->type == TYPEFLOAT || right->rtype->type == TYPEFLOAT) {
+            return;
+        }
+        changed = FALSE;
+        if (fn_0044be00(left) == NULL && fn_0044be00(right) == NULL) {
+            if (IroDump_IsType1NodeType50(right) != 0 || IroUtil_IsTypeOneNodeTypeFiftyOne(right) != 0) {
+                if (IroUtil_IsZeroConstant(right) != 0) {
+                    switch (node->nodetype) {
+                        case EADDV:
+                        case ESUBV:
+                        case EADD:
+                        case ESUB:
+                        case ESHL:
+                        case ESHR:
+                        case EXOR:
+                        case EOR:
+                        case ELOR:
+                        case EADDASS:
+                        case ESUBASS:
+                        case ESHLASS:
+                        case ESHRASS:
+                        case EXORASS:
+                        case EORASS:
+                            replace_left(node);
+                            changed = TRUE;
+                            break;
+                        case EMUL:
+                        case EAND:
+                        case ELAND:
+                            REPLACE_CONST(node, cint64_zero);
+                            changed = TRUE;
+                            break;
+                        case EMULASS:
+                        case EANDASS:
+                            node->nodetype = EASS;
+#if VERSION < VERSION_GC_1_3
+                            changed = TRUE;
+#endif
+                            node->u.diadic.right->rtype = node->rtype;
+                            node->u.diadic.right->u.node->rtype = node->rtype;
+#if VERSION >= VERSION_GC_1_3
+                            changed = TRUE;
+#endif
+                            break;
+                        case EDIV:
+                        case EMODULO:
+                        case EDIVASS:
+                        case EMODASS:
+                            if (node->stmt->sourceoffset != 0) {
+                                TStreamElement *errorPos = CPrep_GetLastBufferedToken();
+                                errorPos->tokenoffset = node->stmt->sourceoffset;
+                                CError_SetBufferedToken(errorPos);
+                            }
+#if VERSION >= VERSION_GC_1_3
+                            CError_Warning(ERR_DIVISION_BY_0);
+#else
+                            CError_ReportError(ERR_DIVISION_BY_0);
+#endif
+                            break;
+                    }
+                } else {
+                    if (node->nodetype == ELAND) {
+                        replace_left(node);
+                        changed = TRUE;
+                    } else if (node->nodetype == ELOR) {
+                        replace_const(node, cint64_one);
+                        changed = TRUE;
+                    } else if (node->nodetype == ESHL || node->nodetype == ESHR || node->nodetype == ESHLASS ||
+                               node->nodetype == ESHRASS) {
+                        type = node->rtype;
+                        tmp1 = type->size * 8;
+                        if (left->type == IROLinearOp1Arg && left->nodetype == ETYPCON) {
+                            type = left->u.monadic->rtype;
+                            if (left->u.monadic->type == IROLinearOp1Arg && left->u.monadic->nodetype == EINDIRECT &&
+                                left->u.monadic->u.monadic->type == IROLinearOp1Arg &&
+                                left->u.monadic->u.monadic->nodetype == EBITFIELD &&
+                                left->u.monadic->u.monadic->rtype->type == TYPEBITFIELD)
+                                tmp2 = TYPE_BITFIELD(left->u.monadic->u.monadic->rtype)->bitlength;
+                            else
+                                tmp2 = type->size * 8;
+                        } else {
+                            tmp2 = tmp1;
+                        }
+
+                        switch (node->nodetype) {
+                            case ESHL:
+                            case ESHLASS:
+                                CInt64_SetLong(&val, tmp1);
+                                if (is_unsigned(type))
+                                    compare = CInt64_GreaterEqualU(right->u.node->data.intval, val);
+                                else
+                                    compare = CInt64_GreaterEqual(right->u.node->data.intval, val);
+                                break;
+                            case ESHR:
+                            case ESHRASS:
+                                CInt64_SetLong(&val, tmp2);
+                                compare = is_unsigned(type) && CInt64_GreaterEqualU(right->u.node->data.intval, val);
+                                break;
+                        }
+
+                        if (compare) {
+                            switch (node->nodetype) {
+                                case ESHL:
+                                case ESHR:
+                                    replace_const(node, cint64_zero);
+                                    break;
+                                case ESHLASS:
+                                case ESHRASS:
+                                    node->nodetype = EASS;
+                                    replace_const(right, cint64_zero);
+                                    break;
+                            }
+                            changed = TRUE;
+                        }
+                    } else if (fn_0044cad0(right) != 0) {
+                        switch (node->nodetype) {
+                            case EMUL:
+                            case EMULV:
+                            case EDIV:
+                            case EMULASS:
+                            case EDIVASS:
+                                replace_left(node);
+                                changed = TRUE;
+                                break;
+                            case EMODULO:
+                                REPLACE_CONST(node, cint64_zero);
+                                changed = TRUE;
+                                break;
+                            case EMODASS:
+                                node->nodetype = EASS;
+                                REPLACE_CONST(right, cint64_zero);
+                                node->u.diadic.right->rtype = node->rtype;
+                                node->u.diadic.right->u.node->rtype = node->rtype;
+                                changed = TRUE;
+                                break;
+                        }
+                    } else if (IroUtil_IsOne(right) != 0) {
+                        switch (node->nodetype) {
+                            case EMUL:
+                            case EMULV:
+                            case EDIV:
+                                rewrite_diadic_as_rtype_matched_monadic(node);
+                                changed = TRUE;
+                                break;
+                            case EMODULO:
+                                REPLACE_CONST(node, cint64_zero);
+                                changed = TRUE;
+                                break;
+                            case EMODASS:
+                                node->nodetype = EASS;
+                                REPLACE_CONST(right, cint64_zero);
+                                node->u.diadic.right->rtype = node->rtype;
+                                node->u.diadic.right->u.node->rtype = node->rtype;
+                                changed = TRUE;
+                                break;
+                        }
+                    }
+                }
+            }
+            if (!changed && (IroDump_IsType1NodeType50(left) != 0 || IroUtil_IsTypeOneNodeTypeFiftyOne(left) != 0)) {
+                if (IroUtil_IsZeroConstant(left) != 0) {
+                    switch (node->nodetype) {
+                        case EADDV:
+                        case EADD:
+                        case EXOR:
+                        case EOR:
+                        case ELOR:
+                            replace_right(node);
+                            break;
+                        case EMUL:
+                        case ESHL:
+                        case ESHR:
+                        case EAND:
+                        case ELAND:
+                            REPLACE_CONST(node, cint64_zero);
+                            break;
+                        case ESUBV:
+                        case ESUB:
+                            rewrite_diadic_as_monadic(node);
+                            break;
+                    }
+                } else {
+                    if (node->nodetype == ELAND) {
+                        replace_right(node);
+                    } else if (node->nodetype == ELOR) {
+                        REPLACE_CONST(node, cint64_one);
+                    } else if (fn_0044cad0(left) != 0) {
+                        switch (node->nodetype) {
+                            case EMUL:
+                            case EMULV:
+                                replace_right(node);
+                                break;
+                        }
+                    } else if (IroUtil_IsOne(left) != 0) {
+                        switch (node->nodetype) {
+                            case EMUL:
+                            case EMULV:
+                                rewrite_diadic_as_monadic(node);
+                                break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+#else
 void simplify_diadic_constants(IROLinear *node)
 {
     IROLinear *left;
@@ -468,9 +1053,14 @@ void simplify_diadic_constants(IROLinear *node)
                         case EMULASS:
                         case EANDASS:
                             node->nodetype = EASS;
+#if VERSION < VERSION_GC_1_3
                             changed = TRUE;
+#endif
                             node->u.diadic.right->rtype = node->rtype;
                             node->u.diadic.right->u.node->rtype = node->rtype;
+#if VERSION >= VERSION_GC_1_3
+                            changed = TRUE;
+#endif
                             break;
                         case EDIV:
                         case EMODULO:
@@ -481,7 +1071,11 @@ void simplify_diadic_constants(IROLinear *node)
                                 errorPos->tokenoffset = node->stmt->sourceoffset;
                                 CError_SetBufferedToken(errorPos);
                             }
+#if VERSION >= VERSION_GC_1_3
+                            CError_Warning(ERR_DIVISION_BY_0);
+#else
                             CError_ReportError(ERR_DIVISION_BY_0);
+#endif
                             break;
                     }
                 } else {
@@ -490,7 +1084,7 @@ void simplify_diadic_constants(IROLinear *node)
                         replace_left(node);
                         changed = TRUE;
                     } else if (op == 0x1d) {
-                        replace_const(node, cint64_one.hi, cint64_one.lo);
+                        REPLACE_CONST(node, cint64_one);
                         changed = TRUE;
                     } else if (op == 0x11 || op == 0x12 || op == 0x24 || op == 0x25) {
                         resultBits = node->rtype->size;
@@ -615,7 +1209,7 @@ void simplify_diadic_constants(IROLinear *node)
                     if (node->nodetype == ELAND) {
                         replace_right(node);
                     } else if (node->nodetype == ELOR) {
-                        replace_const(node, cint64_one.hi, cint64_one.lo);
+                        REPLACE_CONST(node, cint64_one);
                     } else if (fn_0044cad0(left) != 0) {
                         switch (node->nodetype) {
                             case EMUL:
@@ -636,6 +1230,7 @@ void simplify_diadic_constants(IROLinear *node)
         }
     }
 }
+#endif
 
 void simplify_same_linears(IROLinear *node)
 {
@@ -656,12 +1251,12 @@ void simplify_same_linears(IROLinear *node)
                 case EGREATER:
                 case ENOTEQU:
                 case EXOR:
-                    replace_const(node, cint64_zero.hi, cint64_zero.lo);
+                    REPLACE_CONST(node, cint64_zero);
                     break;
                 case ELESSEQU:
                 case EGREATEREQU:
                 case EEQU:
-                    replace_const(node, cint64_one.hi, cint64_one.lo);
+                    REPLACE_CONST(node, cint64_one);
                     break;
                 case EAND:
                 case EOR:
@@ -675,7 +1270,7 @@ void simplify_same_linears(IROLinear *node)
                 case ESUBASS:
                 case EXORASS:
                     node->nodetype = EASS;
-                    replace_const(right, cint64_zero.hi, cint64_zero.lo);
+                    REPLACE_CONST(right, cint64_zero);
                     break;
             }
         }
@@ -779,6 +1374,9 @@ void simplify_matching_monadic_operands(IROLinear *node)
                                 simplify_diadic_nodes(node);
                                 simplify_diadic_constants(node);
                                 simplify_same_linears(node);
+#if VERSION >= VERSION_GC_1_3
+                                fn_0045b490(node);
+#endif
                             }
                             break;
                     }
@@ -787,6 +1385,71 @@ void simplify_matching_monadic_operands(IROLinear *node)
         }
     }
 }
+
+#if VERSION >= VERSION_GC_1_3
+typedef struct IROListNode13 {
+    IROList list;
+    struct IROListNode13 *nextList;
+} IROListNode13;
+
+extern Object *data_005875b8;
+extern Boolean fn_0047d430(Object *proc, IROLinear *node);
+extern void fn_0047c270(Object *proc, IROLinear *node, IROListNode13 **list);
+extern void fn_005297b0(void *p);
+
+/* the reference's DoTransformations13: an equality of two pointers pointer analysis resolves to one place each */
+void fn_0045b490(IROLinear *nd)
+{
+    IROLinear *left;
+    IROLinear *right;
+    IROLinear *left2;
+    IROLinear *right2;
+    IROListNode13 *tmp;
+    IROListNode13 *leftlist;
+    IROListNode13 *rightlist;
+
+    if (nd->type == IROLinearOp2Arg) {
+        left = nd->u.diadic.left;
+        right = nd->u.diadic.right;
+
+        if (!fn_0044be00(left) && !fn_0044be00(right) && (nd->nodetype == EEQU || nd->nodetype == ENOTEQU) &&
+            fn_0047d430(data_005875b8, left) && fn_0047d430(data_005875b8, right)) {
+            leftlist = NULL;
+            fn_0047c270(data_005875b8, left, &leftlist);
+            if (leftlist) {
+                if (leftlist->list.head && leftlist->list.tail && !leftlist->nextList) {
+                    rightlist = NULL;
+                    fn_0047c270(data_005875b8, right, &rightlist);
+                    if (rightlist) {
+                        if (rightlist->list.head && rightlist->list.tail && !rightlist->nextList) {
+                            left2 = leftlist->list.tail;
+                            right2 = rightlist->list.tail;
+                            if (IroUtil_LinearsSame(left2, right2)) {
+                                replace_const(nd, (nd->nodetype == EEQU) ? cint64_one : cint64_zero);
+                            } else if (left2->type == right2->type &&
+                                       IroUtil_AreTypesEqual(left2->rtype, right2->rtype)) {
+                                replace_const(nd, (nd->nodetype == EEQU) ? cint64_zero : cint64_one);
+                            }
+                        }
+
+                        while (rightlist) {
+                            tmp = rightlist->nextList;
+                            fn_005297b0(rightlist);
+                            rightlist = tmp;
+                        }
+                    }
+                }
+
+                while (leftlist) {
+                    tmp = leftlist->nextList;
+                    fn_005297b0(leftlist);
+                    leftlist = tmp;
+                }
+            }
+        }
+    }
+}
+#endif
 
 void simplify_diadic_with_monadic_operand(IROLinear *expr)
 {
@@ -824,7 +1487,7 @@ void simplify_diadic_with_monadic_operand(IROLinear *expr)
                         break;
                     case EDIV:
                         if (IroUtil_LinearsSame(left->u.monadic, right) != 0)
-                            replace_const(expr, cint64_negone.hi, cint64_negone.lo);
+                            REPLACE_CONST(expr, cint64_negone);
                         break;
                 }
             } else {
@@ -837,12 +1500,12 @@ void simplify_diadic_with_monadic_operand(IROLinear *expr)
                     switch (expr->nodetype) {
                         case EAND:
                             if (matchingOperand->nodetype == EBINNOT || matchingOperand->nodetype == ELOGNOT)
-                                replace_const(expr, cint64_zero.hi, cint64_zero.lo);
+                                REPLACE_CONST(expr, cint64_zero);
                             break;
                         case EANDASS:
                             if (matchingOperand->nodetype == EBINNOT || matchingOperand->nodetype == ELOGNOT) {
                                 expr->nodetype = EASS;
-                                replace_const(right, cint64_zero.hi, cint64_zero.lo);
+                                REPLACE_CONST(right, cint64_zero);
                                 expr->u.diadic.right->rtype = expr->rtype;
                                 expr->u.diadic.right->u.node->rtype = expr->rtype;
                             }
@@ -850,7 +1513,7 @@ void simplify_diadic_with_monadic_operand(IROLinear *expr)
                         case EXOR:
                         case EOR:
                             if (matchingOperand->nodetype == EBINNOT) {
-                                replace_const(expr, cint64_zero.hi, cint64_zero.lo);
+                                REPLACE_CONST(expr, cint64_zero);
                                 expr->u.node->data.intval = CInt64_Inv(expr->u.node->data.intval);
                             }
                             break;
@@ -858,7 +1521,7 @@ void simplify_diadic_with_monadic_operand(IROLinear *expr)
                         case EORASS:
                             if (matchingOperand->nodetype == EBINNOT) {
                                 expr->nodetype = EASS;
-                                replace_const(right, cint64_zero.hi, cint64_zero.lo);
+                                REPLACE_CONST(right, cint64_zero);
                                 right->u.node->data.intval = CInt64_Inv(right->u.node->data.intval);
                                 expr->u.diadic.right->rtype = expr->rtype;
                                 expr->u.diadic.right->u.node->rtype = expr->rtype;
@@ -866,20 +1529,20 @@ void simplify_diadic_with_monadic_operand(IROLinear *expr)
                             break;
                         case ELOR:
                             if (matchingOperand->nodetype == EBINNOT || matchingOperand->nodetype == ELOGNOT)
-                                replace_const(expr, cint64_one.hi, cint64_one.lo);
+                                REPLACE_CONST(expr, cint64_one);
                             break;
                         case ELAND:
                             if (matchingOperand->nodetype == ELOGNOT)
-                                replace_const(expr, cint64_zero.hi, cint64_zero.lo);
+                                REPLACE_CONST(expr, cint64_zero);
                             break;
                         case EDIV:
                             if (matchingOperand->nodetype == EMONMIN)
-                                replace_const(expr, cint64_negone.hi, cint64_negone.lo);
+                                REPLACE_CONST(expr, cint64_negone);
                             break;
                         case EDIVASS:
                             if (matchingOperand->nodetype == EMONMIN) {
                                 expr->nodetype = EASS;
-                                replace_const(right, cint64_negone.hi, cint64_negone.lo);
+                                REPLACE_CONST(right, cint64_negone);
                                 expr->u.diadic.right->rtype = expr->rtype;
                                 expr->u.diadic.right->u.node->rtype = expr->rtype;
                             }
@@ -987,7 +1650,7 @@ void simplify_diadic_matching_child(IROLinear *node)
                             case EGREATEREQU:
                             case EEQU:
                             case ENOTEQU:
-                                replace_const(left, cint64_zero.hi, cint64_zero.lo);
+                                REPLACE_CONST(left, cint64_zero);
                                 replace_right(right);
                                 swapkids(node);
                                 if (reverseOp)
@@ -1017,7 +1680,7 @@ void simplify_diadic_matching_child(IROLinear *node)
                             case EEQU:
                             case ENOTEQU:
                                 if (matchingChild == 1) {
-                                    replace_const(left, cint64_zero.hi, cint64_zero.lo);
+                                    REPLACE_CONST(left, cint64_zero);
                                     replace_right(right);
                                     swapkids(node);
                                 }
@@ -1574,6 +2237,10 @@ void remove_redundant_monadic_ops(IROLinear *expression)
                                 break;
                             if (value->type == IROLinearIfNot)
                                 break;
+#if VERSION >= VERSION_GC_1_3
+                            if (value->type == IROLinearCond && expression == value->u.args3.a)
+                                break;
+#endif
                             switch (value->nodetype) {
                                 case ELOGNOT:
                                 case ELAND:
@@ -1625,8 +2292,12 @@ void remove_redundant_monadic_ops(IROLinear *expression)
                     }
             }
         done:
+#if VERSION < VERSION_GC_1_3
             if (changed != 0)
                 IroDump_Print("remove redundant Monadic op at: %d, %d\n", expression->index, previous->index);
+#else
+            ;
+#endif
         }
     }
 }
@@ -1723,8 +2394,12 @@ ENode *IroTransform_CombineEAddTerms(ENode *expression)
     collect_eadd_terms(root->data.diadic.left);
     collect_eadd_terms(root->data.diadic.right);
 
+#if VERSION >= VERSION_GC_1_3
+    for (node = eadd_terms, previous = NULL, found = NULL; node != NULL; node = node->next) {
+#else
     found = NULL;
     for (node = eadd_terms, previous = NULL; node != NULL; node = node->next) {
+#endif
         current = node->node;
         if (current->type == EOBJREF) {
             found = current;
@@ -1751,9 +2426,15 @@ ENode *IroTransform_CombineEAddTerms(ENode *expression)
         }
     }
     previous = NULL;
+#if VERSION >= VERSION_GC_1_3
+    sum.lo = 0;
+    sum.hi = 0;
+    bestType = NULL;
+#else
     bestType = NULL;
     sum.lo = 0;
     sum.hi = 0;
+#endif
     for (node = eadd_terms; node != NULL; node = node->next) {
         current = node->node;
         if (current->type == EINTCONST && current->rtype != NULL) {
@@ -1861,6 +2542,202 @@ ENode *canonicalize_diadic_expression(ENode *expression)
     }
     return expression;
 }
+
+
+#if VERSION >= VERSION_GC_1_3
+extern void CLIO_ReportAssertionFailure(char *a, char *b, unsigned int c);
+
+struct Fn00482e40 {
+    char pad[8];
+    UInt8 value;
+};
+
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+extern void *fn_00529870(int size);
+
+struct Fn00480380 {
+    SInt32 a;
+    SInt32 b;
+};
+
+struct Fn004737c0 {
+    SInt32 a;
+    SInt32 b;
+    UInt8 c;
+};
+
+struct Fn0047b330 {
+    SInt32 a;
+    SInt32 b;
+    SInt32 c;
+};
+
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+extern void *data_005a9534;
+extern void *data_005a951c;
+
+struct Fn004719b0 {
+    void *first;
+    void *rtype;
+};
+
+struct Fn00473800 {
+    SInt32 a;
+    SInt32 b;
+    UInt8 c;
+};
+
+struct Fn0047e400 {
+    SInt32 a;
+    SInt32 b;
+    SInt32 c;
+    SInt32 d;
+};
+
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+extern void fn_005297b0(void *);
+extern void fn_00529700(void);
+
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+struct Fn004832f0 {
+    SInt32 a;
+    SInt32 b;
+};
+
+struct Fn0048ecf0 {
+    SInt32 a;
+    SInt32 b;
+    SInt32 c;
+};
+
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+extern void fn_00474400(void *, void *);
+extern void fn_00476320(void *, void *);
+
+struct Fn004762b0 {
+    SInt32 *pte;
+    SInt32 otherPtes;
+};
+
+struct Fn00477bc0 {
+    void *first;
+    void *rtype;
+    SInt32 third;
+    SInt32 fourth;
+};
+
+struct Fn0047ba30 {
+    SInt32 a;
+    SInt32 b;
+    SInt32 c;
+    SInt32 d;
+};
+
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+extern void fn_0047afa0(void *, void *);
+
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+extern char data_00565458[];
+
+/* initialize a table of 0x4d per-node-type entries */
+void fn_00456bd0(void)
+{
+    int i;
+
+    for (i = 0; i < 0x4d; i++)
+        data_00565458[i] = 0;
+    data_00565458[0] = 0;
+    data_00565458[1] = 0;
+    data_00565458[2] = 0;
+    data_00565458[3] = 0;
+    data_00565458[4] = 0;
+    data_00565458[5] = 1;
+    data_00565458[6] = 1;
+    data_00565458[7] = 1;
+    data_00565458[8] = 0;
+    data_00565458[9] = 1;
+    data_00565458[10] = 1;
+    data_00565458[11] = 1;
+    data_00565458[12] = 1;
+    data_00565458[13] = 1;
+    data_00565458[14] = 1;
+    data_00565458[15] = 1;
+    data_00565458[16] = 1;
+    data_00565458[17] = 1;
+    data_00565458[18] = 1;
+    data_00565458[19] = 0;
+    data_00565458[20] = 0;
+    data_00565458[21] = 0;
+    data_00565458[22] = 0;
+    data_00565458[23] = 0;
+    data_00565458[24] = 0;
+    data_00565458[25] = 1;
+    data_00565458[26] = 1;
+    data_00565458[27] = 1;
+    data_00565458[28] = 0;
+    data_00565458[29] = 0;
+    data_00565458[30] = 0;
+    data_00565458[31] = 0;
+    data_00565458[32] = 0;
+    data_00565458[33] = 0;
+    data_00565458[34] = 0;
+    data_00565458[35] = 0;
+    data_00565458[36] = 0;
+    data_00565458[37] = 0;
+    data_00565458[38] = 0;
+    data_00565458[39] = 0;
+    data_00565458[40] = 0;
+    data_00565458[41] = 0;
+    data_00565458[42] = 0;
+    data_00565458[43] = 0;
+    data_00565458[44] = 0;
+    data_00565458[45] = 0;
+    data_00565458[46] = 0;
+    data_00565458[47] = 0;
+    data_00565458[48] = 0;
+    data_00565458[49] = 0;
+    data_00565458[50] = 0;
+    data_00565458[51] = 0;
+    data_00565458[52] = 0;
+    data_00565458[53] = 0;
+    data_00565458[54] = 0;
+    data_00565458[55] = 0;
+    data_00565458[56] = 0;
+    data_00565458[57] = 0;
+    data_00565458[58] = 0;
+    data_00565458[59] = 0;
+    data_00565458[60] = 0;
+    data_00565458[61] = 0;
+    data_00565458[62] = 0;
+    data_00565458[63] = 0;
+    data_00565458[64] = 0;
+    data_00565458[65] = 0;
+    data_00565458[66] = 0;
+    data_00565458[68] = 0;
+    data_00565458[69] = 0;
+    data_00565458[70] = 0;
+    data_00565458[71] = 0;
+    data_00565458[72] = 0;
+    data_00565458[73] = 0;
+    data_00565458[74] = 0;
+    data_00565458[75] = 0;
+    data_00565458[76] = 0;
+}
+#endif
 
 ENode *walk_expr_postorder(ENode *expr)
 {

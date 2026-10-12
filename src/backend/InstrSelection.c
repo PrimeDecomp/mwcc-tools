@@ -24,8 +24,8 @@
 
 struct FunctionCallFrame *function_call_frames;
 struct ObjectList *switch_tables;
-short gUsedVirtualRegistersFPR;
-SInt16 gUsedVirtualRegistersGPR;
+BY_VERSION(short, SInt32) gUsedVirtualRegistersFPR;
+BY_VERSION(SInt16, SInt32) gUsedVirtualRegistersGPR;
 
 typedef void (*DispatchHandler)(unsigned char *input, int argument2, int argument3, struct DispatchResult *output);
 typedef void (*OperandGenFunc)(ENode *node, int a, int b, Operand *out);
@@ -411,6 +411,443 @@ void InstrSelection_EmitSwitchTables(Object *function)
     }
 }
 
+#if VERSION >= VERSION_GC_1_3
+extern void fn_004e23a0(Operand *operand, SInt32 value);
+extern void Operands_SetQual(Operand *op, ENode *e);
+extern Boolean fn_004df030(Object *object);
+extern SInt32 fn_004d0190(Object *object);
+
+void fn_0044c890(ENode *expr, int unused1, int unused2, Operand *operand)
+{
+    Object *object = expr->data.objref;
+    struct {
+        char pad[0x26];
+        SInt16 reg;
+        SInt16 regHi;
+    } *info;
+
+    fn_004e23a0(operand, (SInt32)object);
+    if (fn_004df030(object)) {
+        info = (void *)Registers_GetInfo(object->dwarfLinks.toc);
+        operand->kind = 8;
+        operand->reg = info->reg;
+        operand->regHi = info->regHi;
+        operand->object = object;
+        operand->displacement = fn_004d0190(object);
+        Operands_SetQual(operand, expr);
+    }
+}
+int getbit64(long long value);
+
+/* the bit index of a power of two in the range 1..62, else 0 */
+int fn_004471b0(long long value)
+{
+    int r = getbit64(value);
+    int inRange = r > 0 && r < 0x3f;
+    if (!inRange)
+        r = 0;
+    return r;
+}
+
+/* the bit index of a 64-bit power of two, -1 for 0, else -2 */
+int getbit64(long long value)
+{
+    switch (value) {
+        case 0:
+            return -1;
+        case 0x1LL:
+            return 0;
+        case 0x2LL:
+            return 1;
+        case 0x4LL:
+            return 2;
+        case 0x8LL:
+            return 3;
+        case 0x10LL:
+            return 4;
+        case 0x20LL:
+            return 5;
+        case 0x40LL:
+            return 6;
+        case 0x80LL:
+            return 7;
+        case 0x100LL:
+            return 8;
+        case 0x200LL:
+            return 9;
+        case 0x400LL:
+            return 10;
+        case 0x800LL:
+            return 11;
+        case 0x1000LL:
+            return 12;
+        case 0x2000LL:
+            return 13;
+        case 0x4000LL:
+            return 14;
+        case 0x8000LL:
+            return 15;
+        case 0x10000LL:
+            return 16;
+        case 0x20000LL:
+            return 17;
+        case 0x40000LL:
+            return 18;
+        case 0x80000LL:
+            return 19;
+        case 0x100000LL:
+            return 20;
+        case 0x200000LL:
+            return 21;
+        case 0x400000LL:
+            return 22;
+        case 0x800000LL:
+            return 23;
+        case 0x1000000LL:
+            return 24;
+        case 0x2000000LL:
+            return 25;
+        case 0x4000000LL:
+            return 26;
+        case 0x8000000LL:
+            return 27;
+        case 0x10000000LL:
+            return 28;
+        case 0x20000000LL:
+            return 29;
+        case 0x40000000LL:
+            return 30;
+        case 0x80000000LL:
+            return 31;
+        case 0x100000000LL:
+            return 32;
+        case 0x200000000LL:
+            return 33;
+        case 0x400000000LL:
+            return 34;
+        case 0x800000000LL:
+            return 35;
+        case 0x1000000000LL:
+            return 36;
+        case 0x2000000000LL:
+            return 37;
+        case 0x4000000000LL:
+            return 38;
+        case 0x8000000000LL:
+            return 39;
+        case 0x10000000000LL:
+            return 40;
+        case 0x20000000000LL:
+            return 41;
+        case 0x40000000000LL:
+            return 42;
+        case 0x80000000000LL:
+            return 43;
+        case 0x100000000000LL:
+            return 44;
+        case 0x200000000000LL:
+            return 45;
+        case 0x400000000000LL:
+            return 46;
+        case 0x800000000000LL:
+            return 47;
+        case 0x1000000000000LL:
+            return 48;
+        case 0x2000000000000LL:
+            return 49;
+        case 0x4000000000000LL:
+            return 50;
+        case 0x8000000000000LL:
+            return 51;
+        case 0x10000000000000LL:
+            return 52;
+        case 0x20000000000000LL:
+            return 53;
+        case 0x40000000000000LL:
+            return 54;
+        case 0x80000000000000LL:
+            return 55;
+        case 0x100000000000000LL:
+            return 56;
+        case 0x200000000000000LL:
+            return 57;
+        case 0x400000000000000LL:
+            return 58;
+        case 0x800000000000000LL:
+            return 59;
+        case 0x1000000000000000LL:
+            return 60;
+        case 0x2000000000000000LL:
+            return 61;
+        case 0x4000000000000000LL:
+            return 62;
+    }
+    if (value == 0x8000000000000000LL)
+        return 63;
+    return -2;
+}
+
+/* evaluate a cached operand expression (kind 0x48), computing the operand on first use */
+void fn_00453d50(ENode *expression, SInt16 a, SInt16 b, Operand *result)
+{
+    ENode *child = expression->data.monadic;
+    Operand *cache;
+
+    if (child->type != 0x48)
+        CError_FATAL(252);
+    if (child->data.diadic.right == NULL) {
+        cache = (Operand *)CompilerTools_AllocatePool(sizeof(Operand));
+        memclrw(cache, sizeof(Operand));
+        child->data.diadic.right = (ENode *)cache;
+        data_00560648[child->data.monadic->type](child->data.monadic, 0, 0, cache);
+    }
+    *result = *(Operand *)child->data.diadic.right;
+}
+
+void fn_0044c500(SInt16 opcode, ENode *expression, SInt16 targetReg, Operand *result)
+{
+    Operand operand;
+    SInt32 reg;
+
+    memclrw(&operand, sizeof(operand));
+    data_00560648[expression->type](expression, 0, 0, &operand);
+    if (operand.kind) {
+        Operands_ForceGPR(&operand, expression->rtype, 0);
+    }
+    reg = targetReg ? targetReg : gUsedVirtualRegistersGPR++;
+    PCodeUtilities_EmitInstruction(opcode, reg, operand.reg);
+    result->kind = OpndType_GPR;
+    result->reg = reg;
+}
+/* evaluate both operands of a node, forcing an indirect left operand that was marked for it into a register first */
+void fn_0044fc00(ENode *expression, SInt16 reg, SInt16 reg2, Operand *result)
+{
+    ENode *left = expression->data.diadic.left;
+    ENode *right = expression->data.diadic.right;
+    Type *ty;
+    unsigned char k;
+
+    data_00560648[left->type](left, 0, 0, result);
+    if (left->type == EINDIRECT && (result->flags & 0x80)) {
+        ty = left->rtype;
+        k = ty->type;
+        if (k == TYPEINT || k == TYPEENUM || k == 0xb || k == 0xc || (k == 0xa && *(SInt32 *)((char *)ty + 2) == 4) ||
+            (copts.operandsDebug && k == TYPEFLOAT && ((char *)ty)[6] != 0x13 && *(SInt32 *)((char *)ty + 2) == 4)) {
+            if (result->kind != 0)
+                Operands_ForceGPR(result, ty, 0);
+        } else if (k == TYPEFLOAT && ((char *)ty)[6] != 0x13 && result->kind != 5) {
+            Operands_ForceFPR(result, ty, 0);
+        }
+    }
+    data_00560648[right->type](right, reg, 0, result);
+}
+extern void fn_00444f20(ENode *expression, SInt16 reg, SInt16 reg2, Operand *result);
+
+/* select code for a node whose single operand is either a 64-bit value, an integer constant or a general expression */
+void fn_00451440(ENode *expression, SInt16 reg, SInt16 reg2, Operand *result)
+{
+    ENode *left = expression->data.diadic.left;
+    ENode *right = expression->data.diadic.right;
+    Type *ty;
+
+    ty = expression->rtype;
+    if (copts.operandsDebug && ty->type == TYPEFLOAT && ((char *)ty)[6] != 0x13)
+        CError_FATAL(0x5d2);
+    ty = expression->rtype;
+    if ((ty->type == TYPEINT || ty->type == TYPEENUM) && *(SInt32 *)((char *)ty + 2) == 8) {
+        fn_00444f20(expression, reg, reg2, result);
+        return;
+    }
+    if (right->type == 0x32)
+        InstrSelection_EmitUnaryGPRInstruction(*(SInt16 *)((char *)right + 0x12), NULL, reg, result);
+    else
+        ((void (*)(short, ENode *, short, Operand *))InstrSelection_EmitBinaryGPRInstruction)(0x6a, right, reg, result);
+}
+#define IS_SMALL_INT_CONST(n) \
+    ((n)->type == 0x32 && (n)->rtype->type == TYPEINT && *(SInt32 *)((char *)(n)->rtype + 2) <= 4)
+
+/* classify a pair of operands: bit 0/1 = left/right is a small integer constant; 5/6 = that constant is zero;
+ * 4 = both constants differ by one */
+int fn_0044edc0(ENode *left, ENode *right)
+{
+    int r = 0;
+
+    if (IS_SMALL_INT_CONST(left))
+        r += 1;
+    if (IS_SMALL_INT_CONST(right))
+        r += 2;
+    if ((r & 1) && IS_SMALL_INT_CONST(left) && *(SInt32 *)((char *)left + 0x12) == 0)
+        return 5;
+    if ((r & 2) && IS_SMALL_INT_CONST(right) && *(SInt32 *)((char *)right + 0x12) == 0)
+        return 6;
+    if (r == 3) {
+        SInt32 d = *(SInt32 *)((char *)left + 0x12) - *(SInt32 *)((char *)right + 0x12);
+        if (d == 1 || d == -1)
+            return 4;
+    }
+    return r;
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+extern Boolean fn_004ddc20(void *data, Type *type, void *out);
+
+/* materialise a vector constant in vector register `vr` (splatting from an immediate or via a GPR) */
+void fn_00444410(ENode *e, SInt16 vr, int unused, Operand *out)
+{
+    struct {
+        SInt16 direct;
+        SInt16 viaGPR;
+        SInt8 imm;
+    } form;
+    SInt32 reg;
+    SInt32 tmp;
+
+    if (vr != 0)
+        reg = vr;
+    else
+        reg = gUsedVirtualRegistersVR++;
+    if (!fn_004ddc20((char *)e + 0xe, e->rtype, &form))
+        CError_FATAL(0x2568);
+    if (form.direct != -1) {
+        PCodeUtilities_EmitInstruction(form.direct, reg, form.imm);
+        out->kind = 6;
+        out->reg = reg;
+        return;
+    } else if (form.viaGPR != -1) {
+        tmp = gUsedVirtualRegistersGPR++;
+        PCodeUtilities_EmitInstruction(0x89, tmp, form.imm);
+        PCodeUtilities_EmitInstruction(form.viaGPR, reg, 0, tmp);
+        out->kind = 6;
+        out->reg = reg;
+        return;
+    } else {
+        CError_FATAL(0x2578);
+    }
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+extern SInt32 gVirtualRegistersActive;
+extern SInt16 data_005e6cfa;
+extern SInt16 data_005e70e0;
+extern PCodeInstruction *data_005dccc2;
+
+/* register holding the base address for an object's section: small-data base or a lazily created virtual copy */
+int fn_004f5df0(Object *obj)
+{
+    SInt32 reg;
+
+    if (obj->u.var.info->flags & 1) {
+        if (gVirtualRegistersActive && data_005e6cfa == -1) {
+            reg = gUsedVirtualRegistersGPR++;
+            data_005e6cfa = reg;
+            data_005dccc2 = PCodeUtilities_CreateInstruction(0x22, data_005e6cfa, 1, 0, 0);
+            PCode_AppendInstruction(prologueBlock, data_005dccc2);
+        }
+        return data_005e6cfa;
+    }
+    return data_005e70e0;
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+#if VERSION >= VERSION_GC_1_3
+#define data_005e7138 (*(UInt8 *)((char *)&copts + 0x56))
+#else
+extern UInt8 data_005e7138;
+#endif
+extern void fn_0050e3d0(int arg0, SInt16 reg, Operand *operand, int displacement, int secondReg, int arg5);
+
+typedef struct PackedValue13 {
+    char pad[2];
+    int value;
+} PackedValue13;
+
+void fn_0050e350(int arg0, Operand *operand, PackedValue13 *other, int arg3)
+{
+    int reg;
+
+    Operands_Normalize(operand);
+    if (operand->kind == 10) {
+        reg = gUsedVirtualRegistersGPR++;
+        Operands_EmitAddress(reg, operand);
+        operand->kind = 9;
+        operand->reg = reg;
+        operand->object = NULL;
+        operand->displacement = 0;
+    }
+    if (data_005e7138 != 0)
+        arg3 = 4;
+    fn_0050e3d0(arg0, operand->reg, operand, operand->displacement, other->value, arg3);
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+extern void fn_00452ff0();
+extern void fn_00452a50();
+extern void fn_0044fdb0();
+extern void fn_0044f1e0();
+extern void fn_0044d490();
+extern void fn_0044c930();
+
+/* fill the table of per-node-type expression generators */
+#pragma opt_unroll_loops off
+void fn_00453e10(void)
+{
+    BY_VERSION(UInt8, ENodeType) i;
+
+    i = 0;
+    while (i <= 0x4d) {
+        data_00560648[i] = (void *)fn_004b5ce0;
+        i++;
+    }
+    data_00560648[0] = (void *)generate_postinc_postdec;
+    data_00560648[1] = (void *)generate_postinc_postdec;
+    data_00560648[4] = (void *)select_indirect_operand;
+    data_00560648[5] = (void *)fn_00452ff0;
+    data_00560648[6] = (void *)emit_bitwise_not;
+    data_00560648[7] = (void *)generate_boolean_expression;
+    data_00560648[8] = (void *)force_monadic_operand_register;
+    data_00560648[9] = (void *)fn_00452a50;
+    data_00560648[11] = (void *)generate_division;
+    data_00560648[12] = (void *)generate_modulo;
+    data_00560648[15] = (void *)emit_add;
+    data_00560648[16] = (void *)select_subtraction;
+    data_00560648[17] = (void *)fn_00451440;
+    data_00560648[18] = (void *)select_right_shift;
+    data_00560648[19] = (void *)generate_comparison;
+    data_00560648[20] = (void *)generate_comparison;
+    data_00560648[21] = (void *)generate_comparison;
+    data_00560648[22] = (void *)generate_comparison;
+    data_00560648[23] = (void *)generate_comparison;
+    data_00560648[24] = (void *)generate_comparison;
+    data_00560648[25] = (void *)emit_bitwise_and;
+    data_00560648[26] = (void *)gen_xor;
+    data_00560648[27] = (void *)select_or;
+    data_00560648[28] = (void *)generate_boolean_expression;
+    data_00560648[29] = (void *)generate_boolean_expression;
+    data_00560648[30] = (void *)fn_0044fdb0;
+    data_00560648[41] = (void *)fn_0044fc00;
+    data_00560648[48] = (void *)fn_0044f1e0;
+    data_00560648[49] = (void *)report_fatal_error;
+    data_00560648[50] = (void *)make_intval_operand;
+    data_00560648[51] = (void *)load_float_constant;
+    data_00560648[52] = (void *)fn_004b6530;
+    data_00560648[53] = (void *)fn_0044d490;
+    data_00560648[54] = (void *)generate_intrinsic_or_function_call;
+    data_00560648[55] = (void *)generate_intrinsic_or_function_call;
+    data_00560648[56] = (void *)fn_0044c890;
+    data_00560648[58] = (void *)emit_conditional_funccall;
+    data_00560648[59] = (void *)get_function_type_operand;
+    data_00560648[72] = (void *)get_dispatch_result;
+    data_00560648[73] = (void *)fn_00453d50;
+    data_00560648[75] = (void *)fn_00444410;
+    data_00560648[76] = (void *)fn_0044c930;
+}
+#pragma opt_unroll_loops reset
+#endif
+
 void get_dispatch_result(struct DeferredDispatch *dispatch, unsigned int argument2, unsigned int argument3,
                          struct DispatchResult *output)
 {
@@ -418,6 +855,9 @@ void get_dispatch_result(struct DeferredDispatch *dispatch, unsigned int argumen
 
     if (dispatch->result == NULL) {
         result = (struct DispatchResult *)lalloc(sizeof(struct DispatchResult));
+#if VERSION >= VERSION_GC_1_3
+        memclrw(result, sizeof(struct DispatchResult));
+#endif
         dispatch->result = result;
         data_00560648[*dispatch->input](dispatch->input, 0, 0, result);
     }
@@ -573,6 +1013,128 @@ void generate_postinc_postdec(ENode *expr, SInt32 outputReg, SInt32 outputRegHi,
     }
 }
 
+#if VERSION >= VERSION_GC_1_3
+extern Boolean fn_004df030(Object *object);
+extern SInt32 fn_004d0190(Object *object);
+extern void Operands_SetQual(Operand *op, ENode *e);
+
+#define SIO_IS_FLOAT(t) ((t)->type == TYPEFLOAT && ((t)->type != TYPEFLOAT || ((TypeIntegral *)(t))->integral != 0x13))
+#define SIO_IS_POINTER(t) (((t)->type == TYPEPOINTER || (t)->type == TYPEARRAY) && (t)->type != TYPEARRAY)
+
+struct VarInfo13 {
+    char pad[0x25];
+    UInt8 regClass;
+    SInt16 reg;
+    SInt16 regHi;
+};
+
+void select_indirect_operand(ENode *expression, int targetReg, int flags, Operand *result)
+{
+    Object *object;
+    Type *type;
+    short sourceReg;
+    int structKind;
+    struct VarInfo13 *registerInfo;
+    int highReg;
+    ENode *value;
+    int offset;
+    unsigned char kind;
+    unsigned char valueKind;
+    Operand operand;
+    SInt32 displacement;
+
+    type = expression->rtype;
+    value = expression->data.monadic;
+    if (value->type == EOBJREF && fn_004df030(value->data.objref)) {
+        Operand *out = result;
+        object = value->data.objref;
+        registerInfo = (struct VarInfo13 *)Registers_GetInfo(object->dwarfLinks.toc);
+        out->kind = OpndType_IndirectSymbol;
+        out->reg = registerInfo->reg;
+        out->regHi = registerInfo->regHi;
+        out->object = object;
+        out->displacement = fn_004d0190(object);
+        Operands_SetQual(out, expression);
+        return;
+    }
+    if (copts.operandsDebug != 0 && SIO_IS_FLOAT(type)) {
+        SFPE_PPC_EABI_GenerateMonadicOperand(expression, targetReg, flags, result);
+        return;
+    }
+    if ((type->type == TYPEINT || type->type == TYPEENUM) && type->size == 8) {
+        select_monadic_operand(expression, targetReg, flags, result);
+        return;
+    }
+    memclrw(&operand, sizeof(operand));
+    if (value->type == EOBJREF &&
+        (Registers_GetInfo(value->data.objref) != NULL
+             ? (((struct VarInfo13 *)Registers_GetInfo(value->data.objref))->reg)
+             : 0) != 0) {
+        registerInfo = (struct VarInfo13 *)Registers_GetInfo(value->data.objref);
+        switch (registerInfo->regClass) {
+            case 1:
+                result->kind = OpndType_GPR;
+                break;
+            case 2:
+                result->kind = OpndType_FPR;
+                break;
+            case 3:
+                result->kind = OpndType_VR;
+                break;
+            case 4:
+                result->kind = OpndType_CRField;
+                break;
+            default:
+                CError_FATAL(460);
+        }
+        result->reg = registerInfo->reg;
+        result->object = NULL;
+    } else {
+        if (value->type == EBITFIELD) {
+            kind = value->data.monadic->type;
+            data_00560648[kind](value->data.monadic, 0, 0, &operand);
+            Operands_MakeIndirect(&operand, expression);
+            if (operand.kind != OpndType_GPR) {
+                Operands_ForceGPR(&operand, type, 0);
+            }
+            Operands_ExtractBitfield(&operand, TYPE_BITFIELD(value->rtype), targetReg, result);
+        } else if (InstrSelection_MatchPostIncDecRegister(value, &operand, &displacement) != 0 &&
+                   (type->type == TYPEINT || type->type == TYPEENUM || SIO_IS_POINTER(type) ||
+                    type->type == TYPEMEMBERPOINTER && type->size == 4 || SIO_IS_FLOAT(type) ||
+                    type->type == TYPESTRUCT && (structKind = TYPE_STRUCT(type)->stype) >= 4 && structKind <= 14)) {
+            Operands_MakeIndirect(&operand, expression);
+            *result = operand;
+            if (type->type == TYPEINT || type->type == TYPEENUM || SIO_IS_POINTER(type) ||
+                type->type == TYPEMEMBERPOINTER && type->size == 4) {
+                if (result->kind != OpndType_GPR) {
+                    Operands_ForceGPR(result, type, targetReg);
+                }
+            } else if (SIO_IS_FLOAT(type)) {
+                if (result->kind != OpndType_FPR) {
+                    Operands_ForceFPR(result, type, targetReg);
+                }
+            } else if (result->kind != OpndType_VR) {
+                Operands_ForceVR(result, type, targetReg);
+            }
+            offset = displacement;
+            sourceReg = operand.reg;
+            if (displacement != (short)displacement) {
+                PCodeUtilities_EmitInstruction(66, highReg = operand.reg, sourceReg, 0,
+                                               (short)((offset >> 16) + (offset >> 15 & 1)));
+                if ((short)offset != 0) {
+                    PCodeUtilities_EmitInstruction(63, highReg, highReg, 0, (short)offset);
+                }
+            } else {
+                PCodeUtilities_EmitInstruction(63, operand.reg, sourceReg, 0, offset);
+            }
+        } else {
+            valueKind = value->type;
+            data_00560648[valueKind](value, 0, 0, result);
+            Operands_MakeIndirect(result, expression);
+        }
+    }
+}
+#else
 void select_indirect_operand(ENode *expression, int targetReg, int flags, Operand *result)
 {
     Type *type;
@@ -658,6 +1220,7 @@ void select_indirect_operand(ENode *expression, int targetReg, int flags, Operan
         }
     }
 }
+#endif
 
 void emit_negation(ENode *node, SInt16 targetReg, SInt16 targetHighReg, Operand *out)
 {
@@ -801,12 +1364,15 @@ void force_monadic_operand_register(ENode *expr, short outputReg, short outputRe
         else if (output->kind)
             Operands_ForceGPR(output, inner->rtype, outputReg);
     } else {
-        CError_ASSERT(610, inner->rtype->type == TYPEVOID ||
+        CError_ASSERT(BY_VERSION(610, 685), inner->rtype->type == TYPEVOID ||
                                ((inner->rtype->type == TYPESTRUCT || inner->rtype->type == TYPECLASS) &&
                                 !Type_RequiresMemoryReturn(inner->rtype)));
     }
 }
 
+#if VERSION >= VERSION_GC_1_3
+#pragma defer_codegen off
+#endif
 void emit_multiply(ENode *node, SInt16 dstreg, SInt16 src, Operand *result)
 {
     Type *type;
@@ -930,7 +1496,13 @@ void emit_multiply(ENode *node, SInt16 dstreg, SInt16 src, Operand *result)
         }
     } while (0);
 }
+#if VERSION >= VERSION_GC_1_3
+#pragma defer_codegen reset
+#endif
 
+#if VERSION >= VERSION_GC_1_3
+#pragma defer_codegen off
+#endif
 void compute_signed_division_multiplier_shift(SInt32 divisor, ConstInfo2 *magic)
 {
     int exponent;
@@ -939,6 +1511,10 @@ void compute_signed_division_multiplier_shift(SInt32 divisor, ConstInfo2 *magic)
     UInt32 adjustedNumerator;
     const UInt32 two31 = 0x80000000;
 
+#if VERSION >= VERSION_GC_1_3
+    if (divisor == 0)
+        CError_FatalError(ERR_DIVISION_BY_0);
+#endif
     absoluteDivisor = abs(divisor);
     adjustedNumerator = two31 + ((UInt32)divisor >> 31);
     criticalDivisor = adjustedNumerator - 1 - adjustedNumerator % absoluteDivisor;
@@ -963,11 +1539,18 @@ void compute_signed_division_multiplier_shift(SInt32 divisor, ConstInfo2 *magic)
         }
         delta = absoluteDivisor - divisorRemainder;
     } while (criticalQuotient < delta || (criticalQuotient == delta && criticalRemainder == 0));
+#if VERSION >= VERSION_GC_1_3
+    (magic->multiplier = divisorQuotient + 1, divisor < 0) ? (magic->multiplier = -magic->multiplier) : 0;
+#else
     magic->multiplier = divisorQuotient + 1;
     if (divisor < 0)
         magic->multiplier = -magic->multiplier;
+#endif
     magic->shift = exponent - 32;
 }
+#if VERSION >= VERSION_GC_1_3
+#pragma defer_codegen reset
+#endif
 
 void compute_unsigned_division_parameters(unsigned int divisor, struct DivisionParameters *parameters)
 {
@@ -1452,9 +2035,15 @@ void generate_left_shift(ENode *expr, short outputReg, short outputRegHi, Operan
 
 void select_right_shift(ENode *expr, short outputReg, short outputRegHi, Operand *output)
 {
+#if VERSION >= VERSION_GC_1_3
+    ENode *left;
+    ENode *right;
+    Type *type;
+#else
     Type *type;
     ENode *left;
     ENode *right;
+#endif
     Operand op;
     short shift;
     int reg;
@@ -1463,6 +2052,18 @@ void select_right_shift(ENode *expr, short outputReg, short outputRegHi, Operand
     right = expr->data.diadic.right;
     type = expr->rtype;
 
+#if VERSION >= VERSION_GC_1_3
+    if (copts.operandsDebug && type->type == TYPEFLOAT) {
+        if (type->type != TYPEFLOAT || ((TypeIntegral *)type)->integral != 0x13) {
+            CError_FATAL(1530);
+            return;
+        }
+    }
+    if ((type->type == TYPEINT || type->type == TYPEENUM) && type->size == 8) {
+        fn_00444f20(expr, outputReg, outputRegHi, output);
+        return;
+    }
+#else
     if (copts.operandsDebug && type->type == TYPEFLOAT) {
         CError_FATAL(1403);
         return;
@@ -1471,6 +2072,7 @@ void select_right_shift(ENode *expr, short outputReg, short outputRegHi, Operand
         generate_gpr_pair_shift(expr, outputReg, outputRegHi, output);
         return;
     }
+#endif
     if (right->type == EINTCONST) {
         shift = right->data.intval.lo;
         memclrw(&op, sizeof(Operand));
@@ -1478,11 +2080,21 @@ void select_right_shift(ENode *expr, short outputReg, short outputRegHi, Operand
         if (op.kind)
             Operands_ForceGPR(&op, (Type *)left->rtype, 0);
         reg = outputReg ? outputReg : gUsedVirtualRegistersGPR++;
+#if VERSION >= VERSION_GC_1_3
+        if (Type_IsUnsigned(type)) {
+            shift &= 31;
+            PCodeUtilities_EmitInstruction(PC_RLWINM, reg, op.reg, (32 - shift) & 31, 32 - type->size * 8 + shift, 31);
+        } else {
+            shift &= 31;
+            PCodeUtilities_EmitInstruction(PC_SRAWI, reg, op.reg, shift);
+        }
+#else
         shift &= 31;
         if (is_unsigned(type))
             PCodeUtilities_EmitInstruction(PC_RLWINM, reg, op.reg, 32 - shift, 32 - type->size * 8 + shift, 31);
         else
             PCodeUtilities_EmitInstruction(PC_SRAWI, reg, op.reg, shift);
+#endif
         output->kind = OpndType_GPR;
         output->reg = reg;
     } else {
@@ -1612,6 +2224,10 @@ void emit_bitwise_and(ENode *node, SInt16 outputReg, SInt16 outputRegHi, Operand
         InstrSelection_EmitBinaryGPRInstruction(PC_AND, left, right, outputReg, output);
     } while (0);
 }
+
+#if VERSION >= VERSION_GC_1_3
+extern void fn_00444f20(ENode *expression, SInt16 reg, SInt16 reg2, Operand *result);
+#endif
 
 void gen_xor(ENode *expr, short outputReg, short outputRegHi, Operand *output)
 {
@@ -1938,7 +2554,7 @@ void generate_type_conversion(ENode *node, short outputReg, short outputRegHi, O
 
 void report_fatal_error(void)
 {
-    CError_FATAL(1933);
+    CError_FATAL(BY_VERSION(1933, 2478));
 }
 
 /* Register-pair or pointer result of instruction selection. */
@@ -1969,13 +2585,13 @@ void load_float_constant(ENode *node, unsigned int regA, unsigned int regB, Oper
     if (copts.operandsDebug) {
         SFPE_PPC_EABI_LoadFloatConstant(node, regA, regB, out);
     } else {
-        CError_FATAL(1982);
+        CError_FATAL(BY_VERSION(1982, 2534));
     }
 }
 
 void fn_004b6530(void)
 {
-    CError_FATAL(1996);
+    CError_FATAL(BY_VERSION(1996, 2548));
 }
 
 void generate_conditional_expression(ENode *node, SInt16 outputReg, SInt16 outputRegHi, Operand *output)
@@ -2155,7 +2771,7 @@ void make_objref_operand(ENode *node, unsigned int unused1, unsigned int unused2
 
 unsigned int fn_004b5ce0(void)
 {
-    CError_FATAL(2298);
+    CError_FATAL(BY_VERSION(2298, 4400));
 }
 
 void InstrSelection_EmitBinaryGPRInstruction(short opcode, ENode *left, ENode *right, short outputReg, Operand *output)
@@ -2350,12 +2966,19 @@ void InstrSelection_EmitUnaryFPRInstruction(SInt16 opcode, ENode *node, SInt16 r
     data_00560648[node->type](node, 0, 0, &op);
     if (op.kind != OpndType_FPR)
         Operands_ForceFPR(&op, node->rtype, 0);
+#if VERSION >= VERSION_GC_1_3
+    virtualRegister = reg ? reg : gUsedVirtualRegistersFPR++;
+#else
     virtualRegister = (SInt16)(reg ? reg : gUsedVirtualRegistersFPR++);
+#endif
     PCodeUtilities_EmitInstruction(opcode, virtualRegister, op.reg);
     res->kind = OpndType_FPR;
     res->reg = virtualRegister;
 }
 
+#if VERSION >= VERSION_GC_1_3
+#pragma defer_codegen off
+#endif
 void InstrSelection_EmitThreeOperandFPRInstruction(SInt16 opcode, ENode *left, ENode *middle, ENode *right,
                                                    SInt16 targetReg, Operand *result)
 {
@@ -2390,15 +3013,22 @@ void InstrSelection_EmitThreeOperandFPRInstruction(SInt16 opcode, ENode *left, E
         }
     }
 
+#if VERSION >= VERSION_GC_1_3
+    resultReg = targetReg ? targetReg : gUsedVirtualRegistersFPR++;
+#else
     if (targetReg != 0)
         virtualReg = targetReg;
     else
         virtualReg = gUsedVirtualRegistersFPR++;
     resultReg = virtualReg;
+#endif
     PCodeUtilities_EmitInstruction(opcode, resultReg, leftOperand.reg, middleOperand.reg, rightOperand.reg);
     result->kind = OpndType_FPR;
     result->reg = resultReg;
 }
+#if VERSION >= VERSION_GC_1_3
+#pragma defer_codegen reset
+#endif
 
 void generate_comparison(ENode *expr, SInt32 requestedReg, SInt32 requestedRegHi, Operand *output)
 {
@@ -2491,7 +3121,7 @@ void generate_boolean_expression(ENode *expression, int unused1, int unused2, Op
             intermediateReg = gUsedVirtualRegistersGPR;
             gUsedVirtualRegistersGPR += 1;
             if (result->kind != OpndType_GPR)
-                CError_FATAL(2902);
+                CError_FATAL(BY_VERSION(2902, 5093));
             PCodeUtilities_EmitInstruction(PC_CNTLZW, intermediateReg, result->reg);
             PCodeUtilities_EmitInstruction(PC_RLWINM, resultReg, intermediateReg, 27, 5, 31);
             result->kind = OpndType_GPR;
@@ -2530,7 +3160,7 @@ void generate_boolean_expression(ENode *expression, int unused1, int unused2, Op
             temporaryReg = gUsedVirtualRegistersGPR;
             gUsedVirtualRegistersGPR += 1;
             if (result->kind != OpndType_GPR)
-                CError_FATAL(2932);
+                CError_FATAL(BY_VERSION(2932, 5123));
             PCodeUtilities_EmitInstruction(PC_CNTLZW, temporaryReg, result->reg);
             PCodeUtilities_EmitInstruction(PC_RLWINM, negatedReg, temporaryReg, 27, 5, 31);
             result->kind = OpndType_GPR;
@@ -2685,7 +3315,7 @@ void generate_condition_branches(ENode *expr, PCodeLabel *trueLabel, PCodeLabel 
             break;
         }
         default:
-            CError_FATAL(3220);
+            CError_FATAL(BY_VERSION(3220, 5400));
             break;
     }
 }
@@ -3211,7 +3841,7 @@ void emit_cmpli_with_addis(SInt16 condition, ENode *node, SInt32 immediate, Oper
         Operands_ForceGPR(&operand, node->rtype, 0);
     tempReg = gUsedVirtualRegistersGPR++;
     PCodeUtilities_EmitInstruction(PC_ADDIS, tempReg, operand.reg, 0, low_word(~(immediate >> 16) + 1));
-    PCodeUtilities_EmitInstruction(PC_CMPLI, 0, tempReg, low_word(immediate));
+    PCodeUtilities_EmitInstruction(PC_CMPLI, 0, tempReg, BY_VERSION(low_word(immediate), (UInt16)low_word(immediate)));
     if (postIncDec) {
         SInt16 lowAdjustment = increment;
         SInt32 adjustment = increment;
@@ -3235,9 +3865,8 @@ int is_contiguous_mask(unsigned int mask, short *firstBit, short *lastBit)
     int last;
     int bit;
 
-    last = -1;
+    first = last = -1;
     bit = 31;
-    first = -1;
     do {
         if (mask & 1) {
             if (first != -1) {
@@ -3303,7 +3932,11 @@ int InstrSelection_MatchPostIncDecRegister(ENode *node, Operand *info, SInt32 *s
                     : 0))
         return 0;
 
+#if VERSION >= VERSION_GC_1_3
+    if (IS_TYPE_POINTER(rtype)) {
+#else
     if (rtype->type == TYPEPOINTER) {
+#endif
         if (node->type == EPOSTINC)
             *size = TYPE_POINTER(rtype)->target->size;
         else
@@ -3445,7 +4078,7 @@ void gen_xor_reg_pair(ENode *node, SInt16 reg1, SInt16 reg2, Operand *result)
     }
 
     if (opL.kind != OpndType_GPRPair || opR.kind != OpndType_GPRPair)
-        CError_FATAL(4345);
+        CError_FATAL(BY_VERSION(4345, 7534));
 
     if (reg1)
         rlo = reg1;
@@ -3493,7 +4126,7 @@ void emit_gpr_pair_or(ENode *node, SInt16 reg1, SInt16 reg2, Operand *out)
     }
 
     if (res1.kind != OpndType_GPRPair || res2.kind != OpndType_GPRPair)
-        CError_FATAL(4399);
+        CError_FATAL(BY_VERSION(4399, 7584));
 
     reg1 = (reg1 != 0) ? reg1 : gUsedVirtualRegistersGPR++;
     reg2 = (reg2 != 0) ? reg2 : gUsedVirtualRegistersGPR++;
@@ -3535,7 +4168,7 @@ void emit_gpr_pair_and(ENode *node, SInt16 reg1, SInt16 reg2, Operand *result)
             Operands_ForceGPRPair(&rightOperand, right->rtype, 0, 0);
     }
     if (leftOperand.kind != OpndType_GPRPair || rightOperand.kind != OpndType_GPRPair)
-        CError_FATAL(4453);
+        CError_FATAL(BY_VERSION(4453, 7634));
     if (reg1)
         resultReg = reg1;
     else
@@ -3815,7 +4448,7 @@ void InstrSelection_GenerateLongLongComparison(ENode *expr, Operand *result, SIn
     }
 
     if (leftOperand.kind != OpndType_GPRPair || rightOperand.kind != OpndType_GPRPair)
-        CError_FATAL(4939);
+        CError_FATAL(BY_VERSION(4939, 8998));
 
     switch (expr->type) {
         case EEQU:
@@ -3914,7 +4547,7 @@ void InstrSelection_GenerateLongLongComparison(ENode *expr, Operand *result, SIn
             break;
 
         default:
-            CError_FATAL(5049);
+            CError_FATAL(BY_VERSION(5049, 9108));
     }
 }
 
@@ -3954,11 +4587,11 @@ void generate_gpr_pair_shift(ENode *node, short outputReg, short outputRegHi, Op
 
     if (node->type == ESHR) {
         if (is_unsigned(left->rtype))
-            PCodeUtilities_EmitObjectInstructionWithPayload(data_00587ff0, 0, 0x38, 0, 0);
+            PCodeUtilities_EmitObjectInstructionWithRegisterMasks(data_00587ff0, 0, 0x38, 0, 0);
         else
-            PCodeUtilities_EmitObjectInstructionWithPayload(data_00587ff4, 0, 0x38, 0, 0);
+            PCodeUtilities_EmitObjectInstructionWithRegisterMasks(data_00587ff4, 0, 0x38, 0, 0);
     } else if (node->type == ESHL) {
-        PCodeUtilities_EmitObjectInstructionWithPayload(data_00587fec, 0, 0x38, 0, 0);
+        PCodeUtilities_EmitObjectInstructionWithRegisterMasks(data_00587fec, 0, 0x38, 0, 0);
     } else {
         CError_FATAL(5116);
     }
@@ -4006,14 +4639,14 @@ void generate_gpr_pair_division_or_modulo(ENode *node, SInt16 requestedReg, SInt
 
     if (node->type == EDIV) {
         if (is_unsigned(left->rtype) || is_unsigned(right->rtype))
-            PCodeUtilities_EmitObjectInstructionWithPayload(data_00588038, 0, 0x78, 0, 0);
+            PCodeUtilities_EmitObjectInstructionWithRegisterMasks(data_00588038, 0, 0x78, 0, 0);
         else
-            PCodeUtilities_EmitObjectInstructionWithPayload(data_0058803c, 0, 0x78, 0, 0);
+            PCodeUtilities_EmitObjectInstructionWithRegisterMasks(data_0058803c, 0, 0x78, 0, 0);
     } else if (node->type == EMODULO) {
         if (is_unsigned(left->rtype) || is_unsigned(right->rtype))
-            PCodeUtilities_EmitObjectInstructionWithPayload(data_00588078, 0, 0x78, 0, 0);
+            PCodeUtilities_EmitObjectInstructionWithRegisterMasks(data_00588078, 0, 0x78, 0, 0);
         else
-            PCodeUtilities_EmitObjectInstructionWithPayload(data_0058808c, 0, 0x78, 0, 0);
+            PCodeUtilities_EmitObjectInstructionWithRegisterMasks(data_0058808c, 0, 0x78, 0, 0);
     } else {
         CError_FATAL(5191);
     }
@@ -4053,10 +4686,10 @@ void generate_gpr_pair_type_conversion(ENode *node, SInt16 reg1, SInt16 reg2, Op
             if (result->reg != return_gpr_first)
                 PCodeUtilities_EmitInstruction(PC_MR, return_gpr_first, result->reg);
             if (is_unsigned(operandType))
-                PCodeUtilities_EmitObjectInstructionWithPayload(
+                PCodeUtilities_EmitObjectInstructionWithRegisterMasks(
                     (conversionType->size == 4) ? data_00587eac : data_00587eb4, 0, 0x18, 0, 0);
             else
-                PCodeUtilities_EmitObjectInstructionWithPayload(
+                PCodeUtilities_EmitObjectInstructionWithRegisterMasks(
                     (conversionType->size == 4) ? data_00587edc : data_00587ee4, 0, 0x18, 0, 0);
             result->kind = OpndType_FPR;
             result->reg = gUsedVirtualRegistersFPR++;
@@ -4095,7 +4728,7 @@ void generate_gpr_pair_type_conversion(ENode *node, SInt16 reg1, SInt16 reg2, Op
             Operands_ForceFPR(result, operandType, 0);
         if ((int)result->reg != 1)
             PCodeUtilities_EmitInstruction(PC_FMR, 1, result->reg);
-        PCodeUtilities_EmitObjectInstructionWithPayload(data_00587e68, 0, 0, 2, 0);
+        PCodeUtilities_EmitObjectInstructionWithRegisterMasks(data_00587e68, 0, 0, 2, 0);
         result->kind = OpndType_GPRPair;
         result->reg = gUsedVirtualRegistersGPR++;
         result->regHi = gUsedVirtualRegistersGPR++;

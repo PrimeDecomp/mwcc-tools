@@ -17,14 +17,20 @@
 #include "compiler/StackFrameEABI.h"
 #include <string.h>
 
+#if VERSION >= VERSION_GC_1_3
+#define REGINFO_FILE "RegisterInfo.c"
+#else
+#define REGINFO_FILE CERROR_FILE
+#endif
+
 SInt32 gUseVirtualRegisterNumbers_00587f00;
-short gFPRCoalesceLast;
-short gGPRCoalesceLast;
+BY_VERSION(short, SInt32) gFPRCoalesceLast;
+BY_VERSION(short, SInt32) gGPRCoalesceLast;
 short gInitialObjectVRLast;
 short gVRCounterCheckpoint;
 short gInitialObjectFPRLast;
 short gAvailableSavedFPRs;
-short gVRCoalesceLast;
+BY_VERSION(short, SInt32) gVRCoalesceLast;
 short gFPRCounterCheckpoint;
 short gGPRCounterCheckpoint;
 SInt16 gAvailableSavedVRs;
@@ -154,7 +160,7 @@ static SInt16 Registers_FindFreeGPR(void)
     SInt32 i = 31;
     do {
         if (gUsedPhysicalGPR[i] == 0) {
-            Registers_BindGPR(NULL, i);
+            REGISTERS_BIND_GPR(NULL, i);
             return (SInt16)i;
         }
         i--;
@@ -189,7 +195,7 @@ void Registers_InitRegisterState(void)
     }
     gUsedPhysicalGPR[1] = 2;
     gUsedPhysicalGPR[2] = 2;
-    Registers_BindGPR(NULL, 0xd);
+    REGISTERS_BIND_GPR(NULL, 0xd);
     gUsedPhysicalGPR[13] = 2;
     {
         SInt32 usevrs = 0;
@@ -206,7 +212,7 @@ void Registers_InitRegisterState(void)
 void Registers_SetupStackBaseReg(void)
 {
     if (data_0058852d != 0U) {
-        Registers_BindGPR(NULL, 31);
+        REGISTERS_BIND_GPR(NULL, 31);
         stack_base_reg = 31U;
     } else {
         stack_base_reg = 1U;
@@ -252,7 +258,7 @@ void Registers_AllocateGPR(Object *obj)
         i = 0x1f;
         for (;;) {
             if (gUsedPhysicalGPR[i] == 0) {
-                Registers_BindGPR(NULL, i);
+                REGISTERS_BIND_GPR(NULL, i);
                 break;
             }
             if (--i < 0xe) {
@@ -271,6 +277,7 @@ void Registers_AllocateGPR(Object *obj)
         info->reg = reg;
 }
 
+#if VERSION < VERSION_GC_1_3
 void Registers_AllocateGPRPair(Object *obj)
 {
     SInt16 reg1;
@@ -316,6 +323,7 @@ void Registers_AllocateGPRPair(Object *obj)
         info->regHi = reg2;
     }
 }
+#endif
 
 void Registers_AllocateFPR(Object *obj)
 {
@@ -416,7 +424,7 @@ void Registers_AllocateVR(Object *obj)
         i = 31;
         for (;;) {
             if (gUsedPhysicalVR[i] == 0) {
-                Registers_BindVR(NULL, i);
+                REGISTERS_BIND_VR(NULL, i);
                 reg = (SInt16)i;
                 break;
             }
@@ -433,6 +441,7 @@ void Registers_AllocateVR(Object *obj)
         vr->reg = reg;
 }
 
+#if VERSION < VERSION_GC_1_3
 void Registers_BindGPR(Object *obj, SInt16 reg)
 {
     SInt32 i;
@@ -489,7 +498,9 @@ void Registers_BindGPR(Object *obj, SInt16 reg)
             info->is_fpr = 1;
     }
 }
+#endif
 
+#if VERSION < VERSION_GC_1_3
 void Registers_BindGPRPair(Object *obj, SInt16 reg0, SInt16 reg1)
 {
     VarInfo *info;
@@ -532,6 +543,7 @@ void Registers_BindGPRPair(Object *obj, SInt16 reg0, SInt16 reg1)
             info->is_fpr = 1;
     }
 }
+#endif
 
 void Registers_BindFPR(Object *obj, SInt16 regnum)
 {
@@ -577,6 +589,7 @@ void Registers_BindFPR(Object *obj, SInt16 regnum)
     }
 }
 
+#if VERSION < VERSION_GC_1_3
 void Registers_BindVR(Object *obj, short vr)
 {
     if (gUsedPhysicalVR[vr] == 0) {
@@ -631,6 +644,7 @@ void Registers_BindVR(Object *obj, short vr)
         regs->reg = vr;
     }
 }
+#endif
 
 int Registers_AvailableGPRs(void)
 {
@@ -667,7 +681,7 @@ short Coloring_ClaimGPRColor(void)
     int reg;
     for (reg = 31; reg >= 14; --reg) {
         if (gUsedPhysicalGPR[reg] == 0) {
-            Registers_BindGPR(NULL, reg);
+            REGISTERS_BIND_GPR(NULL, reg);
             return reg;
         }
     }
@@ -693,7 +707,7 @@ short Coloring_ClaimVRColor(void)
 
     for (color = 31; color >= 20; --color) {
         if (gUsedPhysicalVR[color] == 0) {
-            Registers_BindVR(NULL, color);
+            REGISTERS_BIND_VR(NULL, color);
             return color;
         }
     }
@@ -783,24 +797,32 @@ VarInfo *Registers_GetInfo(Object *object)
     switch (object->datatype) {
         case DDATA:
             if (!object->u.data.info) {
-                info = (VarInfo *)galloc(44U);
-                memclrw(info, 44U);
+                info = (VarInfo *)galloc(BY_VERSION(44U, 0x2a));
+                memclrw(info, BY_VERSION(44U, 0x2a));
                 object->u.data.info = info;
             }
             return object->u.data.info;
         case DLOCAL:
             if (!object->u.var.info)
+#if VERSION >= VERSION_GC_1_3
+                CError_Internal(REGINFO_FILE, 647);
+#else
                 CError_FATAL(745);
+#endif
             return object->u.var.info;
         case DABSOLUTE:
             if (!object->u.data.info) {
-                info = (VarInfo *)galloc(44U);
-                memclrw(info, 44U);
+                info = (VarInfo *)galloc(BY_VERSION(44U, 0x2a));
+                memclrw(info, BY_VERSION(44U, 0x2a));
                 object->u.data.info = info;
             }
             return object->u.data.info;
         default:
+#if VERSION >= VERSION_GC_1_3
+            CError_Internal(REGINFO_FILE, 660);
+#else
             CError_FATAL(758);
+#endif
             return NULL;
     }
 }
@@ -898,3 +920,672 @@ void Coloring_ResetVRColors(void)
     gVRSaveSpan = gSaveSpan;
     memcpy(gUsedPhysicalVR, gSavedUsedPhysicalRegisters, 32);
 }
+
+#if VERSION >= VERSION_GC_1_3
+struct Fn004ceda0 {
+    SInt32 w[8];
+};
+extern UInt8 data_005e2bf0[5][32];
+extern SInt32 data_005e674c[];
+extern SInt16 data_005dca90;
+extern struct Fn004ceda0 data_005dca70;
+
+void fn_004ceda0(RegClass13 rclass)
+{
+    data_005e674c[rclass] = data_005dca90;
+    memcpy(data_005e2bf0[rclass], &data_005dca70, sizeof(data_005dca70));
+}
+
+void fn_004cedd0(RegClass13 rclass)
+{
+    data_005dca90 = data_005e674c[rclass];
+    memcpy(&data_005dca70, data_005e2bf0[rclass], sizeof(data_005dca70));
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+extern UInt8 data_005e7375;
+extern int fn_004cf6d0(RegClass13 rclass);
+
+
+void fn_004cf620(void)
+{
+    RegClass13 i;
+    if (data_005e7375) {
+        memset(data_005e2bf0, 0, 0xa0);
+        for (i = 0; i < RegClass13_Max; i++)
+            fn_004cf6d0(i);
+    }
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+extern SInt32 data_005e6794[];
+extern SInt32 data_005e0ef0[5][32];
+
+int fn_004ced60(RegClass13 rclass, int reg)
+{
+    int i;
+
+    for (i = 0; i < data_005e6794[rclass]; i++) {
+        if (reg == data_005e0ef0[rclass][i])
+            return 1;
+    }
+
+    return 0;
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+char fn_004cfa90(char cls)
+{
+    switch (cls) {
+    case 2:
+        return 'v';
+    case 4:
+        return 'r';
+    case 3:
+        return 'f';
+    default:
+        CError_Internal("RegisterInfo.c", 0xf2);
+        return '?';
+    }
+}
+
+int fn_004cfad0(char cls)
+{
+    switch (cls) {
+    case 0:
+        return 3;
+    case 1:
+        return 2;
+    case 2:
+        return 0x14;
+    case 4:
+        return 0xe;
+    case 3:
+        return 0xe;
+    default:
+        return -1;
+    }
+}
+
+/* a register a variable is bound to (1.3), and its name for diagnostics */
+typedef struct RegisterBinding13 {
+    struct RegisterBinding13 *next;
+    Object *object;
+    HashNameNode *name;
+    char rclass;
+    char reg;
+} RegisterBinding13;
+extern RegisterBinding13 *data_005e686c;
+extern SInt32 data_005e6cc0[5];
+
+/* RegisterInfo.c (1.3), with GetABIFirstNonVolatile inlined */
+void CMachine_ResetMaximumAlignment(void)
+{
+    RegClass13 rclass;
+
+    data_005e686c = NULL;
+    data_005e7375 = 1;
+    for (rclass = 0; rclass < RegClass13_Max; rclass++)
+        data_005e6cc0[rclass] = 29 - fn_004cfad0(rclass);
+}
+
+#if VERSION >= VERSION_GC_1_3
+#define data_005e713d (*(UInt8 *)((char *)&copts + 0x5b))
+
+int fn_004cfb10(UInt8 *p)
+{
+    UInt8 *r;
+
+    if (p != NULL) {
+        switch (p[2]) {
+        case 0:
+            r = p + 0x36;
+            break;
+        default:
+            r = NULL;
+            break;
+        }
+    } else {
+        r = NULL;
+    }
+    if (data_005e713d != 0)
+        return 0;
+    if (r != NULL && r[1] != 0)
+        return 1;
+    return 0;
+}
+
+/* the reference's is_register_object; 1.3 also takes an object fn_004cfb10 accepts */
+Boolean fn_004cfb90(Object *obj)
+{
+    return obj->sclass == 0x101 || fn_004cfb10((UInt8 *)obj);
+}
+#endif
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+extern SInt32 data_005e6574[];
+extern SInt32 data_005e0bf0[5][32];
+
+UInt32 fn_004fcb20(RegClass13 rclass)
+{
+    UInt32 mask;
+    int i;
+    int reg;
+
+    mask = 0;
+    for (i = 0; i < data_005e6574[rclass]; i++) {
+        if (!data_005e2bf0[rclass][reg = data_005e0bf0[rclass][i]])
+            mask |= 1 << reg;
+    }
+
+    return mask;
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+int fn_004e9360(void)
+{
+    int i;
+    RegClass13 rclass;
+    int count;
+
+    count = 0;
+    for (rclass = 0; rclass < RegClass13_Max; rclass++) {
+        for (i = 0; data_005e6574[rclass] > i; i++)
+            count++;
+    }
+    return count;
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+extern SInt32 data_005e6878;
+extern SInt32 data_005e6a7c[];
+extern SInt32 data_005e66a8[];
+extern SInt32 data_005e5fc8[];
+
+void fn_004fca40(void)
+{
+    RegClass13 rclass;
+
+    if (data_005e6878)
+        return;
+    for (rclass = 0; rclass < RegClass13_Max; rclass++) {
+        int r = data_005e6a7c[rclass];
+        if (r > data_005e66a8[rclass])
+            data_005e66a8[rclass] = r;
+        if (r > 256)
+            data_005e6a7c[rclass] = data_005e5fc8[rclass];
+    }
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+/* RegisterInfo.c (1.3): the reference's retain_register, retain_GPR_pair and assign_GPR_pair, with
+ * Registers_GetVarInfo (Registers_GetInfo, out of line) inlined. */
+extern SInt32 data_005e6878;
+extern SInt32 data_005e6a7c[];
+extern SInt32 data_005e6c00[];
+
+inline VarInfo *Registers_GetNewVarInfo(void)
+{
+    VarInfo *vi = (VarInfo *)galloc(sizeof(VarInfo));
+    memclrw(vi, sizeof(VarInfo));
+    return vi;
+}
+
+inline VarInfo *Registers_GetVarInfo(Object *obj)
+{
+    switch (obj->datatype) {
+        case DDATA:
+            if (!obj->u.data.info)
+                obj->u.data.info = Registers_GetNewVarInfo();
+            return obj->u.data.info;
+        case DLOCAL:
+            if (!obj->u.var.info)
+                CError_Internal(REGINFO_FILE, 647);
+            return obj->u.var.info;
+        case DABSOLUTE:
+            if (!obj->u.data.info)
+                obj->u.data.info = Registers_GetNewVarInfo();
+            return obj->u.data.info;
+        default:
+            CError_Internal(REGINFO_FILE, 660);
+            return NULL;
+    }
+}
+
+extern void PPCError_ReportError(SInt32 code, ...);
+
+/* the first nonvolatile register of a class, after binding the variables the source bound to its registers */
+int fn_004cf6d0(RegClass13 rclass)
+{
+    RegisterBinding13 *binding;
+    Object *obj;
+    VarInfo *vi;
+    int first;
+    int base;
+    int result;
+    int count;
+    int i;
+    int used[32];
+
+    first = fn_004cfad0(rclass);
+    result = first;
+    if (data_005e713d)
+        return result;
+
+    base = first;
+    for (i = 0; i < 32; i++)
+        used[i] = 0;
+
+    for (binding = data_005e686c; binding; binding = binding->next) {
+        if (rclass == binding->rclass) {
+            used[binding->reg - base] = binding->reg;
+            if (binding->reg >= result)
+                result = binding->reg + 1;
+            obj = binding->object;
+            if (obj && obj->otype == OT_OBJECT) {
+                if (!(Registers_GetVarInfo(obj)->reg == 0))
+                    CError_Internal(REGINFO_FILE, 279);
+                if (data_005e2bf0[binding->rclass][binding->reg] == 0) {
+                    data_005e2bf0[binding->rclass][binding->reg] = 1;
+                    vi = Registers_GetVarInfo(obj);
+                    vi->flags |= 2;
+                    vi->reg = binding->reg;
+                    vi->regHi = 0;
+                    vi->rclass = binding->rclass;
+                } else {
+                    char name[2];
+                    name[0] = fn_004cfa90(binding->rclass);
+                    name[1] = 0;
+                    PPCError_ReportError(0xca, obj, name, binding->reg);
+                }
+            } else {
+                PPCError_ReportError(0xcc, binding->name->name);
+            }
+        }
+    }
+
+    count = 0;
+    for (i = 0; i < data_005e6cc0[rclass]; i++) {
+        if (!used[i]) {
+            for (i++; i < data_005e6cc0[rclass]; i++) {
+                if (used[i]) {
+                    char name[2];
+                    name[0] = fn_004cfa90(rclass);
+                    name[1] = 0;
+                    PPCError_ReportError(0xc7, name, used[i] - 1);
+                    count++;
+                    break;
+                }
+            }
+        }
+    }
+
+    if (count)
+        return first;
+    return result;
+}
+
+/* 1.3 floating-point types: a long double (integral 0x13) and any other one */
+#define IS_TYPE_FLOAT_LONGDOUBLE(ty) ((ty)->type == TYPEFLOAT && TYPE_INTEGRAL(ty)->integral == 0x13)
+#define IS_TYPE_FLOAT_NOT_LONGDOUBLE(ty) ((ty)->type == TYPEFLOAT && !IS_TYPE_FLOAT_LONGDOUBLE(ty))
+
+extern void fn_004fcba0(Object *obj, RegClass13 rclass);
+
+/* the reference's assign_register_by_type; a float goes to GPRs under copts.operandsDebug */
+void Registers_AllocateGPRPair(Object *obj)
+{
+    VarInfo *vi;
+    Type *ty;
+    Boolean flag;
+
+    ty = obj->type;
+    vi = Registers_GetVarInfo(obj);
+    flag = 0;
+    vi->rclass = RegClass13_Max;
+    vi->reg = 0;
+    vi->regHi = 0;
+
+    if ((ty->type == TYPEINT) || (ty->type == TYPEENUM) ||
+        ((ty->type == TYPEPOINTER || ty->type == TYPEARRAY) && (ty->type != TYPEARRAY)) ||
+        ((ty->type == TYPEMEMBERPOINTER) && (ty->size == 4U)) ||
+        (copts.operandsDebug && IS_TYPE_FLOAT_NOT_LONGDOUBLE(ty))) {
+        if ((((ty->type == TYPEINT) || (ty->type == TYPEENUM)) && (ty->size == 8)) ||
+            (copts.operandsDebug && IS_TYPE_FLOAT_NOT_LONGDOUBLE(ty) && ty->size != 4))
+            flag = 1;
+        vi->rclass = RegClass13_GPR;
+    } else if (IS_TYPE_FLOAT_NOT_LONGDOUBLE(ty) || IS_TYPE_FLOAT_LONGDOUBLE(ty)) {
+        vi->rclass = RegClass13_FPR;
+    } else if ((ty->type == TYPESTRUCT) && ((int)TYPE_STRUCT(ty)->stype >= 4) && ((int)TYPE_STRUCT(ty)->stype <= 14)) {
+        vi->rclass = RegClass13_VR;
+    } else {
+        return;
+    }
+
+    if (vi->rclass < RegClass13_Max) {
+        if (flag) {
+            if (!(vi->rclass == RegClass13_GPR))
+                CError_Internal(REGINFO_FILE, 520);
+            if (data_005e6c00[vi->rclass] > 1)
+                Registers_BindVR(obj);
+        } else {
+            if (data_005e6c00[vi->rclass] > 0)
+                fn_004fcba0(obj, vi->rclass);
+        }
+    }
+}
+
+extern int fn_004fcac0(RegClass13 rclass);
+
+#pragma defer_codegen off
+void Registers_BindVR(Object *obj)
+{
+    short reg;
+    short regHi;
+    VarInfo *vi;
+
+    vi = Registers_GetVarInfo(obj);
+    if (data_005e6878) {
+        reg = data_005e6a7c[RegClass13_GPR]++;
+        regHi = data_005e6a7c[RegClass13_GPR]++;
+    } else {
+        if (!(data_005e6c00[RegClass13_GPR] >= 2))
+            CError_Internal(REGINFO_FILE, 554);
+        reg = fn_004fcac0(RegClass13_GPR);
+        regHi = fn_004fcac0(RegClass13_GPR);
+        Registers_BindGPRPair(obj, reg, regHi);
+    }
+
+    vi->rclass = RegClass13_GPR;
+    if (reg > 0 && regHi > 0) {
+        vi->flags |= 2 | 4;
+        vi->reg = reg;
+        vi->regHi = regHi;
+    } else {
+        CError_Internal(REGINFO_FILE, 567);
+    }
+}
+#pragma defer_codegen reset
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+int fn_004fcac0(RegClass13 rclass)
+{
+    int best;
+    int tmp;
+
+    best = -1;
+    while (data_005e674c[rclass] < data_005e6794[rclass]) {
+        if (data_005e2bf0[rclass][tmp = data_005e0ef0[rclass][data_005e674c[rclass]++]] == 0) {
+            best = tmp;
+            break;
+        }
+    }
+
+    return best;
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+extern char *data_005e6884[5];
+extern char *data_005e6c5c[5];
+
+void fn_004cf5b0(void)
+{
+    data_005e6884[0] = "SPR";
+    data_005e6c5c[0] = "spr%ld";
+    data_005e6884[1] = "CRFIELD";
+    data_005e6c5c[1] = "cr%ld";
+    data_005e6884[2] = "VR";
+    data_005e6c5c[2] = "vr%ld";
+    data_005e6884[3] = "FPR";
+    data_005e6c5c[3] = "f%ld";
+    data_005e6884[4] = "GPR";
+    data_005e6c5c[4] = "r%ld";
+}
+
+extern char *data_005e5988[5][32];
+extern SInt32 data_005e6574[];
+extern SInt32 data_005e6778[];
+extern SInt32 data_005e6878;
+extern SInt32 data_005e6c00[];
+extern SInt16 data_005e70e0;
+extern SInt16 data_005e6cfa;
+extern SInt32 data_00588224;
+
+/* the reference's init_target_registers */
+void fn_004cf2c0(void)
+{
+    RegClass13 rclass;
+    int reg;
+    int end;
+
+    static int last_nonvolatile_reg[] = {3, 5, 31, 31, 31};
+    static int nonvol_reserve[] = {0, 0, 0, 4, 3};
+
+    for (rclass = 0; rclass < RegClass13_Max; rclass++) {
+        for (reg = 0; reg < 32; reg++)
+            data_005e5988[rclass][reg] = NULL;
+    }
+
+    data_005e5988[0][0] = "XER";
+    data_005e5988[0][1] = "LR";
+    data_005e5988[0][2] = "CTR";
+    data_005e5988[0][3] = "VRSAVE";
+    data_005e5988[RegClass13_GPR][1] = "SP";
+    data_005e5988[RegClass13_GPR][13] = "SDA";
+
+    fn_004cf5b0();
+    data_005e6778[0] = 4;
+    data_005e6778[1] = 8;
+    data_005e6778[2] = 32;
+    data_005e6778[3] = 32;
+    data_005e6778[4] = 32;
+    data_005e2bf0[RegClass13_GPR][1] = 2;
+    data_005e2bf0[RegClass13_GPR][2] = 2;
+    data_005e2bf0[RegClass13_GPR][13] = 2;
+    data_005e2bf0[1][5] = 2;
+
+    for (rclass = 0; rclass < RegClass13_Max; rclass++) {
+        data_005e6794[rclass] = 0;
+        if (last_nonvolatile_reg[rclass] >= 0) {
+            end = fn_004cf6d0(rclass);
+            for (reg = last_nonvolatile_reg[rclass]; reg >= end; reg--) {
+                if (data_005e2bf0[rclass][reg] == 0)
+                    data_005e0ef0[rclass][data_005e6794[rclass]++] = reg;
+            }
+        }
+
+        data_005e6c00[rclass] = data_005e6794[rclass] - nonvol_reserve[rclass];
+        if (data_005e6c00[rclass] < 0)
+            data_005e6c00[rclass] = 0;
+
+        data_005e6574[rclass] = 0;
+        for (reg = 0; reg < data_005e6778[rclass]; reg++) {
+            if (reg < fn_004cfad0(rclass) || reg > last_nonvolatile_reg[rclass]) {
+                if (data_005e2bf0[rclass][reg] == 0)
+                    data_005e0bf0[rclass][data_005e6574[rclass]++] = reg;
+            }
+        }
+    }
+
+    data_005e70e0 = -1;
+    data_005e6cfa = -1;
+    data_005e6878 = (copts.deleteDeadInstructions > 0) && !data_00588224;
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+extern short high_word_offset;
+extern short low_word_offset;
+extern short returnRegHi;
+extern short return_gpr_first;
+extern short sfpe_right_operand_reg_hi;
+extern short sfpe_right_operand_reg;
+
+void fn_004cece0(void)
+{
+    if (copts.littleendian != 0) {
+        high_word_offset = 4;
+        low_word_offset = 0;
+        returnRegHi = 4;
+        return_gpr_first = 3;
+        sfpe_right_operand_reg_hi = 6;
+        sfpe_right_operand_reg = 5;
+    } else {
+        high_word_offset = 0;
+        low_word_offset = 4;
+        returnRegHi = 3;
+        return_gpr_first = 4;
+        sfpe_right_operand_reg_hi = 5;
+        sfpe_right_operand_reg = 6;
+    }
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+extern SInt32 data_005e6878;
+extern SInt32 data_005e6a7c[];
+extern SInt32 data_005e6794[];
+extern SInt32 data_005e674c[];
+extern SInt32 data_005e0ef0[5][32];
+
+extern SInt32 gVirtualRegistersActive;
+extern SInt32 data_005e6778[];
+extern void fn_004cf2c0(void);
+
+/* the reference's init_registers */
+void fn_004fcc60(void)
+{
+    RegClass13 rclass;
+    int j;
+
+    for (rclass = 0; rclass < RegClass13_Max; rclass++) {
+        for (j = 0; j < 32; j++)
+            data_005e2bf0[rclass][j] = 0;
+    }
+
+    for (rclass = 0; rclass < RegClass13_Max; rclass++)
+        data_005e674c[rclass] = 0;
+
+    data_005e6878 = 1;
+
+    fn_004cf2c0();
+    for (rclass = 0; rclass < RegClass13_Max; rclass++)
+        data_005e6a7c[rclass] = data_005e6778[rclass];
+
+    gVirtualRegistersActive = 1;
+}
+
+/* the reference's assign_register_to_variable */
+#pragma defer_codegen off
+void fn_004fcba0(Object *obj, RegClass13 rclass)
+{
+    VarInfo *vi;
+    int reg;
+
+    vi = Registers_GetInfo(obj);
+    if (data_005e6878) {
+        reg = data_005e6a7c[rclass]++;
+    } else {
+        reg = fn_004fcac0(rclass);
+        Registers_BindGPR(obj, rclass, reg);
+    }
+
+    vi->flags |= 2;
+    vi->rclass = rclass;
+    vi->reg = reg;
+}
+#pragma defer_codegen reset
+
+/* RegisterInfo.c (1.3), defined after fn_004fcba0, which calls Registers_BindGPR out of line */
+void Registers_BindGPR(Object *obj, RegClass13 rclass, short reg)
+{
+    VarInfo *vi;
+
+    if (!(reg < 32))
+        CError_Internal(REGINFO_FILE, 95);
+
+    if (data_005e2bf0[rclass][reg] == 0) {
+        data_005e6c00[rclass]--;
+        data_005e2bf0[rclass][reg] = 1;
+        if (reg == data_005e0ef0[rclass][data_005e674c[rclass]])
+            data_005e674c[rclass]++;
+    }
+
+    if (obj) {
+        vi = Registers_GetVarInfo(obj);
+        vi->rclass = rclass;
+        vi->flags |= 2;
+        vi->reg = reg;
+    }
+}
+
+void Registers_BindGPRPair(Object *obj, short reg, short regHi)
+{
+    VarInfo *vi;
+
+    Registers_BindGPR(NULL, RegClass13_GPR, reg);
+    Registers_BindGPR(NULL, RegClass13_GPR, regHi);
+
+    if (obj) {
+        vi = Registers_GetVarInfo(obj);
+        vi->rclass = RegClass13_GPR;
+        vi->flags |= 2 | 4;
+        vi->reg = reg;
+        vi->regHi = regHi;
+    }
+}
+
+extern SInt32 data_005e6778[];
+
+/* the reference's update_asm_nonvolatile_registers */
+void fn_004cec70(void)
+{
+    RegClass13 rclass;
+    int i;
+    int reg;
+
+    for (rclass = 0; rclass < RegClass13_Max; rclass++) {
+        reg = data_005e6794[rclass];
+        for (i = data_005e6794[rclass] - 1; i >= 0; i--) {
+            if (data_005e2bf0[rclass][data_005e0ef0[rclass][i]] == 1)
+                break;
+            reg--;
+        }
+        if (reg > data_005e674c[rclass])
+            data_005e674c[rclass] = reg;
+    }
+}
+
+/* the reference's asm_used_register */
+void fn_004cfe50(RegClass13 rclass, short reg)
+{
+    long i;
+
+    if (reg >= data_005e6778[rclass])
+        return;
+    if (data_005e2bf0[rclass][reg] == 0) {
+        if (reg == data_005e0ef0[rclass][data_005e674c[rclass]]) {
+            if (data_005e6c00[rclass] > 0)
+                data_005e6c00[rclass]--;
+            data_005e2bf0[rclass][reg] = 1;
+            data_005e674c[rclass]++;
+        } else {
+            for (i = data_005e674c[rclass]; i < data_005e6794[rclass]; i++) {
+                if (reg == data_005e0ef0[rclass][i]) {
+                    data_005e2bf0[rclass][reg] = 1;
+                    if (data_005e6c00[rclass] > 0)
+                        data_005e6c00[rclass]--;
+                }
+            }
+        }
+    }
+}
+#endif

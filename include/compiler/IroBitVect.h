@@ -14,13 +14,13 @@ struct BitVector {
 };
 #pragma pack(pop)
 extern void IroBitVect_ClearBitVector(BitVector *vector);
-extern int IroBitVect_ContainsSubset(BitVector *subset, BitVector *superset);
+extern BY_VERSION(int, Boolean) IroBitVect_ContainsSubset(BitVector *subset, BitVector *superset);
 extern unsigned int is_bitvector_empty(struct BitVector *values);
 extern void IroBitVect_SetAllBits(BitVector *array);
 extern void IroBitVect_CopyBitVector(BitVector *source, BitVector *destination);
 extern void IroBitVect_Subtract(BitVector *source, BitVector *destination);
-extern int IroBitVect_AreEqual(BitVector *a, BitVector *b);
-extern unsigned int IroBitVect_Intersects(BitVector *left, BitVector *right);
+extern BY_VERSION(int, char) IroBitVect_AreEqual(BitVector *a, BitVector *b);
+extern BY_VERSION(unsigned int, Boolean) IroBitVect_Intersects(BitVector *left, BitVector *right);
 extern unsigned int IroBitVect_AllocateBitVector(BitVector **vector, unsigned int bitCount);
 extern void IroBitVect_ClearBit(UInt32 bit, BitVector *vector);
 extern void IroBitVect_Or(BitVector *sourceData, BitVector *destinationData);

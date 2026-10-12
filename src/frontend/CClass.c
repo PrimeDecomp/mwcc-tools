@@ -70,7 +70,7 @@ static inline Boolean CClass_ShouldReplacePath(BClassList *current, BClassList *
         case 3:
             return 1;
         default:
-            CError_FATAL(800);
+            CError_FATAL(BY_VERSION(800, 978));
         case 2:
             switch (get_path_access(candidate)) {
                 case 0:
@@ -80,7 +80,7 @@ static inline Boolean CClass_ShouldReplacePath(BClassList *current, BClassList *
                 case 3:
                     return 0;
                 default:
-                    CError_FATAL(809);
+                    CError_FATAL(BY_VERSION(809, 987));
             }
         case 1:
             switch (get_path_access(candidate)) {
@@ -91,7 +91,7 @@ static inline Boolean CClass_ShouldReplacePath(BClassList *current, BClassList *
                 case 3:
                     return 0;
                 default:
-                    CError_FATAL(819);
+                    CError_FATAL(BY_VERSION(819, 997));
                     return 0;
             }
     }
@@ -153,6 +153,24 @@ void CClass_GenThunks(void)
     }
 }
 
+#if VERSION >= VERSION_GC_1_3
+extern ObjBase *fn_0052ecf0(ClassList *bases, HashNameNode *name);
+
+ObjBase *fn_0052ecb0(TypeClass *cls, HashNameNode *name)
+{
+    NameSpaceObjectList *list;
+    ObjBase *found;
+
+    list = CScope_FindName(cls->nspace, name);
+    if (list != NULL && list->object->otype == 4)
+        return list->object;
+    found = fn_0052ecf0(cls->bases, name);
+    if (found != NULL)
+        return found;
+    return NULL;
+}
+#endif
+
 Object *get_or_create_thunk_object(Object *source, SInt32 firstArgument, SInt32 secondArgument, SInt32 thirdArgument)
 {
     PendingThunk *entry;
@@ -190,7 +208,7 @@ UInt8 CClass_GetOverrideKind(TypeFunc *a, TypeFunc *b, Boolean errorflag)
 {
     if (!a->args || !b->args)
         return OV_NONE;
-    if ((a->flags & 0x17000001) != (b->flags & 0x17000001) || !is_arglistsame(a->args->next, b->args->next) ||
+    if ((a->flags & TFUNC_COMPARE_MASK) != (b->flags & TFUNC_COMPARE_MASK) || !is_arglistsame(a->args->next, b->args->next) ||
         a->args->qual != b->args->qual)
         return OV_NONE;
     if (!iscpp_typeequal(a->functype, b->functype)) {
@@ -293,10 +311,10 @@ Object *CClass_CopyConstructor(TypeClass *cls)
         Object *obj;
         if ((obj = (Object *)list->object)->otype == OT_OBJECT && IS_TYPE_FUNC(obj->type)) {
             FuncArg *arg;
-            CError_ASSERT(349, (arg = TYPE_FUNC(obj->type)->args) != NULL);
+            CError_ASSERT(BY_VERSION(349, 532), (arg = TYPE_FUNC(obj->type)->args) != NULL);
             arg = arg->next;
             if (cls->flags & CLASS_HAS_VBASES) {
-                CError_ASSERT(353, arg != NULL);
+                CError_ASSERT(BY_VERSION(353, 536), arg != NULL);
                 arg = arg->next;
             }
             if (arg != NULL && arg != &elipsis && (arg->next == NULL || arg->next->dexpr != NULL) &&
@@ -345,7 +363,6 @@ Object *CClass_Destructor(TypeClass *cls)
     }
     return NULL;
 }
-
 Boolean CClass_IsDestructor(Object *obj)
 {
     return obj != NULL && obj->type->type == TYPEFUNC && (TYPE_FUNC(obj->type)->flags & FUNC_IS_DTOR) != 0;
@@ -361,12 +378,108 @@ Boolean CClass_HasTypeFuncFlag16384(Object *object)
     if (isFunction) {
         TypeFunc *function = TYPE_FUNC(object->type);
         unsigned int flags = function->flags;
-        if (flags & 16384U)
+        if (flags & BY_VERSION(16384U, 4096U))
             result = 1;
     }
     return result;
 }
 
+#if VERSION >= VERSION_GC_1_3
+/* plain old data: no virtual functions, bases, destructor, user constructor or assignment operator, and public
+ * members that are themselves plain old data (no member pointers or references) */
+static inline Object *IsPOD_Destructor(TypeClass *cls)
+{
+    NameSpaceObjectList *entry;
+
+    entry = CScope_FindName(cls->nspace, destructor_name);
+    while (entry != NULL) {
+        if (OBJECT(entry->object)->otype == OT_OBJECT && TYPE(OBJECT(entry->object)->type)->type == TYPEFUNC)
+            return OBJECT(entry->object);
+        entry = entry->next;
+    }
+    return NULL;
+}
+
+static inline NameSpaceObjectList *IsPOD_Constructor(TypeClass *type)
+{
+    NameSpaceObjectList *objects;
+
+    objects = CScope_FindName(type->nspace, constructor_name);
+    if (objects != NULL && objects->object->otype == OT_OBJECT && OBJECT(objects->object)->type->type == TYPEFUNC) {
+        return objects;
+    }
+    return NULL;
+}
+
+Boolean CClass_IsPODClass(TypeClass *tclass)
+{
+    NameSpaceObjectList *nsol;
+    Object *object;
+    ObjMemberVar *ivar;
+    Type *type;
+
+    if (tclass->vtable != NULL || tclass->bases != NULL || IsPOD_Destructor(tclass) != NULL)
+        return 0;
+
+    for (nsol = IsPOD_Constructor(tclass); nsol != NULL; nsol = nsol->next) {
+        if (nsol->object->otype == OT_OBJECT && OBJECT(nsol->object)->type->type == TYPEFUNC &&
+            !(TYPE_FUNC(OBJECT(nsol->object)->type)->flags & FUNC_AUTO_GENERATED))
+            return 0;
+    }
+
+    object = CClass_AssignmentOperator(tclass);
+    if (object != NULL && !(TYPE_FUNC(object->type)->flags & FUNC_AUTO_GENERATED))
+        return 0;
+
+    for (ivar = tclass->ivars; ivar != NULL; ivar = ivar->next) {
+        if (ivar->access != ACCESSPUBLIC)
+            return 0;
+        type = ivar->type;
+        while (type->type == TYPEARRAY)
+            type = TPTR_TARGET(type);
+        switch ((SInt8)type->type) {
+            case TYPECLASS:
+                if (!CClass_IsPODClass(TYPE_CLASS(type)))
+                    return 0;
+                break;
+            case TYPEMEMBERPOINTER:
+                return 0;
+            case TYPEPOINTER:
+                if (TYPE_POINTER(type)->qual & Q_REFERENCE)
+                    return 0;
+                break;
+        }
+    }
+    return 1;
+}
+
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+
+
+Boolean CClass_ReferenceArgument(TypeClass *cls)
+{
+    Object *obj;
+    int result;
+
+    if ((cls->flags & (CLASS_COMPLETED | CLASS_IS_TEMPL_INST)) == 0x800)
+        CDecl_CompleteType((Type *)cls);
+
+    if (copts.simple_class_byval != 0) {
+        result = 0;
+        if (!fn_0052cef0(cls))
+            result = 1;
+        return result;
+    }
+
+    obj = CClass_FindFuncObject(cls->nspace, destructor_name);
+    result = obj != NULL;
+    if (!result)
+        result = CClass_CopyConstructor(cls) != NULL;
+    return result;
+}
+#else
 Boolean CClass_ReferenceArgument(TypeClass *cls)
 {
     Object *obj;
@@ -386,6 +499,7 @@ Boolean CClass_ReferenceArgument(TypeClass *cls)
 
     return result;
 }
+#endif
 
 void fn_004ebae0(TypeClass *type)
 {
@@ -531,7 +645,11 @@ void fn_004eb810(void)
     return;
 }
 
+#if VERSION >= VERSION_GC_1_3
+UInt8 CClass_FindBasePath(TypeClass *sourceClass, TypeClass *targetClass, short *offset, char option1, char option2)
+#else
 UInt8 CClass_FindBasePath(TypeClass *sourceClass, TypeClass *targetClass, char option1, char option2)
+#endif
 {
     UInt8 result;
 
@@ -561,7 +679,7 @@ UInt8 get_path_access(BClassList *path)
     UInt8 access;
 
     if (path == NULL) {
-        CError_FATAL(752);
+        CError_FATAL(BY_VERSION(752, 930));
     }
     access = 0;
     for (;;) {
@@ -577,7 +695,7 @@ UInt8 get_path_access(BClassList *path)
             base = base->next;
         }
         if (base == (ClassList *)0) {
-            CError_FATAL(761);
+            CError_FATAL(BY_VERSION(761, 939));
         }
         switch (base->access) {
             case ACCESSPUBLIC:
@@ -595,7 +713,7 @@ UInt8 get_path_access(BClassList *path)
             case ACCESSNONE:
                 return 3;
             default:
-                CError_FATAL(782);
+                CError_FATAL(BY_VERSION(782, 960));
         }
     }
     return access;
@@ -609,7 +727,7 @@ unsigned char CClass_IsMoreAccessiblePath(BClassList *path, BClassList *otherPat
         case 3:
             return 1;
         default:
-            CError_FATAL(800);
+            CError_FATAL(BY_VERSION(800, 978));
         case 2:
             switch (get_path_access(path)) {
                 case 0:
@@ -619,7 +737,7 @@ unsigned char CClass_IsMoreAccessiblePath(BClassList *path, BClassList *otherPat
                 case 3:
                     return 0;
                 default:
-                    CError_FATAL(809);
+                    CError_FATAL(BY_VERSION(809, 987));
             }
         case 1:
             switch (get_path_access(path)) {
@@ -630,7 +748,7 @@ unsigned char CClass_IsMoreAccessiblePath(BClassList *path, BClassList *otherPat
                 case 3:
                     return 0;
                 default:
-                    CError_FATAL(819);
+                    CError_FATAL(BY_VERSION(819, 997));
             }
             return 0;
     }
@@ -867,7 +985,7 @@ SInt32 CClass_VirtualBaseOffset(TypeClass *cls, TypeClass *base)
             return entry->offset;
         entry = entry->next;
     }
-    CError_FATAL(1182);
+    CError_FATAL(BY_VERSION(1182, 1342));
     return 0;
 }
 
@@ -881,7 +999,7 @@ unsigned int CClass_VirtualBaseVTableOffset(TypeClass *type, TypeClass *base)
         classes = classes->next;
     }
 
-    CError_FATAL(1199);
+    CError_FATAL(BY_VERSION(1199, 1359));
     return 0;
 }
 
@@ -928,8 +1046,13 @@ OverrideClass *find_class_layout_by_class_and_offset(OverrideClass *layout, Type
 
 OverrideClass *create_class_layout(OverrideClass *root, TypeClass *cls, SInt32 offset, SInt32 voffset)
 {
+#if VERSION >= VERSION_GC_1_3
+    ClassList *base;
+    OverrideClass *layout;
+#else
     OverrideClass *layout;
     ClassList *base;
+#endif
     CScopeObjectIterator scope;
     Object *object;
     OverrideFunc *member;
@@ -1020,7 +1143,7 @@ void select_member_override(OverrideClass *classRecord, OverrideClass *context, 
                     if (classRecord == root_class_layout) {
                         TYPE_METHOD(function->object->type)->flags |= 0x20;
                         if (kind == OVERRIDE_2)
-                            TYPE_METHOD(function->object->type)->flags |= 0x20000000;
+                            TYPE_METHOD(function->object->type)->flags |= TFUNC_VIRTUAL_OVERRIDE;
                     }
                     search->selectedClass = classRecord;
                     search->selected = function;
@@ -1052,7 +1175,7 @@ CClassNode *collect_override_return_class_types(CClassNode *types, TypeClass *tc
             if (obj->name == method->name && obj->datatype == DVFUNC &&
                 CClass_GetOverrideKind(TYPE_FUNC(obj->type), TYPE_FUNC(method->type), 0) == OVERRIDE_2) {
                 if (!(FT_PTR(obj)->type == TYPEPOINTER && TPTR_TARGET(FT_PTR(obj))->type == TYPECLASS))
-                    CError_FATAL(1526);
+                    CError_FATAL(BY_VERSION(1526, 1686));
 
                 target = TPTR_TARGET(FT_PTR(obj));
 
@@ -1090,8 +1213,8 @@ ObjectList *prepend_base_method_copies(ObjectList *objects, Object *method, Type
     base = collect_override_return_class_types(NULL, theclass, method, 1);
     while (base != NULL) {
         name = CMangler_GetCovariantFunctionName(method, base->type);
-        object = (Object *)galloc(54);
-        memclrw(object, 54);
+        object = (Object *)galloc(BY_VERSION(54, 68));
+        memclrw(object, BY_VERSION(54, 68));
         object->otype = OT_OBJECT;
         object->datatype = DFUNC;
         object->section = method->section;
@@ -1099,13 +1222,17 @@ ObjectList *prepend_base_method_copies(ObjectList *objects, Object *method, Type
         object->name = name;
         baseclass = (TypeClass *)base->type;
         functype = (TypeMemberFunc *)method->type;
-        CError_ASSERT(1564, !(functype->type != TYPEFUNC || (functype->flags & FUNC_METHOD) == 0 ||
-                              functype->functype->type != TYPEPOINTER));
+        CError_ASSERT(BY_VERSION(1564, 1724), !(functype->type != TYPEFUNC || (functype->flags & FUNC_METHOD) == 0 ||
+                                                functype->functype->type != TYPEPOINTER));
         pointertype = (TypePointer *)galloc(sizeof(TypePointer));
         *pointertype = *(TypePointer *)functype->functype;
         pointertype->target = (Type *)baseclass;
         newtype = copyMemberFunction(functype);
+#if VERSION >= VERSION_GC_1_3
+        newtype->flags &= ~(TFUNC_VIRTUAL_OVERRIDE | 0x20);
+#else
         newtype->flags &= 0xdfffffdf;
+#endif
         newtype->functype = (Type *)pointertype;
         object->type = (Type *)newtype;
         object->qual = method->qual & ~Q_INLINE;
@@ -1133,7 +1260,7 @@ void CClass_DefineCovariantFuncs(Object *func, CInlineInfo *inlineInfo)
         Object *member;
         Type *returnType;
         NameSpace *functionScope;
-        CError_ASSERT(1594, found != NULL && found->next == NULL && OBJ_BASE(found->object)->otype == OT_OBJECT);
+        CError_ASSERT(BY_VERSION(1594, 1754), found != NULL && found->next == NULL && OBJ_BASE(found->object)->otype == OT_OBJECT);
         member = (Object *)found->object;
         returnType = CDecl_NewPointerType(returnClass->type);
         functionScope = CFunc_FuncGenSetup(&body, member);
@@ -1244,30 +1371,30 @@ void build_virtual_function_entries(OverrideClass *ctx)
         return;
     for (entry = ctx->members; entry != NULL; entry = entry->next) {
         slot = CABI_GetVTableOffset(ctx->theclass) + (ctx->voffset + TYPE_METHOD(entry->object->type)->vtbl_index);
-        CError_ASSERT(1707, slot < vtable_size);
+        CError_ASSERT(BY_VERSION(1707, 1867), slot < vtable_size);
         if (data_00581caa[slot] != 0)
             continue;
         if (entry->selected != NULL) {
             func = entry->selected->object;
-            if ((TYPE_METHOD(func->type)->flags & 0x20000000) != 0 &&
+            if ((TYPE_METHOD(func->type)->flags & TFUNC_VIRTUAL_OVERRIDE) != 0 &&
                 CClass_GetOverrideKind(TYPE_FUNC(entry->object->type), TYPE_FUNC(func->type), 0) == 2) {
-                CError_ASSERT(1727,
+                CError_ASSERT(BY_VERSION(1727, 1887),
                               TYPE_METHOD(entry->object->type)->functype->type == TYPEPOINTER &&
                                   TYPE_POINTER(TYPE_METHOD(entry->object->type)->functype)->target->type == TYPECLASS);
                 found = CScope_FindName(TYPE_METHOD(func->type)->theclass->nspace,
                                         CMangler_GetCovariantFunctionName(
                                             func, TYPE_POINTER(TYPE_METHOD(entry->object->type)->functype)->target));
-                CError_ASSERT(1594, found != NULL && found->next == NULL && found->object->otype == OT_OBJECT);
+                CError_ASSERT(BY_VERSION(1594, 1754), found != NULL && found->next == NULL && found->object->otype == OT_OBJECT);
                 func = (Object *)found->object;
             }
             diff = entry->selectedClass->offset - ctx->offset;
             if (diff != 0 && (TYPE_METHOD(func->type)->flags & FUNC_PURE) == 0) {
                 virtual_base_layout = NULL;
-                CError_ASSERT(1739, contains_base_layout(ctx, entry->selectedClass));
+                CError_ASSERT(BY_VERSION(1739, 1899), contains_base_layout(ctx, entry->selectedClass));
                 if (virtual_base_layout != NULL && (current_class->flags & CLASS_SOM_INIT) != 0) {
                     delta = ctx->offset - virtual_base_layout->offset;
                     off = CABI_GetCtorOffsetOffset(virtual_base_layout->theclass, NULL) - delta;
-                    CError_ASSERT(1746, off > 0);
+                    CError_ASSERT(BY_VERSION(1746, 1906), off > 0);
                     func = get_or_create_thunk_object(func, diff, 0, off);
                 } else {
                     func = get_or_create_thunk_object(func, diff, 0, -1);
@@ -1360,7 +1487,7 @@ void mark_vbases_has_override(OverrideClass *root, OverrideClass *node, unsigned
                 continue;
             virtual_base_layout = NULL;
             if (!contains_base_layout(node, entry->selectedClass))
-                CError_FATAL(1880);
+                CError_FATAL(BY_VERSION(1880, 2040));
             if (virtual_base_layout == NULL)
                 continue;
             for (item = root->theclass->vbases; item != NULL; item = item->next) {
@@ -1368,7 +1495,7 @@ void mark_vbases_has_override(OverrideClass *root, OverrideClass *node, unsigned
                     break;
             }
             if (item == NULL)
-                CError_FATAL(1887);
+                CError_FATAL(BY_VERSION(1887, 2047));
             item->has_override = 1;
         }
     }
@@ -1450,8 +1577,8 @@ void CClass_CheckOverrides(TypeClass *cls)
             break;
         }
         if (object->datatype == DVFUNC) {
-            CError_ASSERT(1997, object->type->type == TYPEFUNC);
-            if (TYPE_FUNC(object->type)->flags & 0x20000000) {
+            CError_ASSERT(BY_VERSION(1997, 2175), object->type->type == TYPEFUNC);
+            if (TYPE_FUNC(object->type)->flags & TFUNC_VIRTUAL_OVERRIDE) {
                 linked = prepend_base_method_copies(linked, object, cls);
             }
         }
@@ -1504,7 +1631,7 @@ void CClass_ClassAction(TypeClass *cls)
         if (copts.RTTI && (cls->flags & 0x2010) == 0)
             rtti_offset_table = CRTTI_BuildRTTIOffsetTable(cls, data_00581caa, rtti_offset_table);
 
-        CError_ASSERT(2314, cls->vtable->object->type->size == cls->vtable->size);
+        CError_ASSERT(BY_VERSION(2314, 2492), cls->vtable->object->type->size == cls->vtable->size);
 
         CInit_DeclareData(cls->vtable->object, data_00581caa, rtti_offset_table, cls->vtable->size);
     }
@@ -1555,10 +1682,10 @@ void CClass_MemberDef(Object *object, TypeClass *cls)
             }
             return;
         case 2:
-            CError_FATAL(2504);
+            CError_FATAL(BY_VERSION(2504, 2682));
             return;
         default:
-            CError_FATAL(2523);
+            CError_FATAL(BY_VERSION(2523, 2701));
             return;
     }
 }
@@ -1688,6 +1815,7 @@ Boolean check_base_path_access(BClassList *cl, UInt8 acc)
     }
     return 0;
 }
+#if VERSION < VERSION_GC_1_3
 
 void CClass_CheckBaseAccess(BClassList *bases, char access)
 {
@@ -1698,6 +1826,19 @@ void CClass_CheckBaseAccess(BClassList *bases, char access)
         CError_ReportError(ERR_ILLEGAL_ACCESS_PROTECTED_PRIVATE_MEMBER);
     }
 }
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+void fn_0052ad20(BClassList *bases, Object *member, char access)
+{
+    if (!check_base_path_access(bases, access)) {
+        if (bases != NULL && member != NULL)
+            CError_ReportError(381, bases->type, 0, member);
+        else
+            CError_ReportError(ERR_ILLEGAL_ACCESS_PROTECTED_PRIVATE_MEMBER);
+    }
+}
+#endif
 
 BClassList *deduplicate_and_select_base_path_suffix(BClassList *p, TypeClass *base)
 {
@@ -1762,7 +1903,7 @@ void CClass_CheckStaticAccess(BClassList *type, TypeClass *owner, UInt8 access)
             CError_Warning(ERR_ILLEGAL_ACCESS_PROTECTED_PRIVATE_MEMBER);
             return;
         default:
-            CError_FATAL(2970);
+            CError_FATAL(BY_VERSION(2970, 3013));
             return;
     }
 }
@@ -1809,7 +1950,7 @@ static SInt32 CClass_GetVBaseOffset(TypeClass *base)
         if (v->base == base)
             return v->offset;
     }
-    CError_FATAL(1182);
+    CError_FATAL(BY_VERSION(1182, 1342));
     return 0;
 }
 
@@ -1819,7 +1960,7 @@ static SInt32 CL_FindVOffset(TypeClass *base)
     for (p = current_class->vbases; p != NULL; p = p->next)
         if (p->base == base)
             return p->voffset;
-    CError_FATAL(1199);
+    CError_FATAL(BY_VERSION(1199, 1359));
     return 0;
 }
 
@@ -1829,7 +1970,7 @@ static SInt32 CL_FindOffset(TypeClass *base)
     for (p = current_class->vbases; p != NULL; p = p->next)
         if (p->base == base)
             return p->offset;
-    CError_FATAL(1182);
+    CError_FATAL(BY_VERSION(1182, 1342));
     return 0;
 }
 
@@ -1851,6 +1992,13 @@ Type *copy_pointer_array_type(Type *type)
             *copy = *(TypePointer *)type;
             copy->target = copy_pointer_array_type(copy->target);
             return (Type *)copy;
+#if VERSION >= VERSION_GC_1_3
+        case TYPEMEMBERPOINTER: {
+            TypeMemberPointer *memberCopy = (TypeMemberPointer *)galloc(sizeof(TypeMemberPointer));
+            *memberCopy = *(TypeMemberPointer *)type;
+            return (Type *)memberCopy;
+        }
+#endif
         default:
             return type;
     }

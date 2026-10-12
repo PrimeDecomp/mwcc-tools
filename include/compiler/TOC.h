@@ -42,7 +42,13 @@ extern void fn_0049d710(ENode *node, Type *targetType, int ignored);
 extern unsigned char is_small_splat_or_table_vector(long value, Type *type);
 extern void TOC_EmitMemberPointerConstants(void);
 extern Object *TOC_GetFloatObject(Type *type, Float *value);
+#if VERSION >= VERSION_GC_1_3
+/* (1.3 has no separate TOC entry helper: its callers use fn_004defd0, which returns 0) */
+extern int fn_004defd0(Object *obj, SInt32 a, SInt32 b);
+#define fn_0049f230(object, a, b) ((Object *)fn_004defd0(object, a, b))
+#else
 extern Object *fn_0049f230(Object *object, SInt32 a, SInt32 b);
+#endif
 extern void fn_0049ebb0(ENode *expr);
 extern void add_initial_object(void *object);
 extern Object *get_or_create_label_object(CLabel *node);

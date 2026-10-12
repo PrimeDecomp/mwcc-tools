@@ -7,9 +7,9 @@
 extern "C" {
 #endif
 
-extern CInt64 cint64_negone;
-extern CInt64 cint64_zero;
-extern CInt64 cint64_one;
+extern CONST_13 CInt64 cint64_negone;
+extern CONST_13 CInt64 cint64_zero;
+extern CONST_13 CInt64 cint64_one;
 extern CInt64 cint64_max;
 extern CInt64 cint64_min;
 
@@ -77,7 +77,9 @@ extern void CInt64_ConvertUInt32(CInt64 *i);
 extern void CInt64_ConvertInt16(CInt64 *i);
 extern void CInt64_ConvertUInt16(CInt64 *i);
 extern void CInt64_ConvertInt8(CInt64 *i);
+#if VERSION < VERSION_GC_1_3
 extern void CInt64_ConvertUInt8(CInt64 *i);
+#endif
 extern void CInt64_ConvertUFromLongDouble(CInt64 *pResult, double value);
 extern void CInt64_ConvertFromLongDouble(CInt64 *pResult, double value);
 extern double CInt64_ConvertUToLongDouble(const CInt64 *value);

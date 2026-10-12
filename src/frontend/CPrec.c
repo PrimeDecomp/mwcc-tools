@@ -1294,8 +1294,13 @@ void add_written_type_entry(Type *key, int imagePosition)
     CPrecWrittenEntry *entry;
     unsigned int hash;
 
+#if VERSION >= VERSION_GC_1_3
+    keyBytes.v = (UInt32)key;
+    hash = keyBytes.b[0] + (unsigned int)key + keyBytes.b[1] + keyBytes.b[2] + keyBytes.b[3];
+#else
     keyBytes.v = (UInt32)key;
     hash = keyBytes.b[0] + (UInt32)key + keyBytes.b[1] + keyBytes.b[2] + keyBytes.b[3];
+#endif
     hash &= 16383U;
     slot = &written_entry_buckets[hash];
     entry = (CPrecWrittenEntry *)lalloc(sizeof(CPrecWrittenEntry));
@@ -1610,10 +1615,10 @@ int add_serialized_bucket_entry(SInt32 offset, SInt32 listIndex)
     if (data_00581c28 != 0) {
         node = (SerializedBucketEntry *)lalloc(sizeof(*node));
         node->offset = offset;
-        CError_ASSERT(484, (node->offset & 0x80000001) == 0);
+        CError_ASSERT(BY_VERSION(484, 507), (node->offset & 0x80000001) == 0);
         if (listIndex < 0) {
             listIndex = ~listIndex;
-            CError_ASSERT(490, listIndex < serialized_bucket_count);
+            CError_ASSERT(BY_VERSION(490, 513), listIndex < serialized_bucket_count);
             node->next = serialized_buckets[listIndex].list;
             listId = 0;
             serialized_buckets[listIndex].list = node;
@@ -1623,7 +1628,7 @@ int add_serialized_bucket_entry(SInt32 offset, SInt32 listIndex)
             listId = listIndex;
         }
         offset -= flushed_size;
-        CError_ASSERT(502, offset >= 0 && offset <= precompiled_buffer.size);
+        CError_ASSERT(BY_VERSION(502, 525), offset >= 0 && offset <= precompiled_buffer.size);
         *(SInt32 *)((char *)*precompiled_buffer.data + offset) = listId;
     }
 }
@@ -1631,19 +1636,22 @@ int add_serialized_bucket_entry(SInt32 offset, SInt32 listIndex)
 #pragma auto_inline off
 int patch_object_reference(SInt32 location, HashNameNode *object)
 {
+#if VERSION >= VERSION_GC_1_3
+    SInt32 key = (SInt32)object;
+#endif
     if (data_00581c28) {
         CPrecWrittenEntry *entry;
         SerializedBucketEntry *reference;
         SInt32 index;
 
-        CError_ASSERT(520, entry = CPrec_Find((SInt32)object));
+        CError_ASSERT(BY_VERSION(520, 543), entry = CPrec_Find(BY_VERSION((SInt32)object, key)));
         reference = (SerializedBucketEntry *)lalloc(sizeof(SerializedBucketEntry));
         reference->offset = location;
         reference->next = serialized_bucket_entries;
         serialized_bucket_entries = reference;
-        CError_ASSERT(525, (reference->offset & 0x80000001) == 0);
+        CError_ASSERT(BY_VERSION(525, 548), (reference->offset & 0x80000001) == 0);
         index = location - flushed_size;
-        CError_ASSERT(529, index >= 0 && index <= precompiled_buffer.size);
+        CError_ASSERT(BY_VERSION(529, 552), index >= 0 && index <= precompiled_buffer.size);
         *(void **)(*precompiled_buffer.data + index) = entry->image_position;
     }
 }
@@ -2026,8 +2034,8 @@ unsigned int write_except_spec_list(ExceptSpecList *record)
             }
             referenceOffset = prec_position;
             add_serialized_bucket_entry(recordOffset, prec_position);
-            record = record->next;
             recordOffset = referenceOffset;
+            record = record->next;
         } while (record != NULL);
     }
     return startOffset;
@@ -2057,7 +2065,7 @@ FuncArg *write_func_args(FuncArg *arg, Boolean naming)
         if (arg->type) {
             add_serialized_bucket_entry((SInt32)&current->type, (SInt32)write_type(arg->type));
         } else
-            CError_FATAL(1142);
+            CError_FATAL(BY_VERSION(1142, 1167));
         if (!arg->next)
             break;
         if ((entry = CPrec_FindAddrPatch_004deb20(arg->next))) {
@@ -2289,8 +2297,13 @@ unsigned int write_prec_type_entries(struct PrecTypeEntry *entry)
 {
     SInt32 firstOffset;
     SInt32 typeOffset;
+#if VERSION < VERSION_GC_1_3
     SInt32 entryOffset;
     SInt32 nextEntryOffset;
+#else
+    SInt32 nextEntryOffset;
+    SInt32 entryOffset;
+#endif
 
     if (data_00581c28 != '\0') {
         while ((prec_position & 3) != 0) {
@@ -2872,7 +2885,7 @@ TStreamElement *append_saved_prep_tokens(TStreamElement *recs, SInt32 n)
             case -1:
                 break;
             default:
-                CError_ASSERT(1974, rp->tokentype >= 0);
+                CError_ASSERT(BY_VERSION(1974, 2063), rp->tokentype >= 0);
                 break;
         }
     }
@@ -3011,7 +3024,7 @@ unsigned int write_prec_input_record(TemplateFriend *record)
     }
     if (record->stream.firsttoken != NULL) {
         TStreamElement *entries = append_saved_prep_tokens(record->stream.firsttoken, record->stream.tokens);
-        add_serialized_bucket_entry(offset + 0x28, (SInt32)entries);
+        add_serialized_bucket_entry(offset + BY_VERSION( 0x28, 0x2c), (SInt32)entries);
     }
     return offset;
 }
@@ -3079,7 +3092,7 @@ SInt32 serialize_template_class_declarations(TemplateAction *list)
                                             dispatch_obj_by_otype(declaration->u.refobj));
                 break;
             default:
-                CError_FATAL(2313);
+                CError_FATAL(BY_VERSION(2313, 2410));
                 break;
         }
         if (declaration->next == NULL)
@@ -3385,7 +3398,7 @@ int write_type(Type *type)
                     case TYPEVOID:
                     case TYPETEMPLDEPEXPR:
                     default:
-                        CError_FATAL(2691);
+                        CError_FATAL(BY_VERSION(2691, 2796));
                         baseOffset = 0;
                 }
             }
@@ -3430,7 +3443,7 @@ int write_type(Type *type)
         case TYPEVOID:
         case TYPETEMPLDEPEXPR:
         default:
-            CError_FATAL(2691);
+            CError_FATAL(BY_VERSION(2691, 2796));
             return 0;
     }
 }
@@ -3523,7 +3536,7 @@ unsigned int write_member_func_ref(EMemberInfo *entry)
 {
     SInt32 offset;
 
-    CError_FATAL(2848);
+    CError_FATAL(BY_VERSION(2848, 2953));
     if (data_00581c28) {
         while (prec_position & 3) {
             AppendGListByte(&precompiled_buffer, 0);
@@ -3539,7 +3552,7 @@ unsigned int write_member_func_ref(EMemberInfo *entry)
     if (entry->expr)
         add_serialized_bucket_entry(offset + 4, write_enode(entry->expr));
     if (entry->templargs)
-        CError_FATAL(2863);
+        CError_FATAL(BY_VERSION(2863, 2968));
     add_serialized_bucket_entry(offset + 8, write_namespace_object_list(entry->list));
     return offset;
 }
@@ -3636,7 +3649,7 @@ SInt32 write_enode(ENode *node)
             break;
         case EOBJLIST:
             add_serialized_bucket_entry(offset + 10, write_namespace_object_list(node->data.objlist.list));
-            CError_ASSERT(2938, node->data.objlist.templargs == 0);
+            CError_ASSERT(BY_VERSION(2938, 3043), node->data.objlist.templargs == 0);
             if ((name = node->data.objlist.name) != NULL) {
                 name->id = 1;
                 patch_object_reference(offset + 18, name);
@@ -3728,7 +3741,7 @@ SInt32 write_enode(ENode *node)
         case EVECTOR128CONST:
             break;
         default:
-            CError_FATAL(3031);
+            CError_FATAL(BY_VERSION(3031, 3142));
             break;
     }
     return offset;
@@ -3821,7 +3834,7 @@ UInt32 write_prec_recs(IStmtRec *recs, SInt16 count)
                     break;
                 }
                 default:
-                    CError_FATAL(3141);
+                    CError_FATAL(BY_VERSION(3141, 3261));
                     break;
             }
             index++;
@@ -3869,9 +3882,12 @@ SInt32 serialize_cprec_rec(CInlineInfo *record)
 {
     SInt32 base;
 
-    memclrw(&record->fileinfo, 10);
+    memclrw(&record->fileinfo, BY_VERSION(10, 14));
     record->f1c = 0;
     record->tokenoffset = 0;
+#if VERSION >= VERSION_GC_1_3
+    record->f98 = 0;
+#endif
     record->tokenline = 0;
 
     if (data_00581c28 != 0) {
@@ -3913,7 +3929,7 @@ SInt32 write_enum_const(ObjEnumConst *enumConst)
         append_enum_const(enumConst);
         if (data_00581c28) {
             if (enumConst->access == 255)
-                CError_FATAL(3228);
+                CError_FATAL(BY_VERSION(3228, 3349));
             enumConst->access = 255;
         }
         name = enumConst->name;
@@ -4092,7 +4108,7 @@ UInt32 write_object(Object *obj)
         case DVFUNC: {
             Type *type;
             DefArgCtorInfo *defarg;
-            if ((type = obj->type)->type == TYPEFUNC && (((TypeFunc *)type)->flags & 0x400) != 0)
+            if ((type = obj->type)->type == TYPEFUNC && (((TypeFunc *)type)->flags & TFUNC_TEMPLATE) != 0)
                 add_serialized_bucket_entry(offset + 0x26, (SInt32)write_template_function(obj->u.templateFunction));
             else if ((obj->qual & Q_INLINE) != 0 && obj->u.func.u != NULL)
                 add_serialized_bucket_entry(offset + 0x26, serialize_cprec_rec((CInlineInfo *)obj->u.func.u));
@@ -4109,7 +4125,7 @@ UInt32 write_object(Object *obj)
         }
         case DDATA: {
             if (obj->u.data.info != NULL)
-                CError_FATAL(3494);
+                CError_FATAL(BY_VERSION(3494, 3622));
             if ((obj->qual & Q_INLINE_DATA) != 0) {
                 switch ((SInt8)obj->type->type) {
                     case TYPEFLOAT:
@@ -4313,7 +4329,7 @@ void serialize_namespace_usings_and_hash(void)
     SInt32 bucket;
     SInt32 nameOffset;
 
-    CError_ASSERT(3777, cscope_root->is_hash);
+    CError_ASSERT(BY_VERSION(3777, 3905), cscope_root->is_hash);
 
     if ((usingEntry = cscope_root->usings) != NULL) {
         if (data_00581c28) {
@@ -4594,8 +4610,8 @@ void write_serialized_buckets(void)
             entryCount = 0;
             entry = serialized_buckets[bucketIndex].list;
             while (entry != NULL) {
-                entry = entry->next;
                 entryCount = entryCount + 1;
+                entry = entry->next;
             }
             if (entryCount != 0) {
                 if (data_00581c28 != '\0') {
@@ -5006,7 +5022,7 @@ SInt32 write_serialized_bucket_offsets(void)
     p = serialized_bucket_entries;
     count = prev = 0;
     while (p != NULL) {
-        CError_ASSERT(4207, (p->offset & 0x80000001) == 0);
+        CError_ASSERT(BY_VERSION(4207, 4339), (p->offset & 0x80000001) == 0);
         delta = p->offset - prev;
         value = p->offset;
         if (delta >= -128 && delta <= 126) {
@@ -5281,7 +5297,7 @@ SInt16 write_precompiled_file(void)
     prec_header = galloc(0x50e8);
     memclrw(prec_header, 0x50e8);
     prec_header->magic = (SInt32)0xbeefface;
-    prec_header->version = 0x412;
+    prec_header->version = BY_VERSION(0x412, 0x417);
     prec_header->kind = 2;
     prec_header->flag = copts.check_header_flags;
     prec_header->cplusplus = copts.cplusplus;
@@ -5438,9 +5454,8 @@ void decompress_precompiled_header(void)
         if ((n = *src++) >= 0xe0) {
             n -= 0xe0;
             do {
-                n--;
                 *dst++ = 0;
-            } while (n >= 0);
+            } while (--n >= 0);
         } else {
             do {
                 *dst++ = *src++;
@@ -5592,9 +5607,9 @@ void restore_macro_lists(void)
     SInt32 *saved_lists;
     int list_index;
     UInt8 *arena;
-    lists = macro_buckets;
     arena = precompiled_header_base;
     saved_lists = prec_header->macroOffsets;
+    lists = macro_buckets;
     list_index = 0;
     do {
         node = *lists;
@@ -5620,9 +5635,9 @@ void restore_macro_lists(void)
             }
             *lists = (Macro *)(arena + saved_offset);
         }
-        list_index = list_index + 1;
         saved_lists = saved_lists + 1;
         lists = lists + 1;
+        list_index = list_index + 1;
     } while (list_index < 2048);
 }
 
@@ -5656,7 +5671,7 @@ void CPrec_LoadPrecompiledHeader(short file, UInt8 *buffer)
 
     if (prec_header->magic != 0xbeefface)
         CError_FatalError(ERR_ILLEGAL_DATA_PRECOMPILED_HEADER);
-    if (prec_header->version != 0x412)
+    if (prec_header->version != BY_VERSION(0x412, 0x417))
         CError_FatalError(ERR_ILLEGAL_PRECOMPILED_HEADER_VERSION);
     if (prec_header->kind != 2)
         CError_FatalError(ERR_ILLEGAL_PRECOMPILED_HEADER_COMPILER_FLAGS_TARGET);
@@ -5667,8 +5682,8 @@ void CPrec_LoadPrecompiledHeader(short file, UInt8 *buffer)
     apply_relocations();
     apply_object_patches();
 
-    offsets = prec_header->hashNameOffsets;
     hashEntries = data_00587f88;
+    offsets = prec_header->hashNameOffsets;
     base = precompiled_header_base;
     index = 0;
     do {
@@ -5695,7 +5710,7 @@ void CPrec_LoadPrecompiledHeader(short file, UInt8 *buffer)
     restore_macro_lists();
     patch_buffered_token_locations();
 
-    CError_ASSERT(4845, cscope_root->is_hash != 0);
+    CError_ASSERT(BY_VERSION(4845, 4981), cscope_root->is_hash != 0);
     {
         SInt32 namespaceOffset;
         UInt8 *namespaceBase;

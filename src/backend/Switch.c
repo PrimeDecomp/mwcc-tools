@@ -117,8 +117,13 @@ void build_case_ranges(Type *type, SwitchCase *list, CLabel *defaultCase)
     range = case_ranges;
     range->base = data_00581160;
     range->width = CInt64_Sub(data_00581168, data_00581160);
+#if VERSION >= VERSION_GC_1_3
+    range->info = defaultCase->pclabel;
+    i = 0;
+#else
     i = 0;
     range->info = defaultCase->pclabel;
+#endif
     for (; i < switch_case_count; i++) {
         SwitchCase *entry = data_00581150[i];
         if (!CInt64_GreaterEqual(entry->min, data_00581160))
@@ -398,10 +403,20 @@ Object *create_switchtable(void)
     obj->qual = Q_CONST;
     obj->flags |= 6;
     obj->u.data.linkname = obj->name;
+#if VERSION >= VERSION_GC_1_3
+    obj->type = NULL;
+    obj->section = ObjGen_PPC_EABI_GetHeaderIndex(2);
+#else
     obj->section = ObjGen_PPC_EABI_GetHeaderIndex(2);
     obj->type = NULL;
+#endif
+#if VERSION >= VERSION_GC_1_3
+    obj->type = (Type *)&void_ptr;
+    fn_0049f230(obj, 0, 0);
+#else
     fn_0049f230(obj, 0, 0);
     obj->type = (Type *)&void_ptr;
+#endif
     obj->u.data.u.switchtable.data = (SInt32 *)lalloc((obj->u.data.u.switchtable.size = switchtable_max.lo + 1) << 2);
 
     p = case_ranges;
@@ -447,7 +462,7 @@ void generate_switchtable_dispatch(ENode *node, SwitchInfo *cases)
     }
     obj = create_switchtable();
     if ((node->rtype->type == TYPEINT || node->rtype->type == TYPEENUM) && node->rtype->size == 8)
-        CError_FATAL(554);
+        CError_FATAL(BY_VERSION(554, 553));
     data_00560648[node->type](node, 0, 0, &operand);
     if (node->rtype->size < 4)
         Operands_ExtendGPR(&operand, node->rtype, 0);
@@ -527,7 +542,7 @@ void Switch_GenerateSwitch(ENode *expression, SwitchInfo *cases)
             caseNode->label->pclabel = PCode_NewLabel();
         switch_case_count++;
     }
-    CError_ASSERT(651, switch_case_count >= 0 && switch_case_count <= 0x3333332U);
+    CError_ASSERT(BY_VERSION(651, 656), switch_case_count >= 0 && switch_case_count <= 0x3333332U);
     defaultCase = cases->defaultlabel;
     if (defaultCase->pclabel == NULL) {
         PCodeLabel *id = PCode_NewLabel();

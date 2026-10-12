@@ -118,14 +118,25 @@ static inline long third_word(long p)
     return x;
 }
 
+#if VERSION >= VERSION_GC_1_3
+extern void *data_005e6c4c;
+extern void *data_005e6cdc;
+#endif
+
 void fn_0049f560(void)
 {
     gTrailingObjectList_005876a0 = data_00587660 = (float_object_list = NULL);
     gInitialObjectList_005882ac = NULL;
     data_00588200 = 0;
+#if VERSION >= VERSION_GC_1_3
+    data_005e6c4c = NULL;
+#endif
     member_pointer_constants = NULL;
+#if VERSION >= VERSION_GC_1_3
+    data_005e6cdc = NULL;
+#endif
     data_00588508 = 1;
-    memclrw(data_005883f0, 54);
+    memclrw(data_005883f0, BY_VERSION(54, 0x44));
     blank_name = GetHashNameNode("TOC");
     toc_references = NULL;
 }
@@ -280,6 +291,175 @@ void add_toc_reference(Object *id, Object *a, ENode *b, char c)
     }
 }
 
+#if VERSION >= VERSION_GC_1_3
+char *fn_004f60d0(char *a)
+{
+    return a + 8;
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+struct Fn004dbc20 {
+    char pad[0xa];
+    UInt16 id;
+};
+extern UInt16 data_005dcc54;
+
+struct Fn004dbc20 *fn_004dbc20(void)
+{
+    struct Fn004dbc20 *r = (struct Fn004dbc20 *)CompilerTools_AllocatePool(0xc);
+    memclrw(r, 0xc);
+    r->id = data_005dcc54;
+    data_005dcc54++;
+    return r;
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+struct Fn004df110 {
+    struct Fn004df110 *next;
+    int key;
+    int pad;
+    int count;
+};
+extern struct Fn004df110 *data_005dcc58;
+
+Boolean fn_004df110(int key)
+{
+    struct Fn004df110 *p = data_005dcc58;
+    while (p != NULL) {
+        if (key == p->key) {
+            if (p->count < 3)
+                return 0;
+            return 1;
+        }
+        p = p->next;
+    }
+    return 0;
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+extern ObjectList *data_005e686c;
+
+void fn_004df320(void)
+{
+    ObjectList *list;
+
+    list = gTrailingObjectList_005876a0;
+    while (list != NULL) {
+        list->object->u.data.info = CPrep_AllocateVarInfo();
+        list = list->next;
+    }
+    toc_references = NULL;
+    list = data_005e686c;
+    while (list != NULL) {
+        if (list->object != NULL && list->object->otype == OT_OBJECT)
+            list->object->u.data.info = CPrep_AllocateVarInfo();
+        list = list->next;
+    }
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+#pragma pack(push, 1)
+struct Fn004dd570Leaf {
+    UInt8 pad[2];
+    SInt32 value;
+};
+struct Fn004dd570Node {
+    UInt8 type;
+    UInt8 pad[5];
+    struct Fn004dd570Leaf *left;
+    UInt8 pad2[4];
+    struct Fn004dd570Node *right;
+    struct Fn004dd570Node *inner;
+};
+#pragma pack(pop)
+
+SInt32 fn_004dd570(struct Fn004dd570Node *arg)
+{
+    struct Fn004dd570Node *node;
+    SInt32 result;
+
+    if (arg->type == 0x1e)
+        node = arg->inner;
+    else
+        node = arg;
+    if (node->type == 0x30 && node->right->left->value < node->left->value)
+        result = node->right->left->value;
+    else
+        result = node->left->value;
+    return result;
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+#if VERSION >= VERSION_GC_1_3
+#define data_005e7102 (*(UInt8 *)((char *)&copts + 0x20))
+#else
+extern UInt8 data_005e7102;
+#endif
+extern Boolean fn_004b3fc0(Object *obj);
+extern void fn_004df140(Object *link, Object *obj);
+
+int fn_004defd0(Object *obj, SInt32 a, SInt32 b)
+{
+    Object *link;
+
+    if (obj->section == 0)
+        CError_Internal("TOC.c", 0x296);
+    BE_symbol_GetOrCreateFunctionObjectSymbol(obj);
+    if (obj->datatype == 0 && !fn_004b3fc0(obj) && data_005e7102 != 0) {
+        link = BE_symbol_GetFunctionSymbolLinkData(obj);
+        if (link != NULL)
+            fn_004df140(link, obj);
+    }
+    return 0;
+}
+#if VERSION >= VERSION_GC_1_3
+static Boolean TOC_IsReferencedEnough(Object *key)
+{
+    TOCReferenceEntry *entry = toc_references;
+
+    while (entry != NULL) {
+        if (key == entry->object) {
+            if ((SInt32)entry->expression >= 3)
+                return 1;
+            break;
+        }
+        entry = entry->next;
+    }
+    return 0;
+}
+
+Boolean fn_004df030(Object *obj)
+{
+    Object *link;
+
+    if (!TOC_IsReferencedEnough(obj) && obj->u.data.f36hi != 0)
+        return 0;
+    if (obj->datatype == 0 && !fn_004b3fc0(obj) && data_005e7102 != 0) {
+        link = BE_symbol_GetFunctionSymbolLinkData(obj);
+        if (link != NULL && obj->dwarfLinks.toc != NULL && TOC_IsReferencedEnough(obj->dwarfLinks.toc)) {
+            int reg;
+
+            if (Registers_GetInfo(obj->dwarfLinks.toc) != NULL)
+                reg = Registers_GetInfo(obj->dwarfLinks.toc)->reg;
+            else
+                reg = 0;
+            if (reg != 0) {
+                if (link != obj->dwarfLinks.toc)
+                    CError_Internal("TOC.c", 0x21e);
+                return 1;
+            }
+        }
+    }
+    return 0;
+}
+#endif
+#endif
+
 UInt8 TOC_HasObjectReferenceWithoutExpression(Object *key)
 {
     TOCReferenceEntry *entry;
@@ -299,6 +479,7 @@ UInt8 TOC_HasObjectReferenceWithoutExpression(Object *key)
     return '\0';
 }
 
+#if VERSION < VERSION_GC_1_3
 Object *fn_0049f230(Object *object, SInt32 a, SInt32 b)
 {
     if (object->section == 0)
@@ -306,6 +487,7 @@ Object *fn_0049f230(Object *object, SInt32 a, SInt32 b)
     BE_symbol_GetOrCreateFunctionObjectSymbol(object);
     return NULL;
 }
+#endif
 
 void rewrite_indirect_toc_references(void)
 {
@@ -340,6 +522,17 @@ void rewrite_indirect_toc_references(void)
         }
     }
 }
+
+#if VERSION >= VERSION_GC_1_3
+extern SInt32 data_005dccd6;
+extern UInt8 data_005e73fa;
+
+/* needs_frame */
+int fn_004f60b0(void)
+{
+    return (data_005dccd6 > 0) || data_005e73fa;
+}
+#endif
 
 Object *TOC_GetFloatObject(Type *type, Float *value)
 {
@@ -636,7 +829,7 @@ Type *select_common_arithmetic_type(Type *leftType, Type *rightType)
                 leftType = (Type *)&stunsignedlong;
             else {
                 if (leftType != (Type *)&stsignedlonglong)
-                    CError_FATAL(1397);
+                    CError_FATAL(BY_VERSION(1397, 1799));
                 leftType = (Type *)&stunsignedlonglong;
             }
         }
@@ -812,14 +1005,26 @@ void expandpreincdec(ENode *node)
 
     operand = node->data.monadic;
     rtype = node->rtype;
+#if VERSION >= VERSION_GC_1_3
+    if (operand->type != 4)
+        CError_FATAL(2046);
+#endif
     constant = lalloc(sizeof(ENode));
     memclrw(constant, sizeof(ENode));
+#if VERSION >= VERSION_GC_1_3
+    if (rtype->type == TYPEFLOAT && !(rtype->type == TYPEFLOAT && TYPE_INTEGRAL(rtype)->integral == 0x13)) {
+#else
     if (rtype->type == TYPEFLOAT) {
+#endif
         constant->type = EFLOATCONST;
         constant->cost = 0;
         constant->rtype = rtype;
         constant->data.floatval = float_one;
+#if VERSION >= VERSION_GC_1_3
+    } else if ((UInt8)(rtype->type - TYPEPOINTER) <= 1) {
+#else
     } else if (rtype->type == TYPEPOINTER) {
+#endif
         constant->type = EINTCONST;
         constant->cost = 0;
         constant->rtype = (Type *)&stunsignedlong;
@@ -944,7 +1149,7 @@ void fn_0049d710(ENode *node, Type *targetType, int ignored)
                 node->type = EINDIRECT;
                 node->cost = 1;
                 node->data.diadic.left = ref;
-                CError_ASSERT(648, object->section != 0);
+                CError_ASSERT(BY_VERSION(648, 662), object->section != 0);
                 BE_symbol_GetOrCreateFunctionObjectSymbol(object);
             }
             node->hascall = 0;
@@ -965,7 +1170,7 @@ void fn_0049d710(ENode *node, Type *targetType, int ignored)
         case EOBJREF: {
             Object *object = node->data.objref;
             if (object->datatype == DALIAS)
-                CError_FATAL(1998);
+                CError_FATAL(BY_VERSION(1998, 3220));
             DWARF_AddPendingObject(object);
             if (object->datatype == DFUNC || object->datatype == DVFUNC)
                 data_00588500 = 1;
@@ -981,7 +1186,7 @@ void fn_0049d710(ENode *node, Type *targetType, int ignored)
                         }
                     }
                     data_00588500 = 1;
-                    CError_ASSERT(648, object->section != 0);
+                    CError_ASSERT(BY_VERSION(648, 662), object->section != 0);
                     BE_symbol_GetOrCreateFunctionObjectSymbol(object);
                     node->hascall = 0;
                     break;
@@ -1564,11 +1769,11 @@ void fn_0049d420(Statement *statements)
                     while (operandIndex < instruction->operand_count) {
                         if (operand->kind == 2 && operand->target.object == NULL) {
                             if (TOC_RegisterClass(operand) == 0) {
-                                Registers_BindGPR(operand->target.object, operand->data.value);
+                                REGISTERS_BIND_GPR(operand->target.object, operand->data.value);
                             } else if (TOC_RegisterClass(operand) == 1) {
                                 Registers_BindFPR(operand->target.object, operand->data.value);
                             } else if (TOC_RegisterClass(operand) == 9) {
-                                Registers_BindVR(operand->target.object, operand->data.value);
+                                REGISTERS_BIND_VR(operand->target.object, operand->data.value);
                             }
                         }
                         operandIndex++;

@@ -47,12 +47,18 @@ struct MachineOpcodeInfo {
 struct MachineInfo {
     SInt32 count;
     SInt32 omitRegisterAntiDependencyLatency;
+#if VERSION >= VERSION_GC_1_3
+    SInt32 unk08; /* 1.3 inserts a word here (0 in every table) */
+#endif
     SInt32 (*getLatency)(void *);
     void (*beginScheduling)(void);
     SInt32 (*check)(void *);
     void (*issueInstruction)(void *);
     void (*advanceCycle)(void);
     SInt32 (*checkLate)(void *);
+#if VERSION >= VERSION_GC_1_3
+    SInt32 (*unk24)(void *); /* 1.3 adds a 10th callback (fn_00506260 in every table but 7400's) */
+#endif
 };
 #pragma options align = reset
 #pragma options align = mac68k
@@ -96,6 +102,17 @@ extern struct MachineInfo machine7400;
 extern struct MachineInfo machine601;
 extern struct MachineInfo machine821;
 extern int Scheduler_ReturnZero(PCodeInstruction *list, PCodeInstruction *ref, char c);
+#if VERSION >= VERSION_GC_1_3
+/* 1.3's own machine model callbacks (MachineSimulation7400.c, Peephole.c) */
+extern int fn_00506260(void);
+extern int fn_00576cc0(PCodeInstruction *p);
+extern int fn_00576d10(int a);
+extern int fn_005770d0(PCodeInstruction *p);
+extern int fn_005771e0(PCodeInstruction *p);
+extern int fn_00577230(int a);
+extern int fn_00577750(PCodeInstruction *p);
+extern int fn_005777a0(int a);
+#endif
 
 #ifdef __cplusplus
 }

@@ -75,10 +75,15 @@ static __inline void FindOrAdd(HashNameNode *key)
         node->stmt = entry;
     }
 }
-
+#if VERSION >= VERSION_GC_1_3
+extern UInt8 data_005e7322;
+#endif
 void InlineAsm_LongJump(void)
 {
-    longjmp(inlineAsmJmpBuf, 1);
+#if VERSION >= VERSION_GC_1_3
+    if (data_005e7322 != 0)
+#endif
+        longjmp(inlineAsmJmpBuf, 1);
 }
 
 void InlineAsm_Error(short errorCode)
@@ -91,6 +96,10 @@ void InlineAsm_Error(short errorCode)
     }
     CError_ReportError(errorCode);
 }
+
+#if VERSION >= VERSION_GC_1_3
+extern UInt8 data_005e7322;
+#endif
 
 CLabel *InlineAsm_CreateLabel(HashNameNode *name)
 {
@@ -163,7 +172,7 @@ unsigned char InlineAsm_ResolveOperandName(HashNameNode *name, struct AsmOperand
                 case OT_MEMBERVAR:
                     return 0;
                 default:
-                    CError_Internal("InlineAsm.c", 233);
+                    CError_Internal("InlineAsm.c", BY_VERSION(233, 248));
             }
         }
         scope = scope->parent;
@@ -587,7 +596,14 @@ void InlineAsm_CopyInstructionAndResolveOperands(Statement *output, struct CLabe
                 operand->data.label = references[labelIndex];
                 break;
             }
+#if VERSION >= VERSION_GC_1_3
+            case 6:
+            case 7:
+                break;
+            case 8: {
+#else
             case 6: {
+#endif
                 SInt16 labelIndex = operand->data.value;
                 operand->data.label = references[labelIndex];
                 operand->target.label = references[(SInt16)operand->target.label];
@@ -625,16 +641,23 @@ void InlineAsm_RecordObjectUses(Statement *record)
 
 CLabel *InlineAsm_FindOperandLabel(Statement *object)
 {
-    ParsedAsmInstruction *table;
     EncodedOperand *entry;
+    ParsedAsmInstruction *table;
+#if VERSION >= VERSION_GC_1_3
+    int index;
+
+    table = (ParsedAsmInstruction *) object->expr;
+    index = 0;
+#else
     int index = 0;
 
-    table = (ParsedAsmInstruction *)object->expr;
+    table = (ParsedAsmInstruction *) object->expr;
+#endif
     entry = table->data.operands;
     for (; index < table->operand_count; index++, ++entry) {
         if (entry->kind == 5)
             return (CLabel *)entry->data.label;
-        if (entry->kind == 6)
+        if (entry->kind == BY_VERSION(6, 8))
             return (CLabel *)entry->data.label;
     }
     return NULL;
@@ -646,11 +669,16 @@ void *InlineAsm_GetOperandLabel(Statement *owner)
     ParsedAsmInstruction *instruction;
     int index;
 
+#if VERSION >= VERSION_GC_1_3
+    instruction = (ParsedAsmInstruction *) owner->expr;
     index = 0;
-    instruction = (ParsedAsmInstruction *)owner->expr;
+#else
+    index = 0;
+    instruction = (ParsedAsmInstruction *) owner->expr;
+#endif
     operand = instruction->data.operands;
     while (index < instruction->operand_count) {
-        if (operand->kind == 6)
+        if (operand->kind == BY_VERSION(6, 8))
             return operand->target.label;
         index++;
         operand++;
@@ -660,6 +688,19 @@ void *InlineAsm_GetOperandLabel(Statement *owner)
 
 Object *InlineAsm_GetObjectByIndex(ParsedAsmInstruction *t, SInt32 index, SInt32 *offset)
 {
+#if VERSION >= VERSION_GC_1_3
+    EncodedOperand *e;
+    int i;
+    int n;
+
+    for (i = 0, n = 0, e = t->data.operands; i < t->operand_count; i++, e++) {
+        if (e->kind == 3 && n++ == index) {
+            *offset = (char *)&e->target.object - (char *)t;
+            return (Object *)e->target.object;
+        }
+    }
+    return NULL;
+#else
     char *base;
     EncodedOperand *e;
     int i;
@@ -673,6 +714,7 @@ Object *InlineAsm_GetObjectByIndex(ParsedAsmInstruction *t, SInt32 index, SInt32
         }
     }
     return NULL;
+#endif
 }
 
 char *format_inlineasm_instruction(ENode *info)

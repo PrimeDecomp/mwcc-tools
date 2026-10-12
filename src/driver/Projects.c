@@ -184,7 +184,7 @@ SInt32 ToolHelpers_cc_AddProjectEntry(OSSpec *path, SInt16 mode, char *name, Boo
     return result;
 }
 
-int ToolHelpers_cc_AddAccessPath(OSPathSpec *path, char use_first, int value, unsigned char option)
+int ToolHelpers_cc_AddAccessPath(OSPathSpec *path, BY_VERSION( char, int) use_first, int value, unsigned char option)
 {
     int status;
     int result;
@@ -273,7 +273,11 @@ void ToolHelpers_cc_CallFileInfoForDirectory(OSSpec *input)
     CWFileSpec body;
     OSSpec spec;
     int result;
+#if VERSION >= VERSION_GC_1_3
+    OS_MakeSpecWithPath(&input->path, NULL, 0, &spec);
+#else
     spec.path = input->path;
+#endif
     OS_OSSpec_To_FSSpec(&spec, &body);
     result = CWParserPluginsPrivate_CallFileInfo(pluginPrivateContext, &body);
     if (result != 0U) {

@@ -30,12 +30,217 @@ struct BrowseOptions {
 #pragma pack(pop)
 #pragma options align = mac68k
 struct CNameRef {
+#if VERSION >= VERSION_GC_1_3
+    CInt64 val; /* the reference's PrepValue */
+#else
     SInt32 a;
     SInt32 b;
+#endif
     SInt16 c;
 };
 #pragma options align = reset
 #pragma options align = mac68k
+#if VERSION >= VERSION_GC_1_3
+#pragma options align = packed
+struct CompilerLinkerOptions {
+    UInt8 littleendian;
+    UInt8 pad01[1];
+    SInt16 processor;
+    SInt8 processorModel;
+    UInt8 instructionSchedulingMode;
+    unsigned char debug_listing;
+    char emitExtraAssemblyData;
+    Boolean disable_registers;
+    char fp_contract;
+    UInt8 f0a;
+    UInt8 f0b;
+    Boolean unroll_speculative;
+    UInt8 pad0b[1];
+    SInt16 unroll_instr_limit;
+    SInt16 unroll_factor_limit;
+    UInt8 altivec_model;
+    UInt8 altivec_vrsave;
+    UInt8 codeAlignment;
+    char catssupport;
+    char forcecatssupport;
+    UInt8 pad15[1];
+    SInt32 nonconstsmalldatathreshold;
+    int constsmalldatathreshold;
+    UInt8 usedatapool;
+    UInt8 commonblocks;
+    char debugEnabled;
+    Boolean operandsDebug;
+    UInt8 use_lmw_stmw;
+    UInt8 f26;
+    char f27;
+    union {
+        UInt8 f25;
+        SInt8 rel109_offset;
+    };
+    struct ObjGenSection *textSection;
+    struct ObjGenSection *dataSection;
+    struct ObjGenSection *bssSection;
+    struct ObjGenSection *smallDataSection;
+    struct ObjGenSection *smallBSSSection;
+    SInt32 sectionHeaderTableSize;
+    SInt32 *sectionHeaderTable;
+    struct InterruptList *interruptList;
+    struct InterruptGenerationRecord *interruptOptions;
+    UInt8 incompatible_return_small_structs;
+    Boolean create_file_object;
+    UInt8 incompatible_sfpe_double_params;
+    UInt8 f4f;
+    UInt8 f50;
+    UInt8 f51;
+    UInt8 f52; /* 0x52: TargetPanels_eabi_ppc_LoadCompilerOptions clears it */
+    UInt8 f53;
+    UInt8 f54b; /* 0x54 */
+    UInt8 pad55[1];
+    UInt8 pad_56[4];
+    UInt8 f5cEarly;
+    UInt8 pad_5d[9];
+    char *f54; /* 0x64: the prefix file's name; CPrep_Compile reads it */
+    SInt16 inlineLimit;
+    SInt32 inlineAutoSize;
+    SInt32 inlineAutoMax;
+    UInt8 inlineAuto;
+    UInt8 cplusplus;
+    UInt8 ecplusplus;
+    UInt8 objective_c;
+    SInt8 objc_strict;
+    char ARM_conform;
+    char ARMscoping;
+    Boolean checkprotos;
+    char trigraphs;
+    UInt8 onlystdkeywords;
+    UInt8 enumsalwaysint;
+    UInt8 ANSIstrict;
+    UInt8 mpwc_relax;
+    UInt8 mpwc_newline;
+    Boolean ignore_oldstyle;
+    Boolean cpp_extensions;
+    UInt8 pointercast_lvalue;
+    char RTTI;
+    UInt8 delete_exception;
+    UInt8 pad6c[2];
+    UInt8 unsigned_char;
+    char multibyteaware;
+    UInt8 auto_inline;
+    UInt8 defer_codegen;
+    UInt8 direct_to_som;
+    UInt8 SOMCheckEnvironment;
+    UInt8 SOMCallOptimization;
+    UInt8 booltruefalse;
+    UInt8 old_enum_mangler[1];
+    UInt8 longlong;
+    UInt8 longlong_enums;
+    UInt8 no_tfuncinline[1];
+    UInt8 f7a;
+    char flat_include;
+    char syspath_once;
+    char always_import;
+    UInt8 simple_class_byval;
+    char wchar_type;
+    UInt8 vbase_ctor_offset;
+    char vbase_abi_v2;
+    char def_inherited;
+    UInt8 template_patch;
+    UInt8 template_friends;
+    Boolean faster_pch_gen;
+    UInt8 array_new_delete;
+    UInt8 dollar_identifiers;
+    UInt8 def_inline_tfuncs[1];
+    UInt8 arg_dep_lookup;
+    volatile char simple_prepdump;
+    char line_prepdump;
+    UInt8 fullpath_prepdump;
+    UInt8 old_mtemplparser[1];
+    UInt8 suppress_init_code;
+    Boolean reverse_bitfields;
+    UInt8 c9x;
+    Boolean float_constants;
+    Boolean no_static_dtors;
+    Boolean longlong_prepeval;
+    UInt8 const_strings;
+    UInt8 dumpir[1];
+    UInt8 experimental;
+    UInt8 gcc_extensions;
+    UInt8 pad98[3];
+    UInt8 f9b;
+    char fb5; /* 0xb5: CPrep_Compile sets it */
+    UInt8 pad_b6[3];
+    char warningerrors; /* 0xb9: report_diagnostic tests it */
+    char extended_errorcheck;
+    UInt8 check_header_flags;
+    UInt8 pad_bc[1];
+    Boolean warn_illpragma;
+    UInt8 warn_emptydecl;
+    Boolean warn_possunwant;
+    char warn_unusedvar;
+    char warn_unusedarg;
+    UInt8 warn_extracomma;
+    Boolean warn_hidevirtual;
+    char warn_largeargs;
+    Boolean warn_implicitconv;
+    UInt8 warn_notinlined;
+    SInt8 warn_structclass;
+    Boolean warn_padding;
+    Boolean warn_no_side_effect;
+    Boolean warn_resultnotused;
+    UInt8 warnPtrIntSize; /* 0xcb: CExpr conversion of a pointer to a narrower integer warns when set */
+    signed char structalignment;
+    UInt8 alignarraymembers;
+    SInt8 dont_reuse_strings;
+    UInt8 poolstrings;
+    UInt8 explicit_zero_data;
+    UInt8 readonly_strings;
+    UInt8 exceptions;
+    UInt8 padb4[1];
+    UInt8 dontinline;
+    UInt8 alwaysinline;
+    char peephole;
+    Boolean globaloptimizer;
+    UInt8 profile;
+    UInt8 cfm_internal;
+    UInt8 cfm_import;
+    UInt8 cfm_export;
+    UInt8 cfm_lib_export;
+    char nosyminline;
+    char force_active;
+    unsigned char sideeffects;
+    UInt8 pad_e0[1];
+    SInt8 deleteDeadInstructions;
+    UInt8 optimizesize;
+    UInt8 fc3;
+    UInt8 pluginFlag_e4; /* 0xe4: initialize_copts copies the flag dispatch_compiler_plugin_request clears */
+    UInt8 commonsubs;
+    UInt8 loopinvariants;
+    UInt8 propagation;
+    UInt8 deadstore;
+    UInt8 strengthreduction;
+    UInt8 strengthreductionstrict;
+    UInt8 deadcode;
+    UInt8 lifetimes;
+    UInt8 padcc[1];
+    UInt8 unrolling;
+    Boolean vectorizeloops;
+    UInt8 irSecondOptimizationPass;
+    UInt8 ff1;
+    UInt8 ff2;
+    signed char unrollOption;
+    SInt8 fd1;
+    UInt8 filesyminfo;
+    UInt8 fd3;
+    char fd4;
+    UInt8 fd5;
+    Boolean fd6;
+    int precompiledHeaderCreator;
+    UInt32 precompiledHeaderFileTypes[2];
+    SInt32 fe4;
+};
+#pragma options align = reset
+#pragma options align = mac68k
+#else
 struct CompilerLinkerOptions {
     UInt8 littleendian;
     UInt8 pad01[1];
@@ -216,6 +421,7 @@ struct CompilerLinkerOptions {
     UInt32 precompiledHeaderFileTypes[2];
     SInt32 fe4;
 };
+#endif
 #pragma options align = reset
 #pragma options align = mac68k
 struct CPrepCU {
@@ -250,6 +456,9 @@ struct CPrepCU {
     UInt16 mainFileAttributes;
     SInt32 platformCode1;
     SInt32 platformCode0;
+#if VERSION >= VERSION_GC_1_3
+    char *optionString; /* 0x102: a 0x80-byte buffer the plugin fills; fn_0043c020 compares a token with it. */
+#endif
 };
 #pragma options align = reset
 #pragma options align = mac68k
@@ -316,6 +525,9 @@ struct OptionEntry {
 #pragma options align = mac68k
 struct CPrepFileInfo {
     CWFileSpec textfile;
+#if VERSION >= VERSION_GC_1_3
+    UInt8 f46[12];
+#endif
     char *textbuffer;
     SInt32 textlength;
     SInt32 linenumber;
@@ -381,6 +593,10 @@ extern Boolean fn_0043ecb0(short ch);
 extern void CPrep_PopMacro(void);
 extern UInt8 CPrep_Compile(CPrepCU *cu);
 extern SInt32 CPrep_UpdateTokenLine(FileOffsetInfo *foi);
+#if VERSION >= VERSION_GC_1_3
+extern void fn_0043dad0(CPrepFileInfo *file);
+extern void fn_0043db20(FileOffsetInfo *location, SInt32 *line, SInt32 *name);
+#endif
 extern void CPrep_PopFile(void);
 extern TStreamElement *CPrep_GetLastBufferedToken(void);
 extern int fn_0043f860(char *p);
@@ -411,6 +627,9 @@ extern void apply_pragma_object_flags(unsigned int flags);
 extern UInt8 CPrep_ExpandMacro(void);
 extern Macro *lookup_expandable_macro(void);
 extern void CPrep_GetFOI(FileOffsetInfo *location, TStreamElement *record);
+#if VERSION >= VERSION_GC_1_3
+extern SInt32 fn_00436580(FileOffsetInfo *a);
+#endif
 extern void CPrep_GetPosition(CPrepFileInfo **position, SInt32 *offset);
 extern UInt8 *expand_macro(Macro *m);
 extern int scan_braced_tokens(void (*callback)(TStreamElement *), int tokenCount);
@@ -427,6 +646,30 @@ extern UInt8 data_00588516;
 extern UInt8 data_00588523;
 extern SInt16 macro_expansion_depth;
 extern UInt32 intconst_lo;
+#if VERSION >= VERSION_GC_1_3
+extern struct Macro builtin_line_macro;
+extern struct Macro builtin_file_macro;
+extern struct Macro builtin_date_macro;
+extern struct Macro builtin_time_macro;
+extern struct Macro builtin_stdc_version_macro;
+extern struct Macro builtin_stdc_hosted_macro;
+extern struct Macro builtin_casm_macro;
+extern struct Macro builtin_mwerks_macro;
+extern struct Macro builtin_som_macro;
+extern struct Macro builtin_option_macro;
+extern struct Macro builtin_ide_target_macro;
+extern struct Macro builtin_env_var_macro;
+extern struct Macro builtin_altivec_macro;
+extern struct Macro builtin_powerc_macro;
+extern struct Macro builtin_underscore_powerc_macro;
+extern struct Macro builtin_powerpc_macro;
+extern struct Macro builtin_ppc_macro;
+extern struct Macro builtin_endian_macro;
+extern struct Macro builtin_profile_macro;
+extern struct Macro builtin_fourbyteints_macro;
+extern struct Macro builtin_ieeedoubles_macro;
+extern struct Macro builtin_ppc_eabi_macro;
+#endif
 extern UInt8 f87_enabled;
 extern struct Macro **macro_buckets;
 extern SInt32 line_count;

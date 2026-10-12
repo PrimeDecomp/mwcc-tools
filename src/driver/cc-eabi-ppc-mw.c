@@ -129,12 +129,19 @@ int __stdcall get_global_name_and_length(char **name, int *length)
 }
 #pragma scheduling reset
 
+#if VERSION >= VERSION_GC_1_3
+unsigned char data_005437e8[] = "mwldnr2";
+#endif
 unsigned int __stdcall set_data_pointer(unsigned int objectAddress)
 {
     struct DataPointerObject *object;
     unsigned char *data;
     object = (struct DataPointerObject *)objectAddress;
+#if VERSION >= VERSION_GC_1_3
+    object->data = (data = data_005437e8);
+#else
     object->data = (data = (unsigned char *)"mwldnr2");
+#endif
     object = NULL;
     return (unsigned int)object;
 }

@@ -112,8 +112,8 @@ static inline void StoreBigEndian32(UInt8 *bytes, UInt32 value)
 struct ResEntry *insert_res_entry(struct ResEntry **listAddress, UInt16 key, UInt32 value, UInt8 *name, UInt8 flag,
                                   void **extra)
 {
-    struct ResEntry *previous = NULL;
     struct ResEntry **link = listAddress;
+    struct ResEntry *previous = NULL;
     struct ResEntry *entry;
     char nameBuffer[256];
 
@@ -452,8 +452,8 @@ int count_types(ResFile *chain)
     count = 0;
     entry = chain->types;
     while (entry != NULL) {
-        entry = entry->next;
         count = count + 1;
+        entry = entry->next;
     }
     return count;
 }
@@ -702,7 +702,7 @@ void write_default_binary_record(SInt16 file)
     memset(defaults, 0, sizeof(defaults));
     memset(defaults + 70, 0, 4);
     memset(defaults + 66, 0, 4);
-    memcpy(&trailer.prefix, &prefix, sizeof(prefix));
+    trailer.prefix = prefix;
     trailer.reserved = 0;
     trailer.values[0] = 0;
     trailer.values[1] = 0;
@@ -919,7 +919,12 @@ SInt32 fn_004083b0(int handle, UInt32 *secondValue, UInt32 *firstValue)
             result = OS_Read(handle, values, &byteCount);
             if (result == 0 && byteCount == 8) {
                 result = 0;
+#if VERSION >= VERSION_GC_1_3
+                /* (1.3 rereads the first word for each byte) */
+                values[0] = SWAP32(((volatile UInt32 *)values)[0]);
+#else
                 values[0] = SWAP32(values[0]);
+#endif
                 values[1] = SWAP32(values[1]);
                 *firstValue = values[0];
                 *secondValue = values[1];

@@ -12,6 +12,9 @@ struct CParseCacheNode {
     struct CParseCacheNode *next;
     struct Object *object;
     struct ENode *expr;
+#if VERSION >= VERSION_GC_1_3
+    SInt32 extra;
+#endif
 };
 #pragma options align = mac68k
 struct CParseRec {
@@ -78,18 +81,18 @@ extern TypeFunc data_0055d5e8;
 #define TK_ENUM 273
 #define TK_CLASS 274
 #define TK_UU_VECTOR 283
-#define TK_BOOL 284
-#define TK_WCHAR_T 285
-#define TK__COMPLEX 286
-#define TK__IMAGINARY 287
-#define TK_TYPENAME 288
-#define TK_CONST 289
-#define TK_VOLATILE 290
-#define TK_PASCAL 291
-#define TK_UU_DECLSPEC 292
-#define TK_UU_STDCALL 293
-#define TK_UU_CDECL 294
-#define TK_UU_FASTCALL 295
+#define TK_BOOL BY_VERSION(284, 285)
+#define TK_WCHAR_T BY_VERSION(285, 286)
+#define TK__COMPLEX BY_VERSION(286, 287)
+#define TK__IMAGINARY BY_VERSION(287, 288)
+#define TK_TYPENAME BY_VERSION(288, 289)
+#define TK_CONST BY_VERSION(289, 290)
+#define TK_VOLATILE BY_VERSION(290, 291)
+#define TK_PASCAL BY_VERSION(291, 292)
+#define TK_UU_DECLSPEC BY_VERSION(292, 293)
+#define TK_UU_STDCALL BY_VERSION(293, 294)
+#define TK_UU_CDECL BY_VERSION(294, 295)
+#define TK_UU_FASTCALL BY_VERSION(295, 296)
 #define TK_UU_FLOATCALL 296
 #define TK_UU_FAR 297
 #define TK_EXPLICIT 298
@@ -171,8 +174,8 @@ extern TypeFunc data_0055d5e8;
 #define TK_AT_SELECTOR 381
 #define TK_AT_ENCODE 382
 #define TK_AT_DEFS 383
-#define TK_RESTRICT 388
-#define TK_UU_ATTRIBUTE 389
+#define TK_RESTRICT BY_VERSION(388, 389)
+#define TK_UU_ATTRIBUTE BY_VERSION(389, 390)
 extern SInt16 tk;
 extern NameSpaceName *runtime_operator_namespace_name;
 extern NameSpaceName *data_00588008;
@@ -180,7 +183,14 @@ extern void CParser_CheckAnonymousUnion(DeclInfo *context, char flag);
 extern Boolean CParser_IsAnonymousUnion(Type **ptype, Boolean flag);
 extern void fn_0048c290(void);
 extern void CParser_GetDeclSpecs(DeclInfo *state, Boolean allowObject);
+#if VERSION >= VERSION_GC_1_3
+extern unsigned char CParser_CheckTemplateClassScope(Type *type, Boolean reportError);
+/* (every 1.3 caller reports the error) */
+#define CParser_CheckTemplateClassScopeReporting(type) CParser_CheckTemplateClassScope((type), 1)
+#else
 extern unsigned char CParser_CheckTemplateClassScope(Type *type);
+#define CParser_CheckTemplateClassScopeReporting(type) CParser_CheckTemplateClassScope(type)
+#endif
 extern int parse_dtype_specifiers(DeclInfo *state);
 extern void CParser_ParseDeclSpec(DeclInfo *st, int arg2);
 extern void CParser_ParseAttribute(Type *type, DeclInfo *function);
@@ -212,7 +222,14 @@ extern SInt32 CParser_GetUniqueID(void);
 extern Type *CParser_GetWCharType(void);
 extern Type *CParser_GetBoolType(void);
 extern FuncArg *CParser_NewFuncArg(void);
+#if VERSION >= VERSION_GC_1_3
+extern Boolean CParser_ParseOperatorName(SInt16 *operatorToken, Boolean allowConversion, Boolean parseConversion);
+#define CPARSER_PARSE_OPERATOR_NAME(token, allowConversion, parseConversion) \
+    CParser_ParseOperatorName(token, allowConversion, parseConversion)
+#else
 extern Boolean CParser_ParseOperatorName(SInt16 *operatorToken, Boolean allowConversion);
+#define CPARSER_PARSE_OPERATOR_NAME(token, allowConversion, parseConversion) CParser_ParseOperatorName(token, allowConversion)
+#endif
 extern void CParser_Cleanup(void);
 extern unsigned int CParser_NewClassAction(TypeClass *type);
 extern void CParser_NewCallBackAction(Object *object, TypeClass *theclass);
@@ -224,12 +241,20 @@ extern void CParser_Setup(void);
 extern Boolean CParser_IsNullOrAtOrDollarPrefixedName(HashNameNode *name);
 extern void CParser_CallBackAction(Object *key);
 extern char CParser_HasInternalLinkage(Object *obj);
+#if VERSION >= VERSION_GC_1_3
+extern char CParser_CheckInternalLinkage(Object *obj);
+#endif
 extern UInt8 is_volatile_object(Object *object);
 extern UInt8 CParser_IsVolatile(Type *type, unsigned int qualifiers);
 extern StructMember *ismember(Type *type, HashNameNode *name);
 extern Boolean CParser_IsVirtualFunction(Object *object, TypeClass **firstValue, UInt32 *secondValue);
 extern UInt32 CParser_GetCVTypeQualifiers(Type *type, SInt32 qual);
+#if VERSION >= VERSION_GC_1_3
+extern void fn_004e7880(Object *object, DeclInfo *record);
+#define CParser_UpdateObject fn_004e7880
+#else
 extern void CParser_UpdateObject(Object *object, volatile DeclInfo *record);
+#endif
 extern SInt16 GetPrec(short token);
 extern void fn_0048c220(char processInput);
 extern Boolean is_pascal_object(Object *object);
@@ -247,6 +272,9 @@ extern void initialize_runtime_objects(void);
 extern Object *CParser_NewObject(struct DeclInfo *record);
 extern Object *CParser_NewAliasObject(Object *object, int offset);
 extern void fn_00490210(Object *object, volatile DeclInfo *record);
+#if VERSION >= VERSION_GC_1_3
+extern HashNameNode *fn_004e7990(void);
+#endif
 extern SInt16 is_typesame(Type *e1, Type *e2);
 extern void cparser(void);
 extern void parse_declaration(DeclInfo *p);

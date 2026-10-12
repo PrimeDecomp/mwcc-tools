@@ -10,12 +10,22 @@
 struct MachineInfo machine603e = {
     2,
     1,
+#if VERSION >= VERSION_GC_1_3
+    0,
+    (SInt32 (*)(void *))fn_00577750,
+#else
     (SInt32 (*)(void *))fn_0052e640,
+#endif
     fn_0052e590,
     (SInt32 (*)(void *))is_instruction_issuable,
     (void (*)(void *))fn_0052e450,
     fn_0052e110,
+#if VERSION >= VERSION_GC_1_3
+    (SInt32 (*)(void *))fn_00577230,
+    (SInt32 (*)(void *))fn_00506260,
+#else
     (SInt32 (*)(void *))get_instruction_opcode_table_value,
+#endif
 };
 
 /* Each opcode's execution unit, latency and cycles in each stage of the pipeline. */
@@ -507,7 +517,7 @@ static CompletionEntry instruction_completion_entries[5];
 SInt32 fn_0052e640(PCodeInstruction *p)
 {
     SInt32 n = machineOpcodeInfo[p->opcode].latency;
-    if (p->flags & fRecordBit) {
+    if (PCODE_RECORD(p->flags)) {
         n += 2;
     }
     if (p->opcode == 0x27 || p->opcode == 0x36) {
@@ -559,7 +569,7 @@ int is_instruction_issuable(PCodeInstruction *instr)
                 case PC_CMPL:
                     list = instr;
                     ref = data_00582d20.instr;
-                    if (Scheduler_ReturnZero(list, ref, 0))
+                    if (Scheduler_ReturnZero(list, ref, BY_VERSION( 0, 4)))
                         return 0;
                     if (!data_00582d50.instr)
                         return 1;

@@ -93,10 +93,18 @@ unsigned char CompilerTools_ReportDiagnostic(SInt32 diagnosticCode, ...)
     char message[0x800];
     char format[0x100];
     va_list args;
+#if VERSION >= VERSION_GC_1_3
+    char *base;
+#endif
 
     if (data_00587958 == 0 && data_00588228 < data_005511b4) {
         COS_GetString(format, 0x2af9, diagnosticCode);
+#if VERSION >= VERSION_GC_1_3
+        base = (char *)&diagnosticCode;
+        args = base + ((va_list)(&diagnosticCode + 1) - base + 3) / 4 * 4;
+#else
         args = (va_list)&diagnosticCode + ((va_list)(&diagnosticCode + 1) - (va_list)&diagnosticCode + 3) / 4 * 4;
+#endif
         format_string(message, sizeof(message), format, args);
         fn_0041e990(message, "");
         data_00588228++;
@@ -111,14 +119,24 @@ void CompilerTools_ReportLimitedDiagnostic(SInt32 diagnosticCode, ...)
 
     if (limited_diagnostic_count < limited_diagnostic_limit) {
         COS_GetString(format, 0x2af9, diagnosticCode);
+#if VERSION >= VERSION_GC_1_3
+        format_string(message, sizeof(message), format,
+                      (((char *)(&diagnosticCode + 1) - (args = (char *)&diagnosticCode)) + 3) / 4 * 4 + args);
+#else
         args = (va_list)&diagnosticCode + (((va_list)(&diagnosticCode + 1) - (va_list)&diagnosticCode + 3) / 4) * 4;
         format_string(message, sizeof(message), format, args);
+#endif
         fn_0041e970(message, "");
         limited_diagnostic_count++;
     } else if (limited_diagnostic_count == limited_diagnostic_limit) {
         COS_GetString(format, 0x2af9, 25);
+#if VERSION >= VERSION_GC_1_3
+        format_string(message, sizeof(message), format,
+                      (((char *)(&diagnosticCode + 1) - (args = (char *)&diagnosticCode)) + 3) / 4 * 4 + args);
+#else
         args = (va_list)&diagnosticCode + (((va_list)(&diagnosticCode + 1) - (va_list)&diagnosticCode + 3) / 4) * 4;
         format_string(message, sizeof(message), format, args);
+#endif
         fn_0041e970(message, NULL);
         limited_diagnostic_count++;
     }
@@ -130,8 +148,12 @@ void CompilerTools_FormatMessageAndLongjmp(int message, int status)
     char buf[256];
 
     COS_GetString(buf, 0x2af9, message);
+#if VERSION >= VERSION_GC_1_3
+    format_string(message_buffer, 0x800, buf, (((char *)(&status + 1) - (args = (char *)&status)) + 3) / 4 * 4 + args);
+#else
     args = (va_list)&status + (((va_list)(&status + 1) - (va_list)&status + 3) / 4) * 4;
     format_string(message_buffer, 0x800, buf, args);
+#endif
     longjmp(file_input_jmpbuf, status);
 }
 

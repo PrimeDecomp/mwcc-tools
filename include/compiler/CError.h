@@ -26,8 +26,8 @@ struct MessageContext {
 struct StrBuf {
     char *start;
     char *cursor;
-    SInt32 size;
-    SInt32 avail;
+    BY_VERSION(SInt32, UInt32) size;
+    BY_VERSION(SInt32, UInt32) avail;
 };
 /* The compiler's messages, by the numbers its message table (and every report) uses. */
 enum {
@@ -358,6 +358,9 @@ extern char data_005830c8[];
 extern jmp_buf error_jmp_buf;
 extern char error_message_buffer[];
 extern struct ParserTryBlock *trychain;
+#if VERSION >= VERSION_GC_1_3
+extern UInt8 cerror_suppress_warnings;
+#endif
 extern char data_005883ec[];
 extern int CError_Internal(const char *file, int line);
 extern void CError_BufferAppendString(StrBuf *eb, const char *str);

@@ -33,6 +33,9 @@ extern void ConstantPropagation_PropagateConstantsInBlock(struct PCodeBlock *blo
 extern struct PCodeInstruction *find_dlocal_addi(PCodeOperand *operand, SInt16 *size_out, SInt16 displacement);
 extern void ConstantPropagation_FindUniqueDefinitions(struct PCodeBlock *state);
 extern int gConstantPropagationChanged;
+#if VERSION >= VERSION_GC_1_3
+extern struct PCodeInstruction **fpr_definitions;
+#endif
 extern void COpt_LoadDeletion(void);
 extern int gLoadDeletionChanged;
 extern struct CBlockData *data_00587c98;

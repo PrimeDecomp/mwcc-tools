@@ -32,12 +32,12 @@ extern unsigned char match_template_arguments(TemplPartialSpec *arguments, Templ
 extern TemplArg *match_specialization_arguments(TemplPartialSpec *arguments, TemplArg *actual, char instantiate);
 extern void CTemplateClass_ParseClassDeclaration(TemplateScopeState *scope, TemplParam *parameters, short access,
                                                  SInt32 *state);
-extern unsigned char CTemplateClass_CompleteClassLayout(struct TemplClass *state, ClassLayout *values);
+extern BY_VERSION( unsigned char, void) CTemplateClass_CompleteClassLayout(struct TemplClass *state, ClassLayout *values);
 extern struct TemplClass *CTemplateClass_CreateClassTemplateDeclaration(TypeClass *owner, HashNameNode *arg1,
-                                                                        short arg2);
+                                                                               short arg2);
 extern char CTemplateClass_SelectSpecialization(TemplArg *context, struct TemplClass **classType, TemplArg **result);
 extern TemplClassInst *create_class_template_instance(struct TemplClass *definition, void *argument,
-                                                      void *alternate_argument);
+                                                       void *alternate_argument);
 extern void CTemplateClass_AppendExpressionRecord(struct TemplClass *type, Object *object, ENode *expression);
 extern void CTemplateClass_AppendEnumConstDeclaration(struct TemplClass *self, ObjEnumConst *a, ENode *str);
 extern void CTemplateClass_AppendEnumDeclaration(struct TemplClass *type, TypeEnum *value);

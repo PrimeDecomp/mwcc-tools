@@ -23,7 +23,7 @@ ENode *fn_0050a000(TypeClass *context, ENode *receiver, HashNameNode *name, char
     ENode *result;
     char argumentFlag;
 
-    CError_ASSERT(89, receiver->type == EINDIRECT);
+    CError_ASSERT(BY_VERSION(89, 92), receiver->type == EINDIRECT);
     receiver = receiver->data.monadic;
     args = CABI_SplitNameIntoMessageArguments(name, &argumentFlag);
     tk = CPrepTokenizer_GetNextToken();

@@ -34,6 +34,10 @@
 #include <ctype.h>
 #include <stdio.h>
 
+#if VERSION >= VERSION_GC_1_3
+extern void fn_004b4710(void);
+#endif
+
 MacroStack macro_stack[128];
 UInt32 intconst_lo;
 UInt8 data_00586fd0[256];
@@ -66,12 +70,21 @@ static Macro data_0054fd08 = {NULL, NULL, NULL, 0, 1, 0, {NULL}};
 static Macro data_0054fd1c = {NULL, NULL, NULL, 0, 2, 0, {NULL}};
 static Macro data_0054fd30 = {NULL, NULL, NULL, 0, 3, 0, {NULL}};
 static Macro data_0054fd44 = {NULL, NULL, NULL, 0, 4, 0, {NULL}};
+#if VERSION >= VERSION_GC_1_3
+/* (1.3: shared with CodeGen.c, uninitialized: RegisterPredefinedMacros sets the macro's flag) */
+extern Macro data_0054fd58;
+#else
 static Macro data_0054fd58 = {NULL, NULL, NULL, 0, 5, 0, {NULL}};
+#endif
 static Macro data_0054fd6c = {NULL, NULL, NULL, 0, 6, 0, {NULL}};
 static Macro data_0054fd80 = {NULL, NULL, NULL, 0, 7, 0, {NULL}};
 static Macro data_0054fd94 = {NULL, NULL, NULL, 0, 8, 0, {NULL}};
 static Macro data_0054fda8 = {NULL, NULL, NULL, 0, 9, 0, {NULL}};
+#if VERSION >= VERSION_GC_1_3
+extern Macro cplusplus_predefined_macro;
+#else
 static Macro cplusplus_predefined_macro = {NULL, NULL, NULL, 0, 10, 0, {NULL}};
+#endif
 static Macro data_0054fdd0 = {NULL, NULL, NULL, 0, 11, 0, {NULL}};
 static Macro data_0054fde4 = {NULL, NULL, NULL, 0, 12, 0, {NULL}};
 static Macro data_0054fdf8 = {NULL, NULL, NULL, 0, 13, 0, {NULL}};
@@ -83,8 +96,13 @@ static Macro data_0054fe5c = {NULL, NULL, NULL, 0, 17, 0, {NULL}};
 static Macro data_0054fe70 = {NULL, NULL, NULL, 0, 18, 0, {NULL}};
 static Macro data_0054fe84 = {NULL, NULL, NULL, 0, 20, 0, {NULL}};
 static Macro data_0054fe98 = {NULL, NULL, NULL, 0, 21, 0, {NULL}};
+#if VERSION >= VERSION_GC_1_3
+extern Macro data_0054feac;
+extern Macro data_0054fec0;
+#else
 static Macro data_0054feac = {NULL, NULL, NULL, 0, 34, 0, {NULL}};
 static Macro data_0054fec0 = {NULL, NULL, NULL, 0, 33, 0, {NULL}};
+#endif
 static Macro data_0054fed4 = {NULL, NULL, NULL, 0, 32, 0, {NULL}};
 
 static OptionEntry pragma_options[] = {
@@ -256,6 +274,44 @@ typedef enum { CPrep_DidPush, CPrep_DidPop } CPrep_DidFlag;
     do {                                                                                                               \
         data_00588470 = 1;                                                                                             \
         data_00588524 = 1;                                                                                             \
+        DAT_00588523 = 1;                                                                                              \
+    } while (0)
+#define KEYWORD()                                                                                                      \
+    if (memcmp("if", NAMEBUF, 3) == 0)                                                                                 \
+        parse_if_directive();                                                                                          \
+    else if (memcmp("ifdef", NAMEBUF, 6) == 0)                                                                         \
+        parse_ifdef_directive();                                                                                       \
+    else if (memcmp("ifndef", NAMEBUF, 7) == 0)                                                                        \
+        parse_ifndef();                                                                                                \
+    else if (memcmp("elif", NAMEBUF, 5) == 0)                                                                          \
+        parse_elif_directive();                                                                                        \
+    else if (memcmp("else", NAMEBUF, 5) == 0)                                                                          \
+        parse_else_directive();                                                                                        \
+    else if (memcmp("endif", NAMEBUF, 6) == 0)                                                                         \
+        parse_endif_directive();                                                                                       \
+    else {                                                                                                             \
+        CPrepTokenizer_SkipToEndOfLine();                                                                              \
+        continue;                                                                                                      \
+    }
+
+#define REGN(name_, macro_)                                                                                            \
+    do {                                                                                                               \
+        HashNameNode *name = GetHashNameNode((name_));                                                                 \
+        (macro_).name = name;                                                                                          \
+        (macro_).next = macro_buckets[name->hashval];                                                                  \
+        macro_buckets[(macro_).name->hashval] = &(macro_);                                                             \
+        (macro_).isExpanding = 0;                                                                                      \
+    } while (0)
+
+#if VERSION >= VERSION_GC_1_3
+extern void fn_0047d8c0(void);
+#endif
+
+#define NAMEBUF ((char *)data_00587fa0->name)
+#define SETLINE()                                                                                                      \
+    do {                                                                                                               \
+        data_00588470 = 1;                                                                                             \
+        data_00588524 = 1;                                                                                             \
         data_00588523 = 1;                                                                                             \
     } while (0)
 #define KEYWORD()                                                                                                      \
@@ -398,7 +454,7 @@ static inline void restorePrepSetting(void)
 {
     struct IROOptNode *node = saved_options;
     while (node != NULL) {
-        if (node->flag != 0 && node->code == 0xd1) {
+        if (node->flag != 0 && node->code == BY_VERSION(0xd1, 244)) {
             copts.fd1 = node->value;
             node->flag = 0;
             return;
@@ -412,7 +468,7 @@ static inline void ApplyUnrollOption(void)
 {
     IROOptNode *option = saved_options;
     while (option != NULL) {
-        if (option->flag != 0 && option->code == 0xd0) {
+        if (option->flag != 0 && option->code == BY_VERSION(0xd0, 243)) {
             copts.unrollOption = option->value;
             option->flag = 0;
             return;
@@ -426,7 +482,7 @@ static inline void CPrep_RestoreOptimizationLevel(void)
 {
     IROOptNode *p = saved_options;
     while (p != NULL) {
-        if (p->flag != 0 && p->code == 0xc1) {
+        if (p->flag != 0 && p->code == BY_VERSION(0xc1, 225)) {
             copts.deleteDeadInstructions = p->value;
             p->flag = 0;
             return;
@@ -514,6 +570,9 @@ static inline CPrepCU *CPrep_CurrentCompilationUnit(void)
     return (CPrepCU *)cprep_cu;
 }
 
+#if VERSION >= VERSION_GC_1_3
+#pragma sym reset
+#endif
 #pragma auto_inline off
 HashNameNode *fn_00441850(CPrepFileInfo *file, SInt32 *position)
 {
@@ -521,6 +580,123 @@ HashNameNode *fn_00441850(CPrepFileInfo *file, SInt32 *position)
     COS_FileGetPathName(fileName, file, position);
     return GetHashNameNode(fileName);
 }
+
+#if VERSION >= VERSION_GC_1_3
+/* the browser's token offset of a source position */
+SInt32 fn_00436580(FileOffsetInfo *a)
+{
+    return a->tokenoffset;
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+void fn_00440040(Macro *macro, const char *text)
+{
+    HashNameNode *name = GetHashNameNode(text);
+    macro->name = name;
+    macro->flag = 1;
+    macro->next = macro_buckets[macro->name->hashval];
+    macro_buckets[macro->name->hashval] = macro;
+    macro->isExpanding = 0;
+}
+#endif
+
+
+#if VERSION >= VERSION_GC_1_3
+extern char *getenv(const char *name);
+extern struct CPrepCU compiler_plugin_cu;
+
+/* parse `( identifier )` and write the quoted value of that environment variable into `out` */
+BY_VERSION(int, char *) fn_0043bf40(char *out)
+{
+    int n = 0;
+    char *p;
+    char c;
+
+    if (CPrep_ScanMacroExpandedChar() == 0) {
+        CError_ReportError(0x70);
+        return 0;
+    }
+    if (CPrepTokenizer_ScanToken() != '(') {
+        CError_ReportError(0x72);
+        return 0;
+    }
+    if (CPrep_ScanMacroExpandedChar() == 0) {
+        CError_ReportError(0x70);
+        return 0;
+    }
+    if (CPrepTokenizer_GetToken() != -3) {
+        CError_ReportError(0x6b);
+        return 0;
+    }
+    p = getenv(data_00587fa0->name);
+    *out++ = 0x22;
+    if (p != NULL) {
+        while (n < 0x200 && (c = *p) != 0) {
+            n++;
+#if VERSION >= VERSION_GC_1_3
+            *out++ = *p++;
+#else
+            *out++ = c;
+            p++;
+#endif
+            if (c == 0x5c) {
+                *out++ = 0x5c;
+                n++;
+            }
+        }
+    }
+#if VERSION >= VERSION_GC_1_3
+    *out = 0x22;
+    out[1] = 0;
+#else
+    *out++ = 0x22;
+    *out = 0;
+#endif
+    if (CPrep_ScanMacroExpandedChar() == 0) {
+        CError_ReportError(0x70);
+        return 0;
+    }
+    if (CPrepTokenizer_ScanToken() != ')') {
+        CError_ReportError(0x73);
+        return 0;
+    }
+    return BY_VERSION(1, out + 1);
+}
+
+/* parse `( "string" )` and report whether the string equals the target name */
+Boolean fn_0043c020(void)
+{
+    Boolean r;
+
+    if (CPrep_ScanMacroExpandedChar() == 0) {
+        CError_ReportError(0x70);
+        return 0;
+    }
+    if (CPrepTokenizer_ScanToken() != '(') {
+        CError_ReportError(0x72);
+        return 0;
+    }
+    if (CPrep_ScanMacroExpandedChar() == 0) {
+        CError_ReportError(0x70);
+        return 0;
+    }
+    if (CPrepTokenizer_ScanToken() != -4) {
+        CError_ReportError(0x78);
+        return 0;
+    }
+    r = strcmp(compiler_plugin_cu.optionString, string_token_data) == 0;
+    if (CPrep_ScanMacroExpandedChar() == 0) {
+        CError_ReportError(0x70);
+        return 0;
+    }
+    if (CPrepTokenizer_ScanToken() != ')') {
+        CError_ReportError(0x73);
+        return 0;
+    }
+    return r;
+}
+#endif
 #pragma auto_inline reset
 
 int CPrep_AppendStringBounded(char *dst, char *src, int size)
@@ -542,6 +718,96 @@ int CPrep_AppendStringBounded(char *dst, char *src, int size)
     }
     return 0;
 }
+
+#if VERSION >= VERSION_GC_1_3
+#pragma sym on
+#endif
+#if VERSION >= VERSION_GC_1_3
+#pragma pack(push, 1)
+struct Fn0043dad0Entry {
+    UInt8 pad0[0x46];
+    HashNameNode *name;
+    UInt8 pad1[4];
+    SInt32 cached;
+    UInt8 pad2[0x10];
+    UInt8 active;
+};
+#pragma pack(pop)
+
+void fn_0043dad0(CPrepFileInfo *file)
+{
+    struct Fn0043dad0Entry *entry = (struct Fn0043dad0Entry *)file;
+    HashNameNode *name;
+    HashNameNode *base;
+
+    if (entry != NULL && entry->active != 0) {
+        name = fn_00441850((CPrepFileInfo *)entry, NULL);
+        if (entry->name != name) {
+            base = fn_00441850((CPrepFileInfo *)(cprep_cu + 0x92), NULL);
+            entry->cached = 0;
+            if (name == base)
+                name = NULL;
+            entry->name = name;
+        }
+    }
+}
+
+#pragma pack(push, 1)
+struct FOI13 {
+    CPrepFileInfo *file;
+    SInt32 line;
+    SInt32 offset;
+};
+#pragma pack(pop)
+
+/* bring the file location up to date with the preprocessor position; returns the line and the file name */
+void fn_0043db20(FileOffsetInfo *location, SInt32 *line, SInt32 *name)
+{
+    struct FOI13 *foi = (struct FOI13 *)location;
+    CPrepFileInfo *file;
+    short i;
+    SInt32 offset;
+    char *position;
+
+    if (buffered_tokens < bufferedTokenPosition && bufferedTokenPosition[-1].tokenfile == foi->file) {
+        if (bufferedTokenPosition[-1].tokenline > foi->line)
+            foi->line = bufferedTokenPosition[-1].tokenline;
+        if (bufferedTokenPosition[-1].tokenoffset > foi->offset)
+            foi->offset = bufferedTokenPosition[-1].tokenoffset;
+    } else if (foi->file == data_0057f94a[current_file_index]) {
+        if (data_00587ef0 > foi->line)
+            foi->line = data_00587ef0;
+        if (macro_expansion_depth != 0)
+            position = macro_stack[0].pos;
+        else
+            position = (char *)currentTextPosition;
+        offset = position - data_0057f94a[current_file_index]->textbuffer;
+        if (offset > foi->offset)
+            foi->offset = offset;
+    } else {
+        for (i = current_file_index - 1; i >= 0; i--) {
+            if (foi->file == data_0057f94a[i]) {
+                if (data_0057f94a[i]->linenumber > foi->line)
+                    foi->line = data_0057f94a[i]->linenumber;
+                if (data_0057f94a[i]->pos > foi->offset)
+                    foi->offset = data_0057f94a[i]->pos;
+                break;
+            }
+        }
+    }
+    file = foi->file;
+    if (file != NULL && ((struct Fn0043dad0Entry *)file)->cached != 0)
+        *line = data_00587ef0;
+    else
+        *line = foi->line;
+    CError_ASSERT(2011, *line >= 0);
+    file = foi->file;
+    if (file != NULL)
+        *name = (SInt32)((struct Fn0043dad0Entry *)file)->name;
+    else
+        *name = 0;
+}
+#endif
 
 unsigned int __stdcall CPrep_InvokeCompilerCallback(CWPluginPrivateContext *instance_id,
                                                     struct FileProcessingInfo *argument, const char *value)
@@ -577,6 +843,9 @@ unsigned int __stdcall call_compiler_callback(CWPluginPrivateContext *object_id,
 }
 #pragma auto_inline reset
 
+#if VERSION >= VERSION_GC_1_3
+#pragma sym on
+#endif
 #pragma auto_inline off
 SInt32 __stdcall CPrep_CallCompilerCallback(void *objectId, SInt32 argument)
 {
@@ -646,6 +915,9 @@ int __stdcall CPrep_GetContextPayload(CWPluginPrivateContext *handle, CWFileSpec
     *destination = storage->contextData.payload;
     return 0;
 }
+#if VERSION >= VERSION_GC_1_3
+#pragma sym reset
+#endif
 
 unsigned int __stdcall CPrep_GetDependencyOption(int lookupKey, unsigned short *value)
 {
@@ -814,6 +1086,37 @@ CWPluginPrivateContext *validate_context_signature(CWPluginPrivateContext *recor
     return NULL;
 }
 
+#if VERSION >= VERSION_GC_1_3
+#define REGB(name_, macro_)                                                                                            \
+    (macro_).name = GetHashNameNode((name_));                                                                          \
+    (macro_).flag = 1;                                                                                                 \
+    (macro_).next = macro_buckets[(macro_).name->hashval];                                                             \
+    macro_buckets[(macro_).name->hashval] = &(macro_);                                                                 \
+    (macro_).isExpanding = 0
+
+extern void fn_0042f020(void);
+
+void __stdcall CPrep_RegisterPredefinedMacros(void)
+{
+    REGB("__LINE__", builtin_line_macro);
+    REGB("__FILE__", builtin_file_macro);
+    REGB("__DATE__", builtin_date_macro);
+    REGB("__TIME__", builtin_time_macro);
+    REGB("__STDC__", data_0054fd58);
+    REGB("__STDC_VERSION__", builtin_stdc_version_macro);
+    REGB("__STDC_HOSTED__", builtin_stdc_hosted_macro);
+    REGB("__CASM__", builtin_casm_macro);
+    REGB("__cplusplus", cplusplus_predefined_macro);
+    REGB("__MWERKS__", builtin_mwerks_macro);
+    REGB("__SOM_ENABLED__", builtin_som_macro);
+    REGB("__embedded_cplusplus", data_0054feac);
+    REGB("__option", builtin_option_macro);
+    REGB("__ide_target", builtin_ide_target_macro);
+    REGB("__env_var", builtin_env_var_macro);
+    fn_0042f020();
+}
+#pragma auto_inline reset
+#else
 #pragma auto_inline reset
 
 void __stdcall CPrep_RegisterPredefinedMacros(void)
@@ -849,6 +1152,8 @@ void __stdcall CPrep_RegisterPredefinedMacros(void)
     }
     REGN("__PPC_EABI__", data_0054fe98);
 }
+
+#endif
 
 unsigned int *CPrep_RemoveFlaggedMacros(void)
 {
@@ -931,10 +1236,14 @@ int initialize_preprocessor(void)
     }
     data_0058702f = 1;
     f87_enabled = (copts.dollar_identifiers > 0);
+#if VERSION >= VERSION_GC_1_3
+    fn_004b4710();
+#else
     if (copts.filesyminfo) {
         DWARF_Init();
     }
     fn_0048b500();
+#endif
     return 0;
 }
 
@@ -1082,7 +1391,7 @@ unsigned char fn_004401b0(unsigned char *name, unsigned char mode, unsigned char
     data_00587fb0 = currentPFile->textbuffer;
     textend = (UInt8 *)currentPFile->textbuffer + currentPFile->textlength;
     if (data_0058850f != 0 && copts.simple_prepdump == 0)
-        CPreprocess_EmitLineDirective();
+        CPREPROCESS_EMIT_LINE_DIRECTIVE(1);
     return 1;
 }
 
@@ -1101,6 +1410,12 @@ void CPrep_GrowBufferedTokenBuffer(SInt32 n)
     buffered_token_buffer_end = &buffered_tokens[buffered_token_capacity - 1];
     bufferedTokenPosition = buffered_tokens + count;
 }
+#if VERSION >= VERSION_GC_1_3
+#pragma sym reset
+
+#pragma sym on
+extern void fn_004b4710(void);
+#endif
 
 #pragma sym off
 
@@ -1145,7 +1460,7 @@ void CPrep_UngetToken(void)
     remainingBufferedTokenCount++;
     bufferedTokenPosition--;
     if (bufferedTokenPosition < buffered_tokens)
-        CError_FATAL(1237);
+        CError_FATAL(BY_VERSION(1237, 901));
 }
 
 void CPrep_SetPosition(SInt32 *position)
@@ -1201,11 +1516,19 @@ void CPrep_SaveFunctionBodyTokens(TokenStream *result, void (*tokenCallback)(TSt
     Boolean hasHandlers;
 
     firstTokenIndex = bufferedTokenPosition - buffered_tokens - 1;
+#if VERSION >= VERSION_GC_1_3
+    hasHandlers = FALSE;
+    result->tokens = 0;
+    result->firsttoken = NULL;
+    tokenCount = 0;
+    bodyStart = 0;
+#else
     tokenCount = 0;
     bodyStart = 0;
     hasHandlers = FALSE;
     result->tokens = 0;
     result->firsttoken = NULL;
+#endif
     savedMode = data_0058850d;
     data_0058850d = 1;
     switch (tk) {
@@ -1372,8 +1695,13 @@ void CPrep_RemoveBufferedTokens(TokenStream *stream, SInt32 *firstIndex)
     TStreamElement *firstEntry;
 
     index = *firstIndex;
+#if VERSION >= VERSION_GC_1_3
+    firstEntry = buffered_tokens + index;
+    remainingCount = bufferedTokenPosition - buffered_tokens;
+#else
     remainingCount = bufferedTokenPosition - buffered_tokens;
     firstEntry = buffered_tokens + index;
+#endif
     remainingCount = remainingCount - index - stream->tokens + remainingBufferedTokenCount;
     if (remainingCount >= 0) {
         if (remainingCount != 0) {
@@ -1401,9 +1729,15 @@ int fn_0043f860(char *p)
     short c;
 
     if ((*p >= 'a' && *p <= 'z') || (*p >= 'A' && *p <= 'Z') || *p == '_') {
+#if VERSION >= VERSION_GC_1_3
+        len = 1;
+        p++;
+        for (;;) {
+#else
         p++;
         len = 1;
         for (;;) {
+#endif
             c = *p++;
             if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_')
                 len++;
@@ -1530,7 +1864,7 @@ void CPrep_GetTokenLocation(TStreamElement *token, CPrepFileInfo **file, SInt32 
     if (!tok && buffered_tokens < bufferedTokenPosition)
         tok = bufferedTokenPosition - 1;
     if (tok && !tok->tokenfile)
-        CError_FATAL(1714);
+        CError_FATAL(BY_VERSION(1714, 1455));
     if (data_0057f9dc || !tok) {
         if (!currentPFile)
             CError_DispatchAndLongJump();
@@ -1665,6 +1999,11 @@ void fn_0043f3b0(short warningCode)
 
 #pragma sym reset
 
+#if VERSION >= VERSION_GC_1_3
+/* (a file the preprocessor keeps open besides the include stack, released with the next pop) */
+extern CPrepFileInfo *at_005db204;
+#endif
+
 void CPrep_PopFile(void)
 {
     CPrepFileInfo *input;
@@ -1674,6 +2013,13 @@ void CPrep_PopFile(void)
 
     fn_0041b7f0(((struct CPrepCU *)cprep_cu)->context, currentPFile->textbuffer);
     currentPFile->textbuffer = NULL;
+#if VERSION >= VERSION_GC_1_3
+    if (at_005db204 != NULL && at_005db204->textbuffer != NULL) {
+        fn_0041b7f0(compiler_plugin_cu.context, at_005db204->textbuffer);
+        at_005db204->textbuffer = NULL;
+        at_005db204 = NULL;
+    }
+#endif
     --current_file_index;
     if (current_file_index >= 0) {
         input = data_0057f94a[current_file_index];
@@ -1686,7 +2032,7 @@ void CPrep_PopFile(void)
         data_00588524 = 1;
     }
     if (data_0058850f != 0 && copts.simple_prepdump == 0)
-        CPreprocess_EmitLineDirective();
+        CPREPROCESS_EMIT_LINE_DIRECTIVE(1);
 }
 
 #pragma sym off
@@ -1735,6 +2081,30 @@ void fn_0043f1f0(FileOffsetInfo *name)
     data_005875f8 = name->file;
 }
 
+#if VERSION >= VERSION_GC_1_3
+void CPrep_GetFOI(FileOffsetInfo *location, TStreamElement *record)
+{
+    if (!record || !record->tokenfile) {
+        if (buffered_tokens < bufferedTokenPosition) {
+            location->file = bufferedTokenPosition[-1].tokenfile;
+            location->tokenline = bufferedTokenPosition[-1].tokenline;
+            location->tokenoffset = bufferedTokenPosition[-1].tokenoffset;
+        } else {
+            location->file = (CPrepFileInfo *)data_0057f94a[current_file_index];
+            location->tokenline = data_00587ef0;
+            if (macro_expansion_depth)
+                location->tokenoffset = macro_stack[0].pos - data_0057f94a[current_file_index]->textbuffer;
+            else
+                location->tokenoffset = (char *)currentTextPosition - data_0057f94a[current_file_index]->textbuffer;
+        }
+    } else {
+        location->file = record->tokenfile;
+        location->tokenline = record->tokenline;
+        location->tokenoffset = record->tokenoffset;
+    }
+    location->is_inline = 0;
+}
+#else
 void CPrep_GetFOI(FileOffsetInfo *location, TStreamElement *record)
 {
     if ((record == NULL) || (record->tokenfile == NULL)) {
@@ -1751,7 +2121,46 @@ void CPrep_GetFOI(FileOffsetInfo *location, TStreamElement *record)
     }
     location->is_inline = 0;
 }
+#endif
 
+#if VERSION >= VERSION_GC_1_3
+SInt32 CPrep_UpdateTokenLine(FileOffsetInfo *foi)
+{
+    SInt32 p;
+    SInt32 i;
+
+    if (buffered_tokens < bufferedTokenPosition &&
+        bufferedTokenPosition[-1].tokenfile == (struct CPrepFileInfo *)foi->file) {
+        p = bufferedTokenPosition[-1].tokenline;
+        if (p > foi->tokenline)
+            foi->tokenline = p;
+        p = bufferedTokenPosition[-1].tokenoffset;
+        if (p > foi->tokenoffset)
+            foi->tokenoffset = p;
+    } else if (foi->file == data_0057f94a[current_file_index]) {
+        if (data_00587ef0 > foi->tokenline)
+            foi->tokenline = data_00587ef0;
+        if (macro_expansion_depth)
+            p = macro_stack[0].pos - data_0057f94a[current_file_index]->textbuffer;
+        else
+            p = (char *)currentTextPosition - data_0057f94a[current_file_index]->textbuffer;
+        if (p > foi->tokenoffset)
+            foi->tokenoffset = p;
+    } else {
+        for (i = current_file_index - 1; i >= 0; i--) {
+            if (foi->file == data_0057f94a[i]) {
+                if (data_0057f94a[i]->linenumber > foi->tokenline)
+                    foi->tokenline = data_0057f94a[i]->linenumber;
+                if (data_0057f94a[i]->pos > foi->tokenoffset)
+                    foi->tokenoffset = data_0057f94a[i]->pos;
+                break;
+            }
+        }
+    }
+
+    return foi->tokenline;
+}
+#else
 SInt32 CPrep_UpdateTokenLine(FileOffsetInfo *foi)
 {
     int i;
@@ -1776,6 +2185,7 @@ SInt32 CPrep_UpdateTokenLine(FileOffsetInfo *foi)
     }
     return foi->tokenline;
 }
+#endif
 
 void CPrep_GetPosition(CPrepFileInfo **position, SInt32 *offset)
 {
@@ -1820,6 +2230,13 @@ UInt8 CPrep_Compile(CPrepCU *cu)
     copts.longlong_prepeval = copts.longlong = 1;
     copts.vbase_ctor_offset = 1;
     copts.vbase_abi_v2 = 1;
+#if VERSION >= VERSION_GC_1_3
+    copts.fb5 = 1;
+    copts.extended_errorcheck = 0;
+    if (copts.cplusplus)
+        copts.const_strings = 1;
+    copts.inlineAuto = 1;
+#endif
 
     if (CompilerTools_InitHeaps(CError_LongJump) != 0) {
         releaseheaps();
@@ -1834,6 +2251,9 @@ UInt8 CPrep_Compile(CPrepCU *cu)
             CException_ResetPrecompiledState(currentCU->precompiling);
             CSOM_NoOp();
             fn_0048b3f0();
+#if VERSION >= VERSION_GC_1_3
+            fn_0047d8c0();
+#endif
             CBrowse_InitBrowseData(cu);
             fn_004401b0(NULL, 1, 0);
             if (*copts.f54 != 0)
@@ -2035,9 +2455,13 @@ Macro *find_macro_for_expansion(UInt8 *p)
                 return NULL;
             }
             if (node->nargs != 0) {
+#if VERSION >= VERSION_GC_1_3
+                while (*(char *)p == ' ' || (*(char *)p >= '\t' && *(char *)p <= '\f'))
+#else
                 while (*p == ' ' || ((char)*p >= '\t' && (char)*p <= '\f'))
+#endif
                     p++;
-                if (*p != '(')
+                if (BY_VERSION(*p, *(char *)p) != '(')
                     return NULL;
             }
             return node;
@@ -2506,7 +2930,7 @@ void define_macro(void)
                     cursor->next = cursor->next->next;
                     break;
                 }
-                CError_ASSERT(2854, cursor = cursor->next);
+                CError_ASSERT(BY_VERSION(2854, 2848), cursor = cursor->next);
             }
         }
     }
@@ -2603,7 +3027,7 @@ Boolean evaluate_pragma_option(void)
             if (strcmp(data_00587fa0->name, option->name) == 0) {
                 offset = option->flags & 0x1fff;
                 result = ((UInt8 *)&copts)[offset];
-                if (offset == 0x75 && copts.cplusplus == 0)
+                if (offset == BY_VERSION(0x75, 0x8e) && copts.cplusplus == 0)
                     result = 0;
                 goto option_found;
             }
@@ -2635,10 +3059,20 @@ UInt8 *find_identifier_end_after_optional_paren(UInt8 *text)
             ++text;
         } while ((parenSpace = *text) == ' ' || (9 <= parenSpace && parenSpace <= 12));
     }
+#if VERSION >= VERSION_GC_1_3
+    {
+        char c = *text;
+        if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_') {
+            return CPrepTokenizer_ScanIdentifier(text);
+        }
+    }
+    return NULL;
+#else
     if (((char)*text >= 'a' && (char)*text <= 'z') || ((char)*text >= 'A' && (char)*text <= 'Z') || *text == '_') {
         return CPrepTokenizer_ScanIdentifier(text);
     }
     return NULL;
+#endif
 }
 
 char *expand_macros_in_text(Macro *state, char *text)
@@ -2928,6 +3362,81 @@ char *CPrep_GetFileName(char *param1, Boolean param2, Boolean param3)
     *p = 0;
     return param1;
 }
+#if VERSION >= VERSION_GC_1_3
+extern const char *fn_0042ef30(Macro *macro);
+extern Boolean fn_0043c020(void);
+extern BY_VERSION(int, char *) fn_0043bf40(char *out);
+
+char *expand_builtin_macro(Macro *macro)
+{
+    char buffer[512];
+    UInt8 filename[256];
+    char *datePart = buffer + 512 - 32;
+    char *cursor;
+    int length;
+    int index;
+    char *text;
+    struct tm *time;
+    unsigned long textLength;
+
+    if (macro == &builtin_option_macro)
+        return evaluate_pragma_option() ? "1" : "0";
+    if (macro == &builtin_ide_target_macro)
+        return fn_0043c020() ? "1" : "0";
+
+    if (macro == &builtin_line_macro) {
+        sprintf(buffer, "%ld", data_00587ef0);
+    } else if (macro == &builtin_file_macro) {
+        cursor = buffer;
+        COS_FileGetFSSpecInfo(&data_0057f94a[current_file_index]->textfile, NULL, NULL, filename);
+        length = filename[0];
+        if (cursor == NULL)
+            cursor = galloc(length + 3);
+        text = cursor;
+        *text++ = '"';
+        index = 0;
+        while (index < length) {
+            index++;
+            *text++ = filename[index];
+        }
+        *text = '"';
+        text[1] = 0;
+    } else if (macro == &builtin_date_macro) {
+        time = localtime(&data_0057f9d4);
+        strftime(buffer, 64, "\"%b ", time);
+        strftime(datePart, 32, "%d", time);
+        if (datePart[0] == '0')
+            datePart[0] = ' ';
+        strcat(buffer, datePart);
+        strftime(datePart, 32, " %Y\"", time);
+        strcat(buffer, datePart);
+    } else if (macro == &builtin_time_macro) {
+        strftime(buffer, 64, "\"%H:%M:%S\"", localtime(&data_0057f9d4));
+    } else if (macro == &data_0054fd58) {
+        return "1";
+    } else if (macro == &builtin_casm_macro || macro == &builtin_mwerks_macro) {
+        return "0x2406";
+    } else if (macro == &cplusplus_predefined_macro) {
+        return "199711L";
+    } else if (macro == &builtin_som_macro) {
+        return ((UInt8 *)&copts)[0x8b] ? "1" : "0";
+    } else if (macro == &data_0054feac) {
+        return ((UInt8 *)&copts)[0x74] ? "1" : "0";
+    } else if (macro == &builtin_stdc_version_macro) {
+        return ((UInt8 *)&copts)[0xa9] ? "199901L" : "199409L";
+    } else if (macro == &builtin_stdc_hosted_macro) {
+        return "0";
+    } else if (macro == &builtin_env_var_macro) {
+        fn_0043bf40(buffer);
+    } else {
+        return (char *)fn_0042ef30(macro);
+    }
+    textLength = strlen(buffer);
+    text = aalloc(textLength + 1);
+    strcpy(text, buffer);
+    return text;
+}
+#else
 
 char *expand_builtin_macro(Macro *macro)
 {
@@ -3045,6 +3554,8 @@ char *expand_builtin_macro(Macro *macro)
     }
 }
 
+#endif
+
 UInt8 *expand_macro(Macro *macro)
 {
     char *text;
@@ -3074,7 +3585,7 @@ UInt8 *expand_macro(Macro *macro)
     variadic = (macro->nargs & 0x8000) != 0;
     if (nargs != 0) {
         skip_line_breaks_and_expand_macros();
-        CError_ASSERT(3520, CPrepTokenizer_NextChar() == '(');
+        CError_ASSERT(BY_VERSION(3520, 3294), CPrepTokenizer_NextChar() == '(');
 
         if (nargs > 1) {
             variadicArgument = variadic && nargs == 2;
@@ -3351,7 +3862,7 @@ void CPrep_SaveAndSetOption(unsigned int index, UInt8 value)
 {
     IROOptNode *entry = saved_options;
     for (;;) {
-        if (!entry || (entry->flag && entry->code == index)) {
+        if (!entry || (entry->flag && BY_VERSION(entry->code, (unsigned int)entry->code) == index)) {
             IROOptNode *new_entry = (IROOptNode *)galloc(sizeof(*new_entry));
             new_entry->next = saved_options;
             saved_options = new_entry;
@@ -3588,8 +4099,14 @@ void read_pragma_token(void)
             ch = CPrepTokenizer_ScanChar();
             if (data_00588523 != 0 || ch <= 32)
                 break;
+#if VERSION >= VERSION_GC_1_3
+            buffer[length] = ch;
+            currentTextPosition = (UInt8 *)lookahead_position;
+            length++;
+#else
             buffer[length++] = ch;
             currentTextPosition = (UInt8 *)lookahead_position;
+#endif
         } while (length < 255);
         buffer[length] = 0;
         if (length == 0 || length >= 255) {
@@ -3622,7 +4139,7 @@ void parse_align_pragma(void)
         CPrepTokenizer_ScanToken() == 0x3d && CPrep_ScanMacroExpandedChar() && CPrepTokenizer_ScanToken() == -3) {
         if (memcmp(data_00587fa0->name, "reset", 6) == 0) {
             for (option = saved_options; option; option = option->next) {
-                if (option->flag && option->code == 0xad) {
+                if (option->flag && option->code == BY_VERSION(0xad, 204)) {
                     copts.structalignment = option->value;
                     option->flag = 0;
                     goto done;
@@ -3630,15 +4147,15 @@ void parse_align_pragma(void)
             }
             copts.structalignment = data_0057fcea->structalignment;
         } else if (memcmp(data_00587fa0->name, "native", 7) == 0) {
-            CPrep_SaveAndSetOption(0xad, 2);
+            CPrep_SaveAndSetOption(BY_VERSION(0xad, 204), 2);
         } else if (memcmp(data_00587fa0->name, "mac68k", 7) == 0) {
-            CPrep_SaveAndSetOption(0xad, 0);
+            CPrep_SaveAndSetOption(BY_VERSION(0xad, 204), 0);
         } else if (memcmp(data_00587fa0->name, "mac68k4byte", 12) == 0) {
-            CPrep_SaveAndSetOption(0xad, 1);
+            CPrep_SaveAndSetOption(BY_VERSION(0xad, 204), 1);
         } else if (memcmp(data_00587fa0->name, "power", 6) == 0) {
-            CPrep_SaveAndSetOption(0xad, 2);
+            CPrep_SaveAndSetOption(BY_VERSION(0xad, 204), 2);
         } else if (memcmp(data_00587fa0->name, "packed", 7) == 0) {
-            CPrep_SaveAndSetOption(0xad, 8);
+            CPrep_SaveAndSetOption(BY_VERSION(0xad, 204), 8);
         } else {
             goto invalid;
         }
@@ -3720,7 +4237,7 @@ void parse_optimization_level_pragma(void)
         if (n == -1) {
             SInt32 v = intconst_lo;
             if (v >= 0 && v <= 4) {
-                CPrep_SaveAndSetOption(0xc1, v);
+                CPrep_SaveAndSetOption(BY_VERSION(0xc1, 225), v);
                 IrOptimizer_SetDeleteDeadInstructionsFlags();
                 CodeGen_SetIROptimizationEnabled();
                 return;
@@ -3767,7 +4284,7 @@ void parse_unroll_pragma(void)
         if (token == -1) {
             SInt32 value = intconst_lo;
             if (value >= 0 && value <= 0x7f) {
-                CPrep_SaveAndSetOption(0xd0, value);
+                CPrep_SaveAndSetOption(BY_VERSION(0xd0, 243), value);
                 IrOptimizer_SetDeleteDeadInstructionsFlags();
                 CodeGen_SetIROptimizationEnabled();
                 return;
@@ -3814,7 +4331,7 @@ void parse_prep_setting(void)
         if (token == -1) {
             SInt32 value = intconst_lo;
             if (value >= 0 && value <= 0x7f) {
-                CPrep_SaveAndSetOption(0xd1, value);
+                CPrep_SaveAndSetOption(BY_VERSION(0xd1, 244), value);
                 IrOptimizer_SetDeleteDeadInstructionsFlags();
                 CodeGen_SetIROptimizationEnabled();
                 return;
@@ -3860,16 +4377,26 @@ void parse_structalignment(void)
                         if (data_0057fce0 != 0) {
                             data_0057fce0--;
                             saved_structalignments[data_0057fce0].obj = NULL;
+#if VERSION >= VERSION_GC_1_3
+                            saved_structalignments[data_0057fce0].align = copts.structalignment;
+                            didPush = 1;
+#else
                             didPush = 1;
                             saved_structalignments[data_0057fce0].align = copts.structalignment;
+#endif
                         } else {
                             CPrep_0043afc0_error(0xba);
                         }
                     } else if (memcmp(data_00587fa0->name, "pop", 4) == 0) {
                         if (data_0057fce0 < 0x80) {
                             copts.structalignment = saved_structalignments[data_0057fce0].align;
+#if VERSION >= VERSION_GC_1_3
+                            data_0057fce0++;
+                            didPop = 1;
+#else
                             didPop = 1;
                             data_0057fce0++;
+#endif
                         } else {
                             CPrep_0043afc0_error(0xba);
                         }
@@ -3971,8 +4498,13 @@ void concatenate_and_dispatch_string_tokens(void)
         if (CPrep_ScanMacroExpandedChar() != 0) {
             saved_depth = macro_expansion_depth;
             end = buffer;
+#if VERSION >= VERSION_GC_1_3
+            buffer[0] = 0;
+            macrocheck = 1;
+#else
             macrocheck = 1;
             buffer[0] = 0;
+#endif
             token = CPrepTokenizer_ScanToken();
             macrocheck = 0;
             if (token == -4) {
@@ -4645,7 +5177,7 @@ Boolean is_zero_name_ref(CNameRef *value)
     int isZero;
 
     isZero = 0;
-    if ((value->a == 0) && (value->b == 0)) {
+    if ((BY_VERSION(value->a, value->val.hi) == 0) && (BY_VERSION(value->b, value->val.lo) == 0)) {
         isZero = 1;
     }
     return isZero;
@@ -4739,7 +5271,7 @@ CNameRef evaluate_conditional_expression_value(void)
 
 static Boolean CNameRef_IsNull(CNameRef *p)
 {
-    return (p->a == 0 && p->b == 0);
+    return (BY_VERSION(p->a, p->val.hi) == 0 && BY_VERSION(p->b, p->val.lo) == 0);
 }
 
 void fn_004392e0(void)
@@ -4773,8 +5305,12 @@ void fn_004392e0(void)
         data_005884fd = savedFlag;
         CPrepTokenizer_SkipToEndOfLine();
     }
+#if VERSION >= VERSION_GC_1_3
+    token_integer = savedState.val;
+#else
     token_integer.hi = savedState.a;
     intconst_lo = savedState.b;
+#endif
 }
 
 void parse_if_directive(void)
@@ -4939,7 +5475,7 @@ void parse_elif_directive(void)
                 skip_inactive_if_blocks();
                 return;
             default:
-                CError_FATAL(5696);
+                CError_FATAL(BY_VERSION(5696, 5701));
         }
     }
 }
@@ -4982,7 +5518,7 @@ void parse_else_directive(void)
             data_0057f6c8[if_depth - 1].state = 4;
             return;
         default:
-            CError_FATAL(5734);
+            CError_FATAL(BY_VERSION(5734, 5739));
             return;
     }
 }
@@ -5315,6 +5851,19 @@ CPrepFileInfo *CPrep_GetPFile(void)
     return currentPFile;
 }
 
+#if VERSION >= VERSION_GC_1_3
+/* 1.3's VarInfo is 0x2a bytes (the reference's layout: flags at 0x24, rclass at 0x25, reg at 0x26, regHi at 0x28) */
+VarInfo *CPrep_AllocateVarInfo(void)
+{
+    VarInfo *info;
+    info = (VarInfo *)lalloc(0x2a);
+    memclrw(info, 0x2a);
+    info->deftoken = *CPrep_GetLastBufferedToken();
+    info->varnumber = next_varnumber;
+    next_varnumber++;
+    return info;
+}
+#else
 VarInfo *CPrep_AllocateVarInfo(void)
 {
     VarInfo *info;
@@ -5331,5 +5880,6 @@ VarInfo *CPrep_AllocateVarInfo(void)
     info->in_param_area = 0;
     return info;
 }
+#endif
 
 #pragma sym reset

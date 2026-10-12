@@ -13,6 +13,9 @@ struct NameSpace {
     HashNameNode *name;
     NameSpaceList *usings;
     TypeClass *theclass;
+#if VERSION >= VERSION_GC_1_3
+    void *f10; /* 1.3 inserts a pointer here */
+#endif
     union {
         NameSpaceName **hash;
         NameSpaceName *list;

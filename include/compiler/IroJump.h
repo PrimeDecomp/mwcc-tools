@@ -14,14 +14,14 @@ struct ERange {
     CInt64 lower;
 };
 #pragma options align = reset
-extern SInt32 IRO_DoJumpChaining(void);
-extern SInt32 chain_label(CLabel **label);
-extern SInt32 IRO_RangePropagateInFNode(void);
+extern BY_VERSION( SInt32, Boolean) IRO_DoJumpChaining(void);
+extern BY_VERSION( SInt32, Boolean) chain_label(CLabel **label);
+extern BY_VERSION( SInt32, Boolean) IRO_RangePropagateInFNode(void);
 extern int initialize_linear_range(IROLinear *nd);
-extern int IRO_RemoveLabels(void);
+extern BY_VERSION(int, Boolean) IRO_RemoveLabels(void);
 extern void IroJump_ConvertCInt64ToType(CInt64 *value, Type *type);
 extern int IRO_RemoveRedundantJumps(void);
-extern SInt32 IRO_RemoveUnreachable(void);
+extern BY_VERSION(SInt32, UInt8) IRO_RemoveUnreachable(void);
 extern void IroJump_MarkReachable(IRONode *param);
 extern struct ERangeVar *range_vars;
 

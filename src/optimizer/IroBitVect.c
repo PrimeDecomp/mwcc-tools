@@ -18,7 +18,7 @@ void IroBitVect_ClearBit(UInt32 bit, BitVector *vector)
     if (bit >> 5 < vector->size) {
         vector->bits[bit >> 5] &= ~(1U << (bit & 0x1f));
     } else {
-        CError_FATAL(64);
+        CError_FATAL(BY_VERSION(64, 73));
     }
 }
 
@@ -47,13 +47,17 @@ void IroBitVect_Or(BitVector *sourceData, BitVector *destinationData)
     }
 }
 
-unsigned int IroBitVect_Intersects(BitVector *left, BitVector *right)
+BY_VERSION(unsigned int, Boolean) IroBitVect_Intersects(BitVector *left, BitVector *right)
 {
-    unsigned int wordCount;
-    unsigned int wordIndex;
+    BY_VERSION(unsigned int, UInt32) wordCount;
+    BY_VERSION(unsigned int, UInt32) wordIndex;
 
     wordCount = left->size;
+#if VERSION >= VERSION_GC_1_3
+    if (right->size < wordCount) {
+#else
     if (right->size < left->size) {
+#endif
         wordCount = right->size;
     }
     for (wordIndex = 0; wordIndex < wordCount; wordIndex++) {
@@ -64,7 +68,7 @@ unsigned int IroBitVect_Intersects(BitVector *left, BitVector *right)
     return 0;
 }
 
-int IroBitVect_AreEqual(BitVector *a, BitVector *b)
+BY_VERSION(int, char) IroBitVect_AreEqual(BitVector *a, BitVector *b)
 {
     unsigned int i;
 
@@ -101,11 +105,15 @@ void IroBitVect_SetAllBits(BitVector *array)
     memset(array->bits, 255, array->size * sizeof(unsigned int));
 }
 
-int IroBitVect_ContainsSubset(BitVector *subset, BitVector *superset)
+BY_VERSION(int, Boolean) IroBitVect_ContainsSubset(BitVector *subset, BitVector *superset)
 {
-    unsigned int wordIndex;
+    BY_VERSION(unsigned int, int) wordIndex;
 
+#if VERSION >= VERSION_GC_1_3
+    for (wordIndex = 0; wordIndex < subset->size; wordIndex++) {
+#else
     for (wordIndex = 0; wordIndex < subset->size; wordIndex = wordIndex + 1) {
+#endif
         if (superset->size < wordIndex) {
             if (subset->bits[wordIndex] != 0) {
                 return 0;

@@ -16,6 +16,19 @@
 #include <ctype.h>
 
 int data_00588258;
+#if VERSION >= VERSION_GC_1_3
+UInt8 data_005e73cf;
+char data_005da920[0x80];
+extern int __stdcall fn_0041ee60(CWPluginPrivateContext *context, char *buffer, int size);
+extern unsigned char __lower_map[256];
+/* (1.3's tolower is inline here) */
+static inline int cc_tolower(int c)
+{
+    return (c == -1) ? -1 : (int)__lower_map[(unsigned char)c];
+}
+#else
+#define cc_tolower tolower
+#endif
 struct CPrepCU compiler_plugin_cu;
 
 Boolean data_0054c3d0 = 1;
@@ -83,6 +96,11 @@ signed char initialize_compiler_plugin_cu(unsigned int input)
         return 0;
     compiler_plugin_cu.platformCode1 = readBuffer.head.platformCodes[1];
     compiler_plugin_cu.platformCode0 = readBuffer.head.platformCodes[0];
+#if VERSION >= VERSION_GC_1_3
+    compiler_plugin_cu.optionString = data_005da920;
+    if (fn_0041ee60((CWPluginPrivateContext *)input, compiler_plugin_cu.optionString, 0x80))
+        return 0;
+#endif
     return 1;
 }
 
@@ -105,14 +123,19 @@ void initialize_copts(CPrepCU *source)
 
     copts.littleendian = 0;
     copts.cplusplus = 1;
+#if VERSION >= VERSION_GC_1_3
+    copts.objective_c = frontEndPrefs.objective_c;
+    extension[0] = 0;
+#else
     extension[0] = 0;
     copts.objective_c = frontEndPrefs.objective_c;
+#endif
 
     for (dotPosition = source->mainFile.name[0]; source->mainFile.name[dotPosition] != '.'; dotPosition--)
         ;
     if (dotPosition >= 2) {
         for (extensionLength = 0; extensionLength + dotPosition <= source->mainFile.name[0]; extensionLength++)
-            extension[extensionLength] = tolower(source->mainFile.name[extensionLength + dotPosition]);
+            extension[extensionLength] = cc_tolower(source->mainFile.name[extensionLength + dotPosition]);
         extension[extensionLength] = 0;
     }
 
@@ -152,6 +175,10 @@ void initialize_copts(CPrepCU *source)
     copts.wchar_type = frontEndPrefs.wchar_type;
     copts.ecplusplus = frontEndPrefs.ecplusplus;
     copts.defer_codegen = frontEndPrefs.defer_codegen;
+#if VERSION >= VERSION_GC_1_3
+    copts.inlineAutoSize = 0x200;
+    copts.inlineAutoMax = 100000;
+#endif
 
     DropInCompilerLinkerPrivate_CallArgumentValue(compiler_plugin_cu.context, "C/C++ Warnings",
                                                   &settingsHandle.warnings);
@@ -174,6 +201,9 @@ void initialize_copts(CPrepCU *source)
     optimizerPrefs = **settingsHandle.optimizer;
     copts.deleteDeadInstructions = optimizerPrefs.optimizationlevel;
     copts.optimizesize = (optimizerPrefs.optfor == 1);
+#if VERSION >= VERSION_GC_1_3
+    copts.pluginFlag_e4 = data_005e73cf;
+#endif
     copts.unrollOption = 8;
     copts.fd1 = 100;
     copts.filesyminfo = source->filesyminfo;
@@ -216,6 +246,9 @@ int __stdcall dispatch_compiler_plugin_request(CWPluginPrivateContext *input)
         case 0:
             initialize_compiler_plugin_cu((unsigned int)input);
             if (data_00588258 == 0) {
+#if VERSION >= VERSION_GC_1_3
+                data_005e73cf = 0;
+#endif
                 CWPluginsPrivate_InvokeCallback40(compiler_plugin_cu.context, "Win32_Plugins_PPC_Nintendo", "1", 0, 0,
                                                   &data_00588258);
                 data_0057f486 = 1;
@@ -240,9 +273,14 @@ int __stdcall dispatch_compiler_plugin_request(CWPluginPrivateContext *input)
                     if (compiler_plugin_cu.preprocessOnly != 0) {
                         if (compiler_plugin_cu.objectData != 0) {
                             memset(&output, 0, 10);
+#if VERSION >= VERSION_GC_1_3
+                            output.secondValue = compiler_plugin_cu.objectData;
+                            compiler_plugin_cu.objectData = 0;
+#else
                             value = compiler_plugin_cu.objectData;
                             compiler_plugin_cu.objectData = 0;
                             output.secondValue = value;
+#endif
                             result = CWPluginsPrivate_CallValuePairCallback(compiler_plugin_cu.context, &output);
                         }
                     } else {

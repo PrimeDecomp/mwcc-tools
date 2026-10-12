@@ -31,6 +31,9 @@ struct OStack {
 };
 struct TokenText {
     short kind;
+#if VERSION >= VERSION_GC_1_3
+    short pad02;
+#endif
     char *text;
 };
 struct Triple {
@@ -45,6 +48,7 @@ extern OStack *Option_PopStack(short flags);
 extern void format_ostack(char *str, short flags);
 extern void Option_FormatOStackToList(void *list);
 extern void Option_ResetOptionLists(void);
+extern void Option_FinalizeOptionLists(void);
 extern OptionList *Option_GetOptionList(void);
 extern void add_option(Option *option);
 extern int Option_RegisterOptionList(OptionList *list);

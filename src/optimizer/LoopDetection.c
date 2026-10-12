@@ -90,6 +90,45 @@ void compute_dominators(void)
     } while (changed);
 }
 
+#if VERSION >= VERSION_GC_1_3
+extern SInt32 data_005e6778[];
+
+/* nonzero when `instr` is a register-to-register copy-like instruction whose destination is not below the register limit */
+#define OPS (instr->operandData.operands)
+static inline int fn_0056a050_D(PCodeInstruction *instr)
+{
+    return OPS[2].kind == 3 && OPS[2].arg == 1;
+}
+
+static inline int fn_0056a050_C(PCodeInstruction *instr)
+{
+    return OPS[2].kind == 2 || fn_0056a050_D(instr);
+}
+
+static inline int fn_0056a050_B(PCodeInstruction *instr)
+{
+    return instr->opcode == 0x3f && fn_0056a050_C(instr);
+}
+
+static inline int fn_0056a050_A(PCodeInstruction *instr)
+{
+    return instr->opcode == 0x3c || fn_0056a050_B(instr);
+}
+
+static inline int fn_0056a050_E(PCodeInstruction *instr)
+{
+    return OPS[0].value.reg >= data_005e6778[OPS[0].arg];
+}
+
+int fn_0056a050(PCodeInstruction *instr)
+{
+    if (fn_0056a050_A(instr) && fn_0056a050_E(instr))
+        return 1;
+    return 0;
+}
+#undef OPS
+#endif
+
 struct SelectedNode *collect_nodes_in_predecessor_bitsets(void)
 {
     PCodeBlock *node;
@@ -318,7 +357,7 @@ void LoopDetection_CreatePreheader(Loop *region)
                         }
                     }
                 } else
-                    CError_ASSERT(496, predecessor->payload.block->next == oldBlock);
+                    CError_ASSERT(BY_VERSION(496, 505), predecessor->payload.block->next == oldBlock);
             }
             successor = predecessor->payload.block->successors;
             if (successor != NULL) {

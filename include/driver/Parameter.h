@@ -203,7 +203,7 @@ extern int xor_const_dest(TOGGLE_T *p);
 extern void zero_unsigned_outputs(int mode, unsigned int *firstOutput, unsigned int *secondOutput,
                                   unsigned int *thirdOutput);
 extern int const_matches_dest(SET_T *p);
-extern Boolean store_constrec_val(SET_T *rec, void *unused, UInt32 flags);
+extern BY_VERSION( Boolean, int) store_constrec_val(SET_T *rec, void *unused, UInt32 flags);
 extern void zero_outputs(int selector, unsigned int *firstOutput, unsigned int *secondOutput,
                          unsigned int *thirdOutput);
 extern int compare_setstring_value(SETSTRING_T *parm);

@@ -21,6 +21,14 @@
 #include <string.h>
 #include <stdio.h>
 
+#if VERSION >= VERSION_GC_1_3
+extern ENode *fn_004b9290(ENode *funcexpr, FuncArg *arg); /* CExpr_GetDefaultArgument */
+extern UInt8 data_005df118;
+extern UInt8 data_005df119;
+extern UInt8 data_005df11a;
+extern void fn_0055d440(Statement *stmt);
+#endif
+
 struct Object *throw_func;
 struct ECacheNode *cached_objects;
 Type exception_temp_object_type;
@@ -35,6 +43,7 @@ static struct ExceptionAction *currentDobjstack;
 static struct ExceptionAction *current_dobjstack;
 #pragma options align = reset
 
+#if VERSION < VERSION_GC_1_3
 static inline Boolean CException_HasThrow(Statement *s)
 {
     data_00581c30 = 0;
@@ -67,6 +76,7 @@ static inline Boolean CException_HasThrow(Statement *s)
     }
     return 0;
 }
+#endif
 
 static inline void reverse_one(ENodeList **arr, SInt32 i, ENodeList *found)
 {
@@ -190,7 +200,7 @@ static inline ENode *CException_004e2c40_inline1(Object *p0, ENode *p1)
 {
     ENode *v3;
     v3 = CABI_DestroyObject(p0, p1, 1, 1, 0);
-    CError_ASSERT(609, !(v3->type != EFUNCCALL || v3->data.funccall.funcref->type != EOBJREF));
+    CError_ASSERT(BY_VERSION(609, 687), !(v3->type != EFUNCCALL || v3->data.funccall.funcref->type != EOBJREF));
     if (v3->data.funccall.funcref->data.objref->datatype == DVFUNC) {
         v3->data.funccall.funcref->flags |= 128;
     }
@@ -212,7 +222,7 @@ static Object *CException_StdType(void *name)
     Object *type;
     obj = CScope_FindObjectList(&lookup, GetHashNameNode(name));
     if (obj == NULL || (type = (Object *)obj->object)->otype != 5 || type->datatype != DLOCAL) {
-        CError_FATAL(502);
+        CError_FATAL(BY_VERSION(502, 580));
         type = NULL;
     }
     return type;
@@ -221,10 +231,28 @@ static Object *CException_StdType(void *name)
 void CExcept_Setup(void)
 {
     cexcept_dobjstack = NULL;
+#if VERSION >= VERSION_GC_1_3
+    cached_objects = NULL;
+#endif
     exception_cleanup_registered = 0U;
     cexcept_magic = 0U;
     return;
 }
+
+#if VERSION >= VERSION_GC_1_3
+extern UInt8 data_005df12c;
+extern Boolean fn_005213e0(Object *obj, Boolean flag);
+
+void fn_0051e5a0(ENode *expr)
+{
+    ENode *funcref = expr->data.funccall.funcref;
+    Object *obj;
+
+    if (funcref->type != EOBJREF ||
+        (obj = funcref->data.objref, fn_005213e0(obj, obj->datatype == DVFUNC && (expr->flags & ENODE_FLAG_80) == 0)))
+        data_005df12c = 1;
+}
+#endif
 
 void CExcept_CheckStackRefs(ExceptionAction *node)
 {
@@ -271,7 +299,7 @@ void CExcept_CheckStackRefs(ExceptionAction *node)
             case EAT_TERMINATE:
                 break;
             default:
-                CError_FATAL(131);
+                CError_FATAL(BY_VERSION(131, 192));
                 break;
         }
         node = node->next;
@@ -365,7 +393,7 @@ Boolean CExcept_ActionCompare(ExceptionAction *left, ExceptionAction *right)
             case EAT_SPECIFICATION:
                 return left->data.specification.ids == right->data.specification.ids;
             default:
-                CError_FATAL(253);
+                CError_FATAL(BY_VERSION(253, 314));
         }
     }
     return 0;
@@ -392,7 +420,7 @@ unsigned char CExcept_ActionNeedsDestruction(ExceptionAction *entry)
         case EAT_DESTROYBASE:
             break;
         default:
-            CError_FATAL(302);
+            CError_FATAL(BY_VERSION(302, 363));
             break;
     }
     result = 0;
@@ -522,6 +550,13 @@ void CExcept_Terminate(void)
     cexcept_dobjstack = entry;
 }
 
+/* Expression-node prefix used by exception rewriting. */
+
+#if VERSION >= VERSION_GC_1_3
+/* (1.3) lower an init/try/catch node: the reference's CExcept_TransInitTryCatch */
+extern ENode *fn_0051f1e0(ENode *expr, Boolean isCond);
+#endif
+
 void CExcept_Magic(void)
 {
     cexcept_magic = 1;
@@ -561,7 +596,7 @@ void CExcept_RegisterMember(Statement *statement, Object *objectptr, SInt32 offs
         node->data.member.objectptr = objectptr;
         node->data.member.offset = offset;
     } else {
-        CError_ASSERT(554, &condition->type->type == &stsignedshort.type);
+        CError_ASSERT(BY_VERSION(554, 632), &condition->type->type == &stsignedshort.type);
         node->kind = EAT_DESTROYMEMBERCOND;
         node->data.member_cond.objectptr = objectptr;
         node->data.member_cond.cond = condition;
@@ -614,8 +649,13 @@ Statement *CExcept_ActionCleanup(ExceptionAction *cleanup, Statement *statement)
             localObjectExpression = create_objectrefnode(cleanup->data.local.object);
             localDtorCall = CException_004e2c40_inline1(localDtor, localObjectExpression);
             localStatement = CException_004e2c40_inline2(statement, localDtorCall);
+#if VERSION >= VERSION_GC_1_3
+            localStatement->dobjstack = cleanup->next;
+            statement = localStatement;
+#else
             statement = localStatement;
             localStatement->dobjstack = cleanup->next;
+#endif
             break;
         case EAT_DESTROYLOCALOFFSET:
             offset = cleanup->data.member.offset;
@@ -626,8 +666,13 @@ Statement *CExcept_ActionCleanup(ExceptionAction *cleanup, Statement *statement)
             }
             memberDtorCall = CException_004e2c40_inline1(memberDtor, expression);
             memberStatement = CException_004e2c40_inline2(statement, memberDtorCall);
+#if VERSION >= VERSION_GC_1_3
+            memberStatement->dobjstack = cleanup->next;
+            statement = memberStatement;
+#else
             statement = memberStatement;
             memberStatement->dobjstack = cleanup->next;
+#endif
             break;
         case EAT_DELETELOCALPOINTER:
             deleteFunc = cleanup->data.local.dtor;
@@ -661,7 +706,7 @@ Statement *CExcept_ActionCleanup(ExceptionAction *cleanup, Statement *statement)
             }
             break;
         default:
-            CError_FATAL(749);
+            CError_FATAL(BY_VERSION(749, 827));
         case EAT_DESTROYLOCALCOND:
         case EAT_DESTROYLOCALPOINTER:
         case 6:
@@ -701,7 +746,7 @@ void fn_004e2940(TypeClass *exceptionData)
     while (entry != NULL) {
         if (entry->is_global == 0 && entry->is_templ == 0 && entry->name == NULL) {
             if (cscope_currentfunc == NULL) {
-                CError_FATAL(790);
+                CError_FATAL(BY_VERSION(790, 868));
             }
             sprintf(name, "*%lx*%lx*", &cscope_currentfunc, (int)&entry);
             AppendGListName(&data_00583548, name);
@@ -909,13 +954,13 @@ ENode *create_call_with_arg_and_default_args(Object *func, TypeClass *cls, ENode
     ENode *call;
     ENodeList *p;
 
-    CError_ASSERT(1092, IS_TYPE_FUNC(func->type) && (fa = TYPE_FUNC(func->type)->args) != 0 && (fa = fa->next) != 0);
+    CError_ASSERT(BY_VERSION(1092, 1169), IS_TYPE_FUNC(func->type) && (fa = TYPE_FUNC(func->type)->args) != 0 && (fa = fa->next) != 0);
 
     call = funccallexpr(func, which, NULL, NULL, NULL);
     list = call->data.funccall.args;
 
     if (cls->flags & CLASS_HAS_VBASES) {
-        CError_ASSERT(1102, (fa = fa->next) != 0);
+        CError_ASSERT(BY_VERSION(1102, 1179), (fa = fa->next) != 0);
         list->next = (ENodeList *)lalloc(8);
         list = list->next;
         list->next = NULL;
@@ -927,11 +972,15 @@ ENode *create_call_with_arg_and_default_args(Object *func, TypeClass *cls, ENode
     p->next = NULL;
     p->node = arg;
     while ((fa = fa->next) != NULL) {
-        CError_ASSERT(1118, fa->dexpr != 0);
+        CError_ASSERT(BY_VERSION(1118, 1195), fa->dexpr != 0);
         p->next = (ENodeList *)lalloc(8);
         p = p->next;
         p->next = NULL;
+#if VERSION >= VERSION_GC_1_3
+        p->node = fn_004b9290(call->data.funccall.funcref, fa);
+#else
         p->node = fn_00513040(fa->dexpr, 0);
+#endif
     }
     return call;
 }
@@ -1019,7 +1068,7 @@ void fn_004e1fb0(Statement *firstScope, Statement *insertionScope, Statement *la
             entry->data.catch_block.label = entries->handlerEntry->label;
             if (entries->exceptionType != NULL) {
                 stringNode = create_type_stringconst(entries->exceptionType, entries->declarationData, 0);
-                CError_ASSERT(1009, stringNode->type == ESTRINGCONST);
+                CError_ASSERT(BY_VERSION(1009, 1086), stringNode->type == ESTRINGCONST);
                 entry->data.catch_block.typeInfo =
                     CInit_DeclareString(stringNode->data.string.data, stringNode->data.string.size, 0, 0);
             }
@@ -1037,7 +1086,7 @@ void fn_004e1fb0(Statement *firstScope, Statement *insertionScope, Statement *la
         if ((current = scope->dobjstack) != originalList) {
             for (;;) {
                 if (current == NULL)
-                    CError_FATAL(1320);
+                    CError_FATAL(BY_VERSION(1320, 1404));
                 if (current->next == replacementList)
                     break;
                 if (current->next == originalList) {
@@ -1159,13 +1208,22 @@ void CExcept_ScanTryBlock(void *context, char rethrow)
     previous = NULL;
 
     for (;;) {
+#if VERSION >= VERSION_GC_1_3
+        UPDATE_STATEMENT_LINE();
+#else
         sourceoffset = CPrep_UpdateTokenLine(&function_fileinfo);
+#endif
 
         lastStatement = CFunc_AppendStatement(2);
         lastStatement->flags = 1;
         lastStatement->label = newlabel();
+#if VERSION >= VERSION_GC_1_3
+        lastStatement->label->stmt = lastStatement;
+        cleanup = NULL;
+#else
         cleanup = NULL;
         lastStatement->label->stmt = lastStatement;
+#endif
 
         handler = (ExceptionHandlerRecord *)lalloc(sizeof(*handler));
         memclrw(handler, sizeof(*handler));
@@ -1225,7 +1283,7 @@ void CExcept_ScanTryBlock(void *context, char rethrow)
         }
         handler->handlerEnd = lastStatement;
         if (cleanup != NULL)
-            CFunc_RestoreBlock(cleanup);
+            BY_VERSION(            CFunc_RestoreBlock, fn_004f4a60)(cleanup);
         if (tk != TK_CATCH)
             break;
         {
@@ -1275,7 +1333,7 @@ ENode *fn_004e1940(ENode *node)
         ExceptionAction *stmt;
         type->object = obj;
         type->initializationFlag = NULL;
-        CError_ASSERT(1643, node->data.objref->otype == OT_OBJECT &&
+        CError_ASSERT(BY_VERSION(1643, 1749), node->data.objref->otype == OT_OBJECT &&
                                 (type->classObject = CClass_Destructor((TypeClass *)node->data.objref)) != 0);
         stmt = CException_NewStmtNode();
         stmt->kind = EAT_DESTROYLOCAL;
@@ -1432,9 +1490,9 @@ ENode *rewrite_funccall_temporaries(ENode *node, Boolean reverse)
         temporary->initializationFlag = NULL;
         if (temporaryExpr->data.temp.type->type == TYPECLASS) {
             temporary->classObject = CClass_Destructor((TypeClass *)temporaryExpr->data.temp.type);
-            CError_ASSERT(1825, temporary->classObject != NULL);
+            CError_ASSERT(BY_VERSION(1825, 2046), temporary->classObject != NULL);
         } else {
-            CError_FATAL(1825);
+            CError_FATAL(BY_VERSION(1825, 2046));
         }
         temporaryExpr->type = EOBJREF;
         temporaryExpr->data.objref = temporary->object;
@@ -1521,6 +1579,10 @@ ENode *rewrite_expr_temporaries(ENode *expr)
         case ENEWEXCEPTIONARRAY:
             lower_newexception(expr, 1);
             return;
+#if VERSION >= VERSION_GC_1_3
+        case ENODE_13_INSERTED:
+            return fn_0051f1e0(expr, 1);
+#endif
         case ENULLCHECK:
             expr->data.diadic.left = rewrite_expr_temporaries(expr->data.diadic.left);
             expr->data.diadic.right = rewrite_expr_temporaries(expr->data.diadic.right);
@@ -1566,6 +1628,10 @@ ENode *rewrite_expr_temporaries(ENode *expr)
         case EXORASS:
         case EORASS:
         case ECOMMA:
+#if VERSION >= VERSION_GC_1_3
+        case EROTL:
+        case EROTR:
+#endif
             expr->data.diadic.left = rewrite_expr_temporaries(expr->data.diadic.left);
             expr->data.diadic.right = rewrite_expr_temporaries(expr->data.diadic.right);
             return expr;
@@ -1591,7 +1657,7 @@ ENode *rewrite_expr_temporaries(ENode *expr)
         case EVECTOR128CONST:
             return expr;
         default:
-            CError_FATAL(2016);
+            CError_FATAL(BY_VERSION(2016, 2236));
             return expr;
     }
 }
@@ -1605,6 +1671,10 @@ ENode *fn_004e1050(ENode *expression)
         case ENEWEXCEPTIONARRAY:
             lower_newexception(expression, 0);
             return;
+#if VERSION >= VERSION_GC_1_3
+        case ENODE_13_INSERTED:
+            return fn_0051f1e0(expression, 0);
+#endif
         case ENULLCHECK:
             expression->data.diadic.left = fn_004e1050(expression->data.diadic.left);
             expression->data.diadic.right = rewrite_expr_temporaries(expression->data.diadic.right);
@@ -1680,7 +1750,7 @@ ENode *fn_004e1050(ENode *expression)
         case EVECTOR128CONST:
             return expression;
         default:
-            CError_FATAL(2127);
+            CError_FATAL(BY_VERSION(2127, 2350));
             return expression;
     }
 }
@@ -1696,7 +1766,7 @@ Statement *generate_temporary_object_destruction(Statement *arg)
             current_dobjstack->data.local.object == p->object)
             current_dobjstack = current_dobjstack->next;
         else
-            CError_FATAL(2151);
+            CError_FATAL(BY_VERSION(2151, 2374));
         if (p->initializationFlag != NULL) {
             stmt = CFunc_InsertAfterStatement(ST_IFNGOTO, stmt);
             stmt->expr = create_objectnode(p->initializationFlag);
@@ -1726,14 +1796,51 @@ void insert_temporary_object_destruction(Statement *statement, char flag1, char 
         Statement statement;
         unsigned int words[7]; /* Raw statement storage, including unknown bytes. */
     } saved;
+#if VERSION >= VERSION_GC_1_3
+    Statement *cursor = data_00581c36;
+    temporary_object_list = NULL;
+    data_005df118 = 0;
+    data_005df11a = 0;
+    data_005df119 = 0;
+    statement->expr = fn_004e1050(statement->expr);
+    if (data_005df119 != 0) {
+        data_005df11a = 1;
+        if (data_005df118 != 0) {
+            fn_0055d440(statement);
+            data_00581c36 = statement;
+        } else {
+            data_00581c36 = cursor;
+        }
+        for (;;) {
+            if (cursor == NULL)
+                CError_FATAL(2425);
+            switch (cursor->type) {
+                case ST_RETURN:
+                    if (cursor->expr == NULL)
+                        CError_FATAL(2429);
+                case ST_EXPRESSION:
+                case ST_SWITCH:
+                case ST_IFGOTO:
+                case ST_IFNGOTO:
+                    cursor->expr = fn_004e1050(cursor->expr);
+                    break;
+            }
+            if (cursor == statement)
+                break;
+            data_00581c36 = cursor;
+            cursor = cursor->next;
+        }
+    }
+#else
     temporary_object_list = NULL;
     statement->expr = fn_004e1050(statement->expr);
+#endif
     if (temporary_object_list != NULL) {
         if (flag1 == 0) {
             if (flag2 != 0) {
                 expr = statement->expr;
-                CError_ASSERT(2194, !(statement->expr->rtype->type == TYPECLASS &&
-                                      CClass_Destructor((TypeClass *)expr->rtype) != 0));
+                CError_ASSERT(BY_VERSION(2194, 2456), !(statement->expr->rtype->type == TYPECLASS &&
+                                                        CClass_Destructor((TypeClass *)expr->rtype) != 0));
                 object = create_temp_object(expr->rtype);
                 statement->expr = makediadicnode(create_objectnode(object), expr, 30);
             }
@@ -1772,7 +1879,7 @@ void update_statement_dobjstacks(Statement *node)
                 e = e->data.monadic;
             if (e->type == EFUNCCALL) {
                 if (e->data.funccall.funcref->type == EOBJREF &&
-                    CClass_IsDestructor(e->data.funccall.funcref->data.objref) && (info = p->dobjstack) != NULL &&
+                    CClass_IsCtor(e->data.funccall.funcref->data.objref) && (info = p->dobjstack) != NULL &&
                     info->kind == EAT_DESTROYLOCAL && (args = e->data.funccall.args) != NULL &&
                     args->node->type == EOBJREF && args->node->data.objref == info->data.local.object) {
                     currentDobjstack = currentDobjstack->next;
@@ -1874,7 +1981,7 @@ void setup_exception_specification(struct Statement *statements, struct ExceptSp
     for (handler = handlers; handler != NULL; handler = handler->next) {
         expression = create_type_stringconst(handler->type, handler->qual, 0);
         if (expression->type != ESTRINGCONST)
-            CError_FATAL(1009);
+            CError_FATAL(BY_VERSION(1009, 1086));
         region->data.specification.ids[handler_index++] =
             CInit_DeclareString(expression->data.string.data, expression->data.string.size, 0, 0);
     }
@@ -1894,13 +2001,16 @@ void setup_exception_specification(struct Statement *statements, struct ExceptSp
     return_statement = CFunc_InsertAfterStatement(3, end_statement);
     return_statement->label = end_label;
 }
+#if VERSION < VERSION_GC_1_3
 
 void fn_004e0b20(ENode *expr)
 {
     data_00581c30 = 1U;
     return;
 }
+#endif
 
+#if VERSION < VERSION_GC_1_3
 unsigned char fn_004e0ab0(Statement *node)
 {
     data_00581c30 = 0;
@@ -1936,7 +2046,64 @@ unsigned char fn_004e0ab0(Statement *node)
     }
     return 0;
 }
+#endif
 
+#if VERSION >= VERSION_GC_1_3
+extern UInt8 data_005df12c;
+extern void fn_0051e5a0(ENode *expr);
+/* Reports whether the statements contain a call that may throw; otherwise marks the function as non-throwing. */
+#pragma dont_inline on
+Boolean fn_0051e510(Object *func, Statement *node)
+{
+    data_005df12c = 0;
+    for (; node != NULL; node = node->next) {
+        switch (node->type) {
+            case ST_NOP:
+            case ST_LABEL:
+            case ST_GOTO:
+            case ST_ASM:
+                break;
+            case ST_RETURN:
+                if (node->expr == NULL)
+                    break;
+            case ST_EXPRESSION:
+            case ST_SWITCH:
+            case ST_IFGOTO:
+            case ST_IFNGOTO:
+            case ST_BEGINCATCH:
+            case ST_ENDCATCH:
+            case ST_ENDCATCHDTOR:
+            case ST_GOTOEXPR:
+                CExpr_SearchExprTree(node->expr, (void (*)(ENode *))fn_0051e5a0, 2, 0x36, 0x37);
+#if VERSION >= VERSION_GC_1_3
+                if (data_005df12c)
+                    continue;
+#endif
+                break;
+            default:
+                CError_FATAL(2687);
+        }
+    }
+    if (data_005df12c == 0) {
+        TYPE_FUNC(cscope_currentfunc->type)->flags |= 0x400;
+        return 0;
+    }
+    return 1;
+}
+#pragma dont_inline reset
+void CExcept_ExceptionTansform(Statement *stmt)
+{
+    cached_objects = NULL;
+    update_statement_dobjstacks(stmt);
+    if (cscope_currentfunc != NULL) {
+        if (fn_0051e510(cscope_currentfunc, stmt)) {
+            CError_ASSERT(2716, cscope_currentfunc->type->type == TYPEFUNC);
+            if (TYPE_FUNC(cscope_currentfunc->type)->exspecs != NULL && copts.exceptions != 0)
+                setup_exception_specification(stmt, TYPE_FUNC(cscope_currentfunc->type)->exspecs);
+        }
+    }
+}
+#else
 void CExcept_ExceptionTansform(Statement *stmt)
 {
     update_statement_dobjstacks(stmt);
@@ -1946,3 +2113,4 @@ void CExcept_ExceptionTansform(Statement *stmt)
         }
     }
 }
+#endif

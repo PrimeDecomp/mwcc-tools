@@ -50,6 +50,9 @@ extern unsigned int __stdcall CWParserPluginsPrivate_GetParserValues(CWPluginPri
                                                                      unsigned int *first_value,
                                                                      unsigned int *second_value);
 extern int __stdcall CWParserPluginsPrivate_GetEnvironment(void *input, CommandLineArguments **value_out);
+#if VERSION >= VERSION_GC_1_3
+extern int __stdcall CWParserPluginsPrivate_GetPanelExtra(void *context, UInt32 *value);
+#endif
 extern int __stdcall CWParserPluginsPrivate_GetOutputValues(struct CWPluginPrivateContext *context,
                                                             unsigned char *firstValue, unsigned char *secondValue);
 extern int __stdcall CWParserPluginsPrivate_GetPanels(void *context, int *firstValue, struct PanelEntry **secondValue);
@@ -59,8 +62,13 @@ extern int __stdcall fn_0041bfd0(void *context, char *name, void **value);
 extern unsigned int __stdcall CWParserPluginsPrivate_CallFileOperationCallback(CWPluginPrivateContext *objectId,
                                                                                FileOperationInfo *argument);
 extern int __stdcall CWParserPluginsPrivate_CallFileInfo(CWPluginPrivateContext *ctx, CWFileSpec *info);
+#if VERSION >= VERSION_GC_1_3
+extern int __stdcall CWParserPluginsPrivate_CallParserCallback3(void *context, int argument2, int argument3, char *text);
+#define CWParserPluginsPrivate_CallParserTextCallback CWParserPluginsPrivate_CallParserCallback3
+#else
 extern int __stdcall CWParserPluginsPrivate_CallParserTextCallback(CWPluginPrivateContext *request, int argument2,
                                                                    int argument3, char *text);
+#endif
 extern int __stdcall CWParserPluginsPrivate_PassValuePair(CWPluginPrivateContext *target, char *firstValue,
                                                           unsigned int secondValue);
 extern void __stdcall CWParserPluginsPrivate_CallValuePairCallback(CWPluginPrivateContext *target, char *firstValue,

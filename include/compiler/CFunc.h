@@ -36,10 +36,13 @@ struct Statement {
     UInt8 marked;
     UInt8 flags;
     SInt16 value;
-    ENode *expr;
-    struct CLabel *label;
-    struct ExceptionAction *dobjstack;
+        ENode * expr;
+        struct CLabel *label;
+        struct ExceptionAction *dobjstack;
     SInt32 sourceoffset;
+#if VERSION >= VERSION_GC_1_3
+    SInt32 f1a;
+#endif
 };
 #pragma options align = reset
 /* A function queued for code generation after the translation unit has been parsed (list head DAT_005876e8,
@@ -130,6 +133,12 @@ extern void InitExpr_Register(ENode *expr, Object *cls);
 extern ENode *append_cleannode_dtors(ENode *left, struct CleanNode *list);
 extern void CFunc_GenerateSingleExprFunc(Object *func, ENode *expr);
 extern UInt32 sourceoffset;
+#if VERSION >= VERSION_GC_1_3
+extern SInt32 data_005e669c;
+#define UPDATE_STATEMENT_LINE() fn_0043db20(&function_fileinfo, (SInt32 *)&sourceoffset, &data_005e669c)
+#else
+#define UPDATE_STATEMENT_LINE() (sourceoffset = CPrep_UpdateTokenLine(&function_fileinfo))
+#endif
 extern struct Statement *curstmt;
 extern struct CLabel *Labels;
 extern struct ExceptionAction *cexcept_dobjstack;
@@ -146,6 +155,7 @@ extern CLabel *findlabel(void);
 extern void CheckCLabels(void);
 extern Statement *CFunc_InsertAfterStatement(int type, Statement *after);
 extern Statement *CFunc_AppendStatement(int kind);
+extern Statement *CFunc_SplitStatement(int kind, Statement *stmt);
 extern CLabel *newlabel(void);
 extern FuncArg *parameter_type_list(DeclInfo *state);
 extern UInt8 CFunc_ParseFakeArgList(char stop_at_comma);
@@ -165,6 +175,9 @@ struct DeclBlock {
     UInt16 index;
 };
 extern void CFunc_RestoreBlock(const struct DeclBlock *values);
+#if VERSION >= VERSION_GC_1_3
+extern void fn_004f4a60(struct DeclBlock *block); /* CFunc.c: unwinds then restores */
+#endif
 extern struct DeclBlock *CFunc_NewDeclBlock(void);
 
 #ifdef __cplusplus

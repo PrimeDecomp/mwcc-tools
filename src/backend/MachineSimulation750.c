@@ -11,12 +11,18 @@
 struct MachineInfo machine750 = {
     2,
     1,
+#if VERSION >= VERSION_GC_1_3
+    0,
+#endif
     (SInt32 (*)(void *))fn_0052f330,
     reset_simulation_pipeline,
     (SInt32 (*)(void *))fn_0052f120,
     (void (*)(void *))record_instruction_kind,
     advance_simulation_pipeline,
     (SInt32 (*)(void *))get_opcode_table_first_entry,
+#if VERSION >= VERSION_GC_1_3
+    (SInt32 (*)(void *))fn_00506260,
+#endif
 };
 
 /* Each opcode's execution unit, latency and cycles in each stage of the pipeline; the table ends at PC_VMINFP,
@@ -359,9 +365,19 @@ int fn_0052f330(PCodeInstruction *instruction)
     int count;
     unsigned int flags;
 
+#if VERSION >= VERSION_GC_1_3
+    count = data_00576f28[instruction->opcode].latency;
+    flags = instruction->flags;
+#else
     flags = instruction->flags;
     count = data_00576f28[instruction->opcode].latency;
+#endif
+#if VERSION >= VERSION_GC_1_3
+    /* (1.3: the record bit, among the flags of an instruction that is not a branch or call) */
+    if ((((flags & 9) ? 0 : flags) & 0x20000000) != 0) {
+#else
     if ((flags & PCodeInstruction_CloneExtraOperandExcluded) != 0) {
+#endif
         count += 2;
     }
     if ((instruction->opcode == PC_LMW) || (instruction->opcode == PC_STMW)) {

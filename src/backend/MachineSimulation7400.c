@@ -10,12 +10,20 @@
 struct MachineInfo machine7400 = {
     2,
     1,
+#if VERSION >= VERSION_GC_1_3
+    0,
+    (SInt32 (*)(void *))fn_00576cc0,
+#else
     (SInt32 (*)(void *))get_adjusted_opcode_table_value,
+#endif
     reset_pipeline_state,
     (SInt32 (*)(void *))can_issue_instruction_in_pipeline_slots,
     (void (*)(void *))queue_instruction,
     advance_pipeline,
     (SInt32 (*)(void *))lookup_instruction_opcode_entry,
+#if VERSION >= VERSION_GC_1_3
+    (SInt32 (*)(void *))fn_0052f370,
+#endif
 };
 
 /* Each opcode's execution unit, latency and cycles in each stage of the pipeline. */
@@ -530,7 +538,7 @@ int get_adjusted_opcode_table_value(PCodeInstruction *record)
     int result;
 
     result = (SInt8)data_00577660[record->opcode].baseLatency;
-    if ((record->flags & fRecordBit) != 0) {
+    if ((PCODE_RECORD(record->flags)) != 0) {
         result = result + 2;
     }
     if ((record->opcode == PC_LMW) || (record->opcode == PC_STMW)) {
@@ -538,6 +546,220 @@ int get_adjusted_opcode_table_value(PCodeInstruction *record)
     }
     return result;
 }
+
+#if VERSION >= VERSION_GC_1_3
+struct Fn00576d10 {
+    char pad[0x20];
+    SInt16 index;
+};
+
+extern signed char data_005d06c5[];
+extern signed char data_005d11ed[];
+extern signed char data_005d1d7d[];
+
+int fn_00576d10(int a)
+{
+    return data_005d06c5[((struct Fn00576d10 *)a)->index * 6];
+}
+
+int fn_00577230(int a)
+{
+    return data_005d11ed[((struct Fn00576d10 *)a)->index * 6];
+}
+
+int fn_005777a0(int a)
+{
+    return data_005d1d7d[((struct Fn00576d10 *)a)->index * 6];
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+struct Fn005771e0 {
+    UInt8 unit;
+    SInt8 latency;
+    SInt8 rest[4];
+};
+extern struct Fn005771e0 data_005d06c0[];
+
+int fn_005771e0(PCodeInstruction *p)
+{
+    short opcode = p->opcode;
+    int n = data_005d06c0[opcode].latency;
+    if (((p->flags & 9) ? 0 : p->flags) & 0x20000000)
+        n += 2;
+    if (opcode == 0x27 || opcode == 0x36)
+        n += p->operand_count - 2;
+    return n;
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+struct Fn00577750 {
+    SInt8 pad;
+    SInt8 latency;
+    SInt8 rest[4];
+};
+extern struct Fn00577750 data_005d11e8[];
+
+int fn_00577750(PCodeInstruction *p)
+{
+    short opcode = p->opcode;
+    int n = data_005d11e8[opcode].latency;
+    if (((p->flags & 9) ? 0 : p->flags) & 0x20000000)
+        n += 2;
+    if (opcode == 0x27 || opcode == 0x36)
+        n += p->operand_count - 2;
+    return n;
+}
+
+struct Fn00576cc0 {
+    SInt8 pad;
+    SInt8 latency;
+    SInt8 rest[5];
+};
+extern struct Fn00576cc0 data_005cf9c0[];
+
+int fn_00576cc0(PCodeInstruction *p)
+{
+    short opcode = p->opcode;
+    int n = data_005cf9c0[opcode].latency;
+    if (((p->flags & 9) ? 0 : p->flags) & 0x20000000)
+        n += 2;
+    if (opcode == 0x27 || opcode == 0x36)
+        n += p->operand_count - 2;
+    return n;
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+struct Fn005770d0Unit {
+    PCodeInstruction *instruction;
+    int status;
+};
+extern int data_005dfec8;
+extern struct Fn005770d0Unit data_005dff00[];
+
+int fn_005770d0(PCodeInstruction *p)
+{
+    PCodeInstruction *other;
+
+    if (data_005dfec8 == 0)
+        return 0;
+    if (data_005dff00[data_005d06c0[p->opcode].unit].instruction != NULL)
+        return 0;
+    if (p->flags & 4) {
+        other = data_005dff00[3].instruction;
+        if (other != NULL && (other->flags & 4))
+            return 0;
+    }
+    return 1;
+}
+#if VERSION >= VERSION_GC_1_3
+struct Fn00576120Slot {
+    PCodeInstruction *instruction;
+    SInt32 value;
+};
+extern unsigned char data_005ce9b2[];
+extern SInt32 data_005dfc58;
+extern SInt32 data_005dfc5c;
+extern SInt32 data_005dfc60;
+extern SInt32 data_005dfc64;
+extern struct Fn00576120Slot data_005dfc68[];
+extern SInt32 data_005dfce8;
+extern SInt32 data_005dfcec;
+extern SInt32 data_005dfcf0;
+extern SInt32 data_005dfcf4;
+extern SInt32 data_005dfcf8;
+extern SInt32 data_005dfcfc;
+extern SInt32 data_005dfd00;
+extern SInt32 data_005dfd04;
+extern struct Fn00576120Slot data_005dfd08[];
+extern SInt32 data_005dfdd8;
+
+int fn_00576010(PCodeInstruction *p)
+{
+    int unit;
+    int secondMissing;
+    int firstMissing;
+    unsigned char i;
+    int count;
+
+    if (data_005dfc58 == 0)
+        return 0;
+    unit = data_005ce9b2[p->opcode * 10];
+    if (unit == 4) {
+        firstMissing = 0;
+        if (data_005dfd08[5].instruction == NULL)
+            firstMissing = 1;
+        secondMissing = 0;
+        if (data_005dfd08[4].instruction == NULL)
+            secondMissing = 1;
+        if (!secondMissing && !firstMissing)
+            return 0;
+    } else if (data_005dfd08[unit].instruction != NULL) {
+        return 0;
+    }
+    if (unit == 11) {
+        count = 0;
+        i = 14;
+        while (i >= 11) {
+            if (data_005dfd08[i].instruction != NULL)
+                count++;
+            i--;
+        }
+        if (count >= 3 && data_005dfdd8 != 0)
+            return 0;
+    }
+    if (data_005dfcec <= 0)
+        return 0;
+    if (unit == 11) {
+        if (data_005dfcf0 < 1 || data_005dfcfc >= 1)
+            return 0;
+    } else if (unit >= 15 && unit <= 22) {
+        if (data_005dfcf8 < 1 || data_005dfd04 >= 2)
+            return 0;
+    } else if (unit != 0) {
+        if (data_005dfcf4 < 1 || data_005dfd00 >= 3)
+            return 0;
+    }
+    return 1;
+}
+
+static void fn_00576120_Zero(struct Fn00576120Slot *arr, SInt32 n)
+{
+    SInt32 i;
+    for (i = 0; i < n; i++)
+        arr[i].instruction = NULL;
+}
+
+static void fn_00576120_ZeroBoth(struct Fn00576120Slot *arr, SInt32 n)
+{
+    SInt32 i;
+    for (i = 0; i < n; i++) {
+        arr[i].instruction = NULL;
+        arr[i].value = 0;
+    }
+}
+
+void fn_00576120(void)
+{
+    data_005dfce8 = 4;
+    data_005dfcec = 3;
+    data_005dfcf0 = 2;
+    data_005dfcf4 = 3;
+    data_005dfcf8 = 2;
+    data_005dfcfc = 0;
+    data_005dfd00 = 0;
+    data_005dfd04 = 0;
+    fn_00576120_Zero(data_005dfd08, 26);
+    data_005dfc58 = 16;
+    data_005dfc5c = 0;
+    data_005dfc60 = 0;
+    data_005dfc64 = 0;
+    fn_00576120_ZeroBoth(data_005dfc68, 16);
+}
+#endif
+#endif
 
 void reset_pipeline_state(void)
 {

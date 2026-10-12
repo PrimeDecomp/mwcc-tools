@@ -3,6 +3,12 @@
 
 #include "compiler/common.h"
 
+#if VERSION >= VERSION_GC_1_3
+#define PEEP_LIVE_T UInt32 *
+#else
+#define PEEP_LIVE_T UInt32
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -39,24 +45,29 @@ extern struct PCodeBlock *gReturnBlock;
 extern void Peephole_MergeAdjacentBlocks(Object *object, Boolean mergePrologue);
 extern void Peephole_OptimizeBlocks(Object *object);
 extern void peephole_optimize_block(PCodeBlock *scope);
-extern SInt32 fold_rlwimi_store_to_stwbrx(PCodeInstruction *node, UInt32 mask);
-extern unsigned int fold_to_rlwnm(unsigned int instruction, unsigned int liveRegisters);
-extern int has_register_conflict(UInt32 mask, PCodeInstruction *group, PCodeInstruction *operand,
+extern SInt32 fold_rlwimi_store_to_stwbrx(PCodeInstruction *node, PEEP_LIVE_T mask);
+extern unsigned int fold_to_rlwnm(unsigned int instruction, PEEP_LIVE_T liveRegisters);
+extern int has_register_conflict(PEEP_LIVE_T mask, PCodeInstruction *group, PCodeInstruction *operand,
                                  PCodeInstruction *other, PCodeInstruction *target);
-extern unsigned int combine_srawi(PCodeInstruction *pc, UInt32 mask);
-extern int fold_rlwimi_rlwinm_to_sthbrx(PCodeInstruction *instruction, int mask);
-extern unsigned int combine_addi(PCodeInstruction *pc, UInt32 mask);
-extern int fold_rlwinm_or_mr_reaching_def(PCodeInstruction *pc, UInt32 mask);
+extern unsigned int combine_srawi(PCodeInstruction *pc, PEEP_LIVE_T mask);
+extern int fold_rlwimi_rlwinm_to_sthbrx(PCodeInstruction *instruction, PEEP_LIVE_T mask);
+extern unsigned int combine_addi(PCodeInstruction *pc, PEEP_LIVE_T mask);
+extern int fold_rlwinm_or_mr_reaching_def(PCodeInstruction *pc, PEEP_LIVE_T mask);
 extern int eliminate_redundant_store(PCodeInstruction *in);
+#if VERSION >= VERSION_GC_1_3
+extern unsigned int rewrite_reaching_def_reg(PCodeInstruction *p1, UInt32 *live);
+extern unsigned int retarget_reaching_def_register(PCodeInstruction *p1, UInt32 *live);
+#else
 extern unsigned int rewrite_reaching_def_reg(PCodeInstruction *p1, SInt32 p2, UInt32 p3);
 extern unsigned int retarget_reaching_def_register(PCodeInstruction *p1, UInt32 p3, SInt32 p2);
-extern unsigned int fold_not_into_andc(PCodeInstruction *pc, UInt32 mask);
-extern int remove_redundant_extsb(PCodeInstruction *self, UInt32 mask);
+#endif
+extern unsigned int fold_not_into_andc(PCodeInstruction *pc, PEEP_LIVE_T mask);
+extern int remove_redundant_extsb(PCodeInstruction *self, PEEP_LIVE_T mask);
 extern SInt32 bypass_cmpli_zero(PCodeInstruction *p);
 extern SInt32 fold_constant_compare_branch(PCodeInstruction *node);
-extern int eliminate_matching_addi(PCodeInstruction *instruction, UInt32 registerMask);
-extern int fold_reaching_lha_or_extsb(PCodeInstruction *p, UInt32 mask);
-extern int fold_lbz_lbzx_mask(PCodeInstruction *instruction, int register_mask);
+extern int eliminate_matching_addi(PCodeInstruction *instruction, PEEP_LIVE_T registerMask);
+extern int fold_reaching_lha_or_extsb(PCodeInstruction *p, PEEP_LIVE_T mask);
+extern int fold_lbz_lbzx_mask(PCodeInstruction *instruction, PEEP_LIVE_T register_mask);
 extern int make_record_form_and_unlink_instruction(PCodeInstruction *instruction);
 extern int fn_004cba60(CmpCtx *ctx);
 extern int unlink_instruction_matching_vmr_source(PCodeInstruction *p);
@@ -72,17 +83,21 @@ extern int fn_004cc040(PCodeInstruction *p, UInt32 m0, UInt32 m1, UInt32 m2, UIn
 extern void build_reaching_def_table(PCodeBlock *info);
 extern void build_register_block_liveness(Object *object);
 extern void compute_register_block_liveness(RegisterBlockLiveness *data, UInt32 mask);
-extern int combine_mulli(struct PCodeInstruction *state, int register_mask);
+extern int combine_mulli(struct PCodeInstruction *state, PEEP_LIVE_T register_mask);
+#if VERSION >= VERSION_GC_1_3
+extern int merge_reaching_def_instruction(PCodeInstruction *instruction, UInt32 *live);
+#else
 extern int merge_reaching_def_instruction(PCodeInstruction *instruction, int operand1, int operand2, int operand3,
                                           int registerMask);
-extern int replace_with_reaching_li(PCodeInstruction *instruction, int register_mask);
+#endif
+extern int replace_with_reaching_li(PCodeInstruction *instruction, PEEP_LIVE_T register_mask);
 extern int fold_reaching_addi(PCodeInstruction *current);
-extern int fold_li_operand(PCodeInstruction *instruction, int register_mask);
-extern int fold_lhz_lhzx_mask(PCodeInstruction *instruction, int register_mask);
-extern int bypass_extsh_for_rotated_mask(struct PCodeInstruction *pattern, int registerMask);
-extern int bypass_extsb_for_low_byte_rotated_mask(PCodeInstruction *instruction, int register_mask);
+extern int fold_li_operand(PCodeInstruction *instruction, PEEP_LIVE_T register_mask);
+extern int fold_lhz_lhzx_mask(PCodeInstruction *instruction, PEEP_LIVE_T register_mask);
+extern int bypass_extsh_for_rotated_mask(struct PCodeInstruction *pattern, PEEP_LIVE_T registerMask);
+extern int bypass_extsb_for_low_byte_rotated_mask(PCodeInstruction *instruction, PEEP_LIVE_T register_mask);
 extern void initialize_register_block_liveness(void);
-extern int fold_addi_or_mr_reaching_def(PCodeInstruction *pc, UInt32 mask);
+extern int fold_addi_or_mr_reaching_def(PCodeInstruction *pc, PEEP_LIVE_T mask);
 extern int rewrite_as_addi(PCodeInstruction *record);
 extern void register_peephole_rules(void);
 extern void Peephole_VisitBlocksWithMultipleInstructions(void *arg1);

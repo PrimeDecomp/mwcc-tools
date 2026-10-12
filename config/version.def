@@ -1,0 +1,6 @@
+; The functions the 1.3 executable imports from VERSION.dll, which it calls through the import library's stubs
+LIBRARY VERSION.dll
+EXPORTS
+	GetFileVersionInfoSizeA@8 @1
+	GetFileVersionInfoA@16 @0
+	VerQueryValueA@16 @10

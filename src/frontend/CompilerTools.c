@@ -27,6 +27,8 @@ static struct HeapMem heap_pool;
 static void (*data_0057fdd4)();
 static SInt16 data_0057fdd8;
 
+#define POOL_SIZE BY_VERSION(unsigned int, SInt32)
+
 static unsigned short swap16(unsigned short x)
 {
     union {
@@ -288,7 +290,7 @@ void AppendGListTargetEndianLong(GList *buf, UInt32 value)
 
 void AppendGListID(GList *buf, const char *str)
 {
-    UInt32 len = strlen(str) + 1;
+    BY_VERSION(UInt32, unsigned int) len = strlen(str) + 1;
     if (buf->size + len > buf->hndlsize) {
         struct StorageHandle *handle;
         buf->hndlsize += len + buf->growsize;
@@ -305,7 +307,7 @@ void AppendGListID(GList *buf, const char *str)
 
 void AppendGListName(GList *buf, const char *str)
 {
-    UInt32 len = strlen(str);
+    BY_VERSION(UInt32, unsigned int) len = strlen(str);
     if ((buf->size + len) > (UInt32)buf->hndlsize) {
         buf->hndlsize += len + buf->growsize;
         if (!COS_ResizeHandle((struct StorageHandle *)buf->data, buf->hndlsize) && data_00587708 != NULL)
@@ -537,7 +539,7 @@ SInt16 CompilerTools_InitHeaps(void (*param)())
     galloc_pool.allocsize = 0x38000;
     data_0057fd84.allocsize = 0x10000;
     block_pool.allocsize = 0x4000;
-    data_0057fdac.allocsize = 0x4000;
+    data_0057fdac.allocsize = BY_VERSION( 0x4000, 0x40000);
     heap_pool.allocsize = 0x4000;
     select_or_allocate_pool_node(&galloc_pool, 0);
     select_or_allocate_pool_node(&data_0057fd84, 0);
@@ -641,7 +643,7 @@ void *galloc(SInt32 size)
     return result;
 }
 
-void *lalloc(unsigned int size)
+void *lalloc(POOL_SIZE size)
 {
     char *allocation;
     size = (size & ~7U) + 8U;
@@ -668,7 +670,7 @@ void *aalloc(SInt32 size)
     return block;
 }
 
-void *oalloc(UInt32 requestedSize)
+void *oalloc(BY_VERSION(UInt32, SInt32) requestedSize)
 {
     char *result;
 
@@ -682,6 +684,33 @@ void *oalloc(UInt32 requestedSize)
     data_0057fdac.curfreep += requestedSize;
     return result;
 }
+
+#if VERSION >= VERSION_GC_1_3
+void CompilerTools_ResetGallocAndPoolMemory(void)
+{
+    HeapBlock *link;
+
+    link = galloc_pool.blocks;
+    while (link != NULL) {
+        HeapBlock **block = link->blockhandle;
+        link = link->next;
+        COS_FreeHandle(block);
+    }
+    memset(&galloc_pool, 0, sizeof(galloc_pool));
+    data_0057fdac.allocsize = 0x40000;
+    select_or_allocate_pool_node(&data_0057fdac, 0);
+}
+
+void CompilerTools_SetHeapCallback(void (*callback)())
+{
+    data_0057fdd4 = callback;
+}
+
+void (*CompilerTools_GetHeapCallback(void))()
+{
+    return data_0057fdd4;
+}
+#endif
 
 void locklheap(void)
 {
@@ -765,16 +794,30 @@ char *ScanDec(char *src, SInt32 *value, Boolean *flag)
     return src;
 }
 
+
 void memclrw(void *buffer, unsigned int size)
 {
     memset(buffer, 0, size);
 }
 
+#if VERSION >= VERSION_GC_1_3
+extern unsigned char __lower_map[256];
+static inline int CTOOLS_LOWER(int c)
+{
+    return (c == -1) ? -1 : (int)__lower_map[(unsigned char)c];
+}
+void CToLowercase(char *src, char *dst)
+{
+    while ((*dst++ = (char)CTOOLS_LOWER(*src++)) != 0)
+        ;
+}
+#else
 void CToLowercase(char *src, char *dst)
 {
     while ((*dst++ = (char)tolower(*src++)) != 0)
         ;
 }
+#endif
 
 SInt16 getbit(UInt32 value)
 {
@@ -894,7 +937,7 @@ UInt32 CTool_EndianConvertMem(void *buffer, short size)
         return;
 
     front = buffer;
-    back = front + size;
+    back = BY_VERSION(front, (unsigned char *)buffer) + size;
 
     for (;;) {
         back--;
@@ -910,7 +953,18 @@ UInt32 CTool_EndianConvertMem(void *buffer, short size)
 void CTool_EndianConvertWord64(CInt64 ci, char *result)
 {
     UInt32 buf[2];
+#if VERSION < VERSION_GC_1_3
     UInt32 h;
+#endif
+#if VERSION >= VERSION_GC_1_3
+    if (copts.littleendian == 0) {
+        buf[0] = swap32(ci.hi);
+        buf[1] = swap32(ci.lo);
+    } else {
+        buf[0] = swap32(ci.lo);
+        buf[1] = swap32(ci.hi);
+    }
+#else
     if (copts.littleendian == 0) {
         h = ci.hi;
         buf[0] = swap32(h);
@@ -920,6 +974,7 @@ void CTool_EndianConvertWord64(CInt64 ci, char *result)
         h = ci.hi;
         buf[1] = swap32(h);
     }
+#endif
     memcpy(result, buf, 8);
 }
 

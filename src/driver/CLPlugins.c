@@ -14,6 +14,11 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
+#if VERSION >= VERSION_GC_1_3
+#include "driver/ResourceStrings.h"
+#include "driver/MemUtils.h"
+#define free xfree
+#endif
 
 typedef short(__stdcall *code_short)(void *);
 
@@ -34,7 +39,7 @@ char *CLPlugins_GetName(Plugin *plugin)
     char *name;
 
     if (plugin == NULL) {
-        CLIO_ReportAssertionFailure("pl", "CLPlugins.c", 0x36);
+        CLIO_ReportAssertionFailure("pl", "CLPlugins.c", BY_VERSION(0x36, 263));
     }
     if (plugin->callbacks->getName != NULL) {
         result = plugin->callbacks->getName(&name);
@@ -52,7 +57,7 @@ UInt8 *get_plugin_result(Plugin *plugin)
     UInt8 *result;
 
     if (plugin == NULL) {
-        CLIO_ReportAssertionFailure("pl", "CLPlugins.c", 0x42);
+        CLIO_ReportAssertionFailure("pl", "CLPlugins.c", BY_VERSION(0x42, 276));
     }
     if (plugin->callbacks->getResult != NULL) {
         status = plugin->callbacks->getResult((void **)&result);
@@ -70,7 +75,7 @@ PluginDesc *CLPlugins_GetPluginDesc(Plugin *provider)
     unsigned int size;
 
     if (provider == NULL) {
-        CLIO_ReportAssertionFailure("pl", "CLPlugins.c", 0x56);
+        CLIO_ReportAssertionFailure("pl", "CLPlugins.c", BY_VERSION(0x56, 329));
     }
     if (provider->callbacks->getData != NULL) {
         if (provider->callbacks->getData(&data, &size) == 0) {
@@ -86,7 +91,7 @@ unsigned int CLPlugins_GetType(Plugin *type)
 {
     PluginDesc *resolvedType;
     if (!type)
-        CLIO_ReportAssertionFailure("pl", "CLPlugins.c", 102U);
+        CLIO_ReportAssertionFailure("pl", "CLPlugins.c", BY_VERSION(102U, 345U));
     resolvedType = CLPlugins_GetPluginDesc(type);
     if (resolvedType)
         return resolvedType->type;
@@ -100,10 +105,10 @@ TargetInfo *get_target_info(Plugin *entry)
     unsigned char *result;
 
     if (entry == NULL) {
-        CLIO_ReportAssertionFailure("pl", "CLPlugins.c", 115);
+        CLIO_ReportAssertionFailure("pl", "CLPlugins.c", BY_VERSION(115, 358));
     }
     if (((Plugin *)entry)->cl_cb == NULL) {
-        CLIO_ReportAssertionFailure("pl->cl_cb != NULL", "CLPlugins.c", 116);
+        CLIO_ReportAssertionFailure("pl->cl_cb != NULL", "CLPlugins.c", BY_VERSION( 116, 359));
     }
     if (((Plugin *)entry)->cl_cb->getTargetInfo != NULL) {
         status = ((Plugin *)entry)->cl_cb->getTargetInfo(&result);
@@ -120,7 +125,7 @@ void *get_plugin_directory_list(Plugin *plugin)
     struct PluginDirectoryList *directoryList;
     SInt16 status;
     if (plugin == NULL)
-        CLIO_ReportAssertionFailure("pl", "CLPlugins.c", 0x8a);
+        CLIO_ReportAssertionFailure("pl", "CLPlugins.c", BY_VERSION(0x8a, 0x17d));
     if (plugin->callbacks->getDirectoryList != NULL) {
         status = plugin->callbacks->getDirectoryList(&directoryList);
         if (status == 0)
@@ -135,10 +140,10 @@ FileMapInfo *get_file_map(Plugin *context)
     FileMapInfo *result;
 
     if (context == NULL) {
-        CLIO_ReportAssertionFailure("pl", "CLPlugins.c", 0x9e);
+        CLIO_ReportAssertionFailure("pl", "CLPlugins.c", BY_VERSION(0x9e, 0x191));
     }
     if (context->cl_cb == NULL) {
-        CLIO_ReportAssertionFailure("pl->cl_cb != NULL", "CLPlugins.c", 0x9f);
+        CLIO_ReportAssertionFailure("pl->cl_cb != NULL", "CLPlugins.c", BY_VERSION( 0x9f, 0x192));
     }
     if (context->cl_cb->getFileMap != NULL) {
         if ((*context->cl_cb->getFileMap)(&result) == 0) {
@@ -155,7 +160,7 @@ unsigned int get_callback_result(void *input)
     PluginResultCallback **callbacks = input;
 
     if (callbacks == NULL) {
-        CLIO_ReportAssertionFailure("pl", "CLPlugins.c", 0xb3);
+        CLIO_ReportAssertionFailure("pl", "CLPlugins.c", BY_VERSION(0xb3, 0x1a6));
     }
     if ((*callbacks)[8] != NULL) {
         status = (*callbacks)[8](&result);
@@ -173,10 +178,10 @@ const CWObjectFlags *CLPlugins_GetObjectFlags(Plugin *plugin)
     PluginDesc *info;
 
     if (plugin == NULL) {
-        CLIO_ReportAssertionFailure("pl", "CLPlugins.c", 0xbf);
+        CLIO_ReportAssertionFailure("pl", "CLPlugins.c", BY_VERSION(0xbf, 0x1b2));
     }
     if (plugin->cl_cb == NULL) {
-        CLIO_ReportAssertionFailure("pl->cl_cb != NULL", "CLPlugins.c", 0xc0);
+        CLIO_ReportAssertionFailure("pl->cl_cb != NULL", "CLPlugins.c", BY_VERSION( 0xc0, 0x1b3));
     }
     if (plugin->cl_cb->getObjectFlags != NULL) {
         if (plugin->cl_cb->getObjectFlags(&flags) == 0) {
@@ -224,6 +229,22 @@ char CLPlugins_MatchTarget(Plugin *plugin, int firstIdentifier, int secondIdenti
     return 0;
 }
 
+#if VERSION >= VERSION_GC_1_3
+char file_map_matches(FileMap *reference, int value, char *name, char flag)
+{
+    if (flag != 0 && value != 0 && reference->type != 0 && value == reference->type)
+        return 1;
+    if (!((reference->ext[0] != '\0' || flag != '\0') && (name[0] != '\0' || flag != '\0')) &&
+        reference->type == value)
+        return 1;
+    if (((reference->type == 0 && flag == '\0') || (value == 0 && flag == '\0')) &&
+        CLIO_CompareStringsIgnoreCase(reference->ext, name) == 0)
+        return 1;
+    if (CLIO_CompareStringsIgnoreCase(reference->ext, name) == 0 && reference->type == value)
+        return 1;
+    return 0;
+}
+#else
 char file_map_matches(FileMap *reference, int value, char *name, char flag)
 {
     if (!(((reference->ext[0] != '\0' || flag != '\0') && (name[0] != '\0' || flag != '\0')) ||
@@ -235,6 +256,7 @@ char file_map_matches(FileMap *reference, int value, char *name, char flag)
     else
         return 0;
 }
+#endif
 
 char plugin_file_map_matches(Plugin *entry, int value, char *text, char option)
 {
@@ -264,7 +286,7 @@ Boolean call_query_callback(Plugin *p, PluginRequest *a, SInt32 b, SInt32 c)
     Boolean result;
 
     if (p->pr_cb == NULL) {
-        CLIO_ReportAssertionFailure("pl->pr_cb != NULL", "CLPlugins.c", 0x143);
+        CLIO_ReportAssertionFailure("pl->pr_cb != NULL", "CLPlugins.c", BY_VERSION( 0x143, 0x236));
     }
     if ((f = *(CLPluginFunc *)p->pr_cb) != NULL) {
         if (f(a, b, c, &result) == 0) {
@@ -280,7 +302,7 @@ UInt8 query_plugin(Plugin *plugin, unsigned int queryArgument, char **queryKind)
     UInt8 result;
 
     if (plugin->pr_cb == NULL) {
-        CLIO_ReportAssertionFailure("pl->pr_cb != NULL", "CLPlugins.c", 0x14f);
+        CLIO_ReportAssertionFailure("pl->pr_cb != NULL", "CLPlugins.c", BY_VERSION( 0x14f, 0x242));
     }
     if (plugin->pr_cb->query != NULL) {
         status = plugin->pr_cb->query(queryArgument, queryKind, &result);
@@ -291,6 +313,38 @@ UInt8 query_plugin(Plugin *plugin, unsigned int queryArgument, char **queryKind)
     return 0;
 }
 
+#if VERSION >= VERSION_GC_1_3
+
+/* "Version a.b[.c][ build d]" of a plugin (or of the compiler itself when there is none), as a new string */
+char *format_plugin_version(Plugin *plugin)
+{
+    UInt16 *version;
+    char *result;
+    char *cursor;
+    char text[16];
+
+    if (plugin == NULL && data_005d89be.valid != 0) {
+        version = data_005d89be.numbers;
+    } else if (plugin == NULL) {
+        return NULL;
+    } else {
+        version = (UInt16 *)get_plugin_result(plugin);
+    }
+    result = xmalloc("version info", 0x40);
+    if (BY_VERSION(version[1] | version[0], version[0] | version[1]) | version[2] | (version[3] != 0)) {
+        cursor = text;
+        cursor += sprintf(cursor, "%u", version[0]);
+        cursor += sprintf(cursor, ".%u", version[1]);
+        if (version[2] != 0)
+            cursor += sprintf(cursor, ".%u", version[2]);
+        if (version[3] != 0)
+            sprintf(cursor, " build %u", version[3]);
+        sprintf(result, "Version %s", text);
+        return result;
+    }
+    return NULL;
+}
+#else
 char *format_plugin_version(Plugin *plugin, char *buffer)
 {
     static char data_0057d90a[18];
@@ -316,6 +370,16 @@ char *format_plugin_version(Plugin *plugin, char *buffer)
     return "(unknown)";
 }
 
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+#define FORMAT_PLUGIN_VERSION(p) format_plugin_version(p)
+#define PLUGIN_VERSION_TEXT(p) ((char *)(p)->f10)
+#else
+#define FORMAT_PLUGIN_VERSION(p) format_plugin_version(p, NULL)
+#define PLUGIN_VERSION_TEXT(p) format_plugin_version(p, NULL)
+#endif
+
 /* Callback table with five preceding entries. */
 /* Plugin value and callback table. */
 
@@ -330,7 +394,7 @@ UInt8 CLPlugins_WriteObjectFile(Plugin *plugin, CWFileSpec *context, CWFileSpec 
     struct OSSpec outputSpec;
 
     if (plugin->cl_cb == NULL) {
-        CLIO_ReportAssertionFailure("pl->cl_cb != NULL", "CLPlugins.c", 0x173);
+        CLIO_ReportAssertionFailure("pl->cl_cb != NULL", "CLPlugins.c", BY_VERSION( 0x173, 0x24e));
     }
     validInput = 0;
     validContext = 0;
@@ -341,7 +405,7 @@ UInt8 CLPlugins_WriteObjectFile(Plugin *plugin, CWFileSpec *context, CWFileSpec 
         validInput = 1;
     }
     if (!validInput) {
-        CLIO_ReportAssertionFailure("data != NULL && srcfss != NULL && outfss != NULL", "CLPlugins.c", 0x174);
+        CLIO_ReportAssertionFailure("data != NULL && srcfss != NULL && outfss != NULL", "CLPlugins.c", BY_VERSION(0x174, 0x24f));
     }
     if (plugin->cl_cb->writeObjectFile != NULL) {
         callbackResult = (*plugin->cl_cb->writeObjectFile)(context, input, objectFlags, option, objectHandle);
@@ -465,7 +529,7 @@ Plugin *CLPlugins_CreatePluginDataCopy(PluginRequiredInputRecord *record36, Plug
     PluginQueryTable *source8;
     Plugin *copy;
     source8 = record8;
-    copy = xmalloc(0U, 20U);
+    copy = xmalloc(0U, BY_VERSION(20U, 24U));
     if (!copy)
         return NULL;
     if (!record36)
@@ -523,11 +587,21 @@ Boolean fn_004098a0(Plugin *input)
 
 static Plugin *data_0057d91c;
 
+#if VERSION >= VERSION_GC_1_3
+extern void fn_00408cc0(void);
+
+void fn_004098d0(void)
+{
+    data_0057d91c = NULL;
+    fn_00408cc0();
+}
+#else
 void fn_004098d0(void)
 {
     data_0057d91c = NULL;
     return;
 }
+#endif
 
 void CLPlugins_FreePlugins(void)
 {
@@ -541,6 +615,18 @@ void CLPlugins_FreePlugins(void)
         free_plugin(p);
         p = next;
     }
+#if VERSION >= VERSION_GC_1_3
+    if (data_005d89be.company)
+        xfree(data_005d89be.company);
+    if (data_005d89be.product)
+        xfree(data_005d89be.product);
+    if (data_005d89be.description)
+        xfree(data_005d89be.description);
+    if (data_005d89be.copyright)
+        xfree(data_005d89be.copyright);
+    if (data_005d89be.version)
+        xfree(data_005d89be.version);
+#endif
 }
 
 int CLPlugins_AddPlugin(void *pluginHandle)
@@ -557,8 +643,11 @@ int CLPlugins_AddPlugin(void *pluginHandle)
     SInt16 i;
 
     name = CLPlugins_GetName(plugin);
+#if VERSION >= VERSION_GC_1_3
+    plugin->f10 = format_plugin_version(plugin);
+#endif
     if (!validate_plugin(plugin, &local)) {
-        CLErrors_EmitDiagnostic(0x58, name, format_plugin_version(plugin, NULL), local);
+        CLErrors_EmitDiagnostic(0x58, name, PLUGIN_VERSION_TEXT(plugin), local);
         return 0;
     }
     slot = &data_0057d91c;
@@ -587,7 +676,7 @@ int CLPlugins_AddPlugin(void *pluginHandle)
         lang = desc->lang;
         if (lang == 0)
             lang = 0x2d2d2d2d;
-        CLIO_FormatAndDispatchText("Added plugin '%s', version '%s'\n", name, format_plugin_version(plugin, NULL));
+        CLIO_FormatAndDispatchText("Added plugin '%s', version '%s'\n", name, FORMAT_PLUGIN_VERSION(plugin));
         CLIO_FormatAndDispatchText("Type: '%c%c%c%c';  Lang: '%c%c%c%c';  API range: %d-%d\n",
                                    (desc->type & 0xff000000) >> 24, (desc->type & 0xff0000) >> 16,
                                    (desc->type & 0xff00) >> 8, desc->type & 0xff, (lang & 0xff000000) >> 24,
@@ -795,6 +884,12 @@ Plugin *CLPlugins_FindMatchingLinkPlugin(Plugin *plugins, int kind, int selector
     return match;
 }
 
+/* Plugin chain entry; metadata is opaque here. */
+
+#if VERSION >= VERSION_GC_1_3
+extern void *alloca(unsigned int size);
+#endif
+
 Plugin *CLPlugins_SelectPluginByRequestsAndValues(Plugin *plugins, int selector, int request_count,
                                                   PluginRequest *requests, int option4, int option5, int value_count,
                                                   char **values)
@@ -810,7 +905,11 @@ Plugin *CLPlugins_SelectPluginByRequestsAndValues(Plugin *plugins, int selector,
     Plugin *selected;
     plugin = plugins != NULL ? plugins : data_0057d91c;
     selected = NULL;
+#if VERSION >= VERSION_GC_1_3
+    results = alloca(value_count);
+#else
     results = malloc(value_count);
+#endif
     while (plugin != NULL) {
         if (matches_plugin_type_lang(plugin, 1348563571, selector, 1) != 0) {
             request_index = 0;
@@ -851,7 +950,9 @@ Plugin *CLPlugins_SelectPluginByRequestsAndValues(Plugin *plugins, int selector,
             }
         }
     }
+#if VERSION < VERSION_GC_1_3
     free(results);
+#endif
     return selected;
 }
 
@@ -880,9 +981,9 @@ int CLPlugins_BuildPluginRequests(Plugin *list, SInt32 *count, PluginRequest **o
         info = (PluginDesc *)CLPlugins_GetPluginDesc(node);
         name = get_plugin_result(node);
         if (info == NULL)
-            CLIO_ReportAssertionFailure("df != NULL", "CLPlugins.c", 0x40d);
+            CLIO_ReportAssertionFailure("df != NULL", "CLPlugins.c", BY_VERSION(0x40d, 1273));
         if (name == NULL)
-            CLIO_ReportAssertionFailure("vi != NULL", "CLPlugins.c", 0x40e);
+            CLIO_ReportAssertionFailure("vi != NULL", "CLPlugins.c", BY_VERSION(0x40e, 1274));
         (*out)[index].tag.signed_kind = info->type;
         (*out)[index].secondCode = info->lang;
         (*out)[index].flags = info->flags;
@@ -918,9 +1019,13 @@ int CLPlugins_GetUniquePluginNames(Plugin *nameList, SInt32 *nameCount, char ***
     SInt32 nameIndex;
     SInt32 existingIndex;
 
+#if VERSION >= VERSION_GC_1_3
+    array = (char **)xmalloc("plugin preference union", CountPluginNames(nameList) << 2);
+#else
     array = (char **)malloc(CountPluginNames(nameList) << 2);
     if (array == NULL)
         return 0;
+#endif
 
     count = 0;
     list = nameList ? nameList : data_0057d91c;
@@ -946,7 +1051,11 @@ int CLPlugins_GetUniquePluginNames(Plugin *nameList, SInt32 *nameCount, char ***
     *nameArray = xmalloc(NULL, count << 2);
     if (*nameArray == NULL)
         return 0;
+#if VERSION >= VERSION_GC_1_3
+    *nameArray = (char **)xrealloc("plugin preference union", array, count << 2);
+#else
     *nameArray = (char **)realloc(array, count << 2);
+#endif
     *nameCount = count;
     return 1;
 }
@@ -969,7 +1078,12 @@ int CLPlugins_DispatchArgumentToPlugins(Plugin *node, SInt32 argument, SInt32 fi
         node = data_0057d91c;
     }
     while (node != NULL) {
-        if ((node->cl_cb == NULL) || (CLPlugins_MatchTarget(node, firstIdentifier, secondIdentifier, 0) != 0)) {
+#        if VERSION >= VERSION_GC_1_3
+        if (node->cl_cb != NULL && CLPlugins_MatchTarget(node, firstIdentifier, secondIdentifier, 0) != 0)
+#else
+        if ((node->cl_cb == NULL) || (CLPlugins_MatchTarget(node, firstIdentifier, secondIdentifier, 0) != 0))
+#endif
+        {
             fn_0040a610(node, argument);
         }
         node = node->next;

@@ -246,7 +246,7 @@ void CABI_ReverseBitField(TypeBitfield *tbitfield)
             bits = 64;
             break;
         default:
-            CError_FATAL(168);
+            CError_FATAL(BY_VERSION(168, 172));
     }
     tbitfield->offset = bits - tbitfield->offset - tbitfield->bitlength;
 }
@@ -278,8 +278,13 @@ void layout_nonvirtual_bases(void *abiContext, TypeClass *derivedClass)
             } else {
                 if (previousBaseWasEmpty)
                     offset++;
+#if VERSION >= VERSION_GC_1_3
+                baseEntry->offset = offset;
+                previousBaseWasEmpty = 1;
+#else
                 previousBaseWasEmpty = 1;
                 baseEntry->offset = offset;
+#endif
             }
         }
     }
@@ -321,7 +326,7 @@ void layout_class_ivars(ClassLayout *member, TypeClass *type)
                 unionType = NULL;
             } else {
                 if (unionType == NULL)
-                    CError_FATAL(408);
+                    CError_FATAL(BY_VERSION(408, 412));
                 name = mem->name;
                 if (name == NULL) {
                     offset = 0;
@@ -334,7 +339,7 @@ void layout_class_ivars(ClassLayout *member, TypeClass *type)
                         }
                         node = node->next;
                         if (node == NULL)
-                            CError_FATAL(358);
+                            CError_FATAL(BY_VERSION(358, 362));
                     }
                 }
                 mem->offset = unionOffset + offset;
@@ -346,7 +351,7 @@ void layout_class_ivars(ClassLayout *member, TypeClass *type)
                 removeUnnamed = 1;
         } else {
             if (mem->type->type != TYPECLASS)
-                CError_FATAL(418);
+                CError_FATAL(BY_VERSION(418, 422));
             if (type->mode == 1)
                 CMach_StructLayoutInitOffset(initialSize);
             unionOffset = CMach_StructLayoutGetOffset(mem->type, mem->qual);
@@ -391,7 +396,7 @@ void layout_class_ivars(ClassLayout *member, TypeClass *type)
                     bitfieldBits = 0x40;
                     break;
                 default:
-                    CError_FATAL(168);
+                    CError_FATAL(BY_VERSION(168, 172));
             }
             bitfield->offset = bitfieldBits - bitfield->offset - bitfield->bitlength;
         }
@@ -487,7 +492,7 @@ void layout_vtable(ClassLayout *layout, TypeClass *classType)
                 break;
             }
             if (layout->objlist[index] == NULL) {
-                CError_FATAL(662);
+                CError_FATAL(BY_VERSION(662, 666));
             }
             if (layout->objlist[index]->otype == OT_MEMBERVAR) {
                 member->next = OBJ_MEMBER_VAR(layout->objlist[index])->next;
@@ -520,8 +525,8 @@ void layout_vtable(ClassLayout *layout, TypeClass *classType)
         }
     }
     for (methodIndex = 0; methodIndex < layout->lex_order_count; ++methodIndex) {
-        if ((method = OBJECT(layout->objlist[methodIndex])) == NULL) {
-            CError_FATAL(710);
+        if ((method = OBJECT( layout->objlist[methodIndex])) == NULL) {
+            CError_FATAL(BY_VERSION(710, 714));
         }
         if (method->otype == OT_OBJECT && method->datatype == DVFUNC) {
             methodType = (TypeMemberFunc *)method->type;
@@ -664,7 +669,7 @@ void CABI_MakeDefaultArgConstructor(TypeClass *theclass, Object *function)
     if (anyerrors != 0 || function->access == ACCESSNONE) {
         return;
     }
-    CError_ASSERT(857, (defaults = function->u.func.defargdata) != 0);
+    CError_ASSERT(BY_VERSION(857, 866), (defaults = function->u.func.defargdata) != 0);
     classFlags = theclass->eflags;
     if ((classFlags & CLASS_EFLAGS_INTERNAL) != 0) {
         function->flags |= OBJECT_INTERNAL;
@@ -719,7 +724,7 @@ void CABI_MakeDefaultArgConstructor(TypeClass *theclass, Object *function)
 
 static Object *CABI_ThisArg(void)
 {
-    CError_ASSERT(922, arguments && IS_TYPE_POINTER_ONLY(arguments->object->type));
+    CError_ASSERT(BY_VERSION(922, 931), arguments && IS_TYPE_POINTER_ONLY(arguments->object->type));
     return arguments->object;
 }
 
@@ -729,7 +734,9 @@ ENode *CABI_MakeThisExpr(TypeClass *typeClass, int count)
     if (typeClass != NULL) {
         if (typeClass->sominfo == NULL) {
             type = create_objectnode(CABI_ThisArg());
+#if VERSION < VERSION_GC_1_3
             type->rtype = (Type *)&void_ptr;
+#endif
             if ((typeClass->flags & CLASS_HANDLEOBJECT) != 0) {
                 type = makemonadicnode(type, 4);
             }
@@ -764,7 +771,7 @@ ENode *build_vbase_ptr_initializers(ENode *expr, TypeClass *func, TypeClass *cls
                 p->off = off;
                 p->next = trans_vtboffsets;
                 trans_vtboffsets = p;
-                CError_ASSERT(922, arguments != NULL && arguments->object->type->type == TYPEPOINTER);
+                CError_ASSERT(BY_VERSION(922, 931), arguments != NULL && arguments->object->type->type == TYPEPOINTER);
                 n = create_objectnode(arguments->object);
                 n->rtype = (Type *)&void_ptr;
                 if (off)
@@ -863,7 +870,7 @@ SInt32 CABI_GetCtorOffsetOffset(TypeClass *tclass, TypeClass *baseclass)
         size = tclass->vbases->offset;
     if (baseclass) {
         basesize = CABI_FindNVBase(tclass, baseclass, 0);
-        CError_ASSERT(1169, basesize >= 0);
+        CError_ASSERT(BY_VERSION(1169, 1178), basesize >= 0);
         size -= basesize;
     }
     savealign = copts.structalignment;
@@ -893,9 +900,9 @@ Statement *assign_vbase_ctor_offsets(Statement *list, TypeClass *cls)
             vbaseoffset = CClass_VirtualBaseOffset(cls, vb->base);
             ctoroffset = CABI_GetCtorOffsetOffset(vb->base, NULL);
             path = find_shortest_virtual_base_offset_path(cls, vb->base);
-            CError_ASSERT(1118, path != NULL);
+            CError_ASSERT(BY_VERSION(1118, 1127), path != NULL);
             value = path->offset;
-            CError_ASSERT(922, arguments != NULL && arguments->object->type->type == TYPEPOINTER);
+            CError_ASSERT(BY_VERSION(922, 931), arguments != NULL && arguments->object->type->type == TYPEPOINTER);
             obj = create_objectnode(arguments->object);
             obj->rtype = (Type *)&void_ptr;
             if (value != 0)
@@ -907,7 +914,7 @@ Statement *assign_vbase_ctor_offsets(Statement *list, TypeClass *cls)
                 obj = makemonadicnode(obj, EINDIRECT);
             }
             value = (SInt32)obj;
-            CError_ASSERT(1206, value != 0);
+            CError_ASSERT(BY_VERSION(1206, 1215), value != 0);
             expr = makediadicnode(create_objectnode(thisnode), obj, EASS);
             list = CFunc_InsertAfterStatement(4, list);
             list->expr = expr;
@@ -915,7 +922,7 @@ Statement *assign_vbase_ctor_offsets(Statement *list, TypeClass *cls)
             expr = makediadicnode(create_objectnode(thisnode), intconstnode((Type *)&stunsignedlong, ctoroffset), EADD);
             expr = makemonadicnode(expr, EINDIRECT);
             expr->rtype = (Type *)&stunsignedlong;
-            CError_ASSERT(922, arguments != NULL && arguments->object->type->type == TYPEPOINTER);
+            CError_ASSERT(BY_VERSION(922, 931), arguments != NULL && arguments->object->type->type == TYPEPOINTER);
             obj = create_objectnode(arguments->object);
             obj->rtype = (Type *)&void_ptr;
             if (vbaseoffset != 0)
@@ -961,7 +968,7 @@ Statement *assign_vtable_pointers(Statement *result, Object *obj, TypeClass *cls
 
             if (cls != NULL) {
                 if (cls->sominfo == NULL) {
-                    CError_ASSERT(922, arguments != NULL && arguments->object->type->type == TYPEPOINTER);
+                    CError_ASSERT(BY_VERSION(922, 931), arguments != NULL && arguments->object->type->type == TYPEPOINTER);
                     node = create_objectnode(arguments->object);
                     node->rtype = (Type *)&void_ptr;
                     if (cls->flags & CLASS_HANDLEOBJECT)
@@ -970,7 +977,7 @@ Statement *assign_vtable_pointers(Statement *result, Object *obj, TypeClass *cls
                     node = CSOM_GetOrCreateLocalObjectNode(cls);
                 }
             } else {
-                CError_ASSERT(922, arguments != NULL && arguments->object->type->type == TYPEPOINTER);
+                CError_ASSERT(BY_VERSION(922, 931), arguments != NULL && arguments->object->type->type == TYPEPOINTER);
                 node = create_objectnode(arguments->object);
                 node->rtype = (Type *)&void_ptr;
             }
@@ -1071,7 +1078,7 @@ void CABI_InsertConstructorInitialization(Object *obj, Statement *stmt, TypeClas
 
     if (has_try) {
         for (current = stmt;; current = current->next) {
-            CError_ASSERT(1393, current);
+            CError_ASSERT(BY_VERSION(1393, 1408), current);
             if (current->type == ST_BEGINCATCH)
                 break;
         }
@@ -1174,7 +1181,7 @@ void CABI_InsertConstructorInitialization(Object *obj, Statement *stmt, TypeClas
                         } while (type->type == TYPEARRAY);
                         if (type->type == TYPECLASS &&
                             (function = (destructor = CClass_Destructor((TypeClass *)type)))) {
-                            CError_ASSERT(1529, type->size);
+                            CError_ASSERT(BY_VERSION(1529, 1560), type->size);
                             CExcept_RegisterMemberArray(current, CABI_ThisArg(), member->offset, function,
                                                         member->type->size / type->size, type->size);
                         }
@@ -1237,7 +1244,7 @@ void CABI_InsertConstructorInitialization(Object *obj, Statement *stmt, TypeClas
     if (!tclass->sominfo) {
         for (current = stmt->next; current; current = current->next) {
             if (current->type == ST_RETURN) {
-                CError_ASSERT(1619, !current->expr);
+                CError_ASSERT(BY_VERSION(1619, 1661), !current->expr);
                 current->expr = CABI_MakeThisExpr(NULL, 0);
             }
         }
@@ -1420,7 +1427,7 @@ Statement *make_baseclass_and_ivars_copy_statements(Statement *stmt, TypeClass *
                 if (type->type == TYPEARRAY) {
                     while (type->type == TYPEARRAY)
                         type = TYPE_POINTER(type)->target;
-                    CError_ASSERT(1875, type->type == TYPECLASS);
+                    CError_ASSERT(BY_VERSION(1875, 1969), type->type == TYPECLASS);
                     if (!type->size)
                         continue;
 
@@ -1589,7 +1596,7 @@ void CABI_MakeDefaultConstructor(TypeClass *cls, Object *func)
 
     ret = CFunc_InsertAfterStatement(8, acc);
 
-    CError_ASSERT(922, arguments != NULL && arguments->object->type->type == TYPEPOINTER);
+    CError_ASSERT(BY_VERSION(922, 931), arguments != NULL && arguments->object->type->type == TYPEPOINTER);
 
     node = create_objectnode(arguments->object);
     node->rtype = (Type *)&void_ptr;
@@ -1625,7 +1632,7 @@ Statement *destroy_members(Statement *expr, ObjMemberVar *member, TypeClass *cls
                 offset = member->offset;
                 if (cls) {
                     if (!cls->sominfo) {
-                        CError_ASSERT(922, arguments && arguments->object->type->type == TYPEPOINTER);
+                        CError_ASSERT(BY_VERSION(922, 931), arguments && arguments->object->type->type == TYPEPOINTER);
                         base = create_objectnode(arguments->object);
                         base->rtype = (Type *)&void_ptr;
                         if (cls->flags & CLASS_HANDLEOBJECT)
@@ -1634,7 +1641,7 @@ Statement *destroy_members(Statement *expr, ObjMemberVar *member, TypeClass *cls
                         base = CSOM_GetOrCreateLocalObjectNode(cls);
                     }
                 } else {
-                    CError_ASSERT(922, arguments && arguments->object->type->type == TYPEPOINTER);
+                    CError_ASSERT(BY_VERSION(922, 931), arguments && arguments->object->type->type == TYPEPOINTER);
                     base = create_objectnode(arguments->object);
                     base->rtype = (Type *)&void_ptr;
                 }
@@ -1664,8 +1671,13 @@ Statement *destroy_nonvirtual_bases(Statement *acc, ClassList *list)
         count++;
     }
     for (; count > 0; count--) {
+#if VERSION >= VERSION_GC_1_3
+        p = list;
+        i = 1;
+#else
         i = 1;
         p = list;
+#endif
         while (i < count) {
             i++;
             p = p->next;
@@ -1673,7 +1685,7 @@ Statement *destroy_nonvirtual_bases(Statement *acc, ClassList *list)
         if (!p->is_virtual && (dtor = CClass_Destructor(p->base)) != NULL) {
             acc = CFunc_InsertAfterStatement(4, acc);
             offset = p->offset;
-            CError_ASSERT(922, arguments != NULL && arguments->object->type->type == TYPEPOINTER);
+            CError_ASSERT(BY_VERSION(922, 931), arguments != NULL && arguments->object->type->type == TYPEPOINTER);
             node = create_objectnode(arguments->object);
             node->rtype = (Type *)&void_ptr;
             if (offset != 0)
@@ -1728,12 +1740,12 @@ void CABI_TransDestructor(Object *destructor, Object *completeDestructor, Statem
     if (current != NULL) {
         do {
             if (current->type == ST_RETURN) {
-                CError_ASSERT(2297, current->expr == 0);
+                CError_ASSERT(BY_VERSION(2297, 2334), current->expr == 0);
                 current->type = ST_GOTO;
                 current->label = label;
             }
             if ((next = current->next) != NULL && next->type == ST_RETURN && next->next == NULL) {
-                CError_ASSERT(2302, next->expr == 0);
+                CError_ASSERT(BY_VERSION(2302, 2339), next->expr == 0);
                 current->next = NULL;
                 break;
             }
@@ -1745,7 +1757,7 @@ void CABI_TransDestructor(Object *destructor, Object *completeDestructor, Statem
     if (handleDelete) {
         exitLabel = newlabel();
         current = CFunc_InsertAfterStatement(7, stmt);
-        CError_ASSERT(922, arguments != 0 && arguments->object->type->type == TYPEPOINTER);
+        CError_ASSERT(BY_VERSION(922, 931), arguments != 0 && arguments->object->type->type == TYPEPOINTER);
         node = create_objectnode(arguments->object);
         node->rtype = (Type *)&void_ptr;
         current->expr = node;
@@ -1782,7 +1794,7 @@ void CABI_TransDestructor(Object *destructor, Object *completeDestructor, Statem
     if (destroyVirtualBases && (tclass->flags & CLASS_HAS_VBASES) != 0) {
         label = newlabel();
         current = CFunc_InsertAfterStatement(7, current);
-        CError_ASSERT(967, arguments != 0 && arguments->next != 0 && arguments->next->object->type->type == TYPEINT);
+        CError_ASSERT(BY_VERSION(967, 976), arguments != 0 && arguments->next != 0 && arguments->next->object->type->type == TYPEINT);
         node = create_objectnode(arguments->next->object);
         current->expr = node;
         current->label = label;
@@ -1794,7 +1806,7 @@ void CABI_TransDestructor(Object *destructor, Object *completeDestructor, Statem
 
     if (handleDelete) {
         conditional = CFunc_InsertAfterStatement(ST_IFGOTO, current);
-        CError_ASSERT(967, arguments != 0 && arguments->next != 0 && arguments->next->object->type->type == TYPEINT);
+        CError_ASSERT(BY_VERSION(967, 976), arguments != 0 && arguments->next != 0 && arguments->next->object->type->type == TYPEINT);
         node = create_objectnode(arguments->next->object);
         node = CExpr_New_ELESSEQU_Node(node, intconstnode((Type *)&stsignedshort, 0));
         conditional->expr = node;
@@ -1802,13 +1814,13 @@ void CABI_TransDestructor(Object *destructor, Object *completeDestructor, Statem
         current = CFunc_InsertAfterStatement(ST_EXPRESSION, conditional);
         deleteFunction = CParser_FindDeallocationObject((Type *)tclass, 0, 0);
         if ((deleteArgs = ((TypeFunc *)deleteFunction->type)->args) != NULL && deleteArgs->next != NULL) {
-            CError_ASSERT(922, arguments != 0 && arguments->object->type->type == TYPEPOINTER);
+            CError_ASSERT(BY_VERSION(922, 931), arguments != 0 && arguments->object->type->type == TYPEPOINTER);
             node = create_objectnode(arguments->object);
             node->rtype = (Type *)&void_ptr;
             current->expr =
                 funccallexpr(deleteFunction, node, intconstnode((Type *)&stunsignedlong, tclass->size), NULL, NULL);
         } else {
-            CError_ASSERT(922, arguments != 0 && arguments->object->type->type == TYPEPOINTER);
+            CError_ASSERT(BY_VERSION(922, 931), arguments != 0 && arguments->object->type->type == TYPEPOINTER);
             node = create_objectnode(arguments->object);
             node->rtype = (Type *)&void_ptr;
             current->expr = funccallexpr(deleteFunction, node, NULL, NULL, NULL);
@@ -1822,7 +1834,7 @@ void CABI_TransDestructor(Object *destructor, Object *completeDestructor, Statem
     if (tclass->sominfo != NULL) {
         current->expr = NULL;
     } else {
-        CError_ASSERT(922, arguments != 0 && arguments->object->type->type == TYPEPOINTER);
+        CError_ASSERT(BY_VERSION(922, 931), arguments != 0 && arguments->object->type->type == TYPEPOINTER);
         node = create_objectnode(arguments->object);
         node->rtype = (Type *)&void_ptr;
         current->expr = node;
@@ -1883,7 +1895,7 @@ ENode *CABI_DestroyObject(Object *dtor, ENode *objexpr, UInt8 mode, Boolean flag
             val = 0;
             break;
         default:
-            CError_FATAL(2751);
+            CError_FATAL(BY_VERSION(2751, 2791));
     }
 
     expr = lalloc(sizeof(ENode));

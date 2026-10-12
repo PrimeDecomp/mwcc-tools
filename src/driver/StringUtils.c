@@ -74,7 +74,7 @@ char *mvprintf(char *buffer, unsigned int size, const char *format, va_list args
     int length;
 
     if (buffer == NULL)
-        CLIO_ReportAssertionFailure("mybuf != NULL", "StringUtils.c", 135U);
+        CLIO_ReportAssertionFailure("mybuf != NULL", "StringUtils.c", BY_VERSION(135U, 134U));
 
     capacity = size - 1;
     result = buffer;
@@ -101,7 +101,12 @@ char *mvprintf(char *buffer, unsigned int size, const char *format, va_list args
 
 char *mprintf(char *buffer, int size, char *format, ...)
 {
+#if VERSION >= VERSION_GC_1_3
+    va_list base = (va_list)&format;
+    va_list args = base + (((va_list)(&format + 1) - base + 3) / 4) * 4;
+#else
     va_list args = (va_list)&format + (((va_list)(&format + 1) - (va_list)&format + 3) / 4) * 4;
+#endif
     char *result = mvprintf(buffer, size, format, args);
     return result;
 }
@@ -111,8 +116,15 @@ int HPrintF(struct StorageHandle *output, char *format, ...)
     char *text;
     int length;
     va_list arguments;
+#if VERSION >= VERSION_GC_1_3
+    char *base;
+
+    base = (char *)&format;
+    arguments = base + (((int)((char *)&format + sizeof(format)) - (int)base + 3) / 4) * 4;
+#else
 
     va_start(arguments, format);
+#endif
     text = mvprintf(hprintf_buffer, 0x100, format, arguments);
     length = strlen(text);
     if (Memory_AppendStorageHandle(text, output, strlen(text)) != 0) {

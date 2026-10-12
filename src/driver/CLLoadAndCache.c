@@ -43,8 +43,12 @@ int CLLoadAndCache_GetFileText(OSSpec *path, StorageHandle **outHandle, UInt8 *o
 
     buf = (StorageHandle *)Memory_NewHandle(size + 1);
     if (buf == NULL) {
+#if VERSION >= VERSION_GC_1_3
+        CLIO_OutOfMemory();
+#else
         CLIO_FormatAndDispatchText("\nOut of memory\n");
         longjmp(driver_jmp_buf, 1);
+#endif
     }
 
     fn_00413a00(buf);

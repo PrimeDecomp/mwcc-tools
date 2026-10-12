@@ -191,7 +191,9 @@ extern void CExcept_RegisterMemberArray(Statement *stmt, Object *object, SInt32 
                                         SInt32 size);
 extern void CExcept_ExceptionTansform(Statement *stmt);
 extern Statement *CExcept_ActionCleanup(ExceptionAction *input, Statement *statement);
+#if VERSION < VERSION_GC_1_3
 extern unsigned char fn_004e0ab0(Statement *node);
+#endif
 extern void CExcept_Setup(void);
 extern struct Object *throw_func;
 extern struct ECacheNode *cached_objects;

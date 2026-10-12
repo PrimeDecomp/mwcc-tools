@@ -13,12 +13,12 @@ extern void IroDump_Print(const char *message, ...);
 extern void IroDump_DumpExpressions(void);
 extern void dump_flowgraph(void);
 extern void IroDump_PrintBitSet(char *prefix, BitVector *bitset);
-extern int INT_005882b8;
+extern BY_VERSION( int, UInt8) INT_005882b8;
 extern Object *data_005875b8;
 extern void dump_linear_node(IROLinear *node);
-extern unsigned int IroDump_IsType1NodeType50(IROLinear *linear);
-extern SInt32 IroDump_IsPowerOfTwo(IROLinear *node, SInt32 *bit);
-extern int fn_0044d520(IROLinear *node);
+extern BY_VERSION( unsigned int, unsigned char) IroDump_IsType1NodeType50(IROLinear *linear);
+extern BY_VERSION( SInt32, Boolean) IroDump_IsPowerOfTwo(IROLinear *node, SInt32 *bit);
+extern BY_VERSION( int, unsigned char) fn_0044d520(IROLinear *node);
 
 #ifdef __cplusplus
 }

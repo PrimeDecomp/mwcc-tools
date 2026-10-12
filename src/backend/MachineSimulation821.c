@@ -11,12 +11,18 @@
 struct MachineInfo machine821 = {
     1,
     0,
+#if VERSION >= VERSION_GC_1_3
+    0,
+#endif
     (SInt32 (*)(void *))get_instruction_cost,
     reset_spill_state,
     (SInt32 (*)(void *))fn_005308b0,
     (void (*)(void *))fn_00530830,
     fn_00530660,
     (SInt32 (*)(void *))get_instruction_opcode_table_entry,
+#if VERSION >= VERSION_GC_1_3
+    (SInt32 (*)(void *))fn_00506260,
+#endif
 };
 
 /* Each opcode's execution unit, latency and cycles in each stage of the pipeline; the table ends at PC_VMINFP,
@@ -351,7 +357,7 @@ int get_instruction_cost(PCodeInstruction *instruction)
 {
     int cost = data_00578e50[instruction->opcode].latency;
 
-    if (instruction->flags & fRecordBit) {
+    if (PCODE_RECORD(instruction->flags)) {
         cost += 2;
     }
     if (instruction->opcode == PC_LMW || instruction->opcode == PC_STMW) {

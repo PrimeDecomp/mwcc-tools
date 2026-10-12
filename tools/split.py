@@ -423,6 +423,11 @@ def split(version):
     for _, name in sorted((address, name) for name, section, address, _ in symbols if section == ".idata"):
         order.external(name)
     order.write(Path(f"build/{version}/obj/sections.obj"))
+    # (the resources are an input of their own, a .res file the linker writes the .rsrc section from)
+    if ".rsrc" in sections:
+        from rsrc2res import resources, res_file
+        resource_section = next(s for s in pe.sections if s.name == ".rsrc")
+        Path(f"build/{version}/obj/resources.res").write_bytes(res_file(resources(pe, resource_section)))
     Path(f"build/{version}/obj/ok").touch()
 
 

@@ -99,11 +99,23 @@ extern BClassList *CClass_GetBasePath(TypeClass *type, TypeClass *target, SInt16
 extern BClassList *find_target_base_path(TypeClass *cls, TypeClass *target, SInt32 offset, SInt16 level);
 extern SInt16 CClass_GetBasePathLevel(void);
 extern void fn_004eb810(void);
+#if VERSION >= VERSION_GC_1_3
+/* (1.3 checks a base path through the member-aware check, with no member) */
+extern void fn_0052ad20(BClassList *bases, Object *member, char access);
+#define CClass_CheckBaseAccess(bases, access) fn_0052ad20(bases, NULL, access)
+#else
 extern void CClass_CheckBaseAccess(BClassList *bases, char access);
+#endif
 extern Object *create_root_class_layout(TypeClass *type);
 extern void build_class_layout(TypeClass *type);
 extern Object *CClass_CheckPures(TypeClass *type);
+#if VERSION >= VERSION_GC_1_3
+extern UInt8 CClass_FindBasePath(TypeClass *sourceClass, TypeClass *targetClass, short *offset, char option1, char option2);
+#define CCLASS_FIND_BASE_PATH(src, dst, option1, option2) CClass_FindBasePath(src, dst, NULL, option1, option2)
+#else
 extern UInt8 CClass_FindBasePath(TypeClass *sourceClass, TypeClass *targetClass, char option1, char option2);
+#define CCLASS_FIND_BASE_PATH(src, dst, option1, option2) CClass_FindBasePath(src, dst, option1, option2)
+#endif
 extern void CClass_CheckEnumAccess(BClassList *bases, ObjBase *object);
 extern void CClass_CheckObjectAccess(BClassList *bases, Object *reference);
 extern ENode *CClass_CreateThisSelfExpr(void);
@@ -119,8 +131,14 @@ extern BClassList *CClass_GetPathCopy(BClassList *list, Boolean global);
 extern void fn_004ebae0(TypeClass *type);
 extern Boolean CClass_ReferenceArgument(TypeClass *cls);
 extern Boolean CClass_HasTypeFuncFlag16384(Object *object);
+/* the two tests are renumbered in 1.3, so the constructor and destructor roles swap functions */
+#define CClass_IsCtor BY_VERSION(CClass_IsDestructor, CClass_HasTypeFuncFlag16384)
+#define CClass_IsDtor BY_VERSION(CClass_HasTypeFuncFlag16384, CClass_IsDestructor)
 extern Boolean CClass_IsDestructor(Object *obj);
 extern Object *CClass_Destructor(TypeClass *cls);
+#if VERSION >= VERSION_GC_1_3
+extern Boolean CClass_IsPODClass(TypeClass *tclass);
+#endif
 extern NameSpaceObjectList *CClass_Constructor(TypeClass *type);
 extern NameSpaceObjectList *CClass_MemberObject(TypeClass *type, HashNameNode *name);
 extern void select_layout_member_overrides(OverrideClass *node);

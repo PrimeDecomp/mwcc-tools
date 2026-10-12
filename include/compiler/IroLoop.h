@@ -12,8 +12,10 @@ extern "C" {
 #pragma options align = mac68k
 struct IROAddrRecord {
     struct IROLinear *linear;
+#if VERSION < VERSION_GC_1_3
     UInt8 x4;
     UInt8 alignmentPadding;
+#endif
     SInt16 numObjRefs;
     IROElmList *objRefs;
     SInt16 numMisc;
@@ -21,6 +23,10 @@ struct IROAddrRecord {
     SInt16 numInts;
     IROElmList *ints;
     SInt32 x18;
+#if VERSION >= VERSION_GC_1_3
+    UInt8 x4;
+    UInt8 alignmentPadding;
+#endif
 };
 #pragma options align = reset
 /* The kinds of IR node (IROLinear.type), as the optimizer's dump prints them (IroDump: "Operand", "Goto", "If %d %s",
@@ -37,6 +43,9 @@ enum {
     IROLinearReturn,
     IROLinearLabel,
     IROLinearSwitch,
+#if VERSION >= VERSION_GC_1_3
+    IROLinearCond,
+#endif
     IROLinearFunccall,
     IROLinearEntry,
     IROLinearExit,
@@ -44,7 +53,7 @@ enum {
     IROLinearEndCatch,
     IROLinearEndCatchDtor,
     IROLinearAsm,
-    IROLinearEnd = 19
+    IROLinearEnd = BY_VERSION(19, 20)
 };
 /* An IR node's flags (IROLinear.flags), as the optimizer's dump prints them (<reffed>, <assigned>, <used>, ...); its other
  * bits are not named. */
@@ -61,6 +70,8 @@ enum {
 #define IROLF_VecOp 0x2000
 #define IROLF_VecOpBase 0x10000
 #define IROLF_CounterLoop 0x40000
+#define IROLF_BitfieldIndirect 0x80000 /* (1.3) */
+#define IROLF_CouldError 0x100000 /* (1.3) */
 
 #pragma options align = mac68k
 struct IROLinear {
@@ -73,6 +84,10 @@ struct IROLinear {
     Type *rtype;
     struct IROExpr *expr;
     struct ERange *range;
+#if VERSION >= VERSION_GC_1_3
+    UInt32 f1a; /* 0x1a: copied to ENode f0a by IrOptimizer_0042eb40 */
+    UInt8 f1e;
+#endif
     union {
         struct IROLinear *monadic;
         ENode *node;
@@ -102,6 +117,9 @@ struct IROLinear {
             struct IROLinear *callee;
             struct TypeFunc *functype;
         } funccall;
+#if VERSION >= VERSION_GC_1_3
+        UInt8 pad20[20];
+#endif
     } u;
     struct IROLinear *next;
 };
@@ -114,7 +132,11 @@ struct IROList {
 #pragma pack(pop)
 #pragma options align = mac68k
 struct IROLoopInd {
+#if VERSION >= VERSION_GC_1_3
+    UInt16 flags;
+#else
     UInt32 flags;
+#endif
     struct VarRecord *var;
     struct IRONode *node;
     struct IROLinear *nd;
@@ -163,6 +185,12 @@ struct IRONode {
     Boolean mustreach;
     Boolean referenced;
     UInt16 loopdepth;
+#if VERSION >= VERSION_GC_1_3
+    Boolean x3C;
+    struct ObjectSet *addressed;
+    Boolean mustreach1;
+    UInt8 pad43;
+#endif
 };
 #pragma options align = reset
 #pragma options align = mac68k
@@ -183,8 +211,8 @@ extern void mark_nonintersecting_linears(void);
 extern void IRO_FindLoops(void);
 extern void split_last_linear_into_new_node(void);
 extern void IroLoop_ComputeLoopDepth(void);
-extern void fn_00461dc0(IROLinear *type, unsigned int enabled);
-extern void forward_expr_if_check_object(IROLinear *entry, int checkObject);
+extern void fn_00461dc0(IROLinear *type, BY_VERSION(unsigned int, char) enabled);
+extern void forward_expr_if_check_object(IROLinear *entry, BY_VERSION(int, char) checkObject);
 extern void fn_00460f70(void);
 extern void unroll_loop(int factor, struct IRONode *header);
 extern void fn_004614f0(IRONode *lp);
@@ -227,6 +255,10 @@ extern struct IRONode *data_00587c68;
 extern struct IRONode *iro_flowgraph_head;
 extern struct IRONode **iroNodesByIndex;
 extern struct IRONode *data_00587fac;
+#if VERSION >= VERSION_GC_1_3
+/* (1.3: shared with IroEmptyLoop.c) */
+extern struct IRONode *loop_header;
+#endif
 
 #ifdef __cplusplus
 }

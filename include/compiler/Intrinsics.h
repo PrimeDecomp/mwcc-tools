@@ -85,7 +85,7 @@ extern Type *check_binary_intrinsic_args(UInt16 op, ENodeList *args, HashNameNod
 extern SInt32 select_altivec_mangle_result(UInt16 code, ENodeList *arg2, HashNameNode *nm);
 extern short intrinsic_opcodes[];
 extern struct Object *data_00587fc0;
-extern SInt16 gUsedVirtualRegistersVR;
+extern BY_VERSION(SInt16, SInt32) gUsedVirtualRegistersVR;
 union IntrinsicTableEntry {
     void *table;
     struct SimpleEntry *simple;
@@ -95,6 +95,7 @@ union IntrinsicTableEntry {
     struct IntrinsicTypeEntry *unary;
     struct IntrinsicTripleEntry *triple;
     struct OpEntry *op;
+    struct MangleEntry *mangle;
 };
 extern TypeIntegral stsignedint;
 extern unsigned int Intrinsics_IsMonadicObjrefTypeFuncFlag200Set(ENode *expression);

@@ -10,7 +10,7 @@ inline void IroBitVect_SetBit(UInt32 bit, BitVector *bv)
     if ((bit >> 5) < bv->size)
         bv->bits[bit >> 5] |= 1u << bit;
     else
-        CError_Internal("BitVector.h", 47);
+        CError_Internal("BitVector.h", BY_VERSION(47, 56));
 }
 
 #endif

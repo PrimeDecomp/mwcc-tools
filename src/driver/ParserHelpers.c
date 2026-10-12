@@ -19,7 +19,13 @@
 int data_00587e14;
 int data_00587e18;
 Boolean data_00587e20;
+#if VERSION >= VERSION_GC_1_3
+/* (1.3: the option table's storage in the raw data) */
+extern char at_005e73e1[];
+#define data_0058851b (*(unsigned char *)at_005e73e1)
+#else
 char data_0058851b;
+#endif
 
 short data_0054a0b8 = 0;
 

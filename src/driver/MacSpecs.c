@@ -152,7 +152,7 @@ int find_or_create_spec_entry(OSPathSpec *spec, unsigned int *typePtr, unsigned 
     rec = &node->root;
     p = str + 1;
     if (str[0] != '\\')
-        CLIO_ReportAssertionFailure("*pb == OS_PATHSEP", "MacSpecs.c", 0x108);
+        CLIO_ReportAssertionFailure("*pb == OS_PATHSEP", "MacSpecs.c", BY_VERSION(0x108, 267));
     while (*p != '\0') {
         tok = p;
         while (*p != '\0' && *p != '\\')
@@ -236,8 +236,19 @@ int build_name_and_backslash_path(int a, int b, void *buffer1, void *buffer2)
     *out2 = '\\';
     p = out2 + 1;
     while (n--) {
+#if VERSION >= VERSION_GC_1_3
+        unsigned int length = strlen((char *)*arr[n]);
+
+        if ((p - out2) + length + 1 > 0x104) {
+            *p = 0;
+            return 0;
+        }
+        memcpy(p, (char *)*arr[n], length);
+        p += length;
+#else
         strcpy(p, (char *)*arr[n]);
         p += strlen(p);
+#endif
         *p++ = '\\';
     }
     *p = 0;
@@ -303,6 +314,32 @@ DWORD __stdcall fn_00413670(short kind, int value, OSPathSpec *path)
     return 0;
 }
 
+#if VERSION >= VERSION_GC_1_3
+
+/* rebuild a spec from its path with the last component in the case the file system stores it in */
+int fn_004141a0(OSSpec *spec)
+{
+    char path[0x104];
+    _WIN32_FIND_DATAA found;
+    char *name;
+    HANDLE handle;
+    int length;
+
+    strcpy(path, OS_SpecToString(spec, data_005880e0, 0x104));
+    name = OS_GetFileNamePtr(path);
+    handle = FindFirstFileA(path, &found);
+    if (handle != (HANDLE)-1) {
+        length = strlen(found.cFileName);
+        if ((name - path) + length + 1 < 0x104) {
+            strncpy(name, found.cFileName, length);
+            name[length] = 0;
+        }
+        FindClose(handle);
+    }
+    return OS_MakeSpec(path, spec, NULL);
+}
+#endif
+
 /* Unused lookup request declaration removed: no accesses or allocations. */
 int __stdcall MacSpecs_MakeOSSpec(CWFileSpec *record, OSSpec *spec)
 {
@@ -311,7 +348,15 @@ int __stdcall MacSpecs_MakeOSSpec(CWFileSpec *record, OSSpec *spec)
         return result;
     }
     p2cstrcpy(file_name_buffer, record->name);
+#if VERSION >= VERSION_GC_1_3
+    result = OS_MakeNameSpec(file_name_buffer, &spec->name);
+    if (result != 0) {
+        return result;
+    }
+    return fn_004141a0(spec);
+#else
     return OS_MakeNameSpec(file_name_buffer, &spec->name);
+#endif
 }
 
 int __stdcall MacSpecs_MakeResourceForkSpec(OSSpec *source, OSSpec *destination, char retryOnError)

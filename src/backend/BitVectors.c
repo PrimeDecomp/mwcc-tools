@@ -8,7 +8,9 @@ void CodeMotion_AllocateBits(UInt32 *destination, const UInt32 *source, SInt32 b
     int count = (bit_count + 31) >> 5;
 
     while (count != 0) {
-        *destination++ = *source++;
+        *destination = *source;
+        destination++;
+        source++;
         count--;
     }
 }
@@ -24,11 +26,11 @@ SInt32 BitVectors_CopyAndCheckChanged(UInt32 *destination, UInt32 *source, SInt3
     int empty;
     int equal;
     int more;
+    nextDestination = destination;
+    nextSource = source;
     count = bitCount;
     count += 31U;
-    nextDestination = destination;
     count = (int)count >> 5;
-    nextSource = source;
     remaining = count;
     changed = 0U;
     empty = (count == 0U);
@@ -39,10 +41,10 @@ SInt32 BitVectors_CopyAndCheckChanged(UInt32 *destination, UInt32 *source, SInt3
             count = word;
             if (!equal)
                 changed = 1U;
-            remaining -= 1U;
             *nextDestination = count;
             nextDestination++;
             nextSource++;
+            remaining -= 1U;
             more = (remaining != 0U);
         } while (more);
     }

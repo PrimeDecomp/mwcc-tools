@@ -69,6 +69,10 @@ void fn_0044a640(IROLinear *value)
     node->mustreach = 0U;
     node->referenced = 0U;
     node->loopdepth = 0U;
+#if VERSION >= VERSION_GC_1_3
+    node->x3C = 0;
+    node->addressed = NULL;
+#endif
     iro_node_count += 1U;
     if (iro_flowgraph_head == NULL)
         iro_flowgraph_head = node;
@@ -78,6 +82,7 @@ void fn_0044a640(IROLinear *value)
     }
     iroNodeTail = node;
 }
+
 
 void IroFlowgraph_RebuildSuccPred(void)
 {

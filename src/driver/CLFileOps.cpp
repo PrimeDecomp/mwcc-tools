@@ -262,7 +262,12 @@ unsigned int __stdcall set_lookup_paths_name_and_value(unsigned int context, uns
 }
 
 /* The parser's callbacks. */
+#if VERSION >= VERSION_GC_1_3
+/* (external: the 1.3 bindings place it) */
+void *data_0054bf4c[9] = {
+#else
 static void *data_0054bf4c[9] = {
+#endif
     (void *)add_access_path,
     (void *)add_or_copy_pref_panel_storage,
     (void *)set_file_output_name_and_kind,
@@ -303,6 +308,33 @@ unsigned short fn_00419620(void)
 
 SInt32 dispatch_output_storage_by_mask(DropinFileRecord *state, SInt16 mask, SInt32 argument1, SInt32 argument2)
 {
+#if VERSION >= VERSION_GC_1_3
+    SInt32 result = 0;
+    SInt32 value;
+
+    if (state->outputStorage != NULL) {
+        value = Memory_GetHandleSize(state->outputStorage);
+        if ((SInt32)mask != 8L || (optsCmdLine.toDisk & 8) != 0) {
+            if (!(state->outputMask & (SInt32)mask)) {
+                result = CLIO_WriteStorageToStdout(state->outputStorage, value, 0);
+            } else {
+                if (optsCmdLine.verbose != 0)
+                    CLErrors_ForwardMessage(0xf, OS_SpecToStringRelative(&state->outputPath, NULL, data_005880e0, 0x104));
+                result = CLIO_WriteTextFile(&state->outputPath, state->outputStorage, value, argument1, argument2);
+                state->validatedOutputMask |= mask;
+            }
+        } else {
+            if (optsCompiler.outMakefile[0] != 0) {
+                result = CLIO_AppendStorageToFile(&clState.makefileSpec, state->outputStorage, value, argument1, argument2);
+            } else {
+                result = CLIO_WriteStorageToStdout(state->outputStorage, value, 0);
+            }
+        }
+        Memory_FreeHandle(state->outputStorage);
+        state->outputStorage = NULL;
+    }
+    return result;
+#else
     SInt32 value;
     Boolean result;
     if (state->outputStorage != NULL) {
@@ -321,11 +353,12 @@ SInt32 dispatch_output_storage_by_mask(DropinFileRecord *state, SInt16 mask, SIn
         return CLIO_WriteStorageToStdout(state->outputStorage, value, 0);
     }
     return 0;
+#endif
 }
 
 int CLFileOps_SetupOutputPath(DropinFileRecord *obj, SInt16 mask)
 {
-    char fallbackName[64];
+    char fallbackName[BY_VERSION(64, 256)];
     char pathName[260];
     char suffix[16];
     OSPathSpec directoryPath;
@@ -538,8 +571,15 @@ unsigned int write_object_file(DropinFileRecord *record)
     SInt32 type;
     SInt32 creator;
     objectFlags = CLPlugins_GetObjectFlags(record->selectedPlugin);
+#if VERSION >= VERSION_GC_1_3
+    if (record->objectDataFlushed)
+        CLErrors_ReportInternalError("CLFileOps.c", 640, "Object data is flushed");
+    if (record->objectData == 0U && !record->objectDataFlushed)
+        return 1;
+#else
     if (record->objectData == 0U)
         return 1;
+#endif
     type = optsCompiler.objFileType ? optsCompiler.objFileType : objectFlags->objFileType;
     creator = optsCompiler.objFileCreator ? optsCompiler.objFileCreator : objectFlags->objFileCreator;
     if (CLWriteObjectFile_WriteObjectFile(record, creator, type) == 0U)
@@ -699,7 +739,7 @@ int compile_file(DropinFileRecord *file, char *processed)
         return 1;
     }
     if (file->selectedPlugin == 0)
-        CLIO_ReportAssertionFailure("file->compiler", "CLFileOps.c", 0x342);
+        CLIO_ReportAssertionFailure("file->compiler", "CLFileOps.c", BY_VERSION(0x342, 1010));
     *processed = 1;
     startTime = OS_GetMilliseconds();
     CLBrowser_InitMemBuffer(&clState.browseTableHandle);

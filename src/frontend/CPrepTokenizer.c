@@ -39,6 +39,10 @@ static UInt8 data_00580dd0;
 
 typedef int (*TokenScanner)(short);
 
+#if VERSION >= VERSION_GC_1_3
+unsigned int fn_004d10d0(unsigned int argument);
+#endif
+
 /* The scanner of each character a token starts with. */
 static TokenScanner data_0055da98[256] = {
     (TokenScanner)mark_previous_text_character,
@@ -81,11 +85,11 @@ static TokenScanner data_0055da98[256] = {
     (TokenScanner)tokenize_percent,
     (TokenScanner)tokenize_and,
     (TokenScanner)scan_character_constant,
-    (TokenScanner)clear_global_and_return_argument,
-    (TokenScanner)clear_global_and_return_argument,
+    (TokenScanner)BY_VERSION(clear_global_and_return_argument, fn_004d10d0),
+    (TokenScanner)BY_VERSION(clear_global_and_return_argument, fn_004d10d0),
     (TokenScanner)scan_star_or_mult_assign,
     (TokenScanner)scan_plus_token,
-    (TokenScanner)clear_global_and_return_argument,
+    (TokenScanner)BY_VERSION(clear_global_and_return_argument, fn_004d10d0),
     (TokenScanner)scan_minus_token,
     (TokenScanner)scan_dot_token,
     (TokenScanner)scan_div_assign,
@@ -100,11 +104,11 @@ static TokenScanner data_0055da98[256] = {
     (TokenScanner)scan_numeric_literal,
     (TokenScanner)scan_numeric_literal,
     (TokenScanner)tokenize_colon,
-    (TokenScanner)clear_global_and_return_argument,
+    (TokenScanner)BY_VERSION(clear_global_and_return_argument, fn_004d10d0),
     (TokenScanner)scan_less_token,
     (TokenScanner)tokenize_equals,
     (TokenScanner)scan_greater_token,
-    (TokenScanner)clear_global_and_return_argument,
+    (TokenScanner)BY_VERSION(clear_global_and_return_argument, fn_004d10d0),
     (TokenScanner)scan_at_token,
     (TokenScanner)scan_identifier_and_expand_macro,
     (TokenScanner)scan_identifier_and_expand_macro,
@@ -119,6 +123,9 @@ static TokenScanner data_0055da98[256] = {
     (TokenScanner)scan_identifier_and_expand_macro,
     (TokenScanner)scan_quoted_literal,
     (TokenScanner)scan_identifier_and_expand_macro,
+    (TokenScanner)BY_VERSION(scan_identifier_and_expand_macro, scan_n_keyword),
+    (TokenScanner)scan_identifier_and_expand_macro,
+    (TokenScanner)BY_VERSION(scan_identifier_and_expand_macro, scan_identifier),
     (TokenScanner)scan_identifier_and_expand_macro,
     (TokenScanner)scan_identifier_and_expand_macro,
     (TokenScanner)scan_identifier_and_expand_macro,
@@ -126,18 +133,15 @@ static TokenScanner data_0055da98[256] = {
     (TokenScanner)scan_identifier_and_expand_macro,
     (TokenScanner)scan_identifier_and_expand_macro,
     (TokenScanner)scan_identifier_and_expand_macro,
+    (TokenScanner)BY_VERSION(scan_identifier_and_expand_macro, classify_identifier_or_xor_token),
     (TokenScanner)scan_identifier_and_expand_macro,
     (TokenScanner)scan_identifier_and_expand_macro,
-    (TokenScanner)scan_identifier_and_expand_macro,
-    (TokenScanner)scan_identifier_and_expand_macro,
-    (TokenScanner)scan_identifier_and_expand_macro,
-    (TokenScanner)scan_identifier_and_expand_macro,
-    (TokenScanner)clear_global_and_return_argument,
-    (TokenScanner)clear_global_and_return_argument,
-    (TokenScanner)clear_global_and_return_argument,
+    (TokenScanner)BY_VERSION(clear_global_and_return_argument, fn_004d10d0),
+    (TokenScanner)BY_VERSION(clear_global_and_return_argument, fn_004d10d0),
+    (TokenScanner)BY_VERSION(clear_global_and_return_argument, fn_004d10d0),
     (TokenScanner)scan_xor_operator,
     (TokenScanner)classify_identifier_token,
-    (TokenScanner)clear_global_and_return_argument,
+    (TokenScanner)BY_VERSION(clear_global_and_return_argument, fn_004d10d0),
     (TokenScanner)scan_identifier_or_keyword_a,
     (TokenScanner)scan_b_keyword,
     (TokenScanner)fn_00493ea0,
@@ -164,10 +168,10 @@ static TokenScanner data_0055da98[256] = {
     (TokenScanner)classify_identifier_or_xor_token,
     (TokenScanner)scan_identifier_and_expand_macro,
     (TokenScanner)scan_identifier_and_expand_macro,
-    (TokenScanner)clear_global_and_return_argument,
+    (TokenScanner)BY_VERSION(clear_global_and_return_argument, fn_004d10d0),
     (TokenScanner)scan_bitor,
-    (TokenScanner)clear_global_and_return_argument,
-    (TokenScanner)clear_global_and_return_argument,
+    (TokenScanner)BY_VERSION(clear_global_and_return_argument, fn_004d10d0),
+    (TokenScanner)BY_VERSION(clear_global_and_return_argument, fn_004d10d0),
     (TokenScanner)return_unsigned_minus_six,
     (TokenScanner)return_unsigned_minus_six,
     (TokenScanner)return_unsigned_minus_six,
@@ -790,6 +794,16 @@ short CPrepTokenizer_ScanChar(void)
     }
 }
 
+#if VERSION >= VERSION_GC_1_3
+extern UInt8 data_005e73ed;
+
+unsigned int fn_004d10d0(unsigned int argument)
+{
+    data_005e73ed = 0;
+    return argument;
+}
+#endif
+
 short CPrepTokenizer_NextChar(void)
 {
     short character;
@@ -1232,8 +1246,12 @@ SInt16 parse_float_suffix(short suffix)
     }
 
     if ((suffix >= 'a' && suffix <= 'z') || (suffix >= 'A' && suffix <= 'Z') || suffix == '_' ||
-        (suffix >= '0' && suffix <= '9'))
+        (suffix >= '0' && suffix <= '9')) {
         CPrep_ReportError(0x69);
+#if VERSION >= VERSION_GC_1_3
+        floatType = 15;
+#endif
+    }
 
     return floatType;
 }
@@ -1968,9 +1986,9 @@ unsigned int scan_minus_token(volatile unsigned short token)
     data_00588524 = 0;
     savedPosition = currentTextPosition;
     lookahead = CPrepTokenizer_NextChar();
-    token = lookahead;
     WriteLexerPosition(&lookahead_position, currentTextPosition);
     currentTextPosition = savedPosition;
+    token = lookahead;
     if (token == 61) {
         ReadLexerPosition(&currentTextPosition, lookahead_position);
         return TK_SUB_ASSIGN;
@@ -2004,9 +2022,9 @@ unsigned int scan_bitor(volatile unsigned short token)
     data_00588524 = 0;
     savedState = currentTextPosition;
     nextToken = CPrepTokenizer_NextChar();
-    token = nextToken;
     lookahead_position = (char *)currentTextPosition;
     currentTextPosition = savedState;
+    token = nextToken;
     if (token == 61) {
         currentTextPosition = lookaheadState();
         return TK_OR_ASSIGN;
@@ -2026,9 +2044,9 @@ unsigned int tokenize_and(volatile unsigned short token)
     data_00588524 = 0;
     savedState = currentTextPosition;
     nextToken = CPrepTokenizer_NextChar();
-    token = nextToken;
     lookahead_position = (char *)currentTextPosition;
     currentTextPosition = savedState;
+    token = nextToken;
     if (token == 61) {
         currentTextPosition = (unsigned char *)lookahead_position;
         return TK_AND_ASSIGN;
@@ -2498,7 +2516,11 @@ SInt32 scan_o_keyword(void)
     return TK_IDENTIFIER;
 }
 
+#if VERSION >= VERSION_GC_1_3
+SInt32 scan_identifier(short ch)
+#else
 SInt32 scan_identifier(void)
+#endif
 {
     data_00588524 = 0;
     currentTextPosition = CPrepTokenizer_ScanIdentifier(currentTextPosition - 1);
@@ -2508,7 +2530,7 @@ SInt32 scan_identifier(void)
         if (memcmp("pascal", data_00587fa0->name, 7) == 0)
             return TK_PASCAL;
     }
-    if (copts.cplusplus != 0) {
+    if (copts.cplusplus != 0 BY_VERSION(, && ch == 'p')) {
         if (memcmp("private", data_00587fa0->name, 8) == 0)
             return TK_PRIVATE;
         if (memcmp("protected", data_00587fa0->name, 10) == 0)
@@ -2685,14 +2707,18 @@ int classify_w_keyword(void)
     return TK_IDENTIFIER;
 }
 
-int classify_identifier_or_xor_token(void)
+int classify_identifier_or_xor_token(BY_VERSION(void, short ch))
 {
     data_00588524 = 0;
     currentTextPosition = CPrepTokenizer_ScanIdentifier(currentTextPosition - 1);
     if ((macrocheck != '\0') && (CPrep_ExpandMacro() != '\0')) {
         return 0;
     }
+#    if VERSION >= VERSION_GC_1_3
+    if (copts.cplusplus != '\0' && ch == 'x' && data_005884fd == '\0' && data_0058850f == '\0') {
+#else
     if (((copts.cplusplus != '\0') && (data_005884fd == '\0')) && (data_0058850f == '\0')) {
+#endif
         if (memcmp("xor", data_00587fa0->name, 4) == 0) {
             return '^';
         }
@@ -2949,7 +2975,7 @@ short CPrepTokenizer_GetNextToken(void)
                     }
                     break;
                 default:
-                    CError_Internal("CPrepTokenizer.c", 2504);
+                    CError_Internal("CPrepTokenizer.c", BY_VERSION(2504, 3022));
             }
         }
         bufferedTokenPosition++;

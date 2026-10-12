@@ -16,7 +16,132 @@
 #include <string.h>
 #include <stdio.h>
 
+#if VERSION >= VERSION_GC_1_3
+#include "compiler/CInline.h"
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+void fn_004bdce0(struct CInlineBackendOptions *options)
+{
+    copts.processor = options->processor;
+    copts.processorModel = options->processorModel;
+    copts.instructionSchedulingMode = options->instructionSchedulingMode;
+    copts.debug_listing = options->cOptimizerDumpEnabled;
+    copts.emitExtraAssemblyData = options->emitExtraAssemblyData;
+    copts.disable_registers = options->f08;
+    copts.fp_contract = options->debugOptions;
+    copts.f0a = options->f0a;
+    copts.f0b = options->f0b;
+    copts.unroll_speculative = options->ppcUnrollSpeculative;
+    copts.unroll_instr_limit = options->ppcUnrollInstructionsLimit;
+    copts.unroll_factor_limit = options->ppcUnrollFactorLimit;
+    copts.altivec_model = options->altivecModel;
+    copts.altivec_vrsave = options->altivecVrsave;
+    copts.codeAlignment = options->codeAlignment;
+    copts.catssupport = options->emitSerializedAssemblyFormat;
+    copts.forcecatssupport = options->f14;
+    copts.nonconstsmalldatathreshold = options->smallDataLimit;
+    copts.constsmalldatathreshold = options->smallBSSLimit;
+    copts.usedatapool = options->reuseSectionSymbols;
+    copts.commonblocks = options->f20;
+    copts.f54b = options->f54b;
+    copts.use_lmw_stmw = options->useRegisterSaveHelpers;
+    copts.f27 = options->f27;
+    copts.f25 = options->f25;
+    copts.interruptList = options->interruptList;
+    copts.interruptOptions = options->interruptOptions;
+    copts.incompatible_return_small_structs = options->f4e;
+    copts.create_file_object = options->emitMainFileObject;
+    copts.incompatible_sfpe_double_params = options->returnStructsInMemory;
+    copts.f4f = options->f4f;
+    copts.f50 = options->f50;
+    copts.f51 = options->f51;
+    copts.f52 = options->f52;
+    copts.f53 = options->f53;
+    copts.deleteDeadInstructions = options->deleteDeadInstructions;
+    copts.optimizesize = options->uniformSpillBlockWeight;
+    copts.fc3 = options->fc3;
+    copts.commonsubs = options->irCommonSubexpressionElimination;
+    copts.loopinvariants = options->fc5;
+    copts.propagation = options->irCopyPropagation;
+    copts.deadstore = options->irEliminateUnused;
+    copts.strengthreduction = options->fc8;
+    copts.strengthreductionstrict = options->fc9;
+    copts.deadcode = options->irRemoveUnreachable;
+    copts.lifetimes = options->fcb;
+    copts.unrolling = options->irLoopUnrolling;
+    copts.vectorizeloops = options->fce;
+    copts.irSecondOptimizationPass = options->irSecondOptimizationPass;
+    copts.ff1 = options->ff1;
+    copts.ff2 = options->ff2;
+    copts.unrollOption = options->unrollOption;
+    copts.fd1 = options->fd1;
+}
+
+void fn_004bded0(struct CInlineBackendOptions *options)
+{
+    options->processor = copts.processor;
+    options->processorModel = copts.processorModel;
+    options->instructionSchedulingMode = copts.instructionSchedulingMode;
+    options->cOptimizerDumpEnabled = copts.debug_listing;
+    options->emitExtraAssemblyData = copts.emitExtraAssemblyData;
+    options->f08 = copts.disable_registers;
+    options->debugOptions = copts.fp_contract;
+    options->f0a = copts.f0a;
+    options->f0b = copts.f0b;
+    options->ppcUnrollSpeculative = copts.unroll_speculative;
+    options->ppcUnrollInstructionsLimit = copts.unroll_instr_limit;
+    options->ppcUnrollFactorLimit = copts.unroll_factor_limit;
+    options->altivecModel = copts.altivec_model;
+    options->altivecVrsave = copts.altivec_vrsave;
+    options->codeAlignment = copts.codeAlignment;
+    options->emitSerializedAssemblyFormat = copts.catssupport;
+    options->f14 = copts.forcecatssupport;
+    options->smallDataLimit = copts.nonconstsmalldatathreshold;
+    options->smallBSSLimit = copts.constsmalldatathreshold;
+    options->reuseSectionSymbols = copts.usedatapool;
+    options->f20 = copts.commonblocks;
+    options->f54b = copts.f54b;
+    options->useRegisterSaveHelpers = copts.use_lmw_stmw;
+    options->f27 = copts.f27;
+    options->f25 = copts.f25;
+    options->interruptList = copts.interruptList;
+    options->interruptOptions = copts.interruptOptions;
+    options->f4e = copts.incompatible_return_small_structs;
+    options->emitMainFileObject = copts.create_file_object;
+    options->returnStructsInMemory = copts.incompatible_sfpe_double_params;
+    options->f4f = copts.f4f;
+    options->f50 = copts.f50;
+    options->f51 = copts.f51;
+    options->f52 = copts.f52;
+    options->f53 = copts.f53;
+    options->deleteDeadInstructions = copts.deleteDeadInstructions;
+    options->uniformSpillBlockWeight = copts.optimizesize;
+    options->fc3 = copts.fc3;
+    options->irCommonSubexpressionElimination = copts.commonsubs;
+    options->fc5 = copts.loopinvariants;
+    options->irCopyPropagation = copts.propagation;
+    options->irEliminateUnused = copts.deadstore;
+    options->fc8 = copts.strengthreduction;
+    options->fc9 = copts.strengthreductionstrict;
+    options->irRemoveUnreachable = copts.deadcode;
+    options->fcb = copts.lifetimes;
+    options->irLoopUnrolling = copts.unrolling;
+    options->fce = copts.vectorizeloops;
+    options->irSecondOptimizationPass = copts.irSecondOptimizationPass;
+    options->ff1 = copts.ff1;
+    options->ff2 = copts.ff2;
+    options->unrollOption = copts.unrollOption;
+    options->fd1 = copts.fd1;
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+/* (1.3: also used by BE_elf.c and Registers.c) */
+int maximumAlignment;
+#else
 static int maximumAlignment;
+#endif
 static int structLayoutOffset;
 static short data_00580fa0;
 static signed short bitfield_storage_size;
@@ -187,7 +312,7 @@ static inline Float CMach_CalcFloatConvert(Type *type, Float value)
         case 12:
             break;
         default:
-            CError_FATAL(714);
+            CError_FATAL(BY_VERSION(714, 801));
     }
     return value;
 }
@@ -226,11 +351,17 @@ int CMach_GetQUALalign(int qualifiers)
         } else if (qualifiers == Q_ALIGNED_MASK) {
             alignment = 8192;
         } else {
-            CError_Internal("CMachine.c", 202);
+            CError_Internal("CMachine.c", BY_VERSION(202, 226));
         }
     }
     return alignment;
 }
+
+#if VERSION >= VERSION_GC_1_3
+void fn_004c17a0(void)
+{
+}
+#endif
 
 #define ISZERO64(v) ((Boolean)(((v).hi == 0) && ((v).lo == 0)))
 
@@ -253,7 +384,7 @@ CInt64 CMach_CalcIntDiadic(Type *type, CInt64 a, SInt16 op, CInt64 b)
             case 8:
                 break;
             default:
-                CError_FATAL(243);
+                CError_FATAL(BY_VERSION(243, 327));
         }
         switch (op) {
             case '*':
@@ -371,7 +502,7 @@ CInt64 CMach_CalcIntDiadic(Type *type, CInt64 a, SInt16 op, CInt64 b)
             case 8:
                 break;
             default:
-                CError_FATAL(305);
+                CError_FATAL(BY_VERSION(305, 389));
         }
         switch (op) {
             case '*':
@@ -491,7 +622,7 @@ CInt64 CMach_CalcIntMonadic(Type *type, SInt16 op, CInt64 val)
             case 8:
                 break;
             default:
-                CError_Internal("CMachine.c", 364);
+                CError_Internal("CMachine.c", BY_VERSION(364, 448));
         }
         switch (op) {
             case '-':
@@ -533,7 +664,7 @@ CInt64 CMach_CalcIntMonadic(Type *type, SInt16 op, CInt64 val)
             case 8:
                 break;
             default:
-                CError_Internal("CMachine.c", 394);
+                CError_Internal("CMachine.c", BY_VERSION(394, 478));
         }
         switch (op) {
             case '-':
@@ -574,8 +705,13 @@ CInt64 CMach_CalcIntConvertFromFloat(Type *type, double value)
         else
             CInt64_ConvertFromLongDouble(&result, value);
     } else if (is_unsigned(type)) {
+#if VERSION >= VERSION_GC_1_3
+        result.lo = value;
+        result.hi = 0;
+#else
         result.hi = 0;
         result.lo = value;
+#endif
     } else {
         SInt32 converted;
         result.lo = (SInt32)value;
@@ -611,11 +747,11 @@ void CMach_InitIntMem(Type *type, CInt64 val, void *mem)
                     CTool_EndianConvertWord64(val, mem);
                     break;
                 default:
-                    CError_FATAL(482);
+                    CError_FATAL(BY_VERSION(482, 566));
             }
             break;
         default:
-            CError_FATAL(486);
+            CError_FATAL(BY_VERSION(486, 570));
     }
 }
 
@@ -699,7 +835,7 @@ Float CMach_CalcFloatDiadic(Type *type, Float left, short op, Float right)
             left.data.value /= right.data.value;
             break;
         default:
-            CError_FATAL(592);
+            CError_FATAL(BY_VERSION(592, 679));
     }
     return CMach_CalcFloatConvert(type, left);
 }
@@ -708,7 +844,7 @@ Float CMach_CalcFloatMonadic(Type *type, short op, double value)
 {
     Float result;
     if (op != 0x2d)
-        CError_FATAL(605);
+        CError_FATAL(BY_VERSION(605, 692));
     value = -value;
     result.data.value = value;
     switch (type->size) {
@@ -722,7 +858,7 @@ Float CMach_CalcFloatMonadic(Type *type, short op, double value)
         case 12:
             break;
         default:
-            CError_FATAL(714);
+            CError_FATAL(BY_VERSION(714, 801));
             break;
     }
     return result;
@@ -746,7 +882,7 @@ Boolean CMach_CalcFloatDiadicBool(Type *self, volatile double a, SInt16 op, vola
         case 0x3c:
             return a < b;
         default:
-            CError_Internal("CMachine.c", 0x273);
+            CError_Internal("CMachine.c", BY_VERSION(0x273, 0x2ca));
             return 0;
     }
 }
@@ -812,24 +948,24 @@ Float CMachine_RoundFloatToType(Type *type, Float value)
         case 12:
             break;
         default:
-            CError_Internal("CMachine.c", 714);
+            CError_Internal("CMachine.c", BY_VERSION(714, 801));
     }
     return value;
 }
 
 unsigned char CMach_FloatIsZero(double value)
 {
-    return value == 0.0L;
+    return BY_VERSION(value == 0.0L, 0.0L == value);
 }
 
 unsigned char CMach_FloatIsOne(double value)
 {
-    return value == 1.0L;
+    return BY_VERSION(value == 1.0L, 1.0L == value);
 }
 
 UInt8 CMach_FloatIsNegOne(double value)
 {
-    return value == -1.0L;
+    return BY_VERSION(value == -1.0L, -1.0L == value);
 }
 
 void CMach_InitFloatMem(Type *type, Float value, unsigned char *dest)
@@ -850,7 +986,7 @@ void CMach_InitFloatMem(Type *type, Float value, unsigned char *dest)
             }
         }
     }
-    CError_FATAL(779);
+    CError_FATAL(BY_VERSION(779, 866));
 }
 
 void CMach_PrintFloat(char *output, Float value)
@@ -892,6 +1028,85 @@ void CMach_PragmaParams(void)
     }
 }
 
+#if VERSION >= VERSION_GC_1_3
+int fn_004c0080(void *a, int b, int c);
+
+/* The alignment of a struct: the largest of its members', as the pack mode (copts.structalignment) has it. */
+int fn_004bfe90(TypeStruct *tstruct, UInt8 flag)
+{
+    StructMember *member;
+    SInt8 mode = *((SInt8 *)&copts + 0xcc);
+    int stype = tstruct->stype;
+    int align, value;
+    Boolean first;
+
+    if (stype >= 4 && stype <= 14)
+        return 16;
+    switch (mode) {
+    case 0:
+        return 2;
+    case 1:
+        return tstruct->size > 2 ? 4 : 2;
+    case 3:
+    case 8:
+        return 1;
+    }
+    if (tstruct->size <= 1)
+        return 1;
+    align = 1;
+    switch (mode) {
+    case 2:
+        if (*((UInt8 *)&copts + 0x86)) {
+            for (member = tstruct->members; member; member = member->next) {
+                value = CMachine_GetTypeAlignmentImpl(member->type, flag);
+                if (value > align)
+                    align = value;
+                if (flag && (value = CMach_GetQUALalign(member->qual)) > align)
+                    align = value;
+            }
+        } else if (stype == 1) {
+            for (member = tstruct->members; member; member = member->next) {
+                value = fn_004c0080(member->type, 1, flag);
+                if (value > align)
+                    align = value;
+                if (flag && (value = CMach_GetQUALalign(member->qual)) > align)
+                    align = value;
+            }
+        } else {
+            first = 1;
+            for (member = tstruct->members; member; member = member->next) {
+                value = fn_004c0080(member->type, first || align >= 8, flag);
+                if (value > align)
+                    align = value;
+                if (flag && (value = CMach_GetQUALalign(member->qual)) > align)
+                    align = value;
+                first = 0;
+            }
+        }
+        return align;
+    default:
+        CError_FATAL(1028);
+    case 4:
+    case 5:
+    case 6:
+    case 7:
+        break;
+    }
+    for (member = tstruct->members; member; member = member->next) {
+        value = CMachine_GetTypeAlignmentImpl(member->type, flag);
+        if (value > align)
+            align = value;
+        if (flag && (value = CMach_GetQUALalign(member->qual)) > align)
+            align = value;
+    }
+    return align;
+}
+
+UInt16 CMach_GetStructAlign(TypeStruct *str)
+{
+    return fn_004bfe90(str, 1);
+}
+#else
 UInt16 CMach_GetStructAlign(TypeStruct *str)
 {
     unsigned int lift_value_0;
@@ -899,6 +1114,10 @@ UInt16 CMach_GetStructAlign(TypeStruct *str)
     maximumAlignment = 0;
     return lift_value_0;
 }
+#endif
+#if VERSION >= VERSION_GC_1_3
+SInt16 fn_004bf830(Type *type, int minAlign, UInt8 flag);
+#endif
 
 short CMach_GetClassAlign(TypeClass *list)
 {
@@ -918,7 +1137,11 @@ short CMach_GetClassAlign(TypeClass *list)
     return maximum;
 }
 
+#if VERSION >= VERSION_GC_1_3
+SInt16 CMachine_GetTypeAlignmentImpl(Type *type, SInt32 flag)
+#else
 SInt16 CMachine_GetTypeAlignment(Type *type)
+#endif
 {
     UInt8 arrayAlignment;
     Boolean isPowerAlignment;
@@ -980,7 +1203,7 @@ SInt16 CMachine_GetTypeAlignment(Type *type)
                             return 8;
                         return 4;
                     default:
-                        CError_FATAL(1173);
+                        CError_FATAL(BY_VERSION(1173, 1348));
                 }
                 /* fall through */
             case TYPEMEMBERPOINTER:
@@ -1032,6 +1255,182 @@ SInt16 CMachine_GetTypeAlignment(Type *type)
     }
 }
 
+#if VERSION >= VERSION_GC_1_3
+extern int fn_004bfc30(void *a, int b);
+
+SInt16 CMachine_GetTypeAlignment(Type *type)
+{
+    return CMachine_GetTypeAlignmentImpl(type, 1);
+}
+
+int fn_004bfc20(void *a)
+{
+    return fn_004bfc30(a, 1);
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+int fn_004c0080(void *a, int b, int c)
+{
+    return (SInt16)CMachine_GetTypeAlignmentImpl(a, c);
+}
+
+#pragma options align = mac68k
+struct Fn004bec90 {
+    char pad[0xe];
+    struct Fn004bec90b *inner;
+};
+struct Fn004bec90b {
+    char pad[2];
+    int size;
+};
+#pragma options align = reset
+
+int fn_004bec90(struct Fn004bec90 *a)
+{
+    struct Fn004bec90b *inner = a->inner;
+    int size = inner->size;
+    int align = (SInt16)CMachine_GetTypeAlignmentImpl((Type *)inner, 1) - 1;
+    return (size + align) & ~align;
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+#if VERSION >= VERSION_GC_1_3
+#define data_005e7169 (*(UInt8 *)((char *)&copts + 0x87))
+#else
+extern UInt8 data_005e7169;
+#endif
+
+Boolean fn_004bf100(Type *type)
+{
+    switch ((SInt8)type->type) {
+    case TYPEINT:
+        switch (TYPE_INTEGRAL(type)->integral) {
+        case IT_BOOL:
+        case IT_UCHAR:
+        case IT_WCHAR_T:
+        case IT_USHORT:
+        case IT_UINT:
+        case IT_ULONG:
+        case IT_ULONGLONG:
+            return 1;
+        case IT_CHAR:
+            return data_005e7169;
+        default:
+            return 0;
+        }
+    case TYPEPOINTER:
+        return 1;
+    default:
+        return 0;
+    }
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+extern TypeIntegral data_005adcf0;
+extern TypeIntegral data_005adcf8;
+extern TypeIntegral data_005add00;
+
+Type *fn_004bf0a0(short token, short a, short b)
+{
+    Type *type;
+
+    switch (token) {
+    case 0x113:
+        type = (Type *)&data_005adcf0;
+        break;
+    case 0x114:
+        type = (Type *)&data_005adcf8;
+        break;
+    case 0x115:
+        type = (Type *)&data_005add00;
+        break;
+    default:
+        type = NULL;
+        break;
+    }
+    if (type == NULL || a != 0 || b != 0) {
+        CError_ReportError(ERR_ILLEGAL_TYPE);
+        return (Type *)&stsignedint;
+    }
+    return type;
+}
+
+#if VERSION >= VERSION_GC_1_3
+#define data_005e71ae (*(UInt8 *)((char *)&copts + 0xcc))
+#else
+extern UInt8 data_005e71ae;
+#endif
+#if VERSION >= VERSION_GC_1_3
+#define data_005e7168 (*(UInt8 *)((char *)&copts + 0x86))
+#else
+extern UInt8 data_005e7168;
+#endif
+
+SInt16 fn_004c1620(Type *type)
+{
+    UInt8 savedA = data_005e71ae;
+    UInt8 savedB = data_005e7168;
+    SInt32 alignment;
+
+    data_005e71ae = 2;
+    data_005e7168 = 0;
+    alignment = CMachine_GetTypeAlignmentImpl(type, 0);
+    data_005e71ae = savedA;
+    data_005e7168 = savedB;
+    if (type->type == TYPESTRUCT && *(SInt32 *)((char *)type + 0xa) == 0) {
+        if (*(SInt16 *)((char *)type + 0x10) > alignment)
+            return *(SInt16 *)((char *)type + 0x10);
+    }
+    return alignment;
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+extern UInt8 data_005dc468;
+
+
+/* alignment of a struct member, honouring the pack mode, and the running maximum alignment of the struct */
+SInt16 fn_004bf830(Type *type, int minAlign, UInt8 flag)
+{
+    int align;
+
+    align = CMachine_GetTypeAlignmentImpl(type, flag);
+    if (align < 1)
+        align = 1;
+    if (*(UInt8 *)type == 4 && *((SInt8 *)type + 0xe) >= 4 && *((SInt8 *)type + 0xe) <= 14 && align < 16)
+        align = 16;
+    switch (data_005e71ae) {
+    case 0:
+        if (align > 2)
+            align = 2;
+        break;
+    case 1:
+        if (align > 4)
+            align = 4;
+        break;
+    case 2:
+        if (!data_005e7168) {
+            align = 1;
+            if (structLayoutOffset != 0 && data_005dc468 < 8)
+                align = 0;
+            align = fn_004c0080(type, align, flag);
+        }
+        if (minAlign > align)
+            align = minAlign;
+        break;
+    case 8:
+        align = 1;
+        break;
+    }
+    if (align > data_005dc468)
+        data_005dc468 = align;
+    return align;
+}
+#endif
+
 SInt16 CMach_GetTypeAlign(Type *type)
 {
     SInt32 alignment;
@@ -1066,21 +1465,32 @@ SInt16 CMach_GetTypeAlign(Type *type)
 
 SInt16 CMach_MemberAlignValue(Type *type, SInt32 offset)
 {
+#if VERSION >= VERSION_GC_1_3
+    /* (1.3 aligns as a struct member: the pack mode applies) */
+    SInt16 alignment = fn_004bf830(type, 0, 1);
+#else
     SInt16 alignment = CMach_GetTypeAlign(type);
+#endif
     if ((SInt32)alignment <= 1)
         return 0;
     return (alignment - (offset & (alignment - 1U))) & (alignment - 1U);
 }
 
+/* (1.3: RegisterInfo.c's, in Registers.c) */
+#if VERSION < VERSION_GC_1_3
 void CMachine_ResetMaximumAlignment(void)
 {
     maximumAlignment = 0;
     return;
 }
+#endif
 
 void CMach_StructLayoutInitOffset(unsigned int offset)
 {
     structLayoutOffset = offset;
+#if VERSION >= VERSION_GC_1_3
+    data_005dc468 = 4;
+#endif
     data_00580fa0 = 0;
     bitfield_storage_size = 0;
     data_00580fa4 = 0;
@@ -1142,6 +1552,10 @@ long CMach_StructLayoutGetOffset(Type *type, int flags)
     structLayoutOffset = offset + type->size;
     return offset;
 }
+
+#if VERSION >= VERSION_GC_1_3
+extern UInt8 data_005dc468;
+#endif
 
 long CMach_StructLayoutBitfield(TypeBitfield *field, int alignmentKind)
 {
@@ -1236,6 +1650,9 @@ long CMach_StructLayoutBitfield(TypeBitfield *field, int alignmentKind)
     return data_00580fa4;
 }
 
+#if VERSION >= VERSION_GC_1_3
+#pragma sym off
+#endif
 Boolean CMach_GetFunctionResultClass(TypeFunc *functype)
 {
     SInt8 type = functype->functype->type;
@@ -1256,6 +1673,9 @@ Boolean CMach_GetFunctionResultClass(TypeFunc *functype)
             return 0;
     }
 }
+#if VERSION >= VERSION_GC_1_3
+#pragma sym reset
+#endif
 
 Boolean Type_RequiresMemoryReturn(Type *type)
 {
@@ -1315,6 +1735,12 @@ const char *CMach_GetCPU(void)
             return "__PPC509__";
         case 4:
             return "__PPC555__";
+#if VERSION >= VERSION_GC_1_3
+        case 25:
+            return "__PPC556__";
+        case 26:
+            return "__PPC565__";
+#endif
         case 5:
             return "__PPC601__";
         case 6:
@@ -1343,12 +1769,20 @@ const char *CMach_GetCPU(void)
             return "__PPC860__";
         case 21:
             return "__PPC7400__";
+#if VERSION >= VERSION_GC_1_3
+        case 24:
+            return "__PPC7450__";
+#endif
         case 18:
             return "__PPC8240__";
         case 19:
             return "__PPC8260__";
         case 22:
             return "__PPCGEKKO__";
+#if VERSION >= VERSION_GC_1_3
+        case 23:
+            return "__PPCe500__";
+#endif
         default:
             return NULL;
     }

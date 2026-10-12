@@ -11,6 +11,9 @@ struct AccessPathEntry {
     OSPathSpec *path;
     struct AccessPaths *children;
     unsigned int auxiliary2;
+#if VERSION >= VERSION_GC_1_3
+    unsigned short auxiliary3;
+#endif
 };
 #pragma options align = mac68k
 struct DepRecord {

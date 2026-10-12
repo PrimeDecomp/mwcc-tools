@@ -16,6 +16,12 @@
 #include "compiler/IroBitVect.h"
 #include "compiler/IroCSE.h"
 #include "compiler/IroDump.h"
+#if VERSION >= VERSION_GC_1_3
+#include "compiler/IroFlowgraph.h"
+#include "compiler/IROUseDef.h"
+extern struct IROUse *allocated_uses;
+extern struct IROUse *global_use_tail;
+#endif
 #include "compiler/IroJump.h"
 #include "compiler/IroLoop.h"
 #include "compiler/IroUtil.h"
@@ -59,6 +65,311 @@ unsigned int IroPropagate_IsRegisterEligible(Object *object)
     return result;
 }
 
+#if VERSION >= VERSION_GC_1_3
+void fn_00470190(IROLinear *p, Boolean flag)
+{
+    if (flag)
+        fn_0044b2d0(p);
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+/* mark the object a local-register operand refers to in the register bit vector */
+void fn_004701b0(IROLinear *p, Boolean flag)
+{
+    VarRecord *var;
+
+    if (flag && p->type == IROLinearOperand && p->u.node->type == EOBJREF) {
+        if (p->flags & IROLF_Ind) {
+            if ((p->flags & IROLF_Assigned) && !(p->flags & IROLF_Used))
+                return;
+            var = fn_0044ba70(p->u.node->data.objref, 0, 1);
+            if (var != NULL)
+                IroBitVect_SetBit(var->index, data_00588018);
+        }
+    }
+}
+
+/* merge block B into the block A that falls through into it; returns A, or NULL if they cannot be merged */
+struct IRONode *fn_00470390(struct IRONode *a, struct IRONode *b)
+{
+    UInt32 i;
+    UInt32 j;
+    UInt32 k;
+    UInt32 n;
+    Boolean found;
+    struct IRONode *s;
+    struct IROExpr *e;
+    struct ReplacementCandidate *rc;
+    struct IROUse *u;
+
+    if (a->nextnode != b || a->last == NULL || b->first == NULL || a->last->next != b->first)
+        return NULL;
+    if (b->first->type == IROLinearLabel)
+        IroUtil_ClearZeroOperands(b->first);
+    a->nextnode = b->nextnode;
+    a->last = b->last;
+    for (i = 0; i < a->numsucc; i++) {
+        if (a->succ[i] == b->index) {
+            for (; i < a->numsucc; i++) {
+                if (i + 1 < a->numsucc)
+                    a->succ[i] = a->succ[i + 1];
+                else
+                    a->succ[i] = 0;
+            }
+            a->numsucc--;
+            break;
+        }
+    }
+    for (j = 0; j < b->numsucc; j++) {
+        s = iroNodesByIndex[b->succ[j]];
+        for (i = 0, n = a->numsucc; i < n; i++) {
+            if (s->index == a->succ[i])
+                break;
+        }
+        if (i == a->numsucc) {
+            a->succ[a->numsucc++] = s->index;
+            s->numpred++;
+            s->numpred--;
+        }
+        found = 0;
+        n = s->numpred;
+        for (k = 0; k < n; k++) {
+            if (a->index == s->pred[k]) {
+                found = 1;
+                break;
+            }
+        }
+        for (k = 0; k < s->numpred; k++) {
+            if (b->index == s->pred[k]) {
+                if (!found) {
+                    s->pred[k] = a->index;
+                } else {
+                    for (; k < s->numpred; k++) {
+                        if (k + 1 < s->numpred)
+                            s->pred[k] = s->pred[k + 1];
+                        else
+                            s->pred[k] = 0;
+                    }
+                    s->numpred--;
+                }
+                break;
+            }
+        }
+    }
+    b->numpred = 0;
+    b->numsucc = 0;
+    b->last = NULL;
+    b->first = NULL;
+    b->nextnode = NULL;
+    b->reachable = 0;
+    b->visited = 0;
+    b->mustreach = 0;
+    b->referenced = 0;
+    b->loopdepth = 0;
+    if (iroNodeTail == b)
+        iroNodeTail = a;
+    if (expr_list != NULL && expr_tail != NULL) {
+        for (e = expr_list; e != NULL && e != expr_tail->next; e = e->next) {
+            if (e->node == b)
+                e->node = a;
+        }
+    }
+    if (replacementCandidate != NULL && replacementCandidateTail != NULL) {
+        for (rc = replacementCandidate; rc != NULL && rc != replacementCandidateTail->next; rc = rc->next) {
+            if (rc->block == b)
+                rc->block = a;
+        }
+    }
+    if (allocated_uses != NULL && global_use_tail != NULL) {
+        for (u = allocated_uses; u != NULL && u != global_use_tail->globalnext; u = u->globalnext) {
+            if (u->node == b)
+                u->node = a;
+        }
+    }
+    iroNodesByIndex[b->index] = NULL;
+    return a;
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+/* whether a definition of VAR in NODE is used outside NODE */
+Boolean fn_00470230(VarRecord *var, struct IRONode *node)
+{
+    struct IRODef *defs;
+    struct IROUse *uses;
+    struct IROUse *u;
+    struct IRODef *d;
+    struct IRODef *found;
+    struct IRONode *n;
+    struct IROLinear *l;
+    UInt32 bit;
+    UInt32 *bits;
+
+    defs = var->defs;
+    uses = var->uses;
+    if (defs != NULL && uses != NULL) {
+        found = NULL;
+        for (u = uses; u != NULL; u = u->varnext) {
+            if (found == NULL && u->node == node && u->linear != NULL && !(u->linear->flags & IROLF_Assigned) && defs != NULL) {
+                for (d = defs; d != NULL; d = d->varnext) {
+                    bit = d->index;
+                    if ((bit >> 5) < u->reachingDefs->size && (u->reachingDefs->bits[bit >> 5] & ((UInt32)1 << (bit & 31))))
+                        break;
+                }
+                found = d;
+            }
+        }
+        if (found == NULL)
+            return 0;
+        for (u = uses; u != NULL; u = u->varnext) {
+            if (u->node != node && u->linear != NULL && !(u->linear->flags & IROLF_Assigned)) {
+                bit = found->index;
+                if ((bit >> 5) < u->reachingDefs->size && (u->reachingDefs->bits[bit >> 5] & ((UInt32)1 << (bit & 31))))
+                    return 1;
+            }
+        }
+        return 0;
+    }
+    for (n = iro_flowgraph_head; n != NULL; n = n->nextnode) {
+        if (n == node)
+            continue;
+        for (l = n->first; l != NULL; l = l->next) {
+            if (IroDump_GetObjRef(l) != NULL && !(l->flags & IROLF_Assigned)) {
+                if (fn_0044ba70(l->u.monadic->u.node->data.objref, 0, 1) == var)
+                    return 1;
+            }
+            if (l == n->last)
+                break;
+        }
+    }
+    IroVars_CheckTimedLongjmp();
+    return 0;
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+/* record whether the variables used by `child` intersect those in `vars` */
+#define PROP_CHECK_CHILD(child, from, used, vars, found)         \
+    do {                                                         \
+        IroBitVect_ClearBitVector(used);                         \
+        IroBitVect_ClearBitVector(data_00588018);                \
+        visit_linear_postorder((child), (void (*)(IROLinear *, int))fn_00470190);            \
+        IroBitVect_Or(data_00588018, used);                      \
+        if (IroBitVect_Intersects(used, vars))                   \
+            *(found) = 1;                                        \
+    } while (0)
+
+void fn_0046ffd0(IROLinear *node, IROLinear *from, BitVector *used, BitVector *vars, Boolean *found)
+{
+    IROLinear *child;
+    int i;
+
+    switch (node->type) {
+    case 3:
+        if (node->nodetype != 0x1c && node->nodetype != 0x1d && node->nodetype != 0x29) {
+            child = node->u.diadic.left;
+            if (child != from)
+                PROP_CHECK_CHILD(child, from, used, vars, found);
+            child = node->u.diadic.right;
+            if (child != from)
+                PROP_CHECK_CHILD(child, from, used, vars, found);
+        }
+        break;
+    case 11: {
+        IROLinear **args;
+        child = *(IROLinear **)((char *)node + 0x28);
+        if (child != from)
+            PROP_CHECK_CHILD(child, from, used, vars, found);
+        args = *(IROLinear ***)((char *)node + 0x24);
+        for (i = 0; !*found && i < *(SInt16 *)((char *)node + 0x22); i++) {
+            child = args[i];
+            if (child != from)
+                PROP_CHECK_CHILD(child, from, used, vars, found);
+        }
+        break;
+    }
+    }
+}
+
+/* does evaluating `expr` at the store `node` conflict with a later use of the stored variable? */
+Boolean fn_0046fec0(IROLinear *node, IROLinear *expr)
+{
+    Boolean found = 0;
+    IROLinear *prev = node;
+    IROLinear *use;
+    BitVector *used;
+    BitVector *vars;
+    VarRecord *vr;
+
+    use = IroUtil_FindNextUse(prev);
+    if (use != NULL) {
+        IroBitVect_AllocateBitVector(&used, iroVarCount + 1);
+        IroBitVect_AllocateBitVector(&vars, iroVarCount + 1);
+        IroBitVect_AllocateBitVector(&data_00588018, iroVarCount + 1);
+        visit_linear_postorder(expr, (void (*)(IROLinear *, int))fn_004701b0);
+        IroBitVect_Or(data_00588018, vars);
+        vr = fn_0044ba70(*(Object **)(*(char **)(*(char **)((char *)node + 0x20) + 0x20) + 0xe), 0, 1);
+        IroBitVect_SetBit(vr->index, vars);
+        while (use != NULL && !found) {
+            fn_0046ffd0(use, prev, used, vars, &found);
+            prev = use;
+            use = IroUtil_FindNextUse(use);
+        }
+    }
+    return found;
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+static inline int IRO_IsRegable(Object *obj)
+{
+    int result;
+    if (obj->datatype == DLOCAL && obj->u.var.info) {
+        result = 0;
+        if (obj->u.var.info->noregister == 0)
+            result++;
+        return result;
+    }
+    return 0;
+}
+
+static inline Boolean Inline_IsObjectData(Object *object)
+{
+    return object->datatype == DDATA;
+}
+
+/* IsPropagatable */
+Boolean fn_004592e0(IROLinear *linear)
+{
+    Object *obj;
+    Object *obj2;
+
+    if (linear->type == IROLinearOp2Arg && linear->nodetype == EASS && (obj = IroDump_GetObjRef(linear->u.diadic.left)) &&
+        obj->type == linear->rtype && !is_volatile_object(obj)) {
+        if (linear->u.diadic.left->flags & IROLF_BitfieldIndirect) {
+            if (!fn_0044d520(linear->u.diadic.right))
+                return 0;
+            else
+                return 1;
+        }
+
+        if (fn_0044d520(linear->u.diadic.right))
+            return 1;
+
+        if ((obj2 = IroDump_GetObjRef(linear->u.diadic.right)) && !is_volatile_object(obj2) &&
+            IroUtil_AreTypesEqual(obj->type, linear->rtype)) {
+            if (!Inline_IsObjectData(linear->u.diadic.right->u.monadic->u.node->data.objref)) {
+                if (IRO_IsRegable(obj) && !IRO_IsRegable(obj2))
+                    return 0;
+                return 1;
+            }
+        }
+    }
+
+    return 0;
+}
+#else
 int fn_004592e0(IROLinear *node)
 {
     Object *left;
@@ -113,6 +424,7 @@ int fn_004592e0(IROLinear *node)
     }
     return 0;
 }
+#endif
 
 void IRO_CopyAndConstantPropagation(void)
 {
@@ -310,7 +622,7 @@ void IRO_CopyAndConstantPropagation(void)
                         } else if (node->value->type == IROLinearOperand) {
                             replacement = node->value->u.node;
                         } else {
-                            CError_FATAL(532);
+                            CError_FATAL(BY_VERSION(532, 768));
                         }
                         InlineAsmPPC_ReplaceObjectReferenceArguments(instruction->u.asm_stmt,
                                                                      list.operands[candidateIndex].object, replacement);

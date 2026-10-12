@@ -10,6 +10,9 @@
 #include "compiler/CodeGen.h"
 #include "compiler/PPCError.h"
 #include "compiler/InlineAsmRegisters.h"
+#if VERSION >= VERSION_GC_1_3
+#include "compiler/CError.h"
+#endif
 
 #include <string.h>
 #include <stdio.h>
@@ -440,6 +443,25 @@ InlineAsmRegisterEntry *CTemplateNew_GetInlineAsmRegisterEntry(HashNameNode *nam
     registerName = name->name;
     return CTemplateNew_LookupInlineAsmRegister(registerName);
 }
+
+#if VERSION >= VERSION_GC_1_3
+Type *fn_00531090(TypeTemplDep *base)
+{
+    TemplArg *args;
+    TypeTemplDep *result;
+
+    tk = CPrepTokenizer_GetNextToken();
+    args = CTemplateNew_ParseTemplateArguments(NULL, 1);
+    if (args == NULL) {
+        CError_ReportError(ERR_DECLARATION_SYNTAX_ERROR);
+        return (Type *)&stsignedint;
+    }
+    result = CDecl_NewTemplDepType(4);
+    result->u.qualtempl.type = base;
+    result->u.qualtempl.args = args;
+    return (Type *)result;
+}
+#endif
 
 struct InlineAsmRegisterEntry *CTemplateNew_LookupInlineAsmRegister(char *registerName)
 {

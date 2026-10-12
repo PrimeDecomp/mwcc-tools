@@ -42,6 +42,10 @@ struct CNameNode {
 #pragma options align = mac68k
 struct InterruptGenerationRecord {
     struct InterruptGenerationRecord *next;
+#if VERSION >= VERSION_GC_1_3
+    UInt8 kind; /* 0x04: 2 for a #pragma section declaration (BE_elf_SetDeclSection) */
+    UInt8 pad05;
+#endif
     UInt16 sectionIndex;
     UInt16 id;
     UInt8 enable;
@@ -66,6 +70,10 @@ struct ObjGenSection {
     UInt8 kind;
     UInt8 flags;
     SInt16 index;
+#if VERSION >= VERSION_GC_1_3
+    SInt16 f0c;
+    SInt16 symbolSectionIndex; /* 0x0e: write_sym_nodes emits it as st_shndx */
+#endif
     SInt32 relocationCount;
     struct ObjGenSymbolLink *symbolLink;
     struct SectionSymbolAttributes *header;
@@ -97,6 +105,9 @@ struct ObjGenSection {
 struct ObjGenSymbolLink {
     struct Object *object;
     struct BE_SymNode *symbol;
+#if VERSION >= VERSION_GC_1_3
+    UInt32 f08;
+#endif
     UInt8 value;
 };
 #pragma pack(pop)
@@ -177,6 +188,9 @@ extern void emit_relocation(SInt32 op, SInt32 offset, Object *obj, ObjGenSection
 extern void ObjGen_PPC_EABI_SetSymbolOffset(Object *object, int offset);
 extern void fn_00489360(Object *arg1, int arg2, void *arg3);
 extern UInt16 ObjGen_PPC_EABI_GetSectionIndex(short reg);
+#if VERSION >= VERSION_GC_1_3
+extern short fn_004b1d10(short key);
+#endif
 extern void ObjGen_PPC_EABI_AppendOutputEntry(ObjGenSection *context, unsigned int value);
 extern void ObjGen_PPC_EABI_EmitObjectRelocation(Object *object);
 extern ObjGenSection *fn_004892a0(Object *object, int size);

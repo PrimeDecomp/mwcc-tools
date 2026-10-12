@@ -41,6 +41,11 @@
 #include "compiler/TOC.h"
 #include "driver/cc-eabi-ppc.h"
 #include <string.h>
+#if VERSION >= VERSION_GC_1_3
+#include "compiler/IrOptimizer.h"
+#include "compiler/IroLoop.h"
+#include "compiler/IroUtil.h"
+#endif
 
 struct CompilerLinkerOptions copts;
 struct Object *data_0058758c;
@@ -315,6 +320,74 @@ Object *CodeGen_AllocateTemporaryObject(Type *type)
     return object;
 }
 
+
+#if VERSION >= VERSION_GC_1_3
+extern void fn_00440040(Macro *macro, const char *text);
+/* 1.3: CodeGen registers these target macros itself (upstream keeps them static in CPrep.c for 1.2.5) */
+extern Macro data_0054fec0;
+extern Macro optionalNameMacro;
+
+/* text of a target-specific predefined macro */
+const char *fn_0042ef30(Macro *macro)
+{
+    if (macro == &data_0054fec0)
+        return "10205";
+    if (macro == &builtin_altivec_macro)
+        return "100000000";
+    if (macro == &builtin_powerc_macro)
+        return "1";
+    if (macro == &builtin_underscore_powerc_macro)
+        return "1";
+    if (macro == &builtin_powerpc_macro)
+        return "1";
+    if (macro == &builtin_endian_macro)
+        return "1";
+    if (macro == &builtin_ppc_macro)
+        return "1";
+    if (CMach_GetCPU() && macro == &optionalNameMacro)
+        return "1";
+    if (macro == &builtin_profile_macro)
+        return copts.emitExtraAssemblyData ? "1" : "0";
+    if (macro == &builtin_fourbyteints_macro)
+        return "1";
+    if (macro == &builtin_ieeedoubles_macro)
+        return "1";
+    if (macro == &builtin_ppc_eabi_macro)
+        return "1";
+    CError_FATAL(5027);
+    return "0";
+}
+
+/* target-specific predefined macros */
+void fn_0042f020(void)
+{
+    const char *optionalName;
+
+    fn_00440040(&data_0054fec0, "__VEC__");
+    fn_00440040(&builtin_altivec_macro, "__ALTIVEC__");
+    fn_00440040(&builtin_powerc_macro, "powerc");
+    fn_00440040(&builtin_underscore_powerc_macro, "__powerc");
+    fn_00440040(&builtin_powerpc_macro, "__POWERPC__");
+    fn_00440040(&builtin_ppc_macro, "__ppc__");
+#if VERSION >= VERSION_GC_1_3
+    if (!copts.littleendian)
+        fn_00440040(&builtin_endian_macro, "__BIG_ENDIAN__");
+    else
+        fn_00440040(&builtin_endian_macro, "__LITTLE_ENDIAN__");
+#else
+    fn_00440040(&builtin_endian_macro, copts.littleendian ? "__LITTLE_ENDIAN__" : "__BIG_ENDIAN__");
+#endif
+    optionalName = CMach_GetCPU();
+    if (optionalName != NULL) {
+        fn_00440040(&optionalNameMacro, optionalName);
+    }
+    fn_00440040(&builtin_profile_macro, "__profile__");
+    fn_00440040(&builtin_fourbyteints_macro, "__fourbyteints__");
+    fn_00440040(&builtin_ieeedoubles_macro, "__IEEEdoubles__");
+    fn_00440040(&builtin_ppc_eabi_macro, "__PPC_EABI__");
+}
+#endif
+
 void CodeGen_AllocateArgumentSlots(Object *function, Boolean isVariadic, Boolean hasStructReturn)
 {
     Object *obj;
@@ -414,7 +487,11 @@ void CodeGen_AllocateArgumentSlots(Object *function, Boolean isVariadic, Boolean
     data_00588274 = offset;
 }
 
+#if VERSION >= VERSION_GC_1_3
+void CodeGen_EnumerateArgumentRegisters(void (*callback)(Object *argument, SInt16 registerNumber), Boolean flag)
+#else
 void CodeGen_EnumerateArgumentRegisters(void (*callback)(Object *argument, SInt16 registerNumber))
+#endif
 {
     Type *argumentType;
     ObjectList *parameter = arguments;
@@ -449,7 +526,7 @@ void CodeGen_EnumerateArgumentRegisters(void (*callback)(Object *argument, SInt1
                 else
                     generalRegister += 2;
             } else {
-                CError_FATAL(448);
+                CError_FATAL(BY_VERSION(448, 389));
                 generalRegister += argumentType->size >> 2;
                 if (argumentType->size & 3)
                     generalRegister++;
@@ -476,7 +553,7 @@ void bind_object_register(Object *object, SInt16 reg)
             (type->type == TYPEMEMBERPOINTER && type->size == 4) ||
             (copts.operandsDebug != 0 && type->type == TYPEFLOAT)) {
             if (type->size <= 4) {
-                Registers_BindGPR(object, reg);
+                REGISTERS_BIND_GPR(object, reg);
             } else if (reg < 10) {
                 if (copts.littleendian != 0) {
                     Registers_BindGPRPair(object, reg, reg + 1);
@@ -490,7 +567,7 @@ void bind_object_register(Object *object, SInt16 reg)
             TypeStruct *structType = (TypeStruct *)type;
             int structKind;
             if ((structKind = structType->stype) >= STRUCT_VECTOR_UCHAR && structKind <= STRUCT_VECTOR_PIXEL)
-                Registers_BindVR(object, reg);
+                REGISTERS_BIND_VR(object, reg);
         }
     }
 }
@@ -858,7 +935,11 @@ void allocate_registers_and_local_slots(void)
 
     gVectorArrayConversion = 0;
     if (data_00588521 > 0 && gUseVirtualRegisterNumbers_00587f00 == 0)
+#if VERSION >= VERSION_GC_1_3
+        CodeGen_EnumerateArgumentRegisters(bind_object_register, 0);
+#else
         CodeGen_EnumerateArgumentRegisters(bind_object_register);
+#endif
     if (gUseVirtualRegisterNumbers_00587f00 != 0) {
         allocate_object_registers();
     } else {
@@ -1276,7 +1357,7 @@ void emit_name_string_address(const char *name)
         Operands_ForceGPR(&op, (Type *)&void_ptr, 3);
 
     if (op.kind > 0) {
-        CError_FATAL(1535);
+        CError_FATAL(BY_VERSION(1535, 1684));
     } else {
         SInt32 reg = op.reg;
         if (reg != 3) {
@@ -1296,7 +1377,7 @@ void emit_name_string_address(const char *name)
         }
     }
 
-    PCodeUtilities_EmitObjectInstructionWithPayload(data_00588054, 1, 8, 0, 0);
+    PCodeUtilities_EmitObjectInstructionWithRegisterMasks(data_00588054, 1, 8, 0, 0);
 }
 
 void CodeGen_Generator(Statement *statements, Object *functionObject, Boolean context, Boolean zero)
@@ -1406,7 +1487,11 @@ void CodeGen_Generator(Statement *statements, Object *functionObject, Boolean co
     StackFrameEABI_Initialize();
     Registers_SetupStackBaseReg();
     allocate_registers_and_local_slots();
+#if VERSION >= VERSION_GC_1_3
+    CodeGen_EnumerateArgumentRegisters(&emit_dlocal_initialization, 0);
+#else
     CodeGen_EnumerateArgumentRegisters(&emit_dlocal_initialization);
+#endif
     if (copts.instructionSchedulingMode != 0 || copts.altivec_model != 0)
         PCodeUtilities_ResolveLabel(PCode_NewLabel());
     if (copts.profile)
@@ -1461,7 +1546,7 @@ void CodeGen_Generator(Statement *statements, Object *functionObject, Boolean co
                 data_00560648[operand->type](operand, 0, 0, &operandBuffer);
                 if (operandBuffer.kind != OpndType_GPR)
                     Operands_ForceGPR(&operandBuffer, (Type *)&void_ptr, 0);
-                CError_ASSERT(1286, operandBuffer.kind == OpndType_GPR);
+                CError_ASSERT(BY_VERSION(1286, 1412), operandBuffer.kind == OpndType_GPR);
                 for (labelEntry = toc_name_entries; labelEntry != NULL; labelEntry = labelEntry->next)
                     PCode_AddSuccessor(gCurrentBlock, labelEntry->label->pclabel);
                 PCodeUtilities_EmitInstruction(PC_MTCTR, operandBuffer.reg);
@@ -1491,22 +1576,22 @@ void CodeGen_Generator(Statement *statements, Object *functionObject, Boolean co
             case ST_BEGINCATCH: {
                 Object *object = statement->expr->data.objref;
                 PCodeUtilities_ResolveLabel(PCode_NewLabel());
-                CError_ASSERT(1436, object->datatype == DLOCAL);
+                CError_ASSERT(BY_VERSION(1436, 1583), object->datatype == DLOCAL);
                 emit_opcode_with_base_offset(PC_STW, 1, stack_base_reg, object, 0x14);
                 PCodeUtilities_ResolveLabel(PCode_NewLabel());
                 break;
             }
             case ST_ENDCATCHDTOR: {
                 ENode *operand = statement->expr;
-                CError_ASSERT(1845, operand->data.objref->datatype == DLOCAL);
+                CError_ASSERT(BY_VERSION(1845, 2157), operand->data.objref->datatype == DLOCAL);
                 PCodeUtilities_EmitAddress(3, stack_base_reg, statement->expr->data.objref, 0);
-                PCodeUtilities_EmitObjectInstructionWithPayload(data_005875a0, 1, 8, 0, 0);
+                PCodeUtilities_EmitObjectInstructionWithRegisterMasks(data_005875a0, 1, 8, 0, 0);
             }
                 /* fall through */
             case ST_ENDCATCH: {
                 Object *object = statement->expr->data.objref;
                 PCodeInstruction *instruction;
-                CError_ASSERT(1463, object->datatype == DLOCAL);
+                CError_ASSERT(BY_VERSION(1463, 1610), object->datatype == DLOCAL);
                 PCodeUtilities_ResolveLabel(PCode_NewLabel());
                 emit_opcode_with_base_offset(PC_LWZ, 0, 1, NULL, 0);
                 instruction = PCodeUtilities_CreateInstruction(0x22, 1, stack_base_reg, object, 0x14);
@@ -1584,7 +1669,7 @@ void CodeGen_Generator(Statement *statements, Object *functionObject, Boolean co
         StackFrameEABI_SaveArgumentRegisters(firstEntryBlock, secondEntryBlock, commonEntryBlock, entryLabel);
     }
     if (copts.profile)
-        PCodeUtilities_EmitObjectInstructionWithPayload(data_00587c8c, 1, 0, 0, 0);
+        PCodeUtilities_EmitObjectInstructionWithRegisterMasks(data_00587c8c, 1, 0, 0, 0);
     StackFrameEABI_MergePrologueEpilogue(gReturnBlock, 1);
     if (copts.debug_listing)
         fn_004c4bd0(COptimizer_GetFunctionObject(functionObject)->name, "AFTER GENERATING EPILOGUE, PROLOGUE");
@@ -1629,7 +1714,7 @@ void CodeGen_GenThunk(Object *stmt, Object *func, SInt32 a, SInt32 flag, SInt32 
     save_d7 = copts.peephole;
     save_27 = copts.emitExtraAssemblyData;
 
-    CError_ASSERT(2026, !flag);
+    CError_ASSERT(BY_VERSION(2026, 2372), !flag);
 
     PCode_ResetBlocks();
     PCode_CreateBlock();
@@ -1810,7 +1895,7 @@ void CodeGen_EmitLoadAndBranchFunction(Object *function, Object *branchTarget, O
     SInt32 reg;
 
     memclrw(&operand, sizeof(operand));
-    CError_ASSERT(2283, offset <= 0x7fff);
+    CError_ASSERT(BY_VERSION(2283, 2630), offset <= 0x7fff);
     PCode_ResetBlocks();
     PCode_CreateBlock();
     table->section = ObjGen_PPC_EABI_GetHeaderIndex(2);
@@ -1826,7 +1911,7 @@ void CodeGen_EmitLoadAndBranchFunction(Object *function, Object *branchTarget, O
         Operands_ForceGPR(&operand, (Type *)&void_ptr, 12);
     }
     if (operand.kind != OpndType_GPR) {
-        CError_FATAL(2316);
+        CError_FATAL(BY_VERSION(2316, 2664));
     } else {
         reg = operand.reg;
         if (reg != 12)
@@ -2328,11 +2413,11 @@ void CodeGen_ParsePragma(HashNameNode *name)
     if (!strcmp(name->name, "altivec_vrsave")) {
         if (CPrepTokenizer_ScanToken() == -3) {
             if (!strcmp(data_00587fa0->name, "off")) {
-                CPrep_SaveAndSetOption(0x11, 0);
+                CPrep_SaveAndSetOption(BY_VERSION(0x11, 19), 0);
             } else if (!strcmp(data_00587fa0->name, "on")) {
-                CPrep_SaveAndSetOption(0x11, 1);
+                CPrep_SaveAndSetOption(BY_VERSION(0x11, 19), 1);
             } else if (!strcmp(data_00587fa0->name, "allon")) {
-                CPrep_SaveAndSetOption(0x11, 2);
+                CPrep_SaveAndSetOption(BY_VERSION(0x11, 19), 2);
             } else if (!strcmp(data_00587fa0->name, "reset")) {
                 CPrep_RestoreOption(0x11);
             } else {
@@ -2357,7 +2442,7 @@ void CodeGen_ParsePragma(HashNameNode *name)
                 case 32:
                 case 64:
                 case 128:
-                    CPrep_SaveAndSetOption(0x12, value);
+                    CPrep_SaveAndSetOption(BY_VERSION(0x12, 20), value);
                     break;
                 default:
                     PPCError_ReportDiagnostic(0xa1);
@@ -2474,6 +2559,86 @@ void CodeGen_ParsePragma(HashNameNode *name)
     SkipPragma();
 }
 
+#if VERSION >= VERSION_GC_1_3
+struct ObjectOverrideEntry {
+    struct ObjectOverrideEntry *next;
+    Object *object;
+    UInt32 pad8;
+    UInt8 lo;
+    UInt8 hi;
+};
+
+struct IntrRecord13 {
+    struct IntrRecord13 *next;
+    UInt8 kind;
+    UInt8 pad5;
+    UInt16 pad6;
+    UInt16 id;
+    UInt16 regs[5];
+    UInt8 flags;
+    UInt8 pad15;
+};
+
+extern struct ObjectOverrideEntry *data_005e686c;
+extern SInt32 data_005e6714;
+extern struct IntrRecord13 *fn_004b1c00(void);
+
+static inline void SetInterruptFlags(Object *obj, UInt8 flags)
+{
+    struct IntrRecord13 *record;
+    BE_SymNode *infoObject;
+
+    obj->qual |= 0x80000000;
+    infoObject = BE_symbol_GetOrCreateFunctionObjectSymbol(obj);
+    record = (struct IntrRecord13 *)infoObject->interruptInfo;
+    if (record == NULL) {
+        record = (struct IntrRecord13 *)galloc(0x16);
+        memclrw(record, 0x16);
+        infoObject->interruptInfo = (InterruptGenerationRecord *)record;
+        record->next = (struct IntrRecord13 *)interrupt_generation_records;
+        interrupt_generation_records = (InterruptGenerationRecord *)record;
+        data_005e6714--;
+        record->id = data_005e6714;
+        record->kind = 1;
+    }
+    record->flags |= flags;
+}
+
+void CodeGen_SetObjectSectionAndInterruptInfo(Object *obj)
+{
+    struct ObjectOverrideEntry *entry;
+    UInt16 key;
+    UInt8 kind;
+
+    if (obj->datatype == 0 && obj->u.data.f36hi != 0) {
+        key = obj->u.data.f36;
+        for (entry = data_005e686c; entry != NULL; entry = entry->next) {
+            if ((UInt8)key == entry->lo) {
+                if ((UInt8)(key >> 8) == entry->hi)
+                    entry->object = obj;
+                break;
+            }
+        }
+    }
+
+    if (obj->section == 0) {
+        if (obj->name == NULL)
+            return;
+        obj->section = fn_004b1c00()->id;
+    }
+
+    kind = obj->datatype;
+    if ((kind == 3 || kind == 4) && obj->u.f1_3[0x18] != 0) {
+        if (obj->name == NULL)
+            return;
+        SetInterruptFlags(obj, obj->u.f1_3[0x18]);
+    } else if (copts.interruptOptions != NULL && kind != 0) {
+        if (obj->name == NULL)
+            return;
+        SetInterruptFlags(obj, ((struct IntrRecord13 *)copts.interruptOptions)->flags);
+    }
+}
+#else
 void CodeGen_SetObjectSectionAndInterruptInfo(Object *obj)
 {
     SInt32 isConst;
@@ -2542,10 +2707,16 @@ void CodeGen_SetObjectSectionAndInterruptInfo(Object *obj)
     }
 }
 
+#endif
+
 void CodeGen_SetIROptimizationEnabled(void)
 
 {
+#if VERSION >= VERSION_GC_1_3
+    copts.globaloptimizer = 1;
+#else
     copts.globaloptimizer = '\0' < copts.deleteDeadInstructions;
+#endif
     return;
 }
 
@@ -2557,8 +2728,14 @@ unsigned int CodeGen_GetMethRecRTypeSize(MethRec *record)
         size = 4;
     } else {
         Type *type = record->rtype;
+#if VERSION >= VERSION_GC_1_3
+        if (type->type == TYPEARRAY ||
+            (type->type == TYPESTRUCT && ((int)TYPE_STRUCT(type)->stype < 4 || (int)TYPE_STRUCT(type)->stype > 14)) ||
+            type->type == TYPECLASS || (type->type == TYPEMEMBERPOINTER && type->size == 12))
+#else
         if (type->type == TYPEARRAY || (unsigned char)(type->type - TYPESTRUCT) <= TYPECLASS - TYPESTRUCT ||
             (type->type == TYPEMEMBERPOINTER && type->size == 12))
+#endif
             size = 8;
         else
             size = type->size;
@@ -2584,11 +2761,23 @@ int fn_00432480(MethRec *record)
     return (((size + 3) & ~3) + 7) & ~3;
 }
 
+/* Type-bearing record used by the code generator; preceding fields are unknown. */
+
+#if VERSION >= VERSION_GC_1_3
+unsigned int fn_0042fbd0(MethRec *record)
+{
+    return (CodeGen_GetMethRecRTypeSize(record) + 7) & ~3;
+}
+#endif
+
 unsigned int CodeGen_GetObjCParameterOffset(MethRec *function, ObjCParameterNode *argument)
 {
     unsigned int offset;
     ObjCParameterNode *arg;
 
+#if VERSION >= VERSION_GC_1_3
+    offset = ((CodeGen_GetMethRecRTypeSize(function) + 7) & ~3U) + 4;
+#else
     if (function->rtype == NULL)
         offset = 4;
     else if (function->rtype->type == TYPEARRAY || (unsigned char)(function->rtype->type - TYPESTRUCT) <= 1 ||
@@ -2601,6 +2790,7 @@ unsigned int CodeGen_GetObjCParameterOffset(MethRec *function, ObjCParameterNode
     offset = (offset + 3) & ~3U;
     offset = (offset + 7) & ~3U;
     offset += 4;
+#endif
     arg = function->args;
     while (arg != NULL) {
         if (arg == argument)
@@ -2620,6 +2810,9 @@ SInt32 CodeGen_GetMethRecRtypeAndArgsSize(MethRec *p)
     ObjCParameterNode *n;
     SInt32 size;
 
+#if VERSION >= VERSION_GC_1_3
+    size = CodeGen_GetMethRecRTypeSize(p);
+#else
     if (p->rtype == NULL)
         size = 4;
     else if (p->rtype->type == TYPEARRAY || p->rtype->type == TYPESTRUCT || p->rtype->type == TYPECLASS ||
@@ -2630,6 +2823,7 @@ SInt32 CodeGen_GetMethRecRtypeAndArgsSize(MethRec *p)
     if (size == 0)
         size = 1;
     size = (size + 3) & ~3;
+#endif
 
     n = p->args;
     while (n != NULL) {
@@ -2647,14 +2841,19 @@ SInt32 CodeGen_GetMethRecRtypeAndArgsSize(MethRec *p)
 
 InterruptGenerationRecord *CodeGen_FindInterruptGenerationRecord(SInt16 key)
 {
+#if VERSION >= VERSION_GC_1_3
+    UInt16 id = key;
+#endif
     InterruptGenerationRecord *entry = interrupt_generation_records;
     while (entry) {
-        if (entry->id == (unsigned short)key)
+        if (entry->id == BY_VERSION((unsigned short)key, id))
             break;
         entry = entry->next;
     }
+#if VERSION < VERSION_GC_1_3
     if (!entry)
         CError_FATAL(3429);
+#endif
     return entry;
 }
 
@@ -2694,6 +2893,19 @@ ENode *CodeGen_MakeAltivecStructCast(ENode *a, Type *type, UInt32 qual)
 
 int CodeGen_CheckAltivecStypeMatch(ENode *expr, Type *type, Boolean convert, Boolean checkAccess)
 {
+#if VERSION >= VERSION_GC_1_3
+    TypeStruct *targetType = TYPE_STRUCT(type);
+    TypeStruct *exprType = TYPE_STRUCT(expr->rtype);
+    SInt32 result;
+
+    if (copts.altivec_model != 0 && targetType->type == TYPESTRUCT && (int)targetType->stype >= 4 &&
+        (int)targetType->stype <= 14 && exprType->type == TYPESTRUCT && (int)exprType->stype >= 4 &&
+        (int)exprType->stype <= 14 && targetType->stype == exprType->stype)
+        result = 3;
+    else
+        result = 0;
+    return result;
+#else
     TypeStruct *targetType = TYPE_STRUCT(type);
     TypeStruct *exprType = TYPE_STRUCT(expr->rtype);
     SInt32 result;
@@ -2713,6 +2925,7 @@ int CodeGen_CheckAltivecStypeMatch(ENode *expr, Type *type, Boolean convert, Boo
         result = 0;
     }
     return result;
+#endif
 }
 
 Boolean IrOptimizer_ConvertToVectorConstant(ENode *expr, union MWVector128 *dst, TypeStruct *vectorType)
@@ -3019,3 +3232,334 @@ Boolean IrOptimizer_ConvertToVectorConstant(ENode *expr, union MWVector128 *dst,
     }
     return result;
 }
+
+#if VERSION >= VERSION_GC_1_3
+extern UInt8 data_005e73ec;
+extern UInt8 data_005e7375;
+
+void fn_0042ed50(void)
+{
+    data_005e73ec = 0;
+    data_005e7375 = 0;
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+void fn_0046b550(void)
+{
+    IROLinear *node = linear_head;
+
+    linear_index_counter = 0;
+    if (linear_head != NULL) {
+        do {
+            node->index = linear_index_counter;
+            linear_index_counter++;
+        } while ((node = node->next) != NULL);
+    }
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+/* upstream keeps these static in IrOptimizer.c */
+extern struct Statement *current_statement;
+extern UInt8 data_0057f6b4;
+
+struct IroSavedState {
+    struct IROLinear *linearHead;
+    struct IROLinear *lastLinear;
+    int linearIndexCounter;
+    struct Statement *currentStatement;
+    UInt8 flag0;
+    UInt8 flag1;
+    UInt8 flag2;
+    struct List12 *nullCheckList;
+    struct Statement *optimizerStatement;
+    struct Statement *word1c;
+};
+
+void fn_0046b1e0(struct IroSavedState *state)
+{
+    linear_head = state->linearHead;
+    last_linear = state->lastLinear;
+    linear_index_counter = state->linearIndexCounter;
+    current_statement = state->currentStatement;
+    data_0057f6b4 = state->flag0;
+    data_00588518 = state->flag1;
+    data_00588526 = state->flag2;
+    temporary_list = state->nullCheckList;
+    current_optimizer_statement = state->optimizerStatement;
+    statement_insertion_point = state->word1c;
+}
+
+void fn_0046b240(struct IroSavedState *state)
+{
+    state->linearHead = linear_head;
+    state->lastLinear = last_linear;
+    state->linearIndexCounter = linear_index_counter;
+    state->currentStatement = current_statement;
+    state->flag0 = data_0057f6b4;
+    state->flag1 = data_00588518;
+    state->flag2 = data_00588526;
+    state->nullCheckList = temporary_list;
+    state->optimizerStatement = current_optimizer_statement;
+    state->word1c = statement_insertion_point;
+}
+extern Boolean fn_004672c0(IROLinear *nd);
+
+static Statement *NewPendingStmt(UInt8 type)
+{
+    Statement *s = (Statement *)CompilerTools_AllocatePool(0x1e);
+    memset(s, 0, 0x1e);
+    s->type = type;
+    return s;
+}
+
+/* new label statement for an existing label */
+void fn_0046dcf0(CLabel **label)
+{
+    Statement *s = NewPendingStmt(2);
+    s->label = *label;
+    s->label->stmt = s;
+    s->dobjstack = current_optimizer_statement->dobjstack;
+    s->sourceoffset = current_optimizer_statement->sourceoffset;
+    s->f1a = current_optimizer_statement->f1a;
+    s->value = current_optimizer_statement->value;
+    s->flags = current_optimizer_statement->flags;
+    if (statement_insertion_point) {
+        s->next = statement_insertion_point->next;
+        statement_insertion_point->next = s;
+    } else {
+        s->next = NULL;
+    }
+    statement_insertion_point = s;
+}
+
+/* new label statement for a fresh label, returned through *out */
+void fn_0046e2b0(ENode *e, CLabel **out)
+{
+    Statement *s;
+    *out = IroUtil_NewLabel();
+    s = NewPendingStmt(3);
+    s->label = *out;
+    s->dobjstack = current_optimizer_statement->dobjstack;
+    s->sourceoffset = current_optimizer_statement->sourceoffset;
+    s->f1a = current_optimizer_statement->f1a;
+    s->value = current_optimizer_statement->value;
+    s->flags = current_optimizer_statement->flags;
+    if (statement_insertion_point) {
+        s->next = statement_insertion_point->next;
+        statement_insertion_point->next = s;
+    } else {
+        s->next = NULL;
+    }
+    statement_insertion_point = s;
+}
+
+/* new expression statement */
+void fn_0046e8d0(ENode *e)
+{
+    Statement *s = NewPendingStmt(4);
+    s->expr = e->data.monadic;
+    s->dobjstack = current_optimizer_statement->dobjstack;
+    s->sourceoffset = current_optimizer_statement->sourceoffset;
+    s->f1a = current_optimizer_statement->f1a;
+    s->value = current_optimizer_statement->value;
+    s->flags = current_optimizer_statement->flags;
+    if (statement_insertion_point) {
+        s->next = statement_insertion_point->next;
+        statement_insertion_point->next = s;
+    } else {
+        s->next = NULL;
+    }
+    statement_insertion_point = s;
+}
+
+/* new conditional branch statement (kind 6) to a fresh label */
+void fn_0046d6d0(ENode *e, void *unused, CLabel **out)
+{
+    Statement *s;
+    *out = IroUtil_NewLabel();
+    s = NewPendingStmt(6);
+    s->expr = e->data.monadic;
+    s->label = *out;
+    s->dobjstack = current_optimizer_statement->dobjstack;
+    s->sourceoffset = current_optimizer_statement->sourceoffset;
+    s->f1a = current_optimizer_statement->f1a;
+    s->value = current_optimizer_statement->value;
+    s->flags = current_optimizer_statement->flags;
+    if (statement_insertion_point) {
+        s->next = statement_insertion_point->next;
+        statement_insertion_point->next = s;
+    } else {
+        s->next = NULL;
+    }
+    statement_insertion_point = s;
+}
+
+/* new conditional branch statement (kind 7) to a fresh label */
+void fn_0046e350(ENode *e, CLabel **out)
+{
+    Statement *s;
+    *out = IroUtil_NewLabel();
+    s = NewPendingStmt(7);
+    s->expr = e->data.monadic;
+    s->label = *out;
+    s->dobjstack = current_optimizer_statement->dobjstack;
+    s->sourceoffset = current_optimizer_statement->sourceoffset;
+    s->f1a = current_optimizer_statement->f1a;
+    s->value = current_optimizer_statement->value;
+    s->flags = current_optimizer_statement->flags;
+    if (statement_insertion_point) {
+        s->next = statement_insertion_point->next;
+        statement_insertion_point->next = s;
+    } else {
+        s->next = NULL;
+    }
+    statement_insertion_point = s;
+}
+
+/* mark a tree of kind-15 linears as part of the loop-invariant region */
+void fn_0046eab0(IROLinear *nd)
+{
+    nd->flags |= 0x40;
+    if (nd->type == IROLinearOp2Arg && nd->nodetype == 0xf) {
+        if (fn_004672c0(nd->u.diadic.left) || (nd->u.diadic.left->type == IROLinearOp1Arg && nd->u.diadic.left->nodetype == EINDIRECT))
+            nd->u.diadic.left->flags |= 0x40;
+        if (fn_004672c0(nd->u.diadic.right) || (nd->u.diadic.right->type == IROLinearOp1Arg && nd->u.diadic.right->nodetype == EINDIRECT))
+            nd->u.diadic.right->flags |= 0x40;
+        if (nd->u.diadic.left->type == IROLinearOp2Arg && nd->u.diadic.left->nodetype == 0xf)
+            fn_0046eab0(nd->u.diadic.left);
+        if (nd->u.diadic.right->type == IROLinearOp2Arg && nd->u.diadic.right->nodetype == 0xf)
+            fn_0046eab0(nd->u.diadic.right);
+    }
+}
+/* recursively set the 0x4000 flag on a linear tree */
+void fn_0046e9f0(IROLinear *node)
+{
+    int i;
+
+    node->flags |= 0x4000;
+    switch (node->type) {
+    case IROLinearNop:
+    case IROLinearEnd:
+        break;
+    case IROLinearOp1Arg:
+    case IROLinearBeginCatch:
+    case IROLinearEndCatch:
+    case IROLinearEndCatchDtor:
+        fn_0046e9f0(node->u.monadic);
+        break;
+    case IROLinearOp2Arg:
+        fn_0046e9f0(node->u.diadic.left);
+        fn_0046e9f0(node->u.diadic.right);
+        break;
+    case IROLinearIf:
+    case IROLinearIfNot:
+        fn_0046e9f0(node->u.branch.cond);
+        break;
+    case IROLinearReturn:
+        if (node->u.monadic != NULL)
+            fn_0046e9f0(node->u.monadic);
+        break;
+    case IROLinearSwitch:
+        fn_0046e9f0(node->u.swtch.cond);
+        break;
+    case IROLinearCond:
+        fn_0046e9f0(node->u.args3.a);
+        fn_0046e9f0(node->u.args3.b);
+        fn_0046e9f0(node->u.args3.c);
+        break;
+    case IROLinearFunccall:
+        fn_0046e9f0(node->u.funccall.callee);
+        for (i = 0; i < node->u.funccall.argCount; i++)
+            fn_0046e9f0(node->u.funccall.args[i]);
+        break;
+    }
+}
+/* TransformLogicalAndLHS: branch (kind 7) on the left operand to a fresh label */
+void fn_0046e400(ENode *e, Object **pp, CLabel **out)
+{
+    Statement *s;
+    *out = IroUtil_NewLabel();
+    s = NewPendingStmt(7);
+    s->expr = e->data.diadic.left;
+    s->label = *out;
+    s->dobjstack = current_optimizer_statement->dobjstack;
+    s->sourceoffset = current_optimizer_statement->sourceoffset;
+    s->f1a = current_optimizer_statement->f1a;
+    s->value = current_optimizer_statement->value;
+    s->flags = current_optimizer_statement->flags;
+    if (statement_insertion_point) {
+        s->next = statement_insertion_point->next;
+        statement_insertion_point->next = s;
+    } else {
+        s->next = NULL;
+    }
+    statement_insertion_point = s;
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+extern UInt8 data_005dac20;
+extern UInt8 data_005dac21;
+extern UInt8 INT_005882b8;
+extern void fn_00454030(void);
+extern void fn_00454a40(void);
+extern void fn_00456800(void);
+extern void fn_00456bd0(void);
+extern void fn_0045cdf0(void);
+extern void fn_0045cb50(void);
+extern void fn_0045c8b0(void);
+extern void fn_0045f8c0(void);
+extern void fn_0045f520(void);
+extern void fn_004625b0(void);
+extern void fn_00462310(void);
+
+/* run the one-time optimizer setup passes (once per translation unit) */
+void fn_0042e150(void)
+{
+    if (!data_005dac21) {
+        INT_005882b8 = 0;
+        fn_00454030();
+        if (!data_005dac20) {
+            fn_00454a40();
+            fn_00456800();
+            fn_00456bd0();
+            fn_0045cdf0();
+            fn_0045cb50();
+            fn_0045c8b0();
+            fn_0045f8c0();
+            fn_0045f520();
+            fn_004625b0();
+            fn_00462310();
+            data_005dac20 = 1;
+        }
+        data_005dac21 = 1;
+    }
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+extern void (*data_005dac28)(void);
+extern void fn_00441220(int *stats, UInt8 kind);
+extern void fn_004b49e0(const char *format, ...);
+
+/* report an out-of-memory condition with heap statistics, then run the installed heap callback */
+void fn_0042ed60(void)
+{
+    int all[7];
+    int opt[7];
+
+    fn_00441220(opt, 3);
+    fn_00441220(all, 5);
+    CompilerTools_ResetGallocAndPoolMemory();
+    fn_004b49e0("%n:%u HEAP STATUS\n    optimizer: %i blocks, used: %i, free: %i, total: %i, largest free: %i\n          all: %i "
+                "blocks, used: %i, free: %i, total: %i, largest free: %i",
+                "?", "out of memory", opt[0], opt[2] - opt[3], opt[3], opt[2], opt[6], all[0], all[2] - all[3], all[3], all[2],
+                all[6]);
+    if (data_005dac28 != NULL) {
+        CompilerTools_SetHeapCallback(data_005dac28);
+        data_005dac28();
+    }
+}
+#endif

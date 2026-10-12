@@ -268,7 +268,7 @@ static inline void RecordObjectUse(Object *object, unsigned char direct_referenc
     VarInfo *info;
 
     if (object->datatype == DALIAS) {
-        CError_FATAL(1850);
+        CError_FATAL(BY_VERSION(1850, 1875));
     }
     if (object->datatype != DLOCAL) {
         return;
@@ -276,11 +276,22 @@ static inline void RecordObjectUse(Object *object, unsigned char direct_referenc
 
     info = object->u.var.info;
     info->used = 1;
+#if VERSION >= VERSION_GC_1_3
+    /* (with the IR optimizer on, use counts come from it) */
+    if (!copts.globaloptimizer) {
+        if (copts.optimizesize) {
+            info->usage++;
+        } else {
+            info->usage += curstmtvalue;
+        }
+    }
+#else
     if (copts.optimizesize) {
         info->usage++;
     } else {
         info->usage += curstmtvalue;
     }
+#endif
     if (direct_reference) {
         info->noregister = 1;
     }
@@ -514,6 +525,48 @@ void eliminate_common_subexpressions(void)
         }
     }
 }
+
+#if VERSION >= VERSION_GC_1_3
+extern SInt32 data_005e6778[];
+extern UInt8 data_005e2bf0[][32];
+extern SInt32 data_005e66a8[];
+extern SInt32 data_005e6a7c[];
+extern SInt32 data_005e5fc8[];
+
+/* the number of class IDX registers whose state byte is 0 */
+int fn_004fcb70(signed char idx)
+{
+    int n = 0;
+    int i;
+    for (i = 0; i < data_005e6778[idx]; i++) {
+        if (data_005e2bf0[idx][i] == 0)
+            n++;
+    }
+    return n;
+}
+
+/* the reference's open_temp_registers */
+void fn_004fca90(void)
+{
+    RegClass13 rclass;
+
+    for (rclass = 0; rclass < RegClass13_Max; rclass++)
+        data_005e5fc8[rclass] = data_005e66a8[rclass] = data_005e6a7c[rclass];
+}
+
+/* the reference's close_temp_registers */
+void fn_004fca00(void)
+{
+    RegClass13 rclass;
+
+    for (rclass = 0; rclass < RegClass13_Max; rclass++) {
+        if (data_005e6a7c[rclass] < data_005e66a8[rclass])
+            data_005e6a7c[rclass] = data_005e66a8[rclass];
+        else
+            data_005e66a8[rclass] = data_005e6a7c[rclass];
+    }
+}
+#endif
 
 COptCSE *find_or_create_left_cse(ENode *expr, COptCSE *left)
 {
@@ -1185,7 +1238,7 @@ void fn_004bf980(void)
             do {
                 ENode *expr;
                 if (op->type >= 4 && op->type <= 0xf && (expr = op->expr) != NULL && expr->type == ECOMMA) {
-                    Statement *next = (Statement *)lalloc(0x1a);
+                    Statement *next = (Statement *)lalloc(BY_VERSION(0x1a, 0x1e));
                     *next = *op;
                     op->next = next;
                     op->type = ST_EXPRESSION;
@@ -1449,7 +1502,7 @@ void follow_switch_labels_and_fold_constant(Statement *self)
     SwitchInfo *b;
     SwitchCase *p;
 
-    CError_ASSERT(1731, (b = (SwitchInfo *)self->label) != NULL && b->cases != NULL && b->defaultlabel != NULL);
+    CError_ASSERT(BY_VERSION(1731, 1746), (b = (SwitchInfo *) self->label) != NULL && b->cases != NULL && b->defaultlabel != NULL);
 
     b->defaultlabel = COpt_Follow(self, b->defaultlabel);
     for (p = b->cases; p != NULL; p = p->next)
@@ -1551,7 +1604,7 @@ void COptimizer_RecordObjectUse(Object *object, unsigned char direct_reference)
     VarInfo *info;
 
     if (object->datatype == DALIAS) {
-        CError_FATAL(1850);
+        CError_FATAL(BY_VERSION(1850, 1875));
     }
     if (object->datatype != DLOCAL) {
         return;
@@ -1559,11 +1612,22 @@ void COptimizer_RecordObjectUse(Object *object, unsigned char direct_reference)
 
     info = object->u.var.info;
     info->used = 1;
+#if VERSION >= VERSION_GC_1_3
+    /* (with the IR optimizer on, use counts come from it) */
+    if (!copts.globaloptimizer) {
+        if (copts.optimizesize) {
+            info->usage++;
+        } else {
+            info->usage += curstmtvalue;
+        }
+    }
+#else
     if (copts.optimizesize) {
         info->usage++;
     } else {
         info->usage += curstmtvalue;
     }
+#endif
     if (direct_reference) {
         info->noregister = 1;
     }
@@ -1599,6 +1663,9 @@ void COptimizer_CountExpressionObjectUses(ENode *expression)
                 return;
 
             case ECOND:
+#if VERSION >= VERSION_GC_1_3
+            case ECONDASS:
+#endif
                 COptimizer_CountExpressionObjectUses(expression->data.monadic);
                 COptimizer_CountExpressionObjectUses(expression->data.diadic.right);
                 COptimizer_CountExpressionObjectUses(expression->data.cond.expr2);
@@ -1676,7 +1743,7 @@ void COptimizer_CountExpressionObjectUses(ENode *expression)
                 return;
 
             default:
-                CError_FATAL(1949);
+                CError_FATAL(BY_VERSION(1949, 1998));
                 break;
         }
     }
@@ -1922,7 +1989,7 @@ void set_label_stmt_flag(ENode *a)
     CLabel *label;
     label = (CLabel *)a->data.longval;
     if ((statement = label->stmt) == NULL || statement->type != ST_LABEL)
-        CError_FATAL(2133);
+        CError_FATAL(BY_VERSION(2133, 2195));
     label = (CLabel *)a->data.longval;
     statement = label->stmt;
     statement->flags |= 1;

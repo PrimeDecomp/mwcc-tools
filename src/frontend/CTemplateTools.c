@@ -32,7 +32,7 @@ static inline TemplArg *find(TemplArg *e, TemplParamID pid)
     for (; e; e = e->next) {
         if (e->pid.index == pid.index && e->pid.nindex == pid.nindex) {
             if (pid.type != e->pid.type)
-                CError_FATAL(1654);
+                CError_FATAL(BY_VERSION(1654, 1984));
             return e;
         }
     }
@@ -208,7 +208,7 @@ UInt8 CTemplTool_IsIdenticalTemplArgList(TemplArg *pattern, TemplParam *argument
         if (argument == NULL)
             return 0;
         if (argument->pid.type != pattern->pid.type)
-            CError_FATAL(207);
+            CError_FATAL(BY_VERSION(207, 297));
         if (pattern->pid.type) {
             if (pattern->data.typeparam.type->type != TYPETEMPLATE ||
                 (type = (TypeTemplDep *)pattern->data.typeparam.type)->dtype != 0 ||
@@ -227,6 +227,80 @@ UInt8 CTemplTool_IsIdenticalTemplArgList(TemplArg *pattern, TemplParam *argument
     return argument == NULL;
 }
 
+
+#if VERSION >= VERSION_GC_1_3
+ENode *fn_00561640(Object *obj, ENode *expr)
+{
+    TypeDeduce ctx;
+    TemplFuncInstance *info;
+    TypeMemberFunc *func;
+
+    memclrw(&ctx, sizeof(ctx));
+    CError_ASSERT(1747, obj->type->type == TYPEFUNC);
+    info = (TemplFuncInstance *)obj->u.func.inst;
+    if (info != NULL) {
+        ctx.args = info->args;
+    }
+    func = (TypeMemberFunc *)obj->type;
+    if ((func->flags & FUNC_METHOD) && (func->theclass->flags & CLASS_IS_TEMPL_INST)) {
+        ctx.inst = TEMPL_CLASS_INST(func->theclass);
+        ctx.tmclass = ctx.inst->templ;
+    }
+    return CTemplTool_DeduceExpr(&ctx, expr);
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+typedef struct TemplateTypeParamList13 {
+    char pad[0x10];
+    TemplParam *params;
+} TemplateTypeParamList13;
+
+typedef struct TemplateTypeParamDecl13 {
+    char pad[4];
+    HashNameNode *name;
+    TypeTemplDep *type;
+} TemplateTypeParamDecl13;
+
+#pragma options align = mac68k
+typedef struct TemplateTypeHolder13 {
+    UInt8 kind;
+    UInt8 flags;
+    TypeTemplDep *type;
+    char pad[4];
+} TemplateTypeHolder13;
+#pragma options align = reset
+
+/* add a type parameter record to a template parameter list, reporting duplicate names */
+void fn_005635a0(TemplateTypeParamList13 *list, TemplateTypeParamDecl13 *decl)
+{
+    TypeTemplDep *dependentType;
+    TemplateTypeHolder13 *holder;
+    TemplParam *existing;
+    TemplParam *record;
+
+    dependentType = CDecl_NewTemplDepType(0);
+    ((TemplateTypeParamDecl13 *)dependentType)->type = decl->type;
+    holder = (TemplateTypeHolder13 *)galloc(sizeof(TemplateTypeHolder13));
+    memclrw(holder, sizeof(TemplateTypeHolder13));
+    holder->kind = 1;
+    holder->flags = 0;
+    holder->type = dependentType;
+    for (existing = list->params; existing != NULL; existing = existing->next) {
+        if (existing->name == decl->name) {
+            CError_ReportError(0x7a, decl->name->name);
+            return;
+        }
+    }
+    record = (TemplParam *)galloc(0x10);
+    memclrw(record, 0x10);
+    record->name = decl->name;
+    record->data.typeparam.type = (Type *)holder;
+    record->next = list->params;
+    list->params = record;
+}
+#endif
+
 TemplClass *CTemplTool_GetSelfRefTemplate(TypeTemplDep *reference)
 {
     TemplClass *target;
@@ -237,7 +311,7 @@ TemplClass *CTemplTool_GetSelfRefTemplate(TypeTemplDep *reference)
     TemplClass *nestedClass;
     TemplClass *resolved;
     TemplArg *arguments;
-    CError_ASSERT(242, reference->type == TYPETEMPLATE);
+    CError_ASSERT(BY_VERSION(242, 347), reference->type == TYPETEMPLATE);
     if (reference->dtype == 2) {
         if (CTemplTool_IsIdenticalTemplArgList(reference->u.templ.args, (reference->u.templ.templ)->templ__params) !=
             0) {
@@ -264,7 +338,7 @@ TemplClass *CTemplTool_GetSelfRefTemplate(TypeTemplDep *reference)
         return NULL;
     }
     if (reference->dtype == 4) {
-        CError_ASSERT(284, reference->u.qualtempl.type->dtype == 1);
+        CError_ASSERT(BY_VERSION(284, 389), reference->u.qualtempl.type->dtype == 1);
         nestedParent = CTemplTool_GetSelfRefTemplate(reference->u.qualtempl.type->u.qual.type);
         if (nestedParent != NULL) {
             nestedInstance = (TypeClass *)CScope_GetLocalTagType(nestedParent->theclass.nspace,
@@ -288,8 +362,8 @@ struct TemplateFunction *CTemplTool_GetFuncTempl(Object *obj)
     while (p->datatype == DALIAS) {
         p = p->u.alias.object;
     }
-    if (p->type->type != TYPEFUNC || (((TypeFunc *)p->type)->flags & 0x400U) == 0) {
-        CError_FATAL(311);
+    if (p->type->type != TYPEFUNC || (((TypeFunc *)p->type)->flags & BY_VERSION(0x400U, TFUNC_TEMPLATE)) == 0) {
+        CError_FATAL(BY_VERSION(311, 416));
     }
     return p->u.templateFunction;
 }
@@ -300,15 +374,15 @@ void CTemplTool_MergeDefaultArgs(TemplParam *destination, TemplParam *source)
     do {
         if (destination == NULL) {
             if (source != NULL) {
-                CError_FATAL(339);
+                CError_FATAL(BY_VERSION(339, 455));
             }
             return;
         }
         if (source == NULL) {
-            CError_FATAL(342);
+            CError_FATAL(BY_VERSION(342, 458));
         }
         if (destination->pid.type != source->pid.type) {
-            CError_FATAL(343);
+            CError_FATAL(BY_VERSION(343, 459));
         }
         if (destination->pid.type != 0) {
             if (destination->data.typeparam.type == NULL && source->data.typeparam.type != NULL) {
@@ -330,14 +404,14 @@ void CTemplTool_MergeArgNames(Type *sourceFunc, Type *destinationFunc)
     FuncArg *destinationArg;
 
     if (destinationFunc->type != TYPEFUNC || sourceFunc->type != TYPEFUNC)
-        CError_FATAL(396);
+        CError_FATAL(BY_VERSION(396, 524));
 
     sourceArg = CTemplateTools_FirstArg((TypeMemberFunc *)sourceFunc);
     destinationArg = CTemplateTools_FirstArg((TypeMemberFunc *)destinationFunc);
 
     for (;;) {
         if (sourceArg == NULL || destinationArg == NULL || sourceArg == &elipsis || destinationArg == &elipsis) {
-            CError_ASSERT(403, sourceArg == destinationArg);
+            CError_ASSERT(BY_VERSION(403, 531), sourceArg == destinationArg);
             break;
         }
         destinationArg->name = sourceArg->name;
@@ -365,12 +439,30 @@ UInt8 CTemplTool_EqualParams(TemplParam *left, TemplParam *right, char copyValue
         if (copyValue != '\0') {
             left->name = right->name;
         }
+#if VERSION >= VERSION_GC_1_3
+        /* (1.3: 0 type, 1 non-type, 2 template template parameter) */
+        switch ((UInt8)left->pid.type) {
+        case 0:
+            break;
+        case 1:
+            stringsMatch = iscpp_typeequal(left->data.paramdecl.type, right->data.paramdecl.type);
+            if ((stringsMatch == 0) || (left->data.paramdecl.qual != right->data.paramdecl.qual)) {
+                return '\0';
+            }
+            break;
+        case 2:
+            break;
+        default:
+            CError_FATAL(576);
+        }
+#else
         if (left->pid.type == '\0') {
             stringsMatch = iscpp_typeequal(left->data.paramdecl.type, right->data.paramdecl.type);
             if ((stringsMatch == 0) || (left->data.paramdecl.qual != right->data.paramdecl.qual)) {
                 return '\0';
             }
         }
+#endif
         left = left->next;
         right = right->next;
     }
@@ -393,7 +485,7 @@ NameSpace *CTemplTool_SetupTemplateArgumentNameSpace(TemplParam *arglist, TemplA
         return ns;
     while (arglist != NULL) {
         if (targlist == NULL)
-            CError_FATAL(468);
+            CError_FATAL(BY_VERSION(468, 607));
         if (arglist->name != NULL) {
             if (targlist->pid.type == 0) {
                 if (flag) {
@@ -434,7 +526,7 @@ NameSpace *CTemplTool_SetupTemplateArgumentNameSpace(TemplParam *arglist, TemplA
         targlist = targlist->next;
     }
     if (targlist != NULL)
-        CError_FATAL(519);
+        CError_FATAL(BY_VERSION(519, 685));
     return ns;
 }
 
@@ -537,7 +629,7 @@ unsigned char CTemplTool_IsTemplateArgumentDependentType(Type *type)
                 type = ((TypePointer *)type)->target;
                 break;
             default:
-                CError_FATAL(653);
+                CError_FATAL(BY_VERSION(653, 1391));
                 break;
         }
     }
@@ -556,11 +648,11 @@ UInt8 CTemplTool_IsSameTemplate(TemplParam *parameter, TemplArg *argument)
     for (;;) {
         if (argument == NULL) {
             if (parameter != NULL)
-                CError_FATAL(681);
+                CError_FATAL(BY_VERSION(681, 850));
             return 1;
         }
         if (parameter == NULL || argument->pid.type != parameter->pid.type)
-            CError_FATAL(684);
+            CError_FATAL(BY_VERSION(684, 853));
 
         if (argument->pid.type) {
             if (argument->data.typeparam.type->type != TYPETEMPLATE ||
@@ -605,11 +697,11 @@ Type *CTemplTool_IsDependentTemplate(TemplClass *templateClass, TemplArg *argume
         for (;;) {
             if (!argument) {
                 if (parameter)
-                    CError_FATAL(806);
+                    CError_FATAL(BY_VERSION(806, 988));
                 return NULL;
             }
             if (!parameter || (unsigned char)argument->pid.type != (unsigned char)parameter->pid.type)
-                CError_FATAL(809);
+                CError_FATAL(BY_VERSION(809, 991));
             if (argument->pid.type) {
                 dependent = CTemplTool_IsTemplateArgumentDependentType(argument->data.typeparam.type);
             } else {
@@ -658,6 +750,12 @@ Boolean CTemplTool_EqualExprTypes(ENode *left, ENode *right)
             return leftObject == rightObject;
         }
 
+#if VERSION >= VERSION_GC_1_3
+        case EMEMBER:
+            /* (1.3's EMEMBER: the same candidate list) */
+            return left->data.emember->list == right->data.emember->list;
+#endif
+
         case ETEMPLDEP:
             if (left->data.templdep.subtype != right->data.templdep.subtype)
                 return 0;
@@ -666,18 +764,26 @@ Boolean CTemplTool_EqualExprTypes(ENode *left, ENode *right)
                     return left->data.templdep.u.pid.nindex == right->data.templdep.u.pid.nindex &&
                            left->data.templdep.u.pid.index == right->data.templdep.u.pid.index;
                 case TDE_SIZEOF:
+#if VERSION >= VERSION_GC_1_3
+                case 2:
+#endif
                     return iscpp_typeequal(left->data.templdep.u.typeexpr.type, right->data.templdep.u.typeexpr.type);
                 case TDE_CAST:
                     return iscpp_typeequal(left->data.templdep.u.cast.type, right->data.templdep.u.cast.type) != 0 &&
                            left->data.templdep.u.cast.qual == right->data.templdep.u.cast.qual;
                 case TDE_QUALNAME:
                     return iscpp_typeequal(TYPE(left->data.templdep.u.qual.type),
-                                           TYPE(right->data.templdep.u.qual.type)) != 0 &&
+                                           TYPE( right->data.templdep.u.qual.type)) != 0 &&
                            left->data.templdep.u.qual.name == right->data.templdep.u.qual.name;
                 case TDE_OBJ:
                     return left->data.templdep.u.obj == right->data.templdep.u.obj;
+#if VERSION >= VERSION_GC_1_3
+                case 7:
+                    /* (1.3: a dependent expression) */
+                    return CTemplTool_EqualExprTypes(left->data.templdep.u.monadic, right->data.templdep.u.monadic);
+#endif
                 default:
-                    CError_FATAL(890);
+                    CError_FATAL(BY_VERSION(890, 1086));
             }
 
         case EMUL:
@@ -696,6 +802,12 @@ Boolean CTemplTool_EqualExprTypes(ENode *left, ENode *right)
         case EAND:
         case EXOR:
         case EOR:
+#if VERSION >= VERSION_GC_1_3
+        case ELAND:
+        case ELOR:
+        case EROTL:
+        case EROTR:
+#endif
             return CTemplTool_EqualExprTypes(left->data.diadic.left, right->data.diadic.left) &&
                    CTemplTool_EqualExprTypes(left->data.diadic.right, right->data.diadic.right);
 
@@ -710,7 +822,7 @@ Boolean CTemplTool_EqualExprTypes(ENode *left, ENode *right)
                    CTemplTool_EqualExprTypes(left->data.cond.expr2, right->data.cond.expr2);
     }
 
-    CError_FATAL(922);
+    CError_FATAL(BY_VERSION(922, 1122));
     return 0;
 }
 
@@ -802,7 +914,7 @@ TemplArg *CTemplTool_MakeGlobalTemplArgCopy(TemplArg *p)
             res = cur = (TemplArg *)galloc(sizeof(TemplArg));
         }
         *cur = *p;
-        if (cur->pid.type == 0 && cur->data.paramdecl.expr != NULL)
+        if (cur->pid.type == BY_VERSION( 0, 1) && cur->data.paramdecl.expr != NULL)
             cur->data.paramdecl.expr = fn_00513040(cur->data.paramdecl.expr, 1);
         p = p->next;
     }
@@ -832,7 +944,7 @@ Boolean CTemplTool_TemplDepTypeCompare(TypeTemplDep *a, TypeTemplDep *b)
             return iscpp_typeequal(a->u.bitfield.type, b->u.bitfield.type) &&
                    CTemplTool_EqualExprTypes(a->u.bitfield.size, b->u.bitfield.size);
         default:
-            CError_FATAL(1079);
+            CError_FATAL(BY_VERSION(1079, 1286));
             return 0;
     }
 }
@@ -850,7 +962,7 @@ Type *CTemplTool_DeduceArgDepType(TemplArg *record, TypeTemplDep *key, unsigned 
             index = record->pid.index;
         } while (index != key->u.pid.index || record->pid.nindex != key->u.pid.nindex);
         if (record->pid.type == 0) {
-            CError_FATAL(1107);
+            CError_FATAL(BY_VERSION(1107, 1314));
         }
         *resultQualifiers |= record->data.typeparam.qual;
         return record->data.typeparam.type;
@@ -866,22 +978,27 @@ TemplClassInst *fn_00517270(TypeClass *current, TemplClassInst *limit, TemplClas
     TypeClass *ancestors[32];
     TemplClassInst *record;
 
+#if VERSION >= VERSION_GC_1_3
+    ancestors[0] = current;
+    depth = 0;
+#else
     depth = 0;
     ancestors[0] = current;
+#endif
     while (1) {
         if (32 <= depth) {
-            CError_FATAL(1134);
+            CError_FATAL(BY_VERSION(1134, 1338));
         }
         record = (TemplClassInst *)current;
         current = (TypeClass *)record->parent;
         if (current == NULL) {
-            CError_FATAL(1135);
+            CError_FATAL(BY_VERSION(1135, 1339));
         }
         if (current == &limit->theclass)
             break;
         record = (TemplClassInst *)current;
         if (record->inst_args != NULL) {
-            CError_FATAL(1137);
+            CError_FATAL(BY_VERSION(1137, 1341));
         }
         depth = depth + 1;
         ancestors[depth] = current;
@@ -892,17 +1009,21 @@ TemplClassInst *fn_00517270(TypeClass *current, TemplClassInst *limit, TemplClas
         depth = depth - 1;
         while (1) {
             if (match == NULL) {
-                CError_FATAL(1146);
+                CError_FATAL(BY_VERSION(1146, 1350));
             }
             if (match->parent == target)
                 break;
             match = match->next;
         }
         target = match;
+#if VERSION >= VERSION_GC_1_3
+        if (depth < 0)
+            break;
+#endif
         if ((match->theclass.flags & (CLASS_COMPLETED | CLASS_IS_TEMPL_INST)) == 0x800) {
             CTemplateClass_InstantiateClass(&match->theclass);
         }
-    } while (0 <= depth);
+    } while (BY_VERSION(0 <= depth, 1));
     return match;
 }
 
@@ -914,7 +1035,7 @@ TemplClassInst *find_corresponding_instance_class(TypeDeduce *list, TypeClass *t
     TemplClassInst *q;
 
     if ((p = ((TemplClassInst *)list->tmclass)) == NULL)
-        CError_FATAL(1170);
+        CError_FATAL(BY_VERSION(1170, 1393));
     if ((q = (list->inst)) == NULL) {
         if (!(p->parent != NULL && p->templ != NULL))
             CError_FATAL(1173);
@@ -931,7 +1052,7 @@ TemplClassInst *find_corresponding_instance_class(TypeDeduce *list, TypeClass *t
             break;
         curq = curq->parent;
         if (!(curq != NULL))
-            CError_FATAL(1186);
+            CError_FATAL(BY_VERSION(1186, 1416));
     }
     cur = (TemplClassInst *)targetClass;
     if (cur->inst_args == NULL) {
@@ -1000,24 +1121,24 @@ ENode *CTemplTool_DeduceExpr(TypeDeduce *ctx, ENode *node)
                     if (ctx->processingArgument != 0 && node->data.templdep.u.pid.nindex == ctx->nindex) {
                         return CloneNode(node);
                     }
-                    for (record = ctx->args; record != NULL; record = record->next) {
+                    for (record =ctx->args; record != NULL; record = record->next) {
                         if (record->pid.index == node->data.templdep.u.pid.index &&
                             record->pid.nindex == node->data.templdep.u.pid.nindex) {
-                            CError_ASSERT(1310, record->pid.type == 0 && record->data.typeparam.type != NULL);
+                            CError_ASSERT(BY_VERSION(1310, 1562), record->pid.type == 0 && record->data.typeparam.type != NULL);
                             return CloneRecNode(record);
                         }
                     }
-                    for (group = ctx->inst; group != NULL; group = group->parent) {
-                        for (outerRecord = group->inst_args; outerRecord != NULL; outerRecord = outerRecord->next) {
+                    for (group =ctx->inst; group != NULL; group =group->parent) {
+                        for (outerRecord =group->inst_args; outerRecord != NULL; outerRecord = outerRecord->next) {
                             if (outerRecord->pid.index == node->data.templdep.u.pid.index &&
                                 outerRecord->pid.nindex == node->data.templdep.u.pid.nindex) {
-                                CError_ASSERT(1323,
+                                CError_ASSERT(BY_VERSION(1323, 1575),
                                               outerRecord->pid.type == 0 && outerRecord->data.typeparam.type != NULL);
                                 return CloneRecNode(outerRecord);
                             }
                         }
                     }
-                    CError_FATAL(1330);
+                    CError_FATAL(BY_VERSION(1330, 1582));
                 case TDE_SIZEOF:
                     qualifiers = 0;
                     type = CTemplTool_DeduceTypeCopy(ctx, node->data.templdep.u.typeexpr.type, &qualifiers);
@@ -1061,13 +1182,13 @@ ENode *CTemplTool_DeduceExpr(TypeDeduce *ctx, ENode *node)
                     return nullnode();
                 case TDE_OBJ:
                     resolvedObject =
-                        find_corresponding_instance_class(ctx, node->data.templdep.u.obj->nspace->theclass);
+                        find_corresponding_instance_class(ctx,node->data.templdep.u.obj->nspace->theclass);
                     if (resolvedObject == NULL || resolvedObject->theclass.type != TYPECLASS) {
-                        CError_FATAL(1379);
+                        CError_FATAL(BY_VERSION(1379, 1651));
                     }
                     entry = CScope_GetLocalObject(resolvedObject->theclass.nspace, node->data.templdep.u.obj->name);
                     if (entry == NULL) {
-                        CError_FATAL(1382);
+                        CError_FATAL(BY_VERSION(1382, 1654));
                     }
                     memclrw(&expression, sizeof(expression));
                     expression.object = (ObjBase *)entry->object;
@@ -1119,6 +1240,10 @@ ENode *CTemplTool_DeduceExpr(TypeDeduce *ctx, ENode *node)
         case EOR:
         case ELAND:
         case ELOR:
+#if VERSION >= VERSION_GC_1_3
+        case EROTL:
+        case EROTR:
+#endif
             return CExpr_NewDyadicNode(CTemplTool_DeduceExpr(ctx, node->data.diadic.left), node->type,
                                        CTemplTool_DeduceExpr(ctx, node->data.diadic.right));
         case ECOND:
@@ -1126,7 +1251,7 @@ ENode *CTemplTool_DeduceExpr(TypeDeduce *ctx, ENode *node)
                                         CTemplTool_DeduceExpr(ctx, node->data.cond.expr1),
                                         CTemplTool_DeduceExpr(ctx, node->data.cond.expr2));
         default:
-            CError_FATAL(1448);
+            CError_FATAL(BY_VERSION(1448, 1727));
         case EINTCONST:
             return CloneNode(node);
     }
@@ -1142,7 +1267,7 @@ TemplClass *fn_00516b50(TemplateLookupContext *context, TemplClass *record)
         return record;
     }
     if (((owner = context->owner) == NULL) || ((scope = context->currentClass) == NULL)) {
-        CError_FATAL(1472);
+        CError_FATAL(BY_VERSION(1472, 1776));
     }
     for (;;) {
         if (record->templ_parent == owner) {
@@ -1159,7 +1284,7 @@ TemplClass *fn_00516b50(TemplateLookupContext *context, TemplClass *record)
         }
         scope = scope->templ_parent;
         if (scope == NULL) {
-            CError_FATAL(1486);
+            CError_FATAL(BY_VERSION(1486, 1790));
         }
     }
     return record;
@@ -1250,9 +1375,9 @@ TemplArg *find_template_argument(struct TypeDeduce *context, struct TemplParamID
 
     if ((entry = find(context->args, pid)))
         return entry;
-    CError_ASSERT(1678, (originalClass = context->tmclass) != 0);
+    CError_ASSERT(BY_VERSION(1678, 2008), (originalClass = context->tmclass) != 0);
     if (!(currentClass = (TemplClass *)context->inst)) {
-        CError_ASSERT(1681, !(originalClass->templ_parent == 0 || originalClass->inst_parent == 0));
+        CError_ASSERT(BY_VERSION(1681, 2011), !(originalClass->templ_parent == 0 || originalClass->inst_parent == 0));
         originalClass = context->tmclass;
         currentClass = (TemplClass *)originalClass->inst_parent;
     }
@@ -1260,7 +1385,7 @@ TemplArg *find_template_argument(struct TypeDeduce *context, struct TemplParamID
         if ((entry = find((TemplArg *)currentClass->templ__params, pid)))
             return entry;
         if (!(currentClass = currentClass->templ_parent))
-            CError_FATAL(1692);
+            CError_FATAL(BY_VERSION(1692, 2022));
     }
 }
 
@@ -1268,7 +1393,7 @@ Type *make_bitfield_type(TypeDeduce *ctx, Type *ty, ENode *node, UInt32 *out)
 {
     UInt32 n;
     SInt16 bits;
-    SInt32 width;
+    BY_VERSION(SInt32, SInt16) width;
     TypeBitfield *tb;
 
     if (CTemplTool_IsTemplateArgumentDependentType(ty)) {
@@ -1289,6 +1414,11 @@ Type *make_bitfield_type(TypeDeduce *ctx, Type *ty, ENode *node, UInt32 *out)
         case 4:
             bits = 32;
             break;
+#if VERSION >= VERSION_GC_1_3
+        case 8:
+            bits = 64;
+            break;
+#endif
         default:
             CError_ReportError(ERR_ILLEGAL_BITFIELD_DECLARATION);
             return ty;
@@ -1335,7 +1465,7 @@ Type *resolve_templ_dep_type(TypeDeduce *ctx, TypeTemplDep *arg, UInt32 *out)
                 if (type == (Type *)arg->u.qual.type)
                     return (Type *)arg;
                 if (type->type != TYPECLASS) {
-                    CError_ASSERT(1826, type->type == TYPETEMPLATE);
+                    CError_ASSERT(BY_VERSION(1826, 2157), type->type == TYPETEMPLATE);
                     copy = galloc(sizeof(*copy));
                     *copy = *arg;
                     copy->u.qual.type = (TypeTemplDep *)type;
@@ -1463,6 +1593,13 @@ Type *resolve_templ_dep_pointer_target(TypeDeduce *context, Type *typeArg, UInt3
             *(TypePointer *)pointerType->target = *(TypePointer *)resolvedType;
             *qualifiers = targetQualifiers & 3;
             ((TypePointer *)pointerType->target)->qual |= originalQualifiers & 3;
+#if VERSION >= VERSION_GC_1_3
+        } else if (resolvedType->type == TYPEMEMBERPOINTER) {
+            pointerType->target = (Type *)galloc(sizeof(TypeMemberPointer));
+            *(TypeMemberPointer *)pointerType->target = *(TypeMemberPointer *)resolvedType;
+            *qualifiers = targetQualifiers & 3;
+            ((TypeMemberPointer *)pointerType->target)->qual |= originalQualifiers & 3;
+#endif
         } else {
             pointerType->target = resolvedType;
             *qualifiers = (originalQualifiers | targetQualifiers) & 3;
@@ -1478,7 +1615,7 @@ static void CTemplateTools_SetFirstArgName(TypeMemberFunc *f)
     FuncArg *a;
 
     if ((f->flags & FUNC_METHOD) && !f->is_static) {
-        CError_ASSERT(410, (a = f->args) != NULL);
+        CError_ASSERT(BY_VERSION(410, 538), (a = f->args) != NULL);
         if (a->name == NULL)
             a->name = this_arg_name;
     }
@@ -1489,10 +1626,10 @@ static FuncArg *CTemplateTools_FirstArg(TypeMemberFunc *f)
     FuncArg *a = f->args;
 
     if ((f->flags & FUNC_METHOD) && !f->is_static) {
-        CError_ASSERT(374, a != NULL);
+        CError_ASSERT(BY_VERSION(374, 502), a != NULL);
         a = a->next;
-        if ((f->flags & FUNC_IS_DTOR) && (f->theclass->flags & CLASS_HAS_VBASES)) {
-            CError_ASSERT(379, a != NULL);
+        if ((f->flags & BY_VERSION(FUNC_IS_DTOR, FUNC_IS_CTOR)) && (f->theclass->flags & CLASS_HAS_VBASES)) {
+            CError_ASSERT(BY_VERSION(379, 507), a != NULL);
             a = a->next;
         }
     }
@@ -1544,6 +1681,9 @@ FuncArg *CTemplTool_DeduceArgCopy(TypeDeduce *ctx, FuncArg *args)
         }
         *tail = *args;
         tail->type = resolve_templ_dep_pointer_target(ctx, tail->type, &tail->qual);
+#if VERSION >= VERSION_GC_1_3
+        CDecl_CheckObjectType(tail->type);
+#else
         if (ctx->processingClassTypes == 0 && (copts.experimental == 0 || ctx->processingArgument == 0)) {
             expression = tail->dexpr;
             if (expression == NULL)
@@ -1555,6 +1695,7 @@ FuncArg *CTemplTool_DeduceArgCopy(TypeDeduce *ctx, FuncArg *args)
                 tail->dexpr = fn_00513040(tail->dexpr, 1);
             }
         }
+#endif
         args = args->next;
     }
     return newlist;
@@ -1608,11 +1749,11 @@ Type *CTemplTool_DeduceTypeCopy(TypeDeduce *ctx, Type *type, UInt32 *qual)
             TemplClassInst *theclass;
             if (((TypeEnum *)type)->nspace->theclass != NULL &&
                 (((TypeEnum *)type)->nspace->theclass->flags & Q_VIRTUAL) != 0 && ctx->processingClassTypes == 0) {
-                CError_ASSERT(2103, ((TypeEnum *)type)->enumname);
+                CError_ASSERT(BY_VERSION(2103, 2471), ((TypeEnum *)type)->enumname);
                 theclass = find_corresponding_instance_class(ctx, ((TypeEnum *)type)->nspace->theclass);
-                CError_ASSERT(2105, theclass != NULL && theclass->theclass.type == TYPECLASS);
+                CError_ASSERT(BY_VERSION(2105, 2473), theclass != NULL && theclass->theclass.type == TYPECLASS);
                 type = CScope_GetLocalTagType(theclass->theclass.nspace, ((TypeEnum *)type)->enumname);
-                CError_ASSERT(2108, type != NULL);
+                CError_ASSERT(BY_VERSION(2108, 2477), type != NULL);
                 return type;
             }
             return type;
@@ -1626,10 +1767,10 @@ Type *CTemplTool_DeduceTypeCopy(TypeDeduce *ctx, Type *type, UInt32 *qual)
                 if (((TypeClass *)type)->nspace->theclass != NULL &&
                     (((TypeClass *)type)->nspace->theclass->flags & Q_VIRTUAL) != 0) {
                     Type *result;
-                    CError_ASSERT(2123, ctx->inst);
-                    CError_ASSERT(2124, ((TypeClass *)type)->classname);
+                    CError_ASSERT(BY_VERSION(2123, 2492), ctx->inst);
+                    CError_ASSERT(BY_VERSION(2124, 2493), ((TypeClass *)type)->classname);
                     result = CScope_GetLocalTagType(TYPE_CLASS(ctx->inst)->nspace, ((TypeClass *)type)->classname);
-                    CError_ASSERT(2127, result != NULL);
+                    CError_ASSERT(BY_VERSION(2127, 2496), result != NULL);
                     return result;
                 }
             }
@@ -1686,7 +1827,7 @@ Type *CTemplTool_DeduceTypeCopy(TypeDeduce *ctx, Type *type, UInt32 *qual)
                 methodClass = (Type *)((TypeMemberFunc *)type)->theclass;
                 resolvedMethodClass = resolve_templ_dep_pointer_target(ctx, methodClass, &functionQual);
                 method->theclass = (TypeClass *)resolvedMethodClass;
-                CError_ASSERT(2179, method->theclass->type == TYPECLASS);
+                CError_ASSERT(BY_VERSION(2179, 2556), method->theclass->type == TYPECLASS);
                 function = (TypeFunc *)method;
             } else {
                 function = (TypeFunc *)galloc(sizeof(TypeFunc));
@@ -1700,7 +1841,11 @@ Type *CTemplTool_DeduceTypeCopy(TypeDeduce *ctx, Type *type, UInt32 *qual)
             if (((TypeFunc *)type)->exspecs != NULL) {
                 function->exspecs = copy_resolved_except_spec_list(ctx, ((TypeFunc *)type)->exspecs);
             }
+#if VERSION >= VERSION_GC_1_3
+            fn_0053a650(function);
+#else
             fn_00504240(function);
+#endif
             return (Type *)function;
         }
         default:
@@ -1719,7 +1864,11 @@ Type *CTemplTool_ResolveMemberSelfRefs(TemplClass *tclass, Type *type, UInt32 *q
         TypeFunc *function = (TypeFunc *)type;
         function->functype = CTemplTool_DeduceTypeCopy(&state, function->functype, &function->qual);
         function->args = CTemplTool_DeduceArgCopy(&state, function->args);
+#if VERSION >= VERSION_GC_1_3
+        fn_0053a650(function);
+#else
         fn_00504240(function);
+#endif
         type = (Type *)function;
     } else {
         type = CTemplTool_DeduceTypeCopy(&state, type, qualifiers);

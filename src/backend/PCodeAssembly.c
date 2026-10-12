@@ -129,7 +129,7 @@ UInt32 encode_assembly_instruction(PCodeInstruction *instr, UInt32 offset, Weird
                 bits |= (instr->operandData.assemblyOperands[0].data.label.label->target.block->code_offset - offset) &
                         0x3FFFFFC;
                 if (absoluteBranch)
-                    CError_FATAL(160);
+                    CError_FATAL(BY_VERSION(160, 299));
             }
             if (instr->flags & fLink)
                 bits |= 1;
@@ -426,7 +426,7 @@ UInt32 encode_assembly_instruction(PCodeInstruction *instr, UInt32 offset, Weird
             bits |= instr->operandData.assemblyOperands[0].data.reg.reg << 21;
             bits |= instr->operandData.assemblyOperands[1].data.reg.reg << 16;
             bits |= instr->operandData.assemblyOperands[2].data.reg.reg << 11;
-            if (instr->flags & fRecordBit)
+            if (PCODE_RECORD(instr->flags))
                 bits |= 1;
             break;
 
@@ -468,7 +468,7 @@ UInt32 encode_assembly_instruction(PCodeInstruction *instr, UInt32 offset, Weird
             bits |= instr->operandData.assemblyOperands[1].data.reg.reg << 16;
             if (instr->flags & fOverflow)
                 bits |= 0x400;
-            if (instr->flags & fRecordBit)
+            if (PCODE_RECORD(instr->flags))
                 bits |= 1;
             break;
 
@@ -683,7 +683,7 @@ UInt32 encode_assembly_instruction(PCodeInstruction *instr, UInt32 offset, Weird
             bits |= instr->operandData.assemblyOperands[0].data.reg.reg << 16;
             bits |= instr->operandData.assemblyOperands[1].data.reg.reg << 21;
             bits |= instr->operandData.assemblyOperands[2].data.reg.reg << 11;
-            if (instr->flags & fRecordBit)
+            if (PCODE_RECORD(instr->flags))
                 bits |= 1;
             break;
 
@@ -692,7 +692,7 @@ UInt32 encode_assembly_instruction(PCodeInstruction *instr, UInt32 offset, Weird
         case PC_CNTLZW:
             bits |= instr->operandData.assemblyOperands[0].data.reg.reg << 16;
             bits |= instr->operandData.assemblyOperands[1].data.reg.reg << 21;
-            if (instr->flags & fRecordBit)
+            if (PCODE_RECORD(instr->flags))
                 bits |= 1;
             break;
 
@@ -700,7 +700,7 @@ UInt32 encode_assembly_instruction(PCodeInstruction *instr, UInt32 offset, Weird
             bits |= instr->operandData.assemblyOperands[0].data.reg.reg << 16;
             bits |= instr->operandData.assemblyOperands[1].data.reg.reg << 21;
             bits |= instr->operandData.assemblyOperands[1].data.reg.reg << 11;
-            if (instr->flags & fRecordBit)
+            if (PCODE_RECORD(instr->flags))
                 bits |= 1;
             break;
 
@@ -708,7 +708,7 @@ UInt32 encode_assembly_instruction(PCodeInstruction *instr, UInt32 offset, Weird
             bits |= instr->operandData.assemblyOperands[0].data.reg.reg << 16;
             bits |= instr->operandData.assemblyOperands[1].data.reg.reg << 21;
             bits |= instr->operandData.assemblyOperands[1].data.reg.reg << 11;
-            if (instr->flags & fRecordBit)
+            if (PCODE_RECORD(instr->flags))
                 bits |= 1;
             break;
 
@@ -716,7 +716,7 @@ UInt32 encode_assembly_instruction(PCodeInstruction *instr, UInt32 offset, Weird
             bits |= instr->operandData.assemblyOperands[0].data.reg.reg << 16;
             bits |= instr->operandData.assemblyOperands[1].data.reg.reg << 21;
             bits |= (instr->operandData.assemblyOperands[2].data.imm.value & 31) << 11;
-            if (instr->flags & fRecordBit)
+            if (PCODE_RECORD(instr->flags))
                 bits |= 1;
             break;
 
@@ -727,7 +727,7 @@ UInt32 encode_assembly_instruction(PCodeInstruction *instr, UInt32 offset, Weird
             bits |= (instr->operandData.assemblyOperands[2].data.imm.value & 31) << 11;
             bits |= (instr->operandData.assemblyOperands[3].data.imm.value & 31) << 6;
             bits |= (instr->operandData.assemblyOperands[4].data.imm.value & 31) << 1;
-            if (instr->flags & fRecordBit)
+            if (PCODE_RECORD(instr->flags))
                 bits |= 1;
             break;
 
@@ -737,7 +737,7 @@ UInt32 encode_assembly_instruction(PCodeInstruction *instr, UInt32 offset, Weird
             bits |= instr->operandData.assemblyOperands[2].data.reg.reg << 11;
             bits |= (instr->operandData.assemblyOperands[3].data.imm.value & 31) << 6;
             bits |= (instr->operandData.assemblyOperands[4].data.imm.value & 31) << 1;
-            if (instr->flags & fRecordBit)
+            if (PCODE_RECORD(instr->flags))
                 bits |= 1;
             break;
 
@@ -769,7 +769,7 @@ UInt32 encode_assembly_instruction(PCodeInstruction *instr, UInt32 offset, Weird
 
         case PC_MFFS:
             bits |= instr->operandData.assemblyOperands[0].data.reg.reg << 21;
-            if (instr->flags & fRecordBit)
+            if (PCODE_RECORD(instr->flags))
                 bits |= 1;
             break;
 
@@ -781,7 +781,7 @@ UInt32 encode_assembly_instruction(PCodeInstruction *instr, UInt32 offset, Weird
         case PC_MTFSF:
             bits |= (instr->operandData.assemblyOperands[0].data.imm.value & 0xFF) << 17;
             bits |= instr->operandData.assemblyOperands[1].data.reg.reg << 11;
-            if (instr->flags & fRecordBit)
+            if (PCODE_RECORD(instr->flags))
                 bits |= 1;
             break;
 
@@ -796,7 +796,7 @@ UInt32 encode_assembly_instruction(PCodeInstruction *instr, UInt32 offset, Weird
         case PC_FCTIWZ:
             bits |= instr->operandData.assemblyOperands[0].data.reg.reg << 21;
             bits |= instr->operandData.assemblyOperands[1].data.reg.reg << 11;
-            if (instr->flags & fRecordBit)
+            if (PCODE_RECORD(instr->flags))
                 bits |= 1;
             break;
 
@@ -809,7 +809,7 @@ UInt32 encode_assembly_instruction(PCodeInstruction *instr, UInt32 offset, Weird
             bits |= instr->operandData.assemblyOperands[0].data.reg.reg << 21;
             bits |= instr->operandData.assemblyOperands[1].data.reg.reg << 16;
             bits |= instr->operandData.assemblyOperands[2].data.reg.reg << 11;
-            if (instr->flags & fRecordBit)
+            if (PCODE_RECORD(instr->flags))
                 bits |= 1;
             break;
 
@@ -828,7 +828,7 @@ UInt32 encode_assembly_instruction(PCodeInstruction *instr, UInt32 offset, Weird
             bits |= instr->operandData.assemblyOperands[0].data.reg.reg << 21;
             bits |= instr->operandData.assemblyOperands[1].data.reg.reg << 16;
             bits |= instr->operandData.assemblyOperands[2].data.reg.reg << 6;
-            if (instr->flags & fRecordBit)
+            if (PCODE_RECORD(instr->flags))
                 bits |= 1;
             break;
 
@@ -857,7 +857,7 @@ UInt32 encode_assembly_instruction(PCodeInstruction *instr, UInt32 offset, Weird
                 bits |= ((instr->operandData.assemblyOperands[0].data.imm.value & 0x1F) << 16) +
                         ((instr->operandData.assemblyOperands[0].data.imm.value & 0x3E0) << 6);
             } else {
-                CError_FATAL(1266);
+                CError_FATAL(BY_VERSION(1266, 1039));
             }
             bits |= instr->operandData.assemblyOperands[1].data.reg.reg << 21;
             break;
@@ -941,14 +941,14 @@ UInt32 encode_assembly_instruction(PCodeInstruction *instr, UInt32 offset, Weird
         case PC_MTFSB0:
         case PC_MTFSB1:
             bits |= (instr->operandData.assemblyOperands[0].data.imm.value & 31) << 21;
-            if (instr->flags & fRecordBit)
+            if (PCODE_RECORD(instr->flags))
                 bits |= 1;
             break;
 
         case PC_MTFSFI:
             bits |= instr->operandData.assemblyOperands[0].data.reg.reg << 23;
             bits |= (instr->operandData.assemblyOperands[1].data.imm.value & 15) << 12;
-            if (instr->flags & fRecordBit)
+            if (PCODE_RECORD(instr->flags))
                 bits |= 1;
             break;
 
@@ -956,7 +956,7 @@ UInt32 encode_assembly_instruction(PCodeInstruction *instr, UInt32 offset, Weird
         case PC_FSQRTS:
             bits |= instr->operandData.assemblyOperands[0].data.reg.reg << 21;
             bits |= instr->operandData.assemblyOperands[1].data.reg.reg << 11;
-            if (instr->flags & fRecordBit)
+            if (PCODE_RECORD(instr->flags))
                 bits |= 1;
             break;
 
@@ -998,7 +998,7 @@ UInt32 encode_assembly_instruction(PCodeInstruction *instr, UInt32 offset, Weird
             bits |= instr->operandData.assemblyOperands[1].data.reg.reg << 21;
             bits |= instr->operandData.assemblyOperands[0].data.reg.reg << 16;
             bits |= instr->operandData.assemblyOperands[2].data.reg.reg << 11;
-            if (instr->flags & fRecordBit)
+            if (PCODE_RECORD(instr->flags))
                 bits |= 1;
             break;
 
@@ -1006,7 +1006,7 @@ UInt32 encode_assembly_instruction(PCodeInstruction *instr, UInt32 offset, Weird
             bits |= instr->operandData.assemblyOperands[0].data.reg.reg << 21;
             bits |= instr->operandData.assemblyOperands[1].data.reg.reg << 16;
             bits |= instr->operandData.assemblyOperands[2].data.reg.reg << 11;
-            if (instr->flags & fRecordBit)
+            if (PCODE_RECORD(instr->flags))
                 bits |= 1;
             break;
 
@@ -1019,7 +1019,7 @@ UInt32 encode_assembly_instruction(PCodeInstruction *instr, UInt32 offset, Weird
             bits |= instr->operandData.assemblyOperands[2].data.reg.reg << 11;
             if (instr->flags & fOverflow)
                 bits |= 0x400;
-            if (instr->flags & fRecordBit)
+            if (PCODE_RECORD(instr->flags))
                 bits |= 1;
             break;
 
@@ -1029,14 +1029,14 @@ UInt32 encode_assembly_instruction(PCodeInstruction *instr, UInt32 offset, Weird
             bits |= instr->operandData.assemblyOperands[1].data.reg.reg << 16;
             if (instr->flags & fOverflow)
                 bits |= 0x400;
-            if (instr->flags & fRecordBit)
+            if (PCODE_RECORD(instr->flags))
                 bits |= 1;
             break;
 
         case PC_CLCS:
             bits |= instr->operandData.assemblyOperands[0].data.reg.reg << 21;
             bits |= instr->operandData.assemblyOperands[1].data.reg.reg << 16;
-            if (instr->flags & fRecordBit)
+            if (PCODE_RECORD(instr->flags))
                 bits |= 1;
             break;
 
@@ -1052,7 +1052,7 @@ UInt32 encode_assembly_instruction(PCodeInstruction *instr, UInt32 offset, Weird
             bits |= instr->operandData.assemblyOperands[2].data.reg.reg << 11;
             bits |= (instr->operandData.assemblyOperands[3].data.imm.value & 31) << 6;
             bits |= (instr->operandData.assemblyOperands[4].data.imm.value & 31) << 1;
-            if (instr->flags & fRecordBit)
+            if (PCODE_RECORD(instr->flags))
                 bits |= 1;
             break;
 
@@ -1070,7 +1070,7 @@ UInt32 encode_assembly_instruction(PCodeInstruction *instr, UInt32 offset, Weird
             bits |= instr->operandData.assemblyOperands[1].data.reg.reg << 21;
             bits |= instr->operandData.assemblyOperands[0].data.reg.reg << 16;
             bits |= instr->operandData.assemblyOperands[2].data.reg.reg << 11;
-            if (instr->flags & fRecordBit)
+            if (PCODE_RECORD(instr->flags))
                 bits |= 1;
             break;
 
@@ -1082,7 +1082,7 @@ UInt32 encode_assembly_instruction(PCodeInstruction *instr, UInt32 offset, Weird
             bits |= instr->operandData.assemblyOperands[1].data.reg.reg << 21;
             bits |= instr->operandData.assemblyOperands[0].data.reg.reg << 16;
             bits |= (instr->operandData.assemblyOperands[2].data.imm.value & 31) << 11;
-            if (instr->flags & fRecordBit)
+            if (PCODE_RECORD(instr->flags))
                 bits |= 1;
             break;
 
@@ -1286,7 +1286,7 @@ UInt32 encode_assembly_instruction(PCodeInstruction *instr, UInt32 offset, Weird
             bits |= instr->operandData.assemblyOperands[0].data.reg.reg << 21;
             bits |= instr->operandData.assemblyOperands[1].data.reg.reg << 16;
             bits |= instr->operandData.assemblyOperands[2].data.reg.reg << 11;
-            if (instr->flags & fRecordBit)
+            if (PCODE_RECORD(instr->flags))
                 bits |= 0x400;
             break;
 
@@ -1382,7 +1382,7 @@ UInt32 encode_assembly_instruction(PCodeInstruction *instr, UInt32 offset, Weird
             bits |= instr->operandData.assemblyOperands[0].data.reg.reg << 21;
             bits |= instr->operandData.assemblyOperands[1].data.reg.reg << 16;
             bits |= instr->operandData.assemblyOperands[2].data.reg.reg << 11;
-            if (instr->flags & fRecordBit)
+            if (PCODE_RECORD(instr->flags))
                 bits |= 1;
             break;
 
@@ -1402,7 +1402,7 @@ UInt32 encode_assembly_instruction(PCodeInstruction *instr, UInt32 offset, Weird
             bits |= instr->operandData.assemblyOperands[0].data.reg.reg << 21;
             bits |= instr->operandData.assemblyOperands[1].data.reg.reg << 16;
             bits |= instr->operandData.assemblyOperands[2].data.reg.reg << 6;
-            if (instr->flags & fRecordBit)
+            if (PCODE_RECORD(instr->flags))
                 bits |= 1;
             break;
 
@@ -1414,7 +1414,7 @@ UInt32 encode_assembly_instruction(PCodeInstruction *instr, UInt32 offset, Weird
         case PC_PS_RSQRTE:
             bits |= instr->operandData.assemblyOperands[0].data.reg.reg << 21;
             bits |= instr->operandData.assemblyOperands[1].data.reg.reg << 11;
-            if (instr->flags & fRecordBit)
+            if (PCODE_RECORD(instr->flags))
                 bits |= 1;
             break;
 
@@ -1434,7 +1434,7 @@ UInt32 encode_assembly_instruction(PCodeInstruction *instr, UInt32 offset, Weird
             bits |= instr->operandData.assemblyOperands[0].data.reg.reg << 21;
             bits |= instr->operandData.assemblyOperands[1].data.reg.reg << 16;
             bits |= instr->operandData.assemblyOperands[2].data.reg.reg << 11;
-            if (instr->flags & fRecordBit)
+            if (PCODE_RECORD(instr->flags))
                 bits |= 1;
             break;
 
@@ -1453,7 +1453,7 @@ UInt32 encode_assembly_instruction(PCodeInstruction *instr, UInt32 offset, Weird
             break;
 
         default:
-            CError_FATAL(2068);
+            CError_FATAL(BY_VERSION(2068, 2200));
     }
 
     return CTool_EndianConvertWord32(bits);
@@ -1533,7 +1533,7 @@ void expand_out_of_range_conditional_branches(void)
                             PCode_UnlinkInstruction(entry->reverse_instructions);
                             break;
                         default:
-                            CError_Internal("PCodeAssembly.c", 2189);
+                            CError_Internal("PCodeAssembly.c", BY_VERSION(2189, 2367));
                     }
                     PCode_AppendInstruction(entry, PCodeUtilities_CreateInstruction(0, conditionalTarget));
                     break;
@@ -1556,7 +1556,7 @@ void expand_out_of_range_conditional_branches(void)
                             entry->reverse_instructions->opcode = PC_BDZ;
                             break;
                         default:
-                            CError_Internal("PCodeAssembly.c", 2210);
+                            CError_Internal("PCodeAssembly.c", BY_VERSION(2210, 2388));
                     }
                     entry->reverse_instructions->operandData.operands[0].value.label = entry->next->labels;
                     PCode_AppendInstruction(entry, PCodeUtilities_CreateInstruction(0, simpleTarget));

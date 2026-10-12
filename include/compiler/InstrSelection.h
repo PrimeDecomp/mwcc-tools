@@ -24,6 +24,21 @@ extern "C" {
 #define OpndType_IndirectGPR_Indexed 10
 #define OpndType_IndirectSymbol 11
 
+#if VERSION >= VERSION_GC_1_3
+#pragma pack(push, 4)
+struct Operand {
+    unsigned char kind;
+    unsigned char unknown_01;
+    short reg;
+    short regHi;
+    short secondary_reg;
+    int displacement;
+    int immediate;
+    struct Object *object;
+    unsigned int flags;
+};
+#pragma pack(pop)
+#else
 #pragma pack(push, 2)
 struct Operand {
     unsigned char kind;
@@ -37,19 +52,20 @@ struct Operand {
     struct Object *object;
 };
 #pragma pack(pop)
+#endif
 struct ConstInfo2 {
     SInt32 multiplier;
     SInt32 shift;
 };
 #pragma options align = mac68k
 struct DeferredDispatch {
-    unsigned char header[10];
+    unsigned char header[BY_VERSION(10, 14)]; /* (an ENode: 1.3's has 4 more bytes before its data) */
     unsigned char *input;
     struct DispatchResult *result;
 };
 #pragma options align = reset
 struct DispatchResult {
-    unsigned char bytes[22];
+    unsigned char bytes[BY_VERSION(22, 24)]; /* (an Operand) */
 };
 /* Magic-number parameters for unsigned division by a constant. */
 struct DivisionParameters {
@@ -136,8 +152,8 @@ extern void get_objaccess_cached_value(ENode *node, UInt32 argument2, UInt32 arg
                                        UInt32 argument5);
 extern void (*data_00560648[])(void *, short, short, void *);
 extern struct FunctionCallFrame *function_call_frames;
-extern short gUsedVirtualRegistersFPR;
-extern SInt16 gUsedVirtualRegistersGPR;
+extern BY_VERSION(short, SInt32) gUsedVirtualRegistersFPR;
+extern BY_VERSION(SInt16, SInt32) gUsedVirtualRegistersGPR;
 extern void get_dispatch_result(struct DeferredDispatch *dispatch, unsigned int argument2, unsigned int argument3,
                                 struct DispatchResult *output);
 extern void InstrSelection_EmitSwitchTables(Object *function);

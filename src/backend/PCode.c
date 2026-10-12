@@ -9,6 +9,11 @@
 #include "compiler/InterferenceGraph.h"
 #include "compiler/LoopDetection.h"
 #include "compiler/PCodeUtilities.h"
+#if VERSION >= VERSION_GC_1_3
+#include "compiler/InlineAsmPPC.h"
+
+extern void fn_00511610(void);
+#endif
 
 struct PCodeBlock **gPCodeBlockOrder;
 unsigned int data_00587ffc;
@@ -48,7 +53,6 @@ enum {
     PCode_LFD = 0x92,
     PCode_LFDX = 0x94
 };
-
 void PCode_ResetBlocks(void)
 {
     unsigned short *statusValue = (unsigned short *)&gPCodeBlockCount;
@@ -57,13 +61,64 @@ void PCode_ResetBlocks(void)
     gPCodeBlockCount = 0;
     next_label_number = *statusValue;
     data_00587ffc = 1;
+#if VERSION >= VERSION_GC_1_3
+    fn_00511610();
+#endif
 }
 
+#if VERSION >= VERSION_GC_1_3
+void fn_00528030(PCodeInstruction *instr, short opcode)
+{
+    UInt32 f;
+    instr->flags = (instr->flags & ~(gPCodeOpcodeDescriptors[instr->opcode].flags & ~0x20)) |
+                   gPCodeOpcodeDescriptors[opcode].flags;
+    f = instr->flags;
+    if ((f & 0x10) && PCODE_RECORD(f))
+        instr->flags = f & ~0x10;
+    instr->opcode = opcode;
+}
+
+void fn_00528090(PCodeInstruction *instr, int count)
+{
+    int i;
+    if (!((instr->operand_count > 5 ? instr->operand_count : 5) >= count))
+        CError_Internal("PCodeInfo.c", 0x847);
+    for (i = instr->operand_count - 1; i >= count; i--)
+        instr->operandData.operands[i].kind = 6;
+    instr->operand_count = count;
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
 PCodeInstruction *PCode_CloneInstruction(PCodeInstruction *instr)
 {
     PCodeInstruction *clone;
     int i;
-    if ((((PCodeInstruction *)(instr))->flags & 0x200) && !(((PCodeInstruction *)(instr))->flags & fRecordBit))
+    int extra = 0;
+
+    if (((instr->flags & 9) ? 0 : instr->flags) & 0x8000000) {
+        if (!(((instr->flags & 9) ? 0 : instr->flags) & 0x20000000))
+            extra = 1;
+    }
+    clone = (PCodeInstruction *)CompilerTools_AllocatePool(
+        (instr->operand_count + extra) * sizeof(PCodeOperand) + 0x24);
+    memclrw(clone, (instr->operand_count + extra) * sizeof(PCodeOperand) + 0x24);
+    clone->opcode = instr->opcode;
+    clone->flags = instr->flags;
+    clone->operand_count = instr->operand_count;
+    clone->f18[0] = instr->f18[0];
+    for (i = 0; i < instr->operand_count; i++)
+        clone->operandData.operands[i] = instr->operandData.operands[i];
+    if (extra)
+        clone->operandData.operands[instr->operand_count].kind = 6;
+    return clone;
+}
+#else
+PCodeInstruction *PCode_CloneInstruction(PCodeInstruction *instr)
+{
+    PCodeInstruction *clone;
+    int i;
+    if ((((PCodeInstruction *)(instr))->flags & 0x200) && !(PCODE_RECORD(((PCodeInstruction *)(instr))->flags)))
         clone = (PCodeInstruction *)lalloc((((PCodeInstruction *)(instr))->operand_count + 1) * sizeof(PCodeOperand) +
                                            sizeof(PCodeInstruction));
     else
@@ -76,6 +131,7 @@ PCodeInstruction *PCode_CloneInstruction(PCodeInstruction *instr)
         clone->operandData.operands[i] = ((PCodeInstruction *)(instr))->operandData.operands[i];
     return (PCodeInstruction *)(clone);
 }
+#endif
 
 PCodeLabel *PCode_NewLabel(void)
 {
@@ -140,6 +196,9 @@ void PCode_AddSuccessor(PCodeBlock *block, PCodeLabel *name)
 {
     PCodeBlockLink *entry;
     entry = (PCodeBlockLink *)lalloc(sizeof(PCodeBlockLink));
+#if VERSION >= VERSION_GC_1_3
+    memclrw(entry, sizeof(PCodeBlockLink));
+#endif
     entry->payload = name->target;
     if (name->resolved == 0)
         name->target.pendingLinks = entry;
@@ -161,6 +220,9 @@ void PCode_BuildPredecessors(void)
             if (q != NULL) {
                 do {
                     n = (PCodeBlockLink *)lalloc(8);
+#if VERSION >= VERSION_GC_1_3
+                    memclrw(n, 8);
+#endif
                     n->payload.block = p;
                     n->next = q->payload.block->predecessors;
                     q->payload.block->predecessors = n;
@@ -183,7 +245,7 @@ void PCode_UnlinkBlocksWithoutFlag4(void)
             p->prev->next = p->next;
             if (p->next != NULL)
                 p->next->prev = p->prev;
-            p->flags |= 0x10;
+            p->flags |= BY_VERSION(0x10, 0x20);
         }
         p = p->next;
     }
@@ -242,6 +304,9 @@ void PCode_InsertInstructionBefore(PCodeInstruction *h, PCodeInstruction *n)
     n->next = h;
     n->previous = h->previous;
     h->previous = n;
+#if VERSION >= VERSION_GC_1_3
+    n->f18[1] = h->f18[1];
+#endif
     n->block = o;
     o->instruction_count++;
     o->flags &= ~8;
@@ -257,6 +322,9 @@ void PCode_InsertInstructionAfter(PCodeInstruction *h, PCodeInstruction *n)
     n->previous = h;
     n->next = h->next;
     h->next = n;
+#if VERSION >= VERSION_GC_1_3
+    n->f18[1] = h->f18[1];
+#endif
     n->block = c;
     c->instruction_count++;
     c->flags &= 0xfff7;
@@ -265,6 +333,10 @@ void PCode_InsertInstructionAfter(PCodeInstruction *h, PCodeInstruction *n)
 void Operands_AllocateGPR(unsigned int flags)
 {
     gCurrentBlock->reverse_instructions->flags |= flags;
+#if VERSION >= VERSION_GC_1_3
+    if (flags & 0x100)
+        gCurrentBlock->reverse_instructions->flags &= 0xffff9fef;
+#endif
 }
 
 unsigned int PCode_SetCodeOffsets(void)

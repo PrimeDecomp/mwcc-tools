@@ -69,6 +69,9 @@ extern SInt32 fn_0051f790(RegisterValueRecord *a, PCodeInstruction *b);
 extern void ValueNumbering_PerformValueNumbering(int options);
 extern void traverse_single_predecessor_successors(PCodeBlock *node);
 extern void fn_0051e720(void);
+#if VERSION >= VERSION_GC_1_3
+extern void fn_00507560(void);
+#endif
 extern void value_number_block(PCodeBlock *block);
 extern void fn_0051ee40(PCodeInstruction *p);
 extern void value_number_single_instruction(PCodeInstruction *argument);

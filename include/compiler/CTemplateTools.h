@@ -44,6 +44,10 @@ extern struct TemplArg *find_template_argument(struct TypeDeduce *context, struc
 extern void fn_00516930(void *context, struct TemplClass *function, TemplArg *arguments);
 extern ExceptSpecList *copy_resolved_except_spec_list(void *ctx, ExceptSpecList *n);
 extern unsigned char CTemplTool_IsTemplateArgumentDependentType(Type *type);
+#if VERSION >= VERSION_GC_1_3
+/* (old name used by 1.3 code merged from the old tree) */
+#define CTemplateTools_IsDependentType CTemplTool_IsTemplateArgumentDependentType
+#endif
 extern TemplClassInst *find_corresponding_instance_class(TypeDeduce *list, TypeClass *targetClass);
 extern UInt8 CTemplTool_IsIdenticalTemplArgList(TemplArg *pattern, TemplParam *argument);
 extern UInt8 CTemplTool_IsSameTemplate(TemplParam *parameter, TemplArg *argument);

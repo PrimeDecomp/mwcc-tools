@@ -10,8 +10,24 @@ extern "C" {
 struct PluginRequiredInputRecord {
     unsigned char bytes[36];
 };
-extern int fn_004050e0(char *left, char *right, int count);
+#if VERSION >= VERSION_GC_1_3
+#define GLUECALL __stdcall
+#else
+#define GLUECALL
+#endif
+extern int GLUECALL fn_004050e0(char *left, char *right, int count);
 extern int ClientGlue_CompareLowercaseStrings(const char *left, const char *right);
+#if VERSION >= VERSION_GC_1_3
+extern int __stdcall fn_00412660(const char *left, const char *right);
+#define STRINGS_EQUAL(left, right) fn_00412660(left, right)
+#define STRINGS_DIFFER(left, right) (!fn_00412660(left, right))
+extern int __stdcall CLIO_CompareStringsIgnoreCase(char *left, char *right);
+#define CLIO_STRINGS_EQUAL(left, right) (CLIO_CompareStringsIgnoreCase((char *)(left), (char *)(right)) == 0)
+#else
+#define CLIO_STRINGS_EQUAL(left, right) (!ClientGlue_CompareLowercaseStrings(left, right))
+#define STRINGS_EQUAL(left, right) (!ClientGlue_CompareLowercaseStrings(left, right))
+#define STRINGS_DIFFER(left, right) (ClientGlue_CompareLowercaseStrings(left, right) != 0)
+#endif
 extern char *ClientGlue_DuplicateString(const char *a0);
 extern int __stdcall ClientGlue_AddResourceStrings(char *arg1, SInt16 arg2, char **arg3);
 extern void __stdcall ClientGlue_AddPlugin(PluginRequiredInputRecord *a0);

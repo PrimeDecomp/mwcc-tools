@@ -18,8 +18,8 @@ struct ByteBuffer {
     char *prefix;
 };
 struct DiagnosticDetails {
-    unsigned char precedingData[324];
-    char text[324];
+    unsigned char precedingData[BY_VERSION(324, 516)];
+    char text[BY_VERSION(324, 516)];
     int formatValue;
     int diagnosticValue;
 };
@@ -58,7 +58,11 @@ extern char *forward_format_arguments(char *output, int size, char *prefix, char
 extern unsigned int write_text_to_stdout_or_stderr(int unused, short messageType, const char *textAddress);
 extern void append_byte(struct ByteBuffer *buffer, char value);
 extern void append_text(struct ByteBuffer *buffer, char *text);
+#if VERSION >= VERSION_GC_1_3
+extern int __stdcall report_user_break(unsigned int value);
+#else
 extern int report_user_break(unsigned int value);
+#endif
 extern void initialize_console(void);
 extern void clear_global(void);
 extern void CLIO_ExchangeClearGlobal(void);
@@ -85,8 +89,28 @@ extern void emit_formatted_diagnostic(Plugin *source, DiagnosticSourcePosition *
 extern void print_diagnostic(Plugin *object, DiagnosticSourcePosition *dump, SInt32 code, SInt16 level,
                              char *messageArg1, char **messageArg2);
 extern void CLIO_FormatAndDispatchText(char *fmt, ...);
+/* Reports an allocation failure and abandons the run. */
+#if VERSION >= VERSION_GC_1_3
+#include <stdio.h>
+#include <stdlib.h>
+#define CLIO_OutOfMemory()                                                                                             \
+    do {                                                                                                               \
+        fprintf(stderr, "\n*** Out of memory\n");                                                                      \
+        exit(-23);                                                                                                     \
+    } while (0)
+#else
+#define CLIO_OutOfMemory()                                                                                             \
+    do {                                                                                                               \
+        CLIO_FormatAndDispatchText("\nOut of memory\n");                                                               \
+        longjmp(driver_jmp_buf, 1);                                                                                    \
+    } while (0)
+#endif
 extern void extract_diagnostic_source_line(DiagnosticSourcePosition *info);
+#if VERSION >= VERSION_GC_1_3
+extern int __stdcall CLIO_CompareStringsIgnoreCase(char *left, char *right);
+#else
 extern int CLIO_CompareStringsIgnoreCase(char *left, char *right);
+#endif
 extern NameTableEntry *create_data_block(char *name, const void *source, unsigned int size);
 
 #ifdef __cplusplus

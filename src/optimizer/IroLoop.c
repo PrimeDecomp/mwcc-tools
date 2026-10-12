@@ -44,7 +44,11 @@ static char lbl_00580650[26];
 static unsigned char data_0058066a;
 static char lbl_0058066B[9];
 static signed int data_00580674;
+#if VERSION >= VERSION_GC_1_3
+struct IRONode *loop_header;
+#else
 static struct IRONode *loop_header;
+#endif
 static struct IROLinear *loop_candidate_last;
 static char lbl_00580680[32];
 
@@ -76,8 +80,18 @@ static void NopOutBlock(IRONode *node);
 static IROLinear *NewLabelLinear(IROList *list);
 static IROLinear *NewTypedLinear(UInt8 type, IROList *list);
 static IROLinear *NewCondLinear(UInt8 type, IROList *list);
-static IROLinear *constantref(Type *ty, long n);
-static ENode *newconstant(Type *ty, long n);
+static IROLinear *constantref(Type *ty, BY_VERSION(long, int) n);
+static ENode *newconstant(Type *ty, BY_VERSION(long, int) n);
+
+#if VERSION >= VERSION_GC_1_3
+extern Boolean is_unsigned(Type *type); /* CParser.h */
+/* CInt64_SetLong as 1.3's unroller has it (an int value) */
+static inline void CInt64_SetInt13(CInt64 *p, int n)
+{
+    p->lo = n;
+    p->hi = (n < 0) ? -1 : 0;
+}
+#endif
 static void visit(IROLinear *p, IROList *b);
 
 static inline IROLinear *MakeSequenceNode(IROLinear *left, IROLinear *right, IROList *context, int storeRight)
@@ -138,6 +152,325 @@ void compute_mustreach(void)
         }
     }
 }
+
+#if VERSION >= VERSION_GC_1_3
+extern UInt8 data_005e73e7;
+
+void fn_004a3a00(void)
+{
+    data_005e73e7 = 1;
+    IRO_FindLoops_Unroll();
+    IroVars_CheckTimedLongjmp();
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+void fn_004ab460(IROLinear *p, Boolean flag)
+{
+    if (flag)
+        fn_0044b2d0(p);
+}
+
+#pragma options align = mac68k
+struct Fn004a5b70 {
+    char pad[2];
+    UInt32 flags;
+};
+#pragma options align = reset
+
+void fn_004a5b70(struct Fn004a5b70 *a, Boolean flag)
+{
+    if (flag)
+        a->flags &= ~0x100;
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+extern SInt16 data_005dc352;
+extern UInt8 data_005dc354;
+extern int data_005dc32a[];
+
+struct Fn004ab7f0 {
+    char pad[8];
+    SInt16 v;
+};
+
+void fn_004ab7f0(struct Fn004ab7f0 *a, Boolean flag)
+{
+    if (flag && a->v == data_005dc352) {
+        data_005dc354 = 1;
+        longjmp(data_005dc32a, 1);
+    }
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+typedef struct IroWorkQueue {
+    UInt16 *data;
+    UInt16 count;
+    UInt16 head;
+} IroWorkQueue;
+
+void fn_004a9d80(IroWorkQueue *queue, UInt16 value)
+{
+    if (queue->count < iro_node_count) {
+        queue->data[(queue->head + queue->count) % iro_node_count] = value;
+        queue->count++;
+    } else {
+        CError_Internal("IroFlowgraph.h", 0x5d);
+    }
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+extern UInt8 data_005dc328;
+extern int data_005dc300[];
+
+void fn_004ab7b0(IROLinear *node, Boolean flag)
+{
+    if (flag) {
+        switch (node->type) {
+        case 1:
+        case 2:
+        case 3:
+        case 10:
+        case 11:
+        case 17:
+            if (fn_0044be00((IROLinear *)node) != NULL) {
+                data_005dc328 = 1;
+                longjmp(data_005dc300, 1);
+            }
+            break;
+        }
+    }
+}
+extern void fn_004ab480(IROLinear *l, Boolean flag);
+#define IROLOOP_BIT(bv, i) (((i) >> 5) < (bv)->size && ((1 << (i)) & (bv)->bits[(i) >> 5]))
+
+/* does a linear tree from node `n` onwards (before `stop`) write the variable `a3` refers to, without being dominated */
+Boolean fn_004ab500(IRONode *n, void *a1, IRONode *stop, IROLinear *a3, BitVector *vars, Boolean reset)
+{
+    IROLinear *l;
+    UInt16 i;
+    IRONode *p;
+
+    if (n != stop) {
+        if (reset) {
+            for (p = iro_flowgraph_head; p != NULL; p = p->nextnode)
+                *((UInt8 *)p + 0x3c) = 0;
+        } else if (*((UInt8 *)n + 0x3c)) {
+            return 0;
+        }
+        *((UInt8 *)n + 0x3c) = 1;
+    }
+    for (l = n->first; l != NULL && l != n->last->next; l = l->next) {
+        if (!(l->flags & 2)) {
+            memset(data_005dc32a, 0, 0x2c);
+            data_005dc352 = a3->index;
+            data_005dc354 = 0;
+            if (!setjmp(data_005dc32a))
+                visit_linear_range_trees(l, l, (void *)fn_004ab7f0);
+            if (data_005dc354)
+                return 0;
+            IroBitVect_ClearBitVector(data_00588018);
+            visit_linear_range_trees(l, l, (void *)fn_004ab480);
+            if (IroBitVect_Intersects(vars, data_00588018))
+                return 1;
+        }
+    }
+    if (n != stop) {
+        for (i = 0; i < n->numsucc; i++) {
+            if (fn_004ab500(iroNodesByIndex[n->succ[i]], a1, stop, a3, vars, 0))
+                return 1;
+        }
+    }
+    return 0;
+}
+
+/* like fn_004ab500, but looks for any linear with side effects */
+Boolean fn_004ab650(IRONode *n, void *a1, IRONode *stop, IROLinear *a3, Boolean reset)
+{
+    IROLinear *l;
+    UInt16 i;
+    IRONode *p;
+
+    if (n != stop) {
+        if (reset) {
+            for (p = iro_flowgraph_head; p != NULL; p = p->nextnode)
+                *((UInt8 *)p + 0x3c) = 0;
+        } else if (*((UInt8 *)n + 0x3c)) {
+            return 0;
+        }
+        *((UInt8 *)n + 0x3c) = 1;
+    }
+    for (l = n->first; l != NULL && l != n->last->next; l = l->next) {
+        if (!(l->flags & 2)) {
+            memset(data_005dc32a, 0, 0x2c);
+            data_005dc352 = a3->index;
+            data_005dc354 = 0;
+            if (!setjmp(data_005dc32a))
+                visit_linear_range_trees(l, l, (void *)fn_004ab7f0);
+            if (data_005dc354)
+                return 0;
+            memset(data_005dc300, 0, 0x2a);
+            data_005dc328 = 0;
+            if (!setjmp(data_005dc300))
+                visit_linear_range_trees(l, l, (void *)fn_004ab7b0);
+            if (data_005dc328)
+                return 1;
+        }
+    }
+    if (n != stop) {
+        for (i = 0; i < n->numsucc; i++) {
+            if (fn_004ab650(iroNodesByIndex[n->succ[i]], a1, stop, a3, 0))
+                return 1;
+        }
+    }
+    return 0;
+}
+#define IROLOOP_QUEUE_PUSH(queue, value)                                                                               \
+    do {                                                                                                               \
+        if ((queue)->count < iro_node_count) {                                                                         \
+            (queue)->data[((queue)->head + (queue)->count) % iro_node_count] = (value);                                \
+            (queue)->count++;                                                                                          \
+        } else {                                                                                                       \
+            CError_Internal("IroFlowgraph.h", 0x5d);                                                                   \
+        }                                                                                                              \
+    } while (0)
+
+/* queue the unvisited nodes reachable from `node`, stopping at `stop` */
+void fn_004a9bd0(IroWorkQueue *queue, IRONode *node, IRONode *stop)
+{
+    UInt16 i;
+    UInt16 j;
+    UInt16 k;
+    IRONode *s;
+    IRONode *t;
+
+    if (node != NULL && !*((UInt8 *)node + 0x3c)) {
+        *((UInt8 *)node + 0x3c) = 1;
+        IROLOOP_QUEUE_PUSH(queue, node->index);
+        if (node != stop) {
+            for (i = 0; i < node->numsucc; i++) {
+                s = iroNodesByIndex[node->succ[i]];
+                if (s != NULL && !*((UInt8 *)s + 0x3c)) {
+                    *((UInt8 *)s + 0x3c) = 1;
+                    IROLOOP_QUEUE_PUSH(queue, s->index);
+                    if (s != stop) {
+                        for (j = 0; j < s->numsucc; j++) {
+                            t = iroNodesByIndex[s->succ[j]];
+                            if (t != NULL && !*((UInt8 *)t + 0x3c)) {
+                                *((UInt8 *)t + 0x3c) = 1;
+                                fn_004a9d80(queue, t->index);
+                                if (t != stop) {
+                                    for (k = 0; k < t->numsucc; k++)
+                                        fn_004a9bd0(queue, iroNodesByIndex[t->succ[k]], stop);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+#define IROLOOP_CHECK_CHILD(child, skip, vars, used, found)                         \
+    do {                                                                            \
+        if (fn_0044be00(child) != NULL) {                                           \
+            *(found) = 1;                                                           \
+        } else {                                                                    \
+            IroBitVect_ClearBitVector(used);                                        \
+            IroBitVect_ClearBitVector(data_00588018);                               \
+            visit_linear_postorder((child), (void (*)(IROLinear *, int))fn_004ab480); \
+            IroBitVect_Or(data_00588018, used);                                     \
+            if (IroBitVect_Intersects(vars, used))                                  \
+                *(found) = 1;                                                       \
+        }                                                                           \
+    } while (0)
+
+/* does any operand of `node` other than `skip` have side effects or touch the variables in `vars`? */
+void fn_004ab270(IROLinear *node, IROLinear *skip, BitVector *vars, BitVector *used, Boolean *found)
+{
+    IROLinear *child;
+    int i;
+
+    switch (node->type) {
+    case 3:
+        if (node->nodetype != 0x1c && node->nodetype != 0x1d && node->nodetype != 0x29) {
+            child = node->u.diadic.left;
+            if (child != skip)
+                IROLOOP_CHECK_CHILD(child, skip, vars, used, found);
+            child = node->u.diadic.right;
+            if (child != skip) {
+                if (fn_0044be00(child) != NULL) {
+                    *found = 1;
+                    break;
+                }
+                IroBitVect_ClearBitVector(used);
+                IroBitVect_ClearBitVector(data_00588018);
+                visit_linear_postorder(child, (void (*)(IROLinear *, int))fn_004ab480);
+                IroBitVect_Or(data_00588018, used);
+                if (IroBitVect_Intersects(vars, used))
+                    *found = 1;
+            }
+        }
+        break;
+    case 11:
+        child = *(IROLinear **)((char *)node + 0x28);
+        if (child != skip)
+            IROLOOP_CHECK_CHILD(child, skip, vars, used, found);
+        for (i = 0; !*found && i < *(SInt16 *)((char *)node + 0x22); i++) {
+            child = (*(IROLinear ***)((char *)node + 0x24))[i];
+            if (child != skip)
+                IROLOOP_CHECK_CHILD(child, skip, vars, used, found);
+        }
+        break;
+    }
+}
+extern void fn_004aa360(IRONode *n);
+
+/* are all linears in the nodes reachable from `start` (up to `stopnode`) that it dominates free of side effects? */
+Boolean fn_004ab140(IRONode *start, IRONode *stopnode, IROLinear *skip, Boolean skipType7)
+{
+    IroWorkQueue queue;
+    IRONode *n;
+    IROLinear *l;
+    UInt16 idx;
+    BitVector *dom;
+
+    queue.data = (UInt16 *)oalloc(iro_node_count * 2);
+    queue.count = 0;
+    queue.head = 0;
+    for (n = iro_flowgraph_head; n != NULL; n = n->nextnode)
+        *((UInt8 *)n + 0x3c) = 0;
+    fn_004a9bd0(&queue, start, stopnode);
+    while (queue.count != 0) {
+        idx = queue.data[queue.head];
+        queue.head = (queue.head + 1) % iro_node_count;
+        queue.count--;
+        n = iroNodesByIndex[idx];
+        if (n == NULL)
+            continue;
+        dom = *(BitVector **)((char *)n + 0x2e);
+        if (!((start->index >> 5) < dom->size && ((1 << (start->index & 31)) & dom->bits[start->index >> 5])))
+            return 0;
+        l = n->first;
+        while (l != NULL) {
+            if (!((skip != NULL && l == skip) || (skipType7 && l->type == 7))) {
+                if (n->numpred == 2 && l->type == 8)
+                    fn_004aa360(n);
+                if (l->type != 0 && l->type != 8 && l->type != 4 && !(l->flags & 2))
+                    return 0;
+            }
+            l = l->next;
+            if (l == NULL || l == n->last->next)
+                break;
+        }
+    }
+    return 1;
+}
+#endif
 
 int is_value_preserving_integral_conversion(IROLinear *op)
 {
@@ -431,7 +764,7 @@ int match_induction_expression(IROLinear *node, IROLinear **factor, IROLinear **
             return 0;
     }
     if (variableNode->u.monadic->u.node == NULL)
-        CError_FATAL(903);
+        CError_FATAL(BY_VERSION(903, 802));
     constant = variableNode->u.monadic->u.node;
     *variable = fn_0044ba70(constant->data.objref, 0, 1);
     if (*variable == NULL || (*variable)->inductionState != 2)
@@ -450,7 +783,7 @@ int match_induction_expression(IROLinear *node, IROLinear **factor, IROLinear **
              induction = induction->next)
             ;
         if (induction == NULL)
-            CError_FATAL(944);
+            CError_FATAL(BY_VERSION(944, 845));
         if (induction->step == NULL) {
             SInt32 iterations = induction->addConst;
             SInt32 step = divisor.lo;
@@ -473,7 +806,7 @@ int match_induction_expression(IROLinear *node, IROLinear **factor, IROLinear **
     return 1;
 }
 
-void forward_expr_if_check_object(IROLinear *entry, int checkObject)
+void forward_expr_if_check_object(IROLinear *entry, BY_VERSION(int, char) checkObject)
 
 {
     if ((checkObject != 0) && (entry->expr != NULL)) {
@@ -483,9 +816,9 @@ void forward_expr_if_check_object(IROLinear *entry, int checkObject)
 }
 
 /* (IroUtil_VisitLinearTree visitors) */
-void fn_00461dc0(IROLinear *type, unsigned int enabled)
+void fn_00461dc0(IROLinear *type, BY_VERSION(unsigned int, char) enabled)
 {
-    if (enabled != 0U) {
+    if (enabled != BY_VERSION(0U, 0)) {
         if (type->expr != 0U) {
             type->flags &= ~2048U;
         }
@@ -607,7 +940,7 @@ IROExpr *fn_00461860(IROExpr *root, IROLinear *initial, IROLinear *step, IROLoop
                    context->nd->u.diadic.right->nodetype == ESUB) {
             operation->nodetype = ESUBASS;
         } else {
-            operation->nodetype = ((volatile IROLinear *)context->nd)->nodetype;
+            operation->nodetype = ((BY_VERSION(volatile IROLinear *, IROLinear *volatile))context->nd)->nodetype;
         }
     } else if (context->nd->nodetype == EPREINC || context->nd->nodetype == EPOSTINC) {
         operation->nodetype = EADDASS;
@@ -630,9 +963,13 @@ IROExpr *fn_00461860(IROExpr *root, IROLinear *initial, IROLinear *step, IROLoop
                     ENode *integer = IrOptimizer_NewENode(EINTCONST);
                     integer->rtype = step->rtype;
                     operation->u.diadic.right->rtype = step->rtype;
+#if VERSION >= VERSION_GC_1_3
+                    CInt64_SetInt13(&integer->data.intval, context->addConst * step->u.node->data.intval.lo);
+#else
                     constant = step->u.node->data.intval.lo * context->addConst;
                     integer->data.intval.lo = constant;
                     integer->data.intval.hi = (constant < 0) ? -1 : 0;
+#endif
                     operation->u.diadic.right->u.node = integer;
                 }
                 IroUtil_AppendLinear(operation->u.diadic.right, &updateList);
@@ -650,7 +987,7 @@ IROExpr *fn_00461860(IROExpr *root, IROLinear *initial, IROLinear *step, IROLoop
         predecessor = IroUtil_GetLinearRangeStart(context->nd);
         IroUtil_InsertLinearBefore(updateList.head, updateList.tail, predecessor);
     }
-    IroUtil_VisitLinearTree(root->linear, forward_expr_if_check_object);
+    IroUtil_VisitLinearTree(root->linear, BY_VERSION(forward_expr_if_check_object, (void (*)(IROLinear *, int))forward_expr_if_check_object));
     root->temp = temporary;
     root->next = iro_loop_roots;
     iro_loop_roots = root;
@@ -686,7 +1023,7 @@ IRONode *insert_loop_preheader(IRONode *loopHead, IRONode *predecessor)
         predecessor->nextnode = preheader;
         preheader->nextnode = loopHead;
     } else {
-        CError_ASSERT(1362, loopHead->first->type == IROLinearLabel);
+        CError_ASSERT(BY_VERSION(1362, 1422), loopHead->first->type == IROLinearLabel);
         label->next = IrOptimizer_NewLinear(IROLinearGoto);
         label->next->u.label = loopHead->first->u.label;
         iroNodeTail->last->next = label;
@@ -896,10 +1233,15 @@ void fn_00460f70(void)
     IroBitVect_AllocateBitVector(&data_0058064c, iroVarCount + 1);
     IroBitVect_AllocateBitVector(&data_00588018, iroVarCount + 1);
     for (node = iro_flowgraph_head; node != NULL; node = node->nextnode) {
+#if VERSION >= VERSION_GC_1_3
+        if (!GMARKED(node->index))
+            continue;
+#else
         if ((node->index >> 5) >= IRO_LoopScratchVector_005880dc->size)
             continue;
         if (!((1 << node->index) & IRO_LoopScratchVector_005880dc->bits[node->index >> 5]))
             continue;
+#endif
         item = node->first;
         if (item == NULL)
             continue;
@@ -1184,7 +1526,7 @@ void reduce_strength_and_move_loop_invariants(IRONode *func)
             found = 1;
             if (node->nextnode == func) {
                 if (functionNode != NULL && node != functionNode)
-                    CError_FATAL(2516);
+                    CError_FATAL(BY_VERSION(2516, 3880));
                 functionNode = node;
             }
         }
@@ -1217,7 +1559,11 @@ void reduce_strength_and_move_loop_invariants(IRONode *func)
             if (IN_SET(previousExpr->node->index) && previousExpr->hasSideEffects == 0 &&
                 (previousExpr->mayTrap == 0 || previousExpr->node->mustreach != 0) &&
                 (previousExpr->linear->flags & IROLF_LoopInvariant) != 0) {
+#if VERSION >= VERSION_GC_1_3
+                IroUtil_VisitLinearTree(previousExpr->linear, (void (*)(IROLinear *, int))fn_004a5b70);
+#else
                 IroUtil_VisitLinearTree(previousExpr->linear, (void (*)(IROLinear *, int))fn_0044e340);
+#endif
                 previousExpr->linear->flags = previousExpr->linear->flags | 0x100;
             }
         }
@@ -1267,7 +1613,7 @@ void reduce_strength_and_move_loop_invariants(IRONode *func)
                     }
                     if (matchingEntry != NULL) {
                         IroDump_Print("Using existing RIS: %d\n", matchingEntry->linear->index);
-                        IroUtil_VisitLinearTree(memberUse->linear, forward_expr_if_check_object);
+                        IroUtil_VisitLinearTree(memberUse->linear, BY_VERSION(forward_expr_if_check_object, (void (*)(IROLinear *, int))forward_expr_if_check_object));
                     } else {
                         IROExpr *result = fn_00461860(memberUse, bases, expression, info, 0);
                         matchingEntry = result;
@@ -1344,6 +1690,15 @@ void find_induction_init(struct IROLoop *state, struct IRONode *list)
     if (state->init != NULL && state->init->type != IROLinearOp2Arg)
         state->init = NULL;
 }
+
+#define IN_SET(v)                                                                                                      \
+    (((v) >> 5) < IRO_LoopScratchVector_005880dc->size &&                                                              \
+     (IRO_LoopScratchVector_005880dc->bits[(v) >> 5] & (1 << ((v) & 31))) != 0)
+
+#if VERSION >= VERSION_GC_1_3
+struct Fn004a5b70;
+void fn_004a5b70(struct Fn004a5b70 *a, Boolean flag);
+#endif
 
 /* Analyses the loop whose test ends LOOP. */
 
@@ -1822,6 +2177,11 @@ int combine_nonoverlapping_shifts(CInt64 a, CInt64 b, CInt64 *out)
 }
 #pragma auto_inline reset
 
+#if VERSION >= VERSION_GC_1_3
+#define NLL_LABEL(lab) (lab)
+#else
+#define NLL_LABEL(lab) lab->u.label
+#endif
 void unroll_loop(int factor, struct IRONode *header)
 {
     IROLinear *checkLinear;
@@ -2235,7 +2595,7 @@ void unroll_loop(int factor, struct IRONode *header)
 
                     IroUtil_InitList(&list);
                     lab = NewLabelLinear(&list);
-                    limit = (IROLinear *)lab->u.label;
+                    limit = (IROLinear *)NLL_LABEL(lab);
                     IroUtil_InsertLinearBefore(list.head, list.tail, pred->last);
                     testLast = list.head;
 
@@ -2297,7 +2657,7 @@ void unroll_loop(int factor, struct IRONode *header)
 
                     IroUtil_InitList(&list);
                     lab = NewLabelLinear(&list);
-                    object = (Object *)lab->u.label;
+                    object = (Object *)NLL_LABEL(lab);
                     IroUtil_InsertLinearBefore(list.head, list.tail, pred->last);
                     exitFirst = list.head;
 
@@ -2588,7 +2948,7 @@ void unroll_loop(int factor, struct IRONode *header)
 
                     IroUtil_InitList(&list);
                     lab = NewLabelLinear(&list);
-                    right1 = (IROLinear *)lab->u.label;
+                    right1 = (IROLinear *)NLL_LABEL(lab);
                     IroUtil_InsertLinearBefore(list.head, list.tail, pred->last);
                     exitFirst = list.head;
 
@@ -2783,7 +3143,8 @@ int is_loop_unrollable(IROLoop *loop)
 
     if (!(loop->flags & 0x10000)) {
         operand = loop->cond->u.diadic.right;
-        if (IroDump_IsType1NodeType50(loop->cond->u.diadic.right) == 0 && (operand->flags & IROLF_LoopInvariant) == 0) {
+        if (IroDump_IsType1NodeType50(BY_VERSION(loop->cond->u.diadic.right, operand)) == 0 &&
+            (operand->flags & IROLF_LoopInvariant) == 0) {
             IroDump_Print("IsLoopUnrollable:No because Loop Upper Bound is Variant in the loop\n");
             return 0;
         }
@@ -2795,6 +3156,14 @@ int is_loop_unrollable(IROLoop *loop)
             IroDump_Print("IsLoopUnrollable:No because initial value of induction stored thru pointer\n");
             return 0;
         }
+#if VERSION >= VERSION_GC_1_3
+        if (!is_unsigned(loop->init->rtype)) {
+            if (IroDump_IsType1NodeType50(loop->init->u.diadic.right)) {
+                if (!CInt64_GreaterEqual(loop->init->u.diadic.right->u.node->data.intval, cint64_zero)) {
+                    IroDump_Print("IsLoopUnrollable:No because initial value of induction is signed but init < 0\n");
+                    return 0;
+                }
+#else
         initializationType = (TypeIntegral *)loop->init->rtype;
         if (initializationType->integral == IT_CHAR || initializationType->integral == IT_SHORT ||
             initializationType->integral == IT_INT || initializationType->integral == IT_LONG ||
@@ -2805,6 +3174,7 @@ int is_loop_unrollable(IROLoop *loop)
                     IroDump_Print("IsLoopUnrollable:No because initial value of induction is signed but > 0\n");
                     return 0;
                 }
+#endif
             } else {
                 if (compute_loop_count(loop, &value)) {
                     IroDump_Print("IsLoopUnrollable:Yes, the limits substract out to be constants\n");
@@ -2821,10 +3191,14 @@ int is_loop_unrollable(IROLoop *loop)
             return 0;
         }
     } else {
+#if VERSION >= VERSION_GC_1_3
+        if (!is_unsigned(loop->cond->u.diadic.left->rtype)) {
+#else
         initializationType = (TypeIntegral *)loop->cond->u.diadic.left->rtype;
         if (initializationType->integral == IT_CHAR || initializationType->integral == IT_SHORT ||
             initializationType->integral == IT_INT || initializationType->integral == IT_LONG ||
             initializationType->integral == IT_LONGLONG) {
+#endif
             IroDump_Print("IsLoopUnrollable:No because the while loop induction is signed\n");
             return 0;
         }
@@ -2841,6 +3215,12 @@ int is_loop_unrollable(IROLoop *loop)
     return 1;
 }
 
+#if VERSION >= VERSION_GC_1_3
+/* (1.3: compute_loop_count is in IroUnrollLoop.c) */
+#undef CERROR_FILE
+#define CERROR_FILE "IroUnrollLoop.c"
+#endif
+
 /* The loop's iteration count, when its bounds differ by a constant. */
 int compute_loop_count(IROLoop *loop, CInt64 *count)
 {
@@ -2856,6 +3236,17 @@ int compute_loop_count(IROLoop *loop, CInt64 *count)
     CInt64 step;
     CInt64 minusOne;
 
+#if VERSION >= VERSION_GC_1_3
+    start = loop->init->u.diadic.right;
+    if (loop->flags & 1) {
+        limit = loop->cond->u.diadic.right;
+        limitType = loop->cond->u.diadic.right->rtype;
+    } else {
+        limit = loop->cond->u.diadic.left;
+        limitType = loop->cond->u.diadic.left->rtype;
+    }
+    isUnsigned = is_unsigned(limitType);
+#else
     isUnsigned = 0;
     start = loop->init->u.diadic.right;
     if (loop->flags & 1) {
@@ -2870,6 +3261,7 @@ int compute_loop_count(IROLoop *loop, CInt64 *count)
         integralType->integral == IT_UINT || integralType->integral == IT_ULONG ||
         integralType->integral == IT_ULONGLONG)
         isUnsigned = 1;
+#endif
     if (IroDump_IsType1NodeType50(start) != 0 && IroDump_IsType1NodeType50(limit) != 0) {
         startValue = start->u.node->data.intval;
         limitValue = limit->u.node->data.intval;
@@ -2888,6 +3280,9 @@ int compute_loop_count(IROLoop *loop, CInt64 *count)
         *count = CInt64_Add(*count, step);
         if (loop->cond->type == IROLinearOp2Arg && loop->cond->nodetype == ELESS)
             *count = CInt64_Add(*count, minusOne);
+#if VERSION >= VERSION_GC_1_3
+        CError_ASSERT(2486, !CInt64_IsZero(&step));
+#endif
         if (isUnsigned != 0)
             *count = CInt64_DivU(*count, step);
         else
@@ -2895,9 +3290,9 @@ int compute_loop_count(IROLoop *loop, CInt64 *count)
         if (CInt64_Equal(*count, cint64_zero))
             return 0;
         if (isUnsigned != 0)
-            CError_ASSERT(9775, !CInt64_LessEqualU(*count, cint64_zero));
+            CError_ASSERT(BY_VERSION(9775, 2508), !CInt64_LessEqualU(*count, cint64_zero));
         else
-            CError_ASSERT(9784, !CInt64_LessEqual(*count, cint64_zero));
+            CError_ASSERT(BY_VERSION(9784, 2517), !CInt64_LessEqual(*count, cint64_zero));
         return 1;
     }
     startTerms = IroVars_CreateAddrRecord(start);
@@ -2939,6 +3334,10 @@ int compute_loop_count(IROLoop *loop, CInt64 *count)
     }
     return 0;
 }
+#if VERSION >= VERSION_GC_1_3
+#undef CERROR_FILE
+#define CERROR_FILE "IroLoop.c"
+#endif
 
 /* Whether two address sums differ only by a constant (returned in DIFFERENCE). */
 int compute_positive_addr_record_difference(IROAddrRecord *first, IROAddrRecord *second, int context,
@@ -2991,6 +3390,7 @@ int compute_positive_addr_record_difference(IROAddrRecord *first, IROAddrRecord 
     return 0;
 }
 
+
 void fn_0045c520(IROLoop *loop, CInt64 *iterationCount, int *unrollFactor, int *remainderLoop, int *unrollLoop,
                  int *exactMultiple)
 {
@@ -3036,6 +3436,12 @@ void fn_0045c520(IROLoop *loop, CInt64 *iterationCount, int *unrollFactor, int *
     }
 }
 
+#if VERSION >= VERSION_GC_1_3
+/* 1.3 builds the loop unroller from its own file */
+#undef CERROR_FILE
+#define CERROR_FILE "IroUnrollLoop.c"
+#endif
+
 struct IROLinear *create_loop_iteration_count(struct IROList *context, struct IROLoop *statement)
 {
     Type *type;
@@ -3071,8 +3477,8 @@ struct IROLinear *create_loop_iteration_count(struct IROList *context, struct IR
     }
 
 #if VERSION >= VERSION_GC_1_2_5
-    CError_ASSERT(10087, statement->induction != 0);
-    CError_ASSERT(10092, statement->induction->addConst != 0);
+    CError_ASSERT(BY_VERSION(10087, 2924), statement->induction != 0);
+    CError_ASSERT(BY_VERSION(10092, 2929), statement->induction->addConst != 0);
 #else
     CError_ASSERT(10070, statement->induction != 0);
     CError_ASSERT(10075, statement->induction->addConst != 0);
@@ -3148,7 +3554,11 @@ struct IROLinear *create_loop_iteration_count(struct IROList *context, struct IR
             quotient->nodetype = ESHL;
             quotient->u.diadic.left = sum;
             quotient->u.diadic.right = stepNode;
+#if VERSION >= VERSION_GC_1_3
+            CInt64_SetInt13(&stepNode->u.node->data.intval, shift);
+#else
             stepNode->u.node->data.intval.lo = shift;
+#endif
         } else {
             quotient = IrOptimizer_NewLinear(IROLinearOp2Arg);
             linear_index_counter++;
@@ -3178,6 +3588,10 @@ struct IROLinear *create_loop_iteration_count(struct IROList *context, struct IR
     IroUtil_AppendLinear(assignment, context);
     return assignment->u.diadic.left;
 }
+#if VERSION >= VERSION_GC_1_3
+#undef CERROR_FILE
+#define CERROR_FILE "IroLoop.c"
+#endif
 
 static void NopOutBlock(IRONode *node)
 {
@@ -3197,7 +3611,11 @@ static IROLinear *NewLabelLinear(IROList *list)
     lab->u.label = IroUtil_NewLabel();
     lab->flags |= 1;
     IroUtil_AppendLinear(lab, list);
+#if VERSION >= VERSION_GC_1_3
+    return (IROLinear *)lab->u.label;
+#else
     return lab;
+#endif
 }
 
 static IROLinear *NewTypedLinear(UInt8 type, IROList *list)
@@ -3408,7 +3826,7 @@ IROLinear *create_loop_ind_temporary(IROLoopInd *loop, long value, IROList *chai
     return assignment->u.diadic.left;
 }
 
-static IROLinear *constantref(Type *ty, long n)
+static IROLinear *constantref(Type *ty, BY_VERSION(long, int) n)
 {
     IROLinear *p;
     ENode *c;
@@ -3421,7 +3839,7 @@ static IROLinear *constantref(Type *ty, long n)
     return p;
 }
 
-static ENode *newconstant(Type *ty, long n)
+static ENode *newconstant(Type *ty, BY_VERSION(long, int) n)
 {
     ENode *p;
     long hi;
@@ -3632,8 +4050,12 @@ void create_source_constant_branch(IROList *list, IROLinear *source, SInt32 valu
 
     expression = IrOptimizer_NewENode(EINTCONST);
     expression->rtype = type;
+#if VERSION >= VERSION_GC_1_3
+    CInt64_SetInt13(&expression->data.intval, value);
+#else
     expression->data.intval.lo = value;
     expression->data.intval.hi = value < 0 ? -1 : 0;
+#endif
     constant->u.node = expression;
 
     IroUtil_AppendLinear(constant, list);
@@ -3755,6 +4177,7 @@ void add_const_to_induction_var_references(IROLinear *first, IROLinear *last, SI
             break;
     }
 }
+
 
 /* Appends to ARG the update of the loop's induction variable by COUNT steps. */
 void append_scaled_induction_update(IROLoop *owner, SInt32 count, IROList *arg)

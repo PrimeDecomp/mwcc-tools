@@ -261,7 +261,7 @@ TemplParam *parse_template_parameter(NameSpace *owner, TemplParam *value, short 
     declaration->pid.index = memberValue;
     switch (declaration->pid.nindex = memberByte, tk) {
         case 0x112:
-        case 0x120:
+        case TKN(0x120):
             tk = CPrepTokenizer_GetNextToken();
             if (tk == TK_IDENTIFIER) {
                 declaration->name = data_00587fa0;
@@ -327,7 +327,11 @@ TemplParam *parse_template_parameter(NameSpace *owner, TemplParam *value, short 
     return declaration;
 }
 
+#if VERSION >= VERSION_GC_1_3
+TemplParam *parse_template_parameter_list(NameSpace *parserState, char mode)
+#else
 TemplParam *parse_template_parameter_list(NameSpace *parserState, unsigned char mode)
+#endif
 {
     TemplParam **tail;
     TemplParam *argument;
@@ -582,8 +586,13 @@ UInt8 CTemplateNew_LinkTemplateScope(DeclInfo *context, TypeTemplDep *request, N
         if (result != NULL) {
             *destination = result->theclass.nspace;
             if (context->templateScope == NULL || (*destination)->theclass == NULL) {
-                CError_FATAL(757);
+                CError_FATAL(BY_VERSION(757, 948));
             }
+#if VERSION >= VERSION_GC_1_3
+            cscope_current = (NameSpace *)(*destination)->theclass->nspace;
+            context->templateScope = NULL;
+            return 1;
+#endif
             slot = (*destination)->theclass;
             entry = context->templateScope;
             if (entry->linkedNamespace != NULL) {
@@ -661,11 +670,11 @@ void parse_template_member_definition(void *context, TypeClass *template_info, D
                                object->type, object->qual, declaration->thetype, declaration->qual);
             return;
         }
-        CError_ASSERT(869, object->datatype == DDATA);
+        CError_ASSERT(BY_VERSION(869, 1070), object->datatype == DDATA);
         CPrep_BufferTokensThroughSemicolon(&parsed_body, NULL);
     }
     if (parsed_body.tokens != 0) {
-        is_saved_function = object->type->type == TYPEFUNC && (((TypeFunc *)object->type)->flags & 1024) != 0;
+        is_saved_function = object->type->type == TYPEFUNC && (((TypeFunc *)object->type)->flags & BY_VERSION(1024, TFUNC_TEMPLATE)) != 0;
         if (is_saved_function) {
             if (CTemplTool_EqualParams(object->u.templateFunction->params, context, 0) == 0) {
                 CError_ReportError(ERR_TEMPLATE_PARAMETER_MISMATCH);
@@ -686,8 +695,13 @@ void parse_template_member_definition(void *context, TypeClass *template_info, D
     }
 }
 
+#if VERSION >= VERSION_GC_1_3
+void parse_function_template_declaration(TemplateScopeState *stack, TemplParam *params, TypeClass *tclass,
+                                         SInt32 *startOffset, AccessType access, Boolean flag)
+#else
 void parse_function_template_declaration(TemplateScopeState *stack, TemplParam *params, TypeClass *tclass,
                                          SInt32 *startOffset)
+#endif
 {
     Boolean isstatic;
     DeclInfo di;
@@ -726,11 +740,11 @@ void parse_function_template_declaration(TemplateScopeState *stack, TemplParam *
 
     if (!di.hasTypename) {
         if (tclass && di.thetype->type == TYPECLASS && di.thetype == (Type *)tclass && tk == '(') {
-            CError_ASSERT(1027, cscope_current->parent == tclass->nspace);
+            CError_ASSERT(BY_VERSION(1027, 1418), cscope_current->parent == tclass->nspace);
             CError_ReportIllegalFlags(di.qual & ~(Q_INLINE | Q_EXPLICIT));
             di.thetype = (Type *)&void_ptr;
             di.isConstructor = 1;
-            CDecl_ParseDirectFuncDecl(&di);
+            CDecl_ParseDirectFuncDeclFromParen(&di);
             if (di.thetype->type == TYPEFUNC) {
                 FuncArg *args;
                 if ((args = TYPE_FUNC(di.thetype)->args) && !args->next && args->type == (Type *)tclass) {
@@ -756,7 +770,7 @@ void parse_function_template_declaration(TemplateScopeState *stack, TemplParam *
                 di.thetype = (Type *)&void_ptr;
                 di.isConstructor = 1;
                 CTempl_PushScope(stack, &templclass->theclass);
-                CDecl_ParseDirectFuncDecl(&di);
+                CDecl_ParseDirectFuncDeclFromParen(&di);
                 if (di.thetype->type == TYPEFUNC) {
                     di.name = constructor_name;
                     if (templclass->theclass.flags & CLASS_HAS_VBASES)
@@ -796,7 +810,7 @@ void parse_function_template_declaration(TemplateScopeState *stack, TemplParam *
                     }
                     di.thetype = (Type *)&void_ptr;
                     CTempl_PushScope(stack, &templclass->theclass);
-                    CDecl_ParseDirectFuncDecl(&di);
+                    CDecl_ParseDirectFuncDeclFromParen(&di);
                     if (di.thetype->type == TYPEFUNC) {
                         if (templclass->theclass.sominfo)
                             di.qual |= Q_VIRTUAL;
@@ -819,6 +833,7 @@ void parse_function_template_declaration(TemplateScopeState *stack, TemplParam *
                     }
                     CError_ReportIllegalFlags(di.qual & ~(Q_INLINE | Q_VIRTUAL));
                     conversion_type_name(&di);
+#if VERSION < VERSION_GC_1_3
                     if (tk != '(')
                         CError_ReportError(ERR_LPAREN_EXPECTED);
                     else
@@ -829,6 +844,7 @@ void parse_function_template_declaration(TemplateScopeState *stack, TemplParam *
                         CError_ReportError(ERR_RPAREN_EXPECTED);
                     else
                         tk = CPrepTokenizer_GetNextToken();
+#endif
                     conversionType = di.thetype;
                     conversionQual = di.qual;
                     CDecl_NewConvFuncType(&di);
@@ -854,7 +870,7 @@ void parse_function_template_declaration(TemplateScopeState *stack, TemplParam *
     scandeclarator(&di);
     data_00582108 = 0;
     if (cscope_current->is_templ) {
-        CError_ASSERT(1192, cscope_current == stack->scope);
+        CError_ASSERT(BY_VERSION(1192, 1589), cscope_current == stack->scope);
         cscope_current = stack->scope->parent;
     }
 
@@ -872,13 +888,13 @@ void parse_function_template_declaration(TemplateScopeState *stack, TemplParam *
 
     for (list = CScope_FindName(cscope_current, di.name); list; list = list->next) {
         if ((obj = OBJECT(list->object))->otype == OT_OBJECT && obj->type->type == TYPEFUNC &&
-            (TYPE_FUNC(obj->type)->flags & 0x400)) {
+            (TYPE_FUNC(obj->type)->flags & TFUNC_TEMPLATE)) {
             templ = CTemplTool_GetFuncTempl(obj);
             if (CTemplTool_EqualParams(templ->params, params, 0) && iscpp_typeequal(obj->type, di.thetype)) {
                 if (tk != ';' && templ->stream.tokens)
                     CError_ReportError(ERR_TEMPLATE_REDEFINED);
                 if (tk == '{' || tk == ':' || tk == TK_TRY)
-                    CError_ASSERT(1227, CTemplTool_EqualParams(templ->params, params, 1));
+                    CError_ASSERT(BY_VERSION(1227, 1654), CTemplTool_EqualParams(templ->params, params, 1));
                 TYPE_FUNC(obj->type)->args = TYPE_FUNC(di.thetype)->args;
                 break;
             }
@@ -944,10 +960,16 @@ void parse_explicit_template_instantiation(void)
         case TK_UNION:
         case TK_CLASS:
             tk = CPrepTokenizer_GetNextToken();
+#if VERSION >= VERSION_GC_1_3
+            declarationFlags = 0;
+            if (tk == TK_UU_DECLSPEC)
+                CDecl_ParseDeclarationAttributeFlags(&declarationFlags);
+#else
             if (tk == TK_UU_DECLSPEC)
                 declarationFlags = CDecl_ParseClassDeclSpec();
             else
                 declarationFlags = 0;
+#endif
             if (tk != TK_IDENTIFIER) {
                 CError_ReportError(ERR_IDENTIFIER_EXPECTED);
                 return;
@@ -1012,7 +1034,11 @@ void parse_explicit_template_instantiation(void)
             CError_ReportError(ERR_IDENTIFIER_EXPECTED);
             return;
         }
+#if VERSION >= VERSION_GC_1_3
+        if (!CPARSER_PARSE_OPERATOR_NAME(NULL, 1, 1))
+#else
         if (!CParser_ParseOperatorName(NULL, 1))
+#endif
             return;
         hasQualifiedName = 1;
     } else
@@ -1039,7 +1065,7 @@ void parse_explicit_template_instantiation(void)
         CError_ReportError(ERR_LPAREN_EXPECTED);
         return;
     }
-    CDecl_ParseDirectFuncDecl(&declaration);
+    CDecl_ParseDirectFuncDeclFromParen(&declaration);
     if (declaration.thetype->type != TYPEFUNC) {
         CError_ReportError(ERR_ILLEGAL_EXPLICIT_TEMPLATE_INSTANTIATION);
         return;
@@ -1052,7 +1078,7 @@ void parse_explicit_template_instantiation(void)
         TemplateFunction *nameSpace;
 
         if ((object = (Object *)objects->object)->otype != OT_OBJECT || object->type->type != TYPEFUNC ||
-            (((TypeFunc *)object->type)->flags & 0x400) == 0)
+            (((TypeFunc *)object->type)->flags & TFUNC_TEMPLATE) == 0)
             continue;
         nameSpace = CTemplTool_GetFuncTempl(object);
         result = CTemplateFunc_FindOrCreateMatchedSpecialization(object, declaration.thetype, arguments, NULL);
@@ -1112,7 +1138,11 @@ void parse_explicit_template_specialization(void)
 /* Namespace state for a template declaration. */
 /* Saved parser position. */
 
+#if VERSION >= VERSION_GC_1_3
+void CTemplateNew_ParseTemplateDeclaration(TypeClass *templateClass, AccessType access)
+#else
 void CTemplateNew_ParseTemplateDeclaration(TypeClass *templateClass)
+#endif
 {
     char templateDepth;
     char emptyParameters;
@@ -1235,7 +1265,12 @@ void CTemplateNew_ParseTemplateDeclaration(TypeClass *templateClass)
             CError_ReportError(ERR_UNIMPLEMENTED_C_FEATURE);
             return;
         }
+#if VERSION >= VERSION_GC_1_3
+        parse_function_template_declaration(&namespaceState, parameters, templateClass, &savedPosition.position, access,
+                                            0);
+#else
         parse_function_template_declaration(&namespaceState, parameters, templateClass, &savedPosition.position);
+#endif
     } while (0);
     if ((linkedNamespace = namespaceState.linkedNamespace) != NULL) {
         CError_ASSERT(1609, linkedNamespace->parent == namespaceState.scope);
@@ -1305,7 +1340,7 @@ Boolean CTemplateNew_InstantiateFunction(TemplateFunction *definition, TemplFunc
         copts.filesyminfo = 0;
     tk = CPrepTokenizer_GetNextToken();
     if (tk != '{' && tk != ':' && tk != TK_TRY)
-        CError_FATAL(1689);
+        CError_FATAL(BY_VERSION(1689, 2112));
     declaration_token = *CPrep_GetLastBufferedToken();
     if (copts.filesyminfo != 0) {
         CPrep_GetFOI(&function_fileinfo, &definition->deftoken);
@@ -1362,8 +1397,13 @@ void CTemplateNew_CompileObject(TemplClass *templateClass, TemplClassInst *conte
     source_line = source->startoffset;
     tk = CPrepTokenizer_GetNextToken();
     declaration_token = *CPrep_GetLastBufferedToken();
+#if VERSION >= VERSION_GC_1_3
+    savedFileSymInfo = copts.filesyminfo;
+    if (copts.filesyminfo) {
+#else
     savedFileSymInfo = copts.filesyminfo;
     if (savedFileSymInfo) {
+#endif
         CPrep_GetFOI(&function_fileinfo, &declaration_token);
         data_00587184 = data_00588454;
     }
@@ -1388,7 +1428,7 @@ void CTemplateNew_CompileObject(TemplClass *templateClass, TemplClassInst *conte
             CInit_InitializeData(object);
             break;
         default:
-            CError_FATAL(1796);
+            CError_FATAL(BY_VERSION(1796, 2227));
     }
     CTemplTool_PopInstance(&sa);
     CTemplTool_RemoveTemplateArgumentNameSpace(arguments, context, &scope);
@@ -1492,7 +1532,7 @@ Boolean CTemplateNew_InstantiateInlineTemplateObject(Object *obj)
     Object *func;
     TemplateMember *entry;
 
-    CError_ASSERT(1981, obj->type->type == TYPEFUNC && (obj->qual & Q_IS_TEMPLATED));
+    CError_ASSERT(BY_VERSION(1981, 2422), obj->type->type == TYPEFUNC && (obj->qual & Q_IS_TEMPLATED));
     if (!(TYPE_FUNC(obj->type)->flags & FUNC_DEFINED)) {
         theclass = (TemplClassInst *)TYPE_METHOD(obj->type)->theclass;
         if (!theclass->is_specialized) {

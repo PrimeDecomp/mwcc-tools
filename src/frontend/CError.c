@@ -112,9 +112,9 @@ static inline void CError_GetErrorMessage(char *message, short errorCode)
 {
     char format[128];
 
-    if (errorCode < 100 || errorCode >= 372) {
+    if (errorCode < 100 || errorCode >= BY_VERSION(372, 393)) {
         CompilerGetCString(5, format);
-        sprintf(error_message_buffer, format, "CError.c", 138);
+        sprintf(error_message_buffer, format, "CError.c", BY_VERSION( 138, 142));
         report_diagnostic(10001, error_message_buffer, 1, 0);
         longjmp(error_jmp_buf, 1);
         data_0058715c++;
@@ -126,9 +126,9 @@ static inline int CError_GetResourceIndex(SInt16 errorNumber)
 {
     char internalErrorFormat[128];
 
-    if (errorNumber < 100 || errorNumber >= 372) {
+    if (errorNumber < 100 || errorNumber >= BY_VERSION(372, 393)) {
         CompilerGetCString(5, internalErrorFormat);
-        sprintf(error_message_buffer, internalErrorFormat, "CError.c", 138);
+        sprintf(error_message_buffer, internalErrorFormat, "CError.c", BY_VERSION( 138, 142));
         report_diagnostic(10001, error_message_buffer, 1, 0);
         longjmp(error_jmp_buf, 1);
         data_0058715c++;
@@ -140,8 +140,8 @@ struct IRONode *CError_NewIRONode(void)
 {
     IRONode *record;
     UInt16 number;
-    record = (IRONode *)oalloc(60U);
-    memset(record, 0, 60U);
+    record = (IRONode *)oalloc(BY_VERSION(60U, 68U));
+    memset(record, 0, BY_VERSION( 60U, 68U));
     number = iro_node_count;
     record->index = number;
     iro_node_count += 1U;
@@ -245,6 +245,42 @@ void append_targ_expr(StrBuf *buf, ENode *node)
     CError_BufferAppendString(buf, "{targ_expr}");
 }
 
+#if VERSION >= VERSION_GC_1_3
+extern SInt32 data_005dc1b8;
+
+void fn_004671e0(void)
+{
+    data_005dc1b8 = -1;
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+void fn_00462c70(TypeClass *cls)
+{
+    Object *pure = CClass_CheckPures(cls);
+    if (pure == NULL)
+        CError_ReportError(0x174, cls, 0);
+    else
+        CError_ReportError(0xc2, pure);
+}
+/* qualified function signature including a template argument list */
+void fn_00464930(StrBuf *buf, NameSpace *ns, HashNameNode *name, TemplArg *targs, Type *type)
+{
+    while (ns->is_unnamed && ns->parent != NULL)
+        ns = ns->parent;
+    append_namespace_qualification(buf, ns);
+    append_function_name(buf, ns, name, type);
+    append_ctstate_list(buf, targs);
+    if (type != NULL) {
+        if (targs == NULL && (TYPE_METHOD(type)->flags & 0x100000) && buf != NULL)
+            CError_BufferAppendString(buf, "<...>");
+        append_function_args(buf, TYPE_METHOD(type), 0);
+    } else if (buf != NULL) {
+        CError_BufferAppendString(buf, "()");
+    }
+}
+#endif
+
 void append_ctstate_argument(StrBuf *context, TemplArg *record)
 {
     if (!record->pid.type)
@@ -347,7 +383,7 @@ void append_templdep(StrBuf *buf, TypeTemplDep *node)
             break;
         default:
             CompilerGetCString(5, msg);
-            sprintf(error_message_buffer, msg, "CError.c", 0x1b5);
+            sprintf(error_message_buffer, msg, "CError.c", BY_VERSION( 0x1b5, 463));
             report_diagnostic(0x2711, error_message_buffer, 1, 0);
             longjmp(error_jmp_buf, 1);
             data_0058715c++;
@@ -492,7 +528,7 @@ void append_type(StrBuf *buf, Type *type, UInt32 qualifiers)
                     break;
                 default:
                     CompilerGetCString(5, structError);
-                    sprintf(error_message_buffer, structError, "CError.c", 0x24f);
+                    sprintf(error_message_buffer, structError, "CError.c", BY_VERSION( 0x24f, 618));
                     report_diagnostic(0x2711, error_message_buffer, 1, 0);
                     longjmp(error_jmp_buf, 1);
                     data_0058715c = data_0058715c + 1;
@@ -616,7 +652,7 @@ void append_type(StrBuf *buf, Type *type, UInt32 qualifiers)
             return;
         default:
             CompilerGetCString(5, typeError);
-            sprintf(error_message_buffer, typeError, "CError.c", 0x2d0);
+            sprintf(error_message_buffer, typeError, "CError.c", BY_VERSION( 0x2d0, 752));
             report_diagnostic(0x2711, error_message_buffer, 1, 0);
             longjmp(error_jmp_buf, 1);
             data_0058715c = data_0058715c + 1;
@@ -687,7 +723,6 @@ void append_qualified_function_signature(StrBuf *buf, NameSpace *ns, HashNameNod
     } else
         CError_BufferAppendString(buf, "()");
 }
-
 void append_object_name(StrBuf *sb, Object *obj)
 {
     if (TYPEFUNC != obj->type->type) {
@@ -711,7 +746,15 @@ void append_object_name(StrBuf *sb, Object *obj)
             sb->avail -= n;
         }
     } else {
+#if VERSION >= VERSION_GC_1_3
+        struct FunctionTemplateInfo13 {
+            UInt8 pad[8];
+            TemplArg *args;
+        } *info = *(struct FunctionTemplateInfo13 **)((char *)obj + 0x36);
+        fn_00464930(sb, obj->nspace, obj->name, info != NULL ? info->args : NULL, obj->type);
+#else
         append_qualified_function_signature(sb, obj->nspace, obj->name, obj->type);
+#endif
     }
 }
 
@@ -734,6 +777,10 @@ void append_func_type_info(StrBuf *buf, MethRec *func)
     if (func->isvararg)
         CError_BufferAppendString(buf, ",...");
 }
+
+#if VERSION >= VERSION_GC_1_3
+extern void fn_00464930(StrBuf *buf, NameSpace *ns, HashNameNode *name, TemplArg *targs, Type *type);
+#endif
 
 char *CError_GetQualifiedName(NameSpace *nameSpace, HashNameNode *name)
 {
@@ -758,6 +805,10 @@ char *CError_GetQualifiedName(NameSpace *nameSpace, HashNameNode *name)
     memcpy(sb.cursor, name->name, len);
     sb.cursor += len;
     sb.avail -= len;
+#if VERSION >= VERSION_GC_1_3
+    if (sb.avail == 0)
+        CError_BufferGrow(&sb, 1);
+#endif
     *sb.cursor = 0;
     sb.avail = 0;
     newdata = (char *)lalloc(sb.size + 1);
@@ -773,7 +824,15 @@ char *CError_BuildNameSpaceNameTypeString(NameSpace *nspace, HashNameNode *name,
     s.start = s.cursor = buf;
     s.avail = 255;
     s.size = s.avail;
+#if VERSION >= VERSION_GC_1_3
+    fn_00464930(&s, nspace, name, NULL, x);
+#else
     append_qualified_function_signature(&s, nspace, name, x);
+#endif
+#if VERSION >= VERSION_GC_1_3
+    if (s.avail == 0)
+        CError_BufferGrow(&s, 1);
+#endif
     *s.cursor = 0;
     s.avail = 0;
     p = (char *)lalloc(s.size + 1);
@@ -789,11 +848,19 @@ long CError_GetObjectString(Object *object)
     buffer.avail = 255;
     buffer.size = buffer.avail;
     append_object_name(&buffer, object);
+#if VERSION >= VERSION_GC_1_3
+    if (buffer.avail == 0)
+        CError_BufferGrow(&buffer, 1);
+#endif
     *buffer.cursor = 0;
     buffer.avail = 0;
     result = lalloc(buffer.size + 1);
     return (long)strcpy(result, buffer.start);
 }
+
+#if VERSION >= VERSION_GC_1_3
+extern void fn_00464930(StrBuf *buf, NameSpace *ns, HashNameNode *name, TemplArg *targs, Type *type);
+#endif
 
 char *CError_GetQualifiedHashName(NameSpace *nspace, HashNameNode *nameRef)
 {
@@ -804,7 +871,7 @@ char *CError_GetQualifiedHashName(NameSpace *nspace, HashNameNode *nameRef)
 
     if (nameRef == NULL) {
         CompilerGetCString(5, msgbuf);
-        sprintf(error_message_buffer, msgbuf, "CError.c", 0x39c);
+        sprintf(error_message_buffer, msgbuf, "CError.c", BY_VERSION( 0x39c, 973));
         report_diagnostic(0x2711, error_message_buffer, 1, 0);
         longjmp(error_jmp_buf, 1);
         data_0058715c++;
@@ -818,6 +885,10 @@ char *CError_GetQualifiedHashName(NameSpace *nspace, HashNameNode *nameRef)
         str.size = str.avail;
         append_namespace_qualification(&str, nspace);
         CErrBuf_Append(&str, name);
+#if VERSION >= VERSION_GC_1_3
+        if (str.avail == 0)
+            CError_BufferGrow(&str, 1);
+#endif
         *str.cursor = 0;
         str.avail = 0;
         return (char *)strcpy((char *)lalloc(str.size + 1), str.start);
@@ -991,7 +1062,7 @@ void CError_FormatAndReportDiagnostic(int errorCode, const char *format, char *a
                         continue;
                     default:
                         CompilerGetCString(5, err);
-                        sprintf(error_message_buffer, err, "CError.c", 1110);
+                        sprintf(error_message_buffer, err, "CError.c", BY_VERSION( 1110, 1174));
                         report_diagnostic(10001, error_message_buffer, 1, 0);
                         longjmp(error_jmp_buf, 1);
                         data_0058715c++;
@@ -1023,7 +1094,11 @@ NameSpaceList *CError_ReportError(int errorNumber, ...)
     diagnosticCode = errorNumber;
     COS_GetString(format, 10000, CError_GetResourceIndex(diagnosticCode));
     CError_FormatAndReportDiagnostic(diagnosticCode + 10000, format, args, 0, 0);
+#if VERSION >= VERSION_GC_1_3
+    if (data_005884fd != 0 && !data_0058850f)
+#else
     if (data_005884fd != 0)
+#endif
         InlineAsm_LongJump();
 }
 
@@ -1031,9 +1106,9 @@ void CError_FatalError(short errorNumber)
 {
     char message[128];
 
-    if (+errorNumber < 100 || +errorNumber >= 372) {
+    if (+errorNumber < 100 || +errorNumber >= BY_VERSION(372, 393)) {
         CompilerGetCString(5, message);
-        sprintf(error_message_buffer, (char *)message, "CError.c", 138);
+        sprintf(error_message_buffer, (char *)message, "CError.c", BY_VERSION( 138, 142));
         report_diagnostic(10001, error_message_buffer, 1, 0);
         longjmp(error_jmp_buf, 1);
         ++data_0058715c;
@@ -1073,7 +1148,7 @@ void CError_FunctionCallError(short errorCode, ObjectList *objects, ENodeList *a
 
     if ((diagnosticCode = errorCode) < 100 || diagnosticCode >= 0x174) {
         CompilerGetCString(5, resourceBuffer);
-        sprintf(error_message_buffer, resourceBuffer, "CError.c", 0x8a);
+        sprintf(error_message_buffer, resourceBuffer, "CError.c", BY_VERSION( 0x8a, 0x8e));
         report_diagnostic(0x2711, error_message_buffer, 1, 0);
         longjmp(error_jmp_buf, 1);
         data_0058715c++;
@@ -1181,15 +1256,19 @@ void CError_Warning(SInt32 diagnosticCode, ...)
     SInt32 diagnosticID;
     SInt16 errorCode;
 
+#if VERSION >= VERSION_GC_1_3
+    if (trychain || cerror_suppress_warnings)
+#else
     if (trychain)
+#endif
         return;
 
     va_start(args, diagnosticCode);
     diagnosticID = diagnosticCode;
 
-    if ((SInt16)diagnosticID < 100 || (SInt16)diagnosticID >= 372) {
+    if ((SInt16)diagnosticID < 100 || (SInt16)diagnosticID >= BY_VERSION(372, 393)) {
         CompilerGetCString(5, message);
-        sprintf(error_message_buffer, message, "CError.c", 138);
+        sprintf(error_message_buffer, message, "CError.c", BY_VERSION( 138, 142));
         report_diagnostic(0x2711, error_message_buffer, 1, 0);
         longjmp(error_jmp_buf, 1);
         data_0058715c++;

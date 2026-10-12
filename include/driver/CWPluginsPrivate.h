@@ -41,6 +41,9 @@ struct CWPluginPrivateContext {
             SInt32 value3;
             void *value10;
             void *value11;
+#if VERSION >= VERSION_GC_1_3
+            void *value12;
+#endif
             SInt32 value4;
             void *value5;
             SInt32 value6;
@@ -53,6 +56,9 @@ struct CWPluginPrivateContext {
             void *outputSecondValue;
             unsigned int first_value;
             unsigned int second_value;
+#if VERSION >= VERSION_GC_1_3
+            UInt32 f_panelExtra;
+#endif
             int count;
             struct PanelEntry *panels;
             int lookupFirstValue;
@@ -60,7 +66,7 @@ struct CWPluginPrivateContext {
             struct IntegerSequenceResult *entries;
             unsigned char pad130[4];
             void **parserCallbacks;
-            unsigned char pad138[0x1a];
+            unsigned char pad138[BY_VERSION(0x1a, 0x16)];
         } parser;
     } contextData;
     void *callbackValue;

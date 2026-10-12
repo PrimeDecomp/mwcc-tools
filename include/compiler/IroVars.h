@@ -80,7 +80,7 @@ extern void fn_0044b4e0(IROLinear *node);
 extern SInt32 record_monadic_var_part_use(IROLinear *obj);
 extern void IroVars_BuildVarRecords(void);
 extern int record_var_part_use(IROLinear *source, VarRecord *operand, int offset, Type *type);
-extern VarRecord *fn_0044ba70(Object *object, unsigned int create, unsigned int mode);
+extern VarRecord *fn_0044ba70(Object *object, BY_VERSION(unsigned int, Boolean) create, BY_VERSION(unsigned int, Boolean) mode);
 extern void IroVars_CheckTimedLongjmp(void);
 extern IROLinear *IroVars_CreateIntConstant(CInt64 value, Type *type);
 extern IROAddrRecord *IroVars_CreateAddrRecord(struct IROLinear *linear);

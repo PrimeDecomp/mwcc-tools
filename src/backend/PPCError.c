@@ -25,7 +25,7 @@ typedef char *va_list;
 
 static inline void PPCError_CheckDiagnosticCode(SInt16 diagnosticId)
 {
-    if (diagnosticId < 100 || diagnosticId >= 178) {
+    if (diagnosticId < 100 || diagnosticId >= BY_VERSION(178, 216)) {
         CError_FATAL(40);
     }
 }
@@ -67,6 +67,59 @@ void PPCError_EmitClassTypeUpdate(SInt16 requestedReg, ENode *node, SInt16 flags
     classTypeUpdates = update;
 }
 
+#if VERSION >= VERSION_GC_1_3
+extern SInt32 data_005dccd6;
+
+void fn_004f5cf0(void)
+{
+    data_005dccd6 = 0;
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+extern int fn_004f5f00(void *a);
+
+int fn_004f5ee0(void *a, int b)
+{
+    return (SInt16)(fn_004f5f00(a) + b);
+}
+
+Boolean fn_004f5e70(void *a)
+{
+    int v = fn_004f5f00(a);
+    return v == (SInt16)v;
+}
+
+int fn_004f5ec0(void *a, int b)
+{
+    int v = fn_004f5f00(a) + b;
+    return (SInt16)((v >> 16) + ((v >> 15) & 1));
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+int fn_004f5e90(void *a)
+{
+    int r = fn_004f5f00(a);
+    int v = (SInt16)r;
+    if (r != v)
+        CError_Internal("StackFrame.c", 0xaef);
+    return v;
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+void fn_004b49e0(const char *format, ...)
+{
+    char *base;
+
+    if (trychain != NULL)
+        return;
+    CError_FormatAndReportDiagnostic(0x27e9, format,
+                                     (((char *)(&format + 1) - (base = (char *)&format)) + 3) / 4 * 4 + base, 0, 1);
+}
+#endif
+
 void PPCError_UpdateClassTypeOperands(void)
 {
     ClassTypeUpdate *update;
@@ -84,15 +137,23 @@ void PPCError_ReportError(SInt32 error, ...)
 {
     char buffer[256];
     char *args;
+#if VERSION >= VERSION_GC_1_3
+    char *base;
+#endif
     SInt32 diagnosticCode;
     SInt16 errorCode;
 
     if (trychain != NULL)
         longjmp(trychain->jmpbuf, 1);
 
+#if VERSION >= VERSION_GC_1_3
+    base = (char *)&error;
+    args = base + (((char *)(&error + 1) - base + 3) / 4 * 4);
+#else
     args = (char *)&error + (((char *)(&error + 1) - (char *)&error + 3) / 4 * 4);
+#endif
     diagnosticCode = error;
-    CError_ASSERT(40, (SInt16)diagnosticCode >= 100 && (SInt16)diagnosticCode < 178);
+    CError_ASSERT(40, (SInt16)diagnosticCode >= 100 && (SInt16)diagnosticCode < BY_VERSION(178, 216));
 
     errorCode = diagnosticCode;
     COS_GetString(buffer, 10001, errorCode - 99);
@@ -106,13 +167,21 @@ void PPCError_ReportDiagnostic(SInt32 diagnosticId, ...)
 {
     char buf[256];
     va_list args;
+#if VERSION >= VERSION_GC_1_3
+    char *base;
+#endif
     SInt32 diagnosticCode;
     SInt16 errorCode;
 
     if (trychain != NULL) {
         return;
     }
+#if VERSION >= VERSION_GC_1_3
+    base = (char *)&diagnosticId;
+    args = base + (((va_list)(&diagnosticId + 1) - base) + 3) / 4 * 4;
+#else
     args = (va_list)&diagnosticId + (((va_list)(&diagnosticId + 1) - (va_list)&diagnosticId) + 3) / 4 * 4;
+#endif
     diagnosticCode = diagnosticId;
     PPCError_CheckDiagnosticCode(diagnosticCode);
     errorCode = diagnosticCode;
@@ -124,16 +193,24 @@ void PPCError_FatalError(short diagnostic, ...)
 {
     char buffer[256];
     va_list args;
+#if VERSION >= VERSION_GC_1_3
+    char *base;
+#endif
     SInt32 diagnosticCode;
     SInt16 errorCode;
 
     if (trychain != NULL)
         longjmp(trychain->jmpbuf, 1);
 
+#if VERSION >= VERSION_GC_1_3
+    base = (char *)&diagnostic;
+    args = base + (((va_list)(&diagnostic + 1) - base + 3) / 4 * 4);
+#else
     args = (va_list)&diagnostic + (((va_list)(&diagnostic + 1) - (va_list)&diagnostic + 3) / 4 * 4);
+#endif
 
     diagnosticCode = diagnostic;
-    CError_ASSERT(40, (SInt16)diagnosticCode >= 100 && (SInt16)diagnosticCode < 178);
+    CError_ASSERT(40, (SInt16)diagnosticCode >= 100 && (SInt16)diagnosticCode < BY_VERSION(178, 216));
 
     errorCode = diagnosticCode;
 

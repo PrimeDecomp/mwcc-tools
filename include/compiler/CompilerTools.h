@@ -60,10 +60,19 @@ extern unsigned int CTool_EndianConvertInPlaceWord32Ptr(unsigned int *p);
 extern UInt16 CTool_EndianConvertWord16(UInt16 word);
 extern void CToLowercase(char *src, char *dst);
 extern char *ScanDec(char *src, SInt32 *value, Boolean *flag);
-extern void *oalloc(UInt32 requestedSize);
+extern void *oalloc(BY_VERSION(UInt32, SInt32) requestedSize);
 extern void *aalloc(SInt32 size);
-extern void *lalloc(unsigned int size);
+extern void *lalloc(BY_VERSION(unsigned int, SInt32) size);
+#if VERSION >= VERSION_GC_1_3
+/* (1.3 code merged from the old tree still uses the old names of these allocators) */
+#define CompilerTools_AllocatePool lalloc
+#define CompilerTools_AllocatePoolMemory oalloc
+#define CompilerTools_AllocateBlock aalloc
+#endif
 extern void releasegheap(void);
+extern void CompilerTools_ResetGallocAndPoolMemory(void);
+extern void CompilerTools_SetHeapCallback(void (*callback)());
+extern void (*CompilerTools_GetHeapCallback(void))();
 extern void releaseheaps(void);
 extern SInt16 initheaps(void (*param)());
 extern SInt16 CompilerTools_InitHeaps(void (*param)());

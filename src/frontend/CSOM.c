@@ -42,7 +42,11 @@ static inline ENode *CSOM_004e38b0_inline1(Type *v4)
     ObjectList *v5;
     Object *t1;
     v5 = locals;
+#if VERSION >= VERSION_GC_1_3
+    while (v5) {
+#else
     while ((int)v5 != 0) {
+#endif
         if (v5->object->name == csom_blank_name) {
             return create_objectnode(v5->object);
         }
@@ -209,10 +213,18 @@ static int basehead(TypeClass *p)
     return h;
 }
 
+#if VERSION >= VERSION_GC_1_3
+extern UInt8 data_005e7322;
+void CSOM_NoOp(void)
+{
+    data_005e7322 = 0;
+}
+#else
 void CSOM_NoOp(void)
 {
     return;
 }
+#endif
 
 void fn_004e67a0(void)
 {
@@ -646,10 +658,17 @@ struct SOMVTable *find_or_add_base(SOMClassBuildState *list, TypeClass *unused, 
     if (list->bases != NULL) {
         count = 1;
         p = list->bases;
+#if VERSION >= VERSION_GC_1_3
+        while (p->next != NULL) {
+            count++;
+            p = p->next;
+        }
+#else
         while (p->next != NULL) {
             p = p->next;
             count++;
         }
+#endif
         p->next = (struct SOMVTable *)lalloc(sizeof(struct SOMVTable));
         memclrw(p->next, sizeof(struct SOMVTable));
         node = p->next;
@@ -865,11 +884,20 @@ void create_override_methods_object(SOMClassBuildState *cls, TypeClass *func)
     ENode *array;
 
     if (cls->overrideMethodCount) {
+#if VERSION >= VERSION_GC_1_3
+        size = cls->overrideMethodCount;
+        s = func->classname->name;
+        obj = CParser_NewCompilerDefDataObject();
+        obj->name = CParser_NameConcat(s, "OverrideProcs");
+        size = (size << 2) + 0; /* (size *= 4; written so that it also matches under -inline auto,deferred) */
+        obj->type = CDecl_NewStructType(size, 4);
+#else
         size = cls->overrideMethodCount * 4;
         s = func->classname->name;
         obj = CParser_NewCompilerDefDataObject();
         obj->name = CParser_NameConcat(s, "OverrideProcs");
         obj->type = CDecl_NewStructType(size, 4);
+#endif
         CScope_AddObject(obj->nspace, obj->name, (ObjBase *)obj);
         obj->sclass = TK_STATIC;
 
@@ -904,17 +932,29 @@ Object *build_base_method_vtbl_index_object(SOMClassBuildState *groups)
     Object *result;
 
     data_00583548.size = 0;
+#if VERSION >= VERSION_GC_1_3
+    group = groups->bases;
+    groupIndex = 0;
+#else
     groupIndex = 0;
     group = groups->bases;
+#endif
     while (group != NULL) {
         if (group->slots != NULL) {
             AppendGListWord(&data_00583548, CTool_EndianConvertWord16(groupIndex));
             method = group->slots;
             count = 0;
+#if VERSION >= VERSION_GC_1_3
+            while (method != NULL) {
+                count++;
+                method = method->next;
+            }
+#else
             while (method != NULL) {
                 method = method->next;
                 count++;
             }
+#endif
             AppendGListWord(&data_00583548, CTool_EndianConvertWord16(count));
             method = group->slots;
             while (method != NULL) {
@@ -1224,9 +1264,14 @@ void make_class_descriptor(SOMClassBuildState *record, TypeClass *classType)
 void initialize_class_data_object(SOMClassBuildState *methods, TypeClass *tclass)
 {
     OLinkList *list;
+#if VERSION < VERSION_GC_1_3
     SInt32 offset;
+#endif
     OLinkList *init;
     SOMEntry *m;
+#if VERSION >= VERSION_GC_1_3
+    SInt32 offset;
+#endif
     ENode *buf;
 
     list = NULL;
@@ -1333,8 +1378,13 @@ void CSOM_ParseMethodNameList(void)
             }
             newEntry = (SOMInfoEntry *)galloc(10);
             *tail = newEntry;
+#if VERSION >= VERSION_GC_1_3
+            tail = &newEntry->next;
+            newEntry->next = NULL;
+#else
             newEntry->next = NULL;
             tail = &newEntry->next;
+#endif
             newEntry->name = data_00587fa0;
             newEntry->kind = 0;
             if (bare != 0) {
@@ -1705,9 +1755,14 @@ void CSOM_GenerateSomselfAssignment(TypeClass *tclass, Statement *stmt)
             expr = makemonadicnode(expr, EINDIRECT);
             memclrw(&obj, sizeof(Object));
             obj.otype = 5;
+#if VERSION >= VERSION_GC_1_3
+            obj.type = TYPE(&data_005646b8);
+#endif
             obj.name = unnamed_name;
             obj.datatype = DFUNC;
+#if VERSION < VERSION_GC_1_3
             obj.type = TYPE(&data_005646b8);
+#endif
             call = funccallexpr(&obj, somself, NULL, NULL, NULL);
             CError_ASSERT(1761, call->type == EFUNCCALL);
             call->data.funccall.funcref = expr;
@@ -1948,11 +2003,19 @@ ENode *CSOM_CreateMemberAccessExpr(BClassList *classList, ObjMemberVar *request,
         node = makediadicnode(operand, intconstnode((Type *)&stsignedlong, 8), EADD);
         node->rtype = CDecl_NewPointerType(TYPE(&data_005646b8));
         value = makemonadicnode(node, EINDIRECT);
+#if VERSION >= VERSION_GC_1_3
+        memclrw(&functionObject, 0x44);
+        functionObject.otype = OT_OBJECT;
+        functionObject.type = TYPE(&data_005646b8);
+        functionObject.name = unnamed_name;
+        functionObject.datatype = DFUNC;
+#else
         memclrw(&functionObject, 54);
         functionObject.otype = OT_OBJECT;
         functionObject.name = unnamed_name;
         functionObject.datatype = DFUNC;
-        functionObject.type = TYPE(&data_005646b8);
+        functionObject.type = TYPE( &data_005646b8);
+#endif
         call = funccallexpr(&functionObject, expr, NULL, NULL, NULL);
         CError_ASSERT(1761, call->type == EFUNCCALL);
         call->data.monadic = value;

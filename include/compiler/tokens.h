@@ -11,6 +11,9 @@ extern "C" {
 struct FileOffsetInfo {
     CPrepFileInfo *file;
     SInt32 tokenline;
+#if VERSION >= VERSION_GC_1_3
+    SInt32 tokenoffset;
+#endif
     Boolean is_inline;
 };
 #pragma options align = reset

@@ -10,8 +10,25 @@ extern "C" {
 extern PCodeInstruction *PCodeUtilities_MakeInstructionWithObject(short opcode, short operand, Object *object,
                                                                   short flags, char appendToBlock);
 extern void PCodeUtilities_EmitAddress(short resultReg, short baseReg, struct Object *object, short offset);
+#if VERSION >= VERSION_GC_1_3
+/* (1.3: the used registers of each class, indexed SPR, CR field, VR, FPR, GPR) */
+extern void PCodeUtilities_EmitObjectInstructionWithPayload(Object *operand, SInt16 emitInstruction, UInt32 *masks);
+static inline void PCodeUtilities_EmitObjectInstructionWithRegisterMasks(Object *operand, SInt16 emitInstruction,
+                                                                         UInt32 gprMask, UInt32 fprMask, UInt32 vrMask)
+{
+    UInt32 masks[5];
+    masks[0] = 0;
+    masks[1] = 0;
+    masks[2] = vrMask;
+    masks[3] = fprMask;
+    masks[4] = gprMask;
+    PCodeUtilities_EmitObjectInstructionWithPayload(operand, emitInstruction, masks);
+}
+#else
 extern void PCodeUtilities_EmitObjectInstructionWithPayload(Object *operand, SInt16 emitInstruction, SInt32 value1,
                                                             SInt32 value2, SInt32 value3);
+#define PCodeUtilities_EmitObjectInstructionWithRegisterMasks PCodeUtilities_EmitObjectInstructionWithPayload
+#endif
 extern PCodeOperand *fn_004a2290(PCodeOperand *p, UInt32 mask0, UInt32 mask1, UInt32 mask2);
 extern void PCodeUtilities_EmitInstructionAndCreateBlock(Object *object);
 extern unsigned int PCodeUtilities_EmitConditionalBranch(unsigned int opcode, PCodeLabel *target);

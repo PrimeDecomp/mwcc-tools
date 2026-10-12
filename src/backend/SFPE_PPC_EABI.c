@@ -113,12 +113,12 @@ void SFPE_PPC_EABI_GenerateDiadicArithmetic(ENode *node, SInt16 requestedReg, SI
         data_00560648[right->type](right, 0, 0, &rightOperand);
         if (rightOperand.kind)
             Operands_ForceGPR(&rightOperand, right->rtype, 0);
-        CError_ASSERT(129, rightOperand.kind == OpndType_GPR);
+        CError_ASSERT(BY_VERSION(129, 154), rightOperand.kind == OpndType_GPR);
 
         data_00560648[left->type](left, 0, 0, &leftOperand);
         if (leftOperand.kind)
             Operands_ForceGPR(&leftOperand, left->rtype, 0);
-        CError_ASSERT(136, leftOperand.kind == OpndType_GPR);
+        CError_ASSERT(BY_VERSION(136, 161), leftOperand.kind == OpndType_GPR);
 
         {
             SInt32 reg = leftOperand.reg;
@@ -132,13 +132,13 @@ void SFPE_PPC_EABI_GenerateDiadicArithmetic(ENode *node, SInt16 requestedReg, SI
         }
 
         if (node->type == EADD) {
-            PCodeUtilities_EmitObjectInstructionWithPayload(data_005875bc, 0, 0x18, 0, 0);
+            PCodeUtilities_EmitObjectInstructionWithRegisterMasks(data_005875bc, 0, 0x18, 0, 0);
         } else if (node->type == ESUB) {
-            PCodeUtilities_EmitObjectInstructionWithPayload(data_005875ac, 0, 0x18, 0, 0);
+            PCodeUtilities_EmitObjectInstructionWithRegisterMasks(data_005875ac, 0, 0x18, 0, 0);
         } else if (node->type == EMUL) {
-            PCodeUtilities_EmitObjectInstructionWithPayload(data_005875f0, 0, 0x18, 0, 0);
+            PCodeUtilities_EmitObjectInstructionWithRegisterMasks(data_005875f0, 0, 0x18, 0, 0);
         } else if (node->type == EDIV) {
-            PCodeUtilities_EmitObjectInstructionWithPayload(data_005875e8, 0, 0x18, 0, 0);
+            PCodeUtilities_EmitObjectInstructionWithRegisterMasks(data_005875e8, 0, 0x18, 0, 0);
         } else {
             CError_FATAL(158);
         }
@@ -149,11 +149,11 @@ void SFPE_PPC_EABI_GenerateDiadicArithmetic(ENode *node, SInt16 requestedReg, SI
     } else {
         data_00560648[right->type](right, 0, 0, &rightOperand);
         Operands_ForceGPRPair(&rightOperand, right->rtype, 0, 0);
-        CError_ASSERT(174, rightOperand.kind == OpndType_GPRPair);
+        CError_ASSERT(BY_VERSION(174, 237), rightOperand.kind == OpndType_GPRPair);
 
         data_00560648[left->type](left, 0, 0, &leftOperand);
         Operands_ForceGPRPair(&leftOperand, left->rtype, 0, 0);
-        CError_ASSERT(181, leftOperand.kind == OpndType_GPRPair);
+        CError_ASSERT(BY_VERSION(181, 243), leftOperand.kind == OpndType_GPRPair);
 
         if (leftOperand.regHi != returnRegHi)
             PCodeUtilities_EmitInstruction(PC_MR, returnRegHi, leftOperand.regHi);
@@ -165,23 +165,23 @@ void SFPE_PPC_EABI_GenerateDiadicArithmetic(ENode *node, SInt16 requestedReg, SI
             PCodeUtilities_EmitInstruction(PC_MR, sfpe_right_operand_reg, rightOperand.reg);
 
         if (node->type == EADD) {
-            PCodeUtilities_EmitObjectInstructionWithPayload(data_005875f4, 0, 0x78, 0, 0);
+            PCodeUtilities_EmitObjectInstructionWithRegisterMasks(data_005875f4, 0, 0x78, 0, 0);
         } else if (node->type == ESUB) {
-            PCodeUtilities_EmitObjectInstructionWithPayload(data_00587584, 0, 0x78, 0, 0);
+            PCodeUtilities_EmitObjectInstructionWithRegisterMasks(data_00587584, 0, 0x78, 0, 0);
         } else if (node->type == EMUL) {
-            PCodeUtilities_EmitObjectInstructionWithPayload(data_0058762c, 0, 0x78, 0, 0);
+            PCodeUtilities_EmitObjectInstructionWithRegisterMasks(data_0058762c, 0, 0x78, 0, 0);
         } else if (node->type == EDIV) {
             if (((left->rtype->type == TYPEINT || left->rtype->type == TYPEENUM) && left->rtype->size == 8 &&
                  is_unsigned(left->rtype)) ||
                 ((right->rtype->type == TYPEINT || right->rtype->type == TYPEENUM) && right->rtype->size == 8 &&
                  is_unsigned(right->rtype))) {
                 PPCError_ReportError(0x82, CERROR_FILE, 0xce);
-                PCodeUtilities_EmitObjectInstructionWithPayload(data_0058761c, 0, 0x78, 0, 0);
+                PCodeUtilities_EmitObjectInstructionWithRegisterMasks(data_0058761c, 0, 0x78, 0, 0);
             } else {
-                PCodeUtilities_EmitObjectInstructionWithPayload(data_0058761c, 0, 0x78, 0, 0);
+                PCodeUtilities_EmitObjectInstructionWithRegisterMasks(data_0058761c, 0, 0x78, 0, 0);
             }
         } else {
-            CError_FATAL(214);
+            CError_FATAL(BY_VERSION(214, 276));
         }
 
         result->kind = OpndType_GPRPair;
@@ -386,20 +386,20 @@ void SFPE_PPC_EABI_GenerateFloatPostIncDec(ENode *expr, SInt16 outputReg, SInt16
             Registers_GetInfo(inner->data.objref);
             result->kind = OpndType_GPR;
             result->reg = (outputReg != 0 && outputReg != sourceReg) ? outputReg : gUsedVirtualRegistersGPR++;
-            CError_ASSERT(488, sourceReg != result->reg);
+            CError_ASSERT(BY_VERSION(488, 546), sourceReg != result->reg);
             PCodeUtilities_EmitInstruction(PC_MR, result->reg, sourceReg);
             if (sourceReg != 3)
                 PCodeUtilities_EmitInstruction(PC_MR, 3, sourceReg);
             argumentReg = gUsedVirtualRegistersGPR++;
             LoadFloatArg(argumentReg);
             if (expr->type == EPOSTINC)
-                PCodeUtilities_EmitObjectInstructionWithPayload(data_005875bc, 0, 0x18, 0, 0);
+                PCodeUtilities_EmitObjectInstructionWithRegisterMasks(data_005875bc, 0, 0x18, 0, 0);
             else
-                PCodeUtilities_EmitObjectInstructionWithPayload(data_005875ac, 0, 0x18, 0, 0);
+                PCodeUtilities_EmitObjectInstructionWithRegisterMasks(data_005875ac, 0, 0x18, 0, 0);
             PCodeUtilities_EmitInstruction(PC_MR, sourceReg, 3);
         } else {
             if (inner->type == EBITFIELD)
-                CError_FATAL(515);
+                CError_FATAL(BY_VERSION(515, 590));
             data_00560648[inner->type](inner, 0, 0, &operand);
             Operands_MakeIndirect(&operand, inner);
             value = operand;
@@ -413,9 +413,9 @@ void SFPE_PPC_EABI_GenerateFloatPostIncDec(ENode *expr, SInt16 outputReg, SInt16
             argumentReg = gUsedVirtualRegistersGPR++;
             LoadFloatArgGPR(argumentReg);
             if (expr->type == EPOSTINC)
-                PCodeUtilities_EmitObjectInstructionWithPayload(data_005875bc, 0, 0x18, 0, 0);
+                PCodeUtilities_EmitObjectInstructionWithRegisterMasks(data_005875bc, 0, 0x18, 0, 0);
             else
-                PCodeUtilities_EmitObjectInstructionWithPayload(data_005875ac, 0, 0x18, 0, 0);
+                PCodeUtilities_EmitObjectInstructionWithRegisterMasks(data_005875ac, 0, 0x18, 0, 0);
             Operands_EmitTypedGPRMemoryInstruction(3, &operand, type);
         }
     } else {
@@ -429,8 +429,8 @@ void SFPE_PPC_EABI_GenerateFloatPostIncDec(ENode *expr, SInt16 outputReg, SInt16
             result->reg = (outputReg != 0 && (outputReg != sourceReg && outputReg != sourceReg2))
                               ? outputReg
                               : gUsedVirtualRegistersGPR++;
-            CError_ASSERT(556, sourceReg != result->reg && sourceReg2 != result->reg);
-            CError_ASSERT(557, sourceReg != result->regHi && sourceReg2 != result->regHi);
+            CError_ASSERT(BY_VERSION(556, 654), sourceReg != result->reg && sourceReg2 != result->reg);
+            CError_ASSERT(BY_VERSION(557, 655), sourceReg != result->regHi && sourceReg2 != result->regHi);
             PCodeUtilities_EmitInstruction(PC_MR, result->regHi, sourceReg2);
             PCodeUtilities_EmitInstruction(PC_MR, result->reg, sourceReg);
             if (sourceReg2 != returnRegHi)
@@ -441,14 +441,14 @@ void SFPE_PPC_EABI_GenerateFloatPostIncDec(ENode *expr, SInt16 outputReg, SInt16
             argumentReg2 = gUsedVirtualRegistersGPR++;
             LoadDoubleArg(argumentReg, argumentReg2);
             if (expr->type == EPOSTINC)
-                PCodeUtilities_EmitObjectInstructionWithPayload(data_005875f4, 0, 0x78, 0, 0);
+                PCodeUtilities_EmitObjectInstructionWithRegisterMasks(data_005875f4, 0, 0x78, 0, 0);
             else
-                PCodeUtilities_EmitObjectInstructionWithPayload(data_00587584, 0, 0x78, 0, 0);
+                PCodeUtilities_EmitObjectInstructionWithRegisterMasks(data_00587584, 0, 0x78, 0, 0);
             PCodeUtilities_EmitInstruction(PC_MR, sourceReg2, returnRegHi);
             PCodeUtilities_EmitInstruction(PC_MR, sourceReg, return_gpr_first);
         } else {
             if (inner->type == EBITFIELD)
-                CError_FATAL(591);
+                CError_FATAL(BY_VERSION(591, 690));
             data_00560648[inner->type](inner, 0, 0, &operand);
             Operands_MakeIndirect(&operand, inner);
             value = operand;
@@ -466,9 +466,9 @@ void SFPE_PPC_EABI_GenerateFloatPostIncDec(ENode *expr, SInt16 outputReg, SInt16
             argumentReg2 = gUsedVirtualRegistersGPR++;
             LoadDoubleArg(argumentReg, argumentReg2);
             if (expr->type == EPOSTINC)
-                PCodeUtilities_EmitObjectInstructionWithPayload(data_005875f4, 0, 0x78, 0, 0);
+                PCodeUtilities_EmitObjectInstructionWithRegisterMasks(data_005875f4, 0, 0x78, 0, 0);
             else
-                PCodeUtilities_EmitObjectInstructionWithPayload(data_00587584, 0, 0x78, 0, 0);
+                PCodeUtilities_EmitObjectInstructionWithRegisterMasks(data_00587584, 0, 0x78, 0, 0);
             Operands_StoreGPRPair(return_gpr_first, returnRegHi, &operand, type);
         }
     }
@@ -671,32 +671,32 @@ int SFPE_PPC_EABI_GenerateComparison(ENode *node, Operand *result, int branch)
         case EEQU:
         case ENOTEQU:
             if (comparison == EEQU) {
-                PCodeUtilities_EmitObjectInstructionWithPayload(size == 8 ? data_0058760c : data_005875d8, 0,
+                PCodeUtilities_EmitObjectInstructionWithRegisterMasks(size == 8 ? data_0058760c : data_005875d8, 0,
                                                                 registerMask, 0, 0);
                 condition = 0x17;
                 flags = 1;
             } else if (comparison == ENOTEQU) {
-                PCodeUtilities_EmitObjectInstructionWithPayload(size == 8 ? data_00587604 : data_005875d4, 0,
+                PCodeUtilities_EmitObjectInstructionWithRegisterMasks(size == 8 ? data_00587604 : data_005875d4, 0,
                                                                 registerMask, 0, 0);
                 condition = 0x17;
                 flags = 1;
             } else if (comparison == EGREATER) {
-                PCodeUtilities_EmitObjectInstructionWithPayload(size == 8 ? data_00587610 : data_005875dc, 0,
+                PCodeUtilities_EmitObjectInstructionWithRegisterMasks(size == 8 ? data_00587610 : data_005875dc, 0,
                                                                 registerMask, 0, 0);
                 condition = 0x17;
                 flags = 1;
             } else if (comparison == ELESS) {
-                PCodeUtilities_EmitObjectInstructionWithPayload(size == 8 ? data_00587618 : data_005875e4, 0,
+                PCodeUtilities_EmitObjectInstructionWithRegisterMasks(size == 8 ? data_00587618 : data_005875e4, 0,
                                                                 registerMask, 0, 0);
                 condition = 0x17;
                 flags = 1;
             } else if (comparison == ELESSEQU) {
-                PCodeUtilities_EmitObjectInstructionWithPayload(size == 8 ? data_005875fc : data_005875c8, 0,
+                PCodeUtilities_EmitObjectInstructionWithRegisterMasks(size == 8 ? data_005875fc : data_005875c8, 0,
                                                                 registerMask, 0, 0);
                 condition = 0x17;
                 flags = 1;
             } else if (comparison == EGREATEREQU) {
-                PCodeUtilities_EmitObjectInstructionWithPayload(size == 8 ? data_00587628 : data_005875ec, 0,
+                PCodeUtilities_EmitObjectInstructionWithRegisterMasks(size == 8 ? data_00587628 : data_005875ec, 0,
                                                                 registerMask, 0, 0);
                 condition = 0x17;
                 flags = 1;
@@ -748,7 +748,7 @@ void SFPE_PPC_EABI_GenerateConversion(ENode *expression, short requested_registe
                 data_00560648[node->type](node, 0, 0, result);
                 Operands_ForceGPRPair(result, (Type *)type, 0, 0);
                 if (result->kind != OpndType_GPRPair) {
-                    CError_FATAL(946);
+                    CError_FATAL(BY_VERSION(946, 1020));
                 }
                 if (result->regHi != returnRegHi) {
                     PCodeUtilities_EmitInstruction(PC_MR, returnRegHi, result->regHi);
@@ -756,9 +756,9 @@ void SFPE_PPC_EABI_GenerateConversion(ENode *expression, short requested_registe
                 if (result->reg != return_gpr_first) {
                     PCodeUtilities_EmitInstruction(PC_MR, return_gpr_first, result->reg);
                 }
-                PCodeUtilities_EmitObjectInstructionWithPayload(
+                PCodeUtilities_EmitObjectInstructionWithRegisterMasks(
                     is_unsigned(type) ? (target_type->size == 4 ? data_00587f9c : data_00587f50)
-                                      : (target_type->size == 4 ? data_00588210 : data_00588250),
+                                          : (target_type->size == 4 ? data_00588210 : data_00588250),
                     0, 0x18, 0, 0);
                 if (target_type->size == 4) {
                     lift_result(result, 0);
@@ -776,9 +776,9 @@ void SFPE_PPC_EABI_GenerateConversion(ENode *expression, short requested_registe
                 if (result->reg != RESULT_GPR) {
                     PCodeUtilities_EmitInstruction(PC_MR, 3, result->reg);
                 }
-                PCodeUtilities_EmitObjectInstructionWithPayload(
+                PCodeUtilities_EmitObjectInstructionWithRegisterMasks(
                     is_unsigned(type) ? (target_type->size == 4 ? data_00587e34 : data_00587e5c)
-                                      : (target_type->size == 4 ? data_00587ec0 : data_00587e90),
+                                          : (target_type->size == 4 ? data_00587ec0 : data_00587e90),
                     0, 8, 0, 0);
                 if (target_type->size == 4) {
                     lift_result(result, 0);
@@ -795,7 +795,7 @@ void SFPE_PPC_EABI_GenerateConversion(ENode *expression, short requested_registe
                 data_00560648[node->type](node, 0, 0, result);
                 Operands_ForceGPRPair(result, (Type *)type, 0, 0);
                 if (result->kind != OpndType_GPRPair) {
-                    CError_FATAL(1049);
+                    CError_FATAL(BY_VERSION(1049, 1115));
                 }
                 if (result->regHi != returnRegHi) {
                     PCodeUtilities_EmitInstruction(PC_MR, returnRegHi, result->regHi);
@@ -803,7 +803,7 @@ void SFPE_PPC_EABI_GenerateConversion(ENode *expression, short requested_registe
                 if (result->reg != return_gpr_first) {
                     PCodeUtilities_EmitInstruction(PC_MR, return_gpr_first, result->reg);
                 }
-                PCodeUtilities_EmitObjectInstructionWithPayload(data_00587e9c, 0, 0x18, 0, 0);
+                PCodeUtilities_EmitObjectInstructionWithRegisterMasks(data_00587e9c, 0, 0x18, 0, 0);
                 lift_result(result, 0);
             } else if ((type->size == 4) && (target_type->size != 4)) {
                 data_00560648[node->type](node, 0, 0, result);
@@ -813,11 +813,11 @@ void SFPE_PPC_EABI_GenerateConversion(ENode *expression, short requested_registe
                 if (result->reg != RESULT_GPR) {
                     PCodeUtilities_EmitInstruction(PC_MR, 3, result->reg);
                 }
-                PCodeUtilities_EmitObjectInstructionWithPayload(data_00587e6c, 0, 8, 0, 0);
+                PCodeUtilities_EmitObjectInstructionWithRegisterMasks(data_00587e6c, 0, 8, 0, 0);
                 lift_result(result, 3);
             } else {
                 if (target_type->size != type->size) {
-                    CError_FATAL(1088);
+                    CError_FATAL(BY_VERSION(1088, 1152));
                 }
                 data_00560648[node->type](node, requested_register, requested_pair_register, result);
                 if ((type->size == 4) && (result->kind != OpndType_GPR)) {
@@ -838,7 +838,7 @@ void SFPE_PPC_EABI_GenerateConversion(ENode *expression, short requested_registe
                 data_00560648[node->type](node, 0, 0, result);
                 Operands_ForceGPRPair(result, (Type *)type, 0, 0);
                 if (result->kind != OpndType_GPRPair) {
-                    CError_FATAL(1112);
+                    CError_FATAL(BY_VERSION(1112, 1175));
                 }
                 if (result->regHi != returnRegHi) {
                     PCodeUtilities_EmitInstruction(PC_MR, returnRegHi, result->regHi);
@@ -847,9 +847,9 @@ void SFPE_PPC_EABI_GenerateConversion(ENode *expression, short requested_registe
                     PCodeUtilities_EmitInstruction(PC_MR, return_gpr_first, result->reg);
                 }
                 if (is_unsigned(expression->rtype)) {
-                    PCodeUtilities_EmitObjectInstructionWithPayload(data_00588068, 0, 0x18, 0, 0);
+                    PCodeUtilities_EmitObjectInstructionWithRegisterMasks(data_00588068, 0, 0x18, 0, 0);
                 } else {
-                    PCodeUtilities_EmitObjectInstructionWithPayload(data_0058823c, 0, 0x18, 0, 0);
+                    PCodeUtilities_EmitObjectInstructionWithRegisterMasks(data_0058823c, 0, 0x18, 0, 0);
                 }
                 lift_result(result, 3);
             } else if (((target_kind == TYPEINT) || (target_kind == TYPEENUM)) &&
@@ -863,9 +863,9 @@ void SFPE_PPC_EABI_GenerateConversion(ENode *expression, short requested_registe
                     PCodeUtilities_EmitInstruction(PC_MR, 3, result->reg);
                 }
                 if (is_unsigned(expression->rtype)) {
-                    PCodeUtilities_EmitObjectInstructionWithPayload(data_00588020, 0, 8, 0, 0);
+                    PCodeUtilities_EmitObjectInstructionWithRegisterMasks(data_00588020, 0, 8, 0, 0);
                 } else {
-                    PCodeUtilities_EmitObjectInstructionWithPayload(data_00588214, 0, 8, 0, 0);
+                    PCodeUtilities_EmitObjectInstructionWithRegisterMasks(data_00588214, 0, 8, 0, 0);
                 }
                 lift_result(result, 3);
             } else if ((((target_kind == TYPEINT) || (target_kind == TYPEENUM)) && (copts.operandsDebug != 0)) &&
@@ -873,7 +873,7 @@ void SFPE_PPC_EABI_GenerateConversion(ENode *expression, short requested_registe
                 data_00560648[node->type](node, 0, 0, result);
                 Operands_ForceGPRPair(result, (Type *)type, 0, 0);
                 if (result->kind != OpndType_GPRPair) {
-                    CError_FATAL(1169);
+                    CError_FATAL(BY_VERSION(1169, 1231));
                 }
                 if (result->regHi != returnRegHi) {
                     PCodeUtilities_EmitInstruction(PC_MR, returnRegHi, result->regHi);
@@ -882,9 +882,9 @@ void SFPE_PPC_EABI_GenerateConversion(ENode *expression, short requested_registe
                     PCodeUtilities_EmitInstruction(PC_MR, return_gpr_first, result->reg);
                 }
                 if (is_unsigned(expression->rtype)) {
-                    PCodeUtilities_EmitObjectInstructionWithPayload(data_00587e94, 0, 0x18, 0, 0);
+                    PCodeUtilities_EmitObjectInstructionWithRegisterMasks(data_00587e94, 0, 0x18, 0, 0);
                 } else {
-                    PCodeUtilities_EmitObjectInstructionWithPayload(data_00587ea4, 0, 0x18, 0, 0);
+                    PCodeUtilities_EmitObjectInstructionWithRegisterMasks(data_00587ea4, 0, 0x18, 0, 0);
                 }
                 lift_result(result, 0);
             } else if ((((target_kind == TYPEINT) || (target_kind == TYPEENUM)) && (copts.operandsDebug != 0)) &&
@@ -897,13 +897,13 @@ void SFPE_PPC_EABI_GenerateConversion(ENode *expression, short requested_registe
                     PCodeUtilities_EmitInstruction(PC_MR, 3, result->reg);
                 }
                 if (is_unsigned(expression->rtype)) {
-                    PCodeUtilities_EmitObjectInstructionWithPayload(data_00587e80, 0, 8, 0, 0);
+                    PCodeUtilities_EmitObjectInstructionWithRegisterMasks(data_00587e80, 0, 8, 0, 0);
                 } else {
-                    PCodeUtilities_EmitObjectInstructionWithPayload(data_00587e7c, 0, 8, 0, 0);
+                    PCodeUtilities_EmitObjectInstructionWithRegisterMasks(data_00587e7c, 0, 8, 0, 0);
                 }
                 lift_result(result, 0);
             } else {
-                CError_FATAL(1209);
+                CError_FATAL(BY_VERSION(1209, 1280));
             }
         }
     }

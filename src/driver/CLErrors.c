@@ -13,7 +13,13 @@
 #include "driver/TextUtils.h"
 #include <string.h>
 #include <stdlib.h>
+#if VERSION >= VERSION_GC_1_3
+#define VA_DECL char *va_base;
+#define va_start(ap, last) (va_base = (char *)&(last), (ap) = va_base + (((char *)(&(last) + 1) - va_base + 3) / 4 * 4))
+#else
+#define VA_DECL
 #define va_start(ap, last) ((ap) = (char *)&(last) + (((char *)(&(last) + 1) - (char *)&(last) + 3) / 4 * 4))
+#endif
 
 #include <stdio.h>
 
@@ -48,25 +54,48 @@ void format_and_emit_diagnostic(int kind, int messageId, va_list arguments)
 
 unsigned char CLErrors_EmitDiagnostic(int messageId, ...)
 {
+#if VERSION >= VERSION_GC_1_3
+    char *base = (char *)&messageId;
+    va_list arguments = base + ((char *)((short *)&messageId + 1) - base + 3) / 4 * 4;
+#else
     va_list arguments = ((char *)&messageId + ((char *)((short *)&messageId + 1) - (char *)&messageId + 3) / 4 * 4);
+#endif
     format_and_emit_diagnostic(2, messageId, arguments);
 }
 
 void CLErrors_ForwardMessageArguments(int messageId, ...)
 {
     char *base = (char *)&messageId;
+#if VERSION >= VERSION_GC_1_3
+    va_list arguments = base + ((char *)((short *)&messageId + 1) - base + 3) / 4 * 4;
+#else
     va_list arguments = (char *)&messageId + ((char *)((short *)&messageId + 1) - base + 3) / 4 * 4;
+#endif
     format_and_emit_diagnostic(1, messageId, arguments);
 }
 
+#if VERSION >= VERSION_GC_1_3
+void CLErrors_ForwardMessage(int messageId, ...)
+{
+    char *base;
+    format_and_emit_diagnostic(0, messageId, (((char *)((short *)&messageId + 1) - (base = (char *)&messageId)) + 3) / 4 * 4 + base);
+}
+#else
 void CLErrors_ForwardMessage(short messageId, ...)
 {
     va_list arguments;
+    VA_DECL
+#if VERSION >= VERSION_GC_1_3
+    va_start(arguments, messageId);
+    format_and_emit_diagnostic(0, messageId, arguments);
+#else
     void *messageSlot = &messageId;
     unsigned int *argument = messageSlot;
     va_start(arguments, messageId);
     format_and_emit_diagnostic(0, *argument, arguments);
+#endif
 }
+#endif
 
 void CLErrors_ReportOSError(SInt32 diagnosticCode, UInt32 osErr, ...)
 {
@@ -75,6 +104,7 @@ void CLErrors_ReportOSError(SInt32 diagnosticCode, UInt32 osErr, ...)
     char *message;
     char *osMessage;
     va_list args;
+    VA_DECL
 
     va_start(args, osErr);
     message = mvprintf(messageBuffer, sizeof(messageBuffer), fn_004087d0(diagnosticCode, formatBuffer), args);
@@ -90,6 +120,7 @@ void CLErrors_ReportFormattedOSError(SInt32 diagnosticCode, SInt32 osError, ...)
     char formatBuffer[256];
     char *message;
     va_list args;
+    VA_DECL
 
     va_start(args, osError);
     message = mvprintf(messageBuffer, sizeof(messageBuffer), fn_004087d0(diagnosticCode, formatBuffer), args);
@@ -106,6 +137,7 @@ void CLErrors_ReportInternalError(const char *file, int line, const char *fmt, .
     char buf[256];
     char *msg;
     va_list args;
+    VA_DECL
     va_start(args, fmt);
     msg = mvprintf(buf, sizeof(buf), fmt, args);
     CLIO_WriteFormattedText("INTERNAL ERROR [%s:%d]:\n%s\n", file, line, msg);
@@ -119,6 +151,7 @@ void CLErrors_FatalError(char *format, ...)
     char *message;
     char buffer[256];
     va_list args;
+    VA_DECL
 
     va_start(args, format);
     message = mvprintf(buffer, sizeof(buffer), format, args);

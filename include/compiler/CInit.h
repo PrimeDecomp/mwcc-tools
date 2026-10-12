@@ -96,7 +96,7 @@ struct NameEntry {
 };
 #pragma pack(pop)
 extern void CInit_RewriteString(ENode *node, SInt32 flag_arg);
-extern NameEntry *CInit_DeclarePooledWString(char *string, UInt32 length);
+extern NameEntry *CInit_DeclarePooledWString(char *string, BY_VERSION(UInt32, SInt32) length);
 extern Object *CInit_DeclareString(const char *data, UInt32 length, UInt8 kind1, UInt8 kind2);
 extern void CInit_InitializeStaticData(Object *initObject, void (*output)(ENode *));
 extern ENode *CInit_AutoObject(Object *obj, Type *type, UInt32 qual);
@@ -131,7 +131,13 @@ extern void initialize_struct_data(InitializerData *ctx, CInit *ci, Type *type, 
 extern void fn_004d3620(TypeBitfield *bf, unsigned char *ptr, CInt64 value);
 extern void initialize_int(InitializerData *stage, ENode *expr, Type *type, UInt32 qual);
 extern void initialize_pointer_or_intconst(InitializerData *ctx, ENode *node, Type *ns, UInt32 qual);
+#if VERSION >= VERSION_GC_1_3
+extern Boolean CInit_RelocInitCheck(ENode *node, Object **pobj, CInt64 *pval, Boolean flag);
+#define EVALUATE_INT_OR_RELOCATION(node, pobj, pval, flag) CInit_RelocInitCheck(node, pobj, pval, flag)
+#else
 extern Boolean CInit_RelocInitCheck(ENode *node, Object **pobj, CInt64 *pval);
+#define EVALUATE_INT_OR_RELOCATION(node, pobj, pval, flag) CInit_RelocInitCheck(node, pobj, pval)
+#endif
 extern Boolean fn_004d3b20(Type *type);
 extern Boolean fn_004d3ba0(Type *type);
 extern UInt8 advance_initializer_state(CInit *ci);

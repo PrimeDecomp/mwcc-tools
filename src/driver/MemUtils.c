@@ -12,7 +12,21 @@
 
 
 
-void *xmalloc(const char *text, unsigned int size)
+#if VERSION >= VERSION_GC_1_3
+void *XMEMCALL xmalloc(const char *text, unsigned int size)
+{
+    char *memory;
+
+    memory = malloc(size ? size : 1);
+    if (memory == NULL) {
+        fprintf(stderr, "*** Out of memory when allocating %d bytes%s%s", size, text ? " for " : "", text ? text : "");
+        exit(-23);
+        return NULL;
+    }
+    return memory;
+}
+#else
+void *XMEMCALL xmalloc(const char *text, unsigned int size)
 {
     char message[80];
     char *memory;
@@ -27,7 +41,9 @@ void *xmalloc(const char *text, unsigned int size)
     return memory;
 }
 
-void *xcalloc(const char *pool, unsigned int size)
+#endif
+
+void *XMEMCALL xcalloc(const char *pool, unsigned int size)
 {
     unsigned char *memory;
     memory = xmalloc(pool, size);
@@ -35,7 +51,22 @@ void *xcalloc(const char *pool, unsigned int size)
     return memory;
 }
 
-void *xrealloc(const char *detail, void *block, unsigned int size)
+#if VERSION >= VERSION_GC_1_3
+void *XMEMCALL xrealloc(const char *detail, void *block, unsigned int size)
+{
+    char *resizedBlock;
+
+    resizedBlock = (char *)realloc(block, size ? size : 1U);
+    if (!resizedBlock) {
+        fprintf(stderr, "*** Out of memory when resizing buffer to %d bytes%s%s", size, detail ? " for " : "",
+                detail ? detail : "");
+        exit(-23);
+        return NULL;
+    }
+    return resizedBlock;
+}
+#else
+void *XMEMCALL xrealloc(const char *detail, void *block, unsigned int size)
 {
     char message[80];
     char *resizedBlock;
@@ -51,10 +82,20 @@ void *xrealloc(const char *detail, void *block, unsigned int size)
     return resizedBlock;
 }
 
-char *xstrdup(const char *s)
+#endif
+
+char *XMEMCALL xstrdup(const char *s)
 {
     return strcpy(xmalloc(NULL, strlen(s) + 1), s);
 }
+
+#if VERSION >= VERSION_GC_1_3
+void __stdcall xfree(void *block)
+{
+    if (block != NULL)
+        free(block);
+}
+#endif
 
 int __stdcall MemUtils_CallPluginEntry(Plugin *entry)
 {

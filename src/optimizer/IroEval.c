@@ -117,6 +117,37 @@ void convert_cint64_to_bitfield(CInt64 *val, Type *type, TypeBitfield *type2)
     }
 }
 
+#if VERSION >= VERSION_GC_1_3
+extern int fn_00454ff0(IRONode *first, IRONode *last);
+
+int IroEval_OptimizeIfChains13(void)
+{
+    IRONode *obj;
+    IRONode *first;
+    IRONode *last;
+    IRONode *next;
+    int found;
+
+    found = 0;
+    for (obj = iro_flowgraph_head; obj != NULL; obj = obj->nextnode) {
+        if (obj->last->type == IROLinearIf) {
+            first = last = obj;
+            while ((next = obj->nextnode) != NULL && next->last->type == IROLinearIf) {
+                last = (obj = next);
+            }
+            if (first != last && fn_00454ff0(first, last) != 0)
+                found = 1;
+        }
+    }
+    if (found != 0) {
+        IroFlowgraph_RebuildSuccPred();
+        IroFlowgraph_ComputeDom();
+    }
+    IroVars_CheckTimedLongjmp();
+    return found;
+}
+#endif
+
 int IRO_ConstantFolding(void)
 {
     IROLinear *node;
@@ -522,6 +553,13 @@ int starts_with_branch_cond(IRONode *node)
     IROLinear *n;
 
     if (node->numpred <= 1) {
+#if VERSION >= VERSION_GC_1_3
+        n = node->first;
+        while (n != node->last && (n->type == IROLinearNop || n->type == IROLinearLabel))
+            n = n->next;
+        if (n == find_leftmost_leaf(node->last->u.branch.cond))
+            return 1;
+#else
         if (node->last->type == IROLinearIf || node->last->type == IROLinearIfNot) {
             n = node->first;
             while (n != node->last && (n->type == IROLinearNop || n->type == IROLinearLabel))
@@ -529,6 +567,7 @@ int starts_with_branch_cond(IRONode *node)
             if (n == find_leftmost_leaf(node->last->u.branch.cond))
                 return 1;
         }
+#endif
     }
     return 0;
 }
@@ -556,6 +595,7 @@ SInt32 has_label_successor(void *id, IRONode *node)
 }
 #pragma auto_inline reset
 
+#if VERSION < VERSION_GC_1_3 /* (inlined in 1.3) */
 int get_matching_cond_objref(Object *expectedResult, IROLinear *cond)
 {
     Object *result = NULL;
@@ -578,7 +618,42 @@ int get_matching_cond_objref(Object *expectedResult, IROLinear *cond)
     }
     return 0;
 }
+#endif
 
+#if VERSION >= VERSION_GC_1_3
+static inline Object *check_cond_objref(Object *expectedResult, IROLinear *cond)
+{
+    Object *result = get_key(cond);
+    if ((expectedResult == NULL || expectedResult == result) && fn_0044be00(cond) == NULL)
+        return result;
+    return NULL;
+}
+
+static inline int check_branch_label(void *id, IRONode *node)
+{
+    switch (node->last->type) {
+        case IROLinearIf:
+            if (id == node->last->u.label)
+                return 1;
+            break;
+    }
+    return 0;
+}
+
+int fn_00455350(IRONode *left, IRONode *right)
+{
+    void *label;
+    Object *object;
+
+    if (left == right)
+        return (int)check_cond_objref(NULL, left->last->u.branch.cond);
+
+    label = left->last->u.label;
+    object = IroDump_GetObjRef(left->last->u.branch.cond->u.diadic.left);
+    return starts_with_branch_cond(right) && check_branch_label(label, right) &&
+           check_cond_objref(object, right->last->u.branch.cond);
+}
+#else
 int fn_00455350(IRONode *left, IRONode *right)
 {
     Object *result;
@@ -617,6 +692,8 @@ int fn_00455350(IRONode *left, IRONode *right)
         return result;
     }
 }
+
+#endif
 
 SInt32 mark_adjacent_compare_cases(CompareCase *cases, CompareCase *candidate, CInt64 *minimum)
 {
@@ -662,6 +739,14 @@ static int IsAdjacent(CInt64 d)
     return 0;
 }
 
+#if VERSION >= VERSION_GC_1_3
+static inline void IroEval_SetULong(CInt64 *pN, UInt32 n)
+{
+    pN->lo = n;
+    pN->hi = 0;
+}
+#endif
+
 int fn_00454f80(CompareCase *list, CInt64 value)
 {
     CompareCase *last;
@@ -677,8 +762,13 @@ int fn_00454f80(CompareCase *list, CInt64 value)
     count = 0;
     for (entry = list; entry != NULL; entry = entry->link) {
         if (entry->state == 2) {
+#if VERSION >= VERSION_GC_1_3
+            last = entry;
+            count = count + 1;
+#else
             count = count + 1;
             last = entry;
+#endif
         }
     }
     if (count == 0)
@@ -695,8 +785,12 @@ int fn_00454f80(CompareCase *list, CInt64 value)
     last->state = -1;
     expression = last->node->last;
     expression->u.branch.cond->nodetype = ELESSEQU;
+#if VERSION >= VERSION_GC_1_3
+    IroEval_SetULong(&expression->u.branch.cond->u.diadic.right->u.node->data.intval, count - 1);
+#else
     expression->u.branch.cond->u.diadic.right->u.node->data.intval.hi = 0;
     expression->u.branch.cond->u.diadic.right->u.node->data.intval.lo = count - 1;
+#endif
 
     leftWrapper = IrOptimizer_NewLinear(IROLinearOp1Arg);
     leftWrapper->nodetype = ETYPCON;
@@ -731,8 +825,12 @@ int fn_00454f80(CompareCase *list, CInt64 value)
     operation->u.diadic.left = expression->u.branch.cond->u.diadic.left;
     operation->u.diadic.right = constant;
     expression->u.branch.cond->u.diadic.left = leftWrapper;
+#if VERSION >= VERSION_GC_1_3
+    expression->u.branch.cond->u.diadic.right = (rightWrapper->u.monadic = expression->u.branch.cond->u.diadic.right, rightWrapper);
+#else
     rightWrapper->u.monadic = expression->u.branch.cond->u.diadic.right;
     expression->u.branch.cond->u.diadic.right = rightWrapper;
+#endif
 
     return count;
 }

@@ -10,12 +10,18 @@
 struct MachineInfo machine601 = {
     2,
     0,
+#if VERSION >= VERSION_GC_1_3
+    0,
+#endif
     (SInt32 (*)(void *))get_latency,
     clear_instruction_and_globals,
     (SInt32 (*)(void *))is_execution_unit_available,
     (void (*)(void *))set_execution_unit_instruction,
     advance_instruction_pipeline,
     (SInt32 (*)(void *))is_execution_unit_seven,
+#if VERSION >= VERSION_GC_1_3
+    (SInt32 (*)(void *))fn_00506260,
+#endif
 };
 
 /* Each opcode's execution unit, latency and cycles in each stage of the pipeline. */
@@ -500,7 +506,7 @@ static PipelineStage data_00583010;
 SInt32 get_latency(PCodeInstruction *p)
 {
     SInt32 n = data_00578340[p->opcode].latency;
-    if (p->flags & fRecordBit) {
+    if (PCODE_RECORD(p->flags)) {
         n += 2;
     }
     if (p->opcode == 0x27 || p->opcode == 0x36) {

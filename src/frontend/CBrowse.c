@@ -78,12 +78,15 @@ void CBrowse_InitBrowseData(CPrepCU *classes)
 {
     struct BrowseStreamHeader header;
     if (classes == NULL) {
-        CError_Internal("CBrowse.c", 122U);
+        CError_Internal("CBrowse.c", BY_VERSION( 122U, 123U));
     }
     classes->browseData = 0;
     InitGList(&data_00581ba8.buffer, 65536);
     InitGList(&browse_function_buffer.buffer, 1024);
     nextFunctionId = 1U;
+#if VERSION >= VERSION_GC_1_3
+    template_recordbrowseinfo = 0;
+#endif
     data_005884f5 = 0;
     memclrw(&header, 76U);
     header.magic = 0xbeabbaebU;
@@ -101,7 +104,7 @@ void CBrowse_StoreBrowseData(CPrepCU *arguments)
     int index;
     long result;
 
-    CError_ASSERT(149, arguments != NULL);
+    CError_ASSERT(BY_VERSION(149, 151), arguments != NULL);
 
     if (data_00581ba8.buffer.size >= 0x4cU) {
         COS_LockHandleHi(browse_function_buffer.buffer.data);
@@ -134,7 +137,7 @@ void write_text_or_name_id(GList *output, char *text, int index)
     unsigned int length;
 
     if (output == NULL || text == NULL || *text == 0)
-        CError_Internal("CBrowse.c", 0xbc);
+        CError_Internal("CBrowse.c", BY_VERSION( 0xbc, 0xbe));
 
     if (index < 0 && data_005884f5 != 0) {
         for (entry = data_00587f88[CHash(text)]; entry != NULL; entry = entry->next) {
@@ -167,7 +170,7 @@ void CBrowse_GenerateClassRecord(DeclInfo *record, GList *out)
     char *className;
     SInt32 baseCount;
 
-    CError_ASSERT(225, record && record->thetype && out);
+    CError_ASSERT(BY_VERSION(225, 227), record && record->thetype && out);
     *out = browse_member_list;
     if (!(record->file && record->file->fileID && record->file->recordbrowseinfo && record->file2 &&
           record->file2->fileID && record->sourceoffset > 0)) {
@@ -183,7 +186,7 @@ void CBrowse_GenerateClassRecord(DeclInfo *record, GList *out)
     AppendGListWord(&browse_member_list, record->file->fileID);
     AppendGListWord(&browse_member_list, record->file2->fileID);
     AppendGListLong(&browse_member_list, record->sourceoffset - 1);
-    CError_ASSERT(268, browse_member_list.size == 9);
+    CError_ASSERT(BY_VERSION(268, 270), browse_member_list.size == 9);
     AppendGListLong(&browse_member_list, record->sourceoffset - 1);
     AppendGListLong(&browse_member_list, 0);
     name = TYPE_CLASS(record->thetype)->classname;
@@ -231,7 +234,7 @@ void CBrowse_WriteObjMemberVar(ObjMemberVar *rec, SInt32 start, SInt32 end)
     SInt16 len;
 
     if (rec == NULL)
-        CError_Internal("CBrowse.c", 0x166);
+        CError_Internal("CBrowse.c", BY_VERSION( 0x166, 0x168));
     if (browse_member_list.data != NULL && start > 0 && end >= start) {
         if (tk == ';')
             end++;
@@ -252,12 +255,12 @@ void CBrowse_RecordFunction(Object *obj, SInt32 start, SInt32 end)
     TypeMemberFunc *func;
     SInt32 id;
 
-    CError_ASSERT(378, obj != NULL);
+    CError_ASSERT(BY_VERSION(378, 380), obj != NULL);
     if (CParser_IsNullOrAtOrDollarPrefixedName(obj->name))
         return;
     if (browse_member_list.data != NULL && start > 0 && end >= start) {
         flags = 0;
-        CError_ASSERT(389, obj->type != NULL && obj->type->type == TYPEFUNC);
+        CError_ASSERT(BY_VERSION(389, 391), obj->type != NULL && obj->type->type == TYPEFUNC);
         func = TYPE_METHOD(obj->type);
         if (!(func->flags & FUNC_AUTO_GENERATED)) {
             if (obj->datatype == DVFUNC)
@@ -266,9 +269,9 @@ void CBrowse_RecordFunction(Object *obj, SInt32 start, SInt32 end)
                 flags |= 1;
             if (func->is_static)
                 flags |= 2;
-            if (func->flags & FUNC_IS_DTOR)
+            if (func->flags & BY_VERSION(FUNC_IS_DTOR, 0x1000))
                 flags |= 0x800;
-            if (func->flags & 0x4000)
+            if (func->flags & BY_VERSION(0x4000, 0x2000))
                 flags |= 0x1000;
             AppendGListByte(&browse_member_list, 0);
             AppendGListByte(&browse_member_list, data_00563340[obj->access]);
@@ -292,7 +295,7 @@ void CBrowse_RecordDataObject(Object *obj, SInt32 param2, SInt32 param3)
     SInt16 len;
 
     if (obj == NULL)
-        CError_FATAL(433);
+        CError_FATAL(BY_VERSION(433, 435));
 
     if (browse_member_list.data != NULL && param2 > 0 && param3 >= param2 && obj->datatype == DDATA) {
         if (tk == ';')
@@ -313,7 +316,7 @@ void CBrowse_RestoreScope(SInt32 statementOffset, GList *savedScope)
     UInt32 outputOffset;
 
     if (savedScope == NULL)
-        CError_Internal("CBrowse.c", 451U);
+        CError_Internal("CBrowse.c", BY_VERSION( 451U, 453U));
     if (browse_member_list.data != NULL) {
         if (browse_member_list.size > 0) {
             if (tk == ';')
@@ -333,7 +336,7 @@ void CBrowse_BuildTypeStructBrowseInfo(DeclInfo *obj, TypeStruct *info, GList *o
 {
     HashNameNode *name;
 
-    CError_ASSERT(478, obj != NULL && out != NULL);
+    CError_ASSERT(BY_VERSION(478, 480), obj != NULL && out != NULL);
     *out = browse_member_list;
     if (!(obj->file != NULL && obj->file->fileID != 0 && obj->file->recordbrowseinfo != 0 && obj->file2 != NULL &&
           obj->file2->fileID != 0 && obj->sourceoffset > 0)) {
@@ -349,7 +352,7 @@ void CBrowse_BuildTypeStructBrowseInfo(DeclInfo *obj, TypeStruct *info, GList *o
     AppendGListWord(&browse_member_list, obj->file->fileID);
     AppendGListWord(&browse_member_list, obj->file2->fileID);
     AppendGListLong(&browse_member_list, obj->sourceoffset - 1);
-    CError_ASSERT(519, browse_member_list.size == 9);
+    CError_ASSERT(BY_VERSION(519, 521), browse_member_list.size == 9);
     AppendGListLong(&browse_member_list, obj->sourceoffset - 1);
     AppendGListLong(&browse_member_list, 0);
     write_text_or_name_id(&browse_member_list, name->name, name->id);
@@ -380,7 +383,7 @@ void CBrowse_FlushAndRestoreMemberList(SInt32 value, GList *state)
 {
     unsigned int offset;
     if (state == NULL) {
-        CError_Internal("CBrowse.c", 556U);
+        CError_Internal("CBrowse.c", BY_VERSION( 556U, 558U));
     }
     if (browse_member_list.data != NULL) {
         if (value > 0 && browse_member_list.size > 0) {
@@ -404,7 +407,7 @@ void CBrowse_WriteNameLineRange(NameSpace *names, HashNameNode *name, CPrepFileI
     int fileId;
 
     if (!file || !file->recordbrowseinfo)
-        reportBrowseError(616);
+        reportBrowseError(BY_VERSION(616, 618));
 
     if (endFile && endFile->fileID && firstLine > 0 && lastLine >= firstLine) {
         qualifiedName = CError_GetQualifiedName(names, name);
@@ -412,7 +415,7 @@ void CBrowse_WriteNameLineRange(NameSpace *names, HashNameNode *name, CPrepFileI
         endFileId = endFile->fileID;
         fileId = file->fileID;
         if (!name->name)
-            reportBrowseError(582);
+            reportBrowseError(BY_VERSION(582, 584));
 
         writeBrowseRecordKind(&data_00581ba8.buffer, 5);
         AppendGListWord(&data_00581ba8.buffer, fileId);
@@ -436,7 +439,7 @@ void CBrowse_RecordNameRange(NameSpace *nameSpace, HashNameNode *hn, CPrepFileIn
     SInt32 endIndex;
     SInt32 startIndex;
     if (startRecord == NULL || startRecord->recordbrowseinfo == 0) {
-        CError_Internal("CBrowse.c", 0x276);
+        CError_Internal("CBrowse.c", BY_VERSION( 0x276, 0x278));
     }
     if (endRecord != NULL && endRecord->fileID != 0 && start > 0 && end >= start) {
         qualifiedName = CError_GetQualifiedName(nameSpace, hn);
@@ -444,7 +447,7 @@ void CBrowse_RecordNameRange(NameSpace *nameSpace, HashNameNode *hn, CPrepFileIn
         endIndex = endRecord->fileID;
         startIndex = startRecord->fileID;
         if (hn->name == NULL) {
-            CError_Internal("CBrowse.c", 0x246);
+            CError_Internal("CBrowse.c", BY_VERSION( 0x246, 0x248));
         }
         AppendGListByte(&data_00581ba8.buffer, 4);
         AppendGListWord(&data_00581ba8.buffer, startIndex);
@@ -469,7 +472,7 @@ void CBrowse_WriteRelatedRecord(NameSpace *nameSpace, HashNameNode *name, CPrepF
     SInt32 relatedValue;
     SInt32 recordValue;
 
-    CError_ASSERT(644, record != NULL && record->recordbrowseinfo != 0);
+    CError_ASSERT(BY_VERSION(644, 646), record != NULL && record->recordbrowseinfo != 0);
     if (tk == ',')
         last++;
     if (relatedRecord != NULL && relatedRecord->fileID != 0 && first > 0 && last >= first) {
@@ -477,7 +480,7 @@ void CBrowse_WriteRelatedRecord(NameSpace *nameSpace, HashNameNode *name, CPrepF
         nameLength = name->id;
         relatedValue = relatedRecord->fileID;
         recordValue = record->fileID;
-        CError_ASSERT(582, name->name);
+        CError_ASSERT(BY_VERSION(582, 584), name->name);
         AppendGListByte(&data_00581ba8.buffer, 6);
         AppendGListWord(&data_00581ba8.buffer, recordValue);
         AppendGListWord(&data_00581ba8.buffer, relatedValue);
@@ -507,7 +510,7 @@ void write_function_browse_record(Object *obj, SInt32 fileNumber, SInt32 scopeNu
     HashNameNode *functionName;
     SInt32 nameId;
 
-    CError_ASSERT(738, obj->type != NULL && obj->type->type == TYPEFUNC);
+    CError_ASSERT(BY_VERSION(738, 740), obj->type != NULL && obj->type->type == TYPEFUNC);
     if (CParser_IsNullOrAtOrDollarPrefixedName(obj->name))
         return;
     functionType = (TypeMemberFunc *)obj->type;
@@ -538,7 +541,7 @@ void write_function_browse_record(Object *obj, SInt32 fileNumber, SInt32 scopeNu
         }
     } else {
         needsDemangling = 1;
-        if (functionType->flags & 0x6000) {
+        if (functionType->flags & BY_VERSION(0x6000, 0x3000)) {
             className = functionType->theclass->classname->name;
             while (*className >= '0' && *className <= '9')
                 className++;
@@ -547,7 +550,7 @@ void write_function_browse_record(Object *obj, SInt32 fileNumber, SInt32 scopeNu
             className = strrchr(demangledName, ':');
             if (className != NULL)
                 displayName = className + 1;
-            if (functionType->flags & 0x4000) {
+            if (functionType->flags & BY_VERSION(0x4000, 0x2000)) {
                 destructorName[0] = '~';
                 strncpy(destructorName + 1, displayName, sizeof(destructorName) - 1);
                 displayName = destructorName;
@@ -575,7 +578,7 @@ void write_function_browse_record(Object *obj, SInt32 fileNumber, SInt32 scopeNu
         else
             aliasNameId = functionName->id;
     }
-    CError_ASSERT(582, displayName != NULL);
+    CError_ASSERT(BY_VERSION(582, 584), displayName != NULL);
     AppendGListByte(&data_00581ba8.buffer, 0);
     AppendGListWord(&data_00581ba8.buffer, fileNumber);
     AppendGListWord(&data_00581ba8.buffer, scopeNumber);
@@ -614,7 +617,7 @@ void CBrowse_ForwardObjectFileRange(Object *object, CPrepFileInfo *browseFile, C
                                     SInt32 startOffset, SInt32 endOffset)
 {
     if (browseFile == NULL || browseFile->recordbrowseinfo == 0)
-        CError_Internal("CBrowse.c", 0x378);
+        CError_Internal("CBrowse.c", BY_VERSION( 0x378, 0x37a));
     if (sourceFile != NULL && sourceFile->fileID != 0 && startOffset > 0 && endOffset + 1 >= startOffset)
         write_function_browse_record(object, browseFile->fileID, sourceFile->fileID, startOffset, endOffset + 1);
 }
@@ -633,8 +636,8 @@ void CBrowse_WriteObjectBrowseInfo(Object *object, CPrepFileInfo *metadata, CPre
     SInt32 endValue;
 
     isFunction = is_const_object(object);
-    CError_ASSERT(910, metadata != NULL && metadata->recordbrowseinfo != 0);
-    CError_ASSERT(911, object != NULL);
+    CError_ASSERT(BY_VERSION(910, 912), metadata != NULL && metadata->recordbrowseinfo != 0);
+    CError_ASSERT(BY_VERSION(911, 913), object != NULL);
     if (tk == ';')
         end++;
     if (endMetadata != NULL && endMetadata->fileID != 0 && start > 0 && end >= start) {
@@ -662,13 +665,13 @@ void write_identifier_range_record(Macro *source, CPrepFileInfo *info, int first
     char *payload;
     char *checkedPayload;
     int recordValue;
-    BROWSE_ASSERT(info != 0 && (info->recordbrowseinfo == 0 || source->flag != 0), CError_Internal("CBrowse.c", 949));
+    BROWSE_ASSERT(info != 0 && (info->recordbrowseinfo == 0 || source->flag != 0), CError_Internal("CBrowse.c", BY_VERSION( 949, 951)));
     if (info != NULL) {
         if ((identifier = info->fileID) != 0 && first > 0 && last >= first) {
             recordValue = source->name->id;
             payload = checkedPayload = source->name->name;
             secondIdentifier = firstIdentifier = (int)identifier;
-            BROWSE_ASSERT(checkedPayload == 0, CError_Internal("CBrowse.c", 582));
+            BROWSE_ASSERT(checkedPayload == 0, CError_Internal("CBrowse.c", BY_VERSION( 582, 584)));
             AppendGListByte(&data_00581ba8.buffer, 3);
             AppendGListWord(&data_00581ba8.buffer, firstIdentifier);
             AppendGListWord(&data_00581ba8.buffer, secondIdentifier);
@@ -689,13 +692,13 @@ void CBrowse_RecordClassLocation(struct TypeClass *type, CPrepFileInfo *location
     char *name;
     char *name_check;
     int name_value;
-    BROWSE_ASSERT(location != 0 && location->recordbrowseinfo == 0, CError_Internal("CBrowse.c", 963));
+    BROWSE_ASSERT(location != 0 && location->recordbrowseinfo == 0, CError_Internal("CBrowse.c", BY_VERSION( 963, 965)));
     if (location != NULL) {
         if ((file_id = location->fileID) != 0 && first_line > 0 && last_line >= first_line) {
             name_value = type->classname->id;
             name = name_check = type->classname->name;
             file_end = file_start = (int)file_id;
-            BROWSE_ASSERT(name_check == 0, CError_Internal("CBrowse.c", 582));
+            BROWSE_ASSERT(name_check == 0, CError_Internal("CBrowse.c", BY_VERSION( 582, 584)));
             AppendGListByte(&data_00581ba8.buffer, 7);
             AppendGListWord(&data_00581ba8.buffer, file_start);
             AppendGListWord(&data_00581ba8.buffer, file_end);
@@ -718,7 +721,7 @@ void write_template_function_browse_record(TemplateFunction *info)
     SInt32 nameId;
 
     if (info->srcfile != NULL && browse_source(info)->recordbrowseinfo == 0)
-        CError_FATAL(977);
+        CError_FATAL(BY_VERSION(977, 979));
 
     if (info->srcfile != NULL && browse_source(info)->fileID != 0 && info->startoffset > 0 &&
         info->endoffset >= info->startoffset) {
@@ -729,7 +732,7 @@ void write_template_function_browse_record(TemplateFunction *info)
         sourceCount = browse_source(info)->fileID;
         endFileId = sourceCount;
         startFileId = sourceCount;
-        CError_ASSERT(582, name != 0);
+        CError_ASSERT(BY_VERSION(582, 584), name != 0);
         AppendGListByte(&data_00581ba8.buffer, 7);
         AppendGListWord(&data_00581ba8.buffer, startFileId);
         AppendGListWord(&data_00581ba8.buffer, endFileId);

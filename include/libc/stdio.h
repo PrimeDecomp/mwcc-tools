@@ -1,9 +1,13 @@
+#include "version.h"
 #ifndef MWCC_HOST_PROBE_STDIO_H
 #define MWCC_HOST_PROBE_STDIO_H
 
 #include <stddef.h>
 
 /* The MSL stdio functions the compiler links (lib/msl/MSL_Common/Include/cstdio, Win32 configuration). */
+#if VERSION >= VERSION_GC_1_3
+#pragma options align = mac68k
+#endif
 typedef struct {
     unsigned int open_mode       : 2;
     unsigned int io_mode         : 3;
@@ -18,6 +22,9 @@ typedef struct {
     unsigned char eof;
     unsigned char error;
 } __file_state;
+#if VERSION >= VERSION_GC_1_3
+#pragma options align = reset
+#endif
 typedef unsigned long __file_handle;
 typedef unsigned long fpos_t;
 typedef struct _FILE FILE;
@@ -27,6 +34,9 @@ typedef int (*__io_proc)(__file_handle file, unsigned char *buff, size_t *count,
 typedef int (*__close_proc)(__file_handle file);
 
 /* 0x54 bytes: __files[1] (stdout) is 0x537664, __files[2] (stderr) 0x5376b8. */
+#if VERSION >= VERSION_GC_1_3
+#pragma options align = mac68k
+#endif
 struct _FILE {
     __file_handle handle;
     __file_modes mode;
@@ -50,7 +60,13 @@ struct _FILE {
     __close_proc close_proc;
     __idle_proc idle_proc;
     struct _FILE *next_file_struct;
+#if VERSION >= VERSION_GC_1_3
+    unsigned long f50;
+#endif
 };
+#if VERSION >= VERSION_GC_1_3
+#pragma options align = reset
+#endif
 
 extern FILE __files[];
 #define stdin  (&__files[0])

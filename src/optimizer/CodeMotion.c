@@ -346,6 +346,7 @@ int is_loop_invariant(PCodeInstruction *instruction, Loop *loop, UInt32 *definit
                     }
                 }
                 break;
+#if VERSION < VERSION_GC_1_3
             case PCOp_SPR:
                 if (allow_spr == 0)
                     return 0;
@@ -354,6 +355,7 @@ int is_loop_invariant(PCodeInstruction *instruction, Loop *loop, UInt32 *definit
                 if (allow_crfield == 0 || (operand->flags & 2) == 0)
                     return 0;
                 break;
+#endif
         }
         operand++;
     }
@@ -673,7 +675,7 @@ unsigned int fn_00525fc0(PCodeInstruction *node, Loop *loop, UInt32 *defs)
     if (node->opcode == PC_SRAWI && next != NULL && next->opcode == PC_ADDZE &&
         node->operandData.operands[0].value.reg == next->operandData.operands[0].value.reg &&
         next->operandData.operands[0].value.reg == next->operandData.operands[1].value.reg &&
-        (node->flags & 0x20460) == 0 && (next->flags & 0x20460) == 0) {
+        (node->flags & BY_VERSION(0x20460, 0x1a8)) == 0 && (next->flags & BY_VERSION(0x20460, 0x1a8)) == 0) {
         if (is_loop_invariant(node, loop, defs, 1, 0)) {
             if (fn_00526070(node, loop)) {
                 data_00574ce8 = next;
@@ -739,7 +741,7 @@ void CodeMotion_00525e70(Loop *region, PCodeBlock *block, PCodeInstruction *inst
     PCodeBlock *oldRegion = region->preheader;
     PCodeInstruction *terminator;
 
-    if (instruction->flags & fRecordBit) {
+    if (PCODE_RECORD(instruction->flags)) {
         move_instruction_to_preheader(instruction, region);
     } else {
         PCode_UnlinkInstruction(instruction);
@@ -750,7 +752,7 @@ void CodeMotion_00525e70(Loop *region, PCodeBlock *block, PCodeInstruction *inst
     region->preheader = NULL;
     LoopDetection_CreatePreheader(region);
     terminator = oldRegion->reverse_instructions;
-    CError_ASSERT(765, terminator->opcode == PC_B);
+    CError_ASSERT(BY_VERSION(765, 775), terminator->opcode == PC_B);
     PCode_UnlinkInstruction(terminator);
     PCode_UnlinkInstruction(replacement);
     PCode_AppendInstruction(oldRegion, replacement);
@@ -962,7 +964,7 @@ void unswitch_loop(Loop *loop)
                 break;
             previous = path;
         }
-        CError_ASSERT(1181, previous->payload.block != NULL);
+        CError_ASSERT(BY_VERSION(1181, 1192), previous->payload.block != NULL);
 
         if (previous->payload.block->reverse_instructions != NULL &&
             previous->payload.block->reverse_instructions->opcode == PC_B)
@@ -999,7 +1001,7 @@ void unswitch_loop(Loop *loop)
                 target = &loop->body->reverse_instructions->operandData.operands[i];
         }
         if (target == NULL)
-            CError_FATAL(1239);
+            CError_FATAL(BY_VERSION(1239, 1250));
         replace_successor(loop->body, target->value.label->target.block, branchPath->payload.block);
         target->value.label = branchPath->payload.block->labels;
 
@@ -1009,7 +1011,7 @@ void unswitch_loop(Loop *loop)
                 target = &preheader->reverse_instructions->operandData.operands[i];
         }
         if (target == NULL)
-            CError_FATAL(1256);
+            CError_FATAL(BY_VERSION(1256, 1267));
         replace_successor(preheader, target->value.label->target.block, loop->body);
         target->value.label = loop->body->labels;
 
@@ -1019,7 +1021,7 @@ void unswitch_loop(Loop *loop)
                 target = &loop->preheader->reverse_instructions->operandData.operands[i];
         }
         if (target == NULL)
-            CError_FATAL(1273);
+            CError_FATAL(BY_VERSION(1273, 1284));
         replace_successor(loop->preheader, target->value.label->target.block, newBlock);
         target->value.label = newBlock->labels;
 
@@ -1815,7 +1817,11 @@ void propagate_use_sets(void)
     do {
         changed = 0;
         i = gPCodeBlockCount;
+#if VERSION >= VERSION_GC_1_3
+        while (i != 0) {
+#else
         while (0 != i) {
+#endif
             i--;
             if ((block = gPCodeBlockOrder[i]) != NULL) {
                 state = &data_00587fe4[block->index];

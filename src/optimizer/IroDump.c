@@ -33,10 +33,14 @@
 #include <stdio.h>
 
 Object *data_005875b8;
-int INT_005882b8;
+BY_VERSION(int, UInt8) INT_005882b8;
 
 static struct _FILE *iro_dump_output;
 
+#if VERSION >= VERSION_GC_1_3
+/* The name of each ENode type: 1.3 fills it at run time (fn_00454a40). */
+char *enode_type_names[0x4d];
+#else
 /* The name of each ENode type. */
 static char *enode_type_names[] = {
     "EPOSTINC",
@@ -116,6 +120,7 @@ static char *enode_type_names[] = {
     "EASSBLK",
     "EVECTOR128CONST",
 };
+#endif
 
 static inline void dump_separator(void)
 {
@@ -171,10 +176,14 @@ void dump_linear_node(IROLinear *node)
                     case '3':
                         fprintf(iro_dump_output, "%g", operand->data.floatval.data.value);
                         break;
+#if VERSION >= VERSION_GC_1_3
+                    case EVECTOR128CONST: /* (1.3's enum value of ours' EASSBLK here) */
+#else
                     case 'J':
+#endif
                         fprintf(iro_dump_output, "%.8lX%.8lX%.8lX%.8lX", operand->data.vector128val.ul[0],
-                                operand->data.vector128val.ul[1], operand->data.vector128val.ul[2],
-                                operand->data.vector128val.ul[3]);
+                                    operand->data.vector128val.ul[1], operand->data.vector128val.ul[2],
+                                    operand->data.vector128val.ul[3]);
                         break;
                 }
             }
@@ -208,6 +217,12 @@ void dump_linear_node(IROLinear *node)
         case IROLinearSwitch:
             fprintf(iro_dump_output, "Switch %d", node->u.diadic.right->index);
             break;
+#if VERSION >= VERSION_GC_1_3
+        case IROLinearCond:
+            fprintf(iro_dump_output, "%s %d %d %d", enode_type_names[node->nodetype], node->u.args3.a->index,
+                        node->u.args3.b->index, node->u.args3.c->index);
+            break;
+#endif
         case IROLinearFunccall:
             fprintf(iro_dump_output, "Funccall %d(", node->u.funccall.callee->index);
             for (index = 0; index < node->u.funccall.argCount; ++index) {
@@ -270,6 +285,14 @@ void dump_linear_node(IROLinear *node)
     if ((node->flags & IROLF_CounterLoop) != 0) {
         fprintf(iro_dump_output, " <counter loop>");
     }
+#if VERSION >= VERSION_GC_1_3
+    if ((node->flags & IROLF_BitfieldIndirect) != 0) {
+        fprintf(iro_dump_output, " <bitfield_indirect>");
+    }
+    if ((node->flags & IROLF_CouldError) != 0) {
+        fprintf(iro_dump_output, " <could_error>");
+    }
+#endif
     if ((type = (Type *)node->rtype) != NULL && CParser_IsVolatile(type, node->nodeflags & 3)) {
         fprintf(iro_dump_output, " <volatile>");
     }
@@ -284,6 +307,120 @@ void dump_linear_node(IROLinear *node)
     }
     fprintf(iro_dump_output, "\n");
 }
+
+#if VERSION >= VERSION_GC_1_3
+#include <string.h>
+#include "driver/COSToolsCLT.h"
+extern CPrepFileInfo data13_005e7064;
+
+/* open the log file for the IRO dump named after the source file */
+void fn_00454030(void)
+{
+    char name[256];
+    int i;
+
+    if (INT_005882b8) {
+        COS_FileGetPathName(name, &data13_005e7064, NULL);
+        for (i = strlen(name); i >= 0; i--) {
+            if (name[i] == '.') {
+                name[i] = 0;
+                break;
+            }
+        }
+        strcat(name, ".log");
+        iro_dump_output = (struct _FILE *)fopen(name, "wt");
+        if (iro_dump_output == NULL)
+            INT_005882b8 = 0;
+    }
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+
+void fn_00454a40(void)
+{
+    int i;
+
+    for (i = 0; i < 0x4d; i++)
+        enode_type_names[i] = "";
+    enode_type_names[0] = "EPOSTINC";
+    enode_type_names[1] = "EPOSTDEC";
+    enode_type_names[2] = "EPREINC";
+    enode_type_names[3] = "EPREDEC";
+    enode_type_names[4] = "EINDIRECT";
+    enode_type_names[5] = "EMONMIN";
+    enode_type_names[6] = "EBINNOT";
+    enode_type_names[7] = "ELOGNOT";
+    enode_type_names[8] = "EFORCELOAD";
+    enode_type_names[9] = "EMUL";
+    enode_type_names[10] = "EMULV";
+    enode_type_names[11] = "EDIV";
+    enode_type_names[12] = "EMODULO";
+    enode_type_names[13] = "EADDV";
+    enode_type_names[14] = "ESUBV";
+    enode_type_names[15] = "EADD";
+    enode_type_names[16] = "ESUB";
+    enode_type_names[17] = "ESHL";
+    enode_type_names[18] = "ESHR";
+    enode_type_names[19] = "ELESS";
+    enode_type_names[20] = "EGREATER";
+    enode_type_names[21] = "ELESSEQU";
+    enode_type_names[22] = "EGREATEREQU";
+    enode_type_names[23] = "EEQU";
+    enode_type_names[24] = "ENOTEQU";
+    enode_type_names[25] = "EAND";
+    enode_type_names[26] = "EXOR";
+    enode_type_names[27] = "EOR";
+    enode_type_names[28] = "ELAND";
+    enode_type_names[29] = "ELOR";
+    enode_type_names[30] = "EASS";
+    enode_type_names[31] = "EMULASS";
+    enode_type_names[32] = "EDIVASS";
+    enode_type_names[33] = "EMODASS";
+    enode_type_names[34] = "EADDASS";
+    enode_type_names[35] = "ESUBASS";
+    enode_type_names[36] = "ESHLASS";
+    enode_type_names[37] = "ESHRASS";
+    enode_type_names[38] = "EANDASS";
+    enode_type_names[39] = "EXORASS";
+    enode_type_names[40] = "EORASS";
+    enode_type_names[41] = "ECOMMA";
+    enode_type_names[42] = "EPMODULO";
+    enode_type_names[43] = "EROTL";
+    enode_type_names[44] = "EROTR";
+    enode_type_names[45] = "EBCLR";
+    enode_type_names[46] = "EBTST";
+    enode_type_names[47] = "EBSET";
+    enode_type_names[48] = "ETYPCON";
+    enode_type_names[49] = "EBITFIELD";
+    enode_type_names[50] = "EINTCONST";
+    enode_type_names[51] = "EFLOATCONST";
+    enode_type_names[52] = "ESTRINGCONST";
+    enode_type_names[53] = "ECOND";
+    enode_type_names[54] = "EFUNCCALL";
+    enode_type_names[55] = "EFUNCCALLP";
+    enode_type_names[56] = "EOBJREF";
+    enode_type_names[57] = "EMFPOINTER";
+    enode_type_names[58] = "ENULLCHECK";
+    enode_type_names[59] = "EPRECOMP";
+    enode_type_names[60] = "ETEMP";
+    enode_type_names[61] = "EARGOBJ";
+    enode_type_names[62] = "ELOCOBJ";
+    enode_type_names[63] = "ELABEL";
+    enode_type_names[64] = "ESETCONST";
+    enode_type_names[65] = "ENEWEXCEPTION";
+    enode_type_names[66] = "ENEWEXCEPTIONARRAY";
+    enode_type_names[68] = "EOBJLIST";
+    enode_type_names[69] = "EMEMBER";
+    enode_type_names[70] = "ETEMPLDEP";
+    enode_type_names[71] = "EINSTRUCTION";
+    enode_type_names[72] = "EDEFINE";
+    enode_type_names[73] = "EREUSE";
+    enode_type_names[74] = "EASSBLK";
+    enode_type_names[75] = "EVECTOR128CONST";
+    enode_type_names[76] = "ECONDASS";
+}
+#endif
 
 void IroDump_PrintBitSet(char *prefix, BitVector *bitset)
 {
@@ -512,13 +649,22 @@ void IroDump_DumpAddress(IROLinear *address, IROLinear *baseTerm, IROLinear *var
 void IroDump_Print(const char *message, ...)
 {
     va_list arguments;
+#if VERSION >= VERSION_GC_1_3
+    char *base;
+#else
     int argumentSize;
+#endif
 
     if (INT_005882b8 == 0)
         return;
 
+#if VERSION >= VERSION_GC_1_3
+    base = (char *)&message;
+    arguments = base + ((va_list)(&message + 1) - base + 3) / 4 * 4;
+#else
     argumentSize = (va_list)(&message + 1) - (va_list)&message;
     arguments = (va_list)&message + (argumentSize + 3) / 4 * 4;
+#endif
     vfprintf(iro_dump_output, message, arguments);
 }
 
@@ -530,7 +676,7 @@ Object *IroDump_GetObjRef(IROLinear *linear)
     return NULL;
 }
 
-int fn_0044d520(IROLinear *node)
+BY_VERSION(int, unsigned char) fn_0044d520(IROLinear *node)
 {
     if (node->type == 1U &&
         (node->u.node->type == EINTCONST || node->u.node->type == EVECTOR128CONST || node->u.node->type == EFLOATCONST))
@@ -538,6 +684,35 @@ int fn_0044d520(IROLinear *node)
     return 0;
 }
 
+#if VERSION >= VERSION_GC_1_3
+Boolean IroDump_IsPowerOfTwo(IROLinear *node, SInt32 *bit)
+{
+    SInt32 mask;
+    UInt32 i;
+    SInt32 value;
+    ENode *expr;
+
+    *bit = -1;
+    if (node->type == IROLinearOperand) {
+        if ((expr = node->u.node)->type == EINTCONST) {
+            if (expr->data.intval.hi != 0)
+                return 0;
+            value = expr->data.intval.lo;
+            mask = 1;
+            i = 0;
+            do {
+                if (mask == value) {
+                    *bit = i;
+                    return 1;
+                }
+                mask += mask;
+                i++;
+            } while (i < 31);
+        }
+    }
+    return 0;
+}
+#else
 SInt32 IroDump_IsPowerOfTwo(IROLinear *node, SInt32 *bit)
 {
     SInt32 value;
@@ -558,15 +733,21 @@ SInt32 IroDump_IsPowerOfTwo(IROLinear *node, SInt32 *bit)
                     *bit = index;
                     return 1;
                 }
+#if VERSION >= VERSION_GC_1_3
+                mask += mask;
+                index++;
+#else
                 index++;
                 mask += mask;
+#endif
             } while (index < 31);
         }
     }
     return 0;
 }
-
-unsigned int IroDump_IsType1NodeType50(IROLinear *linear)
+#endif
+BY_VERSION(
+unsigned int, unsigned char) IroDump_IsType1NodeType50(IROLinear *linear)
 {
     if (linear->type == IROLinearOperand && linear->u.node->type == 50U)
         return 1U;

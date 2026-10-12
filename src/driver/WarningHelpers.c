@@ -66,7 +66,7 @@ unsigned int print_command_line_warning_options(void)
 
     output = (struct StorageHandle *)Memory_NewHandle(0);
     if (output == NULL) {
-        longjmp(plugin_request_jmp_buf, 7);
+        BY_VERSION(longjmp(plugin_request_jmp_buf, 7), exit(-23));
     }
     HPrintF(output, "Command-line warning options:\n");
     if (pCmdLine.noCmdLineWarnings != '\0') {

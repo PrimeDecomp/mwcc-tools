@@ -13,6 +13,10 @@
 #include "compiler/InstrSelection.h"
 #include "compiler/ObjGen_PPC_EABI.h"
 #include "compiler/PCode.h"
+#if VERSION >= VERSION_GC_1_3
+#include "compiler/Registers.h"
+extern void expand_out_of_range_conditional_branches(void);
+#endif
 
 struct Statement *gCurrentStatement;
 struct PCodeBlock *gCurrentBlock;
@@ -277,16 +281,228 @@ PCodeInstruction *PCodeUtilities_CreateInstruction(UInt16 op, ...)
 {
     va_list arguments;
     PCodeInstruction *instruction;
+#if VERSION >= VERSION_GC_1_3
+    {
+        va_list base = (va_list)&op;
+        arguments = base + (((va_list)(&op + 1) - base + 3) / 4) * 4;
+    }
+#else
     arguments = (va_list)&op + (((va_list)(&op + 1) - (va_list)&op + 3) / 4) * 4;
+#endif
     instruction = create_pcode_instruction(op, arguments);
+#if VERSION >= VERSION_GC_1_3
+    instruction->f18[1] = gCurrentStatement != NULL ? gCurrentStatement->sourceoffset : -1;
+#endif
     return instruction;
 }
 
+#if VERSION >= VERSION_GC_1_3
+struct Fn004e95f0 {
+    char pad[0x14];
+    UInt32 flags;
+};
+
+void fn_004e95f0(struct Fn004e95f0 *a)
+{
+    a->flags &= ~0x6010;
+    a->flags |= 0x100;
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+extern SInt32 data_005e0bf0[];
+extern SInt32 data_005e6574[];
+
+/* fill `op` with one use-operand for every register in the per-class bit masks; returns the next free operand */
+PCodeOperand *fn_004e92d0(PCodeOperand *op, UInt32 *masks)
+{
+    RegClass13 cls;
+    int i;
+
+    for (cls = 4; cls >= 0; cls--) {
+        for (i = 0; i < data_005e6574[cls]; i++) {
+            op->kind = 0;
+            op->arg = cls;
+            op->value.reg = ((SInt32 (*)[32])data_005e0bf0)[cls][i];
+            op->flags = 2;
+            if (masks[cls] & (1 << ((SInt32 (*)[32])data_005e0bf0)[cls][i]))
+                op->flags |= 1;
+            if (cls == 1 && op->value.reg == 1)
+                op->flags |= 1;
+            op++;
+        }
+    }
+    return op;
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+/* turn the instruction's label operand into an implicit use of r1 and normalise its opcode */
+void fn_004e9530(PCodeInstruction *instr)
+{
+    PCodeOperand *op;
+    int count;
+
+    switch (instr->opcode) {
+    case 0:
+        instr->opcode = 1;
+        break;
+    case 0x12:
+        instr->opcode = 0x13;
+        break;
+    case 0x11:
+        instr->opcode = 0x14;
+        break;
+    }
+    op = instr->operandData.operands;
+    for (count = instr->operand_count; op->kind != 6 && count != 0; op++, count--) {
+        if (op->kind == 0 && op->arg == 0 && op->value.reg == 1) {
+            op->flags |= 2;
+            instr->flags |= 0x1000000;
+            return;
+        }
+    }
+    if (op->kind != 6)
+        CError_Internal("PCodeUtilities.c", 0xa9);
+    op->kind = 0;
+    op->arg = 0;
+    op->value.reg = 1;
+    op->flags = 2;
+    if (gPCodeOpcodeDescriptors[instr->opcode].flags & 8) {
+        instr->flags &= ~1;
+        instr->flags |= 8;
+    }
+    instr->flags |= 0x1000000;
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+extern SInt32 data_005e6574[];
+#if VERSION >= VERSION_GC_1_3
+#define data_005e71b4 (*(UInt8 *)((char *)&copts + 0xd2))
+#else
+extern UInt8 data_005e71b4;
+#endif
+#if VERSION >= VERSION_GC_1_3
+#define data_005e713e (*(UInt32 *)((char *)&copts + 0x5c))
+#else
+extern UInt32 data_005e713e;
+#endif
+extern struct PCodeBlock *gPCodeBlocks;
+extern PCodeLabel *fn_004dbc20(void);
+extern void fn_0049f4b0(void);
+extern HashNameNode *COptimizer_GetFunctionObject(Object *obj);
+extern void fn_004c4bc0(const char *name, const char *message);
+
+/* emit the register-usage marker instruction and the label that follows it */
+void fn_004e9070(UInt32 *masks)
+{
+    int n = 0;
+    RegClass13 cls;
+    int i;
+    PCodeInstruction *instr;
+    PCodeLabel *label;
+    PCodeOperand *payload;
+
+    for (cls = 0; cls < RegClass13_Max; cls++) {
+        for (i = 0; data_005e6574[cls] > i; i++)
+            n++;
+    }
+    if (PCodeUtilities_ExceptionScopesEnabled() && gCurrentStatement)
+        n += Exceptions_CountBoundObjectFields(gCurrentStatement->dobjstack);
+    instr = PCodeUtilities_CreateInstruction(0x13, n);
+    payload = fn_004e92d0(instr->operandData.operands + 1, masks);
+    if (PCodeUtilities_ExceptionScopesEnabled() && gCurrentStatement)
+        Exceptions_CollectRegisterOperands(gCurrentStatement->dobjstack, payload);
+    PCode_AppendInstruction(gCurrentBlock, instr);
+    label = fn_004dbc20();
+    if (gCurrentBlock->instruction_count != 0) {
+        PCode_AddSuccessor(gCurrentBlock, label);
+        fn_0049f4b0();
+    }
+    PCode_ResolveLabel(gCurrentBlock, label);
+    if (PCodeUtilities_ExceptionScopesEnabled() && gCurrentStatement)
+        Exceptions_AppendScopeEntry(instr, gCurrentStatement->dobjstack);
+}
+
+/* insert alignment no-ops before short aligned blocks, re-laying out the code until nothing changes */
+UInt32 fn_004e9a30(Object *func, UInt32 size)
+{
+    PCodeBlock *block;
+    PCodeBlock *prev;
+    PCodeInstruction *last;
+    PCodeInstruction *nop;
+    int changed;
+    UInt32 half;
+
+    do {
+        changed = 0;
+        for (block = gPCodeBlocks; block != NULL; block = block->next) {
+            if ((block->flags & 0x6000) == 0x2000 && (block->code_offset & 7) != 0 && block->instruction_count < 8) {
+                prev = block->prev;
+                if (prev != NULL && !(prev->flags & 0x2000)) {
+                    last = prev->reverse_instructions;
+                    if (last != NULL && last->opcode == 0x8c && !(last->flags & 0x100)) {
+                        PCode_UnlinkInstruction(last);
+                    } else {
+                        nop = PCodeUtilities_CreateInstruction(0x8c);
+                        nop->flags &= ~0x100;
+                        PCode_AppendInstruction(prev, nop);
+                    }
+                    size = PCode_SetCodeOffsets();
+                    changed = 1;
+                }
+            }
+        }
+        if (changed) {
+            fn_004c4bc0(COptimizer_GetFunctionObject(func)->name + 0, "AFTER INSERT ALIGN NOPs");
+            half = data_005e713e >> 1;
+            if (size >= half) {
+                ((void (*)(int, int))expand_out_of_range_conditional_branches)(half - 1, -half);
+                size = PCode_SetCodeOffsets();
+            }
+        }
+    } while (changed);
+    return size;
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+/* (1.3 inlines PCode_AppendInstruction here) */
+static inline void append_instruction(PCodeBlock *block, PCodeInstruction *instruction)
+{
+    PCodeInstruction *tail;
+    if (block->instructions) {
+        instruction->next = NULL;
+        instruction->previous = block->reverse_instructions;
+        block->reverse_instructions->next = instruction;
+        block->reverse_instructions = instruction;
+    } else {
+        block->reverse_instructions = instruction;
+        block->instructions = block->reverse_instructions;
+        instruction->previous = NULL;
+        instruction->next = instruction->previous;
+    }
+    instruction->block = block;
+    block->instruction_count += 1U;
+}
+
+PCodeInstruction *PCodeUtilities_EmitInstruction(short opcode, ...)
+{
+    va_list base = (va_list)&opcode;
+    va_list arguments = base + (((va_list)(&opcode + 1) - base + 3) / 4) * 4;
+    PCodeInstruction *instruction = create_pcode_instruction(opcode, arguments);
+    instruction->f18[1] = gCurrentStatement != NULL ? gCurrentStatement->sourceoffset : -1;
+    append_instruction(gCurrentBlock, instruction);
+    return instruction;
+}
+#else
 PCodeInstruction *PCodeUtilities_EmitInstruction(short opcode, ...)
 {
     va_list arguments = (va_list)&opcode + (((va_list)(&opcode + 1) - (va_list)&opcode + 3) / 4) * 4;
     return PCode_AppendInstruction(gCurrentBlock, create_pcode_instruction(opcode, arguments));
 }
+#endif
 
 void PCodeUtilities_MakeRecordForm(PCodeInstruction *o)
 {
@@ -468,6 +684,59 @@ PCodeOperand *fn_004a2290(PCodeOperand *operand, UInt32 gprMask, UInt32 fprMask,
     return operand;
 }
 
+#if VERSION >= VERSION_GC_1_3
+extern SInt32 data_005e6574[];
+PCodeOperand *fn_004e92d0(PCodeOperand *op, UInt32 *masks);
+
+/* (1.3: one register-use operand for every register of every class; `masks` holds the used ones per class) */
+void PCodeUtilities_EmitObjectInstructionWithPayload(Object *operand, SInt16 emitInstruction, UInt32 *masks)
+{
+    SInt32 operandCount = 0;
+    RegClass13 cls;
+    int i;
+    PCodeInstruction *instruction;
+    PCodeLabel *label;
+    PCodeOperand *payload;
+    char operandKind;
+
+    for (cls = 0; cls < RegClass13_Max; cls++) {
+        for (i = 0; data_005e6574[cls] > i; i++)
+            operandCount++;
+    }
+    if (PCodeUtilities_ExceptionScopesEnabled() && gCurrentStatement)
+        operandCount += Exceptions_CountBoundObjectFields(gCurrentStatement->dobjstack);
+
+    operandKind = PCodeUtilities_Require(operand);
+    if (operandKind == 10) {
+        instruction = PCodeUtilities_CreateInstruction(1, operandCount, operand, 0);
+    } else if (operandKind == 11) {
+        instruction = PCodeUtilities_CreateInstruction(1, operandCount, operand, 0);
+        instruction->flags |= 0x10000000;
+    } else {
+        instruction = PCodeUtilities_CreateInstruction(1, operandCount, operand, 0);
+    }
+
+    payload = fn_004e92d0(instruction->operandData.operands + 1, masks);
+
+    if (PCodeUtilities_ExceptionScopesEnabled() && gCurrentStatement)
+        Exceptions_CollectRegisterOperands(gCurrentStatement->dobjstack, payload);
+
+    PCode_AppendInstruction(gCurrentBlock, instruction);
+
+    if (emitInstruction != 0)
+        PCodeUtilities_EmitInstruction(PC_NOP);
+
+    label = PCode_NewLabel();
+    if (gCurrentBlock->instruction_count != 0) {
+        PCode_AddSuccessor(gCurrentBlock, label);
+        PCode_CreateBlock();
+    }
+    PCode_ResolveLabel(gCurrentBlock, label);
+
+    if (PCodeUtilities_ExceptionScopesEnabled() && gCurrentStatement)
+        Exceptions_AppendScopeEntry(instruction, gCurrentStatement->dobjstack);
+}
+#else
 void PCodeUtilities_EmitObjectInstructionWithPayload(Object *operand, SInt16 emitInstruction, SInt32 firstRegisterMask,
                                                      SInt32 secondRegisterMask, SInt32 thirdRegisterMask)
 {
@@ -520,6 +789,7 @@ void PCodeUtilities_EmitObjectInstructionWithPayload(Object *operand, SInt16 emi
     if (PCodeUtilities_ExceptionScopesEnabled() && gCurrentStatement)
         Exceptions_AppendScopeEntry(instruction, gCurrentStatement->dobjstack);
 }
+#endif
 
 void PCodeUtilities_EmitAddress(short resultReg, short baseReg, struct Object *object, short offset)
 {
@@ -529,6 +799,9 @@ void PCodeUtilities_EmitAddress(short resultReg, short baseReg, struct Object *o
 
     addressReg = baseReg;
     if (object != NULL && ((int)baseReg == 2 || (int)baseReg == 13)) {
+#if VERSION >= VERSION_GC_1_3
+        CError_ASSERT(534, object->datatype != DLOCAL);
+#endif
         addressReg = 0;
     }
     if (object == NULL && offset == 0) {
@@ -543,11 +816,16 @@ void PCodeUtilities_EmitAddress(short resultReg, short baseReg, struct Object *o
             instruction->flags = ~gPCodeOpcodeDescriptors[instruction->opcode].flags & instruction->flags |
                                  gPCodeOpcodeDescriptors[PC_LI].flags;
             instruction->opcode = PC_LI;
+#if VERSION >= VERSION_GC_1_3
+            instruction->operandData.operands[1] = instruction->operandData.operands[2];
+            PC_SETCOUNT(instruction, 2);
+#else
             instruction->operand_count = 2;
             instruction->operandData.operands[1] = instruction->operandData.operands[2];
+#endif
         }
     } else
-        CError_ASSERT(848, baseReg != 0);
+        CError_ASSERT(BY_VERSION(848, 557), baseReg != 0);
 }
 
 PCodeInstruction *PCodeUtilities_CreateInstructionWithObject(short operand1, short operand2, Object *operand3,
@@ -555,7 +833,7 @@ PCodeInstruction *PCodeUtilities_CreateInstructionWithObject(short operand1, sho
 {
     PCodeInstruction *instruction;
     if (operand3 == NULL) {
-        CError_FATAL(869);
+        CError_FATAL(BY_VERSION(869, 577));
     }
     {
         short first = operand1;
@@ -579,12 +857,12 @@ PCodeInstruction *PCodeUtilities_MakeInstructionWithObject(short opcode, short o
 
     if (copts.f25 != 0) {
         if ((int)operand == 0) {
-            CError_FATAL(889);
+            CError_FATAL(BY_VERSION(889, 601));
         }
         result = PCodeUtilities_CreateInstruction(0x42, opcode, operand, object, flags);
     } else {
         if (operand != 0) {
-            CError_FATAL(894);
+            CError_FATAL(BY_VERSION(894, 606));
         }
         result = PCodeUtilities_CreateInstruction(0x8a, opcode, object, flags);
     }
@@ -679,7 +957,12 @@ void PCodeUtilities_LoadImmediate(SInt16 target, SInt32 value)
 
     if (value != (SInt16)value) {
         if (copts.deleteDeadInstructions > 1 && (SInt16)value != 0) {
+#if VERSION >= VERSION_GC_1_3
+            SInt32 fresh = gUsedVirtualRegistersGPR++;
+            intermediate = fresh;
+#else
             intermediate = gUsedVirtualRegistersGPR++;
+#endif
         }
         PCodeUtilities_EmitInstruction(PC_LIS, intermediate, 0, (SInt16)((value >> 16) + (value >> 15 & 1)));
         if ((SInt16)value != 0) {
@@ -697,7 +980,12 @@ void PCodeUtilities_EmitLoadImmediate(SInt16 destination, SInt32 value)
 
     if (value != lowHalf(value)) {
         if (copts.deleteDeadInstructions > 1 && lowHalf(value) != 0) {
+#if VERSION >= VERSION_GC_1_3
+            SInt32 reg = gUsedVirtualRegistersGPR++;
+            temporary = reg;
+#else
             temporary = gUsedVirtualRegistersGPR++;
+#endif
         }
         high = value >> 16;
         PCodeUtilities_EmitInstruction(PC_LIS, temporary, 0, high);

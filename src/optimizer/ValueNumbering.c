@@ -534,10 +534,12 @@ SInt32 fn_0051f790(RegisterValueRecord *record, PCodeInstruction *instruction)
                 if (record->input_indices[operandIndex - 1] != gRegisterValueStates[operand->value.reg].index)
                     return 0;
                 break;
+#if VERSION < VERSION_GC_1_3
             case PCOp_CRFIELD:
                 if (record->input_indices[operandIndex - 1] != register_value_states[operand->value.reg].index)
                     return 0;
                 break;
+#endif
             case PCOp_MEMORY:
                 if (operand->kind != PCOp_MEMORY)
                     return 0;
@@ -554,7 +556,9 @@ SInt32 fn_0051f790(RegisterValueRecord *record, PCodeInstruction *instruction)
                 if (operand->value.signed_value != storedOperand->value.signed_value)
                     return 0;
                 break;
+#if VERSION < VERSION_GC_1_3
             case PCOp_SPR:
+#endif
             case PCOp_LABEL:
                 CError_FATAL(776);
                 break;
@@ -1511,7 +1515,12 @@ void traverse_single_predecessor_successors(PCodeBlock *node)
         if ((entry->payload.block->flags & 4) == 0 && entry->payload.block->predecessors != NULL &&
             entry->payload.block->predecessors->next == NULL) {
             traverse_single_predecessor_successors(entry->payload.block);
+#if VERSION >= VERSION_GC_1_3
+            /* (1.3's restore is fn_00507560; the row named fn_0051e720 is another function) */
+            fn_00507560();
+#else
             fn_0051e720();
+#endif
         }
     }
 

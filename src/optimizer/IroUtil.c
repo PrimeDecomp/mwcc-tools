@@ -49,7 +49,7 @@ static inline int IRO_ConstsSame(ENode *a, ENode *b)
 }
 
 #pragma auto_inline off
-int IroUtil_IsTypeOneNodeTypeFiftyOne(IROLinear *record)
+BY_VERSION(int, unsigned char) IroUtil_IsTypeOneNodeTypeFiftyOne(IROLinear *record)
 {
     if (record->type == 1U && record->u.node->type == 51U)
         return 1;
@@ -57,8 +57,97 @@ int IroUtil_IsTypeOneNodeTypeFiftyOne(IROLinear *record)
 }
 #pragma auto_inline reset
 
+#if VERSION >= VERSION_GC_1_3
+Boolean fn_004693e0(Type *a, Type *b)
+{
+    if (a->type == TYPEPOINTER && b->type == TYPEPOINTER)
+        return 1;
+    return !!is_typesame(a, b);
+}
+/* find the leaf operand that is evaluated first (smallest statement index) */
+IROLinear *fn_00468db0(IROLinear *node)
+{
+    IROLinear *l;
+    IROLinear *r;
+    IROLinear *t;
+
+    switch (node->type) {
+    case 1:
+        return node;
+    case 2:
+        return fn_00468db0(node->u.diadic.left);
+    case 3:
+        l = node->u.diadic.left;
+        r = node->u.diadic.right;
+        return fn_00468db0(r->index < l->index ? r : l);
+    case 10:
+        l = node->u.diadic.left;
+        r = node->u.diadic.right;
+        t = *(IROLinear **)((char *)node + 0x28);
+        if (l->index < r->index)
+            return fn_00468db0(l->index < t->index ? l : t);
+        return fn_00468db0(r->index < t->index ? r : t);
+    case 11:
+        return fn_00468db0((*(IROLinear ***)((char *)node + 0x24))[*(SInt16 *)((char *)node + 0x22) - 1]);
+    default:
+        CError_Internal("IroUtil.c", 0x281);
+        return NULL;
+    }
+}
+/* build `*obj = <old>` after the linear `old` and splice it into the list; returns the new store */
+IROLinear *fn_00467750(char *info)
+{
+    IROLinear *ref;
+    IROLinear *ind;
+    IROLinear *store;
+    IROLinear *old;
+    IRONode *n;
+
+    ref = IrOptimizer_NewLinear(1);
+    ref->u.node = create_objectrefnode(*(Object **)(info + 8));
+    ref->rtype = ref->u.node->data.objref->type;
+    ref->index = ++linear_index_counter;
+    ref->flags |= 0x26;
+
+    ind = IrOptimizer_NewLinear(2);
+    ind->nodetype = 4;
+    ind->rtype = (*(IROLinear **)(info + 4))->rtype;
+    ind->u.monadic = ref;
+    ind->index = ++linear_index_counter;
+    ind->flags |= 6;
+
+    store = IrOptimizer_NewLinear(3);
+    store->nodetype = 0x1e;
+    store->u.diadic.left = ind;
+    store->u.diadic.right = *(IROLinear **)(info + 4);
+    store->rtype = (*(IROLinear **)(info + 4))->rtype;
+    store->index = ++linear_index_counter;
+
+    ref->next = ind;
+    ind->next = store;
+
+    old = *(IROLinear **)(info + 4);
+    switch (old->type) {
+    case 4:
+    case 5:
+    case 6:
+    case 9:
+        CError_Internal("IroUtil.c", 0x42d);
+    }
+    for (n = iro_flowgraph_head; n != NULL; n = n->nextnode) {
+        if (n->last == old) {
+            n->last = store;
+            break;
+        }
+    }
+    store->next = old->next;
+    old->next = ref;
+    return store;
+}
+#endif
+
 /* an assignment: a one- or two-operand op whose operator assigns */
-int fn_0044d460(IROLinear *node)
+BY_VERSION(int, Boolean) fn_0044d460(IROLinear *node)
 {
     if (((node->type == IROLinearOp1Arg) || (node->type == IROLinearOp2Arg)) && (data_00551d6c[node->nodetype] != 0)) {
         return 1;
@@ -88,6 +177,26 @@ int equal_enode_values(ENode *left, ENode *right)
     return 0;
 }
 
+#if VERSION >= VERSION_GC_1_3
+Boolean IroUtil_AreTypesEqual(Type *a, Type *b)
+{
+    TypeBitfield *ba;
+    TypeBitfield *bb;
+
+    if (IS_TYPE_BITFIELD(a)) {
+        if (IS_TYPE_BITFIELD(b)) {
+            ba = TYPE_BITFIELD(a);
+            bb = TYPE_BITFIELD(b);
+            if (ba->bitfieldtype == bb->bitfieldtype && ba->offset == bb->offset && ba->bitlength == bb->bitlength)
+                return 1;
+        }
+        return 0;
+    }
+    if (IS_TYPE_POINTER_ONLY(a) && IS_TYPE_POINTER_ONLY(b))
+        return 1;
+    return !!is_typesame(a, b);
+}
+#else
 int IroUtil_AreTypesEqual(Type *a, Type *b)
 {
     TypeBitfield *ba;
@@ -106,6 +215,7 @@ int IroUtil_AreTypesEqual(Type *a, Type *b)
         return 1;
     return is_typesame(a, b);
 }
+#endif
 
 SInt16 IroUtil_IsTypeSame(Type *left, Type *right)
 {
@@ -114,7 +224,7 @@ SInt16 IroUtil_IsTypeSame(Type *left, Type *right)
     return is_typesame(left, right);
 }
 
-int IroUtil_LinearConstantTreesSame(IROLinear *a, IROLinear *b)
+BY_VERSION(int, char) IroUtil_LinearConstantTreesSame(IROLinear *a, IROLinear *b)
 {
     if (a->type == b->type && IRO_TypesEqual(a->rtype, b->rtype)) {
         switch (a->type) {
@@ -129,6 +239,14 @@ int IroUtil_LinearConstantTreesSame(IROLinear *a, IROLinear *b)
                     return IroUtil_LinearConstantTreesSame(a->u.diadic.left, b->u.diadic.left) &&
                            IroUtil_LinearConstantTreesSame(a->u.diadic.right, b->u.diadic.right);
                 return 0;
+#if VERSION >= VERSION_GC_1_3
+            case IROLinearCond:
+                if (a->nodetype == b->nodetype)
+                    return IroUtil_LinearConstantTreesSame(a->u.args3.a, b->u.args3.a) &&
+                           IroUtil_LinearConstantTreesSame(a->u.args3.b, b->u.args3.b) &&
+                           IroUtil_LinearConstantTreesSame(a->u.args3.c, b->u.args3.c);
+                return 0;
+#endif
             case IROLinearFunccall:
                 return 0;
             default:
@@ -150,7 +268,11 @@ CLabel *IroUtil_NewLabel(void)
     return lift_call_0;
 }
 
+#if VERSION >= VERSION_GC_1_3
+Boolean IroUtil_LinearsSame(IROLinear *a, IROLinear *b)
+#else
 int IroUtil_LinearsSame(IROLinear *a, IROLinear *b)
+#endif
 {
     if (a->type == b->type && IRO_TypesEqual(a->rtype, b->rtype)) {
         int flag = 0;
@@ -180,6 +302,14 @@ int IroUtil_LinearsSame(IROLinear *a, IROLinear *b)
                                     IroUtil_LinearsSame(a->u.diadic.right, b->u.diadic.right));
                 }
                 return 0;
+#if VERSION >= VERSION_GC_1_3
+            case IROLinearCond:
+                if (a->nodetype == b->nodetype)
+                    return IroUtil_LinearsSame(a->u.args3.a, b->u.args3.a) &&
+                           IroUtil_LinearsSame(a->u.args3.b, b->u.args3.b) &&
+                           IroUtil_LinearsSame(a->u.args3.c, b->u.args3.c);
+                return 0;
+#endif
             case IROLinearFunccall:
                 return 0;
             default:
@@ -250,6 +380,53 @@ void *IroUtil_MoveLinearRangeBeforeObject(IROLinear *object, IROLinear *first, I
     return next;
 }
 
+#if VERSION >= VERSION_GC_1_3
+static inline Boolean IRO_IsIntConstant(IROLinear *linear)
+{
+    if (linear->type == IROLinearOperand && linear->u.node->type == EINTCONST)
+        return 1;
+    return 0;
+}
+
+static inline Boolean IRO_IsFloatConstant(IROLinear *linear)
+{
+    if (linear->type == IROLinearOperand && linear->u.node->type == EFLOATCONST)
+        return 1;
+    return 0;
+}
+
+static inline Boolean IRO_Int64IsZero(CInt64 *n)
+{
+    return n->hi == 0 && n->lo == 0;
+}
+
+static inline Boolean IRO_Int64IsOne(CInt64 *n)
+{
+    return n->hi == 0 && n->lo == 1;
+}
+
+/* IRO_IsConstantZero */
+Boolean IroUtil_IsZeroConstant(IROLinear *linear)
+{
+    return (IRO_IsIntConstant(linear) && IRO_Int64IsZero(&linear->u.node->data.intval)) ||
+           (IRO_IsFloatConstant(linear) && CMach_FloatIsZero(linear->u.node->data.floatval.data.value));
+}
+
+/* IRO_IsConstantOne */
+Boolean fn_0044cad0(IROLinear *linear)
+{
+    return (IRO_IsIntConstant(linear) && IRO_Int64IsOne(&linear->u.node->data.intval)) ||
+           (IRO_IsFloatConstant(linear) && CMach_FloatIsOne(linear->u.node->data.floatval.data.value));
+}
+
+/* IRO_IsConstantNegativeOne */
+Boolean IroUtil_IsOne(IROLinear *linear)
+{
+    CInt64 neg = CInt64_Neg(linear->u.node->data.intval);
+    return (IRO_IsIntConstant(linear) && IRO_Int64IsOne(&neg)) ||
+           (IRO_IsFloatConstant(linear) && CMach_FloatIsNegOne(linear->u.node->data.floatval.data.value));
+}
+#else
 short IroUtil_IsZeroConstant(IROLinear *node)
 {
     int b;
@@ -338,7 +515,18 @@ short IroUtil_IsOne(IROLinear *node)
     }
     return result;
 }
+#endif
 
+#if VERSION >= VERSION_GC_1_3
+void clear_operand_if_zero(IROLinear *operand, char value)
+{
+    if (value == 0) {
+        operand->type = 0;
+        operand->expr = NULL;
+    }
+    return;
+}
+#else
 void clear_operand_if_zero(Operand *operand, int value)
 {
     if (value == 0) {
@@ -347,6 +535,7 @@ void clear_operand_if_zero(Operand *operand, int value)
     }
     return;
 }
+#endif
 
 void IroUtil_ClearZeroOperands(struct IROLinear *object)
 {
@@ -368,6 +557,13 @@ void IroUtil_VisitLinearTree(IROLinear *node, void (*visit)(IROLinear *, int))
             IroUtil_VisitLinearTree(node->u.diadic.left, visit);
             IroUtil_VisitLinearTree(node->u.diadic.right, visit);
             break;
+#if VERSION >= VERSION_GC_1_3
+        case IROLinearCond:
+            IroUtil_VisitLinearTree(node->u.args3.a, visit);
+            IroUtil_VisitLinearTree(node->u.args3.b, visit);
+            IroUtil_VisitLinearTree(node->u.args3.c, visit);
+            break;
+#endif
         case IROLinearFunccall:
             IroUtil_VisitLinearTree(node->u.funccall.callee, visit);
             for (i = 0; i < node->u.funccall.argCount; i++)
@@ -377,6 +573,7 @@ void IroUtil_VisitLinearTree(IROLinear *node, void (*visit)(IROLinear *, int))
     visit(node, 0);
 }
 
+#if VERSION < VERSION_GC_1_3
 void visit_linear_postorder(IROLinear *node, void (*visit)(IROLinear *, int))
 {
     int i;
@@ -399,6 +596,7 @@ void visit_linear_postorder(IROLinear *node, void (*visit)(IROLinear *, int))
     }
     visit(node, 0);
 }
+#endif
 
 void visit_linear_range_trees(IROLinear *node, IROLinear *last, void *ctx)
 {
@@ -407,9 +605,11 @@ void visit_linear_range_trees(IROLinear *node, IROLinear *last, void *ctx)
     for (n = node; n != NULL; n = n->next) {
         switch (n->type) {
             case IROLinearNop:
+#if VERSION < VERSION_GC_1_3
             case IROLinearAsm:
-            case 17:
-            case 18:
+#endif
+            case BY_VERSION(17, 18):
+            case BY_VERSION(18, 19):
             case IROLinearEnd:
                 break;
             case IROLinearBeginCatch:
@@ -420,6 +620,9 @@ void visit_linear_range_trees(IROLinear *node, IROLinear *last, void *ctx)
             case IROLinearOperand:
             case IROLinearOp1Arg:
             case IROLinearOp2Arg:
+#if VERSION >= VERSION_GC_1_3
+            case IROLinearCond:
+#endif
             case IROLinearFunccall:
                 IroUtil_VisitLinearTree(n, (void (*)(IROLinear *, int))ctx);
                 break;
@@ -434,6 +637,12 @@ void visit_linear_range_trees(IROLinear *node, IROLinear *last, void *ctx)
             case IROLinearSwitch:
                 IroUtil_VisitLinearTree(n->u.swtch.cond, (void (*)(IROLinear *, int))ctx);
                 break;
+#if VERSION >= VERSION_GC_1_3
+            case IROLinearAsm:
+                ((void (*)(IROLinear *, int))ctx)(n, 1);
+                ((void (*)(IROLinear *, int))ctx)(n, 0);
+                break;
+#endif
         }
         if (n == last)
             return;
@@ -494,7 +703,7 @@ void IroUtil_InsertLinearBefore(IROLinear *newnode, IROLinear *owner, IROLinear 
     IROLinear *prev;
 
     if (oldnode->type == IROLinearLabel) {
-        CError_FATAL(773);
+        CError_FATAL(BY_VERSION(773, 1011));
     }
 
     prev = NULL;
@@ -531,7 +740,7 @@ void IroUtil_InsertLinearRangeAfter(IROLinear *first, IROLinear *replacement, IR
         case IROLinearIf:
         case IROLinearIfNot:
         case IROLinearSwitch:
-            CError_FATAL(828);
+            CError_FATAL(BY_VERSION(828, 1069));
     }
     entry = iro_flowgraph_head;
     while (entry != NULL) {
@@ -545,7 +754,7 @@ void IroUtil_InsertLinearRangeAfter(IROLinear *first, IROLinear *replacement, IR
     object->next = first;
 }
 
-void fn_0044c6b0(IROLinear *object, unsigned int enabled)
+void fn_0044c6b0(IROLinear *object, BY_VERSION( unsigned int, char) enabled)
 {
     IROLinear *node;
     if (enabled != 0) {
@@ -581,9 +790,10 @@ static int is_int_const(IROLinear *node)
     return 0;
 }
 
-void set_expr_node_if_update_type(IROLinear *linear, unsigned int updateType)
+
+void set_expr_node_if_update_type(IROLinear *linear, BY_VERSION(unsigned int, char) updateType)
 {
-    if (updateType != 0U) {
+    if (updateType != BY_VERSION(0U, 0)) {
         if (linear->expr != NULL) {
             linear->expr->node = move_expr_before_node;
         }
@@ -645,7 +855,7 @@ IROLinear *IroUtil_FindLabel(CLabel *key, IROLinear *head)
             break;
     }
     if (!entry)
-        CError_FATAL(1016);
+        CError_FATAL(BY_VERSION(1016, 1253));
     return entry;
 }
 
@@ -692,6 +902,13 @@ IROLinear *IroUtil_CopyLinearToList(IROLinear *node, IROList *list)
                 newnode->u.diadic.right = IroUtil_CopyLinearToList(newnode->u.diadic.right, list);
             }
             break;
+#if VERSION >= VERSION_GC_1_3
+        case IROLinearCond:
+            newnode->u.args3.a = IroUtil_CopyLinearToList(newnode->u.args3.a, list);
+            newnode->u.args3.b = IroUtil_CopyLinearToList(newnode->u.args3.b, list);
+            newnode->u.args3.c = IroUtil_CopyLinearToList(newnode->u.args3.c, list);
+            break;
+#endif
         case IROLinearFunccall:
             newnode->u.funccall.callee = IroUtil_CopyLinearToList(newnode->u.funccall.callee, list);
             newnode->u.funccall.args =
@@ -725,7 +942,11 @@ IROLinear *IroUtil_AppendObjectRefAndUse(Object *obj, IROList *list)
     expressionNode->rtype = expressionNode->u.node->data.objref->type;
     linear_index_counter++;
     expressionNode->index = linear_index_counter;
+#if VERSION >= VERSION_GC_1_3
+    expressionNode->flags |= IROLF_Reffed | IROLF_Ind;
+#else
     expressionNode->flags |= IROLF_Ind;
+#endif
 
     if (list->head != NULL)
         list->tail->next = expressionNode;
@@ -751,14 +972,129 @@ IROLinear *IroUtil_AppendObjectRefAndUse(Object *obj, IROList *list)
     while (list->tail->next != NULL)
         list->tail = list->tail->next;
 
+#if VERSION < VERSION_GC_1_3
     expressionNode->next = useNode;
+#endif
     return useNode;
 }
+
+#if VERSION >= VERSION_GC_1_3
+/* (1.3) the node that uses `linear` as an operand, and in `*operand` where it holds it: the reference's
+   LocateFatherHelper, inlined into its callers */
+static inline IROLinear *IroUtil_LocateFatherHelper(IROLinear *linear, Boolean fromHeadToo, IROLinear ***operand)
+{
+    IROLinear *scan;
+    SInt32 pass;
+    int i;
+
+    for (scan = linear->next, pass = 0; pass < (fromHeadToo ? 2 : 1); pass++) {
+        while (scan) {
+            switch (scan->type) {
+                case IROLinearIf:
+                case IROLinearIfNot:
+                    if (scan->u.branch.cond == linear) {
+                        if (operand)
+                            *operand = &scan->u.branch.cond;
+                        return scan;
+                    }
+                    break;
+                case IROLinearReturn:
+                    if (scan->u.monadic == linear) {
+                        if (operand)
+                            *operand = &scan->u.monadic;
+                        return scan;
+                    }
+                    break;
+                case IROLinearOp1Arg:
+                    if (scan->u.monadic == linear) {
+                        if (operand)
+                            *operand = &scan->u.monadic;
+                        return scan;
+                    }
+                    break;
+                case IROLinearSwitch:
+                    if (scan->u.swtch.cond == linear) {
+                        if (operand)
+                            *operand = &scan->u.swtch.cond;
+                        return scan;
+                    }
+                    break;
+                case IROLinearOp2Arg:
+                    if (scan->u.diadic.left == linear) {
+                        if (operand)
+                            *operand = &scan->u.diadic.left;
+                        return scan;
+                    }
+                    if (scan->u.diadic.right == linear) {
+                        if (operand)
+                            *operand = &scan->u.diadic.right;
+                        return scan;
+                    }
+                    break;
+                case IROLinearCond:
+                    if (scan->u.args3.a == linear) {
+                        if (operand)
+                            *operand = &scan->u.args3.a;
+                        return scan;
+                    }
+                    if (scan->u.args3.b == linear) {
+                        if (operand)
+                            *operand = &scan->u.args3.b;
+                        return scan;
+                    }
+                    if (scan->u.args3.c == linear) {
+                        if (operand)
+                            *operand = &scan->u.args3.c;
+                        return scan;
+                    }
+                    break;
+                case IROLinearFunccall:
+                    if (scan->u.funccall.callee == linear) {
+                        if (operand)
+                            *operand = &scan->u.funccall.callee;
+                        return scan;
+                    }
+                    for (i = 0; i < scan->u.funccall.argCount; i++) {
+                        if (scan->u.funccall.args[i] == linear) {
+                            if (operand)
+                                *operand = &scan->u.funccall.args[i];
+                            return scan;
+                        }
+                    }
+                    break;
+                case IROLinearNop:
+                case IROLinearOperand:
+                case IROLinearGoto:
+                case IROLinearLabel:
+                case IROLinearEntry:
+                case IROLinearExit:
+                case IROLinearBeginCatch:
+                case IROLinearEndCatch:
+                case IROLinearEndCatchDtor:
+                case IROLinearAsm:
+                case IROLinearEnd:
+                    break;
+                default:
+                    CError_FATAL(1545);
+            }
+            scan = scan->next;
+        }
+        scan = linear_head;
+    }
+
+    if (operand)
+        *operand = NULL;
+    return NULL;
+}
+#endif
 
 IROLinear *IroUtil_FindNextUse(IROLinear *self)
 {
     IROLinear *n;
     int i;
+#if VERSION >= VERSION_GC_1_3
+    return IroUtil_LocateFatherHelper(self, 0, NULL);
+#else
     for (n = self->next; n != NULL; n = n->next) {
         switch (n->type) {
             case IROLinearIf:
@@ -804,13 +1140,54 @@ IROLinear *IroUtil_FindNextUse(IROLinear *self)
             case IROLinearEnd:
                 break;
             default:
-                CError_FATAL(1258);
+                CError_FATAL(BY_VERSION(1258, 1545));
                 break;
         }
     }
     return NULL;
+#endif
 }
 
+#if VERSION >= VERSION_GC_1_3
+/* replace `from` in the node that uses it, searching from the list's head too, with `to` (which becomes referenced) */
+void fn_0044e560(IROLinear *from, IROLinear *to)
+{
+    IROLinear **operand;
+
+    if (IroUtil_LocateFatherHelper(from, 1, &operand)) {
+        CError_ASSERT(1673, operand && *operand);
+        *operand = to;
+        to->flags |= IROLF_Reffed;
+    } else {
+        IroDump_Print("Oh, oh, did not find reference to replace\n");
+    }
+}
+
+/* replace `obj` in the node that uses it with `newobj` */
+IROLinear *IroUtil_ReplaceNextReference(IROLinear *obj, IROLinear *newobj)
+{
+    IROLinear **operand;
+    IROLinear *user = IroUtil_LocateFatherHelper(obj, 0, &operand);
+    if (user) {
+        CError_ASSERT(1594, operand && *operand);
+        *operand = newobj;
+    }
+    return user;
+}
+
+/* replace `node` in the node that uses it with `newref`, clearing `node`'s tree */
+IROLinear *IroUtil_ReplaceFirstReference(IROLinear *node, IROLinear *newref)
+{
+    IROLinear **operand;
+    IROLinear *user = IroUtil_LocateFatherHelper(node, 0, &operand);
+    if (user) {
+        CError_ASSERT(1577, operand && *operand);
+        IroUtil_VisitLinearTree(node, (void (*)(IROLinear *, int))clear_operand_if_zero);
+        *operand = newref;
+    }
+    return user;
+}
+#else
 IROLinear *IroUtil_ReplaceFirstReference(IROLinear *node, IROLinear *newref)
 {
     IROLinear *p;
@@ -961,6 +1338,7 @@ IROLinear *IroUtil_ReplaceNextReference(IROLinear *obj, IROLinear *newobj)
     }
     return NULL;
 }
+#endif
 
 struct IROLinear *IroUtil_GetLinearRangeStart(struct IROLinear *node)
 {

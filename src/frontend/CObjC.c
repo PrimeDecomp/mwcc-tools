@@ -24,6 +24,10 @@
 #include <string.h>
 #include <stdio.h>
 
+#if VERSION >= VERSION_GC_1_3
+#include "compiler/CException.h"
+#endif
+
 struct HashEntry **selector_hash;
 struct TypeClass *data_00587140;
 struct PrecTypeEntry *class_type_entries;
@@ -52,7 +56,7 @@ UInt8 data_00588507;
                     break;                                                                                             \
                 matchedParameter = matchedParameter->next;                                                             \
                 if (matchedParameter == 0)                                                                             \
-                    CError_FATAL(2998);                                                                                \
+                    CError_FATAL(BY_VERSION(2998, 3004));                                                                \
             }                                                                                                          \
         }                                                                                                              \
         while (extra != 0) {                                                                                           \
@@ -292,7 +296,7 @@ static inline Boolean IsSelType(Type *ty)
         return 0;
     t = TPTR_TARGET(ty);
     sel = (struct Type *)(SInt32)GetSelTypeWrapper(1);
-    CError_ASSERT(844, sel->type == TYPEPOINTER);
+    CError_ASSERT(BY_VERSION(844, 847), sel->type == TYPEPOINTER);
     return t == TPTR_TARGET((Type *)sel);
 }
 
@@ -732,7 +736,7 @@ Object *CObjCModern_GetSelectorReference(HashEntry *p)
         else
             CScope_AddGlobalObject(obj);
         p->obj = obj;
-        memclrw(local14, 4);
+        memclrw(local14, BY_VERSION(4, obj->type->size));
         block[0] = 0;
         block[1] = (SInt32)id;
         block[2] = 0;
@@ -1011,7 +1015,7 @@ MethRec *parse_method_declaration(char useGlobalAllocation)
             method->isinst = 0;
             break;
         default:
-            CError_Internal(CERROR_FILE, 0x3cd);
+            CError_Internal(CERROR_FILE, BY_VERSION( 0x3cd, 976));
     }
     tk = CPrepTokenizer_GetNextToken();
     if (tk == '(') {
@@ -1122,10 +1126,17 @@ MethRec *fn_00508940(MethRec *methods, MethRec *method, char check_types, char a
     Type *argument_type;
     for (candidate = methods; candidate != NULL; candidate = candidate->next) {
         if (method->isinst == candidate->isinst) {
+#if VERSION >= VERSION_GC_1_3
+            argument = method->args;
+            argument_selector = argument;
+            candidate_argument = candidate->args;
+            candidate_selector = candidate_argument;
+#else
             candidate_selector = candidate->args;
             candidate_argument = candidate_selector;
             argument_selector = method->args;
             argument = argument_selector;
+#endif
             for (;;) {
                 if (argument_selector == NULL || candidate_selector == NULL) {
                     if (argument_selector != NULL || candidate_selector != NULL) {
@@ -1224,8 +1235,13 @@ TypeFunc *get_method_ftype(MethRec *spec)
         f->type = TYPEFUNC;
         f->functype = spec->rtype;
         f->qual = spec->rqual;
+#if VERSION >= VERSION_GC_1_3
+        f->flags = 0x4000;
+        fn_00504240(f, 1);
+#else
         f->flags = 0x8000;
         fn_00504240(f);
+#endif
         NewFirstArg(f);
         ObjC_NewArg(f, GetHashNameNode("_cmd"), GetSelType(1), 0);
         for (a = (ObjCParameterNode *)spec->args; a != NULL; a = a->next) {
@@ -1249,9 +1265,17 @@ TypeFunc *get_method_ftype(MethRec *spec)
 
 ObjectList *parse_protocol_list(void)
 {
+#if VERSION >= VERSION_GC_1_3
+    ObjectList *result;
+    ObjectList *entry;
+    CRec *protocol;
+
+    result = NULL;
+#else
     ObjectList *result = NULL;
     CRec *protocol;
     ObjectList *entry;
+#endif
 
     tk = CPrepTokenizer_GetNextToken();
     for (;;) {
@@ -1259,8 +1283,16 @@ ObjectList *parse_protocol_list(void)
             CError_ReportError(ERR_IDENTIFIER_EXPECTED);
             break;
         }
+#if VERSION >= VERSION_GC_1_3
+        if ((protocol = FindRec(data_00587fa0)) != NULL) {
+            for (entry = result; entry != NULL; entry = entry->next) {
+                if ((CRec *)entry->object == protocol)
+                    break;
+            }
+#else
         if ((protocol = FindNamedRec(data_00587fa0, data_00588064)) != NULL) {
             entry = FindObject(protocol, result);
+#endif
             if (entry == NULL) {
                 entry = (ObjectList *)galloc(sizeof(ObjectList));
                 entry->next = result;
@@ -1353,7 +1385,7 @@ Type *CObjC_ParseIdType(void)
 Type *CObjC_ParseProtocolList(Type *type)
 {
     if ((UInt16)tk != 60U)
-        CError_Internal(CERROR_FILE, 1530U);
+        CError_Internal(CERROR_FILE, BY_VERSION( 1530U, 1526U));
     parse_protocol_list();
     return type;
 }
@@ -1492,7 +1524,7 @@ void parse_method_definition(TypeClass *object, CRec *kind, MethRec **methods)
         copts.cplusplus = savedCPlusPlus;
     }
     function = method->function;
-    CError_ASSERT(1631, function->type->type == TYPEFUNC);
+    CError_ASSERT(BY_VERSION(1631, 1627), function->type->type == TYPEFUNC);
     argument = arguments = ((TypeFunc *)function->type)->args;
     if (arguments != NULL) {
         argument->type = (Type *)CDecl_NewPointerType((Type *)object);
@@ -1521,7 +1553,11 @@ void encode_class(TypeClass *cls, Boolean flag)
 {
     ObjMemberVar *iv;
 
+#if VERSION >= VERSION_GC_1_3
+    if (CClass_IsPODClass(cls)) {
+#else
     if (!(cls->flags & 0x4000)) {
+#endif
         AppendGListByte(&data_00583548, cls->mode == 1 ? 0x28 : 0x7b);
         if (data_00588507 != 0)
             AppendGListByte(&data_00583548, 0x3f);
@@ -1647,7 +1683,7 @@ void fn_005074f0(Type *type, UInt32 qual, Boolean flag)
                         AppendGListByte(&data_00583548, 'D');
                         return;
                     default:
-                        CError_FATAL(1838);
+                        CError_FATAL(BY_VERSION(1838, 1841));
                 }
             case TYPEENUM:
                 type = TYPE_ENUM(type)->enumtype;
@@ -1717,7 +1753,7 @@ void fn_005074f0(Type *type, UInt32 qual, Boolean flag)
                 AppendGListByte(&data_00583548, '?');
                 return;
             default:
-                CError_FATAL(1889);
+                CError_FATAL(BY_VERSION(1889, 1892));
                 return;
         }
     }
@@ -1740,9 +1776,14 @@ Object *create_ivar_list(TypeClass *cls)
     Type *ivarType;
     UInt32 ivarQualifiers;
 
+#if VERSION >= VERSION_GC_1_3
+    for (scan = cls->ivars, count = 0; scan != NULL; scan = scan->next)
+        count++;
+#else
     count = 0;
     for (scan = cls->ivars; scan != NULL; scan = scan->next)
         count++;
+#endif
 
     if (count != 0) {
         size = (count - 1) * sizeof(IvarEntry) + sizeof(UInt32) + sizeof(IvarEntry);
@@ -1807,8 +1848,14 @@ Object *create_method_list_object(TypeClass *owner, CRec *category, MethRec *met
     NameSpace *savedContext;
     UInt8 savedState;
 
+#if VERSION >= VERSION_GC_1_3
+    method = methods;
+    count = 0;
+    for (; method != NULL; method = method->next) {
+#else
     count = 0;
     for (method = methods; method != NULL; method = method->next) {
+#endif
         SInt8 isInstanceMethod = method->isinst;
         if (methodKind == isInstanceMethod)
             count++;
@@ -1823,8 +1870,13 @@ Object *create_method_list_object(TypeClass *owner, CRec *category, MethRec *met
         CScope_AddObject(object->nspace, object->name, (ObjBase *)object);
         result = object;
         object->sclass = TK_STATIC;
+#if VERSION >= VERSION_GC_1_3
+        object->section = qualifiers;
+        relocations = NULL;
+#else
         relocations = NULL;
         object->section = qualifiers;
+#endif
         methodList->count = CTool_EndianConvertWord32(count);
         method = methods;
         entry = methodList->methods;
@@ -1912,10 +1964,17 @@ Object *create_protocol_list(ObjectList *entries, char *name)
 
     scan = entries;
     count = 0;
+#if VERSION >= VERSION_GC_1_3
+    while (scan) {
+        count++;
+        scan = scan->next;
+    }
+#else
     while (scan) {
         scan = scan->next;
         count++;
     }
+#endif
 
     if (count) {
         lastIndex = count - 1;
@@ -1928,8 +1987,13 @@ Object *create_protocol_list(ObjectList *entries, char *name)
         CScope_AddObject(object->nspace, object->name, (ObjBase *)object);
         result = object;
         object->sclass = TK_STATIC;
+#if VERSION >= VERSION_GC_1_3
+        object->section = 18;
+        relocations = NULL;
+#else
         relocations = NULL;
         object->section = 18;
+#endif
         descriptor->count = CTool_EndianConvertWord32(count);
         entry = entries;
         index = 0;
@@ -1940,11 +2004,18 @@ Object *create_protocol_list(ObjectList *entries, char *name)
                 relocation->next = relocations;
                 relocations = relocation;
                 relocation->obj = CObjC_GetProtocolInfo((CRec *)entry->object);
+#if VERSION >= VERSION_GC_1_3
+                relocation->offset = (slot + 8) - (char *)descriptor;
+                relocation->addend = 0;
+                entry = entry->next;
+                slot += sizeof(descriptor->protocols[0]);
+#else
                 offset = (slot + 8) - (char *)descriptor;
                 slot += sizeof(descriptor->protocols[0]);
                 relocation->offset = offset;
                 relocation->addend = 0;
                 entry = entry->next;
+#endif
                 index++;
             } while (entry);
         }
@@ -2063,7 +2134,7 @@ Object *CObjC_GetProtocolInfo(CRec *protocol)
             ref->next = refs;
             refs = ref;
             ref->obj = fn_00509c40(protocol->name->name, 0x13);
-            ref->offset = 4;
+            ref->offset = BY_VERSION( 4, BY_VERSION(20, BY_VERSION(4, BY_VERSION(20, 4))));
             ref->addend = 0;
 
             data[2] = CTool_EndianConvertWord32(0);
@@ -2087,7 +2158,7 @@ Object *CObjC_GetProtocolInfo(CRec *protocol)
                 ref->addend = 0;
             }
 
-            data[4] = CTool_EndianConvertWord32(0);
+            data[BY_VERSION(4, BY_VERSION(20, BY_VERSION(4, BY_VERSION(20, 4))))] = CTool_EndianConvertWord32(0);
             if ((list = create_protocol_method_list(protocol, "L_OBJC_PROTOCOL_CLASS_METHODS_", 7, 1)) != NULL) {
                 ref = (OLinkList *)lalloc(sizeof(OLinkList));
                 ref->next = refs;
@@ -2103,9 +2174,9 @@ Object *CObjC_GetProtocolInfo(CRec *protocol)
             info->section = 0x12;
             if (info->type->size != 0x14) {
                 if (!info->type->size)
-                    info->type = CDecl_NewStructType(0x14, 4);
+                    info->type = CDecl_NewStructType(0x14, BY_VERSION(4, BY_VERSION(20, BY_VERSION(4, BY_VERSION(20, 4)))));
                 else
-                    CError_FATAL(2259);
+                    CError_FATAL(BY_VERSION(2259, 2262));
             }
             CInit_DeclareData(info, data, refs, info->type->size);
             info->type = (Type *)protocolClass;
@@ -2182,7 +2253,7 @@ void emit_classobject_and_metaclassobject(TypeClass *cls)
         relocation->addend = 0;
         relocations = relocation;
     }
-    CError_ASSERT(2364, metaclassObject->type->size == 0x28);
+    CError_ASSERT(BY_VERSION(2364, 2367), metaclassObject->type->size == 0x28);
     CInit_DeclareData(metaclassObject, buffer, relocations, metaclassObject->type->size);
 
     buffer[0] = CTool_EndianConvertWord32(0);
@@ -2242,7 +2313,7 @@ void emit_classobject_and_metaclassobject(TypeClass *cls)
         relocation->addend = 0;
         relocations = relocation;
     }
-    CError_ASSERT(2434, classObject->type->size == 0x28);
+    CError_ASSERT(BY_VERSION(2434, 2437), classObject->type->size == 0x28);
     CInit_DeclareData(classObject, buffer, relocations, classObject->type->size);
 }
 
@@ -2694,9 +2765,12 @@ void CObjC_ParseProtocol(void)
                         newItem->next = rec->methods;
                         rec->methods = newItem;
                         (void)CObjCModern_RegisterMethodSelector(newItem);
-                    } else {
+                    }
+#if VERSION < VERSION_GC_1_3
+                    else {
                         CError_ReportError(ERR_METHOD_REDECLARED, newItem);
                     }
+#endif
                 }
                 if (tk != ';') {
                     CError_ReportError(ERR_SEMICOLON_EXPECTED);
@@ -2788,7 +2862,7 @@ ENode *CObjC_MakeMessageSend(ENode *receiver, TypeClass *obj, MessageArgument *a
     if (obj != NULL) {
         currentClass = obj;
         for (;;) {
-            CError_ASSERT(3106, currentClass->objcinfo != 0);
+            CError_ASSERT(BY_VERSION(3106, 3112), currentClass->objcinfo != 0);
             for (entry = ((ObjCInfo *)currentClass->objcinfo)->vars; entry != NULL; entry = entry->next) {
                 for (method = entry->methods; method != NULL; method = method->next) {
                     switch (mode) {
@@ -2927,7 +3001,7 @@ ENode *CObjC_MakeMessageSend(ENode *receiver, TypeClass *obj, MessageArgument *a
         call->flags = (UInt16)method->rqual & ENODE_FLAG_QUALS;
         call->data.funccall.funcref = create_objectrefnode(callee);
         call->data.funccall.functype = functionType;
-        CError_ASSERT(3280, call->data.funccall.functype->type == TYPEFUNC);
+        CError_ASSERT(BY_VERSION(3280, 3286), call->data.funccall.functype->type == TYPEFUNC);
         firstArg = lalloc(sizeof(ENodeList));
         call->data.funccall.args = firstArg;
         firstArg->node = receiver;
@@ -3109,6 +3183,23 @@ ENode *CObjC_ParseStringConstant(void)
     tk = CPrepTokenizer_GetNextToken();
     if (tk == TK_STRING) {
         if ((type = fn_00504c90_inline1()) != NULL) {
+#if VERSION >= VERSION_GC_1_3
+            entries = NULL;
+            values[0] = CTool_EndianConvertWord32(0);
+            entry = (OLinkList *)lalloc(16);
+            entry->next = entries;
+            entries = entry;
+            entry->obj = type->objcinfo->classobject;
+            entry->offset = 0;
+            entry->addend = 0;
+            values[1] = CTool_EndianConvertWord32(0);
+            entry = (OLinkList *)lalloc(16);
+            entry->next = entries;
+            entries = entry;
+            entry->obj = CInit_DeclareString(string_token_data, token_value_kind_or_string_length, 0, 0);
+            entry->offset = 4;
+            entry->addend = 0;
+#else
             values[0] = CTool_EndianConvertWord32(0);
             tail = entry = (OLinkList *)lalloc(16);
             entry->next = NULL;
@@ -3121,6 +3212,7 @@ ENode *CObjC_ParseStringConstant(void)
             entries->obj = CInit_DeclareString(string_token_data, token_value_kind_or_string_length, 0, 0);
             entries->offset = 4;
             entries->addend = 0;
+#endif
             values[2] = CTool_EndianConvertWord32(token_value_kind_or_string_length - 1);
             sprintf(name, "%ld", objc_string_constant_count++);
             object = CParser_NewCompilerDefDataObject();
@@ -3169,6 +3261,234 @@ ENode *CDecl_ParseProtocolExpression(void)
     }
     return nullnode();
 }
+
+#if VERSION >= VERSION_GC_1_3
+void fn_00533130(void)
+{
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+void fn_0053a650(TypeFunc *type)
+{
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+#pragma options align = mac68k
+struct Fn0053a690 {
+    UInt8 type;
+    UInt8 pad;
+    SInt32 size;
+    SInt32 value;
+    SInt32 extra;
+};
+#pragma options align = reset
+
+struct Fn0053a690 *fn_0053a690(SInt32 value)
+{
+    struct Fn0053a690 *p = (struct Fn0053a690 *)galloc(0xe);
+    memclrw(p, 0xe);
+    p->type = 0xb;
+    p->size = 4;
+    p->value = value;
+    p->extra = 0x20;
+    return p;
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+struct Fn005346c0 {
+    struct {
+        UInt8 pad[8];
+        SInt32 flag;
+    } *info;
+    UInt8 pad[8];
+    void *marker;
+};
+extern UInt8 data_005b8168[];
+
+Boolean fn_005346c0(struct Fn005346c0 *s, void *marker)
+{
+    if (s != NULL && s->marker == marker && (s->info == NULL || s->info->flag != 0)) {
+        s->marker = data_005b8168;
+        return 0;
+    }
+    return 1;
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+/* prepend an implicit `this` argument to `func`, taking const/volatile from the member function flags */
+void fn_0053a250(TypeFunc *func, TypeClass *classType)
+{
+    FuncArg *argument;
+    TypePointer *pointerType;
+    Type *target;
+
+    if (classType->sominfo == NULL) {
+        target = (Type *)classType;
+    } else {
+        target = &stvoid;
+    }
+    pointerType = (TypePointer *)galloc(sizeof(TypePointer));
+    memclrw(pointerType, sizeof(TypePointer));
+    pointerType->type = TYPEPOINTER;
+    pointerType->size = 4;
+    pointerType->target = target;
+    pointerType->qual = Q_CONST;
+    argument = CParser_NewFuncArg();
+    argument->name = this_arg_name;
+    argument->type = (Type *)pointerType;
+    if (func->flags & 0x8000)
+        argument->qual |= Q_CONST;
+    if (func->flags & 0x10000)
+        argument->qual |= Q_VOLATILE;
+    argument->next = func->args;
+    func->args = argument;
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+typedef struct ClassTail13 {
+    char pad[0x42];
+    void *f42;
+    void *f46;
+    void *f4a;
+    void *f4e;
+    void *f52;
+    short f56;
+    char f58;
+    char f59;
+} ClassTail13;
+
+/* clear the members and layout state of a class so it can be redefined */
+TypeClass *fn_00532360(TypeClass *theclass)
+{
+    theclass->nspace->names = 0;
+    theclass->nspace->data.list = NULL;
+    theclass->ivars = NULL;
+    theclass->bases = NULL;
+    theclass->vbases = NULL;
+    theclass->friends = NULL;
+    theclass->vtable = NULL;
+    ((ClassTail13 *)theclass)->f42 = NULL;
+    ((ClassTail13 *)theclass)->f46 = NULL;
+    ((ClassTail13 *)theclass)->f4a = NULL;
+    ((ClassTail13 *)theclass)->f4e = NULL;
+    ((ClassTail13 *)theclass)->f52 = NULL;
+    ((ClassTail13 *)theclass)->f56 = 0;
+    ((ClassTail13 *)theclass)->f58 = 0;
+    ((ClassTail13 *)theclass)->f59 = 2;
+    return theclass;
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+/* propagate the array-parameter flag from `source` arguments onto the matching `target` arguments */
+void fn_00538260(FuncArg *source, FuncArg *target)
+{
+    if (target == NULL)
+        return;
+    while (source != NULL && source != &elipsis && source != &oldstyle && target != NULL &&
+           target != &elipsis && target != &oldstyle) {
+        if ((source->type->type == TYPEPOINTER && target->is_array) ||
+            (source->is_array && target->type->type == TYPEPOINTER)) {
+            target->is_array = source->is_array;
+        }
+        source = source->next;
+        target = target->next;
+    }
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+/* step through the unsigned integer types from char upward, skipping types that are not wider than the previous one */
+Type *fn_00536d00(SInt32 *state)
+{
+    switch (*state) {
+        case 0:
+            *state = 1;
+            return (Type *)&stunsignedchar;
+        case 1:
+            if (stunsignedshort.size > stunsignedchar.size) {
+                *state = 2;
+                return (Type *)&stunsignedshort;
+            }
+        case 2:
+            if (stunsignedint.size > stunsignedshort.size) {
+                *state = 3;
+                return (Type *)&stunsignedint;
+            }
+        case 3:
+            if (stunsignedlong.size > stunsignedint.size) {
+                *state = 4;
+                return (Type *)&stunsignedlong;
+            }
+        case 4:
+            *state = 5;
+            if (stunsignedlonglong.size > stunsignedlong.size && copts.longlong != 0 && copts.longlong_enums != 0)
+                return (Type *)&stunsignedlonglong;
+    }
+    return NULL;
+}
+
+/* step through the signed integer types from char upward, skipping types that are not wider than the previous one */
+Type *fn_00536dc0(SInt32 *state)
+{
+    switch (*state) {
+        case 0:
+            *state = 1;
+            return (Type *)&stsignedchar;
+        case 1:
+            if (stsignedshort.size > stsignedchar.size) {
+                *state = 2;
+                return (Type *)&stsignedshort;
+            }
+        case 2:
+            if (stsignedint.size > stsignedshort.size) {
+                *state = 3;
+                return (Type *)&stsignedint;
+            }
+        case 3:
+            if (stsignedlong.size > stsignedint.size) {
+                *state = 4;
+                return (Type *)&stsignedlong;
+            }
+        case 4:
+            *state = 5;
+            if (stsignedlonglong.size > stsignedlong.size && copts.longlong != 0 && copts.longlong_enums != 0)
+                return (Type *)&stsignedlonglong;
+    }
+    return NULL;
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+/* scan the const/volatile qualifiers and exception specification following a member function declarator */
+void fn_0053a5b0(TypeFunc *func)
+{
+    int token;
+
+    while (1) {
+        if ((token = tk) == TKN(0x121)) {
+            if (func->flags & 0x8000)
+                CError_Warning(0x139, "const");
+            func->flags |= 0x8000;
+            tk = CPrepTokenizer_GetNextToken();
+        } else if (token == TKN(0x122)) {
+            if (func->flags & 0x10000)
+                CError_Warning(0x139, "volatile");
+            func->flags |= 0x10000;
+            tk = CPrepTokenizer_GetNextToken();
+        } else {
+            break;
+        }
+    }
+    if (token == 0x14e)
+        CExcept_ScanExceptionSpecification(func);
+}
+#endif
 
 ENode *CDecl_ParseSelectorExpression(void)
 {

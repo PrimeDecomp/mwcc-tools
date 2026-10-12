@@ -13,6 +13,10 @@
 
 /* A browser table entry associates a value with a name. */
 #include <stdlib.h>
+#if VERSION >= VERSION_GC_1_3
+#include "driver/MemUtils.h"
+#define free xfree
+#endif
 
 jmp_buf driver_jmp_buf;
 
@@ -105,17 +109,21 @@ int CLBrowser_LookupValue(void *table, char *name, short *value)
     found = 0;
     index = OS_IsFullPath(name);
     if (index == 0) {
-        CLIO_ReportAssertionFailure("OS_IsFullPath(fullpath)", "CLBrowser.c", 0x73);
+        CLIO_ReportAssertionFailure("OS_IsFullPath(fullpath)", "CLBrowser.c", BY_VERSION(0x73, 114));
     }
     if (!table) {
-        CLIO_ReportAssertionFailure("browsetable!=NULL", "CLBrowser.c", 0x74);
+        CLIO_ReportAssertionFailure("browsetable!=NULL", "CLBrowser.c", BY_VERSION(0x74, 115));
     }
     fn_004287c0(table, &entry, (unsigned int *)&count, &tableInfo);
     index = 0;
     if (0 < count) {
         do {
+#if VERSION >= VERSION_GC_1_3
+            if (OS_EqualPath(name, entry->name)) {
+#else
             comparison = CLIO_CompareStringsIgnoreCase(name, entry->name);
             if (comparison == 0) {
+#endif
                 found = 1;
                 break;
             }
@@ -142,8 +150,12 @@ int CLBrowser_FindOrAddLookupEntry(OSHandle *browser, char *name, short *result)
         fn_004287c0(browser, &entry, &count, &offset);
         OS_UnlockHandle(browser);
         if (OS_ResizeHandle(browser, (count + 1) << 3) != 0) {
+#if VERSION >= VERSION_GC_1_3
+            CLIO_OutOfMemory();
+#else
             CLIO_FormatAndDispatchText("\nOut of memory\n");
             longjmp(driver_jmp_buf, 1);
+#endif
         }
         entry = (CLBrowserLookupEntry *)((char *)OS_LockHandle(browser) + offset);
         entry->name = savedName;
@@ -246,10 +258,10 @@ unsigned int build_browser_file_buffer(struct StorageHandle *dataHandle, void *i
     int byteOrder = 1;
 
     if (dataHandle == NULL) {
-        CLIO_ReportAssertionFailure("browsedata!=NULL", "CLBrowser.c", 258);
+        CLIO_ReportAssertionFailure("browsedata!=NULL", "CLBrowser.c", BY_VERSION(258, 253));
     }
     if (indexHandle == NULL) {
-        CLIO_ReportAssertionFailure("browsetable!=NULL", "CLBrowser.c", 259);
+        CLIO_ReportAssertionFailure("browsetable!=NULL", "CLBrowser.c", BY_VERSION(259, 254));
     }
     dataSize = Memory_GetHandleSize(dataHandle);
     indexOffset = (dataSize + sizeof(header) + 7) & -8;
@@ -269,8 +281,12 @@ unsigned int build_browser_file_buffer(struct StorageHandle *dataHandle, void *i
     error = OS_NewHandle(totalSize, &output);
     *result = output;
     if (error != 0) {
+#if VERSION >= VERSION_GC_1_3
+        CLIO_OutOfMemory();
+#else
         CLIO_FormatAndDispatchText("\nOut of memory\n");
         longjmp(driver_jmp_buf, 1);
+#endif
     }
     buffer = OS_LockHandle(&output);
     memcpy(buffer, &header, sizeof(header));
@@ -294,7 +310,11 @@ BrowserCacheEntry *allocate_browser_cache_entry(void)
         entry = browser_cache_free_list;
         browser_cache_free_list = entry->next;
     } else {
+#if VERSION >= VERSION_GC_1_3
+        entry = (BrowserCacheEntry *)xmalloc("include file cache", sizeof(BrowserCacheEntry));
+#else
         entry = (BrowserCacheEntry *)malloc(0x160);
+#endif
     }
     return entry;
 }
@@ -344,7 +364,10 @@ void CLBrowser_FreeCacheEntries(void)
         do {
             next = node->next;
             record = node->buffer;
-            Memory_FreeHandle(record);
+#if VERSION >= VERSION_GC_1_3
+            if (record != NULL)
+#endif
+                Memory_FreeHandle(record);
             free(node);
             node = next;
         } while (next != NULL);

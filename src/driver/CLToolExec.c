@@ -17,6 +17,10 @@
 #include <ctype.h>
 #include <stdlib.h>
 #include <string.h>
+#if VERSION >= VERSION_GC_1_3
+#include "driver/MemUtils.h"
+#define free xfree
+#endif
 
 void CLToolExec_AppendArgument(int *count, char ***storage, const char *value)
 {
@@ -75,7 +79,7 @@ int build_tool_command_line(int flags, DropinFileRecord *tool, struct ToolComman
         } while (index < plugin_request_count);
     }
     if (index >= plugin_request_count) {
-        CLIO_ReportAssertionFailure("x < numPlugins", "CLToolExec.c", 87);
+        CLIO_ReportAssertionFailure("x < numPlugins", "CLToolExec.c", BY_VERSION(87, 89));
     }
     arguments->argc = 1;
     arguments->argv = xmalloc("command-line arguments", 8);
@@ -132,7 +136,16 @@ unsigned int CLToolExec_SetTemporaryOutputMask(void)
     while (index < CLFiles_GetIndex(&default_target->files)) {
         record = CLFiles_FindFileByIndex(&default_target->files, index);
         if ((record->outputArgumentMask & 2) != 0 && (optsCmdLine.toDisk & 2) == 0 && (record->outputMask & 2) == 0)
+#if VERSION >= VERSION_GC_1_3
+        {
+            if (optsCompiler.keepObjects == 0)
+                record->temporaryOutputMask |= 2;
+            else
+                record->outputMask |= 2;
+        }
+#else
             record->temporaryOutputMask |= 2;
+#endif
         ++index;
     }
     return 1;
@@ -146,6 +159,18 @@ unsigned int CLToolExec_DeleteTemporaryOutputs(void)
     index = 0;
     while (index < CLFiles_GetIndex(&default_target->files)) {
         entry = CLFiles_FindFileByIndex(&default_target->files, index);
+#if VERSION >= VERSION_GC_1_3
+        if ((entry->outputArgumentMask & 2) && (entry->temporaryOutputMask & 2) &&
+            ((short)entry->validatedOutputMask & 2)) {
+            CLFileOps_SetupOutputPath(entry, 2);
+            if (optsCmdLine.verbose > 1) {
+                CLErrors_ForwardMessage(19U, OS_SpecToString(&entry->outputPath, data_005880e0, 260U));
+            }
+            OS_Delete(&entry->outputPath);
+            entry->temporaryOutputMask &= ~2;
+            entry->validatedOutputMask &= ~2;
+        }
+#else
         if ((entry->outputArgumentMask & 2) && (entry->temporaryOutputMask & 2)) {
             if (optsCmdLine.verbose > 1) {
                 CLErrors_ForwardMessage(19U, OS_SpecToString(&entry->outputPath, data_005880e0, 260U));
@@ -153,6 +178,7 @@ unsigned int CLToolExec_DeleteTemporaryOutputs(void)
             OS_Delete(&entry->outputPath);
             entry->temporaryOutputMask &= ~2;
         }
+#endif
         ++index;
     }
     return 1U;
@@ -166,16 +192,21 @@ int CLToolExec_ExecuteLinker(Plugin *tool, UInt32 flags, DropinFileRecord *argum
     int index;
     char *pluginName;
     char *toolName;
-    char fallbackName[64];
+    char fallbackName[BY_VERSION(64, 256)];
     OSSpec toolPath;
     ToolCommandLine command;
     UInt32 status;
 
     if ((flags & 1) == 0)
-        CLIO_ReportAssertionFailure("dropinflags & isExecutableTool", "CLToolExec.c", 0xf7);
+        CLIO_ReportAssertionFailure("dropinflags & isExecutableTool", "CLToolExec.c", BY_VERSION(0xf7, 269));
 
+#if VERSION >= VERSION_GC_1_3
+    command.argc = 0;
+    command.envp = NULL;
+#else
     command.envp = NULL;
     command.argc = 0;
+#endif
     command.argv = command.envp;
 
     if (flags & 0x8000000)
@@ -215,6 +246,12 @@ int CLToolExec_ExecuteLinker(Plugin *tool, UInt32 flags, DropinFileRecord *argum
 
         if (OS_FindProgram(fallbackName, &toolPath) == 0) {
             char *resolvedName = fallbackName;
+#if VERSION >= VERSION_GC_1_3
+            if (optsCompiler.linkerName[0] != 0) {
+                CLErrors_ForwardMessageArguments(0x42, message, optsCompiler.linkerName);
+                CLErrors_ForwardMessage(0x41, resolvedName, clState.programName);
+            } else
+#endif
             if (optsCmdLine.verbose != 0)
                 CLErrors_ForwardMessage(0x41, resolvedName, clState.programName);
         } else {

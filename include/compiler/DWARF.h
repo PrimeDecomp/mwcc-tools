@@ -70,6 +70,9 @@ struct DwarfSym {
     struct Object *object;
     struct DwarfFixup *fixups;
     SInt32 offset;
+#if VERSION >= VERSION_GC_1_3
+    UInt32 f0c;
+#endif
     struct DwarfNode *replacement;
 };
 #pragma pack(pop)

@@ -634,6 +634,9 @@ void Exceptions_AppendScopeEntry(PCodeInstruction *context, ExceptionAction *ele
     else
         exception_scope_entries = entry;
     last_exception_scope_entry = entry;
+#if VERSION >= VERSION_GC_1_3
+    PCodeUtilities_ResolveLabel(PCode_NewLabel());
+#endif
     while (elements != NULL) {
         if (elements->kind == EAT_CATCHBLOCK && elements->data.catch_block.label->pclabel)
             PCode_AddSuccessor(context->block, elements->data.catch_block.label->pclabel);
@@ -653,7 +656,7 @@ int compact_exception_scope_entries(void)
         return 0;
 
     for (e = exception_scope_entries; e != NULL; e = e->next) {
-        if (((PCodeInstruction *)e->start)->block->flags & 0x10)
+        if (((PCodeInstruction *)e->start)->block->flags & BY_VERSION(0x10, 0x20))
             RemoveEntry(e);
     }
 
@@ -745,7 +748,7 @@ void Exceptions_EmitExceptionTable(Object *object, int offset)
     for (range = exception_scope_entries; range != NULL; range = range->next) {
         startOffset = pc_offset(range->start);
         endOffset = pc_offset(range->end);
-        CError_ASSERT(953, ((endOffset - startOffset) >> 2 & 0xFFFF0000) == 0);
+        CError_ASSERT(BY_VERSION(953, 1264), ((endOffset - startOffset) >> 2 & 0xFFFF0000) == 0);
         entry->offset = CTool_EndianConvertWord32(startOffset + 4);
         entry->length = CTool_EndianConvertWord16((endOffset - startOffset) >> 2);
         entry->value = CTool_EndianConvertWord16(range->info->recordOffset);

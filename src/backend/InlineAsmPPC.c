@@ -1129,7 +1129,11 @@ void parse_expression_operand(EncodedOperand *dest, struct ParsedAsmInstruction 
     }
 }
 
+#if VERSION >= VERSION_GC_1_3
+EncodedOperand *parse_displacement_operand(EncodedOperand *operand, struct ParsedAsmInstruction *instruction, int flags)
+#else
 EncodedOperand *parse_displacement_operand(EncodedOperand *operand, struct ParsedAsmInstruction *instruction)
+#endif
 {
     InlineAsmExpression expression;
     SInt32 displacement;
@@ -1138,8 +1142,13 @@ EncodedOperand *parse_displacement_operand(EncodedOperand *operand, struct Parse
     SInt32 has_no_object;
 
     parse_expression(&expression, 0);
+#if VERSION >= VERSION_GC_1_3
+    is_constant = 0;
+    has_no_object = 0;
+#else
     has_no_object = 0;
     is_constant = 0;
+#endif
     if (expression.object == NULL && expression.object_label == NULL)
         has_no_object = 1;
     if (has_no_object && expression.label == NULL)
@@ -1175,7 +1184,13 @@ EncodedOperand *parse_displacement_operand(EncodedOperand *operand, struct Parse
         CError_ReportError(ERR_NUMBER_OUT_RANGE);
     if (tk == '(') {
         tk = CPrepTokenizer_GetNextToken();
+#if VERSION >= VERSION_GC_1_3
+        parse_register_operand(operand, 4, flags);
+        if (operand->target.object == NULL && operand->data.value != 0)
+            operand->modifier.reg.flags = 0;
+#else
         parse_register_operand(operand, 0, 0);
+#endif
         operand++;
         instruction->operand_count++;
         if (tk != ')')
@@ -1752,7 +1767,7 @@ struct ParsedAsmInstruction *parse_asm_instruction_operands(struct AsmOperandPat
                 }
                 break;
             case 0x41:
-                operand = parse_displacement_operand(operand, instruction);
+                operand = PARSE_DISPLACEMENT_OPERAND(operand, instruction, PCodeOperand_Use);
                 break;
             case 0x16:
                 value = recovery_inline_ranged(0, 3);
@@ -2314,7 +2329,7 @@ void InlineAsmPPC_Initialize(void)
             data_00587128 = 0x000FFFFFU;
             break;
         default:
-            CError_FATAL(2665);
+            CError_FATAL(BY_VERSION(2665, 2632));
             break;
     }
     enabled = 0U;
@@ -2345,7 +2360,11 @@ void InlineAsmPPC_Init(char mode)
     CTemplateNew_ClearGlobalArray();
     CTemplateNew_InitRegistrationHashTables();
     if (inlineAsmMode != '\0') {
+#if VERSION >= VERSION_GC_1_3
+        CodeGen_EnumerateArgumentRegisters(assign_object_register, 0);
+#else
         CodeGen_EnumerateArgumentRegisters(assign_object_register);
+#endif
         FuncLevelAsmPPC_AllocateLocals();
     }
 }
@@ -2852,11 +2871,11 @@ PCodeInstruction *create_pcode_asm_instruction(ParsedAsmInstruction *ia, SInt32 
                                 Registers_BindGPRPair(operand->target.object, InlineAsm_Register(operand),
                                                       InlineAsm_RegisterHi(operand));
                             else
-                                Registers_BindGPR(operand->target.object, out->data.reg.reg);
+                                REGISTERS_BIND_GPR(operand->target.object, out->data.reg.reg);
                         } else if (out->kind == 1 && out->data.reg.reg < 32)
                             Registers_BindFPR(operand->target.object, out->data.reg.reg);
                         else if (out->kind == 9 && out->data.reg.reg < 32)
-                            Registers_BindVR(operand->target.object, out->data.reg.reg);
+                            REGISTERS_BIND_VR(operand->target.object, out->data.reg.reg);
                     }
                     break;
                 }
@@ -2887,7 +2906,7 @@ PCodeInstruction *create_pcode_asm_instruction(ParsedAsmInstruction *ia, SInt32 
                     out->data.labeldiff.offset = operand->modifier.kind;
                     break;
                 default:
-                    CError_FATAL(3514);
+                    CError_FATAL(BY_VERSION(3514, 3623));
                     break;
             }
     }
@@ -3124,7 +3143,7 @@ SInt32 fn_004631f0(ParsedAsmInstruction *operand)
             }
         }
     }
-    CError_FATAL(3863);
+    CError_FATAL(BY_VERSION(3863, 4039));
     return 0;
 }
 

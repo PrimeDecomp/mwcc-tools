@@ -10,6 +10,9 @@
 #include "compiler/CExpr2.h"
 #include "compiler/CInt64.h"
 #include "compiler/CObjC.h"
+#if VERSION >= VERSION_GC_1_3
+#include "compiler/CTemplateTools.h"
+#endif
 #include "compiler/CompilerTools.h"
 #include "driver/COSToolsCLT.h"
 #include <string.h>
@@ -392,7 +395,7 @@ HashNameNode *CMangler_ThunkName(Object *input, int offset, int adjustment, int 
             name = object->name;
             break;
         default:
-            CError_FATAL(1012);
+            CError_FATAL(BY_VERSION(1012, 1110));
             name = NULL;
             break;
     }
@@ -492,8 +495,8 @@ void mangle_qualified_name(NameSpace *nameSpace, const char *name)
     const char *part;
 
     parts[0] = name;
-    count = 1;
     scope = nameSpace;
+    count = 1;
     if (nameSpace != NULL) {
         do {
             if (scope->name != NULL) {
@@ -690,7 +693,7 @@ void CMangler_MangleType(Type *type, UInt32 flags)
                         AppendGListName(&data_00583548, "class");
                         return;
                     default:
-                        CError_FATAL(626);
+                        CError_FATAL(BY_VERSION(626, 701));
                 }
             }
             return;
@@ -706,7 +709,7 @@ void CMangler_MangleType(Type *type, UInt32 flags)
             AppendGListName(&data_00583548, "1T");
             return;
         default:
-            CError_FATAL(641);
+            CError_FATAL(BY_VERSION(641, 716));
             return;
     }
 }
@@ -806,6 +809,10 @@ HashNameNode *CMangler_ConversionFuncName(Type *type, UInt32 qual)
 {
     char **buffer;
     HashNameNode *name;
+#if VERSION >= VERSION_GC_1_3
+    if (CTemplateTools_IsDependentType(type))
+        return GetHashNameNode("__op");
+#endif
     data_00583548.size = 0;
     AppendGListName(&data_00583548, "__op");
     CMangler_MangleType(type, qual);
@@ -869,7 +876,7 @@ HashNameNode *CMangler_GetCovariantFunctionName(Object *object, Type *type)
             result = target->name;
             break;
         default:
-            CError_FATAL(1012);
+            CError_FATAL(BY_VERSION(1012, 1110));
             result = NULL;
             break;
     }
@@ -934,7 +941,7 @@ HashNameNode *COptimizer_GetFunctionObject(Object *obj)
         case DUNUSED:
             return obj->name;
         default:
-            CError_FATAL(1012);
+            CError_FATAL(BY_VERSION(1012, 1110));
             return NULL;
     }
 }

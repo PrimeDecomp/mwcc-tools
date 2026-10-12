@@ -47,6 +47,9 @@ struct SectionRec {
     UInt8 near_reloc;
     UInt8 mode;
     UInt8 alignmentPadding;
+#if VERSION >= VERSION_GC_1_3
+    UInt8 pad06[2];          /* 1.3: the names are 4-byte aligned (struct is 0x10 bytes) */
+#endif
     char *sectionName;
     char *linkedSectionName;
 };
@@ -62,7 +65,13 @@ extern void fn_0049c510(char *value1, UInt8 value2, SInt8 value3, SInt32 value4)
 extern ObjGenSection *fn_0049c540(ObjGenSection *input, SInt32 context);
 extern SectionRec *BE_elf_CreateSectionRec(char *nspace, char *name, unsigned int datatype, unsigned int unk03,
                                            unsigned int access);
+#if VERSION >= VERSION_GC_1_3
+extern ObjGenSection *BE_elf_FindSection(const char *name, SInt32 hashval, UInt8 flags);
+#define BE_ELF_FIND_SECTION(name, hashval, flags) BE_elf_FindSection(name, hashval, flags)
+#else
 extern ObjGenSection *BE_elf_FindSection(const char *name, SInt32 hashval);
+#define BE_ELF_FIND_SECTION(name, hashval, flags) BE_elf_FindSection(name, hashval)
+#endif
 extern ObjGenSection *BE_elf_CreateSection(char *name, UInt8 kind, SInt8 attribute, SInt32 initialSize,
                                            SectionRec *flags, UInt8 alignment, struct ObjGenSymbolLink *symbolLink);
 extern ObjGenSection *BE_elf_CreateSectionWithRelocations(SectionRec *rawObject, short kind, char flags, int size,

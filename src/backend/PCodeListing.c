@@ -89,6 +89,16 @@ void format_operand(PCodeOperand *n, char *ctx)
     }
 }
 
+#if VERSION >= VERSION_GC_1_3
+extern SInt32 data_005e6588;
+
+void fn_004ff290(void)
+{
+    if (data_005e6588 != 0)
+        CError_FATAL(0x565);
+}
+#endif
+
 void fn_004c4bf0(PCodeInstruction *instruction, char *out)
 {
     char extraOperands[20];

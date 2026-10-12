@@ -3,7 +3,11 @@
 #include "driver/AssertionFailure.h"
 #include "driver/MemUtils.h"
 #include <stdlib.h>
-#include <string.h>
+#include <string.h>
+#if VERSION >= VERSION_GC_1_3
+#include "driver/MemUtils.h"
+#define free xfree
+#endif
 
 struct PayloadWithValue *CLSegs_CreatePayloadWithValue(const char *source, UInt16 value)
 {
@@ -27,28 +31,29 @@ Boolean Segments_Initialize(Segments *segments)
     unsigned short segmentIndex;
     struct PayloadWithValue *segment;
     if (segments == NULL) {
-        CLIO_ReportAssertionFailure("segs != NULL", "CLSegs.c", 34U);
+        CLIO_ReportAssertionFailure("segs != NULL", "CLSegs.c", BY_VERSION( 34U, 36U));
     }
     memset(segments, 0, 8U);
     segments->values = NULL;
     segment = CLSegs_CreatePayloadWithValue("Jump Table", 40U);
     CLSegs_AddValue(segments, segment, &segmentIndex);
     if (segmentIndex != 0U) {
-        CLIO_ReportAssertionFailure("idx==0", "CLSegs.c", 42U);
+        CLIO_ReportAssertionFailure("idx==0", "CLSegs.c", BY_VERSION( 42U, 44U));
     }
     segment = CLSegs_CreatePayloadWithValue("Main", 65535U);
     CLSegs_AddValue(segments, segment, &segmentIndex);
     if (segmentIndex != 1U) {
-        CLIO_ReportAssertionFailure("idx==1", "CLSegs.c", 47U);
+        CLIO_ReportAssertionFailure("idx==1", "CLSegs.c", BY_VERSION( 47U, 49U));
     }
     return 1;
 }
+
 
 unsigned char CLSegs_FreeValues(Segments *array)
 {
     unsigned short index;
     if (array == NULL)
-        CLIO_ReportAssertionFailure("segs != NULL", "CLSegs.c", 55U);
+        CLIO_ReportAssertionFailure("segs != NULL", "CLSegs.c", BY_VERSION( 55U, 57U));
     if (array->values != NULL) {
         index = 0;
         while (index < array->count) {
@@ -65,7 +70,7 @@ unsigned char CLSegs_FreeValues(Segments *array)
 Boolean allocate_access_path_value_index(Segments *table, UInt16 *index)
 {
     if (table == NULL) {
-        CLIO_ReportAssertionFailure("segs != NULL", "CLSegs.c", 76U);
+        CLIO_ReportAssertionFailure("segs != NULL", "CLSegs.c", BY_VERSION( 76U, 78U));
     }
     if (table->count >= table->capacity) {
         UInt16 capacity;
@@ -100,7 +105,7 @@ Boolean CLSegs_AddValue(Segments *table, struct PayloadWithValue *value, UInt16 
 struct PayloadWithValue *CLSegs_GetValue(struct Segments *table, unsigned int index)
 {
     if (table == NULL) {
-        CLIO_ReportAssertionFailure("segs != NULL", "CLSegs.c", 135U);
+        CLIO_ReportAssertionFailure("segs != NULL", "CLSegs.c", BY_VERSION( 135U, 137U));
     }
     if ((unsigned short)index < table->count) {
         struct PayloadWithValue **entries = (struct PayloadWithValue **)table->values;
@@ -112,7 +117,7 @@ struct PayloadWithValue *CLSegs_GetValue(struct Segments *table, unsigned int in
 unsigned short CLSegs_GetCount(struct Segments *table)
 {
     if (table == NULL) {
-        CLIO_ReportAssertionFailure("segs != NULL", "CLSegs.c", 145U);
+        CLIO_ReportAssertionFailure("segs != NULL", "CLSegs.c", BY_VERSION( 145U, 147U));
     }
     return table->count;
 }

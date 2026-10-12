@@ -63,7 +63,7 @@ static inline void StackFrame_EmitAltivecStackPointerSave(Boolean restore, SInt1
 
     if (restore) {
         PCodeUtilities_EmitInstruction(PC_STW, 1, *savedStackReg, 0, 0);
-        Registers_BindGPR(NULL, *savedStackReg);
+        REGISTERS_BIND_GPR(NULL, *savedStackReg);
     } else {
         if (fn_004c15f0() == 0)
             *savedStackReg = 12;
@@ -1386,7 +1386,7 @@ void StackFrame_CheckAltivec(void)
                 frameReg = 11;
                 PPCError_ReportError(0x74);
             }
-            Registers_BindGPR(NULL, frameReg);
+            REGISTERS_BIND_GPR(NULL, frameReg);
         }
         savedBlock = gCurrentBlock;
         gCurrentBlock = prologueBlock;
@@ -1410,3 +1410,219 @@ static inline unsigned int ReadFrameWord(const unsigned char *storage)
 {
     return *(const unsigned int *)storage;
 }
+
+#if VERSION >= VERSION_GC_1_3
+extern Object *data_005e6a14;
+extern SInt32 data_005dcd8c;
+extern void fn_004f8490(Object *obj);
+
+/* create the "<valocal>" object that holds the variable-argument register save area */
+void fn_004f57b0(void)
+{
+    int size = 0;
+
+    if (copts.operandsDebug || !copts.debugEnabled)
+        size += 0x20;
+    else
+        size += 0x60;
+    data_005e6a14 = (Object *)CompilerTools_AllocatePool(0x44);
+    memclrw(data_005e6a14, 0x44);
+    data_005e6a14->type = CDecl_NewArrayType((Type *)&stchar, size);
+    data_005e6a14->otype = 5;
+    data_005e6a14->name = GetHashNameNodeExport("<valocal>");
+    data_005e6a14->datatype = 1;
+    data_005e6a14->u.var.uid = 0;
+    data_005e6a14->u.var.info = CPrep_AllocateVarInfo();
+    if (data_005dcd8c != 0)
+        CError_Internal("StackFrame.c", 0xc92);
+    fn_004f8490(data_005e6a14);
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+typedef struct FrameAdjustRecord {
+    struct FrameAdjustRecord *next;
+    PCodeInstruction *instruction;
+} FrameAdjustRecord;
+
+extern SInt32 data_005dcd94;
+extern SInt32 data_005dcda0;
+extern FrameAdjustRecord *data_005e67d4;
+
+/* emit `stwu r1,-frameSize(r1)` with the aligned frame size and record the instruction for later patching */
+void fn_004f6d70(int reg)
+{
+    SInt32 size;
+    FrameAdjustRecord *record;
+    PCodeInstruction *last;
+
+    size = (data_005dcd94 + 7 + data_005dcda0) & ~(data_005dcda0 - 1);
+    record = (FrameAdjustRecord *)CompilerTools_AllocatePool(sizeof(FrameAdjustRecord));
+    PCodeUtilities_EmitInstruction(PC_STWU, 1, reg, 0, -size);
+    Operands_AllocateGPR(0x100);
+    last = gCurrentBlock->reverse_instructions;
+    record->instruction = last;
+    record->next = data_005e67d4;
+    data_005e67d4 = record;
+    PCodeUtilities_EmitInstruction(PC_MR, 1, reg);
+    Operands_AllocateGPR(0x100);
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+extern SInt32 data_005dcdac;
+extern SInt32 data_005dcda4;
+extern SInt16 fn_004c1620(Type *type);
+
+/* align a stack slot of `type` at `offset`, returning the offset past the slot and its start in *outOffset */
+SInt32 fn_004f60e0(SInt32 offset, Type *type, char flag, SInt32 *outOffset, SInt32 size)
+{
+    SInt32 alignment;
+    UInt8 kind;
+    SInt32 stype;
+
+    if (!flag) {
+        *outOffset = offset;
+        return offset;
+    }
+    kind = type->type;
+    if (((kind == TYPEINT || kind == TYPEENUM) && type->size == 8) ||
+        (kind == TYPEFLOAT && *(UInt8 *)((char *)type + 6) != 0x13 && type->size != 4)) {
+        if (data_005dcdac < 8)
+            data_005dcdac = 8;
+        if (data_005dcda0 < 8)
+            data_005dcda0 = 8;
+        offset = (offset + 7) & ~7;
+    } else {
+        offset = (offset + 3) & ~3;
+    }
+    kind = type->type;
+    if (kind == TYPESTRUCT && (stype = *(SInt8 *)((char *)type + 0xe)) >= 4 && stype <= 14) {
+        if (data_005dcdac < 16)
+            data_005dcdac = 16;
+        if (data_005dcda0 < 16)
+            data_005dcda0 = 16;
+        offset = ((offset + 0x17) & ~0xF) - 8;
+    } else if (kind == TYPEARRAY ||
+               (kind == TYPESTRUCT && ((stype = *(SInt8 *)((char *)type + 0xe)) < 4 || stype > 14)) ||
+               kind == TYPECLASS || (kind == 10 && type->size == 0xc)) {
+        alignment = fn_004c1620(type);
+        if (alignment > 4) {
+            offset = ((offset + 7 + alignment) & ~(alignment - 1)) - 8;
+            if (data_005dcda4 < alignment)
+                data_005dcda4 = alignment;
+        }
+    }
+    *outOffset = offset;
+    return offset + size;
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+extern SInt32 data_005e674c[];
+extern SInt32 data_005e6778[];
+extern SInt32 data_005dcd62;
+extern SInt32 data_005dcd0a;
+#define COPTS13_U8(off) (*(UInt8 *)((char *)&copts + (off)))
+
+#pragma dont_inline on
+/* whether the registers of class `cls` (2=VR, 3=FPR, 4=GPR) are saved/restored by an out-of-line routine */
+char fn_004f5b60(char cls)
+{
+    if (COPTS13_U8(0xb) != 0)
+        return 0;
+    switch (cls) {
+        case 4:
+            if (COPTS13_U8(0x54) != 0 && COPTS13_U8(0) == 0)
+                return 0;
+            return data_005e674c[4] > 4 || (COPTS13_U8(0xe2) != 0 && data_005e674c[4] > 2);
+        case 3:
+            if (COPTS13_U8(0x241) != 0)
+                return 0;
+            return data_005e674c[3] > 3 || (COPTS13_U8(0xe2) != 0 && data_005e674c[3] > 2);
+        case 2:
+            return data_005e674c[2] > 3 || (COPTS13_U8(0xe2) != 0 && data_005e674c[2] > 2);
+        default:
+            CError_Internal("StackFrame.c", 0xbb7);
+            return 0;
+    }
+}
+
+/* emit a call to the out-of-line save/restore routine named by `format` for register class `cls` */
+void fn_004f5a20(const char *format, char cls, short reg)
+{
+    char name[0x20];
+    NameSpace *saved;
+    Object *function;
+    char *instruction;
+    char *operand;
+    short i;
+    int count = 1;
+
+    if (cls == 2)
+        count++;
+    sprintf(name, format, 0x20 - data_005e674c[cls]);
+    saved = cscope_current;
+    cscope_current = cscope_root;
+    function = CParser_NewRTFunc(&stvoid, NULL, 2, 0);
+    cscope_current = saved;
+    function->name = GetHashNameNode(name);
+    BE_symbol_GetOrCreateFunctionObjectSymbol(function);
+    count += data_005e674c[cls];
+    instruction = (char *)PCodeUtilities_CreateInstruction(1, count, function, 0);
+    operand = instruction + 0x30;
+    for (i = 1; i <= data_005e674c[cls]; i++) {
+        *(UInt8 *)operand = 0;
+        *(UInt8 *)(operand + 1) = cls;
+        *(SInt16 *)(operand + 4) = data_005e6778[cls] - i;
+        *(SInt16 *)(operand + 2) = reg;
+        operand += 0xc;
+    }
+    if (cls == 2) {
+        *(UInt8 *)operand = 0;
+        *(UInt8 *)(operand + 1) = 4;
+        *(SInt16 *)(operand + 4) = 0xc;
+        *(SInt16 *)(operand + 2) = 2;
+        *(UInt8 *)(operand + 0xc) = 0;
+        *(UInt8 *)(operand + 0xd) = 4;
+        *(SInt16 *)(operand + 0x10) = 0;
+        *(SInt16 *)(operand + 0xe) = 1;
+    } else {
+        *(UInt8 *)operand = 0;
+        *(UInt8 *)(operand + 1) = 4;
+        *(SInt16 *)(operand + 4) = 0xb;
+        *(SInt16 *)(operand + 2) = 1;
+    }
+    PCode_AppendInstruction(gCurrentBlock, (PCodeInstruction *)instruction);
+    Operands_AllocateGPR(0x100);
+}
+
+#pragma dont_inline reset
+
+/* emit the prologue code saving the used GPRs relative to register `reg` */
+void fn_004f6ff0(int reg, int offset)
+{
+    int i;
+    int span;
+
+    offset += data_005dcd62;
+    if (!fn_004f5b60(4)) {
+        if (COPTS13_U8(0x54) != 0 && COPTS13_U8(0) == 0 &&
+            (data_005e674c[4] > 4 || (COPTS13_U8(0xe2) != 0 && data_005e674c[4] > 1))) {
+            PCodeUtilities_EmitInstruction(PC_STMW, data_005e674c[4] - 1, 0x20 - data_005e674c[4], reg, 0, offset);
+        } else {
+            for (i = 1; i <= data_005e674c[4]; i++)
+                PCodeUtilities_EmitInstruction(PC_STW, 0x20 - i, reg, 0,
+                                               offset + (data_005e674c[4] - i) * data_005dcd0a);
+        }
+    } else {
+        span = data_005e674c[4] * 4 + offset;
+        if (span != 0)
+            PCodeUtilities_EmitInstruction(PC_ADDI, 0xb, reg, 0, span);
+        else
+            PCodeUtilities_EmitInstruction(PC_MR, 0xb, reg);
+        fn_004f5a20("_savegpr_%d", 4, 1);
+    }
+}
+#undef COPTS13_U8
+#endif

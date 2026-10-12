@@ -9,16 +9,23 @@ extern "C" {
 
 #pragma options align = mac68k
 struct IROExpr {
+#if VERSION >= VERSION_GC_1_3
+    UInt8 state; /* 0x0: 1.3 moved the state byte to the front */
+#endif
     UInt16 index;
     struct IROLinear *linear;
     struct Object *temp;
     struct IRONode *node;
     struct BitVector *depends;
     struct IROExpr *use;
+#if VERSION < VERSION_GC_1_3
     UInt8 state;
+#endif
     UInt8 mayTrap;
     UInt8 hasSideEffects;
+#if VERSION < VERSION_GC_1_3
     UInt8 alignmentPadding;
+#endif
     struct IROLinear *factor;
     struct VarRecord *var;
     struct IROLinear *expr;
@@ -48,8 +55,12 @@ extern void fn_0044f230(IROLinear *expression, IRONode *value);
 extern void IroCSE_CollectExpressionVarRefsAndFlags(struct IROLinear *input);
 extern void fn_0044f350(IROLinear *expression);
 extern IROLinear *fn_0044e340(IROLinear *node, unsigned int clearBit);
+#if VERSION >= VERSION_GC_1_3
+extern IROLinear *fn_0044e360(IROLinear *type, Boolean clearBit);
+#else
 extern IROLinear *fn_0044e360(IROLinear *type, unsigned int clearBit);
-extern void set_global_if_zero_value_and_flag(IROLinear *type, int value);
+#endif
+extern void set_global_if_zero_value_and_flag(IROLinear *type, BY_VERSION(int, Boolean) value);
 extern void IroCSE_ClearExpr(void);
 extern IROLinear *IroCSE_CreateTempAssignment(IROExpr *pair);
 extern void IroCSE_RemoveExpr(IROExpr *entry);
@@ -57,12 +68,12 @@ extern void collect_expression_var_refs_and_flags(IROLinear *e, SInt32 flag);
 extern void fn_0044e560(IROLinear *from, IROLinear *to);
 extern void IroCSE_ReplaceReference(IROLinear *target, Object *object, IROLinear *reference);
 extern void fn_0044f6a0(IROLinear *e, SInt32 flag);
-extern unsigned int data_00587630;
-extern int data_00587e58;
-extern SInt32 data_005880a4;
+extern BY_VERSION( unsigned int, Boolean) data_00587630;
+extern BY_VERSION( int, Boolean) data_00587e58;
+extern BY_VERSION( SInt32, Boolean) data_005880a4;
 extern struct BitVector *data_00552b88;
 extern unsigned int expression_count;
-extern unsigned int data_005870f8;
+extern BY_VERSION(unsigned int, Boolean) data_005870f8;
 extern struct IROExpr *expr_tail;
 extern struct IROExpr *expr_list;
 extern BitVector *killed_exprs;

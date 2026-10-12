@@ -91,8 +91,43 @@ extern ENode *CExpr_MakeNameLookupResultExpr(NameResult *p);
 extern ENode *make_member_function_esetconst(NameResult *candidates);
 extern ENode *scan_explicit_conversion(Type *type, SInt32 qualifiers);
 extern ENode *CExpr_DoExplicitConversion(Type *classType, unsigned long qualifiers, ENodeList *arguments);
-extern ENode *argumentpromotion(ENode *expression, Type *type, unsigned short qualifiers, int mode);
+extern ENode *argumentpromotion(ENode *expression, Type *type, BY_VERSION( unsigned short, short) qualifiers, int mode);
 extern ENode *oldassignmentpromotion(ENode *e, Type *t, SInt16 sz, SInt32 flag);
+#if VERSION >= VERSION_GC_1_3
+extern ENode *fn_0042edf0(ENode *node);
+#define CHECK_NODE(x) fn_0042edf0(x)
+#else
+#define CHECK_NODE(x) (x)
+#endif
+#if VERSION >= VERSION_GC_1_3
+/* 1.3 routes assignment conversions through a wrapper that picks the old or the new implementation. */
+extern ENode *assignmentpromotion_wrapper(ENode *e, Type *t, SInt32 sz, char flag);
+#define oldassignmentpromotion assignmentpromotion_wrapper
+extern UInt8 data_005e7196;
+typedef struct ConvMatch {
+    Type *from;
+    Type *to;
+    SInt32 fromQual;
+    SInt32 toQual;
+    UInt8 f10;
+    UInt8 f11;
+    UInt8 f12;
+    UInt8 f13;
+    UInt8 f14;
+    UInt8 f15;
+} ConvMatch;
+extern char fn_0054e4e0(ENode *e, Type *t, SInt32 sz, SInt32 zero, ConvMatch *out);
+extern char fn_0054ee80(void *list, struct TemplArg *templargs, Type *t, ENode **out);
+extern char fn_0054f0f0(Type *to, SInt32 toQual, Type *from, SInt32 fromQual, ConvMatch *out);
+extern char fn_0054f1f0(ENode *e, Type *t, SInt32 sz, UInt8 mode, char refTarget, char lvalueOk, ConvMatch *out);
+extern ENode *fn_0054d6d0(ENode *e, Type *t, SInt32 sz, char flag);
+extern ENode *fn_0054d370(ENode *e, Type *t, SInt32 sz);
+extern ENode *fn_00540a20(ENode *e, Type *from, Type *to, char a, char b);
+extern Boolean fn_0052cef0(TypeClass *cls);
+extern void fn_0052ad20(BClassList *bases, Object *member, char access);
+extern ENode *fn_0054da10(ENode *e, Type *t, SInt32 sz, char *kind, SInt32 a, SInt32 b, SInt32 c);
+extern ENode *fn_0054ccd0(ENode *e, Type *t, SInt32 sz, SInt32 zero, char flag);
+#endif
 extern void check_implicit_pointer_qual_conversion(ENode *a, Type *b, SInt16 c);
 extern ENode *CExpr_GeneratePointerAndRewriteConst(ENode *expr);
 extern SInt32 fn_004f8ae0(Type *type);
@@ -118,7 +153,14 @@ extern SInt16 canadd(ENode *p, UInt32 n);
 extern SInt16 add_to_expression_constant(ENode *node, CInt64 v);
 extern ENode *CExpr_New_EDIV_Node(ENode *left, ENode *right, Boolean flag);
 extern ENode *CExpr_New_EMUL_Node(ENode *lhs, ENode *rhs);
+#if VERSION >= VERSION_GC_1_3
+/* (1.3 names the operator in its message about an operand that is not arithmetic) */
+extern void unify_arithmetic_rtypes(ENode **leftp, char *opname, ENode **rightp, Boolean flag);
+#define UNIFY_ARITHMETIC_RTYPES(leftp, opname, rightp, flag) unify_arithmetic_rtypes(leftp, opname, rightp, flag)
+#else
 extern void unify_arithmetic_rtypes(ENode **leftp, ENode **rightp, SInt32 unused);
+#define UNIFY_ARITHMETIC_RTYPES(leftp, opname, rightp, flag) unify_arithmetic_rtypes(leftp, rightp, flag)
+#endif
 extern void fn_004fb400(ENode *e);
 extern void optimizecomm(ENode *expression);
 extern unsigned char get_binary_operator_info(short token, unsigned char *operatorInfo);

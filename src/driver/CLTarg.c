@@ -8,6 +8,10 @@
 #include <string.h>
 
 #include <stdlib.h>
+#if VERSION >= VERSION_GC_1_3
+#include "driver/MemUtils.h"
+#define free xfree
+#endif
 typedef SInt32(__stdcall *DispatchOperation)(CWPluginPrivateContext *, void *, int, void *, void *);
 struct CLTarget *CLTarg_CreateTarget(char *targetName, int processor, int operatingSystem, int targetKind)
 {

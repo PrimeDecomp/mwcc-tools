@@ -35,9 +35,17 @@ char *CTemplateClass_ParseDouble(char *value, double *result, char *error)
 {
     char *status;
 
+#if VERSION >= VERSION_GC_1_3
+    ((int *)_GetThreadLocalData())[1] = 0;
+#else
     errno = 0;
+#endif
     *result = strtod(value, &status);
+#if VERSION >= VERSION_GC_1_3
+    *error = ((int *)_GetThreadLocalData())[1] != 0;
+#else
     *error = errno != 0;
+#endif
     return status;
 }
 
@@ -87,7 +95,7 @@ void CTemplateClass_AddDeferredFunctionDeclaration(TemplClass *classTemplate, De
     if (tk == '{' && declInfo->thetype->type == TYPEFUNC) {
         declInfo->qual |= Q_INLINE;
         functionType = (TypeFunc *)declInfo->thetype;
-        functionType->flags |= (FUNC_DEFINED | 0x8000000);
+        functionType->flags |= (FUNC_DEFINED | BY_VERSION( 0x8000000, 0x800000));
         function->fileoffset = function_fileinfo;
         CPrep_SaveFunctionBodyTokens(&function->stream, NULL, 1);
         if (CPrepTokenizer_GetNextTokenAndRestorePosition() == ';')
@@ -223,6 +231,15 @@ void CTemplateClass_AppendObjectDeclaration(TemplClass *ctx, Object *obj)
     }
 }
 
+#if VERSION >= VERSION_GC_1_3
+void CTemplateClass_CompleteClassLayout(TemplClass *state, ClassLayout *values)
+{
+    state->lex_order_count = values->lex_order_count;
+    if (values->has_vtable)
+        state->flags |= 1;
+    state->theclass.flags |= CLASS_COMPLETED;
+}
+#else
 unsigned char CTemplateClass_CompleteClassLayout(TemplClass *state, ClassLayout *values)
 {
     unsigned char byteValue;
@@ -232,6 +249,7 @@ unsigned char CTemplateClass_CompleteClassLayout(TemplClass *state, ClassLayout 
     state->theclass.flags |= CLASS_COMPLETED;
     return byteValue;
 }
+#endif
 
 TemplClassInst *create_class_template_instance(TemplClass *definition, void *argument, void *alternate_argument)
 {
@@ -320,8 +338,8 @@ struct TemplateMember *CTemplateClass_AddTemplateArgumentOverride(TemplClass *ow
         }
         entry = entry->next;
     }
-    entry = galloc(sizeof(TemplateMember));
-    memclrw(entry, sizeof(TemplateMember));
+    entry = galloc(BY_VERSION(sizeof(TemplateMember), 0x2e));
+    memclrw(entry, BY_VERSION(sizeof(TemplateMember), 0x2e));
     entry->next = owner->members;
     owner->members = entry;
     entry->params = NULL;
@@ -362,7 +380,7 @@ void CTemplateClass_ParsePartialSpecialization(TemplateScopeState *scope, struct
     }
     templateClass = (TemplClass *)type;
     tk = CPrepTokenizer_GetNextToken();
-    CError_ASSERT(461, tk == '<');
+    CError_ASSERT(BY_VERSION(461, 469), tk == '<');
     parameter = parameters;
     for (; parameter != NULL; parameter = parameter->next) {
         if (parameter->pid.type != 0) {
@@ -623,10 +641,10 @@ TemplArg *match_specialization_arguments(TemplPartialSpec *arguments, TemplArg *
             if (CTemplTool_IsTemplateArgumentDependentExpression(pattern->data.paramdecl.expr)) {
                 index = CTemplateFunc_GetArgumentParameterIndex(pattern);
                 if (index < 0)
-                    CError_FATAL(749);
+                    CError_FATAL(BY_VERSION(749, 789));
                 if (state.args[index].is_deduced != 0) {
                     if (!CTemplTool_EqualExprTypes(candidate->data.paramdecl.expr,
-                                                   state.args[index].data.paramdecl.expr))
+                                                 state.args[index].data.paramdecl.expr))
                         return NULL;
                 } else {
                     state.args[index].data.paramdecl.expr = candidate->data.paramdecl.expr;
@@ -656,7 +674,7 @@ unsigned char match_template_arguments(TemplPartialSpec *arguments, TemplPartial
     for (;;) {
         if (argument == NULL) {
             if (patternArgument != NULL)
-                CError_FATAL(796);
+                CError_FATAL(BY_VERSION(796, 856));
             index = 0;
             while (index < state.maxCount) {
                 if (state.args[index].is_deduced == 0)
@@ -666,9 +684,9 @@ unsigned char match_template_arguments(TemplPartialSpec *arguments, TemplPartial
             return 1;
         }
         if (patternArgument == NULL)
-            CError_FATAL(805);
+            CError_FATAL(BY_VERSION(805, 865));
         if (argument->pid.type != patternArgument->pid.type)
-            CError_FATAL(806);
+            CError_FATAL(BY_VERSION(806, 866));
         if (argument->pid.type != 0) {
             if (qualtest(patternArgument->data.typeparam.qual, argument->data.typeparam.qual))
                 return 0;
@@ -684,12 +702,12 @@ unsigned char match_template_arguments(TemplPartialSpec *arguments, TemplPartial
         } else if (CTemplTool_IsTemplateArgumentDependentExpression(patternArgument->data.paramdecl.expr) != 0) {
             matchIndex = CTemplateFunc_GetArgumentParameterIndex(patternArgument);
             if (matchIndex < 0)
-                CError_FATAL(845);
+                CError_FATAL(BY_VERSION(845, 907));
             if (state.args[matchIndex].is_deduced != 0) {
                 if (argument->data.typeparam.type != NULL) {
                     if (state.args[matchIndex].data.typeparam.type == NULL ||
                         CTemplTool_EqualExprTypes(argument->data.paramdecl.expr,
-                                                  state.args[matchIndex].data.paramdecl.expr) == 0)
+                                                state.args[matchIndex].data.paramdecl.expr) == 0)
                         return 0;
                 } else {
                     if (state.args[matchIndex].data.typeparam.type != NULL ||
@@ -748,8 +766,7 @@ struct TemplateClassMatch *remove_less_specialized_matches(struct TemplateClassM
                 table[j] = NULL;
         }
     }
-    list = NULL;
-    for (i = 0; i < count; i++) {
+    for (i = 0, list = NULL; i < count; i++) {
         if (table[i] != NULL) {
             if (list == NULL)
                 list = table[i];
@@ -826,6 +843,9 @@ TemplClass *CTemplateClass_CreateClassTemplateDeclaration(TypeClass *owner, Hash
     object->templ__params = NULL;
     CDecl_DefineClass(owner->nspace, arg1, &object->theclass, arg2, 0, 1);
     object->theclass.flags = FUNC_AUTO_GENERATED;
+#if VERSION >= VERSION_GC_1_3
+    object->align = copts.structalignment;
+#endif
 
     record = (struct TemplateAction *)galloc(40);
     memclrw(record, 40);
@@ -931,7 +951,7 @@ void instantiate_bases(TypeDeduce *context, TypeClass *instance, TemplClass *cla
                         instanceBase = instance->bases;
                         for (;;) {
                             if (base == NULL || instanceBase == NULL) {
-                                CError_FATAL(1146);
+                                CError_FATAL(BY_VERSION(1146, 1222));
                             }
                             if (base == declaration->u.base.insert_after) {
                                 newBase->next = instanceBase->next;
@@ -1040,7 +1060,7 @@ void initialize_enum_constants(TypeDeduce *context, struct TemplateAction *objec
             if (binding->name == item->name)
                 break;
         if (binding == NULL)
-            CError_FATAL(1256);
+            CError_FATAL(BY_VERSION(1256, 1332));
         if (parameter->u.enumerator.initexpr != NULL) {
             expression = CTemplTool_DeduceExpr(context, parameter->u.enumerator.initexpr);
             if (expression->type != EINTCONST) {
@@ -1051,7 +1071,7 @@ void initialize_enum_constants(TypeDeduce *context, struct TemplateAction *objec
             }
         } else {
             if (expression == NULL)
-                CError_FATAL(1271);
+                CError_FATAL(BY_VERSION(1271, 1347));
             expression->data.intval = CInt64_Add(expression->data.intval, cint64_one);
         }
         binding->val = expression->data.intval;
@@ -1069,19 +1089,29 @@ void instantiate_ivars(TypeDeduce *ctx, TypeClass *dst, TemplClass *src)
     struct TemplateAction *q;
     struct DefAction *r;
     ObjMemberVar **out;
+#if VERSION >= VERSION_GC_1_3
+    TypeDeduce *c;
+#endif
 
     p = src->theclass.ivars;
     out = &dst->ivars;
     for (; p != NULL; p = p->next) {
-        CError_ASSERT(1321, !p->has_path);
+        CError_ASSERT(BY_VERSION(1321, 1397), !p->has_path);
         m = (ObjMemberVar *)galloc(sizeof(ObjMemberVar));
         *m = *p;
         for (q = (ctx->tmclass)->actions; q != NULL; q = q->next) {
             if (q->type == TAT_OBJECTDEF && q->u.refobj == (ObjBase *)p) {
                 r = (struct DefAction *)lalloc(sizeof(struct DefAction));
+#if VERSION >= VERSION_GC_1_3
+                c = ctx;
+                r->next = c->defActions;
+                r->action = q;
+                c->defActions = r;
+#else
                 r->next = ctx->defActions;
                 r->action = q;
                 ctx->defActions = r;
+#endif
                 r->refobj = (ObjBase *)m;
                 break;
             }
@@ -1131,7 +1161,7 @@ void instantiate_objtype(TypeDeduce *context, ObjType *type, HashNameNode *name)
 
     objects = CScope_FindName(TYPE_CLASS(context->inst)->nspace, name);
     if (objects != NULL && objects->object->otype == OT_TYPETAG) {
-        CError_ASSERT(1394, objects->next == NULL);
+        CError_ASSERT(BY_VERSION(1394, 1470), objects->next == NULL);
         extra = (NameSpaceObjectList *)galloc(8);
         extra->object = objects->object;
         extra->next = NULL;
@@ -1155,11 +1185,16 @@ void fn_0051c680(TypeDeduce *ctx, Object *obj)
     FuncArg *arg;
     TemplateAction *head;
 
-    CError_ASSERT(1440, (list = obj->u.templateFunction) != NULL && list->params != NULL);
+    CError_ASSERT(BY_VERSION(1440, 1516), (list = obj->u.templateFunction) != NULL && list->params != NULL);
 
+#if VERSION >= VERSION_GC_1_3
+    found = ctx->tmclass->actions;
+    if (found != NULL) {
+#else
     head = (ctx->tmclass)->actions;
     found = head;
     if (head != NULL) {
+#endif
         do {
             if (found->type == TAT_OBJECTDEF && found->u.refobj == (ObjBase *)obj)
                 break;
@@ -1175,12 +1210,12 @@ void fn_0051c680(TypeDeduce *ctx, Object *obj)
     templateFunctions = copy;
     copy->original = list;
 
-    newobj = galloc(0x36);
+    newobj = galloc(BY_VERSION(0x36, 0x44));
     *newobj = *obj;
     newobj->u.templateFunction = copy;
     newobj->nspace = TYPE_CLASS(ctx->inst)->nspace;
 
-    CError_ASSERT(1465, ctx->processingArgument == 0);
+    CError_ASSERT(BY_VERSION(1465, 1541), ctx->processingArgument == 0);
     ctx->processingArgument = 1;
     ctx->nindex = (list->params)->pid.nindex;
 
@@ -1195,11 +1230,11 @@ void fn_0051c680(TypeDeduce *ctx, Object *obj)
     }
     ctx->processingArgument = 0;
 
-    CError_ASSERT(1477, newobj->type->type == TYPEFUNC);
-    ((TypeFunc *)newobj->type)->flags |= 0x400;
+    CError_ASSERT(BY_VERSION(1477, 1553), newobj->type->type == TYPEFUNC);
+    ((TypeFunc *)newobj->type)->flags |= TFUNC_TEMPLATE;
 
-    if ((((TypeFunc *)newobj->type)->flags & FUNC_IS_DTOR) != 0 && ctx->hasNewVBases != 0 && found == NULL) {
-        CError_ASSERT(1484, ((TypeFunc *)newobj->type)->args != NULL);
+    if ((((TypeFunc *)newobj->type)->flags & BY_VERSION(FUNC_IS_DTOR, FUNC_IS_CTOR)) != 0 && ctx->hasNewVBases != 0 && found == NULL) {
+        CError_ASSERT(BY_VERSION(1484, 1560), ((TypeFunc *)newobj->type)->args != NULL);
         arg = CParser_NewFuncArg();
         arg->type = (Type *)&stsignedshort;
         arg->next = ((TypeFunc *)newobj->type)->args->next;
@@ -1219,10 +1254,10 @@ void instantiate_template_object(TypeDeduce *ctx, Object *templ)
 
     if (templ->nspace != TYPE_CLASS(ctx->tmclass)->nspace) {
         if (templ->datatype != DALIAS)
-            CError_FATAL(1511);
+            CError_FATAL(BY_VERSION(1511, 1587));
         needsNewNamespace = 0;
     }
-    if (templ->type->type == TYPEFUNC && (((TypeFunc *)templ->type)->flags & 0x400) != 0) {
+    if (templ->type->type == TYPEFUNC && (((TypeFunc *)templ->type)->flags & TFUNC_TEMPLATE) != 0) {
         fn_0051c680(ctx, templ);
         return;
     }
@@ -1267,14 +1302,14 @@ void instantiate_template_object(TypeDeduce *ctx, Object *templ)
         case DVFUNC:
             obj->object.u.func.linkname = NULL;
             if (obj->object.type->type != TYPEFUNC)
-                CError_FATAL(1574);
+                CError_FATAL(BY_VERSION(1574, 1650));
             if (obj->object.u.func.u != NULL || obj->object.u.func.defargdata != NULL)
-                CError_FATAL(1575);
-            if ((((TypeFunc *)obj->object.type)->flags & FUNC_IS_DTOR) != 0 && ctx->hasNewVBases != 0 &&
+                CError_FATAL(BY_VERSION(1575, 1651));
+            if ((((TypeFunc *)obj->object.type)->flags & BY_VERSION( FUNC_IS_DTOR, FUNC_IS_CTOR)) != 0 && ctx->hasNewVBases != 0 &&
                 matchingInstance == NULL) {
                 FuncArg *arg;
                 if (((TypeFunc *)obj->object.type)->args == NULL)
-                    CError_FATAL(1581);
+                    CError_FATAL(BY_VERSION(1581, 1657));
                 arg = CParser_NewFuncArg();
                 arg->type = (Type *)&stsignedshort;
                 arg->next = ((FuncArg *)((TypeFunc *)obj->object.type)->args)->next;
@@ -1282,10 +1317,10 @@ void instantiate_template_object(TypeDeduce *ctx, Object *templ)
             }
             if ((((TypeFunc *)obj->object.type)->flags & FUNC_CONVERSION) != 0) {
                 if (templ->type->type != TYPEFUNC)
-                    CError_FATAL(1589);
+                    CError_FATAL(BY_VERSION(1589, 1665));
                 if (CTemplTool_IsTemplateArgumentDependentType(((TypeFunc *)templ->type)->functype)) {
                     if (matchingInstance == NULL)
-                        CError_FATAL(1592);
+                        CError_FATAL(BY_VERSION(1592, 1668));
                     return;
                 }
             }
@@ -1298,9 +1333,9 @@ void instantiate_template_object(TypeDeduce *ctx, Object *templ)
             break;
         case DLOCAL:
         case DEXPR:
-            CError_FATAL(1612);
+            CError_FATAL(BY_VERSION(1612, 1688));
         default:
-            CError_FATAL(1615);
+            CError_FATAL(BY_VERSION(1615, 1691));
             break;
         case DABSOLUTE:
         case DINLINEFUNC:
@@ -1327,19 +1362,19 @@ void instantiate_object_type(TypeDeduce *context, TemplateAction *function, ObjB
         return;
     }
     if (object->otype != OT_OBJECT)
-        CError_FATAL(1661);
+        CError_FATAL(BY_VERSION(1661, 1737));
     {
         Object *currentFunction = (Object *)function->u.refobj;
-        if (IS_TYPE_FUNC(currentFunction->type) && (TYPE_FUNC(currentFunction->type)->flags & 0x400)) {
+        if (IS_TYPE_FUNC(currentFunction->type) && (TYPE_FUNC(currentFunction->type)->flags & TFUNC_TEMPLATE)) {
             currentFunction = (Object *)currentFunction->u.templateFunction;
-            CError_ASSERT(1671, currentFunction != NULL);
-            CError_ASSERT(1672, !context->processingArgument);
+            CError_ASSERT(BY_VERSION(1671, 1747), currentFunction != NULL);
+            CError_ASSERT(BY_VERSION(1672, 1748), !context->processingArgument);
             context->processingArgument = 1;
             context->nindex = ((TypeBitfield *)((TemplateFunction *)currentFunction)->params)->offset;
             OBJECT(object)->type = CTemplTool_DeduceTypeCopy(context, OBJECT(object)->type, &OBJECT(object)->qual);
             context->processingArgument = 0;
-            CError_ASSERT(1677, IS_TYPE_FUNC(OBJECT(object)->type));
-            TYPE_FUNC(OBJECT(object)->type)->flags |= 0x400;
+            CError_ASSERT(BY_VERSION(1677, 1753), IS_TYPE_FUNC(OBJECT(object)->type));
+            TYPE_FUNC(OBJECT(object)->type)->flags |= TFUNC_TEMPLATE;
             return;
         }
         OBJECT(object)->type = CTemplTool_DeduceTypeCopy(context, OBJECT(object)->type, &OBJECT(object)->qual);
@@ -1349,9 +1384,9 @@ void instantiate_object_type(TypeDeduce *context, TemplateAction *function, ObjB
         switch (OBJECT(object)->datatype) {
             case DFUNC:
             case DVFUNC:
-                CError_ASSERT(1693, IS_TYPE_FUNC(OBJECT(object)->type));
+                CError_ASSERT(BY_VERSION(1693, 1769), IS_TYPE_FUNC(OBJECT(object)->type));
                 if (TYPE_FUNC(OBJECT(object)->type)->flags & FUNC_CONVERSION) {
-                    CError_ASSERT(1696, IS_TYPE_FUNC(OBJECT(object)->type));
+                    CError_ASSERT(BY_VERSION(1696, 1772), IS_TYPE_FUNC(OBJECT(object)->type));
                     if (CTemplTool_IsTemplateArgumentDependentType(TYPE_FUNC(currentFunction->type)->functype)) {
                         OBJECT(object)->name = CMangler_ConversionFuncName(TYPE_FUNC(OBJECT(object)->type)->functype,
                                                                            TYPE_FUNC(OBJECT(object)->type)->qual);
@@ -1359,9 +1394,9 @@ void instantiate_object_type(TypeDeduce *context, TemplateAction *function, ObjB
                                          (ObjBase *)OBJECT(object));
                     }
                 }
-                if ((TYPE_FUNC(OBJECT(object)->type)->flags & FUNC_IS_DTOR) && context->hasNewVBases) {
+                if ((TYPE_FUNC(OBJECT(object)->type)->flags & BY_VERSION(FUNC_IS_DTOR, 0x1000)) && context->hasNewVBases) {
                     FuncArg *argument;
-                    CError_ASSERT(1710, TYPE_FUNC(OBJECT(object)->type)->args != NULL);
+                    CError_ASSERT(BY_VERSION(1710, 1786), TYPE_FUNC(OBJECT(object)->type)->args != NULL);
                     argument = CParser_NewFuncArg();
                     argument->type = (Type *)&stsignedshort;
                     argument->next = TYPE_FUNC(OBJECT(object)->type)->args->next;
@@ -1381,7 +1416,7 @@ void instantiate_namespace_objects(TypeDeduce *map, TypeClass *unused, TypeClass
     NameSpaceObjectList *objects;
 
     if (obj->nspace->is_hash != 0) {
-        CError_FATAL(1754);
+        CError_FATAL(BY_VERSION(1754, 1830));
     }
     for (entry = obj->nspace->data.list; entry != NULL; entry = entry->next) {
         for (objects = &entry->first; objects != NULL; objects = objects->next) {
@@ -1404,13 +1439,13 @@ void instantiate_namespace_objects(TypeDeduce *map, TypeClass *unused, TypeClass
                     instantiate_objtype(map, member, entry->name);
                     break;
                 case 3:
-                    CError_FATAL(1778);
+                    CError_FATAL(BY_VERSION(1778, 1854));
                 case 5:
                     templateObject = (Object *)objects->object;
                     instantiate_template_object(map, templateObject);
                     break;
                 default:
-                    CError_FATAL(1785);
+                    CError_FATAL(BY_VERSION(1785, 1861));
                     break;
             }
         }
@@ -1459,8 +1494,8 @@ void instantiate_friend_declaration(TypeDeduce *ctx, struct TemplateFriend *decl
         }
     } else {
         if (instance.thetype->type != TYPECLASS)
-            CError_FATAL(1881);
-        CDecl_AddFriend(TYPE_CLASS(ctx->inst), NULL, TYPE_CLASS(instance.thetype));
+            CError_FATAL(BY_VERSION(1881, 1963));
+        CDecl_AddFriend(TYPE_CLASS(ctx->inst), NULL, TYPE_CLASS( instance.thetype));
     }
 }
 
@@ -1488,7 +1523,7 @@ unsigned char CTemplateClass_InstantiateClass(TypeClass *theclass)
     TStreamElement *sourceSave;
     TemplArg *resolvedArgs;
     UInt32 typeResult;
-    CError_ASSERT(1907, (theclass->flags & CLASS_IS_TEMPL_INST) != 0);
+    CError_ASSERT(BY_VERSION(1907, 1989), (theclass->flags & CLASS_IS_TEMPL_INST) != 0);
     if ((theclass->flags & CLASS_COMPLETED) != 0)
         return 1;
     if ((classInstance = (TemplClassInst *)theclass)->is_specialized != 0)
@@ -1501,7 +1536,7 @@ unsigned char CTemplateClass_InstantiateClass(TypeClass *theclass)
     resolvedTemplate = templateClass;
     if (templateClass->pspecs != NULL &&
         CTemplateClass_SelectSpecialization(classInstance->inst_args, &resolvedTemplate, &resolvedArgs) != 0) {
-        CError_ASSERT(1926, classInstance->oargs == 0);
+        CError_ASSERT(BY_VERSION(1926, 2013), classInstance->oargs == 0);
         classInstance->templ = resolvedTemplate;
         classInstance->oargs = classInstance->inst_args;
         classInstance->inst_args = resolvedArgs;
@@ -1520,9 +1555,9 @@ unsigned char CTemplateClass_InstantiateClass(TypeClass *theclass)
     instantiation.inst = classInstance;
     instantiation.params = resolvedTemplate->templ__params;
     instantiation.args = classInstance->inst_args;
-    CError_ASSERT(1958, resolvedTemplate->theclass.sominfo == 0);
-    CError_ASSERT(1959, resolvedTemplate->theclass.objcinfo == 0);
-    CError_ASSERT(1960, resolvedTemplate->theclass.vtable == 0);
+    CError_ASSERT(BY_VERSION(1958, 2045), resolvedTemplate->theclass.sominfo == 0);
+    CError_ASSERT(BY_VERSION(1959, 2047), resolvedTemplate->theclass.objcinfo == 0);
+    CError_ASSERT(BY_VERSION(1960, 2049), resolvedTemplate->theclass.vtable == 0);
     classInstance->theclass.flags |= resolvedTemplate->theclass.flags & 8312;
     instantiate_bases(&instantiation, &classInstance->theclass, resolvedTemplate);
     instantiation.hasNewVBases = (classInstance->theclass.flags & CLASS_HAS_VBASES) != 0 &&
@@ -1544,7 +1579,7 @@ unsigned char CTemplateClass_InstantiateClass(TypeClass *theclass)
                 CError_SetWrittenEntry(&sourceSave);
                 break;
             default:
-                CError_FATAL(2005);
+                CError_FATAL(BY_VERSION(2005, 2094));
             case TAT_FRIEND:
             case TAT_ENUMERATOR:
             case TAT_BASE:
@@ -1556,7 +1591,7 @@ unsigned char CTemplateClass_InstantiateClass(TypeClass *theclass)
     }
     instantiate_ivars(&instantiation, &classInstance->theclass, resolvedTemplate);
     instantiate_namespace_objects(&instantiation, &classInstance->theclass, &resolvedTemplate->theclass);
-    CError_ASSERT(2016, resolvedTemplate->theclass.friends == 0);
+    CError_ASSERT(BY_VERSION(2016, 2105), resolvedTemplate->theclass.friends == 0);
     for (memberDeclaration = resolvedTemplate->actions; memberDeclaration != NULL;
          memberDeclaration = memberDeclaration->next) {
         switch (memberDeclaration->type) {
@@ -1583,7 +1618,7 @@ unsigned char CTemplateClass_InstantiateClass(TypeClass *theclass)
                 break;
             case TAT_OBJECTINIT:
                 for (objectMapping = instantiation.defActions;; objectMapping = objectMapping->next) {
-                    CError_ASSERT(2047, objectMapping != 0);
+                    CError_ASSERT(BY_VERSION(2047, 2136), objectMapping != 0);
                     if (objectMapping->action == memberDeclaration) {
                         fn_00449d60();
                         CError_SaveAndSetWrittenEntry(&memberDeclaration->source_ref, &sourceSave);
@@ -1608,7 +1643,7 @@ unsigned char CTemplateClass_InstantiateClass(TypeClass *theclass)
                 templateType = memberDeclaration->u.usingdecl.type;
                 access = memberDeclaration->u.usingdecl.access;
                 typeResult = 0;
-                CError_ASSERT(1802, !(templateType->type != TYPETEMPLATE || templateType->dtype != 1));
+                CError_ASSERT(BY_VERSION(1802, 1878), !(templateType->type != TYPETEMPLATE || templateType->dtype != 1));
                 instantiatedType =
                     CTemplTool_DeduceTypeCopy(&instantiation, (Type *)templateType->u.qual.type, &typeResult);
                 if (instantiatedType->type != TYPECLASS) {
@@ -1624,7 +1659,7 @@ unsigned char CTemplateClass_InstantiateClass(TypeClass *theclass)
                 break;
             case TAT_OBJECTDEF:
                 for (baseMapping = instantiation.defActions;; baseMapping = baseMapping->next) {
-                    CError_ASSERT(2067, baseMapping != 0);
+                    CError_ASSERT(BY_VERSION(2067, 2156), baseMapping != 0);
                     if (baseMapping->action == memberDeclaration) {
                         fn_00449d60();
                         CError_SaveAndSetWrittenEntry(&memberDeclaration->source_ref, &sourceSave);

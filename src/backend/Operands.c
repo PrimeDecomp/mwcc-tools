@@ -99,18 +99,34 @@ static void Operands_SetKind(Operand *op, UInt8 kind)
     CError_ASSERT(92, op != NULL);
 }
 
+#if VERSION >= VERSION_GC_1_3
+#define OPERAND_VOLATILE 0x80
+#define OPERAND_CONST 0x40
+#else
+#define OPERAND_VOLATILE fIsVolatile
+#define OPERAND_CONST fIsConst
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+void Operands_SetQual(Operand *op, ENode *e)
+#else
 static void Operands_SetQual(Operand *op, ENode *e)
+#endif
 {
+#if VERSION >= VERSION_GC_1_3
+    if (op == NULL)
+        CError_FATAL(118);
+#endif
     if (e != NULL) {
         if (e->type == EINTCONST) {
             op->flags = 0;
             if (e->flags & ENODE_FLAG_VOLATILE)
-                op->flags |= fIsVolatile;
+                op->flags |= OPERAND_VOLATILE;
             if (e->flags & ENODE_FLAG_CONST)
-                op->flags |= fIsConst;
+                op->flags |= OPERAND_CONST;
         } else {
-            op->flags = CParserIsVolatileExpr(e) ? fIsVolatile : 0;
-            op->flags |= CParserIsConstExpr(e) ? fIsConst : 0;
+            op->flags = CParserIsVolatileExpr(e) ? OPERAND_VOLATILE : 0;
+            op->flags |= CParserIsConstExpr(e) ? OPERAND_CONST : 0;
         }
     } else {
         op->flags = 0;
@@ -157,9 +173,145 @@ void Operands_MakeIndirect(Operand *op, ENode *e)
             Operands_SetQual(op, e);
             break;
         default:
-            CError_FATAL(162);
+            CError_FATAL(BY_VERSION(162, 217));
     }
 }
+
+#if VERSION >= VERSION_GC_1_3
+void fn_004e23a0(Operand *operand, SInt32 value)
+{
+    memclrw(operand, sizeof(Operand));
+    operand->kind = 8;
+    operand->object = (Object *)value;
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+void fn_004e05b0(SInt16 reg, Operand *node, Type *type)
+{
+    SInt16 opcode;
+
+    if (copts.operandsDebug && type->type == TYPEFLOAT && !(type->type == TYPEFLOAT && TYPE_INTEGRAL(type)->integral == 0x13))
+        PPCError_FatalError(0x84);
+
+    Operands_Normalize(node);
+
+    switch (node->kind) {
+        case OpndType_IndirectGPR_ImmOffset:
+            if (type->size == 4)
+                opcode = 0x96;
+            else
+                opcode = 0x9a;
+            emit_opcode_with_base_offset(opcode, reg, node->reg, node->object, node->displacement);
+            Operands_AllocateGPR(node->flags);
+            break;
+        case OpndType_IndirectGPR_Indexed:
+            if (type->size == 4)
+                opcode = 0x98;
+            else
+                opcode = 0x9c;
+            PCodeUtilities_EmitInstruction(opcode, reg, node->reg, node->secondary_reg);
+            Operands_AllocateGPR(node->flags);
+            break;
+        default:
+            CError_FATAL(1253);
+            break;
+    }
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+/* does the last instruction of the current block match the given opcode/operands for `operand`? */
+Boolean fn_004e0490(void *operand, UInt16 opcode, SInt16 a, SInt16 b)
+{
+    PCodeInstruction *last;
+
+    if (gCurrentBlock->instruction_count <= 0)
+        return 0;
+    last = gCurrentBlock->reverse_instructions;
+    if (((char *)last)[0x24] != 0 || ((char *)last)[0x25] != 4 || *(SInt16 *)((char *)last + 0x28) != *(SInt16 *)((char *)operand + 2))
+        return 0;
+    if (last->opcode != opcode && !(opcode == 0x65 && last->opcode == 0x64))
+        return 0;
+    if (opcode == 0x67) {
+        if (*(SInt32 *)((char *)last + 0x3e) != 0 || *(SInt32 *)((char *)last + 0x4a) != a ||
+            *(SInt32 *)((char *)last + 0x56) != b)
+            return 0;
+    }
+    return 1;
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+extern int fn_004f5f00(void *obj);
+extern Boolean fn_004e6610(Type *type);
+
+/* pick the load/store opcode for an access, depending on whether its offset fits in a 16-bit displacement */
+int fn_004e8c80(void *obj, int offset, int store)
+{
+    int op;
+
+    if (obj != NULL && ((UInt8 *)obj)[2] == 1) {
+        if (((fn_004f5f00(obj) + offset) >> 11) != 0)
+            op = store ? 0x195 : 0x199;
+        else
+            op = store ? 0x193 : 0x197;
+    } else {
+        op = store ? 0x195 : 0x199;
+    }
+    return op;
+}
+
+/* move the value of `op` into a fresh general register (copying away its old register if it would be clobbered) */
+void fn_004e01e0(Operand *op, Type *type, SInt16 spare, SInt16 reg)
+{
+    if (*(UInt8 *)op != 0)
+        Operands_ForceGPR(op, type, spare);
+    if (reg != 0)
+        reg = reg;
+    else
+        reg = gUsedVirtualRegistersGPR++;
+    if (reg == *(SInt16 *)((char *)op + 2)) {
+        if (spare == 0)
+            spare = gUsedVirtualRegistersGPR++;
+        PCodeUtilities_EmitInstruction(0x8b, spare, *(SInt16 *)((char *)op + 2));
+        *(SInt16 *)((char *)op + 2) = spare;
+    }
+    if (fn_004e6610(type))
+        PCodeUtilities_EmitInstruction(0x89, reg, 0);
+    else
+        PCodeUtilities_EmitInstruction(0x6c, reg, *(SInt16 *)((char *)op + 2), 0x1f);
+    *(UInt8 *)op = 3;
+    *(SInt16 *)((char *)op + 4) = reg;
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+extern void fn_004e8ae0(SInt16 dest, SInt16 base, SInt32 offset, void *obj, int a, int b, int c);
+
+/* load the value of a memory operand into `dest` using the displacement form that fits */
+void fn_004e0960(SInt16 dest, Operand *op, void *type)
+{
+    Operands_Normalize(op);
+    if (*(UInt8 *)type == 2 && *((UInt8 *)type + 6) == 0x13) {
+        switch (*(UInt8 *)op) {
+        case 9:
+            fn_004e8ae0(dest, *(SInt16 *)((char *)op + 2), *(SInt32 *)((char *)op + 0x10), *(void **)((char *)op + 8), 0, 0x390, 0);
+            Operands_AllocateGPR(*(UInt32 *)((char *)op + 0x14));
+            break;
+        case 10:
+            PCodeUtilities_EmitInstruction(0x199, dest, *(SInt16 *)((char *)op + 2), *(SInt16 *)((char *)op + 6), 0, 0x390);
+            Operands_AllocateGPR(*(UInt32 *)((char *)op + 0x14));
+            break;
+        default:
+            CError_Internal("Operands.c", 0x46a);
+            break;
+        }
+    } else {
+        CError_Internal("Operands.c", 0x46f);
+    }
+}
+#endif
 
 void Operands_Add(Operand *left, Operand *right, SInt16 hint, Operand *dest)
 {
@@ -422,7 +574,7 @@ void Operands_Normalize(Operand *op)
         case OpndType_IndirectGPR_Indexed:
             break;
         default:
-            CError_FATAL(474);
+            CError_FATAL(BY_VERSION(474, 582));
     }
 }
 
@@ -552,7 +704,7 @@ void Operands_ForceGPRPair(Operand *op, Type *type, SInt16 first, SInt16 second)
                 if (targetFirst != op->reg) {
                     if (targetFirst == op->regHi) {
                         if (targetFirst == targetSecond)
-                            CError_FATAL(657);
+                            CError_FATAL(BY_VERSION(657, 819));
                         PCodeUtilities_EmitInstruction(PC_MR, targetSecond, op->regHi);
                         PCodeUtilities_EmitInstruction(PC_MR, targetFirst, op->reg);
                     } else {
@@ -563,7 +715,7 @@ void Operands_ForceGPRPair(Operand *op, Type *type, SInt16 first, SInt16 second)
                 } else if (targetSecond != op->regHi) {
                     if (targetSecond == op->reg) {
                         if (targetFirst == targetSecond)
-                            CError_FATAL(671);
+                            CError_FATAL(BY_VERSION(671, 833));
                         PCodeUtilities_EmitInstruction(PC_MR, targetFirst, op->reg);
                         PCodeUtilities_EmitInstruction(PC_MR, targetSecond, op->regHi);
                     } else {
@@ -672,11 +824,11 @@ void Operands_ForceGPRPair(Operand *op, Type *type, SInt16 first, SInt16 second)
             break;
         }
         default:
-            CError_FATAL(751);
+            CError_FATAL(BY_VERSION(751, 913));
             break;
     }
     if (secondRegister == -1) {
-        CError_FATAL(755);
+        CError_FATAL(BY_VERSION(755, 917));
     } else {
         op->kind = OpndType_GPRPair;
         op->reg = firstRegister;
@@ -715,7 +867,7 @@ void Operands_ForceFPR(Operand *operand, Type *type, short requestedReg)
             Operands_AllocateGPR(operand->flags);
             break;
         default:
-            CError_FATAL(800);
+            CError_FATAL(BY_VERSION(800, 985));
     }
     operand->kind = OpndType_FPR;
     operand->reg = resultReg;
@@ -764,14 +916,14 @@ void Operands_ForceVR(Operand *operand, Type *type, short targetReg)
                     PCodeUtilities_EmitInstruction(PC_VSPLTISW, targetReg, operand->immediate);
                     break;
                 default:
-                    CError_FATAL(863);
+                    CError_FATAL(BY_VERSION(863, 1048));
             }
             operand->kind = OpndType_VR;
             operand->reg = targetReg;
             Operands_AllocateGPR(operand->flags);
             break;
         default:
-            CError_FATAL(873);
+            CError_FATAL(BY_VERSION(873, 1058));
     }
     operand->kind = OpndType_VR;
     operand->reg = resultReg;
@@ -798,7 +950,7 @@ void Operands_EmitTypedGPRMemoryInstruction(short reg, Operand *opnd, Type *type
             } else if (type->type == TYPEMEMBERPOINTER && type->size == 4) {
             } else if (copts.operandsDebug && type->type == TYPEFLOAT && type->size == 4) {
             } else {
-                CError_FATAL(906);
+                CError_FATAL(BY_VERSION(906, 1165));
             }
             emit_opcode_with_base_offset(op, reg, opnd->reg, opnd->object, opnd->displacement);
             Operands_AllocateGPR(opnd->flags);
@@ -819,14 +971,14 @@ void Operands_EmitTypedGPRMemoryInstruction(short reg, Operand *opnd, Type *type
             } else if (type->type == TYPEMEMBERPOINTER && type->size == 4) {
             } else if (copts.operandsDebug && type->type == TYPEFLOAT && type->size == 4) {
             } else {
-                CError_FATAL(923);
+                CError_FATAL(BY_VERSION(923, 1182));
             }
             PCodeUtilities_EmitInstruction(op, reg, opnd->reg, opnd->secondary_reg);
             Operands_AllocateGPR(opnd->flags);
             break;
 
         default:
-            CError_FATAL(928);
+            CError_FATAL(BY_VERSION(928, 1187));
     }
 }
 
@@ -836,7 +988,7 @@ void Operands_StoreGPRPair(SInt16 reg, SInt16 regHi, Operand *op, Type *type)
 
     if (!(((type->type == TYPEINT || type->type == TYPEENUM) && type->size == 8) ||
           (copts.operandsDebug && type->type == TYPEFLOAT && type->size != 4)))
-        CError_FATAL(943);
+        CError_FATAL(BY_VERSION(943, 1202));
 
     Operands_Normalize(op);
 
@@ -963,7 +1115,7 @@ void Operands_ExtendGPR(Operand *operand, Type *type, short requestedReg)
             ((unsigned int (*)(unsigned int, ...))PCodeUtilities_EmitInstruction)(101, resultReg, operand->reg);
             break;
         default:
-            CError_FATAL(1063);
+            CError_FATAL(BY_VERSION(1063, 1383));
     }
     operand->kind = OpndType_GPR;
     operand->reg = resultReg;
@@ -1097,14 +1249,25 @@ void Operands_ConvertFloatToInteger(Operand *operand, SInt16 reg)
     operand->kind = OpndType_GPR;
     operand->reg = resultReg;
 }
-
+#if VERSION >= VERSION_GC_1_3
+extern UInt32 at_005b7ef0[];
+#endif
 void Operands_MoveToNewGPR(Operand *op, short outputReg)
 {
     if (op->reg != kRegOne)
         PCodeUtilities_EmitInstruction(PC_FMR, 1, op->reg);
-    PCodeUtilities_EmitObjectInstructionWithPayload(data_0058758c, 0, 0, 2, 0);
+#if VERSION >= VERSION_GC_1_3
+    PCodeUtilities_EmitObjectInstructionWithPayload(data_0058758c, 0, at_005b7ef0);
+    op->kind = OpndType_GPR;
+    {
+        SInt32 reg = gUsedVirtualRegistersGPR++;
+        op->reg = reg;
+    }
+#else
+    PCodeUtilities_EmitObjectInstructionWithRegisterMasks(data_0058758c, 0, 0, 2, 0);
     op->kind = OpndType_GPR;
     op->reg = gUsedVirtualRegistersGPR++;
+#endif
     PCodeUtilities_EmitInstruction(PC_MR, op->reg, 3);
 }
 
@@ -1152,8 +1315,13 @@ unsigned int Operands_InsertBitField(unsigned short reg, Operand *operand, TypeB
     int end;
     int width;
 
+#if VERSION >= VERSION_GC_1_3
+    shift = record->bitfieldtype->size << 3;
+    shift = 32 - shift;
+#else
     shift = 32;
     shift -= record->bitfieldtype->size << 3;
+#endif
     shift += record->offset;
     width = record->bitlength;
     if (copts.littleendian != 0) {
@@ -1178,7 +1346,7 @@ void Operands_EmitAddress(SInt16 reg, Operand *operand)
     } else if (operand->kind == OpndType_IndirectGPR_Indexed) {
         PCodeUtilities_EmitInstruction(PC_ADD, reg, operand->reg, operand->secondary_reg);
     } else {
-        CError_FATAL(1369);
+        CError_FATAL(BY_VERSION(1369, 1843));
     }
 }
 

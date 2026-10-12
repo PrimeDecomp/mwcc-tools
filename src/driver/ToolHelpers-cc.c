@@ -29,7 +29,11 @@ int set_output_path(char *name, int unused, char *path)
     int err;
     if (!path)
         path = name;
+#if VERSION >= VERSION_GC_1_3
+    if ((pCmdLine.state == 3 || (pCmdLine.state == 0 && pTool->tool == 'Link')) && pCmdLine.toDisk != 4) {
+#else
     if (pCmdLine.state == 3 || (pCmdLine.state == 0 && pTool->tool == 'Link')) {
+#endif
         if (data_0058851d) {
             fn_0040ecb1(0x29, path);
             return 0;
@@ -70,6 +74,30 @@ int set_output_path(char *name, int unused, char *path)
             return 0;
         }
         strncpy(data_00587d04, path, 0x100);
+#if VERSION >= VERSION_GC_1_3
+        if (pCmdLine.stages == 8)
+            return 1;
+        if (data_00588530 != 0 && data_00588530 != 1)
+            return 1;
+        CWPluginsPrivate_GetNumFiles(pluginPrivateContext, &count);
+        while (count-- > 0) {
+            if (!CWPluginsPrivate_InvokeExportedRecordCallback(pluginPrivateContext, count, 0, &tinfo) &&
+                tinfo.fileType == 0x54455854) {
+                data_00588530 = 1;
+                break;
+            }
+        }
+        if (count <= 0) {
+            CWPluginsPrivate_GetNumFiles(pluginPrivateContext, &count);
+            if (count > 0)
+                data_00588530 = 1;
+            count--;
+        }
+        if (data_00588530 == 0) {
+            data_00588530 = 2;
+            return 1;
+        }
+#else
         if (pCmdLine.stages == 8)
             return 1;
         if (data_00588530 > 1)
@@ -86,6 +114,7 @@ int set_output_path(char *name, int unused, char *path)
             data_00588530 = 2;
             return 1;
         }
+#endif
         ToolHelpers_cc_SetFileOutputName(count, data_0054a0b8, data_00587d04);
         data_00587d04[0] = 0;
         return 1;

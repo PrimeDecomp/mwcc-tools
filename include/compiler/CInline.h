@@ -16,9 +16,81 @@ typedef enum EvalMode { EM_NONE = 0, EM_REG = 2, EM_ARG = 3, EM_LOCAL = 4 } Eval
 struct CIBEntry {
     SInt16 statementIndex;
     CInt64 caseValue;
+#if VERSION >= VERSION_GC_1_3
+    CInt64 caseMax;
+#endif
 };
 #pragma pack(pop)
 #pragma options align = mac68k
+#if VERSION >= VERSION_GC_1_3
+/* The back-end options an inline function was defined with (CInlineInfo 0x12); CodeGen of deferred inline
+ * functions restores them. */
+struct CInlineBackendOptions {
+    SInt16 processor;
+    UInt8 processorModel;
+    UInt8 instructionSchedulingMode;
+    UInt8 cOptimizerDumpEnabled;
+    UInt8 emitExtraAssemblyData;
+    UInt8 f08;
+    UInt8 debugOptions;
+    UInt8 f0a;
+    UInt8 f0b;
+    UInt8 ppcUnrollSpeculative;
+    UInt8 pad0b[1];
+    SInt16 ppcUnrollInstructionsLimit;
+    SInt16 ppcUnrollFactorLimit;
+    UInt8 altivecModel;
+    UInt8 altivecVrsave;
+    UInt8 codeAlignment;
+    UInt8 emitSerializedAssemblyFormat;
+    UInt8 f14;
+    UInt8 pad15[1];
+    SInt32 smallDataLimit;
+    SInt32 smallBSSLimit;
+    UInt8 reuseSectionSymbols;
+    UInt8 f20;
+    UInt8 pad20[2];
+    UInt8 useRegisterSaveHelpers;
+    UInt8 pad23[1];
+    UInt8 f27;
+    UInt8 f25;
+    UInt8 pad26[28];
+    struct InterruptList *interruptList;
+    struct InterruptGenerationRecord *interruptOptions;
+    UInt8 f4e;
+    UInt8 emitMainFileObject;
+    UInt8 returnStructsInMemory;
+    UInt8 f4f;
+    UInt8 f50;
+    UInt8 f51;
+    UInt8 f52;
+    UInt8 f53;
+    UInt8 f54b;
+    UInt8 pad53[11];
+    UInt8 deleteDeadInstructions;
+    UInt8 uniformSpillBlockWeight;
+    UInt8 fc3;
+    UInt8 irCommonSubexpressionElimination;
+    UInt8 fc5;
+    UInt8 irCopyPropagation;
+    UInt8 irEliminateUnused;
+    UInt8 fc8;
+    UInt8 fc9;
+    UInt8 irRemoveUnreachable;
+    UInt8 fcb;
+    UInt8 irLoopUnrolling;
+    UInt8 fce;
+    UInt8 irSecondOptimizationPass;
+    UInt8 ff1;
+    UInt8 ff2;
+    UInt8 unrollOption;
+    UInt8 fd1;
+};
+
+extern void fn_004bdce0(struct CInlineBackendOptions *options);
+extern void fn_004bded0(struct CInlineBackendOptions *options);
+#endif
+
 struct CInlineInfo {
     SInt16 nargs;
     struct CInlineVar *arginfo;
@@ -26,9 +98,15 @@ struct CInlineInfo {
     struct CInlineVar *localinfo;
     UInt16 nstmts;
     struct IStmtRec *stmtinfo;
+#if VERSION >= VERSION_GC_1_3
+    struct CInlineBackendOptions options; /* 0x12 */
+#endif
     FileOffsetInfo fileinfo;
     UInt32 f1c;
     UInt32 tokenoffset;
+#if VERSION >= VERSION_GC_1_3
+    UInt32 f98; /* 0x98 (1.3) */
+#endif
     UInt32 tokenline;
     UInt8 kind;
 };
@@ -68,6 +146,9 @@ struct IStmtRec {
     UInt8 flags;
     UInt16 value;
     UInt32 sourceoffset;
+#if VERSION >= VERSION_GC_1_3
+    SInt32 f08;
+#endif
     struct ExceptionAction *exceptionActions;
     union {
         struct ParsedAsmInstruction *assembly;
@@ -153,7 +234,14 @@ extern Boolean can_inline(ENode *node);
 extern ENode *inline_call_expression(ENode *expr);
 extern void fn_005129f0(ENode *expr);
 extern void forward_objref(ENode *expr);
+#if VERSION >= VERSION_GC_1_3
+extern ENode *copy_result_reference(ENode *e, Boolean flag);
+extern Boolean fn_0055fb40(ENode *expr);
+#define COPY_RESULT_REFERENCE(e) copy_result_reference((e), 1)
+#else
 extern ENode *copy_result_reference(ENode *e);
+#define COPY_RESULT_REFERENCE(e) copy_result_reference(e)
+#endif
 extern ENode *fn_00513040(ENode *expr, UInt8 mode);
 extern unsigned char fn_0050ebc0(void);
 extern void add_undefined_exception_function_objects(ExceptionAction *entry);
@@ -161,7 +249,11 @@ extern void add_undefined_function_object(Object *object);
 extern void generate_inline_code(Object *object, CInlineInfo *input, char mode);
 extern unsigned char fn_00511180(Object *function, Statement *statement);
 extern SInt16 CInline_GetStatementIndex(Statement *link, Statement *target);
+#if VERSION >= VERSION_GC_1_3
+extern Object *CInline_GetObjectByIndex(SInt32 id, char flag);
+#else
 extern Object *CInline_GetObjectByIndex(UInt32 index, char useTable);
+#endif
 extern void set_object_sclass(Object *object, UInt8 kind);
 extern void fn_005130b0(ENode *node, Boolean flag);
 extern ENode *fn_00513240(ENode *e);

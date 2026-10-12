@@ -197,7 +197,7 @@ void emit_enum_type(Type *type)
 
     startOffset = dwarf_info_buffer->size;
     entry = find_or_create_dwinfo(type);
-    CError_ASSERT(LINE(246), entry->typeNode != NULL);
+    CError_ASSERT(LINE(BY_VERSION(246, 259)), entry->typeNode != NULL);
     entry->typeNode->u.fixups = ResolveFixups(entry->typeNode->u.fixups, startOffset);
     entrySize = emit_entry_header(4);
     if (TYPE_ENUM(type)->enumname != NULL) {
@@ -283,7 +283,7 @@ void fn_004b0a80(TypeStruct *type)
     hasMembers = 0;
     entryOffset = dwarf_info_buffer->size;
     info = find_or_create_dwinfo((Type *)type);
-    CError_ASSERT(LINE(289), info->typeNode != NULL);
+    CError_ASSERT(LINE(BY_VERSION(289, 302)), info->typeNode != NULL);
     info->typeNode->u.fixups = ResolveFixups(info->typeNode->u.fixups, entryOffset);
     switch (type->stype) {
         case STRUCT_TYPE_STRUCT:
@@ -316,7 +316,7 @@ void fn_004b0a80(TypeStruct *type)
     length += 4;
     *(SInt32 *)(*dwarf_info_buffer->data + entryOffset) = length;
     if (++*dwarf_depth_ptr >= 0x32)
-        CError_FATAL(LINE(325));
+        CError_FATAL(LINE(BY_VERSION(325, 338)));
     dwarf_entry_offsets[*dwarf_depth_ptr] = 0;
     member = type->members;
     if (member != NULL)
@@ -395,7 +395,7 @@ void emit_class_dwarf(TypeClass *cls)
     recordPos = dwarf_info_buffer->size;
     typeInfo = find_or_create_dwinfo((Type *)cls);
     if (typeInfo->typeNode == NULL)
-        CError_FATAL(LINE(408));
+        CError_FATAL(LINE(BY_VERSION(408, 471)));
     typeInfo->typeNode->u.fixups = ResolveFixups(typeInfo->typeNode->u.fixups, recordPos);
     mode = cls->mode;
     classMode = mode;
@@ -406,7 +406,7 @@ void emit_class_dwarf(TypeClass *cls)
     else if (classMode == 1)
         tag = 0x17;
     else
-        CError_FATAL(LINE(418));
+        CError_FATAL(LINE(BY_VERSION(418, 481)));
     length = emit_entry_header(tag);
     if (cls->classname != NULL) {
         length += DW_Word(0x38);
@@ -416,7 +416,7 @@ void emit_class_dwarf(TypeClass *cls)
     AppendGListLong(dwarf_info_buffer, cls->size);
     length += 4;
     PatchDwarfLength(recordPos, length);
-    CError_ASSERT(LINE(430), ++*dwarf_depth_ptr < 0x32);
+    CError_ASSERT(LINE(BY_VERSION(430, 493)), ++*dwarf_depth_ptr < 0x32);
     dwarf_entry_offsets[*dwarf_depth_ptr] = 0;
     if (cls->bases != NULL) {
         for (base = cls->bases; base != NULL; base = base->next) {
@@ -500,7 +500,7 @@ void emit_class_dwarf(TypeClass *cls)
         if (!(entry = CScope_NextObjectIteratorObject(&search)))
             break;
         if (entry->datatype == DFUNC || entry->datatype == DVFUNC) {
-            if (entry->type->type == TYPEFUNC && (TYPE_FUNC(entry->type)->flags & 0x400) != 0) {
+            if (entry->type->type == TYPEFUNC && (TYPE_FUNC(entry->type)->flags & TFUNC_TEMPLATE) != 0) {
                 if (entry->u.templateFunction->instances == NULL)
                     continue;
                 typeInfo = find_or_create_dwinfo(entry->u.templateFunction->instances->object->type);
@@ -576,8 +576,7 @@ void emit_array_type(Type *type)
     arrayInfo = find_or_create_dwinfo(type);
 
     if (arrayInfo->typeNode == NULL)
-        CError_FATAL(LINE(629));
-
+        CError_FATAL(LINE(BY_VERSION(629, 693)));
     arrayInfo->typeNode->u.fixups = ResolveFixups(arrayInfo->typeNode->u.fixups, entryOffset);
 
     get_type_dwarf_ref(elementInfo, 0, 1);
@@ -643,6 +642,10 @@ UInt16 get_integral_type_code(Type *type)
             return 15U;
         case IT_LONGDOUBLE:
             return 15U;
+#if VERSION >= VERSION_GC_1_3
+        case 19: /* (the integral kind 1.3 adds after the two at 17 and 18, which have no code) */
+            return 0xAC00U;
+#endif
         case IT_WCHAR_T:
         default:
             return 0U;
@@ -785,7 +788,7 @@ void set_type_dwarf_ref(Type *p, UInt16 x, Boolean flag, DwarfRef *out)
             }
             return;
         default:
-            CError_FATAL(LINE(840));
+            CError_FATAL(LINE(BY_VERSION(840, 912)));
     }
 }
 
@@ -804,6 +807,12 @@ struct DWInfo *find_or_create_dwinfo(struct Type *type)
     middleLow = ((UInt32)type >> 9) & 127;
     middleHigh = ((UInt32)type >> 16) & 127;
     bucketIndex = hash = low ^ high ^ (middleLow ^ middleHigh);
+#if VERSION >= VERSION_GC_1_3
+    for (record = dwinfo_buckets[bucketIndex]; record; record = record->next) {
+        if (record->type == type)
+            return record;
+    }
+#else
     record = bucket = dwinfo_buckets[bucketIndex];
     if (bucket) {
         do {
@@ -812,6 +821,7 @@ struct DWInfo *find_or_create_dwinfo(struct Type *type)
             record = record->next;
         } while (record);
     }
+#endif
     newRecord = galloc(sizeof(DWInfo));
     memclrw(newRecord, sizeof(DWInfo));
     newRecord->next = dwinfo_buckets[hash];
@@ -963,7 +973,7 @@ int emit_location_attribute(DwarfLocationOperand *location, UInt16 attribute, un
             expressionSize += 5;
             break;
         default:
-            CError_Internal(CERROR_FILE, LINE(1011));
+            CError_Internal(CERROR_FILE, LINE(BY_VERSION(1011, 1100)));
             break;
     }
 
@@ -1099,7 +1109,7 @@ void emit_compile_unit(struct ObjGenSection *section, UInt8 language)
     if (copts.f26 == 0)
         currentDwarfFunctionState->lineBaseRelocated = 1;
     if (++(*dwarf_depth_ptr) >= 50)
-        CError_Internal(CERROR_FILE, LINE(0x49b));
+        CError_Internal(CERROR_FILE, LINE(BY_VERSION(0x49b, 0x4f1)));
     dwarf_entry_offsets[*dwarf_depth_ptr] = 0;
 }
 
@@ -1146,14 +1156,14 @@ void emit_function_type(DwarfFixup **fixups, DWInfo *function)
         get_type_dwarf_ref(typeRecord, 0, 1);
         size += emit_dwarf_ref(typeRecord);
     }
-    CError_ASSERT(LINE(1230), function->typeNode != NULL);
+    CError_ASSERT(LINE(BY_VERSION(1230, 1316)), function->typeNode != NULL);
     currentDwarfScope = function->typeNode;
     *data_005604a8 = 0;
     argument = type->args;
     if (argument != NULL && copts.cplusplus != 0 && (type->flags & FUNC_METHOD) != 0)
         argument = argument->next;
     *(SInt32 *)(*dwarf_info_buffer->data + offset) = size;
-    CError_ASSERT(LINE(1239), ++*dwarf_depth_ptr < 0x32);
+    CError_ASSERT(LINE(BY_VERSION(1239, 1325)), ++*dwarf_depth_ptr < 0x32);
     dwarf_entry_offsets[*dwarf_depth_ptr] = 0;
     for (; argument != NULL; argument = argument->next) {
         if (argument->type != NULL) {
@@ -1244,7 +1254,7 @@ SInt32 emit_function_entry(Object *func, SInt32 code_size, SInt32 code_offset,
         reference = BE_elf_AddRelocation(dwarf_section, dwarf_info_buffer->size, NULL, dwarf_section,
                                          class_reference.num, currentDwarfFunctionState->offset);
         if (class_reference.valid == 0) {
-            CError_ASSERT(LINE(1337), symbol->typeNode != 0);
+            CError_ASSERT(LINE(BY_VERSION(1337, 1423)), symbol->typeNode != 0);
             fixup = galloc(sizeof(DwarfFixup));
             fixup->reference = reference;
             fixup->offset = dwarf_info_buffer->size;
@@ -1313,9 +1323,9 @@ SInt32 emit_function_entry(Object *func, SInt32 code_size, SInt32 code_offset,
                 AppendGListLong(dwarf_info_buffer, dwarf_uses_zero_addends() ? 0 : symbol->u.offset);
                 entry_size += 6;
             } else {
-                CError_FATAL(LINE(1394));
-                entry_size += DW_Word(0x2038);
-                entry_size += DW_String(COptimizer_GetFunctionObject(variable->object)->name);
+                CError_FATAL(LINE(BY_VERSION(1394, 1480)));
+                entry_size += DW_Word( 0x2038);
+                entry_size += DW_String( COptimizer_GetFunctionObject(variable->object)->name);
             }
             variable = variable->next;
         }
@@ -1323,7 +1333,7 @@ SInt32 emit_function_entry(Object *func, SInt32 code_size, SInt32 code_offset,
 
     *(SInt32 *)(*dwarf_info_buffer->data + start_offset) = entry_size;
 
-    CError_ASSERT(LINE(1401), ++*dwarf_depth_ptr < 0x32);
+    CError_ASSERT(LINE(BY_VERSION(1401, 1487)), ++*dwarf_depth_ptr < 0x32);
     dwarf_entry_offsets[*dwarf_depth_ptr] = 0;
     *data_005604a8 = 0;
     return start_offset;
@@ -1522,7 +1532,7 @@ void DWARF_WriteDebugInfo(void)
                         case 0xffff:
                             break;
                         default:
-                            CError_Internal(CERROR_FILE, LINE(0x66d));
+                            CError_Internal(CERROR_FILE, LINE(BY_VERSION(0x66d, 0x6c3)));
                             break;
                     }
                 }
@@ -1606,16 +1616,22 @@ SInt32 emit_dwarf_ref(DWInfo *info)
             size += DW_Word(0);
             while (qualifier != NULL) {
                 AppendGListByte(dwarf_info_buffer, qualifier->type);
+#if VERSION >= VERSION_GC_1_3
+                qualifierCount++;
+                size++;
+                qualifier = qualifier->next;
+#else
                 qualifier = qualifier->next;
                 qualifierCount++;
                 size++;
+#endif
             }
             relocation = BE_elf_AddRelocation(dwarf_section, dwarf_info_buffer->size, NULL, dwarf_section, ref->num,
                                               currentDwarfFunctionState->offset);
             typeInfo = ref->typeInfo;
             if (!typeInfo->rec.valid) {
                 DwarfFixup *fixup;
-                CError_ASSERT(LINE(1728), typeInfo->typeNode != NULL);
+                CError_ASSERT(LINE(BY_VERSION(1728, 1814)), typeInfo->typeNode != NULL);
                 fixup = (DwarfFixup *)galloc(sizeof(DwarfFixup));
                 fixup->reference = relocation;
                 fixup->offset = dwarf_info_buffer->size;
@@ -1638,9 +1654,15 @@ SInt32 emit_dwarf_ref(DWInfo *info)
             size += DW_Word(0);
             while (qualifier != NULL) {
                 AppendGListByte(dwarf_info_buffer, qualifier->type);
+#if VERSION >= VERSION_GC_1_3
+                qualifierCount++;
+                size++;
+                qualifier = qualifier->next;
+#else
                 qualifier = qualifier->next;
                 qualifierCount++;
                 size++;
+#endif
             }
             AppendGListWord(dwarf_info_buffer, ref->num);
             size += 2;
@@ -1658,7 +1680,7 @@ SInt32 emit_dwarf_ref(DWInfo *info)
                                               currentDwarfFunctionState->offset);
             if (!ref->valid) {
                 DwarfFixup *fixup;
-                CError_ASSERT(LINE(1758), typeInfo->typeNode != NULL);
+                CError_ASSERT(LINE(BY_VERSION(1758, 1844)), typeInfo->typeNode != NULL);
                 fixup = (DwarfFixup *)galloc(sizeof(DwarfFixup));
                 fixup->reference = relocation;
                 fixup->offset = dwarf_info_buffer->size;
@@ -1670,7 +1692,7 @@ SInt32 emit_dwarf_ref(DWInfo *info)
             break;
         }
         default:
-            CError_FATAL(LINE(1768));
+            CError_FATAL(LINE(BY_VERSION(1768, 1854)));
             break;
     }
     return size;
@@ -1965,7 +1987,7 @@ void DWARF_CreateObjectDebugEntry(Object *object)
     entry = NewDwarfNode();
     object->debugInfo.entry = entry;
     if (object->dwarfLinks.pendingEntry != NULL) {
-        CError_Internal(CERROR_FILE, LINE(0x7f5));
+        CError_Internal(CERROR_FILE, LINE(BY_VERSION(0x7f5, 0x89f)));
         object->dwarfLinks.pendingEntry->u.sym.replacement = entry;
     }
 
@@ -2028,7 +2050,7 @@ void insert_type_node_before(DWInfo *before, DWInfo *info)
 
     type = info->type;
     if (before == NULL)
-        CError_FATAL(LINE(2124));
+        CError_FATAL(LINE(BY_VERSION(2124, 2294)));
     switch ((SInt8)type->type) {
         case TYPEENUM:
         case TYPESTRUCT:
@@ -2044,20 +2066,20 @@ void insert_type_node_before(DWInfo *before, DWInfo *info)
             kind = 0x4081;
             break;
         case TYPETEMPLATE:
-            CError_FATAL(LINE(2141));
+            CError_FATAL(LINE(BY_VERSION(2141, 2311)));
             break;
         default:
             return;
     }
     list = before->typeNode;
     if (list == NULL)
-        CError_FATAL(LINE(2106));
+        CError_FATAL(LINE(BY_VERSION(2106, 2276)));
     node = galloc(sizeof(*node));
     memclrw(node, sizeof(*node));
     node->next = list;
     node->prev = list->prev;
     if (node->prev == NULL)
-        CError_FATAL(LINE(2110));
+        CError_FATAL(LINE(BY_VERSION(2110, 2280)));
     list->prev = node;
     node->prev->next = node;
     node->scope = data_00587168;
@@ -2090,7 +2112,7 @@ void create_type_node(DWInfo *typeLink)
             kind = 0x4081;
             break;
         case TYPETEMPLATE:
-            CError_FATAL(LINE(2175));
+            CError_FATAL(LINE(BY_VERSION(2175, 2345)));
             break;
         default:
             return;
@@ -2100,12 +2122,12 @@ void create_type_node(DWInfo *typeLink)
         node->scope = data_00587168;
     } else {
         current = current_block_node;
-        CError_ASSERT(LINE(2106), current != NULL);
+        CError_ASSERT(LINE(BY_VERSION(2106, 2276)), current != NULL);
         newNode = (DwarfNode *)galloc(sizeof(DwarfNode));
         memclrw(newNode, sizeof(DwarfNode));
         newNode->next = current;
         newNode->prev = current->prev;
-        CError_ASSERT(LINE(2110), newNode->prev != NULL);
+        CError_ASSERT(LINE(BY_VERSION(2110, 2280)), newNode->prev != NULL);
         current->prev = newNode;
         newNode->prev->next = newNode;
         newNode->scope = data_00587168;
@@ -2128,7 +2150,7 @@ void insert_type_nodes_recursive(DWInfo *a, DWInfo *b)
     b->marked = 1;
     switch ((SInt8)t->type) {
         case TYPETEMPLATE:
-            CError_FATAL(LINE(2211));
+            CError_FATAL(LINE(BY_VERSION(2211, 2381)));
             break;
 
         case TYPEBITFIELD: {
@@ -2212,7 +2234,11 @@ void insert_type_nodes_recursive(DWInfo *a, DWInfo *b)
                     break;
                 if (obj->type == NULL)
                     continue;
-                if (obj->type->type == TYPEFUNC && (TYPE_FUNC(obj->type)->flags & 0x400) != 0) {
+#                if VERSION >= VERSION_GC_1_3
+                if (obj->datatype == DALIAS)
+                    continue;
+#endif
+                if (obj->type->type == TYPEFUNC && (TYPE_FUNC(obj->type)->flags & TFUNC_TEMPLATE) != 0) {
                     if (obj->u.templateFunction->instances == NULL)
                         continue;
                     e = find_or_create_dwinfo(obj->u.templateFunction->instances->object->type);

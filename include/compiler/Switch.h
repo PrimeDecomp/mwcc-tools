@@ -23,6 +23,9 @@ struct SwitchCase {
     struct SwitchCase *next;
     struct CLabel *label;
     CInt64 min;
+#if VERSION >= VERSION_GC_1_3
+    CInt64 max; /* 0x10: 1.3 case ranges */
+#endif
 };
 #pragma options align = reset
 extern void Switch_GenerateSwitch(ENode *expression, struct SwitchInfo *cases);

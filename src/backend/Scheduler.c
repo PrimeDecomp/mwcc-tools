@@ -389,6 +389,7 @@ void build_sched_dependencies(CColoringNode *list, CColoringNode *blk)
                 fn_004cd7c0(9, blk, &register_owner_lists[item->value.reg],
                             &virtual_register_owner_lists[item->value.reg], item->flags & 2);
                 break;
+#if VERSION < VERSION_GC_1_3
             case PCOp_SPR:
                 CError_ASSERT(640, item->value.reg >= 0 && item->value.reg <= 3);
                 fn_004cd7c0(2, blk, &data_00581b24[item->value.reg], &data_00581b18[item->value.reg], item->flags & 2);
@@ -397,6 +398,7 @@ void build_sched_dependencies(CColoringNode *list, CColoringNode *blk)
                 CError_ASSERT(645, item->value.reg >= 0 && item->value.reg <= 7);
                 fn_004cd7c0(3, blk, &data_00581b50[item->value.reg], &data_00581b30[item->value.reg], item->flags & 2);
                 break;
+#endif
             case PCOp_MEMORY:
                 if ((body->flags & (fIsRead | fIsWrite)) != 0) {
                     if ((body->flags & fIsVolatile) != 0)
@@ -419,7 +421,7 @@ void build_sched_dependencies(CColoringNode *list, CColoringNode *blk)
     if ((body->flags & fIsPtrOp) != 0)
         add_memory_dependencies(blk, body->flags & fIsWrite, body->flags & fIsVolatile);
 
-    if ((body->flags & 0x420) != 0 || data_00581b80->checkLate(body) != 0) {
+    if ((body->flags & BY_VERSION(0x420, 0x108)) != 0 || data_00581b80->checkLate(body) != 0) {
         for (p = list; p != NULL; p = p->prev)
             add_dependency(blk, p, 0);
         n = (struct SchedEntry *)oalloc(sizeof(*n));
@@ -600,6 +602,28 @@ void Scheduler_Schedule(char force)
     }
 }
 
+#if VERSION >= VERSION_GC_1_3
+int Scheduler_ReturnZero(PCodeInstruction *list, PCodeInstruction *ref, char c)
+{
+    PCodeOperand *r;
+    SInt32 i;
+    SInt32 refid;
+
+    if (ref != NULL) {
+        r = &ref->operandData.operands[0];
+        if (ref->operand_count >= 1 && r->kind == 0 && r->arg == c && (r->flags & 2) != 0) {
+            refid = r->value.reg;
+            for (i = 0; i < list->operand_count; i++) {
+                PCodeOperand *e = &list->operandData.operands[i];
+
+                if (e->kind == 0 && e->arg == c && (e->flags & 3) != 0 && e->value.reg == refid)
+                    return 1;
+            }
+        }
+    }
+    return 0;
+}
+#else
 int Scheduler_ReturnZero(PCodeInstruction *list, PCodeInstruction *ref, char c)
 {
     SInt32 refid;
@@ -620,3 +644,4 @@ int Scheduler_ReturnZero(PCodeInstruction *list, PCodeInstruction *ref, char c)
     }
     return 0;
 }
+#endif

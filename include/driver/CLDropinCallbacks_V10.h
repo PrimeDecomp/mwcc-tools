@@ -132,13 +132,13 @@ struct StoredRecord {
     char text;
     char reservedAfterText[653];
     int stringHandle;
-    char reservedBeforeOptions[45];
+    char reservedBeforeOptions[BY_VERSION(45, 45 + 0x180)];
     char optionA, optionB, optionC, optionD, optionE, optionF, optionG;
     char reservedBeforeFlag[16];
     char flag;
     char reservedBeforeCode[1];
     short code;
-    char reservedBeforeValues[32];
+    char reservedBeforeValues[BY_VERSION(32, 36)];
     int firstValue, secondValue;
 };
 #pragma options align = reset

@@ -35,7 +35,7 @@ void initialize_plugin_request(Plugin *owner, int phase)
     item->initializationFlag = 1;
     item->initializationFlagCopy = item->initializationFlag;
     owner->object->request = phase;
-    owner->object->apiVersion = 11;
+    owner->object->apiVersion = BY_VERSION(11, 12);
     owner->object->pluginStorage = 0;
     OS_MakeFileSpec("Project.mcp", &text);
     OS_OSSpec_To_FSSpec(&text, &owner->object->sourcefile);
@@ -69,7 +69,11 @@ void initialize_plugin_request(Plugin *owner, int phase)
 Boolean CLPluginRequests_ParseCommandLine(Plugin *func, struct CLTarget *context, struct CommandParseInfo *value1,
                                           SInt32 value2, SInt32 value3, SInt32 value4, void *value5, SInt32 value6,
                                           char **value7, struct ToolArgumentSet *value8, ToolArgumentSet *value9,
-                                          void *value10, void *value11)
+                                          void *value10, void *value11
+#if VERSION >= VERSION_GC_1_3
+                                          , void *value12
+#endif
+                                          )
 {
     CWPluginPrivateContext *state;
     SInt32 contextValue;
@@ -79,6 +83,9 @@ Boolean CLPluginRequests_ParseCommandLine(Plugin *func, struct CLTarget *context
     state = (CWPluginPrivateContext *)func->object;
     state->contextData.generation.value10 = value10;
     state->contextData.generation.value11 = value11;
+#if VERSION >= VERSION_GC_1_3
+    state->contextData.generation.value12 = value12;
+#endif
     state->requestData.commandParseInfo = value1;
     state->contextData.generation.value2 = value2;
     state->contextData.generation.value3 = value3;
@@ -157,8 +164,19 @@ Boolean CLPluginRequests_SetupFileRequest(Plugin *job, DropinFileRecord *input, 
     ctx = job->object;
     *ctx->targetSettings = *default_target->settings;
     OS_OSSpec_To_FSSpec(&input->inputPath, &ctx->contextData.payload);
+#if VERSION >= VERSION_GC_1_3
+    UInt32 fileType;
+    if (MacFileTypes_GetFileType(&input->inputPath, &fileType) == 0 && fileType == 0x54455854) {
+        if (UCBGetFileText(ctx, &ctx->contextData.payload, &ctx->callbackValue, &ctx->callbackFlags, &result))
+            return 0;
+    } else {
+        ctx->callbackValue = 0;
+        ctx->callbackFlags = 0;
+    }
+#else
     if (UCBGetFileText(ctx, &ctx->contextData.payload, &ctx->callbackValue, &ctx->callbackFlags, &result))
         return 0;
+#endif
     ctx->requestData.fileIndex = input->listEntry.index;
     ctx->setting = optsCmdLine.debugInfo;
     ctx->dependencyStatusNegative = input->dependencyStatusNegative;

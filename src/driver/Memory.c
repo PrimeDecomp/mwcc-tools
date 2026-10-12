@@ -4,6 +4,10 @@
 #include "driver/CLFileOps.h"
 #include "driver/Generic.h"
 #include <stdlib.h>
+#if VERSION >= VERSION_GC_1_3
+#include "driver/MemUtils.h"
+#define free xfree
+#endif
 
 static unsigned short memory_error;
 OSHandle *Memory_GetSizeAddress(void *allocation)
@@ -35,6 +39,19 @@ StorageHandle *Memory_CreateStorageHandle(OSHandle *input)
 
 void Memory_ExtractMemBuffer(void *input, OSHandle *result)
 {
+#if VERSION >= VERSION_GC_1_3
+    OSHandle *buffer;
+    char *data;
+
+    buffer = Memory_GetSizeAddress(input);
+    data = buffer->addr;
+    buffer = (OSHandle *)buffer->size;
+    result->addr = data;
+    result->size = (UInt32)buffer;
+#undef free
+    free(input);
+#define free xfree
+#else
     OSHandle *buffer;
     char *data;
     OSHandle *destination;
@@ -50,6 +67,7 @@ void Memory_ExtractMemBuffer(void *input, OSHandle *result)
     destination->size = (UInt32)buffer;
     argument = handle;
     free(argument);
+#endif
 }
 
 unsigned short Memory_GetError(void)
@@ -110,10 +128,16 @@ void __stdcall fn_00413a40(struct StorageHandle *handle)
 
 void __stdcall fn_00413a50(void *entry)
 {
+#if VERSION >= VERSION_GC_1_3
+    if (entry) {
+        memory_error = 0;
+        OS_UnlockHandle(&((StorageHandle *)entry)->buffer);
+#else
     StorageHandle *record = entry;
     if (record) {
         memory_error = 0;
         OS_UnlockHandle(&record->buffer);
+#endif
     } else {
         memory_error = -109;
     }

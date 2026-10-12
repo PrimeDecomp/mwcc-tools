@@ -11,7 +11,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <ctype.h>
-int fn_004050e0(char *left, char *right, int count)
+int GLUECALL fn_004050e0(char *left, char *right, int count)
 {
     unsigned int rightValue;
     unsigned int leftValue;
@@ -27,6 +27,14 @@ int fn_004050e0(char *left, char *right, int count)
     }
     return 0;
 }
+
+#if VERSION >= VERSION_GC_1_3
+#include "driver/CLIO.h"
+int __stdcall fn_00412660(const char *left, const char *right)
+{
+    return CLIO_CompareStringsIgnoreCase((char *)left, (char *)right) == 0;
+}
+#endif
 
 int ClientGlue_CompareLowercaseStrings(const char *left, const char *right)
 {
