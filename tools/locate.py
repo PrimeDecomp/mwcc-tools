@@ -57,6 +57,70 @@ def functions_of(path):
     return out
 
 
+def relocations_of(path):
+    """{section name of a function: [(offset, symbol name, type)]} keyed like functions_of's order: a list parallel to
+    functions_of(path), each entry the relocations (offset in the function, target symbol, COFF type) of a function."""
+    data = Path(path).read_bytes()
+    count = struct.unpack_from("<H", data, 2)[0]
+    symptr, symcount = struct.unpack_from("<II", data, 8)
+    strings = symptr + 18 * symcount
+    names = {}
+    i = 0
+    while i < symcount:
+        at = symptr + 18 * i
+        raw = data[at:at + 8]
+        aux = data[at + 17]
+        if raw[:4] == bytes(4):
+            offset = struct.unpack_from("<I", raw, 4)[0]
+            names[i] = data[strings + offset:data.index(bytes(1), strings + offset)].decode("latin-1")
+        else:
+            names[i] = raw.rstrip(bytes(1)).decode("latin-1")
+        i += 1 + aux
+    out = []
+    for k in range(count):
+        header = 20 + 40 * k
+        flags = struct.unpack_from("<I", data, header + 36)[0]
+        size, offset, reloc, _, nreloc = struct.unpack_from("<IIIIH", data, header + 16)
+        if not flags & 0x20 or not size:
+            continue
+        entries = []
+        for r in range(nreloc):
+            at, index, kind = struct.unpack_from("<IIH", data, reloc + 10 * r)
+            addend = struct.unpack_from("<i", data, offset + at)[0]
+            entries.append((at, names.get(index, "?"), kind, addend))
+        out.append(entries)
+    return out
+
+
+def bindings_from(version, source):
+    """{symbol: address} the exact functions of a compiled source say: where a function is found in the executable, each
+    relocated operand holds the address of the symbol its object names there."""
+    import json
+    config = json.loads(Path(f"config/{folder(version)}/config.json").read_text())
+    pe = PEFile(Path(config["original"]))
+    text = next(s for s in pe.sections if s.name == ".text")
+    blob = pe.read(text.virtual_address, text.virtual_size)
+    path = Path(f"build/{folder(version)}/compiled/{source}.obj")
+    found = {}
+    conflicts = set()
+    for (name, code, wild), relocs in zip(functions_of(path), relocations_of(path)):
+        places = find(blob, code, wild, limit=2)
+        if len(places) != 1:
+            continue
+        base = text.virtual_address + places[0]
+        for at, symbol, kind, addend in relocs:
+            value = struct.unpack_from("<I", blob, places[0] + at)[0]
+            if kind == 6:
+                address = value - addend
+            elif kind == 20:
+                address = (value + base + at + 4 - addend) & 0xFFFFFFFF
+            else:
+                continue
+            if found.setdefault(symbol, address) != address:
+                conflicts.add(symbol)
+    return {s: a for s, a in found.items() if s not in conflicts}
+
+
 def find(blob, code, wild, limit=4):
     runs, run = [], None
     for i in range(len(code)):

@@ -100,6 +100,9 @@ def main():
     parser.add_argument("--split-only", action="store_true",
                         help="link every unit from its split object, none from its compiled source (the check that "
                         "the split relinks the original)")
+    parser.add_argument("--oracle", action="store_true",
+                        help="also build the oracle executable (config.json \"oracle\": units linked from source with "
+                        "MWCC_ORACLE_TRACE defined, the trace functions beside them) to build/<version>/oracle/")
     arguments = parser.parse_args()
     version = arguments.version
     config = json.loads(Path(f"config/{version}/config.json").read_text())
@@ -132,7 +135,8 @@ def main():
         "  command = " + ENVIRONMENT + "$wibo $compiler_command $cflags",
         "  description = MWCC $in",
         "rule configure",
-        f"  command = $python configure.py --version {version} --mode {mode}" + (" --split-only" if arguments.split_only else ""),
+        f"  command = $python configure.py --version {version} --mode {mode}" + (" --split-only" if arguments.split_only else "")
+        + (" --oracle" if arguments.oracle else ""),
         "  generator = 1",
         "",
         f"version = {version}",
@@ -196,6 +200,45 @@ def main():
         imports = [f"build/{Path(library).stem}.lib" if library.endswith(".def") else library
                    for library in config.get("imports", ["lib/win32sdk/KERNEL32.LIB"])]
         inputs += imports + ["build/lmgr326b.lib"]
+        if arguments.oracle:
+            oracle_config = config.get("oracle", {})
+            oracle_units = oracle_config.get("units", [])
+            # (sources of the oracle build that replace no unit: the trace output and the wrappers of hooked functions)
+            oracle_extra = ["src/oracle/OracleTrace.c", *oracle_config.get("extra", [])]
+            if not oracle_units and not oracle_config.get("hooks"):
+                parser.error(f"config/{version}/config.json lists no oracle units or hooks")
+            oracle_inputs = []
+            trace_object = f"build/{version}/oracle/OracleTrace.obj"
+            template = sources[oracle_config.get("template", oracle_units[0] if oracle_units else
+                                                 "src/driver/CLWriteObjectFile.c")]
+            # (every unit is the original's, as split, but the oracle units, which are compiled from source)
+            for unit in units:
+                if unit in oracle_units:
+                    oracle_inputs.append(f"build/{version}/oracle/compiled/{unit}.obj")
+                elif unit in LIBRARY_OBJECTS:
+                    oracle_inputs.append(LIBRARY_OBJECTS[unit])
+                else:
+                    oracle_inputs.append(f"build/{version}/obj/{unit}.obj")
+            extra_objects = [trace_object if u == "src/oracle/OracleTrace.c" else f"build/{version}/oracle/compiled/{u}.obj"
+                             for u in oracle_extra]
+            oracle_inputs = [*inputs[:len(extra) + 1], *oracle_inputs, *imports, "build/lmgr326b.lib", *extra_objects]
+            for unit, obj in [*zip(oracle_extra, extra_objects),
+                              *((u, f"build/{version}/oracle/compiled/{u}.obj") for u in oracle_units)]:
+                unit_settings = sources.get(unit, template)
+                compiler = f"build/compilers/{host(unit_settings, unit)}/mwcc.exe"
+                args = ["-c", *map(flag, unit_settings["flags"]), f"-DVERSION={VERSIONS.index(version)}",
+                        "-DMWCC_ORACLE_TRACE", *(f"-I{d}" for d in unit_settings.get("include_dirs", [])), "-Iinclude",
+                        "-i-", *(f"-I{d}" for d in unit_settings.get("system_include_dirs", [])), "-Iinclude/libc"]
+                out += [f"build {obj}: mwcc {unit} | {TOOL_DEP}{compiler} || lib/ok", f"  cflags = {join(args)}",
+                        f"  stem = {Path(unit).stem}",
+                        f"  compiler_command = {compiler.replace('/', chr(92)) if WINDOWS else compiler}"]
+            out += [
+                "rule oracle_link",
+                "  command = $python tools/link.py --oracle $version $out $in",
+                "  description = LINK ORACLE $out",
+                f"build build/{version}/oracle/mwcceppc.exe: oracle_link {' '.join(oracle_inputs)} | "
+                f"{TOOL_DEP}build/compilers/pro53/mwld.exe tools/link.py || lib/ok",
+            ]
         out += [
             "rule split",
             "  command = $python tools/split.py $version",

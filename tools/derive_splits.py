@@ -488,7 +488,9 @@ def make_symbols(image, order, ranges, owner_of_function, refs, ref_symbols):
         sources.setdefault(address, set()).update(order[u] for u in units)
 
     bound = {}
-    for name, address in image.bindings.items():
+    # (several names may be bound at an address: the ones that say something win over a generated one)
+    generated = re.compile(r"^_?(data|DAT|fn|lbl|s|FUN)_[0-9A-Fa-f]{8}$|^_?@\d+$")
+    for name, address in sorted(image.bindings.items(), key=lambda item: bool(generated.match(item[0]))):
         bound.setdefault(address, name)
     decorated = compiled_names(image.version)
     from_reference = {}

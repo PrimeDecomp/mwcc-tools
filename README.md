@@ -68,6 +68,9 @@ each compiled function is compared with the original's; `ninja` fails when a fun
 
 `python tools/verify.py` builds and checks every version, and that every function of a source matches.
 
+For 1.3 and 1.3.2, `docs/oracle.md` describes the oracle executable (the original compiler with trace wrappers) and
+`tools/oracle.py`, which explains a source's register assignment and inlining with it.
+
 Diffing
 =======
 

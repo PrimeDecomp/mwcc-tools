@@ -1,5 +1,6 @@
 #define CERROR_FILE "unknown.c"
 #include "compiler/common.h"
+#include "compiler/OracleTrace.h"
 #include "driver/CLWriteObjectFile.h"
 #include "driver/AssertionFailure.h"
 #include "driver/CLErrors.h"
@@ -31,6 +32,7 @@ UInt32 CLWriteObjectFile_WriteObjectFile(struct DropinFileRecord *self, unsigned
     unsigned int ready = self->objectData != 0 && self->selectedPlugin != NULL;
     if (!ready)
         CLIO_ReportAssertionFailure("file->objectdata && file->compiler", "CLWriteObjectFile.c", 0x16);
+    ORACLE_TRACE(("driver.write_object options=%u,%u\n", option1, option2));
     OS_OSSpec_To_FSSpec(&self->outputPath, &objectFile);
     OS_OSSpec_To_FSSpec(&self->inputPath, &sourceFile);
     if (optsCmdLine.verbose != 0) {

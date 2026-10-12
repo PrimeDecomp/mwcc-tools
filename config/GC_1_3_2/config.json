@@ -24,5 +24,18 @@
   "sym_off": [
     "src/backend/MachineSimulation603.c",
     "src/frontend/CError.c"
-  ]
+  ],
+  "oracle": {
+    "template": "src/backend/Coloring.c",
+    "extra": [
+      "src/oracle/Hooks.c"
+    ],
+    "hooks": [
+      "_fn_00506cd0",
+      "_fn_0055ed70",
+      "_fn_0055e540",
+      "_fn_0055f350"
+    ],
+    "units": []
+  }
 }
