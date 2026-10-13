@@ -77,3 +77,39 @@ in compile order is still what made it.)
 
 Without an oracle for the version (GC 1.2.5n), the original compiler compiles the source. On Echoes' 73 matching TUs,
 67 of the 68 it can build come out the same; the last is a global the target's split does not place.
+
+## `tools/inline_window.py`: the inline limit a TU's target agrees with
+
+```
+python tools/inline_window.py --from-ninja FILE UNIT... [--target DIR] [--verbose] [--json]
+```
+
+Finds the range of inline limits (`inline_max_size`) that agrees with every inlining decision the target made. Use it
+when a unit's target inlines calls ours keeps, or the reverse, with no source change that explains it.
+
+For each function the target also has, each callee's calls are counted in our object and in the target asm (`bl`).
+With the costs from `--full-cost`:
+
+| Calls | Bound on the limit |
+|---|---|
+| Same count, inlined in both | At least the cost of the costliest one. |
+| Same count, kept in both | Below the cost of the cheapest one. |
+| The target makes fewer | It inlined calls ours keeps: at least their cost. |
+| The target makes more | It kept calls ours inlines: below their cost. |
+
+The report gives the window, and the calls that set each end:
+
+```
+== src/Collision/CollisionUtil.cpp: limit 125, the target agrees with 201..-
+   the current limit 125 is outside it: the target's build likely used another limit for this unit
+   at least 201: planeBoxOverlap in TriBoxOverlap (calls: ours 1, target 0): the target inlines all of them, ...
+```
+
+* **The current limit is outside the window:** the target's build likely used another limit for this unit. This is a
+  build setting, not the source.
+* **The window is empty:** no single limit agrees. Either the source still differs, or the limit differs per function.
+
+Calls kept for another reason (not declared inline, no body, the depth limit) are not bounds; they are listed as "not
+a limit question". The bounds are first-order: inlining one call changes the costs of the calls around it. When a
+function calls one callee several times, the calls are not told apart, so the bound is the one that holds for at least
+one of them.

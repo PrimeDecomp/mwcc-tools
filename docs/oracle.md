@@ -13,7 +13,8 @@ More detail:
 * [Registers and scheduling](oracle/registers.md): the register report, `--pcode`, `--exchange`, `--schedule`.
 * [Inlining](oracle/inlining.md): `--inline-cost`, `--near`, `--full-cost`, `--instantiation`.
 * [Locals and the stack frame](oracle/locals.md): `--locals`, and comparing a frame with the target's.
-* [Comparing translation units](oracle/tu-tools.md): `tools/inline_diff.py` and `tools/data_diff.py`.
+* [Comparing translation units](oracle/tu-tools.md): `tools/inline_diff.py`, `tools/data_diff.py` and
+  `tools/inline_window.py`.
 * [Trace format, JSON and Python API](oracle/trace.md).
 
 ## Build
@@ -111,6 +112,8 @@ Last result, the same with every trace on:
 * `tools/inline_diff.py`: why one translation unit inlines a call another keeps. See
   [Comparing translation units](oracle/tu-tools.md).
 * `tools/data_diff.py`: a translation unit's data layout against its target asm. See
+  [Comparing translation units](oracle/tu-tools.md).
+* `tools/inline_window.py`: the range of inline limits a unit's target agrees with. See
   [Comparing translation units](oracle/tu-tools.md).
 * `tools/locate.py VERSION SOURCE...`: where a compiled source's functions are in the executable.
 * `tools/nearest.py VERSION SOURCE...`: the functions of the executable a not-yet-exact function resembles most.
