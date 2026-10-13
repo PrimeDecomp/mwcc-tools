@@ -33,7 +33,10 @@
       "_CTemplateNew_InstantiateInlineTemplateObject",
       "_CTemplateNew_InstantiateFunction",
       "_generate_inline_code",
-      "_fn_0050f240"
+      "_fn_0050f240",
+      "_fn_00436390",
+      "_COptimizer_Optimize",
+      "_Peephole_MergeAdjacentBlocks"
     ],
     "units": []
   },

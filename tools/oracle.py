@@ -2084,6 +2084,188 @@ def pcode_report(function, before, names):
     return out
 
 
+def block_trace(lines):
+    """How code generation cut each function into blocks and how they were merged (bk.*, with MWCC_ORACLE_BLOCKS=2),
+    by link name: `statements` ([{"line", "before": (block, count), "after": (block, count)}], the statements
+    generated before its raw list), `lists` ([(phase, [{"p", "index", "count", "flags", "succ", "pred",
+    "instructions"}])], raw, optimized, then merged after each merge pass) and `merges` ([{"prologue", "pairs":
+    [{"a", "b", "counts", "why"}]}])."""
+    functions, statements, current, blocks = {}, [], None, None
+    for line in lines:
+        if not line.startswith("bk."):
+            continue
+        m = re.match(r"bk\.stmt line=(-?\d+) before=(\w+):(-?\d+) after=(\w+):(-?\d+)$", line)
+        if m:
+            statements.append({"line": int(m.group(1)), "before": (m.group(2), int(m.group(3))),
+                               "after": (m.group(4), int(m.group(5)))})
+            continue
+        m = re.match(r"bk\.list phase=(\w+) link=(.*)$", line)
+        if m:
+            current = functions.setdefault(m.group(2), {"statements": [], "lists": [], "merges": []})
+            if m.group(1) == "raw":
+                current["statements"], statements = statements, []
+            blocks = []
+            phase = m.group(1)
+            if phase == "merged" and len(current["merges"]) > 1:
+                phase = f"merged{len(current['merges'])}"
+            current["lists"].append((phase, blocks))
+            continue
+        m = re.match(r"bk\.block p=(\w+) index=(-?\d+) count=(-?\d+) flags=(\w+) succ=(\d+) pred=(\d+)$", line)
+        if m and blocks is not None:
+            blocks.append({"p": m.group(1), "index": int(m.group(2)), "count": int(m.group(3)),
+                           "flags": int(m.group(4), 16), "succ": int(m.group(5)), "pred": int(m.group(6)),
+                           "instructions": []})
+            continue
+        m = re.match(r"bk\.i p=(\w+) op=(-?\d+) flags=(\w+) n=(\d+)(?: line=(-?\d+))? ops=(.*)", line)
+        if m and blocks:
+            blocks[-1]["instructions"].append(Instruction(
+                m.group(1), int(m.group(2)), int(m.group(3), 16),
+                [Operand(bytes.fromhex(x)) for x in m.group(6).split()],
+                int(m.group(5)) if m.group(5) is not None else None))
+            continue
+        m = re.match(r"bk\.merge prologue=(\d) link=(.*)$", line)
+        if m:
+            current = functions.setdefault(m.group(2), {"statements": [], "lists": [], "merges": []})
+            current["merges"].append({"prologue": m.group(1) == "1", "pairs": []})
+            blocks = None
+            continue
+        m = re.match(r"bk\.pair a=(\w+) b=(\w+) counts=(-?\d+)\+(-?\d+) why=(\S+)$", line)
+        if m and current and current["merges"]:
+            current["merges"][-1]["pairs"].append({"a": m.group(1), "b": m.group(2),
+                                                   "counts": (int(m.group(3)), int(m.group(4))),
+                                                   "why": m.group(5)})
+    return functions
+
+
+CALLS = ("bl", "bctrl", "blrl")
+CUT_CAUSES = {"limit": "the block held more than 100 instructions",
+              "call": "after a call",
+              "branch": "after a branch",
+              "label": "a label starts the next block (a jump target)",
+              "unknown": "the block is gone from the raw list"}
+MERGE_REASONS = {"prologue": "the prologue block (not merged in this pass)",
+                 "empty": "the first is empty",
+                 "call": "the first has a call or a side effect",
+                 "branch": "the first ends with a conditional branch",
+                 "successors": "the first has another successor",
+                 "predecessors": "the second has another predecessor",
+                 "epilogue": "the second is the epilogue",
+                 "flag": "the second is flagged (an exception handler or the like)",
+                 "over100": "together more than 100 instructions",
+                 "-": "merged"}
+
+
+def block_cuts(record, names):
+    """Where the statements of RECORD (one function of block_trace) went from one block to another: [{"line",
+    "from", "count", "to", "inside", "cause"}], `inside` when the cut happened while one statement was generated
+    (it ended in another block than it began in), and `cause` a key of CUT_CAUSES."""
+    raw = next((b for phase, b in record["lists"] if phase == "raw"), [])
+    by_pointer = {b["p"]: b for b in raw}
+    points = []
+    for statement in record["statements"]:
+        points.append((statement["before"], statement["line"], False))
+        points.append((statement["after"], statement["line"], True))
+    cuts = []
+    for (first, _, _), (second, line, inside) in zip(points, points[1:]):
+        if first[0] == second[0]:
+            continue
+        block = by_pointer.get(first[0])
+        last = block["instructions"][-1] if block and block["instructions"] else None
+        name = names.get(last.opcode, "") if last else ""
+        if first[1] > 100:
+            cause = "limit"
+        elif block is None:
+            cause = "unknown"
+        elif name in CALLS:
+            cause = "call"
+        elif name.startswith("b"):
+            cause = "branch"
+        else:
+            cause = "label"
+        cuts.append({"line": line, "from": first[0], "count": first[1], "to": second[0], "inside": inside,
+                     "cause": cause})
+    return cuts
+
+
+def blocks_report(link, record, names, pcode=False):
+    """--blocks: how the function was cut into blocks, statement by statement, and why the merge pass left the blocks
+    apart; with PCODE, each raw block's instructions."""
+    out = [f"== {link}: blocks =="]
+    lists = record["lists"]
+    if not lists:
+        return out + ["   no block lists traced (an oracle with the bk.* hooks is needed)"]
+    raw = next((b for phase, b in lists if phase == "raw"), lists[0][1])
+    counts = {}
+    for phase, blocks in lists:
+        for b in blocks:
+            counts.setdefault(b["p"], {}).setdefault(phase, b["count"])
+    out.append("   blocks: " + ", ".join(f"{phase} {len(blocks)}" for phase, blocks in lists)
+               + "; instructions: " + ", ".join(f"{phase} {sum(b['count'] for b in blocks)}"
+                                                for phase, blocks in lists))
+    lines_of = {}
+    for statement in record["statements"]:
+        for pointer, _ in (statement["before"], statement["after"]):
+            lines_of.setdefault(pointer, set()).add(statement["line"])
+    cuts = block_cuts(record, names)
+    if record["statements"]:
+        tally = {}
+        for cut in cuts:
+            tally[cut["cause"]] = tally.get(cut["cause"], 0) + 1
+        out.append(f"   {len(record['statements'])} statements, {len(cuts)} cuts: "
+                   + "; ".join(f"{n} {CUT_CAUSES[c]}" for c, n in sorted(tally.items(), key=lambda x: -x[1])))
+    for number, merge in enumerate(record["merges"]):
+        tally = {}
+        for pair in merge["pairs"]:
+            tally[pair["why"]] = tally.get(pair["why"], 0) + 1
+        out.append(f"   merge pass {number + 1}{' (prologue too)' if merge['prologue'] else ''}: "
+                   + "; ".join(f"{n} {MERGE_REASONS.get(w, w)}" for w, n in
+                               sorted(tally.items(), key=lambda x: -x[1])))
+    why_next = {}
+    for merge in record["merges"]:
+        for pair in merge["pairs"]:
+            why_next[pair["a"]] = pair["why"]
+    cut_after = {cut["from"]: cut for cut in cuts}
+    phases = [phase for phase, _ in lists]
+
+    def row(b):
+        sizes = " -> ".join(str(counts[b["p"]].get(phase, "gone")) for phase in dict.fromkeys(phases))
+        last = b["instructions"][-1] if b["instructions"] else None
+        end = names.get(last.opcode, f"op{last.opcode}") if last else "-"
+        cut = cut_after.get(b["p"])
+        return (sizes, end, CUT_CAUSES[cut["cause"]] if cut else "-",
+                MERGE_REASONS.get(why_next.get(b["p"], ""), "last") if b["p"] in why_next else "-")
+
+    out.append("   per block: instructions (" + " -> ".join(dict.fromkeys(phases)) + "), the last instruction, why "
+               "it was cut, why it was not merged with the next")
+    group = []
+
+    def flush():
+        if not group:
+            return
+        first, last = group[0], group[-1]
+        lines = sorted({n for b in group for n in lines_of.get(b["p"], ()) if n > 0})
+        where = f" lines {lines[0]}..{lines[-1]}" if len(lines) > 1 else (f" line {lines[0]}" if lines else "")
+        label = (f"block {first['index']}" if len(group) == 1 else
+                 f"blocks {first['index']}..{last['index']} ({len(group)})")
+        sizes, end, cut, why = row(first)
+        out.append(f"      {label}{where}: {sizes}; ends {end}; cut: {cut}; next: {why}")
+
+    for b in raw:
+        if group and row(group[-1]) != row(b):
+            flush()
+            group = []
+        group.append(b)
+    flush()
+    if pcode:
+        for b in raw:
+            lines = sorted(n for n in lines_of.get(b["p"], ()) if n > 0)
+            out.append(f"   raw block {b['index']} ({b['count']} instructions"
+                       + (f", lines {', '.join(map(str, lines))}" if lines else "") + ")")
+            for instruction in b["instructions"]:
+                out.append(f"      {instruction.text(names, limit=12)}")
+    return out
+
+
 def matches(wanted, function, link):
     """--function: a substring of the function's name or of its link (mangled) name."""
     return not wanted or wanted in function or wanted in (link or "")
@@ -2144,7 +2326,7 @@ def ninja_rule(path, source):
 OPTIONS = {"--version": True, "--function": True, "--from-ninja": True, "--raw": False, "--pcode": False,
            "--no-check": False, "--json": False, "--schedule": False, "--inline-cost": True, "--exchange": True,
            "--override": True, "--near": True, "--full-cost": False, "--instantiation": True, "--locals": False,
-           "--target": True, "--help": False, "-h": False}
+           "--target": True, "--blocks": False, "--help": False, "-h": False}
 
 
 def split_arguments(argv):
@@ -2377,7 +2559,8 @@ def instantiation_report(events, text):
 
 
 def compile_trace(source, flags=(), from_ninja=None, version=None, overrides=(), schedule=False, inline_cost=False,
-                  check=True, full_cost=False, instantiation=False, original_fallback=False, scalarize=False):
+                  check=True, full_cost=False, instantiation=False, original_fallback=False, scalarize=False,
+                  blocks=False):
     """Compile SOURCE with the oracle and return its trace: a dict with `lines`, `version`, `oracle`, `source` (as the
     rule spells it), `identical` (None when not checked, or the original compiler is not there) and `differences`.
     FROM_NINJA takes the flags, the working directory and the version from a project's build.ninja (FLAGS are then
@@ -2431,6 +2614,8 @@ def compile_trace(source, flags=(), from_ninja=None, version=None, overrides=(),
             env["MWCC_ORACLE_INSTANTIATION"] = "1"
         if scalarize:
             env["MWCC_ORACLE_LOCALS"] = "1"
+        if blocks:
+            env["MWCC_ORACLE_BLOCKS"] = "2"
         run = subprocess.run([*launcher(oracle), *flags, "-c", compiled, "-o", str(obj)], cwd=workdir, env=env,
                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
         if run.returncode:
@@ -2504,6 +2689,7 @@ def main():
     parser.add_argument("--instantiation")
     parser.add_argument("--locals", action="store_true")
     parser.add_argument("--target")
+    parser.add_argument("--blocks", action="store_true")
     arguments = parser.parse_args(options)
     if len(positional) != 1:
         parser.error("one SOURCE is needed")
@@ -2514,7 +2700,7 @@ def main():
     compiled = compile_trace(arguments.source, extra, arguments.from_ninja, arguments.version, arguments.override,
                              arguments.schedule, bool(arguments.inline_cost) or near is not None,
                              not arguments.no_check, arguments.full_cost, bool(arguments.instantiation),
-                             scalarize=arguments.locals)
+                             scalarize=arguments.locals, blocks=arguments.blocks)
     if compiled["warning"]:
         print(compiled["warning"], file=sys.stderr)
     arguments.version = compiled["version"]
@@ -2544,6 +2730,15 @@ def main():
         return
     if arguments.instantiation:
         print("\n".join(instantiation_report(document.get("instantiation", []), arguments.instantiation)))
+        return
+
+    if arguments.blocks:
+        traced = block_trace(lines)
+        shown = [link for link in traced if matches(arguments.function, link, link)]
+        for link in shown:
+            print("\n".join(blocks_report(link, traced[link], names, arguments.pcode)))
+        if not shown:
+            print("no block trace for that function (an oracle with the bk.* hooks is needed)")
         return
 
     if arguments.locals:

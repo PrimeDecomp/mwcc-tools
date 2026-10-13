@@ -13,6 +13,7 @@ More detail:
 * [Registers and scheduling](oracle/registers.md): the register report, `--pcode`, `--exchange`, `--schedule`.
 * [Inlining](oracle/inlining.md): `--inline-cost`, `--near`, `--full-cost`, `--instantiation`.
 * [Locals and the stack frame](oracle/locals.md): `--locals`, and comparing a frame with the target's.
+* [Basic blocks](oracle/blocks.md): `--blocks`, where code generation cuts blocks and why they are not merged.
 * [Comparing translation units](oracle/tu-tools.md): `tools/inline_diff.py`, `tools/data_diff.py`,
   `tools/inline_window.py` and `tools/header_impact.py`.
 * [Trace format, JSON and Python API](oracle/trace.md).
@@ -76,6 +77,7 @@ explanation is of a different object: do not trust it. `--no-check` skips the ch
 | `--full-cost` | The whole cost past the threshold, and which kept calls the inline depth limit decided. |
 | `--instantiation TEXT` | When the bodies of matching functions were queued, parsed, emitted and compiled. |
 | `--locals` | What the scalarizer did with each local aggregate, and our frame against the target's. |
+| `--blocks` | Where code generation cut the function into blocks, and why the merge pass left them apart. |
 | `--override PATH=REPLACEMENT` | Compile with REPLACEMENT in place of PATH, without touching the checkout (repeatable). |
 | `--raw` | The trace lines (see [Trace format](oracle/trace.md)). |
 | `--json` | Everything as one JSON document (see [Trace format](oracle/trace.md)). |

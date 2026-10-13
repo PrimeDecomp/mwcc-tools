@@ -1337,6 +1337,109 @@ ENode *setup_inline_locals_and_arguments(Object *function, CInlineInfo *info, EN
     }
     return result;
 }
+
+/* bk.*: how code generation cuts the function into blocks and how they are merged (MWCC_ORACLE_BLOCKS=1).
+ * bk.stmt per expression statement (fn_00436390): its source line and the block and instruction count before and
+ * after it is generated; a statement whose block before is not the last one's after was cut from it (a block is cut
+ * once it holds more than 100 instructions, at the start of a statement). bk.list (raw: before COptimizer_Optimize;
+ * optimized: after it; merged: after Peephole_MergeAdjacentBlocks) lists the blocks, each bk.block with its count,
+ * and with MWCC_ORACLE_BLOCKS=2 its instructions (bk.i, as ra.i). bk.pair, before each merge pass, says for each block
+ * and the next why the pass leaves them apart, as the pass starts (it then merges a run of blocks into the first
+ * while the sum stays at 100 or below). */
+extern struct Statement *gCurrentStatement;
+extern struct PCodeBlock *gCurrentBlock;
+extern void fn_00436390__retail(ENode *expression);
+extern void COptimizer_Optimize__retail(Object *function);
+extern void Peephole_MergeAdjacentBlocks__retail(Object *object, Boolean mergePrologue);
+
+static void block_list(const char *phase, Object *function)
+{
+    PCodeBlock *block;
+    PCodeInstruction *instruction;
+    PCodeBlockLink *link;
+    int successors, predecessors;
+    const char *level = getenv("MWCC_ORACLE_BLOCKS");
+
+    OracleTrace_Printf("bk.list phase=%s link=%s\n", phase, maybe_link(function));
+    for (block = gPCodeBlocks; block != NULL; block = block->next) {
+        for (successors = 0, link = block->successors; link != NULL; link = link->next)
+            successors++;
+        for (predecessors = 0, link = block->predecessors; link != NULL; link = link->next)
+            predecessors++;
+        OracleTrace_Printf("bk.block p=%08x index=%d count=%d flags=%04x succ=%d pred=%d\n",
+                           (unsigned int)block, block->index, (int)block->instruction_count,
+                           (unsigned int)block->flags, successors, predecessors);
+        if (level != NULL && level[0] == '2')
+            for (instruction = block->instructions; instruction != NULL; instruction = instruction->next)
+                print_instruction("bk.i", instruction);
+    }
+}
+
+void fn_00436390(ENode *expression)
+{
+    PCodeBlock *block = gCurrentBlock;
+    int count = block != NULL ? block->instruction_count : -1;
+
+    fn_00436390__retail(expression);
+    if (wanted("MWCC_ORACLE_BLOCKS"))
+        OracleTrace_Printf("bk.stmt line=%ld before=%08x:%d after=%08x:%d\n",
+                           gCurrentStatement != NULL ? (long)gCurrentStatement->sourceoffset : -1L,
+                           (unsigned int)block, count, (unsigned int)gCurrentBlock,
+                           gCurrentBlock != NULL ? (int)gCurrentBlock->instruction_count : -1);
+}
+
+void COptimizer_Optimize(Object *function)
+{
+    if (wanted("MWCC_ORACLE_BLOCKS"))
+        block_list("raw", function);
+    COptimizer_Optimize__retail(function);
+    if (wanted("MWCC_ORACLE_BLOCKS"))
+        block_list("optimized", function);
+}
+
+void Peephole_MergeAdjacentBlocks(Object *object, Boolean mergePrologue)
+{
+    PCodeBlock *block;
+    PCodeBlock *next;
+    PCodeInstruction *instruction;
+    const char *why;
+
+    if (!wanted("MWCC_ORACLE_BLOCKS")) {
+        Peephole_MergeAdjacentBlocks__retail(object, mergePrologue);
+        return;
+    }
+    OracleTrace_Printf("bk.merge prologue=%d link=%s\n", (int)mergePrologue, maybe_link(object));
+    for (block = gPCodeBlocks; block != NULL && block->next != NULL; block = block->next) {
+        next = block->next;
+        why = NULL;
+        if (!mergePrologue && (block->flags & 1))
+            why = "prologue";
+        else if (block->instruction_count <= 0)
+            why = "empty";
+        for (instruction = block->instructions; why == NULL && instruction != NULL; instruction = instruction->next)
+            if (instruction->flags & BY_VERSION(0x420, 0x108))
+                why = "call";
+        if (why == NULL && block->reverse_instructions != NULL &&
+            (block->reverse_instructions->flags & fIsBranch) != 0 && block->reverse_instructions->opcode != PC_B)
+            why = "branch";
+        if (why == NULL && (block->successors == NULL || block->successors->payload.block != next ||
+                            block->successors->next != NULL))
+            why = "successors";
+        if (why == NULL && (next->predecessors == NULL || next->predecessors->payload.block != block ||
+                            next->predecessors->next != NULL))
+            why = "predecessors";
+        if (why == NULL && !mergePrologue && (next->flags & 2))
+            why = "epilogue";
+        if (why == NULL && (next->flags & BY_VERSION(0x20, 0x8000)))
+            why = "flag";
+        if (why == NULL && block->instruction_count + next->instruction_count > 100)
+            why = "over100";
+        OracleTrace_Printf("bk.pair a=%08x b=%08x counts=%d+%d why=%s\n", (unsigned int)block, (unsigned int)next,
+                           (int)block->instruction_count, (int)next->instruction_count, why != NULL ? why : "-");
+    }
+    Peephole_MergeAdjacentBlocks__retail(object, mergePrologue);
+    block_list("merged", object);
+}
 #endif
 
 #endif

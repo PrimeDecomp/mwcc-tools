@@ -80,6 +80,16 @@ The `lc.arg` fields:
 * `argument`: the argument's node kind, after commas, force-loads and casts. `expression`: the argument, in short form.
 * `link`: the callee.
 
+**`MWCC_ORACLE_BLOCKS`** (`--blocks`; `2` also prints each block's instructions, which `--blocks` always asks for):
+
+| Lines | Content |
+|---|---|
+| `bk.stmt line= before=BLOCK:COUNT after=BLOCK:COUNT` | Each expression statement generated: its line, and the current block and its instruction count before and after. |
+| `bk.list phase= link=` | The blocks: `raw` before the global optimizer, `optimized` after it, `merged` after each merge pass. |
+| `bk.block p= index= count= flags= succ= pred=` | A block of the list, with its `bk.i` lines at level 2 (as `ra.i`). |
+| `bk.merge prologue= link=` | A merge pass starts; `prologue=1` when it may merge the prologue block. |
+| `bk.pair a= b= counts=A+B why=` | For each block and the next, as the pass starts, why it keeps them apart (`prologue`, `empty`, `call`, `branch`, `successors`, `predecessors`, `epilogue`, `flag`, `over100`), or `-`. |
+
 **`MWCC_ORACLE_IRO_DUMP=FILE`** turns on the global optimizer's own dump (IroDump, normally written to `<source>.log`
 in debug builds), appended to FILE.
 
@@ -123,5 +133,6 @@ in debug builds), appended to FILE.
 | `parse_trace(lines)` | The snapshots before and after each allocation; the before snapshot also holds the colouring rounds and the frame. |
 | `analyze(...)` | The data `--json` prints. |
 | `opcode_names(version)` | The opcode names, for views of your own. |
+| `block_trace(lines)`, `block_cuts(record, names)` | The `bk.*` lines by link name (`compile_trace(..., blocks=True)`), and where each function's statements moved to a new block, and why. |
 
 Each function's dict has `schema_version` (`SCHEMA_VERSION`), raised when a field changes meaning or goes away.
