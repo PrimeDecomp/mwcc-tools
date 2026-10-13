@@ -17,6 +17,8 @@ The report has five parts:
 4. [Slot shifts](#slot-shifts): objects the target places in another order.
 5. [One-sided objects](#one-sided-objects): objects only one side keeps in memory.
 
+It ends with a [summary](#summary) of what each side keeps in memory.
+
 Parts 3 to 5 need the target asm: `--from-ninja`, or `--target DIR` with a dtk build directory.
 
 ## The scalarizer
@@ -145,3 +147,20 @@ Example, CAuiBitmapMeter::Draw (Echoes):
 ```
 
 These are temporaries the target keeps and ours splits. Only one member of one copy is read; the rest are dead stores.
+
+## Summary
+
+The report for each function ends with a short list of what is kept in memory:
+
+* **ours:** each local or temporary, with its reason in a few words and the copy functions it goes through, with the
+  source lines they are inlined on;
+* **target:** each group of identical copies, with how many are read back.
+
+```
+== Draw: kept in memory (summary) ==
+   ours: @599 (4 bytes): its address is taken (pointer analysis off); through CColor::CColor (constructor), lines 117, 118, 120
+   target: 3 copies of a 12-byte value at r1+0x38, 0x44, 0x50, 1 read back (a value made again for each use: ...)
+```
+
+Copies of which only one is read are usually a value computed again for each use. In Draw, that was a macro that
+evaluated its argument once per component.

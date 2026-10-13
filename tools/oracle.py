@@ -861,6 +861,57 @@ def copy_bindings(name, bindings):
     return list(out.values())
 
 
+def short_reason(reason):
+    """A blocked_reasons reason in a few words."""
+    if reason.startswith("used as a whole or at an offset not known"):
+        return "used whole or at an unknown offset" + (" (a call's argument)" if "a call's argument" in reason else "")
+    if reason.startswith("used as a "):
+        what = "copied whole" if "copied as a whole" in reason else "a member aggregate copied whole"
+        return re.sub(r" at offset.*", "", reason).replace("used as a ", "a ") + f": {what}"
+    return reason.split(" (")[0]
+
+
+def locals_summary(analysis, passes, bindings, runs=()):
+    """The objects kept in memory in one function, in a few lines: ours (from PASSES, scalarize_passes' for it), each
+    with its reason, the copy functions it goes through and the lines they are inlined on, and the target's
+    identical copies (RUNS, unpaired_objects' target runs)."""
+    lines_of = {}
+    for d in analysis.get("inlining", ()):
+        if d.get("kind") == "decision" and d.get("lines"):
+            lines_of.setdefault(d["link"], set()).update(d["lines"])
+    sizes = {e["name"]: e["size"] for e in analysis.get("frame") or ()}
+    kept = {}
+    for scalarize in passes:
+        for name, var in scalarize["vars"].items():
+            if var["parts"] and not all(p["blocked"] for p in var["parts"]):
+                kept.pop(name, None)
+                continue
+            reasons = [short_reason(r) for r in blocked_reasons(var, scalarize) if not r.startswith("(")]
+            if not reasons and (var["noregister"] or not scalarize["pointers"]):
+                reasons = ["its address is taken" + ("" if scalarize["pointers"] else " (pointer analysis off)")]
+            how = []
+            for link, readable, generated in copy_bindings(name, bindings):
+                at = sorted(lines_of.get(link, ()))
+                how.append(f"{readable}{' (made by the compiler)' if generated else ''}"
+                           + (f", line{'s' if len(at) > 1 else ''} {', '.join(map(str, at[:4]))}" if at else ""))
+            size = var["size"] if var["size"] is not None else sizes.get(name)
+            kept[name] = (size, list(dict.fromkeys(reasons)) or ["not identified"], how)
+    copies = [c for run in runs for c in run.get("copies", ())]
+    if not kept and not copies:
+        return []
+    out = [f"== {analysis['function']}: kept in memory (summary) =="]
+    for name, (size, reasons, how) in kept.items():
+        out.append(f"   ours: {name} ({size} bytes): {'; '.join(reasons)}"
+                   + (f"; through {'; '.join(how)}" if how else ""))
+    for c in copies:
+        read = sum(1 for o in c["offsets"] if o in c["reloaded"])
+        out.append(f"   target: {len(c['offsets'])} copies of a {c['size']}-byte value at r1+"
+                   + ", ".join(f"{o:#x}" for o in c["offsets"]) + f", {read} read back"
+                   + (" (a value made again for each use: a macro or inline that evaluates its argument more than "
+                      "once, or a by-value chain)" if read < len(c["offsets"]) else ""))
+    return out
+
+
 def blocked_reasons(var, scalarize):
     """Why the scalarizer left VAR (one of a pass's `vars`) in memory, from its uses and parts."""
     reasons = []
@@ -2507,13 +2558,18 @@ def main():
             ours = function_words(compiled["object"], analysis["link"])
             theirs = target_words(asm, analysis["link"]) if asm is not None else None
             layout = analysis.get("layout")
+            runs = []
             if ours and theirs and target is not None and layout:
                 limit = layout["linkage"] + layout["outgoing"] + layout["locals"]
                 shifts = slot_shifts(ours, theirs, analysis["frame"] or [], limit, target[2])
                 print("\n".join(shift_report(shifts, analysis["frame"] or [])))
-                print("\n".join(unpaired_report(*unpaired_objects(ours, theirs, analysis["frame"] or [], limit,
-                                                                   target[2]))))
+                runs, mine = unpaired_objects(ours, theirs, analysis["frame"] or [], limit, target[2])
+                print("\n".join(unpaired_report(runs, mine)))
             print("\n".join(frame_report(analysis)))
+            summary = locals_summary(analysis, passes.get(analysis["link"], []),
+                                     bindings.get(analysis["link"], []), runs)
+            if summary:
+                print("\n".join(summary))
         return
 
     def about(d):
