@@ -15,7 +15,10 @@
       "_inline_call_expression",
       "_fn_00507070",
       "_fn_00506f50",
-      "_fn_004f7fb0"
+      "_fn_004f7fb0",
+      "_schedule_block",
+      "_select_ready_coloring_node",
+      "_fn_0055e600"
     ],
     "units": []
   },

@@ -7,9 +7,12 @@
  * does; the trace says what happened inside, from outside: the PCode before and after, whose operands are the
  * register assignment (tools/oracle.py reads the allocation from the pair).
  */
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include "compiler/common.h"
 #include "compiler/CInline.h"
+#include "compiler/CMangler.h"
 #include "compiler/CPrep.h"
 #include "compiler/CodeGen.h"
 #include "compiler/enode.h"
@@ -19,33 +22,62 @@
 #include "compiler/PCode.h"
 #include "compiler/InterferenceGraph.h"
 #include "compiler/Registers.h"
+#include "compiler/Scheduler.h"
 #include "compiler/OracleTrace.h"
 
 #ifdef MWCC_ORACLE_TRACE
 
-/* The link (mangled) name of a function where the compiler has made it already (it has, for the function being
- * generated), else its name. */
+/* The link (mangled) name of a function. When the compiler has not made it yet (a member function's is often made only
+ * when the object is written), the mangler makes it here without caching it in the object: it only builds the name in
+ * its own buffer and enters it in the name table, where the compiler finds it again later. */
 static const char *link_name(Object *object)
 {
+    HashNameNode *name;
+
     while (object != NULL && object->datatype == DALIAS)
         object = object->u.alias.object;
     if (object == NULL)
         return "?";
-    if ((object->datatype == DFUNC || object->datatype == DVFUNC) && object->u.func.linkname != NULL)
-        return object->u.func.linkname->name;
+    if (object->datatype == DFUNC || object->datatype == DVFUNC) {
+        name = object->u.func.linkname;
+#if VERSION >= VERSION_GC_1_3
+        if (name == NULL)
+            name = CMangler_GetLinkName(object);
+#endif
+        if (name != NULL)
+            return name->name;
+    }
     return object->name != NULL ? object->name->name : "?";
 }
 
 /* The PCode of the function being generated: a block per line (its address, number, weight and the blocks it leads to),
  * an instruction per line (its address, which is what identifies it before and after, opcode, flags, the source line
  * it was generated for, operands as the kind, arg and ten bytes of value each). */
+static void print_instruction(const char *prefix, PCodeInstruction *instruction)
+{
+    int operand;
+    int byte;
+
+    /* (f18[1] is the source line of the statement it was generated for) */
+    OracleTrace_Printf("%s p=%08x op=%d flags=%08x n=%d line=%d ops=", prefix, (unsigned int)instruction,
+                       (int)instruction->opcode, instruction->flags, (int)instruction->operand_count,
+                       instruction->f18[1]);
+    for (operand = 0; operand < instruction->operand_count; operand++) {
+        const unsigned char *raw = (const unsigned char *)&instruction->operandData.operands[operand];
+
+        for (byte = 0; byte < 12; byte++) {
+            OracleTrace_Printf("%02x", (unsigned int)raw[byte]);
+        }
+        OracleTrace_Printf(" ");
+    }
+    OracleTrace_Printf("\n");
+}
+
 static void snapshot(const char *phase, Object *function)
 {
     PCodeBlock *block;
     PCodeInstruction *instruction;
     PCodeBlockLink *link;
-    int operand;
-    int byte;
 
     OracleTrace_Printf("ra.%s function=%s link=%s\n", phase, function->name->name, link_name(function));
     for (block = gPCodeBlocks; block != NULL; block = block->next) {
@@ -55,23 +87,18 @@ static void snapshot(const char *phase, Object *function)
             OracleTrace_Printf("%08x,", (unsigned int)link->payload.block);
         }
         OracleTrace_Printf("\n");
-        for (instruction = block->instructions; instruction != NULL; instruction = instruction->next) {
-            /* (f18[1] is the source line of the statement it was generated for) */
-            OracleTrace_Printf("ra.i p=%08x op=%d flags=%08x n=%d line=%d ops=", (unsigned int)instruction,
-                               (int)instruction->opcode, instruction->flags, (int)instruction->operand_count,
-                               instruction->f18[1]);
-            for (operand = 0; operand < instruction->operand_count; operand++) {
-                const unsigned char *raw = (const unsigned char *)&instruction->operandData.operands[operand];
-
-                for (byte = 0; byte < 12; byte++) {
-                    OracleTrace_Printf("%02x", (unsigned int)raw[byte]);
-                }
-                OracleTrace_Printf(" ");
-            }
-            OracleTrace_Printf("\n");
-        }
+        for (instruction = block->instructions; instruction != NULL; instruction = instruction->next)
+            print_instruction("ra.i", instruction);
     }
     OracleTrace_Printf("ra.end\n");
+}
+
+/* A trace that is only wanted on request (it is large): the environment variable NAME set to something else than 0. */
+static int wanted(const char *name)
+{
+    const char *value = getenv(name);
+
+    return value != NULL && value[0] != 0 && value[0] != '0';
 }
 
 #if VERSION >= VERSION_GC_1_3
@@ -226,13 +253,120 @@ static void frame_objects(const char *kind, ObjectList *list)
     }
 }
 
+/* fr.layout: the sizes the layout computed, read through the operands of its own code (the same in 1.3, 1.3.2 and
+ * 2.7; checked byte by byte): the linkage area (8, or 0 when the function has no frame), the outgoing arguments, the
+ * locals area, the area above it and the frame before the register saves. A local's offset from r1 is
+ * linkage + outgoing + its offset. */
+static void frame_layout(void)
+{
+    const unsigned char *code = (const unsigned char *)fn_004f7fb0__retail;
+
+    if (code[0x2da] != 0xc7 || code[0x2db] != 0x05 || code[0x2e0] != 8 || code[0x2e4] != 0x8b ||
+        code[0x2e5] != 0x15 || code[0x2ed] != 0x03 || code[0x2ee] != 0x15 || code[0x2f3] != 0xa1 ||
+        code[0x2fa] != 0xa3)
+        return;
+    OracleTrace_Printf("fr.layout linkage=%d outgoing=%d locals=%d above=%d size=%d\n", **(int **)(code + 0x2dc),
+                       **(int **)(code + 0x2e6), **(int **)(code + 0x2ef), **(int **)(code + 0x2f4),
+                       **(int **)(code + 0x2fb));
+}
+
 void fn_004f7fb0(void)
 {
     fn_004f7fb0__retail();
     OracleTrace_Printf("fr.begin\n");
+    frame_layout();
     frame_objects("local", locals);
     frame_objects("temp", temporary_objects);
     OracleTrace_Printf("fr.end\n");
+}
+
+/* The list scheduler, on request (MWCC_ORACLE_SCHEDULE=1): schedule_block orders the instructions of one block, cycle
+ * by cycle, picking among the ready ones with select_ready_coloring_node (the sources' Scheduler.c; 1.3 to 2.7 run the
+ * same code, with the machine's check one word further on and another opcode table). sc.block: the block, whether the
+ * registers are still virtual (the scheduling before the allocation) and its instructions in their order before;
+ * sc.node: the dependency graph once it is built (each instruction's latency, height, latest cycle, unscheduled
+ * predecessors and the instructions that depend on it with the latency of each edge); sc.pick: for each pick, the
+ * cycle and every instruction whose predecessors are all scheduled, with its earliest and latest cycle, height, the
+ * dependents it would make ready, whether the machine can issue it this cycle and its opcode's rank; then what was
+ * picked (0 when nothing could be: the cycle ends); sc.after: the order it left. */
+extern void schedule_block__retail(PCodeBlock *block);
+extern CColoringNode *select_ready_coloring_node__retail(CColoringNode *list, UInt16 cycle);
+extern SInt32 gVirtualRegistersActive;
+static int schedule_dag_pending;
+
+static int schedule_globals(struct MachineInfo **machine, const unsigned char **rank)
+{
+    const unsigned char *code = (const unsigned char *)select_ready_coloring_node__retail;
+
+    if (code[0x26] != 0x8b || code[0x27] != 0x2d || code[0x100] != 0x8a || code[0x101] != 0x04 || code[0x102] != 0x55)
+        return 0;
+    *machine = **(struct MachineInfo ***)(code + 0x28);
+    *rank = *(const unsigned char **)(code + 0x103);
+    return 1;
+}
+
+void schedule_block(PCodeBlock *block)
+{
+    PCodeInstruction *instruction;
+
+    if (!wanted("MWCC_ORACLE_SCHEDULE")) {
+        schedule_block__retail(block);
+        return;
+    }
+    OracleTrace_Printf("sc.block p=%08x index=%d virtual=%d\n", (unsigned int)block, block->index,
+                       (int)gVirtualRegistersActive);
+    for (instruction = block->instructions; instruction != NULL; instruction = instruction->next)
+        print_instruction("sc.i", instruction);
+    schedule_dag_pending = 1;
+    schedule_block__retail(block);
+    schedule_dag_pending = 0;
+    OracleTrace_Printf("sc.after order=");
+    for (instruction = block->instructions; instruction != NULL; instruction = instruction->next)
+        OracleTrace_Printf("%08x,", (unsigned int)instruction);
+    OracleTrace_Printf("\n");
+}
+
+CColoringNode *select_ready_coloring_node(CColoringNode *list, UInt16 cycle)
+{
+    struct MachineInfo *machine;
+    const unsigned char *rank;
+    CColoringNode *node;
+    CColoringNode *picked;
+    CColoringList *edge;
+    int count;
+    int known;
+
+    if (!wanted("MWCC_ORACLE_SCHEDULE"))
+        return select_ready_coloring_node__retail(list, cycle);
+    known = schedule_globals(&machine, &rank);
+    if (schedule_dag_pending) {
+        schedule_dag_pending = 0;
+        for (node = list; node != NULL; node = node->prev) {
+            OracleTrace_Printf("sc.node i=%08x latency=%d height=%d latest=%d preds=%d succ=", (unsigned int)node->obj,
+                               (int)node->latency, (int)node->height, (int)node->latestCycle, (int)node->flag);
+            for (edge = node->conflicts; edge != NULL; edge = edge->next)
+                OracleTrace_Printf("%08x:%d,", (unsigned int)edge->owner->obj, (int)edge->value);
+            OracleTrace_Printf("\n");
+        }
+    }
+    OracleTrace_Printf("sc.pick cycle=%d ready=", (int)cycle);
+    for (node = list; node != NULL; node = node->prev) {
+        if (node->flag != 0)
+            continue;
+        /* (what select counts: the dependents this one is the last unscheduled predecessor of) */
+        count = 0;
+        for (edge = node->conflicts; edge != NULL; edge = edge->next)
+            if (edge->owner->flag == 1)
+                count++;
+        /* (the machine's check only reads its pipeline state) */
+        OracleTrace_Printf("%08x:%d:%d:%d:%d:%d:%d,", (unsigned int)node->obj, (int)node->earliestCycle,
+                           (int)node->latestCycle, (int)node->height, count,
+                           known ? (int)(machine->check(node->obj) != 0) : -1,
+                           known ? (int)rank[node->obj->opcode * 18] : -1);
+    }
+    picked = select_ready_coloring_node__retail(list, cycle);
+    OracleTrace_Printf(" pick=%08x\n", picked != NULL ? (unsigned int)picked->obj : 0);
+    return picked;
 }
 #endif
 
@@ -349,13 +483,117 @@ Boolean CAN_INLINE(ENode *node)
     return result;
 }
 
-/* inl.cost: the automatic inliner's estimate of a body against the threshold (data_005dfb68). */
+static int cost_nest;
+
+/* inl.cost: the automatic inliner's estimate of a body against the threshold (data_005dfb68): the running cost, plus
+ * one per statement, plus what fn_0055e600 adds for each statement's expression (it stops once over the threshold).
+ * nest is the depth of the expressions being costed when the body is a callee's met inside another body's. */
 int fn_0055e540(CInlineInfo *info, int running, int depth)
 {
     int result = fn_0055e540__retail(info, running, depth);
 
-    OracleTrace_Printf("inl.cost nstmts=%d running=%d depth=%d cost=%d threshold=%d\n",
-                       info != NULL ? (int)info->nstmts : -1, running, depth, result, (int)data_005dfb68);
+    OracleTrace_Printf("inl.cost nstmts=%d running=%d depth=%d cost=%d threshold=%d nest=%d\n",
+                       info != NULL ? (int)info->nstmts : -1, running, depth, result, (int)data_005dfb68, cost_nest);
+    return result;
+}
+
+/* inl.expr, on request (MWCC_ORACLE_INLINE_COST=1): what each expression of a body adds to its cost (fn_0055e600 walks
+ * an expression and its operands, and a call's callee body through fn_0055e540), after its operands (theirs have
+ * nest one deeper): its ENode type, the object it names or the constant it is, and the cost it added, its operands'
+ * included. */
+extern int fn_0055e600__retail(ENode *expr, int running, int depth);
+
+static void describe_append(char *buffer, int *length, const char *text)
+{
+    int size = strlen(text);
+
+    if (*length + size >= 255)
+        size = 255 - *length - 1;
+    if (size <= 0)
+        return;
+    memcpy(buffer + *length, text, size);
+    *length += size;
+    buffer[*length] = 0;
+}
+
+/* A short description of an expression, a few levels deep, without spaces: objects by name, constants by value, `*`
+ * for an indirection, `+` and `=` for an addition and an assignment, `name()` for a call and `eN` for the other ENode
+ * types (N is the type number), `..` where it stops. */
+static void describe(ENode *expr, char *buffer, int *length, int level)
+{
+    char number[16];
+
+    if (expr == NULL) {
+        describe_append(buffer, length, "?");
+        return;
+    }
+    if (level > 5) {
+        describe_append(buffer, length, "..");
+        return;
+    }
+    switch (expr->type) {
+        case EOBJREF:
+            describe_append(buffer, length, expr->data.objref != NULL && expr->data.objref->name != NULL
+                                                ? expr->data.objref->name->name
+                                                : "?");
+            return;
+        case EINTCONST:
+            sprintf(number, "%d", (int)expr->data.intval.lo);
+            describe_append(buffer, length, number);
+            return;
+        case EARGOBJ:
+        case ELOCOBJ:
+            /* (an inline body's argument or local, by its index) */
+            sprintf(number, "%s%d", expr->type == EARGOBJ ? "arg" : "loc", (int)expr->data.longval);
+            describe_append(buffer, length, number);
+            return;
+        case EINDIRECT:
+            describe_append(buffer, length, "*(");
+            describe(expr->data.monadic, buffer, length, level + 1);
+            describe_append(buffer, length, ")");
+            return;
+        case EADD:
+        case EASS:
+            describe(expr->data.diadic.left, buffer, length, level + 1);
+            describe_append(buffer, length, expr->type == EADD ? "+" : "=");
+            describe(expr->data.diadic.right, buffer, length, level + 1);
+            return;
+        case EFUNCCALL:
+        case EFUNCCALLP:
+            if (expr->data.funccall.funcref != NULL && expr->data.funccall.funcref->type == EOBJREF)
+                describe_append(buffer, length, callee_name(expr->data.funccall.funcref->data.objref));
+            else
+                describe_append(buffer, length, "(*)");
+            describe_append(buffer, length, "()");
+            return;
+        default:
+            sprintf(number, "e%d", (int)expr->type);
+            describe_append(buffer, length, number);
+            if (expr->type <= ELOGNOT || expr->type == ETYPCON) {
+                describe_append(buffer, length, "(");
+                describe(expr->data.monadic, buffer, length, level + 1);
+                describe_append(buffer, length, ")");
+            }
+            return;
+    }
+}
+
+int fn_0055e600(ENode *expr, int running, int depth)
+{
+    char what[256];
+    int length;
+    int result;
+
+    if (!wanted("MWCC_ORACLE_INLINE_COST"))
+        return fn_0055e600__retail(expr, running, depth);
+    cost_nest++;
+    result = fn_0055e600__retail(expr, running, depth);
+    cost_nest--;
+    what[0] = 0;
+    length = 0;
+    describe(expr, what, &length, 0);
+    OracleTrace_Printf("inl.expr nest=%d type=%d cost=%d what=%s\n", cost_nest, expr != NULL ? (int)expr->type : -1,
+                       result - running, what);
     return result;
 }
 

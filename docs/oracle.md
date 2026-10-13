@@ -29,7 +29,8 @@ same (`build/tools/wibo`, or a `wibo` on the PATH); it does not need binfmt_misc
 ## Explain a source: `tools/oracle.py`
 
 ```
-python tools/oracle.py [--version V] [--function NAME] [--raw] [--pcode] [--json] [--no-check] SOURCE -- [COMPILER FLAGS...]
+python tools/oracle.py [--version V] [--function NAME] [--raw] [--pcode] [--schedule] [--inline-cost CALLEE]
+    [--exchange A,B] [--override PATH=REPLACEMENT] [--json] [--no-check] SOURCE -- [COMPILER FLAGS...]
 python tools/oracle.py --from-ninja ../prime/build.ninja src/GuiSys/CGuiFrame.cpp --function Draw
 ```
 
@@ -53,9 +54,10 @@ lists
   replayed from the traced graph and mask (`select replayed: N of M agree`; a register it disagrees on is flagged), and
   so is the simplification (a note says when its order differs from the trace). r0 as a neighbour is pointed out: r0
   cannot be a base register (an address operand of r0 reads as 0);
-* the stack frame once it is laid out: the locals and the compiler's temporaries in memory by offset (in the locals
-  area: the offset from r1 adds the linkage area, 8 bytes, and the outgoing arguments) and size, and the locals kept
-  in registers.
+* the stack frame once it is laid out: its layout (linkage area, outgoing arguments, locals area, the area above it
+  and the frame size, read from the compiler's globals), the locals and the compiler's temporaries in memory by
+  offset in the locals area and by offset from r1 (`r1+28`, the address the code uses), with their size, and the
+  locals kept in registers.
 
 `--function` restricts the report, and `--raw`'s trace lines, to the functions whose name or link name contains NAME.
 `--pcode` prints the PCode the allocator was given, per block, with the virtual register numbers (`%r60` is virtual
@@ -64,10 +66,37 @@ register 60) that the register report names. `--json` prints all of it as one JS
 (`block`, `line`, `instruction`), `degree`, `neighbors` (`vreg`, `phys`), `state` (colored, coalesced, spilled,
 split), `order`, `pushed`, `select`; `functions[].inlining[]` with `cost` and `threshold`; `functions[].frame`).
 
+When no function matches `--function`, the traced functions that look most like NAME are listed, by name and link
+name (`--json`: `similar[]`).
+
+More views, each traced only when asked for (the objects are the same either way):
+
+* `--schedule`: the instruction scheduler, per block, before the allocation (virtual registers) and after it. Each
+  cycle's pick, and for every other candidate why it lost: not ready yet (and the instruction whose latency it waits
+  for), its unit busy, or the first tie-break it lost (urgency: its latest cycle is past; fewer scheduled successors;
+  lower height; lower opcode rank, before the allocation only; else the earlier instruction wins). The picks are
+  replayed from the traced candidates (`select replayed: N of M picks agree`). `--json` adds
+  `functions[].schedule[]` with `picks[]` (`over[]` with `why`), `edges[]` (`from`, `to`, `latency`) and `before`
+  (the order the scheduler was given).
+* `--inline-cost CALLEE`: only the inliner's decisions about callees whose name contains CALLEE, each with its cost
+  broken down: one line per statement-level expression of the callee's body (`*(arg0+8) = arg1`: 5), and the bodies
+  of the calls inlined inside it nested under their call (`--json`: `inlining[].breakdown`).
+* `--exchange A,B` (`--exchange r41,r42`): why two virtual registers of a class were coloured in that order and got
+  the registers they did: when the simplification pushed each and the neighbour whose removal let it, degrees,
+  spill costs, neighbours, and what select found free for each.
+* `--override PATH=REPLACEMENT` (repeatable): compile with REPLACEMENT in place of PATH (relative to the directory
+  compiled in), without touching the checkout. For a header, REPLACEMENT is copied under a temporary directory that
+  is searched just before the include directory PATH is in; for SOURCE itself, REPLACEMENT is compiled with SOURCE's
+  directory searched first. The check compiles the same replacement with the original.
+
 The first line says whether the object equals the original compiler's; when it says NO, the sections and the
 functions that differ are listed, and the explanation is of a different object and should not be trusted.
 
-From Python, `tools/oracle.py` can be imported: `parse_trace(lines)` gives the snapshots before and after each
+From Python, `tools/oracle.py` can be imported. `analyze_file(trace, function=None, link=None, version="GC_1_3_2")`
+takes a trace file (or its lines) and returns one dict per function, as `--json` prints them (`function` a substring
+of the name or link name, `link` the exact link name); each has `schema_version` (`SCHEMA_VERSION`, raised when a
+field changes meaning or goes away). `explain_exchange(analysis, a, b)` and `similar_functions(...)` are the
+`--exchange` and suggestion views. Lower down, `parse_trace(lines)` gives the snapshots before and after each
 allocation (the before snapshot also holds the colouring rounds and the frame), `analyze(...)` the data `--json`
 prints and `opcode_names(version)` the opcode names, for views of your own.
 
@@ -76,7 +105,13 @@ only the object is wanted). Its lines: `ra.before`/`ra.after function= link=` wi
 the source line) per instruction; `ra.graph cls= k= start= count=` and `ra.node v= p= deg= flags= color= n=` (the
 graph before the simplification); `ra.order` (the stack, first coloured first, with each node's spill cost);
 `ra.select mask= after= ok=` (each node's colour and flags); `fr.local`/`fr.temp name= offset= size= reg= used=`
-between `fr.begin` and `fr.end`; `inl.can`, `inl.cost`, `inl.begin`, `inl.end`.
+between `fr.begin` and `fr.end`, with `fr.layout linkage= outgoing= locals= above= size=`; `inl.can`, `inl.cost`
+(`nest=`), `inl.begin`, `inl.end`. With `MWCC_ORACLE_SCHEDULE=1`: `sc.block p= index= virtual=` with its `sc.i`
+lines, `sc.node i= latency= height= latest= preds= succ=` (the dependency graph, `succ` as `pointer:latency`),
+`sc.pick cycle= ready= pick=` (each candidate `pointer:earliest:latest:height:scheduled successors:check:rank`) and
+`sc.after order=`. With `MWCC_ORACLE_INLINE_COST=1`: `inl.expr nest= type= cost= what=`, in post-order. The link
+names are the mangled ones (the compiler computes them when it has not yet). The file is appended to, so delete it
+between runs.
 
 ## Check the equivalence: `tools/corpus.py`
 
