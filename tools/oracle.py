@@ -793,7 +793,8 @@ def inline_bindings(lines):
     name, for `local`: a copy of the argument, or for a reference, a pointer holding its address) and `object` (the
     object an aliased formal stands for, when it is one: for `reference`, the temporary the argument constructs, which
     is how a by-value class argument comes, copied by the caller), `declared` and `declared_size` (the formal's
-    type as declared: a by-value class formal is a reference by then, with `declared` 4 or 5; -1: not found)."""
+    type as declared: a by-value class formal is a reference by then, with `declared` 4 or 5; -1: not found) and
+    `generated` (1: the callee was made by the compiler, an implicit copy constructor or operator=)."""
     out, pending = {}, []
     for line in lines:
         if line.startswith("lc.arg "):
@@ -804,7 +805,8 @@ def inline_bindings(lines):
                             "mode": f["mode"],
                             "var": None if f["var"] == "-" else f["var"],
                             "object": None if f.get("object", "-") == "-" else f["object"],
-                            "declared": int(f.get("declared", -1)), "declared_size": int(f.get("declared_size", -1))})
+                            "declared": int(f.get("declared", -1)), "declared_size": int(f.get("declared_size", -1)),
+                            "generated": int(f.get("generated", 0))})
         elif line.startswith("ra.before ") and pending:
             m = re.match(r"ra\.before function=\S* link=(.*)$", line)
             if m:
@@ -824,14 +826,37 @@ def flip_hint(reason):
         return ("every use were of a member at a constant offset (no whole copy of it, no index that is not a "
                 "constant)")
     if reason.startswith("used as a "):
-        return ("that copy were made member by member: a class with a copy constructor (or operator=) that copies "
-                "each member, inlined, is copied that way; one without is copied whole. Or if the copy went away")
+        return ("that copy were made member by member, or went away. An operator= the compiler makes copies a "
+                "member whose class has no user operator= whole, even when that class has a user copy constructor; "
+                "an implicit copy constructor does the same for a member whose class has no user copy constructor. "
+                "So for an assignment, give the class copied whole a user operator= that copies each member (inlined); "
+                "for a construction, a user copy constructor. The copy functions it is bound to are listed below")
     if reason.startswith("its uses overlap"):
         return "its bytes were always used at the same size and type (no stores of parts read back as a word)"
     if reason.startswith("its address is taken"):
         return ("its address were not taken: no &x, no binding to a reference or pointer formal of a call that is "
                 "not inlined, no member function call on it that is not inlined")
     return None
+
+
+def special_member(link):
+    """A readable name for LINK when it is a constructor or operator= (`L::operator=`), else None."""
+    m = re.match(r"__(as|ct)__(\d+)", link)
+    if not m:
+        return None
+    length, start = int(m.group(2)), m.end()
+    owner = link[start:start + length]
+    return f"{owner}::operator=" if m.group(1) == "as" else f"{owner}::{owner} (constructor)"
+
+
+def copy_bindings(name, bindings):
+    """The inlined constructors and operator= (from inline_bindings' list for a function) whose argument (not
+    `this`) is the local NAME: [(link, readable name, generated)], in the order inlined."""
+    out = {}
+    for b in bindings:
+        if b["index"] >= 1 and b["object"] == name and special_member(b["callee"]):
+            out.setdefault(b["callee"], (b["callee"], special_member(b["callee"]), b.get("generated", 0)))
+    return list(out.values())
 
 
 def blocked_reasons(var, scalarize):
@@ -844,10 +869,11 @@ def blocked_reasons(var, scalarize):
         elif use["kind"] not in SCALAR_KINDS:
             whole = use["offset"] == 0 and var["size"] is not None and use["size"] >= var["size"]
             reasons.append(f"used as a {TYPE_KINDS.get(use['kind'], use['kind'])} of {use['size']} bytes at offset "
-                           f"{use['offset']} ({where}): " + ("copied as a whole (copy construction of a class with "
-                                                             "no copy constructor, a by-value argument, a return)"
-                                                             if whole else "a member aggregate copied whole (copy "
-                                                             "construction of a member with no copy constructor)"))
+                           f"{use['offset']} ({where}): " + ("copied as a whole (an assignment or copy "
+                                                             "construction that copies it bitwise, a by-value "
+                                                             "argument, a return)" if whole else "a member aggregate "
+                                                             "copied whole (by an assignment or copy construction "
+                                                             "that copies that member bitwise)"))
     scalars = sorted({(u["offset"], u["offset"] + max(u["size"], 1), u["kind"]) for u in var["uses"]
                       if u["offset"] >= 0 and u["kind"] in SCALAR_KINDS})
     overlaps = [(a, b) for a, b in zip(scalars, scalars[1:]) if b[0] < a[1]]
@@ -1143,6 +1169,16 @@ def locals_report(analysis, passes, target=None, bindings=()):
             return "no slot of its own (listed at offset 0)"
         return f"memory r1+{e['r1']}" if "r1" in e else f"memory +{e['offset']}"
 
+    listed = set()
+
+    def copies(name):
+        if name in listed:
+            return
+        listed.add(name)
+        for link, readable, generated in copy_bindings(name, bindings):
+            out.append(f"            {name} is the argument of inlined {readable} ({link}"
+                       + (", made by the compiler)" if generated else ")"))
+
     if not passes:
         out.append("   no scalarizer pass traced (MWCC_ORACLE_LOCALS=1 and an oracle with the sc.* hooks needed; "
                    "the pass runs only with the global optimizer)")
@@ -1167,12 +1203,16 @@ def locals_report(analysis, passes, target=None, bindings=()):
                     out.append(f"         because: {reason}")
                     if flip_hint(reason):
                         out.append(f"            it would be split if {flip_hint(reason)}")
+                    if reason.startswith("used as a "):
+                        copies(name)
             elif blocked:
                 out.append(f"      {name} ({var['size']} bytes): KEPT IN MEMORY ({where(name)})")
                 for reason in blocked_reasons(var, scalarize):
                     out.append(f"         because: {reason}")
                     if flip_hint(reason):
                         out.append(f"            it would be split if {flip_hint(reason)}")
+                    if reason.startswith("used as a "):
+                        copies(name)
             else:
                 out.append(f"      {name} ({var['size']} bytes): split into scalars (it would be kept in memory by a "
                            "whole copy of it or of a member aggregate, its address taken, or bytes used at "

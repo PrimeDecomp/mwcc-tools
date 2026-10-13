@@ -1224,7 +1224,7 @@ ENode *setup_inline_locals_and_arguments(Object *function, CInlineInfo *info, EN
         object = slot->var == NULL && slot->expr != NULL && slot->expr->type == EOBJREF ? slot->expr->data.objref
                                                                                         : NULL;
         OracleTrace_Printf("lc.arg index=%d name=%s type=%d size=%ld ref=%d dirty=%d mode=%s var=%s object=%s "
-                           "declared=%d declared_size=%ld link=%s\n", i,
+                           "declared=%d declared_size=%ld generated=%d link=%s\n", i,
                            formal->name ? formal->name->name : "?", formal->type ? formal->type->type : -1,
                            formal->type ? formal->type->size : -1,
                            formal->type && formal->type->type == TYPEPOINTER &&
@@ -1233,7 +1233,9 @@ ENode *setup_inline_locals_and_arguments(Object *function, CInlineInfo *info, EN
                            slot->var && slot->var->name ? slot->var->name->name : "-",
                            object && object->name ? object->name->name : "-",
                            declared && declared->type ? declared->type->type : -1,
-                           declared && declared->type ? declared->type->size : -1, maybe_link(function));
+                           declared && declared->type ? declared->type->size : -1,
+                           IS_TYPE_FUNC(function->type) && (TYPE_FUNC(function->type)->flags & FUNC_AUTO_GENERATED),
+                           maybe_link(function));
     }
     return result;
 }

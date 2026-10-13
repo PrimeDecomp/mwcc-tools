@@ -141,8 +141,12 @@ those bodies, outermost first, by link name (shown as `inside:` with `--inline-c
   Copy construction of a class with no copy constructor (`F h = f;`, a member initialised from another `mOrigin(o)`)
   is a whole copy and keeps both in memory. Give the class an inline copy constructor that copies each member, and
   the same code is split into registers (checked on 2.7). An assignment `g = f` of a POD is done member by member
-  and does not keep a local in memory. Each kept local has a line on what would let it be split; each split one, what
-  would keep it. Locals in
+  and does not keep a local in memory. An assignment of a class, through the operator= the compiler makes (and
+  inlines), copies each member whose class has no user operator= whole, even when that class has a user copy
+  constructor: a user copy constructor on CVector3f does not split a CLine that `mAxis = axis` copies, a user
+  operator= that copies each member does (checked on 2.7). Each kept local has a line on what would let it be split,
+  and the inlined constructors and operator= it is the argument of (`L::operator= (__as__1LFRC1L, made by the
+  compiler)`); each split one, what would keep it. Locals in
   memory that the pass never saw are listed after. With `--from-ninja` (or `--target DIR`, a dtk build directory),
   the target's frame size is set against ours, and the target's locals area is given by the r1 offsets its code
   uses: the loads, stores and `addi` (an address taken) at each, grouped into runs, with our locals at those offsets.
@@ -226,8 +230,9 @@ with no body yet: the others' bodies are the `inl.cost` lines one `nest` deeper 
 the whole or not known), `lc.call node=` (a call that may reach an address-taken local), `lc.temp name=` (the scalar
 made for each part not blocked, in the parts' order), then `lc.pass pointers= link=` and its parts, `lc.part blocked=
 noregister= bits= type= size= uses= var_size= var=`; and per formal of each call the inliner expands, `lc.arg index=
-name= type= size= ref= dirty= mode= var= object= link=` (mode unused, substituted, reference or local; var= the
-fresh local; object= the object an aliased formal stands for; link= the callee), before the function's
+name= type= size= ref= dirty= mode= var= object= declared= declared_size= generated= link=` (mode unused,
+substituted, reference or local; var= the fresh local; object= the object an aliased formal stands for; declared= the
+formal's declared type kind; generated=1: a callee the compiler made; link= the callee), before the function's
 `ra.before`. `MWCC_ORACLE_IRO_DUMP=FILE` turns on the global optimizer's own
 dump (IroDump, normally written to `<source>.log` in debug builds) into FILE, appended to. The link
 names are the mangled ones (the compiler computes them when it has not yet). The file is appended to, so delete it
