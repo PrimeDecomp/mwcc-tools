@@ -113,3 +113,40 @@ Calls kept for another reason (not declared inline, no body, the depth limit) ar
 a limit question". The bounds are first-order: inlining one call changes the costs of the calls around it. When a
 function calls one callee several times, the calls are not told apart, so the bound is the one that holds for at least
 one of them.
+
+## `tools/header_impact.py`: what a header change does to every unit
+
+```
+python tools/header_impact.py --from-ninja FILE --git REV [--unit TEXT] [--jobs N] [--all] [--json]
+python tools/header_impact.py --from-ninja FILE --override include/Kyoto/Math/CVector3f.hpp=edited.hpp
+```
+
+Run it before merging a change to shared headers. It finds the units that include a changed file (from ninja's deps
+log), and compiles each one with the oracle before and after the change. For every function whose code differs, it
+shows:
+
+* its size before and after;
+* its similarity to the target before and after, marked `WORSE` or `better`;
+* the inlining decisions that changed, with their costs;
+* the frame size and the stack slots that moved.
+
+When neither inlining nor the frame changed, the difference is in register allocation or scheduling. The last line
+lists the functions that moved away from the target.
+
+The change is given one of two ways:
+
+* `--git REV`: the working tree against REV (`git diff --name-only REV`). Before is REV's version of each changed
+  file, after is the working tree's.
+* `--override PATH=EDITED` (repeatable): after is PATH replaced by EDITED; before is the checkout.
+
+The similarity is difflib's ratio over the instruction words, with frame offsets, relocated fields and branch targets
+masked. It is not objdiff's score, but it moves the same way.
+
+* Functions are paired by name with the compiler's local numbers left out, so `__arraydtor$89` and `__arraydtor$91`
+  are the same function.
+* Units built with a version that has no oracle (GC 1.2.5n) are compiled with the original compiler. Their code is
+  compared, but there are no inlining or frame details.
+* A header included through a path relative to the including file, rather than through the include path, is not
+  replaced by `--override`.
+* Each unit is compiled twice. A change to `types.h` reaches about 980 Echoes units and takes about half an hour with
+  `--jobs 8`. Use `--unit` to narrow it.
