@@ -30,21 +30,22 @@ same (`build/tools/wibo`, or a `wibo` on the PATH); it does not need binfmt_misc
 
 ```
 python tools/oracle.py [--version V] [--function NAME] [--raw] [--pcode] [--schedule] [--inline-cost CALLEE]
-    [--exchange A,B] [--override PATH=REPLACEMENT] [--json] [--no-check] SOURCE -- [COMPILER FLAGS...]
+    [--near N] [--exchange A,B] [--override PATH=REPLACEMENT] [--json] [--no-check] SOURCE -- [COMPILER FLAGS...]
 python tools/oracle.py --from-ninja ../prime/build.ninja src/GuiSys/CGuiFrame.cpp --function Draw
 ```
 
 The compiler's flags come after `--` (or, the older form, after SOURCE: the script's own options, which have two
 dashes, are still recognised there). `--from-ninja FILE` takes the flags and the working directory from the rule that
-builds SOURCE in a decomp project's `build.ninja` (the directory is the one that file is in; SOURCE is looked up with
-either `/` or `\` as the separator); flags given as well are an error. It also takes the version from the rule's
+builds SOURCE in a decomp project's `build.ninja` (the directory is the one that file is in; SOURCE is relative to it
+or absolute, with `/` or `\`, in any case on Windows); flags given as well are an error. It also takes the version from the rule's
 `mw_version` (`GC/2.7` is `GC_2_7`), and warns when `--version` names another. Without either, the version is
 `GC_1_3_2`. The report, per function (named by its name and its link name, `Think (Think__10CPowerBombFfR13CStateManager)`),
 lists
 
 * the inliner's decisions: inlined (with the cost estimate against the threshold) or kept, and why (not declared
   inline, over budget, ...); callees are qualified (`CWeapon::GetOwnerId`), and a decision made more than once is given
-  once with how many times and at which inline depths;
+  once with how many times, at which inline depths and on which source lines (the line of the statement the call is
+  in, in the file that statement comes from: a header's line for a call inside an inline body);
 * the register allocation, per class: K, the class's colour mask, earlier colourings that failed and spilled, and the
   **traced** colouring order (the stack the simplification leaves, first coloured first). Each virtual register gets
   its physical register, def/use counts, the blocks it lives in, the instruction (block and source line) that first
@@ -64,7 +65,9 @@ lists
 register 60) that the register report names. `--json` prints all of it as one JSON document instead
 (`functions[].classes.GPR.vregs[]`: `vreg`, `class`, `phys`, `defs`, `uses`, `live_blocks`, `across_call`, `def`
 (`block`, `line`, `instruction`), `degree`, `neighbors` (`vreg`, `phys`), `state` (colored, coalesced, spilled,
-split), `order`, `pushed`, `select`; `functions[].inlining[]` with `cost` and `threshold`; `functions[].frame`).
+split), `order`, `pushed`, `select`; `functions[].inlining[]`: `callee`, `link` (the callee's link name, which tells
+overloads and template instances apart), `inline`, `cost`, `threshold`, `reason`, `count`, `depths`, `lines`;
+`functions[].frame`).
 
 When no function matches `--function`, the traced functions that look most like NAME are listed, by name and link
 name (`--json`: `similar[]`).
@@ -78,9 +81,15 @@ More views, each traced only when asked for (the objects are the same either way
   replayed from the traced candidates (`select replayed: N of M picks agree`). `--json` adds
   `functions[].schedule[]` with `picks[]` (`over[]` with `why`), `edges[]` (`from`, `to`, `latency`) and `before`
   (the order the scheduler was given).
-* `--inline-cost CALLEE`: only the inliner's decisions about callees whose name contains CALLEE, each with its cost
-  broken down: one line per statement-level expression of the callee's body (`*(arg0+8) = arg1`: 5), and the bodies
-  of the calls inlined inside it nested under their call (`--json`: `inlining[].breakdown`).
+* `--inline-cost CALLEE`: only the inliner's decisions about callees whose name or link name contains CALLEE, each
+  with its cost broken down: one line per statement-level expression of the callee's body (`*(arg0+8) = arg1`: 5),
+  and the bodies of the calls inlined inside it nested under their call. A call names its callee's link name and
+  says when the compiler made the callee (an implicit destructor or constructor). `--json`: `inlining[].breakdown`,
+  whose call nodes have `link`, `implicit`, `ctor` and `dtor`.
+* `--near N`: every decision of the automatic inliner whose cost is within N of the threshold, in all functions,
+  with the callee's link name, the function and the lines: the close calls a header change can flip (`--json`:
+  `near[]`, each with `margin`, the threshold minus the cost). The estimate stops once over the threshold, so a kept
+  call's cost is where it stopped.
 * `--exchange A,B` (`--exchange r41,r42`): why two virtual registers of a class were coloured in that order and got
   the registers they did: when the simplification pushed each and the neighbour whose removal let it, degrees,
   spill costs, neighbours, and what select found free for each.
@@ -92,7 +101,11 @@ More views, each traced only when asked for (the objects are the same either way
 The first line says whether the object equals the original compiler's; when it says NO, the sections and the
 functions that differ are listed, and the explanation is of a different object and should not be trusted.
 
-From Python, `tools/oracle.py` can be imported. `analyze_file(trace, function=None, link=None, version="GC_1_3_2")`
+From Python, `tools/oracle.py` can be imported. `analyze_source(source, flags=(), from_ninja=None, version=None,
+overrides=(), function=None, link=None, schedule=False, inline_cost=False, check=False, near=None)` compiles and
+returns the document `--json` prints (`overrides` as `--override` takes them, `near` as `--near`); it raises
+`OracleError` when it cannot compile. `compile_trace(...)` (the same arguments) only compiles and returns the trace.
+`analyze_file(trace, function=None, link=None, version="GC_1_3_2")`
 takes a trace file (or its lines) and returns one dict per function, as `--json` prints them (`function` a substring
 of the name or link name, `link` the exact link name); each has `schema_version` (`SCHEMA_VERSION`, raised when a
 field changes meaning or goes away). `explain_exchange(analysis, a, b)` and `similar_functions(...)` are the
@@ -105,11 +118,12 @@ only the object is wanted). Its lines: `ra.before`/`ra.after function= link=` wi
 the source line) per instruction; `ra.graph cls= k= start= count=` and `ra.node v= p= deg= flags= color= n=` (the
 graph before the simplification); `ra.order` (the stack, first coloured first, with each node's spill cost);
 `ra.select mask= after= ok=` (each node's colour and flags); `fr.local`/`fr.temp name= offset= size= reg= used=`
-between `fr.begin` and `fr.end`, with `fr.layout linkage= outgoing= locals= above= size=`; `inl.can`, `inl.cost`
-(`nest=`), `inl.begin`, `inl.end`. With `MWCC_ORACLE_SCHEDULE=1`: `sc.block p= index= virtual=` with its `sc.i`
+between `fr.begin` and `fr.end`, with `fr.layout linkage= outgoing= locals= above= size=`; `inl.can` and `inl.begin`
+(with `line=`, the call's statement's source line, and `link=`, the callee's), `inl.cost` (`nest=`), `inl.end`. With `MWCC_ORACLE_SCHEDULE=1`: `sc.block p= index= virtual=` with its `sc.i`
 lines, `sc.node i= latency= height= latest= preds= succ=` (the dependency graph, `succ` as `pointer:latency`),
 `sc.pick cycle= ready= pick=` (each candidate `pointer:earliest:latest:height:scheduled successors:check:rank`) and
-`sc.after order=`. With `MWCC_ORACLE_INLINE_COST=1`: `inl.expr nest= type= cost= what=`, in post-order. The link
+`sc.after order=`. With `MWCC_ORACLE_INLINE_COST=1`: `inl.expr nest= type= cost= what=`, in post-order (a call of a named function also has `link=` and `flags=`, its
+function type's flags: 0x100 made by the compiler, 0x1000 a constructor, 0x2000 a destructor). The link
 names are the mangled ones (the compiler computes them when it has not yet). The file is appended to, so delete it
 between runs.
 

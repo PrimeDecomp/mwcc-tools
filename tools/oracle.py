@@ -24,8 +24,15 @@ Options (anywhere before `--`; the compiler's flags after `--`, or after SOURCE)
                     src/Collision/CMaterialList.cpp`); no compiler flags may be given with it
   --raw             print the trace lines too (only those of the functions --function selects, if given)
   --pcode           print the PCode the allocator was given, per block, with the virtual register numbers
+  --schedule        explain the instruction scheduler's picks, per block
+  --inline-cost C   only the inliner's decisions about callee C (name or link name), with their cost broken down
+  --near N          every inline decision whose cost is within N of the threshold, with the callee's link name
+  --exchange A,B    why virtual registers A and B were coloured in that order (r41,r42)
+  --override P=R    compile with file R in place of P (a header or SOURCE), the checkout untouched; repeatable
   --json            print the report as JSON
-  --no-check        do not compile with the original compiler to compare the objects"""
+  --no-check        do not compile with the original compiler to compare the objects
+
+docs/oracle.md has the details, and the Python entry points (analyze_source, analyze_file)."""
 import argparse
 import os
 import re
@@ -737,6 +744,7 @@ def inlining_decisions(events):
 
     def add(record):
         depth = record.pop("depth", None)
+        line = record.pop("line", None)
         breakdown = record.pop("breakdown", None)
         key = tuple(sorted(record.items()))
         if breakdown is not None and key not in seen:
@@ -746,19 +754,26 @@ def inlining_decisions(events):
             seen[key] = record
             decisions.append(record)
         seen[key]["count"] += 1
-        if depth is not None:
-            depths = seen[key].setdefault("depths", [])
-            if depth not in depths:
-                depths.append(depth)
+        for field, value in (("depths", depth), ("lines", line)):
+            if value is not None:
+                values = seen[key].setdefault(field, [])
+                if value not in values:
+                    values.append(value)
 
     # (inl.expr comes after its operands' and inl.cost after its statements', each with its nesting: what is pending
     # one level deeper belongs to the next line one level up)
     pending = {}
+    begins = []
     for kind, f in events:
         if kind == "inl.expr":
             nest = int(f.get("nest", 0))
             node = {"what": f.get("what", "?"), "type": int(f.get("type", -1)), "cost": int(f.get("cost", 0)),
                     "parts": pending.pop(nest + 1, [])}
+            if "link" in f:
+                # (a call: the callee's link name, and whether the compiler made it, a constructor or a destructor)
+                flags = int(f.get("flags", "0"), 16)
+                node.update(link=f["link"], implicit=bool(flags & 0x100), ctor=bool(flags & 0x1000),
+                            dtor=bool(flags & 0x2000))
             pending.setdefault(nest, []).append(node)
         elif kind == "inl.cost":
             nest = int(f.get("nest", 0))
@@ -777,7 +792,10 @@ def inlining_decisions(events):
             name = f.get("function", "?")
             result = f.get("result") == "1"
             depth = f.get("depth")
-            record = {"event": "decision", "callee": name, "inline": result, "depth": int(depth or 0)}
+            record = {"event": "decision", "callee": name, "link": f.get("link", name), "inline": result,
+                      "depth": int(depth or 0)}
+            if int(f.get("line", -1)) > 0:
+                record["line"] = int(f["line"])
             if f.get("inline_bit") == "0" and not result:
                 reason = "not declared inline (and not a method defined in its class)"
             elif result and f.get("always") == "1":
@@ -802,23 +820,63 @@ def inlining_decisions(events):
             add(record)
             cost = None
         elif kind == "inl.end":
-            add({"event": "expansion", "callee": f.get("function", "?"), "expanded": f.get("expanded") != "0"})
+            record = {"event": "expansion", "callee": f.get("function", "?"), "expanded": f.get("expanded") != "0"}
+            if begins:
+                b = begins.pop()
+                record["link"] = b.get("link", record["callee"])
+                if int(b.get("line", -1)) > 0:
+                    record["line"] = int(b["line"])
+            add(record)
+        elif kind == "inl.begin":
+            begins.append(f)
     return decisions
 
 
-def inlining_report(decisions):
+def inlining_report(decisions, links=False):
     out = []
     for d in decisions:
         times = f"  (x{d['count']})" if d["count"] > 1 else ""
         if any(d.get("depths", ())):
             times += "  (depth " + ", ".join(str(x) for x in sorted(d["depths"])) + ")"
+        if d.get("lines"):
+            times += "  (line " + ", ".join(str(x) for x in sorted(d["lines"])) + ")"
         if d["event"] == "decision":
-            out.append(f"   {d['callee']}: {'INLINE' if d['inline'] else 'call kept'} - {d['reason']}{times}")
+            out.append(f"   {d['callee']}: {'INLINE' if d['inline'] else 'call kept'} - {d['reason']}{times}"
+                       + (f"\n      [{d['link']}]" if links and d.get("link") else ""))
         elif d["expanded"]:
             out.append(f"      {d['callee']}: expanded in place{times}")
         else:
             out.append(f"      {d['callee']}: could not be expanded here (its body is not an expression-only body at "
                        f"this stage){times}")
+    return out
+
+
+def near_threshold(analyses, after_last, margin):
+    """The automatic inliner's decisions whose cost is within MARGIN of the threshold, in every function (and after
+    the last one): the close calls a change of a header can flip. The estimate stops once over the threshold, so a
+    kept call's cost is where it stopped, not its whole cost."""
+    out = []
+    groups = [(a["function"], a["link"], a["inlining"]) for a in analyses] + [(None, None, after_last or [])]
+    for function, link, decisions in groups:
+        for d in decisions:
+            if d["event"] == "decision" and "cost" in d and abs(d["cost"] - d["threshold"]) <= margin:
+                out.append({"function": function, "function_link": link, "callee": d["callee"],
+                            "link": d.get("link"), "inline": d["inline"], "cost": d["cost"],
+                            "threshold": d["threshold"], "margin": d["threshold"] - d["cost"], "count": d["count"],
+                            "lines": d.get("lines", []), "depths": d.get("depths", [])})
+    return out
+
+
+def near_report(near, margin):
+    out = [f"== inline decisions within {margin} of the threshold (cost, threshold, decision, callee link name, in "
+           "which function) =="]
+    for n in near:
+        where = n["function"] or "(after the last function)"
+        lines = f"  line {', '.join(str(x) for x in sorted(n['lines']))}" if n["lines"] else ""
+        out.append(f"   {n['cost']:>4} {n['threshold']:>4}  {'INLINE' if n['inline'] else 'kept  '}  {n['link']}  in "
+                   f"{where}{lines}" + (f"  (x{n['count']})" if n["count"] > 1 else ""))
+    if not near:
+        out.append("   none")
     return out
 
 
@@ -851,8 +909,11 @@ def cost_report(decision, types):
                            "statement(s), and:")
                 walk(node["parts"], indent + 1)
                 continue
+            call = ""
+            if node.get("link"):
+                call = f"  [{node['link']}{', compiler-made' if node['implicit'] else ''}]"
             out.append(f"         {node['cost']:>4}  {'  ' * indent}{types.get(node['type'], node['type'])}: "
-                       f"{node['what']}")
+                       f"{node['what']}{call}")
             walk(node["parts"], indent + 1)
 
     walk(b["statements"], 0)
@@ -1019,7 +1080,7 @@ def explain_exchange(analysis, first, second):
     return out
 
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 def analyze_file(trace, function=None, link=None, version="GC_1_3_2"):
@@ -1129,25 +1190,31 @@ def raw_for(lines, wanted):
 
 
 def ninja_rule(path, source):
-    """The cflags and the mw_version of the rule of a build.ninja that compiles SOURCE."""
+    """The cflags, the mw_version and the source as spelled of the rule of a build.ninja that compiles SOURCE (relative
+    to the build.ninja's directory, or absolute; / or \\, any case on Windows)."""
     text = re.sub(r"\$\r?\n\s*", "", Path(path).read_text())
-    for variant in dict.fromkeys((source, source.replace("/", "\\"), source.replace("\\", "/"))):
-        m = re.search(r"^build [^\n]*: mwcc\w* " + re.escape(variant) + r"\b[^\n]*\n((?:  [^\n]*\n)+)", text, re.M)
-        if m:
-            block = m.group(1)
+    base = Path(path).resolve().parent
+
+    def key(p):
+        return os.path.normcase(os.path.normpath(base / p))
+
+    wanted = key(source)
+    for m in re.finditer(r"^build [^\n]*: mwcc\w* (\S+)[^\n]*\n((?:  [^\n]*\n)+)", text, re.M):
+        if key(m.group(1).replace("$:", ":")) == wanted:
+            block = m.group(2)
             flags = re.search(r"^  cflags = (.*)$", block, re.M)
             version = re.search(r"^  mw_version = (.*)$", block, re.M)
             if version is None:
                 version = re.search(r"^mw_version = (.*)$", text, re.M)
             if flags:
                 return (shlex.split(flags.group(1), posix=True),
-                        version.group(1).strip().replace("\\", "/") if version else None)
-    sys.exit(f"{path} has no mwcc rule for {source}")
+                        version.group(1).strip().replace("\\", "/") if version else None, m.group(1).replace("$:", ":"))
+    raise OracleError(f"{path} has no mwcc rule for {source}")
 
 
 OPTIONS = {"--version": True, "--function": True, "--from-ninja": True, "--raw": False, "--pcode": False,
            "--no-check": False, "--json": False, "--schedule": False, "--inline-cost": True, "--exchange": True,
-           "--override": True, "--help": False, "-h": False}
+           "--override": True, "--near": True, "--help": False, "-h": False}
 
 
 def split_arguments(argv):
@@ -1238,11 +1305,11 @@ def apply_overrides(overrides, flags, source, workdir, temp):
     flags = list(flags)
     for k, item in enumerate(overrides):
         if "=" not in item:
-            sys.exit(f"--override {item}: give PATH=REPLACEMENT")
+            raise OracleError(f"--override {item}: give PATH=REPLACEMENT")
         path, replacement = item.split("=", 1)
         replacement = Path(replacement).resolve()
         if not replacement.exists():
-            sys.exit(f"--override: {replacement} does not exist")
+            raise OracleError(f"--override: {replacement} does not exist")
         target = (workdir / path).resolve()
         if target == (workdir / source).resolve():
             flags = ["-i", str(target.parent)] + flags
@@ -1262,9 +1329,104 @@ def apply_overrides(overrides, flags, source, workdir, temp):
             flags[n:n] = [flags[n], str(Path(temp) / f"override{k}")]
             break
         else:
-            sys.exit(f"--override: {path} is not under an include directory of the flags (-i/-I), so it cannot be "
+            raise OracleError(f"--override: {path} is not under an include directory of the flags (-i/-I), so it cannot be "
                      "replaced without changing the checkout")
     return flags, source
+
+
+class OracleError(SystemExit):
+    """A compile that could not be done (no rule for the source, a bad override, no oracle, the compiler failed): the
+    command line prints it and exits; a script can catch it."""
+
+
+def compile_trace(source, flags=(), from_ninja=None, version=None, overrides=(), schedule=False, inline_cost=False,
+                  check=True):
+    """Compile SOURCE with the oracle and return its trace: a dict with `lines`, `version`, `oracle`, `source` (as the
+    rule spells it), `identical` (None when not checked, or the original compiler is not there) and `differences`.
+    FROM_NINJA takes the flags, the working directory and the version from a project's build.ninja (FLAGS are then
+    not allowed); otherwise FLAGS are the compiler's flags, run in the current directory. OVERRIDES are
+    `PATH=REPLACEMENT` strings, as --override takes them. Raises OracleError."""
+    warning = None
+    if from_ninja:
+        if flags:
+            raise OracleError(f"--from-ninja takes the compiler's flags from {from_ninja}; these were given too: "
+                              + " ".join(flags))
+        flags, project, source = ninja_rule(from_ninja, source)
+        workdir = Path(from_ninja).resolve().parent
+        inferred = None
+        if project:
+            m = re.match(r"GC/(\d+)\.(\d+)(?:\.(\d+))?(\w*)$", project)
+            if m:
+                inferred = "GC_" + "_".join(x for x in m.group(1, 2, 3) if x) + m.group(4)
+        if version and inferred and version != inferred:
+            warning = (f"WARNING: {from_ninja} builds {source} with {project} ({inferred}), not {version}; using "
+                       f"{version} as asked")
+        version = version or inferred or "GC_1_3_2"
+    else:
+        flags, workdir = list(flags), Path.cwd()
+        version = version or "GC_1_3_2"
+    oracle = ROOT / f"build/{version}/oracle/mwcceppc.exe"
+    if not oracle.exists():
+        raise OracleError(f"{oracle} does not exist: python configure.py --version {version} --oracle, then ninja "
+                          f"build/{version}/oracle/mwcceppc.exe")
+    # -MD, -MMD and -c are the project's; the object goes to a temporary file
+    flags = [f for f in flags if f not in ("-MD", "-MMD", "-c")]
+    result = {"version": version, "oracle": str(oracle.relative_to(ROOT)), "source": source, "identical": None,
+              "differences": [], "warning": warning}
+    with tempfile.TemporaryDirectory() as temp:
+        compiled = source
+        if overrides:
+            flags, compiled = apply_overrides(list(overrides), flags, source, workdir, temp)
+        trace = Path(temp) / "trace.txt"
+        obj = Path(temp) / "oracle.o"
+        env = dict(os.environ, MWCC_ORACLE_TRACE_FILE=str(trace))
+        if schedule:
+            env["MWCC_ORACLE_SCHEDULE"] = "1"
+        if inline_cost:
+            env["MWCC_ORACLE_INLINE_COST"] = "1"
+        run = subprocess.run([*launcher(oracle), *flags, "-c", compiled, "-o", str(obj)], cwd=workdir, env=env,
+                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        if run.returncode:
+            raise OracleError(f"{run.stdout}\nthe oracle compiler failed ({run.returncode})")
+        result["lines"] = trace.read_text().splitlines() if trace.exists() else []
+        if check:
+            original = ROOT / f"build/compilers/GC/{version[3:].replace('_', '.')}/mwcceppc.exe"
+            if original.exists():
+                other = Path(temp) / "original.o"
+                subprocess.run([*launcher(original), *flags, "-c", compiled, "-o", str(other)], cwd=workdir,
+                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+                result["identical"] = other.exists() and other.read_bytes() == obj.read_bytes()
+                if result["identical"] is False and other.exists():
+                    result["differences"] = object_differences(obj.read_bytes(), other.read_bytes())
+    return result
+
+
+def analyze_source(source, flags=(), from_ninja=None, version=None, overrides=(), function=None, link=None,
+                   schedule=False, inline_cost=False, check=False, near=None):
+    """Compile SOURCE (as compile_trace does) and analyse it: the document --json prints, with `schema_version`,
+    `identical`, `functions` (as analyze_file gives them), `inlining_after_last_function`, `similar` (when FUNCTION
+    matches nothing) and, with NEAR, `near` (near_threshold's decisions)."""
+    compiled = compile_trace(source, flags, from_ninja, version, overrides, schedule, inline_cost, check)
+    return document_for(compiled, function, link, near)[0]
+
+
+def document_for(compiled, function=None, link=None, near=None):
+    """analyze_source's document for a compile_trace result, with parse_trace's allocations and inliner events."""
+    lines = compiled["lines"]
+    allocations, inliner = parse_trace(lines)
+    analyses = analyze_file(lines, function, link, version=compiled["version"])
+    document = {"schema_version": SCHEMA_VERSION, "oracle": compiled["oracle"], "version": compiled["version"],
+                "source": compiled["source"], "identical": compiled["identical"],
+                "differences": compiled["differences"], "functions": analyses}
+    last = allocations[-1][3] if allocations else 0
+    after = inlining_decisions(inliner[last:]) if inliner[last:] and not function and not link else []
+    if after:
+        document["inlining_after_last_function"] = after
+    if function and not analyses:
+        document["similar"] = [{"function": n, "link": l} for n, l in similar_functions(allocations, function)]
+    if near is not None:
+        document["near"] = near_threshold(analyses, after, near)
+    return document, allocations, inliner
 
 
 def main():
@@ -1281,75 +1443,26 @@ def main():
     parser.add_argument("--inline-cost")
     parser.add_argument("--exchange")
     parser.add_argument("--override", action="append", default=[])
+    parser.add_argument("--near")
     arguments = parser.parse_args(options)
     if len(positional) != 1:
         parser.error("one SOURCE is needed")
     arguments.source = positional[0]
-    if arguments.from_ninja:
-        if extra:
-            sys.exit(f"--from-ninja takes the compiler's flags from {arguments.from_ninja}; these were given too: "
-                     + " ".join(extra))
-        flags, project = ninja_rule(arguments.from_ninja, arguments.source)
-        workdir = Path(arguments.from_ninja).resolve().parent
-        inferred = None
-        if project:
-            m = re.match(r"GC/(\d+)\.(\d+)(?:\.(\d+))?(\w*)$", project)
-            if m:
-                inferred = "GC_" + "_".join(x for x in m.group(1, 2, 3) if x) + m.group(4)
-        if arguments.version and inferred and arguments.version != inferred:
-            print(f"WARNING: {arguments.from_ninja} builds {arguments.source} with {project} ({inferred}), not "
-                  f"{arguments.version}; using {arguments.version} as asked", file=sys.stderr)
-        arguments.version = arguments.version or inferred or "GC_1_3_2"
-    else:
-        flags, workdir = extra, Path.cwd()
-        arguments.version = arguments.version or "GC_1_3_2"
-    oracle = ROOT / f"build/{arguments.version}/oracle/mwcceppc.exe"
-    if not oracle.exists():
-        sys.exit(f"{oracle} does not exist: python configure.py --version {arguments.version} --oracle, then ninja "
-                 f"build/{arguments.version}/oracle/mwcceppc.exe")
-    # -MD, -MMD and -c are the project's; the object goes to a temporary file
-    flags = [f for f in flags if f not in ("-MD", "-MMD", "-c")]
-    differences = []
-    with tempfile.TemporaryDirectory() as temp:
-        source = arguments.source
-        if arguments.override:
-            flags, source = apply_overrides(arguments.override, flags, source, workdir, temp)
-        trace = Path(temp) / "trace.txt"
-        obj = Path(temp) / "oracle.o"
-        env = dict(os.environ, MWCC_ORACLE_TRACE_FILE=str(trace))
-        if arguments.schedule:
-            env["MWCC_ORACLE_SCHEDULE"] = "1"
-        if arguments.inline_cost:
-            env["MWCC_ORACLE_INLINE_COST"] = "1"
-        run = subprocess.run([*launcher(oracle), *flags, "-c", source, "-o", str(obj)], cwd=workdir, env=env,
-                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-        if run.returncode:
-            print(run.stdout)
-            sys.exit(f"the oracle compiler failed ({run.returncode})")
-        lines = trace.read_text().splitlines() if trace.exists() else []
-        check = None
-        if not arguments.no_check:
-            original = ROOT / f"build/compilers/GC/{arguments.version[3:].replace('_', '.')}/mwcceppc.exe"
-            if original.exists():
-                other = Path(temp) / "original.o"
-                subprocess.run([*launcher(original), *flags, "-c", source, "-o", str(other)], cwd=workdir,
-                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-                check = other.exists() and other.read_bytes() == obj.read_bytes()
-                if check is False and other.exists():
-                    differences = object_differences(obj.read_bytes(), other.read_bytes())
-    allocations, inliner = parse_trace(lines)
-    analyses = analyze_file(lines, arguments.function, version=arguments.version)
+    near = None
+    if arguments.near is not None:
+        near = int(arguments.near)
+    compiled = compile_trace(arguments.source, extra, arguments.from_ninja, arguments.version, arguments.override,
+                             arguments.schedule, bool(arguments.inline_cost) or near is not None,
+                             not arguments.no_check)
+    if compiled["warning"]:
+        print(compiled["warning"], file=sys.stderr)
+    arguments.version = compiled["version"]
+    oracle = ROOT / compiled["oracle"]
+    lines, check, differences = compiled["lines"], compiled["identical"], compiled["differences"]
+    document, allocations, inliner = document_for(compiled, arguments.function, near=near)
+    analyses = document["functions"]
     if arguments.json:
         import json
-        document = {"schema_version": SCHEMA_VERSION, "oracle": str(oracle.relative_to(ROOT)),
-                    "version": arguments.version, "identical": check, "differences": differences,
-                    "functions": analyses}
-        last = allocations[-1][3] if allocations else 0
-        if inliner[last:] and not arguments.function:
-            document["inlining_after_last_function"] = inlining_decisions(inliner[last:])
-        if arguments.function and not analyses:
-            document["similar"] = [{"function": n, "link": l}
-                                   for n, l in similar_functions(allocations, arguments.function)]
         if arguments.raw:
             document["raw"] = raw_for(lines, arguments.function) if arguments.function else lines
         print(json.dumps(document, indent=1))
@@ -1365,16 +1478,23 @@ def main():
         print("\n".join(raw_for(lines, arguments.function) if arguments.function else lines))
     names = opcode_names(arguments.version)
     types = enode_names()
+    if near is not None:
+        print("\n".join(near_report(document["near"], near)))
+        return
+
+    def about(d):
+        return d["event"] == "decision" and (arguments.inline_cost in d["callee"] or
+                                             arguments.inline_cost in d.get("link", ""))
+
     for analysis in analyses:
         title = f"{analysis['function']} ({analysis['link']})"
         if arguments.inline_cost:
             # (only the decisions about that callee, each with what its cost estimate is made of)
-            wanted = [d for d in analysis["inlining"]
-                      if d["event"] == "decision" and arguments.inline_cost in d["callee"]]
+            wanted = [d for d in analysis["inlining"] if about(d)]
             if wanted:
                 print(f"== {title}: inlining {arguments.inline_cost} ==")
                 for d in wanted:
-                    print("\n".join(inlining_report([d])))
+                    print("\n".join(inlining_report([d], links=True)))
                     print("\n".join(cost_report(d, types)))
             continue
         if arguments.exchange:
@@ -1394,11 +1514,11 @@ def main():
     if inliner[last:] and not arguments.function and not arguments.exchange:
         decisions = inlining_decisions(inliner[last:])
         if arguments.inline_cost:
-            decisions = [d for d in decisions if d["event"] == "decision" and arguments.inline_cost in d["callee"]]
+            decisions = [d for d in decisions if about(d)]
         if decisions:
             print("== inlining after the last allocated function ==")
             for d in decisions:
-                print("\n".join(inlining_report([d])))
+                print("\n".join(inlining_report([d], links=bool(arguments.inline_cost))))
                 if arguments.inline_cost:
                     print("\n".join(cost_report(d, types)))
     if arguments.function and not analyses:

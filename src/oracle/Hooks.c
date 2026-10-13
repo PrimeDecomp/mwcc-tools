@@ -12,6 +12,7 @@
 #include <string.h>
 #include "compiler/common.h"
 #include "compiler/CInline.h"
+#include "compiler/CFunc.h"
 #include "compiler/CMangler.h"
 #include "compiler/CPrep.h"
 #include "compiler/CodeGen.h"
@@ -459,8 +460,30 @@ static const char *callee_name(Object *function)
     return buffer;
 }
 
+/* The statement the inliner is looking at, for the source line of a call it decides on (1.3 and later keep the line in
+ * the statement's sourceoffset, as the PCode does). */
+extern Statement *inline_statement__retail(Statement *statement);
+static Statement *inline_current;
+
+Statement *inline_statement(Statement *statement)
+{
+    Statement *saved = inline_current;
+    Statement *result;
+
+    inline_current = statement;
+    result = inline_statement__retail(statement);
+    inline_current = saved;
+    return result;
+}
+
+static int inline_line(void)
+{
+    return inline_current != NULL ? (int)inline_current->sourceoffset : -1;
+}
+
 /* inl.can: the decision for a call of FUNCTION at the inline depth DEPTH, with the options and the callee's statement
- * count that the decision looks at; tools/oracle.py gives the reason. */
+ * count that the decision looks at; tools/oracle.py gives the reason. link is the callee's link name, line the source
+ * line of the statement the call is in. */
 Boolean CAN_INLINE(ENode *node)
 {
     Boolean result;
@@ -477,9 +500,10 @@ Boolean CAN_INLINE(ENode *node)
         info = (CInlineInfo *)function->u.func.u;
     result = CAN_INLINE_RETAIL(node);
     OracleTrace_Printf("inl.can function=%s result=%d depth=%d inline_bit=%d always=%d auto=%d limit=%d body=%d "
-                       "nstmts=%d\n", callee_name(function), (int)result, (int)data_00582468,
+                       "nstmts=%d line=%d link=", callee_name(function), (int)result, (int)data_00582468,
                        (int)((function->qual & Q_INLINE) != 0), (int)ALWAYS_INLINE, (int)INLINE_AUTO,
-                       (int)INLINE_LIMIT, info != NULL, info != NULL ? (int)info->nstmts : -1);
+                       (int)INLINE_LIMIT, info != NULL, info != NULL ? (int)info->nstmts : -1, inline_line());
+    OracleTrace_Printf("%s\n", link_name(function));
     return result;
 }
 
@@ -592,8 +616,22 @@ int fn_0055e600(ENode *expr, int running, int depth)
     what[0] = 0;
     length = 0;
     describe(expr, what, &length, 0);
-    OracleTrace_Printf("inl.expr nest=%d type=%d cost=%d what=%s\n", cost_nest, expr != NULL ? (int)expr->type : -1,
-                       result - running, what);
+    OracleTrace_Printf("inl.expr nest=%d type=%d cost=%d ", cost_nest, expr != NULL ? (int)expr->type : -1,
+                       result - running);
+    /* a call of a named function: its link name and its function type's flags (0x100 compiler-generated, 0x1000 a
+     * constructor, 0x2000 a destructor) */
+    if (expr != NULL && (expr->type == EFUNCCALL || expr->type == EFUNCCALLP) && expr->data.funccall.funcref != NULL &&
+        expr->data.funccall.funcref->type == EOBJREF && expr->data.funccall.funcref->data.objref != NULL) {
+        Object *callee = expr->data.funccall.funcref->data.objref;
+
+        while (callee->datatype == DALIAS && callee->u.alias.object != NULL)
+            callee = callee->u.alias.object;
+        OracleTrace_Printf("link=%s flags=%x ", link_name(callee),
+                           callee->type != NULL && callee->type->type == TYPEFUNC
+                               ? (unsigned int)TYPE_FUNC(callee->type)->flags
+                               : 0u);
+    }
+    OracleTrace_Printf("what=%s\n", what);
     return result;
 }
 
@@ -611,8 +649,9 @@ ENode *INLINE_CALL(ENode *expr)
         (unsigned long)function->u.func.u >= 0x10000)
         info = (CInlineInfo *)function->u.func.u;
 
-    OracleTrace_Printf("inl.begin function=%s depth=%d body=%d kind=%d\n", callee_name(function), (int)data_00582468,
-                       info != NULL, info != NULL ? (int)INFO_KIND(info) : -1);
+    OracleTrace_Printf("inl.begin function=%s depth=%d body=%d kind=%d line=%d link=", callee_name(function),
+                       (int)data_00582468, info != NULL, info != NULL ? (int)INFO_KIND(info) : -1, inline_line());
+    OracleTrace_Printf("%s\n", function != NULL ? link_name(function) : "?");
     result = INLINE_CALL_RETAIL(expr);
     OracleTrace_Printf("inl.end function=%s expanded=%d\n", callee_name(function), result != expr);
     return result;
