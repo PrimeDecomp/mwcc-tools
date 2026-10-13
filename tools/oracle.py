@@ -42,7 +42,7 @@ Options (anywhere before `--`; the compiler's flags after `--`, or after SOURCE)
   --json            print the report as JSON
   --no-check        do not compile with the original compiler to compare the objects
 
-docs/oracle.md has the details, and the Python entry points (analyze_source, analyze_file)."""
+docs/oracle.md has the details; docs/oracle/trace.md the Python entry points (analyze_source, analyze_file)."""
 import argparse
 import bisect
 import os
