@@ -301,6 +301,26 @@ def absorb(mine, theirs):
             return
 
 
+def made_early(layout, functions, compiled=()):
+    """Mark each float literal of the target laid out before the literals of a function compiled before its first
+    user (`made`: the first users before and after it): literals are laid out as they are made, when the first
+    function using them is compiled, so one of the functions compiled between those made it, and it is not in the
+    target's text (stripped, or another TU's copy); `candidates`: those of COMPILED (the oracle's functions, in
+    order) between the two that the target's text does not have."""
+    order = {f: n for n, f in enumerate(functions)}
+    for name, s in layout.items():
+        literals = [(i, order[u[0]]) for i in s["items"] for u in [[u for u in i["users"] if u in order]]
+                    if u and i["value"].startswith(("float", "double"))]
+        for n, (i, at) in enumerate(literals):
+            later = [j for j, a in literals[n + 1:] if a < at]
+            if later:
+                after, before = literals[n - 1][0]["users"][0] if n else None, later[0]["users"][0]
+                i["made"] = (after, before)
+                if before in compiled:
+                    start = compiled.index(after) + 1 if after in compiled else 0
+                    i["candidates"] = [f for f in compiled[start:compiled.index(before)] if f not in order]
+
+
 def named(i):
     return i["name"] and i["name"] != "(padding)" and not anonymous(i["name"])
 
@@ -356,6 +376,17 @@ def compare(mine, theirs):
 def line(mark, i):
     users = i["users"]
     used = f"  first used in {short(users[0])}" + (f" (+{len(users) - 1})" if len(users) > 1 else "") if users else ""
+    if "made" in i:
+        after, before = i["made"]
+        used += (f"; made earlier, before {short(before)}'s literals"
+                 + (f" (after {short(after)}'s)" if after else "")
+                 + ": by a function compiled there, not in the target or whose use of it was optimized away")
+        if i.get("candidates"):
+            used += (f" (the oracle compiles {len(i['candidates'])} there: "
+                     + ", ".join(short(c) for c in i["candidates"][:3]) + (", ..." if len(i["candidates"]) > 3 else "")
+                     + ")")
+        elif "candidates" in i:
+            used += " (the oracle compiles no function there the target lacks)"
     if "via" in i:
         used = f"  used through {i['via']} in {short(users[0])}" + (f" (+{len(users) - 1})" if len(users) > 1 else "")
     moved = f"  [at {i['moved']:#x} in the other]" if "moved" in i else ""
@@ -456,6 +487,9 @@ def main():
     # (the linker strips the local objects nothing references, and those only the functions not in the target use,
     # stripped or another TU's; it keeps the global ones)
     functions = inline_diff.asm_functions(path)
+    compiled_order = [n for n, _ in sorted(oracle.object_symbols(compiled["object"]).items(),
+                                           key=lambda x: (x[1][0], x[1][1]))]
+    made_early(theirs, list(functions), compiled_order)
     for n, s in mine.items():
         if n.startswith((".ctors", ".dtors")):
             continue

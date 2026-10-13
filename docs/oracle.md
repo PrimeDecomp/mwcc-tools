@@ -211,7 +211,11 @@ status is 0 when nothing differs. Last result: 2313/2313 canaries on all three v
   is split into its strings): the objects missing, extra or in another place (`[at 0x14 in the other]`), or in
   another section (`[in .sdata in the other]`), each with the first function that references it. Float literals are
   laid out in the order they were made (`TOC_GetFloatObject`, while their first function was compiled), so a literal
-  elsewhere usually means a function compiled in another order or one the source does not have. Compared as linked:
+  elsewhere usually means a function compiled in another order or one the source does not have. A target literal laid
+  out before the literals of a function compiled before its first user says so (`made earlier, before F's literals
+  (after G's)`), with the oracle's functions compiled between G and F that the target's text lacks: one of them, or
+  one whose use of it was optimized away, made it. (2.7 merged `TOC_GetFloatObject` and `EmitFloatObject` into their
+  callers: they cannot be hooked there, but a literal's first user in compile order is what made it.) Compared as linked:
   the local objects nothing references and those only the functions missing from the target use are dropped (and
   listed in a line), as are the weak ones another TU of the module holds (vtables). Code that reaches a section
   through its anchor (`...bss.0` plus an offset) uses all of its objects, as far as the object says. The target's
