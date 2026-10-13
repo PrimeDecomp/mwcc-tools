@@ -204,7 +204,11 @@ status is 0 when nothing differs. Last result: 2313/2313 canaries on all three v
   The linker keeps one copy of a weak function per module, in one TU, so one emitted here that another TU of the
   module holds is not a difference; the main program's linker also strips the weak functions nothing references, so
   one emitted here only in a main-program TU may be that. A callee kept in the target has an out-of-line body whose
-  own calls are decided there, so one misprediction brings others: look at the outermost first.
+  own calls are decided there, so one misprediction brings others: look at the outermost first. Each misprediction
+  has a `verdict`: a call the target keeps that this TU inlines every time at round 0, with its body and far within
+  the threshold, is "not inline as written" (or had no body yet in the original): depth and cost are ruled out;
+  one kept here says no body, the depth limit or cost. B is A by default, and A and B can be objdiff.json unit
+  names (or their ends, `Enemies/CIngSpaceJumpGuardian`), as data_diff's SOURCE can.
 * `tools/data_diff.py --from-ninja FILE SOURCE`: a TU's data layout against its target asm. Each data section of the
   object (from its symbol table and relocations) is compared with the `.obj` blocks of the same section of the target
   asm, object by object, paired by contents (local names, `@N`, `lbl_...`, `...bss.0`, are not compared; a string pool

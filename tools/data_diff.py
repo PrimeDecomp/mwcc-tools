@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""python tools/data_diff.py [options] SOURCE: how a translation unit's data is laid out, against the target. SOURCE is
-compiled with the oracle; each data section of the object (its alignment, then each object in order: offset, size,
+"""python tools/data_diff.py [options] SOURCE: how a translation unit's data is laid out, against the target. SOURCE (a
+source, or an objdiff.json unit name or its end: Enemies/CIngSpaceJumpGuardian) is compiled with the oracle; each data section of the object (its alignment, then each object in order: offset, size,
 value, name and the first function that references it) is compared with the same section of the target asm. Objects
 are paired by their contents (local names, @N and lbl_..., are not compared; a string pool is split into its strings),
 so the report says which objects are missing, extra or in another order, and the functions that first use them:
@@ -46,6 +46,7 @@ def strings_of(data):
     """The NUL-terminated strings DATA is made of, or None if it is not such text."""
     if not data or data[-1] != 0:
         return None
+    data = data.rstrip(b"\0") + b"\0"  # (the NULs after the last one: padding)
     parts = data[:-1].split(b"\0")
     if not any(parts) or not all(p and all(32 <= c < 127 or c in (9, 10, 13) for c in p) for p in parts):
         return None
@@ -82,15 +83,21 @@ def split(section, offset, name, data, relocations, users, padding=False):
     """ITEM, or one item per string of a string pool."""
     if padding:
         return [{"section": section, "offset": offset, "size": len(data), "name": "(padding)",
-                 "value": f"pad {len(data)}", "key": f"pad {len(data)}", "users": []}]
-    strings = None if relocations else strings_of(data)
+                 "value": f"pad {len(data)}", "key": f"pad {len(data)}", "bytes": data.hex(), "symbols": "()",
+                 "users": []}]
+    # (a float or a double can read as text: 4 and 8 bytes are text in the pool, or when they end with one NUL after
+    # 3 characters or more; the target's split cuts its pool where it is referenced)
+    text = not relocations and (len(data) not in (4, 8) or name.startswith("@stringBase")
+                                or (data[-1] == 0 and data[-2] != 0 and all(data[:3])))
+    strings = strings_of(data) if text else None
     if not strings:
         return [item(section, offset, name, data, relocations, users)]
     out, at = [], offset
     for text in strings:
         size = len(text) + 1
         out.append({"section": section, "offset": at, "size": size, "name": name, "value": json.dumps(text),
-                    "key": "str " + text, "users": users})
+                    "key": "str " + text, "bytes": text.encode("latin-1").hex() + "00", "symbols": "()",
+                    "users": users})
         at += size
     return out
 
@@ -309,8 +316,10 @@ def made_early(layout, functions, compiled=()):
     order) between the two that the target's text does not have."""
     order = {f: n for n, f in enumerate(functions)}
     for name, s in layout.items():
-        literals = [(i, order[u[0]]) for i in s["items"] for u in [[u for u in i["users"] if u in order]]
-                    if u and i["value"].startswith(("float", "double"))]
+        for i in s["items"]:  # (the users in the order compiled)
+            i["users"].sort(key=lambda u: order.get(u, len(order)))
+        literals = [(i, order[i["users"][0]]) for i in s["items"]
+                    if i["users"] and i["users"][0] in order and i["value"].startswith(("float", "double"))]
         for n, (i, at) in enumerate(literals):
             later = [j for j, a in literals[n + 1:] if a < at]
             if later:
@@ -468,6 +477,7 @@ def main():
         flags = argv[argv.index("--") + 1:]
         argv = argv[:argv.index("--")]
     arguments = parser.parse_args(argv)
+    arguments.source = inline_diff.unit_source(arguments.from_ninja, arguments.source)
     compiled = oracle.compile_trace(arguments.source, flags, arguments.from_ninja, arguments.version,
                                     arguments.override, check=False, original_fallback=True)
     mine = object_layout(compiled["object"])
@@ -487,9 +497,20 @@ def main():
     # (the linker strips the local objects nothing references, and those only the functions not in the target use,
     # stripped or another TU's; it keeps the global ones)
     functions = inline_diff.asm_functions(path)
-    compiled_order = [n for n, _ in sorted(oracle.object_symbols(compiled["object"]).items(),
-                                           key=lambda x: (x[1][0], x[1][1]))]
-    made_early(theirs, list(functions), compiled_order)
+    text_order = [n for n, _ in sorted(oracle.object_symbols(compiled["object"]).items(),
+                                       key=lambda x: (x[1][0], x[1][1]))]
+    # (the order the functions were compiled in, from the trace; with deferred inlining, the text is in the reverse
+    # order, the target's too)
+    compiled_order = list(dict.fromkeys(m.group(2) or m.group(1) for line in compiled["lines"]
+                                        for m in [re.match(r"ra\.before function=(\S*)(?: link=(.*))?$", line)] if m))
+    compiled_order = [f for f in compiled_order if f in text_order] or text_order
+    reverse = (len(compiled_order) > 1 and compiled_order is not text_order
+               and text_order.index(compiled_order[0]) > text_order.index(compiled_order[-1]))
+    made_early(theirs, list(functions)[::-1] if reverse else list(functions), compiled_order)
+    position = {f: n for n, f in enumerate(compiled_order)}
+    for s in mine.values():
+        for i in s["items"]:
+            i["users"].sort(key=lambda u: position.get(u, len(position)))
     for n, s in mine.items():
         if n.startswith((".ctors", ".dtors")):
             continue

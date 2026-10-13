@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""python tools/inline_diff.py [options] A B: why one translation unit inlines a call another keeps. Both are compiled
+"""python tools/inline_diff.py [options] A [B]: why one translation unit inlines a call another keeps. Both are compiled
 with the oracle (--full-cost), and for every callee (by link name) both decide on, each one's decisions are printed
 side by side: inlined, kept or kept by the inline depth limit, the compiler's estimate and the whole cost, the rounds
 (the inline depth), the functions, the inlined bodies the call is in, the calls at the depth limit and the sensitive
 terms (calls costed as their body, or as a call for want of one, that would flip the decision or move it by 1 or 2).
+A and B are sources or objdiff.json unit names (or their ends: Enemies/CIngSpaceJumpGuardian); B is A by default (with
+--target, one TU against the target).
 
   --from-ninja FILE  the build.ninja that builds A and B (their flags and version; else flags after --)
   --version V        the compiler version (default: the rule's, else GC_1_3_2)
@@ -14,7 +16,9 @@ terms (calls costed as their body, or as a call for want of one, that would flip
                      `.fn LINK` lines of its target asm (DIR/**/asm/<source without src/>.s; by default the
                      build/<id> directory --from-ninja's build.ninja names most). Shows the callees emitted in one
                      and not the other (with --all, every callee, with its target state), then each TU's functions
-                     emitted differently (a weak function another TU of the module holds is not a difference)
+                     emitted differently (a weak function another TU of the module holds is not a difference).
+                     Each misprediction has a verdict: which of no body, depth, cost or "not inline as written"
+                     explains it
   --json             the comparison as JSON"""
 import argparse
 import json
@@ -84,10 +88,29 @@ def report(name, s, target=None):
            f"rounds {', '.join(map(str, s['rounds'])) or '-'}" + (f"   {target}" if target else ""),
            f"      in {', '.join(s['functions'])}"]
     out.extend(f"      because: {r}" for r in s["reasons"])
+    if s.get("verdict"):
+        out.append(f"      verdict: {s['verdict']}")
     out.extend(section("inside", oracle.tree(s["chains"]), "lines"))
     out.extend(section("at the depth limit [limit +1]", oracle.tree(s["limit_paths"]), "lines"))
     out.extend(section("sensitive", [oracle.sensitivity_text(t) for t in s["sensitivity"]], "terms"))
     return out
+
+
+def unit_source(from_ninja, name):
+    """NAME itself if it is a file (next to FROM_NINJA's build.ninja), else the source of the objdiff.json unit named
+    NAME, or ending with /NAME (IngSpaceJumpGuardian/MetroidPrime/Enemies/CIngSpaceJumpGuardian, or
+    Enemies/CIngSpaceJumpGuardian)."""
+    root = Path(from_ninja).resolve().parent if from_ninja else Path.cwd()
+    if (root / name).is_file() or not (root / "objdiff.json").is_file():
+        return name
+    units = json.loads((root / "objdiff.json").read_text())["units"]
+    found = [u for u in units if u["name"] == name] or [u for u in units if u["name"].endswith("/" + name)]
+    sources = sorted({u.get("metadata", {}).get("source_path") for u in found} - {None})
+    if len(sources) != 1:
+        raise oracle.OracleError(f"{name}: not a file, and objdiff.json has "
+                                 + (f"{len(sources)} units with sources by that name: {', '.join(sources[:5])}"
+                                    if sources else "no unit with a source by that name"))
+    return sources[0]
 
 
 def target_directory(from_ninja):
@@ -177,6 +200,43 @@ def prediction(link, functions, emitted):
     return state + "; MISPREDICTED: not emitted here", True
 
 
+def verdict(decisions, emitted_here):
+    """Which hypothesis explains that the target emits a callee this TU does not (EMITTED_HERE false: every call of it
+    inlined here, the target keeps one), or the reverse, from this TU's DECISIONS about it."""
+    if not decisions:
+        return None
+    inlined = [d for d in decisions if d["outcome"] == "inlined"]
+    no_body = [d for d in decisions if "no body" in d.get("reason", "")]
+    limit = [d for d in decisions if d["outcome"] == "limit" or d.get("limit_paths")]
+    costed = [d for d in decisions if "cost" in d]
+    margin = min((d["threshold"] - d.get("full_cost", d["cost"]) for d in costed), default=None)
+    rounds = lambda ds: sorted({r for d in ds for r in d.get("depths", [d.get("depth", 0)])})  # noqa: E731
+    deepest = max(rounds(decisions))
+    if not emitted_here:
+        if len(inlined) < len(decisions):
+            return None
+        out = [f"the target keeps a call this TU inlines every time ({sum(d.get('count', 1) for d in inlined)}x, "
+               f"rounds {', '.join(map(str, rounds(inlined)))}, with its body)"]
+        out.append("depth would not explain it (round 0, no call at the depth limit)" if deepest == 0 and not limit
+                   else f"depth could: inlined at round {deepest}" + (", calls at the depth limit" if limit else ""))
+        if margin is not None:
+            out.append(f"cost would need +{margin + 1} to keep it" + (" (close: look at the sensitive terms)"
+                                                                      if margin <= 4 else ""))
+        out.append("most likely the callee is not inline as written there (not declared inline, defined out of "
+                   "line), or had no body yet at that point of the original" if deepest == 0 and not limit
+                   and (margin is None or margin > 4) else "")
+        return "; ".join(o for o in out if o)
+    if no_body:
+        return (f"kept here {sum(d.get('count', 1) for d in no_body)}x for want of a body (declared later or never defined here): the original "
+                "had its body by then, or the target's copy is from elsewhere")
+    if limit:
+        return "kept here by the inline depth limit: the original's nesting is shallower, or its bodies smaller"
+    if margin is not None and margin < 0:
+        return (f"kept here by cost (over by {-margin}): the original's body, or its calls' bodies, cost less"
+                + (" (close: look at the sensitive terms)" if -margin <= 4 else ""))
+    return None
+
+
 def emission_report(name, document, functions, emitted, callee=None):
     """The functions emitted here and not in the target, and the inline ones (weak or local) the target emits and
     this TU does not."""
@@ -192,14 +252,19 @@ def emission_report(name, document, functions, emitted, callee=None):
         out.append("   (the main program's linker strips the weak functions nothing references: those here only may "
                    "be that)")
     out.extend(f"   here only: {l}" + (f"\n      {emitted[l]}" if emitted[l] else "") for l in extra)
-    out.extend(f"   there only ({functions[l]}): {l}" for l in missing)
+    decisions = decisions_by_link(document)
+    for l in missing:
+        out.append(f"   there only ({functions[l]}): {l}")
+        why = verdict(decisions.get(l, []), False)
+        if why:
+            out.append(f"      verdict: {why}")
     return out
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("a")
-    parser.add_argument("b")
+    parser.add_argument("b", nargs="?")
     parser.add_argument("--from-ninja")
     parser.add_argument("--version")
     parser.add_argument("--override", action="append", default=[])
@@ -213,6 +278,8 @@ def main():
         flags = argv[argv.index("--") + 1:]
         argv = argv[:argv.index("--")]
     arguments = parser.parse_args(argv)
+    arguments.a = unit_source(arguments.from_ninja, arguments.a)
+    arguments.b = unit_source(arguments.from_ninja, arguments.b) if arguments.b else arguments.a
     documents = [oracle.analyze_source(source, flags, arguments.from_ninja, arguments.version, arguments.override,
                                        full_cost=True, instantiation=arguments.target is not None)
                  for source in (arguments.a, arguments.b)]
@@ -237,9 +304,13 @@ def main():
         differ = set(sa["outcomes"]) != set(sb["outcomes"])
         if not arguments.all and not (wrong_a or wrong_b if arguments.target is not None else differ):
             continue
-        for s, t, wrong in ((sa, ta, wrong_a), (sb, tb, wrong_b)):
+        for s, t, wrong, decisions, e in ((sa, ta, wrong_a, a[link], emitted[0]), (sb, tb, wrong_b, b[link], emitted[1])):
             if t:
                 s["target"], s["mispredicted"] = t, wrong
+            if wrong:
+                why = verdict(decisions, link in e)
+                if why:
+                    s["verdict"] = why
         rows.append({"link": link, "callee": a[link][0]["callee"], "a": sa, "b": sb})
     if arguments.json:
         out = {"schema_version": oracle.SCHEMA_VERSION, "a": documents[0]["source"], "b": documents[1]["source"],
