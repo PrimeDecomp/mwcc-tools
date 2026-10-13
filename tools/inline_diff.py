@@ -10,10 +10,11 @@ terms (calls costed as their body, or as a call for want of one, that would flip
   --override P=R     as tools/oracle.py's, for both; repeatable
   --callee TEXT      only the callees whose link name contains TEXT
   --all              every shared callee, not only those decided differently
-  --target [DIR]     check against the target: a callee is emitted out of line (`.fn LINK`) in a TU's target asm
-                     (DIR/**/asm/<source without src/>.s; by default the build/<id> directory --from-ninja's
-                     build.ninja names most) if and only if a call to it is kept there. Shows the callees mispredicted
-                     in A or B (with --all, every callee, with its target state)
+  --target [DIR]     check against the target: the functions each TU emits (and why an inline one is) against the
+                     `.fn LINK` lines of its target asm (DIR/**/asm/<source without src/>.s; by default the
+                     build/<id> directory --from-ninja's build.ninja names most). Shows the callees emitted in one
+                     and not the other (with --all, every callee, with its target state), then each TU's functions
+                     emitted differently (a weak function another TU of the module holds is not a difference)
   --json             the comparison as JSON"""
 import argparse
 import json
@@ -106,29 +107,86 @@ def target_functions(directory, source):
     found = sorted(Path(directory).glob(f"asm/{relative}")) + sorted(Path(directory).glob(f"*/asm/{relative}"))
     if not found:
         return None
+    out = asm_functions(found[0])
+    # (the linker keeps one copy of a weak function per module, in one TU: the module's other TUs say where)
+    module = Path(str(found[0])[:str(found[0]).replace("\\", "/").rindex("/asm/") + 4])
+    out[MODULE] = module_functions(module, found[0])
+    # (the main program's linker strips the weak functions nothing references; a module's keeps them)
+    out[STRIPPED] = module == Path(directory) / "asm"
+    return out
+
+
+MODULE = " module"
+STRIPPED = " stripped"
+
+
+def asm_functions(path):
     out = {}
-    for line in found[0].read_text(errors="replace").splitlines():
+    for line in path.read_text(errors="replace").splitlines():
         m = re.match(r'\s*\.fn\s+("[^"]*"|\S+),\s*(\w+)', line)
         if m:
             out[m.group(1).strip('"')] = m.group(2)
     return out
 
 
-def prediction(s, functions):
-    """(the target state, mispredicted) of one TU's decisions about a callee against its target functions. Only an
-    inline function is predicted (a function that is not is emitted, global, where it is defined, whatever is
-    inlined)."""
+def module_functions(root, own, cache={}):
+    """{link name: the asm file (under ROOT, the module's asm directory) of another TU that has it}."""
+    if root not in cache:
+        index = {}
+        for path in sorted(root.rglob("*.s")):
+            for link in asm_functions(path):
+                index.setdefault(link, path)
+        cache[root] = index
+    return {link: path for link, path in cache[root].items() if path != own}
+
+
+def emission(document):
+    """({link name: why} of the functions this TU emits (every function compiled; why: what referenced an inline one,
+    from the instantiation trace, else ""), in the order compiled."""
+    why = {}
+    for e in document.get("instantiation", []):
+        if e["event"] == "emit" and e["link"] not in why:
+            why[e["link"]] = e.get("why", "referenced") + (f" (in {e['from']})" if e.get("from") else "")
+    return {f["link"]: why.get(f["link"], "") for f in document["functions"]}
+
+
+def prediction(link, functions, emitted):
+    """(the target state, mispredicted) of a callee: whether this TU emits it (EMITTED, from emission) as the target
+    does (FUNCTIONS, from target_functions)."""
     if functions is None:
         return None, False
-    binding = functions.get(s["link"])
-    if binding == "global" or s["reasons"] and all(r.startswith("not declared inline") for r in s["reasons"]):
-        return (f"target: out of line ({binding})" if binding else "target: not emitted (not inline)"), False
-    kept = any(k != "inlined" for k in s["outcomes"])
+    binding = functions.get(link)
     state = f"target: out of line ({binding})" if binding else "target: not emitted"
-    if kept != bool(binding):
-        return state + ("; MISPREDICTED (kept here, inlined there)" if kept else
-                        "; MISPREDICTED (inlined here, emitted there)"), True
-    return state, False
+    if (link in emitted) == bool(binding):
+        return state + ("; emitted here too" if binding else ""), False
+    if link in emitted:
+        elsewhere = functions[MODULE].get(link)
+        if elsewhere is not None:
+            return state + f" (the module keeps its one copy in {elsewhere.name}); emitted here too", False
+        if functions[STRIPPED]:
+            return state + " (the main program strips unreferenced weak functions); emitted here", False
+        return (state + " (nor anywhere in the module); MISPREDICTED: emitted here"
+                + (f", {emitted[link]}" if emitted[link] else "")), True
+    return state + "; MISPREDICTED: not emitted here", True
+
+
+def emission_report(name, document, functions, emitted, callee=None):
+    """The functions emitted here and not in the target, and the inline ones (weak or local) the target emits and
+    this TU does not."""
+    module = functions[MODULE]
+    extra = [l for l in emitted if l not in functions and l not in module and (not callee or callee in l)]
+    elsewhere = [l for l in emitted if l not in functions and l in module and (not callee or callee in l)]
+    missing = [l for l, b in functions.items()
+               if l not in (MODULE, STRIPPED) and b != "global" and l not in emitted and (not callee or callee in l)]
+    out = [f"== {name}: {document['source']}: emitted differently from the target: {len(extra)} here only (nowhere "
+           f"in the module), {len(missing)} there only; {len(elsewhere)} here whose copy the module keeps in another "
+           "TU"]
+    if functions[STRIPPED] and extra:
+        out.append("   (the main program's linker strips the weak functions nothing references: those here only may "
+                   "be that)")
+    out.extend(f"   here only: {l}" + (f"\n      {emitted[l]}" if emitted[l] else "") for l in extra)
+    out.extend(f"   there only ({functions[l]}): {l}" for l in missing)
+    return out
 
 
 def main():
@@ -149,7 +207,7 @@ def main():
         argv = argv[:argv.index("--")]
     arguments = parser.parse_args(argv)
     documents = [oracle.analyze_source(source, flags, arguments.from_ninja, arguments.version, arguments.override,
-                                       full_cost=True)
+                                       full_cost=True, instantiation=arguments.target is not None)
                  for source in (arguments.a, arguments.b)]
     targets = [None, None]
     if arguments.target is not None:
@@ -160,25 +218,30 @@ def main():
         for d, t in zip(documents, targets):
             if t is None:
                 print(f"WARNING: no target asm for {d['source']} under {directory}", file=sys.stderr)
+    emitted = [emission(d) for d in documents]
     a, b = (decisions_by_link(d) for d in documents)
     rows = []
     for link in sorted(set(a) & set(b)):
         if arguments.callee and arguments.callee not in link:
             continue
         sa, sb = summary(a[link]), summary(b[link])
-        sa["link"] = sb["link"] = link
-        (ta, wrong_a), (tb, wrong_b) = prediction(sa, targets[0]), prediction(sb, targets[1])
+        (ta, wrong_a), (tb, wrong_b) = (prediction(link, targets[0], emitted[0]),
+                                        prediction(link, targets[1], emitted[1]))
         differ = set(sa["outcomes"]) != set(sb["outcomes"])
         if not arguments.all and not (wrong_a or wrong_b if arguments.target is not None else differ):
             continue
         for s, t, wrong in ((sa, ta, wrong_a), (sb, tb, wrong_b)):
-            del s["link"]
             if t:
                 s["target"], s["mispredicted"] = t, wrong
         rows.append({"link": link, "callee": a[link][0]["callee"], "a": sa, "b": sb})
     if arguments.json:
-        print(json.dumps({"schema_version": oracle.SCHEMA_VERSION, "a": documents[0]["source"],
-                          "b": documents[1]["source"], "callees": rows}, indent=1, default=list))
+        out = {"schema_version": oracle.SCHEMA_VERSION, "a": documents[0]["source"], "b": documents[1]["source"],
+               "callees": rows}
+        if arguments.target is not None:
+            out["emitted"] = {"a": emitted[0], "b": emitted[1]}
+            out["target"] = {k: t and {l: b for l, b in t.items() if l not in (MODULE, STRIPPED)}
+                             for k, t in zip("ab", targets)}
+        print(json.dumps(out, indent=1, default=list))
         return
     which = ("all" if arguments.all else "mispredicted against the target" if arguments.target is not None
              else "decided differently")
@@ -188,6 +251,9 @@ def main():
         print(f"== {row['callee']}  [{row['link']}]")
         print("\n".join(report("A", row["a"], row["a"].get("target"))))
         print("\n".join(report("B", row["b"], row["b"].get("target"))))
+    for name, document, functions, e in zip("AB", documents, targets, emitted):
+        if functions is not None:
+            print("\n".join(emission_report(name, document, functions, e, arguments.callee)))
 
 
 if __name__ == "__main__":

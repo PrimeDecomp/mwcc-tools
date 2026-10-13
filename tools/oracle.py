@@ -30,6 +30,8 @@ Options (anywhere before `--`; the compiler's flags after `--`, or after SOURCE)
   --full-cost       estimate the whole cost of the inline decisions over the threshold too (the compiler stops there),
                     with the calls at the inline depth limit and the sensitive terms (calls whose body being there
                     or not would flip the decision, or move it by 2 or less)
+  --instantiation T when the bodies of the functions whose link name contains T were queued, parsed and generated
+                    (and by which function), with the inliner's decisions about them, in order
   --exchange A,B    why virtual registers A and B were coloured in that order (r41,r42)
   --override P=R    compile with file R in place of P (a header or SOURCE), the checkout untouched; repeatable
   --json            print the report as JSON
@@ -37,6 +39,7 @@ Options (anywhere before `--`; the compiler's flags after `--`, or after SOURCE)
 
 docs/oracle.md has the details, and the Python entry points (analyze_source, analyze_file)."""
 import argparse
+import bisect
 import os
 import re
 import shlex
@@ -1257,7 +1260,7 @@ def explain_exchange(analysis, first, second):
     return out
 
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 
 def analyze_file(trace, function=None, link=None, version="GC_1_3_2"):
@@ -1392,7 +1395,7 @@ def ninja_rule(path, source):
 
 OPTIONS = {"--version": True, "--function": True, "--from-ninja": True, "--raw": False, "--pcode": False,
            "--no-check": False, "--json": False, "--schedule": False, "--inline-cost": True, "--exchange": True,
-           "--override": True, "--near": True, "--full-cost": False, "--help": False, "-h": False}
+           "--override": True, "--near": True, "--full-cost": False, "--instantiation": True, "--help": False, "-h": False}
 
 
 def split_arguments(argv):
@@ -1517,8 +1520,115 @@ class OracleError(SystemExit):
     command line prints it and exits; a script can catch it."""
 
 
+QUEUE_KINDS = {0: "an inline definition", 1: "a template class member", 2: "a template function instance",
+               3: "a compiler-made method"}
+
+
+EMIT_REASONS = {
+    "fn_005114e0": "a call or address of it left in the code after inlining",
+    "CExcept_CheckStackRefs": "the destructor of an object live in a statement (its exception actions), even when "
+                              "every call of it was inlined",
+    "emit_object": "referenced by data emitted (a vtable, an initializer)",
+}
+
+
+def function_at(version, address, cache={}):
+    """The name of the function of VERSION's executable (config/VERSION/symbols.txt) that holds ADDRESS, or None."""
+    if version not in cache:
+        functions = []
+        path = ROOT / f"config/{version}/symbols.txt"
+        for line in path.read_text().splitlines() if path.exists() else []:
+            m = re.match(r"_?(\S+) = \.text:0x([0-9A-Fa-f]+); // type:function size:0x([0-9A-Fa-f]+)", line)
+            if m:
+                functions.append((int(m.group(2), 16), int(m.group(3), 16), m.group(1)))
+        cache[version] = sorted(functions)
+    functions = cache[version]
+    i = bisect.bisect_right(functions, (address, 1 << 32, "")) - 1
+    if i >= 0 and address < functions[i][0] + functions[i][1]:
+        return functions[i][2]
+    return None
+
+
+def instantiation_events(lines, version=None):
+    """When each function's body came to be, in the order of the trace (with MWCC_ORACLE_INSTANTIATION=1), and the
+    inliner's decisions and the functions compiled among them: dicts with `kind` "instantiation", `event` (queue,
+    need, parse, func, gen, decision or compiled), `link`, `position` (the trace line) and, as the event has them,
+    `queue_kind`, `new`, `from`, `expanding`, `body`, `result`, `inline`, `depth`, `chain`, `in` (a decision's
+    function: the next one compiled) and, for emit (an inline function queued for code generation because it was
+    referenced), `caller` (the compiler function that referenced it, from VERSION's symbols) and `why`."""
+    events = []
+    for position, line in enumerate(lines):
+        if line.startswith("tp.") and not line.startswith("tp.parse.begin"):
+            f = dict(re.findall(r"(\w+)=(\S+)", line))
+            e = {"kind": "instantiation", "event": line.split()[0][3:], "link": f.get("link", "?"),
+                 "position": position}
+            for field in ("from", "expanding"):
+                if f.get(field, "-") != "-":
+                    e[field] = f[field]
+            if e["event"] in ("queue", "parse"):
+                e["queue_kind"] = int(f.get("kind", 0))
+            for field in ("new", "body", "result"):
+                if field in f:
+                    e[field] = f[field] == "1"
+            if "caller" in f and version:
+                caller = function_at(version, int(f["caller"], 16))
+                e["caller"] = caller or f"0x{f['caller']}"
+                e["why"] = EMIT_REASONS.get(caller, f"referenced by {e['caller']}")
+            events.append(e)
+        elif line.startswith("inl.can "):
+            f = dict(re.findall(r"(\w+)=(\S+)", line))
+            events.append({"kind": "instantiation", "event": "decision", "link": f.get("link", "?"),
+                           "position": position, "inline": f.get("result") == "1", "body": f.get("body") == "1",
+                           "depth": int(f.get("depth", 0)), "chain": f["chain"].split("|") if f.get("chain") else []})
+        else:
+            m = re.match(r"ra\.before function=(\S*)(?: link=(.*))?$", line)
+            if m:
+                link = m.group(2) or m.group(1)
+                for e in reversed(events):
+                    if e["event"] == "compiled":
+                        break
+                    if e["event"] == "decision":
+                        e["in"] = link
+                events.append({"kind": "instantiation", "event": "compiled", "link": link, "position": position})
+    return events
+
+
+def instantiation_report(events, text):
+    """The events of instantiation_events about the functions whose link name contains TEXT (and the decisions about
+    calls of them), in order."""
+    out = [f"== when the bodies of {text} came to be, and the decisions about calling them (trace line, event) =="]
+    for e in events:
+        if text not in e["link"]:
+            continue
+        where = "".join(f" {k}={e[k]}" for k in ("from", "expanding") if k in e)
+        if e["event"] == "queue":
+            what = (f"queued for parsing: {QUEUE_KINDS.get(e['queue_kind'], e['queue_kind'])}"
+                    + ("" if e.get("new", True) else " (already queued)"))
+        elif e["event"] == "need":
+            what = "the inliner asked for its body" + (" (queued)" if e.get("result") else " (nothing to do)")
+        elif e["event"] == "parse":
+            what = (f"parsed ({QUEUE_KINDS.get(e['queue_kind'], e['queue_kind'])}): "
+                    + ("its body is there for the inliner" if e.get("body") else "no inline body"))
+        elif e["event"] == "func":
+            what = "template function instance compiled"
+        elif e["event"] == "gen":
+            what = "code generated from its saved body"
+        elif e["event"] == "emit":
+            what = f"to be emitted: {e.get('why', 'referenced')}"
+        elif e["event"] == "compiled":
+            what = "compiled (allocated)"
+        else:
+            what = (f"call {'INLINED' if e['inline'] else 'kept'} in {e.get('in', '(after the last function)')}, "
+                    f"round {e['depth']}" + ("" if e["body"] else ", NO BODY yet")
+                    + (f", inside {' > '.join(e['chain'])}" if e["chain"] else ""))
+        out.append(f"   {e['position']:>7}  {what}{where}  [{e['link']}]")
+    if len(out) == 1:
+        out.append("   nothing")
+    return out
+
+
 def compile_trace(source, flags=(), from_ninja=None, version=None, overrides=(), schedule=False, inline_cost=False,
-                  check=True, full_cost=False):
+                  check=True, full_cost=False, instantiation=False):
     """Compile SOURCE with the oracle and return its trace: a dict with `lines`, `version`, `oracle`, `source` (as the
     rule spells it), `identical` (None when not checked, or the original compiler is not there) and `differences`.
     FROM_NINJA takes the flags, the working directory and the version from a project's build.ninja (FLAGS are then
@@ -1564,6 +1674,8 @@ def compile_trace(source, flags=(), from_ninja=None, version=None, overrides=(),
             env["MWCC_ORACLE_INLINE_COST"] = "1"
         if full_cost:
             env["MWCC_ORACLE_FULL_COST"] = "1"
+        if instantiation:
+            env["MWCC_ORACLE_INSTANTIATION"] = "1"
         run = subprocess.run([*launcher(oracle), *flags, "-c", compiled, "-o", str(obj)], cwd=workdir, env=env,
                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
         if run.returncode:
@@ -1582,11 +1694,13 @@ def compile_trace(source, flags=(), from_ninja=None, version=None, overrides=(),
 
 
 def analyze_source(source, flags=(), from_ninja=None, version=None, overrides=(), function=None, link=None,
-                   schedule=False, inline_cost=False, check=False, near=None, full_cost=False):
+                   schedule=False, inline_cost=False, check=False, near=None, full_cost=False, instantiation=False):
     """Compile SOURCE (as compile_trace does) and analyse it: the document --json prints, with `schema_version`,
     `identical`, `functions` (as analyze_file gives them), `inlining_after_last_function`, `similar` (when FUNCTION
-    matches nothing) and, with NEAR, `near` (near_threshold's decisions)."""
-    compiled = compile_trace(source, flags, from_ninja, version, overrides, schedule, inline_cost, check, full_cost)
+    matches nothing), with NEAR, `near` (near_threshold's decisions) and, with INSTANTIATION, `instantiation`
+    (instantiation_events)."""
+    compiled = compile_trace(source, flags, from_ninja, version, overrides, schedule, inline_cost, check, full_cost,
+                             instantiation)
     return document_for(compiled, function, link, near)[0]
 
 
@@ -1606,6 +1720,8 @@ def document_for(compiled, function=None, link=None, near=None):
         document["similar"] = [{"function": n, "link": l} for n, l in similar_functions(allocations, function)]
     if near is not None:
         document["near"] = near_threshold(analyses, after, near)
+    if any(line.startswith("tp.") for line in lines):
+        document["instantiation"] = instantiation_events(lines, compiled["version"])
     return document, allocations, inliner
 
 
@@ -1625,6 +1741,7 @@ def main():
     parser.add_argument("--override", action="append", default=[])
     parser.add_argument("--near")
     parser.add_argument("--full-cost", action="store_true")
+    parser.add_argument("--instantiation")
     arguments = parser.parse_args(options)
     if len(positional) != 1:
         parser.error("one SOURCE is needed")
@@ -1634,7 +1751,7 @@ def main():
         near = int(arguments.near)
     compiled = compile_trace(arguments.source, extra, arguments.from_ninja, arguments.version, arguments.override,
                              arguments.schedule, bool(arguments.inline_cost) or near is not None,
-                             not arguments.no_check, arguments.full_cost)
+                             not arguments.no_check, arguments.full_cost, bool(arguments.instantiation))
     if compiled["warning"]:
         print(compiled["warning"], file=sys.stderr)
     arguments.version = compiled["version"]
@@ -1661,6 +1778,9 @@ def main():
     types = enode_names()
     if near is not None:
         print("\n".join(near_report(document["near"], near)))
+        return
+    if arguments.instantiation:
+        print("\n".join(instantiation_report(document.get("instantiation", []), arguments.instantiation)))
         return
 
     def about(d):

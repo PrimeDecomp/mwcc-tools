@@ -42,7 +42,14 @@
       "_select_ready_coloring_node",
       "_fn_0055e600",
       "_inline_statement",
-      "_generate_inline_statements"
+      "_generate_inline_statements",
+      "_fn_0055c730",
+      "_CInline_AddFunctionPrecNode",
+      "_CInline_AddSpecialization",
+      "_CTemplateNew_InstantiateInlineTemplateObject",
+      "_CTemplateNew_InstantiateFunction",
+      "_generate_inline_code",
+      "_fn_0050f240"
     ],
     "units": []
   }

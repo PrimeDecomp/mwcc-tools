@@ -14,6 +14,9 @@
 #include "compiler/CInline.h"
 #include "compiler/CFunc.h"
 #include "compiler/CMangler.h"
+#include "compiler/CPrec.h"
+#include "compiler/CTemplateNew.h"
+#include "compiler/templates.h"
 #include "compiler/CPrep.h"
 #include "compiler/CodeGen.h"
 #include "compiler/enode.h"
@@ -931,6 +934,150 @@ ENode *INLINE_CALL(ENode *expr)
     if (result != expr && function != NULL)
         origin_walk(result, parent, link_name(function), 0);
     return result;
+}
+#endif
+
+#if VERSION >= VERSION_GC_1_3
+/* With MWCC_ORACLE_INSTANTIATION=1, when each function's body comes to be (tp.*): from= is the function being parsed
+ * then (cscope_currentfunc), expanding= the one whose calls are being inlined (data_005dfb62), - for none.
+ *   tp.queue kind= link= new=   an inline definition (kind 0: a class's member, a template class's included) or a
+ *                               template function instance (kind 2) put on the queue of bodies to parse
+ *   tp.need link= result=       the inliner asks for a template class member's body (result=1: queued)
+ *   tp.parse kind= link= body=  a queued definition parsed (kind 3: a compiler-made method, 1: a template member);
+ *                               body=1 when the inliner has its body after
+ *   tp.func link=               a template function instance compiled
+ *   tp.gen link=                a function's code generated from its saved body (inlining deferred) */
+#if VERSION >= VERSION_GC_2_7
+#define DISPATCH fn_0055c730
+#define DISPATCH_RETAIL fn_0055c730__retail
+#elif VERSION >= VERSION_GC_1_3_2
+#define DISPATCH fn_0055a7f0
+#define DISPATCH_RETAIL fn_0055a7f0__retail
+#else
+#define DISPATCH CInline_DispatchNextDeferredNode
+#define DISPATCH_RETAIL CInline_DispatchNextDeferredNode__retail
+#endif
+
+extern CPrecNode *pending_prec_nodes;
+extern InlineNode *deferredInlineNodes;
+extern Boolean DISPATCH_RETAIL(void);
+extern void CInline_AddFunctionPrecNode__retail(Object *func, TypeClass *value, FileOffsetInfo *key, TokenStream *pair,
+                                                Boolean flag);
+extern void CInline_AddSpecialization__retail(Object *func, void *definition, void *specialization);
+extern Boolean CTemplateNew_InstantiateInlineTemplateObject__retail(Object *obj);
+extern Boolean CTemplateNew_InstantiateFunction__retail(TemplateFunction *definition, TemplFuncInstance *specialization,
+                                                        Boolean report);
+extern void generate_inline_code__retail(Object *object, CInlineInfo *input, char mode);
+
+static const char *maybe_link(Object *object)
+{
+    return object != NULL ? link_name(object) : "-";
+}
+
+static void tp_context(void)
+{
+    OracleTrace_Printf("from=%s ", maybe_link(cscope_currentfunc));
+    OracleTrace_Printf("expanding=%s ", maybe_link(data_005dfb62));
+}
+
+static int has_body(Object *object)
+{
+    return object != NULL && (unsigned long)object->u.func.u >= 0x10000;
+}
+
+void CInline_AddFunctionPrecNode(Object *func, TypeClass *value, FileOffsetInfo *key, TokenStream *pair, Boolean flag)
+{
+    CPrecNode *before = flag ? pendingInlineWork : pending_prec_nodes;
+
+    CInline_AddFunctionPrecNode__retail(func, value, key, pair, flag);
+    if (!wanted("MWCC_ORACLE_INSTANTIATION"))
+        return;
+    OracleTrace_Printf("tp.queue kind=0 pending=%d new=%d ", (int)flag,
+                       (flag ? pendingInlineWork : pending_prec_nodes) != before);
+    tp_context();
+    OracleTrace_Printf("link=%s\n", link_name(func));
+}
+
+void CInline_AddSpecialization(Object *func, void *definition, void *specialization)
+{
+    CPrecNode *before = pendingInlineWork;
+
+    CInline_AddSpecialization__retail(func, definition, specialization);
+    if (!wanted("MWCC_ORACLE_INSTANTIATION"))
+        return;
+    OracleTrace_Printf("tp.queue kind=2 pending=1 new=%d ", pendingInlineWork != before);
+    tp_context();
+    OracleTrace_Printf("link=%s\n", link_name(func));
+}
+
+Boolean CTemplateNew_InstantiateInlineTemplateObject(Object *obj)
+{
+    Boolean result = CTemplateNew_InstantiateInlineTemplateObject__retail(obj);
+
+    if (wanted("MWCC_ORACLE_INSTANTIATION")) {
+        OracleTrace_Printf("tp.need result=%d ", (int)result);
+        tp_context();
+        OracleTrace_Printf("link=%s\n", link_name(obj));
+    }
+    return result;
+}
+
+Boolean CTemplateNew_InstantiateFunction(TemplateFunction *definition, TemplFuncInstance *specialization, Boolean report)
+{
+    Boolean result;
+
+    if (wanted("MWCC_ORACLE_INSTANTIATION")) {
+        OracleTrace_Printf("tp.func ");
+        tp_context();
+        OracleTrace_Printf("link=%s\n", maybe_link(specialization != NULL ? specialization->object : NULL));
+    }
+    result = CTemplateNew_InstantiateFunction__retail(definition, specialization, report);
+    return result;
+}
+
+Boolean DISPATCH(void)
+{
+    CPrecNode *work = pending_prec_nodes;
+    Boolean result;
+
+    if (!wanted("MWCC_ORACLE_INSTANTIATION"))
+        return DISPATCH_RETAIL();
+    if (work != NULL && !anyerrors)
+        OracleTrace_Printf("tp.parse.begin kind=%d link=%s\n", (int)work->kind, maybe_link(work->obj));
+    result = DISPATCH_RETAIL();
+    if (work != NULL && result && pending_prec_nodes != work)
+        OracleTrace_Printf("tp.parse kind=%d body=%d link=%s\n", (int)work->kind, has_body(work->obj),
+                           maybe_link(work->obj));
+    return result;
+}
+
+/* tp.emit: fn_0050f240 marks a function referenced; an inline one with a body not generated yet is then queued for
+ * code generation (emitted), whatever becomes of the references. caller= is the return address (the compiler
+ * function that referenced it: an exception action, a vtable, an initializer, the calls left in a function...). */
+extern void fn_0050f240__retail(Object *object);
+
+void fn_0050f240(Object *object)
+{
+    unsigned long caller;
+    InlineNode *before = deferredInlineNodes;
+
+    asm {
+        mov eax, [ebp + 4]
+        mov caller, eax
+    }
+    fn_0050f240__retail(object);
+    if (wanted("MWCC_ORACLE_INSTANTIATION") && deferredInlineNodes != before) {
+        OracleTrace_Printf("tp.emit caller=%lx ", caller);
+        tp_context();
+        OracleTrace_Printf("link=%s\n", maybe_link(object));
+    }
+}
+
+void generate_inline_code(Object *object, CInlineInfo *input, char mode)
+{
+    if (wanted("MWCC_ORACLE_INSTANTIATION"))
+        OracleTrace_Printf("tp.gen link=%s\n", maybe_link(object));
+    generate_inline_code__retail(object, input, mode);
 }
 #endif
 

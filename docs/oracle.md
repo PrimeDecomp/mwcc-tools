@@ -114,6 +114,18 @@ The inliner goes over a function once per inline depth (the `depth` of a decisio
 `-inline` depth limit, 8 by default), and a call kept is decided again in every round, with less depth left for its
 estimate each time. A call met in a later round is one of a body inlined in an earlier one: a decision's `chain` is
 those bodies, outermost first, by link name (shown as `inside:` with `--inline-cost` and `--near`).
+* `--instantiation TEXT`: when the bodies of the functions whose link name contains TEXT came to be, in order:
+  queued for parsing (an inline definition, a template class member, a template function instance or a
+  compiler-made method, with `from=`, the function being parsed then, and `expanding=`, the one being inlined into),
+  asked for by the inliner, parsed (and whether the inliner has its body after), compiled as a template function
+  instance, marked to be emitted and why, code generated from its saved body, compiled; and the inliner's
+  decisions about calling them among those (in which function, the round, `NO BODY yet`). A function is emitted when
+  something references it (`fn_0050f240`): a call or address left in the code after inlining, the destructor of an
+  object live in a statement (its exception actions: emitted even when every call of it was inlined, and with no
+  reference left in the object), or data emitted (a vtable, an initializer). `--json`: `instantiation[]`, each with
+  `event` (queue, need, parse, func, emit, gen, decision, compiled), `link`, `position` (the trace line) and as it
+  has them `queue_kind`, `new`, `from`, `expanding`, `body`, `result`, `caller`, `why`, `inline`, `depth`, `chain`
+  and `in`.
 * `--exchange A,B` (`--exchange r41,r42`): why two virtual registers of a class were coloured in that order and got
   the registers they did: when the simplification pushed each and the neighbour whose removal let it, degrees,
   spill costs, neighbours, and what select found free for each.
@@ -126,7 +138,8 @@ The first line says whether the object equals the original compiler's; when it s
 functions that differ are listed, and the explanation is of a different object and should not be trusted.
 
 From Python, `tools/oracle.py` can be imported. `analyze_source(source, flags=(), from_ninja=None, version=None,
-overrides=(), function=None, link=None, schedule=False, inline_cost=False, check=False, near=None, full_cost=False)`
+overrides=(), function=None, link=None, schedule=False, inline_cost=False, check=False, near=None, full_cost=False,
+instantiation=False)`
 compiles and
 returns the document `--json` prints (`overrides` as `--override` takes them, `near` as `--near`); it raises
 `OracleError` when it cannot compile. `compile_trace(...)` (the same arguments) only compiles and returns the trace.
@@ -155,7 +168,11 @@ limit), and the `inl.expr` lines are those of the whole estimate; a call's `inl.
 the depth limit, and `cand=` and `body=` (an inline candidate; its body is there). Only a body's statements have
 `inl.expr` lines (the compiler costs their operands without the hook); each has `calls=`, the calls of inline
 functions in it in the order they are costed, separated by `|`, `!` before one at the depth limit and `?` before one
-with no body yet: the others' bodies are the `inl.cost` lines one `nest` deeper before it, in that order. The link
+with no body yet: the others' bodies are the `inl.cost` lines one `nest` deeper before it, in that order. With
+`MWCC_ORACLE_INSTANTIATION=1`: `tp.queue kind= pending= new= from= expanding= link=`, `tp.need result= ...`,
+`tp.parse.begin` and `tp.parse kind= body= link=` (around the parsing of a queued definition), `tp.func`,
+`tp.emit caller=` (the return address in the compiler: `function_at(version, address)` names it) and
+`tp.gen link=`. The link
 names are the mangled ones (the compiler computes them when it has not yet). The file is appended to, so delete it
 between runs.
 
@@ -172,7 +189,7 @@ size of `.bss`), the messages and the exit code; prints `DIFF name: ...` per dif
 a decomp project whose `build.ninja` rules that use this version's compiler are compiled with their own flags.
 `--limit`, `--list FILE` and `--keep DIR` narrow the input or keep the objects of the inputs that differ. The exit
 status is 0 when nothing differs. Last result: 2313/2313 canaries on all three versions; Prime 604/604 (1.3.2) and 64/64
-(1.3); Metroid Prime 2: Echoes 729/729 (2.7).
+(1.3); Metroid Prime 2: Echoes 729/729 (2.7) and 31/31 (1.3.2); the same with every trace on.
 
 ## Other tools
 
@@ -180,12 +197,14 @@ status is 0 when nothing differs. Last result: 2313/2313 canaries on all three v
   with `--full-cost`, and each callee (by link name) both decide on differently is given side by side: the
   outcomes, the estimate and the whole cost, the rounds, the functions, the chains, the calls at the depth limit
   (`[limit +1]`), the sensitive terms and the reasons (`--all` for every shared callee, `--callee TEXT`, `--json`).
-  Chains and paths are printed as trees. `--target [DIR]` checks each TU against the target: an inline function is
-  emitted out of line (`.fn LINK` in DIR/**/asm/<source without src/>.s; by default the `build/<id>` directory the
-  build.ninja names most) if and only if a call to it is kept, so the callees mispredicted in A or B are listed. One
-  that is inlined everywhere can still be emitted (its address taken, a vtable), and a callee kept in the target has
-  an out-of-line body whose own calls are decided there, so one misprediction brings others: look at the outermost
-  first.
+  Chains and paths are printed as trees. `--target [DIR]` checks each TU against the target: the functions it emits
+  (every function compiled, with why an inline one is emitted, from `--instantiation`) against the `.fn LINK` lines
+  of its target asm (DIR/**/asm/<source without src/>.s; by default the `build/<id>` directory the build.ninja names
+  most). The callees emitted in one and not the other are listed, and for each TU the functions emitted differently.
+  The linker keeps one copy of a weak function per module, in one TU, so one emitted here that another TU of the
+  module holds is not a difference; the main program's linker also strips the weak functions nothing references, so
+  one emitted here only in a main-program TU may be that. A callee kept in the target has an out-of-line body whose
+  own calls are decided there, so one misprediction brings others: look at the outermost first.
 * `tools/locate.py VERSION SOURCE...`: where a compiled source's functions are in the executable.
 * `tools/nearest.py VERSION SOURCE...`: the functions of the executable a not-yet-exact function resembles most.
 * `tools/fdiff.py VERSION SOURCE FUNCTION ADDRESS`: instruction diff of a compiled function against the original's.
