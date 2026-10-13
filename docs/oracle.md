@@ -179,6 +179,12 @@ those bodies, outermost first, by link name (shown as `inside:` with `--inline-c
   paired are merged into runs, with their loads and stores (`addi`: the address passed on). Our in-memory objects with
   no access of the target's paired are listed too. For example, PreRender's `r1+0x4c..0x57 (12 bytes): stw x8, stb
   x8, sth x4, ...` is a CModelFlags the target keeps in memory, member by member, where ours splits it.
+  Within a run, identical copies of one value are named: stores of the same registers, unwritten in between, in the
+  same order at the same distances. Each group gives where the copies are, whether they were stored copy by copy or
+  interleaved, which copy was stored first and which members are read back. For example, CAuiBitmapMeter::Draw (Echoes)
+  has `3 identical copies of a 12-byte value (f4, f6, f5) at r1+0x5c, 0x68, 0x74, stored interleaved (first: 0x74)`,
+  of which only +0 of the copy at 0x74 is read back. The rest are dead stores of temporaries the target keeps and
+  ours splits.
 * `--exchange A,B` (`--exchange r41,r42`): why two virtual registers of a class were coloured in that order and got
   the registers they did: when the simplification pushed each and the neighbour whose removal let it, degrees,
   spill costs, neighbours, and what select found free for each.

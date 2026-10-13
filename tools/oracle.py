@@ -1021,6 +1021,88 @@ MNEMONICS = {32: "lwz", 33: "lwzu", 34: "lbz", 35: "lbzu", 36: "stw", 37: "stwu"
              57: "psq_lu", 60: "psq_st", 61: "psq_stu"}
 
 
+STORE_OPCODES = (36, 37, 38, 39, 44, 45, 52, 53, 54, 55, 60, 61)
+FLOAT_STORES = (52, 53, 54, 55, 60, 61)
+
+
+def register_writes(word):
+    """The registers WORD (an instruction) may write, as ("f" or "r", number) pairs, over-approximated for the
+    integer registers (rD and rA of anything that is not a store, a branch or a compare); a call clobbers the
+    volatile ones."""
+    opcode = word >> 26
+    d, a = (word >> 21) & 31, (word >> 16) & 31
+    if opcode == 18 and word & 1 or opcode == 19 and word & 1:
+        return [("f", n) for n in range(14)] + [("r", n) for n in range(13)]
+    if opcode in STORE_OPCODES or opcode in (16, 18, 19, 10, 11, 47):
+        return []
+    if opcode in (48, 49, 50, 51, 56, 57) or opcode in (59, 63) and not (opcode == 63 and (word >> 1) & 0x3ff in
+                                                                         (0, 32)) or opcode == 4:
+        return [("f", d)] + ([("r", a)] if opcode in (49, 51, 57) else [])
+    if opcode == 31 and (word >> 1) & 0x3ff in (0, 32):
+        return []
+    return [("r", d), ("r", a)]
+
+
+def run_copies(words, start, end):
+    """Identical copies of one value stored into the target's r1+START..END: stores of the same registers, holding
+    the same values (no write to them in between), in the same order at the same distances. A list of dicts with
+    `size`, `offsets` (where each copy starts), `registers` and `reloaded` ({copy offset: [(member offset,
+    mnemonic)]}, the loads from it), `order` ("copy by copy": each copy's stores together, or "interleaved") and
+    `first` (the copy stored first), the copies covering the most bytes first."""
+    version, stores, loads, at = {}, {}, {}, {}
+    for index, word in enumerate(words):
+        opcode, offset = word >> 26, r1_offset(word)
+        if offset is not None and start <= offset < end:
+            if opcode in STORE_OPCODES:
+                register = ("f" if opcode in FLOAT_STORES else "r", (word >> 21) & 31)
+                stores.setdefault(offset, []).append((register, version.get(register, 0),
+                                                      MEMORY_OPCODES[opcode]))
+                at.setdefault(offset, []).append(index)
+            elif opcode != 14:
+                loads.setdefault(offset, []).append(MNEMONICS[opcode])
+        for register in register_writes(word):
+            version[register] = version.get(register, 0) + 1
+    if not stores:
+        return []
+    best = []
+    for size in range(8, min(end - start, 64) + 1, 4):
+        blocks = {}
+        for base in sorted(stores):
+            members = [tuple(sorted(stores.get(o, ()))) for o in range(base, base + size, 4)]
+            if all(members) and len(members) > 1:
+                blocks.setdefault(tuple(members), []).append(base)
+        groups = []
+        for members, bases in blocks.items():
+            chosen = []
+            for base in bases:
+                if not chosen or base >= chosen[-1] + size:
+                    chosen.append(base)
+            if len(chosen) > 1:
+                groups.append((size, chosen, members))
+        taken, picked = set(), []
+        for group in sorted(groups, key=lambda g: -len(g[1])):
+            bytes_ = {b + i for b in group[1] for i in range(size)}
+            if not bytes_ & taken:
+                taken |= bytes_
+                picked.append(group)
+        if sum(len(g[1]) * g[0] for g in picked) > sum(len(g[1]) * g[0] for g in best):
+            best = picked
+    out = []
+    for size, bases, members in sorted(best, key=lambda g: (-len(g[1]) * g[0], g[1][0])):
+        reloaded = {}
+        for base in bases:
+            for o in range(base, base + size):
+                for mnemonic in loads.get(o, []):
+                    reloaded.setdefault(base, []).append((o - base, mnemonic))
+        order = sorted((i, base) for base in bases for o in range(base, base + size, 4) for i in at.get(o, []))
+        changes = sum(1 for (_, a), (_, b) in zip(order, order[1:]) if a != b)
+        out.append({"size": size, "offsets": bases, "reloaded": reloaded,
+                    "registers": [f"{m[0][0][0]}{m[0][0][1]}" for m in members],
+                    "order": "copy by copy" if changes == len(bases) - 1 else "interleaved",
+                    "first": order[0][1]})
+    return out
+
+
 def unpaired_objects(ours, theirs, frame, our_limit, their_limit):
     """The stack objects only one side keeps in memory, from the same pairing as slot_shifts: (target runs, our
     objects). A target run is a dict with `start`, `end` and `accesses` ({mnemonic: count}) for the r1 offsets none of
@@ -1069,6 +1151,8 @@ def unpaired_objects(ours, theirs, frame, our_limit, their_limit):
                 for _, mnemonic in ours_at[o]:
                     counts[mnemonic] = counts.get(mnemonic, 0) + 1
             mine.append(dict(e, accesses=counts))
+    for run in runs:
+        run["copies"] = run_copies(theirs, run["start"], run["end"])
     return runs, mine
 
 
@@ -1086,6 +1170,23 @@ def unpaired_report(runs, mine):
             note = " (its address passed on)" if "addi" in run["accesses"] else ""
             out.append(f"      r1+{run['start']:#x}..{run['end'] - 1:#x} ({run['end'] - run['start']} bytes): "
                        f"{shown(run['accesses'])}{note}")
+            for copies in run.get("copies", []):
+                offsets = ", ".join(f"{o:#x}" for o in copies["offsets"])
+                out.append(f"         {len(copies['offsets'])} identical copies of a {copies['size']}-byte value "
+                           f"({', '.join(copies['registers'])}) at r1+{offsets}, stored {copies['order']}"
+                           f" (first: {copies['first']:#x})")
+                if copies["reloaded"]:
+                    read = "; ".join(f"the copy at {o:#x}: " + ", ".join(f"+{m} ({n})" for m, n in members)
+                                     for o, members in copies["reloaded"].items())
+                    dead = len(copies["offsets"]) - len(copies["reloaded"])
+                    out.append(f"            read back: {read}"
+                               + (f"; the {dead} other(s) never read (dead stores)" if dead else ""))
+                else:
+                    out.append("            never read back (dead stores, or read through an address)")
+            if run.get("copies"):
+                out.append("         (one value copied whole into several temporaries the target keeps in memory: a "
+                           "chain of whole copies, by-value returns or arguments, each a temporary of its own; "
+                           "compare with our locals of that size split into scalars, above)")
     if mine:
         out.append("   in our memory, with no access of the target's paired (the target keeps it elsewhere or "
                    "scalarized):")
