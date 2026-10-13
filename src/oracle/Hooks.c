@@ -512,12 +512,54 @@ static int cost_nest;
 /* inl.cost: the automatic inliner's estimate of a body against the threshold (data_005dfb68): the running cost, plus
  * one per statement, plus what fn_0055e600 adds for each statement's expression (it stops once over the threshold).
  * nest is the depth of the expressions being costed when the body is a callee's met inside another body's. */
+extern UInt8 data_005dfb66;
+static int cost_quiet;
+
+/* With MWCC_ORACLE_FULL_COST=1, a body's estimate is made a second time, traced, past the threshold (raised out of
+ * reach), for its whole cost (full=); the first, untraced, is the compiler's own and is what is returned. The estimate
+ * changes nothing but data_005dfb66 (whether the function being compiled was met: it is only ever set), which is put
+ * back. The compiler makes the estimate the threshold plus one when it meets a call of an inline function at the inline
+ * depth limit (unless the function being compiled was met: data_005dfb66), so the body is never inlined; an untraced
+ * estimate with the raised threshold says whether that happened (limit=1), and the traced one is made with
+ * data_005dfb66 set, where such a call adds nothing (its arguments are counted). */
+#define FULL_COST_LIMIT 0x3fffffff
+
 int fn_0055e540(CInlineInfo *info, int running, int depth)
 {
-    int result = fn_0055e540__retail(info, running, depth);
+    int result;
+    int full;
+    SInt32 threshold;
+    UInt8 met;
+    UInt8 after;
+    int limited;
 
-    OracleTrace_Printf("inl.cost nstmts=%d running=%d depth=%d cost=%d threshold=%d nest=%d\n",
-                       info != NULL ? (int)info->nstmts : -1, running, depth, result, (int)data_005dfb68, cost_nest);
+    if (cost_nest == 0 && !cost_quiet && wanted("MWCC_ORACLE_FULL_COST")) {
+        met = data_005dfb66;
+        cost_quiet = 1;
+        result = fn_0055e540__retail(info, running, depth);
+        cost_quiet = 0;
+        after = data_005dfb66;
+        threshold = data_005dfb68;
+        /* (the traced pass starts from the state the compiler's started from, and leaves the state it left) */
+        data_005dfb66 = met;
+        data_005dfb68 = FULL_COST_LIMIT;
+        cost_quiet = 1;
+        limited = fn_0055e540__retail(info, running, depth) > FULL_COST_LIMIT;
+        cost_quiet = 0;
+        data_005dfb66 = 1;
+        full = fn_0055e540__retail(info, running, depth);
+        data_005dfb68 = threshold;
+        data_005dfb66 = after;
+        OracleTrace_Printf("inl.cost nstmts=%d running=%d depth=%d cost=%d threshold=%d nest=%d full=%d limit=%d\n",
+                           info != NULL ? (int)info->nstmts : -1, running, depth, result, (int)threshold, cost_nest,
+                           full, limited);
+        return result;
+    }
+    result = fn_0055e540__retail(info, running, depth);
+    if (!cost_quiet)
+        OracleTrace_Printf("inl.cost nstmts=%d running=%d depth=%d cost=%d threshold=%d nest=%d\n",
+                           info != NULL ? (int)info->nstmts : -1, running, depth, result, (int)data_005dfb68,
+                           cost_nest);
     return result;
 }
 
@@ -608,7 +650,8 @@ int fn_0055e600(ENode *expr, int running, int depth)
     int length;
     int result;
 
-    if (!wanted("MWCC_ORACLE_INLINE_COST"))
+    /* (MWCC_ORACLE_FULL_COST needs this too: it is what keeps the nested bodies' estimates apart from the top one) */
+    if (cost_quiet || !(wanted("MWCC_ORACLE_INLINE_COST") || wanted("MWCC_ORACLE_FULL_COST")))
         return fn_0055e600__retail(expr, running, depth);
     cost_nest++;
     result = fn_0055e600__retail(expr, running, depth);

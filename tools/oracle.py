@@ -27,6 +27,7 @@ Options (anywhere before `--`; the compiler's flags after `--`, or after SOURCE)
   --schedule        explain the instruction scheduler's picks, per block
   --inline-cost C   only the inliner's decisions about callee C (name or link name), with their cost broken down
   --near N          every inline decision whose cost is within N of the threshold, with the callee's link name
+  --full-cost       estimate the whole cost of the inline decisions over the threshold too (the compiler stops there)
   --exchange A,B    why virtual registers A and B were coloured in that order (r41,r42)
   --override P=R    compile with file R in place of P (a header or SOURCE), the checkout untouched; repeatable
   --json            print the report as JSON
@@ -806,9 +807,21 @@ def inlining_decisions(events):
                 if cost is not None and f.get("inline_bit") != "0":
                     c, t = int(cost.get("cost", 0)), int(cost.get("threshold", 0))
                     record.update(cost=c, threshold=t)
+                    if "full" in cost:
+                        record["full_cost"] = int(cost["full"])
+                        record["depth_limited"] = cost.get("limit") == "1"
                     if cost.get("breakdown") and cost["breakdown"]["statements"]:
                         record["breakdown"] = cost["breakdown"]
                     reason = f"estimated cost {c} {'is within' if result else 'exceeds'} the threshold {t}"
+                    if record.get("depth_limited") and record["full_cost"] <= t:
+                        reason = (f"a call in it is at the inline depth limit, which makes the estimate {c} (the "
+                                  f"threshold {t} plus one, and what follows); without it the whole cost is "
+                                  f"{record['full_cost']}, within the threshold")
+                    elif "full_cost" in record and record["full_cost"] != c:
+                        reason += f" (whole cost {record['full_cost']}"
+                        if record.get("depth_limited"):
+                            reason += ", without the calls at the inline depth limit, which also keep it"
+                        reason += ")"
                     if result and f.get("nstmts") and int(f["nstmts"]) > 0:
                         reason += f" ({f['nstmts']} statements)"
                 else:
@@ -860,10 +873,15 @@ def near_threshold(analyses, after_last, margin):
     for function, link, decisions in groups:
         for d in decisions:
             if d["event"] == "decision" and "cost" in d and abs(d["cost"] - d["threshold"]) <= margin:
-                out.append({"function": function, "function_link": link, "callee": d["callee"],
-                            "link": d.get("link"), "inline": d["inline"], "cost": d["cost"],
-                            "threshold": d["threshold"], "margin": d["threshold"] - d["cost"], "count": d["count"],
-                            "lines": d.get("lines", []), "depths": d.get("depths", [])})
+                n = {"function": function, "function_link": link, "callee": d["callee"],
+                     "link": d.get("link"), "inline": d["inline"], "cost": d["cost"],
+                     "threshold": d["threshold"], "margin": d["threshold"] - d["cost"], "count": d["count"],
+                     "lines": d.get("lines", []), "depths": d.get("depths", [])}
+                if "full_cost" in d:
+                    n["full_cost"] = d["full_cost"]
+                    n["full_margin"] = d["threshold"] - d["full_cost"]
+                    n["depth_limited"] = d.get("depth_limited", False)
+                out.append(n)
     return out
 
 
@@ -873,8 +891,13 @@ def near_report(near, margin):
     for n in near:
         where = n["function"] or "(after the last function)"
         lines = f"  line {', '.join(str(x) for x in sorted(n['lines']))}" if n["lines"] else ""
+        if n["depths"]:
+            lines += f"  depth {', '.join(str(x) for x in sorted(n['depths']))}"
+        whole = ""
+        if "full_cost" in n and n["full_cost"] != n["cost"]:
+            whole = f"  (whole cost {n['full_cost']}" + (", DEPTH LIMIT" if n.get("depth_limited") else "") + ")"
         out.append(f"   {n['cost']:>4} {n['threshold']:>4}  {'INLINE' if n['inline'] else 'kept  '}  {n['link']}  in "
-                   f"{where}{lines}" + (f"  (x{n['count']})" if n["count"] > 1 else ""))
+                   f"{where}{lines}" + (f"  (x{n['count']})" if n["count"] > 1 else "") + whole)
     if not near:
         out.append("   none")
     return out
@@ -918,8 +941,15 @@ def cost_report(decision, types):
 
     walk(b["statements"], 0)
     total = b["running"] + b["nstmts"] + sum(n["cost"] for n in b["statements"])
-    out.append(f"         {total:>4}  in all, against the threshold {decision.get('threshold')}"
-               + (" (the estimate stops once over it)" if total > (decision.get("threshold") or 1 << 30) else ""))
+    if "full_cost" in decision:
+        out.append(f"         {total:>4}  in all, the whole cost (the compiler's estimate: {decision['cost']}), against "
+                   f"the threshold {decision.get('threshold')}"
+                   + ("; a call at the inline depth limit (adding nothing here) keeps it anyway"
+                      if decision.get("depth_limited") else ""))
+    else:
+        out.append(f"         {total:>4}  in all, against the threshold {decision.get('threshold')}"
+                   + (" (the estimate stops once over it; --full-cost goes on)"
+                      if total > (decision.get("threshold") or 1 << 30) else ""))
     return [line for line in out if line is not None]
 
 
@@ -1214,7 +1244,7 @@ def ninja_rule(path, source):
 
 OPTIONS = {"--version": True, "--function": True, "--from-ninja": True, "--raw": False, "--pcode": False,
            "--no-check": False, "--json": False, "--schedule": False, "--inline-cost": True, "--exchange": True,
-           "--override": True, "--near": True, "--help": False, "-h": False}
+           "--override": True, "--near": True, "--full-cost": False, "--help": False, "-h": False}
 
 
 def split_arguments(argv):
@@ -1340,7 +1370,7 @@ class OracleError(SystemExit):
 
 
 def compile_trace(source, flags=(), from_ninja=None, version=None, overrides=(), schedule=False, inline_cost=False,
-                  check=True):
+                  check=True, full_cost=False):
     """Compile SOURCE with the oracle and return its trace: a dict with `lines`, `version`, `oracle`, `source` (as the
     rule spells it), `identical` (None when not checked, or the original compiler is not there) and `differences`.
     FROM_NINJA takes the flags, the working directory and the version from a project's build.ninja (FLAGS are then
@@ -1384,6 +1414,8 @@ def compile_trace(source, flags=(), from_ninja=None, version=None, overrides=(),
             env["MWCC_ORACLE_SCHEDULE"] = "1"
         if inline_cost:
             env["MWCC_ORACLE_INLINE_COST"] = "1"
+        if full_cost:
+            env["MWCC_ORACLE_FULL_COST"] = "1"
         run = subprocess.run([*launcher(oracle), *flags, "-c", compiled, "-o", str(obj)], cwd=workdir, env=env,
                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
         if run.returncode:
@@ -1402,11 +1434,11 @@ def compile_trace(source, flags=(), from_ninja=None, version=None, overrides=(),
 
 
 def analyze_source(source, flags=(), from_ninja=None, version=None, overrides=(), function=None, link=None,
-                   schedule=False, inline_cost=False, check=False, near=None):
+                   schedule=False, inline_cost=False, check=False, near=None, full_cost=False):
     """Compile SOURCE (as compile_trace does) and analyse it: the document --json prints, with `schema_version`,
     `identical`, `functions` (as analyze_file gives them), `inlining_after_last_function`, `similar` (when FUNCTION
     matches nothing) and, with NEAR, `near` (near_threshold's decisions)."""
-    compiled = compile_trace(source, flags, from_ninja, version, overrides, schedule, inline_cost, check)
+    compiled = compile_trace(source, flags, from_ninja, version, overrides, schedule, inline_cost, check, full_cost)
     return document_for(compiled, function, link, near)[0]
 
 
@@ -1444,6 +1476,7 @@ def main():
     parser.add_argument("--exchange")
     parser.add_argument("--override", action="append", default=[])
     parser.add_argument("--near")
+    parser.add_argument("--full-cost", action="store_true")
     arguments = parser.parse_args(options)
     if len(positional) != 1:
         parser.error("one SOURCE is needed")
@@ -1453,7 +1486,7 @@ def main():
         near = int(arguments.near)
     compiled = compile_trace(arguments.source, extra, arguments.from_ninja, arguments.version, arguments.override,
                              arguments.schedule, bool(arguments.inline_cost) or near is not None,
-                             not arguments.no_check)
+                             not arguments.no_check, arguments.full_cost)
     if compiled["warning"]:
         print(compiled["warning"], file=sys.stderr)
     arguments.version = compiled["version"]

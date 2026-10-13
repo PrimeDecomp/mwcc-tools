@@ -30,7 +30,7 @@ same (`build/tools/wibo`, or a `wibo` on the PATH); it does not need binfmt_misc
 
 ```
 python tools/oracle.py [--version V] [--function NAME] [--raw] [--pcode] [--schedule] [--inline-cost CALLEE]
-    [--near N] [--exchange A,B] [--override PATH=REPLACEMENT] [--json] [--no-check] SOURCE -- [COMPILER FLAGS...]
+    [--near N] [--full-cost] [--exchange A,B] [--override PATH=REPLACEMENT] [--json] [--no-check] SOURCE -- [COMPILER FLAGS...]
 python tools/oracle.py --from-ninja ../prime/build.ninja src/GuiSys/CGuiFrame.cpp --function Draw
 ```
 
@@ -66,7 +66,8 @@ register 60) that the register report names. `--json` prints all of it as one JS
 (`functions[].classes.GPR.vregs[]`: `vreg`, `class`, `phys`, `defs`, `uses`, `live_blocks`, `across_call`, `def`
 (`block`, `line`, `instruction`), `degree`, `neighbors` (`vreg`, `phys`), `state` (colored, coalesced, spilled,
 split), `order`, `pushed`, `select`; `functions[].inlining[]`: `callee`, `link` (the callee's link name, which tells
-overloads and template instances apart), `inline`, `cost`, `threshold`, `reason`, `count`, `depths`, `lines`;
+overloads and template instances apart), `inline`, `cost`, `threshold`, `reason`, `count`, `depths`, `lines`
+(and with `--full-cost`, `full_cost` and `depth_limited`);
 `functions[].frame`).
 
 When no function matches `--function`, the traced functions that look most like NAME are listed, by name and link
@@ -89,7 +90,12 @@ More views, each traced only when asked for (the objects are the same either way
 * `--near N`: every decision of the automatic inliner whose cost is within N of the threshold, in all functions,
   with the callee's link name, the function and the lines: the close calls a header change can flip (`--json`:
   `near[]`, each with `margin`, the threshold minus the cost). The estimate stops once over the threshold, so a kept
-  call's cost is where it stopped.
+  call's cost is where it stopped (126 to 128 with the threshold 125), unless `--full-cost` is given.
+* `--full-cost`: the inliner's estimates are made a second time, past the threshold, for the whole cost
+  (`full_cost`; `--near` adds `full_cost`, `full_margin`). It also says whether a call in the body is at the inline
+  depth limit (`depth_limited`): the compiler then makes the estimate the threshold plus one, whatever the size, and
+  the body is never inlined; the whole cost leaves such calls out (their arguments are counted). Many kept calls at
+  126 are this, not their size.
 * `--exchange A,B` (`--exchange r41,r42`): why two virtual registers of a class were coloured in that order and got
   the registers they did: when the simplification pushed each and the neighbour whose removal let it, degrees,
   spill costs, neighbours, and what select found free for each.
@@ -102,7 +108,8 @@ The first line says whether the object equals the original compiler's; when it s
 functions that differ are listed, and the explanation is of a different object and should not be trusted.
 
 From Python, `tools/oracle.py` can be imported. `analyze_source(source, flags=(), from_ninja=None, version=None,
-overrides=(), function=None, link=None, schedule=False, inline_cost=False, check=False, near=None)` compiles and
+overrides=(), function=None, link=None, schedule=False, inline_cost=False, check=False, near=None, full_cost=False)`
+compiles and
 returns the document `--json` prints (`overrides` as `--override` takes them, `near` as `--near`); it raises
 `OracleError` when it cannot compile. `compile_trace(...)` (the same arguments) only compiles and returns the trace.
 `analyze_file(trace, function=None, link=None, version="GC_1_3_2")`
@@ -123,7 +130,9 @@ between `fr.begin` and `fr.end`, with `fr.layout linkage= outgoing= locals= abov
 lines, `sc.node i= latency= height= latest= preds= succ=` (the dependency graph, `succ` as `pointer:latency`),
 `sc.pick cycle= ready= pick=` (each candidate `pointer:earliest:latest:height:scheduled successors:check:rank`) and
 `sc.after order=`. With `MWCC_ORACLE_INLINE_COST=1`: `inl.expr nest= type= cost= what=`, in post-order (a call of a named function also has `link=` and `flags=`, its
-function type's flags: 0x100 made by the compiler, 0x1000 a constructor, 0x2000 a destructor). The link
+function type's flags: 0x100 made by the compiler, 0x1000 a constructor, 0x2000 a destructor). With
+`MWCC_ORACLE_FULL_COST=1`, `inl.cost` also has `full=` (the whole cost) and `limit=` (1: a call at the inline depth
+limit), and the `inl.expr` lines are those of the whole estimate. The link
 names are the mangled ones (the compiler computes them when it has not yet). The file is appended to, so delete it
 between runs.
 
