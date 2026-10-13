@@ -19,7 +19,8 @@
       "_schedule_block",
       "_select_ready_coloring_node",
       "_fn_0055e600",
-      "_inline_statement"
+      "_inline_statement",
+      "_generate_inline_statements"
     ],
     "units": []
   },

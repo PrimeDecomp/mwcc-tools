@@ -109,10 +109,12 @@ static int wanted(const char *name)
 
 #ifdef ALLOCATE_REGISTERS
 extern void ALLOCATE_REGISTERS_RETAIL(Object *function);
+static void origins_reset(void);
 
-/* The register allocation of a function: Coloring_AllocateRegisters in the sources. */
+/* The register allocation of a function: Coloring_AllocateRegisters in the sources. Its inlining is over by then. */
 void ALLOCATE_REGISTERS(Object *function)
 {
+    origins_reset();
     snapshot("before", function);
     ALLOCATE_REGISTERS_RETAIL(function);
     snapshot("after", function);
@@ -460,6 +462,141 @@ static const char *callee_name(Object *function)
     return buffer;
 }
 
+/* Where the calls the inliner decides on come from: the inliner goes over the function again and again (the inline
+ * depth is the round), and a call met in a later round is one of an inlined body. Each body expanded has the calls in
+ * the code it made entered here (their function reference node: the node can_inline is given), with the entry of the
+ * call that was expanded as the parent, so a decision's chain (chain=, the inlined bodies it is in, outermost first)
+ * is the parents' callees. Emptied at each function's register allocation, the inlining being over. */
+#define ORIGIN_SIZE 0x10000
+typedef struct Origin {
+    ENode *funcref;
+    int parent;
+    const char *link;
+} Origin;
+static Origin origins[ORIGIN_SIZE];
+static int origins_used;
+
+static void origins_reset(void)
+{
+    memset(origins, 0, sizeof(origins));
+    origins_used = 0;
+}
+
+static int origin_find(ENode *funcref)
+{
+    unsigned int slot = ((unsigned int)funcref >> 2) & (ORIGIN_SIZE - 1);
+    int tries;
+
+    for (tries = 0; tries < ORIGIN_SIZE && origins[slot].funcref != NULL; tries++) {
+        if (origins[slot].funcref == funcref)
+            return (int)slot;
+        slot = (slot + 1) & (ORIGIN_SIZE - 1);
+    }
+    return -1;
+}
+
+static void origin_add(ENode *funcref, int parent, const char *link)
+{
+    unsigned int slot = ((unsigned int)funcref >> 2) & (ORIGIN_SIZE - 1);
+
+    /* (kept below three quarters full; past that, calls go without a chain) */
+    if (origins_used >= ORIGIN_SIZE / 4 * 3)
+        return;
+    while (origins[slot].funcref != NULL && origins[slot].funcref != funcref)
+        slot = (slot + 1) & (ORIGIN_SIZE - 1);
+    if (origins[slot].funcref == NULL)
+        origins_used++;
+    origins[slot].funcref = funcref;
+    origins[slot].parent = parent;
+    origins[slot].link = link;
+}
+
+/* Enter the calls of an expression made by expanding a body (LINK, under the entry PARENT). */
+static void origin_walk(ENode *expr, int parent, const char *link, int level)
+{
+    ENodeList *arg;
+
+    if (expr == NULL || level > 200)
+        return;
+    switch (expr->type) {
+        case EPOSTINC: case EPOSTDEC: case EPREINC: case EPREDEC: case EINDIRECT: case EMONMIN: case EBINNOT:
+        case ELOGNOT: case EFORCELOAD: case ETYPCON: case EBITFIELD:
+            origin_walk(expr->data.monadic, parent, link, level + 1);
+            return;
+        case EMUL: case EMULV: case EDIV: case EMODULO: case EADDV: case ESUBV: case EADD: case ESUB: case ESHL:
+        case ESHR: case ELESS: case EGREATER: case ELESSEQU: case EGREATEREQU: case EEQU: case ENOTEQU: case EAND:
+        case EXOR: case EOR: case ELAND: case ELOR: case EASS: case EMULASS: case EDIVASS: case EMODASS: case EADDASS:
+        case ESUBASS: case ESHLASS: case ESHRASS: case EANDASS: case EXORASS: case EORASS: case ECOMMA: case EPMODULO:
+        case EROTL: case EROTR: case EBCLR: case EBTST: case EBSET: case ENULLCHECK: case EMFPOINTER:
+            origin_walk(expr->data.diadic.left, parent, link, level + 1);
+            origin_walk(expr->data.diadic.right, parent, link, level + 1);
+            return;
+        case ECOND:
+        case ECONDASS:
+            origin_walk(expr->data.cond.cond, parent, link, level + 1);
+            origin_walk(expr->data.cond.expr1, parent, link, level + 1);
+            origin_walk(expr->data.cond.expr2, parent, link, level + 1);
+            return;
+        case EFUNCCALL:
+        case EFUNCCALLP:
+            if (expr->data.funccall.funcref != NULL && expr->data.funccall.funcref->type == EOBJREF)
+                origin_add(expr->data.funccall.funcref, parent, link);
+            else
+                origin_walk(expr->data.funccall.funcref, parent, link, level + 1);
+            for (arg = expr->data.funccall.args; arg != NULL; arg = arg->next)
+                origin_walk(arg->node, parent, link, level + 1);
+            return;
+        default:
+            return;
+    }
+}
+
+/* The chain of a call's function reference node, outermost first, separated by | (link names have < and >). */
+static void print_chain(ENode *funcref)
+{
+    int path[32];
+    int count = 0;
+    int entry = origin_find(funcref);
+
+    while (entry >= 0 && count < 32) {
+        path[count++] = entry;
+        entry = origins[entry].parent;
+    }
+    while (count-- > 0)
+        OracleTrace_Printf("%s%s", origins[path[count]].link, count > 0 ? "|" : "");
+}
+
+extern Statement *generate_inline_statements__retail(Object *function, Statement *tail, CInlineInfo *args,
+                                                     ENode *result, CLabel *returnLabel, Object *returnObject,
+                                                     UInt8 appendStatement);
+
+/* A body expanded as statements, after TAIL (which it reuses): the statements up to the one it returns are new. */
+Statement *generate_inline_statements(Object *function, Statement *tail, CInlineInfo *args, ENode *result,
+                                      CLabel *returnLabel, Object *returnObject, UInt8 appendStatement)
+{
+    int parent = result != NULL ? origin_find(result->data.funccall.funcref) : -1;
+    const char *link = link_name(function);
+    Statement *last = generate_inline_statements__retail(function, tail, args, result, returnLabel, returnObject,
+                                                         appendStatement);
+    Statement *statement;
+
+    for (statement = tail; statement != NULL; statement = statement->next) {
+        switch (statement->type) {
+            case ST_EXPRESSION:
+            case ST_SWITCH:
+            case ST_IFGOTO:
+            case ST_IFNGOTO:
+            case ST_RETURN:
+            case ST_GOTOEXPR:
+                origin_walk(statement->expr, parent, link, 0);
+                break;
+        }
+        if (statement == last)
+            break;
+    }
+    return last;
+}
+
 /* The statement the inliner is looking at, for the source line of a call it decides on (1.3 and later keep the line in
  * the statement's sourceoffset, as the PCode does). */
 extern Statement *inline_statement__retail(Statement *statement);
@@ -503,7 +640,9 @@ Boolean CAN_INLINE(ENode *node)
                        "nstmts=%d line=%d link=", callee_name(function), (int)result, (int)data_00582468,
                        (int)((function->qual & Q_INLINE) != 0), (int)ALWAYS_INLINE, (int)INLINE_AUTO,
                        (int)INLINE_LIMIT, info != NULL, info != NULL ? (int)info->nstmts : -1, inline_line());
-    OracleTrace_Printf("%s\n", link_name(function));
+    OracleTrace_Printf("%s chain=", link_name(function));
+    print_chain(node);
+    OracleTrace_Printf("\n");
     return result;
 }
 
@@ -513,6 +652,7 @@ static int cost_nest;
  * one per statement, plus what fn_0055e600 adds for each statement's expression (it stops once over the threshold).
  * nest is the depth of the expressions being costed when the body is a callee's met inside another body's. */
 extern UInt8 data_005dfb66;
+extern Object *data_005dfb62;
 static int cost_quiet;
 
 /* With MWCC_ORACLE_FULL_COST=1, a body's estimate is made a second time, traced, past the threshold (raised out of
@@ -667,12 +807,22 @@ int fn_0055e600(ENode *expr, int running, int depth)
         expr->data.funccall.funcref->type == EOBJREF && expr->data.funccall.funcref->data.objref != NULL) {
         Object *callee = expr->data.funccall.funcref->data.objref;
 
+        /* limit=1: an inline function with a body met at the inline depth limit, the call the compiler charges the
+         * threshold plus one for (the test fn_0055e600 makes, on the object as it is referenced, before the alias) */
+        int at_limit = depth == 0 && callee->u.func.u != NULL && callee->type != NULL &&
+                       callee->type->type == TYPEFUNC &&
+                       ((callee->qual & Q_INLINE) || (TYPE_METHOD(callee->type)->flags & 0x800)) &&
+                       (callee->datatype == DFUNC ||
+                        (callee->datatype == DVFUNC && (expr->data.funccall.funcref->flags & ENODE_FLAG_80))) &&
+                       callee != data_005dfb62;
+
         while (callee->datatype == DALIAS && callee->u.alias.object != NULL)
             callee = callee->u.alias.object;
-        OracleTrace_Printf("link=%s flags=%x ", link_name(callee),
+        OracleTrace_Printf("link=%s flags=%x %s", link_name(callee),
                            callee->type != NULL && callee->type->type == TYPEFUNC
                                ? (unsigned int)TYPE_FUNC(callee->type)->flags
-                               : 0u);
+                               : 0u,
+                           at_limit ? "limit=1 " : "");
     }
     OracleTrace_Printf("what=%s\n", what);
     return result;
@@ -685,6 +835,7 @@ ENode *INLINE_CALL(ENode *expr)
     Object *function = expr->data.monadic->data.objref;
     CInlineInfo *info = NULL;
     ENode *result;
+    int parent;
 
     if (function != NULL && function->datatype == DALIAS)
         function = function->u.alias.object;
@@ -695,8 +846,12 @@ ENode *INLINE_CALL(ENode *expr)
     OracleTrace_Printf("inl.begin function=%s depth=%d body=%d kind=%d line=%d link=", callee_name(function),
                        (int)data_00582468, info != NULL, info != NULL ? (int)INFO_KIND(info) : -1, inline_line());
     OracleTrace_Printf("%s\n", function != NULL ? link_name(function) : "?");
+    parent = origin_find(expr->data.funccall.funcref);
     result = INLINE_CALL_RETAIL(expr);
     OracleTrace_Printf("inl.end function=%s expanded=%d\n", callee_name(function), result != expr);
+    /* (a body expanded in place, as an expression: the calls in it are the body's) */
+    if (result != expr && function != NULL)
+        origin_walk(result, parent, link_name(function), 0);
     return result;
 }
 #endif

@@ -66,8 +66,8 @@ register 60) that the register report names. `--json` prints all of it as one JS
 (`functions[].classes.GPR.vregs[]`: `vreg`, `class`, `phys`, `defs`, `uses`, `live_blocks`, `across_call`, `def`
 (`block`, `line`, `instruction`), `degree`, `neighbors` (`vreg`, `phys`), `state` (colored, coalesced, spilled,
 split), `order`, `pushed`, `select`; `functions[].inlining[]`: `callee`, `link` (the callee's link name, which tells
-overloads and template instances apart), `inline`, `cost`, `threshold`, `reason`, `count`, `depths`, `lines`
-(and with `--full-cost`, `full_cost` and `depth_limited`);
+overloads and template instances apart), `inline`, `cost`, `threshold`, `reason`, `count`, `depths`, `lines`,
+`chain` (and with `--full-cost`, `full_cost`, `depth_limited` and `limit_paths`);
 `functions[].frame`).
 
 When no function matches `--function`, the traced functions that look most like NAME are listed, by name and link
@@ -95,7 +95,13 @@ More views, each traced only when asked for (the objects are the same either way
   (`full_cost`; `--near` adds `full_cost`, `full_margin`). It also says whether a call in the body is at the inline
   depth limit (`depth_limited`): the compiler then makes the estimate the threshold plus one, whatever the size, and
   the body is never inlined; the whole cost leaves such calls out (their arguments are counted). Many kept calls at
-  126 are this, not their size.
+  126 are this, not their size. `limit_paths` gives each such call as the callees' link names from the body's own
+  calls down to it.
+
+The inliner goes over a function once per inline depth (the `depth` of a decision is that round, up to the
+`-inline` depth limit, 8 by default), and a call kept is decided again in every round, with less depth left for its
+estimate each time. A call met in a later round is one of a body inlined in an earlier one: a decision's `chain` is
+those bodies, outermost first, by link name (shown as `inside:` with `--inline-cost` and `--near`).
 * `--exchange A,B` (`--exchange r41,r42`): why two virtual registers of a class were coloured in that order and got
   the registers they did: when the simplification pushed each and the neighbour whose removal let it, degrees,
   spill costs, neighbours, and what select found free for each.
@@ -126,13 +132,15 @@ the source line) per instruction; `ra.graph cls= k= start= count=` and `ra.node 
 graph before the simplification); `ra.order` (the stack, first coloured first, with each node's spill cost);
 `ra.select mask= after= ok=` (each node's colour and flags); `fr.local`/`fr.temp name= offset= size= reg= used=`
 between `fr.begin` and `fr.end`, with `fr.layout linkage= outgoing= locals= above= size=`; `inl.can` and `inl.begin`
-(with `line=`, the call's statement's source line, and `link=`, the callee's), `inl.cost` (`nest=`), `inl.end`. With `MWCC_ORACLE_SCHEDULE=1`: `sc.block p= index= virtual=` with its `sc.i`
+(with `line=`, the call's statement's source line, and `link=`, the callee's; `inl.can` also has `chain=`, the
+inlined bodies the call is in, outermost first, separated by `|`), `inl.cost` (`nest=`), `inl.end`. With `MWCC_ORACLE_SCHEDULE=1`: `sc.block p= index= virtual=` with its `sc.i`
 lines, `sc.node i= latency= height= latest= preds= succ=` (the dependency graph, `succ` as `pointer:latency`),
 `sc.pick cycle= ready= pick=` (each candidate `pointer:earliest:latest:height:scheduled successors:check:rank`) and
 `sc.after order=`. With `MWCC_ORACLE_INLINE_COST=1`: `inl.expr nest= type= cost= what=`, in post-order (a call of a named function also has `link=` and `flags=`, its
 function type's flags: 0x100 made by the compiler, 0x1000 a constructor, 0x2000 a destructor). With
 `MWCC_ORACLE_FULL_COST=1`, `inl.cost` also has `full=` (the whole cost) and `limit=` (1: a call at the inline depth
-limit), and the `inl.expr` lines are those of the whole estimate. The link
+limit), and the `inl.expr` lines are those of the whole estimate; a call's `inl.expr` has `limit=1` when it is at
+the depth limit. The link
 names are the mangled ones (the compiler computes them when it has not yet). The file is appended to, so delete it
 between runs.
 

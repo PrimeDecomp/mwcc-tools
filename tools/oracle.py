@@ -737,6 +737,18 @@ def frame_report(analysis):
     return out
 
 
+def limit_paths(nodes, above=()):
+    """The calls of a cost breakdown at the inline depth limit, each as the callees' link names from the body's own
+    calls down to it."""
+    out = []
+    for node in nodes:
+        here = above + (node["link"],) if node.get("link") else above
+        if node.get("depth_limit"):
+            out.append(list(here))
+        out.extend(limit_paths(node["parts"], here))
+    return out
+
+
 def inlining_decisions(events):
     """The decisions of the inliner, each with its reason, with how many times each was made (in the order of the
     first)."""
@@ -775,6 +787,8 @@ def inlining_decisions(events):
                 flags = int(f.get("flags", "0"), 16)
                 node.update(link=f["link"], implicit=bool(flags & 0x100), ctor=bool(flags & 0x1000),
                             dtor=bool(flags & 0x2000))
+                if f.get("limit") == "1":
+                    node["depth_limit"] = True
             pending.setdefault(nest, []).append(node)
         elif kind == "inl.cost":
             nest = int(f.get("nest", 0))
@@ -794,7 +808,10 @@ def inlining_decisions(events):
             result = f.get("result") == "1"
             depth = f.get("depth")
             record = {"event": "decision", "callee": name, "link": f.get("link", name), "inline": result,
-                      "depth": int(depth or 0)}
+                      "depth": int(depth or 0),
+                      # (the inlined bodies the call is in, outermost first: the inliner goes over the function
+                      # once per depth, so a call met at depth N came from a body expanded at depth N - 1)
+                      "chain": tuple(f["chain"].split("|")) if f.get("chain") else ()}
             if int(f.get("line", -1)) > 0:
                 record["line"] = int(f["line"])
             if f.get("inline_bit") == "0" and not result:
@@ -812,6 +829,9 @@ def inlining_decisions(events):
                         record["depth_limited"] = cost.get("limit") == "1"
                     if cost.get("breakdown") and cost["breakdown"]["statements"]:
                         record["breakdown"] = cost["breakdown"]
+                        paths = limit_paths(cost["breakdown"]["statements"])
+                        if paths:
+                            record["limit_paths"] = tuple(tuple(p) for p in paths)
                     reason = f"estimated cost {c} {'is within' if result else 'exceeds'} the threshold {t}"
                     if record.get("depth_limited") and record["full_cost"] <= t:
                         reason = (f"a call in it is at the inline depth limit, which makes the estimate {c} (the "
@@ -855,7 +875,8 @@ def inlining_report(decisions, links=False):
             times += "  (line " + ", ".join(str(x) for x in sorted(d["lines"])) + ")"
         if d["event"] == "decision":
             out.append(f"   {d['callee']}: {'INLINE' if d['inline'] else 'call kept'} - {d['reason']}{times}"
-                       + (f"\n      [{d['link']}]" if links and d.get("link") else ""))
+                       + (f"\n      [{d['link']}]" if links and d.get("link") else "")
+                       + (f"\n      inside: {' > '.join(d['chain'])}" if links and d.get("chain") else ""))
         elif d["expanded"]:
             out.append(f"      {d['callee']}: expanded in place{times}")
         else:
@@ -876,7 +897,8 @@ def near_threshold(analyses, after_last, margin):
                 n = {"function": function, "function_link": link, "callee": d["callee"],
                      "link": d.get("link"), "inline": d["inline"], "cost": d["cost"],
                      "threshold": d["threshold"], "margin": d["threshold"] - d["cost"], "count": d["count"],
-                     "lines": d.get("lines", []), "depths": d.get("depths", [])}
+                     "lines": d.get("lines", []), "depths": d.get("depths", []), "chain": list(d.get("chain", ())),
+                     "limit_paths": [list(x) for x in d.get("limit_paths", ())]}
                 if "full_cost" in d:
                     n["full_cost"] = d["full_cost"]
                     n["full_margin"] = d["threshold"] - d["full_cost"]
@@ -896,6 +918,10 @@ def near_report(near, margin):
         whole = ""
         if "full_cost" in n and n["full_cost"] != n["cost"]:
             whole = f"  (whole cost {n['full_cost']}" + (", DEPTH LIMIT" if n.get("depth_limited") else "") + ")"
+        if n["chain"]:
+            whole += "\n          inside: " + " > ".join(n["chain"])
+        for path in n["limit_paths"]:
+            whole += "\n          at the depth limit: " + " > ".join(path)
         out.append(f"   {n['cost']:>4} {n['threshold']:>4}  {'INLINE' if n['inline'] else 'kept  '}  {n['link']}  in "
                    f"{where}{lines}" + (f"  (x{n['count']})" if n["count"] > 1 else "") + whole)
     if not near:
@@ -935,6 +961,8 @@ def cost_report(decision, types):
             call = ""
             if node.get("link"):
                 call = f"  [{node['link']}{', compiler-made' if node['implicit'] else ''}]"
+            if node.get("depth_limit"):
+                call += "  AT THE INLINE DEPTH LIMIT"
             out.append(f"         {node['cost']:>4}  {'  ' * indent}{types.get(node['type'], node['type'])}: "
                        f"{node['what']}{call}")
             walk(node["parts"], indent + 1)
