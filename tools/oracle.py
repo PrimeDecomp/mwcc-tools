@@ -794,7 +794,8 @@ def inline_bindings(lines):
     object an aliased formal stands for, when it is one: for `reference`, the temporary the argument constructs, which
     is how a by-value class argument comes, copied by the caller), `declared` and `declared_size` (the formal's
     type as declared: a by-value class formal is a reference by then, with `declared` 4 or 5; -1: not found) and
-    `generated` (1: the callee was made by the compiler, an implicit copy constructor or operator=)."""
+    `generated` (1: the callee was made by the compiler, an implicit copy constructor or operator=) and `expression`
+    (the argument, short: objects by name, *p, (a+b), f(first argument,..), #N another node kind)."""
     out, pending = {}, []
     for line in lines:
         if line.startswith("lc.arg "):
@@ -806,7 +807,8 @@ def inline_bindings(lines):
                             "var": None if f["var"] == "-" else f["var"],
                             "object": None if f.get("object", "-") == "-" else f["object"],
                             "declared": int(f.get("declared", -1)), "declared_size": int(f.get("declared_size", -1)),
-                            "generated": int(f.get("generated", 0))})
+                            "generated": int(f.get("generated", 0)),
+                            "expression": None if f.get("expression", "-") == "-" else f["expression"]})
         elif line.startswith("ra.before ") and pending:
             m = re.match(r"ra\.before function=\S* link=(.*)$", line)
             if m:
@@ -1334,13 +1336,30 @@ def locals_report(analysis, passes, target=None, bindings=()):
             continue
         previous = (number, out[before:])
         out.insert(before, mark + ":")
+    # a local formal of a pointer or reference holds the address of `object`; that may itself be such a local
+    holds = {b["var"]: b["object"] for b in bindings if b["mode"] == "local" and b["var"] and b["object"]
+             and (b["ref"] or b["kind"] == 11)}
+
+    def pointed(b):
+        if not (b["ref"] or b["kind"] == 11):
+            return None
+        target, hops = b["object"], 0
+        while target in holds and hops < 16:
+            target, hops = holds[target], hops + 1
+        return target
+
     groups, callees = {}, {}
     for b in bindings:
         if b["mode"] != "unused":
             callees.setdefault(b["callee"], len(callees))
             byvalue = b["declared_size"] if b["declared"] in (4, 5) else None
             key = (b["callee"], b["index"], b["name"], b["kind"], b["size"], b["ref"], b["mode"], byvalue)
-            groups.setdefault(key, []).append(b["var"] if b["mode"] == "local" else b["object"])
+            if b["mode"] == "local" and b["var"] and pointed(b):
+                groups.setdefault(key, []).append(f"{b['var']}=&{pointed(b)}")
+            elif b["mode"] == "local" and b["var"] and (b["ref"] or b["kind"] == 11) and b.get("expression"):
+                groups.setdefault(key, []).append(f"{b['var']}={b['expression']}")
+            else:
+                groups.setdefault(key, []).append(b["var"] if b["mode"] == "local" else b["object"])
     if groups:
         out.append("   formals of the calls inlined into it (substituted: the caller's expression stands for it, "
                    "aliased; reference: bound to the temporary the argument constructs (a BY VALUE formal's is "
@@ -1357,13 +1376,25 @@ def locals_report(analysis, passes, target=None, bindings=()):
             named = [v for v in variables if v]
             fates = ""
             if named and (mode in ("local", "reference") or any(v in by_name for v in named)):
-                fates = " -> " + ", ".join(f"{v} ({where(v)})" for v in named[:6]) + (
+                fates = " -> " + ", ".join(f"{v} ({where(v.split('=&')[-1])})" if "=" not in v
+                                           or "=&" in v else v for v in dict.fromkeys(named[:6])) + (
                     f", ... {len(named) - 6} more" if len(named) > 6 else "")
             what = (f"BY VALUE, a class of {byvalue}" if byvalue is not None else "reference" if ref else
                     f"{TYPE_KINDS.get(kind, kind)} {size}")
             copy = (" (the caller's COPY)" if byvalue is not None and mode == "reference" else
                     " (a COPY of the aggregate)" if mode == "local" and kind in (4, 5, 12) else "")
             out.append(f"         #{index} {name} ({what}): {mode}{copy}{times}{fates}")
+    holders = {}
+    for order, b in enumerate(bindings, 1):
+        if b["mode"] == "local" and b["var"] and pointed(b):
+            holders.setdefault(pointed(b), []).append(f"#{order} {b['callee']} {b['name']} ({b['var']})")
+    if holders:
+        out.append("   objects whose address an inlined call holds in a local (#: the order the formals were bound; "
+                   "such an object is address-taken, and the scalarizer splits it only if every use of it is a "
+                   "member at a known offset):")
+        for name, held in sorted(holders.items(), key=lambda h: int(h[1][0].split()[0][1:])):
+            out.append(f"      {name} ({where(name)}): " + "; ".join(held[:8])
+                       + (f"; ... {len(held) - 8} more" if len(held) > 8 else ""))
     temps = {p["temp"] for s in passes for v in s["vars"].values() for p in v["parts"] if p["temp"]}
     unseen = [e for e in frame if e["used"] and not e["reg"] and e["name"] not in seen and e["name"] not in temps
               and e["size"] > 4]

@@ -165,6 +165,11 @@ those bodies, outermost first, by link name (shown as `inside:` with `--inline-c
   stack copy of an argument points to. Each formal is labelled from the callee's declared argument types: `BY VALUE,
   a class of N` when the declaration takes it by value. The inline variable is a reference by then, so `reference`
   alone does not tell by-value from `const &` bound to a temporary such as `V(a, b, c)`.
+  A local pointer or reference formal (an inlined member function's `this`, a `const &` with side effects) shows what
+  it holds the address of. That is `@729=&tmp` when the argument is an object, or one reached through another such
+  local. Otherwise it is the argument in short: `@729=(data((*..+188))+12)` is element 1 of a reserved_vector member
+  at this+188, and `@654=__vc((*this+188),..)` is its operator[]. An object whose address such a formal holds is
+  address-taken; the objects with any are listed under "objects whose address an inlined call holds", in binding order.
 
   Last come the slot shifts. Our instructions are paired with the target's: difflib over the words, with frame
   offsets, relocated fields and branch targets masked. For each pair of r1 accesses below the register saves, the
@@ -236,9 +241,10 @@ with no body yet: the others' bodies are the `inl.cost` lines one `nest` deeper 
 the whole or not known), `lc.call node=` (a call that may reach an address-taken local), `lc.temp name=` (the scalar
 made for each part not blocked, in the parts' order), then `lc.pass pointers= link=` and its parts, `lc.part blocked=
 noregister= bits= type= size= uses= var_size= var=`; and per formal of each call the inliner expands, `lc.arg index=
-name= type= size= ref= dirty= mode= var= object= declared= declared_size= generated= link=` (mode unused,
+name= type= size= ref= dirty= mode= var= object= declared= declared_size= generated= argument= expression= link=` (mode unused,
 substituted, reference or local; var= the fresh local; object= the object an aliased formal stands for; declared= the
-formal's declared type kind; generated=1: a callee the compiler made; link= the callee), before the function's
+formal's declared type kind; generated=1: a callee the compiler made; argument= the argument's
+node kind, after commas, force-loads and casts; expression= the argument, short; link= the callee), before the function's
 `ra.before`. `MWCC_ORACLE_IRO_DUMP=FILE` turns on the global optimizer's own
 dump (IroDump, normally written to `<source>.log` in debug builds) into FILE, appended to. The link
 names are the mangled ones (the compiler computes them when it has not yet). The file is appended to, so delete it

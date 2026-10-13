@@ -1193,6 +1193,75 @@ Boolean fn_00460c90(IROLinear *node)
  * holds the address). object= is the object an aliased formal stands for, when it is one (EOBJREF). declared= and
  * declared_size= are the kind and size of the formal's type as the function declares it (the inline variable of a
  * by-value class formal is already a reference: declared=5 there, with ref=1), -1 when no argument has its name. */
+/* A short form of EXPR (an argument) appended to BUFFER (of SIZE, kept terminated), without spaces: objects by
+ * name, *x, (a+b), f(first argument,...), (a,b) for a comma, #N for any other node kind; DEPTH levels deep. */
+static void describe_expression(char *buffer, size_t size, ENode *expr, int depth)
+{
+    char piece[64];
+    size_t used = strlen(buffer);
+
+    if (used + 8 >= size)
+        return;
+    if (expr == NULL) {
+        strcat(buffer, "?");
+        return;
+    }
+    if (depth <= 0) {
+        strcat(buffer, "..");
+        return;
+    }
+    switch (expr->type) {
+    case EOBJREF:
+        sprintf(piece, "%.48s", expr->data.objref->name ? expr->data.objref->name->name : "?");
+        strcat(buffer, piece);
+        return;
+    case EINDIRECT:
+        strcat(buffer, "*");
+        describe_expression(buffer, size, expr->data.monadic, depth - 1);
+        return;
+    case EFORCELOAD:
+    case ETYPCON:
+        describe_expression(buffer, size, expr->data.monadic, depth);
+        return;
+    case EADD:
+    case ECOMMA:
+        strcat(buffer, "(");
+        describe_expression(buffer, size, expr->data.diadic.left, depth - 1);
+        strcat(buffer, expr->type == EADD ? "+" : ",");
+        describe_expression(buffer, size, expr->data.diadic.right, depth - 1);
+        strcat(buffer, ")");
+        return;
+    case EFUNCCALL:
+        if (expr->data.funccall.funcref != NULL && expr->data.funccall.funcref->type == EOBJREF)
+            describe_expression(buffer, size, expr->data.funccall.funcref, 1);
+        else
+            strcat(buffer, "call");
+        strcat(buffer, "(");
+        if (expr->data.funccall.args != NULL) {
+            describe_expression(buffer, size, expr->data.funccall.args->node, depth - 1);
+            if (expr->data.funccall.args->next != NULL)
+                strcat(buffer, ",..");
+        }
+        strcat(buffer, ")");
+        return;
+    case EINTCONST:
+        sprintf(piece, "%ld", (long)expr->data.intval.lo);
+        strcat(buffer, piece);
+        return;
+    case EMUL:
+        strcat(buffer, "(");
+        describe_expression(buffer, size, expr->data.diadic.left, depth - 1);
+        strcat(buffer, "*");
+        describe_expression(buffer, size, expr->data.diadic.right, depth - 1);
+        strcat(buffer, ")");
+        return;
+    default:
+        sprintf(piece, "#%d", expr->type);
+        strcat(buffer, piece);
+        return;
+    }
+}
+
 extern ENode *setup_inline_locals_and_arguments__retail(Object *function, CInlineInfo *info, ENodeList *arguments);
 extern struct InlineSlot *data_0058245a;
 ENode *setup_inline_locals_and_arguments(Object *function, CInlineInfo *info, ENodeList *arguments)
@@ -1203,6 +1272,8 @@ ENode *setup_inline_locals_and_arguments(Object *function, CInlineInfo *info, EN
     const char *mode;
     Object *object;
     FuncArg *declared;
+    ENode *argument;
+    char expression[256];
     int i;
 
     if (!wanted("MWCC_ORACLE_LOCALS"))
@@ -1221,10 +1292,36 @@ ENode *setup_inline_locals_and_arguments(Object *function, CInlineInfo *info, EN
         declared = IS_TYPE_FUNC(function->type) ? TYPE_FUNC(function->type)->args : NULL;
         while (declared != NULL && declared->name != formal->name)
             declared = declared->next;
-        object = slot->var == NULL && slot->expr != NULL && slot->expr->type == EOBJREF ? slot->expr->data.objref
-                                                                                        : NULL;
+        /* the object the argument is or points at (a local formal: the object whose address it holds), through the
+           right side of commas (a temporary constructed, then its address) */
+        argument = slot->expr;
+        if (argument == NULL) { /* a local formal: the call's own argument */
+            ENodeList *list = arguments;
+            int n;
+            for (n = 0; list != NULL && n < i; n++)
+                list = list->next;
+            argument = list != NULL ? list->node : NULL;
+        }
+        expression[0] = 0;
+        describe_expression(expression, sizeof(expression) - 8, argument, 4);
+        for (;;) {
+            if (argument != NULL && argument->type == ECOMMA)
+                argument = argument->data.diadic.right;
+            else if (argument != NULL && (argument->type == EFORCELOAD || argument->type == ETYPCON))
+                argument = argument->data.monadic;
+            else if (argument != NULL && argument->type == EFUNCCALL && argument->data.funccall.args != NULL &&
+                     argument->data.funccall.args->node->type == EOBJREF)
+                argument = argument->data.funccall.args->node; /* a temporary a call returns into */
+            else
+                break;
+        }
+        object = NULL;
+        if (argument != NULL && argument->type == EOBJREF)
+            object = argument->data.objref;
+        else if (argument != NULL && argument->type == EINDIRECT && argument->data.monadic->type == EOBJREF)
+            object = argument->data.monadic->data.objref; /* a pointer local's value: what it points at */
         OracleTrace_Printf("lc.arg index=%d name=%s type=%d size=%ld ref=%d dirty=%d mode=%s var=%s object=%s "
-                           "declared=%d declared_size=%ld generated=%d link=%s\n", i,
+                           "declared=%d declared_size=%ld generated=%d argument=%d expression=%s link=%s\n", i,
                            formal->name ? formal->name->name : "?", formal->type ? formal->type->type : -1,
                            formal->type ? formal->type->size : -1,
                            formal->type && formal->type->type == TYPEPOINTER &&
@@ -1235,6 +1332,7 @@ ENode *setup_inline_locals_and_arguments(Object *function, CInlineInfo *info, EN
                            declared && declared->type ? declared->type->type : -1,
                            declared && declared->type ? declared->type->size : -1,
                            IS_TYPE_FUNC(function->type) && (TYPE_FUNC(function->type)->flags & FUNC_AUTO_GENERATED),
+                           argument != NULL ? argument->type : -1, expression[0] ? expression : "-",
                            maybe_link(function));
     }
     return result;
