@@ -78,6 +78,8 @@ explanation is of a different object: do not trust it. `--no-check` skips the ch
 | `--instantiation TEXT` | When the bodies of matching functions were queued, parsed, emitted and compiled. |
 | `--locals` | What the scalarizer did with each local aggregate, and our frame against the target's. |
 | `--blocks` | Where code generation cut the function into blocks, and why the merge pass left them apart. |
+| `--cut-limit N`, `--merge-limit N` | Compile with other block limits (patched copies of both compilers). See [Basic blocks](oracle/blocks.md). |
+| `--keep-object PATH` | Also write the oracle's object to PATH. |
 | `--override PATH=REPLACEMENT` | Compile with REPLACEMENT in place of PATH, without touching the checkout (repeatable). |
 | `--raw` | The trace lines (see [Trace format](oracle/trace.md)). |
 | `--json` | Everything as one JSON document (see [Trace format](oracle/trace.md)). |

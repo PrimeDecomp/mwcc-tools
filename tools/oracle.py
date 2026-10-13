@@ -2069,6 +2069,64 @@ def launcher(executable):
     return [found, str(executable)]
 
 
+# The file offsets of code generation's two block limits, the same in the original and the oracle (the oracle keeps
+# the original's .text where it was): the 7 inlined copies of the cut at the start of a statement (`cmp word ptr
+# [block+0x28], 100; jle`: a new block when the current one holds more than 100 instructions), and the merge
+# (`cmp ecx, 100; jle`, Peephole_MergeAdjacentBlocks: merged when the two hold 100 or fewer).
+BLOCK_LIMITS = {
+    "GC_1_3": ([0x32d15, 0x32db1, 0x32e11, 0x32e71, 0x32f54, 0x32fe1, 0x33055], 0xfe91d),
+    "GC_1_3_2": ([0x32a95, 0x32b31, 0x32b91, 0x32bf1, 0x32cd4, 0x32d61, 0x32dd5], 0xff3fd),
+    "GC_2_7": ([0x32b75, 0x32c11, 0x32c71, 0x32cd1, 0x32db4, 0x32e41, 0x32eb5], 0x10017d),
+}
+
+
+def limit_value(text):
+    """--cut-limit/--merge-limit's value: an instruction count from 0 to 127 (a signed byte in the compare), or
+    `none` (never cut; merge whatever the size)."""
+    if text in (None, "none"):
+        return text
+    value = int(text, 0)
+    if not 0 <= value <= 127:
+        raise OracleError(f"a block limit is 0 to 127, or none (not {text})")
+    return value
+
+
+def patch_limits(executable, version, cut=None, merge=None):
+    """Patch EXECUTABLE (a copy of a version's original or oracle) in place to use other block limits: CUT and MERGE as
+    limit_value gives them, None for unchanged."""
+    if version not in BLOCK_LIMITS:
+        raise OracleError(f"the block limits of {version} are not known (only {', '.join(BLOCK_LIMITS)})")
+    data = bytearray(Path(executable).read_bytes())
+    cuts, site = BLOCK_LIMITS[version]
+    for offset in cuts:
+        if data[offset:offset + 2] != b"\x66\x83" or data[offset + 3:offset + 6] != b"\x28\x64\x7e":
+            raise OracleError(f"{executable} does not have the expected cut compare at {offset:#x}")
+        if cut == "none":
+            data[offset + 5] = 0xEB  # (jle -> jmp: never a new block)
+        elif cut is not None:
+            data[offset + 4] = cut
+    if data[site:site + 5] != b"\x83\xf9\x64\x0f\x8e":
+        raise OracleError(f"{executable} does not have the expected merge compare at {site:#x}")
+    if merge == "none":
+        data[site + 3:site + 5] = b"\x90\xe9"  # (jle rel32 -> nop; jmp rel32, the same target)
+    elif merge is not None:
+        data[site + 2] = merge
+    Path(executable).write_bytes(bytes(data))
+
+
+def patched_copy(executable, directory, version, cut, merge):
+    """A copy of EXECUTABLE, with the licence stub beside it, in DIRECTORY, patched by patch_limits."""
+    directory = Path(directory)
+    directory.mkdir(parents=True, exist_ok=True)
+    copy = directory / Path(executable).name
+    shutil.copyfile(executable, copy)
+    stub = Path(executable).parent / "lmgr326b.dll"
+    if stub.exists():
+        shutil.copyfile(stub, directory / stub.name)
+    patch_limits(copy, version, cut, merge)
+    return copy
+
+
 def pcode_report(function, before, names):
     """The PCode the allocator was given, per block, with the virtual register numbers (%r60 is virtual register 60 of
     the GPR class) that the register report names."""
@@ -2155,7 +2213,7 @@ MERGE_REASONS = {"prologue": "the prologue block (not merged in this pass)",
                  "-": "merged"}
 
 
-def block_cuts(record, names):
+def block_cuts(record, names, limit=100):
     """Where the statements of RECORD (one function of block_trace) went from one block to another: [{"line",
     "from", "count", "to", "inside", "cause"}], `inside` when the cut happened while one statement was generated
     (it ended in another block than it began in), and `cause` a key of CUT_CAUSES."""
@@ -2172,7 +2230,7 @@ def block_cuts(record, names):
         block = by_pointer.get(first[0])
         last = block["instructions"][-1] if block and block["instructions"] else None
         name = names.get(last.opcode, "") if last else ""
-        if first[1] > 100:
+        if limit != "none" and first[1] > limit:
             cause = "limit"
         elif block is None:
             cause = "unknown"
@@ -2187,7 +2245,7 @@ def block_cuts(record, names):
     return cuts
 
 
-def blocks_report(link, record, names, pcode=False):
+def blocks_report(link, record, names, pcode=False, limit=100):
     """--blocks: how the function was cut into blocks, statement by statement, and why the merge pass left the blocks
     apart; with PCODE, each raw block's instructions."""
     out = [f"== {link}: blocks =="]
@@ -2206,13 +2264,17 @@ def blocks_report(link, record, names, pcode=False):
     for statement in record["statements"]:
         for pointer, _ in (statement["before"], statement["after"]):
             lines_of.setdefault(pointer, set()).add(statement["line"])
-    cuts = block_cuts(record, names)
+    cuts = block_cuts(record, names, limit)
+
+    def cause_text(cause):
+        return CUT_CAUSES[cause].replace("100", str(limit))
+
     if record["statements"]:
         tally = {}
         for cut in cuts:
             tally[cut["cause"]] = tally.get(cut["cause"], 0) + 1
         out.append(f"   {len(record['statements'])} statements, {len(cuts)} cuts: "
-                   + "; ".join(f"{n} {CUT_CAUSES[c]}" for c, n in sorted(tally.items(), key=lambda x: -x[1])))
+                   + "; ".join(f"{n} {cause_text(c)}" for c, n in sorted(tally.items(), key=lambda x: -x[1])))
     for number, merge in enumerate(record["merges"]):
         tally = {}
         for pair in merge["pairs"]:
@@ -2232,7 +2294,7 @@ def blocks_report(link, record, names, pcode=False):
         last = b["instructions"][-1] if b["instructions"] else None
         end = names.get(last.opcode, f"op{last.opcode}") if last else "-"
         cut = cut_after.get(b["p"])
-        return (sizes, end, CUT_CAUSES[cut["cause"]] if cut else "-",
+        return (sizes, end, cause_text(cut["cause"]) if cut else "-",
                 MERGE_REASONS.get(why_next.get(b["p"], ""), "last") if b["p"] in why_next else "-")
 
     out.append("   per block: instructions (" + " -> ".join(dict.fromkeys(phases)) + "), the last instruction, why "
@@ -2326,7 +2388,8 @@ def ninja_rule(path, source):
 OPTIONS = {"--version": True, "--function": True, "--from-ninja": True, "--raw": False, "--pcode": False,
            "--no-check": False, "--json": False, "--schedule": False, "--inline-cost": True, "--exchange": True,
            "--override": True, "--near": True, "--full-cost": False, "--instantiation": True, "--locals": False,
-           "--target": True, "--blocks": False, "--help": False, "-h": False}
+           "--target": True, "--blocks": False, "--cut-limit": True, "--merge-limit": True,
+           "--keep-object": True, "--help": False, "-h": False}
 
 
 def split_arguments(argv):
@@ -2560,13 +2623,15 @@ def instantiation_report(events, text):
 
 def compile_trace(source, flags=(), from_ninja=None, version=None, overrides=(), schedule=False, inline_cost=False,
                   check=True, full_cost=False, instantiation=False, original_fallback=False, scalarize=False,
-                  blocks=False):
+                  blocks=False, cut_limit=None, merge_limit=None, keep_object=None):
     """Compile SOURCE with the oracle and return its trace: a dict with `lines`, `version`, `oracle`, `source` (as the
     rule spells it), `identical` (None when not checked, or the original compiler is not there) and `differences`.
     FROM_NINJA takes the flags, the working directory and the version from a project's build.ninja (FLAGS are then
     not allowed); otherwise FLAGS are the compiler's flags, run in the current directory. OVERRIDES are
     `PATH=REPLACEMENT` strings, as --override takes them. With ORIGINAL_FALLBACK, the original compiler compiles it
-    when the version has no oracle (no trace then). `object` is the object's bytes. Raises OracleError."""
+    when the version has no oracle (no trace then). `object` is the object's bytes. CUT_LIMIT and MERGE_LIMIT
+    (limit_value's) compile with other block limits: both compilers are patched copies then. KEEP_OBJECT is a path to
+    copy the oracle's object to. Raises OracleError."""
     warning = None
     if from_ninja:
         if flags:
@@ -2603,6 +2668,11 @@ def compile_trace(source, flags=(), from_ninja=None, version=None, overrides=(),
             flags, compiled = apply_overrides(list(overrides), flags, source, workdir, temp)
         trace = Path(temp) / "trace.txt"
         obj = Path(temp) / "oracle.o"
+        if cut_limit is not None or merge_limit is not None:
+            oracle = patched_copy(oracle, Path(temp) / "oracle", version, cut_limit, merge_limit)
+            if original.exists():
+                original = patched_copy(original, Path(temp) / "original", version, cut_limit, merge_limit)
+            result["limits"] = {"cut": cut_limit, "merge": merge_limit}
         env = dict(os.environ, MWCC_ORACLE_TRACE_FILE=str(trace))
         if schedule:
             env["MWCC_ORACLE_SCHEDULE"] = "1"
@@ -2622,6 +2692,8 @@ def compile_trace(source, flags=(), from_ninja=None, version=None, overrides=(),
             raise OracleError(f"{run.stdout}\nthe oracle compiler failed ({run.returncode})")
         result["lines"] = trace.read_text().splitlines() if trace.exists() else []
         result["object"] = obj.read_bytes()
+        if keep_object:
+            Path(keep_object).write_bytes(result["object"])
         if check:
             if original.exists():
                 other = Path(temp) / "original.o"
@@ -2690,6 +2762,9 @@ def main():
     parser.add_argument("--locals", action="store_true")
     parser.add_argument("--target")
     parser.add_argument("--blocks", action="store_true")
+    parser.add_argument("--cut-limit")
+    parser.add_argument("--merge-limit")
+    parser.add_argument("--keep-object")
     arguments = parser.parse_args(options)
     if len(positional) != 1:
         parser.error("one SOURCE is needed")
@@ -2700,7 +2775,9 @@ def main():
     compiled = compile_trace(arguments.source, extra, arguments.from_ninja, arguments.version, arguments.override,
                              arguments.schedule, bool(arguments.inline_cost) or near is not None,
                              not arguments.no_check, arguments.full_cost, bool(arguments.instantiation),
-                             scalarize=arguments.locals, blocks=arguments.blocks)
+                             scalarize=arguments.locals, blocks=arguments.blocks,
+                             cut_limit=limit_value(arguments.cut_limit), merge_limit=limit_value(arguments.merge_limit),
+                             keep_object=arguments.keep_object)
     if compiled["warning"]:
         print(compiled["warning"], file=sys.stderr)
     arguments.version = compiled["version"]
@@ -2714,7 +2791,10 @@ def main():
             document["raw"] = raw_for(lines, arguments.function) if arguments.function else lines
         print(json.dumps(document, indent=1))
         return
+    limits = compiled.get("limits")
     print(f"oracle: {oracle.relative_to(ROOT)} ({arguments.version}); the original's code with trace wrappers"
+          + (f"; block limits patched (both compilers): cut {limits['cut'] if limits['cut'] is not None else 100}, "
+             f"merge {limits['merge'] if limits['merge'] is not None else 100}" if limits else "")
           + ("" if check is None else "; object identical to the original compiler's: " + ("yes" if check else
                                                                                            "NO - the oracle differs")))
     if check is False:
@@ -2734,9 +2814,10 @@ def main():
 
     if arguments.blocks:
         traced = block_trace(lines)
+        cut = limits["cut"] if limits and limits["cut"] is not None else 100
         shown = [link for link in traced if matches(arguments.function, link, link)]
         for link in shown:
-            print("\n".join(blocks_report(link, traced[link], names, arguments.pcode)))
+            print("\n".join(blocks_report(link, traced[link], names, arguments.pcode, cut)))
         if not shown:
             print("no block trace for that function (an oracle with the bk.* hooks is needed)")
         return

@@ -50,6 +50,29 @@ each is far below the limit.
 
 With `--pcode`, the report also lists each raw block's instructions, with virtual registers.
 
+## Other limits: `--cut-limit`, `--merge-limit`
+
+```
+python tools/oracle.py --from-ninja ../echoes/build.ninja src/MetroidPrime/ScriptLoader.cpp --function __sinit \
+    --blocks --cut-limit 77 --keep-object sinit-77.o
+```
+
+These compile with other block limits, to test whether the target's blocks were cut at other places than ours. For
+example, give the size that a guessed source would reach, then compare the object with the target.
+
+* `--cut-limit N`: a new block at the start of a statement once the block holds more than N instructions.
+* `--merge-limit N`: blocks are merged when together they hold N or fewer.
+* N is 0 to 127 (the compare takes a signed byte), or `none`: never cut, or merge whatever the size.
+* `--keep-object PATH`: also write the oracle's object to PATH, to disassemble or diff. It works without the limits
+  too.
+
+The script patches copies of both the oracle and the original, in a temporary directory; the files in `build/` are
+not changed. The check still compares the two, and the report's first line gives the limits used. The patched places
+are the same in the original and the oracle: `BLOCK_LIMITS` in `tools/oracle.py` lists their file offsets for 1.3,
+1.3.2 and 2.7. The cut is inlined in seven places, one per kind of statement, and all seven are patched.
+
+## Example
+
 In the ScriptLoader example, each of the 184 table entries is three statements of 13 raw instructions in all. Eight
 entries make 104 instructions, so each block holds eight entries. The optimizer shrinks the blocks to about 61
 instructions, and no two fit in 100 together, so the 23 blocks stay apart.
