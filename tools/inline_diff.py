@@ -2,21 +2,30 @@
 """python tools/inline_diff.py [options] A B: why one translation unit inlines a call another keeps. Both are compiled
 with the oracle (--full-cost), and for every callee (by link name) both decide on, each one's decisions are printed
 side by side: inlined, kept or kept by the inline depth limit, the compiler's estimate and the whole cost, the rounds
-(the inline depth), the functions, the inlined bodies the call is in and the calls at the depth limit.
+(the inline depth), the functions, the inlined bodies the call is in, the calls at the depth limit and the sensitive
+terms (calls costed as their body, or as a call for want of one, that would flip the decision or move it by 1 or 2).
 
   --from-ninja FILE  the build.ninja that builds A and B (their flags and version; else flags after --)
   --version V        the compiler version (default: the rule's, else GC_1_3_2)
   --override P=R     as tools/oracle.py's, for both; repeatable
   --callee TEXT      only the callees whose link name contains TEXT
   --all              every shared callee, not only those decided differently
+  --target [DIR]     check against the target: a callee is emitted out of line (`.fn LINK`) in a TU's target asm
+                     (DIR/**/asm/<source without src/>.s; by default the build/<id> directory --from-ninja's
+                     build.ninja names most) if and only if a call to it is kept there. Shows the callees mispredicted
+                     in A or B (with --all, every callee, with its target state)
   --json             the comparison as JSON"""
 import argparse
 import json
+import re
 import sys
+from collections import Counter
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import oracle  # noqa: E402
+
+SHOWN = 6
 
 
 def decisions_by_link(document):
@@ -38,12 +47,18 @@ def summary(decisions):
         outcomes[d["outcome"]] = outcomes.get(d["outcome"], 0) + d["count"]
     costs = sorted({d["cost"] for d in decisions if "cost" in d})
     whole = sorted({d["full_cost"] for d in decisions if "full_cost" in d})
+    terms = {}
+    for d in decisions:
+        for s in d.get("sensitivity", ()):
+            key = (tuple(s["path"]), s["kind"], s["delta"])
+            terms[key] = dict(s, flips=s["flips"] or terms.get(key, {}).get("flips", False))
     return {"outcomes": outcomes, "costs": costs, "full_costs": whole,
             "rounds": sorted({r for d in decisions for r in d.get("depths", [])}),
             "functions": sorted({d["function"] for d in decisions}),
             "reasons": sorted({d["reason"] for d in decisions if "cost" not in d}),
             "chains": sorted({tuple(d.get("chain", ())) for d in decisions if d.get("chain")}),
-            "limit_paths": sorted({tuple(p) for d in decisions for p in d.get("limit_paths", ())})}
+            "limit_paths": sorted({tuple(p) for d in decisions for p in d.get("limit_paths", ())}),
+            "sensitivity": sorted(terms.values(), key=lambda s: (not s["flips"], abs(s["delta"]), s["path"]))}
 
 
 def span(values):
@@ -52,19 +67,68 @@ def span(values):
     return str(values[0]) if len(values) == 1 else f"{values[0]}..{values[-1]}"
 
 
-def report(name, s):
+def section(title, lines, more):
+    if not lines:
+        return []
+    shown = lines[:SHOWN * 2]
+    out = [f"      {title}:"] + [f"         {line}" for line in shown]
+    if len(lines) > len(shown):
+        out.append(f"         ... {len(lines) - len(shown)} more {more}")
+    return out
+
+
+def report(name, s, target=None):
     outcomes = ", ".join(f"{k} x{v}" for k, v in sorted(s["outcomes"].items()))
     out = [f"   {name}: {outcomes}; estimate {span(s['costs'])}, whole cost {span(s['full_costs'])}, "
-           f"rounds {', '.join(map(str, s['rounds'])) or '-'}",
+           f"rounds {', '.join(map(str, s['rounds'])) or '-'}" + (f"   {target}" if target else ""),
            f"      in {', '.join(s['functions'])}"]
     out.extend(f"      because: {r}" for r in s["reasons"])
-    out.extend(f"      inside: {' > '.join(c)}" for c in s["chains"][:6])
-    if len(s["chains"]) > 6:
-        out.append(f"      ... {len(s['chains']) - 6} more chains")
-    out.extend(f"      at the depth limit: {' > '.join(p)}  [limit +1]" for p in s["limit_paths"][:6])
-    if len(s["limit_paths"]) > 6:
-        out.append(f"      ... {len(s['limit_paths']) - 6} more calls at the depth limit")
+    out.extend(section("inside", oracle.tree(s["chains"]), "lines"))
+    out.extend(section("at the depth limit [limit +1]", oracle.tree(s["limit_paths"]), "lines"))
+    out.extend(section("sensitive", [oracle.sensitivity_text(t) for t in s["sensitivity"]], "terms"))
     return out
+
+
+def target_directory(from_ninja):
+    """The build/<id> directory the build.ninja names most."""
+    root = Path(from_ninja).resolve().parent
+    ids = Counter(re.findall(r"build/(\w+)/", Path(from_ninja).read_text()))
+    for build_id, _ in ids.most_common():
+        if build_id != "compilers" and (root / "build" / build_id).is_dir():
+            return root / "build" / build_id
+    raise oracle.OracleError(f"no target build directory named in {from_ninja}; give --target DIR")
+
+
+def target_functions(directory, source):
+    """{link name: binding} of the functions in the target asm of SOURCE (as the rule spells it), or None."""
+    relative = re.sub(r"^src/", "", source.replace("\\", "/"))
+    relative = str(Path(relative).with_suffix(".s")).replace("\\", "/")
+    found = sorted(Path(directory).glob(f"asm/{relative}")) + sorted(Path(directory).glob(f"*/asm/{relative}"))
+    if not found:
+        return None
+    out = {}
+    for line in found[0].read_text(errors="replace").splitlines():
+        m = re.match(r'\s*\.fn\s+("[^"]*"|\S+),\s*(\w+)', line)
+        if m:
+            out[m.group(1).strip('"')] = m.group(2)
+    return out
+
+
+def prediction(s, functions):
+    """(the target state, mispredicted) of one TU's decisions about a callee against its target functions. Only an
+    inline function is predicted (a function that is not is emitted, global, where it is defined, whatever is
+    inlined)."""
+    if functions is None:
+        return None, False
+    binding = functions.get(s["link"])
+    if binding == "global" or s["reasons"] and all(r.startswith("not declared inline") for r in s["reasons"]):
+        return (f"target: out of line ({binding})" if binding else "target: not emitted (not inline)"), False
+    kept = any(k != "inlined" for k in s["outcomes"])
+    state = f"target: out of line ({binding})" if binding else "target: not emitted"
+    if kept != bool(binding):
+        return state + ("; MISPREDICTED (kept here, inlined there)" if kept else
+                        "; MISPREDICTED (inlined here, emitted there)"), True
+    return state, False
 
 
 def main():
@@ -76,6 +140,7 @@ def main():
     parser.add_argument("--override", action="append", default=[])
     parser.add_argument("--callee")
     parser.add_argument("--all", action="store_true")
+    parser.add_argument("--target", nargs="?", const="")
     parser.add_argument("--json", action="store_true")
     argv = sys.argv[1:]
     flags = []
@@ -86,27 +151,47 @@ def main():
     documents = [oracle.analyze_source(source, flags, arguments.from_ninja, arguments.version, arguments.override,
                                        full_cost=True)
                  for source in (arguments.a, arguments.b)]
+    targets = [None, None]
+    if arguments.target is not None:
+        if not arguments.target and not arguments.from_ninja:
+            raise oracle.OracleError("--target without a directory needs --from-ninja")
+        directory = Path(arguments.target) if arguments.target else target_directory(arguments.from_ninja)
+        targets = [target_functions(directory, d["source"]) for d in documents]
+        for d, t in zip(documents, targets):
+            if t is None:
+                print(f"WARNING: no target asm for {d['source']} under {directory}", file=sys.stderr)
     a, b = (decisions_by_link(d) for d in documents)
     rows = []
     for link in sorted(set(a) & set(b)):
         if arguments.callee and arguments.callee not in link:
             continue
         sa, sb = summary(a[link]), summary(b[link])
-        if not arguments.all and set(sa["outcomes"]) == set(sb["outcomes"]):
+        sa["link"] = sb["link"] = link
+        (ta, wrong_a), (tb, wrong_b) = prediction(sa, targets[0]), prediction(sb, targets[1])
+        differ = set(sa["outcomes"]) != set(sb["outcomes"])
+        if not arguments.all and not (wrong_a or wrong_b if arguments.target is not None else differ):
             continue
+        for s, t, wrong in ((sa, ta, wrong_a), (sb, tb, wrong_b)):
+            del s["link"]
+            if t:
+                s["target"], s["mispredicted"] = t, wrong
         rows.append({"link": link, "callee": a[link][0]["callee"], "a": sa, "b": sb})
     if arguments.json:
         print(json.dumps({"schema_version": oracle.SCHEMA_VERSION, "a": documents[0]["source"],
                           "b": documents[1]["source"], "callees": rows}, indent=1, default=list))
         return
+    which = ("all" if arguments.all else "mispredicted against the target" if arguments.target is not None
+             else "decided differently")
     print(f"A: {documents[0]['source']}\nB: {documents[1]['source']}\n"
-          f"{len(set(a) & set(b))} callees decided in both; {'all' if arguments.all else 'decided differently'}: "
-          f"{len(rows)}")
+          f"{len(set(a) & set(b))} callees decided in both; {which}: {len(rows)}")
     for row in rows:
         print(f"== {row['callee']}  [{row['link']}]")
-        print("\n".join(report("A", row["a"])))
-        print("\n".join(report("B", row["b"])))
+        print("\n".join(report("A", row["a"], row["a"].get("target"))))
+        print("\n".join(report("B", row["b"], row["b"].get("target"))))
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except oracle.OracleError as error:
+        sys.exit(str(error))

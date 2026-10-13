@@ -68,7 +68,7 @@ register 60) that the register report names. `--json` prints all of it as one JS
 split), `order`, `pushed`, `select`; `functions[].inlining[]`: `callee`, `link` (the callee's link name, which tells
 overloads and template instances apart), `inline`, `cost`, `threshold`, `reason`, `count`, `depths`, `lines`,
 `chain`, `outcome` (`inlined`, `kept`, or `limit`: kept by a call at the inline depth limit, known with
-`--full-cost`) (and with `--full-cost`, `full_cost`, `depth_limited` and `limit_paths`). Every object of the inliner
+`--full-cost`) (and with `--full-cost`, `full_cost`, `depth_limited`, `limit_paths` and `sensitivity`). Every object of the inliner
 has a `kind`: `decision`, `expansion` (a body expanded), `breakdown` (a node of a cost breakdown) or `near`;
 `functions[].frame`).
 
@@ -86,9 +86,14 @@ More views, each traced only when asked for (the objects are the same either way
   (the order the scheduler was given).
 * `--inline-cost CALLEE`: only the inliner's decisions about callees whose name or link name contains CALLEE, each
   with its cost broken down: one line per statement-level expression of the callee's body (`*(arg0+8) = arg1`: 5),
-  and the bodies of the calls inlined inside it nested under their call. A call names its callee's link name and
-  says when the compiler made the callee (an implicit destructor or constructor). `--json`: `inlining[].breakdown`,
-  whose call nodes have `link`, `implicit`, `ctor` and `dtor`.
+  and under it the bodies of the inline functions it calls (`the body of LINK`, with what it would cost as a plain
+  call instead), in the order they are costed. A statement that is a call names its callee's link name and says when
+  the compiler made the callee (an implicit destructor or constructor). A call at the inline depth limit is marked
+  `[limit +1: LINK ...]`, an inline function with no body yet (costed as a call) `[LINK: no body yet ...]`. Only
+  statements are costed through the hook (the compiler costs an expression's operands itself), so a body is shown
+  under the statement it is in, named by its callee. `--json`: `inlining[].breakdown`, whose nodes have `calls`
+  (`[mark, link]`: `!` at the depth limit, `?` no body yet) and, for a body, `of` (its callee's link name); a call
+  statement also has `link`, `implicit`, `ctor`, `dtor` and `candidate`.
 * `--near N`: every decision of the automatic inliner whose cost is within N of the threshold, in all functions,
   with the callee's link name, the function and the lines: the close calls a header change can flip (`--json`:
   `near[]`, each with `margin`, the threshold minus the cost). The estimate stops once over the threshold, so a kept
@@ -98,7 +103,12 @@ More views, each traced only when asked for (the objects are the same either way
   depth limit (`depth_limited`): the compiler then makes the estimate the threshold plus one, whatever the size, and
   the body is never inlined; the whole cost leaves such calls out (their arguments are counted). Many kept calls at
   126 are this, not their size. `limit_paths` gives each such call as the callees' link names from the body's own
-  calls down to it.
+  calls down to it (printed as a tree: a line's prefix in common with the line above is indented instead).
+  `sensitivity` lists the calls whose cost would change if the callee's body were or were not there, when that
+  alone would flip the decision or moves the cost by 2 or less: an inline function costed as its body would cost 1
+  as a plain call (`body`, a callee not inline in another TU, or not defined yet there), and one with no body yet
+  would cost its body (`no body`, as costed elsewhere in the TU). Each has `path`, `kind`, `delta`, `flips` and
+  `count` (`sensitive:` with `--near`).
 
 The inliner goes over a function once per inline depth (the `depth` of a decision is that round, up to the
 `-inline` depth limit, 8 by default), and a call kept is decided again in every round, with less depth left for its
@@ -142,7 +152,10 @@ lines, `sc.node i= latency= height= latest= preds= succ=` (the dependency graph,
 function type's flags: 0x100 made by the compiler, 0x1000 a constructor, 0x2000 a destructor). With
 `MWCC_ORACLE_FULL_COST=1`, `inl.cost` also has `full=` (the whole cost) and `limit=` (1: a call at the inline depth
 limit), and the `inl.expr` lines are those of the whole estimate; a call's `inl.expr` has `limit=1` when it is at
-the depth limit. The link
+the depth limit, and `cand=` and `body=` (an inline candidate; its body is there). Only a body's statements have
+`inl.expr` lines (the compiler costs their operands without the hook); each has `calls=`, the calls of inline
+functions in it in the order they are costed, separated by `|`, `!` before one at the depth limit and `?` before one
+with no body yet: the others' bodies are the `inl.cost` lines one `nest` deeper before it, in that order. The link
 names are the mangled ones (the compiler computes them when it has not yet). The file is appended to, so delete it
 between runs.
 
@@ -166,7 +179,13 @@ status is 0 when nothing differs. Last result: 2313/2313 canaries on all three v
 * `tools/inline_diff.py --from-ninja FILE A B`: why one translation unit inlines a call another keeps. Both are compiled
   with `--full-cost`, and each callee (by link name) both decide on differently is given side by side: the
   outcomes, the estimate and the whole cost, the rounds, the functions, the chains, the calls at the depth limit
-  (`[limit +1]`) and the reasons (`--all` for every shared callee, `--callee TEXT`, `--json`).
+  (`[limit +1]`), the sensitive terms and the reasons (`--all` for every shared callee, `--callee TEXT`, `--json`).
+  Chains and paths are printed as trees. `--target [DIR]` checks each TU against the target: an inline function is
+  emitted out of line (`.fn LINK` in DIR/**/asm/<source without src/>.s; by default the `build/<id>` directory the
+  build.ninja names most) if and only if a call to it is kept, so the callees mispredicted in A or B are listed. One
+  that is inlined everywhere can still be emitted (its address taken, a vtable), and a callee kept in the target has
+  an out-of-line body whose own calls are decided there, so one misprediction brings others: look at the outermost
+  first.
 * `tools/locate.py VERSION SOURCE...`: where a compiled source's functions are in the executable.
 * `tools/nearest.py VERSION SOURCE...`: the functions of the executable a not-yet-exact function resembles most.
 * `tools/fdiff.py VERSION SOURCE FUNCTION ADDRESS`: instruction diff of a compiled function against the original's.

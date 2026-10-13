@@ -784,8 +784,79 @@ static void describe(ENode *expr, char *buffer, int *length, int level)
     }
 }
 
+/* The retail fn_0055e600 costs an expression's operands itself (its calls to itself are internal, not hooked), so only
+ * the expressions a body's statements are made of are traced. body_calls walks one as it does, listing the calls of
+ * inline functions in the order it costs them (their bodies are the inl.cost lines one deeper, in that
+ * order), with ! before one at the inline depth limit (depth 0: charged, or nothing, not costed as its body) and ? before
+ * an inline function with no body yet. */
+static void body_calls(ENode *node, int depth, char *buffer, int *length)
+{
+    ENodeList *arg;
+    Object *callee;
+    const char *link;
+    int size;
+
+    if (node == NULL)
+        return;
+    switch (node->type) {
+        case EPOSTINC: case EPOSTDEC: case EPREINC: case EPREDEC: case EINDIRECT: case EMONMIN: case EBINNOT:
+        case ELOGNOT: case EFORCELOAD: case ETYPCON: case EBITFIELD:
+            body_calls(node->data.monadic, depth, buffer, length);
+            break;
+        case EMUL: case EMULV: case EDIV: case EMODULO: case EADDV: case ESUBV: case EADD: case ESUB: case ESHL:
+        case ESHR: case ELESS: case EGREATER: case ELESSEQU: case EGREATEREQU: case EEQU: case ENOTEQU: case EAND:
+        case EXOR: case EOR: case ELAND: case ELOR: case EASS: case EMULASS: case EDIVASS: case EMODASS: case EADDASS:
+        case ESUBASS: case ESHLASS: case ESHRASS: case EANDASS: case EXORASS: case EORASS: case ECOMMA: case EPMODULO:
+        case EROTL: case EROTR: case EBCLR: case EBTST: case EBSET: case ENULLCHECK: case EMFPOINTER:
+            body_calls(node->data.diadic.left, depth, buffer, length);
+            body_calls(node->data.diadic.right, depth, buffer, length);
+            break;
+        case EFUNCCALL:
+        case EFUNCCALLP:
+            if (node->data.funccall.funcref->type == EOBJREF) {
+                callee = node->data.funccall.funcref->data.objref;
+                if (callee->type != NULL && callee->type->type == TYPEFUNC &&
+                    ((callee->qual & Q_INLINE) || (TYPE_METHOD(callee->type)->flags & 0x800)) &&
+                    (callee->datatype == DFUNC ||
+                     (callee->datatype == DVFUNC && (node->data.funccall.funcref->flags & ENODE_FLAG_80)))) {
+                    /* (? before a candidate with no body yet: costed as a call, one) */
+                    int mark = callee->u.func.u == NULL ? '?' : depth == 0 ? '!' : 0;
+                    while (callee->datatype == DALIAS && callee->u.alias.object != NULL)
+                        callee = callee->u.alias.object;
+                    link = link_name(callee);
+                    size = strlen(link);
+                    if (*length + size + 3 < 4000) {
+                        if (*length)
+                            buffer[(*length)++] = '|';
+                        if (mark)
+                            buffer[(*length)++] = (char)mark;
+                        memcpy(buffer + *length, link, size);
+                        *length += size;
+                        buffer[*length] = 0;
+                    }
+                }
+            }
+            for (arg = node->data.funccall.args; arg != NULL; arg = arg->next)
+                body_calls(arg->node, depth, buffer, length);
+            break;
+        case ECOND:
+            body_calls(node->data.cond.cond, depth, buffer, length);
+            body_calls(node->data.cond.expr1, depth, buffer, length);
+            body_calls(node->data.cond.expr2, depth, buffer, length);
+            break;
+        case EMEMBER:
+            if (((ENodeList *)node->data.monadic)->node != NULL)
+                body_calls(((ENodeList *)node->data.monadic)->node, depth, buffer, length);
+            break;
+        default:
+            break;
+    }
+}
+
 int fn_0055e600(ENode *expr, int running, int depth)
 {
+    static char calls[4096];
+    int calls_length;
     char what[256];
     int length;
     int result;
@@ -809,21 +880,28 @@ int fn_0055e600(ENode *expr, int running, int depth)
 
         /* limit=1: an inline function with a body met at the inline depth limit, the call the compiler charges the
          * threshold plus one for (the test fn_0055e600 makes, on the object as it is referenced, before the alias) */
-        int at_limit = depth == 0 && callee->u.func.u != NULL && callee->type != NULL &&
-                       callee->type->type == TYPEFUNC &&
-                       ((callee->qual & Q_INLINE) || (TYPE_METHOD(callee->type)->flags & 0x800)) &&
-                       (callee->datatype == DFUNC ||
-                        (callee->datatype == DVFUNC && (expr->data.funccall.funcref->flags & ENODE_FLAG_80))) &&
-                       callee != data_005dfb62;
+        /* cand=1: an inline candidate (inline, or a method defined in its class, and called directly); body=1: its
+         * body is saved, so it is costed as its body (or charged at the depth limit), else as a call (one) */
+        int candidate = callee->type != NULL && callee->type->type == TYPEFUNC &&
+                        ((callee->qual & Q_INLINE) || (TYPE_METHOD(callee->type)->flags & 0x800)) &&
+                        (callee->datatype == DFUNC ||
+                         (callee->datatype == DVFUNC && (expr->data.funccall.funcref->flags & ENODE_FLAG_80)));
+        int body = candidate && callee->u.func.u != NULL;
+        int at_limit = depth == 0 && body && callee != data_005dfb62;
 
         while (callee->datatype == DALIAS && callee->u.alias.object != NULL)
             callee = callee->u.alias.object;
-        OracleTrace_Printf("link=%s flags=%x %s", link_name(callee),
+        OracleTrace_Printf("link=%s flags=%x cand=%d body=%d %s", link_name(callee),
                            callee->type != NULL && callee->type->type == TYPEFUNC
                                ? (unsigned int)TYPE_FUNC(callee->type)->flags
                                : 0u,
-                           at_limit ? "limit=1 " : "");
+                           candidate, body, at_limit ? "limit=1 " : "");
     }
+    calls[0] = 0;
+    calls_length = 0;
+    body_calls(expr, depth, calls, &calls_length);
+    if (calls_length)
+        OracleTrace_Printf("calls=%s ", calls);
     OracleTrace_Printf("what=%s\n", what);
     return result;
 }

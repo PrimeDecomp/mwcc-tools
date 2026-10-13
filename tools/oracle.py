@@ -27,7 +27,9 @@ Options (anywhere before `--`; the compiler's flags after `--`, or after SOURCE)
   --schedule        explain the instruction scheduler's picks, per block
   --inline-cost C   only the inliner's decisions about callee C (name or link name), with their cost broken down
   --near N          every inline decision whose cost is within N of the threshold, with the callee's link name
-  --full-cost       estimate the whole cost of the inline decisions over the threshold too (the compiler stops there)
+  --full-cost       estimate the whole cost of the inline decisions over the threshold too (the compiler stops there),
+                    with the calls at the inline depth limit and the sensitive terms (calls whose body being there
+                    or not would flip the decision, or move it by 2 or less)
   --exchange A,B    why virtual registers A and B were coloured in that order (r41,r42)
   --override P=R    compile with file R in place of P (a header or SOURCE), the checkout untouched; repeatable
   --json            print the report as JSON
@@ -737,21 +739,108 @@ def frame_report(analysis):
     return out
 
 
-def limit_paths(nodes, above=()):
-    """The calls of a cost breakdown at the inline depth limit, each as the callees' link names from the body's own
-    calls down to it."""
+def cost_terms(nodes, above=()):
+    """The calls of inline functions in a cost breakdown, each as (path, kind, cost): the path is the link names of the
+    bodies it is in (from the body's own calls down) and its callee's; kind is "body" (costed as its body: cost), "limit"
+    (at the inline depth limit) or "no body" (an inline function whose body is not there yet: costed as a call)."""
     out = []
     for node in nodes:
-        here = above + (node["link"],) if node.get("link") else above
-        if node.get("depth_limit"):
-            out.append(list(here))
-        out.extend(limit_paths(node["parts"], here))
+        if node["what"] == "body":
+            here = above + (node["of"],) if node.get("of") else above
+            if node.get("of"):
+                out.append((here, "body", node["cost"]))
+            out.extend(cost_terms(node["parts"], here))
+            continue
+        for mark, link in node.get("calls", ()):
+            if mark:
+                out.append((above + (link,), "limit" if mark == "!" else "no body", None))
+        out.extend(cost_terms(node["parts"], above))
     return out
 
 
-def inlining_decisions(events):
+def limit_paths(nodes):
+    """The calls of a cost breakdown at the inline depth limit, each as the callees' link names from the body's own
+    calls down to it."""
+    paths = [path for path, kind, _ in cost_terms(nodes) if kind == "limit"]
+    return [list(path) for path in dict.fromkeys(paths)]
+
+
+def tree(paths, suffix=""):
+    """PATHS (sequences of link names) sorted, each with the prefix it has in common with the one before left out
+    and indented instead."""
+    out, previous = [], ()
+    for path in sorted(tuple(p) for p in paths):
+        common = 0
+        while common < min(len(path), len(previous)) - 1 and path[common] == previous[common]:
+            common += 1
+        out.append(("  " * common) + ("> " if common else "") + " > ".join(path[common:]) + suffix)
+        previous = path
+    return out
+
+
+def call_list(text):
+    """inl.expr's calls= field: [(mark, link)], mark "!" at the inline depth limit, "?" with no body yet, else ""."""
+    return [(c[0], c[1:]) if c[:1] in ("!", "?") else ("", c) for c in text.split("|")] if text else []
+
+
+def body_costs(events):
+    """{callee link name: the smallest cost its body was estimated at} over a whole trace (with --full-cost): what an
+    inline function costed as a call (its body not there yet) would cost once its body is there."""
+    out, bodies = {}, {}
+    for kind, f in events:
+        if kind == "inl.cost" and int(f.get("nest", 0)) > 0:
+            bodies.setdefault(int(f["nest"]), []).append(int(f.get("cost", 0)) - int(f.get("running", 0)))
+        elif kind == "inl.expr":
+            costs = bodies.pop(int(f.get("nest", 0)) + 1, [])
+            for (mark, link), cost in zip([c for c in call_list(f.get("calls")) if not c[0]], costs):
+                out[link] = min(cost, out.get(link, cost))
+    return out
+
+
+def sensitive_terms(nodes, bodies):
+    """The calls of a cost breakdown whose cost would change if the callee's body were (or were not) there: an inline
+    function with its body is costed as that body, and as a plain call (1) otherwise; one without its body yet as 1,
+    and as its body (BODIES, from body_costs) once that is there. Each is (path, kind, delta); a call at the depth
+    limit is in limit_paths instead."""
+    out = []
+    for path, kind, cost in cost_terms(nodes):
+        if kind == "body":
+            out.append((path, kind, 1 - cost))
+        elif kind == "no body" and path[-1] in bodies:
+            out.append((path, kind, bodies[path[-1]] - 1))
+    return out
+
+
+def sensitivity(record, bodies, small=2):
+    """A decision's sensitive terms (sensitive_terms) that would flip it on their own, or change its cost by at most
+    SMALL: each a dict with path, kind, delta, flips and count."""
+    t, statements = record.get("threshold"), record["breakdown"]["statements"]
+    out = {}
+    for path, kind, delta in sensitive_terms(statements, bodies):
+        if record["inline"]:
+            flips = record["cost"] + delta > t
+        else:
+            flips = not record.get("depth_limited") and record["full_cost"] + delta <= t
+        if flips or abs(delta) <= small:
+            key = (path, kind, delta)
+            if key not in out:
+                out[key] = {"path": list(path), "kind": kind, "delta": delta, "flips": flips, "count": 0}
+            out[key]["count"] += 1
+    return sorted(out.values(), key=lambda s: (not s["flips"], abs(s["delta"])))
+
+
+def sensitivity_text(s):
+    what = ("its body is costed; as a plain call" if s["kind"] == "body" else
+            "costed as a call (no body yet here); with its body")
+    return (f"{' > '.join(s['path'])}  [{what}: {s['delta']:+d}]" + ("  FLIPS THE DECISION" if s["flips"] else "")
+            + (f"  (x{s['count']})" if s["count"] > 1 else ""))
+
+
+def inlining_decisions(events, bodies=None):
     """The decisions of the inliner, each with its reason, with how many times each was made (in the order of the
-    first)."""
+    first). BODIES (body_costs of the whole trace) adds each decision's `sensitivity` with --full-cost."""
+    if bodies is None:
+        bodies = body_costs(events)
     decisions, seen = [], {}
     cost = None
 
@@ -759,9 +848,12 @@ def inlining_decisions(events):
         depth = record.pop("depth", None)
         line = record.pop("line", None)
         breakdown = record.pop("breakdown", None)
+        terms = record.pop("sensitivity", None)
         key = tuple(sorted(record.items()))
         if breakdown is not None and key not in seen:
             record["breakdown"] = breakdown
+        if terms is not None and key not in seen:
+            record["sensitivity"] = terms
         if key not in seen:
             record["count"] = 0
             seen[key] = record
@@ -781,12 +873,16 @@ def inlining_decisions(events):
         if kind == "inl.expr":
             nest = int(f.get("nest", 0))
             node = {"kind": "breakdown", "what": f.get("what", "?"), "type": int(f.get("type", -1)), "cost": int(f.get("cost", 0)),
-                    "parts": pending.pop(nest + 1, [])}
+                    "parts": pending.pop(nest + 1, []), "calls": call_list(f.get("calls"))}
+            # (the bodies one deeper are those of the calls costed as their bodies, in order: name them)
+            for part, (_, link) in zip([p for p in node["parts"] if p["what"] == "body"],
+                                       [c for c in node["calls"] if not c[0]]):
+                part["of"] = link
             if "link" in f:
                 # (a call: the callee's link name, and whether the compiler made it, a constructor or a destructor)
                 flags = int(f.get("flags", "0"), 16)
                 node.update(link=f["link"], implicit=bool(flags & 0x100), ctor=bool(flags & 0x1000),
-                            dtor=bool(flags & 0x2000))
+                            dtor=bool(flags & 0x2000), candidate=f.get("cand") == "1")
                 if f.get("limit") == "1":
                     node["depth_limit"] = True
             pending.setdefault(nest, []).append(node)
@@ -794,10 +890,14 @@ def inlining_decisions(events):
             nest = int(f.get("nest", 0))
             statements = pending.pop(nest, [])
             if nest > 0:
-                # (a callee's body costed inside an expression: it is one of that expression's parts)
-                pending.setdefault(nest, []).append({"kind": "breakdown", "what": "body", "type": -1, "cost": int(f.get("cost", 0)) -
-                                                     int(f.get("running", 0)), "nstmts": int(f.get("nstmts", 0)),
-                                                     "parts": statements})
+                # (a callee's body costed inside an expression: it is one of that expression's parts; the bodies
+                # costed before it in the same expression are its siblings, not its statements)
+                bodies = [i for i, p in enumerate(statements) if p["what"] == "body"]
+                siblings = statements[:bodies[-1] + 1] if bodies else []
+                statements = statements[len(siblings):]
+                pending[nest] = siblings + [{"kind": "breakdown", "what": "body", "type": -1,
+                                             "cost": int(f.get("cost", 0)) - int(f.get("running", 0)),
+                                             "nstmts": int(f.get("nstmts", 0)), "parts": statements}]
                 continue
             cost = dict(f)
             if statements or "nest" in f:
@@ -832,6 +932,10 @@ def inlining_decisions(events):
                         paths = limit_paths(cost["breakdown"]["statements"])
                         if paths:
                             record["limit_paths"] = tuple(tuple(p) for p in paths)
+                        if "full_cost" in record:
+                            terms = sensitivity(dict(record, inline=result), bodies)
+                            if terms:
+                                record["sensitivity"] = terms
                     reason = f"estimated cost {c} {'is within' if result else 'exceeds'} the threshold {t}"
                     if record.get("depth_limited") and record["full_cost"] <= t:
                         reason = (f"a call in it is at the inline depth limit, which makes the estimate {c} (the "
@@ -903,7 +1007,8 @@ def near_threshold(analyses, after_last, margin):
                      "threshold": d["threshold"], "margin": d["threshold"] - d["cost"], "count": d["count"],
                      "lines": d.get("lines", []), "depths": d.get("depths", []), "chain": list(d.get("chain", ())),
                      "outcome": d["outcome"],
-                     "limit_paths": [list(x) for x in d.get("limit_paths", ())]}
+                     "limit_paths": [list(x) for x in d.get("limit_paths", ())],
+                     "sensitivity": d.get("sensitivity", [])}
                 if "full_cost" in d:
                     n["full_cost"] = d["full_cost"]
                     n["full_margin"] = d["threshold"] - d["full_cost"]
@@ -925,8 +1030,13 @@ def near_report(near, margin):
             whole = f"  (whole cost {n['full_cost']}" + (", DEPTH LIMIT" if n.get("depth_limited") else "") + ")"
         if n["chain"]:
             whole += "\n          inside: " + " > ".join(n["chain"])
-        for path in n["limit_paths"]:
-            whole += "\n          at the depth limit: " + " > ".join(path) + "  [limit +1]"
+        if n["limit_paths"]:
+            whole += "\n          at the depth limit [limit +1]:"
+            whole += "".join("\n             " + line for line in tree(n["limit_paths"]))
+        for term in n["sensitivity"][:4]:
+            whole += "\n          sensitive: " + sensitivity_text(term)
+        if len(n["sensitivity"]) > 4:
+            whole += f"\n          ... {len(n['sensitivity']) - 4} more sensitive terms (--json: near[].sensitivity)"
         out.append(f"   {n['cost']:>4} {n['threshold']:>4}  {n['outcome'].upper():<7}  {n['link']}  in "
                    f"{where}{lines}" + (f"  (x{n['count']})" if n["count"] > 1 else "") + whole)
     if not near:
@@ -959,15 +1069,19 @@ def cost_report(decision, types):
     def walk(nodes, indent):
         for node in nodes:
             if node["what"] == "body":
-                out.append(f"         {node['cost']:>4}  {'  ' * indent}the callee's body: {node['nstmts']} "
-                           "statement(s), and:")
+                plain = f"  [as a plain call: {1 - node['cost']:+d}]" if node.get("of") else ""
+                out.append(f"         {node['cost']:>4}  {'  ' * indent}the body of {node.get('of', 'a callee')}: "
+                           f"{node['nstmts']} statement(s){plain}, and:")
                 walk(node["parts"], indent + 1)
                 continue
             call = ""
             if node.get("link"):
                 call = f"  [{node['link']}{', compiler-made' if node['implicit'] else ''}]"
-            if node.get("depth_limit"):
-                call += "  [limit +1] AT THE INLINE DEPTH LIMIT"
+            for mark, link in node.get("calls", ()):
+                if mark == "!":
+                    call += f"  [limit +1: {link} AT THE INLINE DEPTH LIMIT]"
+                elif mark == "?":
+                    call += f"  [{link}: no body yet, costed as a call]"
             out.append(f"         {node['cost']:>4}  {'  ' * indent}{types.get(node['type'], node['type'])}: "
                        f"{node['what']}{call}")
             walk(node["parts"], indent + 1)
@@ -1143,7 +1257,7 @@ def explain_exchange(analysis, first, second):
     return out
 
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 
 def analyze_file(trace, function=None, link=None, version="GC_1_3_2"):
@@ -1154,6 +1268,7 @@ def analyze_file(trace, function=None, link=None, version="GC_1_3_2"):
     lines = Path(trace).read_text().splitlines() if isinstance(trace, (str, Path)) else list(trace)
     allocations, inliner = parse_trace(lines)
     names = opcode_names(version)
+    bodies = body_costs(inliner)
     out, start = [], 0
     for name, before, after, upto in allocations:
         events = inliner[start:upto]
@@ -1162,7 +1277,7 @@ def analyze_file(trace, function=None, link=None, version="GC_1_3_2"):
             continue
         analysis = analyze(name, before, after, names)
         analysis["schema_version"] = SCHEMA_VERSION
-        analysis["inlining"] = inlining_decisions(events)
+        analysis["inlining"] = inlining_decisions(events, bodies)
         analysis["schedule"] = analyze_schedule(before.schedule, names)
         out.append(analysis)
     return out
@@ -1484,7 +1599,7 @@ def document_for(compiled, function=None, link=None, near=None):
                 "source": compiled["source"], "identical": compiled["identical"],
                 "differences": compiled["differences"], "functions": analyses}
     last = allocations[-1][3] if allocations else 0
-    after = inlining_decisions(inliner[last:]) if inliner[last:] and not function and not link else []
+    after = inlining_decisions(inliner[last:], body_costs(inliner)) if inliner[last:] and not function and not link else []
     if after:
         document["inlining_after_last_function"] = after
     if function and not analyses:
@@ -1578,7 +1693,7 @@ def main():
             print("\n".join(schedule_report(analysis["function"], analysis["schedule"])))
     last = allocations[-1][3] if allocations else 0
     if inliner[last:] and not arguments.function and not arguments.exchange:
-        decisions = inlining_decisions(inliner[last:])
+        decisions = inlining_decisions(inliner[last:], body_costs(inliner))
         if arguments.inline_cost:
             decisions = [d for d in decisions if about(d)]
         if decisions:
