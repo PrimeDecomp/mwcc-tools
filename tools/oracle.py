@@ -32,6 +32,11 @@ Options (anywhere before `--`; the compiler's flags after `--`, or after SOURCE)
                     or not would flip the decision, or move it by 2 or less)
   --instantiation T when the bodies of the functions whose link name contains T were queued, parsed and generated
                     (and by which function), with the inliner's decisions about them, in order
+  --locals          what the scalarizer made of each local aggregate: split into scalars (and where each went) or
+                    kept in memory and why; how each inlined call bound its formals (aliased, the caller's by-value
+                    copy, a fresh local); with the target's frame (from --from-ninja's project) next to ours and the
+                    slot shifts (the objects the target places in another order)
+  --target DIR      the dtk build directory with the target asm for --locals (default: --from-ninja's)
   --exchange A,B    why virtual registers A and B were coloured in that order (r41,r42)
   --override P=R    compile with file R in place of P (a header or SOURCE), the checkout untouched; repeatable
   --json            print the report as JSON
@@ -742,6 +747,424 @@ def frame_report(analysis):
     return out
 
 
+def scalarize_passes(lines):
+    """The scalarizer's passes (IRO_ScalarizeClassDataMembers, traced with MWCC_ORACLE_LOCALS=1) by the link name of
+    their function, in order: each a dict with `pointers` (pointer analysis on), `calls` (the calls through which it
+    may reach a local whose address is taken) and `vars` ({name: {size, noregister, uses, parts}}). Each use is a dict
+    with `node`, `call` (the node is a call, whose argument it is), `offset` (-1: the whole, or not known), `kind` and
+    `size` (of the type used there); each part one with `start` and `end` (bits), `kind`, `size`, `uses`, `blocked` and
+    `temp` (the scalar made for it). A local with uses and no parts was never recorded (noregister is None then)."""
+    out, temps, calls, uses = {}, [], 0, []
+    current = None
+    for line in lines:
+        if line.startswith("lc.temp "):
+            temps.append(line.split("name=", 1)[1])
+        elif line.startswith("lc.call "):
+            calls += 1
+        elif line.startswith("lc.use "):
+            head, name = line.split(" var=", 1)
+            f = {k: int(v) for k, v in re.findall(r"(\w+)=(-?\d+)", head)}
+            uses.append((name, {"node": f["node"], "call": f["kind"] == 17, "offset": f["offset"],
+                                "kind": f["type"], "size": f["size"]}))
+        elif line.startswith("lc.pass "):
+            m = re.match(r"lc\.pass pointers=(\d+) link=(.*)$", line)
+            current = {"pointers": int(m.group(1)), "calls": calls, "vars": {}}
+            out.setdefault(m.group(2), []).append(current)
+            for name, use in uses:
+                current["vars"].setdefault(name, {"size": None, "noregister": None, "uses": [], "parts": []})
+                current["vars"][name]["uses"].append(use)
+            pending, temps, calls, uses = temps, [], 0, []
+        elif line.startswith("lc.part ") and current is not None:
+            head, name = line.split(" var=", 1)
+            f = {k: int(v) for k, v in re.findall(r"(\w+)=(-?\d+)", head)}
+            start, end = (int(x) for x in re.search(r"bits=(-?\d+)\.\.(-?\d+)", head).groups())
+            var = current["vars"].setdefault(name, {"size": None, "noregister": None, "uses": [], "parts": []})
+            var["size"], var["noregister"] = f["var_size"], f["noregister"]
+            var["parts"].append({"start": start, "end": end, "kind": f["type"], "size": f["size"], "uses": f["uses"],
+                                 "blocked": f["blocked"], "temp": pending.pop(0) if not f["blocked"] and pending
+                                 else None})
+    return out
+
+
+def inline_bindings(lines):
+    """How the inliner bound the formals of each call it expanded (lc.arg, with MWCC_ORACLE_LOCALS=1), by the link
+    name of the function they were expanded into: lists of dicts with `callee` (link name), `index`, `name`, `kind`,
+    `size`, `ref` (a reference), `dirty`, `mode` (unused, substituted, reference or local) and `var` (the local's
+    name, for `local`: a copy of the argument, or for a reference, a pointer holding its address) and `object` (the
+    object an aliased formal stands for, when it is one: for `reference`, the temporary the argument constructs, which
+    is how a by-value class argument comes, copied by the caller), `declared` and `declared_size` (the formal's
+    type as declared: a by-value class formal is a reference by then, with `declared` 4 or 5; -1: not found)."""
+    out, pending = {}, []
+    for line in lines:
+        if line.startswith("lc.arg "):
+            head, callee = line.split(" link=", 1)
+            f = dict(re.findall(r"(\w+)=(\S+)", head))
+            pending.append({"callee": callee, "index": int(f["index"]), "name": f["name"], "kind": int(f["type"]),
+                            "size": int(f["size"]), "ref": int(f.get("ref", 0)), "dirty": int(f["dirty"]),
+                            "mode": f["mode"],
+                            "var": None if f["var"] == "-" else f["var"],
+                            "object": None if f.get("object", "-") == "-" else f["object"],
+                            "declared": int(f.get("declared", -1)), "declared_size": int(f.get("declared_size", -1))})
+        elif line.startswith("ra.before ") and pending:
+            m = re.match(r"ra\.before function=\S* link=(.*)$", line)
+            if m:
+                out.setdefault(m.group(1), []).extend(pending)
+                pending = []
+    return out
+
+
+TYPE_KINDS = {0: "void", 1: "int", 2: "float", 3: "enum", 4: "struct", 5: "class", 7: "bitfield",
+              10: "member pointer", 11: "pointer", 12: "array"}
+SCALAR_KINDS = (1, 2, 11)
+
+
+def blocked_reasons(var, scalarize):
+    """Why the scalarizer left VAR (one of a pass's `vars`) in memory, from its uses and parts."""
+    reasons = []
+    for use in var["uses"]:
+        where = f"node {use['node']}" + (", a call's argument" if use["call"] else "")
+        if use["offset"] < 0:
+            reasons.append(f"used as a whole or at an offset not known ({where})")
+        elif use["kind"] not in SCALAR_KINDS:
+            whole = use["offset"] == 0 and var["size"] is not None and use["size"] >= var["size"]
+            reasons.append(f"used as a {TYPE_KINDS.get(use['kind'], use['kind'])} of {use['size']} bytes at offset "
+                           f"{use['offset']} ({where}): " + ("copied as a whole (a by-value argument, a return or an "
+                                                             "assignment of the whole)" if whole else
+                                                             "a member aggregate copied whole"))
+    scalars = sorted({(u["offset"], u["offset"] + max(u["size"], 1), u["kind"]) for u in var["uses"]
+                      if u["offset"] >= 0 and u["kind"] in SCALAR_KINDS})
+    overlaps = [(a, b) for a, b in zip(scalars, scalars[1:]) if b[0] < a[1]]
+    if overlaps:
+        (s1, e1, _), (s2, e2, _) = overlaps[0]
+        reasons.append(f"its uses overlap with different sizes or types (bytes {s1}..{e1 - 1} and {s2}..{e2 - 1}"
+                       + (f", and {len(overlaps) - 1} more" if len(overlaps) > 1 else "") + ")")
+    if var["noregister"] and scalarize["calls"]:
+        reasons.append("its address is taken and a call may reach it (pointer analysis)")
+    return list(dict.fromkeys(reasons)) or ["(not identified from its uses)"]
+
+
+def target_frame(asm, link):
+    """The stack frame of LINK in a target asm file: (size, {r1 offset: set of (access size, mnemonic)}, limit) for
+    the locals area (below the register saves, at LIMIT), or None."""
+    body, inside = [], False
+    for line in asm.read_text(errors="replace").splitlines():
+        m = re.match(r'\s*\.(fn|endfn)\s+("[^"]*"|[^\s,]+)', line)
+        if m:
+            if m.group(2).strip('"') == link:
+                if m.group(1) == "endfn":
+                    break
+                inside = True
+            continue
+        if inside:
+            body.append(line.split("*/")[-1].strip())
+    size, saves, uses = None, None, {}
+    widths = {"b": 1, "h": 2, "w": 4, "s": 4, "d": 8}
+    for number, instruction in enumerate(body):
+        m = re.match(r"stwu r1, -(0x[0-9a-fA-F]+|\d+)\(r1\)", instruction)
+        if m and size is None:
+            size = int(m.group(1), 0)
+            continue
+        # (the prologue's register saves: stmw, and stfd/psq_st of f14..f31)
+        m = re.match(r"(stmw r\d+|stfd f(?:1[4-9]|2\d|3[01])|psq_st f(?:1[4-9]|2\d|3[01])), (0x[0-9a-fA-F]+|\d+)\(r1\)",
+                     instruction)
+        if m and number < 16:
+            saves = min(saves if saves is not None else 1 << 30, int(m.group(2), 0))
+        m = re.match(r"(\w+) \w+, (-?0x[0-9a-fA-F]+|-?\d+)\(r1\)", instruction)
+        if m:
+            mnemonic = m.group(1)
+            width = 8 if mnemonic.startswith("psq") else widths.get(mnemonic.rstrip("uxa")[-1:], 4)
+            uses.setdefault(int(m.group(2), 0), set()).add((width, mnemonic))
+        m = re.match(r"addi \w+, r1, (0x[0-9a-fA-F]+|\d+)$", instruction)
+        if m:
+            uses.setdefault(int(m.group(1), 0), set()).add((0, "addi"))
+    if size is None:
+        return None
+    limit = saves if saves is not None else size
+    return size, {o: u for o, u in uses.items() if 8 <= o < limit}, limit
+
+
+def function_words(data, link):
+    """The instruction words of function LINK in an ELF32 big-endian object (DATA), or None."""
+    import struct
+    shoff, = struct.unpack_from(">I", data, 0x20)
+    shentsize, shnum, _ = struct.unpack_from(">HHH", data, 0x2E)
+    headers = [struct.unpack_from(">IIIIIIIIII", data, shoff + i * shentsize) for i in range(shnum)]
+    for _, kind, _, _, offset, size, strings_index, _, _, entsize in headers:
+        if kind != 2:  # (SHT_SYMTAB)
+            continue
+        strings = headers[strings_index][4]
+        for at in range(offset, offset + size, entsize or 16):
+            name_offset, value, symbol_size, info, _, index = struct.unpack_from(">IIIBBH", data, at)
+            name = data[strings + name_offset:data.index(b"\0", strings + name_offset)].decode("latin-1")
+            if name == link and info & 0xf == 2 and index < shnum:
+                base = headers[index][4] + value
+                return list(struct.unpack_from(f">{symbol_size // 4}I", data, base))
+    return None
+
+
+def target_words(asm, link):
+    """The instruction words of function LINK in a target asm file (from the bytes in each line's comment)."""
+    words, inside = [], False
+    for line in asm.read_text(errors="replace").splitlines():
+        m = re.match(r'\s*\.(fn|endfn)\s+("[^"]*"|[^\s,]+)', line)
+        if m:
+            if m.group(2).strip('"') == link:
+                if m.group(1) == "endfn":
+                    break
+                inside = True
+            continue
+        if inside:
+            m = re.search(r"/\*.*?\b((?:[0-9A-Fa-f]{2} ){3}[0-9A-Fa-f]{2})\s*\*/", line)
+            if m:
+                words.append(int(m.group(1).replace(" ", ""), 16))
+    return words or None
+
+
+# (PowerPC D-form loads and stores, and addi, by primary opcode: the access's size; psq_l/psq_st have a 12-bit offset)
+MEMORY_OPCODES = {32: 4, 33: 4, 34: 1, 35: 1, 36: 4, 37: 4, 38: 1, 39: 1, 40: 2, 41: 2, 42: 2, 43: 2, 44: 2, 45: 2,
+                  46: 4, 47: 4, 48: 4, 49: 4, 50: 8, 51: 8, 52: 4, 53: 4, 54: 8, 55: 8, 14: 0, 56: 8, 57: 8, 60: 8,
+                  61: 8}
+
+
+def r1_offset(word):
+    """The r1 offset WORD (an instruction) uses, or None: a load, a store or an addi based on r1."""
+    opcode = word >> 26
+    if opcode not in MEMORY_OPCODES or (word >> 16) & 31 != 1:
+        return None
+    if opcode in (56, 57, 60, 61):
+        return (word & 0xfff) - ((word & 0x800) << 1)
+    return (word & 0xffff) - ((word & 0x8000) << 1)
+
+
+def instruction_token(word):
+    """WORD with what differs between two compiles of the same code masked: displacements of loads, stores and addi
+    (frame offsets; relocated fields), branch targets and the immediates of lis/ori/addis (relocated halves)."""
+    opcode = word >> 26
+    if opcode in MEMORY_OPCODES or opcode in (15, 24, 25):
+        return word & ~(0xfff if opcode in (56, 57, 60, 61) else 0xffff)
+    if opcode == 18:
+        return word & 0xfc000003
+    if opcode == 16:
+        return word & 0xffff0003
+    return word
+
+
+def slot_shifts(ours, theirs, frame, our_limit, their_limit):
+    """Pair our instructions (words) with the target's and, for each pair of r1 accesses below the register saves
+    (OUR_LIMIT, THEIR_LIMIT), our offset and the target's: {name: {delta: count}} by the FRAME entry ours is in, with
+    `?` for an offset no entry covers."""
+    import difflib
+    matcher = difflib.SequenceMatcher(None, [instruction_token(w) for w in ours],
+                                      [instruction_token(w) for w in theirs], autojunk=False)
+    slots = sorted(((e["r1"], e["r1"] + max(e["size"], 1), e["name"]) for e in frame
+                    if e["used"] and not e["reg"] and "r1" in e and e["offset"] != 0), key=lambda s: s[0])
+    slots += [(e["r1"], e["r1"] + max(e["size"], 1), e["name"]) for e in frame
+              if e["used"] and not e["reg"] and "r1" in e and e["offset"] == 0 and not e["name"].startswith("@")]
+    out = {}
+    for a, b, size in matcher.get_matching_blocks():
+        for i in range(size):
+            mine, target = r1_offset(ours[a + i]), r1_offset(theirs[b + i])
+            if mine is None or target is None or not 8 <= mine < our_limit or not 8 <= target < their_limit:
+                continue
+            name = next((n for start, end, n in slots if start <= mine < end), "?")
+            deltas = out.setdefault(name, {})
+            deltas[target - mine] = deltas.get(target - mine, 0) + 1
+    return out
+
+
+def shift_report(shifts, frame):
+    """slot_shifts' result as lines: the objects grouped by how far the target has them from ours (their accesses'
+    usual delta), the smallest groups (an object placed in another order) first, then the objects whose accesses
+    disagree."""
+    if not shifts:
+        return []
+    by_name = {e["name"]: e for e in frame}
+
+    def where(name):
+        e = by_name.get(name)
+        return f"{e['size']}@r1+{e['r1']:#x}" if e and "r1" in e else "?"
+
+    groups, mixed = {}, []
+    for name, deltas in shifts.items():
+        usual = max(deltas, key=deltas.get)
+        groups.setdefault(usual, []).append(name)
+        if len(deltas) > 1:
+            mixed.append(name)
+    out = ["   slot shifts (target offset - ours, by the object our paired r1 accesses are in; the smallest groups "
+           "are the objects the target places in another order):"]
+    for delta, names in sorted(groups.items(), key=lambda g: (len(g[1]), g[0])):
+        names.sort(key=lambda n: by_name.get(n, {}).get("r1", 1 << 30))
+        shown = ", ".join(f"{n} ({where(n)})" for n in names[:10]) + (
+            f", ... {len(names) - 10} more" if len(names) > 10 else "")
+        out.append(f"      {delta:+#x}: {len(names)} object(s): {shown}")
+        if len(names) <= 2 and len(groups) > 1:
+            for name in names:
+                e = by_name.get(name)
+                if not e or "r1" not in e:
+                    continue
+                there = [o["name"] for o in frame if o["used"] and not o["reg"] and "r1" in o and o["offset"] != 0
+                         and o["r1"] <= e["r1"] + delta < o["r1"] + max(o["size"], 1)]
+                if there:
+                    out.append(f"         the target has {name} at r1+{e['r1'] + delta:#x}, where ours has "
+                               f"{', '.join(there)} (temporaries get slots by when they are made)")
+    for name in mixed:
+        shown = ", ".join(f"{d:+#x} x{n}" for d, n in sorted(shifts[name].items(), key=lambda x: -x[1]))
+        out.append(f"      {name} ({where(name)}) has accesses at several deltas: {shown}")
+    return out
+
+
+def locals_target_asm(directory, from_ninja, source):
+    """The target asm of SOURCE for --locals: under DIRECTORY (--target), or the build directory FROM_NINJA's
+    build.ninja names (as inline_diff finds them); None if there is none."""
+    if directory is None and from_ninja is None:
+        return None
+    import inline_diff
+    try:
+        return inline_diff.target_asm(directory or inline_diff.target_directory(from_ninja), source)
+    except OracleError:
+        return None
+
+
+def locals_report(analysis, passes, target=None, bindings=()):
+    """--locals: what the scalarizer made of each local aggregate of ANALYSIS's function (PASSES, as
+    scalarize_passes gives them for it), where its scalars ended up, the locals it never saw, and with TARGET
+    (target_frame's result), the target's frame next to ours."""
+    out = [f"== {analysis['function']}: locals (the scalarizer: IRO_ScalarizeClassDataMembers) =="]
+    frame = analysis["frame"] or []
+    by_name = {}
+    for e in frame:
+        by_name.setdefault(e["name"], e)
+
+    crowded = sum(1 for e in frame if e["used"] and not e["reg"] and e["offset"] == 0) > 2
+
+    def where(name):
+        e = by_name.get(name)
+        if e is None or not e["used"]:
+            return "not in the frame: split, folded or dead"
+        if e["reg"]:
+            return f"reg {e['reg']}"
+        if crowded and e["offset"] == 0 and name.startswith("@"):
+            return "no slot of its own (listed at offset 0)"
+        return f"memory r1+{e['r1']}" if "r1" in e else f"memory +{e['offset']}"
+
+    if not passes:
+        out.append("   no scalarizer pass traced (MWCC_ORACLE_LOCALS=1 and an oracle with the sc.* hooks needed; "
+                   "the pass runs only with the global optimizer)")
+    seen = set()
+    previous = None
+    for number, scalarize in enumerate(passes, 1):
+        if not scalarize["vars"]:
+            continue
+        before, mark = len(out), f"   pass {number} (pointer analysis {'on' if scalarize['pointers'] else 'off'})"
+        for name, var in scalarize["vars"].items():
+            seen.add(name)
+            if var["size"] is None and name in by_name:
+                var = dict(var, size=by_name[name]["size"])
+            blocked = all(p["blocked"] for p in var["parts"])
+            if not var["parts"]:
+                reasons = [r for r in blocked_reasons(var, scalarize) if not r.startswith("(")]
+                if not reasons and not scalarize["pointers"]:
+                    reasons = ["its address is taken (noregister), and pointer analysis is off: its "
+                               f"{len(var['uses'])} member use(s) were not recorded"]
+                out.append(f"      {name} ({var['size']} bytes): KEPT IN MEMORY ({where(name)}), no part made")
+                for reason in reasons or ["(not identified from its uses)"]:
+                    out.append(f"         because: {reason}")
+            elif blocked:
+                out.append(f"      {name} ({var['size']} bytes): KEPT IN MEMORY ({where(name)})")
+                for reason in blocked_reasons(var, scalarize):
+                    out.append(f"         because: {reason}")
+            else:
+                out.append(f"      {name} ({var['size']} bytes): split into scalars")
+            spans = {}
+            for p in var["parts"]:
+                spans.setdefault((p["start"], p["end"], p["kind"], p["size"]), []).append(p)
+            for (start, end, kind, size), same in sorted(spans.items()):
+                span = "whole/unknown" if start < 0 else f"bytes {start // 8}..{(end + 1) // 8 - 1}"
+                temps = [p["temp"] for p in same if p["temp"]]
+                fate = (" -> " + ", ".join(f"{t} ({where(t)})" for t in temps)) if temps else ""
+                again = f" (recorded {len(same)} times)" if len(same) > 1 else ""
+                out.append(f"         {span:<14} {TYPE_KINDS.get(kind, kind)} {size}, "
+                           f"{sum(p['uses'] for p in same)} use(s){again}{fate}")
+        if previous is not None and out[before:] == previous[1]:
+            del out[before:]
+            out.append(f"{mark}: as pass {previous[0]}")
+            continue
+        previous = (number, out[before:])
+        out.insert(before, mark + ":")
+    groups, callees = {}, {}
+    for b in bindings:
+        if b["mode"] != "unused":
+            callees.setdefault(b["callee"], len(callees))
+            byvalue = b["declared_size"] if b["declared"] in (4, 5) else None
+            key = (b["callee"], b["index"], b["name"], b["kind"], b["size"], b["ref"], b["mode"], byvalue)
+            groups.setdefault(key, []).append(b["var"] if b["mode"] == "local" else b["object"])
+    if groups:
+        out.append("   formals of the calls inlined into it (substituted: the caller's expression stands for it, "
+                   "aliased; reference: bound to the temporary the argument constructs (a BY VALUE formal's is "
+                   "the caller's copy; a reference formal's, a temporary such as V(a, b, c)); local: a fresh "
+                   "local holding the argument, or its address for a reference formal):")
+        callee = None
+        for key in sorted(groups, key=lambda k: (callees[k[0]], k[1], k[6])):
+            link, index, name, kind, size, ref, mode, byvalue = key
+            variables = groups[key]
+            if link != callee:
+                out.append(f"      {link}")
+                callee = link
+            times = f" x{len(variables)}" if len(variables) > 1 else ""
+            named = [v for v in variables if v]
+            fates = ""
+            if named and (mode in ("local", "reference") or any(v in by_name for v in named)):
+                fates = " -> " + ", ".join(f"{v} ({where(v)})" for v in named[:6]) + (
+                    f", ... {len(named) - 6} more" if len(named) > 6 else "")
+            what = (f"BY VALUE, a class of {byvalue}" if byvalue is not None else "reference" if ref else
+                    f"{TYPE_KINDS.get(kind, kind)} {size}")
+            copy = (" (the caller's COPY)" if byvalue is not None and mode == "reference" else
+                    " (a COPY of the aggregate)" if mode == "local" and kind in (4, 5, 12) else "")
+            out.append(f"         #{index} {name} ({what}): {mode}{copy}{times}{fates}")
+    temps = {p["temp"] for s in passes for v in s["vars"].values() for p in v["parts"] if p["temp"]}
+    unseen = [e for e in frame if e["used"] and not e["reg"] and e["name"] not in seen and e["name"] not in temps
+              and e["size"] > 4]
+    if unseen:
+        out.append("   in memory, and never seen by the scalarizer (no member access of it: used only whole, as a "
+                   "copy's source or target, or its address is taken):")
+        for e in sorted(unseen, key=lambda e: e.get("r1", e["offset"])):
+            out.append(f"      {e['name']} ({e['size']} bytes, {where(e['name'])})")
+    layout = analysis.get("layout")
+    if target is not None:
+        size, uses, _ = target
+        ours = layout["size"] if layout else None
+        out.append(f"   frame: target {size:#x} ({size}), ours " + (f"{ours:#x} ({ours})" if ours is not None else "?")
+                   + ("" if ours is None or ours == size else f": {size - ours:+d} bytes in the target's"))
+        runs, run = [], None
+        for offset in sorted(uses):
+            width = max(w for w, _ in uses[offset])
+            if run and offset <= run[1]:
+                run[1] = max(run[1], offset + width)
+                run[2].append(offset)
+            else:
+                run = [offset, offset + max(width, 1), [offset]]
+                runs.append(run)
+        if runs:
+            out.append("   the target's locals area, by the r1 offsets its code uses (addi: the address is taken):")
+            mine = [e for e in frame if e["used"] and not e["reg"] and "r1" in e]
+            # (the frame lists the compiler's temporaries that got no slot, scalars mostly, at offset 0: when several
+            # share it, the @ ones are counted rather than named)
+            crowded = sum(1 for e in mine if e["offset"] == 0) > 2
+
+            def slotless(e):
+                return crowded and e["offset"] == 0 and e["name"].startswith("@")
+            for start, end, offsets in runs:
+                accesses = ", ".join(f"{o:#x}:" + "/".join(sorted({m for _, m in uses[o]})) for o in offsets)
+                here = [e for e in mine if e["r1"] < end and e["r1"] + e["size"] > start]
+                ours_here = [e["name"] for e in here if not slotless(e)]
+                others = len(here) - len(ours_here)
+                if others:
+                    ours_here.append(f"{others} compiler temporaries listed at offset 0 (no slot of their own)")
+                out.append(f"      r1+{start:#x}..{end - 1:#x} ({end - start} bytes) {accesses}"
+                           + (f"   ours there: {', '.join(ours_here)}" if ours_here else ""))
+    return out
+
+
 def cost_terms(nodes, above=()):
     """The calls of inline functions in a cost breakdown, each as (path, kind, cost): the path is the link names of the
     bodies it is in (from the body's own calls down) and its callee's; kind is "body" (costed as its body: cost), "limit"
@@ -1395,7 +1818,8 @@ def ninja_rule(path, source):
 
 OPTIONS = {"--version": True, "--function": True, "--from-ninja": True, "--raw": False, "--pcode": False,
            "--no-check": False, "--json": False, "--schedule": False, "--inline-cost": True, "--exchange": True,
-           "--override": True, "--near": True, "--full-cost": False, "--instantiation": True, "--help": False, "-h": False}
+           "--override": True, "--near": True, "--full-cost": False, "--instantiation": True, "--locals": False,
+           "--target": True, "--help": False, "-h": False}
 
 
 def split_arguments(argv):
@@ -1628,7 +2052,7 @@ def instantiation_report(events, text):
 
 
 def compile_trace(source, flags=(), from_ninja=None, version=None, overrides=(), schedule=False, inline_cost=False,
-                  check=True, full_cost=False, instantiation=False, original_fallback=False):
+                  check=True, full_cost=False, instantiation=False, original_fallback=False, scalarize=False):
     """Compile SOURCE with the oracle and return its trace: a dict with `lines`, `version`, `oracle`, `source` (as the
     rule spells it), `identical` (None when not checked, or the original compiler is not there) and `differences`.
     FROM_NINJA takes the flags, the working directory and the version from a project's build.ninja (FLAGS are then
@@ -1680,6 +2104,8 @@ def compile_trace(source, flags=(), from_ninja=None, version=None, overrides=(),
             env["MWCC_ORACLE_FULL_COST"] = "1"
         if instantiation:
             env["MWCC_ORACLE_INSTANTIATION"] = "1"
+        if scalarize:
+            env["MWCC_ORACLE_LOCALS"] = "1"
         run = subprocess.run([*launcher(oracle), *flags, "-c", compiled, "-o", str(obj)], cwd=workdir, env=env,
                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
         if run.returncode:
@@ -1724,6 +2150,11 @@ def document_for(compiled, function=None, link=None, near=None):
         document["similar"] = [{"function": n, "link": l} for n, l in similar_functions(allocations, function)]
     if near is not None:
         document["near"] = near_threshold(analyses, after, near)
+    if any(line.startswith("lc.") for line in lines):
+        passes, bindings = scalarize_passes(lines), inline_bindings(lines)
+        for analysis in analyses:
+            analysis["locals"] = passes.get(analysis["link"], [])
+            analysis["inline_bindings"] = bindings.get(analysis["link"], [])
     if any(line.startswith("tp.") for line in lines):
         document["instantiation"] = instantiation_events(lines, compiled["version"])
     return document, allocations, inliner
@@ -1746,6 +2177,8 @@ def main():
     parser.add_argument("--near")
     parser.add_argument("--full-cost", action="store_true")
     parser.add_argument("--instantiation")
+    parser.add_argument("--locals", action="store_true")
+    parser.add_argument("--target")
     arguments = parser.parse_args(options)
     if len(positional) != 1:
         parser.error("one SOURCE is needed")
@@ -1755,7 +2188,8 @@ def main():
         near = int(arguments.near)
     compiled = compile_trace(arguments.source, extra, arguments.from_ninja, arguments.version, arguments.override,
                              arguments.schedule, bool(arguments.inline_cost) or near is not None,
-                             not arguments.no_check, arguments.full_cost, bool(arguments.instantiation))
+                             not arguments.no_check, arguments.full_cost, bool(arguments.instantiation),
+                             scalarize=arguments.locals)
     if compiled["warning"]:
         print(compiled["warning"], file=sys.stderr)
     arguments.version = compiled["version"]
@@ -1785,6 +2219,25 @@ def main():
         return
     if arguments.instantiation:
         print("\n".join(instantiation_report(document.get("instantiation", []), arguments.instantiation)))
+        return
+
+    if arguments.locals:
+        passes, bindings = scalarize_passes(lines), inline_bindings(lines)
+        for analysis in analyses:
+            target = None
+            asm = locals_target_asm(arguments.target, arguments.from_ninja, compiled["source"])
+            if asm is not None:
+                target = target_frame(asm, analysis["link"])
+            print("\n".join(locals_report(analysis, passes.get(analysis["link"], []), target,
+                                           bindings.get(analysis["link"], []))))
+            ours = function_words(compiled["object"], analysis["link"])
+            theirs = target_words(asm, analysis["link"]) if asm is not None else None
+            layout = analysis.get("layout")
+            if ours and theirs and target is not None and layout:
+                limit = layout["linkage"] + layout["outgoing"] + layout["locals"]
+                shifts = slot_shifts(ours, theirs, analysis["frame"] or [], limit, target[2])
+                print("\n".join(shift_report(shifts, analysis["frame"] or [])))
+            print("\n".join(frame_report(analysis)))
         return
 
     def about(d):

@@ -31,6 +31,12 @@
       "src/oracle/Hooks.c"
     ],
     "hooks": [
+      "_fn_00460780",
+      "_fn_00460c90",
+      "_setup_inline_locals_and_arguments",
+      "_fn_004601f0",
+      "_create_temp_object",
+      "_fn_00454030",
       "_fn_00506cd0",
       "_fn_00560c80",
       "_fn_0055e540",

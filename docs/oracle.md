@@ -30,7 +30,8 @@ same (`build/tools/wibo`, or a `wibo` on the PATH); it does not need binfmt_misc
 
 ```
 python tools/oracle.py [--version V] [--function NAME] [--raw] [--pcode] [--schedule] [--inline-cost CALLEE]
-    [--near N] [--full-cost] [--exchange A,B] [--override PATH=REPLACEMENT] [--json] [--no-check] SOURCE -- [COMPILER FLAGS...]
+    [--near N] [--full-cost] [--instantiation TEXT] [--locals [--target DIR]] [--exchange A,B]
+    [--override PATH=REPLACEMENT] [--json] [--no-check] SOURCE -- [COMPILER FLAGS...]
 python tools/oracle.py --from-ninja ../prime/build.ninja src/GuiSys/CGuiFrame.cpp --function Draw
 ```
 
@@ -126,6 +127,45 @@ those bodies, outermost first, by link name (shown as `inside:` with `--inline-c
   `event` (queue, need, parse, func, emit, gen, decision, compiled), `link`, `position` (the trace line) and as it
   has them `queue_kind`, `new`, `from`, `expanding`, `body`, `result`, `caller`, `why`, `inline`, `depth`, `chain`
   and `in`.
+* `--locals` (with `--function`): what the global optimizer's scalarizer (IRO_ScalarizeClassDataMembers, run once or
+  twice per function) made of each local aggregate and compiler temporary: split into scalars (each part, by bytes,
+  with the scalar made for it and where that ended up: a register, memory, or gone), or KEPT IN MEMORY and why. The
+  reasons it gives:
+  - a use of the whole as a struct or class (a by-value argument's copy, a return, an assignment of the whole), or of
+    a member aggregate;
+  - a use at an offset it does not know;
+  - uses of the same bytes with different sizes or types (bytes stored one by one, then read as a word);
+  - an address taken (noregister) with pointer analysis off, so its member uses are not even recorded;
+  - with pointer analysis on, an address taken that a call may reach.
+
+  Memberwise assignments (`g = f` of a POD) are uses of each member and do not keep a local in memory. Locals in
+  memory that the pass never saw are listed after. With `--from-ninja` (or `--target DIR`, a dtk build directory),
+  the target's frame size is set against ours, and the target's locals area is given by the r1 offsets its code
+  uses: the loads, stores and `addi` (an address taken) at each, grouped into runs, with our locals at those offsets.
+  For example, a run of `stw`/`stb`/`stb`/`sth`/`stw` at r1+0x4c is a 12-byte struct the target keeps in memory, member
+  by member.
+
+  It also lists how the inliner bound each formal of every call inlined into the function, by callee:
+  - substituted: the caller's expression stands for the formal (aliased: a const reference to an lvalue, a `this`);
+  - reference: bound to the temporary the argument constructs. A by-value class argument comes this way: the caller
+    copy-constructs it into a temporary (`v (reference): reference -> @5 (memory r1+8)` is that stack copy), where a
+    const reference to the same lvalue is substituted, with no copy;
+  - local: a fresh local holding the argument (a modified formal, or an argument with side effects), or its address
+    for a reference formal.
+
+  Locals and temporaries are shown with where they ended up. A missing by-value formal is what a target's extra
+  stack copy of an argument points to. Each formal is labelled from the callee's declared argument types: `BY VALUE,
+  a class of N` when the declaration takes it by value. The inline variable is a reference by then, so `reference`
+  alone does not tell by-value from `const &` bound to a temporary such as `V(a, b, c)`.
+
+  Last come the slot shifts. Our instructions are paired with the target's: difflib over the words, with frame
+  offsets, relocated fields and branch targets masked. For each pair of r1 accesses below the register saves, the
+  report takes the target offset minus ours and files it under the object (from our frame) the access is in. Objects
+  are grouped by their usual delta, smallest group first. A group of one is an object the target places in another
+  order; for it, the report names the object of ours at the offset where the target has it. Our temporaries get their
+  slots in the order they are made, so that object is the one whose place in the order the original differs on. For
+  example, on LoadSurfaceCamera, `-0x120: @996 (12@r1+0x154)`, which the target has where ours has @1043, while the
+  24 other 12-byte temporaries are at +0xc.
 * `--exchange A,B` (`--exchange r41,r42`): why two virtual registers of a class were coloured in that order and got
   the registers they did: when the simplification pushed each and the neighbour whose removal let it, degrees,
   spill costs, neighbours, and what select found free for each.
@@ -172,7 +212,15 @@ with no body yet: the others' bodies are the `inl.cost` lines one `nest` deeper 
 `MWCC_ORACLE_INSTANTIATION=1`: `tp.queue kind= pending= new= from= expanding= link=`, `tp.need result= ...`,
 `tp.parse.begin` and `tp.parse kind= body= link=` (around the parsing of a queued definition), `tp.func`,
 `tp.emit caller=` (the return address in the compiler: `function_at(version, address)` names it) and
-`tp.gen link=`. The link
+`tp.gen link=`. With `MWCC_ORACLE_LOCALS=1` (the scalarizer, per pass; the lines of a pass come before its
+`lc.pass`): `lc.use node= kind= offset= type= size= var=` (each use recorded; kind 17: a call's argument; offset -1:
+the whole or not known), `lc.call node=` (a call that may reach an address-taken local), `lc.temp name=` (the scalar
+made for each part not blocked, in the parts' order), then `lc.pass pointers= link=` and its parts, `lc.part blocked=
+noregister= bits= type= size= uses= var_size= var=`; and per formal of each call the inliner expands, `lc.arg index=
+name= type= size= ref= dirty= mode= var= object= link=` (mode unused, substituted, reference or local; var= the
+fresh local; object= the object an aliased formal stands for; link= the callee), before the function's
+`ra.before`. `MWCC_ORACLE_IRO_DUMP=FILE` turns on the global optimizer's own
+dump (IroDump, normally written to `<source>.log` in debug builds) into FILE, appended to. The link
 names are the mangled ones (the compiler computes them when it has not yet). The file is appended to, so delete it
 between runs.
 

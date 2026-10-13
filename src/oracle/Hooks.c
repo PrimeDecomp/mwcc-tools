@@ -28,6 +28,8 @@
 #include "compiler/Registers.h"
 #include "compiler/Scheduler.h"
 #include "compiler/OracleTrace.h"
+#include "compiler/IroDump.h"
+#include "compiler/IroLoop.h"
 
 #ifdef MWCC_ORACLE_TRACE
 
@@ -1078,6 +1080,162 @@ void generate_inline_code(Object *object, CInlineInfo *input, char mode)
     if (wanted("MWCC_ORACLE_INSTANTIATION"))
         OracleTrace_Printf("tp.gen link=%s\n", maybe_link(object));
     generate_inline_code__retail(object, input, mode);
+}
+
+/* The optimizer's own dump (IroDump: the IR after its passes, and what some of them did, such as the parts of local
+ * aggregates IRO_ScalarizeClassDataMembers, fn_00460780, records), which the compiler turns off before it opens the
+ * dump file (fn_00454030, once a translation unit): MWCC_ORACLE_IRO_DUMP=PATH turns it on, into PATH. */
+extern FILE *iro_dump_output;
+extern void fn_00454030__retail(void);
+
+void fn_00454030(void)
+{
+    const char *path = getenv("MWCC_ORACLE_IRO_DUMP");
+
+    if (path != NULL && path[0] != 0) {
+        if (iro_dump_output == NULL)
+            iro_dump_output = fopen(path, "a");
+        INT_005882b8 = iro_dump_output != NULL;
+        return;
+    }
+    fn_00454030__retail();
+}
+
+/* lc.*: which local aggregates IRO_ScalarizeClassDataMembers (fn_00460780, once or twice a function) turns into
+ * scalars a part at a time (and which it leaves in memory), with MWCC_ORACLE_LOCALS=1. Its parts list is
+ * class_data_parts (named as in 1.2.5); with the pointer analysis flag (iro_pointer_analysis) an address-taken local is
+ * recorded too, and left in memory only if a call may reach it (fn_00460c90). A part (IROVarPart, packed): flags (1:
+ * the variable is left in memory) at 4, the VarRecord at 6, the first and last bit at 0x12 and 0x16, the type at
+ * 0x1a, the next part at 0x1e, the uses at 0x22; a VarRecord: the object at 2, noregister (its address taken) at 0xb.
+ * The relink moves .bss, so these are read by name, not at their addresses. */
+extern struct IROVarPart *class_data_parts;
+extern UInt8 iro_pointer_analysis;
+extern Object *data_005875b8;
+extern void fn_00460780__retail(void);
+extern Boolean fn_00460c90__retail(IROLinear *node);
+extern Object *create_temp_object__retail(Type *type);
+static Boolean in_scalarize;
+
+/* lc.temp: the scalar the pass makes for a part (one for each part not blocked, in the parts' order; before the
+ * pass's lc.pass line). */
+Object *create_temp_object(Type *type)
+{
+    Object *object = create_temp_object__retail(type);
+
+    if (in_scalarize && wanted("MWCC_ORACLE_LOCALS"))
+        OracleTrace_Printf("lc.temp name=%s\n", object && object->name ? object->name->name : "?");
+    return object;
+}
+
+/* lc.use: each use of a local the pass records (record_var_part_use), before it is recorded: the node (kind 17: a
+ * call, whose argument it is), the offset (-1: the whole, or an offset not known) and the type used there. A use that
+ * overlaps another differently leaves the local in memory, and makes no part of its own. */
+extern int fn_004601f0__retail(IROLinear *node, char *var, SInt32 offset, Type *type);
+int fn_004601f0(IROLinear *node, char *var, SInt32 offset, Type *type)
+{
+    Object *object;
+
+    if (in_scalarize && wanted("MWCC_ORACLE_LOCALS")) {
+        object = *(Object **)(var + 2);
+        OracleTrace_Printf("lc.use node=%d kind=%d offset=%ld type=%d size=%ld var=%s\n", node->index, node->type,
+                           offset, type ? type->type : -1, type ? type->size : -1,
+                           object && object->name ? object->name->name : "?");
+    }
+    return fn_004601f0__retail(node, var, offset, type);
+}
+
+void fn_00460780(void)
+{
+    char *part;
+    char *var;
+    char *use;
+    Object *object;
+    Type *type;
+    int uses;
+
+    in_scalarize = 1;
+    fn_00460780__retail();
+    in_scalarize = 0;
+    if (!wanted("MWCC_ORACLE_LOCALS"))
+        return;
+    OracleTrace_Printf("lc.pass pointers=%d link=%s\n", iro_pointer_analysis, maybe_link(data_005875b8));
+    for (part = (char *)class_data_parts; part != NULL; part = *(char **)(part + 0x1e)) {
+        var = *(char **)(part + 6);
+        object = *(Object **)(var + 2);
+        type = *(Type **)(part + 0x1a);
+        uses = 0;
+        for (use = *(char **)(part + 0x22); use != NULL; use = *(char **)(use + 4))
+            uses++;
+        OracleTrace_Printf("lc.part blocked=%d noregister=%d bits=%ld..%ld type=%d size=%ld uses=%d var_size=%ld "
+                           "var=%s\n",
+                           part[4] & 1, var[0xb], *(SInt32 *)(part + 0x12), *(SInt32 *)(part + 0x16),
+                           type ? type->type : -1, type ? type->size : -1, uses,
+                           object && object->type ? object->type->size : -1,
+                           object && object->name ? object->name->name : "?");
+    }
+}
+
+/* lc.call: a call through which a local recorded may be reached (pointer analysis): those whose address is taken are
+ * then left in memory. */
+Boolean fn_00460c90(IROLinear *node)
+{
+    Boolean result = fn_00460c90__retail(node);
+
+    if (result && wanted("MWCC_ORACLE_LOCALS"))
+        OracleTrace_Printf("lc.call node=%d\n", node->index);
+    return result;
+}
+
+/* lc.arg: how the inliner binds each formal of a call it expands (setup_inline_locals_and_arguments): unused, the
+ * argument substituted for it (no side effects, and dirty set), a reference bound to the object the argument makes
+ * (a constructor's or a by-value return's temporary: how a by-value class argument comes, its copy made by the
+ * caller), or a fresh local the argument is copied to (var=, as the frame names it; for a reference, ref=1, the local
+ * holds the address). object= is the object an aliased formal stands for, when it is one (EOBJREF). declared= and
+ * declared_size= are the kind and size of the formal's type as the function declares it (the inline variable of a
+ * by-value class formal is already a reference: declared=5 there, with ref=1), -1 when no argument has its name. */
+extern ENode *setup_inline_locals_and_arguments__retail(Object *function, CInlineInfo *info, ENodeList *arguments);
+extern struct InlineSlot *data_0058245a;
+ENode *setup_inline_locals_and_arguments(Object *function, CInlineInfo *info, ENodeList *arguments)
+{
+    ENode *result = setup_inline_locals_and_arguments__retail(function, info, arguments);
+    struct InlineSlot *slot;
+    CInlineVar *formal;
+    const char *mode;
+    Object *object;
+    FuncArg *declared;
+    int i;
+
+    if (!wanted("MWCC_ORACLE_LOCALS"))
+        return result;
+    for (i = 0; i < info->nargs; i++) {
+        slot = &data_0058245a[i];
+        formal = &info->arginfo[i];
+        if (!formal->used)
+            mode = "unused";
+        else if (slot->var != NULL)
+            mode = "local";
+        else if (slot->arg != NULL)
+            mode = "reference";
+        else
+            mode = "substituted";
+        declared = IS_TYPE_FUNC(function->type) ? TYPE_FUNC(function->type)->args : NULL;
+        while (declared != NULL && declared->name != formal->name)
+            declared = declared->next;
+        object = slot->var == NULL && slot->expr != NULL && slot->expr->type == EOBJREF ? slot->expr->data.objref
+                                                                                        : NULL;
+        OracleTrace_Printf("lc.arg index=%d name=%s type=%d size=%ld ref=%d dirty=%d mode=%s var=%s object=%s "
+                           "declared=%d declared_size=%ld link=%s\n", i,
+                           formal->name ? formal->name->name : "?", formal->type ? formal->type->type : -1,
+                           formal->type ? formal->type->size : -1,
+                           formal->type && formal->type->type == TYPEPOINTER &&
+                               (TYPE_POINTER(formal->type)->qual & Q_REFERENCE) != 0,
+                           formal->dirty, mode,
+                           slot->var && slot->var->name ? slot->var->name->name : "-",
+                           object && object->name ? object->name->name : "-",
+                           declared && declared->type ? declared->type->type : -1,
+                           declared && declared->type ? declared->type->size : -1, maybe_link(function));
+    }
+    return result;
 }
 #endif
 
