@@ -1628,12 +1628,13 @@ def instantiation_report(events, text):
 
 
 def compile_trace(source, flags=(), from_ninja=None, version=None, overrides=(), schedule=False, inline_cost=False,
-                  check=True, full_cost=False, instantiation=False):
+                  check=True, full_cost=False, instantiation=False, original_fallback=False):
     """Compile SOURCE with the oracle and return its trace: a dict with `lines`, `version`, `oracle`, `source` (as the
     rule spells it), `identical` (None when not checked, or the original compiler is not there) and `differences`.
     FROM_NINJA takes the flags, the working directory and the version from a project's build.ninja (FLAGS are then
     not allowed); otherwise FLAGS are the compiler's flags, run in the current directory. OVERRIDES are
-    `PATH=REPLACEMENT` strings, as --override takes them. Raises OracleError."""
+    `PATH=REPLACEMENT` strings, as --override takes them. With ORIGINAL_FALLBACK, the original compiler compiles it
+    when the version has no oracle (no trace then). `object` is the object's bytes. Raises OracleError."""
     warning = None
     if from_ninja:
         if flags:
@@ -1654,6 +1655,9 @@ def compile_trace(source, flags=(), from_ninja=None, version=None, overrides=(),
         flags, workdir = list(flags), Path.cwd()
         version = version or "GC_1_3_2"
     oracle = ROOT / f"build/{version}/oracle/mwcceppc.exe"
+    original = ROOT / f"build/compilers/GC/{version[3:].replace('_', '.')}/mwcceppc.exe"
+    if not oracle.exists() and original_fallback and original.exists():
+        oracle = original
     if not oracle.exists():
         raise OracleError(f"{oracle} does not exist: python configure.py --version {version} --oracle, then ninja "
                           f"build/{version}/oracle/mwcceppc.exe")
@@ -1681,8 +1685,8 @@ def compile_trace(source, flags=(), from_ninja=None, version=None, overrides=(),
         if run.returncode:
             raise OracleError(f"{run.stdout}\nthe oracle compiler failed ({run.returncode})")
         result["lines"] = trace.read_text().splitlines() if trace.exists() else []
+        result["object"] = obj.read_bytes()
         if check:
-            original = ROOT / f"build/compilers/GC/{version[3:].replace('_', '.')}/mwcceppc.exe"
             if original.exists():
                 other = Path(temp) / "original.o"
                 subprocess.run([*launcher(original), *flags, "-c", compiled, "-o", str(other)], cwd=workdir,

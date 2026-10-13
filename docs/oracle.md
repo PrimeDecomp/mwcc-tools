@@ -205,6 +205,19 @@ status is 0 when nothing differs. Last result: 2313/2313 canaries on all three v
   module holds is not a difference; the main program's linker also strips the weak functions nothing references, so
   one emitted here only in a main-program TU may be that. A callee kept in the target has an out-of-line body whose
   own calls are decided there, so one misprediction brings others: look at the outermost first.
+* `tools/data_diff.py --from-ninja FILE SOURCE`: a TU's data layout against its target asm. Each data section of the
+  object (from its symbol table and relocations) is compared with the `.obj` blocks of the same section of the target
+  asm, object by object, paired by contents (local names, `@N`, `lbl_...`, `...bss.0`, are not compared; a string pool
+  is split into its strings): the objects missing, extra or in another place (`[at 0x14 in the other]`), or in
+  another section (`[in .sdata in the other]`), each with the first function that references it. Float literals are
+  laid out in the order they were made (`TOC_GetFloatObject`, while their first function was compiled), so a literal
+  elsewhere usually means a function compiled in another order or one the source does not have. Compared as linked:
+  the local objects nothing references and those only the functions missing from the target use are dropped (and
+  listed in a line), as are the weak ones another TU of the module holds (vtables). Code that reaches a section
+  through its anchor (`...bss.0` plus an offset) uses all of its objects, as far as the object says. The target's
+  alignment and the padding at a section's end come from the split and are not compared. `--section`, `--all`,
+  `--json`; without an oracle for the version (GC 1.2.5n), the original compiler compiles it. On Echoes' 73 matching
+  TUs, 67 of the 68 it can build are the same; the last is a global the target's split does not place.
 * `tools/locate.py VERSION SOURCE...`: where a compiled source's functions are in the executable.
 * `tools/nearest.py VERSION SOURCE...`: the functions of the executable a not-yet-exact function resembles most.
 * `tools/fdiff.py VERSION SOURCE FUNCTION ADDRESS`: instruction diff of a compiled function against the original's.

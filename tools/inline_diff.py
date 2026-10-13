@@ -100,17 +100,24 @@ def target_directory(from_ninja):
     raise oracle.OracleError(f"no target build directory named in {from_ninja}; give --target DIR")
 
 
-def target_functions(directory, source):
-    """{link name: binding} of the functions in the target asm of SOURCE (as the rule spells it), or None."""
+def target_asm(directory, source):
+    """The target asm of SOURCE (as the rule spells it): DIRECTORY/asm/<source without src/>.s, or a module's
+    (DIRECTORY/*/asm/...); None if there is none."""
     relative = re.sub(r"^src/", "", source.replace("\\", "/"))
     relative = str(Path(relative).with_suffix(".s")).replace("\\", "/")
     found = sorted(Path(directory).glob(f"asm/{relative}")) + sorted(Path(directory).glob(f"*/asm/{relative}"))
-    if not found:
+    return found[0] if found else None
+
+
+def target_functions(directory, source):
+    """{link name: binding} of the functions in the target asm of SOURCE (as the rule spells it), or None."""
+    found = target_asm(directory, source)
+    if found is None:
         return None
-    out = asm_functions(found[0])
+    out = asm_functions(found)
     # (the linker keeps one copy of a weak function per module, in one TU: the module's other TUs say where)
-    module = Path(str(found[0])[:str(found[0]).replace("\\", "/").rindex("/asm/") + 4])
-    out[MODULE] = module_functions(module, found[0])
+    module = Path(str(found)[:str(found).replace("\\", "/").rindex("/asm/") + 4])
+    out[MODULE] = module_functions(module, found)
     # (the main program's linker strips the weak functions nothing references; a module's keeps them)
     out[STRIPPED] = module == Path(directory) / "asm"
     return out
