@@ -780,7 +780,7 @@ def inlining_decisions(events):
     for kind, f in events:
         if kind == "inl.expr":
             nest = int(f.get("nest", 0))
-            node = {"what": f.get("what", "?"), "type": int(f.get("type", -1)), "cost": int(f.get("cost", 0)),
+            node = {"kind": "breakdown", "what": f.get("what", "?"), "type": int(f.get("type", -1)), "cost": int(f.get("cost", 0)),
                     "parts": pending.pop(nest + 1, [])}
             if "link" in f:
                 # (a call: the callee's link name, and whether the compiler made it, a constructor or a destructor)
@@ -795,7 +795,7 @@ def inlining_decisions(events):
             statements = pending.pop(nest, [])
             if nest > 0:
                 # (a callee's body costed inside an expression: it is one of that expression's parts)
-                pending.setdefault(nest, []).append({"what": "body", "type": -1, "cost": int(f.get("cost", 0)) -
+                pending.setdefault(nest, []).append({"kind": "breakdown", "what": "body", "type": -1, "cost": int(f.get("cost", 0)) -
                                                      int(f.get("running", 0)), "nstmts": int(f.get("nstmts", 0)),
                                                      "parts": statements})
                 continue
@@ -807,7 +807,7 @@ def inlining_decisions(events):
             name = f.get("function", "?")
             result = f.get("result") == "1"
             depth = f.get("depth")
-            record = {"event": "decision", "callee": name, "link": f.get("link", name), "inline": result,
+            record = {"kind": "decision", "event": "decision", "callee": name, "link": f.get("link", name), "inline": result,
                       "depth": int(depth or 0),
                       # (the inlined bodies the call is in, outermost first: the inliner goes over the function
                       # once per depth, so a call met at depth N came from a body expanded at depth N - 1)
@@ -850,10 +850,14 @@ def inlining_decisions(events):
                 reason = (f"depth {depth} with {f.get('nstmts')} statements "
                           f"({'within' if result else 'over'} the limit for this depth)")
             record["reason"] = reason
+            # (limit: kept, and a call at the inline depth limit keeps it whatever its size; known with --full-cost)
+            record["outcome"] = ("inlined" if result else
+                                 "limit" if record.get("depth_limited") and record["full_cost"] <= record["threshold"]
+                                 else "kept")
             add(record)
             cost = None
         elif kind == "inl.end":
-            record = {"event": "expansion", "callee": f.get("function", "?"), "expanded": f.get("expanded") != "0"}
+            record = {"kind": "expansion", "event": "expansion", "callee": f.get("function", "?"), "expanded": f.get("expanded") != "0"}
             if begins:
                 b = begins.pop()
                 record["link"] = b.get("link", record["callee"])
@@ -894,10 +898,11 @@ def near_threshold(analyses, after_last, margin):
     for function, link, decisions in groups:
         for d in decisions:
             if d["event"] == "decision" and "cost" in d and abs(d["cost"] - d["threshold"]) <= margin:
-                n = {"function": function, "function_link": link, "callee": d["callee"],
+                n = {"kind": "near", "function": function, "function_link": link, "callee": d["callee"],
                      "link": d.get("link"), "inline": d["inline"], "cost": d["cost"],
                      "threshold": d["threshold"], "margin": d["threshold"] - d["cost"], "count": d["count"],
                      "lines": d.get("lines", []), "depths": d.get("depths", []), "chain": list(d.get("chain", ())),
+                     "outcome": d["outcome"],
                      "limit_paths": [list(x) for x in d.get("limit_paths", ())]}
                 if "full_cost" in d:
                     n["full_cost"] = d["full_cost"]
@@ -921,8 +926,8 @@ def near_report(near, margin):
         if n["chain"]:
             whole += "\n          inside: " + " > ".join(n["chain"])
         for path in n["limit_paths"]:
-            whole += "\n          at the depth limit: " + " > ".join(path)
-        out.append(f"   {n['cost']:>4} {n['threshold']:>4}  {'INLINE' if n['inline'] else 'kept  '}  {n['link']}  in "
+            whole += "\n          at the depth limit: " + " > ".join(path) + "  [limit +1]"
+        out.append(f"   {n['cost']:>4} {n['threshold']:>4}  {n['outcome'].upper():<7}  {n['link']}  in "
                    f"{where}{lines}" + (f"  (x{n['count']})" if n["count"] > 1 else "") + whole)
     if not near:
         out.append("   none")
@@ -962,7 +967,7 @@ def cost_report(decision, types):
             if node.get("link"):
                 call = f"  [{node['link']}{', compiler-made' if node['implicit'] else ''}]"
             if node.get("depth_limit"):
-                call += "  AT THE INLINE DEPTH LIMIT"
+                call += "  [limit +1] AT THE INLINE DEPTH LIMIT"
             out.append(f"         {node['cost']:>4}  {'  ' * indent}{types.get(node['type'], node['type'])}: "
                        f"{node['what']}{call}")
             walk(node["parts"], indent + 1)
@@ -1138,7 +1143,7 @@ def explain_exchange(analysis, first, second):
     return out
 
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 
 def analyze_file(trace, function=None, link=None, version="GC_1_3_2"):

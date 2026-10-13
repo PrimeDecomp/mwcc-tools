@@ -67,7 +67,9 @@ register 60) that the register report names. `--json` prints all of it as one JS
 (`block`, `line`, `instruction`), `degree`, `neighbors` (`vreg`, `phys`), `state` (colored, coalesced, spilled,
 split), `order`, `pushed`, `select`; `functions[].inlining[]`: `callee`, `link` (the callee's link name, which tells
 overloads and template instances apart), `inline`, `cost`, `threshold`, `reason`, `count`, `depths`, `lines`,
-`chain` (and with `--full-cost`, `full_cost`, `depth_limited` and `limit_paths`);
+`chain`, `outcome` (`inlined`, `kept`, or `limit`: kept by a call at the inline depth limit, known with
+`--full-cost`) (and with `--full-cost`, `full_cost`, `depth_limited` and `limit_paths`). Every object of the inliner
+has a `kind`: `decision`, `expansion` (a body expanded), `breakdown` (a node of a cost breakdown) or `near`;
 `functions[].frame`).
 
 When no function matches `--function`, the traced functions that look most like NAME are listed, by name and link
@@ -161,6 +163,10 @@ status is 0 when nothing differs. Last result: 2313/2313 canaries on all three v
 
 ## Other tools
 
+* `tools/inline_diff.py --from-ninja FILE A B`: why one translation unit inlines a call another keeps. Both are compiled
+  with `--full-cost`, and each callee (by link name) both decide on differently is given side by side: the
+  outcomes, the estimate and the whole cost, the rounds, the functions, the chains, the calls at the depth limit
+  (`[limit +1]`) and the reasons (`--all` for every shared callee, `--callee TEXT`, `--json`).
 * `tools/locate.py VERSION SOURCE...`: where a compiled source's functions are in the executable.
 * `tools/nearest.py VERSION SOURCE...`: the functions of the executable a not-yet-exact function resembles most.
 * `tools/fdiff.py VERSION SOURCE FUNCTION ADDRESS`: instruction diff of a compiled function against the original's.
