@@ -138,7 +138,11 @@ those bodies, outermost first, by link name (shown as `inside:` with `--inline-c
   - an address taken (noregister) with pointer analysis off, so its member uses are not even recorded;
   - with pointer analysis on, an address taken that a call may reach.
 
-  Memberwise assignments (`g = f` of a POD) are uses of each member and do not keep a local in memory. Locals in
+  Copy construction of a class with no copy constructor (`F h = f;`, a member initialised from another `mOrigin(o)`)
+  is a whole copy and keeps both in memory. Give the class an inline copy constructor that copies each member, and
+  the same code is split into registers (checked on 2.7). An assignment `g = f` of a POD is done member by member
+  and does not keep a local in memory. Each kept local has a line on what would let it be split; each split one, what
+  would keep it. Locals in
   memory that the pass never saw are listed after. With `--from-ninja` (or `--target DIR`, a dtk build directory),
   the target's frame size is set against ours, and the target's locals area is given by the r1 offsets its code
   uses: the loads, stores and `addi` (an address taken) at each, grouped into runs, with our locals at those offsets.
@@ -166,6 +170,11 @@ those bodies, outermost first, by link name (shown as `inside:` with `--inline-c
   slots in the order they are made, so that object is the one whose place in the order the original differs on. For
   example, on LoadSurfaceCamera, `-0x120: @996 (12@r1+0x154)`, which the target has where ours has @1043, while the
   24 other 12-byte temporaries are at +0xc.
+
+  The same pairing gives the objects only one side keeps in memory. The target's r1 offsets with no access of ours
+  paired are merged into runs, with their loads and stores (`addi`: the address passed on). Our in-memory objects with
+  no access of the target's paired are listed too. For example, PreRender's `r1+0x4c..0x57 (12 bytes): stw x8, stb
+  x8, sth x4, ...` is a CModelFlags the target keeps in memory, member by member, where ours splits it.
 * `--exchange A,B` (`--exchange r41,r42`): why two virtual registers of a class were coloured in that order and got
   the registers they did: when the simplification pushed each and the neighbour whose removal let it, degrees,
   spill costs, neighbours, and what select found free for each.

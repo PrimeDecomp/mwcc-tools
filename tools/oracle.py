@@ -818,6 +818,22 @@ TYPE_KINDS = {0: "void", 1: "int", 2: "float", 3: "enum", 4: "struct", 5: "class
 SCALAR_KINDS = (1, 2, 11)
 
 
+def flip_hint(reason):
+    """What would let the scalarizer split a local kept in memory for REASON (one of blocked_reasons'), or None."""
+    if reason.startswith("used as a whole or at an offset not known"):
+        return ("every use were of a member at a constant offset (no whole copy of it, no index that is not a "
+                "constant)")
+    if reason.startswith("used as a "):
+        return ("that copy were made member by member: a class with a copy constructor (or operator=) that copies "
+                "each member, inlined, is copied that way; one without is copied whole. Or if the copy went away")
+    if reason.startswith("its uses overlap"):
+        return "its bytes were always used at the same size and type (no stores of parts read back as a word)"
+    if reason.startswith("its address is taken"):
+        return ("its address were not taken: no &x, no binding to a reference or pointer formal of a call that is "
+                "not inlined, no member function call on it that is not inlined")
+    return None
+
+
 def blocked_reasons(var, scalarize):
     """Why the scalarizer left VAR (one of a pass's `vars`) in memory, from its uses and parts."""
     reasons = []
@@ -828,9 +844,10 @@ def blocked_reasons(var, scalarize):
         elif use["kind"] not in SCALAR_KINDS:
             whole = use["offset"] == 0 and var["size"] is not None and use["size"] >= var["size"]
             reasons.append(f"used as a {TYPE_KINDS.get(use['kind'], use['kind'])} of {use['size']} bytes at offset "
-                           f"{use['offset']} ({where}): " + ("copied as a whole (a by-value argument, a return or an "
-                                                             "assignment of the whole)" if whole else
-                                                             "a member aggregate copied whole"))
+                           f"{use['offset']} ({where}): " + ("copied as a whole (copy construction of a class with "
+                                                             "no copy constructor, a by-value argument, a return)"
+                                                             if whole else "a member aggregate copied whole (copy "
+                                                             "construction of a member with no copy constructor)"))
     scalars = sorted({(u["offset"], u["offset"] + max(u["size"], 1), u["kind"]) for u in var["uses"]
                       if u["offset"] >= 0 and u["kind"] in SCALAR_KINDS})
     overlaps = [(a, b) for a, b in zip(scalars, scalars[1:]) if b[0] < a[1]]
@@ -972,6 +989,85 @@ def slot_shifts(ours, theirs, frame, our_limit, their_limit):
     return out
 
 
+MNEMONICS = {32: "lwz", 33: "lwzu", 34: "lbz", 35: "lbzu", 36: "stw", 37: "stwu", 38: "stb", 39: "stbu", 40: "lhz",
+             41: "lhzu", 42: "lha", 43: "lhau", 44: "sth", 45: "sthu", 46: "lmw", 47: "stmw", 48: "lfs", 49: "lfsu",
+             50: "lfd", 51: "lfdu", 52: "stfs", 53: "stfsu", 54: "stfd", 55: "stfdu", 14: "addi", 56: "psq_l",
+             57: "psq_lu", 60: "psq_st", 61: "psq_stu"}
+
+
+def unpaired_objects(ours, theirs, frame, our_limit, their_limit):
+    """The stack objects only one side keeps in memory, from the same pairing as slot_shifts: (target runs, our
+    objects). A target run is a dict with `start`, `end` and `accesses` ({mnemonic: count}) for the r1 offsets none of
+    whose accesses pairs with one of ours (adjacent and overlapping offsets merged; an addi is its address passed on).
+    Ours are the FRAME entries in memory none of whose accesses pairs with the target's, each with `accesses`."""
+    import difflib
+    matcher = difflib.SequenceMatcher(None, [instruction_token(w) for w in ours],
+                                      [instruction_token(w) for w in theirs], autojunk=False)
+    paired_ours, paired_theirs = set(), set()
+    for a, b, size in matcher.get_matching_blocks():
+        for i in range(size):
+            mine, target = r1_offset(ours[a + i]), r1_offset(theirs[b + i])
+            if mine is not None and target is not None:
+                paired_ours.add(mine)
+                paired_theirs.add(target)
+
+    def accesses(words, limit):
+        out = {}
+        for word in words:
+            offset = r1_offset(word)
+            if offset is not None and 8 <= offset < limit:
+                width = MEMORY_OPCODES[word >> 26]
+                out.setdefault(offset, []).append((width, MNEMONICS[word >> 26]))
+        return out
+
+    runs, run = [], None
+    theirs_at = accesses(theirs, their_limit)
+    for offset in sorted(o for o in theirs_at if o not in paired_theirs):
+        width = max(max(w for w, _ in theirs_at[offset]), 1)
+        if run is not None and offset <= run["end"]:
+            run["end"] = max(run["end"], offset + width)
+        else:
+            run = {"start": offset, "end": offset + width, "accesses": {}}
+            runs.append(run)
+        for _, mnemonic in theirs_at[offset]:
+            run["accesses"][mnemonic] = run["accesses"].get(mnemonic, 0) + 1
+    ours_at = accesses(ours, our_limit)
+    mine = []
+    for e in frame:
+        if not e["used"] or e["reg"] or "r1" not in e or e["offset"] == 0 and e["name"].startswith("@"):
+            continue
+        offsets = [o for o in ours_at if e["r1"] <= o < e["r1"] + max(e["size"], 1)]
+        if offsets and not any(o in paired_ours for o in offsets):
+            counts = {}
+            for o in offsets:
+                for _, mnemonic in ours_at[o]:
+                    counts[mnemonic] = counts.get(mnemonic, 0) + 1
+            mine.append(dict(e, accesses=counts))
+    return runs, mine
+
+
+def unpaired_report(runs, mine):
+    """unpaired_objects' result as lines."""
+    out = []
+
+    def shown(counts):
+        return ", ".join(f"{m} x{n}" for m, n in sorted(counts.items(), key=lambda x: -x[1]))
+
+    if runs:
+        out.append("   in the target's memory, with no access of ours paired (kept in memory there; ours has it in "
+                   "registers, elsewhere, or not at all):")
+        for run in runs:
+            note = " (its address passed on)" if "addi" in run["accesses"] else ""
+            out.append(f"      r1+{run['start']:#x}..{run['end'] - 1:#x} ({run['end'] - run['start']} bytes): "
+                       f"{shown(run['accesses'])}{note}")
+    if mine:
+        out.append("   in our memory, with no access of the target's paired (the target keeps it elsewhere or "
+                   "scalarized):")
+        for e in mine:
+            out.append(f"      {e['name']} ({e['size']} bytes at r1+{e['r1']:#x}): {shown(e['accesses'])}")
+    return out
+
+
 def shift_report(shifts, frame):
     """slot_shifts' result as lines: the objects grouped by how far the target has them from ours (their accesses'
     usual delta), the smallest groups (an object placed in another order) first, then the objects whose accesses
@@ -1004,7 +1100,7 @@ def shift_report(shifts, frame):
                     continue
                 there = [o["name"] for o in frame if o["used"] and not o["reg"] and "r1" in o and o["offset"] != 0
                          and o["r1"] <= e["r1"] + delta < o["r1"] + max(o["size"], 1)]
-                if there:
+                if there and there != [name]:
                     out.append(f"         the target has {name} at r1+{e['r1'] + delta:#x}, where ours has "
                                f"{', '.join(there)} (temporaries get slots by when they are made)")
     for name in mixed:
@@ -1069,12 +1165,18 @@ def locals_report(analysis, passes, target=None, bindings=()):
                 out.append(f"      {name} ({var['size']} bytes): KEPT IN MEMORY ({where(name)}), no part made")
                 for reason in reasons or ["(not identified from its uses)"]:
                     out.append(f"         because: {reason}")
+                    if flip_hint(reason):
+                        out.append(f"            it would be split if {flip_hint(reason)}")
             elif blocked:
                 out.append(f"      {name} ({var['size']} bytes): KEPT IN MEMORY ({where(name)})")
                 for reason in blocked_reasons(var, scalarize):
                     out.append(f"         because: {reason}")
+                    if flip_hint(reason):
+                        out.append(f"            it would be split if {flip_hint(reason)}")
             else:
-                out.append(f"      {name} ({var['size']} bytes): split into scalars")
+                out.append(f"      {name} ({var['size']} bytes): split into scalars (it would be kept in memory by a "
+                           "whole copy of it or of a member aggregate, its address taken, or bytes used at "
+                           "different sizes)")
             spans = {}
             for p in var["parts"]:
                 spans.setdefault((p["start"], p["end"], p["kind"], p["size"]), []).append(p)
@@ -2237,6 +2339,8 @@ def main():
                 limit = layout["linkage"] + layout["outgoing"] + layout["locals"]
                 shifts = slot_shifts(ours, theirs, analysis["frame"] or [], limit, target[2])
                 print("\n".join(shift_report(shifts, analysis["frame"] or [])))
+                print("\n".join(unpaired_report(*unpaired_objects(ours, theirs, analysis["frame"] or [], limit,
+                                                                   target[2]))))
             print("\n".join(frame_report(analysis)))
         return
 
