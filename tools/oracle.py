@@ -2435,6 +2435,49 @@ def cse_tree(text, types, indices=False):
         return text
 
 
+# What the compiler functions that make temporaries (create_temp_object's callers, by symbol name) make them for.
+TEMP_CREATORS = {
+    "fn_0046e030": "linearization: an EFORCELOAD's temporary (an inlined function's return, or a value loaded once)",
+    "extract_right_operand_to_statement": "linearization: a comma expression's value",
+    "insert_intconst_assignment": "linearization: a && or || value",
+    "IroCSE_CreateTemp": "common subexpressions (in place)",
+    "move_common_sub": "common subexpressions (where the uses meet)",
+    "create_replacement_temp_assignment": "common subexpressions (in place)",
+    "fn_0055d510": "inliner: flattening an inlined expression into statements",
+    "fn_0055d7e0": "inliner: flattening `cond ? a : b` into statements",
+    "fn_0055da80": "inliner: flattening a null check into statements",
+    "fn_00460780": "scalarizer: a member of a local aggregate",
+}
+
+
+def temp_creator(version, caller):
+    """The compiler function at CALLER (create_temp_object's return address), with what it makes temporaries for."""
+    name = function_at(version, caller)
+    if name is None:
+        return hex(caller)
+    return f"{name}: {TEMP_CREATORS[name]}" if name in TEMP_CREATORS else name
+
+
+def vreg_origin(record, cls, number, version, types):
+    """What a virtual register of class CLS holds, from a cse_trace record: the local or temporary it was given to, and
+    for a common subexpression's temporary, its expression and the repeat that made it; None when unknown."""
+    names = [name for name, (reg, c, noregister) in record["vregs"].items()
+             if reg == number and CLASSES.get(c) == cls and not noregister]
+    if not names:
+        return None
+    name = names[0]
+    for p in record["passes"]:
+        for t in p["temps"]:
+            if t["name"] == name:
+                return (f"{name} = {cse_tree(t['tree'], types)}, a common subexpression's temporary (pass {p['n']}, "
+                        f"expression #{t['expr']}), made at its first repeat #{t['repeat']}: the temporaries are made "
+                        f"in the order of their first repeats, so this one's number moves with that order (see --cse)")
+    caller = next((c for n, c in record["objects"] if n == name), None)
+    if caller is not None:
+        return f"{name}, a temporary made by {temp_creator(version, caller)}"
+    return f"{name}, a local of the source"
+
+
 def cse_report(link, record, types, version, ir_line=None):
     """--cse: the temporaries the common subexpressions made, pass by pass, in the order made (each at the first
     repeat of its expression, in the IR's order), with where the expression and that repeat are and the register the
@@ -2456,8 +2499,10 @@ def cse_report(link, record, types, version, ir_line=None):
 
     for p in record["passes"]:
         lines = {n["i"]: n["line"] for n in p["ir"]}
-        out.append(f"   pass {p['n']}: {len([t for t in p['temps'] if t['name'] not in (None, '-')])} temporaries, "
-                   f"{len(p['replaces'])} repeats replaced")
+        count = len([t for t in p["temps"] if t["name"] not in (None, "-")])
+        out.append(f"   pass {p['n']}: " + (f"{count} temporaries, {len(p['replaces'])} repeats replaced" if count or
+                                            p["replaces"] else "no temporaries made, no repeats replaced")
+                   + (" (its IR is numbered anew: the indices are not pass 1's)" if p["n"] > 1 else ""))
         previous = None
         for t in p["temps"]:
             name = t["name"] or "?"
@@ -2501,7 +2546,7 @@ def cse_report(link, record, types, version, ir_line=None):
     if shown:
         out.append("   other temporaries in registers (the function that made each):")
         for name, caller in shown:
-            out.append(f"      {name} -> {vreg(name)}  made by {function_at(version, caller) or hex(caller)}")
+            out.append(f"      {name} -> {vreg(name)}  made by {temp_creator(version, caller)}")
     hidden = len(others) - len(shown)
     if hidden:
         out.append(f"   ({hidden} other temporaries are in memory or gone by the allocation)")
@@ -2962,7 +3007,8 @@ def main():
                              not arguments.no_check, arguments.full_cost, bool(arguments.instantiation),
                              scalarize=arguments.locals, blocks=arguments.blocks,
                              cut_limit=limit_value(arguments.cut_limit), merge_limit=limit_value(arguments.merge_limit),
-                             keep_object=arguments.keep_object, cse=arguments.cse or bool(arguments.ir))
+                             keep_object=arguments.keep_object,
+                             cse=arguments.cse or bool(arguments.ir) or bool(arguments.exchange))
     if compiled["warning"]:
         print(compiled["warning"], file=sys.stderr)
     arguments.version = compiled["version"]
@@ -3059,6 +3105,19 @@ def main():
             continue
         if arguments.exchange:
             print("\n".join(explain_exchange(analysis, *arguments.exchange.split(",", 1))))
+            record = cse_trace(lines).get(analysis["link"])
+            if record:
+                origins = []
+                for text in arguments.exchange.split(",", 1):
+                    m = re.match(r"%?(r|f|v|cr)?(\d+)$", text.strip())
+                    if m:
+                        cls = {"r": "GPR", "f": "FPR", "v": "VR", "cr": "CR", None: "GPR"}[m.group(1)]
+                        origin = vreg_origin(record, cls, int(m.group(2)), arguments.version, types)
+                        if origin:
+                            origins.append(f"   %{m.group(2)} holds {origin}")
+                if origins:
+                    print("   what they hold:")
+                    print("\n".join(origins))
             continue
         if analysis["inlining"]:
             print(f"== {title}: inlining ==")

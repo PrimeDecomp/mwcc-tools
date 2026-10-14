@@ -40,8 +40,14 @@ example, `ESUB #792` has its right operand at #786 and its left operand at #791.
   * its register as the allocation starts (`%f42`, virtual), or `memory`.
 * **occurs before ... but repeats after it:** a temporary made after another although its expression comes first.
   These are the pairs whose order a source change can flip.
-* **other temporaries in registers:** temporaries from elsewhere (the inliner, linearization, copy propagation, the
-  scalarizer...), each with its register and the compiler function that made it.
+* **other temporaries in registers:** temporaries from elsewhere, each with its register and the compiler function
+  that made it, named with what it makes temporaries for: the inliner flattening an expression, linearization (an
+  EFORCELOAD's value, a comma or `&&`/`||` value), the scalarizer... (`TEMP_CREATORS` in `tools/oracle.py`).
+* A pass that made nothing says so. Each pass numbers the IR anew, so its indices are not the first pass's.
+
+**With `--exchange`.** `--exchange A,B` also says what each of the two virtual registers holds: a local, a temporary
+and the function that made it, or a common subexpression's temporary with its expression and the repeat that made it.
+For those, "define it later" means: make the expression repeat later in the IR.
 
 `--ir LINE` adds the linear IR of that source line as each pass starts. `--ir all` lists the whole function. Each node
 is shown with its index, its operation and operands. Each expression is shown with the temporary it got
