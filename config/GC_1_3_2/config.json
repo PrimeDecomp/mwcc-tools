@@ -58,7 +58,10 @@
       "_fn_0050f240",
       "_fn_00436390",
       "_COptimizer_Optimize",
-      "_Peephole_MergeAdjacentBlocks"
+      "_Peephole_MergeAdjacentBlocks",
+      "_IRO_CommonSubs",
+      "_move_common_sub",
+      "_IroDump_Print"
     ],
     "units": []
   }

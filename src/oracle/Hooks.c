@@ -115,11 +115,13 @@ static int wanted(const char *name)
 #ifdef ALLOCATE_REGISTERS
 extern void ALLOCATE_REGISTERS_RETAIL(Object *function);
 static void origins_reset(void);
+void cse_vregs(void);
 
 /* The register allocation of a function: Coloring_AllocateRegisters in the sources. Its inlining is over by then. */
 void ALLOCATE_REGISTERS(Object *function)
 {
     origins_reset();
+    cse_vregs();
     snapshot("before", function);
     ALLOCATE_REGISTERS_RETAIL(function);
     snapshot("after", function);
@@ -1120,8 +1122,16 @@ static Boolean in_scalarize;
  * pass's lc.pass line). */
 Object *create_temp_object(Type *type)
 {
-    Object *object = create_temp_object__retail(type);
+    unsigned long caller;
+    Object *object;
 
+    asm {
+        mov eax, [ebp + 4]
+        mov caller, eax
+    }
+    object = create_temp_object__retail(type);
+    if (wanted("MWCC_ORACLE_CSE"))
+        OracleTrace_Printf("ce.object name=%s caller=%lx\n", object && object->name ? object->name->name : "?", caller);
     if (in_scalarize && wanted("MWCC_ORACLE_LOCALS"))
         OracleTrace_Printf("lc.temp name=%s\n", object && object->name ? object->name->name : "?");
     return object;
@@ -1439,6 +1449,168 @@ void Peephole_MergeAdjacentBlocks(Object *object, Boolean mergePrologue)
     }
     Peephole_MergeAdjacentBlocks__retail(object, mergePrologue);
     block_list("merged", object);
+}
+
+/* ce.*: the global optimizer's common subexpressions, with MWCC_ORACLE_CSE=1 (2: also the linear IR as each pass
+ * starts). IRO_CommonSubs first marks each expression that repeats an available one, then walks the IR in order: at
+ * each repeat, the expression it repeats gets its temporary (move_common_sub) if it has none yet, so the temporaries
+ * are made in the order of their first repeats. ce.pass starts a pass (the function's n-th) and ce.l lists the IR
+ * (index, kind, ENode type, operands' indices, line); ce.move is a temporary about to be made, for the expression at
+ * expr= (its tree: `(TYPE#index operands)`, operands by name), ce.temp the temporary made, by path (replace: assigned
+ * where the expression stands; comma: assigned where all its uses meet), and ce.replace each repeat replaced (from the
+ * optimizer's own dump message, which IroDump_Print prints only when the dump is on). ce.object is each temporary
+ * object made (create_temp_object), with the caller's return address, and ce.vreg each local's register (a virtual
+ * register number, in the class rclass) as the allocation starts. */
+#include "compiler/IroCSE.h"
+
+extern struct IROLinear *linear_head;
+extern void IRO_CommonSubs__retail(void);
+extern void move_common_sub__retail(IROExpr *group);
+static Object *cse_function;
+static int cse_pass;
+static int cse_moved;
+
+static void describe_linear(char *buffer, size_t size, IROLinear *linear, int depth)
+{
+    char piece[32];
+    size_t used = strlen(buffer);
+
+    if (used + 12 >= size)
+        return;
+    if (linear == NULL) {
+        strcat(buffer, "?");
+        return;
+    }
+    if (depth <= 0) {
+        strcat(buffer, "..");
+        return;
+    }
+    switch (linear->type) {
+    case IROLinearOperand:
+        describe_expression(buffer, size, linear->u.node, 3);
+        return;
+    case IROLinearOp1Arg:
+        sprintf(piece, "(%d#%d ", (int)linear->nodetype, (int)linear->index);
+        strcat(buffer, piece);
+        describe_linear(buffer, size, linear->u.monadic, depth - 1);
+        strcat(buffer, ")");
+        return;
+    case IROLinearOp2Arg:
+        sprintf(piece, "(%d#%d ", (int)linear->nodetype, (int)linear->index);
+        strcat(buffer, piece);
+        describe_linear(buffer, size, linear->u.diadic.left, depth - 1);
+        strcat(buffer, " ");
+        describe_linear(buffer, size, linear->u.diadic.right, depth - 1);
+        strcat(buffer, ")");
+        return;
+    default:
+        sprintf(piece, "[kind%d#%d]", (int)linear->type, (int)linear->index);
+        strcat(buffer, piece);
+    }
+}
+
+static long linear_line(IROLinear *linear)
+{
+    return linear != NULL && linear->stmt != NULL ? (long)linear->stmt->sourceoffset : -1L;
+}
+
+static void linear_list(void)
+{
+    IROLinear *linear;
+    char text[160];
+
+    for (linear = linear_head; linear != NULL; linear = linear->next) {
+        text[0] = 0;
+        if (linear->type == IROLinearOperand)
+            describe_expression(text, sizeof(text), linear->u.node, 3);
+        OracleTrace_Printf("ce.l i=%d kind=%d op=%d a=%d b=%d line=%ld expr=%d text=%s\n", (int)linear->index,
+                           (int)linear->type, (int)linear->nodetype,
+                           (linear->type == IROLinearOp1Arg || linear->type == IROLinearOp2Arg) &&
+                                   linear->u.monadic != NULL
+                               ? (int)linear->u.monadic->index
+                               : -1,
+                           linear->type == IROLinearOp2Arg && linear->u.diadic.right != NULL
+                               ? (int)linear->u.diadic.right->index
+                               : -1,
+                           linear_line(linear), linear->expr != NULL ? (int)linear->expr->index : -1, text);
+    }
+}
+
+void IRO_CommonSubs(void)
+{
+    const char *level = getenv("MWCC_ORACLE_CSE");
+
+    if (!wanted("MWCC_ORACLE_CSE")) {
+        IRO_CommonSubs__retail();
+        return;
+    }
+    if (cse_function != data_005875b8) {
+        cse_function = data_005875b8;
+        cse_pass = 0;
+    }
+    cse_pass++;
+    OracleTrace_Printf("ce.pass n=%d link=%s\n", cse_pass, maybe_link(data_005875b8));
+    if (level[0] == '2')
+        linear_list();
+    IRO_CommonSubs__retail();
+    OracleTrace_Printf("ce.end\n");
+}
+
+void move_common_sub(IROExpr *group)
+{
+    char tree[512];
+
+    if (!wanted("MWCC_ORACLE_CSE")) {
+        move_common_sub__retail(group);
+        return;
+    }
+    tree[0] = 0;
+    describe_linear(tree, sizeof(tree), group->linear, 8);
+    OracleTrace_Printf("ce.move expr=%d line=%ld tree=%s\n", group->linear != NULL ? (int)group->linear->index : -1,
+                       linear_line(group->linear), tree);
+    cse_moved = 0;
+    move_common_sub__retail(group);
+    OracleTrace_Printf("ce.temp name=%s path=%s\n",
+                       group->temp != NULL && group->temp->name != NULL ? group->temp->name->name : "-",
+                       group->temp == NULL ? "none" : cse_moved ? "comma" : "replace");
+}
+
+/* (the original's, which prints only when the dump is on; the CSE messages are read here first) */
+void IroDump_Print(const char *message, ...)
+{
+    va_list arguments;
+    char *base = (char *)&message;
+
+    arguments = base + ((va_list)(&message + 1) - base + 3) / 4 * 4;
+    if (strncmp(message, "Moving common sub", 17) == 0)
+        cse_moved = 1;
+    if (strncmp(message, "Replacing common sub at", 23) == 0 && wanted("MWCC_ORACLE_CSE"))
+        OracleTrace_Printf("ce.replace at=%d with=%d\n", ((int *)arguments)[0], ((int *)arguments)[1]);
+    if (INT_005882b8 != 0)
+        vfprintf(iro_dump_output, message, arguments);
+}
+
+static void vreg_objects(ObjectList *list)
+{
+    Object *object;
+    VarInfo *info;
+
+    for (; list != NULL; list = list->next) {
+        object = list->object;
+        if (object == NULL || object->datatype != DLOCAL || (info = object->u.var.info) == NULL)
+            continue;
+        OracleTrace_Printf("ce.vreg name=%s reg=%d class=%d noregister=%d\n",
+                           object->name != NULL ? object->name->name : "?", (int)info->reg, (int)info->rclass,
+                           (int)info->noregister);
+    }
+}
+
+void cse_vregs(void)
+{
+    if (!wanted("MWCC_ORACLE_CSE"))
+        return;
+    vreg_objects(locals);
+    vreg_objects(temporary_objects);
 }
 #endif
 

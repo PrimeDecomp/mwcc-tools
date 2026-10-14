@@ -90,6 +90,18 @@ The `lc.arg` fields:
 | `bk.merge prologue= link=` | A merge pass starts; `prologue=1` when it may merge the prologue block. |
 | `bk.pair a= b= counts=A+B why=` | For each block and the next, as the pass starts, why it keeps them apart (`prologue`, `empty`, `call`, `branch`, `successors`, `predecessors`, `epilogue`, `flag`, `over100`), or `-`. |
 
+**`MWCC_ORACLE_CSE`** (`--cse`; `2` also lists the linear IR as each pass starts, which `--cse` always asks for):
+
+| Lines | Content |
+|---|---|
+| `ce.pass n= link=` ... `ce.end` | One IRO_CommonSubs call, the function's n-th. |
+| `ce.l i= kind= op= a= b= line= expr= text=` | At level 2, each IR node: index, kind (1 operand, 2 one operand, 3 two operands...), ENode type, the operands' indices, source line, expression number, and an operand's text. |
+| `ce.move expr= line= tree=` | A temporary about to be made for the expression at `expr`. `tree` is prefix form: `(TYPE#index operands)`. |
+| `ce.temp name= path=` | The temporary made: `replace` (assigned in place), `comma` (where its uses meet), or `none` (over 64 uses). |
+| `ce.replace at= with=` | A repeat replaced by the temporary of the expression at `with`. |
+| `ce.object name= caller=` | Each temporary object made (create_temp_object), with the caller's return address. |
+| `ce.vreg name= reg= class= noregister=` | Each local's register as the allocation starts (a virtual register number), before `ra.before`. |
+
 **`MWCC_ORACLE_IRO_DUMP=FILE`** turns on the global optimizer's own dump (IroDump, normally written to `<source>.log`
 in debug builds), appended to FILE.
 
@@ -133,6 +145,7 @@ in debug builds), appended to FILE.
 | `parse_trace(lines)` | The snapshots before and after each allocation; the before snapshot also holds the colouring rounds and the frame. |
 | `analyze(...)` | The data `--json` prints. |
 | `opcode_names(version)` | The opcode names, for views of your own. |
+| `cse_trace(lines)`, `cse_tree(text, types)` | The `ce.*` lines by link name (`compile_trace(..., cse=True)`), and a `ce.move` tree in infix form. |
 | `block_trace(lines)`, `block_cuts(record, names)` | The `bk.*` lines by link name (`compile_trace(..., blocks=True)`), and where each function's statements moved to a new block, and why. |
 
 Each function's dict has `schema_version` (`SCHEMA_VERSION`), raised when a field changes meaning or goes away.

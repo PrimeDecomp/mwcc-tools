@@ -2328,6 +2328,186 @@ def blocks_report(link, record, names, pcode=False, limit=100):
     return out
 
 
+def cse_trace(lines):
+    """The global optimizer's common subexpressions (ce.*, with MWCC_ORACLE_CSE=2), by link name: `passes` ([{"n",
+    "ir": [{"i", "kind", "op", "a", "b", "line", "expr", "text"}], "temps": [{"expr", "line", "tree", "name", "path",
+    "repeat", "replaces"}], "replaces": [(at, with)]}], each IRO_CommonSubs call), `objects` ([(name, caller address)],
+    every temporary object made for the function, in order) and `vregs` ({name: (register, class, noregister)}, as the
+    allocation starts). The objects and registers are the ones traced before the function's ra.before."""
+    functions, objects, vregs, current = {}, [], {}, None
+
+    def record(link):
+        return functions.setdefault(link, {"passes": [], "objects": [], "vregs": {}})
+
+    for line in lines:
+        if line.startswith("ra.before"):
+            m = re.match(r"ra\.before function=(\S*)(?: link=(.*))?$", line)
+            if m:
+                r = record(m.group(2) or m.group(1))
+                r["objects"].extend(objects)
+                r["vregs"].update(vregs)
+            objects, vregs = [], {}
+            continue
+        if not line.startswith("ce."):
+            continue
+        m = re.match(r"ce\.object name=(\S+) caller=(\w+)$", line)
+        if m:
+            objects.append((m.group(1), int(m.group(2), 16)))
+            continue
+        m = re.match(r"ce\.vreg name=(\S+) reg=(-?\d+) class=(\d+) noregister=(\d+)$", line)
+        if m:
+            vregs[m.group(1)] = (int(m.group(2)), int(m.group(3)), m.group(4) == "1")
+            continue
+        m = re.match(r"ce\.pass n=(\d+) link=(.*)$", line)
+        if m:
+            current = {"n": int(m.group(1)), "ir": [], "temps": [], "replaces": []}
+            record(m.group(2))["passes"].append(current)
+            continue
+        if current is None:
+            continue
+        m = re.match(r"ce\.l i=(\d+) kind=(\d+) op=(\d+) a=(-?\d+) b=(-?\d+) line=(-?\d+) expr=(-?\d+) text=(.*)$",
+                     line)
+        if m:
+            current["ir"].append({"i": int(m.group(1)), "kind": int(m.group(2)), "op": int(m.group(3)),
+                                  "a": int(m.group(4)), "b": int(m.group(5)), "line": int(m.group(6)),
+                                  "expr": int(m.group(7)), "text": m.group(8)})
+            continue
+        m = re.match(r"ce\.move expr=(-?\d+) line=(-?\d+) tree=(.*)$", line)
+        if m:
+            current["temps"].append({"expr": int(m.group(1)), "line": int(m.group(2)), "tree": m.group(3),
+                                     "name": None, "path": None, "repeat": None, "replaces": []})
+            continue
+        m = re.match(r"ce\.temp name=(\S+) path=(\w+)$", line)
+        if m and current["temps"]:
+            current["temps"][-1].update(name=m.group(1), path=m.group(2))
+            continue
+        m = re.match(r"ce\.replace at=(-?\d+) with=(-?\d+)$", line)
+        if m:
+            at, with_ = int(m.group(1)), int(m.group(2))
+            current["replaces"].append((at, with_))
+            for temp in current["temps"]:
+                if temp["expr"] == with_:
+                    temp["replaces"].append(at)
+                    if temp["repeat"] is None:
+                        temp["repeat"] = at
+    return functions
+
+
+IRO_KINDS = {0: "nop", 1: "operand", 2: "op1", 3: "op2", 4: "goto", 5: "if", 6: "ifnot", 7: "return", 8: "label",
+             9: "switch", 10: "cond", 11: "call"}
+INFIX = {"EADD": "+", "ESUB": "-", "EMUL": "*", "EDIV": "/", "EASS": "=", "ESHL": "<<", "ESHR": ">>", "EAND": "&",
+         "EOR": "|", "EXOR": "^", "ELESS": "<", "EGREATER": ">", "ELESSEQU": "<=", "EGREATEREQU": ">=",
+         "EEQU": "==", "ENOTEQU": "!=", "ECOMMA": ","}
+
+
+def cse_tree(text, types, indices=False):
+    """A ce.move tree (`(TYPE#index operands)`, prefix) in infix form: `*gunDirFlat`, `(a*b)`; with INDICES, each
+    operation with its node's index (`*#790 gunDirFlat`)."""
+    tokens = re.findall(r"\(|\)|[^\s()]+", text)
+    position = 0
+
+    def parse():
+        nonlocal position
+        token = tokens[position]
+        position += 1
+        if token != "(":
+            return token
+        head = tokens[position]
+        position += 1
+        children = []
+        while tokens[position] != ")":
+            children.append(parse())
+        position += 1
+        number, _, index = head.partition("#")
+        name = types.get(int(number), f"op{number}") if number.isdigit() else number
+        mark = f"#{index}" if indices and index else ""
+        if name == "EINDIRECT" and len(children) == 1:
+            return f"*{mark}{children[0]}"
+        if name in ("ETYPCON", "EFORCELOAD") and len(children) == 1:
+            return f"{name.lower()[1:]}{mark}({children[0]})"
+        if name in INFIX and len(children) == 2:
+            return f"({children[0]} {INFIX[name]}{mark} {children[1]})"
+        return f"{name}{mark}(" + ", ".join(children) + ")"
+
+    try:
+        return parse()
+    except (IndexError, ValueError):
+        return text
+
+
+def cse_report(link, record, types, version, ir_line=None):
+    """--cse: the temporaries the common subexpressions made, pass by pass, in the order made (each at the first
+    repeat of its expression, in the IR's order), with where the expression and that repeat are and the register the
+    temporary got; then the other temporaries in registers, with the function that made each. With IR_LINE (a source
+    line, or `all`), the linear IR of that line as each pass starts."""
+    out = [f"== {link}: common subexpressions =="]
+    if not record["passes"]:
+        return out + ["   no IRO_CommonSubs pass traced (MWCC_ORACLE_CSE=2 and an oracle with the ce.* hooks needed)"]
+    made = {}
+
+    def vreg(name):
+        if name not in record["vregs"]:
+            return "not allocated"
+        reg, cls, noregister = record["vregs"][name]
+        if noregister or reg == 0:
+            return "memory"
+        prefix = {"GPR": "r", "FPR": "f", "VR": "v", "CR": "cr"}.get(CLASSES.get(cls, "?"), "?")
+        return f"%{prefix}{reg}"
+
+    for p in record["passes"]:
+        lines = {n["i"]: n["line"] for n in p["ir"]}
+        out.append(f"   pass {p['n']}: {len([t for t in p['temps'] if t['name'] not in (None, '-')])} temporaries, "
+                   f"{len(p['replaces'])} repeats replaced")
+        previous = None
+        for t in p["temps"]:
+            name = t["name"] or "?"
+            made[name] = p["n"]
+            repeat = t["repeat"]
+            where = f"#{t['expr']}" + (f" line {t['line']}" if t["line"] > 0 else "")
+            first = (f"first repeat #{repeat}" + (f" line {lines[repeat]}" if lines.get(repeat, 0) > 0 and
+                                                  lines.get(repeat) != t["line"] else "")
+                     if repeat is not None else "no repeat replaced")
+            note = ""
+            if previous is not None and t["expr"] < previous["expr"] and repeat is not None and \
+                    previous["repeat"] is not None:
+                note = (f"  <- occurs before {previous['name']}'s expression (#{t['expr']} < #{previous['expr']}) but "
+                        f"repeats after it")
+            out.append(f"      {name} = {cse_tree(t['tree'], types)}  [{where}; {first}; "
+                       f"{len(t['replaces'])} repeat{'s' if len(t['replaces']) != 1 else ''}; "
+                       f"{'assigned where all uses meet' if t['path'] == 'comma' else 'assigned in place'}"
+                       f"{'' if t['path'] != 'none' else '; NOT MADE (over 64 uses)'}] -> {vreg(name)}{note}")
+            previous = t
+        if ir_line is not None:
+            wanted = [n for n in p["ir"]
+                      if n["kind"] != 0 and (ir_line == "all" or str(n["line"]) == str(ir_line))]
+            temp_of = {t["expr"]: t["name"] for t in p["temps"]}
+            repeats = {at: w for at, w in p["replaces"]}
+            out.append(f"   pass {p['n']}: linear IR" + ("" if ir_line == "all" else f" of line {ir_line}")
+                       + " (index, node, operands; expressions with their temporary or the one they repeat)")
+            for n in wanted:
+                kind = IRO_KINDS.get(n["kind"], f"kind{n['kind']}")
+                op = types.get(n["op"], f"op{n['op']}") if n["kind"] in (2, 3) else kind
+                operands = " ".join(f"#{x}" for x in (n["a"], n["b"]) if x >= 0)
+                extra = n["text"] if n["kind"] == 1 else operands
+                tag = ""
+                if n["i"] in temp_of:
+                    tag = f"  -> {temp_of[n['i']]}"
+                elif n["i"] in repeats:
+                    tag = f"  repeats #{repeats[n['i']]}" + (f" ({temp_of[repeats[n['i']]]})"
+                                                             if repeats[n["i"]] in temp_of else "")
+                out.append(f"      #{n['i']:<5} {op:<12} {extra}{tag}")
+    others = [(name, caller) for name, caller in record["objects"] if name not in made]
+    shown = [(name, caller) for name, caller in others if vreg(name) not in ("memory", "not allocated")]
+    if shown:
+        out.append("   other temporaries in registers (the function that made each):")
+        for name, caller in shown:
+            out.append(f"      {name} -> {vreg(name)}  made by {function_at(version, caller) or hex(caller)}")
+    hidden = len(others) - len(shown)
+    if hidden:
+        out.append(f"   ({hidden} other temporaries are in memory or gone by the allocation)")
+    return out
+
+
 def matches(wanted, function, link):
     """--function: a substring of the function's name or of its link (mangled) name."""
     return not wanted or wanted in function or wanted in (link or "")
@@ -2389,7 +2569,8 @@ OPTIONS = {"--version": True, "--function": True, "--from-ninja": True, "--raw":
            "--no-check": False, "--json": False, "--schedule": False, "--inline-cost": True, "--exchange": True,
            "--override": True, "--near": True, "--full-cost": False, "--instantiation": True, "--locals": False,
            "--target": True, "--blocks": False, "--cut-limit": True, "--merge-limit": True,
-           "--keep-object": True, "--help": False, "-h": False}
+           "--keep-object": True, "--cse": False, "--ir": True,
+           "--help": False, "-h": False}
 
 
 def split_arguments(argv):
@@ -2623,7 +2804,7 @@ def instantiation_report(events, text):
 
 def compile_trace(source, flags=(), from_ninja=None, version=None, overrides=(), schedule=False, inline_cost=False,
                   check=True, full_cost=False, instantiation=False, original_fallback=False, scalarize=False,
-                  blocks=False, cut_limit=None, merge_limit=None, keep_object=None):
+                  blocks=False, cut_limit=None, merge_limit=None, keep_object=None, cse=False):
     """Compile SOURCE with the oracle and return its trace: a dict with `lines`, `version`, `oracle`, `source` (as the
     rule spells it), `identical` (None when not checked, or the original compiler is not there) and `differences`.
     FROM_NINJA takes the flags, the working directory and the version from a project's build.ninja (FLAGS are then
@@ -2686,6 +2867,8 @@ def compile_trace(source, flags=(), from_ninja=None, version=None, overrides=(),
             env["MWCC_ORACLE_LOCALS"] = "1"
         if blocks:
             env["MWCC_ORACLE_BLOCKS"] = "2"
+        if cse:
+            env["MWCC_ORACLE_CSE"] = "2"
         run = subprocess.run([*launcher(oracle), *flags, "-c", compiled, "-o", str(obj)], cwd=workdir, env=env,
                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
         if run.returncode:
@@ -2765,6 +2948,8 @@ def main():
     parser.add_argument("--cut-limit")
     parser.add_argument("--merge-limit")
     parser.add_argument("--keep-object")
+    parser.add_argument("--cse", action="store_true")
+    parser.add_argument("--ir")
     arguments = parser.parse_args(options)
     if len(positional) != 1:
         parser.error("one SOURCE is needed")
@@ -2777,7 +2962,7 @@ def main():
                              not arguments.no_check, arguments.full_cost, bool(arguments.instantiation),
                              scalarize=arguments.locals, blocks=arguments.blocks,
                              cut_limit=limit_value(arguments.cut_limit), merge_limit=limit_value(arguments.merge_limit),
-                             keep_object=arguments.keep_object)
+                             keep_object=arguments.keep_object, cse=arguments.cse or bool(arguments.ir))
     if compiled["warning"]:
         print(compiled["warning"], file=sys.stderr)
     arguments.version = compiled["version"]
@@ -2810,6 +2995,15 @@ def main():
         return
     if arguments.instantiation:
         print("\n".join(instantiation_report(document.get("instantiation", []), arguments.instantiation)))
+        return
+
+    if arguments.cse or arguments.ir:
+        traced = cse_trace(lines)
+        shown = [link for link in traced if matches(arguments.function, link, link) and traced[link]["passes"]]
+        for link in shown:
+            print("\n".join(cse_report(link, traced[link], types, arguments.version, arguments.ir)))
+        if not shown:
+            print("no common subexpression trace for that function (an oracle with the ce.* hooks is needed)")
         return
 
     if arguments.blocks:
