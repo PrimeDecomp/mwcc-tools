@@ -101,6 +101,7 @@ The `lc.arg` fields:
 | `ce.replace at= with=` | A repeat replaced by the temporary of the expression at `with`. |
 | `ce.object name= caller=` | Each temporary object made (create_temp_object), with the caller's return address. |
 | `ce.vreg name= reg= class= noregister=` | Each local's register as the allocation starts (a virtual register number), before `ra.before`. |
+| `st.codegen` / `st.optimized function= link=` ... `st.end` | With `MWCC_ORACLE_STAGES=1`, the PCode as code generation made it and as the global optimizer (COptimizer) left it, in the `ra.before` format (`st.block`, `st.i`). The peephole forward pass then gives the allocator's, `ra.before`. |
 | `pp.copy at= line= tree=` | An assignment copy propagation forwards (IRO_CopyAndConstantPropagation): the left side's uses read the right side. |
 | `pp.expression at= line= tree=` | An assignment expression propagation may forward into a single use in its block (IroPropagate_PropagateExpressions). |
 | `pp.dead at= line= tree=` | A dead assignment removed (IROUseDef). Its tree is already gone: match `at` to an earlier `pp.copy` or `pp.expression`. |

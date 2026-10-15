@@ -79,24 +79,32 @@ static void print_instruction(const char *prefix, PCodeInstruction *instruction)
     OracleTrace_Printf("\n");
 }
 
-static void snapshot(const char *phase, Object *function)
+/* The PCode of FUNCTION, its lines prefixed with PREFIX ("ra" for the allocation's, "st" for a stage's). */
+static void snapshot_as(const char *prefix, const char *phase, Object *function)
 {
     PCodeBlock *block;
     PCodeInstruction *instruction;
     PCodeBlockLink *link;
+    char line_prefix[8];
 
-    OracleTrace_Printf("ra.%s function=%s link=%s\n", phase, function->name->name, link_name(function));
+    OracleTrace_Printf("%s.%s function=%s link=%s\n", prefix, phase, function->name->name, link_name(function));
     for (block = gPCodeBlocks; block != NULL; block = block->next) {
-        OracleTrace_Printf("ra.block p=%08x index=%d weight=%d flags=%04x succ=", (unsigned int)block, block->index,
-                           block->execution_weight, (unsigned int)block->flags);
+        OracleTrace_Printf("%s.block p=%08x index=%d weight=%d flags=%04x succ=", prefix, (unsigned int)block,
+                           block->index, block->execution_weight, (unsigned int)block->flags);
         for (link = block->successors; link != NULL; link = link->next) {
             OracleTrace_Printf("%08x,", (unsigned int)link->payload.block);
         }
         OracleTrace_Printf("\n");
+        sprintf(line_prefix, "%s.i", prefix);
         for (instruction = block->instructions; instruction != NULL; instruction = instruction->next)
-            print_instruction("ra.i", instruction);
+            print_instruction(line_prefix, instruction);
     }
-    OracleTrace_Printf("ra.end\n");
+    OracleTrace_Printf("%s.end\n", prefix);
+}
+
+static void snapshot(const char *phase, Object *function)
+{
+    snapshot_as("ra", phase, function);
 }
 
 /* A trace that is only wanted on request (it is large): the environment variable NAME set to something else than 0. */
@@ -1402,7 +1410,13 @@ void COptimizer_Optimize(Object *function)
 {
     if (wanted("MWCC_ORACLE_BLOCKS"))
         block_list("raw", function);
+    /* (MWCC_ORACLE_STAGES: the PCode code generation made, and what the global optimizer left of it; the peephole
+     * forward pass then gives the allocator's, ra.before) */
+    if (wanted("MWCC_ORACLE_STAGES"))
+        snapshot_as("st", "codegen", function);
     COptimizer_Optimize__retail(function);
+    if (wanted("MWCC_ORACLE_STAGES"))
+        snapshot_as("st", "optimized", function);
     if (wanted("MWCC_ORACLE_BLOCKS"))
         block_list("optimized", function);
 }
