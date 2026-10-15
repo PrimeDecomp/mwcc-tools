@@ -19,6 +19,10 @@ For each register class (GPR, FPR, ...) the report gives:
 **Replays.** Select is replayed from the traced graph and mask (`select replayed: N of M agree`), and a register it
 disagrees on is flagged. The simplification is replayed too, and a note says when its order differs from the trace.
 
+To find what would give the target's registers instead (a local declared elsewhere, a temporary made a named
+local, a value no longer in a register of its own), see [What-if colouring](colouring.md): `tools/colouring.py`
+replays the colouring with the claims predicted and searches the edits of the graph.
+
 **r0.** When r0 is a neighbour, the report points it out: r0 cannot be a base register, because an address operand of
 r0 reads as 0.
 

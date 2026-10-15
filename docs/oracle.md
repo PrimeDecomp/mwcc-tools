@@ -11,6 +11,8 @@ inliner, which are not byte-exact for 1.3 and 1.3.2 (2.7 has no sources at all).
 More detail:
 
 * [Registers and scheduling](oracle/registers.md): the register report, `--pcode`, `--exchange`, `--schedule`.
+* [What-if colouring](oracle/colouring.md): `tools/colouring.py`, the smallest change of the interference graph
+  (a renumbering, a removed node) that gives the target's registers.
 * [Inlining](oracle/inlining.md): `--inline-cost`, `--near`, `--full-cost`, `--instantiation`.
 * [Locals and the stack frame](oracle/locals.md): `--locals`, and comparing a frame with the target's.
 * [Basic blocks](oracle/blocks.md): `--blocks`, where code generation cuts blocks and why they are not merged.

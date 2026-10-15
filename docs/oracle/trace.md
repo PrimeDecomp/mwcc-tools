@@ -152,4 +152,7 @@ in debug builds), appended to FILE.
 | `cse_trace(lines)`, `cse_tree(text, types)` | The `ce.*` and `pp.*` lines by link name (`compile_trace(..., cse=True)`), and a `ce.move` tree in infix form. |
 | `block_trace(lines)`, `block_cuts(record, names)` | The `bk.*` lines by link name (`compile_trace(..., blocks=True)`), and where each function's statements moved to a new block, and why. |
 
+`tools/colouring.py` builds on these for the what-if commands; its own entry points are listed in
+[What-if colouring](colouring.md#python-api).
+
 Each function's dict has `schema_version` (`SCHEMA_VERSION`), raised when a field changes meaning or goes away.
