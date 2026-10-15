@@ -105,14 +105,16 @@ highest first.
    Among changes equally good, the shorter moves come first.
 2. **Annealing.** A simulated annealing searches a renumbering of the nodes to renumber (the claimers, the wrong nodes
    and the untargeted non-volatile nodes), together with a set of graph edits and of the single moves that helped. It
-   starts from the best single change, `--restarts` times (default 4), sharing `--iterations` between the runs.
+   starts from the best single change, `--restarts` times (default 10), sharing `--iterations` between the runs.
    * It first minimises the registers wrong, then the claims coloured out of order.
    * Once exact, it minimises the change: each node moved out of order and each edit counts 100, then the pairs of
      nodes swapped and the nodes a move jumps.
-3. **Tightening.** Each solution has moved nodes put back, swaps undone and edits removed while it stays exact.
+3. **Tightening.** Each solution has moved nodes put back, swaps undone and edits removed while it stays exact. On
+   the best two, groups of two or three moved nodes are also put back together, and two moves are replaced by one.
 
 A single move is printed as `number %97 (@4275) just after %33 (useVideoFilter)`. A renumbering of several nodes is
-printed lowest number first, with the moved nodes starred; the others keep their order:
+printed lowest number first, with the moved nodes starred. Each moved node is numbered just after the one before it
+in the list, and every other node keeps its order, as when the declarations move:
 
 ```
 numbered, lowest first: %51 (noRota)* < %32 < %44 (i) < %45 (SORT) < %46 (sortItems) < ... < %52 (constUVs)* < ...
@@ -127,7 +129,7 @@ Options:
 
 * `--iterations N` (default 20000; about 2-3 ms each on a graph of 500 nodes);
 * `--seed N` (another seed can find other solutions);
-* `--restarts N` (default 4);
+* `--restarts N` (default 10);
 * `--fixed V,...` (nodes not to renumber, such as a value the source cannot name);
 * `--nodes V,...` (renumber exactly these);
 * `--top N`.
@@ -137,7 +139,8 @@ Options:
 Applies the edits given and prints which registers change and how many stay wrong. Use it to check a hypothesis
 before editing the source:
 
-* `--order V,V,...` (the nodes renumbered among themselves, in that order: each takes the next of their own numbers);
+* `--order V,V,...` (the nodes renumbered in that order: the fewest of them move, each just after the one before it,
+  as their declarations would);
 * `--move V:before|after:W` (the nodes between shift by one);
 * `--drop V`;
 * `--degree V:+1`;
@@ -166,8 +169,10 @@ Each variant below undoes one of the changes that matched `RenderParticlesIndire
 | `const uint bufSize` | 23 wrong | single change `number %34 (bufSize) just after %86 (@4344)`: exact (the fix: `int bufSize`) | `%97 (@4285) from %34` |
 
 Each of these takes about 3 seconds from a saved trace. On `RenderParticles` (14 wrong, `force` EXACT), a
-renumbering-only search (`--kinds none`) finds an exact solution of four moves in about a minute: `noRota` lowest,
-`constUVs` after `hasModuColor`, and two temporaries (`@5732`, `%252`) after `SORT`.
+renumbering-only search (`--kinds none`) finds an exact solution with every seed tried, in under two minutes. Two
+seeds in four find the smallest, four moves, such as `noRota` lowest, `constUVs` after `hasModuColor`, and two
+temporaries (`@5732`, `%252`) after `sortItems`; the others find five or six. On a search like this, compare a few
+seeds.
 
 ## Limits
 

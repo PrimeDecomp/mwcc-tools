@@ -33,20 +33,22 @@ Options (anywhere before `--`):
   --load PREFIX     use a saved trace and object instead of compiling (twice for remap)
   --iterations N    search: the annealing steps (default 20000; about 2-3 ms each on a function of 500 nodes)
   --seed N          search: the random seed (default 1); another seed can find other solutions
-  --restarts N      search: the independent annealing runs the iterations are shared between (default 4)
+  --restarts N      search: the independent annealing runs the iterations are shared between (default 10)
   --fixed V,...     search: virtual registers not to renumber (a value the source cannot make a named local)
   --nodes V,...     search: renumber exactly these (default: the claimers, the registers wrong and the untargeted
                     nodes holding a non-volatile register)
   --top N           search: the solutions shown (default 8)
   --kinds LIST      search: the graph edits tried besides the renumbering, from drop,degree,unlink,link (default
                     drop,degree,unlink); `none` for a renumbering only
-  --order V,...     replay: these virtual registers renumbered among themselves, in that order (lowest first)
+  --order V,...     replay: these virtual registers renumbered in that order (lowest first), the fewest of them
+                    moved as declarations move
   --move V:before|after:W, --drop V, --degree V:+1, --unlink A,B, --link A,B   replay: the other edits
   --json            print the result as JSON
 
 docs/oracle/colouring.md has the details."""
 import argparse
 import bisect
+import itertools
 import json
 import re
 import sys
@@ -126,8 +128,7 @@ def allocations(compiled, function=None):
 def edited(r, edits=()):
     """A copy of Round R with EDITS applied, and the renaming they made ({old index: new index}). An edit is a tuple:
     ("move", v, "before" | "after", w): v renumbered next to w, the nodes between shifting by one (as moving a
-    declaration does); ("order", (v, ...)): the nodes given renumbered among themselves, in that order (each takes the
-    next of their numbers, sorted); ("drop", v): the node removed, each neighbour's degree one lower; ("degree", v,
+    declaration does); ("order", (v, ...)): the nodes given renumbered in that order, by moving the fewest of them; ("drop", v): the node removed, each neighbour's degree one lower; ("degree", v,
     delta): its degree changed; ("unlink", a, b) / ("link", a, b): an edge removed / added (both degrees change). The
     renumberings apply in the order given, before the other edits; the numbers stay whole and virtual."""
     rename = {}
@@ -136,9 +137,15 @@ def edited(r, edits=()):
         sequence = list(slots)
         for e in edits:
             if e[0] == "order":
-                places = sorted(sequence.index(v) for v in e[1])
-                for at, v in zip(places, e[1]):
-                    sequence[at] = v
+                # (the fewest nodes moved, each just after the one before it in the order (the first, before the
+                # first that stays), as moving their declarations does)
+                moved = set(renumbered(e[1]))
+                staying = next((x for x in e[1] if x not in moved), None)
+                for k, v in enumerate(e[1]):
+                    if v in moved:
+                        sequence.remove(v)
+                        at = sequence.index(e[1][k - 1]) + 1 if k else sequence.index(staying)
+                        sequence.insert(at, v)
             elif e[0] == "move":
                 _, v, where, w = e
                 sequence.remove(v)
@@ -708,7 +715,7 @@ def inverted(order, original):
 
 
 def search(problem, kinds=("drop", "degree", "unlink"), iterations=20000, seed=1, nodes=None, fixed=(), keep=8,
-           restarts=4, progress=None):
+           restarts=10, progress=None):
     """What gives the target's registers with the smallest change: each graph edit (candidate_edits of KINDS) and each
     node of NODES numbered alone just after another (`move`) are tried first (`singles`: the ones that leave fewer registers wrong), then a
     simulated annealing over a
@@ -755,6 +762,47 @@ def search(problem, kinds=("drop", "degree", "unlink"), iterations=20000, seed=1
         return 0, (100 * (len(renumbered(order)) + len(chosen)) + inverted(order, nodes) +
                    sum(jumped(e) for e in chosen))
 
+    def put_back(order, v):
+        """ORDER with V put back where the original numbering has it among the nodes that keep their order."""
+        moved = set(renumbered(order))
+        rest = [x for x in order if x != v]
+        at = next((k for k, x in enumerate(rest) if x not in moved and rank[x] > rank[v]), len(rest))
+        return rest[:at] + [v] + rest[at:]
+
+    def merge(order, chosen):
+        """ORDER (exact) with two or three moved nodes put back together, or two put back and one node moved instead,
+        while it stays exact."""
+        improved = True
+        while improved:
+            improved = False
+            moved = renumbered(order)
+            for size in (2, 3):
+                for group in itertools.combinations(moved, size):
+                    trial = order
+                    for v in group:
+                        trial = put_back(trial, v)
+                    if len(renumbered(trial)) < len(moved) and evaluate(trial, chosen)[0] == 0:
+                        order, improved = trial, True
+                        break
+                if improved:
+                    break
+            if improved:
+                continue
+            for a, b in itertools.combinations(moved, 2):
+                back = put_back(put_back(order, a), b)
+                for u in back:
+                    rest = [x for x in back if x != u]
+                    for at in range(len(back)):
+                        trial = rest[:at] + [u] + rest[at:]
+                        if len(renumbered(trial)) < len(moved) and evaluate(trial, chosen)[0] == 0:
+                            order, improved = trial, True
+                            break
+                    if improved:
+                        break
+                if improved:
+                    break
+        return order
+
     def tighten(order, chosen, limit):
         """ORDER and CHOSEN with moved nodes and swaps put back and edits removed while no more than LIMIT are
         wrong."""
@@ -762,11 +810,8 @@ def search(problem, kinds=("drop", "degree", "unlink"), iterations=20000, seed=1
         while improved:
             improved = False
             for v in renumbered(order):
-                # (put back where the original numbering has it among the nodes that keep their order)
                 moved = set(renumbered(order))
-                rest = [x for x in order if x != v]
-                at = next((k for k, x in enumerate(rest) if x not in moved and rank[x] > rank[v]), len(rest))
-                trial = rest[:at] + [v] + rest[at:]
+                trial = put_back(order, v)
                 if len(renumbered(trial)) < len(moved):
                     wrong, _ = evaluate(trial, chosen)
                     if wrong is not None and wrong <= limit:
@@ -841,6 +886,13 @@ def search(problem, kinds=("drop", "degree", "unlink"), iterations=20000, seed=1
         order, chosen = tighten(list(next((x[1] for x in e if x[0] == "order"), nodes)),
                                 {x for x in e if x[0] != "order"}, 0)
         tightened.setdefault(edits_of(order, chosen), evaluate(order, chosen)[1])
+    # (the best few: two moves made one, then tightened again)
+    for e, _ in sorted(tightened.items(), key=lambda x: x[1])[:2]:
+        order = next((x[1] for x in e if x[0] == "order"), None)
+        if order and len(renumbered(order)) >= 2:
+            chosen = {x for x in e if x[0] != "order"}
+            order, chosen = tighten(merge(list(order), chosen), chosen, 0)
+            tightened.setdefault(edits_of(order, chosen), evaluate(order, chosen)[1])
     ranked = sorted(((c, e) for e, c in tightened.items()), key=lambda x: (x[0], len(x[1])))[:keep]
     best = None
     if not ranked:
@@ -1009,7 +1061,7 @@ def parser():
         p.add_argument(name, action="append", default=[])
     p.add_argument("--iterations", type=int, default=20000)
     p.add_argument("--seed", type=int, default=1)
-    p.add_argument("--restarts", type=int, default=4)
+    p.add_argument("--restarts", type=int, default=10)
     p.add_argument("--fixed", default="")
     p.add_argument("--nodes", default="")
     p.add_argument("--top", type=int, default=8)
