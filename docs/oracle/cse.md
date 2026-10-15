@@ -53,6 +53,18 @@ For those, "define it later" means: make the expression repeat later in the IR.
 is shown with its index, its operation and operands. Each expression is shown with the temporary it got
 (`-> @9227`) or the expression it repeats (`repeats #790 (@9227)`). `--ir` turns on `--cse`.
 
+`--ir` also lists the line's propagations, which run before and between the passes:
+
+* **copy propagation:** `x = y` with `y` a variable of the same type (or a constant). The uses of `x` read `y`.
+* **expression propagation:** `x = expr` with a single use of `x` in its basic block. The use gets `expr` itself when
+  nothing between them changes what `expr` reads.
+* **dead assignment removed:** nothing reads `x` any more, so its assignment goes and `x` gets no register.
+
+This is how a local disappears. `int n = v.size();` with `size()` inlined becomes `@T = load; n = @T`. Copy
+propagation forwards `@T` into the uses of `n`, and the dead `n = @T` is removed, so the load stays in the
+linearizer's temporary `@T`. `const bool e = mFlag; f(e);` loses `e` to expression propagation, and the load becomes
+a code generation temporary.
+
 ## Example: CPlayer::UpdateAssistedAiming (Prime, GC 1.3.2)
 
 In `CVector3f::Cross`, inlined on line 1557, `gunToTargetFlat.x` (#785) comes before `gunDirFlat.x` (#790) in the IR.

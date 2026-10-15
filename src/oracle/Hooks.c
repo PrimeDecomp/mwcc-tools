@@ -1575,7 +1575,23 @@ void move_common_sub(IROExpr *group)
                        group->temp == NULL ? "none" : cse_moved ? "comma" : "replace");
 }
 
-/* (the original's, which prints only when the dump is on; the CSE messages are read here first) */
+/* A propagation or dead-assignment message's node, by index: "pp.KIND at=N line=L tree=T". */
+static void propagation_note(const char *kind, int index)
+{
+    IROLinear *linear;
+    char tree[512];
+
+    for (linear = linear_head; linear != NULL; linear = linear->next)
+        if (linear->index == index)
+            break;
+    tree[0] = 0;
+    if (linear != NULL)
+        describe_linear(tree, sizeof(tree), linear, 6);
+    OracleTrace_Printf("pp.%s at=%d line=%ld tree=%s\n", kind, index, linear != NULL ? linear_line(linear) : 0L,
+                       tree);
+}
+
+/* (the original's, which prints only when the dump is on; the CSE and propagation messages are read here first) */
 void IroDump_Print(const char *message, ...)
 {
     va_list arguments;
@@ -1586,6 +1602,14 @@ void IroDump_Print(const char *message, ...)
         cse_moved = 1;
     if (strncmp(message, "Replacing common sub at", 23) == 0 && wanted("MWCC_ORACLE_CSE"))
         OracleTrace_Printf("ce.replace at=%d with=%d\n", ((int *)arguments)[0], ((int *)arguments)[1]);
+    if (wanted("MWCC_ORACLE_CSE")) {
+        if (strncmp(message, "Found propagatable assignment", 29) == 0)
+            propagation_note("copy", ((int *)arguments)[0]);
+        else if (strncmp(message, "Found propagatable expression", 29) == 0)
+            propagation_note("expression", ((int *)arguments)[0]);
+        else if (strncmp(message, "Removing dead assignment", 24) == 0)
+            propagation_note("dead", ((int *)arguments)[0]);
+    }
     if (INT_005882b8 != 0)
         vfprintf(iro_dump_output, message, arguments);
 }

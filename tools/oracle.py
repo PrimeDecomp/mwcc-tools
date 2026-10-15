@@ -2332,12 +2332,14 @@ def cse_trace(lines):
     """The global optimizer's common subexpressions (ce.*, with MWCC_ORACLE_CSE=2), by link name: `passes` ([{"n",
     "ir": [{"i", "kind", "op", "a", "b", "line", "expr", "text"}], "temps": [{"expr", "line", "tree", "name", "path",
     "repeat", "replaces"}], "replaces": [(at, with)]}], each IRO_CommonSubs call), `objects` ([(name, caller address)],
-    every temporary object made for the function, in order) and `vregs` ({name: (register, class, noregister)}, as the
-    allocation starts). The objects and registers are the ones traced before the function's ra.before."""
-    functions, objects, vregs, current = {}, [], {}, None
+    every temporary object made for the function, in order), `vregs` ({name: (register, class, noregister)}, as the
+    allocation starts) and `propagations` ([{"kind", "at", "line", "tree"}], pp.*: the copy and expression propagations
+    and the dead assignments removed, in order). The objects, registers and propagations are the ones traced before the
+    function's ra.before."""
+    functions, objects, vregs, propagations, current = {}, [], {}, [], None
 
     def record(link):
-        return functions.setdefault(link, {"passes": [], "objects": [], "vregs": {}})
+        return functions.setdefault(link, {"passes": [], "objects": [], "vregs": {}, "propagations": []})
 
     for line in lines:
         if line.startswith("ra.before"):
@@ -2346,7 +2348,13 @@ def cse_trace(lines):
                 r = record(m.group(2) or m.group(1))
                 r["objects"].extend(objects)
                 r["vregs"].update(vregs)
-            objects, vregs = [], {}
+                r["propagations"].extend(propagations)
+            objects, vregs, propagations = [], {}, []
+            continue
+        m = re.match(r"pp\.(\w+) at=(-?\d+) line=(-?\d+) tree=(.*)$", line)
+        if m:
+            propagations.append({"kind": m.group(1), "at": int(m.group(2)), "line": int(m.group(3)),
+                                 "tree": m.group(4)})
             continue
         if not line.startswith("ce."):
             continue
@@ -2438,9 +2446,13 @@ def cse_tree(text, types, indices=False):
 # What the compiler functions that make temporaries (create_temp_object's callers, by symbol name) make them for.
 TEMP_CREATORS = {
     "fn_0046e030": "linearization: an EFORCELOAD's temporary (an inlined function's return, or a value loaded once)",
+    "fn_0046ec50": "linearization: an EFORCELOAD's temporary (an inlined function's return, or a value loaded once)",
     "extract_right_operand_to_statement": "linearization: a comma expression's value",
     "insert_intconst_assignment": "linearization: a && or || value",
-    "IroCSE_CreateTemp": "common subexpressions (in place)",
+    # (the CSE pass's own temporaries are reported pass by pass; the ones left are the loop optimizer's)
+    "IroCSE_CreateTemp": "loop-invariant code motion (IroLoop reduce_strength_and_move_loop_invariants)",
+    "fn_00461860": "loop strength reduction: an induction variable's reduced expression",
+    "fn_004a7500": "loop optimizer (probably strength reduction, as fn_00461860 in 1.3.2)",
     "move_common_sub": "common subexpressions (where the uses meet)",
     "create_replacement_temp_assignment": "common subexpressions (in place)",
     "fn_0055d510": "inliner: flattening an inlined expression into statements",
@@ -2476,6 +2488,33 @@ def vreg_origin(record, cls, number, version, types):
     if caller is not None:
         return f"{name}, a temporary made by {temp_creator(version, caller)}"
     return f"{name}, a local of the source"
+
+
+PROPAGATIONS = {
+    "copy": "copy propagation (IRO_CopyAndConstantPropagation): the left side's uses read the right side instead",
+    "expression": "expression propagation candidate (IroPropagate_PropagateExpressions): a single use in the block "
+                  "gets the expression itself",
+    "dead": "dead assignment removed (IROUseDef): nothing reads it any more",
+}
+
+
+def propagation_report(record, types, ir_line):
+    """--ir LINE: the copy and expression propagations of that line's assignments, and the dead ones removed."""
+    out = []
+    assignment = {}
+    for q in record.get("propagations", []):
+        if ir_line != "all" and str(q["line"]) != str(ir_line):
+            continue
+        if q["kind"] == "dead":
+            text = assignment.get(q["at"], f"#{q['at']}")
+        else:
+            text = cse_tree(q["tree"], types)
+            assignment[q["at"]] = text
+        out.append(f"      #{q['at']:<5} {text}: {PROPAGATIONS.get(q['kind'], q['kind'])}")
+    if out:
+        out.insert(0, "   propagations" + ("" if ir_line == "all" else f" on line {ir_line}")
+                   + " (before and between the passes; indices are those of the IR at the time)")
+    return out
 
 
 def cse_report(link, record, types, version, ir_line=None):
@@ -2541,6 +2580,8 @@ def cse_report(link, record, types, version, ir_line=None):
                     tag = f"  repeats #{repeats[n['i']]}" + (f" ({temp_of[repeats[n['i']]]})"
                                                              if repeats[n["i"]] in temp_of else "")
                 out.append(f"      #{n['i']:<5} {op:<12} {extra}{tag}")
+    if ir_line is not None:
+        out.extend(propagation_report(record, types, ir_line))
     others = [(name, caller) for name, caller in record["objects"] if name not in made]
     shown = [(name, caller) for name, caller in others if vreg(name) not in ("memory", "not allocated")]
     if shown:

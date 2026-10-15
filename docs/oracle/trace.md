@@ -101,6 +101,9 @@ The `lc.arg` fields:
 | `ce.replace at= with=` | A repeat replaced by the temporary of the expression at `with`. |
 | `ce.object name= caller=` | Each temporary object made (create_temp_object), with the caller's return address. |
 | `ce.vreg name= reg= class= noregister=` | Each local's register as the allocation starts (a virtual register number), before `ra.before`. |
+| `pp.copy at= line= tree=` | An assignment copy propagation forwards (IRO_CopyAndConstantPropagation): the left side's uses read the right side. |
+| `pp.expression at= line= tree=` | An assignment expression propagation may forward into a single use in its block (IroPropagate_PropagateExpressions). |
+| `pp.dead at= line= tree=` | A dead assignment removed (IROUseDef). Its tree is already gone: match `at` to an earlier `pp.copy` or `pp.expression`. |
 
 **`MWCC_ORACLE_IRO_DUMP=FILE`** turns on the global optimizer's own dump (IroDump, normally written to `<source>.log`
 in debug builds), appended to FILE.
@@ -145,7 +148,7 @@ in debug builds), appended to FILE.
 | `parse_trace(lines)` | The snapshots before and after each allocation; the before snapshot also holds the colouring rounds and the frame. |
 | `analyze(...)` | The data `--json` prints. |
 | `opcode_names(version)` | The opcode names, for views of your own. |
-| `cse_trace(lines)`, `cse_tree(text, types)` | The `ce.*` lines by link name (`compile_trace(..., cse=True)`), and a `ce.move` tree in infix form. |
+| `cse_trace(lines)`, `cse_tree(text, types)` | The `ce.*` and `pp.*` lines by link name (`compile_trace(..., cse=True)`), and a `ce.move` tree in infix form. |
 | `block_trace(lines)`, `block_cuts(record, names)` | The `bk.*` lines by link name (`compile_trace(..., blocks=True)`), and where each function's statements moved to a new block, and why. |
 
 Each function's dict has `schema_version` (`SCHEMA_VERSION`), raised when a field changes meaning or goes away.
