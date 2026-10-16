@@ -23,6 +23,12 @@
       "source": "symbolic_address.cpp",
       "flags": ["-nodefaults", "-proc", "gekko", "-fp", "hardware", "-O4,p"],
       "minimum_symbol_materializations": 4
+    },
+    {
+      "id": "fixed_quantizers",
+      "source": "fixed_quantizers.cpp",
+      "flags": ["-nodefaults", "-proc", "gekko", "-fp", "hardware", "-O4,p"],
+      "minimum_fixed_quantizer_operands": 16
     }
   ]
 }

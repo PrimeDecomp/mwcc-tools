@@ -148,9 +148,12 @@ helper calls can bypass the table.
 The full RenderParticles EnvModulate case now ties symbol returns to later address
 births, symbolic PCode and confirmed r4 merges. The merged temporaries remain
 invisible graph nodes adjacent to noRota and the zero-vector address. Three tested
-reference/pointer forwarders produce the same complete graph and retain the
-99.94901% mismatch. See `docs/oracle-source-guided-case-envmodulate.md` in the current
-source checkout for the source pin, evidence and remaining materializer-binding gap.
+reference/pointer forwarders produce the same complete graph. A later checked
+shared-const-pointer rewrite reduces scoped Normalize pairs from three to two and
+noRota degree from 159 to 156, with the same complete stock object on both hosts.
+Its final target match worsens from 99.94901% to 99.491905%; it is retained as an
+isolated graph experiment. See `docs/oracle-source-guided-case-envmodulate.md` in
+the current source checkout for the source pin, checks and provenance limits.
 
 ## Search source variants against a graph objective (development)
 
@@ -161,6 +164,7 @@ newer than the pinned migration kit executable:
 mwcc-tools source-search run plan.json --output particle-search --candidates 100 --compilations 100 --seconds 600
 mwcc-tools source-search run plan.json --output particle-search --resume
 mwcc-tools source-search replay particle-search 1
+mwcc-tools source-search state particle-capture.json --object particle.o --link RenderParticles__11CElementGenFv --class 4 --round 0
 ```
 
 Use the strict format-1 plan from `docs/oracle/source-search.md` in the oracle
@@ -207,6 +211,16 @@ rechecked before `verified_success`. Optional target-object mismatch is separate
 An unavailable fingerprint has `fingerprint_error`; keep that source candidate
 and its evaluation, without claiming that it joined an equivalent-state group.
 
+`source-search state` inspects a retained JSON envelope containing `compilation`
+and its supplied object. It requires verified stock equality, matching object
+hash and complete selected graph coverage. Read its optional `fingerprint` and
+`normalization` evaluation: unsupported representations are indeterminate, while
+bad captures, objects or selectors fail. It does not rerun compilation, dependency
+checks or source semantics. Fixed GQR operands at the observed PSQ_L/PSQ_ST forms
+retain all twelve bytes, including their hardware selectors; other kind-1 forms
+remain unsupported. Generated local-symbol suffixes can still split equivalent
+states. Use replay when fresh compiler and semantic checks are required.
+
 `progress.json` saves the queue, evaluations and every source representative of
 each relevant compiler state. Exact compilation reuse separately hashes both
 compiler input scans, raw dependencies, runtime files, flags and environment.
@@ -216,8 +230,10 @@ remain in the run directory. Do not modify these saved inputs. Remove the defaul
 `particle-search/CANCEL` file before resuming a cancelled run. Changed source/build
 context requires a new output directory; replay requires matching dependencies.
 
-These APIs are under development. The reducer, matched-source index and a useful
-full RenderParticles source transformation are not complete. A synthetic successful
+These APIs are under development. The reducer, matched-source index and complete
+backend origins/lifetimes remain open. The real shared-pointer experiment
+demonstrates a useful source-driven graph change, while the final RenderParticles
+matching investigation remains open. A synthetic successful
 initializer experiment deliberately changes behavior and is only a mechanism test.
 
 ## Calibrate inline decisions

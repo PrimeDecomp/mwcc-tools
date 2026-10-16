@@ -8,6 +8,85 @@ fn fixture(name: &str) -> PathBuf {
 }
 
 #[test]
+fn retained_state_command_distinguishes_normalization_gaps_from_invalid_captures() {
+    use mwcc_oracle_core::{
+        runner::{CheckStatus, Compilation, TraceOptions},
+        source_guided::state,
+        version::Version,
+    };
+    let scratch = tempfile::tempdir().unwrap();
+    let capture = scratch.path().join("capture.json");
+    let object = scratch.path().join("object.o");
+    let bytes = fs::read(fixture("GC_2_7/pipeline.o")).unwrap();
+    fs::write(&object, &bytes).unwrap();
+    let trace = "pv.function.begin schema=1 function=1 parent=0 c0=4 c1=8 c2=32 c3=32 c4=32 coverage=direct_counter_writes link=pipeline__Fii\npv.graph.begin schema=1 function=1 graph=1 births=0 cls=4 physical=32 start=32 count=32 phase=3 boundary=before_simplify\npv.graph.instruction p=123 op=403 flags=122 n=1 line=2 ops=010001009203000000000000\npv.graph.end function=1 graph=1 nodes=0 instructions=1 complete=1\npv.function.end function=1 births=0 graphs=1 c0=4 c1=8 c2=32 c3=32 c4=32\n";
+    let mut compilation = Compilation {
+        version: Version::Gc27,
+        source: "model.cpp".into(),
+        oracle: "model".into(),
+        producer_sha256: "model".into(),
+        original_sha256: Some("stock".into()),
+        source_sha256: state::digest(b"model source"),
+        flags: vec![],
+        trace_options: TraceOptions {
+            backend: true,
+            ..TraceOptions::default()
+        },
+        object_sha256: state::digest(&bytes),
+        check_status: CheckStatus::Verified,
+        identical: Some(true),
+        differences: vec![],
+        diagnostics: String::new(),
+        trace: trace.into(),
+        trace_present: true,
+        original_fallback: false,
+        object: vec![],
+    };
+    let save = |c: &Compilation| {
+        fs::write(
+            &capture,
+            serde_json::to_vec(&serde_json::json!({"compilation":c})).unwrap(),
+        )
+        .unwrap()
+    };
+    let run = |round: &str| {
+        Command::new(env!("CARGO_BIN_EXE_mwcc-tools"))
+            .args(["source-search", "state"])
+            .arg(&capture)
+            .arg("--object")
+            .arg(&object)
+            .args(["--link", "pipeline__Fii", "--class", "4", "--round", round])
+            .output()
+            .unwrap()
+    };
+    save(&compilation);
+    let output = run("0");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let report: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["normalization"]["state"], "satisfied");
+    assert_eq!(report["fingerprint"].as_str().unwrap().len(), 64);
+    compilation.trace = trace.replace("010001009203000000000000", "630001009203000000000000");
+    save(&compilation);
+    let output = run("0");
+    assert!(output.status.success());
+    let report: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["normalization"]["state"], "indeterminate");
+    assert!(report["fingerprint"].is_null());
+    compilation.trace = trace.into();
+    save(&compilation);
+    let unavailable = run("99");
+    assert!(!unavailable.status.success() && unavailable.stdout.is_empty());
+    fs::write(&object, b"changed object").unwrap();
+    let changed = run("0");
+    assert!(!changed.status.success() && changed.stdout.is_empty());
+    assert!(String::from_utf8_lossy(&changed.stderr).contains("object bytes"));
+}
+
+#[test]
 fn provenance_inspect_accepts_capture_json_and_keeps_coverage_explicit() {
     let scratch = tempfile::tempdir().unwrap();
     let path = scratch.path().join("capture.json");

@@ -1,7 +1,46 @@
 use anyhow::{Context, Result, bail, ensure};
-use mwcc_oracle_core::source_guided::search::{self, Budget};
+use mwcc_oracle_core::{
+    runner::Compilation,
+    source_guided::{
+        search::{self, Budget},
+        state,
+    },
+};
 use std::{fs, path::PathBuf};
 pub fn run(args: &[String]) -> Result<()> {
+    if args.first().map(String::as_str) == Some("state") {
+        let path = args
+            .get(1)
+            .context("source-search state needs a capture JSON file")?;
+        let mut object = None;
+        let mut link = None;
+        let mut class = 4;
+        let mut round = 0;
+        let mut i = 2;
+        while i < args.len() {
+            let option = &args[i];
+            let value = args.get(i + 1).context("state option needs a value")?;
+            match option.as_str() {
+                "--object" => object = Some(value),
+                "--link" => link = Some(value),
+                "--class" => class = value.parse()?,
+                "--round" => round = value.parse()?,
+                _ => bail!("unknown state option {option}"),
+            }
+            i += 2;
+        }
+        let mut capture: serde_json::Value = serde_json::from_slice(&fs::read(path)?)?;
+        let mut compilation: Compilation = serde_json::from_value(capture["compilation"].take())?;
+        compilation.object = fs::read(object.context("state needs --object FILE")?)?;
+        let report = state::inspect(
+            &compilation,
+            link.context("state needs --link NAME")?,
+            class,
+            round,
+        )?;
+        println!("{}", serde_json::to_string_pretty(&report)?);
+        return Ok(());
+    }
     if args.first().map(String::as_str) == Some("replay") {
         let output = PathBuf::from(
             args.get(1)

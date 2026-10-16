@@ -9,6 +9,7 @@ command. Supported producers are `GC_1_3`, `GC_1_3_2` and `GC_2_7`.
 mwcc-tools source-search run plan.json --output search-run --candidates 100 --compilations 100 --seconds 600
 mwcc-tools source-search run plan.json --output search-run --resume --compilations 100
 mwcc-tools source-search replay search-run 1
+mwcc-tools source-search state capture.json --object candidate.o --link RenderParticles__11CElementGenFv --class 4 --round 0
 ```
 
 Commands emit versioned JSON on stdout. Errors go to stderr. Search completion is
@@ -171,6 +172,22 @@ Generated local relocation-name suffixes can also split equivalent states, as th
 That case used complete graph checks and independent objdiff evidence; the generic
 fingerprint has not yet incorporated a checked local-symbol normalization.
 
+`source-search state` inspects a saved JSON envelope containing `compilation` and
+the supplied object, without compiling. It validates verified stock-check status,
+the object hash and complete selected-function graph coverage. The format-1 report
+contains `link`, `class`, `round`, source/object hashes, an optional `fingerprint`
+and a `normalization` evaluation. Unsupported representations give an indeterminate
+evaluation (`compiler_state_coverage`) with no fingerprint. Invalid captures,
+objects or selectors fail with diagnostics on stderr. This does not establish
+current dependency integrity or rerun a semantic checker; use search replay for
+fresh compilation and checks.
+
+Fixed GQR operands are supported only in the observed PSQ_L/PSQ_ST read form
+(opcodes 403/407): all twelve operand bytes, including selectors 912 through 919,
+remain exact. They are hardware identities, not renamed virtual registers. Other
+kind-1 forms remain unsupported. The real shared-pointer EnvModulate experiment
+now has reproducible distinct baseline/candidate fingerprints on both hosts.
+
 Compilation caching is separate. Every lookup runs dependency and preprocessing
 scans with **both** oracle and stock compilers. Keys include both preprocessed
 hashes, raw dependency bytes, source identity, ordered flags, working directory,
@@ -210,11 +227,14 @@ export/restoration is not implemented.
 ## Rust entry points
 
 Use `objective::{Contract, Input, evaluate}` for the shared evidence-aware predicate,
-`state::{graph, snapshot, fingerprint}` for observed state, `inputs::capture` for
+`state::{graph, snapshot, fingerprint, inspect}` for observed state, `inputs::capture` for
 compiler-input identity, and `search::{load_plan, run, replay}` for orchestration.
 These native typed APIs and strict versioned JSON are the supported development
 interface. Legacy Python API compatibility is not required.
 
-The mechanism-preserving reducer, matched-source index, complete exact backend
-origins/lifetimes and the useful full RenderParticles source experiment remain
+The real [EnvModulate experiment](../oracle-source-guided-case-envmodulate.md)
+finds a shared-const-pointer rewrite with fewer observed address pairs and lower
+`noRota` degree, verified by fresh builds on both hosts. The final match worsens;
+this is a graph-objective result, not a matching fix. The mechanism-preserving
+reducer, matched-source index and complete exact backend origins/lifetimes remain
 open. See the [implementation status](../oracle-source-guided-status.md).

@@ -727,3 +727,84 @@ fn dependency_tokens_preserve_spaces_and_resolve_actual_file_identities() {
     assert!(inputs::dependency_paths("unit.o: missing.h", scratch.path()).is_err());
     assert!(inputs::dependency_paths("missing separator", scratch.path()).is_err());
 }
+
+#[test]
+fn fixed_quantizer_operands_keep_hardware_identity_and_reject_other_shapes() {
+    use mwcc_oracle_core::trace::{Instruction, Operand};
+    let report = provenance::parse(&synthetic(false, true, false)).unwrap();
+    let mut graph = report.graphs.graphs[0].clone();
+    graph.instructions.clear();
+    let mut reference = None;
+    for opcode in [403, 407] {
+        for register in 912u16..=919 {
+            let mut raw = [0u8; 12];
+            raw[..4].copy_from_slice(&[1, 0, 1, 0]);
+            raw[4..6].copy_from_slice(&register.to_le_bytes());
+            graph.instructions = vec![Instruction {
+                pointer: "123".into(),
+                opcode,
+                flags: 0x122,
+                operands: vec![Operand { raw }],
+                line: None,
+            }];
+            let normalized = state::instructions(&graph).unwrap();
+            assert_eq!(normalized[0]["operands"][0], serde_json::json!(raw));
+            if let Some(reference) = &reference {
+                assert_ne!(reference, &normalized);
+            }
+            reference = Some(normalized);
+            for (offset, value) in [(1, 4), (2, 2), (4, 0), (6, 1), (10, 1)] {
+                let saved = graph.instructions[0].operands[0].raw[offset];
+                graph.instructions[0].operands[0].raw[offset] = value;
+                assert!(state::instructions(&graph).is_err());
+                graph.instructions[0].operands[0].raw[offset] = saved;
+            }
+        }
+    }
+    graph.instructions[0].opcode = 137;
+    assert!(state::instructions(&graph).is_err());
+}
+
+#[test]
+fn retained_state_analysis_checks_objects_coverage_and_unsupported_normalization() {
+    let source = b"model source";
+    let trace = synthetic(false, true, false);
+    let mut c = compilation(&trace, source);
+    let analysis = state::inspect(&c, "pipeline__Fii", 4, 0).unwrap();
+    assert_eq!(analysis.normalization.state, EvaluationState::Satisfied);
+    assert_eq!(analysis.fingerprint.as_ref().unwrap().len(), 64);
+    let original_object = c.object.clone();
+    c.object[0] ^= 1;
+    c.object_sha256 = state::digest(&c.object);
+    assert!(state::inspect(&c, "pipeline__Fii", 4, 0).is_err());
+    c.object = original_object;
+    c.object_sha256 = state::digest(&c.object);
+    c.object[0] ^= 1;
+    assert!(
+        format!(
+            "{:#}",
+            state::inspect(&c, "pipeline__Fii", 4, 0).unwrap_err()
+        )
+        .contains("object bytes")
+    );
+    c.object[0] ^= 1;
+    c.check_status = CheckStatus::Skipped;
+    assert!(state::inspect(&c, "pipeline__Fii", 4, 0).is_err());
+    c.check_status = CheckStatus::Verified;
+    assert!(state::inspect(&c, "pipeline__Fii", 4, 99).is_err());
+    c.trace = trace.replace("graphs=1 ranges=2", "graphs=2 ranges=2");
+    assert!(state::inspect(&c, "pipeline__Fii", 4, 0).is_err());
+    c.trace = trace.replace("020000000000000000000000", "630000000000000000000000");
+    let analysis = state::inspect(&c, "pipeline__Fii", 4, 0).unwrap();
+    assert!(analysis.fingerprint.is_none());
+    assert_eq!(analysis.normalization.state, EvaluationState::Indeterminate);
+    assert_eq!(
+        analysis.normalization.reasons[0].code,
+        mwcc_oracle_core::evidence::EvidenceGap::CompilerStateCoverage
+    );
+    assert!(
+        analysis.normalization.reasons[0]
+            .detail
+            .contains("operand kind 99")
+    );
+}

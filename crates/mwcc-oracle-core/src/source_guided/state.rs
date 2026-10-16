@@ -2,8 +2,10 @@
 //! retain multiplicity; opaque compiler pointers never become semantic anchors.
 use crate::{
     elf,
+    evidence::{Evaluation, EvaluationState, EvidenceGap},
     graph_history::Graph,
     provenance::Report,
+    runner::{CheckStatus, Compilation},
     trace::{Block, Instruction, Node, Round, Snapshot},
     version::Version,
 };
@@ -113,6 +115,21 @@ impl Names {
                 4 => {
                     let label = ordinal(&mut self.labels, pointer(&raw, 2));
                     raw[2..6].copy_from_slice(&label.to_le_bytes());
+                }
+                1 => {
+                    // Inline PSQ_L/PSQ_ST retain a fixed GQR read in a
+                    // non-allocatable operand, distinct from kind-0 virtual
+                    // registers. All eight selectors were observed with this
+                    // exact shape on each supported retail version. Preserve
+                    // every byte: GQR identity must never be alpha-renamed.
+                    ensure!(
+                        matches!(i.opcode, 403 | 407)
+                            && raw[..4] == [1, 0, 1, 0]
+                            && (912..=919).contains(&u16::from_le_bytes(raw[4..6].try_into()?))
+                            && raw[6..] == [0; 6],
+                        "unsupported fixed-quantizer operand form at opcode {}",
+                        i.opcode
+                    );
                 }
                 7 => {
                     for at in [4, 8] {
@@ -248,4 +265,84 @@ pub fn fingerprint(g: &Graph, report: &Report, object: &[u8], version: Version) 
         "bounds":g.range_bounds.as_ref().map(|b|json!({"physical":b.physical_limit,"initial_last":b.initial_last,"first":b.first,"last":b.last,"evidence":b.evidence})),
         "object":object_instructions(object,&g.link)?,"allocated_data":data});
     Ok(digest(&serde_json::to_vec(&value)?))
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Analysis {
+    pub format_version: u32,
+    pub link: String,
+    pub class: u8,
+    pub round: usize,
+    pub source_sha256: String,
+    pub object_sha256: String,
+    pub fingerprint: Option<String>,
+    pub normalization: Evaluation,
+}
+/// Inspect a retained capture/object pair without compiling it again. The
+/// object hash and complete selected-function graph capture are mandatory.
+/// Unsupported operand representations are explicit normalization gaps.
+pub fn inspect(compilation: &Compilation, link: &str, class: u8, round: usize) -> Result<Analysis> {
+    ensure!(class < 5, "unknown register class");
+    ensure!(
+        compilation.version.has_oracle(),
+        "unsupported state-inspection compiler version"
+    );
+    ensure!(
+        compilation.check_status == CheckStatus::Verified,
+        "state inspection requires a stock-verified compilation"
+    );
+    ensure!(
+        digest(&compilation.object) == compilation.object_sha256,
+        "object bytes do not match the retained compilation"
+    );
+    // Invalid object structure is an input error, separate from an observed
+    // compiler representation for which normalization is not yet supported.
+    let object = elf::Elf::parse(&compilation.object)?;
+    let functions: Vec<_> = object
+        .symbols()?
+        .into_iter()
+        .filter(|function| function.kind == 2 && function.name == link)
+        .collect();
+    ensure!(functions.len() == 1, "ELF link must identify one function");
+    ensure!(
+        object.function_bytes(&functions[0])?.len().is_multiple_of(4),
+        "unaligned PowerPC function"
+    );
+    object.relocations()?;
+    let report = crate::provenance::parse(&compilation.trace)?;
+    let selected = graph(&report, link, class, round)?;
+    ensure!(
+        selected.observations.state == EvaluationState::Satisfied
+            && report
+                .graphs
+                .functions
+                .iter()
+                .any(|f| f.function == selected.function
+                    && f.observations.state == EvaluationState::Satisfied),
+        "state inspection requires complete selected-function graph capture"
+    );
+    let (fingerprint, normalization) =
+        match fingerprint(selected, &report, &compilation.object, compilation.version) {
+            Ok(fingerprint) => (
+                Some(fingerprint),
+                Evaluation {
+                    state: EvaluationState::Satisfied,
+                    reasons: vec![],
+                },
+            ),
+            Err(error) => (
+                None,
+                Evaluation::indeterminate(EvidenceGap::CompilerStateCoverage, format!("{error:#}")),
+            ),
+        };
+    Ok(Analysis {
+        format_version: 1,
+        link: link.into(),
+        class,
+        round,
+        source_sha256: compilation.source_sha256.clone(),
+        object_sha256: compilation.object_sha256.clone(),
+        fingerprint,
+        normalization,
+    })
 }

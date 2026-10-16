@@ -23,6 +23,7 @@ pub enum EvidenceGap {
     ObjectivePredicate,
     CompilationCoverage,
     BuildInputCoverage,
+    CompilerStateCoverage,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

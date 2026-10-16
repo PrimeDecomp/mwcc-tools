@@ -112,8 +112,8 @@ remaining degree-7 graph nodes adjacent to `noRota` and the zero-vector address.
 
 Three private reference/pointer forwarding variants retain the complete numbered
 graph and instruction body. Required symbolic relocations remain; independent
-objdiff reports 100% against baseline and 99.94901% against target. No new useful
-graph edit or proper match was found. A fourth, target-ABI-specific pointer/integer
+objdiff reports 100% against baseline and 99.94901% against target. Those variants
+produce no useful graph edit. A fourth, target-ABI-specific pointer/integer
 round trip at the first call also retains that graph and body. Their exact source/header/runtime inputs,
 objects, traces, remaps and comparison evidence are retained. This is direct native
 case evidence, not a claimed source-search winner.
@@ -128,10 +128,33 @@ The new `symbol_address_pairs` evaluator counts the selected qualified-symbol
 mechanism with complete capture and unique graph-binding requirements. A real
 native harness run passes calibration and all hard gates, but the cast variant
 still has three pairs against a maximum of two: `bounded_search_exhausted`, with
-no winner. Unsupported PCode kind 1 prevents relevant-state grouping for this
-function; `fingerprint_error` now reports unavailable grouping separately.
+no winner. That initial analyzer reports unsupported PCode kind 1 separately in
+`fingerprint_error`.
 Exact argument/inline origins, other source roles and semantic lifetimes remain
 incomplete. Pair-path counts do not prove complete temporary elimination.
+
+A subsequent native search finds a checked shared-const-pointer rewrite. It
+reports `verified_success` after private/original baseline calibration, candidate
+compilation and fresh independent verification. The two direct call sites reuse
+one local const pointer to the same global object; the third inlined use stays
+unchanged. Observed EnvModulate pairs fall from three to two, adjacent address-half
+nodes from six to two, and uniquely anchored `noRota` degree from 159 to 156.
+All hard constraints and the closed source-rewrite check pass. An independent
+Linux compile has the same complete stock object, numbered graphs and stable
+materialization bindings. Final matching worsens to 99.491905% against retail;
+this useful graph experiment is not a matching fix and is not applied to the game.
+The two additional generated array recipes were not compiled or tested.
+
+Retained-state normalization now supports the observed fixed GQR read operands
+at PSQ_L/PSQ_ST, preserving all bytes and all eight hardware selectors. Other
+kind-1 forms still fail explicitly. `source-search state` validates a saved
+capture/object and selected graph, then reports a fingerprint or an indeterminate
+normalization evaluation. It performs no compilation, dependency rescan or semantic
+check. The candidate, fresh Windows verification and independent Linux capture
+share one fingerprint; baseline has another. Generated local-symbol suffixes
+remain a conservative grouping limitation. Proofs are under
+`build/source-guided/address-reuse-audit/` and
+`/home/henrique/.cache/mwcc-address-reuse-audit/`.
 
 ## Native source-search harness
 
@@ -172,7 +195,7 @@ Pinned migration packages remain unchanged.
 
 ## Validation
 
-118 workspace tests pass on Windows and Linux, with nine compiler-backed tests
+121 workspace tests pass on Windows and Linux, with nine compiler-backed tests
 left opt-in. The new live source-search test was also run on both hosts across all
 three supported versions. It exercises relevant-state grouping, real cache hits,
 header invalidation, verification across resume, independent replay, semantic
@@ -210,6 +233,14 @@ Proofs are under `build/source-guided/materializer-audit/` and
 `/home/henrique/.cache/mwcc-materializer-audit/`. Full-case native search, the actual
 stock object and independent Linux symbolic bindings are retained there. The
 initial wrong-offset producer is retained only as failed diagnostic evidence.
+The new fixed-quantizer fixture adds six stock-verified probe off/on compiles on
+each host, covering all eight GQR selectors at both observed opcodes on all three
+compiler versions. Two core tests check exact fixed-operand normalization,
+unsupported forms and retained-capture validity; a CLI test checks structured
+positive/indeterminate results and rejection of invalid objects/selectors.
+Both full suites and all-target Clippy pass after these changes. The full-unit
+shared-pointer candidate and its independent verification are stock-checked;
+the Linux object, graphs, materialization bindings and fingerprint agree.
 Three core provenance tests and one CLI test cover complete/missing paths,
 unsupported schemas, observed-write consistency, malformed outcomes and filtering.
 Four value-history tests cover actual identity semantics: multiple generations,
@@ -251,28 +282,27 @@ remain indeterminate. Fresh source-equivalence builds on both hosts match all
 three retained producer objects exactly.
 The new scratch-reuse fixture gives 239 births, one rewind and twelve reused
 numbers on all three versions/hosts, without asserting physical register choices.
-The capture includes RenderParticles, but this is not a source-variant success or
-the final RenderParticles investigation. Timings are retained; a controlled probe
+The capture includes RenderParticles; these earlier off/on checks are separate
+from the later successful graph-objective experiment. Timings are retained; a controlled probe
 overhead/throughput benchmark remains open.
 
 ## Required work still open
 
 | Roadmap stage | Remaining work |
 |---|---|
-| Reproducible cases/contracts | Extend the captured full symbolic-address case to a useful checked graph edit; capture the flag/second-promoted-element mechanisms and finish identity/provenance/objective/build-input contracts |
+| Reproducible cases/contracts | Capture the flag/second-promoted-element mechanisms and finish identity/provenance/objective/build-input contracts; the symbolic-address case now has a useful checked graph edit |
 | Backend provenance | Complete source-role/object and leaf/inline provenance beyond guarded object bindings and allocator ranges, justify semantic lifetime bindings for ambiguous generations, and close remaining alias/coverage gaps and rare coalescing cases |
 | Correspondence | Add lifecycle/provenance anchors, generations, observed merges/replacements and justified elimination; extend phase selection to newly captured backend phases |
-| Source search | Capture the actual requested mechanisms, extend precise provenance/objective recognition, add language-aware recipes and demonstrate checked useful transformations in the full RenderParticles case; the bounded native harness is implemented |
+| Source search | Capture the remaining requested mechanisms, extend precise provenance/objective recognition, add language-aware recipes and finish the full RenderParticles investigation; the bounded harness and one useful checked full-function graph edit are implemented |
 | Reduction | Reuse the evaluator for deterministic mechanism-preserving reduction, rebind identities, reject indeterminate results and retest discoveries in RenderParticles |
 | Matched-source index | Coverage-aware trace/source index and reproducible queries/examples feeding the harness |
 | Delivery | Compiler-version/platform checks, trace overhead/search throughput measurements, native documentation/kit/schema updates and the complete RenderParticles investigation |
 
-The next implementation step is to use the qualified-symbol materialization
-objective to find and independently check a useful source edit, while closing
-source-role coverage beyond this Normalize pair path and the real case's grouping
-gaps. Complete exact backend expression/inline evidence and semantic lifetime
-binding for ambiguous generations. Then implement reduction and the
-matched-source index using the shared evaluator. Capture and label the three
+The qualified-symbol objective now has a concrete independently checked C++ graph
+edit. Implement reduction and the matched-source index using the shared evaluator,
+while closing source-role coverage beyond this Normalize pair path and the remaining
+grouping gaps. Complete exact backend expression/inline evidence and semantic
+lifetime binding for ambiguous generations. Capture and label the three
 requested real mechanisms and complete the RenderParticles loop. Keep the full
 roadmap scope: the implemented provenance components do not complete any of the
 four requested tools.

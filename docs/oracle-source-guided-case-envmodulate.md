@@ -1,7 +1,9 @@
 # Real case: symbolic EnvModulate arguments
 
-This is a negative source-variant experiment and an observed compiler mechanism,
-not a new RenderParticles match or a successful source-search objective.
+The native harness now finds and independently verifies a source edit that reduces
+the observed symbolic-address pairs from three to two and changes the relevant
+graph. The final RenderParticles match gets worse. The edit is retained as an
+isolated compiler experiment and has not been applied to the game checkout.
 
 The isolated clean source comes from Echoes main `7968f74ae1c3268a9cb03104a60635673d31deb5`.
 Its SHA-256 is `0a216aa15cd1f169e67ff43bdec4867f55ae5f1f8da4cbc883ce1b6ec60dfab3`.
@@ -147,11 +149,10 @@ relocation kind; requiring all six would prevent a valid reduction to fewer pair
 The native target diagnostic retains 17 differing bytes and unequal raw relocation
 names; it is separate from the earlier objdiff row/percentage comparison.
 
-This real function also contains PCode operand kind 1 at paired-single opcodes
-403 and 407. Its representation is not yet supported by state normalization.
-Grouping is unavailable, and the current API exposes `fingerprint_error` instead
-of silently normalizing this operand. Generated local-symbol suffixes remain a
-second grouping limitation after that operand is supported.
+This first run could not group relevant states because PCode operand kind 1 at
+paired-single opcodes 403 and 407 was unsupported. It retained `fingerprint_error`
+explicitly. The fixed-quantizer support described below closes that particular
+gap; generated local-symbol suffixes remain a separate grouping limitation.
 
 New Windows evidence is under `build/source-guided/materializer-audit/`:
 `particle-case-verified/{capture,provenance,verification}.json`, the baseline object
@@ -161,3 +162,90 @@ under `/home/henrique/.cache/mwcc-materializer-audit/particle-case/`. The new
 `tests/fixtures/backend/symbolic_address.cpp` isolates the same const-reference
 argument mechanism on all three versions, with complete symbol bindings and two
 confirmed merges in each capture.
+
+## A source edit that changes the graph
+
+A later native search tests a shared local pointer. At the start of RenderParticles
+it introduces:
+
+```cpp
+const CTevCombiners::CTevPass* const oracleEnvPass = &CGraphics::kEnvModulate;
+```
+
+The two direct `SetTevOp(kTS_Stage0, CGraphics::EnvModulate())` calls instead pass
+`*oracleEnvPass`. The third use inside the inlined `SetParticleTevScale(scale)` is
+unchanged. There are no fixed addresses, assembly, header edits or CTevPass copies.
+The winning source SHA-256 is
+`fa0fdcb8b823d19542741af0f38756abd154948fa16f10c3218143104a3fd55c`.
+
+The plan selects `symbol_address_pairs` for `kEnvModulate__9CGraphics`, with a
+maximum of two. It requires at least one kind-6 HA and one kind-4 LO relocation,
+each with addend zero. Its `source_transformation` checker accepts only exact,
+closed rewrites of the pinned baseline and checks the retained pure accessor body
+and relevant header hashes. For this rewrite, a const local pointer denotes the
+same global address and each dereference supplies the original const reference.
+The global itself is mutable; this rewrite caches its address, not its contents.
+This is a bounded source justification, not unrestricted equivalence or gameplay
+testing. Two array recipes are also present in the plan, but the search stops at
+the pointer winner; those array variants were not compiled or tested.
+
+The run reports `verified_success` after four fresh builds: private baseline,
+original-context calibration, candidate and independent candidate verification.
+All hard constraints and configured source checks pass. The complete candidate
+stock object SHA-256 is
+`5a78df424169a668ec258ff0cb0b2f12c379e736fd24094131db40253475d50b`.
+An additional independent Linux compile produces the same object and agrees with
+both Windows captures on every numbered graph observation and stable
+materialization binding.
+
+| Observation | Baseline | Shared pointer |
+|---|---:|---:|
+| Observed EnvModulate Normalize pairs | 3 | 2 |
+| EnvModulate address-half nodes adjacent to `noRota` | 6 | 2 |
+| Stored degree of uniquely anchored `noRota` | 159 | 156 |
+| Selected GPR graph nodes | 555 | 554 |
+| Function birth observations | 1,104 | 1,103 |
+| Function dispatch observations | 4,080 | 4,083 |
+
+One address result remains a virtual root of degree 4, without a `noRota` edge;
+the other merges into r4 and remains an invisible degree-7 node. This establishes
+a useful graph change from a concrete C++ declaration, while retaining symbolic
+relocations. It does not establish complete semantic lifetime correspondence or
+absence of every possible address temporary.
+
+The final function grows from 6,668 to 6,672 bytes. Independent objdiff 3.7 with
+`functionRelocDiffs=data_value` reports **99.491905%** against retail, compared with
+the baseline's **99.94901%**. Graph-objective satisfaction and final matching are
+separate results; this is not a RenderParticles matching fix.
+
+## Retained-state normalization and reproduction
+
+The native state normalizer now recognizes only the observed fixed GQR operand
+form at PSQ_L/PSQ_ST (opcodes 403/407). It retains all twelve bytes, including
+hardware IDs 912 through 919, rather than renaming those IDs as virtual registers.
+Different selectors remain different states. Other kind-1 representations remain
+unsupported. A fixture covers all eight selectors at both opcodes on all three
+compiler versions, with stock equality and probe off/on checks on both hosts.
+
+`source-search state CAPTURE --object OBJECT --link RenderParticles__11CElementGenFv`
+inspects a retained capture without recompiling. It validates stock-check status,
+object hash and selected graph coverage before reporting a fingerprint. Unsupported
+normalization returns an explicit indeterminate evaluation with no fingerprint;
+invalid captures or selectors fail. This inspection does not recheck dependencies
+or rerun the source checker.
+
+Baseline fingerprint:
+`92eb228a7a1a27e07e5af4f23e862fe21cd860bd798e90977b780c4a98ac2ecc`.
+The winning Windows, fresh Windows verification and independent Linux captures
+share fingerprint
+`ae34770e49693ba5896c9fac25f9de5d141ac05869970d9f92645866089c3246`.
+
+Windows evidence is under `build/source-guided/address-reuse-audit/`: the frozen
+analyzer, plan and closed checker; `closed-variants/named-pointer/CElementGen.cpp`;
+`search/` with input closure, calibration, candidate and fresh verification;
+`winner-evidence.json`; `cross-host-verification.json`; retained-state reports;
+and independent objdiff reports. The original search used the analyzer before
+GQR normalization support, so its unavailable-grouping diagnostic is preserved.
+The later state reports use the current analyzer and do not replace saved outcomes.
+Linux evidence is under `/home/henrique/.cache/mwcc-address-reuse-audit/`, including
+private source/header bytes, fresh capture/object, state and graph checks.

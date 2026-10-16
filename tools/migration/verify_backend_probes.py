@@ -99,6 +99,12 @@ def main():
             assert len(objects) >= case.get("minimum_object_bindings", 0), case["id"]
             assert len(pairs) >= case.get("minimum_pair_bindings", 0), case["id"]
             graphs = report["graphs"]
+            quantizers = [operand["raw"] for graph in graphs["graphs"] for instruction in graph["instructions"]
+                          for operand in instruction["operands"] if operand["raw"][0] == 1 and instruction["opcode"] in (403, 407)]
+            assert len(quantizers) >= case.get("minimum_fixed_quantizer_operands", 0), case["id"]
+            if case.get("minimum_fixed_quantizer_operands"):
+                assert all(raw[:4] == [1, 0, 1, 0] and raw[6:] == [0]*6 for raw in quantizers), case["id"]
+                assert {int.from_bytes(bytes(raw[4:6]), "little") for raw in quantizers} == set(range(912, 920)), case["id"]
             assert graphs["observations"]["state"] == ("indeterminate" if empty else "satisfied"), case["id"]
             # Compare new snapshots to the independently emitted existing graph
             # records, preserving neighbor order/duplicates and stored degrees.
@@ -147,6 +153,7 @@ def main():
                 expressions=sum(len(f["expressions"]) for f in history["functions"]),
                 object_bindings=len(objects), pair_bindings=len(pairs), range_categories=sorted(categories),
                 symbol_materializations=len(materializations),
+                fixed_quantizer_operands=len(quantizers),
                 materialized_symbols=sorted({m["symbol_text"] for m in materializations if m["symbol_text"] is not None}),
                 graphs=len(graphs["graphs"]), graph_only=sum(len(g["graph_only"]) for g in graphs["graphs"]),
                 bindings={state:sum(sum(n["binding"]["evidence"]["state"]==state for n in g["nodes"].values()) for g in graphs["graphs"])
