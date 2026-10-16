@@ -102,13 +102,20 @@ mwcc-tools oracle compile-trace --oracle-root ORACLE_ROOT --from-ninja build.nin
 mwcc-tools provenance inspect particle-capture.json --link RenderParticles__11CElementGenFv --json > particle-coalescing.json
 ```
 
-The format-1 result records actual deciding branches and confirmed union-parent
+The format-2 result records actual deciding branches and confirmed union-parent
 writes. It explains interference, window bounds, flags, kind/class filtering,
 already-equal roots and the GPR special-register guard. `decisions` reports capture
-coverage; `lifecycle` remains indeterminate until creation/reuse/category coverage
-is implemented. Observation IDs are not stable value IDs. Missing records do not
+coverage. Its `history` includes direct counter births, resets, rewinds,
+capture-local value IDs/generations and available partial statement-root origins.
+`history.counter_observations` covers that direct-counter scope; aggregate
+`lifecycle` remains indeterminate while semantic categories, complete origins and
+graph/lifetime bindings are unfinished. Observation IDs are not cross-variant
+semantic identities. Missing records do not
 prove elimination. Consume the structured decisions and coverage rather than
 extracting explanations from report text.
+
+`mwcc-tools provenance audit-counters --root ORACLE_ROOT --version GC_2_7` emits a
+native audit of the pinned image's actual counter references and remaining gaps.
 
 ## Calibrate inline decisions
 

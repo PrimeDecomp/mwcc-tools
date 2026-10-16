@@ -97,7 +97,7 @@ pub fn instrument(data: &[u8]) -> Result<Vec<u8>> {
         let at = i.address() as usize;
         positions.insert(at, size);
         if SITES.contains(&at) {
-            size += probe(0, 0, 0).0.len();
+            size += callback(0, 0, 0).0.len();
         }
         size += match i.bytes()[0] {
             0x70..=0x7f => 6,
@@ -188,7 +188,7 @@ pub fn instrument(data: &[u8]) -> Result<Vec<u8>> {
         let at = i.address() as usize;
         ensure!(code.len() == positions[&at], "probe position mismatch");
         if SITES.contains(&at) {
-            let (bytes, fields) = probe(at as u32, descriptor, handler);
+            let (bytes, fields) = callback(at as u32, descriptor, handler);
             let start = code.len() as u32;
             new_relocations.extend(fields.into_iter().map(|mut r| {
                 r.offset += start;
@@ -258,7 +258,7 @@ pub fn instrument(data: &[u8]) -> Result<Vec<u8>> {
     builder.finish()
 }
 
-fn probe(site: u32, descriptor: u32, handler: u32) -> (Vec<u8>, Vec<Relocation>) {
+pub(crate) fn callback(site: u32, descriptor: u32, handler: u32) -> (Vec<u8>, Vec<Relocation>) {
     // Save all GPRs, flags, x87, MXCSR and XMM registers. FXSAVE is supported by
     // the SSE2 i686 producer target. The callback gets the pre-probe register view.
     let mut code = vec![

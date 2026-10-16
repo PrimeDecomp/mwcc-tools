@@ -1,0 +1,13 @@
+{
+  "format_version": 1,
+  "scope": "mechanism fixtures for the development backend observers",
+  "cases": [
+    {
+      "id": "scratch_counter_reuse",
+      "source": "counter_reuse.c",
+      "flags": ["-nodefaults", "-proc", "gekko", "-fp", "hardware", "-O0"],
+      "minimum_rewinds": 1,
+      "minimum_reused_registers": 1
+    }
+  ]
+}

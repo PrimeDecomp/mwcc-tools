@@ -73,7 +73,9 @@ unsafe extern "C" fn fn_00436390(expression: *const u8) {
         } else {
             i32::from(read::<i16>(before, 40))
         };
+        let previous = crate::lifecycle::expression_begin(expression);
         fn_00436390__retail(expression);
+        crate::lifecycle::expression_end(previous);
         if wanted(c"MWCC_ORACLE_BLOCKS") {
             let statement = ptr::addr_of!(gCurrentStatement).read_unaligned();
             let after = ptr::addr_of!(gCurrentBlock).read_unaligned();
@@ -100,6 +102,7 @@ unsafe extern "C" fn fn_00436390(expression: *const u8) {
 #[unsafe(export_name = "COptimizer_Optimize")]
 unsafe extern "C" fn optimize(function: *const u8) {
     unsafe {
+        crate::lifecycle::phase(1);
         if wanted(c"MWCC_ORACLE_BLOCKS") {
             block_list(c"raw", function);
         }
@@ -107,6 +110,7 @@ unsafe extern "C" fn optimize(function: *const u8) {
             pcode::snapshot(c"st".as_ptr(), c"codegen".as_ptr(), function);
         }
         COptimizer_Optimize__retail(function);
+        crate::lifecycle::phase(2);
         if wanted(c"MWCC_ORACLE_STAGES") {
             pcode::snapshot(c"st".as_ptr(), c"optimized".as_ptr(), function);
         }

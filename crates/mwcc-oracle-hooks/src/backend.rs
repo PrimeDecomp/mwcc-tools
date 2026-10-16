@@ -17,6 +17,27 @@ pub struct Registers {
     eax: u32,
     eflags: u32,
 }
+const _: () = {
+    assert!(core::mem::size_of::<Registers>() == 36);
+    assert!(core::mem::offset_of!(Registers, saved_esp) == 12);
+    assert!(core::mem::offset_of!(Registers, eax) == 28);
+    assert!(core::mem::offset_of!(Registers, eflags) == 32);
+};
+impl Registers {
+    pub fn slot(&self, index: usize) -> Option<u32> {
+        match index {
+            0 => Some(self.edi),
+            1 => Some(self.esi),
+            2 => Some(self.ebp),
+            3 => Some(self.saved_esp),
+            4 => Some(self.ebx),
+            5 => Some(self.edx),
+            6 => Some(self.ecx),
+            7 => Some(self.eax),
+            _ => None,
+        }
+    }
+}
 #[repr(C)]
 pub struct Globals {
     class: *const i8,
@@ -68,10 +89,10 @@ pub unsafe extern "C" fn observe(r: &Registers, site: u32, g: &Globals) {
         let index = class as isize;
         if site == 7 {
             let function = ptr::addr_of!(FUNCTION).read();
-            OracleTrace_Printf(c"pv.coalesce.begin schema=1 pass=%lu cls=%d count=%ld physical=%ld first=%d last=%ld special=%d creation=missing link=%s\n".as_ptr(),
+            OracleTrace_Printf(c"pv.coalesce.begin schema=1 pass=%lu cls=%d count=%ld physical=%ld first=%d last=%ld special=%d function_id=%lu creation=direct_counter_writes link=%s\n".as_ptr(),
                 pass, class, g.count.offset(index).read_unaligned(), g.physical.offset(index).read_unaligned(),
                 i32::from(g.first.offset(index).read_unaligned()), g.last.offset(index).read_unaligned(),
-                i32::from(g.special.read_unaligned()), if function.is_null() { c"?".as_ptr().cast() } else { pcode::link_name(function) });
+                i32::from(g.special.read_unaligned()), crate::lifecycle::function_id(), if function.is_null() { c"?".as_ptr().cast() } else { pcode::link_name(function) });
             return;
         }
         let candidate = ptr::addr_of!(CANDIDATE).read();

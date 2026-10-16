@@ -207,7 +207,9 @@ unsafe extern "C" fn fn_00506cd0(function: *const u8) {
         cse::cse_vregs();
         pcode::snapshot(c"ra".as_ptr(), c"before".as_ptr(), function);
         let previous = crate::backend::context(function);
+        crate::lifecycle::phase(3);
         fn_00506cd0__retail(function);
+        crate::lifecycle::phase(4);
         crate::backend::context(previous);
         pcode::snapshot(c"ra".as_ptr(), c"after".as_ptr(), function);
     }

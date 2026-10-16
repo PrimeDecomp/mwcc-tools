@@ -14,7 +14,7 @@ fn provenance_inspect_accepts_capture_json_and_keeps_coverage_explicit() {
     let trace = "pv.coalesce.begin schema=1 pass=1 cls=4 count=40 physical=32 first=32 last=40 special=1 creation=missing link=test__Fv\npv.coalesce.candidate pass=1 candidate=1 instruction=100 destination=35 source=36\npv.coalesce.check pass=1 candidate=1 condition=copy_flag site=10f taken=1 eflags=0\npv.coalesce.end pass=1 candidates=1\n";
     fs::write(
         &path,
-        serde_json::to_vec(&serde_json::json!({"compilation":{"trace":trace}})).unwrap(),
+        serde_json::to_vec(&serde_json::json!({"compilation":{"trace":trace},"trace":"unrelated fallback","report":{"ignored":[1,{"trace":"not compiler evidence"}]}})).unwrap(),
     )
     .unwrap();
     let run = |extra: &[&str]| {
@@ -32,7 +32,7 @@ fn provenance_inspect_accepts_capture_json_and_keeps_coverage_explicit() {
         String::from_utf8_lossy(&output.stderr)
     );
     let value: Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(value["format_version"], 1);
+    assert_eq!(value["format_version"], 2);
     assert_eq!(value["decisions"]["state"], "satisfied");
     assert_eq!(value["lifecycle"]["state"], "indeterminate");
     assert!(!run(&["--link", "absent"]).status.success());

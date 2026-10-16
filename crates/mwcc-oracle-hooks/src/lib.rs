@@ -51,6 +51,11 @@ mod instantiation;
     target_pointer_width = "32",
     not(any(feature = "trace-output", feature = "frontend"))
 ))]
+mod lifecycle;
+#[cfg(all(
+    target_pointer_width = "32",
+    not(any(feature = "trace-output", feature = "frontend"))
+))]
 mod local_call;
 #[cfg(all(
     target_pointer_width = "32",

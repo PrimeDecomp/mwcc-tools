@@ -18,6 +18,7 @@ def main():
     parser.add_argument("--oracle-root", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--version", action="append")
+    parser.add_argument("--case", action="append", help="select fixture IDs without repeating unrelated compiles")
     parser.add_argument("--from-ninja", type=Path)
     parser.add_argument("--source")
     parser.add_argument("--project-version", default="GC_2_7")
@@ -47,8 +48,14 @@ def main():
     versions = args.version or ["GC_1_3", "GC_1_3_2", "GC_2_7"]
     for version in versions:
         cases = [] if args.project_only else [v for v in manifest["cases"] if v["version"] == version]
+        if not args.project_only:
+            backend=ROOT / "tests/fixtures/backend"
+            cases += [dict(case,source_file=backend / case["source"])
+                      for case in json.loads((backend / "manifest.json").read_text())["cases"]]
         if args.source and args.from_ninja and version == args.project_version:
             cases.append(dict(id=args.source, source=args.source, project=True))
+        if args.case:
+            cases=[case for case in cases if case["id"] in args.case]
         for index, case in enumerate(cases):
             key = f"{version}-{index}"
             command = [binary, "oracle", "compile-trace", "--oracle-root", oracle, "--version", version]
@@ -56,7 +63,7 @@ def main():
             if case.get("project"):
                 command += ["--from-ninja", args.from_ninja.resolve(), case["source"]]
             else:
-                command += [fixtures / case["source"], "--", *case["flags"]]
+                command += [case.get("source_file", fixtures / case["source"]), "--", *case["flags"]]
             disabled, disabled_meta = run(key+"-disabled", command)
             # Insert before SOURCE/-- so this cannot become a compiler option.
             enabled_command = command[:3]+["--backend"]+command[3:]
@@ -75,6 +82,13 @@ def main():
             else:
                 assert report["passes"] and report["decisions"]["state"] == "satisfied", case["id"]
             assert report["lifecycle"]["state"] == "indeterminate"
+            history=report["history"]
+            assert history["counter_observations"]["state"] == ("indeterminate" if empty else "satisfied"), case["id"]
+            assert not history["orphans"] and not history["gaps"], case["id"]
+            reused=sum(sum(len(r["values"])>1 for r in f["registers"]) for f in history["functions"])
+            rewinds=sum(sum(c["kind"]=="rewind" for c in f["changes"]) for f in history["functions"])
+            assert reused>=case.get("minimum_reused_registers",0),case["id"]
+            assert rewinds>=case.get("minimum_rewinds",0),case["id"]
             decisions = {}
             for p in report["passes"]:
                 for candidate in p["candidates"]:
@@ -85,7 +99,10 @@ def main():
                 source_sha256=a["source_sha256"], flags=a["flags"], producer_sha256=a["producer_sha256"],
                 original_sha256=a["original_sha256"], object_sha256=a["object_sha256"],
                 disabled=disabled_meta, enabled=enabled_meta, explanation=report_meta,
-                passes=len(report["passes"]), decisions=decisions))
+                passes=len(report["passes"]), decisions=decisions,
+                births=sum(len(f["births"]) for f in history["functions"]),
+                expressions=sum(len(f["expressions"]) for f in history["functions"]),
+                reused_registers=reused,rewinds=rewinds))
             save()
             print(f"{case['id']}: stock objects and existing trace agree, {len(report['passes'])} complete passes; {decisions}", flush=True)
     assert evidence["cases"], "no selected cases"

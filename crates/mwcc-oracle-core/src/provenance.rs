@@ -9,6 +9,7 @@ use std::collections::BTreeMap;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Check {
+    pub trace_position: usize,
     pub condition: String,
     pub taken: bool,
     /// Raw saved inputs are retained for auditing the actual retail predicate.
@@ -26,6 +27,7 @@ pub enum Decision {
 pub struct Candidate {
     /// A pass-local observation ID, not a stable value/lifetime ID.
     pub id: u32,
+    pub trace_position: usize,
     pub instruction: String,
     pub operands: BTreeMap<String, String>,
     pub checks: Vec<Check>,
@@ -35,6 +37,7 @@ pub struct Candidate {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Pass {
     pub id: u32,
+    pub begin_position: usize,
     pub link: String,
     pub class: u8,
     pub header: BTreeMap<String, String>,
@@ -48,6 +51,7 @@ pub struct Report {
     pub passes: Vec<Pass>,
     pub decisions: Evaluation,
     pub lifecycle: Evaluation,
+    pub history: crate::value_history::History,
 }
 fn integer(r: &Record, field: &str) -> Result<u32> {
     r.get(field)?
@@ -67,6 +71,31 @@ fn gap(detail: &str) -> Evaluation {
     Evaluation::indeterminate(EvidenceGap::CoalescingCoverage, detail)
 }
 
+/// Inspect a raw trace or compile-trace JSON without allocating the unrelated
+/// report tree contained in large translation-unit capture documents.
+pub fn inspect(input: &str) -> Result<Report> {
+    if input.trim_start().starts_with('{') {
+        #[derive(Deserialize)]
+        struct Body {
+            trace: Option<String>,
+        }
+        #[derive(Deserialize)]
+        struct Capture {
+            compilation: Option<Body>,
+            trace: Option<String>,
+        }
+        let capture: Capture = serde_json::from_str(input)?;
+        let trace = capture
+            .compilation
+            .and_then(|c| c.trace)
+            .or(capture.trace)
+            .context("JSON lacks compilation.trace or trace")?;
+        parse(&trace)
+    } else {
+        parse(input)
+    }
+}
+
 pub fn parse(text: &str) -> Result<Report> {
     let mut passes: Vec<Pass> = vec![];
     let mut supported = true;
@@ -82,6 +111,9 @@ pub fn parse(text: &str) -> Result<Report> {
             .pop()
             .context("empty provenance record")?;
         r.line = line_index + 1;
+        if crate::value_history::is_record(&r.kind) {
+            continue;
+        }
         if r.kind == "pv.gap" {
             gaps = true;
             continue;
@@ -95,6 +127,7 @@ pub fn parse(text: &str) -> Result<Report> {
             supported &= integer(&r, "schema")? == 1;
             passes.push(Pass {
                 id,
+                begin_position: r.line,
                 link: r.get("link")?.into(),
                 class: integer(&r, "cls")?.try_into()?,
                 header: r.fields,
@@ -132,6 +165,7 @@ pub fn parse(text: &str) -> Result<Report> {
             );
             pass.candidates.push(Candidate {
                 id,
+                trace_position: r.line,
                 instruction: r.get("instruction")?.into(),
                 operands: r.fields,
                 checks: vec![],
@@ -196,6 +230,7 @@ pub fn parse(text: &str) -> Result<Report> {
                     };
                 }
                 candidate.checks.push(Check {
+                    trace_position: r.line,
                     condition,
                     taken: taken == 1,
                     inputs: r.fields,
@@ -246,13 +281,14 @@ pub fn parse(text: &str) -> Result<Report> {
         gap("no complete supported coalescing capture, or missing decisions/context")
     };
     Ok(Report {
-        format_version: 1,
+        format_version: 2,
         passes,
         decisions,
         lifecycle: Evaluation::indeterminate(
             EvidenceGap::BackendLifecycleCoverage,
-            "coalescing branches do not cover value creation, number reuse or allocation categories",
+            "direct counter observations and statement roots do not establish complete lifecycle bindings, semantic categories or full expression/inline origins",
         ),
+        history: crate::value_history::parse(text)?,
     })
 }
 

@@ -3,6 +3,25 @@ use mwcc_oracle_core::{evidence::EvaluationState, provenance};
 use std::fs;
 
 pub fn run(args: &[String]) -> Result<()> {
+    if args.first().map(String::as_str) == Some("audit-counters") {
+        let mut root = std::env::current_dir()?;
+        let mut version = "GC_2_7".to_owned();
+        let mut i = 1;
+        while i < args.len() {
+            let option = &args[i];
+            i += 1;
+            let value = args.get(i).context("audit-counters option needs a value")?;
+            match option.as_str() {
+                "--root" => root = value.into(),
+                "--version" => version = value.clone(),
+                x => bail!("unknown audit option {x}"),
+            }
+            i += 1;
+        }
+        let audit = mwcc_oracle_core::backend_audit::capture(&root, &version)?;
+        println!("{}", serde_json::to_string_pretty(&audit)?);
+        return Ok(());
+    }
     ensure!(
         args.first().map(String::as_str) == Some("inspect"),
         "use provenance inspect TRACE [--link NAME] [--json]"
@@ -25,26 +44,34 @@ pub fn run(args: &[String]) -> Result<()> {
         i += 1;
     }
     let input = fs::read_to_string(path)?;
-    let trace = if input.trim_start().starts_with('{') {
-        let value: serde_json::Value = serde_json::from_str(&input)?;
-        value
-            .pointer("/compilation/trace")
-            .or_else(|| value.get("trace"))
-            .and_then(|v| v.as_str())
-            .context("JSON lacks compilation.trace or trace")?
-            .to_owned()
-    } else {
-        input
-    };
-    let mut report = provenance::parse(&trace)?;
+    let mut report = provenance::inspect(&input)?;
     if let Some(link) = link {
         report.passes.retain(|p| p.link == *link);
-        ensure!(!report.passes.is_empty(), "no coalescing pass for {link}");
+        report.history.functions.retain(|f| f.link == *link);
+        ensure!(
+            !report.passes.is_empty() || !report.history.functions.is_empty(),
+            "no provenance for {link}"
+        );
         // Filtering is a view; the report-wide coverage remains conservative.
     }
     if json {
         println!("{}", serde_json::to_string_pretty(&report)?);
     } else {
+        for function in &report.history.functions {
+            let reused = function
+                .registers
+                .iter()
+                .filter(|r| r.values.len() > 1)
+                .count();
+            println!(
+                "{}: function {}, {} births, {} reused register numbers, direct-counter observations {:?}",
+                function.link,
+                function.id,
+                function.births.len(),
+                reused,
+                function.counter_observations.state
+            );
+        }
         for pass in &report.passes {
             println!(
                 "{}: pass {}, class {}, {} candidates, {}",
@@ -84,7 +111,7 @@ pub fn run(args: &[String]) -> Result<()> {
                 );
             }
         }
-        println!("Creation/reuse/category coverage: missing");
+        println!("Complete lifecycle/category/leaf-origin coverage: incomplete");
     }
     Ok(())
 }

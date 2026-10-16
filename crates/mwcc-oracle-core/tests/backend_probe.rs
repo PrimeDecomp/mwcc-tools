@@ -33,9 +33,16 @@ fn retail_probe_rewrite_preserves_other_sections_and_refuses_byte_or_layout_drif
     let root =
         PathBuf::from(env::var_os("MWCC_ORACLE_TEST_ROOT").expect("set MWCC_ORACLE_TEST_ROOT"));
     for version in ["GC_1_3", "GC_1_3_2", "GC_2_7"] {
-        let input = fs::read(root.join(format!(
-            "build/{version}/obj/src/backend/InterferenceGraph.c.obj"
-        )))
+        let counters = root.join(format!(
+            "build/{version}/oracle/counters/InterferenceGraph.c.obj"
+        ));
+        let input = fs::read(if counters.is_file() {
+            counters
+        } else {
+            root.join(format!(
+                "build/{version}/obj/src/backend/InterferenceGraph.c.obj"
+            ))
+        })
         .unwrap();
         let original = Object::parse(&input).unwrap();
         // Include callers in other units, not just the rewritten object.

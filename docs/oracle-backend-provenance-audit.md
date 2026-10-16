@@ -63,25 +63,43 @@ rejections, and 3 already-equal-root decisions. These are whole-unit counts, not
 RenderParticles-only counts. The particular fixtures do not exercise every rare
 branch outcome; they do not establish creation or semantic-origin coverage.
 
-## Creation and register-number reuse: incomplete audit
+## Creation and register-number reuse: direct-write observations installed
 
-`Registers.c` contains object-binding allocation paths for GPRs, pairs, FPRs and
-VRs, plus coalescing-window checkpoints which can rewind virtual-register counters.
-`Operands_AllocateGPR` and its underlying allocator need separate inspection for
-backend-generated address/call/promotion temporaries. Object binding alone cannot
-establish complete creation coverage. Register numbers therefore cannot be lifetime
-IDs, even within one function.
+`provenance audit-counters` now audits the actual pinned images in Rust. It finds
+1,188/1,191/1,200 direct counter references in GC 1.3/1.3.2/2.7, including
+570/571/578 writes. All relevant functions decode completely; no direct reference
+is unclassified or unaccounted for, and no address-taking reference is found in
+that scope. Each version has four non-increment writes: initial reset, scratch
+rewind, high-water restoration and allocation reset. The remaining writes are
+increments, mostly inlined across backend/optimizer units. Computed aliases/bulk
+writes outside this direct-reference scope remain an explicit audit limitation.
 
-Inspection also finds many direct/inlined counter increments in `Operands.c`
-(address materialization and several `Operands_NewReg` paths). Wrapping only the
-named allocation functions would miss these births. The next audit must enumerate
-actual retail counter writes, including class-indexed accesses and checkpoint
-rewinds, across code-generation units.
+The retail audit corrects misleading names: `Operands_AllocateGPR` updates the
+current instruction's flags; it does not create a virtual register.
+`fn_004cf6d0` computes a physical-register range. The actual variable-assignment
+increment is in `fn_004fcba0`, with many other increments in instruction selection,
+operands, calls, struct moves and spills. Reconstructed C version branches and
+symbol/container names must not be treated as authoritative semantics.
 
-Next audit every counter-creation/reuse/category path against all three retail
-images, establish function/expression/inline context, and build identity/coverage
-events before using absence predicates. Entry-point names and C signatures are
-leads until checked against the executable. Unsupported paths remain explicit.
+Fixed-size call islands now execute and observe every audited write, with two
+additional context sites. The generator's actual entries are `0x433590`,
+`0x433310`, `0x4333F0`; later metadata folds it into a larger container. All three
+share the audited object store at `+0x9D` and stack epilogue at `+0xDB4`.
+Original section sizes and unpatched bytes/symbol values stay unchanged; no
+instruction branch or jump table needs to be moved for these counter probes.
+
+`pv.function.*`, `pv.value.birth`, `pv.counter.*` and `pv.expression.*` record
+function/creation observations, counter reset/rewind/restore events, phases and
+available partial statement-root origins. The host preserves separate generations
+when a number recurs. Direct-counter continuity is checked rather than assumed.
+The new reuse fixture demonstrates 239 births, one rewind and twelve reused numbers
+with stock-equivalent output on all three versions and both hosts. The full particle
+unit records 6,356 births and 4,325 partial expression observations, without gaps or
+orphan writes in these captures.
+
+Complete semantic categories, full expression/inline ancestry, per-phase graph
+visibility and justified graph/lifetime bindings remain open. Birth IDs are local
+to a capture; no cross-variant identity or elimination proof is claimed yet.
 
 ## Comparison foundation
 

@@ -202,6 +202,36 @@ pub fn run(request: &Request) -> Result<Report> {
                 .is_some_and(|s| s.contains("_OracleRust_BackendProbe"))
         });
         if native {
+            let counter_inputs = inputs
+                .iter()
+                .filter(|p| p.ends_with(".obj") && !compiled_objects.contains(p))
+                .map(|p| Ok((p.clone(), fs::read(request.root.join(p))?)))
+                .collect::<Result<Vec<_>>>()?;
+            let counters = crate::counter_probe::install(&request.root, version, &counter_inputs)?;
+            let mut counter_destinations = BTreeSet::new();
+            for input in &mut inputs {
+                if let Some(data) = counters.objects.get(input) {
+                    let output = format!("build/{version}/oracle/counters/{}", basename(input));
+                    ensure!(
+                        counter_destinations.insert(output.clone()),
+                        "counter object output name collision"
+                    );
+                    write(&request.root, &output, data)?;
+                    *input = output;
+                }
+            }
+            let islands = format!("build/{version}/oracle/compiled/rust/counter-islands.obj");
+            write(&request.root, &islands, &counters.islands)?;
+            inputs.push(islands);
+            write(
+                &request.root,
+                &format!("build/{version}/oracle/counters/sites.json"),
+                &serde_json::to_vec_pretty(&counters.sites)?,
+            )?;
+            messages.push(format!(
+                "installed {} guarded counter/context observations",
+                counters.sites.len()
+            ));
             let mut count = 0;
             for input in &mut inputs {
                 if !input.ends_with(".obj") {
