@@ -98,6 +98,7 @@ pub struct Function {
     pub changes: Vec<CounterChange>,
     pub registers: Vec<RegisterHistory>,
     pub ended: bool,
+    pub expected_graphs: Option<u32>,
     pub counter_observations: Evaluation,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -227,6 +228,7 @@ pub fn parse(text: &str) -> Result<History> {
                 changes: vec![],
                 registers: vec![],
                 ended: false,
+                expected_graphs: None,
                 counter_observations: gap("function has no end record"),
             });
             stack.push(function);
@@ -247,6 +249,11 @@ pub fn parse(text: &str) -> Result<History> {
                     && state.expressions.is_empty();
                 f.ended = true;
                 f.end_position = Some(r.line);
+                f.expected_graphs = r
+                    .fields
+                    .get("graphs")
+                    .map(|value| value.parse())
+                    .transpose()?;
                 stack.pop();
                 if state.valid {
                     f.counter_observations = known();

@@ -46,6 +46,41 @@ fn provenance_inspect_accepts_capture_json_and_keeps_coverage_explicit() {
 }
 
 #[test]
+fn provenance_link_filter_keeps_graphs_and_function_coverage_in_the_same_view() {
+    let scratch = tempfile::tempdir().unwrap();
+    let path = scratch.path().join("graphs.trace");
+    let mut trace = String::new();
+    for (id, link) in [(1, "first"), (2, "second")] {
+        trace += &format!(
+            "pv.function.begin schema=1 function={id} parent=0 c0=4 c1=8 c2=32 c3=32 c4=32 coverage=direct_counter_writes link={link}\n\
+            pv.graph.begin schema=1 function={id} graph=1 births=0 cls=4 physical=32 start=32 count=32 phase=3 boundary=before_simplify\n\
+            pv.graph.end function={id} graph=1 nodes=0 instructions=0 complete=1\n\
+            pv.function.end function={id} births=0 graphs=1 c0=4 c1=8 c2=32 c3=32 c4=32\n"
+        );
+    }
+    fs::write(&path, trace).unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_mwcc-tools"))
+        .args(["provenance", "inspect"])
+        .arg(path)
+        .args(["--link", "second", "--json"])
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let report: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["history"]["functions"].as_array().unwrap().len(), 1);
+    for collection in ["graphs", "functions"] {
+        let entries = report["graphs"][collection].as_array().unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0]["link"], "second");
+    }
+    assert_eq!(report["graphs"]["observations"]["state"], "satisfied");
+}
+
+#[test]
 fn configure_defaults_to_rust_and_preserves_the_explicit_c_rollback() {
     let source = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
     let scratch = tempfile::tempdir().unwrap();

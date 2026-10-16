@@ -28,6 +28,8 @@ struct State {
     expression: u32,
     expression_next: u32,
     phase: u32,
+    graphs: u32,
+    physical: [u32; 5],
     counts: [u32; 5],
     origin_statement: *const u8,
     origin_node: *const u8,
@@ -40,6 +42,8 @@ const EMPTY: State = State {
     expression: 0,
     expression_next: 0,
     phase: 0,
+    graphs: 0,
+    physical: [0; 5],
     counts: [0; 5],
     origin_statement: ptr::null(),
     origin_node: ptr::null(),
@@ -70,6 +74,39 @@ pub unsafe fn function_id() -> u32 {
 }
 pub unsafe fn phase(value: u32) {
     unsafe { ptr::addr_of_mut!(STATE.phase).write(value) }
+}
+pub struct GraphContext {
+    pub function: u32,
+    pub graph: u32,
+    pub births: u32,
+    pub phase: u32,
+    pub physical: u32,
+}
+pub unsafe fn graph_context(class: i8) -> Option<GraphContext> {
+    unsafe {
+        if !enabled() {
+            return None;
+        }
+        if function_id() == 0 || !(0..5).contains(&class) {
+            OracleTrace_Printf(
+                c"pv.gap reason=graph_context cls=%d\n".as_ptr(),
+                i32::from(class),
+            );
+            return None;
+        }
+        let graph = ptr::addr_of!(STATE.graphs).read().wrapping_add(1);
+        ptr::addr_of_mut!(STATE.graphs).write(graph);
+        Some(GraphContext {
+            function: function_id(),
+            graph,
+            births: ptr::addr_of!(STATE.sequence).read(),
+            phase: ptr::addr_of!(STATE.phase).read(),
+            physical: ptr::addr_of!(STATE.physical)
+                .cast::<u32>()
+                .add(class as usize)
+                .read(),
+        })
+    }
 }
 pub unsafe fn expression_begin(node: *const u8) -> u32 {
     unsafe {
@@ -179,6 +216,7 @@ pub unsafe extern "C" fn observe(r: &Registers, site: u32, d: &Descriptor) {
             state.object = r.slot(7).unwrap_or(0) as *const u8;
             for i in 0..5 {
                 state.counts[i] = d.counts.add(i).read_unaligned();
+                state.physical[i] = d.physical.add(i).read_unaligned();
             }
             ptr::addr_of_mut!(STATE).write(state);
             OracleTrace_Printf(c"pv.function.begin schema=1 function=%lu parent=%lu site=%lx c0=%lu c1=%lu c2=%lu c3=%lu c4=%lu coverage=direct_counter_writes link=%s\n".as_ptr(),
@@ -196,10 +234,11 @@ pub unsafe extern "C" fn observe(r: &Registers, site: u32, d: &Descriptor) {
                 return;
             }
             OracleTrace_Printf(
-                c"pv.function.end function=%lu births=%lu c0=%lu c1=%lu c2=%lu c3=%lu c4=%lu\n"
+                c"pv.function.end function=%lu births=%lu graphs=%lu c0=%lu c1=%lu c2=%lu c3=%lu c4=%lu\n"
                     .as_ptr(),
                 state.id,
                 state.sequence,
+                state.graphs,
                 state.counts[0],
                 state.counts[1],
                 state.counts[2],

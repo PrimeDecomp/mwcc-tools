@@ -31,9 +31,11 @@ Set each to `1`. `mwcc-tools oracle` sets them for the options that need them.
 coalescing paths. `pv.function.*`, `pv.value.birth`, `pv.counter.*` and
 `pv.expression.*` add direct counter writes, function/creation identities, reuse
 and available partial statement-root origins. Use `mwcc-tools provenance inspect
-TRACE --json` for format-2 decisions/history and explicit coverage. See
+TRACE --json` for format-2 decisions/history and explicit coverage. `pv.graph.*`
+pairs nodes with the instructions present immediately before graph simplification,
+including a birth cutoff, current visibility, and per-function graph counts. See
 [backend provenance](provenance.md); semantic categories, complete origins and
-graph/lifetime bindings remain incomplete.
+semantic lifetime correspondence remain incomplete.
 
 **`MWCC_ORACLE_SCHEDULE`** (`--schedule`):
 
@@ -166,7 +168,7 @@ See the [native kit guide](../../integrations/decomp-kits/overlay/.agents/docs/o
 for project units, candidates, explicit check states, saved graphs and calibration.
 Rust callers can use the workspace source API in `mwcc-oracle-core`, including
 `trace`, `document`, `allocation`, `colouring`, `runner`, `provenance`,
-`value_history` and `backend_audit`.
+`value_history`, `graph_history` and `backend_audit`.
 
 The retained Python implementations are historical behavior references. Their
 imports, function signatures and rendered text are not supported production APIs.

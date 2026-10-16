@@ -97,9 +97,17 @@ with stock-equivalent output on all three versions and both hosts. The full part
 unit records 6,356 births and 4,325 partial expression observations, without gaps or
 orphan writes in these captures.
 
-Complete semantic categories, full expression/inline ancestry, per-phase graph
-visibility and justified graph/lifetime bindings remain open. Birth IDs are local
-to a capture; no cross-variant identity or elimination proof is claimed yet.
+The graph hook now captures the current instructions and graph immediately before
+retail simplification, with class-specific physical thresholds and a birth cutoff.
+The new `pv.graph.*` records preserve actual visibility, graph-only nodes, stored
+degrees and ordered adjacency. Function-end graph totals detect missing snapshots.
+The host keeps candidate generations and confirmed merge contributors within a
+counter-reset epoch; it does not substitute the latest birth for a reused number.
+
+Complete semantic categories, full expression/inline ancestry and semantic
+lifetime correspondence remain open. Birth IDs are local to a capture; no
+cross-variant identity or elimination proof is claimed yet. The old `remap`
+before/after instruction boundaries are distinct from these new graph snapshots.
 
 ## Comparison foundation
 

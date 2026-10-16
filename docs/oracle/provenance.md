@@ -1,4 +1,4 @@
-# Backend birth, reuse and coalescing provenance (development API)
+# Backend birth, graph and coalescing provenance (development API)
 
 Build the current native tools and a fresh Rust producer with `configure --oracle`.
 These commands are newer than the pinned Rust migration release in the kits.
@@ -45,7 +45,7 @@ display.
 `decisions` describes coverage of the captured coalescing passes. A satisfied value
 means those decisions were fully observed; it is not a source-search objective.
 The separate aggregate `lifecycle` result remains indeterminate: semantic
-categories, complete expression/inline origins and graph/lifetime bindings remain
+categories, complete expression/inline origins and semantic lifetime binding remain
 incomplete. Pass/candidate IDs are observation IDs. These records alone cannot
 prove a temporary was eliminated.
 
@@ -94,6 +94,41 @@ allocation and their following boundaries. Rust callers can use
 and `value_history` directly. Capture inspection skips unrelated rendered-report
 data rather than building a second full JSON analysis tree.
 
+## Graphs at their actual instruction boundary
+
+`graphs.graphs` contains snapshots taken immediately before retail graph
+simplification (`boundary=before_simplify`). Each snapshot pairs the actual
+instruction list at that instant with graph nodes, raw neighbor lists, unique
+adjacency degrees, stored degrees, flags and colors. `graph_only` means absent
+from those instructions; it does not mean eliminated. `instruction_only` and
+`missing_neighbor_nodes` retain the other graph boundaries. Physical thresholds
+are class-specific, including SPR and condition registers.
+
+The format-1 `pv.graph.begin/instruction/node/end` records carry a function-local
+graph ordinal and birth cutoff. A bounded bit set observes visibility in one scan
+of the instruction list. The parser independently checks visibility against the
+captured operands, checks node/instruction totals, and compares per-function graph
+counts against `pv.function.end graphs=N`. Missing last snapshots, missing ends,
+unsupported schemas and contradictory visibility cannot establish full graph
+coverage. `graphs.observations` and `graphs.functions[].observations` describe
+snapshot coverage separately from birth bindings. Old captures without these
+records remain usable but cannot establish that coverage.
+
+Each node's `binding.direct` retains all candidate birth IDs for its class/number
+before that graph, within the current counter-reset epoch. `contributors` adds
+origins from confirmed coalescer parent writes. `merges` retains both roots and
+their possible birth sets, with the actual decision trace position. Child nodes
+and their births remain inspectable even when their instructions disappear.
+Future births and merges never explain an earlier graph; class resets prevent
+bindings from leaking between allocation epochs. Reused numbers remain ambiguous,
+and unknown virtual contributors remain explicit evidence gaps.
+
+A satisfied `binding.evidence` establishes capture-local number/merge binding
+within direct-counter coverage. It does not establish cross-variant semantic
+identity, an exact leaf expression, or elimination. Full origin and category
+evidence must still be connected to comparison and source objectives. Rust callers
+can use `graph_history` directly or inspect the combined provenance report.
+
 Audit a pinned retail image independently with the native command:
 
 ```text
@@ -111,7 +146,9 @@ or unit name is a link location, not necessarily the semantic function's name.
 `tools/migration/verify_backend_probes.py` runs each selected input with probes
 disabled/enabled, checks stock-object equality and unchanged existing traces, then
 independently invokes the native explanation command to validate every candidate
-path and direct-counter history. Full outputs, identities, flags, hashes and elapsed times are retained in a
+path, direct-counter history and graph-phase capture. It compares the new node
+records against the independently emitted existing graph records, preserving raw
+neighbors and degrees. Full outputs, identities, flags, hashes and elapsed times are retained in a
 private output directory. `--case` selects fixture IDs. It also accepts `--from-ninja`, `--source` and
 `--project-only` for complete game units. This is a development audit; Python is
 not a product runtime dependency. A successful trace comparison is not a measured
@@ -123,6 +160,10 @@ numbers on all supported versions/hosts. The complete Echoes particle unit recor
 6,356 births and 4,325 partial expression observations with stock-equivalent output
 on both hosts.
 
-Continue with graph-phase/lifetime bindings, categories and complete origins before
+The current graph checks retain 182 snapshots from that unit, with 2,627 node
+observations absent from the instructions at their respective graph boundaries.
+These are retained observations, not a count of eliminated values.
+
+Continue with semantic lifetime correspondence, categories and complete origins before
 using absence predicates. The complete implementation scope remains in the
 [source-guided roadmap](../oracle-source-guided-search.md).

@@ -52,12 +52,21 @@ pipeline phases and partial statement-root expression contexts. The host preserv
 all generations when numbers recur and distinguishes increments from resets,
 rewinds and high-water restores. Orphan writes, discontinuities, missing function
 ends and unsupported schemas cannot establish complete direct-counter capture.
-Semantic categories, precise leaf/inline origins and graph/lifetime binding remain
+Semantic categories, precise leaf/inline origins and semantic lifetime binding remain
 incomplete; direct PE-reference coverage is not a complete alias-analysis proof.
+
+The graph hook additionally observes current instructions and graph membership
+immediately before retail simplification. Snapshots retain actual visibility,
+graph-only nodes, stored degrees, ordered/duplicate adjacency, missing neighbors,
+class-specific physical thresholds and a birth cutoff. Function-end graph totals
+detect missing snapshots. Capture-local bindings retain all possible generations,
+confirmed merge contributors and explicit unknown/ambiguous origins, using reset
+epochs and actual decision positions. Future births/merges cannot bind earlier
+graphs. Semantic lifetime correspondence remains unfinished.
 
 `oracle compile-trace --backend` enables these records; `provenance inspect`
 returns format-2 typed decisions, birth/reuse histories, saved inputs and separate
-decision, direct-counter and aggregate lifecycle coverage.
+decision, direct-counter, graph-snapshot and aggregate lifecycle coverage.
 It validates sites, EFLAGS, short-circuit paths, physical-register window bypass,
 counts and roots. Unsupported schemas, incomplete paths and absent captures remain
 indeterminate. The [native API](oracle/provenance.md), trace reference and kit guide
@@ -67,12 +76,14 @@ Capture/disassembly evidence is retained under
 `build/source-guided/backend-audit/`. The capture helper records compiler/function
 hashes and instruction guards and is explicitly a development audit, not a product
 runtime dependency. Runtime proofs are retained under `build/source-guided/probes/`
-and the newer `build/source-guided/counters/` (Windows), with corresponding Linux
-proofs under `/home/henrique/.cache/mwcc-counter-probes/`.
+and the newer `build/source-guided/counters/` and `build/source-guided/graphs/`
+(Windows), with corresponding Linux proofs under
+`/home/henrique/.cache/mwcc-counter-probes/` and
+`/home/henrique/.cache/mwcc-graph-probes/`.
 
 ## Validation
 
-96 workspace tests pass on Windows and Linux, with seven compiler-backed tests
+102 workspace tests pass on Windows and Linux, with seven compiler-backed tests
 left opt-in. Retail coalescer/counter rewrite tests were also run on both hosts;
 they check all three versions, exact current rewrites against retained runtime
 objects, unchanged neighboring sections/relocations, foreign call targets and
@@ -83,6 +94,10 @@ unsupported schemas, observed-write consistency, malformed outcomes and filterin
 Four value-history tests cover actual identity semantics: multiple generations,
 rewinds/restores, nested function namespaces, partial origins, missing data,
 unsupported schemas, gaps and malformed expression bytes.
+Five graph-history tests cover actual-phase visibility, reused/future generations,
+reset epochs, merge chains, missing contributor births, class-specific boundaries,
+missing snapshots and inconsistent or partial captures. A CLI test checks that
+link-name filtering keeps graph and function-coverage views aligned.
 Five comparison tests
 cover graph-only nodes, boundary edges, degree discrepancies, majority-vote
 ambiguity, colliding targets, physical projections, changed rounds and absent
@@ -96,6 +111,13 @@ versions: stock objects and existing trace records agree, and all coalescing pat
 are explained. The full Echoes `CElementGen.cpp` unit passes off/on on both hosts
 with 182 complete coalescing passes, 6,356 births, 4,325 partial expression
 observations, no counter gaps/orphans, and identical stock objects/existing traces.
+Both hosts also pass the new graph checks: the fixtures contain 45 graph snapshots
+with 171 nodes absent from their current instructions; the full particle unit has
+182 snapshots, 2,627 such node observations and 6,662 capture-local number/merge
+bindings. Those are snapshot observations, not distinct eliminated values.
+The reuse fixture's twelve reused numbers each retain both birth candidates and
+remain indeterminate. Fresh source-equivalence builds on both hosts match all
+three retained producer objects exactly.
 The new scratch-reuse fixture gives 239 births, one rewind and twelve reused
 numbers on all three versions/hosts, without asserting physical register choices.
 The capture includes RenderParticles, but this is not a source-variant success or
@@ -107,15 +129,15 @@ overhead/throughput benchmark remains open.
 | Roadmap stage | Remaining work |
 |---|---|
 | Reproducible cases/contracts | Capture and label the three actual mechanisms, retain the full RenderParticles case, and finish identity/provenance/objective/build-input contracts |
-| Backend provenance | Bind observed births/generations to graph phases and instruction visibility; complete object/category and leaf/inline provenance; close remaining alias/coverage gaps and rare coalescing cases |
+| Backend provenance | Complete object/category and leaf/inline provenance, justify semantic lifetime bindings beyond capture-local number/merge candidates, and close remaining alias/coverage gaps and rare coalescing cases |
 | Correspondence | Add lifecycle/provenance anchors, generations, observed merges/replacements and justified elimination; extend phase selection to newly captured backend phases |
 | Source search | Shared objective evaluator, hard constraints, bounded source transformations, exact input cache, compiler-state fingerprints, budgets/cancellation/resume and independently verified successful candidates |
 | Reduction | Reuse the evaluator for deterministic mechanism-preserving reduction, rebind identities, reject indeterminate results and retest discoveries in RenderParticles |
 | Matched-source index | Coverage-aware trace/source index and reproducible queries/examples feeding the harness |
 | Delivery | Compiler-version/platform checks, trace overhead/search throughput measurements, native documentation/kit/schema updates and the complete RenderParticles investigation |
 
-The next implementation step is graph-phase visibility and lifetime binding,
-followed by object/category and complete origin evidence. Connect these observations
+The next implementation step is object/category and complete origin evidence,
+including semantic lifetime binding for ambiguous generations. Connect these observations
 to correspondence and the graph-directed harness; then implement reduction and the
 matched-source index using the shared evaluator. Capture and label the three
 requested real mechanisms and complete the RenderParticles loop. Keep the full

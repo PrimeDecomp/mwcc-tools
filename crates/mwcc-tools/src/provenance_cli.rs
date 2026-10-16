@@ -48,6 +48,8 @@ pub fn run(args: &[String]) -> Result<()> {
     if let Some(link) = link {
         report.passes.retain(|p| p.link == *link);
         report.history.functions.retain(|f| f.link == *link);
+        report.graphs.graphs.retain(|g| g.link == *link);
+        report.graphs.functions.retain(|f| f.link == *link);
         ensure!(
             !report.passes.is_empty() || !report.history.functions.is_empty(),
             "no provenance for {link}"
@@ -70,6 +72,17 @@ pub fn run(args: &[String]) -> Result<()> {
                 function.births.len(),
                 reused,
                 function.counter_observations.state
+            );
+        }
+        for graph in &report.graphs.graphs {
+            println!(
+                "{}: graph {}, class {}, {} nodes, {} absent from current instructions, observations {:?}",
+                graph.link,
+                graph.id,
+                graph.class,
+                graph.nodes.len(),
+                graph.graph_only.len(),
+                graph.observations.state
             );
         }
         for pass in &report.passes {

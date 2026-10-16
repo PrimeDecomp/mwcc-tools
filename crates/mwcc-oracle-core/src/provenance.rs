@@ -28,6 +28,7 @@ pub struct Candidate {
     /// A pass-local observation ID, not a stable value/lifetime ID.
     pub id: u32,
     pub trace_position: usize,
+    pub decision_position: Option<usize>,
     pub instruction: String,
     pub operands: BTreeMap<String, String>,
     pub checks: Vec<Check>,
@@ -52,6 +53,7 @@ pub struct Report {
     pub decisions: Evaluation,
     pub lifecycle: Evaluation,
     pub history: crate::value_history::History,
+    pub graphs: crate::graph_history::GraphHistory,
 }
 fn integer(r: &Record, field: &str) -> Result<u32> {
     r.get(field)?
@@ -111,7 +113,7 @@ pub fn parse(text: &str) -> Result<Report> {
             .pop()
             .context("empty provenance record")?;
         r.line = line_index + 1;
-        if crate::value_history::is_record(&r.kind) {
+        if crate::value_history::is_record(&r.kind) || crate::graph_history::is_record(&r.kind) {
             continue;
         }
         if r.kind == "pv.gap" {
@@ -166,6 +168,7 @@ pub fn parse(text: &str) -> Result<Report> {
             pass.candidates.push(Candidate {
                 id,
                 trace_position: r.line,
+                decision_position: None,
                 instruction: r.get("instruction")?.into(),
                 operands: r.fields,
                 checks: vec![],
@@ -235,6 +238,9 @@ pub fn parse(text: &str) -> Result<Report> {
                     taken: taken == 1,
                     inputs: r.fields,
                 });
+                if candidate.decision != Decision::Indeterminate {
+                    candidate.decision_position = Some(r.line);
+                }
             }
             "pv.coalesce.merge" => {
                 let parent: u16 = integer(&r, "parent")?.try_into()?;
@@ -245,6 +251,7 @@ pub fn parse(text: &str) -> Result<Report> {
                 );
                 ensure!(parent < child, "unexpected retail union root ordering");
                 candidate.decision = Decision::Merged { parent, child };
+                candidate.decision_position = Some(r.line);
             }
             _ => supported = false,
         }
@@ -280,6 +287,8 @@ pub fn parse(text: &str) -> Result<Report> {
     } else {
         gap("no complete supported coalescing capture, or missing decisions/context")
     };
+    let history = crate::value_history::parse(text)?;
+    let graphs = crate::graph_history::parse(text, &history, &passes)?;
     Ok(Report {
         format_version: 2,
         passes,
@@ -288,7 +297,8 @@ pub fn parse(text: &str) -> Result<Report> {
             EvidenceGap::BackendLifecycleCoverage,
             "direct counter observations and statement roots do not establish complete lifecycle bindings, semantic categories or full expression/inline origins",
         ),
-        history: crate::value_history::parse(text)?,
+        history,
+        graphs,
     })
 }
 

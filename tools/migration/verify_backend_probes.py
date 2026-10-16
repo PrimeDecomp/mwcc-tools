@@ -85,6 +85,26 @@ def main():
             history=report["history"]
             assert history["counter_observations"]["state"] == ("indeterminate" if empty else "satisfied"), case["id"]
             assert not history["orphans"] and not history["gaps"], case["id"]
+            graphs = report["graphs"]
+            assert graphs["observations"]["state"] == ("indeterminate" if empty else "satisfied"), case["id"]
+            # Compare new snapshots to the independently emitted existing graph
+            # records, preserving neighbor order/duplicates and stored degrees.
+            existing_graphs = []
+            for line in b["trace"].splitlines():
+                if line.startswith("ra.graph "):
+                    fields = dict(item.split("=", 1) for item in line.split()[1:])
+                    existing_graphs.append(dict(cls=int(fields["cls"]), start=int(fields["start"]), count=int(fields["count"]), nodes={}))
+                elif line.startswith("ra.node "):
+                    fields = dict(item.split("=", 1) for item in line.split()[1:])
+                    existing_graphs[-1]["nodes"][int(fields["v"])] = dict(
+                        stored_degree=int(fields["deg"]), flags=int(fields["flags"], 16), color=int(fields["color"]),
+                        recorded_neighbors=[int(v) & 65535 for v in fields["n"].split(",") if v])
+            assert len(existing_graphs) == len(graphs["graphs"]), case["id"]
+            for old, new in zip(existing_graphs, graphs["graphs"]):
+                assert (old["cls"], old["start"], old["count"]) == (new["class"], new["start"], new["count"])
+                assert old["nodes"].keys() == {int(v) for v in new["nodes"]}
+                for register, node in old["nodes"].items():
+                    assert all(new["nodes"][str(register)][key] == value for key, value in node.items())
             reused=sum(sum(len(r["values"])>1 for r in f["registers"]) for f in history["functions"])
             rewinds=sum(sum(c["kind"]=="rewind" for c in f["changes"]) for f in history["functions"])
             assert reused>=case.get("minimum_reused_registers",0),case["id"]
@@ -102,6 +122,9 @@ def main():
                 passes=len(report["passes"]), decisions=decisions,
                 births=sum(len(f["births"]) for f in history["functions"]),
                 expressions=sum(len(f["expressions"]) for f in history["functions"]),
+                graphs=len(graphs["graphs"]), graph_only=sum(len(g["graph_only"]) for g in graphs["graphs"]),
+                bindings={state:sum(sum(n["binding"]["evidence"]["state"]==state for n in g["nodes"].values()) for g in graphs["graphs"])
+                          for state in ["satisfied", "indeterminate"]},
                 reused_registers=reused,rewinds=rewinds))
             save()
             print(f"{case['id']}: stock objects and existing trace agree, {len(report['passes'])} complete passes; {decisions}", flush=True)

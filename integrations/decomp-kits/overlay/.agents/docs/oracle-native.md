@@ -109,7 +109,13 @@ coverage. Its `history` includes direct counter births, resets, rewinds,
 capture-local value IDs/generations and available partial statement-root origins.
 `history.counter_observations` covers that direct-counter scope; aggregate
 `lifecycle` remains indeterminate while semantic categories, complete origins and
-graph/lifetime bindings are unfinished. Observation IDs are not cross-variant
+semantic lifetime correspondence are unfinished. `graphs.graphs` captures actual
+instructions and graph membership immediately before simplification, including
+`graph_only`, stored/raw adjacency evidence, candidate birth bindings and confirmed
+merge contributors. Read `graphs.observations` and each node's `binding.evidence`
+separately: snapshot coverage does not prove a unique lifetime when register
+numbers were reused. Function-end graph counts detect missing snapshots.
+Observation IDs are not cross-variant
 semantic identities. Missing records do not
 prove elimination. Consume the structured decisions and coverage rather than
 extracting explanations from report text.

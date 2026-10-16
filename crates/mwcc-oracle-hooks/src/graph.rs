@@ -1,5 +1,8 @@
 //! Allocation graph observation; byte guards and call order match Hooks.c.
-use crate::abi::{OracleTrace_Printf, read};
+use crate::{
+    abi::{OracleTrace_Printf, read, wanted},
+    lifecycle, pcode,
+};
 use core::{
     mem::{align_of, offset_of, size_of},
     ptr,
@@ -69,6 +72,98 @@ unsafe fn globals() -> Option<Globals> {
         })
     }
 }
+// Register operands have a u16 number. One bounded bit set covers its complete
+// domain, including physical registers, without rescanning instructions per node.
+static mut VISIBLE: [u8; 8192] = [0; 8192];
+unsafe fn capture(g: &Globals, class: i8, start: i32, count: i32) {
+    unsafe {
+        let Some(context) = lifecycle::graph_context(class) else {
+            return;
+        };
+        OracleTrace_Printf(c"pv.graph.begin schema=1 function=%lu graph=%lu births=%lu cls=%d physical=%lu start=%ld count=%ld phase=%lu boundary=before_simplify\n".as_ptr(),
+            context.function, context.graph, context.births, i32::from(class), context.physical, start, count, context.phase);
+        let bits = ptr::addr_of_mut!(VISIBLE).cast::<u8>();
+        ptr::write_bytes(bits, 0, 8192);
+        let mut valid = start >= 0 && count >= start && count <= 65536;
+        let mut instructions = 0u32;
+        let mut blocks = 0u32;
+        let mut block = ptr::addr_of!(pcode::gPCodeBlocks).read_unaligned();
+        while valid && !block.is_null() {
+            blocks += 1;
+            if blocks > 1_000_000 {
+                valid = false;
+                break;
+            }
+            let mut instruction = read::<*const u8>(block, 20);
+            while !instruction.is_null() {
+                instructions += 1;
+                let operands = read::<i16>(instruction, 34);
+                if instructions > 1_000_000 || !(0..=256).contains(&operands) {
+                    valid = false;
+                    break;
+                }
+                pcode::instruction(c"pv.graph.instruction".as_ptr(), instruction);
+                for index in 0..operands {
+                    let operand = instruction.add(36 + index as usize * 12);
+                    if read::<u8>(operand, 0) == 0 && read::<u8>(operand, 1) == class as u8 {
+                        let register = usize::from(read::<u16>(operand, 4));
+                        let byte = bits.add(register / 8);
+                        byte.write(byte.read() | (1 << (register % 8)));
+                    }
+                }
+                instruction = read(instruction, 0);
+            }
+            block = read(block, 0);
+        }
+        let mut nodes = 0u32;
+        if valid {
+            for index in start..count {
+                let node = g.graph.offset(index as isize).read_unaligned();
+                if node.is_null() {
+                    valid = false;
+                    break;
+                }
+                let neighbors = ptr::addr_of!((*node).neighbor_count).read_unaligned();
+                if neighbors < 0 {
+                    valid = false;
+                    break;
+                }
+                OracleTrace_Printf(
+                    c"pv.graph.node v=%ld visible=%d deg=%d flags=%x color=%d n=".as_ptr(),
+                    index,
+                    i32::from(
+                        bits.add(index as usize / 8).read() & (1 << (index as usize % 8)) != 0,
+                    ),
+                    i32::from(ptr::addr_of!((*node).degree).read_unaligned()),
+                    u32::from(ptr::addr_of!((*node).flags).read_unaligned()),
+                    i32::from(ptr::addr_of!((*node).color).read_unaligned()),
+                );
+                for neighbor in 0..neighbors {
+                    OracleTrace_Printf(
+                        c"%u,".as_ptr(),
+                        u32::from(
+                            ptr::addr_of!((*node).neighbors)
+                                .cast::<u16>()
+                                .add(neighbor as usize)
+                                .read_unaligned(),
+                        ),
+                    );
+                }
+                OracleTrace_Printf(c"\n".as_ptr());
+                nodes += 1;
+            }
+        }
+        OracleTrace_Printf(
+            c"pv.graph.end function=%lu graph=%lu nodes=%lu instructions=%lu complete=%d\n"
+                .as_ptr(),
+            context.function,
+            context.graph,
+            nodes,
+            instructions,
+            i32::from(valid),
+        );
+    }
+}
 #[unsafe(no_mangle)]
 unsafe extern "C" fn fn_00507070() -> *mut OracleNode {
     unsafe {
@@ -77,6 +172,7 @@ unsafe extern "C" fn fn_00507070() -> *mut OracleNode {
             let class = g.class.read_unaligned();
             let start = g.start.offset(isize::from(class)).read_unaligned();
             let count = g.count.offset(isize::from(class)).read_unaligned();
+            capture(g, class, start, count);
             OracleTrace_Printf(
                 c"ra.graph cls=%d k=%d start=%d count=%d\n".as_ptr(),
                 i32::from(class),
@@ -104,6 +200,8 @@ unsafe extern "C" fn fn_00507070() -> *mut OracleNode {
                 }
                 OracleTrace_Printf(c"\n".as_ptr());
             }
+        } else if wanted(c"MWCC_ORACLE_BACKEND") {
+            OracleTrace_Printf(c"pv.gap reason=graph_byte_guard\n".as_ptr());
         }
         let stack = fn_00507070__retail();
         if let Some(g) = &known {
