@@ -14,6 +14,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("directory", type=Path)
     parser.add_argument("--output", type=Path)
+    parser.add_argument("--fixtures-only", action="store_true", help="audit fixture results without requiring a new canary run")
     args = parser.parse_args()
     stage = args.directory.resolve()
     manifest = stage / "producer-verification.json"
@@ -31,7 +32,7 @@ def main():
         return logs.get(name, stage / (name + ".stdout"))
     fixtures = ROOT / "tests/fixtures/oracle"
     cases = json.loads((fixtures / "manifest.json").read_text())["cases"]
-    evidence = dict(revalidated_from_retained_outputs=True, versions=[])
+    evidence = dict(revalidated_from_retained_outputs=True, canaries_audited=not args.fixtures_only, versions=[])
     for version in ["GC_1_3", "GC_1_3_2", "GC_2_7"]:
         built = built_versions.get(version)
         if built:
@@ -105,13 +106,15 @@ def main():
             assert all(item["instantiation_kinds"].get(kind, 0) > 0 for kind in ["tp.queue", "tp.func", "tp.gen", "tp.emit"])
         if built and "binding_records" in built:
             assert item["scalar_kinds"]["lc.arg"] == built["binding_records"] > 0
-        corpus_file = log(f"canaries-{version}")
-        corpus = json.loads(corpus_file.read_text(encoding="utf-8"))
-        assert corpus["total"] > 0 and corpus["identical"] == corpus["total"]
-        assert all(not outcome["problems"] for outcome in corpus["outcomes"])
-        item["canaries"] = dict(total=corpus["total"], identical=corpus["identical"], log_sha256=sha(corpus_file))
+        if not args.fixtures_only:
+            corpus_file = log(f"canaries-{version}")
+            corpus = json.loads(corpus_file.read_text(encoding="utf-8"))
+            assert corpus["total"] > 0 and corpus["identical"] == corpus["total"]
+            assert all(not outcome["problems"] for outcome in corpus["outcomes"])
+            item["canaries"] = dict(total=corpus["total"], identical=corpus["identical"], log_sha256=sha(corpus_file))
         evidence["versions"].append(item)
-        print(f"{version}: {len(item['cases'])} compilations, graph={item['graph_records']}, frame={item['frame_records']}, PCode={item['pcode_records']}, schedule={item['schedule_records']}, scalar={item['scalar_records']}, CSE={item['cse_records']}, propagation={item['propagation_records']}, inline={item['inline_records']}, chained={item['chained_calls']}, {corpus['identical']}/{corpus['total']} canaries verified")
+        scope = "fixtures only" if args.fixtures_only else f"{corpus['identical']}/{corpus['total']} canaries verified"
+        print(f"{version}: {len(item['cases'])} compilations, graph={item['graph_records']}, frame={item['frame_records']}, PCode={item['pcode_records']}, schedule={item['schedule_records']}, scalar={item['scalar_records']}, CSE={item['cse_records']}, propagation={item['propagation_records']}, inline={item['inline_records']}, chained={item['chained_calls']}, {scope}")
     output = args.output or stage / "fixture-log-audit.json"
     output.write_text(json.dumps(evidence, indent=2) + "\n", encoding="utf-8")
 

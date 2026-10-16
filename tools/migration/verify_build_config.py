@@ -48,13 +48,15 @@ def main():
                     if (root / "config" / name / "splits.txt").exists():
                         shutil.copyfile(root / "config" / name / "splits.txt",config / "splits.txt")
                 command=([sys.executable,str(root / "configure.py")] if backend=="python" else [str(binary),"configure"])
+                if backend == "rust" and "--oracle" in options:
+                    command.extend(["--producer", "c"])
                 run([*command,"--version",version,*options],directory)
                 ninja=(directory / "build.ninja").read_text()
                 targets=run(["ninja","-t","targets","all"],directory)
                 objdiff=json.loads((directory / "objdiff.json").read_text()) if (directory / "objdiff.json").exists() else None
                 # Native Windows rules name the PE executable explicitly; an
                 # extensionless file cannot be launched by Ninja/CreateProcess.
-                outputs.append(dict(ninja=normalize_ninja(ninja.replace("build/tools/objdiff-cli.exe", "build/tools/objdiff-cli")),
+                outputs.append(dict(ninja=normalize_ninja(ninja.replace("build/tools/objdiff-cli.exe", "build/tools/objdiff-cli").replace(" --oracle --producer c", " --oracle")),
                                     objdiff=objdiff,targets=targets.replace("build/tools/objdiff-cli.exe", "build/tools/objdiff-cli")))
             if outputs[0]!=outputs[1]:
                 if args.keep:

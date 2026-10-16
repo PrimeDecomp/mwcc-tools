@@ -7,9 +7,9 @@ carried over from 1.3.2 directly; 2.0 to 2.6 are not built. To add one, insert i
 ## How the configuration was made
 
 ```
-python tools/remap.py 1.3.2 2.7 --symbols
-python tools/derive_splits.py GC_2_7 --reference GC_1_3_2
-python configure.py --version GC_2_7 --mode link --split-only && ninja build/GC_2_7/ok
+mwcc-tools remap 1.3.2 2.7 --symbols
+mwcc-tools derive-splits GC_2_7 --reference GC_1_3_2
+mwcc-tools configure --version GC_2_7 --mode link --split-only && ninja build/GC_2_7/ok
 ```
 
 `--symbols` also carries the 231 functions that 1.3.2's `symbols.txt` names but its `functions.json` does not list
@@ -92,6 +92,6 @@ The 343, by the source file the function had in 1.3.2:
 
 ## Status
 
-* `python tools/corpus.py --version GC_2_7 --canaries …`: 2313/2313 identical.
-* `python tools/corpus.py --version GC_2_7 --prime path/to/echoes`: 729/729 identical. Metroid Prime 2: Echoes builds
+* `mwcc-tools corpus --version GC_2_7 --canaries …`: 2313/2313 identical.
+* `mwcc-tools corpus --version GC_2_7 --prime path/to/echoes`: 729/729 identical. Metroid Prime 2: Echoes builds
   most of its units with 2.7. `--prime` takes the plain `mwcc` rules whose `mw_version` is `GC/2.7`.

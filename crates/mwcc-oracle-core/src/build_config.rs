@@ -225,17 +225,22 @@ fn objdiff(version: &str, config: &Value, sources: &Value, units: &[String]) -> 
 pub fn generate(root: &Path, request: &Request) -> Result<Generation> {
     ensure!(
         !request.rust_hooks || request.oracle,
-        "--rust-hooks requires --oracle"
+        "Rust producer requires --oracle"
     );
     let version = &request.version;
     let version_index = VERSIONS
         .iter()
         .position(|v| v == version)
         .context("unsupported build version")?;
-    let config: Value = serde_json::from_slice(&fs::read(
-        root.join(format!("config/{version}/config.json")),
-    )?)?;
-    let sources: Value = serde_json::from_slice(&fs::read(root.join("config/sources.json"))?)?;
+    let read_json = |relative: &str| -> Result<Value> {
+        let path = root.join(relative);
+        serde_json::from_slice(
+            &fs::read(&path).with_context(|| format!("read {}", path.display()))?,
+        )
+        .with_context(|| format!("parse {}", path.display()))
+    };
+    let config = read_json(&format!("config/{version}/config.json"))?;
+    let sources = read_json("config/sources.json")?;
     let source_settings = sources
         .as_object()
         .context("source settings are not an object")?;
@@ -244,6 +249,7 @@ pub fn generate(root: &Path, request: &Request) -> Result<Generation> {
     let mode = request
         .mode
         .as_deref()
+        .or(if request.oracle { Some("link") } else { None })
         .or_else(|| config["mode"].as_str())
         .unwrap_or(if has_splits { "link" } else { "compare" });
     ensure!(
@@ -252,8 +258,8 @@ pub fn generate(root: &Path, request: &Request) -> Result<Generation> {
     );
     let linking = mode == "link";
     ensure!(
-        !request.rust_hooks || linking,
-        "--rust-hooks requires --mode link"
+        !request.oracle || linking,
+        "Oracle instrumentation requires --mode link"
     );
     ensure!(
         !linking || has_splits,
@@ -309,8 +315,10 @@ pub fn generate(root: &Path, request: &Request) -> Result<Generation> {
                 ""
             },
             if request.oracle { " --oracle" } else { "" },
-            if request.rust_hooks {
-                " --rust-hooks"
+            if request.oracle && request.rust_hooks {
+                " --producer rust"
+            } else if request.oracle {
+                " --producer c"
             } else {
                 ""
             }
@@ -329,9 +337,7 @@ pub fn generate(root: &Path, request: &Request) -> Result<Generation> {
     }
     let mut originals = vec![];
     for version in VERSIONS {
-        let c: Value = serde_json::from_slice(&fs::read(
-            root.join(format!("config/{version}/config.json")),
-        )?)?;
+        let c = read_json(&format!("config/{version}/config.json"))?;
         originals.push(text(&c, "original")?.to_owned());
     }
     out.extend([

@@ -190,7 +190,8 @@ def main():
         # Use the same locally pinned loader for the frozen C and hybrid roots;
         # a global old wibo may lack APIs needed by project flags such as -multibyte.
         env["MWCC_WIBO"] = str(stage / "build/tools/wibo")
-    evidence = dict(binary_sha256=sha(binary), reference_root=str(reference), native_build=not args.skip_build, versions=[])
+    evidence = dict(binary_sha256=sha(binary), reference_root=str(reference), native_build=not args.skip_build,
+                    producer_selection="existing-tree" if args.skip_build else "default-rust", versions=[])
     evidence_path = stage / args.evidence_name
     if evidence_path.exists():
         previous = json.loads(evidence_path.read_text(encoding="utf-8"))
@@ -237,7 +238,11 @@ def main():
     for version in args.version or ["GC_1_3", "GC_1_3_2", "GC_2_7"]:
         target = f"build/{version}/oracle/mwcceppc.exe"
         if not args.skip_build:
-            run(f"configure-{version}", [binary, "configure", "--root", stage, "--version", version, "--mode", "link", "--oracle", "--rust-hooks"])
+            run(f"configure-{version}", [binary, "configure", "--root", stage, "--version", version, "--oracle"])
+            ninja = (stage / "build.ninja").read_text()
+            assert "--oracle --producer rust" in ninja
+            assert "compiled/src/oracle/Hooks.c.obj" not in ninja
+            assert "OracleTrace.obj: mwcc" not in ninja
             run(f"build-{version}", ["ninja", "-j", "8", target])
         if os.name != "nt":
             evidence["wibo_sha256"] = sha(stage / "build/tools/wibo")

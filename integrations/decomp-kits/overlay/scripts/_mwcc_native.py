@@ -33,6 +33,12 @@ def executable(arguments):
             path = root / relative / f"mwcc-tools{suffix}"
             if path.is_file():
                 return str(path.resolve())
+    if sys.platform in ("win32", "linux"):
+        target = "x86_64-pc-windows-msvc" if os.name == "nt" else "x86_64-unknown-linux-gnu"
+        project = Path(__file__).resolve().parents[1]
+        path = project / ".agents/tools/mwcc" / target / "bin" / f"mwcc-tools{suffix}"
+        if path.is_file():
+            return str(path.resolve())
     found = shutil.which("mwcc-tools")
     if found:
         return found

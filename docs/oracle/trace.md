@@ -24,7 +24,7 @@ Link names are the mangled ones; the compiler computes them if it has not yet.
 
 ### Turned on by environment variables
 
-Set each to `1`. `tools/oracle.py` sets them for the options that need them.
+Set each to `1`. `mwcc-tools oracle` sets them for the options that need them.
 
 **`MWCC_ORACLE_SCHEDULE`** (`--schedule`):
 
@@ -136,23 +136,27 @@ in debug builds), appended to FILE.
   `why`, `inline`, `depth`, `chain` and `in`.
 * **No match** for `--function`: `similar[]`.
 
-## Python API
+## Native API
 
-`tools/oracle.py` can be imported.
+Use the executable and versioned JSON for kit automation:
 
-| Function | Does |
-|---|---|
-| `analyze_source(source, flags=(), from_ninja=None, version=None, overrides=(), function=None, link=None, schedule=False, inline_cost=False, check=False, near=None, full_cost=False, instantiation=False)` | Compiles and returns the document `--json` prints. `overrides` as `--override` takes them, `near` as `--near`. Raises `OracleError` when it cannot compile. |
-| `compile_trace(...)` | The same arguments; only compiles and returns the trace. |
-| `analyze_file(trace, function=None, link=None, version="GC_1_3_2")` | Takes a trace file (or its lines) and returns one dict per function, as `--json` prints them. `function` is a substring of the name or link name, `link` the exact link name. |
-| `explain_exchange(analysis, a, b)`, `similar_functions(...)` | The `--exchange` and suggestion views. |
-| `parse_trace(lines)` | The snapshots before and after each allocation; the before snapshot also holds the colouring rounds and the frame. |
-| `analyze(...)` | The data `--json` prints. |
-| `opcode_names(version)` | The opcode names, for views of your own. |
-| `cse_trace(lines)`, `cse_tree(text, types)` | The `ce.*` and `pp.*` lines by link name (`compile_trace(..., cse=True)`), and a `ce.move` tree in infix form. |
-| `block_trace(lines)`, `block_cuts(record, names)` | The `bk.*` lines by link name (`compile_trace(..., blocks=True)`), and where each function's statements moved to a new block, and why. |
+```text
+mwcc-tools oracle compile-trace SOURCE --version GC_1_3_2 -- COMPILER_FLAGS
+mwcc-tools oracle analyze-trace saved.trace --version GC_1_3_2
+mwcc-tools oracle regdiff --project PROJECT --unit UNIT --function FUNCTION --json
+```
 
-`tools/colouring.py` builds on these for the what-if commands; its own entry points are listed in
-[What-if colouring](colouring.md#python-api).
+`compile-trace` returns a format-1 envelope with `compilation` and the schema-6
+`report`. Check `compilation.check_status.status`: `verified` means full-object
+equality with the stock compiler; skipped/unavailable checks are not successes.
+Keep diagnostics on stderr and handle command failures. The plain `oracle --json`
+command returns the schema-6 report directly. Regdiff has its own format-1 document
+and structured register explanations; do not parse human report paragraphs.
 
-Each function's dict has `schema_version` (`SCHEMA_VERSION`), raised when a field changes meaning or goes away.
+See the [native kit guide](../../integrations/decomp-kits/overlay/.agents/docs/oracle-native.md)
+for project units, candidates, explicit check states, saved graphs and calibration.
+Rust callers can use the workspace source API in `mwcc-oracle-core`, including
+`trace`, `document`, `allocation`, `colouring` and `runner`.
+
+The retained Python implementations are historical behavior references. Their
+imports, function signatures and rendered text are not supported production APIs.

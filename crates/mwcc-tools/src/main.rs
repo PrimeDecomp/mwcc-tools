@@ -734,7 +734,7 @@ fn help() {
   fdiff VERSION SOURCE FUNCTION ADDRESS [--root DIR]
   nearest VERSION SOURCE... [--root DIR]
   link [--oracle] VERSION OUTPUT INPUT... [--root DIR] [--timeout SECS]
-  configure [--version V] [--mode link|compare] [--split-only] [--oracle] [--rust-hooks] [--root DIR]
+  configure [--version V] [--mode link|compare] [--split-only] [--oracle [--producer rust|c]] [--root DIR]
   build-hooks OUTPUT [--trace-shim | --frontend-version V] [--root DIR] [--rustc FILE] [--timeout SECS]
   package-release OUTPUT.zip --binary FILE --target TARGET [--root DIR] [--source-revision COMMIT]
   transform-dep DEP OUT [--root DIR]
@@ -816,6 +816,10 @@ fn run() -> Result<()> {
                     | "--reference"
                     | "--out"
                     | "--mode"
+                    | "--producer"
+                    | "--binary"
+                    | "--source-revision"
+                    | "--frontend-version"
                     | "--ninja"
                     | "--rustc"
             )

@@ -7,6 +7,15 @@ versions selected per library. Let the unit's Ninja edge select its compiler
 and flags. Run these examples from the game checkout, or replace `--project .`
 with its path. Neither candidates nor header overrides require source swaps.
 
+The kit's `install-native.py PROJECT --apply` installs its checked host executable
+and notices; use the printed `MWCC_TOOLS` path or add its `bin` directory to PATH.
+The source bundle and pin are in `native-manifest.json`. Build the oracle with
+`mwcc-tools configure --root ORACLE_ROOT --version VERSION --oracle`, then Ninja
+in that checkout. `--oracle` selects linking and Rust observation hooks by default;
+`--producer c` selects the explicit rollback and regeneration retains that choice.
+Building hooks needs Rust 1.96.0 with `i686-pc-windows-msvc`; offline analysis uses
+only the host executable. See the kit's `EXTERNALS.md` for complete setup.
+
 ## Inspect a unit
 
 ```text

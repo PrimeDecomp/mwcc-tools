@@ -5,7 +5,7 @@ Part of the [oracle documentation](../oracle.md).
 ## `tools/inline_diff.py`: why one TU inlines a call another keeps
 
 ```
-python tools/inline_diff.py --from-ninja FILE A [B] [--all] [--callee TEXT] [--target [DIR]] [--json]
+mwcc-tools inline-diff --from-ninja FILE A [B] [--all] [--callee TEXT] [--target [DIR]] [--json]
 ```
 
 Compiles both translation units with `--full-cost`. For each callee (by link name) that the two decide on
@@ -46,7 +46,7 @@ Each misprediction gets a `verdict`:
 ## `tools/data_diff.py`: a TU's data layout against its target asm
 
 ```
-python tools/data_diff.py --from-ninja FILE SOURCE [--section NAME] [--all] [--json]
+mwcc-tools data-diff --from-ninja FILE SOURCE [--section NAME] [--all] [--json]
 ```
 
 Each data section of the object (from its symbol table and relocations) is compared with the `.obj` blocks of the same
@@ -81,7 +81,7 @@ Without an oracle for the version (GC 1.2.5n), the original compiler compiles th
 ## `tools/inline_window.py`: the inline limit a TU's target agrees with
 
 ```
-python tools/inline_window.py --from-ninja FILE UNIT... [--target DIR] [--verbose] [--json]
+mwcc-tools inline-window --from-ninja FILE UNIT... [--target DIR] [--verbose] [--json]
 ```
 
 Finds the range of inline limits (`inline_max_size`) that agrees with every inlining decision the target made. Use it
@@ -117,8 +117,8 @@ one of them.
 ## `tools/header_impact.py`: what a header change does to every unit
 
 ```
-python tools/header_impact.py --from-ninja FILE --git REV [--unit TEXT] [--jobs N] [--all] [--json]
-python tools/header_impact.py --from-ninja FILE --override include/Kyoto/Math/CVector3f.hpp=edited.hpp
+mwcc-tools header-impact --from-ninja FILE --git REV [--unit TEXT] [--jobs N] [--all] [--json]
+mwcc-tools header-impact --from-ninja FILE --override include/Kyoto/Math/CVector3f.hpp=edited.hpp
 ```
 
 Run it before merging a change to shared headers. It finds the units that include a changed file (from ninja's deps

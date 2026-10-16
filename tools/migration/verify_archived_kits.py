@@ -243,7 +243,7 @@ def main():
             shutil.copy2(args.wibo, oracle / "build/tools/wibo")
             (oracle / "build/tools/wibo").chmod(0o755)
         run(label + "-configure-pin", [args.binary, "configure", "--root", oracle, "--version", compiler,
-                                      "--mode", "link", "--oracle"], oracle, oracle)
+                                      "--mode", "link", "--oracle", "--producer", "c"], oracle, oracle)
         run(label + "-build-pin", ["ninja", "-j", "8", f"build/{compiler}/oracle/mwcceppc.exe"], oracle, oracle)
         entry["pinned_producer_sha256"] = sha(oracle / f"build/{compiler}/oracle/mwcceppc.exe")
         entry["rust_producer_sha256"] = sha(args.native_root / f"build/{compiler}/oracle/mwcceppc.exe")

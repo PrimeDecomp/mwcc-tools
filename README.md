@@ -30,7 +30,7 @@ Supported versions:
 Dependencies
 ============
 
-- Python 3.11+
+- Rust 1.96.0 and a C compiler to build `mwcc-tools`, or a prebuilt native distribution
 - [ninja](https://github.com/ninja-build/ninja)
 - [unshield](https://github.com/twogood/unshield), to unpack the CodeWarrior Pro 5.3 updater
 
@@ -43,11 +43,14 @@ Building
 ========
 
 ```sh
-python configure.py
+cargo build --locked --release -p mwcc-tools
+target/release/mwcc-tools configure
 ninja
 ```
 
-For another version, `python configure.py --version GC_1_2_5n` (or `GC_1_3`).
+On Windows, use `target/release/mwcc-tools.exe`. For another version, pass
+`configure --version GC_1_2_5n` (or `GC_1_3`). Python is used by independent migration
+validation and unrelated kit support, not the native production build commands.
 
 The build downloads what it needs but this repository does not contain:
 
@@ -135,7 +138,7 @@ root, then `wibo` on PATH. Use the pinned loader for flags such as `-multibyte`;
 required Windows APIs. Windows continues to launch the compiler directly.
 Use the [native oracle kit API](integrations/decomp-kits/overlay/.agents/docs/oracle-native.md)
 for kit automation and structured results. Optional old-name launchers and adoption evidence are documented in
-[the kit integration guide](integrations/decomp-kits/README.md); existing kit archives have not yet been switched.
+[the kit integration guide](integrations/decomp-kits/README.md). New native kits are generated separately from the retained historical archives.
 Native `implib`, `rsrc2res`, `split`, `link` and `compare` cover executable construction; `link` still uses the historical linker
 and `compare report` uses objdiff. Native `locate`, `bindfrom` and `funcmatch` support binary investigation; `bindfrom`
 updates the selected version's bindings file when explicitly invoked.
@@ -150,14 +153,15 @@ and restore the primary configuration. An isolated Windows bootstrap, all verifi
 three oracle builds have passed on Windows and Linux; each rebuilt oracle passed 2,313 canaries with all trace
 options. The existing Python build entry points remain available during migration.
 
-The producer port is incremental. `configure --version GC_1_3_2 --mode link --oracle --rust-hooks` opts into the
-translated local-call, allocation-graph/entry, frame-layout, scheduling, block/stage, scalarization, CSE, propagation,
+`configure --version GC_1_3_2 --oracle` selects link mode and the Rust producer, including
+local-call, allocation-graph/entry, frame-layout, scheduling, block/stage, scalarization, CSE, propagation,
 inline-ancestry/context, argument bindings and common template/instantiation hooks plus shared PCode/expression tracing and a separate
 Rust trace writer. A separate frontend object supplies inline decisions/costs, expression expansion and deferred-node
 dispatch for each compiler version, completing all 31 observation hooks. This mode compiles no C observation sources. Install the producer
 target with `rustup target add i686-pc-windows-msvc`, then build `build/GC_1_3_2/oracle/mwcceppc.exe` with Ninja.
-This source-build mode requires rustc; ordinary host analysis and existing C producer builds do not require the
-32-bit target. `build-hooks OUTPUT` builds and checks the standalone hook object; add `--trace-shim` for the separate writer. `RUSTC` or `--rustc` selects its compiler.
+This source-build mode requires rustc; ordinary host analysis does not require the 32-bit target.
+`--oracle --producer c` selects the retained C rollback, and regeneration preserves that choice.
+`build-hooks OUTPUT` builds and checks the standalone hook object; add `--trace-shim` for the separate writer. `RUSTC` or `--rustc` selects its compiler.
 The [source-guided graph-search roadmap](docs/oracle-source-guided-search.md) is scheduled after migration completion,
 starting with backend provenance/coalescing explanations and graph-directed C++ variant search.
 
@@ -165,7 +169,7 @@ The [audited benchmarks](docs/oracle-rust-benchmarks.md) separate analysis/searc
 and report the memory tradeoffs. `package-release OUTPUT.zip --binary FILE --target TARGET` creates a native
 distribution with checksums, metadata, kit documentation and matching dependency notices; see the
 [distribution guide](docs/oracle-rust-release.md). Local Windows/Linux packages pass independent archive and
-standalone execution audits. A published release pin and kit archive adoption remain pending.
+standalone execution audits. Native kits include their source pin and complete Git bundle; the local release does not require a public remote to contain that commit.
 
 License
 =======

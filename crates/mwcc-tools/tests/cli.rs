@@ -8,6 +8,84 @@ fn fixture(name: &str) -> PathBuf {
 }
 
 #[test]
+fn configure_defaults_to_rust_and_preserves_the_explicit_c_rollback() {
+    let source = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let scratch = tempfile::tempdir().unwrap();
+    let root = scratch.path();
+    fs::create_dir(root.join("config")).unwrap();
+    fs::copy(
+        source.join("config/sources.json"),
+        root.join("config/sources.json"),
+    )
+    .unwrap();
+    for version in mwcc_oracle_core::build_config::VERSIONS {
+        let directory = root.join("config").join(version);
+        fs::create_dir_all(&directory).unwrap();
+        fs::copy(
+            source.join("config").join(version).join("config.json"),
+            directory.join("config.json"),
+        )
+        .unwrap();
+    }
+    for version in ["GC_1_3", "GC_1_3_2", "GC_2_7"] {
+        let directory = root.join("config").join(version);
+        fs::create_dir_all(&directory).unwrap();
+        for file in ["config.json", "splits.txt"] {
+            fs::copy(
+                source.join("config").join(version).join(file),
+                directory.join(file),
+            )
+            .unwrap();
+        }
+        let configure = |extra: &[&str]| {
+            Command::new(env!("CARGO_BIN_EXE_mwcc-tools"))
+                .args(["configure", "--version", version, "--oracle", "--root"])
+                .arg(root)
+                .args(extra)
+                .output()
+                .unwrap()
+        };
+        let rust = configure(&[]);
+        assert!(
+            rust.status.success(),
+            "{}",
+            String::from_utf8_lossy(&rust.stderr)
+        );
+        let ninja = fs::read_to_string(root.join("build.ninja")).unwrap();
+        assert!(ninja.contains("--oracle --producer rust"));
+        assert!(ninja.contains("oracle/compiled/rust/hooks.obj"));
+        assert!(ninja.contains("oracle/compiled/rust/frontend.obj"));
+        assert!(!ninja.contains("compiled/src/oracle/Hooks.c.obj"));
+        assert!(!ninja.contains("OracleTrace.obj: mwcc"));
+        let c = configure(&["--producer=c"]);
+        assert!(c.status.success(), "{}", String::from_utf8_lossy(&c.stderr));
+        let fallback = fs::read_to_string(root.join("build.ninja")).unwrap();
+        assert!(fallback.contains("--oracle --producer c"));
+        assert!(fallback.contains("compiled/src/oracle/Hooks.c.obj"));
+        assert!(fallback.contains("OracleTrace.obj: mwcc"));
+        assert!(!fallback.contains("oracle/compiled/rust/"));
+        for extra in [
+            &["--producer", "unknown"][..],
+            &["--rust-hooks", "--producer", "c"][..],
+            &["--mode", "compare", "--producer", "c"][..],
+        ] {
+            assert!(!configure(extra).status.success());
+            assert_eq!(
+                fs::read_to_string(root.join("build.ninja")).unwrap(),
+                fallback
+            );
+        }
+    }
+    let output = Command::new(env!("CARGO_BIN_EXE_mwcc-tools"))
+        .args(["configure", "--producer", "rust", "--root"])
+        .arg(root)
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("--producer requires --oracle"));
+}
+
+#[test]
 fn offline_json_and_saved_colourings_work_without_compilers() {
     let binary = env!("CARGO_BIN_EXE_mwcc-tools");
     let output = Command::new(binary)

@@ -3,7 +3,7 @@
 Part of the [oracle documentation](../oracle.md).
 
 ```
-python tools/oracle.py --from-ninja ../prime/build.ninja src/MetroidPrime/Player/CPlayer.cpp \
+mwcc-tools oracle --from-ninja ../prime/build.ninja src/MetroidPrime/Player/CPlayer.cpp \
     --function UpdateAssistedAiming --cse --ir 1557
 ```
 

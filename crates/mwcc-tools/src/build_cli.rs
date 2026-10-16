@@ -7,7 +7,7 @@ pub fn run(command: &str, args: &[String]) -> Result<()> {
     let mut mode = None;
     let mut split_only = false;
     let mut oracle = false;
-    let mut rust_hooks = false;
+    let mut producer = None;
     let mut trace_shim = false;
     let mut frontend_version = None;
     let mut rustc = std::env::var_os("RUSTC")
@@ -22,15 +22,18 @@ pub fn run(command: &str, args: &[String]) -> Result<()> {
         match args[i].as_str() {
             "--split-only" if command == "configure" => split_only = true,
             "--oracle" if command == "configure" => oracle = true,
-            "--rust-hooks" if command == "configure" => rust_hooks = true,
+            "--rust-hooks" if command == "configure" => {
+                ensure!(producer != Some(false), "conflicting producer choices");
+                producer = Some(true);
+            }
             "--trace-shim" if command == "build-hooks" => trace_shim = true,
             "--root" | "--version" | "--mode" | "--timeout" | "--ninja" | "--jobs" | "--rustc"
-            | "--frontend-version" => {
+            | "--frontend-version" | "--producer" => {
                 let option = &args[i];
                 ensure!(
                     option == "--root"
                         || (command == "configure"
-                            && ["--version", "--mode"].contains(&option.as_str()))
+                            && ["--version", "--mode", "--producer"].contains(&option.as_str()))
                         || (command == "download" && option == "--timeout")
                         || (command == "build-hooks"
                             && ["--rustc", "--timeout", "--frontend-version"]
@@ -47,6 +50,18 @@ pub fn run(command: &str, args: &[String]) -> Result<()> {
                     "--ninja" => ninja = value.into(),
                     "--rustc" => rustc = value.into(),
                     "--frontend-version" => frontend_version = Some(value.clone()),
+                    "--producer" => {
+                        let rust = match value.as_str() {
+                            "rust" => true,
+                            "c" => false,
+                            _ => bail!("--producer must be rust or c"),
+                        };
+                        ensure!(
+                            producer.is_none_or(|old| old == rust),
+                            "conflicting producer choices"
+                        );
+                        producer = Some(rust);
+                    }
                     "--jobs" => {
                         let n = value.parse::<usize>()?;
                         ensure!(n > 0, "jobs must be positive");
@@ -132,8 +147,9 @@ pub fn run(command: &str, args: &[String]) -> Result<()> {
         "configure" => {
             ensure!(
                 positional.is_empty(),
-                "configure [--version V] [--mode link|compare] [--split-only] [--oracle] [--rust-hooks] [--root DIR]"
+                "configure [--version V] [--mode link|compare] [--split-only] [--oracle [--producer rust|c]] [--root DIR]"
             );
+            ensure!(producer.is_none() || oracle, "--producer requires --oracle");
             let tools = std::env::current_exe()?.to_string_lossy().into_owned();
             build_config::run(
                 &root,
@@ -142,7 +158,7 @@ pub fn run(command: &str, args: &[String]) -> Result<()> {
                     mode,
                     split_only,
                     oracle,
-                    rust_hooks,
+                    rust_hooks: producer.unwrap_or(oracle),
                     tools,
                     platform: Platform::current(),
                 },

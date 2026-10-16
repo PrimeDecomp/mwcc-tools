@@ -3,7 +3,7 @@
 Part of the [oracle documentation](../oracle.md).
 
 ```
-python tools/oracle.py --from-ninja ../echoes/build.ninja src/GuiSys/CAuiBitmapMeter.cpp --function Draw --locals
+mwcc-tools oracle --from-ninja ../echoes/build.ninja src/GuiSys/CAuiBitmapMeter.cpp --function Draw --locals
 ```
 
 `--locals` explains why a local struct or class ends up in registers or on the stack. With the target asm, it also

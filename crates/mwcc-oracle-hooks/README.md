@@ -40,11 +40,11 @@ From a Rust migration checkout:
 ```sh
 rustup target add i686-pc-windows-msvc
 cargo build --release --locked
-mwcc-tools configure --version GC_1_3_2 --mode link --oracle --rust-hooks
+mwcc-tools configure --version GC_1_3_2 --oracle
 ninja build/GC_1_3_2/oracle/mwcceppc.exe
 ```
 
-Use the built `target/release/mwcc-tools` executable if it is not on PATH. `--rust-hooks` is opt-in and requires `--oracle`; without it, the producer remains C. It builds `oracle/compiled/rust/hooks.obj`, `oracle/compiled/rust/frontend.obj` and the separate writer at `oracle/OracleTrace.obj`. This mode compiles neither `Hooks.c` nor `OracleTrace.c`. Regeneration retains the mode and all object source dependencies. The original compiler/linker/runtime remain external components.
+Use the built `target/release/mwcc-tools` executable if it is not on PATH. `--oracle` selects link mode and Rust hooks by default. It builds `oracle/compiled/rust/hooks.obj`, `oracle/compiled/rust/frontend.obj` and the separate writer at `oracle/OracleTrace.obj`, compiling neither `Hooks.c` nor `OracleTrace.c`. Use `--producer c` with `--oracle` for the retained C rollback, or `--producer rust` to state the selection explicitly. Regeneration retains either choice and all object source dependencies. The original compiler/linker/runtime remain external components. The earlier `--rust-hooks` spelling remains an optional alias.
 
 `mwcc-tools build-hooks OUTPUT` builds the object separately, checking its exact exports, expected C imports and supported relocations before replacing any previous output. `RUSTC` or `--rustc FILE` can select the compiler. The target's precompiled Rust core library is needed even though no Rust runtime is linked.
 
@@ -83,7 +83,7 @@ Use `--existing-root DIR --skip-build --evidence-name NAME.json` for additional 
 
 Use `verify_link.py --retain-builds --diagnose-abi` to retain failed link/runtime trees and print the first differing serialized bytes. Ordinary runtime harness builds still import only `ExitProcess`; diagnostic builds also import `GetStdHandle` and `WriteFile`.
 
-`verify_c_producer.py` checks the default C build against the frozen C source, including every non-debug section byte, BSS size, flag, symbolic relocation and public definition. Opt-in guards must preserve that fallback throughout migration.
+`verify_c_producer.py` checks the retained C build against the frozen C source, including every non-debug section byte, BSS size, flag, symbolic relocation and public definition. Select it explicitly with `--producer c`; its guarded source remains available for rollback.
 
 `verify_producer_sources.py DIR --binary FILE` builds all linked Rust objects afresh and compares their complete bytes with a retained runtime proof. It records all current/retained source hashes in a separate immutable proof directory. This can establish that a Rust declaration or comment cleanup leaves the already tested artifact unchanged; C/header/config differences or any changed object require new runtime evidence. The original runtime proof and its source snapshots are preserved.
 

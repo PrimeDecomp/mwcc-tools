@@ -1,54 +1,56 @@
 # The oracle executable (GC 1.3, 1.3.2 and 2.7)
 
 The oracle is the original `mwcceppc.exe`, relinked with trace wrappers around some of its functions. It produces
-the same objects, messages and exit code as the original; the wrappers only print. From the trace, `tools/oracle.py`
+the same objects, messages and exit code as the original; the wrappers only print. From the trace, `mwcc-tools oracle`
 explains why the compiler assigned each register, which calls it inlined, and how it laid out the stack frame.
 
 The original's own code runs: the oracle is not built from this repository's C sources of the allocator and the
-inliner, which are not byte-exact for 1.3 and 1.3.2 (2.7 has no sources at all). The wrappers are in
-`src/oracle/Hooks.c` and `src/oracle/OracleTrace.c`.
+inliner, which are not byte-exact for 1.3 and 1.3.2 (2.7 has no sources at all). The default wrappers are in
+`crates/mwcc-oracle-hooks`; `src/oracle/Hooks.c` and `OracleTrace.c` are the explicit C rollback.
 
 More detail:
 
 * [Registers and scheduling](oracle/registers.md): the register report, `--pcode`, `--exchange`, `--schedule`.
-* [What-if colouring](oracle/colouring.md): `tools/colouring.py`, the smallest change of the interference graph
+* [What-if colouring](oracle/colouring.md): `mwcc-tools colouring`, the smallest change of the interference graph
   (a renumbering, a removed node) that gives the target's registers.
 * [Inlining](oracle/inlining.md): `--inline-cost`, `--near`, `--full-cost`, `--instantiation`.
 * [Locals and the stack frame](oracle/locals.md): `--locals`, and comparing a frame with the target's.
 * [Basic blocks](oracle/blocks.md): `--blocks`, where code generation cuts blocks and why they are not merged.
 * [Common subexpressions](oracle/cse.md): `--cse`, `--ir`, the order of the optimizer's temporaries and their registers.
-* [Comparing translation units](oracle/tu-tools.md): `tools/inline_diff.py`, `tools/data_diff.py`,
-  `tools/inline_window.py` and `tools/header_impact.py`.
-* [Trace format, JSON and Python API](oracle/trace.md).
+* [Comparing translation units](oracle/tu-tools.md): native `inline-diff`, `data-diff`, `inline-window` and `header-impact`.
+* [Trace format, JSON and native API](oracle/trace.md).
 
 ## Build
 
 ```
-python configure.py --version GC_1_3_2 --mode link --oracle
+cargo build --release --locked -p mwcc-tools
+rustup target add i686-pc-windows-msvc --toolchain 1.96.0
+mwcc-tools configure --version GC_1_3_2 --oracle
 ninja build/GC_1_3_2/oracle/mwcceppc.exe
 ```
 
-* `GC_1_3` and `GC_2_7` work the same way. `configure.py` writes `build.ninja` for one version, so re-run it when
+* `GC_1_3` and `GC_2_7` work the same way. `mwcc-tools configure` writes `build.ninja` for one version, so re-run it when
   switching versions.
 * `ninja` downloads the original compiler to `build/compilers/GC/<version>/`. Do not `ninja -t clean` the oracle
   target: it removes the downloaded compilers.
 * The wrapped functions are listed in `oracle.hooks` in `config/<version>/config.json` (retail symbol names). Keep that
-  list consistent with the wrappers in `src/oracle/Hooks.c`.
+  list consistent with the wrappers in `crates/mwcc-oracle-hooks`. `--producer c` selects the retained C implementation;
+  Ninja regeneration preserves that choice. Rust is the default and compiles no C observation sources.
 * The licence stub `lmgr326b.dll` is copied beside the executable. To run the oracle on another Windows machine, copy
   `build/<version>/oracle/mwcceppc.exe` and `lmgr326b.dll`, plus `build/compilers/GC/<version>/` for the check below.
-* On Linux or WSL, the build and `tools/oracle.py` run the executable through wibo (`build/tools/wibo`, or a `wibo` on
-  the PATH). Neither binfmt_misc nor the executable bit is needed.
+* On Linux or WSL, native tools run the executable through pinned wibo 1.2.0. `MWCC_WIBO` overrides the oracle root's
+  `build/tools/wibo`, then PATH. Neither binfmt_misc nor an executable bit on the PE is needed.
 
-## Explain a source: `tools/oracle.py`
+## Explain a source: `mwcc-tools oracle`
 
 ```
-python tools/oracle.py [OPTIONS] SOURCE -- [COMPILER FLAGS...]
-python tools/oracle.py --from-ninja ../prime/build.ninja src/GuiSys/CGuiFrame.cpp --function Draw
+mwcc-tools oracle [OPTIONS] SOURCE -- [COMPILER FLAGS...]
+mwcc-tools oracle --from-ninja ../prime/build.ninja src/GuiSys/CGuiFrame.cpp --function Draw
 ```
 
 **Flags and version.**
 
-* Give the compiler's flags after `--`. The older form, flags right after SOURCE, still works.
+* Give compiler flags after `--`, keeping tool options before the separator.
 * `--from-ninja FILE` takes the flags, the working directory and the version from the rule that builds SOURCE in a
   decomp project's `build.ninja`. SOURCE is relative to that file's directory, or absolute. Giving flags as well is an
   error.
@@ -95,8 +97,8 @@ searched just before PATH's include directory. The check compiles the same repla
 ## Check the equivalence: `tools/corpus.py`
 
 ```
-python tools/corpus.py --version GC_1_3_2 --canaries path/to/mwcc-rs/canaries --jobs 8
-python tools/corpus.py --version GC_1_3_2 --prime path/to/prime --keep out-dir
+mwcc-tools corpus --version GC_1_3_2 --canaries path/to/mwcc-rs/canaries --jobs 8
+mwcc-tools corpus --version GC_1_3_2 --prime path/to/prime --keep out-dir
 ```
 
 This compiles every input with the original and with the oracle, then compares the non-debug sections (and the size of

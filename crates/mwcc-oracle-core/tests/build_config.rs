@@ -14,7 +14,11 @@ fn normalize(text: &str) -> String {
         {
             continue;
         }
-        lines.push(line.replace("build/tools/objdiff-cli.exe", "build/tools/objdiff-cli"));
+        // Frozen C graphs predate explicit producer selection in regeneration.
+        lines.push(
+            line.replace("build/tools/objdiff-cli.exe", "build/tools/objdiff-cli")
+                .replace(" --oracle --producer c", " --oracle"),
+        );
     }
     lines.join("\n") + "\n"
 }
@@ -59,6 +63,23 @@ fn native_configuration_preserves_all_reference_graphs() {
             platform: serde_json::from_value(case["platform"].clone()).unwrap(),
         };
         let generated = build_config::generate(root.path(), &request).unwrap();
+        // The native API makes --oracle imply linking. The old Python API
+        // silently ignored it in GC 1.3's default compare mode. Compare those
+        // two requests with the frozen explicit-link oracle graph instead.
+        let expected = if request.oracle && case["mode"].is_null() {
+            cases
+                .iter()
+                .find(|other| {
+                    other["version"] == case["version"]
+                        && other["platform"] == case["platform"]
+                        && other["split_only"] == case["split_only"]
+                        && other["oracle"] == true
+                        && other["mode"] == "link"
+                })
+                .unwrap()
+        } else {
+            case
+        };
         if request.platform.windows() {
             assert!(
                 generated
@@ -74,14 +95,14 @@ fn native_configuration_preserves_all_reference_graphs() {
         }
         assert_eq!(
             normalize(&generated.ninja),
-            case["ninja"].as_str().unwrap(),
+            expected["ninja"].as_str().unwrap(),
             "case {i}: {} {}",
             case["version"],
             case["platform"]
         );
         assert_eq!(
             serde_json::to_value(generated.objdiff).unwrap(),
-            case["objdiff"],
+            expected["objdiff"],
             "case {i}"
         );
     }
@@ -165,7 +186,7 @@ fn depfile_conversion_matches_native_reference_and_preserves_failed_inputs() {
 }
 
 #[test]
-fn rust_hook_builds_are_explicit_regenerable_and_require_the_migrated_abi() {
+fn rust_hook_builds_are_regenerable_and_require_the_migrated_abi() {
     let root = project();
     let mut request = Request {
         version: "GC_1_3".into(),
@@ -202,7 +223,7 @@ fn rust_hook_builds_are_explicit_regenerable_and_require_the_migrated_abi() {
     );
     fs::write(path, serde_json::to_vec(&config).unwrap()).unwrap();
     let ninja = build_config::generate(root.path(), &request).unwrap().ninja;
-    assert!(ninja.contains("--oracle --rust-hooks"));
+    assert!(ninja.contains("--oracle --producer rust"));
     assert!(ninja.contains("command = $tools build-hooks $out"));
     assert!(ninja.contains("--frontend-version GC_1_3"));
     assert!(ninja.contains("build/GC_1_3/oracle/compiled/rust/frontend.obj"));

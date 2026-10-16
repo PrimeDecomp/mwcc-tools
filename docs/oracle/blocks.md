@@ -3,7 +3,7 @@
 Part of the [oracle documentation](../oracle.md).
 
 ```
-python tools/oracle.py --from-ninja ../echoes/build.ninja src/MetroidPrime/ScriptLoader.cpp --function __sinit --blocks
+mwcc-tools oracle --from-ninja ../echoes/build.ninja src/MetroidPrime/ScriptLoader.cpp --function __sinit --blocks
 ```
 
 `--blocks` shows how code generation cut a function into basic blocks, and why the merge pass left them apart. Use it
@@ -53,7 +53,7 @@ With `--pcode`, the report also lists each raw block's instructions, with virtua
 ## Other limits: `--cut-limit`, `--merge-limit`
 
 ```
-python tools/oracle.py --from-ninja ../echoes/build.ninja src/MetroidPrime/ScriptLoader.cpp --function __sinit \
+mwcc-tools oracle --from-ninja ../echoes/build.ninja src/MetroidPrime/ScriptLoader.cpp --function __sinit \
     --blocks --cut-limit 77 --keep-object sinit-77.o
 ```
 

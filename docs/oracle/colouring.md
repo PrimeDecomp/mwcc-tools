@@ -25,8 +25,8 @@ The replay is Coloring.c's GC/2.7 rules, and it reproduces GC/1.3.2 traces too:
   * The traced claims' gaps are a consistency check on that. On every traced function so far, they add nothing.
 
 ```
-python tools/colouring.py COMMAND [OPTIONS] SOURCE -- [COMPILER FLAGS...]
-python tools/colouring.py search --from-ninja ../echoes/build.ninja src/Kyoto/Particles/CElementGen.cpp \
+mwcc-tools colouring COMMAND [OPTIONS] SOURCE -- [COMPILER FLAGS...]
+mwcc-tools colouring search --from-ninja ../echoes/build.ninja src/Kyoto/Particles/CElementGen.cpp \
     --function RenderParticles__
 ```
 
@@ -42,7 +42,7 @@ compiler's flags after `--`.
 ### `verify`
 
 ```
-python tools/colouring.py verify --from-ninja ../prime/build.ninja src/MetroidPrime/CStateManager.cpp
+mwcc-tools colouring verify --from-ninja ../prime/build.ninja src/MetroidPrime/CStateManager.cpp
 ```
 
 Replays every function (or `--function`'s) and checks that the simplification gives the traced order and select the
@@ -185,18 +185,12 @@ seeds.
 * The search is randomised. When it finds nothing, try another `--seed`, more `--iterations`, a narrower `--nodes`,
   or `--kinds` with `link`.
 
-## Python API
+## Native API
 
-| Function | Does |
-|---|---|
-| `compile_source(source, flags, from_ninja, version, overrides, save)` | `oracle.compile_trace` with the `ce.vreg` names traced. |
-| `load_saved(prefix)`, `allocations(compiled, function)` | A saved trace and object; the functions' `Allocation`s (`last_round(cls)`, `name(cls, v)`, `words`). |
-| `replay(round, cls, register_count, edits, used)` | Simplify and select with edits: `order`, `colour`, `spilled`, `claims`, `pushes`. |
-| `verify_function(allocation, cls)` | The `verify` check of one function. |
-| `derive_targets(allocation, target_words, cls, wants)` | The `target` derivation. |
-| `Problem(allocation, cls, targets)`, `force(problem)`, `search(problem, ...)` | The what-if commands. |
-| `remap(first, second)`, `graph_difference(first, second, mapping, cls)` | The `remap` pairing and difference. |
-| `register_fields(word)`, `shape(word)` | The PowerPC register field decoder. |
-
-The tests are in `tests/test_colouring.py` (`python -m unittest discover tests`). The compile test is skipped when
-`build/GC_2_7/oracle` is not built.
+Use `mwcc-tools colouring verify|target|force|search|replay|remap` directly.
+The `colouring unit` dispatcher resolves project units and accepts private candidates;
+`--load PREFIX --version VERSION` analyzes saved input without compiling.
+Use `--json` for structured results. Rust library callers use the `colouring`
+module in `mwcc-oracle-core`. Tests live in `crates/mwcc-oracle-core/tests/colouring.rs`
+and the CLI fixture suite. Python oracle/colouring imports are historical references,
+not an integration API. See the [native kit guide](../../integrations/decomp-kits/overlay/.agents/docs/oracle-native.md).

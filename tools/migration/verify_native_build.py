@@ -99,7 +99,7 @@ def main():
             assert "version = GC_1_2_5" in ninja
             continue
         for version in ["GC_1_3", "GC_1_3_2", "GC_2_7"]:
-            run(f"configure-{version}-oracle", [args.binary, "configure", "--root", stage, "--version", version, "--mode", "link", "--oracle"])
+            run(f"configure-{version}-oracle", [args.binary, "configure", "--root", stage, "--version", version, "--mode", "link", "--oracle", "--producer", "c"])
             ninja = (stage / "build.ninja").read_text(encoding="utf-8")
             assert "$python" not in ninja and ".py " not in ninja
             target = f"build/{version}/oracle/mwcceppc.exe"
