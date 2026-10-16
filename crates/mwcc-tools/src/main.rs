@@ -820,6 +820,10 @@ fn run() -> Result<()> {
                     | "--binary"
                     | "--source-revision"
                     | "--frontend-version"
+                    | "--first-round"
+                    | "--second-round"
+                    | "--first-snapshot"
+                    | "--second-snapshot"
                     | "--ninja"
                     | "--rustc"
             )

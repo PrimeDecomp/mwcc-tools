@@ -3,7 +3,9 @@
 Updated 2026-10-16 following the post-migration planning handoff. The Rust migration
 is complete locally; see [its acceptance audit](oracle-rust-completion.md) and
 [status](oracle-rust-status.md). This document is the implementation roadmap for
-the four requested follow-on features. **They are planned, not implemented.** They
+the four requested follow-on features. Implementation has started; see
+[current progress and open requirements](oracle-source-guided-status.md). **The
+four tools are not complete.** They
 do not expand the completed migration's parity requirements.
 
 The objective is to connect successful allocation-graph edits to C++ constructs

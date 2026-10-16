@@ -84,6 +84,14 @@ unit dispatch supplies the compiler version, or specify it explicitly.
 Spills remain unsupported by the what-if model. A useful graph edit is a
 source-transformation hypothesis, not evidence that particular C++ produces it.
 
+The development `remap --json` interface uses format 2: all captured graph nodes,
+unmatched nodes, ambiguous/competing instruction votes and unmapped boundary edges
+remain explicit. Instruction-invisible nodes are not automatically eliminated.
+Elimination is indeterminate until backend lifecycle coverage supplies evidence.
+`--first-round N`/`--second-round N` select zero-based occurrences within the class;
+`--first-snapshot before|after`/`--second-snapshot before|after` select existing trace
+snapshots. These additions are in development after the pinned migration release.
+
 ## Calibrate inline decisions
 
 ```text

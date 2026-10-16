@@ -253,6 +253,6 @@ Next implement [source-guided graph search](oracle-source-guided-search.md) as f
 - [ ] Add a reducer that preserves the compiler mechanism under investigation, then verify useful reduced-case discoveries in `RenderParticles`.
 - [ ] Index matched functions' traces and source constructs to find existing examples of the desired behavior.
 
-Build provenance and the graph-directed harness first. All four extensions remain follow-on work, not yet implemented; they do not add requirements to the migration's parity gates.
+Build provenance and the graph-directed harness first. Follow-on implementation has started; see [its status](oracle-source-guided-status.md). All four tools remain incomplete and do not add requirements to the migration's completed parity gates.
 
 The adopted roadmap now specifies reproducible cases and shared contracts, then backend provenance, reliable value correspondence and the graph-directed harness as the first usable milestone. `remap`/graph comparison must account for graph-only nodes, ambiguous mappings, merges and boundary edges before unmatched values can support elimination claims. Reduction and corpus queries share the objective evaluator; missing coverage or ambiguous correspondence yields an indeterminate result.

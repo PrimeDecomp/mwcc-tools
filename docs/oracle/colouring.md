@@ -187,6 +187,21 @@ seeds.
 
 ## Native API
 
+`remap --json` now returns format 2. It retains all captured graph nodes (including
+instruction-invisible temporaries), raw/unique adjacency and stored degrees, all
+operand votes, ambiguous/competing targets and unmatched boundary edges. Its
+mapping and comparable edge changes are explicitly inferred from instructions.
+Unmatched nodes are not proven eliminated; the elimination result remains
+`indeterminate` without backend lifecycle coverage.
+
+Use `--first-round N` and `--second-round N` for zero-based round occurrences within
+the selected class; the default is the last recorded round on each side. Snapshot
+selection uses `--first-snapshot before|after` and `--second-snapshot before|after`.
+These names refer to the existing trace snapshots, not newly instrumented backend
+phases. Missing default snapshots remain explicit; unavailable explicit round
+indices are errors. The provenance/correspondence implementation is ongoing; see
+the [backend audit](../oracle-backend-provenance-audit.md).
+
 Use `mwcc-tools colouring verify|target|force|search|replay|remap` directly.
 The `colouring unit` dispatcher resolves project units and accepts private candidates;
 `--load PREFIX --version VERSION` analyzes saved input without compiling.

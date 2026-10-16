@@ -412,7 +412,7 @@ fn offline_regdiff_matches_archived_helper() {
 }
 
 #[test]
-fn all_colouring_commands_match_python_json_and_text() {
+fn colouring_commands_preserve_behavior_and_remap_reports_versioned_uncertainty() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
     let cases: Value =
         serde_json::from_slice(&fs::read(root.join("tests/fixtures/colouring/cli.json")).unwrap())
@@ -439,8 +439,30 @@ fn all_colouring_commands_match_python_json_and_text() {
             );
             if json_output {
                 let actual: Value = serde_json::from_slice(&output.stdout).unwrap();
-                assert_eq!(actual, case["json"], "{args:?}");
+                if args[0] == "remap" {
+                    assert_eq!(actual["format_version"], 2);
+                    assert_eq!(actual["elimination"]["state"], "indeterminate");
+                    assert_eq!(
+                        actual["elimination"]["reasons"][0]["code"],
+                        "backend_lifecycle_coverage"
+                    );
+                    assert_eq!(actual["paired_instructions"], case["json"]["paired"]);
+                    assert_eq!(actual["instruction_counts"], case["json"]["instructions"]);
+                    for (source, target) in actual["inferred_mapping"].as_object().unwrap() {
+                        assert_eq!(target, &case["json"]["mapping"][source]);
+                    }
+                } else {
+                    assert_eq!(actual, case["json"], "{args:?}");
+                }
             } else {
+                if args[0] == "remap" {
+                    assert!(
+                        String::from_utf8(output.stdout)
+                            .unwrap()
+                            .contains("elimination indeterminate")
+                    );
+                    continue;
+                }
                 assert_eq!(
                     String::from_utf8(output.stdout)
                         .unwrap()
@@ -451,6 +473,46 @@ fn all_colouring_commands_match_python_json_and_text() {
             }
         }
     }
+}
+
+#[test]
+fn remap_exposes_round_selection_and_missing_snapshots_without_false_success() {
+    let saved = fixture("GC_2_7/pipeline");
+    let run = |extra: &[&str]| {
+        Command::new(env!("CARGO_BIN_EXE_mwcc-tools"))
+            .args(["colouring", "remap", "--load"])
+            .arg(&saved)
+            .arg("--load")
+            .arg(&saved)
+            .args(["--function", "pipeline", "--json"])
+            .args(extra)
+            .output()
+            .unwrap()
+    };
+    let output = run(&["--first-round=0", "--second-round=0"]);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let report: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["format_version"], 2);
+    assert_eq!(report["first"]["class_round"], 0);
+    assert!(!report["first"]["nodes"].as_object().unwrap().is_empty());
+    assert_eq!(report["elimination"]["state"], "indeterminate");
+    let output = run(&["--second-snapshot=after"]);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let report: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["selection_second"]["phase"], "after");
+    assert!(report["second"].is_null() && report["delta"].is_null());
+    assert_eq!(report["elimination"]["state"], "indeterminate");
+    let output = run(&["--first-round", "999"]);
+    assert!(!output.status.success() && output.stdout.is_empty());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("class round 999 unavailable"));
 }
 
 #[test]

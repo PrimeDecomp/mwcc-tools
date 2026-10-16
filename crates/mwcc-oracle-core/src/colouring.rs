@@ -9,6 +9,7 @@ use anyhow::{Context, Result, ensure};
 use serde::Serialize;
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
+pub mod correspondence;
 pub mod search;
 pub mod target;
 

@@ -2,7 +2,7 @@
 use super::final_colours;
 use crate::{
     ppc, sequence,
-    trace::{Allocation, Instruction},
+    trace::{Allocation, Instruction, Snapshot},
     version::class_name,
 };
 use anyhow::Result;
@@ -508,6 +508,8 @@ pub fn derive(
 }
 
 pub struct Remapped {
+    /// All instruction-operand votes, including losing and colliding candidates.
+    pub votes: BTreeMap<(String, u32), Vec<(u32, usize)>>,
     pub mapping: BTreeMap<(String, u32), u32>,
     pub unsure: BTreeMap<(String, u32), serde_json::Value>,
     pub paired: usize,
@@ -518,22 +520,20 @@ pub fn remap(
     second: &Allocation,
     version: crate::version::Version,
 ) -> Remapped {
+    remap_snapshots(&first.before, &second.before, version)
+}
+
+pub fn remap_snapshots(
+    first: &Snapshot,
+    second: &Snapshot,
+    version: crate::version::Version,
+) -> Remapped {
     use regex::Regex;
     use std::sync::LazyLock;
     static VIRTUAL: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"%(cr|[rfv])\d+").unwrap());
     let names = crate::version::opcode_names(version);
-    let a: Vec<_> = first
-        .before
-        .blocks
-        .iter()
-        .flat_map(|b| &b.instructions)
-        .collect();
-    let b: Vec<_> = second
-        .before
-        .blocks
-        .iter()
-        .flat_map(|b| &b.instructions)
-        .collect();
+    let a: Vec<_> = first.blocks.iter().flat_map(|b| &b.instructions).collect();
+    let b: Vec<_> = second.blocks.iter().flat_map(|b| &b.instructions).collect();
     let aa: Vec<_> = a
         .iter()
         .map(|i| VIRTUAL.replace_all(&i.text(names), "%$1").into_owned())
@@ -560,19 +560,20 @@ pub fn remap(
     }
     let mut mapping = BTreeMap::new();
     let mut unsure = BTreeMap::new();
-    for (key, counter) in votes {
+    for (key, counter) in &votes {
         let mut best = counter[0];
-        for entry in &counter {
+        for entry in counter {
             if entry.1 > best.1 {
                 best = *entry;
             }
         }
         mapping.insert(key.clone(), best.0);
         if counter.len() > 1 {
-            unsure.insert(key, counter_value(&counter));
+            unsure.insert(key.clone(), counter_value(counter));
         }
     }
     Remapped {
+        votes,
         mapping,
         unsure,
         paired,
@@ -588,6 +589,10 @@ pub struct GraphDifference {
     pub edges_added: BTreeSet<(u32, u32)>,
     pub edges_removed: BTreeSet<(u32, u32)>,
 }
+/// Historical mapped-subgraph projection for captured reference reports. This
+/// omits unmatched boundary edges and instruction-invisible nodes; production
+/// source objectives must use `correspondence::compare`, not infer elimination
+/// from this projection's `only_first`/`only_second` fields.
 pub fn graph_difference(
     first: &Allocation,
     second: &Allocation,

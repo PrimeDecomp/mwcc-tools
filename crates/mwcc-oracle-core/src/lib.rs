@@ -15,6 +15,7 @@ pub mod disassembly;
 pub mod document;
 pub mod download;
 pub mod elf;
+pub mod evidence;
 pub mod executable;
 pub mod header_impact;
 pub mod inline_calibrate;

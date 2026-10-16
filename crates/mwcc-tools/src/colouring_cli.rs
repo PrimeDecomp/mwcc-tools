@@ -2,6 +2,7 @@ use anyhow::{Context, Result, bail, ensure};
 use mwcc_oracle_core::{
     colouring::{
         self, Edit,
+        correspondence::{self, Selection, SnapshotPhase},
         search::{self, Options, Problem},
         target,
     },
@@ -28,6 +29,8 @@ struct Args {
     wants: BTreeMap<u32, i32>,
     edits: BTreeMap<String, Vec<String>>,
     search: Options,
+    first_graph: Selection,
+    second_graph: Selection,
 }
 
 fn number(text: &str) -> Result<u32> {
@@ -84,6 +87,10 @@ fn parse(args: &[String]) -> Result<Args> {
                 | "--working-directory"
                 | "--override"
                 | "--timeout"
+                | "--first-round"
+                | "--second-round"
+                | "--first-snapshot"
+                | "--second-snapshot"
         ) {
             let value = args
                 .get(i + 1)
@@ -101,6 +108,30 @@ fn parse(args: &[String]) -> Result<Args> {
                 "--want" => {
                     let (v, c) = value.split_once('=').context("--want needs V=REGISTER")?;
                     out.wants.insert(number(v)?, i32::try_from(number(c)?)?);
+                }
+                "--first-round" | "--second-round" => {
+                    let round = Some(
+                        value
+                            .parse()
+                            .context("class round must be a nonnegative index")?,
+                    );
+                    if option == "--first-round" {
+                        out.first_graph.round = round;
+                    } else {
+                        out.second_graph.round = round;
+                    }
+                }
+                "--first-snapshot" | "--second-snapshot" => {
+                    let phase = match value.as_str() {
+                        "before" => SnapshotPhase::Before,
+                        "after" => SnapshotPhase::After,
+                        _ => bail!("snapshot must be before or after"),
+                    };
+                    if option == "--first-snapshot" {
+                        out.first_graph.phase = phase;
+                    } else {
+                        out.second_graph.phase = phase;
+                    }
                 }
                 "--iterations" => out.search.iterations = value.parse()?,
                 "--seed" => out.search.seed = value.clone(),
@@ -158,6 +189,12 @@ fn parse(args: &[String]) -> Result<Args> {
             "unknown register class {class}"
         );
     }
+    ensure!(
+        out.command == "remap"
+            || (out.first_graph == Selection::default()
+                && out.second_graph == Selection::default()),
+        "graph snapshot/round selection is available only for remap"
+    );
     Ok(out)
 }
 
@@ -564,83 +601,68 @@ fn run_remap(args: &Args, class: &str) -> Result<(Value, Vec<String>)> {
     };
     let first = one(&a, args.function.as_deref())?;
     let second = one(&b, args.function.as_deref())?;
-    let result = target::remap(first, second, args.version.unwrap_or(b.version));
-    let output = result.json(first, second, class)?;
-    let na = names(&a, first)?;
-    let nb = names(&b, second)?;
-    let label = |first: bool, v| label(class, v, if first { &na } else { &nb }, None);
+    ensure!(
+        a.version == b.version,
+        "remap requires the same compiler version on both inputs"
+    );
+    let first_snapshot = match args.first_graph.phase {
+        SnapshotPhase::Before => &first.before,
+        SnapshotPhase::After => &first.after,
+    };
+    let second_snapshot = match args.second_graph.phase {
+        SnapshotPhase::Before => &second.before,
+        SnapshotPhase::After => &second.after,
+    };
+    let inferred = target::remap_snapshots(first_snapshot, second_snapshot, a.version);
+    let comparison = correspondence::compare(
+        first,
+        second,
+        &inferred,
+        class,
+        args.first_graph,
+        args.second_graph,
+    )?;
+    let output = serde_json::to_value(&comparison)?;
     let mut lines = vec![format!(
         "== {}: {} of {} / {} instructions paired ==",
-        first.before.function, result.paired, result.instructions.0, result.instructions.1
+        first.before.function, inferred.paired, inferred.instructions.0, inferred.instructions.1
     )];
-    let changed: BTreeMap<u32, u32> = serde_json::from_value(output["changed"].clone())?;
-    let back: BTreeMap<_, _> = changed.iter().map(|(v, w)| (*w, *v)).collect();
-    if let Some(d) = target::graph_difference(first, second, &result.mapping, class) {
-        if !d.moved.is_empty() {
+    lines.push(format!(
+        "   {} unambiguous instruction hypotheses; elimination indeterminate",
+        comparison.inferred_mapping.len()
+    ));
+    for (side, graph) in [("first", &comparison.first), ("second", &comparison.second)] {
+        if let Some(graph) = graph {
             lines.push(format!(
-                "   numbered out of their order (the second's numbers, from the first's): {}",
-                d.moved
-                    .iter()
-                    .map(|w| format!("{} from %{}", label(false, *w), back.get(w).unwrap_or(w)))
-                    .collect::<Vec<_>>()
-                    .join(", ")
+                "   {side}: {:?} class round {}, {} graph nodes, {} graph-only nodes",
+                graph.phase,
+                graph.class_round,
+                graph.nodes.len(),
+                graph.graph_only.len()
             ));
-        }
-        for (nodes, side, first) in [
-            (&d.only_first, "only in the first", true),
-            (&d.only_second, "only in the second", false),
-        ] {
-            if !nodes.is_empty() {
-                lines.push(format!(
-                    "   nodes {side}: {}",
-                    nodes
-                        .iter()
-                        .map(|v| label(first, *v))
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                ));
-            }
-        }
-        for (edges, what) in [
-            (&d.edges_added, "edges added"),
-            (&d.edges_removed, "edges removed"),
-        ] {
-            if !edges.is_empty() {
-                lines.push(format!(
-                    "   {what} (the second's numbers): {}{}",
-                    edges
-                        .iter()
-                        .take(40)
-                        .map(|(x, y)| format!("{} - {}", label(false, *x), label(false, *y)))
-                        .collect::<Vec<_>>()
-                        .join(", "),
-                    if edges.len() > 40 {
-                        format!(" ... {} more", edges.len() - 40)
-                    } else {
-                        String::new()
-                    }
-                ));
-            }
+        } else {
+            lines.push(format!("   {side}: requested graph snapshot unavailable"));
         }
     }
-    lines.push(format!(
-        "   {} {class} registers renumbered: {}{}",
-        changed.len(),
-        changed
-            .iter()
-            .take(60)
-            .map(|(v, w)| format!("%{v}->%{w}"))
-            .collect::<Vec<_>>()
-            .join(" "),
-        if changed.len() > 60 { " ..." } else { "" }
-    ));
-    for ((c, v), counter) in &result.unsure {
-        if c == class {
-            lines.push(format!(
-                "   %{v}: several candidates {}",
-                repr(counter, true)
-            ));
-        }
+    if let Some(delta) = &comparison.delta {
+        lines.push(format!(
+            "   unmatched graph nodes: {} first / {} second (not proven eliminated)",
+            delta.unmatched_first.len(),
+            delta.unmatched_second.len()
+        ));
+        lines.push(format!(
+            "   unclassified boundary edges: {} first / {} second",
+            delta.boundary_first.len(),
+            delta.boundary_second.len()
+        ));
+        lines.push(format!(
+            "   inferred edge changes: +{} / -{}",
+            delta.inferred_edges_added.len(),
+            delta.inferred_edges_removed.len()
+        ));
+    }
+    for limitation in &comparison.limitations {
+        lines.push(format!("   {limitation}"));
     }
     Ok((output, lines))
 }
@@ -652,7 +674,7 @@ pub fn run(raw: &[String]) -> Result<()> {
         .any(|s| s == "--help" || s == "-h")
     {
         println!(
-            "mwcc-tools colouring COMMAND [OPTIONS] [SOURCE] -- COMPILER FLAGS\n\nCommands: verify, target, force, search, replay, remap\n\n--load PREFIX (repeat twice for remap), --save PREFIX, --from-ninja FILE, --version V,\n--function NAME, --class GPR|FPR|VR, --target-asm FILE, --want V=REGISTER, --json\n\nReplay edits: --order V,V,... --move V:before|after:W --drop V --degree V:+1 --unlink A,B --link A,B\nSearch: --iterations N --seed INTEGER --restarts N --top N --fixed V,V,... --nodes V,V,... --kinds drop,degree,unlink"
+            "mwcc-tools colouring COMMAND [OPTIONS] [SOURCE] -- COMPILER FLAGS\n\nCommands: verify, target, force, search, replay, remap\n\n--load PREFIX (repeat twice for remap), --save PREFIX, --from-ninja FILE, --version V,\n--function NAME, --class GPR|FPR|VR, --target-asm FILE, --want V=REGISTER, --json\n\nReplay edits: --order V,V,... --move V:before|after:W --drop V --degree V:+1 --unlink A,B --link A,B\nSearch: --iterations N --seed INTEGER --restarts N --top N --fixed V,V,... --nodes V,V,... --kinds drop,degree,unlink\nRemap: --first-round N --second-round N (zero-based within class), --first-snapshot before|after --second-snapshot before|after; JSON format 2 retains unmatched nodes and boundary edges"
         );
         return Ok(());
     }
