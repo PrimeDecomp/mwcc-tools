@@ -1,4 +1,4 @@
-# Development Rust producer and V6 observer ABI
+# Development Rust producer and observer ABIs
 
 Build a fresh producer from the current sources with `mwcc-tools configure
 --oracle --root ORACLE_ROOT --version GC_2_7`, then build its generated target.
@@ -8,9 +8,9 @@ The kit's pinned migration release may predate these development capabilities.
 
 ## Native surface and descriptor
 
-`producer::validate` checks the complete common COFF surface: 30 hook definitions,
-13 support exports and exactly 60 imports. The common object therefore exports
-43 symbols. The separately built frontend object exports five hooks per compiler
+`producer::validate` checks the complete common COFF surface: 38 hook definitions,
+14 support exports and exactly 69 imports. The common object therefore exports
+52 symbols. The separately built frontend object exports five hooks per compiler
 version; the separate Rust trace writer exports two symbols and imports five C
 runtime symbols. These inventories are code in `producer.rs`, not inferred from
 the presence of a few familiar exports. Unexpected compiler runtime helpers fail
@@ -30,6 +30,23 @@ The native linker rejects older observer objects. These four names are supplied
 by `producer::ARGUMENT_HOOKS` only on the Rust path. The configured C hook list and
 C rollback producer remain unchanged. Linking renames the original definitions
 to `__retail` and redirects their callers to the wrappers.
+
+The arena extension additionally requires `_OracleRust_ArenaProbeV1` and the
+eight reset/release/initialization wrappers in `producer::ARENA_HOOKS`. They are
+native-only additions; older V6 common objects are rejected before installation.
+The linker provides `_OracleRust_ArenaGlobals`: a 12-byte structure containing
+the relocated first pool descriptor pointer, local lock pointer and version
+number. Each arena island passes a separate 36-byte descriptor containing that
+globals pointer, canonical site, action, pair, pool and size/result selectors.
+These layouts are distinct from the counter descriptor below. Guarded islands
+preserve registers, flags and FXSAVE state; allocation commits execute their
+original descriptor stores before the observer. The failure-callback island
+restores the original retail stack before invoking the original callback.
+See [source arenas](source-arenas.md) for the opt-in stream and query contract.
+
+Link-name lookup can allocate compiler hash entries. Frontend inline and
+template observers resolve every link before emitting the first fragment of a
+multipart trace line, preserving record boundaries when arena capture is active.
 
 The counter descriptor remains 48 bytes, aligned to four bytes, on the i686
 producer target. V6 changes the observer capability and routing rather than

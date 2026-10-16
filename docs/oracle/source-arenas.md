@@ -1,4 +1,52 @@
-# Source arena reference audit
+# Source arena observations and reference audit
+
+The development producer can capture guarded arena requests, allocation commits
+and invalidation scopes independently of backend tracing:
+
+```text
+mwcc-tools oracle compile-trace source.cpp --source-arenas -- COMPILER_FLAGS
+mwcc-tools source-arenas inspect capture.json --json
+mwcc-tools source-arenas resolve capture.json --position 120 --pool local --address 01a00000 --extent 24
+```
+
+`--position` is a one-based raw trace line; addresses are hexadecimal. Pools are
+`heap`, `optimizer`, `block`, `local` and `global`. The allocation result identifies
+the historical pool epoch, allocation and offset only when the requested payload
+is covered by a later independently reconciled checkpoint. Padding, reset
+interiors, checkpoint emission positions and unknown epochs remain indeterminate.
+Allocation identity does not establish initialized contents, immutable node
+revisions, source ancestry or semantic equivalence.
+
+Nine request/commit pairs cover four ordinary allocators and five inline hash
+allocation paths. Requests retain sizes before alignment. Commit observations
+validate the reserved span against the actual post-store descriptor; zero-byte
+requests have an empty payload even though the allocator reserves eight bytes.
+Nineteen guarded islands preserve the displaced instructions and machine state.
+Eight wrappers capture resets, releases and initialization, including the local
+heap lock. The failure callback emits an explicit unsupported boundary.
+
+The compilation-wide `pv.arena.*` stream uses schema 1 and cumulative request,
+allocation, reset, gap and checkpoint counters. The host replays authoritative
+raw records instead of trusting deserialized display fields. Missing records,
+counter mismatches, stack overflow, unsupported callbacks and truncated suffixes
+cannot prove new coverage. An earlier independently reconciled prefix can remain
+queryable. Captures from older producers without the stream remain unknown.
+
+Reset returns supply checkpoints. With `--backend`, each backend function end
+supplies another checkpoint immediately before its matching `pv.function.end`.
+Without backend tracing, observations after the last reset checkpoint are an
+unproven suffix until another reset returns. No process-end coverage is inferred.
+Graph fingerprint format 4 rejects arena captures until arena normalization is
+implemented. This opt-in capture is a foundation for the original-source bridge;
+it does not implement that bridge.
+
+Native Windows/Linux fixture validation passes on all three compiler versions:
+all nine allocation pairs, independent counter reconciliation, historical address
+reuse, payload/padding queries and malformed-trace negatives. Backend coexistence
+uses separate diagnostic FP4/validated-decision comparisons; raw CPU probe values
+are not asserted equal. Locked reset and failure callbacks are not claimed as
+exercised native fixture paths. See the
+[extension status](../oracle-source-guided-status.md) for exact accepted evidence.
 
 Original source nodes and optimizer nodes can outlive backend function scopes.
 Their addresses can also be reused after a heap reset. Before joining a source
@@ -76,9 +124,9 @@ resolve writes through an alias passed to a helper.
   to the caller's result structure. A direct reference is not automatically an
   allocation or reset site.
 
-Future runtime instrumentation must guard the actual call/return or store sites,
-including original split COFF relocation target identities. The audit's PE body
-hashes and normalized fields are an inventory, not that installation contract.
+The runtime installer guards actual call/return or store sites, including
+original split COFF relocation target identities. The static audit's PE body
+hashes and normalized fields alone are an inventory, not that installation contract.
 The output deliberately retains `allocation_coverage_complete=false` and
 `reset_coverage_complete=false`, even when `unresolved` is empty.
 
@@ -98,7 +146,7 @@ game source. A successful run proves static agreement; it supplies no runtime
 source ancestry or completeness claim.
 
 The separate host [allocation lifetime ledger](source-lifetimes.md) consumes
-guarded allocation/reset observations once producer integration exists. It does
+validated guarded allocation/reset observations through the runtime parser. It does
 not infer runtime coverage from this static inventory.
 
 A further retained split audit is in

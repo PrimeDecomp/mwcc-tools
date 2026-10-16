@@ -1,0 +1,131 @@
+{
+  "format_version": 1,
+  "generator_sha256": "00911ec4d24f486b7887a2bfc7ffaec31ccc8a24fd892627af75ed91db7b2a73",
+  "flags": [
+    "-nodefaults",
+    "-proc",
+    "gekko",
+    "-fp",
+    "hardware",
+    "-Cpp_exceptions",
+    "off",
+    "-O4,p"
+  ],
+  "cases": [
+    {
+      "source": "arena_collisions.cpp",
+      "sha256": "5d48eab267f3ff1147aa7a882c8c26ba6de4be3e038273e7f7c7d8021a439055",
+      "bytes": 4911,
+      "aim": "40 same-bucket macro names and 40 same-bucket externally visible variable names; stimulates first/tail lookup attempts, not a priori runtime site coverage"
+    },
+    {
+      "source": "arena_lifetimes.cpp",
+      "sha256": "bbce392b37cafd4e519b18b17dc563bc711afc6adfb65f4aae488a4b5c9bc9ff",
+      "bytes": 2332,
+      "aim": "4 independent exported functions, templates, nontrivial local destruction, inline argument calls, branches, loops and promoted-array patterns; repeated ordinary-pool resets/reuse are observations to verify"
+    }
+  ],
+  "collisions": [
+    {
+      "kind": "macro",
+      "bucket": 592,
+      "names": [
+        "arena_macro_000000",
+        "arena_macro_000667",
+        "arena_macro_000763",
+        "arena_macro_001627",
+        "arena_macro_001723",
+        "arena_macro_002666",
+        "arena_macro_002762",
+        "arena_macro_003626",
+        "arena_macro_003722",
+        "arena_macro_004071",
+        "arena_macro_004669",
+        "arena_macro_004765",
+        "arena_macro_004861",
+        "arena_macro_005031",
+        "arena_macro_005629",
+        "arena_macro_005725",
+        "arena_macro_005821",
+        "arena_macro_006568",
+        "arena_macro_006664",
+        "arena_macro_006770",
+        "arena_macro_007528",
+        "arena_macro_007624",
+        "arena_macro_007730",
+        "arena_macro_008567",
+        "arena_macro_008663",
+        "arena_macro_009527",
+        "arena_macro_009623",
+        "arena_macro_010228",
+        "arena_macro_010324",
+        "arena_macro_010430",
+        "arena_macro_011267",
+        "arena_macro_011363",
+        "arena_macro_012227",
+        "arena_macro_012323",
+        "arena_macro_013266",
+        "arena_macro_013362",
+        "arena_macro_014226",
+        "arena_macro_014322",
+        "arena_macro_014999",
+        "arena_macro_015269"
+      ]
+    },
+    {
+      "kind": "export",
+      "bucket": 922,
+      "names": [
+        "arena_export_000000",
+        "arena_export_000608",
+        "arena_export_000687",
+        "arena_export_000773",
+        "arena_export_001547",
+        "arena_export_001633",
+        "arena_export_002507",
+        "arena_export_002586",
+        "arena_export_002672",
+        "arena_export_003546",
+        "arena_export_003632",
+        "arena_export_004489",
+        "arena_export_004506",
+        "arena_export_004585",
+        "arena_export_004671",
+        "arena_export_005449",
+        "arena_export_005545",
+        "arena_export_005631",
+        "arena_export_006409",
+        "arena_export_006488",
+        "arena_export_006505",
+        "arena_export_006584",
+        "arena_export_006670",
+        "arena_export_007448",
+        "arena_export_007544",
+        "arena_export_007634",
+        "arena_export_007730",
+        "arena_export_008508",
+        "arena_export_008587",
+        "arena_export_008673",
+        "arena_export_009447",
+        "arena_export_009533",
+        "arena_export_010208",
+        "arena_export_010287",
+        "arena_export_010373",
+        "arena_export_011147",
+        "arena_export_011233",
+        "arena_export_011937",
+        "arena_export_012107",
+        "arena_export_012186"
+      ]
+    },
+    {
+      "kind": "automatic_function_identifier_export_tail",
+      "bucket": 1033,
+      "names": [
+        "arena_000008"
+      ],
+      "target": "__FUNCTION__"
+    }
+  ],
+  "scope": "These are source stimuli. Actual guarded runtime sites/pools/reset paths must be measured; no fixture promises locked reset/OOM/failure callback coverage."
+}

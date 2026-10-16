@@ -15,7 +15,25 @@ pub const ARGUMENT_HOOKS: [&str; 4] = [
     "_load_argument_registers",
     "_store_argument_on_stack",
 ];
-pub const HOOKS: [&str; 30] = [
+pub const ARENA_HOOKS: [&str; 8] = [
+    "_CompilerTools_ResetPool",
+    "_freeaheap",
+    "_freelheap",
+    "_CompilerTools_ResetGallocAndPoolMemory",
+    "_releasegheap",
+    "_releaseheaps",
+    "_initheaps",
+    "_CompilerTools_InitHeaps",
+];
+pub const HOOKS: [&str; 38] = [
+    "_CompilerTools_ResetPool",
+    "_freeaheap",
+    "_freelheap",
+    "_CompilerTools_ResetGallocAndPoolMemory",
+    "_releasegheap",
+    "_releaseheaps",
+    "_initheaps",
+    "_CompilerTools_InitHeaps",
     "_fn_00460c90",
     "_fn_00507070",
     "_fn_00506f50",
@@ -47,7 +65,8 @@ pub const HOOKS: [&str; 30] = [
     "_load_argument_registers",
     "_store_argument_on_stack",
 ];
-pub const SUPPORT: [&str; 13] = [
+pub const SUPPORT: [&str; 14] = [
+    "_OracleRust_ArenaProbeV1",
     "_OracleRust_ExpressionProbeV1",
     "_OracleRust_ArgumentForceGpr",
     "_OracleRust_CounterProbeV6",
@@ -62,7 +81,8 @@ pub const SUPPORT: [&str; 13] = [
     "_OracleRust_PrintChain",
     "_OracleRust_InlineLine",
 ];
-pub const SOURCES: [&str; 17] = [
+pub const SOURCES: [&str; 18] = [
+    "source_arenas.rs",
     "lifecycle.rs",
     "call_arguments.rs",
     "backend.rs",
@@ -130,7 +150,16 @@ pub fn validate_frontend(data: &[u8], version: &str) -> Result<()> {
         &imports.iter().map(String::as_str).collect::<Vec<_>>(),
     )
 }
-pub const IMPORTS: [&str; 60] = [
+pub const IMPORTS: [&str; 69] = [
+    "_OracleRust_ArenaGlobals",
+    "_CompilerTools_ResetPool__retail",
+    "_freeaheap__retail",
+    "_freelheap__retail",
+    "_CompilerTools_ResetGallocAndPoolMemory__retail",
+    "_releasegheap__retail",
+    "_releaseheaps__retail",
+    "_initheaps__retail",
+    "_CompilerTools_InitHeaps__retail",
     "_abort",
     "_FunctionCalls_GenerateCall__retail",
     "_assign_argument_locations__retail",

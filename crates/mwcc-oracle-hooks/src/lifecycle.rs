@@ -794,6 +794,7 @@ pub unsafe extern "C" fn observe(r: &Registers, site: u32, d: &Descriptor) {
                 return;
             }
             let scalar = crate::scalar::take_summary(state.object);
+            crate::source_arenas::checkpoint(state.id);
             let (scalar_passes, scalar_bindings, scalar_first, scalar_last) =
                 scalar.unwrap_or((0, 0, 0, 0));
             OracleTrace_Printf(

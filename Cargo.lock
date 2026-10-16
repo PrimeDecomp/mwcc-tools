@@ -320,6 +320,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "mwcc-oracle-core",
+ "serde",
  "serde_json",
  "sha2",
  "tempfile",

@@ -233,6 +233,18 @@ pub fn run(request: &Request) -> Result<Report> {
                                 .all(|hook| symbols.contains(*hook)))),
                 "Rust V6 argument observer hooks are missing; rebuild the common hooks with the current sources"
             );
+            ensure!(
+                compiled_objects
+                    .iter()
+                    .any(|p| fs::read(request.root.join(p))
+                        .ok()
+                        .and_then(|b| coff::defined_symbols(&b).ok())
+                        .is_some_and(|symbols| symbols.contains("_OracleRust_ArenaProbeV1")
+                            && crate::producer::ARENA_HOOKS
+                                .iter()
+                                .all(|hook| symbols.contains(*hook)))),
+                "Rust arena observer hooks are missing; rebuild the common hooks with the current sources"
+            );
             let mut dispatchers = 0;
             for input in &mut inputs {
                 if !input.ends_with(".obj") {
@@ -286,6 +298,36 @@ pub fn run(request: &Request) -> Result<Report> {
                 &serde_json::to_vec_pretty(&arguments.guards)?,
             )?;
             messages.push("installed guarded regular-call argument observations".into());
+            let arena_inputs = inputs
+                .iter()
+                .filter(|p| p.ends_with(".obj") && !compiled_objects.contains(p))
+                .map(|p| Ok((p.clone(), fs::read(request.root.join(p))?)))
+                .collect::<Result<Vec<_>>>()?;
+            let arenas = crate::source_arena_probe::install(&request.root, version, &arena_inputs)?;
+            for input in &mut inputs {
+                if let Some(data) = arenas.objects.get(input) {
+                    let output = format!("build/{version}/oracle/arenas/{}", basename(input));
+                    write(&request.root, &output, data)?;
+                    *input = output;
+                }
+            }
+            let arena_islands = format!("build/{version}/oracle/compiled/rust/arena-islands.obj");
+            write(&request.root, &arena_islands, &arenas.islands)?;
+            inputs.push(arena_islands);
+            write(
+                &request.root,
+                &format!("build/{version}/oracle/arenas/sites.json"),
+                &serde_json::to_vec_pretty(&arenas.sites)?,
+            )?;
+            write(
+                &request.root,
+                &format!("build/{version}/oracle/arenas/guards.json"),
+                &serde_json::to_vec_pretty(&arenas.guards)?,
+            )?;
+            messages.push(format!(
+                "installed {} guarded arena observations",
+                arenas.sites.len()
+            ));
             let counter_inputs = inputs
                 .iter()
                 .filter(|p| p.ends_with(".obj") && !compiled_objects.contains(p))
@@ -348,7 +390,10 @@ pub fn run(request: &Request) -> Result<Report> {
             .filter_map(Value::as_str)
             .collect::<Vec<_>>();
         if native {
-            for hook in crate::producer::ARGUMENT_HOOKS {
+            for hook in crate::producer::ARGUMENT_HOOKS
+                .into_iter()
+                .chain(crate::producer::ARENA_HOOKS)
+            {
                 if !hooks.contains(&hook) {
                     hooks.push(hook);
                 }

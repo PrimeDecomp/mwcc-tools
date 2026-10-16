@@ -4,7 +4,68 @@ Updated 2026-10-17. The active objective is to implement all four requested tool
 using the [adopted roadmap](oracle-source-guided-search.md). The objective is not
 complete. The completed Rust migration remains a separate release.
 
-## Current extension: lowered call arguments and retained reproducers
+## Current extension: guarded arena lifetimes
+
+The development producer now connects guarded arena allocation and invalidation
+observations to the host lifetime ledger. `oracle compile-trace --source-arenas`
+is independent of backend tracing. Nine pre-alignment request/commit pairs,
+eight reset/release/initialization wrappers and an explicit failure-callback
+boundary produce compilation-wide `pv.arena.*` records with independent totals.
+Use native `source-arenas inspect` and `source-arenas resolve` for historical
+payload queries. Missing coverage remains indeterminate. See
+[source arenas](oracle/source-arenas.md) and
+[allocation lifetimes](oracle/source-lifetimes.md).
+
+Queries revalidate raw records and replay the ledger through the selected
+one-based trace position. A later balanced checkpoint must independently
+reconcile that prefix. Checkpoint emission, active resets, padding, unknown
+epochs, conflicting spans and unsupported callbacks cannot establish liveness.
+Earlier checkpointed observations survive a later truncated suffix. An arena-only
+capture has reset-end checkpoints; backend tracing adds function-end checkpoints.
+No process-end checkpoint is inferred. Fingerprint format 4 rejects arena
+captures until their normalization is implemented.
+
+Current workspace suites pass on both hosts: **229 passed, 13 opt-in tests
+ignored**. All-target Clippy and actual i686 common/frontend Clippy pass with
+warnings denied. The Windows constructor proof rejects **271 mutations** across
+all three compiler versions and preserves every nonpatch byte and identity.
+GC2.7 additionally guards a coarse four-function split so its final call cannot
+be hidden by decoding across zero padding.
+
+Fresh native producers pass **36 C/Rust baseline compilations per host**. Final
+runtime captures pass **18 fixture compilations per host**, including all nine
+allocation paths, optional inline/template streams and backend coexistence.
+Exact legacy trace parity is separate from backend diagnostic FP4 and validated
+decision parity: raw saved CPU registers can contain volatile pointers and stale
+partial-register upper bits. Both native runtime audits also pass **54 malformed
+variants and nine padding negatives per host**, with actual historical address
+reuse proved in optimizer, block and local pools on every compiler version.
+Each fixture's independent raw counters reconcile with zero gaps. Windows alone
+retains 563,227 arena records and 24 old/new reuse pairs; this is a coverage
+fixture, not a performance benchmark.
+
+The common/frontend/trace COFF and all generated arena, argument and counter
+islands agree byte-for-byte between hosts. All nine cross-host fixture objects
+also agree. Exact identities, logs and commands are under
+`build/source-guided/source-arena-runtime-audit/`: `validation-v2`,
+`constructor-cos-group-fixed/windows`, `windows-producer-v3/rust-producer-hz1mae5p`,
+`windows-runtime-final-v1`, `final-bin` and `cross-host-runtime-v1.json`.
+The native Linux producer/runtime proofs are under
+`/home/henrique/.cache/mwcc-source-arena-runtime-audit/{producer-v3,runtime-final-v1}`.
+These local ignored artifacts are not guaranteed present in a fresh checkout.
+Failed and intermediate runs remain separate, including a multipart trace-line
+interleaving bug fixed by resolving allocating link-name lookups before printing.
+Native fixtures exercise reset operations 1/2/3/6/8. Locked-reset, callback and
+capacity negatives have focused host tests. Operations 4/5/7 have static guards;
+none of these are claimed as exercised native fixture paths.
+
+Allocation identity does not establish initialized node contents, immutable
+revisions or original-source ancestry. The next bridge work is immutable source
+observations and actual inline/IRO replacement edges, with shared validated replay
+for batches of node queries. The successful source recipe below remains a
+separate source-transformation proof.
+
+## Retained V6 baseline: lowered call arguments and reproducers
 
 V6 adds [call-argument provenance](oracle/call-arguments.md): exact lowered
 contexts, cached callee links, nested dispatch/register/stack/ForceGPR episodes,
@@ -109,7 +170,8 @@ Unknown end totals invalidate affected earlier receipts retrospectively;
 precisely located loss is a separate operation. Cross-pool overlaps and malformed
 spans cannot leave conflicting current identities proven. An active interval
 index avoids historical scans in normal operation. This is a tested foundation,
-not a V7 producer or a parser for V6 pointers. See
+not a parser for V6 pointers. The runtime integration above adds new guarded
+observations rather than assigning lifetimes to old captures. See
 [allocation lifetimes](oracle/source-lifetimes.md).
 
 The [new bounded source family](oracle-source-discovery-envmodulate.md) retains
@@ -146,7 +208,7 @@ full-unit source-transformation proof; the diagnostic target is the clean-source
 baseline object, not retail. It does not establish semantic lifetime elimination,
 direct initialization or a category transition.
 
-Current workspace suites pass on both hosts: **208 passed, 12 opt-in tests
+The preceding bridge-foundation suites passed on both hosts: **208 passed, 12 opt-in tests
 ignored**, with all-target Clippy warnings denied. The opt-in retail arena test
 also passes on each host across all three compiler versions. Logs are in
 `build/source-guided/source-origin-bridge/validation-v1/`. The first Windows
@@ -154,9 +216,9 @@ preflight exposed an inherited nonblocking accepted socket in the HTTP fixture;
 the fixture now explicitly uses blocking request reads with its existing timeout.
 Initial diagnostics remain separate from the passing current logs.
 
-The next source-provenance implementation step is guarded runtime allocation and
-invalidation capture with independent totals feeding the lifetime ledger, then
-immutable source-node observations and actual inline/IRO replacement edges.
+The runtime allocation/invalidation integration above supplies the next tested
+foundation. Immutable source-node observations and actual inline/IRO replacement
+edges remain to be implemented.
 Neither pointer equality nor the new successful source recipe closes those
 remaining original-source and semantic-lifetime requirements.
 

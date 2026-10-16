@@ -15,6 +15,7 @@ mod header_impact_cli;
 mod kit_cli;
 mod provenance_cli;
 mod release_cli;
+mod source_arenas_cli;
 mod source_index_cli;
 mod source_reduce_cli;
 mod source_repro_cli;
@@ -145,6 +146,7 @@ fn parse_compile(args: &[String], schema_six: bool) -> Result<ParsedCompile> {
             }
             "--stages" => options.stages = true,
             "--backend" => options.backend = true,
+            "--source-arenas" => options.source_arenas = true,
             "--json" => json_output = true,
             "--pcode" => pcode = true,
             "--raw" => raw = true,
@@ -716,6 +718,8 @@ fn help() {
   oracle analyze-trace TRACE [--version V] [--function NAME] [--link NAME] [--raw] [--allocation-only | --events]
   oracle compile-trace SOURCE [options] -- COMPILER FLAGS
   provenance inspect TRACE_OR_CAPTURE.json [--link NAME] [--json]
+  source-arenas inspect TRACE_OR_CAPTURE.json [--json]
+  source-arenas resolve TRACE_OR_CAPTURE.json --position LINE --pool POOL --address HEX --extent BYTES
   provenance compare FIRST SECOND --link NAME [--second-link NAME] [--class 4] [--first-round 0] [--second-round 0] [--version GC_2_7] [--json]
   provenance audit-counters|audit-dispatch|audit-source-arenas --root ORACLE_ROOT --version GC_2_7
   oracle run-unit --project DIR --unit NAME [--candidate FILE] [--fast] -- VIEW OPTIONS
@@ -765,6 +769,7 @@ fn help() {
 
 Oracle views: --pcode, --schedule, --near N, --inline-cost CALLEE, --full-cost, --instantiation TEXT, --cse, --ir LINE|all, --exchange A,B, --blocks, --locals, --raw.
 compile-trace includes provenance and explicit check status; oracle --json uses report schema 6.
+compile-trace --source-arenas records guarded arena lifetimes independently of --backend.
 Migration details: docs/oracle-rust-status.md."#
     );
 }
@@ -976,6 +981,7 @@ fn run() -> Result<()> {
         Some("data-diff") => tu_cli::data_diff(&args[1..])?,
         Some("header-impact") => header_impact_cli::run(&args[1..])?,
         Some("source-search") => source_search_cli::run(&args[1..])?,
+        Some("source-arenas") => source_arenas_cli::run(&args[1..])?,
         Some("source-reduce") => source_reduce_cli::run(&args[1..])?,
         Some("source-repro") => source_repro_cli::run(&args[1..])?,
         Some("source-index") => source_index_cli::run(&args[1..])?,

@@ -21,6 +21,21 @@ fn prefix() -> String {
     )
 }
 #[test]
+fn arena_coverage_is_independent_of_coalescer_decision_coverage() {
+    let text = format!(
+        "{}{}pv.coalesce.end pass=1 candidates=1\n",
+        prefix(),
+        check("destination_below_window", "271", 1, "80")
+    );
+    let with_arenas = format!("pv.arena.unknown schema=1\n{text}");
+    let report = provenance::parse(&with_arenas).unwrap();
+    assert_eq!(report.decisions.state, EvaluationState::Satisfied);
+    assert_eq!(
+        report.source_arenas.observations.state,
+        EvaluationState::Indeterminate
+    );
+}
+#[test]
 fn branches_explain_rejections_but_never_prove_creation_or_elimination() {
     let trace = format!(
         "{}{}pv.coalesce.end pass=1 candidates=1\n",

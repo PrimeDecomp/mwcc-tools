@@ -377,6 +377,15 @@ An empty unresolved list does not establish runtime allocation/reset coverage or
 source ancestry. Pool generations and immutable node revisions are separate;
 pointer equality alone cannot identify an original write.
 
+The development producer also accepts `oracle compile-trace --source-arenas`.
+Use `source-arenas inspect CAPTURE --json` and `source-arenas resolve CAPTURE
+--position LINE --pool local --address HEX --extent BYTES` for guarded historical
+allocation queries. Positions are one-based raw trace lines, and addresses are
+hexadecimal. A query needs a later independently reconciled checkpoint; absent
+or truncated evidence remains indeterminate. Without `--backend`, checkpoints
+come only from reset returns. This stream does not yet supply original-source
+ancestry, and graph fingerprint format 4 rejects arena captures.
+
 Queries use the shared mechanism evaluator. Require an actual symbol relocation
 when asking for a zero address-pair count, so unrelated functions cannot satisfy
 the query by never using that symbol. Zero counts describe the guarded Normalize

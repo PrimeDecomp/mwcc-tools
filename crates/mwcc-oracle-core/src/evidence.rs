@@ -27,6 +27,7 @@ pub enum EvidenceGap {
     ArrayPromotionCoverage,
     CallResultCoverage,
     CallArgumentCoverage,
+    SourceArenaCoverage,
     ScalarizationCoverage,
 }
 

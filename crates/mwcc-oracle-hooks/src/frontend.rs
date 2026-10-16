@@ -140,12 +140,25 @@ unsafe extern "C" fn decision(node: *const u8) -> u8 {
         };
         let result = decision_retail(node);
         let options = ptr::addr_of!(copts);
+        let name = callee_name(function);
+        let nesting = i32::from(ptr::addr_of!(data_00582468).read());
+        let inline_bit = i32::from(read::<u32>(function, 18) & 0x10 != 0);
+        let always = i32::from(read::<u8>(options, OFFSETS.0));
+        let auto = i32::from(read::<u8>(options, OFFSETS.1));
+        let limit = i32::from(read::<i16>(options, OFFSETS.2));
+        let nstmts = if info.is_null() {
+            -1
+        } else {
+            i32::from(read::<u16>(info, 12))
+        };
+        let line = OracleRust_InlineLine();
+        // Mangling can allocate a hash entry and emit an arena record. Finish
+        // compiler lookups before starting this multipart output record.
+        let link = OracleRust_LinkName(function);
         OracleTrace_Printf(c"inl.can function=%s result=%d depth=%d inline_bit=%d always=%d auto=%d limit=%d body=%d nstmts=%d line=%d link=".as_ptr(),
-            callee_name(function), i32::from(result), i32::from(ptr::addr_of!(data_00582468).read()),
-            i32::from(read::<u32>(function, 18) & 0x10 != 0), i32::from(read::<u8>(options, OFFSETS.0)),
-            i32::from(read::<u8>(options, OFFSETS.1)), i32::from(read::<i16>(options, OFFSETS.2)),
-            i32::from(!info.is_null()), if info.is_null() { -1 } else { i32::from(read::<u16>(info, 12)) }, OracleRust_InlineLine());
-        OracleTrace_Printf(c"%s chain=".as_ptr(), OracleRust_LinkName(function));
+            name, i32::from(result), nesting, inline_bit, always, auto, limit,
+            i32::from(!info.is_null()), nstmts, line);
+        OracleTrace_Printf(c"%s chain=".as_ptr(), link);
         OracleRust_PrintChain(node);
         OracleTrace_Printf(c"\n".as_ptr());
         result
@@ -383,16 +396,18 @@ unsafe extern "C" fn fn_0055e600(expr: *const u8, running: i32, depth: i32) -> i
         let buffer = what.as_mut_ptr().cast::<u8>();
         buffer.write(0);
         describe(expr, buffer, &mut 0, 0);
-        OracleTrace_Printf(
-            c"inl.expr nest=%d type=%d cost=%d ".as_ptr(),
-            ptr::addr_of!(NEST).read(),
-            if expr.is_null() {
-                -1
-            } else {
-                i32::from(read::<u8>(expr, 0))
-            },
-            result.wrapping_sub(running),
-        );
+        let nesting = ptr::addr_of!(NEST).read();
+        let expression_kind = if expr.is_null() {
+            -1
+        } else {
+            i32::from(read::<u8>(expr, 0))
+        };
+        let mut call_metadata = false;
+        let mut link = c"?".as_ptr();
+        let mut flags = 0u32;
+        let mut cand = false;
+        let mut body = false;
+        let mut limited = false;
         if !expr.is_null() && matches!(read::<u8>(expr, 0), 54 | 55) {
             let reference = read::<*const u8>(expr, 14);
             if !reference.is_null()
@@ -400,35 +415,48 @@ unsafe extern "C" fn fn_0055e600(expr: *const u8, running: i32, depth: i32) -> i
                 && !read::<*const u8>(reference, 14).is_null()
             {
                 let mut callee = read::<*const u8>(reference, 14);
-                let cand = candidate(callee, reference);
-                let body = cand && !read::<*const u8>(callee, 42).is_null();
-                let limited = depth == 0 && body && callee != ptr::addr_of!(data_005dfb62).read();
+                cand = candidate(callee, reference);
+                body = cand && !read::<*const u8>(callee, 42).is_null();
+                limited = depth == 0 && body && callee != ptr::addr_of!(data_005dfb62).read();
                 while read::<u8>(callee, 2) == 6 && !read::<*const u8>(callee, 42).is_null() {
                     callee = read(callee, 42);
                 }
                 let ty = read::<*const u8>(callee, 14);
-                OracleTrace_Printf(
-                    c"link=%s flags=%x cand=%d body=%d %s".as_ptr(),
-                    OracleRust_LinkName(callee),
-                    if !ty.is_null() && read::<u8>(ty, 0) == 6 {
-                        read::<u32>(ty, 22)
-                    } else {
-                        0
-                    },
-                    i32::from(cand),
-                    i32::from(body),
-                    if limited {
-                        c"limit=1 ".as_ptr()
-                    } else {
-                        c"".as_ptr()
-                    },
-                );
+                link = OracleRust_LinkName(callee);
+                flags = if !ty.is_null() && read::<u8>(ty, 0) == 6 {
+                    read::<u32>(ty, 22)
+                } else {
+                    0
+                };
+                call_metadata = true;
             }
         }
         let calls = ptr::addr_of_mut!(CALLS).cast::<u8>();
         calls.write(0);
         let mut used = 0;
+        // Both this walk and the direct callee lookup above can allocate while
+        // obtaining link names. Keep their order, ahead of every output prefix.
         body_calls(expr, depth, calls, &mut used);
+        OracleTrace_Printf(
+            c"inl.expr nest=%d type=%d cost=%d ".as_ptr(),
+            nesting,
+            expression_kind,
+            result.wrapping_sub(running),
+        );
+        if call_metadata {
+            OracleTrace_Printf(
+                c"link=%s flags=%x cand=%d body=%d %s".as_ptr(),
+                link,
+                flags,
+                i32::from(cand),
+                i32::from(body),
+                if limited {
+                    c"limit=1 ".as_ptr()
+                } else {
+                    c"".as_ptr()
+                },
+            );
+        }
         if used != 0 {
             OracleTrace_Printf(c"calls=%s ".as_ptr(), calls);
         }
@@ -456,26 +484,28 @@ unsafe extern "C" fn expansion(expr: *const u8) -> *const u8 {
         } else {
             ptr::null()
         };
+        let name = callee_name(function);
+        let nesting = i32::from(ptr::addr_of!(data_00582468).read());
+        let kind = if info.is_null() {
+            -1
+        } else {
+            i32::from(read::<u8>(info, OFFSETS.3))
+        };
+        let line = OracleRust_InlineLine();
+        let link = if function.is_null() {
+            c"?".as_ptr()
+        } else {
+            OracleRust_LinkName(function)
+        };
         OracleTrace_Printf(
             c"inl.begin function=%s depth=%d body=%d kind=%d line=%d link=".as_ptr(),
-            callee_name(function),
-            i32::from(ptr::addr_of!(data_00582468).read()),
+            name,
+            nesting,
             i32::from(!info.is_null()),
-            if info.is_null() {
-                -1
-            } else {
-                i32::from(read::<u8>(info, OFFSETS.3))
-            },
-            OracleRust_InlineLine(),
+            kind,
+            line,
         );
-        OracleTrace_Printf(
-            c"%s\n".as_ptr(),
-            if function.is_null() {
-                c"?".as_ptr()
-            } else {
-                OracleRust_LinkName(function)
-            },
-        );
+        OracleTrace_Printf(c"%s\n".as_ptr(), link);
         let parent = OracleRust_OriginFind(read(expr, 14));
         let result = expansion_retail(expr);
         OracleTrace_Printf(

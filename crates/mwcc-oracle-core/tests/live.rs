@@ -36,6 +36,7 @@ fn original_and_oracle_objects_agree_for_all_synthetic_versions() {
             version: Version::parse(case["version"].as_str().unwrap()).unwrap(),
             options: TraceOptions {
                 backend: false,
+                source_arenas: false,
                 schedule: true,
                 inline_cost: true,
                 full_cost: true,

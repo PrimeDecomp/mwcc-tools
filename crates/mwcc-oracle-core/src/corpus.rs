@@ -180,6 +180,7 @@ pub fn run(request: &Request) -> Result<Report> {
     let options = if request.all_traces {
         TraceOptions {
             backend: true,
+            source_arenas: false,
             schedule: true,
             inline_cost: true,
             full_cost: true,

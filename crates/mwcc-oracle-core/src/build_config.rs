@@ -480,7 +480,8 @@ pub fn generate(root: &Path, request: &Request) -> Result<Generation> {
                 ensure!(
                     crate::producer::HOOKS
                         .iter()
-                        .filter(|name| !crate::producer::ARGUMENT_HOOKS.contains(name))
+                        .filter(|name| !crate::producer::ARGUMENT_HOOKS.contains(name)
+                            && !crate::producer::ARENA_HOOKS.contains(name))
                         .chain(crate::producer::frontend_hooks(version)?.iter())
                         .all(|name| hooks.iter().any(|h| h == name)),
                     "this version does not expose all migrated Rust hooks"

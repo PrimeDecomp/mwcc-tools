@@ -6,13 +6,13 @@
 //! accessible payload extent, not initialized bytes or evidence of an object type.
 //! An allocation identity and a node's immutable observation/revision are separate:
 //! this ledger deliberately provides no node/content equivalence operation.
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, BTreeSet},
     sync::Arc,
 };
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PoolDomain {
     Heap,

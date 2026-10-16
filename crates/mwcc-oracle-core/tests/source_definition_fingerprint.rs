@@ -159,6 +159,20 @@ fn fingerprint(text: &str) -> String {
 }
 
 #[test]
+fn arena_captures_cannot_use_fingerprints_without_arena_normalization() {
+    let text = trace();
+    let report = provenance::parse(&text).unwrap();
+    let mut capture = compilation(text.clone());
+    capture.trace_options.source_arenas = true;
+    assert!(state::fingerprint(&report.graphs.graphs[0], &report, &capture).is_err());
+    let with_record = format!("{text}\npv.arena.unknown schema=1\n");
+    let report = provenance::parse(&with_record).unwrap();
+    assert!(
+        state::fingerprint(&report.graphs.graphs[0], &report, &compilation(with_record)).is_err()
+    );
+}
+
+#[test]
 fn scalarized_definition_fingerprint_keeps_preallocation_definition_shape() {
     let original = non_li_definition();
     let changed = original.replacen("ra.i p=ccc op=103", "ra.i p=ccc op=102", 1);

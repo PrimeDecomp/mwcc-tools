@@ -41,16 +41,19 @@ unsafe fn maybe_link(object: *const u8) -> *const c_char {
         }
     }
 }
-unsafe fn context() {
+// Name lookup can allocate in the compiler. Resolve every link before emitting
+// the first fragment so arena records cannot split an existing trace record.
+unsafe fn context() -> (*const c_char, *const c_char) {
     unsafe {
-        OracleTrace_Printf(
-            c"from=%s ".as_ptr(),
-            maybe_link(ptr::addr_of!(cscope_currentfunc).read()),
-        );
-        OracleTrace_Printf(
-            c"expanding=%s ".as_ptr(),
-            maybe_link(ptr::addr_of!(data_005dfb62).read()),
-        );
+        let from = maybe_link(ptr::addr_of!(cscope_currentfunc).read());
+        let expanding = maybe_link(ptr::addr_of!(data_005dfb62).read());
+        (from, expanding)
+    }
+}
+unsafe fn print_context(context: (*const c_char, *const c_char)) {
+    unsafe {
+        OracleTrace_Printf(c"from=%s ".as_ptr(), context.0);
+        OracleTrace_Printf(c"expanding=%s ".as_ptr(), context.1);
     }
 }
 unsafe fn pending(flag: u8) -> *const u8 {
@@ -76,13 +79,15 @@ unsafe extern "C" fn CInline_AddFunctionPrecNode(
         if !wanted(c"MWCC_ORACLE_INSTANTIATION") {
             return;
         }
+        let context = context();
+        let link = link_name(function);
         OracleTrace_Printf(
             c"tp.queue kind=0 pending=%d new=%d ".as_ptr(),
             i32::from(flag),
             i32::from(pending(flag) != before),
         );
-        context();
-        OracleTrace_Printf(c"link=%s\n".as_ptr(), link_name(function));
+        print_context(context);
+        OracleTrace_Printf(c"link=%s\n".as_ptr(), link);
     }
 }
 #[unsafe(no_mangle)]
@@ -97,12 +102,14 @@ unsafe extern "C" fn CInline_AddSpecialization(
         if !wanted(c"MWCC_ORACLE_INSTANTIATION") {
             return;
         }
+        let context = context();
+        let link = link_name(function);
         OracleTrace_Printf(
             c"tp.queue kind=2 pending=1 new=%d ".as_ptr(),
             i32::from(ptr::addr_of!(pendingInlineWork).read() != before),
         );
-        context();
-        OracleTrace_Printf(c"link=%s\n".as_ptr(), link_name(function));
+        print_context(context);
+        OracleTrace_Printf(c"link=%s\n".as_ptr(), link);
     }
 }
 #[unsafe(no_mangle)]
@@ -110,9 +117,11 @@ unsafe extern "C" fn CTemplateNew_InstantiateInlineTemplateObject(object: *const
     unsafe {
         let result = CTemplateNew_InstantiateInlineTemplateObject__retail(object);
         if wanted(c"MWCC_ORACLE_INSTANTIATION") {
+            let context = context();
+            let link = link_name(object);
             OracleTrace_Printf(c"tp.need result=%d ".as_ptr(), i32::from(result));
-            context();
-            OracleTrace_Printf(c"link=%s\n".as_ptr(), link_name(object));
+            print_context(context);
+            OracleTrace_Printf(c"link=%s\n".as_ptr(), link);
         }
         result
     }
@@ -125,14 +134,16 @@ unsafe extern "C" fn CTemplateNew_InstantiateFunction(
 ) -> u8 {
     unsafe {
         if wanted(c"MWCC_ORACLE_INSTANTIATION") {
-            OracleTrace_Printf(c"tp.func ".as_ptr());
-            context();
+            let context = context();
             let object = if specialization.is_null() {
                 ptr::null()
             } else {
                 read(specialization, 4)
             };
-            OracleTrace_Printf(c"link=%s\n".as_ptr(), maybe_link(object));
+            let link = maybe_link(object);
+            OracleTrace_Printf(c"tp.func ".as_ptr());
+            print_context(context);
+            OracleTrace_Printf(c"link=%s\n".as_ptr(), link);
         }
         CTemplateNew_InstantiateFunction__retail(definition, specialization, report)
     }
@@ -150,9 +161,11 @@ unsafe extern "C" fn emit(object: *const u8, caller: u32) {
         if wanted(c"MWCC_ORACLE_INSTANTIATION")
             && ptr::addr_of!(deferredInlineNodes).read() != before
         {
+            let context = context();
+            let link = maybe_link(object);
             OracleTrace_Printf(c"tp.emit caller=%lx ".as_ptr(), caller);
-            context();
-            OracleTrace_Printf(c"link=%s\n".as_ptr(), maybe_link(object));
+            print_context(context);
+            OracleTrace_Printf(c"link=%s\n".as_ptr(), link);
         }
     }
 }

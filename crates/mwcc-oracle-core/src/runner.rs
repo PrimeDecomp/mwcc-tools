@@ -16,6 +16,7 @@ use tempfile::TempDir;
 
 const TRACE_ENV: &[&str] = &[
     "MWCC_ORACLE_BACKEND",
+    "MWCC_ORACLE_SOURCE_ARENAS",
     "MWCC_ORACLE_SCHEDULE",
     "MWCC_ORACLE_INLINE_COST",
     "MWCC_ORACLE_FULL_COST",
@@ -31,6 +32,7 @@ const TRACE_ENV: &[&str] = &[
 #[serde(default, deny_unknown_fields)]
 pub struct TraceOptions {
     pub backend: bool,
+    pub source_arenas: bool,
     pub schedule: bool,
     pub inline_cost: bool,
     pub full_cost: bool,
@@ -46,6 +48,7 @@ impl TraceOptions {
         let mut env = BTreeMap::new();
         for (key, enabled, value) in [
             ("MWCC_ORACLE_BACKEND", self.backend, "1"),
+            ("MWCC_ORACLE_SOURCE_ARENAS", self.source_arenas, "1"),
             ("MWCC_ORACLE_SCHEDULE", self.schedule, "1"),
             ("MWCC_ORACLE_INLINE_COST", self.inline_cost, "1"),
             ("MWCC_ORACLE_FULL_COST", self.full_cost, "1"),

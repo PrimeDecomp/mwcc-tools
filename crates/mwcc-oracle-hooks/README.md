@@ -1,6 +1,6 @@
 # In-process Rust producer
 
-This `no_std` crate produces three i686 Windows COFF objects, linked by the historical linker: common hooks, a version-specific frontend and trace output. Together they replace all 31 observation wrappers and both output APIs. The development common object exports eleven support helpers and these 26 wrappers:
+This `no_std` crate produces three i686 Windows COFF objects, linked by the historical linker: common hooks, a version-specific frontend and trace output. The completed migration replaced all 31 original observation wrappers and both output APIs. The current development common object has 38 wrappers and 14 support exports (52 total), with exactly 69 imports. Five frontend wrappers and the two output APIs remain separate objects. The original 26 common wrappers are:
 
 | Symbol | Records |
 |---|---|
@@ -31,7 +31,17 @@ This `no_std` crate produces three i686 Windows COFF objects, linked by the hist
 | `generate_inline_code` | saved-body code generation (`tp.gen`) |
 | `setup_inline_locals_and_arguments` | formal/actual bindings (`lc.arg`) |
 
-`OracleRust_LinkName`, `OracleRust_PrintInstruction` and `OracleRust_Snapshot` provide mangled-name lookup, raw PCode records and allocation/stage snapshots. `OracleRust_DescribeExpression` supplies binding expression spelling, and `cse_vregs` supplies CSE register records. The separate frontend imports `OracleRust_LinkName`, `OracleRust_OriginFind`, `OracleRust_OriginWalk`, `OracleRust_PrintChain` and `OracleRust_InlineLine` to share the common object's ancestry table and statement context. These nine exports, plus the development `OracleRust_BackendProbe` and `OracleRust_CounterProbeV5`, are support functions, not retail hooks; they are checked separately and do not belong in `oracle.hooks`.
+Four additional common wrappers observe regular-call arguments. Eight arena
+wrappers observe `CompilerTools_ResetPool`, `freeaheap`, `freelheap`,
+`CompilerTools_ResetGallocAndPoolMemory`, `releasegheap`, `releaseheaps`,
+`initheaps` and `CompilerTools_InitHeaps`. They preserve the exact retail ABI;
+the two initialization functions return raw status and accept the failure
+callback. Native link installation supplies 19 guarded allocation islands and
+the private `OracleRust_ArenaGlobals` data ABI. `OracleRust_ArenaProbeV1` is a
+support observer. The opt-in `MWCC_ORACLE_SOURCE_ARENAS` stream and its bounded
+coverage semantics are described in [source arenas](../../docs/oracle/source-arenas.md).
+
+`OracleRust_LinkName`, `OracleRust_PrintInstruction` and `OracleRust_Snapshot` provide mangled-name lookup, raw PCode records and allocation/stage snapshots. `OracleRust_DescribeExpression` supplies binding expression spelling, and `cse_vregs` supplies CSE register records. The separate frontend imports `OracleRust_LinkName`, `OracleRust_OriginFind`, `OracleRust_OriginWalk`, `OracleRust_PrintChain` and `OracleRust_InlineLine` to share the common object's ancestry table and statement context. These nine exports, plus `OracleRust_BackendProbe`, `OracleRust_CounterProbeV6`, `OracleRust_ExpressionProbeV1`, `OracleRust_ArgumentForceGpr` and `OracleRust_ArenaProbeV1`, are support functions, not retail hooks; they are checked separately and do not belong in `oracle.hooks`.
 
 The retail compiler still performs allocation. The Rust wrappers preserve the C wrapper's call order, operand-byte guards and trace formatting. Compiler pointers stay raw; packed fields and embedded x86 operands are read without creating Rust references. No allocator, unwinding or Rust-owned values cross the ABI. The trace object owns `OracleTrace_Printf` and `OracleTrace_Enabled`, forwarding formatting and flushing to the original compiler's C stdio.
 

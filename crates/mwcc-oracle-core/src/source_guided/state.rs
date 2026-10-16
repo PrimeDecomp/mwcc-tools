@@ -231,6 +231,12 @@ pub fn object_instructions(object: &[u8], link: &str) -> Result<Value> {
 /// graphs. This can miss duplicate states but cannot merge solely on WL hashes.
 pub fn fingerprint(g: &Graph, report: &Report, compilation: &Compilation) -> Result<String> {
     ensure!(
+        !compilation.trace_options.source_arenas
+            && !compilation.trace.contains("pv.arena.")
+            && report.source_arenas.events.is_empty(),
+        "source arena capture normalization is not supported by this fingerprint format"
+    );
+    ensure!(
         report.trace_sha256 == digest(compilation.trace.as_bytes()),
         "fingerprint provenance is not bound to the exact compiler trace"
     );

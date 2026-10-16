@@ -321,15 +321,15 @@ pub(crate) unsafe fn dispatch_end(token: u32, abandoned: bool) {
         if token == 0 {
             return;
         }
-        if let Some(e) = active() {
-            if e.id == token {
-                if abandoned {
-                    gap(e.call, e.ordinal, e.id, c"dispatch_unwind")
-                } else {
-                    operand(e, c"dispatch_return")
-                }
-                end(token)
+        if let Some(e) = active()
+            && e.id == token
+        {
+            if abandoned {
+                gap(e.call, e.ordinal, e.id, c"dispatch_unwind")
+            } else {
+                operand(e, c"dispatch_return")
             }
+            end(token)
         }
     }
 }
@@ -554,13 +554,13 @@ unsafe extern "C" fn assign_argument_locations(
 ) -> u32 {
     unsafe {
         let result = assign_argument_locations__retail(a, b, c, d, e, f);
-        if lifecycle::enabled() {
-            if let Some(i) = current() {
-                if !(*call(i)).item.is_null() && read::<u32>((*call(i)).item, 18) == b {
-                    bind(result as *const u8, b as *const u8, a as *const u8)
-                } else {
-                    gap(i, 0, 0, c"assign_call_item_mismatch")
-                }
+        if lifecycle::enabled()
+            && let Some(i) = current()
+        {
+            if !(*call(i)).item.is_null() && read::<u32>((*call(i)).item, 18) == b {
+                bind(result as *const u8, b as *const u8, a as *const u8)
+            } else {
+                gap(i, 0, 0, c"assign_call_item_mismatch")
             }
         }
         result
@@ -580,10 +580,10 @@ unsafe fn primary(context: u32, stack: bool) -> u32 {
             load_argument_registers__retail(context)
         };
         if token != 0 {
-            if let Some(e) = active() {
-                if e.id == token {
-                    operand(e, c"helper_return")
-                }
+            if let Some(e) = active()
+                && e.id == token
+            {
+                operand(e, c"helper_return")
             }
             end(token)
         }
@@ -625,10 +625,10 @@ unsafe extern "C" fn force(operand_ptr: u32, ty: u32, requested: u32) -> u32 {
         } else {
             0
         };
-        if token != 0 {
-            if let Some(e) = active() {
-                operand(e, c"force_before")
-            }
+        if token != 0
+            && let Some(e) = active()
+        {
+            operand(e, c"force_before")
         }
         let result = OracleRust_ArgumentForceGprRetail(operand_ptr, ty, requested);
         if token != 0 {

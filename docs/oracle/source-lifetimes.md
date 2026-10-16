@@ -2,8 +2,11 @@
 
 The native `source_lifetimes` Rust module is an incremental host ledger for
 guarded compiler allocation observations. It is a foundation for the original
-source bridge. **No producer hooks or trace parser feed it yet.** Existing V6
-captures cannot acquire proven node lifetimes by passing their pointers to it.
+source bridge. The development `source_arenas` parser now connects the guarded
+arena protocol to this ledger. Native fixture validation passes on Windows and
+Linux across all three versions; see the [status](../oracle-source-guided-status.md)
+for exercised paths and limits. The parser alone is not a coverage claim. Existing
+V6 captures have no arena stream and remain indeterminate.
 
 The ledger accepts exact observed allocation spans with globally increasing
 capture-local IDs, a pool domain and epoch. Requested payload bytes are separate
@@ -30,8 +33,9 @@ node observations and actual clone/lowering/replacement edges.
 ## Coverage and invalidation
 
 Coverage is supplied by an audited producer/parser; successful allocations alone
-cannot establish it. The future parser must independently reconcile stream totals
-and report missing/reset/alias coverage. `begin_pool` cannot erase an earlier gap
+cannot establish it. The development parser independently reconciles cumulative
+request, allocation, reset, gap and checkpoint totals, with exact event order,
+request/commit pairing and reset nesting. `begin_pool` cannot erase an earlier gap
 or assign identities to pre-existing nodes.
 
 * `lose_coverage` retrospectively invalidates affected receipts throughout the
@@ -51,7 +55,41 @@ or assign identities to pre-existing nodes.
 These are observed arena identity boundaries, not automatic claims of physical
 deallocation. Selecting another block, or clearing some other pool's descriptor,
 is insufficient. The [retail arena audit](source-arenas.md) distinguishes those
-operations and the allocator bypasses that future hooks must capture.
+operations and the allocator bypasses covered by the new observation contract.
+
+## Historical arena queries
+
+`source_arenas::History::resolve_at(position, pool, address, extent)` validates the
+retained raw records and rebuilds the ledger through a one-based raw trace
+position. A later independent checkpoint must reconcile that prefix. Epoch zero
+remains unknown until an observed invalidation establishes coverage for the
+requested pool. Active resets, uncheckpointed suffixes, missing records or totals,
+unsupported paths, allocator padding and overlapping live spans remain
+indeterminate. A known earlier checkpoint can still cover an earlier historical
+observation after a later suffix is truncated.
+
+The checkpoint's counters are sampled before its record is formatted. Its own
+record position is therefore a coverage boundary, not a queryable allocation
+observation, including when a later checkpoint covers that position. There is no
+inferred compilation-end checkpoint. Backend tracing supplies function-end
+checkpoints; an arena-only capture has reset-end checkpoints alone.
+
+The returned allocation ID, epoch, offset and extent describe the requested
+historical position. A later reset can retire that allocation without making the
+historical observation indeterminate. The result does not assert current liveness,
+an original source role or unchanged node contents. Serialized query results are
+display data, not private `AllocationReference` receipts; queries rebuild from raw
+evidence rather than trusting deserialized coverage summaries.
+
+Each query currently clones and revalidates the retained records, then replays
+allocations into a new ledger. Normal work is proportional to retained record
+bytes plus allocation replay and active-index operations; reporting overlaps adds
+the matching spans. Event-count and stack limits bound retained entries and
+nesting; memory still depends on input record sizes. A large batch of node
+queries repeats this work. This API currently serves bounded CLI
+point queries. An original-source bridge resolving thousands of observations
+will need shared validated replay or batch queries before making throughput
+claims. No such optimization or native performance result is implied here.
 
 The history has an explicit allocation capacity and never evicts records that
 could disambiguate old receipts. An augmented interval index covers active

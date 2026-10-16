@@ -12,6 +12,45 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
 
+# Exact common-object contracts from crates/mwcc-oracle-core/src/producer.rs.
+# Keep these explicit: checking the object against its own reported inventory
+# would not detect a missing migrated wrapper or an accidental runtime import.
+ARGUMENT_HOOKS = {
+    "_FunctionCalls_GenerateCall", "_assign_argument_locations",
+    "_load_argument_registers", "_store_argument_on_stack",
+}
+ARENA_HOOKS = {
+    "_CompilerTools_ResetPool", "_freeaheap", "_freelheap",
+    "_CompilerTools_ResetGallocAndPoolMemory", "_releasegheap", "_releaseheaps",
+    "_initheaps", "_CompilerTools_InitHeaps",
+}
+COMMON_IMPORTS = {
+    "_OracleRust_ArenaGlobals",
+    "_CompilerTools_ResetPool__retail", "_freeaheap__retail", "_freelheap__retail",
+    "_CompilerTools_ResetGallocAndPoolMemory__retail", "_releasegheap__retail", "_releaseheaps__retail",
+    "_initheaps__retail", "_CompilerTools_InitHeaps__retail",
+    "_abort",
+    "_FunctionCalls_GenerateCall__retail", "_assign_argument_locations__retail",
+    "_load_argument_registers__retail", "_store_argument_on_stack__retail",
+    "_OracleRust_ArgumentForceGprRetail",
+    "_fn_00460c90__retail", "_fn_00507070__retail", "_fn_00506f50__retail",
+    "_fn_004fcb70", "_fn_004ceda0", "_fn_004fcb20", "_fn_004f7fb0__retail",
+    "_locals", "_temporary_objects", "_getenv", "_OracleTrace_Printf",
+    "_CMangler_GetLinkName", "_sprintf", "_gPCodeBlocks", "_gVirtualRegistersActive",
+    "_schedule_block__retail", "_select_ready_coloring_node__retail",
+    "_fn_00436390__retail", "_COptimizer_Optimize__retail", "_Peephole_MergeAdjacentBlocks__retail",
+    "_gCurrentStatement", "_gCurrentBlock", "_fn_00454030__retail", "_create_temp_object__retail",
+    "_fn_004601f0__retail", "_fn_00460780__retail", "_IRO_CommonSubs__retail", "_move_common_sub__retail",
+    "_iro_dump_output", "_INT_005882b8", "_class_data_parts", "_iro_pointer_analysis",
+    "_data_005875b8", "_linear_head", "_strncmp", "_fopen", "_vfprintf",
+    "_fn_00506cd0__retail", "_generate_inline_statements__retail", "_inline_statement__retail",
+    "_memset", "_pendingInlineWork", "_pending_prec_nodes", "_deferredInlineNodes",
+    "_cscope_currentfunc", "_data_005dfb62", "_CInline_AddFunctionPrecNode__retail",
+    "_CInline_AddSpecialization__retail", "_CTemplateNew_InstantiateInlineTemplateObject__retail",
+    "_CTemplateNew_InstantiateFunction__retail", "_fn_0050f240__retail",
+    "_generate_inline_code__retail", "_setup_inline_locals_and_arguments__retail", "_data_0058245a",
+}
+
 
 def sha(path):
     with path.open("rb") as stream:
@@ -258,16 +297,20 @@ def main():
                     "_fn_004601f0", "_fn_00460780", "_IRO_CommonSubs", "_move_common_sub", "_IroDump_Print",
                     "_fn_00506cd0", "_generate_inline_statements", "_inline_statement",
                     "_CInline_AddFunctionPrecNode", "_CInline_AddSpecialization", "_CTemplateNew_InstantiateInlineTemplateObject",
-                    "_CTemplateNew_InstantiateFunction", "_fn_0050f240", "_generate_inline_code", "_setup_inline_locals_and_arguments", "_FunctionCalls_GenerateCall", "_assign_argument_locations", "_load_argument_registers", "_store_argument_on_stack"}
+                    "_CTemplateNew_InstantiateFunction", "_fn_0050f240", "_generate_inline_code", "_setup_inline_locals_and_arguments"} | ARGUMENT_HOOKS | ARENA_HOOKS
         support = {"_OracleRust_LinkName", "_OracleRust_PrintInstruction", "_OracleRust_Snapshot", "_OracleRust_DescribeExpression", "_cse_vregs",
-                   "_OracleRust_OriginFind", "_OracleRust_OriginWalk", "_OracleRust_PrintChain", "_OracleRust_InlineLine", "_OracleRust_BackendProbe", "_OracleRust_CounterProbeV6", "_OracleRust_ExpressionProbeV1", "_OracleRust_ArgumentForceGpr"}
+                   "_OracleRust_OriginFind", "_OracleRust_OriginWalk", "_OracleRust_PrintChain", "_OracleRust_InlineLine", "_OracleRust_BackendProbe", "_OracleRust_CounterProbeV6", "_OracleRust_ExpressionProbeV1", "_OracleRust_ArgumentForceGpr", "_OracleRust_ArenaProbeV1"}
+        assert len(migrated) == 38 and len(support) == 14 and len(COMMON_IMPORTS) == 69
         assert not c_object.exists(), "C observation hooks still compiled in Rust producer"
         for path, expected in [(rust_object, migrated | support), (frontend_object, frontend_names)]:
             symbols, _ = module.read_object(path)
             defined = {s["name"] for s in symbols.values() if s["section"] > 0 and s["storage"] == 2}
             assert defined == expected, (path, defined)
+            if path == rust_object:
+                undefined = {s["name"] for s in symbols.values() if s["section"] == 0 and s["storage"] == 2}
+                assert undefined == COMMON_IMPORTS, (path, "common imports", undefined)
         config = json.loads((stage / f"config/{version}/config.json").read_text())
-        assert set(config["oracle"]["hooks"]) | {"_FunctionCalls_GenerateCall", "_assign_argument_locations", "_load_argument_registers", "_store_argument_on_stack"} == migrated | frontend_names
+        assert set(config["oracle"]["hooks"]) | ARGUMENT_HOOKS | ARENA_HOOKS == migrated | frontend_names
         check_frontend = trace_check.parent / f"{version}-frontend.obj"
         run(f"validate-frontend-{version}", [binary, "build-hooks", check_frontend, "--root", ROOT, "--frontend-version", version])
         assert sha(check_frontend) == sha(frontend_object)
@@ -279,7 +322,8 @@ def main():
             assert f"build build/{version}/oracle/OracleTrace.obj: rust_trace " in (stage / "build.ninja").read_text()
         item = dict(version=version, producer_sha256=sha(stage / target), rust_object_sha256=sha(rust_object),
                     trace_object_sha256=sha(trace_object), frontend_object_sha256=sha(frontend_object),
-                    frontend_reference=str(check_frontend.relative_to(stage)), hook_inventory_count=len(migrated | frontend_names), cases=[])
+                    frontend_reference=str(check_frontend.relative_to(stage)), hook_inventory_count=len(migrated | frontend_names),
+                    common_exports=len(migrated | support), common_imports=len(COMMON_IMPORTS), cases=[])
         evidence["versions"].append(item)
         save()
         print(f"{version}: {'retained' if args.skip_build else 'native'} hybrid build and C/Rust definition ownership pass", flush=True)
