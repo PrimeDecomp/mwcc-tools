@@ -66,6 +66,18 @@ pub struct Audit {
     pub lifecycle_coverage_complete: bool,
     pub limitations: Vec<String>,
 }
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ReferenceAudit {
+    pub references: Vec<Reference>,
+    pub functions: Vec<NamedFunctionGuard>,
+    pub unresolved: Vec<Unresolved>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct NamedFunctionGuard {
+    pub name: String,
+    #[serde(flatten)]
+    pub guard: FunctionGuard,
+}
 
 pub fn capture(root: &Path, version: &str) -> Result<Audit> {
     ensure!(
@@ -98,12 +110,39 @@ pub fn capture(root: &Path, version: &str) -> Result<Audit> {
         counters["FPR"] == table_base + 12 && counters["GPR"] == table_base + 16,
         "unexpected counter layout"
     );
-    let fixups = executable::base_relocations(&pe)?;
+    let audit = references(&pe, &symbols, &splits, table_base..table_base + 20)?;
+    let mut functions = BTreeMap::new();
+    for function in audit.functions {
+        ensure!(
+            functions.insert(function.name, function.guard).is_none(),
+            "ambiguous counter container name"
+        );
+    }
+    Ok(Audit{format_version:1,version:version.into(),compiler_sha256:format!("{:x}",Sha256::digest(&original.data)),
+        symbol_metadata_sha256:format!("{:x}",Sha256::digest(metadata)),counters,table_base,
+        references:audit.references,functions,unresolved:audit.unresolved,
+        lifecycle_coverage_complete:false,limitations:vec![
+            "Direct PE HIGHLOW references only: register-derived aliases, bulk writes and dataflow require further audit".into(),
+            "A counter write is not yet a classified creation, reset, rewind or restored high-water mark".into(),
+            "Hardware register class is not the requested semantic allocation category".into(),
+        ]})
+}
+
+/// Inspect direct, relocated references into a retail global range. This does
+/// not resolve aliases or infer a call's ABI from a reconstructed declaration.
+pub fn references(
+    pe: &pe::Pe<'_>,
+    symbols: &[executable::Symbol],
+    splits: &executable::Splits,
+    range: std::ops::Range<u32>,
+) -> Result<ReferenceAudit> {
+    ensure!(range.start < range.end, "empty reference audit range");
+    let fixups = executable::base_relocations(pe)?;
     let mut relevant = BTreeMap::new();
     let mut unresolved = vec![];
     for &address in &fixups {
         let target = pe::u32le(pe.read(address, 4)?, 0)?;
-        if (table_base..table_base + 20).contains(&target) {
+        if range.contains(&target) {
             if pe.section_for_address(address)?.characteristics & 0x20 != 0 {
                 relevant.insert(address, target);
             } else {
@@ -111,7 +150,7 @@ pub fn capture(root: &Path, version: &str) -> Result<Audit> {
                     address,
                     target,
                     reason:
-                        "counter address stored outside executable code; alias analysis required"
+                        "inspected address stored outside executable code; alias analysis required"
                             .into(),
                 });
             }
@@ -120,7 +159,7 @@ pub fn capture(root: &Path, version: &str) -> Result<Audit> {
     let mut decoder = disassembly::decoder()?;
     decoder.set_detail(true)?;
     let mut references = vec![];
-    let mut functions = BTreeMap::new();
+    let mut functions = Vec::new();
     let mut accounted = BTreeSet::new();
     for symbol in symbols
         .iter()
@@ -229,9 +268,9 @@ pub fn capture(root: &Path, version: &str) -> Result<Audit> {
         }
         normalized_fields.sort_unstable();
         normalized_fields.dedup();
-        functions.insert(
-            symbol.name.clone(),
-            FunctionGuard {
+        functions.push(NamedFunctionGuard {
+            name: symbol.name.clone(),
+            guard: FunctionGuard {
                 address: symbol.address,
                 size,
                 code_sha256: format!("{:x}", Sha256::digest(code)),
@@ -239,7 +278,7 @@ pub fn capture(root: &Path, version: &str) -> Result<Audit> {
                 normalized_fields,
                 decoded_bytes,
             },
-        );
+        });
     }
     for (address, target) in relevant.into_iter().filter(|(a, _)| !accounted.contains(a)) {
         unresolved.push(Unresolved {
@@ -249,11 +288,9 @@ pub fn capture(root: &Path, version: &str) -> Result<Audit> {
         });
     }
     references.sort_by_key(|r| r.address);
-    Ok(Audit{format_version:1,version:version.into(),compiler_sha256:format!("{:x}",Sha256::digest(&original.data)),
-        symbol_metadata_sha256:format!("{:x}",Sha256::digest(metadata)),counters,table_base,references,functions,unresolved,
-        lifecycle_coverage_complete:false,limitations:vec![
-            "Direct PE HIGHLOW references only: register-derived aliases, bulk writes and dataflow require further audit".into(),
-            "A counter write is not yet a classified creation, reset, rewind or restored high-water mark".into(),
-            "Hardware register class is not the requested semantic allocation category".into(),
-        ]})
+    Ok(ReferenceAudit {
+        references,
+        functions,
+        unresolved,
+    })
 }

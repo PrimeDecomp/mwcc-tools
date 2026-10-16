@@ -37,7 +37,8 @@ pub const HOOKS: [&str; 26] = [
     "_generate_inline_code",
     "_setup_inline_locals_and_arguments",
 ];
-pub const SUPPORT: [&str; 11] = [
+pub const SUPPORT: [&str; 12] = [
+    "_OracleRust_ExpressionProbeV1",
     "_OracleRust_CounterProbeV2",
     "_OracleRust_BackendProbe",
     "_OracleRust_LinkName",
@@ -117,7 +118,8 @@ pub fn validate_frontend(data: &[u8], version: &str) -> Result<()> {
         &imports.iter().map(String::as_str).collect::<Vec<_>>(),
     )
 }
-pub const IMPORTS: [&str; 54] = [
+pub const IMPORTS: [&str; 55] = [
+    "_abort",
     "_fn_00460c90__retail",
     "_fn_00507070__retail",
     "_fn_00506f50__retail",

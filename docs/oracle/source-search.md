@@ -148,6 +148,10 @@ Fingerprints normalize known pointer/register identities but retain graph-only
 nodes, degrees, origin/range evidence, selected instructions, symbolic relocations
 and allocated data. Unsupported operand forms disable grouping. Conservative
 graph-only numbering can miss equivalent states.
+Generated local relocation-name suffixes can also split equivalent states, as the
+[real EnvModulate experiment](../oracle-source-guided-case-envmodulate.md) demonstrates.
+That case used complete graph checks and independent objdiff evidence; the generic
+fingerprint has not yet incorporated a checked local-symbol normalization.
 
 Compilation caching is separate. Every lookup runs dependency and preprocessing
 scans with **both** oracle and stock compilers. Keys include both preprocessed

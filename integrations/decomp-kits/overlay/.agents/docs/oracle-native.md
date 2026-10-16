@@ -134,6 +134,24 @@ separately. Rebuild both tools and common hooks for the current internal callbac
 `mwcc-tools provenance audit-counters --root ORACLE_ROOT --version GC_2_7` emits a
 native audit of the pinned image's actual counter references and remaining gaps.
 
+Current development producers also observe expression-generation dispatch. Use
+`provenance audit-dispatch --root ORACLE_ROOT --version GC_2_7` for the native
+initializer/target audit. Rebuild common hooks and the producer for its versioned
+observer. Consume `expressions[].parent`, `dispatch`, `result`, `end_position` and
+`abandoned` with per-function `dispatch_scope`, totals and `dispatch_observations`.
+Births can now point to nested `codegen_dispatch` contexts. Raw requested argument
+bits can contain unused upper-half pointer bits; they are not register identities.
+Tagged result evidence is separate from dispatch capture and complete lifetime
+evidence. Caller statement lines do not supply complete inline ancestry, and direct
+helper calls can bypass the table.
+
+The full RenderParticles EnvModulate case now ties symbol returns to later address
+births, symbolic PCode and confirmed r4 merges. The merged temporaries remain
+invisible graph nodes adjacent to noRota and the zero-vector address. Three tested
+reference/pointer forwarders produce the same complete graph and retain the
+99.94901% mismatch. See `docs/oracle-source-guided-case-envmodulate.md` in the current
+source checkout for the source pin, evidence and remaining materializer-binding gap.
+
 ## Search source variants against a graph objective (development)
 
 Build current native tools and the current Rust oracle producer. This command is

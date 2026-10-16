@@ -89,7 +89,15 @@ Use `verify_link.py --retain-builds --diagnose-abi` to retain failed link/runtim
 
 The common instantiation group adds fourteen layout/width probes and 96 differential scenarios. `TemplFuncInstance` is sixteen bytes, aligned to two, with its object pointer at byte four. Cases check null and unaligned specialization records, null context, name and alias fallback, unsigned byte results and flags, signed mode bytes, queue changes and nonchanges, options/context changed by retail, trace-before-retail versus trace-after-retail ordering, and exact caller EIP through one indirect call instruction. At that checkpoint, the object had exactly 34 exports and 52 C imports, with no Rust allocator/runtime helpers.
 
-The binding group adds 44 layout/width/enum probes and 72 differential scenarios. They cover all four binding modes, absent/disabled options, negative/zero/multiple formal counts, packed records at odd addresses, post-retail slot/formal/option changes, declared-name identity, nullable names/types, byte promotion, reference and generated-function flags, expression unwrapping and empty expression fallback. `generated` remains Boolean even though its underlying flag is `0x100`. The current object has 35 exports and 54 C imports.
+The binding group adds 44 layout/width/enum probes and 72 differential scenarios. They cover all four binding modes, absent/disabled options, negative/zero/multiple formal counts, packed records at odd addresses, post-retail slot/formal/option changes, declared-name identity, nullable names/types, byte promotion, reference and generated-function flags, expression unwrapping and empty expression fallback. `generated` remains Boolean even though its underlying flag is `0x100`. At that checkpoint the object had 35 exports and 54 C imports.
+
+The current common object adds the post-migration coalescer, counter and expression
+observers: 38 exports and 55 C imports. The expression observer uses guarded
+machine islands around retail table dispatch, retaining argument bits, return
+registers/flags and FPU/SSE state. Its 8-byte descriptor uses
+`OracleRust_ExpressionProbeV1`; the separate counter descriptor remains V2.
+See [native provenance](../../docs/oracle/provenance.md) for typed dispatch capture,
+result uncertainty and the remaining exact-origin/lifetime limits.
 
 The frontend object implements inline decisions, body/expression costs, call expansion and deferred-node dispatch. Default selection, packaging and the migration's final integration gates remain. The post-migration source-guided search roadmap is separate.
 

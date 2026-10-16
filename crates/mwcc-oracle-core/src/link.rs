@@ -208,9 +208,47 @@ pub fn run(request: &Request) -> Result<Report> {
                     .any(|p| fs::read(request.root.join(p))
                         .ok()
                         .and_then(|b| coff::defined_symbols(&b).ok())
+                        .is_some_and(|s| s.contains(crate::dispatch_probe::HANDLER))),
+                "Rust expression observer is stale; rebuild the common hooks with the current sources"
+            );
+            ensure!(
+                compiled_objects
+                    .iter()
+                    .any(|p| fs::read(request.root.join(p))
+                        .ok()
+                        .and_then(|b| coff::defined_symbols(&b).ok())
                         .is_some_and(|s| s.contains("_OracleRust_CounterProbeV2"))),
                 "Rust counter observer ABI is stale; rebuild the common hooks with the current sources"
             );
+            let mut dispatchers = 0;
+            for input in &mut inputs {
+                if !input.ends_with(".obj") {
+                    continue;
+                }
+                let data = fs::read(request.root.join(&*input))?;
+                if !coff::Object::parse(&data)?
+                    .symbols
+                    .values()
+                    .any(|s| s.section > 0 && s.name == crate::dispatch_audit::INITIALIZER)
+                {
+                    continue;
+                }
+                let installed = crate::dispatch_probe::instrument(&request.root, version, &data)?;
+                let output = format!("build/{version}/oracle/dispatch/{}", basename(input));
+                write(&request.root, &output, &installed.object)?;
+                write(
+                    &request.root,
+                    &format!("build/{version}/oracle/dispatch/audit.json"),
+                    &serde_json::to_vec_pretty(&installed.audit)?,
+                )?;
+                *input = output;
+                dispatchers += 1;
+            }
+            ensure!(
+                dispatchers == 1,
+                "native provenance requires exactly one expression initializer"
+            );
+            messages.push("installed guarded retail expression dispatch observations".into());
             let counter_inputs = inputs
                 .iter()
                 .filter(|p| p.ends_with(".obj") && !compiled_objects.contains(p))

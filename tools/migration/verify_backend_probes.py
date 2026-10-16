@@ -85,6 +85,8 @@ def main():
             history=report["history"]
             assert history["counter_observations"]["state"] == ("indeterminate" if empty else "satisfied"), case["id"]
             assert not history["orphans"] and not history["gaps"], case["id"]
+            assert all(f["dispatch_scope"] == "guarded_table_v1" and f["dispatch_observations"]["state"] == "satisfied"
+                       for f in history["functions"]), case["id"]
             assert all(f["range_observations"]["state"] == "satisfied" for f in history["functions"]), case["id"]
             objects = [b["object"] for f in history["functions"] for b in f["births"] if b["object"]]
             pairs = [o for o in objects if o["part"] in ("first_word", "second_word")]

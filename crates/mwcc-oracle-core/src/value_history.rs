@@ -96,6 +96,32 @@ pub struct Expression {
     pub complete: bool,
     pub tree_bytes: Vec<u8>,
     pub tree_text: Option<String>,
+    pub parent: Option<u32>,
+    pub dispatch: Option<Dispatch>,
+    pub result: Option<DispatchResult>,
+    pub end_position: Option<usize>,
+    pub abandoned: bool,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Dispatch {
+    /// Address in the pinned retail image, not a live compiler pointer.
+    pub retail_target: u32,
+    /// Exact stack argument bits; unused upper bits are not interpreted.
+    pub requested: [u32; 2],
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct DispatchResult {
+    pub trace_position: usize,
+    pub kind: u8,
+    pub class: Option<u8>,
+    pub register: Option<u32>,
+    pub second: Option<u32>,
+    pub index: Option<u32>,
+    pub object: Option<String>,
+    pub displacement: Option<i32>,
+    pub immediate: Option<i32>,
+    /// Tag-defined output observation, not a semantic lifetime binding.
+    pub evidence: Evaluation,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -139,6 +165,10 @@ pub struct Function {
     pub ranges: Vec<RangeEvent>,
     pub range_observations: Evaluation,
     pub counter_observations: Evaluation,
+    pub dispatch_scope: Option<String>,
+    pub expected_dispatches: Option<u32>,
+    pub expected_dispatch_returns: Option<u32>,
+    pub dispatch_observations: Evaluation,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct History {
@@ -156,6 +186,7 @@ pub fn is_record(kind: &str) -> bool {
             | "pv.function.end"
             | "pv.expression.begin"
             | "pv.expression.end"
+            | "pv.expression.result"
             | "pv.value.birth"
             | "pv.value.object"
             | "pv.category.initial"
@@ -293,6 +324,10 @@ pub fn parse(text: &str) -> Result<History> {
                 ranges: vec![],
                 range_observations: gap("no complete range-marker capture"),
                 counter_observations: gap("function has no end record"),
+                dispatch_scope: r.fields.get("dispatch").cloned(),
+                expected_dispatches: None,
+                expected_dispatch_returns: None,
+                dispatch_observations: gap("no guarded dispatch summary"),
             });
             stack.push(function);
             continue;
@@ -318,6 +353,13 @@ pub fn parse(text: &str) -> Result<History> {
                     .map(|value| value.parse())
                     .transpose()?;
                 f.expected_ranges = r.fields.get("ranges").map(|v| v.parse()).transpose()?;
+                f.expected_dispatches =
+                    r.fields.get("dispatches").map(|v| v.parse()).transpose()?;
+                f.expected_dispatch_returns = r
+                    .fields
+                    .get("dispatch_returns")
+                    .map(|v| v.parse())
+                    .transpose()?;
                 if state.ranges_valid
                     && f.expected_ranges.map(|v| v as usize) == Some(f.ranges.len())
                 {
@@ -348,6 +390,23 @@ pub fn parse(text: &str) -> Result<History> {
                     .step_by(2)
                     .map(|i| u8::from_str_radix(&encoded[i..i + 2], 16))
                     .collect::<std::result::Result<Vec<_>, _>>()?;
+                let parent = state.expressions.last().copied();
+                if let Some(declared) = r.fields.get("parent") {
+                    ensure!(
+                        declared.parse::<u32>()? == parent.unwrap_or(0),
+                        "expression parent disagrees with active scope"
+                    );
+                }
+                let dispatch = if r.get("scope")? == "codegen_dispatch" {
+                    let target = h(&r, "target")?;
+                    ensure!(target != 0, "dispatch has no retail target");
+                    Some(Dispatch {
+                        retail_target: target,
+                        requested: [h(&r, "a")?, h(&r, "b")?],
+                    })
+                } else {
+                    None
+                };
                 f.expressions.push(Expression {
                     id,
                     trace_position: r.line,
@@ -358,6 +417,11 @@ pub fn parse(text: &str) -> Result<History> {
                     complete: n(&r, "complete")? != 0,
                     tree_text: String::from_utf8(tree_bytes.clone()).ok(),
                     tree_bytes,
+                    parent,
+                    dispatch,
+                    result: None,
+                    end_position: None,
+                    abandoned: false,
                 });
                 state.expressions.push(id);
             }
@@ -366,6 +430,84 @@ pub fn parse(text: &str) -> Result<History> {
                     state.expressions.pop() == Some(n(&r, "expression")?),
                     "expression scope end disagrees with stack"
                 );
+                f.expressions[n(&r, "expression")? as usize - 1].end_position = Some(r.line);
+                let abandoned = r.fields.get("abandoned").is_some_and(|v| v == "1");
+                f.expressions[n(&r, "expression")? as usize - 1].abandoned = abandoned;
+                state.valid &= !abandoned;
+            }
+            "pv.expression.result" => {
+                let id = n(&r, "expression")?;
+                ensure!(
+                    state.expressions.last() == Some(&id),
+                    "dispatch result outside its active scope"
+                );
+                let expression = f
+                    .expressions
+                    .get_mut(id as usize - 1)
+                    .context("result has no expression")?;
+                ensure!(
+                    expression.dispatch.is_some() && expression.result.is_none(),
+                    "result is repeated or not a dispatch result"
+                );
+                let kind: u8 = n(&r, "kind")?.try_into()?;
+                let number = |field: &str| -> Result<Option<u32>> {
+                    r.fields
+                        .get(field)
+                        .map(|v| v.parse().map_err(Into::into))
+                        .transpose()
+                };
+                let signed = |field: &str| -> Result<Option<i32>> {
+                    r.fields
+                        .get(field)
+                        .map(|v| v.parse().map_err(Into::into))
+                        .transpose()
+                };
+                let class = number("cls")?.map(u8::try_from).transpose()?;
+                let register = number("register")?;
+                let second = number("second")?;
+                let index = number("index")?;
+                let object = r.fields.get("object").cloned();
+                let displacement = signed("displacement")?;
+                let immediate = signed("immediate")?;
+                let expected_class = match kind {
+                    0..=3 | 9 | 10 => Some(4),
+                    5 => Some(3),
+                    6 => Some(2),
+                    7 => Some(1),
+                    _ => None,
+                };
+                ensure!(
+                    class == expected_class
+                        && register.is_some() == expected_class.is_some()
+                        && second.is_some() == (kind == 3)
+                        && index.is_some() == matches!(kind, 2 | 10)
+                        && object.is_some() == matches!(kind, 8 | 11)
+                        && displacement.is_some() == matches!(kind, 1 | 8 | 9 | 11)
+                        && immediate.is_some() == (kind == 4),
+                    "dispatch result disagrees with its Operand tag"
+                );
+                if let Some(object) = &object {
+                    ensure!(
+                        u32::from_str_radix(object, 16).is_ok(),
+                        "invalid dispatch object identity"
+                    );
+                }
+                expression.result = Some(DispatchResult {
+                    trace_position: r.line,
+                    kind,
+                    class,
+                    register,
+                    second,
+                    index,
+                    object,
+                    displacement,
+                    immediate,
+                    evidence: if kind <= 11 {
+                        known()
+                    } else {
+                        gap("unknown dispatch output tag")
+                    },
+                });
             }
             "pv.value.birth" => {
                 state.valid &= n(&r, "schema")? == 1;
@@ -518,6 +660,23 @@ pub fn parse(text: &str) -> Result<History> {
         }
     }
     for state in states.into_values() {
+        let function = &mut history.functions[state.index];
+        let dispatches = function
+            .expressions
+            .iter()
+            .filter(|e| e.dispatch.is_some())
+            .collect::<Vec<_>>();
+        if state.valid
+            && function.ended
+            && function.dispatch_scope.as_deref() == Some("guarded_table_v1")
+            && function.expected_dispatches.map(|n| n as usize) == Some(dispatches.len())
+            && function.expected_dispatch_returns == function.expected_dispatches
+            && dispatches
+                .iter()
+                .all(|e| e.end_position.is_some() && !e.abandoned && e.result.is_some())
+        {
+            function.dispatch_observations = known();
+        }
         if !state.valid {
             history.functions[state.index].counter_observations =
                 gap("unsupported or discontinuous observations in this function");

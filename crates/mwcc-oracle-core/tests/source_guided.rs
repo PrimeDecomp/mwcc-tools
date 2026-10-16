@@ -483,6 +483,50 @@ fn equivalent_states_group_pointers_but_keep_category_and_origin_evidence() {
         ordered,
         state::fingerprint(&ar.graphs.graphs[0], &ar, &a.object, a.version).unwrap()
     );
+    // Retail callers can leave pointer bits in the unused upper half of a
+    // short argument. Those bits are preserved in observations but must not
+    // split otherwise identical completed graph states.
+    ar.history.functions[0].births[0].expression = Some(1);
+    ar.history.functions[0]
+        .expressions
+        .push(mwcc_oracle_core::value_history::Expression {
+            id: 1,
+            trace_position: 1,
+            node: "opaque".into(),
+            kind: 56,
+            line: Some(3),
+            scope: "codegen_dispatch".into(),
+            complete: false,
+            tree_bytes: b"symbol".to_vec(),
+            tree_text: Some("symbol".into()),
+            parent: None,
+            dispatch: Some(mwcc_oracle_core::value_history::Dispatch {
+                retail_target: 0x440000,
+                requested: [4, 0],
+            }),
+            result: None,
+            end_position: Some(2),
+            abandoned: false,
+        });
+    let scoped = state::fingerprint(&ar.graphs.graphs[0], &ar, &a.object, a.version).unwrap();
+    ar.history.functions[0].expressions[0]
+        .dispatch
+        .as_mut()
+        .unwrap()
+        .requested[0] = 0xabcd0004;
+    assert_eq!(
+        scoped,
+        state::fingerprint(&ar.graphs.graphs[0], &ar, &a.object, a.version).unwrap()
+    );
+    ar.history.functions[0].expressions[0]
+        .dispatch
+        .as_mut()
+        .unwrap()
+        .retail_target = 0x441000;
+    assert_ne!(
+        scoped,
+        state::fingerprint(&ar.graphs.graphs[0], &ar, &a.object, a.version).unwrap()
+    );
 }
 #[test]
 fn source_edits_are_atomic_and_keep_unrelated_encoded_bytes() {

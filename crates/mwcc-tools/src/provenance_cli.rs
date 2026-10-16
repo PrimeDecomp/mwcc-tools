@@ -3,14 +3,19 @@ use mwcc_oracle_core::{evidence::EvaluationState, provenance};
 use std::fs;
 
 pub fn run(args: &[String]) -> Result<()> {
-    if args.first().map(String::as_str) == Some("audit-counters") {
+    if matches!(
+        args.first().map(String::as_str),
+        Some("audit-counters" | "audit-dispatch")
+    ) {
         let mut root = std::env::current_dir()?;
         let mut version = "GC_2_7".to_owned();
         let mut i = 1;
         while i < args.len() {
             let option = &args[i];
             i += 1;
-            let value = args.get(i).context("audit-counters option needs a value")?;
+            let value = args
+                .get(i)
+                .context("provenance audit option needs a value")?;
             match option.as_str() {
                 "--root" => root = value.into(),
                 "--version" => version = value.clone(),
@@ -18,7 +23,11 @@ pub fn run(args: &[String]) -> Result<()> {
             }
             i += 1;
         }
-        let audit = mwcc_oracle_core::backend_audit::capture(&root, &version)?;
+        let audit = if args[0] == "audit-dispatch" {
+            serde_json::to_value(mwcc_oracle_core::dispatch_audit::capture(&root, &version)?)?
+        } else {
+            serde_json::to_value(mwcc_oracle_core::backend_audit::capture(&root, &version)?)?
+        };
         println!("{}", serde_json::to_string_pretty(&audit)?);
         return Ok(());
     }

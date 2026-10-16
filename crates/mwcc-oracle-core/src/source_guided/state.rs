@@ -227,7 +227,7 @@ pub fn fingerprint(g: &Graph, report: &Report, object: &[u8], version: Version) 
         let origins=n.binding.direct.iter().chain(&n.binding.contributors).map(|id| {
             let b=&f.births[(id.sequence-1) as usize];
             json!({"site":b.site,"phase":b.phase,"generation":b.generation,"object":b.object.as_ref().map(|o|json!({"part":o.part,"datatype":o.datatype,"storage":o.storage,"type_kind":o.type_kind,"type_size":o.type_size,"name":o.name_bytes,"complete":o.name_complete,"known":o.name_known})),
-                "expression":b.expression.and_then(|id|f.expressions.iter().find(|e|e.id==id)).map(|e|json!({"scope":e.scope,"complete":e.complete,"tree":e.tree_bytes}))})
+                "expression":b.expression.and_then(|id|f.expressions.iter().find(|e|e.id==id)).map(|e|json!({"scope":e.scope,"kind":e.kind,"dispatch_target":e.dispatch.as_ref().map(|d|d.retail_target),"complete":e.complete,"tree":e.tree_bytes}))})
         }).collect::<Vec<_>>();
         json!({"id":rename(r),"degree":n.stored_degree,"flags":n.flags,"color":n.color,"neighbors":neighbors,"category":n.range_category,
             "origins":origins,"binding":n.binding.evidence,"visible":n.visible_in_instructions})

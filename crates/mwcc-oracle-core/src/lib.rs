@@ -16,6 +16,8 @@ pub mod cse;
 pub mod data_diff;
 pub mod derive_splits;
 pub mod disassembly;
+pub mod dispatch_audit;
+pub mod dispatch_probe;
 pub mod document;
 pub mod download;
 pub mod elf;

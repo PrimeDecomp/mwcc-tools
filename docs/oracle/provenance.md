@@ -185,6 +185,48 @@ Its `lifecycle_coverage_complete` remains false: the direct-reference audit does
 not prove the absence of all computed aliases or bulk writes. A metadata container
 or unit name is a link location, not necessarily the semantic function's name.
 
+## Expression-generation dispatch context
+
+```text
+mwcc-tools provenance audit-dispatch --root ORACLE_ROOT --version GC_2_7
+```
+
+The native audit guards the complete retail initializer and its pointer writes.
+It proves 78 initialized entries (0 through 77), rather than trusting reconstructed
+array sizes. Function guards retain addresses as well as names: GC 2.7 has two
+local functions named `_fn_00453e10`. The constructor distinguishes their bodies
+and rejects substituting same-named COFF targets.
+
+The constructor changes only initializer target relocations, adding entry/return
+islands that forward the original argument bytes and preserve return registers,
+flags, x87, MXCSR and XMM state. Existing sections keep their sizes and instruction
+offsets; retail generator bodies remain intact. This uses the actual retail dispatch, not a reconstructed
+C prototype. The internal expression descriptor has its own versioned observer;
+stale common hooks fail linking with a rebuild diagnostic.
+
+`history.functions[].expressions[]` adds parent IDs, active `codegen_dispatch`
+context, original-retail generator target, raw requested argument bits, a tagged
+result snapshot, and end/abandonment observations. `births[].expression` names the
+most specific observed active scope. Requested argument bits can include unused
+upper-half pointer bits; they are ABI evidence, not virtual-register identities.
+The relevant-state fingerprint retains the generator target and completed graph,
+not those incidental argument bits. Result records read only the fields associated
+with the observed Operand tag; unknown tags retain indeterminate result evidence.
+
+`dispatch_scope == "guarded_table_v1"`, end totals and
+`dispatch_observations` describe balanced capture of those table calls. Result
+evidence, bounded expression spelling and semantic lifetime completeness are
+separate. Statement lines can identify an inline caller rather than the original
+leaf. Direct helper calls can bypass the table. Dispatch context therefore does
+not claim complete exact leaf, inline or source-role provenance, and
+`lifecycle` remains indeterminate. Missing result/end records, unknown declarations,
+unwinds and depth overflow cannot establish complete relevant capture.
+
+The [real EnvModulate case](../oracle-source-guided-case-envmodulate.md) connects
+symbol-returning leaves, later address-register births, symbolic PCode, confirmed
+r4 merges and invisible graph nodes that remain adjacent to `noRota`. It also
+records three unsuccessful, behavior-justified wrapper experiments.
+
 ## Validation
 
 `tools/migration/verify_backend_probes.py` runs each selected input with probes
