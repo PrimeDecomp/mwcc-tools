@@ -261,6 +261,9 @@ fn server(responses: Vec<String>) -> (String, thread::JoinHandle<Vec<String>>) {
                     Err(e) => panic!("{e}"),
                 }
             };
+            // Accepted sockets can inherit the listener's nonblocking mode on
+            // Windows. The request loop below uses blocking reads with a timeout.
+            socket.set_nonblocking(false).unwrap();
             socket
                 .set_read_timeout(Some(Duration::from_secs(2)))
                 .unwrap();
