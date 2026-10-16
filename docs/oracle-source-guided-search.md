@@ -1,56 +1,170 @@
 # After the Rust migration: realize useful graph edits in C++
 
-Added 2026-10-16. Implement this work **after the Rust migration is finished and its completion gates have passed**, as recorded in [the migration plan](oracle-rust-migration.md) and [implementation status](oracle-rust-status.md). This is a follow-on roadmap, not an expansion of the migration's parity requirements.
+Updated 2026-10-16 following the post-migration planning handoff. The Rust migration
+is complete locally; see [its acceptance audit](oracle-rust-completion.md) and
+[status](oracle-rust-status.md). This document is the implementation roadmap for
+the four requested follow-on features. **They are planned, not implemented.** They
+do not expand the completed migration's parity requirements.
 
-The objective is to connect successful allocation-graph edits to C++ constructs that cause the compiler to produce those edits. Allocation replay, graph search, graph comparison and existing frontend provenance provide the foundation. The missing evidence is which source transformations realize a useful graph change.
+The objective is to connect successful allocation-graph edits to C++ constructs
+that actually produce them. Allocation replay, graph search, graph comparison and
+existing frontend provenance provide the foundation. The missing evidence is which
+source transformations realize a useful graph change, not how the allocator colors
+an edited graph. Prefer native Rust APIs, versioned structured results and improved
+kit documentation; legacy Python APIs and report prose need not be preserved.
 
-## Priority 1: complete backend provenance and coalescing explanations
+## Existing comparison gap
 
-Extend the oracle's producer and structured reports to describe every virtual register's creation site, originating expression, allocation category and subsequent merges. Cover backend-generated address temporaries, call-result temporaries and array-promotion temporaries, in addition to the existing named-local and CSE provenance.
+[`colouring::target::remap`](../crates/mwcc-oracle-core/src/colouring/target.rs)
+currently matches visible instruction sequences after normalizing virtual-register
+spellings, then votes on register-operand correspondence. `graph_difference` chooses
+the last available round for a class, compares adjacency among mapped virtual nodes
+and physical registers, and derives `only_first`/`only_second` from registers used by
+visible instructions. It omits edges to unmapped virtual nodes; its inverse mapping
+also cannot express many-to-one correspondence faithfully.
 
-Record each attempted coalescing and the condition that decides it, including the coalescing window, interference and instruction flags. Retain temporaries that disappear from the visible instructions but still contribute nodes or graph degrees. Preserve enough identity across creation, transformations, merge attempts and allocation rounds to follow a value through the backend.
+Extend these functions before treating a disappearing temporary as reliably
+eliminated. An unmatched value is not evidence of elimination. Graph-only nodes,
+ambiguous correspondence, merges, boundary edges and phase/round selection must
+be represented explicitly.
 
-Deliver a queryable lifecycle and coalescing history alongside the human explanation. Include the compiler version, phase and deciding inputs so that an absent event is distinguishable from an unsupported hook or an incomplete trace.
+## 1. Reproducible cases and shared contracts
 
-Acceptance examples:
+Capture baseline cases for a symbolic address argument introducing an unwanted
+temporary, a flag initialization retaining an extra move, and the second promoted
+array element failing to coalesce. Include the relevant full `RenderParticles`
+case. Preserve source and dependencies, compiler identity, ordered flags, object,
+symbolic relocations and complete trace so each case can be replayed independently.
 
-- Explain the extra temporary introduced by a symbolic address argument, from its creation through its allocation effects.
-- Explain why the second promoted array element does or does not coalesce, identifying the actual deciding condition.
-- Account for relevant graph nodes and degrees even when their original temporaries no longer occur in the instruction list.
-- Confirm that the added observation hooks preserve compiler output with tracing disabled and enabled.
+Define versioned structures for value identity, provenance events, coalescing
+decisions, graph objectives and evaluation results. Evaluations distinguish
+**satisfied**, **unsatisfied** and **indeterminate**. Missing hooks, incomplete
+relevant trace coverage or ambiguous value correspondence never count as success.
+Record the evidence and coverage needed to justify each result.
 
-## Priority 2: source-variant search scored by graph changes
+## 2. Complete backend provenance first
 
-Build a harness that accepts a baseline, a relevant set of values or graph nodes, and an explicit compiler-state objective. Compile C++ variants and use the existing `remap` machinery to assess whether each variant achieved the requested change.
+Audit virtual-register creation and coalescing paths for each supported oracle
+compiler version. Document covered and unsupported paths rather than interpreting
+an absent event as an absent mechanism.
 
-Initial objectives:
+Record each register's function and class, creation identity, allocation phase and
+round, backend creation site/reason, originating expression, source location and
+inline ancestry when available. Record allocation category and category changes,
+copies, merges, replacements and disappearance from visible instructions. Cover
+backend addresses, call results and array promotion as well as named locals/CSE.
 
-- Eliminate a relevant coalesced temporary while preserving symbolic relocations.
-- Keep a flag's initialization directly in its final register, removing the extra move.
-- Change a particular value's allocation category while preserving its instructions.
+Identity must survive raw-address changes and reused register numbers. Preserve
+multiple contributing origins and explicit unknown origins. Raw pointers and
+register numbers alone are insufficient identities across source variants.
 
-Keep semantic and relocation constraints explicit. A better final mismatch alone does not establish that a variant realized the intended mechanism. Report the graph, provenance, category, move and relocation evidence used to score or reject it, as appropriate to the objective.
+Instrument actual coalescing decisions: candidate operands, relevant instructions,
+window bounds, flags, interference evidence, outcome and the condition that actually
+decided it. Distinguish candidates rejected before an attempt from attempted merges.
+Do not infer a definite reason from the final graph alone.
 
-Deduplicate variants by the relevant compiler state after remapping. Source forms that copy propagation reduces to the same state should share a result rather than consume repeated search effort. Define and version this state fingerprint; include the fields needed by the objective and avoid accidentally merging variants with different symbolic relocations or provenance mechanisms.
+Retain nodes after their instructions disappear. Record graph membership and degree
+at meaningful phases, explaining stored-degree versus adjacency differences.
+Expose structured lifecycle queries and readable explanations.
 
-Start with bounded, reproducible variant families such as declaration forms, parameter types, wrappers and promotion patterns. Save each candidate, its build flags and compiler identity, the objective result and its state fingerprint. A successful search must return a concrete, reviewable source variant and a recompilation that demonstrates the graph change.
+Acceptance: explain the symbolic-address and promoted-array cases end to end,
+account for relevant graph nodes/degrees, and verify stock-equivalent output with
+tracing enabled and disabled for the affected compiler versions.
 
-**Build priorities 1 and 2 first.** Provenance should explain why candidates succeed or collapse to the same state, and the graph-directed harness should turn that information into testable source hypotheses.
+## 3. Value correspondence and complete graph comparison
 
-## Priority 3: reduce examples while preserving the mechanism
+Build on `remap` and `graph_difference`, combining provenance anchors with
+instruction matching. Represent ambiguity, established elimination and many-to-one
+merges explicitly. Include graph-only temporaries and let callers select the
+intended phase and allocation round.
 
-Add a reducer whose predicate describes the compiler behavior under investigation. Examples are “a symbolic argument creates this extra temporary” and “the second promoted array element cannot coalesce.” Preserve the mechanism rather than exact final physical registers, which depend on the rest of the function.
+Report unmatched nodes and edges crossing the mapped boundary instead of silently
+omitting them. Separate “not matched,” “not visible in instructions,” “merged” and
+“proven eliminated.” Changed allocation rounds must not be mistaken for removal.
 
-Use provenance and remapping to follow the relevant values as unrelated code is removed. Keep compilation validity and the objective's required semantics and symbolic relocations as constraints. Record the reduction steps and reproduce the final predicate from the saved small example.
+Acceptance fixtures cover renumbering, disappeared temporaries, merges, ambiguity
+and changed allocation rounds without false elimination claims.
 
-Use reduced examples to exhaustively test declaration forms, parameter types, wrappers and promotion patterns. Verify useful discoveries again in `RenderParticles`; success on the reduced case is a hypothesis until it survives transplantation into the full function.
+## 4. Graph-directed source-variant harness
 
-## Priority 4: find existing source examples of the desired behavior
+Create one Rust objective evaluator shared by search, reduction and corpus queries.
+The first objectives are:
 
-Index oracle traces from already matched functions together with their source locations, compiler versions and build flags. Query for concrete mechanisms, beginning with symbolic address arguments without the unwanted temporary and promoted values whose initialization coalesces as needed.
+- Remove a relevant temporary: lifecycle/graph evidence establishes removal while
+  required symbolic relocations remain.
+- Initialize a flag directly: initialization reaches the value's allocated register
+  without the unwanted copy.
+- Change a value's allocation category while preserving the specified instruction
+  structure.
 
-Return the corresponding C++ construct and its provenance/coalescing evidence. Distinguish examples obtained under different compiler versions or flags, and make each result reproducible. Use these observed source patterns to seed the variant harness and reducer experiments.
+Separate hard constraints from ranking. Check compilation, required relocations,
+applicable semantic checks and trace completeness before scoring graph changes.
+Report final target mismatch separately; a better mismatch does not prove that the
+intended mechanism changed.
 
-## Completion evidence
+Begin with bounded, reproducible transformation families: declaration placement
+and forms, equivalent initialization forms, compatible parameter forms, wrappers
+and array-promotion patterns. State their preconditions. Parameter changes and
+wrappers are not automatically equivalent source transformations.
 
-Demonstrate the complete loop on a representative `RenderParticles` problem: identify a useful graph edit, explain its backend mechanism, find or search for a C++ construct that realizes it, reduce the behavior where useful, and verify the source change in the full function. Keep the graph objective and the final code-match result separate so the evidence shows what was learned.
+Save candidate source, transformations, build inputs, objective evidence and
+rejection reasons. Support budgets, cancellation, resume and deterministic ordering.
+
+Use exact build-input caching to avoid identical recompilations, including compiler
+identity, dependencies, flags, trace configuration and relevant environment in the
+cache contract. Separately define
+and version compiler-state fingerprints to group already compiled results and avoid
+redundant analysis/exploration. Preserve relevant provenance, graph boundaries,
+categories, instructions and symbolic relocations while normalizing incidental
+identities. Different source variants still require their initial compilation.
+Keep source representatives: equivalent current compiler states do not guarantee
+identical future transformations.
+
+Acceptance: return a concrete source candidate that independently recompiles and
+satisfies an objective, with inspectable evidence grouping duplicate syntax variants.
+
+**The first usable milestone consists of stages 1–4: provenance, reliable value
+correspondence and the graph-directed harness.** Build these before the reducer and
+matched-source index. This preserves the requested priority of provenance and
+source-variant search while making comparison correctness a prerequisite.
+
+## 5. Mechanism-preserving reduction
+
+Reuse the objective evaluator as the reduction predicate. Reduce declarations,
+statements, expressions, helpers and dependencies while retaining the mechanism and
+required build/relocation constraints. Example predicates are “a symbolic argument
+creates this extra temporary” and “the second promoted array element cannot coalesce.”
+
+Rebind values through provenance after every change and reject indeterminate
+evaluations. Preserve the mechanism rather than exact physical registers, which
+depend on the whole function. Provide deterministic reduction order, caching,
+budgets and replayable logs. Label compiler-behavior reproducers separately from
+source changes validated for transplantation.
+
+Acceptance: a smaller standalone case reproduces the same creation/coalescing
+decision. Use it to exhaustively test declaration forms, parameter types, wrappers
+and promotion patterns, then retest useful transformations in `RenderParticles`.
+
+## 6. Searchable matched-source corpus
+
+Index traces from already matched functions with source revisions/ranges, compiler
+identity, flags, match evidence and provenance coverage. Initial queries seek
+symbolic address arguments without the unwanted temporary, and promoted values
+whose initialization coalesces as needed.
+
+Absence queries require complete relevant coverage. Return actual C++ constructs,
+decision evidence and reproduction commands, keeping compiler-version and flag
+differences visible. Feed observed examples into the harness as candidate patterns.
+
+Acceptance: returned examples recompile and reproduce the claimed mechanism.
+
+## 7. Validation and delivery
+
+Add focused parser, lifecycle, correspondence, objective and fingerprint tests plus
+compiler-backed cases. Run affected compiler-version checks and Windows/Linux
+integration checks. Measure trace overhead and search throughput. Update native
+CLI documentation, kit workflows and structured schemas together.
+
+Finish with a reproducible `RenderParticles` investigation: explain a useful graph
+change, find or generate C++ realizing it, reduce where useful, and verify in the
+full function. Report graph-objective success and final code matching independently.
