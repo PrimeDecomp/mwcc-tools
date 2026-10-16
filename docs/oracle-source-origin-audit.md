@@ -1,6 +1,6 @@
 # Source write and initializer provenance audit
 
-This is a read-only investigation after `f164a24`, not an implemented provenance contract. No producer, hook, parser, objective, sealed proof, or game input was changed for this audit. Call-argument capture remains the immediate instrumentation priority. The bridge below needs a defined observation contract and guarded runtime validation before implementation.
+This began as a read-only investigation after `f164a24`, not an implemented provenance contract. Call-argument capture has since been implemented in V6. The original-source bridge below still needs a defined observation contract and guarded runtime validation. The later [inline/write-emission audit](oracle-inline-clone-audit.md) resolves the concrete frontend entries, ownership and external switch-table guards; the [IRO audit](oracle-iro-origin-audit.md) resolves private entries and scalar replacement stores; the native [source arena audit](oracle/source-arenas.md) inventories allocation and reset prerequisites. These audits do not add runtime source ancestry.
 
 ## What retained captures establish
 
@@ -74,15 +74,16 @@ fn source_origins_for_backend_expression(history: &History, expression: Expressi
 
 Every ID is compilation-local and includes an observed construction/pass/arena lifetime where relevant. Reused raw pointers, reused indices, or identical names are never identity. An untracked pre-existing node or unobserved in-place rewrite cannot acquire a proven lifetime merely because its current bytes equal an older snapshot. Until guarded construction/arena-reset coverage resolves that ambiguity, the corresponding path stays indeterminate. A cheaper first increment can expose exact scalar-use/Statement/ENode snapshots as **stage-local context**; it must not claim the complete original source bridge above.
 
-Each supported producer path needs guarded instruction/body fingerprints and ABI layouts on all three versions, balanced invocation/end records, independent observed totals, function/owner checks, and explicit gaps for unsupported node tags, list cycles, capacity/depth limits, absent callbacks, or pointer-lifetime ambiguity. Source and inline histories can precede backend functions, so retain them at compilation scope. Version aliases for the two optimizer conversion functions still need retail address/guard validation on GC1.3.2/2.7; the decompiled C signatures alone are not such validation. Known current symbols for future auditing are:
+Each supported producer path needs guarded instruction/body fingerprints and ABI layouts on all three versions, balanced invocation/end records, independent observed totals, function/owner checks, and explicit gaps for unsupported node tags, list cycles, capacity/depth limits, absent callbacks, or pointer-lifetime ambiguity. Source and inline histories can precede backend functions, so retain them at compilation scope. Later retail/split audits resolve the optimizer entries below. On GC1.3.2/2.7 some are private entries inside coarse split containers, each with its own ABI and return; they are not fused runtime functions. Actual entry points are:
 
 | Candidate | GC1.3 | GC1.3.2 | GC2.7 |
 | --- | --- | --- | --- |
 | CInit_InitializeAutoData | `005099e0` | `0050a4c0` | `0050b240` |
 | append_or_defer_expression_statement | `004f33e0` | `004f3e90` | `004f4d50` |
 | fn_00513240 clone/substitute | `0055f360` | `0055fec0` | `00561dd0` |
-| linearize_expression | `0046c990` | unresolved here | unresolved here |
-| fn_0042eb40 reconstruction | `0046be00` | unresolved here | unresolved here |
+| linearize_expression | `0046c990` | `0046cc30` | `0046d850` |
+| lower_expression_to_statements | `0046cef0` | `0046d190` | `0046ddb0` |
+| fn_0042eb40 reconstruction | `0046be00` | `0046c0a0` | `0046ccc0` |
 
 Validation should include explicit scalar/aggregate declaration initializers versus later assignments; no initializer versus implicit construction; deferred callback flush; both inline routes; two invocations of the same helper with different actual arrays; nested inline formal substitution; shadowed names; in-place ENode rewrites; pass renumbering; arena/pointer reuse; an unobserved origin remaining indeterminate; truncated trees/lists; and all original-vs-instrumented object/relocation comparisons. The existing full and tiny captures are controls for present gaps, not positive evidence for the proposed new roles.
 

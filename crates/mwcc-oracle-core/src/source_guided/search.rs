@@ -915,12 +915,10 @@ pub fn run(plan: &Plan, output: &Path, budget: &Budget, resume: bool) -> Result<
                 .iter()
                 .filter_map(|o| o.evaluation.as_ref().map(|e| (o.id, &e.score)))
                 .collect::<Vec<_>>();
-            ranked.sort_by_key(|(id, score)| {
-                (
-                    !score.eligible,
-                    score.objective_cost.unwrap_or(u32::MAX),
-                    *id,
-                )
+            ranked.sort_by(|(id, score), (other_id, other_score)| {
+                score
+                    .compare_priority(other_score)
+                    .then_with(|| id.cmp(other_id))
             });
             progress.ranking = ranked.into_iter().map(|(id, _)| id).collect();
             progress.next += 1;

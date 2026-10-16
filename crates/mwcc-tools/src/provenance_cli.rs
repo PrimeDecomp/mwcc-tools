@@ -130,7 +130,7 @@ pub fn run(args: &[String]) -> Result<()> {
     }
     if matches!(
         args.first().map(String::as_str),
-        Some("audit-counters" | "audit-dispatch")
+        Some("audit-counters" | "audit-dispatch" | "audit-source-arenas")
     ) {
         let mut root = std::env::current_dir()?;
         let mut version = "GC_2_7".to_owned();
@@ -148,7 +148,11 @@ pub fn run(args: &[String]) -> Result<()> {
             }
             i += 1;
         }
-        let audit = if args[0] == "audit-dispatch" {
+        let audit = if args[0] == "audit-source-arenas" {
+            serde_json::to_value(mwcc_oracle_core::source_arena_audit::capture(
+                &root, &version,
+            )?)?
+        } else if args[0] == "audit-dispatch" {
             serde_json::to_value(mwcc_oracle_core::dispatch_audit::capture(&root, &version)?)?
         } else {
             serde_json::to_value(mwcc_oracle_core::backend_audit::capture(&root, &version)?)?

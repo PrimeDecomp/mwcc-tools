@@ -365,3 +365,8 @@ and two range categories on every supported version/host.
 Continue with semantic lifetime correspondence, categories and complete origins before
 using absence predicates. The complete implementation scope remains in the
 [source-guided roadmap](../oracle-source-guided-search.md).
+
+For original-source ancestry, the [source arena audit](source-arenas.md) inventories
+retail allocation/reset storage and bypass paths on all three versions. It is a
+static prerequisite to lifetime-safe node observations; it does not add a
+runtime source-origin contract.

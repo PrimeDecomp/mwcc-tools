@@ -717,7 +717,7 @@ fn help() {
   oracle compile-trace SOURCE [options] -- COMPILER FLAGS
   provenance inspect TRACE_OR_CAPTURE.json [--link NAME] [--json]
   provenance compare FIRST SECOND --link NAME [--second-link NAME] [--class 4] [--first-round 0] [--second-round 0] [--version GC_2_7] [--json]
-  provenance audit-counters|audit-dispatch --root ORACLE_ROOT --version GC_2_7
+  provenance audit-counters|audit-dispatch|audit-source-arenas --root ORACLE_ROOT --version GC_2_7
   oracle run-unit --project DIR --unit NAME [--candidate FILE] [--fast] -- VIEW OPTIONS
   oracle regdiff --project DIR --unit NAME --function QUERY [--full] [--json]
   colouring verify|target|force|search|replay|remap [SOURCE | --load PREFIX] [options]

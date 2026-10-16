@@ -44,7 +44,7 @@ same-host OS/architecture with dependencies/include roots under the recorded
 working directory and supported options. Complete transitive checker and OS
 runtime packaging remains outside this bounded contract.
 
-Current workspace suites pass on both hosts: **193 passed, 11 opt-in tests ignored**.
+The V6 baseline workspace suites passed on both hosts: **193 passed, 11 opt-in tests ignored**.
 All-target Clippy with warnings denied also passes. V6 producers pass 36 C/Rust
 comparisons, 45 backend off/on pairs, nine scalarization cases and 91 constructor
 corruption negatives per host. Three additional argument off/on pairs per host
@@ -80,6 +80,85 @@ separate diagnostics. The [source-write audit](oracle-source-origin-audit.md)
 identifies guarded transformation edges still needed for original assignment,
 declaration-initializer and inline-leaf ancestry. Reused CSE indices, source lines
 and an active initializer callback are insufficient joins.
+
+## Original-source bridge work after V6
+
+The native `provenance audit-source-arenas` inventories all five retail pools,
+local lock and failure callback, with input hashes, containing-function guards
+and unresolved direct references. Both native hosts agree on complete reports
+and 66 retail listings across the three compiler versions. The retained proof is
+`build/source-guided/source-origin-bridge/arena-audit/{windows-final,linux-final}/`.
+This is static evidence: both runtime coverage flags remain false. Inlined global
+allocation in name interning bypasses `galloc`; locked `freelheap` does not reset
+local allocations; selecting optimizer space after freeing global space is not
+an optimizer reset. See [source arenas](oracle/source-arenas.md).
+
+The [inline audit](oracle-inline-clone-audit.md) identifies exact frontend owners,
+ordinary source-statement emission, deferred initializer callbacks, clone mode
+substitutions and external switch-table guards. The
+[IRO audit](oracle-iro-origin-audit.md) verifies 66 retail/split bodies and 45
+scalar-use replacement sites. Later compiler versions contain private ordinary
+functions inside coarse split symbols. Constructor-only hooks miss direct
+allocations; lifetime identity alone cannot cover destructive in-place rewrites.
+These audits resolve implementation sites without claiming a runtime original
+source-write path.
+
+The host `source_lifetimes` API now tracks exact requested/reserved allocation
+spans, pool epochs, guarded invalidations and capture-bound private receipts.
+Unknown end totals invalidate affected earlier receipts retrospectively;
+precisely located loss is a separate operation. Cross-pool overlaps and malformed
+spans cannot leave conflicting current identities proven. An active interval
+index avoids historical scans in normal operation. This is a tested foundation,
+not a V7 producer or a parser for V6 pointers. See
+[allocation lifetimes](oracle/source-lifetimes.md).
+
+The [new bounded source family](oracle-source-discovery-envmodulate.md) retains
+three checked full-unit variants with unchanged noRota source and headers. Late
+pointer/reference reuse removes one graph node; call factoring removes two.
+All reduce three EnvModulate pairs to two, so the stronger maximum-one objective
+remains unsatisfied. One selected late-reference argument has zero pairs while
+another argument still owns the remaining materialization. Those are scoped
+mechanism facts, not a final retail match or original-source lifetime proof.
+
+Count objectives now score distance to the requested interval rather than giving
+all failures cost one. A three-pair baseline with maximum one costs two; a
+two-pair candidate costs one. Unknown evidence stays unscored, hard constraints
+still determine eligibility, and only actual satisfaction can trigger independent
+winner verification. The retained source experiments use their original frozen
+V6 analyzer and keep its original scoring results.
+
+Fresh native analyzers agree on all four complete score reports from those
+retained Windows captures: costs are `[2,1,1,1]`, placing the three partial
+improvements before their baseline. The separate mechanism-only score audit
+reruns no compiler or semantic checker. Exact reports, analyzer hashes and the
+cross-host receipt are under
+`build/source-guided/source-origin-bridge/score-audit/`. It changes neither the
+old source-transformation run nor its success status.
+
+A separate [caller-proven helper specialization](oracle-source-discovery-helper-specialization.md)
+now reaches the stronger objective: two EnvModulate pairs become one, graph
+nodes fall from 553 to 551, and the named noRota degree falls from 157 to 155.
+The native harness independently recompiles the candidate, passes all nine hard
+gates and the closed-source checker, and retains equal candidate/verification
+objects. The recipe uses the original public setters in the helper's proven else
+branch, without changing headers, noRota or the ABI. This is a Windows GC2.7
+full-unit source-transformation proof; the diagnostic target is the clean-source
+baseline object, not retail. It does not establish semantic lifetime elimination,
+direct initialization or a category transition.
+
+Current workspace suites pass on both hosts: **208 passed, 12 opt-in tests
+ignored**, with all-target Clippy warnings denied. The opt-in retail arena test
+also passes on each host across all three compiler versions. Logs are in
+`build/source-guided/source-origin-bridge/validation-v1/`. The first Windows
+preflight exposed an inherited nonblocking accepted socket in the HTTP fixture;
+the fixture now explicitly uses blocking request reads with its existing timeout.
+Initial diagnostics remain separate from the passing current logs.
+
+The next source-provenance implementation step is guarded runtime allocation and
+invalidation capture with independent totals feeding the lifetime ledger, then
+immutable source-node observations and actual inline/IRO replacement edges.
+Neither pointer equality nor the new successful source recipe closes those
+remaining original-source and semantic-lifetime requirements.
 
 ## Previous extension: frontend scalarization and real source examples
 

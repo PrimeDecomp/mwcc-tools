@@ -200,10 +200,18 @@ passed; a configured check is not a formal equivalence proof.
 
 An optional `target: {"object": "target.o", "link": "exact_target_link"}` records
 final byte mismatch and relocation equality separately. That mismatch is not the
-graph objective. `score.eligible` requires all hard constraints; objective cost is
-0 for observed satisfaction, 1 for observed failure, and null for indeterminate.
+graph objective. `score.eligible` requires all hard constraints. For
+`symbol_address_pairs` and `call_argument_address_pairs`, `objective_cost` is the
+observed count's distance to the requested inclusive interval: three pairs with
+maximum one cost 2; two pairs cost 1; a count inside the interval costs 0.
+Other objectives cost 0 for observed satisfaction and 1 for observed failure.
+Indeterminate evidence always has null cost. A nearer unsatisfied count is partial
+progress and cannot trigger success or bypass any hard constraint.
 `ranking` orders eligible candidates first and known objective costs before unknown
-ones. Edge-change counts are conditional diagnostics from the
+ones, including a known `u32::MAX` cost. Rust callers can use
+`Score::compare_priority` and a stable candidate ID to break ties. Saved runs
+remain bound to their recorded analyzer; changed scoring does not authorize
+resuming a run with a different executable. Edge-change counts are conditional diagnostics from the
 [provenance-aware comparison](graph-correspondence.md), with multiplicity changes,
 complete nodes and explicit unclassified boundary edges.
 `fingerprint_error` explains unavailable state grouping separately from compilation

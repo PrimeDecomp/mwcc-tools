@@ -140,9 +140,56 @@ pub struct EvaluationReport {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Score {
     pub eligible: bool,
+    /// Distance to the allowed count interval for count objectives; otherwise
+    /// zero for satisfaction and one for failure. Unknown evidence has no cost.
     pub objective_cost: Option<u32>,
     pub inferred_edges_added: usize,
     pub inferred_edges_removed: usize,
+}
+impl Score {
+    /// Eligible candidates first, then known costs in ascending order.
+    /// Conditional edge deltas do not override the requested objective. Callers
+    /// can use a stable candidate ID to break equal priorities.
+    pub fn compare_priority(&self, other: &Self) -> std::cmp::Ordering {
+        (
+            !self.eligible,
+            self.objective_cost.is_none(),
+            self.objective_cost,
+        )
+            .cmp(&(
+                !other.eligible,
+                other.objective_cost.is_none(),
+                other.objective_cost,
+            ))
+    }
+}
+
+fn objective_cost(
+    objective: &Objective,
+    evaluation: &Evaluation,
+    observations: &Value,
+) -> Option<u32> {
+    match evaluation.state {
+        EvaluationState::Satisfied => Some(0),
+        EvaluationState::Indeterminate => None,
+        EvaluationState::Unsatisfied => {
+            let (minimum, maximum) = match objective {
+                Objective::SymbolAddressPairs {
+                    minimum, maximum, ..
+                }
+                | Objective::CallArgumentAddressPairs {
+                    minimum, maximum, ..
+                } => (*minimum, *maximum),
+                _ => return Some(1),
+            };
+            let count = observations["candidate"]["count"].as_u64()?;
+            let distance =
+                u64::from(minimum).saturating_sub(count) + count.saturating_sub(u64::from(maximum));
+            // A contradictory failure with an in-range count must not acquire
+            // a success score. Very large known distances remain worst-ranked.
+            (distance != 0).then(|| u32::try_from(distance).unwrap_or(u32::MAX))
+        }
+    }
 }
 pub struct Input<'a> {
     pub compilation: &'a Compilation,
@@ -1789,11 +1836,7 @@ pub fn evaluate(
         .all(|c| c.state == EvaluationState::Satisfied);
     let score = Score {
         eligible,
-        objective_cost: match objective.state {
-            EvaluationState::Satisfied => Some(0),
-            EvaluationState::Unsatisfied => Some(1),
-            EvaluationState::Indeterminate => None,
-        },
+        objective_cost: objective_cost(&c.objective, &objective, &observations),
         inferred_edges_added: graph_changes["inferred_edges_added"]
             .as_array()
             .map_or(0, Vec::len),

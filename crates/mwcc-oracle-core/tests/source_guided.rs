@@ -19,6 +19,37 @@ fn known() -> Evaluation {
         reasons: vec![],
     }
 }
+#[test]
+fn ranking_keeps_hard_constraints_and_known_extreme_costs_ahead_of_unknowns() {
+    let known = objective::Score {
+        eligible: true,
+        objective_cost: Some(u32::MAX),
+        inferred_edges_added: 0,
+        inferred_edges_removed: 0,
+    };
+    let unknown = objective::Score {
+        objective_cost: None,
+        ..known.clone()
+    };
+    let blocked = objective::Score {
+        eligible: false,
+        objective_cost: Some(0),
+        ..known.clone()
+    };
+    assert!(known.compare_priority(&unknown).is_lt());
+    assert!(unknown.compare_priority(&blocked).is_lt());
+    let nearer = objective::Score {
+        objective_cost: Some(1),
+        ..known.clone()
+    };
+    assert!(nearer.compare_priority(&known).is_lt());
+    let irrelevant_changes = objective::Score {
+        inferred_edges_added: 1000,
+        inferred_edges_removed: 1000,
+        ..nearer.clone()
+    };
+    assert!(nearer.compare_priority(&irrelevant_changes).is_eq());
+}
 fn reg(register: u32, effect: u16) -> String {
     format!(
         "0004{}{}000000000000",
@@ -299,6 +330,9 @@ fn argument_pair_counts_use_owned_births_and_never_treat_missing_context_as_zero
             .state,
         EvaluationState::Unsatisfied
     );
+    let short = evaluate_argument_trace(&text, argument_objective(0, 4, 5));
+    assert_eq!(short.objective.state, EvaluationState::Unsatisfied);
+    assert_eq!(short.score.objective_cost, Some(3));
     assert_eq!(
         evaluate_argument_trace(&text, argument_objective(2, 0, 0))
             .objective
@@ -319,12 +353,9 @@ fn argument_pair_counts_use_owned_births_and_never_treat_missing_context_as_zero
         text.replace("argument_births=2", "argument_births=1"),
         text.replace("symbol_complete=1", "symbol_complete=0"),
     ] {
-        assert_eq!(
-            evaluate_argument_trace(&changed, argument_objective(0, 0, 0))
-                .objective
-                .state,
-            EvaluationState::Indeterminate
-        );
+        let unknown = evaluate_argument_trace(&changed, argument_objective(0, 0, 0));
+        assert_eq!(unknown.objective.state, EvaluationState::Indeterminate);
+        assert_eq!(unknown.score.objective_cost, None);
     }
 }
 #[test]
@@ -538,6 +569,17 @@ fn symbol_pair_objective_counts_a_guarded_mechanism_and_requires_complete_identi
     let result = objective::evaluate(&c, &input, &input).unwrap();
     assert_eq!(result.overall.state, EvaluationState::Satisfied);
     assert_eq!(result.observations["candidate"]["count"], 1);
+    assert_eq!(result.score.objective_cost, Some(0));
+    // A count objective supplies a gradient even while it remains unsatisfied.
+    // One observed pair is two short of the requested range, not just "failed".
+    let distant = contract(Objective::SymbolAddressPairs {
+        symbol: "sym__1C".into(),
+        minimum: 3,
+        maximum: 4,
+    });
+    let distant_result = objective::evaluate(&distant, &input, &input).unwrap();
+    assert_eq!(distant_result.objective.state, EvaluationState::Unsatisfied);
+    assert_eq!(distant_result.score.objective_cost, Some(2));
     assert_eq!(
         result.observations["candidate"]["pairs"][0]["low"]["sequence"],
         2
@@ -571,13 +613,9 @@ fn symbol_pair_objective_counts_a_guarded_mechanism_and_requires_complete_identi
             source,
             semantic_check: None,
         };
-        assert_eq!(
-            objective::evaluate(&zero, &input, &candidate)
-                .unwrap()
-                .objective
-                .state,
-            EvaluationState::Indeterminate
-        );
+        let result = objective::evaluate(&zero, &input, &candidate).unwrap();
+        assert_eq!(result.objective.state, EvaluationState::Indeterminate);
+        assert_eq!(result.score.objective_cost, None);
     }
     let mut br = ar.clone();
     br.graphs.graphs[0]

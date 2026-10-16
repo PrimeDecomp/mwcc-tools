@@ -364,6 +364,19 @@ first. Unknown earlier callees or missing arguments do not establish zero pairs.
 Require the containing function's symbolic relocations and semantic checks when
 testing a source transformation.
 
+For original-source provenance development, use the static native inventory:
+
+```text
+mwcc-tools provenance audit-source-arenas --root ORACLE_ROOT --version GC_2_7
+```
+
+It records all five retail heap descriptors, lock/failure-callback references,
+containing function hashes and unresolved direct references. The source checkout's
+`docs/oracle/source-arenas.md` explains allocator bypasses and conditional resets.
+An empty unresolved list does not establish runtime allocation/reset coverage or
+source ancestry. Pool generations and immutable node revisions are separate;
+pointer equality alone cannot identify an original write.
+
 Queries use the shared mechanism evaluator. Require an actual symbol relocation
 when asking for a zero address-pair count, so unrelated functions cannot satisfy
 the query by never using that symbol. Zero counts describe the guarded Normalize
