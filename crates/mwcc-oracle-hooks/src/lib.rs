@@ -11,6 +11,11 @@ mod abi;
     target_pointer_width = "32",
     not(any(feature = "trace-output", feature = "frontend"))
 ))]
+mod backend;
+#[cfg(all(
+    target_pointer_width = "32",
+    not(any(feature = "trace-output", feature = "frontend"))
+))]
 mod bindings;
 #[cfg(all(
     target_pointer_width = "32",

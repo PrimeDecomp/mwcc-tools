@@ -37,7 +37,8 @@ pub const HOOKS: [&str; 26] = [
     "_generate_inline_code",
     "_setup_inline_locals_and_arguments",
 ];
-pub const SUPPORT: [&str; 9] = [
+pub const SUPPORT: [&str; 10] = [
+    "_OracleRust_BackendProbe",
     "_OracleRust_LinkName",
     "_OracleRust_PrintInstruction",
     "_OracleRust_Snapshot",
@@ -48,7 +49,8 @@ pub const SUPPORT: [&str; 9] = [
     "_OracleRust_PrintChain",
     "_OracleRust_InlineLine",
 ];
-pub const SOURCES: [&str; 14] = [
+pub const SOURCES: [&str; 15] = [
+    "backend.rs",
     "lib.rs",
     "abi.rs",
     "local_call.rs",

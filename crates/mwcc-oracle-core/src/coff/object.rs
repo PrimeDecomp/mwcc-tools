@@ -293,6 +293,18 @@ impl Builder {
         });
         Ok(number)
     }
+    pub fn refresh_section_definitions(&mut self) -> Result<()> {
+        // Callers may fill relocations or rewrite contents after creating a
+        // section. Keep its auxiliary definition consistent with the header.
+        for (&number, &symbol) in &self.section_symbols {
+            let section = &self.sections[number as usize - 1];
+            let at = symbol as usize * 18 + 18;
+            self.symbols[at..at + 4].copy_from_slice(&section.size.to_le_bytes());
+            self.symbols[at + 4..at + 6]
+                .copy_from_slice(&u16::try_from(section.relocations.len())?.to_le_bytes());
+        }
+        Ok(())
+    }
     pub fn finish(mut self) -> Result<Vec<u8>> {
         let header_size = 20 + 40 * self.sections.len();
         let mut body = vec![];

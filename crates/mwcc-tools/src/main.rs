@@ -13,6 +13,7 @@ mod calibrate_cli;
 mod colouring_cli;
 mod header_impact_cli;
 mod kit_cli;
+mod provenance_cli;
 mod release_cli;
 mod tu_cli;
 
@@ -139,6 +140,7 @@ fn parse_compile(args: &[String], schema_six: bool) -> Result<ParsedCompile> {
                 cse_view = true;
             }
             "--stages" => options.stages = true,
+            "--backend" => options.backend = true,
             "--json" => json_output = true,
             "--pcode" => pcode = true,
             "--raw" => raw = true,
@@ -709,6 +711,7 @@ fn help() {
   oracle SOURCE [--json] [--oracle-root ROOT] [--from-ninja FILE] [--version V] [view options] -- COMPILER FLAGS
   oracle analyze-trace TRACE [--version V] [--function NAME] [--link NAME] [--raw] [--allocation-only | --events]
   oracle compile-trace SOURCE [options] -- COMPILER FLAGS
+  provenance inspect TRACE_OR_CAPTURE.json [--link NAME] [--json]
   oracle run-unit --project DIR --unit NAME [--candidate FILE] [--fast] -- VIEW OPTIONS
   oracle regdiff --project DIR --unit NAME --function QUERY [--full] [--json]
   colouring verify|target|force|search|replay|remap [SOURCE | --load PREFIX] [options]
@@ -835,6 +838,7 @@ fn run() -> Result<()> {
         }
     }
     match args.first().map(String::as_str) {
+        Some("provenance") => provenance_cli::run(&args[1..])?,
         Some("--version") => println!("mwcc-tools {}", env!("CARGO_PKG_VERSION")),
         Some("package-release") => release_cli::run(&args[1..])?,
         Some("configure" | "transform-dep" | "download" | "verify" | "gates" | "build-hooks") => {

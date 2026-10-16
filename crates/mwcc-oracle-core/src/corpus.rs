@@ -179,6 +179,7 @@ pub fn run(request: &Request) -> Result<Report> {
         Mutex::new((0..request.jobs.len()).map(|_| None).collect());
     let options = if request.all_traces {
         TraceOptions {
+            backend: true,
             schedule: true,
             inline_cost: true,
             full_cost: true,

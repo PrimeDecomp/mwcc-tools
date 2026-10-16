@@ -92,6 +92,24 @@ Elimination is indeterminate until backend lifecycle coverage supplies evidence.
 `--first-snapshot before|after`/`--second-snapshot before|after` select existing trace
 snapshots. These additions are in development after the pinned migration release.
 
+## Observe actual coalescing decisions (development)
+
+The current Rust source adds backend branch provenance after the pinned migration
+release. Build fresh native tools and a fresh Rust producer to use it:
+
+```text
+mwcc-tools oracle compile-trace --oracle-root ORACLE_ROOT --from-ninja build.ninja --backend src/Kyoto/Particles/CElementGen.cpp > particle-capture.json
+mwcc-tools provenance inspect particle-capture.json --link RenderParticles__11CElementGenFv --json > particle-coalescing.json
+```
+
+The format-1 result records actual deciding branches and confirmed union-parent
+writes. It explains interference, window bounds, flags, kind/class filtering,
+already-equal roots and the GPR special-register guard. `decisions` reports capture
+coverage; `lifecycle` remains indeterminate until creation/reuse/category coverage
+is implemented. Observation IDs are not stable value IDs. Missing records do not
+prove elimination. Consume the structured decisions and coverage rather than
+extracting explanations from report text.
+
 ## Calibrate inline decisions
 
 ```text

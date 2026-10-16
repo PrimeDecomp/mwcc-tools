@@ -19,6 +19,7 @@ More detail:
 * [Common subexpressions](oracle/cse.md): `--cse`, `--ir`, the order of the optimizer's temporaries and their registers.
 * [Comparing translation units](oracle/tu-tools.md): native `inline-diff`, `data-diff`, `inline-window` and `header-impact`.
 * [Trace format, JSON and native API](oracle/trace.md).
+* [Retail coalescing provenance](oracle/provenance.md): development `--backend` captures and `provenance inspect`.
 
 ## Build
 

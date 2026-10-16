@@ -1,7 +1,8 @@
 # Backend provenance instrumentation audit
 
 This is an active implementation audit for the [source-guided roadmap](oracle-source-guided-search.md).
-It does not claim complete provenance or installed backend probes.
+Guarded coalescing probes are installed in the development Rust producer. Complete
+creation/reuse/category provenance is still open.
 
 ## Coalescing: verified retail entry points
 
@@ -29,8 +30,8 @@ reads the active class and register count from globals. Its range, root-finding
 and interference predicates are inlined. Its initial filter uses instruction flags,
 not the simple opcode selection described by the reconstructed implementation.
 Observing only function entry/exit or hypothetical helper returns would miss the
-actual deciding branches. The exact calling context still needs validation before
-installing a wrapper.
+actual deciding branches. The implementation retains the original prologue/body
+and inserts callbacks; it does not assume the reconstructed function signature.
 
 The audited sequence includes copy-flag filtering (`0x10`), rejection by another
 flag (`0x100`), operand validation and class filtering, root equality, an actual
@@ -41,11 +42,26 @@ condition rather than inventing a name. Bounds are read from class-indexed table
 
 Candidate branch/write offsets relative to each entry are `0x10F`, `0x17B`,
 `0x18B`, `0x1D6`, `0x244`, `0x271`, `0x280`, `0x289`, `0x291`, `0x2B9` and
-`0x2C7`. These are audit candidates, **not yet installed probes**. Branch polarity,
-saved registers/flags, stack-local instruction identity, relocated code/data and
-all control-flow edges must be preserved and verified before runtime use. A probe
-must observe the original branch inputs/outcome; it must not replace the retail
-coalescing algorithm with a reconstructed one.
+`0x2C7`. The implemented merge observation is at `0x2CB`, **after** the parent
+write. Entry (`0x7`), copy-candidate (`0x107`) and exit (`0x442`) observations bring
+the installed total to fourteen sites. The native linker checks the normalized
+full-body hash and exact relocation layout, redirects every local branch after
+widening short branches, and retains original symbol/data relocations. Callback
+stubs save GPRs, flags, x87, MXCSR and XMM state. The saved PUSHAD ESP plus four
+recovers retail ESP; its `+0xC` slot identifies the current instruction.
+
+`mwcc-tools oracle compile-trace --backend` enables `pv.coalesce.*` records.
+`mwcc-tools provenance inspect` validates deciding paths, EFLAGS, physical-register
+window bypass and actual parent writes, and keeps absent/incomplete coverage
+indeterminate. See the [development API](oracle/provenance.md).
+
+All three versions pass stock-object and existing-trace equality with probes on
+and off on Windows/Linux synthetic fixtures. The full Echoes `CElementGen.cpp`
+unit passes on both hosts: 182 complete passes, 222 merges, 500 class rejections,
+621 interference rejections, 18 destination-window and 11 source-window
+rejections, and 3 already-equal-root decisions. These are whole-unit counts, not
+RenderParticles-only counts. The particular fixtures do not exercise every rare
+branch outcome; they do not establish creation or semantic-origin coverage.
 
 ## Creation and register-number reuse: incomplete audit
 
@@ -55,6 +71,12 @@ VRs, plus coalescing-window checkpoints which can rewind virtual-register counte
 backend-generated address/call/promotion temporaries. Object binding alone cannot
 establish complete creation coverage. Register numbers therefore cannot be lifetime
 IDs, even within one function.
+
+Inspection also finds many direct/inlined counter increments in `Operands.c`
+(address materialization and several `Operands_NewReg` paths). Wrapping only the
+named allocation functions would miss these births. The next audit must enumerate
+actual retail counter writes, including class-indexed accesses and checkpoint
+rewinds, across code-generation units.
 
 Next audit every counter-creation/reuse/category path against all three retail
 images, establish function/expression/inline context, and build identity/coverage

@@ -193,6 +193,40 @@ pub fn run(request: &Request) -> Result<Report> {
         .cloned()
         .collect();
     if request.oracle {
+        // The Rust support export identifies the native producer. C rollback
+        // builds keep their original input objects and do not install probes.
+        let native = compiled_objects.iter().any(|p| {
+            fs::read(request.root.join(p))
+                .ok()
+                .and_then(|b| coff::defined_symbols(&b).ok())
+                .is_some_and(|s| s.contains("_OracleRust_BackendProbe"))
+        });
+        if native {
+            let mut count = 0;
+            for input in &mut inputs {
+                if !input.ends_with(".obj") {
+                    continue;
+                }
+                let data = fs::read(request.root.join(&*input))?;
+                crate::backend_probe::validate_incoming(&data)?;
+                if !coff::defined_symbols(&data)?.contains(crate::backend_probe::FUNCTION) {
+                    continue;
+                }
+                let output = format!("build/{version}/oracle/probes/{}", basename(input));
+                write(
+                    &request.root,
+                    &output,
+                    &crate::backend_probe::instrument(&data)?,
+                )?;
+                *input = output;
+                count += 1;
+            }
+            ensure!(
+                count == 1,
+                "native provenance requires exactly one retail coalescer"
+            );
+            messages.push("installed guarded retail coalescing observations".into());
+        }
         for symbol in config["oracle"]["hooks"]
             .as_array()
             .into_iter()

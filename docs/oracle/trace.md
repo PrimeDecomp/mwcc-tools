@@ -1,4 +1,4 @@
-# Trace format, JSON and Python API
+# Trace format, JSON and native API
 
 Part of the [oracle documentation](../oracle.md).
 
@@ -25,6 +25,12 @@ Link names are the mangled ones; the compiler computes them if it has not yet.
 ### Turned on by environment variables
 
 Set each to `1`. `mwcc-tools oracle` sets them for the options that need them.
+
+**`MWCC_ORACLE_BACKEND`** (`--backend`, current development Rust producer):
+`pv.coalesce.begin`, `candidate`, `check`, `merge` and `end` record actual retail
+coalescing paths. Use `mwcc-tools provenance inspect TRACE --json` for validated
+decisions and explicit coverage. See [backend provenance](provenance.md); creation,
+register-number reuse and allocation-category coverage remain incomplete.
 
 **`MWCC_ORACLE_SCHEDULE`** (`--schedule`):
 
@@ -156,7 +162,7 @@ and structured register explanations; do not parse human report paragraphs.
 See the [native kit guide](../../integrations/decomp-kits/overlay/.agents/docs/oracle-native.md)
 for project units, candidates, explicit check states, saved graphs and calibration.
 Rust callers can use the workspace source API in `mwcc-oracle-core`, including
-`trace`, `document`, `allocation`, `colouring` and `runner`.
+`trace`, `document`, `allocation`, `colouring`, `runner` and `provenance`.
 
 The retained Python implementations are historical behavior references. Their
 imports, function signatures and rendered text are not supported production APIs.

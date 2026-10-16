@@ -12,6 +12,7 @@ pub enum EvaluationState {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum EvidenceGap {
+    CoalescingCoverage,
     BackendLifecycleCoverage,
     AmbiguousCorrespondence,
     MissingGraphSnapshot,

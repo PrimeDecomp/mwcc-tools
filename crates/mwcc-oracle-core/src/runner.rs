@@ -15,6 +15,7 @@ use std::{
 use tempfile::TempDir;
 
 const TRACE_ENV: &[&str] = &[
+    "MWCC_ORACLE_BACKEND",
     "MWCC_ORACLE_SCHEDULE",
     "MWCC_ORACLE_INLINE_COST",
     "MWCC_ORACLE_FULL_COST",
@@ -28,6 +29,7 @@ const TRACE_ENV: &[&str] = &[
 
 #[derive(Clone, Debug, Default, Serialize)]
 pub struct TraceOptions {
+    pub backend: bool,
     pub schedule: bool,
     pub inline_cost: bool,
     pub full_cost: bool,
@@ -42,6 +44,7 @@ impl TraceOptions {
     fn environment(&self) -> BTreeMap<String, String> {
         let mut env = BTreeMap::new();
         for (key, enabled, value) in [
+            ("MWCC_ORACLE_BACKEND", self.backend, "1"),
             ("MWCC_ORACLE_SCHEDULE", self.schedule, "1"),
             ("MWCC_ORACLE_INLINE_COST", self.inline_cost, "1"),
             ("MWCC_ORACLE_FULL_COST", self.full_cost, "1"),
