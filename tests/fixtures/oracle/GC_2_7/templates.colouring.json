@@ -1,0 +1,76 @@
+[
+  {
+    "function": "adjust",
+    "link": "adjust<i>__Fi",
+    "class": "GPR",
+    "nodes": 3,
+    "rounds": 1,
+    "order_agrees": true,
+    "colour_disagreements": [],
+    "claims": [],
+    "traced_claims": [],
+    "preused": [],
+    "inferred": true,
+    "spilled": [],
+    "traced_spilled": [],
+    "ok": true
+  },
+  {
+    "function": "with_value",
+    "link": "with_value__Fii",
+    "class": "GPR",
+    "nodes": 13,
+    "rounds": 1,
+    "order_agrees": true,
+    "colour_disagreements": [],
+    "claims": [
+      31
+    ],
+    "traced_claims": [
+      31
+    ],
+    "preused": [],
+    "inferred": false,
+    "spilled": [],
+    "traced_spilled": [],
+    "ok": true
+  },
+  {
+    "function": "combine",
+    "link": "combine__F5Value",
+    "class": "GPR",
+    "nodes": 6,
+    "rounds": 1,
+    "order_agrees": true,
+    "colour_disagreements": [],
+    "claims": [],
+    "traced_claims": [],
+    "preused": [],
+    "inferred": true,
+    "spilled": [],
+    "traced_spilled": [],
+    "ok": true
+  },
+  {
+    "function": "__dt",
+    "link": "__dt__5ValueFv",
+    "class": "GPR",
+    "nodes": 5,
+    "rounds": 1,
+    "order_agrees": true,
+    "colour_disagreements": [],
+    "claims": [
+      31,
+      30
+    ],
+    "traced_claims": [
+      31,
+      30
+    ],
+    "preused": [],
+    "inferred": false,
+    "spilled": [],
+    "traced_spilled": [],
+    "ok": true
+  }
+]

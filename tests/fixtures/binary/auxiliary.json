@@ -1,0 +1,153 @@
+{
+  "indices": {
+    "entry": 2,
+    "external": 3,
+    "weak": 10
+  },
+  "symbols": {
+    "0": {
+      "name": ".text",
+      "value": 0,
+      "section": 1,
+      "type": 0,
+      "storage": 3
+    },
+    "2": {
+      "name": "_entry",
+      "value": 0,
+      "section": 1,
+      "type": 32,
+      "storage": 2
+    },
+    "3": {
+      "name": "_external_with_a_long_name",
+      "value": 0,
+      "section": 0,
+      "type": 0,
+      "storage": 2
+    },
+    "4": {
+      "name": ".bss",
+      "value": 0,
+      "section": 2,
+      "type": 0,
+      "storage": 3
+    },
+    "6": {
+      "name": ".data",
+      "value": 0,
+      "section": 3,
+      "type": 0,
+      "storage": 3
+    },
+    "8": {
+      "name": ".debug$long_section",
+      "value": 0,
+      "section": 4,
+      "type": 0,
+      "storage": 3
+    },
+    "10": {
+      "name": "_weak",
+      "value": 0,
+      "section": 0,
+      "type": 0,
+      "storage": 105
+    }
+  },
+  "sections": [
+    {
+      "name": ".text",
+      "flags": 1615855648,
+      "code": true,
+      "data": [
+        232,
+        0,
+        0,
+        0,
+        0,
+        195
+      ],
+      "relocs": [
+        [
+          1,
+          2,
+          20
+        ]
+      ]
+    },
+    {
+      "name": ".bss",
+      "flags": 3224371328,
+      "code": false,
+      "data": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "relocs": []
+    },
+    {
+      "name": ".data",
+      "flags": 3224371264,
+      "code": false,
+      "data": [
+        4,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "relocs": [
+        [
+          0,
+          2,
+          6
+        ],
+        [
+          4,
+          2,
+          6
+        ]
+      ]
+    },
+    {
+      "name": "/51",
+      "flags": 1107296320,
+      "code": false,
+      "data": [
+        100,
+        101,
+        98,
+        117,
+        103
+      ],
+      "relocs": []
+    }
+  ],
+  "defined": [
+    "_entry"
+  ],
+  "sizes": {
+    ".text": 6,
+    ".bss": 16,
+    ".data": 8,
+    "/51": 5
+  }
+}

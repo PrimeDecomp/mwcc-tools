@@ -1,0 +1,110 @@
+{
+  "symbols": "_entry = .text:0x00401000; // type:function size:0x10 scope:global\n_call = .text:0x00401020; // type:function size:0x10\n_c = .text:0x00401040; // type:function size:0x10\n_fn_00401050 = .text:0x00401050; // type:function size:0x4\n_d = .text:0x00401060; // type:function size:0x10\n_e = .text:0x00401080; // type:function size:0x10\n_f = .text:0x004010a0; // type:function size:0x10\n_z = .text:0x004010c0; // type:function size:0x10\n_data = .data:0x00402000; // type:object size:0x8\n_data_alias = .data:0x00402000; // type:object size:0x8\n_zero = .data:0x00402010; // type:object\n",
+  "objects": {
+    "src/one.c": "src-one.c.obj",
+    "src/two.c": "src-two.c.obj"
+  },
+  "commands": [
+    {
+      "command": "disasm",
+      "arguments": [
+        "fixtureA",
+        "0x401000"
+      ],
+      "output": "00401000  push ebp\n00401001  mov ebp, esp\n00401003  sub esp, 0x10\n00401006  push 0x402000 <_data_alias>\n0040100b  add esp, 0x10\n0040100e  pop ebp\n0040100f  ret\n"
+    },
+    {
+      "command": "disasm",
+      "arguments": [
+        "fixtureA",
+        "0x401000",
+        "8"
+      ],
+      "output": "00401000  push ebp\n00401001  mov ebp, esp\n00401003  sub esp, 0x10\n"
+    },
+    {
+      "command": "disasm",
+      "arguments": [
+        "fixtureA",
+        "0x401050",
+        "1"
+      ],
+      "output": "00401050  push ebp\n"
+    },
+    {
+      "command": "disasm",
+      "arguments": [
+        "fixtureA",
+        "0x401050",
+        "0"
+      ],
+      "output": ""
+    },
+    {
+      "command": "disasm",
+      "arguments": [
+        "fixtureA",
+        "0x401051",
+        "1"
+      ],
+      "output": ""
+    },
+    {
+      "command": "disasm",
+      "arguments": [
+        "fixtureA",
+        "0x401051"
+      ],
+      "output": "00401051  mov ebp, esp\n00401053  ret\n00401054  add byte ptr [eax], al\n00401056  add byte ptr [eax], al\n00401058  add byte ptr [eax], al\n0040105a  add byte ptr [eax], al\n0040105c  add byte ptr [eax], al\n0040105e  add byte ptr [eax], al\n00401060  push ebp\n00401061  mov ebp, esp\n00401063  sub esp, 0x40\n00401066  push 0x404008\n0040106b  add esp, 0x10\n0040106e  pop ebp\n0040106f  ret\n00401070  add byte ptr [eax], al\n00401072  add byte ptr [eax], al\n00401074  add byte ptr [eax], al\n00401076  add byte ptr [eax], al\n00401078  add byte ptr [eax], al\n0040107a  add byte ptr [eax], al\n0040107c  add byte ptr [eax], al\n0040107e  add byte ptr [eax], al\n00401080  push ebp\n00401081  mov ebp, esp\n00401083  sub esp, 0x50\n00401086  push 0x402010 <_zero>\n0040108b  add esp, 0x10\n0040108e  pop ebp\n0040108f  ret\n00401090  add byte ptr [eax], al\n00401092  add byte ptr [eax], al\n00401094  add byte ptr [eax], al\n00401096  add byte ptr [eax], al\n00401098  add byte ptr [eax], al\n0040109a  add byte ptr [eax], al\n0040109c  add byte ptr [eax], al\n0040109e  add byte ptr [eax], al\n004010a0  push ebp\n004010a1  mov ebp, esp\n004010a3  sub esp, 0x60\n004010a6  push 0x402014 <_zero+0x4>\n004010ab  add esp, 0x10\n004010ae  pop ebp\n004010af  ret\n004010b0  add byte ptr [eax], al\n004010b2  add byte ptr [eax], al\n004010b4  add byte ptr [eax], al\n004010b6  add byte ptr [eax], al\n004010b8  add byte ptr [eax], al\n004010ba  add byte ptr [eax], al\n004010bc  add byte ptr [eax], al\n004010be  add byte ptr [eax], al\n004010c0  push ebp\n004010c1  mov ebp, esp\n004010c3  sub esp, 0x60\n004010c6  push 0x402014 <_zero+0x4>\n004010cb  add esp, 0x10\n004010ce  pop ebp\n004010cf  ret\n004010d0  int3\n004010d1  int3\n004010d2  int3\n004010d3  int3\n004010d4  int3\n004010d5  int3\n004010d6  int3\n004010d7  int3\n004010d8  add byte ptr [eax], al\n004010da  add byte ptr [eax], al\n004010dc  add byte ptr [eax], al\n004010de  add byte ptr [eax], al\n004010e0  add byte ptr [eax], al\n004010e2  add byte ptr [eax], al\n004010e4  add byte ptr [eax], al\n004010e6  add byte ptr [eax], al\n004010e8  add byte ptr [eax], al\n004010ea  add byte ptr [eax], al\n004010ec  add byte ptr [eax], al\n004010ee  add byte ptr [eax], al\n004010f0  add byte ptr [eax], al\n004010f2  add byte ptr [eax], al\n004010f4  add byte ptr [eax], al\n004010f6  add byte ptr [eax], al\n004010f8  add byte ptr [eax], al\n004010fa  add byte ptr [eax], al\n004010fc  add byte ptr [eax], al\n004010fe  add byte ptr [eax], al\n00401100  add byte ptr [eax], al\n00401102  add byte ptr [eax], al\n00401104  add byte ptr [eax], al\n00401106  add byte ptr [eax], al\n00401108  add byte ptr [eax], al\n0040110a  add byte ptr [eax], al\n0040110c  add byte ptr [eax], al\n0040110e  add byte ptr [eax], al\n00401110  add byte ptr [eax], al\n00401112  add byte ptr [eax], al\n00401114  add byte ptr [eax], al\n00401116  add byte ptr [eax], al\n00401118  add byte ptr [eax], al\n0040111a  add byte ptr [eax], al\n0040111c  add byte ptr [eax], al\n0040111e  add byte ptr [eax], al\n00401120  add byte ptr [eax], al\n00401122  add byte ptr [eax], al\n00401124  add byte ptr [eax], al\n00401126  add byte ptr [eax], al\n00401128  add byte ptr [eax], al\n0040112a  add byte ptr [eax], al\n0040112c  add byte ptr [eax], al\n0040112e  add byte ptr [eax], al\n00401130  add byte ptr [eax], al\n00401132  add byte ptr [eax], al\n00401134  add byte ptr [eax], al\n00401136  add byte ptr [eax], al\n00401138  add byte ptr [eax], al\n0040113a  add byte ptr [eax], al\n0040113c  add byte ptr [eax], al\n0040113e  add byte ptr [eax], al\n00401140  add byte ptr [eax], al\n00401142  add byte ptr [eax], al\n00401144  add byte ptr [eax], al\n00401146  add byte ptr [eax], al\n00401148  add byte ptr [eax], al\n0040114a  add byte ptr [eax], al\n0040114c  add byte ptr [eax], al\n0040114e  add byte ptr [eax], al\n"
+    },
+    {
+      "command": "fdiff",
+      "arguments": [
+        "fixtureA",
+        "src/one.c",
+        "_a",
+        "0x401000"
+      ],
+      "output": "_a: 7 instructions, original at 0x401000: 18 (48 bytes); ratio 0.560\n  =    0  push ebp\n  =    1  mov ebp, esp\n  =    3  sub esp, 0x10\n  ~    6  push 0\n  =    b  add esp, 0x10\n  =    e  pop ebp\n  =    f  ret\n  +   10  jmp dword ptr [0x405060]\n  +   16  jmp dword ptr [0x405070]\n  +   1c  add byte ptr [eax], al\n  +   1e  add byte ptr [eax], al\n  +   20  push ebp\n  +   21  mov ebp, esp\n  +   23  sub esp, 0x20\n  +   26  call 0x7c\n  +   2b  add esp, 0x10\n  +   2e  pop ebp\n  +   2f  ret\n"
+    },
+    {
+      "command": "fdiff",
+      "arguments": [
+        "fixtureA",
+        "src/one.c",
+        "_b",
+        "0x401020"
+      ],
+      "output": "_b: 7 instructions, original at 0x401020: 7 (16 bytes); ratio 1.000\n  =    0  push ebp\n  =    1  mov ebp, esp\n  =    3  sub esp, 0x20\n  ~    6  call 7\n  =    b  add esp, 0x10\n  =    e  pop ebp\n  =    f  ret\n"
+    },
+    {
+      "command": "fdiff",
+      "arguments": [
+        "fixtureA",
+        "src/one.c",
+        "_g",
+        "0x401020"
+      ],
+      "output": "_g: 7 instructions, original at 0x401020: 7 (16 bytes); ratio 0.857\n  =    0  push ebp\n  =    1  mov ebp, esp\n  ~    3  sub esp, 0x70\n  -    6  push 0\n  +    6  call 0x5c\n  =    b  add esp, 0x10\n  =    e  pop ebp\n  =    f  ret\n"
+    },
+    {
+      "command": "fdiff",
+      "arguments": [
+        "fixtureA",
+        "src/one.c",
+        "_g",
+        "0x4010e0"
+      ],
+      "output": "_g: 7 instructions, original at 0x4010e0: 48 (0 bytes); ratio 0.000\n  -    0  push ebp\n  -    1  mov ebp, esp\n  -    3  sub esp, 0x70\n  -    6  push 0\n  -    b  add esp, 0x10\n  -    e  pop ebp\n  -    f  ret\n  +    0  add byte ptr [eax], al\n  +    2  add byte ptr [eax], al\n  +    4  add byte ptr [eax], al\n  +    6  add byte ptr [eax], al\n  +    8  add byte ptr [eax], al\n  +    a  add byte ptr [eax], al\n  +    c  add byte ptr [eax], al\n  +    e  add byte ptr [eax], al\n  +   10  add byte ptr [eax], al\n  +   12  add byte ptr [eax], al\n  +   14  add byte ptr [eax], al\n  +   16  add byte ptr [eax], al\n  +   18  add byte ptr [eax], al\n  +   1a  add byte ptr [eax], al\n  +   1c  add byte ptr [eax], al\n  +   1e  add byte ptr [eax], al\n  +   20  add byte ptr [eax], al\n  +   22  add byte ptr [eax], al\n  +   24  add byte ptr [eax], al\n  +   26  add byte ptr [eax], al\n  +   28  add byte ptr [eax], al\n  +   2a  add byte ptr [eax], al\n  +   2c  add byte ptr [eax], al\n  +   2e  add byte ptr [eax], al\n  +   30  add byte ptr [eax], al\n  +   32  add byte ptr [eax], al\n  +   34  add byte ptr [eax], al\n  +   36  add byte ptr [eax], al\n  +   38  add byte ptr [eax], al\n  +   3a  add byte ptr [eax], al\n  +   3c  add byte ptr [eax], al\n  +   3e  add byte ptr [eax], al\n  +   40  add byte ptr [eax], al\n  +   42  add byte ptr [eax], al\n  +   44  add byte ptr [eax], al\n  +   46  add byte ptr [eax], al\n  +   48  add byte ptr [eax], al\n  +   4a  add byte ptr [eax], al\n  +   4c  add byte ptr [eax], al\n  +   4e  add byte ptr [eax], al\n  +   50  add byte ptr [eax], al\n  +   52  add byte ptr [eax], al\n  +   54  add byte ptr [eax], al\n  +   56  add byte ptr [eax], al\n  +   58  add byte ptr [eax], al\n  +   5a  add byte ptr [eax], al\n  +   5c  add byte ptr [eax], al\n  +   5e  add byte ptr [eax], al\n"
+    },
+    {
+      "command": "nearest",
+      "arguments": [
+        "fixtureA",
+        "src/one.c",
+        "src/two.c"
+      ],
+      "output": "src/one.c:\n  _g                                              16  1.00 _z@0x4010c0/16, 1.00 _f@0x4010a0/16, 1.00 _entry@0x401000/16\nsrc/two.c:\n"
+    }
+  ]
+}

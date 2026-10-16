@@ -1,0 +1,47 @@
+//! The oracle's host-side data model and analysis. Compiler pointers are opaque
+//! trace identities; this library never dereferences them.
+pub mod allocation;
+pub mod blocks;
+pub mod build_config;
+pub mod build_verify;
+pub mod coff;
+pub mod colouring;
+pub mod compare;
+pub mod corpus;
+pub mod cse;
+pub mod data_diff;
+pub mod derive_splits;
+pub mod disassembly;
+pub mod document;
+pub mod download;
+pub mod elf;
+pub mod executable;
+pub mod header_impact;
+pub mod inline_calibrate;
+pub mod inline_diff;
+pub mod inline_window;
+pub mod inlining;
+pub mod investigate;
+pub mod link;
+pub mod locals;
+pub mod ninja;
+pub mod pe;
+pub mod ppc;
+pub mod process_tree;
+pub mod producer;
+pub mod project;
+pub mod python_random;
+pub mod regdiff;
+pub mod release;
+pub mod remap_binary;
+pub mod report;
+pub mod runner;
+pub mod schedule;
+pub mod sequence;
+pub mod split;
+mod temporary;
+pub mod trace;
+pub mod version;
+pub mod x86;
+
+pub const SCHEMA_VERSION: u32 = 6;

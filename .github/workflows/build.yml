@@ -22,11 +22,17 @@ jobs:
           path: |
             build/compilers
             lib
-          key: compilers-${{ hashFiles('tools/download_tool.py') }}
+          key: compilers-${{ runner.os }}-${{ hashFiles('crates/mwcc-oracle-core/src/download.rs') }}
+
+      - name: Install pinned Rust toolchain
+        run: rustup show
+
+      - name: Build native tools
+        run: cargo build --locked --release -p mwcc-tools
 
       - name: Build
         run: |
-          python3 configure.py --version ${{ matrix.version }}
+          target/release/mwcc-tools configure --version ${{ matrix.version }}
           ninja all_source progress
 
       - uses: actions/upload-artifact@v4

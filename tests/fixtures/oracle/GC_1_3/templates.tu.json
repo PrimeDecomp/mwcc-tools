@@ -1,0 +1,1169 @@
+{
+  "decisions": {
+    "__ct__5ValueFii": [
+      {
+        "kind": "decision",
+        "event": "decision",
+        "callee": "Value::__ct",
+        "link": "__ct__5ValueFii",
+        "inline": true,
+        "chain": [],
+        "cost": 19,
+        "threshold": 512,
+        "full_cost": 19,
+        "depth_limited": false,
+        "reason": "estimated cost 19 is within the threshold 512 (3 statements)",
+        "outcome": "inlined",
+        "breakdown": {
+          "running": 0,
+          "nstmts": 3,
+          "statements": [
+            {
+              "kind": "breakdown",
+              "what": "*(*(arg0))=*(arg1)",
+              "type": 30,
+              "cost": 6,
+              "parts": [],
+              "calls": []
+            },
+            {
+              "kind": "breakdown",
+              "what": "*(*(arg0)+4)=*(arg2)",
+              "type": 30,
+              "cost": 8,
+              "parts": [],
+              "calls": []
+            },
+            {
+              "kind": "breakdown",
+              "what": "*(arg0)",
+              "type": 4,
+              "cost": 2,
+              "parts": [],
+              "calls": []
+            }
+          ]
+        },
+        "count": 1,
+        "depths": [
+          0
+        ],
+        "lines": [
+          15
+        ],
+        "function": "with_value (with_value__Fii)"
+      }
+    ],
+    "__ct__5ValueFRC5Value": [
+      {
+        "kind": "decision",
+        "event": "decision",
+        "callee": "Value::__ct",
+        "link": "__ct__5ValueFRC5Value",
+        "inline": true,
+        "chain": [],
+        "cost": 23,
+        "threshold": 512,
+        "full_cost": 23,
+        "depth_limited": false,
+        "reason": "estimated cost 23 is within the threshold 512 (3 statements)",
+        "outcome": "inlined",
+        "breakdown": {
+          "running": 0,
+          "nstmts": 3,
+          "statements": [
+            {
+              "kind": "breakdown",
+              "what": "*(*(arg0))=*(*(arg1))",
+              "type": 30,
+              "cost": 7,
+              "parts": [],
+              "calls": []
+            },
+            {
+              "kind": "breakdown",
+              "what": "*(*(arg0)+4)=*(*(arg1)+4)",
+              "type": 30,
+              "cost": 11,
+              "parts": [],
+              "calls": []
+            },
+            {
+              "kind": "breakdown",
+              "what": "*(arg0)",
+              "type": 4,
+              "cost": 2,
+              "parts": [],
+              "calls": []
+            }
+          ]
+        },
+        "count": 1,
+        "depths": [
+          0
+        ],
+        "lines": [
+          16
+        ],
+        "function": "with_value (with_value__Fii)"
+      }
+    ],
+    "combine__F5Value": [
+      {
+        "kind": "decision",
+        "event": "decision",
+        "callee": "combine",
+        "link": "combine__F5Value",
+        "inline": true,
+        "chain": [],
+        "cost": 20,
+        "threshold": 512,
+        "full_cost": 20,
+        "depth_limited": false,
+        "reason": "estimated cost 20 is within the threshold 512 (1 statements)",
+        "outcome": "inlined",
+        "breakdown": {
+          "running": 0,
+          "nstmts": 1,
+          "statements": [
+            {
+              "kind": "breakdown",
+              "what": "*(*(arg0)+4)+adjust()",
+              "type": 15,
+              "cost": 19,
+              "parts": [
+                {
+                  "kind": "breakdown",
+                  "what": "body",
+                  "type": -1,
+                  "cost": 10,
+                  "nstmts": 1,
+                  "parts": [
+                    {
+                      "kind": "breakdown",
+                      "what": "e9",
+                      "type": 9,
+                      "cost": 9,
+                      "parts": [],
+                      "calls": []
+                    }
+                  ],
+                  "of": "adjust<i>__Fi"
+                }
+              ],
+              "calls": [
+                [
+                  "",
+                  "adjust<i>__Fi"
+                ]
+              ]
+            }
+          ]
+        },
+        "count": 7,
+        "depths": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ],
+        "lines": [
+          16
+        ],
+        "function": "with_value (with_value__Fii)"
+      },
+      {
+        "kind": "decision",
+        "event": "decision",
+        "callee": "combine",
+        "link": "combine__F5Value",
+        "inline": true,
+        "chain": [],
+        "reason": "auto-inline decision",
+        "outcome": "inlined",
+        "count": 1,
+        "depths": [
+          7
+        ],
+        "lines": [
+          16
+        ],
+        "function": "with_value (with_value__Fii)"
+      }
+    ],
+    "__dt__5ValueFv": [
+      {
+        "kind": "decision",
+        "event": "decision",
+        "callee": "Value::__dt",
+        "link": "__dt__5ValueFv",
+        "inline": true,
+        "chain": [],
+        "cost": 30,
+        "threshold": 512,
+        "full_cost": 30,
+        "depth_limited": false,
+        "reason": "estimated cost 30 is within the threshold 512 (8 statements)",
+        "outcome": "inlined",
+        "breakdown": {
+          "running": 0,
+          "nstmts": 8,
+          "statements": [
+            {
+              "kind": "breakdown",
+              "what": "*(arg0)",
+              "type": 4,
+              "cost": 2,
+              "parts": [],
+              "calls": []
+            },
+            {
+              "kind": "breakdown",
+              "what": "e19",
+              "type": 19,
+              "cost": 5,
+              "parts": [],
+              "calls": []
+            },
+            {
+              "kind": "breakdown",
+              "what": "consume()",
+              "type": 54,
+              "cost": 6,
+              "parts": [],
+              "calls": [],
+              "link": "consume__Fi",
+              "implicit": false,
+              "ctor": false,
+              "dtor": false,
+              "candidate": false
+            },
+            {
+              "kind": "breakdown",
+              "what": "e21",
+              "type": 21,
+              "cost": 4,
+              "parts": [],
+              "calls": []
+            },
+            {
+              "kind": "breakdown",
+              "what": "__dl()",
+              "type": 54,
+              "cost": 3,
+              "parts": [],
+              "calls": [],
+              "link": "__dl__FPv",
+              "implicit": false,
+              "ctor": false,
+              "dtor": false,
+              "candidate": false
+            },
+            {
+              "kind": "breakdown",
+              "what": "*(arg0)",
+              "type": 4,
+              "cost": 2,
+              "parts": [],
+              "calls": []
+            }
+          ]
+        },
+        "count": 2,
+        "depths": [
+          0
+        ],
+        "lines": [
+          16
+        ],
+        "function": "with_value (with_value__Fii)"
+      }
+    ],
+    "consume__Fi": [
+      {
+        "kind": "decision",
+        "event": "decision",
+        "callee": "consume",
+        "link": "consume__Fi",
+        "inline": false,
+        "chain": [
+          "__dt__5ValueFv"
+        ],
+        "reason": "not declared inline (and not a method defined in its class)",
+        "outcome": "kept",
+        "count": 28,
+        "depths": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "lines": [
+          16
+        ],
+        "function": "with_value (with_value__Fii)"
+      },
+      {
+        "kind": "decision",
+        "event": "decision",
+        "callee": "consume",
+        "link": "consume__Fi",
+        "inline": false,
+        "chain": [],
+        "reason": "not declared inline (and not a method defined in its class)",
+        "outcome": "kept",
+        "count": 16,
+        "depths": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "lines": [
+          9
+        ],
+        "function": "__dt (__dt__5ValueFv)"
+      }
+    ],
+    "__dl__FPv": [
+      {
+        "kind": "decision",
+        "event": "decision",
+        "callee": "__dl",
+        "link": "__dl__FPv",
+        "inline": false,
+        "chain": [
+          "__dt__5ValueFv"
+        ],
+        "reason": "not declared inline (and not a method defined in its class)",
+        "outcome": "kept",
+        "count": 28,
+        "depths": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "lines": [
+          16
+        ],
+        "function": "with_value (with_value__Fii)"
+      },
+      {
+        "kind": "decision",
+        "event": "decision",
+        "callee": "__dl",
+        "link": "__dl__FPv",
+        "inline": false,
+        "chain": [],
+        "reason": "not declared inline (and not a method defined in its class)",
+        "outcome": "kept",
+        "count": 16,
+        "depths": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "lines": [
+          9
+        ],
+        "function": "__dt (__dt__5ValueFv)"
+      }
+    ],
+    "adjust<i>__Fi": [
+      {
+        "kind": "decision",
+        "event": "decision",
+        "callee": "adjust",
+        "link": "adjust<i>__Fi",
+        "inline": true,
+        "chain": [],
+        "cost": 10,
+        "threshold": 512,
+        "full_cost": 10,
+        "depth_limited": false,
+        "reason": "estimated cost 10 is within the threshold 512 (1 statements)",
+        "outcome": "inlined",
+        "breakdown": {
+          "running": 0,
+          "nstmts": 1,
+          "statements": [
+            {
+              "kind": "breakdown",
+              "what": "e9",
+              "type": 9,
+              "cost": 9,
+              "parts": [],
+              "calls": []
+            }
+          ]
+        },
+        "count": 1,
+        "depths": [
+          0
+        ],
+        "lines": [
+          12
+        ],
+        "function": "combine (combine__F5Value)"
+      }
+    ]
+  },
+  "summaries": {
+    "__ct__5ValueFii": {
+      "summary": {
+        "outcomes": {
+          "inlined": 1
+        },
+        "costs": [
+          19
+        ],
+        "full_costs": [
+          19
+        ],
+        "rounds": [
+          0
+        ],
+        "functions": [
+          "with_value (with_value__Fii)"
+        ],
+        "reasons": [],
+        "chains": [],
+        "limit_paths": [],
+        "sensitivity": []
+      },
+      "report": [
+        "   A: inlined x1; estimate 19, whole cost 19, rounds 0",
+        "      in with_value (with_value__Fii)"
+      ],
+      "verdict_present": null,
+      "verdict_absent": "the target keeps a call this TU inlines every time (1x, rounds 0, with its body); depth would not explain it (round 0, no call at the depth limit); cost would need +494 to keep it; most likely the callee is not inline as written there (not declared inline, defined out of line), or had no body yet at that point of the original"
+    },
+    "__ct__5ValueFRC5Value": {
+      "summary": {
+        "outcomes": {
+          "inlined": 1
+        },
+        "costs": [
+          23
+        ],
+        "full_costs": [
+          23
+        ],
+        "rounds": [
+          0
+        ],
+        "functions": [
+          "with_value (with_value__Fii)"
+        ],
+        "reasons": [],
+        "chains": [],
+        "limit_paths": [],
+        "sensitivity": []
+      },
+      "report": [
+        "   A: inlined x1; estimate 23, whole cost 23, rounds 0",
+        "      in with_value (with_value__Fii)"
+      ],
+      "verdict_present": null,
+      "verdict_absent": "the target keeps a call this TU inlines every time (1x, rounds 0, with its body); depth would not explain it (round 0, no call at the depth limit); cost would need +490 to keep it; most likely the callee is not inline as written there (not declared inline, defined out of line), or had no body yet at that point of the original"
+    },
+    "combine__F5Value": {
+      "summary": {
+        "outcomes": {
+          "inlined": 8
+        },
+        "costs": [
+          20
+        ],
+        "full_costs": [
+          20
+        ],
+        "rounds": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "functions": [
+          "with_value (with_value__Fii)"
+        ],
+        "reasons": [
+          "auto-inline decision"
+        ],
+        "chains": [],
+        "limit_paths": [],
+        "sensitivity": []
+      },
+      "report": [
+        "   A: inlined x8; estimate 20, whole cost 20, rounds 0, 1, 2, 3, 4, 5, 6, 7",
+        "      in with_value (with_value__Fii)",
+        "      because: auto-inline decision"
+      ],
+      "verdict_present": null,
+      "verdict_absent": "the target keeps a call this TU inlines every time (8x, rounds 0, 1, 2, 3, 4, 5, 6, 7, with its body); depth could: inlined at round 7; cost would need +493 to keep it"
+    },
+    "__dt__5ValueFv": {
+      "summary": {
+        "outcomes": {
+          "inlined": 2
+        },
+        "costs": [
+          30
+        ],
+        "full_costs": [
+          30
+        ],
+        "rounds": [
+          0
+        ],
+        "functions": [
+          "with_value (with_value__Fii)"
+        ],
+        "reasons": [],
+        "chains": [],
+        "limit_paths": [],
+        "sensitivity": []
+      },
+      "report": [
+        "   A: inlined x2; estimate 30, whole cost 30, rounds 0",
+        "      in with_value (with_value__Fii)"
+      ],
+      "verdict_present": null,
+      "verdict_absent": "the target keeps a call this TU inlines every time (2x, rounds 0, with its body); depth would not explain it (round 0, no call at the depth limit); cost would need +483 to keep it; most likely the callee is not inline as written there (not declared inline, defined out of line), or had no body yet at that point of the original"
+    },
+    "consume__Fi": {
+      "summary": {
+        "outcomes": {
+          "kept": 44
+        },
+        "costs": [],
+        "full_costs": [],
+        "rounds": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "functions": [
+          "__dt (__dt__5ValueFv)",
+          "with_value (with_value__Fii)"
+        ],
+        "reasons": [
+          "not declared inline (and not a method defined in its class)"
+        ],
+        "chains": [
+          [
+            "__dt__5ValueFv"
+          ]
+        ],
+        "limit_paths": [],
+        "sensitivity": []
+      },
+      "report": [
+        "   A: kept x44; estimate -, whole cost -, rounds 0, 1, 2, 3, 4, 5, 6, 7",
+        "      in __dt (__dt__5ValueFv), with_value (with_value__Fii)",
+        "      because: not declared inline (and not a method defined in its class)",
+        "      inside:",
+        "         __dt__5ValueFv"
+      ],
+      "verdict_present": null,
+      "verdict_absent": null
+    },
+    "__dl__FPv": {
+      "summary": {
+        "outcomes": {
+          "kept": 44
+        },
+        "costs": [],
+        "full_costs": [],
+        "rounds": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "functions": [
+          "__dt (__dt__5ValueFv)",
+          "with_value (with_value__Fii)"
+        ],
+        "reasons": [
+          "not declared inline (and not a method defined in its class)"
+        ],
+        "chains": [
+          [
+            "__dt__5ValueFv"
+          ]
+        ],
+        "limit_paths": [],
+        "sensitivity": []
+      },
+      "report": [
+        "   A: kept x44; estimate -, whole cost -, rounds 0, 1, 2, 3, 4, 5, 6, 7",
+        "      in __dt (__dt__5ValueFv), with_value (with_value__Fii)",
+        "      because: not declared inline (and not a method defined in its class)",
+        "      inside:",
+        "         __dt__5ValueFv"
+      ],
+      "verdict_present": null,
+      "verdict_absent": null
+    },
+    "adjust<i>__Fi": {
+      "summary": {
+        "outcomes": {
+          "inlined": 1
+        },
+        "costs": [
+          10
+        ],
+        "full_costs": [
+          10
+        ],
+        "rounds": [
+          0
+        ],
+        "functions": [
+          "combine (combine__F5Value)"
+        ],
+        "reasons": [],
+        "chains": [],
+        "limit_paths": [],
+        "sensitivity": []
+      },
+      "report": [
+        "   A: inlined x1; estimate 10, whole cost 10, rounds 0",
+        "      in combine (combine__F5Value)"
+      ],
+      "verdict_present": null,
+      "verdict_absent": "the target keeps a call this TU inlines every time (1x, rounds 0, with its body); depth would not explain it (round 0, no call at the depth limit); cost would need +503 to keep it; most likely the callee is not inline as written there (not declared inline, defined out of line), or had no body yet at that point of the original"
+    }
+  },
+  "emission": {
+    "adjust<i>__Fi": "",
+    "with_value__Fii": "",
+    "combine__F5Value": "a call or address of it left in the code after inlining (in with_value__Fii)",
+    "__dt__5ValueFv": "the destructor of an object live in a statement (its exception actions), even when every call of it was inlined (in with_value__Fii)"
+  },
+  "target": {
+    "__ct__5ValueFRC5Value": "weak",
+    "__dt__5ValueFv": "weak",
+    "__dl__FPv": "weak"
+  },
+  "module": {
+    "with_value__Fii": "another.s",
+    "__dt__5ValueFv": "another.s"
+  },
+  "predictions": {
+    "false": {
+      "__ct__5ValueFRC5Value": [
+        "target: out of line (weak); MISPREDICTED: not emitted here",
+        true
+      ],
+      "consume__Fi": [
+        "target: not emitted",
+        false
+      ],
+      "__ct__5ValueFii": [
+        "target: not emitted",
+        false
+      ],
+      "adjust<i>__Fi": [
+        "target: not emitted (nor anywhere in the module); MISPREDICTED: emitted here",
+        true
+      ],
+      "combine__F5Value": [
+        "target: not emitted (nor anywhere in the module); MISPREDICTED: emitted here, a call or address of it left in the code after inlining (in with_value__Fii)",
+        true
+      ],
+      "with_value__Fii": [
+        "target: not emitted (the module keeps its one copy in another.s); emitted here too",
+        false
+      ],
+      "__dt__5ValueFv": [
+        "target: out of line (weak); emitted here too",
+        false
+      ],
+      "__dl__FPv": [
+        "target: out of line (weak); MISPREDICTED: not emitted here",
+        true
+      ]
+    },
+    "true": {
+      "__ct__5ValueFRC5Value": [
+        "target: out of line (weak); MISPREDICTED: not emitted here",
+        true
+      ],
+      "consume__Fi": [
+        "target: not emitted",
+        false
+      ],
+      "__ct__5ValueFii": [
+        "target: not emitted",
+        false
+      ],
+      "adjust<i>__Fi": [
+        "target: not emitted (the main program strips unreferenced weak functions); emitted here",
+        false
+      ],
+      "combine__F5Value": [
+        "target: not emitted (the main program strips unreferenced weak functions); emitted here",
+        false
+      ],
+      "with_value__Fii": [
+        "target: not emitted (the module keeps its one copy in another.s); emitted here too",
+        false
+      ],
+      "__dt__5ValueFv": [
+        "target: out of line (weak); emitted here too",
+        false
+      ],
+      "__dl__FPv": [
+        "target: out of line (weak); MISPREDICTED: not emitted here",
+        true
+      ]
+    }
+  },
+  "emission_report": [
+    "== A: sources/templates.cpp: emitted differently from the target: 2 here only (nowhere in the module), 2 there only; 1 here whose copy the module keeps in another TU",
+    "   here only: adjust<i>__Fi",
+    "   here only: combine__F5Value\n      a call or address of it left in the code after inlining (in with_value__Fii)",
+    "   there only (weak): __ct__5ValueFRC5Value",
+    "      verdict: the target keeps a call this TU inlines every time (1x, rounds 0, with its body); depth would not explain it (round 0, no call at the depth limit); cost would need +490 to keep it; most likely the callee is not inline as written there (not declared inline, defined out of line), or had no body yet at that point of the original",
+    "   there only (weak): __dl__FPv"
+  ],
+  "object_calls": {
+    "with_value__Fii": {
+      "combine__F5Value": 1,
+      "consume__Fi": 2
+    },
+    "__dt__5ValueFv": {
+      "consume__Fi": 1,
+      "__dl__FPv": 1
+    }
+  },
+  "windows": [
+    {
+      "calls": {
+        "adjust<i>__Fi": {},
+        "with_value__Fii": {
+          "combine__F5Value": 1,
+          "consume__Fi": 2,
+          "__ct__5ValueFii": 0,
+          "__ct__5ValueFRC5Value": 0,
+          "__dt__5ValueFv": 0,
+          "__dl__FPv": 0
+        },
+        "combine__F5Value": {
+          "adjust<i>__Fi": 0
+        },
+        "__dt__5ValueFv": {
+          "consume__Fi": 1,
+          "__dl__FPv": 1
+        }
+      },
+      "bounds": [
+        {
+          "function": "with_value",
+          "link": "with_value__Fii",
+          "callee": "Value::__ct",
+          "callee_link": "__ct__5ValueFii",
+          "ours": 0,
+          "target": 0,
+          "threshold": 512,
+          "side": "low",
+          "value": 19,
+          "why": "inlined in both"
+        },
+        {
+          "function": "with_value",
+          "link": "with_value__Fii",
+          "callee": "Value::__ct",
+          "callee_link": "__ct__5ValueFRC5Value",
+          "ours": 0,
+          "target": 0,
+          "threshold": 512,
+          "side": "low",
+          "value": 23,
+          "why": "inlined in both"
+        },
+        {
+          "function": "with_value",
+          "link": "with_value__Fii",
+          "callee": "combine",
+          "callee_link": "combine__F5Value",
+          "ours": 1,
+          "target": 1,
+          "threshold": 512,
+          "side": "low",
+          "value": 20,
+          "why": "inlined in both"
+        },
+        {
+          "function": "with_value",
+          "link": "with_value__Fii",
+          "callee": "Value::__dt",
+          "callee_link": "__dt__5ValueFv",
+          "ours": 0,
+          "target": 0,
+          "threshold": 512,
+          "side": "low",
+          "value": 30,
+          "why": "inlined in both"
+        },
+        {
+          "function": "combine",
+          "link": "combine__F5Value",
+          "callee": "adjust",
+          "callee_link": "adjust<i>__Fi",
+          "ours": 0,
+          "target": 0,
+          "threshold": 512,
+          "side": "low",
+          "value": 10,
+          "why": "inlined in both"
+        }
+      ],
+      "window": [
+        30,
+        null
+      ],
+      "report": [
+        "== sources/templates.cpp: limit 512, the target agrees with 30..-",
+        "   at least 30: Value::__dt in with_value (calls: ours 0, target 0): inlined in both",
+        "   at least 23: Value::__ct in with_value (calls: ours 0, target 0): inlined in both"
+      ],
+      "verbose": [
+        "== sources/templates.cpp: limit 512, the target agrees with 30..-",
+        "   at least 30: Value::__dt in with_value (calls: ours 0, target 0): inlined in both",
+        "   at least 23: Value::__ct in with_value (calls: ours 0, target 0): inlined in both",
+        "   at least 20: combine in with_value (calls: ours 1, target 1): inlined in both",
+        "   at least 19: Value::__ct in with_value (calls: ours 0, target 0): inlined in both",
+        "   at least 10: adjust in combine (calls: ours 0, target 0): inlined in both"
+      ]
+    },
+    {
+      "calls": {
+        "adjust<i>__Fi": {},
+        "with_value__Fii": {
+          "combine__F5Value": 0,
+          "consume__Fi": 1,
+          "__ct__5ValueFii": 0,
+          "__ct__5ValueFRC5Value": 0,
+          "__dt__5ValueFv": 0,
+          "__dl__FPv": 0
+        },
+        "combine__F5Value": {
+          "adjust<i>__Fi": 0
+        },
+        "__dt__5ValueFv": {
+          "consume__Fi": 0,
+          "__dl__FPv": 0
+        }
+      },
+      "bounds": [
+        {
+          "function": "with_value",
+          "link": "with_value__Fii",
+          "callee": "Value::__ct",
+          "callee_link": "__ct__5ValueFii",
+          "ours": 0,
+          "target": 0,
+          "threshold": 512,
+          "side": "low",
+          "value": 19,
+          "why": "inlined in both"
+        },
+        {
+          "function": "with_value",
+          "link": "with_value__Fii",
+          "callee": "Value::__ct",
+          "callee_link": "__ct__5ValueFRC5Value",
+          "ours": 0,
+          "target": 0,
+          "threshold": 512,
+          "side": "low",
+          "value": 23,
+          "why": "inlined in both"
+        },
+        {
+          "function": "with_value",
+          "link": "with_value__Fii",
+          "callee": "combine",
+          "callee_link": "combine__F5Value",
+          "ours": 1,
+          "target": 0,
+          "threshold": 512,
+          "side": null,
+          "why": "the target makes fewer calls, but ours keeps none for cost"
+        },
+        {
+          "function": "with_value",
+          "link": "with_value__Fii",
+          "callee": "Value::__dt",
+          "callee_link": "__dt__5ValueFv",
+          "ours": 0,
+          "target": 0,
+          "threshold": 512,
+          "side": "low",
+          "value": 30,
+          "why": "inlined in both"
+        },
+        {
+          "function": "with_value",
+          "link": "with_value__Fii",
+          "callee": "consume",
+          "callee_link": "consume__Fi",
+          "ours": 2,
+          "target": 1,
+          "threshold": null,
+          "side": null,
+          "why": "not declared inline (and not a method defined in its class)"
+        },
+        {
+          "function": "combine",
+          "link": "combine__F5Value",
+          "callee": "adjust",
+          "callee_link": "adjust<i>__Fi",
+          "ours": 0,
+          "target": 0,
+          "threshold": 512,
+          "side": "low",
+          "value": 10,
+          "why": "inlined in both"
+        },
+        {
+          "function": "__dt",
+          "link": "__dt__5ValueFv",
+          "callee": "consume",
+          "callee_link": "consume__Fi",
+          "ours": 1,
+          "target": 0,
+          "threshold": null,
+          "side": null,
+          "why": "not declared inline (and not a method defined in its class)"
+        },
+        {
+          "function": "__dt",
+          "link": "__dt__5ValueFv",
+          "callee": "__dl",
+          "callee_link": "__dl__FPv",
+          "ours": 1,
+          "target": 0,
+          "threshold": null,
+          "side": null,
+          "why": "not declared inline (and not a method defined in its class)"
+        }
+      ],
+      "window": [
+        30,
+        null
+      ],
+      "report": [
+        "== sources/templates.cpp: limit 512, the target agrees with 30..-",
+        "   at least 30: Value::__dt in with_value (calls: ours 0, target 0): inlined in both",
+        "   at least 23: Value::__ct in with_value (calls: ours 0, target 0): inlined in both",
+        "   not a limit question: combine in with_value (calls: ours 1, target 0): the target makes fewer calls, but ours keeps none for cost",
+        "   not a limit question: consume in with_value (calls: ours 2, target 1): not declared inline (and not a method defined in its class)",
+        "   not a limit question: consume in __dt (calls: ours 1, target 0): not declared inline (and not a method defined in its class)",
+        "   not a limit question: __dl in __dt (calls: ours 1, target 0): not declared inline (and not a method defined in its class)"
+      ],
+      "verbose": [
+        "== sources/templates.cpp: limit 512, the target agrees with 30..-",
+        "   at least 30: Value::__dt in with_value (calls: ours 0, target 0): inlined in both",
+        "   at least 23: Value::__ct in with_value (calls: ours 0, target 0): inlined in both",
+        "   at least 19: Value::__ct in with_value (calls: ours 0, target 0): inlined in both",
+        "   at least 10: adjust in combine (calls: ours 0, target 0): inlined in both",
+        "   not a limit question: combine in with_value (calls: ours 1, target 0): the target makes fewer calls, but ours keeps none for cost",
+        "   not a limit question: consume in with_value (calls: ours 2, target 1): not declared inline (and not a method defined in its class)",
+        "   not a limit question: consume in __dt (calls: ours 1, target 0): not declared inline (and not a method defined in its class)",
+        "   not a limit question: __dl in __dt (calls: ours 1, target 0): not declared inline (and not a method defined in its class)"
+      ]
+    },
+    {
+      "calls": {
+        "adjust<i>__Fi": {},
+        "with_value__Fii": {
+          "combine__F5Value": 3,
+          "consume__Fi": 3,
+          "__ct__5ValueFii": 1,
+          "__ct__5ValueFRC5Value": 1,
+          "__dt__5ValueFv": 1,
+          "__dl__FPv": 1
+        },
+        "combine__F5Value": {
+          "adjust<i>__Fi": 1
+        },
+        "__dt__5ValueFv": {
+          "consume__Fi": 2,
+          "__dl__FPv": 2
+        }
+      },
+      "bounds": [
+        {
+          "function": "with_value",
+          "link": "with_value__Fii",
+          "callee": "Value::__ct",
+          "callee_link": "__ct__5ValueFii",
+          "ours": 0,
+          "target": 1,
+          "threshold": 512,
+          "side": "high",
+          "value": 18,
+          "why": "the target keeps 1 more, where ours inlines them"
+        },
+        {
+          "function": "with_value",
+          "link": "with_value__Fii",
+          "callee": "Value::__ct",
+          "callee_link": "__ct__5ValueFRC5Value",
+          "ours": 0,
+          "target": 1,
+          "threshold": 512,
+          "side": "high",
+          "value": 22,
+          "why": "the target keeps 1 more, where ours inlines them"
+        },
+        {
+          "function": "with_value",
+          "link": "with_value__Fii",
+          "callee": "combine",
+          "callee_link": "combine__F5Value",
+          "ours": 1,
+          "target": 3,
+          "threshold": 512,
+          "side": "high",
+          "value": 19,
+          "why": "the target keeps 2 more, where ours inlines them"
+        },
+        {
+          "function": "with_value",
+          "link": "with_value__Fii",
+          "callee": "Value::__dt",
+          "callee_link": "__dt__5ValueFv",
+          "ours": 0,
+          "target": 1,
+          "threshold": 512,
+          "side": "high",
+          "value": 29,
+          "why": "the target keeps 1 more, where ours inlines them"
+        },
+        {
+          "function": "with_value",
+          "link": "with_value__Fii",
+          "callee": "consume",
+          "callee_link": "consume__Fi",
+          "ours": 2,
+          "target": 3,
+          "threshold": null,
+          "side": null,
+          "why": "not declared inline (and not a method defined in its class)"
+        },
+        {
+          "function": "with_value",
+          "link": "with_value__Fii",
+          "callee": "__dl",
+          "callee_link": "__dl__FPv",
+          "ours": 0,
+          "target": 1,
+          "threshold": null,
+          "side": null,
+          "why": "not declared inline (and not a method defined in its class)"
+        },
+        {
+          "function": "combine",
+          "link": "combine__F5Value",
+          "callee": "adjust",
+          "callee_link": "adjust<i>__Fi",
+          "ours": 0,
+          "target": 1,
+          "threshold": 512,
+          "side": "high",
+          "value": 9,
+          "why": "the target keeps 1 more, where ours inlines them"
+        },
+        {
+          "function": "__dt",
+          "link": "__dt__5ValueFv",
+          "callee": "consume",
+          "callee_link": "consume__Fi",
+          "ours": 1,
+          "target": 2,
+          "threshold": null,
+          "side": null,
+          "why": "not declared inline (and not a method defined in its class)"
+        },
+        {
+          "function": "__dt",
+          "link": "__dt__5ValueFv",
+          "callee": "__dl",
+          "callee_link": "__dl__FPv",
+          "ours": 1,
+          "target": 2,
+          "threshold": null,
+          "side": null,
+          "why": "not declared inline (and not a method defined in its class)"
+        }
+      ],
+      "window": [
+        null,
+        9
+      ],
+      "report": [
+        "== sources/templates.cpp: limit 512, the target agrees with -..9",
+        "   the current limit 512 is outside it: the target's build likely used another limit for this unit (a setting, not the source)",
+        "   at most 9: adjust in combine (calls: ours 0, target 1): the target keeps 1 more, where ours inlines them",
+        "   at most 18: Value::__ct in with_value (calls: ours 0, target 1): the target keeps 1 more, where ours inlines them",
+        "   at most 19: combine in with_value (calls: ours 1, target 3): the target keeps 2 more, where ours inlines them",
+        "   at most 22: Value::__ct in with_value (calls: ours 0, target 1): the target keeps 1 more, where ours inlines them",
+        "   at most 29: Value::__dt in with_value (calls: ours 0, target 1): the target keeps 1 more, where ours inlines them",
+        "   not a limit question: consume in with_value (calls: ours 2, target 3): not declared inline (and not a method defined in its class)",
+        "   not a limit question: __dl in with_value (calls: ours 0, target 1): not declared inline (and not a method defined in its class)",
+        "   not a limit question: consume in __dt (calls: ours 1, target 2): not declared inline (and not a method defined in its class)",
+        "   not a limit question: __dl in __dt (calls: ours 1, target 2): not declared inline (and not a method defined in its class)"
+      ],
+      "verbose": [
+        "== sources/templates.cpp: limit 512, the target agrees with -..9",
+        "   the current limit 512 is outside it: the target's build likely used another limit for this unit (a setting, not the source)",
+        "   at most 9: adjust in combine (calls: ours 0, target 1): the target keeps 1 more, where ours inlines them",
+        "   at most 18: Value::__ct in with_value (calls: ours 0, target 1): the target keeps 1 more, where ours inlines them",
+        "   at most 19: combine in with_value (calls: ours 1, target 3): the target keeps 2 more, where ours inlines them",
+        "   at most 22: Value::__ct in with_value (calls: ours 0, target 1): the target keeps 1 more, where ours inlines them",
+        "   at most 29: Value::__dt in with_value (calls: ours 0, target 1): the target keeps 1 more, where ours inlines them",
+        "   not a limit question: consume in with_value (calls: ours 2, target 3): not declared inline (and not a method defined in its class)",
+        "   not a limit question: __dl in with_value (calls: ours 0, target 1): not declared inline (and not a method defined in its class)",
+        "   not a limit question: consume in __dt (calls: ours 1, target 2): not declared inline (and not a method defined in its class)",
+        "   not a limit question: __dl in __dt (calls: ours 1, target 2): not declared inline (and not a method defined in its class)"
+      ]
+    }
+  ]
+}

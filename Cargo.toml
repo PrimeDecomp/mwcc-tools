@@ -1,0 +1,25 @@
+[workspace]
+members = ["crates/mwcc-oracle-core", "crates/mwcc-tools", "crates/mwcc-oracle-hooks"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "CC0-1.0"
+rust-version = "1.96"
+
+[workspace.dependencies]
+anyhow = "1.0.100"
+regex = "1.12.2"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = { version = "1.0.145", features = ["preserve_order", "float_roundtrip"] }
+tempfile = "3.23.0"
+sha2 = "0.10.9"
+sha1 = "0.10.6"
+indexmap = { version = "2.14.2", features = ["serde"] }
+# Pinned upstream revision bundles Capstone 5.0.9; enable only the required x86 decoder.
+capstone = { git = "https://github.com/capstone-rust/capstone-rs", rev = "04f196369ee64f4ad1821a9453670e9a9ce9b25a", default-features = false, features = ["std", "full", "arch_x86"] }
+ureq = { version = "=3.2.0", default-features = false, features = ["rustls"] }
+zip = { version = "=6.0.0", default-features = false, features = ["deflate-flate2"] }
+flate2 = { version = "1.1.5", default-features = false, features = ["rust_backend"] }
+crc32fast = "1.5.0"

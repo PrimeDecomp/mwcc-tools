@@ -33,6 +33,14 @@
 
 #ifdef MWCC_ORACLE_TRACE
 
+#ifdef MWCC_ORACLE_RUST_HOOKS
+extern const char *OracleRust_LinkName(Object *object);
+extern void OracleRust_PrintInstruction(const char *prefix, PCodeInstruction *instruction);
+extern void OracleRust_Snapshot(const char *prefix, const char *phase, Object *function);
+#define link_name OracleRust_LinkName
+#define print_instruction OracleRust_PrintInstruction
+#define snapshot_as OracleRust_Snapshot
+#else
 /* The link (mangled) name of a function. When the compiler has not made it yet (a member function's is often made only
  * when the object is written), the mangler makes it here without caching it in the object: it only builds the name in
  * its own buffer and enters it in the name table, where the compiler finds it again later. */
@@ -101,11 +109,14 @@ static void snapshot_as(const char *prefix, const char *phase, Object *function)
     }
     OracleTrace_Printf("%s.end\n", prefix);
 }
+#endif
 
+#ifndef MWCC_ORACLE_RUST_HOOKS
 static void snapshot(const char *phase, Object *function)
 {
     snapshot_as("ra", phase, function);
 }
+#endif
 
 /* A trace that is only wanted on request (it is large): the environment variable NAME set to something else than 0. */
 static int wanted(const char *name)
@@ -121,6 +132,7 @@ static int wanted(const char *name)
 #endif
 
 #ifdef ALLOCATE_REGISTERS
+#ifndef MWCC_ORACLE_RUST_HOOKS
 extern void ALLOCATE_REGISTERS_RETAIL(Object *function);
 static void origins_reset(void);
 void cse_vregs(void);
@@ -134,9 +146,11 @@ void ALLOCATE_REGISTERS(Object *function)
     ALLOCATE_REGISTERS_RETAIL(function);
     snapshot("after", function);
 }
+#endif /* !MWCC_ORACLE_RUST_HOOKS: allocation entry and origin reset live in Rust. */
 #endif
 
 #if VERSION >= VERSION_GC_1_3
+#ifndef MWCC_ORACLE_RUST_HOOKS
 /* The colouring of one register class, as the original does it (1.3 to 2.7 run the same code): fn_00507260 sets the
  * class up, fn_00507070 simplifies the interference graph and returns the stack of its nodes (the order select colours
  * them in, the top first), and fn_00506f50 colours them, the lowest free colour of the class's mask first and a
@@ -246,6 +260,8 @@ int fn_00506f50(OracleNode *stack)
     return result;
 }
 
+#endif /* !MWCC_ORACLE_RUST_HOOKS: graph simplification/selection live in the Rust object. */
+
 /* The stack frame once it is laid out (fn_004f7fb0, after the allocation: StackFrameEABI_FinalizeLayout and the slots
  * of the compiler's temporaries in 1.2.5): fr.local, each local in the order of the function's list, with its offset
  * in the locals area (u.var.uid; the offset from r1 adds the linkage area and the outgoing arguments), size and
@@ -254,6 +270,7 @@ extern void fn_004f7fb0__retail(void);
 extern ObjectList *locals;
 extern ObjectList *temporary_objects; /* (a list of TemporaryObjectEntry, which has the same layout) */
 
+#ifndef MWCC_ORACLE_RUST_HOOKS
 static void frame_objects(const char *kind, ObjectList *list)
 {
     Object *object;
@@ -297,6 +314,7 @@ void fn_004f7fb0(void)
     frame_objects("temp", temporary_objects);
     OracleTrace_Printf("fr.end\n");
 }
+#endif
 
 /* The list scheduler, on request (MWCC_ORACLE_SCHEDULE=1): schedule_block orders the instructions of one block, cycle
  * by cycle, picking among the ready ones with select_ready_coloring_node (the sources' Scheduler.c; 1.3 to 2.7 run the
@@ -307,6 +325,7 @@ void fn_004f7fb0(void)
  * cycle and every instruction whose predecessors are all scheduled, with its earliest and latest cycle, height, the
  * dependents it would make ready, whether the machine can issue it this cycle and its opcode's rank; then what was
  * picked (0 when nothing could be: the cycle ends); sc.after: the order it left. */
+#ifndef MWCC_ORACLE_RUST_HOOKS
 extern void schedule_block__retail(PCodeBlock *block);
 extern CColoringNode *select_ready_coloring_node__retail(CColoringNode *list, UInt16 cycle);
 extern SInt32 gVirtualRegistersActive;
@@ -386,6 +405,7 @@ CColoringNode *select_ready_coloring_node(CColoringNode *list, UInt16 cycle)
     OracleTrace_Printf(" pick=%08x\n", picked != NULL ? (unsigned int)picked->obj : 0);
     return picked;
 }
+#endif /* !MWCC_ORACLE_RUST_HOOKS: scheduler observations live in Rust. */
 #endif
 
 /* The inliner: whether a call is to be inlined (can_inline), what the body costs where the automatic inliner asks
@@ -482,6 +502,16 @@ static const char *callee_name(Object *function)
  * the code it made entered here (their function reference node: the node can_inline is given), with the entry of the
  * call that was expanded as the parent, so a decision's chain (chain=, the inlined bodies it is in, outermost first)
  * is the parents' callees. Emptied at each function's register allocation, the inlining being over. */
+#ifdef MWCC_ORACLE_RUST_HOOKS
+extern int OracleRust_OriginFind(ENode *funcref);
+extern void OracleRust_OriginWalk(ENode *expr, int parent, const char *link, int level);
+extern void OracleRust_PrintChain(ENode *funcref);
+extern int OracleRust_InlineLine(void);
+#define origin_find OracleRust_OriginFind
+#define origin_walk OracleRust_OriginWalk
+#define print_chain OracleRust_PrintChain
+#define inline_line OracleRust_InlineLine
+#else
 #define ORIGIN_SIZE 0x10000
 typedef struct Origin {
     ENode *funcref;
@@ -632,10 +662,12 @@ static int inline_line(void)
 {
     return inline_current != NULL ? (int)inline_current->sourceoffset : -1;
 }
+#endif /* !MWCC_ORACLE_RUST_HOOKS: origin table/walking and statement context live in Rust. */
 
 /* inl.can: the decision for a call of FUNCTION at the inline depth DEPTH, with the options and the callee's statement
  * count that the decision looks at; tools/oracle.py gives the reason. link is the callee's link name, line the source
  * line of the statement the call is in. */
+#ifndef MWCC_ORACLE_RUST_FRONTEND
 Boolean CAN_INLINE(ENode *node)
 {
     Boolean result;
@@ -947,6 +979,7 @@ ENode *INLINE_CALL(ENode *expr)
         origin_walk(result, parent, link_name(function), 0);
     return result;
 }
+#endif /* !MWCC_ORACLE_RUST_FRONTEND */
 #endif
 
 #if VERSION >= VERSION_GC_1_3
@@ -997,6 +1030,7 @@ static int has_body(Object *object)
     return object != NULL && (unsigned long)object->u.func.u >= 0x10000;
 }
 
+#ifndef MWCC_ORACLE_RUST_HOOKS
 void CInline_AddFunctionPrecNode(Object *func, TypeClass *value, FileOffsetInfo *key, TokenStream *pair, Boolean flag)
 {
     CPrecNode *before = flag ? pendingInlineWork : pending_prec_nodes;
@@ -1047,6 +1081,9 @@ Boolean CTemplateNew_InstantiateFunction(TemplateFunction *definition, TemplFunc
     return result;
 }
 
+#endif /* !MWCC_ORACLE_RUST_HOOKS: common instantiation observers live in Rust. */
+
+#ifndef MWCC_ORACLE_RUST_FRONTEND
 Boolean DISPATCH(void)
 {
     CPrecNode *work = pending_prec_nodes;
@@ -1063,11 +1100,14 @@ Boolean DISPATCH(void)
     return result;
 }
 
+#endif /* !MWCC_ORACLE_RUST_FRONTEND */
+
 /* tp.emit: fn_0050f240 marks a function referenced; an inline one with a body not generated yet is then queued for
  * code generation (emitted), whatever becomes of the references. caller= is the return address (the compiler
  * function that referenced it: an exception action, a vtable, an initializer, the calls left in a function...). */
 extern void fn_0050f240__retail(Object *object);
 
+#ifndef MWCC_ORACLE_RUST_HOOKS
 void fn_0050f240(Object *object)
 {
     unsigned long caller;
@@ -1092,12 +1132,15 @@ void generate_inline_code(Object *object, CInlineInfo *input, char mode)
     generate_inline_code__retail(object, input, mode);
 }
 
+#endif /* !MWCC_ORACLE_RUST_HOOKS: deferred emission observers live in Rust. */
+
 /* The optimizer's own dump (IroDump: the IR after its passes, and what some of them did, such as the parts of local
  * aggregates IRO_ScalarizeClassDataMembers, fn_00460780, records), which the compiler turns off before it opens the
  * dump file (fn_00454030, once a translation unit): MWCC_ORACLE_IRO_DUMP=PATH turns it on, into PATH. */
 extern FILE *iro_dump_output;
 extern void fn_00454030__retail(void);
 
+#ifndef MWCC_ORACLE_RUST_HOOKS
 void fn_00454030(void)
 {
     const char *path = getenv("MWCC_ORACLE_IRO_DUMP");
@@ -1110,6 +1153,7 @@ void fn_00454030(void)
     }
     fn_00454030__retail();
 }
+#endif
 
 /* lc.*: which local aggregates IRO_ScalarizeClassDataMembers (fn_00460780, once or twice a function) turns into
  * scalars a part at a time (and which it leaves in memory), with MWCC_ORACLE_LOCALS=1. Its parts list is
@@ -1124,6 +1168,7 @@ extern Object *data_005875b8;
 extern void fn_00460780__retail(void);
 extern Boolean fn_00460c90__retail(IROLinear *node);
 extern Object *create_temp_object__retail(Type *type);
+#ifndef MWCC_ORACLE_RUST_HOOKS
 static Boolean in_scalarize;
 
 /* lc.temp: the scalar the pass makes for a part (one for each part not blocked, in the parts' order; before the
@@ -1192,9 +1237,11 @@ void fn_00460780(void)
                            object && object->name ? object->name->name : "?");
     }
 }
+#endif /* !MWCC_ORACLE_RUST_HOOKS: scalarization and temporary observation live in Rust. */
 
 /* lc.call: a call through which a local recorded may be reached (pointer analysis): those whose address is taken are
  * then left in memory. */
+#ifndef MWCC_ORACLE_RUST_HOOKS
 Boolean fn_00460c90(IROLinear *node)
 {
     Boolean result = fn_00460c90__retail(node);
@@ -1203,6 +1250,7 @@ Boolean fn_00460c90(IROLinear *node)
         OracleTrace_Printf("lc.call node=%d\n", node->index);
     return result;
 }
+#endif
 
 /* lc.arg: how the inliner binds each formal of a call it expands (setup_inline_locals_and_arguments): unused, the
  * argument substituted for it (no side effects, and dirty set), a reference bound to the object the argument makes
@@ -1213,6 +1261,10 @@ Boolean fn_00460c90(IROLinear *node)
  * by-value class formal is already a reference: declared=5 there, with ref=1), -1 when no argument has its name. */
 /* A short form of EXPR (an argument) appended to BUFFER (of SIZE, kept terminated), without spaces: objects by
  * name, *x, (a+b), f(first argument,...), (a,b) for a comma, #N for any other node kind; DEPTH levels deep. */
+#ifdef MWCC_ORACLE_RUST_HOOKS
+extern void OracleRust_DescribeExpression(char *buffer, size_t size, ENode *expr, int depth);
+#define describe_expression OracleRust_DescribeExpression
+#else
 static void describe_expression(char *buffer, size_t size, ENode *expr, int depth)
 {
     char piece[64];
@@ -1280,8 +1332,10 @@ static void describe_expression(char *buffer, size_t size, ENode *expr, int dept
     }
 }
 
+#endif /* !MWCC_ORACLE_RUST_HOOKS: expression spelling lives in Rust. */
 extern ENode *setup_inline_locals_and_arguments__retail(Object *function, CInlineInfo *info, ENodeList *arguments);
 extern struct InlineSlot *data_0058245a;
+#ifndef MWCC_ORACLE_RUST_HOOKS
 ENode *setup_inline_locals_and_arguments(Object *function, CInlineInfo *info, ENodeList *arguments)
 {
     ENode *result = setup_inline_locals_and_arguments__retail(function, info, arguments);
@@ -1356,6 +1410,8 @@ ENode *setup_inline_locals_and_arguments(Object *function, CInlineInfo *info, EN
     return result;
 }
 
+#endif /* !MWCC_ORACLE_RUST_HOOKS: inline argument bindings live in Rust. */
+
 /* bk.*: how code generation cuts the function into blocks and how they are merged (MWCC_ORACLE_BLOCKS=1).
  * bk.stmt per expression statement (fn_00436390): its source line and the block and instruction count before and
  * after it is generated; a statement whose block before is not the last one's after was cut from it (a block is cut
@@ -1366,6 +1422,7 @@ ENode *setup_inline_locals_and_arguments(Object *function, CInlineInfo *info, EN
  * while the sum stays at 100 or below). */
 extern struct Statement *gCurrentStatement;
 extern struct PCodeBlock *gCurrentBlock;
+#ifndef MWCC_ORACLE_RUST_HOOKS
 extern void fn_00436390__retail(ENode *expression);
 extern void COptimizer_Optimize__retail(Object *function);
 extern void Peephole_MergeAdjacentBlocks__retail(Object *object, Boolean mergePrologue);
@@ -1464,6 +1521,7 @@ void Peephole_MergeAdjacentBlocks(Object *object, Boolean mergePrologue)
     Peephole_MergeAdjacentBlocks__retail(object, mergePrologue);
     block_list("merged", object);
 }
+#endif /* !MWCC_ORACLE_RUST_HOOKS: block/stage observers live in Rust. */
 
 /* ce.*: the global optimizer's common subexpressions, with MWCC_ORACLE_CSE=1 (2: also the linear IR as each pass
  * starts). IRO_CommonSubs first marks each expression that repeats an available one, then walks the IR in order: at
@@ -1477,6 +1535,7 @@ void Peephole_MergeAdjacentBlocks(Object *object, Boolean mergePrologue)
  * register number, in the class rclass) as the allocation starts. */
 #include "compiler/IroCSE.h"
 
+#ifndef MWCC_ORACLE_RUST_HOOKS
 extern struct IROLinear *linear_head;
 extern void IRO_CommonSubs__retail(void);
 extern void move_common_sub__retail(IROExpr *group);
@@ -1650,6 +1709,7 @@ void cse_vregs(void)
     vreg_objects(locals);
     vreg_objects(temporary_objects);
 }
+#endif /* !MWCC_ORACLE_RUST_HOOKS: CSE/propagation observers live in Rust. */
 #endif
 
 #endif

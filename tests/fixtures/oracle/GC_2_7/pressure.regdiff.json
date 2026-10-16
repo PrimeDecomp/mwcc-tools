@@ -1,0 +1,1277 @@
+[
+  {
+    "query": "pressure",
+    "index": 0,
+    "how": "link name",
+    "explanations": [
+      {
+        "class": "GPR",
+        "vreg": 50,
+        "lines": [
+          "%50   -> r31   1 defs, 1 uses, live in 3 blocks; defined in block 1 line 8: lwz %r50, %r32, #76",
+          "because: live across 1 call(s) (first in block 2): the registers a call clobbers are its neighbours",
+          "because: coloured #1: the simplification took it when its degree was 12 < K=29",
+          "because: colours its neighbours held then: r0..r1 r3..r12",
+          "because: no colour of the mask was free: r31 was claimed (a non-volatile register, saved in the prologue; it joins the mask from here on)"
+        ]
+      },
+      {
+        "class": "GPR",
+        "vreg": 49,
+        "lines": [
+          "%49   -> r30   1 defs, 1 uses, live in 3 blocks; defined in block 1 line 9: lwz %r49, %r32, #80",
+          "because: live across 1 call(s) (first in block 2): the registers a call clobbers are its neighbours",
+          "because: coloured #2: the simplification took it when its degree was 13 < K=29",
+          "because: colours its neighbours held then: r0..r1 r3..r12 r31(%50)",
+          "because: no colour of the mask was free: r30 was claimed (a non-volatile register, saved in the prologue; it joins the mask from here on)"
+        ]
+      },
+      {
+        "class": "GPR",
+        "vreg": 48,
+        "lines": [
+          "%48   -> r29   1 defs, 1 uses, live in 3 blocks; defined in block 1 line 9: lwz %r48, %r32, #84",
+          "because: live across 1 call(s) (first in block 2): the registers a call clobbers are its neighbours",
+          "because: coloured #3: the simplification took it when its degree was 14 < K=29",
+          "because: colours its neighbours held then: r0..r1 r3..r12 r30(%49) r31(%50)",
+          "because: no colour of the mask was free: r29 was claimed (a non-volatile register, saved in the prologue; it joins the mask from here on)"
+        ]
+      },
+      {
+        "class": "GPR",
+        "vreg": 47,
+        "lines": [
+          "%47   -> r28   1 defs, 1 uses, live in 3 blocks; defined in block 1 line 9: lwz %r47, %r32, #88",
+          "because: live across 1 call(s) (first in block 2): the registers a call clobbers are its neighbours",
+          "because: coloured #4: the simplification took it when its degree was 15 < K=29",
+          "because: colours its neighbours held then: r0..r1 r3..r12 r29(%48) r30(%49) r31(%50)",
+          "because: no colour of the mask was free: r28 was claimed (a non-volatile register, saved in the prologue; it joins the mask from here on)"
+        ]
+      },
+      {
+        "class": "GPR",
+        "vreg": 46,
+        "lines": [
+          "%46   -> r27   1 defs, 1 uses, live in 3 blocks; defined in block 1 line 9: lwz %r46, %r32, #92",
+          "because: live across 1 call(s) (first in block 2): the registers a call clobbers are its neighbours",
+          "because: coloured #5: the simplification took it when its degree was 16 < K=29",
+          "because: colours its neighbours held then: r0..r1 r3..r12 r28(%47) r29(%48) r30(%49) r31(%50)",
+          "because: no colour of the mask was free: r27 was claimed (a non-volatile register, saved in the prologue; it joins the mask from here on)"
+        ]
+      },
+      {
+        "class": "GPR",
+        "vreg": 45,
+        "lines": [
+          "%45   -> r26   1 defs, 1 uses, live in 3 blocks; defined in block 1 line 10: lwz %r45, %r32, #96",
+          "because: live across 1 call(s) (first in block 2): the registers a call clobbers are its neighbours",
+          "because: coloured #6: the simplification took it when its degree was 17 < K=29",
+          "because: colours its neighbours held then: r0..r1 r3..r12 r27(%46) r28(%47) r29(%48) r30(%49) r31(%50)",
+          "because: no colour of the mask was free: r26 was claimed (a non-volatile register, saved in the prologue; it joins the mask from here on)"
+        ]
+      },
+      {
+        "class": "GPR",
+        "vreg": 44,
+        "lines": [
+          "%44   -> r25   1 defs, 1 uses, live in 3 blocks; defined in block 1 line 10: lwz %r44, %r32, #100",
+          "because: live across 1 call(s) (first in block 2): the registers a call clobbers are its neighbours",
+          "because: coloured #7: the simplification took it when its degree was 18 < K=29",
+          "because: colours its neighbours held then: r0..r1 r3..r12 r26(%45) r27(%46) r28(%47) r29(%48) r30(%49) r31(%50)",
+          "because: no colour of the mask was free: r25 was claimed (a non-volatile register, saved in the prologue; it joins the mask from here on)"
+        ]
+      },
+      {
+        "class": "GPR",
+        "vreg": 43,
+        "lines": [
+          "%43   -> r24   1 defs, 1 uses, live in 3 blocks; defined in block 1 line 10: lwz %r43, %r32, #104",
+          "because: live across 1 call(s) (first in block 2): the registers a call clobbers are its neighbours",
+          "because: coloured #8: the simplification took it when its degree was 19 < K=29",
+          "because: colours its neighbours held then: r0..r1 r3..r12 r25(%44) r26(%45) r27(%46) r28(%47) r29(%48) r30(%49) r31(%50)",
+          "because: no colour of the mask was free: r24 was claimed (a non-volatile register, saved in the prologue; it joins the mask from here on)"
+        ]
+      },
+      {
+        "class": "GPR",
+        "vreg": 42,
+        "lines": [
+          "%42   -> r23   1 defs, 1 uses, live in 3 blocks; defined in block 1 line 10: lwz %r42, %r32, #108",
+          "because: live across 1 call(s) (first in block 2): the registers a call clobbers are its neighbours",
+          "because: coloured #9: the simplification took it when its degree was 20 < K=29",
+          "because: colours its neighbours held then: r0..r1 r3..r12 r24(%43) r25(%44) r26(%45) r27(%46) r28(%47) r29(%48) r30(%49) r31(%50)",
+          "because: no colour of the mask was free: r23 was claimed (a non-volatile register, saved in the prologue; it joins the mask from here on)"
+        ]
+      },
+      {
+        "class": "GPR",
+        "vreg": 41,
+        "lines": [
+          "%41   -> r22   1 defs, 1 uses, live in 3 blocks; defined in block 1 line 11: lwz %r41, %r32, #112",
+          "because: live across 1 call(s) (first in block 2): the registers a call clobbers are its neighbours",
+          "because: coloured #10: the simplification took it when its degree was 21 < K=29",
+          "because: colours its neighbours held then: r0..r1 r3..r12 r23(%42) r24(%43) r25(%44) r26(%45) r27(%46) r28(%47) r29(%48) r30(%49) r31(%50)",
+          "because: no colour of the mask was free: r22 was claimed (a non-volatile register, saved in the prologue; it joins the mask from here on)"
+        ]
+      },
+      {
+        "class": "GPR",
+        "vreg": 40,
+        "lines": [
+          "%40   -> r21   1 defs, 1 uses, live in 3 blocks; defined in block 1 line 11: lwz %r40, %r32, #116",
+          "because: live across 1 call(s) (first in block 2): the registers a call clobbers are its neighbours",
+          "because: coloured #11: the simplification took it when its degree was 22 < K=29",
+          "because: colours its neighbours held then: r0..r1 r3..r12 r22(%41) r23(%42) r24(%43) r25(%44) r26(%45) r27(%46) r28(%47) r29(%48) r30(%49) r31(%50)",
+          "because: no colour of the mask was free: r21 was claimed (a non-volatile register, saved in the prologue; it joins the mask from here on)"
+        ]
+      },
+      {
+        "class": "GPR",
+        "vreg": 39,
+        "lines": [
+          "%39   -> r20   1 defs, 1 uses, live in 3 blocks; defined in block 1 line 11: lwz %r39, %r32, #120",
+          "because: live across 1 call(s) (first in block 2): the registers a call clobbers are its neighbours",
+          "because: coloured #12: the simplification took it when its degree was 23 < K=29",
+          "because: colours its neighbours held then: r0..r1 r3..r12 r21(%40) r22(%41) r23(%42) r24(%43) r25(%44) r26(%45) r27(%46) r28(%47) r29(%48) r30(%49) r31(%50)",
+          "because: no colour of the mask was free: r20 was claimed (a non-volatile register, saved in the prologue; it joins the mask from here on)"
+        ]
+      },
+      {
+        "class": "GPR",
+        "vreg": 38,
+        "lines": [
+          "%38   -> r19   1 defs, 1 uses, live in 3 blocks; defined in block 1 line 11: lwz %r38, %r32, #124",
+          "because: live across 1 call(s) (first in block 2): the registers a call clobbers are its neighbours",
+          "because: coloured #13: the simplification took it when its degree was 24 < K=29",
+          "because: colours its neighbours held then: r0..r1 r3..r12 r20(%39) r21(%40) r22(%41) r23(%42) r24(%43) r25(%44) r26(%45) r27(%46) r28(%47) r29(%48) r30(%49) r31(%50)",
+          "because: no colour of the mask was free: r19 was claimed (a non-volatile register, saved in the prologue; it joins the mask from here on)"
+        ]
+      },
+      {
+        "class": "GPR",
+        "vreg": 37,
+        "lines": [
+          "%37   -> r18   1 defs, 1 uses, live in 3 blocks; defined in block 1 line 12: lwz %r37, %r32, #128",
+          "because: live across 1 call(s) (first in block 2): the registers a call clobbers are its neighbours",
+          "because: coloured #14: the simplification took it when its degree was 25 < K=29",
+          "because: colours its neighbours held then: r0..r1 r3..r12 r19(%38) r20(%39) r21(%40) r22(%41) r23(%42) r24(%43) r25(%44) r26(%45) r27(%46) r28(%47) r29(%48) r30(%49) r31(%50)",
+          "because: no colour of the mask was free: r18 was claimed (a non-volatile register, saved in the prologue; it joins the mask from here on)"
+        ]
+      },
+      {
+        "class": "GPR",
+        "vreg": 36,
+        "lines": [
+          "%36   -> r17   1 defs, 1 uses, live in 3 blocks; defined in block 1 line 12: lwz %r36, %r32, #132",
+          "because: live across 1 call(s) (first in block 2): the registers a call clobbers are its neighbours",
+          "because: coloured #15: the simplification took it when its degree was 26 < K=29",
+          "because: colours its neighbours held then: r0..r1 r3..r12 r18(%37) r19(%38) r20(%39) r21(%40) r22(%41) r23(%42) r24(%43) r25(%44) r26(%45) r27(%46) r28(%47) r29(%48) r30(%49) r31(%50)",
+          "because: no colour of the mask was free: r17 was claimed (a non-volatile register, saved in the prologue; it joins the mask from here on)"
+        ]
+      },
+      {
+        "class": "GPR",
+        "vreg": 35,
+        "lines": [
+          "%35   -> r16   1 defs, 1 uses, live in 3 blocks; defined in block 1 line 12: lwz %r35, %r32, #136",
+          "because: live across 1 call(s) (first in block 2): the registers a call clobbers are its neighbours",
+          "because: coloured #16: the simplification took it when its degree was 27 < K=29",
+          "because: colours its neighbours held then: r0..r1 r3..r12 r17(%36) r18(%37) r19(%38) r20(%39) r21(%40) r22(%41) r23(%42) r24(%43) r25(%44) r26(%45) r27(%46) r28(%47) r29(%48) r30(%49) r31(%50)",
+          "because: no colour of the mask was free: r16 was claimed (a non-volatile register, saved in the prologue; it joins the mask from here on)"
+        ]
+      },
+      {
+        "class": "GPR",
+        "vreg": 34,
+        "lines": [
+          "%34   -> r15   1 defs, 1 uses, live in 3 blocks; defined in block 1 line 12: lwz %r34, %r32, #140",
+          "because: live across 1 call(s) (first in block 2): the registers a call clobbers are its neighbours",
+          "because: coloured #17: the simplification took it when its degree was 28 < K=29",
+          "because: colours its neighbours held then: r0..r1 r3..r12 r16(%35) r17(%36) r18(%37) r19(%38) r20(%39) r21(%40) r22(%41) r23(%42) r24(%43) r25(%44) r26(%45) r27(%46) r28(%47) r29(%48) r30(%49) r31(%50)",
+          "because: no colour of the mask was free: r15 was claimed (a non-volatile register, saved in the prologue; it joins the mask from here on)"
+        ]
+      },
+      {
+        "class": "GPR",
+        "vreg": 51,
+        "lines": [
+          "%51   -> r14   1 defs, 1 uses, live in 3 blocks; defined in block 1 line 8: lwz %r51, %r32, #72",
+          "because: live across 1 call(s) (first in block 2): the registers a call clobbers are its neighbours",
+          "because: coloured #18: no node had a degree below K=29; it was the spill candidate (spill cost 3 / degree 29 the lowest)",
+          "because: colours its neighbours held then: r0..r1 r3..r12 r15(%34) r16(%35) r17(%36) r18(%37) r19(%38) r20(%39) r21(%40) r22(%41) r23(%42) r24(%43) r25(%44) r26(%45) r27(%46) r28(%47) r29(%48) r30(%49) r31(%50)",
+          "because: no colour of the mask was free: r14 was claimed (a non-volatile register, saved in the prologue; it joins the mask from here on)"
+        ]
+      },
+      {
+        "class": "GPR",
+        "vreg": 70,
+        "lines": [
+          "%70   -> r0   1 defs, 1 uses, live in 1 blocks; defined in block 3 line 13: mr %r70, r3, -",
+          "because: coloured #19: the simplification took it when its degree was 20 < K=29",
+          "because: colours its neighbours held then: r1 r3 r14(%51) r15(%34) r16(%35) r17(%36) r18(%37) r19(%38) r20(%39) r21(%40) r22(%41) r23(%42) r24(%43) r25(%44) r26(%45) r27(%46) r28(%47) r29(%48) r30(%49) r31(%50)",
+          "because: free in the mask: r0, r4..r12; the lowest is r0"
+        ]
+      },
+      {
+        "class": "GPR",
+        "vreg": 104,
+        "lines": [
+          "%104  -> r3   1 defs, 1 uses, live in 1 blocks; defined in block 3 line 14: add %r104, %r103, %r35",
+          "because: coloured #56: the simplification took it when its degree was 2 < K=29",
+          "because: colours its neighbours held then: r0(%70) r15(%34)",
+          "because: free in the mask: r3..r12, r14, r16..r31; the lowest is r3"
+        ]
+      },
+      {
+        "class": "GPR",
+        "vreg": 103,
+        "lines": [
+          "%103  -> r3   1 defs, 1 uses, live in 1 blocks; defined in block 3 line 14: add %r103, %r102, %r36",
+          "because: coloured #57: the simplification took it when its degree was 3 < K=29",
+          "because: colours its neighbours held then: r0(%70) r15(%34) r16(%35)",
+          "because: free in the mask: r3..r12, r14, r17..r31; the lowest is r3"
+        ]
+      },
+      {
+        "class": "GPR",
+        "vreg": 102,
+        "lines": [
+          "%102  -> r3   1 defs, 1 uses, live in 1 blocks; defined in block 3 line 14: add %r102, %r101, %r37",
+          "because: coloured #58: the simplification took it when its degree was 4 < K=29",
+          "because: colours its neighbours held then: r0(%70) r15(%34) r16(%35) r17(%36)",
+          "because: free in the mask: r3..r12, r14, r18..r31; the lowest is r3"
+        ]
+      },
+      {
+        "class": "GPR",
+        "vreg": 101,
+        "lines": [
+          "%101  -> r3   1 defs, 1 uses, live in 1 blocks; defined in block 3 line 14: add %r101, %r100, %r38",
+          "because: coloured #59: the simplification took it when its degree was 5 < K=29",
+          "because: colours its neighbours held then: r0(%70) r15(%34) r16(%35) r17(%36) r18(%37)",
+          "because: free in the mask: r3..r12, r14, r19..r31; the lowest is r3"
+        ]
+      },
+      {
+        "class": "GPR",
+        "vreg": 100,
+        "lines": [
+          "%100  -> r3   1 defs, 1 uses, live in 1 blocks; defined in block 3 line 14: add %r100, %r99, %r39",
+          "because: coloured #60: the simplification took it when its degree was 6 < K=29",
+          "because: colours its neighbours held then: r0(%70) r15(%34) r16(%35) r17(%36) r18(%37) r19(%38)",
+          "because: free in the mask: r3..r12, r14, r20..r31; the lowest is r3"
+        ]
+      },
+      {
+        "class": "GPR",
+        "vreg": 99,
+        "lines": [
+          "%99   -> r3   1 defs, 1 uses, live in 1 blocks; defined in block 3 line 14: add %r99, %r98, %r40",
+          "because: coloured #61: the simplification took it when its degree was 7 < K=29",
+          "because: colours its neighbours held then: r0(%70) r15(%34) r16(%35) r17(%36) r18(%37) r19(%38) r20(%39)",
+          "because: free in the mask: r3..r12, r14, r21..r31; the lowest is r3"
+        ]
+      },
+      {
+        "class": "GPR",
+        "vreg": 98,
+        "lines": [
+          "%98   -> r3   1 defs, 1 uses, live in 1 blocks; defined in block 3 line 14: add %r98, %r97, %r41",
+          "because: coloured #62: the simplification took it when its degree was 8 < K=29",
+          "because: colours its neighbours held then: r0(%70) r15(%34) r16(%35) r17(%36) r18(%37) r19(%38) r20(%39) r21(%40)",
+          "because: free in the mask: r3..r12, r14, r22..r31; the lowest is r3"
+        ]
+      },
+      {
+        "class": "GPR",
+        "vreg": 97,
+        "lines": [
+          "%97   -> r3   1 defs, 1 uses, live in 1 blocks; defined in block 3 line 14: add %r97, %r96, %r42",
+          "because: coloured #63: the simplification took it when its degree was 9 < K=29",
+          "because: colours its neighbours held then: r0(%70) r15(%34) r16(%35) r17(%36) r18(%37) r19(%38) r20(%39) r21(%40) r22(%41)",
+          "because: free in the mask: r3..r12, r14, r23..r31; the lowest is r3"
+        ]
+      },
+      {
+        "class": "GPR",
+        "vreg": 96,
+        "lines": [
+          "%96   -> r3   1 defs, 1 uses, live in 1 blocks; defined in block 3 line 14: add %r96, %r95, %r43",
+          "because: coloured #64: the simplification took it when its degree was 10 < K=29",
+          "because: colours its neighbours held then: r0(%70) r15(%34) r16(%35) r17(%36) r18(%37) r19(%38) r20(%39) r21(%40) r22(%41) r23(%42)",
+          "because: free in the mask: r3..r12, r14, r24..r31; the lowest is r3"
+        ]
+      },
+      {
+        "class": "GPR",
+        "vreg": 95,
+        "lines": [
+          "%95   -> r3   1 defs, 1 uses, live in 1 blocks; defined in block 3 line 14: add %r95, %r94, %r44",
+          "because: coloured #65: the simplification took it when its degree was 11 < K=29",
+          "because: colours its neighbours held then: r0(%70) r15(%34) r16(%35) r17(%36) r18(%37) r19(%38) r20(%39) r21(%40) r22(%41) r23(%42) r24(%43)",
+          "because: free in the mask: r3..r12, r14, r25..r31; the lowest is r3"
+        ]
+      },
+      {
+        "class": "GPR",
+        "vreg": 94,
+        "lines": [
+          "%94   -> r3   1 defs, 1 uses, live in 1 blocks; defined in block 3 line 14: add %r94, %r93, %r45",
+          "because: coloured #66: the simplification took it when its degree was 12 < K=29",
+          "because: colours its neighbours held then: r0(%70) r15(%34) r16(%35) r17(%36) r18(%37) r19(%38) r20(%39) r21(%40) r22(%41) r23(%42) r24(%43) r25(%44)",
+          "because: free in the mask: r3..r12, r14, r26..r31; the lowest is r3"
+        ]
+      },
+      {
+        "class": "GPR",
+        "vreg": 93,
+        "lines": [
+          "%93   -> r3   1 defs, 1 uses, live in 1 blocks; defined in block 3 line 14: add %r93, %r92, %r46",
+          "because: coloured #67: the simplification took it when its degree was 13 < K=29",
+          "because: colours its neighbours held then: r0(%70) r15(%34) r16(%35) r17(%36) r18(%37) r19(%38) r20(%39) r21(%40) r22(%41) r23(%42) r24(%43) r25(%44) r26(%45)",
+          "because: free in the mask: r3..r12, r14, r27..r31; the lowest is r3"
+        ]
+      },
+      {
+        "class": "GPR",
+        "vreg": 92,
+        "lines": [
+          "%92   -> r3   1 defs, 1 uses, live in 1 blocks; defined in block 3 line 14: add %r92, %r91, %r47",
+          "because: coloured #68: the simplification took it when its degree was 14 < K=29",
+          "because: colours its neighbours held then: r0(%70) r15(%34) r16(%35) r17(%36) r18(%37) r19(%38) r20(%39) r21(%40) r22(%41) r23(%42) r24(%43) r25(%44) r26(%45) r27(%46)",
+          "because: free in the mask: r3..r12, r14, r28..r31; the lowest is r3"
+        ]
+      },
+      {
+        "class": "GPR",
+        "vreg": 91,
+        "lines": [
+          "%91   -> r3   1 defs, 1 uses, live in 1 blocks; defined in block 3 line 14: add %r91, %r90, %r48",
+          "because: coloured #69: the simplification took it when its degree was 15 < K=29",
+          "because: colours its neighbours held then: r0(%70) r15(%34) r16(%35) r17(%36) r18(%37) r19(%38) r20(%39) r21(%40) r22(%41) r23(%42) r24(%43) r25(%44) r26(%45) r27(%46) r28(%47)",
+          "because: free in the mask: r3..r12, r14, r29..r31; the lowest is r3"
+        ]
+      },
+      {
+        "class": "GPR",
+        "vreg": 90,
+        "lines": [
+          "%90   -> r3   1 defs, 1 uses, live in 1 blocks; defined in block 3 line 14: add %r90, %r89, %r49",
+          "because: coloured #70: the simplification took it when its degree was 16 < K=29",
+          "because: colours its neighbours held then: r0(%70) r15(%34) r16(%35) r17(%36) r18(%37) r19(%38) r20(%39) r21(%40) r22(%41) r23(%42) r24(%43) r25(%44) r26(%45) r27(%46) r28(%47) r29(%48)",
+          "because: free in the mask: r3..r12, r14, r30..r31; the lowest is r3"
+        ]
+      },
+      {
+        "class": "GPR",
+        "vreg": 89,
+        "lines": [
+          "%89   -> r3   1 defs, 1 uses, live in 1 blocks; defined in block 3 line 14: add %r89, %r88, %r50",
+          "because: coloured #71: the simplification took it when its degree was 17 < K=29",
+          "because: colours its neighbours held then: r0(%70) r15(%34) r16(%35) r17(%36) r18(%37) r19(%38) r20(%39) r21(%40) r22(%41) r23(%42) r24(%43) r25(%44) r26(%45) r27(%46) r28(%47) r29(%48) r30(%49)",
+          "because: free in the mask: r3..r12, r14, r31; the lowest is r3"
+        ]
+      },
+      {
+        "class": "GPR",
+        "vreg": 88,
+        "lines": [
+          "%88   -> r3   1 defs, 1 uses, live in 1 blocks; defined in block 3 line 14: add %r88, %r87, %r51",
+          "because: coloured #72: the simplification took it when its degree was 18 < K=29",
+          "because: colours its neighbours held then: r0(%70) r15(%34) r16(%35) r17(%36) r18(%37) r19(%38) r20(%39) r21(%40) r22(%41) r23(%42) r24(%43) r25(%44) r26(%45) r27(%46) r28(%47) r29(%48) r30(%49) r31(%50)",
+          "because: free in the mask: r3..r12, r14; the lowest is r3"
+        ]
+      },
+      {
+        "class": "GPR",
+        "vreg": 87,
+        "lines": [
+          "%87   -> r3   1 defs, 1 uses, live in 1 blocks; defined in block 3 line 14: add %r87, %r86, %r52",
+          "because: coloured #73: the simplification took it when its degree was 19 < K=29",
+          "because: colours its neighbours held then: r0(%70) r14(%51) r15(%34) r16(%35) r17(%36) r18(%37) r19(%38) r20(%39) r21(%40) r22(%41) r23(%42) r24(%43) r25(%44) r26(%45) r27(%46) r28(%47) r29(%48) r30(%49) r31(%50)",
+          "because: free in the mask: r3..r12; the lowest is r3"
+        ]
+      },
+      {
+        "class": "GPR",
+        "vreg": 86,
+        "lines": [
+          "%86   -> r4   1 defs, 1 uses, live in 1 blocks; defined in block 3 line 14: add %r86, %r85, %r53",
+          "because: coloured #74: the simplification took it when its degree was 21 < K=29",
+          "because: colours its neighbours held then: r0(%70) r1 r3(%140) r14(%51) r15(%34) r16(%35) r17(%36) r18(%37) r19(%38) r20(%39) r21(%40) r22(%41) r23(%42) r24(%43) r25(%44) r26(%45) r27(%46) r28(%47) r29(%48) r30(%49) r31(%50)",
+          "because: free in the mask: r4..r12; the lowest is r4"
+        ]
+      },
+      {
+        "class": "GPR",
+        "vreg": 85,
+        "lines": [
+          "%85   -> r4   1 defs, 1 uses, live in 1 blocks; defined in block 3 line 14: add %r85, %r84, %r54",
+          "because: coloured #75: the simplification took it when its degree was 21 < K=29",
+          "because: colours its neighbours held then: r0(%70) r1 r3(%139) r14(%51) r15(%34) r16(%35) r17(%36) r18(%37) r19(%38) r20(%39) r21(%40) r22(%41) r23(%42) r24(%43) r25(%44) r26(%45) r27(%46) r28(%47) r29(%48) r30(%49) r31(%50)",
+          "because: free in the mask: r4..r12; the lowest is r4"
+        ]
+      },
+      {
+        "class": "GPR",
+        "vreg": 84,
+        "lines": [
+          "%84   -> r4   1 defs, 1 uses, live in 1 blocks; defined in block 3 line 14: add %r84, %r83, %r55",
+          "because: coloured #76: the simplification took it when its degree was 21 < K=29",
+          "because: colours its neighbours held then: r0(%70) r1 r3(%138) r14(%51) r15(%34) r16(%35) r17(%36) r18(%37) r19(%38) r20(%39) r21(%40) r22(%41) r23(%42) r24(%43) r25(%44) r26(%45) r27(%46) r28(%47) r29(%48) r30(%49) r31(%50)",
+          "because: free in the mask: r4..r12; the lowest is r4"
+        ]
+      },
+      {
+        "class": "GPR",
+        "vreg": 83,
+        "lines": [
+          "%83   -> r4   1 defs, 1 uses, live in 1 blocks; defined in block 3 line 14: add %r83, %r82, %r56",
+          "because: coloured #77: the simplification took it when its degree was 21 < K=29",
+          "because: colours its neighbours held then: r0(%70) r1 r3(%137) r14(%51) r15(%34) r16(%35) r17(%36) r18(%37) r19(%38) r20(%39) r21(%40) r22(%41) r23(%42) r24(%43) r25(%44) r26(%45) r27(%46) r28(%47) r29(%48) r30(%49) r31(%50)",
+          "because: free in the mask: r4..r12; the lowest is r4"
+        ]
+      },
+      {
+        "class": "GPR",
+        "vreg": 82,
+        "lines": [
+          "%82   -> r4   1 defs, 1 uses, live in 1 blocks; defined in block 3 line 14: add %r82, %r81, %r57",
+          "because: coloured #78: the simplification took it when its degree was 21 < K=29",
+          "because: colours its neighbours held then: r0(%70) r1 r3(%136) r14(%51) r15(%34) r16(%35) r17(%36) r18(%37) r19(%38) r20(%39) r21(%40) r22(%41) r23(%42) r24(%43) r25(%44) r26(%45) r27(%46) r28(%47) r29(%48) r30(%49) r31(%50)",
+          "because: free in the mask: r4..r12; the lowest is r4"
+        ]
+      },
+      {
+        "class": "GPR",
+        "vreg": 81,
+        "lines": [
+          "%81   -> r4   1 defs, 1 uses, live in 1 blocks; defined in block 3 line 14: add %r81, %r80, %r58",
+          "because: coloured #79: the simplification took it when its degree was 21 < K=29",
+          "because: colours its neighbours held then: r0(%70) r1 r3(%135) r14(%51) r15(%34) r16(%35) r17(%36) r18(%37) r19(%38) r20(%39) r21(%40) r22(%41) r23(%42) r24(%43) r25(%44) r26(%45) r27(%46) r28(%47) r29(%48) r30(%49) r31(%50)",
+          "because: free in the mask: r4..r12; the lowest is r4"
+        ]
+      },
+      {
+        "class": "GPR",
+        "vreg": 80,
+        "lines": [
+          "%80   -> r4   1 defs, 1 uses, live in 1 blocks; defined in block 3 line 14: add %r80, %r79, %r59",
+          "because: coloured #80: the simplification took it when its degree was 21 < K=29",
+          "because: colours its neighbours held then: r0(%70) r1 r3(%134) r14(%51) r15(%34) r16(%35) r17(%36) r18(%37) r19(%38) r20(%39) r21(%40) r22(%41) r23(%42) r24(%43) r25(%44) r26(%45) r27(%46) r28(%47) r29(%48) r30(%49) r31(%50)",
+          "because: free in the mask: r4..r12; the lowest is r4"
+        ]
+      },
+      {
+        "class": "GPR",
+        "vreg": 79,
+        "lines": [
+          "%79   -> r4   1 defs, 1 uses, live in 1 blocks; defined in block 3 line 14: add %r79, %r78, %r60",
+          "because: coloured #81: the simplification took it when its degree was 21 < K=29",
+          "because: colours its neighbours held then: r0(%70) r1 r3(%133) r14(%51) r15(%34) r16(%35) r17(%36) r18(%37) r19(%38) r20(%39) r21(%40) r22(%41) r23(%42) r24(%43) r25(%44) r26(%45) r27(%46) r28(%47) r29(%48) r30(%49) r31(%50)",
+          "because: free in the mask: r4..r12; the lowest is r4"
+        ]
+      },
+      {
+        "class": "GPR",
+        "vreg": 78,
+        "lines": [
+          "%78   -> r4   1 defs, 1 uses, live in 1 blocks; defined in block 3 line 14: add %r78, %r77, %r61",
+          "because: coloured #82: the simplification took it when its degree was 21 < K=29",
+          "because: colours its neighbours held then: r0(%70) r1 r3(%132) r14(%51) r15(%34) r16(%35) r17(%36) r18(%37) r19(%38) r20(%39) r21(%40) r22(%41) r23(%42) r24(%43) r25(%44) r26(%45) r27(%46) r28(%47) r29(%48) r30(%49) r31(%50)",
+          "because: free in the mask: r4..r12; the lowest is r4"
+        ]
+      },
+      {
+        "class": "GPR",
+        "vreg": 77,
+        "lines": [
+          "%77   -> r4   1 defs, 1 uses, live in 1 blocks; defined in block 3 line 14: add %r77, %r76, %r62",
+          "because: coloured #83: the simplification took it when its degree was 21 < K=29",
+          "because: colours its neighbours held then: r0(%70) r1 r3(%131) r14(%51) r15(%34) r16(%35) r17(%36) r18(%37) r19(%38) r20(%39) r21(%40) r22(%41) r23(%42) r24(%43) r25(%44) r26(%45) r27(%46) r28(%47) r29(%48) r30(%49) r31(%50)",
+          "because: free in the mask: r4..r12; the lowest is r4"
+        ]
+      },
+      {
+        "class": "GPR",
+        "vreg": 76,
+        "lines": [
+          "%76   -> r4   1 defs, 1 uses, live in 1 blocks; defined in block 3 line 14: add %r76, %r75, %r63",
+          "because: coloured #84: the simplification took it when its degree was 21 < K=29",
+          "because: colours its neighbours held then: r0(%70) r1 r3(%130) r14(%51) r15(%34) r16(%35) r17(%36) r18(%37) r19(%38) r20(%39) r21(%40) r22(%41) r23(%42) r24(%43) r25(%44) r26(%45) r27(%46) r28(%47) r29(%48) r30(%49) r31(%50)",
+          "because: free in the mask: r4..r12; the lowest is r4"
+        ]
+      },
+      {
+        "class": "GPR",
+        "vreg": 75,
+        "lines": [
+          "%75   -> r4   1 defs, 1 uses, live in 1 blocks; defined in block 3 line 14: add %r75, %r74, %r64",
+          "because: coloured #85: the simplification took it when its degree was 21 < K=29",
+          "because: colours its neighbours held then: r0(%70) r1 r3(%129) r14(%51) r15(%34) r16(%35) r17(%36) r18(%37) r19(%38) r20(%39) r21(%40) r22(%41) r23(%42) r24(%43) r25(%44) r26(%45) r27(%46) r28(%47) r29(%48) r30(%49) r31(%50)",
+          "because: free in the mask: r4..r12; the lowest is r4"
+        ]
+      },
+      {
+        "class": "GPR",
+        "vreg": 74,
+        "lines": [
+          "%74   -> r4   1 defs, 1 uses, live in 1 blocks; defined in block 3 line 14: add %r74, %r73, %r65",
+          "because: coloured #86: the simplification took it when its degree was 21 < K=29",
+          "because: colours its neighbours held then: r0(%70) r1 r3(%128) r14(%51) r15(%34) r16(%35) r17(%36) r18(%37) r19(%38) r20(%39) r21(%40) r22(%41) r23(%42) r24(%43) r25(%44) r26(%45) r27(%46) r28(%47) r29(%48) r30(%49) r31(%50)",
+          "because: free in the mask: r4..r12; the lowest is r4"
+        ]
+      },
+      {
+        "class": "GPR",
+        "vreg": 73,
+        "lines": [
+          "%73   -> r4   1 defs, 1 uses, live in 1 blocks; defined in block 3 line 14: add %r73, %r72, %r66",
+          "because: coloured #87: the simplification took it when its degree was 21 < K=29",
+          "because: colours its neighbours held then: r0(%70) r1 r3(%127) r14(%51) r15(%34) r16(%35) r17(%36) r18(%37) r19(%38) r20(%39) r21(%40) r22(%41) r23(%42) r24(%43) r25(%44) r26(%45) r27(%46) r28(%47) r29(%48) r30(%49) r31(%50)",
+          "because: free in the mask: r4..r12; the lowest is r4"
+        ]
+      },
+      {
+        "class": "GPR",
+        "vreg": 72,
+        "lines": [
+          "%72   -> r4   1 defs, 1 uses, live in 1 blocks; defined in block 3 line 14: add %r72, %r71, %r67",
+          "because: coloured #88: the simplification took it when its degree was 21 < K=29",
+          "because: colours its neighbours held then: r0(%70) r1 r3(%126) r14(%51) r15(%34) r16(%35) r17(%36) r18(%37) r19(%38) r20(%39) r21(%40) r22(%41) r23(%42) r24(%43) r25(%44) r26(%45) r27(%46) r28(%47) r29(%48) r30(%49) r31(%50)",
+          "because: free in the mask: r4..r12; the lowest is r4"
+        ]
+      },
+      {
+        "class": "GPR",
+        "vreg": 71,
+        "lines": [
+          "%71   -> r4   1 defs, 1 uses, live in 1 blocks; defined in block 3 line 14: add %r71, %r69, %r68",
+          "because: coloured #89: the simplification took it when its degree was 22 < K=29",
+          "because: colours its neighbours held then: r0(%70) r1 r3(%125,fixed) r14(%51) r15(%34) r16(%35) r17(%36) r18(%37) r19(%38) r20(%39) r21(%40) r22(%41) r23(%42) r24(%43) r25(%44) r26(%45) r27(%46) r28(%47) r29(%48) r30(%49) r31(%50)",
+          "because: free in the mask: r4..r12; the lowest is r4"
+        ]
+      },
+      {
+        "class": "GPR",
+        "vreg": 69,
+        "lines": [
+          "%69   -> r0 / r4 (split by spilling)   1 defs, 1 uses, live in 3 blocks; defined in block 1 line 4: lwz %r69, %r32, #0",
+          "because: live across 1 call(s) (first in block 2): the registers a call clobbers are its neighbours",
+          "because: coloured #90: the simplification took it when its degree was 0 < K=29",
+          "because: free in the mask: r0, r3..r12, r14..r31; the lowest is r0",
+          "because: spilled by an earlier colouring of the class"
+        ]
+      },
+      {
+        "class": "GPR",
+        "vreg": 68,
+        "lines": [
+          "%68   -> r0   1 defs, 1 uses, live in 3 blocks; defined in block 1 line 4: lwz %r68, %r32, #4",
+          "because: live across 1 call(s) (first in block 2): the registers a call clobbers are its neighbours",
+          "because: coloured #91: the simplification took it when its degree was 0 < K=29",
+          "because: free in the mask: r0, r3..r12, r14..r31; the lowest is r0",
+          "because: spilled by an earlier colouring of the class"
+        ]
+      },
+      {
+        "class": "GPR",
+        "vreg": 67,
+        "lines": [
+          "%67   -> r0 / r3 (split by spilling)   1 defs, 1 uses, live in 3 blocks; defined in block 1 line 4: lwz %r67, %r32, #8",
+          "because: live across 1 call(s) (first in block 2): the registers a call clobbers are its neighbours",
+          "because: coloured #92: the simplification took it when its degree was 0 < K=29",
+          "because: free in the mask: r0, r3..r12, r14..r31; the lowest is r0",
+          "because: spilled by an earlier colouring of the class"
+        ]
+      },
+      {
+        "class": "GPR",
+        "vreg": 66,
+        "lines": [
+          "%66   -> r0 / r3 (split by spilling)   1 defs, 1 uses, live in 3 blocks; defined in block 1 line 4: lwz %r66, %r32, #12",
+          "because: live across 1 call(s) (first in block 2): the registers a call clobbers are its neighbours",
+          "because: coloured #93: the simplification took it when its degree was 0 < K=29",
+          "because: free in the mask: r0, r3..r12, r14..r31; the lowest is r0",
+          "because: spilled by an earlier colouring of the class"
+        ]
+      },
+      {
+        "class": "GPR",
+        "vreg": 65,
+        "lines": [
+          "%65   -> r0 / r3 (split by spilling)   1 defs, 1 uses, live in 3 blocks; defined in block 1 line 5: lwz %r65, %r32, #16",
+          "because: live across 1 call(s) (first in block 2): the registers a call clobbers are its neighbours",
+          "because: coloured #94: the simplification took it when its degree was 0 < K=29",
+          "because: free in the mask: r0, r3..r12, r14..r31; the lowest is r0",
+          "because: spilled by an earlier colouring of the class"
+        ]
+      },
+      {
+        "class": "GPR",
+        "vreg": 64,
+        "lines": [
+          "%64   -> r0 / r3 (split by spilling)   1 defs, 1 uses, live in 3 blocks; defined in block 1 line 5: lwz %r64, %r32, #20",
+          "because: live across 1 call(s) (first in block 2): the registers a call clobbers are its neighbours",
+          "because: coloured #95: the simplification took it when its degree was 0 < K=29",
+          "because: free in the mask: r0, r3..r12, r14..r31; the lowest is r0",
+          "because: spilled by an earlier colouring of the class"
+        ]
+      },
+      {
+        "class": "GPR",
+        "vreg": 63,
+        "lines": [
+          "%63   -> r0 / r3 (split by spilling)   1 defs, 1 uses, live in 3 blocks; defined in block 1 line 5: lwz %r63, %r32, #24",
+          "because: live across 1 call(s) (first in block 2): the registers a call clobbers are its neighbours",
+          "because: coloured #96: the simplification took it when its degree was 0 < K=29",
+          "because: free in the mask: r0, r3..r12, r14..r31; the lowest is r0",
+          "because: spilled by an earlier colouring of the class"
+        ]
+      },
+      {
+        "class": "GPR",
+        "vreg": 62,
+        "lines": [
+          "%62   -> r0 / r3 (split by spilling)   1 defs, 1 uses, live in 3 blocks; defined in block 1 line 5: lwz %r62, %r32, #28",
+          "because: live across 1 call(s) (first in block 2): the registers a call clobbers are its neighbours",
+          "because: coloured #97: the simplification took it when its degree was 0 < K=29",
+          "because: free in the mask: r0, r3..r12, r14..r31; the lowest is r0",
+          "because: spilled by an earlier colouring of the class"
+        ]
+      },
+      {
+        "class": "GPR",
+        "vreg": 61,
+        "lines": [
+          "%61   -> r0 / r3 (split by spilling)   1 defs, 1 uses, live in 3 blocks; defined in block 1 line 6: lwz %r61, %r32, #32",
+          "because: live across 1 call(s) (first in block 2): the registers a call clobbers are its neighbours",
+          "because: coloured #98: the simplification took it when its degree was 0 < K=29",
+          "because: free in the mask: r0, r3..r12, r14..r31; the lowest is r0",
+          "because: spilled by an earlier colouring of the class"
+        ]
+      },
+      {
+        "class": "GPR",
+        "vreg": 60,
+        "lines": [
+          "%60   -> r0 / r3 (split by spilling)   1 defs, 1 uses, live in 3 blocks; defined in block 1 line 6: lwz %r60, %r32, #36",
+          "because: live across 1 call(s) (first in block 2): the registers a call clobbers are its neighbours",
+          "because: coloured #99: the simplification took it when its degree was 0 < K=29",
+          "because: free in the mask: r0, r3..r12, r14..r31; the lowest is r0",
+          "because: spilled by an earlier colouring of the class"
+        ]
+      },
+      {
+        "class": "GPR",
+        "vreg": 59,
+        "lines": [
+          "%59   -> r0 / r3 (split by spilling)   1 defs, 1 uses, live in 3 blocks; defined in block 1 line 6: lwz %r59, %r32, #40",
+          "because: live across 1 call(s) (first in block 2): the registers a call clobbers are its neighbours",
+          "because: coloured #100: the simplification took it when its degree was 0 < K=29",
+          "because: free in the mask: r0, r3..r12, r14..r31; the lowest is r0",
+          "because: spilled by an earlier colouring of the class"
+        ]
+      },
+      {
+        "class": "GPR",
+        "vreg": 58,
+        "lines": [
+          "%58   -> r0 / r3 (split by spilling)   1 defs, 1 uses, live in 3 blocks; defined in block 1 line 6: lwz %r58, %r32, #44",
+          "because: live across 1 call(s) (first in block 2): the registers a call clobbers are its neighbours",
+          "because: coloured #101: the simplification took it when its degree was 0 < K=29",
+          "because: free in the mask: r0, r3..r12, r14..r31; the lowest is r0",
+          "because: spilled by an earlier colouring of the class"
+        ]
+      },
+      {
+        "class": "GPR",
+        "vreg": 57,
+        "lines": [
+          "%57   -> r0 / r3 (split by spilling)   1 defs, 1 uses, live in 3 blocks; defined in block 1 line 7: lwz %r57, %r32, #48",
+          "because: live across 1 call(s) (first in block 2): the registers a call clobbers are its neighbours",
+          "because: coloured #102: the simplification took it when its degree was 0 < K=29",
+          "because: free in the mask: r0, r3..r12, r14..r31; the lowest is r0",
+          "because: spilled by an earlier colouring of the class"
+        ]
+      },
+      {
+        "class": "GPR",
+        "vreg": 56,
+        "lines": [
+          "%56   -> r0 / r3 (split by spilling)   1 defs, 1 uses, live in 3 blocks; defined in block 1 line 7: lwz %r56, %r32, #52",
+          "because: live across 1 call(s) (first in block 2): the registers a call clobbers are its neighbours",
+          "because: coloured #103: the simplification took it when its degree was 0 < K=29",
+          "because: free in the mask: r0, r3..r12, r14..r31; the lowest is r0",
+          "because: spilled by an earlier colouring of the class"
+        ]
+      },
+      {
+        "class": "GPR",
+        "vreg": 55,
+        "lines": [
+          "%55   -> r0 / r3 (split by spilling)   1 defs, 1 uses, live in 3 blocks; defined in block 1 line 7: lwz %r55, %r32, #56",
+          "because: live across 1 call(s) (first in block 2): the registers a call clobbers are its neighbours",
+          "because: coloured #104: the simplification took it when its degree was 0 < K=29",
+          "because: free in the mask: r0, r3..r12, r14..r31; the lowest is r0",
+          "because: spilled by an earlier colouring of the class"
+        ]
+      },
+      {
+        "class": "GPR",
+        "vreg": 54,
+        "lines": [
+          "%54   -> r0 / r3 (split by spilling)   1 defs, 1 uses, live in 3 blocks; defined in block 1 line 7: lwz %r54, %r32, #60",
+          "because: live across 1 call(s) (first in block 2): the registers a call clobbers are its neighbours",
+          "because: coloured #105: the simplification took it when its degree was 0 < K=29",
+          "because: free in the mask: r0, r3..r12, r14..r31; the lowest is r0",
+          "because: spilled by an earlier colouring of the class"
+        ]
+      },
+      {
+        "class": "GPR",
+        "vreg": 53,
+        "lines": [
+          "%53   -> r0 / r3 (split by spilling)   1 defs, 1 uses, live in 3 blocks; defined in block 1 line 8: lwz %r53, %r32, #64",
+          "because: live across 1 call(s) (first in block 2): the registers a call clobbers are its neighbours",
+          "because: coloured #106: the simplification took it when its degree was 0 < K=29",
+          "because: free in the mask: r0, r3..r12, r14..r31; the lowest is r0",
+          "because: spilled by an earlier colouring of the class"
+        ]
+      },
+      {
+        "class": "GPR",
+        "vreg": 52,
+        "lines": [
+          "%52   -> r0 / r3 (split by spilling)   1 defs, 1 uses, live in 3 blocks; defined in block 1 line 8: lwz %r52, %r32, #68",
+          "because: live across 1 call(s) (first in block 2): the registers a call clobbers are its neighbours",
+          "because: coloured #107: the simplification took it when its degree was 0 < K=29",
+          "because: free in the mask: r0, r3..r12, r14..r31; the lowest is r0",
+          "because: spilled by an earlier colouring of the class"
+        ]
+      },
+      {
+        "class": "GPR",
+        "vreg": 32,
+        "lines": [
+          "%32   -> r3   1 defs, 37 uses, live in 1 blocks; defined in block 1: mr %r32, r3, -",
+          "because: coloured #109: the simplification took it when its degree was 0 < K=29",
+          "because: free in the mask: r0, r3..r12, r14..r31; the lowest is r0"
+        ]
+      }
+    ],
+    "text": [
+      "match 98.19%  (trace allocation #0, by link name)",
+      "",
+      "== inlining (call: decision - reason) ==",
+      "   external: call kept - not declared inline (and not a method defined in its class)  (x8)  (depth 0, 1, 2, 3, 4, 5, 6, 7)  (line 13)",
+      "",
+      "== pressure: PCode before the allocation ==",
+      "   block 0 (weight 1) -> 1",
+      "   block 1 (weight 1) -> 2",
+      "      mr %r32, r3, -",
+      "      lwz %r69, %r32, #0",
+      "      lwz %r68, %r32, #4",
+      "      lwz %r67, %r32, #8",
+      "      lwz %r66, %r32, #12",
+      "      lwz %r65, %r32, #16",
+      "      lwz %r64, %r32, #20",
+      "      lwz %r63, %r32, #24",
+      "      lwz %r62, %r32, #28",
+      "      lwz %r61, %r32, #32",
+      "      lwz %r60, %r32, #36",
+      "      lwz %r59, %r32, #40",
+      "      lwz %r58, %r32, #44",
+      "      lwz %r57, %r32, #48",
+      "      lwz %r56, %r32, #52",
+      "      lwz %r55, %r32, #56",
+      "      lwz %r54, %r32, #60",
+      "      lwz %r53, %r32, #64",
+      "      lwz %r52, %r32, #68",
+      "      lwz %r51, %r32, #72",
+      "      lwz %r50, %r32, #76",
+      "      lwz %r49, %r32, #80",
+      "      lwz %r48, %r32, #84",
+      "      lwz %r47, %r32, #88",
+      "      lwz %r46, %r32, #92",
+      "      lwz %r45, %r32, #96",
+      "      lwz %r44, %r32, #100",
+      "      lwz %r43, %r32, #104",
+      "      lwz %r42, %r32, #108",
+      "      lwz %r41, %r32, #112",
+      "      lwz %r40, %r32, #116",
+      "      lwz %r39, %r32, #120",
+      "      lwz %r38, %r32, #124",
+      "      lwz %r37, %r32, #128",
+      "      lwz %r36, %r32, #132",
+      "      lwz %r35, %r32, #136",
+      "      lwz %r34, %r32, #140",
+      "      lwz r3, %r32, #144",
+      "   block 2 (weight 1) -> 3",
+      "      bl sym, r0, r3, ... 51 more (the registers the call clobbers)",
+      "   block 3 (weight 1) -> 4",
+      "      add %r71, %r69, %r68",
+      "      mr %r70, r3, -",
+      "      add %r72, %r71, %r67",
+      "      add %r73, %r72, %r66",
+      "      add %r74, %r73, %r65",
+      "      add %r75, %r74, %r64",
+      "      add %r76, %r75, %r63",
+      "      add %r77, %r76, %r62",
+      "      add %r78, %r77, %r61",
+      "      add %r79, %r78, %r60",
+      "      add %r80, %r79, %r59",
+      "      add %r81, %r80, %r58",
+      "      add %r82, %r81, %r57",
+      "      add %r83, %r82, %r56",
+      "      add %r84, %r83, %r55",
+      "      add %r85, %r84, %r54",
+      "      add %r86, %r85, %r53",
+      "      add %r87, %r86, %r52",
+      "      add %r88, %r87, %r51",
+      "      add %r89, %r88, %r50",
+      "      add %r90, %r89, %r49",
+      "      add %r91, %r90, %r48",
+      "      add %r92, %r91, %r47",
+      "      add %r93, %r92, %r46",
+      "      add %r94, %r93, %r45",
+      "      add %r95, %r94, %r44",
+      "      add %r96, %r95, %r43",
+      "      add %r97, %r96, %r42",
+      "      add %r98, %r97, %r41",
+      "      add %r99, %r98, %r40",
+      "      add %r100, %r99, %r39",
+      "      add %r101, %r100, %r38",
+      "      add %r102, %r101, %r37",
+      "      add %r103, %r102, %r36",
+      "      add %r104, %r103, %r35",
+      "      add r3, %r104, %r34",
+      "      add r3, %r70, r3",
+      "   block 4 (weight 1) -> exit",
+      "",
+      "== stack slot differences (r1 offsets, ours -> target) ==",
+      "   0x8 -> 0x18  x2",
+      "   0xc -> 0x1c  x2",
+      "   0x10 -> 0x20  x2",
+      "   0x14 -> 0x24  x2",
+      "   0x18 -> 0x28  x2",
+      "   0x1c -> 0x2c  x2",
+      "   0x20 -> 0x30  x2",
+      "   0x24 -> 0x34  x2",
+      "   0x28 -> 0x38  x2",
+      "   0x2c -> 0x3c  x2",
+      "   0x30 -> 0x40  x2",
+      "   0x34 -> 0x44  x2",
+      "   0x38 -> 0x48  x2",
+      "   0x3c -> 0x4c  x2",
+      "   0x40 -> 0x50  x2",
+      "   0x44 -> 0x54  x2",
+      "   0x48 -> 0x58  x2",
+      "   0x4c -> 0x5c  x2",
+      "   0xa0 -> 0xb0  x3",
+      "   0xa4 -> 0xb4  x2",
+      "   our frame, as the oracle traced it (r1 offset = locals offset + 8 + outgoing arguments):",
+      "      frame 160 bytes before the register saves: linkage 8, outgoing arguments 0, locals 72, above them 72",
+      "      in memory (offset from r1, offset in the locals area, size, name):",
+      "             8     0     4  call",
+      "             8     0     4  a17",
+      "            12     4     4  a16",
+      "            16     8     4  a15",
+      "            20    12     4  a14",
+      "            24    16     4  a13",
+      "            28    20     4  a12",
+      "            32    24     4  a11",
+      "            36    28     4  a10",
+      "            40    32     4  a9",
+      "            44    36     4  a8",
+      "            48    40     4  a7",
+      "            52    44     4  a6",
+      "            56    48     4  a5",
+      "            60    52     4  a4",
+      "            64    56     4  a3",
+      "            68    60     4  a2",
+      "            72    64     4  a1",
+      "            76    68     4  a0",
+      "      in registers: a35=reg 15, a34=reg 16, a33=reg 17, a32=reg 18, a31=reg 19, a30=reg 20, a29=reg 21, a28=reg 22, a27=reg 23, a26=reg 24, a25=reg 25, a24=reg 26, a23=reg 27, a22=reg 28, a21=reg 29, a20=reg 30, a19=reg 31, a18=reg 14",
+      "   (the layout follows the order locals and temporaries are declared and created; reorder them or change a type/size and remeasure)",
+      "",
+      "== register differences (ours -> target, aligned rows) ==",
+      "   r14 -> r31  x2   ours r14: %51;  ours r31: %50",
+      "   r15 -> r30  x2   ours r15: %34;  ours r30: %49",
+      "   r16 -> r29  x2   ours r16: %35;  ours r29: %48",
+      "   r17 -> r28  x2   ours r17: %36;  ours r28: %47",
+      "   r18 -> r27  x2   ours r18: %37;  ours r27: %46",
+      "   r19 -> r26  x2   ours r19: %38;  ours r26: %45",
+      "   r20 -> r25  x2   ours r20: %39;  ours r25: %44",
+      "   r21 -> r24  x2   ours r21: %40;  ours r24: %43",
+      "   r22 -> r23  x2   ours r22: %41;  ours r23: %42",
+      "   r23 -> r22  x2   ours r23: %42;  ours r22: %41",
+      "   r24 -> r21  x2   ours r24: %43;  ours r21: %40",
+      "   r25 -> r20  x2   ours r25: %44;  ours r20: %39",
+      "   r26 -> r19  x2   ours r26: %45;  ours r19: %38",
+      "   r27 -> r18  x2   ours r27: %46;  ours r18: %37",
+      "   r28 -> r17  x2   ours r28: %47;  ours r17: %36",
+      "   r29 -> r16  x2   ours r29: %48;  ours r16: %35",
+      "   r30 -> r15  x2   ours r30: %49;  ours r15: %34",
+      "   r31 -> r14  x2   ours r31: %50;  ours r14: %51",
+      "",
+      "== swaps ==",
+      "   r14 <-> r31: ours gives r14 to %51 and r31 to %50; the target has them the other way round.",
+      "      Traced: %50 was coloured first (#1, degree 12 < K) and took the lower free register; %51 came later (#18, spill candidate (cost 3)).",
+      "      The simplification removed %51 earlier than %50 (it colours the last removed first); the exchange needs that reversed: a later creation, or more interference (a longer life) for %51, or less for %50.",
+      "   r22 <-> r23: ours gives r22 to %41 and r23 to %42; the target has them the other way round.",
+      "      Traced: %42 was coloured first (#9, degree 20 < K) and took the lower free register; %41 came later (#10, degree 21 < K).",
+      "      The simplification removed %41 earlier than %42 (it colours the last removed first); the exchange needs that reversed: a later creation, or more interference (a longer life) for %41, or less for %42.",
+      "   r21 <-> r24: ours gives r21 to %40 and r24 to %43; the target has them the other way round.",
+      "      Traced: %43 was coloured first (#8, degree 19 < K) and took the lower free register; %40 came later (#11, degree 22 < K).",
+      "      The simplification removed %40 earlier than %43 (it colours the last removed first); the exchange needs that reversed: a later creation, or more interference (a longer life) for %40, or less for %43.",
+      "   r20 <-> r25: ours gives r20 to %39 and r25 to %44; the target has them the other way round.",
+      "      Traced: %44 was coloured first (#7, degree 18 < K) and took the lower free register; %39 came later (#12, degree 23 < K).",
+      "      The simplification removed %39 earlier than %44 (it colours the last removed first); the exchange needs that reversed: a later creation, or more interference (a longer life) for %39, or less for %44.",
+      "   r19 <-> r26: ours gives r19 to %38 and r26 to %45; the target has them the other way round.",
+      "      Traced: %45 was coloured first (#6, degree 17 < K) and took the lower free register; %38 came later (#13, degree 24 < K).",
+      "      The simplification removed %38 earlier than %45 (it colours the last removed first); the exchange needs that reversed: a later creation, or more interference (a longer life) for %38, or less for %45.",
+      "   r18 <-> r27: ours gives r18 to %37 and r27 to %46; the target has them the other way round.",
+      "      Traced: %46 was coloured first (#5, degree 16 < K) and took the lower free register; %37 came later (#14, degree 25 < K).",
+      "      The simplification removed %37 earlier than %46 (it colours the last removed first); the exchange needs that reversed: a later creation, or more interference (a longer life) for %37, or less for %46.",
+      "   r17 <-> r28: ours gives r17 to %36 and r28 to %47; the target has them the other way round.",
+      "      Traced: %47 was coloured first (#4, degree 15 < K) and took the lower free register; %36 came later (#15, degree 26 < K).",
+      "      The simplification removed %36 earlier than %47 (it colours the last removed first); the exchange needs that reversed: a later creation, or more interference (a longer life) for %36, or less for %47.",
+      "   r16 <-> r29: ours gives r16 to %35 and r29 to %48; the target has them the other way round.",
+      "      Traced: %48 was coloured first (#3, degree 14 < K) and took the lower free register; %35 came later (#16, degree 27 < K).",
+      "      The simplification removed %35 earlier than %48 (it colours the last removed first); the exchange needs that reversed: a later creation, or more interference (a longer life) for %35, or less for %48.",
+      "   r15 <-> r30: ours gives r15 to %34 and r30 to %49; the target has them the other way round.",
+      "      Traced: %49 was coloured first (#2, degree 13 < K) and took the lower free register; %34 came later (#17, degree 28 < K).",
+      "      The simplification removed %34 earlier than %49 (it colours the last removed first); the exchange needs that reversed: a later creation, or more interference (a longer life) for %34, or less for %49.",
+      "",
+      "== virtual registers ==",
+      "   %32 (GPR) defined at block 1: mr %r32, r3, -",
+      "      because: coloured #109: the simplification took it when its degree was 0 < K=29",
+      "      because: free in the mask: r0, r3..r12, r14..r31; the lowest is r0",
+      "   %34 (GPR) defined at block 1 line 12: lwz %r34, %r32, #140",
+      "      because: live across 1 call(s) (first in block 2): the registers a call clobbers are its neighbours",
+      "      because: coloured #17: the simplification took it when its degree was 28 < K=29",
+      "      because: colours its neighbours held then: r0..r1 r3..r12 r16(%35) r17(%36) r18(%37) r19(%38) r20(%39) r21(%40) r22(%41) r23(%42) r24(%43) r25(%44) r26(%45) r27(%46) r28(%47) r29(%48) r30(%49) r31(%50)",
+      "      because: no colour of the mask was free: r15 was claimed (a non-volatile register, saved in the prologue; it joins the mask from here on)",
+      "   %35 (GPR) defined at block 1 line 12: lwz %r35, %r32, #136",
+      "      because: live across 1 call(s) (first in block 2): the registers a call clobbers are its neighbours",
+      "      because: coloured #16: the simplification took it when its degree was 27 < K=29",
+      "      because: colours its neighbours held then: r0..r1 r3..r12 r17(%36) r18(%37) r19(%38) r20(%39) r21(%40) r22(%41) r23(%42) r24(%43) r25(%44) r26(%45) r27(%46) r28(%47) r29(%48) r30(%49) r31(%50)",
+      "      because: no colour of the mask was free: r16 was claimed (a non-volatile register, saved in the prologue; it joins the mask from here on)",
+      "   %36 (GPR) defined at block 1 line 12: lwz %r36, %r32, #132",
+      "      because: live across 1 call(s) (first in block 2): the registers a call clobbers are its neighbours",
+      "      because: coloured #15: the simplification took it when its degree was 26 < K=29",
+      "      because: colours its neighbours held then: r0..r1 r3..r12 r18(%37) r19(%38) r20(%39) r21(%40) r22(%41) r23(%42) r24(%43) r25(%44) r26(%45) r27(%46) r28(%47) r29(%48) r30(%49) r31(%50)",
+      "      because: no colour of the mask was free: r17 was claimed (a non-volatile register, saved in the prologue; it joins the mask from here on)",
+      "   %37 (GPR) defined at block 1 line 12: lwz %r37, %r32, #128",
+      "      because: live across 1 call(s) (first in block 2): the registers a call clobbers are its neighbours",
+      "      because: coloured #14: the simplification took it when its degree was 25 < K=29",
+      "      because: colours its neighbours held then: r0..r1 r3..r12 r19(%38) r20(%39) r21(%40) r22(%41) r23(%42) r24(%43) r25(%44) r26(%45) r27(%46) r28(%47) r29(%48) r30(%49) r31(%50)",
+      "      because: no colour of the mask was free: r18 was claimed (a non-volatile register, saved in the prologue; it joins the mask from here on)",
+      "   %38 (GPR) defined at block 1 line 11: lwz %r38, %r32, #124",
+      "      because: live across 1 call(s) (first in block 2): the registers a call clobbers are its neighbours",
+      "      because: coloured #13: the simplification took it when its degree was 24 < K=29",
+      "      because: colours its neighbours held then: r0..r1 r3..r12 r20(%39) r21(%40) r22(%41) r23(%42) r24(%43) r25(%44) r26(%45) r27(%46) r28(%47) r29(%48) r30(%49) r31(%50)",
+      "      because: no colour of the mask was free: r19 was claimed (a non-volatile register, saved in the prologue; it joins the mask from here on)",
+      "   %39 (GPR) defined at block 1 line 11: lwz %r39, %r32, #120",
+      "      because: live across 1 call(s) (first in block 2): the registers a call clobbers are its neighbours",
+      "      because: coloured #12: the simplification took it when its degree was 23 < K=29",
+      "      because: colours its neighbours held then: r0..r1 r3..r12 r21(%40) r22(%41) r23(%42) r24(%43) r25(%44) r26(%45) r27(%46) r28(%47) r29(%48) r30(%49) r31(%50)",
+      "      because: no colour of the mask was free: r20 was claimed (a non-volatile register, saved in the prologue; it joins the mask from here on)",
+      "   %40 (GPR) defined at block 1 line 11: lwz %r40, %r32, #116",
+      "      because: live across 1 call(s) (first in block 2): the registers a call clobbers are its neighbours",
+      "      because: coloured #11: the simplification took it when its degree was 22 < K=29",
+      "      because: colours its neighbours held then: r0..r1 r3..r12 r22(%41) r23(%42) r24(%43) r25(%44) r26(%45) r27(%46) r28(%47) r29(%48) r30(%49) r31(%50)",
+      "      because: no colour of the mask was free: r21 was claimed (a non-volatile register, saved in the prologue; it joins the mask from here on)",
+      "   %41 (GPR) defined at block 1 line 11: lwz %r41, %r32, #112",
+      "      because: live across 1 call(s) (first in block 2): the registers a call clobbers are its neighbours",
+      "      because: coloured #10: the simplification took it when its degree was 21 < K=29",
+      "      because: colours its neighbours held then: r0..r1 r3..r12 r23(%42) r24(%43) r25(%44) r26(%45) r27(%46) r28(%47) r29(%48) r30(%49) r31(%50)",
+      "      because: no colour of the mask was free: r22 was claimed (a non-volatile register, saved in the prologue; it joins the mask from here on)",
+      "   %42 (GPR) defined at block 1 line 10: lwz %r42, %r32, #108",
+      "      because: live across 1 call(s) (first in block 2): the registers a call clobbers are its neighbours",
+      "      because: coloured #9: the simplification took it when its degree was 20 < K=29",
+      "      because: colours its neighbours held then: r0..r1 r3..r12 r24(%43) r25(%44) r26(%45) r27(%46) r28(%47) r29(%48) r30(%49) r31(%50)",
+      "      because: no colour of the mask was free: r23 was claimed (a non-volatile register, saved in the prologue; it joins the mask from here on)",
+      "   %43 (GPR) defined at block 1 line 10: lwz %r43, %r32, #104",
+      "      because: live across 1 call(s) (first in block 2): the registers a call clobbers are its neighbours",
+      "      because: coloured #8: the simplification took it when its degree was 19 < K=29",
+      "      because: colours its neighbours held then: r0..r1 r3..r12 r25(%44) r26(%45) r27(%46) r28(%47) r29(%48) r30(%49) r31(%50)",
+      "      because: no colour of the mask was free: r24 was claimed (a non-volatile register, saved in the prologue; it joins the mask from here on)",
+      "   %44 (GPR) defined at block 1 line 10: lwz %r44, %r32, #100",
+      "      because: live across 1 call(s) (first in block 2): the registers a call clobbers are its neighbours",
+      "      because: coloured #7: the simplification took it when its degree was 18 < K=29",
+      "      because: colours its neighbours held then: r0..r1 r3..r12 r26(%45) r27(%46) r28(%47) r29(%48) r30(%49) r31(%50)",
+      "      because: no colour of the mask was free: r25 was claimed (a non-volatile register, saved in the prologue; it joins the mask from here on)",
+      "   %45 (GPR) defined at block 1 line 10: lwz %r45, %r32, #96",
+      "      because: live across 1 call(s) (first in block 2): the registers a call clobbers are its neighbours",
+      "      because: coloured #6: the simplification took it when its degree was 17 < K=29",
+      "      because: colours its neighbours held then: r0..r1 r3..r12 r27(%46) r28(%47) r29(%48) r30(%49) r31(%50)",
+      "      because: no colour of the mask was free: r26 was claimed (a non-volatile register, saved in the prologue; it joins the mask from here on)",
+      "   %46 (GPR) defined at block 1 line 9: lwz %r46, %r32, #92",
+      "      because: live across 1 call(s) (first in block 2): the registers a call clobbers are its neighbours",
+      "      because: coloured #5: the simplification took it when its degree was 16 < K=29",
+      "      because: colours its neighbours held then: r0..r1 r3..r12 r28(%47) r29(%48) r30(%49) r31(%50)",
+      "      because: no colour of the mask was free: r27 was claimed (a non-volatile register, saved in the prologue; it joins the mask from here on)",
+      "   %47 (GPR) defined at block 1 line 9: lwz %r47, %r32, #88",
+      "      because: live across 1 call(s) (first in block 2): the registers a call clobbers are its neighbours",
+      "      because: coloured #4: the simplification took it when its degree was 15 < K=29",
+      "      because: colours its neighbours held then: r0..r1 r3..r12 r29(%48) r30(%49) r31(%50)",
+      "      because: no colour of the mask was free: r28 was claimed (a non-volatile register, saved in the prologue; it joins the mask from here on)",
+      "   %48 (GPR) defined at block 1 line 9: lwz %r48, %r32, #84",
+      "      because: live across 1 call(s) (first in block 2): the registers a call clobbers are its neighbours",
+      "      because: coloured #3: the simplification took it when its degree was 14 < K=29",
+      "      because: colours its neighbours held then: r0..r1 r3..r12 r30(%49) r31(%50)",
+      "      because: no colour of the mask was free: r29 was claimed (a non-volatile register, saved in the prologue; it joins the mask from here on)",
+      "   %49 (GPR) defined at block 1 line 9: lwz %r49, %r32, #80",
+      "      because: live across 1 call(s) (first in block 2): the registers a call clobbers are its neighbours",
+      "      because: coloured #2: the simplification took it when its degree was 13 < K=29",
+      "      because: colours its neighbours held then: r0..r1 r3..r12 r31(%50)",
+      "      because: no colour of the mask was free: r30 was claimed (a non-volatile register, saved in the prologue; it joins the mask from here on)",
+      "   %50 (GPR) defined at block 1 line 8: lwz %r50, %r32, #76",
+      "      because: live across 1 call(s) (first in block 2): the registers a call clobbers are its neighbours",
+      "      because: coloured #1: the simplification took it when its degree was 12 < K=29",
+      "      because: colours its neighbours held then: r0..r1 r3..r12",
+      "      because: no colour of the mask was free: r31 was claimed (a non-volatile register, saved in the prologue; it joins the mask from here on)",
+      "   %51 (GPR) defined at block 1 line 8: lwz %r51, %r32, #72",
+      "      because: live across 1 call(s) (first in block 2): the registers a call clobbers are its neighbours",
+      "      because: coloured #18: no node had a degree below K=29; it was the spill candidate (spill cost 3 / degree 29 the lowest)",
+      "      because: colours its neighbours held then: r0..r1 r3..r12 r15(%34) r16(%35) r17(%36) r18(%37) r19(%38) r20(%39) r21(%40) r22(%41) r23(%42) r24(%43) r25(%44) r26(%45) r27(%46) r28(%47) r29(%48) r30(%49) r31(%50)",
+      "      because: no colour of the mask was free: r14 was claimed (a non-volatile register, saved in the prologue; it joins the mask from here on)",
+      "   %52 (GPR) defined at block 1 line 8: lwz %r52, %r32, #68",
+      "      because: live across 1 call(s) (first in block 2): the registers a call clobbers are its neighbours",
+      "      because: coloured #107: the simplification took it when its degree was 0 < K=29",
+      "      because: free in the mask: r0, r3..r12, r14..r31; the lowest is r0",
+      "      because: spilled by an earlier colouring of the class",
+      "   %53 (GPR) defined at block 1 line 8: lwz %r53, %r32, #64",
+      "      because: live across 1 call(s) (first in block 2): the registers a call clobbers are its neighbours",
+      "      because: coloured #106: the simplification took it when its degree was 0 < K=29",
+      "      because: free in the mask: r0, r3..r12, r14..r31; the lowest is r0",
+      "      because: spilled by an earlier colouring of the class",
+      "   %54 (GPR) defined at block 1 line 7: lwz %r54, %r32, #60",
+      "      because: live across 1 call(s) (first in block 2): the registers a call clobbers are its neighbours",
+      "      because: coloured #105: the simplification took it when its degree was 0 < K=29",
+      "      because: free in the mask: r0, r3..r12, r14..r31; the lowest is r0",
+      "      because: spilled by an earlier colouring of the class",
+      "   %55 (GPR) defined at block 1 line 7: lwz %r55, %r32, #56",
+      "      because: live across 1 call(s) (first in block 2): the registers a call clobbers are its neighbours",
+      "      because: coloured #104: the simplification took it when its degree was 0 < K=29",
+      "      because: free in the mask: r0, r3..r12, r14..r31; the lowest is r0",
+      "      because: spilled by an earlier colouring of the class",
+      "   %56 (GPR) defined at block 1 line 7: lwz %r56, %r32, #52",
+      "      because: live across 1 call(s) (first in block 2): the registers a call clobbers are its neighbours",
+      "      because: coloured #103: the simplification took it when its degree was 0 < K=29",
+      "      because: free in the mask: r0, r3..r12, r14..r31; the lowest is r0",
+      "      because: spilled by an earlier colouring of the class",
+      "   %57 (GPR) defined at block 1 line 7: lwz %r57, %r32, #48",
+      "      because: live across 1 call(s) (first in block 2): the registers a call clobbers are its neighbours",
+      "      because: coloured #102: the simplification took it when its degree was 0 < K=29",
+      "      because: free in the mask: r0, r3..r12, r14..r31; the lowest is r0",
+      "      because: spilled by an earlier colouring of the class",
+      "   %58 (GPR) defined at block 1 line 6: lwz %r58, %r32, #44",
+      "      because: live across 1 call(s) (first in block 2): the registers a call clobbers are its neighbours",
+      "      because: coloured #101: the simplification took it when its degree was 0 < K=29",
+      "      because: free in the mask: r0, r3..r12, r14..r31; the lowest is r0",
+      "      because: spilled by an earlier colouring of the class",
+      "   %59 (GPR) defined at block 1 line 6: lwz %r59, %r32, #40",
+      "      because: live across 1 call(s) (first in block 2): the registers a call clobbers are its neighbours",
+      "      because: coloured #100: the simplification took it when its degree was 0 < K=29",
+      "      because: free in the mask: r0, r3..r12, r14..r31; the lowest is r0",
+      "      because: spilled by an earlier colouring of the class",
+      "   %60 (GPR) defined at block 1 line 6: lwz %r60, %r32, #36",
+      "      because: live across 1 call(s) (first in block 2): the registers a call clobbers are its neighbours",
+      "      because: coloured #99: the simplification took it when its degree was 0 < K=29",
+      "      because: free in the mask: r0, r3..r12, r14..r31; the lowest is r0",
+      "      because: spilled by an earlier colouring of the class",
+      "   %61 (GPR) defined at block 1 line 6: lwz %r61, %r32, #32",
+      "      because: live across 1 call(s) (first in block 2): the registers a call clobbers are its neighbours",
+      "      because: coloured #98: the simplification took it when its degree was 0 < K=29",
+      "      because: free in the mask: r0, r3..r12, r14..r31; the lowest is r0",
+      "      because: spilled by an earlier colouring of the class",
+      "   %62 (GPR) defined at block 1 line 5: lwz %r62, %r32, #28",
+      "      because: live across 1 call(s) (first in block 2): the registers a call clobbers are its neighbours",
+      "      because: coloured #97: the simplification took it when its degree was 0 < K=29",
+      "      because: free in the mask: r0, r3..r12, r14..r31; the lowest is r0",
+      "      because: spilled by an earlier colouring of the class",
+      "   %63 (GPR) defined at block 1 line 5: lwz %r63, %r32, #24",
+      "      because: live across 1 call(s) (first in block 2): the registers a call clobbers are its neighbours",
+      "      because: coloured #96: the simplification took it when its degree was 0 < K=29",
+      "      because: free in the mask: r0, r3..r12, r14..r31; the lowest is r0",
+      "      because: spilled by an earlier colouring of the class",
+      "   %64 (GPR) defined at block 1 line 5: lwz %r64, %r32, #20",
+      "      because: live across 1 call(s) (first in block 2): the registers a call clobbers are its neighbours",
+      "      because: coloured #95: the simplification took it when its degree was 0 < K=29",
+      "      because: free in the mask: r0, r3..r12, r14..r31; the lowest is r0",
+      "      because: spilled by an earlier colouring of the class",
+      "   %65 (GPR) defined at block 1 line 5: lwz %r65, %r32, #16",
+      "      because: live across 1 call(s) (first in block 2): the registers a call clobbers are its neighbours",
+      "      because: coloured #94: the simplification took it when its degree was 0 < K=29",
+      "      because: free in the mask: r0, r3..r12, r14..r31; the lowest is r0",
+      "      because: spilled by an earlier colouring of the class",
+      "   %66 (GPR) defined at block 1 line 4: lwz %r66, %r32, #12",
+      "      because: live across 1 call(s) (first in block 2): the registers a call clobbers are its neighbours",
+      "      because: coloured #93: the simplification took it when its degree was 0 < K=29",
+      "      because: free in the mask: r0, r3..r12, r14..r31; the lowest is r0",
+      "      because: spilled by an earlier colouring of the class",
+      "   %67 (GPR) defined at block 1 line 4: lwz %r67, %r32, #8",
+      "      because: live across 1 call(s) (first in block 2): the registers a call clobbers are its neighbours",
+      "      because: coloured #92: the simplification took it when its degree was 0 < K=29",
+      "      because: free in the mask: r0, r3..r12, r14..r31; the lowest is r0",
+      "      because: spilled by an earlier colouring of the class",
+      "   %68 (GPR) defined at block 1 line 4: lwz %r68, %r32, #4",
+      "      because: live across 1 call(s) (first in block 2): the registers a call clobbers are its neighbours",
+      "      because: coloured #91: the simplification took it when its degree was 0 < K=29",
+      "      because: free in the mask: r0, r3..r12, r14..r31; the lowest is r0",
+      "      because: spilled by an earlier colouring of the class",
+      "   %69 (GPR) defined at block 1 line 4: lwz %r69, %r32, #0",
+      "      because: live across 1 call(s) (first in block 2): the registers a call clobbers are its neighbours",
+      "      because: coloured #90: the simplification took it when its degree was 0 < K=29",
+      "      because: free in the mask: r0, r3..r12, r14..r31; the lowest is r0",
+      "      because: spilled by an earlier colouring of the class",
+      "   %70 (GPR) defined at block 3 line 13: mr %r70, r3, -",
+      "      because: coloured #19: the simplification took it when its degree was 20 < K=29",
+      "      because: colours its neighbours held then: r1 r3 r14(%51) r15(%34) r16(%35) r17(%36) r18(%37) r19(%38) r20(%39) r21(%40) r22(%41) r23(%42) r24(%43) r25(%44) r26(%45) r27(%46) r28(%47) r29(%48) r30(%49) r31(%50)",
+      "      because: free in the mask: r0, r4..r12; the lowest is r0",
+      "   %71 (GPR) defined at block 3 line 14: add %r71, %r69, %r68",
+      "      because: coloured #89: the simplification took it when its degree was 22 < K=29",
+      "      because: colours its neighbours held then: r0(%70) r1 r3(%125,fixed) r14(%51) r15(%34) r16(%35) r17(%36) r18(%37) r19(%38) r20(%39) r21(%40) r22(%41) r23(%42) r24(%43) r25(%44) r26(%45) r27(%46) r28(%47) r29(%48) r30(%49) r31(%50)",
+      "      because: free in the mask: r4..r12; the lowest is r4",
+      "   %72 (GPR) defined at block 3 line 14: add %r72, %r71, %r67",
+      "      because: coloured #88: the simplification took it when its degree was 21 < K=29",
+      "      because: colours its neighbours held then: r0(%70) r1 r3(%126) r14(%51) r15(%34) r16(%35) r17(%36) r18(%37) r19(%38) r20(%39) r21(%40) r22(%41) r23(%42) r24(%43) r25(%44) r26(%45) r27(%46) r28(%47) r29(%48) r30(%49) r31(%50)",
+      "      because: free in the mask: r4..r12; the lowest is r4",
+      "   %73 (GPR) defined at block 3 line 14: add %r73, %r72, %r66",
+      "      because: coloured #87: the simplification took it when its degree was 21 < K=29",
+      "      because: colours its neighbours held then: r0(%70) r1 r3(%127) r14(%51) r15(%34) r16(%35) r17(%36) r18(%37) r19(%38) r20(%39) r21(%40) r22(%41) r23(%42) r24(%43) r25(%44) r26(%45) r27(%46) r28(%47) r29(%48) r30(%49) r31(%50)",
+      "      because: free in the mask: r4..r12; the lowest is r4",
+      "   %74 (GPR) defined at block 3 line 14: add %r74, %r73, %r65",
+      "      because: coloured #86: the simplification took it when its degree was 21 < K=29",
+      "      because: colours its neighbours held then: r0(%70) r1 r3(%128) r14(%51) r15(%34) r16(%35) r17(%36) r18(%37) r19(%38) r20(%39) r21(%40) r22(%41) r23(%42) r24(%43) r25(%44) r26(%45) r27(%46) r28(%47) r29(%48) r30(%49) r31(%50)",
+      "      because: free in the mask: r4..r12; the lowest is r4",
+      "   %75 (GPR) defined at block 3 line 14: add %r75, %r74, %r64",
+      "      because: coloured #85: the simplification took it when its degree was 21 < K=29",
+      "      because: colours its neighbours held then: r0(%70) r1 r3(%129) r14(%51) r15(%34) r16(%35) r17(%36) r18(%37) r19(%38) r20(%39) r21(%40) r22(%41) r23(%42) r24(%43) r25(%44) r26(%45) r27(%46) r28(%47) r29(%48) r30(%49) r31(%50)",
+      "      because: free in the mask: r4..r12; the lowest is r4",
+      "   %76 (GPR) defined at block 3 line 14: add %r76, %r75, %r63",
+      "      because: coloured #84: the simplification took it when its degree was 21 < K=29",
+      "      because: colours its neighbours held then: r0(%70) r1 r3(%130) r14(%51) r15(%34) r16(%35) r17(%36) r18(%37) r19(%38) r20(%39) r21(%40) r22(%41) r23(%42) r24(%43) r25(%44) r26(%45) r27(%46) r28(%47) r29(%48) r30(%49) r31(%50)",
+      "      because: free in the mask: r4..r12; the lowest is r4",
+      "   %77 (GPR) defined at block 3 line 14: add %r77, %r76, %r62",
+      "      because: coloured #83: the simplification took it when its degree was 21 < K=29",
+      "      because: colours its neighbours held then: r0(%70) r1 r3(%131) r14(%51) r15(%34) r16(%35) r17(%36) r18(%37) r19(%38) r20(%39) r21(%40) r22(%41) r23(%42) r24(%43) r25(%44) r26(%45) r27(%46) r28(%47) r29(%48) r30(%49) r31(%50)",
+      "      because: free in the mask: r4..r12; the lowest is r4",
+      "   %78 (GPR) defined at block 3 line 14: add %r78, %r77, %r61",
+      "      because: coloured #82: the simplification took it when its degree was 21 < K=29",
+      "      because: colours its neighbours held then: r0(%70) r1 r3(%132) r14(%51) r15(%34) r16(%35) r17(%36) r18(%37) r19(%38) r20(%39) r21(%40) r22(%41) r23(%42) r24(%43) r25(%44) r26(%45) r27(%46) r28(%47) r29(%48) r30(%49) r31(%50)",
+      "      because: free in the mask: r4..r12; the lowest is r4",
+      "   %79 (GPR) defined at block 3 line 14: add %r79, %r78, %r60",
+      "      because: coloured #81: the simplification took it when its degree was 21 < K=29",
+      "      because: colours its neighbours held then: r0(%70) r1 r3(%133) r14(%51) r15(%34) r16(%35) r17(%36) r18(%37) r19(%38) r20(%39) r21(%40) r22(%41) r23(%42) r24(%43) r25(%44) r26(%45) r27(%46) r28(%47) r29(%48) r30(%49) r31(%50)",
+      "      because: free in the mask: r4..r12; the lowest is r4",
+      "   %80 (GPR) defined at block 3 line 14: add %r80, %r79, %r59",
+      "      because: coloured #80: the simplification took it when its degree was 21 < K=29",
+      "      because: colours its neighbours held then: r0(%70) r1 r3(%134) r14(%51) r15(%34) r16(%35) r17(%36) r18(%37) r19(%38) r20(%39) r21(%40) r22(%41) r23(%42) r24(%43) r25(%44) r26(%45) r27(%46) r28(%47) r29(%48) r30(%49) r31(%50)",
+      "      because: free in the mask: r4..r12; the lowest is r4",
+      "   %81 (GPR) defined at block 3 line 14: add %r81, %r80, %r58",
+      "      because: coloured #79: the simplification took it when its degree was 21 < K=29",
+      "      because: colours its neighbours held then: r0(%70) r1 r3(%135) r14(%51) r15(%34) r16(%35) r17(%36) r18(%37) r19(%38) r20(%39) r21(%40) r22(%41) r23(%42) r24(%43) r25(%44) r26(%45) r27(%46) r28(%47) r29(%48) r30(%49) r31(%50)",
+      "      because: free in the mask: r4..r12; the lowest is r4",
+      "   %82 (GPR) defined at block 3 line 14: add %r82, %r81, %r57",
+      "      because: coloured #78: the simplification took it when its degree was 21 < K=29",
+      "      because: colours its neighbours held then: r0(%70) r1 r3(%136) r14(%51) r15(%34) r16(%35) r17(%36) r18(%37) r19(%38) r20(%39) r21(%40) r22(%41) r23(%42) r24(%43) r25(%44) r26(%45) r27(%46) r28(%47) r29(%48) r30(%49) r31(%50)",
+      "      because: free in the mask: r4..r12; the lowest is r4",
+      "   %83 (GPR) defined at block 3 line 14: add %r83, %r82, %r56",
+      "      because: coloured #77: the simplification took it when its degree was 21 < K=29",
+      "      because: colours its neighbours held then: r0(%70) r1 r3(%137) r14(%51) r15(%34) r16(%35) r17(%36) r18(%37) r19(%38) r20(%39) r21(%40) r22(%41) r23(%42) r24(%43) r25(%44) r26(%45) r27(%46) r28(%47) r29(%48) r30(%49) r31(%50)",
+      "      because: free in the mask: r4..r12; the lowest is r4",
+      "   %84 (GPR) defined at block 3 line 14: add %r84, %r83, %r55",
+      "      because: coloured #76: the simplification took it when its degree was 21 < K=29",
+      "      because: colours its neighbours held then: r0(%70) r1 r3(%138) r14(%51) r15(%34) r16(%35) r17(%36) r18(%37) r19(%38) r20(%39) r21(%40) r22(%41) r23(%42) r24(%43) r25(%44) r26(%45) r27(%46) r28(%47) r29(%48) r30(%49) r31(%50)",
+      "      because: free in the mask: r4..r12; the lowest is r4",
+      "   %85 (GPR) defined at block 3 line 14: add %r85, %r84, %r54",
+      "      because: coloured #75: the simplification took it when its degree was 21 < K=29",
+      "      because: colours its neighbours held then: r0(%70) r1 r3(%139) r14(%51) r15(%34) r16(%35) r17(%36) r18(%37) r19(%38) r20(%39) r21(%40) r22(%41) r23(%42) r24(%43) r25(%44) r26(%45) r27(%46) r28(%47) r29(%48) r30(%49) r31(%50)",
+      "      because: free in the mask: r4..r12; the lowest is r4",
+      "   %86 (GPR) defined at block 3 line 14: add %r86, %r85, %r53",
+      "      because: coloured #74: the simplification took it when its degree was 21 < K=29",
+      "      because: colours its neighbours held then: r0(%70) r1 r3(%140) r14(%51) r15(%34) r16(%35) r17(%36) r18(%37) r19(%38) r20(%39) r21(%40) r22(%41) r23(%42) r24(%43) r25(%44) r26(%45) r27(%46) r28(%47) r29(%48) r30(%49) r31(%50)",
+      "      because: free in the mask: r4..r12; the lowest is r4",
+      "   %87 (GPR) defined at block 3 line 14: add %r87, %r86, %r52",
+      "      because: coloured #73: the simplification took it when its degree was 19 < K=29",
+      "      because: colours its neighbours held then: r0(%70) r14(%51) r15(%34) r16(%35) r17(%36) r18(%37) r19(%38) r20(%39) r21(%40) r22(%41) r23(%42) r24(%43) r25(%44) r26(%45) r27(%46) r28(%47) r29(%48) r30(%49) r31(%50)",
+      "      because: free in the mask: r3..r12; the lowest is r3",
+      "   %88 (GPR) defined at block 3 line 14: add %r88, %r87, %r51",
+      "      because: coloured #72: the simplification took it when its degree was 18 < K=29",
+      "      because: colours its neighbours held then: r0(%70) r15(%34) r16(%35) r17(%36) r18(%37) r19(%38) r20(%39) r21(%40) r22(%41) r23(%42) r24(%43) r25(%44) r26(%45) r27(%46) r28(%47) r29(%48) r30(%49) r31(%50)",
+      "      because: free in the mask: r3..r12, r14; the lowest is r3",
+      "   %89 (GPR) defined at block 3 line 14: add %r89, %r88, %r50",
+      "      because: coloured #71: the simplification took it when its degree was 17 < K=29",
+      "      because: colours its neighbours held then: r0(%70) r15(%34) r16(%35) r17(%36) r18(%37) r19(%38) r20(%39) r21(%40) r22(%41) r23(%42) r24(%43) r25(%44) r26(%45) r27(%46) r28(%47) r29(%48) r30(%49)",
+      "      because: free in the mask: r3..r12, r14, r31; the lowest is r3",
+      "   %90 (GPR) defined at block 3 line 14: add %r90, %r89, %r49",
+      "      because: coloured #70: the simplification took it when its degree was 16 < K=29",
+      "      because: colours its neighbours held then: r0(%70) r15(%34) r16(%35) r17(%36) r18(%37) r19(%38) r20(%39) r21(%40) r22(%41) r23(%42) r24(%43) r25(%44) r26(%45) r27(%46) r28(%47) r29(%48)",
+      "      because: free in the mask: r3..r12, r14, r30..r31; the lowest is r3",
+      "   %91 (GPR) defined at block 3 line 14: add %r91, %r90, %r48",
+      "      because: coloured #69: the simplification took it when its degree was 15 < K=29",
+      "      because: colours its neighbours held then: r0(%70) r15(%34) r16(%35) r17(%36) r18(%37) r19(%38) r20(%39) r21(%40) r22(%41) r23(%42) r24(%43) r25(%44) r26(%45) r27(%46) r28(%47)",
+      "      because: free in the mask: r3..r12, r14, r29..r31; the lowest is r3",
+      "   %92 (GPR) defined at block 3 line 14: add %r92, %r91, %r47",
+      "      because: coloured #68: the simplification took it when its degree was 14 < K=29",
+      "      because: colours its neighbours held then: r0(%70) r15(%34) r16(%35) r17(%36) r18(%37) r19(%38) r20(%39) r21(%40) r22(%41) r23(%42) r24(%43) r25(%44) r26(%45) r27(%46)",
+      "      because: free in the mask: r3..r12, r14, r28..r31; the lowest is r3",
+      "   %93 (GPR) defined at block 3 line 14: add %r93, %r92, %r46",
+      "      because: coloured #67: the simplification took it when its degree was 13 < K=29",
+      "      because: colours its neighbours held then: r0(%70) r15(%34) r16(%35) r17(%36) r18(%37) r19(%38) r20(%39) r21(%40) r22(%41) r23(%42) r24(%43) r25(%44) r26(%45)",
+      "      because: free in the mask: r3..r12, r14, r27..r31; the lowest is r3",
+      "   %94 (GPR) defined at block 3 line 14: add %r94, %r93, %r45",
+      "      because: coloured #66: the simplification took it when its degree was 12 < K=29",
+      "      because: colours its neighbours held then: r0(%70) r15(%34) r16(%35) r17(%36) r18(%37) r19(%38) r20(%39) r21(%40) r22(%41) r23(%42) r24(%43) r25(%44)",
+      "      because: free in the mask: r3..r12, r14, r26..r31; the lowest is r3",
+      "   %95 (GPR) defined at block 3 line 14: add %r95, %r94, %r44",
+      "      because: coloured #65: the simplification took it when its degree was 11 < K=29",
+      "      because: colours its neighbours held then: r0(%70) r15(%34) r16(%35) r17(%36) r18(%37) r19(%38) r20(%39) r21(%40) r22(%41) r23(%42) r24(%43)",
+      "      because: free in the mask: r3..r12, r14, r25..r31; the lowest is r3",
+      "   %96 (GPR) defined at block 3 line 14: add %r96, %r95, %r43",
+      "      because: coloured #64: the simplification took it when its degree was 10 < K=29",
+      "      because: colours its neighbours held then: r0(%70) r15(%34) r16(%35) r17(%36) r18(%37) r19(%38) r20(%39) r21(%40) r22(%41) r23(%42)",
+      "      because: free in the mask: r3..r12, r14, r24..r31; the lowest is r3",
+      "   %97 (GPR) defined at block 3 line 14: add %r97, %r96, %r42",
+      "      because: coloured #63: the simplification took it when its degree was 9 < K=29",
+      "      because: colours its neighbours held then: r0(%70) r15(%34) r16(%35) r17(%36) r18(%37) r19(%38) r20(%39) r21(%40) r22(%41)",
+      "      because: free in the mask: r3..r12, r14, r23..r31; the lowest is r3",
+      "   %98 (GPR) defined at block 3 line 14: add %r98, %r97, %r41",
+      "      because: coloured #62: the simplification took it when its degree was 8 < K=29",
+      "      because: colours its neighbours held then: r0(%70) r15(%34) r16(%35) r17(%36) r18(%37) r19(%38) r20(%39) r21(%40)",
+      "      because: free in the mask: r3..r12, r14, r22..r31; the lowest is r3",
+      "   %99 (GPR) defined at block 3 line 14: add %r99, %r98, %r40",
+      "      because: coloured #61: the simplification took it when its degree was 7 < K=29",
+      "      because: colours its neighbours held then: r0(%70) r15(%34) r16(%35) r17(%36) r18(%37) r19(%38) r20(%39)",
+      "      because: free in the mask: r3..r12, r14, r21..r31; the lowest is r3",
+      "   %100 (GPR) defined at block 3 line 14: add %r100, %r99, %r39",
+      "      because: coloured #60: the simplification took it when its degree was 6 < K=29",
+      "      because: colours its neighbours held then: r0(%70) r15(%34) r16(%35) r17(%36) r18(%37) r19(%38)",
+      "      because: free in the mask: r3..r12, r14, r20..r31; the lowest is r3",
+      "   %101 (GPR) defined at block 3 line 14: add %r101, %r100, %r38",
+      "      because: coloured #59: the simplification took it when its degree was 5 < K=29",
+      "      because: colours its neighbours held then: r0(%70) r15(%34) r16(%35) r17(%36) r18(%37)",
+      "      because: free in the mask: r3..r12, r14, r19..r31; the lowest is r3",
+      "   %102 (GPR) defined at block 3 line 14: add %r102, %r101, %r37",
+      "      because: coloured #58: the simplification took it when its degree was 4 < K=29",
+      "      because: colours its neighbours held then: r0(%70) r15(%34) r16(%35) r17(%36)",
+      "      because: free in the mask: r3..r12, r14, r18..r31; the lowest is r3",
+      "   %103 (GPR) defined at block 3 line 14: add %r103, %r102, %r36",
+      "      because: coloured #57: the simplification took it when its degree was 3 < K=29",
+      "      because: colours its neighbours held then: r0(%70) r15(%34) r16(%35)",
+      "      because: free in the mask: r3..r12, r14, r17..r31; the lowest is r3",
+      "   %104 (GPR) defined at block 3 line 14: add %r104, %r103, %r35",
+      "      because: coloured #56: the simplification took it when its degree was 2 < K=29",
+      "      because: colours its neighbours held then: r0(%70) r15(%34)",
+      "      because: free in the mask: r3..r12, r14, r16..r31; the lowest is r3",
+      "",
+      "== colouring order (traced) ==",
+      "   GPR: select replay 109/109, simplify replay agrees",
+      "   colouring order (traced; first coloured first): %50 %49 %48 %47 %46 %45 %44 %43 %42 %41 %40 %39 %38 %37 %36 %35 %34 %51 %70 %140 %139 %138 %137 %136 %135 %134 %133 %132 %131 %130 %129 %128 %127 %126 %125 %124 %123 %122 %121 %120 ... 69 more"
+    ]
+  }
+]

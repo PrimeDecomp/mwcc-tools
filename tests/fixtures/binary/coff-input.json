@@ -1,0 +1,50 @@
+{
+  "sections": [
+    {
+      "name": ".text",
+      "flags": 1615855648,
+      "data": [
+        232,
+        0,
+        0,
+        0,
+        0,
+        195
+      ],
+      "relocations": [
+        {
+          "offset": 1,
+          "symbol": 1,
+          "kind": 20
+        }
+      ]
+    },
+    {
+      "name": ".data",
+      "flags": 3224371264,
+      "data": [
+        104,
+        101,
+        108,
+        108,
+        111,
+        0
+      ],
+      "relocations": []
+    }
+  ],
+  "symbols": [
+    {
+      "name": "_entry",
+      "value": 0,
+      "section": 1,
+      "storage": 2
+    },
+    {
+      "name": "_external_with_a_long_name",
+      "value": 0,
+      "section": 0,
+      "storage": 2
+    }
+  ]
+}

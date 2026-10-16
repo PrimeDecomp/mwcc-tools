@@ -1,0 +1,2364 @@
+{
+  "schema_version": 6,
+  "oracle": "build\\GC_1_3_2\\oracle\\mwcceppc.exe",
+  "version": "GC_1_3_2",
+  "source": "sources/cse.c",
+  "identical": true,
+  "differences": [],
+  "functions": [
+    {
+      "function": "common_integer",
+      "link": "common_integer",
+      "blocks": 5,
+      "instructions": 9,
+      "classes": {
+        "GPR": {
+          "rounds": [
+            {
+              "k": 29,
+              "mask": 8185,
+              "ok": true,
+              "nodes": 8,
+              "spilled": []
+            }
+          ],
+          "vregs": [
+            {
+              "vreg": 32,
+              "class": "GPR",
+              "phys": 0,
+              "defs": 0,
+              "uses": 0,
+              "live_blocks": 0,
+              "across_call": 0,
+              "first_call_block": null,
+              "degree": 0,
+              "neighbors": [],
+              "graph_flags": 0,
+              "in_pcode": false,
+              "state": "colored",
+              "order": 7,
+              "select": {
+                "how": "lowest free",
+                "free": 3221233657,
+                "predicted": 0,
+                "agrees": true,
+                "taken": {},
+                "mask": 3221233657,
+                "color": 0,
+                "flags": 2
+              },
+              "pushed": {
+                "why": "degree",
+                "degree": 0,
+                "k": 29,
+                "pass": 1
+              }
+            },
+            {
+              "vreg": 33,
+              "class": "GPR",
+              "phys": 0,
+              "defs": 0,
+              "uses": 0,
+              "live_blocks": 0,
+              "across_call": 0,
+              "first_call_block": null,
+              "degree": 0,
+              "neighbors": [],
+              "graph_flags": 0,
+              "in_pcode": false,
+              "state": "colored",
+              "order": 6,
+              "select": {
+                "how": "lowest free",
+                "free": 3221233657,
+                "predicted": 0,
+                "agrees": true,
+                "taken": {},
+                "mask": 3221233657,
+                "color": 0,
+                "flags": 2
+              },
+              "pushed": {
+                "why": "degree",
+                "degree": 0,
+                "k": 29,
+                "pass": 1
+              }
+            },
+            {
+              "vreg": 34,
+              "class": "GPR",
+              "phys": 30,
+              "defs": 1,
+              "uses": 1,
+              "live_blocks": 3,
+              "across_call": 1,
+              "first_call_block": 2,
+              "def": {
+                "block": 1,
+                "line": null,
+                "instruction": "mr %r34, r5, -"
+              },
+              "degree": 13,
+              "neighbors": [
+                {
+                  "vreg": 0,
+                  "phys": 0
+                },
+                {
+                  "vreg": 3,
+                  "phys": 3
+                },
+                {
+                  "vreg": 4,
+                  "phys": 4
+                },
+                {
+                  "vreg": 5,
+                  "phys": 5
+                },
+                {
+                  "vreg": 6,
+                  "phys": 6
+                },
+                {
+                  "vreg": 7,
+                  "phys": 7
+                },
+                {
+                  "vreg": 8,
+                  "phys": 8
+                },
+                {
+                  "vreg": 9,
+                  "phys": 9
+                },
+                {
+                  "vreg": 10,
+                  "phys": 10
+                },
+                {
+                  "vreg": 11,
+                  "phys": 11
+                },
+                {
+                  "vreg": 12,
+                  "phys": 12
+                },
+                {
+                  "vreg": 35,
+                  "phys": 31
+                },
+                {
+                  "vreg": 39,
+                  "phys": 0
+                }
+              ],
+              "graph_flags": 0,
+              "state": "colored",
+              "order": 5,
+              "select": {
+                "how": "claimed",
+                "free": 0,
+                "predicted": 30,
+                "agrees": true,
+                "taken": {
+                  "0": [
+                    0,
+                    39
+                  ],
+                  "3": [
+                    3
+                  ],
+                  "4": [
+                    4
+                  ],
+                  "5": [
+                    5
+                  ],
+                  "6": [
+                    6
+                  ],
+                  "7": [
+                    7
+                  ],
+                  "8": [
+                    8
+                  ],
+                  "9": [
+                    9
+                  ],
+                  "10": [
+                    10
+                  ],
+                  "11": [
+                    11
+                  ],
+                  "12": [
+                    12
+                  ],
+                  "31": [
+                    35
+                  ]
+                },
+                "mask": 2147491833,
+                "color": 30,
+                "flags": 2
+              },
+              "pushed": {
+                "why": "degree",
+                "degree": 13,
+                "k": 29,
+                "pass": 1
+              }
+            },
+            {
+              "vreg": 35,
+              "class": "GPR",
+              "phys": 31,
+              "defs": 1,
+              "uses": 3,
+              "live_blocks": 3,
+              "across_call": 1,
+              "first_call_block": 2,
+              "def": {
+                "block": 1,
+                "line": 6,
+                "instruction": "mullw %r35, %r36, %r37"
+              },
+              "degree": 13,
+              "neighbors": [
+                {
+                  "vreg": 0,
+                  "phys": 0
+                },
+                {
+                  "vreg": 3,
+                  "phys": 3
+                },
+                {
+                  "vreg": 4,
+                  "phys": 4
+                },
+                {
+                  "vreg": 5,
+                  "phys": 5
+                },
+                {
+                  "vreg": 6,
+                  "phys": 6
+                },
+                {
+                  "vreg": 7,
+                  "phys": 7
+                },
+                {
+                  "vreg": 8,
+                  "phys": 8
+                },
+                {
+                  "vreg": 9,
+                  "phys": 9
+                },
+                {
+                  "vreg": 10,
+                  "phys": 10
+                },
+                {
+                  "vreg": 11,
+                  "phys": 11
+                },
+                {
+                  "vreg": 12,
+                  "phys": 12
+                },
+                {
+                  "vreg": 34,
+                  "phys": 30
+                },
+                {
+                  "vreg": 39,
+                  "phys": 0
+                }
+              ],
+              "graph_flags": 0,
+              "state": "colored",
+              "order": 4,
+              "select": {
+                "how": "claimed",
+                "free": 0,
+                "predicted": 31,
+                "agrees": true,
+                "taken": {
+                  "0": [
+                    0,
+                    39
+                  ],
+                  "3": [
+                    3
+                  ],
+                  "4": [
+                    4
+                  ],
+                  "5": [
+                    5
+                  ],
+                  "6": [
+                    6
+                  ],
+                  "7": [
+                    7
+                  ],
+                  "8": [
+                    8
+                  ],
+                  "9": [
+                    9
+                  ],
+                  "10": [
+                    10
+                  ],
+                  "11": [
+                    11
+                  ],
+                  "12": [
+                    12
+                  ]
+                },
+                "mask": 8185,
+                "color": 31,
+                "flags": 2
+              },
+              "pushed": {
+                "why": "degree",
+                "degree": 12,
+                "k": 29,
+                "pass": 1
+              }
+            },
+            {
+              "vreg": 36,
+              "class": "GPR",
+              "phys": 6,
+              "defs": 1,
+              "uses": 1,
+              "live_blocks": 1,
+              "across_call": 0,
+              "first_call_block": null,
+              "def": {
+                "block": 1,
+                "line": 6,
+                "instruction": "add %r36, r3, r4"
+              },
+              "degree": 4,
+              "neighbors": [
+                {
+                  "vreg": 3,
+                  "phys": 3
+                },
+                {
+                  "vreg": 4,
+                  "phys": 4
+                },
+                {
+                  "vreg": 5,
+                  "phys": 5
+                },
+                {
+                  "vreg": 37,
+                  "phys": 0
+                }
+              ],
+              "graph_flags": 0,
+              "state": "colored",
+              "order": 3,
+              "select": {
+                "how": "lowest free",
+                "free": 8128,
+                "predicted": 6,
+                "agrees": true,
+                "taken": {
+                  "3": [
+                    3
+                  ],
+                  "4": [
+                    4
+                  ],
+                  "5": [
+                    5
+                  ],
+                  "0": [
+                    37
+                  ]
+                },
+                "mask": 8185,
+                "color": 6,
+                "flags": 2
+              },
+              "pushed": {
+                "why": "degree",
+                "degree": 4,
+                "k": 29,
+                "pass": 1
+              }
+            },
+            {
+              "vreg": 37,
+              "class": "GPR",
+              "phys": 0,
+              "defs": 1,
+              "uses": 1,
+              "live_blocks": 1,
+              "across_call": 0,
+              "first_call_block": null,
+              "def": {
+                "block": 1,
+                "line": 6,
+                "instruction": "subf %r37, r4, r3"
+              },
+              "degree": 2,
+              "neighbors": [
+                {
+                  "vreg": 5,
+                  "phys": 5
+                },
+                {
+                  "vreg": 36,
+                  "phys": 6
+                }
+              ],
+              "graph_flags": 0,
+              "state": "colored",
+              "order": 2,
+              "select": {
+                "how": "lowest free",
+                "free": 8153,
+                "predicted": 0,
+                "agrees": true,
+                "taken": {
+                  "5": [
+                    5
+                  ]
+                },
+                "mask": 8185,
+                "color": 0,
+                "flags": 2
+              },
+              "pushed": {
+                "why": "degree",
+                "degree": 1,
+                "k": 29,
+                "pass": 1
+              }
+            },
+            {
+              "vreg": 38,
+              "class": "GPR",
+              "phys": 0,
+              "defs": 0,
+              "uses": 0,
+              "live_blocks": 0,
+              "across_call": 0,
+              "first_call_block": null,
+              "degree": 0,
+              "neighbors": [],
+              "graph_flags": 0,
+              "in_pcode": false,
+              "state": "colored",
+              "order": 1,
+              "select": {
+                "how": "lowest free",
+                "free": 8185,
+                "predicted": 0,
+                "agrees": true,
+                "taken": {},
+                "mask": 8185,
+                "color": 0,
+                "flags": 2
+              },
+              "pushed": {
+                "why": "degree",
+                "degree": 0,
+                "k": 29,
+                "pass": 1
+              }
+            },
+            {
+              "vreg": 39,
+              "class": "GPR",
+              "phys": 0,
+              "defs": 1,
+              "uses": 1,
+              "live_blocks": 1,
+              "across_call": 0,
+              "first_call_block": null,
+              "def": {
+                "block": 3,
+                "line": 6,
+                "instruction": "add %r39, %r35, r3"
+              },
+              "degree": 2,
+              "neighbors": [
+                {
+                  "vreg": 34,
+                  "phys": 30
+                },
+                {
+                  "vreg": 35,
+                  "phys": 31
+                }
+              ],
+              "graph_flags": 0,
+              "state": "colored",
+              "order": 0,
+              "select": {
+                "how": "lowest free",
+                "free": 8185,
+                "predicted": 0,
+                "agrees": true,
+                "taken": {},
+                "mask": 8185,
+                "color": 0,
+                "flags": 2
+              },
+              "pushed": {
+                "why": "degree",
+                "degree": 0,
+                "k": 29,
+                "pass": 1
+              }
+            }
+          ],
+          "k": 29,
+          "mask": 8185,
+          "order": [
+            39,
+            38,
+            37,
+            36,
+            35,
+            34,
+            33,
+            32
+          ],
+          "simplify_replay_agrees": true,
+          "select_replay_agrees": 8,
+          "select_replayed": 8
+        }
+      },
+      "removed": [],
+      "inserted": [],
+      "frame": [
+        {
+          "kind": "local",
+          "name": "@5",
+          "offset": 0,
+          "size": 4,
+          "reg": 31,
+          "used": true
+        },
+        {
+          "kind": "local",
+          "name": "y",
+          "offset": 0,
+          "size": 4,
+          "reg": 0,
+          "used": false
+        },
+        {
+          "kind": "local",
+          "name": "x",
+          "offset": 0,
+          "size": 4,
+          "reg": 0,
+          "used": false
+        }
+      ],
+      "layout": {
+        "linkage": 8,
+        "outgoing": 0,
+        "locals": 0,
+        "above": 8,
+        "size": 16
+      },
+      "schema_version": 6,
+      "inlining": [
+        {
+          "kind": "decision",
+          "event": "decision",
+          "callee": "consume",
+          "link": "consume",
+          "inline": false,
+          "chain": [],
+          "reason": "not declared inline (and not a method defined in its class)",
+          "outcome": "kept",
+          "count": 8,
+          "depths": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7
+          ],
+          "lines": [
+            6
+          ]
+        }
+      ],
+      "schedule": [
+        {
+          "block": 1,
+          "virtual": true,
+          "instructions": 5,
+          "cycles": 7,
+          "replay_agrees": 9,
+          "replayed": 9,
+          "picks": [
+            {
+              "cycle": 0,
+              "i": "00ae6bf8",
+              "position": 1,
+              "line": 6,
+              "instruction": "add %r36, r3, r4",
+              "latest": 0,
+              "height": 7,
+              "count": 0,
+              "rank": 2,
+              "agrees": true,
+              "over": [
+                {
+                  "i": "00ae6b40",
+                  "position": 0,
+                  "why": "the pick must issue by this cycle (latest 0), this one need not"
+                },
+                {
+                  "i": "00ae6c60",
+                  "position": 2,
+                  "why": "a tie: the pick comes first in the block"
+                }
+              ]
+            },
+            {
+              "cycle": 0,
+              "i": "00ae6c60",
+              "position": 2,
+              "line": 6,
+              "instruction": "subf %r37, r4, r3",
+              "latest": 0,
+              "height": 7,
+              "count": 1,
+              "rank": 2,
+              "agrees": true,
+              "over": [
+                {
+                  "i": "00ae6b40",
+                  "position": 0,
+                  "why": "the pick must issue by this cycle (latest 0), this one need not"
+                }
+              ]
+            },
+            {
+              "cycle": 1,
+              "i": "00ae6cc8",
+              "position": 3,
+              "line": 6,
+              "instruction": "mullw %r35, %r36, %r37",
+              "latest": 1,
+              "height": 6,
+              "count": 1,
+              "rank": 2,
+              "agrees": true,
+              "over": [
+                {
+                  "i": "00ae6b40",
+                  "position": 0,
+                  "why": "the pick must issue by this cycle (latest 1), this one need not"
+                }
+              ]
+            },
+            {
+              "cycle": 1,
+              "i": "00ae6b40",
+              "position": 0,
+              "line": -1,
+              "instruction": "mr %r34, r5, -",
+              "latest": 6,
+              "height": 1,
+              "count": 0,
+              "rank": 0,
+              "agrees": true,
+              "over": [
+                {
+                  "i": "00ae6d68",
+                  "position": 4,
+                  "why": "not ready until cycle 6 (it waits 5 cycle(s) for #3 mullw %r35, %r36, %r37)"
+                }
+              ]
+            },
+            {
+              "cycle": 6,
+              "i": "00ae6d68",
+              "position": 4,
+              "line": 6,
+              "instruction": "mr r3, %r35, -",
+              "latest": 6,
+              "height": 1,
+              "count": 0,
+              "rank": 0,
+              "agrees": true,
+              "over": []
+            }
+          ],
+          "before": [
+            "mr %r34, r5, -",
+            "add %r36, r3, r4",
+            "subf %r37, r4, r3",
+            "mullw %r35, %r36, %r37",
+            "mr r3, %r35, -"
+          ],
+          "edges": [
+            {
+              "from": 1,
+              "to": 4,
+              "latency": 0
+            },
+            {
+              "from": 1,
+              "to": 3,
+              "latency": 1
+            },
+            {
+              "from": 2,
+              "to": 4,
+              "latency": 0
+            },
+            {
+              "from": 2,
+              "to": 3,
+              "latency": 1
+            },
+            {
+              "from": 3,
+              "to": 4,
+              "latency": 5
+            }
+          ]
+        },
+        {
+          "block": 3,
+          "virtual": true,
+          "instructions": 3,
+          "cycles": 3,
+          "replay_agrees": 5,
+          "replayed": 5,
+          "picks": [
+            {
+              "cycle": 0,
+              "i": "00ae7138",
+              "position": 0,
+              "line": 6,
+              "instruction": "add %r39, %r35, r3",
+              "latest": 0,
+              "height": 3,
+              "count": 1,
+              "rank": 2,
+              "agrees": true,
+              "over": []
+            },
+            {
+              "cycle": 1,
+              "i": "00ae71a0",
+              "position": 1,
+              "line": 6,
+              "instruction": "add r3, %r39, %r35",
+              "latest": 1,
+              "height": 2,
+              "count": 1,
+              "rank": 2,
+              "agrees": true,
+              "over": []
+            },
+            {
+              "cycle": 2,
+              "i": "00ae7208",
+              "position": 2,
+              "line": 6,
+              "instruction": "add r3, %r34, r3",
+              "latest": 2,
+              "height": 1,
+              "count": 0,
+              "rank": 2,
+              "agrees": true,
+              "over": []
+            }
+          ],
+          "before": [
+            "add %r39, %r35, r3",
+            "add r3, %r39, %r35",
+            "add r3, %r34, r3"
+          ],
+          "edges": [
+            {
+              "from": 0,
+              "to": 2,
+              "latency": 0
+            },
+            {
+              "from": 0,
+              "to": 1,
+              "latency": 1
+            },
+            {
+              "from": 1,
+              "to": 2,
+              "latency": 1
+            }
+          ]
+        },
+        {
+          "block": 0,
+          "virtual": false,
+          "instructions": 10,
+          "cycles": 10,
+          "replay_agrees": 15,
+          "replayed": 15,
+          "picks": [
+            {
+              "cycle": 0,
+              "i": "00ae75d0",
+              "position": 0,
+              "line": 3,
+              "instruction": "stwu r1, r1, #-16",
+              "latest": 0,
+              "height": 10,
+              "count": 1,
+              "rank": 2,
+              "agrees": true,
+              "over": []
+            },
+            {
+              "cycle": 0,
+              "i": "00ae7638",
+              "position": 1,
+              "line": 3,
+              "instruction": "mflr r0, spr1",
+              "latest": 1,
+              "height": 9,
+              "count": 2,
+              "rank": 4,
+              "agrees": true,
+              "over": []
+            },
+            {
+              "cycle": 1,
+              "i": "00ae6bf8",
+              "position": 5,
+              "line": 6,
+              "instruction": "add r6, r3, r4",
+              "latest": 3,
+              "height": 7,
+              "count": 0,
+              "rank": 2,
+              "agrees": true,
+              "over": [
+                {
+                  "i": "00ae76a0",
+                  "position": 2,
+                  "why": "not ready until cycle 2 (it waits 2 cycle(s) for #0 stwu r1, r1, #-16)"
+                }
+              ]
+            },
+            {
+              "cycle": 2,
+              "i": "00ae76a0",
+              "position": 2,
+              "line": 3,
+              "instruction": "stw r0, r1, #20",
+              "latest": 2,
+              "height": 8,
+              "count": 2,
+              "rank": 1,
+              "agrees": true,
+              "over": []
+            },
+            {
+              "cycle": 2,
+              "i": "00ae6c60",
+              "position": 6,
+              "line": 6,
+              "instruction": "subf r0, r4, r3",
+              "latest": 3,
+              "height": 7,
+              "count": 0,
+              "rank": 2,
+              "agrees": true,
+              "over": [
+                {
+                  "i": "00ae7708",
+                  "position": 3,
+                  "why": "not ready until cycle 4 (it waits 2 cycle(s) for #2 stw r0, r1, #20)"
+                }
+              ]
+            },
+            {
+              "cycle": 4,
+              "i": "00ae7708",
+              "position": 3,
+              "line": 3,
+              "instruction": "stw r31, r1, #12",
+              "latest": 4,
+              "height": 6,
+              "count": 2,
+              "rank": 1,
+              "agrees": true,
+              "over": []
+            },
+            {
+              "cycle": 4,
+              "i": "00ae6cc8",
+              "position": 7,
+              "line": 6,
+              "instruction": "mullw r31, r6, r0",
+              "latest": 4,
+              "height": 6,
+              "count": 1,
+              "rank": 2,
+              "agrees": true,
+              "over": [
+                {
+                  "i": "00ae7770",
+                  "position": 4,
+                  "why": "not ready until cycle 6 (it waits 2 cycle(s) for #3 stw r31, r1, #12)"
+                }
+              ]
+            },
+            {
+              "cycle": 6,
+              "i": "00ae7770",
+              "position": 4,
+              "line": 3,
+              "instruction": "stw r30, r1, #8",
+              "latest": 8,
+              "height": 2,
+              "count": 1,
+              "rank": 1,
+              "agrees": true,
+              "over": [
+                {
+                  "i": "00ae6d68",
+                  "position": 9,
+                  "why": "not ready until cycle 9 (it waits 5 cycle(s) for #7 mullw r31, r6, r0)"
+                }
+              ]
+            },
+            {
+              "cycle": 6,
+              "i": "00ae6b40",
+              "position": 8,
+              "line": -1,
+              "instruction": "mr r30, r5, -",
+              "latest": 9,
+              "height": 1,
+              "count": 0,
+              "rank": 0,
+              "agrees": true,
+              "over": [
+                {
+                  "i": "00ae6d68",
+                  "position": 9,
+                  "why": "not ready until cycle 9 (it waits 5 cycle(s) for #7 mullw r31, r6, r0)"
+                }
+              ]
+            },
+            {
+              "cycle": 9,
+              "i": "00ae6d68",
+              "position": 9,
+              "line": 6,
+              "instruction": "mr r3, r31, -",
+              "latest": 9,
+              "height": 1,
+              "count": 0,
+              "rank": 0,
+              "agrees": true,
+              "over": []
+            }
+          ],
+          "before": [
+            "stwu r1, r1, #-16",
+            "mflr r0, spr1",
+            "stw r0, r1, #20",
+            "stw r31, r1, #12",
+            "stw r30, r1, #8",
+            "add r6, r3, r4",
+            "subf r0, r4, r3",
+            "mullw r31, r6, r0",
+            "mr r30, r5, -",
+            "mr r3, r31, -"
+          ],
+          "edges": [
+            {
+              "from": 0,
+              "to": 1,
+              "latency": 0
+            },
+            {
+              "from": 0,
+              "to": 4,
+              "latency": 2
+            },
+            {
+              "from": 0,
+              "to": 3,
+              "latency": 2
+            },
+            {
+              "from": 0,
+              "to": 2,
+              "latency": 2
+            },
+            {
+              "from": 1,
+              "to": 9,
+              "latency": 0
+            },
+            {
+              "from": 1,
+              "to": 8,
+              "latency": 0
+            },
+            {
+              "from": 1,
+              "to": 5,
+              "latency": 0
+            },
+            {
+              "from": 1,
+              "to": 4,
+              "latency": 0
+            },
+            {
+              "from": 1,
+              "to": 3,
+              "latency": 0
+            },
+            {
+              "from": 1,
+              "to": 6,
+              "latency": 0
+            },
+            {
+              "from": 1,
+              "to": 7,
+              "latency": 1
+            },
+            {
+              "from": 1,
+              "to": 2,
+              "latency": 1
+            },
+            {
+              "from": 2,
+              "to": 4,
+              "latency": 2
+            },
+            {
+              "from": 2,
+              "to": 3,
+              "latency": 2
+            },
+            {
+              "from": 2,
+              "to": 6,
+              "latency": 0
+            },
+            {
+              "from": 3,
+              "to": 4,
+              "latency": 2
+            },
+            {
+              "from": 3,
+              "to": 7,
+              "latency": 0
+            },
+            {
+              "from": 4,
+              "to": 8,
+              "latency": 0
+            },
+            {
+              "from": 5,
+              "to": 9,
+              "latency": 0
+            },
+            {
+              "from": 5,
+              "to": 7,
+              "latency": 1
+            },
+            {
+              "from": 6,
+              "to": 9,
+              "latency": 0
+            },
+            {
+              "from": 6,
+              "to": 7,
+              "latency": 1
+            },
+            {
+              "from": 7,
+              "to": 9,
+              "latency": 5
+            }
+          ]
+        }
+      ],
+      "locals": [
+        {
+          "pointers": 0,
+          "calls": 0,
+          "vars": {}
+        },
+        {
+          "pointers": 0,
+          "calls": 0,
+          "vars": {}
+        }
+      ],
+      "inline_bindings": []
+    },
+    {
+      "function": "common_float",
+      "link": "common_float",
+      "blocks": 4,
+      "instructions": 7,
+      "classes": {
+        "GPR": {
+          "rounds": [
+            {
+              "k": 29,
+              "mask": 8185,
+              "ok": true,
+              "nodes": 4,
+              "spilled": []
+            }
+          ],
+          "vregs": [
+            {
+              "vreg": 32,
+              "class": "GPR",
+              "phys": 0,
+              "defs": 0,
+              "uses": 0,
+              "live_blocks": 0,
+              "across_call": 0,
+              "first_call_block": null,
+              "degree": 0,
+              "neighbors": [],
+              "graph_flags": 0,
+              "in_pcode": false,
+              "state": "colored",
+              "order": 3,
+              "select": {
+                "how": "lowest free",
+                "free": 8185,
+                "predicted": 0,
+                "agrees": true,
+                "taken": {},
+                "mask": 8185,
+                "color": 0,
+                "flags": 2
+              },
+              "pushed": {
+                "why": "degree",
+                "degree": 0,
+                "k": 29,
+                "pass": 1
+              }
+            },
+            {
+              "vreg": 33,
+              "class": "GPR",
+              "phys": 0,
+              "defs": 0,
+              "uses": 0,
+              "live_blocks": 0,
+              "across_call": 0,
+              "first_call_block": null,
+              "degree": 0,
+              "neighbors": [],
+              "graph_flags": 0,
+              "in_pcode": false,
+              "state": "colored",
+              "order": 2,
+              "select": {
+                "how": "lowest free",
+                "free": 8185,
+                "predicted": 0,
+                "agrees": true,
+                "taken": {},
+                "mask": 8185,
+                "color": 0,
+                "flags": 2
+              },
+              "pushed": {
+                "why": "degree",
+                "degree": 0,
+                "k": 29,
+                "pass": 1
+              }
+            },
+            {
+              "vreg": 34,
+              "class": "GPR",
+              "phys": 0,
+              "defs": 1,
+              "uses": 2,
+              "live_blocks": 1,
+              "across_call": 0,
+              "first_call_block": null,
+              "def": {
+                "block": 2,
+                "line": 10,
+                "instruction": "rlwinm %r34, r4, #2, #0, #29"
+              },
+              "degree": 2,
+              "neighbors": [
+                {
+                  "vreg": 3,
+                  "phys": 3
+                },
+                {
+                  "vreg": 35,
+                  "phys": 4
+                }
+              ],
+              "graph_flags": 0,
+              "state": "colored",
+              "order": 1,
+              "select": {
+                "how": "lowest free",
+                "free": 8161,
+                "predicted": 0,
+                "agrees": true,
+                "taken": {
+                  "3": [
+                    3
+                  ],
+                  "4": [
+                    35
+                  ]
+                },
+                "mask": 8185,
+                "color": 0,
+                "flags": 2
+              },
+              "pushed": {
+                "why": "degree",
+                "degree": 2,
+                "k": 29,
+                "pass": 1
+              }
+            },
+            {
+              "vreg": 35,
+              "class": "GPR",
+              "phys": 4,
+              "defs": 1,
+              "uses": 1,
+              "live_blocks": 1,
+              "across_call": 0,
+              "first_call_block": null,
+              "def": {
+                "block": 2,
+                "line": 10,
+                "instruction": "add %r35, r3, %r34"
+              },
+              "degree": 3,
+              "neighbors": [
+                {
+                  "vreg": 0,
+                  "phys": 0
+                },
+                {
+                  "vreg": 3,
+                  "phys": 3
+                },
+                {
+                  "vreg": 34,
+                  "phys": 0
+                }
+              ],
+              "graph_flags": 0,
+              "state": "colored",
+              "order": 0,
+              "select": {
+                "how": "lowest free",
+                "free": 8176,
+                "predicted": 4,
+                "agrees": true,
+                "taken": {
+                  "0": [
+                    0
+                  ],
+                  "3": [
+                    3
+                  ]
+                },
+                "mask": 8185,
+                "color": 4,
+                "flags": 2
+              },
+              "pushed": {
+                "why": "degree",
+                "degree": 2,
+                "k": 29,
+                "pass": 1
+              }
+            }
+          ],
+          "k": 29,
+          "mask": 8185,
+          "order": [
+            35,
+            34,
+            33,
+            32
+          ],
+          "simplify_replay_agrees": true,
+          "select_replay_agrees": 4,
+          "select_replayed": 4
+        },
+        "FPR": {
+          "rounds": [
+            {
+              "k": 32,
+              "mask": 16383,
+              "ok": true,
+              "nodes": 5,
+              "spilled": []
+            }
+          ],
+          "vregs": [
+            {
+              "vreg": 32,
+              "class": "FPR",
+              "phys": 0,
+              "defs": 0,
+              "uses": 0,
+              "live_blocks": 0,
+              "across_call": 0,
+              "first_call_block": null,
+              "degree": 0,
+              "neighbors": [],
+              "graph_flags": 0,
+              "in_pcode": false,
+              "state": "colored",
+              "order": 4,
+              "select": {
+                "how": "lowest free",
+                "free": 16383,
+                "predicted": 0,
+                "agrees": true,
+                "taken": {},
+                "mask": 16383,
+                "color": 0,
+                "flags": 2
+              },
+              "pushed": {
+                "why": "degree",
+                "degree": 0,
+                "k": 32,
+                "pass": 1
+              }
+            },
+            {
+              "vreg": 33,
+              "class": "FPR",
+              "phys": 1,
+              "defs": 1,
+              "uses": 2,
+              "live_blocks": 1,
+              "across_call": 0,
+              "first_call_block": null,
+              "def": {
+                "block": 2,
+                "line": 10,
+                "instruction": "fmuls %f33, %f34, %f35"
+              },
+              "degree": 1,
+              "neighbors": [
+                {
+                  "vreg": 36,
+                  "phys": 0
+                }
+              ],
+              "graph_flags": 0,
+              "state": "colored",
+              "order": 3,
+              "select": {
+                "how": "lowest free",
+                "free": 16382,
+                "predicted": 1,
+                "agrees": true,
+                "taken": {
+                  "0": [
+                    36
+                  ]
+                },
+                "mask": 16383,
+                "color": 1,
+                "flags": 2
+              },
+              "pushed": {
+                "why": "degree",
+                "degree": 1,
+                "k": 32,
+                "pass": 1
+              }
+            },
+            {
+              "vreg": 34,
+              "class": "FPR",
+              "phys": 1,
+              "defs": 1,
+              "uses": 1,
+              "live_blocks": 1,
+              "across_call": 0,
+              "first_call_block": null,
+              "def": {
+                "block": 2,
+                "line": 10,
+                "instruction": "lfsx %f34, r3, %r34"
+              },
+              "degree": 1,
+              "neighbors": [
+                {
+                  "vreg": 35,
+                  "phys": 0
+                }
+              ],
+              "graph_flags": 0,
+              "state": "colored",
+              "order": 2,
+              "select": {
+                "how": "lowest free",
+                "free": 16382,
+                "predicted": 1,
+                "agrees": true,
+                "taken": {
+                  "0": [
+                    35
+                  ]
+                },
+                "mask": 16383,
+                "color": 1,
+                "flags": 2
+              },
+              "pushed": {
+                "why": "degree",
+                "degree": 1,
+                "k": 32,
+                "pass": 1
+              }
+            },
+            {
+              "vreg": 35,
+              "class": "FPR",
+              "phys": 0,
+              "defs": 1,
+              "uses": 1,
+              "live_blocks": 1,
+              "across_call": 0,
+              "first_call_block": null,
+              "def": {
+                "block": 2,
+                "line": 10,
+                "instruction": "lfs %f35, %r35, #4"
+              },
+              "degree": 1,
+              "neighbors": [
+                {
+                  "vreg": 34,
+                  "phys": 1
+                }
+              ],
+              "graph_flags": 0,
+              "state": "colored",
+              "order": 1,
+              "select": {
+                "how": "lowest free",
+                "free": 16383,
+                "predicted": 0,
+                "agrees": true,
+                "taken": {},
+                "mask": 16383,
+                "color": 0,
+                "flags": 2
+              },
+              "pushed": {
+                "why": "degree",
+                "degree": 0,
+                "k": 32,
+                "pass": 1
+              }
+            },
+            {
+              "vreg": 36,
+              "class": "FPR",
+              "phys": 0,
+              "defs": 1,
+              "uses": 1,
+              "live_blocks": 1,
+              "across_call": 0,
+              "first_call_block": null,
+              "def": {
+                "block": 2,
+                "line": 11,
+                "instruction": "fadds %f36, %f33, %f33"
+              },
+              "degree": 1,
+              "neighbors": [
+                {
+                  "vreg": 33,
+                  "phys": 1
+                }
+              ],
+              "graph_flags": 0,
+              "state": "colored",
+              "order": 0,
+              "select": {
+                "how": "lowest free",
+                "free": 16383,
+                "predicted": 0,
+                "agrees": true,
+                "taken": {},
+                "mask": 16383,
+                "color": 0,
+                "flags": 2
+              },
+              "pushed": {
+                "why": "degree",
+                "degree": 0,
+                "k": 32,
+                "pass": 1
+              }
+            }
+          ],
+          "k": 32,
+          "mask": 16383,
+          "order": [
+            36,
+            35,
+            34,
+            33,
+            32
+          ],
+          "simplify_replay_agrees": true,
+          "select_replay_agrees": 5,
+          "select_replayed": 5
+        }
+      },
+      "removed": [],
+      "inserted": [],
+      "frame": [
+        {
+          "kind": "local",
+          "name": "@13",
+          "offset": 0,
+          "size": 4,
+          "reg": 1,
+          "used": true
+        },
+        {
+          "kind": "local",
+          "name": "@12",
+          "offset": 0,
+          "size": 4,
+          "reg": 0,
+          "used": true,
+          "r1": 0
+        },
+        {
+          "kind": "local",
+          "name": "x",
+          "offset": 0,
+          "size": 4,
+          "reg": 0,
+          "used": true,
+          "r1": 0
+        }
+      ],
+      "layout": {
+        "linkage": 0,
+        "outgoing": 0,
+        "locals": 0,
+        "above": 0,
+        "size": 0
+      },
+      "schema_version": 6,
+      "inlining": [],
+      "schedule": [
+        {
+          "block": 2,
+          "virtual": true,
+          "instructions": 7,
+          "cycles": 11,
+          "replay_agrees": 16,
+          "replayed": 16,
+          "picks": [
+            {
+              "cycle": 0,
+              "i": "00ae6780",
+              "position": 0,
+              "line": 10,
+              "instruction": "rlwinm %r34, r4, #2, #0, #29",
+              "latest": 0,
+              "height": 13,
+              "count": 2,
+              "rank": 2,
+              "agrees": true,
+              "over": []
+            },
+            {
+              "cycle": 1,
+              "i": "00ae6858",
+              "position": 2,
+              "line": 10,
+              "instruction": "add %r35, r3, %r34",
+              "latest": 1,
+              "height": 12,
+              "count": 1,
+              "rank": 2,
+              "agrees": true,
+              "over": [
+                {
+                  "i": "00ae67f0",
+                  "position": 1,
+                  "why": "the pick must issue by this cycle (latest 1), this one need not"
+                }
+              ]
+            },
+            {
+              "cycle": 1,
+              "i": "00ae67f0",
+              "position": 1,
+              "line": 10,
+              "instruction": "lfsx %f34, r3, %r34",
+              "latest": 2,
+              "height": 11,
+              "count": 0,
+              "rank": 3,
+              "agrees": true,
+              "over": [
+                {
+                  "i": "00ae68c0",
+                  "position": 3,
+                  "why": "not ready until cycle 2 (it waits 1 cycle(s) for #2 add %r35, r3, %r34)"
+                }
+              ]
+            },
+            {
+              "cycle": 2,
+              "i": "00ae68c0",
+              "position": 3,
+              "line": 10,
+              "instruction": "lfs %f35, %r35, #4",
+              "latest": 2,
+              "height": 11,
+              "count": 1,
+              "rank": 3,
+              "agrees": true,
+              "over": []
+            },
+            {
+              "cycle": 4,
+              "i": "00ae6928",
+              "position": 4,
+              "line": 10,
+              "instruction": "fmuls %f33, %f34, %f35",
+              "latest": 4,
+              "height": 9,
+              "count": 1,
+              "rank": 2,
+              "agrees": true,
+              "over": []
+            },
+            {
+              "cycle": 7,
+              "i": "00ae69f8",
+              "position": 5,
+              "line": 11,
+              "instruction": "fadds %f36, %f33, %f33",
+              "latest": 7,
+              "height": 6,
+              "count": 1,
+              "rank": 2,
+              "agrees": true,
+              "over": []
+            },
+            {
+              "cycle": 10,
+              "i": "00ae6a60",
+              "position": 6,
+              "line": 11,
+              "instruction": "fadds f1, %f36, %f33",
+              "latest": 10,
+              "height": 3,
+              "count": 0,
+              "rank": 2,
+              "agrees": true,
+              "over": []
+            }
+          ],
+          "before": [
+            "rlwinm %r34, r4, #2, #0, #29",
+            "lfsx %f34, r3, %r34",
+            "add %r35, r3, %r34",
+            "lfs %f35, %r35, #4",
+            "fmuls %f33, %f34, %f35",
+            "fadds %f36, %f33, %f33",
+            "fadds f1, %f36, %f33"
+          ],
+          "edges": [
+            {
+              "from": 0,
+              "to": 2,
+              "latency": 1
+            },
+            {
+              "from": 0,
+              "to": 1,
+              "latency": 1
+            },
+            {
+              "from": 1,
+              "to": 4,
+              "latency": 2
+            },
+            {
+              "from": 2,
+              "to": 3,
+              "latency": 1
+            },
+            {
+              "from": 3,
+              "to": 4,
+              "latency": 2
+            },
+            {
+              "from": 4,
+              "to": 6,
+              "latency": 3
+            },
+            {
+              "from": 4,
+              "to": 5,
+              "latency": 3
+            },
+            {
+              "from": 5,
+              "to": 6,
+              "latency": 3
+            }
+          ]
+        }
+      ],
+      "locals": [
+        {
+          "pointers": 0,
+          "calls": 0,
+          "vars": {}
+        },
+        {
+          "pointers": 0,
+          "calls": 0,
+          "vars": {}
+        }
+      ],
+      "inline_bindings": []
+    },
+    {
+      "function": "common_branch",
+      "link": "common_branch",
+      "blocks": 6,
+      "instructions": 8,
+      "classes": {
+        "GPR": {
+          "rounds": [
+            {
+              "k": 29,
+              "mask": 8185,
+              "ok": true,
+              "nodes": 8,
+              "spilled": []
+            }
+          ],
+          "vregs": [
+            {
+              "vreg": 32,
+              "class": "GPR",
+              "phys": 0,
+              "defs": 0,
+              "uses": 0,
+              "live_blocks": 0,
+              "across_call": 0,
+              "first_call_block": null,
+              "degree": 0,
+              "neighbors": [],
+              "graph_flags": 0,
+              "in_pcode": false,
+              "state": "colored",
+              "order": 6,
+              "select": {
+                "how": "lowest free",
+                "free": 8185,
+                "predicted": 0,
+                "agrees": true,
+                "taken": {},
+                "mask": 8185,
+                "color": 0,
+                "flags": 2
+              },
+              "pushed": {
+                "why": "degree",
+                "degree": 0,
+                "k": 29,
+                "pass": 1
+              }
+            },
+            {
+              "vreg": 33,
+              "class": "GPR",
+              "phys": 0,
+              "defs": 0,
+              "uses": 0,
+              "live_blocks": 0,
+              "across_call": 0,
+              "first_call_block": null,
+              "degree": 0,
+              "neighbors": [],
+              "graph_flags": 0,
+              "in_pcode": false,
+              "state": "colored",
+              "order": 5,
+              "select": {
+                "how": "lowest free",
+                "free": 8185,
+                "predicted": 0,
+                "agrees": true,
+                "taken": {},
+                "mask": 8185,
+                "color": 0,
+                "flags": 2
+              },
+              "pushed": {
+                "why": "degree",
+                "degree": 0,
+                "k": 29,
+                "pass": 1
+              }
+            },
+            {
+              "vreg": 34,
+              "class": "GPR",
+              "phys": 0,
+              "defs": 0,
+              "uses": 0,
+              "live_blocks": 0,
+              "across_call": 0,
+              "first_call_block": null,
+              "degree": 0,
+              "neighbors": [],
+              "graph_flags": 0,
+              "in_pcode": false,
+              "state": "colored",
+              "order": 4,
+              "select": {
+                "how": "lowest free",
+                "free": 8185,
+                "predicted": 0,
+                "agrees": true,
+                "taken": {},
+                "mask": 8185,
+                "color": 0,
+                "flags": 2
+              },
+              "pushed": {
+                "why": "degree",
+                "degree": 0,
+                "k": 29,
+                "pass": 1
+              }
+            },
+            {
+              "vreg": 35,
+              "class": "GPR",
+              "phys": 0,
+              "defs": 0,
+              "uses": 0,
+              "live_blocks": 0,
+              "across_call": 0,
+              "first_call_block": null,
+              "degree": 0,
+              "neighbors": [],
+              "graph_flags": 0,
+              "in_pcode": false,
+              "state": "colored",
+              "order": 3,
+              "select": {
+                "how": "lowest free",
+                "free": 8185,
+                "predicted": 0,
+                "agrees": true,
+                "taken": {},
+                "mask": 8185,
+                "color": 0,
+                "flags": 2
+              },
+              "pushed": {
+                "why": "degree",
+                "degree": 0,
+                "k": 29,
+                "pass": 1
+              }
+            },
+            {
+              "vreg": 36,
+              "class": "GPR",
+              "phys": 0,
+              "defs": 1,
+              "uses": 2,
+              "live_blocks": 2,
+              "across_call": 0,
+              "first_call_block": null,
+              "def": {
+                "block": 2,
+                "line": 15,
+                "instruction": "mullw %r36, %r37, %r38"
+              },
+              "degree": 3,
+              "neighbors": [
+                {
+                  "vreg": 3,
+                  "phys": 3
+                },
+                {
+                  "vreg": 5,
+                  "phys": 5
+                },
+                {
+                  "vreg": 39,
+                  "phys": 3
+                }
+              ],
+              "graph_flags": 0,
+              "state": "colored",
+              "order": 2,
+              "select": {
+                "how": "lowest free",
+                "free": 8145,
+                "predicted": 0,
+                "agrees": true,
+                "taken": {
+                  "3": [
+                    3,
+                    39
+                  ],
+                  "5": [
+                    5
+                  ]
+                },
+                "mask": 8185,
+                "color": 0,
+                "flags": 2
+              },
+              "pushed": {
+                "why": "degree",
+                "degree": 3,
+                "k": 29,
+                "pass": 1
+              }
+            },
+            {
+              "vreg": 37,
+              "class": "GPR",
+              "phys": 6,
+              "defs": 1,
+              "uses": 1,
+              "live_blocks": 1,
+              "across_call": 0,
+              "first_call_block": null,
+              "def": {
+                "block": 2,
+                "line": 15,
+                "instruction": "add %r37, r3, r4"
+              },
+              "degree": 4,
+              "neighbors": [
+                {
+                  "vreg": 3,
+                  "phys": 3
+                },
+                {
+                  "vreg": 4,
+                  "phys": 4
+                },
+                {
+                  "vreg": 5,
+                  "phys": 5
+                },
+                {
+                  "vreg": 38,
+                  "phys": 0
+                }
+              ],
+              "graph_flags": 0,
+              "state": "colored",
+              "order": 1,
+              "select": {
+                "how": "lowest free",
+                "free": 8128,
+                "predicted": 6,
+                "agrees": true,
+                "taken": {
+                  "3": [
+                    3
+                  ],
+                  "4": [
+                    4
+                  ],
+                  "5": [
+                    5
+                  ],
+                  "0": [
+                    38
+                  ]
+                },
+                "mask": 8185,
+                "color": 6,
+                "flags": 2
+              },
+              "pushed": {
+                "why": "degree",
+                "degree": 4,
+                "k": 29,
+                "pass": 1
+              }
+            },
+            {
+              "vreg": 38,
+              "class": "GPR",
+              "phys": 0,
+              "defs": 1,
+              "uses": 1,
+              "live_blocks": 1,
+              "across_call": 0,
+              "first_call_block": null,
+              "def": {
+                "block": 2,
+                "line": 15,
+                "instruction": "subf %r38, r4, r3"
+              },
+              "degree": 2,
+              "neighbors": [
+                {
+                  "vreg": 5,
+                  "phys": 5
+                },
+                {
+                  "vreg": 37,
+                  "phys": 6
+                }
+              ],
+              "graph_flags": 0,
+              "state": "colored",
+              "order": 0,
+              "select": {
+                "how": "lowest free",
+                "free": 8153,
+                "predicted": 0,
+                "agrees": true,
+                "taken": {
+                  "5": [
+                    5
+                  ]
+                },
+                "mask": 8185,
+                "color": 0,
+                "flags": 2
+              },
+              "pushed": {
+                "why": "degree",
+                "degree": 1,
+                "k": 29,
+                "pass": 1
+              }
+            },
+            {
+              "vreg": 39,
+              "class": "GPR",
+              "phys": 3,
+              "defs": 2,
+              "uses": 1,
+              "live_blocks": 2,
+              "across_call": 0,
+              "first_call_block": null,
+              "def": {
+                "block": 2,
+                "line": 17,
+                "instruction": "subf %r39, %r36, %r36"
+              },
+              "degree": 1,
+              "neighbors": [
+                {
+                  "vreg": 36,
+                  "phys": 0
+                }
+              ],
+              "graph_flags": 4,
+              "state": "coalesced",
+              "coalesced_into": 3
+            }
+          ],
+          "k": 29,
+          "mask": 8185,
+          "order": [
+            38,
+            37,
+            36,
+            35,
+            34,
+            33,
+            32
+          ],
+          "simplify_replay_agrees": true,
+          "select_replay_agrees": 7,
+          "select_replayed": 7
+        }
+      },
+      "removed": [
+        "mr r3, %r39, -"
+      ],
+      "inserted": [],
+      "frame": [
+        {
+          "kind": "local",
+          "name": "@22",
+          "offset": 0,
+          "size": 4,
+          "reg": 0,
+          "used": true,
+          "r1": 0
+        },
+        {
+          "kind": "local",
+          "name": "x",
+          "offset": 0,
+          "size": 4,
+          "reg": 0,
+          "used": true,
+          "r1": 0
+        }
+      ],
+      "layout": {
+        "linkage": 0,
+        "outgoing": 0,
+        "locals": 0,
+        "above": 0,
+        "size": 0
+      },
+      "schema_version": 6,
+      "inlining": [],
+      "schedule": [
+        {
+          "block": 2,
+          "virtual": true,
+          "instructions": 6,
+          "cycles": 7,
+          "replay_agrees": 10,
+          "replayed": 10,
+          "picks": [
+            {
+              "cycle": 0,
+              "i": "00ae6d08",
+              "position": 0,
+              "line": 15,
+              "instruction": "add %r37, r3, r4",
+              "latest": 0,
+              "height": 7,
+              "count": 0,
+              "rank": 2,
+              "agrees": true,
+              "over": [
+                {
+                  "i": "00ae6d70",
+                  "position": 1,
+                  "why": "a tie: the pick comes first in the block"
+                },
+                {
+                  "i": "00ae6ed8",
+                  "position": 3,
+                  "why": "the pick must issue by this cycle (latest 0), this one need not"
+                }
+              ]
+            },
+            {
+              "cycle": 0,
+              "i": "00ae6d70",
+              "position": 1,
+              "line": 15,
+              "instruction": "subf %r38, r4, r3",
+              "latest": 0,
+              "height": 7,
+              "count": 1,
+              "rank": 2,
+              "agrees": true,
+              "over": [
+                {
+                  "i": "00ae6ed8",
+                  "position": 3,
+                  "why": "the pick must issue by this cycle (latest 0), this one need not"
+                }
+              ]
+            },
+            {
+              "cycle": 1,
+              "i": "00ae6dd8",
+              "position": 2,
+              "line": 15,
+              "instruction": "mullw %r36, %r37, %r38",
+              "latest": 1,
+              "height": 6,
+              "count": 1,
+              "rank": 2,
+              "agrees": true,
+              "over": [
+                {
+                  "i": "00ae6ed8",
+                  "position": 3,
+                  "why": "the pick must issue by this cycle (latest 1), this one need not"
+                }
+              ]
+            },
+            {
+              "cycle": 1,
+              "i": "00ae6ed8",
+              "position": 3,
+              "line": 17,
+              "instruction": "cmpi cr0, r5, #0",
+              "latest": 4,
+              "height": 3,
+              "count": 0,
+              "rank": 1,
+              "agrees": true,
+              "over": [
+                {
+                  "i": "00ae6f40",
+                  "position": 4,
+                  "why": "not ready until cycle 6 (it waits 5 cycle(s) for #2 mullw %r36, %r37, %r38)"
+                }
+              ]
+            },
+            {
+              "cycle": 6,
+              "i": "00ae6f40",
+              "position": 4,
+              "line": 17,
+              "instruction": "subf %r39, %r36, %r36",
+              "latest": 6,
+              "height": 1,
+              "count": 1,
+              "rank": 2,
+              "agrees": true,
+              "over": []
+            },
+            {
+              "cycle": 6,
+              "i": "00ae6fb8",
+              "position": 5,
+              "line": 17,
+              "instruction": "bt cr0, #2, label, -",
+              "latest": 7,
+              "height": 0,
+              "count": 0,
+              "rank": 0,
+              "agrees": true,
+              "over": []
+            }
+          ],
+          "before": [
+            "add %r37, r3, r4",
+            "subf %r38, r4, r3",
+            "mullw %r36, %r37, %r38",
+            "cmpi cr0, r5, #0",
+            "subf %r39, %r36, %r36",
+            "bt cr0, #2, label, -"
+          ],
+          "edges": [
+            {
+              "from": 0,
+              "to": 5,
+              "latency": 0
+            },
+            {
+              "from": 0,
+              "to": 2,
+              "latency": 1
+            },
+            {
+              "from": 1,
+              "to": 5,
+              "latency": 0
+            },
+            {
+              "from": 1,
+              "to": 2,
+              "latency": 1
+            },
+            {
+              "from": 2,
+              "to": 5,
+              "latency": 0
+            },
+            {
+              "from": 2,
+              "to": 4,
+              "latency": 5
+            },
+            {
+              "from": 3,
+              "to": 5,
+              "latency": 3
+            },
+            {
+              "from": 4,
+              "to": 5,
+              "latency": 0
+            }
+          ]
+        }
+      ],
+      "locals": [
+        {
+          "pointers": 0,
+          "calls": 0,
+          "vars": {}
+        },
+        {
+          "pointers": 0,
+          "calls": 0,
+          "vars": {}
+        }
+      ],
+      "inline_bindings": []
+    }
+  ]
+}

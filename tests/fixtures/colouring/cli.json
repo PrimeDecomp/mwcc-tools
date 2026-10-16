@@ -1,0 +1,333 @@
+[
+  {
+    "args": [
+      "verify",
+      "--load",
+      "tests/fixtures/oracle/GC_1_3_2/registers",
+      "--function",
+      "across_calls",
+      "--version",
+      "GC_1_3_2"
+    ],
+    "exit_code": 0,
+    "json": {
+      "functions": [
+        {
+          "function": "across_calls",
+          "link": "across_calls",
+          "class": "GPR",
+          "nodes": 12,
+          "rounds": 1,
+          "order_agrees": true,
+          "colour_disagreements": [],
+          "claims": [
+            31,
+            30,
+            29,
+            28,
+            27
+          ],
+          "traced_claims": [
+            31,
+            30,
+            29,
+            28,
+            27
+          ],
+          "preused": [],
+          "inferred": false,
+          "spilled": [],
+          "traced_spilled": [],
+          "ok": true
+        }
+      ],
+      "ok": true
+    },
+    "text": "OK        across_calls GPR: 12 nodes claims 31,30,29,28,27\n1 of 1 colourings replayed exactly\n"
+  },
+  {
+    "args": [
+      "target",
+      "--load",
+      "tests/fixtures/oracle/GC_1_3_2/registers",
+      "--function",
+      "across_calls",
+      "--version",
+      "GC_1_3_2",
+      "--target-asm",
+      "tests/fixtures/colouring/registers-target.s"
+    ],
+    "exit_code": 0,
+    "json": {
+      "function": "across_calls",
+      "class": "GPR",
+      "targets": {
+        "32": 18,
+        "33": 17,
+        "34": 16,
+        "38": 15,
+        "39": 14,
+        "41": 0,
+        "42": 0,
+        "43": 0
+      },
+      "wrong": [
+        32,
+        33,
+        34,
+        38,
+        39
+      ],
+      "votes": {
+        "32": {
+          "18": 2
+        },
+        "33": {
+          "17": 4
+        },
+        "34": {
+          "16": 4
+        },
+        "38": {
+          "15": 2
+        },
+        "39": {
+          "14": 2
+        },
+        "41": {
+          "0": 2
+        },
+        "42": {
+          "0": 2
+        },
+        "43": {
+          "0": 2
+        }
+      },
+      "conflicts": [],
+      "renumbered": [],
+      "stats": {
+        "words": 26,
+        "target_words": 26,
+        "paired_with_pcode": 12,
+        "paired_with_target": 26
+      }
+    },
+    "text": "== across_calls: GPR targets ==\n   pairing: {'words': 26, 'target_words': 26, 'paired_with_pcode': 12, 'paired_with_target': 26}\n   8 registers with a target, 5 wrong:\n      %32: ours r27, target r18\n      %33: ours r28, target r17\n      %34: ours r29, target r16\n      %38: ours r30, target r15\n      %39: ours r31, target r14\n"
+  },
+  {
+    "args": [
+      "force",
+      "--load",
+      "tests/fixtures/oracle/GC_1_3_2/registers",
+      "--function",
+      "across_calls",
+      "--version",
+      "GC_1_3_2",
+      "--target-asm",
+      "tests/fixtures/colouring/registers-target.s"
+    ],
+    "exit_code": 0,
+    "json": {
+      "function": "across_calls",
+      "class": "GPR",
+      "wrong": [
+        32,
+        33,
+        34,
+        38,
+        39
+      ],
+      "order": [
+        43,
+        42,
+        41,
+        40,
+        32,
+        33,
+        37,
+        36,
+        35,
+        34,
+        38,
+        39
+      ],
+      "colour": {
+        "43": 0,
+        "42": 0,
+        "41": 0,
+        "40": 0,
+        "32": 31,
+        "33": 30,
+        "37": 0,
+        "36": 0,
+        "35": 0,
+        "34": 29,
+        "38": 28,
+        "39": 27
+      },
+      "spilled": [],
+      "exact": false
+    },
+    "text": "== across_calls: GPR, 5 registers wrong ==\n   the claiming nodes ordered by their target: %32 %33 %34 %38 %39\n   still wrong: %32, %33, %34, %38, %39: no order of the claims gives the target; the graph must change (its edges or nodes)\n"
+  },
+  {
+    "args": [
+      "replay",
+      "--load",
+      "tests/fixtures/oracle/GC_1_3_2/registers",
+      "--function",
+      "across_calls",
+      "--version",
+      "GC_1_3_2",
+      "--target-asm",
+      "tests/fixtures/colouring/registers-target.s",
+      "--move",
+      "43:before:32",
+      "--degree",
+      "32:+1"
+    ],
+    "exit_code": 0,
+    "json": {
+      "function": "across_calls",
+      "class": "GPR",
+      "edits": [
+        [
+          "move",
+          43,
+          "before",
+          32
+        ],
+        [
+          "degree",
+          32,
+          1
+        ]
+      ],
+      "wrong": [
+        32,
+        33,
+        34,
+        38,
+        39
+      ],
+      "spilled": [],
+      "colour": {
+        "42": 0,
+        "41": 0,
+        "40": 0,
+        "39": 31,
+        "38": 30,
+        "37": 0,
+        "36": 0,
+        "35": 0,
+        "34": 29,
+        "33": 28,
+        "32": 27,
+        "43": 0
+      },
+      "order": [
+        42,
+        41,
+        40,
+        39,
+        38,
+        37,
+        36,
+        35,
+        34,
+        33,
+        32,
+        43
+      ]
+    },
+    "text": "== across_calls: GPR with number %43 just before %32; degree of %32 +1 ==\n   wrong: 5 -> 5\n"
+  },
+  {
+    "args": [
+      "search",
+      "--load",
+      "tests/fixtures/oracle/GC_1_3_2/registers",
+      "--function",
+      "across_calls",
+      "--version",
+      "GC_1_3_2",
+      "--target-asm",
+      "tests/fixtures/colouring/registers-target.s",
+      "--seed",
+      "2",
+      "--iterations",
+      "240",
+      "--restarts",
+      "3"
+    ],
+    "exit_code": 0,
+    "json": {
+      "function": "across_calls",
+      "class": "GPR",
+      "wrong": [
+        32,
+        33,
+        34,
+        38,
+        39
+      ],
+      "nodes": [
+        32,
+        33,
+        34,
+        38,
+        39
+      ],
+      "exact": [],
+      "best": [
+        5,
+        []
+      ],
+      "singles": []
+    },
+    "text": "== across_calls: GPR, 5 registers wrong: %32, %33, %34, %38, %39 ==\n   renumbering %32 %33 %34 %38 %39\n   no exact solution found; the best leaves 5 wrong:\n"
+  },
+  {
+    "args": [
+      "remap",
+      "--load",
+      "tests/fixtures/oracle/GC_1_3_2/registers",
+      "--function",
+      "across_calls",
+      "--version",
+      "GC_1_3_2",
+      "--load",
+      "tests/fixtures/oracle/GC_2_7/registers"
+    ],
+    "exit_code": 0,
+    "json": {
+      "class": "GPR",
+      "mapping": {
+        "32": 32,
+        "33": 33,
+        "34": 34,
+        "38": 38,
+        "39": 39,
+        "41": 41,
+        "42": 42,
+        "43": 43
+      },
+      "changed": {},
+      "unsure": {},
+      "paired": 15,
+      "instructions": [
+        15,
+        15
+      ],
+      "graph": {
+        "moved": [],
+        "only_first": [],
+        "only_second": [],
+        "edges_added": [],
+        "edges_removed": []
+      }
+    },
+    "text": "== across_calls: 15 of 15 / 15 instructions paired ==\n   0 GPR registers renumbered: \n"
+  }
+]

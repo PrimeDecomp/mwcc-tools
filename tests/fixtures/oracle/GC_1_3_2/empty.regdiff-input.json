@@ -1,0 +1,42 @@
+{
+  "left": {
+    "sections": [
+      {
+        "name": ".symtab",
+        "size": "32"
+      },
+      {
+        "name": ".strtab",
+        "size": "9"
+      },
+      {
+        "name": ".shstrtab",
+        "size": "36"
+      },
+      {
+        "name": ".comment",
+        "size": "60"
+      }
+    ]
+  },
+  "right": {
+    "sections": [
+      {
+        "name": ".symtab",
+        "size": "32"
+      },
+      {
+        "name": ".strtab",
+        "size": "9"
+      },
+      {
+        "name": ".shstrtab",
+        "size": "36"
+      },
+      {
+        "name": ".comment",
+        "size": "60"
+      }
+    ]
+  }
+}

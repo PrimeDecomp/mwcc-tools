@@ -1,0 +1,759 @@
+{
+  "objects": {
+    "src/one.c": "src-one.c.obj",
+    "src/two.c": "src-two.c.obj"
+  },
+  "functions_from": [
+    {
+      "name": "a",
+      "address": "0x401000",
+      "size": 16,
+      "source": "src/one.c"
+    },
+    {
+      "name": "b",
+      "address": "0x401020",
+      "size": 16,
+      "source": "src/one.c"
+    },
+    {
+      "name": "shared",
+      "address": "0x401040",
+      "size": 16,
+      "source": "src/one.c"
+    },
+    {
+      "name": "shared",
+      "address": "0x401060",
+      "size": 16,
+      "source": "src/two.c"
+    },
+    {
+      "name": "onlyref",
+      "address": "0x401080",
+      "size": 16,
+      "source": "src/two.c"
+    },
+    {
+      "name": "f",
+      "address": "0x4010a0",
+      "size": 16,
+      "source": "src/two.c"
+    },
+    {
+      "name": "f",
+      "address": "0x4010c0",
+      "size": 16,
+      "source": "src/two.c"
+    }
+  ],
+  "functions_to": [
+    {
+      "name": "a",
+      "address": "0x411000",
+      "size": 16,
+      "source": "src/one.c"
+    },
+    {
+      "name": "b",
+      "address": "0x411020",
+      "size": 16,
+      "source": "src/one.c"
+    },
+    {
+      "name": "shared",
+      "address": "0x411040",
+      "size": 16,
+      "source": "src/one.c"
+    },
+    {
+      "name": "shared",
+      "address": "0x411060",
+      "size": 16,
+      "source": "src/two.c"
+    },
+    {
+      "name": "onlyref",
+      "address": "0x411080",
+      "size": 16,
+      "source": "src/two.c"
+    },
+    {
+      "name": "f",
+      "address": "0x4110a0",
+      "size": 16,
+      "source": "src/two.c"
+    },
+    {
+      "name": "f",
+      "address": "0x4110c0",
+      "size": 16,
+      "source": "src/two.c"
+    }
+  ],
+  "reference_splits": "Sections:\n\t.text type:code align:4\n\t.data type:data align:4\n\t.reloc type:data align:4\n\t.bss type:bss align:4\n\t.idata type:data align:4\n\t.rdata type:rodata align:4\n\t.exc type:data align:4\n\t.CRT type:data align:4\n\t.tls type:data align:4\nsrc/one.c:\n\t.text start:0x00401000 end:0x00401040\ndata-only:\n\t.rdata start:0x00406000 end:0x00406200\nsrc/two.c:\n\t.text start:0x00401040 end:0x00401180\ncommon:\n\t.bss start:0x00404000 end:0x00404013\nruntime-.exc:\n\t.exc start:0x00407000 end:0x00407200\nruntime-.CRT:\n\t.CRT start:0x00408000 end:0x00408200\nruntime-.tls:\n\t.tls start:0x00409000 end:0x00409200\n",
+  "reference_symbols": "_fn_00401050 = .text:0x00401050; // type:function size:0x4 scope:global\n_onlyref@8 = .text:0x00401080; // type:function size:0x10 scope:global\nruntime_rdata = .rdata:0x00406000; // type:object size:0x8 scope:global force_active\nruntime_exc = .exc:0x00407000; // type:object size:0x8 scope:global force_active\nruntime_CRT = .CRT:0x00408000; // type:object size:0x8 scope:global force_active\nruntime_tls = .tls:0x00409000; // type:object size:0x8 scope:global force_active\n",
+  "bindings": {
+    "_data_00402000": "0x00402000",
+    "_realData": "0x00402000",
+    "_a": "0x00401000",
+    "_shared": "0x00402010",
+    "_interpolated": "0x00402008",
+    "_bss": "00404000",
+    "_lost": "0x00409080"
+  },
+  "derived": {
+    "functions": [
+      {
+        "name": "a",
+        "address": "0x411000",
+        "size": 16,
+        "source": "src/one.c",
+        "start": 4263936
+      },
+      {
+        "name": "_ExitProcess@4",
+        "address": "0x00411010",
+        "size": 6,
+        "start": 4263952,
+        "thunk": true
+      },
+      {
+        "name": "_license",
+        "address": "0x00411016",
+        "size": 6,
+        "start": 4263958,
+        "thunk": true
+      },
+      {
+        "name": "b",
+        "address": "0x411020",
+        "size": 16,
+        "source": "src/one.c",
+        "start": 4263968
+      },
+      {
+        "name": "shared",
+        "address": "0x411040",
+        "size": 16,
+        "source": "src/one.c",
+        "start": 4264000
+      },
+      {
+        "name": "fn_00411050",
+        "address": "0x00411050",
+        "size": 4,
+        "start": 4264016
+      },
+      {
+        "name": "shared",
+        "address": "0x411060",
+        "size": 16,
+        "source": "src/two.c",
+        "start": 4264032
+      },
+      {
+        "name": "onlyref",
+        "address": "0x411080",
+        "size": 16,
+        "source": "src/two.c",
+        "start": 4264064
+      },
+      {
+        "name": "f",
+        "address": "0x4110a0",
+        "size": 16,
+        "source": "src/two.c",
+        "start": 4264096
+      },
+      {
+        "name": "f",
+        "address": "0x4110c0",
+        "size": 16,
+        "source": "src/two.c",
+        "start": 4264128
+      }
+    ],
+    "order": [
+      "kernel32.dll_stubs_00411010",
+      "lmgr326b",
+      "src/one.c",
+      "data-only",
+      "src/two.c",
+      "common",
+      "runtime-.exc",
+      "runtime-.CRT",
+      "runtime-.tls"
+    ],
+    "ranges": {
+      "kernel32.dll_stubs_00411010": [
+        {
+          "section": ".text",
+          "start": 4263936,
+          "end": 4263958,
+          "options": {}
+        },
+        {
+          "section": ".data",
+          "start": 4268032,
+          "end": 4268048,
+          "options": {}
+        }
+      ],
+      "lmgr326b": [
+        {
+          "section": ".text",
+          "start": 4263958,
+          "end": 4263968,
+          "options": {
+            "align": "2"
+          }
+        }
+      ],
+      "src/one.c": [
+        {
+          "section": ".text",
+          "start": 4263968,
+          "end": 4264320,
+          "options": {}
+        },
+        {
+          "section": ".data",
+          "start": 4268048,
+          "end": 4268096,
+          "options": {}
+        },
+        {
+          "section": ".bss",
+          "start": 4276224,
+          "end": 4276240,
+          "options": {}
+        },
+        {
+          "section": ".bss",
+          "start": 4276240,
+          "end": 4276243,
+          "options": {
+            "common": "1"
+          }
+        }
+      ],
+      "data-only": [
+        {
+          "section": ".rdata",
+          "start": 4284416,
+          "end": 4284928,
+          "options": {}
+        }
+      ],
+      "src/two.c": [],
+      "common": [],
+      "runtime-.exc": [
+        {
+          "section": ".exc",
+          "start": 4288512,
+          "end": 4289024,
+          "options": {}
+        }
+      ],
+      "runtime-.CRT": [
+        {
+          "section": ".CRT",
+          "start": 4292608,
+          "end": 4293120,
+          "options": {}
+        }
+      ],
+      "runtime-.tls": [
+        {
+          "section": ".tls",
+          "start": 4296704,
+          "end": 4297216,
+          "options": {}
+        }
+      ]
+    },
+    "owners": {
+      "4263936": 0,
+      "4263952": 0,
+      "4263958": 1,
+      "4263968": 2,
+      "4264000": 2,
+      "4264016": 2,
+      "4264032": 2,
+      "4264064": 2,
+      "4264096": 2,
+      "4264128": 2
+    },
+    "refs": {
+      "4268032": [
+        0
+      ],
+      "4280416": [
+        0
+      ],
+      "4280432": [
+        1
+      ],
+      "4264060": [
+        2
+      ],
+      "4276224": [
+        2
+      ],
+      "4276232": [
+        2
+      ],
+      "4268048": [
+        2
+      ],
+      "4268052": [
+        2
+      ],
+      "4268056": [
+        2
+      ]
+    },
+    "everywhere": [
+      4268032,
+      4268048,
+      4268052,
+      4268056,
+      4276224,
+      4276232,
+      4280416,
+      4280432
+    ],
+    "sections": {
+      ".text": {
+        "type": "code",
+        "align": "4"
+      },
+      ".data": {
+        "type": "data",
+        "align": "4"
+      },
+      ".reloc": {
+        "type": "data",
+        "align": "4"
+      },
+      ".bss": {
+        "type": "bss",
+        "align": "4"
+      },
+      ".idata": {
+        "type": "data",
+        "align": "4"
+      },
+      ".rdata": {
+        "type": "rodata",
+        "align": "4"
+      },
+      ".exc": {
+        "type": "data",
+        "align": "4"
+      },
+      ".CRT": {
+        "type": "data",
+        "align": "4"
+      },
+      ".tls": {
+        "type": "data",
+        "align": "4"
+      }
+    },
+    "imports": [
+      {
+        "slot": 4280416,
+        "symbol": "__imp__ExitProcess@4",
+        "dll": "KERNEL32.dll"
+      },
+      {
+        "slot": 4280432,
+        "symbol": "__imp__license",
+        "dll": "lmgr326b.dll"
+      }
+    ],
+    "splits": "Sections:\n\t.text       type:code align:4\n\t.data       type:data align:4\n\t.reloc      type:data align:4\n\t.bss        type:bss align:4\n\t.idata      type:data align:4\n\t.rdata      type:rodata align:4\n\t.exc        type:data align:4\n\t.CRT        type:data align:4\n\t.tls        type:data align:4\n\nkernel32.dll_stubs_00411010:\n\t.text       start:0x00411000 end:0x00411016\n\t.data       start:0x00412000 end:0x00412010\n\nlmgr326b:\n\t.text       start:0x00411016 end:0x00411020 align:2\n\nsrc/one.c:\n\t.text       start:0x00411020 end:0x00411180\n\t.data       start:0x00412010 end:0x00412040\n\t.bss        start:0x00414000 end:0x00414010\n\t.bss        start:0x00414010 end:0x00414013 common:1\n\ndata-only:\n\t.rdata      start:0x00416000 end:0x00416200\n\nruntime-.exc:\n\t.exc        start:0x00417000 end:0x00417200\n\nruntime-.CRT:\n\t.CRT        start:0x00418000 end:0x00418200\n\nruntime-.tls:\n\t.tls        start:0x00419000 end:0x00419200\n",
+    "symbols": [
+      "_a__00411000 = .text:0x00411000; // type:function size:0x10 scope:global",
+      "_ExitProcess@4 = .text:0x00411010; // type:function size:0x6 scope:global",
+      "_license = .text:0x00411016; // type:function size:0x6 scope:global",
+      "_b = .text:0x00411020; // type:function size:0x10 scope:global",
+      "_shared__00411040 = .text:0x00411040; // type:function size:0x10 scope:global",
+      "_fn_00411050 = .text:0x00411050; // type:function size:0x4 scope:global",
+      "_shared__00411060 = .text:0x00411060; // type:function size:0x10 scope:global",
+      "_onlyref@8 = .text:0x00411080; // type:function size:0x10 scope:global",
+      "_f = .text:0x004110A0; // type:function size:0x10 scope:local",
+      "_f = .text:0x004110C0; // type:function size:0x10 scope:local",
+      "lbl_00412000 = .data:0x00412000; // type:object size:0x10 scope:local",
+      "lbl_00412010 = .data:0x00412010; // type:object size:0x4 scope:local",
+      "lbl_00412014 = .data:0x00412014; // type:object size:0x4 scope:local",
+      "lbl_00412018 = .data:0x00412018; // type:object size:0x28 scope:local",
+      "lbl_00414000 = .bss:0x00414000; // type:object size:0x8 scope:local",
+      "lbl_00414008 = .bss:0x00414008; // type:object size:0x8 scope:local",
+      "__imp__ExitProcess@4 = .idata:0x00415060; // type:object size:0x4 scope:global",
+      "__imp__license = .idata:0x00415070; // type:object size:0x4 scope:global",
+      "runtime_rdata = .rdata:0x00416000; // type:object size:0x8 scope:global force_active:True",
+      "runtime_exc = .exc:0x00417000; // type:object size:0x8 scope:global force_active:True",
+      "runtime_CRT = .CRT:0x00418000; // type:object size:0x8 scope:global force_active:True",
+      "runtime_tls = .tls:0x00419000; // type:object size:0x8 scope:global force_active:True"
+    ]
+  },
+  "compiled_symbols": {
+    "definitions": {
+      "b": "src/one.c",
+      "c": "src/one.c",
+      "d": "src/one.c",
+      "e": "src/one.c",
+      "f": "src/one.c",
+      "g": "src/one.c"
+    },
+    "decorated": {
+      "a": "_a",
+      "address": "_address",
+      "b": "_b",
+      "call": "_call",
+      "c": "_c",
+      "conflict": "_conflict",
+      "d": "_d",
+      "e": "_e",
+      "@tmp": "_@tmp",
+      "f": "_f",
+      "ambiguous": "_ambiguous",
+      "g": "_g",
+      "missing": "_missing"
+    }
+  },
+  "remapped": {
+    "found": {
+      "4198400": 4263936,
+      "4198432": 4263968,
+      "4198464": 4264000,
+      "4198496": 4264032,
+      "4198528": 4264064,
+      "4198560": 4264096,
+      "4198592": 4264128
+    },
+    "missing": [],
+    "pairs": {
+      "4202496": 4268032,
+      "4210688": 4276224,
+      "4210696": 4276232,
+      "4202512": 4268048
+    },
+    "wildcards": [
+      {
+        "address": 4198400,
+        "size": 16,
+        "code": [
+          85,
+          139,
+          236,
+          131,
+          236,
+          16,
+          104,
+          0,
+          32,
+          64,
+          0,
+          131,
+          196,
+          16,
+          93,
+          195
+        ],
+        "wild": [
+          7,
+          8,
+          9,
+          10
+        ]
+      },
+      {
+        "address": 4198432,
+        "size": 16,
+        "code": [
+          85,
+          139,
+          236,
+          131,
+          236,
+          32,
+          232,
+          81,
+          0,
+          0,
+          0,
+          131,
+          196,
+          16,
+          93,
+          195
+        ],
+        "wild": [
+          7,
+          8,
+          9,
+          10
+        ]
+      },
+      {
+        "address": 4198464,
+        "size": 16,
+        "code": [
+          85,
+          139,
+          236,
+          131,
+          236,
+          48,
+          104,
+          0,
+          64,
+          64,
+          0,
+          131,
+          196,
+          16,
+          93,
+          195
+        ],
+        "wild": [
+          7,
+          8,
+          9,
+          10
+        ]
+      },
+      {
+        "address": 4198496,
+        "size": 16,
+        "code": [
+          85,
+          139,
+          236,
+          131,
+          236,
+          64,
+          104,
+          8,
+          64,
+          64,
+          0,
+          131,
+          196,
+          16,
+          93,
+          195
+        ],
+        "wild": [
+          7,
+          8,
+          9,
+          10
+        ]
+      },
+      {
+        "address": 4198528,
+        "size": 16,
+        "code": [
+          85,
+          139,
+          236,
+          131,
+          236,
+          80,
+          104,
+          16,
+          32,
+          64,
+          0,
+          131,
+          196,
+          16,
+          93,
+          195
+        ],
+        "wild": [
+          7,
+          8,
+          9,
+          10
+        ]
+      },
+      {
+        "address": 4198560,
+        "size": 16,
+        "code": [
+          85,
+          139,
+          236,
+          131,
+          236,
+          96,
+          104,
+          20,
+          32,
+          64,
+          0,
+          131,
+          196,
+          16,
+          93,
+          195
+        ],
+        "wild": [
+          7,
+          8,
+          9,
+          10
+        ]
+      },
+      {
+        "address": 4198592,
+        "size": 16,
+        "code": [
+          85,
+          139,
+          236,
+          131,
+          236,
+          96,
+          104,
+          20,
+          32,
+          64,
+          0,
+          131,
+          196,
+          16,
+          93,
+          195
+        ],
+        "wild": [
+          7,
+          8,
+          9,
+          10
+        ]
+      }
+    ]
+  },
+  "without_symbols": {
+    "report": "7 of 7 functions found in fixtureB; 0 differ or are not found\n6 of 7 bindings carried; 1 lost\n  binding _lost = 0x00409080\n",
+    "functions": [
+      {
+        "name": "a",
+        "address": "0x00411000",
+        "size": 16,
+        "source": "src/one.c"
+      },
+      {
+        "name": "b",
+        "address": "0x00411020",
+        "size": 16,
+        "source": "src/one.c"
+      },
+      {
+        "name": "shared",
+        "address": "0x00411040",
+        "size": 16,
+        "source": "src/one.c"
+      },
+      {
+        "name": "shared",
+        "address": "0x00411060",
+        "size": 16,
+        "source": "src/two.c"
+      },
+      {
+        "name": "onlyref",
+        "address": "0x00411080",
+        "size": 16,
+        "source": "src/two.c"
+      },
+      {
+        "name": "f",
+        "address": "0x004110a0",
+        "size": 16,
+        "source": "src/two.c"
+      },
+      {
+        "name": "f",
+        "address": "0x004110c0",
+        "size": 16,
+        "source": "src/two.c"
+      }
+    ],
+    "bindings": {
+      "_data_00402000": "0x00412000",
+      "_realData": "0x00412000",
+      "_a": "0x00411000",
+      "_shared": "0x00412010",
+      "_interpolated": "0x00412008",
+      "_bss": "0x00414000"
+    }
+  },
+  "with_symbols": {
+    "report": "8 of 8 functions found in fixtureB; 0 differ or are not found\n6 of 7 bindings carried; 1 lost\n  binding _lost = 0x00409080\n",
+    "functions": [
+      {
+        "name": "a",
+        "address": "0x00411000",
+        "size": 16,
+        "source": "src/one.c"
+      },
+      {
+        "name": "b",
+        "address": "0x00411020",
+        "size": 16,
+        "source": "src/one.c"
+      },
+      {
+        "name": "shared",
+        "address": "0x00411040",
+        "size": 16,
+        "source": "src/one.c"
+      },
+      {
+        "name": "fn_00411050",
+        "address": "0x00411050",
+        "size": 4
+      },
+      {
+        "name": "shared",
+        "address": "0x00411060",
+        "size": 16,
+        "source": "src/two.c"
+      },
+      {
+        "name": "onlyref",
+        "address": "0x00411080",
+        "size": 16,
+        "source": "src/two.c"
+      },
+      {
+        "name": "f",
+        "address": "0x004110a0",
+        "size": 16,
+        "source": "src/two.c"
+      },
+      {
+        "name": "f",
+        "address": "0x004110c0",
+        "size": 16,
+        "source": "src/two.c"
+      }
+    ],
+    "bindings": {
+      "_data_00402000": "0x00412000",
+      "_realData": "0x00412000",
+      "_a": "0x00411000",
+      "_shared": "0x00412010",
+      "_interpolated": "0x00412008",
+      "_bss": "0x00414000"
+    }
+  }
+}

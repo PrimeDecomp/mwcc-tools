@@ -1,0 +1,468 @@
+{
+  "decisions": {
+    "nested__Fi": [
+      {
+        "kind": "decision",
+        "event": "decision",
+        "callee": "nested",
+        "link": "nested__Fi",
+        "inline": true,
+        "chain": [],
+        "cost": 11,
+        "threshold": 512,
+        "full_cost": 11,
+        "depth_limited": false,
+        "reason": "estimated cost 11 is within the threshold 512 (1 statements)",
+        "outcome": "inlined",
+        "breakdown": {
+          "running": 0,
+          "nstmts": 1,
+          "statements": [
+            {
+              "kind": "breakdown",
+              "what": "twice()+1",
+              "type": 15,
+              "cost": 10,
+              "parts": [
+                {
+                  "kind": "breakdown",
+                  "what": "body",
+                  "type": -1,
+                  "cost": 6,
+                  "nstmts": 1,
+                  "parts": [
+                    {
+                      "kind": "breakdown",
+                      "what": "*(arg0)+*(arg0)",
+                      "type": 15,
+                      "cost": 5,
+                      "parts": [],
+                      "calls": []
+                    }
+                  ],
+                  "of": "twice<i>__Fi"
+                }
+              ],
+              "calls": [
+                [
+                  "",
+                  "twice<i>__Fi"
+                ]
+              ]
+            }
+          ]
+        },
+        "count": 2,
+        "depths": [
+          0
+        ],
+        "lines": [
+          8,
+          12
+        ],
+        "function": "pipeline (pipeline__Fii)"
+      }
+    ],
+    "consume__Fi": [
+      {
+        "kind": "decision",
+        "event": "decision",
+        "callee": "consume",
+        "link": "consume__Fi",
+        "inline": false,
+        "chain": [],
+        "reason": "not declared inline (and not a method defined in its class)",
+        "outcome": "kept",
+        "count": 8,
+        "depths": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "lines": [
+          13
+        ],
+        "function": "pipeline (pipeline__Fii)"
+      }
+    ],
+    "twice<i>__Fi": [
+      {
+        "kind": "decision",
+        "event": "decision",
+        "callee": "twice",
+        "link": "twice<i>__Fi",
+        "inline": true,
+        "chain": [
+          "nested__Fi"
+        ],
+        "cost": 6,
+        "threshold": 512,
+        "full_cost": 6,
+        "depth_limited": false,
+        "reason": "estimated cost 6 is within the threshold 512 (1 statements)",
+        "outcome": "inlined",
+        "breakdown": {
+          "running": 0,
+          "nstmts": 1,
+          "statements": [
+            {
+              "kind": "breakdown",
+              "what": "*(arg0)+*(arg0)",
+              "type": 15,
+              "cost": 5,
+              "parts": [],
+              "calls": []
+            }
+          ]
+        },
+        "count": 2,
+        "depths": [
+          1
+        ],
+        "lines": [
+          8,
+          12
+        ],
+        "function": "pipeline (pipeline__Fii)"
+      }
+    ]
+  },
+  "summaries": {
+    "nested__Fi": {
+      "summary": {
+        "outcomes": {
+          "inlined": 2
+        },
+        "costs": [
+          11
+        ],
+        "full_costs": [
+          11
+        ],
+        "rounds": [
+          0
+        ],
+        "functions": [
+          "pipeline (pipeline__Fii)"
+        ],
+        "reasons": [],
+        "chains": [],
+        "limit_paths": [],
+        "sensitivity": []
+      },
+      "report": [
+        "   A: inlined x2; estimate 11, whole cost 11, rounds 0",
+        "      in pipeline (pipeline__Fii)"
+      ],
+      "verdict_present": null,
+      "verdict_absent": "the target keeps a call this TU inlines every time (2x, rounds 0, with its body); depth would not explain it (round 0, no call at the depth limit); cost would need +502 to keep it; most likely the callee is not inline as written there (not declared inline, defined out of line), or had no body yet at that point of the original"
+    },
+    "consume__Fi": {
+      "summary": {
+        "outcomes": {
+          "kept": 8
+        },
+        "costs": [],
+        "full_costs": [],
+        "rounds": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "functions": [
+          "pipeline (pipeline__Fii)"
+        ],
+        "reasons": [
+          "not declared inline (and not a method defined in its class)"
+        ],
+        "chains": [],
+        "limit_paths": [],
+        "sensitivity": []
+      },
+      "report": [
+        "   A: kept x8; estimate -, whole cost -, rounds 0, 1, 2, 3, 4, 5, 6, 7",
+        "      in pipeline (pipeline__Fii)",
+        "      because: not declared inline (and not a method defined in its class)"
+      ],
+      "verdict_present": null,
+      "verdict_absent": null
+    },
+    "twice<i>__Fi": {
+      "summary": {
+        "outcomes": {
+          "inlined": 2
+        },
+        "costs": [
+          6
+        ],
+        "full_costs": [
+          6
+        ],
+        "rounds": [
+          1
+        ],
+        "functions": [
+          "pipeline (pipeline__Fii)"
+        ],
+        "reasons": [],
+        "chains": [
+          [
+            "nested__Fi"
+          ]
+        ],
+        "limit_paths": [],
+        "sensitivity": []
+      },
+      "report": [
+        "   A: inlined x2; estimate 6, whole cost 6, rounds 1",
+        "      in pipeline (pipeline__Fii)",
+        "      inside:",
+        "         nested__Fi"
+      ],
+      "verdict_present": null,
+      "verdict_absent": "the target keeps a call this TU inlines every time (2x, rounds 1, with its body); depth could: inlined at round 1; cost would need +507 to keep it"
+    }
+  },
+  "emission": {
+    "pipeline__Fii": ""
+  },
+  "target": {
+    "consume__Fi": "weak"
+  },
+  "module": {},
+  "predictions": {
+    "false": {
+      "consume__Fi": [
+        "target: out of line (weak); MISPREDICTED: not emitted here",
+        true
+      ],
+      "nested__Fi": [
+        "target: not emitted",
+        false
+      ],
+      "pipeline__Fii": [
+        "target: not emitted (nor anywhere in the module); MISPREDICTED: emitted here",
+        true
+      ],
+      "twice<i>__Fi": [
+        "target: not emitted",
+        false
+      ]
+    },
+    "true": {
+      "consume__Fi": [
+        "target: out of line (weak); MISPREDICTED: not emitted here",
+        true
+      ],
+      "nested__Fi": [
+        "target: not emitted",
+        false
+      ],
+      "pipeline__Fii": [
+        "target: not emitted (the main program strips unreferenced weak functions); emitted here",
+        false
+      ],
+      "twice<i>__Fi": [
+        "target: not emitted",
+        false
+      ]
+    }
+  },
+  "emission_report": [
+    "== A: sources/pipeline.cpp: emitted differently from the target: 1 here only (nowhere in the module), 1 there only; 0 here whose copy the module keeps in another TU",
+    "   here only: pipeline__Fii",
+    "   there only (weak): consume__Fi"
+  ],
+  "object_calls": {
+    "pipeline__Fii": {
+      "consume__Fi": 1
+    }
+  },
+  "windows": [
+    {
+      "calls": {
+        "pipeline__Fii": {
+          "consume__Fi": 1,
+          "nested__Fi": 0,
+          "twice<i>__Fi": 0
+        }
+      },
+      "bounds": [
+        {
+          "function": "pipeline",
+          "link": "pipeline__Fii",
+          "callee": "nested",
+          "callee_link": "nested__Fi",
+          "ours": 0,
+          "target": 0,
+          "threshold": 512,
+          "side": "low",
+          "value": 11,
+          "why": "inlined in both"
+        },
+        {
+          "function": "pipeline",
+          "link": "pipeline__Fii",
+          "callee": "twice",
+          "callee_link": "twice<i>__Fi",
+          "ours": 0,
+          "target": 0,
+          "threshold": 512,
+          "side": "low",
+          "value": 6,
+          "why": "inlined in both"
+        }
+      ],
+      "window": [
+        11,
+        null
+      ],
+      "report": [
+        "== sources/pipeline.cpp: limit 512, the target agrees with 11..-",
+        "   at least 11: nested in pipeline (calls: ours 0, target 0): inlined in both",
+        "   at least 6: twice in pipeline (calls: ours 0, target 0): inlined in both"
+      ],
+      "verbose": [
+        "== sources/pipeline.cpp: limit 512, the target agrees with 11..-",
+        "   at least 11: nested in pipeline (calls: ours 0, target 0): inlined in both",
+        "   at least 6: twice in pipeline (calls: ours 0, target 0): inlined in both"
+      ]
+    },
+    {
+      "calls": {
+        "pipeline__Fii": {
+          "consume__Fi": 0,
+          "nested__Fi": 0,
+          "twice<i>__Fi": 0
+        }
+      },
+      "bounds": [
+        {
+          "function": "pipeline",
+          "link": "pipeline__Fii",
+          "callee": "nested",
+          "callee_link": "nested__Fi",
+          "ours": 0,
+          "target": 0,
+          "threshold": 512,
+          "side": "low",
+          "value": 11,
+          "why": "inlined in both"
+        },
+        {
+          "function": "pipeline",
+          "link": "pipeline__Fii",
+          "callee": "consume",
+          "callee_link": "consume__Fi",
+          "ours": 1,
+          "target": 0,
+          "threshold": null,
+          "side": null,
+          "why": "not declared inline (and not a method defined in its class)"
+        },
+        {
+          "function": "pipeline",
+          "link": "pipeline__Fii",
+          "callee": "twice",
+          "callee_link": "twice<i>__Fi",
+          "ours": 0,
+          "target": 0,
+          "threshold": 512,
+          "side": "low",
+          "value": 6,
+          "why": "inlined in both"
+        }
+      ],
+      "window": [
+        11,
+        null
+      ],
+      "report": [
+        "== sources/pipeline.cpp: limit 512, the target agrees with 11..-",
+        "   at least 11: nested in pipeline (calls: ours 0, target 0): inlined in both",
+        "   at least 6: twice in pipeline (calls: ours 0, target 0): inlined in both",
+        "   not a limit question: consume in pipeline (calls: ours 1, target 0): not declared inline (and not a method defined in its class)"
+      ],
+      "verbose": [
+        "== sources/pipeline.cpp: limit 512, the target agrees with 11..-",
+        "   at least 11: nested in pipeline (calls: ours 0, target 0): inlined in both",
+        "   at least 6: twice in pipeline (calls: ours 0, target 0): inlined in both",
+        "   not a limit question: consume in pipeline (calls: ours 1, target 0): not declared inline (and not a method defined in its class)"
+      ]
+    },
+    {
+      "calls": {
+        "pipeline__Fii": {
+          "consume__Fi": 2,
+          "nested__Fi": 1,
+          "twice<i>__Fi": 1
+        }
+      },
+      "bounds": [
+        {
+          "function": "pipeline",
+          "link": "pipeline__Fii",
+          "callee": "nested",
+          "callee_link": "nested__Fi",
+          "ours": 0,
+          "target": 1,
+          "threshold": 512,
+          "side": "high",
+          "value": 10,
+          "why": "the target keeps 1 more, where ours inlines them"
+        },
+        {
+          "function": "pipeline",
+          "link": "pipeline__Fii",
+          "callee": "consume",
+          "callee_link": "consume__Fi",
+          "ours": 1,
+          "target": 2,
+          "threshold": null,
+          "side": null,
+          "why": "not declared inline (and not a method defined in its class)"
+        },
+        {
+          "function": "pipeline",
+          "link": "pipeline__Fii",
+          "callee": "twice",
+          "callee_link": "twice<i>__Fi",
+          "ours": 0,
+          "target": 1,
+          "threshold": 512,
+          "side": "high",
+          "value": 5,
+          "why": "the target keeps 1 more, where ours inlines them"
+        }
+      ],
+      "window": [
+        null,
+        5
+      ],
+      "report": [
+        "== sources/pipeline.cpp: limit 512, the target agrees with -..5",
+        "   the current limit 512 is outside it: the target's build likely used another limit for this unit (a setting, not the source)",
+        "   at most 5: twice in pipeline (calls: ours 0, target 1): the target keeps 1 more, where ours inlines them",
+        "   at most 10: nested in pipeline (calls: ours 0, target 1): the target keeps 1 more, where ours inlines them",
+        "   not a limit question: consume in pipeline (calls: ours 1, target 2): not declared inline (and not a method defined in its class)"
+      ],
+      "verbose": [
+        "== sources/pipeline.cpp: limit 512, the target agrees with -..5",
+        "   the current limit 512 is outside it: the target's build likely used another limit for this unit (a setting, not the source)",
+        "   at most 5: twice in pipeline (calls: ours 0, target 1): the target keeps 1 more, where ours inlines them",
+        "   at most 10: nested in pipeline (calls: ours 0, target 1): the target keeps 1 more, where ours inlines them",
+        "   not a limit question: consume in pipeline (calls: ours 1, target 2): not declared inline (and not a method defined in its class)"
+      ]
+    }
+  ]
+}

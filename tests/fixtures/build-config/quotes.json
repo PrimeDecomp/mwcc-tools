@@ -1,0 +1,67 @@
+[
+  {
+    "argument": "",
+    "Windows": "\"\"",
+    "Posix": "''"
+  },
+  {
+    "argument": "plain",
+    "Windows": "plain",
+    "Posix": "plain"
+  },
+  {
+    "argument": "one two",
+    "Windows": "\"one two\"",
+    "Posix": "'one two'"
+  },
+  {
+    "argument": "a\tb",
+    "Windows": "\"a\tb\"",
+    "Posix": "'a\tb'"
+  },
+  {
+    "argument": "a\"b",
+    "Windows": "a\\\"b",
+    "Posix": "'a\"b'"
+  },
+  {
+    "argument": "a\\",
+    "Windows": "a\\",
+    "Posix": "'a\\'"
+  },
+  {
+    "argument": "two words\\",
+    "Windows": "\"two words\\\\\"",
+    "Posix": "'two words\\'"
+  },
+  {
+    "argument": "path\\\"name",
+    "Windows": "path\\\\\\\"name",
+    "Posix": "'path\\\"name'"
+  },
+  {
+    "argument": "h\u00e9llo",
+    "Windows": "h\u00e9llo",
+    "Posix": "'h\u00e9llo'"
+  },
+  {
+    "argument": "$HOME",
+    "Windows": "$HOME",
+    "Posix": "'$HOME'"
+  },
+  {
+    "argument": "a'b",
+    "Windows": "a'b",
+    "Posix": "'a'\"'\"'b'"
+  },
+  {
+    "argument": "C:\\SDK\\some path\\",
+    "Windows": "\"C:\\SDK\\some path\\\\\"",
+    "Posix": "'C:\\SDK\\some path\\'"
+  },
+  {
+    "argument": "back\\\\slash",
+    "Windows": "back\\\\slash",
+    "Posix": "'back\\\\slash'"
+  }
+]

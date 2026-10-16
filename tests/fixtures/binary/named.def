@@ -1,0 +1,4 @@
+LIBRARY sample
+EXPORTS
+    foo@8 @3
+    by_ordinal @7 NONAME

@@ -1,0 +1,748 @@
+[
+  {
+    "name": "external-6-0",
+    "symbol": "_fn",
+    "target_address": 4198400,
+    "target_size": 5,
+    "addresses": {
+      "_dest": 4202528
+    },
+    "body": [
+      32,
+      32,
+      64,
+      0,
+      195
+    ],
+    "resolutions": [
+      {
+        "offset": 0,
+        "symbol": "_dest",
+        "index": 3,
+        "address": 4202528,
+        "kind": 6,
+        "addend": 0
+      }
+    ]
+  },
+  {
+    "name": "external-6-4",
+    "symbol": "_fn",
+    "target_address": 4198400,
+    "target_size": 5,
+    "addresses": {
+      "_dest": 4202528
+    },
+    "body": [
+      36,
+      32,
+      64,
+      0,
+      195
+    ],
+    "resolutions": [
+      {
+        "offset": 0,
+        "symbol": "_dest",
+        "index": 3,
+        "address": 4202528,
+        "kind": 6,
+        "addend": 4
+      }
+    ]
+  },
+  {
+    "name": "external-6-4294967264",
+    "symbol": "_fn",
+    "target_address": 4198400,
+    "target_size": 5,
+    "addresses": {
+      "_dest": 4202528
+    },
+    "body": [
+      0,
+      32,
+      64,
+      0,
+      195
+    ],
+    "resolutions": [
+      {
+        "offset": 0,
+        "symbol": "_dest",
+        "index": 3,
+        "address": 4202528,
+        "kind": 6,
+        "addend": 4294967264
+      }
+    ]
+  },
+  {
+    "name": "external-7-0",
+    "symbol": "_fn",
+    "target_address": 4198400,
+    "target_size": 5,
+    "addresses": {
+      "_dest": 4202528
+    },
+    "body": [
+      32,
+      32,
+      0,
+      0,
+      195
+    ],
+    "resolutions": [
+      {
+        "offset": 0,
+        "symbol": "_dest",
+        "index": 3,
+        "address": 4202528,
+        "kind": 7,
+        "addend": 0
+      }
+    ]
+  },
+  {
+    "name": "external-7-4",
+    "symbol": "_fn",
+    "target_address": 4198400,
+    "target_size": 5,
+    "addresses": {
+      "_dest": 4202528
+    },
+    "body": [
+      36,
+      32,
+      0,
+      0,
+      195
+    ],
+    "resolutions": [
+      {
+        "offset": 0,
+        "symbol": "_dest",
+        "index": 3,
+        "address": 4202528,
+        "kind": 7,
+        "addend": 4
+      }
+    ]
+  },
+  {
+    "name": "external-7-4294967264",
+    "symbol": "_fn",
+    "target_address": 4198400,
+    "target_size": 5,
+    "addresses": {
+      "_dest": 4202528
+    },
+    "body": [
+      0,
+      32,
+      0,
+      0,
+      195
+    ],
+    "resolutions": [
+      {
+        "offset": 0,
+        "symbol": "_dest",
+        "index": 3,
+        "address": 4202528,
+        "kind": 7,
+        "addend": 4294967264
+      }
+    ]
+  },
+  {
+    "name": "external-20-0",
+    "symbol": "_fn",
+    "target_address": 4198400,
+    "target_size": 5,
+    "addresses": {
+      "_dest": 4202528
+    },
+    "body": [
+      28,
+      16,
+      0,
+      0,
+      195
+    ],
+    "resolutions": [
+      {
+        "offset": 0,
+        "symbol": "_dest",
+        "index": 3,
+        "address": 4202528,
+        "kind": 20,
+        "addend": 0
+      }
+    ]
+  },
+  {
+    "name": "external-20-4",
+    "symbol": "_fn",
+    "target_address": 4198400,
+    "target_size": 5,
+    "addresses": {
+      "_dest": 4202528
+    },
+    "body": [
+      32,
+      16,
+      0,
+      0,
+      195
+    ],
+    "resolutions": [
+      {
+        "offset": 0,
+        "symbol": "_dest",
+        "index": 3,
+        "address": 4202528,
+        "kind": 20,
+        "addend": 4
+      }
+    ]
+  },
+  {
+    "name": "external-20-4294967264",
+    "symbol": "_fn",
+    "target_address": 4198400,
+    "target_size": 5,
+    "addresses": {
+      "_dest": 4202528
+    },
+    "body": [
+      252,
+      15,
+      0,
+      0,
+      195
+    ],
+    "resolutions": [
+      {
+        "offset": 0,
+        "symbol": "_dest",
+        "index": 3,
+        "address": 4202528,
+        "kind": 20,
+        "addend": 4294967264
+      }
+    ]
+  },
+  {
+    "name": "external-12-0",
+    "symbol": "_fn",
+    "target_address": 4198400,
+    "target_size": 5,
+    "addresses": {
+      "_dest": 4202528
+    },
+    "error": "unsupported i386 relocation 12"
+  },
+  {
+    "name": "external-12-4",
+    "symbol": "_fn",
+    "target_address": 4198400,
+    "target_size": 5,
+    "addresses": {
+      "_dest": 4202528
+    },
+    "error": "unsupported i386 relocation 12"
+  },
+  {
+    "name": "external-12-4294967264",
+    "symbol": "_fn",
+    "target_address": 4198400,
+    "target_size": 5,
+    "addresses": {
+      "_dest": 4202528
+    },
+    "error": "unsupported i386 relocation 12"
+  },
+  {
+    "name": "stdcall-reference",
+    "symbol": "_fn",
+    "target_address": 4198400,
+    "target_size": 5,
+    "addresses": {
+      "_dest": 4202528
+    },
+    "body": [
+      32,
+      32,
+      64,
+      0,
+      195
+    ],
+    "resolutions": [
+      {
+        "offset": 0,
+        "symbol": "_dest@8",
+        "index": 3,
+        "address": 4202528,
+        "kind": 6,
+        "addend": 0
+      }
+    ]
+  },
+  {
+    "name": "stdcall-function",
+    "symbol": "_fn",
+    "target_address": 4198400,
+    "target_size": 5,
+    "addresses": {
+      "_dest": 4202528
+    },
+    "body": [
+      32,
+      32,
+      64,
+      0,
+      195
+    ],
+    "resolutions": [
+      {
+        "offset": 0,
+        "symbol": "_dest",
+        "index": 3,
+        "address": 4202528,
+        "kind": 6,
+        "addend": 0
+      }
+    ]
+  },
+  {
+    "name": "ambiguous-function",
+    "symbol": "_fn",
+    "target_address": 4198400,
+    "target_size": 5,
+    "addresses": {
+      "_dest": 4202528
+    },
+    "error": "candidate function not emitted uniquely"
+  },
+  {
+    "name": "missing-function",
+    "symbol": "_missing",
+    "target_address": 4198400,
+    "target_size": 5,
+    "addresses": {
+      "_dest": 4202528
+    },
+    "error": "candidate function not emitted uniquely"
+  },
+  {
+    "name": "local-label",
+    "symbol": "_fn",
+    "target_address": 4198400,
+    "target_size": 5,
+    "addresses": {},
+    "body": [
+      2,
+      16,
+      64,
+      0,
+      195
+    ],
+    "resolutions": [
+      {
+        "offset": 0,
+        "symbol": "local",
+        "index": 3,
+        "address": 4198402,
+        "kind": 6,
+        "addend": 0
+      }
+    ]
+  },
+  {
+    "name": "absolute",
+    "symbol": "_fn",
+    "target_address": 4198400,
+    "target_size": 5,
+    "addresses": {},
+    "body": [
+      120,
+      86,
+      52,
+      18,
+      195
+    ],
+    "resolutions": [
+      {
+        "offset": 0,
+        "symbol": "_dest",
+        "index": 3,
+        "address": 305419896,
+        "kind": 6,
+        "addend": 0
+      }
+    ]
+  },
+  {
+    "name": "unbound-external",
+    "symbol": "_fn",
+    "target_address": 4198400,
+    "target_size": 5,
+    "addresses": {},
+    "error": "unbound relocation: _dest"
+  },
+  {
+    "name": "cross-boundary",
+    "symbol": "_fn",
+    "target_address": 4198400,
+    "target_size": 5,
+    "addresses": {
+      "_dest": 4202528
+    },
+    "error": "relocation crosses function boundary"
+  },
+  {
+    "name": "unbound-function",
+    "symbol": "_fn",
+    "target_address": 4198400,
+    "target_size": 5,
+    "addresses": {},
+    "error": "unbound local function: _dest"
+  },
+  {
+    "name": "string-False-False",
+    "symbol": "_fn",
+    "target_address": 4198400,
+    "target_size": 5,
+    "addresses": {},
+    "body": [
+      32,
+      32,
+      64,
+      0,
+      195
+    ],
+    "resolutions": [
+      {
+        "offset": 0,
+        "symbol": "_dest",
+        "index": 5,
+        "address": 4202528,
+        "kind": 6,
+        "addend": 0
+      }
+    ]
+  },
+  {
+    "name": "string-False-True",
+    "symbol": "_fn",
+    "target_address": 4198400,
+    "target_size": 5,
+    "addresses": {
+      "_dest": 4202528
+    },
+    "body": [
+      32,
+      32,
+      64,
+      0,
+      195
+    ],
+    "resolutions": [
+      {
+        "offset": 0,
+        "symbol": "_dest",
+        "index": 5,
+        "address": 4202528,
+        "kind": 6,
+        "addend": 0
+      }
+    ]
+  },
+  {
+    "name": "string-True-False",
+    "symbol": "_fn",
+    "target_address": 4198400,
+    "target_size": 5,
+    "addresses": {},
+    "body": [
+      64,
+      32,
+      64,
+      0,
+      195
+    ],
+    "resolutions": [
+      {
+        "offset": 0,
+        "symbol": "_dest",
+        "index": 5,
+        "address": 4202560,
+        "kind": 6,
+        "addend": 0
+      }
+    ]
+  },
+  {
+    "name": "string-True-True",
+    "symbol": "_fn",
+    "target_address": 4198400,
+    "target_size": 5,
+    "addresses": {
+      "_dest": 4202528
+    },
+    "body": [
+      64,
+      32,
+      64,
+      0,
+      195
+    ],
+    "resolutions": [
+      {
+        "offset": 0,
+        "symbol": "_dest",
+        "index": 5,
+        "address": 4202560,
+        "kind": 6,
+        "addend": 0
+      }
+    ]
+  },
+  {
+    "name": "ambiguous-block-no-original",
+    "symbol": "_fn",
+    "target_address": 4198400,
+    "target_size": null,
+    "addresses": {},
+    "error": "unbound literal: _dest (2 retail blocks, 0 strings)"
+  },
+  {
+    "name": "unique-block",
+    "symbol": "_fn",
+    "target_address": 4198400,
+    "target_size": 5,
+    "addresses": {},
+    "body": [
+      32,
+      32,
+      64,
+      0,
+      195
+    ],
+    "resolutions": [
+      {
+        "offset": 0,
+        "symbol": "_dest",
+        "index": 5,
+        "address": 4202528,
+        "kind": 6,
+        "addend": 0
+      }
+    ]
+  },
+  {
+    "name": "numeric-bound-static",
+    "symbol": "_fn",
+    "target_address": 4198400,
+    "target_size": 5,
+    "addresses": {
+      "_dest": 4202592
+    },
+    "body": [
+      96,
+      32,
+      64,
+      0,
+      195
+    ],
+    "resolutions": [
+      {
+        "offset": 0,
+        "symbol": "_dest",
+        "index": 5,
+        "address": 4202592,
+        "kind": 6,
+        "addend": 0
+      }
+    ]
+  },
+  {
+    "name": "mismatched-static-binding",
+    "symbol": "_fn",
+    "target_address": 4198400,
+    "target_size": 5,
+    "addresses": {
+      "_dest": 4202592
+    },
+    "body": [
+      32,
+      32,
+      64,
+      0,
+      195
+    ],
+    "resolutions": [
+      {
+        "offset": 0,
+        "symbol": "_dest",
+        "index": 5,
+        "address": 4202528,
+        "kind": 6,
+        "addend": 0
+      }
+    ]
+  },
+  {
+    "name": "pool-with-addend",
+    "symbol": "_fn",
+    "target_address": 4198400,
+    "target_size": 5,
+    "addresses": {},
+    "body": [
+      64,
+      32,
+      64,
+      0,
+      195
+    ],
+    "resolutions": [
+      {
+        "offset": 0,
+        "symbol": "_dest",
+        "index": 5,
+        "address": 4202544,
+        "kind": 6,
+        "addend": 16
+      }
+    ]
+  },
+  {
+    "name": "trimmed-jump-table",
+    "symbol": "_fn",
+    "target_address": 4198400,
+    "target_size": 5,
+    "addresses": {},
+    "body": [
+      32,
+      32,
+      64,
+      0,
+      195
+    ],
+    "resolutions": [
+      {
+        "offset": 0,
+        "symbol": "_dest",
+        "index": 5,
+        "address": 4202528,
+        "kind": 6,
+        "addend": 0
+      }
+    ]
+  },
+  {
+    "name": "image-relative-table",
+    "symbol": "_fn",
+    "target_address": 4198400,
+    "target_size": 5,
+    "addresses": {},
+    "body": [
+      32,
+      32,
+      64,
+      0,
+      195
+    ],
+    "resolutions": [
+      {
+        "offset": 0,
+        "symbol": "_dest",
+        "index": 5,
+        "address": 4202528,
+        "kind": 6,
+        "addend": 0
+      }
+    ]
+  },
+  {
+    "name": "absolute-table",
+    "symbol": "_fn",
+    "target_address": 4198400,
+    "target_size": 5,
+    "addresses": {},
+    "body": [
+      32,
+      32,
+      64,
+      0,
+      195
+    ],
+    "resolutions": [
+      {
+        "offset": 0,
+        "symbol": "_dest",
+        "index": 5,
+        "address": 4202528,
+        "kind": 6,
+        "addend": 0
+      }
+    ]
+  },
+  {
+    "name": "bss-own-reference",
+    "symbol": "_fn",
+    "target_address": 4198400,
+    "target_size": 5,
+    "addresses": {},
+    "body": [
+      0,
+      80,
+      64,
+      0,
+      195
+    ],
+    "resolutions": [
+      {
+        "offset": 0,
+        "symbol": "_dest",
+        "index": 5,
+        "address": 4214784,
+        "kind": 6,
+        "addend": 0
+      }
+    ]
+  },
+  {
+    "name": "bss-rejected-contents",
+    "symbol": "_fn",
+    "target_address": 4198400,
+    "target_size": 5,
+    "addresses": {},
+    "error": "unbound literal: _dest (0 retail blocks, 0 strings)"
+  },
+  {
+    "name": "literal-subitem",
+    "symbol": "_fn",
+    "target_address": 4198400,
+    "target_size": 5,
+    "addresses": {},
+    "body": [
+      32,
+      32,
+      64,
+      0,
+      195
+    ],
+    "resolutions": [
+      {
+        "offset": 0,
+        "symbol": "_dest",
+        "index": 5,
+        "address": 4202520,
+        "kind": 6,
+        "addend": 8
+      }
+    ]
+  }
+]

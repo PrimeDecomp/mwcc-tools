@@ -1,0 +1,174 @@
+{
+  "functions": {
+    "pipeline__Fii": [
+      2485256160,
+      2080899750,
+      2415984676,
+      939720705,
+      2480996380,
+      2145583636,
+      2478899224,
+      2143549910,
+      2476802068,
+      1000341504,
+      2474704912,
+      2090607480,
+      947912704,
+      2157969408,
+      2147483648,
+      2426470408,
+      2415984652,
+      2422276104,
+      2480996364,
+      1207959608,
+      740098048,
+      941424641,
+      2082275860,
+      1099038728,
+      2143351672,
+      2088772116,
+      2090738196,
+      1417676799,
+      1099038736,
+      2088969080,
+      1207959553,
+      2086935416,
+      1002242049,
+      2082332672,
+      1098973128,
+      2147549220,
+      2086992404,
+      2212560924,
+      2210463768,
+      2208366612,
+      2206269456,
+      2080900006,
+      941686816,
+      1317011488
+    ]
+  },
+  "decisions": {
+    "pipeline__Fii": {
+      "nested__Fi": [
+        {
+          "inlined": 2
+        },
+        [
+          11
+        ]
+      ],
+      "consume__Fi": [
+        {
+          "kept": 8
+        },
+        []
+      ],
+      "twice<i>__Fi": [
+        {
+          "inlined": 2
+        },
+        [
+          6
+        ]
+      ]
+    }
+  },
+  "frames": {
+    "pipeline__Fii": {
+      "p": 8
+    }
+  },
+  "comparison": [
+    {
+      "link": "added_by_header_change__Fi",
+      "function": "added_by_header_change",
+      "size": [
+        null,
+        8
+      ],
+      "inlining": [],
+      "frame": [],
+      "frame_size": [
+        null,
+        0
+      ]
+    },
+    {
+      "link": "pipeline__Fii",
+      "function": "pipeline",
+      "size": [
+        176,
+        252
+      ],
+      "inlining": [],
+      "frame": [
+        {
+          "name": "scratch",
+          "before": null,
+          "after": 16
+        }
+      ],
+      "frame_size": [
+        32,
+        64
+      ]
+    }
+  ],
+  "report": [
+    "== src/unit.cpp (includes include/header.hpp): 2 function(s) changed",
+    "   added_by_header_change (only after)",
+    "      frame None -> 0 bytes",
+    "   pipeline (176 -> 252 bytes)",
+    "      frame 32 -> 64 bytes",
+    "      slot scratch: - -> r1+0x10"
+  ],
+  "asm": ".fn \"pipeline__Fii\", global\n/* 00000000 94 21 FE 00 */ stwu r1, -512(r1)\n/* 00000000 BF C1 01 E0 */ stmw r30, 480(r1)\n/* 00000000 94 21 FF E0 */ stwu r1, -32(r1)\n/* 00000000 7C 08 02 A6 */ .long 0x7c0802a6\n/* 00000000 90 01 00 24 */ stw r0, 36(r1)\n/* 00000000 38 03 00 01 */ addi r0, r3, 1\n/* 00000000 93 E1 00 1C */ stw r31, 28(r1)\n/* 00000000 7F E3 02 14 */ .long 0x7fe30214\n/* 00000000 93 C1 00 18 */ stw r30, 24(r1)\n/* 00000000 7F C3 F9 D6 */ .long 0x7fc3f9d6\n/* 00000000 93 A1 00 14 */ stw r29, 20(r1)\n/* 00000000 3B A0 00 00 */ addi r29, r0, 0\n/* 00000000 93 81 00 10 */ stw r28, 16(r1)\n/* 00000000 7C 9C 23 78 */ .long 0x7c9c2378\n/* 00000000 38 80 00 00 */ addi r4, r0, 0\n/* 00000000 80 A0 00 00 */ lwz r5, 0(r0)\n/* 00000000 80 00 00 00 */ lwz r0, 0(r0)\n/* 00000000 90 A1 00 08 */ stw r5, 8(r1)\n/* 00000000 90 01 00 0C */ stw r0, 12(r1)\n/* 00000000 90 61 00 08 */ stw r3, 8(r1)\n/* 00000000 93 E1 00 0C */ stw r31, 12(r1)\n/* 00000000 48 00 00 38 */ .long 0x48000038\n/* 00000000 2C 1D 00 00 */ .long 0x2c1d0000\n/* 00000000 38 1D 00 01 */ addi r0, r29, 1\n/* 00000000 7C 1D 02 14 */ .long 0x7c1d0214\n/* 00000000 41 82 00 08 */ .long 0x41820008\n/* 00000000 7F C0 F3 78 */ .long 0x7fc0f378\n/* 00000000 7C 80 22 14 */ .long 0x7c802214\n/* 00000000 7C 9E 22 14 */ .long 0x7c9e2214\n/* 00000000 54 80 07 FF */ .long 0x548007ff\n/* 00000000 41 82 00 10 */ .long 0x41820010\n/* 00000000 7C 83 23 78 */ .long 0x7c832378\n/* 00000000 48 00 00 01 */ .long 0x48000001\n/* 00000000 7C 64 1B 78 */ .long 0x7c641b78\n/* 00000000 3B BD 00 01 */ addi r29, r29, 1\n/* 00000000 7C 1D E0 00 */ .long 0x7c1de000\n/* 00000000 41 80 FF C8 */ .long 0x4180ffc8\n/* 00000000 80 01 00 24 */ lwz r0, 36(r1)\n/* 00000000 7C 64 FA 14 */ .long 0x7c64fa14\n/* 00000000 83 E1 00 1C */ lwz r31, 28(r1)\n/* 00000000 83 C1 00 18 */ lwz r30, 24(r1)\n/* 00000000 83 A1 00 14 */ lwz r29, 20(r1)\n/* 00000000 83 81 00 10 */ lwz r28, 16(r1)\n/* 00000000 7C 08 03 A6 */ .long 0x7c0803a6\n/* 00000000 38 21 00 20 */ addi r1, r1, 32\n/* 00000000 4E 80 00 20 */ .long 0x4e800020\n/* 00000000 90 61 01 40 */ stw r3, 320(r1)\n/* 00000000 90 81 01 44 */ stw r4, 324(r1)\n/* 00000000 90 A1 01 48 */ stw r5, 328(r1)\n/* 00000000 90 61 01 4C */ stw r3, 332(r1)\n/* 00000000 90 81 01 50 */ stw r4, 336(r1)\n/* 00000000 90 A1 01 54 */ stw r5, 340(r1)\n/* 00000000 90 61 01 58 */ stw r3, 344(r1)\n/* 00000000 90 81 01 5C */ stw r4, 348(r1)\n/* 00000000 90 A1 01 60 */ stw r5, 352(r1)\n/* 00000000 80 C1 01 40 */ lwz r6, 320(r1)\n/* 00000000 38 E1 01 4C */ addi r7, r1, 332\n.endfn \"pipeline__Fii\"",
+  "with_target": [
+    {
+      "link": "added_by_header_change__Fi",
+      "function": "added_by_header_change",
+      "size": [
+        null,
+        8
+      ],
+      "inlining": [],
+      "frame": [],
+      "frame_size": [
+        null,
+        0
+      ]
+    },
+    {
+      "link": "pipeline__Fii",
+      "function": "pipeline",
+      "size": [
+        176,
+        252
+      ],
+      "similarity": [
+        0.8712871287128713,
+        0.5833333333333334
+      ],
+      "inlining": [],
+      "frame": [
+        {
+          "name": "scratch",
+          "before": null,
+          "after": 16
+        }
+      ],
+      "frame_size": [
+        32,
+        64
+      ]
+    }
+  ],
+  "target_report": [
+    "== src/unit.cpp (includes include/header.hpp): 2 function(s) changed",
+    "   added_by_header_change (only after)",
+    "      frame None -> 0 bytes",
+    "   pipeline (176 -> 252 bytes): similarity to the target 87.13% -> 58.33% (WORSE)",
+    "      frame 32 -> 64 bytes",
+    "      slot scratch: - -> r1+0x10"
+  ]
+}

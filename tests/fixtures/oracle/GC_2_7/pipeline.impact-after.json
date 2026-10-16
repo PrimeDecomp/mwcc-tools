@@ -1,0 +1,3394 @@
+{
+  "schema_version": 6,
+  "oracle": "build\\GC_2_7\\oracle\\mwcceppc.exe",
+  "version": "GC_2_7",
+  "source": "sources/pipeline.cpp",
+  "identical": null,
+  "differences": [],
+  "functions": [
+    {
+      "function": "pipeline",
+      "link": "pipeline__Fii",
+      "blocks": 11,
+      "instructions": 53,
+      "classes": {
+        "GPR": {
+          "rounds": [
+            {
+              "k": 29,
+              "mask": 8185,
+              "ok": true,
+              "nodes": 29,
+              "spilled": []
+            }
+          ],
+          "vregs": [
+            {
+              "vreg": 32,
+              "class": "GPR",
+              "phys": 0,
+              "defs": 0,
+              "uses": 0,
+              "live_blocks": 0,
+              "across_call": 0,
+              "first_call_block": null,
+              "degree": 0,
+              "neighbors": [],
+              "graph_flags": 0,
+              "in_pcode": false,
+              "state": "colored",
+              "order": 26,
+              "select": {
+                "how": "lowest free",
+                "free": 4026540025,
+                "predicted": 0,
+                "agrees": true,
+                "taken": {},
+                "mask": 4026540025,
+                "color": 0,
+                "flags": 2
+              },
+              "pushed": {
+                "why": "degree",
+                "degree": 0,
+                "k": 29,
+                "pass": 1
+              }
+            },
+            {
+              "vreg": 33,
+              "class": "GPR",
+              "phys": 28,
+              "defs": 1,
+              "uses": 1,
+              "live_blocks": 8,
+              "across_call": 1,
+              "first_call_block": 6,
+              "def": {
+                "block": 1,
+                "line": null,
+                "instruction": "mr %r33, r4, -"
+              },
+              "degree": 30,
+              "neighbors": [
+                {
+                  "vreg": 0,
+                  "phys": 0
+                },
+                {
+                  "vreg": 1,
+                  "phys": 1
+                },
+                {
+                  "vreg": 3,
+                  "phys": 3
+                },
+                {
+                  "vreg": 4,
+                  "phys": 4
+                },
+                {
+                  "vreg": 5,
+                  "phys": 5
+                },
+                {
+                  "vreg": 6,
+                  "phys": 6
+                },
+                {
+                  "vreg": 7,
+                  "phys": 7
+                },
+                {
+                  "vreg": 8,
+                  "phys": 8
+                },
+                {
+                  "vreg": 9,
+                  "phys": 9
+                },
+                {
+                  "vreg": 10,
+                  "phys": 10
+                },
+                {
+                  "vreg": 11,
+                  "phys": 11
+                },
+                {
+                  "vreg": 12,
+                  "phys": 12
+                },
+                {
+                  "vreg": 34,
+                  "phys": 29
+                },
+                {
+                  "vreg": 35,
+                  "phys": 3
+                },
+                {
+                  "vreg": 38,
+                  "phys": 30
+                },
+                {
+                  "vreg": 42,
+                  "phys": 31
+                },
+                {
+                  "vreg": 44,
+                  "phys": 8
+                },
+                {
+                  "vreg": 46,
+                  "phys": 7
+                },
+                {
+                  "vreg": 47,
+                  "phys": 6
+                },
+                {
+                  "vreg": 48,
+                  "phys": 4
+                },
+                {
+                  "vreg": 49,
+                  "phys": 6
+                },
+                {
+                  "vreg": 50,
+                  "phys": 4
+                },
+                {
+                  "vreg": 51,
+                  "phys": 6
+                },
+                {
+                  "vreg": 52,
+                  "phys": 4
+                },
+                {
+                  "vreg": 53,
+                  "phys": 4
+                },
+                {
+                  "vreg": 55,
+                  "phys": 0
+                },
+                {
+                  "vreg": 56,
+                  "phys": 5
+                },
+                {
+                  "vreg": 58,
+                  "phys": 0
+                },
+                {
+                  "vreg": 59,
+                  "phys": 0
+                },
+                {
+                  "vreg": 60,
+                  "phys": 3
+                }
+              ],
+              "graph_flags": 0,
+              "state": "colored",
+              "order": 3,
+              "select": {
+                "how": "claimed",
+                "free": 0,
+                "predicted": 28,
+                "agrees": true,
+                "taken": {
+                  "0": [
+                    0
+                  ],
+                  "1": [
+                    1
+                  ],
+                  "3": [
+                    3,
+                    35,
+                    60
+                  ],
+                  "4": [
+                    4
+                  ],
+                  "5": [
+                    5
+                  ],
+                  "6": [
+                    6
+                  ],
+                  "7": [
+                    7
+                  ],
+                  "8": [
+                    8
+                  ],
+                  "9": [
+                    9
+                  ],
+                  "10": [
+                    10
+                  ],
+                  "11": [
+                    11
+                  ],
+                  "12": [
+                    12
+                  ],
+                  "29": [
+                    34
+                  ],
+                  "30": [
+                    38
+                  ],
+                  "31": [
+                    42
+                  ]
+                },
+                "mask": 3758104569,
+                "color": 28,
+                "flags": 2
+              },
+              "pushed": {
+                "why": "degree",
+                "degree": 17,
+                "k": 29,
+                "pass": 2,
+                "unlocked_by": 46
+              }
+            },
+            {
+              "vreg": 34,
+              "class": "GPR",
+              "phys": 29,
+              "defs": 1,
+              "uses": 5,
+              "live_blocks": 8,
+              "across_call": 1,
+              "first_call_block": 6,
+              "def": {
+                "block": 1,
+                "line": 10,
+                "instruction": "li %r34, #0"
+              },
+              "degree": 29,
+              "neighbors": [
+                {
+                  "vreg": 0,
+                  "phys": 0
+                },
+                {
+                  "vreg": 1,
+                  "phys": 1
+                },
+                {
+                  "vreg": 3,
+                  "phys": 3
+                },
+                {
+                  "vreg": 4,
+                  "phys": 4
+                },
+                {
+                  "vreg": 5,
+                  "phys": 5
+                },
+                {
+                  "vreg": 6,
+                  "phys": 6
+                },
+                {
+                  "vreg": 7,
+                  "phys": 7
+                },
+                {
+                  "vreg": 8,
+                  "phys": 8
+                },
+                {
+                  "vreg": 9,
+                  "phys": 9
+                },
+                {
+                  "vreg": 10,
+                  "phys": 10
+                },
+                {
+                  "vreg": 11,
+                  "phys": 11
+                },
+                {
+                  "vreg": 12,
+                  "phys": 12
+                },
+                {
+                  "vreg": 33,
+                  "phys": 28
+                },
+                {
+                  "vreg": 35,
+                  "phys": 3
+                },
+                {
+                  "vreg": 38,
+                  "phys": 30
+                },
+                {
+                  "vreg": 42,
+                  "phys": 31
+                },
+                {
+                  "vreg": 44,
+                  "phys": 8
+                },
+                {
+                  "vreg": 47,
+                  "phys": 6
+                },
+                {
+                  "vreg": 48,
+                  "phys": 4
+                },
+                {
+                  "vreg": 49,
+                  "phys": 6
+                },
+                {
+                  "vreg": 50,
+                  "phys": 4
+                },
+                {
+                  "vreg": 51,
+                  "phys": 6
+                },
+                {
+                  "vreg": 52,
+                  "phys": 4
+                },
+                {
+                  "vreg": 53,
+                  "phys": 4
+                },
+                {
+                  "vreg": 55,
+                  "phys": 0
+                },
+                {
+                  "vreg": 56,
+                  "phys": 5
+                },
+                {
+                  "vreg": 58,
+                  "phys": 0
+                },
+                {
+                  "vreg": 59,
+                  "phys": 0
+                },
+                {
+                  "vreg": 60,
+                  "phys": 3
+                }
+              ],
+              "graph_flags": 64,
+              "state": "colored",
+              "order": 2,
+              "select": {
+                "how": "claimed",
+                "free": 0,
+                "predicted": 29,
+                "agrees": true,
+                "taken": {
+                  "0": [
+                    0
+                  ],
+                  "1": [
+                    1
+                  ],
+                  "3": [
+                    3,
+                    35,
+                    60
+                  ],
+                  "4": [
+                    4
+                  ],
+                  "5": [
+                    5
+                  ],
+                  "6": [
+                    6
+                  ],
+                  "7": [
+                    7
+                  ],
+                  "8": [
+                    8
+                  ],
+                  "9": [
+                    9
+                  ],
+                  "10": [
+                    10
+                  ],
+                  "11": [
+                    11
+                  ],
+                  "12": [
+                    12
+                  ],
+                  "30": [
+                    38
+                  ],
+                  "31": [
+                    42
+                  ]
+                },
+                "mask": 3221233657,
+                "color": 29,
+                "flags": 66
+              },
+              "pushed": {
+                "why": "degree",
+                "degree": 16,
+                "k": 29,
+                "pass": 2,
+                "unlocked_by": 44
+              }
+            },
+            {
+              "vreg": 35,
+              "class": "GPR",
+              "phys": 3,
+              "defs": 2,
+              "uses": 5,
+              "live_blocks": 8,
+              "across_call": 0,
+              "first_call_block": null,
+              "def": {
+                "block": 1,
+                "line": 9,
+                "instruction": "lwzx %r35, %r56, %r55"
+              },
+              "degree": 7,
+              "neighbors": [
+                {
+                  "vreg": 1,
+                  "phys": 1
+                },
+                {
+                  "vreg": 33,
+                  "phys": 28
+                },
+                {
+                  "vreg": 34,
+                  "phys": 29
+                },
+                {
+                  "vreg": 38,
+                  "phys": 30
+                },
+                {
+                  "vreg": 42,
+                  "phys": 31
+                },
+                {
+                  "vreg": 58,
+                  "phys": 0
+                },
+                {
+                  "vreg": 59,
+                  "phys": 0
+                }
+              ],
+              "graph_flags": 4,
+              "state": "coalesced",
+              "coalesced_into": 3
+            },
+            {
+              "vreg": 36,
+              "class": "GPR",
+              "phys": 0,
+              "defs": 0,
+              "uses": 0,
+              "live_blocks": 0,
+              "across_call": 0,
+              "first_call_block": null,
+              "degree": 0,
+              "neighbors": [],
+              "graph_flags": 0,
+              "in_pcode": false,
+              "state": "colored",
+              "order": 25,
+              "select": {
+                "how": "lowest free",
+                "free": 4026540025,
+                "predicted": 0,
+                "agrees": true,
+                "taken": {},
+                "mask": 4026540025,
+                "color": 0,
+                "flags": 2
+              },
+              "pushed": {
+                "why": "degree",
+                "degree": 0,
+                "k": 29,
+                "pass": 1
+              }
+            },
+            {
+              "vreg": 37,
+              "class": "GPR",
+              "phys": 0,
+              "defs": 0,
+              "uses": 0,
+              "live_blocks": 0,
+              "across_call": 0,
+              "first_call_block": null,
+              "degree": 0,
+              "neighbors": [],
+              "graph_flags": 0,
+              "in_pcode": false,
+              "state": "colored",
+              "order": 24,
+              "select": {
+                "how": "lowest free",
+                "free": 4026540025,
+                "predicted": 0,
+                "agrees": true,
+                "taken": {},
+                "mask": 4026540025,
+                "color": 0,
+                "flags": 2
+              },
+              "pushed": {
+                "why": "degree",
+                "degree": 0,
+                "k": 29,
+                "pass": 1
+              }
+            },
+            {
+              "vreg": 38,
+              "class": "GPR",
+              "phys": 30,
+              "defs": 1,
+              "uses": 2,
+              "live_blocks": 8,
+              "across_call": 1,
+              "first_call_block": 6,
+              "def": {
+                "block": 1,
+                "line": null,
+                "instruction": "mullw %r38, r3, %r42"
+              },
+              "degree": 33,
+              "neighbors": [
+                {
+                  "vreg": 0,
+                  "phys": 0
+                },
+                {
+                  "vreg": 1,
+                  "phys": 1
+                },
+                {
+                  "vreg": 3,
+                  "phys": 3
+                },
+                {
+                  "vreg": 4,
+                  "phys": 4
+                },
+                {
+                  "vreg": 5,
+                  "phys": 5
+                },
+                {
+                  "vreg": 6,
+                  "phys": 6
+                },
+                {
+                  "vreg": 7,
+                  "phys": 7
+                },
+                {
+                  "vreg": 8,
+                  "phys": 8
+                },
+                {
+                  "vreg": 9,
+                  "phys": 9
+                },
+                {
+                  "vreg": 10,
+                  "phys": 10
+                },
+                {
+                  "vreg": 11,
+                  "phys": 11
+                },
+                {
+                  "vreg": 12,
+                  "phys": 12
+                },
+                {
+                  "vreg": 33,
+                  "phys": 28
+                },
+                {
+                  "vreg": 34,
+                  "phys": 29
+                },
+                {
+                  "vreg": 35,
+                  "phys": 3
+                },
+                {
+                  "vreg": 39,
+                  "phys": 5
+                },
+                {
+                  "vreg": 40,
+                  "phys": 9
+                },
+                {
+                  "vreg": 42,
+                  "phys": 31
+                },
+                {
+                  "vreg": 44,
+                  "phys": 8
+                },
+                {
+                  "vreg": 45,
+                  "phys": 6
+                },
+                {
+                  "vreg": 46,
+                  "phys": 7
+                },
+                {
+                  "vreg": 47,
+                  "phys": 6
+                },
+                {
+                  "vreg": 48,
+                  "phys": 4
+                },
+                {
+                  "vreg": 49,
+                  "phys": 6
+                },
+                {
+                  "vreg": 50,
+                  "phys": 4
+                },
+                {
+                  "vreg": 51,
+                  "phys": 6
+                },
+                {
+                  "vreg": 52,
+                  "phys": 4
+                },
+                {
+                  "vreg": 53,
+                  "phys": 4
+                },
+                {
+                  "vreg": 55,
+                  "phys": 0
+                },
+                {
+                  "vreg": 56,
+                  "phys": 5
+                },
+                {
+                  "vreg": 58,
+                  "phys": 0
+                },
+                {
+                  "vreg": 59,
+                  "phys": 0
+                },
+                {
+                  "vreg": 60,
+                  "phys": 3
+                }
+              ],
+              "graph_flags": 0,
+              "state": "colored",
+              "order": 1,
+              "select": {
+                "how": "claimed",
+                "free": 0,
+                "predicted": 30,
+                "agrees": true,
+                "taken": {
+                  "0": [
+                    0
+                  ],
+                  "1": [
+                    1
+                  ],
+                  "3": [
+                    3,
+                    35,
+                    60
+                  ],
+                  "4": [
+                    4
+                  ],
+                  "5": [
+                    5
+                  ],
+                  "6": [
+                    6
+                  ],
+                  "7": [
+                    7
+                  ],
+                  "8": [
+                    8
+                  ],
+                  "9": [
+                    9
+                  ],
+                  "10": [
+                    10
+                  ],
+                  "11": [
+                    11
+                  ],
+                  "12": [
+                    12
+                  ],
+                  "31": [
+                    42
+                  ]
+                },
+                "mask": 2147491833,
+                "color": 30,
+                "flags": 2
+              },
+              "pushed": {
+                "why": "degree",
+                "degree": 15,
+                "k": 29,
+                "pass": 2,
+                "unlocked_by": 46
+              }
+            },
+            {
+              "vreg": 39,
+              "class": "GPR",
+              "phys": 5,
+              "defs": 1,
+              "uses": 1,
+              "live_blocks": 1,
+              "across_call": 0,
+              "first_call_block": null,
+              "def": {
+                "block": 1,
+                "line": 8,
+                "instruction": "lwz %r39, r0, sym"
+              },
+              "degree": 9,
+              "neighbors": [
+                {
+                  "vreg": 1,
+                  "phys": 1
+                },
+                {
+                  "vreg": 3,
+                  "phys": 3
+                },
+                {
+                  "vreg": 4,
+                  "phys": 4
+                },
+                {
+                  "vreg": 38,
+                  "phys": 30
+                },
+                {
+                  "vreg": 40,
+                  "phys": 9
+                },
+                {
+                  "vreg": 41,
+                  "phys": 0
+                },
+                {
+                  "vreg": 42,
+                  "phys": 31
+                },
+                {
+                  "vreg": 44,
+                  "phys": 8
+                },
+                {
+                  "vreg": 45,
+                  "phys": 6
+                }
+              ],
+              "graph_flags": 0,
+              "state": "colored",
+              "order": 23,
+              "select": {
+                "how": "lowest free",
+                "free": 805313696,
+                "predicted": 5,
+                "agrees": true,
+                "taken": {
+                  "1": [
+                    1
+                  ],
+                  "3": [
+                    3
+                  ],
+                  "4": [
+                    4
+                  ],
+                  "30": [
+                    38
+                  ],
+                  "9": [
+                    40
+                  ],
+                  "0": [
+                    41
+                  ],
+                  "31": [
+                    42
+                  ],
+                  "8": [
+                    44
+                  ],
+                  "6": [
+                    45
+                  ]
+                },
+                "mask": 4026540025,
+                "color": 5,
+                "flags": 2
+              },
+              "pushed": {
+                "why": "degree",
+                "degree": 9,
+                "k": 29,
+                "pass": 1
+              }
+            },
+            {
+              "vreg": 40,
+              "class": "GPR",
+              "phys": 9,
+              "defs": 1,
+              "uses": 1,
+              "live_blocks": 1,
+              "across_call": 0,
+              "first_call_block": null,
+              "def": {
+                "block": 1,
+                "line": 8,
+                "instruction": "lwz %r40, r0, sym"
+              },
+              "degree": 11,
+              "neighbors": [
+                {
+                  "vreg": 1,
+                  "phys": 1
+                },
+                {
+                  "vreg": 3,
+                  "phys": 3
+                },
+                {
+                  "vreg": 4,
+                  "phys": 4
+                },
+                {
+                  "vreg": 38,
+                  "phys": 30
+                },
+                {
+                  "vreg": 39,
+                  "phys": 5
+                },
+                {
+                  "vreg": 42,
+                  "phys": 31
+                },
+                {
+                  "vreg": 44,
+                  "phys": 8
+                },
+                {
+                  "vreg": 45,
+                  "phys": 6
+                },
+                {
+                  "vreg": 46,
+                  "phys": 7
+                },
+                {
+                  "vreg": 55,
+                  "phys": 0
+                },
+                {
+                  "vreg": 56,
+                  "phys": 5
+                }
+              ],
+              "graph_flags": 0,
+              "state": "colored",
+              "order": 22,
+              "select": {
+                "how": "lowest free",
+                "free": 805314048,
+                "predicted": 9,
+                "agrees": true,
+                "taken": {
+                  "1": [
+                    1
+                  ],
+                  "3": [
+                    3
+                  ],
+                  "4": [
+                    4
+                  ],
+                  "30": [
+                    38
+                  ],
+                  "31": [
+                    42
+                  ],
+                  "8": [
+                    44
+                  ],
+                  "6": [
+                    45
+                  ],
+                  "7": [
+                    46
+                  ],
+                  "0": [
+                    55
+                  ],
+                  "5": [
+                    56
+                  ]
+                },
+                "mask": 4026540025,
+                "color": 9,
+                "flags": 2
+              },
+              "pushed": {
+                "why": "degree",
+                "degree": 10,
+                "k": 29,
+                "pass": 1
+              }
+            },
+            {
+              "vreg": 41,
+              "class": "GPR",
+              "phys": 0,
+              "defs": 1,
+              "uses": 1,
+              "live_blocks": 1,
+              "across_call": 0,
+              "first_call_block": null,
+              "def": {
+                "block": 1,
+                "line": 8,
+                "instruction": "addi %r41, r3, #17, -"
+              },
+              "degree": 6,
+              "neighbors": [
+                {
+                  "vreg": 1,
+                  "phys": 1
+                },
+                {
+                  "vreg": 3,
+                  "phys": 3
+                },
+                {
+                  "vreg": 4,
+                  "phys": 4
+                },
+                {
+                  "vreg": 39,
+                  "phys": 5
+                },
+                {
+                  "vreg": 43,
+                  "phys": 5
+                },
+                {
+                  "vreg": 44,
+                  "phys": 8
+                }
+              ],
+              "graph_flags": 0,
+              "state": "colored",
+              "order": 21,
+              "select": {
+                "how": "lowest free",
+                "free": 4026539713,
+                "predicted": 0,
+                "agrees": true,
+                "taken": {
+                  "1": [
+                    1
+                  ],
+                  "3": [
+                    3
+                  ],
+                  "4": [
+                    4
+                  ],
+                  "5": [
+                    43
+                  ],
+                  "8": [
+                    44
+                  ]
+                },
+                "mask": 4026540025,
+                "color": 0,
+                "flags": 2
+              },
+              "pushed": {
+                "why": "degree",
+                "degree": 5,
+                "k": 29,
+                "pass": 1
+              }
+            },
+            {
+              "vreg": 42,
+              "class": "GPR",
+              "phys": 31,
+              "defs": 1,
+              "uses": 3,
+              "live_blocks": 9,
+              "across_call": 1,
+              "first_call_block": 6,
+              "def": {
+                "block": 1,
+                "line": 8,
+                "instruction": "add %r42, r3, %r41"
+              },
+              "degree": 33,
+              "neighbors": [
+                {
+                  "vreg": 0,
+                  "phys": 0
+                },
+                {
+                  "vreg": 1,
+                  "phys": 1
+                },
+                {
+                  "vreg": 3,
+                  "phys": 3
+                },
+                {
+                  "vreg": 4,
+                  "phys": 4
+                },
+                {
+                  "vreg": 5,
+                  "phys": 5
+                },
+                {
+                  "vreg": 6,
+                  "phys": 6
+                },
+                {
+                  "vreg": 7,
+                  "phys": 7
+                },
+                {
+                  "vreg": 8,
+                  "phys": 8
+                },
+                {
+                  "vreg": 9,
+                  "phys": 9
+                },
+                {
+                  "vreg": 10,
+                  "phys": 10
+                },
+                {
+                  "vreg": 11,
+                  "phys": 11
+                },
+                {
+                  "vreg": 12,
+                  "phys": 12
+                },
+                {
+                  "vreg": 33,
+                  "phys": 28
+                },
+                {
+                  "vreg": 34,
+                  "phys": 29
+                },
+                {
+                  "vreg": 35,
+                  "phys": 3
+                },
+                {
+                  "vreg": 38,
+                  "phys": 30
+                },
+                {
+                  "vreg": 39,
+                  "phys": 5
+                },
+                {
+                  "vreg": 40,
+                  "phys": 9
+                },
+                {
+                  "vreg": 44,
+                  "phys": 8
+                },
+                {
+                  "vreg": 45,
+                  "phys": 6
+                },
+                {
+                  "vreg": 46,
+                  "phys": 7
+                },
+                {
+                  "vreg": 47,
+                  "phys": 6
+                },
+                {
+                  "vreg": 48,
+                  "phys": 4
+                },
+                {
+                  "vreg": 49,
+                  "phys": 6
+                },
+                {
+                  "vreg": 50,
+                  "phys": 4
+                },
+                {
+                  "vreg": 51,
+                  "phys": 6
+                },
+                {
+                  "vreg": 52,
+                  "phys": 4
+                },
+                {
+                  "vreg": 53,
+                  "phys": 4
+                },
+                {
+                  "vreg": 55,
+                  "phys": 0
+                },
+                {
+                  "vreg": 56,
+                  "phys": 5
+                },
+                {
+                  "vreg": 58,
+                  "phys": 0
+                },
+                {
+                  "vreg": 59,
+                  "phys": 0
+                },
+                {
+                  "vreg": 60,
+                  "phys": 3
+                }
+              ],
+              "graph_flags": 0,
+              "state": "colored",
+              "order": 0,
+              "select": {
+                "how": "claimed",
+                "free": 0,
+                "predicted": 31,
+                "agrees": true,
+                "taken": {
+                  "0": [
+                    0
+                  ],
+                  "1": [
+                    1
+                  ],
+                  "3": [
+                    3,
+                    35,
+                    60
+                  ],
+                  "4": [
+                    4
+                  ],
+                  "5": [
+                    5
+                  ],
+                  "6": [
+                    6
+                  ],
+                  "7": [
+                    7
+                  ],
+                  "8": [
+                    8
+                  ],
+                  "9": [
+                    9
+                  ],
+                  "10": [
+                    10
+                  ],
+                  "11": [
+                    11
+                  ],
+                  "12": [
+                    12
+                  ]
+                },
+                "mask": 8185,
+                "color": 31,
+                "flags": 2
+              },
+              "pushed": {
+                "why": "degree",
+                "degree": 14,
+                "k": 29,
+                "pass": 2,
+                "unlocked_by": 46
+              }
+            },
+            {
+              "vreg": 43,
+              "class": "GPR",
+              "phys": 5,
+              "defs": 1,
+              "uses": 1,
+              "live_blocks": 1,
+              "across_call": 0,
+              "first_call_block": null,
+              "def": {
+                "block": 1,
+                "line": 9,
+                "instruction": "lis %r43, sym"
+              },
+              "degree": 5,
+              "neighbors": [
+                {
+                  "vreg": 0,
+                  "phys": 0
+                },
+                {
+                  "vreg": 1,
+                  "phys": 1
+                },
+                {
+                  "vreg": 3,
+                  "phys": 3
+                },
+                {
+                  "vreg": 4,
+                  "phys": 4
+                },
+                {
+                  "vreg": 41,
+                  "phys": 0
+                }
+              ],
+              "graph_flags": 0,
+              "state": "colored",
+              "order": 20,
+              "select": {
+                "how": "lowest free",
+                "free": 4026540000,
+                "predicted": 5,
+                "agrees": true,
+                "taken": {
+                  "0": [
+                    0
+                  ],
+                  "1": [
+                    1
+                  ],
+                  "3": [
+                    3
+                  ],
+                  "4": [
+                    4
+                  ]
+                },
+                "mask": 4026540025,
+                "color": 5,
+                "flags": 2
+              },
+              "pushed": {
+                "why": "degree",
+                "degree": 4,
+                "k": 29,
+                "pass": 1
+              }
+            },
+            {
+              "vreg": 44,
+              "class": "GPR",
+              "phys": 8,
+              "defs": 1,
+              "uses": 8,
+              "live_blocks": 1,
+              "across_call": 0,
+              "first_call_block": null,
+              "def": {
+                "block": 1,
+                "line": 9,
+                "instruction": "addi %r44, %r43, sym, -"
+              },
+              "degree": 20,
+              "neighbors": [
+                {
+                  "vreg": 0,
+                  "phys": 0
+                },
+                {
+                  "vreg": 1,
+                  "phys": 1
+                },
+                {
+                  "vreg": 3,
+                  "phys": 3
+                },
+                {
+                  "vreg": 4,
+                  "phys": 4
+                },
+                {
+                  "vreg": 33,
+                  "phys": 28
+                },
+                {
+                  "vreg": 34,
+                  "phys": 29
+                },
+                {
+                  "vreg": 38,
+                  "phys": 30
+                },
+                {
+                  "vreg": 39,
+                  "phys": 5
+                },
+                {
+                  "vreg": 40,
+                  "phys": 9
+                },
+                {
+                  "vreg": 41,
+                  "phys": 0
+                },
+                {
+                  "vreg": 42,
+                  "phys": 31
+                },
+                {
+                  "vreg": 45,
+                  "phys": 6
+                },
+                {
+                  "vreg": 46,
+                  "phys": 7
+                },
+                {
+                  "vreg": 47,
+                  "phys": 6
+                },
+                {
+                  "vreg": 48,
+                  "phys": 4
+                },
+                {
+                  "vreg": 49,
+                  "phys": 6
+                },
+                {
+                  "vreg": 50,
+                  "phys": 4
+                },
+                {
+                  "vreg": 51,
+                  "phys": 6
+                },
+                {
+                  "vreg": 55,
+                  "phys": 0
+                },
+                {
+                  "vreg": 56,
+                  "phys": 5
+                }
+              ],
+              "graph_flags": 0,
+              "state": "colored",
+              "order": 19,
+              "select": {
+                "how": "lowest free",
+                "free": 7936,
+                "predicted": 8,
+                "agrees": true,
+                "taken": {
+                  "0": [
+                    0,
+                    55
+                  ],
+                  "1": [
+                    1
+                  ],
+                  "3": [
+                    3
+                  ],
+                  "4": [
+                    4,
+                    48,
+                    50
+                  ],
+                  "28": [
+                    33
+                  ],
+                  "29": [
+                    34
+                  ],
+                  "30": [
+                    38
+                  ],
+                  "31": [
+                    42
+                  ],
+                  "6": [
+                    45,
+                    47,
+                    49,
+                    51
+                  ],
+                  "7": [
+                    46
+                  ],
+                  "5": [
+                    56
+                  ]
+                },
+                "mask": 4026540025,
+                "color": 8,
+                "flags": 2
+              },
+              "pushed": {
+                "why": "degree",
+                "degree": 17,
+                "k": 29,
+                "pass": 1
+              }
+            },
+            {
+              "vreg": 45,
+              "class": "GPR",
+              "phys": 6,
+              "defs": 1,
+              "uses": 1,
+              "live_blocks": 1,
+              "across_call": 0,
+              "first_call_block": null,
+              "def": {
+                "block": 1,
+                "line": 9,
+                "instruction": "lwz %r45, %r44, #0"
+              },
+              "degree": 11,
+              "neighbors": [
+                {
+                  "vreg": 1,
+                  "phys": 1
+                },
+                {
+                  "vreg": 3,
+                  "phys": 3
+                },
+                {
+                  "vreg": 4,
+                  "phys": 4
+                },
+                {
+                  "vreg": 38,
+                  "phys": 30
+                },
+                {
+                  "vreg": 39,
+                  "phys": 5
+                },
+                {
+                  "vreg": 40,
+                  "phys": 9
+                },
+                {
+                  "vreg": 42,
+                  "phys": 31
+                },
+                {
+                  "vreg": 44,
+                  "phys": 8
+                },
+                {
+                  "vreg": 46,
+                  "phys": 7
+                },
+                {
+                  "vreg": 55,
+                  "phys": 0
+                },
+                {
+                  "vreg": 56,
+                  "phys": 5
+                }
+              ],
+              "graph_flags": 0,
+              "state": "colored",
+              "order": 18,
+              "select": {
+                "how": "lowest free",
+                "free": 805314368,
+                "predicted": 6,
+                "agrees": true,
+                "taken": {
+                  "1": [
+                    1
+                  ],
+                  "3": [
+                    3
+                  ],
+                  "4": [
+                    4
+                  ],
+                  "30": [
+                    38
+                  ],
+                  "31": [
+                    42
+                  ],
+                  "7": [
+                    46
+                  ],
+                  "0": [
+                    55
+                  ],
+                  "5": [
+                    56
+                  ]
+                },
+                "mask": 4026540025,
+                "color": 6,
+                "flags": 2
+              },
+              "pushed": {
+                "why": "degree",
+                "degree": 8,
+                "k": 29,
+                "pass": 1
+              }
+            },
+            {
+              "vreg": 46,
+              "class": "GPR",
+              "phys": 7,
+              "defs": 1,
+              "uses": 1,
+              "live_blocks": 1,
+              "across_call": 0,
+              "first_call_block": null,
+              "def": {
+                "block": 1,
+                "line": 9,
+                "instruction": "lwz %r46, %r44, #4"
+              },
+              "degree": 12,
+              "neighbors": [
+                {
+                  "vreg": 1,
+                  "phys": 1
+                },
+                {
+                  "vreg": 3,
+                  "phys": 3
+                },
+                {
+                  "vreg": 4,
+                  "phys": 4
+                },
+                {
+                  "vreg": 33,
+                  "phys": 28
+                },
+                {
+                  "vreg": 38,
+                  "phys": 30
+                },
+                {
+                  "vreg": 40,
+                  "phys": 9
+                },
+                {
+                  "vreg": 42,
+                  "phys": 31
+                },
+                {
+                  "vreg": 44,
+                  "phys": 8
+                },
+                {
+                  "vreg": 45,
+                  "phys": 6
+                },
+                {
+                  "vreg": 47,
+                  "phys": 6
+                },
+                {
+                  "vreg": 55,
+                  "phys": 0
+                },
+                {
+                  "vreg": 56,
+                  "phys": 5
+                }
+              ],
+              "graph_flags": 0,
+              "state": "colored",
+              "order": 17,
+              "select": {
+                "how": "lowest free",
+                "free": 536878976,
+                "predicted": 7,
+                "agrees": true,
+                "taken": {
+                  "1": [
+                    1
+                  ],
+                  "3": [
+                    3
+                  ],
+                  "4": [
+                    4
+                  ],
+                  "28": [
+                    33
+                  ],
+                  "30": [
+                    38
+                  ],
+                  "31": [
+                    42
+                  ],
+                  "6": [
+                    47
+                  ],
+                  "0": [
+                    55
+                  ],
+                  "5": [
+                    56
+                  ]
+                },
+                "mask": 4026540025,
+                "color": 7,
+                "flags": 2
+              },
+              "pushed": {
+                "why": "degree",
+                "degree": 9,
+                "k": 29,
+                "pass": 1
+              }
+            },
+            {
+              "vreg": 47,
+              "class": "GPR",
+              "phys": 6,
+              "defs": 1,
+              "uses": 1,
+              "live_blocks": 1,
+              "across_call": 0,
+              "first_call_block": null,
+              "def": {
+                "block": 1,
+                "line": 9,
+                "instruction": "lwz %r47, %r44, #8"
+              },
+              "degree": 11,
+              "neighbors": [
+                {
+                  "vreg": 1,
+                  "phys": 1
+                },
+                {
+                  "vreg": 3,
+                  "phys": 3
+                },
+                {
+                  "vreg": 33,
+                  "phys": 28
+                },
+                {
+                  "vreg": 34,
+                  "phys": 29
+                },
+                {
+                  "vreg": 38,
+                  "phys": 30
+                },
+                {
+                  "vreg": 42,
+                  "phys": 31
+                },
+                {
+                  "vreg": 44,
+                  "phys": 8
+                },
+                {
+                  "vreg": 46,
+                  "phys": 7
+                },
+                {
+                  "vreg": 48,
+                  "phys": 4
+                },
+                {
+                  "vreg": 55,
+                  "phys": 0
+                },
+                {
+                  "vreg": 56,
+                  "phys": 5
+                }
+              ],
+              "graph_flags": 0,
+              "state": "colored",
+              "order": 16,
+              "select": {
+                "how": "lowest free",
+                "free": 8128,
+                "predicted": 6,
+                "agrees": true,
+                "taken": {
+                  "1": [
+                    1
+                  ],
+                  "3": [
+                    3
+                  ],
+                  "28": [
+                    33
+                  ],
+                  "29": [
+                    34
+                  ],
+                  "30": [
+                    38
+                  ],
+                  "31": [
+                    42
+                  ],
+                  "4": [
+                    48
+                  ],
+                  "0": [
+                    55
+                  ],
+                  "5": [
+                    56
+                  ]
+                },
+                "mask": 4026540025,
+                "color": 6,
+                "flags": 2
+              },
+              "pushed": {
+                "why": "degree",
+                "degree": 9,
+                "k": 29,
+                "pass": 1
+              }
+            },
+            {
+              "vreg": 48,
+              "class": "GPR",
+              "phys": 4,
+              "defs": 1,
+              "uses": 1,
+              "live_blocks": 1,
+              "across_call": 0,
+              "first_call_block": null,
+              "def": {
+                "block": 1,
+                "line": 9,
+                "instruction": "lwz %r48, %r44, #12"
+              },
+              "degree": 11,
+              "neighbors": [
+                {
+                  "vreg": 1,
+                  "phys": 1
+                },
+                {
+                  "vreg": 3,
+                  "phys": 3
+                },
+                {
+                  "vreg": 33,
+                  "phys": 28
+                },
+                {
+                  "vreg": 34,
+                  "phys": 29
+                },
+                {
+                  "vreg": 38,
+                  "phys": 30
+                },
+                {
+                  "vreg": 42,
+                  "phys": 31
+                },
+                {
+                  "vreg": 44,
+                  "phys": 8
+                },
+                {
+                  "vreg": 47,
+                  "phys": 6
+                },
+                {
+                  "vreg": 49,
+                  "phys": 6
+                },
+                {
+                  "vreg": 55,
+                  "phys": 0
+                },
+                {
+                  "vreg": 56,
+                  "phys": 5
+                }
+              ],
+              "graph_flags": 0,
+              "state": "colored",
+              "order": 15,
+              "select": {
+                "how": "lowest free",
+                "free": 8080,
+                "predicted": 4,
+                "agrees": true,
+                "taken": {
+                  "1": [
+                    1
+                  ],
+                  "3": [
+                    3
+                  ],
+                  "28": [
+                    33
+                  ],
+                  "29": [
+                    34
+                  ],
+                  "30": [
+                    38
+                  ],
+                  "31": [
+                    42
+                  ],
+                  "6": [
+                    49
+                  ],
+                  "0": [
+                    55
+                  ],
+                  "5": [
+                    56
+                  ]
+                },
+                "mask": 4026540025,
+                "color": 4,
+                "flags": 2
+              },
+              "pushed": {
+                "why": "degree",
+                "degree": 9,
+                "k": 29,
+                "pass": 1
+              }
+            },
+            {
+              "vreg": 49,
+              "class": "GPR",
+              "phys": 6,
+              "defs": 1,
+              "uses": 1,
+              "live_blocks": 1,
+              "across_call": 0,
+              "first_call_block": null,
+              "def": {
+                "block": 1,
+                "line": 9,
+                "instruction": "lwz %r49, %r44, #16"
+              },
+              "degree": 11,
+              "neighbors": [
+                {
+                  "vreg": 1,
+                  "phys": 1
+                },
+                {
+                  "vreg": 3,
+                  "phys": 3
+                },
+                {
+                  "vreg": 33,
+                  "phys": 28
+                },
+                {
+                  "vreg": 34,
+                  "phys": 29
+                },
+                {
+                  "vreg": 38,
+                  "phys": 30
+                },
+                {
+                  "vreg": 42,
+                  "phys": 31
+                },
+                {
+                  "vreg": 44,
+                  "phys": 8
+                },
+                {
+                  "vreg": 48,
+                  "phys": 4
+                },
+                {
+                  "vreg": 50,
+                  "phys": 4
+                },
+                {
+                  "vreg": 55,
+                  "phys": 0
+                },
+                {
+                  "vreg": 56,
+                  "phys": 5
+                }
+              ],
+              "graph_flags": 0,
+              "state": "colored",
+              "order": 14,
+              "select": {
+                "how": "lowest free",
+                "free": 8128,
+                "predicted": 6,
+                "agrees": true,
+                "taken": {
+                  "1": [
+                    1
+                  ],
+                  "3": [
+                    3
+                  ],
+                  "28": [
+                    33
+                  ],
+                  "29": [
+                    34
+                  ],
+                  "30": [
+                    38
+                  ],
+                  "31": [
+                    42
+                  ],
+                  "4": [
+                    50
+                  ],
+                  "0": [
+                    55
+                  ],
+                  "5": [
+                    56
+                  ]
+                },
+                "mask": 4026540025,
+                "color": 6,
+                "flags": 2
+              },
+              "pushed": {
+                "why": "degree",
+                "degree": 9,
+                "k": 29,
+                "pass": 1
+              }
+            },
+            {
+              "vreg": 50,
+              "class": "GPR",
+              "phys": 4,
+              "defs": 1,
+              "uses": 1,
+              "live_blocks": 1,
+              "across_call": 0,
+              "first_call_block": null,
+              "def": {
+                "block": 1,
+                "line": 9,
+                "instruction": "lwz %r50, %r44, #20"
+              },
+              "degree": 11,
+              "neighbors": [
+                {
+                  "vreg": 1,
+                  "phys": 1
+                },
+                {
+                  "vreg": 3,
+                  "phys": 3
+                },
+                {
+                  "vreg": 33,
+                  "phys": 28
+                },
+                {
+                  "vreg": 34,
+                  "phys": 29
+                },
+                {
+                  "vreg": 38,
+                  "phys": 30
+                },
+                {
+                  "vreg": 42,
+                  "phys": 31
+                },
+                {
+                  "vreg": 44,
+                  "phys": 8
+                },
+                {
+                  "vreg": 49,
+                  "phys": 6
+                },
+                {
+                  "vreg": 51,
+                  "phys": 6
+                },
+                {
+                  "vreg": 55,
+                  "phys": 0
+                },
+                {
+                  "vreg": 56,
+                  "phys": 5
+                }
+              ],
+              "graph_flags": 0,
+              "state": "colored",
+              "order": 13,
+              "select": {
+                "how": "lowest free",
+                "free": 8080,
+                "predicted": 4,
+                "agrees": true,
+                "taken": {
+                  "1": [
+                    1
+                  ],
+                  "3": [
+                    3
+                  ],
+                  "28": [
+                    33
+                  ],
+                  "29": [
+                    34
+                  ],
+                  "30": [
+                    38
+                  ],
+                  "31": [
+                    42
+                  ],
+                  "6": [
+                    51
+                  ],
+                  "0": [
+                    55
+                  ],
+                  "5": [
+                    56
+                  ]
+                },
+                "mask": 4026540025,
+                "color": 4,
+                "flags": 2
+              },
+              "pushed": {
+                "why": "degree",
+                "degree": 9,
+                "k": 29,
+                "pass": 1
+              }
+            },
+            {
+              "vreg": 51,
+              "class": "GPR",
+              "phys": 6,
+              "defs": 1,
+              "uses": 1,
+              "live_blocks": 1,
+              "across_call": 0,
+              "first_call_block": null,
+              "def": {
+                "block": 1,
+                "line": 9,
+                "instruction": "lwz %r51, %r44, #24"
+              },
+              "degree": 11,
+              "neighbors": [
+                {
+                  "vreg": 1,
+                  "phys": 1
+                },
+                {
+                  "vreg": 3,
+                  "phys": 3
+                },
+                {
+                  "vreg": 33,
+                  "phys": 28
+                },
+                {
+                  "vreg": 34,
+                  "phys": 29
+                },
+                {
+                  "vreg": 38,
+                  "phys": 30
+                },
+                {
+                  "vreg": 42,
+                  "phys": 31
+                },
+                {
+                  "vreg": 44,
+                  "phys": 8
+                },
+                {
+                  "vreg": 50,
+                  "phys": 4
+                },
+                {
+                  "vreg": 52,
+                  "phys": 4
+                },
+                {
+                  "vreg": 55,
+                  "phys": 0
+                },
+                {
+                  "vreg": 56,
+                  "phys": 5
+                }
+              ],
+              "graph_flags": 0,
+              "state": "colored",
+              "order": 12,
+              "select": {
+                "how": "lowest free",
+                "free": 8128,
+                "predicted": 6,
+                "agrees": true,
+                "taken": {
+                  "1": [
+                    1
+                  ],
+                  "3": [
+                    3
+                  ],
+                  "28": [
+                    33
+                  ],
+                  "29": [
+                    34
+                  ],
+                  "30": [
+                    38
+                  ],
+                  "31": [
+                    42
+                  ],
+                  "4": [
+                    52
+                  ],
+                  "0": [
+                    55
+                  ],
+                  "5": [
+                    56
+                  ]
+                },
+                "mask": 4026540025,
+                "color": 6,
+                "flags": 2
+              },
+              "pushed": {
+                "why": "degree",
+                "degree": 9,
+                "k": 29,
+                "pass": 1
+              }
+            },
+            {
+              "vreg": 52,
+              "class": "GPR",
+              "phys": 4,
+              "defs": 1,
+              "uses": 1,
+              "live_blocks": 1,
+              "across_call": 0,
+              "first_call_block": null,
+              "def": {
+                "block": 1,
+                "line": 9,
+                "instruction": "lwz %r52, %r44, #28"
+              },
+              "degree": 9,
+              "neighbors": [
+                {
+                  "vreg": 1,
+                  "phys": 1
+                },
+                {
+                  "vreg": 3,
+                  "phys": 3
+                },
+                {
+                  "vreg": 33,
+                  "phys": 28
+                },
+                {
+                  "vreg": 34,
+                  "phys": 29
+                },
+                {
+                  "vreg": 38,
+                  "phys": 30
+                },
+                {
+                  "vreg": 42,
+                  "phys": 31
+                },
+                {
+                  "vreg": 51,
+                  "phys": 6
+                },
+                {
+                  "vreg": 55,
+                  "phys": 0
+                },
+                {
+                  "vreg": 56,
+                  "phys": 5
+                }
+              ],
+              "graph_flags": 0,
+              "state": "colored",
+              "order": 11,
+              "select": {
+                "how": "lowest free",
+                "free": 8144,
+                "predicted": 4,
+                "agrees": true,
+                "taken": {
+                  "1": [
+                    1
+                  ],
+                  "3": [
+                    3
+                  ],
+                  "28": [
+                    33
+                  ],
+                  "29": [
+                    34
+                  ],
+                  "30": [
+                    38
+                  ],
+                  "31": [
+                    42
+                  ],
+                  "0": [
+                    55
+                  ],
+                  "5": [
+                    56
+                  ]
+                },
+                "mask": 4026540025,
+                "color": 4,
+                "flags": 2
+              },
+              "pushed": {
+                "why": "degree",
+                "degree": 8,
+                "k": 29,
+                "pass": 1
+              }
+            },
+            {
+              "vreg": 53,
+              "class": "GPR",
+              "phys": 4,
+              "defs": 1,
+              "uses": 0,
+              "live_blocks": 0,
+              "across_call": 0,
+              "first_call_block": null,
+              "def": {
+                "block": 1,
+                "line": 9,
+                "instruction": "lwz %r53, r1, sym"
+              },
+              "degree": 8,
+              "neighbors": [
+                {
+                  "vreg": 1,
+                  "phys": 1
+                },
+                {
+                  "vreg": 3,
+                  "phys": 3
+                },
+                {
+                  "vreg": 33,
+                  "phys": 28
+                },
+                {
+                  "vreg": 34,
+                  "phys": 29
+                },
+                {
+                  "vreg": 38,
+                  "phys": 30
+                },
+                {
+                  "vreg": 42,
+                  "phys": 31
+                },
+                {
+                  "vreg": 55,
+                  "phys": 0
+                },
+                {
+                  "vreg": 56,
+                  "phys": 5
+                }
+              ],
+              "graph_flags": 0,
+              "state": "colored",
+              "order": 10,
+              "select": {
+                "how": "lowest free",
+                "free": 8144,
+                "predicted": 4,
+                "agrees": true,
+                "taken": {
+                  "1": [
+                    1
+                  ],
+                  "3": [
+                    3
+                  ],
+                  "28": [
+                    33
+                  ],
+                  "29": [
+                    34
+                  ],
+                  "30": [
+                    38
+                  ],
+                  "31": [
+                    42
+                  ],
+                  "0": [
+                    55
+                  ],
+                  "5": [
+                    56
+                  ]
+                },
+                "mask": 4026540025,
+                "color": 4,
+                "flags": 2
+              },
+              "pushed": {
+                "why": "degree",
+                "degree": 8,
+                "k": 29,
+                "pass": 1
+              }
+            },
+            {
+              "vreg": 54,
+              "class": "GPR",
+              "phys": 0,
+              "defs": 1,
+              "uses": 0,
+              "live_blocks": 0,
+              "across_call": 0,
+              "first_call_block": null,
+              "def": {
+                "block": 1,
+                "line": 9,
+                "instruction": "rlwinm %r54, r3, #0, #29, #31"
+              },
+              "degree": 0,
+              "neighbors": [],
+              "graph_flags": 0,
+              "state": "colored",
+              "order": 9,
+              "select": {
+                "how": "lowest free",
+                "free": 4026540025,
+                "predicted": 0,
+                "agrees": true,
+                "taken": {},
+                "mask": 4026540025,
+                "color": 0,
+                "flags": 2
+              },
+              "pushed": {
+                "why": "degree",
+                "degree": 0,
+                "k": 29,
+                "pass": 1
+              }
+            },
+            {
+              "vreg": 55,
+              "class": "GPR",
+              "phys": 0,
+              "defs": 1,
+              "uses": 1,
+              "live_blocks": 1,
+              "across_call": 0,
+              "first_call_block": null,
+              "def": {
+                "block": 1,
+                "line": 9,
+                "instruction": "rlwinm %r55, r3, #2, #27, #29"
+              },
+              "degree": 19,
+              "neighbors": [
+                {
+                  "vreg": 1,
+                  "phys": 1
+                },
+                {
+                  "vreg": 3,
+                  "phys": 3
+                },
+                {
+                  "vreg": 4,
+                  "phys": 4
+                },
+                {
+                  "vreg": 33,
+                  "phys": 28
+                },
+                {
+                  "vreg": 34,
+                  "phys": 29
+                },
+                {
+                  "vreg": 38,
+                  "phys": 30
+                },
+                {
+                  "vreg": 40,
+                  "phys": 9
+                },
+                {
+                  "vreg": 42,
+                  "phys": 31
+                },
+                {
+                  "vreg": 44,
+                  "phys": 8
+                },
+                {
+                  "vreg": 45,
+                  "phys": 6
+                },
+                {
+                  "vreg": 46,
+                  "phys": 7
+                },
+                {
+                  "vreg": 47,
+                  "phys": 6
+                },
+                {
+                  "vreg": 48,
+                  "phys": 4
+                },
+                {
+                  "vreg": 49,
+                  "phys": 6
+                },
+                {
+                  "vreg": 50,
+                  "phys": 4
+                },
+                {
+                  "vreg": 51,
+                  "phys": 6
+                },
+                {
+                  "vreg": 52,
+                  "phys": 4
+                },
+                {
+                  "vreg": 53,
+                  "phys": 4
+                },
+                {
+                  "vreg": 56,
+                  "phys": 5
+                }
+              ],
+              "graph_flags": 0,
+              "state": "colored",
+              "order": 8,
+              "select": {
+                "how": "lowest free",
+                "free": 8129,
+                "predicted": 0,
+                "agrees": true,
+                "taken": {
+                  "1": [
+                    1
+                  ],
+                  "3": [
+                    3
+                  ],
+                  "4": [
+                    4
+                  ],
+                  "28": [
+                    33
+                  ],
+                  "29": [
+                    34
+                  ],
+                  "30": [
+                    38
+                  ],
+                  "31": [
+                    42
+                  ],
+                  "5": [
+                    56
+                  ]
+                },
+                "mask": 4026540025,
+                "color": 0,
+                "flags": 2
+              },
+              "pushed": {
+                "why": "degree",
+                "degree": 8,
+                "k": 29,
+                "pass": 1
+              }
+            },
+            {
+              "vreg": 56,
+              "class": "GPR",
+              "phys": 5,
+              "defs": 1,
+              "uses": 1,
+              "live_blocks": 1,
+              "across_call": 0,
+              "first_call_block": null,
+              "def": {
+                "block": 1,
+                "line": 9,
+                "instruction": "addi %r56, r1, sym, -"
+              },
+              "degree": 20,
+              "neighbors": [
+                {
+                  "vreg": 0,
+                  "phys": 0
+                },
+                {
+                  "vreg": 1,
+                  "phys": 1
+                },
+                {
+                  "vreg": 3,
+                  "phys": 3
+                },
+                {
+                  "vreg": 4,
+                  "phys": 4
+                },
+                {
+                  "vreg": 33,
+                  "phys": 28
+                },
+                {
+                  "vreg": 34,
+                  "phys": 29
+                },
+                {
+                  "vreg": 38,
+                  "phys": 30
+                },
+                {
+                  "vreg": 40,
+                  "phys": 9
+                },
+                {
+                  "vreg": 42,
+                  "phys": 31
+                },
+                {
+                  "vreg": 44,
+                  "phys": 8
+                },
+                {
+                  "vreg": 45,
+                  "phys": 6
+                },
+                {
+                  "vreg": 46,
+                  "phys": 7
+                },
+                {
+                  "vreg": 47,
+                  "phys": 6
+                },
+                {
+                  "vreg": 48,
+                  "phys": 4
+                },
+                {
+                  "vreg": 49,
+                  "phys": 6
+                },
+                {
+                  "vreg": 50,
+                  "phys": 4
+                },
+                {
+                  "vreg": 51,
+                  "phys": 6
+                },
+                {
+                  "vreg": 52,
+                  "phys": 4
+                },
+                {
+                  "vreg": 53,
+                  "phys": 4
+                },
+                {
+                  "vreg": 55,
+                  "phys": 0
+                }
+              ],
+              "graph_flags": 0,
+              "state": "colored",
+              "order": 7,
+              "select": {
+                "how": "lowest free",
+                "free": 8160,
+                "predicted": 5,
+                "agrees": true,
+                "taken": {
+                  "0": [
+                    0
+                  ],
+                  "1": [
+                    1
+                  ],
+                  "3": [
+                    3
+                  ],
+                  "4": [
+                    4
+                  ],
+                  "28": [
+                    33
+                  ],
+                  "29": [
+                    34
+                  ],
+                  "30": [
+                    38
+                  ],
+                  "31": [
+                    42
+                  ]
+                },
+                "mask": 4026540025,
+                "color": 5,
+                "flags": 2
+              },
+              "pushed": {
+                "why": "degree",
+                "degree": 8,
+                "k": 29,
+                "pass": 1
+              }
+            },
+            {
+              "vreg": 57,
+              "class": "GPR",
+              "phys": 0,
+              "defs": 0,
+              "uses": 0,
+              "live_blocks": 0,
+              "across_call": 0,
+              "first_call_block": null,
+              "degree": 0,
+              "neighbors": [],
+              "graph_flags": 0,
+              "in_pcode": false,
+              "state": "colored",
+              "order": 6,
+              "select": {
+                "how": "lowest free",
+                "free": 4026540025,
+                "predicted": 0,
+                "agrees": true,
+                "taken": {},
+                "mask": 4026540025,
+                "color": 0,
+                "flags": 2
+              },
+              "pushed": {
+                "why": "degree",
+                "degree": 0,
+                "k": 29,
+                "pass": 1
+              }
+            },
+            {
+              "vreg": 58,
+              "class": "GPR",
+              "phys": 0,
+              "defs": 2,
+              "uses": 2,
+              "live_blocks": 2,
+              "across_call": 0,
+              "first_call_block": null,
+              "def": {
+                "block": 3,
+                "line": 12,
+                "instruction": "addi %r58, %r34, #17, -"
+              },
+              "degree": 6,
+              "neighbors": [
+                {
+                  "vreg": 3,
+                  "phys": 3
+                },
+                {
+                  "vreg": 33,
+                  "phys": 28
+                },
+                {
+                  "vreg": 34,
+                  "phys": 29
+                },
+                {
+                  "vreg": 35,
+                  "phys": 3
+                },
+                {
+                  "vreg": 38,
+                  "phys": 30
+                },
+                {
+                  "vreg": 42,
+                  "phys": 31
+                }
+              ],
+              "graph_flags": 64,
+              "state": "colored",
+              "order": 5,
+              "select": {
+                "how": "lowest free",
+                "free": 8177,
+                "predicted": 0,
+                "agrees": true,
+                "taken": {
+                  "3": [
+                    3,
+                    35
+                  ],
+                  "28": [
+                    33
+                  ],
+                  "29": [
+                    34
+                  ],
+                  "30": [
+                    38
+                  ],
+                  "31": [
+                    42
+                  ]
+                },
+                "mask": 4026540025,
+                "color": 0,
+                "flags": 66
+              },
+              "pushed": {
+                "why": "degree",
+                "degree": 6,
+                "k": 29,
+                "pass": 1
+              }
+            },
+            {
+              "vreg": 59,
+              "class": "GPR",
+              "phys": 0,
+              "defs": 1,
+              "uses": 1,
+              "live_blocks": 1,
+              "across_call": 0,
+              "first_call_block": null,
+              "def": {
+                "block": 5,
+                "line": 13,
+                "instruction": "rlwinm %r59, %r35, #0, #31, #31"
+              },
+              "degree": 6,
+              "neighbors": [
+                {
+                  "vreg": 3,
+                  "phys": 3
+                },
+                {
+                  "vreg": 33,
+                  "phys": 28
+                },
+                {
+                  "vreg": 34,
+                  "phys": 29
+                },
+                {
+                  "vreg": 35,
+                  "phys": 3
+                },
+                {
+                  "vreg": 38,
+                  "phys": 30
+                },
+                {
+                  "vreg": 42,
+                  "phys": 31
+                }
+              ],
+              "graph_flags": 0,
+              "state": "colored",
+              "order": 4,
+              "select": {
+                "how": "lowest free",
+                "free": 8177,
+                "predicted": 0,
+                "agrees": true,
+                "taken": {
+                  "3": [
+                    3,
+                    35
+                  ],
+                  "28": [
+                    33
+                  ],
+                  "29": [
+                    34
+                  ],
+                  "30": [
+                    38
+                  ],
+                  "31": [
+                    42
+                  ]
+                },
+                "mask": 4026540025,
+                "color": 0,
+                "flags": 2
+              },
+              "pushed": {
+                "why": "degree",
+                "degree": 6,
+                "k": 29,
+                "pass": 1
+              }
+            },
+            {
+              "vreg": 60,
+              "class": "GPR",
+              "phys": 3,
+              "defs": 1,
+              "uses": 1,
+              "live_blocks": 1,
+              "across_call": 0,
+              "first_call_block": null,
+              "def": {
+                "block": 7,
+                "line": 13,
+                "instruction": "mr %r60, r3, -"
+              },
+              "degree": 4,
+              "neighbors": [
+                {
+                  "vreg": 33,
+                  "phys": 28
+                },
+                {
+                  "vreg": 34,
+                  "phys": 29
+                },
+                {
+                  "vreg": 38,
+                  "phys": 30
+                },
+                {
+                  "vreg": 42,
+                  "phys": 31
+                }
+              ],
+              "graph_flags": 4,
+              "state": "coalesced",
+              "coalesced_into": 3
+            }
+          ],
+          "k": 29,
+          "mask": 8185,
+          "order": [
+            42,
+            38,
+            34,
+            33,
+            59,
+            58,
+            57,
+            56,
+            55,
+            54,
+            53,
+            52,
+            51,
+            50,
+            49,
+            48,
+            47,
+            46,
+            45,
+            44,
+            43,
+            41,
+            40,
+            39,
+            37,
+            36,
+            32
+          ],
+          "simplify_replay_agrees": true,
+          "select_replay_agrees": 27,
+          "select_replayed": 27
+        }
+      },
+      "removed": [
+        "rlwinm %r54, r3, #0, #29, #31",
+        "mr r3, %r35, -",
+        "mr %r60, r3, -",
+        "mr %r35, %r60, -"
+      ],
+      "inserted": [],
+      "frame": [
+        {
+          "kind": "local",
+          "name": "@31",
+          "offset": 0,
+          "size": 4,
+          "reg": 0,
+          "used": true,
+          "r1": 8
+        },
+        {
+          "kind": "local",
+          "name": "@30",
+          "offset": 0,
+          "size": 4,
+          "reg": 0,
+          "used": true,
+          "r1": 8
+        },
+        {
+          "kind": "local",
+          "name": "@29",
+          "offset": 0,
+          "size": 4,
+          "reg": 30,
+          "used": true
+        },
+        {
+          "kind": "local",
+          "name": "@28",
+          "offset": 0,
+          "size": 4,
+          "reg": 0,
+          "used": false
+        },
+        {
+          "kind": "local",
+          "name": "@27",
+          "offset": 0,
+          "size": 4,
+          "reg": 0,
+          "used": false
+        },
+        {
+          "kind": "local",
+          "name": "@25",
+          "offset": 0,
+          "size": 4,
+          "reg": 0,
+          "used": false
+        },
+        {
+          "kind": "local",
+          "name": "@23",
+          "offset": 0,
+          "size": 4,
+          "reg": 0,
+          "used": false
+        },
+        {
+          "kind": "local",
+          "name": "@22",
+          "offset": 0,
+          "size": 4,
+          "reg": 0,
+          "used": false
+        },
+        {
+          "kind": "local",
+          "name": "@21",
+          "offset": 0,
+          "size": 4,
+          "reg": 0,
+          "used": false
+        },
+        {
+          "kind": "local",
+          "name": "shared",
+          "offset": 0,
+          "size": 4,
+          "reg": 0,
+          "used": false
+        },
+        {
+          "kind": "local",
+          "name": "i",
+          "offset": 0,
+          "size": 4,
+          "reg": 29,
+          "used": true
+        },
+        {
+          "kind": "local",
+          "name": "total",
+          "offset": 0,
+          "size": 4,
+          "reg": 3,
+          "used": true
+        },
+        {
+          "kind": "local",
+          "name": "scratch",
+          "offset": 8,
+          "size": 32,
+          "reg": 0,
+          "used": true,
+          "r1": 16
+        },
+        {
+          "kind": "local",
+          "name": "p",
+          "offset": 0,
+          "size": 8,
+          "reg": 0,
+          "used": true,
+          "r1": 8
+        }
+      ],
+      "layout": {
+        "linkage": 8,
+        "outgoing": 0,
+        "locals": 40,
+        "above": 16,
+        "size": 64
+      },
+      "schema_version": 6,
+      "inlining": [
+        {
+          "kind": "decision",
+          "event": "decision",
+          "callee": "nested",
+          "link": "nested__Fi",
+          "inline": true,
+          "chain": [],
+          "cost": 11,
+          "threshold": 512,
+          "full_cost": 11,
+          "depth_limited": false,
+          "reason": "estimated cost 11 is within the threshold 512 (1 statements)",
+          "outcome": "inlined",
+          "breakdown": {
+            "running": 0,
+            "nstmts": 1,
+            "statements": [
+              {
+                "kind": "breakdown",
+                "what": "twice()+17",
+                "type": 15,
+                "cost": 10,
+                "parts": [
+                  {
+                    "kind": "breakdown",
+                    "what": "body",
+                    "type": -1,
+                    "cost": 6,
+                    "nstmts": 1,
+                    "parts": [
+                      {
+                        "kind": "breakdown",
+                        "what": "*(arg0)+*(arg0)",
+                        "type": 15,
+                        "cost": 5,
+                        "parts": [],
+                        "calls": []
+                      }
+                    ],
+                    "of": "twice<i>__Fi"
+                  }
+                ],
+                "calls": [
+                  [
+                    "",
+                    "twice<i>__Fi"
+                  ]
+                ]
+              }
+            ]
+          },
+          "count": 2,
+          "depths": [
+            0
+          ],
+          "lines": [
+            8,
+            12
+          ]
+        },
+        {
+          "kind": "expansion",
+          "event": "expansion",
+          "callee": "nested",
+          "expanded": true,
+          "link": "nested__Fi",
+          "count": 2,
+          "lines": [
+            8,
+            12
+          ]
+        },
+        {
+          "kind": "decision",
+          "event": "decision",
+          "callee": "consume",
+          "link": "consume__Fi",
+          "inline": false,
+          "chain": [],
+          "reason": "not declared inline (and not a method defined in its class)",
+          "outcome": "kept",
+          "count": 8,
+          "depths": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7
+          ],
+          "lines": [
+            13
+          ]
+        },
+        {
+          "kind": "decision",
+          "event": "decision",
+          "callee": "twice",
+          "link": "twice<i>__Fi",
+          "inline": true,
+          "chain": [
+            "nested__Fi"
+          ],
+          "cost": 6,
+          "threshold": 512,
+          "full_cost": 6,
+          "depth_limited": false,
+          "reason": "estimated cost 6 is within the threshold 512 (1 statements)",
+          "outcome": "inlined",
+          "breakdown": {
+            "running": 0,
+            "nstmts": 1,
+            "statements": [
+              {
+                "kind": "breakdown",
+                "what": "*(arg0)+*(arg0)",
+                "type": 15,
+                "cost": 5,
+                "parts": [],
+                "calls": []
+              }
+            ]
+          },
+          "count": 2,
+          "depths": [
+            1
+          ],
+          "lines": [
+            8,
+            12
+          ]
+        },
+        {
+          "kind": "expansion",
+          "event": "expansion",
+          "callee": "twice",
+          "expanded": true,
+          "link": "twice<i>__Fi",
+          "count": 2,
+          "lines": [
+            8,
+            12
+          ]
+        }
+      ],
+      "schedule": []
+    },
+    {
+      "function": "added_by_header_change",
+      "link": "added_by_header_change__Fi",
+      "blocks": 3,
+      "instructions": 2,
+      "classes": {
+        "GPR": {
+          "rounds": [
+            {
+              "k": 29,
+              "mask": 8185,
+              "ok": true,
+              "nodes": 1,
+              "spilled": []
+            }
+          ],
+          "vregs": [
+            {
+              "vreg": 32,
+              "class": "GPR",
+              "phys": 3,
+              "defs": 1,
+              "uses": 1,
+              "live_blocks": 1,
+              "across_call": 0,
+              "first_call_block": null,
+              "def": {
+                "block": 1,
+                "line": null,
+                "instruction": "mr %r32, r3, -"
+              },
+              "degree": 0,
+              "neighbors": [],
+              "graph_flags": 4,
+              "state": "coalesced",
+              "coalesced_into": 3
+            }
+          ],
+          "k": 29,
+          "mask": 8185,
+          "order": [],
+          "simplify_replay_agrees": true,
+          "select_replay_agrees": 0,
+          "select_replayed": 0
+        }
+      },
+      "removed": [
+        "mr %r32, r3, -"
+      ],
+      "inserted": [],
+      "frame": [],
+      "layout": {
+        "linkage": 0,
+        "outgoing": 0,
+        "locals": 0,
+        "above": 0,
+        "size": 0
+      },
+      "schema_version": 6,
+      "inlining": [],
+      "schedule": []
+    }
+  ]
+}

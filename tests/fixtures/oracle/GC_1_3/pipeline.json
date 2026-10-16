@@ -1,0 +1,3703 @@
+{
+  "schema_version": 6,
+  "oracle": "build\\GC_1_3\\oracle\\mwcceppc.exe",
+  "version": "GC_1_3",
+  "source": "sources/pipeline.cpp",
+  "identical": true,
+  "differences": [],
+  "functions": [
+    {
+      "function": "pipeline",
+      "link": "pipeline__Fii",
+      "blocks": 11,
+      "instructions": 31,
+      "classes": {
+        "GPR": {
+          "rounds": [
+            {
+              "k": 29,
+              "mask": 8185,
+              "ok": true,
+              "nodes": 15,
+              "spilled": []
+            }
+          ],
+          "vregs": [
+            {
+              "vreg": 32,
+              "class": "GPR",
+              "phys": 0,
+              "defs": 0,
+              "uses": 0,
+              "live_blocks": 0,
+              "across_call": 0,
+              "first_call_block": null,
+              "degree": 0,
+              "neighbors": [],
+              "graph_flags": 0,
+              "in_pcode": false,
+              "state": "colored",
+              "order": 13,
+              "select": {
+                "how": "lowest free",
+                "free": 4026540025,
+                "predicted": 0,
+                "agrees": true,
+                "taken": {},
+                "mask": 4026540025,
+                "color": 0,
+                "flags": 2
+              },
+              "pushed": {
+                "why": "degree",
+                "degree": 0,
+                "k": 29,
+                "pass": 1
+              }
+            },
+            {
+              "vreg": 33,
+              "class": "GPR",
+              "phys": 28,
+              "defs": 1,
+              "uses": 1,
+              "live_blocks": 8,
+              "across_call": 1,
+              "first_call_block": 6,
+              "def": {
+                "block": 1,
+                "line": null,
+                "instruction": "mr %r33, r4, -"
+              },
+              "degree": 20,
+              "neighbors": [
+                {
+                  "vreg": 0,
+                  "phys": 0
+                },
+                {
+                  "vreg": 1,
+                  "phys": 1
+                },
+                {
+                  "vreg": 3,
+                  "phys": 3
+                },
+                {
+                  "vreg": 4,
+                  "phys": 4
+                },
+                {
+                  "vreg": 5,
+                  "phys": 5
+                },
+                {
+                  "vreg": 6,
+                  "phys": 6
+                },
+                {
+                  "vreg": 7,
+                  "phys": 7
+                },
+                {
+                  "vreg": 8,
+                  "phys": 8
+                },
+                {
+                  "vreg": 9,
+                  "phys": 9
+                },
+                {
+                  "vreg": 10,
+                  "phys": 10
+                },
+                {
+                  "vreg": 11,
+                  "phys": 11
+                },
+                {
+                  "vreg": 12,
+                  "phys": 12
+                },
+                {
+                  "vreg": 34,
+                  "phys": 29
+                },
+                {
+                  "vreg": 35,
+                  "phys": 4
+                },
+                {
+                  "vreg": 38,
+                  "phys": 30
+                },
+                {
+                  "vreg": 40,
+                  "phys": 0
+                },
+                {
+                  "vreg": 42,
+                  "phys": 31
+                },
+                {
+                  "vreg": 44,
+                  "phys": 0
+                },
+                {
+                  "vreg": 45,
+                  "phys": 0
+                },
+                {
+                  "vreg": 46,
+                  "phys": 3
+                }
+              ],
+              "graph_flags": 0,
+              "state": "colored",
+              "order": 12,
+              "select": {
+                "how": "claimed",
+                "free": 0,
+                "predicted": 28,
+                "agrees": true,
+                "taken": {
+                  "0": [
+                    0,
+                    40,
+                    44,
+                    45
+                  ],
+                  "1": [
+                    1
+                  ],
+                  "3": [
+                    3,
+                    46
+                  ],
+                  "4": [
+                    4,
+                    35
+                  ],
+                  "5": [
+                    5
+                  ],
+                  "6": [
+                    6
+                  ],
+                  "7": [
+                    7
+                  ],
+                  "8": [
+                    8
+                  ],
+                  "9": [
+                    9
+                  ],
+                  "10": [
+                    10
+                  ],
+                  "11": [
+                    11
+                  ],
+                  "12": [
+                    12
+                  ],
+                  "29": [
+                    34
+                  ],
+                  "30": [
+                    38
+                  ],
+                  "31": [
+                    42
+                  ]
+                },
+                "mask": 3758104569,
+                "color": 28,
+                "flags": 2
+              },
+              "pushed": {
+                "why": "degree",
+                "degree": 20,
+                "k": 29,
+                "pass": 1
+              }
+            },
+            {
+              "vreg": 34,
+              "class": "GPR",
+              "phys": 29,
+              "defs": 1,
+              "uses": 5,
+              "live_blocks": 8,
+              "across_call": 1,
+              "first_call_block": 6,
+              "def": {
+                "block": 1,
+                "line": 10,
+                "instruction": "li %r34, #0"
+              },
+              "degree": 19,
+              "neighbors": [
+                {
+                  "vreg": 0,
+                  "phys": 0
+                },
+                {
+                  "vreg": 1,
+                  "phys": 1
+                },
+                {
+                  "vreg": 3,
+                  "phys": 3
+                },
+                {
+                  "vreg": 4,
+                  "phys": 4
+                },
+                {
+                  "vreg": 5,
+                  "phys": 5
+                },
+                {
+                  "vreg": 6,
+                  "phys": 6
+                },
+                {
+                  "vreg": 7,
+                  "phys": 7
+                },
+                {
+                  "vreg": 8,
+                  "phys": 8
+                },
+                {
+                  "vreg": 9,
+                  "phys": 9
+                },
+                {
+                  "vreg": 10,
+                  "phys": 10
+                },
+                {
+                  "vreg": 11,
+                  "phys": 11
+                },
+                {
+                  "vreg": 12,
+                  "phys": 12
+                },
+                {
+                  "vreg": 33,
+                  "phys": 28
+                },
+                {
+                  "vreg": 35,
+                  "phys": 4
+                },
+                {
+                  "vreg": 38,
+                  "phys": 30
+                },
+                {
+                  "vreg": 42,
+                  "phys": 31
+                },
+                {
+                  "vreg": 44,
+                  "phys": 0
+                },
+                {
+                  "vreg": 45,
+                  "phys": 0
+                },
+                {
+                  "vreg": 46,
+                  "phys": 3
+                }
+              ],
+              "graph_flags": 64,
+              "state": "colored",
+              "order": 11,
+              "select": {
+                "how": "claimed",
+                "free": 0,
+                "predicted": 29,
+                "agrees": true,
+                "taken": {
+                  "0": [
+                    0,
+                    44,
+                    45
+                  ],
+                  "1": [
+                    1
+                  ],
+                  "3": [
+                    3,
+                    46
+                  ],
+                  "4": [
+                    4,
+                    35
+                  ],
+                  "5": [
+                    5
+                  ],
+                  "6": [
+                    6
+                  ],
+                  "7": [
+                    7
+                  ],
+                  "8": [
+                    8
+                  ],
+                  "9": [
+                    9
+                  ],
+                  "10": [
+                    10
+                  ],
+                  "11": [
+                    11
+                  ],
+                  "12": [
+                    12
+                  ],
+                  "30": [
+                    38
+                  ],
+                  "31": [
+                    42
+                  ]
+                },
+                "mask": 3221233657,
+                "color": 29,
+                "flags": 66
+              },
+              "pushed": {
+                "why": "degree",
+                "degree": 18,
+                "k": 29,
+                "pass": 1
+              }
+            },
+            {
+              "vreg": 35,
+              "class": "GPR",
+              "phys": 4,
+              "defs": 2,
+              "uses": 5,
+              "live_blocks": 8,
+              "across_call": 0,
+              "first_call_block": null,
+              "def": {
+                "block": 1,
+                "line": 9,
+                "instruction": "li %r35, #0"
+              },
+              "degree": 8,
+              "neighbors": [
+                {
+                  "vreg": 1,
+                  "phys": 1
+                },
+                {
+                  "vreg": 3,
+                  "phys": 3
+                },
+                {
+                  "vreg": 33,
+                  "phys": 28
+                },
+                {
+                  "vreg": 34,
+                  "phys": 29
+                },
+                {
+                  "vreg": 38,
+                  "phys": 30
+                },
+                {
+                  "vreg": 42,
+                  "phys": 31
+                },
+                {
+                  "vreg": 44,
+                  "phys": 0
+                },
+                {
+                  "vreg": 45,
+                  "phys": 0
+                }
+              ],
+              "graph_flags": 64,
+              "state": "colored",
+              "order": 10,
+              "select": {
+                "how": "lowest free",
+                "free": 8176,
+                "predicted": 4,
+                "agrees": true,
+                "taken": {
+                  "1": [
+                    1
+                  ],
+                  "3": [
+                    3
+                  ],
+                  "30": [
+                    38
+                  ],
+                  "31": [
+                    42
+                  ],
+                  "0": [
+                    44,
+                    45
+                  ]
+                },
+                "mask": 3221233657,
+                "color": 4,
+                "flags": 66
+              },
+              "pushed": {
+                "why": "degree",
+                "degree": 6,
+                "k": 29,
+                "pass": 1
+              }
+            },
+            {
+              "vreg": 36,
+              "class": "GPR",
+              "phys": 0,
+              "defs": 0,
+              "uses": 0,
+              "live_blocks": 0,
+              "across_call": 0,
+              "first_call_block": null,
+              "degree": 0,
+              "neighbors": [],
+              "graph_flags": 0,
+              "in_pcode": false,
+              "state": "colored",
+              "order": 9,
+              "select": {
+                "how": "lowest free",
+                "free": 3221233657,
+                "predicted": 0,
+                "agrees": true,
+                "taken": {},
+                "mask": 3221233657,
+                "color": 0,
+                "flags": 2
+              },
+              "pushed": {
+                "why": "degree",
+                "degree": 0,
+                "k": 29,
+                "pass": 1
+              }
+            },
+            {
+              "vreg": 37,
+              "class": "GPR",
+              "phys": 0,
+              "defs": 0,
+              "uses": 0,
+              "live_blocks": 0,
+              "across_call": 0,
+              "first_call_block": null,
+              "degree": 0,
+              "neighbors": [],
+              "graph_flags": 0,
+              "in_pcode": false,
+              "state": "colored",
+              "order": 8,
+              "select": {
+                "how": "lowest free",
+                "free": 3221233657,
+                "predicted": 0,
+                "agrees": true,
+                "taken": {},
+                "mask": 3221233657,
+                "color": 0,
+                "flags": 2
+              },
+              "pushed": {
+                "why": "degree",
+                "degree": 0,
+                "k": 29,
+                "pass": 1
+              }
+            },
+            {
+              "vreg": 38,
+              "class": "GPR",
+              "phys": 30,
+              "defs": 1,
+              "uses": 2,
+              "live_blocks": 8,
+              "across_call": 1,
+              "first_call_block": 6,
+              "def": {
+                "block": 1,
+                "line": null,
+                "instruction": "mullw %r38, r3, %r42"
+              },
+              "degree": 21,
+              "neighbors": [
+                {
+                  "vreg": 0,
+                  "phys": 0
+                },
+                {
+                  "vreg": 1,
+                  "phys": 1
+                },
+                {
+                  "vreg": 3,
+                  "phys": 3
+                },
+                {
+                  "vreg": 4,
+                  "phys": 4
+                },
+                {
+                  "vreg": 5,
+                  "phys": 5
+                },
+                {
+                  "vreg": 6,
+                  "phys": 6
+                },
+                {
+                  "vreg": 7,
+                  "phys": 7
+                },
+                {
+                  "vreg": 8,
+                  "phys": 8
+                },
+                {
+                  "vreg": 9,
+                  "phys": 9
+                },
+                {
+                  "vreg": 10,
+                  "phys": 10
+                },
+                {
+                  "vreg": 11,
+                  "phys": 11
+                },
+                {
+                  "vreg": 12,
+                  "phys": 12
+                },
+                {
+                  "vreg": 33,
+                  "phys": 28
+                },
+                {
+                  "vreg": 34,
+                  "phys": 29
+                },
+                {
+                  "vreg": 35,
+                  "phys": 4
+                },
+                {
+                  "vreg": 39,
+                  "phys": 5
+                },
+                {
+                  "vreg": 40,
+                  "phys": 0
+                },
+                {
+                  "vreg": 42,
+                  "phys": 31
+                },
+                {
+                  "vreg": 44,
+                  "phys": 0
+                },
+                {
+                  "vreg": 45,
+                  "phys": 0
+                },
+                {
+                  "vreg": 46,
+                  "phys": 3
+                }
+              ],
+              "graph_flags": 0,
+              "state": "colored",
+              "order": 7,
+              "select": {
+                "how": "claimed",
+                "free": 0,
+                "predicted": 30,
+                "agrees": true,
+                "taken": {
+                  "0": [
+                    0,
+                    40,
+                    44,
+                    45
+                  ],
+                  "1": [
+                    1
+                  ],
+                  "3": [
+                    3,
+                    46
+                  ],
+                  "4": [
+                    4
+                  ],
+                  "5": [
+                    5,
+                    39
+                  ],
+                  "6": [
+                    6
+                  ],
+                  "7": [
+                    7
+                  ],
+                  "8": [
+                    8
+                  ],
+                  "9": [
+                    9
+                  ],
+                  "10": [
+                    10
+                  ],
+                  "11": [
+                    11
+                  ],
+                  "12": [
+                    12
+                  ],
+                  "31": [
+                    42
+                  ]
+                },
+                "mask": 2147491833,
+                "color": 30,
+                "flags": 2
+              },
+              "pushed": {
+                "why": "degree",
+                "degree": 18,
+                "k": 29,
+                "pass": 1
+              }
+            },
+            {
+              "vreg": 39,
+              "class": "GPR",
+              "phys": 5,
+              "defs": 1,
+              "uses": 1,
+              "live_blocks": 1,
+              "across_call": 0,
+              "first_call_block": null,
+              "def": {
+                "block": 1,
+                "line": 8,
+                "instruction": "lwz %r39, r0, sym"
+              },
+              "degree": 7,
+              "neighbors": [
+                {
+                  "vreg": 1,
+                  "phys": 1
+                },
+                {
+                  "vreg": 3,
+                  "phys": 3
+                },
+                {
+                  "vreg": 4,
+                  "phys": 4
+                },
+                {
+                  "vreg": 38,
+                  "phys": 30
+                },
+                {
+                  "vreg": 40,
+                  "phys": 0
+                },
+                {
+                  "vreg": 41,
+                  "phys": 0
+                },
+                {
+                  "vreg": 42,
+                  "phys": 31
+                }
+              ],
+              "graph_flags": 0,
+              "state": "colored",
+              "order": 6,
+              "select": {
+                "how": "lowest free",
+                "free": 8160,
+                "predicted": 5,
+                "agrees": true,
+                "taken": {
+                  "1": [
+                    1
+                  ],
+                  "3": [
+                    3
+                  ],
+                  "4": [
+                    4
+                  ],
+                  "0": [
+                    40,
+                    41
+                  ],
+                  "31": [
+                    42
+                  ]
+                },
+                "mask": 2147491833,
+                "color": 5,
+                "flags": 2
+              },
+              "pushed": {
+                "why": "degree",
+                "degree": 6,
+                "k": 29,
+                "pass": 1
+              }
+            },
+            {
+              "vreg": 40,
+              "class": "GPR",
+              "phys": 0,
+              "defs": 1,
+              "uses": 1,
+              "live_blocks": 1,
+              "across_call": 0,
+              "first_call_block": null,
+              "def": {
+                "block": 1,
+                "line": 8,
+                "instruction": "lwz %r40, r0, sym"
+              },
+              "degree": 7,
+              "neighbors": [
+                {
+                  "vreg": 1,
+                  "phys": 1
+                },
+                {
+                  "vreg": 3,
+                  "phys": 3
+                },
+                {
+                  "vreg": 4,
+                  "phys": 4
+                },
+                {
+                  "vreg": 33,
+                  "phys": 28
+                },
+                {
+                  "vreg": 38,
+                  "phys": 30
+                },
+                {
+                  "vreg": 39,
+                  "phys": 5
+                },
+                {
+                  "vreg": 42,
+                  "phys": 31
+                }
+              ],
+              "graph_flags": 0,
+              "state": "colored",
+              "order": 5,
+              "select": {
+                "how": "lowest free",
+                "free": 8161,
+                "predicted": 0,
+                "agrees": true,
+                "taken": {
+                  "1": [
+                    1
+                  ],
+                  "3": [
+                    3
+                  ],
+                  "4": [
+                    4
+                  ],
+                  "31": [
+                    42
+                  ]
+                },
+                "mask": 2147491833,
+                "color": 0,
+                "flags": 2
+              },
+              "pushed": {
+                "why": "degree",
+                "degree": 4,
+                "k": 29,
+                "pass": 1
+              }
+            },
+            {
+              "vreg": 41,
+              "class": "GPR",
+              "phys": 0,
+              "defs": 1,
+              "uses": 1,
+              "live_blocks": 1,
+              "across_call": 0,
+              "first_call_block": null,
+              "def": {
+                "block": 1,
+                "line": 8,
+                "instruction": "addi %r41, r3, #1, -"
+              },
+              "degree": 4,
+              "neighbors": [
+                {
+                  "vreg": 1,
+                  "phys": 1
+                },
+                {
+                  "vreg": 3,
+                  "phys": 3
+                },
+                {
+                  "vreg": 4,
+                  "phys": 4
+                },
+                {
+                  "vreg": 39,
+                  "phys": 5
+                }
+              ],
+              "graph_flags": 0,
+              "state": "colored",
+              "order": 4,
+              "select": {
+                "how": "lowest free",
+                "free": 2147491809,
+                "predicted": 0,
+                "agrees": true,
+                "taken": {
+                  "1": [
+                    1
+                  ],
+                  "3": [
+                    3
+                  ],
+                  "4": [
+                    4
+                  ]
+                },
+                "mask": 2147491833,
+                "color": 0,
+                "flags": 2
+              },
+              "pushed": {
+                "why": "degree",
+                "degree": 3,
+                "k": 29,
+                "pass": 1
+              }
+            },
+            {
+              "vreg": 42,
+              "class": "GPR",
+              "phys": 31,
+              "defs": 1,
+              "uses": 3,
+              "live_blocks": 9,
+              "across_call": 1,
+              "first_call_block": 6,
+              "def": {
+                "block": 1,
+                "line": 8,
+                "instruction": "add %r42, r3, %r41"
+              },
+              "degree": 21,
+              "neighbors": [
+                {
+                  "vreg": 0,
+                  "phys": 0
+                },
+                {
+                  "vreg": 1,
+                  "phys": 1
+                },
+                {
+                  "vreg": 3,
+                  "phys": 3
+                },
+                {
+                  "vreg": 4,
+                  "phys": 4
+                },
+                {
+                  "vreg": 5,
+                  "phys": 5
+                },
+                {
+                  "vreg": 6,
+                  "phys": 6
+                },
+                {
+                  "vreg": 7,
+                  "phys": 7
+                },
+                {
+                  "vreg": 8,
+                  "phys": 8
+                },
+                {
+                  "vreg": 9,
+                  "phys": 9
+                },
+                {
+                  "vreg": 10,
+                  "phys": 10
+                },
+                {
+                  "vreg": 11,
+                  "phys": 11
+                },
+                {
+                  "vreg": 12,
+                  "phys": 12
+                },
+                {
+                  "vreg": 33,
+                  "phys": 28
+                },
+                {
+                  "vreg": 34,
+                  "phys": 29
+                },
+                {
+                  "vreg": 35,
+                  "phys": 4
+                },
+                {
+                  "vreg": 38,
+                  "phys": 30
+                },
+                {
+                  "vreg": 39,
+                  "phys": 5
+                },
+                {
+                  "vreg": 40,
+                  "phys": 0
+                },
+                {
+                  "vreg": 44,
+                  "phys": 0
+                },
+                {
+                  "vreg": 45,
+                  "phys": 0
+                },
+                {
+                  "vreg": 46,
+                  "phys": 3
+                }
+              ],
+              "graph_flags": 0,
+              "state": "colored",
+              "order": 3,
+              "select": {
+                "how": "claimed",
+                "free": 0,
+                "predicted": 31,
+                "agrees": true,
+                "taken": {
+                  "0": [
+                    0,
+                    44,
+                    45
+                  ],
+                  "1": [
+                    1
+                  ],
+                  "3": [
+                    3,
+                    46
+                  ],
+                  "4": [
+                    4
+                  ],
+                  "5": [
+                    5
+                  ],
+                  "6": [
+                    6
+                  ],
+                  "7": [
+                    7
+                  ],
+                  "8": [
+                    8
+                  ],
+                  "9": [
+                    9
+                  ],
+                  "10": [
+                    10
+                  ],
+                  "11": [
+                    11
+                  ],
+                  "12": [
+                    12
+                  ]
+                },
+                "mask": 8185,
+                "color": 31,
+                "flags": 2
+              },
+              "pushed": {
+                "why": "degree",
+                "degree": 15,
+                "k": 29,
+                "pass": 1
+              }
+            },
+            {
+              "vreg": 43,
+              "class": "GPR",
+              "phys": 0,
+              "defs": 0,
+              "uses": 0,
+              "live_blocks": 0,
+              "across_call": 0,
+              "first_call_block": null,
+              "degree": 0,
+              "neighbors": [],
+              "graph_flags": 0,
+              "in_pcode": false,
+              "state": "colored",
+              "order": 2,
+              "select": {
+                "how": "lowest free",
+                "free": 8185,
+                "predicted": 0,
+                "agrees": true,
+                "taken": {},
+                "mask": 8185,
+                "color": 0,
+                "flags": 2
+              },
+              "pushed": {
+                "why": "degree",
+                "degree": 0,
+                "k": 29,
+                "pass": 1
+              }
+            },
+            {
+              "vreg": 44,
+              "class": "GPR",
+              "phys": 0,
+              "defs": 2,
+              "uses": 2,
+              "live_blocks": 2,
+              "across_call": 0,
+              "first_call_block": null,
+              "def": {
+                "block": 3,
+                "line": 12,
+                "instruction": "addi %r44, %r34, #1, -"
+              },
+              "degree": 5,
+              "neighbors": [
+                {
+                  "vreg": 33,
+                  "phys": 28
+                },
+                {
+                  "vreg": 34,
+                  "phys": 29
+                },
+                {
+                  "vreg": 35,
+                  "phys": 4
+                },
+                {
+                  "vreg": 38,
+                  "phys": 30
+                },
+                {
+                  "vreg": 42,
+                  "phys": 31
+                }
+              ],
+              "graph_flags": 64,
+              "state": "colored",
+              "order": 1,
+              "select": {
+                "how": "lowest free",
+                "free": 8185,
+                "predicted": 0,
+                "agrees": true,
+                "taken": {},
+                "mask": 8185,
+                "color": 0,
+                "flags": 66
+              },
+              "pushed": {
+                "why": "degree",
+                "degree": 0,
+                "k": 29,
+                "pass": 1
+              }
+            },
+            {
+              "vreg": 45,
+              "class": "GPR",
+              "phys": 0,
+              "defs": 1,
+              "uses": 1,
+              "live_blocks": 1,
+              "across_call": 0,
+              "first_call_block": null,
+              "def": {
+                "block": 5,
+                "line": 13,
+                "instruction": "rlwinm %r45, %r35, #0, #31, #31"
+              },
+              "degree": 5,
+              "neighbors": [
+                {
+                  "vreg": 33,
+                  "phys": 28
+                },
+                {
+                  "vreg": 34,
+                  "phys": 29
+                },
+                {
+                  "vreg": 35,
+                  "phys": 4
+                },
+                {
+                  "vreg": 38,
+                  "phys": 30
+                },
+                {
+                  "vreg": 42,
+                  "phys": 31
+                }
+              ],
+              "graph_flags": 0,
+              "state": "colored",
+              "order": 0,
+              "select": {
+                "how": "lowest free",
+                "free": 8185,
+                "predicted": 0,
+                "agrees": true,
+                "taken": {},
+                "mask": 8185,
+                "color": 0,
+                "flags": 2
+              },
+              "pushed": {
+                "why": "degree",
+                "degree": 0,
+                "k": 29,
+                "pass": 1
+              }
+            },
+            {
+              "vreg": 46,
+              "class": "GPR",
+              "phys": 3,
+              "defs": 1,
+              "uses": 1,
+              "live_blocks": 1,
+              "across_call": 0,
+              "first_call_block": null,
+              "def": {
+                "block": 7,
+                "line": 13,
+                "instruction": "mr %r46, r3, -"
+              },
+              "degree": 4,
+              "neighbors": [
+                {
+                  "vreg": 33,
+                  "phys": 28
+                },
+                {
+                  "vreg": 34,
+                  "phys": 29
+                },
+                {
+                  "vreg": 38,
+                  "phys": 30
+                },
+                {
+                  "vreg": 42,
+                  "phys": 31
+                }
+              ],
+              "graph_flags": 4,
+              "state": "coalesced",
+              "coalesced_into": 3
+            }
+          ],
+          "k": 29,
+          "mask": 8185,
+          "order": [
+            45,
+            44,
+            43,
+            42,
+            41,
+            40,
+            39,
+            38,
+            37,
+            36,
+            35,
+            34,
+            33,
+            32
+          ],
+          "simplify_replay_agrees": true,
+          "select_replay_agrees": 14,
+          "select_replayed": 14
+        }
+      },
+      "removed": [
+        "mr %r46, r3, -"
+      ],
+      "inserted": [],
+      "frame": [
+        {
+          "kind": "local",
+          "name": "@29",
+          "offset": 0,
+          "size": 4,
+          "reg": 0,
+          "used": true,
+          "r1": 8
+        },
+        {
+          "kind": "local",
+          "name": "@28",
+          "offset": 0,
+          "size": 4,
+          "reg": 0,
+          "used": true,
+          "r1": 8
+        },
+        {
+          "kind": "local",
+          "name": "@27",
+          "offset": 0,
+          "size": 4,
+          "reg": 30,
+          "used": true
+        },
+        {
+          "kind": "local",
+          "name": "@26",
+          "offset": 0,
+          "size": 4,
+          "reg": 0,
+          "used": false
+        },
+        {
+          "kind": "local",
+          "name": "@25",
+          "offset": 0,
+          "size": 4,
+          "reg": 0,
+          "used": false
+        },
+        {
+          "kind": "local",
+          "name": "@23",
+          "offset": 0,
+          "size": 4,
+          "reg": 0,
+          "used": false
+        },
+        {
+          "kind": "local",
+          "name": "@21",
+          "offset": 0,
+          "size": 4,
+          "reg": 0,
+          "used": false
+        },
+        {
+          "kind": "local",
+          "name": "@20",
+          "offset": 0,
+          "size": 4,
+          "reg": 0,
+          "used": false
+        },
+        {
+          "kind": "local",
+          "name": "shared",
+          "offset": 0,
+          "size": 4,
+          "reg": 0,
+          "used": false
+        },
+        {
+          "kind": "local",
+          "name": "i",
+          "offset": 0,
+          "size": 4,
+          "reg": 29,
+          "used": true
+        },
+        {
+          "kind": "local",
+          "name": "total",
+          "offset": 0,
+          "size": 4,
+          "reg": 4,
+          "used": true
+        },
+        {
+          "kind": "local",
+          "name": "p",
+          "offset": 0,
+          "size": 8,
+          "reg": 0,
+          "used": true,
+          "r1": 8
+        }
+      ],
+      "layout": {
+        "linkage": 8,
+        "outgoing": 0,
+        "locals": 8,
+        "above": 16,
+        "size": 32
+      },
+      "schema_version": 6,
+      "inlining": [
+        {
+          "kind": "decision",
+          "event": "decision",
+          "callee": "nested",
+          "link": "nested__Fi",
+          "inline": true,
+          "chain": [],
+          "cost": 11,
+          "threshold": 512,
+          "full_cost": 11,
+          "depth_limited": false,
+          "reason": "estimated cost 11 is within the threshold 512 (1 statements)",
+          "outcome": "inlined",
+          "breakdown": {
+            "running": 0,
+            "nstmts": 1,
+            "statements": [
+              {
+                "kind": "breakdown",
+                "what": "twice()+1",
+                "type": 15,
+                "cost": 10,
+                "parts": [
+                  {
+                    "kind": "breakdown",
+                    "what": "body",
+                    "type": -1,
+                    "cost": 6,
+                    "nstmts": 1,
+                    "parts": [
+                      {
+                        "kind": "breakdown",
+                        "what": "*(arg0)+*(arg0)",
+                        "type": 15,
+                        "cost": 5,
+                        "parts": [],
+                        "calls": []
+                      }
+                    ],
+                    "of": "twice<i>__Fi"
+                  }
+                ],
+                "calls": [
+                  [
+                    "",
+                    "twice<i>__Fi"
+                  ]
+                ]
+              }
+            ]
+          },
+          "count": 2,
+          "depths": [
+            0
+          ],
+          "lines": [
+            8,
+            12
+          ]
+        },
+        {
+          "kind": "expansion",
+          "event": "expansion",
+          "callee": "nested",
+          "expanded": true,
+          "link": "nested__Fi",
+          "count": 2,
+          "lines": [
+            8,
+            12
+          ]
+        },
+        {
+          "kind": "decision",
+          "event": "decision",
+          "callee": "consume",
+          "link": "consume__Fi",
+          "inline": false,
+          "chain": [],
+          "reason": "not declared inline (and not a method defined in its class)",
+          "outcome": "kept",
+          "count": 8,
+          "depths": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7
+          ],
+          "lines": [
+            13
+          ]
+        },
+        {
+          "kind": "decision",
+          "event": "decision",
+          "callee": "twice",
+          "link": "twice<i>__Fi",
+          "inline": true,
+          "chain": [
+            "nested__Fi"
+          ],
+          "cost": 6,
+          "threshold": 512,
+          "full_cost": 6,
+          "depth_limited": false,
+          "reason": "estimated cost 6 is within the threshold 512 (1 statements)",
+          "outcome": "inlined",
+          "breakdown": {
+            "running": 0,
+            "nstmts": 1,
+            "statements": [
+              {
+                "kind": "breakdown",
+                "what": "*(arg0)+*(arg0)",
+                "type": 15,
+                "cost": 5,
+                "parts": [],
+                "calls": []
+              }
+            ]
+          },
+          "count": 2,
+          "depths": [
+            1
+          ],
+          "lines": [
+            8,
+            12
+          ]
+        },
+        {
+          "kind": "expansion",
+          "event": "expansion",
+          "callee": "twice",
+          "expanded": true,
+          "link": "twice<i>__Fi",
+          "count": 2,
+          "lines": [
+            8,
+            12
+          ]
+        }
+      ],
+      "schedule": [
+        {
+          "block": 1,
+          "virtual": true,
+          "instructions": 13,
+          "cycles": 11,
+          "replay_agrees": 19,
+          "replayed": 19,
+          "picks": [
+            {
+              "cycle": 0,
+              "i": "00a18a38",
+              "position": 6,
+              "line": 8,
+              "instruction": "addi %r41, r3, #1, -",
+              "latest": 0,
+              "height": 7,
+              "count": 1,
+              "rank": 2,
+              "agrees": true,
+              "over": [
+                {
+                  "i": "00a185c0",
+                  "position": 0,
+                  "why": "the pick must issue by this cycle (latest 0), this one need not"
+                },
+                {
+                  "i": "00a18698",
+                  "position": 1,
+                  "why": "the pick must issue by this cycle (latest 0), this one need not"
+                },
+                {
+                  "i": "00a18790",
+                  "position": 2,
+                  "why": "the pick must issue by this cycle (latest 0), this one need not"
+                },
+                {
+                  "i": "00a18c20",
+                  "position": 9,
+                  "why": "the pick must issue by this cycle (latest 0), this one need not"
+                },
+                {
+                  "i": "00a18c88",
+                  "position": 10,
+                  "why": "the pick must issue by this cycle (latest 0), this one need not"
+                }
+              ]
+            },
+            {
+              "cycle": 0,
+              "i": "00a18698",
+              "position": 1,
+              "line": 8,
+              "instruction": "lwz %r39, r0, sym",
+              "latest": 1,
+              "height": 6,
+              "count": 1,
+              "rank": 3,
+              "agrees": true,
+              "over": [
+                {
+                  "i": "00a185c0",
+                  "position": 0,
+                  "why": "the pick makes 1 dependent(s) ready, this one 0"
+                },
+                {
+                  "i": "00a18790",
+                  "position": 2,
+                  "why": "a tie: the pick comes first in the block"
+                },
+                {
+                  "i": "00a18aa0",
+                  "position": 7,
+                  "why": "not ready until cycle 1 (it waits 1 cycle(s) for #6 addi %r41, r3, #1, -)"
+                },
+                {
+                  "i": "00a18c20",
+                  "position": 9,
+                  "why": "the pick makes 1 dependent(s) ready, this one 0"
+                },
+                {
+                  "i": "00a18c88",
+                  "position": 10,
+                  "why": "the pick makes 1 dependent(s) ready, this one 0"
+                }
+              ]
+            },
+            {
+              "cycle": 1,
+              "i": "00a18aa0",
+              "position": 7,
+              "line": 8,
+              "instruction": "add %r42, r3, %r41",
+              "latest": 1,
+              "height": 6,
+              "count": 1,
+              "rank": 2,
+              "agrees": true,
+              "over": [
+                {
+                  "i": "00a185c0",
+                  "position": 0,
+                  "why": "the pick must issue by this cycle (latest 1), this one need not"
+                },
+                {
+                  "i": "00a18790",
+                  "position": 2,
+                  "why": "the pick's opcode rank is 2, this one's 3 (the lower wins)"
+                },
+                {
+                  "i": "00a18840",
+                  "position": 3,
+                  "why": "not ready until cycle 2 (it waits 2 cycle(s) for #1 lwz %r39, r0, sym)"
+                },
+                {
+                  "i": "00a18c20",
+                  "position": 9,
+                  "why": "the pick must issue by this cycle (latest 1), this one need not"
+                },
+                {
+                  "i": "00a18c88",
+                  "position": 10,
+                  "why": "the pick must issue by this cycle (latest 1), this one need not"
+                }
+              ]
+            },
+            {
+              "cycle": 1,
+              "i": "00a18790",
+              "position": 2,
+              "line": 8,
+              "instruction": "lwz %r40, r0, sym",
+              "latest": 1,
+              "height": 6,
+              "count": 1,
+              "rank": 3,
+              "agrees": true,
+              "over": [
+                {
+                  "i": "00a185c0",
+                  "position": 0,
+                  "why": "the pick must issue by this cycle (latest 1), this one need not"
+                },
+                {
+                  "i": "00a18840",
+                  "position": 3,
+                  "why": "not ready until cycle 2 (it waits 2 cycle(s) for #1 lwz %r39, r0, sym)"
+                },
+                {
+                  "i": "00a18c20",
+                  "position": 9,
+                  "why": "the pick must issue by this cycle (latest 1), this one need not"
+                },
+                {
+                  "i": "00a18c88",
+                  "position": 10,
+                  "why": "the pick must issue by this cycle (latest 1), this one need not"
+                },
+                {
+                  "i": "00a18dc0",
+                  "position": 11,
+                  "why": "not ready until cycle 2 (it waits 1 cycle(s) for #7 add %r42, r3, %r41)"
+                }
+              ]
+            },
+            {
+              "cycle": 2,
+              "i": "00a18dc0",
+              "position": 11,
+              "line": -1,
+              "instruction": "mullw %r38, r3, %r42",
+              "latest": 2,
+              "height": 5,
+              "count": 0,
+              "rank": 2,
+              "agrees": true,
+              "over": [
+                {
+                  "i": "00a185c0",
+                  "position": 0,
+                  "why": "the pick must issue by this cycle (latest 2), this one need not"
+                },
+                {
+                  "i": "00a18840",
+                  "position": 3,
+                  "why": "the pick must issue by this cycle (latest 2), this one need not"
+                },
+                {
+                  "i": "00a18920",
+                  "position": 4,
+                  "why": "not ready until cycle 3 (it waits 2 cycle(s) for #2 lwz %r40, r0, sym)"
+                },
+                {
+                  "i": "00a18c20",
+                  "position": 9,
+                  "why": "the pick must issue by this cycle (latest 2), this one need not"
+                },
+                {
+                  "i": "00a18c88",
+                  "position": 10,
+                  "why": "the pick must issue by this cycle (latest 2), this one need not"
+                }
+              ]
+            },
+            {
+              "cycle": 2,
+              "i": "00a18840",
+              "position": 3,
+              "line": 8,
+              "instruction": "stw %r39, r1, sym",
+              "latest": 3,
+              "height": 4,
+              "count": 1,
+              "rank": 1,
+              "agrees": true,
+              "over": [
+                {
+                  "i": "00a185c0",
+                  "position": 0,
+                  "why": "the pick makes 1 dependent(s) ready, this one 0"
+                },
+                {
+                  "i": "00a18920",
+                  "position": 4,
+                  "why": "not ready until cycle 3 (it waits 2 cycle(s) for #2 lwz %r40, r0, sym)"
+                },
+                {
+                  "i": "00a18c20",
+                  "position": 9,
+                  "why": "the pick makes 1 dependent(s) ready, this one 0"
+                },
+                {
+                  "i": "00a18c88",
+                  "position": 10,
+                  "why": "the pick makes 1 dependent(s) ready, this one 0"
+                }
+              ]
+            },
+            {
+              "cycle": 3,
+              "i": "00a185c0",
+              "position": 0,
+              "line": -1,
+              "instruction": "mr %r33, r4, -",
+              "latest": 6,
+              "height": 1,
+              "count": 0,
+              "rank": 0,
+              "agrees": true,
+              "over": [
+                {
+                  "i": "00a18920",
+                  "position": 4,
+                  "why": "the machine cannot issue it this cycle (its unit is busy)"
+                },
+                {
+                  "i": "00a189d0",
+                  "position": 5,
+                  "why": "not ready until cycle 4 (it waits 2 cycle(s) for #3 stw %r39, r1, sym)"
+                },
+                {
+                  "i": "00a18c20",
+                  "position": 9,
+                  "why": "the pick's opcode rank is 0, this one's 4 (the lower wins)"
+                },
+                {
+                  "i": "00a18c88",
+                  "position": 10,
+                  "why": "the pick's opcode rank is 0, this one's 4 (the lower wins)"
+                }
+              ]
+            },
+            {
+              "cycle": 4,
+              "i": "00a18920",
+              "position": 4,
+              "line": 8,
+              "instruction": "stw %r40, r1, sym",
+              "latest": 3,
+              "height": 4,
+              "count": 1,
+              "rank": 1,
+              "agrees": true,
+              "over": [
+                {
+                  "i": "00a189d0",
+                  "position": 5,
+                  "why": "the pick must issue by this cycle (latest 3), this one need not"
+                },
+                {
+                  "i": "00a18c20",
+                  "position": 9,
+                  "why": "the pick must issue by this cycle (latest 3), this one need not"
+                },
+                {
+                  "i": "00a18c88",
+                  "position": 10,
+                  "why": "the pick must issue by this cycle (latest 3), this one need not"
+                }
+              ]
+            },
+            {
+              "cycle": 4,
+              "i": "00a18c20",
+              "position": 9,
+              "line": 9,
+              "instruction": "li %r35, #0",
+              "latest": 6,
+              "height": 1,
+              "count": 0,
+              "rank": 4,
+              "agrees": true,
+              "over": [
+                {
+                  "i": "00a189d0",
+                  "position": 5,
+                  "why": "the machine cannot issue it this cycle (its unit is busy)"
+                },
+                {
+                  "i": "00a18bb8",
+                  "position": 8,
+                  "why": "not ready until cycle 6 (it waits 2 cycle(s) for #4 stw %r40, r1, sym)"
+                },
+                {
+                  "i": "00a18c88",
+                  "position": 10,
+                  "why": "a tie: the pick comes first in the block"
+                }
+              ]
+            },
+            {
+              "cycle": 5,
+              "i": "00a18c88",
+              "position": 10,
+              "line": 10,
+              "instruction": "li %r34, #0",
+              "latest": 6,
+              "height": 1,
+              "count": 0,
+              "rank": 4,
+              "agrees": true,
+              "over": [
+                {
+                  "i": "00a189d0",
+                  "position": 5,
+                  "why": "the machine cannot issue it this cycle (its unit is busy)"
+                },
+                {
+                  "i": "00a18bb8",
+                  "position": 8,
+                  "why": "not ready until cycle 6 (it waits 2 cycle(s) for #4 stw %r40, r1, sym)"
+                }
+              ]
+            },
+            {
+              "cycle": 8,
+              "i": "00a189d0",
+              "position": 5,
+              "line": 8,
+              "instruction": "stw r3, r1, sym",
+              "latest": 5,
+              "height": 2,
+              "count": 0,
+              "rank": 1,
+              "agrees": true,
+              "over": [
+                {
+                  "i": "00a18bb8",
+                  "position": 8,
+                  "why": "a tie: the pick comes first in the block"
+                }
+              ]
+            },
+            {
+              "cycle": 10,
+              "i": "00a18bb8",
+              "position": 8,
+              "line": 8,
+              "instruction": "stw %r42, r1, sym",
+              "latest": 5,
+              "height": 2,
+              "count": 1,
+              "rank": 1,
+              "agrees": true,
+              "over": []
+            },
+            {
+              "cycle": 10,
+              "i": "00a1a5c0",
+              "position": 12,
+              "line": -1,
+              "instruction": "b label, -",
+              "latest": 7,
+              "height": 0,
+              "count": 0,
+              "rank": 0,
+              "agrees": true,
+              "over": []
+            }
+          ],
+          "before": [
+            "mr %r33, r4, -",
+            "lwz %r39, r0, sym",
+            "lwz %r40, r0, sym",
+            "stw %r39, r1, sym",
+            "stw %r40, r1, sym",
+            "stw r3, r1, sym",
+            "addi %r41, r3, #1, -",
+            "add %r42, r3, %r41",
+            "stw %r42, r1, sym",
+            "li %r35, #0",
+            "li %r34, #0",
+            "mullw %r38, r3, %r42",
+            "b label, -"
+          ],
+          "edges": [
+            {
+              "from": 0,
+              "to": 12,
+              "latency": 0
+            },
+            {
+              "from": 1,
+              "to": 12,
+              "latency": 0
+            },
+            {
+              "from": 1,
+              "to": 3,
+              "latency": 2
+            },
+            {
+              "from": 2,
+              "to": 12,
+              "latency": 0
+            },
+            {
+              "from": 2,
+              "to": 4,
+              "latency": 2
+            },
+            {
+              "from": 3,
+              "to": 12,
+              "latency": 0
+            },
+            {
+              "from": 3,
+              "to": 5,
+              "latency": 2
+            },
+            {
+              "from": 4,
+              "to": 12,
+              "latency": 0
+            },
+            {
+              "from": 4,
+              "to": 8,
+              "latency": 2
+            },
+            {
+              "from": 5,
+              "to": 12,
+              "latency": 0
+            },
+            {
+              "from": 6,
+              "to": 12,
+              "latency": 0
+            },
+            {
+              "from": 6,
+              "to": 7,
+              "latency": 1
+            },
+            {
+              "from": 7,
+              "to": 12,
+              "latency": 0
+            },
+            {
+              "from": 7,
+              "to": 11,
+              "latency": 1
+            },
+            {
+              "from": 7,
+              "to": 8,
+              "latency": 1
+            },
+            {
+              "from": 8,
+              "to": 12,
+              "latency": 0
+            },
+            {
+              "from": 9,
+              "to": 12,
+              "latency": 0
+            },
+            {
+              "from": 10,
+              "to": 12,
+              "latency": 0
+            },
+            {
+              "from": 11,
+              "to": 12,
+              "latency": 0
+            }
+          ]
+        },
+        {
+          "block": 3,
+          "virtual": true,
+          "instructions": 4,
+          "cycles": 4,
+          "replay_agrees": 6,
+          "replayed": 6,
+          "picks": [
+            {
+              "cycle": 0,
+              "i": "00a18f00",
+              "position": 0,
+              "line": 12,
+              "instruction": "cmpi cr0, %r34, #0",
+              "latest": 0,
+              "height": 3,
+              "count": 0,
+              "rank": 1,
+              "agrees": true,
+              "over": [
+                {
+                  "i": "00a18f68",
+                  "position": 1,
+                  "why": "the pick must issue by this cycle (latest 0), this one need not"
+                }
+              ]
+            },
+            {
+              "cycle": 0,
+              "i": "00a18f68",
+              "position": 1,
+              "line": 12,
+              "instruction": "addi %r44, %r34, #1, -",
+              "latest": 1,
+              "height": 2,
+              "count": 1,
+              "rank": 2,
+              "agrees": true,
+              "over": []
+            },
+            {
+              "cycle": 1,
+              "i": "00a18fd0",
+              "position": 2,
+              "line": 12,
+              "instruction": "add %r44, %r34, %r44",
+              "latest": 2,
+              "height": 1,
+              "count": 1,
+              "rank": 2,
+              "agrees": true,
+              "over": []
+            },
+            {
+              "cycle": 3,
+              "i": "00a19048",
+              "position": 3,
+              "line": 12,
+              "instruction": "bt cr0, #2, label, -",
+              "latest": 3,
+              "height": 0,
+              "count": 0,
+              "rank": 0,
+              "agrees": true,
+              "over": []
+            }
+          ],
+          "before": [
+            "cmpi cr0, %r34, #0",
+            "addi %r44, %r34, #1, -",
+            "add %r44, %r34, %r44",
+            "bt cr0, #2, label, -"
+          ],
+          "edges": [
+            {
+              "from": 0,
+              "to": 3,
+              "latency": 3
+            },
+            {
+              "from": 1,
+              "to": 3,
+              "latency": 0
+            },
+            {
+              "from": 1,
+              "to": 2,
+              "latency": 1
+            },
+            {
+              "from": 2,
+              "to": 3,
+              "latency": 0
+            }
+          ]
+        },
+        {
+          "block": 5,
+          "virtual": true,
+          "instructions": 5,
+          "cycles": 7,
+          "replay_agrees": 11,
+          "replayed": 11,
+          "picks": [
+            {
+              "cycle": 0,
+              "i": "00a191a8",
+              "position": 0,
+              "line": 12,
+              "instruction": "add %r35, %r44, %r35",
+              "latest": 0,
+              "height": 6,
+              "count": 1,
+              "rank": 2,
+              "agrees": true,
+              "over": []
+            },
+            {
+              "cycle": 1,
+              "i": "00a19210",
+              "position": 1,
+              "line": 12,
+              "instruction": "add %r35, %r38, %r35",
+              "latest": 1,
+              "height": 5,
+              "count": 1,
+              "rank": 2,
+              "agrees": true,
+              "over": []
+            },
+            {
+              "cycle": 2,
+              "i": "00a19298",
+              "position": 2,
+              "line": 13,
+              "instruction": "rlwinm %r45, %r35, #0, #31, #31",
+              "latest": 2,
+              "height": 4,
+              "count": 1,
+              "rank": 2,
+              "agrees": true,
+              "over": []
+            },
+            {
+              "cycle": 3,
+              "i": "00a19308",
+              "position": 3,
+              "line": 13,
+              "instruction": "cmpi cr0, %r45, #0",
+              "latest": 3,
+              "height": 3,
+              "count": 1,
+              "rank": 1,
+              "agrees": true,
+              "over": []
+            },
+            {
+              "cycle": 6,
+              "i": "00a19380",
+              "position": 4,
+              "line": 13,
+              "instruction": "bt cr0, #2, label, -",
+              "latest": 6,
+              "height": 0,
+              "count": 0,
+              "rank": 0,
+              "agrees": true,
+              "over": []
+            }
+          ],
+          "before": [
+            "add %r35, %r44, %r35",
+            "add %r35, %r38, %r35",
+            "rlwinm %r45, %r35, #0, #31, #31",
+            "cmpi cr0, %r45, #0",
+            "bt cr0, #2, label, -"
+          ],
+          "edges": [
+            {
+              "from": 0,
+              "to": 4,
+              "latency": 0
+            },
+            {
+              "from": 0,
+              "to": 2,
+              "latency": 1
+            },
+            {
+              "from": 0,
+              "to": 1,
+              "latency": 1
+            },
+            {
+              "from": 1,
+              "to": 4,
+              "latency": 0
+            },
+            {
+              "from": 1,
+              "to": 2,
+              "latency": 1
+            },
+            {
+              "from": 2,
+              "to": 4,
+              "latency": 0
+            },
+            {
+              "from": 2,
+              "to": 3,
+              "latency": 1
+            },
+            {
+              "from": 3,
+              "to": 4,
+              "latency": 3
+            }
+          ]
+        },
+        {
+          "block": 0,
+          "virtual": false,
+          "instructions": 20,
+          "cycles": 21,
+          "replay_agrees": 34,
+          "replayed": 34,
+          "picks": [
+            {
+              "cycle": 0,
+              "i": "00a1a848",
+              "position": 0,
+              "line": 0,
+              "instruction": "stwu r1, r1, #-32",
+              "latest": 0,
+              "height": 18,
+              "count": 1,
+              "rank": 2,
+              "agrees": true,
+              "over": []
+            },
+            {
+              "cycle": 0,
+              "i": "00a1a8b0",
+              "position": 1,
+              "line": 0,
+              "instruction": "mflr r0, spr1",
+              "latest": 1,
+              "height": 17,
+              "count": 1,
+              "rank": 4,
+              "agrees": true,
+              "over": []
+            },
+            {
+              "cycle": 2,
+              "i": "00a1a918",
+              "position": 2,
+              "line": 0,
+              "instruction": "stw r0, r1, #36",
+              "latest": 2,
+              "height": 16,
+              "count": 2,
+              "rank": 1,
+              "agrees": true,
+              "over": []
+            },
+            {
+              "cycle": 2,
+              "i": "00a18a38",
+              "position": 7,
+              "line": 8,
+              "instruction": "addi r0, r3, #1, -",
+              "latest": 11,
+              "height": 7,
+              "count": 0,
+              "rank": 2,
+              "agrees": true,
+              "over": [
+                {
+                  "i": "00a1a980",
+                  "position": 3,
+                  "why": "not ready until cycle 4 (it waits 2 cycle(s) for #2 stw r0, r1, #36)"
+                }
+              ]
+            },
+            {
+              "cycle": 4,
+              "i": "00a1a980",
+              "position": 3,
+              "line": 0,
+              "instruction": "stw r31, r1, #28",
+              "latest": 4,
+              "height": 14,
+              "count": 2,
+              "rank": 1,
+              "agrees": true,
+              "over": []
+            },
+            {
+              "cycle": 4,
+              "i": "00a18aa0",
+              "position": 9,
+              "line": 8,
+              "instruction": "add r31, r3, r0",
+              "latest": 12,
+              "height": 6,
+              "count": 0,
+              "rank": 2,
+              "agrees": true,
+              "over": [
+                {
+                  "i": "00a1a9e8",
+                  "position": 4,
+                  "why": "not ready until cycle 6 (it waits 2 cycle(s) for #3 stw r31, r1, #28)"
+                }
+              ]
+            },
+            {
+              "cycle": 6,
+              "i": "00a1a9e8",
+              "position": 4,
+              "line": 0,
+              "instruction": "stw r30, r1, #24",
+              "latest": 6,
+              "height": 12,
+              "count": 2,
+              "rank": 1,
+              "agrees": true,
+              "over": []
+            },
+            {
+              "cycle": 6,
+              "i": "00a18dc0",
+              "position": 11,
+              "line": -1,
+              "instruction": "mullw r30, r3, r31",
+              "latest": 13,
+              "height": 5,
+              "count": 0,
+              "rank": 2,
+              "agrees": true,
+              "over": [
+                {
+                  "i": "00a1aa50",
+                  "position": 5,
+                  "why": "not ready until cycle 8 (it waits 2 cycle(s) for #4 stw r30, r1, #24)"
+                }
+              ]
+            },
+            {
+              "cycle": 8,
+              "i": "00a1aa50",
+              "position": 5,
+              "line": 0,
+              "instruction": "stw r29, r1, #20",
+              "latest": 8,
+              "height": 10,
+              "count": 2,
+              "rank": 1,
+              "agrees": true,
+              "over": []
+            },
+            {
+              "cycle": 8,
+              "i": "00a18c88",
+              "position": 16,
+              "line": 10,
+              "instruction": "li r29, #0",
+              "latest": 17,
+              "height": 1,
+              "count": 0,
+              "rank": 4,
+              "agrees": true,
+              "over": [
+                {
+                  "i": "00a1aab8",
+                  "position": 6,
+                  "why": "not ready until cycle 10 (it waits 2 cycle(s) for #5 stw r29, r1, #20)"
+                }
+              ]
+            },
+            {
+              "cycle": 10,
+              "i": "00a1aab8",
+              "position": 6,
+              "line": 0,
+              "instruction": "stw r28, r1, #16",
+              "latest": 10,
+              "height": 8,
+              "count": 3,
+              "rank": 1,
+              "agrees": true,
+              "over": []
+            },
+            {
+              "cycle": 10,
+              "i": "00a185c0",
+              "position": 13,
+              "line": -1,
+              "instruction": "mr r28, r4, -",
+              "latest": 17,
+              "height": 1,
+              "count": 1,
+              "rank": 0,
+              "agrees": true,
+              "over": [
+                {
+                  "i": "00a18698",
+                  "position": 8,
+                  "why": "not ready until cycle 12 (it waits 2 cycle(s) for #6 stw r28, r1, #16)"
+                },
+                {
+                  "i": "00a18790",
+                  "position": 10,
+                  "why": "not ready until cycle 12 (it waits 2 cycle(s) for #6 stw r28, r1, #16)"
+                }
+              ]
+            },
+            {
+              "cycle": 11,
+              "i": "00a18c20",
+              "position": 15,
+              "line": 9,
+              "instruction": "li r4, #0",
+              "latest": 17,
+              "height": 1,
+              "count": 0,
+              "rank": 4,
+              "agrees": true,
+              "over": [
+                {
+                  "i": "00a18698",
+                  "position": 8,
+                  "why": "not ready until cycle 12 (it waits 2 cycle(s) for #6 stw r28, r1, #16)"
+                },
+                {
+                  "i": "00a18790",
+                  "position": 10,
+                  "why": "not ready until cycle 12 (it waits 2 cycle(s) for #6 stw r28, r1, #16)"
+                }
+              ]
+            },
+            {
+              "cycle": 12,
+              "i": "00a18698",
+              "position": 8,
+              "line": 8,
+              "instruction": "lwz r5, r0, sym",
+              "latest": 12,
+              "height": 6,
+              "count": 1,
+              "rank": 3,
+              "agrees": true,
+              "over": [
+                {
+                  "i": "00a18790",
+                  "position": 10,
+                  "why": "a tie: the pick comes first in the block"
+                }
+              ]
+            },
+            {
+              "cycle": 13,
+              "i": "00a18790",
+              "position": 10,
+              "line": 8,
+              "instruction": "lwz r0, r0, sym",
+              "latest": 12,
+              "height": 6,
+              "count": 1,
+              "rank": 3,
+              "agrees": true,
+              "over": [
+                {
+                  "i": "00a18840",
+                  "position": 12,
+                  "why": "not ready until cycle 14 (it waits 2 cycle(s) for #8 lwz r5, r0, sym)"
+                }
+              ]
+            },
+            {
+              "cycle": 14,
+              "i": "00a18840",
+              "position": 12,
+              "line": 8,
+              "instruction": "stw r5, r1, sym",
+              "latest": 14,
+              "height": 4,
+              "count": 1,
+              "rank": 1,
+              "agrees": true,
+              "over": [
+                {
+                  "i": "00a18920",
+                  "position": 14,
+                  "why": "not ready until cycle 15 (it waits 2 cycle(s) for #10 lwz r0, r0, sym)"
+                }
+              ]
+            },
+            {
+              "cycle": 16,
+              "i": "00a18920",
+              "position": 14,
+              "line": 8,
+              "instruction": "stw r0, r1, sym",
+              "latest": 14,
+              "height": 4,
+              "count": 1,
+              "rank": 1,
+              "agrees": true,
+              "over": [
+                {
+                  "i": "00a189d0",
+                  "position": 17,
+                  "why": "the pick makes 1 dependent(s) ready, this one 0"
+                }
+              ]
+            },
+            {
+              "cycle": 18,
+              "i": "00a189d0",
+              "position": 17,
+              "line": 8,
+              "instruction": "stw r3, r1, sym",
+              "latest": 16,
+              "height": 2,
+              "count": 0,
+              "rank": 1,
+              "agrees": true,
+              "over": [
+                {
+                  "i": "00a18bb8",
+                  "position": 18,
+                  "why": "a tie: the pick comes first in the block"
+                }
+              ]
+            },
+            {
+              "cycle": 20,
+              "i": "00a18bb8",
+              "position": 18,
+              "line": 8,
+              "instruction": "stw r31, r1, sym",
+              "latest": 16,
+              "height": 2,
+              "count": 1,
+              "rank": 1,
+              "agrees": true,
+              "over": []
+            },
+            {
+              "cycle": 20,
+              "i": "00a1a5c0",
+              "position": 19,
+              "line": -1,
+              "instruction": "b label, -",
+              "latest": 18,
+              "height": 0,
+              "count": 0,
+              "rank": 0,
+              "agrees": true,
+              "over": []
+            }
+          ],
+          "before": [
+            "stwu r1, r1, #-32",
+            "mflr r0, spr1",
+            "stw r0, r1, #36",
+            "stw r31, r1, #28",
+            "stw r30, r1, #24",
+            "stw r29, r1, #20",
+            "stw r28, r1, #16",
+            "addi r0, r3, #1, -",
+            "lwz r5, r0, sym",
+            "add r31, r3, r0",
+            "lwz r0, r0, sym",
+            "mullw r30, r3, r31",
+            "stw r5, r1, sym",
+            "mr r28, r4, -",
+            "stw r0, r1, sym",
+            "li r4, #0",
+            "li r29, #0",
+            "stw r3, r1, sym",
+            "stw r31, r1, sym",
+            "b label, -"
+          ],
+          "edges": [
+            {
+              "from": 0,
+              "to": 19,
+              "latency": 0
+            },
+            {
+              "from": 0,
+              "to": 1,
+              "latency": 0
+            },
+            {
+              "from": 0,
+              "to": 10,
+              "latency": 2
+            },
+            {
+              "from": 0,
+              "to": 8,
+              "latency": 2
+            },
+            {
+              "from": 0,
+              "to": 18,
+              "latency": 2
+            },
+            {
+              "from": 0,
+              "to": 17,
+              "latency": 2
+            },
+            {
+              "from": 0,
+              "to": 14,
+              "latency": 2
+            },
+            {
+              "from": 0,
+              "to": 12,
+              "latency": 2
+            },
+            {
+              "from": 0,
+              "to": 6,
+              "latency": 2
+            },
+            {
+              "from": 0,
+              "to": 5,
+              "latency": 2
+            },
+            {
+              "from": 0,
+              "to": 4,
+              "latency": 2
+            },
+            {
+              "from": 0,
+              "to": 3,
+              "latency": 2
+            },
+            {
+              "from": 0,
+              "to": 2,
+              "latency": 2
+            },
+            {
+              "from": 1,
+              "to": 19,
+              "latency": 0
+            },
+            {
+              "from": 1,
+              "to": 18,
+              "latency": 0
+            },
+            {
+              "from": 1,
+              "to": 17,
+              "latency": 0
+            },
+            {
+              "from": 1,
+              "to": 16,
+              "latency": 0
+            },
+            {
+              "from": 1,
+              "to": 15,
+              "latency": 0
+            },
+            {
+              "from": 1,
+              "to": 13,
+              "latency": 0
+            },
+            {
+              "from": 1,
+              "to": 12,
+              "latency": 0
+            },
+            {
+              "from": 1,
+              "to": 11,
+              "latency": 0
+            },
+            {
+              "from": 1,
+              "to": 8,
+              "latency": 0
+            },
+            {
+              "from": 1,
+              "to": 6,
+              "latency": 0
+            },
+            {
+              "from": 1,
+              "to": 5,
+              "latency": 0
+            },
+            {
+              "from": 1,
+              "to": 4,
+              "latency": 0
+            },
+            {
+              "from": 1,
+              "to": 3,
+              "latency": 0
+            },
+            {
+              "from": 1,
+              "to": 10,
+              "latency": 0
+            },
+            {
+              "from": 1,
+              "to": 7,
+              "latency": 0
+            },
+            {
+              "from": 1,
+              "to": 14,
+              "latency": 1
+            },
+            {
+              "from": 1,
+              "to": 9,
+              "latency": 1
+            },
+            {
+              "from": 1,
+              "to": 2,
+              "latency": 1
+            },
+            {
+              "from": 2,
+              "to": 19,
+              "latency": 0
+            },
+            {
+              "from": 2,
+              "to": 6,
+              "latency": 2
+            },
+            {
+              "from": 2,
+              "to": 5,
+              "latency": 2
+            },
+            {
+              "from": 2,
+              "to": 4,
+              "latency": 2
+            },
+            {
+              "from": 2,
+              "to": 3,
+              "latency": 2
+            },
+            {
+              "from": 2,
+              "to": 8,
+              "latency": 2
+            },
+            {
+              "from": 2,
+              "to": 10,
+              "latency": 2
+            },
+            {
+              "from": 2,
+              "to": 7,
+              "latency": 0
+            },
+            {
+              "from": 3,
+              "to": 19,
+              "latency": 0
+            },
+            {
+              "from": 3,
+              "to": 6,
+              "latency": 2
+            },
+            {
+              "from": 3,
+              "to": 5,
+              "latency": 2
+            },
+            {
+              "from": 3,
+              "to": 4,
+              "latency": 2
+            },
+            {
+              "from": 3,
+              "to": 10,
+              "latency": 2
+            },
+            {
+              "from": 3,
+              "to": 8,
+              "latency": 2
+            },
+            {
+              "from": 3,
+              "to": 9,
+              "latency": 0
+            },
+            {
+              "from": 4,
+              "to": 19,
+              "latency": 0
+            },
+            {
+              "from": 4,
+              "to": 6,
+              "latency": 2
+            },
+            {
+              "from": 4,
+              "to": 5,
+              "latency": 2
+            },
+            {
+              "from": 4,
+              "to": 10,
+              "latency": 2
+            },
+            {
+              "from": 4,
+              "to": 8,
+              "latency": 2
+            },
+            {
+              "from": 4,
+              "to": 11,
+              "latency": 0
+            },
+            {
+              "from": 5,
+              "to": 19,
+              "latency": 0
+            },
+            {
+              "from": 5,
+              "to": 6,
+              "latency": 2
+            },
+            {
+              "from": 5,
+              "to": 10,
+              "latency": 2
+            },
+            {
+              "from": 5,
+              "to": 8,
+              "latency": 2
+            },
+            {
+              "from": 5,
+              "to": 16,
+              "latency": 0
+            },
+            {
+              "from": 6,
+              "to": 19,
+              "latency": 0
+            },
+            {
+              "from": 6,
+              "to": 10,
+              "latency": 2
+            },
+            {
+              "from": 6,
+              "to": 8,
+              "latency": 2
+            },
+            {
+              "from": 6,
+              "to": 13,
+              "latency": 0
+            },
+            {
+              "from": 7,
+              "to": 19,
+              "latency": 0
+            },
+            {
+              "from": 7,
+              "to": 10,
+              "latency": 0
+            },
+            {
+              "from": 7,
+              "to": 14,
+              "latency": 1
+            },
+            {
+              "from": 7,
+              "to": 9,
+              "latency": 1
+            },
+            {
+              "from": 8,
+              "to": 19,
+              "latency": 0
+            },
+            {
+              "from": 8,
+              "to": 12,
+              "latency": 2
+            },
+            {
+              "from": 9,
+              "to": 19,
+              "latency": 0
+            },
+            {
+              "from": 9,
+              "to": 10,
+              "latency": 0
+            },
+            {
+              "from": 9,
+              "to": 18,
+              "latency": 1
+            },
+            {
+              "from": 9,
+              "to": 11,
+              "latency": 1
+            },
+            {
+              "from": 10,
+              "to": 19,
+              "latency": 0
+            },
+            {
+              "from": 10,
+              "to": 14,
+              "latency": 2
+            },
+            {
+              "from": 11,
+              "to": 19,
+              "latency": 0
+            },
+            {
+              "from": 12,
+              "to": 19,
+              "latency": 0
+            },
+            {
+              "from": 12,
+              "to": 17,
+              "latency": 2
+            },
+            {
+              "from": 13,
+              "to": 19,
+              "latency": 0
+            },
+            {
+              "from": 13,
+              "to": 15,
+              "latency": 0
+            },
+            {
+              "from": 14,
+              "to": 19,
+              "latency": 0
+            },
+            {
+              "from": 14,
+              "to": 18,
+              "latency": 2
+            },
+            {
+              "from": 15,
+              "to": 19,
+              "latency": 0
+            },
+            {
+              "from": 16,
+              "to": 19,
+              "latency": 0
+            },
+            {
+              "from": 17,
+              "to": 19,
+              "latency": 0
+            },
+            {
+              "from": 18,
+              "to": 19,
+              "latency": 0
+            }
+          ]
+        },
+        {
+          "block": 5,
+          "virtual": false,
+          "instructions": 4,
+          "cycles": 6,
+          "replay_agrees": 9,
+          "replayed": 9,
+          "picks": [
+            {
+              "cycle": 0,
+              "i": "00a191a8",
+              "position": 0,
+              "line": 12,
+              "instruction": "add r4, r0, r4",
+              "latest": 0,
+              "height": 5,
+              "count": 1,
+              "rank": 2,
+              "agrees": true,
+              "over": []
+            },
+            {
+              "cycle": 1,
+              "i": "00a19210",
+              "position": 1,
+              "line": 12,
+              "instruction": "add r4, r30, r4",
+              "latest": 1,
+              "height": 4,
+              "count": 1,
+              "rank": 2,
+              "agrees": true,
+              "over": []
+            },
+            {
+              "cycle": 2,
+              "i": "00a19298",
+              "position": 2,
+              "line": 13,
+              "instruction": "rlwinm r0, r4, #0, #31, #31, cr0",
+              "latest": 2,
+              "height": 3,
+              "count": 1,
+              "rank": 2,
+              "agrees": true,
+              "over": []
+            },
+            {
+              "cycle": 5,
+              "i": "00a19380",
+              "position": 3,
+              "line": 13,
+              "instruction": "bt cr0, #2, label, -",
+              "latest": 5,
+              "height": 0,
+              "count": 0,
+              "rank": 0,
+              "agrees": true,
+              "over": []
+            }
+          ],
+          "before": [
+            "add r4, r0, r4",
+            "add r4, r30, r4",
+            "rlwinm r0, r4, #0, #31, #31, cr0",
+            "bt cr0, #2, label, -"
+          ],
+          "edges": [
+            {
+              "from": 0,
+              "to": 3,
+              "latency": 0
+            },
+            {
+              "from": 0,
+              "to": 2,
+              "latency": 1
+            },
+            {
+              "from": 0,
+              "to": 1,
+              "latency": 1
+            },
+            {
+              "from": 1,
+              "to": 3,
+              "latency": 0
+            },
+            {
+              "from": 1,
+              "to": 2,
+              "latency": 1
+            },
+            {
+              "from": 2,
+              "to": 3,
+              "latency": 3
+            }
+          ]
+        },
+        {
+          "block": 10,
+          "virtual": false,
+          "instructions": 7,
+          "cycles": 5,
+          "replay_agrees": 10,
+          "replayed": 10,
+          "picks": [
+            {
+              "cycle": 0,
+              "i": "00a1acc0",
+              "position": 5,
+              "line": 15,
+              "instruction": "lwz r0, r1, #36",
+              "latest": 0,
+              "height": 4,
+              "count": 0,
+              "rank": 3,
+              "agrees": true,
+              "over": [
+                {
+                  "i": "00a19ac0",
+                  "position": 0,
+                  "why": "the pick must issue by this cycle (latest 0), this one need not"
+                }
+              ]
+            },
+            {
+              "cycle": 0,
+              "i": "00a19ac0",
+              "position": 0,
+              "line": 15,
+              "instruction": "add r3, r4, r31",
+              "latest": 2,
+              "height": 2,
+              "count": 1,
+              "rank": 2,
+              "agrees": true,
+              "over": []
+            },
+            {
+              "cycle": 1,
+              "i": "00a1ab20",
+              "position": 1,
+              "line": 15,
+              "instruction": "lwz r31, r1, #28",
+              "latest": 2,
+              "height": 2,
+              "count": 1,
+              "rank": 3,
+              "agrees": true,
+              "over": []
+            },
+            {
+              "cycle": 2,
+              "i": "00a1ab88",
+              "position": 2,
+              "line": 15,
+              "instruction": "lwz r30, r1, #24",
+              "latest": 2,
+              "height": 2,
+              "count": 1,
+              "rank": 3,
+              "agrees": true,
+              "over": []
+            },
+            {
+              "cycle": 3,
+              "i": "00a1abf0",
+              "position": 3,
+              "line": 15,
+              "instruction": "lwz r29, r1, #20",
+              "latest": 2,
+              "height": 2,
+              "count": 1,
+              "rank": 3,
+              "agrees": true,
+              "over": []
+            },
+            {
+              "cycle": 4,
+              "i": "00a1ac58",
+              "position": 4,
+              "line": 15,
+              "instruction": "lwz r28, r1, #16",
+              "latest": 2,
+              "height": 2,
+              "count": 1,
+              "rank": 3,
+              "agrees": true,
+              "over": []
+            },
+            {
+              "cycle": 4,
+              "i": "00a1ad28",
+              "position": 6,
+              "line": 15,
+              "instruction": "mtlr r0, spr1",
+              "latest": 2,
+              "height": 2,
+              "count": 0,
+              "rank": 1,
+              "agrees": true,
+              "over": []
+            }
+          ],
+          "before": [
+            "add r3, r4, r31",
+            "lwz r31, r1, #28",
+            "lwz r30, r1, #24",
+            "lwz r29, r1, #20",
+            "lwz r28, r1, #16",
+            "lwz r0, r1, #36",
+            "mtlr r0, spr1"
+          ],
+          "edges": [
+            {
+              "from": 0,
+              "to": 6,
+              "latency": 0
+            },
+            {
+              "from": 0,
+              "to": 1,
+              "latency": 0
+            },
+            {
+              "from": 1,
+              "to": 6,
+              "latency": 0
+            },
+            {
+              "from": 1,
+              "to": 4,
+              "latency": 0
+            },
+            {
+              "from": 1,
+              "to": 3,
+              "latency": 0
+            },
+            {
+              "from": 1,
+              "to": 2,
+              "latency": 0
+            },
+            {
+              "from": 2,
+              "to": 6,
+              "latency": 0
+            },
+            {
+              "from": 2,
+              "to": 4,
+              "latency": 0
+            },
+            {
+              "from": 2,
+              "to": 3,
+              "latency": 0
+            },
+            {
+              "from": 3,
+              "to": 6,
+              "latency": 0
+            },
+            {
+              "from": 3,
+              "to": 4,
+              "latency": 0
+            },
+            {
+              "from": 4,
+              "to": 6,
+              "latency": 0
+            },
+            {
+              "from": 5,
+              "to": 6,
+              "latency": 2
+            }
+          ]
+        }
+      ],
+      "locals": [
+        {
+          "pointers": 0,
+          "calls": 0,
+          "vars": {
+            "p": {
+              "size": 8,
+              "noregister": 0,
+              "uses": [
+                {
+                  "node": 4,
+                  "call": false,
+                  "offset": 0,
+                  "kind": 5,
+                  "size": 8
+                },
+                {
+                  "node": 9,
+                  "call": false,
+                  "offset": 0,
+                  "kind": 1,
+                  "size": 4
+                },
+                {
+                  "node": 31,
+                  "call": false,
+                  "offset": 4,
+                  "kind": 1,
+                  "size": 4
+                },
+                {
+                  "node": 46,
+                  "call": false,
+                  "offset": 4,
+                  "kind": 1,
+                  "size": 4
+                },
+                {
+                  "node": 48,
+                  "call": false,
+                  "offset": 0,
+                  "kind": 1,
+                  "size": 4
+                },
+                {
+                  "node": 118,
+                  "call": false,
+                  "offset": 4,
+                  "kind": 1,
+                  "size": 4
+                }
+              ],
+              "parts": [
+                {
+                  "start": 0,
+                  "end": 63,
+                  "kind": 5,
+                  "size": 8,
+                  "uses": 1,
+                  "blocked": 1,
+                  "temp": null
+                }
+              ]
+            }
+          }
+        },
+        {
+          "pointers": 0,
+          "calls": 0,
+          "vars": {
+            "p": {
+              "size": null,
+              "noregister": null,
+              "uses": [
+                {
+                  "node": 4,
+                  "call": false,
+                  "offset": 0,
+                  "kind": 5,
+                  "size": 8
+                },
+                {
+                  "node": 9,
+                  "call": false,
+                  "offset": 0,
+                  "kind": 1,
+                  "size": 4
+                },
+                {
+                  "node": 72,
+                  "call": false,
+                  "offset": 0,
+                  "kind": 1,
+                  "size": 4
+                }
+              ],
+              "parts": []
+            }
+          }
+        }
+      ],
+      "inline_bindings": [
+        {
+          "callee": "nested__Fi",
+          "index": 0,
+          "name": "a",
+          "kind": 1,
+          "size": 4,
+          "ref": 0,
+          "dirty": 1,
+          "mode": "substituted",
+          "var": null,
+          "object": "input",
+          "declared": 1,
+          "declared_size": 4,
+          "generated": 0,
+          "expression": "*input"
+        },
+        {
+          "callee": "nested__Fi",
+          "index": 0,
+          "name": "a",
+          "kind": 1,
+          "size": 4,
+          "ref": 0,
+          "dirty": 1,
+          "mode": "substituted",
+          "var": null,
+          "object": "i",
+          "declared": 1,
+          "declared_size": 4,
+          "generated": 0,
+          "expression": "*i"
+        },
+        {
+          "callee": "twice<i>__Fi",
+          "index": 0,
+          "name": "x",
+          "kind": 1,
+          "size": 4,
+          "ref": 0,
+          "dirty": 1,
+          "mode": "substituted",
+          "var": null,
+          "object": "input",
+          "declared": 1,
+          "declared_size": 4,
+          "generated": 0,
+          "expression": "*input"
+        },
+        {
+          "callee": "twice<i>__Fi",
+          "index": 0,
+          "name": "x",
+          "kind": 1,
+          "size": 4,
+          "ref": 0,
+          "dirty": 1,
+          "mode": "substituted",
+          "var": null,
+          "object": "i",
+          "declared": 1,
+          "declared_size": 4,
+          "generated": 0,
+          "expression": "*i"
+        }
+      ]
+    }
+  ],
+  "instantiation": [
+    {
+      "kind": "instantiation",
+      "event": "queue",
+      "link": "twice<i>__Fi",
+      "position": 0,
+      "from": "nested__Fi",
+      "queue_kind": 2,
+      "new": true
+    },
+    {
+      "kind": "instantiation",
+      "event": "func",
+      "link": "twice<i>__Fi",
+      "position": 2
+    },
+    {
+      "kind": "instantiation",
+      "event": "parse",
+      "link": "twice<i>__Fi",
+      "position": 3,
+      "queue_kind": 2,
+      "body": true
+    },
+    {
+      "kind": "instantiation",
+      "event": "gen",
+      "link": "pipeline__Fii",
+      "position": 4
+    },
+    {
+      "kind": "instantiation",
+      "event": "decision",
+      "link": "nested__Fi",
+      "position": 17,
+      "inline": true,
+      "body": true,
+      "depth": 0,
+      "chain": [],
+      "in": "pipeline__Fii"
+    },
+    {
+      "kind": "instantiation",
+      "event": "decision",
+      "link": "nested__Fi",
+      "position": 25,
+      "inline": true,
+      "body": true,
+      "depth": 0,
+      "chain": [],
+      "in": "pipeline__Fii"
+    },
+    {
+      "kind": "instantiation",
+      "event": "decision",
+      "link": "consume__Fi",
+      "position": 29,
+      "inline": false,
+      "body": false,
+      "depth": 0,
+      "chain": [],
+      "in": "pipeline__Fii"
+    },
+    {
+      "kind": "instantiation",
+      "event": "decision",
+      "link": "twice<i>__Fi",
+      "position": 32,
+      "inline": true,
+      "body": true,
+      "depth": 1,
+      "chain": [
+        "nested__Fi"
+      ],
+      "in": "pipeline__Fii"
+    },
+    {
+      "kind": "instantiation",
+      "event": "decision",
+      "link": "twice<i>__Fi",
+      "position": 38,
+      "inline": true,
+      "body": true,
+      "depth": 1,
+      "chain": [
+        "nested__Fi"
+      ],
+      "in": "pipeline__Fii"
+    },
+    {
+      "kind": "instantiation",
+      "event": "decision",
+      "link": "consume__Fi",
+      "position": 42,
+      "inline": false,
+      "body": false,
+      "depth": 1,
+      "chain": [],
+      "in": "pipeline__Fii"
+    },
+    {
+      "kind": "instantiation",
+      "event": "decision",
+      "link": "consume__Fi",
+      "position": 43,
+      "inline": false,
+      "body": false,
+      "depth": 2,
+      "chain": [],
+      "in": "pipeline__Fii"
+    },
+    {
+      "kind": "instantiation",
+      "event": "decision",
+      "link": "consume__Fi",
+      "position": 44,
+      "inline": false,
+      "body": false,
+      "depth": 3,
+      "chain": [],
+      "in": "pipeline__Fii"
+    },
+    {
+      "kind": "instantiation",
+      "event": "decision",
+      "link": "consume__Fi",
+      "position": 45,
+      "inline": false,
+      "body": false,
+      "depth": 4,
+      "chain": [],
+      "in": "pipeline__Fii"
+    },
+    {
+      "kind": "instantiation",
+      "event": "decision",
+      "link": "consume__Fi",
+      "position": 46,
+      "inline": false,
+      "body": false,
+      "depth": 5,
+      "chain": [],
+      "in": "pipeline__Fii"
+    },
+    {
+      "kind": "instantiation",
+      "event": "decision",
+      "link": "consume__Fi",
+      "position": 47,
+      "inline": false,
+      "body": false,
+      "depth": 6,
+      "chain": [],
+      "in": "pipeline__Fii"
+    },
+    {
+      "kind": "instantiation",
+      "event": "decision",
+      "link": "consume__Fi",
+      "position": 48,
+      "inline": false,
+      "body": false,
+      "depth": 7,
+      "chain": [],
+      "in": "pipeline__Fii"
+    },
+    {
+      "kind": "instantiation",
+      "event": "compiled",
+      "link": "pipeline__Fii",
+      "position": 709
+    }
+  ]
+}

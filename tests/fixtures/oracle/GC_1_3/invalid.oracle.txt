@@ -1,0 +1,9 @@
+### mwcceppc.exe Compiler:
+#    File: tests\fixtures\oracle\errors\invalid.c
+# -----------------------------------------------
+#       2: int invalid( {
+#   Error:              ^
+#   declaration syntax error
+#   Too many errors printed, aborting program
+
+User break, cancelled...

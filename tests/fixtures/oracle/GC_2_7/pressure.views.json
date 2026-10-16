@@ -1,0 +1,38 @@
+{
+  "near": [],
+  "suggestions": {
+    "accumualte": [
+      [
+        "pressure",
+        "pressure"
+      ]
+    ],
+    "does_not_exist": [
+      [
+        "pressure",
+        "pressure"
+      ]
+    ]
+  },
+  "near_report": [
+    "== inline decisions within 8 of the threshold (cost, threshold, decision, callee link name, in which function) ==",
+    "   none"
+  ],
+  "instantiation_report": [
+    "== when the bodies of  came to be, and the decisions about calling them (trace line, event) ==",
+    "         0  call kept in pressure, round 0, NO BODY yet  [external]",
+    "         1  call kept in pressure, round 1, NO BODY yet  [external]",
+    "         2  call kept in pressure, round 2, NO BODY yet  [external]",
+    "         3  call kept in pressure, round 3, NO BODY yet  [external]",
+    "         4  call kept in pressure, round 4, NO BODY yet  [external]",
+    "         5  call kept in pressure, round 5, NO BODY yet  [external]",
+    "         6  call kept in pressure, round 6, NO BODY yet  [external]",
+    "         7  call kept in pressure, round 7, NO BODY yet  [external]",
+    "      1602  compiled (allocated)  [pressure]"
+  ],
+  "raw_selected": {
+    "common": [],
+    "pipeline": [],
+    "does_not_exist": []
+  }
+}

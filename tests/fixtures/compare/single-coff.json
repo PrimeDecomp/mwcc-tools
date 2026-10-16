@@ -1,0 +1,43 @@
+[
+  {
+    "file": "single-0.obj",
+    "data": [
+      97,
+      98,
+      99
+    ],
+    "symbol": null,
+    "code": true,
+    "bss_size": 0
+  },
+  {
+    "file": "single-1.obj",
+    "data": [
+      97,
+      98,
+      99
+    ],
+    "symbol": "_fn",
+    "code": true,
+    "bss_size": 0
+  },
+  {
+    "file": "single-2.obj",
+    "data": [
+      100,
+      97,
+      116,
+      97
+    ],
+    "symbol": "?decorated@@",
+    "code": false,
+    "bss_size": 0
+  },
+  {
+    "file": "single-3.obj",
+    "data": [],
+    "symbol": null,
+    "code": false,
+    "bss_size": 20
+  }
+]

@@ -1,0 +1,514 @@
+{
+  "config": {
+    "original": "original.exe",
+    "sha1": "a51a160df3edb021869d027db00b783024ef03e6"
+  },
+  "functions": [
+    {
+      "name": "a",
+      "address": "0x401000",
+      "size": 5,
+      "source": "src/matched.cpp"
+    },
+    {
+      "name": "b",
+      "address": "0x401010",
+      "size": 5,
+      "source": "src/nonmatching.cpp"
+    },
+    {
+      "name": "c",
+      "address": "0x401020",
+      "size": 5,
+      "source": "src/nonmatching.cpp"
+    },
+    {
+      "name": "missing",
+      "address": "0x401030",
+      "size": 5,
+      "source": "src/nonmatching.cpp"
+    },
+    {
+      "name": "patch",
+      "address": "0x401040",
+      "size": 5,
+      "source": "src/matched.cpp",
+      "binary_patch": true
+    },
+    {
+      "name": "?unrecovered@@",
+      "address": "0x401060",
+      "size": 1
+    }
+  ],
+  "bindings": {
+    "_data": "0x402000"
+  },
+  "sources": {
+    "src/matched.cpp": {},
+    "src/nonmatching.cpp": {
+      "status": "NonMatching"
+    }
+  },
+  "rows": [
+    {
+      "name": "src/matched/a",
+      "address": 4198400,
+      "size": 5,
+      "source": "src/matched.cpp",
+      "code": true,
+      "symbol": "_a",
+      "bss": false,
+      "target": "build/FIXTURE/target/src/matched/a.obj",
+      "base": "build/FIXTURE/base/src/matched/a.obj"
+    },
+    {
+      "name": "unknown/.text/00401005",
+      "address": 4198405,
+      "size": 11,
+      "code": true,
+      "bss": false,
+      "target": "build/FIXTURE/target/unknown/.text/00401005.obj"
+    },
+    {
+      "name": "src/nonmatching/b",
+      "address": 4198416,
+      "size": 5,
+      "source": "src/nonmatching.cpp",
+      "code": true,
+      "symbol": "_b",
+      "bss": false,
+      "target": "build/FIXTURE/target/src/nonmatching/b.obj",
+      "base": "build/FIXTURE/base/src/nonmatching/b.obj"
+    },
+    {
+      "name": "unknown/.text/00401015",
+      "address": 4198421,
+      "size": 11,
+      "code": true,
+      "bss": false,
+      "target": "build/FIXTURE/target/unknown/.text/00401015.obj"
+    },
+    {
+      "name": "src/nonmatching/c",
+      "address": 4198432,
+      "size": 5,
+      "source": "src/nonmatching.cpp",
+      "code": true,
+      "symbol": "_c",
+      "bss": false,
+      "target": "build/FIXTURE/target/src/nonmatching/c.obj",
+      "base": "build/FIXTURE/base/src/nonmatching/c.obj"
+    },
+    {
+      "name": "unknown/.text/00401025",
+      "address": 4198437,
+      "size": 11,
+      "code": true,
+      "bss": false,
+      "target": "build/FIXTURE/target/unknown/.text/00401025.obj"
+    },
+    {
+      "name": "src/nonmatching/missing",
+      "address": 4198448,
+      "size": 5,
+      "source": "src/nonmatching.cpp",
+      "code": true,
+      "symbol": "_missing",
+      "bss": false,
+      "target": "build/FIXTURE/target/src/nonmatching/missing.obj",
+      "base": "build/FIXTURE/base/src/nonmatching/missing.obj"
+    },
+    {
+      "name": "unknown/.text/00401035",
+      "address": 4198453,
+      "size": 11,
+      "code": true,
+      "bss": false,
+      "target": "build/FIXTURE/target/unknown/.text/00401035.obj"
+    },
+    {
+      "name": "src/matched/patch",
+      "address": 4198464,
+      "size": 5,
+      "source": "src/matched.cpp",
+      "binary_patch": true,
+      "code": true,
+      "symbol": "_patch",
+      "bss": false,
+      "target": "build/FIXTURE/target/src/matched/patch.obj",
+      "base": "build/FIXTURE/base/src/matched/patch.obj"
+    },
+    {
+      "name": "unknown/.text/00401045",
+      "address": 4198469,
+      "size": 27,
+      "code": true,
+      "bss": false,
+      "target": "build/FIXTURE/target/unknown/.text/00401045.obj"
+    },
+    {
+      "name": "unrecovered/?unrecovered@@",
+      "address": 4198496,
+      "size": 1,
+      "code": true,
+      "symbol": "?unrecovered@@",
+      "bss": false,
+      "target": "build/FIXTURE/target/unrecovered/%3funrecovered@@.obj"
+    },
+    {
+      "name": "unknown/.text/00401061",
+      "address": 4198497,
+      "size": 31,
+      "code": true,
+      "bss": false,
+      "target": "build/FIXTURE/target/unknown/.text/00401061.obj"
+    },
+    {
+      "name": "unknown/.data/00402000",
+      "address": 4202496,
+      "size": 64,
+      "code": false,
+      "bss": false,
+      "target": "build/FIXTURE/target/unknown/.data/00402000.obj"
+    },
+    {
+      "name": "unknown/.bss/00404000",
+      "address": 4210688,
+      "size": 16,
+      "code": false,
+      "bss": true,
+      "target": "build/FIXTURE/target/unknown/.bss/00404000.obj"
+    }
+  ],
+  "checks": {
+    "src/matched/a": {
+      "body": [
+        0,
+        32,
+        64,
+        0,
+        195
+      ],
+      "exact": true
+    },
+    "src/nonmatching/b": {
+      "body": [
+        0,
+        32,
+        64,
+        0,
+        195
+      ],
+      "exact": false
+    },
+    "src/nonmatching/c": {
+      "body": [
+        0,
+        32,
+        64,
+        0,
+        195
+      ],
+      "exact": false
+    },
+    "src/nonmatching/missing": {
+      "body": null,
+      "exact": false
+    },
+    "src/matched/patch": {
+      "body": [
+        0,
+        32,
+        64,
+        0,
+        195
+      ],
+      "exact": true
+    }
+  },
+  "objdiff": {
+    "$schema": "https://raw.githubusercontent.com/encounter/objdiff/main/config.schema.json",
+    "min_version": "3.8.0",
+    "custom_make": "ninja",
+    "build_target": false,
+    "build_base": true,
+    "watch_patterns": [
+      "src/**/*.c",
+      "src/**/*.cpp",
+      "include/**/*.h",
+      "config/**/*.json"
+    ],
+    "units": [
+      {
+        "name": "src/matched/a",
+        "target_path": "build/FIXTURE/target/src/matched/a.obj",
+        "metadata": {
+          "complete": true,
+          "progress_categories": [
+            "code"
+          ],
+          "source_path": "src/matched.cpp"
+        },
+        "base_path": "build/FIXTURE/base/src/matched/a.obj"
+      },
+      {
+        "name": "unknown/.text/00401005",
+        "target_path": "build/FIXTURE/target/unknown/.text/00401005.obj",
+        "metadata": {
+          "complete": false,
+          "progress_categories": [
+            "code"
+          ]
+        }
+      },
+      {
+        "name": "src/nonmatching/b",
+        "target_path": "build/FIXTURE/target/src/nonmatching/b.obj",
+        "metadata": {
+          "complete": false,
+          "progress_categories": [
+            "code"
+          ],
+          "source_path": "src/nonmatching.cpp"
+        },
+        "base_path": "build/FIXTURE/base/src/nonmatching/b.obj"
+      },
+      {
+        "name": "unknown/.text/00401015",
+        "target_path": "build/FIXTURE/target/unknown/.text/00401015.obj",
+        "metadata": {
+          "complete": false,
+          "progress_categories": [
+            "code"
+          ]
+        }
+      },
+      {
+        "name": "src/nonmatching/c",
+        "target_path": "build/FIXTURE/target/src/nonmatching/c.obj",
+        "metadata": {
+          "complete": false,
+          "progress_categories": [
+            "code"
+          ],
+          "source_path": "src/nonmatching.cpp"
+        },
+        "base_path": "build/FIXTURE/base/src/nonmatching/c.obj"
+      },
+      {
+        "name": "unknown/.text/00401025",
+        "target_path": "build/FIXTURE/target/unknown/.text/00401025.obj",
+        "metadata": {
+          "complete": false,
+          "progress_categories": [
+            "code"
+          ]
+        }
+      },
+      {
+        "name": "src/nonmatching/missing",
+        "target_path": "build/FIXTURE/target/src/nonmatching/missing.obj",
+        "metadata": {
+          "complete": false,
+          "progress_categories": [
+            "code"
+          ],
+          "source_path": "src/nonmatching.cpp"
+        }
+      },
+      {
+        "name": "unknown/.text/00401035",
+        "target_path": "build/FIXTURE/target/unknown/.text/00401035.obj",
+        "metadata": {
+          "complete": false,
+          "progress_categories": [
+            "code"
+          ]
+        }
+      },
+      {
+        "name": "src/matched/patch",
+        "target_path": "build/FIXTURE/target/src/matched/patch.obj",
+        "metadata": {
+          "complete": false,
+          "progress_categories": [
+            "code"
+          ],
+          "source_path": "src/matched.cpp"
+        },
+        "base_path": "build/FIXTURE/base/src/matched/patch.obj"
+      },
+      {
+        "name": "unknown/.text/00401045",
+        "target_path": "build/FIXTURE/target/unknown/.text/00401045.obj",
+        "metadata": {
+          "complete": false,
+          "progress_categories": [
+            "code"
+          ]
+        }
+      },
+      {
+        "name": "unrecovered/?unrecovered@@",
+        "target_path": "build/FIXTURE/target/unrecovered/%3funrecovered@@.obj",
+        "metadata": {
+          "complete": false,
+          "progress_categories": [
+            "code"
+          ]
+        }
+      },
+      {
+        "name": "unknown/.text/00401061",
+        "target_path": "build/FIXTURE/target/unknown/.text/00401061.obj",
+        "metadata": {
+          "complete": false,
+          "progress_categories": [
+            "code"
+          ]
+        }
+      },
+      {
+        "name": "unknown/.data/00402000",
+        "target_path": "build/FIXTURE/target/unknown/.data/00402000.obj",
+        "metadata": {
+          "complete": false,
+          "progress_categories": [
+            "data"
+          ]
+        }
+      },
+      {
+        "name": "unknown/.bss/00404000",
+        "target_path": "build/FIXTURE/target/unknown/.bss/00404000.obj",
+        "metadata": {
+          "complete": false,
+          "progress_categories": [
+            "data"
+          ]
+        }
+      }
+    ],
+    "progress_categories": [
+      {
+        "id": "code",
+        "name": "Code"
+      },
+      {
+        "id": "data",
+        "name": "Data"
+      }
+    ]
+  },
+  "completion": "FIXTURE: 2/5 functions exact, 1 linked\n  NonMatching: b c missing\n  binary patch: patch\n",
+  "objects": {
+    "build/FIXTURE/target/unrecovered/%3funrecovered@@.obj": "40d3a12507295da3f09bf84864277405ed47ad45cd613c612414abbb238b1148",
+    "build/FIXTURE/target/unknown/.bss/00404000.obj": "d31d2b0b21c8e4719b70b22369951cdf7130c70ad3c7fe1aff3c040529d4c4fc",
+    "build/FIXTURE/target/unknown/.data/00402000.obj": "a17138c1b2dfff979df60649a2f47fadec31b31c4c5737be96cbe5baa431030c",
+    "build/FIXTURE/target/unknown/.text/00401005.obj": "3c3c3dbe0e804c32b4d43683815e3944c0d3a97af343d2fccc5fb9eff62ce32e",
+    "build/FIXTURE/target/unknown/.text/00401015.obj": "937339c7d153df9b4792edf3b61c6c6448b39aee89206372298641b560edd6d3",
+    "build/FIXTURE/target/unknown/.text/00401025.obj": "56b6e532e7621576dc8a9e1a91b25146e90853330ff5d1b0002b3ae5a94bdba1",
+    "build/FIXTURE/target/unknown/.text/00401035.obj": "ba4fa271a15692af116a5f079e2c7ebf76af06afdbe49a259ed6841aa54a68a5",
+    "build/FIXTURE/target/unknown/.text/00401045.obj": "b3f298b24e3d12a9055421dc4eefcc91f3abc4597f9160baa94e0069ca9a15a5",
+    "build/FIXTURE/target/unknown/.text/00401061.obj": "f63091d30121f474a8e1ab2aac2079e333247a6f1f338c3817ca8b467f37ee8e",
+    "build/FIXTURE/target/src/matched/a.obj": "5b8f2a15b08c2cbcad42cdcebbd542ffeed4840b5a414420e9cb310dfa73f588",
+    "build/FIXTURE/target/src/matched/patch.obj": "c3b0770e1721dbf297eeb3a7bce56204aa3e98c8aed7e6ee49d35c492145bc7c",
+    "build/FIXTURE/target/src/nonmatching/b.obj": "52964e514f58b7f6e2deda05a91c329d5e04b4ae5414e5ee1e6d4933c4348b66",
+    "build/FIXTURE/target/src/nonmatching/c.obj": "477dec06877117c85ab3bccac6c8afaae64ff6f2d107a136efd630fd0e9577da",
+    "build/FIXTURE/target/src/nonmatching/missing.obj": "ad8d96da5041a1a2ba09ddbc701de254867040da02f6237add76d3b66b5e70a6",
+    "build/FIXTURE/base/src/matched/a.obj": "5b8f2a15b08c2cbcad42cdcebbd542ffeed4840b5a414420e9cb310dfa73f588",
+    "build/FIXTURE/base/src/matched/patch.obj": "c3b0770e1721dbf297eeb3a7bce56204aa3e98c8aed7e6ee49d35c492145bc7c",
+    "build/FIXTURE/base/src/nonmatching/b.obj": "52964e514f58b7f6e2deda05a91c329d5e04b4ae5414e5ee1e6d4933c4348b66",
+    "build/FIXTURE/base/src/nonmatching/c.obj": "477dec06877117c85ab3bccac6c8afaae64ff6f2d107a136efd630fd0e9577da"
+  },
+  "report_input": {
+    "units": [
+      {
+        "name": "unknown/.text/00401005",
+        "functions": [
+          {
+            "name": "__unknown"
+          }
+        ],
+        "measures": {
+          "total_functions": 1,
+          "matched_functions_percent": 0.0
+        }
+      },
+      {
+        "name": "src/matched/a",
+        "functions": [
+          {
+            "name": "_a"
+          }
+        ],
+        "measures": {
+          "total_functions": 1
+        }
+      }
+    ],
+    "measures": {
+      "total_functions": 2,
+      "matched_functions": 1
+    },
+    "categories": [
+      {
+        "id": "code",
+        "measures": {
+          "total_functions": 2,
+          "matched_functions": 1
+        }
+      },
+      {
+        "id": "data",
+        "measures": {
+          "total_functions": 0
+        }
+      }
+    ]
+  },
+  "report_output": {
+    "units": [
+      {
+        "name": "unknown/.text/00401005",
+        "measures": {
+          "total_functions": 0,
+          "matched_functions_percent": 0.0
+        }
+      },
+      {
+        "name": "src/matched/a",
+        "functions": [
+          {
+            "name": "_a"
+          }
+        ],
+        "measures": {
+          "total_functions": 1
+        }
+      }
+    ],
+    "measures": {
+      "total_functions": 1,
+      "matched_functions": 1,
+      "matched_functions_percent": 100.0
+    },
+    "categories": [
+      {
+        "id": "code",
+        "measures": {
+          "total_functions": 1,
+          "matched_functions": 1,
+          "matched_functions_percent": 100.0
+        }
+      },
+      {
+        "id": "data",
+        "measures": {
+          "total_functions": 0
+        }
+      }
+    ]
+  }
+}

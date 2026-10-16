@@ -1,0 +1,335 @@
+[
+  {
+    "query": "common_integer",
+    "index": 0,
+    "how": "link name",
+    "explanations": [
+      {
+        "class": "GPR",
+        "vreg": 39,
+        "lines": [
+          "%39   -> r0   1 defs, 1 uses, live in 1 blocks; defined in block 3 line 6: add %r39, %r35, r3",
+          "because: coloured #1: the simplification took it when its degree was 0 < K=29",
+          "because: free in the mask: r0, r3..r12; the lowest is r0"
+        ]
+      },
+      {
+        "class": "GPR",
+        "vreg": 37,
+        "lines": [
+          "%37   -> r0   1 defs, 1 uses, live in 1 blocks; defined in block 1 line 6: subf %r37, r4, r3",
+          "because: coloured #3: the simplification took it when its degree was 1 < K=29",
+          "because: colours its neighbours held then: r5",
+          "because: free in the mask: r0, r3..r4, r6..r12; the lowest is r0"
+        ]
+      },
+      {
+        "class": "GPR",
+        "vreg": 36,
+        "lines": [
+          "%36   -> r6   1 defs, 1 uses, live in 1 blocks; defined in block 1 line 6: add %r36, r3, r4",
+          "because: coloured #4: the simplification took it when its degree was 4 < K=29",
+          "because: colours its neighbours held then: r0(%37) r3..r5",
+          "because: free in the mask: r6..r12; the lowest is r6"
+        ]
+      },
+      {
+        "class": "GPR",
+        "vreg": 35,
+        "lines": [
+          "%35   -> r31   1 defs, 3 uses, live in 3 blocks; defined in block 1 line 6: mullw %r35, %r36, %r37",
+          "because: live across 1 call(s) (first in block 2): the registers a call clobbers are its neighbours",
+          "because: coloured #5: the simplification took it when its degree was 12 < K=29",
+          "because: colours its neighbours held then: r0(%39,fixed) r3..r12",
+          "because: no colour of the mask was free: r31 was claimed (a non-volatile register, saved in the prologue; it joins the mask from here on)"
+        ]
+      },
+      {
+        "class": "GPR",
+        "vreg": 34,
+        "lines": [
+          "%34   -> r30   1 defs, 1 uses, live in 3 blocks; defined in block 1: mr %r34, r5, -",
+          "because: live across 1 call(s) (first in block 2): the registers a call clobbers are its neighbours",
+          "because: coloured #6: the simplification took it when its degree was 13 < K=29",
+          "because: colours its neighbours held then: r0(%39,fixed) r3..r12 r31(%35)",
+          "because: no colour of the mask was free: r30 was claimed (a non-volatile register, saved in the prologue; it joins the mask from here on)"
+        ]
+      }
+    ],
+    "text": [
+      "match 97.15%  (trace allocation #0, by link name)",
+      "",
+      "== inlining (call: decision - reason) ==",
+      "   consume: call kept - not declared inline (and not a method defined in its class)  (x8)  (depth 0, 1, 2, 3, 4, 5, 6, 7)  (line 6)",
+      "",
+      "== common_integer: PCode before the allocation ==",
+      "   block 0 (weight 1) -> 1",
+      "   block 1 (weight 1) -> 2",
+      "      add %r36, r3, r4",
+      "      subf %r37, r4, r3",
+      "      mullw %r35, %r36, %r37",
+      "      mr %r34, r5, -",
+      "      mr r3, %r35, -",
+      "   block 2 (weight 1) -> 3",
+      "      bl sym, r0, r3, ... 51 more (the registers the call clobbers)",
+      "   block 3 (weight 1) -> 4",
+      "      add %r39, %r35, r3",
+      "      add r3, %r39, %r35",
+      "      add r3, %r34, r3",
+      "   block 4 (weight 1) -> exit",
+      "",
+      "== stack slot differences (r1 offsets, ours -> target) ==",
+      "   0x10 -> 0x20  x1",
+      "   0x14 -> 0x24  x2",
+      "   our frame, as the oracle traced it (r1 offset = locals offset + 8 + outgoing arguments):",
+      "      frame 16 bytes before the register saves: linkage 8, outgoing arguments 0, locals 0, above them 8",
+      "      in registers: @5=reg 31",
+      "   (the layout follows the order locals and temporaries are declared and created; reorder them or change a type/size and remeasure)",
+      "",
+      "== other differing rows: 4 (ours | target) ==",
+      "   stw r31, 0xc(r1)                     | stw r14, 0x1c(r1)",
+      "   stw r30, 0x8(r1)                     | stw r15, 0x18(r1)",
+      "   lwz r31, 0xc(r1)                     | lwz r14, 0x1c(r1)",
+      "   lwz r30, 0x8(r1)                     | lwz r15, 0x18(r1)",
+      "   (rows the allocator cannot explain: instruction choice or scheduling; compare the source shape)",
+      "",
+      "== register differences (ours -> target, aligned rows) ==",
+      "   r30 -> r15  x2   ours r30: %34;  ours r15: none",
+      "   r31 -> r14  x4   ours r31: %35;  ours r14: none",
+      "",
+      "== virtual registers ==",
+      "   %34 (GPR) defined at block 1: mr %r34, r5, -",
+      "      because: live across 1 call(s) (first in block 2): the registers a call clobbers are its neighbours",
+      "      because: coloured #6: the simplification took it when its degree was 13 < K=29",
+      "      because: colours its neighbours held then: r0(%39,fixed) r3..r12 r31(%35)",
+      "      because: no colour of the mask was free: r30 was claimed (a non-volatile register, saved in the prologue; it joins the mask from here on)",
+      "   %35 (GPR) defined at block 1 line 6: mullw %r35, %r36, %r37",
+      "      because: live across 1 call(s) (first in block 2): the registers a call clobbers are its neighbours",
+      "      because: coloured #5: the simplification took it when its degree was 12 < K=29",
+      "      because: colours its neighbours held then: r0(%39,fixed) r3..r12",
+      "      because: no colour of the mask was free: r31 was claimed (a non-volatile register, saved in the prologue; it joins the mask from here on)",
+      "   %36 (GPR) defined at block 1 line 6: add %r36, r3, r4",
+      "      because: coloured #4: the simplification took it when its degree was 4 < K=29",
+      "      because: colours its neighbours held then: r0(%37) r3..r5",
+      "      because: free in the mask: r6..r12; the lowest is r6",
+      "   %37 (GPR) defined at block 1 line 6: subf %r37, r4, r3",
+      "      because: coloured #3: the simplification took it when its degree was 1 < K=29",
+      "      because: colours its neighbours held then: r5",
+      "      because: free in the mask: r0, r3..r4, r6..r12; the lowest is r0",
+      "   %39 (GPR) defined at block 3 line 6: add %r39, %r35, r3",
+      "      because: coloured #1: the simplification took it when its degree was 0 < K=29",
+      "      because: free in the mask: r0, r3..r12; the lowest is r0",
+      "",
+      "== colouring order (traced) ==",
+      "   GPR: select replay 8/8, simplify replay agrees",
+      "   colouring order (traced; first coloured first): %39 %38 %37 %36 %35 %34 %33 %32"
+    ]
+  },
+  {
+    "query": "common_float",
+    "index": 1,
+    "how": "link name",
+    "explanations": [
+      {
+        "class": "GPR",
+        "vreg": 35,
+        "lines": [
+          "%35   -> r4   1 defs, 1 uses, live in 1 blocks; defined in block 2 line 10: add %r35, r3, %r34",
+          "because: coloured #1: the simplification took it when its degree was 2 < K=29",
+          "because: colours its neighbours held then: r0 r3",
+          "because: r0 is a neighbour: r0 cannot be a base register (an address operand of r0 reads as 0), so registers used as addresses interfere with it",
+          "because: free in the mask: r4..r12; the lowest is r4"
+        ]
+      },
+      {
+        "class": "GPR",
+        "vreg": 34,
+        "lines": [
+          "%34   -> r0   1 defs, 2 uses, live in 1 blocks; defined in block 2 line 10: rlwinm %r34, r4, #2, #0, #29",
+          "because: coloured #2: the simplification took it when its degree was 2 < K=29",
+          "because: colours its neighbours held then: r3 r4(%35)",
+          "because: free in the mask: r0, r5..r12; the lowest is r0"
+        ]
+      },
+      {
+        "class": "FPR",
+        "vreg": 36,
+        "lines": [
+          "%36   -> f0   1 defs, 1 uses, live in 1 blocks; defined in block 2 line 11: fadds %f36, %f33, %f33",
+          "because: coloured #1: the simplification took it when its degree was 0 < K=32",
+          "because: free in the mask: f0..f13; the lowest is f0"
+        ]
+      },
+      {
+        "class": "FPR",
+        "vreg": 35,
+        "lines": [
+          "%35   -> f0   1 defs, 1 uses, live in 1 blocks; defined in block 2 line 10: lfs %f35, %r35, #4",
+          "because: coloured #2: the simplification took it when its degree was 0 < K=32",
+          "because: free in the mask: f0..f13; the lowest is f0"
+        ]
+      },
+      {
+        "class": "FPR",
+        "vreg": 34,
+        "lines": [
+          "%34   -> f1   1 defs, 1 uses, live in 1 blocks; defined in block 2 line 10: lfsx %f34, r3, %r34",
+          "because: coloured #3: the simplification took it when its degree was 1 < K=32",
+          "because: colours its neighbours held then: f0(%35)",
+          "because: free in the mask: f1..f13; the lowest is f1"
+        ]
+      },
+      {
+        "class": "FPR",
+        "vreg": 33,
+        "lines": [
+          "%33   -> f1   1 defs, 2 uses, live in 1 blocks; defined in block 2 line 10: fmuls %f33, %f34, %f35",
+          "because: coloured #4: the simplification took it when its degree was 1 < K=32",
+          "because: colours its neighbours held then: f0(%36)",
+          "because: free in the mask: f1..f13; the lowest is f1"
+        ]
+      }
+    ],
+    "text": [
+      "match 100.00%  (trace allocation #1, by link name)",
+      "",
+      "== inlining (call: decision - reason) ==",
+      "   no calls",
+      "",
+      "== common_float: PCode before the allocation ==",
+      "   block 0 (weight 1) -> 1",
+      "   block 1 (weight 1) -> 2",
+      "   block 2 (weight 1) -> 3",
+      "      rlwinm %r34, r4, #2, #0, #29",
+      "      add %r35, r3, %r34",
+      "      lfsx %f34, r3, %r34",
+      "      lfs %f35, %r35, #4",
+      "      fmuls %f33, %f34, %f35",
+      "      fadds %f36, %f33, %f33",
+      "      fadds f1, %f36, %f33",
+      "   block 3 (weight 1) -> exit",
+      "",
+      "== register differences (ours -> target, aligned rows) ==",
+      "   none",
+      "",
+      "== virtual registers ==",
+      "   %33 (FPR) defined at block 2 line 10: fmuls %f33, %f34, %f35",
+      "      because: coloured #4: the simplification took it when its degree was 1 < K=32",
+      "      because: colours its neighbours held then: f0(%36)",
+      "      because: free in the mask: f1..f13; the lowest is f1",
+      "   %34 (FPR) defined at block 2 line 10: lfsx %f34, r3, %r34",
+      "      because: coloured #3: the simplification took it when its degree was 1 < K=32",
+      "      because: colours its neighbours held then: f0(%35)",
+      "      because: free in the mask: f1..f13; the lowest is f1",
+      "   %35 (FPR) defined at block 2 line 10: lfs %f35, %r35, #4",
+      "      because: coloured #2: the simplification took it when its degree was 0 < K=32",
+      "      because: free in the mask: f0..f13; the lowest is f0",
+      "   %36 (FPR) defined at block 2 line 11: fadds %f36, %f33, %f33",
+      "      because: coloured #1: the simplification took it when its degree was 0 < K=32",
+      "      because: free in the mask: f0..f13; the lowest is f0",
+      "   %34 (GPR) defined at block 2 line 10: rlwinm %r34, r4, #2, #0, #29",
+      "      because: coloured #2: the simplification took it when its degree was 2 < K=29",
+      "      because: colours its neighbours held then: r3 r4(%35)",
+      "      because: free in the mask: r0, r5..r12; the lowest is r0",
+      "   %35 (GPR) defined at block 2 line 10: add %r35, r3, %r34",
+      "      because: coloured #1: the simplification took it when its degree was 2 < K=29",
+      "      because: colours its neighbours held then: r0 r3",
+      "      because: r0 is a neighbour: r0 cannot be a base register (an address operand of r0 reads as 0), so registers used as addresses interfere with it",
+      "      because: free in the mask: r4..r12; the lowest is r4",
+      "",
+      "== colouring order (traced) ==",
+      "   GPR: select replay 4/4, simplify replay agrees",
+      "   FPR: select replay 5/5, simplify replay agrees",
+      "   colouring order (traced; first coloured first): %35 %34 %33 %32",
+      "   colouring order (traced; first coloured first): %36 %35 %34 %33 %32"
+    ]
+  },
+  {
+    "query": "common_branch",
+    "index": 2,
+    "how": "link name",
+    "explanations": [
+      {
+        "class": "GPR",
+        "vreg": 38,
+        "lines": [
+          "%38   -> r0   1 defs, 1 uses, live in 1 blocks; defined in block 2 line 15: subf %r38, r4, r3",
+          "because: coloured #1: the simplification took it when its degree was 1 < K=29",
+          "because: colours its neighbours held then: r5",
+          "because: free in the mask: r0, r3..r4, r6..r12; the lowest is r0"
+        ]
+      },
+      {
+        "class": "GPR",
+        "vreg": 37,
+        "lines": [
+          "%37   -> r6   1 defs, 1 uses, live in 1 blocks; defined in block 2 line 15: add %r37, r3, r4",
+          "because: coloured #2: the simplification took it when its degree was 4 < K=29",
+          "because: colours its neighbours held then: r0(%38) r3..r5",
+          "because: free in the mask: r6..r12; the lowest is r6"
+        ]
+      },
+      {
+        "class": "GPR",
+        "vreg": 36,
+        "lines": [
+          "%36   -> r0   1 defs, 2 uses, live in 2 blocks; defined in block 2 line 15: mullw %r36, %r37, %r38",
+          "because: coloured #3: the simplification took it when its degree was 3 < K=29",
+          "because: colours its neighbours held then: r3(%39,fixed) r5",
+          "because: free in the mask: r0, r4, r6..r12; the lowest is r0"
+        ]
+      },
+      {
+        "class": "GPR",
+        "vreg": 39,
+        "lines": [
+          "%39   -> r3 (coalesced into r3)   2 defs, 1 uses, live in 2 blocks; defined in block 2 line 17: subf %r39, %r36, %r36"
+        ]
+      }
+    ],
+    "text": [
+      "match 100.00%  (trace allocation #2, by link name)",
+      "",
+      "== inlining (call: decision - reason) ==",
+      "   no calls",
+      "",
+      "== common_branch: PCode before the allocation ==",
+      "   block 0 (weight 1) -> 1",
+      "   block 1 (weight 1) -> 2",
+      "   block 2 (weight 1) -> 3, 4",
+      "      add %r37, r3, r4",
+      "      subf %r38, r4, r3",
+      "      mullw %r36, %r37, %r38",
+      "      cmpi cr0, r5, #0",
+      "      subf %r39, %r36, %r36",
+      "      bt cr0, #2, label, -",
+      "   block 3 (weight 1) -> 4",
+      "      add %r39, %r36, %r36",
+      "   block 4 (weight 1) -> 5",
+      "      mr r3, %r39, -",
+      "   block 5 (weight 1) -> exit",
+      "",
+      "== register differences (ours -> target, aligned rows) ==",
+      "   none",
+      "",
+      "== virtual registers ==",
+      "   %36 (GPR) defined at block 2 line 15: mullw %r36, %r37, %r38",
+      "      because: coloured #3: the simplification took it when its degree was 3 < K=29",
+      "      because: colours its neighbours held then: r3(%39,fixed) r5",
+      "      because: free in the mask: r0, r4, r6..r12; the lowest is r0",
+      "   %37 (GPR) defined at block 2 line 15: add %r37, r3, r4",
+      "      because: coloured #2: the simplification took it when its degree was 4 < K=29",
+      "      because: colours its neighbours held then: r0(%38) r3..r5",
+      "      because: free in the mask: r6..r12; the lowest is r6",
+      "   %38 (GPR) defined at block 2 line 15: subf %r38, r4, r3",
+      "      because: coloured #1: the simplification took it when its degree was 1 < K=29",
+      "      because: colours its neighbours held then: r5",
+      "      because: free in the mask: r0, r3..r4, r6..r12; the lowest is r0",
+      "   %39 (GPR) defined at block 2 line 17: subf %r39, %r36, %r36",
+      "",
+      "== colouring order (traced) ==",
+      "   GPR: select replay 7/7, simplify replay agrees",
+      "   colouring order (traced; first coloured first): %38 %37 %36 %35 %34 %33 %32"
+    ]
+  }
+]

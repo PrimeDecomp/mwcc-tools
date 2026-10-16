@@ -1,0 +1,212 @@
+{
+  "decisions": {
+    "external": [
+      {
+        "kind": "decision",
+        "event": "decision",
+        "callee": "external",
+        "link": "external",
+        "inline": false,
+        "chain": [],
+        "reason": "not declared inline (and not a method defined in its class)",
+        "outcome": "kept",
+        "count": 24,
+        "depths": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "lines": [
+          4,
+          5,
+          6
+        ],
+        "function": "across_calls (across_calls)"
+      }
+    ]
+  },
+  "summaries": {
+    "external": {
+      "summary": {
+        "outcomes": {
+          "kept": 24
+        },
+        "costs": [],
+        "full_costs": [],
+        "rounds": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "functions": [
+          "across_calls (across_calls)"
+        ],
+        "reasons": [
+          "not declared inline (and not a method defined in its class)"
+        ],
+        "chains": [],
+        "limit_paths": [],
+        "sensitivity": []
+      },
+      "report": [
+        "   A: kept x24; estimate -, whole cost -, rounds 0, 1, 2, 3, 4, 5, 6, 7",
+        "      in across_calls (across_calls)",
+        "      because: not declared inline (and not a method defined in its class)"
+      ],
+      "verdict_present": null,
+      "verdict_absent": null
+    }
+  },
+  "emission": {
+    "across_calls": "",
+    "accumulate": ""
+  },
+  "target": {},
+  "module": {
+    "accumulate": "another.s"
+  },
+  "predictions": {
+    "false": {
+      "external": [
+        "target: not emitted",
+        false
+      ],
+      "accumulate": [
+        "target: not emitted (the module keeps its one copy in another.s); emitted here too",
+        false
+      ],
+      "across_calls": [
+        "target: not emitted (nor anywhere in the module); MISPREDICTED: emitted here",
+        true
+      ]
+    },
+    "true": {
+      "external": [
+        "target: not emitted",
+        false
+      ],
+      "accumulate": [
+        "target: not emitted (the module keeps its one copy in another.s); emitted here too",
+        false
+      ],
+      "across_calls": [
+        "target: not emitted (the main program strips unreferenced weak functions); emitted here",
+        false
+      ]
+    }
+  },
+  "emission_report": [
+    "== A: sources/registers.c: emitted differently from the target: 1 here only (nowhere in the module), 0 there only; 1 here whose copy the module keeps in another TU",
+    "   here only: across_calls"
+  ],
+  "object_calls": {
+    "across_calls": {
+      "_savegpr_27": 1,
+      "external": 3,
+      "_restgpr_27": 1
+    }
+  },
+  "windows": [
+    {
+      "calls": {
+        "across_calls": {
+          "_savegpr_27": 1,
+          "external": 3,
+          "_restgpr_27": 1
+        },
+        "accumulate": {}
+      },
+      "bounds": [],
+      "window": [
+        null,
+        null
+      ],
+      "report": [
+        "== sources/registers.c: limit None, the target agrees with -..-"
+      ],
+      "verbose": [
+        "== sources/registers.c: limit None, the target agrees with -..-"
+      ]
+    },
+    {
+      "calls": {
+        "across_calls": {
+          "_savegpr_27": 1,
+          "external": 2,
+          "_restgpr_27": 1
+        },
+        "accumulate": {}
+      },
+      "bounds": [
+        {
+          "function": "across_calls",
+          "link": "across_calls",
+          "callee": "external",
+          "callee_link": "external",
+          "ours": 3,
+          "target": 2,
+          "threshold": null,
+          "side": null,
+          "why": "not declared inline (and not a method defined in its class)"
+        }
+      ],
+      "window": [
+        null,
+        null
+      ],
+      "report": [
+        "== sources/registers.c: limit None, the target agrees with -..-",
+        "   not a limit question: external in across_calls (calls: ours 3, target 2): not declared inline (and not a method defined in its class)"
+      ],
+      "verbose": [
+        "== sources/registers.c: limit None, the target agrees with -..-",
+        "   not a limit question: external in across_calls (calls: ours 3, target 2): not declared inline (and not a method defined in its class)"
+      ]
+    },
+    {
+      "calls": {
+        "across_calls": {
+          "_savegpr_27": 1,
+          "external": 4,
+          "_restgpr_27": 1
+        },
+        "accumulate": {}
+      },
+      "bounds": [
+        {
+          "function": "across_calls",
+          "link": "across_calls",
+          "callee": "external",
+          "callee_link": "external",
+          "ours": 3,
+          "target": 4,
+          "threshold": null,
+          "side": null,
+          "why": "not declared inline (and not a method defined in its class)"
+        }
+      ],
+      "window": [
+        null,
+        null
+      ],
+      "report": [
+        "== sources/registers.c: limit None, the target agrees with -..-",
+        "   not a limit question: external in across_calls (calls: ours 3, target 4): not declared inline (and not a method defined in its class)"
+      ],
+      "verbose": [
+        "== sources/registers.c: limit None, the target agrees with -..-",
+        "   not a limit question: external in across_calls (calls: ours 3, target 4): not declared inline (and not a method defined in its class)"
+      ]
+    }
+  ]
+}

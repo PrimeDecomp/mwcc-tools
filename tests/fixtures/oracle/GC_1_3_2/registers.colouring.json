@@ -1,0 +1,62 @@
+[
+  {
+    "function": "across_calls",
+    "link": "across_calls",
+    "class": "GPR",
+    "nodes": 12,
+    "rounds": 1,
+    "order_agrees": true,
+    "colour_disagreements": [],
+    "claims": [
+      31,
+      30,
+      29,
+      28,
+      27
+    ],
+    "traced_claims": [
+      31,
+      30,
+      29,
+      28,
+      27
+    ],
+    "preused": [],
+    "inferred": false,
+    "spilled": [],
+    "traced_spilled": [],
+    "ok": true
+  },
+  {
+    "function": "accumulate",
+    "link": "accumulate",
+    "class": "GPR",
+    "nodes": 8,
+    "rounds": 1,
+    "order_agrees": true,
+    "colour_disagreements": [],
+    "claims": [],
+    "traced_claims": [],
+    "preused": [],
+    "inferred": true,
+    "spilled": [],
+    "traced_spilled": [],
+    "ok": true
+  },
+  {
+    "function": "accumulate",
+    "link": "accumulate",
+    "class": "FPR",
+    "nodes": 11,
+    "rounds": 1,
+    "order_agrees": true,
+    "colour_disagreements": [],
+    "claims": [],
+    "traced_claims": [],
+    "preused": [],
+    "inferred": true,
+    "spilled": [],
+    "traced_spilled": [],
+    "ok": true
+  }
+]

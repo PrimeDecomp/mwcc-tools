@@ -96,8 +96,80 @@ Project structure
 
 The source is formatted with `clang-format` (`uv run clang-format -i FILE`).
 
+Rust oracle tools (migration in progress)
+========================================
+
+The native host tools are being ported from the `oracle` branch. Build and test them with:
+
+```sh
+cargo build --release --locked
+cargo test --locked --workspace
+```
+
+Building the native tools requires a C compiler for the statically linked x86 Capstone decoder (MSVC on Windows or a
+working C toolchain on Linux). The decoder and Rust bindings are pinned; their notices are retained under
+[licenses](licenses/README.md). Released native binaries do not require a Python or Capstone installation.
+
+The toolchain is pinned in `rust-toolchain.toml`. The native tool can analyze an existing trace without a compiler,
+compile a source using a built oracle, and verify saved colourings:
+
+```sh
+mwcc-tools oracle analyze-trace saved.trace --version GC_1_3_2 --json
+mwcc-tools oracle --oracle-root /path/to/mwcc-oracle --from-ninja ../prime/build.ninja src/GuiSys/CGuiFrame.cpp --json
+mwcc-tools colouring verify --load saved --json
+mwcc-tools oracle regdiff --project ../prime --unit main/GuiSys/CGuiFrame --function Draw --full
+mwcc-tools header-impact --from-ninja ../prime/build.ninja --override include/Header.hpp=/path/to/candidate.hpp --json
+mwcc-tools corpus --oracle-root /path/to/mwcc-oracle --canaries /path/to/canaries --version GC_2_7 --jobs 8 --all-traces
+mwcc-tools split GC_1_3_2 --root /path/to/mwcc-oracle --output /path/to/split-output
+mwcc-tools compare compare GC_1_3 --root /path/to/mwcc-oracle
+mwcc-tools funcmatch 1.3 1.3.2 --root /path/to/mwcc-oracle --json
+```
+
+Set `MWCC_ORACLE_ROOT` instead of passing `--oracle-root` on each command. The original compiler and trace producer
+are still built as described in [the oracle guide](docs/oracle.md). `oracle compile-trace` returns a versioned envelope
+with explicit check status, hashes, diagnostics, raw trace and the schema-6 report. Ordinary `oracle --json` returns
+the compatibility report. See [migration status](docs/oracle-rust-status.md) for supported commands, verification
+evidence and remaining work; existing Python integrations remain available during the migration.
+On Linux, `MWCC_WIBO` explicitly selects the loader; otherwise the runner uses `build/tools/wibo` under the oracle
+root, then `wibo` on PATH. Use the pinned loader for flags such as `-multibyte`; an older global loader can lack
+required Windows APIs. Windows continues to launch the compiler directly.
+Use the [native oracle kit API](integrations/decomp-kits/overlay/.agents/docs/oracle-native.md)
+for kit automation and structured results. Optional old-name launchers and adoption evidence are documented in
+[the kit integration guide](integrations/decomp-kits/README.md); existing kit archives have not yet been switched.
+Native `implib`, `rsrc2res`, `split`, `link` and `compare` cover executable construction; `link` still uses the historical linker
+and `compare report` uses objdiff. Native `locate`, `bindfrom` and `funcmatch` support binary investigation; `bindfrom`
+updates the selected version's bindings file when explicitly invoked.
+Native binary `remap` carries function lists and bindings into a selected version; `derive-splits` writes inferred
+split/symbol metadata and supports `--out DIR` for reviewing it in a separate directory.
+Native `disasm`, `fdiff` and `nearest` provide annotated x86 listings, instruction diffs and nearest-function reports.
+Native `configure` writes Ninja and objdiff configuration; `transform-dep` converts compiler dependencies to UTF-8
+Ninja depfiles. Native `download` acquires the pinned compilers, runtime sources, objdiff and wibo, using external
+`unshield` (through WSL on Windows when needed) for the Pro 5.3 updater. Native `verify` runs all eight versions;
+`gates` runs the legacy comparison/relink matrix. Both run versions sequentially, return failure when a gate fails,
+and restore the primary configuration. An isolated Windows bootstrap, all verification/gate configurations and all
+three oracle builds have passed on Windows and Linux; each rebuilt oracle passed 2,313 canaries with all trace
+options. The existing Python build entry points remain available during migration.
+
+The producer port is incremental. `configure --version GC_1_3_2 --mode link --oracle --rust-hooks` opts into the
+translated local-call, allocation-graph/entry, frame-layout, scheduling, block/stage, scalarization, CSE, propagation,
+inline-ancestry/context, argument bindings and common template/instantiation hooks plus shared PCode/expression tracing and a separate
+Rust trace writer. A separate frontend object supplies inline decisions/costs, expression expansion and deferred-node
+dispatch for each compiler version, completing all 31 observation hooks. This mode compiles no C observation sources. Install the producer
+target with `rustup target add i686-pc-windows-msvc`, then build `build/GC_1_3_2/oracle/mwcceppc.exe` with Ninja.
+This source-build mode requires rustc; ordinary host analysis and existing C producer builds do not require the
+32-bit target. `build-hooks OUTPUT` builds and checks the standalone hook object; add `--trace-shim` for the separate writer. `RUSTC` or `--rustc` selects its compiler.
+The [source-guided graph-search roadmap](docs/oracle-source-guided-search.md) is scheduled after migration completion,
+starting with backend provenance/coalescing explanations and graph-directed C++ variant search.
+
+The [audited benchmarks](docs/oracle-rust-benchmarks.md) separate analysis/search performance from compiler runtime
+and report the memory tradeoffs. `package-release OUTPUT.zip --binary FILE --target TARGET` creates a native
+distribution with checksums, metadata, kit documentation and matching dependency notices; see the
+[distribution guide](docs/oracle-rust-release.md). Local Windows/Linux packages pass independent archive and
+standalone execution audits. A published release pin and kit archive adoption remain pending.
+
 License
 =======
 
-The project's files are dedicated to the public domain under CC0 (`LICENSE`); it started from
+The project's own files are dedicated to the public domain under CC0 (`LICENSE`); third-party components retain their
+upstream licenses. The project started from
 [inspiredrobot/mwcc](https://github.com/inspiredrobot/mwcc), also CC0.
