@@ -305,7 +305,10 @@ pub fn inspect(compilation: &Compilation, link: &str, class: u8, round: usize) -
         .collect();
     ensure!(functions.len() == 1, "ELF link must identify one function");
     ensure!(
-        object.function_bytes(&functions[0])?.len().is_multiple_of(4),
+        object
+            .function_bytes(&functions[0])?
+            .len()
+            .is_multiple_of(4),
         "unaligned PowerPC function"
     );
     object.relocations()?;

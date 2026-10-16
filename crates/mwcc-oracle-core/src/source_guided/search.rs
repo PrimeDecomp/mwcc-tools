@@ -129,20 +129,20 @@ pub struct Progress {
     pub error: Option<String>,
 }
 #[derive(Debug)]
-struct BudgetReached;
+pub(super) struct BudgetReached;
 impl std::fmt::Display for BudgetReached {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str("compilation budget reached")
     }
 }
 impl std::error::Error for BudgetReached {}
-struct Control<'a> {
-    budget: &'a Budget,
-    began: Instant,
-    compilations: Cell<usize>,
+pub(super) struct Control<'a> {
+    pub(super) budget: &'a Budget,
+    pub(super) began: Instant,
+    pub(super) compilations: Cell<usize>,
 }
 impl Control<'_> {
-    fn cancelled(&self) -> bool {
+    pub(super) fn cancelled(&self) -> bool {
         self.budget.cancel_file.exists()
             || self.began.elapsed() >= Duration::from_secs(self.budget.seconds)
     }
@@ -154,7 +154,7 @@ impl Control<'_> {
         Ok(())
     }
 }
-fn atomic_json(path: &Path, value: &impl Serialize) -> Result<()> {
+pub(super) fn atomic_json(path: &Path, value: &impl Serialize) -> Result<()> {
     fs::create_dir_all(path.parent().context("output has no parent")?)?;
     let mut temp = tempfile::NamedTempFile::new_in(path.parent().unwrap())?;
     use std::io::Write;
@@ -169,7 +169,7 @@ pub fn load_plan(path: &Path) -> Result<Plan> {
     let base = path.canonicalize()?.parent().unwrap().to_owned();
     normalize(plan, &base)
 }
-fn normalize(mut plan: Plan, base: &Path) -> Result<Plan> {
+pub(super) fn normalize(mut plan: Plan, base: &Path) -> Result<Plan> {
     for path in [
         &mut plan.build.oracle_root,
         &mut plan.build.working_directory,
@@ -245,7 +245,7 @@ pub fn validate(plan: &Plan) -> Result<()> {
     );
     Ok(())
 }
-fn request(plan: &Plan) -> Result<CompileRequest> {
+pub(super) fn request(plan: &Plan) -> Result<CompileRequest> {
     let (source, flags, directory, version) = if let Some(ninja) = &plan.build.from_ninja {
         let (rule, cwd) = ninja::find_rule(ninja, &plan.build.source)?;
         let inferred = rule.mw_version.as_deref().map(Version::parse).transpose()?;
@@ -329,15 +329,15 @@ pub fn apply(source: &[u8], edits: &[Edit]) -> Result<Vec<u8>> {
     }
     Ok(output)
 }
-fn source_path(output: &Path, sha: &str, name: &OsName) -> Result<PathBuf> {
+pub(super) fn source_path(output: &Path, sha: &str, name: &OsName) -> Result<PathBuf> {
     ensure!(
         sha.len() == 64 && sha.bytes().all(|b| b.is_ascii_hexdigit()),
         "invalid saved source hash"
     );
     Ok(output.join("sources").join(sha).join(&name.0))
 }
-struct OsName(std::ffi::OsString);
-fn store_source(output: &Path, source: &[u8], name: &OsName) -> Result<String> {
+pub(super) struct OsName(pub(super) std::ffi::OsString);
+pub(super) fn store_source(output: &Path, source: &[u8], name: &OsName) -> Result<String> {
     let sha = state::digest(source);
     let path = source_path(output, &sha, name)?;
     fs::create_dir_all(path.parent().unwrap())?;
@@ -348,17 +348,17 @@ fn store_source(output: &Path, source: &[u8], name: &OsName) -> Result<String> {
     }
     Ok(sha)
 }
-fn variant_request(base: &CompileRequest, source: &Path) -> CompileRequest {
+pub(super) fn variant_request(base: &CompileRequest, source: &Path) -> CompileRequest {
     let mut request = base.clone();
     request.overrides = vec![format!("{}={}", base.source, source.display())];
     request
 }
 #[derive(Serialize, Deserialize)]
-struct Saved {
-    inputs: inputs::Snapshot,
-    compilation: Compilation,
+pub(super) struct Saved {
+    pub(super) inputs: inputs::Snapshot,
+    pub(super) compilation: Compilation,
 }
-fn load_artifact(output: &Path, key: &str) -> Result<Saved> {
+pub(super) fn load_artifact(output: &Path, key: &str) -> Result<Saved> {
     ensure!(
         key.len() == 64 && key.bytes().all(|b| b.is_ascii_hexdigit()),
         "invalid artifact key"
@@ -395,7 +395,7 @@ fn load_artifact(output: &Path, key: &str) -> Result<Saved> {
     }
     Ok(saved)
 }
-fn retain_inputs(output: &Path, snapshot: &inputs::Snapshot) -> Result<()> {
+pub(super) fn retain_inputs(output: &Path, snapshot: &inputs::Snapshot) -> Result<()> {
     let root = output.join("input-files");
     fs::create_dir_all(&root)?;
     for file in snapshot.dependencies.iter().chain(&snapshot.runtime) {
@@ -416,7 +416,7 @@ fn retain_inputs(output: &Path, snapshot: &inputs::Snapshot) -> Result<()> {
     }
     Ok(())
 }
-fn artifact(
+pub(super) fn artifact(
     request: &CompileRequest,
     output: &Path,
     control: &Control<'_>,
@@ -474,7 +474,7 @@ fn artifact(
     )?;
     Ok((saved, key, false))
 }
-fn checker(
+pub(super) fn checker(
     plan: &Plan,
     source: &Path,
     object: &Path,
@@ -492,13 +492,14 @@ fn checker(
             .replace("{baseline_source}", &baseline_source.to_string_lossy())
             .replace("{baseline_object}", &baseline_object.to_string_lossy());
     }
-    Ok(Some(inputs::semantic_check(
-        &check,
-        source,
-        object,
-        directory,
-        &|| control.cancelled(),
-    )?))
+    let before = inputs::checker_inputs(&check, directory)?;
+    let outcome =
+        inputs::semantic_check(&check, source, object, directory, &|| control.cancelled())?;
+    ensure!(
+        before == inputs::checker_inputs(&check, directory)?,
+        "semantic-check inputs changed during execution"
+    );
+    Ok(Some(outcome))
 }
 fn checked(value: &Option<CheckOutcome>) -> Option<Evaluation> {
     value.as_ref().map(|v| {
@@ -521,7 +522,7 @@ fn known() -> Evaluation {
         reasons: vec![],
     }
 }
-fn input<'a>(
+pub(super) fn input<'a>(
     saved: &'a Saved,
     report: &'a provenance::Report,
     source: &'a [u8],
@@ -534,7 +535,7 @@ fn input<'a>(
         semantic_check: checked(check),
     }
 }
-fn final_mismatch(plan: &Plan, compilation: &Compilation) -> Result<Option<Value>> {
+pub(super) fn final_mismatch(plan: &Plan, compilation: &Compilation) -> Result<Option<Value>> {
     let Some(target) = &plan.target else {
         return Ok(None);
     };
@@ -625,6 +626,7 @@ pub fn run(plan: &Plan, output: &Path, budget: &Budget, resume: bool) -> Result<
     );
     let plan_sha = state::digest(&serde_json::to_vec(plan)?);
     let analysis_sha = analysis_identity(plan, &base)?;
+    let analysis_inputs_sha = analysis_inputs_identity(plan, &base)?;
     let path = output.join("progress.json");
     let mut progress = if path.is_file() {
         ensure!(resume, "output already has a run; use --resume");
@@ -895,6 +897,10 @@ pub fn run(plan: &Plan, output: &Path, budget: &Budget, resume: bool) -> Result<
                     error: Some(format!("{e:#}")),
                 },
             };
+            ensure!(
+                analysis_inputs_identity(plan, &base)? == analysis_inputs_sha,
+                "checker inputs/target changed during source search"
+            );
             if let Some(fingerprint) = &outcome.fingerprint {
                 progress
                     .groups
@@ -977,9 +983,18 @@ pub fn run(plan: &Plan, output: &Path, budget: &Budget, resume: bool) -> Result<
     Ok(progress)
 }
 
-fn analysis_identity(plan: &Plan, base: &CompileRequest) -> Result<String> {
+pub(super) fn analysis_identity(plan: &Plan, base: &CompileRequest) -> Result<String> {
     Ok(state::digest(&serde_json::to_vec(
         &json!({"analyzer_sha256":inputs::analyzer_sha256()?,"check_inputs":plan.semantic_check.as_ref().map(|check|inputs::checker_inputs(check,&base.working_directory)).transpose()?,
+        "target":plan.target.as_ref().map(|target|fs::read(&target.object).map(|bytes|state::digest(&bytes))).transpose()?}),
+    )?))
+}
+
+/// Mutable analysis inputs are rechecked during a run without repeatedly
+/// hashing the already-running analyzer executable.
+pub(super) fn analysis_inputs_identity(plan: &Plan, base: &CompileRequest) -> Result<String> {
+    Ok(state::digest(&serde_json::to_vec(
+        &json!({"check_inputs":plan.semantic_check.as_ref().map(|check|inputs::checker_inputs(check,&base.working_directory)).transpose()?,
         "target":plan.target.as_ref().map(|target|fs::read(&target.object).map(|bytes|state::digest(&bytes))).transpose()?}),
     )?))
 }
@@ -1011,6 +1026,7 @@ pub fn replay(output: &Path, id: usize, budget: &Budget) -> Result<Outcome> {
         analysis_identity(&plan, &base)? == progress.analysis_sha256,
         "analyzer/checker inputs/target changed; use a new run directory"
     );
+    let analysis_inputs_sha = analysis_inputs_identity(&plan, &base)?;
     let old_candidate_key = progress
         .outcomes
         .iter()
@@ -1158,6 +1174,92 @@ pub fn replay(output: &Path, id: usize, budget: &Budget) -> Result<Outcome> {
         ),
         error: None,
     };
+    ensure!(
+        analysis_inputs_identity(&plan, &base)? == analysis_inputs_sha,
+        "checker inputs/target changed during source replay"
+    );
     atomic_json(&directory.join("outcome.json"), &outcome)?;
     Ok(outcome)
+}
+
+#[cfg(test)]
+mod checker_tests {
+    use super::*;
+
+    #[test]
+    fn checker_mutation_is_rejected_and_analysis_inputs_detect_drift() {
+        let scratch = tempfile::tempdir().unwrap();
+        let directory = scratch.path().canonicalize().unwrap();
+        let proof = directory.join("proof.txt");
+        let target = directory.join("target.o");
+        fs::write(&proof, b"original proof").unwrap();
+        fs::write(&target, b"target bytes").unwrap();
+        let script = directory.join(if cfg!(windows) {
+            "checker.ps1"
+        } else {
+            "checker.sh"
+        });
+        let (program, mut arguments) = if cfg!(windows) {
+            fs::write(
+                &script,
+                b"param([string]$Proof)\n[System.IO.File]::WriteAllText($Proof, 'changed proof')\n",
+            )
+            .unwrap();
+            (
+                "powershell.exe",
+                vec![
+                    "-NoProfile",
+                    "-NonInteractive",
+                    "-ExecutionPolicy",
+                    "Bypass",
+                    "-File",
+                ],
+            )
+        } else {
+            fs::write(&script, b"printf 'changed proof' > \"$1\"\n").unwrap();
+            ("/bin/sh", vec![])
+        };
+        let script_name = script.to_str().unwrap();
+        let proof_name = proof.to_str().unwrap();
+        arguments.extend([script_name, proof_name]);
+        let mut plan: Plan = serde_json::from_value(json!({
+            "format_version":1,
+            "build":{"oracle_root":directory,"working_directory":directory,"source":"source.cpp","version":"GC_2_7","flags":[],"from_ninja":null,"timeout_seconds":30},
+            "contract":{"format_version":1,"selection":{"link":"example","class":4,"round":0},"objective":{"kind":"symbol_address_pairs","symbol":"symbol","minimum":0,"maximum":0},"relocations":[],"purpose":"mechanism_reproducer"},
+            "transformations":[],"maximum_depth":0,"generation_limit":1,
+            "semantic_check":{"program":program,"arguments":arguments,"inputs":[proof],"timeout_seconds":30},
+            "target":{"object":target,"link":"example"}
+        })).unwrap();
+        let base = request(&plan).unwrap();
+        let before = analysis_inputs_identity(&plan, &base).unwrap();
+        let budget = Budget {
+            candidates: 1,
+            compilations: 0,
+            seconds: 60,
+            cancel_file: directory.join("CANCEL"),
+        };
+        let control = Control {
+            budget: &budget,
+            began: Instant::now(),
+            compilations: Cell::new(0),
+        };
+        let error = checker(
+            &plan, &proof, &target, &proof, &target, &directory, &control,
+        )
+        .unwrap_err();
+        assert!(format!("{error:#}").contains("inputs changed during execution"));
+        assert_ne!(analysis_inputs_identity(&plan, &base).unwrap(), before);
+        fs::write(&proof, b"original proof").unwrap();
+        assert_eq!(analysis_inputs_identity(&plan, &base).unwrap(), before);
+        fs::write(&target, b"different target").unwrap();
+        assert_ne!(analysis_inputs_identity(&plan, &base).unwrap(), before);
+        plan.semantic_check = None;
+        assert!(
+            checker(
+                &plan, &proof, &target, &proof, &target, &directory, &control
+            )
+            .unwrap()
+            .is_none()
+        );
+    }
 }

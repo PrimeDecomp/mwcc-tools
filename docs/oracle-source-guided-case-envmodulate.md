@@ -249,3 +249,22 @@ GQR normalization support, so its unavailable-grouping diagnostic is preserved.
 The later state reports use the current analyzer and do not replace saved outcomes.
 Linux evidence is under `/home/henrique/.cache/mwcc-address-reuse-audit/`, including
 private source/header bytes, fresh capture/object, state and graph checks.
+
+## Bounded reduction of the real source
+
+The native reducer uses the winning shared-pointer source as its baseline and
+requires exactly two guarded EnvModulate pairs plus the required HA/LO symbolic
+relocations. A guarded recipe removes an unrelated 222-line CElementGen
+constructor. It shrinks the translation unit from 117,085 to 110,801 bytes while
+the RenderParticles mechanism remains satisfied. Four stock-verified builds cover
+private/original calibration, the smaller candidate and independent verification.
+The fresh candidate object reproduces SHA-256
+`6859b26d4200a5a4962ff120f1a1214bb9d3434193f9e74d3bd40a62d944b2f6`.
+
+This `verified_reduction` is a fixed point of the supplied guarded recipe, not a
+globally minimal function. It deliberately uses `mechanism_reproducer` and leaves
+`transplantation_validated: false`; deleting a constructor is not a proposed game
+change. The predicate retains the observed compiler mechanism rather than exact
+physical registers. The plan, sources, input closure, run/result, fresh verification
+and `verification.json` are under
+`build/source-guided/reduction-probes/particle-windows/`.

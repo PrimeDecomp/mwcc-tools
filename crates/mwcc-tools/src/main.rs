@@ -15,6 +15,8 @@ mod header_impact_cli;
 mod kit_cli;
 mod provenance_cli;
 mod release_cli;
+mod source_index_cli;
+mod source_reduce_cli;
 mod source_search_cli;
 mod tu_cli;
 
@@ -720,6 +722,12 @@ fn help() {
   colouring unit --project DIR --unit NAME COMMAND [options]
   source-search run PLAN --output DIR [--resume] [--candidates N] [--compilations N] [--seconds N] [--cancel-file FILE]
   source-search replay DIR CANDIDATE_ID
+  source-search state CAPTURE --object FILE --link NAME [--class 4] [--round 0]
+  source-reduce run PLAN --output DIR [--resume] [--candidates N] [--compilations N] [--seconds N] [--cancel-file FILE]
+  source-reduce replay DIR CANDIDATE_ID
+  source-index ingest SPEC --index DIR
+  source-index query QUERY --index DIR
+  source-index verify QUERY ENTRY_ID --index DIR --output DIR [--seconds N] [--cancel-file FILE]
   inline-diff A [B] [--from-ninja FILE] [--target [DIR]] [--all] [--json]
   inline-window --from-ninja FILE UNIT... [--target DIR] [--verbose] [--json]
   data-diff SOURCE [--from-ninja FILE] [--target [DIR]] [--section NAME] [--all] [--json]
@@ -961,6 +969,8 @@ fn run() -> Result<()> {
         Some("data-diff") => tu_cli::data_diff(&args[1..])?,
         Some("header-impact") => header_impact_cli::run(&args[1..])?,
         Some("source-search") => source_search_cli::run(&args[1..])?,
+        Some("source-reduce") => source_reduce_cli::run(&args[1..])?,
+        Some("source-index") => source_index_cli::run(&args[1..])?,
         Some("inline-calibrate") => calibrate_cli::run(&args[1..])?,
         Some(
             "pe" | "implib" | "rsrc2res" | "split" | "link" | "compare" | "locate" | "bindfrom"

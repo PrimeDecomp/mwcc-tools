@@ -203,6 +203,9 @@ are rejected. Failed compiles are not reusable artifacts.
 and runtime bytes by hash. Artifact integrity is checked on load. Analyzer, checker
 inputs and target identities also bind resumable analysis. The analyzer executable
 is hashed once per invocation rather than copied into every compiler cache entry.
+Checker/proof files and the target are rechecked before completed outcomes are
+saved; checker inputs are also checked before and after execution. Changes during
+a run invalidate its evidence instead of being recorded under the old identity.
 
 Budgets apply per invocation, including baseline calibration and independent
 verification. `--compilations` counts attempted source-unit builds (each includes
@@ -236,5 +239,7 @@ The real [EnvModulate experiment](../oracle-source-guided-case-envmodulate.md)
 finds a shared-const-pointer rewrite with fewer observed address pairs and lower
 `noRota` degree, verified by fresh builds on both hosts. The final match worsens;
 this is a graph-objective result, not a matching fix. The mechanism-preserving
-reducer, matched-source index and complete exact backend origins/lifetimes remain
-open. See the [implementation status](../oracle-source-guided-status.md).
+[reducer](source-reduce.md) and [matched-source index](source-index.md) now have
+native implementations using the shared evaluator. Stronger backend
+origins/lifetimes, promoted-array predicates and the complete RenderParticles
+investigation remain open. See the [implementation status](../oracle-source-guided-status.md).

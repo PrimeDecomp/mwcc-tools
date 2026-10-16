@@ -230,11 +230,60 @@ remain in the run directory. Do not modify these saved inputs. Remove the defaul
 `particle-search/CANCEL` file before resuming a cancelled run. Changed source/build
 context requires a new output directory; replay requires matching dependencies.
 
-These APIs are under development. The reducer, matched-source index and complete
-backend origins/lifetimes remain open. The real shared-pointer experiment
+These APIs are under development. Complete backend origins/lifetimes remain open.
+The real shared-pointer experiment
 demonstrates a useful source-driven graph change, while the final RenderParticles
 matching investigation remains open. A synthetic successful
 initializer experiment deliberately changes behavior and is only a mechanism test.
+
+## Reduce a compiler mechanism (development)
+
+```text
+mwcc-tools source-reduce run reduction.json --output reduced-case --candidates 100 --compilations 100 --seconds 600
+mwcc-tools source-reduce run reduction.json --output reduced-case --resume
+mwcc-tools source-reduce replay reduced-case 1
+```
+
+Use `docs/oracle/source-reduce.md` in the oracle source checkout for the strict
+format-1 plan. It shares search's build, objective, relocation and semantic-check
+contracts. `reductions` supplies guarded shrinking recipes; `delete_lines` enables
+coarse-to-fine whole-line deletion. The baseline must satisfy the mechanism first.
+Every accepted smaller case requires complete relevant evidence and a fresh
+independent compile; indeterminate results cannot preserve a predicate. The
+predicate rebinds source/object evidence instead of retaining particular physical
+registers. Budgets, cancellation, exact-input cache, pending verification and
+replay use the same native execution helpers as source search.
+
+Read `status`, `best`, `baseline_evaluation`, `outcomes` and each outcome's
+`verification`; `verified_reduction` means a fixed point of configured passes,
+not a global minimum. A `mechanism_reproducer` can change program behavior and
+explicitly leaves `transplantation_validated: false`. Retest useful discoveries
+in the complete original function. General lifetime elimination, array-promotion
+role predicates and reduction of a category transition remain unsupported.
+
+## Query matched source examples (development)
+
+```text
+mwcc-tools source-index ingest ingest.json --index corpus
+mwcc-tools source-index query query.json --index corpus
+mwcc-tools source-index verify query.json ENTRY_ID --index corpus --output fresh-example
+```
+
+Use `docs/oracle/source-index.md` for versioned input/output structures and the
+typed `source_guided::index` API. Ingestion requires exact function bytes and
+symbolic relocations against the reference object, a stock-verified capture and
+its exact source/dependency/compiler closure. Entries retain source ranges,
+declared revisions, flags and separate provenance coverage. Revision/range
+association is supplied metadata, not automatically recovered source ancestry.
+
+Queries use the shared mechanism evaluator. Require an actual symbol relocation
+when asking for a zero address-pair count, so unrelated functions cannot satisfy
+the query by never using that symbol. Zero counts describe the guarded Normalize
+path only; incomplete evidence remains indeterminate. Fresh verification applies
+the query filters, recompiles in the exact retained environment, rechecks the
+stock object and reference match, and reevaluates the predicate. A source example
+is a starting point for experimentation; its mechanism does not establish that a
+transplanted edit will preserve the complete function's allocation or behavior.
 
 ## Calibrate inline decisions
 

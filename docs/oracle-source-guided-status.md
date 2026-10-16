@@ -193,10 +193,77 @@ edits; automatic language-aware rewrite generation and portable repro export are
 not implemented. Native help and the kit source guide use the new structured API.
 Pinned migration packages remain unchanged.
 
+## Native reduction and matched-source index
+
+[`source-reduce`](oracle/source-reduce.md) now reuses the search execution helpers
+and shared evaluator. It tries guarded shrinking recipes and deterministic
+coarse-to-fine line deletion. The original must satisfy the mechanism; every
+accepted smaller case must reproduce its exact input snapshot and stock object
+in a fresh independent compile and satisfy all configured gates again. Pending
+verification survives budgets/resume, accepted candidate-only dependencies are
+rescanned, and replay performs three fresh builds. Results distinguish a fixed
+point of configured passes from global minimality and leave transplantation
+unvalidated. Category-transition reduction, stronger lifetime elimination and
+promoted-array predicates remain unsupported.
+
+A real bounded reduction removes an unrelated 222-line constructor from the
+winning full CElementGen source: 117,085 to 110,801 bytes, with exactly two
+EnvModulate pairs and required HA/LO relocations still observed. Four builds
+include private/original calibration and independent verification; the fresh
+object reproduces. This is explicitly mechanism-only and not a game change.
+Evidence is retained under `build/source-guided/reduction-probes/particle-windows/`.
+
+[`source-index`](oracle/source-index.md) admits only exact function bytes and
+symbolic relocations against a supplied target. Entries retain complete source,
+dependency/runtime blobs, compiler flags/identity, declared revision/range and
+separate provenance coverage. Queries reuse the shared static mechanism evaluator;
+incomplete absence evidence cannot win. Fresh verification applies the same
+filters, requires the exact environment/input snapshot, recompiles stock/oracle,
+rechecks the reference match and reevaluates the query. Unsupported relocation
+representations and ambiguous/section-symbol references fail conservatively.
+Revision/range association is declared metadata, not automatically proven ancestry.
+
+The real clean CElementGen corpus admits 35 strictly matched functions. A query
+requiring an actual `sStaticListInitialized` relocation finds Initialize with zero
+pairs on the guarded Normalize path. An EnvModulate query requiring its relocation
+finds no qualifying example. These results exercise a real matched-source corpus;
+they do not discover the desired symbolic-address argument behavior. Input drift
+is rejected, including an attempted fresh verification whose environment hash
+differs from the older retained capture.
+
+An independent review caught and corrected verification filter bypass, unsupported
+REL relocations, effective Ninja-flag handling and mutable checker/proof inputs.
+Checker inputs are checked around execution; mutable analysis inputs are checked
+before completed search/reduction outcomes are saved. Analyzer identity is still
+hashed once per invocation.
+
 ## Validation
 
-121 workspace tests pass on Windows and Linux, with nine compiler-backed tests
-left opt-in. The new live source-search test was also run on both hosts across all
+127 workspace tests pass on Windows and Linux, with ten compiler-backed tests
+left opt-in. All-target Clippy and final focused index checks pass on both hosts;
+logs are under `build/source-guided/tool-integration/`. The new checker test
+rejects a proof file mutated by the checker and separately detects target drift.
+Three reducer tests cover deterministic byte-preserving shrink order, guarded
+recipes and saved pass cursors. Two index tests cover exact bytes/relocations,
+unsupported relocation forms, complete input closure, indeterminate absence,
+query/verification filters, cancellation and entry/blob integrity.
+Real native index ingestion/query/fresh verification passes on both hosts;
+`Initialize` reproduces the complete clean stock object and the same matched
+function/source excerpt. Summaries are
+`build/source-guided/matched-index-audit/verification.json` and
+`build/source-guided/matched-index-linux/verification.json`.
+The expanded reducer live proof passes all three compiler versions on both hosts:
+each automatic pass reduces 534 to 281 bytes over 59 candidates and 60 builds,
+with identical reduced source bytes across hosts/versions. Guarded shrinking,
+cache/resume, fresh verification, three-build replay, candidate-only header drift,
+missing semantic checks and cancellation all pass. Windows proof root is
+`build/source-guided/tool-integration/source-reduction-8oyCev`; the final Linux
+summary is `build/source-guided/reduction-probes/linux-final-verification.json`.
+An earlier Linux attempt lost its running test executable to a concurrent Cargo
+rebuild and is retained as a failed harness diagnostic. The final proof uses a
+frozen copied executable and does not rebuild or replace it while running.
+
+The live source-search test was also run on both hosts across all
 three supported versions. It exercises relevant-state grouping, real cache hits,
 header invalidation, verification across resume, independent replay, semantic
 evidence gates, cancellation and retained-input integrity. Native CLI run/replay
@@ -294,15 +361,15 @@ overhead/throughput benchmark remains open.
 | Backend provenance | Complete source-role/object and leaf/inline provenance beyond guarded object bindings and allocator ranges, justify semantic lifetime bindings for ambiguous generations, and close remaining alias/coverage gaps and rare coalescing cases |
 | Correspondence | Add lifecycle/provenance anchors, generations, observed merges/replacements and justified elimination; extend phase selection to newly captured backend phases |
 | Source search | Capture the remaining requested mechanisms, extend precise provenance/objective recognition, add language-aware recipes and finish the full RenderParticles investigation; the bounded harness and one useful checked full-function graph edit are implemented |
-| Reduction | Reuse the evaluator for deterministic mechanism-preserving reduction, rebind identities, reject indeterminate results and retest discoveries in RenderParticles |
-| Matched-source index | Coverage-aware trace/source index and reproducible queries/examples feeding the harness |
+| Reduction | Native deterministic reduction/rebinding/uncertainty gates and replay are implemented; add category-transition reference support and promoted-array predicates, and retest discoveries in RenderParticles |
+| Matched-source index | Native exact-match corpus/query/revalidation is implemented; expand useful source-role coverage and find examples of the requested argument/promotion behavior to feed the harness |
 | Delivery | Compiler-version/platform checks, trace overhead/search throughput measurements, native documentation/kit/schema updates and the complete RenderParticles investigation |
 
 The qualified-symbol objective now has a concrete independently checked C++ graph
-edit. Implement reduction and the matched-source index using the shared evaluator,
-while closing source-role coverage beyond this Normalize pair path and the remaining
+edit. Native reduction and matched-source indexing now use the shared evaluator.
+Close source-role coverage beyond this Normalize pair path and the remaining
 grouping gaps. Complete exact backend expression/inline evidence and semantic
 lifetime binding for ambiguous generations. Capture and label the three
 requested real mechanisms and complete the RenderParticles loop. Keep the full
-roadmap scope: the implemented provenance components do not complete any of the
-four requested tools.
+roadmap active: the delivered native implementations do not close the remaining
+provenance, mechanism and end-to-end acceptance requirements.
