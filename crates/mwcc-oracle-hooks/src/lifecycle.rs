@@ -17,13 +17,17 @@ pub struct Descriptor {
     first: *const i16,
     last: *const i32,
     object_binding: u32,
+    operand_binding: u32,
+    data_link_offset: u32,
 }
 const _: () = {
-    assert!(core::mem::size_of::<Descriptor>() == 36);
+    assert!(core::mem::size_of::<Descriptor>() == 44);
     assert!(core::mem::align_of::<Descriptor>() == 4);
     assert!(core::mem::offset_of!(Descriptor, selector) == 12);
     assert!(core::mem::offset_of!(Descriptor, role) == 16);
     assert!(core::mem::offset_of!(Descriptor, object_binding) == 32);
+    assert!(core::mem::offset_of!(Descriptor, operand_binding) == 36);
+    assert!(core::mem::offset_of!(Descriptor, data_link_offset) == 40);
 };
 #[derive(Clone, Copy)]
 struct State {
@@ -43,6 +47,7 @@ struct State {
     ranges: u32,
     dispatches: u32,
     dispatch_returns: u32,
+    materializations: u32,
     origin_statement: *const u8,
     origin_node: *const u8,
     origin_id: u32,
@@ -64,6 +69,7 @@ const EMPTY: State = State {
     ranges: 0,
     dispatches: 0,
     dispatch_returns: 0,
+    materializations: 0,
     origin_statement: ptr::null(),
     origin_node: ptr::null(),
     origin_id: 0,
@@ -137,9 +143,10 @@ unsafe fn dispatch_output(frame: DispatchFrame) {
         let p = frame.output;
         let kind = u32::from(p.read());
         OracleTrace_Printf(
-            c"pv.expression.result function=%lu expression=%lu kind=%lu".as_ptr(),
+            c"pv.expression.result function=%lu expression=%lu operand=%08x kind=%lu".as_ptr(),
             frame.function,
             frame.expression,
+            p as u32,
             kind,
         );
         // Read only fields defined for this Operand tag. Inactive fields and
@@ -476,7 +483,63 @@ unsafe fn object_binding(r: &Registers, d: &Descriptor, function: u32, value: u3
     }
 }
 
-#[unsafe(export_name = "OracleRust_CounterProbeV2")]
+/// Observe the exact source Operand still held in EBX, with its Object in EBP,
+/// at the two guarded Normalize counter writes. Do not invoke the mangler or
+/// otherwise populate compiler caches merely to obtain a prettier identity.
+unsafe fn operand_binding(r: &Registers, d: &Descriptor, function: u32, value: u32) {
+    unsafe {
+        if d.operand_binding == 0 {
+            return;
+        }
+        let operand = r.slot(4).unwrap_or(0) as *const u8;
+        let object = r.slot(2).unwrap_or(0) as *const u8;
+        if !matches!(d.operand_binding, 1 | 2)
+            || operand.is_null()
+            || object.is_null()
+            || !matches!(operand.read(), 8 | 11)
+            || read::<*const u8>(operand, 16) != object
+        {
+            OracleTrace_Printf(
+                c"pv.gap reason=symbol_operand_binding function=%lu value=%lu\n".as_ptr(),
+                function,
+                value,
+            );
+            return;
+        }
+        let count = ptr::addr_of!(STATE.materializations).read();
+        ptr::addr_of_mut!(STATE.materializations).write(count.wrapping_add(1));
+        let datatype = read::<u8>(object, 2);
+        let link = match datatype {
+            0 => read::<*const u8>(object, d.data_link_offset as usize),
+            3 | 4 => read::<*const u8>(object, 50),
+            _ => ptr::null(),
+        };
+        let text = if link.is_null() {
+            ptr::null()
+        } else {
+            link.add(10)
+        };
+        let hex = ptr::addr_of_mut!(HEX).cast::<u8>();
+        let mut length = 0;
+        if !text.is_null() {
+            while length < 512 && text.add(length).read() != 0 {
+                let byte = text.add(length).read();
+                let digit = |v: u8| if v < 10 { b'0' + v } else { b'a' + v - 10 };
+                hex.add(length * 2).write(digit(byte >> 4));
+                hex.add(length * 2 + 1).write(digit(byte & 15));
+                length += 1;
+            }
+        }
+        hex.add(length * 2).write(0);
+        OracleTrace_Printf(c"pv.value.materialization schema=1 function=%lu value=%lu part=%lu operand=%08x kind=%lu object=%08x displacement=%ld datatype=%lu storage=%lu symbol_known=%d symbol_complete=%d symbol_hex=%s\n".as_ptr(),
+            function, value, d.operand_binding, operand as u32, u32::from(operand.read()), object as u32,
+            read::<i32>(operand, 8), u32::from(datatype), u32::from(read::<u16>(object, 22)),
+            i32::from(!link.is_null()), i32::from(!link.is_null() && (length < 512 || text.add(length).read() == 0)),
+            hex.cast::<core::ffi::c_char>());
+    }
+}
+
+#[unsafe(export_name = "OracleRust_CounterProbeV3")]
 pub unsafe extern "C" fn observe(r: &Registers, site: u32, d: &Descriptor) {
     unsafe {
         if !enabled() {
@@ -512,7 +575,7 @@ pub unsafe extern "C" fn observe(r: &Registers, site: u32, d: &Descriptor) {
                 state.counts[i] = d.counts.add(i).read_unaligned();
             }
             ptr::addr_of_mut!(STATE).write(state);
-            OracleTrace_Printf(c"pv.function.begin schema=1 function=%lu parent=%lu site=%lx c0=%lu c1=%lu c2=%lu c3=%lu c4=%lu coverage=direct_counter_writes dispatch=guarded_table_v1 link=%s\n".as_ptr(),
+            OracleTrace_Printf(c"pv.function.begin schema=1 function=%lu parent=%lu site=%lx c0=%lu c1=%lu c2=%lu c3=%lu c4=%lu coverage=direct_counter_writes dispatch=guarded_table_v1 materialization=guarded_normalize_pair_v1 link=%s\n".as_ptr(),
                 id,parent.id,site,state.counts[0],state.counts[1],state.counts[2],state.counts[3],state.counts[4],
                 if state.object.is_null(){c"?".as_ptr().cast()}else{pcode::link_name(state.object)});
             return;
@@ -527,7 +590,7 @@ pub unsafe extern "C" fn observe(r: &Registers, site: u32, d: &Descriptor) {
                 return;
             }
             OracleTrace_Printf(
-                c"pv.function.end function=%lu births=%lu graphs=%lu ranges=%lu dispatches=%lu dispatch_returns=%lu c0=%lu c1=%lu c2=%lu c3=%lu c4=%lu\n"
+                c"pv.function.end function=%lu births=%lu graphs=%lu ranges=%lu dispatches=%lu dispatch_returns=%lu materializations=%lu c0=%lu c1=%lu c2=%lu c3=%lu c4=%lu\n"
                     .as_ptr(),
                 state.id,
                 state.sequence,
@@ -535,6 +598,7 @@ pub unsafe extern "C" fn observe(r: &Registers, site: u32, d: &Descriptor) {
                 state.ranges,
                 state.dispatches,
                 state.dispatch_returns,
+                state.materializations,
                 state.counts[0],
                 state.counts[1],
                 state.counts[2],
@@ -623,6 +687,7 @@ pub unsafe extern "C" fn observe(r: &Registers, site: u32, d: &Descriptor) {
                 state.id,sequence,class,after.wrapping_sub(1),after,physical,site,origin,state.phase,statement as u32,
                 if statement.is_null(){-1}else{read::<i32>(statement,22)});
             object_binding(r, d, state.id, sequence);
+            operand_binding(r, d, state.id, sequence);
         } else {
             OracleTrace_Printf(c"pv.counter.change function=%lu role=%lu cls=%lu old=%lu after=%lu physical=%lu site=%lx phase=%lu\n".as_ptr(),
                 state.id,d.role,class,old,after,physical,site,state.phase);

@@ -174,11 +174,22 @@ families, preconditions and atomic exact-anchor edits. Depth and generation limi
 bound exploration. Use these structured inputs rather than wrapping report text.
 
 Available predicates are `direct_initialization`, `change_range_category` and
-`eliminate_temporary`. Direct initialization checks a constant LI and removal of
+`eliminate_temporary`, plus the scoped `symbol_address_pairs` count. Direct initialization checks a constant LI and removal of
 the intermediate copy through final allocation. Category changes must preserve
 normalized instructions and relocations. Elimination currently stays indeterminate:
 an unmatched graph node is insufficient evidence. Range categories describe
 allocator number ranges, not semantic source roles.
+
+`symbol_address_pairs` selects a qualified mangled `symbol`, `minimum` and
+`maximum`, with class 4 (GPR). It counts observed high/low pairs from the guarded
+Normalize path before the selected graph. It requires complete relevant capture,
+symbol identities, adjacent pair births and unique graph bindings. Its report
+includes the source Operand, selected births, surviving graph nodes and confirmed
+merges. Other materialization paths and optimizer-created values remain outside
+this count, so it is not complete temporary-elimination proof. Retain required
+symbolic relocation kinds with minimum counts of one; do not accidentally require
+all repeated address pairs to remain. Current producers use the guarded V3 counter
+descriptor and must be rebuilt with current common hooks.
 
 Require `purpose: "source_transformation"` and configure a semantic-check executable
 with arguments using `{source}`, `{object}`, `{baseline_source}` and
@@ -193,6 +204,8 @@ Read `status`, `evaluation.overall`, `constraints`, `score`, `graph_changes` and
 does not establish success. Known objective costs rank eligible candidates;
 indeterminate evidence never wins. A successful candidate is freshly compiled and
 rechecked before `verified_success`. Optional target-object mismatch is separate.
+An unavailable fingerprint has `fingerprint_error`; keep that source candidate
+and its evaluation, without claiming that it joined an equivalent-state group.
 
 `progress.json` saves the queue, evaluations and every source representative of
 each relevant compiler state. Exact compilation reuse separately hashes both

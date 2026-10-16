@@ -99,6 +99,8 @@ pub struct Outcome {
     pub artifact: Option<String>,
     pub artifact_directory: Option<PathBuf>,
     pub fingerprint: Option<String>,
+    #[serde(default)]
+    pub fingerprint_error: Option<String>,
     pub duplicate_state_of: Option<usize>,
     pub evaluation: Option<EvaluationReport>,
     pub semantic_check: Option<CheckOutcome>,
@@ -792,8 +794,9 @@ pub fn run(plan: &Plan, output: &Path, budget: &Budget, resume: bool) -> Result<
                         &saved.compilation.object,
                         saved.compilation.version,
                     )
-                })
-                .ok();
+                });
+                let fingerprint_error = fingerprint.as_ref().err().map(|e| format!("{e:#}"));
+                let fingerprint = fingerprint.ok();
                 let duplicate = fingerprint
                     .as_ref()
                     .and_then(|f| progress.groups.get(f).and_then(|ids| ids.first().copied()));
@@ -866,6 +869,7 @@ pub fn run(plan: &Plan, output: &Path, budget: &Budget, resume: bool) -> Result<
                     artifact: Some(key.clone()),
                     artifact_directory: Some(output.join("cache").join(&key)),
                     fingerprint,
+                    fingerprint_error,
                     duplicate_state_of: duplicate,
                     evaluation: Some(evaluation),
                     semantic_check: check,
@@ -883,6 +887,7 @@ pub fn run(plan: &Plan, output: &Path, budget: &Budget, resume: bool) -> Result<
                     artifact: None,
                     artifact_directory: None,
                     fingerprint: None,
+                    fingerprint_error: None,
                     duplicate_state_of: None,
                     evaluation: None,
                     semantic_check: None,
@@ -1129,8 +1134,9 @@ pub fn replay(output: &Path, id: usize, budget: &Budget) -> Result<Outcome> {
         plan.contract.selection.class,
         plan.contract.selection.round,
     )
-    .and_then(|g| state::fingerprint(g, &b, &saved.compilation.object, saved.compilation.version))
-    .ok();
+    .and_then(|g| state::fingerprint(g, &b, &saved.compilation.object, saved.compilation.version));
+    let fingerprint_error = fingerprint.as_ref().err().map(|e| format!("{e:#}"));
+    let fingerprint = fingerprint.ok();
     let outcome = Outcome {
         id,
         status: if evaluation.overall.state == EvaluationState::Satisfied {
@@ -1143,6 +1149,7 @@ pub fn replay(output: &Path, id: usize, budget: &Budget) -> Result<Outcome> {
         artifact: Some(key),
         artifact_directory: Some(object.parent().unwrap().to_owned()),
         fingerprint,
+        fingerprint_error,
         duplicate_state_of: None,
         evaluation: Some(evaluation),
         semantic_check: check,

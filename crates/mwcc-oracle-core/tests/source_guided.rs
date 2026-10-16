@@ -186,6 +186,137 @@ fn contract(objective: Objective) -> Contract {
         purpose: Purpose::MechanismReproducer,
     }
 }
+fn symbolic_pair_trace() -> String {
+    let mut trace = synthetic(false, true, false)
+        .replace(
+            "coverage=direct_counter_writes",
+            "coverage=direct_counter_writes materialization=guarded_normalize_pair_v1",
+        )
+        .replace(
+            "births=2 graphs=1 ranges=2 c0=",
+            "births=2 graphs=1 ranges=2 materializations=2 c0=",
+        );
+    for (id, name, site) in [(1, "flag", "4e2fea"), (2, "other", "4e2ff6")] {
+        trace = trace.replace(&birth(id, name), &format!("{}pv.value.materialization schema=1 function=1 value={id} part={id} operand=1234 kind=8 object=abc displacement=0 datatype=0 storage=2 symbol_known=1 symbol_complete=1 symbol_hex=73796d5f5f3143\n", birth(id, name).replace("site=400028", &format!("site={site}"))));
+    }
+    trace
+}
+#[test]
+fn symbol_pair_objective_counts_a_guarded_mechanism_and_requires_complete_identity_and_graph_bindings()
+ {
+    let source = b"model source";
+    let trace = symbolic_pair_trace();
+    let a = compilation(&trace, source);
+    let ar = provenance::parse(&a.trace).unwrap();
+    let input = Input {
+        compilation: &a,
+        provenance: &ar,
+        source,
+        semantic_check: None,
+    };
+    let c = contract(Objective::SymbolAddressPairs {
+        symbol: "sym__1C".into(),
+        minimum: 1,
+        maximum: 1,
+    });
+    let result = objective::evaluate(&c, &input, &input).unwrap();
+    assert_eq!(result.overall.state, EvaluationState::Satisfied);
+    assert_eq!(result.observations["candidate"]["count"], 1);
+    assert_eq!(
+        result.observations["candidate"]["pairs"][0]["low"]["sequence"],
+        2
+    );
+    let zero = contract(Objective::SymbolAddressPairs {
+        symbol: "sym__1C".into(),
+        minimum: 0,
+        maximum: 0,
+    });
+    assert_eq!(
+        objective::evaluate(&zero, &input, &input)
+            .unwrap()
+            .objective
+            .state,
+        EvaluationState::Unsatisfied
+    );
+    for changed in [
+        trace.replace("materializations=2", "materializations=1"),
+        trace.replace(
+            "symbol_known=1 symbol_complete=1 symbol_hex=73796d5f5f3143",
+            "symbol_known=0 symbol_complete=0 symbol_hex=",
+        ),
+        trace.replace("symbol_complete=1", "symbol_complete=0"),
+        trace.replace("value=2 part=2 operand=1234", "value=2 part=2 operand=5678"),
+    ] {
+        let b = compilation(&changed, source);
+        let br = provenance::parse(&b.trace).unwrap();
+        let candidate = Input {
+            compilation: &b,
+            provenance: &br,
+            source,
+            semantic_check: None,
+        };
+        assert_eq!(
+            objective::evaluate(&zero, &input, &candidate)
+                .unwrap()
+                .objective
+                .state,
+            EvaluationState::Indeterminate
+        );
+    }
+    let mut br = ar.clone();
+    br.graphs.graphs[0]
+        .nodes
+        .get_mut(&33)
+        .unwrap()
+        .binding
+        .direct
+        .clear();
+    let candidate = Input {
+        compilation: &a,
+        provenance: &br,
+        source,
+        semantic_check: None,
+    };
+    assert_eq!(
+        objective::evaluate(&zero, &input, &candidate)
+            .unwrap()
+            .objective
+            .state,
+        EvaluationState::Indeterminate
+    );
+    let graph = state::graph(&ar, "pipeline__Fii", 4, 0).unwrap();
+    let before = state::fingerprint(graph, &ar, &a.object, Version::Gc27).unwrap();
+    let mut changed = ar.clone();
+    changed.history.functions[0].births[1]
+        .materialization
+        .as_mut()
+        .unwrap()
+        .symbol_bytes
+        .push(b'X');
+    assert_ne!(
+        before,
+        state::fingerprint(graph, &changed, &a.object, Version::Gc27).unwrap()
+    );
+    changed = ar.clone();
+    let binding = changed.history.functions[0].births[1]
+        .materialization
+        .as_mut()
+        .unwrap();
+    binding.operand = "9999".into();
+    binding.object = "ffff".into();
+    assert_eq!(
+        before,
+        state::fingerprint(graph, &changed, &a.object, Version::Gc27).unwrap()
+    );
+    assert!(
+        objective::validate(&contract(Objective::SymbolAddressPairs {
+            symbol: "sym".into(),
+            minimum: 2,
+            maximum: 1
+        }))
+        .is_err()
+    );
+}
 fn anchor() -> ObjectAnchor {
     ObjectAnchor {
         name: "flag".into(),

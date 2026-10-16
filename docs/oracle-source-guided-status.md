@@ -116,9 +116,22 @@ objdiff reports 100% against baseline and 99.94901% against target. No new usefu
 graph edit or proper match was found. A fourth, target-ABI-specific pointer/integer
 round trip at the first call also retains that graph and body. Their exact source/header/runtime inputs,
 objects, traces, remaps and comparison evidence are retained. This is direct native
-case evidence, not a claimed source-search winner. Explicit argument-materializer
-bindings and stable anonymous-value selectors are the next case-driven work;
-exact leaf/inline origins, source roles and semantic lifetimes remain incomplete.
+case evidence, not a claimed source-search winner.
+
+The subsequent V3 counter observer adds direct Operand/Object/symbol bindings at
+the two guarded Normalize address-pair birth sites. It guards the retail cache
+layout difference (56 in GC 1.3/1.3.2, 54 in GC 2.7); it does not invoke the mangler.
+Both hosts' corrected full-case captures preserve the stock object and retain 32
+address-half bindings with complete names, including all six EnvModulate halves.
+Each pair matches an observed expression output, with alias/dataflow limits explicit.
+The new `symbol_address_pairs` evaluator counts the selected qualified-symbol
+mechanism with complete capture and unique graph-binding requirements. A real
+native harness run passes calibration and all hard gates, but the cast variant
+still has three pairs against a maximum of two: `bounded_search_exhausted`, with
+no winner. Unsupported PCode kind 1 prevents relevant-state grouping for this
+function; `fingerprint_error` now reports unavailable grouping separately.
+Exact argument/inline origins, other source roles and semantic lifetimes remain
+incomplete. Pair-path counts do not prove complete temporary elimination.
 
 ## Native source-search harness
 
@@ -159,7 +172,7 @@ Pinned migration packages remain unchanged.
 
 ## Validation
 
-115 workspace tests pass on Windows and Linux, with nine compiler-backed tests
+118 workspace tests pass on Windows and Linux, with nine compiler-backed tests
 left opt-in. The new live source-search test was also run on both hosts across all
 three supported versions. It exercises relevant-state grouping, real cache hits,
 header invalidation, verification across resume, independent replay, semantic
@@ -187,6 +200,16 @@ Fresh dispatch producers pass 36 C/Rust fixture comparisons and 48 probe off/on
 compiles on each host. The source-search live test also passes on these producers.
 Proofs are under `build/source-guided/dispatch-audit/` on Windows and
 `/home/henrique/.cache/mwcc-dispatch-{producer,enabled,source-search}/` on Linux.
+The newer corrected materializer producers pass 36 C/Rust fixture comparisons and
+54 probe off/on compiles per host (including the new symbolic-address fixture).
+Constructor tests pass on both hosts/all versions against those exact retained
+islands. Two history tests cover source operands, pair roles, incomplete symbol
+identities, stale/changed outputs and missing materializer coverage; one objective
+test checks scoped counts, hard uncertainty gates and fingerprint identity fields.
+Proofs are under `build/source-guided/materializer-audit/` and
+`/home/henrique/.cache/mwcc-materializer-audit/`. Full-case native search, the actual
+stock object and independent Linux symbolic bindings are retained there. The
+initial wrong-offset producer is retained only as failed diagnostic evidence.
 Three core provenance tests and one CLI test cover complete/missing paths,
 unsupported schemas, observed-write consistency, malformed outcomes and filtering.
 Four value-history tests cover actual identity semantics: multiple generations,
@@ -244,12 +267,11 @@ overhead/throughput benchmark remains open.
 | Matched-source index | Coverage-aware trace/source index and reproducible queries/examples feeding the harness |
 | Delivery | Compiler-version/platform checks, trace overhead/search throughput measurements, native documentation/kit/schema updates and the complete RenderParticles investigation |
 
-The next implementation step is to bind source operands to births at the observed
-symbolic-address materializer (`0x4e2fea`/`0x4e2ff6` in GC 2.7), including qualified
-symbol identity, and expose that binding to the shared objective evaluator. Complete
-exact backend expression/inline and source-role evidence, including semantic lifetime
-binding for ambiguous generations, and apply the harness to the actual mechanisms.
-Then implement reduction and the
+The next implementation step is to use the qualified-symbol materialization
+objective to find and independently check a useful source edit, while closing
+source-role coverage beyond this Normalize pair path and the real case's grouping
+gaps. Complete exact backend expression/inline evidence and semantic lifetime
+binding for ambiguous generations. Then implement reduction and the
 matched-source index using the shared evaluator. Capture and label the three
 requested real mechanisms and complete the RenderParticles loop. Keep the full
 roadmap scope: the implemented provenance components do not complete any of the

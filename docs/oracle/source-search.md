@@ -103,6 +103,21 @@ or promotion patterns; automatic C++ AST rewrite generation is not implemented.
 - `eliminate_temporary`: takes `value`. It deliberately remains indeterminate
   until complete semantic lifetime evidence can justify elimination. Missing nodes
   and inferred edge changes do not prove that a temporary disappeared.
+- `symbol_address_pairs`: takes a qualified mangled `symbol` and inclusive
+  `minimum`/`maximum` pair counts, with GPR selection. For example,
+  `{"kind":"symbol_address_pairs","symbol":"kEnvModulate__9CGraphics","minimum":0,"maximum":2}`
+  asks for at most two pairs from the guarded Normalize creation path before the
+  selected graph. It requires complete materializer/counter capture, complete
+  symbol identities, consistent adjacent high/low births and unique graph bindings
+  for the selected results. Reports retain both counts, birth IDs, allocation roots,
+  graph-only nodes and confirmed physical merges. Unknown identities or reused
+  numbers remain indeterminate. This bounded path count does not prove the absence
+  of all address temporaries, including values created later by optimization.
+
+For the symbolic-address objective, require at least one relocation of each needed
+type rather than preserving the incidental number of repeated materializations.
+For GC 2.7 EnvModulate, kind 6 (high-adjusted) and kind 4 (low) each with addend 0
+and `minimum: 1` retain the symbolic address while allowing fewer repeated pairs.
 
 All objectives require stock-equivalent oracle objects, matching compiler
 identities/flags/options, captured source hashes, complete selected function graph
@@ -137,6 +152,9 @@ graph objective. `score.eligible` requires all hard constraints; objective cost 
 0 for observed satisfaction, 1 for observed failure, and null for indeterminate.
 `ranking` orders eligible candidates first and known objective costs before unknown
 ones. Edge-change counts are inferred diagnostics with explicit unclassified edges.
+`fingerprint_error` explains unavailable state grouping separately from compilation
+and objective results. An unsupported operand is not silently normalized; that
+candidate remains available without joining a compiler-state group.
 
 ## Cache, grouping and retained results
 

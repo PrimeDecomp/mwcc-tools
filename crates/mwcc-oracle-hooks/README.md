@@ -31,7 +31,7 @@ This `no_std` crate produces three i686 Windows COFF objects, linked by the hist
 | `generate_inline_code` | saved-body code generation (`tp.gen`) |
 | `setup_inline_locals_and_arguments` | formal/actual bindings (`lc.arg`) |
 
-`OracleRust_LinkName`, `OracleRust_PrintInstruction` and `OracleRust_Snapshot` provide mangled-name lookup, raw PCode records and allocation/stage snapshots. `OracleRust_DescribeExpression` supplies binding expression spelling, and `cse_vregs` supplies CSE register records. The separate frontend imports `OracleRust_LinkName`, `OracleRust_OriginFind`, `OracleRust_OriginWalk`, `OracleRust_PrintChain` and `OracleRust_InlineLine` to share the common object's ancestry table and statement context. These nine exports, plus the development `OracleRust_BackendProbe` and `OracleRust_CounterProbeV2`, are support functions, not retail hooks; they are checked separately and do not belong in `oracle.hooks`.
+`OracleRust_LinkName`, `OracleRust_PrintInstruction` and `OracleRust_Snapshot` provide mangled-name lookup, raw PCode records and allocation/stage snapshots. `OracleRust_DescribeExpression` supplies binding expression spelling, and `cse_vregs` supplies CSE register records. The separate frontend imports `OracleRust_LinkName`, `OracleRust_OriginFind`, `OracleRust_OriginWalk`, `OracleRust_PrintChain` and `OracleRust_InlineLine` to share the common object's ancestry table and statement context. These nine exports, plus the development `OracleRust_BackendProbe` and `OracleRust_CounterProbeV3`, are support functions, not retail hooks; they are checked separately and do not belong in `oracle.hooks`.
 
 The retail compiler still performs allocation. The Rust wrappers preserve the C wrapper's call order, operand-byte guards and trace formatting. Compiler pointers stay raw; packed fields and embedded x86 operands are read without creating Rust references. No allocator, unwinding or Rust-owned values cross the ABI. The trace object owns `OracleTrace_Printf` and `OracleTrace_Enabled`, forwarding formatting and flushing to the original compiler's C stdio.
 
@@ -95,7 +95,11 @@ The current common object adds the post-migration coalescer, counter and express
 observers: 38 exports and 55 C imports. The expression observer uses guarded
 machine islands around retail table dispatch, retaining argument bits, return
 registers/flags and FPU/SSE state. Its 8-byte descriptor uses
-`OracleRust_ExpressionProbeV1`; the separate counter descriptor remains V2.
+`OracleRust_ExpressionProbeV1`; the separate 44-byte counter descriptor uses V3.
+The counter observer also reads actual source Operand/Object state at the two
+guarded Normalize pair-birth sites. Cached symbol names are observational: no
+mangler call is made. The retail data-name cache offset is selected by audited
+version (56 in GC 1.3/1.3.2, 54 in GC 2.7), rather than the reconstructed header.
 See [native provenance](../../docs/oracle/provenance.md) for typed dispatch capture,
 result uncertainty and the remaining exact-origin/lifetime limits.
 

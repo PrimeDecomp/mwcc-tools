@@ -87,6 +87,12 @@ def main():
             assert not history["orphans"] and not history["gaps"], case["id"]
             assert all(f["dispatch_scope"] == "guarded_table_v1" and f["dispatch_observations"]["state"] == "satisfied"
                        for f in history["functions"]), case["id"]
+            assert all(f["materialization_scope"] == "guarded_normalize_pair_v1" and f["materialization_observations"]["state"] == "satisfied"
+                       for f in history["functions"]), case["id"]
+            materializations = [b["materialization"] for f in history["functions"] for b in f["births"] if b["materialization"]]
+            assert len(materializations) >= case.get("minimum_symbol_materializations", 0), case["id"]
+            if case.get("minimum_symbol_materializations"):
+                assert all(m["symbol_known"] and m["symbol_complete"] for m in materializations), case["id"]
             assert all(f["range_observations"]["state"] == "satisfied" for f in history["functions"]), case["id"]
             objects = [b["object"] for f in history["functions"] for b in f["births"] if b["object"]]
             pairs = [o for o in objects if o["part"] in ("first_word", "second_word")]
@@ -140,6 +146,8 @@ def main():
                 births=sum(len(f["births"]) for f in history["functions"]),
                 expressions=sum(len(f["expressions"]) for f in history["functions"]),
                 object_bindings=len(objects), pair_bindings=len(pairs), range_categories=sorted(categories),
+                symbol_materializations=len(materializations),
+                materialized_symbols=sorted({m["symbol_text"] for m in materializations if m["symbol_text"] is not None}),
                 graphs=len(graphs["graphs"]), graph_only=sum(len(g["graph_only"]) for g in graphs["graphs"]),
                 bindings={state:sum(sum(n["binding"]["evidence"]["state"]==state for n in g["nodes"].values()) for g in graphs["graphs"])
                           for state in ["satisfied", "indeterminate"]},

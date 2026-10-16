@@ -121,7 +121,11 @@ impl Names {
                     }
                 }
                 2 | 3 | 6 => {}
-                _ => anyhow::bail!("unsupported operand kind in instruction-state comparison"),
+                _ => anyhow::bail!(
+                    "unsupported PCode operand kind {} at opcode {} in instruction-state comparison",
+                    raw[0],
+                    i.opcode
+                ),
             }
             if matches!(raw[0], 0 | 2 | 3 | 4) {
                 let object = ordinal(&mut self.objects, pointer(&raw, 6));
@@ -227,6 +231,7 @@ pub fn fingerprint(g: &Graph, report: &Report, object: &[u8], version: Version) 
         let origins=n.binding.direct.iter().chain(&n.binding.contributors).map(|id| {
             let b=&f.births[(id.sequence-1) as usize];
             json!({"site":b.site,"phase":b.phase,"generation":b.generation,"object":b.object.as_ref().map(|o|json!({"part":o.part,"datatype":o.datatype,"storage":o.storage,"type_kind":o.type_kind,"type_size":o.type_size,"name":o.name_bytes,"complete":o.name_complete,"known":o.name_known})),
+                "materialization":b.materialization.as_ref().map(|m|json!({"part":m.part,"kind":m.kind,"displacement":m.displacement,"datatype":m.datatype,"storage":m.storage,"symbol_known":m.symbol_known,"symbol_complete":m.symbol_complete,"symbol":m.symbol_bytes})),
                 "expression":b.expression.and_then(|id|f.expressions.iter().find(|e|e.id==id)).map(|e|json!({"scope":e.scope,"kind":e.kind,"dispatch_target":e.dispatch.as_ref().map(|d|d.retail_target),"complete":e.complete,"tree":e.tree_bytes}))})
         }).collect::<Vec<_>>();
         json!({"id":rename(r),"degree":n.stored_degree,"flags":n.flags,"color":n.color,"neighbors":neighbors,"category":n.range_category,

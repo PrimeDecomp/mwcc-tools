@@ -6,7 +6,7 @@ use crate::{
     graph_history::Graph,
     provenance::Report,
     runner::{CheckStatus, Compilation},
-    value_history::{Birth, ObjectPart},
+    value_history::{AddressPart, Birth, ObjectPart},
     version::Version,
 };
 use anyhow::{Context, Result, ensure};
@@ -43,6 +43,13 @@ pub enum Objective {
     },
     EliminateTemporary {
         value: ObjectAnchor,
+    },
+    /// Count the guarded Normalize high/low creation mechanism. This does not
+    /// assert absence of all address temporaries or semantic value elimination.
+    SymbolAddressPairs {
+        symbol: String,
+        minimum: u32,
+        maximum: u32,
     },
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -137,7 +144,104 @@ pub fn validate(c: &Contract) -> Result<()> {
             .all(|r| r.minimum > 0 && !r.symbol.is_empty()),
         "invalid relocation requirement"
     );
+    if let Objective::SymbolAddressPairs {
+        symbol,
+        minimum,
+        maximum,
+    } = &c.objective
+    {
+        ensure!(
+            !symbol.is_empty() && minimum <= maximum && c.selection.class == 4,
+            "symbol address pairs require a symbol, ordered count bounds and GPR selection"
+        );
+    }
     Ok(())
+}
+fn symbol_address_pairs(input: &Input<'_>, graph: &Graph, symbol: &str) -> Result<Value> {
+    let function = input
+        .provenance
+        .history
+        .functions
+        .iter()
+        .find(|f| f.id == graph.function)
+        .context("missing materialization function")?;
+    ensure!(
+        function.materialization_observations.state == EvaluationState::Satisfied
+            && function.counter_observations.state == EvaluationState::Satisfied,
+        "complete guarded Normalize-pair and counter capture is required"
+    );
+    let mut pairs = vec![];
+    let mut high_count = 0;
+    let mut low_count = 0;
+    for low in function
+        .births
+        .iter()
+        .filter(|b| b.id.sequence <= graph.birth_cutoff)
+    {
+        let Some(binding) = &low.materialization else {
+            continue;
+        };
+        // Unknown symbols could be additional occurrences of the requested
+        // symbol; they cannot be silently excluded from a negative/count bound.
+        ensure!(
+            binding.symbol_known && binding.symbol_complete,
+            "a materialized symbol identity is incomplete"
+        );
+        if binding.part != AddressPart::Low {
+            high_count += 1;
+            continue;
+        }
+        low_count += 1;
+        let high = function
+            .births
+            .get(
+                (low.id.sequence as usize)
+                    .checked_sub(2)
+                    .context("address low half is the first birth")?,
+            )
+            .context("address low half has no preceding birth")?;
+        let high_binding = high
+            .materialization
+            .as_ref()
+            .context("address low half has no observed high half")?;
+        ensure!(
+            high_binding.part == AddressPart::High
+                && high.class == 4
+                && low.class == 4
+                && high_binding.operand == binding.operand
+                && high_binding.object == binding.object
+                && high_binding.kind == binding.kind
+                && high_binding.displacement == binding.displacement
+                && high_binding.symbol_known
+                && high_binding.symbol_complete
+                && high_binding.symbol_bytes == binding.symbol_bytes,
+            "address pair observations disagree"
+        );
+        if binding.symbol_bytes != symbol.as_bytes() {
+            continue;
+        }
+        let node = graph.nodes.get(&low.register);
+        // A reused raw number cannot identify this pair's graph state. Count
+        // the creation but leave the objective indeterminate until it is bound.
+        ensure!(
+            node.is_some_and(
+                |node| node.binding.evidence.state == EvaluationState::Satisfied
+                    && node.binding.direct == [low.id]
+            ),
+            "address result lacks a unique graph birth binding"
+        );
+        let allocation_root = root(graph, low)?;
+        pairs.push(json!({"high":high.id,"low":low.id,"source":binding,
+            "result_register":low.register,"allocation_root":allocation_root,
+            "node":node,"merged_to_physical":allocation_root < graph.physical_limit}));
+    }
+    ensure!(
+        high_count == low_count,
+        "incomplete address materialization pair at the selected boundary"
+    );
+    Ok(
+        json!({"count":pairs.len(),"pairs":pairs,"scope":"guarded_normalize_pair_v1_before_selected_graph"}),
+    )
 }
 fn anchor<'a>(input: &'a Input<'_>, g: &Graph, a: &ObjectAnchor) -> Result<&'a Birth> {
     let f = input
@@ -599,10 +703,36 @@ pub fn evaluate(
             );
             let changes = delta(a, b, candidate.compilation.version);
             let tested = (|| -> Result<(Evaluation, Value)> {
+                if let Objective::SymbolAddressPairs {
+                    symbol,
+                    minimum,
+                    maximum,
+                } = &c.objective
+                {
+                    let from = symbol_address_pairs(baseline, a, symbol)?;
+                    let to = symbol_address_pairs(candidate, b, symbol)?;
+                    let count = to["count"]
+                        .as_u64()
+                        .context("missing materialization count")?;
+                    let result = if u64::from(*minimum) <= count && count <= u64::from(*maximum) {
+                        known()
+                    } else {
+                        false_result(
+                            "the observed symbolic-address pair count is outside the requested bounds",
+                        )
+                    };
+                    return Ok((
+                        result,
+                        json!({"baseline":from,"candidate":to,
+                        "minimum":minimum,"maximum":maximum,"symbol":symbol,
+                        "semantic_limit":"Counts one guarded materialization path; does not prove complete temporary elimination."}),
+                    ));
+                }
                 let selector = match &c.objective {
                     Objective::ChangeRangeCategory { value, .. }
                     | Objective::DirectInitialization { value, .. }
                     | Objective::EliminateTemporary { value } => value,
+                    Objective::SymbolAddressPairs { .. } => unreachable!(),
                 };
                 let from = anchor(baseline, a, selector)?;
                 let to = anchor(candidate, b, selector)?;
@@ -663,6 +793,7 @@ pub fn evaluate(
                         ),
                         json!({"baseline_value":from.id,"candidate_value":to.id}),
                     )),
+                    Objective::SymbolAddressPairs { .. } => unreachable!(),
                 }
             })();
             match tested {

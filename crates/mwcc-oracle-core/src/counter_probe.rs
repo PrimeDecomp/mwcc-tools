@@ -33,6 +33,19 @@ pub struct Site {
     pub field: Option<usize>,
     pub counter_class: Option<u8>,
     pub object_binding: ObjectBinding,
+    pub operand_binding: OperandBinding,
+    pub data_link_offset: u32,
+}
+/// These roles are justified by the guarded retail Normalize path, not by a
+/// register number, expression spelling or reconstructed function signature.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
+#[repr(u32)]
+#[serde(rename_all = "snake_case")]
+pub enum OperandBinding {
+    #[default]
+    None = 0,
+    SymbolAddressHigh = 1,
+    SymbolAddressLow = 2,
 }
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
 #[repr(u32)]
@@ -66,7 +79,7 @@ pub struct Installed {
 }
 const COUNTS: &str = "_data_005e6a7c";
 const PHYSICAL: &str = "_data_005e6778";
-const HANDLER: &str = "_OracleRust_CounterProbeV2";
+const HANDLER: &str = "_OracleRust_CounterProbeV3";
 // Roles: increment, close/high-water restore, rewind, initial reset, allocation
 // reset, function begin, function end. These are actual writes, not guessed types.
 fn role(version: &str, r: &Reference) -> Result<Role> {
@@ -101,6 +114,59 @@ pub fn plan(root: &Path, version: &str) -> Result<Vec<Site>> {
     let mut decoder = disassembly::decoder()?;
     decoder.set_detail(true)?;
     let mut sites = vec![];
+    // The reconstructed Object header still has the GC 1.3 data suffix in all
+    // versions. Retail GC 2.7 omits that two-byte field. Use guarded retail
+    // cache accesses, not sizeof/offsetof on that reconstructed declaration.
+    let data_link_offset = if version == "GC_2_7" { 54 } else { 56 };
+    let cache_function = metadata
+        .iter()
+        .find(|s| s.name == "_COptimizer_GetFunctionObject")
+        .context("missing retail symbol cache accessor")?;
+    ensure!(
+        executable::size(&cache_function.options)? == 0x75,
+        "symbol cache accessor size guard"
+    );
+    let cache = pe.read(cache_function.address, 0x75)?;
+    ensure!(
+        cache[0x36..0x3d] == [0x83, 0x7b, data_link_offset as u8, 0, 0x75, 0x0a, 0x53]
+            && cache[0x43..0x4b]
+                == [
+                    0x89,
+                    0x43,
+                    data_link_offset as u8,
+                    0x8b,
+                    0x43,
+                    data_link_offset as u8,
+                    0x5b,
+                    0xc3
+                ],
+        "retail data link-name cache layout guard"
+    );
+    let (normalize, normalize_hash, pair_sites) = match version {
+        "GC_1_3" => (
+            "_Operands_Normalize",
+            "cdd84dd317bc1ccc73d71c61534230d8f725df0f972e7cfabe42fa3e2ae63b1d",
+            [0x4e17da, 0x4e17e6],
+        ),
+        "GC_1_3_2" => (
+            "_fn_004e10c0",
+            "7d4343a886a40c4dff88f279a091567a016d93b834b6d4fe187fee93171b9d0e",
+            [0x4e231a, 0x4e2326],
+        ),
+        "GC_2_7" => (
+            "_fn_004e1d90",
+            "7d4343a886a40c4dff88f279a091567a016d93b834b6d4fe187fee93171b9d0e",
+            [0x4e2fea, 0x4e2ff6],
+        ),
+        _ => unreachable!(),
+    };
+    ensure!(
+        audit
+            .functions
+            .get(normalize)
+            .is_some_and(|f| f.normalized_sha256 == normalize_hash),
+        "symbol address operand ABI guard failed"
+    );
     for (name, expected) in [
         (
             "_fn_004fcba0",
@@ -194,6 +260,14 @@ pub fn plan(root: &Path, version: &str) -> Result<Vec<Site>> {
                 ("_Registers_BindVR", 0xa6) => ObjectBinding::PairSecond,
                 _ => ObjectBinding::None,
             },
+            operand_binding: if r.address == pair_sites[0] {
+                OperandBinding::SymbolAddressHigh
+            } else if r.address == pair_sites[1] {
+                OperandBinding::SymbolAddressLow
+            } else {
+                OperandBinding::None
+            },
+            data_link_offset,
         });
     }
     let expected = match version {
@@ -248,6 +322,8 @@ pub fn plan(root: &Path, version: &str) -> Result<Vec<Site>> {
             field,
             counter_class: None,
             object_binding: ObjectBinding::None,
+            operand_binding: OperandBinding::None,
+            data_link_offset,
         });
     }
     // Observe the completed snapshot/window, after its last actual memory write.
@@ -295,6 +371,8 @@ pub fn plan(root: &Path, version: &str) -> Result<Vec<Site>> {
             field: Some(2),
             counter_class: None,
             object_binding: ObjectBinding::None,
+            operand_binding: OperandBinding::None,
+            data_link_offset,
         });
     }
     ensure!(
@@ -306,6 +384,20 @@ pub fn plan(root: &Path, version: &str) -> Result<Vec<Site>> {
         "missing object binding sites"
     );
     sites.sort_by_key(|s| s.address);
+    ensure!(
+        sites
+            .iter()
+            .filter(|s| s.operand_binding != OperandBinding::None)
+            .all(|s| s.container == normalize
+                && s.counter_class == Some(4)
+                && s.role == Role::Increment)
+            && sites
+                .iter()
+                .filter(|s| s.operand_binding != OperandBinding::None)
+                .count()
+                == 2,
+        "missing symbolic address birth sites"
+    );
     ensure!(
         sites
             .windows(2)
@@ -494,6 +586,8 @@ pub fn install(root: &Path, version: &str, inputs: &[(String, Vec<u8>)]) -> Resu
             desc.extend((site.role as u32).to_le_bytes());
             desc.extend([0; 12]);
             desc.extend((site.object_binding as u32).to_le_bytes());
+            desc.extend((site.operand_binding as u32).to_le_bytes());
+            desc.extend(site.data_link_offset.to_le_bytes());
             let mut desc_relocations = vec![
                 Relocation {
                     offset: descriptor_offset + 4,

@@ -58,6 +58,26 @@ fn counter_islands_preserve_all_unpatched_bytes_symbols_sizes_and_guard_sites() 
             _ => 582,
         };
         assert_eq!(installed.sites.len(), expected);
+        let materializers = installed
+            .sites
+            .iter()
+            .filter(|s| s.operand_binding != counter_probe::OperandBinding::None)
+            .collect::<Vec<_>>();
+        assert_eq!(materializers.len(), 2);
+        assert_eq!(
+            materializers[0].operand_binding,
+            counter_probe::OperandBinding::SymbolAddressHigh
+        );
+        assert_eq!(
+            materializers[1].operand_binding,
+            counter_probe::OperandBinding::SymbolAddressLow
+        );
+        assert!(
+            installed
+                .sites
+                .iter()
+                .all(|s| s.data_link_offset == if version == "GC_2_7" { 54 } else { 56 })
+        );
         let mut coverage = 0;
         for (path, bytes) in &inputs {
             let Some(new) = installed.objects.get(path) else {

@@ -169,9 +169,37 @@ ambiguous. A source objective needs both before attributing a category change to
 particular value. These observations are available in Rust through
 `allocation_category` and the combined provenance report.
 
-The internal callback is now `OracleRust_CounterProbeV2`, with a guarded 36-byte
+The internal callback is now `OracleRust_CounterProbeV3`, with a guarded 44-byte
 descriptor. Rebuild the common hooks and producer together; the linker rejects an
 older callback ABI instead of interpreting stale descriptors.
+
+### Symbolic address materialization
+
+The two guarded Normalize pair-allocation sites now attach
+`Birth.materialization`. The observation retains `part: high|low`, the source
+Operand address/tag/Object/displacement, datatype/storage and byte-preserving
+cached mangled symbol name with separate known/complete flags. This observes the
+operand held in EBX and Object in EBP at the actual counter write. It does not
+invoke the mangler or populate compiler caches. A missing cached name stays unknown.
+The constructor checks the complete Normalize metadata container and the retail
+cache accessor: the data link-name field is at 56 in GC 1.3/1.3.2 and 54 in GC 2.7.
+The reconstructed header alone does not establish that retail suffix layout.
+
+Dispatch results additionally retain their output `operand` address. A
+`matching_dispatch_output` identifies the most recent same-address output in the
+enclosing observed scope only if tag, Object and displacement still agree. This
+is matching observed state, not proof that no unobserved alias wrote the operand.
+The qualified symbol at the materializer is read directly and does not depend on
+the partial expression spelling or this output match.
+
+Function capture declares `materialization=guarded_normalize_pair_v1`; the end
+record gives `materializations`. `materialization_observations` requires a valid
+counter/function capture, the declared scope, matching totals and a binding for
+every captured birth at either guarded site. Complete capture of zero such births
+means only that this path was not observed. Other address-generation paths,
+optimizer-created values and complete semantic lifetimes remain outside this scope.
+The shared `symbol_address_pairs` objective counts this mechanism without claiming
+complete temporary elimination; see [source search](source-search.md).
 
 Audit a pinned retail image independently with the native command:
 

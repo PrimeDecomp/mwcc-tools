@@ -98,13 +98,11 @@ Linux independently recompiles the same source and retained header closure under
 counts and births agree. Paths in compiler flags were translated to that private
 project; source and header bytes were unchanged.
 
-This experiment used native capture/remap and a closed set of justified source
-edits. It is not a claimed harness winner: the current named-object objective
-selector cannot reliably select these anonymous materializations. The next useful
-observation is an explicit source-operand/argument-to-birth binding at the address
-materializer, including qualified symbol identity. Then the shared evaluator can
-select the mechanism across edits and reduction. Direct helper calls, exact inline
-ancestry, optimizer-created values and semantic lifetime correspondence remain open.
+The initial experiment used native capture/remap and a closed set of justified
+source edits. Its named-object selector could not select the anonymous
+materializations. The subsequent operand binding and scoped objective below now
+cover this mechanism. Direct helper calls, exact argument/inline ancestry,
+optimizer-created values and semantic lifetime correspondence remain open.
 The three wrapper forms tested here did not realize the desired graph change.
 The const-pointer form adds two dispatch observations (4,082 versus 4,080) while
 retaining the same births and graphs. Extra lowering work is not itself a useful
@@ -118,3 +116,48 @@ instruction bytes and complete numbered GPR remap graph unchanged. Independent
 objdiff again reports 100% against baseline and 99.94901% against target. Its
 capture, source and checks are under `integer-roundtrip-first/checked-result.json`.
 This cast does not expose a useful alternative materialization path.
+
+## Direct operand binding and native harness result
+
+The subsequent V3 counter observer reads the actual source Operand and Object at
+each of the two Normalize birth sites. It records the cached qualified symbol and
+high/low role without invoking the mangler. The retail cache field differs in GC
+2.7; its accessor bytes establish offset 54, versus 56 in GC 1.3/1.3.2. The initial
+incorrect-offset producer's failed full-case run is retained separately and is not
+counted as a successful runtime proof.
+
+Corrected Windows and Linux full-unit captures again produce the complete stock
+object above. RenderParticles has 32 address-half bindings, all with complete
+cached names. Six are `kEnvModulate__9CGraphics`, forming the same three pairs.
+Their input Operand addresses and active contents match the most recent outputs
+of observed expressions 313, 318 and 332 respectively. That is a state observation,
+not proof of alias-free dataflow. The qualified symbol is read at the birth itself.
+
+The native `symbol_address_pairs` evaluator now selects these pairs by qualified
+symbol, with complete counter/materializer coverage and unique graph bindings.
+An actual `source-search run` asks for at most two pairs and tests the first-call
+pointer/integer round trip. Baseline calibration and every hard constraint pass;
+both baseline and candidate have three pairs, so both predicates are **unsatisfied**.
+The run ends `bounded_search_exhausted` after three fresh compiles. It does not
+claim a useful transformation or a semantics-checked winner.
+
+The run retains all six required global-symbol relocations. A future reduction in
+repeated materialization must instead require at least one of each needed high/low
+relocation kind; requiring all six would prevent a valid reduction to fewer pairs.
+The native target diagnostic retains 17 differing bytes and unequal raw relocation
+names; it is separate from the earlier objdiff row/percentage comparison.
+
+This real function also contains PCode operand kind 1 at paired-single opcodes
+403 and 407. Its representation is not yet supported by state normalization.
+Grouping is unavailable, and the current API exposes `fingerprint_error` instead
+of silently normalizing this operand. Generated local-symbol suffixes remain a
+second grouping limitation after that operand is supported.
+
+New Windows evidence is under `build/source-guided/materializer-audit/`:
+`particle-case-verified/{capture,provenance,verification}.json`, the baseline object
+and raw trace, and `particle-search/` with native plan, retained input closure,
+calibration, three compilation artifacts and both evaluations. Linux evidence is
+under `/home/henrique/.cache/mwcc-materializer-audit/particle-case/`. The new
+`tests/fixtures/backend/symbolic_address.cpp` isolates the same const-reference
+argument mechanism on all three versions, with complete symbol bindings and two
+confirmed merges in each capture.

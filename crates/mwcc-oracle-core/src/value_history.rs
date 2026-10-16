@@ -49,6 +49,31 @@ pub struct Birth {
     pub line: Option<i32>,
     pub category: Option<String>,
     pub object: Option<ObjectBinding>,
+    pub materialization: Option<Materialization>,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AddressPart {
+    High,
+    Low,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Materialization {
+    pub trace_position: usize,
+    pub part: AddressPart,
+    pub operand: String,
+    pub kind: u8,
+    pub object: String,
+    pub displacement: i32,
+    pub datatype: u8,
+    pub storage: u16,
+    pub symbol_known: bool,
+    pub symbol_complete: bool,
+    pub symbol_bytes: Vec<u8>,
+    pub symbol_text: Option<String>,
+    /// Most recent observed output at this address in the enclosing dispatch,
+    /// only when its active fields equal the input. This is not alias tracking.
+    pub matching_dispatch_output: Option<u32>,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -112,6 +137,7 @@ pub struct Dispatch {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct DispatchResult {
     pub trace_position: usize,
+    pub operand: Option<String>,
     pub kind: u8,
     pub class: Option<u8>,
     pub register: Option<u32>,
@@ -169,6 +195,9 @@ pub struct Function {
     pub expected_dispatches: Option<u32>,
     pub expected_dispatch_returns: Option<u32>,
     pub dispatch_observations: Evaluation,
+    pub materialization_scope: Option<String>,
+    pub expected_materializations: Option<u32>,
+    pub materialization_observations: Evaluation,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct History {
@@ -189,6 +218,7 @@ pub fn is_record(kind: &str) -> bool {
             | "pv.expression.result"
             | "pv.value.birth"
             | "pv.value.object"
+            | "pv.value.materialization"
             | "pv.category.initial"
             | "pv.category.window"
             | "pv.counter.change"
@@ -328,6 +358,9 @@ pub fn parse(text: &str) -> Result<History> {
                 expected_dispatches: None,
                 expected_dispatch_returns: None,
                 dispatch_observations: gap("no guarded dispatch summary"),
+                materialization_scope: r.fields.get("materialization").cloned(),
+                expected_materializations: None,
+                materialization_observations: gap("no guarded symbol materialization summary"),
             });
             stack.push(function);
             continue;
@@ -358,6 +391,11 @@ pub fn parse(text: &str) -> Result<History> {
                 f.expected_dispatch_returns = r
                     .fields
                     .get("dispatch_returns")
+                    .map(|v| v.parse())
+                    .transpose()?;
+                f.expected_materializations = r
+                    .fields
+                    .get("materializations")
                     .map(|v| v.parse())
                     .transpose()?;
                 if state.ranges_valid
@@ -494,6 +532,17 @@ pub fn parse(text: &str) -> Result<History> {
                 }
                 expression.result = Some(DispatchResult {
                     trace_position: r.line,
+                    operand: r
+                        .fields
+                        .get("operand")
+                        .map(|value| {
+                            ensure!(
+                                u32::from_str_radix(value, 16).is_ok(),
+                                "invalid output Operand identity"
+                            );
+                            Ok::<_, anyhow::Error>(value.clone())
+                        })
+                        .transpose()?,
                     kind,
                     class,
                     register,
@@ -549,6 +598,92 @@ pub fn parse(text: &str) -> Result<History> {
                     line: line(&r)?,
                     category: (category != "unknown").then(|| category.to_owned()),
                     object: None,
+                    materialization: None,
+                });
+            }
+            "pv.value.materialization" => {
+                let sequence = n(&r, "value")?;
+                ensure!(
+                    sequence != 0 && sequence as usize == f.births.len(),
+                    "materialization is not attached to the current birth"
+                );
+                let birth = f.births.last().unwrap();
+                ensure!(
+                    birth.materialization.is_none() && birth.class == 4,
+                    "repeated or non-GPR materialization binding"
+                );
+                let part = match n(&r, "part")? {
+                    1 => AddressPart::High,
+                    2 => AddressPart::Low,
+                    _ => anyhow::bail!("unknown address materialization part"),
+                };
+                ensure!(
+                    matches!(
+                        (birth.site, part),
+                        (0x4e17da | 0x4e231a | 0x4e2fea, AddressPart::High)
+                            | (0x4e17e6 | 0x4e2326 | 0x4e2ff6, AddressPart::Low)
+                    ),
+                    "materialization role disagrees with guarded birth site"
+                );
+                let operand = r.get("operand")?.to_owned();
+                let object = r.get("object")?.to_owned();
+                ensure!(
+                    h(&r, "operand")? != 0 && h(&r, "object")? != 0,
+                    "null materialization identity"
+                );
+                let kind: u8 = n(&r, "kind")?.try_into()?;
+                ensure!(
+                    matches!(kind, 8 | 11),
+                    "materialization input is not a symbol Operand"
+                );
+                let displacement = r.number("displacement")?;
+                let symbol_known = bit(&r, "symbol_known")?;
+                let symbol_complete = bit(&r, "symbol_complete")?;
+                let symbol_bytes = bytes(&r, "symbol_hex")?;
+                ensure!(
+                    symbol_known || (!symbol_complete && symbol_bytes.is_empty()),
+                    "unknown symbol has claimed name evidence"
+                );
+                state.valid &= n(&r, "schema")? == 1;
+                let enclosing = state
+                    .expressions
+                    .last()
+                    .and_then(|id| f.expressions.get(*id as usize - 1));
+                let matching_dispatch_output = enclosing.and_then(|enclosing| {
+                    f.expressions
+                        .iter()
+                        .rev()
+                        .filter(|e| e.trace_position >= enclosing.trace_position && !e.abandoned)
+                        .find(|e| {
+                            e.result
+                                .as_ref()
+                                .is_some_and(|result| result.operand.as_deref() == Some(&operand))
+                        })
+                        .filter(|e| {
+                            e.result.as_ref().is_some_and(|result| {
+                                result.kind == kind
+                                    && result.object.as_deref() == Some(&object)
+                                    && result.displacement == Some(displacement)
+                            })
+                        })
+                        .map(|e| e.id)
+                });
+                f.births.last_mut().unwrap().materialization = Some(Materialization {
+                    trace_position: r.line,
+                    part,
+                    operand,
+                    kind,
+                    object,
+                    displacement,
+                    datatype: n(&r, "datatype")?.try_into()?,
+                    storage: n(&r, "storage")?.try_into()?,
+                    symbol_known,
+                    symbol_complete,
+                    symbol_text: symbol_known
+                        .then(|| String::from_utf8(symbol_bytes.clone()).ok())
+                        .flatten(),
+                    symbol_bytes,
+                    matching_dispatch_output,
                 });
             }
             "pv.value.object" => {
@@ -676,6 +811,30 @@ pub fn parse(text: &str) -> Result<History> {
                 .all(|e| e.end_position.is_some() && !e.abandoned && e.result.is_some())
         {
             function.dispatch_observations = known();
+        }
+        if state.valid
+            && function.ended
+            && function.materialization_scope.as_deref() == Some("guarded_normalize_pair_v1")
+            && function.expected_materializations.map(|n| n as usize)
+                == Some(
+                    function
+                        .births
+                        .iter()
+                        .filter(|b| b.materialization.is_some())
+                        .count(),
+                )
+            && function
+                .births
+                .iter()
+                .filter(|b| {
+                    matches!(
+                        b.site,
+                        0x4e17da | 0x4e17e6 | 0x4e231a | 0x4e2326 | 0x4e2fea | 0x4e2ff6
+                    )
+                })
+                .all(|b| b.materialization.is_some())
+        {
+            function.materialization_observations = known();
         }
         if !state.valid {
             history.functions[state.index].counter_observations =

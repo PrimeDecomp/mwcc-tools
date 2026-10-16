@@ -136,8 +136,16 @@ The `-O0` reuse path has no range markers, so its range categories remain unknow
 The graph hook now reads live physical limits: target initialization may occur
 after generator entry. The host also cross-checks the preceding coalescer header,
 making stale early development snapshots with a zero boundary indeterminate.
-The internal descriptor is 36 bytes and uses `OracleRust_CounterProbeV2`; native
+The internal descriptor is 44 bytes and uses `OracleRust_CounterProbeV3`; native
 linking rejects older common-hook ABIs before installing these islands.
+
+The descriptor also selects the two guarded Normalize symbol-address births and
+the audited data link-name cache offset (56 in GC 1.3/1.3.2, 54 in GC 2.7). These
+observations bind the actual Operand/Object to each high/low address half without
+calling name-generation helpers. The reconstructed Object header retains the
+older suffix and cannot prove the later retail layout. The initial full-case
+failure and corrected cache-access byte evidence are retained under
+`build/source-guided/materializer-audit/`; the failed producer is not a runtime proof.
 
 The standalone object-binding fixture retains eight bindings (six paired words)
 and both before/inside-window categories with stock-equivalent output on all

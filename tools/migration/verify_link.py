@@ -83,7 +83,7 @@ def main():
             "_fn_00460780", "_IRO_CommonSubs", "_move_common_sub", "_IroDump_Print",
             "_OracleRust_DescribeExpression", "_cse_vregs"}
         origin_group = scalar_group | {"_fn_00506cd0", "_generate_inline_statements", "_inline_statement",
-            "_OracleRust_OriginFind", "_OracleRust_OriginWalk", "_OracleRust_PrintChain", "_OracleRust_InlineLine", "_OracleRust_BackendProbe", "_OracleRust_CounterProbeV2", "_OracleRust_ExpressionProbeV1"}
+            "_OracleRust_OriginFind", "_OracleRust_OriginWalk", "_OracleRust_PrintChain", "_OracleRust_InlineLine", "_OracleRust_BackendProbe", "_OracleRust_CounterProbeV3", "_OracleRust_ExpressionProbeV1"}
         instantiation_group = origin_group | {"_CInline_AddFunctionPrecNode", "_CInline_AddSpecialization",
             "_CTemplateNew_InstantiateInlineTemplateObject", "_CTemplateNew_InstantiateFunction", "_fn_0050f240", "_generate_inline_code"}
         binding_hooks = defined == instantiation_group | {"_setup_inline_locals_and_arguments"}
