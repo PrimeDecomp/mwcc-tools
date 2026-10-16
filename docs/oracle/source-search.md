@@ -21,6 +21,10 @@ compile and a fresh configured semantic check before `verified_success` is emitt
 If the baseline already satisfies the predicate, the run reports
 `baseline_already_satisfied` and stops.
 
+For a local bundle that can replay captured inputs after disconnecting the
+original checkout, see [`source-repro`](source-repro.md). Its declared path,
+runtime and checker closure limits apply.
+
 ## Plan format 1
 
 This complete example uses `initializer-linear.c` in the synthetic
@@ -153,6 +157,13 @@ or promotion patterns; automatic C++ AST rewrite generation is not implemented.
   graph-only nodes and confirmed physical merges. Unknown identities or reused
   numbers remain indeterminate. This bounded path count does not prove the absence
   of all address temporaries, including values created later by optimization.
+- `call_argument_address_pairs`: adds exact qualified `callee`, zero-based `call`
+  occurrence and lowered-context `ordinal` to the symbol/count bounds. It counts
+  pairs whose births are owned by that specific argument, including arguments of
+  void calls. Missing contexts, unknown earlier callees and incomplete independent
+  call totals remain indeterminate. Ordinals are not automatically C++ parameter
+  indices. See [call argument provenance](call-arguments.md) for the contract and
+  observation limits.
 
 For the symbolic-address objective, require at least one relocation of each needed
 type rather than preserving the incidental number of repeated materializations.
@@ -209,11 +220,12 @@ Fingerprints normalize known pointer/register identities but retain graph-only
 nodes, degrees, origin/range evidence, selected instructions, symbolic relocations
 and allocated data. Unsupported operand forms disable grouping. Conservative
 graph-only numbering can miss equivalent states.
-The current fingerprint payload is format 3. It includes normalized scalar-array
+The current fingerprint payload is format 4. It includes normalized scalar-array
 origin and partial call-result shape/type evidence, plus whole-function frontend
 scalarization bindings, independent totals, unbound creations and pointer equality
 relationships. Preallocation definitions, CFG structure, instruction identity
-relationships through allocation, and actual coalescing decisions also participate:
+relationships through allocation, actual coalescing decisions, and guarded call
+argument contexts/episodes with their operand, birth and PCode observations participate:
 two equal final graphs can give different definition predicates. It excludes capture-local pointer spellings and inactive output
 bytes. Unsupported scalarization schemas or normalization disable grouping.
 Reports expose `fingerprint_format_version`;

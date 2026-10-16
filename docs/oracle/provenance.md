@@ -248,7 +248,7 @@ the analyzer executable and must not mix fingerprints from different analyzers.
 V5 adds [frontend aggregate scalarization](scalarization.md), including original
 byte/bit intervals, actual returned temporary identities and function-end totals.
 Typed `scalarization.backend_values` joins exact Object/VarInfo identities to
-backend births with separate coverage. The format-3 fingerprint also retains
+backend births with separate coverage. Fingerprints from format 3 onward also retain
 whole-function scalar creations without graph nodes, coverage and pointer equality
 relationships. Unsupported normalization disables state grouping. The internal
 callback remains guarded; earlier V4 proof directories describe the historical
@@ -322,6 +322,13 @@ r4 merges and invisible graph nodes that remain adjacent to `noRota`. It also
 records three unsuccessful, behavior-justified wrapper experiments.
 
 ## Validation
+
+Development producers additionally expose [call argument provenance](call-arguments.md)
+as `Report.call_arguments`. This records the lowered contexts, evaluated operands,
+scoped births and argument-lowering instruction intervals independently of a
+call's returned value. Function-end totals make missing streams explicit. State
+fingerprint format 4 includes these observations and their pointer equality/order
+relationships to the existing backend history.
 
 Reports include `trace_sha256`, computed from the exact raw trace, and coalescing
 passes include `end_position`. Shared source objectives check report/compilation

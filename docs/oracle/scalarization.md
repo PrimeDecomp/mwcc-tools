@@ -88,7 +88,7 @@ to the game.
 
 ## State grouping
 
-Relevant-state fingerprints now use format 3. They retain the whole function's
+Relevant-state fingerprints use format 4 (format 3 introduced scalarization). They retain the whole function's
 scalarization evidence, including creations without a backend graph node,
 independent totals, coverage, relative event order and pointer equality
 relationships. Raw pointer values, pass IDs and absolute trace positions are

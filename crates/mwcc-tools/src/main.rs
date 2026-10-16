@@ -17,6 +17,7 @@ mod provenance_cli;
 mod release_cli;
 mod source_index_cli;
 mod source_reduce_cli;
+mod source_repro_cli;
 mod source_search_cli;
 mod tu_cli;
 
@@ -727,6 +728,9 @@ fn help() {
   source-search evaluate CONTRACT CAPTURE --source FILE --object FILE [--baseline-capture FILE --baseline-source FILE --baseline-object FILE]
   source-reduce run PLAN --output DIR [--resume] [--candidates N] [--compilations N] [--seconds N] [--cancel-file FILE]
   source-reduce replay DIR CANDIDATE_ID
+  source-repro export search|reduction RUN CANDIDATE_ID --output NEW [--run-analyzer FILE]
+  source-repro verify BUNDLE [--expected-sha256 HASH]
+  source-repro replay BUNDLE --output NEW [--seconds N] [--compilations N] [--cancel-file FILE]
   source-index ingest SPEC --index DIR
   source-index origins --index DIR [--link NAME] [--version VERSION]
   source-index query QUERY --index DIR
@@ -973,6 +977,7 @@ fn run() -> Result<()> {
         Some("header-impact") => header_impact_cli::run(&args[1..])?,
         Some("source-search") => source_search_cli::run(&args[1..])?,
         Some("source-reduce") => source_reduce_cli::run(&args[1..])?,
+        Some("source-repro") => source_repro_cli::run(&args[1..])?,
         Some("source-index") => source_index_cli::run(&args[1..])?,
         Some("inline-calibrate") => calibrate_cli::run(&args[1..])?,
         Some(

@@ -139,6 +139,34 @@ pub struct OriginCoverage {
     pub scalar_arrays: OriginScope,
     pub normalize_symbols: OriginScope,
     pub call_results: OriginScope,
+    #[serde(default)]
+    pub call_arguments: CallArgumentCoverage,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CallArgumentCoverage {
+    pub scope: Option<String>,
+    pub observations: crate::evidence::Evaluation,
+    pub event_totals: crate::evidence::Evaluation,
+    /// Counts of observed regular-call contexts, not source call occurrences.
+    pub known_callees: usize,
+    pub unknown_callees: usize,
+    pub callee_links: Vec<String>,
+    pub bound_arguments: usize,
+    pub episodes: usize,
+}
+impl Default for CallArgumentCoverage {
+    fn default() -> Self {
+        Self {
+            scope: None,
+            observations: crate::call_arguments::gap("no guarded regular-call argument scope"),
+            event_totals: crate::call_arguments::gap("no independent regular-call event totals"),
+            known_callees: 0,
+            unknown_callees: 0,
+            callee_links: vec![],
+            bound_arguments: 0,
+            episodes: 0,
+        }
+    }
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ObservedOrigin<T> {
@@ -191,6 +219,28 @@ fn origin_coverage(
     report: &provenance::Report,
     function: &crate::value_history::Function,
 ) -> OriginCoverage {
+    let calls = report
+        .call_arguments
+        .calls
+        .iter()
+        .filter(|c| c.function == function.id)
+        .collect::<Vec<_>>();
+    let known = calls
+        .iter()
+        .filter(|c| c.callee.name_known && c.callee.name_complete)
+        .count();
+    let summary = report
+        .call_arguments
+        .functions
+        .iter()
+        .find(|f| f.function == function.id);
+    let mut callee_links = calls
+        .iter()
+        .filter(|c| c.callee.name_known && c.callee.name_complete)
+        .filter_map(|c| c.callee.name_text.clone())
+        .collect::<Vec<_>>();
+    callee_links.sort();
+    callee_links.dedup();
     OriginCoverage {
         counter: function.counter_observations.clone(),
         function_graphs: report
@@ -231,6 +281,22 @@ fn origin_coverage(
                 .iter()
                 .filter(|b| b.call_result.is_some())
                 .count(),
+        },
+        call_arguments: CallArgumentCoverage {
+            scope: summary.and_then(|f| f.scope.clone()),
+            observations: summary.map_or_else(
+                || crate::call_arguments::gap("missing function call-argument summary"),
+                |f| f.observations.clone(),
+            ),
+            event_totals: summary.map_or_else(
+                || crate::call_arguments::gap("missing independent regular-call event totals"),
+                |f| f.event_totals.clone(),
+            ),
+            known_callees: known,
+            unknown_callees: calls.len() - known,
+            callee_links,
+            bound_arguments: calls.iter().map(|c| c.arguments.len()).sum(),
+            episodes: calls.iter().map(|c| c.episodes.len()).sum(),
         },
     }
 }

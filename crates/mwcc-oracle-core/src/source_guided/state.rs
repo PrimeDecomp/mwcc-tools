@@ -13,9 +13,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
+mod call_arguments;
 mod definitions;
 
-pub const FINGERPRINT_FORMAT_VERSION: u32 = 3;
+pub const FINGERPRINT_FORMAT_VERSION: u32 = 4;
 
 pub fn digest(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
@@ -236,6 +237,7 @@ pub fn fingerprint(g: &Graph, report: &Report, compilation: &Compilation) -> Res
     let object = &compilation.object;
     let version = compilation.version;
     let definitions = definitions::normalize(g, report, compilation)?;
+    let arguments = call_arguments::normalize(g, report, compilation)?;
     let mut names = Names::default();
     let instruction_state = g
         .instructions
@@ -287,7 +289,7 @@ pub fn fingerprint(g: &Graph, report: &Report, compilation: &Compilation) -> Res
     let value = json!({"format_version":FINGERPRINT_FORMAT_VERSION,"version":version,"class":g.class,"boundary":g.boundary,"phase":g.phase,
         "physical":g.physical_limit,"start":g.start,"count":g.count,"birth_cutoff":g.birth_cutoff,"observations":g.observations,"instructions":instruction_state,"nodes":nodes,
         "bounds":g.range_bounds.as_ref().map(|b|json!({"physical":b.physical_limit,"initial_last":b.initial_last,"first":b.first,"last":b.last,"evidence":b.evidence})),
-        "object":object_instructions(object,&g.link)?,"allocated_data":data,"scalarization":scalarization,"definitions":definitions});
+        "object":object_instructions(object,&g.link)?,"allocated_data":data,"scalarization":scalarization,"definitions":definitions,"call_arguments":arguments});
     Ok(digest(&serde_json::to_vec(&value)?))
 }
 

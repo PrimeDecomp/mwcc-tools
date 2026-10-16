@@ -9,7 +9,13 @@ use std::{
     thread,
     time::{Duration, Instant},
 };
-pub const HOOKS: [&str; 26] = [
+pub const ARGUMENT_HOOKS: [&str; 4] = [
+    "_FunctionCalls_GenerateCall",
+    "_assign_argument_locations",
+    "_load_argument_registers",
+    "_store_argument_on_stack",
+];
+pub const HOOKS: [&str; 30] = [
     "_fn_00460c90",
     "_fn_00507070",
     "_fn_00506f50",
@@ -36,10 +42,15 @@ pub const HOOKS: [&str; 26] = [
     "_fn_0050f240",
     "_generate_inline_code",
     "_setup_inline_locals_and_arguments",
+    "_FunctionCalls_GenerateCall",
+    "_assign_argument_locations",
+    "_load_argument_registers",
+    "_store_argument_on_stack",
 ];
-pub const SUPPORT: [&str; 12] = [
+pub const SUPPORT: [&str; 13] = [
     "_OracleRust_ExpressionProbeV1",
-    "_OracleRust_CounterProbeV5",
+    "_OracleRust_ArgumentForceGpr",
+    "_OracleRust_CounterProbeV6",
     "_OracleRust_BackendProbe",
     "_OracleRust_LinkName",
     "_OracleRust_PrintInstruction",
@@ -51,8 +62,9 @@ pub const SUPPORT: [&str; 12] = [
     "_OracleRust_PrintChain",
     "_OracleRust_InlineLine",
 ];
-pub const SOURCES: [&str; 16] = [
+pub const SOURCES: [&str; 17] = [
     "lifecycle.rs",
+    "call_arguments.rs",
     "backend.rs",
     "lib.rs",
     "abi.rs",
@@ -118,8 +130,13 @@ pub fn validate_frontend(data: &[u8], version: &str) -> Result<()> {
         &imports.iter().map(String::as_str).collect::<Vec<_>>(),
     )
 }
-pub const IMPORTS: [&str; 55] = [
+pub const IMPORTS: [&str; 60] = [
     "_abort",
+    "_FunctionCalls_GenerateCall__retail",
+    "_assign_argument_locations__retail",
+    "_load_argument_registers__retail",
+    "_store_argument_on_stack__retail",
+    "_OracleRust_ArgumentForceGprRetail",
     "_fn_00460c90__retail",
     "_fn_00507070__retail",
     "_fn_00506f50__retail",

@@ -89,6 +89,17 @@ pub enum Objective {
         minimum: u32,
         maximum: u32,
     },
+    /// The guarded Normalize-pair mechanism within one lowered argument.
+    /// `call` counts exact callee-link occurrences in this function; `ordinal`
+    /// is lowered argument-context order, not the C++ formal parameter index.
+    CallArgumentAddressPairs {
+        callee: String,
+        call: usize,
+        ordinal: u32,
+        symbol: String,
+        minimum: u32,
+        maximum: u32,
+    },
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -191,6 +202,22 @@ pub fn validate(c: &Contract) -> Result<()> {
         ensure!(
             !symbol.is_empty() && minimum <= maximum && c.selection.class == 4,
             "symbol address pairs require a symbol, ordered count bounds and GPR selection"
+        );
+    }
+    if let Objective::CallArgumentAddressPairs {
+        callee,
+        symbol,
+        minimum,
+        maximum,
+        ..
+    } = &c.objective
+    {
+        ensure!(
+            !callee.is_empty()
+                && !symbol.is_empty()
+                && minimum <= maximum
+                && c.selection.class == 4,
+            "argument address pairs require callee and symbol links, ordered bounds and GPR selection"
         );
     }
     if let Objective::PromotedCopyCoalescing { value, outcome, .. } = &c.objective {
@@ -454,13 +481,26 @@ fn symbol_address_pairs(input: &Input<'_>, graph: &Graph, symbol: &str) -> Resul
             && function.counter_observations.state == EvaluationState::Satisfied,
         "complete guarded Normalize-pair and counter capture is required"
     );
+    scoped_symbol_address_pairs(
+        function,
+        graph,
+        symbol,
+        &function.births.iter().map(|b| b.id).collect(),
+    )
+}
+fn scoped_symbol_address_pairs(
+    function: &crate::value_history::Function,
+    graph: &Graph,
+    symbol: &str,
+    owned: &BTreeSet<crate::value_history::ValueId>,
+) -> Result<Value> {
     let mut pairs = vec![];
     let mut high_count = 0;
     let mut low_count = 0;
     for low in function
         .births
         .iter()
-        .filter(|b| b.id.sequence <= graph.birth_cutoff)
+        .filter(|b| b.id.sequence <= graph.birth_cutoff && owned.contains(&b.id))
     {
         let Some(binding) = &low.materialization else {
             continue;
@@ -489,7 +529,8 @@ fn symbol_address_pairs(input: &Input<'_>, graph: &Graph, symbol: &str) -> Resul
             .as_ref()
             .context("address low half has no observed high half")?;
         ensure!(
-            high_binding.part == AddressPart::High
+            owned.contains(&high.id)
+                && high_binding.part == AddressPart::High
                 && high.class == 4
                 && low.class == 4
                 && high_binding.operand == binding.operand
@@ -526,6 +567,127 @@ fn symbol_address_pairs(input: &Input<'_>, graph: &Graph, symbol: &str) -> Resul
     Ok(
         json!({"count":pairs.len(),"pairs":pairs,"scope":"guarded_normalize_pair_v1_before_selected_graph"}),
     )
+}
+fn call_argument_address_pairs(
+    input: &Input<'_>,
+    graph: &Graph,
+    callee: &str,
+    occurrence: usize,
+    ordinal: u32,
+    symbol: &str,
+) -> Result<Value> {
+    let history = &input.provenance.call_arguments;
+    let function = input
+        .provenance
+        .history
+        .functions
+        .iter()
+        .find(|f| f.id == graph.function)
+        .context("missing argument materialization function")?;
+    ensure!(
+        function.materialization_observations.state == EvaluationState::Satisfied
+            && function.counter_observations.state == EvaluationState::Satisfied,
+        "argument pair counts require complete guarded Normalize-pair and counter capture"
+    );
+    let summary = history
+        .functions
+        .iter()
+        .find(|f| f.function == graph.function)
+        .context("missing independent call-argument function totals")?;
+    ensure!(
+        summary.event_totals.state == EvaluationState::Satisfied,
+        "independent call-argument function event totals are incomplete"
+    );
+    let calls = history
+        .calls
+        .iter()
+        .filter(|c| c.function == graph.function)
+        .collect::<Vec<_>>();
+    let selected = calls
+        .iter()
+        .copied()
+        .filter(|c| {
+            c.callee.name_known
+                && c.callee.name_complete
+                && c.callee.name_bytes == callee.as_bytes()
+        })
+        .nth(occurrence)
+        .context("requested qualified callee occurrence is not observed")?;
+    // An unknown earlier call could be an earlier occurrence of this callee.
+    // Unknown calls after the selected occurrence do not affect its ordinal.
+    ensure!(
+        calls
+            .iter()
+            .filter(|c| c.begin_position <= selected.begin_position)
+            .all(|c| c.callee.name_known && c.callee.name_complete),
+        "unknown callee identity can change the requested occurrence ordinal"
+    );
+    ensure!(
+        selected.observations.state == EvaluationState::Satisfied
+            && selected
+                .end_position
+                .is_some_and(|p| p < graph.begin_position),
+        "selected argument call is incomplete or does not precede the graph"
+    );
+    let argument = selected
+        .arguments
+        .iter()
+        .find(|a| a.ordinal == ordinal)
+        .context("requested lowered argument context is not observed")?;
+    let mut episodes = selected
+        .episodes
+        .iter()
+        .filter(|e| e.ordinal == ordinal)
+        .collect::<Vec<_>>();
+    let mut episode_ids = episodes.iter().map(|e| e.id).collect::<BTreeSet<_>>();
+    // Nested-call arguments still execute as part of the selected argument's
+    // lowering. Traverse observed episode ancestry rather than counting only
+    // its exclusive events, which could turn a wrapper into false absence.
+    loop {
+        let descendants = calls
+            .iter()
+            .flat_map(|c| &c.episodes)
+            .filter(|e| {
+                !episode_ids.contains(&e.id)
+                    && e.parent_episode.is_some_and(|p| episode_ids.contains(&p))
+            })
+            .collect::<Vec<_>>();
+        if descendants.is_empty() {
+            break;
+        }
+        for episode in descendants {
+            episode_ids.insert(episode.id);
+            episodes.push(episode);
+        }
+    }
+    ensure!(
+        !episodes.is_empty()
+            && episodes
+                .iter()
+                .all(|e| e.observations.state == EvaluationState::Satisfied),
+        "selected argument has incomplete lowering episodes"
+    );
+    let owned = episodes
+        .iter()
+        .flat_map(|e| &e.births)
+        .map(|b| b.value)
+        .collect::<BTreeSet<_>>();
+    ensure!(
+        owned
+            .iter()
+            .all(|id| id.function == graph.function && id.sequence <= graph.birth_cutoff),
+        "argument birth is outside the selected function or graph boundary"
+    );
+    let mut pairs = scoped_symbol_address_pairs(function, graph, symbol, &owned)?;
+    pairs["scope"] = json!("guarded_normalize_pair_v1_within_observed_lowered_argument");
+    pairs["callee"] = json!(selected.callee);
+    pairs["call_id"] = json!(selected.id);
+    pairs["call_occurrence"] = json!(occurrence);
+    pairs["ordinal_kind"] = json!(crate::call_arguments::ORDINAL_KIND);
+    pairs["argument"] = json!(argument);
+    pairs["episode_ids"] = json!(episodes.iter().map(|e| e.id).collect::<Vec<_>>());
+    pairs["ownership_scope"] = json!("selected_argument_episode_subtree_including_nested_calls");
+    Ok(pairs)
 }
 fn anchor<'a>(input: &'a Input<'_>, g: &Graph, a: &ObjectAnchor) -> Result<&'a Birth> {
     let f = input
@@ -1481,12 +1643,42 @@ pub fn evaluate(
                         "semantic_limit":"Counts one guarded materialization path; does not prove complete temporary elimination."}),
                     ));
                 }
+                if let Objective::CallArgumentAddressPairs {
+                    callee,
+                    call,
+                    ordinal,
+                    symbol,
+                    minimum,
+                    maximum,
+                } = &c.objective
+                {
+                    let from =
+                        call_argument_address_pairs(baseline, a, callee, *call, *ordinal, symbol)?;
+                    let to =
+                        call_argument_address_pairs(candidate, b, callee, *call, *ordinal, symbol)?;
+                    let count = to["count"]
+                        .as_u64()
+                        .context("missing argument pair count")?;
+                    let result = if u64::from(*minimum) <= count && count <= u64::from(*maximum) {
+                        known()
+                    } else {
+                        false_result(
+                            "the observed argument address-pair count is outside the requested bounds",
+                        )
+                    };
+                    return Ok((
+                        result,
+                        json!({"baseline":from,"candidate":to,"minimum":minimum,"maximum":maximum,"symbol":symbol,
+                        "semantic_limit":"Counts guarded Normalize pairs owned by this lowered argument; no claim of complete temporary elimination, source parameter identity or final ABI register placement."}),
+                    ));
+                }
                 let selector = match &c.objective {
                     Objective::RangeCategory { value, .. }
                     | Objective::ChangeRangeCategory { value, .. }
                     | Objective::DirectInitialization { value, .. }
                     | Objective::EliminateTemporary { value } => value,
                     Objective::SymbolAddressPairs { .. }
+                    | Objective::CallArgumentAddressPairs { .. }
                     | Objective::PromotedCopyCoalescing { .. }
                     | Objective::ScalarizedArrayInitialization { .. }
                     | Objective::ScalarizedArrayDefinition { .. } => unreachable!(),
@@ -1568,6 +1760,7 @@ pub fn evaluate(
                         json!({"baseline_value":from.id,"candidate_value":to.id}),
                     )),
                     Objective::SymbolAddressPairs { .. }
+                    | Objective::CallArgumentAddressPairs { .. }
                     | Objective::PromotedCopyCoalescing { .. }
                     | Objective::ScalarizedArrayInitialization { .. }
                     | Objective::ScalarizedArrayDefinition { .. } => unreachable!(),
@@ -1576,7 +1769,14 @@ pub fn evaluate(
             match tested {
                 Ok((e, observations)) => (e, observations, changes),
                 Err(e) => (
-                    gap(EvidenceGap::AmbiguousCorrespondence, &format!("{e:#}")),
+                    gap(
+                        if matches!(&c.objective, Objective::CallArgumentAddressPairs { .. }) {
+                            EvidenceGap::CallArgumentCoverage
+                        } else {
+                            EvidenceGap::AmbiguousCorrespondence
+                        },
+                        &format!("{e:#}"),
+                    ),
                     json!({}),
                     changes,
                 ),

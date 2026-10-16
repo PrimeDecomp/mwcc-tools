@@ -12,6 +12,10 @@ mwcc-tools source-reduce run reduction.json --output scratch/reduction --resume
 mwcc-tools source-reduce replay scratch/reduction 1
 ```
 
+[`source-repro`](source-repro.md) exports a retained candidate and its calibration
+inputs for fresh local replay from a relocated bundle, within its documented
+runtime, dependency and native-checker closure limits.
+
 The native API is `source_guided::reduction::{load_plan, run, replay}`. `run` uses
 `search::Budget`; cancellation is a file, by default `OUTPUT/CANCEL`. Budgets apply
 per invocation, including baseline setup and independent verification. Cancellation

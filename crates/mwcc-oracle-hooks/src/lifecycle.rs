@@ -55,6 +55,7 @@ struct State {
     origin_statement: *const u8,
     origin_node: *const u8,
     origin_id: u32,
+    call_arguments: crate::call_arguments::Counters,
 }
 const EMPTY: State = State {
     id: 0,
@@ -79,6 +80,7 @@ const EMPTY: State = State {
     origin_statement: ptr::null(),
     origin_node: ptr::null(),
     origin_id: 0,
+    call_arguments: crate::call_arguments::EMPTY_COUNTERS,
 };
 static mut STATE: State = EMPTY;
 static mut STACK: [State; 16] = [EMPTY; 16];
@@ -103,6 +105,7 @@ struct DispatchFrame {
     returned: u32,
     output: *const u8,
     target: u32,
+    argument_episode: u32,
 }
 const NO_FRAME: DispatchFrame = DispatchFrame {
     function: 0,
@@ -112,6 +115,7 @@ const NO_FRAME: DispatchFrame = DispatchFrame {
     returned: 0,
     output: ptr::null(),
     target: 0,
+    argument_episode: 0,
 };
 static mut DISPATCH_FRAMES: [DispatchFrame; 1024] = [NO_FRAME; 1024];
 static mut DISPATCH_DEPTH: usize = 0;
@@ -122,6 +126,7 @@ unsafe extern "C" {
 
 unsafe fn abandon_dispatch(frame: DispatchFrame) {
     unsafe {
+        crate::call_arguments::dispatch_end(frame.argument_episode, true);
         OracleTrace_Printf(
             c"pv.gap function=%lu reason=dispatch_unwind expression=%lu\n".as_ptr(),
             frame.function,
@@ -227,6 +232,7 @@ pub unsafe extern "C" fn expression_probe(r: &Registers, site: u32, d: &Expressi
                 returned: read(stack as *const u8, 0),
                 output,
                 target: d.retail_target,
+                argument_episode: crate::call_arguments::dispatch_begin(node, output),
             });
             ptr::addr_of_mut!(DISPATCH_DEPTH).write(depth + 1);
             ptr::addr_of_mut!(STATE.dispatches)
@@ -257,6 +263,7 @@ pub unsafe extern "C" fn expression_probe(r: &Registers, site: u32, d: &Expressi
             }
             let frame = frames.add(index).read();
             dispatch_output(frame);
+            crate::call_arguments::dispatch_end(frame.argument_episode, false);
             expression_end(frame.previous);
             ptr::addr_of_mut!(STATE.dispatch_returns)
                 .write(ptr::addr_of!(STATE.dispatch_returns).read().wrapping_add(1));
@@ -264,6 +271,18 @@ pub unsafe extern "C" fn expression_probe(r: &Registers, site: u32, d: &Expressi
             (stack as *mut u32).write_unaligned(frame.returned);
         }
     }
+}
+pub(crate) unsafe fn birth_sequence() -> u32 {
+    unsafe { ptr::addr_of!(STATE.sequence).read() }
+}
+pub(crate) unsafe fn function_object() -> *const u8 {
+    unsafe { ptr::addr_of!(STATE.object).read() }
+}
+pub(crate) unsafe fn expression_id() -> u32 {
+    unsafe { ptr::addr_of!(STATE.expression).read() }
+}
+pub(crate) unsafe fn argument_counters() -> *mut crate::call_arguments::Counters {
+    unsafe { ptr::addr_of_mut!(STATE.call_arguments) }
 }
 pub(crate) unsafe fn enabled() -> bool {
     unsafe {
@@ -724,7 +743,7 @@ unsafe fn call_result_origin(
     }
 }
 
-#[unsafe(export_name = "OracleRust_CounterProbeV5")]
+#[unsafe(export_name = "OracleRust_CounterProbeV6")]
 pub unsafe extern "C" fn observe(r: &Registers, site: u32, d: &Descriptor) {
     unsafe {
         if !enabled() {
@@ -760,7 +779,7 @@ pub unsafe extern "C" fn observe(r: &Registers, site: u32, d: &Descriptor) {
                 state.counts[i] = d.counts.add(i).read_unaligned();
             }
             ptr::addr_of_mut!(STATE).write(state);
-            OracleTrace_Printf(c"pv.function.begin schema=1 function=%lu parent=%lu function_object=%08x site=%lx c0=%lu c1=%lu c2=%lu c3=%lu c4=%lu coverage=direct_counter_writes dispatch=guarded_table_v1 materialization=guarded_normalize_pair_v1 array_promotion=guarded_scalar_v1 call_result=guarded_call_result_v1 scalarization=guarded_temp_returns_v1 link=%s\n".as_ptr(),
+            OracleTrace_Printf(c"pv.function.begin schema=1 function=%lu parent=%lu function_object=%08x site=%lx c0=%lu c1=%lu c2=%lu c3=%lu c4=%lu coverage=direct_counter_writes dispatch=guarded_table_v1 materialization=guarded_normalize_pair_v1 array_promotion=guarded_scalar_v1 call_result=guarded_call_result_v1 scalarization=guarded_temp_returns_v1 call_arguments=guarded_regular_call_arguments_v1 link=%s\n".as_ptr(),
                 id,parent.id,state.object as u32,site,state.counts[0],state.counts[1],state.counts[2],state.counts[3],state.counts[4],
                 if state.object.is_null(){c"?".as_ptr().cast()}else{pcode::link_name(state.object)});
             return;
@@ -778,7 +797,7 @@ pub unsafe extern "C" fn observe(r: &Registers, site: u32, d: &Descriptor) {
             let (scalar_passes, scalar_bindings, scalar_first, scalar_last) =
                 scalar.unwrap_or((0, 0, 0, 0));
             OracleTrace_Printf(
-                c"pv.function.end function=%lu births=%lu graphs=%lu ranges=%lu dispatches=%lu dispatch_returns=%lu materializations=%lu array_promotions=%lu call_results=%lu scalarization=%s scalar_passes=%lu scalar_bindings=%lu scalar_first_pass=%lu scalar_last_pass=%lu c0=%lu c1=%lu c2=%lu c3=%lu c4=%lu\n"
+                c"pv.function.end function=%lu births=%lu graphs=%lu ranges=%lu dispatches=%lu dispatch_returns=%lu materializations=%lu array_promotions=%lu call_results=%lu scalarization=%s scalar_passes=%lu scalar_bindings=%lu scalar_first_pass=%lu scalar_last_pass=%lu call_arguments=%s call_count=%lu argument_count=%lu argument_episodes=%lu argument_births=%lu argument_operands=%lu argument_instructions=%lu c0=%lu c1=%lu c2=%lu c3=%lu c4=%lu\n"
                     .as_ptr(),
                 state.id,
                 state.sequence,
@@ -791,6 +810,8 @@ pub unsafe extern "C" fn observe(r: &Registers, site: u32, d: &Descriptor) {
                 state.call_results,
                 if scalar.is_some(){c"guarded_temp_returns_v1".as_ptr()}else{c"unknown".as_ptr()},
                 scalar_passes,scalar_bindings,scalar_first,scalar_last,
+                if state.call_arguments.gaps==0{c"guarded_regular_call_arguments_v1".as_ptr()}else{c"unknown".as_ptr()},
+                state.call_arguments.calls,state.call_arguments.arguments,state.call_arguments.episodes,state.call_arguments.births,state.call_arguments.operands,state.call_arguments.instructions,
                 state.counts[0],
                 state.counts[1],
                 state.counts[2],
@@ -799,11 +820,23 @@ pub unsafe extern "C" fn observe(r: &Registers, site: u32, d: &Descriptor) {
             );
             let depth = ptr::addr_of!(DEPTH).read();
             if depth > 0 {
-                let mut previous = ptr::addr_of!(STACK).cast::<State>().add(depth - 1).read();
-                for i in 0..5 {
-                    previous.counts[i] = d.counts.add(i).read_unaligned();
+                // Keep the bounded observer state copy independent of compiler runtime helpers.
+                let previous = ptr::addr_of!(STACK)
+                    .cast::<State>()
+                    .add(depth - 1)
+                    .cast::<core::mem::MaybeUninit<u8>>();
+                let destination = ptr::addr_of_mut!(STATE).cast::<core::mem::MaybeUninit<u8>>();
+                for byte in 0..core::mem::size_of::<State>() {
+                    destination
+                        .add(byte)
+                        .write_volatile(previous.add(byte).read_volatile());
                 }
-                ptr::addr_of_mut!(STATE).write(previous);
+                for i in 0..5 {
+                    ptr::addr_of_mut!(STATE.counts)
+                        .cast::<u32>()
+                        .add(i)
+                        .write(d.counts.add(i).read_unaligned());
+                }
                 ptr::addr_of_mut!(DEPTH).write(depth - 1);
             } else {
                 ptr::addr_of_mut!(STATE).write(EMPTY);
@@ -878,6 +911,7 @@ pub unsafe extern "C" fn observe(r: &Registers, site: u32, d: &Descriptor) {
             OracleTrace_Printf(c"pv.value.birth schema=1 function=%lu value=%lu cls=%lu register=%lu count=%lu physical=%lu site=%lx expression=%lu phase=%lu statement=%08x line=%ld category=unknown\n".as_ptr(),
                 state.id,sequence,class,after.wrapping_sub(1),after,physical,site,origin,state.phase,statement as u32,
                 if statement.is_null(){-1}else{read::<i32>(statement,22)});
+            crate::call_arguments::birth(state.id, sequence, class, after.wrapping_sub(1));
             object_binding(r, d, state.id, sequence);
             operand_binding(r, d, state.id, sequence);
             match d.origin_binding {

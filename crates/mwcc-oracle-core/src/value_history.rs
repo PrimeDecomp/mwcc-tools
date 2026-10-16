@@ -138,21 +138,8 @@ pub struct Dispatch {
     /// Exact stack argument bits; unused upper bits are not interpreted.
     pub requested: [u32; 2],
 }
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct DispatchResult {
-    pub trace_position: usize,
-    pub operand: Option<String>,
-    pub kind: u8,
-    pub class: Option<u8>,
-    pub register: Option<u32>,
-    pub second: Option<u32>,
-    pub index: Option<u32>,
-    pub object: Option<String>,
-    pub displacement: Option<i32>,
-    pub immediate: Option<i32>,
-    /// Tag-defined output observation, not a semantic lifetime binding.
-    pub evidence: Evaluation,
-}
+/// Tagged dispatch output; shared with call-argument operand observations.
+pub type DispatchResult = crate::operand_observation::Observation;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ChangeKind {
@@ -540,76 +527,11 @@ pub fn parse(text: &str) -> Result<History> {
                     expression.dispatch.is_some() && expression.result.is_none(),
                     "result is repeated or not a dispatch result"
                 );
-                let kind: u8 = n(&r, "kind")?.try_into()?;
-                let number = |field: &str| -> Result<Option<u32>> {
-                    r.fields
-                        .get(field)
-                        .map(|v| v.parse().map_err(Into::into))
-                        .transpose()
-                };
-                let signed = |field: &str| -> Result<Option<i32>> {
-                    r.fields
-                        .get(field)
-                        .map(|v| v.parse().map_err(Into::into))
-                        .transpose()
-                };
-                let class = number("cls")?.map(u8::try_from).transpose()?;
-                let register = number("register")?;
-                let second = number("second")?;
-                let index = number("index")?;
-                let object = r.fields.get("object").cloned();
-                let displacement = signed("displacement")?;
-                let immediate = signed("immediate")?;
-                let expected_class = match kind {
-                    0..=3 | 9 | 10 => Some(4),
-                    5 => Some(3),
-                    6 => Some(2),
-                    7 => Some(1),
-                    _ => None,
-                };
-                ensure!(
-                    class == expected_class
-                        && register.is_some() == expected_class.is_some()
-                        && second.is_some() == (kind == 3)
-                        && index.is_some() == matches!(kind, 2 | 10)
-                        && object.is_some() == matches!(kind, 8 | 11)
-                        && displacement.is_some() == matches!(kind, 1 | 8 | 9 | 11)
-                        && immediate.is_some() == (kind == 4),
-                    "dispatch result disagrees with its Operand tag"
-                );
-                if let Some(object) = &object {
-                    ensure!(
-                        u32::from_str_radix(object, 16).is_ok(),
-                        "invalid dispatch object identity"
-                    );
+                let mut output = crate::operand_observation::parse(&r)?;
+                if output.kind > 11 {
+                    output.evidence = gap("unknown dispatch output tag");
                 }
-                expression.result = Some(DispatchResult {
-                    trace_position: r.line,
-                    operand: r
-                        .fields
-                        .get("operand")
-                        .map(|value| {
-                            ensure!(
-                                u32::from_str_radix(value, 16).is_ok(),
-                                "invalid output Operand identity"
-                            );
-                            Ok::<_, anyhow::Error>(value.clone())
-                        })
-                        .transpose()?,
-                    kind,
-                    class,
-                    register,
-                    second,
-                    index,
-                    object,
-                    displacement,
-                    immediate,
-                    evidence: if kind <= 11 {
-                        known()
-                    } else {
-                        gap("unknown dispatch output tag")
-                    },
-                });
+                expression.result = Some(output);
             }
             "pv.value.birth" => {
                 state.valid &= n(&r, "schema")? == 1;

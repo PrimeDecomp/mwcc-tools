@@ -26,6 +26,7 @@ pub enum EvidenceGap {
     CompilerStateCoverage,
     ArrayPromotionCoverage,
     CallResultCoverage,
+    CallArgumentCoverage,
     ScalarizationCoverage,
 }
 

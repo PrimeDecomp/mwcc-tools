@@ -192,6 +192,20 @@ pub fn run(args: &[String]) -> Result<()> {
                 .iter()
                 .any(|f| f.id == value.value.function)
         });
+        report.call_arguments.calls.retain(|call| {
+            report
+                .history
+                .functions
+                .iter()
+                .any(|f| f.id == call.function)
+        });
+        report.call_arguments.functions.retain(|summary| {
+            report
+                .history
+                .functions
+                .iter()
+                .any(|f| f.id == summary.function)
+        });
         ensure!(
             !report.passes.is_empty()
                 || !report.history.functions.is_empty()
@@ -236,6 +250,20 @@ pub fn run(args: &[String]) -> Result<()> {
                     value.register
                 );
             }
+        }
+        for call in &report.call_arguments.calls {
+            println!(
+                "  call {} to {}: {} lowered argument contexts, {} episodes, observations {:?}",
+                call.id,
+                call.callee
+                    .name_text
+                    .as_deref()
+                    .filter(|_| call.callee.name_known && call.callee.name_complete)
+                    .unwrap_or("<unresolved callee>"),
+                call.arguments.len(),
+                call.episodes.len(),
+                call.observations.state
+            );
         }
         for graph in &report.graphs.graphs {
             println!(

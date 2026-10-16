@@ -4,5 +4,6 @@ pub mod index;
 pub mod inputs;
 pub mod objective;
 pub mod reduction;
+pub mod reproducer;
 pub mod search;
 pub mod state;

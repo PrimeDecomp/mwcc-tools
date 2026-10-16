@@ -83,10 +83,12 @@ def main():
             "_fn_00460780", "_IRO_CommonSubs", "_move_common_sub", "_IroDump_Print",
             "_OracleRust_DescribeExpression", "_cse_vregs"}
         origin_group = scalar_group | {"_fn_00506cd0", "_generate_inline_statements", "_inline_statement",
-            "_OracleRust_OriginFind", "_OracleRust_OriginWalk", "_OracleRust_PrintChain", "_OracleRust_InlineLine", "_OracleRust_BackendProbe", "_OracleRust_CounterProbeV5", "_OracleRust_ExpressionProbeV1"}
+            "_OracleRust_OriginFind", "_OracleRust_OriginWalk", "_OracleRust_PrintChain", "_OracleRust_InlineLine", "_OracleRust_BackendProbe", "_OracleRust_CounterProbeV6", "_OracleRust_ExpressionProbeV1"}
         instantiation_group = origin_group | {"_CInline_AddFunctionPrecNode", "_CInline_AddSpecialization",
             "_CTemplateNew_InstantiateInlineTemplateObject", "_CTemplateNew_InstantiateFunction", "_fn_0050f240", "_generate_inline_code"}
-        binding_hooks = defined == instantiation_group | {"_setup_inline_locals_and_arguments"}
+        argument_group = instantiation_group | {"_setup_inline_locals_and_arguments", "_FunctionCalls_GenerateCall", "_assign_argument_locations", "_load_argument_registers", "_store_argument_on_stack", "_OracleRust_ArgumentForceGpr"}
+        argument_hooks = defined == argument_group
+        binding_hooks = defined == instantiation_group | {"_setup_inline_locals_and_arguments"} or argument_hooks
         instantiation_hooks = defined == instantiation_group or binding_hooks
         origin_hooks = defined == origin_group or instantiation_hooks
         scalar_hooks = defined == scalar_group or origin_hooks
@@ -120,6 +122,8 @@ def main():
                 "_deferredInlineNodes", "_cscope_currentfunc", "_data_005dfb62"}
         if binding_hooks:
             expected |= {"_setup_inline_locals_and_arguments__retail", "_data_0058245a"}
+        if argument_hooks:
+            expected |= {"_FunctionCalls_GenerateCall__retail", "_assign_argument_locations__retail", "_load_argument_registers__retail", "_store_argument_on_stack__retail", "_OracleRust_ArgumentForceGprRetail"}
         assert undefined == expected, undefined
         print(f"Rust ABI object: {len(sections)} sections, {len(defined)} exports, only the expected C imports", flush=True)
     if args.oracle and args.compiled:

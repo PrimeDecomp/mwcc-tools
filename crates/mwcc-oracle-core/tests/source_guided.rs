@@ -201,6 +201,322 @@ fn symbolic_pair_trace() -> String {
     }
     trace
 }
+fn argument_pair_trace(pair_ordinal: u32) -> String {
+    let mut text = symbolic_pair_trace()
+        .replace("function=1 parent=0", "function=1 parent=0 function_object=aa call_arguments=guarded_regular_call_arguments_v1")
+        .replace("pv.function.end function=1", "pv.function.end function=1 call_arguments=guarded_regular_call_arguments_v1 call_count=1 argument_count=2 argument_episodes=2 argument_births=2 argument_operands=2 argument_instructions=0");
+    let mut begin = "pv.call.begin schema=1 function=1 function_object=aa call=1 parent_call=0 parent_expression=0 item=900 kind=54 callee_node=800 callee_kind=56 callee_object=400 callee_known=1 callee_complete=1 callee_hex=7461726765745f5f465549 return_type=500 type_kind=0 type_size=0 output=a00 scope=guarded_regular_call_arguments_v1 ordinal_kind=lowered_argument_context_order\n".to_owned();
+    for ordinal in 0..2 {
+        begin += &format!(
+            "pv.argument.bind schema=1 function=1 call=1 ordinal={ordinal} list={:x} context={:x} node={:x} kind=56 type=500 type_kind=1 type_size=4 hascall=0 flags=1 gpr={} second_gpr=-1 fpr=-1 vector=-1 stack_offset=0 evaluated=0\n",
+            0x700 + ordinal,
+            0x100 + ordinal * 0x100,
+            0x300 + ordinal,
+            3 + ordinal
+        );
+    }
+    let episode = |ordinal, id, before, after, value: &str| {
+        let context = 0x100 + ordinal * 0x100;
+        format!(
+            "pv.argument.begin schema=1 function=1 call=1 ordinal={ordinal} episode={id} parent_episode=0 stage=register context={context:x} node={:x} operand={:x} births_before={before} block=100 tail=0\n{value}pv.argument.operand schema=1 function=1 call=1 ordinal={ordinal} episode={id} stage=helper_return operand={:x} kind=0 cls=4 register=33\npv.argument.end schema=1 function=1 call=1 ordinal={ordinal} episode={id} births_after={after} block=100 tail=0 instructions=0 pcode_complete=1\n",
+            0x300 + ordinal,
+            context + 8,
+            context + 8
+        )
+    };
+    let first_begin = episode(pair_ordinal, 1, 0, 2, "")
+        .split("pv.argument.operand")
+        .next()
+        .unwrap()
+        .to_owned();
+    text = text.replacen(
+        "pv.value.birth",
+        &(begin + &first_begin + "pv.value.birth"),
+        1,
+    );
+    for (value, register) in [(1, 32), (2, 33)] {
+        let line = text
+            .lines()
+            .find(|l| l.starts_with("pv.value.birth ") && l.contains(&format!("value={value} ")))
+            .unwrap()
+            .to_owned();
+        text = text.replace(&line,&format!("{line}\npv.argument.birth schema=1 function=1 call=1 ordinal={pair_ordinal} episode=1 value={value} cls=4 register={register}"));
+    }
+    let first_end = episode(pair_ordinal, 1, 0, 2, "")
+        .split_once("pv.argument.operand")
+        .unwrap()
+        .1
+        .to_owned();
+    let end = "pv.argument.operand".to_owned()
+        + &first_end
+        + &episode(1 - pair_ordinal, 2, 2, 2, "")
+        + "pv.call.end schema=1 function=1 call=1 arguments=2 episodes=2 births=2 operands=2 instructions=0 complete=1\n";
+    text.replace(
+        "ra.before function=pipeline",
+        &(end + "ra.before function=pipeline"),
+    )
+}
+fn argument_objective(ordinal: u32, minimum: u32, maximum: u32) -> Objective {
+    Objective::CallArgumentAddressPairs {
+        callee: "target__FUI".into(),
+        call: 0,
+        ordinal,
+        symbol: "sym__1C".into(),
+        minimum,
+        maximum,
+    }
+}
+fn evaluate_argument_trace(text: &str, objective: Objective) -> objective::EvaluationReport {
+    let source = b"model source";
+    let compilation = compilation(text, source);
+    let report = provenance::parse(text).unwrap();
+    let input = Input {
+        compilation: &compilation,
+        provenance: &report,
+        source,
+        semantic_check: None,
+    };
+    objective::evaluate(&contract(objective), &input, &input).unwrap()
+}
+#[test]
+fn argument_pair_counts_use_owned_births_and_never_treat_missing_context_as_zero() {
+    let text = argument_pair_trace(0);
+    assert_eq!(
+        evaluate_argument_trace(&text, argument_objective(0, 1, 1))
+            .overall
+            .state,
+        EvaluationState::Satisfied
+    );
+    assert_eq!(
+        evaluate_argument_trace(&text, argument_objective(1, 0, 0))
+            .overall
+            .state,
+        EvaluationState::Satisfied
+    );
+    assert_eq!(
+        evaluate_argument_trace(&text, argument_objective(0, 0, 0))
+            .objective
+            .state,
+        EvaluationState::Unsatisfied
+    );
+    assert_eq!(
+        evaluate_argument_trace(&text, argument_objective(2, 0, 0))
+            .objective
+            .state,
+        EvaluationState::Indeterminate
+    );
+    assert_eq!(
+        evaluate_argument_trace(&argument_pair_trace(1), argument_objective(0, 0, 0))
+            .overall
+            .state,
+        EvaluationState::Satisfied
+    );
+    for changed in [
+        text.replace(
+            "callee_known=1 callee_complete=1 callee_hex=7461726765745f5f465549",
+            "callee_known=0 callee_complete=0 callee_hex=",
+        ),
+        text.replace("argument_births=2", "argument_births=1"),
+        text.replace("symbol_complete=1", "symbol_complete=0"),
+    ] {
+        assert_eq!(
+            evaluate_argument_trace(&changed, argument_objective(0, 0, 0))
+                .objective
+                .state,
+            EvaluationState::Indeterminate
+        );
+    }
+}
+#[test]
+fn argument_pair_count_includes_nested_call_arguments_in_the_selected_evaluation() {
+    let mut text=argument_pair_trace(0)
+        .replace(" call=1", " call=2")
+        .replace("parent_call=0", "parent_call=1")
+        .replace(" episode=2", " episode=3")
+        .replace(" episode=1", " episode=2")
+        .replace("parent_episode=0", "parent_episode=1")
+        .replace("callee_hex=7461726765745f5f465549", "callee_hex=696e6e65725f5f465549")
+        .replace("call_count=1 argument_count=2 argument_episodes=2 argument_births=2 argument_operands=2", "call_count=2 argument_count=3 argument_episodes=3 argument_births=2 argument_operands=3");
+    let outer = "pv.call.begin schema=1 function=1 function_object=aa call=1 parent_call=0 parent_expression=0 item=1900 kind=54 callee_node=1800 callee_kind=56 callee_object=1400 callee_known=1 callee_complete=1 callee_hex=7461726765745f5f465549 return_type=500 type_kind=0 type_size=0 output=1a00 scope=guarded_regular_call_arguments_v1 ordinal_kind=lowered_argument_context_order\npv.argument.bind schema=1 function=1 call=1 ordinal=0 list=1700 context=1000 node=1100 kind=54 type=500 type_kind=1 type_size=4 hascall=1 flags=1 gpr=3 second_gpr=-1 fpr=-1 vector=-1 stack_offset=0 evaluated=0\npv.argument.begin schema=1 function=1 call=1 ordinal=0 episode=1 parent_episode=0 stage=register context=1000 node=1100 operand=1008 births_before=0 block=100 tail=0\n";
+    text = text.replace(
+        "pv.call.begin schema=1 function=1 function_object=aa call=2",
+        &(outer.to_owned() + "pv.call.begin schema=1 function=1 function_object=aa call=2"),
+    );
+    let end = "pv.argument.operand schema=1 function=1 call=1 ordinal=0 episode=1 stage=helper_return operand=1008 kind=0 cls=4 register=33\npv.argument.end schema=1 function=1 call=1 ordinal=0 episode=1 births_after=2 block=100 tail=0 instructions=0 pcode_complete=1\npv.call.end schema=1 function=1 call=1 arguments=1 episodes=1 births=0 operands=1 instructions=0 complete=1\n";
+    text = text.replace(
+        "ra.before function=pipeline",
+        &(end.to_owned() + "ra.before function=pipeline"),
+    );
+    let result = evaluate_argument_trace(&text, argument_objective(0, 1, 1));
+    assert_eq!(
+        result.overall.state,
+        EvaluationState::Satisfied,
+        "{result:?}"
+    );
+    assert_eq!(
+        result.observations["candidate"]["episode_ids"],
+        serde_json::json!([1, 2, 3])
+    );
+    assert_eq!(
+        evaluate_argument_trace(&text, argument_objective(0, 0, 0))
+            .objective
+            .state,
+        EvaluationState::Unsatisfied
+    );
+}
+#[test]
+fn argument_pair_query_keeps_unrelated_pcode_gaps_separate_from_event_totals() {
+    let mut text=argument_pair_trace(0)
+        .replace("call_count=1 argument_count=2 argument_episodes=2 argument_births=2 argument_operands=2", "call_count=2 argument_count=3 argument_episodes=3 argument_births=2 argument_operands=3")
+        .replace("pv.function.end function=1 call_arguments=guarded_regular_call_arguments_v1", "pv.function.end function=1 call_arguments=unknown");
+    let later = "pv.call.begin schema=1 function=1 function_object=aa call=2 parent_call=0 parent_expression=0 item=2900 kind=54 callee_node=2800 callee_kind=56 callee_object=2400 callee_known=1 callee_complete=1 callee_hex=6f746865725f5f465549 return_type=500 type_kind=0 type_size=0 output=2a00 scope=guarded_regular_call_arguments_v1 ordinal_kind=lowered_argument_context_order\npv.argument.bind schema=1 function=1 call=2 ordinal=0 list=2700 context=2100 node=2300 kind=4 type=500 type_kind=1 type_size=4 hascall=0 flags=1 gpr=3 second_gpr=-1 fpr=-1 vector=-1 stack_offset=0 evaluated=0\npv.argument.begin schema=1 function=1 call=2 ordinal=0 episode=3 parent_episode=0 stage=register context=2100 node=2300 operand=2108 births_before=2 block=100 tail=0\npv.argument.operand schema=1 function=1 call=2 ordinal=0 episode=3 stage=helper_return operand=2108 kind=4 immediate=3\npv.argument.gap schema=1 function=1 call=2 ordinal=0 episode=3 reason=pcode_interval_incomplete\npv.argument.end schema=1 function=1 call=2 ordinal=0 episode=3 births_after=2 block=200 tail=0 instructions=0 pcode_complete=0\npv.call.end schema=1 function=1 call=2 arguments=1 episodes=1 births=0 operands=1 instructions=0 complete=0\n";
+    text = text.replace(
+        "ra.before function=pipeline",
+        &(later.to_owned() + "ra.before function=pipeline"),
+    );
+    let report = provenance::parse(&text).unwrap();
+    assert_eq!(
+        report.call_arguments.functions[0].event_totals.state,
+        EvaluationState::Satisfied
+    );
+    assert_eq!(
+        report.call_arguments.functions[0].observations.state,
+        EvaluationState::Indeterminate
+    );
+    assert_eq!(
+        report.call_arguments.calls[0].observations.state,
+        EvaluationState::Satisfied
+    );
+    assert_eq!(
+        report.call_arguments.calls[1].observations.state,
+        EvaluationState::Indeterminate
+    );
+    assert_eq!(
+        evaluate_argument_trace(&text, argument_objective(0, 1, 1))
+            .overall
+            .state,
+        EvaluationState::Satisfied
+    );
+    let missing = text.replace("argument_count=3", "argument_count=2");
+    assert_eq!(
+        evaluate_argument_trace(&missing, argument_objective(0, 1, 1))
+            .objective
+            .state,
+        EvaluationState::Indeterminate
+    );
+}
+#[test]
+fn argument_fingerprints_keep_ownership_stages_and_unknown_fields_fail_closed() {
+    let fingerprint = |text: &str| {
+        let report = provenance::parse(text).unwrap();
+        state::fingerprint(
+            &report.graphs.graphs[0],
+            &report,
+            &compilation(text, b"model source"),
+        )
+    };
+    let text = argument_pair_trace(0);
+    let base = fingerprint(&text).unwrap();
+    assert_ne!(base, fingerprint(&argument_pair_trace(1)).unwrap());
+    assert_ne!(
+        base,
+        fingerprint(&text.replace("stage=register", "stage=stack")).unwrap()
+    );
+    // A consistent address relocation preserves all equality relationships.
+    let mut moved = String::new();
+    for line in text.lines() {
+        let mut record = mwcc_oracle_core::trace::records(line).pop().unwrap();
+        for key in [
+            "function_object",
+            "item",
+            "callee_node",
+            "callee_object",
+            "return_type",
+            "output",
+            "list",
+            "context",
+            "node",
+            "type",
+            "operand",
+            "block",
+            "tail",
+            "object",
+            "info",
+            "p",
+        ] {
+            if key == "p" && record.kind == "ra.node" {
+                continue;
+            }
+            if let Some(value) = record.fields.get_mut(key) {
+                let raw = u32::from_str_radix(value, 16).unwrap();
+                if raw != 0 {
+                    *value = format!("{:x}", raw + 0x10000);
+                }
+            }
+        }
+        moved += &record.kind;
+        for (key, value) in record.fields {
+            moved += &format!(" {key}={value}");
+        }
+        moved.push('\n');
+    }
+    assert_eq!(base, fingerprint(&moved).unwrap());
+    assert!(
+        fingerprint(&text.replace(
+            "pv.argument.bind schema=1",
+            "pv.argument.bind future=1 schema=1"
+        ))
+        .is_err()
+    );
+}
+#[test]
+fn argument_fingerprints_retain_independent_dispatch_results_used_by_coverage() {
+    let mut text = argument_pair_trace(0)
+        .replace(" episode=2", " episode=3")
+        .replace("episode=1 value=", "episode=2 value=")
+        .replace("expression=0 phase=0", "expression=1 phase=0")
+        .replace("argument_episodes=2", "argument_episodes=3")
+        .replace("argument_operands=2", "argument_operands=3")
+        .replace(
+            "arguments=2 episodes=2 births=2 operands=2",
+            "arguments=2 episodes=3 births=2 operands=3",
+        );
+    let begin = "pv.expression.begin function=1 expression=1 node=300 kind=56 line=3 scope=codegen_dispatch complete=0 parent=0 target=440000 a=3 b=0 tree_hex=73796d626f6c\npv.argument.begin schema=1 function=1 call=1 ordinal=0 episode=2 parent_episode=1 stage=dispatch context=100 node=300 operand=108 births_before=0 block=100 tail=0\n";
+    text = text.replacen("pv.value.birth", &(begin.to_owned() + "pv.value.birth"), 1);
+    let end = "pv.expression.result function=1 expression=1 operand=108 kind=0 cls=4 register=33\npv.argument.operand schema=1 function=1 call=1 ordinal=0 episode=2 stage=dispatch_return operand=108 kind=0 cls=4 register=33\npv.argument.end schema=1 function=1 call=1 ordinal=0 episode=2 births_after=2 block=100 tail=0 instructions=0 pcode_complete=1\npv.expression.end function=1 expression=1\n";
+    text = text.replace(
+        "pv.argument.operand schema=1 function=1 call=1 ordinal=0 episode=1",
+        &(end.to_owned() + "pv.argument.operand schema=1 function=1 call=1 ordinal=0 episode=1"),
+    );
+    let changed = text.replace(
+        "pv.expression.result function=1 expression=1 operand=108 kind=0 cls=4 register=33",
+        "pv.expression.result function=1 expression=1 operand=108 kind=0 cls=4 register=32",
+    );
+    let original = provenance::parse(&text).unwrap();
+    let altered = provenance::parse(&changed).unwrap();
+    assert_eq!(
+        original.call_arguments.observations.state,
+        EvaluationState::Satisfied
+    );
+    assert_eq!(
+        altered.call_arguments.observations.state,
+        EvaluationState::Indeterminate
+    );
+    assert_ne!(
+        state::fingerprint(
+            &original.graphs.graphs[0],
+            &original,
+            &compilation(&text, b"model source")
+        )
+        .unwrap(),
+        state::fingerprint(
+            &altered.graphs.graphs[0],
+            &altered,
+            &compilation(&changed, b"model source")
+        )
+        .unwrap()
+    );
+}
 #[test]
 fn symbol_pair_objective_counts_a_guarded_mechanism_and_requires_complete_identity_and_graph_bindings()
  {
@@ -773,7 +1089,7 @@ fn retained_state_analysis_checks_objects_coverage_and_unsupported_normalization
     let trace = synthetic(false, true, false);
     let mut c = compilation(&trace, source);
     let analysis = state::inspect(&c, "pipeline__Fii", 4, 0).unwrap();
-    assert_eq!(analysis.fingerprint_format_version, 3);
+    assert_eq!(analysis.fingerprint_format_version, 4);
     assert_eq!(analysis.normalization.state, EvaluationState::Satisfied);
     assert_eq!(analysis.fingerprint.as_ref().unwrap().len(), 64);
     let original_object = c.object.clone();

@@ -258,16 +258,16 @@ def main():
                     "_fn_004601f0", "_fn_00460780", "_IRO_CommonSubs", "_move_common_sub", "_IroDump_Print",
                     "_fn_00506cd0", "_generate_inline_statements", "_inline_statement",
                     "_CInline_AddFunctionPrecNode", "_CInline_AddSpecialization", "_CTemplateNew_InstantiateInlineTemplateObject",
-                    "_CTemplateNew_InstantiateFunction", "_fn_0050f240", "_generate_inline_code", "_setup_inline_locals_and_arguments"}
+                    "_CTemplateNew_InstantiateFunction", "_fn_0050f240", "_generate_inline_code", "_setup_inline_locals_and_arguments", "_FunctionCalls_GenerateCall", "_assign_argument_locations", "_load_argument_registers", "_store_argument_on_stack"}
         support = {"_OracleRust_LinkName", "_OracleRust_PrintInstruction", "_OracleRust_Snapshot", "_OracleRust_DescribeExpression", "_cse_vregs",
-                   "_OracleRust_OriginFind", "_OracleRust_OriginWalk", "_OracleRust_PrintChain", "_OracleRust_InlineLine", "_OracleRust_BackendProbe", "_OracleRust_CounterProbeV5", "_OracleRust_ExpressionProbeV1"}
+                   "_OracleRust_OriginFind", "_OracleRust_OriginWalk", "_OracleRust_PrintChain", "_OracleRust_InlineLine", "_OracleRust_BackendProbe", "_OracleRust_CounterProbeV6", "_OracleRust_ExpressionProbeV1", "_OracleRust_ArgumentForceGpr"}
         assert not c_object.exists(), "C observation hooks still compiled in Rust producer"
         for path, expected in [(rust_object, migrated | support), (frontend_object, frontend_names)]:
             symbols, _ = module.read_object(path)
             defined = {s["name"] for s in symbols.values() if s["section"] > 0 and s["storage"] == 2}
             assert defined == expected, (path, defined)
         config = json.loads((stage / f"config/{version}/config.json").read_text())
-        assert set(config["oracle"]["hooks"]) == migrated | frontend_names
+        assert set(config["oracle"]["hooks"]) | {"_FunctionCalls_GenerateCall", "_assign_argument_locations", "_load_argument_registers", "_store_argument_on_stack"} == migrated | frontend_names
         check_frontend = trace_check.parent / f"{version}-frontend.obj"
         run(f"validate-frontend-{version}", [binary, "build-hooks", check_frontend, "--root", ROOT, "--frontend-version", version])
         assert sha(check_frontend) == sha(frontend_object)

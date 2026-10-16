@@ -94,7 +94,7 @@ pub struct Installed {
 }
 const COUNTS: &str = "_data_005e6a7c";
 const PHYSICAL: &str = "_data_005e6778";
-const HANDLER: &str = "_OracleRust_CounterProbeV5";
+const HANDLER: &str = "_OracleRust_CounterProbeV6";
 // Roles: increment, close/high-water restore, rewind, initial reset, allocation
 // reset, function begin, function end. These are actual writes, not guessed types.
 fn role(version: &str, r: &Reference) -> Result<Role> {

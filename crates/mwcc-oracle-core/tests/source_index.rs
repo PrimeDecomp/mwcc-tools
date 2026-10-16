@@ -248,12 +248,54 @@ fn corpus_rejects_incomplete_absence_and_detects_tampering() {
         assert_eq!(entry.call_results[0].origin.callee, "400");
         assert!(!entry.call_results[0].origin.output_complete);
         assert!(!entry.call_results[0].origin.tree_complete);
+        assert!(entry.coverage.call_arguments.scope.is_none());
+        assert_eq!(
+            entry.coverage.call_arguments.observations.state,
+            EvaluationState::Indeterminate
+        );
+        assert_eq!(
+            (
+                entry.coverage.call_arguments.known_callees,
+                entry.coverage.call_arguments.unknown_callees,
+                entry.coverage.call_arguments.bound_arguments,
+                entry.coverage.call_arguments.episodes
+            ),
+            (0, 0, 0, 0)
+        );
         assert!(entry.coverage.normalize_symbols.scope.is_none());
         assert_eq!(
             entry.coverage.normalize_symbols.observations.state,
             EvaluationState::Indeterminate
         );
     }
+    // Inventory derives new capabilities from each retained capture even when
+    // the older entry's cached coverage metadata lacks that capability.
+    let mut call_spec = spec.clone();
+    call_spec.capture = dir.join("call-capture.json");
+    let mut document: serde_json::Value =
+        serde_json::from_slice(&fs::read(&spec.capture).unwrap()).unwrap();
+    let original = document["compilation"]["trace"].as_str().unwrap();
+    let begin = "pv.call.begin schema=1 function=1 function_object=aa call=1 parent_call=0 parent_expression=0 item=1000 kind=54 callee_node=300 callee_kind=56 callee_object=400 callee_known=1 callee_complete=1 callee_hex=7461726765745f5f465549 return_type=500 type_kind=1 type_size=4 output=600 scope=guarded_regular_call_arguments_v1 ordinal_kind=lowered_argument_context_order\npv.call.end schema=1 function=1 call=1 arguments=0 episodes=0 births=0 operands=0 instructions=0 complete=1\n";
+    let unknown=begin.replace("call=1 ","call=2 ").replace("callee_kind=56 callee_object=400 callee_known=1 callee_complete=1 callee_hex=7461726765745f5f465549", "callee_kind=4 callee_object=0 callee_known=0 callee_complete=0 callee_hex=");
+    let first=begin.replace("pv.call.end schema=1 function=1 call=1 arguments=0 episodes=0 births=0 operands=0 instructions=0 complete=1", "pv.argument.bind schema=1 function=1 call=1 ordinal=0 list=700 context=100 node=200 kind=50 type=500 type_kind=1 type_size=4 hascall=0 flags=1 gpr=3 second_gpr=-1 fpr=-1 vector=-1 stack_offset=0 evaluated=0\npv.argument.begin schema=1 function=1 call=1 ordinal=0 episode=1 parent_episode=0 stage=register context=100 node=200 operand=108 births_before=0 block=800 tail=0\npv.argument.operand schema=1 function=1 call=1 ordinal=0 episode=1 stage=helper_return operand=108 kind=4 immediate=17\npv.argument.end schema=1 function=1 call=1 ordinal=0 episode=1 births_after=0 block=800 tail=0 instructions=0 pcode_complete=1\npv.call.end schema=1 function=1 call=1 arguments=1 episodes=1 births=0 operands=1 instructions=0 complete=1");
+    let updated=original.replace("function=1 parent=0 ","function=1 parent=0 function_object=aa call_arguments=guarded_regular_call_arguments_v1 ")
+        .replacen("pv.value.birth",&(first+&unknown+"pv.value.birth"),1)
+        .replace("pv.function.end function=1 ","pv.function.end function=1 call_arguments=guarded_regular_call_arguments_v1 call_count=2 argument_count=1 argument_episodes=1 argument_births=0 argument_operands=1 argument_instructions=0 ");
+    document["compilation"]["trace"] = serde_json::json!(updated);
+    fs::write(&call_spec.capture, serde_json::to_vec(&document).unwrap()).unwrap();
+    let call_corpus = dir.join("call-index");
+    index::ingest(&call_corpus, &call_spec).unwrap();
+    let call_inventory = index::origins(&call_corpus, &index::OriginFilter::default()).unwrap();
+    let coverage = &call_inventory.entries[0].coverage.call_arguments;
+    assert_eq!(
+        coverage.scope.as_deref(),
+        Some("guarded_regular_call_arguments_v1")
+    );
+    assert_eq!(coverage.observations.state, EvaluationState::Satisfied);
+    assert_eq!((coverage.known_callees, coverage.unknown_callees), (1, 1));
+    assert_eq!(coverage.callee_links, ["target__FUI"]);
+    assert_eq!((coverage.bound_arguments, coverage.episodes), (1, 1));
+    assert_eq!(coverage.event_totals.state, EvaluationState::Satisfied);
     let mut header_spec = spec.clone();
     header_spec.functions[0].source_file = Some(FileInput {
         path: header_path.clone(),

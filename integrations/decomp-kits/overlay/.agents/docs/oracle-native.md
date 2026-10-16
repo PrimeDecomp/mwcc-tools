@@ -233,8 +233,10 @@ checks or source semantics. Fixed GQR operands at the observed PSQ_L/PSQ_ST form
 retain all twelve bytes, including their hardware selectors; other kind-1 forms
 remain unsupported. Generated local-symbol suffixes can still split equivalent
 states. Use replay when fresh compiler and semantic checks are required.
-Fingerprint format 2 includes initialized array origins and partial call shapes,
-excluding capture pointers and inactive bytes; inspect `fingerprint_format_version`.
+Fingerprint format 4 includes frontend scalarization, preallocation definitions,
+actual coalescing decisions and guarded call-argument observations, excluding
+capture pointer spellings and inactive bytes. Inspect `fingerprint_format_version`;
+older saved runs retain their analyzer and cannot mix fingerprint formats.
 
 `source-search evaluate CONTRACT CAPTURE --source FILE --object FILE` evaluates
 retained inputs without compiling. Supply `--baseline-capture`, `--baseline-source`
@@ -287,6 +289,31 @@ in the complete original function. Static category and promoted-copy predicates
 are supported. General lifetime elimination and reduction of a category transition
 remain unsupported.
 
+## Export a retained reproducer (development)
+
+```text
+mwcc-tools source-repro export search particle-search 1 --output portable-case --run-analyzer ORIGINAL_RUN_ANALYZER
+mwcc-tools source-repro verify portable-case
+mwcc-tools source-repro replay portable-case --output fresh-replay --seconds 600
+```
+
+Use `export reduction` for a retained reducer candidate. Read
+`docs/oracle/source-repro.md` in the source checkout for the schema and supported
+path/option forms. Export validates retained snapshots, source/dependency/runtime
+bytes and original analyzer identity. It packages a separate pinned replay tool,
+compiler runtime, original/private-baseline/candidate cases, predicate and declared
+checker/target inputs. Export and verification do not execute bundle contents.
+
+Replay uses a new directory and fresh input scans, stock-equivalence checks,
+exact retained-object comparisons and the shared predicate/semantic gates. It
+does not restore original paths or reuse the original run's cache identities.
+Initial support requires the same host OS/architecture and compatible runtime,
+dependencies/include roots within the recorded working directory, recognized
+include options, and native checker executables with explicitly declared inputs.
+It does not prove transitive checker closure. Unsupported paths/options/scripts
+are rejected; path-sensitive object differences are not waived. Existing pinned
+migration-kit packages do not include this development command.
+
 ## Query matched source examples (development)
 
 ```text
@@ -312,13 +339,30 @@ coverage before selecting queries; old captures remain explicitly incomplete.
 Current development `provenance inspect` also exposes frontend scalarization
 passes and exact aggregate-part Object/VarInfo joins to backend births. Use the
 source checkout's `docs/oracle/scalarization.md` for its schema and limits. State
-fingerprints are format 3; saved runs bind their analyzer and cannot mix formats.
+fingerprints are format 4; saved runs bind their analyzer and cannot mix formats.
 The `scalarized_array_initialization` objective requires an exact whole-element
 join and a supported constant-LI initialization. `scalarized_array_definition`
 instead takes an explicit observed definition ordinal and checks its producer,
 actual copy merge and final assigned destination. It does not infer C++
 initialization or dominance. State grouping includes the preallocation definitions
 and coalescing evidence, since identical final graphs alone are insufficient.
+
+Current development producers also expose `Report.call_arguments`. Use the source
+checkout's `docs/oracle/call-arguments.md` for the typed argument contexts, nested
+lowering episodes, tagged operand observations, scoped births and bounded PCode
+intervals. A void call can create argument temporaries even though it has no
+returned value. Argument ordinals are lowered compiler-context order, not
+automatically C++ parameter indices. Planned slots and helper-return operands
+are separate from final ABI locations; missing independent function totals leave
+coverage indeterminate.
+
+Use `call_argument_address_pairs` with `callee`, zero-based `call` occurrence,
+lowered-context `ordinal`, `symbol`, `minimum` and `maximum` to query the guarded
+Normalize mechanism for one argument through the shared search/reducer/index
+evaluator. Read exact qualified callee names and argument ordinals from a capture
+first. Unknown earlier callees or missing arguments do not establish zero pairs.
+Require the containing function's symbolic relocations and semantic checks when
+testing a source transformation.
 
 Queries use the shared mechanism evaluator. Require an actual symbol relocation
 when asking for a zero address-pair count, so unrelated functions cannot satisfy

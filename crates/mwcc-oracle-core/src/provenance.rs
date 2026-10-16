@@ -62,6 +62,8 @@ pub struct Report {
     pub graphs: crate::graph_history::GraphHistory,
     #[serde(default)]
     pub scalarization: crate::scalarization::History,
+    #[serde(default)]
+    pub call_arguments: crate::call_arguments::History,
 }
 fn integer(r: &Record, field: &str) -> Result<u32> {
     r.get(field)?
@@ -121,6 +123,7 @@ pub fn parse(text: &str) -> Result<Report> {
         if crate::value_history::is_record(kind)
             || crate::graph_history::is_record(kind)
             || crate::scalarization::is_record(kind)
+            || crate::call_arguments::is_record(kind)
         {
             continue;
         }
@@ -309,6 +312,7 @@ pub fn parse(text: &str) -> Result<Report> {
     let graphs = crate::graph_history::parse(text, &history, &passes)?;
     let mut scalarization = crate::scalarization::parse(text)?;
     crate::scalarization::bind_backend(&mut scalarization, &history.functions);
+    let call_arguments = crate::call_arguments::parse(text, &history)?;
     Ok(Report {
         format_version: 2,
         trace_sha256: format!("{:x}", Sha256::digest(text.as_bytes())),
@@ -321,6 +325,7 @@ pub fn parse(text: &str) -> Result<Report> {
         history,
         graphs,
         scalarization,
+        call_arguments,
     })
 }
 

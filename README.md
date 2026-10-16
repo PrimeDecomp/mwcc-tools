@@ -170,6 +170,9 @@ Current development tools expose [backend provenance](docs/oracle/provenance.md)
 changes the EnvModulate allocation graph; its final match worsens. Complete
 source/lifetime provenance and the remaining real mechanisms stay open; see
 [implementation status](docs/oracle-source-guided-status.md).
+Development V6 producers add [lowered call-argument observations](docs/oracle/call-arguments.md)
+and argument-qualified graph objectives. [Retained reproducer bundles](docs/oracle/source-repro.md)
+support offline integrity checks and fresh native replay after relocating supported inputs.
 
 The [audited benchmarks](docs/oracle-rust-benchmarks.md) separate analysis/search performance from compiler runtime
 and report the memory tradeoffs. `package-release OUTPUT.zip --binary FILE --target TARGET` creates a native

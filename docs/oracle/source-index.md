@@ -77,6 +77,13 @@ name/index/size; Normalize records expose symbol/part/displacement. Call-result
 records retain explicit partial output/tree flags and capture-local references;
 they do not supply a qualified callee or prove a call-argument relationship.
 
+V6 captures separately expose `coverage.call_arguments`: guarded scope, overall
+observations, independent `event_totals`, known/unknown callee counts, unique
+complete cached `callee_links`, `bound_arguments` and `episodes`. Older captures
+have indeterminate argument coverage. This inventory helps choose exact callee
+selectors for the shared [argument-qualified count](call-arguments.md); an
+aggregate zero does not itself prove a particular argument avoided a temporary.
+
 Inventory derives coverage and origins from the retained capture, including old
 entries whose stored coverage has no backend-origin fields. It rechecks retained
 blob integrity and retail function bytes/relocations. A zero count describes only

@@ -1,10 +1,87 @@
 # Source-guided oracle tools: implementation status
 
-Updated 2026-10-16. The active objective is to implement all four requested tools
+Updated 2026-10-17. The active objective is to implement all four requested tools
 using the [adopted roadmap](oracle-source-guided-search.md). The objective is not
 complete. The completed Rust migration remains a separate release.
 
-## Current extension: frontend scalarization and real source examples
+## Current extension: lowered call arguments and retained reproducers
+
+V6 adds [call-argument provenance](oracle/call-arguments.md): exact lowered
+contexts, cached callee links, nested dispatch/register/stack/ForceGPR episodes,
+tagged operands, exclusive birth ownership and bounded PCode intervals. Independent
+function-end totals detect missing streams. `event_totals` reconciliation remains
+separate from complete observation of every call, so an unrelated PCode gap cannot
+erase a separately complete call. Unknown earlier callees still make occurrence
+selectors ambiguous. The [producer contract](oracle/producer.md) records the actual
+six-word assignment ABI, guarded 48-byte context and native-only hook inventory.
+
+The shared `call_argument_address_pairs` objective selects an exact qualified
+callee, occurrence and lowered-context ordinal, then counts guarded Normalize
+pairs through that argument's episode subtree, including nested calls. Search,
+reduction and corpus queries share it. Fingerprint format 4 retains these
+observations, coverage and pointer equality/order relationships to the existing
+backend evidence. `source-index origins` inventories cached links, known/unknown
+callees, bound contexts and episode counts.
+
+Fresh full Render captures bind four void `SetTevOp` calls to address pairs and
+the fifth reference argument to zero Normalize births. The first call's lowered
+ordinal 1 is planned for GPR4 and owns Birth54:360/361, GPR219/220, for
+`kEnvModulate`. Call512 instead materializes `sParticleModulatePass`. The matched
+`Render2D` reference argument has zero such births. These are argument-creation
+observations, not call results or proof of final ABI locations. Source/object
+bytes agree with the retained V5 cases. Actual nested PCode block transitions
+remain explicit gaps. The tiny reference-only function has no GPR graph, so its
+graph-bound count objective remains indeterminate despite complete call
+observations; an explicit no-allocation boundary contract remains future work.
+
+The new [source-repro API](oracle/source-repro.md) exports retained search or
+reduction cases with raw dependencies, compiler runtime, original contract,
+declared native checker inputs and separate original/replay analyzer identities.
+Offline verification executes nothing. Replay uses a new relocated workspace
+and requires fresh stock checks, exact retained objects/raw closure, matching
+compiler context and the original predicate/purpose gates. Initial support is
+same-host OS/architecture with dependencies/include roots under the recorded
+working directory and supported options. Complete transitive checker and OS
+runtime packaging remains outside this bounded contract.
+
+Current workspace suites pass on both hosts: **193 passed, 11 opt-in tests ignored**.
+All-target Clippy with warnings denied also passes. V6 producers pass 36 C/Rust
+comparisons, 45 backend off/on pairs, nine scalarization cases and 91 constructor
+corruption negatives per host. Three additional argument off/on pairs per host
+have equal stock objects, common-hook COFF and typed role records. All five
+fixture callees have complete cached names; its nested case preserves its actual
+bounded PCode gap. Current test/lint logs and frozen analyzer identities are in
+`build/source-guided/call-argument-audit/{final-validation,final-bin}/`.
+
+The final source-search regression also passes all three compiler versions on
+both V6 hosts, including grouping/cache, resume, independent replay, header drift,
+semantic gates, cancellation and tampered inputs. Its copied test executables are
+the run analyzers; they are recorded separately from the final CLI. Nineteen
+retained objective evaluations agree in full between native hosts: seven
+satisfied, three observed failures and nine deliberate indeterminate cases.
+The full Render address/local/reference and matched Render2D reference objectives
+are satisfied with required symbolic relocations. These evaluate existing source
+cases; they do not establish a new equivalent RenderParticles transformation.
+
+Final native GC2.7 reproducer proofs pass on each host after disconnecting both
+private original project/run paths and moving the bundle. Three fresh compilations
+retain exact object/raw closure and stock checks; missing blobs fail verification.
+Five integrity tests per host also cover reduction export, while live relocated
+replay covers search. Receipts are `build/rpw-v3/` and `build/rpl-v2/`; the V6 search
+and cross-host objective receipts are under `call-argument-audit/`.
+
+The native Windows/Linux analyzers normalize the same new Windows full Render
+capture to format-4 fingerprint
+`ceff10d256236a0497e6b3d53851fc6d9ff8d2cbcbe03c0bd7bfc0b9d95e4aee`.
+This is cross-host retained analysis, not an independent Linux full-unit compile;
+the new tiny/backend/scalarization fixtures were independently compiled on both
+hosts. Earlier failed/intermediate producers and reproducer attempts remain
+separate diagnostics. The [source-write audit](oracle-source-origin-audit.md)
+identifies guarded transformation edges still needed for original assignment,
+declaration-initializer and inline-leaf ancestry. Reused CSE indices, source lines
+and an active initializer callback are insufficient joins.
+
+## Previous extension: frontend scalarization and real source examples
 
 V5 observes actual aggregate-part temporary returns, original byte/bit intervals,
 Object/VarInfo/type identities and independent function-end totals. The native
@@ -16,7 +93,7 @@ versions, including six positive joins and three controls. The real computation
 is not a constant LI, so the narrow scalarized-initialization objective remains
 indeterminate. See [scalarization provenance](oracle/scalarization.md).
 
-Relevant-state fingerprints are now format 3 and retain whole-function frontend
+V5 introduced format-3 fingerprints retaining whole-function frontend
 bindings, including creations without graph nodes. Unsupported normalization
 disables grouping. They also retain preallocation definitions, CFG and actual
 coalescing evidence: equal final graphs can have different definition predicates.
@@ -44,7 +121,7 @@ time from 22.9 to 10.3 seconds by classifying record families before allocating
 unrelated fields. This is a retained-analysis measurement, not a V5 compilation
 or source-search speed claim.
 
-Current validation passes on Windows and Linux: **172 workspace tests**, ten
+The V5 baseline validation passed on Windows and Linux: **172 workspace tests**, ten
 opt-in integration tests skipped by default, all-target Clippy with warnings
 denied, and formatting checks. Separate V5 producer checks pass 36 legacy
 comparisons, 45 backend probe off/on pairs, nine scalarization cases and 63
@@ -496,13 +573,13 @@ are now documented in the [benchmark report](oracle-source-guided-benchmarks.md)
 
 | Roadmap stage | Remaining work |
 |---|---|
-| Reproducible cases/contracts | Symbolic-address, flag and second-promoted-element mechanisms now have retained real/standalone cases; strengthen semantic lifetime identity and portable reproduction contracts |
+| Reproducible cases/contracts | Symbolic-address, flag and second-promoted-element mechanisms have retained real/standalone cases; bounded same-host portable reproduction is implemented; broaden supported path/checker closures and strengthen semantic lifetime identity |
 | Backend provenance | Complete source-role/object and leaf/inline provenance beyond guarded object bindings and allocator ranges, justify semantic lifetime bindings for ambiguous generations, and close remaining alias/coverage gaps and rare coalescing cases |
 | Correspondence | Native provenance anchors, conditional injective hypotheses, actual local merge chains and boundary diagnostics are implemented; finish semantic lifetime/replacement/elimination evidence and additional backend phases |
-| Source search | Extend precise provenance/objective recognition, add language-aware recipes and finish the full RenderParticles investigation; bounded harness, all requested mechanism cases and one useful checked full-function graph edit are implemented |
+| Source search | Extend precise provenance/objective recognition, including explicit no-allocation boundaries, add language-aware recipes and finish the full RenderParticles investigation; bounded harness, argument-qualified Normalize counts and one useful checked full-function graph edit are implemented |
 | Reduction | Native deterministic reduction/rebinding/uncertainty gates, static category/promoted-copy predicates and replay are implemented; add category-transition reference support and retest discoveries in RenderParticles |
 | Matched-source index | Native exact-match corpus/query/revalidation and real symbolic member/reference-argument examples are implemented; expand argument/promotion role coverage and test useful transplants |
-| Delivery | Finish current extension's compiler-version/platform checks, native documentation/kit/schema updates and the complete RenderParticles investigation; bounded overhead/throughput measurements are available |
+| Delivery | Finish original-source/semantic lifetime coverage and the complete RenderParticles investigation; V6 compiler-version/platform checks and native/kit development documentation are implemented; V6 throughput has not been benchmarked |
 
 The qualified-symbol objective now has a concrete independently checked C++ graph
 edit. Native reduction and matched-source indexing now use the shared evaluator.

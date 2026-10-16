@@ -217,8 +217,21 @@ pub fn run(request: &Request) -> Result<Report> {
                     .any(|p| fs::read(request.root.join(p))
                         .ok()
                         .and_then(|b| coff::defined_symbols(&b).ok())
-                        .is_some_and(|s| s.contains("_OracleRust_CounterProbeV5"))),
+                        .is_some_and(|s| s.contains("_OracleRust_CounterProbeV6"))),
                 "Rust counter observer ABI is stale; rebuild the common hooks with the current sources"
+            );
+            ensure!(
+                compiled_objects
+                    .iter()
+                    .any(|p| fs::read(request.root.join(p))
+                        .ok()
+                        .and_then(|b| coff::defined_symbols(&b).ok())
+                        .is_some_and(|symbols| symbols
+                            .contains(crate::call_argument_probe::FORCE_HANDLER)
+                            && crate::producer::ARGUMENT_HOOKS
+                                .iter()
+                                .all(|hook| symbols.contains(*hook)))),
+                "Rust V6 argument observer hooks are missing; rebuild the common hooks with the current sources"
             );
             let mut dispatchers = 0;
             for input in &mut inputs {
@@ -249,6 +262,30 @@ pub fn run(request: &Request) -> Result<Report> {
                 "native provenance requires exactly one expression initializer"
             );
             messages.push("installed guarded retail expression dispatch observations".into());
+            let argument_inputs = inputs
+                .iter()
+                .filter(|p| p.ends_with(".obj") && !compiled_objects.contains(p))
+                .map(|p| Ok((p.clone(), fs::read(request.root.join(p))?)))
+                .collect::<Result<Vec<_>>>()?;
+            let arguments =
+                crate::call_argument_probe::install(&request.root, version, &argument_inputs)?;
+            for input in &mut inputs {
+                if let Some(data) = arguments.objects.get(input) {
+                    let output = format!("build/{version}/oracle/arguments/{}", basename(input));
+                    write(&request.root, &output, data)?;
+                    *input = output;
+                }
+            }
+            let argument_island =
+                format!("build/{version}/oracle/compiled/rust/argument-islands.obj");
+            write(&request.root, &argument_island, &arguments.islands)?;
+            inputs.push(argument_island);
+            write(
+                &request.root,
+                &format!("build/{version}/oracle/arguments/guards.json"),
+                &serde_json::to_vec_pretty(&arguments.guards)?,
+            )?;
+            messages.push("installed guarded regular-call argument observations".into());
             let counter_inputs = inputs
                 .iter()
                 .filter(|p| p.ends_with(".obj") && !compiled_objects.contains(p))
@@ -304,12 +341,20 @@ pub fn run(request: &Request) -> Result<Report> {
             );
             messages.push("installed guarded retail coalescing observations".into());
         }
-        for symbol in config["oracle"]["hooks"]
+        let mut hooks = config["oracle"]["hooks"]
             .as_array()
             .into_iter()
             .flatten()
             .filter_map(Value::as_str)
-        {
+            .collect::<Vec<_>>();
+        if native {
+            for hook in crate::producer::ARGUMENT_HOOKS {
+                if !hooks.contains(&hook) {
+                    hooks.push(hook);
+                }
+            }
+        }
+        for symbol in hooks {
             let mut held = vec![];
             for path in &inputs {
                 if path.ends_with(".obj")
