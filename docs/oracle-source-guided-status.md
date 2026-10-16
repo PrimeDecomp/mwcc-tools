@@ -23,9 +23,15 @@ complete. The completed Rust migration remains a separate release.
 - The old mapped-subgraph projection remains for historical reference fixtures;
   production remap and future source objectives use the evidence-aware interface.
 
-Elimination remains **indeterminate**. The comparison API does not yet bind rich
-birth histories to graph lifetimes or consume them as semantic correspondence
-anchors. Capturing births does not turn unmatched nodes into elimination proof.
+The new native [provenance comparison](oracle/graph-correspondence.md) compares
+actual `before_simplify` graphs. It combines unique complete named-object and
+qualified-symbol anchors with instruction votes, reports only injective conditional
+hypotheses, and retains conflicts, complete nodes, multiplicities and unclassified
+boundary edges. Actual capture-local merge chains remain separate from hypotheses.
+The shared objective's graph diagnostics now use this comparison.
+
+Elimination remains **indeterminate**. These anchors do not establish complete
+semantic graph lifetimes. Capturing births does not turn unmatched nodes into elimination proof.
 Snapshot names remain existing boundaries, not new backend-phase instrumentation.
 
 ## Retail instrumentation
@@ -156,6 +162,40 @@ remain a conservative grouping limitation. Proofs are under
 `build/source-guided/address-reuse-audit/` and
 `/home/henrique/.cache/mwcc-address-reuse-audit/`.
 
+## Scalar-array and call-result origins
+
+The V4 producer guards two scalar `COpt_ArrayToRegister` increment sites and six
+`FunctionCalls_GenerateCall` result sites per compiler version. New typed records
+bind each scalar promotion to its original array Object, complete name/type,
+element index/size and checked bounds. Call records bind the original call ENode,
+return type and single/paired result role, with a bounded partial expression.
+Output bytes are explicitly incomplete: only the Operand tag is initialized at
+these birth sites. Separate scoped totals detect missing bindings. Vector-array
+promotion and full expression/inline/lifetime ancestry remain open.
+
+The [promoted-flag case](oracle-source-guided-case-promoted-flags.md) captures both
+historical real RenderParticles array candidates and a small cross-version
+reproducer. The second element is created above the completed coalescing window;
+its incoming copy passes interference and is rejected by
+`destination_above_window`. A new `promoted_copy_coalescing` objective binds the
+source element to its unique birth/graph node and tests an actual incoming-copy
+decision. It does not infer source initializer identity. All three versions have
+positive first-element coalescing and second-element rejection proofs on both
+hosts. Two store/helper variants retain unused promotion births but move the live
+value elsewhere; the evaluator correctly leaves those cases indeterminate.
+Twenty-three bounded standalone variants and a full-function outside-loop store
+experiment are documented. The full rewrite removes the move and worsens final
+matching; no matching fix or game edit is claimed.
+
+Fingerprint format 2 includes initialized scalar-array origin and partial call
+shape/type evidence, excludes capture pointers/inactive bytes and masks unused
+array flag bits. Native `source-search evaluate` applies contracts to retained
+captures/source/object files without compilation or semantic checking. Static
+`range_category` is available to search, reduction and matched-source queries;
+the instruction-preserving `change_range_category` transition remains distinct.
+Shared evaluation validates object/source hashes, exact report/trace binding,
+supported compiler context and explicit verified-identical stock status.
+
 ## Native source-search harness
 
 The new [`source_guided` API and `source-search` command](oracle/source-search.md)
@@ -203,8 +243,8 @@ in a fresh independent compile and satisfy all configured gates again. Pending
 verification survives budgets/resume, accepted candidate-only dependencies are
 rescanned, and replay performs three fresh builds. Results distinguish a fixed
 point of configured passes from global minimality and leave transplantation
-unvalidated. Category-transition reduction, stronger lifetime elimination and
-promoted-array predicates remain unsupported.
+unvalidated. Static range-category and promoted-copy predicates are supported;
+category-transition reduction and stronger lifetime elimination remain open.
 
 A real bounded reduction removes an unrelated 222-line constructor from the
 winning full CElementGen source: 117,085 to 110,801 bytes, with exactly two
@@ -212,6 +252,15 @@ EnvModulate pairs and required HA/LO relocations still observed. Four builds
 include private/original calibration and independent verification; the fresh
 object reproduces. This is explicitly mechanism-only and not a game change.
 Evidence is retained under `build/source-guided/reduction-probes/particle-windows/`.
+
+The new promoted-copy predicate also passes a native GC 2.7 reducer run: 1,117 to
+255 bytes, 59 candidates and six independently verified acceptances. Fresh replay
+uses three new builds and reproduces the exact final stock object. The selected
+register/window changes from 44/43 to 41/40 while the ordinal-zero
+`destination_above_window` rejection and required `observe` REL24 relocation
+remain. A fresh ghost baseline is rejected as indeterminate with no bound incoming
+copies. This is a mechanism reproducer, not a semantic or transplant claim.
+Proof: `build/source-guided/promoted-reducer-audit/verification.compact.json`.
 
 [`source-index`](oracle/source-index.md) admits only exact function bytes and
 symbolic relocations against a supplied target. Entries retain complete source,
@@ -238,6 +287,30 @@ before completed search/reduction outcomes are saved. Analyzer identity is still
 hashed once per invocation.
 
 ## Validation
+
+V4 producers pass 36 C/Rust migration comparisons per host and 45 backend
+off/on pairs per host (90 captures), covering all three compiler versions,
+scalar GPR/FPR promotions and all six call-result paths including vector and
+paired-single results. Stock objects and all existing non-provenance trace
+records agree. Cross-host object hashes and typed summaries agree for all 45
+cases; common-hook and counter-island COFF bytes also agree. Proof roots are
+`build/source-guided/birth-origin-audit/` and
+`/home/henrique/.cache/mwcc-birth-origin-audit/`.
+New native comparison reports for the real baseline/shared-pointer source pair
+are identical across hosts: 555 to 554 nodes, 292 conditional injective pairs,
+no conflicts, and the anchored `noRota` degree changes from 159 to 156. Neighbor
+changes outside the mapped subgraph remain unclassified. Proof:
+`build/source-guided/graph-correspondence-audit/verification.json`.
+The final gated evaluator's six positive, two standalone ghost-negative and one
+full RenderParticles ghost-negative retained evaluations agree in full across
+hosts under `build/source-guided/promoted-copy-final-gated-audit/`. All retained
+source/object/report-trace gates pass; ghost objectives remain indeterminate.
+The current full workspace suites pass on both hosts: 148 tests, ten ignored
+compiler-backed tests in the default suite, and all-target Clippy without warnings.
+Exact V4 constructor preservation/tamper tests pass separately on both hosts/all
+three versions. Relative SDK input-scan destinations also work with a distinct
+compiler working directory on both hosts. Logs and summaries are retained under
+`build/source-guided/birth-origin-audit/`.
 
 127 workspace tests pass on Windows and Linux, with ten compiler-backed tests
 left opt-in. All-target Clippy and final focused index checks pass on both hosts;
@@ -357,11 +430,11 @@ overhead/throughput benchmark remains open.
 
 | Roadmap stage | Remaining work |
 |---|---|
-| Reproducible cases/contracts | Capture the flag/second-promoted-element mechanisms and finish identity/provenance/objective/build-input contracts; the symbolic-address case now has a useful checked graph edit |
+| Reproducible cases/contracts | Symbolic-address, flag and second-promoted-element mechanisms now have retained real/standalone cases; strengthen semantic lifetime identity and portable reproduction contracts |
 | Backend provenance | Complete source-role/object and leaf/inline provenance beyond guarded object bindings and allocator ranges, justify semantic lifetime bindings for ambiguous generations, and close remaining alias/coverage gaps and rare coalescing cases |
-| Correspondence | Add lifecycle/provenance anchors, generations, observed merges/replacements and justified elimination; extend phase selection to newly captured backend phases |
-| Source search | Capture the remaining requested mechanisms, extend precise provenance/objective recognition, add language-aware recipes and finish the full RenderParticles investigation; the bounded harness and one useful checked full-function graph edit are implemented |
-| Reduction | Native deterministic reduction/rebinding/uncertainty gates and replay are implemented; add category-transition reference support and promoted-array predicates, and retest discoveries in RenderParticles |
+| Correspondence | Native provenance anchors, conditional injective hypotheses, actual local merge chains and boundary diagnostics are implemented; finish semantic lifetime/replacement/elimination evidence and additional backend phases |
+| Source search | Extend precise provenance/objective recognition, add language-aware recipes and finish the full RenderParticles investigation; bounded harness, all requested mechanism cases and one useful checked full-function graph edit are implemented |
+| Reduction | Native deterministic reduction/rebinding/uncertainty gates, static category/promoted-copy predicates and replay are implemented; add category-transition reference support and retest discoveries in RenderParticles |
 | Matched-source index | Native exact-match corpus/query/revalidation is implemented; expand useful source-role coverage and find examples of the requested argument/promotion behavior to feed the harness |
 | Delivery | Compiler-version/platform checks, trace overhead/search throughput measurements, native documentation/kit/schema updates and the complete RenderParticles investigation |
 
@@ -369,7 +442,7 @@ The qualified-symbol objective now has a concrete independently checked C++ grap
 edit. Native reduction and matched-source indexing now use the shared evaluator.
 Close source-role coverage beyond this Normalize pair path and the remaining
 grouping gaps. Complete exact backend expression/inline evidence and semantic
-lifetime binding for ambiguous generations. Capture and label the three
-requested real mechanisms and complete the RenderParticles loop. Keep the full
+lifetime binding for ambiguous generations. Complete the remaining RenderParticles
+source-discovery loop using the three retained mechanisms. Keep the full
 roadmap active: the delivered native implementations do not close the remaining
 provenance, mechanism and end-to-end acceptance requirements.

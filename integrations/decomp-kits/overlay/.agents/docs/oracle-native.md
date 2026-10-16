@@ -177,12 +177,19 @@ required symbolic relocations and a purpose. `transformations` records identifie
 families, preconditions and atomic exact-anchor edits. Depth and generation limits
 bound exploration. Use these structured inputs rather than wrapping report text.
 
-Available predicates are `direct_initialization`, `change_range_category` and
+Available predicates are `direct_initialization`, `range_category`, `change_range_category` and
 `eliminate_temporary`, plus the scoped `symbol_address_pairs` count. Direct initialization checks a constant LI and removal of
 the intermediate copy through final allocation. Category changes must preserve
 normalized instructions and relocations. Elimination currently stays indeterminate:
 an unmatched graph node is insufficient evidence. Range categories describe
 allocator number ranges, not semantic source roles.
+The static `range_category` predicate preserves an observed category without
+requiring a transition or identical instructions, so it can serve reducer/index
+queries. `promoted_copy_coalescing` selects a guarded scalar array element by
+complete name, element index and size, then tests an observed incoming-copy
+ordinal for actual coalescing or a named rejection condition. It requires complete
+promotion/counter/pass/graph evidence. An unused promotion node with no incoming
+copy remains indeterminate; it does not establish direct source initialization.
 
 `symbol_address_pairs` selects a qualified mangled `symbol`, `minimum` and
 `maximum`, with class 4 (GPR). It counts observed high/low pairs from the guarded
@@ -192,8 +199,11 @@ includes the source Operand, selected births, surviving graph nodes and confirme
 merges. Other materialization paths and optimizer-created values remain outside
 this count, so it is not complete temporary-elimination proof. Retain required
 symbolic relocation kinds with minimum counts of one; do not accidentally require
-all repeated address pairs to remain. Current producers use the guarded V3 counter
+all repeated address pairs to remain. Current producers use the guarded V4 counter
 descriptor and must be rebuilt with current common hooks.
+V4 adds scalar-array Object/index bindings and six call-result origin paths.
+Call output bytes are partial at birth, and full source/inline/lifetime ancestry
+remains incomplete. Existing pinned migration packages are unchanged.
 
 Require `purpose: "source_transformation"` and configure a semantic-check executable
 with arguments using `{source}`, `{object}`, `{baseline_source}` and
@@ -220,6 +230,18 @@ checks or source semantics. Fixed GQR operands at the observed PSQ_L/PSQ_ST form
 retain all twelve bytes, including their hardware selectors; other kind-1 forms
 remain unsupported. Generated local-symbol suffixes can still split equivalent
 states. Use replay when fresh compiler and semantic checks are required.
+Fingerprint format 2 includes initialized array origins and partial call shapes,
+excluding capture pointers and inactive bytes; inspect `fingerprint_format_version`.
+
+`source-search evaluate CONTRACT CAPTURE --source FILE --object FILE` evaluates
+retained inputs without compiling. Supply `--baseline-capture`, `--baseline-source`
+and `--baseline-object` together for transition predicates; otherwise the candidate
+is its own baseline. The API validates source/object hashes, report/trace binding
+and explicit verified-identical stock status. It does not rescan dependencies or
+run a semantic checker, so source-transformation purpose remains indeterminate.
+Use `provenance compare FIRST SECOND --link NAME --json` for complete observed
+boundary graphs, conditional injective correspondence, conflicts, multiplicity
+changes and unclassified boundary edges. An unmatched node does not prove removal.
 
 `progress.json` saves the queue, evaluations and every source representative of
 each relevant compiler state. Exact compilation reuse separately hashes both
@@ -258,8 +280,9 @@ Read `status`, `best`, `baseline_evaluation`, `outcomes` and each outcome's
 `verification`; `verified_reduction` means a fixed point of configured passes,
 not a global minimum. A `mechanism_reproducer` can change program behavior and
 explicitly leaves `transplantation_validated: false`. Retest useful discoveries
-in the complete original function. General lifetime elimination, array-promotion
-role predicates and reduction of a category transition remain unsupported.
+in the complete original function. Static category and promoted-copy predicates
+are supported. General lifetime elimination and reduction of a category transition
+remain unsupported.
 
 ## Query matched source examples (development)
 

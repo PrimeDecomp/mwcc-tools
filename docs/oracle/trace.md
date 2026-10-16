@@ -39,6 +39,15 @@ including a birth cutoff, current visibility, and per-function graph counts. See
 [backend provenance](provenance.md); semantic categories, complete origins and
 semantic lifetime correspondence remain incomplete.
 
+V4 adds `pv.value.array` for guarded scalar-array promotion (original Object,
+element bounds/index and complete known name/type) and `pv.value.call_result`
+for six guarded call-result paths (original call ENode, return type, result part
+and a partial output Operand). Call output bytes are explicitly incomplete at
+birth; only their tag is initialized. Function scopes/totals provide separate
+array and call-result coverage. Vector-array promotion and complete inline/source
+lifetimes are not covered. Typed reports include the exact input trace SHA-256
+and each observed coalescing pass's end position.
+
 **`MWCC_ORACLE_SCHEDULE`** (`--schedule`):
 
 | Lines | Content |

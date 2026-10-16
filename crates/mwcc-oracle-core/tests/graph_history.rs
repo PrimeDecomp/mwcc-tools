@@ -197,6 +197,7 @@ fn confirmed_merge_chains_add_contributors_without_erasing_child_births() {
     let mut pass = Pass {
         id: 1,
         begin_position: 4,
+        end_position: None,
         link: "sample".into(),
         class: 4,
         header: BTreeMap::from([

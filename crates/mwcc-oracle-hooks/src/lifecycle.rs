@@ -19,15 +19,17 @@ pub struct Descriptor {
     object_binding: u32,
     operand_binding: u32,
     data_link_offset: u32,
+    origin_binding: u32,
 }
 const _: () = {
-    assert!(core::mem::size_of::<Descriptor>() == 44);
+    assert!(core::mem::size_of::<Descriptor>() == 48);
     assert!(core::mem::align_of::<Descriptor>() == 4);
     assert!(core::mem::offset_of!(Descriptor, selector) == 12);
     assert!(core::mem::offset_of!(Descriptor, role) == 16);
     assert!(core::mem::offset_of!(Descriptor, object_binding) == 32);
     assert!(core::mem::offset_of!(Descriptor, operand_binding) == 36);
     assert!(core::mem::offset_of!(Descriptor, data_link_offset) == 40);
+    assert!(core::mem::offset_of!(Descriptor, origin_binding) == 44);
 };
 #[derive(Clone, Copy)]
 struct State {
@@ -48,6 +50,8 @@ struct State {
     dispatches: u32,
     dispatch_returns: u32,
     materializations: u32,
+    array_promotions: u32,
+    call_results: u32,
     origin_statement: *const u8,
     origin_node: *const u8,
     origin_id: u32,
@@ -70,6 +74,8 @@ const EMPTY: State = State {
     dispatches: 0,
     dispatch_returns: 0,
     materializations: 0,
+    array_promotions: 0,
+    call_results: 0,
     origin_statement: ptr::null(),
     origin_node: ptr::null(),
     origin_id: 0,
@@ -81,6 +87,7 @@ static mut NEXT: u32 = 0;
 static mut ENABLED: i8 = -1;
 static mut TEXT: [u8; 2048] = [0; 2048];
 static mut HEX: [u8; 4096] = [0; 4096];
+static mut OUTPUT_HEX: [u8; 49] = [0; 49];
 #[repr(C)]
 pub struct ExpressionDescriptor {
     retail_target: u32,
@@ -539,7 +546,175 @@ unsafe fn operand_binding(r: &Registers, d: &Descriptor, function: u32, value: u
     }
 }
 
-#[unsafe(export_name = "OracleRust_CounterProbeV3")]
+unsafe fn bounded_hex(text: *const u8, limit: usize) -> (usize, bool) {
+    unsafe {
+        let hex = ptr::addr_of_mut!(HEX).cast::<u8>();
+        let mut length = 0;
+        if !text.is_null() {
+            while length < limit && text.add(length).read() != 0 {
+                let byte = text.add(length).read();
+                let digit = |v: u8| if v < 10 { b'0' + v } else { b'a' + v - 10 };
+                hex.add(length * 2).write(digit(byte >> 4));
+                hex.add(length * 2 + 1).write(digit(byte & 15));
+                length += 1;
+            }
+        }
+        hex.add(length * 2).write(0);
+        (
+            length,
+            !text.is_null() && (length < limit || text.add(length).read() == 0),
+        )
+    }
+}
+
+/// These fields are read at the two actual scalar-array counter increments,
+/// before the retail store writes EAX into values[ECX]. The guarded constructor
+/// and consuming loop establish the original object and element meanings.
+unsafe fn array_origin(r: &Registers, function: u32, value: u32, class: u32, register: u32) {
+    unsafe {
+        let promotion = r.slot(1).unwrap_or(0) as *const u8; // ESI
+        let index = r.slot(6).unwrap_or(u32::MAX); // ECX
+        if promotion.is_null() {
+            OracleTrace_Printf(
+                c"pv.gap function=%lu value=%lu reason=array_origin_null\n".as_ptr(),
+                function,
+                value,
+            );
+            return;
+        }
+        let object = read::<*const u8>(promotion, 4);
+        let element_size = read::<i32>(promotion, 12);
+        let array_size = read::<i32>(promotion, 16);
+        let count = read::<i32>(promotion, 20);
+        let flags = read::<u8>(promotion, 8);
+        if object.is_null()
+            || !(1..=8).contains(&count)
+            || index >= count as u32
+            || element_size <= 0
+            || element_size.checked_mul(count) != Some(array_size)
+            || flags & 1 != 0
+            || !matches!(class, 3 | 4)
+            || (flags & 2 != 0) != (class == 3)
+            || r.slot(7) != Some(register)
+        {
+            OracleTrace_Printf(
+                c"pv.gap function=%lu value=%lu reason=array_origin_bounds\n".as_ptr(),
+                function,
+                value,
+            );
+            return;
+        }
+        let ty = read::<*const u8>(object, 14);
+        if ty.is_null() || expression::type_id(ty) != 12 || expression::type_size(ty) != array_size
+        {
+            OracleTrace_Printf(
+                c"pv.gap function=%lu value=%lu reason=array_origin_type\n".as_ptr(),
+                function,
+                value,
+            );
+            return;
+        }
+        let element = read::<*const u8>(ty, 6);
+        if element.is_null() || expression::type_size(element) != element_size {
+            OracleTrace_Printf(
+                c"pv.gap function=%lu value=%lu reason=array_origin_element\n".as_ptr(),
+                function,
+                value,
+            );
+            return;
+        }
+        let name = read::<*const u8>(object, 10);
+        let text = if name.is_null() {
+            ptr::null()
+        } else {
+            name.add(10)
+        };
+        let (_, complete) = bounded_hex(text, 256);
+        ptr::addr_of_mut!(STATE.array_promotions)
+            .write(ptr::addr_of!(STATE.array_promotions).read().wrapping_add(1));
+        OracleTrace_Printf(c"pv.value.array schema=1 function=%lu value=%lu promotion=%08x object=%08x register=%lu element_index=%lu element_size=%ld array_size=%ld element_count=%ld flags=%lu datatype=%lu storage=%lu type_kind=%d type_size=%ld name_known=%d name_complete=%d name_hex=%s\n".as_ptr(),
+            function,value,promotion as u32,object as u32,register,index,element_size,array_size,count,u32::from(flags),
+            u32::from(read::<u8>(object,2)),u32::from(read::<u16>(object,22)),expression::type_id(ty),expression::type_size(ty),
+            i32::from(!name.is_null()),i32::from(complete),ptr::addr_of!(HEX).cast::<core::ffi::c_char>());
+    }
+}
+
+/// The helper's original frame and result pointer are guarded by its full
+/// retail body. The operand has only its tag set at this point; raw inactive
+/// bytes are retained for audit but never interpreted as final output state.
+unsafe fn call_result_origin(
+    r: &Registers,
+    function: u32,
+    value: u32,
+    class: u32,
+    register: u32,
+    binding: u32,
+) {
+    unsafe {
+        let stack = r.slot(3).unwrap_or(0).wrapping_add(8) as *const u8;
+        let item = read::<*const u8>(stack, 0x64);
+        let output = r.slot(7).unwrap_or(0) as *const u8;
+        let return_type = read::<*const u8>(stack, 0xc);
+        let part = binding - 1;
+        if item.is_null()
+            || output.is_null()
+            || return_type.is_null()
+            || read::<*const u8>(stack, 0x68) != output
+            || !matches!(item.read(), 54 | 55)
+        {
+            OracleTrace_Printf(
+                c"pv.gap function=%lu value=%lu reason=call_result_origin_input\n".as_ptr(),
+                function,
+                value,
+            );
+            return;
+        }
+        let function_type = read::<*const u8>(item, 22);
+        let callee = read::<*const u8>(item, 14);
+        let expected_kind = match (part, class) {
+            (1, 3) => 5,
+            (1, 2) => 6,
+            (1, 4) => 0,
+            (2 | 3, 4) => 3,
+            _ => u8::MAX,
+        };
+        if function_type.is_null()
+            || callee.is_null()
+            || read::<*const u8>(function_type, 14) != return_type
+            || output.read() != expected_kind
+        {
+            OracleTrace_Printf(
+                c"pv.gap function=%lu value=%lu reason=call_result_origin_type\n".as_ptr(),
+                function,
+                value,
+            );
+            return;
+        }
+        let raw = ptr::addr_of_mut!(OUTPUT_HEX).cast::<u8>();
+        for index in 0..24 {
+            // Keep this externally owned partial snapshot scalar. Vectorizing
+            // fixed-size hex conversion emits public SIMD constants into the
+            // COFF support surface and combines individual observations.
+            let byte = output.add(index).read_volatile();
+            let digit = |v: u8| if v < 10 { b'0' + v } else { b'a' + v - 10 };
+            raw.add(index * 2).write_volatile(digit(byte >> 4));
+            raw.add(index * 2 + 1).write_volatile(digit(byte & 15));
+        }
+        raw.add(48).write(0);
+        let text = ptr::addr_of_mut!(TEXT).cast::<u8>();
+        text.write(0);
+        expression::describe(text.cast(), 512, item, 8);
+        bounded_hex(text, 2047);
+        ptr::addr_of_mut!(STATE.call_results)
+            .write(ptr::addr_of!(STATE.call_results).read().wrapping_add(1));
+        OracleTrace_Printf(c"pv.value.call_result schema=1 function=%lu value=%lu part=%lu register=%lu item=%08x kind=%lu callee=%08x return_type=%08x type_kind=%d type_size=%ld output=%08x output_kind=%lu output_complete=0 output_hex=%s tree_known=1 tree_complete=0 tree_hex=%s\n".as_ptr(),
+            function,value,part,register,item as u32,u32::from(item.read()),callee as u32,return_type as u32,
+            expression::type_id(return_type),expression::type_size(return_type),output as u32,u32::from(output.read()),
+            raw.cast::<core::ffi::c_char>(),ptr::addr_of!(HEX).cast::<core::ffi::c_char>());
+    }
+}
+
+#[unsafe(export_name = "OracleRust_CounterProbeV4")]
 pub unsafe extern "C" fn observe(r: &Registers, site: u32, d: &Descriptor) {
     unsafe {
         if !enabled() {
@@ -575,7 +750,7 @@ pub unsafe extern "C" fn observe(r: &Registers, site: u32, d: &Descriptor) {
                 state.counts[i] = d.counts.add(i).read_unaligned();
             }
             ptr::addr_of_mut!(STATE).write(state);
-            OracleTrace_Printf(c"pv.function.begin schema=1 function=%lu parent=%lu site=%lx c0=%lu c1=%lu c2=%lu c3=%lu c4=%lu coverage=direct_counter_writes dispatch=guarded_table_v1 materialization=guarded_normalize_pair_v1 link=%s\n".as_ptr(),
+            OracleTrace_Printf(c"pv.function.begin schema=1 function=%lu parent=%lu site=%lx c0=%lu c1=%lu c2=%lu c3=%lu c4=%lu coverage=direct_counter_writes dispatch=guarded_table_v1 materialization=guarded_normalize_pair_v1 array_promotion=guarded_scalar_v1 call_result=guarded_call_result_v1 link=%s\n".as_ptr(),
                 id,parent.id,site,state.counts[0],state.counts[1],state.counts[2],state.counts[3],state.counts[4],
                 if state.object.is_null(){c"?".as_ptr().cast()}else{pcode::link_name(state.object)});
             return;
@@ -590,7 +765,7 @@ pub unsafe extern "C" fn observe(r: &Registers, site: u32, d: &Descriptor) {
                 return;
             }
             OracleTrace_Printf(
-                c"pv.function.end function=%lu births=%lu graphs=%lu ranges=%lu dispatches=%lu dispatch_returns=%lu materializations=%lu c0=%lu c1=%lu c2=%lu c3=%lu c4=%lu\n"
+                c"pv.function.end function=%lu births=%lu graphs=%lu ranges=%lu dispatches=%lu dispatch_returns=%lu materializations=%lu array_promotions=%lu call_results=%lu c0=%lu c1=%lu c2=%lu c3=%lu c4=%lu\n"
                     .as_ptr(),
                 state.id,
                 state.sequence,
@@ -599,6 +774,8 @@ pub unsafe extern "C" fn observe(r: &Registers, site: u32, d: &Descriptor) {
                 state.dispatches,
                 state.dispatch_returns,
                 state.materializations,
+                state.array_promotions,
+                state.call_results,
                 state.counts[0],
                 state.counts[1],
                 state.counts[2],
@@ -688,6 +865,25 @@ pub unsafe extern "C" fn observe(r: &Registers, site: u32, d: &Descriptor) {
                 if statement.is_null(){-1}else{read::<i32>(statement,22)});
             object_binding(r, d, state.id, sequence);
             operand_binding(r, d, state.id, sequence);
+            match d.origin_binding {
+                0 => {}
+                1 => array_origin(r, state.id, sequence, class, after.wrapping_sub(1)),
+                2..=4 => call_result_origin(
+                    r,
+                    state.id,
+                    sequence,
+                    class,
+                    after.wrapping_sub(1),
+                    d.origin_binding,
+                ),
+                _ => {
+                    OracleTrace_Printf(
+                        c"pv.gap function=%lu value=%lu reason=birth_origin_descriptor\n".as_ptr(),
+                        state.id,
+                        sequence,
+                    );
+                }
+            }
         } else {
             OracleTrace_Printf(c"pv.counter.change function=%lu role=%lu cls=%lu old=%lu after=%lu physical=%lu site=%lx phase=%lu\n".as_ptr(),
                 state.id,d.role,class,old,after,physical,site,state.phase);

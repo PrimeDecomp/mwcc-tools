@@ -5,6 +5,7 @@ use crate::{
 };
 use anyhow::{Context, Result, ensure};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -39,6 +40,8 @@ pub struct Candidate {
 pub struct Pass {
     pub id: u32,
     pub begin_position: usize,
+    #[serde(default)]
+    pub end_position: Option<usize>,
     pub link: String,
     pub class: u8,
     pub header: BTreeMap<String, String>,
@@ -49,6 +52,9 @@ pub struct Pass {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Report {
     pub format_version: u32,
+    /// Digest of the exact trace parsed into this report. Empty in older reports.
+    #[serde(default)]
+    pub trace_sha256: String,
     pub passes: Vec<Pass>,
     pub decisions: Evaluation,
     pub lifecycle: Evaluation,
@@ -130,6 +136,7 @@ pub fn parse(text: &str) -> Result<Report> {
             passes.push(Pass {
                 id,
                 begin_position: r.line,
+                end_position: None,
                 link: r.get("link")?.into(),
                 class: integer(&r, "cls")?.try_into()?,
                 header: r.fields,
@@ -157,6 +164,7 @@ pub fn parse(text: &str) -> Result<Report> {
                 "candidate count differs at pass end"
             );
             pass.ended = true;
+            pass.end_position = Some(r.line);
             continue;
         }
         let id = integer(&r, "candidate")?;
@@ -291,6 +299,7 @@ pub fn parse(text: &str) -> Result<Report> {
     let graphs = crate::graph_history::parse(text, &history, &passes)?;
     Ok(Report {
         format_version: 2,
+        trace_sha256: format!("{:x}", Sha256::digest(text.as_bytes())),
         passes,
         decisions,
         lifecycle: Evaluation::indeterminate(

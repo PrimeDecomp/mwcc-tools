@@ -182,6 +182,9 @@ pub fn capture(
     cancel: &dyn Fn() -> bool,
 ) -> Result<Snapshot> {
     fs::create_dir_all(scratch)?;
+    // Compiler subprocesses use the project's working directory. Resolve scan
+    // and override destinations before crossing that directory boundary.
+    let scratch = scratch.canonicalize()?;
     let mut flags = request
         .flags
         .iter()
@@ -189,7 +192,7 @@ pub fn capture(
         .cloned()
         .collect::<Vec<_>>();
     let mut source = request.source.clone();
-    runner::apply_overrides(request, scratch, &mut flags, &mut source)?;
+    runner::apply_overrides(request, &scratch, &mut flags, &mut source)?;
     let actual_source = if Path::new(&source).is_absolute() {
         PathBuf::from(&source)
     } else {

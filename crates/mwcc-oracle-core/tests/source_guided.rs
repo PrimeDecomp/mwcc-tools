@@ -771,6 +771,7 @@ fn retained_state_analysis_checks_objects_coverage_and_unsupported_normalization
     let trace = synthetic(false, true, false);
     let mut c = compilation(&trace, source);
     let analysis = state::inspect(&c, "pipeline__Fii", 4, 0).unwrap();
+    assert_eq!(analysis.fingerprint_format_version, 2);
     assert_eq!(analysis.normalization.state, EvaluationState::Satisfied);
     assert_eq!(analysis.fingerprint.as_ref().unwrap().len(), 64);
     let original_object = c.object.clone();
@@ -791,6 +792,11 @@ fn retained_state_analysis_checks_objects_coverage_and_unsupported_normalization
     c.check_status = CheckStatus::Skipped;
     assert!(state::inspect(&c, "pipeline__Fii", 4, 0).is_err());
     c.check_status = CheckStatus::Verified;
+    for identical in [None, Some(false)] {
+        c.identical = identical;
+        assert!(state::inspect(&c, "pipeline__Fii", 4, 0).is_err());
+    }
+    c.identical = Some(true);
     assert!(state::inspect(&c, "pipeline__Fii", 4, 99).is_err());
     c.trace = trace.replace("graphs=1 ranges=2", "graphs=2 ranges=2");
     assert!(state::inspect(&c, "pipeline__Fii", 4, 0).is_err());
@@ -807,4 +813,56 @@ fn retained_state_analysis_checks_objects_coverage_and_unsupported_normalization
             .detail
             .contains("operand kind 99")
     );
+}
+
+#[test]
+fn backend_origin_fingerprints_keep_elements_and_call_shapes_but_ignore_partial_output_bytes() {
+    let t = synthetic(false, true, false);
+    let c = compilation(&t, b"model source");
+    let mut report = provenance::parse(&t).unwrap();
+    report.history.functions[0].births[0].array_promotion=Some(serde_json::from_value(serde_json::json!({
+        "trace_position":3,"promotion":"100","object":"200","element_index":1,"element_size":4,"array_size":8,"element_count":2,"flags":0,"datatype":1,"storage":0,"type_kind":12,"type_size":8,"name_known":true,"name_complete":true,"name_bytes":[102,108,97,103],"name_text":"flag"
+    })).unwrap());
+    report.history.functions[0].births[1].call_result=Some(serde_json::from_value(serde_json::json!({
+        "trace_position":4,"part":"single","item":"300","kind":54,"callee":"400","return_type":"500","type_kind":8,"type_size":4,"output":"600","output_kind":0,"output_bytes":vec![0;24],"output_complete":false,"tree_known":true,"tree_complete":false,"tree_bytes":[99,97,108,108],"tree_text":"call"
+    })).unwrap());
+    let fingerprint = |report: &mwcc_oracle_core::provenance::Report| {
+        state::fingerprint(&report.graphs.graphs[0], report, &c.object, c.version).unwrap()
+    };
+    let original = fingerprint(&report);
+    let call = report.history.functions[0].births[1]
+        .call_result
+        .as_mut()
+        .unwrap();
+    call.item = "301".into();
+    call.callee = "401".into();
+    call.return_type = "501".into();
+    call.output = "601".into();
+    call.output_bytes = vec![0xff; 24];
+    call.output_bytes[0] = 0;
+    let array = report.history.functions[0].births[0]
+        .array_promotion
+        .as_mut()
+        .unwrap();
+    array.promotion = "101".into();
+    array.object = "201".into();
+    array.flags = 0xf8;
+    assert_eq!(original, fingerprint(&report));
+    report.history.functions[0].births[0]
+        .array_promotion
+        .as_mut()
+        .unwrap()
+        .element_index = 0;
+    assert_ne!(original, fingerprint(&report));
+    report.history.functions[0].births[0]
+        .array_promotion
+        .as_mut()
+        .unwrap()
+        .element_index = 1;
+    report.history.functions[0].births[1]
+        .call_result
+        .as_mut()
+        .unwrap()
+        .kind = 55;
+    assert_ne!(original, fingerprint(&report));
 }

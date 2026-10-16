@@ -85,14 +85,59 @@ An example query for a complete, scoped zero count is:
 
 `link`, `version` and `flags` are optional exact filters. Queries evaluate each
 example against itself as a mechanism reproducer. They support guarded
-`symbol_address_pairs` counts and `direct_initialization`. Category **changes**
+`symbol_address_pairs` counts, `direct_initialization` and the current-state
+`range_category` predicate. For example:
+
+```json
+{
+  "kind": "range_category",
+  "value": {"name": "flag", "part": "single", "type_kind": 1, "type_size": 1},
+  "target": "inside_coalescing_window"
+}
+```
+
+The named object/type/part must uniquely bind to a complete observed birth. The
+predicate follows confirmed coalescer parent writes and tests the resulting
+root's category at the selected graph. A final allocated register/color alone
+does not make the category `physical`. This predicate requires no category
+transition or preserved instruction structure; it can query an already desired
+category. It says nothing about a value's source role or array-promotion status.
+Unknown range or ambiguous merge/birth evidence remains indeterminate.
+`promoted_copy_coalescing` can query the observed incoming-copy behavior of a
+scalar promoted array element:
+
+```json
+{
+  "kind": "promoted_copy_coalescing",
+  "value": {"name": "flag", "element_index": 1, "element_size": 4},
+  "copy": 0,
+  "outcome": {"kind": "rejected", "condition": "destination_above_window"}
+}
+```
+
+This requires complete guarded scalar-promotion provenance, a unique whole-function
+array-name/index/size birth without raw-register reuse, and a complete original
+graph-node binding. The latest matching coalescer pass before the selected graph
+must have complete decisions and matching counts/physical/window bounds. `copy`
+is the zero-based ordinal among observed incoming register-copy candidates for
+that element. It is **not** an automatic source-initializer or dominance binding.
+`outcome: {"kind":"coalesced"}` accepts an actual confirmed merge or an observed
+already-same-root copy removal. Rejection conditions come from the deciding
+retail branch. Missing or ambiguous provenance is indeterminate. Zero bound incoming copies
+remains indeterminate: an invisible promotion node may be a ghost while live
+initialization uses a different value. An out-of-range ordinal after at least
+one bound copy in a complete pass is unsatisfied. The current guarded scope supports scalar
+GPR/FPR promotion, not VMX promotion. Actual source examples still require exact
+function matching and fresh revalidation before being treated as corpus evidence.
+Category **changes**
 require a baseline transition and are rejected as static queries. General
 `eliminate_temporary` remains indeterminate until lifecycle coverage can prove
 it. A zero Normalize-pair count only establishes absence on that guarded path
 before the selected allocation graph; it does not prove absence of every
 address temporary. To find useful symbolic-address examples, add required
 relocations so functions that never reference the symbol cannot satisfy the
-query vacuously. Array-promotion role predicates remain future work.
+query vacuously. General initializer/dominance and vector-promotion bindings
+remain open.
 
 `verify` applies the same filters and objective, recompiles without a compilation
 cache, checks the complete snapshot before and after, checks stock equivalence,

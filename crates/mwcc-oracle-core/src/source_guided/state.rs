@@ -15,6 +15,8 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 
+pub const FINGERPRINT_FORMAT_VERSION: u32 = 2;
+
 pub fn digest(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
 }
@@ -249,6 +251,8 @@ pub fn fingerprint(g: &Graph, report: &Report, object: &[u8], version: Version) 
             let b=&f.births[(id.sequence-1) as usize];
             json!({"site":b.site,"phase":b.phase,"generation":b.generation,"object":b.object.as_ref().map(|o|json!({"part":o.part,"datatype":o.datatype,"storage":o.storage,"type_kind":o.type_kind,"type_size":o.type_size,"name":o.name_bytes,"complete":o.name_complete,"known":o.name_known})),
                 "materialization":b.materialization.as_ref().map(|m|json!({"part":m.part,"kind":m.kind,"displacement":m.displacement,"datatype":m.datatype,"storage":m.storage,"symbol_known":m.symbol_known,"symbol_complete":m.symbol_complete,"symbol":m.symbol_bytes})),
+                "array_promotion":b.array_promotion.as_ref().map(|a|json!({"index":a.element_index,"element_size":a.element_size,"array_size":a.array_size,"element_count":a.element_count,"flags":a.flags&7,"datatype":a.datatype,"storage":a.storage,"type_kind":a.type_kind,"type_size":a.type_size,"name_known":a.name_known,"name_complete":a.name_complete,"name":a.name_bytes})),
+                "call_result":b.call_result.as_ref().map(|c|json!({"part":c.part,"kind":c.kind,"type_kind":c.type_kind,"type_size":c.type_size,"tree_known":c.tree_known,"tree_complete":c.tree_complete,"tree":c.tree_bytes})),
                 "expression":b.expression.and_then(|id|f.expressions.iter().find(|e|e.id==id)).map(|e|json!({"scope":e.scope,"kind":e.kind,"dispatch_target":e.dispatch.as_ref().map(|d|d.retail_target),"complete":e.complete,"tree":e.tree_bytes}))})
         }).collect::<Vec<_>>();
         json!({"id":rename(r),"degree":n.stored_degree,"flags":n.flags,"color":n.color,"neighbors":neighbors,"category":n.range_category,
@@ -260,7 +264,7 @@ pub fn fingerprint(g: &Graph, report: &Report, object: &[u8], version: Version) 
     let data=elf.sections.iter().enumerate().filter(|(_,s)|s.flags&2!=0 && s.flags&4==0)
         .map(|(index,s)|json!({"name":s.name,"kind":s.kind,"size":s.size,"alignment":s.alignment,"bytes":s.data,
             "relocations":relocations.iter().filter(|r|r.section==index).map(|r|json!({"offset":r.offset,"kind":r.kind,"symbol":r.symbol.name,"addend":r.addend})).collect::<Vec<_>>() })).collect::<Vec<_>>();
-    let value = json!({"format_version":1,"version":version,"class":g.class,"boundary":g.boundary,"phase":g.phase,
+    let value = json!({"format_version":FINGERPRINT_FORMAT_VERSION,"version":version,"class":g.class,"boundary":g.boundary,"phase":g.phase,
         "physical":g.physical_limit,"start":g.start,"count":g.count,"observations":g.observations,"instructions":instruction_state,"nodes":nodes,
         "bounds":g.range_bounds.as_ref().map(|b|json!({"physical":b.physical_limit,"initial_last":b.initial_last,"first":b.first,"last":b.last,"evidence":b.evidence})),
         "object":object_instructions(object,&g.link)?,"allocated_data":data});
@@ -276,6 +280,7 @@ pub struct Analysis {
     pub source_sha256: String,
     pub object_sha256: String,
     pub fingerprint: Option<String>,
+    pub fingerprint_format_version: u32,
     pub normalization: Evaluation,
 }
 /// Inspect a retained capture/object pair without compiling it again. The
@@ -288,7 +293,7 @@ pub fn inspect(compilation: &Compilation, link: &str, class: u8, round: usize) -
         "unsupported state-inspection compiler version"
     );
     ensure!(
-        compilation.check_status == CheckStatus::Verified,
+        compilation.check_status == CheckStatus::Verified && compilation.identical == Some(true),
         "state inspection requires a stock-verified compilation"
     );
     ensure!(
@@ -346,6 +351,7 @@ pub fn inspect(compilation: &Compilation, link: &str, class: u8, round: usize) -
         source_sha256: compilation.source_sha256.clone(),
         object_sha256: compilation.object_sha256.clone(),
         fingerprint,
+        fingerprint_format_version: FINGERPRINT_FORMAT_VERSION,
         normalization,
     })
 }

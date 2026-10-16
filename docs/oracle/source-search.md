@@ -10,6 +10,7 @@ mwcc-tools source-search run plan.json --output search-run --candidates 100 --co
 mwcc-tools source-search run plan.json --output search-run --resume --compilations 100
 mwcc-tools source-search replay search-run 1
 mwcc-tools source-search state capture.json --object candidate.o --link RenderParticles__11CElementGenFv --class 4 --round 0
+mwcc-tools source-search evaluate contract.json capture.json --source candidate.cpp --object candidate.o
 ```
 
 Commands emit versioned JSON on stdout. Errors go to stderr. Search completion is
@@ -101,6 +102,19 @@ or promotion patterns; automatic C++ AST rewrite generation is not implemented.
   or `after_coalescing_window`, preserving normalized boundary PCode and final
   instruction/relocation structure. These are allocator number ranges, not source
   roles such as call-result or address temporaries.
+- `range_category`: uses the same `value` and `target`, but tests the candidate's
+  observed category without requiring a change or preserving its instructions.
+  This static predicate is useful for reduction and corpus queries.
+- `promoted_copy_coalescing`: selects a guarded scalar-array element by complete
+  source name, `element_index` and `element_size`. For example:
+  `{"kind":"promoted_copy_coalescing","value":{"name":"flag","element_index":1,"element_size":4},"copy":0,"outcome":{"kind":"rejected","condition":"destination_above_window"}}`.
+  `copy` is the zero-based ordinal of observed incoming register-copy candidates
+  in the complete selected coalescing pass. Set `outcome` to
+  `{"kind":"coalesced"}` to require a confirmed merge or already-shared root.
+  It checks actual decisions, array/counter coverage and unique birth/graph binding;
+  it does not identify a source initializer automatically. A surviving promotion
+  birth with no incoming copies remains indeterminate: it may be an unused node
+  while another value carries the flag. See the [promoted-flag case](../oracle-source-guided-case-promoted-flags.md).
 - `eliminate_temporary`: takes `value`. It deliberately remains indeterminate
   until complete semantic lifetime evidence can justify elimination. Missing nodes
   and inferred edge changes do not prove that a temporary disappeared.
@@ -120,8 +134,9 @@ type rather than preserving the incidental number of repeated materializations.
 For GC 2.7 EnvModulate, kind 6 (high-adjusted) and kind 4 (low) each with addend 0
 and `minimum: 1` retain the symbolic address while allowing fewer repeated pairs.
 
-All objectives require stock-equivalent oracle objects, matching compiler
-identities/flags/options, captured source hashes, complete selected function graph
+All objectives require stock-equivalent oracle objects with consistent retained
+object hashes, matching supported compiler identities/flags/options, captured
+source hashes, provenance bound to its exact trace, complete selected function graph
 coverage, and all requested symbolic relocations. Relocation requirements count
 within the selected function; null kind/addend accepts any kind/addend for that
 symbol. Missing evidence is distinct from an observed failed predicate.
@@ -152,7 +167,9 @@ final byte mismatch and relocation equality separately. That mismatch is not the
 graph objective. `score.eligible` requires all hard constraints; objective cost is
 0 for observed satisfaction, 1 for observed failure, and null for indeterminate.
 `ranking` orders eligible candidates first and known objective costs before unknown
-ones. Edge-change counts are inferred diagnostics with explicit unclassified edges.
+ones. Edge-change counts are conditional diagnostics from the
+[provenance-aware comparison](graph-correspondence.md), with multiplicity changes,
+complete nodes and explicit unclassified boundary edges.
 `fingerprint_error` explains unavailable state grouping separately from compilation
 and objective results. An unsupported operand is not silently normalized; that
 candidate remains available without joining a compiler-state group.
@@ -167,13 +184,18 @@ Fingerprints normalize known pointer/register identities but retain graph-only
 nodes, degrees, origin/range evidence, selected instructions, symbolic relocations
 and allocated data. Unsupported operand forms disable grouping. Conservative
 graph-only numbering can miss equivalent states.
+The current fingerprint payload is format 2. It includes normalized scalar-array
+origin and partial call-result shape/type evidence, while excluding capture-local
+pointers and inactive output bytes. Reports expose `fingerprint_format_version`;
+older frozen proofs retain their original analyzer and fingerprints.
 Generated local relocation-name suffixes can also split equivalent states, as the
 [real EnvModulate experiment](../oracle-source-guided-case-envmodulate.md) demonstrates.
 That case used complete graph checks and independent objdiff evidence; the generic
 fingerprint has not yet incorporated a checked local-symbol normalization.
 
 `source-search state` inspects a saved JSON envelope containing `compilation` and
-the supplied object, without compiling. It validates verified stock-check status,
+the supplied object, without compiling. It validates verified stock-check status
+and explicit identical output,
 the object hash and complete selected-function graph coverage. The format-1 report
 contains `link`, `class`, `round`, source/object hashes, an optional `fingerprint`
 and a `normalization` evaluation. Unsupported representations give an indeterminate
@@ -181,6 +203,15 @@ evaluation (`compiler_state_coverage`) with no fingerprint. Invalid captures,
 objects or selectors fail with diagnostics on stderr. This does not establish
 current dependency integrity or rerun a semantic checker; use search replay for
 fresh compilation and checks.
+
+`source-search evaluate` applies a contract to retained source/object/capture files
+without compiling. It accepts a compile-trace envelope or a plain `Compilation`.
+Add all three `--baseline-capture`, `--baseline-source` and `--baseline-object`
+options when testing a transition; otherwise the candidate is its own baseline
+for static predicates. It verifies the retained hashes and capture evidence, but
+does not rescan dependencies or execute a semantic checker. Consequently a
+`source_transformation` contract remains indeterminate here. Use search/replay for
+fresh compilation and configured semantic validation.
 
 Fixed GQR operands are supported only in the observed PSQ_L/PSQ_ST read form
 (opcodes 403/407): all twelve operand bytes, including selectors 912 through 919,
@@ -240,6 +271,7 @@ finds a shared-const-pointer rewrite with fewer observed address pairs and lower
 `noRota` degree, verified by fresh builds on both hosts. The final match worsens;
 this is a graph-objective result, not a matching fix. The mechanism-preserving
 [reducer](source-reduce.md) and [matched-source index](source-index.md) now have
-native implementations using the shared evaluator. Stronger backend
-origins/lifetimes, promoted-array predicates and the complete RenderParticles
+native implementations using the shared evaluator. Guarded scalar-array and
+call-result origins and a promoted-copy predicate are implemented. Stronger
+expression/inline/lifetime bindings and the complete RenderParticles
 investigation remain open. See the [implementation status](../oracle-source-guided-status.md).

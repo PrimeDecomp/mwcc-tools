@@ -1,4 +1,5 @@
 //! Shared graph objectives and reproducible source experiments.
+pub mod correspondence;
 pub mod index;
 pub mod inputs;
 pub mod objective;

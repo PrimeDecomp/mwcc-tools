@@ -3,6 +3,41 @@
   "scope": "mechanism fixtures for the development backend observers",
   "cases": [
     {
+      "id": "promoted_double",
+      "source": "promoted_double.cpp",
+      "flags": ["-nodefaults", "-proc", "gekko", "-fp", "hardware", "-O4,p"],
+      "minimum_array_promotions": 2,
+      "minimum_call_results": 3
+    },
+    {
+      "id": "promoted_flags",
+      "source": "../source-guided/promoted_flags.cpp",
+      "flags": ["-nodefaults", "-proc", "gekko", "-fp", "hardware", "-O4,p"],
+      "minimum_array_promotions": 4,
+      "minimum_call_results": 9
+    },
+    {
+      "id": "call_results",
+      "source": "call_results.cpp",
+      "flags": ["-nodefaults", "-proc", "gekko", "-fp", "hardware", "-O4,p"],
+      "minimum_call_results": 5,
+      "required_call_paths": ["fpr", "gpr_first", "gpr_second", "gpr_single"]
+    },
+    {
+      "id": "call_results_vector",
+      "source": "call_results_vector.cpp",
+      "flags": ["-nodefaults", "-proc", "7400", "-vector", "on", "-O4,p"],
+      "minimum_call_results": 1,
+      "required_call_paths": ["vector"]
+    },
+    {
+      "id": "call_results_paired",
+      "source": "call_results_paired.cpp",
+      "flags": ["-nodefaults", "-proc", "gekko", "-fp", "hardware", "-O4,p"],
+      "minimum_call_results": 1,
+      "required_call_paths": ["paired_single"]
+    },
+    {
       "id": "scratch_counter_reuse",
       "source": "counter_reuse.c",
       "flags": ["-nodefaults", "-proc", "gekko", "-fp", "hardware", "-O0"],

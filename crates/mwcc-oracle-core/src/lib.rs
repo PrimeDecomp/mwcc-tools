@@ -4,6 +4,7 @@ pub mod allocation;
 pub mod allocation_category;
 pub mod backend_audit;
 pub mod backend_probe;
+pub mod birth_origin;
 pub mod blocks;
 pub mod build_config;
 pub mod build_verify;

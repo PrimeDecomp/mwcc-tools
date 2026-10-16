@@ -715,6 +715,7 @@ fn help() {
   oracle analyze-trace TRACE [--version V] [--function NAME] [--link NAME] [--raw] [--allocation-only | --events]
   oracle compile-trace SOURCE [options] -- COMPILER FLAGS
   provenance inspect TRACE_OR_CAPTURE.json [--link NAME] [--json]
+  provenance compare FIRST SECOND --link NAME [--second-link NAME] [--class 4] [--first-round 0] [--second-round 0] [--version GC_2_7] [--json]
   provenance audit-counters|audit-dispatch --root ORACLE_ROOT --version GC_2_7
   oracle run-unit --project DIR --unit NAME [--candidate FILE] [--fast] -- VIEW OPTIONS
   oracle regdiff --project DIR --unit NAME --function QUERY [--full] [--json]
@@ -723,6 +724,7 @@ fn help() {
   source-search run PLAN --output DIR [--resume] [--candidates N] [--compilations N] [--seconds N] [--cancel-file FILE]
   source-search replay DIR CANDIDATE_ID
   source-search state CAPTURE --object FILE --link NAME [--class 4] [--round 0]
+  source-search evaluate CONTRACT CAPTURE --source FILE --object FILE [--baseline-capture FILE --baseline-source FILE --baseline-object FILE]
   source-reduce run PLAN --output DIR [--resume] [--candidates N] [--compilations N] [--seconds N] [--cancel-file FILE]
   source-reduce replay DIR CANDIDATE_ID
   source-index ingest SPEC --index DIR

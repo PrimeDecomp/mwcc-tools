@@ -64,6 +64,49 @@ fn counter_islands_preserve_all_unpatched_bytes_symbols_sizes_and_guard_sites() 
             .filter(|s| s.operand_binding != counter_probe::OperandBinding::None)
             .collect::<Vec<_>>();
         assert_eq!(materializers.len(), 2);
+        let origins = installed
+            .sites
+            .iter()
+            .filter(|s| s.origin_binding != counter_probe::OriginBinding::None)
+            .collect::<Vec<_>>();
+        assert_eq!(origins.len(), 8);
+        let scalar = origins
+            .iter()
+            .filter(|s| s.origin_binding == counter_probe::OriginBinding::ScalarArrayElement)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            scalar
+                .iter()
+                .map(|s| (s.offset, s.counter_class))
+                .collect::<Vec<_>>(),
+            [(0x332, Some(3)), (0x345, Some(4))]
+        );
+        let calls = origins
+            .iter()
+            .filter(|s| s.container == "_FunctionCalls_GenerateCall")
+            .collect::<Vec<_>>();
+        assert_eq!(
+            calls
+                .iter()
+                .map(|s| (s.offset, s.counter_class))
+                .collect::<Vec<_>>(),
+            [
+                (0x4c7, Some(3)),
+                (0x514, Some(2)),
+                (0x55d, Some(3)),
+                (0x602, Some(4)),
+                (0x612, Some(4)),
+                (0x66d, Some(4))
+            ]
+        );
+        assert_eq!(
+            calls[3].origin_binding,
+            counter_probe::OriginBinding::CallResultFirst
+        );
+        assert_eq!(
+            calls[4].origin_binding,
+            counter_probe::OriginBinding::CallResultSecond
+        );
         assert_eq!(
             materializers[0].operand_binding,
             counter_probe::OperandBinding::SymbolAddressHigh
@@ -119,26 +162,27 @@ fn counter_islands_preserve_all_unpatched_bytes_symbols_sizes_and_guard_sites() 
             }
         }
         assert_eq!(coverage, expected);
-        let site = &installed.sites[0];
-        let mut locations = None;
-        for (index, (_, bytes)) in inputs.iter().enumerate() {
-            let old = Object::parse(bytes).unwrap();
-            if let Some(s) = old
-                .symbols
-                .values()
-                .find(|s| s.section > 0 && s.name == site.container)
-            {
-                let start =
-                    old.sections[s.section as usize - 1].raw_offset as usize + s.value as usize;
-                locations = Some((index, start, start + site.offset as usize));
-                break;
+        for site in [&installed.sites[0], scalar[0], calls[4]] {
+            let mut locations = None;
+            for (index, (_, bytes)) in inputs.iter().enumerate() {
+                let old = Object::parse(bytes).unwrap();
+                if let Some(s) = old
+                    .symbols
+                    .values()
+                    .find(|s| s.section > 0 && s.name == site.container)
+                {
+                    let start =
+                        old.sections[s.section as usize - 1].raw_offset as usize + s.value as usize;
+                    locations = Some((index, start, start + site.offset as usize));
+                    break;
+                }
             }
-        }
-        let (index, start, at) = locations.unwrap();
-        for position in [at, start, at + site.field.unwrap()] {
-            let mut damaged = inputs.clone();
-            damaged[index].1[position] ^= 1;
-            assert!(counter_probe::install(&root, version, &damaged).is_err());
+            let (index, start, at) = locations.unwrap();
+            for position in [at, start, at + site.field.unwrap()] {
+                let mut damaged = inputs.clone();
+                damaged[index].1[position] ^= 1;
+                assert!(counter_probe::install(&root, version, &damaged).is_err());
+            }
         }
     }
 }

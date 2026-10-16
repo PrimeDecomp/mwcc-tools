@@ -97,12 +97,52 @@ does not establish absence of all address temporaries or semantic elimination.
 Direct-initialization objectives are also usable. Prefer `source_line: null` when
 the complete named-object/type/part binding identifies the initializer: deleting
 earlier lines changes numeric source locations. A specified line remains a hard
-selector and is never silently rewritten. `change_range_category` is a
+selector and is never silently rewritten. To preserve an established allocation
+category while shrinking, use the current-state predicate:
+
+```json
+{
+  "kind": "range_category",
+  "value": {"name": "flag", "part": "single", "type_kind": 1, "type_size": 1},
+  "target": "inside_coalescing_window"
+}
+```
+
+Both baseline and each accepted case must independently satisfy that category
+through a unique complete named-object/type/part binding at the selected graph.
+Confirmed coalescer parent writes determine the observed root; this does not
+require any exact physical register or preserved instructions. Range markers,
+birth and merge bindings must justify the category; incomplete evidence is not
+accepted. The category describes an allocation range, not a source role or a
+proof of array promotion. `change_range_category` is a
 transition between two cases and is currently rejected by reduction plans: a
 separate reference capture is needed to preserve that transition while shrinking
 the candidate. `eliminate_temporary` remains indeterminate and cannot produce an
 accepted reduction. Promoted-array/coalescing predicates and stronger lifetime
-bindings remain shared-evaluator work, not capabilities implied by this reducer.
+bindings do not follow automatically from an allocation category. To preserve the
+specific observed copy failure for a promoted scalar element, use:
+
+```json
+{
+  "kind": "promoted_copy_coalescing",
+  "value": {"name": "flag", "element_index": 1, "element_size": 4},
+  "copy": 0,
+  "outcome": {"kind": "rejected", "condition": "destination_above_window"}
+}
+```
+
+The ordinal selects an observed incoming register-copy in the complete matching
+coalescer pass; it does not prove which source initializer or control-flow path
+produced that copy. Complete guarded scalar-array provenance and unique
+array-name/index/element-size birth/node/generation binding are required. The pass
+must match the selected graph's counts and allocation window. This preserves an
+actual deciding branch without requiring the same final physical registers.
+Use `{"kind":"coalesced"}` to retain a confirmed merge or already-same-root
+copy removal. Incomplete evidence and zero bound incoming copies are indeterminate: an
+invisible promotion node alone cannot identify the live initialization. An
+out-of-range ordinal after at least one bound copy in a complete pass is
+unsatisfied. Scalar GPR/FPR promotion is covered; general
+source-lifetime, initializer/dominance and VMX-promotion proofs remain open.
 
 A satisfied candidate receives a fresh independent compilation. Its build-input
 snapshot and object hash must reproduce, and the shared predicate and configured

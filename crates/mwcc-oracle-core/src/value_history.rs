@@ -50,6 +50,10 @@ pub struct Birth {
     pub category: Option<String>,
     pub object: Option<ObjectBinding>,
     pub materialization: Option<Materialization>,
+    #[serde(default)]
+    pub array_promotion: Option<crate::birth_origin::ArrayPromotion>,
+    #[serde(default)]
+    pub call_result: Option<crate::birth_origin::CallResult>,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -198,6 +202,18 @@ pub struct Function {
     pub materialization_scope: Option<String>,
     pub expected_materializations: Option<u32>,
     pub materialization_observations: Evaluation,
+    #[serde(default)]
+    pub array_promotion_scope: Option<String>,
+    #[serde(default)]
+    pub expected_array_promotions: Option<u32>,
+    #[serde(default = "crate::birth_origin::array_gap")]
+    pub array_promotion_observations: Evaluation,
+    #[serde(default)]
+    pub call_result_scope: Option<String>,
+    #[serde(default)]
+    pub expected_call_results: Option<u32>,
+    #[serde(default = "crate::birth_origin::call_gap")]
+    pub call_result_observations: Evaluation,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct History {
@@ -219,6 +235,8 @@ pub fn is_record(kind: &str) -> bool {
             | "pv.value.birth"
             | "pv.value.object"
             | "pv.value.materialization"
+            | "pv.value.array"
+            | "pv.value.call_result"
             | "pv.category.initial"
             | "pv.category.window"
             | "pv.counter.change"
@@ -361,6 +379,12 @@ pub fn parse(text: &str) -> Result<History> {
                 materialization_scope: r.fields.get("materialization").cloned(),
                 expected_materializations: None,
                 materialization_observations: gap("no guarded symbol materialization summary"),
+                array_promotion_scope: r.fields.get("array_promotion").cloned(),
+                expected_array_promotions: None,
+                array_promotion_observations: crate::birth_origin::array_gap(),
+                call_result_scope: r.fields.get("call_result").cloned(),
+                expected_call_results: None,
+                call_result_observations: crate::birth_origin::call_gap(),
             });
             stack.push(function);
             continue;
@@ -396,6 +420,16 @@ pub fn parse(text: &str) -> Result<History> {
                 f.expected_materializations = r
                     .fields
                     .get("materializations")
+                    .map(|v| v.parse())
+                    .transpose()?;
+                f.expected_array_promotions = r
+                    .fields
+                    .get("array_promotions")
+                    .map(|v| v.parse())
+                    .transpose()?;
+                f.expected_call_results = r
+                    .fields
+                    .get("call_results")
                     .map(|v| v.parse())
                     .transpose()?;
                 if state.ranges_valid
@@ -599,7 +633,26 @@ pub fn parse(text: &str) -> Result<History> {
                     category: (category != "unknown").then(|| category.to_owned()),
                     object: None,
                     materialization: None,
+                    array_promotion: None,
+                    call_result: None,
                 });
+            }
+            "pv.value.array" | "pv.value.call_result" => {
+                if n(&r, "schema")? != 1 {
+                    state.valid = false;
+                    continue;
+                }
+                let birth = f
+                    .births
+                    .last_mut()
+                    .context("backend origin has no current birth")?;
+                if r.kind == "pv.value.array" {
+                    ensure!(birth.array_promotion.is_none(), "duplicate array origin");
+                    birth.array_promotion = Some(crate::birth_origin::array(&r, birth)?);
+                } else {
+                    ensure!(birth.call_result.is_none(), "duplicate call-result origin");
+                    birth.call_result = Some(crate::birth_origin::call(&r, birth)?);
+                }
             }
             "pv.value.materialization" => {
                 let sequence = n(&r, "value")?;
@@ -836,6 +889,7 @@ pub fn parse(text: &str) -> Result<History> {
         {
             function.materialization_observations = known();
         }
+        crate::birth_origin::finish(function, state.valid);
         if !state.valid {
             history.functions[state.index].counter_observations =
                 gap("unsupported or discontinuous observations in this function");

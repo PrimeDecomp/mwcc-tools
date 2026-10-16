@@ -2,7 +2,132 @@ use anyhow::{Context, Result, bail, ensure};
 use mwcc_oracle_core::{evidence::EvaluationState, provenance};
 use std::fs;
 
+fn captured_version(input: &str) -> Result<Option<mwcc_oracle_core::version::Version>> {
+    if !input.trim_start().starts_with('{') {
+        return Ok(None);
+    }
+    let value: serde_json::Value = serde_json::from_str(input)?;
+    let version = value
+        .get("compilation")
+        .and_then(|c| c.get("version"))
+        .or_else(|| value.get("version"))
+        .and_then(|v| v.as_str());
+    version
+        .map(mwcc_oracle_core::version::Version::parse)
+        .transpose()
+}
+fn compare(args: &[String]) -> Result<()> {
+    use mwcc_oracle_core::{
+        source_guided::correspondence::{self, Boundary, Selection},
+        version::Version,
+    };
+    let first = args
+        .first()
+        .context("provenance compare needs FIRST SECOND")?;
+    let second = args.get(1).context("provenance compare needs SECOND")?;
+    let mut link = None;
+    let mut second_link = None;
+    let mut class = 4;
+    let mut first_round = 0;
+    let mut second_round = 0;
+    let mut version = None;
+    let mut json = false;
+    let mut i = 2;
+    while i < args.len() {
+        let option = &args[i];
+        i += 1;
+        if option == "--json" {
+            json = true;
+            continue;
+        }
+        let value = args
+            .get(i)
+            .context("provenance compare option needs a value")?;
+        i += 1;
+        match option.as_str() {
+            "--link" => link = Some(value.clone()),
+            "--second-link" => second_link = Some(value.clone()),
+            "--class" => class = value.parse()?,
+            "--first-round" => first_round = value.parse()?,
+            "--second-round" => second_round = value.parse()?,
+            "--version" => version = Some(Version::parse(value)?),
+            other => bail!("unknown provenance compare option {other}"),
+        }
+    }
+    let first = fs::read_to_string(first)?;
+    let second = fs::read_to_string(second)?;
+    let a_version = captured_version(&first)?;
+    let b_version = captured_version(&second)?;
+    ensure!(
+        !matches!((a_version,b_version),(Some(a),Some(b)) if a!=b),
+        "cross-version graph comparisons are unsupported"
+    );
+    let version = if let Some(v) = version {
+        ensure!(
+            a_version.is_none_or(|a| a == v) && b_version.is_none_or(|b| b == v),
+            "--version disagrees with compiler capture"
+        );
+        v
+    } else {
+        ensure!(
+            a_version.is_some() && a_version == b_version,
+            "raw traces or missing/different compiler identities require --version"
+        );
+        a_version.unwrap()
+    };
+    let link = link.context("provenance compare requires --link NAME")?;
+    let first_selection = Selection {
+        link: link.clone(),
+        class,
+        round: first_round,
+        boundary: Boundary::BeforeSimplify,
+    };
+    let second_selection = Selection {
+        link: second_link.unwrap_or(link),
+        class,
+        round: second_round,
+        boundary: Boundary::BeforeSimplify,
+    };
+    let report = correspondence::compare(
+        &provenance::inspect(&first)?,
+        &first_selection,
+        &provenance::inspect(&second)?,
+        &second_selection,
+        version,
+    )?;
+    if json {
+        println!("{}", serde_json::to_string_pretty(&report)?);
+    } else {
+        println!(
+            "Observed before_simplify graphs: {} nodes -> {} nodes; capture {:?}",
+            report.first.nodes.len(),
+            report.second.nodes.len(),
+            report.coverage.state
+        );
+        println!(
+            "{} conditional injective pairs, {} unmatched first, {} unmatched second, {} conflicts",
+            report.mapping.len(),
+            report.unmatched_first.len(),
+            report.unmatched_second.len(),
+            report.conflicts.len()
+        );
+        println!(
+            "{} mapped neighbor multiplicity differences; {} first and {} second unclassified boundary edges",
+            report.neighbor_differences.len(),
+            report.boundary_first.len(),
+            report.boundary_second.len()
+        );
+        println!(
+            "Source/symbol anchors and instruction votes are conditional. Semantic lifetime correspondence and elimination remain indeterminate."
+        );
+    }
+    Ok(())
+}
+
 pub fn run(args: &[String]) -> Result<()> {
+    if args.first().map(String::as_str) == Some("compare") {
+        return compare(&args[1..]);
+    }
     if matches!(
         args.first().map(String::as_str),
         Some("audit-counters" | "audit-dispatch")

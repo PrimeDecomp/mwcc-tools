@@ -7,12 +7,11 @@ use crate::{
     provenance::Report,
     runner::{CheckStatus, Compilation},
     value_history::{AddressPart, Birth, ObjectPart},
-    version::Version,
 };
 use anyhow::{Context, Result, ensure};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -30,8 +29,34 @@ pub struct ObjectAnchor {
     pub type_size: i32,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PromotedElementAnchor {
+    pub name: String,
+    pub element_index: u32,
+    pub element_size: i32,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum CopyOutcome {
+    Coalesced,
+    Rejected { condition: String },
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Objective {
+    /// The ordinal incoming register-copy decision for an observed promoted
+    /// element. This is not an automatic source-initializer/dominance binding.
+    PromotedCopyCoalescing {
+        value: PromotedElementAnchor,
+        copy: usize,
+        outcome: CopyOutcome,
+    },
+    /// Observe the current category without requiring a transition or fixed
+    /// instruction structure. Useful when preserving an established mechanism.
+    RangeCategory {
+        value: ObjectAnchor,
+        target: Category,
+    },
     ChangeRangeCategory {
         value: ObjectAnchor,
         target: Category,
@@ -155,7 +180,222 @@ pub fn validate(c: &Contract) -> Result<()> {
             "symbol address pairs require a symbol, ordered count bounds and GPR selection"
         );
     }
+    if let Objective::PromotedCopyCoalescing { value, outcome, .. } = &c.objective {
+        ensure!(
+            matches!(c.selection.class, 3 | 4)
+                && !value.name.is_empty()
+                && value.element_index < 8
+                && value.element_size > 0,
+            "promoted copy predicate requires a scalar FPR/GPR array name, element index and positive element size"
+        );
+        if let CopyOutcome::Rejected { condition } = outcome {
+            ensure!(
+                matches!(
+                    condition.as_str(),
+                    "interference"
+                        | "destination_below_window"
+                        | "destination_above_window"
+                        | "source_below_window"
+                        | "source_above_window"
+                        | "gpr_special_register"
+                ),
+                "unsupported promoted register-copy rejection condition"
+            );
+        }
+    }
     Ok(())
+}
+fn promoted_copy(
+    input: &Input<'_>,
+    graph: &Graph,
+    value: &PromotedElementAnchor,
+    ordinal: usize,
+    outcome: &CopyOutcome,
+) -> Result<(Evaluation, Value)> {
+    let function = input
+        .provenance
+        .history
+        .functions
+        .iter()
+        .find(|f| f.id == graph.function)
+        .context("missing promoted-element function")?;
+    ensure!(
+        function.array_promotion_observations.state == EvaluationState::Satisfied
+            && function.counter_observations.state == EvaluationState::Satisfied,
+        "complete guarded scalar-promotion and counter capture is required"
+    );
+    let matches: Vec<_> = function
+        .births
+        .iter()
+        .filter(|b| {
+            b.class == graph.class
+                && b.array_promotion.as_ref().is_some_and(|a| {
+                    a.name_known
+                        && a.name_complete
+                        && a.name_bytes == value.name.as_bytes()
+                        && a.element_index == value.element_index
+                        && a.element_size == value.element_size
+                })
+        })
+        .collect();
+    ensure!(
+        matches.len() == 1,
+        "promoted-element anchor must identify one complete observed birth in the whole function"
+    );
+    let birth = matches[0];
+    ensure!(
+        birth.generation == 0
+            && function
+                .births
+                .iter()
+                .filter(|b| b.class == birth.class && b.register == birth.register)
+                .count()
+                == 1,
+        "promoted register number has reused/ambiguous generations"
+    );
+    let node = graph
+        .nodes
+        .get(&birth.register)
+        .context("promoted element has no original graph node")?;
+    ensure!(
+        node.binding.evidence.state == EvaluationState::Satisfied
+            && node.binding.direct == [birth.id],
+        "promoted graph node does not bind exactly its unique observed birth"
+    );
+    let pass = input
+        .provenance
+        .passes
+        .iter()
+        .filter(|p| {
+            p.class == graph.class
+                && p.link == graph.link
+                && p.begin_position < graph.begin_position
+                && p.header
+                    .get("function_id")
+                    .and_then(|id| id.parse::<u32>().ok())
+                    == Some(graph.function)
+        })
+        .max_by_key(|p| p.begin_position)
+        .context("no selected-function coalescer pass precedes the graph")?;
+    ensure!(
+        birth.trace_position < pass.begin_position
+            && pass.ended
+            && pass
+                .end_position
+                .is_some_and(|end| end < graph.begin_position)
+            && pass.decisions.state == EvaluationState::Satisfied,
+        "promoted copy requires a complete coalescer pass after its birth"
+    );
+    let bounds = graph
+        .range_bounds
+        .as_ref()
+        .context("selected graph lacks allocation-window evidence")?;
+    ensure!(
+        bounds.evidence.state == EvaluationState::Satisfied,
+        "selected graph allocation-window evidence is incomplete"
+    );
+    let header = |name: &str| -> Result<i64> {
+        pass.header
+            .get(name)
+            .with_context(|| format!("coalescer lacks {name}"))?
+            .parse()
+            .with_context(|| format!("coalescer has invalid {name}"))
+    };
+    ensure!(
+        header("count")? == i64::from(graph.count)
+            && header("physical")? == i64::from(graph.physical_limit)
+            && header("first")? == i64::from(bounds.first)
+            && header("last")? == i64::from(bounds.last),
+        "coalescer bounds disagree with the selected graph"
+    );
+    ensure!(
+        pass.candidates
+            .iter()
+            .all(|c| c.trace_position < graph.begin_position
+                && c.decision_position
+                    .is_some_and(|p| p < graph.begin_position)),
+        "coalescer decisions extend beyond the selected graph boundary"
+    );
+    let number = |candidate: &crate::provenance::Candidate, name: &str| -> Result<u32> {
+        candidate
+            .operands
+            .get(name)
+            .with_context(|| format!("copy candidate lacks {name}"))?
+            .parse()
+            .with_context(|| format!("copy candidate has invalid {name}"))
+    };
+    let mut incoming = vec![];
+    for candidate in &pass.candidates {
+        if number(candidate, "destination")? != birth.register {
+            continue;
+        }
+        let is_copy = candidate
+            .checks
+            .iter()
+            .any(|check| check.condition == "copy_flag" && !check.taken);
+        if !is_copy {
+            continue;
+        }
+        if number(candidate, "destination_kind")? != 0
+            || number(candidate, "source_kind")? != 0
+            || number(candidate, "destination_class")? != u32::from(graph.class)
+            || number(candidate, "source_class")? != u32::from(graph.class)
+        {
+            continue;
+        }
+        let opcode = number(candidate, "opcode")?;
+        ensure!(
+            number(candidate, "operands")? >= 2 && number(candidate, "source")? < graph.count,
+            "incoming copy has invalid operand count or source register"
+        );
+        let expected = if graph.class == 4 { "mr" } else { "fmr" };
+        ensure!(
+            crate::version::opcode_names(input.compilation.version)
+                .get(&(opcode as i32))
+                .is_some_and(|name| name == expected),
+            "incoming promoted register-copy opcode is inconsistent with its selected class"
+        );
+        ensure!(
+            candidate.evidence.state == EvaluationState::Satisfied,
+            "incoming promoted copy decision is incomplete"
+        );
+        incoming.push(candidate);
+    }
+    let selected = incoming.get(ordinal).copied();
+    let result = match selected {
+        None if incoming.is_empty() => gap(
+            EvidenceGap::BackendLifecycleCoverage,
+            "no incoming register-copy is bound to the promoted birth; an invisible/ghost promotion node is not source-lifetime or coalescing-success evidence",
+        ),
+        None => false_result(
+            "the complete selected pass has no incoming register-copy at the requested ordinal",
+        ),
+        Some(selected) => {
+            let matched = match (outcome, &selected.decision) {
+                (
+                    CopyOutcome::Coalesced,
+                    crate::provenance::Decision::Merged { .. }
+                    | crate::provenance::Decision::AlreadySameRoot { .. },
+                ) => true,
+                (
+                    CopyOutcome::Rejected { condition },
+                    crate::provenance::Decision::Rejected { condition: actual },
+                ) => condition == actual,
+                _ => false,
+            };
+            if matched {
+                known()
+            } else {
+                false_result(
+                    "the observed incoming-copy decision differs from the requested outcome",
+                )
+            }
+        }
+    };
+    Ok((
+        result,
+        json!({"value":birth.id,"register":birth.register,"array_origin":birth.array_promotion,"node_binding":node.binding,"pass":pass.id,"window":bounds,"copy_ordinal":ordinal,"incoming_copies":incoming,"selected":selected,"expected":outcome,"scope":"ordinal_observed_incoming_register_copy_at_selected_coalescer_pass","semantic_limit":"No automatic source-initializer, dominance, full lifetime or physical-register claim."}),
+    ))
 }
 fn symbol_address_pairs(input: &Input<'_>, graph: &Graph, symbol: &str) -> Result<Value> {
     let function = input
@@ -348,66 +588,58 @@ fn relocation_check(input: &Input<'_>, c: &Contract) -> Evaluation {
         }
     }
 }
-fn delta(a: &Graph, b: &Graph, version: Version) -> Value {
-    let remap = crate::colouring::target::remap_snapshots(
-        &state::snapshot(a),
-        &state::snapshot(b),
-        version,
-    );
-    let mut mapping = BTreeMap::new();
-    let mut votes = vec![];
-    let mut inverse = BTreeMap::<u32, usize>::new();
-    for ((class, from), candidates) in &remap.votes {
-        if *class == crate::version::class_name(a.class) && candidates.len() == 1 {
-            *inverse.entry(candidates[0].0).or_default() += 1;
-            mapping.insert(*from, candidates[0].0);
+fn delta(c: &Contract, baseline: &Input<'_>, candidate: &Input<'_>) -> (Value, Evaluation) {
+    use super::correspondence::{self, Boundary, Selection};
+    let selected = Selection {
+        link: c.selection.link.clone(),
+        class: c.selection.class,
+        round: c.selection.round,
+        boundary: Boundary::BeforeSimplify,
+    };
+    let comparison = if baseline.compilation.version == candidate.compilation.version {
+        correspondence::compare(
+            baseline.provenance,
+            &selected,
+            candidate.provenance,
+            &selected,
+            candidate.compilation.version,
+        )
+    } else {
+        Err(anyhow::anyhow!("compiler versions differ"))
+    };
+    match comparison {
+        Ok(report) => {
+            let mut added = vec![];
+            let mut removed = vec![];
+            if report.coverage.state == EvaluationState::Satisfied {
+                for change in &report.neighbor_differences {
+                    if change.first_occurrences == 0 && change.second_occurrences > 0 {
+                        added.push((change.second, change.neighbor_in_second_space));
+                    }
+                    if change.first_occurrences > 0 && change.second_occurrences == 0 {
+                        removed.push((change.second, change.neighbor_in_second_space));
+                    }
+                }
+            }
+            let coverage = report.coverage.clone();
+            (
+                json!({"format_version":1,"method":"conditional_provenance_and_instruction_hypotheses","paired_instructions":report.paired_instructions,"instruction_counts":report.instruction_counts,"correspondence":report.mapping,
+                "inferred_edges_added":added,"inferred_edges_removed":removed,"neighbor_multiplicity_changes":report.neighbor_differences,"boundary_first":report.boundary_first,"boundary_second":report.boundary_second,
+                "elimination":report.elimination,"provenance_correspondence":report}),
+                coverage,
+            )
         }
-    }
-    mapping.retain(|_, to| inverse[to] == 1);
-    for ((class, from), candidates) in remap.votes {
-        if class == crate::version::class_name(a.class) {
-            votes.push(
-                json!({"first":from,"candidates":candidates,"inferred_second":mapping.get(&from)}),
+        Err(error) => {
+            let coverage = gap(
+                EvidenceGap::MissingGraphSnapshot,
+                &format!("observed-boundary comparison unavailable: {error:#}"),
             );
+            (
+                json!({"format_version":1,"method":"conditional_provenance_and_instruction_hypotheses","inferred_edges_added":[],"inferred_edges_removed":[],"neighbor_multiplicity_changes":[],"boundary_first":[],"boundary_second":[],"provenance_correspondence":null,"coverage":coverage,"error":format!("{error:#}"),"elimination":gap(EvidenceGap::BackendLifecycleCoverage,"missing comparison cannot prove elimination")}),
+                coverage,
+            )
         }
     }
-    let edges = |g: &Graph| {
-        g.nodes
-            .iter()
-            .flat_map(|(v, n)| n.recorded_neighbors.iter().map(|w| (*v, *w)))
-            .collect::<BTreeSet<_>>()
-    };
-    let translated = |r: u32| {
-        if r < a.physical_limit {
-            Some(r)
-        } else {
-            mapping.get(&r).copied()
-        }
-    };
-    let mut mapped = BTreeSet::new();
-    let mut boundary = vec![];
-    for (x, y) in edges(a) {
-        if let (Some(x), Some(y)) = (translated(x), translated(y)) {
-            mapped.insert((x, y));
-        } else {
-            boundary.push((x, y));
-        }
-    }
-    let inverse: BTreeSet<_> = mapping.values().copied().collect();
-    let mut second = BTreeSet::new();
-    let mut boundary_second = vec![];
-    for (x, y) in edges(b) {
-        if (x < b.physical_limit || inverse.contains(&x))
-            && (y < b.physical_limit || inverse.contains(&y))
-        {
-            second.insert((x, y));
-        } else {
-            boundary_second.push((x, y));
-        }
-    }
-    json!({"method":"instruction_votes","paired_instructions":remap.paired,"instruction_counts":remap.instructions,"correspondence":votes,
-        "inferred_edges_added":second.difference(&mapped).collect::<Vec<_>>(),"inferred_edges_removed":mapped.difference(&second).collect::<Vec<_>>(),
-        "boundary_first":boundary,"boundary_second":boundary_second,"elimination":gap(EvidenceGap::BackendLifecycleCoverage,"instruction votes do not prove elimination")})
 }
 fn direct_initialization(
     input: &Input<'_>,
@@ -602,8 +834,49 @@ pub fn evaluate(
         },
     );
     constraints.insert(
+        "captured_object".into(),
+        if state::digest(&baseline.compilation.object) == baseline.compilation.object_sha256
+            && state::digest(&candidate.compilation.object) == candidate.compilation.object_sha256
+        {
+            known()
+        } else {
+            gap(
+                EvidenceGap::BuildInputCoverage,
+                "object bytes do not match the compiler capture",
+            )
+        },
+    );
+    constraints.insert(
+        "captured_provenance".into(),
+        if baseline.provenance.trace_sha256 == state::digest(baseline.compilation.trace.as_bytes())
+            && candidate.provenance.trace_sha256
+                == state::digest(candidate.compilation.trace.as_bytes())
+        {
+            known()
+        } else {
+            gap(
+                EvidenceGap::BuildInputCoverage,
+                "provenance report is not bound to the exact compiler capture trace",
+            )
+        },
+    );
+    constraints.insert(
         "compiler_context".into(),
-        if baseline.compilation.version == candidate.compilation.version
+        if baseline.compilation.version.has_oracle()
+            && candidate.compilation.version.has_oracle()
+            && !baseline.compilation.producer_sha256.is_empty()
+            && !candidate.compilation.producer_sha256.is_empty()
+            && baseline
+                .compilation
+                .original_sha256
+                .as_ref()
+                .is_some_and(|s| !s.is_empty())
+            && candidate
+                .compilation
+                .original_sha256
+                .as_ref()
+                .is_some_and(|s| !s.is_empty())
+            && baseline.compilation.version == candidate.compilation.version
             && baseline.compilation.producer_sha256 == candidate.compilation.producer_sha256
             && baseline.compilation.original_sha256 == candidate.compilation.original_sha256
             && baseline.compilation.flags == candidate.compilation.flags
@@ -618,17 +891,24 @@ pub fn evaluate(
     constraints.insert(
         "stock_equivalence".into(),
         combine(
-            [
-                &baseline.compilation.check_status,
-                &candidate.compilation.check_status,
-            ]
-            .map(|status| match status {
-                CheckStatus::Verified => known(),
-                CheckStatus::Skipped | CheckStatus::OriginalUnavailable => gap(
-                    EvidenceGap::CompilationCoverage,
-                    "stock-equivalence evidence is unavailable",
-                ),
-                _ => false_result("compiler output is not stock-equivalent"),
+            [baseline.compilation, candidate.compilation].map(|compilation| {
+                match &compilation.check_status {
+                    CheckStatus::Verified => match compilation.identical {
+                        Some(true) => known(),
+                        Some(false) => false_result(
+                            "verified stock-check status contradicts non-identical output",
+                        ),
+                        None => gap(
+                            EvidenceGap::CompilationCoverage,
+                            "verified stock-check status lacks the identical-output result",
+                        ),
+                    },
+                    CheckStatus::Skipped | CheckStatus::OriginalUnavailable => gap(
+                        EvidenceGap::CompilationCoverage,
+                        "stock-equivalence evidence is unavailable",
+                    ),
+                    _ => false_result("compiler output is not stock-equivalent"),
+                }
             }),
         ),
     );
@@ -701,8 +981,17 @@ pub fn evaluate(
                     function_capture(candidate, b.function),
                 ]),
             );
-            let changes = delta(a, b, candidate.compilation.version);
+            let (changes, comparison_coverage) = delta(c, baseline, candidate);
+            constraints.insert("observed_boundary_comparison".into(), comparison_coverage);
             let tested = (|| -> Result<(Evaluation, Value)> {
+                if let Objective::PromotedCopyCoalescing {
+                    value,
+                    copy,
+                    outcome,
+                } = &c.objective
+                {
+                    return promoted_copy(candidate, b, value, *copy, outcome);
+                }
                 if let Objective::SymbolAddressPairs {
                     symbol,
                     minimum,
@@ -729,14 +1018,33 @@ pub fn evaluate(
                     ));
                 }
                 let selector = match &c.objective {
-                    Objective::ChangeRangeCategory { value, .. }
+                    Objective::RangeCategory { value, .. }
+                    | Objective::ChangeRangeCategory { value, .. }
                     | Objective::DirectInitialization { value, .. }
                     | Objective::EliminateTemporary { value } => value,
-                    Objective::SymbolAddressPairs { .. } => unreachable!(),
+                    Objective::SymbolAddressPairs { .. }
+                    | Objective::PromotedCopyCoalescing { .. } => unreachable!(),
                 };
                 let from = anchor(baseline, a, selector)?;
                 let to = anchor(candidate, b, selector)?;
                 match &c.objective {
+                    Objective::RangeCategory { target, .. } => {
+                        let to_root = root(b, to)?;
+                        let observed = category(b, to_root)?;
+                        let result = if observed.evidence.state != EvaluationState::Satisfied {
+                            observed.evidence.clone()
+                        } else if observed.category == Some(*target) {
+                            known()
+                        } else {
+                            false_result(
+                                "the anchored value is not in the requested current allocation range",
+                            )
+                        };
+                        Ok((
+                            result,
+                            json!({"baseline_value":from.id,"candidate_value":to.id,"candidate_root":to_root,"candidate_category":observed,"target":target,"anchor_scope":"unique_complete_observed_object_name_type_and_pair_part","category_scope":"observed_root_at_selected_graph","semantic_limit":"An observed allocation range is not a source role, lifetime or array-promotion proof; no instruction preservation is required."}),
+                        ))
+                    }
                     Objective::ChangeRangeCategory { target, .. } => {
                         let from_root = root(a, from)?;
                         let to_root = root(b, to)?;
@@ -793,7 +1101,8 @@ pub fn evaluate(
                         ),
                         json!({"baseline_value":from.id,"candidate_value":to.id}),
                     )),
-                    Objective::SymbolAddressPairs { .. } => unreachable!(),
+                    Objective::SymbolAddressPairs { .. }
+                    | Objective::PromotedCopyCoalescing { .. } => unreachable!(),
                 }
             })();
             match tested {

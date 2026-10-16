@@ -16,6 +16,7 @@ use capstone::{
     },
 };
 use serde::Serialize;
+use sha2::{Digest, Sha256};
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
@@ -35,6 +36,20 @@ pub struct Site {
     pub object_binding: ObjectBinding,
     pub operand_binding: OperandBinding,
     pub data_link_offset: u32,
+    pub origin_binding: OriginBinding,
+}
+/// Read-only origins at actual counter writes. These identify guarded helper
+/// mechanisms, not complete semantic lifetimes or arbitrary inline ancestry.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
+#[repr(u32)]
+#[serde(rename_all = "snake_case")]
+pub enum OriginBinding {
+    #[default]
+    None = 0,
+    ScalarArrayElement = 1,
+    CallResultSingle = 2,
+    CallResultFirst = 3,
+    CallResultSecond = 4,
 }
 /// These roles are justified by the guarded retail Normalize path, not by a
 /// register number, expression spelling or reconstructed function signature.
@@ -79,7 +94,7 @@ pub struct Installed {
 }
 const COUNTS: &str = "_data_005e6a7c";
 const PHYSICAL: &str = "_data_005e6778";
-const HANDLER: &str = "_OracleRust_CounterProbeV3";
+const HANDLER: &str = "_OracleRust_CounterProbeV4";
 // Roles: increment, close/high-water restore, rewind, initial reset, allocation
 // reset, function begin, function end. These are actual writes, not guessed types.
 fn role(version: &str, r: &Reference) -> Result<Role> {
@@ -176,6 +191,14 @@ pub fn plan(root: &Path, version: &str) -> Result<Vec<Site>> {
             "_Registers_BindVR",
             "bdde62ffa0f7872d0c8afa6518ddbf92b4b0270356083e1048ba87a2590886c5",
         ),
+        (
+            "_COpt_ArrayToRegister",
+            "4492771ad6e0733be32e5c687da872cfbe999cf0be8b49b75930c3b0645a5ff8",
+        ),
+        (
+            "_FunctionCalls_GenerateCall",
+            "0aefa5c61a1dd82488fcce8b2480816f051613daa95f64ae7b543084307112bc",
+        ),
     ] {
         ensure!(
             audit
@@ -185,6 +208,23 @@ pub fn plan(root: &Path, version: &str) -> Result<Vec<Site>> {
             "object binding ABI guard failed for {name}"
         );
     }
+    // Guard the constructor as well as the consumer: only these pinned retail
+    // stores justify LoopVar's original object, sizes, count and slot meanings.
+    let builder = metadata
+        .iter()
+        .find(|s| s.name == "_build_array_loopvars")
+        .context("missing scalar array builder")?;
+    let builder_hash = match version {
+        "GC_1_3" => "084ecf59c2d0aaf301f2581df94d468013b1df8a3fff018327f6314e91b4cd37",
+        "GC_1_3_2" => "b011ab9c2d7652b78e6f00abab6468fccf52f501a72beb39a3601cae6730e217",
+        "GC_2_7" => "aa78233ab4f31a3906968dad68aacb7470763b4f386871873e83c6a3083ae00b",
+        _ => unreachable!(),
+    };
+    ensure!(
+        executable::size(&builder.options)? == 0x1e3
+            && format!("{:x}", Sha256::digest(pe.read(builder.address, 0x1e3)?)) == builder_hash,
+        "scalar array builder layout guard failed"
+    );
     for r in audit.references.iter().filter(|r| r.write) {
         let instructions =
             decoder.disasm_count(pe.read(r.address, 15)?, u64::from(r.address), 1)?;
@@ -268,6 +308,15 @@ pub fn plan(root: &Path, version: &str) -> Result<Vec<Site>> {
                 OperandBinding::None
             },
             data_link_offset,
+            origin_binding: match (r.function.as_str(), r.offset) {
+                ("_COpt_ArrayToRegister", 0x332 | 0x345) => OriginBinding::ScalarArrayElement,
+                ("_FunctionCalls_GenerateCall", 0x4c7 | 0x514 | 0x55d | 0x66d) => {
+                    OriginBinding::CallResultSingle
+                }
+                ("_FunctionCalls_GenerateCall", 0x602) => OriginBinding::CallResultFirst,
+                ("_FunctionCalls_GenerateCall", 0x612) => OriginBinding::CallResultSecond,
+                _ => OriginBinding::None,
+            },
         });
     }
     let expected = match version {
@@ -324,6 +373,7 @@ pub fn plan(root: &Path, version: &str) -> Result<Vec<Site>> {
             object_binding: ObjectBinding::None,
             operand_binding: OperandBinding::None,
             data_link_offset,
+            origin_binding: OriginBinding::None,
         });
     }
     // Observe the completed snapshot/window, after its last actual memory write.
@@ -373,6 +423,7 @@ pub fn plan(root: &Path, version: &str) -> Result<Vec<Site>> {
             object_binding: ObjectBinding::None,
             operand_binding: OperandBinding::None,
             data_link_offset,
+            origin_binding: OriginBinding::None,
         });
     }
     ensure!(
@@ -384,6 +435,22 @@ pub fn plan(root: &Path, version: &str) -> Result<Vec<Site>> {
         "missing object binding sites"
     );
     sites.sort_by_key(|s| s.address);
+    let origins = sites
+        .iter()
+        .filter(|s| s.origin_binding != OriginBinding::None)
+        .collect::<Vec<_>>();
+    ensure!(
+        origins.len() == 8
+            && origins.iter().all(|s| s.role == Role::Increment
+                && s.counter_class
+                    == Some(match (s.container.as_str(), s.offset) {
+                        ("_COpt_ArrayToRegister", 0x332)
+                        | ("_FunctionCalls_GenerateCall", 0x4c7 | 0x55d) => 3,
+                        ("_FunctionCalls_GenerateCall", 0x514) => 2,
+                        _ => 4,
+                    })),
+        "missing or inconsistent guarded birth-origin sites"
+    );
     ensure!(
         sites
             .iter()
@@ -588,6 +655,7 @@ pub fn install(root: &Path, version: &str, inputs: &[(String, Vec<u8>)]) -> Resu
             desc.extend((site.object_binding as u32).to_le_bytes());
             desc.extend((site.operand_binding as u32).to_le_bytes());
             desc.extend(site.data_link_offset.to_le_bytes());
+            desc.extend((site.origin_binding as u32).to_le_bytes());
             let mut desc_relocations = vec![
                 Relocation {
                     offset: descriptor_offset + 4,

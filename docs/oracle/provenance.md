@@ -169,7 +169,7 @@ ambiguous. A source objective needs both before attributing a category change to
 particular value. These observations are available in Rust through
 `allocation_category` and the combined provenance report.
 
-The internal callback is now `OracleRust_CounterProbeV3`, with a guarded 44-byte
+The internal callback is now `OracleRust_CounterProbeV4`, with a guarded 48-byte
 descriptor. Rebuild the common hooks and producer together; the linker rejects an
 older callback ABI instead of interpreting stale descriptors.
 
@@ -200,6 +200,63 @@ means only that this path was not observed. Other address-generation paths,
 optimizer-created values and complete semantic lifetimes remain outside this scope.
 The shared `symbol_address_pairs` objective counts this mechanism without claiming
 complete temporary elimination; see [source search](source-search.md).
+
+### Scalar array promotion
+
+`Birth.array_promotion` binds the two audited scalar `COpt_ArrayToRegister`
+creation paths to the original array Object and its observed element index.
+It records element size, array size/count, raw optimizer flags, original
+datatype/storage/type and byte-preserving source name with known/complete bits.
+The full retail scalar-pass and builder bodies guard the LoopVar field layout;
+the observer checks the original register, element/type sizes and index bounds.
+This distinguishes the first and second promoted elements even when generated
+instruction spellings no longer retain the array's name.
+
+The function declares `array_promotion=guarded_scalar_v1`; its end record gives
+`array_promotions`. `array_promotion_observations` requires the declared scope,
+complete counter capture, matching totals and a binding at every captured scalar
+promotion birth site. The supported paths create GPR and FPR elements. A vector
+array-promotion path remains outside this scope. The observed array Object pointer
+is capture-local, and a complete name is not proof of inline/declaration ancestry.
+
+### Call-result creation
+
+`Birth.call_result` observes all six register-creation sites in the guarded
+`FunctionCalls_GenerateCall` body: ordinary FPR, vector, paired-single FPR, GPR
+single and the two words of a GPR pair. It records the direct call ENode, its
+function-reference ENode (`callee`), return type and allocated part. This direct
+helper input remains available when a lowering path bypasses expression dispatch.
+The bounded expression text has separate known/complete flags and stays partial.
+It does not supply an overload-stable qualified function symbol or full inline
+ancestry.
+
+These observations occur before the retail result-register stores. `output_bytes`
+therefore retains 24 raw bytes with `output_complete: false`; inactive/uninitialized
+fields and opaque pointers must not become semantic identities. The function
+declares `call_result=guarded_call_result_v1` and ends with `call_results`.
+`call_result_observations` additionally checks all guarded births and consistent
+adjacent pair-word bindings. Coverage of this helper does not classify every
+temporary produced by intrinsic lowering or other backend helpers.
+
+The native state fingerprint format is now 2. It retains promoted element/source
+metadata and call shape/type/partial expression evidence, excludes raw partial
+output bytes and pointers, and masks optimizer flags to their three audited active
+bits. Raw flags remain available in the provenance report. Inspect
+`fingerprint_format_version` in a retained-state report; saved searches still bind
+the analyzer executable and must not mix fingerprints from different analyzers.
+
+### Compare the observed graph boundary
+
+```text
+mwcc-tools provenance compare baseline.json candidate.json --link RenderParticles__11CElementGenFv --class 4 --first-round 0 --second-round 0 --json
+```
+
+The [graph correspondence API](graph-correspondence.md) selects actual
+`before_simplify` graphs, retains every node and raw neighbor record, and combines
+unique observed object/symbol anchors with instruction hypotheses. It keeps
+confirmed capture-local merges separate from conditional cross-variant mappings.
+Conflicts, unmatched nodes and boundary edges remain explicit. Semantic lifetime
+identity and elimination are still indeterminate.
 
 Audit a pinned retail image independently with the native command:
 
@@ -256,6 +313,13 @@ r4 merges and invisible graph nodes that remain adjacent to `noRota`. It also
 records three unsuccessful, behavior-justified wrapper experiments.
 
 ## Validation
+
+Reports include `trace_sha256`, computed from the exact raw trace, and coalescing
+passes include `end_position`. Shared source objectives check report/compilation
+trace agreement and require the selected complete pass to finish before its graph.
+These fields detect mixed retained inputs; mutable Rust report structures remain
+trusted caller data. Older deserialized reports without a digest cannot establish
+the current retained-input gate.
 
 `tools/migration/verify_backend_probes.py` runs each selected input with probes
 disabled/enabled, checks stock-object equality and unchanged existing traces, then

@@ -136,7 +136,7 @@ The `-O0` reuse path has no range markers, so its range categories remain unknow
 The graph hook now reads live physical limits: target initialization may occur
 after generator entry. The host also cross-checks the preceding coalescer header,
 making stale early development snapshots with a zero boundary indeterminate.
-The internal descriptor is 44 bytes and uses `OracleRust_CounterProbeV3`; native
+The internal descriptor is 48 bytes and uses `OracleRust_CounterProbeV4`; native
 linking rejects older common-hook ABIs before installing these islands.
 
 The descriptor also selects the two guarded Normalize symbol-address births and
@@ -151,6 +151,109 @@ The standalone object-binding fixture retains eight bindings (six paired words)
 and both before/inside-window categories with stock-equivalent output on all
 three versions and both hosts. This does not establish exact origins for all
 backend address, call-result or array-promotion temporaries.
+
+## Guarded scalar-array and call-result origins
+
+The V4 descriptor selects eight existing counter islands for additional read-only
+origins. The ordinary birth remains the function/sequence identity. These records
+describe specific retail mechanisms; they do not establish complete semantic
+lifetimes, optimizer replacement history or inline ancestry.
+
+`COpt_ArrayToRegister` has size `0x5c8` and the same normalized full-body hash on
+all three versions:
+`4492771ad6e0733be32e5c687da872cfbe999cf0be8b49b75930c3b0645a5ff8`.
+Its FPR/GPR increments are at offsets `+0x332` and `+0x345`:
+
+| Version | FPR site | GPR site |
+|---|---|---|
+| GC 1.3 | `0x571072` | `0x571085` |
+| GC 1.3.2 | `0x571d32` | `0x571d45` |
+| GC 2.7 | `0x573ff2` | `0x574005` |
+
+At both sites ESI holds the promotion record, ECX the element index and EAX the
+new register. Retail stores and consumers establish the record's original array
+Object at `+4`, flags at `+8`, element size at `+0xc`, array size at `+0x10`,
+element count at `+0x14` and register slots at `+0x1c`. The constructor
+`build_array_loopvars`, size `0x1e3`, is separately guarded by exact pinned bytes:
+
+| Version | Constructor address | SHA-256 |
+|---|---|---|
+| GC 1.3 | `0x571310` | `084ecf59c2d0aaf301f2581df94d468013b1df8a3fff018327f6314e91b4cd37` |
+| GC 1.3.2 | `0x571fd0` | `b011ab9c2d7652b78e6f00abab6468fccf52f501a72beb39a3601cae6730e217` |
+| GC 2.7 | `0x574290` | `aa78233ab4f31a3906968dad68aacb7470763b4f386871873e83c6a3083ae00b` |
+
+`pv.value.array` binds the birth directly to this Object and element, retaining
+bounded name bytes, type/storage fields and raw flags. Runtime checks require
+one to eight elements, a valid index, positive element size, consistent sizes,
+array/element type sizes, the observed class flag and the actual newly allocated
+register. This does not cover the separate vector-array pass: its VR increment
+at `fn_0052cf10+0x14b` is still only an ordinary birth. It also does not recover
+an array's declaration token or its full inline ancestry.
+
+`FunctionCalls_GenerateCall`, size `0x6a6`, has normalized full-body hash
+`0aefa5c61a1dd82488fcce8b2480816f051613daa95f64ae7b543084307112bc`.
+The entry addresses are `0x5267c0`, `0x527320` and `0x5281b0` respectively.
+Its six result increments have offsets `+0x4c7` (FPR), `+0x514` (VR), `+0x55d`
+(another FPR branch), `+0x602` and `+0x612` (GPR pair creation order), and
+`+0x66d` (GPR). The reconstructed C omits the second FPR branch; it is not an
+authoritative exhaustive list of return cases.
+
+The guarded frame retains the actual call ENode at retail ESP `+0x64`, its
+return Type at `+0xc` and output Operand argument at `+0x68`. EAX is the same
+output Operand at each increment. The observer checks those identities, the
+call-node kind, return-type relation and output tag. `pv.value.call_result`
+retains the actual node/callee/type/output pointers, class-independent pair role,
+bounded expression text and a raw 24-byte output snapshot. The register field
+means the observed birth, not a final result read from that partial Operand.
+The following retail instruction has not yet stored the new result register.
+Consequently `output_complete=0` and `tree_complete=0`; inactive raw output bytes
+can contain incidental pointers or uninitialized data and are not semantic
+fingerprint inputs.
+
+The normal dispatcher reaches this helper through
+`generate_intrinsic_or_function_call` (table kinds 54/55). Two additional direct
+calls originate in intrinsic fallback paths. Observing the actual helper frame
+covers these routes without assuming that the active outer dispatch node is the
+helper's call node. Source inline ancestry remains partial: the existing origin
+table records certain call references, not arbitrary array objects or generated
+nodes. Function headers declare `guarded_scalar_v1` and
+`guarded_call_result_v1`; function ends count their successful observations.
+Missing records, runtime guard failures and missing scope declarations cannot
+establish absence. V4 producer runtime proofs must be built separately from the
+sealed V3 trees.
+
+The first V4 Windows proof is retained under
+`build/source-guided/birth-origin-audit/windows-producer/rust-producer-57ijuxk6`:
+all three versions pass the 36 legacy C/Rust comparisons, with common hook-object
+SHA-256 `539d259896c03824763ae47b9aca3d7e5ef7092378cbe8cbe2679e9df32b8f3b`.
+Separate stock-verified backend captures exercise all eight selected origin sites
+on every version, without provenance gaps. Ordinary word/pair/float/double calls
+cover four call sites; `__vector float` with `-proc 7400 -vector on` covers the VR
+site; `__vec2x32float__` with `-proc gekko` covers the extra FPR/PS_MR site. Small
+integer and double array cases exercise the GPR and FPR promotion loops. Their
+raw captures, partial output records and source inputs are retained under the
+same audit directory's `call-paths/`, `windows-promoted/` and
+`windows-promoted-fpr/` directories. These enabled captures are separate from
+full probe off/on and full-function acceptance checks.
+
+The completed V4 fixture verification now covers 45 off/on pairs (90 captures)
+on each host, across all three versions, with stock-equivalent objects and
+unchanged preexisting trace records. Every version records six scalar-array
+elements and 34 call-result births across the fixtures, including all six guarded
+call sites and both scalar-array classes. Windows and Linux stock-object hashes,
+typed evidence summaries and counter-island COFF bytes agree. The shared hook
+hash above also agrees across hosts; the linked producer files retain their own
+host-specific hashes.
+
+Windows evidence is at
+`build/source-guided/birth-origin-audit/backend-windows-full/verification.json`.
+The separately built Linux producer and 36 legacy comparisons are retained at
+`/home/henrique/.cache/mwcc-birth-origin-audit/producer/rust-producer-gmo66ilq`,
+with off/on evidence at
+`/home/henrique/.cache/mwcc-birth-origin-audit/backend-full/verification.json`.
+`build/source-guided/birth-origin-audit/cross-host-verification.json` records the
+cross-host checks. Per-invocation timings are retained; concurrent verification
+does not establish controlled trace overhead or search throughput.
 
 ## Comparison foundation
 

@@ -217,7 +217,7 @@ pub fn run(request: &Request) -> Result<Report> {
                     .any(|p| fs::read(request.root.join(p))
                         .ok()
                         .and_then(|b| coff::defined_symbols(&b).ok())
-                        .is_some_and(|s| s.contains("_OracleRust_CounterProbeV3"))),
+                        .is_some_and(|s| s.contains("_OracleRust_CounterProbeV4"))),
                 "Rust counter observer ABI is stale; rebuild the common hooks with the current sources"
             );
             let mut dispatchers = 0;

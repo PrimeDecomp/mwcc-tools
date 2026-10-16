@@ -7,7 +7,97 @@ use mwcc_oracle_core::{
     },
 };
 use std::{fs, path::PathBuf};
+fn evaluate(args: &[String]) -> Result<()> {
+    use mwcc_oracle_core::{
+        provenance,
+        source_guided::objective::{self, Contract, Input},
+    };
+    let contract: Contract = serde_json::from_slice(&fs::read(
+        args.first()
+            .context("source-search evaluate needs CONTRACT CAPTURE")?,
+    )?)?;
+    let capture = args
+        .get(1)
+        .context("source-search evaluate needs CAPTURE")?;
+    let mut source = None;
+    let mut object = None;
+    let mut baseline_capture = None;
+    let mut baseline_source = None;
+    let mut baseline_object = None;
+    let mut i = 2;
+    while i < args.len() {
+        let value = args.get(i + 1).context("evaluate option needs a value")?;
+        match args[i].as_str() {
+            "--source" => source = Some(value),
+            "--object" => object = Some(value),
+            "--baseline-capture" => baseline_capture = Some(value),
+            "--baseline-source" => baseline_source = Some(value),
+            "--baseline-object" => baseline_object = Some(value),
+            other => bail!("unknown evaluate option {other}"),
+        };
+        i += 2;
+    }
+    let baseline_count = [
+        baseline_capture.is_some(),
+        baseline_source.is_some(),
+        baseline_object.is_some(),
+    ]
+    .into_iter()
+    .filter(|present| *present)
+    .count();
+    ensure!(
+        baseline_count == 0 || baseline_count == 3,
+        "all three baseline options are required together"
+    );
+    let load = |capture: &str, source: &str, object: &str| -> Result<_> {
+        let mut value: serde_json::Value = serde_json::from_slice(&fs::read(capture)?)?;
+        let selected = value
+            .get_mut("compilation")
+            .map(serde_json::Value::take)
+            .unwrap_or(value);
+        let mut compilation: Compilation = serde_json::from_value(selected)?;
+        compilation.object = fs::read(object)?;
+        let source = fs::read(source)?;
+        let report = provenance::parse(&compilation.trace)?;
+        Ok((compilation, source, report))
+    };
+    let candidate = load(
+        capture,
+        source.context("evaluate requires --source FILE")?,
+        object.context("evaluate requires --object FILE")?,
+    )?;
+    let baseline = if baseline_count == 3 {
+        Some(load(
+            baseline_capture.unwrap(),
+            baseline_source.unwrap(),
+            baseline_object.unwrap(),
+        )?)
+    } else {
+        None
+    };
+    let original = baseline.as_ref().unwrap_or(&candidate);
+    let report = objective::evaluate(
+        &contract,
+        &Input {
+            compilation: &original.0,
+            source: &original.1,
+            provenance: &original.2,
+            semantic_check: None,
+        },
+        &Input {
+            compilation: &candidate.0,
+            source: &candidate.1,
+            provenance: &candidate.2,
+            semantic_check: None,
+        },
+    )?;
+    println!("{}", serde_json::to_string_pretty(&report)?);
+    Ok(())
+}
 pub fn run(args: &[String]) -> Result<()> {
+    if args.first().map(String::as_str) == Some("evaluate") {
+        return evaluate(&args[1..]);
+    }
     if args.first().map(String::as_str) == Some("state") {
         let path = args
             .get(1)

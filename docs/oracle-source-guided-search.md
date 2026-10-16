@@ -17,6 +17,13 @@ kit documentation; legacy Python APIs and report prose need not be preserved.
 
 ## Existing comparison gap
 
+The development implementation now has a separate native
+[observed-boundary comparison](oracle/graph-correspondence.md) used by shared
+objectives. It retains all nodes, conditional provenance/instruction hypotheses,
+actual local merge chains, conflicts and boundary edges. The description below
+records the original instruction-only gap; semantic lifetime/elimination evidence
+and additional phase capture still require work.
+
 [`colouring::target::remap`](../crates/mwcc-oracle-core/src/colouring/target.rs)
 currently matches visible instruction sequences after normalizing virtual-register
 spellings, then votes on register-operand correspondence. `graph_difference` chooses

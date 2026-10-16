@@ -89,6 +89,19 @@ def main():
                        for f in history["functions"]), case["id"]
             assert all(f["materialization_scope"] == "guarded_normalize_pair_v1" and f["materialization_observations"]["state"] == "satisfied"
                        for f in history["functions"]), case["id"]
+            assert all(f["array_promotion_scope"] == "guarded_scalar_v1" and f["array_promotion_observations"]["state"] == "satisfied"
+                       and f["call_result_scope"] == "guarded_call_result_v1" and f["call_result_observations"]["state"] == "satisfied"
+                       for f in history["functions"]), case["id"]
+            promotions = [b["array_promotion"] for f in history["functions"] for b in f["births"] if b["array_promotion"]]
+            call_results = [b["call_result"] for f in history["functions"] for b in f["births"] if b["call_result"]]
+            assert len(promotions) >= case.get("minimum_array_promotions", 0), case["id"]
+            assert len(call_results) >= case.get("minimum_call_results", 0), case["id"]
+            assert all(not c["output_complete"] and not c["tree_complete"] and len(c["output_bytes"]) == 24
+                       for c in call_results), case["id"]
+            call_base = {"GC_1_3": 0x5267c0, "GC_1_3_2": 0x527320, "GC_2_7": 0x5281b0}[version]
+            call_names = {0x4c7: "fpr", 0x514: "vector", 0x55d: "paired_single", 0x602: "gpr_first", 0x612: "gpr_second", 0x66d: "gpr_single"}
+            call_paths = {call_names[b["site"]-call_base] for f in history["functions"] for b in f["births"] if b["call_result"]}
+            assert set(case.get("required_call_paths", [])) <= call_paths, case["id"]
             materializations = [b["materialization"] for f in history["functions"] for b in f["births"] if b["materialization"]]
             assert len(materializations) >= case.get("minimum_symbol_materializations", 0), case["id"]
             if case.get("minimum_symbol_materializations"):
@@ -153,6 +166,9 @@ def main():
                 expressions=sum(len(f["expressions"]) for f in history["functions"]),
                 object_bindings=len(objects), pair_bindings=len(pairs), range_categories=sorted(categories),
                 symbol_materializations=len(materializations),
+                array_promotions=len(promotions), call_results=len(call_results),
+                call_result_paths=sorted(call_paths),
+                call_result_parts=sorted({c["part"] for c in call_results}),
                 fixed_quantizer_operands=len(quantizers),
                 materialized_symbols=sorted({m["symbol_text"] for m in materializations if m["symbol_text"] is not None}),
                 graphs=len(graphs["graphs"]), graph_only=sum(len(g["graph_only"]) for g in graphs["graphs"]),

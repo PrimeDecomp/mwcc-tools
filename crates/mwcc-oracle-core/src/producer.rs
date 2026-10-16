@@ -39,7 +39,7 @@ pub const HOOKS: [&str; 26] = [
 ];
 pub const SUPPORT: [&str; 12] = [
     "_OracleRust_ExpressionProbeV1",
-    "_OracleRust_CounterProbeV3",
+    "_OracleRust_CounterProbeV4",
     "_OracleRust_BackendProbe",
     "_OracleRust_LinkName",
     "_OracleRust_PrintInstruction",

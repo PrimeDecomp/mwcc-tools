@@ -260,7 +260,7 @@ def main():
                     "_CInline_AddFunctionPrecNode", "_CInline_AddSpecialization", "_CTemplateNew_InstantiateInlineTemplateObject",
                     "_CTemplateNew_InstantiateFunction", "_fn_0050f240", "_generate_inline_code", "_setup_inline_locals_and_arguments"}
         support = {"_OracleRust_LinkName", "_OracleRust_PrintInstruction", "_OracleRust_Snapshot", "_OracleRust_DescribeExpression", "_cse_vregs",
-                   "_OracleRust_OriginFind", "_OracleRust_OriginWalk", "_OracleRust_PrintChain", "_OracleRust_InlineLine", "_OracleRust_BackendProbe", "_OracleRust_CounterProbeV3", "_OracleRust_ExpressionProbeV1"}
+                   "_OracleRust_OriginFind", "_OracleRust_OriginWalk", "_OracleRust_PrintChain", "_OracleRust_InlineLine", "_OracleRust_BackendProbe", "_OracleRust_CounterProbeV4", "_OracleRust_ExpressionProbeV1"}
         assert not c_object.exists(), "C observation hooks still compiled in Rust producer"
         for path, expected in [(rust_object, migrated | support), (frontend_object, frontend_names)]:
             symbols, _ = module.read_object(path)
