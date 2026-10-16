@@ -44,8 +44,9 @@ C rollback. The original compiler and runtime are downloaded during the build.
 Avoid `ninja -t clean` on the oracle target: it removes downloaded compilers.
 
 Set `MWCC_ORACLE_ROOT` to the built checkout when running tools elsewhere.
-Linux/WSL runs the compiler through wibo 1.2.0; `MWCC_WIBO` selects a loader,
+Linux/WSL and macOS run the compiler through wibo 1.2.0; `MWCC_WIBO` selects a loader,
 otherwise the runner checks `build/tools/wibo`, then PATH. Windows runs it directly.
+The pinned macOS wibo is Intel-only and needs Rosetta 2 on Apple Silicon.
 
 For a decomp kit, follow the [native kit workflow](../integrations/decomp-kits/overlay/.agents/docs/oracle-native.md).
 

@@ -45,6 +45,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     for name in ("prime_archive", "echoes_archive", "windows_release", "linux_release", "source_bundle", "output"):
         parser.add_argument("--" + name.replace("_", "-"), type=Path, required=True)
+    parser.add_argument("--macos-arm64-release", type=Path)
+    parser.add_argument("--macos-intel-release", type=Path)
     parser.add_argument("--source-pin", required=True)
     parser.add_argument("--release-label", default="rust-preview")
     args = parser.parse_args()
@@ -55,6 +57,10 @@ def main():
     assert not (output / "prime-agent-workflow").exists() and not (output / "echoes-agent-workflow").exists(), "Use a new output directory"
     releases = {"x86_64-pc-windows-msvc": args.windows_release.resolve(),
                 "x86_64-unknown-linux-gnu": args.linux_release.resolve()}
+    for target, archive in (("aarch64-apple-darwin", args.macos_arm64_release),
+                            ("x86_64-apple-darwin", args.macos_intel_release)):
+        if archive:
+            releases[target] = archive.resolve()
     artifacts = {}
     for target, archive in releases.items():
         assert archive.with_suffix(".zip.sha256").read_text().split()[0] == sha(archive)

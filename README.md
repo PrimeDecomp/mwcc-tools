@@ -126,7 +126,9 @@ mwcc-tools colouring verify --load saved --json
 
 Set `MWCC_ORACLE_ROOT` to the checkout containing the built oracle compilers.
 Offline analysis needs only the native executable. Compilation also needs the
-original compiler/runtime and, on Linux, wibo 1.2.0. `MWCC_WIBO` selects a loader.
+original compiler/runtime and, on Linux or macOS, wibo 1.2.0.
+`MWCC_WIBO` selects a loader. The Intel macOS wibo also needs Rosetta 2 on
+Apple Silicon; native host analysis does not.
 
 `configure --oracle` selects Rust observation hooks. Building hooks needs the
 `i686-pc-windows-msvc` target; host analysis does not.

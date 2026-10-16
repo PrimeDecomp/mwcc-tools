@@ -2,8 +2,9 @@
 import argparse
 import hashlib
 import json
-import os
 from pathlib import Path, PurePosixPath
+import platform
+import struct
 import subprocess
 import tempfile
 import zipfile
@@ -11,6 +12,57 @@ import zipfile
 
 def digest(data):
     return hashlib.sha256(data).hexdigest()
+
+
+def native_target(system=None, machine=None):
+    """Match the running host explicitly, rather than grouping every POSIX OS."""
+    system = platform.system() if system is None else system
+    machine = platform.machine() if machine is None else machine
+    architecture = {"amd64": "x86_64", "x86_64": "x86_64",
+                    "arm64": "aarch64", "aarch64": "aarch64"}.get(machine.lower())
+    target = {
+        ("Windows", "x86_64"): "x86_64-pc-windows-msvc",
+        ("Linux", "x86_64"): "x86_64-unknown-linux-gnu",
+        ("Darwin", "x86_64"): "x86_64-apple-darwin",
+        ("Darwin", "aarch64"): "aarch64-apple-darwin",
+    }.get((system, architecture))
+    if target is None:
+        raise RuntimeError(f"unsupported native release audit host {system}/{machine}")
+    return target
+
+
+def validate_native_binary(data, target):
+    """Independently check the target's executable format and CPU before launch."""
+    if target == "x86_64-pc-windows-msvc":
+        assert len(data) >= 64 and data[:2] == b"MZ", "release executable is not PE"
+        pe = struct.unpack_from("<I", data, 60)[0]
+        assert pe + 26 <= len(data) and data[pe:pe+4] == b"PE\0\0", "truncated PE header"
+        machine, = struct.unpack_from("<H", data, pe+4)
+        optional_size, flags = struct.unpack_from("<HH", data, pe+20)
+        assert machine == 0x8664, "release executable is not x86-64 PE"
+        assert optional_size >= 2 and pe+24+optional_size <= len(data), "truncated PE optional header"
+        assert data[pe+24:pe+26] == b"\x0b\x02" and flags & 2 and not flags & 0x2000, "PE is not a 64-bit executable"
+        return dict(format="pe", architecture="x86_64")
+    if target == "x86_64-unknown-linux-gnu":
+        assert len(data) >= 64 and data[:7] == b"\x7fELF\x02\x01\x01", "release executable is not little-endian ELF64"
+        kind, machine, version = struct.unpack_from("<HHI", data, 16)
+        assert machine == 62 and kind in (2, 3) and version == 1, "ELF is not an x86-64 executable"
+        return dict(format="elf", architecture="x86_64")
+    cpu = {"x86_64-apple-darwin": 0x01000007,
+           "aarch64-apple-darwin": 0x0100000c}.get(target)
+    assert cpu is not None, "unsupported release target"
+    assert len(data) >= 32 and data[:4] == b"\xcf\xfa\xed\xfe", "release executable is not thin little-endian Mach-O64"
+    observed_cpu, _, kind, count, size = struct.unpack_from("<IIIII", data, 4)
+    assert observed_cpu == cpu and kind == 2, "Mach-O target CPU or executable type mismatch"
+    assert count > 0 and count <= size//8 and 32+size <= len(data), "invalid Mach-O load-command extent"
+    position = 32
+    for _ in range(count):
+        assert position+8 <= 32+size, "truncated Mach-O load command"
+        _, command_size = struct.unpack_from("<II", data, position)
+        assert command_size >= 8 and command_size % 8 == 0 and position+command_size <= 32+size, "invalid Mach-O load command size"
+        position += command_size
+    assert position == 32+size, "Mach-O load-command count/extent mismatch"
+    return dict(format="mach_o", architecture="x86_64" if cpu == 0x01000007 else "aarch64")
 
 
 def main():
@@ -53,7 +105,9 @@ def main():
         assert inventory["target"] == meta["target"] and inventory["rustc"] == meta["notice_inventory_rustc"]
         for name, sha in inventory["files"].items():
             assert digest(bundle.read(f"licenses/dependencies/{meta['target']}/{name}")) == sha
-        assert (os.name == "nt") == ("windows" in meta["target"]), "Run on the archive's native host"
+        host_target = native_target()
+        assert meta["target"] == host_target, f"run {meta['target']} audit on its native host/architecture, not {host_target}"
+        executable_identity = validate_native_binary(bundle.read(meta["executable"]), meta["target"])
         with tempfile.TemporaryDirectory(prefix="mwcc standalone release ") as temporary:
             working = Path(temporary)
             bundle.extractall(working)
@@ -94,6 +148,8 @@ def main():
                                              object_sha256=compilation["object_sha256"], check_status="verified"))
     evidence = dict(complete=True, archive_sha256=expected_hash, binary_sha256=meta["executable_sha256"],
                     source_catalogue_sha256=meta["source_catalogue_sha256"], target=meta["target"],
+                    native_host=dict(system=platform.system(), machine=platform.machine(), target=host_target),
+                    executable_identity=executable_identity,
                     files=len(names), standalone_trace_cases=traces, checked_compilations=compilations, commands=commands)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(evidence, indent=2) + "\n", encoding="utf-8")

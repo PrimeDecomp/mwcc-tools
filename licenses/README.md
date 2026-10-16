@@ -28,3 +28,16 @@ python tools/migration/capture_notices.py --output licenses/dependencies/x86_64-
 ```
 
 Run only the command matching that host. The collector uses offline, target-filtered Cargo metadata and requires the toolchain's installed library attribution/license files. It rejects missing notices and detects stale lockfiles, changed notice bytes and unexpected inventory files. Regenerate after dependency/toolchain changes. Native `package-release` includes the target's inventory and every inventoried file, checks their hashes against the lockfile and bundles the decoder notices separately. See the [distribution guide](../docs/oracle-rust-release.md).
+
+`LICENSE` and `Cargo.lock` are pinned to LF in `.gitattributes`. The collector
+preserves their actual bytes: CRLF conversion changes both the workspace notice
+block and its hash. After updating attributes in an existing Windows checkout,
+refresh those files before regenerating inventories. The checkout regression
+test compares notice output from real Git checkouts with `core.autocrlf` enabled
+and disabled.
+
+macOS release jobs collect the locked target graph and installed Rust library
+notices on the native Intel or Apple Silicon runner into `build/notices/TARGET`.
+They verify that inventory and pass it to `package-release --notices DIR`; the
+archive still stores notices under `licenses/dependencies/TARGET`. No macOS
+inventory is fabricated from another host's Rust installation.

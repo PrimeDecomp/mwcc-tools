@@ -770,7 +770,7 @@ fn help() {
   link [--oracle] VERSION OUTPUT INPUT... [--root DIR] [--timeout SECS]
   configure [--version V] [--mode link|compare] [--split-only] [--oracle [--producer rust|c]] [--root DIR]
   build-hooks OUTPUT [--trace-shim | --frontend-version V] [--root DIR] [--rustc FILE] [--timeout SECS]
-  package-release OUTPUT.zip --binary FILE --target TARGET [--root DIR] [--source-revision COMMIT]
+  package-release OUTPUT.zip --binary FILE --target TARGET [--root DIR] [--source-revision COMMIT] [--notices DIR]
   transform-dep DEP OUT [--root DIR]
   download TOOL OUTPUT [OTHER_OUTPUT...] [--root DIR] [--timeout SECS]
   verify|gates [--root DIR] [--ninja FILE] [--jobs N] [--timeout SECS]
@@ -856,6 +856,7 @@ fn run() -> Result<()> {
                     | "--producer"
                     | "--binary"
                     | "--source-revision"
+                    | "--notices"
                     | "--frontend-version"
                     | "--first-round"
                     | "--second-round"

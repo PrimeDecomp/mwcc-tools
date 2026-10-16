@@ -1,9 +1,25 @@
 """Shared native-tool discovery for legacy kit command names; no oracle imports."""
 import os
 from pathlib import Path
+import platform
 import shutil
 import subprocess
 import sys
+
+
+def native_target():
+    system, machine = platform.system(), platform.machine().lower()
+    architecture = {"amd64": "x86_64", "x86_64": "x86_64",
+                    "arm64": "aarch64", "aarch64": "aarch64"}.get(machine)
+    target = {
+        ("Windows", "x86_64"): "x86_64-pc-windows-msvc",
+        ("Linux", "x86_64"): "x86_64-unknown-linux-gnu",
+        ("Darwin", "x86_64"): "x86_64-apple-darwin",
+        ("Darwin", "aarch64"): "aarch64-apple-darwin",
+    }.get((system, architecture))
+    if target is None:
+        raise RuntimeError(f"no bundled tools target for {system}/{machine}")
+    return target
 
 
 def oracle_root(arguments):
@@ -33,15 +49,22 @@ def executable(arguments):
             path = root / relative / f"mwcc-tools{suffix}"
             if path.is_file():
                 return str(path.resolve())
-    if sys.platform in ("win32", "linux"):
-        target = "x86_64-pc-windows-msvc" if os.name == "nt" else "x86_64-unknown-linux-gnu"
+    unsupported = None
+    try:
+        target = native_target()
+    except RuntimeError as error:
+        unsupported = str(error)
+    else:
+        installed_suffix = ".exe" if target == "x86_64-pc-windows-msvc" else ""
         project = Path(__file__).resolve().parents[1]
-        path = project / ".agents/tools/mwcc" / target / "bin" / f"mwcc-tools{suffix}"
+        path = project / ".agents/tools/mwcc" / target / "bin" / f"mwcc-tools{installed_suffix}"
         if path.is_file():
             return str(path.resolve())
     found = shutil.which("mwcc-tools")
     if found:
         return found
+    if unsupported:
+        raise RuntimeError(f"{unsupported}; set MWCC_TOOLS to a build for this host, or put mwcc-tools on PATH")
     raise RuntimeError("mwcc-tools was not found; set MWCC_TOOLS to a native release executable, or run cargo build --release --locked in MWCC_ORACLE_ROOT")
 
 

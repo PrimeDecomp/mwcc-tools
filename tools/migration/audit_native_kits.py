@@ -2,7 +2,6 @@
 import argparse
 import hashlib
 import json
-import os
 from pathlib import Path
 import subprocess
 import sys
@@ -10,6 +9,7 @@ import tempfile
 import zipfile
 
 from verify_archived_kits import CASES, sha, unpack, write_json
+from audit_release import native_target
 
 
 def main():
@@ -55,7 +55,7 @@ def main():
                             cwd=project, check=True, capture_output=True, text=True, timeout=120)
     (output / "install.stdout").write_text(result.stdout)
     executable = Path(next(line.removeprefix("MWCC_TOOLS=") for line in result.stdout.splitlines() if line.startswith("MWCC_TOOLS=")))
-    target = "x86_64-pc-windows-msvc" if os.name == "nt" else "x86_64-unknown-linux-gnu"
+    target = native_target()
     assert sha(executable) == native["artifacts"][target]["executable_sha256"]
     evidence = dict(complete=False, archive=archive, source_pin=args.source_pin,
                     native_manifest_sha256=sha(kit / "native-manifest.json"), executable_sha256=sha(executable), target=target)

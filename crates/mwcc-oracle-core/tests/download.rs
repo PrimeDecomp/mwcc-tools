@@ -128,6 +128,11 @@ fn library_selection_and_guarded_byte_patches_match_all_reference_outputs() {
 }
 #[test]
 fn pins_platform_urls_and_fixture_integrity_match_the_reference() {
+    // Rust calls Apple Silicon "aarch64"; the pinned release uses "arm64".
+    assert_eq!(
+        download::objdiff_url("Darwin", "aarch64").unwrap(),
+        "https://github.com/encounter/objdiff/releases/download/v3.8.1/objdiff-cli-macos-arm64"
+    );
     let metadata = manifest();
     assert_eq!(
         metadata["reference_commit"],

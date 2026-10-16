@@ -31,7 +31,7 @@ pub fn objdiff_url(system: &str, machine: &str) -> Result<String> {
     let machine = machine.to_lowercase();
     let machine = match machine.as_str() {
         "amd64" => "x86_64",
-        "arm64" if system == "macos" => "arm64",
+        "arm64" | "aarch64" if system == "macos" => "arm64",
         "arm64" => "aarch64",
         other => other,
     };

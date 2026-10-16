@@ -19,6 +19,11 @@ hashes and source identity, installs the executable and notices, and prints the
 Set `MWCC_ORACLE_ROOT` to the checkout containing the built oracle compilers.
 The kit's `EXTERNALS.md` describes compiler setup.
 
+The installer and native-tool discovery support Windows/Linux x64 and macOS
+Intel/Apple Silicon. A kit must include the matching target in its manifest;
+older archives may contain only Windows/Linux packages. A standalone macOS
+release on PATH or selected by `MWCC_TOOLS` also works.
+
 The optional old-name Python launchers dispatch to `MWCC_TOOLS`, the installed
 native copy, an executable under the oracle root, or PATH. A missing explicit
 executable or failed native command is an error; there is no Python fallback.
@@ -57,3 +62,7 @@ The archived-kit verifiers retain legacy regression evidence without making
 legacy APIs the adoption contract. See the
 [migration status](../../docs/oracle-rust-status.md) for release pins
 and validation results.
+
+Supply `--macos-arm64-release` and/or `--macos-intel-release` when assembling a
+new kit with macOS assets. The kit audit selects the native host target and checks
+its installation; existing archives remain unchanged.

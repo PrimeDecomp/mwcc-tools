@@ -8,7 +8,12 @@ use sha2::{Digest, Sha256};
 use std::{collections::BTreeMap, fs, io::Write, path::Path};
 use zip::{CompressionMethod, ZipWriter, write::SimpleFileOptions};
 
-pub const TARGETS: [&str; 2] = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu"];
+pub const TARGETS: [&str; 4] = [
+    "x86_64-pc-windows-msvc",
+    "x86_64-unknown-linux-gnu",
+    "aarch64-apple-darwin",
+    "x86_64-apple-darwin",
+];
 
 pub fn sha256(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
@@ -27,7 +32,12 @@ fn collect(root: &Path, relative: &str, files: &mut BTreeMap<String, Vec<u8>>) -
                 .file_name()
                 .into_string()
                 .map_err(|_| anyhow::anyhow!("non-UTF-8 release input"))?;
-            collect(root, &format!("{relative}/{name}"), files)?;
+            let child = if relative.is_empty() {
+                name
+            } else {
+                format!("{relative}/{name}")
+            };
+            collect(root, &child, files)?;
         }
     } else {
         ensure!(
@@ -39,12 +49,87 @@ fn collect(root: &Path, relative: &str, files: &mut BTreeMap<String, Vec<u8>>) -
     Ok(())
 }
 
+// Thin little-endian mach_header_64 only. Universal/fat files are deliberately
+// unsupported: a package target must identify the executable's actual CPU type.
+fn validate_macho(bytes: &[u8], target: &str) -> Result<()> {
+    ensure!(
+        bytes.len() >= 32 && &bytes[..4] == b"\xcf\xfa\xed\xfe",
+        "release executable is not thin little-endian 64-bit Mach-O"
+    );
+    let field = |offset: usize| -> u32 {
+        u32::from_le_bytes(
+            bytes[offset..offset + 4]
+                .try_into()
+                .expect("validated Mach-O header"),
+        )
+    };
+    let cpu = if target == "aarch64-apple-darwin" {
+        0x0100_000c
+    } else {
+        0x0100_0007
+    };
+    ensure!(
+        field(4) == cpu,
+        "release Mach-O CPU does not match {target}"
+    );
+    ensure!(
+        field(12) == 2,
+        "release Mach-O is not an executable (MH_EXECUTE)"
+    );
+    ensure!(
+        field(28) == 0,
+        "release Mach-O reserved header field is nonzero"
+    );
+    let count = field(16) as usize;
+    let size = field(20) as usize;
+    let end = 32usize
+        .checked_add(size)
+        .context("Mach-O load-command extent overflow")?;
+    ensure!(
+        count > 0 && count <= size / 8 && end <= bytes.len(),
+        "release Mach-O load-command header/extent is invalid"
+    );
+    let mut offset = 32usize;
+    for _ in 0..count {
+        ensure!(offset + 8 <= end, "truncated Mach-O load-command header");
+        let size = u32::from_le_bytes(bytes[offset + 4..offset + 8].try_into()?) as usize;
+        ensure!(
+            size >= 8 && size.is_multiple_of(8),
+            "invalid 64-bit Mach-O load-command size"
+        );
+        offset = offset
+            .checked_add(size)
+            .context("Mach-O load-command overflow")?;
+        ensure!(offset <= end, "Mach-O load command exceeds declared extent");
+    }
+    ensure!(offset == end, "Mach-O load-command count/size mismatch");
+    Ok(())
+}
+
 /// Validate notices and build an archive in memory before replacing any output.
 pub fn assemble(
     root: &Path,
     binary: &[u8],
     target: &str,
     revision: Option<&str>,
+) -> Result<Vec<u8>> {
+    assemble_with_notices(
+        root,
+        binary,
+        target,
+        revision,
+        &root.join(format!("licenses/dependencies/{target}")),
+    )
+}
+
+/// Assemble with a generated target notice directory while retaining canonical
+/// archive paths and the same target, lockfile, file-set and content validation.
+pub fn assemble_with_notices(
+    root: &Path,
+    binary: &[u8],
+    target: &str,
+    revision: Option<&str>,
+    notice_dir: &Path,
 ) -> Result<Vec<u8>> {
     ensure!(
         TARGETS.contains(&target),
@@ -101,8 +186,25 @@ pub fn assemble(
         collect(root, path, &mut files)?;
     }
     let notices = format!("licenses/dependencies/{target}");
-    collect(root, &notices, &mut files)?;
-    let inventory: Value = serde_json::from_slice(&files[&format!("{notices}/inventory.json")])?;
+    // Check the supplied path itself: joining an empty relative path can append
+    // a separator, which follows a directory symlink before symlink_metadata.
+    let notice_path = notice_dir.components().collect::<std::path::PathBuf>();
+    let notice_metadata = fs::symlink_metadata(&notice_path)
+        .with_context(|| format!("notice directory {}", notice_dir.display()))?;
+    ensure!(
+        !notice_metadata.file_type().is_symlink() && notice_metadata.is_dir(),
+        "release notice input must be a real directory, not a symlink"
+    );
+    let mut notice_files = BTreeMap::new();
+    collect(notice_dir, "", &mut notice_files)?;
+    for (path, bytes) in notice_files {
+        files.insert(format!("{notices}/{path}"), bytes);
+    }
+    let inventory: Value = serde_json::from_slice(
+        files
+            .get(&format!("{notices}/inventory.json"))
+            .context("release notice inventory.json is missing")?,
+    )?;
     ensure!(
         inventory["format_version"] == 1 && inventory["target"] == target,
         "notice inventory target/format mismatch"
@@ -183,6 +285,8 @@ fn validate_binary(bytes: &[u8], target: &str) -> Result<()> {
             bytes.get(pe..pe.saturating_add(6)) == Some(b"PE\0\0\x64\x86"),
             "release executable is not x86-64 PE"
         );
+    } else if target.ends_with("-apple-darwin") {
+        validate_macho(bytes, target)?;
     } else {
         ensure!(
             bytes.len() >= 20 && &bytes[..6] == b"\x7fELF\x02\x01" && &bytes[18..20] == b"\x3e\0",
@@ -199,7 +303,26 @@ pub fn write(
     revision: Option<&str>,
     output: &Path,
 ) -> Result<String> {
-    let bytes = assemble(root, &fs::read(binary)?, target, revision)?;
+    write_with_notices(
+        root,
+        binary,
+        target,
+        revision,
+        output,
+        &root.join(format!("licenses/dependencies/{target}")),
+    )
+}
+
+/// Write an archive using an explicitly supplied target notice directory.
+pub fn write_with_notices(
+    root: &Path,
+    binary: &Path,
+    target: &str,
+    revision: Option<&str>,
+    output: &Path,
+    notice_dir: &Path,
+) -> Result<String> {
+    let bytes = assemble_with_notices(root, &fs::read(binary)?, target, revision, notice_dir)?;
     let digest = sha256(&bytes);
     let parent = output
         .parent()

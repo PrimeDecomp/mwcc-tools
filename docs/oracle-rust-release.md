@@ -7,8 +7,8 @@ From a repository checkout, for example:
 gh release download v0.1.0 --pattern 'mwcc-tools-0.1.0-x86_64-pc-windows-msvc.zip*' --dir downloads
 ```
 
-Use `x86_64-unknown-linux-gnu` for Linux, and substitute the desired release
-version. Outside a checkout, add `--repo OWNER/REPOSITORY`. Pull requests and
+Choose a target from the table below and substitute the desired release version.
+Outside a checkout, add `--repo OWNER/REPOSITORY`. Pull requests and
 branch pushes also provide versioned packages as Actions artifacts; these are
 test builds, not published releases.
 
@@ -21,15 +21,30 @@ commands and versioned JSON rather than Python imports or human report text.
 Offline trace analysis and graph replay require only the executable. Compiler
 execution additionally needs a built oracle checkout, selected with
 `MWCC_ORACLE_ROOT` or `--oracle-root`. Original compiler executables, the historical
-linker/runtime, Ninja, objdiff and Linux's wibo are external components and are
-not bundled. Use wibo 1.2.0; `MWCC_WIBO` can select it explicitly. Building Rust
+linker/runtime, Ninja, objdiff and wibo are external components and are not
+bundled. Compiler execution on Linux and macOS requires wibo 1.2.0;
+`MWCC_WIBO` selects it explicitly. macOS uses the pinned `wibo-macos` asset.
+That asset is Intel-only, so compiler execution on Apple Silicon also requires
+Rosetta 2. The native ARM host tools and offline analysis do not require Rosetta.
+The macOS compiler/runtime setup has not been validated locally. Building Rust
 observation hooks requires Rust 1.96.0 and its `i686-pc-windows-msvc` target.
 The bundled `docs/producer.md` describes that source build.
 
-The supported distributions are `x86_64-pc-windows-msvc` and
-`x86_64-unknown-linux-gnu`. A Linux executable's libc requirements are those of
-its build host; the target name is not a promise of compatibility with older
-Linux distributions. Test on the deployment host before adopting a package.
+CI builds these native distributions:
+
+| Host | Package target | Actions runner |
+| --- | --- | --- |
+| Windows x64 | `x86_64-pc-windows-msvc` | `windows-2022` |
+| Linux x64 | `x86_64-unknown-linux-gnu` | `ubuntu-24.04` |
+| macOS Apple Silicon | `aarch64-apple-darwin` | `macos-15` |
+| macOS Intel | `x86_64-apple-darwin` | `macos-15-intel` |
+
+The macOS jobs test native host tools and offline analysis, and build/validate
+the Windows COFF observation objects. These are separate architecture packages,
+not a universal binary. The runner labels follow GitHub's
+[hosted runner reference](https://docs.github.com/en/actions/reference/runners/github-hosted-runners).
+The build host determines system-library requirements; the target name does not
+promise compatibility with older Linux or macOS releases.
 
 `release.json` records executable identity, versioned JSON protocols, stock
 compiler identities, a source-input catalogue and matching dependency notices.
@@ -46,19 +61,22 @@ not a signature or publisher authentication.
 
 ## Publish a version
 
-The `Rust tools` workflow tests and audits both host packages before publishing.
+The `Rust tools` workflow tests and audits all four host packages before publishing.
 Only a pushed `vVERSION` tag can publish, and `VERSION` must exactly match
 `workspace.package.version` in `Cargo.toml`. A failed or cancelled matrix job
 prevents publication. Build jobs have read-only repository permissions; only the
 tag-only publication job has `contents: write`.
 
 CI installs the pinned toolchain's documentation component to collect its actual
-Rust library notices. `Cargo.lock` uses LF on both hosts so notice hashes agree
-with fresh checkouts.
+Rust library notices. Windows and Linux retain strict byte-for-byte checks of
+their committed inventories. `LICENSE` and `Cargo.lock` use LF on every host.
+The macOS jobs collect their host's exact notices into `build/notices/TARGET`,
+check that inventory, and package it through `--notices`. No macOS golden notice
+inventory or completed native macOS validation is claimed before those jobs run.
 
 1. Update the workspace version and lockfile together. Check dependency notices
    if the lockfile or Rust toolchain changed, then commit the release inputs.
-2. Let the branch's Windows and Linux Actions checks pass. Review their audited
+2. Let all four host Actions checks pass. Review their audited
    packages before tagging the same commit.
 3. Create and push an annotated tag when ready to publish:
 
@@ -69,9 +87,9 @@ with fresh checkouts.
 
 The tag run builds fresh packages named
 `mwcc-tools-VERSION-TARGET.zip` and matching `.zip.sha256` files. It downloads
-both versioned Actions artifacts, checks their hashes, package identities and
+all four versioned Actions artifacts, checks their hashes, package identities and
 native audit results, and verifies that the remote tag still names the built
-commit. The publication job uses GitHub CLI to create a draft, upload all four
+commit. The publication job uses GitHub CLI to create a draft, upload all eight
 files, then publish. Versions containing a prerelease suffix are marked as
 prereleases and are not marked latest.
 
@@ -90,7 +108,9 @@ These steps use [`gh release create --verify-tag`](https://cli.github.com/manual
 
 ```text
 cargo build --locked --release -p mwcc-tools
-mwcc-tools package-release build/releases/mwcc-tools-0.1.0-TARGET.zip --binary PATH_TO_BUILT_EXECUTABLE --target TARGET
+python tools/migration/capture_notices.py --target TARGET --output build/notices/TARGET
+python tools/migration/capture_notices.py --target TARGET --output build/notices/TARGET --check
+mwcc-tools package-release build/releases/mwcc-tools-0.1.0-TARGET.zip --binary PATH_TO_BUILT_EXECUTABLE --target TARGET --notices build/notices/TARGET
 ```
 
 Run from the repository, or supply `--root`. Supply `--source-revision` with a full

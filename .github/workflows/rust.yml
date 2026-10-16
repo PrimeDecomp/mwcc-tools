@@ -42,14 +42,24 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, windows-2022]
+        os: [ubuntu-24.04, windows-2022, macos-15, macos-15-intel]
         include:
           - os: ubuntu-24.04
             native_target: x86_64-unknown-linux-gnu
             executable: mwcc-tools
+            notice_dir: licenses/dependencies/x86_64-unknown-linux-gnu
           - os: windows-2022
             native_target: x86_64-pc-windows-msvc
             executable: mwcc-tools.exe
+            notice_dir: licenses/dependencies/x86_64-pc-windows-msvc
+          - os: macos-15
+            native_target: aarch64-apple-darwin
+            executable: mwcc-tools
+            notice_dir: build/notices/aarch64-apple-darwin
+          - os: macos-15-intel
+            native_target: x86_64-apple-darwin
+            executable: mwcc-tools
+            notice_dir: build/notices/x86_64-apple-darwin
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -58,8 +68,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13'
-      - name: Test producer trace comparisons
-        run: python -m unittest discover -s tools/migration -p test_producer_trace.py
+      - name: Test trace, notice and platform validators
+        run: python -m unittest discover -s tools/migration -p 'test_*.py'
       - name: Install pinned Rust toolchain
         run: |
           rustup show
@@ -90,14 +100,17 @@ jobs:
           cargo run --locked -p mwcc-tools -- build-hooks build/frontend13.obj --frontend-version GC_1_3
           cargo run --locked -p mwcc-tools -- build-hooks build/frontend132.obj --frontend-version GC_1_3_2
           cargo run --locked -p mwcc-tools -- build-hooks build/frontend27.obj --frontend-version GC_2_7
+      - name: Collect macOS dependency and Rust library notices
+        if: runner.os == 'macOS'
+        run: python tools/migration/capture_notices.py --target ${{ matrix.native_target }} --output ${{ matrix.notice_dir }}
       - name: Check locked dependency and Rust library notices
-        run: python tools/migration/capture_notices.py --output licenses/dependencies/${{ matrix.native_target }} --check
+        run: python tools/migration/capture_notices.py --target ${{ matrix.native_target }} --output ${{ matrix.notice_dir }} --check
       - name: Build release executable
         run: cargo build --locked --release -p mwcc-tools
       - name: Require unchanged tracked release inputs
         run: git diff --exit-code HEAD --
       - name: Assemble native distribution
-        run: target/release/${{ matrix.executable }} package-release build/releases/mwcc-tools-${{ needs.metadata.outputs.version }}-${{ matrix.native_target }}.zip --binary target/release/${{ matrix.executable }} --target ${{ matrix.native_target }} --source-revision ${{ needs.metadata.outputs.revision }}
+        run: target/release/${{ matrix.executable }} package-release build/releases/mwcc-tools-${{ needs.metadata.outputs.version }}-${{ matrix.native_target }}.zip --binary target/release/${{ matrix.executable }} --target ${{ matrix.native_target }} --notices ${{ matrix.notice_dir }} --source-revision ${{ needs.metadata.outputs.revision }}
       - name: Audit archive and standalone execution
         run: python tools/migration/audit_release.py build/releases/mwcc-tools-${{ needs.metadata.outputs.version }}-${{ matrix.native_target }}.zip --source-root . --binary target/release/${{ matrix.executable }} --output build/releases/audit.json
       - uses: actions/upload-artifact@v4
@@ -126,7 +139,15 @@ jobs:
         with:
           name: native-${{ needs.metadata.outputs.version }}-x86_64-pc-windows-msvc
           path: release-input/x86_64-pc-windows-msvc
-      - name: Recheck both audited packages before publication
+      - uses: actions/download-artifact@v4
+        with:
+          name: native-${{ needs.metadata.outputs.version }}-aarch64-apple-darwin
+          path: release-input/aarch64-apple-darwin
+      - uses: actions/download-artifact@v4
+        with:
+          name: native-${{ needs.metadata.outputs.version }}-x86_64-apple-darwin
+          path: release-input/x86_64-apple-darwin
+      - name: Recheck all four audited packages before publication
         shell: python
         env:
           RELEASE_VERSION: ${{ needs.metadata.outputs.version }}
@@ -136,7 +157,8 @@ jobs:
           version, revision = os.environ["RELEASE_VERSION"], os.environ["SOURCE_REVISION"]
           destination = pathlib.Path("release-files")
           destination.mkdir()
-          for target in ("x86_64-unknown-linux-gnu", "x86_64-pc-windows-msvc"):
+          for target in ("x86_64-unknown-linux-gnu", "x86_64-pc-windows-msvc",
+                         "aarch64-apple-darwin", "x86_64-apple-darwin"):
               directory = pathlib.Path("release-input") / target
               archive = directory / f"mwcc-tools-{version}-{target}.zip"
               sidecar = archive.with_suffix(".zip.sha256")
@@ -162,7 +184,7 @@ jobs:
                   raise SystemExit(f"Missing or mismatched native audit: {target}")
               for file in (archive, sidecar):
                   shutil.copyfile(file, destination / file.name)
-      - name: Publish a new release with both native packages
+      - name: Publish a new release with all four native packages
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}

@@ -7,6 +7,7 @@ pub fn run(args: &[String]) -> Result<()> {
     let mut target = None;
     let mut revision = None;
     let mut output = None;
+    let mut notices = None;
     let mut i = 0;
     while i < args.len() {
         let option = &args[i];
@@ -18,7 +19,14 @@ pub fn run(args: &[String]) -> Result<()> {
             output = Some(PathBuf::from(option));
         } else {
             ensure!(
-                ["--root", "--binary", "--target", "--source-revision"].contains(&option.as_str()),
+                [
+                    "--root",
+                    "--binary",
+                    "--target",
+                    "--source-revision",
+                    "--notices"
+                ]
+                .contains(&option.as_str()),
                 "unknown package-release option {option}"
             );
             i += 1;
@@ -29,22 +37,22 @@ pub fn run(args: &[String]) -> Result<()> {
                 "--root" => root = value.into(),
                 "--binary" => binary = Some(PathBuf::from(value)),
                 "--target" => target = Some(value.as_str()),
+                "--notices" => notices = Some(PathBuf::from(value)),
                 _ => revision = Some(value.as_str()),
             }
         }
         i += 1;
     }
-    let output = output.context("package-release OUTPUT.zip --binary FILE --target TARGET [--root DIR] [--source-revision COMMIT]")?;
+    let output = output.context("package-release OUTPUT.zip --binary FILE --target TARGET [--root DIR] [--source-revision COMMIT] [--notices DIR]")?;
     ensure!(
         output.extension().is_some_and(|e| e == "zip"),
         "release output must end in .zip"
     );
-    let digest = mwcc_oracle_core::release::write(
-        &root,
-        &binary.context("--binary is required")?,
-        target.context("--target is required")?,
-        revision,
-        &output,
+    let binary = binary.context("--binary is required")?;
+    let target = target.context("--target is required")?;
+    let notices = notices.unwrap_or_else(|| root.join("licenses/dependencies").join(target));
+    let digest = mwcc_oracle_core::release::write_with_notices(
+        &root, &binary, target, revision, &output, &notices,
     )?;
     println!("{digest}  {}", output.display());
     Ok(())

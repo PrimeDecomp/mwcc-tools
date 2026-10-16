@@ -585,7 +585,7 @@
       "notices": [
         {
           "path": "LICENSE",
-          "sha256": "f4e7f373b9b996950337e8d41a4a2939c2d90b7725e9baf3d5084a22717ad328"
+          "sha256": "a2010f343487d3f7618affe54f789f5487602331c0a8d03f49e9a7c547cf0499"
         }
       ]
     },
@@ -597,7 +597,7 @@
       "notices": [
         {
           "path": "LICENSE",
-          "sha256": "f4e7f373b9b996950337e8d41a4a2939c2d90b7725e9baf3d5084a22717ad328"
+          "sha256": "a2010f343487d3f7618affe54f789f5487602331c0a8d03f49e9a7c547cf0499"
         }
       ]
     },
@@ -609,7 +609,7 @@
       "notices": [
         {
           "path": "LICENSE",
-          "sha256": "f4e7f373b9b996950337e8d41a4a2939c2d90b7725e9baf3d5084a22717ad328"
+          "sha256": "a2010f343487d3f7618affe54f789f5487602331c0a8d03f49e9a7c547cf0499"
         }
       ]
     },
@@ -1364,6 +1364,11 @@
     "9eacbcb81be660840c714a560a9d65ba07913db98dd4baf969f78dd499fdd60f": [
       "ring 0.17.14: third_party/fiat/LICENSE"
     ],
+    "a2010f343487d3f7618affe54f789f5487602331c0a8d03f49e9a7c547cf0499": [
+      "mwcc-oracle-core 0.1.0: LICENSE",
+      "mwcc-oracle-hooks 0.1.0: LICENSE",
+      "mwcc-tools 0.1.0: LICENSE"
+    ],
     "a446f219aabe3667850444bbd5f11b7e931889b4d5dbf3bc074fe00f25f1124c": [
       "capstone-sys 0.18.0: LICENSE"
     ],
@@ -1467,11 +1472,6 @@
     "f025ccfb7dfb6bdfedc75ca0f67acc69e6fb4998143d834f7c2f38a29989680f": [
       "ring 0.17.14: LICENSE-other-bits"
     ],
-    "f4e7f373b9b996950337e8d41a4a2939c2d90b7725e9baf3d5084a22717ad328": [
-      "mwcc-oracle-core 0.1.0: LICENSE",
-      "mwcc-oracle-hooks 0.1.0: LICENSE",
-      "mwcc-tools 0.1.0: LICENSE"
-    ],
     "f7db81051789b729fea528a63ec4c938fdcb93d9d61d97dc8cc2e9df6d47f2a1": [
       "unicode-ident 1.0.27: LICENSE-UNICODE"
     ],
@@ -1480,7 +1480,7 @@
     ]
   },
   "files": {
-    "THIRD-PARTY-NOTICES.txt": "4dd01323ebd504a00dc42b1a22b049597905c3c461ded1993d4747b31a889849",
+    "THIRD-PARTY-NOTICES.txt": "d6fe102325434c5bfbc99f7d402c86a4048ffed39eb69b5ce4215e072ba38917",
     "rust/COPYRIGHT-library.html": "78c163fcec50e64bfd85fedb850c273595602fafa2b41f30f75d4e410b80ee83",
     "rust/licenses/Apache-2.0.txt": "074e6e32c86a4c0ef8b3ed25b721ca23aca83df277cd88106ef7177c354615ff",
     "rust/licenses/BSD-2-Clause.txt": "f32fb3b417a194167cfad068223fc975ba96c5960513a10f66a3c28720aec1df",

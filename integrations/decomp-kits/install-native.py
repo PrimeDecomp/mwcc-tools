@@ -3,7 +3,6 @@
 import argparse
 import hashlib
 import json
-import os
 from pathlib import Path, PurePosixPath
 import platform
 import tempfile
@@ -14,19 +13,37 @@ def digest(data):
     return hashlib.sha256(data).hexdigest()
 
 
+def native_target():
+    system, machine = platform.system(), platform.machine().lower()
+    architecture = {"amd64": "x86_64", "x86_64": "x86_64",
+                    "arm64": "aarch64", "aarch64": "aarch64"}.get(machine)
+    target = {
+        ("Windows", "x86_64"): "x86_64-pc-windows-msvc",
+        ("Linux", "x86_64"): "x86_64-unknown-linux-gnu",
+        ("Darwin", "x86_64"): "x86_64-apple-darwin",
+        ("Darwin", "aarch64"): "aarch64-apple-darwin",
+    }.get((system, architecture))
+    if target is None:
+        raise RuntimeError(f"no bundled tools target for {system}/{machine}; build mwcc-tools for this host")
+    return target
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("project", type=Path)
     parser.add_argument("--apply", action="store_true", help="write files (otherwise validate and show the destination)")
     args = parser.parse_args()
-    if platform.machine().lower() not in ("amd64", "x86_64") or platform.system() not in ("Windows", "Linux"):
-        parser.error("bundled tools support Windows/Linux x86-64; build mwcc-tools for other hosts")
-    target = "x86_64-pc-windows-msvc" if os.name == "nt" else "x86_64-unknown-linux-gnu"
+    try:
+        target = native_target()
+    except RuntimeError as error:
+        parser.error(str(error))
     kit = Path(__file__).resolve().parent
     manifest = json.loads((kit / "native-manifest.json").read_text())
     if manifest["format_version"] != 1:
         parser.error("unsupported native manifest format")
-    artifact = manifest["artifacts"][target]
+    artifact = manifest["artifacts"].get(target)
+    if artifact is None:
+        parser.error(f"this kit has no bundled tools for {target}; use a kit with this target or build mwcc-tools and set MWCC_TOOLS")
     archive = (kit / artifact["path"]).resolve()
     if not archive.is_relative_to(kit) or digest(archive.read_bytes()) != artifact["sha256"]:
         parser.error("native archive path/hash mismatch")
