@@ -1,6 +1,14 @@
 # Source write and initializer provenance audit
 
-This began as a read-only investigation after `f164a24`, not an implemented provenance contract. Call-argument capture has since been implemented in V6. The original-source bridge below still needs a defined observation contract and guarded runtime validation. The later [inline/write-emission audit](oracle-inline-clone-audit.md) resolves the concrete frontend entries, ownership and external switch-table guards; the [IRO audit](oracle-iro-origin-audit.md) resolves private entries and scalar replacement stores; the native [source arena audit](oracle/source-arenas.md) inventories allocation and reset prerequisites. These audits do not add runtime source ancestry.
+This research record identifies the observations needed to connect original C++
+writes and initializers to backend values. It began after `f164a24`; its captures
+describe that historical scope. Current development adds a bounded
+[source-node API](oracle/source-nodes.md), with native validation still pending.
+The complete source-to-backend bridge remains open.
+
+Related references: [inline/write emission](oracle-inline-clone-audit.md),
+[IRO transformations](oracle-iro-origin-audit.md) and
+[arena lifetimes](oracle/source-arenas.md).
 
 ## What retained captures establish
 
@@ -47,7 +55,9 @@ Declaration parsing and inline-body registration can precede backend `pv.functio
 
 ## Minimum guarded bridge proposal
 
-Use one additive typed source-origin history. Keep existing context fields unchanged and partial. The following are proposed records/API semantics, not implemented schema:
+The following describes the complete target contract. The experimental
+[source-node API](oracle/source-nodes.md) implements selected snapshots and actual
+clone-call observations; the remaining edges and the APIs below are proposals:
 
 1. **Source snapshots and write roles.** At a guarded frontend statement emission or pre-inline body-registration boundary, record the complete supported tagged ENode graph, its exact owning function Object and statement/body slot. Assign `SourceWrite` only to an observed assignment node with explicit LHS/RHS edges. Record direct Object/constant-byte-interval targets only when an audited LHS recognizer proves them; otherwise the target remains unknown. Add `DeclarationInitializer` only through a matched `CInit_InitializeAutoData` target scope and its exact callback input root. Keep explicit syntax/default construction separate. Record declaration token file/offset only when its compiler token identity can be bound to the retained source closure; line is display data.
 2. **Actual copy/lowering edges.** Instrument each `fn_00513240` invocation, both inline expansion routes, and formal/actual substitution identity. Capture input/output node observations, evaluation mode, callee/body slot and parent invocation. For lowering, record recursive input scope and actual generated statements/rewritten nodes; a transformation that has not been observed remains a gap. Do not zip equal-looking trees or treat the outer call's replacement root as complete leaf ancestry.

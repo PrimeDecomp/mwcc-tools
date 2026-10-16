@@ -378,7 +378,7 @@ pub fn plan(root: &Path, version: &str) -> Result<Vec<Site>> {
     Ok(result)
 }
 
-fn check_guard(object: &Object<'_>, g: &Guard, original: &[u8]) -> Result<()> {
+pub(crate) fn check_guard(object: &Object<'_>, g: &Guard, original: &[u8]) -> Result<()> {
     let found = object
         .symbols
         .values()
@@ -416,6 +416,14 @@ fn check_guard(object: &Object<'_>, g: &Guard, original: &[u8]) -> Result<()> {
     let mut expected = original.to_vec();
     let mut ids = Sha256::new();
     let mut covered = BTreeSet::new();
+    ensure!(
+        !section
+            .relocations
+            .iter()
+            .any(|r| { r.offset < s.value && u64::from(r.offset) + 4 > u64::from(s.value) }),
+        "relocation crosses guarded arena region start: {}",
+        g.name
+    );
     let mut relocs = section
         .relocations
         .iter()
@@ -465,7 +473,7 @@ fn check_guard(object: &Object<'_>, g: &Guard, original: &[u8]) -> Result<()> {
 
 // Exactly two cdecl arguments (Registers*, Descriptor*); the saved ESP is the
 // original retail ESP minus 8 (island CALL return plus PUSHFD), before PUSHAD.
-fn callback(descriptor: u32, handler: u32) -> (Vec<u8>, Vec<Relocation>) {
+pub(crate) fn callback(descriptor: u32, handler: u32) -> (Vec<u8>, Vec<Relocation>) {
     let mut code = vec![
         0x9c, 0x60, 0x89, 0xe0, 0x81, 0xec, 0x10, 0x02, 0, 0, 0x83, 0xe4, 0xf0, 0x0f, 0xae, 0x04,
         0x24, 0x50, 0x68,
@@ -611,12 +619,49 @@ fn check_input_branches(
     Ok(())
 }
 
-/// Validate every audited routine before changing any input. Original sections
-/// retain their sizes and all non-patch contents, symbols and relocation targets.
-pub fn install(root: &Path, version: &str, inputs: &[(String, Vec<u8>)]) -> Result<Installed> {
-    let version_id = version_number(version)?;
+/// Internal code-window adapter shared by the two guarded installers.
+#[derive(Clone, Debug)]
+pub(crate) struct CodeWindow {
+    pub address: u32,
+    pub length: u32,
+    pub container: String,
+}
+fn window_sites(windows: &[CodeWindow]) -> Vec<Site> {
+    windows
+        .iter()
+        .map(|w| Site {
+            address: w.address,
+            container: w.container.clone(),
+            offset: 0,
+            bytes: vec![0; w.length as usize],
+            action: 0,
+            pair: 0,
+            pool: 0,
+            size_kind: 0,
+            size_value: 0,
+            result_kind: 0,
+            result_value: 0,
+        })
+        .collect()
+}
+pub(crate) fn check_window_boundaries(
+    code: &[u8],
+    base: u32,
+    windows: &[CodeWindow],
+) -> Result<()> {
+    check_boundaries(code, base, &window_sites(windows))
+}
+/// Full mapped-input branch/alias/relocation scan. Supplemental coarse code
+/// groups are guarded independently before their private-entry decoding is used.
+pub(crate) fn validate_incoming_windows(
+    root: &Path,
+    version: &str,
+    inputs: &[(String, Vec<u8>)],
+    windows: &[CodeWindow],
+    containers: &[Guard],
+) -> Result<()> {
+    version_number(version)?;
     let c = &catalogs()[version];
-    let sites = plan(root, version)?;
     let original = Original::read(root, version)?;
     let pe = original.pe()?;
     let metadata = executable::read_symbols(&fs::read_to_string(
@@ -625,26 +670,11 @@ pub fn install(root: &Path, version: &str, inputs: &[(String, Vec<u8>)]) -> Resu
     .into_iter()
     .map(|s| (s.name, s.address))
     .collect::<BTreeMap<_, _>>();
-    let lock = match version_id {
-        1 => 0x5db510,
-        2 => 0x5dd510,
-        3 => 0x5df568,
-        _ => unreachable!(),
-    };
-    ensure!(
-        metadata.get("_heap_pool") == Some(&(lock + 6))
-            && metadata.get("_data_0057fdd8") == Some(&lock),
-        "arena globals ABI changed"
-    );
+    let sites = window_sites(windows);
     let mut checked = BTreeSet::new();
     for (_, bytes) in inputs {
         let object = Object::parse(bytes)?;
-        for g in c
-            .guards
-            .iter()
-            .chain(&c.incoming_groups)
-            .chain(std::iter::once(&c.statistics_table))
-        {
+        for g in &c.incoming_groups {
             if object
                 .symbols
                 .values()
@@ -652,15 +682,20 @@ pub fn install(root: &Path, version: &str, inputs: &[(String, Vec<u8>)]) -> Resu
             {
                 ensure!(
                     checked.insert(g.name.clone()),
-                    "duplicate guarded arena helper"
+                    "duplicate guarded incoming group"
+                );
+                ensure!(
+                    metadata.get(&g.name) == Some(&g.address)
+                        && digest(pe.read(g.address, g.size as usize)?) == g.code_sha256,
+                    "incoming group PE guard changed"
                 );
                 check_guard(&object, g, pe.read(g.address, g.size as usize)?)?;
             }
         }
     }
     ensure!(
-        checked.len() == 23 + c.incoming_groups.len(),
-        "missing guarded arena helpers/table in link inputs"
+        checked.len() == c.incoming_groups.len(),
+        "missing guarded incoming group"
     );
     // Incoming relocations, including section symbols and aliases in other inputs.
     let mut aliases = metadata.clone();
@@ -736,7 +771,7 @@ pub fn install(root: &Path, version: &str, inputs: &[(String, Vec<u8>)]) -> Resu
                         );
                     } else {
                         ensure!(
-                            !c.guards
+                            !containers
                                 .iter()
                                 .filter(|g| sites.iter().any(|s| s.container == g.name))
                                 .any(|g| {
@@ -751,6 +786,69 @@ pub fn install(root: &Path, version: &str, inputs: &[(String, Vec<u8>)]) -> Resu
             }
         }
     }
+    Ok(())
+}
+
+/// Validate every audited routine before changing any input. Original sections
+/// retain their sizes and all non-patch contents, symbols and relocation targets.
+pub fn install(root: &Path, version: &str, inputs: &[(String, Vec<u8>)]) -> Result<Installed> {
+    let version_id = version_number(version)?;
+    let c = &catalogs()[version];
+    let sites = plan(root, version)?;
+    let original = Original::read(root, version)?;
+    let pe = original.pe()?;
+    let metadata = executable::read_symbols(&fs::read_to_string(
+        root.join(format!("config/{version}/symbols.txt")),
+    )?)?
+    .into_iter()
+    .map(|s| (s.name, s.address))
+    .collect::<BTreeMap<_, _>>();
+    let lock = match version_id {
+        1 => 0x5db510,
+        2 => 0x5dd510,
+        3 => 0x5df568,
+        _ => unreachable!(),
+    };
+    ensure!(
+        metadata.get("_heap_pool") == Some(&(lock + 6))
+            && metadata.get("_data_0057fdd8") == Some(&lock),
+        "arena globals ABI changed"
+    );
+    let mut checked = BTreeSet::new();
+    for (_, bytes) in inputs {
+        let object = Object::parse(bytes)?;
+        for g in c
+            .guards
+            .iter()
+            .chain(&c.incoming_groups)
+            .chain(std::iter::once(&c.statistics_table))
+        {
+            if object
+                .symbols
+                .values()
+                .any(|s| s.section > 0 && s.name == g.name)
+            {
+                ensure!(
+                    checked.insert(g.name.clone()),
+                    "duplicate guarded arena helper"
+                );
+                check_guard(&object, g, pe.read(g.address, g.size as usize)?)?;
+            }
+        }
+    }
+    ensure!(
+        checked.len() == 23 + c.incoming_groups.len(),
+        "missing guarded arena helpers/table in link inputs"
+    );
+    let windows = sites
+        .iter()
+        .map(|s| CodeWindow {
+            address: s.address,
+            length: s.bytes.len() as u32,
+            container: s.container.clone(),
+        })
+        .collect::<Vec<_>>();
+    validate_incoming_windows(root, version, inputs, &windows, &c.guards)?;
     let mut islands = Builder::default();
     let text = islands.section(".text", 0x60500020, vec![], 0, vec![])?;
     let data = islands.section(".rdata", 0x40300040, vec![], 0, vec![])?;
@@ -999,6 +1097,56 @@ pub fn install(root: &Path, version: &str, inputs: &[(String, Vec<u8>)]) -> Resu
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn guard_rejects_relocation_fields_crossing_region_start() {
+        let mut builder = Builder::default();
+        let text = builder
+            .section(".text", 0x60500020, vec![0x90; 8], 8, vec![])
+            .unwrap();
+        builder
+            .add_symbol("_helper", 4, text, 0x20, 2, &[])
+            .unwrap();
+        let target = builder.external("_target").unwrap();
+        let bytes = builder.finish().unwrap();
+        let mut object = Object::parse(&bytes).unwrap();
+        let guard = Guard {
+            name: "_helper".into(),
+            address: 0x1004,
+            size: 4,
+            code_sha256: digest(&[0x90; 4]),
+            normalized_sha256: digest(&[0x90; 4]),
+            relocation_identity_sha256: digest(&[]),
+            definition: Definition {
+                value: 4,
+                section: text,
+                kind: 0x20,
+                storage: 2,
+                auxiliary_hex: String::new(),
+            },
+        };
+        check_guard(&object, &guard, &[0x90; 4]).unwrap();
+        for kind in [6, 20, 7] {
+            for offset in 1..4 {
+                object.sections[0].relocations = vec![Relocation {
+                    offset,
+                    symbol: target,
+                    kind,
+                }];
+                assert!(
+                    check_guard(&object, &guard, &[0x90; 4])
+                        .unwrap_err()
+                        .to_string()
+                        .contains("crosses guarded")
+                );
+            }
+        }
+        object.sections[0].relocations = vec![Relocation {
+            offset: 0,
+            symbol: target,
+            kind: 6,
+        }];
+        check_guard(&object, &guard, &[0x90; 4]).unwrap();
+    }
     #[test]
     fn canonical_sites_and_callback_abi_are_closed() {
         for version in 1..=3 {

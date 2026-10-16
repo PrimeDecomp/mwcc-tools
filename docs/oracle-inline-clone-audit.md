@@ -1,10 +1,10 @@
 # Frontend write emission and inline clone audit
 
-This is a read-only retail audit after `8f90c3f`, not an implemented source-origin
-contract. It refines the [source-origin bridge proposal](oracle-source-origin-audit.md).
-No producer or game input was changed. Allocation lifetime coverage is a separate
-prerequisite; an immutable node observation is also needed whenever a tracked
-allocation is read again after a possible mutation.
+This retail audit identifies frontend ownership, statement-emission and recursive
+clone sites for the [source-origin bridge](oracle-source-origin-audit.md).
+It records the investigation after `8f90c3f`. Current development implements a
+bounded [source-node API](oracle/source-nodes.md); native validation is pending.
+Allocation lifetime and each read's snapshot identity remain separate requirements.
 
 The retained audit is `build/source-guided/source-origin-bridge/inline-audit/`.
 `capture.py`, `capture_extra.py` and `capture_statement.py` read pinned original

@@ -37,6 +37,7 @@ fn original_and_oracle_objects_agree_for_all_synthetic_versions() {
             options: TraceOptions {
                 backend: false,
                 source_arenas: false,
+                source_nodes: false,
                 schedule: true,
                 inline_cost: true,
                 full_cost: true,

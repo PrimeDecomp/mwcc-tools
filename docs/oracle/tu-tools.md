@@ -2,7 +2,7 @@
 
 Part of the [oracle documentation](../oracle.md).
 
-## `tools/inline_diff.py`: why one TU inlines a call another keeps
+## `mwcc-tools inline-diff`: why one TU inlines a call another keeps
 
 ```
 mwcc-tools inline-diff --from-ninja FILE A [B] [--all] [--callee TEXT] [--target [DIR]] [--json]
@@ -43,7 +43,7 @@ Each misprediction gets a `verdict`:
   every time, in pass 0, with its body and far within the threshold. Depth and cost are ruled out.
 * **No body, the depth limit or cost:** for a call this TU keeps.
 
-## `tools/data_diff.py`: a TU's data layout against its target asm
+## `mwcc-tools data-diff`: a TU's data layout against its target asm
 
 ```
 mwcc-tools data-diff --from-ninja FILE SOURCE [--section NAME] [--all] [--json]
@@ -78,7 +78,7 @@ in compile order is still what made it.)
 Without an oracle for the version (GC 1.2.5n), the original compiler compiles the source. On Echoes' 73 matching TUs,
 67 of the 68 it can build come out the same; the last is a global the target's split does not place.
 
-## `tools/inline_window.py`: the inline limit a TU's target agrees with
+## `mwcc-tools inline-window`: the inline limit a TU's target agrees with
 
 ```
 mwcc-tools inline-window --from-ninja FILE UNIT... [--target DIR] [--verbose] [--json]
@@ -114,7 +114,7 @@ a limit question". The bounds are first-order: inlining one call changes the cos
 function calls one callee several times, the calls are not told apart, so the bound is the one that holds for at least
 one of them.
 
-## `tools/header_impact.py`: what a header change does to every unit
+## `mwcc-tools header-impact`: what a header change does to every unit
 
 ```
 mwcc-tools header-impact --from-ninja FILE --git REV [--unit TEXT] [--jobs N] [--all] [--json]
@@ -139,8 +139,10 @@ The change is given one of two ways:
   file, after is the working tree's.
 * `--override PATH=EDITED` (repeatable): after is PATH replaced by EDITED; before is the checkout.
 
-The similarity is difflib's ratio over the instruction words, with frame offsets, relocated fields and branch targets
-masked. It is not objdiff's score, but it moves the same way.
+The native `header_impact::similarity` compares instruction tokens with frame offsets,
+relocated fields and branch targets masked. Its score is twice the matched sequence
+length divided by the combined lengths, with popularity filtering disabled. It is
+a diagnostic similarity measure, not objdiff's score.
 
 * Functions are paired by name with the compiler's local numbers left out, so `__arraydtor$89` and `__arraydtor$91`
   are the same function.
@@ -148,5 +150,5 @@ masked. It is not objdiff's score, but it moves the same way.
   compared, but there are no inlining or frame details.
 * A header included through a path relative to the including file, rather than through the include path, is not
   replaced by `--override`.
-* Each unit is compiled twice. A change to `types.h` reaches about 980 Echoes units and takes about half an hour with
-  `--jobs 8`. Use `--unit` to narrow it.
+* Each unit is compiled twice. Shared headers can affect hundreds of units; use
+  `--unit` to narrow the run and `--jobs` to control concurrency.

@@ -1,4 +1,4 @@
-# Common subexpressions and temporaries: `--cse`, `--ir`
+# Common subexpressions: `mwcc-tools oracle --cse`
 
 Part of the [oracle documentation](../oracle.md).
 
@@ -42,7 +42,9 @@ example, `ESUB #792` has its right operand at #786 and its left operand at #791.
   These are the pairs whose order a source change can flip.
 * **other temporaries in registers:** temporaries from elsewhere, each with its register and the compiler function
   that made it, named with what it makes temporaries for: the inliner flattening an expression, linearization (an
-  EFORCELOAD's value, a comma or `&&`/`||` value), the scalarizer... (`TEMP_CREATORS` in `tools/oracle.py`).
+  EFORCELOAD's value, a comma or `&&`/`||` value), or the scalarizer. The native
+  `cse::temp_creator` maps observed caller addresses to these descriptions; unknown
+  creators retain their address or function name.
 * A pass that made nothing says so. Each pass numbers the IR anew, so its indices are not the first pass's.
 
 **With `--exchange`.** `--exchange A,B` also says what each of the two virtual registers holds: a local, a temporary

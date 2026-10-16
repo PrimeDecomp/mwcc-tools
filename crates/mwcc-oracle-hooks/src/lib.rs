@@ -87,6 +87,11 @@ mod schedule;
     not(any(feature = "trace-output", feature = "frontend"))
 ))]
 mod source_arenas;
+#[cfg(all(
+    target_pointer_width = "32",
+    not(any(feature = "trace-output", feature = "frontend"))
+))]
+mod source_nodes;
 #[cfg(all(target_pointer_width = "32", feature = "trace-output"))]
 mod trace_output;
 

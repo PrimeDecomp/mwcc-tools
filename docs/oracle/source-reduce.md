@@ -1,10 +1,9 @@
-# Evidence-aware source reduction
+# Reduce a compiler-behavior reproducer
 
-`mwcc-tools source-reduce` shrinks a translation unit while retaining a selected
-compiler mechanism. It uses the same Rust objective evaluator, stock-equivalence
-checks, symbolic-relocation constraints and exact-input compilation cache as
-[`source-search`](source-search.md). The output is a compiler-behavior reproducer;
-it is not automatically a source change suitable for transplantation into a game.
+`mwcc-tools source-reduce` removes source while preserving a selected compiler
+objective. Use it to turn a large case into a smaller example of a graph change,
+allocation category or coalescing decision. It shares the evaluator, stock checks,
+relocation constraints and exact-input cache with [source-search](source-search.md).
 
 ```text
 mwcc-tools source-reduce run reduction.json --output scratch/reduction --candidates 100 --compilations 100 --seconds 600
@@ -12,21 +11,17 @@ mwcc-tools source-reduce run reduction.json --output scratch/reduction --resume
 mwcc-tools source-reduce replay scratch/reduction 1
 ```
 
-[`source-repro`](source-repro.md) exports a retained candidate and its calibration
-inputs for fresh local replay from a relocated bundle, within its documented
-runtime, dependency and native-checker closure limits.
-
-The native API is `source_guided::reduction::{load_plan, run, replay}`. `run` uses
-`search::Budget`; cancellation is a file, by default `OUTPUT/CANCEL`. Budgets apply
-per invocation, including baseline setup and independent verification. Cancellation
-terminates compiler/checker process trees. A candidate awaiting its independent
-compile remains pending across resume and is not recorded as accepted.
+The baseline must satisfy the predicate. Every accepted reduction must be smaller,
+pass all evidence gates and reproduce in a fresh independent compile. The tool
+never edits the original source. A mechanism reproducer may change behavior;
+use `purpose: "source_transformation"` and a declared semantic checker when
+behavior must be preserved.
 
 ## Plan format 1
 
-The build, contract, semantic checker and optional target have the same structure
-as source search. Replace search generation bounds and transformations with
-`reductions` and `delete_lines`:
+The `build`, `contract`, checker and optional target use the
+[search plan contract](source-search.md#plan-format-1). Replace search generation
+with `reductions` and `delete_lines`:
 
 ```json
 {
@@ -42,7 +37,7 @@ as source search. Replace search generation bounds and transformations with
   },
   "contract": {
     "format_version": 1,
-    "selection": { "link": "symbolic_address__FUi", "class": 4, "round": 0 },
+    "selection": {"link": "symbolic_address__FUi", "class": 4, "round": 0},
     "objective": {
       "kind": "symbol_address_pairs",
       "symbol": "symbol__8Graphics",
@@ -50,176 +45,97 @@ as source search. Replace search generation bounds and transformations with
       "maximum": 10
     },
     "relocations": [
-      { "symbol": "symbol__8Graphics", "kind": null, "addend": 0, "minimum": 1 }
+      {"symbol": "symbol__8Graphics", "kind": null, "addend": 0, "minimum": 1}
     ],
     "purpose": "mechanism_reproducer"
   },
-  "reductions": [
-    {
-      "id": "remove-unused-helper",
-      "family": "helper",
-      "precondition": "Exact helper anchor; the retained mechanism is checked after deletion.",
-      "edits": [
-        { "find": "static int unused() { return 1; }\n", "replacement": "" }
-      ]
-    }
-  ],
+  "reductions": [{
+    "id": "remove-unused-helper",
+    "family": "helper",
+    "precondition": "Exact helper anchor; the retained mechanism is checked after deletion.",
+    "edits": [{"find": "static int unused() { return 1; }\n", "replacement": ""}]
+  }],
   "delete_lines": true,
   "semantic_check": null,
   "target": null
 }
 ```
 
-Backend/stage/local/CSE traces default to enabled. Unknown fields and duplicate
-recipe IDs are rejected. The original source is read, never edited. All proposed
-sources are written under `OUTPUT/sources/HASH/ORIGINAL_FILENAME`.
+Backend/stage/local/CSE traces default on. Unknown fields and duplicate recipe IDs
+are rejected. Candidate bytes are stored at
+`OUTPUT/sources/HASH/ORIGINAL_FILENAME`, preserving bytes outside each edit.
 
-## Reduction order and evidence
+## What is preserved
 
-Each round tries guarded recipes in plan order. Anchors must occur exactly once,
-edits cannot overlap, and the resulting byte count must decrease. Recipes can
-remove declarations, helpers or included dependencies, or simplify expressions and
-statements. There is no C++ parser or automatic semantic rewrite generator.
+The function/class/round must still exist, and each candidate must rebind the
+objective through its new provenance. Raw register numbers and final physical
+registers are not preservation criteria. Missing graphs, ambiguous bindings,
+incomplete coverage and indeterminate predicates are rejected. Final target
+mismatch is reported separately from reduction acceptance.
 
-When `delete_lines` is enabled, the reducer next tries contiguous line deletion
-from coarse blocks down to individual lines. It retains original bytes outside
-the deleted span, including source encodings and line endings. Invalid C++ is a
-normal rejection. After accepting a reduction it restarts all passes on the new
-case. The final result is a fixed point of these configured passes, not a proof
-of a globally minimal program. Disabling line deletion gives a bounded sequence
-of explicitly supplied structural reductions.
+Use static [search objectives](source-search.md#objectives-and-validity):
 
-The baseline must satisfy the predicate before any shrinking starts. Every
-candidate rebinds the selected named object or symbolic materialization through
-its newly captured provenance; raw register numbers and final physical registers
-are not supplied as preservation criteria. The configured function/class/round
-must continue to exist. Ambiguous bindings, absent graphs, incomplete relevant
-coverage and indeterminate results are rejected. `symbol_address_pairs` preserves
-the guarded Normalize creation mechanism within the requested count bounds. It
-does not establish absence of all address temporaries or semantic elimination.
+- `symbol_address_pairs` or `call_argument_address_pairs` retains the requested
+  guarded Normalize count and required relocations. It does not prove absence
+  of all address temporaries.
+- `range_category` preserves an observed category through a unique named/type/
+  part anchor and confirmed merge roots. It does not require unchanged
+  instructions or physical registers, and does not identify a source role.
+- `promoted_copy_coalescing` retains an actual copy outcome for an element. For
+  example, use `value: {"name":"flag","element_index":1,"element_size":4}`,
+  `copy: 0` and
+  `outcome: {"kind":"rejected","condition":"destination_above_window"}`.
+  `{"kind":"coalesced"}` retains a merge or already-shared-root removal.
+  Complete scalar GPR/FPR promotion, birth/node/generation and matching-pass
+  evidence are required. Zero bound copies remain indeterminate; the ordinal
+  does not prove source initialization or dominance.
+- `direct_initialization`, `scalarized_array_initialization` and
+  `scalarized_array_definition` retain their supported observed definitions.
+  Initializer recognition requires one instruction-bearing block with verified
+  linear scaffolding. Prefer `source_line: null`: deleting earlier lines changes
+  line numbers, and a specified line is never silently rewritten.
 
-Direct-initialization objectives require one instruction-bearing block with
-verified linear empty scaffolding. Prefer `source_line: null`: deleting earlier lines changes numeric source
-locations. A specified line constrains the first observed target definition and
-cannot select a later assignment instead. It is never silently rewritten.
-Cross-block initialization remains indeterminate. To preserve an established allocation
-category while shrinking, use the current-state predicate:
+`change_range_category` needs a separate baseline transition and is rejected by
+reduction plans. General `eliminate_temporary` remains indeterminate. Allocation
+categories and promotion observations cannot supply missing semantic lifetime
+or VMX/source-initializer evidence.
 
-```json
-{
-  "kind": "range_category",
-  "value": {"name": "flag", "part": "single", "type_kind": 1, "type_size": 1},
-  "target": "inside_coalescing_window"
-}
-```
+## Reduction order and results
 
-Both baseline and each accepted case must independently satisfy that category
-through a unique complete named-object/type/part binding at the selected graph.
-Confirmed coalescer parent writes determine the observed root; this does not
-require any exact physical register or preserved instructions. Range markers,
-birth and merge bindings must justify the category; incomplete evidence is not
-accepted. The category describes an allocation range, not a source role or a
-proof of array promotion. `change_range_category` is a
-transition between two cases and is currently rejected by reduction plans: a
-separate reference capture is needed to preserve that transition while shrinking
-the candidate. `eliminate_temporary` remains indeterminate and cannot produce an
-accepted reduction. Promoted-array/coalescing predicates and stronger lifetime
-bindings do not follow automatically from an allocation category. To preserve the
-specific observed copy failure for a promoted scalar element, use:
+Each round tries recipes in plan order. Every anchor must occur once, edits must
+not overlap and byte count must decrease. With `delete_lines: true`, contiguous
+line deletion then proceeds from coarse blocks to single lines. Invalid C++ is a
+normal rejection. An accepted reduction restarts the passes on the smaller case.
+The result is a fixed point of the configured passes, not a globally minimal
+program. There is no C++ parser or automatic semantic rewrite generator.
 
-```json
-{
-  "kind": "promoted_copy_coalescing",
-  "value": {"name": "flag", "element_index": 1, "element_size": 4},
-  "copy": 0,
-  "outcome": {"kind": "rejected", "condition": "destination_above_window"}
-}
-```
+A satisfied candidate must reproduce its input snapshot, object hash, predicate
+and configured semantic checks in a fresh build before replacing the best case.
+For `mechanism_reproducer`, results report `transplantation_validated: false`.
+For `source_transformation`, baseline and candidates need successful checker
+results; the checker establishes only its declared coverage.
 
-The ordinal selects an observed incoming register-copy in the complete matching
-coalescer pass; it does not prove which source initializer or control-flow path
-produced that copy. Complete guarded scalar-array provenance and unique
-array-name/index/element-size birth/node/generation binding are required. The pass
-must match the selected graph's counts and allocation window. This preserves an
-actual deciding branch without requiring the same final physical registers.
-Use `{"kind":"coalesced"}` to retain a confirmed merge or already-same-root
-copy removal. Incomplete evidence and zero bound incoming copies are indeterminate: an
-invisible promotion node alone cannot identify the live initialization. An
-out-of-range ordinal after at least one bound copy in a complete pass is
-unsatisfied. Scalar GPR/FPR promotion is covered; general
-source-lifetime, initializer/dominance and VMX-promotion proofs remain open.
-
-A satisfied candidate receives a fresh independent compilation. Its build-input
-snapshot and object hash must reproduce, and the shared predicate and configured
-semantic checks must pass again. Only then does it replace the best case. Final
-target mismatch is reported separately and does not decide acceptance.
-
-For `mechanism_reproducer`, behavior changes are allowed and the result explicitly
-reports `transplantation_validated: false`. For `source_transformation`, a successful
-declared semantic checker is required for both baseline and candidates. A checker
-only establishes its declared coverage; it does not turn arbitrary statement
-deletion into a general equivalence proof.
-
-## Retained evidence and replay
-
-`progress.json` is an atomic checkpoint of the best case, pass cursor, pending
-candidate, completed outcomes and cumulative compilation/cache counts. Each
-`candidates/ID.json` includes its parent, recipe, source hash, evaluation and
-independent verification. `result.json` points to the final source and artifact.
-Raw input/runtime blobs, preprocessing/dependency scans, object files and traces
-are retained in the same layout as source search. Cache reuse requires the exact
-compiler inputs, not merely an equal graph. Candidate-only dependencies of the
-accepted best case are rescanned on resume.
+`progress.json` stores the best case, pass cursor, pending candidate and counts.
+`candidates/ID.json` retains each parent, recipe, hash, evaluation and verification;
+`result.json` points to the final source/artifact. Input blobs, scans, captures and
+objects use the search layout. Cache reuse requires exact compiler inputs.
 
 Terminal statuses are `verified_reduction`, `no_reduction` and
 `baseline_not_satisfied`. `candidate_budget`, `compilation_budget`, `time_budget`
-and `cancelled` can be resumed. Infrastructure errors are recorded as `failed`;
-candidate compilation/evaluation errors are retained as rejected outcomes.
+and `cancelled` can resume. Infrastructure errors are `failed`; candidate
+build/evaluation errors are rejected outcomes.
+Budgets include baseline setup and verification. Create `OUTPUT/CANCEL` to stop;
+active compiler/checker process trees are terminated. A pending independent build
+is retried on resume rather than accepted early.
 
-Resume requires the same normalized plan, original source, baseline inputs,
-analyzer, checker dependencies and target. Replay validates the retained blobs and
-current dependencies, performs three fresh builds (private baseline, original
-context and selected candidate), recalibrates the original context and reruns the
-predicate. It checks the candidate object against the retained hash and writes a
-new replay outcome without modifying the earlier result. Replay needs the original
-build environment; portable project export is not implemented.
+Resume requires unchanged plan, original source, baseline/candidate dependencies,
+analyzer, checker inputs and target. Replay checks retained integrity and current
+inputs, then makes three fresh builds for original context, private baseline and
+candidate, recalibrates and reruns the predicate. It checks the retained candidate
+object hash and saves a new outcome without changing the old result. For bounded
+relocation away from the original checkout, use [source-repro](source-repro.md).
 
-## Retained real-case proof
-
-The Windows native CLI reduced the checked address-reuse variant from the
-[RenderParticles investigation](../oracle-source-guided-case-envmodulate.md).
-A guarded recipe removed the unrelated 222-line constructor, reducing the
-translation unit from 117,085 to 110,801 bytes. The scoped predicate retained
-exactly two `kEnvModulate__9CGraphics` Normalize pairs in `RenderParticles` and
-required both symbolic HA/LO relocation kinds. All shared hard gates passed;
-four compilations included original-context calibration and a fresh independent
-candidate build. The candidate and independent build produced the same complete
-stock object, SHA-256
-`6859b26d4200a5a4962ff120f1a1214bb9d3434193f9e74d3bd40a62d944b2f6`.
-
-Inputs, the frozen analyzer, native checkpoint/outcomes and verification summary
-are retained under `build/source-guided/reduction-probes/particle-windows/`.
-This is a smaller compiler-behavior case, not a globally minimal unit or a
-behavior-preserving constructor deletion. Its selected function remains 6,672
-bytes against the 6,668-byte retail function; graph-predicate success is separate
-from final code matching. No game source was changed.
-
-The opt-in `source_reduction_live` test additionally starts from the standalone
-symbolic const-reference fixture. It exercises an explicit helper deletion,
-automatic line shrinking, exact cache reuse, pending independent verification
-across resume, three fresh replay builds, candidate-only header drift rejection,
-missing semantic evidence and cancellation. The automatic pass can reduce the
-534-byte fixture to a 281-byte single-call reproducer while retaining an observed
-symbolic address pair and its relocation. It does not preserve a particular
-physical register.
-
-This live test passes on Windows and Linux for GC 1.3, 1.3.2 and 2.7. Each
-automatic run evaluates 59 candidates with 60 compilations, reaching the same
-281-byte source (SHA-256
-`a05c9cc59061ab4b3995f17761a206ea38bf773e164709b2d002e973686f6924`).
-Final Windows evidence is under
-`build/source-guided/tool-integration/source-reduction-8oyCev/`; final Linux
-evidence is under
-`/home/henrique/.cache/mwcc-source-reduction-proofs/final/source-reduction-atpXSV/`.
-The Linux aggregate is also retained at
-`build/source-guided/reduction-probes/linux-final-verification.json`.
+Rust APIs: `source_guided::reduction::{load_plan,run,replay}`, with
+`search::Budget`. The [implementation status](../oracle-source-guided-status.md)
+retains real RenderParticles and standalone all-version/all-host reduction
+evidence, including promoted-copy rejection cases.

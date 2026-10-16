@@ -1,32 +1,59 @@
-# Native oracle kit boundary
+# Native oracle integration
 
-The documented kit API is the native `mwcc-tools` executable and its structured results. See the installable [native oracle guide](overlay/.agents/docs/oracle-native.md). Kit callers and tests should use this API directly. Matching legacy Python APIs or report prose is not required. The optional launchers preserve old script names without importing the Python oracle:
+Kit automation should call `mwcc-tools` and read its structured results. The
+[native oracle guide](overlay/.agents/docs/oracle-native.md) covers installation
+and common tasks:
 
 ```text
 mwcc-tools oracle run-unit --project PROJECT --unit UNIT -- --locals
-mwcc-tools oracle regdiff --project PROJECT --unit UNIT --function FUNCTION --pcode
+mwcc-tools oracle regdiff --project PROJECT --unit UNIT --function FUNCTION --json
 mwcc-tools colouring unit --project PROJECT --unit UNIT search --function FUNCTION --seed 2
-mwcc-tools inline-calibrate --project PROJECT --callee destroy_impl --unit UNIT --breakdown
+mwcc-tools inline-calibrate --project PROJECT --callee CALLEE --unit UNIT --breakdown
 ```
 
-Set `MWCC_TOOLS` to the native executable and `MWCC_ORACLE_ROOT` to the built compiler checkout. Without `MWCC_TOOLS`, the launchers look under the oracle root's `bin`, `target/release`, `build/bin`, then PATH. An explicit missing executable or a native command failure is an error; there is no silent Python fallback.
+## Install and configure
 
-`oracle-run.py` now checks object equality by default. Use `--fast` before the separator, or `--no-check` after it, for an explicitly unchecked run. Candidate compilation retains the unit's flags and source-directory include path without swapping project files. `oracle-regdiff.py` retains `functionRelocDiffs=data_value` and supports the `OBJDIFF_CLI` override. `--json` returns a format-1 register-difference document with structured allocation evidence and per-register explanations. Offline regdiff accepts `--trace`, `--diff-json` and an explicit compiler version.
+Run the kit's `install-native.py PROJECT --apply`. It validates the host archive,
+hashes and source identity, installs the executable and notices, and prints the
+`MWCC_TOOLS` path. Add that executable's directory to PATH for direct commands.
+Set `MWCC_ORACLE_ROOT` to the checkout containing the built oracle compilers.
+The kit's `EXTERNALS.md` describes compiler setup.
 
-Saved colouring traces still support legacy `.trace`/`.o` pairs. Unit dispatch supplies the unit's compiler version when loading them; an explicit version takes precedence and conflicting new manifest metadata is rejected.
+The optional old-name Python launchers dispatch to `MWCC_TOOLS`, the installed
+native copy, an executable under the oracle root, or PATH. A missing explicit
+executable or failed native command is an error; there is no Python fallback.
+Legacy Python imports and report wording are not API requirements.
 
-`inline-calibrate.py` dispatches to native calibration, including `--binary`, `--breakdown`, repeatable units/overrides and JSON-file output. Compiler versions are inferred per unit unless `--compiler` overrides them; the game build defaults to the Ninja target directory rather than a hardcoded game ID. Thresholds remain per decision. Missing cost data produces an explicit error instead of inventing a threshold (the legacy helper can raise `KeyError` for these inputs).
+## Read checks explicitly
 
-`install-native.py PROJECT --apply` installs the kit's host archive and notices after validating hashes, target and source identity. It prints the executable path for `MWCC_TOOLS`; the optional launchers also discover this installed copy. The kit retains an explicit native manifest and complete Git source bundle so the source pin is usable without public publication. Existing archived releases are immutable; new archives are generated separately.
+`run-unit` checks object equality with the stock compiler by default. For
+automation, use `oracle compile-trace` and require
+`compilation.check_status.status == "verified"`. `mismatch`, `skipped`,
+`original_unavailable` and `original_failed` do not establish equality.
+Regdiff's saved project-object comparison is a separate result. Candidates and
+header overrides compile privately with the unit's flags and include order.
 
-`tools/migration/verify_archived_kits.py` validates each archive's sidecar, CRC and complete file manifest, then builds its original oracle pin in a private directory. It copies the real unit's sources, headers, include dependencies, target/source objects and build metadata. It runs the archived scripts and native launchers against the same compiler, comparing source/candidate objects, schema-6 reports, full regdiff/PCode/inlining reports and both calibration modes. Candidates add an emitted function so the gate detects an ignored candidate. Separate checked runs compare the complete Rust producer with the frozen C producer on both inputs. Echoes additionally saves a legacy colouring trace with its original wrapper and loads it through the native launcher.
+## Pinned kits and development tools
 
-The selected units are Prime's `main/GuiSys/CGuiFrame` (`Draw`, original oracle pin `f00b8a8201d0dca13c2206fce61472b02d83b01e`) and Echoes' `main/Kyoto/Particles/CElementGen` (`RenderParticles`, pin `b75c4e5e0b4bc97ae06c26ea9d6aad8379ac1722`). A pre-existing stale game object remains stale; both implementations must report that state consistently, while checked compilation independently verifies equality with the stock compiler. The gate hashes original inputs and Git status before and after execution, without configuring or building either game checkout.
+Each kit's `native-manifest.json` identifies its shipped executable and source
+pin; the complete Git source bundle makes that pin available locally. Archived
+releases remain immutable. Commands documented as development features require
+current tools and a matching freshly built Rust producer; editing this overlay
+does not add them to an existing archive.
 
-On Linux, the staged Ninja file translates Windows separators only in compiler-edge paths and `mw_version` fields, because the archived Python parser cannot read Windows source paths there. Compiler flags and every other copied input remain unchanged. Original/adjusted Ninja hashes are recorded. A Windows-managed Git worktree can supply exported source with repeatable `--pin-archive COMMIT=TAR`; the verifier checks the Git tar's embedded commit and retains the tar/hash. Supply an explicit pinned `--wibo` on Linux. `audit_archived_kits.py ROOT --binary FILE --objdiff FILE` independently rechecks retained inputs, command hashes and comparisons without recompiling.
+Development workflows are documented in the source checkout:
+[provenance](../../docs/oracle/provenance.md),
+[source search](../../docs/oracle/source-search.md),
+[reduction](../../docs/oracle/source-reduce.md),
+[retained reproducers](../../docs/oracle/source-repro.md), and
+[matched-source indexing](../../docs/oracle/source-index.md).
 
-These archived probes establish regression evidence; matching legacy APIs/text is not an adoption requirement. The old Linux Python calibration still fails on Echoes' continued Windows source edge. `verify_native_kit_api.py` validates the direct native API against audited behavioral results, including both calibration modes, legacy saved input and explicit compilation/check/provenance output; `audit_native_kit_api.py` rechecks the retained evidence and unchanged inputs. This avoids extending the old parser to make it a production dependency.
+## Maintain the integration
 
-`tools/migration/adopt_native_kits.py` derives new kit sources from the immutable archives. It updates source pins, native/release manifests, explicit bundle file lists, operational docs and test callers together. Historical research and unrelated helpers remain intact. Oracle tests importing `binary_mode`, `build_command` or `active_version` are replaced by shipped-artifact, installation and native protocol tests. The old generic Python `usage:` assertion is not imposed on native commands.
-
-`audit_native_kits.py` independently validates archive CRC, complete file manifests, both native payloads, source-bundle identity and a real installation. With a retained project proof it executes native `compile-trace` on the real unit, requires an explicit verified check, checks function coverage and rehashes every copied input. Initial previews pinned to `e91a881` passed on Windows and Linux: Prime has 35 functions, Echoes 136, with identical cross-host object hashes. The Windows kit suites passed 69/52 tests; Linux native tests pass for both kits. A Windows-worktree Git-discovery issue in the first Linux test run was corrected by inspecting source bundles outside the surrounding checkout. The generated archives and their final pins are recorded in the migration status.
+`tools/migration/adopt_native_kits.py` derives new kit sources from archived
+releases. `verify_native_kit_api.py` checks direct native behavior;
+`audit_native_kits.py` checks packaged files, source identity and installation.
+The archived-kit verifiers retain legacy regression evidence without making
+legacy APIs the adoption contract. See the
+[migration status](../../docs/oracle-rust-status.md) for release pins
+and validation results.

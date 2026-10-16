@@ -3,7 +3,7 @@ use mwcc_oracle_core::{source_arenas, source_lifetimes::PoolDomain};
 use serde::Deserialize;
 use std::fs;
 
-fn load(path: &str) -> Result<source_arenas::History> {
+pub(crate) fn load_trace(path: &str) -> Result<String> {
     let input = fs::read_to_string(path)?;
     if input.trim_start().starts_with('{') {
         #[derive(Deserialize)]
@@ -16,15 +16,13 @@ fn load(path: &str) -> Result<source_arenas::History> {
             trace: String,
         }
         let value: Capture = serde_json::from_str(&input)?;
-        source_arenas::parse(
-            &value
-                .compilation
-                .map(|c| c.trace)
-                .or(value.trace)
-                .context("capture lacks trace")?,
-        )
+        Ok(value
+            .compilation
+            .map(|c| c.trace)
+            .or(value.trace)
+            .context("capture lacks trace")?)
     } else {
-        source_arenas::parse(&input)
+        Ok(input)
     }
 }
 pub fn run(args: &[String]) -> Result<()> {
@@ -34,13 +32,23 @@ pub fn run(args: &[String]) -> Result<()> {
     let path = args
         .get(1)
         .context("source-arenas needs a raw trace or compile capture")?;
-    let history = load(path)?;
+    let history = source_arenas::parse(&load_trace(path)?)?;
     if command == "inspect" {
         ensure!(
             args.len() == 2 || (args.len() == 3 && args[2] == "--json"),
             "source-arenas inspect CAPTURE [--json]"
         );
         println!("{}", serde_json::to_string_pretty(&history)?);
+        return Ok(());
+    }
+    if command == "resolve-many" {
+        ensure!(
+            args.len() == 4 && args[2] == "--queries",
+            "source-arenas resolve-many CAPTURE --queries QUERIES.json"
+        );
+        let queries: Vec<source_arenas::Query> = serde_json::from_slice(&fs::read(&args[3])?)?;
+        let results = history.prepare().resolve_many(&queries);
+        println!("{}", serde_json::to_string_pretty(&results)?);
         return Ok(());
     }
     ensure!(

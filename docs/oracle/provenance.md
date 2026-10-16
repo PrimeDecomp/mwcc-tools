@@ -1,7 +1,9 @@
-# Backend birth, graph and coalescing provenance (development API)
+# Backend provenance (development API)
 
-Build the current native tools and a fresh Rust producer with `configure --oracle`.
-These commands are newer than the pinned Rust migration release in the kits.
+Use backend provenance to explain where virtual registers came from, which
+coalescing checks decided a copy, and what graph actually reached simplification.
+Build current native tools and a fresh Rust producer with `configure --oracle`;
+these commands are newer than the pinned migration release in the kits.
 
 ```text
 mwcc-tools oracle compile-trace --oracle-root ORACLE_ROOT --version GC_2_7 --backend SOURCE.cpp -- COMPILER_FLAGS > capture.json
@@ -9,364 +11,204 @@ mwcc-tools provenance inspect capture.json --json > provenance.json
 mwcc-tools provenance inspect capture.json --link RenderParticles__11CElementGenFv
 ```
 
-Use `--from-ninja PROJECT/build.ninja` to recover the existing unit's ordered flags
-and working directory. `provenance inspect` accepts raw traces and compile-trace
-JSON. `--link` selects an exact mangled name. The default compilation still checks
-object equality against the stock compiler; keep that check when investigating a
-new producer. `--backend` is opt-in and is isolated from inherited environment
-settings. Corpus `--all-traces` also enables it.
+`inspect` accepts raw traces or compile-trace JSON. `--link` selects an exact
+mangled name; report-wide coverage stays conservative when filtering the display.
+Use `--from-ninja PROJECT/build.ninja` when compiling an existing unit to recover
+its ordered flags and working directory. Keep the default stock-object equality
+check. `--backend` is opt-in and isolated from inherited environment settings;
+corpus `--all-traces` also enables it.
 
-## Observations and explanations
+## Reading the report
 
-The native linker checks the complete audited retail coalescer and its relocation
-layout, widens and redirects its local branches, and inserts observation calls. It
-preserves the original instructions and uses their existing relocations for data
-addresses. A byte/layout mismatch fails linking. Each probe saves general registers,
-EFLAGS, x87 state, MXCSR and XMM registers. The retail algorithm continues to decide
-which instructions to coalesce.
+The format-2 report separates coalescing decisions, counter/birth history, graphs,
+allocation ranges and frontend evidence. A satisfied coverage result means the
+declared mechanism was observed completely; it is not a source-search objective.
+Missing or unsupported evidence stays indeterminate. Malformed or contradictory
+records fail parsing.
 
-Format-1 `pv.coalesce.*` records contain pass and candidate observation IDs, the
-function link name, active class, counts, physical threshold, window bounds,
-instruction identity/operands/flags, branch site/outcome and saved inputs. The
-candidate filter is the retail copy flag, rather than an assumed opcode list.
-Checks include instruction flags, destination kind/class, roots, interference,
-four short-circuit window bounds and the GPR special-register guard. The latter
-name describes the observed condition; its higher-level meaning is unconfirmed.
-A merge record reads the union-parent entry **after** the retail write.
+The aggregate `lifecycle` result remains indeterminate: complete leaf/inline
+origins, source roles and semantic lifetimes are not established. Names, source
+lines, raw pointers and graph absence do not supply those identities. Use the
+[source-search contracts](source-search.md) for predicates with explicit scopes.
 
-The format-2 inspection result retains raw inputs alongside typed decisions:
-`rejected`, `already_same_root`, `merged` or `indeterminate`. It validates branch
-sites, EFLAGS/outcomes, the ordered short-circuit path, physical-register window
-bypass, candidate counts, root ordering and observed parent writes. Malformed or
-contradictory records fail parsing. Incomplete captures or paths remain
-indeterminate. Report-wide coverage stays conservative when `--link` filters the
-display.
+Rust callers can use `provenance::inspect` for captures/raw traces,
+`provenance::parse` for traces, or the underlying `value_history`, `graph_history`
+and `allocation_category` modules. Capture inspection skips unrelated rendered
+report data instead of constructing another complete JSON analysis tree.
 
-`decisions` describes coverage of the captured coalescing passes. A satisfied value
-means those decisions were fully observed; it is not a source-search objective.
-The separate aggregate `lifecycle` result remains indeterminate: semantic
-categories, complete expression/inline origins and semantic lifetime binding remain
-incomplete. Pass/candidate IDs are observation IDs. These records alone cannot
-prove a temporary was eliminated.
+## Coalescing decisions
 
-## Births, counter changes and expression context
+`pv.coalesce.*` records retain pass/candidate observation IDs, function, class,
+physical threshold, window bounds, instruction identity/operands/flags, branch
+outcomes and saved inputs. Candidates follow the retail copy flag, not an assumed
+opcode list. The retail algorithm still makes every decision.
 
-The producer also observes every audited direct counter write: 570 sites in
-GC 1.3, 571 in GC 1.3.2 and 578 in GC 2.7, plus two function-context sites and two
-range-marker sites per version. Most writes are inline increments, including address, call, instruction
-selection, struct-move and spill paths. The remaining writes initialize counters,
-rewind scratch counters, restore high-water marks or reset after allocation.
+Typed decisions are `rejected`, `already_same_root`, `merged` or `indeterminate`.
+Validation checks the ordered short-circuit path, instruction flags, destination
+kind/class, roots, interference, window bounds, physical-register bypass and the
+GPR special-register guard. That last name describes an observed condition; its
+higher-level meaning is unconfirmed. A merge reads the union parent **after** the
+retail write. Observation IDs and instruction many-to-one mappings are not
+semantic lifetime identities or proof of elimination.
 
-Each original memory-write instruction is replaced with an equal-sized CALL/NOP
-sequence. Its call island executes that exact relocated instruction and observes
-the result. Original sections, instruction offsets and branch targets stay fixed.
-Writes that depend on ESP, unknown widths/address forms, missing sites and changed
-bytes fail construction. The function-exit island executes the original stack
-adjustment after discarding its own return slot, preserving its flag effects.
+The installer guards complete retail bodies and COFF relocation identities,
+then preserves original instructions and CPU/FPU state around its probes.
+Changed bytes or layouts fail linking. Rebuild common hooks and producer together;
+stale internal callback ABIs are rejected.
 
-`history` in the format-2 result includes functions, births, counter changes,
-expression observations, orphan writes and gaps. `history.counter_observations`
-reports completeness **within the declared direct-counter scope**. Counter
-discontinuities, missing function ends, orphan writes and unsupported schemas do
-not become successful captures. Each function has its own coverage result.
+## Births, generations and expression context
+
+`history` retains functions, births, counter changes, expression observations,
+orphan writes and gaps. `counter_observations` checks the declared direct-counter
+scope, independently for each function. Missing ends, discontinuities, orphan
+writes and unsupported schemas cannot establish complete capture.
+
+The direct-write inventory covers 570 sites in GC 1.3, 571 in GC 1.3.2 and 578 in
+GC 2.7, plus two function-context and two range-marker sites per version. It
+includes increments, initialization, scratch rewinds, high-water restores and
+allocation resets. Restoring a high-water mark is not a birth.
 
 `Birth.id` is a capture-local function/sequence pair. `generation` counts earlier
-births using the same class/number within that function. `registers[].values`
-retains all generations. One-based `trace_position` fields preserve the
-interleaving of births, counter changes, expression observations and coalescing
-checks. Restoring a high-water mark is not recorded as a birth.
-Do not bind every graph use to the latest generation or compare these IDs directly
-across source variants: semantic correspondence still needs anchors and ambiguity
-handling. Births remain in the history even if no final instruction uses them.
+births using the same class/number in that function; `registers[].values` retains
+all generations. One-based `trace_position` fields preserve event interleaving.
+Births remain visible even when no final instruction uses them. Never bind every
+use to the latest generation or compare IDs directly across source variants.
 
-Each birth records the physical threshold, original retail creation site, pipeline
-phase, source line and available statement-root expression. Expression byte
-spellings use hex in the trace; inspection retains bytes and optional UTF-8 text.
-The bounded spellings have `complete=false`, and statement roots are not claimed
-to be the exact backend leaf expression. `category=null` means the semantic
-allocation category is still unknown. Existing frontend provenance can provide
-additional evidence; these fields do not silently invent it.
+Each birth records the physical threshold, canonical retail creation site,
+pipeline phase, source line and available statement-root context. Canonical sites
+need not equal relocated runtime addresses. Context can be partial or stale outside
+active generation; it is not a causal leaf-expression or declaration-initializer
+claim. Spellings retain bytes and optional UTF-8, with separate completeness.
+`category=null` means the semantic allocation role is unknown.
 
-`Birth.object` adds observed object bindings at the guarded single-register and
-two-word assignment sites. It retains the opaque object/variable-info identities,
-the object's datatype, storage class, type kind/size, and variable-info flags
-**before** the binding writes. Pair parts mean first/second creation order, not a
-claim about high/low word order. Names retain bytes, optional UTF-8 text and separate
-known/complete flags. Repeated names and pointers are not unique semantic identities.
-An absent object binding does not prove that a birth is an anonymous temporary;
-other backend creation paths still need exact expression/object provenance.
+`Birth.object` records guarded single-register/two-word object bindings before
+the binding writes: Object/VarInfo identities, datatype, storage, type kind/size,
+flags and byte-preserving names with known/complete bits. Pair parts mean creation
+order, not high/low word order. Repeated names/pointers are not unique semantic
+identities; a missing binding does not prove an anonymous temporary.
 
-Sites are canonical addresses in the pinned retail image, not necessarily the
-relocated execution address. Typed phases name code generation, optimization,
-allocation and their following boundaries. Rust callers can use
-`provenance::inspect` for captures/raw traces, `provenance::parse` for raw traces,
-and `value_history` directly. Capture inspection skips unrelated rendered-report
-data rather than building a second full JSON analysis tree.
+## Graphs at the observed boundary
 
-## Graphs at their actual instruction boundary
+`graphs.graphs` pairs the actual instruction list immediately before retail
+simplification (`boundary=before_simplify`) with every graph node, raw neighbor
+list, unique adjacency degree, stored degree, flags and colors. `graph_only` means
+absent from that instruction list, not eliminated. `instruction_only` and
+`missing_neighbor_nodes` retain other boundaries. Physical thresholds are
+class-specific, including SPR and condition registers.
 
-`graphs.graphs` contains snapshots taken immediately before retail graph
-simplification (`boundary=before_simplify`). Each snapshot pairs the actual
-instruction list at that instant with graph nodes, raw neighbor lists, unique
-adjacency degrees, stored degrees, flags and colors. `graph_only` means absent
-from those instructions; it does not mean eliminated. `instruction_only` and
-`missing_neighbor_nodes` retain the other graph boundaries. Physical thresholds
-are class-specific, including SPR and condition registers.
+`pv.graph.begin/instruction/node/end` records carry function-local graph ordinals
+and birth cutoffs. The parser independently checks instruction visibility,
+node/instruction totals and function-end `graphs=N`. Missing snapshots/ends,
+unsupported schemas or contradictory visibility prevent complete coverage.
+`graphs.observations` and per-function observations describe snapshot coverage
+separately from birth binding. Old captures without these records remain usable
+but cannot establish that coverage. Live physical thresholds are cross-checked
+against the preceding coalescer pass when available; stale zero thresholds remain
+indeterminate.
 
-The format-1 `pv.graph.begin/instruction/node/end` records carry a function-local
-graph ordinal and birth cutoff. A bounded bit set observes visibility in one scan
-of the instruction list. The parser independently checks visibility against the
-captured operands, checks node/instruction totals, and compares per-function graph
-counts against `pv.function.end graphs=N`. Missing last snapshots, missing ends,
-unsupported schemas and contradictory visibility cannot establish full graph
-coverage. `graphs.observations` and `graphs.functions[].observations` describe
-snapshot coverage separately from birth bindings. Old captures without these
-records remain usable but cannot establish that coverage.
-Physical thresholds are read from the live target table at the graph boundary.
-The parser cross-checks them against the preceding captured coalescer pass when
-available. Early development captures that cached zero before target initialization
-are now indeterminate rather than misclassifying physical neighbors.
-
-Each node's `binding.direct` retains all candidate birth IDs for its class/number
-before that graph, within the current counter-reset epoch. `contributors` adds
-origins from confirmed coalescer parent writes. `merges` retains both roots and
-their possible birth sets, with the actual decision trace position. Child nodes
-and their births remain inspectable even when their instructions disappear.
-Future births and merges never explain an earlier graph; class resets prevent
-bindings from leaking between allocation epochs. Reused numbers remain ambiguous,
-and unknown virtual contributors remain explicit evidence gaps.
-
-A satisfied `binding.evidence` establishes capture-local number/merge binding
-within direct-counter coverage. It does not establish cross-variant semantic
-identity, an exact leaf expression, or elimination. Full origin and category
-evidence must still be connected to comparison and source objectives. Rust callers
-can use `graph_history` directly or inspect the combined provenance report.
-
-## Observed allocation ranges
-
-Graph nodes have a typed `range_category`, backed by `range_bounds` and its own
-evidence. The categories are `physical`, `initial_object_range`,
-`before_coalescing_window`, `inside_coalescing_window` and
-`after_coalescing_window`. These name the retail allocator's number ranges; they
-do not guess semantic roles such as address, call result or promoted array value.
-The initial-object upper bound and coalescing-window bounds are inclusive, matching
-the actual retail comparisons. Birth-time `category` remains unknown until a
-semantic role is justified; it is distinct from the observed range category.
-
-Two fixed-size islands observe the last stores in the initial-range snapshot and
-window-begin functions. `pv.category.initial` and `pv.category.window` retain their
-completed tables and birth cutoffs. Function-end `ranges=N` totals detect missing
-markers. The parser validates those snapshots against the observed counters and
-checks each graph's initial/first bounds against the current function's markers.
-Missing markers, stale or overlapping bounds and inconsistent snapshots remain
-indeterminate. Graphs also sample the current window's last bound, which can grow
-after its opening marker. With `-O0`, retail code can omit both markers; complete
-observation of zero markers does not establish range categories.
-
-Range classification and value binding are separate evidence. A reused raw number
-may have a definite range category while its contributing value generation remains
-ambiguous. A source objective needs both before attributing a category change to a
-particular value. These observations are available in Rust through
-`allocation_category` and the combined provenance report.
-
-The internal callback is now `OracleRust_CounterProbeV5`, with a guarded 48-byte
-descriptor. Rebuild the common hooks and producer together; the linker rejects an
-older callback ABI instead of interpreting stale descriptors.
-
-### Symbolic address materialization
-
-The two guarded Normalize pair-allocation sites now attach
-`Birth.materialization`. The observation retains `part: high|low`, the source
-Operand address/tag/Object/displacement, datatype/storage and byte-preserving
-cached mangled symbol name with separate known/complete flags. This observes the
-operand held in EBX and Object in EBP at the actual counter write. It does not
-invoke the mangler or populate compiler caches. A missing cached name stays unknown.
-The constructor checks the complete Normalize metadata container and the retail
-cache accessor: the data link-name field is at 56 in GC 1.3/1.3.2 and 54 in GC 2.7.
-The reconstructed header alone does not establish that retail suffix layout.
-
-Dispatch results additionally retain their output `operand` address. A
-`matching_dispatch_output` identifies the most recent same-address output in the
-enclosing observed scope only if tag, Object and displacement still agree. This
-is matching observed state, not proof that no unobserved alias wrote the operand.
-The qualified symbol at the materializer is read directly and does not depend on
-the partial expression spelling or this output match.
-
-Function capture declares `materialization=guarded_normalize_pair_v1`; the end
-record gives `materializations`. `materialization_observations` requires a valid
-counter/function capture, the declared scope, matching totals and a binding for
-every captured birth at either guarded site. Complete capture of zero such births
-means only that this path was not observed. Other address-generation paths,
-optimizer-created values and complete semantic lifetimes remain outside this scope.
-The shared `symbol_address_pairs` objective counts this mechanism without claiming
-complete temporary elimination; see [source search](source-search.md).
-
-### Scalar array promotion
-
-`Birth.array_promotion` binds the two audited scalar `COpt_ArrayToRegister`
-creation paths to the original array Object and its observed element index.
-It records element size, array size/count, raw optimizer flags, original
-datatype/storage/type and byte-preserving source name with known/complete bits.
-The full retail scalar-pass and builder bodies guard the LoopVar field layout;
-the observer checks the original register, element/type sizes and index bounds.
-This distinguishes the first and second promoted elements even when generated
-instruction spellings no longer retain the array's name.
-
-The function declares `array_promotion=guarded_scalar_v1`; its end record gives
-`array_promotions`. `array_promotion_observations` requires the declared scope,
-complete counter capture, matching totals and a binding at every captured scalar
-promotion birth site. The supported paths create GPR and FPR elements. A vector
-array-promotion path remains outside this scope. The observed array Object pointer
-is capture-local, and a complete name is not proof of inline/declaration ancestry.
-
-### Call-result creation
-
-`Birth.call_result` observes all six register-creation sites in the guarded
-`FunctionCalls_GenerateCall` body: ordinary FPR, vector, paired-single FPR, GPR
-single and the two words of a GPR pair. It records the direct call ENode, its
-function-reference ENode (`callee`), return type and allocated part. This direct
-helper input remains available when a lowering path bypasses expression dispatch.
-The bounded expression text has separate known/complete flags and stays partial.
-It does not supply an overload-stable qualified function symbol or full inline
-ancestry.
-
-These observations occur before the retail result-register stores. `output_bytes`
-therefore retains 24 raw bytes with `output_complete: false`; inactive/uninitialized
-fields and opaque pointers must not become semantic identities. The function
-declares `call_result=guarded_call_result_v1` and ends with `call_results`.
-`call_result_observations` additionally checks all guarded births and consistent
-adjacent pair-word bindings. Coverage of this helper does not classify every
-temporary produced by intrinsic lowering or other backend helpers.
-
-The native state fingerprint format is now 3. It retains promoted element/source
-metadata and call shape/type/partial expression evidence, excludes raw partial
-output bytes and pointers, and masks optimizer flags to their three audited active
-bits. Raw flags remain available in the provenance report. Inspect
-`fingerprint_format_version` in a retained-state report; saved searches still bind
-the analyzer executable and must not mix fingerprints from different analyzers.
-
-V5 adds [frontend aggregate scalarization](scalarization.md), including original
-byte/bit intervals, actual returned temporary identities and function-end totals.
-Typed `scalarization.backend_values` joins exact Object/VarInfo identities to
-backend births with separate coverage. Fingerprints from format 3 onward also retain
-whole-function scalar creations without graph nodes, coverage and pointer equality
-relationships. Unsupported normalization disables state grouping. The internal
-callback remains guarded; earlier V4 proof directories describe the historical
-producer.
-
-### Compare the observed graph boundary
+A node's `binding.direct` retains possible births before the graph in the current
+counter-reset epoch. `contributors` adds origins from confirmed parent writes;
+`merges` retains both roots, candidate birth sets and decision positions. Future
+births/merges cannot explain an earlier graph. Resets prevent cross-epoch binding;
+reused numbers and unknown virtual contributors remain ambiguous. A satisfied
+`binding.evidence` proves capture-local number/merge binding, not cross-variant
+semantic identity.
 
 ```text
 mwcc-tools provenance compare baseline.json candidate.json --link RenderParticles__11CElementGenFv --class 4 --first-round 0 --second-round 0 --json
 ```
 
-The [graph correspondence API](graph-correspondence.md) selects actual
-`before_simplify` graphs, retains every node and raw neighbor record, and combines
-unique observed object/symbol anchors with instruction hypotheses. It keeps
-confirmed capture-local merges separate from conditional cross-variant mappings.
-Conflicts, unmatched nodes and boundary edges remain explicit. Semantic lifetime
-identity and elimination are still indeterminate.
+The [graph correspondence API](graph-correspondence.md) combines unique observed
+object/symbol anchors with instruction hypotheses. It keeps confirmed local
+merges separate from conditional cross-variant mappings. Conflicts, unmatched
+nodes and boundary edges remain explicit; elimination remains indeterminate.
 
-Audit a pinned retail image independently with the native command:
+## Observed allocation ranges
+
+`range_category` and `range_bounds` classify graph numbers as `physical`,
+`initial_object_range`, `before_coalescing_window`, `inside_coalescing_window` or
+`after_coalescing_window`. These are numeric retail ranges, not semantic roles.
+The initial-object upper bound and coalescing bounds are inclusive.
+
+`pv.category.initial/window` records contain completed tables and birth cutoffs;
+function-end `ranges=N` detects missing markers. The parser checks counters,
+markers and graph bounds. Missing/stale/overlapping bounds remain indeterminate.
+The window's last bound can grow after its opening marker. `-O0` can omit both
+markers: observing zero markers does not establish categories. A definite range
+category does not resolve an ambiguous value generation.
+
+## Specific origin mechanisms
+
+- **Symbolic addresses:** `Birth.materialization` records the two guarded Normalize
+  high/low allocation sites, source Operand/Object/displacement, datatype/storage
+  and cached mangled symbol bytes with known/complete flags. It does not invoke the
+  mangler. A missing cache stays unknown. `matching_dispatch_output` is a scoped
+  same-address/tag/Object/displacement state match, not proof of no alias writes.
+  `materialization_observations` requires scope `guarded_normalize_pair_v1`,
+  complete counters, matching totals and bindings at every guarded birth. Zero
+  means only that this pair-allocation path was not observed.
+- **Scalar array promotion:** `Birth.array_promotion` records original array
+  identity/name, element index/size, array size/count, optimizer flags and type
+  metadata at the two guarded GPR/FPR creation paths. Scope `guarded_scalar_v1`,
+  counters, totals and every site binding must agree. Vector promotion is outside
+  this scope. A complete name does not establish inline/declaration ancestry.
+- **Call results:** `Birth.call_result` covers the six guarded result-register
+  creation sites, retaining direct call/callee ENodes, return type and allocated
+  part. It supplies neither a qualified overload-stable symbol nor full inline
+  ancestry. The 24 `output_bytes` are explicitly partial/uninitialized
+  (`output_complete=false`). Scope `guarded_call_result_v1`, totals, guarded births
+  and adjacent pair-word bindings must agree. Intrinsic/other helper temporaries
+  are not all classified by this mechanism.
+
+[Frontend scalarization](scalarization.md) separately records source byte/bit
+intervals, returned temporary identities and independent totals.
+`scalarization.backend_values` joins exact Object/VarInfo identities to births
+with its own evidence. [Call argument provenance](call-arguments.md), available
+as `Report.call_arguments`, records lowered contexts, evaluated operands, owned
+births and instruction intervals independently of call-result creation.
+
+## Dispatch, retained inputs and validation
 
 ```text
-mwcc-tools provenance audit-counters --root ORACLE_ROOT --version GC_2_7 > counter-audit.json
-```
-
-The format-1 audit records image/metadata hashes, direct PE references, access
-classification, indexed accesses, undecoded/unresolved sites and function guards.
-Its `lifecycle_coverage_complete` remains false: the direct-reference audit does
-not prove the absence of all computed aliases or bulk writes. A metadata container
-or unit name is a link location, not necessarily the semantic function's name.
-
-## Expression-generation dispatch context
-
-```text
+mwcc-tools provenance audit-counters --root ORACLE_ROOT --version GC_2_7
 mwcc-tools provenance audit-dispatch --root ORACLE_ROOT --version GC_2_7
 ```
 
-The native audit guards the complete retail initializer and its pointer writes.
-It proves 78 initialized entries (0 through 77), rather than trusting reconstructed
-array sizes. Function guards retain addresses as well as names: GC 2.7 has two
-local functions named `_fn_00453e10`. The constructor distinguishes their bodies
-and rejects substituting same-named COFF targets.
+The counter audit retains image/metadata identities, direct references,
+classification, unresolved sites and guards. `lifecycle_coverage_complete=false`
+remains deliberate: direct references do not exclude computed aliases/bulk writes.
+A metadata container is a link location, not necessarily a semantic function.
 
-The constructor changes only initializer target relocations, adding entry/return
-islands that forward the original argument bytes and preserve return registers,
-flags, x87, MXCSR and XMM state. Existing sections keep their sizes and instruction
-offsets; retail generator bodies remain intact. This uses the actual retail dispatch, not a reconstructed
-C prototype. The internal expression descriptor has its own versioned observer;
-stale common hooks fail linking with a rebuild diagnostic.
+The dispatch audit guards all 78 initializer entries (0 through 77), their pointer
+writes and exact targets, including same-named local functions. Expression records
+retain parent IDs, `codegen_dispatch` context, retail generator, raw argument bits,
+tagged result and end/abandonment state. Results read only fields defined by their
+Operand tag; unknown tags are indeterminate. `guarded_table_v1`, balanced calls
+and end totals establish table-call coverage, not complete leaf/inline ancestry.
+Direct helpers can bypass the table; statement lines can identify inline callers.
+Raw ABI argument bits are not register identities.
 
-`history.functions[].expressions[]` adds parent IDs, active `codegen_dispatch`
-context, original-retail generator target, raw requested argument bits, a tagged
-result snapshot, and end/abandonment observations. `births[].expression` names the
-most specific observed active scope. Requested argument bits can include unused
-upper-half pointer bits; they are ABI evidence, not virtual-register identities.
-The relevant-state fingerprint retains the generator target and completed graph,
-not those incidental argument bits. Result records read only the fields associated
-with the observed Operand tag; unknown tags retain indeterminate result evidence.
+Reports bind the exact raw trace with `trace_sha256`; passes retain `end_position`.
+Shared source objectives check report/capture agreement and that the selected
+complete pass ends before its graph. Older digest-less reports cannot establish
+that retained-input gate. Mutable Rust report structures remain trusted caller data.
 
-`dispatch_scope == "guarded_table_v1"`, end totals and
-`dispatch_observations` describe balanced capture of those table calls. Result
-evidence, bounded expression spelling and semantic lifetime completeness are
-separate. Statement lines can identify an inline caller rather than the original
-leaf. Direct helper calls can bypass the table. Dispatch context therefore does
-not claim complete exact leaf, inline or source-role provenance, and
-`lifecycle` remains indeterminate. Missing result/end records, unknown declarations,
-unwinds and depth overflow cannot establish complete relevant capture.
+State fingerprint format 4 includes supported backend, scalarization and call
+argument evidence with normalized pointer equality/order relationships. It excludes
+partial call-output storage and incidental argument bits. Unsupported normalization
+disables grouping; saved searches also bind the analyzer executable. Arena capture
+normalization is not yet supported. Consult retained reports for the actual format.
 
-The [real EnvModulate case](../oracle-source-guided-case-envmodulate.md) connects
-symbol-returning leaves, later address-register births, symbolic PCode, confirmed
-r4 merges and invisible graph nodes that remain adjacent to `noRota`. It also
-records three unsuccessful, behavior-justified wrapper experiments.
+`tools/migration/verify_backend_probes.py` independently checks off/on stock-object
+equality, existing traces, decision paths, histories and graph observations.
+`--case` selects fixtures; `--from-ninja`, `--source` and `--project-only` support
+complete units. Python is a development verifier, not a runtime dependency. See
+[extension status](../oracle-source-guided-status.md) for exercised paths and exact
+accepted evidence, including the [EnvModulate case](../oracle-source-guided-case-envmodulate.md).
+Successful comparisons make no performance or rare-branch coverage guarantee.
 
-## Validation
-
-Development producers additionally expose [call argument provenance](call-arguments.md)
-as `Report.call_arguments`. This records the lowered contexts, evaluated operands,
-scoped births and argument-lowering instruction intervals independently of a
-call's returned value. Function-end totals make missing streams explicit. State
-fingerprint format 4 includes these observations and their pointer equality/order
-relationships to the existing backend history.
-
-Reports include `trace_sha256`, computed from the exact raw trace, and coalescing
-passes include `end_position`. Shared source objectives check report/compilation
-trace agreement and require the selected complete pass to finish before its graph.
-These fields detect mixed retained inputs; mutable Rust report structures remain
-trusted caller data. Older deserialized reports without a digest cannot establish
-the current retained-input gate.
-
-`tools/migration/verify_backend_probes.py` runs each selected input with probes
-disabled/enabled, checks stock-object equality and unchanged existing traces, then
-independently invokes the native explanation command to validate every candidate
-path, direct-counter history and graph-phase capture. It compares the new node
-records against the independently emitted existing graph records, preserving raw
-neighbors and degrees. Full outputs, identities, flags, hashes and elapsed times are retained in a
-private output directory. `--case` selects fixture IDs. It also accepts `--from-ninja`, `--source` and
-`--project-only` for complete game units. This is a development audit; Python is
-not a product runtime dependency. A successful trace comparison is not a measured
-overhead guarantee or a claim that every rare rejection branch has a live fixture.
-
-The scratch-reuse fixture preserves a compiler mechanism rather than physical
-register choices: with `-O0`, it produces 239 births, one rewind and twelve reused
-numbers on all supported versions/hosts. The complete Echoes particle unit records
-6,356 births and 4,325 partial expression observations with stock-equivalent output
-on both hosts.
-
-The current graph checks retain 182 snapshots from that unit, with 2,627 node
-observations absent from the instructions at their respective graph boundaries.
-These are retained observations, not a count of eliminated values.
-The same unit now records 1,750 observed object bindings, including eight pair
-words, and exercises initial-object, before/inside/after-window range categories
-on both hosts. The separate 64-bit object-binding fixture retains eight bindings
-and two range categories on every supported version/host.
-
-Continue with semantic lifetime correspondence, categories and complete origins before
-using absence predicates. The complete implementation scope remains in the
+[Source arena observations](source-arenas.md) and the
+[lifetime ledger](source-lifetimes.md) provide allocation identity prerequisites.
+They do not establish initialized node contents or source-write/inline ancestry;
+that bridge's native proof remains separate. The remaining scope is tracked in the
 [source-guided roadmap](../oracle-source-guided-search.md).
-
-For original-source ancestry, the [source arena audit](source-arenas.md) inventories
-retail allocation/reset storage and bypass paths on all three versions. It is a
-static prerequisite to lifetime-safe node observations; it does not add a
-runtime source-origin contract.

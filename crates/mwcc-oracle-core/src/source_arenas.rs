@@ -12,6 +12,7 @@ use crate::{
 };
 use anyhow::{Result, anyhow, ensure};
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
 pub const SCOPE: &str = "guarded_retail_arenas_v1";
 const MAX_EVENTS: usize = 2_000_000;
@@ -128,7 +129,7 @@ pub struct History {
     pub checkpoints: Vec<Checkpoint>,
     pub coverage_intervals: Vec<CoverageInterval>,
     pub observations: Evaluation,
-    /// Authoritative retained input. Every query revalidates this sequence.
+    /// Authoritative retained input. Preparation revalidates this sequence.
     pub records: Vec<Record>,
 }
 impl Default for History {
@@ -160,6 +161,116 @@ pub struct ResolvedAllocation {
 pub struct Resolution {
     pub allocation: Option<ResolvedAllocation>,
     pub observations: Evaluation,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Query {
+    pub trace_position: usize,
+    pub pool: PoolDomain,
+    pub address: u32,
+    pub extent: u32,
+}
+
+/// A receipt issued for one immutable prepared capture at a historical point.
+/// It establishes allocation identity only, never current liveness, initialized
+/// bytes, unchanged contents or node/transformation equivalence. Private fields
+/// and the absence of Deserialize prevent importing display data as a receipt.
+#[derive(Clone, Debug, Serialize)]
+pub struct HistoricalReference {
+    #[serde(skip)]
+    capture: Arc<()>,
+    query: Query,
+    resolved: ResolvedAllocation,
+}
+impl HistoricalReference {
+    pub fn query(&self) -> Query {
+        self.query
+    }
+    pub fn trace_position(&self) -> usize {
+        self.query.trace_position
+    }
+    pub fn allocation(&self) -> u64 {
+        self.resolved.allocation
+    }
+    pub fn pool(&self) -> PoolDomain {
+        self.resolved.pool
+    }
+    pub fn epoch(&self) -> u64 {
+        self.resolved.epoch
+    }
+    pub fn offset(&self) -> u32 {
+        self.resolved.offset
+    }
+    pub fn extent(&self) -> u32 {
+        self.resolved.extent
+    }
+    pub fn checkpoint_position(&self) -> usize {
+        self.resolved.checkpoint_position
+    }
+    pub fn same_capture(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.capture, &other.capture)
+    }
+    pub fn same_allocation(&self, other: &Self) -> crate::source_lifetimes::Evidence<bool> {
+        use crate::source_lifetimes::{Evidence, GapKind, Reason};
+        if !self.same_capture(other) {
+            return Evidence {
+                value: None,
+                reasons: vec![Reason {
+                    kind: GapKind::ForeignReceipt,
+                    pool: Some(other.pool()),
+                    allocation: Some(AllocationId(other.allocation())),
+                    detail: "historical receipt belongs to another prepared capture".into(),
+                }],
+            };
+        }
+        Evidence {
+            value: Some(
+                self.allocation() == other.allocation()
+                    && self.pool() == other.pool()
+                    && self.epoch() == other.epoch(),
+            ),
+            reasons: vec![],
+        }
+    }
+    pub fn same_span(&self, other: &Self) -> crate::source_lifetimes::Evidence<bool> {
+        let mut evidence = self.same_allocation(other);
+        if let Some(same) = evidence.value {
+            evidence.value =
+                Some(same && self.offset() == other.offset() && self.extent() == other.extent());
+        }
+        evidence
+    }
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct HistoricalResolution {
+    pub reference: Option<HistoricalReference>,
+    pub observations: Evaluation,
+}
+impl From<HistoricalResolution> for Resolution {
+    fn from(value: HistoricalResolution) -> Self {
+        Self {
+            allocation: value.reference.map(|r| r.resolved),
+            observations: value.observations,
+        }
+    }
+}
+
+struct PreparedData {
+    events: Vec<Event>,
+    intervals: Vec<CoverageInterval>,
+    observations: Evaluation,
+    invalid: Option<Evaluation>,
+}
+/// Immutable validated timeline. Clones share its private capture identity;
+/// preparing the same raw History again deliberately creates a separate one.
+/// Each batch replays one ledger in increasing position order and restores the
+/// caller's original query order. No ledger or serialized coverage is trusted
+/// from the public History display fields.
+#[derive(Clone)]
+pub struct PreparedHistory {
+    data: Arc<PreparedData>,
+    capture: Arc<()>,
 }
 fn hex(r: &Record, field: &str) -> Result<u32> {
     Ok(u32::from_str_radix(r.get(field)?, 16)?)
@@ -861,6 +972,32 @@ fn validate(records: Vec<Record>) -> History {
     }
 }
 impl History {
+    /// Revalidate the authoritative raw sequence once. The resulting capture is
+    /// immutable and remains independent from later edits to this display model.
+    pub fn prepare(&self) -> PreparedHistory {
+        let data = if self.records.len() > MAX_EVENTS {
+            let error = gap("arena event limit exceeded");
+            PreparedData {
+                events: vec![],
+                intervals: vec![],
+                observations: error.clone(),
+                invalid: Some(error),
+            }
+        } else {
+            let rebuilt = validate(self.records.clone());
+            PreparedData {
+                events: rebuilt.events,
+                intervals: rebuilt.coverage_intervals,
+                observations: rebuilt.observations,
+                invalid: None,
+            }
+        };
+        PreparedHistory {
+            data: Arc::new(data),
+            capture: Arc::new(()),
+        }
+    }
+
     pub fn resolve_at(
         &self,
         trace_position: usize,
@@ -868,57 +1005,82 @@ impl History {
         address: u32,
         extent: u32,
     ) -> Resolution {
-        if self.records.len() > MAX_EVENTS {
-            return Resolution {
-                allocation: None,
-                observations: gap("arena event limit exceeded"),
-            };
+        self.prepare()
+            .resolve_many(&[Query {
+                trace_position,
+                pool,
+                address,
+                extent,
+            }])
+            .pop()
+            .unwrap()
+    }
+}
+
+impl PreparedData {
+    fn checkpoint(&self, position: usize) -> std::result::Result<usize, Evaluation> {
+        if let Some(error) = &self.invalid {
+            return Err(error.clone());
         }
-        let rebuilt = validate(self.records.clone());
-        if rebuilt.events.iter().any(|e| {
-            e.trace_position == trace_position && matches!(e.observation, EventKind::Checkpoint(_))
-        }) {
-            return Resolution {
-                allocation: None,
-                observations: gap(
-                    "checkpoint emission is a coverage boundary, not an allocation observation position",
-                ),
-            };
-        }
-        let Some(interval) = rebuilt
-            .coverage_intervals
-            .iter()
-            .find(|i| i.begin_position <= trace_position && trace_position <= i.end_position)
-        else {
-            return Resolution {
-                allocation: None,
-                observations: gap(
-                    "requested arena position is outside a reconciled checkpoint prefix",
-                ),
-            };
-        };
-        let mut ledger = Ledger::new(MAX_EVENTS);
-        let mut seen = [false; 5];
-        let mut current_epochs = [0u32; 5];
-        let mut reset_depth = 0u32;
-        for e in rebuilt
+        if let Ok(index) = self
             .events
-            .iter()
-            .filter(|e| e.trace_position <= trace_position)
+            .binary_search_by_key(&position, |e| e.trace_position)
+            && matches!(self.events[index].observation, EventKind::Checkpoint(_))
+        {
+            return Err(gap(
+                "checkpoint emission is a coverage boundary, not an allocation observation position",
+            ));
+        }
+        // Validated prefix ends are monotonic, including repeated ends after a
+        // located gap. Select the earliest independent checkpoint covering it.
+        let index = self
+            .intervals
+            .partition_point(|interval| interval.end_position < position);
+        self.intervals
+            .get(index)
+            .filter(|i| i.begin_position <= position)
+            .map(|i| i.checkpoint_position)
+            .ok_or_else(|| {
+                gap("requested arena position is outside a reconciled checkpoint prefix")
+            })
+    }
+}
+
+struct Cursor {
+    ledger: Ledger,
+    seen: [bool; 5],
+    epochs: [u32; 5],
+    reset_depth: u32,
+    next_event: usize,
+}
+impl Cursor {
+    fn new() -> Self {
+        Self {
+            ledger: Ledger::new(MAX_EVENTS),
+            seen: [false; 5],
+            epochs: [0; 5],
+            reset_depth: 0,
+            next_event: 0,
+        }
+    }
+    fn advance(&mut self, events: &[Event], position: usize) {
+        while let Some(e) = events
+            .get(self.next_event)
+            .filter(|e| e.trace_position <= position)
         {
             match &e.observation {
                 EventKind::ResetBegin(r) => {
-                    reset_depth += 1;
+                    self.reset_depth += 1;
                     if r.skip {
-                        let _ = ledger.observe_locked_local_reset(u64::from(current_epochs[3]));
+                        let _ = self
+                            .ledger
+                            .observe_locked_local_reset(u64::from(self.epochs[3]));
                     } else {
                         for n in 0..5 {
                             if r.mask & (1 << n) != 0 {
-                                let d = domain(n as u8).unwrap();
-                                let previous = seen[n].then_some(u64::from(current_epochs[n]));
-                                let _ = ledger.observe_invalidation(
-                                    d,
-                                    previous,
+                                let _ = self.ledger.observe_invalidation(
+                                    domain(n as u8).unwrap(),
+                                    self.seen[n].then_some(u64::from(self.epochs[n])),
                                     u64::from(r.epochs[n]),
                                     if matches!(r.op, 5 | 6) {
                                         InvalidationKind::Release
@@ -927,15 +1089,15 @@ impl History {
                                     },
                                     Coverage::COMPLETE,
                                 );
-                                seen[n] = true;
+                                self.seen[n] = true;
                             }
                         }
                     }
-                    current_epochs = r.epochs;
+                    self.epochs = r.epochs;
                 }
-                EventKind::ResetEnd(_) => reset_depth -= 1,
+                EventKind::ResetEnd(_) => self.reset_depth -= 1,
                 EventKind::Allocation(a) => {
-                    let _ = ledger.observe_allocation(Allocation {
+                    let _ = self.ledger.observe_allocation(Allocation {
                         id: AllocationId(u64::from(a.allocation)),
                         pool: domain(a.pool).unwrap(),
                         epoch: u64::from(a.epoch),
@@ -946,39 +1108,80 @@ impl History {
                 }
                 _ => {}
             }
+            self.next_event += 1;
         }
-        if reset_depth != 0 {
-            return Resolution {
-                allocation: None,
-                observations: gap("requested arena position is inside an active reset"),
+    }
+}
+impl PreparedHistory {
+    /// Whole-stream status; valid earlier prefixes may exist even when a later
+    /// unsupported or truncated suffix makes this status indeterminate.
+    pub fn observations(&self) -> &Evaluation {
+        &self.data.observations
+    }
+
+    pub fn resolve_many(&self, queries: &[Query]) -> Vec<Resolution> {
+        self.resolve_references(queries)
+            .into_iter()
+            .map(Into::into)
+            .collect()
+    }
+
+    pub fn resolve_references(&self, queries: &[Query]) -> Vec<HistoricalResolution> {
+        let mut order = (0..queries.len()).collect::<Vec<_>>();
+        order.sort_unstable_by_key(|&index| (queries[index].trace_position, index));
+        let mut results = (0..queries.len()).map(|_| None).collect::<Vec<_>>();
+        let mut cursor = Cursor::new();
+        for index in order {
+            let query = queries[index];
+            let result = match self.data.checkpoint(query.trace_position) {
+                Err(observations) => HistoricalResolution {
+                    reference: None,
+                    observations,
+                },
+                Ok(checkpoint_position) => {
+                    cursor.advance(&self.data.events, query.trace_position);
+                    if cursor.reset_depth != 0 {
+                        HistoricalResolution {
+                            reference: None,
+                            observations: gap("requested arena position is inside an active reset"),
+                        }
+                    } else {
+                        let receipt = cursor.ledger.resolve(
+                            query.pool,
+                            u64::from(cursor.epochs[pool_number(query.pool) as usize]),
+                            query.address,
+                            query.extent,
+                        );
+                        match receipt.value {
+                            Some(r) => HistoricalResolution {
+                                reference: Some(HistoricalReference {
+                                    capture: self.capture.clone(),
+                                    query,
+                                    resolved: ResolvedAllocation {
+                                        allocation: r.allocation().0,
+                                        pool: r.pool(),
+                                        epoch: r.epoch(),
+                                        offset: r.offset(),
+                                        extent: r.extent(),
+                                        trace_position: query.trace_position,
+                                        checkpoint_position,
+                                    },
+                                }),
+                                observations: known(),
+                            },
+                            None => HistoricalResolution {
+                                reference: None,
+                                observations: gap(format!(
+                                    "allocation lifetime is indeterminate: {:?}",
+                                    receipt.reasons
+                                )),
+                            },
+                        }
+                    }
+                }
             };
+            results[index] = Some(result);
         }
-        let receipt = ledger.resolve(
-            pool,
-            u64::from(current_epochs[pool_number(pool) as usize]),
-            address,
-            extent,
-        );
-        match receipt.value {
-            Some(r) => Resolution {
-                allocation: Some(ResolvedAllocation {
-                    allocation: r.allocation().0,
-                    pool: r.pool(),
-                    epoch: r.epoch(),
-                    offset: r.offset(),
-                    extent: r.extent(),
-                    trace_position,
-                    checkpoint_position: interval.checkpoint_position,
-                }),
-                observations: known(),
-            },
-            None => Resolution {
-                allocation: None,
-                observations: gap(format!(
-                    "allocation lifetime is indeterminate: {:?}",
-                    receipt.reasons
-                )),
-            },
-        }
+        results.into_iter().map(Option::unwrap).collect()
     }
 }

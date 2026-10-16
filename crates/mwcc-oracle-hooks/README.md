@@ -1,6 +1,14 @@
 # In-process Rust producer
 
-This `no_std` crate produces three i686 Windows COFF objects, linked by the historical linker: common hooks, a version-specific frontend and trace output. The completed migration replaced all 31 original observation wrappers and both output APIs. The current development common object has 38 wrappers and 14 support exports (52 total), with exactly 69 imports. Five frontend wrappers and the two output APIs remain separate objects. The original 26 common wrappers are:
+This `no_std` crate builds three i686 Windows COFF objects: common hooks, a
+version-specific frontend and trace output. The historical linker adds them to
+the original compiler. Rust supplies all 31 original observation hooks and both
+output APIs.
+
+Development hooks add backend provenance, arena lifetimes and experimental
+source-node observations. In the source checkout, `docs/oracle/producer.md`
+records current exports/imports, build instructions and validation status.
+The original 26 common wrappers are:
 
 | Symbol | Records |
 |---|---|
@@ -39,7 +47,7 @@ the two initialization functions return raw status and accept the failure
 callback. Native link installation supplies 19 guarded allocation islands and
 the private `OracleRust_ArenaGlobals` data ABI. `OracleRust_ArenaProbeV1` is a
 support observer. The opt-in `MWCC_ORACLE_SOURCE_ARENAS` stream and its bounded
-coverage semantics are described in [source arenas](../../docs/oracle/source-arenas.md).
+coverage semantics are described in the source checkout's `docs/oracle/source-arenas.md`.
 
 `OracleRust_LinkName`, `OracleRust_PrintInstruction` and `OracleRust_Snapshot` provide mangled-name lookup, raw PCode records and allocation/stage snapshots. `OracleRust_DescribeExpression` supplies binding expression spelling, and `cse_vregs` supplies CSE register records. The separate frontend imports `OracleRust_LinkName`, `OracleRust_OriginFind`, `OracleRust_OriginWalk`, `OracleRust_PrintChain` and `OracleRust_InlineLine` to share the common object's ancestry table and statement context. These nine exports, plus `OracleRust_BackendProbe`, `OracleRust_CounterProbeV6`, `OracleRust_ExpressionProbeV1`, `OracleRust_ArgumentForceGpr` and `OracleRust_ArenaProbeV1`, are support functions, not retail hooks; they are checked separately and do not belong in `oracle.hooks`.
 
@@ -110,10 +118,12 @@ The counter observer also reads actual source Operand/Object state at the two
 guarded Normalize pair-birth sites. Cached symbol names are observational: no
 mangler call is made. The retail data-name cache offset is selected by audited
 version (56 in GC 1.3/1.3.2, 54 in GC 2.7), rather than the reconstructed header.
-See [native provenance](../../docs/oracle/provenance.md) for typed dispatch capture,
+See the source checkout's `docs/oracle/provenance.md` for typed dispatch capture,
 result uncertainty and the remaining exact-origin/lifetime limits.
 
-The frontend object implements inline decisions, body/expression costs, call expansion and deferred-node dispatch. Default selection, packaging and the migration's final integration gates remain. The post-migration source-guided search roadmap is separate.
+The frontend object implements inline decisions, body/expression costs, call
+expansion and deferred-node dispatch. Rust default selection and native packaging
+are implemented. The source-guided extensions have separate validation requirements.
 
 Each supported version's `oracle.hooks` inventory contains 31 retail wrappers. The five version-specific frontend wrappers are:
 

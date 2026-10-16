@@ -232,7 +232,9 @@ pub fn object_instructions(object: &[u8], link: &str) -> Result<Value> {
 pub fn fingerprint(g: &Graph, report: &Report, compilation: &Compilation) -> Result<String> {
     ensure!(
         !compilation.trace_options.source_arenas
+            && !compilation.trace_options.source_nodes
             && !compilation.trace.contains("pv.arena.")
+            && !compilation.trace.contains("pv.source.")
             && report.source_arenas.events.is_empty(),
         "source arena capture normalization is not supported by this fingerprint format"
     );

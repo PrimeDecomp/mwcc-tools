@@ -2,6 +2,10 @@
 
 Part of the [oracle documentation](../oracle.md).
 
+Use `oracle compile-trace` to save an annotated capture and `oracle analyze-trace`
+to read an existing trace. The [native API](#native-api) describes the JSON
+envelope; the sections below define the underlying records.
+
 ## The raw trace
 
 The oracle writes its trace to standard error, or to the file named by `MWCC_ORACLE_TRACE_FILE`. That file is appended
@@ -25,6 +29,15 @@ Link names are the mangled ones; the compiler computes them if it has not yet.
 ### Turned on by environment variables
 
 Set each to `1`. `mwcc-tools oracle` sets them for the options that need them.
+
+Development lifetime capture uses `MWCC_ORACLE_SOURCE_ARENAS` (`--source-arenas`)
+and the compilation-wide `pv.arena.*` records. See [arena queries](source-arenas.md)
+for allocation, reset and checkpoint semantics.
+
+Experimental frontend capture uses `MWCC_ORACLE_SOURCE_NODES` (`--source-nodes`)
+and `pv.source.*` records. It also enables arena capture. See
+[source-node observations](source-nodes.md) for snapshot/write/clone queries and
+validation status. Neither stream is accepted by graph fingerprint format 4 yet.
 
 **`MWCC_ORACLE_BACKEND`** (`--backend`, current development Rust producer):
 `pv.coalesce.begin`, `candidate`, `check`, `merge` and `end` record actual retail
@@ -188,5 +201,5 @@ Rust callers can use the workspace source API in `mwcc-oracle-core`, including
 `trace`, `document`, `allocation`, `colouring`, `runner`, `provenance`,
 `value_history`, `graph_history`, `allocation_category`, `scalarization` and `backend_audit`.
 
-The retained Python implementations are historical behavior references. Their
+The Python implementations in Git history are historical behavior references. Their
 imports, function signatures and rendered text are not supported production APIs.

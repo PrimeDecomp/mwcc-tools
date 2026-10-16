@@ -1,6 +1,12 @@
-# Registers and scheduling
+# Registers and scheduling: `mwcc-tools oracle`
 
 Part of the [oracle documentation](../oracle.md).
+
+Inspect register allocation and scheduling for one function:
+
+```text
+mwcc-tools oracle --from-ninja PROJECT/build.ninja SOURCE.cpp --function NAME --pcode --schedule
+```
 
 ## The register report
 
@@ -20,7 +26,7 @@ For each register class (GPR, FPR, ...) the report gives:
 disagrees on is flagged. The simplification is replayed too, and a note says when its order differs from the trace.
 
 To find what would give the target's registers instead (a local declared elsewhere, a temporary made a named
-local, a value no longer in a register of its own), see [What-if colouring](colouring.md): `tools/colouring.py`
+local, a value no longer in a register of its own), see [What-if colouring](colouring.md): `mwcc-tools colouring`
 replays the colouring with the claims predicted and searches the edits of the graph.
 
 **r0.** When r0 is a neighbour, the report points it out: r0 cannot be a base register, because an address operand of

@@ -1,38 +1,27 @@
-# Source search by observed graph objectives
+# Search source variants by compiler behavior
 
-The development Rust API is `mwcc_oracle_core::source_guided`. It provides a shared
-objective evaluator and a bounded source search. Build current `mwcc-tools` and a
-current Rust oracle producer; the pinned migration packages do not include this
-command. Supported producers are `GC_1_3`, `GC_1_3_2` and `GC_2_7`.
+`mwcc-tools source-search` tries guarded source edits, compiles each variant and
+scores an observed compiler objective. Use it to find edits that change graph
+structure, allocation categories, initialization or symbolic-address creation.
+It supports GC 1.3, 1.3.2 and 2.7 with a current development tool and Rust producer.
 
 ```text
 mwcc-tools source-search run plan.json --output search-run --candidates 100 --compilations 100 --seconds 600
 mwcc-tools source-search run plan.json --output search-run --resume --compilations 100
 mwcc-tools source-search replay search-run 1
-mwcc-tools source-search state capture.json --object candidate.o --link RenderParticles__11CElementGenFv --class 4 --round 0
-mwcc-tools source-search evaluate contract.json capture.json --source candidate.cpp --object candidate.o
 ```
 
-Commands emit versioned JSON on stdout. Errors go to stderr. Search completion is
-an application status in JSON: a zero process exit is not an objective success.
-Read `status`, the candidate's `evaluation.overall`, its hard `constraints`, and
-`independent_verification`. Every satisfied non-baseline candidate requires a fresh
-compile and a fresh configured semantic check before `verified_success` is emitted.
-If the baseline already satisfies the predicate, the run reports
-`baseline_already_satisfied` and stops.
-
-For a local bundle that can replay captured inputs after disconnecting the
-original checkout, see [`source-repro`](source-repro.md). Its declared path,
-runtime and checker closure limits apply.
+Commands return JSON. `verified_success` means a non-baseline candidate passed
+the objective, all hard constraints and a fresh independent compile/check.
+`baseline_already_satisfied` stops a search whose baseline already meets the
+objective. Check `status`, `evaluation.overall`, `constraints` and
+`independent_verification`; a zero process exit alone is not success.
 
 ## Plan format 1
 
-This complete example uses `initializer-linear.c` in the synthetic
-`tests/fixtures/source-guided/` source directory. Replace the two absolute paths
-for your installation. Its explicit optimization pragmas retain the named value
-within the supported linear instruction scope. The initializer
-edit deliberately changes behavior. Its success is a **mechanism reproducer**,
-not a semantics-preserving source transformation or a RenderParticles discovery.
+This example edits `tests/fixtures/source-guided/initializer-linear.c`. Replace
+the absolute paths. The edit changes behavior, so it is explicitly a mechanism
+reproducer rather than a semantics-preserving transformation.
 
 ```json
 {
@@ -71,114 +60,95 @@ not a semantics-preserving source transformation or a RenderParticles discovery.
 }
 ```
 
-Relative manifest paths resolve against the plan's directory. `source` resolves
-against the compiler working directory. To use a game unit, set `from_ninja` to
-its `build.ninja`, use the source spelling from that edge, and set `flags` to `[]`.
-The edge supplies the working directory, ordered flags and compiler version;
-`version` can be null or must agree. The `working_directory` field is still required
-and must exist. Backend, stage, local and CSE traces default on. An explicit
-`traces` object uses `runner::TraceOptions`; `backend` must be true.
+Manifest paths resolve relative to the plan; `source` resolves relative to the
+compiler working directory. For a game unit, set `from_ninja` to `build.ninja`,
+use that edge's source spelling and set `flags` to `[]`. The edge supplies the
+working directory, flags and version. `version` may be null or must agree;
+the required `working_directory` must still exist. Backend, stage, local and
+CSE traces default on. An explicit `traces` uses `runner::TraceOptions` and must
+keep `backend: true`.
 
-Selection uses an exact link name and a zero-based round within the selected
-register class (`0` SPR, `1` CR, `2` VR, `3` FPR, `4` GPR). Object anchors require a
-unique observed complete name, type kind/size and part (`single`, `first_word` or
-`second_word`) in that function before the selected graph. Pointer addresses and
-raw virtual-register numbers are capture-local, so they are not source identities.
-An absent, ambiguous or incomplete anchor gives an indeterminate result.
-
-Each transformation applies all its byte anchors atomically. Every anchor must
-occur exactly once and anchors cannot overlap. Unrelated source bytes, including
-non-UTF-8 bytes, are preserved. `precondition` records the author's justification;
-the harness does not prove a text edit's language-level validity. A path applies
-at most one transformation from each family. Breadth-first generation is bounded
-by `maximum_depth` (at most 16) and `generation_limit`, including the baseline.
-Provide guarded recipes for declarations, initializers, parameter types, wrappers
-or promotion patterns; automatic C++ AST rewrite generation is not implemented.
+Each transformation applies all byte anchors atomically. Anchors must occur
+exactly once and cannot overlap. Other bytes, encodings and line endings are
+preserved. `precondition` is the author's justification, not a language-level
+proof. Breadth-first generation uses at most one recipe from each family per
+path, bounded by `maximum_depth` (at most 16) and `generation_limit` (including
+the baseline). Supply recipes for the source changes you want to explore;
+automatic C++ AST rewriting is not implemented.
 
 ## Objectives and validity
 
-- `direct_initialization`: observe a constant LI initializing the anchored value
-  directly in its final assigned register, with no surviving intermediate MR. It
-  checks the first target definition and the final allocation round. Current
-  recognition requires one instruction-bearing block with a verified linear,
-  acyclic chain of empty scaffolding, no earlier control barrier or target use,
-  and a direct LI or one local LI/MR pair for VR/FPR/GPR. A
-  requested constant or source line cannot select a later assignment instead.
-  Cross-block dominance and source declaration ancestry remain unsupported;
-  those cases are indeterminate.
-- `change_range_category`: use `value` and `target` instead of `constant` and
-  `source_line`. The category must observably change to `physical`,
-  `initial_object_range`, `before_coalescing_window`, `inside_coalescing_window`
-  or `after_coalescing_window`, preserving normalized boundary PCode and final
-  instruction/relocation structure. These are allocator number ranges, not source
-  roles such as call-result or address temporaries.
-- `range_category`: uses the same `value` and `target`, but tests the candidate's
-  observed category without requiring a change or preserving its instructions.
-  This static predicate is useful for reduction and corpus queries.
-- `promoted_copy_coalescing`: selects a guarded scalar-array element by complete
-  source name, `element_index` and `element_size`. For example:
-  `{"kind":"promoted_copy_coalescing","value":{"name":"flag","element_index":1,"element_size":4},"copy":0,"outcome":{"kind":"rejected","condition":"destination_above_window"}}`.
-  `copy` is the zero-based ordinal of observed incoming register-copy candidates
-  in the complete selected coalescing pass. Set `outcome` to
-  `{"kind":"coalesced"}` to require a confirmed merge or already-shared root.
-  It checks actual decisions, array/counter coverage and unique birth/graph binding;
-  it does not identify a source initializer automatically. A surviving promotion
-  birth with no incoming copies remains indeterminate: it may be an unused node
-  while another value carries the flag. See the [promoted-flag case](../oracle-source-guided-case-promoted-flags.md).
-- `scalarized_array_initialization`: selects a whole array element using the same
-  `name`, `element_index` and `element_size` fields, then requires an exact
-  frontend-created scalar/backend birth join and applies the narrow constant-LI
-  recognizer using `constant` and optional `source_line`. GPR only. Unknown or
-  duplicate possible source bindings remain indeterminate, including creations
-  without graph nodes. The real pointer-zero flag computation is not an LI and
-  remains unsupported by this predicate. See [scalarization provenance](scalarization.md).
-- `scalarized_array_definition`: selects the same exact frontend-created element
-  and takes `definition`, a zero-based ordinal among definitions of its backend
-  register in the captured `ra.before` block/instruction stream. For example:
-  `{"kind":"scalarized_array_definition","value":{"name":"noRota","element_index":1,"element_size":4},"definition":0}`.
-  It requires the selected producer to remain visible at the actual graph and
-  after allocation, defining the anchored root and its recorded final physical
-  register with compatible opcode and operand shape. A selected MR/FMR must have
-  a unique preceding same-block producer, a complete actual coalescing decision,
-  and no surviving copy. It supports FPR/GPR computations beyond LI constants.
-  The ordinal describes observed compiler records; it does not infer C++
-  initialization, dominance or execution order. Reports retain every candidate
-  definition, the chosen instruction, producer and actual copy decision.
-- `eliminate_temporary`: takes `value`. It deliberately remains indeterminate
-  until complete semantic lifetime evidence can justify elimination. Missing nodes
-  and inferred edge changes do not prove that a temporary disappeared.
-- `symbol_address_pairs`: takes a qualified mangled `symbol` and inclusive
-  `minimum`/`maximum` pair counts, with GPR selection. For example,
-  `{"kind":"symbol_address_pairs","symbol":"kEnvModulate__9CGraphics","minimum":0,"maximum":2}`
-  asks for at most two pairs from the guarded Normalize creation path before the
-  selected graph. It requires complete materializer/counter capture, complete
-  symbol identities, consistent adjacent high/low births and unique graph bindings
-  for the selected results. Reports retain both counts, birth IDs, allocation roots,
-  graph-only nodes and confirmed physical merges. Unknown identities or reused
-  numbers remain indeterminate. This bounded path count does not prove the absence
-  of all address temporaries, including values created later by optimization.
-- `call_argument_address_pairs`: adds exact qualified `callee`, zero-based `call`
-  occurrence and lowered-context `ordinal` to the symbol/count bounds. It counts
-  pairs whose births are owned by that specific argument, including arguments of
-  void calls. Missing contexts, unknown earlier callees and incomplete independent
-  call totals remain indeterminate. Ordinals are not automatically C++ parameter
-  indices. See [call argument provenance](call-arguments.md) for the contract and
-  observation limits.
+`selection` names an exact link, register class and zero-based round. Classes are
+`0` SPR, `1` CR, `2` VR, `3` FPR and `4` GPR. Named-value anchors require a unique,
+complete observed name/type/part binding before that graph; `part` is `single`,
+`first_word` or `second_word`. Raw pointers and register numbers are not source
+identities. Missing or ambiguous evidence is **indeterminate**, not a failed
+predicate or proof of absence.
 
-For the symbolic-address objective, require at least one relocation of each needed
-type rather than preserving the incidental number of repeated materializations.
-For GC 2.7 EnvModulate, kind 6 (high-adjusted) and kind 4 (low) each with addend 0
-and `minimum: 1` retain the symbolic address while allowing fewer repeated pairs.
+Supported objectives:
 
-All objectives require stock-equivalent oracle objects with consistent retained
-object hashes, matching supported compiler identities/flags/options, captured
-source hashes, provenance bound to its exact trace, complete selected function graph
-coverage, and all requested symbolic relocations. Relocation requirements count
-within the selected function; null kind/addend accepts any kind/addend for that
-symbol. Missing evidence is distinct from an observed failed predicate.
+- `direct_initialization`: `value`, `constant`, optional `source_line`. Requires
+  the first target definition to be a direct LI or one local LI/MR pair that
+  initializes the final assigned register without a surviving copy. Recognition
+  is limited to VR/FPR/GPR, one instruction-bearing block and verified linear,
+  acyclic empty scaffolding, with no earlier barrier or target use. A constant
+  or line cannot select a later assignment. Cross-block dominance and C++
+  declaration ancestry remain unsupported.
+- `range_category`: `value`, `target`. Tests `physical`, `initial_object_range`,
+  `before_coalescing_window`, `inside_coalescing_window` or
+  `after_coalescing_window` through observed births and confirmed merge roots.
+  These are allocator ranges, not semantic source roles.
+- `change_range_category`: the same fields, but requires a change from the
+  baseline while preserving normalized boundary PCode and final instruction/
+  relocation structure. Use `range_category` for static reduction/index queries.
+- `promoted_copy_coalescing`: selects `value` by `name`, `element_index` and
+  `element_size`; `copy` is the zero-based incoming-copy ordinal in the complete
+  matching coalescer pass. `outcome` is `{"kind":"coalesced"}` or, for example,
+  `{"kind":"rejected","condition":"destination_above_window"}`. Requires
+  guarded scalar-array/counter coverage and unique birth/graph binding. A
+  coalesced result needs an actual merge or already-shared root. Zero incoming
+  copies remain indeterminate: the promotion node may be unused while another
+  value carries initialization. An out-of-range ordinal after at least one bound
+  copy is unsatisfied. Covers scalar GPR/FPR promotion, not VMX; the ordinal does
+  not identify a source initializer.
+- `scalarized_array_initialization`: the same element selector, `constant` and
+  optional `source_line`. Requires an exact whole-element frontend scalar/
+  backend birth join and the narrow LI recognizer; GPR only. Unknown or duplicate
+  bindings, including creations without graph nodes, remain indeterminate.
+  Pointer-zero computations that are not LI are unsupported.
+- `scalarized_array_definition`: the same element selector and `definition`, a
+  zero-based ordinal in the captured `ra.before` definitions. Requires the
+  producer to survive through the graph and final allocation with compatible
+  opcode/operands and the recorded physical destination. MR/FMR needs a unique
+  preceding same-block producer, actual coalescing evidence and no surviving
+  copy. Supports FPR/GPR computations beyond constants; the ordinal is compiler
+  record order, not C++ initialization, dominance or execution order.
+- `symbol_address_pairs`: qualified `symbol` and inclusive `minimum`/`maximum`,
+  with GPR selection. Counts adjacent high/low births on the guarded Normalize
+  path before the graph. Requires complete materializer/counter/symbol evidence
+  and unique result bindings. It does not count every possible address temporary.
+- `call_argument_address_pairs`: adds exact qualified `callee`, zero-based
+  `call` occurrence and lowered-context `ordinal` to the symbol/count fields.
+  Both births must belong to that argument, including void-call arguments.
+  Unknown earlier callees, missing contexts or incomplete independent totals
+  remain indeterminate. Ordinals are not automatically C++ parameter indices.
+- `eliminate_temporary`: takes `value`; remains indeterminate until semantic
+  lifetime evidence can prove elimination. A missing graph node is insufficient.
 
-Set `purpose` to `source_transformation` for a candidate intended to preserve
-behavior. Configure a checker, for example:
+See [scalarization](scalarization.md), [call arguments](call-arguments.md) and
+the [promoted-flag case](../oracle-source-guided-case-promoted-flags.md) for the
+underlying observations.
+
+All objectives require consistent retained source/object hashes, a supported
+compiler and matching flags/options, stock-equivalent oracle output, provenance
+bound to its trace, complete selected-function graph coverage and requested
+relocations. Relocations are counted within the selected function; null kind or
+addend accepts any value for that symbol. For a zero-count address search, require
+the symbol's relocations so an unrelated function cannot pass vacuously. GC 2.7
+EnvModulate commonly needs kind 6 (HA) and kind 4 (LO), addend 0, each minimum 1.
+
+Set `purpose: "source_transformation"` when behavior must be preserved and
+provide a checker:
 
 ```json
 {
@@ -189,143 +159,88 @@ behavior. Configure a checker, for example:
 }
 ```
 
-The executable runs directly, without a shell, from the compiler working directory.
-Both baseline and candidate must return exit code zero within the timeout. Design
-the checker to establish the required behavior; stock equivalence only compares
-oracle and stock compilation of the same source. Declare checker dependencies
-(scripts, imported modules, test data) in `inputs`; existing file arguments are
-also hashed. A missing checker prevents source-transformation success. Results
-record whether semantics were unchecked mechanism-only or a configured check
-passed; a configured check is not a formal equivalence proof.
+The checker runs directly from the compiler working directory. Baseline and
+candidate must both exit zero within the timeout. Declare its scripts, modules
+and data in `inputs`; existing file arguments are also hashed. Stock equivalence
+compares oracle and stock compilation of the **same source**. It does not replace
+a semantic check, and a configured check proves only its declared coverage.
 
-An optional `target: {"object": "target.o", "link": "exact_target_link"}` records
-final byte mismatch and relocation equality separately. That mismatch is not the
-graph objective. `score.eligible` requires all hard constraints. For
-`symbol_address_pairs` and `call_argument_address_pairs`, `objective_cost` is the
-observed count's distance to the requested inclusive interval: three pairs with
-maximum one cost 2; two pairs cost 1; a count inside the interval costs 0.
-Other objectives cost 0 for observed satisfaction and 1 for observed failure.
-Indeterminate evidence always has null cost. A nearer unsatisfied count is partial
-progress and cannot trigger success or bypass any hard constraint.
-`ranking` orders eligible candidates first and known objective costs before unknown
-ones, including a known `u32::MAX` cost. Rust callers can use
-`Score::compare_priority` and a stable candidate ID to break ties. Saved runs
-remain bound to their recorded analyzer; changed scoring does not authorize
-resuming a run with a different executable. Edge-change counts are conditional diagnostics from the
-[provenance-aware comparison](graph-correspondence.md), with multiplicity changes,
-complete nodes and explicit unclassified boundary edges.
-`fingerprint_error` explains unavailable state grouping separately from compilation
-and objective results. An unsupported operand is not silently normalized; that
-candidate remains available without joining a compiler-state group.
+An optional `target: {"object":"target.o","link":"exact_target_link"}` reports
+final byte mismatch/relocation equality separately. Graph-objective success can
+worsen the final match, as in the [EnvModulate case](../oracle-source-guided-case-envmodulate.md).
 
-## Cache, grouping and retained results
+## Scores and compiler-state grouping
 
-`progress.json` is the atomic checkpoint. `plan.json` stores normalized paths,
-`sources/` stores every candidate's exact bytes, `candidates/` stores evaluations,
-and `groups` preserves every source representative of a relevant-state fingerprint.
-Grouping never discards source representatives or their future transformations.
-Fingerprints normalize known pointer/register identities but retain graph-only
-nodes, degrees, origin/range evidence, selected instructions, symbolic relocations
-and allocated data. Unsupported operand forms disable grouping. Conservative
-graph-only numbering can miss equivalent states.
-The current fingerprint payload is format 4. It includes normalized scalar-array
-origin and partial call-result shape/type evidence, plus whole-function frontend
-scalarization bindings, independent totals, unbound creations and pointer equality
-relationships. Preallocation definitions, CFG structure, instruction identity
-relationships through allocation, actual coalescing decisions, and guarded call
-argument contexts/episodes with their operand, birth and PCode observations participate:
-two equal final graphs can give different definition predicates. It excludes capture-local pointer spellings and inactive output
-bytes. Unsupported scalarization schemas or normalization disable grouping.
-Reports expose `fingerprint_format_version`;
-older frozen proofs retain their original analyzer and fingerprints.
-Generated local relocation-name suffixes can also split equivalent states, as the
-[real EnvModulate experiment](../oracle-source-guided-case-envmodulate.md) demonstrates.
-That case used complete graph checks and independent objdiff evidence; the generic
-fingerprint has not yet incorporated a checked local-symbol normalization.
+`score.eligible` requires every hard gate. Pair-count objectives cost their
+distance from the inclusive requested interval; other objectives cost 0 when
+satisfied and 1 when unsatisfied. Indeterminate cost is null. Ranking puts
+eligible candidates first, then known costs before unknown ones. Partial progress
+cannot trigger success. Rust callers can use `Score::compare_priority` plus a
+stable candidate ID for ties. Edge changes are conditional diagnostics from
+[graph correspondence](graph-correspondence.md).
 
-`source-search state` inspects a saved JSON envelope containing `compilation` and
-the supplied object, without compiling. It validates verified stock-check status
-and explicit identical output,
-the object hash and complete selected-function graph coverage. The format-1 report
-contains `link`, `class`, `round`, source/object hashes, an optional `fingerprint`
-and a `normalization` evaluation. Unsupported representations give an indeterminate
-evaluation (`compiler_state_coverage`) with no fingerprint. Invalid captures,
-objects or selectors fail with diagnostics on stderr. This does not establish
-current dependency integrity or rerun a semantic checker; use search replay for
-fresh compilation and checks.
+Fingerprint format 4 groups only supported observed compiler states. It retains
+graph-only nodes/degrees, births/ranges, relevant PCode/CFG and instruction
+identities, actual coalescing decisions, scalarization and guarded argument
+observations, symbolic relocations and allocated data. Known pointer/register
+identities are normalized; inactive output bytes are excluded. Unsupported forms
+produce `fingerprint_error` and disable grouping without discarding the candidate.
+Every source representative and its future transformations are retained.
+Conservative numbering and generated local-symbol suffixes can miss duplicates;
+they are not silently treated as equivalent.
 
-`source-search evaluate` applies a contract to retained source/object/capture files
-without compiling. It accepts a compile-trace envelope or a plain `Compilation`.
-Add all three `--baseline-capture`, `--baseline-source` and `--baseline-object`
-options when testing a transition; otherwise the candidate is its own baseline
-for static predicates. It verifies the retained hashes and capture evidence, but
-does not rescan dependencies or execute a semantic checker. Consequently a
-`source_transformation` contract remains indeterminate here. Use search/replay for
-fresh compilation and configured semantic validation.
+Inspect retained evidence without compiling:
 
-Fixed GQR operands are supported only in the observed PSQ_L/PSQ_ST read form
-(opcodes 403/407): all twelve operand bytes, including selectors 912 through 919,
-remain exact. They are hardware identities, not renamed virtual registers. Other
-kind-1 forms remain unsupported. The real shared-pointer EnvModulate experiment
-now has reproducible distinct baseline/candidate fingerprints on both hosts.
+```text
+mwcc-tools source-search state capture.json --object candidate.o --link RenderParticles__11CElementGenFv --class 4 --round 0
+mwcc-tools source-search evaluate contract.json capture.json --source candidate.cpp --object candidate.o
+```
 
-Compilation caching is separate. Every lookup runs dependency and preprocessing
-scans with **both** oracle and stock compilers. Keys include both preprocessed
-hashes, raw dependency bytes, source identity, ordered flags, working directory,
-trace options, compiler/DLL/loader hashes and a digest of the inherited environment.
-Environment values are not written into results. Source variants use stable
-content-addressed paths; private-baseline output is calibrated against an original
-context compile. A second scan rejects inputs changing during compilation.
-Time-dependent macros disable reuse. Response files and output/preprocessing modes
-are rejected. Failed compiles are not reusable artifacts.
+`state` accepts a JSON envelope containing `compilation`, validates the object,
+stock-check status and selected graph, and returns a fingerprint or indeterminate
+normalization. `evaluate` also accepts plain `Compilation`; for a transition add
+all three `--baseline-capture`, `--baseline-source` and `--baseline-object` options.
+Neither command rescans dependencies or runs a semantic checker, so retained-only
+evaluation cannot validate a `source_transformation`. Use replay for fresh checks.
+Fixed GQR operands are supported only for observed PSQ_L/PSQ_ST reads (403/407),
+with all 12 bytes and hardware selectors 912–919 kept exact; other kind-1 forms
+remain unsupported.
 
-`cache/` contains captures and objects, `scans/` retains each input scan,
-`verification/` contains independent compiles, and `input-files/` retains dependency
-and runtime bytes by hash. Artifact integrity is checked on load. Analyzer, checker
-inputs and target identities also bind resumable analysis. The analyzer executable
-is hashed once per invocation rather than copied into every compiler cache entry.
-Checker/proof files and the target are rechecked before completed outcomes are
-saved; checker inputs are also checked before and after execution. Changes during
-a run invalidate its evidence instead of being recorded under the old identity.
+## Cache, budgets and replay
 
-Budgets apply per invocation, including baseline calibration and independent
-verification. `--compilations` counts attempted source-unit builds (each includes
-oracle and stock); preprocessing/checker subprocesses do not consume that count
-but do consume time. Baseline calibration needs two builds; a new successful
-candidate normally needs one build and one verification build. Time limits are
-checked between hashing/setup operations and while waiting for subprocesses.
-Cancellation terminates active compiler/checker process trees. Create the cancel
-file (default `search-run/CANCEL`) to stop; remove it before resuming. Pending
-candidates are retried. A successful run is terminal; use independent replay or
-a new output directory for further work.
+Compilation reuse requires fresh dependency/preprocessing scans with both oracle
+and stock compilers. Keys include preprocessed hashes, raw dependencies, source,
+ordered flags, working directory, trace options, runtime hashes and an inherited
+environment digest. Environment values are not written to results. A second scan
+rejects inputs changing during compilation. Time-dependent macros disable reuse;
+response files and output/preprocessing modes are rejected. Failed builds are
+not reusable artifacts. Equal graphs alone never authorize compilation reuse.
 
-Resume and replay require unchanged source, plan, relevant build inputs and analysis identity.
-Keep the analyzer executable with the case; rebuilding it changes that identity.
-Use a fresh directory after those change. Replay retains saved outcomes and makes
-three fresh builds: original context, private baseline and candidate. It rechecks
-stock equality, calibration, objectives and configured semantics. Replay requires
-both baseline and candidate-only dependencies to match retained hashes; restore them in an isolated
-checkout if needed. Retained bytes are available, but automatic portable repro
-export/restoration is not implemented.
+`progress.json` is the atomic checkpoint; `plan.json`, `sources/`, `candidates/`,
+`cache/`, `scans/`, `verification/` and `input-files/` retain the plan, exact source
+bytes, evaluations, captures, objects and input/runtime blobs. Integrity is
+checked on load. The analyzer, checker/proof inputs and target bind resume;
+checker inputs are checked before/after execution and before outcomes are saved.
 
-## Rust entry points
+Budgets apply per invocation, including calibration and independent verification.
+`--compilations` counts attempted source-unit builds, each including oracle and
+stock; scans/checkers consume time but not that count. Baseline calibration needs
+two builds; a new successful candidate normally needs a build and a verification
+build. Cancellation terminates active process trees. Create `search-run/CANCEL`
+(or the configured cancel file) to stop and remove it before resume. Pending
+candidates are retried; a successful run is terminal.
 
-Use `objective::{Contract, Input, evaluate}` for the shared evidence-aware predicate,
-`state::{graph, snapshot, fingerprint, inspect}` for observed state, `inputs::capture` for
-compiler-input identity, and `search::{load_plan, run, replay}` for orchestration.
-`state::fingerprint` takes a graph, its provenance report and the complete
-`runner::Compilation`; it verifies report/trace binding before normalizing the
-allocation records needed by the predicates. An object and graph alone do not
-contain enough evidence for state grouping.
-These native typed APIs and strict versioned JSON are the supported development
-interface. Legacy Python API compatibility is not required.
+Resume requires unchanged plan, source, relevant inputs and analyzer identity.
+Keep the executable with the case; rebuilding it requires a new run directory.
+Replay preserves saved outcomes and makes three fresh builds: original context,
+private baseline and candidate. It rechecks calibration, stock output, objective,
+dependencies and configured semantics. Restore both baseline and candidate-only
+dependencies for ordinary replay, or use [source-repro](source-repro.md) for a
+bounded relocated bundle.
 
-The real [EnvModulate experiment](../oracle-source-guided-case-envmodulate.md)
-finds a shared-const-pointer rewrite with fewer observed address pairs and lower
-`noRota` degree, verified by fresh builds on both hosts. The final match worsens;
-this is a graph-objective result, not a matching fix. The mechanism-preserving
-[reducer](source-reduce.md) and [matched-source index](source-index.md) now have
-native implementations using the shared evaluator. Guarded scalar-array and
-call-result origins and a promoted-copy predicate are implemented. Stronger
-expression/inline/lifetime bindings and the complete RenderParticles
-investigation remain open. See the [implementation status](../oracle-source-guided-status.md).
+Rust APIs live in `source_guided`: `objective::{Contract,Input,evaluate}`,
+`state::{graph,snapshot,fingerprint,inspect}`, `inputs::capture` and
+`search::{load_plan,run,replay}`. Fingerprinting takes the graph, provenance report
+and complete `runner::Compilation`; an object/graph alone is insufficient.
+See the [implementation status](../oracle-source-guided-status.md) for retained
+validation and remaining work.

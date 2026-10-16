@@ -1,4 +1,4 @@
-# Basic blocks: `--blocks`
+# Basic blocks: `mwcc-tools oracle --blocks`
 
 Part of the [oracle documentation](../oracle.md).
 
@@ -66,10 +66,11 @@ example, give the size that a guessed source would reach, then compare the objec
 * `--keep-object PATH`: also write the oracle's object to PATH, to disassemble or diff. It works without the limits
   too.
 
-The script patches copies of both the oracle and the original, in a temporary directory; the files in `build/` are
-not changed. The check still compares the two, and the report's first line gives the limits used. The patched places
-are the same in the original and the oracle: `BLOCK_LIMITS` in `tools/oracle.py` lists their file offsets for 1.3,
-1.3.2 and 2.7. The cut is inlined in seven places, one per kind of statement, and all seven are patched.
+The native runner patches temporary copies of both the oracle and stock compiler;
+files in `build/` are unchanged. The stock-object check still compares the two,
+and the report's first line gives the chosen limits. Rust callers use
+`runner::patch_limits` in `mwcc-oracle-core`, which validates all patch sites before
+changing them for GC 1.3, 1.3.2 and 2.7. All seven inlined cut checks are patched.
 
 ## Example
 

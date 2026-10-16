@@ -57,6 +57,8 @@ pub mod source_arena_probe;
 pub mod source_arenas;
 pub mod source_guided;
 pub mod source_lifetimes;
+pub mod source_node_probe;
+pub mod source_nodes;
 pub mod split;
 mod temporary;
 pub mod trace;

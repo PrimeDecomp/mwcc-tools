@@ -1,139 +1,123 @@
-# The oracle executable (GC 1.3, 1.3.2 and 2.7)
+# Oracle tools
 
-The oracle is the original `mwcceppc.exe`, relinked with trace wrappers around some of its functions. It produces
-the same objects, messages and exit code as the original; the wrappers only print. From the trace, `mwcc-tools oracle`
-explains why the compiler assigned each register, which calls it inlined, and how it laid out the stack frame.
+The oracle is the original CodeWarrior compiler relinked with Rust trace hooks.
+`mwcc-tools` uses its trace to explain register allocation, inlining, scheduling
+and stack layout. Supported oracle versions are `GC_1_3`, `GC_1_3_2` and `GC_2_7`.
 
-The original's own code runs: the oracle is not built from this repository's C sources of the allocator and the
-inliner, which are not byte-exact for 1.3 and 1.3.2 (2.7 has no sources at all). The default wrappers are in
-`crates/mwcc-oracle-hooks`; `src/oracle/Hooks.c` and `OracleTrace.c` are the explicit C rollback.
+Compilation checks compare the oracle's object with the stock compiler's object.
+Use a verified result before relying on the trace to explain your build.
 
-More detail:
+## Choose a tool
 
-* [Registers and scheduling](oracle/registers.md): the register report, `--pcode`, `--exchange`, `--schedule`.
-* [What-if colouring](oracle/colouring.md): `mwcc-tools colouring`, the smallest change of the interference graph
-  (a renumbering, a removed node) that gives the target's registers.
-* [Inlining](oracle/inlining.md): `--inline-cost`, `--near`, `--full-cost`, `--instantiation`.
-* [Locals and the stack frame](oracle/locals.md): `--locals`, and comparing a frame with the target's.
-* [Basic blocks](oracle/blocks.md): `--blocks`, where code generation cuts blocks and why they are not merged.
-* [Common subexpressions](oracle/cse.md): `--cse`, `--ir`, the order of the optimizer's temporaries and their registers.
-* [Comparing translation units](oracle/tu-tools.md): native `inline-diff`, `data-diff`, `inline-window` and `header-impact`.
-* [Trace format, JSON and native API](oracle/trace.md).
-* [Retail coalescing provenance](oracle/provenance.md): development `--backend` captures and `provenance inspect`.
-* [Frontend scalarization provenance](oracle/scalarization.md): exact aggregate-part creation and backend Object joins.
+| Command | Use it to |
+|---|---|
+| `oracle` | Compile a source and explain registers, inlining and stack layout. |
+| `oracle run-unit` | Run the oracle with a decomp project's unit flags. |
+| `oracle regdiff` | Explain a function's register differences from its target. |
+| `oracle compile-trace` | Save raw trace, analysis, hashes and an explicit stock check in one JSON document. |
+| `oracle analyze-trace` | Analyze a saved trace without running a compiler. |
+| `colouring` | Replay allocation or search for graph changes that produce target registers. |
+| `inline-diff` / `inline-window` | Compare inline decisions or find compatible inline-limit ranges. |
+| `inline-calibrate` | Measure inline thresholds for a project's callee. |
+| `data-diff` | Compare a translation unit's data layout with target assembly. |
+| `header-impact` | Find functions affected by a header edit. |
+| `corpus` | Check oracle/stock equality over many inputs. |
+
+Development tools add actual coalescing explanations, graph-scored C++ search,
+reduction and matched-source queries. See [their status and guides](oracle-source-guided-status.md).
 
 ## Build
 
-```
+```text
 cargo build --release --locked -p mwcc-tools
 rustup target add i686-pc-windows-msvc --toolchain 1.96.0
 mwcc-tools configure --version GC_1_3_2 --oracle
 ninja build/GC_1_3_2/oracle/mwcceppc.exe
 ```
 
-* `GC_1_3` and `GC_2_7` work the same way. `mwcc-tools configure` writes `build.ninja` for one version, so re-run it when
-  switching versions.
-* `ninja` downloads the original compiler to `build/compilers/GC/<version>/`. Do not `ninja -t clean` the oracle
-  target: it removes the downloaded compilers.
-* The wrapped functions are listed in `oracle.hooks` in `config/<version>/config.json` (retail symbol names). Keep that
-  list consistent with the wrappers in `crates/mwcc-oracle-hooks`. `--producer c` selects the retained C implementation;
-  Ninja regeneration preserves that choice. Rust is the default and compiles no C observation sources.
-* The licence stub `lmgr326b.dll` is copied beside the executable. To run the oracle on another Windows machine, copy
-  `build/<version>/oracle/mwcceppc.exe` and `lmgr326b.dll`, plus `build/compilers/GC/<version>/` for the check below.
-* On Linux or WSL, native tools run the executable through pinned wibo 1.2.0. `MWCC_WIBO` overrides the oracle root's
-  `build/tools/wibo`, then PATH. Neither binfmt_misc nor an executable bit on the PE is needed.
+Add `target/release` to PATH, or use the executable's full path. On Windows its
+name is `mwcc-tools.exe`. Repeat configure/build for another version; configure
+writes one version's Ninja graph at a time.
 
-## Explain a source: `mwcc-tools oracle`
+Rust hooks are the default. `configure --oracle --producer c` selects the retained
+C rollback. The original compiler and runtime are downloaded during the build.
+Avoid `ninja -t clean` on the oracle target: it removes downloaded compilers.
 
-```
-mwcc-tools oracle [OPTIONS] SOURCE -- [COMPILER FLAGS...]
+Set `MWCC_ORACLE_ROOT` to the built checkout when running tools elsewhere.
+Linux/WSL runs the compiler through wibo 1.2.0; `MWCC_WIBO` selects a loader,
+otherwise the runner checks `build/tools/wibo`, then PATH. Windows runs it directly.
+
+For a decomp kit, follow the [native kit workflow](../integrations/decomp-kits/overlay/.agents/docs/oracle-native.md).
+
+## Explain a source
+
+```text
 mwcc-tools oracle --from-ninja ../prime/build.ninja src/GuiSys/CGuiFrame.cpp --function Draw
+mwcc-tools oracle example.cpp --version GC_2_7 -- -O4,p -inline auto
 ```
 
-**Flags and version.**
+`--from-ninja` reads the source's working directory, compiler version and flags.
+The source path is relative to that Ninja file's directory, or absolute.
+Do not combine it with explicit compiler flags. Without a Ninja rule or
+`--version`, the version defaults to `GC_1_3_2`.
 
-* Give compiler flags after `--`, keeping tool options before the separator.
-* `--from-ninja FILE` takes the flags, the working directory and the version from the rule that builds SOURCE in a
-  decomp project's `build.ninja`. SOURCE is relative to that file's directory, or absolute. Giving flags as well is an
-  error.
-* The version comes from the rule's `mw_version` (`GC/2.7` is `GC_2_7`), or `--version`. It defaults to `GC_1_3_2`.
+The report starts with the stock-object check, then explains inlining,
+register allocation and the stack frame for each selected function.
+`--function NAME` matches a display or link name; use exact link names when
+overloads would be ambiguous.
 
-**The check.** The script also compiles SOURCE with the original compiler and compares the objects. The first line of
-the report says whether they are equal. If it says NO, it lists the sections and functions that differ, and the
-explanation is of a different object: do not trust it. `--no-check` skips the check.
-
-**The report**, per function (`Think (Think__10CPowerBombFfR13CStateManager)`), has three parts:
-
-* **Inlining:** each call inlined or kept, with the cost estimate against the threshold and the reason. A decision
-  made several times is shown once, with its count, inline depths and source lines. See [Inlining](oracle/inlining.md).
-* **Register allocation**, per register class: the colouring order, and for each virtual register its physical
-  register and why it got it. See [Registers](oracle/registers.md).
-* **Stack frame:** its layout, and the locals and temporaries in memory, by offset from r1 (`r1+28`, as the code
-  addresses them).
-
-**Options.** Each view is traced only when asked for; the object is the same either way.
+## Select a view
 
 | Option | Shows |
 |---|---|
-| `--function NAME` | Only the functions whose name or link name contains NAME. With no match, the closest names are listed. |
-| `--pcode` | The PCode the allocator was given, with virtual register numbers (`%r60`). |
-| `--exchange A,B` | Why two virtual registers were coloured in that order and got the registers they did. |
-| `--schedule` | The instruction scheduler's picks per cycle, and why each other candidate lost. |
-| `--inline-cost CALLEE` | The inliner's decisions about CALLEE, with the cost broken down by statement. |
-| `--near N` | Every automatic inlining decision within N of the threshold: the ones a header change can flip. |
-| `--full-cost` | The whole cost past the threshold, and which kept calls the inline depth limit decided. |
-| `--instantiation TEXT` | When the bodies of matching functions were queued, parsed, emitted and compiled. |
-| `--locals` | What the scalarizer did with each local aggregate, and our frame against the target's. |
-| `--blocks` | Where code generation cut the function into blocks, and why the merge pass left them apart. |
-| `--cut-limit N`, `--merge-limit N` | Compile with other block limits (patched copies of both compilers). See [Basic blocks](oracle/blocks.md). |
-| `--keep-object PATH` | Also write the oracle's object to PATH. |
-| `--cse` | The common subexpression temporaries in the order made, with the repeat that made each and its register. |
-| `--ir LINE` | With `--cse`, the linear IR of a source line (or `all`) as each pass starts. |
-| `--override PATH=REPLACEMENT` | Compile with REPLACEMENT in place of PATH, without touching the checkout (repeatable). |
-| `--raw` | The trace lines (see [Trace format](oracle/trace.md)). |
-| `--json` | Everything as one JSON document (see [Trace format](oracle/trace.md)). |
+| `--pcode` | Instructions given to the allocator, including virtual registers. |
+| `--exchange A,B` | Why two virtual registers were colored in that order. |
+| `--schedule` | Scheduler picks and why other candidates lost. |
+| `--inline-cost CALLEE` | Inline costs broken down by statement. |
+| `--near N` | Automatic inline decisions within N of the threshold. |
+| `--full-cost` | Costs beyond the cutoff and inline-depth limits. |
+| `--instantiation TEXT` | Matching bodies being queued, parsed and emitted. |
+| `--locals` | Aggregate scalarization and stack-frame comparison. |
+| `--blocks` | Block boundaries and rejected merges. |
+| `--cse` | Common-subexpression temporaries and their registers. |
+| `--ir LINE` | With CSE, optimizer IR for a line or `all`. |
+| `--raw` | Raw trace records. |
+| `--json` | The schema-6 report. |
 
-`--override` works for headers and for SOURCE itself. A header's REPLACEMENT is copied to a temporary directory that is
-searched just before PATH's include directory. The check compiles the same replacement with the original.
+Use `--override PATH=REPLACEMENT` to test a source or header privately; both
+oracle and stock compilers receive the replacement. Repeat it for multiple files.
+`--keep-object PATH` saves the generated object.
+`--no-check` skips stock comparison and labels the run unchecked.
 
-## Check the equivalence: `tools/corpus.py`
+Reference guides:
+[registers](oracle/registers.md), [colouring](oracle/colouring.md),
+[inlining](oracle/inlining.md), [locals](oracle/locals.md),
+[blocks](oracle/blocks.md), [CSE](oracle/cse.md) and
+[translation-unit tools](oracle/tu-tools.md).
 
+## Save results for automation
+
+```text
+mwcc-tools oracle compile-trace SOURCE --version GC_2_7 -- COMPILER_FLAGS > capture.json
+mwcc-tools oracle analyze-trace saved.trace --version GC_2_7 --json
 ```
-mwcc-tools corpus --version GC_1_3_2 --canaries path/to/mwcc-rs/canaries --jobs 8
-mwcc-tools corpus --version GC_1_3_2 --prime path/to/prime --keep out-dir
+
+`compile-trace` returns a format-1 envelope with `compilation` and `report`.
+Require `compilation.check_status.status == "verified"` when stock equality is
+needed. A successful process exit alone does not establish that equality.
+Plain `oracle --json` returns the report directly.
+
+Use native commands and versioned structured results in integrations.
+The [trace/API reference](oracle/trace.md) documents records and JSON fields.
+
+## Check many inputs
+
+```text
+mwcc-tools corpus --version GC_1_3_2 --canaries path/to/canaries --jobs 8
+mwcc-tools corpus --version GC_2_7 --project path/to/echoes --keep out-dir
 ```
 
-This compiles every input with the original and with the oracle, then compares the non-debug sections (and the size of
-`.bss`), the messages and the exit code. It prints `DIFF name: ...` for each difference, then `N/M identical`, and
-exits with 0 when nothing differs.
-
-* `--canaries DIR`: small programs. A first line `// flags: ...` overrides the baseline flags.
-* `--prime DIR`: a decomp project. The `build.ninja` rules that use this version's compiler are compiled with their own
-  flags.
-* `--limit`, `--list FILE` and `--keep DIR` narrow the input, or keep the objects of the inputs that differ.
-
-Last result, the same with every trace on:
-
-| Corpus | Versions |
-|---|---|
-| Canaries | 2313/2313 on all three |
-| Metroid Prime | 604/604 (1.3.2), 64/64 (1.3) |
-| Metroid Prime 2: Echoes | 729/729 (2.7), 31/31 (1.3.2) |
-
-## Other tools
-
-* `tools/inline_diff.py`: why one translation unit inlines a call another keeps. See
-  [Comparing translation units](oracle/tu-tools.md).
-* `tools/data_diff.py`: a translation unit's data layout against its target asm. See
-  [Comparing translation units](oracle/tu-tools.md).
-* `tools/inline_window.py`: the range of inline limits a unit's target agrees with. See
-  [Comparing translation units](oracle/tu-tools.md).
-* `tools/header_impact.py`: every function a header change moves, in every unit that includes it, against the
-  target. See [Comparing translation units](oracle/tu-tools.md).
-* `tools/locate.py VERSION SOURCE...`: where a compiled source's functions are in the executable.
-* `tools/nearest.py VERSION SOURCE...`: the functions of the executable a not-yet-exact function resembles most.
-* `tools/fdiff.py VERSION SOURCE FUNCTION ADDRESS`: an instruction diff of a compiled function against the original's.
-* `tools/disasm.py VERSION ADDRESS [SIZE]`: annotated disassembly of the original executable.
-* `tools/gates.sh`: every version's relink and compare gate, one after the other.
-* `docs/gc132-differences.md`: what changed between 1.3 and 1.3.2.
-* `docs/gc27-differences.md`: what changed between 1.3.2 and 2.7, and how 2.7's configuration was made.
+`corpus` compares objects, diagnostics and exit codes. It returns failure if
+any input differs. `--limit` and `--list FILE` narrow the inputs;
+`--all-traces` enables optional capture streams.
+Historical migration results are in the [acceptance audit](oracle-rust-completion.md).

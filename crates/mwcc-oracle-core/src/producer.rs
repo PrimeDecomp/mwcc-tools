@@ -25,7 +25,11 @@ pub const ARENA_HOOKS: [&str; 8] = [
     "_initheaps",
     "_CompilerTools_InitHeaps",
 ];
-pub const HOOKS: [&str; 38] = [
+pub const SOURCE_HOOKS: [&str; 3] = ["_CFunc_ParseFuncDef", "_fn_00513040", "_fn_00513240"];
+pub const HOOKS: [&str; 41] = [
+    "_CFunc_ParseFuncDef",
+    "_fn_00513040",
+    "_fn_00513240",
     "_CompilerTools_ResetPool",
     "_freeaheap",
     "_freelheap",
@@ -65,7 +69,8 @@ pub const HOOKS: [&str; 38] = [
     "_load_argument_registers",
     "_store_argument_on_stack",
 ];
-pub const SUPPORT: [&str; 14] = [
+pub const SUPPORT: [&str; 15] = [
+    "_OracleRust_SourceProbeV1",
     "_OracleRust_ArenaProbeV1",
     "_OracleRust_ExpressionProbeV1",
     "_OracleRust_ArgumentForceGpr",
@@ -81,7 +86,8 @@ pub const SUPPORT: [&str; 14] = [
     "_OracleRust_PrintChain",
     "_OracleRust_InlineLine",
 ];
-pub const SOURCES: [&str; 18] = [
+pub const SOURCES: [&str; 19] = [
+    "source_nodes.rs",
     "source_arenas.rs",
     "lifecycle.rs",
     "call_arguments.rs",
@@ -150,7 +156,12 @@ pub fn validate_frontend(data: &[u8], version: &str) -> Result<()> {
         &imports.iter().map(String::as_str).collect::<Vec<_>>(),
     )
 }
-pub const IMPORTS: [&str; 69] = [
+pub const IMPORTS: [&str; 74] = [
+    "_CFunc_ParseFuncDef__retail",
+    "_fn_00513040__retail",
+    "_fn_00513240__retail",
+    "_evalMode",
+    "_alloc_state",
     "_OracleRust_ArenaGlobals",
     "_CompilerTools_ResetPool__retail",
     "_freeaheap__retail",

@@ -1,4 +1,4 @@
-//! Allocation analysis with the schema-6 semantics of tools/oracle.py.
+//! Allocation analysis with schema-6 trace semantics.
 use crate::trace::{Allocation, Instruction, Round, Snapshot};
 use crate::version::{Version, class_name, opcode_names};
 use serde_json::{Value, json};

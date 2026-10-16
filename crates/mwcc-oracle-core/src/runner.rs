@@ -17,6 +17,7 @@ use tempfile::TempDir;
 const TRACE_ENV: &[&str] = &[
     "MWCC_ORACLE_BACKEND",
     "MWCC_ORACLE_SOURCE_ARENAS",
+    "MWCC_ORACLE_SOURCE_NODES",
     "MWCC_ORACLE_SCHEDULE",
     "MWCC_ORACLE_INLINE_COST",
     "MWCC_ORACLE_FULL_COST",
@@ -33,6 +34,7 @@ const TRACE_ENV: &[&str] = &[
 pub struct TraceOptions {
     pub backend: bool,
     pub source_arenas: bool,
+    pub source_nodes: bool,
     pub schedule: bool,
     pub inline_cost: bool,
     pub full_cost: bool,
@@ -49,6 +51,7 @@ impl TraceOptions {
         for (key, enabled, value) in [
             ("MWCC_ORACLE_BACKEND", self.backend, "1"),
             ("MWCC_ORACLE_SOURCE_ARENAS", self.source_arenas, "1"),
+            ("MWCC_ORACLE_SOURCE_NODES", self.source_nodes, "1"),
             ("MWCC_ORACLE_SCHEDULE", self.schedule, "1"),
             ("MWCC_ORACLE_INLINE_COST", self.inline_cost, "1"),
             ("MWCC_ORACLE_FULL_COST", self.full_cost, "1"),

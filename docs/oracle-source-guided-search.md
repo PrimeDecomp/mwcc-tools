@@ -1,41 +1,22 @@
-# After the Rust migration: realize useful graph edits in C++
+# Roadmap: produce useful graph edits from C++
 
-Updated 2026-10-16 following the post-migration planning handoff. The Rust migration
-is complete locally; see [its acceptance audit](oracle-rust-completion.md) and
-[status](oracle-rust-status.md). This document is the implementation roadmap for
-the four requested follow-on features. Implementation has started; see
-[current progress and open requirements](oracle-source-guided-status.md). **The
-four tools are not complete.** They
-do not expand the completed migration's parity requirements.
+Find C++ transformations that produce useful allocation-graph changes. The four
+requested extensions are provenance, graph-directed source search, mechanism
+reduction and a matched-source index. Build provenance and source search first.
 
-The objective is to connect successful allocation-graph edits to C++ constructs
-that actually produce them. Allocation replay, graph search, graph comparison and
-existing frontend provenance provide the foundation. The missing evidence is which
-source transformations realize a useful graph change, not how the allocator colors
-an edited graph. Prefer native Rust APIs, versioned structured results and improved
-kit documentation; legacy Python APIs and report prose need not be preserved.
+The [Rust migration is complete](oracle-rust-status.md). These extensions have
+usable development implementations, with requirements still open; see
+[current status](oracle-source-guided-status.md). This roadmap records the full
+acceptance scope, including work already delivered. Use native Rust APIs and
+versioned JSON for integrations.
 
-## Existing comparison gap
+## Comparison requirement
 
-The development implementation now has a separate native
-[observed-boundary comparison](oracle/graph-correspondence.md) used by shared
-objectives. It retains all nodes, conditional provenance/instruction hypotheses,
-actual local merge chains, conflicts and boundary edges. The description below
-records the original instruction-only gap; semantic lifetime/elimination evidence
-and additional phase capture still require work.
-
-[`colouring::target::remap`](../crates/mwcc-oracle-core/src/colouring/target.rs)
-currently matches visible instruction sequences after normalizing virtual-register
-spellings, then votes on register-operand correspondence. `graph_difference` chooses
-the last available round for a class, compares adjacency among mapped virtual nodes
-and physical registers, and derives `only_first`/`only_second` from registers used by
-visible instructions. It omits edges to unmapped virtual nodes; its inverse mapping
-also cannot express many-to-one correspondence faithfully.
-
-Extend these functions before treating a disappearing temporary as reliably
-eliminated. An unmatched value is not evidence of elimination. Graph-only nodes,
-ambiguous correspondence, merges, boundary edges and phase/round selection must
-be represented explicitly.
+Graph comparison must retain instruction-invisible nodes, ambiguous mappings,
+merges, boundary edges and phase/round selection. The development
+[observed-boundary comparison](oracle/graph-correspondence.md) provides these
+diagnostics. Complete semantic lifetime and elimination evidence remain open:
+an unmatched value alone does not establish elimination.
 
 ## 1. Reproducible cases and shared contracts
 

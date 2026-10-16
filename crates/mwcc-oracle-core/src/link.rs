@@ -245,6 +245,18 @@ pub fn run(request: &Request) -> Result<Report> {
                                 .all(|hook| symbols.contains(*hook)))),
                 "Rust arena observer hooks are missing; rebuild the common hooks with the current sources"
             );
+            ensure!(
+                compiled_objects
+                    .iter()
+                    .any(|p| fs::read(request.root.join(p))
+                        .ok()
+                        .and_then(|b| coff::defined_symbols(&b).ok())
+                        .is_some_and(|symbols| symbols.contains("_OracleRust_SourceProbeV1")
+                            && crate::producer::SOURCE_HOOKS
+                                .iter()
+                                .all(|hook| symbols.contains(*hook)))),
+                "Rust source observers are stale; rebuild the common hooks with the current sources"
+            );
             let mut dispatchers = 0;
             for input in &mut inputs {
                 if !input.ends_with(".obj") {
@@ -328,6 +340,34 @@ pub fn run(request: &Request) -> Result<Report> {
                 "installed {} guarded arena observations",
                 arenas.sites.len()
             ));
+            let source_inputs = inputs
+                .iter()
+                .filter(|p| p.ends_with(".obj") && !compiled_objects.contains(p))
+                .map(|p| Ok((p.clone(), fs::read(request.root.join(p))?)))
+                .collect::<Result<Vec<_>>>()?;
+            let sources =
+                crate::source_node_probe::install(&request.root, version, &source_inputs)?;
+            for input in &mut inputs {
+                if let Some(data) = sources.objects.get(input) {
+                    let output = format!("build/{version}/oracle/source-nodes/{}", basename(input));
+                    write(&request.root, &output, data)?;
+                    *input = output;
+                }
+            }
+            let source_islands = format!("build/{version}/oracle/compiled/rust/source-islands.obj");
+            write(&request.root, &source_islands, &sources.islands)?;
+            inputs.push(source_islands);
+            write(
+                &request.root,
+                &format!("build/{version}/oracle/source-nodes/sites.json"),
+                &serde_json::to_vec_pretty(&sources.sites)?,
+            )?;
+            write(
+                &request.root,
+                &format!("build/{version}/oracle/source-nodes/guards.json"),
+                &serde_json::to_vec_pretty(&sources.guards)?,
+            )?;
+            messages.push("installed guarded source expression observations".into());
             let counter_inputs = inputs
                 .iter()
                 .filter(|p| p.ends_with(".obj") && !compiled_objects.contains(p))
@@ -393,6 +433,7 @@ pub fn run(request: &Request) -> Result<Report> {
             for hook in crate::producer::ARGUMENT_HOOKS
                 .into_iter()
                 .chain(crate::producer::ARENA_HOOKS)
+                .chain(crate::producer::SOURCE_HOOKS)
             {
                 if !hooks.contains(&hook) {
                     hooks.push(hook);

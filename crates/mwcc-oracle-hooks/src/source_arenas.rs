@@ -116,6 +116,9 @@ unsafe fn epoch(pool: u32) -> u32 {
 unsafe fn globals() -> Globals {
     unsafe { ptr::addr_of!(GLOBALS).read() }
 }
+pub(crate) unsafe fn version() -> u32 {
+    unsafe { globals().version }
+}
 unsafe fn gap(reason: &CStr, site: u32) {
     unsafe {
         ptr::addr_of_mut!(UNSUPPORTED).write(1);
@@ -133,7 +136,8 @@ unsafe fn enter() -> bool {
     unsafe {
         let mut enabled = ptr::addr_of!(ENABLED).read();
         if enabled < 0 {
-            enabled = i8::from(wanted(c"MWCC_ORACLE_SOURCE_ARENAS"));
+            enabled =
+                i8::from(wanted(c"MWCC_ORACLE_SOURCE_ARENAS") || crate::source_nodes::enabled());
             ptr::addr_of_mut!(ENABLED).write(enabled);
         }
         if enabled == 0 {
@@ -301,6 +305,7 @@ pub unsafe extern "C" fn observe(r: &Registers, d: &Descriptor) {
 
 unsafe fn checkpoint_inner(function: u32) {
     unsafe {
+        crate::source_nodes::checkpoint();
         let checkpoints = next(ptr::addr_of_mut!(CHECKPOINTS));
         let event = next(ptr::addr_of_mut!(EVENT));
         OracleTrace_Printf(c"pv.arena.checkpoint schema=1 stream=1 event=%lu checkpoints=%lu requests=%lu allocations=%lu resets=%lu reset_ends=%lu gaps=%lu request_depth=%lu reset_depth=%lu unsupported=%lu function=%lu epoch0=%lu epoch1=%lu epoch2=%lu epoch3=%lu epoch4=%lu\n".as_ptr(),event,checkpoints,ptr::addr_of!(REQUESTS).read(),ptr::addr_of!(ALLOCATIONS).read(),ptr::addr_of!(RESETS).read(),ptr::addr_of!(RESET_ENDS).read(),ptr::addr_of!(GAPS).read(),ptr::addr_of!(REQUEST_DEPTH).read(),ptr::addr_of!(RESET_DEPTH).read(),ptr::addr_of!(UNSUPPORTED).read(),function,epoch(0),epoch(1),epoch(2),epoch(3),epoch(4));

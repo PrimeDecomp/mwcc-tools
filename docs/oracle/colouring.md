@@ -1,10 +1,10 @@
-# What-if colouring: `tools/colouring.py`
+# What-if colouring: `mwcc-tools colouring`
 
 Part of the [oracle documentation](../oracle.md).
 
-`tools/colouring.py` addresses a function whose code matches the target except that some values sit in other
+`mwcc-tools colouring` analyzes a function whose code matches the target except that some values sit in other
 registers, most often a permutation of the non-volatile registers (r14..r31, f14..f31). It replays the compiler's
-colouring from the oracle's trace and finds the smallest change to the interference graph that gives the target's
+colouring from the oracle's trace and searches for small changes to the interference graph that give the target's
 registers. The change is expressed as a renumbering of virtual registers, a removed node, or a degree or edge change.
 You then map that change back to source:
 
@@ -12,14 +12,14 @@ You then map that change back to source:
 * a temporary made a named local (`static_cast<int>(...)`, a `const` local);
 * a value no longer computed into a register of its own, such as `x ? GX_TRUE : GX_FALSE` for an argument `x != 0`.
 
-The replay is Coloring.c's GC/2.7 rules, and it reproduces GC/1.3.2 traces too:
+The Rust replay follows the retail GC/2.7 colouring rules and also reproduces GC/1.3.2 traces:
 
-* **Simplification:** the existing `oracle.simulate_simplify`. Nodes are scanned in index order, and a node is pushed
+* **Simplification:** `allocation::simplify` in `mwcc-oracle-core`. Nodes are scanned in index order, and a node is pushed
   when its degree is below K. When none is, the cheapest spill candidate is pushed.
 * **Select:** in the reverse of the push order (a later pass is coloured first; within a pass, the higher index is
   coloured first). Each node takes the lowest colour of the mask that its neighbours do not hold.
 * **Claims:** when no colour is free, select claims the highest non-volatile register not used yet and adds it to the
-  mask. Unlike oracle.py's own replay, the claimed register is predicted, not read back from the trace.
+  mask. The claimed register is predicted rather than read back from the trace.
   * The registers already used when select starts are the physical nodes an instruction names (r31 holding the frame,
     say), as neighbours in the graph.
   * The traced claims' gaps are a consistency check on that. On every traced function so far, they add nothing.
@@ -30,11 +30,11 @@ mwcc-tools colouring search --from-ninja ../echoes/build.ninja src/Kyoto/Particl
     --function RenderParticles__
 ```
 
-Compile options are as `tools/oracle.py` takes them: `--from-ninja`, `--version`, `--override P=R`, and the
+Compile options are shared with `mwcc-tools oracle`: `--from-ninja`, `--version`, `--override P=R`, and the
 compiler's flags after `--`.
 
-* `--save PREFIX` keeps the trace and the object (`PREFIX.trace`, `PREFIX.o`).
-* `--load PREFIX` uses a saved trace and object instead of compiling, so later runs are instant.
+* `--save PREFIX` keeps the trace, object and identity manifest (`PREFIX.trace`, `PREFIX.o`, `PREFIX.manifest.json`).
+* `--load PREFIX` analyzes saved inputs without compiling; when a manifest is present, it checks trace/object hashes and compiler version.
 * `--class FPR` works on the floating-point registers; the default is GPR.
 
 ## Commands
@@ -50,7 +50,7 @@ traced colours, including the registers it claimed. Prints one line per class an
 disagreement. The other commands are only as good as this replay, so run it first on a new compiler version or an
 unusual function.
 
-Checked so far, all exact:
+Retained replay examples (all exact):
 
 | Project | Compiler | Unit | Colourings |
 |---|---|---|---|
@@ -120,14 +120,15 @@ in the list, and every other node keeps its order, as when the declarations move
 numbered, lowest first: %51 (noRota)* < %32 < %44 (i) < %45 (SORT) < %46 (sortItems) < ... < %52 (constUVs)* < ...
 ```
 
-For the move above, `%97`, a temporary (`@4275`), must be numbered right after the named local `useVideoFilter`, so
-it must become a named local declared there. Named locals are numbered in reverse declaration order, with inner scopes
+For the move above, `%97`, a temporary (`@4275`), needs a number right after the named local `useVideoFilter`.
+One source hypothesis is to make it a named local declared there; recompilation must confirm the effect.
+Named locals are numbered in reverse declaration order, with inner scopes
 lower; the `@` and `$` temporaries come after them, then the code generation temporaries. See
 [Registers](registers.md) and the `--cse` view for what each temporary holds.
 
 Options:
 
-* `--iterations N` (default 20000; about 2-3 ms each on a graph of 500 nodes);
+* `--iterations N` (default 20000);
 * `--seed N` (another seed can find other solutions);
 * `--restarts N` (default 10);
 * `--fixed V,...` (nodes not to renumber, such as a value the source cannot name);
@@ -168,11 +169,11 @@ Each variant below undoes one of the changes that matched `RenderParticlesIndire
 | `void* dest` | 8 wrong | single change `number %97 (@4275) just after %33 (useVideoFilter)`: exact (the fix: `void* const dest`, a named local) | `%34 (dest) from %97` |
 | `const uint bufSize` | 23 wrong | single change `number %34 (bufSize) just after %86 (@4344)`: exact (the fix: `int bufSize`) | `%97 (@4285) from %34` |
 
-Each of these takes about 3 seconds from a saved trace. On `RenderParticles` (14 wrong, `force` EXACT), a
-renumbering-only search (`--kinds none`) finds an exact solution with every seed tried, in under two minutes. Two
-seeds in four find the smallest, four moves, such as `noRota` lowest, `constUVs` after `hasModuColor`, and two
-temporaries (`@5732`, `%252`) after `sortItems`; the others find five or six. On a search like this, compare a few
-seeds.
+On the retained `RenderParticles` example (14 wrong, `force` EXACT), a
+renumbering-only search (`--kinds none`) found solutions with four to six moves.
+One four-move hypothesis put `noRota` lowest, `constUVs` after `hasModuColor`, and
+two temporaries (`@5732`, `%252`) after `sortItems`. Compare seeds and verify the
+result by recompiling; a graph solution does not establish a realizable source edit.
 
 ## Limits
 
@@ -199,13 +200,12 @@ the selected class; the default is the last recorded round on each side. Snapsho
 selection uses `--first-snapshot before|after` and `--second-snapshot before|after`.
 These names refer to the existing trace snapshots, not newly instrumented backend
 phases. Missing default snapshots remain explicit; unavailable explicit round
-indices are errors. The provenance/correspondence implementation is ongoing; see
-the [backend audit](../oracle-backend-provenance-audit.md).
+indices are errors. For actual `before_simplify` snapshots and conditional
+provenance anchors, use the separate [graph correspondence API](graph-correspondence.md).
 
 Use `mwcc-tools colouring verify|target|force|search|replay|remap` directly.
 The `colouring unit` dispatcher resolves project units and accepts private candidates;
 `--load PREFIX --version VERSION` analyzes saved input without compiling.
 Use `--json` for structured results. Rust library callers use the `colouring`
 module in `mwcc-oracle-core`. Tests live in `crates/mwcc-oracle-core/tests/colouring.rs`
-and the CLI fixture suite. Python oracle/colouring imports are historical references,
-not an integration API. See the [native kit guide](../../integrations/decomp-kits/overlay/.agents/docs/oracle-native.md).
+and the CLI fixture suite. See the [native kit guide](../../integrations/decomp-kits/overlay/.agents/docs/oracle-native.md).

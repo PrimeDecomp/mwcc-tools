@@ -1,6 +1,6 @@
 use mwcc_oracle_core::{
     evidence::EvaluationState,
-    source_arenas::{self, History},
+    source_arenas::{self, History, Query},
     source_lifetimes::PoolDomain,
 };
 
@@ -505,4 +505,234 @@ fn arena_stack_capacity_matches_the_guarded_producers_sixty_four_frames() {
     let history = s.history();
     assert_eq!(history.events.len(), 3 + 64);
     assert_eq!(history.observations.state, EvaluationState::Indeterminate);
+}
+
+fn query(trace_position: usize, address: u32, extent: u32) -> Query {
+    Query {
+        trace_position,
+        pool: PoolDomain::Local,
+        address,
+        extent,
+    }
+}
+
+#[test]
+fn prepared_batch_preserves_unsorted_duplicate_query_order_and_point_query_results() {
+    let mut s = Stream::new();
+    let initial = s.local(0x3000, 8);
+    s.init();
+    let first = s.local(0x4000, 8);
+    let checkpoint = s.checkpoint();
+    let (inside, after) = s.local_reset(false);
+    let second = s.local(0x4000, 8);
+    s.checkpoint();
+    let queries = [
+        query(second, 0x4004, 4),
+        query(first, 0x4000, 4),
+        query(inside, 0x4000, 4),
+        query(first, 0x4000, 4),
+        query(initial, 0x3000, 4),
+        query(checkpoint, 0x4000, 4),
+        query(after, 0x4000, 4),
+        query(second, 0x4008, 1),
+        query(0, 0x4000, 4),
+        query(usize::MAX, 0x4000, 4),
+    ];
+    let history = s.history();
+    let prepared = history.prepare();
+    let actual = prepared.resolve_many(&queries);
+    for (index, q) in queries.iter().enumerate() {
+        let point = history.resolve_at(q.trace_position, q.pool, q.address, q.extent);
+        assert_eq!(
+            serde_json::to_value(&actual[index]).unwrap(),
+            serde_json::to_value(point).unwrap(),
+            "query {index}"
+        );
+    }
+    assert_eq!(
+        actual
+            .iter()
+            .map(|r| r.allocation.as_ref().map(|r| r.allocation))
+            .collect::<Vec<_>>(),
+        [
+            Some(3),
+            Some(2),
+            None,
+            Some(2),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None
+        ]
+    );
+    assert_eq!(actual[0].allocation.as_ref().unwrap().offset, 4);
+    assert!(prepared.resolve_many(&[]).is_empty());
+    assert!(prepared.resolve_references(&[]).is_empty());
+}
+
+#[test]
+fn prepared_capture_is_immutable_and_ignores_serialized_display_coverage() {
+    let mut s = Stream::new();
+    s.init();
+    let first = s.local(0x4000, 8);
+    s.checkpoint();
+    let mut history = s.history();
+    history.events.clear();
+    history.checkpoints.clear();
+    history.coverage_intervals.clear();
+    history.observations.state = EvaluationState::Indeterminate;
+    let prepared = history.prepare();
+    let q = query(first, 0x4000, 4);
+    assert!(prepared.resolve_many(&[q])[0].allocation.is_some());
+    history.records.clear();
+    assert!(history.prepare().resolve_many(&[q])[0].allocation.is_none());
+    assert!(prepared.resolve_many(&[q])[0].allocation.is_some());
+    assert_eq!(prepared.observations().state, EvaluationState::Satisfied);
+}
+
+#[test]
+fn historical_receipts_join_only_within_one_preparation_and_survive_known_later_retirement() {
+    use mwcc_oracle_core::source_lifetimes::GapKind;
+    let mut s = Stream::new();
+    s.init();
+    let first = s.local(0x4000, 8);
+    s.checkpoint();
+    s.local_reset(false);
+    let second = s.local(0x4000, 8);
+    s.checkpoint();
+    let history = s.history();
+    let prepared = history.prepare();
+    let q = query(first, 0x4000, 4);
+    let a = prepared
+        .resolve_references(&[q])
+        .pop()
+        .unwrap()
+        .reference
+        .unwrap();
+    let b = prepared
+        .clone()
+        .resolve_references(&[q])
+        .pop()
+        .unwrap()
+        .reference
+        .unwrap();
+    let different_span = prepared
+        .resolve_references(&[query(first, 0x4004, 4)])
+        .pop()
+        .unwrap()
+        .reference
+        .unwrap();
+    let reused = prepared
+        .resolve_references(&[query(second, 0x4000, 4)])
+        .pop()
+        .unwrap()
+        .reference
+        .unwrap();
+    assert_eq!(a.query(), q);
+    assert_eq!(a.trace_position(), first);
+    assert_eq!(
+        (a.allocation(), a.pool(), a.epoch(), a.offset(), a.extent()),
+        (1, PoolDomain::Local, 1, 0, 4)
+    );
+    assert!(a.checkpoint_position() > first);
+    assert!(a.same_capture(&b));
+    assert_eq!(a.same_span(&b).value, Some(true));
+    assert_eq!(a.same_allocation(&different_span).value, Some(true));
+    assert_eq!(a.same_span(&different_span).value, Some(false));
+    assert_eq!(a.same_allocation(&reused).value, Some(false));
+    let foreign = history
+        .prepare()
+        .resolve_references(&[q])
+        .pop()
+        .unwrap()
+        .reference
+        .unwrap();
+    assert!(!a.same_capture(&foreign));
+    assert_eq!(a.same_allocation(&foreign).value, None);
+    assert_eq!(
+        a.same_span(&foreign).reasons[0].kind,
+        GapKind::ForeignReceipt
+    );
+    assert_eq!(
+        serde_json::to_value(&a).unwrap(),
+        serde_json::to_value(&foreign).unwrap()
+    );
+    // Display serialization cannot carry the private preparation identity.
+    assert_eq!(a.same_span(&a.clone()).value, Some(true));
+}
+
+#[test]
+fn one_forward_batch_keeps_historical_receipts_before_overlap_gap_and_truncation() {
+    let mut s = Stream::new();
+    s.init();
+    let first = s.local(0x4000, 4);
+    let overlapping = s.local(0x4004, 4);
+    s.checkpoint();
+    let located_gap = s.gap();
+    s.checkpoint();
+    s.local(0x5000, 8);
+    s.lines.pop();
+    let prepared = s.history().prepare();
+    assert_eq!(
+        prepared.observations().state,
+        EvaluationState::Indeterminate
+    );
+    let results = prepared.resolve_references(&[
+        query(located_gap, 0x4000, 4),
+        query(overlapping, 0x4000, 4),
+        query(first, 0x4000, 4),
+        query(overlapping, 0x4004, 4),
+        query(first, 0x4000, 4),
+    ]);
+    assert!(results[0].reference.is_none());
+    assert!(results[1].reference.is_none());
+    assert!(results[3].reference.is_none());
+    let a = results[2].reference.as_ref().unwrap();
+    let b = results[4].reference.as_ref().unwrap();
+    assert_eq!(a.same_span(b).value, Some(true));
+}
+
+#[test]
+fn many_permuted_historical_node_queries_match_known_commit_ids_and_epochs() {
+    let mut s = Stream::new();
+    s.init();
+    let mut entries = vec![];
+    for i in 0..120u32 {
+        if i != 0 && i % 20 == 0 {
+            s.local_reset(false);
+        }
+        let address = 0x4000 + (i % 20) * 16;
+        let position = s.local(address, 8);
+        entries.push((
+            query(position, address + 4, 4),
+            u64::from(i + 1),
+            u64::from(i / 20 + 1),
+        ));
+        if i % 20 == 19 {
+            s.checkpoint();
+        }
+    }
+    // Deterministic permutation, deliberately unrelated to timeline order.
+    let mut seed = 0x6e6f64655f626174u64;
+    for i in (1..entries.len()).rev() {
+        seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1);
+        entries.swap(i, (seed as usize) % (i + 1));
+    }
+    let queries = entries.iter().map(|e| e.0).collect::<Vec<_>>();
+    let results = s.history().prepare().resolve_references(&queries);
+    for (entry, result) in entries.iter().zip(results) {
+        let receipt = result.reference.unwrap();
+        assert_eq!(
+            (
+                receipt.query(),
+                receipt.allocation(),
+                receipt.epoch(),
+                receipt.offset(),
+                receipt.extent()
+            ),
+            (entry.0, entry.1, entry.2, 4, 4)
+        );
+    }
 }

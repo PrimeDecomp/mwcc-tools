@@ -24,7 +24,10 @@ ARENA_HOOKS = {
     "_CompilerTools_ResetGallocAndPoolMemory", "_releasegheap", "_releaseheaps",
     "_initheaps", "_CompilerTools_InitHeaps",
 }
+SOURCE_HOOKS = {"_CFunc_ParseFuncDef", "_fn_00513040", "_fn_00513240"}
 COMMON_IMPORTS = {
+    "_CFunc_ParseFuncDef__retail", "_fn_00513040__retail", "_fn_00513240__retail",
+    "_evalMode", "_alloc_state",
     "_OracleRust_ArenaGlobals",
     "_CompilerTools_ResetPool__retail", "_freeaheap__retail", "_freelheap__retail",
     "_CompilerTools_ResetGallocAndPoolMemory__retail", "_releasegheap__retail", "_releaseheaps__retail",
@@ -297,10 +300,10 @@ def main():
                     "_fn_004601f0", "_fn_00460780", "_IRO_CommonSubs", "_move_common_sub", "_IroDump_Print",
                     "_fn_00506cd0", "_generate_inline_statements", "_inline_statement",
                     "_CInline_AddFunctionPrecNode", "_CInline_AddSpecialization", "_CTemplateNew_InstantiateInlineTemplateObject",
-                    "_CTemplateNew_InstantiateFunction", "_fn_0050f240", "_generate_inline_code", "_setup_inline_locals_and_arguments"} | ARGUMENT_HOOKS | ARENA_HOOKS
+                    "_CTemplateNew_InstantiateFunction", "_fn_0050f240", "_generate_inline_code", "_setup_inline_locals_and_arguments"} | ARGUMENT_HOOKS | ARENA_HOOKS | SOURCE_HOOKS
         support = {"_OracleRust_LinkName", "_OracleRust_PrintInstruction", "_OracleRust_Snapshot", "_OracleRust_DescribeExpression", "_cse_vregs",
-                   "_OracleRust_OriginFind", "_OracleRust_OriginWalk", "_OracleRust_PrintChain", "_OracleRust_InlineLine", "_OracleRust_BackendProbe", "_OracleRust_CounterProbeV6", "_OracleRust_ExpressionProbeV1", "_OracleRust_ArgumentForceGpr", "_OracleRust_ArenaProbeV1"}
-        assert len(migrated) == 38 and len(support) == 14 and len(COMMON_IMPORTS) == 69
+                   "_OracleRust_OriginFind", "_OracleRust_OriginWalk", "_OracleRust_PrintChain", "_OracleRust_InlineLine", "_OracleRust_BackendProbe", "_OracleRust_CounterProbeV6", "_OracleRust_ExpressionProbeV1", "_OracleRust_ArgumentForceGpr", "_OracleRust_ArenaProbeV1", "_OracleRust_SourceProbeV1"}
+        assert len(migrated) == 41 and len(support) == 15 and len(COMMON_IMPORTS) == 74
         assert not c_object.exists(), "C observation hooks still compiled in Rust producer"
         for path, expected in [(rust_object, migrated | support), (frontend_object, frontend_names)]:
             symbols, _ = module.read_object(path)
@@ -310,7 +313,7 @@ def main():
                 undefined = {s["name"] for s in symbols.values() if s["section"] == 0 and s["storage"] == 2}
                 assert undefined == COMMON_IMPORTS, (path, "common imports", undefined)
         config = json.loads((stage / f"config/{version}/config.json").read_text())
-        assert set(config["oracle"]["hooks"]) | ARGUMENT_HOOKS | ARENA_HOOKS == migrated | frontend_names
+        assert set(config["oracle"]["hooks"]) | ARGUMENT_HOOKS | ARENA_HOOKS | SOURCE_HOOKS == migrated | frontend_names
         check_frontend = trace_check.parent / f"{version}-frontend.obj"
         run(f"validate-frontend-{version}", [binary, "build-hooks", check_frontend, "--root", ROOT, "--frontend-version", version])
         assert sha(check_frontend) == sha(frontend_object)

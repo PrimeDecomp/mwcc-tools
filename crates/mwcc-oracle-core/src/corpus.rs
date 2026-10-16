@@ -181,6 +181,7 @@ pub fn run(request: &Request) -> Result<Report> {
         TraceOptions {
             backend: true,
             source_arenas: false,
+            source_nodes: false,
             schedule: true,
             inline_cost: true,
             full_cost: true,

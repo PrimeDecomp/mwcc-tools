@@ -1,7 +1,7 @@
 {
   "format_version": 1,
   "target": "x86_64-pc-windows-msvc",
-  "cargo_lock_sha256": "45d92ba62a0f39735e4cb15ee9e853d28c5d64be21a687e779307ecbe40a7d4c",
+  "cargo_lock_sha256": "3cce3d9ac7a85c6510b2590725e6db8cece346dfd4b6a3f66a6c476a6535d4f0",
   "rustc": [
     "rustc 1.96.0 (ac68faa20 2026-05-25)",
     "binary: rustc",

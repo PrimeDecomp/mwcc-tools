@@ -8,9 +8,13 @@ The kit's pinned migration release may predate these development capabilities.
 
 ## Native surface and descriptor
 
-`producer::validate` checks the complete common COFF surface: 38 hook definitions,
-14 support exports and exactly 69 imports. The common object therefore exports
-52 symbols. The separately built frontend object exports five hooks per compiler
+`producer::validate` checks the complete common COFF surface. The working tree
+has 41 hook definitions, 15 support exports and exactly 74 imports, including the
+experimental source-node extension. The last accepted arena producer has
+38 hooks, 14 support exports and 69 imports. Native source-node validation is
+pending; see [current status](../oracle-source-guided-status.md).
+
+The separately built frontend object exports five hooks per compiler
 version; the separate Rust trace writer exports two symbols and imports five C
 runtime symbols. These inventories are code in `producer.rs`, not inferred from
 the presence of a few familiar exports. Unexpected compiler runtime helpers fail
@@ -43,6 +47,11 @@ preserve registers, flags and FXSAVE state; allocation commits execute their
 original descriptor stores before the observer. The failure-callback island
 restores the original retail stack before invoking the original callback.
 See [source arenas](source-arenas.md) for the opt-in stream and query contract.
+
+The experimental source-node extension adds `_OracleRust_SourceProbeV1` and three
+wrappers for frontend ownership, mode changes and recursive cloning. A guarded
+statement-store island records ordinary assignment emission.
+[Source-node observations](source-nodes.md) defines the bounded query API.
 
 Link-name lookup can allocate compiler hash entries. Frontend inline and
 template observers resolve every link before emitting the first fragment of a

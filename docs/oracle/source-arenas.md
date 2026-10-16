@@ -1,74 +1,116 @@
-# Source arena observations and reference audit
+# Source arena observations
 
-The development producer can capture guarded arena requests, allocation commits
-and invalidation scopes independently of backend tracing:
+Use arena observations to resolve a historical compiler pointer to its allocation
+and pool epoch. They establish allocation identity, not initialized contents,
+source ancestry, unchanged node revisions or semantic equivalence.
 
 ```text
-mwcc-tools oracle compile-trace source.cpp --source-arenas -- COMPILER_FLAGS
+mwcc-tools oracle compile-trace --oracle-root ORACLE_ROOT --version GC_2_7 --source-arenas source.cpp -- COMPILER_FLAGS > capture.json
 mwcc-tools source-arenas inspect capture.json --json
-mwcc-tools source-arenas resolve capture.json --position 120 --pool local --address 01a00000 --extent 24
+mwcc-tools source-arenas resolve capture.json --position 120 --pool local --address 01000000 --extent 24
 ```
 
-`--position` is a one-based raw trace line; addresses are hexadecimal. Pools are
-`heap`, `optimizer`, `block`, `local` and `global`. The allocation result identifies
-the historical pool epoch, allocation and offset only when the requested payload
-is covered by a later independently reconciled checkpoint. Padding, reset
-interiors, checkpoint emission positions and unknown epochs remain indeterminate.
-Allocation identity does not establish initialized contents, immutable node
-revisions, source ancestry or semantic equivalence.
+Use current native tools and a freshly built Rust producer. Commands accept raw
+traces or compile captures. `--position` is a **one-based raw trace line**;
+`--address` is hexadecimal and `--extent` is a byte count. Pools are `heap`,
+`optimizer`, `block`, `local` and `global`. A successful result identifies the
+allocation, historical epoch, offset, extent and covering checkpoint.
+
+For multiple queries, put a JSON array in `queries.json`. JSON addresses are
+numeric decimal values, unlike the point command's hexadecimal argument:
+
+```json
+[
+  {"trace_position": 120, "pool": "local", "address": 16777216, "extent": 24},
+  {"trace_position": 140, "pool": "local", "address": 16777216, "extent": 24}
+]
+```
+
+```text
+mwcc-tools source-arenas resolve-many capture.json --queries queries.json
+```
+
+The batch validates once and shares one chronological replay, returning results
+in input order. Rust callers can retain `history.prepare()` and use
+`resolve_many` for display results or `resolve_references` for private historical
+receipts. See [allocation lifetimes](source-lifetimes.md) for receipt semantics.
+
+## Coverage and query boundaries
+
+The compilation-wide schema-1 `pv.arena.*` stream records requests, commits,
+resets, gaps and independent cumulative checkpoints. The host validates raw
+records rather than trusting serialized display summaries. Missing events,
+counter mismatches, unsupported callbacks, stack overflow and truncated suffixes
+cannot establish new coverage. An earlier reconciled prefix can remain queryable.
+Older captures without the stream stay indeterminate.
+
+A query requires a later independent checkpoint covering its position and an
+observed invalidation establishing that pool's epoch. Padding, overlapping live
+spans, active resets, unknown epochs and uncheckpointed suffixes remain
+indeterminate. A checkpoint's own emission position is a coverage boundary, not
+a queryable allocation observation, even if another checkpoint follows it.
+
+Reset returns supply checkpoints. `--backend` also checkpoints immediately before
+each matching `pv.function.end`. An arena-only capture has reset-end checkpoints;
+no process-end checkpoint is inferred. Historical success does not assert current
+liveness after a later reset. Graph fingerprint format 4 rejects arena captures
+until arena normalization is implemented.
+
+## What the producer observes
 
 Nine request/commit pairs cover four ordinary allocators and five inline hash
-allocation paths. Requests retain sizes before alignment. Commit observations
-validate the reserved span against the actual post-store descriptor; zero-byte
-requests have an empty payload even though the allocator reserves eight bytes.
-Nineteen guarded islands preserve the displaced instructions and machine state.
-Eight wrappers capture resets, releases and initialization, including the local
-heap lock. The failure callback emits an explicit unsupported boundary.
+allocation paths. Requests retain pre-alignment sizes; commits check reserved
+spans against the post-store descriptor. Nineteen guarded islands preserve the
+displaced instructions and machine state. Eight wrappers observe reset, release
+and initialization, including the local lock. Actual failure-callback execution
+emits an unsupported boundary.
 
-The compilation-wide `pv.arena.*` stream uses schema 1 and cumulative request,
-allocation, reset, gap and checkpoint counters. The host replays authoritative
-raw records instead of trusting deserialized display fields. Missing records,
-counter mismatches, stack overflow, unsupported callbacks and truncated suffixes
-cannot prove new coverage. An earlier independently reconciled prefix can remain
-queryable. Captures from older producers without the stream remain unknown.
+The ordinary allocators reserve `(requested & ~7) + 8` bytes. Payload and padding
+remain distinct: an 8-byte request reserves 16 bytes, and a zero-byte request has
+an empty payload despite reserving 8. Invalid or overflowing spans do not establish
+ordinary allocation coverage.
 
-Reset returns supply checkpoints. With `--backend`, each backend function end
-supplies another checkpoint immediately before its matching `pv.function.end`.
-Without backend tracing, observations after the last reset checkpoint are an
-unproven suffix until another reset returns. No process-end coverage is inferred.
-Graph fingerprint format 4 rejects arena captures until arena normalization is
-implemented. This opt-in capture is a foundation for the original-source bridge;
-it does not implement that bridge.
+The operation, not its name, determines invalidation:
 
-Native Windows/Linux fixture validation passes on all three compiler versions:
-all nine allocation pairs, independent counter reconciliation, historical address
-reuse, payload/padding queries and malformed-trace negatives. Backend coexistence
-uses separate diagnostic FP4/validated-decision comparisons; raw CPU probe values
-are not asserted equal. Locked reset and failure callbacks are not claimed as
-exercised native fixture paths. See the
-[extension status](../oracle-source-guided-status.md) for exact accepted evidence.
+- Selecting/changing a current block is not a reset; the selector can reuse an
+  earlier block. Its EAX is not a reliable success status. Observers validate the
+  descriptor/span and account for failure callbacks and reentrancy.
+- `CompilerTools_ResetPool` resets the optimizer pool; `freeaheap` resets the
+  block pool. `freelheap` resets local only when its 16-bit lock is zero. A locked
+  local reset preserves existing local allocation identities and repairs no gaps.
+- `releasegheap` clears global; `releaseheaps` clears all five pools. Heap
+  initialization clears descriptors, which is an identity boundary rather than
+  proof of physical OS deallocation.
+- `CompilerTools_ResetGallocAndPoolMemory` clears global, then changes optimizer
+  allocation size and selects optimizer space with request zero. That selection
+  alone is not optimizer invalidation.
+- Hash initialization/string helpers allocate global spans inline, bypassing
+  `galloc`. The statistics helper only reads pools and writes its caller's result.
 
-Original source nodes and optimizer nodes can outlive backend function scopes.
-Their addresses can also be reused after a heap reset. Before joining a source
-write to an inline copy or reconstructed backend expression, the oracle needs
-the allocation lifetime of each observation. A raw pointer, source line, or
-matching bytes cannot supply that lifetime.
+Native Windows/Linux fixtures cover all nine pairs, independent totals,
+historical reuse, payload/padding queries and malformed traces on all three
+versions. Locked-reset and failure-callback paths are not claimed as exercised
+native fixtures. Exact evidence and backend-coexistence limits are in
+[extension status](../oracle-source-guided-status.md). These checks do not complete
+the source-write/inline bridge or its native proof.
 
-The native static audit inventories the relevant retail storage and its direct
-relocated references:
+## Static reference audit
 
 ```text
 mwcc-tools provenance audit-source-arenas --root ORACLE_ROOT --version GC_2_7
 ```
 
-It reads the checksum-verified original PE and symbol/split metadata without
-building or changing the compiler. The JSON records their SHA-256 identities,
-pool storage fragments, direct instruction references, containing function
-guards and unresolved references. All five pool descriptors are 20 bytes. The
-metadata symbol at each descriptor's start is only four bytes; other symbols
-cover its remaining fields, sometimes together with trailing unrelated storage.
-The audit range is the descriptor's exact 20 bytes, irrespective of those symbol
-fragment sizes.
+This read-only command checks the original PE checksum and symbol/split metadata.
+Its JSON retains SHA-256 identities, descriptor fragments, direct instruction
+references, containing-function guards and unresolved references. An empty
+`unresolved` list does not resolve indirect aliases; the output deliberately keeps
+`allocation_coverage_complete=false` and `reset_coverage_complete=false`.
+
+Each pool descriptor is 20 bytes: `blocks` at 0, `allocsize` at 4, `curblock` at 8,
+`curfreep` at 12 and `curfree` at 16. Heap-block headers are 16 bytes. Metadata symbols
+can fragment a descriptor or include unrelated trailing storage; the audit uses
+its exact 20-byte extent. Canonical addresses below need not equal relocated
+runtime addresses.
 
 | Storage | GC 1.3 | GC 1.3.2 | GC 2.7 |
 | --- | --- | --- | --- |
@@ -80,89 +122,20 @@ fragment sizes.
 | Local pool | `5db552` | `5dd552` | `5df5aa` |
 | Global pool | `5db566` | `5dd566` | `5df5be` |
 
-Coordinates are hexadecimal canonical retail addresses. Each descriptor has
-`blocks` at offset 0, `allocsize` at 4, `curblock` at 8, `curfreep` at 12 and
-`curfree` at 16. Heap blocks have a 16-byte header. These layouts describe
-inspected retail operations; arbitrary payload bytes are not initialized typed
-data merely because they lie in one of these heaps.
-
-## Findings that affect instrumentation
-
-All three versions have 12 direct references to the heap descriptor, 23 to the
-optimizer descriptor, 21 to the block descriptor, 22 to the local descriptor,
-51 to the global descriptor and six to the local lock. Every such relocated
-reference falls within an instruction in a fully decoded named containing
-function. This establishes the direct-reference inventory only. It does not
-resolve writes through an alias passed to a helper.
-
-* `galloc`, `lalloc`, `aalloc` and `oalloc` each round the requested size as
-  `(size & ~7) + 8`. A request for 8 bytes reserves 16; padding must not become
-  a typed node's readable extent. Zero, overflowing or invalid requests need
-  their own runtime evidence rather than ordinary positive-allocation semantics.
-* `InitNameHash`, `GetHashNameNode` and `GetHashNameNodeExport` contain direct
-  global-pool allocation sequences. They bypass a `galloc` wrapper. Each of the
-  latter two functions has two such sites. Capturing only calls to the four
-  named allocators therefore misses real allocation spans.
-* `select_or_allocate_pool_node` mutates a descriptor through its input pointer.
-  It preserves a previous block's remaining space and can return to an earlier
-  block. A change of current block alone is not an arena reset. Its failure path
-  can invoke a callback; callback reentrancy and a failed selection must remain
-  explicit runtime coverage questions.
-* The retail symbol `CompilerTools_ResetPool` is the optimizer reset operation
-  called `freeoheap` in reconstructed source. Its GC 2.7 entry is `440bb0`.
-  `freeaheap` resets the block pool. `freelheap` resets the local pool only when
-  the 16-bit lock is zero. Observing a locked `freelheap` call must preserve
-  existing local allocation identities.
-* `releasegheap` frees and clears the global pool. `releaseheaps` frees and clears
-  all five pools. Both heap-initialization functions clear descriptors. Their
-  observed invalidation scopes must be represented separately from selection.
-* `CompilerTools_ResetGallocAndPoolMemory` frees and clears the **global** pool,
-  then changes the optimizer allocation size and selects optimizer space with
-  request zero. Its name does not justify treating that selection as optimizer
-  invalidation.
-* `_fn_00441220` references all five pools to collect statistics; its writes are
-  to the caller's result structure. A direct reference is not automatically an
-  allocation or reset site.
-
-The runtime installer guards actual call/return or store sites, including
-original split COFF relocation target identities. The static audit's PE body
-hashes and normalized fields alone are an inventory, not that installation contract.
-The output deliberately retains `allocation_coverage_complete=false` and
-`reset_coverage_complete=false`, even when `unresolved` is empty.
-
-## Reproducing the static proof
+Reproduce the static proof with:
 
 ```text
 python tools/migration/verify_source_arenas.py --tools NATIVE_MWCC_TOOLS --oracle-root ORACLE_ROOT --output NEW_DIRECTORY
 ```
 
-The script runs all three versions, retains complete JSON reports and retail
-listings for every containing function (including the aliased selector through
-its failure-callback reference), and checks the inlined allocation and locked
-reset findings. It records native analyzer and script hashes, commands and exit
-codes. `--compare OTHER_NATIVE_OUTPUT` requires equal complete reports and
-listing bytes from another native host. It never builds a producer or compiles a
-game source. A successful run proves static agreement; it supplies no runtime
-source ancestry or completeness claim.
+It retains complete reports/listings, commands, hashes and exit codes.
+`--compare OTHER_NATIVE_OUTPUT` checks complete reports and listing bytes across
+hosts. It does not build a producer or compile game source; static agreement
+supplies no runtime ancestry claim. The runtime installer additionally guards
+actual split COFF bodies and relocation target/addend identities.
 
-The separate host [allocation lifetime ledger](source-lifetimes.md) consumes
-validated guarded allocation/reset observations through the runtime parser. It does
-not infer runtime coverage from this static inventory.
-
-A further retained split audit is in
-`build/source-guided/source-origin-bridge/arena-split-audit/`. Its `audit.py`
-checks 22 containing bodies per version against untouched V6 retail splits,
-masking only actual COFF relocation words and independently resolving every
-target/addend back to the retail address. The manifest
-`arena-split-guards.json` has SHA-256
-`0d46c8907df2af153283a505ebdcebe46c59d789a927fb61e7d94bfad1c7e2a3`.
-It records five inline and four ordinary allocation commit windows per version,
-with exact result/size registers, plus reset ABIs. The selector's EAX is not a
-reliable success status: runtime observers must validate the actual descriptor
-and returned span, including callback/failure paths. The statistics helper's
-external table lives in writable `.data`, even though that helper only reads it.
-These ignored local artifacts are not guaranteed present in a fresh checkout.
-
-The broader bridge and mutation requirements remain in the
-[source-origin audit](../oracle-source-origin-audit.md) and
-[inline clone audit](../oracle-inline-clone-audit.md).
+Detailed private split evidence is retained in
+`build/source-guided/source-origin-bridge/arena-split-audit/` when present; ignored
+audit artifacts are not guaranteed in a fresh checkout. Bridge requirements and
+causal gaps are described in the [source-origin audit](../oracle-source-origin-audit.md)
+and [inline clone audit](../oracle-inline-clone-audit.md).

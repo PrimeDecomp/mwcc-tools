@@ -1,104 +1,111 @@
 # Allocation lifetimes for source provenance
 
-The native `source_lifetimes` Rust module is an incremental host ledger for
-guarded compiler allocation observations. It is a foundation for the original
-source bridge. The development `source_arenas` parser now connects the guarded
-arena protocol to this ledger. Native fixture validation passes on Windows and
-Linux across all three versions; see the [status](../oracle-source-guided-status.md)
-for exercised paths and limits. The parser alone is not a coverage claim. Existing
-V6 captures have no arena stream and remain indeterminate.
+Use `source_lifetimes` to bind an observed pointer extent to one compiler
+allocation and pool epoch. The `source_arenas` parser supplies validated runtime
+observations and historical queries; start with its [capture and CLI usage](source-arenas.md).
+Neither module establishes initialized node contents, source roles or semantic
+value lifetimes.
 
-The ledger accepts exact observed allocation spans with globally increasing
-capture-local IDs, a pool domain and epoch. Requested payload bytes are separate
-from the allocator's reserved span. A 30-byte request reserving 32 bytes cannot
-authorize a read into its two padding bytes. Neither extent proves initialized
-data, a node type, or a source role.
+For repeated historical queries, prepare the raw arena history once:
+
+```rust
+let prepared = history.prepare();
+let displays = prepared.resolve_many(&queries);
+let receipts = prepared.resolve_references(&queries);
+```
+
+`queries` contains `source_arenas::Query { trace_position, pool, address, extent }`.
+Positions are one-based raw trace lines. `resolve_many` returns display data;
+`resolve_references` returns private `HistoricalReference` receipts with evidence.
+The point-query convenience API remains
+`History::resolve_at(position, pool, address, extent)`.
+
+## Historical queries and prepared captures
+
+`prepare()` revalidates authoritative raw records once and creates an immutable
+capture. Later edits to the public display model do not change it. Cloned
+`PreparedHistory` values share capture identity; preparing the same history again
+creates a different identity.
+
+Each batch orders queries by position, replays one ledger forward, then restores
+input order. Validation cost is shared within the prepared capture, and replay
+is shared within a batch; separate batches start separate replays. Event/stack
+limits bound retained entries and nesting, while memory also depends on record
+sizes. No native throughput guarantee is implied.
+
+A historical query needs a later independent checkpoint reconciling its prefix
+and an observed invalidation establishing the requested pool epoch. Unknown
+initial epochs, padding, active resets, overlapping live spans, missing records,
+unsupported paths and uncheckpointed suffixes remain indeterminate. A valid
+earlier prefix can survive truncation of a later suffix.
+
+Checkpoint counters are sampled before formatting their record. A checkpoint's
+own position is a coverage boundary, not an allocation observation, even if a
+later checkpoint covers it. Reset returns and backend function ends supply
+checkpoints; no compilation-end checkpoint is inferred. Arena-only captures have
+reset-end checkpoints alone.
+
+A `HistoricalReference` records allocation, pool, epoch, offset, extent, query
+position and covering checkpoint. It establishes identity at that historical
+position, not current liveness. `same_allocation` and `same_span` require the same
+prepared capture; foreign receipts return indeterminate evidence. Fields are
+private and no `Deserialize` implementation can import display data as a trusted
+receipt. Serialized query results are display data, not transferable capabilities.
+
+## Direct ledger API
+
+`Ledger` accepts exact observed spans with globally increasing capture-local
+allocation IDs, pool domains and epochs. Requested payload is separate from the
+reserved span: a 30-byte payload reserving 32 bytes cannot authorize reading the
+two padding bytes. Extent alone proves neither initialization nor node type.
 
 `Ledger::resolve(pool, epoch, address, extent)` issues a private
-`AllocationReference` only for one covered live allocation containing the requested
-payload. It records allocation ID, offset, extent and observation event. Receipts
-belong to one ledger/capture, cannot be deserialized into trusted references, and
-cannot be fabricated through their public API. A missing allocation, wrong epoch,
-overlapping reserved spans, lost coverage or exhausted capacity returns explicit
-indeterminate evidence. Cross-domain overlaps taint both affected allocations;
-the ledger never silently replaces an old identity at the same address.
+`AllocationReference` only for one covered live allocation containing the payload
+extent. It records allocation ID, offset, extent and ledger event. Receipts belong
+to one ledger/capture, cannot be fabricated through public fields and cannot be
+deserialized as trusted references.
 
-`same_allocation` and `same_span` compare historical receipts, including receipts
-from before an observed reset. `is_live` separately asks whether a receipt's
-allocation is still live now. Two receipts for the same allocation/span do not
-prove unchanged contents, equal node revisions, transformation equivalence or a
-semantic value lifetime. The original-source bridge still needs immutable tagged
-node observations and actual clone/lowering/replacement edges.
+Missing allocations, wrong epochs, overlapping reserved spans, lost coverage or
+capacity exhaustion return explicit indeterminate evidence. Cross-domain
+overlaps taint both allocations; the ledger never silently replaces an old
+identity at the same address. Malformed spans whose footprint cannot be trusted
+taint all pool coverage until each pool observes a fresh invalidation boundary.
+
+`same_allocation` and `same_span` compare historical receipts, including retired
+epochs. `is_live` separately checks current liveness. Equal allocation/span does
+not prove unchanged contents, equal node revisions or transformation equivalence.
+The source bridge also needs immutable tagged snapshots and actual
+clone/lowering/replacement edges.
 
 ## Coverage and invalidation
 
-Coverage is supplied by an audited producer/parser; successful allocations alone
-cannot establish it. The development parser independently reconciles cumulative
-request, allocation, reset, gap and checkpoint totals, with exact event order,
-request/commit pairing and reset nesting. `begin_pool` cannot erase an earlier gap
-or assign identities to pre-existing nodes.
+An audited producer/parser must supply coverage. Successful allocations alone
+cannot establish it, and `begin_pool` cannot erase a gap or assign identities to
+pre-existing nodes. The runtime parser independently reconciles cumulative event
+counts, exact order, request/commit pairing and reset nesting.
 
-* `lose_coverage` retrospectively invalidates affected receipts throughout the
-  capture, including retired epochs. Use it when an end total reveals missing
-  records whose positions are unknown.
-* `lose_coverage_since` requires a justified earliest affected ledger event.
-  Earlier receipts can remain valid.
-* `lose_coverage_from_now` is only for a precisely located loss beginning now.
-  It must not stand in for an unexplained end-total mismatch.
-* `observe_invalidation` requires an actually observed reset/release boundary and
-  a new epoch. It can establish fresh coverage for that pool's future epoch;
-  it does not repair old receipts or another pool's history. An absent old epoch
-  explicitly represents an observed initial invalidation before any pool scope.
-* `observe_locked_local_reset` represents a verified nonzero-lock `freelheap`
-  observation. It preserves the local epoch and allocations, and repairs no gaps.
+| Operation | Contract |
+| --- | --- |
+| `lose_coverage` | Retrospectively invalidates affected receipts, including retired epochs; use for missing records with unknown positions. |
+| `lose_coverage_since` | Retains earlier evidence only when the earliest affected ledger event is justified. |
+| `lose_coverage_from_now` | Applies only to a precisely located loss beginning now; it cannot explain an unknown end-total mismatch. |
+| `observe_invalidation` | Requires an observed reset/release and a new epoch. It can establish future coverage for that pool, without repairing old receipts or other pools. An absent old epoch represents initial observed invalidation. |
+| `observe_locked_local_reset` | Requires verified nonzero-lock `freelheap`; preserves the local epoch/allocations and repairs no gaps. |
 
-These are observed arena identity boundaries, not automatic claims of physical
-deallocation. Selecting another block, or clearing some other pool's descriptor,
-is insufficient. The [retail arena audit](source-arenas.md) distinguishes those
-operations and the allocator bypasses covered by the new observation contract.
+These are arena identity boundaries, not automatic claims of physical
+deallocation. Block selection or clearing another pool's descriptor is
+insufficient. The [retail audit](source-arenas.md) distinguishes those operations
+and the inline allocator bypasses.
 
-## Historical arena queries
+The ledger has an explicit allocation capacity and never evicts history needed
+to disambiguate receipts. An augmented interval index tracks active reserved
+spans, including nested overlaps, with per-pool active IDs. Ordinary lookup avoids
+scanning historical records; coverage invalidation may intentionally scan them.
 
-`source_arenas::History::resolve_at(position, pool, address, extent)` validates the
-retained raw records and rebuilds the ledger through a one-based raw trace
-position. A later independent checkpoint must reconcile that prefix. Epoch zero
-remains unknown until an observed invalidation establishes coverage for the
-requested pool. Active resets, uncheckpointed suffixes, missing records or totals,
-unsupported paths, allocator padding and overlapping live spans remain
-indeterminate. A known earlier checkpoint can still cover an earlier historical
-observation after a later suffix is truncated.
-
-The checkpoint's counters are sampled before its record is formatted. Its own
-record position is therefore a coverage boundary, not a queryable allocation
-observation, including when a later checkpoint covers that position. There is no
-inferred compilation-end checkpoint. Backend tracing supplies function-end
-checkpoints; an arena-only capture has reset-end checkpoints alone.
-
-The returned allocation ID, epoch, offset and extent describe the requested
-historical position. A later reset can retire that allocation without making the
-historical observation indeterminate. The result does not assert current liveness,
-an original source role or unchanged node contents. Serialized query results are
-display data, not private `AllocationReference` receipts; queries rebuild from raw
-evidence rather than trusting deserialized coverage summaries.
-
-Each query currently clones and revalidates the retained records, then replays
-allocations into a new ledger. Normal work is proportional to retained record
-bytes plus allocation replay and active-index operations; reporting overlaps adds
-the matching spans. Event-count and stack limits bound retained entries and
-nesting; memory still depends on input record sizes. A large batch of node
-queries repeats this work. This API currently serves bounded CLI
-point queries. An original-source bridge resolving thousands of observations
-will need shared validated replay or batch queries before making throughput
-claims. No such optimization or native performance result is implied here.
-
-The history has an explicit allocation capacity and never evicts records that
-could disambiguate old receipts. An augmented interval index covers active
-reserved spans, including nested overlaps; each pool also retains its active IDs.
-Ordinary allocation/lookup avoids scanning historical records. Coverage failures
-can intentionally scan history to invalidate earlier evidence.
-
-Focused tests cover address reuse, payload/padding boundaries, overlapping pools,
-locked reset behavior, stale and foreign receipts, capacity, event/ID errors,
-initial and retrospective gaps, and recovery only through an observed barrier.
-A deterministic 20,000-step test compares the interval index with an independent
-brute-force active-span oracle during nested/cross-domain insertion and retirement.
+Tests cover reuse, payload/padding, cross-pool overlaps, locked resets,
+stale/foreign receipts, capacity, event/ID failures and recovery only at observed
+barriers. A deterministic 20,000-step test compares the active interval index with
+an independent brute-force oracle. Native arena fixtures pass on Windows/Linux
+for all three versions; see [status](../oracle-source-guided-status.md) for the
+exercised paths. Parser availability and allocation receipts alone do not prove
+the source-node bridge; older captures without arena records remain indeterminate.

@@ -1,5 +1,17 @@
 # Native mwcc tools distribution
 
+Download a versioned package and its `.zip.sha256` sidecar from GitHub Releases.
+From a repository checkout, for example:
+
+```text
+gh release download v0.1.0 --pattern 'mwcc-tools-0.1.0-x86_64-pc-windows-msvc.zip*' --dir downloads
+```
+
+Use `x86_64-unknown-linux-gnu` for Linux, and substitute the desired release
+version. Outside a checkout, add `--repo OWNER/REPOSITORY`. Pull requests and
+branch pushes also provide versioned packages as Actions artifacts; these are
+test builds, not published releases.
+
 Add this archive's `bin` directory to PATH, or invoke its `mwcc-tools` executable
 directly. `mwcc-tools --help` lists commands. The native kit guide in
 `docs/oracle-native.md` documents unit compilation, structured checks, register
@@ -32,7 +44,49 @@ redistributing the executable. Verify the `.zip.sha256` sidecar and then the
 individual file hashes in `release.json`. A sidecar detects changed bytes; it is
 not a signature or publisher authentication.
 
-## Building a package from the repository
+## Publish a version
+
+The `Rust tools` workflow tests and audits both host packages before publishing.
+Only a pushed `vVERSION` tag can publish, and `VERSION` must exactly match
+`workspace.package.version` in `Cargo.toml`. A failed or cancelled matrix job
+prevents publication. Build jobs have read-only repository permissions; only the
+tag-only publication job has `contents: write`.
+
+CI installs the pinned toolchain's documentation component to collect its actual
+Rust library notices. `Cargo.lock` uses LF on both hosts so notice hashes agree
+with fresh checkouts.
+
+1. Update the workspace version and lockfile together. Check dependency notices
+   if the lockfile or Rust toolchain changed, then commit the release inputs.
+2. Let the branch's Windows and Linux Actions checks pass. Review their audited
+   packages before tagging the same commit.
+3. Create and push an annotated tag when ready to publish:
+
+   ```text
+   git tag -a v0.1.0 -m "mwcc-tools 0.1.0"
+   git push origin v0.1.0
+   ```
+
+The tag run builds fresh packages named
+`mwcc-tools-VERSION-TARGET.zip` and matching `.zip.sha256` files. It downloads
+both versioned Actions artifacts, checks their hashes, package identities and
+native audit results, and verifies that the remote tag still names the built
+commit. The publication job uses GitHub CLI to create a draft, upload all four
+files, then publish. Versions containing a prerelease suffix are marked as
+prereleases and are not marked latest.
+
+Existing releases are not overwritten. If publication fails after draft creation,
+inspect the draft and failed run; a rerun will not replace it automatically.
+Delete an incomplete draft only after confirming it was never published, then
+rerun the failed job. Do not move a published version tag or replace its assets;
+make a new version instead. Repository release immutability and tag protection
+can enforce that policy.
+
+These steps use [`gh release create --verify-tag`](https://cli.github.com/manual/gh_release_create),
+[`gh release upload`](https://cli.github.com/manual/gh_release_upload) and
+[`gh release edit`](https://cli.github.com/manual/gh_release_edit).
+
+## Build a local package
 
 ```text
 cargo build --locked --release -p mwcc-tools
@@ -49,4 +103,6 @@ the same archive bytes. This does not claim reproducible Rust compilation.
 
 Use `tools/migration/audit_release.py` in the source repository for independent
 archive/metadata checks, extraction and offline execution outside the checkout.
-Release assembly creates local artifacts; publishing them is a separate action.
+Local package assembly does not publish a release. CI's native audit checks
+archive contents, notices and offline execution on each host; it does not run
+private game builds or establish complete producer/runtime validation.

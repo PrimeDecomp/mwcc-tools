@@ -1,7 +1,7 @@
 # GC 2.7 against GC 1.3.2
 
 `config/GC_2_7` is the split and relink of the 2.7 executable (Ver 2.4.7 build 108, `VERSION_GC_2_7` = 7). It is
-carried over from 1.3.2 directly; 2.0 to 2.6 are not built. To add one, insert it before 2.7 in `configure.py`
+carried over from 1.3.2 directly; 2.0 to 2.6 are not built. To add one, insert it before 2.7 in `build_config.rs`
 `VERSIONS` and `include/version.h` and renumber 2.7.
 
 ## How the configuration was made
@@ -57,7 +57,7 @@ The 343, by the source file the function had in 1.3.2:
   `fn_004cfb90`). These choose which callee-saved registers a function uses and how arguments are bound. They are the
   first place to look when 2.7 assigns registers differently from 1.3.2.
 * The PCode opcode numbers are those of 1.3.2: the assembler's mnemonic table maps all 1058 mnemonics to the same
-  `PC_` numbers. `tools/oracle.py`'s opcode names therefore apply.
+  `PC_` numbers. The native oracle report uses the same opcode names.
 
 **Inliner**
 
