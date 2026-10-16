@@ -1,0 +1,198 @@
+# Source search by observed graph objectives
+
+The development Rust API is `mwcc_oracle_core::source_guided`. It provides a shared
+objective evaluator and a bounded source search. Build current `mwcc-tools` and a
+current Rust oracle producer; the pinned migration packages do not include this
+command. Supported producers are `GC_1_3`, `GC_1_3_2` and `GC_2_7`.
+
+```text
+mwcc-tools source-search run plan.json --output search-run --candidates 100 --compilations 100 --seconds 600
+mwcc-tools source-search run plan.json --output search-run --resume --compilations 100
+mwcc-tools source-search replay search-run 1
+```
+
+Commands emit versioned JSON on stdout. Errors go to stderr. Search completion is
+an application status in JSON: a zero process exit is not an objective success.
+Read `status`, the candidate's `evaluation.overall`, its hard `constraints`, and
+`independent_verification`. Every satisfied non-baseline candidate requires a fresh
+compile and a fresh configured semantic check before `verified_success` is emitted.
+If the baseline already satisfies the predicate, the run reports
+`baseline_already_satisfied` and stops.
+
+## Plan format 1
+
+This complete example uses the synthetic `tests/fixtures/source-guided/` source
+directory. Replace the two absolute paths for your installation. The initializer
+edit deliberately changes behavior. Its success is a **mechanism reproducer**,
+not a semantics-preserving source transformation or a RenderParticles discovery.
+
+```json
+{
+  "format_version": 1,
+  "build": {
+    "oracle_root": "F:/path/to/current/oracle",
+    "working_directory": "F:/path/to/mwcc/tests/fixtures/source-guided",
+    "source": "initializer.c",
+    "version": "GC_2_7",
+    "flags": ["-nodefaults", "-proc", "gekko", "-fp", "hardware", "-O4,p"],
+    "from_ninja": null,
+    "timeout_seconds": 60
+  },
+  "contract": {
+    "format_version": 1,
+    "selection": {"link": "source_initializer", "class": 4, "round": 0},
+    "objective": {
+      "kind": "direct_initialization",
+      "value": {"name": "flag", "part": "single", "type_kind": 1, "type_size": 4},
+      "constant": 0,
+      "source_line": null
+    },
+    "relocations": [{"symbol": "observe", "kind": null, "addend": null, "minimum": 1}],
+    "purpose": "mechanism_reproducer"
+  },
+  "transformations": [{
+    "id": "constant-initializer",
+    "family": "initialization",
+    "precondition": "Isolated mechanism experiment; the initializer edit changes behavior.",
+    "edits": [{"find": "unsigned flag = observe(input);", "replacement": "unsigned flag = 0;"}]
+  }],
+  "maximum_depth": 1,
+  "generation_limit": 10,
+  "semantic_check": null,
+  "target": null
+}
+```
+
+Relative manifest paths resolve against the plan's directory. `source` resolves
+against the compiler working directory. To use a game unit, set `from_ninja` to
+its `build.ninja`, use the source spelling from that edge, and set `flags` to `[]`.
+The edge supplies the working directory, ordered flags and compiler version;
+`version` can be null or must agree. The `working_directory` field is still required
+and must exist. Backend, stage, local and CSE traces default on. An explicit
+`traces` object uses `runner::TraceOptions`; `backend` must be true.
+
+Selection uses an exact link name and a zero-based round within the selected
+register class (`0` SPR, `1` CR, `2` VR, `3` FPR, `4` GPR). Object anchors require a
+unique observed complete name, type kind/size and part (`single`, `first_word` or
+`second_word`) in that function before the selected graph. Pointer addresses and
+raw virtual-register numbers are capture-local, so they are not source identities.
+An absent, ambiguous or incomplete anchor gives an indeterminate result.
+
+Each transformation applies all its byte anchors atomically. Every anchor must
+occur exactly once and anchors cannot overlap. Unrelated source bytes, including
+non-UTF-8 bytes, are preserved. `precondition` records the author's justification;
+the harness does not prove a text edit's language-level validity. A path applies
+at most one transformation from each family. Breadth-first generation is bounded
+by `maximum_depth` (at most 16) and `generation_limit`, including the baseline.
+Provide guarded recipes for declarations, initializers, parameter types, wrappers
+or promotion patterns; automatic C++ AST rewrite generation is not implemented.
+
+## Objectives and validity
+
+- `direct_initialization`: observe a constant LI initializing the anchored value
+  directly in its final assigned register, with no surviving intermediate MR. It
+  checks the original initializer and the final allocation round, and permits
+  later assignments. Current recognition covers a direct LI or one local LI/MR
+  pair for VR/FPR/GPR; other forms remain indeterminate.
+- `change_range_category`: use `value` and `target` instead of `constant` and
+  `source_line`. The category must observably change to `physical`,
+  `initial_object_range`, `before_coalescing_window`, `inside_coalescing_window`
+  or `after_coalescing_window`, preserving normalized boundary PCode and final
+  instruction/relocation structure. These are allocator number ranges, not source
+  roles such as call-result or address temporaries.
+- `eliminate_temporary`: takes `value`. It deliberately remains indeterminate
+  until complete semantic lifetime evidence can justify elimination. Missing nodes
+  and inferred edge changes do not prove that a temporary disappeared.
+
+All objectives require stock-equivalent oracle objects, matching compiler
+identities/flags/options, captured source hashes, complete selected function graph
+coverage, and all requested symbolic relocations. Relocation requirements count
+within the selected function; null kind/addend accepts any kind/addend for that
+symbol. Missing evidence is distinct from an observed failed predicate.
+
+Set `purpose` to `source_transformation` for a candidate intended to preserve
+behavior. Configure a checker, for example:
+
+```json
+{
+  "program": "F:/checks/validate-particle-candidate.exe",
+  "arguments": ["{baseline_source}", "{baseline_object}", "{source}", "{object}"],
+  "inputs": ["F:/checks/particle-cases.json"],
+  "timeout_seconds": 60
+}
+```
+
+The executable runs directly, without a shell, from the compiler working directory.
+Both baseline and candidate must return exit code zero within the timeout. Design
+the checker to establish the required behavior; stock equivalence only compares
+oracle and stock compilation of the same source. Declare checker dependencies
+(scripts, imported modules, test data) in `inputs`; existing file arguments are
+also hashed. A missing checker prevents source-transformation success. Results
+record whether semantics were unchecked mechanism-only or a configured check
+passed; a configured check is not a formal equivalence proof.
+
+An optional `target: {"object": "target.o", "link": "exact_target_link"}` records
+final byte mismatch and relocation equality separately. That mismatch is not the
+graph objective. `score.eligible` requires all hard constraints; objective cost is
+0 for observed satisfaction, 1 for observed failure, and null for indeterminate.
+`ranking` orders eligible candidates first and known objective costs before unknown
+ones. Edge-change counts are inferred diagnostics with explicit unclassified edges.
+
+## Cache, grouping and retained results
+
+`progress.json` is the atomic checkpoint. `plan.json` stores normalized paths,
+`sources/` stores every candidate's exact bytes, `candidates/` stores evaluations,
+and `groups` preserves every source representative of a relevant-state fingerprint.
+Grouping never discards source representatives or their future transformations.
+Fingerprints normalize known pointer/register identities but retain graph-only
+nodes, degrees, origin/range evidence, selected instructions, symbolic relocations
+and allocated data. Unsupported operand forms disable grouping. Conservative
+graph-only numbering can miss equivalent states.
+
+Compilation caching is separate. Every lookup runs dependency and preprocessing
+scans with **both** oracle and stock compilers. Keys include both preprocessed
+hashes, raw dependency bytes, source identity, ordered flags, working directory,
+trace options, compiler/DLL/loader hashes and a digest of the inherited environment.
+Environment values are not written into results. Source variants use stable
+content-addressed paths; private-baseline output is calibrated against an original
+context compile. A second scan rejects inputs changing during compilation.
+Time-dependent macros disable reuse. Response files and output/preprocessing modes
+are rejected. Failed compiles are not reusable artifacts.
+
+`cache/` contains captures and objects, `scans/` retains each input scan,
+`verification/` contains independent compiles, and `input-files/` retains dependency
+and runtime bytes by hash. Artifact integrity is checked on load. Analyzer, checker
+inputs and target identities also bind resumable analysis. The analyzer executable
+is hashed once per invocation rather than copied into every compiler cache entry.
+
+Budgets apply per invocation, including baseline calibration and independent
+verification. `--compilations` counts attempted source-unit builds (each includes
+oracle and stock); preprocessing/checker subprocesses do not consume that count
+but do consume time. Baseline calibration needs two builds; a new successful
+candidate normally needs one build and one verification build. Time limits are
+checked between hashing/setup operations and while waiting for subprocesses.
+Cancellation terminates active compiler/checker process trees. Create the cancel
+file (default `search-run/CANCEL`) to stop; remove it before resuming. Pending
+candidates are retried. A successful run is terminal; use independent replay or
+a new output directory for further work.
+
+Resume and replay require unchanged source, plan, relevant build inputs and analysis identity.
+Keep the analyzer executable with the case; rebuilding it changes that identity.
+Use a fresh directory after those change. Replay retains saved outcomes and makes
+three fresh builds: original context, private baseline and candidate. It rechecks
+stock equality, calibration, objectives and configured semantics. Replay requires
+both baseline and candidate-only dependencies to match retained hashes; restore them in an isolated
+checkout if needed. Retained bytes are available, but automatic portable repro
+export/restoration is not implemented.
+
+## Rust entry points
+
+Use `objective::{Contract, Input, evaluate}` for the shared evidence-aware predicate,
+`state::{graph, snapshot, fingerprint}` for observed state, `inputs::capture` for
+compiler-input identity, and `search::{load_plan, run, replay}` for orchestration.
+These native typed APIs and strict versioned JSON are the supported development
+interface. Legacy Python API compatibility is not required.
+
+The mechanism-preserving reducer, matched-source index, complete exact backend
+origins/lifetimes and the useful full RenderParticles source experiment remain
+open. See the [implementation status](../oracle-source-guided-status.md).

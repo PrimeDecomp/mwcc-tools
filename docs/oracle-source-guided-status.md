@@ -93,10 +93,60 @@ and `build/source-guided/categories/`
 `/home/henrique/.cache/mwcc-graph-probes/` and
 `/home/henrique/.cache/mwcc-category-probes/`.
 
+## Native source-search harness
+
+The new [`source_guided` API and `source-search` command](oracle/source-search.md)
+connect observed object/range evidence to a shared objective evaluator. Strict
+versioned plans select an exact function/class/round, unique named object/type/part,
+required symbolic relocations and mechanism-only or checked source-transformation
+purpose. Predicates currently recognize direct constant initialization through
+final allocation and observed range-category changes with instruction/relocation
+preservation. They require complete selected-function graph counts, stock object
+equality and matching capture context. Elimination remains indeterminate.
+
+The harness applies bounded atomic source recipes, scores eligible objectives,
+records inferred graph changes separately from final target mismatch, groups
+relevant compiler state and retains every source representative for further
+expansion. Exact compilation caching is separate: oracle and stock dependency/
+preprocessing scans, raw headers, compiler/DLL/loader files, flags, options, working
+directory and environment hashes bind artifacts. Input bytes are retained and
+rescanned after compilation. Analyzer identity is checked once per invocation.
+Private-baseline compilation is calibrated against the original context.
+
+Atomic checkpoints support budgets, cancellation and resume without advancing past
+a pending candidate. Compiler/checker process trees are terminated on cancellation.
+Satisfied candidates require a fresh independent compile and semantic check when
+configured. Replay makes three fresh builds and rechecks the predicate. Source
+transformations without semantic checks cannot succeed; mechanism-only outcomes
+are explicitly labeled. Checker script/data dependencies must be declared.
+
+Synthetic live tests cover syntax variants reducing to one relevant compiler state,
+actual exact-source cache hits, changed-header invalidation, pending verification
+across resume, independent replay, missing semantic checks, cancellation and saved
+input corruption. The successful constant-initializer fixture deliberately changes
+behavior. It proves orchestration and evidence gates, not a semantics-preserving
+transformation or a useful RenderParticles discovery. Recipes are guarded text
+edits; automatic language-aware rewrite generation and portable repro export are
+not implemented. Native help and the kit source guide use the new structured API.
+Pinned migration packages remain unchanged.
+
 ## Validation
 
-106 workspace tests pass on Windows and Linux, with seven compiler-backed tests
-left opt-in. Retail coalescer/counter rewrite tests were also run on both hosts;
+112 workspace tests pass on Windows and Linux, with eight compiler-backed tests
+left opt-in. The new live source-search test was also run on both hosts across all
+three supported versions. It exercises relevant-state grouping, real cache hits,
+header invalidation, verification across resume, independent replay, semantic
+evidence gates, cancellation and retained-input integrity. Native CLI run/replay
+also passes on both hosts using the guide's mechanism example. Six offline tests
+cover objective gates and uncertainty, original-initializer/final-color tracking,
+ambiguous/missing origins, data-sensitive state grouping, atomic byte-preserving
+edits and actual dependency path identities.
+Final source-search proofs are retained at
+`build/source-guided/search-probes/windows-final-harness/source-search-70XrAk`
+and `/home/henrique/.cache/mwcc-source-search-proofs-final-harness/source-search-gu1EGK`.
+Both include candidate-only header drift rejection during replay. Full-suite and
+live logs are under `build/source-guided/search-probes/*-final-harness-*.log`.
+Retail coalescer/counter rewrite tests were also run on both hosts;
 they check all three versions, exact current rewrites against retained runtime
 objects, unchanged neighboring sections/relocations, foreign call targets and
 rejection of changed code/layout, off-site function changes and relocation targets.
@@ -153,15 +203,14 @@ overhead/throughput benchmark remains open.
 | Reproducible cases/contracts | Capture and label the three actual mechanisms, retain the full RenderParticles case, and finish identity/provenance/objective/build-input contracts |
 | Backend provenance | Complete source-role/object and leaf/inline provenance beyond guarded object bindings and allocator ranges, justify semantic lifetime bindings for ambiguous generations, and close remaining alias/coverage gaps and rare coalescing cases |
 | Correspondence | Add lifecycle/provenance anchors, generations, observed merges/replacements and justified elimination; extend phase selection to newly captured backend phases |
-| Source search | Shared objective evaluator, hard constraints, bounded source transformations, exact input cache, compiler-state fingerprints, budgets/cancellation/resume and independently verified successful candidates |
+| Source search | Capture the actual requested mechanisms, extend precise provenance/objective recognition, add language-aware recipes and demonstrate checked useful transformations in the full RenderParticles case; the bounded native harness is implemented |
 | Reduction | Reuse the evaluator for deterministic mechanism-preserving reduction, rebind identities, reject indeterminate results and retest discoveries in RenderParticles |
 | Matched-source index | Coverage-aware trace/source index and reproducible queries/examples feeding the harness |
 | Delivery | Compiler-version/platform checks, trace overhead/search throughput measurements, native documentation/kit/schema updates and the complete RenderParticles investigation |
 
-The next implementation step is to connect observed object/range evidence to
-correspondence and the graph-directed harness while completing exact backend
-expression/inline and source-role evidence, including semantic lifetime binding for
-ambiguous generations. Then implement reduction and the
+The next implementation step is to complete exact backend expression/inline and
+source-role evidence, including semantic lifetime binding for ambiguous generations,
+and apply the harness to the actual mechanisms. Then implement reduction and the
 matched-source index using the shared evaluator. Capture and label the three
 requested real mechanisms and complete the RenderParticles loop. Keep the full
 roadmap scope: the implemented provenance components do not complete any of the

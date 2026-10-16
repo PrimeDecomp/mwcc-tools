@@ -134,6 +134,61 @@ separately. Rebuild both tools and common hooks for the current internal callbac
 `mwcc-tools provenance audit-counters --root ORACLE_ROOT --version GC_2_7` emits a
 native audit of the pinned image's actual counter references and remaining gaps.
 
+## Search source variants against a graph objective (development)
+
+Build current native tools and the current Rust oracle producer. This command is
+newer than the pinned migration kit executable:
+
+```text
+mwcc-tools source-search run plan.json --output particle-search --candidates 100 --compilations 100 --seconds 600
+mwcc-tools source-search run plan.json --output particle-search --resume
+mwcc-tools source-search replay particle-search 1
+```
+
+Use the strict format-1 plan from `docs/oracle/source-search.md` in the oracle
+source checkout. Its `build` names the oracle root, working directory, source,
+compiler version, timeout and either explicit ordered flags or a Ninja file.
+For a game edge, use `from_ninja`, its source spelling and `flags: []`; the edge
+supplies the real version/flags. `contract` selects an exact link, register class
+and zero-based class round, a unique observed object name/type/part, an objective,
+required symbolic relocations and a purpose. `transformations` records identified
+families, preconditions and atomic exact-anchor edits. Depth and generation limits
+bound exploration. Use these structured inputs rather than wrapping report text.
+
+Available predicates are `direct_initialization`, `change_range_category` and
+`eliminate_temporary`. Direct initialization checks a constant LI and removal of
+the intermediate copy through final allocation. Category changes must preserve
+normalized instructions and relocations. Elimination currently stays indeterminate:
+an unmatched graph node is insufficient evidence. Range categories describe
+allocator number ranges, not semantic source roles.
+
+Require `purpose: "source_transformation"` and configure a semantic-check executable
+with arguments using `{source}`, `{object}`, `{baseline_source}` and
+`{baseline_object}`. Declare its script/test-data dependencies in `inputs` and a
+positive `timeout_seconds`. It must actually check the required behavior and exit
+nonzero on failure. Both baseline and candidate are checked. Stock compiler object
+equality checks the instrumentation, not semantic equivalence between variants.
+`mechanism_reproducer` permits unchecked examples, explicitly labeled as such.
+
+Read `status`, `evaluation.overall`, `constraints`, `score`, `graph_changes` and
+`independent_verification`. A zero command exit or improved final mismatch alone
+does not establish success. Known objective costs rank eligible candidates;
+indeterminate evidence never wins. A successful candidate is freshly compiled and
+rechecked before `verified_success`. Optional target-object mismatch is separate.
+
+`progress.json` saves the queue, evaluations and every source representative of
+each relevant compiler state. Exact compilation reuse separately hashes both
+compiler input scans, raw dependencies, runtime files, flags and environment.
+Header edits invalidate it even if preprocessing produces identical code. Sources,
+objects, traces, dependency/runtime bytes and independent verification artifacts
+remain in the run directory. Do not modify these saved inputs. Remove the default
+`particle-search/CANCEL` file before resuming a cancelled run. Changed source/build
+context requires a new output directory; replay requires matching dependencies.
+
+These APIs are under development. The reducer, matched-source index and a useful
+full RenderParticles source transformation are not complete. A synthetic successful
+initializer experiment deliberately changes behavior and is only a mechanism test.
+
 ## Calibrate inline decisions
 
 ```text

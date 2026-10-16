@@ -20,6 +20,9 @@ pub enum EvidenceGap {
     MissingGraphNode,
     MissingRelocationEvidence,
     MissingSemanticCheck,
+    ObjectivePredicate,
+    CompilationCoverage,
+    BuildInputCoverage,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

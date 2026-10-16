@@ -1,7 +1,7 @@
 //! Isolated compiler execution shared by interactive analysis and corpus checks.
 use crate::{elf, process_tree, version::Version};
 use anyhow::{Context, Result, bail, ensure};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
     collections::BTreeMap,
@@ -27,7 +27,8 @@ const TRACE_ENV: &[&str] = &[
     "MWCC_ORACLE_IRO_DUMP",
 ];
 
-#[derive(Clone, Debug, Default, Serialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
 pub struct TraceOptions {
     pub backend: bool,
     pub schedule: bool,
@@ -62,7 +63,7 @@ impl TraceOptions {
     }
 }
 
-#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "status", rename_all = "snake_case")]
 pub enum CheckStatus {
     Verified,
@@ -124,7 +125,7 @@ pub struct CompileRequest {
     pub timeout: Duration,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Compilation {
     pub version: Version,
     pub source: String,
@@ -151,7 +152,16 @@ pub struct Execution {
     pub exit_code: Option<i32>,
     pub timed_out: bool,
     pub diagnostics: String,
+    pub cancelled: bool,
 }
+#[derive(Debug)]
+pub struct Cancelled;
+impl std::fmt::Display for Cancelled {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("compiler operation cancelled")
+    }
+}
+impl std::error::Error for Cancelled {}
 
 pub fn launcher(root: &Path, executable: &Path) -> Result<Command> {
     launcher_with_override(root, executable, std::env::var_os("MWCC_WIBO"))
@@ -191,6 +201,15 @@ pub struct Invocation<'a> {
 }
 
 pub fn execute(invocation: Invocation<'_>) -> Result<Execution> {
+    execute_controlled(invocation, &|| false)
+}
+pub fn execute_controlled(
+    invocation: Invocation<'_>,
+    cancel: &dyn Fn() -> bool,
+) -> Result<Execution> {
+    if cancel() {
+        return Err(Cancelled.into());
+    }
     let Invocation {
         root,
         executable,
@@ -226,25 +245,31 @@ pub fn execute(invocation: Invocation<'_>) -> Result<Execution> {
     let mut child = command
         .spawn()
         .with_context(|| format!("launch {}", executable.display()))?;
-    let (status, timed_out) = wait_for_compiler(&mut child, timeout)?;
+    let (status, timed_out, cancelled) = wait_controlled(&mut child, timeout, cancel)?;
     let bytes = fs::read(log.path())?;
     let diagnostics = bytes.iter().map(|b| char::from(*b)).collect();
     Ok(Execution {
         exit_code: status.code(),
         timed_out,
         diagnostics,
+        cancelled,
     })
 }
 
-fn wait_for_compiler(child: &mut Child, timeout: Duration) -> Result<(ExitStatus, bool)> {
+fn wait_controlled(
+    child: &mut Child,
+    timeout: Duration,
+    cancel: &dyn Fn() -> bool,
+) -> Result<(ExitStatus, bool, bool)> {
     let began = Instant::now();
     loop {
         if let Some(status) = child.try_wait()? {
-            return Ok((status, false));
+            return Ok((status, false, false));
         }
-        if began.elapsed() >= timeout {
+        let cancelled = cancel();
+        if cancelled || began.elapsed() >= timeout {
             process_tree::terminate(child)?;
-            return Ok((child.wait()?, true));
+            return Ok((child.wait()?, !cancelled, cancelled));
         }
         thread::sleep(Duration::from_millis(10));
     }
@@ -259,7 +284,7 @@ fn absolute(base: &Path, path: &Path) -> Result<PathBuf> {
     fs::canonicalize(&full).with_context(|| format!("resolve {}", full.display()))
 }
 
-fn apply_overrides(
+pub(crate) fn apply_overrides(
     request: &CompileRequest,
     scratch: &Path,
     flags: &mut Vec<String>,
@@ -388,6 +413,12 @@ fn patched_copy(path: &Path, destination: &Path, request: &CompileRequest) -> Re
 }
 
 pub fn compile(request: &CompileRequest) -> Result<Compilation> {
+    compile_controlled(request, &|| false)
+}
+pub fn compile_controlled(
+    request: &CompileRequest,
+    cancel: &dyn Fn() -> bool,
+) -> Result<Compilation> {
     let root = fs::canonicalize(&request.root).context("oracle root does not exist")?;
     let relative_oracle = format!("build/{}/oracle/mwcceppc.exe", request.version.name());
     let mut oracle = root.join(&relative_oracle);
@@ -439,17 +470,23 @@ pub fn compile(request: &CompileRequest) -> Result<Compilation> {
     );
     let trace_path = scratch.path().join("trace.txt");
     let obj_path = scratch.path().join("oracle.o");
-    let run = execute(Invocation {
-        root: &root,
-        executable: &oracle,
-        flags: &flags,
-        source: &source,
-        directory: &request.working_directory,
-        output: &obj_path,
-        trace_file: &trace_path,
-        options: &request.options,
-        timeout: request.timeout,
-    })?;
+    let run = execute_controlled(
+        Invocation {
+            root: &root,
+            executable: &oracle,
+            flags: &flags,
+            source: &source,
+            directory: &request.working_directory,
+            output: &obj_path,
+            trace_file: &trace_path,
+            options: &request.options,
+            timeout: request.timeout,
+        },
+        cancel,
+    )?;
+    if run.cancelled {
+        return Err(Cancelled.into());
+    }
     if run.timed_out {
         bail!(
             "oracle compiler timed out after {} seconds\n{}",
@@ -487,17 +524,23 @@ pub fn compile(request: &CompileRequest) -> Result<Compilation> {
         CheckStatus::OriginalUnavailable
     } else {
         let other = scratch.path().join("original.o");
-        let run = execute(Invocation {
-            root: &root,
-            executable: &original,
-            flags: &flags,
-            source: &source,
-            directory: &request.working_directory,
-            output: &other,
-            trace_file: &scratch.path().join("original.trace"),
-            options: &TraceOptions::default(),
-            timeout: request.timeout,
-        })?;
+        let run = execute_controlled(
+            Invocation {
+                root: &root,
+                executable: &original,
+                flags: &flags,
+                source: &source,
+                directory: &request.working_directory,
+                output: &other,
+                trace_file: &scratch.path().join("original.trace"),
+                options: &TraceOptions::default(),
+                timeout: request.timeout,
+            },
+            cancel,
+        )?;
+        if run.cancelled {
+            return Err(Cancelled.into());
+        }
         if run.timed_out || run.exit_code != Some(0) || !other.is_file() {
             CheckStatus::OriginalFailed {
                 exit_code: run.exit_code,
@@ -542,73 +585,77 @@ pub fn compile(request: &CompileRequest) -> Result<Compilation> {
 mod tests {
     use super::*;
     #[test]
-    fn compiler_timeout_stops_descendants_before_reporting_completion() {
-        let scratch = tempfile::tempdir().unwrap();
-        let marker = scratch.path().join("late-write");
-        let ready = scratch.path().join("ready");
-        #[cfg(unix)]
-        let mut command = {
-            let mut command = Command::new("/bin/sh");
-            command
-                .args([
-                    "-c",
-                    "( sleep 2; printf leaked > \"$1\" ) & printf ready > \"$2\"; wait",
-                    "compiler-timeout-test",
-                ])
-                .arg(&marker)
-                .arg(&ready);
-            command
-        };
-        #[cfg(windows)]
-        let mut command = {
-            let powershell = PathBuf::from(std::env::var_os("SystemRoot").unwrap())
-                .join("System32/WindowsPowerShell/v1.0/powershell.exe");
-            let quote = |path: &Path| path.to_string_lossy().replace('\'', "''");
-            let child = scratch.path().join("child.ps1");
-            let parent = scratch.path().join("parent.ps1");
-            fs::write(
-                &child,
-                format!(
-                    "Start-Sleep -Seconds 2\nSet-Content -LiteralPath '{}' -Value leaked\n",
-                    quote(&marker)
-                ),
-            )
-            .unwrap();
-            fs::write(&parent, format!("Start-Process -FilePath '{}' -WindowStyle Hidden -ArgumentList '-NoProfile -NonInteractive -File \"{}\"' | Out-Null\nSet-Content -LiteralPath '{}' -Value ready\nStart-Sleep -Seconds 20\n", quote(&powershell), quote(&child), quote(&ready))).unwrap();
-            let mut command = Command::new(powershell);
-            command
-                .args([
-                    "-NoLogo",
-                    "-NoProfile",
-                    "-NonInteractive",
-                    "-ExecutionPolicy",
-                    "Bypass",
-                    "-File",
-                ])
-                .arg(parent);
-            command
-        };
-        process_tree::prepare(&mut command);
-        let mut child = command
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
-            .unwrap();
-        let began = Instant::now();
-        while !ready.exists() && began.elapsed() < Duration::from_secs(10) {
-            thread::sleep(Duration::from_millis(10));
+    fn compiler_timeout_or_cancellation_stops_descendants_before_reporting_completion() {
+        for cancellation in [false, true] {
+            let scratch = tempfile::tempdir().unwrap();
+            let marker = scratch.path().join("late-write");
+            let ready = scratch.path().join("ready");
+            #[cfg(unix)]
+            let mut command = {
+                let mut command = Command::new("/bin/sh");
+                command
+                    .args([
+                        "-c",
+                        "( sleep 2; printf leaked > \"$1\" ) & printf ready > \"$2\"; wait",
+                        "compiler-timeout-test",
+                    ])
+                    .arg(&marker)
+                    .arg(&ready);
+                command
+            };
+            #[cfg(windows)]
+            let mut command = {
+                let powershell = PathBuf::from(std::env::var_os("SystemRoot").unwrap())
+                    .join("System32/WindowsPowerShell/v1.0/powershell.exe");
+                let quote = |path: &Path| path.to_string_lossy().replace('\'', "''");
+                let child = scratch.path().join("child.ps1");
+                let parent = scratch.path().join("parent.ps1");
+                fs::write(
+                    &child,
+                    format!(
+                        "Start-Sleep -Seconds 2\nSet-Content -LiteralPath '{}' -Value leaked\n",
+                        quote(&marker)
+                    ),
+                )
+                .unwrap();
+                fs::write(&parent, format!("Start-Process -FilePath '{}' -WindowStyle Hidden -ArgumentList '-NoProfile -NonInteractive -File \"{}\"' | Out-Null\nSet-Content -LiteralPath '{}' -Value ready\nStart-Sleep -Seconds 20\n", quote(&powershell), quote(&child), quote(&ready))).unwrap();
+                let mut command = Command::new(powershell);
+                command
+                    .args([
+                        "-NoLogo",
+                        "-NoProfile",
+                        "-NonInteractive",
+                        "-ExecutionPolicy",
+                        "Bypass",
+                        "-File",
+                    ])
+                    .arg(parent);
+                command
+            };
+            process_tree::prepare(&mut command);
+            let mut child = command
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn()
+                .unwrap();
+            let began = Instant::now();
+            while !ready.exists() && began.elapsed() < Duration::from_secs(10) {
+                thread::sleep(Duration::from_millis(10));
+            }
+            let was_ready = ready.exists();
+            let (status, timed_out, cancelled) =
+                wait_controlled(&mut child, Duration::from_millis(20), &|| cancellation).unwrap();
+            assert!(was_ready, "compiler did not start its descendant");
+            assert_eq!(timed_out, !cancellation);
+            assert_eq!(cancelled, cancellation);
+            assert!(!status.success());
+            assert!(child.try_wait().unwrap().is_some());
+            thread::sleep(Duration::from_secs(3));
+            assert!(
+                !marker.exists(),
+                "compiler descendant wrote after timeout was reported"
+            );
         }
-        let was_ready = ready.exists();
-        let (status, timed_out) = wait_for_compiler(&mut child, Duration::from_millis(20)).unwrap();
-        assert!(was_ready, "compiler did not start its descendant");
-        assert!(timed_out);
-        assert!(!status.success());
-        assert!(child.try_wait().unwrap().is_some());
-        thread::sleep(Duration::from_secs(3));
-        assert!(
-            !marker.exists(),
-            "compiler descendant wrote after timeout was reported"
-        );
     }
     #[test]
     fn invalid_limit_patch_is_atomic() {

@@ -45,6 +45,7 @@ pub mod report;
 pub mod runner;
 pub mod schedule;
 pub mod sequence;
+pub mod source_guided;
 pub mod split;
 mod temporary;
 pub mod trace;

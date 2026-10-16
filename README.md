@@ -162,8 +162,10 @@ target with `rustup target add i686-pc-windows-msvc`, then build `build/GC_1_3_2
 This source-build mode requires rustc; ordinary host analysis does not require the 32-bit target.
 `--oracle --producer c` selects the retained C rollback, and regeneration preserves that choice.
 `build-hooks OUTPUT` builds and checks the standalone hook object; add `--trace-shim` for the separate writer. `RUSTC` or `--rustc` selects its compiler.
-The [source-guided graph-search roadmap](docs/oracle-source-guided-search.md) is scheduled after migration completion,
-starting with backend provenance/coalescing explanations and graph-directed C++ variant search.
+The [source-guided graph-search roadmap](docs/oracle-source-guided-search.md) is being implemented after migration.
+Current development tools expose [backend provenance](docs/oracle/provenance.md) and a native
+[graph-directed source search API](docs/oracle/source-search.md). The reducer, matched-source index and
+complete source/lifetime provenance remain open; see [implementation status](docs/oracle-source-guided-status.md).
 
 The [audited benchmarks](docs/oracle-rust-benchmarks.md) separate analysis/search performance from compiler runtime
 and report the memory tradeoffs. `package-release OUTPUT.zip --binary FILE --target TARGET` creates a native

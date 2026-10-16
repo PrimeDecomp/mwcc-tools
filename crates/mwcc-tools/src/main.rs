@@ -15,6 +15,7 @@ mod header_impact_cli;
 mod kit_cli;
 mod provenance_cli;
 mod release_cli;
+mod source_search_cli;
 mod tu_cli;
 
 struct ParsedCompile {
@@ -717,6 +718,8 @@ fn help() {
   oracle regdiff --project DIR --unit NAME --function QUERY [--full] [--json]
   colouring verify|target|force|search|replay|remap [SOURCE | --load PREFIX] [options]
   colouring unit --project DIR --unit NAME COMMAND [options]
+  source-search run PLAN --output DIR [--resume] [--candidates N] [--compilations N] [--seconds N] [--cancel-file FILE]
+  source-search replay DIR CANDIDATE_ID
   inline-diff A [B] [--from-ninja FILE] [--target [DIR]] [--all] [--json]
   inline-window --from-ninja FILE UNIT... [--target DIR] [--verbose] [--json]
   data-diff SOURCE [--from-ninja FILE] [--target [DIR]] [--section NAME] [--all] [--json]
@@ -957,6 +960,7 @@ fn run() -> Result<()> {
         Some("inline-window") => tu_cli::inline_window(&args[1..])?,
         Some("data-diff") => tu_cli::data_diff(&args[1..])?,
         Some("header-impact") => header_impact_cli::run(&args[1..])?,
+        Some("source-search") => source_search_cli::run(&args[1..])?,
         Some("inline-calibrate") => calibrate_cli::run(&args[1..])?,
         Some(
             "pe" | "implib" | "rsrc2res" | "split" | "link" | "compare" | "locate" | "bindfrom"

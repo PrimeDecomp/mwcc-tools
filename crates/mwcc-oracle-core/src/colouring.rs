@@ -344,7 +344,7 @@ pub fn select(
     })
 }
 
-fn final_colours(round: &Round, colours: &mut BTreeMap<u32, i32>) {
+pub fn final_colours(round: &Round, colours: &mut BTreeMap<u32, i32>) {
     for (v, node) in &round.nodes {
         if colours.contains_key(v) || node.flags & 4 == 0 {
             continue;
