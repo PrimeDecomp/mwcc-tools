@@ -1,6 +1,7 @@
 //! The oracle's host-side data model and analysis. Compiler pointers are opaque
 //! trace identities; this library never dereferences them.
 pub mod allocation;
+pub mod allocation_category;
 pub mod backend_audit;
 pub mod backend_probe;
 pub mod blocks;

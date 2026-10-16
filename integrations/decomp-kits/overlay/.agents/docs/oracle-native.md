@@ -120,6 +120,17 @@ semantic identities. Missing records do not
 prove elimination. Consume the structured decisions and coverage rather than
 extracting explanations from report text.
 
+`history.functions[].births[].object` now supplies observed single/pair object
+bindings, type/storage information and byte-preserving names at the audited sites.
+Require known, complete names and a unique relevant binding before using one as a
+source anchor. `graphs.graphs[].nodes[].range_category` describes the actual retail
+allocation range, with evidence backed by `range_bounds` and per-function range
+markers. Range categories distinguish initial objects, values before/inside/after
+the coalescing window and physical registers; they do not identify an address or
+call-result temporary by themselves. Some paths, including the `-O0` reuse fixture,
+omit range markers and remain indeterminate. Check range and value-binding evidence
+separately. Rebuild both tools and common hooks for the current internal callback ABI.
+
 `mwcc-tools provenance audit-counters --root ORACLE_ROOT --version GC_2_7` emits a
 native audit of the pinned image's actual counter references and remaining gaps.
 

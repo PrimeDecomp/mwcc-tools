@@ -42,7 +42,7 @@ context and confirmed union-parent writes.
 
 Native `provenance audit-counters` now identifies every direct PE counter reference
 in the three pinned images. The constructor observes 570/571/578 actual writes,
-plus two function-context sites per version, using fixed-size call islands. It
+plus two function-context and two range-marker sites per version, using fixed-size call islands. It
 checks complete retail container bytes/relocation layouts and write targets;
 original instruction offsets, section sizes, symbols and jump tables stay fixed.
 The islands execute the original writes, not a reimplementation of allocation.
@@ -54,6 +54,16 @@ rewinds and high-water restores. Orphan writes, discontinuities, missing functio
 ends and unsupported schemas cannot establish complete direct-counter capture.
 Semantic categories, precise leaf/inline origins and semantic lifetime binding remain
 incomplete; direct PE-reference coverage is not a complete alias-analysis proof.
+
+Guarded single-register/pair creation sites now attach observed object and
+variable-info identities, type/storage information, flags before binding, and
+byte-preserving known/complete names. Completed initial-range/window markers and
+current graph bounds supply typed `range_category` evidence. These are actual
+allocator number ranges, separate from source roles such as address/call-result
+temporaries. Range marker totals, counter consistency and stale/overlapping bounds
+are checked; paths such as `-O0` without markers remain indeterminate.
+The internal counter descriptor now uses a versioned callback ABI; stale common
+hooks fail linking with a rebuild diagnostic.
 
 The graph hook additionally observes current instructions and graph membership
 immediately before retail simplification. Snapshots retain actual visibility,
@@ -76,14 +86,16 @@ Capture/disassembly evidence is retained under
 `build/source-guided/backend-audit/`. The capture helper records compiler/function
 hashes and instruction guards and is explicitly a development audit, not a product
 runtime dependency. Runtime proofs are retained under `build/source-guided/probes/`
-and the newer `build/source-guided/counters/` and `build/source-guided/graphs/`
+and the newer `build/source-guided/counters/`, `build/source-guided/graphs/`
+and `build/source-guided/categories/`
 (Windows), with corresponding Linux proofs under
 `/home/henrique/.cache/mwcc-counter-probes/` and
-`/home/henrique/.cache/mwcc-graph-probes/`.
+`/home/henrique/.cache/mwcc-graph-probes/` and
+`/home/henrique/.cache/mwcc-category-probes/`.
 
 ## Validation
 
-102 workspace tests pass on Windows and Linux, with seven compiler-backed tests
+106 workspace tests pass on Windows and Linux, with seven compiler-backed tests
 left opt-in. Retail coalescer/counter rewrite tests were also run on both hosts;
 they check all three versions, exact current rewrites against retained runtime
 objects, unchanged neighboring sections/relocations, foreign call targets and
@@ -98,6 +110,11 @@ Five graph-history tests cover actual-phase visibility, reused/future generation
 reset epochs, merge chains, missing contributor births, class-specific boundaries,
 missing snapshots and inconsistent or partial captures. A CLI test checks that
 link-name filtering keeps graph and function-coverage views aligned.
+Four allocation-category tests cover inclusive boundaries, missing/stale range
+evidence, object pair parts and byte names, plus graph/coalescer physical-boundary
+agreement. This caught and fixed an early graph-hook bug: physical limits can
+initialize after generator entry and must be read live. Older captures whose
+cached zero disagrees with their coalescer header now remain indeterminate.
 Five comparison tests
 cover graph-only nodes, boundary edges, degree discrepancies, majority-vote
 ambiguity, colliding targets, physical projections, changed rounds and absent
@@ -105,16 +122,21 @@ snapshots. A new native CLI test verifies selectors, version-2 results and error
 output. Existing allocation/search/decoder fixtures continue to pass; legacy remap
 prose/JSON parity is not required.
 
-Fresh producers pass 36 C/Rust fixture comparisons on each host. Another 42
+Fresh producers pass 36 C/Rust fixture comparisons on each host. Another 48
 fixture compilations per host compare probes off/on across all three
 versions: stock objects and existing trace records agree, and all coalescing paths
 are explained. The full Echoes `CElementGen.cpp` unit passes off/on on both hosts
 with 182 complete coalescing passes, 6,356 births, 4,325 partial expression
 observations, no counter gaps/orphans, and identical stock objects/existing traces.
-Both hosts also pass the new graph checks: the fixtures contain 45 graph snapshots
-with 171 nodes absent from their current instructions; the full particle unit has
+Both hosts also pass the new graph checks: the fixtures contain 48 graph snapshots
+with 204 nodes absent from their current instructions, 273 object bindings and
+eighteen paired words. The new object fixture has eight object bindings, six paired
+words and before/inside-window categories on every version/host. The full particle unit has
 182 snapshots, 2,627 such node observations and 6,662 capture-local number/merge
 bindings. Those are snapshot observations, not distinct eliminated values.
+The current full-unit captures on both hosts retain 1,750 object bindings,
+including eight paired words, and exercise initial-object, before-window,
+inside-window and after-window categories with complete relevant range evidence.
 The reuse fixture's twelve reused numbers each retain both birth candidates and
 remain indeterminate. Fresh source-equivalence builds on both hosts match all
 three retained producer objects exactly.
@@ -129,16 +151,17 @@ overhead/throughput benchmark remains open.
 | Roadmap stage | Remaining work |
 |---|---|
 | Reproducible cases/contracts | Capture and label the three actual mechanisms, retain the full RenderParticles case, and finish identity/provenance/objective/build-input contracts |
-| Backend provenance | Complete object/category and leaf/inline provenance, justify semantic lifetime bindings beyond capture-local number/merge candidates, and close remaining alias/coverage gaps and rare coalescing cases |
+| Backend provenance | Complete source-role/object and leaf/inline provenance beyond guarded object bindings and allocator ranges, justify semantic lifetime bindings for ambiguous generations, and close remaining alias/coverage gaps and rare coalescing cases |
 | Correspondence | Add lifecycle/provenance anchors, generations, observed merges/replacements and justified elimination; extend phase selection to newly captured backend phases |
 | Source search | Shared objective evaluator, hard constraints, bounded source transformations, exact input cache, compiler-state fingerprints, budgets/cancellation/resume and independently verified successful candidates |
 | Reduction | Reuse the evaluator for deterministic mechanism-preserving reduction, rebind identities, reject indeterminate results and retest discoveries in RenderParticles |
 | Matched-source index | Coverage-aware trace/source index and reproducible queries/examples feeding the harness |
 | Delivery | Compiler-version/platform checks, trace overhead/search throughput measurements, native documentation/kit/schema updates and the complete RenderParticles investigation |
 
-The next implementation step is object/category and complete origin evidence,
-including semantic lifetime binding for ambiguous generations. Connect these observations
-to correspondence and the graph-directed harness; then implement reduction and the
+The next implementation step is to connect observed object/range evidence to
+correspondence and the graph-directed harness while completing exact backend
+expression/inline and source-role evidence, including semantic lifetime binding for
+ambiguous generations. Then implement reduction and the
 matched-source index using the shared evaluator. Capture and label the three
 requested real mechanisms and complete the RenderParticles loop. Keep the full
 roadmap scope: the implemented provenance components do not complete any of the

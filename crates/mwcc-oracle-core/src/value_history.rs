@@ -48,6 +48,42 @@ pub struct Birth {
     pub expression: Option<u32>,
     pub line: Option<i32>,
     pub category: Option<String>,
+    pub object: Option<ObjectBinding>,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ObjectPart {
+    Single,
+    FirstWord,
+    SecondWord,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ObjectBinding {
+    pub trace_position: usize,
+    pub object: String,
+    pub variable_info: String,
+    pub part: ObjectPart,
+    pub datatype: u8,
+    pub storage: u16,
+    pub flags_before: u8,
+    pub type_kind: i32,
+    pub type_size: i32,
+    pub name_known: bool,
+    pub name_complete: bool,
+    pub name_bytes: Vec<u8>,
+    pub name_text: Option<String>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum RangeKind {
+    Initial { last: [i32; 3] },
+    Window { first: [i32; 3], last: [i32; 3] },
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RangeEvent {
+    pub trace_position: usize,
+    pub birth_cutoff: u32,
+    pub range: RangeKind,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Expression {
@@ -99,6 +135,9 @@ pub struct Function {
     pub registers: Vec<RegisterHistory>,
     pub ended: bool,
     pub expected_graphs: Option<u32>,
+    pub expected_ranges: Option<u32>,
+    pub ranges: Vec<RangeEvent>,
+    pub range_observations: Evaluation,
     pub counter_observations: Evaluation,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -118,6 +157,9 @@ pub fn is_record(kind: &str) -> bool {
             | "pv.expression.begin"
             | "pv.expression.end"
             | "pv.value.birth"
+            | "pv.value.object"
+            | "pv.category.initial"
+            | "pv.category.window"
             | "pv.counter.change"
             | "pv.counter.orphan"
     )
@@ -150,12 +192,29 @@ fn counts(r: &Record) -> Result<[u32; 5]> {
         n(r, "c4")?,
     ])
 }
+fn bytes(r: &Record, field: &str) -> Result<Vec<u8>> {
+    let encoded = r.get(field)?;
+    ensure!(
+        encoded.is_ascii() && encoded.len().is_multiple_of(2),
+        "invalid {field} hex"
+    );
+    (0..encoded.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&encoded[i..i + 2], 16).context("invalid byte hex"))
+        .collect()
+}
+fn bit(r: &Record, field: &str) -> Result<bool> {
+    let value = n(r, field)?;
+    ensure!(value <= 1, "invalid {field} bit");
+    Ok(value == 1)
+}
 struct State {
     index: usize,
     counts: [u32; 5],
     registers: BTreeMap<(u8, u32), Vec<ValueId>>,
     expressions: Vec<u32>,
     valid: bool,
+    ranges_valid: bool,
 }
 
 pub fn parse(text: &str) -> Result<History> {
@@ -215,6 +274,7 @@ pub fn parse(text: &str) -> Result<History> {
                     registers: BTreeMap::new(),
                     expressions: vec![],
                     valid,
+                    ranges_valid: true,
                 },
             );
             history.functions.push(Function {
@@ -229,6 +289,9 @@ pub fn parse(text: &str) -> Result<History> {
                 registers: vec![],
                 ended: false,
                 expected_graphs: None,
+                expected_ranges: None,
+                ranges: vec![],
+                range_observations: gap("no complete range-marker capture"),
                 counter_observations: gap("function has no end record"),
             });
             stack.push(function);
@@ -254,6 +317,12 @@ pub fn parse(text: &str) -> Result<History> {
                     .get("graphs")
                     .map(|value| value.parse())
                     .transpose()?;
+                f.expected_ranges = r.fields.get("ranges").map(|v| v.parse()).transpose()?;
+                if state.ranges_valid
+                    && f.expected_ranges.map(|v| v as usize) == Some(f.ranges.len())
+                {
+                    f.range_observations = known();
+                }
                 stack.pop();
                 if state.valid {
                     f.counter_observations = known();
@@ -337,6 +406,80 @@ pub fn parse(text: &str) -> Result<History> {
                     expression: (expression != 0).then_some(expression),
                     line: line(&r)?,
                     category: (category != "unknown").then(|| category.to_owned()),
+                    object: None,
+                });
+            }
+            "pv.value.object" => {
+                let sequence = n(&r, "value")?;
+                ensure!(
+                    sequence != 0 && sequence as usize == f.births.len(),
+                    "object binding is not attached to the current birth"
+                );
+                let birth = f.births.last_mut().unwrap();
+                ensure!(birth.object.is_none(), "duplicate object binding");
+                let name_bytes = bytes(&r, "name_hex")?;
+                let name_known = bit(&r, "name_known")?;
+                let name_complete = bit(&r, "name_complete")?;
+                ensure!(
+                    name_known || (name_bytes.is_empty() && !name_complete),
+                    "unknown name has claimed name evidence"
+                );
+                birth.object = Some(ObjectBinding {
+                    trace_position: r.line,
+                    object: r.get("object")?.into(),
+                    variable_info: r.get("info")?.into(),
+                    part: match n(&r, "part")? {
+                        1 => ObjectPart::Single,
+                        2 => ObjectPart::FirstWord,
+                        3 => ObjectPart::SecondWord,
+                        _ => anyhow::bail!("unknown object binding part"),
+                    },
+                    datatype: n(&r, "datatype")?.try_into()?,
+                    storage: n(&r, "storage")?.try_into()?,
+                    flags_before: n(&r, "flags_before")?.try_into()?,
+                    type_kind: r.number("type_kind")?,
+                    type_size: r.number("type_size")?,
+                    name_known,
+                    name_complete,
+                    name_text: if name_known {
+                        String::from_utf8(name_bytes.clone()).ok()
+                    } else {
+                        None
+                    },
+                    name_bytes,
+                });
+            }
+            "pv.category.initial" | "pv.category.window" => {
+                let birth_cutoff = n(&r, "births")?;
+                ensure!(
+                    birth_cutoff as usize == f.births.len(),
+                    "category marker birth cutoff disagrees with capture"
+                );
+                let array = |prefix: &str| -> Result<[i32; 3]> {
+                    Ok([
+                        r.number(&format!("{prefix}2"))?,
+                        r.number(&format!("{prefix}3"))?,
+                        r.number(&format!("{prefix}4"))?,
+                    ])
+                };
+                let range = if r.kind == "pv.category.initial" {
+                    let last = array("i")?;
+                    state.ranges_valid &= (0..3)
+                        .all(|i| last[i] == state.counts[i + 2].wrapping_sub(1) as i16 as i32);
+                    RangeKind::Initial { last }
+                } else {
+                    let first = array("f")?;
+                    let last = array("l")?;
+                    state.ranges_valid &= (0..3).all(|i| {
+                        first[i] == state.counts[i + 2] as i16 as i32
+                            && last[i] == state.counts[i + 2] as i32
+                    });
+                    RangeKind::Window { first, last }
+                };
+                f.ranges.push(RangeEvent {
+                    trace_position: r.line,
+                    birth_cutoff,
+                    range,
                 });
             }
             "pv.counter.change" => {
@@ -378,6 +521,8 @@ pub fn parse(text: &str) -> Result<History> {
         if !state.valid {
             history.functions[state.index].counter_observations =
                 gap("unsupported or discontinuous observations in this function");
+            history.functions[state.index].range_observations =
+                gap("unsupported or discontinuous function capture");
         }
         history.functions[state.index].registers = state
             .registers

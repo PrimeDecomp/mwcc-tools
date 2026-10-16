@@ -53,9 +53,9 @@ fn counter_islands_preserve_all_unpatched_bytes_symbols_sizes_and_guard_sites() 
             "current islands differ from the retained runtime proof"
         );
         let expected = match version {
-            "GC_1_3" => 572,
-            "GC_1_3_2" => 573,
-            _ => 580,
+            "GC_1_3" => 574,
+            "GC_1_3_2" => 575,
+            _ => 582,
         };
         assert_eq!(installed.sites.len(), expected);
         let mut coverage = 0;

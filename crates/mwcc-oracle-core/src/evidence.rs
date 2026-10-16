@@ -14,6 +14,7 @@ pub enum EvaluationState {
 pub enum EvidenceGap {
     CoalescingCoverage,
     BackendLifecycleCoverage,
+    AllocationCategoryCoverage,
     AmbiguousCorrespondence,
     MissingGraphSnapshot,
     MissingGraphNode,

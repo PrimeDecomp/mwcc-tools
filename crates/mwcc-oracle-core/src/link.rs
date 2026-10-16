@@ -202,6 +202,15 @@ pub fn run(request: &Request) -> Result<Report> {
                 .is_some_and(|s| s.contains("_OracleRust_BackendProbe"))
         });
         if native {
+            ensure!(
+                compiled_objects
+                    .iter()
+                    .any(|p| fs::read(request.root.join(p))
+                        .ok()
+                        .and_then(|b| coff::defined_symbols(&b).ok())
+                        .is_some_and(|s| s.contains("_OracleRust_CounterProbeV2"))),
+                "Rust counter observer ABI is stale; rebuild the common hooks with the current sources"
+            );
             let counter_inputs = inputs
                 .iter()
                 .filter(|p| p.ends_with(".obj") && !compiled_objects.contains(p))

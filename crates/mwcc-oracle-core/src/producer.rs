@@ -38,7 +38,7 @@ pub const HOOKS: [&str; 26] = [
     "_setup_inline_locals_and_arguments",
 ];
 pub const SUPPORT: [&str; 11] = [
-    "_OracleRust_CounterProbe",
+    "_OracleRust_CounterProbeV2",
     "_OracleRust_BackendProbe",
     "_OracleRust_LinkName",
     "_OracleRust_PrintInstruction",

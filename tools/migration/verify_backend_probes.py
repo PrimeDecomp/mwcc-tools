@@ -85,6 +85,11 @@ def main():
             history=report["history"]
             assert history["counter_observations"]["state"] == ("indeterminate" if empty else "satisfied"), case["id"]
             assert not history["orphans"] and not history["gaps"], case["id"]
+            assert all(f["range_observations"]["state"] == "satisfied" for f in history["functions"]), case["id"]
+            objects = [b["object"] for f in history["functions"] for b in f["births"] if b["object"]]
+            pairs = [o for o in objects if o["part"] in ("first_word", "second_word")]
+            assert len(objects) >= case.get("minimum_object_bindings", 0), case["id"]
+            assert len(pairs) >= case.get("minimum_pair_bindings", 0), case["id"]
             graphs = report["graphs"]
             assert graphs["observations"]["state"] == ("indeterminate" if empty else "satisfied"), case["id"]
             # Compare new snapshots to the independently emitted existing graph
@@ -105,6 +110,16 @@ def main():
                 assert old["nodes"].keys() == {int(v) for v in new["nodes"]}
                 for register, node in old["nodes"].items():
                     assert all(new["nodes"][str(register)][key] == value for key, value in node.items())
+                if new["class"] in (2, 3, 4):
+                    if case.get("require_range_categories", True):
+                        assert new["range_bounds"]["evidence"]["state"] == "satisfied", (case["id"], new["link"], new["range_bounds"])
+                    matching = [p for p in report["passes"] if int(p["header"].get("function_id", 0)) == new["function"] and p["class"] == new["class"] and p["begin_position"] < new["begin_position"]]
+                    assert matching
+                    assert new["physical_limit"] == int(matching[-1]["header"]["physical"])
+                    assert new["range_bounds"]["first"] == int(matching[-1]["header"]["first"])
+                    assert new["range_bounds"]["last"] == int(matching[-1]["header"]["last"])
+            categories = {n["range_category"]["category"] for g in graphs["graphs"] for n in g["nodes"].values() if n["range_category"]["evidence"]["state"] == "satisfied"}
+            assert len(categories) >= case.get("minimum_range_categories", 0), case["id"]
             reused=sum(sum(len(r["values"])>1 for r in f["registers"]) for f in history["functions"])
             rewinds=sum(sum(c["kind"]=="rewind" for c in f["changes"]) for f in history["functions"])
             assert reused>=case.get("minimum_reused_registers",0),case["id"]
@@ -122,6 +137,7 @@ def main():
                 passes=len(report["passes"]), decisions=decisions,
                 births=sum(len(f["births"]) for f in history["functions"]),
                 expressions=sum(len(f["expressions"]) for f in history["functions"]),
+                object_bindings=len(objects), pair_bindings=len(pairs), range_categories=sorted(categories),
                 graphs=len(graphs["graphs"]), graph_only=sum(len(g["graph_only"]) for g in graphs["graphs"]),
                 bindings={state:sum(sum(n["binding"]["evidence"]["state"]==state for n in g["nodes"].values()) for g in graphs["graphs"])
                           for state in ["satisfied", "indeterminate"]},

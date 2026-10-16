@@ -1,11 +1,11 @@
 # In-process Rust producer
 
-This `no_std` crate produces three i686 Windows COFF objects, linked by the historical linker: common hooks, a version-specific frontend and trace output. Together they replace all 31 observation wrappers, nine shared helpers and both output APIs. The common object contains these 26 wrappers:
+This `no_std` crate produces three i686 Windows COFF objects, linked by the historical linker: common hooks, a version-specific frontend and trace output. Together they replace all 31 observation wrappers and both output APIs. The development common object exports eleven support helpers and these 26 wrappers:
 
 | Symbol | Records |
 |---|---|
 | `fn_00460c90` | `lc.call` |
-| `fn_00507070` | `ra.graph`, `ra.node`, `ra.order` |
+| `fn_00507070` | `ra.graph`, `ra.node`, `ra.order`, backend `pv.graph.*` |
 | `fn_00506f50` | `ra.select` |
 | `fn_004f7fb0` | `fr.begin`, `fr.layout`, `fr.local`, `fr.temp`, `fr.end` |
 | `schedule_block` | `sc.block`, `sc.i`, `sc.after` |
@@ -31,7 +31,7 @@ This `no_std` crate produces three i686 Windows COFF objects, linked by the hist
 | `generate_inline_code` | saved-body code generation (`tp.gen`) |
 | `setup_inline_locals_and_arguments` | formal/actual bindings (`lc.arg`) |
 
-`OracleRust_LinkName`, `OracleRust_PrintInstruction` and `OracleRust_Snapshot` provide mangled-name lookup, raw PCode records and allocation/stage snapshots. `OracleRust_DescribeExpression` supplies binding expression spelling, and `cse_vregs` supplies CSE register records. The separate frontend imports `OracleRust_LinkName`, `OracleRust_OriginFind`, `OracleRust_OriginWalk`, `OracleRust_PrintChain` and `OracleRust_InlineLine` to share the common object's ancestry table and statement context. These nine exports are support functions, not retail hooks; they are checked separately and do not belong in `oracle.hooks`.
+`OracleRust_LinkName`, `OracleRust_PrintInstruction` and `OracleRust_Snapshot` provide mangled-name lookup, raw PCode records and allocation/stage snapshots. `OracleRust_DescribeExpression` supplies binding expression spelling, and `cse_vregs` supplies CSE register records. The separate frontend imports `OracleRust_LinkName`, `OracleRust_OriginFind`, `OracleRust_OriginWalk`, `OracleRust_PrintChain` and `OracleRust_InlineLine` to share the common object's ancestry table and statement context. These nine exports, plus the development `OracleRust_BackendProbe` and `OracleRust_CounterProbeV2`, are support functions, not retail hooks; they are checked separately and do not belong in `oracle.hooks`.
 
 The retail compiler still performs allocation. The Rust wrappers preserve the C wrapper's call order, operand-byte guards and trace formatting. Compiler pointers stay raw; packed fields and embedded x86 operands are read without creating Rust references. No allocator, unwinding or Rust-owned values cross the ABI. The trace object owns `OracleTrace_Printf` and `OracleTrace_Enabled`, forwarding formatting and flushing to the original compiler's C stdio.
 

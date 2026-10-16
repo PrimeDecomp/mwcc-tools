@@ -199,7 +199,10 @@ fn confirmed_merge_chains_add_contributors_without_erasing_child_births() {
         begin_position: 4,
         link: "sample".into(),
         class: 4,
-        header: BTreeMap::from([("function_id".into(), "1".into())]),
+        header: BTreeMap::from([
+            ("function_id".into(), "1".into()),
+            ("physical".into(), "32".into()),
+        ]),
         candidates: vec![
             candidate(1, position("merge1"), 33, 34),
             candidate(2, position("merge2"), 32, 33),

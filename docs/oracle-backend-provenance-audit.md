@@ -109,6 +109,41 @@ lifetime correspondence remain open. Birth IDs are local to a capture; no
 cross-variant identity or elimination proof is claimed yet. The old `remap`
 before/after instruction boundaries are distinct from these new graph snapshots.
 
+## Object bindings and allocator range categories
+
+The single-register creator `_fn_004fcba0` has the same normalized full-body hash
+on all three versions:
+`c7b3553183e2a39829ae89e562ce3bc1801d954270d1ba1e67e5017ecf4da38b`.
+At its increment (`+0x28`), EBX is the variable-info pointer and the object argument
+is at retail ESP+0x1C. The counter island adds its own CALL return slot, so its
+saved PUSHAD ESP+8 recovers retail ESP. `_Registers_BindVR` is actually the paired
+GPR assignment path; its normalized hash is
+`bdde62ffa0f7872d0c8afa6518ddbf92b4b0270356083e1048ba87a2590886c5`.
+At `+0x9A` and `+0xA6`, EBX is the object and EDI is variable info. These guarded
+sites now attach object/type/storage/name evidence to the respective births.
+They observe flags before the later binding stores; pair parts mean creation order.
+
+Two additional fixed-size islands observe the completed stores at
+`Registers_SnapshotInitialObjectRange+0x21` and
+`Registers_BeginCoalesceWindow+0x42`. Their exact 16-bit store targets, RETs,
+complete retail containers and table layouts are checked. The short initial/first
+tables and 32-bit last table use VR/FPR/GPR order. Graph snapshots read the actual
+current bounds, and the parser checks opening markers against observed counters,
+function totals, and graph bounds. Initial-object, before-window, inside-window
+and after-window categories refer to these actual ranges, not guessed source roles.
+The `-O0` reuse path has no range markers, so its range categories remain unknown.
+
+The graph hook now reads live physical limits: target initialization may occur
+after generator entry. The host also cross-checks the preceding coalescer header,
+making stale early development snapshots with a zero boundary indeterminate.
+The internal descriptor is 36 bytes and uses `OracleRust_CounterProbeV2`; native
+linking rejects older common-hook ABIs before installing these islands.
+
+The standalone object-binding fixture retains eight bindings (six paired words)
+and both before/inside-window categories with stock-equivalent output on all
+three versions and both hosts. This does not establish exact origins for all
+backend address, call-result or array-promotion temporaries.
+
 ## Comparison foundation
 
 Native `colouring remap --json` now exposes format 2: complete captured graph node

@@ -2,6 +2,7 @@
 //! Birth candidates retain every possible generation; observed unions add
 //! contributors without asserting cross-variant semantic equivalence.
 use crate::{
+    allocation_category,
     evidence::{Evaluation, EvaluationState, EvidenceGap},
     provenance::{Decision, Pass},
     trace::{self, Instruction, Record},
@@ -32,6 +33,7 @@ pub struct Node {
     pub recorded_neighbors: Vec<u32>,
     pub adjacency_degree: usize,
     pub binding: Binding,
+    pub range_category: allocation_category::Observation,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Merge {
@@ -65,6 +67,7 @@ pub struct Graph {
     pub missing_neighbor_nodes: BTreeSet<u32>,
     pub merges: Vec<Merge>,
     pub observations: Evaluation,
+    pub range_bounds: Option<allocation_category::Bounds>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct GraphHistory {
@@ -204,6 +207,7 @@ pub fn parse(text: &str, history: &History, passes: &[Pass]) -> Result<GraphHist
                     missing_neighbor_nodes: BTreeSet::new(),
                     merges: vec![],
                     observations: gap("graph has no end record"),
+                    range_bounds: allocation_category::from_graph(&r, f, class, physical_limit)?,
                 },
             });
             continue;
@@ -251,6 +255,7 @@ pub fn parse(text: &str, history: &History, passes: &[Pass]) -> Result<GraphHist
                         recorded_neighbors: neighbors,
                         adjacency_degree,
                         binding: unknown_binding(),
+                        range_category: allocation_category::unknown(),
                     },
                 );
             }
@@ -317,6 +322,22 @@ pub fn parse(text: &str, history: &History, passes: &[Pass]) -> Result<GraphHist
             .iter()
             .find(|f| f.id == graph.function)
             .unwrap();
+        if let Some(pass) = passes.iter().rev().find(|p| {
+            p.class == graph.class
+                && p.begin_position < graph.begin_position
+                && p.header
+                    .get("function_id")
+                    .and_then(|v| v.parse::<u32>().ok())
+                    == Some(graph.function)
+        }) && pass
+            .header
+            .get("physical")
+            .and_then(|v| v.parse::<u32>().ok())
+            != Some(graph.physical_limit)
+        {
+            graph.observations =
+                gap("graph physical boundary disagrees with the observed coalescer boundary");
+        }
         bind(graph, f, passes);
     }
     for function in &history.functions {
@@ -465,6 +486,15 @@ fn bind(graph: &mut Graph, f: &Function, passes: &[Pass]) {
         }
     }
     for node in graph.nodes.values_mut() {
+        node.range_category = if graph.observations.state == EvaluationState::Satisfied {
+            graph
+                .range_bounds
+                .as_ref()
+                .map(|b| b.classify(node.register))
+                .unwrap_or_else(allocation_category::unknown)
+        } else {
+            allocation_category::unknown()
+        };
         node.binding.physical = node.register < graph.physical_limit;
         node.binding.direct = direct.get(&node.register).cloned().unwrap_or_default();
         node.binding.contributors = contributors

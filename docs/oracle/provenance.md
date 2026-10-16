@@ -52,8 +52,8 @@ prove a temporary was eliminated.
 ## Births, counter changes and expression context
 
 The producer also observes every audited direct counter write: 570 sites in
-GC 1.3, 571 in GC 1.3.2 and 578 in GC 2.7, plus two function-context sites per
-version. Most writes are inline increments, including address, call, instruction
+GC 1.3, 571 in GC 1.3.2 and 578 in GC 2.7, plus two function-context sites and two
+range-marker sites per version. Most writes are inline increments, including address, call, instruction
 selection, struct-move and spill paths. The remaining writes initialize counters,
 rewind scratch counters, restore high-water marks or reset after allocation.
 
@@ -87,6 +87,15 @@ to be the exact backend leaf expression. `category=null` means the semantic
 allocation category is still unknown. Existing frontend provenance can provide
 additional evidence; these fields do not silently invent it.
 
+`Birth.object` adds observed object bindings at the guarded single-register and
+two-word assignment sites. It retains the opaque object/variable-info identities,
+the object's datatype, storage class, type kind/size, and variable-info flags
+**before** the binding writes. Pair parts mean first/second creation order, not a
+claim about high/low word order. Names retain bytes, optional UTF-8 text and separate
+known/complete flags. Repeated names and pointers are not unique semantic identities.
+An absent object binding does not prove that a birth is an anonymous temporary;
+other backend creation paths still need exact expression/object provenance.
+
 Sites are canonical addresses in the pinned retail image, not necessarily the
 relocated execution address. Typed phases name code generation, optimization,
 allocation and their following boundaries. Rust callers can use
@@ -113,6 +122,10 @@ unsupported schemas and contradictory visibility cannot establish full graph
 coverage. `graphs.observations` and `graphs.functions[].observations` describe
 snapshot coverage separately from birth bindings. Old captures without these
 records remain usable but cannot establish that coverage.
+Physical thresholds are read from the live target table at the graph boundary.
+The parser cross-checks them against the preceding captured coalescer pass when
+available. Early development captures that cached zero before target initialization
+are now indeterminate rather than misclassifying physical neighbors.
 
 Each node's `binding.direct` retains all candidate birth IDs for its class/number
 before that graph, within the current counter-reset epoch. `contributors` adds
@@ -128,6 +141,37 @@ within direct-counter coverage. It does not establish cross-variant semantic
 identity, an exact leaf expression, or elimination. Full origin and category
 evidence must still be connected to comparison and source objectives. Rust callers
 can use `graph_history` directly or inspect the combined provenance report.
+
+## Observed allocation ranges
+
+Graph nodes have a typed `range_category`, backed by `range_bounds` and its own
+evidence. The categories are `physical`, `initial_object_range`,
+`before_coalescing_window`, `inside_coalescing_window` and
+`after_coalescing_window`. These name the retail allocator's number ranges; they
+do not guess semantic roles such as address, call result or promoted array value.
+The initial-object upper bound and coalescing-window bounds are inclusive, matching
+the actual retail comparisons. Birth-time `category` remains unknown until a
+semantic role is justified; it is distinct from the observed range category.
+
+Two fixed-size islands observe the last stores in the initial-range snapshot and
+window-begin functions. `pv.category.initial` and `pv.category.window` retain their
+completed tables and birth cutoffs. Function-end `ranges=N` totals detect missing
+markers. The parser validates those snapshots against the observed counters and
+checks each graph's initial/first bounds against the current function's markers.
+Missing markers, stale or overlapping bounds and inconsistent snapshots remain
+indeterminate. Graphs also sample the current window's last bound, which can grow
+after its opening marker. With `-O0`, retail code can omit both markers; complete
+observation of zero markers does not establish range categories.
+
+Range classification and value binding are separate evidence. A reused raw number
+may have a definite range category while its contributing value generation remains
+ambiguous. A source objective needs both before attributing a category change to a
+particular value. These observations are available in Rust through
+`allocation_category` and the combined provenance report.
+
+The internal callback is now `OracleRust_CounterProbeV2`, with a guarded 36-byte
+descriptor. Rebuild the common hooks and producer together; the linker rejects an
+older callback ABI instead of interpreting stale descriptors.
 
 Audit a pinned retail image independently with the native command:
 
@@ -163,6 +207,10 @@ on both hosts.
 The current graph checks retain 182 snapshots from that unit, with 2,627 node
 observations absent from the instructions at their respective graph boundaries.
 These are retained observations, not a count of eliminated values.
+The same unit now records 1,750 observed object bindings, including eight pair
+words, and exercises initial-object, before/inside/after-window range categories
+on both hosts. The separate 64-bit object-binding fixture retains eight bindings
+and two range categories on every supported version/host.
 
 Continue with semantic lifetime correspondence, categories and complete origins before
 using absence predicates. The complete implementation scope remains in the

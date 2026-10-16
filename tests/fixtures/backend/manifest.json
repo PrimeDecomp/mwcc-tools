@@ -7,7 +7,16 @@
       "source": "counter_reuse.c",
       "flags": ["-nodefaults", "-proc", "gekko", "-fp", "hardware", "-O0"],
       "minimum_rewinds": 1,
-      "minimum_reused_registers": 1
+      "minimum_reused_registers": 1,
+      "require_range_categories": false
+    },
+    {
+      "id": "object_bindings",
+      "source": "object_bindings.c",
+      "flags": ["-nodefaults", "-proc", "gekko", "-fp", "hardware", "-O4,p"],
+      "minimum_object_bindings": 3,
+      "minimum_pair_bindings": 2,
+      "minimum_range_categories": 2
     }
   ]
 }

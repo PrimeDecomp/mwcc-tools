@@ -13,12 +13,17 @@ pub struct Descriptor {
     physical: *const u32,
     selector: i32,
     role: u32,
+    initial: *const i16,
+    first: *const i16,
+    last: *const i32,
+    object_binding: u32,
 }
 const _: () = {
-    assert!(core::mem::size_of::<Descriptor>() == 20);
+    assert!(core::mem::size_of::<Descriptor>() == 36);
     assert!(core::mem::align_of::<Descriptor>() == 4);
     assert!(core::mem::offset_of!(Descriptor, selector) == 12);
     assert!(core::mem::offset_of!(Descriptor, role) == 16);
+    assert!(core::mem::offset_of!(Descriptor, object_binding) == 32);
 };
 #[derive(Clone, Copy)]
 struct State {
@@ -29,8 +34,13 @@ struct State {
     expression_next: u32,
     phase: u32,
     graphs: u32,
-    physical: [u32; 5],
+    physical: *const u32,
     counts: [u32; 5],
+    initial: *const i16,
+    first: *const i16,
+    last: *const i32,
+    category_ready: u32,
+    ranges: u32,
     origin_statement: *const u8,
     origin_node: *const u8,
     origin_id: u32,
@@ -43,8 +53,13 @@ const EMPTY: State = State {
     expression_next: 0,
     phase: 0,
     graphs: 0,
-    physical: [0; 5],
+    physical: ptr::null(),
     counts: [0; 5],
+    initial: ptr::null(),
+    first: ptr::null(),
+    last: ptr::null(),
+    category_ready: 0,
+    ranges: 0,
     origin_statement: ptr::null(),
     origin_node: ptr::null(),
     origin_id: 0,
@@ -81,6 +96,10 @@ pub struct GraphContext {
     pub births: u32,
     pub phase: u32,
     pub physical: u32,
+    pub category_ready: bool,
+    pub initial_last: i32,
+    pub first: i32,
+    pub last: i32,
 }
 pub unsafe fn graph_context(class: i8) -> Option<GraphContext> {
     unsafe {
@@ -101,10 +120,41 @@ pub unsafe fn graph_context(class: i8) -> Option<GraphContext> {
             graph,
             births: ptr::addr_of!(STATE.sequence).read(),
             phase: ptr::addr_of!(STATE.phase).read(),
+            // Target tables can initialize after generator entry. Read them at
+            // this boundary rather than caching their initial contents.
             physical: ptr::addr_of!(STATE.physical)
-                .cast::<u32>()
+                .read()
                 .add(class as usize)
-                .read(),
+                .read_unaligned(),
+            category_ready: class >= 2 && ptr::addr_of!(STATE.category_ready).read() == 3,
+            initial_last: if class >= 2 {
+                i32::from(
+                    ptr::addr_of!(STATE.initial)
+                        .read()
+                        .add(class as usize - 2)
+                        .read_unaligned(),
+                )
+            } else {
+                -1
+            },
+            first: if class >= 2 {
+                i32::from(
+                    ptr::addr_of!(STATE.first)
+                        .read()
+                        .add(class as usize - 2)
+                        .read_unaligned(),
+                )
+            } else {
+                -1
+            },
+            last: if class >= 2 {
+                ptr::addr_of!(STATE.last)
+                    .read()
+                    .add(class as usize - 2)
+                    .read_unaligned()
+            } else {
+                -1
+            },
         })
     }
 }
@@ -186,7 +236,61 @@ unsafe fn statement_origin(statement: *const u8) -> u32 {
     }
 }
 
-#[unsafe(export_name = "OracleRust_CounterProbe")]
+unsafe fn object_binding(r: &Registers, d: &Descriptor, function: u32, value: u32) {
+    unsafe {
+        if d.object_binding == 0 {
+            return;
+        }
+        let (object, info) = match d.object_binding {
+            // The island's CALL return slot is in addition to PUSHFD's slot.
+            1 => (
+                read::<*const u8>(r.slot(3).unwrap().wrapping_add(8) as *const u8, 0x1c),
+                r.slot(4).unwrap() as *const u8,
+            ),
+            2 | 3 => (
+                r.slot(4).unwrap() as *const u8,
+                r.slot(0).unwrap() as *const u8,
+            ),
+            _ => {
+                OracleTrace_Printf(c"pv.gap reason=object_binding_descriptor\n".as_ptr());
+                return;
+            }
+        };
+        if object.is_null() || info.is_null() {
+            OracleTrace_Printf(
+                c"pv.gap reason=object_binding_null function=%lu value=%lu\n".as_ptr(),
+                function,
+                value,
+            );
+            return;
+        }
+        let name = read::<*const u8>(object, 10);
+        let text = if name.is_null() {
+            ptr::null()
+        } else {
+            name.add(10)
+        };
+        let hex = ptr::addr_of_mut!(HEX).cast::<u8>();
+        let mut length = 0usize;
+        if !text.is_null() {
+            while length < 256 && text.add(length).read() != 0 {
+                let byte = text.add(length).read();
+                let digit = |v: u8| if v < 10 { b'0' + v } else { b'a' + v - 10 };
+                hex.add(length * 2).write(digit(byte >> 4));
+                hex.add(length * 2 + 1).write(digit(byte & 15));
+                length += 1;
+            }
+        }
+        hex.add(length * 2).write(0);
+        let ty = read::<*const u8>(object, 14);
+        OracleTrace_Printf(c"pv.value.object function=%lu value=%lu object=%08x info=%08x part=%lu datatype=%d storage=%u flags_before=%u type_kind=%d type_size=%ld name_known=%d name_complete=%d name_hex=%s\n".as_ptr(),
+            function,value,object as u32,info as u32,d.object_binding,i32::from(read::<u8>(object,2)),u32::from(read::<u16>(object,22)),
+            u32::from(read::<u8>(info,36)),expression::type_id(ty),expression::type_size(ty),i32::from(!name.is_null()),
+            i32::from(!name.is_null() && (length < 256 || text.add(length).read() == 0)),hex.cast::<core::ffi::c_char>());
+    }
+}
+
+#[unsafe(export_name = "OracleRust_CounterProbeV2")]
 pub unsafe extern "C" fn observe(r: &Registers, site: u32, d: &Descriptor) {
     unsafe {
         if !enabled() {
@@ -214,9 +318,12 @@ pub unsafe extern "C" fn observe(r: &Registers, site: u32, d: &Descriptor) {
             let mut state = EMPTY;
             state.id = id;
             state.object = r.slot(7).unwrap_or(0) as *const u8;
+            state.initial = d.initial;
+            state.first = d.first;
+            state.last = d.last;
+            state.physical = d.physical;
             for i in 0..5 {
                 state.counts[i] = d.counts.add(i).read_unaligned();
-                state.physical[i] = d.physical.add(i).read_unaligned();
             }
             ptr::addr_of_mut!(STATE).write(state);
             OracleTrace_Printf(c"pv.function.begin schema=1 function=%lu parent=%lu site=%lx c0=%lu c1=%lu c2=%lu c3=%lu c4=%lu coverage=direct_counter_writes link=%s\n".as_ptr(),
@@ -234,11 +341,12 @@ pub unsafe extern "C" fn observe(r: &Registers, site: u32, d: &Descriptor) {
                 return;
             }
             OracleTrace_Printf(
-                c"pv.function.end function=%lu births=%lu graphs=%lu c0=%lu c1=%lu c2=%lu c3=%lu c4=%lu\n"
+                c"pv.function.end function=%lu births=%lu graphs=%lu ranges=%lu c0=%lu c1=%lu c2=%lu c3=%lu c4=%lu\n"
                     .as_ptr(),
                 state.id,
                 state.sequence,
                 state.graphs,
+                state.ranges,
                 state.counts[0],
                 state.counts[1],
                 state.counts[2],
@@ -255,6 +363,31 @@ pub unsafe extern "C" fn observe(r: &Registers, site: u32, d: &Descriptor) {
                 ptr::addr_of_mut!(DEPTH).write(depth - 1);
             } else {
                 ptr::addr_of_mut!(STATE).write(EMPTY);
+            }
+            return;
+        }
+        if d.role == 8 || d.role == 9 {
+            let state = ptr::addr_of!(STATE).read();
+            if state.id == 0 {
+                OracleTrace_Printf(c"pv.gap reason=category_without_function\n".as_ptr());
+                return;
+            }
+            ptr::addr_of_mut!(STATE.ranges).write(state.ranges.wrapping_add(1));
+            if d.role == 8 {
+                ptr::addr_of_mut!(STATE.category_ready).write(1);
+                OracleTrace_Printf(
+                    c"pv.category.initial function=%lu births=%lu i2=%d i3=%d i4=%d\n".as_ptr(),
+                    state.id,
+                    state.sequence,
+                    i32::from(d.initial.read_unaligned()),
+                    i32::from(d.initial.add(1).read_unaligned()),
+                    i32::from(d.initial.add(2).read_unaligned()),
+                );
+            } else {
+                ptr::addr_of_mut!(STATE.category_ready).write(state.category_ready | 2);
+                OracleTrace_Printf(c"pv.category.window function=%lu births=%lu f2=%d f3=%d f4=%d l2=%ld l3=%ld l4=%ld\n".as_ptr(), state.id,state.sequence,
+                    i32::from(d.first.read_unaligned()),i32::from(d.first.add(1).read_unaligned()),i32::from(d.first.add(2).read_unaligned()),
+                    d.last.read_unaligned(),d.last.add(1).read_unaligned(),d.last.add(2).read_unaligned());
             }
             return;
         }
@@ -301,6 +434,7 @@ pub unsafe extern "C" fn observe(r: &Registers, site: u32, d: &Descriptor) {
             OracleTrace_Printf(c"pv.value.birth schema=1 function=%lu value=%lu cls=%lu register=%lu count=%lu physical=%lu site=%lx expression=%lu phase=%lu statement=%08x line=%ld category=unknown\n".as_ptr(),
                 state.id,sequence,class,after.wrapping_sub(1),after,physical,site,origin,state.phase,statement as u32,
                 if statement.is_null(){-1}else{read::<i32>(statement,22)});
+            object_binding(r, d, state.id, sequence);
         } else {
             OracleTrace_Printf(c"pv.counter.change function=%lu role=%lu cls=%lu old=%lu after=%lu physical=%lu site=%lx phase=%lu\n".as_ptr(),
                 state.id,d.role,class,old,after,physical,site,state.phase);

@@ -32,6 +32,17 @@ pub struct Site {
     pub bytes: Vec<u8>,
     pub field: Option<usize>,
     pub counter_class: Option<u8>,
+    pub object_binding: ObjectBinding,
+}
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
+#[repr(u32)]
+#[serde(rename_all = "snake_case")]
+pub enum ObjectBinding {
+    #[default]
+    None = 0,
+    Single = 1,
+    PairFirst = 2,
+    PairSecond = 3,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[repr(u32)]
@@ -44,6 +55,8 @@ pub enum Role {
     AllocationReset = 5,
     FunctionBegin = 6,
     FunctionEnd = 7,
+    InitialRange = 8,
+    WindowBegin = 9,
 }
 #[derive(Debug)]
 pub struct Installed {
@@ -53,7 +66,7 @@ pub struct Installed {
 }
 const COUNTS: &str = "_data_005e6a7c";
 const PHYSICAL: &str = "_data_005e6778";
-const HANDLER: &str = "_OracleRust_CounterProbe";
+const HANDLER: &str = "_OracleRust_CounterProbeV2";
 // Roles: increment, close/high-water restore, rewind, initial reset, allocation
 // reset, function begin, function end. These are actual writes, not guessed types.
 fn role(version: &str, r: &Reference) -> Result<Role> {
@@ -88,6 +101,24 @@ pub fn plan(root: &Path, version: &str) -> Result<Vec<Site>> {
     let mut decoder = disassembly::decoder()?;
     decoder.set_detail(true)?;
     let mut sites = vec![];
+    for (name, expected) in [
+        (
+            "_fn_004fcba0",
+            "c7b3553183e2a39829ae89e562ce3bc1801d954270d1ba1e67e5017ecf4da38b",
+        ),
+        (
+            "_Registers_BindVR",
+            "bdde62ffa0f7872d0c8afa6518ddbf92b4b0270356083e1048ba87a2590886c5",
+        ),
+    ] {
+        ensure!(
+            audit
+                .functions
+                .get(name)
+                .is_some_and(|f| f.normalized_sha256 == expected),
+            "object binding ABI guard failed for {name}"
+        );
+    }
     for r in audit.references.iter().filter(|r| r.write) {
         let instructions =
             decoder.disasm_count(pe.read(r.address, 15)?, u64::from(r.address), 1)?;
@@ -157,6 +188,12 @@ pub fn plan(root: &Path, version: &str) -> Result<Vec<Site>> {
             bytes: i.bytes().to_vec(),
             field: Some((r.relocations[0] - r.address) as usize),
             counter_class,
+            object_binding: match (r.function.as_str(), r.offset) {
+                ("_fn_004fcba0", 0x28) => ObjectBinding::Single,
+                ("_Registers_BindVR", 0x9a) => ObjectBinding::PairFirst,
+                ("_Registers_BindVR", 0xa6) => ObjectBinding::PairSecond,
+                _ => ObjectBinding::None,
+            },
         });
     }
     let expected = match version {
@@ -210,8 +247,64 @@ pub fn plan(root: &Path, version: &str) -> Result<Vec<Site>> {
             bytes: pe.read(address, length)?.to_vec(),
             field,
             counter_class: None,
+            object_binding: ObjectBinding::None,
         });
     }
+    // Observe the completed snapshot/window, after its last actual memory write.
+    // The equal-size island preserves interior branch targets as for counters.
+    for (name, offset, role, target) in [
+        (
+            "_Registers_SnapshotInitialObjectRange",
+            0x21,
+            Role::InitialRange,
+            "_gInitialObjectVRLast",
+        ),
+        (
+            "_Registers_BeginCoalesceWindow",
+            0x42,
+            Role::WindowBegin,
+            "_gVRCoalesceFirst",
+        ),
+    ] {
+        let symbol = metadata
+            .iter()
+            .find(|s| s.name == name)
+            .context("missing category snapshot function")?;
+        let address = symbol.address + offset;
+        let bytes = pe.read(address, 6)?.to_vec();
+        ensure!(
+            bytes[..2] == [0x66, 0xa3] && pe.read(address + 6, 1)? == [0xc3],
+            "category snapshot epilogue guard"
+        );
+        let expected = metadata
+            .iter()
+            .find(|s| s.name == target)
+            .context("missing category snapshot target")?
+            .address;
+        ensure!(
+            u32::from_le_bytes(bytes[2..6].try_into()?) == expected,
+            "category snapshot store target guard"
+        );
+        sites.push(Site {
+            address,
+            container: name.into(),
+            offset,
+            role,
+            selector: 0,
+            bytes,
+            field: Some(2),
+            counter_class: None,
+            object_binding: ObjectBinding::None,
+        });
+    }
+    ensure!(
+        sites
+            .iter()
+            .filter(|s| s.object_binding != ObjectBinding::None)
+            .count()
+            == 3,
+        "missing object binding sites"
+    );
     sites.sort_by_key(|s| s.address);
     ensure!(
         sites
@@ -236,6 +329,32 @@ pub fn install(root: &Path, version: &str, inputs: &[(String, Vec<u8>)]) -> Resu
     let counts = islands.external(COUNTS)?;
     let physical = islands.external(PHYSICAL)?;
     let handler = islands.external(HANDLER)?;
+    let initial = islands.external("_gInitialObjectVRLast")?;
+    let first = islands.external("_gVRCoalesceFirst")?;
+    let last = islands.external("_gVRCoalesceLast")?;
+    // The short tables and the int table must use class order VR,FPR,GPR.
+    for names in [
+        [
+            "_gInitialObjectVRLast",
+            "_gInitialObjectFPRLast",
+            "_gInitialObjectGPRLast",
+        ],
+        [
+            "_gVRCoalesceFirst",
+            "_gFPRCoalesceFirst",
+            "_gGPRCoalesceFirst",
+        ],
+        ["_gVRCoalesceLast", "_gFPRCoalesceLast", "_gGPRCoalesceLast"],
+    ] {
+        let width = if names[0] == "_gVRCoalesceLast" { 4 } else { 2 };
+        let addresses =
+            names.map(|name| metadata.iter().find(|s| s.name == name).map(|s| s.address));
+        let start = addresses[0].context("missing category table")?;
+        ensure!(
+            addresses == [Some(start), Some(start + width), Some(start + 2 * width)],
+            "category table layout guard"
+        );
+    }
     let mut objects = BTreeMap::new();
     let mut installed = BTreeSet::new();
     for (path, bytes) in inputs {
@@ -373,6 +492,8 @@ pub fn install(root: &Path, version: &str, inputs: &[(String, Vec<u8>)]) -> Resu
             let mut desc = vec![0; 12];
             desc.extend(site.selector.to_le_bytes());
             desc.extend((site.role as u32).to_le_bytes());
+            desc.extend([0; 12]);
+            desc.extend((site.object_binding as u32).to_le_bytes());
             let mut desc_relocations = vec![
                 Relocation {
                     offset: descriptor_offset + 4,
@@ -385,6 +506,13 @@ pub fn install(root: &Path, version: &str, inputs: &[(String, Vec<u8>)]) -> Resu
                     kind: 6,
                 },
             ];
+            for (offset, symbol) in [(20, initial), (24, first), (28, last)] {
+                desc_relocations.push(Relocation {
+                    offset: descriptor_offset + offset,
+                    symbol,
+                    kind: 6,
+                });
+            }
             if !matches!(site.role, Role::FunctionBegin | Role::FunctionEnd) {
                 let (field, external) = original_reloc.context("counter pointer missing")?;
                 desc[..4].copy_from_slice(&copied[field..field + 4]);

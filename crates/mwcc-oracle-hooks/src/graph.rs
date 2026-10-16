@@ -80,8 +80,9 @@ unsafe fn capture(g: &Globals, class: i8, start: i32, count: i32) {
         let Some(context) = lifecycle::graph_context(class) else {
             return;
         };
-        OracleTrace_Printf(c"pv.graph.begin schema=1 function=%lu graph=%lu births=%lu cls=%d physical=%lu start=%ld count=%ld phase=%lu boundary=before_simplify\n".as_ptr(),
-            context.function, context.graph, context.births, i32::from(class), context.physical, start, count, context.phase);
+        OracleTrace_Printf(c"pv.graph.begin schema=1 function=%lu graph=%lu births=%lu cls=%d physical=%lu start=%ld count=%ld phase=%lu boundary=before_simplify category_ready=%d initial_last=%ld first=%ld last=%ld\n".as_ptr(),
+            context.function, context.graph, context.births, i32::from(class), context.physical, start, count, context.phase,
+            i32::from(context.category_ready),context.initial_last,context.first,context.last);
         let bits = ptr::addr_of_mut!(VISIBLE).cast::<u8>();
         ptr::write_bytes(bits, 0, 8192);
         let mut valid = start >= 0 && count >= start && count <= 65536;
