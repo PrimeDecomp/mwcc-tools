@@ -184,8 +184,18 @@ pub fn run(args: &[String]) -> Result<()> {
         report.history.functions.retain(|f| f.link == *link);
         report.graphs.graphs.retain(|g| g.link == *link);
         report.graphs.functions.retain(|f| f.link == *link);
+        report.scalarization.passes.retain(|p| p.link == *link);
+        report.scalarization.backend_values.retain(|value| {
+            report
+                .history
+                .functions
+                .iter()
+                .any(|f| f.id == value.value.function)
+        });
         ensure!(
-            !report.passes.is_empty() || !report.history.functions.is_empty(),
+            !report.passes.is_empty()
+                || !report.history.functions.is_empty()
+                || !report.scalarization.passes.is_empty(),
             "no provenance for {link}"
         );
         // Filtering is a view; the report-wide coverage remains conservative.
@@ -207,6 +217,25 @@ pub fn run(args: &[String]) -> Result<()> {
                 reused,
                 function.counter_observations.state
             );
+        }
+        for value in &report.scalarization.backend_values {
+            if let Some(element) = &value.array_element {
+                println!(
+                    "  source {}[{}] -> class {} register {}, frontend pass {:?}/binding {:?}, observations {:?}",
+                    String::from_utf8_lossy(&element.name),
+                    element.element_index,
+                    value.class,
+                    value.register,
+                    value.pass,
+                    value.binding,
+                    value.observations.state
+                );
+            } else if value.observations.state != EvaluationState::Satisfied {
+                println!(
+                    "  register {}: incomplete frontend scalarization binding",
+                    value.register
+                );
+            }
         }
         for graph in &report.graphs.graphs {
             println!(

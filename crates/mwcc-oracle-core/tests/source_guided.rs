@@ -285,7 +285,7 @@ fn symbol_pair_objective_counts_a_guarded_mechanism_and_requires_complete_identi
         EvaluationState::Indeterminate
     );
     let graph = state::graph(&ar, "pipeline__Fii", 4, 0).unwrap();
-    let before = state::fingerprint(graph, &ar, &a.object, Version::Gc27).unwrap();
+    let before = state::fingerprint(graph, &ar, &a).unwrap();
     let mut changed = ar.clone();
     changed.history.functions[0].births[1]
         .materialization
@@ -293,21 +293,22 @@ fn symbol_pair_objective_counts_a_guarded_mechanism_and_requires_complete_identi
         .unwrap()
         .symbol_bytes
         .push(b'X');
-    assert_ne!(
-        before,
-        state::fingerprint(graph, &changed, &a.object, Version::Gc27).unwrap()
-    );
+    assert_ne!(before, state::fingerprint(graph, &changed, &a).unwrap());
     changed = ar.clone();
-    let binding = changed.history.functions[0].births[1]
+    // Moving both halves preserves their identity relation. Moving only one
+    // makes the observed pair inconsistent and must change its state.
+    for birth in &mut changed.history.functions[0].births {
+        let binding = birth.materialization.as_mut().unwrap();
+        binding.operand = "9999".into();
+        binding.object = "ffff".into();
+    }
+    assert_eq!(before, state::fingerprint(graph, &changed, &a).unwrap());
+    changed.history.functions[0].births[1]
         .materialization
         .as_mut()
-        .unwrap();
-    binding.operand = "9999".into();
-    binding.object = "ffff".into();
-    assert_eq!(
-        before,
-        state::fingerprint(graph, &changed, &a.object, Version::Gc27).unwrap()
-    );
+        .unwrap()
+        .operand = "8888".into();
+    assert_ne!(before, state::fingerprint(graph, &changed, &a).unwrap());
     assert!(
         objective::validate(&contract(Objective::SymbolAddressPairs {
             symbol: "sym".into(),
@@ -552,20 +553,19 @@ fn equivalent_states_group_pointers_but_keep_category_and_origin_evidence() {
     let source = b"model source";
     let a = compilation(&synthetic(true, false, false), source);
     let mut ar = provenance::parse(&a.trace).unwrap();
-    let key = state::fingerprint(&ar.graphs.graphs[0], &ar, &a.object, a.version).unwrap();
+    let key = state::fingerprint(&ar.graphs.graphs[0], &ar, &a).unwrap();
     for birth in &mut ar.history.functions[0].births {
         if let Some(o) = &mut birth.object {
-            o.object = "different pointer".into();
-            o.variable_info = "other info".into();
+            let moved = |pointer: &str| {
+                format!("{:x}", u32::from_str_radix(pointer, 16).unwrap() + 0x10000)
+            };
+            o.object = moved(&o.object);
+            o.variable_info = moved(&o.variable_info);
         }
-    }
-    for i in &mut ar.graphs.graphs[0].instructions {
-        i.pointer = "opaque".into();
-        i.line = Some(100);
     }
     assert_eq!(
         key,
-        state::fingerprint(&ar.graphs.graphs[0], &ar, &a.object, a.version).unwrap()
+        state::fingerprint(&ar.graphs.graphs[0], &ar, &a).unwrap()
     );
     // Identical selected instructions do not justify grouping objects whose
     // allocated data differs (for example a changed literal or unwind entry).
@@ -585,9 +585,11 @@ fn equivalent_states_group_pointers_but_keep_category_and_origin_evidence() {
         state::object_instructions(&a.object, "pipeline__Fii").unwrap(),
         state::object_instructions(&changed_data, "pipeline__Fii").unwrap()
     );
+    let mut changed_compilation = a.clone();
+    changed_compilation.object = changed_data;
     assert_ne!(
         key,
-        state::fingerprint(&ar.graphs.graphs[0], &ar, &changed_data, a.version).unwrap()
+        state::fingerprint(&ar.graphs.graphs[0], &ar, &changed_compilation).unwrap()
     );
     ar.graphs.graphs[0]
         .nodes
@@ -596,14 +598,14 @@ fn equivalent_states_group_pointers_but_keep_category_and_origin_evidence() {
         .stored_degree += 1;
     assert_ne!(
         key,
-        state::fingerprint(&ar.graphs.graphs[0], &ar, &a.object, a.version).unwrap()
+        state::fingerprint(&ar.graphs.graphs[0], &ar, &a).unwrap()
     );
     ar.graphs.graphs[0]
         .nodes
         .get_mut(&32)
         .unwrap()
         .recorded_neighbors = vec![5, 33];
-    let ordered = state::fingerprint(&ar.graphs.graphs[0], &ar, &a.object, a.version).unwrap();
+    let ordered = state::fingerprint(&ar.graphs.graphs[0], &ar, &a).unwrap();
     ar.graphs.graphs[0]
         .nodes
         .get_mut(&32)
@@ -612,7 +614,7 @@ fn equivalent_states_group_pointers_but_keep_category_and_origin_evidence() {
         .reverse();
     assert_ne!(
         ordered,
-        state::fingerprint(&ar.graphs.graphs[0], &ar, &a.object, a.version).unwrap()
+        state::fingerprint(&ar.graphs.graphs[0], &ar, &a).unwrap()
     );
     // Retail callers can leave pointer bits in the unused upper half of a
     // short argument. Those bits are preserved in observations but must not
@@ -639,7 +641,7 @@ fn equivalent_states_group_pointers_but_keep_category_and_origin_evidence() {
             end_position: Some(2),
             abandoned: false,
         });
-    let scoped = state::fingerprint(&ar.graphs.graphs[0], &ar, &a.object, a.version).unwrap();
+    let scoped = state::fingerprint(&ar.graphs.graphs[0], &ar, &a).unwrap();
     ar.history.functions[0].expressions[0]
         .dispatch
         .as_mut()
@@ -647,7 +649,7 @@ fn equivalent_states_group_pointers_but_keep_category_and_origin_evidence() {
         .requested[0] = 0xabcd0004;
     assert_eq!(
         scoped,
-        state::fingerprint(&ar.graphs.graphs[0], &ar, &a.object, a.version).unwrap()
+        state::fingerprint(&ar.graphs.graphs[0], &ar, &a).unwrap()
     );
     ar.history.functions[0].expressions[0]
         .dispatch
@@ -656,7 +658,7 @@ fn equivalent_states_group_pointers_but_keep_category_and_origin_evidence() {
         .retail_target = 0x441000;
     assert_ne!(
         scoped,
-        state::fingerprint(&ar.graphs.graphs[0], &ar, &a.object, a.version).unwrap()
+        state::fingerprint(&ar.graphs.graphs[0], &ar, &a).unwrap()
     );
 }
 #[test]
@@ -771,7 +773,7 @@ fn retained_state_analysis_checks_objects_coverage_and_unsupported_normalization
     let trace = synthetic(false, true, false);
     let mut c = compilation(&trace, source);
     let analysis = state::inspect(&c, "pipeline__Fii", 4, 0).unwrap();
-    assert_eq!(analysis.fingerprint_format_version, 2);
+    assert_eq!(analysis.fingerprint_format_version, 3);
     assert_eq!(analysis.normalization.state, EvaluationState::Satisfied);
     assert_eq!(analysis.fingerprint.as_ref().unwrap().len(), 64);
     let original_object = c.object.clone();
@@ -827,7 +829,7 @@ fn backend_origin_fingerprints_keep_elements_and_call_shapes_but_ignore_partial_
         "trace_position":4,"part":"single","item":"300","kind":54,"callee":"400","return_type":"500","type_kind":8,"type_size":4,"output":"600","output_kind":0,"output_bytes":vec![0;24],"output_complete":false,"tree_known":true,"tree_complete":false,"tree_bytes":[99,97,108,108],"tree_text":"call"
     })).unwrap());
     let fingerprint = |report: &mwcc_oracle_core::provenance::Report| {
-        state::fingerprint(&report.graphs.graphs[0], report, &c.object, c.version).unwrap()
+        state::fingerprint(&report.graphs.graphs[0], report, &c).unwrap()
     };
     let original = fingerprint(&report);
     let call = report.history.functions[0].births[1]
@@ -865,4 +867,193 @@ fn backend_origin_fingerprints_keep_elements_and_call_shapes_but_ignore_partial_
         .unwrap()
         .kind = 55;
     assert_ne!(original, fingerprint(&report));
+}
+
+fn scalarized_array_trace(copy: bool) -> String {
+    let frontend = "pv.scalar.begin schema=1 pass=1 function_object=abc coverage=guarded_temp_returns_v1 link=pipeline__Fii\npv.scalar.binding schema=1 pass=1 binding=1 function_object=abc site=461748 part=100 source_linear=101 source_index=7 source_kind=2 variable=102 source_object=110 source_info=111 source_type=112 source_type_kind=12 source_type_size=8 source_datatype=1 source_storage=0 source_name_known=1 source_name_complete=1 source_name_hex=666c6167 source_element_known=1 source_element_type_kind=1 source_element_type_size=4 byte_offset=4 byte_size=4 bit_first=32 bit_last=63 flags=0 temporary=1 temporary_info=123 temporary_type=202 temporary_type_kind=1 temporary_type_size=4\npv.scalar.end schema=1 pass=1 function_object=abc bindings=1 coverage=guarded_temp_returns_v1\n";
+    let backend=synthetic(copy,true,false).replace("function=1 parent=0", "function=1 parent=0 function_object=abc scalarization=guarded_temp_returns_v1").replace("pv.function.end function=1", "pv.function.end function=1 scalarization=guarded_temp_returns_v1 scalar_passes=1 scalar_bindings=1 scalar_first_pass=1 scalar_last_pass=1");
+    let frontend = frontend.replace("function_object=abc", "function=1 function_object=abc");
+    backend.replacen(
+        "pv.category.initial",
+        &(frontend.to_owned() + "pv.category.initial"),
+        1,
+    )
+}
+#[test]
+fn scalarized_source_fingerprints_keep_intervals_but_ignore_capture_identities() {
+    let text = scalarized_array_trace(false);
+    let c = compilation(&text, b"model source");
+    let fingerprint = |text: &str| {
+        let report = provenance::parse(text).unwrap();
+        assert_eq!(report.scalarization.backend_values.len(), 1);
+        assert_eq!(
+            report.scalarization.backend_values[0].observations.state,
+            EvaluationState::Satisfied
+        );
+        let mut capture = c.clone();
+        capture.trace = text.to_owned();
+        state::fingerprint(&report.graphs.graphs[0], &report, &capture).unwrap()
+    };
+    let original = fingerprint(&text);
+    let moved = text
+        .replace("source_object=110", "source_object=210")
+        .replace("part=100 source_linear=101", "part=300 source_linear=301")
+        .replace("variable=102", "variable=302")
+        .replace("source_info=111", "source_info=311")
+        .replace("source_type=112", "source_type=312")
+        .replace("temporary_type=202", "temporary_type=402")
+        .replace("source_index=7", "source_index=42")
+        .replace("function_object=abc", "function_object=def")
+        .replace("pass=1", "pass=2")
+        .replace(
+            "scalar_first_pass=1 scalar_last_pass=1",
+            "scalar_first_pass=2 scalar_last_pass=2",
+        );
+    assert_eq!(original, fingerprint(&moved));
+    let other_element = text.replace(
+        "byte_offset=4 byte_size=4 bit_first=32 bit_last=63",
+        "byte_offset=0 byte_size=4 bit_first=0 bit_last=31",
+    );
+    assert_ne!(original, fingerprint(&other_element));
+    assert_ne!(
+        original,
+        fingerprint(&text.replace("source_name_hex=666c6167", "source_name_hex=6f74686572"))
+    );
+}
+
+#[test]
+fn scalarization_state_rejects_unknown_normalization_and_keeps_pointer_aliases() {
+    let text = scalarized_array_trace(false);
+    let c = compilation(&text, b"model source");
+    let fingerprint = |report: &mwcc_oracle_core::provenance::Report| {
+        state::fingerprint(&report.graphs.graphs[0], report, &c)
+    };
+    let report = provenance::parse(&text).unwrap();
+    let original = fingerprint(&report).unwrap();
+    let mut alias = report.clone();
+    alias.scalarization.passes[0].bindings[0]
+        .temporary
+        .type_pointer = alias.scalarization.passes[0].bindings[0]
+        .source
+        .type_pointer
+        .clone();
+    assert_ne!(original, fingerprint(&alias).unwrap());
+
+    let mut unsupported = report.clone();
+    unsupported.scalarization.passes[0].schema = 2;
+    assert!(fingerprint(&unsupported).is_err());
+    let mut unsupported_site = report.clone();
+    unsupported_site.scalarization.passes[0].bindings[0].site = 0x123456;
+    assert!(fingerprint(&unsupported_site).is_err());
+
+    let unknown_gap = text.replace(
+        "pv.scalar.end",
+        "pv.scalar.gap schema=1 pass=1 function=1 function_object=abc site=461748 reason=unknown future_pointer=deadbeef\npv.scalar.end",
+    );
+    let gap_report = provenance::parse(&unknown_gap).unwrap();
+    let mut gap_capture = c.clone();
+    gap_capture.trace = unknown_gap;
+    let error =
+        state::fingerprint(&gap_report.graphs.graphs[0], &gap_report, &gap_capture).unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("unsupported scalarization gap field")
+    );
+}
+
+#[test]
+fn scalarized_element_initialization_uses_exact_source_binding_and_final_assignment() {
+    use objective::PromotedElementAnchor;
+    let c = contract(Objective::ScalarizedArrayInitialization {
+        value: PromotedElementAnchor {
+            name: "flag".into(),
+            element_index: 1,
+            element_size: 4,
+        },
+        constant: 0,
+        source_line: Some(3),
+    });
+    let evaluate = |text: &str| {
+        let compilation = compilation(text, b"model source");
+        let report = provenance::parse(text).unwrap();
+        let input = Input {
+            compilation: &compilation,
+            provenance: &report,
+            source: b"model source",
+            semantic_check: None,
+        };
+        objective::evaluate(&c, &input, &input).unwrap()
+    };
+    let text = scalarized_array_trace(false);
+    let passed = evaluate(&text);
+    assert_eq!(passed.overall.state, EvaluationState::Satisfied);
+    assert_eq!(
+        passed.observations["source_element"]["array_element"]["element_index"],
+        1
+    );
+    assert_eq!(
+        evaluate(&scalarized_array_trace(true)).overall.state,
+        EvaluationState::Unsatisfied
+    );
+    assert_eq!(
+        evaluate(&text.replace("temporary_info=123", "temporary_info=456"))
+            .overall
+            .state,
+        EvaluationState::Indeterminate
+    );
+    assert_eq!(
+        evaluate(&text.replace("scalar_bindings=1", "scalar_bindings=2"))
+            .overall
+            .state,
+        EvaluationState::Indeterminate
+    );
+    assert_eq!(
+        evaluate(&text.replace(
+            "byte_offset=4 byte_size=4 bit_first=32 bit_last=63",
+            "byte_offset=0 byte_size=4 bit_first=0 bit_last=31"
+        ))
+        .overall
+        .state,
+        EvaluationState::Indeterminate
+    );
+    // A second creation with no backend birth still makes the source-name
+    // selector ambiguous; graph-node-only state grouping must not hide it.
+    let line = text
+        .lines()
+        .find(|l| l.starts_with("pv.scalar.binding"))
+        .unwrap();
+    let extra = line
+        .replace("binding=1", "binding=2")
+        .replace("temporary=1", "temporary=3")
+        .replace("temporary_info=123", "temporary_info=456");
+    let ambiguous = text
+        .replace("pv.scalar.end", &(extra.clone() + "\npv.scalar.end"))
+        .replace("bindings=1 coverage=", "bindings=2 coverage=")
+        .replace("scalar_bindings=1", "scalar_bindings=2");
+    assert_eq!(
+        evaluate(&ambiguous).overall.state,
+        EvaluationState::Indeterminate
+    );
+    let partial_extra = extra.replace(
+        "source_element_known=1 source_element_type_kind=1 source_element_type_size=4",
+        "source_element_known=0 source_element_type_kind=-1 source_element_type_size=-1",
+    );
+    let partial = text
+        .replace("pv.scalar.end", &(partial_extra + "\npv.scalar.end"))
+        .replace("bindings=1 coverage=", "bindings=2 coverage=")
+        .replace("scalar_bindings=1", "scalar_bindings=2");
+    assert_eq!(
+        evaluate(&partial).overall.state,
+        EvaluationState::Indeterminate
+    );
+    let compilation = compilation(&text, b"model source");
+    let fingerprint = |text: &str| {
+        let report = provenance::parse(text).unwrap();
+        let mut capture = compilation.clone();
+        capture.trace = text.to_owned();
+        state::fingerprint(&report.graphs.graphs[0], &report, &capture).unwrap()
+    };
+    assert_ne!(fingerprint(&text), fingerprint(&ambiguous));
+    assert_ne!(fingerprint(&text), fingerprint(&partial));
 }

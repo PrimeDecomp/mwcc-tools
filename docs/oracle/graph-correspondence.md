@@ -24,7 +24,7 @@ and a compiler `Version`. Result format 1 retains:
   node, including ordered raw neighbor lists, stored degree, unique adjacency
   degree, visibility, flags, color, allocation category and birth binding.
 - Conditional correspondence hypotheses from aligned instructions and complete
-  observed named-object/type/word-part or Normalize-symbol/part/displacement
+  observed named-object/type/word-part, guarded promoted-array element, or Normalize-symbol/part/displacement
   anchors. Graph-only nodes participate through provenance anchors.
 - Repeated or missing anchors, ambiguous birth generations, nodes contributed to
   several graph nodes, competing targets and inverse collisions. Every vote is
@@ -51,6 +51,16 @@ one birth and one graph node in each capture, with complete node binding, to
 contribute a hypothesis. Repeated symbols, shadowed names and raw-number reuse
 remain explicit. Unknown origins do not acquire a source identity from their
 register number.
+
+Promoted-array anchors retain the complete source name, element index/size,
+array bounds/count, relevant flags and source datatype/storage. They require
+complete guarded promotion capture and a unique birth over the whole function.
+This can associate instruction-invisible promotion nodes across source variants;
+it does not associate them with a different live frontend scalar. In the real
+second-element versus outside-loop-store captures, `noRota[0]` maps 601 to 589
+and `noRota[1]` maps 602 to 590. Both comparisons retain lifetime and elimination
+uncertainty. Windows and Linux structured results agree; retained evidence is
+under `build/source-guided/promoted-anchor-audit/`.
 
 Source names and instruction alignment are conditional correspondence, not
 semantic lifetime proof. These results do not prove that two expressions have

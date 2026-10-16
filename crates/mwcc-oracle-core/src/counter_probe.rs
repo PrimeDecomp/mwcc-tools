@@ -94,7 +94,7 @@ pub struct Installed {
 }
 const COUNTS: &str = "_data_005e6a7c";
 const PHYSICAL: &str = "_data_005e6778";
-const HANDLER: &str = "_OracleRust_CounterProbeV4";
+const HANDLER: &str = "_OracleRust_CounterProbeV5";
 // Roles: increment, close/high-water restore, rewind, initial reset, allocation
 // reset, function begin, function end. These are actual writes, not guessed types.
 fn role(version: &str, r: &Reference) -> Result<Role> {
@@ -126,6 +126,54 @@ pub fn plan(root: &Path, version: &str) -> Result<Vec<Site>> {
     let metadata = executable::read_symbols(&fs::read_to_string(
         root.join(format!("config/{version}/symbols.txt")),
     )?)?;
+    // The temp-object wrapper reads saved EBX only at the scalarizer's sole
+    // audited call return. Guard both the consumer and the field constructor;
+    // reconstructed IROVarPart declarations alone do not establish these bytes.
+    for (name, size, expected) in [
+        (
+            "_fn_00460780",
+            0x3a2,
+            match version {
+                "GC_1_3" => "88000852a003dd11fdb26a09aa0478f824455ed1085d95aaca22ca3c892be775",
+                "GC_1_3_2" => "9be52856aced363fcf061bb65d04c374551da079d16f88bb35a4718d45cec2dc",
+                "GC_2_7" => "d5dc7b3e3f3af83612de6d9abbecc79e0007f709299e049bcc3d301fdab8481a",
+                _ => unreachable!(),
+            },
+        ),
+        (
+            "_fn_004601f0",
+            0x3fc,
+            match version {
+                "GC_1_3" => "50733c3c5312a6e3c44affbad1c4dd39ec3aef9d33bef0d0a38a4337622433f1",
+                "GC_1_3_2" => "e08fcf3949adf20eb89dde10ccc0f05b671d1e97875642f412505aa9ba923483",
+                "GC_2_7" => "06de28c6947a8d5470191498dcff2b2cc29b955634759550edc67c6bde6afcfe",
+                _ => unreachable!(),
+            },
+        ),
+        (
+            "_create_temp_object",
+            0x76,
+            match version {
+                "GC_1_3" => "a2ee6b2cb813b5b24ff22f8764ae4ddaa4a787d7fa3a91f452e683838d0e79e1",
+                "GC_1_3_2" => "cada9817ceac0a35abc55a941fec25e290316d57ea3010d000d574bdc8d36b33",
+                "GC_2_7" => "23d41eee3041387ab0cc7f97c6d8de2d628f029853b03293bebe59659f03aa29",
+                _ => unreachable!(),
+            },
+        ),
+    ] {
+        let symbol = metadata
+            .iter()
+            .find(|s| s.name == name)
+            .context("missing scalarization ABI symbol")?;
+        ensure!(
+            executable::size(&symbol.options)? == size
+                && format!(
+                    "{:x}",
+                    Sha256::digest(pe.read(symbol.address, size as usize)?)
+                ) == expected,
+            "frontend scalarization layout guard failed for {name}"
+        );
+    }
     let mut decoder = disassembly::decoder()?;
     decoder.set_detail(true)?;
     let mut sites = vec![];
@@ -482,6 +530,145 @@ pub fn install(root: &Path, version: &str, inputs: &[(String, Vec<u8>)]) -> Resu
     let metadata = executable::read_symbols(&fs::read_to_string(
         root.join(format!("config/{version}/symbols.txt")),
     )?)?;
+    let scalar_helpers = ["_fn_00460780", "_fn_004601f0", "_create_temp_object"];
+    let mut scalar_checked = BTreeSet::new();
+    // Check the actual split inputs too: a pristine PE alone cannot establish
+    // the ABI of a modified constructor/consumer supplied to the linker.
+    for (_, bytes) in inputs {
+        let object = Object::parse(bytes)?;
+        for name in scalar_helpers {
+            let Some(symbol) = object
+                .symbols
+                .values()
+                .find(|s| s.section > 0 && s.name == name)
+            else {
+                continue;
+            };
+            ensure!(
+                scalar_checked.insert(name),
+                "duplicate scalarization helper {name}"
+            );
+            let reference = metadata
+                .iter()
+                .find(|s| s.name == name)
+                .context("missing scalarization helper metadata")?;
+            let length = executable::size(&reference.options)? as usize;
+            let section = &object.sections[symbol.section as usize - 1];
+            let mut expected = pe.read(reference.address, length)?.to_vec();
+            let mut actual = section
+                .data
+                .get(symbol.value as usize..symbol.value as usize + length)
+                .context("scalarization helper outside split section")?
+                .to_vec();
+            let mut fields = BTreeMap::new();
+            for &at in fixups
+                .iter()
+                .filter(|&&at| reference.address <= at && at < reference.address + length as u32)
+            {
+                fields.insert((at - reference.address) as usize, 6);
+            }
+            for (at, target) in crate::x86::branches(&expected, reference.address)? {
+                if !(reference.address..reference.address + length as u32).contains(&target) {
+                    fields.insert(at as usize, 20);
+                }
+            }
+            let mut seen = BTreeSet::new();
+            let mut relocations = section
+                .relocations
+                .iter()
+                .filter(|r| symbol.value <= r.offset && r.offset < symbol.value + length as u32)
+                .collect::<Vec<_>>();
+            relocations.sort_by_key(|r| r.offset);
+            let mut identities = Sha256::new();
+            for r in relocations {
+                let at = (r.offset - symbol.value) as usize;
+                ensure!(
+                    fields.get(&at) == Some(&r.kind) && seen.insert(at),
+                    "unexpected scalarization helper relocation"
+                );
+                let target = object
+                    .symbols
+                    .get(&r.symbol)
+                    .context("scalarization relocation target is missing or auxiliary")?;
+                // The split addend and named symbol binding are part of the ABI
+                // guard. Zeroing relocation fields alone would admit retargeted
+                // calls or data references with otherwise identical bodies.
+                identities.update((at as u32).to_le_bytes());
+                identities.update(r.kind.to_le_bytes());
+                identities.update((target.name.len() as u32).to_le_bytes());
+                identities.update(target.name.as_bytes());
+                identities.update(target.value.to_le_bytes());
+                identities.update(target.section.to_le_bytes());
+                identities.update(target.kind.to_le_bytes());
+                identities.update([target.storage]);
+                identities.update((target.auxiliary.len() as u32).to_le_bytes());
+                for auxiliary in &target.auxiliary {
+                    identities.update(auxiliary);
+                }
+                identities.update(
+                    actual
+                        .get(at..at + 4)
+                        .context("scalarization relocation addend crosses boundary")?,
+                );
+                actual
+                    .get_mut(at..at + 4)
+                    .context("scalarization helper fixup crosses boundary")?
+                    .fill(0);
+            }
+            ensure!(
+                seen.len() == fields.len(),
+                "missing scalarization helper relocations"
+            );
+            let identity_hash = match (version, name) {
+                ("GC_1_3", "_fn_00460780") => {
+                    "ba192f74680639732bd1f2efeb58c4f3a8bcddd5b4c158a49bd98278475827b2"
+                }
+                ("GC_1_3_2", "_fn_00460780") => {
+                    "646bd4f9909f58c6a7f4a5bea4d11b7142e167020f79fe14108a7f416540797f"
+                }
+                ("GC_2_7", "_fn_00460780") => {
+                    "c6033a48c09cb6aaabe3ed9ee04891d3067a1e90fc3497ec521ef5645d9cb4fe"
+                }
+                ("GC_1_3", "_fn_004601f0") => {
+                    "4cab8f925dd94ff3a6622b2215291ff1019b18b106881ee991793c2e0521ab12"
+                }
+                ("GC_1_3_2", "_fn_004601f0") => {
+                    "233250dac2d5aa99f7feb8d2b37c383df67a3a357944efcee5cbfb5d94896140"
+                }
+                ("GC_2_7", "_fn_004601f0") => {
+                    "e20d28166fb5c73263bead158939639bdd0039dc27e6fa137274224b7935c357"
+                }
+                ("GC_1_3", "_create_temp_object") => {
+                    "b62e1a5b0015f057028dc8f73fc946d4b578e198c94aeb629fa6c66ba6e70b17"
+                }
+                ("GC_1_3_2", "_create_temp_object") => {
+                    "e38b575766bf848f91a6893638daf76231e92d0d1ee4004858e28e62744be1ba"
+                }
+                ("GC_2_7", "_create_temp_object") => {
+                    "be61889a29289834952d942e7419e9d2441430b169ac096773d1db2532d00404"
+                }
+                _ => bail!("unsupported scalarization helper identity guard"),
+            };
+            ensure!(
+                format!("{:x}", identities.finalize()) == identity_hash,
+                "scalarization helper relocation identity guard failed for {name}"
+            );
+            for at in fields.keys() {
+                expected
+                    .get_mut(*at..*at + 4)
+                    .context("scalarization reference fixup crosses boundary")?
+                    .fill(0);
+            }
+            ensure!(
+                actual == expected,
+                "scalarization helper byte guard failed for {name}"
+            );
+        }
+    }
+    ensure!(
+        scalar_checked.len() == scalar_helpers.len(),
+        "missing scalarization helper split inputs"
+    );
     let mut islands = Builder::default();
     let code_section = islands.section(".text", 0x60500020, vec![], 0, vec![])?;
     let data_section = islands.section(".rdata", 0x40300040, vec![], 0, vec![])?;

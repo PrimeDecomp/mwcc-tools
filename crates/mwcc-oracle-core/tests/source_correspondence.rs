@@ -324,3 +324,73 @@ fn normalize_symbol_anchors_require_complete_function_capture_and_part_identity(
     assert!(report.mapping.is_empty());
     assert_eq!(report.anchors.len(), 4);
 }
+
+fn promoted_elements(indices: &[u32]) -> String {
+    let names = vec![""; indices.len()];
+    let neighbors = vec![vec![]; indices.len()];
+    let mut text = model(4, 32, &names, &[], &neighbors)
+        .replace(
+            "coverage=direct_counter_writes",
+            "coverage=direct_counter_writes array_promotion=guarded_scalar_v1",
+        )
+        .replace(
+            "graphs=1 ranges=0",
+            &format!("graphs=1 ranges=0 array_promotions={}", indices.len()),
+        );
+    for (i, index) in indices.iter().enumerate() {
+        let id = i + 1;
+        let original = birth(4, 32, id, "");
+        let replacement = original.replace("site=400028", "site=574005")
+            + &format!(
+                "pv.value.array schema=1 function=1 value={id} promotion=100 object=200 register={} element_index={index} element_size=4 array_size=8 element_count=2 flags=0 datatype=1 storage=0 type_kind=12 type_size=8 name_known=1 name_complete=1 name_hex=666c616773\n",
+                32 + i
+            );
+        text = text.replace(&original, &replacement);
+    }
+    text
+}
+
+#[test]
+fn promoted_array_elements_anchor_invisible_nodes_without_claiming_live_values() {
+    let a = promoted_elements(&[0, 1]);
+    let b = promoted_elements(&[1, 0]).replace("flags=0 datatype=1", "flags=248 datatype=1");
+    let report = compare(&a, &b, 4);
+    assert_eq!(report.coverage.state, EvaluationState::Satisfied);
+    assert_eq!(
+        report
+            .mapping
+            .iter()
+            .map(|h| (h.first, h.second))
+            .collect::<Vec<_>>(),
+        vec![(32, 33), (33, 32)]
+    );
+    assert_eq!(report.anchors.len(), 2);
+    assert!(report.anchors.iter().all(|a| a.usable));
+    for side in [&report.first, &report.second] {
+        assert!(side.nodes.values().all(|n| !n.node.visible_in_instructions));
+        assert!(side.nodes.values().all(|n| n.unknown_origins.is_empty()));
+    }
+    assert_eq!(report.elimination.state, EvaluationState::Indeterminate);
+    assert_eq!(
+        report.lifetime_correspondence.state,
+        EvaluationState::Indeterminate
+    );
+
+    let incomplete = a.replace("array_promotions=2", "array_promotions=1");
+    let report = compare(&a, &incomplete, 4);
+    assert!(report.mapping.is_empty());
+    assert!(report.anchors.iter().all(|a| !a.usable));
+    assert!(
+        report
+            .anchors
+            .iter()
+            .all(|a| a.limitations.iter().any(|s| s.contains("scalar-array")))
+    );
+
+    let duplicate = promoted_elements(&[0, 0]);
+    let report = compare(&duplicate, &a, 4);
+    assert!(report.mapping.is_empty());
+    assert!(report.anchors.iter().all(|a| !a.usable));
+    let differently_typed = a.replace("flags=0 datatype=1", "flags=4 datatype=1");
+    assert!(compare(&a, &differently_typed, 4).mapping.is_empty());
+}

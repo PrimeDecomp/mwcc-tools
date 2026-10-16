@@ -173,10 +173,10 @@ must not report successful coalescing merely because it cannot find an incoming
 copy to the now-unused promoted node. Several `do` forms have no guarded promotion
 at all and likewise cannot establish success for an array-promotion selector.
 
-These examples motivate explicit frontend scalarization correspondence in addition
-to backend array-origin records. The current evidence explains the requested
-failure and supplies real source constructs for further search; it does not close
-that correspondence gap or establish a fully symbolic RenderParticles match.
+These examples motivated explicit frontend scalarization correspondence in addition
+to backend array-origin records. The V5 extension below closes the exact observed
+creation join for these cases. Full semantic lifetimes and the final symbolic
+RenderParticles match remain open.
 
 ## The same transition in the full function
 
@@ -206,3 +206,35 @@ provenance, graph summary and objdiff output are retained under
 `ad2019e7951fef2bacd5f15e940a5bd72f8bd98e75d02636bd4d4fd0eaeda981`;
 the object SHA-256 is
 `943ba6ad056e1c6aecc71c49df3b3f5d9733f5196804aa632f8c511b548d6e14`.
+
+## V5: identify the frontend-created live value
+
+The new [scalarization trace](oracle/scalarization.md) directly observes the retail
+scalarizer's return. In a fresh full-function capture it binds original `noRota`
+bytes 4–7/bits 32–63 to the returned scalar Object and VarInfo, then to backend
+birth `54:209`, GPR 162. It checks the exact function Object, complete pass/end
+totals and all scalar passes ending before backend creation. Two passes contain
+79 bindings. The stock object and all preexisting trace records agree with the
+same input without the new probes. The object hash remains the one above.
+
+Nine standalone captures span all three supported versions. Six outside-loop or
+inline-helper cases establish the expected live `flag[1]` scalar join; three
+original-promotion controls do not. This is observed creation provenance, not a
+proof of source declaration ancestry, dominance, lifetime or equivalence of two
+values across variants. The old promoted nodes remain unused and the
+`promoted_copy_coalescing` predicate correctly stays indeterminate for them.
+
+The narrow constant-LI initializer predicate also remains indeterminate: the live
+pointer-zero computation uses a different instruction sequence. Retained V5 raw,
+typed and stock-verification evidence is under
+`build/source-guided/scalar-origin-audit/`.
+
+The separate `scalarized_array_definition` objective makes this observed
+computation queryable without calling an instruction ordinal a C++ initializer.
+For the full function, definition zero is the incoming copy from GPR 172 into
+the frontend scalar GPR 162. Actual coalescing merges these values; the opcode-103
+producer survives into the graph and defines the recorded final register, GPR 27,
+with no surviving incoming copy. The predicate can preserve this observed
+mechanism during reduction or source search while the final matching score and
+semantic-lifetime questions remain separate. It does not establish that the old
+unused promotion was eliminated or that the complete function now matches.

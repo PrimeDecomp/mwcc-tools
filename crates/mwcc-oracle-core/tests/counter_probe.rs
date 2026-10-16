@@ -184,5 +184,84 @@ fn counter_islands_preserve_all_unpatched_bytes_symbols_sizes_and_guard_sites() 
                 assert!(counter_probe::install(&root, version, &damaged).is_err());
             }
         }
+        for (name, offset) in [
+            ("_fn_00460780", 0x129),
+            ("_fn_004601f0", 0x30f),
+            ("_create_temp_object", 0x22),
+        ] {
+            let (index, position) = inputs
+                .iter()
+                .enumerate()
+                .find_map(|(index, (_, bytes))| {
+                    let object = Object::parse(bytes).unwrap();
+                    let symbol = object
+                        .symbols
+                        .values()
+                        .find(|s| s.section > 0 && s.name == name)?;
+                    Some((
+                        index,
+                        object.sections[symbol.section as usize - 1].raw_offset as usize
+                            + symbol.value as usize
+                            + offset,
+                    ))
+                })
+                .unwrap();
+            let mut damaged = inputs.clone();
+            damaged[index].1[position] ^= 1;
+            assert!(
+                counter_probe::install(&root, version, &damaged).is_err(),
+                "modified scalarization helper admitted: {name}"
+            );
+            let object = Object::parse(&inputs[index].1).unwrap();
+            let helper = object
+                .symbols
+                .values()
+                .find(|s| s.section > 0 && s.name == name)
+                .unwrap();
+            let section = &object.sections[helper.section as usize - 1];
+            let length = match name {
+                "_fn_00460780" => 0x3a2,
+                "_fn_004601f0" => 0x3fc,
+                _ => 0x76,
+            };
+            let (relocation_index, relocation) = section
+                .relocations
+                .iter()
+                .enumerate()
+                .find(|(_, r)| {
+                    r.kind == 20
+                        && (helper.value..helper.value + length).contains(&r.offset)
+                        && object.symbols[&r.symbol].section == 0
+                })
+                .unwrap();
+            let target = &object.symbols[&relocation.symbol];
+            let replacement = object
+                .symbols
+                .iter()
+                .find(|(id, s)| {
+                    **id != relocation.symbol
+                        && s.storage == target.storage
+                        && s.section == target.section
+                        && s.name != target.name
+                        && s.auxiliary.is_empty()
+                })
+                .unwrap()
+                .0;
+            let relocation_symbol = section.relocation_offset as usize + relocation_index * 10 + 4;
+            let addend = section.raw_offset as usize + relocation.offset as usize;
+            for (label, position, replacement) in [
+                ("retarget", relocation_symbol, replacement.to_le_bytes()),
+                ("addend", addend, 1u32.to_le_bytes()),
+                ("symbol value", target.offset + 8, 1u32.to_le_bytes()),
+            ] {
+                let mut damaged = inputs.clone();
+                damaged[index].1[position..position + 4].copy_from_slice(&replacement);
+                let error = counter_probe::install(&root, version, &damaged).unwrap_err();
+                assert!(
+                    error.to_string().contains("relocation identity guard"),
+                    "{version} {name} {label} did not fail its identity guard: {error:#}"
+                );
+            }
+        }
     }
 }

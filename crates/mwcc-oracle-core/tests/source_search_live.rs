@@ -137,7 +137,7 @@ fn retail_source_search_cache_resume_independent_replay_and_evidence_gates() {
         fs::create_dir_all(&directory).unwrap();
         let fixtures =
             PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/source-guided");
-        for name in ["initializer.c", "input.h"] {
+        for name in ["initializer.c", "initializer-linear.c", "input.h"] {
             fs::copy(fixtures.join(name), directory.join(name)).unwrap();
         }
         let mut plan = plan(&oracle, &directory, version);
@@ -171,6 +171,10 @@ fn retail_source_search_cache_resume_independent_replay_and_evidence_gates() {
             version.name()
         );
 
+        // Keep the branching fixture above for cache/grouping coverage. The
+        // initializer recognizer supports one instruction-bearing block with
+        // linear empty scaffolding, so positive/replay gates use this fixture.
+        plan.build.source = "initializer-linear.c".into();
         plan.contract.objective = Objective::DirectInitialization {
             value: anchor(),
             constant: 0,
@@ -179,7 +183,7 @@ fn retail_source_search_cache_resume_independent_replay_and_evidence_gates() {
         plan.transformations = vec![transform(
             "zero-initializer",
             "mechanism-probe",
-            "unsigned flag = observe(input);",
+            "unsigned flag = input;",
             "\n#include \"candidate-only.h\"\n    unsigned flag = 0;",
         )];
         fs::write(

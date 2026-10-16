@@ -125,7 +125,7 @@ pub struct CompileRequest {
     pub timeout: Duration,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Compilation {
     pub version: Version,
     pub source: String,

@@ -14,7 +14,27 @@ fn resolve(path: &mut PathBuf, base: &Path) {
     }
 }
 pub fn run(args: &[String]) -> Result<()> {
-    let command=args.first().map(String::as_str).context("use source-index ingest SPEC --index DIR | query QUERY --index DIR | verify QUERY ID --index DIR --output DIR")?;
+    if args.first().map(String::as_str) == Some("origins") {
+        let mut root = None;
+        let mut filter = index::OriginFilter::default();
+        let mut i = 1;
+        while i < args.len() {
+            let value = args.get(i + 1).context("origins option needs a value")?;
+            match args[i].as_str() {
+                "--index" => root = Some(PathBuf::from(value)),
+                "--link" => filter.link = Some(value.clone()),
+                "--version" => {
+                    filter.version = Some(mwcc_oracle_core::version::Version::parse(value)?)
+                }
+                other => bail!("unknown source-index origins option {other}"),
+            };
+            i += 2;
+        }
+        let report = index::origins(&root.context("origins requires --index DIR")?, &filter)?;
+        println!("{}", serde_json::to_string_pretty(&report)?);
+        return Ok(());
+    }
+    let command=args.first().map(String::as_str).context("use source-index ingest SPEC --index DIR | origins --index DIR [--link NAME] [--version VERSION] | query QUERY --index DIR | verify QUERY ID --index DIR --output DIR")?;
     let spec = args
         .get(1)
         .context("source-index requires a JSON specification")?;
@@ -67,6 +87,11 @@ pub fn run(args: &[String]) -> Result<()> {
             }
             if let Some(path) = &mut ingest.build.from_ninja {
                 resolve(path, base);
+            }
+            for function in &mut ingest.functions {
+                if let Some(file) = &mut function.source_file {
+                    resolve(&mut file.path, base);
+                }
             }
             serde_json::to_value(index::ingest(&root, &ingest)?)?
         }

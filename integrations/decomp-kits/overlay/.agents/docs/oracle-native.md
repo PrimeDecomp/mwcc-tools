@@ -178,8 +178,11 @@ families, preconditions and atomic exact-anchor edits. Depth and generation limi
 bound exploration. Use these structured inputs rather than wrapping report text.
 
 Available predicates are `direct_initialization`, `range_category`, `change_range_category` and
-`eliminate_temporary`, plus the scoped `symbol_address_pairs` count. Direct initialization checks a constant LI and removal of
-the intermediate copy through final allocation. Category changes must preserve
+`eliminate_temporary`, plus the scoped `symbol_address_pairs` count. Direct
+initialization checks the supported first constant-LI definition and removal of
+the intermediate copy through final allocation, within one instruction-bearing
+block and verified linear empty scaffolding. Cross-block initialization and
+source declaration ancestry remain indeterminate. Category changes must preserve
 normalized instructions and relocations. Elimination currently stays indeterminate:
 an unmatched graph node is insufficient evidence. Range categories describe
 allocator number ranges, not semantic source roles.
@@ -288,6 +291,7 @@ remain unsupported.
 
 ```text
 mwcc-tools source-index ingest ingest.json --index corpus
+mwcc-tools source-index origins --index corpus --version GC_2_7
 mwcc-tools source-index query query.json --index corpus
 mwcc-tools source-index verify query.json ENTRY_ID --index corpus --output fresh-example
 ```
@@ -298,6 +302,23 @@ symbolic relocations against the reference object, a stock-verified capture and
 its exact source/dependency/compiler closure. Entries retain source ranges,
 declared revisions, flags and separate provenance coverage. Revision/range
 association is supplied metadata, not automatically recovered source ancestry.
+
+An optional `function.source_file` identifies a header containing an inline
+definition. Its hash must belong to the captured dependency closure; the source
+range then selects that retained file. The build source remains the translation
+unit. `source-index origins` inventories retained guarded origin records and
+coverage before selecting queries; old captures remain explicitly incomplete.
+
+Current development `provenance inspect` also exposes frontend scalarization
+passes and exact aggregate-part Object/VarInfo joins to backend births. Use the
+source checkout's `docs/oracle/scalarization.md` for its schema and limits. State
+fingerprints are format 3; saved runs bind their analyzer and cannot mix formats.
+The `scalarized_array_initialization` objective requires an exact whole-element
+join and a supported constant-LI initialization. `scalarized_array_definition`
+instead takes an explicit observed definition ordinal and checks its producer,
+actual copy merge and final assigned destination. It does not infer C++
+initialization or dominance. State grouping includes the preallocation definitions
+and coalescing evidence, since identical final graphs alone are insufficient.
 
 Queries use the shared mechanism evaluator. Require an actual symbol relocation
 when asking for a zero address-pair count, so unrelated functions cannot satisfy

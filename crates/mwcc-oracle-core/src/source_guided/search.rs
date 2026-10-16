@@ -789,14 +789,7 @@ pub fn run(plan: &Plan, output: &Path, budget: &Budget, resume: bool) -> Result<
                     plan.contract.selection.class,
                     plan.contract.selection.round,
                 )
-                .and_then(|g| {
-                    state::fingerprint(
-                        g,
-                        &report,
-                        &saved.compilation.object,
-                        saved.compilation.version,
-                    )
-                });
+                .and_then(|g| state::fingerprint(g, &report, &saved.compilation));
                 let fingerprint_error = fingerprint.as_ref().err().map(|e| format!("{e:#}"));
                 let fingerprint = fingerprint.ok();
                 let duplicate = fingerprint
@@ -1150,7 +1143,7 @@ pub fn replay(output: &Path, id: usize, budget: &Budget) -> Result<Outcome> {
         plan.contract.selection.class,
         plan.contract.selection.round,
     )
-    .and_then(|g| state::fingerprint(g, &b, &saved.compilation.object, saved.compilation.version));
+    .and_then(|g| state::fingerprint(g, &b, &saved.compilation));
     let fingerprint_error = fingerprint.as_ref().err().map(|e| format!("{e:#}"));
     let fingerprint = fingerprint.ok();
     let outcome = Outcome {

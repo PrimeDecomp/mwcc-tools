@@ -16,6 +16,7 @@ use anyhow::{Context, Result, ensure};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
+    borrow::Cow,
     collections::{BTreeMap, BTreeSet},
     fs,
     path::{Path, PathBuf},
@@ -33,6 +34,10 @@ pub struct SourceRange {
 pub struct Function {
     pub link: String,
     pub source_range: SourceRange,
+    /// A header/other declaration file in the captured dependency closure.
+    /// Omission preserves primary-translation-unit behavior and old entry IDs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_file: Option<inputs::FileInput>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -113,6 +118,121 @@ pub struct QueryResult {
     pub format_version: u32,
     pub hits: Vec<Hit>,
     pub rejected: Vec<Value>,
+}
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OriginFilter {
+    pub link: Option<String>,
+    pub version: Option<crate::version::Version>,
+    pub flags: Option<Vec<String>>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct OriginScope {
+    pub scope: Option<String>,
+    pub observations: crate::evidence::Evaluation,
+    pub observed: usize,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct OriginCoverage {
+    pub counter: crate::evidence::Evaluation,
+    pub function_graphs: crate::evidence::Evaluation,
+    pub scalar_arrays: OriginScope,
+    pub normalize_symbols: OriginScope,
+    pub call_results: OriginScope,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ObservedOrigin<T> {
+    pub value: crate::value_history::ValueId,
+    pub class: u8,
+    pub register: u32,
+    pub generation: u32,
+    pub phase: crate::value_history::Phase,
+    pub origin: T,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct OriginGraph {
+    pub class: u8,
+    pub round: usize,
+    pub boundary: String,
+    pub phase: crate::value_history::Phase,
+    pub observations: crate::evidence::Evaluation,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct OriginEntry {
+    pub entry_id: String,
+    pub function: Function,
+    pub repository: String,
+    pub revision: String,
+    pub source_file: PathBuf,
+    pub source_sha256: String,
+    pub translation_unit_source_sha256: String,
+    pub source: String,
+    pub compiler_version: crate::version::Version,
+    pub producer_sha256: String,
+    pub stock_sha256: Option<String>,
+    pub flags: Vec<String>,
+    pub build: Build,
+    pub input_sha256: String,
+    pub matched: MatchEvidence,
+    pub coverage: OriginCoverage,
+    pub graphs: Vec<OriginGraph>,
+    pub scalar_arrays: Vec<ObservedOrigin<crate::birth_origin::ArrayPromotion>>,
+    pub normalize_symbols: Vec<ObservedOrigin<crate::value_history::Materialization>>,
+    pub call_results: Vec<ObservedOrigin<crate::birth_origin::CallResult>>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct OriginInventory {
+    pub format_version: u32,
+    pub scanned_entries: usize,
+    pub entries: Vec<OriginEntry>,
+    pub limitations: Vec<String>,
+}
+fn origin_coverage(
+    report: &provenance::Report,
+    function: &crate::value_history::Function,
+) -> OriginCoverage {
+    OriginCoverage {
+        counter: function.counter_observations.clone(),
+        function_graphs: report
+            .graphs
+            .functions
+            .iter()
+            .find(|g| g.function == function.id)
+            .map(|g| g.observations.clone())
+            .unwrap_or_else(|| {
+                crate::evidence::Evaluation::indeterminate(
+                    crate::evidence::EvidenceGap::MissingGraphSnapshot,
+                    "function graph counts are unavailable",
+                )
+            }),
+        scalar_arrays: OriginScope {
+            scope: function.array_promotion_scope.clone(),
+            observations: function.array_promotion_observations.clone(),
+            observed: function
+                .births
+                .iter()
+                .filter(|b| b.array_promotion.is_some())
+                .count(),
+        },
+        normalize_symbols: OriginScope {
+            scope: function.materialization_scope.clone(),
+            observations: function.materialization_observations.clone(),
+            observed: function
+                .births
+                .iter()
+                .filter(|b| b.materialization.is_some())
+                .count(),
+        },
+        call_results: OriginScope {
+            scope: function.call_result_scope.clone(),
+            observations: function.call_result_observations.clone(),
+            observed: function
+                .births
+                .iter()
+                .filter(|b| b.call_result.is_some())
+                .count(),
+        },
+    }
 }
 
 /// Strict symbolic relocation identity. Section/anonymous references are rejected
@@ -227,6 +347,25 @@ fn source_range(source: &[u8], range: &SourceRange) -> Result<String> {
         "source range outside captured source"
     );
     Ok(lines[range.first_line - 1..range.last_line].concat())
+}
+fn function_bytes<'a>(
+    root: &Path,
+    function: &Function,
+    snapshot: &inputs::Snapshot,
+    primary: &'a [u8],
+) -> Result<Cow<'a, [u8]>> {
+    if let Some(file) = &function.source_file {
+        ensure!(
+            snapshot
+                .dependencies
+                .iter()
+                .any(|dependency| dependency == file),
+            "function source file is outside the captured dependency closure or has a different digest"
+        );
+        Ok(Cow::Owned(blob(root, &file.sha256)?))
+    } else {
+        Ok(Cow::Borrowed(primary))
+    }
 }
 fn request(build: &Build) -> Result<runner::CompileRequest> {
     // Reuse the native compiler request contract, including Ninja validation.
@@ -415,8 +554,15 @@ pub fn ingest(root: &Path, spec: &Ingest) -> Result<IngestResult> {
     };
     let mut seen = BTreeSet::new();
     for function in &spec.functions {
-        ensure!(seen.insert(&function.link), "duplicate indexed link");
-        source_range(&source, &function.source_range)?;
+        let mut function = function.clone();
+        if let Some(file) = &mut function.source_file {
+            file.path = file.path.canonicalize()?;
+        }
+        ensure!(seen.insert(function.link.clone()), "duplicate indexed link");
+        source_range(
+            &function_bytes(root, &function, &snapshot, &source)?,
+            &function.source_range,
+        )?;
         let matched = match exact_match(&c.object, &target, &function.link) {
             Ok(m) => m,
             Err(e) => {
@@ -451,7 +597,7 @@ pub fn ingest(root: &Path, spec: &Ingest) -> Result<IngestResult> {
             build: spec.build.clone(),
             inputs: snapshot.clone(),
             matched,
-            coverage: json!({"lifecycle":report.lifecycle,"decisions":report.decisions,"function_counter":captured[0].counter_observations,"materialization":captured[0].materialization_observations,"source_range_association":"declared; exact captured source bytes retained","absence_scope":"query-specific complete guarded path only"}),
+            coverage: json!({"lifecycle":report.lifecycle,"decisions":report.decisions,"function_counter":captured[0].counter_observations,"materialization":captured[0].materialization_observations,"origins":origin_coverage(&report,captured[0]),"source_range_association":"declared; exact captured source bytes retained","absence_scope":"query-specific complete guarded path only"}),
         };
         entry.id = state::digest(&serde_json::to_vec(&entry)?);
         let path = root.join("entries").join(format!("{}.json", entry.id));
@@ -506,6 +652,7 @@ fn contract(query: &Query, link: &str) -> Result<Contract> {
     Ok(c)
 }
 fn evaluate(
+    root: &Path,
     entry: &Entry,
     query: &Query,
     c: &Compilation,
@@ -526,7 +673,10 @@ fn evaluate(
         .collect();
     Ok(Hit {
         entry: entry.clone(),
-        source: source_range(source, &entry.function.source_range)?,
+        source: source_range(
+            &function_bytes(root, &entry.function, &entry.inputs, source)?,
+            &entry.function.source_range,
+        )?,
         evaluation,
         coalescing: json!(passes),
     })
@@ -554,6 +704,10 @@ fn retained(root: &Path, entry: &Entry) -> Result<(Compilation, Vec<u8>)> {
     {
         blob(root, &file.sha256)?;
     }
+    source_range(
+        &function_bytes(root, &entry.function, &entry.inputs, &source)?,
+        &entry.function.source_range,
+    )?;
     ensure!(
         exact_match(
             &c.object,
@@ -622,7 +776,7 @@ pub fn query(root: &Path, query: &Query) -> Result<QueryResult> {
                     && exact_match(&c.object, &target, &entry.function.link)? == entry.matched,
                 "indexed evidence differs from retained capture"
             );
-            let hit = evaluate(entry, query, &c, &report, &source)?;
+            let hit = evaluate(root, entry, query, &c, &report, &source)?;
             if hit.evaluation.overall.state == EvaluationState::Satisfied {
                 result.hits.push(hit);
             } else {
@@ -631,6 +785,172 @@ pub fn query(root: &Path, query: &Query) -> Result<QueryResult> {
         }
     }
     Ok(result)
+}
+/// Derive discovery metadata from retained traces, including old entries whose
+/// stored coverage predates backend-origin support. This does not evaluate an
+/// objective or establish call-argument/source-lifetime correspondence.
+pub fn origins(root: &Path, filter: &OriginFilter) -> Result<OriginInventory> {
+    let mut paths = fs::read_dir(root.join("entries"))?
+        .map(|entry| entry.map(|e| e.path()))
+        .collect::<std::io::Result<Vec<_>>>()?;
+    paths.sort();
+    let mut groups: BTreeMap<String, Vec<Entry>> = BTreeMap::new();
+    let mut scanned_entries = 0;
+    for path in paths
+        .into_iter()
+        .filter(|p| p.extension().is_some_and(|e| e == "json"))
+    {
+        let id = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .context("invalid entry filename")?;
+        let entry = load(root, id)?;
+        scanned_entries += 1;
+        if filter
+            .link
+            .as_ref()
+            .is_some_and(|link| link != &entry.function.link)
+            || filter.version.is_some_and(|v| v != entry.compiler_version)
+            || filter
+                .flags
+                .as_ref()
+                .is_some_and(|flags| flags != &entry.inputs.flags)
+        {
+            continue;
+        }
+        let key = serde_json::to_string(&(
+            &entry.capture_sha256,
+            &entry.source_sha256,
+            &entry.object_sha256,
+            &entry.target_sha256,
+            &entry.input_sha256,
+        ))?;
+        groups.entry(key).or_default().push(entry);
+    }
+    let mut entries = vec![];
+    for group in groups.values() {
+        let (c, source) = retained(root, &group[0])?;
+        let report = provenance::parse(&c.trace)?;
+        let target = blob(root, &group[0].target_sha256)?;
+        for entry in group {
+            ensure!(
+                inputs::key(&entry.inputs)? == entry.input_sha256
+                    && c.version == entry.compiler_version
+                    && exact_match(&c.object, &target, &entry.function.link)? == entry.matched,
+                "indexed evidence differs from retained capture"
+            );
+            let matches: Vec<_> = report
+                .history
+                .functions
+                .iter()
+                .filter(|f| f.link == entry.function.link)
+                .collect();
+            ensure!(
+                matches.len() == 1,
+                "inventory link must identify one captured function"
+            );
+            let function = matches[0];
+            let wrap = |birth: &crate::value_history::Birth| {
+                (
+                    birth.id,
+                    birth.class,
+                    birth.register,
+                    birth.generation,
+                    birth.phase,
+                )
+            };
+            let mut scalar_arrays = vec![];
+            let mut normalize_symbols = vec![];
+            let mut call_results = vec![];
+            for birth in &function.births {
+                let (value, class, register, generation, phase) = wrap(birth);
+                if let Some(origin) = &birth.array_promotion {
+                    scalar_arrays.push(ObservedOrigin {
+                        value,
+                        class,
+                        register,
+                        generation,
+                        phase,
+                        origin: origin.clone(),
+                    });
+                }
+                if let Some(origin) = &birth.materialization {
+                    normalize_symbols.push(ObservedOrigin {
+                        value,
+                        class,
+                        register,
+                        generation,
+                        phase,
+                        origin: origin.clone(),
+                    });
+                }
+                if let Some(origin) = &birth.call_result {
+                    call_results.push(ObservedOrigin {
+                        value,
+                        class,
+                        register,
+                        generation,
+                        phase,
+                        origin: origin.clone(),
+                    });
+                }
+            }
+            let mut rounds = BTreeMap::<u8, usize>::new();
+            let graphs = report
+                .graphs
+                .graphs
+                .iter()
+                .filter(|g| g.function == function.id)
+                .map(|g| {
+                    let round = rounds.entry(g.class).or_default();
+                    let item = OriginGraph {
+                        class: g.class,
+                        round: *round,
+                        boundary: g.boundary.clone(),
+                        phase: g.phase,
+                        observations: g.observations.clone(),
+                    };
+                    *round += 1;
+                    item
+                })
+                .collect();
+            entries.push(OriginEntry {
+                entry_id: entry.id.clone(),
+                function: entry.function.clone(),
+                repository: entry.repository.clone(),
+                revision: entry.revision.clone(),
+                source_file: entry
+                    .function
+                    .source_file
+                    .as_ref()
+                    .map_or_else(|| entry.inputs.source.clone(), |file| file.path.clone()),
+                source_sha256: entry
+                    .function
+                    .source_file
+                    .as_ref()
+                    .map_or_else(|| entry.source_sha256.clone(), |file| file.sha256.clone()),
+                translation_unit_source_sha256: entry.source_sha256.clone(),
+                source: source_range(
+                    &function_bytes(root, &entry.function, &entry.inputs, &source)?,
+                    &entry.function.source_range,
+                )?,
+                compiler_version: c.version,
+                producer_sha256: c.producer_sha256.clone(),
+                stock_sha256: c.original_sha256.clone(),
+                flags: c.flags.clone(),
+                build: entry.build.clone(),
+                input_sha256: entry.input_sha256.clone(),
+                matched: entry.matched.clone(),
+                coverage: origin_coverage(&report, function),
+                graphs,
+                scalar_arrays,
+                normalize_symbols,
+                call_results,
+            });
+        }
+    }
+    entries.sort_by(|a, b| a.entry_id.cmp(&b.entry_id));
+    Ok(OriginInventory {format_version:1,scanned_entries,entries,limitations:vec!["Whole-function origin observations are discovery metadata, not call-argument, initializer/dominance or semantic-lifetime proof.".into(),"Source revision/range associations are declared metadata bound to exact retained source bytes.".into(),"Call callee/return-type/output references and array object/promotion references are capture-local; partial output/tree fields remain explicitly partial, not qualified callee identities.".into(),"Zero observations imply only zero events within the stated complete guarded scope; incomplete or missing scope never establishes general absence.".into()]})
 }
 /// Recompile without cache reuse, requiring the entire original input identity
 /// before and after compilation, then recheck target match and the same predicate.
@@ -660,7 +980,7 @@ pub fn verify(
     let (old, source) = retained(root, &entry)?;
     let old_report = provenance::parse(&old.trace)?;
     ensure!(
-        evaluate(&entry, query, &old, &old_report, &source)?
+        evaluate(root, &entry, query, &old, &old_report, &source)?
             .evaluation
             .overall
             .state
@@ -715,7 +1035,7 @@ pub fn verify(
         "fresh function match differs"
     );
     let fresh_report = provenance::parse(&fresh.trace)?;
-    let hit = evaluate(&entry, query, &fresh, &fresh_report, &source)?;
+    let hit = evaluate(root, &entry, query, &fresh, &fresh_report, &source)?;
     ensure!(
         hit.evaluation.overall.state == EvaluationState::Satisfied,
         "fresh objective is not satisfied"

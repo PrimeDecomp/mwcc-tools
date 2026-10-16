@@ -20,6 +20,7 @@ More detail:
 * [Comparing translation units](oracle/tu-tools.md): native `inline-diff`, `data-diff`, `inline-window` and `header-impact`.
 * [Trace format, JSON and native API](oracle/trace.md).
 * [Retail coalescing provenance](oracle/provenance.md): development `--backend` captures and `provenance inspect`.
+* [Frontend scalarization provenance](oracle/scalarization.md): exact aggregate-part creation and backend Object joins.
 
 ## Build
 

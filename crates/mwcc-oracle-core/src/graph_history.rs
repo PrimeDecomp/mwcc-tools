@@ -131,23 +131,24 @@ pub fn parse(text: &str, history: &History, passes: &[Pass]) -> Result<GraphHist
         .enumerate()
         .filter(|(_, l)| l.trim_start().starts_with("pv."))
     {
-        let mut r = trace::records(line)
-            .pop()
-            .context("empty graph observation")?;
-        r.line = index + 1;
-        if r.kind == "pv.gap" {
+        let kind = trace::record_kind(line).context("empty graph observation")?;
+        if kind == "pv.gap" {
             global_gap = true;
             if let Some(p) = &mut pending {
                 p.valid = false;
             }
             continue;
         }
-        if !is_record(&r.kind) {
+        if !is_record(kind) {
             if let Some(p) = &mut pending {
                 p.valid = false;
             }
             continue;
         }
+        let mut r = trace::records(line)
+            .pop()
+            .context("empty graph observation")?;
+        r.line = index + 1;
         if r.kind == "pv.graph.begin" {
             // A missing end never turns a prior partial graph into a success.
             if let Some(p) = pending.take() {

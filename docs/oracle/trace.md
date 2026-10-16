@@ -48,6 +48,13 @@ array and call-result coverage. Vector-array promotion and complete inline/sourc
 lifetimes are not covered. Typed reports include the exact input trace SHA-256
 and each observed coalescing pass's end position.
 
+V5 adds `pv.scalar.begin/binding/gap/end` and independent function-end
+scalarization totals. These record actual frontend aggregate-part temporary
+creation and exact Object/VarInfo joins to backend births. Typed reports expose
+`scalarization.passes` and `scalarization.backend_values`; absent or ambiguous
+joins remain indeterminate. See [frontend scalarization](scalarization.md) for
+the record scope, temporal checks and real promoted-flag example.
+
 **`MWCC_ORACLE_SCHEDULE`** (`--schedule`):
 
 | Lines | Content |
@@ -179,7 +186,7 @@ See the [native kit guide](../../integrations/decomp-kits/overlay/.agents/docs/o
 for project units, candidates, explicit check states, saved graphs and calibration.
 Rust callers can use the workspace source API in `mwcc-oracle-core`, including
 `trace`, `document`, `allocation`, `colouring`, `runner`, `provenance`,
-`value_history`, `graph_history`, `allocation_category` and `backend_audit`.
+`value_history`, `graph_history`, `allocation_category`, `scalarization` and `backend_audit`.
 
 The retained Python implementations are historical behavior references. Their
 imports, function signatures and rendered text are not supported production APIs.

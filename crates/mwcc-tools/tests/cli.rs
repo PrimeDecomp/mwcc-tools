@@ -19,7 +19,10 @@ fn retained_state_command_distinguishes_normalization_gaps_from_invalid_captures
     let object = scratch.path().join("object.o");
     let bytes = fs::read(fixture("GC_2_7/pipeline.o")).unwrap();
     fs::write(&object, &bytes).unwrap();
-    let trace = "pv.function.begin schema=1 function=1 parent=0 c0=4 c1=8 c2=32 c3=32 c4=32 coverage=direct_counter_writes link=pipeline__Fii\npv.graph.begin schema=1 function=1 graph=1 births=0 cls=4 physical=32 start=32 count=32 phase=3 boundary=before_simplify\npv.graph.instruction p=123 op=403 flags=122 n=1 line=2 ops=010001009203000000000000\npv.graph.end function=1 graph=1 nodes=0 instructions=1 complete=1\npv.function.end function=1 births=0 graphs=1 c0=4 c1=8 c2=32 c3=32 c4=32\n";
+    let instruction = "p=123 op=403 flags=122 n=1 line=2 ops=010001009203000000000000";
+    let trace = format!(
+        "pv.function.begin schema=1 function=1 parent=0 c0=4 c1=8 c2=32 c3=32 c4=32 coverage=direct_counter_writes link=pipeline__Fii\nra.before function=pipeline link=pipeline__Fii\nra.block p=100 index=0 weight=1 flags=0 succ=\nra.i {instruction}\nra.end\npv.graph.begin schema=1 function=1 graph=1 births=0 cls=4 physical=32 start=32 count=32 phase=3 boundary=before_simplify\npv.graph.instruction {instruction}\npv.graph.end function=1 graph=1 nodes=0 instructions=1 complete=1\nra.graph cls=4 k=29 start=32 count=32\nra.after function=pipeline link=pipeline__Fii\nra.block p=100 index=0 weight=1 flags=0 succ=\nra.i {instruction}\nra.end\npv.function.end function=1 births=0 graphs=1 c0=4 c1=8 c2=32 c3=32 c4=32\n"
+    );
     let mut compilation = Compilation {
         version: Version::Gc27,
         source: "model.cpp".into(),
@@ -37,7 +40,7 @@ fn retained_state_command_distinguishes_normalization_gaps_from_invalid_captures
         identical: Some(true),
         differences: vec![],
         diagnostics: String::new(),
-        trace: trace.into(),
+        trace: trace.clone(),
         trace_present: true,
         original_fallback: false,
         object: vec![],
@@ -69,6 +72,17 @@ fn retained_state_command_distinguishes_normalization_gaps_from_invalid_captures
     let report: Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(report["normalization"]["state"], "satisfied");
     assert_eq!(report["fingerprint"].as_str().unwrap().len(), 64);
+    compilation.trace = trace
+        .lines()
+        .filter(|line| !line.starts_with("ra."))
+        .collect::<Vec<_>>()
+        .join("\n");
+    save(&compilation);
+    let missing_definitions = run("0");
+    assert!(missing_definitions.status.success());
+    let report: Value = serde_json::from_slice(&missing_definitions.stdout).unwrap();
+    assert_eq!(report["normalization"]["state"], "indeterminate");
+    assert!(report["fingerprint"].is_null());
     compilation.trace = trace.replace("010001009203000000000000", "630001009203000000000000");
     save(&compilation);
     let output = run("0");
@@ -76,7 +90,7 @@ fn retained_state_command_distinguishes_normalization_gaps_from_invalid_captures
     let report: Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(report["normalization"]["state"], "indeterminate");
     assert!(report["fingerprint"].is_null());
-    compilation.trace = trace.into();
+    compilation.trace = trace;
     save(&compilation);
     let unavailable = run("99");
     assert!(!unavailable.status.success() && unavailable.stdout.is_empty());

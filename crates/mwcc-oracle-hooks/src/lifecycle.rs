@@ -265,7 +265,7 @@ pub unsafe extern "C" fn expression_probe(r: &Registers, site: u32, d: &Expressi
         }
     }
 }
-unsafe fn enabled() -> bool {
+pub(crate) unsafe fn enabled() -> bool {
     unsafe {
         let mut value = ptr::addr_of!(ENABLED).read();
         if value < 0 {
@@ -277,6 +277,16 @@ unsafe fn enabled() -> bool {
 }
 pub unsafe fn function_id() -> u32 {
     unsafe { ptr::addr_of!(STATE.id).read() }
+}
+pub(crate) unsafe fn function_for_object(object: *const u8) -> u32 {
+    unsafe {
+        let state = ptr::addr_of!(STATE).read();
+        if !object.is_null() && state.object == object {
+            state.id
+        } else {
+            0
+        }
+    }
 }
 pub unsafe fn phase(value: u32) {
     unsafe { ptr::addr_of_mut!(STATE.phase).write(value) }
@@ -714,7 +724,7 @@ unsafe fn call_result_origin(
     }
 }
 
-#[unsafe(export_name = "OracleRust_CounterProbeV4")]
+#[unsafe(export_name = "OracleRust_CounterProbeV5")]
 pub unsafe extern "C" fn observe(r: &Registers, site: u32, d: &Descriptor) {
     unsafe {
         if !enabled() {
@@ -750,8 +760,8 @@ pub unsafe extern "C" fn observe(r: &Registers, site: u32, d: &Descriptor) {
                 state.counts[i] = d.counts.add(i).read_unaligned();
             }
             ptr::addr_of_mut!(STATE).write(state);
-            OracleTrace_Printf(c"pv.function.begin schema=1 function=%lu parent=%lu site=%lx c0=%lu c1=%lu c2=%lu c3=%lu c4=%lu coverage=direct_counter_writes dispatch=guarded_table_v1 materialization=guarded_normalize_pair_v1 array_promotion=guarded_scalar_v1 call_result=guarded_call_result_v1 link=%s\n".as_ptr(),
-                id,parent.id,site,state.counts[0],state.counts[1],state.counts[2],state.counts[3],state.counts[4],
+            OracleTrace_Printf(c"pv.function.begin schema=1 function=%lu parent=%lu function_object=%08x site=%lx c0=%lu c1=%lu c2=%lu c3=%lu c4=%lu coverage=direct_counter_writes dispatch=guarded_table_v1 materialization=guarded_normalize_pair_v1 array_promotion=guarded_scalar_v1 call_result=guarded_call_result_v1 scalarization=guarded_temp_returns_v1 link=%s\n".as_ptr(),
+                id,parent.id,state.object as u32,site,state.counts[0],state.counts[1],state.counts[2],state.counts[3],state.counts[4],
                 if state.object.is_null(){c"?".as_ptr().cast()}else{pcode::link_name(state.object)});
             return;
         }
@@ -764,8 +774,11 @@ pub unsafe extern "C" fn observe(r: &Registers, site: u32, d: &Descriptor) {
                 );
                 return;
             }
+            let scalar = crate::scalar::take_summary(state.object);
+            let (scalar_passes, scalar_bindings, scalar_first, scalar_last) =
+                scalar.unwrap_or((0, 0, 0, 0));
             OracleTrace_Printf(
-                c"pv.function.end function=%lu births=%lu graphs=%lu ranges=%lu dispatches=%lu dispatch_returns=%lu materializations=%lu array_promotions=%lu call_results=%lu c0=%lu c1=%lu c2=%lu c3=%lu c4=%lu\n"
+                c"pv.function.end function=%lu births=%lu graphs=%lu ranges=%lu dispatches=%lu dispatch_returns=%lu materializations=%lu array_promotions=%lu call_results=%lu scalarization=%s scalar_passes=%lu scalar_bindings=%lu scalar_first_pass=%lu scalar_last_pass=%lu c0=%lu c1=%lu c2=%lu c3=%lu c4=%lu\n"
                     .as_ptr(),
                 state.id,
                 state.sequence,
@@ -776,6 +789,8 @@ pub unsafe extern "C" fn observe(r: &Registers, site: u32, d: &Descriptor) {
                 state.materializations,
                 state.array_promotions,
                 state.call_results,
+                if scalar.is_some(){c"guarded_temp_returns_v1".as_ptr()}else{c"unknown".as_ptr()},
+                scalar_passes,scalar_bindings,scalar_first,scalar_last,
                 state.counts[0],
                 state.counts[1],
                 state.counts[2],

@@ -7,15 +7,15 @@ use crate::{
     provenance::Report,
     runner::{CheckStatus, Compilation},
     trace::{Block, Instruction, Node, Round, Snapshot},
-    version::Version,
 };
 use anyhow::{Context, Result, ensure};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
+mod definitions;
 
-pub const FINGERPRINT_FORMAT_VERSION: u32 = 2;
+pub const FINGERPRINT_FORMAT_VERSION: u32 = 3;
 
 pub fn digest(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
@@ -228,7 +228,14 @@ pub fn object_instructions(object: &[u8], link: &str) -> Result<Value> {
 /// Conservative fingerprint: instruction-visible registers get canonical IDs;
 /// graph-only registers retain their numbers to avoid equating non-isomorphic
 /// graphs. This can miss duplicate states but cannot merge solely on WL hashes.
-pub fn fingerprint(g: &Graph, report: &Report, object: &[u8], version: Version) -> Result<String> {
+pub fn fingerprint(g: &Graph, report: &Report, compilation: &Compilation) -> Result<String> {
+    ensure!(
+        report.trace_sha256 == digest(compilation.trace.as_bytes()),
+        "fingerprint provenance is not bound to the exact compiler trace"
+    );
+    let object = &compilation.object;
+    let version = compilation.version;
+    let definitions = definitions::normalize(g, report, compilation)?;
     let mut names = Names::default();
     let instruction_state = g
         .instructions
@@ -244,6 +251,18 @@ pub fn fingerprint(g: &Graph, report: &Report, object: &[u8], version: Version) 
             json!(["graph_only", r])
         }
     };
+    let function = report
+        .history
+        .functions
+        .iter()
+        .find(|f| f.id == g.function)
+        .context("missing fingerprint function history")?;
+    let scalarization = crate::scalarization::normalized_function(&report.scalarization, function)?;
+    let scalar_origins=report.scalarization.backend_values.iter().map(|value| {
+        let binding=value.pass.zip(value.binding).and_then(|(pass,ordinal)|report.scalarization.passes.iter().find(|p|p.id==pass).and_then(|p|p.bindings.iter().find(|b|b.ordinal==ordinal)));
+        let normalized=binding.map(|b|json!({"name":b.source.name_bytes,"name_known":b.source.name_known,"name_complete":b.source.name_complete,"datatype":b.source.datatype,"storage":b.source.storage,"source_type_kind":b.source.type_kind,"source_type_size":b.source.type_size,"element_known":b.source.element_known,"element_type_kind":b.source.element_type_kind,"element_type_size":b.source.element_type_size,"byte_offset":b.byte_offset,"byte_size":b.byte_size,"bit_first":b.bit_first,"bit_last":b.bit_last,"flags":b.flags&3,"source_kind":b.source_kind,"temporary_type_kind":b.temporary.type_kind,"temporary_type_size":b.temporary.type_size}));
+        (value.value,json!({"origin":normalized,"array_element":value.array_element,"observations":value.observations}))
+    }).collect::<BTreeMap<_,_>>();
     let mut nodes=g.nodes.iter().map(|(r,n)| {
         let neighbors=n.recorded_neighbors.iter().map(&rename).collect::<Vec<_>>();
         let f=report.history.functions.iter().find(|f|f.id==g.function).unwrap();
@@ -253,6 +272,7 @@ pub fn fingerprint(g: &Graph, report: &Report, object: &[u8], version: Version) 
                 "materialization":b.materialization.as_ref().map(|m|json!({"part":m.part,"kind":m.kind,"displacement":m.displacement,"datatype":m.datatype,"storage":m.storage,"symbol_known":m.symbol_known,"symbol_complete":m.symbol_complete,"symbol":m.symbol_bytes})),
                 "array_promotion":b.array_promotion.as_ref().map(|a|json!({"index":a.element_index,"element_size":a.element_size,"array_size":a.array_size,"element_count":a.element_count,"flags":a.flags&7,"datatype":a.datatype,"storage":a.storage,"type_kind":a.type_kind,"type_size":a.type_size,"name_known":a.name_known,"name_complete":a.name_complete,"name":a.name_bytes})),
                 "call_result":b.call_result.as_ref().map(|c|json!({"part":c.part,"kind":c.kind,"type_kind":c.type_kind,"type_size":c.type_size,"tree_known":c.tree_known,"tree_complete":c.tree_complete,"tree":c.tree_bytes})),
+                "scalarization":scalar_origins.get(&b.id),
                 "expression":b.expression.and_then(|id|f.expressions.iter().find(|e|e.id==id)).map(|e|json!({"scope":e.scope,"kind":e.kind,"dispatch_target":e.dispatch.as_ref().map(|d|d.retail_target),"complete":e.complete,"tree":e.tree_bytes}))})
         }).collect::<Vec<_>>();
         json!({"id":rename(r),"degree":n.stored_degree,"flags":n.flags,"color":n.color,"neighbors":neighbors,"category":n.range_category,
@@ -265,9 +285,9 @@ pub fn fingerprint(g: &Graph, report: &Report, object: &[u8], version: Version) 
         .map(|(index,s)|json!({"name":s.name,"kind":s.kind,"size":s.size,"alignment":s.alignment,"bytes":s.data,
             "relocations":relocations.iter().filter(|r|r.section==index).map(|r|json!({"offset":r.offset,"kind":r.kind,"symbol":r.symbol.name,"addend":r.addend})).collect::<Vec<_>>() })).collect::<Vec<_>>();
     let value = json!({"format_version":FINGERPRINT_FORMAT_VERSION,"version":version,"class":g.class,"boundary":g.boundary,"phase":g.phase,
-        "physical":g.physical_limit,"start":g.start,"count":g.count,"observations":g.observations,"instructions":instruction_state,"nodes":nodes,
+        "physical":g.physical_limit,"start":g.start,"count":g.count,"birth_cutoff":g.birth_cutoff,"observations":g.observations,"instructions":instruction_state,"nodes":nodes,
         "bounds":g.range_bounds.as_ref().map(|b|json!({"physical":b.physical_limit,"initial_last":b.initial_last,"first":b.first,"last":b.last,"evidence":b.evidence})),
-        "object":object_instructions(object,&g.link)?,"allocated_data":data});
+        "object":object_instructions(object,&g.link)?,"allocated_data":data,"scalarization":scalarization,"definitions":definitions});
     Ok(digest(&serde_json::to_vec(&value)?))
 }
 
@@ -329,20 +349,19 @@ pub fn inspect(compilation: &Compilation, link: &str, class: u8, round: usize) -
                     && f.observations.state == EvaluationState::Satisfied),
         "state inspection requires complete selected-function graph capture"
     );
-    let (fingerprint, normalization) =
-        match fingerprint(selected, &report, &compilation.object, compilation.version) {
-            Ok(fingerprint) => (
-                Some(fingerprint),
-                Evaluation {
-                    state: EvaluationState::Satisfied,
-                    reasons: vec![],
-                },
-            ),
-            Err(error) => (
-                None,
-                Evaluation::indeterminate(EvidenceGap::CompilerStateCoverage, format!("{error:#}")),
-            ),
-        };
+    let (fingerprint, normalization) = match fingerprint(selected, &report, compilation) {
+        Ok(fingerprint) => (
+            Some(fingerprint),
+            Evaluation {
+                state: EvaluationState::Satisfied,
+                reasons: vec![],
+            },
+        ),
+        Err(error) => (
+            None,
+            Evaluation::indeterminate(EvidenceGap::CompilerStateCoverage, format!("{error:#}")),
+        ),
+    };
     Ok(Analysis {
         format_version: 1,
         link: link.into(),

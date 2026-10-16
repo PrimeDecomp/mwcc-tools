@@ -46,6 +46,7 @@ pub mod release;
 pub mod remap_binary;
 pub mod report;
 pub mod runner;
+pub mod scalarization;
 pub mod schedule;
 pub mod sequence;
 pub mod source_guided;

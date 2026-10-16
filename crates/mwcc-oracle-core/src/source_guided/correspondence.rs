@@ -43,6 +43,17 @@ pub enum Anchor {
         datatype: u8,
         storage: u16,
     },
+    PromotedArrayElement {
+        name: Vec<u8>,
+        element_index: u32,
+        element_size: i32,
+        array_size: i32,
+        element_count: i32,
+        /// Only the three initialized LoopVar bits, not its spare bits.
+        flags: u8,
+        datatype: u8,
+        storage: u16,
+    },
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct AnchorObservation {
@@ -235,6 +246,22 @@ fn anchors(b: &Birth) -> Vec<Anchor> {
             storage: m.storage,
         });
     }
+    if let Some(a) = &b.array_promotion
+        && a.name_known
+        && a.name_complete
+        && !a.name_bytes.is_empty()
+    {
+        out.push(Anchor::PromotedArrayElement {
+            name: a.name_bytes.clone(),
+            element_index: a.element_index,
+            element_size: a.element_size,
+            array_size: a.array_size,
+            element_count: a.element_count,
+            flags: a.flags & 7,
+            datatype: a.datatype,
+            storage: a.storage,
+        });
+    }
     out
 }
 #[derive(Default)]
@@ -255,6 +282,14 @@ fn origins(f: &Function, g: &Graph) -> Origins {
                 out.invalid.entry(anchor.clone()).or_default().push(
                     "function guarded Normalize-materialization capture is incomplete".into(),
                 );
+            }
+            if matches!(anchor, Anchor::PromotedArrayElement { .. })
+                && f.array_promotion_observations.state != EvaluationState::Satisfied
+            {
+                out.invalid
+                    .entry(anchor.clone())
+                    .or_default()
+                    .push("function guarded scalar-array promotion capture is incomplete".into());
             }
             out.values.entry(anchor.clone()).or_default().push(birth.id);
             for node in g.nodes.values().filter(|n| {

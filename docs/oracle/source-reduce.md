@@ -94,10 +94,11 @@ coverage and indeterminate results are rejected. `symbol_address_pairs` preserve
 the guarded Normalize creation mechanism within the requested count bounds. It
 does not establish absence of all address temporaries or semantic elimination.
 
-Direct-initialization objectives are also usable. Prefer `source_line: null` when
-the complete named-object/type/part binding identifies the initializer: deleting
-earlier lines changes numeric source locations. A specified line remains a hard
-selector and is never silently rewritten. To preserve an established allocation
+Direct-initialization objectives require one instruction-bearing block with
+verified linear empty scaffolding. Prefer `source_line: null`: deleting earlier lines changes numeric source
+locations. A specified line constrains the first observed target definition and
+cannot select a later assignment instead. It is never silently rewritten.
+Cross-block initialization remains indeterminate. To preserve an established allocation
 category while shrinking, use the current-state predicate:
 
 ```json

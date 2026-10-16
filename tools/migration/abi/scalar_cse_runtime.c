@@ -96,6 +96,9 @@ int strncmp(const char *a, const char *b, size_t n)
 
 static char *scalar_environment(const char *name)
 {
+    /* The new frontend-origin stream is separate from the legacy lc/ce ABI.
+     * This harness keeps that stream disabled without changing old query events. */
+    if (equal(name, "MWCC_ORACLE_BACKEND")) return 0;
     pcode_string(name);
     if (equal(name, "MWCC_ORACLE_LOCALS")) return (char *)scalar_locals;
     if (equal(name, "MWCC_ORACLE_CSE")) {

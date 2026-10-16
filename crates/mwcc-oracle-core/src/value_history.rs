@@ -185,6 +185,10 @@ pub struct Function {
     pub end_position: Option<usize>,
     pub parent: u32,
     pub link: String,
+    #[serde(default)]
+    pub function_object: Option<String>,
+    #[serde(default)]
+    pub scalarization: Option<crate::scalarization::Summary>,
     pub births: Vec<Birth>,
     pub expressions: Vec<Expression>,
     pub changes: Vec<CounterChange>,
@@ -311,6 +315,10 @@ pub fn parse(text: &str) -> Result<History> {
         .enumerate()
         .filter(|(_, l)| l.trim_start().starts_with("pv."))
     {
+        let kind = trace::record_kind(line_text).context("empty provenance record")?;
+        if !is_record(kind) && kind != "pv.gap" {
+            continue;
+        }
         let mut r = trace::records(line_text)
             .pop()
             .context("empty provenance record")?;
@@ -362,6 +370,16 @@ pub fn parse(text: &str) -> Result<History> {
                 end_position: None,
                 parent,
                 link: r.get("link")?.into(),
+                function_object: r
+                    .fields
+                    .get("function_object")
+                    .map(|v| {
+                        let value = u32::from_str_radix(v, 16)?;
+                        ensure!(value != 0, "null backend function Object");
+                        Ok::<_, anyhow::Error>(format!("{value:08x}"))
+                    })
+                    .transpose()?,
+                scalarization: crate::scalarization::summary(&r)?,
                 births: vec![],
                 expressions: vec![],
                 changes: vec![],
@@ -404,6 +422,7 @@ pub fn parse(text: &str) -> Result<History> {
                     && state.expressions.is_empty();
                 f.ended = true;
                 f.end_position = Some(r.line);
+                f.scalarization = crate::scalarization::summary(&r)?;
                 f.expected_graphs = r
                     .fields
                     .get("graphs")

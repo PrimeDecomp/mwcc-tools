@@ -10,6 +10,7 @@ by source search. A missing hook or ambiguous correspondence remains
 mwcc-tools source-index ingest ingest.json --index corpus
 mwcc-tools source-index query query.json --index corpus
 mwcc-tools source-index verify query.json ENTRY_ID --index corpus --output fresh-example
+mwcc-tools source-index origins --index corpus --version GC_2_7
 ```
 
 The ingestion specification is format 1:
@@ -55,6 +56,35 @@ Revision and range association are supplied metadata, not a Git attestation or
 an automatically proven mapping from backend line numbers. Queries return the
 exact source text from the declared range and relevant coalescing observations.
 
+For a function defined in a captured header, its function record can additionally
+contain `"source_file":{"path":"include/example.hpp","sha256":"CAPTURED_HASH"}`.
+The path resolves relative to the ingestion specification. Its exact path/hash
+must occur in the closed snapshot's dependencies; the corpus retains and checks
+that blob and validates the range against it. Omission keeps the original
+translation-unit source behavior and existing entry identities. This changes
+the returned declaration excerpt, never the reproduction build's source:
+verification still recompiles the original translation unit and checks its
+whole input closure.
+
+`origins` provides discovery metadata before writing a query. It accepts optional
+`--link NAME` and `--version GC_2_7` filters and returns JSON. The typed API is
+`index::origins(root, &OriginFilter)`; its filter also supports exact ordered
+flags. Each result includes its declared source file/range and exact excerpt,
+separate declaration-file and translation-unit hashes, reproduction build,
+retail match evidence, compiler identities, graph class/round selectors, and
+scoped provenance coverage/counts. Scalar-array records expose the observed
+name/index/size; Normalize records expose symbol/part/displacement. Call-result
+records retain explicit partial output/tree flags and capture-local references;
+they do not supply a qualified callee or prove a call-argument relationship.
+
+Inventory derives coverage and origins from the retained capture, including old
+entries whose stored coverage has no backend-origin fields. It rechecks retained
+blob integrity and retail function bytes/relocations. A zero count describes only
+its stated complete guarded scope; missing scope remains indeterminate. Whole
+function call counts do not show whether a particular symbolic argument avoided
+a temporary, and an array-promotion observation alone does not bind its source
+initializer or semantic lifetime.
+
 Every function is checked independently. Unmatched functions are listed as
 rejected without admitting their traces. Section-symbol and anonymous relocation
 references, ambiguous symbols and unknown relocation representations are rejected
@@ -85,8 +115,11 @@ An example query for a complete, scoped zero count is:
 
 `link`, `version` and `flags` are optional exact filters. Queries evaluate each
 example against itself as a mechanism reproducer. They support guarded
-`symbol_address_pairs` counts, `direct_initialization` and the current-state
-`range_category` predicate. For example:
+`symbol_address_pairs` counts, supported `direct_initialization` and
+`scalarized_array_initialization` cases, explicit `scalarized_array_definition`
+ordinals, promoted-copy outcomes, and the
+current-state `range_category` predicate. See the [objective scopes](source-search.md#objectives-and-validity):
+an exact source match does not fill missing compiler provenance. For example:
 
 ```json
 {
@@ -150,7 +183,7 @@ Exact environment/path identity is intentional:
 moving a corpus to another host requires a separately captured, verified entry
 instead of silently declaring the old input identity reproducible.
 
-The Rust entry points are `source_guided::index::{ingest,query,verify,exact_match}`.
+The Rust entry points are `source_guided::index::{ingest,query,verify,origins,exact_match}`.
 This is a corpus of observed compiler mechanisms, not a claim that every example
 is a semantics-preserving transformation suitable for transplantation.
 
@@ -172,3 +205,30 @@ snapshots, source excerpts and fresh verification artifacts. An old Windows
 snapshot was correctly refused when its environment hash no longer matched;
 a separate new capture, snapshot and entry were created before successful
 revalidation. The old evidence was preserved.
+
+The V4 inventory of those 35 matched functions found 47 call-result births across
+13 functions, with no scalar-array or Normalize observations in their complete
+guarded scopes. It does not identify the desired symbolic-call behavior. A further
+real retail match, the header-defined `CElementGen::CParticle()` constructor,
+provides a positive symbolic initialization example: its 104 bytes and two
+`sZeroVector__9CVector3f` HA/LO relocations match retail, and its trace contains
+three guarded Normalize pairs. Native query and fresh verification return its
+exact header excerpt while recompiling `CElementGen.cpp` with the full unchanged
+input closure. This is member/reference initialization, not proof that an external
+symbolic call argument avoids an unwanted temporary. Inventory and revalidation
+artifacts are under `build/source-guided/matched-origin-audit/`, including
+`header-fresh/verification.json`.
+
+A second bounded corpus admits both retail `CGraphics::Render2D` overloads from
+`DolphinCGraphics.cpp`. The 748-byte pointer overload passes the reference global
+`kEnvPassthru` to `SetTevOp`; native query and fresh verification satisfy a zero
+guarded Normalize-pair count for that symbol while requiring its actual
+relocation. The object loads the reference into argument register `r4` immediately
+before the call. This is useful observed source behavior, but the function-wide
+predicate does not bind a particular argument's source lifetime or prove absence
+of backend temporaries. Other symbols still produce eight Normalize halves in
+that function. All 105 dependencies were private copies, and fresh stock-checked
+compilation preserved the exact input snapshot and retail function match. Evidence
+is retained in `build/source-guided/matched-symbolic-call-audit/verification.json`.
+The source's newer `BeginRender2D` helper uses `kEnvModulate`, but has no function
+symbol in this retail target and was not admitted as a retail example.

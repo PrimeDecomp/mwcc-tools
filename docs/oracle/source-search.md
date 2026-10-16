@@ -23,8 +23,10 @@ If the baseline already satisfies the predicate, the run reports
 
 ## Plan format 1
 
-This complete example uses the synthetic `tests/fixtures/source-guided/` source
-directory. Replace the two absolute paths for your installation. The initializer
+This complete example uses `initializer-linear.c` in the synthetic
+`tests/fixtures/source-guided/` source directory. Replace the two absolute paths
+for your installation. Its explicit optimization pragmas retain the named value
+within the supported linear instruction scope. The initializer
 edit deliberately changes behavior. Its success is a **mechanism reproducer**,
 not a semantics-preserving source transformation or a RenderParticles discovery.
 
@@ -34,7 +36,7 @@ not a semantics-preserving source transformation or a RenderParticles discovery.
   "build": {
     "oracle_root": "F:/path/to/current/oracle",
     "working_directory": "F:/path/to/mwcc/tests/fixtures/source-guided",
-    "source": "initializer.c",
+    "source": "initializer-linear.c",
     "version": "GC_2_7",
     "flags": ["-nodefaults", "-proc", "gekko", "-fp", "hardware", "-O4,p"],
     "from_ninja": null,
@@ -56,7 +58,7 @@ not a semantics-preserving source transformation or a RenderParticles discovery.
     "id": "constant-initializer",
     "family": "initialization",
     "precondition": "Isolated mechanism experiment; the initializer edit changes behavior.",
-    "edits": [{"find": "unsigned flag = observe(input);", "replacement": "unsigned flag = 0;"}]
+    "edits": [{"find": "unsigned flag = input;", "replacement": "unsigned flag = 0;"}]
   }],
   "maximum_depth": 1,
   "generation_limit": 10,
@@ -93,9 +95,13 @@ or promotion patterns; automatic C++ AST rewrite generation is not implemented.
 
 - `direct_initialization`: observe a constant LI initializing the anchored value
   directly in its final assigned register, with no surviving intermediate MR. It
-  checks the original initializer and the final allocation round, and permits
-  later assignments. Current recognition covers a direct LI or one local LI/MR
-  pair for VR/FPR/GPR; other forms remain indeterminate.
+  checks the first target definition and the final allocation round. Current
+  recognition requires one instruction-bearing block with a verified linear,
+  acyclic chain of empty scaffolding, no earlier control barrier or target use,
+  and a direct LI or one local LI/MR pair for VR/FPR/GPR. A
+  requested constant or source line cannot select a later assignment instead.
+  Cross-block dominance and source declaration ancestry remain unsupported;
+  those cases are indeterminate.
 - `change_range_category`: use `value` and `target` instead of `constant` and
   `source_line`. The category must observably change to `physical`,
   `initial_object_range`, `before_coalescing_window`, `inside_coalescing_window`
@@ -115,6 +121,25 @@ or promotion patterns; automatic C++ AST rewrite generation is not implemented.
   it does not identify a source initializer automatically. A surviving promotion
   birth with no incoming copies remains indeterminate: it may be an unused node
   while another value carries the flag. See the [promoted-flag case](../oracle-source-guided-case-promoted-flags.md).
+- `scalarized_array_initialization`: selects a whole array element using the same
+  `name`, `element_index` and `element_size` fields, then requires an exact
+  frontend-created scalar/backend birth join and applies the narrow constant-LI
+  recognizer using `constant` and optional `source_line`. GPR only. Unknown or
+  duplicate possible source bindings remain indeterminate, including creations
+  without graph nodes. The real pointer-zero flag computation is not an LI and
+  remains unsupported by this predicate. See [scalarization provenance](scalarization.md).
+- `scalarized_array_definition`: selects the same exact frontend-created element
+  and takes `definition`, a zero-based ordinal among definitions of its backend
+  register in the captured `ra.before` block/instruction stream. For example:
+  `{"kind":"scalarized_array_definition","value":{"name":"noRota","element_index":1,"element_size":4},"definition":0}`.
+  It requires the selected producer to remain visible at the actual graph and
+  after allocation, defining the anchored root and its recorded final physical
+  register with compatible opcode and operand shape. A selected MR/FMR must have
+  a unique preceding same-block producer, a complete actual coalescing decision,
+  and no surviving copy. It supports FPR/GPR computations beyond LI constants.
+  The ordinal describes observed compiler records; it does not infer C++
+  initialization, dominance or execution order. Reports retain every candidate
+  definition, the chosen instruction, producer and actual copy decision.
 - `eliminate_temporary`: takes `value`. It deliberately remains indeterminate
   until complete semantic lifetime evidence can justify elimination. Missing nodes
   and inferred edge changes do not prove that a temporary disappeared.
@@ -184,9 +209,14 @@ Fingerprints normalize known pointer/register identities but retain graph-only
 nodes, degrees, origin/range evidence, selected instructions, symbolic relocations
 and allocated data. Unsupported operand forms disable grouping. Conservative
 graph-only numbering can miss equivalent states.
-The current fingerprint payload is format 2. It includes normalized scalar-array
-origin and partial call-result shape/type evidence, while excluding capture-local
-pointers and inactive output bytes. Reports expose `fingerprint_format_version`;
+The current fingerprint payload is format 3. It includes normalized scalar-array
+origin and partial call-result shape/type evidence, plus whole-function frontend
+scalarization bindings, independent totals, unbound creations and pointer equality
+relationships. Preallocation definitions, CFG structure, instruction identity
+relationships through allocation, and actual coalescing decisions also participate:
+two equal final graphs can give different definition predicates. It excludes capture-local pointer spellings and inactive output
+bytes. Unsupported scalarization schemas or normalization disable grouping.
+Reports expose `fingerprint_format_version`;
 older frozen proofs retain their original analyzer and fingerprints.
 Generated local relocation-name suffixes can also split equivalent states, as the
 [real EnvModulate experiment](../oracle-source-guided-case-envmodulate.md) demonstrates.
@@ -263,6 +293,10 @@ export/restoration is not implemented.
 Use `objective::{Contract, Input, evaluate}` for the shared evidence-aware predicate,
 `state::{graph, snapshot, fingerprint, inspect}` for observed state, `inputs::capture` for
 compiler-input identity, and `search::{load_plan, run, replay}` for orchestration.
+`state::fingerprint` takes a graph, its provenance report and the complete
+`runner::Compilation`; it verifies report/trace binding before normalizing the
+allocation records needed by the predicates. An object and graph alone do not
+contain enough evidence for state grouping.
 These native typed APIs and strict versioned JSON are the supported development
 interface. Legacy Python API compatibility is not required.
 

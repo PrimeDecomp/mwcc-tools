@@ -4,6 +4,72 @@ Updated 2026-10-16. The active objective is to implement all four requested tool
 using the [adopted roadmap](oracle-source-guided-search.md). The objective is not
 complete. The completed Rust migration remains a separate release.
 
+## Current extension: frontend scalarization and real source examples
+
+V5 observes actual aggregate-part temporary returns, original byte/bit intervals,
+Object/VarInfo/type identities and independent function-end totals. The native
+`scalarization` API joins these to backend births only within the exact observed
+function and complete temporal scope. In the full outside-loop-store
+`RenderParticles` case, `noRota[1]` creates the scalar that becomes GPR 162; the
+older promoted nodes remain unused. Nine small cases cover all three supported
+versions, including six positive joins and three controls. The real computation
+is not a constant LI, so the narrow scalarized-initialization objective remains
+indeterminate. See [scalarization provenance](oracle/scalarization.md).
+
+Relevant-state fingerprints are now format 3 and retain whole-function frontend
+bindings, including creations without graph nodes. Unsupported normalization
+disables grouping. They also retain preallocation definitions, CFG and actual
+coalescing evidence: equal final graphs can have different definition predicates.
+The fingerprint API now requires the full compiler capture. A regression audit
+also corrected the initializer recognizer's ability to select a later assignment;
+supported initialization uses one instruction-bearing block with verified linear
+empty scaffolding. The separate `scalarized_array_definition` objective takes an
+explicit observed ordinal and supports non-LI computations without claiming C++
+initialization or dominance. Promoted-element provenance anchors also associate invisible
+nodes across variants, while keeping lifetime/elimination indeterminate.
+
+The matched-source index now inventories retained origin coverage and supports
+source ranges in captured headers. Fresh exact-retail examples include the inline
+`CParticle` constructor's symbolic member initialization and both `Render2D`
+overloads. The pointer overload passes a global reference through an SDA load
+directly to `SetTevOp`, with zero Normalize materialization pairs for that symbol.
+It is a useful source construct; the current trace does not prove the absence of
+all call-argument temporaries or establish an equivalent RenderParticles rewrite.
+See [the corpus guide](oracle/source-index.md).
+
+[Measured overhead and search throughput](oracle-source-guided-benchmarks.md)
+now cover both hosts/all compiler versions with explicit workload and concurrency
+limits. A separate paired Windows retained-trace experiment reduced full inspection
+time from 22.9 to 10.3 seconds by classifying record families before allocating
+unrelated fields. This is a retained-analysis measurement, not a V5 compilation
+or source-search speed claim.
+
+Current validation passes on Windows and Linux: **172 workspace tests**, ten
+opt-in integration tests skipped by default, all-target Clippy with warnings
+denied, and formatting checks. Separate V5 producer checks pass 36 legacy
+comparisons, 45 backend probe off/on pairs, nine scalarization cases and 63
+constructor corruption negatives per host. The native live search test was run
+separately on all three versions on both hosts, covering grouping/cache, resume,
+fresh verification/replay, dependency changes, semantic gates and cancellation.
+Its final linear initializer fixture replaces the earlier unsupported branching
+positive while retaining the branching fixture for grouping/cache tests.
+
+Final definition replay gives six satisfied live-scalar cases and three
+indeterminate original-promotion controls on both hosts. The full GC 2.7
+`RenderParticles` capture satisfies observed definitions zero and one; definition
+two is unsatisfied, and automatic constant initialization remains indeterminate.
+The final Windows and Linux analyzers normalize the same full retained capture
+to identical fingerprint
+`65b2ea359dd6b82a6c78049274d924da58166c9e5f14a22e2e1d043f700d817c`.
+This is cross-host analysis of the Windows full capture; the nine small compiler
+cases and broad backend fixture captures were independently produced on both hosts.
+Current evidence is under `build/source-guided/scalar-origin-audit/`,
+`scalar-definition-audit/` and `build/ssv5-b58363d2/`. The short Windows live-run
+root avoids an observed retail compiler path-length failure; its earlier failed
+long-path run remains retained. The live initializer test binaries precede the
+final MR/FMR-only guard fix in the separate observed-definition predicate; current
+unit/CLI suites, lint checks and definition replays include that fix.
+
 ## Implemented foundation
 
 - Shared Rust `evidence` types distinguish satisfied, unsatisfied and indeterminate
@@ -423,8 +489,8 @@ three retained producer objects exactly.
 The new scratch-reuse fixture gives 239 births, one rewind and twelve reused
 numbers on all three versions/hosts, without asserting physical register choices.
 The capture includes RenderParticles; these earlier off/on checks are separate
-from the later successful graph-objective experiment. Timings are retained; a controlled probe
-overhead/throughput benchmark remains open.
+from the later successful graph-objective experiment. Controlled workload measurements
+are now documented in the [benchmark report](oracle-source-guided-benchmarks.md).
 
 ## Required work still open
 
@@ -435,8 +501,8 @@ overhead/throughput benchmark remains open.
 | Correspondence | Native provenance anchors, conditional injective hypotheses, actual local merge chains and boundary diagnostics are implemented; finish semantic lifetime/replacement/elimination evidence and additional backend phases |
 | Source search | Extend precise provenance/objective recognition, add language-aware recipes and finish the full RenderParticles investigation; bounded harness, all requested mechanism cases and one useful checked full-function graph edit are implemented |
 | Reduction | Native deterministic reduction/rebinding/uncertainty gates, static category/promoted-copy predicates and replay are implemented; add category-transition reference support and retest discoveries in RenderParticles |
-| Matched-source index | Native exact-match corpus/query/revalidation is implemented; expand useful source-role coverage and find examples of the requested argument/promotion behavior to feed the harness |
-| Delivery | Compiler-version/platform checks, trace overhead/search throughput measurements, native documentation/kit/schema updates and the complete RenderParticles investigation |
+| Matched-source index | Native exact-match corpus/query/revalidation and real symbolic member/reference-argument examples are implemented; expand argument/promotion role coverage and test useful transplants |
+| Delivery | Finish current extension's compiler-version/platform checks, native documentation/kit/schema updates and the complete RenderParticles investigation; bounded overhead/throughput measurements are available |
 
 The qualified-symbol objective now has a concrete independently checked C++ graph
 edit. Native reduction and matched-source indexing now use the shared evaluator.

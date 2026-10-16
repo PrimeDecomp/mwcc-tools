@@ -169,7 +169,7 @@ ambiguous. A source objective needs both before attributing a category change to
 particular value. These observations are available in Rust through
 `allocation_category` and the combined provenance report.
 
-The internal callback is now `OracleRust_CounterProbeV4`, with a guarded 48-byte
+The internal callback is now `OracleRust_CounterProbeV5`, with a guarded 48-byte
 descriptor. Rebuild the common hooks and producer together; the linker rejects an
 older callback ABI instead of interpreting stale descriptors.
 
@@ -238,12 +238,21 @@ declares `call_result=guarded_call_result_v1` and ends with `call_results`.
 adjacent pair-word bindings. Coverage of this helper does not classify every
 temporary produced by intrinsic lowering or other backend helpers.
 
-The native state fingerprint format is now 2. It retains promoted element/source
+The native state fingerprint format is now 3. It retains promoted element/source
 metadata and call shape/type/partial expression evidence, excludes raw partial
 output bytes and pointers, and masks optimizer flags to their three audited active
 bits. Raw flags remain available in the provenance report. Inspect
 `fingerprint_format_version` in a retained-state report; saved searches still bind
 the analyzer executable and must not mix fingerprints from different analyzers.
+
+V5 adds [frontend aggregate scalarization](scalarization.md), including original
+byte/bit intervals, actual returned temporary identities and function-end totals.
+Typed `scalarization.backend_values` joins exact Object/VarInfo identities to
+backend births with separate coverage. The format-3 fingerprint also retains
+whole-function scalar creations without graph nodes, coverage and pointer equality
+relationships. Unsupported normalization disables state grouping. The internal
+callback remains guarded; earlier V4 proof directories describe the historical
+producer.
 
 ### Compare the observed graph boundary
 

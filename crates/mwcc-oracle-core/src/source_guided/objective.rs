@@ -11,7 +11,7 @@ use crate::{
 use anyhow::{Context, Result, ensure};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -44,6 +44,19 @@ pub enum CopyOutcome {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Objective {
+    /// An explicit ordinal definition in the observed allocation input stream.
+    /// This does not infer C++ initialization, dominance or execution order.
+    ScalarizedArrayDefinition {
+        value: PromotedElementAnchor,
+        definition: usize,
+    },
+    /// A whole source array element rewritten by the guarded frontend
+    /// scalarizer, initialized through the existing LI/copy recognizer.
+    ScalarizedArrayInitialization {
+        value: PromotedElementAnchor,
+        constant: i32,
+        source_line: Option<i32>,
+    },
     /// The ordinal incoming register-copy decision for an observed promoted
     /// element. This is not an automatic source-initializer/dominance binding.
     PromotedCopyCoalescing {
@@ -203,7 +216,38 @@ pub fn validate(c: &Contract) -> Result<()> {
             );
         }
     }
+    if let Objective::ScalarizedArrayInitialization { value, .. } = &c.objective {
+        ensure!(
+            c.selection.class == 4 && !value.name.is_empty() && value.element_size > 0,
+            "scalarized initialization currently requires a named GPR array element and positive element size"
+        );
+    }
+    if let Objective::ScalarizedArrayDefinition { value, .. } = &c.objective {
+        ensure!(
+            matches!(c.selection.class, 3 | 4) && !value.name.is_empty() && value.element_size > 0,
+            "scalarized definition requires a named FPR/GPR array element and positive element size"
+        );
+    }
     Ok(())
+}
+fn possible_scalarized_element(
+    binding: &crate::scalarization::Binding,
+    value: &PromotedElementAnchor,
+) -> bool {
+    let source = &binding.source;
+    let name = if source.name_known && source.name_complete {
+        source.name_bytes == value.name.as_bytes()
+    } else {
+        value.name.as_bytes().starts_with(&source.name_bytes)
+    };
+    let offset = value.element_index.checked_mul(value.element_size as u32);
+    name && source.type_kind == 12
+        && binding.flags & 3 == 0
+        && binding.byte_size == value.element_size
+        && offset == u32::try_from(binding.byte_offset).ok()
+        && (!source.element_known
+            || (source.element_type_size == value.element_size
+                && binding.temporary.type_kind == source.element_type_kind))
 }
 fn promoted_copy(
     input: &Input<'_>,
@@ -641,6 +685,292 @@ fn delta(c: &Contract, baseline: &Input<'_>, candidate: &Input<'_>) -> (Value, E
         }
     }
 }
+fn observed_definition(
+    input: &Input<'_>,
+    g: &Graph,
+    b: &Birth,
+    ordinal: usize,
+) -> Result<(Evaluation, Value)> {
+    ensure!(
+        matches!(g.class, 3 | 4) && g.physical_limit == 32,
+        "observed definition requires a FPR/GPR graph"
+    );
+    let function = input
+        .provenance
+        .history
+        .functions
+        .iter()
+        .find(|f| f.id == g.function)
+        .context("definition function missing")?;
+    ensure!(
+        function
+            .births
+            .iter()
+            .filter(|v| v.class == b.class && v.register == b.register)
+            .count()
+            == 1,
+        "definition register has reused/ambiguous generations"
+    );
+    let trace = crate::trace::parse(&input.compilation.trace)?;
+    let allocations = trace
+        .allocations
+        .iter()
+        .filter(|a| a.before.link == g.link)
+        .collect::<Vec<_>>();
+    ensure!(
+        allocations.len() == 1,
+        "definition link does not identify one allocation capture"
+    );
+    let allocation = allocations[0];
+    let definitions = allocation
+        .before
+        .blocks
+        .iter()
+        .enumerate()
+        .flat_map(|(block_index, block)| {
+            block
+                .instructions
+                .iter()
+                .enumerate()
+                .filter(move |(_, i)| defines_register(i, g.class, b.register))
+                .map(move |(instruction_index, i)| (block_index, instruction_index, block, i))
+        })
+        .collect::<Vec<_>>();
+    let candidates=definitions.iter().enumerate().map(|(ordinal,(block_index,index,block,instruction))|json!({"ordinal":ordinal,"block_ordinal":block_index,"block_index":block.index,"instruction_index":index,"instruction":instruction})).collect::<Vec<_>>();
+    let Some((_, index, block, selected)) = definitions.get(ordinal).copied() else {
+        return Ok((
+            if definitions.is_empty() {
+                gap(
+                    EvidenceGap::BackendLifecycleCoverage,
+                    "no observed definition is bound to this scalarized birth; source execution/lifetime is unknown",
+                )
+            } else {
+                false_result("no observed definition at requested ordinal")
+            },
+            json!({"definitions":candidates,"definition":ordinal}),
+        ));
+    };
+    ensure!(
+        allocation
+            .before
+            .blocks
+            .iter()
+            .flat_map(|b| &b.instructions)
+            .filter(|i| i.pointer == selected.pointer)
+            .count()
+            == 1,
+        "selected definition instruction identity is ambiguous"
+    );
+    ensure!(
+        selected
+            .operands
+            .iter()
+            .filter(|o| o.defines() && o.raw[1] == g.class)
+            .count()
+            == 1,
+        "selected definition has multiple class outputs"
+    );
+    let names = crate::version::opcode_names(input.compilation.version);
+    let is_copy = names
+        .get(&selected.opcode)
+        .is_some_and(|name| matches!(name.as_str(), "mr" | "fmr"));
+    let mut copy_decision = None;
+    let (producer, copy) = if is_copy {
+        ensure!(
+            names
+                .get(&selected.opcode)
+                .is_some_and(|name| name == if g.class == 4 { "mr" } else { "fmr" }),
+            "copy opcode does not match selected register class"
+        );
+        let sources = selected
+            .operands
+            .iter()
+            .filter(|o| o.uses() && o.raw[1] == g.class)
+            .collect::<Vec<_>>();
+        ensure!(
+            sources.len() == 1,
+            "selected copy has no unique register source"
+        );
+        let source = sources[0].register();
+        let pass = input
+            .provenance
+            .passes
+            .iter()
+            .filter(|p| {
+                p.class == g.class
+                    && p.link == g.link
+                    && p.begin_position < g.begin_position
+                    && p.header
+                        .get("function_id")
+                        .and_then(|v| v.parse::<u32>().ok())
+                        == Some(g.function)
+            })
+            .max_by_key(|p| p.begin_position)
+            .context("selected copy has no observed coalescer pass")?;
+        ensure!(
+            pass.ended
+                && pass.end_position.is_some_and(|end| end < g.begin_position)
+                && pass.decisions.state == EvaluationState::Satisfied,
+            "selected copy coalescer pass is incomplete or after graph"
+        );
+        let number = |key: &str| -> Result<u32> {
+            pass.header
+                .get(key)
+                .with_context(|| format!("copy pass lacks {key}"))?
+                .parse()
+                .with_context(|| format!("invalid copy pass {key}"))
+        };
+        ensure!(
+            number("count")? == g.count && number("physical")? == g.physical_limit,
+            "copy pass does not bind the selected graph count/class"
+        );
+        let matches = pass
+            .candidates
+            .iter()
+            .filter(|c| c.instruction == selected.pointer)
+            .collect::<Vec<_>>();
+        ensure!(
+            matches.len() == 1,
+            "copy instruction has missing/ambiguous deciding candidate"
+        );
+        let candidate = matches[0];
+        ensure!(
+            candidate.evidence.state == EvaluationState::Satisfied
+                && candidate
+                    .decision_position
+                    .is_some_and(|p| p < g.begin_position),
+            "copy deciding evidence incomplete"
+        );
+        let operand = |key: &str| -> Result<u32> {
+            candidate
+                .operands
+                .get(key)
+                .with_context(|| format!("copy candidate lacks {key}"))?
+                .parse()
+                .with_context(|| format!("invalid copy candidate {key}"))
+        };
+        ensure!(
+            operand("destination_kind")? == 0
+                && operand("source_kind")? == 0
+                && operand("destination_class")? == u32::from(g.class)
+                && operand("source_class")? == u32::from(g.class)
+                && operand("destination")? == b.register
+                && operand("source")? == source
+                && operand("opcode")? == selected.opcode as u32
+                && candidate.checks.iter().any(|c| c.condition == "copy_flag"),
+            "coalescer candidate disagrees with selected register copy"
+        );
+        copy_decision = Some(json!({"pass":pass.id,"candidate":candidate}));
+        match candidate.decision {
+            crate::provenance::Decision::Merged { .. } => ensure!(
+                g.merges.iter().any(|m| m.pass == pass.id
+                    && m.candidate == candidate.id
+                    && m.binding.state == EvaluationState::Satisfied),
+                "copy merge lacks complete graph lifetime binding"
+            ),
+            crate::provenance::Decision::AlreadySameRoot { .. } => {}
+            _ => {
+                return Ok((
+                    false_result("selected definition copy was not observed coalesced"),
+                    json!({"definitions":candidates,"definition":ordinal,"copy_decision":copy_decision}),
+                ));
+            }
+        }
+        let producer = block.instructions[..index]
+            .iter()
+            .rev()
+            .take_while(|i| i.flags & (1 | 8 | 0x100) == 0)
+            .find(|i| defines_register(i, g.class, source))
+            .context(
+                "selected copy has no observed same-block producer before a control barrier",
+            )?;
+        ensure!(
+            producer
+                .operands
+                .iter()
+                .filter(|o| o.defines() && o.raw[1] == g.class)
+                .count()
+                == 1,
+            "copy producer has multiple class outputs"
+        );
+        (producer, Some(selected))
+    } else {
+        (selected, None)
+    };
+    let (evaluation, mut observations) =
+        definition_projection(input, g, b, allocation, producer, copy)?;
+    if let Some(object) = observations.as_object_mut()
+        && let Some(producer) = object.remove("initialization")
+    {
+        object.insert("producer".into(), producer);
+    }
+    observations["definitions"] = json!(candidates);
+    observations["definition"] = json!(ordinal);
+    observations["selected_definition"] = json!(selected);
+    observations["copy_decision"] = json!(copy_decision);
+    observations["scope"] = json!(
+        "ordinal_in_observed_ra_before_block_instruction_stream; no C++ initialization, dominance or execution-order claim"
+    );
+    Ok((evaluation, observations))
+}
+fn initializer_block(blocks: &[crate::trace::Block]) -> Result<&crate::trace::Block> {
+    let key = |s: &str| -> Result<u32> {
+        let p = u32::from_str_radix(s, 16)?;
+        ensure!(p != 0, "null CFG block identity");
+        Ok(p)
+    };
+    let mut nodes = BTreeMap::new();
+    for block in blocks {
+        ensure!(
+            nodes.insert(key(&block.pointer)?, block).is_none(),
+            "duplicate CFG block identity"
+        );
+    }
+    let mut incoming = nodes
+        .keys()
+        .map(|p| (*p, 0usize))
+        .collect::<BTreeMap<_, _>>();
+    for block in blocks {
+        ensure!(
+            block.successors.len() <= 1,
+            "initialization CFG branches; dominance is unknown"
+        );
+        for next in &block.successors {
+            *incoming
+                .get_mut(&key(next)?)
+                .context("initialization CFG has an unobserved external edge")? += 1;
+        }
+    }
+    let entries = incoming
+        .iter()
+        .filter(|(_, n)| **n == 0)
+        .map(|(p, _)| *p)
+        .collect::<Vec<_>>();
+    ensure!(
+        entries.len() == 1 && incoming.values().all(|n| *n <= 1),
+        "initialization CFG lacks one linear entry"
+    );
+    let mut visited = BTreeSet::new();
+    let mut next = Some(entries[0]);
+    while let Some(p) = next {
+        ensure!(visited.insert(p), "initialization CFG contains a cycle");
+        let block = nodes[&p];
+        next = block.successors.first().map(|p| key(p)).transpose()?;
+    }
+    ensure!(
+        visited.len() == blocks.len(),
+        "initialization CFG has unreachable or cyclic blocks"
+    );
+    let body = blocks
+        .iter()
+        .filter(|b| !b.instructions.is_empty())
+        .collect::<Vec<_>>();
+    ensure!(
+        body.len() == 1,
+        "initialization needs one instruction-bearing block; cross-block dominance is unknown"
+    );
+    Ok(body[0])
+}
 fn direct_initialization(
     input: &Input<'_>,
     g: &Graph,
@@ -652,7 +982,6 @@ fn direct_initialization(
         (2..=4).contains(&g.class) && g.physical_limit == 32,
         "direct initialization currently requires a VR/FPR/GPR allocation graph"
     );
-    let r = root(g, b)?;
     let names = crate::version::opcode_names(input.compilation.version);
     let trace = crate::trace::parse(&input.compilation.trace)?;
     let allocations: Vec<_> = trace
@@ -675,40 +1004,53 @@ fn direct_initialization(
                 o.kind() == 2 && i32::from_le_bytes(o.raw[2..6].try_into().unwrap()) == constant
             })
     };
-    let mut initializers = vec![];
-    for block in &allocations[0].before.blocks {
-        for (index, instruction) in block
-            .instructions
+    // Recorded block order is not a dominance or C++ declaration order proof.
+    // Keep this recognizer deliberately narrow; later definitions have their
+    // own explicit observed-definition predicate.
+    let block = initializer_block(&allocations[0].before.blocks)?;
+    let (index, instruction) = block
+        .instructions
+        .iter()
+        .enumerate()
+        .find(|(_, i)| defines(i, b.register))
+        .context("original value has no observed first definition")?;
+    ensure!(
+        block.instructions[..index]
             .iter()
-            .enumerate()
-            .filter(|(_, i)| defines(i, b.register) && line.is_none_or(|l| i.line == Some(l)))
-        {
-            if immediate(instruction) {
-                initializers.push((instruction, None));
-                continue;
-            }
-            if names.get(&instruction.opcode).is_some_and(|n| n == "mr")
-                && instruction.flags & 0x10 != 0
-            {
-                let sources = instruction
+            .all(|i| i.flags & (1 | 8 | 0x100) == 0
+                && !i
                     .operands
                     .iter()
-                    .filter(|o| o.uses() && o.raw[1] == g.class)
-                    .collect::<Vec<_>>();
-                if sources.len() != 1 {
-                    continue;
-                }
-                let previous = block.instructions[..index]
-                    .iter()
-                    .rev()
-                    .take_while(|i| i.flags & (1 | 8 | 0x100) == 0)
-                    .find(|i| defines(i, sources[0].register()));
-                if let Some(previous) = previous
-                    && immediate(previous)
-                {
-                    initializers.push((previous, Some(instruction)));
-                }
-            }
+                    .any(|o| o.uses() && o.raw[1] == g.class && o.register() == b.register)),
+        "first definition follows a control barrier or earlier use; initialization is unknown"
+    );
+    ensure!(
+        line.is_none_or(|l| instruction.line == Some(l)),
+        "requested source line does not identify the original first definition"
+    );
+    let mut initializers = vec![];
+    if immediate(instruction) {
+        initializers.push((instruction, None));
+    }
+    if names.get(&instruction.opcode).is_some_and(|n| n == "mr") && instruction.flags & 0x10 != 0 {
+        let sources = instruction
+            .operands
+            .iter()
+            .filter(|o| o.uses() && o.raw[1] == g.class)
+            .collect::<Vec<_>>();
+        ensure!(
+            sources.len() == 1,
+            "first copy has no unique register source"
+        );
+        let previous = block.instructions[..index]
+            .iter()
+            .rev()
+            .take_while(|i| i.flags & (1 | 8 | 0x100) == 0)
+            .find(|i| defines(i, sources[0].register()));
+        if let Some(previous) = previous
+            && immediate(previous)
+        {
+            initializers.push((previous, Some(instruction)));
         }
     }
     ensure!(
@@ -716,14 +1058,70 @@ fn direct_initialization(
         "expected one immediate initializer bound to the original named value, directly or through one local copy"
     );
     let (initializer, copy) = initializers[0];
+    definition_projection(input, g, b, allocations[0], initializer, copy)
+}
+fn defines_register(i: &crate::trace::Instruction, class: u8, register: u32) -> bool {
+    i.operands
+        .iter()
+        .any(|o| o.defines() && o.raw[1] == class && o.register() == register)
+}
+fn compatible_instruction(
+    before: &crate::trace::Instruction,
+    after: &crate::trace::Instruction,
+) -> bool {
+    before.opcode == after.opcode
+        && before.operands.len() == after.operands.len()
+        && before
+            .operands
+            .iter()
+            .zip(&after.operands)
+            .all(|(before, after)| {
+                let mut a = before.raw;
+                let mut b = after.raw;
+                if before.kind() == 0 && after.kind() == 0 {
+                    let physical = match before.raw[1] {
+                        0 => 4,
+                        1 => 8,
+                        _ => 32,
+                    };
+                    if before.register() < physical && before.register() != after.register() {
+                        return false;
+                    }
+                    a[4..6].fill(0);
+                    b[4..6].fill(0);
+                    // Allocation's last-use bit may change; read/write roles remain.
+                    a[2] &= !4;
+                    b[2] &= !4;
+                }
+                a == b
+            })
+}
+fn definition_projection(
+    input: &Input<'_>,
+    g: &Graph,
+    b: &Birth,
+    allocation: &crate::trace::Allocation,
+    initializer: &crate::trace::Instruction,
+    copy: Option<&crate::trace::Instruction>,
+) -> Result<(Evaluation, Value)> {
+    let r = root(g, b)?;
+    let defines = |i: &crate::trace::Instruction, register| defines_register(i, g.class, register);
     let current = g
         .instructions
         .iter()
         .filter(|i| i.pointer == initializer.pointer)
         .collect::<Vec<_>>();
-    let copy_survives =
-        copy.is_some_and(|copy| g.instructions.iter().any(|i| i.pointer == copy.pointer));
-    if current.len() != 1 || !defines(current[0], r) || copy_survives {
+    let copy_survives = copy.is_some_and(|copy| {
+        g.instructions
+            .iter()
+            .chain(allocation.after.blocks.iter().flat_map(|b| &b.instructions))
+            .any(|i| i.pointer == copy.pointer)
+    });
+    if current.len() != 1
+        || !defines(current[0], r)
+        || !compatible_instruction(initializer, current[0])
+        || copy_survives
+    {
         return Ok((
             false_result(
                 "the initialization still requires a copy into the anchored allocation root",
@@ -731,7 +1129,7 @@ fn direct_initialization(
             json!({"root":r,"value":b.id,"initialization":initializer,"copy":copy,"copy_survives":copy_survives}),
         ));
     }
-    let after: Vec<_> = allocations[0]
+    let after: Vec<_> = allocation
         .after
         .blocks
         .iter()
@@ -753,7 +1151,7 @@ fn direct_initialization(
         registers.len() == 1 && registers[0] < g.physical_limit,
         "initialization has no unique final physical destination"
     );
-    let rounds: Vec<_> = allocations[0]
+    let rounds: Vec<_> = allocation
         .before
         .rounds
         .iter()
@@ -798,11 +1196,8 @@ fn direct_initialization(
             .get(&r)
             .context("no recorded final color for anchored root")?
     };
-    let same = final_instruction.opcode == initializer.opcode
-        && registers[0] as i32 == assigned
-        && final_instruction.operands.iter().any(|o| {
-            o.kind() == 2 && i32::from_le_bytes(o.raw[2..6].try_into().unwrap()) == constant
-        });
+    let same =
+        compatible_instruction(initializer, final_instruction) && registers[0] as i32 == assigned;
     let result = if same {
         known()
     } else {
@@ -984,6 +1379,75 @@ pub fn evaluate(
             let (changes, comparison_coverage) = delta(c, baseline, candidate);
             constraints.insert("observed_boundary_comparison".into(), comparison_coverage);
             let tested = (|| -> Result<(Evaluation, Value)> {
+                if let Objective::ScalarizedArrayInitialization { value, .. }
+                | Objective::ScalarizedArrayDefinition { value, .. } = &c.objective
+                {
+                    let f = candidate
+                        .provenance
+                        .history
+                        .functions
+                        .iter()
+                        .find(|f| f.id == b.function)
+                        .context("missing scalarized array function")?;
+                    let selected = candidate
+                        .provenance
+                        .scalarization
+                        .backend_values
+                        .iter()
+                        .filter(|v| {
+                            v.value.function == f.id
+                                && v.class == b.class
+                                && v.array_element.as_ref().is_some_and(|e| {
+                                    e.name == value.name.as_bytes()
+                                        && e.element_index == value.element_index
+                                        && e.element_size == value.element_size
+                                })
+                        })
+                        .collect::<Vec<_>>();
+                    ensure!(
+                        selected.len() == 1
+                            && selected[0].observations.state == EvaluationState::Satisfied,
+                        "source element lacks one complete frontend-to-backend scalarization binding"
+                    );
+                    let source_matches = candidate
+                        .provenance
+                        .scalarization
+                        .passes
+                        .iter()
+                        .filter(|p| p.function == Some(f.id))
+                        .flat_map(|p| &p.bindings)
+                        .filter(|binding| possible_scalarized_element(binding, value))
+                        .count();
+                    ensure!(
+                        source_matches == 1,
+                        "source element has multiple or unresolved possible scalarization creations in this function"
+                    );
+                    let birth = f
+                        .births
+                        .iter()
+                        .find(|birth| birth.id == selected[0].value)
+                        .context("scalarized backend birth missing")?;
+                    ensure!(
+                        birth.trace_position < b.begin_position,
+                        "scalarized birth does not precede selected graph"
+                    );
+                    let (evaluation, mut observations) = match &c.objective {
+                        Objective::ScalarizedArrayInitialization {
+                            constant,
+                            source_line,
+                            ..
+                        } => direct_initialization(candidate, b, birth, *constant, *source_line)?,
+                        Objective::ScalarizedArrayDefinition { definition, .. } => {
+                            observed_definition(candidate, b, birth, *definition)?
+                        }
+                        _ => unreachable!(),
+                    };
+                    observations["source_element"] = serde_json::to_value(selected[0])?;
+                    observations["anchor_scope"] = json!(
+                        "guarded_whole_array_element_to_exact_scalar_Object_and_backend_birth"
+                    );
+                    return Ok((evaluation, observations));
+                }
                 if let Objective::PromotedCopyCoalescing {
                     value,
                     copy,
@@ -1023,7 +1487,9 @@ pub fn evaluate(
                     | Objective::DirectInitialization { value, .. }
                     | Objective::EliminateTemporary { value } => value,
                     Objective::SymbolAddressPairs { .. }
-                    | Objective::PromotedCopyCoalescing { .. } => unreachable!(),
+                    | Objective::PromotedCopyCoalescing { .. }
+                    | Objective::ScalarizedArrayInitialization { .. }
+                    | Objective::ScalarizedArrayDefinition { .. } => unreachable!(),
                 };
                 let from = anchor(baseline, a, selector)?;
                 let to = anchor(candidate, b, selector)?;
@@ -1102,7 +1568,9 @@ pub fn evaluate(
                         json!({"baseline_value":from.id,"candidate_value":to.id}),
                     )),
                     Objective::SymbolAddressPairs { .. }
-                    | Objective::PromotedCopyCoalescing { .. } => unreachable!(),
+                    | Objective::PromotedCopyCoalescing { .. }
+                    | Objective::ScalarizedArrayInitialization { .. }
+                    | Objective::ScalarizedArrayDefinition { .. } => unreachable!(),
                 }
             })();
             match tested {

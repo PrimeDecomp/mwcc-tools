@@ -112,6 +112,9 @@ fn corpus_rejects_incomplete_absence_and_detects_tampering() {
     let source = b"void example() {}\n";
     let source_path = dir.join("source.cpp");
     let source_sha = write(&source_path, source);
+    let header_path = dir.join("example.hpp");
+    let header = b"// declaration source\ninline void example() {}\n";
+    let header_sha = write(&header_path, header);
     let producer = dir.join("build/GC_2_7/oracle/mwcceppc.exe");
     fs::create_dir_all(producer.parent().unwrap()).unwrap();
     let producer_sha = write(&producer, b"producer");
@@ -145,16 +148,27 @@ fn corpus_rejects_incomplete_absence_and_detects_tampering() {
             },
         ],
         environment_sha256: "environment".into(),
-        dependencies: vec![FileInput {
-            path: source_path.clone(),
-            sha256: source_sha.clone(),
-        }],
+        dependencies: vec![
+            FileInput {
+                path: source_path.clone(),
+                sha256: source_sha.clone(),
+            },
+            FileInput {
+                path: header_path.clone(),
+                sha256: header_sha.clone(),
+            },
+        ],
         preprocessed_sha256: "oracle".into(),
         stock_preprocessed_sha256: "stock".into(),
         reusable: true,
         cache_limitations: vec![],
     };
     let compilation=Compilation {version:Version::Gc27,source:source_path.to_string_lossy().into_owned(),oracle:"oracle".into(),producer_sha256:producer_sha,original_sha256:Some(stock_sha),source_sha256:source_sha,flags:vec![],trace_options:options.clone(),object_sha256:object_sha,check_status:CheckStatus::Verified,identical:Some(true),differences:vec![],diagnostics:String::new(),trace:"pv.function.begin schema=1 function=1 parent=0 c0=4 c1=8 c2=32 c3=32 c4=32 coverage=direct_counter_writes link=example__Fv\npv.function.end function=1 births=0 graphs=0 ranges=0 c0=4 c1=8 c2=32 c3=32 c4=32\n".into(),trace_present:true,original_fallback:false,object:vec![]};
+    let mut compilation = compilation;
+    compilation.trace = format!(
+        "pv.function.begin schema=1 function=1 parent=0 c0=4 c1=8 c2=32 c3=32 c4=32 coverage=direct_counter_writes array_promotion=guarded_scalar_v1 call_result=guarded_call_result_v1 link=example__Fv\npv.value.birth schema=1 function=1 value=1 cls=4 register=32 count=33 physical=32 site=574005 expression=0 phase=1 line=1 category=unknown\npv.value.array schema=1 function=1 value=1 promotion=100 object=200 register=32 element_index=1 element_size=4 array_size=8 element_count=2 flags=0 datatype=1 storage=0 type_kind=12 type_size=8 name_known=1 name_complete=1 name_hex=666c6167\npv.value.birth schema=1 function=1 value=2 cls=4 register=33 count=34 physical=32 site=52881d expression=0 phase=0 line=1 category=unknown\npv.value.call_result schema=1 function=1 value=2 part=1 register=33 item=300 kind=54 callee=400 return_type=500 type_kind=8 type_size=4 output=600 output_kind=0 output_complete=0 output_hex={} tree_known=1 tree_complete=0 tree_hex=63616c6c2829\npv.function.end function=1 births=2 graphs=0 ranges=0 array_promotions=1 call_results=1 c0=4 c1=8 c2=32 c3=32 c4=34\n",
+        "00".repeat(24)
+    );
     let capture = dir.join("capture.json");
     fs::write(
         &capture,
@@ -188,11 +202,146 @@ fn corpus_rejects_incomplete_absence_and_detects_tampering() {
                 first_line: 1,
                 last_line: 1,
             },
+            source_file: None,
         }],
     };
     let corpus = dir.join("index");
     let ingested = index::ingest(&corpus, &spec).unwrap();
     assert_eq!(ingested.added.len(), 1);
+    let stored = index::load(&corpus, &ingested.added[0]).unwrap();
+    assert!(
+        serde_json::to_value(&stored).unwrap()["function"]
+            .get("source_file")
+            .is_none()
+    );
+    assert_eq!(stored.coverage["origins"]["scalar_arrays"]["observed"], 1);
+    let mut legacy = stored.clone();
+    legacy.coverage.as_object_mut().unwrap().remove("origins");
+    legacy.id.clear();
+    legacy.id = state::digest(&serde_json::to_vec(&legacy).unwrap());
+    fs::write(
+        corpus.join("entries").join(format!("{}.json", legacy.id)),
+        serde_json::to_vec_pretty(&legacy).unwrap(),
+    )
+    .unwrap();
+    let inventory = index::origins(&corpus, &index::OriginFilter::default()).unwrap();
+    assert_eq!(inventory.entries.len(), 2);
+    for entry in &inventory.entries {
+        assert_eq!(entry.source, "void example() {}\n");
+        assert_eq!(
+            entry.coverage.scalar_arrays.observations.state,
+            EvaluationState::Satisfied
+        );
+        assert_eq!(entry.coverage.scalar_arrays.observed, 1);
+        assert_eq!(
+            entry.scalar_arrays[0].origin.name_text.as_deref(),
+            Some("flag")
+        );
+        assert_eq!(
+            (
+                entry.scalar_arrays[0].origin.element_index,
+                entry.scalar_arrays[0].origin.element_size
+            ),
+            (1, 4)
+        );
+        assert_eq!(entry.coverage.call_results.observed, 1);
+        assert_eq!(entry.call_results[0].origin.callee, "400");
+        assert!(!entry.call_results[0].origin.output_complete);
+        assert!(!entry.call_results[0].origin.tree_complete);
+        assert!(entry.coverage.normalize_symbols.scope.is_none());
+        assert_eq!(
+            entry.coverage.normalize_symbols.observations.state,
+            EvaluationState::Indeterminate
+        );
+    }
+    let mut header_spec = spec.clone();
+    header_spec.functions[0].source_file = Some(FileInput {
+        path: header_path.clone(),
+        sha256: header_sha.clone(),
+    });
+    header_spec.functions[0].source_range = SourceRange {
+        first_line: 2,
+        last_line: 2,
+    };
+    let header_corpus = dir.join("header-index");
+    let header_ingested = index::ingest(&header_corpus, &header_spec).unwrap();
+    let header_entry = index::load(&header_corpus, &header_ingested.added[0]).unwrap();
+    assert_eq!(header_entry.build.source, spec.build.source);
+    assert_eq!(header_entry.inputs.source, spec.source);
+    let header_inventory = index::origins(&header_corpus, &index::OriginFilter::default()).unwrap();
+    let item = &header_inventory.entries[0];
+    assert_eq!(item.source, "inline void example() {}\n");
+    assert_eq!(item.source_file, header_path);
+    assert_eq!(item.source_sha256, header_sha);
+    assert_eq!(item.translation_unit_source_sha256, stored.source_sha256);
+    let mut invalid = header_spec.clone();
+    invalid.functions[0].source_range.last_line = 3;
+    assert!(
+        index::ingest(&dir.join("bad-range"), &invalid)
+            .unwrap_err()
+            .to_string()
+            .contains("range outside")
+    );
+    let outside = dir.join("outside.hpp");
+    write(&outside, header);
+    invalid = header_spec.clone();
+    invalid.functions[0].source_file.as_mut().unwrap().path = outside;
+    assert!(
+        index::ingest(&dir.join("outside"), &invalid)
+            .unwrap_err()
+            .to_string()
+            .contains("dependency closure")
+    );
+    invalid = header_spec;
+    invalid.functions[0].source_file.as_mut().unwrap().sha256 = state::digest(b"wrong");
+    assert!(
+        index::ingest(&dir.join("wrong-digest"), &invalid)
+            .unwrap_err()
+            .to_string()
+            .contains("different digest")
+    );
+    fs::write(
+        header_corpus.join("blobs").join(&header_sha),
+        b"tampered header",
+    )
+    .unwrap();
+    assert!(index::origins(&header_corpus, &index::OriginFilter::default()).is_err());
+    assert!(
+        index::origins(
+            &corpus,
+            &index::OriginFilter {
+                version: Some(Version::Gc13),
+                ..Default::default()
+            }
+        )
+        .unwrap()
+        .entries
+        .is_empty()
+    );
+    assert!(
+        index::origins(
+            &corpus,
+            &index::OriginFilter {
+                link: Some("wrong".into()),
+                ..Default::default()
+            }
+        )
+        .unwrap()
+        .entries
+        .is_empty()
+    );
+    assert!(
+        index::origins(
+            &corpus,
+            &index::OriginFilter {
+                flags: Some(vec!["wrong".into()]),
+                ..Default::default()
+            }
+        )
+        .unwrap()
+        .entries
+        .is_empty()
+    );
     let query = Query {
         format_version: 1,
         link: None,

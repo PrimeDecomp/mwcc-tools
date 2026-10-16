@@ -136,7 +136,7 @@ The `-O0` reuse path has no range markers, so its range categories remain unknow
 The graph hook now reads live physical limits: target initialization may occur
 after generator entry. The host also cross-checks the preceding coalescer header,
 making stale early development snapshots with a zero boundary indeterminate.
-The internal descriptor is 48 bytes and uses `OracleRust_CounterProbeV4`; native
+The internal descriptor is 48 bytes and uses `OracleRust_CounterProbeV5`; native
 linking rejects older common-hook ABIs before installing these islands.
 
 The descriptor also selects the two guarded Normalize symbol-address births and
@@ -254,6 +254,127 @@ with off/on evidence at
 `build/source-guided/birth-origin-audit/cross-host-verification.json` records the
 cross-host checks. Per-invocation timings are retained; concurrent verification
 does not establish controlled trace overhead or search throughput.
+
+## Frontend aggregate scalarization
+
+Backend array promotion is separate from the frontend rewrite of an aggregate
+part into a new scalar Object. Retained V4 traces show that the live ghost-case
+values `@17` (empty-loop/store-after), `@21` (inline helper), and `@5986`
+(`RenderParticles`) are created at the scalarizer's temp-object return,
+`0x461748` in GC 2.7. They are not CSE-created Objects. Existing `lc.use` records
+identify byte offset 4 of `flag`/`noRota`; the old name-only temp/part ordering
+does not establish the exact Object association.
+
+V5 saves original EBX at the naked `create_temp_object` entry, forwards the
+original caller address, and observes the returned Object. Only the audited
+scalarizer return is recognized. The scalarizer base/return addresses are:
+
+| Version | Scalarizer | Temp-object return |
+| --- | --- | --- |
+| GC 1.3 | `0x460780` | `0x4608a8` |
+| GC 1.3.2 | `0x460a00` | `0x460b28` |
+| GC 2.7 | `0x461620` | `0x461748` |
+
+All three scalarizer bodies are `0x3a2` bytes with normalized SHA-256
+`7ff5c374f005e7bf1c782113ee92c9c311518e26bf27c3f88a0bab8072d46b3a`.
+The `record_var_part_use` constructor is `0x3fc` bytes, normalized SHA-256
+`d528fa438432ca999f55a60133384fc4b116313a9569f601ba5ef6779e2f65cd`;
+`create_temp_object` is `0x76` bytes, normalized SHA-256
+`36d59c0f578dc022a12a7f3c9f6096214f2353f93a9823f02ab3250df1322cb1`.
+Normalization zeros PE base fixups and direct-call operands. Installation also
+checks each version's exact pinned PE body and the supplied split COFF bodies,
+relocation positions, target-symbol bindings and raw addends. The identity guard
+includes local symbol section/value and auxiliary records; changing a call target
+cannot hide inside a normalized operand. An older common object lacks the V5 support export
+and is rejected before instrumentation.
+
+At the audited return, EBX is the actual `IROVarPart` and EAX the newly created
+Object. Retail constructor stores establish part fields `+0` source linear,
+`+4` flags, `+6` VarRecord, `+0xa` byte offset, `+0xe` byte size, `+0x12` first
+bit, `+0x16` last bit, `+0x1a` Type, and `+0x22` use list. VarRecord `+2` is the
+source Object. The bit fields are initialized by retail arithmetic, including
+the separate bitfield offset/width path; they are not inferred from the
+reconstructed declaration's unnamed bytes. The returned Object's Type and
+VarInfo are initialized by the guarded temp constructor.
+
+`pv.scalar.begin/binding/end` records carry a capture-local pass ID, original
+function Object, binding ordinal, actual return site, source/temporary Objects
+and VarInfo pointers, types, complete/bounded source-name bytes, and byte/bit
+intervals. Array element type is read from the original array Type, independently
+of the temporary's size. Nulls, unsupported scalar/aggregate kinds, inconsistent
+types and invalid bounds emit scoped gaps. These records observe creation of the
+replacement Object, not complete source declaration or inline ancestry.
+
+Function begin records carry the same function Object; scalar passes run inside
+that enclosing function context, before the backend Object births. Function end
+records carry an independent pending summary of scalar pass IDs and binding
+totals. A bounded 256-entry cache is consumed once per function end. Missing,
+overflowed, open or inconsistent
+summaries are `unknown`, never an invented zero-pass observation. Real scalar
+passes with zero generated bindings can be complete. This permits the host to
+detect a wholly missing scalar stream as well as a truncated binding list.
+
+Exact backend joins require the matching function Object, capture interval,
+temporary Object and VarInfo, with ambiguous/reused identities retained as gaps.
+A whole-array-element role additionally needs matching source element type/size,
+in-bounds byte interval, agreeing full-width bit interval and no bitfield flag.
+Raw pointers are capture identities, not cross-capture anchors or fingerprint
+inputs. An invisible original-array promotion still does not prove coalescing or
+elimination of the separately scalarized live value.
+
+Fresh V5 producers on Windows and Linux each pass all 36 legacy C/Rust
+comparisons. Their common hook COFF SHA-256 agrees:
+`24a0e4e95a3e0b6f54d3246ab7c8161d396a1f34cfc0c72a1c338331f88ca839`.
+The sealed producers are
+`build/source-guided/scalar-origin-audit/windows-corrected-producer/rust-producer-zt4qxn8n`
+and `/home/henrique/.cache/mwcc-scalar-origin-audit/producer/rust-producer-fshdnbn5`.
+This does not assert that their linked PE files have identical hashes.
+Independent current native constructor tests pass on both hosts against these
+sealed producers. They reproduce the retained counter islands, preserve all
+unpatched bytes/symbols/sections, and reject 63 deliberate corruptions per host.
+These include call retargets, changed raw addends and changed target-symbol
+values in each of the three scalar helpers on every version. Evidence is at
+`build/source-guided/scalar-origin-audit/constructor-verification.json`;
+`scalar-helper-cross-host.json` records the matching helper relocation identities.
+
+Both hosts' raw evidence covers nine cases across the three versions, with 18
+fresh probe off/on captures per host. Both ghost variants bind the original `flag[1]` to the
+live scalarized GPR35; the late-promotion control has no such frontend binding.
+Objects and preexisting trace records agree off/on. Typed results are retained
+at `build/source-guided/scalar-origin-audit/windows-typed/verification.json`.
+Native Linux raw/typed results are retained under
+`/home/henrique/.cache/mwcc-scalar-origin-audit/linux-fixtures/` and
+`linux-typed/`. All nine source/object hashes and derived SDK roles agree across
+hosts. The 15 small function contexts on each host complete every same-function
+scalar pass before the first backend birth. The cross-host checks are at
+`build/source-guided/scalar-origin-audit/cross-host-tiny-verification.json`.
+The separate broad backend suite passes 45 off/on pairs per host, including all
+eight previously guarded backend birth-origin paths. Windows evidence is at
+`build/source-guided/scalar-origin-audit/backend-windows-full/verification.json`.
+Linux evidence is at
+`/home/henrique/.cache/mwcc-scalar-origin-audit/backend-full/verification.json`.
+All 45 source/object hashes and retained typed backend summaries agree across
+hosts, as recorded in
+`build/source-guided/scalar-origin-audit/cross-host-backend-verification.json`.
+These concurrent correctness runs do not measure controlled overhead.
+
+A fresh full `RenderParticles` capture connects the original `noRota[1]`, byte
+interval 4..7 and bit interval 32..63, through scalarizer pass 107/binding 1 to
+backend birth 54:209, GPR162. Its stock object also matches the retained V4
+capture. All 132 full-unit contexts containing both scalar passes and backend
+births finish every scalar pass before the first birth. The retained proof is
+`build/source-guided/scalar-origin-audit/windows-render/verification.json`, with
+the full-unit ordering audit alongside it. The earlier frontend-before-function-
+begin assumption was disproven by these captures; summaries are emitted at
+function end.
+
+These joins establish the source element's live value, not a complete
+initialization or elimination argument. With the retained analysis binary,
+the LI-only scalarized initialization predicate remains indeterminate on these
+pointer-to-flag lowerings. The original late-promoted ghost values still have
+no observed incoming copy, so their coalescing predicate also remains
+indeterminate. Functions with no observed scalar pass retain unknown frontend
+coverage.
 
 ## Comparison foundation
 

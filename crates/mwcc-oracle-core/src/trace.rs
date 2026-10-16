@@ -206,13 +206,17 @@ pub struct Trace {
     pub records: Vec<Record>,
 }
 
+/// The same first token used by `records`, without allocating field maps.
+pub(crate) fn record_kind(line: &str) -> Option<&str> {
+    line.split_whitespace().next()
+}
 pub fn records(text: &str) -> Vec<Record> {
     static KEYS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?:^|\s)(\w+)=").unwrap());
     text.lines()
         .enumerate()
         .filter(|(_, l)| !l.trim().is_empty())
         .map(|(index, line)| {
-            let kind = line.split_whitespace().next().unwrap().to_owned();
+            let kind = record_kind(line).unwrap().to_owned();
             let captures: Vec<_> = KEYS.captures_iter(line).collect();
             let mut fields = BTreeMap::new();
             for (n, c) in captures.iter().enumerate() {

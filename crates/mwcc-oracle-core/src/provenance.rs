@@ -60,6 +60,8 @@ pub struct Report {
     pub lifecycle: Evaluation,
     pub history: crate::value_history::History,
     pub graphs: crate::graph_history::GraphHistory,
+    #[serde(default)]
+    pub scalarization: crate::scalarization::History,
 }
 fn integer(r: &Record, field: &str) -> Result<u32> {
     r.get(field)?
@@ -115,17 +117,25 @@ pub fn parse(text: &str) -> Result<Report> {
         .enumerate()
         .filter(|(_, line)| line.trim_start().starts_with("pv."))
     {
+        let kind = trace::record_kind(line).context("empty provenance record")?;
+        if crate::value_history::is_record(kind)
+            || crate::graph_history::is_record(kind)
+            || crate::scalarization::is_record(kind)
+        {
+            continue;
+        }
+        if kind == "pv.gap" {
+            gaps = true;
+            continue;
+        }
+        if !kind.starts_with("pv.coalesce.") {
+            supported = false;
+            continue;
+        }
         let mut r = trace::records(line)
             .pop()
             .context("empty provenance record")?;
         r.line = line_index + 1;
-        if crate::value_history::is_record(&r.kind) || crate::graph_history::is_record(&r.kind) {
-            continue;
-        }
-        if r.kind == "pv.gap" {
-            gaps = true;
-            continue;
-        }
         if r.kind == "pv.coalesce.begin" {
             let id = integer(&r, "pass")?;
             ensure!(
@@ -297,6 +307,8 @@ pub fn parse(text: &str) -> Result<Report> {
     };
     let history = crate::value_history::parse(text)?;
     let graphs = crate::graph_history::parse(text, &history, &passes)?;
+    let mut scalarization = crate::scalarization::parse(text)?;
+    crate::scalarization::bind_backend(&mut scalarization, &history.functions);
     Ok(Report {
         format_version: 2,
         trace_sha256: format!("{:x}", Sha256::digest(text.as_bytes())),
@@ -308,6 +320,7 @@ pub fn parse(text: &str) -> Result<Report> {
         ),
         history,
         graphs,
+        scalarization,
     })
 }
 

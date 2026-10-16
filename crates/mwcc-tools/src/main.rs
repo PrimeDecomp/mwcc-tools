@@ -728,6 +728,7 @@ fn help() {
   source-reduce run PLAN --output DIR [--resume] [--candidates N] [--compilations N] [--seconds N] [--cancel-file FILE]
   source-reduce replay DIR CANDIDATE_ID
   source-index ingest SPEC --index DIR
+  source-index origins --index DIR [--link NAME] [--version VERSION]
   source-index query QUERY --index DIR
   source-index verify QUERY ENTRY_ID --index DIR --output DIR [--seconds N] [--cancel-file FILE]
   inline-diff A [B] [--from-ninja FILE] [--target [DIR]] [--all] [--json]
