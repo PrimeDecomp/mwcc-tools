@@ -73,9 +73,7 @@ and unrelated kit workflows are retained.
 Independent archive/pin/payload/install audits on both hosts also compile Prime's
 35-function `CGuiFrame` and Echoes' 136-function `CElementGen` units with explicit
 stock equality, producing identical cross-host objects and leaving all copied
-inputs unchanged. Final release identities and kit pins are recorded in
-[the status document](oracle-rust-status.md); release assembly refreshes these
-artifacts against the final source snapshot.
+inputs unchanged. Final artifacts use code pin `9e67176bcb7310559bb74455026f6643fd505e40`. Both native packages and both final kit archives pass their extraction/install/protocol checks; the final kit audits repeat real-unit stock equality on Windows and Linux using the fresh default producers. Final identities are in [the release manifest](oracle-rust-release-manifest.json) and [status document](oracle-rust-status.md).
 
 The [benchmark report](oracle-rust-benchmarks.md) contains audited parsing,
 allocation analysis, replay, seeded search, compilation, complete-command and RSS

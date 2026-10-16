@@ -1,12 +1,15 @@
 # Rust migration implementation status
 
-Updated 2026-10-16. The objective remains the [migration plan](oracle-rust-migration.md). This is a checkpoint: the full migration is not complete. The [source-guided graph-search roadmap](oracle-source-guided-search.md) starts after migration completion.
+Updated 2026-10-16. The objective remains the [migration plan](oracle-rust-migration.md). The migration is complete as a local implementation and native kit delivery. The [source-guided graph-search roadmap](oracle-source-guided-search.md) starts after migration completion.
 
 Current API policy: the user explicitly removed the requirement to match legacy APIs. Native commands and versioned structured results are the kit interface; update documentation/callers/tests to use them. Archived Python parity remains regression evidence, not a requirement to preserve imports, argument spellings or rendered text.
 
-Latest checkpoint: the host tools and all 31 observation hooks are implemented. Native `configure --oracle` now selects linking and Rust by default; `--producer c` is the explicit rollback and regeneration preserves either choice. Fresh default builds and independent fixture/source audits pass on both hosts. Native kit sources/docs/tests/manifests and initial preview archives are implemented and independently audited on Windows and Linux. Final distribution assembly is refreshing those artifacts against the default-selection source snapshot. The deferred search extensions have not started.
+Final code pin: `9e67176bcb7310559bb74455026f6643fd505e40`. Host tools, executable construction and all 31 observation hooks are implemented. Native `configure --oracle` selects linking and Rust by default; `--producer c` is the explicit rollback. Native runtime commands, generated Ninja rules and migrated oracle kit consumers use the executable/structured-result boundary. Historical Python remains an independent reference, not a production API.
 
-Current workspace checks pass on both hosts: 81 offline tests, formatting and all-target Clippy. Extracted release executables also perform verified compilation for GC 1.3, 1.3.2 and 2.7 using the complete Rust producers. See the [requirements audit](oracle-rust-completion.md) for scope, named replacements, evidence and explicit validation limits. Historical package/preview identities are retained in local audit files; final source pins and distribution identities are recorded below after assembly.
+Windows/Linux validation passes 81 offline tests, formatting and all-target Clippy. Fresh default producer builds pass 36 fixture compilations per host, independent source/object audits and equivalence to the retained full-corpus producer code. All 26 real C-reference configuration comparisons pass per host. See the [acceptance audit](oracle-rust-completion.md) for scope and evidence, and the [release manifest](oracle-rust-release-manifest.json) for exact artifact identities.
+
+Final native packages and both new kit archives are assembled and independently audited on Windows and Linux. Extracted executables analyze saved traces outside the checkout and perform verified compilation on all three oracle versions. Each new kit installs its bundled native tool and compiles its real test unit with stock equality: Prime 35 functions, Echoes 136; cross-host objects agree and copied inputs remain unchanged. The deferred search extensions have not started.
+
 
 ## Implemented
 
@@ -52,7 +55,7 @@ The following producer-group records describe historical milestones; the final a
 - Windows/Linux offline CI configuration, including native archive assembly and standalone execution audits. The main build workflow now builds `mwcc-tools` and configures Ninja through it; `tools/gates.sh` delegates to the native failure-aware driver. No remote workflow run has been observed.
 - Locked per-target dependency notice inventories: 69 resolved packages on Windows and 72 on Linux, including build dependencies, nested decoder notices and the Rust standard library's attribution/terms. The 67 common packages have identical notice inventories across hosts. `capture_notices.py --check` verifies exact bytes, Cargo.lock identity and the complete generated file set without writing.
 - Native `package-release`: sorted ZIP entries, fixed timestamps, executable permissions, archive sidecars, format-1 release metadata, supplied source-input catalogue, executable/stock compiler identities, protocol versions, kit/producer guides and verified per-target notices. Original compiler binaries and game-derived inputs are excluded. Invalid inputs preserve an existing archive. The supplied source catalogue and executable identities are recorded separately; this is not a claim of reproducible compilation or a clean release commit.
-- Independent release audits pass on Windows and Linux: all 26 entries/metadata/notices verified and three versioned fixture traces analyzed by the extracted executable from a temporary directory outside the checkout. The Linux archive assembled on Windows from the same Linux executable is byte-identical to the Linux-assembled archive. Local artifacts are under `build/releases/` and `/home/henrique/.cache/mwcc-rust-releases/`; publication and a release source pin remain pending.
+- Independent release audits pass on Windows and Linux: all 26 entries/metadata/notices verified and three versioned fixture traces analyzed by the extracted executable from a temporary directory outside the checkout. The Linux archive assembled on Windows from the same Linux executable is byte-identical to the Linux-assembled archive. Local artifacts are under `build/releases/` and `/home/henrique/.cache/mwcc-rust-releases/`; publication remains a separate action; the local source pin and complete bundle are delivered below.
 - [Audited component and full-command benchmarks](oracle-rust-benchmarks.md) are complete on both hosts: 24 core rows and two fresh-CLI workloads per host, all with matching semantic results. Retained measured executables/source snapshots identify the benchmarked implementation. On the captured Echoes unit, graph search is 2.38–2.93x faster and the fresh full CLI is 1.09–1.12x faster; allocation analysis uses more sampled RSS. Compiler-backed commands and small inputs do not uniformly improve. No performance threshold is used as a correctness gate.
 
 ## Current commands
@@ -224,15 +227,26 @@ python tools/migration/capture_notices.py --output licenses/dependencies/HOST-TA
 
 Use Python 3.11+ for independent reference capture/comparison. Rerun downstream capture scripts after recapturing traces. `compare_backends.py`, `compare_colourings.py` and `compare_tu_tools.py` provide live comparisons and retained outputs. `verify_oracle_views.py --from-ninja FILE --source SOURCE` checks a live project's locals/target report.
 
-## Final distribution assembly
+## Delivered local artifacts
 
-Implementation and behavioral gates are covered in [the acceptance audit](oracle-rust-completion.md). The remaining delivery action is to seal the default-selection source snapshot, rebuild its Windows/Linux packages and refresh/audit the new native kit archives against that pin. Initial `e91a881` previews remain available separately; historical archived kits and original game checkouts are unchanged.
+All artifacts use code pin `9e67176`; exact sizes, hashes, executable/source identities and four final real-unit audit summaries are in [oracle-rust-release-manifest.json](oracle-rust-release-manifest.json).
 
-Final default proofs are `build/rust-migration/default-producer-final/rust-producer-5qmlwrcn` and `/home/henrique/.cache/mwcc-rust-default-producer-final/rust-producer-kirik8ta`. Both pass 36 fixture compilations and current-source object checks. Their Rust objects are byte-identical to the previous full-corpus proofs; all six compiler images match after normalizing only the PE timestamp (`image-equivalence.json`). The final run does not claim repeated canary executions. Both hosts also pass all 26 real C-reference configuration comparisons, including UTF-8 dependency tracking, quoting and generated compilation.
+| Artifact | Location | SHA-256 |
+|---|---|---|
+| Prime native kit | `F:/programming/decomp/decomp-kits/prime-agent-workflow-mcp-2026-10-16-rust.zip` | `b7b7df10fa9c85593406094bdb64916be9c4ec7d6568f93f6b845d19091ccdd7` |
+| Echoes native kit | `F:/programming/decomp/decomp-kits/echoes-agent-workflow-mcp-2026-10-16-rust.zip` | `4e90831e6e76149e8ae71bbf600e68a3f1a2c8ff1079f786676e5856836b2113` |
+| Windows native distribution | `decomp-kits/mwcc-native-0.1.0-9e67176/mwcc-tools-0.1.0-9e67176-x86_64-pc-windows-msvc.zip` | `ac7d50fc92c04fda8cde513f3a61b782fc23e45e4b140f1a6b956da88c5c3774` |
+| Linux native distribution | `decomp-kits/mwcc-native-0.1.0-9e67176/mwcc-tools-0.1.0-9e67176-x86_64-unknown-linux-gnu.zip` | `f9d2529241dd1a028e27d99f5186b6d43a4c32d34f875a0aaebb7b2fb2af9b03` |
 
-## Deferred until migration completion
+The standalone directory is under `F:/programming/decomp/`; it also contains the complete source bundle, archive sidecars and release manifest. Both kit archives embed those native assets, source-bundle identity, updated docs and native contract tests. Use their `install-native.py PROJECT --apply` and `EXTERNALS.md`. Existing historical archives and live game-worktree overlays remain intact; local delivery does not require public publication of the pin. The optional old-name launchers delegate to the native executable.
 
-Implement [source-guided graph search](oracle-source-guided-search.md) only after the migration completion gates pass. Its objective is to connect useful graph edits to C++ constructs that actually produce them.
+Final default proofs are `build/rust-migration/default-producer-final/rust-producer-5qmlwrcn` and `/home/henrique/.cache/mwcc-rust-default-producer-final/rust-producer-kirik8ta`. Both pass 36 fixture compilations and current-source object checks. Their Rust objects are byte-identical to previous full-corpus proofs; all six compiler images match after normalizing only the PE timestamp (`image-equivalence.json`). The final run does not claim repeated canary executions.
+
+Final kit audits are `build/rust-migration/native-kit-final-windows-{prime,echoes}/audit.json` and `/home/henrique/.cache/mwcc-rust-native-kits/final-{prime,echoes}/audit.json`. Final contract tests pass on both hosts, and both final reproducible-archive/extracted-overlay tests pass on Windows. Earlier complete Windows kit suites passed 69/52 tests; the unrelated helpers are retained. Native package audits are `build/releases/windows-9e67176-audit.json` and `/home/henrique/.cache/mwcc-rust-releases/linux-9e67176-audit.json`.
+
+## Deferred after migration
+
+Next implement [source-guided graph search](oracle-source-guided-search.md) as follow-on work. Its objective is to connect useful graph edits to C++ constructs that actually produce them.
 
 - [ ] Complete backend provenance and explain every coalescing attempt, including disappearing temporaries that affect graph degrees.
 - [ ] Build source-variant search scored by explicit graph objectives using `remap`, with deduplication by relevant compiler state.
