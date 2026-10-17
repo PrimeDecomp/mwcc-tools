@@ -50,6 +50,98 @@ The pinned macOS wibo is Intel-only and needs Rosetta 2 on Apple Silicon.
 
 For a decomp kit, follow the [native kit workflow](../integrations/decomp-kits/overlay/.agents/docs/oracle-native.md).
 
+### GC 2.7 without the original compiler
+
+The normal GC 2.7 configure (the vendored `gc2/` tree, without `--oracle`) can also build an oracle whose compiler
+is made from the GC 2.x sources alone. It is opt-in and not built by default:
+
+```text
+mwcc-tools configure --version GC_2_7
+ninja build/GC_2_7/gc2/source-oracle/mwcceppc.exe
+mwcc-tools corpus --version GC_2_7 --canaries DIR --all-traces --exe build/GC_2_7/gc2/source-oracle/mwcceppc.exe
+```
+
+`mwcc-tools source-only GC_2_7 --oracle` (the target's command) links the source-only compiler (every compiled
+`gc2` object; see [gc27-differences.md](gc27-differences.md)) with the three Rust objects. Neither the original
+`mwcceppc.exe` nor its split is read. The Metrowerks toolchain is still downloaded: the compilers, `mwld` and
+`gc2/lib`'s runtime and MSL.
+
+The hooks name what they wrap and read by `config/GC_2_7/symbols.txt`. The link takes each name to the `gc2`
+symbol at the same address (`gc2/config/GC_2_7/symbols.txt`):
+
+* A hooked function is renamed `<hook>__retail` and made global. The calls to it, from its own object and from
+  the others, go to the wrapper `<hook>`. Calls from inside its own body stay retail, as in the oracle.
+  * The 46 hooks are `fn_00507070` = `simplifygraph`, `COptimizer_Optimize` = `globallyoptimizepcode`, and so on.
+  * The link prints the whole table and writes it to `source-oracle/hooks.json`.
+* A function or variable the hooks read gets the oracle's name as a second, global name in its object. Where
+  `gc2` already uses that name for something else, it gets `<name>__oracle` instead. This happens for
+  `CMangler_GetLinkName`, which is `gc2`'s `CMangler_FunctionLinkName`.
+* MWCC addresses a static variable through its section, so it has no symbol. Its place is its offset in its unit's
+  section, from `gc2/config/GC_2_7/splits.txt`. The link checks that the object's section has the original's size
+  and that the object refers to that offset. Examples are `data_00582468` = `CInline.c`'s `cinline_level`, and
+  `heap_pool`/`data_0057fdd8` in `CompilerTools.c`.
+* A common block (`copts`, `pclastblock`, ...) has no section yet. The Rust objects' references to it are renamed
+  instead, with the offset added: `iro_pointer_analysis` is `copts+0xf8`.
+
+Only the hooks are linked. The guarded probes that the oracle installs into the original's split objects are not
+(dispatch, call arguments, arenas, source nodes, counters, coalescing), because they are pinned to that split's
+bytes and the original's image. So:
+
+* Every `pv.*` provenance record of those probes is absent (`--backend` explanations, counters, expression
+  dispatch, argument observations). The scalarizer stream writes `pv.scalar.gap`.
+* `OracleRust_ArenaGlobals` is a zero stand-in. The `--source-arenas` stream reports `invalid_globals` and
+  `unsupported=1`, with resets but no allocations. `OracleRust_ArgumentForceGprRetail` is a `ud2` stand-in that
+  only an installed probe would call.
+* Two traced fields are return addresses into the compiler: `ce.object caller=` and `tp.emit caller=`. They are
+  this executable's addresses. Names that a report resolves through `config/GC_2_7/symbols.txt` are wrong for them.
+  Use `source-oracle/mwcceppc.map` instead.
+
+Check it against the oracle with `corpus --trace-reference`. It runs a second oracle with the same streams and
+compares the two traces. The `pv.*` records are left out, and addresses are masked: the image and heap differ
+between two links. The masked values are hex words, 7- to 9-digit decimals (`st.block weight=` is not set yet and
+holds a stale pointer), `caller=`, and `ops=` operands that hold a pointer.
+
+```text
+mwcc-tools corpus --version GC_2_7 --canaries DIR --all-traces \
+  --exe build/GC_2_7/gc2/source-oracle/mwcceppc.exe --trace-reference build/GC_2_7/oracle/mwcceppc.exe
+```
+
+On the 2313 mwcc-rs canaries:
+
+* every object, message and exit code is identical to the original's;
+* every trace is identical to today's oracle's (2313/2313).
+
+The hook points in units that do not match yet are listed below. The byte comparison is against the original's
+split, with relocations masked. Every other hook is in a matching unit, and its function's bytes are identical.
+
+| Hook | `gc2` function | Unit | Function bytes |
+|---|---|---|---|
+| `setup_inline_locals_and_arguments` | `CInline_SetupArgsExpression` | `CInline.c` | identical |
+| `fn_00560c80` | `CInline_InlineFunctionCheck` | `CInline.c` | identical start; the oracle's symbol (0x19d) also covers the next `gc2` function (0x118) |
+| `fn_0055e540` | `CInline_EstimateSizeOfFunc` | `CInline.c` | identical |
+| `fn_00561260` | `CInline_InlineFunctionExpression` | `CInline.c` | identical |
+| `fn_0055e600` | `CInline_EstimateSizeOfExpr` | `CInline.c` | 48 of 495 bytes differ |
+| `inline_statement` | `CInline_ExpandStatement` | `CInline.c` | identical |
+| `generate_inline_statements` | `CInline_ExpandStatements` | `CInline.c` | identical |
+| `fn_0055c730` | `CInline_GenerateDeferredFuncs` | `CInline.c` | identical |
+| `CInline_AddFunctionPrecNode` | `CInline_AddInlineFunctionAction` | `CInline.c` | identical |
+| `CInline_AddSpecialization` | `CInline_AddTemplateFunctionAction` | `CInline.c` | identical |
+| `generate_inline_code` | `CInline_GenIFunctionCode` | `CInline.c` | identical |
+| `fn_0050f240` | `CInline_ObjectAddrRef` | `CInline.c` | 4 of 340 bytes differ |
+| `fn_00513040` | `CInline_CopyExpression` | `CInline.c` | identical |
+| `fn_00513240` | `CInline_CopyNodes` | `CInline.c` | 88 of 1682 bytes differ |
+| `create_temp_object` | `create_temp_object` | `CFunc.c` | identical |
+| `CFunc_ParseFuncDef` | `CFunc_ParseFuncDef` | `CFunc.c` | identical |
+| `fn_004f7fb0` | `compute_frame_sizes` | `StackFrame.c` | identical (the frame wrapper's operand reads hold) |
+| `Peephole_MergeAdjacentBlocks` | `peepholemergeblocks` | `Peephole.c` | identical |
+| `FunctionCalls_GenerateCall` | `call_function` | `FunctionCalls.c` | identical |
+| `assign_argument_locations` | `analyze_arguments` | `FunctionCalls.c` | 33 of 1551 bytes differ |
+| `load_argument_registers` | `pass_in_register` | `FunctionCalls.c` | identical |
+| `store_argument_on_stack` | `pass_in_memory` | `FunctionCalls.c` | identical |
+
+Of the functions the hooks call, `CMangler_FunctionLinkName` (in the matching `CMangler.c`) differs in 8 of 416
+bytes. The others are identical.
+
 ## Explain a source
 
 ```text
@@ -136,5 +228,6 @@ mwcc-tools corpus --version GC_2_7 --project path/to/echoes --keep out-dir
 
 `corpus` compares objects, diagnostics and exit codes. It returns failure if
 any input differs. `--limit` and `--list FILE` narrow the inputs;
-`--all-traces` enables optional capture streams.
+`--all-traces` enables optional capture streams. `--exe` checks another oracle executable, and
+`--trace-reference OTHER` also compares its trace with OTHER's (see the source-built oracle above).
 Historical migration results are in the [acceptance audit](oracle-rust-completion.md).

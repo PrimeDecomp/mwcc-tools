@@ -74,6 +74,33 @@ pub fn tree(root: &Path, version: &str) -> Result<Option<SourceTree>> {
 
 /// Link VERSION's source-only compiler (its sources compiled beforehand: ninja all_source).
 pub fn run(root: &Path, version: &str) -> Result<Outcome> {
+    let prepared = prepare(root, version)?;
+    let output = output(&prepared.tree);
+    link_compiler(root, &prepared, &[], &output)?;
+    Ok(Outcome {
+        output,
+        objects: prepared.objects.len(),
+        comdats: prepared.patched.comdats,
+        duplicates: prepared.patched.duplicates,
+        trapped: prepared.patched.trapped,
+    })
+}
+
+/// What a source-only compiler links, patched (see the module's description).
+pub struct Prepared {
+    pub tree: SourceTree,
+    /// [(source, object)], in the tree's order.
+    pub objects: Vec<(String, Vec<u8>)>,
+    /// The linker's runtime objects: [(path, object)].
+    pub runtime: Vec<(String, Vec<u8>)>,
+    /// [(name, import library)].
+    pub libraries: Vec<(&'static str, Vec<u8>)>,
+    pub resources: Vec<u8>,
+    pub patched: Patched,
+}
+
+/// Read and patch what VERSION's source-only compiler links.
+pub fn prepare(root: &Path, version: &str) -> Result<Prepared> {
     let tree = tree(root, version)?.with_context(|| {
         format!("{version} has no source tree of its own to build a source-only compiler from")
     })?;
@@ -130,8 +157,39 @@ pub fn run(root: &Path, version: &str) -> Result<Outcome> {
             RESOURCES.replace("mwcceppc.rc", "mwcceppc.ico")
         ))?,
     )?)?;
-    let output = output(&tree);
-    let work = format!("{}/source-only/link", tree.build_dir);
+    Ok(Prepared {
+        tree,
+        objects,
+        runtime,
+        libraries,
+        resources,
+        patched,
+    })
+}
+
+/// Link PREPARED, and the EXTRA objects ([(name, object)]) after its own, into OUTPUT (from ROOT), with the tree's
+/// license library beside it. The inputs are written to `link/` beside OUTPUT.
+pub fn link_compiler(
+    root: &Path,
+    prepared: &Prepared,
+    extra: &[(String, Vec<u8>)],
+    output: &str,
+) -> Result<()> {
+    let Prepared {
+        tree,
+        objects,
+        runtime,
+        libraries,
+        resources,
+        ..
+    } = prepared;
+    let work = format!(
+        "{}/link",
+        output
+            .rsplit_once('/')
+            .context("the output has no directory")?
+            .0
+    );
     let work_path = root.join(&work);
     if work_path.exists() {
         fs::remove_dir_all(&work_path)?;
@@ -139,7 +197,7 @@ pub fn run(root: &Path, version: &str) -> Result<Outcome> {
     fs::create_dir_all(&work_path)?;
     let mut inputs: Vec<String> = runtime.iter().map(|(p, _)| p.clone()).collect();
     let mut listing = String::new();
-    for (source, data) in &objects {
+    for (source, data) in objects.iter().chain(extra) {
         let name: String = source
             .chars()
             .map(|c| {
@@ -154,32 +212,25 @@ pub fn run(root: &Path, version: &str) -> Result<Outcome> {
         fs::write(root.join(&path), data)?;
         listing += &format!("{path}\n");
     }
-    for (name, data) in &libraries {
+    for (name, data) in libraries {
         let path = format!("{work}/{name}.lib");
         fs::write(root.join(&path), data)?;
         listing += &format!("{path}\n");
     }
     fs::write(root.join(format!("{work}/inputs.txt")), listing)?;
-    fs::write(root.join(format!("{work}/resources.res")), &resources)?;
+    fs::write(root.join(format!("{work}/resources.res")), resources)?;
     inputs.push(format!("@{work}/inputs.txt"));
     inputs.push(format!("{work}/resources.res"));
-    let (code, text) = link::mwld(root, &inputs, &output, Duration::from_secs(600))?;
-    if code != Some(0) || !root.join(&output).is_file() {
-        let _ = fs::remove_file(root.join(&output));
+    let (code, text) = link::mwld(root, &inputs, output, Duration::from_secs(600))?;
+    if code != Some(0) || !root.join(output).is_file() {
+        let _ = fs::remove_file(root.join(output));
         bail!("the link fails:\n{text}");
     }
-    let output_path = root.join(&output);
     fs::copy(
-        root.join(format!("{prefix}{LICENSING}")),
-        output_path.with_file_name("lmgr326b.dll"),
+        root.join(format!("{}{LICENSING}", tree.prefix)),
+        root.join(output).with_file_name("lmgr326b.dll"),
     )?;
-    Ok(Outcome {
-        output,
-        objects: objects.len(),
-        comdats: patched.comdats,
-        duplicates: patched.duplicates,
-        trapped: patched.trapped,
-    })
+    Ok(())
 }
 
 // ------------------------------------------------------------------------------------------------ the objects

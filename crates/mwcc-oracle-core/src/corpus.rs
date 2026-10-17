@@ -129,6 +129,8 @@ pub struct Request {
     pub keep: Option<PathBuf>,
     pub timeout: Duration,
     pub all_traces: bool,
+    /// Another oracle to compare the oracle's trace with (the same streams, on each input).
+    pub trace_reference: Option<PathBuf>,
 }
 
 #[derive(Debug, Serialize)]
@@ -148,6 +150,83 @@ fn normalise(text: &str) -> String {
         std::sync::LazyLock::new(|| Regex::new(r"### \S*mwcceppc\.exe").unwrap());
     EXE.replace_all(&text.replace('\r', ""), "### mwcceppc.exe")
         .into_owned()
+}
+
+/// Is VALUE an address in the compiler's image or heap (which two links of it place differently)?
+fn is_address(value: u32) -> bool {
+    (0x0040_0000..0x1000_0000).contains(&value)
+}
+
+/// A trace record as two links of the same compiler give it, or None for a provenance record (`pv.*`, from the
+/// guarded probes, which only the oracle linked from the original's split has): the addresses (is_address) in its
+/// 8-digit hex words, its 7- to 9-digit decimal values, `caller=` (a return address, unpadded) and, after the two
+/// kind bytes, each 12-byte operand of `ops=` that holds one (as a little-endian word at an even offset), made `*`.
+pub fn comparable_record(line: &str) -> Option<String> {
+    static WORD: std::sync::LazyLock<Regex> =
+        std::sync::LazyLock::new(|| Regex::new(r"\b[0-9a-f]{8}\b").unwrap());
+    static OPERAND: std::sync::LazyLock<Regex> =
+        std::sync::LazyLock::new(|| Regex::new(r"\b[0-9a-f]{24}\b").unwrap());
+    static CALLER: std::sync::LazyLock<Regex> =
+        std::sync::LazyLock::new(|| Regex::new(r"\bcaller=[0-9a-f]+\b").unwrap());
+    // (a decimal field holding one: `st.block`'s weight, not yet set, is a stale pointer)
+    static DECIMAL: std::sync::LazyLock<Regex> =
+        std::sync::LazyLock::new(|| Regex::new(r"=([0-9]{7,9})\b").unwrap());
+    if line.starts_with("pv.") {
+        return None;
+    }
+    let line = CALLER.replace_all(line, "caller=*");
+    let line = OPERAND.replace_all(&line, |c: &regex::Captures| {
+        let bytes: Vec<u8> = (0..12)
+            .map(|i| u8::from_str_radix(&c[0][2 * i..2 * i + 2], 16).unwrap_or(0))
+            .collect();
+        if (2..=8)
+            .step_by(2)
+            .any(|at| is_address(u32::from_le_bytes(bytes[at..at + 4].try_into().unwrap())))
+        {
+            format!("{}********************", &c[0][..4])
+        } else {
+            c[0].to_owned()
+        }
+    });
+    let line = DECIMAL.replace_all(&line, |c: &regex::Captures| {
+        if c[1].parse().is_ok_and(is_address) {
+            "=*".to_owned()
+        } else {
+            c[0].to_owned()
+        }
+    });
+    Some(
+        WORD.replace_all(&line, |c: &regex::Captures| {
+            if u32::from_str_radix(&c[0], 16).is_ok_and(is_address) {
+                "*".to_owned()
+            } else {
+                c[0].to_owned()
+            }
+        })
+        .into_owned(),
+    )
+}
+
+/// How trace OURS differs from THEIRS (comparable_record), if it does.
+pub fn trace_difference(ours: &str, theirs: &str) -> Option<String> {
+    let a: Vec<_> = ours.lines().filter_map(comparable_record).collect();
+    let b: Vec<_> = theirs.lines().filter_map(comparable_record).collect();
+    if a == b {
+        return None;
+    }
+    let at = a
+        .iter()
+        .zip(&b)
+        .position(|(x, y)| x != y)
+        .unwrap_or(a.len().min(b.len()));
+    Some(format!(
+        "traces differ ({} vs {} records), first at record {}: {:?} vs {:?}",
+        a.len(),
+        b.len(),
+        at + 1,
+        a.get(at).map_or("(end)", String::as_str),
+        b.get(at).map_or("(end)", String::as_str)
+    ))
 }
 
 pub fn run(request: &Request) -> Result<Report> {
@@ -197,9 +276,16 @@ pub fn run(request: &Request) -> Result<Report> {
         TraceOptions::default()
     };
     let null = Path::new(if cfg!(windows) { "NUL" } else { "/dev/null" });
+    let reference = request
+        .trace_reference
+        .as_ref()
+        .map(std::path::absolute)
+        .transpose()?;
     let check = |index: usize, job: &Job| -> Result<Outcome> {
         let a = scratch.path().join(format!("{index}.real.o"));
         let b = scratch.path().join(format!("{index}.oracle.o"));
+        let trace = scratch.path().join(format!("{index}.oracle.trace"));
+        let reference_trace = scratch.path().join(format!("{index}.reference.trace"));
         let real = runner::execute(runner::Invocation {
             root: &request.root,
             executable: &original,
@@ -218,10 +304,35 @@ pub fn run(request: &Request) -> Result<Report> {
             source: &job.source,
             directory: &job.directory,
             output: &b,
-            trace_file: null,
+            trace_file: if reference.is_some() { &trace } else { null },
             options: &options,
             timeout: request.timeout,
         })?;
+        let traces = match &reference {
+            Some(executable) => {
+                let c = scratch.path().join(format!("{index}.reference.o"));
+                runner::execute(runner::Invocation {
+                    root: &request.root,
+                    executable,
+                    flags: &job.flags,
+                    source: &job.source,
+                    directory: &job.directory,
+                    output: &c,
+                    trace_file: &reference_trace,
+                    options: &options,
+                    timeout: request.timeout,
+                })?;
+                let read = |p: &Path| -> Result<String> {
+                    Ok(if p.is_file() {
+                        String::from_utf8_lossy(&fs::read(p)?).into_owned()
+                    } else {
+                        String::new()
+                    })
+                };
+                Some((read(&trace)?, read(&reference_trace)?))
+            }
+            None => None,
+        };
         let mut problems = vec![];
         if real.timed_out || ours.timed_out {
             problems.push(format!(
@@ -250,6 +361,11 @@ pub fn run(request: &Request) -> Result<Report> {
                 names.into_iter().cloned().collect::<Vec<_>>().join(", ")
             ));
         }
+        if let Some((ours, theirs)) = &traces
+            && let Some(difference) = trace_difference(ours, theirs)
+        {
+            problems.push(difference);
+        }
         if !problems.is_empty()
             && let Some(keep) = &request.keep
         {
@@ -270,6 +386,10 @@ pub fn run(request: &Request) -> Result<Report> {
             fs::write(keep.join(format!("{stem}.oracle.o")), ours_data)?;
             fs::write(keep.join(format!("{stem}.real.txt")), &real.diagnostics)?;
             fs::write(keep.join(format!("{stem}.oracle.txt")), &ours.diagnostics)?;
+            if let Some((ours, theirs)) = &traces {
+                fs::write(keep.join(format!("{stem}.oracle.trace")), ours)?;
+                fs::write(keep.join(format!("{stem}.reference.trace")), theirs)?;
+            }
         }
         Ok(Outcome {
             name: job.name.clone(),

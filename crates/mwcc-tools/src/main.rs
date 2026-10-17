@@ -639,6 +639,7 @@ fn corpus_command(args: &[String]) -> Result<()> {
     let mut list = None;
     let mut jobs = std::thread::available_parallelism().map_or(4, usize::from);
     let mut all_traces = false;
+    let mut trace_reference = None;
     let mut json_output = false;
     let mut timeout = Duration::from_secs(600);
     let mut i = 0;
@@ -664,6 +665,7 @@ fn corpus_command(args: &[String]) -> Result<()> {
             "--prime" | "--project" => project = Some(PathBuf::from(value)),
             "--keep" => keep = Some(PathBuf::from(value)),
             "--exe" => exe = Some(PathBuf::from(value)),
+            "--trace-reference" => trace_reference = Some(PathBuf::from(value)),
             "--limit" => limit = Some(value.parse::<usize>()?),
             "--list" => list = Some(PathBuf::from(value)),
             "--jobs" => jobs = value.parse()?,
@@ -696,6 +698,7 @@ fn corpus_command(args: &[String]) -> Result<()> {
         keep,
         timeout,
         all_traces,
+        trace_reference,
     })?;
     if json_output {
         println!("{}", serde_json::to_string_pretty(&report)?);
@@ -753,6 +756,7 @@ fn help() {
   header-impact --from-ninja FILE (--git REV | --override PATH=FILE) [--unit TEXT] [--jobs N] [--json]
   inline-calibrate --project DIR --callee NAME [--unit UNIT] [--binary] [--json FILE]
   corpus --canaries DIR | --project DIR [--oracle-root ROOT] [--version V] [--jobs N] [--all-traces]
+         [--exe ORACLE] [--trace-reference OTHER_ORACLE]
   object compare ORACLE.o ORIGINAL.o
   pe inspect|read|find FILE [options]
   implib DEF OUTPUT
@@ -761,9 +765,10 @@ fn help() {
   relink-check VERSION [--write] [--root DIR]
       which compiled units of a source tree's build link into the original (after ninja all_source);
       --write records the others as its state.json's relink_exclude
-  source-only VERSION [--root DIR]
+  source-only VERSION [--oracle] [--root DIR]
       link the compiler of a source tree's sources alone, build/VERSION/<tree>/source-only/mwcceppc.exe
-      (after ninja all_source; compare it with the original: corpus --exe)
+      (after ninja all_source; compare it with the original: corpus --exe); --oracle links the Rust hooks in,
+      build/VERSION/<tree>/source-oracle/mwcceppc.exe
   compare extract|compare|report VERSION [--root DIR]
   locate VERSION SOURCE... [--root DIR]
   bindfrom VERSION [--root DIR]

@@ -748,6 +748,66 @@ pub fn generate(root: &Path, request: &Request) -> Result<Generation> {
                     .join(" ")
             ),
         ]);
+        // (with the Rust hooks: the oracle without the original, on request: ninja
+        // build/VERSION/<tree>/source-oracle/mwcceppc.exe)
+        let [hooks, frontend, trace] = crate::source_oracle::rust_objects(&own);
+        let sources = |names: &[&str]| {
+            names
+                .iter()
+                .map(|name| format!("crates/mwcc-oracle-hooks/src/{name}"))
+                .collect::<Vec<_>>()
+                .join(" ")
+        };
+        inputs.extend([
+            hooks.clone(),
+            frontend.clone(),
+            trace.clone(),
+            format!("config/{version}/symbols.txt"),
+            format!("config/{version}/config.json"),
+            format!("{}/symbols.txt", own.config_dir),
+            format!("{}/splits.txt", own.config_dir),
+            format!("{}/state.json", own.config_dir),
+        ]);
+        out.extend([
+            "rule rust_hooks".into(),
+            "  command = $tools build-hooks $out".into(),
+            "  description = RUST HOOKS $out".into(),
+            format!(
+                "build {hooks}: rust_hooks {} | $tools_dep rust-toolchain.toml",
+                sources(&crate::producer::SOURCES)
+            ),
+            "rule rust_frontend".into(),
+            format!("  command = $tools build-hooks $out --frontend-version {version}"),
+            "  description = RUST FRONTEND $out".into(),
+            format!(
+                "build {frontend}: rust_frontend {} | $tools_dep rust-toolchain.toml",
+                sources(&crate::producer::FRONTEND_SOURCES)
+            ),
+            "rule rust_trace".into(),
+            "  command = $tools build-hooks $out --trace-shim".into(),
+            "  description = RUST TRACE $out".into(),
+            format!(
+                "build {trace}: rust_trace {} | $tools_dep rust-toolchain.toml",
+                sources(&crate::producer::TRACE_SOURCES)
+            ),
+            "rule source_oracle".into(),
+            "  command = $tools source-only $version --oracle".into(),
+            "  description = LINK (source-built oracle) $out".into(),
+            format!(
+                "build {}: source_oracle {} | {tool_dep}{} $tools_dep",
+                crate::source_oracle::output(&own),
+                objects
+                    .iter()
+                    .map(|p| ninja_path(p))
+                    .collect::<Vec<_>>()
+                    .join(" "),
+                inputs
+                    .iter()
+                    .map(|p| ninja_path(p))
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            ),
+        ]);
     }
     out.extend([format!("build all_source: phony {}",objects.iter().map(|p|ninja_path(p)).collect::<Vec<_>>().join(" ")),format!("build progress: phony build/{version}/report.json"),
         format!("build build.ninja: configure | $tools_dep {prefix}config/sources.json config/{version}/config.json{}{}",if tree.vendored() {format!(" {}/config.json {}/state.json",tree.config_dir,tree.config_dir)} else {String::new()},if linking {format!(" {split_file}")} else {String::new()}),format!("default build/{version}/ok all_source"),String::new()]);

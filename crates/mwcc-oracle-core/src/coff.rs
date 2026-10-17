@@ -5,7 +5,9 @@ use serde::{Deserialize, Serialize};
 mod object;
 mod patch;
 pub use object::{BuildSection, Builder, Object, ObjectSection, ObjectSymbol};
-pub use patch::{defined_symbols, hook_symbols, section_sizes, undefine_symbols};
+pub use patch::{
+    SymbolEdit, defined_symbols, edit_symbols, hook_symbols, section_sizes, undefine_symbols,
+};
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Relocation {
     pub offset: u32,

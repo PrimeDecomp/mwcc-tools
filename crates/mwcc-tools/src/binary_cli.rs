@@ -332,6 +332,7 @@ pub fn run(command: &str, args: &[String]) -> Result<()> {
         "source-only" => {
             let mut root = std::env::current_dir()?;
             let mut version = None;
+            let mut oracle = false;
             let mut i = 0;
             while i < args.len() {
                 match args[i].as_str() {
@@ -339,12 +340,32 @@ pub fn run(command: &str, args: &[String]) -> Result<()> {
                         i += 1;
                         root = args.get(i).context("--root needs a value")?.into();
                     }
+                    "--oracle" => oracle = true,
                     v if !v.starts_with('-') && version.is_none() => version = Some(v),
                     other => bail!("unknown source-only argument {other}"),
                 }
                 i += 1;
             }
             let version = version.context("source-only requires VERSION")?;
+            if oracle {
+                let outcome = mwcc_oracle_core::source_oracle::run(&root, version)?;
+                for hook in &outcome.hooks {
+                    println!(
+                        "hook {} = {} ({}{})",
+                        hook.hook,
+                        hook.function,
+                        hook.unit,
+                        if hook.matching { "" } else { ", not matching" }
+                    );
+                }
+                println!(
+                    "{version}: {}: {} hooks, {} names read",
+                    outcome.output,
+                    outcome.hooks.len(),
+                    outcome.imports.len()
+                );
+                return Ok(());
+            }
             let outcome = mwcc_oracle_core::source_only::run(&root, version)?;
             for function in &outcome.trapped {
                 println!("traps (the original does not have it): {function}");

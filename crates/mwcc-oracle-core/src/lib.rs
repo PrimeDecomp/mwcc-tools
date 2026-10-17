@@ -61,6 +61,7 @@ pub mod source_lifetimes;
 pub mod source_node_probe;
 pub mod source_nodes;
 pub mod source_only;
+pub mod source_oracle;
 pub mod source_tree;
 pub mod split;
 mod temporary;
