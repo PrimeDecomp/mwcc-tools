@@ -6,6 +6,7 @@
 #include "compiler/CPrep.h"
 #include "compiler/InterferenceGraph.h"
 #include "compiler/objects.h"
+#include "compiler/OracleProbes.h"
 #include "compiler/PCode.h"
 #include "compiler/PPCError.h"
 #include "compiler/RegisterInfo.h"
@@ -299,6 +300,7 @@ void colorinstructions(Object* proc) {
         }
 
         used_virtual_registers[rclass] = n_real_registers[rclass];
+        ORACLE_PROBE(OracleProbe_Counter(5, rclass, NULL));
     }
 
     coloring = FALSE;

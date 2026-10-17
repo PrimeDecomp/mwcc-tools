@@ -133,16 +133,23 @@ probe reads, and the hooks give the records the original's site.
 * The source nodes (`pv.source.*`, `--source-nodes`): `parse_statement` reports each expression statement. A clone's
   `caller` (its return address in the original) is 0: nothing reads it.
 
-The other streams' probes (dispatch, counters, coalescing, call arguments' contexts) are not in gc2's sources yet, so
-those streams are absent from the module's traces. Two scalarization bindings, which need the x86 caller's EBX and
-return address, are gaps. Use `MWCC_IN_PROCESS=0` to run the x86 oracle for them.
+* The register counters' structural sites (`pv.function.*`, `pv.category.*`, `pv.counter.change`): `CodeGen_Generator`
+  reports a function's beginning and end, `set_last_exception_registers` and `open_fe_temp_registers` the ranges,
+  and `Registers.c` and `colorinstructions` each reset of a counter. gc2 defines the counter globals in `Registers.c`.
+* The scalarization bindings (`pv.scalar.*`): `IRO_ScalarizeClassDataMembers` names the part whose temporary
+  `create_temp_object` makes next.
+
+The other streams' probes (the counters' increments, dispatch, coalescing, call arguments' contexts) are not in gc2's
+sources yet, so those streams are absent from the module's traces, and the counts that the counter records give of
+them (`births`, `dispatches`, a counter's `old`) are 0. Use `MWCC_IN_PROCESS=0` to run the x86 oracle for them.
 
 `corpus --source-arenas` (or `--source-nodes`) traces those streams and compares them with `--trace-reference`'s, the
 x86 oracle's. Addresses are masked, but not the original's sites. Between two other records, requests and commits are
 compared as a multiset, without their numbers and the pool's free space: their order follows the order in which the
 compiler evaluates a call's arguments, which C leaves unspecified (MWCC evaluates them from the last, clang from the
 first: `pclabel(makepcblock(), makepclabel())` allocates the label first in the original). Nothing joins two traces
-by these numbers. On the canaries, for 2.6 and 2.7, the streams compare equal but for the inputs that stop on too many
+by these numbers. With `--all-traces`, the functions' beginnings and the scalarization bindings are compared too. On
+the canaries, for 2.6 and 2.7, the streams compare equal but for the inputs that stop on too many
 errors. Those report a user break, and how far the compiler gets before it checks for one depends on the clock
 (`CWUserBreak` every 8 ticks), in the original too.
 

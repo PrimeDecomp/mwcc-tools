@@ -37,6 +37,20 @@ impl Registers {
             _ => None,
         }
     }
+    /// The registers at a probe in the oracle built from gc2's sources: only EAX holds a value.
+    pub const fn accumulator(eax: u32) -> Self {
+        Self {
+            edi: 0,
+            esi: 0,
+            ebp: 0,
+            saved_esp: 0,
+            ebx: 0,
+            edx: 0,
+            ecx: 0,
+            eax,
+            eflags: 0,
+        }
+    }
 }
 #[repr(C)]
 pub struct Globals {

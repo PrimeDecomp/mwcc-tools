@@ -944,3 +944,75 @@ pub unsafe extern "C" fn observe(r: &Registers, site: u32, d: &Descriptor) {
             .write(after);
     }
 }
+
+/// gc2's counter tables (`OracleRust_CounterGlobals`, src/backend/Registers.c).
+#[repr(C)]
+struct CounterGlobals {
+    counts: *const u32,
+    physical: *const u32,
+    initial: *const i16,
+    first: *const i16,
+    last: *const i32,
+}
+// (only the oracle built from gc2's sources has them)
+#[cfg(target_arch = "wasm32")]
+unsafe extern "C" {
+    #[link_name = "OracleRust_CounterGlobals"]
+    static COUNTER_GLOBALS: CounterGlobals;
+}
+#[cfg(target_arch = "wasm32")]
+unsafe fn counter_globals() -> Option<CounterGlobals> {
+    unsafe { Some(ptr::addr_of!(COUNTER_GLOBALS).read()) }
+}
+#[cfg(not(target_arch = "wasm32"))]
+unsafe fn counter_globals() -> Option<CounterGlobals> {
+    None
+}
+/// The original's site for ROLE (2 to 9) in VERSION (3 GC 2.7, 4 GC 2.6).
+pub fn counter_site(version: u32, role: u32) -> Option<u32> {
+    let sites: [u32; 4] = match version {
+        3 => [0x4fe24c, 0x4fe2d8, 0x4fe59a, 0x508657],
+        4 => [0x4fe32c, 0x4fe3b8, 0x4fe67a, 0x508737],
+        _ => return None,
+    };
+    Some(match role {
+        2..=5 => sites[role as usize - 2],
+        6 => 0x43348d,
+        7 => 0x4341a4,
+        8 => 0x4d00a1,
+        9 => 0x4d00f2,
+        _ => return None,
+    })
+}
+
+/// gc2's probe (`include/compiler/OracleProbes.h`): the counter site ROLE for RCLASS, in FUNCTION.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn OracleProbe_Counter(role: u32, rclass: i32, function: *const u8) {
+    unsafe {
+        if !enabled() {
+            return;
+        }
+        let (Some(globals), Some(site)) = (
+            counter_globals(),
+            counter_site(crate::source_arenas::version(), role),
+        ) else {
+            OracleTrace_Printf(c"pv.gap reason=counter_descriptor role=%lu\n".as_ptr(), role);
+            return;
+        };
+        let descriptor = Descriptor {
+            counter: globals.counts.add(rclass.clamp(0, 4) as usize),
+            counts: globals.counts,
+            physical: globals.physical,
+            selector: rclass,
+            role,
+            initial: globals.initial,
+            first: globals.first,
+            last: globals.last,
+            object_binding: 0,
+            operand_binding: 0,
+            data_link_offset: 54,
+            origin_binding: 0,
+        };
+        observe(&Registers::accumulator(function as u32), site, &descriptor);
+    }
+}

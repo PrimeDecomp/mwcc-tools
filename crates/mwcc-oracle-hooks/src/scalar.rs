@@ -140,11 +140,28 @@ unsafe extern "C" fn create_temp_object(_ty: *const u8) -> *const u8 {
     // temp-object call. Save the original value before Rust can use this register.
     core::arch::naked_asm!("push ebx", "push dword ptr [esp + 4]", "push dword ptr [esp + 12]", "call {handler}", "add esp, 12", "ret", handler = sym create_temp);
 }
-// (WebAssembly has neither the return address nor EBX: the bindings, provenance records, are gaps)
+/// The scalarizer's call that gc2's probe announced (`include/compiler/OracleProbes.h`): its part.
+static mut SOURCE_PART: *const u8 = ptr::null();
+/// The original's return site of that call, in 2.6 and 2.7 (IRO_ScalarizeClassDataMembers's).
+const SOURCE_SITE: u32 = 0x461748;
+
+/// gc2's probe: IRO_ScalarizeClassDataMembers is about to make PART's temporary.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn OracleProbe_ScalarTemporary(part: *const u8) {
+    unsafe { ptr::addr_of_mut!(SOURCE_PART).write(part) }
+}
+
+// (WebAssembly has neither the return address nor EBX: the scalarizer's call is the one gc2's probe announced, and
+// others have neither)
 #[cfg(target_arch = "wasm32")]
 #[unsafe(no_mangle)]
 unsafe extern "C" fn create_temp_object(ty: *const u8) -> *const u8 {
-    unsafe { create_temp(ty, 0, ptr::null()) }
+    unsafe {
+        let part = ptr::addr_of!(SOURCE_PART).read();
+        ptr::addr_of_mut!(SOURCE_PART).write(ptr::null());
+        let caller = if part.is_null() { 0 } else { SOURCE_SITE };
+        create_temp(ty, caller, part)
+    }
 }
 unsafe extern "C" fn create_temp(ty: *const u8, caller: u32, part: *const u8) -> *const u8 {
     unsafe {

@@ -40,6 +40,7 @@
 #include "compiler/objects.h"
 #include "compiler/ObjGen_PPC_EABI.h"
 #include "compiler/Operands.h"
+#include "compiler/OracleProbes.h"
 #include "compiler/PCode.h"
 #include "compiler/PCodeAssembly.h"
 #include "compiler/PCodeListing.h"
@@ -1330,6 +1331,7 @@ void CodeGen_Generator(
     }
 
     gFunction = func;
+    ORACLE_PROBE(OracleProbe_Counter(6, 0, func));
     has_varargs = has_vararglist(func);
     init_endian();
     init_stack_globals(func);
@@ -1584,6 +1586,7 @@ void CodeGen_Generator(
     if (saveheaperror) {
         setheaperror(saveheaperror);
     }
+    ORACLE_PROBE(OracleProbe_Counter(7, 0, func));
 }
 
 // the register `this` arrives in: r4 when r3 holds the address of a returned struct

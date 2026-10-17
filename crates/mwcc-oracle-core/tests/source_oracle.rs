@@ -142,17 +142,17 @@ fn provenance_records_compare_without_the_order_of_allocations() {
         reset.clone(),
     ]);
     // (two allocations in another order, from another evaluation order of a call's arguments)
-    assert_eq!(corpus::trace_difference_with(&ours, &theirs, true), None);
+    assert_eq!(corpus::trace_difference_with(&ours, &theirs, &["pv.arena."]), None);
     // (but not across another record)
     let moved = trace(&[
         request(1, 12, "001af7a8"),
         reset,
         request(2, 44, "001af7a8"),
     ]);
-    assert!(corpus::trace_difference_with(&ours, &moved, true).is_some());
+    assert!(corpus::trace_difference_with(&ours, &moved, &["pv.arena."]).is_some());
     // (the original's sites are compared)
     let elsewhere = theirs.replace("site=00440d25", "site=00440d65");
-    assert!(corpus::trace_difference_with(&ours, &elsewhere, true).is_some());
+    assert!(corpus::trace_difference_with(&ours, &elsewhere, &["pv.arena."]).is_some());
     // (and without provenance, not at all)
     assert_eq!(corpus::trace_difference(&ours, &moved), None);
 }

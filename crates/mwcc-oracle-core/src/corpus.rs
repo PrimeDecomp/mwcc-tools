@@ -226,7 +226,7 @@ pub fn comparable_record(line: &str) -> Option<String> {
 
 /// How trace OURS differs from THEIRS (comparable_record), if it does.
 pub fn trace_difference(ours: &str, theirs: &str) -> Option<String> {
-    trace_difference_with(ours, theirs, false)
+    trace_difference_with(ours, theirs, &[])
 }
 
 /// The fields of a provenance record that hold an address in the compiler's memory, or its stack: made `*`.
@@ -287,11 +287,16 @@ pub fn comparable_provenance(line: &str) -> Option<String> {
     )
 }
 
-/// The provenance records of TRACE (comparable_provenance's): each run of PROVENANCE_UNORDERED's, sorted.
-fn provenance_records(trace: &str) -> Vec<String> {
+/// The provenance records of TRACE (comparable_provenance's) of the STREAMS (their records' prefixes, `pv.arena.`):
+/// each run of PROVENANCE_UNORDERED's, sorted.
+fn provenance_records(trace: &str, streams: &[&str]) -> Vec<String> {
     let mut out = vec![];
     let mut run: Vec<String> = vec![];
-    for record in trace.lines().filter_map(comparable_provenance) {
+    for record in trace
+        .lines()
+        .filter(|line| streams.iter().any(|s| line.starts_with(s)))
+        .filter_map(comparable_provenance)
+    {
         if PROVENANCE_UNORDERED.contains(&record.split(' ').next().unwrap_or("")) {
             run.push(record);
             continue;
@@ -305,13 +310,11 @@ fn provenance_records(trace: &str) -> Vec<String> {
     out
 }
 
-/// How trace OURS differs from THEIRS, if it does: comparable_record's, and (PROVENANCE) provenance_records'.
-pub fn trace_difference_with(ours: &str, theirs: &str, provenance: bool) -> Option<String> {
+/// How trace OURS differs from THEIRS, if it does: comparable_record's, and provenance_records' of the STREAMS.
+pub fn trace_difference_with(ours: &str, theirs: &str, streams: &[&str]) -> Option<String> {
     let records = |trace: &str| -> Vec<String> {
         let mut out: Vec<String> = trace.lines().filter_map(comparable_record).collect();
-        if provenance {
-            out.extend(provenance_records(trace));
-        }
+        out.extend(provenance_records(trace, streams));
         out
     };
     let a = records(ours);
@@ -383,6 +386,19 @@ pub fn run(request: &Request) -> Result<Report> {
     };
     options.source_arenas = source_arenas;
     options.source_nodes = request.source_nodes;
+    // (the provenance streams the WebAssembly oracle has too, compared when they are traced)
+    let mut streams = vec![];
+    if source_arenas {
+        streams.push("pv.arena.");
+    }
+    if request.source_nodes {
+        streams.push("pv.source.");
+    }
+    if request.all_traces {
+        // (the functions' beginnings and the scalarization bindings; the rest of the counter stream waits for its
+        // increments)
+        streams.extend(["pv.function.begin", "pv.scalar."]);
+    }
     let null = Path::new(if cfg!(windows) { "NUL" } else { "/dev/null" });
     let reference = request
         .trace_reference
@@ -476,7 +492,7 @@ pub fn run(request: &Request) -> Result<Report> {
             ));
         }
         if let Some((ours, theirs)) = &traces
-            && let Some(difference) = trace_difference_with(ours, theirs, source_arenas)
+            && let Some(difference) = trace_difference_with(ours, theirs, &streams)
         {
             problems.push(difference);
         }

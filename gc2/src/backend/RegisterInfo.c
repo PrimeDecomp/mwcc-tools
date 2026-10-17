@@ -12,6 +12,7 @@
 #include "compiler/CompilerTools.h"
 #include "compiler/CParser.h"
 #include "compiler/objects.h"
+#include "compiler/OracleProbes.h"
 #include "compiler/PCode.h"
 #include "compiler/PPCError.h"
 #include "compiler/types.h"
@@ -419,6 +420,7 @@ void open_fe_temp_registers(void) {
     first_fe_temporary_register[RegClass_FPR] = last_temporary_register[RegClass_FPR] = r;
     r = used_virtual_registers[RegClass_VR];
     first_fe_temporary_register[RegClass_VR] = last_temporary_register[RegClass_VR] = r;
+    ORACLE_PROBE(OracleProbe_Counter(9, 0, NULL));
 }
 
 // Pro7's set_last_exception_registers
@@ -426,6 +428,7 @@ void set_last_exception_registers(void) {
     last_exception_register[RegClass_GPR] = used_virtual_registers[RegClass_GPR] - 1;
     last_exception_register[RegClass_FPR] = used_virtual_registers[RegClass_FPR] - 1;
     last_exception_register[RegClass_VR] = used_virtual_registers[RegClass_VR] - 1;
+    ORACLE_PROBE(OracleProbe_Counter(8, 0, NULL));
 }
 
 static VarInfo* Registers_GetNewVarInfo(void) {

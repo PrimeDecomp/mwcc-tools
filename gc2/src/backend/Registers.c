@@ -2,6 +2,7 @@
 // it in reverse). 2.6 lacks Pro7's retain_register_for_argument, count_scratch_registers and the
 // *_modified_registers functions (no rows; no .bss for mod_regs_table). Its globals are COMMONs.
 #include "compiler/Registers.h"
+#include "compiler/OracleProbes.h"
 #include "compiler/PPCError.h"
 #include "compiler/RegisterInfo.h"
 #include "compiler/objects.h"
@@ -22,6 +23,21 @@ char* register_class_format[RegClassMax];
 int coloring;
 int optimizing;
 
+#ifdef ORACLE_PROBES
+// (the oracle's counter tables: the counters, the physical registers' counts, and the last
+// exception registers, the first front-end temporaries and the last temporaries from the VRs on)
+struct {
+    SInt32* counts;
+    SInt32* physical;
+    short* initial;
+    short* first;
+    SInt32* last;
+} OracleRust_CounterGlobals = {
+    used_virtual_registers, n_real_registers, &last_exception_register[RegClass_VR],
+    &first_fe_temporary_register[RegClass_VR], &last_temporary_register[RegClass_VR]
+};
+#endif
+
 void init_registers(void) {
     RegClass rclass;
     int j;
@@ -41,6 +57,7 @@ void init_registers(void) {
     init_target_registers();
     for (rclass = 0; rclass < RegClassMax; rclass++) {
         used_virtual_registers[rclass] = n_real_registers[rclass];
+        ORACLE_PROBE(OracleProbe_Counter(4, rclass, NULL));
     }
 
     coloring = TRUE;
@@ -135,6 +152,7 @@ void check_temp_registers(void) {
         }
         if (r > 256) {
             used_virtual_registers[rclass] = first_temporary_register[rclass];
+            ORACLE_PROBE(OracleProbe_Counter(3, rclass, NULL));
         }
     }
 }
@@ -145,6 +163,7 @@ void close_temp_registers(void) {
     for (rclass = 0; rclass < RegClassMax; rclass++) {
         if (used_virtual_registers[rclass] < last_temporary_register[rclass]) {
             used_virtual_registers[rclass] = last_temporary_register[rclass];
+            ORACLE_PROBE(OracleProbe_Counter(2, rclass, NULL));
         } else {
             last_temporary_register[rclass] = used_virtual_registers[rclass];
         }
