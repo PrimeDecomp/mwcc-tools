@@ -757,7 +757,7 @@ fn help() {
   pe inspect|read|find FILE [options]
   implib DEF OUTPUT
   rsrc2res EXE OUTPUT
-  split VERSION [--root DIR] [--output DIR]
+  split VERSION [--source] [--root DIR] [--output DIR]
   compare extract|compare|report VERSION [--root DIR]
   locate VERSION SOURCE... [--root DIR]
   bindfrom VERSION [--root DIR]
@@ -767,7 +767,7 @@ fn help() {
   disasm VERSION ADDRESS [SIZE] [--root DIR]
   fdiff VERSION SOURCE FUNCTION ADDRESS [--root DIR]
   nearest VERSION SOURCE... [--root DIR]
-  link [--oracle] VERSION OUTPUT INPUT... [--root DIR] [--timeout SECS]
+  link [--oracle | --source] VERSION OUTPUT INPUT... [--root DIR] [--timeout SECS]
   configure [--version V] [--mode link|compare] [--split-only] [--oracle [--producer rust|c]] [--root DIR]
   build-hooks OUTPUT [--trace-shim | --frontend-version V] [--root DIR] [--rustc FILE] [--timeout SECS]
   package-release OUTPUT.zip --binary FILE --target TARGET [--root DIR] [--source-revision COMMIT] [--notices DIR]

@@ -9,9 +9,11 @@ use std::{
 mod disc;
 mod http;
 mod library;
+mod library_2x;
 pub use disc::{Disc, DiscFile};
 pub use http::{Fetch, HttpFetcher};
 pub use library::{LIB, LibrarySelection, extract_library, patch_library};
+pub use library_2x::{LIB_2X_SHA256, build_library_2x};
 pub const MAX_BYTES: u64 = 1024 * 1024 * 1024;
 pub const OBJDIFF_TAG: &str = "v3.8.1";
 pub const WIBO_TAG: &str = "1.2.0";
@@ -214,6 +216,27 @@ fn unpack_updater<F: Fetch>(
     flatten: bool,
     timeout: Duration,
 ) -> Result<PathBuf> {
+    unpack_updater_groups(
+        workspace,
+        root,
+        fetcher,
+        files,
+        flatten,
+        timeout,
+        &["Win CC++ - FU2"],
+    )?;
+    Ok(root.join("files/Win_CC++_-_FU2"))
+}
+/// Unpack the Pro 5.3 updater's GROUPS into ROOT/files (each as unshield names it, spaces as underscores).
+fn unpack_updater_groups<F: Fetch>(
+    workspace: &Path,
+    root: &Path,
+    fetcher: &mut F,
+    files: &[&str],
+    flatten: bool,
+    timeout: Duration,
+    groups: &[&str],
+) -> Result<PathBuf> {
     let kept = workspace.join("build/downloads/Pro5.3_Factory_Upd_NoLibs.exe");
     let data = if kept.is_file() {
         fs::read(&kept)?
@@ -231,45 +254,47 @@ fn unpack_updater<F: Fetch>(
         local.is_some() || wsl,
         "unshield is required (brew install unshield / apt install unshield)"
     );
-    let mut command = if let Some(local) = local {
-        std::process::Command::new(local)
-    } else {
-        let status = command_output(
-            std::process::Command::new("wsl").args(["-e", "which", "unshield"]),
-            timeout,
-        )?;
-        ensure!(
-            status.status.success(),
-            "unshield is required in WSL (wsl sudo apt install unshield)"
-        );
-        let mut command = std::process::Command::new("wsl");
-        command.args(["-e", "unshield"]);
-        command
-    };
-    let path = |p: PathBuf| -> Result<String> {
-        if wsl {
-            translated(&p, timeout)
+    for group in groups {
+        let mut command = if let Some(local) = local.as_ref() {
+            std::process::Command::new(local)
         } else {
-            Ok(p.to_string_lossy().into_owned())
+            let status = command_output(
+                std::process::Command::new("wsl").args(["-e", "which", "unshield"]),
+                timeout,
+            )?;
+            ensure!(
+                status.status.success(),
+                "unshield is required in WSL (wsl sudo apt install unshield)"
+            );
+            let mut command = std::process::Command::new("wsl");
+            command.args(["-e", "unshield"]);
+            command
+        };
+        let path = |p: PathBuf| -> Result<String> {
+            if wsl {
+                translated(&p, timeout)
+            } else {
+                Ok(p.to_string_lossy().into_owned())
+            }
+        };
+        command.args(["-g", group]);
+        if flatten {
+            command.arg("-j");
         }
-    };
-    command.args(["-g", "Win CC++ - FU2"]);
-    if flatten {
-        command.arg("-j");
+        command
+            .arg("-d")
+            .arg(path(root.join("files"))?)
+            .arg("x")
+            .arg(path(root.join("data1.cab"))?)
+            .args(files);
+        let output = command_output(&mut command, timeout)?;
+        ensure!(
+            output.status.success(),
+            "unshield extraction failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
     }
-    command
-        .arg("-d")
-        .arg(path(root.join("files"))?)
-        .arg("x")
-        .arg(path(root.join("data1.cab"))?)
-        .args(files);
-    let output = command_output(&mut command, timeout)?;
-    ensure!(
-        output.status.success(),
-        "unshield extraction failed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    Ok(root.join("files/Win_CC++_-_FU2"))
+    Ok(root.join("files"))
 }
 fn copy_tree(source: &Path, target: &Path) -> Result<()> {
     fs::create_dir_all(target)?;
@@ -318,7 +343,8 @@ fn run_with_timeout<F: Fetch>(
             "pro53",
             "pro6",
             "mwld",
-            "lib"
+            "lib",
+            "lib-2x"
         ]
         .contains(&tool),
         "unknown downloadable tool {tool}"
@@ -337,7 +363,17 @@ fn run_with_timeout<F: Fetch>(
             write(&destination, &stub).context("replace compiler license stub")?;
         }
     }
-    if ["compilers", "pro4", "pro5", "pro53", "pro6", "mwld", "lib"].contains(&tool)
+    if [
+        "compilers",
+        "pro4",
+        "pro5",
+        "pro53",
+        "pro6",
+        "mwld",
+        "lib",
+        "lib-2x",
+    ]
+    .contains(&tool)
         && output.exists()
     {
         touch(&output)?;
@@ -362,6 +398,22 @@ fn run_with_timeout<F: Fetch>(
             &parent.join("runtime53"),
         )?;
         patch_library(parent)?;
+        touch(&output)?;
+        return Ok(());
+    }
+    if tool == "lib-2x" {
+        // (gc2/lib: the GC 2.x tree's library, Pro 5's with the Pro 5.3 updater's over it)
+        let archive = {
+            let mut disc = Disc::new(fetcher, PRO5_BIN, true);
+            let mut data = vec![];
+            disc.file("CODEWA~1.ZIP;1")?.read_to_end(&mut data)?;
+            data
+        };
+        let temporary = tempfile::tempdir()?;
+        let groups = library_2x::GROUPS;
+        let extracted =
+            unpack_updater_groups(root, temporary.path(), fetcher, &[], false, timeout, groups)?;
+        build_library_2x(std::io::Cursor::new(archive), &extracted, parent)?;
         touch(&output)?;
         return Ok(());
     }

@@ -399,14 +399,38 @@ pub fn generate(
     Ok(written)
 }
 pub fn run(root: &Path, version: &str, destination: Option<&Path>) -> Result<Vec<PathBuf>> {
+    run_from(
+        root,
+        version,
+        destination,
+        &format!("config/{version}"),
+        &format!("build/{version}"),
+    )
+}
+/// Split with the symbols and splits of VERSION's source tree (crate::source_tree), into its build directory.
+pub fn run_source(root: &Path, version: &str, destination: Option<&Path>) -> Result<Vec<PathBuf>> {
+    let tree = crate::source_tree::SourceTree::of(root, version, false)?;
+    run_from(
+        root,
+        version,
+        destination,
+        &tree.config_dir,
+        &tree.build_dir,
+    )
+}
+fn run_from(
+    root: &Path,
+    version: &str,
+    destination: Option<&Path>,
+    config: &str,
+    build: &str,
+) -> Result<Vec<PathBuf>> {
     let original = executable::Original::read(root, version)?;
-    let symbols = executable::read_symbols(&fs::read_to_string(
-        root.join("config").join(version).join("symbols.txt"),
-    )?)?;
-    let splits = executable::read_splits(&fs::read_to_string(
-        root.join("config").join(version).join("splits.txt"),
-    )?)?;
-    let default = root.join("build").join(version).join("obj");
+    let symbols =
+        executable::read_symbols(&fs::read_to_string(root.join(config).join("symbols.txt"))?)?;
+    let splits =
+        executable::read_splits(&fs::read_to_string(root.join(config).join("splits.txt"))?)?;
+    let default = root.join(build).join("obj");
     generate(
         &original.pe()?,
         &symbols,

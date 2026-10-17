@@ -16,15 +16,12 @@ use std::{
 fn basename(path: &str) -> &str {
     path.rsplit(['\\', '/']).next().unwrap()
 }
-fn split_path(version: &str, path: &str) -> String {
-    path.replacen(
-        &format!("build/{version}/compiled/"),
-        &format!("build/{version}/obj/"),
-        1,
-    )
+/// A compiled object's split counterpart; BUILD is the source tree's build directory (crate::source_tree).
+fn split_path(build: &str, path: &str) -> String {
+    path.replacen(&format!("{build}/compiled/"), &format!("{build}/obj/"), 1)
 }
-pub fn usable(root: &Path, version: &str, path: &str) -> Result<bool> {
-    let split = root.join(split_path(version, path));
+pub fn usable(root: &Path, build: &str, path: &str) -> Result<bool> {
+    let split = root.join(split_path(build, path));
     if !split.is_file() {
         return Ok(false);
     }
@@ -35,13 +32,13 @@ pub fn usable(root: &Path, version: &str, path: &str) -> Result<bool> {
 }
 pub fn revert_conflicts(
     root: &Path,
-    version: &str,
+    build: &str,
     inputs: &[String],
     text: &str,
 ) -> Result<BTreeSet<String>> {
     let compiled: IndexMap<_, _> = inputs
         .iter()
-        .filter(|p| p.starts_with(&format!("build/{version}/compiled/")))
+        .filter(|p| p.starts_with(&format!("{build}/compiled/")))
         .map(|p| (basename(p), p))
         .collect();
     let undefined = Regex::new(r"Undefined symbol: (\S+) in\s+#\s+(\S+)")?;
@@ -60,7 +57,7 @@ pub fn revert_conflicts(
                     .map(|p| {
                         Ok((
                             (*p).clone(),
-                            coff::defined_symbols(&fs::read(root.join(split_path(version, p)))?)?,
+                            coff::defined_symbols(&fs::read(root.join(split_path(build, p)))?)?,
                         ))
                     })
                     .collect::<Result<BTreeMap<_, _>>>()?,
@@ -87,6 +84,8 @@ pub struct Request {
     pub output: String,
     pub inputs: Vec<String>,
     pub oracle: bool,
+    /// Link from the version's source tree (crate::source_tree): its objects and splits.
+    pub source: bool,
     pub timeout: Duration,
 }
 #[derive(Debug)]
@@ -164,11 +163,19 @@ pub fn run(request: &Request) -> Result<Report> {
     let mut inputs = request.inputs.clone();
     let mut messages = vec![];
     let version = &request.version;
-    let compiled_prefix = format!("build/{version}/compiled/");
-    if config["validate_units"] == true && !request.oracle {
+    let tree = crate::source_tree::SourceTree::of(
+        &request.root,
+        version,
+        request.oracle || !request.source,
+    )?;
+    let build = tree.build_dir.as_str();
+    let compiled_prefix = format!("{build}/compiled/");
+    // (a vendored tree's Matching list was checked by linking each unit into the original, and the linker strips
+    // what its objects have beyond the unit's range: the SHA-1 below is the check, not section sizes)
+    if config["validate_units"] == true && !request.oracle && !tree.vendored() {
         let mut replaced = BTreeSet::new();
         for input in &inputs {
-            if input.starts_with(&compiled_prefix) && !usable(&request.root, version, input)? {
+            if input.starts_with(&compiled_prefix) && !usable(&request.root, build, input)? {
                 replaced.insert(input.clone());
             }
         }
@@ -176,7 +183,7 @@ pub fn run(request: &Request) -> Result<Report> {
             .into_iter()
             .map(|p| {
                 if replaced.contains(&p) {
-                    split_path(version, &p)
+                    split_path(build, &p)
                 } else {
                     p
                 }
@@ -554,7 +561,7 @@ pub fn run(request: &Request) -> Result<Report> {
             }
         }
         let reverted = if config["validate_units"] == true && !request.oracle {
-            revert_conflicts(&request.root, version, &inputs, &text)?
+            revert_conflicts(&request.root, build, &inputs, &text)?
         } else {
             BTreeSet::new()
         };
@@ -579,7 +586,7 @@ pub fn run(request: &Request) -> Result<Report> {
         ));
         for input in &mut inputs {
             if reverted.contains(input) {
-                *input = split_path(version, input);
+                *input = split_path(build, input);
             }
         }
     }
@@ -617,7 +624,7 @@ pub fn run(request: &Request) -> Result<Report> {
     let actual = format!("{:x}", Sha1::digest(&linked));
     let identical = config["sha1"] == actual;
     let splits = executable::read_splits(&fs::read_to_string(
-        request.root.join("config").join(version).join("splits.txt"),
+        request.root.join(&tree.config_dir).join("splits.txt"),
     )?)?;
     if identical {
         write(

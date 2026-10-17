@@ -1,5 +1,5 @@
 //! Native Ninja/objdiff generation and compiler depfile conversion.
-use crate::{compare, executable};
+use crate::{compare, executable, source_tree::SourceTree};
 use anyhow::{Context, Result, ensure};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -144,10 +144,10 @@ fn text<'a>(value: &'a Value, key: &str) -> Result<&'a str> {
         .as_str()
         .with_context(|| format!("settings lack {key}"))
 }
-fn includes(settings: &Value, key: &str) -> Result<Vec<String>> {
+fn includes(settings: &Value, key: &str, prefix: &str) -> Result<Vec<String>> {
     Ok(optional_strings(&settings[key])?
         .into_iter()
-        .map(|s| format!("-I{s}"))
+        .map(|s| format!("-I{prefix}{s}"))
         .collect())
 }
 fn host(config: &Value, settings: &Value, source: &str) -> Result<String> {
@@ -163,7 +163,11 @@ fn host(config: &Value, settings: &Value, source: &str) -> Result<String> {
         .unwrap_or(compiler)
         .into())
 }
-fn flags(config: &Value, settings: &Value) -> Result<Vec<String>> {
+fn flags(config: &Value, settings: &Value, source: Option<&str>) -> Result<Vec<String>> {
+    // (a vendored tree's config.json gives a source's whole flags: crate::source_tree)
+    if let Some(flags) = source.map(|s| &config["flags"][s]).filter(|f| f.is_array()) {
+        return strings(flags);
+    }
     Ok(strings(&settings["flags"])?
         .into_iter()
         .map(|f| config["flags"][&f].as_str().unwrap_or(&f).to_owned())
@@ -180,8 +184,9 @@ fn compiler_arguments(
     version: usize,
     source: Option<&str>,
     oracle: bool,
+    prefix: &str,
 ) -> Result<Vec<String>> {
-    let mut flags = flags(config, settings)?;
+    let mut flags = flags(config, settings, source)?;
     if let Some(source) = source {
         for (key, value) in [("sym_on", "on"), ("sym_off", "off")] {
             if listed(config, key, source)
@@ -198,10 +203,10 @@ fn compiler_arguments(
     if oracle {
         out.push("-DMWCC_ORACLE_TRACE".into());
     }
-    out.extend(includes(settings, "include_dirs")?);
-    out.extend(["-Iinclude".into(), "-i-".into()]);
-    out.extend(includes(settings, "system_include_dirs")?);
-    out.push("-Iinclude/libc".into());
+    out.extend(includes(settings, "include_dirs", prefix)?);
+    out.extend([format!("-I{prefix}include"), "-i-".into()]);
+    out.extend(includes(settings, "system_include_dirs", prefix)?);
+    out.push(format!("-I{prefix}include/libc"));
     Ok(out)
 }
 fn library(unit: &str) -> Option<&'static str> {
@@ -210,12 +215,14 @@ fn library(unit: &str) -> Option<&'static str> {
         .find(|(n, _)| *n == unit)
         .map(|(_, p)| *p)
 }
-fn objdiff(version: &str, config: &Value, sources: &Value, units: &[String]) -> Value {
+fn objdiff(tree: &SourceTree, config: &Value, sources: &Value, units: &[String]) -> Value {
+    let build = &tree.build_dir;
+    let prefix = &tree.prefix;
     let units:Vec<_>=units.iter().map(|unit| {
         let runtime=unit.starts_with("src/msl/") || unit.starts_with("src/runtime/") || library(unit).is_some();
         let name=unit.strip_prefix("src/").map_or(unit.as_str(),|s|s.rsplit_once('.').map_or(s,|(s,_)|s));
-        let mut entry=json!({"name":name,"target_path":format!("build/{version}/obj/{unit}.obj"),"metadata":{"complete":library(unit).is_some(),"progress_categories":[if runtime {"runtime"} else {"compiler"}]}});
-        if sources.get(unit).is_some() {entry["base_path"]=json!(format!("build/{version}/compiled/{unit}.obj"));entry["metadata"]["complete"]=json!(compare::matching(config,sources,unit));entry["metadata"]["source_path"]=json!(unit);}
+        let mut entry=json!({"name":name,"target_path":format!("{build}/obj/{unit}.obj"),"metadata":{"complete":library(unit).is_some(),"progress_categories":[if runtime {"runtime"} else {"compiler"}]}});
+        if sources.get(unit).is_some() {entry["base_path"]=json!(format!("{build}/compiled/{unit}.obj"));entry["metadata"]["complete"]=json!(compare::matching(config,sources,unit));entry["metadata"]["source_path"]=json!(format!("{prefix}{unit}"));}
         else if let Some(path)=library(unit) {entry["base_path"]=json!(path);}
         else {entry["metadata"]["auto_generated"]=json!(true);}
         entry
@@ -239,12 +246,15 @@ pub fn generate(root: &Path, request: &Request) -> Result<Generation> {
         )
         .with_context(|| format!("parse {}", path.display()))
     };
-    let config = read_json(&format!("config/{version}/config.json"))?;
-    let sources = read_json("config/sources.json")?;
+    let tree = SourceTree::of(root, version, request.oracle)?;
+    let config = tree.config(root, &read_json(&format!("config/{version}/config.json"))?)?;
+    let sources = tree.sources(root)?;
+    let define = tree.version_define(root, version)?.unwrap_or(version_index);
+    let (prefix, build) = (tree.prefix.as_str(), tree.build_dir.as_str());
     let source_settings = sources
         .as_object()
         .context("source settings are not an object")?;
-    let split_file = format!("config/{version}/splits.txt");
+    let split_file = format!("{}/splits.txt", tree.config_dir);
     let has_splits = root.join(&split_file).is_file();
     let mode = request
         .mode
@@ -329,6 +339,33 @@ pub fn generate(root: &Path, request: &Request) -> Result<Generation> {
         format!("build {objdiff_tool}: download"),
         "  tool = objdiff-cli".into(),
     ];
+    if tree.vendored() {
+        // (a vendored tree's own C library headers and lib/: crate::source_tree)
+        let environment = environment.replace("include/libc", &format!("{prefix}include/libc"));
+        out.extend([
+            "rule mwcc_tree".into(),
+            format!(
+                "  command = {environment}$wibo $compiler_command $cflags -MD $in -o $out && $tools transform-dep $stem.dep $out"
+            ),
+            "  description = MWCC $in".into(),
+            "  depfile = $out.d".into(),
+            "  deps = gcc".into(),
+            "rule mwcc_pro4_tree".into(),
+            format!("  command = {environment}$wibo $compiler_command $cflags"),
+            "  description = MWCC $in".into(),
+            format!("build {prefix}lib/ok.pro53: download"),
+            "  tool = lib-2x".into(),
+        ]);
+    }
+    let (rule, rule_pro4, lib_ok) = if tree.vendored() {
+        (
+            "mwcc_tree",
+            "mwcc_pro4_tree",
+            format!("{prefix}lib/ok.pro53"),
+        )
+    } else {
+        ("mwcc", "mwcc_pro4", "lib/ok".to_owned())
+    };
     if !windows {
         out.extend([
             "build build/tools/wibo: download".into(),
@@ -385,26 +422,27 @@ pub fn generate(root: &Path, request: &Request) -> Result<Generation> {
     }
     let mut objects = vec![];
     for (source, settings) in source_settings {
-        let object = format!("build/{version}/compiled/{source}.obj");
+        let object = format!("{build}/compiled/{source}.obj");
+        let input = format!("{prefix}{source}");
         let host = host(&config, settings, source)?;
         let compiler = format!("build/compilers/{host}/mwcc.exe");
-        let mut args = compiler_arguments(&config, settings, version_index, Some(source), false)?;
+        let mut args = compiler_arguments(&config, settings, define, Some(source), false, prefix)?;
         if host == "pro4" {
-            args.extend([source.clone(), "-o".into(), object.clone()]);
+            args.extend([input.clone(), "-o".into(), object.clone()]);
             out.extend([
                 format!(
-                    "build {}: mwcc_pro4 {} | {tool_dep}{compiler} || lib/ok",
+                    "build {}: {rule_pro4} {} | {tool_dep}{compiler} || {lib_ok}",
                     ninja_path(&object),
-                    ninja_path(source)
+                    ninja_path(&input)
                 ),
                 format!("  cflags = {}", join(&pro4_arguments(&args)?, platform)),
             ]);
         } else {
             out.extend([
                 format!(
-                    "build {}: mwcc {} | {tool_dep}{compiler} || lib/ok",
+                    "build {}: {rule} {} | {tool_dep}{compiler} || {lib_ok}",
                     ninja_path(&object),
-                    ninja_path(source)
+                    ninja_path(&input)
                 ),
                 format!("  cflags = {}", join(&args, platform)),
                 format!(
@@ -432,14 +470,14 @@ pub fn generate(root: &Path, request: &Request) -> Result<Generation> {
         let units: Vec<_> = splits.units.iter().map(|u| u.name.clone()).collect();
         let split_objects: Vec<_> = units
             .iter()
-            .map(|u| format!("build/{version}/obj/{u}.obj"))
+            .map(|u| format!("{build}/obj/{u}.obj"))
             .collect();
         let extra = if splits.sections.contains_key(".rsrc") {
-            vec![format!("build/{version}/obj/resources.res")]
+            vec![format!("{build}/obj/resources.res")]
         } else {
             vec![]
         };
-        let mut inputs = vec![format!("build/{version}/obj/sections.obj")];
+        let mut inputs = vec![format!("{build}/obj/sections.obj")];
         inputs.extend(extra.clone());
         for unit in &units {
             inputs.push(if let Some(path) = library(unit) {
@@ -448,9 +486,9 @@ pub fn generate(root: &Path, request: &Request) -> Result<Generation> {
                 && compare::matching(&config, &sources, unit)
                 && !request.split_only
             {
-                format!("build/{version}/compiled/{unit}.obj")
+                format!("{build}/compiled/{unit}.obj")
             } else {
-                format!("build/{version}/obj/{unit}.obj")
+                format!("{build}/obj/{unit}.obj")
             });
         }
         let libraries = if config.get("imports").is_some() {
@@ -592,7 +630,8 @@ pub fn generate(root: &Path, request: &Request) -> Result<Generation> {
                     "build/compilers/{}/mwcc.exe",
                     host(&config, settings, &unit)?
                 );
-                let mut args = compiler_arguments(&config, settings, version_index, None, true)?;
+                let mut args =
+                    compiler_arguments(&config, settings, version_index, None, true, "")?;
                 if request.rust_hooks {
                     args.push("-DMWCC_ORACLE_RUST_HOOKS".into());
                     args.push("-DMWCC_ORACLE_RUST_FRONTEND".into());
@@ -621,10 +660,10 @@ pub fn generate(root: &Path, request: &Request) -> Result<Generation> {
             out.extend(["rule oracle_link".into(),"  command = $tools link --oracle $version $out $in".into(),"  description = LINK ORACLE $out".into(),
                 format!("build build/{version}/oracle/mwcceppc.exe: oracle_link {} | {tool_dep}build/compilers/pro53/mwld.exe $tools_dep || lib/ok",oracle_inputs.iter().map(|p|ninja_path(p)).collect::<Vec<_>>().join(" "))]);
         }
-        out.extend(["rule split".into(),"  command = $tools split $version".into(),"  description = SPLIT $version".into(),"rule implib".into(),"  command = $tools implib $in $out".into(),"  description = IMPLIB $out".into(),
-            "rule link".into(),"  command = $tools link $version $out $in".into(),"  description = LINK $out".into(),"rule report".into(),format!("  command = {objdiff_tool} report generate -o $out"),"  description = REPORT $version".into(),
+        out.extend(["rule split".into(),format!("  command = $tools split $version{}",if tree.vendored() {" --source"} else {""}),"  description = SPLIT $version".into(),"rule implib".into(),"  command = $tools implib $in $out".into(),"  description = IMPLIB $out".into(),
+            "rule link".into(),format!("  command = $tools link $version $out $in{}",if tree.vendored() {" --source"} else {""}),"  description = LINK $out".into(),"rule report".into(),format!("  command = {objdiff_tool} report generate -o $out"),"  description = REPORT $version".into(),
             "build build/compilers/pro53/mwld.exe: download".into(),"  tool = mwld".into(),
-            format!("build build/{version}/obj/ok build/{version}/obj/sections.obj {}: split | {} config/{version}/config.json config/{version}/symbols.txt {split_file} $tools_dep",extra.iter().chain(split_objects.iter()).map(|p|ninja_path(p)).collect::<Vec<_>>().join(" "),ninja_path(text(&config,"original")?)),
+            format!("build {build}/obj/ok {build}/obj/sections.obj {}: split | {} config/{version}/config.json {}/symbols.txt {split_file} $tools_dep",extra.iter().chain(split_objects.iter()).map(|p|ninja_path(p)).collect::<Vec<_>>().join(" "),ninja_path(text(&config,"original")?),tree.config_dir),
             "build build/lmgr326b.lib: implib config/lmgr326b.def | $tools_dep".into()]);
         for library in libraries.iter().filter(|p| p.ends_with(".def")) {
             out.push(format!(
@@ -635,7 +674,7 @@ pub fn generate(root: &Path, request: &Request) -> Result<Generation> {
         }
         out.extend([format!("build build/{version}/mwcceppc.exe | build/{version}/ok: link {} | {tool_dep}build/compilers/pro53/mwld.exe $tools_dep || lib/ok",inputs.iter().map(|p|ninja_path(p)).collect::<Vec<_>>().join(" ")),
             format!("build build/{version}/report.json: report | build/{version}/ok {objdiff_tool} {}",objects.iter().map(|p|ninja_path(p)).collect::<Vec<_>>().join(" "))]);
-        objdiff_config = Some(objdiff(version, &config, &sources, &units));
+        objdiff_config = Some(objdiff(&tree, &config, &sources, &units));
     } else {
         let configs = format!(
             "config/{version}/config.json config/{version}/functions.json config/{version}/bindings.json config/sources.json"
@@ -668,7 +707,7 @@ pub fn generate(root: &Path, request: &Request) -> Result<Generation> {
         ]);
     }
     out.extend([format!("build all_source: phony {}",objects.iter().map(|p|ninja_path(p)).collect::<Vec<_>>().join(" ")),format!("build progress: phony build/{version}/report.json"),
-        format!("build build.ninja: configure | $tools_dep config/sources.json config/{version}/config.json{}",if linking {format!(" {split_file}")} else {String::new()}),format!("default build/{version}/ok all_source"),String::new()]);
+        format!("build build.ninja: configure | $tools_dep {prefix}config/sources.json config/{version}/config.json{}{}",if tree.vendored() {format!(" {}/config.json {}/state.json",tree.config_dir,tree.config_dir)} else {String::new()},if linking {format!(" {split_file}")} else {String::new()}),format!("default build/{version}/ok all_source"),String::new()]);
     Ok(Generation {
         ninja: out.join("\n"),
         objdiff: objdiff_config,

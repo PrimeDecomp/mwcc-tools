@@ -2,6 +2,7 @@
   "original": "build/compilers/GC/2.7/mwcceppc.exe",
   "sha1": "100dd3a2898a1ece55462801d42ff5de8b42e29f",
   "mode": "link",
+  "source_tree": "gc2",
   "validate_units": true,
   "imports": [
     "config/kernel32_27.def",

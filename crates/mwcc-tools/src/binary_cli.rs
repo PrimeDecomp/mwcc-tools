@@ -253,12 +253,14 @@ pub fn run(command: &str, args: &[String]) -> Result<()> {
         "link" => {
             let mut root = std::env::current_dir()?;
             let mut oracle = false;
+            let mut source = false;
             let mut timeout = std::time::Duration::from_secs(600);
             let mut positional = vec![];
             let mut i = 0;
             while i < args.len() {
                 match args[i].as_str() {
                     "--oracle" => oracle = true,
+                    "--source" => source = true,
                     "--root" | "--timeout" => {
                         let option = &args[i];
                         i += 1;
@@ -285,6 +287,7 @@ pub fn run(command: &str, args: &[String]) -> Result<()> {
                 output,
                 inputs: positional,
                 oracle,
+                source,
                 timeout,
             })?;
             for message in report.messages {
@@ -299,9 +302,11 @@ pub fn run(command: &str, args: &[String]) -> Result<()> {
             let mut root = std::env::current_dir()?;
             let mut output = None;
             let mut version = None;
+            let mut source = false;
             let mut i = 0;
             while i < args.len() {
                 match args[i].as_str() {
+                    "--source" => source = true,
                     "--root" | "--output" => {
                         let option = &args[i];
                         i += 1;
@@ -317,11 +322,12 @@ pub fn run(command: &str, args: &[String]) -> Result<()> {
                 }
                 i += 1;
             }
-            mwcc_oracle_core::split::run(
-                &root,
-                version.context("split requires VERSION")?,
-                output.as_deref(),
-            )?;
+            let version = version.context("split requires VERSION")?;
+            if source {
+                mwcc_oracle_core::split::run_source(&root, version, output.as_deref())?;
+            } else {
+                mwcc_oracle_core::split::run(&root, version, output.as_deref())?;
+            }
         }
         "implib" => {
             ensure!(args.len() == 2, "implib requires DEF OUTPUT");
