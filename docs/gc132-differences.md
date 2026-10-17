@@ -46,3 +46,23 @@ What this means for the oracle:
 
 `config/GC_1_3_2/symbols.txt` gives each function the name it has in 1.3 where the code is the same and `fn_XXXXXXXX`
 (the 1.3 address) where it was moved and changed, so a `fn_0055e540` in 1.3.2 is at 0x55F0A0.
+
+## Building from the GC 2.x sources
+
+`config/GC_1_3_2/config.json` names `"source_tree": "gc2"` and `"source_version": "GC_2_7"`. The build compiles
+`gc2/src` with `-DVERSION` of 2.7 (`gc2/include/version.h` has no 1.3.2), against a split of 1.3.2 in
+`gc2/config/GC_1_3_2`. 106 of its 242 units link into the original's SHA-1, and the others link as split. The split was
+made from the bundle's 2.7 configuration:
+
+1. `mwcc-tools remap 2.7 1.3.2 --symbols`, run in a scratch root that holds `gc2/config/GC_2_7` as `config/GC_2_7`.
+2. More names, chained through our own pairing: a symbol that `config/GC_2_7` and `config/GC_1_3_2` both name pairs a
+   2.7 address with a 1.3.2 address, and the bundle's 2.7 name at that address names the 1.3.2 one.
+3. `mwcc-tools derive-splits GC_1_3_2 --reference GC_2_7`, still in the scratch root.
+4. Unit by unit, where both splits list the same number of symbols in a section (and of the same sizes, outside code),
+   the 1.3.2 symbols take the 2.7 names in address order.
+5. Call targets and absolute operands of the paired functions vote for more address pairs, which renamed 1591
+   symbols.
+6. `mwcc-tools relink-check GC_1_3_2 --write`.
+
+Of the 210 Matching candidates, most of the 104 that do not link refer to a symbol the split does not name: better
+naming, not code changes, is what would build more of 1.3.2.

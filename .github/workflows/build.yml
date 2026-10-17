@@ -22,7 +22,8 @@ jobs:
           path: |
             build/compilers
             lib
-          key: compilers-${{ runner.os }}-${{ hashFiles('crates/mwcc-oracle-core/src/download.rs') }}
+            gc2/lib
+          key: compilers-${{ runner.os }}-${{ hashFiles('crates/mwcc-oracle-core/src/download.rs', 'crates/mwcc-oracle-core/src/download/*.rs') }}
 
       - name: Install pinned Rust toolchain
         run: rustup show

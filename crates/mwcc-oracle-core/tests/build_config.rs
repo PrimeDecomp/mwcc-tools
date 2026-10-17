@@ -239,3 +239,85 @@ fn rust_hook_builds_are_regenerable_and_require_the_migrated_abi() {
         assert!(ninja.contains(&format!("crates/mwcc-oracle-hooks/src/{file}")));
     }
 }
+#[test]
+fn vendored_source_tree_builds_from_its_own_sources_and_split() {
+    let root = project();
+    let path = root.path();
+    let write = |relative: &str, text: &str| {
+        let file = path.join(relative);
+        fs::create_dir_all(file.parent().unwrap()).unwrap();
+        fs::write(file, text).unwrap();
+    };
+    for (version, source_version) in [("GC_2_7", None), ("GC_1_3_2", Some("GC_2_7"))] {
+        let file = path.join(format!("config/{version}/config.json"));
+        let mut config: Value = serde_json::from_slice(&fs::read(&file).unwrap()).unwrap();
+        config["source_tree"] = "gc2".into();
+        if let Some(source_version) = source_version {
+            config["source_version"] = source_version.into();
+        }
+        fs::write(&file, serde_json::to_vec(&config).unwrap()).unwrap();
+        let splits = "Sections:\n\t.text type:code align:16\n\nsrc/x.c:\n\t.text start:0x00401000 end:0x00401010\n\nsrc/y.c:\n\t.text start:0x00401010 end:0x00401020\n";
+        write(&format!("gc2/config/{version}/splits.txt"), splits);
+        write(
+            &format!("gc2/config/{version}/config.json"),
+            r#"{"compilers": {"pro53": "pro6"}, "compiler_overrides": {"src/y.c": "pro53"}, "flags": {"src/y.c": ["-O1"]}}"#,
+        );
+        write(
+            &format!("gc2/config/{version}/state.json"),
+            r#"{"matching": ["src/x.c", "src/y.c"], "relink_exclude": {"src/y.c": "does not link"}}"#,
+        );
+    }
+    write(
+        "gc2/config/sources.json",
+        r#"{"src/x.c": {"compiler": "pro53", "flags": ["-O4,p"], "include_dirs": ["src/backend"], "system_include_dirs": ["lib/msl/extra"]}, "src/y.c": {"compiler": "pro53", "flags": ["-O4"]}}"#,
+    );
+    write(
+        "gc2/include/version.h",
+        "#define VERSION_GC_2_6 4\n#define VERSION_GC_2_7 5\n",
+    );
+    for version in ["GC_2_7", "GC_1_3_2"] {
+        let request = |oracle| Request {
+            version: version.into(),
+            mode: None,
+            split_only: false,
+            oracle,
+            rust_hooks: false,
+            tools: "mwcc-tools".into(),
+            platform: Platform::Posix,
+        };
+        let ninja = build_config::generate(path, &request(false)).unwrap().ninja;
+        for expected in [
+            "rule mwcc_tree\n  command = MWCIncludes=gc2/include/libc ",
+            "build gc2/lib/ok.pro53: download\n  tool = lib-2x",
+            &format!(
+                "build build/{version}/gc2/compiled/src/x.c.obj: mwcc_tree gc2/src/x.c | $wibo build/compilers/pro6/mwcc.exe || gc2/lib/ok.pro53"
+            ),
+            "  cflags = -c -O4,p -DVERSION=5 -Igc2/src/backend -Igc2/include -i- -Igc2/lib/msl/extra -Igc2/include/libc",
+            &format!(
+                "build build/{version}/gc2/compiled/src/y.c.obj: mwcc_tree gc2/src/y.c | $wibo build/compilers/pro53/mwcc.exe"
+            ),
+            "  cflags = -c -O1 -DVERSION=5 -Igc2/include -i- -Igc2/include/libc",
+            "  command = $tools split $version --source",
+            "  command = $tools link $version $out $in --source",
+            &format!(
+                "build build/{version}/gc2/obj/ok build/{version}/gc2/obj/sections.obj build/{version}/gc2/obj/src/x.c.obj build/{version}/gc2/obj/src/y.c.obj: split"
+            ),
+            &format!("gc2/config/{version}/symbols.txt gc2/config/{version}/splits.txt"),
+            // (src/x.c links from source; src/y.c is excluded from the relink)
+            &format!(
+                "build/{version}/gc2/obj/sections.obj build/{version}/gc2/compiled/src/x.c.obj build/{version}/gc2/obj/src/y.c.obj"
+            ),
+        ] {
+            assert!(
+                ninja.contains(expected),
+                "{version}: lacks {expected:?}\n{ninja}"
+            );
+        }
+        // (oracle builds keep config/<version>'s own split and sources)
+        let oracle = build_config::generate(path, &request(true)).unwrap().ninja;
+        assert!(
+            !oracle.contains("gc2/"),
+            "{version}: the oracle build uses the tree"
+        );
+    }
+}

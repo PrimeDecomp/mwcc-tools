@@ -24,8 +24,15 @@ Supported versions:
 - `GC_1_2_5`: GameCube 1.2.5
 - `GC_1_2_5n`: GameCube 1.2.5n (1.2.5 with Ninji's patch)
 - `GC_1_3`: GameCube 1.3
-- `GC_1_3_2`: GameCube 1.3.2 (split and relinked; no sources of its own, see `docs/gc132-differences.md`)
-- `GC_2_7`: GameCube 2.7 (split and relinked from 1.3.2's symbols; no sources of its own, see `docs/gc27-differences.md`)
+- `GC_1_3_2`: GameCube 1.3.2 (106 of 242 units from the GC 2.x sources in `gc2/`, see `docs/gc132-differences.md`)
+- `GC_2_7`: GameCube 2.7 (220 of 253 units from the GC 2.x sources in `gc2/`, see `docs/gc27-differences.md`)
+
+`gc2/` is NWPlayer123's GC 2.x decompilation (CC0), vendored with
+`git subtree` at 888bd76d. 1.3.2 and 2.7 build its sources with its own configuration (`gc2/config/<version>`), and
+the link takes the split original for a unit that does not match; the SHA-1 of the result is the check. Its Python
+tools are not used: `mwcc-tools` builds its library tree (`gc2/lib`, the Pro 5 MSL with the Pro 5.3 updater's
+Windows and Mac groups; tool `lib-2x`, about 8 minutes the first time). The oracle builds of 1.3.2 and 2.7 stay on the
+split executables of `config/<version>`.
 
 Dependencies
 ============
@@ -155,4 +162,5 @@ License
 
 The project's own files are dedicated to the public domain under CC0 (`LICENSE`); third-party components retain their
 upstream licenses. The project started from
-[inspiredrobot/mwcc](https://github.com/inspiredrobot/mwcc), also CC0.
+[inspiredrobot/mwcc](https://github.com/inspiredrobot/mwcc), also CC0. `gc2/` is NWPlayer123's GC 2.x
+decompilation, CC0 (`gc2/LICENSE`).

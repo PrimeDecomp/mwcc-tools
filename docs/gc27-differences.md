@@ -148,3 +148,24 @@ explanation matches on `CInline_ExportCheck` from `names.txt` for that reason.
 * `mwcc-tools corpus --version GC_2_7 --canaries …`: 2313/2313 identical.
 * `mwcc-tools corpus --version GC_2_7 --prime path/to/echoes`: 729/729 identical. Metroid Prime 2: Echoes builds
   most of its units with 2.7. `--prime` takes the plain `mwcc` rules whose `mw_version` is `GC/2.7`.
+
+## Building from the GC 2.x sources
+
+`config/GC_2_7/config.json` names `"source_tree": "gc2"`. The build (not the oracle) then compiles `gc2/src` with
+`gc2/config/GC_2_7` (its splits, symbols, per-source flags and compilers, and Matching from its `state.json`) and links
+in `build/GC_2_7/gc2`:
+
+```
+mwcc-tools configure --version GC_2_7
+ninja all_source build/GC_2_7/gc2/obj/ok
+ninja
+```
+
+220 of the 253 units link from source into the original's SHA-1, and the other 33 link as split. A compiled unit
+can carry more than its range, which the linker drops, so the section-size check of `link` is skipped for a source tree
+and the SHA-1 is the check. `gc2/lib` comes from the `lib-2x` download (Pro 5 MSL, then the Pro 5.3 updater's Windows
+and Mac groups, then three patches; checked against a SHA-256 of the tree).
+
+`mwcc-tools relink-check GC_2_7 [--write]` finds which of the Matching units link. It tries them with trial links and
+halves any group whose link does not give the original. With `--write` it stores the units that fail as
+`relink_exclude` in the tree's `state.json`.
