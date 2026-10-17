@@ -237,6 +237,12 @@ changes), and runs each compile on a thread of its own.
 * The host implements the 63 imports with Win32 semantics, in Rust:
   * Files and directories use `std::fs`, relative to the run's directory. `FindFirstFileA` matches case-insensitively
     and returns its matches in sorted order.
+  * On Windows, a run lists each directory it looks in once, and the listing answers whether a file is there and what
+    it is: the compiler looks each header up in every include directory, and a query of the file system there opens
+    the file. Anything the run creates, writes or deletes drops the listings. This took a compile of an Echoes unit
+    (`CWorldTransManager.cpp`) from about 2.7 s to 0.85 s, as long as the executable takes.
+  * A handle gets the lowest free value, as on Windows. The compiler keeps file handles in 16-bit reference numbers,
+    and values that only grew passed 0x8000 in a large precompile.
   * On a Unix host, the compiler sees the file system as drive `Z:`, as under wibo: `/home/x/a.c` is `Z:\home\x\a.c`.
     Other lookups follow the host's file system, so there they are case-sensitive. Checked on Linux (WSL) with the
     fixture corpus, for both versions and both modules.

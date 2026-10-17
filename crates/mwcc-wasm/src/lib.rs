@@ -111,6 +111,7 @@ struct State {
     heap: Heap,
     started: Instant,
     command_line_at: Option<u32>,
+    listings: Listings,
 }
 
 /// The first handle a run gives.
@@ -134,6 +135,7 @@ impl State {
             heap: Heap::default(),
             started: Instant::now(),
             command_line_at: None,
+            listings: Listings::default(),
         }
     }
 
@@ -530,6 +532,90 @@ fn entry_of(name: String, metadata: &fs::Metadata) -> Entry {
         attributes,
         size: if metadata.is_dir() { 0 } else { metadata.len() },
         written: metadata.modified().map(filetime).unwrap_or(FILETIME_UNIX),
+    }
+}
+
+/// The directories a run has listed, on Windows: the compiler looks each header up in every include directory, and
+/// there a query of the file system opens the file (`fs::metadata`). A directory is listed once, and its listing
+/// answers whether a file is there and what it is. Anything the run creates, writes or deletes forgets them all.
+/// Elsewhere a query is cheap, and the file system answers each.
+#[derive(Default)]
+struct Listings(HashMap<PathBuf, Option<Arc<Listing>>>);
+
+struct Listing {
+    entries: Vec<Entry>,
+    /// Each entry by its name as Windows compares names (case-insensitively).
+    by_name: HashMap<String, usize>,
+}
+
+/// What the listings say of a path.
+enum Lookup {
+    Found(Entry),
+    /// Not in its directory.
+    NoFile,
+    /// Its directory is not there.
+    NoPath,
+    /// Ask the file system: not Windows, a path a listing does not answer for (a root, `..` at its end), or a name
+    /// that may be a short (8.3) alias.
+    Unknown,
+}
+
+fn listing_of(directory: &Path) -> Option<Listing> {
+    let mut entries = vec![];
+    for e in fs::read_dir(directory).ok()?.flatten() {
+        let name = e.file_name().to_string_lossy().into_owned();
+        // (a link's entry describes the link: follow it)
+        let metadata = match e.file_type() {
+            Ok(t) if t.is_symlink() => fs::metadata(e.path()),
+            _ => e.metadata(),
+        };
+        if let Ok(m) = metadata {
+            entries.push(entry_of(name, &m));
+        }
+    }
+    let by_name = entries
+        .iter()
+        .enumerate()
+        .map(|(i, e)| (e.name.to_ascii_uppercase(), i))
+        .collect();
+    Some(Listing { entries, by_name })
+}
+
+impl Listings {
+    /// DIRECTORY's listing (`None`: it is not there).
+    fn directory(&mut self, directory: &Path) -> Option<Arc<Listing>> {
+        if !cfg!(windows) {
+            return listing_of(directory).map(Arc::new);
+        }
+        self.0
+            .entry(directory.to_path_buf())
+            .or_insert_with(|| listing_of(directory).map(Arc::new))
+            .clone()
+    }
+
+    fn lookup(&mut self, path: &Path) -> Lookup {
+        if !cfg!(windows) {
+            return Lookup::Unknown;
+        }
+        let (Some(directory), Some(name)) = (path.parent(), path.file_name()) else {
+            return Lookup::Unknown;
+        };
+        if directory.as_os_str().is_empty() {
+            return Lookup::Unknown;
+        }
+        let name = name.to_string_lossy();
+        match self.directory(directory) {
+            None => Lookup::NoPath,
+            Some(listing) => match listing.by_name.get(&name.to_ascii_uppercase()) {
+                Some(&i) => Lookup::Found(listing.entries[i].clone()),
+                None if name.contains('~') => Lookup::Unknown,
+                None => Lookup::NoFile,
+            },
+        }
+    }
+
+    fn forget(&mut self) {
+        self.0.clear();
     }
 }
 
@@ -1035,14 +1121,26 @@ fn imports(linker: &mut Linker<State>) -> Result<()> {
      -> u32 {
         let name = read_string(c, path)?;
         let path = host_path(c.data(), &name);
-        if path.is_dir() {
+        let (is_directory, exists, parent_exists) = match c.data_mut().listings.lookup(&path) {
+            Lookup::Found(e) => (e.attributes & FILE_ATTRIBUTE_DIRECTORY != 0, true, true),
+            Lookup::NoFile => (false, false, true),
+            Lookup::NoPath => (false, false, false),
+            Lookup::Unknown => (
+                path.is_dir(),
+                path.exists(),
+                path.parent().is_none_or(Path::exists),
+            ),
+        };
+        if is_directory {
             c.data_mut().last_error = ERROR_ACCESS_DENIED;
             return Ok(INVALID_HANDLE_VALUE);
         }
         let mut options = fs::OpenOptions::new();
         options.read(access & 0x8000_0000 != 0 || access & 0x4000_0000 == 0);
         options.write(access & 0x4000_0000 != 0);
-        let exists = path.exists();
+        if access & 0x4000_0000 != 0 || matches!(creation, 1 | 2 | 4 | 5) {
+            c.data_mut().listings.forget();
+        }
         match creation {
             1 => {
                 options.create_new(true);
@@ -1059,7 +1157,6 @@ fn imports(linker: &mut Linker<State>) -> Result<()> {
             _ => {}
         }
         if !exists && matches!(creation, 3 | 5) {
-            let parent_exists = path.parent().is_none_or(Path::exists);
             c.data_mut().last_error = if parent_exists {
                 ERROR_FILE_NOT_FOUND
             } else {
@@ -1079,13 +1176,12 @@ fn imports(linker: &mut Linker<State>) -> Result<()> {
                 Ok(handle)
             }
             Err(error) => {
-                c.data_mut().last_error = if error.kind() == std::io::ErrorKind::NotFound
-                    && path.parent().is_some_and(|p| !p.exists())
-                {
-                    ERROR_PATH_NOT_FOUND
-                } else {
-                    io_error(&error)
-                };
+                c.data_mut().last_error =
+                    if error.kind() == std::io::ErrorKind::NotFound && !parent_exists {
+                        ERROR_PATH_NOT_FOUND
+                    } else {
+                        io_error(&error)
+                    };
                 Ok(INVALID_HANDLE_VALUE)
             }
         }
@@ -1158,7 +1254,11 @@ fn imports(linker: &mut Linker<State>) -> Result<()> {
                 Ok(())
             }
             _ => match c.data_mut().handles.get_mut(&handle) {
-                Some(Handle::File { file }) => file.write_all(&data).map_err(|e| io_error(&e)),
+                Some(Handle::File { file }) => {
+                    let result = file.write_all(&data).map_err(|e| io_error(&e));
+                    c.data_mut().listings.forget();
+                    result
+                }
                 _ => Err(ERROR_INVALID_HANDLE),
             },
         };
@@ -1274,6 +1374,16 @@ fn imports(linker: &mut Linker<State>) -> Result<()> {
             return Ok(FILE_ATTRIBUTE_NORMAL);
         }
         let path = host_path(c.data(), &name);
+        let error = match c.data_mut().listings.lookup(&path) {
+            Lookup::Found(e) => return Ok(e.attributes),
+            Lookup::NoFile => Some(ERROR_FILE_NOT_FOUND),
+            Lookup::NoPath => Some(ERROR_PATH_NOT_FOUND),
+            Lookup::Unknown => None,
+        };
+        if let Some(error) = error {
+            c.data_mut().last_error = error;
+            return Ok(INVALID_HANDLE_VALUE);
+        }
         match fs::metadata(&path) {
             Ok(m) => Ok(entry_of(String::new(), &m).attributes),
             Err(e) => {
@@ -1296,6 +1406,7 @@ fn imports(linker: &mut Linker<State>) -> Result<()> {
     import!(linker, "DeleteFileA", |c, path: u32| -> u32 {
         let name = read_string(c, path)?;
         let path = host_path(c.data(), &name);
+        c.data_mut().listings.forget();
         match fs::remove_file(path) {
             Ok(()) => Ok(1),
             Err(e) => fail(c, io_error(&e)),
@@ -1307,6 +1418,7 @@ fn imports(linker: &mut Linker<State>) -> Result<()> {
      -> u32 {
         let name = read_string(c, path)?;
         let path = host_path(c.data(), &name);
+        c.data_mut().listings.forget();
         match fs::create_dir(path) {
             Ok(()) => Ok(1),
             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
@@ -1318,6 +1430,7 @@ fn imports(linker: &mut Linker<State>) -> Result<()> {
     import!(linker, "RemoveDirectoryA", |c, path: u32| -> u32 {
         let name = read_string(c, path)?;
         let path = host_path(c.data(), &name);
+        c.data_mut().listings.forget();
         match fs::remove_dir(path) {
             Ok(()) => Ok(1),
             Err(e) => fail(c, io_error(&e)),
@@ -1377,38 +1490,46 @@ fn imports(linker: &mut Linker<State>) -> Result<()> {
                 written: FILETIME_UNIX,
             });
         } else if !wildcard.contains(['*', '?']) {
-            if let Ok(m) = fs::metadata(host_path(c.data(), &pattern)) {
+            let path = host_path(c.data(), &pattern);
+            match c.data_mut().listings.lookup(&path) {
                 // (the name as the directory has it)
-                let path = host_path(c.data(), &pattern);
-                let name = path
-                    .parent()
-                    .and_then(|p| fs::read_dir(p).ok())
-                    .and_then(|mut d| {
-                        d.find_map(|e| {
-                            let e = e.ok()?;
-                            let n = e.file_name().to_string_lossy().into_owned();
-                            n.eq_ignore_ascii_case(&wildcard).then_some(n)
-                        })
-                    })
-                    .unwrap_or(wildcard.clone());
-                entries.push(entry_of(name, &m));
-            }
-        } else if let Ok(listing) = fs::read_dir(host_path(
-            c.data(),
-            if directory.is_empty() {
-                "."
-            } else {
-                &directory
-            },
-        )) {
-            for e in listing.flatten() {
-                let name = e.file_name().to_string_lossy().into_owned();
-                if matches(wildcard.as_bytes(), name.as_bytes())
-                    && let Ok(m) = e.metadata()
-                {
-                    entries.push(entry_of(name, &m));
+                Lookup::Found(e) => entries.push(e),
+                Lookup::NoFile | Lookup::NoPath => {}
+                Lookup::Unknown => {
+                    if let Ok(m) = fs::metadata(&path) {
+                        let name = path
+                            .parent()
+                            .and_then(|p| fs::read_dir(p).ok())
+                            .and_then(|mut d| {
+                                d.find_map(|e| {
+                                    let e = e.ok()?;
+                                    let n = e.file_name().to_string_lossy().into_owned();
+                                    n.eq_ignore_ascii_case(&wildcard).then_some(n)
+                                })
+                            })
+                            .unwrap_or(wildcard.clone());
+                        entries.push(entry_of(name, &m));
+                    }
                 }
             }
+        } else if let Some(listing) = {
+            let path = host_path(
+                c.data(),
+                if directory.is_empty() {
+                    "."
+                } else {
+                    &directory
+                },
+            );
+            c.data_mut().listings.directory(&path)
+        } {
+            entries.extend(
+                listing
+                    .entries
+                    .iter()
+                    .filter(|e| matches(wildcard.as_bytes(), e.name.as_bytes()))
+                    .cloned(),
+            );
             if matches(wildcard.as_bytes(), b".") {
                 entries.insert(
                     0,
@@ -1543,6 +1664,62 @@ mod tests {
             (kept, a, b),
             (FIRST_HANDLE, FIRST_HANDLE + 4, FIRST_HANDLE + 8)
         );
+    }
+
+    #[test]
+    fn listings_answer_lookups_until_forgotten() {
+        let directory =
+            std::env::temp_dir().join(format!("mwcc-wasm-listings-{}", std::process::id()));
+        fs::create_dir_all(directory.join("sub")).unwrap();
+        fs::write(directory.join("Header.h"), "x").unwrap();
+        let mut listings = Listings::default();
+        let found = |l: Lookup| match l {
+            Lookup::Found(e) => Some(e.name),
+            _ => None,
+        };
+        if cfg!(windows) {
+            assert_eq!(
+                found(listings.lookup(&directory.join("HEADER.H"))),
+                Some("Header.h".into())
+            );
+            assert!(matches!(
+                listings.lookup(&directory.join("other.h")),
+                Lookup::NoFile
+            ));
+            assert!(matches!(
+                listings.lookup(&directory.join("none/a.h")),
+                Lookup::NoPath
+            ));
+            assert!(matches!(
+                listings.lookup(&directory.join("HEADER~1.H")),
+                Lookup::Unknown
+            ));
+            // (a listing answers until the run changes the file system)
+            fs::write(directory.join("other.h"), "y").unwrap();
+            assert!(matches!(
+                listings.lookup(&directory.join("other.h")),
+                Lookup::NoFile
+            ));
+            listings.forget();
+            assert_eq!(
+                found(listings.lookup(&directory.join("other.h"))),
+                Some("other.h".into())
+            );
+        } else {
+            assert!(matches!(
+                listings.lookup(&directory.join("Header.h")),
+                Lookup::Unknown
+            ));
+        }
+        let names: Vec<String> = listings
+            .directory(&directory)
+            .unwrap()
+            .entries
+            .iter()
+            .map(|e| e.name.clone())
+            .collect();
+        assert!(names.contains(&"Header.h".to_owned()) && names.contains(&"sub".to_owned()));
+        fs::remove_dir_all(&directory).unwrap();
     }
 
     #[test]
