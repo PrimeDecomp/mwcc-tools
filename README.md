@@ -33,6 +33,8 @@ the link takes the split original for a unit that does not match; the SHA-1 of t
 tools are not used: `mwcc-tools` builds its library tree (`gc2/lib`, the Pro 5 MSL with the Pro 5.3 updater's
 Windows and Mac groups; tool `lib-2x`, about 8 minutes the first time). The oracle builds of 1.3.2 and 2.7 stay on the
 split executables of `config/<version>`.
+`ninja build/GC_2_7/gc2/source-only/mwcceppc.exe` links 2.7's compiler from the sources alone, the units that do not
+match too (`docs/gc27-differences.md`).
 
 Dependencies
 ============

@@ -371,9 +371,9 @@ pub fn patch<'a>(
             let mut kept = vec![];
             for r in &section.relocations {
                 let symbol = &object.symbols[&r.symbol];
-                if !(symbol.storage == EXTERNAL && symbol.section == 0 && symbol.value == 0)
-                    || !missing.contains(&symbol.name)
-                {
+                let undefined =
+                    symbol.storage == EXTERNAL && symbol.section == 0 && symbol.value == 0;
+                if !(undefined && missing.contains(&symbol.name)) {
                     kept.push(r.clone());
                     continue;
                 }
@@ -578,7 +578,7 @@ pub fn compile_resources(
 }
 
 fn pad4(data: &mut Vec<u8>) {
-    while data.len() % 4 != 0 {
+    while !data.len().is_multiple_of(4) {
         data.push(0);
     }
 }

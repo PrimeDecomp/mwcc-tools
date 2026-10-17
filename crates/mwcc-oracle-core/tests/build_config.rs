@@ -323,6 +323,17 @@ fn vendored_source_tree_builds_from_its_own_sources_and_split() {
                 "{version}: lacks {expected:?}\n{ninja}"
             );
         }
+        // (the compiler of the sources alone, on request: 2.7's own; 1.3.2 builds 2.7's sources)
+        let source_only = format!(
+            "build build/{version}/gc2/source-only/mwcceppc.exe: source_only build/{version}/gc2/compiled/src/x.c.obj build/{version}/gc2/compiled/src/y.c.obj | "
+        );
+        assert_eq!(
+            ninja.contains(&source_only),
+            version == "GC_2_7",
+            "{version}: the source-only edge
+{ninja}"
+        );
+        assert!(!ninja.contains("default build/GC_2_7/gc2/source-only"));
         // (oracle builds keep config/<version>'s own split and sources)
         let oracle = build_config::generate(path, &request(true)).unwrap().ninja;
         assert!(

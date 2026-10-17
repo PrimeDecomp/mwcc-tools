@@ -169,3 +169,28 @@ and Mac groups, then three patches; checked against a SHA-256 of the tree).
 `mwcc-tools relink-check GC_2_7 [--write]` finds which of the Matching units link. It tries them with trial links and
 halves any group whose link does not give the original. With `--write` it stores the units that fail as
 `relink_exclude` in the tree's `state.json`.
+
+### The compiler of the sources alone
+
+```
+ninja all_source build/GC_2_7/gc2/source-only/mwcceppc.exe
+mwcc-tools corpus --version GC_2_7 --canaries … --exe build/GC_2_7/gc2/source-only/mwcceppc.exe
+```
+
+`mwcc-tools source-only GC_2_7` (the ninja target runs it; it is not built by default) links every compiled object of
+the tree (248, those that do not match too) and nothing of the original's. It is a port of gc2's `tools/equivalent.py
+--source-only`:
+
+* The inputs are the runtime objects of `gc2/lib`, then the objects in `gc2/config/sources.json`'s order, then import
+  libraries with thunks made from `gc2/src/imports/*.def`, then resources compiled from `gc2/src/driver/mwcceppc.rc`.
+  The resource compiler is a small one for the subset that script uses (its VERSIONINFO data is llvm-rc's, byte for
+  byte), so neither LLVM nor gc2's Python is needed. gc2's license stand-in, `gc2/tools/lmgr_stub/lmgr326b.dll`, is
+  copied beside it.
+* COMDAT sections the compiler marks "no duplicates" are made "any": `LicenseImports.c`'s thunks for the license
+  functions are the import library's too (6185 COMDATs).
+* A name nothing defines is an error, unless only functions the original does not have refer to it. Those references
+  are dropped and those functions start with `ud2` (10 functions, among them `CIRTrans_TransExpr` and
+  `GetOutputFileDirectory`; the linker drops them anyway).
+
+Its imports are the original's 66, in the definitions' order. The canary corpus gives 2313/2313 identical with it.
+1.3.2 has no source-only compiler: it builds 2.7's sources, which would make it 2.7's.
