@@ -778,7 +778,6 @@
 0x0056F480 0x152 strengthreduceinductionvariables fn_00527290
 0x0056F780 0x228 calc_biv_init fn_005275a0
 0x00570030 0x20E findallnonbasicinductionvariables fn_00527e80
-0x00570A60 0xCA findinitializer fn_005288e0
 0x00570B30 0x82 optimizeloops fn_005289b0
 0x005732F0 0xDF skiplooptest fn_0052b1a0
 0x00574990 0x73 isunsignedloadoperand fn_00574990

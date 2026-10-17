@@ -122,8 +122,10 @@ NWPlayer123's CC0 GC 2.x decompilation, from its 2.7 `symbols.txt` at commit `88
 its names against Pro7 (Ninji's decompilation), the Wii compilers' CodeView and the assert lines. The tables
 cover 1092 of 2.7's 1093 `fn_` symbols. One `fn_` symbol can hold several of its functions: 2.7's `fn_004a7500`
 is `CreateNewLoopExitSuccessor`, `CreatePreHeader` and `CreateRIS`, and the name of the function at the address
-is used. 1.3 and 1.3.2 take a 2.7 name only where the same `fn_` symbol has the same size (823 and 842 symbols).
-Their other `fn_` symbols changed by 2.7 and stay unnamed.
+is used. 1.3 and 1.3.2 take a 2.7 name only where the same `fn_` symbol has the same size (822 and 841 symbols).
+With call targets and addresses masked, all but six of each are at least 90% the same bytes as 2.7's. Five of those
+six are at 78–89% and keep the name. `fn_005288e0` (`findinitializer` in 2.7) is at 20% and is left out. Their other `fn_` symbols changed by
+2.7 and stay unnamed.
 
 ## Check many inputs
 

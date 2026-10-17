@@ -80,7 +80,7 @@ The 343, by the source file the function had in 1.3.2:
   | field | 1.3.2 | 2.7 |
   | --- | ---: | ---: |
   | `inlineLimit` | 0x68 | 0x6c |
-  | `inlineAuto` | 0x72 | 0x76 |
+  | `inlineBottomUp` | 0x72 | 0x76 |
   | `alwaysinline` | 0xd8 | 0xdc |
 
 * These were found by pairing the operands of the functions matched between the two versions that fall in `copts`'s

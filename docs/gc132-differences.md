@@ -37,7 +37,7 @@ What this means for the oracle:
 * The inliner changed. `can_inline` (`_fn_0055ed70` in 1.3.2, `_can_inline` in 1.3) and `inline_call_expression`
   (`_fn_0055f350`, `_inline_call_expression`) changed; the body-cost walk (`fn_0055e540`, now at 0x55F0A0) is the same code
   moved. The options structure `copts` has three more bytes before `alwaysinline` (offset 0xd5 in 1.3, 0xd8 in 1.3.2;
-  `inlineAuto` is at 0x72 and `inlineLimit` at 0x68 in both; `copts` is at 0x5E90E6 in 1.3.2 and the three are
+  `inlineBottomUp` (`#pragma inline_bottom_up`) is at 0x72 and `inlineLimit` at 0x68 in both; `copts` is at 0x5E90E6 in 1.3.2 and the three are
   read at 0x5E91BE, 0x5E9158 and 0x5E914E by `fn_0055ed70`).
 * The pointer analysis (`IroPointerAnalysis`) is the largest change in the optimizer, then the preprocessor and
   the parser support for precompiled headers (`CPrec`).
