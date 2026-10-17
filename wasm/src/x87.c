@@ -347,7 +347,8 @@ static Ext scale(Ext x, int n, int divide)
         big = (n >> 5) - 1;
         small = n & 31;
         if (big > 10) {
-            /* (past the original's table: it reads what follows it; the exponents strtold takes stay within) */
+            /* (past the original's table, from 10^384 on: it reads what follows it, which this does not have; a
+               literal's value can differ there, see docs/wasm.md) */
             big = 10;
         }
         power = mul(from80(&big_powers_of_ten[big]), from80(&powers_of_ten[small]));

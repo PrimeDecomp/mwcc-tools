@@ -1,8 +1,6 @@
-/* What the compiler uses of MSL's Win32 extras.c, which the wasm build cannot compile whole (its _alloca is
- * assembly): these follow lib/msl/MSL_Win32/Src/extras.c. */
-#include "ansi_prefix.Win32.h"
-#include <ctype.h>
-#include "crtl.h"
+/* What the compiler uses of MSL Win32's extras (_strnicmp, and the handle table's next free entry) and of its block
+ * copies and fills. */
+#include "libc.h"
 
 int _doserrno = 0;
 

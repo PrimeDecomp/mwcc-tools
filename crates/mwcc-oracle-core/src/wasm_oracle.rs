@@ -974,7 +974,7 @@ pub fn run(root: &Path, version: &str, clang: &str, wasm_ld: &str) -> Result<Out
         jobs.push(codegen_arguments(&edited, &object));
         extra.push(object);
     }
-    // (oracle.c, with the arguments of MSL's sources)
+    // (oracle.c, with the arguments of the C library's sources)
     ensure!(
         thunks.len() <= 1 && thunks.iter().all(|g| places[VARIADIC.0].name == *g),
         "variadic hooks other than {}: {thunks:?}",
@@ -982,8 +982,8 @@ pub fn run(root: &Path, version: &str, clang: &str, wasm_ld: &str) -> Result<Out
     );
     let like = units
         .iter()
-        .find(|u| u.name == "wasm/src/msl_extras.c")
-        .context("wasm/src/msl_extras.c is not a unit")?;
+        .find(|u| u.name == "wasm/libc/extras.c")
+        .context("wasm/libc/extras.c is not a unit")?;
     let object = format!("{work}/oracle.c.o");
     let mut arguments = like.arguments.clone();
     arguments.extend([

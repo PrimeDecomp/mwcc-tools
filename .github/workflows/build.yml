@@ -60,7 +60,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y ninja-build unshield
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
 
       - name: Install LLVM 22 (clang, wasm-ld)
         run: |
@@ -68,13 +68,12 @@ jobs:
           sudo bash llvm.sh 22
           sudo apt-get install -y lld-22
 
+      # (the original compilers, the comparison's reference: the modules themselves need nothing downloaded)
       - uses: actions/cache@v4
         with:
           path: |
             build/compilers
-            lib
-            gc2/lib
-          key: compilers-${{ runner.os }}-${{ hashFiles('crates/mwcc-oracle-core/src/download.rs', 'crates/mwcc-oracle-core/src/download/*.rs') }}
+          key: original-compilers-${{ runner.os }}-${{ hashFiles('crates/mwcc-oracle-core/src/download.rs', 'crates/mwcc-oracle-core/src/download/*.rs') }}
 
       - name: Install pinned Rust toolchain
         run: |

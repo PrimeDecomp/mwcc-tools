@@ -27,8 +27,8 @@ and `--trace-reference` as processes.
 
 The build needs LLVM's `clang` and `wasm-ld`: version 22 or later, because they read the hooks' IR from Rust's LLVM 22.
 It uses the tools on the path, or `CLANG` and `WASM_LD` at `configure` time. It also needs Rust's
-`wasm32-unknown-unknown` target (`rustup target add wasm32-unknown-unknown`), and MSL's headers from the downloaded
-library tree, `gc2/lib`. The 236 units compile in about 4 seconds. Cranelift compiles a module once per process
+`wasm32-unknown-unknown` target (`rustup target add wasm32-unknown-unknown`). Nothing is downloaded: the C library is
+`wasm/libc`'s, not MSL's. The 203 units compile in about 4 seconds. Cranelift compiles a module once per process
 (1.5 to 2 seconds); a compile then takes 5 to 8 ms.
 
 CI builds both modules for 2.6 and 2.7 on Linux, and compares them with the original compiler under wibo on
@@ -39,9 +39,9 @@ CI builds both modules for 2.6 and 2.7 on Linux, and compares them with the orig
 * Canaries (2313): both stock modules give 2313/2313 identical with the original compilers: objects, messages and
   exit codes.
 * Traces: on the canaries, the oracle modules' traces (`--all-traces`) match those of the x86 oracles (2.6's,
-  split from the original, and 2.7's source-built one) on 2308/2313. The other 5 differ in one field, `st.block`'s
-  `weight`. That is a block's `loopWeight`, read before anything sets it, so it shows what the heap had there. The
-  x86 traces show a stale pointer.
+  split from the original, and 2.7's source-built one) on 2313/2313. A block's `loopWeight` (`st.block`'s `weight`)
+  is read before anything sets it, so it shows what the heap had there; `wasm/libc`'s allocator places blocks as
+  MSL's does, so it shows the same stale value.
 * Floating point: folding matches the original on 40,000 random `+ - * /` of doubles, 20,000 of floats and 20,000
   of converted integers (see below).
 * Metroid Prime 2: Echoes (`corpus --prime`, 2.7): 949/950 identical. The one that differs depends on the host:
@@ -60,25 +60,26 @@ CI builds both modules for 2.6 and 2.7 on Linux, and compares them with the orig
 
 ## How it is built
 
-`crates/mwcc-oracle-core/src/wasm_build.rs` has the edges of the stock module: 230 gc2 sources and 6 of `wasm/src`.
+`crates/mwcc-oracle-core/src/wasm_build.rs` has the edges of the stock module: 190 gc2 sources, 6 of `wasm/src` and
+the 7 of `wasm/libc`.
 
 * Each source is compiled with the defines, include paths and `-align` (`-fpack-struct`) the build gives it, plus
   `-fshort-enums`. MWCC's enums are as small as their values allow (`enumsalwaysint` off), and the hooks read
   structures with that layout.
-* Left out: the startup in `src/runtime` (except `setupargs.c`), `LicenseImports.c`, and MSL's x86 assembly
-  (`setjmp_x86.c`, `ansifp_x86.c` and `extras.c`).
-* `wasm/src` replaces them:
+* Left out: `src/msl` and `src/runtime` (MSL and its startup, compiled from the downloaded `gc2/lib`), and
+  `LicenseImports.c`.
+* `wasm/libc` replaces MSL (below, [The C library](#the-c-library)).
+* `wasm/src` replaces the rest:
   * `start.c` is the entry point `_start`.
   * `sjlj.c` and `sjlj_tag.s` give `setjmp`/`longjmp` on WebAssembly exceptions. They are the standard exceptions
     (`-wasm-use-legacy-eh=false`), which wasmtime runs.
   * `x87.c` emulates the x87 (below).
-  * `msl_extras.c` has the functions of `extras.c` and MSL's memory copies in C.
   * `new.cpp` has `operator new`, and `platform.c` has the license calls (always granted).
 * `wasm/include` has the C headers clang lacks (`stdarg.h`, `setjmp.h`). It also has Windows headers made from gc2's
-  `include/compiler/win32.h` plus `win32_extra.h`, the few declarations MSL's Win32 layer takes from the SDK. No SDK
+  `include/compiler/win32.h` plus `win32_extra.h`, the few declarations the C library takes from the SDK. No SDK
   header is used. `wasm/include-case` has the other spellings the sources use (`windef.h`, `Windows.h`, ...), for
   case-sensitive file systems.
-* MSL's `long double` is a double (`-mlong-double-64`). gnu89 `extern inline` functions are defined in each unit, so
+* `long double` is a double (`-mlong-double-64`). gnu89 `extern inline` functions are defined in each unit, so
   the link takes any one copy (`--allow-multiple-definition`).
 * What WebAssembly needs of gc2's sources is in gc2 itself, under `#ifdef __wasm__`. MWCC builds of them are
   unchanged.
@@ -88,7 +89,42 @@ CI builds both modules for 2.6 and 2.7 on Linux, and compares them with the orig
     `-Wcast-function-type-mismatch` finds no others.
   * Constant folding goes through `CMACH_FOLD` and `CMACH_RECIPROCAL` (`include/compiler/CMachine.h`).
 
-The module's imports are 63 Win32 functions of kernel32 and version.dll. MSL's Win32 layer and the driver call them.
+The module's imports are 56 Win32 functions of kernel32 and version.dll. The C library and the driver call them.
+
+### The C library
+
+`wasm/libc` is a C library written for the module, from the Metroid Prime 2: Echoes decompilation's MSL
+([PrimeDecomp/echoes](https://github.com/PrimeDecomp/echoes), `src/Runtime`, CC0), changed to do what CodeWarrior
+Pro 5.3's Win32 MSL does wherever the compiler's output or its traces can tell. It uses gc2's own C headers
+(`include/libc`), so its structures have their layout.
+
+* `alloc.c`: MSL's allocator (`malloc`, `free`, `realloc`, `calloc`), with the Win32 build's settings. The heap's
+  layout reaches the traces (uninitialized reads, pointer order in hash tables), so blocks are placed as MSL places
+  them:
+  * variable-size pools from `GlobalAlloc`, each the size plus 24, rounded up to 4 KiB, and at least 64 KiB; 8-byte
+    alignment, and no piece smaller than 80 bytes is split off;
+  * four fixed-size pools, of 12, 20, 36 and 68 bytes, in blocks of 4000 bytes, freed when no piece is in use.
+* `string.c`: the string and memory functions, `qsort` (a heapsort, as MSL's: the order of equal elements shows),
+  `strcmp` (the difference of the unsigned characters), `memcpy` (forward, by words from 32 bytes on), the
+  character tables and `strerror`'s messages.
+* `printf.c`: the `printf` family, with MSL's spellings (`(null)`, `NaN`, no `%a`).
+* `scan.c`: `strtol`, `strtoul`, `strtod` (20 significant digits, read by `__dec2num`; below `DBL_MIN` is 0) and
+  `sscanf`'s integer conversions.
+* `stdio.c`: the files: `fopen`, `fwrite`, `fputs`, `setvbuf`, `fflush`, `fclose`, on the Win32 handles. The
+  standard streams are static, buffers and the handle table are allocated as MSL allocates them, and text mode
+  writes `
+`.
+* `runtime.c`: the startup (`_CRTStartup`: handles, environment, thread data and arguments, in MSL's order), the
+  thread data (596 bytes, `errno` first), `atexit`/`exit`, `signal`/`raise`/`abort`, the time functions and
+  `__assertion_failed`.
+* `extras.c`: the Metrowerks extras the compiler calls (`_strnicmp`, `GetHandle`, ...) and MSL's word copies.
+
+It was checked against the original compilers and the earlier module (built with Pro 5.3's MSL itself):
+
+* the canaries, 2.6 and 2.7: 2313/2313 identical objects and messages, and 2313/2313 identical traces;
+* the raw traces with the source arenas, every 40th canary: the same records, the addresses of statics apart;
+* the module's imports: a subset of the earlier module's (no critical sections or thread-local slots);
+* floating-point literals, of exponents from -340 to 310, and halfway cases: the same values as the original.
 
 ### The oracle
 
@@ -175,6 +211,10 @@ The original compiler runs on the x87, and two of its behaviors reach its output
   * `x87.c` does both on a software 80-bit number, with 64-bit significands, rounding to nearest even and the
     original's tables of powers of ten.
   * Checked against the real x87 code of `ansifp_x86.c` on 6 million random inputs: no difference.
+  * `__dec2num` scales its 18 digits by `10^n`. From `|n| = 384` on (a literal far beyond a double's range, such as
+    `1e-380`), the original takes a power of ten past the end of its table, from whatever bytes follow it. `x87.c`
+    uses the table's last entry instead, so such a literal can get another value. Literals of exponents between
+    -340 and 310 stay within the table.
 * `__dec2num` sets the x87 to 64-bit precision (`or cw, 0x300`) and never restores it. So, from the first literal
   on, each `+ - * /` the compiler computes on doubles is rounded twice: first to 64 bits, then to 53 when it is stored.
   * Before any literal is read, the x87 is at Windows's 53 bits, and a result is rounded once.
@@ -205,8 +245,8 @@ changes), and runs each compile on a thread of its own.
   * The command line and environment are the caller's. `GetFullPathNameA` normalizes paths the Windows way and
     leaves verbatim (`\\?\`) paths as they are. The run's directory is given without the verbatim prefix, as a
     process's current directory has it.
-  * There is one thread: thread-local slots and no-op critical sections.
-  * `GlobalAlloc` has its own heap above the module's memory, because MSL's allocator gets its pools from it.
+  * There is one thread: thread-local slots and no-op critical sections (the x86 oracle's MSL calls them).
+  * `GlobalAlloc` has its own heap above the module's memory, because the allocator gets its pools from it.
   * Times are UTC.
   * `CreateProcessA` fails, because nothing in a compile calls it. `FindResourceA` fails with 1813, as the original
     does.

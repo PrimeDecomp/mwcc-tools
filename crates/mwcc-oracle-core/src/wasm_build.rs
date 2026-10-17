@@ -1,15 +1,16 @@
 //! The compiler of gc2's sources built for WebAssembly, to run in process (crates/mwcc-wasm): the build of GC 2.6 and
 //! 2.7 (`build/<version>/wasm/mwcceppc.wasm`, one of `configure`'s default targets). It needs LLVM's clang and wasm-ld
-//! (`$clang`, `$wasm_ld`), and MSL's headers from the library tree (`gc2/lib`, downloaded).
+//! (`$clang`, `$wasm_ld`), and nothing downloaded.
 //!
 //! Each source is compiled with clang from the arguments the build gives it (its defines, among them `VERSION`, its
-//! include paths and `-align`); the module is linked from them and from `wasm/src`, which stands in for what is x86 or
-//! Windows-only:
+//! include paths and `-align`); the module is linked from them and from `wasm/`'s sources, which stand in for what
+//! is x86, Windows-only or Metrowerks':
 //!
-//! * the startup (`src/runtime`, but for `setupargs.c`), which `start.c` replaces;
+//! * the C library and its runtime (gc2's `src/msl` and `src/runtime`, which compile MSL's own sources from the
+//!   downloaded `gc2/lib`): `wasm/libc`, which behaves as MSL does wherever the compiler can tell (see `libc.h`);
+//! * the startup, `start.c`;
 //! * MSL's x87 code: `x87.c` emulates `__dec2num` and `__num2dec`'s 80-bit arithmetic, and the double rounding of the
-//!   compiler's constant folding (gc2's `CMACH_FOLD`); `msl_extras.c` has `extras.c`'s functions and `mem_funcs.c`'s
-//!   copies in C;
+//!   compiler's constant folding (gc2's `CMACH_FOLD`);
 //! * `setjmp` (`sjlj.c`, on wasm exceptions), `operator new` (`new.cpp`) and the license calls (`platform.c`).
 //!
 //! `wasm/include` has the C headers clang lacks and Windows headers made of gc2's `include/compiler/win32.h`; the
@@ -22,25 +23,27 @@ use std::path::Path;
 /// The versions gc2's sources build (`VERSION`), and so the module.
 pub const VERSIONS: [&str; 2] = ["GC_2_6", "GC_2_7"];
 
-/// Sources the module does without (wasm/src replaces them).
-const SKIP: &[&str] = &[
-    "src/driver/LicenseImports.c",
-    "src/msl/setjmp_x86.c",
-    "src/msl/ansifp_x86.c",
-    "src/msl/extras.c",
-];
-const SKIP_DIRECTORY: &str = "src/runtime/";
-const KEEP: &str = "src/runtime/setupargs.c";
+/// Sources the module does without (wasm/ replaces them).
+const SKIP: &[&str] = &["src/driver/LicenseImports.c"];
+const SKIP_DIRECTORIES: &[&str] = &["src/msl/", "src/runtime/"];
 
-/// wasm/src's sources, each with the arguments of the source it stands in for (or beside).
+/// wasm/'s sources, each with the arguments of a source of the tree (the library's: a source of the compiler's
+/// that sees gc2's C headers alone).
 const PLATFORM: &[(&str, &str)] = &[
-    ("wasm/src/x87.c", "src/msl/mem.c"),
-    ("wasm/src/msl_extras.c", "src/msl/mem.c"),
+    ("wasm/libc/alloc.c", LIBRARY),
+    ("wasm/libc/extras.c", LIBRARY),
+    ("wasm/libc/printf.c", LIBRARY),
+    ("wasm/libc/runtime.c", LIBRARY),
+    ("wasm/libc/scan.c", LIBRARY),
+    ("wasm/libc/stdio.c", LIBRARY),
+    ("wasm/libc/string.c", LIBRARY),
+    ("wasm/src/x87.c", LIBRARY),
+    ("wasm/src/start.c", LIBRARY),
     ("wasm/src/sjlj.c", "src/driver/CLMain.c"),
-    ("wasm/src/start.c", "src/runtime/setupargs.c"),
     ("wasm/src/platform.c", "src/driver/CLPlugins.c"),
     ("wasm/src/new.cpp", "src/driver/CLDropinCallbacks_V10.cpp"),
 ];
+const LIBRARY: &str = "src/driver/CLIO.c";
 /// The tag `longjmp` throws (an assembly source).
 const TAG: &str = "wasm/src/sjlj_tag.s";
 
@@ -86,15 +89,6 @@ pub struct Unit {
 /// clang's arguments for SOURCE (of the tree at PREFIX) from the build's ARGUMENTS for it.
 fn clang_arguments(source: &str, prefix: &str, arguments: &[String]) -> Vec<String> {
     let cpp = source.ends_with(".cpp") || source.ends_with(".cp");
-    let msl = [
-        "src/msl/",
-        "src/runtime/",
-        "wasm/src/msl_",
-        "wasm/src/x87",
-        "wasm/src/start",
-    ]
-    .iter()
-    .any(|p| source.starts_with(p));
     let mut options = vec!["little_endian", "longlong"];
     if cpp {
         options.extend(["cplusplus", "bool", "wchar_type"]);
@@ -173,9 +167,6 @@ fn clang_arguments(source: &str, prefix: &str, arguments: &[String]) -> Vec<Stri
         "-include".into(),
         "wasm/include/stdarg.h".into(),
     ]);
-    if msl {
-        out.extend(["-include".into(), "ansi_prefix.Win32.h".into()]);
-    }
     out
 }
 
@@ -192,7 +183,7 @@ pub fn units(root: &Path, version: &str) -> Result<Vec<Unit>> {
     let mut units: Vec<Unit> = sources
         .iter()
         .filter(|(s, _)| {
-            (!s.starts_with(SKIP_DIRECTORY) || s == KEEP) && !SKIP.contains(&s.as_str())
+            !SKIP_DIRECTORIES.iter().any(|d| s.starts_with(d)) && !SKIP.contains(&s.as_str())
         })
         .map(|(s, a)| Unit {
             name: s.clone(),
@@ -304,9 +295,8 @@ pub fn objects(root: &Path, version: &str, oracle: bool) -> Result<Vec<(String, 
     Ok(out)
 }
 
-/// VERSION's edges: each object, the stock module's and the oracle's, and the stock module. LIBRARY is the
-/// library tree's download target.
-pub fn edges(root: &Path, version: &str, library: &str) -> Result<Vec<String>> {
+/// VERSION's edges: each object, the stock module's and the oracle's, and the stock module.
+pub fn edges(root: &Path, version: &str) -> Result<Vec<String>> {
     let units = units(root, version)?;
     let mut out = vec![];
     let mut stock = vec![];
@@ -315,10 +305,9 @@ pub fn edges(root: &Path, version: &str, library: &str) -> Result<Vec<String>> {
         for unit in &units {
             let object = format!("{directory}/{}.o", unit.name);
             out.push(format!(
-                "build {}: wasm_cc {} || {}",
+                "build {}: wasm_cc {}",
                 escape(&object),
-                escape(&unit.input),
-                escape(library)
+                escape(&unit.input)
             ));
             out.push(format!(
                 "  cflags = {}",
@@ -378,7 +367,7 @@ mod tests {
         assert!(a.contains(&"-DVERSION=5".into()));
         assert!(a.contains(&"-Igc2/include".into()));
         assert!(a.contains(&"-isystemgc2/include/libc".into()));
-        assert!(a.ends_with(&["-include".into(), "ansi_prefix.Win32.h".into()]));
+        assert!(a.ends_with(&["-include".into(), "wasm/include/stdarg.h".into()]));
         let b = clang_arguments("src/driver/x.cpp", "gc2/", &arguments);
         assert!(b.contains(&"-D__option_cplusplus=1".into()) && b.contains(&"-xc++".into()));
     }
