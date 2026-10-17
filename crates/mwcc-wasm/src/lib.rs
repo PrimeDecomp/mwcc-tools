@@ -107,11 +107,47 @@ struct State {
     console: Vec<u8>,
     last_error: u32,
     handles: HashMap<u32, Handle>,
-    next_handle: u32,
     tls: Vec<u32>,
     heap: Heap,
     started: Instant,
     command_line_at: Option<u32>,
+}
+
+/// The first handle a run gives.
+const FIRST_HANDLE: u32 = 0x100;
+
+impl State {
+    fn new(request: &Request) -> Self {
+        State {
+            directory: plain(request.directory),
+            guest_directory: guest_path(&plain(request.directory).to_string_lossy()),
+            program: guest_path(request.program),
+            version_info: request.version_info.to_vec(),
+            command_line: command_line(&guest_path(request.program), request.args),
+            environment: request.environment.to_vec(),
+            stdout: vec![],
+            stderr: vec![],
+            console: vec![],
+            last_error: 0,
+            handles: HashMap::new(),
+            tls: vec![],
+            heap: Heap::default(),
+            started: Instant::now(),
+            command_line_at: None,
+        }
+    }
+
+    /// A handle for HANDLE: the lowest value not in use, as Windows reuses a closed handle's value. The compiler keeps
+    /// file handles in 16-bit reference numbers, so values that only grew passed 0x8000 in a large compile and were
+    /// sign-extended (a precompile of many headers failed with OSErr -51).
+    fn open(&mut self, handle: Handle) -> u32 {
+        let value = (FIRST_HANDLE..)
+            .step_by(4)
+            .find(|v| !self.handles.contains_key(v))
+            .unwrap();
+        self.handles.insert(value, handle);
+        value
+    }
 }
 
 /// The heap GlobalAlloc gives: blocks of the wasm memory above what the module uses, grown as needed. A freed block
@@ -177,25 +213,7 @@ impl Compiler {
     }
 
     pub fn run(&self, request: &Request) -> Result<Outcome> {
-        let state = State {
-            directory: plain(request.directory),
-            guest_directory: guest_path(&plain(request.directory).to_string_lossy()),
-            program: guest_path(request.program),
-            version_info: request.version_info.to_vec(),
-            command_line: command_line(&guest_path(request.program), request.args),
-            environment: request.environment.to_vec(),
-            stdout: vec![],
-            stderr: vec![],
-            console: vec![],
-            last_error: 0,
-            handles: HashMap::new(),
-            next_handle: 0x100,
-            tls: vec![],
-            heap: Heap::default(),
-            started: Instant::now(),
-            command_line_at: None,
-        };
-        let mut store = Store::new(&self.engine, state);
+        let mut store = Store::new(&self.engine, State::new(request));
         let started = Instant::now();
         let timeout = request.timeout;
         let cancel = request.cancel.clone();
@@ -1051,9 +1069,7 @@ fn imports(linker: &mut Linker<State>) -> Result<()> {
         }
         match options.open(&path) {
             Ok(file) => {
-                let handle = c.data().next_handle;
-                c.data_mut().next_handle += 4;
-                c.data_mut().handles.insert(handle, Handle::File { file });
+                let handle = c.data_mut().open(Handle::File { file });
                 // (CREATE_ALWAYS and OPEN_ALWAYS on an existing file succeed and say so)
                 c.data_mut().last_error = if exists && matches!(creation, 2 | 4) {
                     ERROR_ALREADY_EXISTS
@@ -1425,11 +1441,7 @@ fn imports(linker: &mut Linker<State>) -> Result<()> {
             return Ok(INVALID_HANDLE_VALUE);
         }
         write_find_data(c, data, &entries[0])?;
-        let handle = c.data().next_handle;
-        c.data_mut().next_handle += 4;
-        c.data_mut()
-            .handles
-            .insert(handle, Handle::Find { entries, next: 1 });
+        let handle = c.data_mut().open(Handle::Find { entries, next: 1 });
         Ok(handle)
     });
     import!(linker, "FindNextFileA", |c,
@@ -1497,6 +1509,40 @@ mod tests {
         assert!(matches(b"*.C", b"foo.c"));
         assert!(matches(b"f?o.*", b"FOO.h"));
         assert!(!matches(b"*.c", b"foo.h"));
+    }
+
+    fn state(directory: &Path) -> State {
+        State::new(&Request {
+            args: &[],
+            directory,
+            environment: &[],
+            program: "mwcceppc.exe",
+            version_info: &[],
+            timeout: None,
+            cancel: None,
+        })
+    }
+
+    #[test]
+    fn handles_reuse_closed_values() {
+        let mut state = state(Path::new("."));
+        let find = || Handle::Find {
+            entries: vec![],
+            next: 0,
+        };
+        let kept = state.open(find());
+        for _ in 0..10_000 {
+            let handle = state.open(find());
+            assert!(handle < 0x8000);
+            state.handles.remove(&handle);
+        }
+        let (a, b) = (state.open(find()), state.open(find()));
+        state.handles.remove(&a);
+        assert_eq!(state.open(find()), a);
+        assert_eq!(
+            (kept, a, b),
+            (FIRST_HANDLE, FIRST_HANDLE + 4, FIRST_HANDLE + 8)
+        );
     }
 
     #[test]
