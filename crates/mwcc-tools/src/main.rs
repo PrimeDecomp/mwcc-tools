@@ -758,6 +758,9 @@ fn help() {
   implib DEF OUTPUT
   rsrc2res EXE OUTPUT
   split VERSION [--source] [--root DIR] [--output DIR]
+  relink-check VERSION [--write] [--root DIR]
+      which compiled units of a source tree's build link into the original (after ninja all_source);
+      --write records the others as its state.json's relink_exclude
   compare extract|compare|report VERSION [--root DIR]
   locate VERSION SOURCE... [--root DIR]
   bindfrom VERSION [--root DIR]
@@ -999,8 +1002,8 @@ fn run() -> Result<()> {
         Some("source-index") => source_index_cli::run(&args[1..])?,
         Some("inline-calibrate") => calibrate_cli::run(&args[1..])?,
         Some(
-            "pe" | "implib" | "rsrc2res" | "split" | "link" | "compare" | "locate" | "bindfrom"
-            | "funcmatch" | "remap" | "derive-splits" | "disasm" | "fdiff" | "nearest",
+            "pe" | "implib" | "rsrc2res" | "split" | "link" | "relink-check" | "compare" | "locate"
+            | "bindfrom" | "funcmatch" | "remap" | "derive-splits" | "disasm" | "fdiff" | "nearest",
         ) => binary_cli::run(&args[0], &args[1..])?,
         Some("object") if args.get(1).map(String::as_str) == Some("compare") => {
             let a = fs::read(

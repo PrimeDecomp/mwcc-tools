@@ -46,6 +46,7 @@ pub mod provenance;
 pub mod python_random;
 pub mod regdiff;
 pub mod release;
+pub mod relink_check;
 pub mod remap_binary;
 pub mod report;
 pub mod runner;

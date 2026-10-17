@@ -288,6 +288,7 @@ pub fn run(command: &str, args: &[String]) -> Result<()> {
                 inputs: positional,
                 oracle,
                 source,
+                record: true,
                 timeout,
             })?;
             for message in report.messages {
@@ -296,6 +297,36 @@ pub fn run(command: &str, args: &[String]) -> Result<()> {
             ensure!(
                 report.identical != Some(false),
                 "linked executable differs from its configured SHA-1"
+            );
+        }
+        "relink-check" => {
+            let mut root = std::env::current_dir()?;
+            let mut version = None;
+            let mut write = false;
+            let mut i = 0;
+            while i < args.len() {
+                match args[i].as_str() {
+                    "--write" => write = true,
+                    "--root" => {
+                        i += 1;
+                        root = args.get(i).context("--root needs a value")?.into();
+                    }
+                    v if !v.starts_with('-') && version.is_none() => version = Some(v),
+                    other => bail!("unknown relink-check argument {other}"),
+                }
+                i += 1;
+            }
+            let version = version.context("relink-check requires VERSION")?;
+            let tools = std::env::current_exe()?.to_string_lossy().into_owned();
+            let outcome = mwcc_oracle_core::relink_check::run(&root, version, &tools, write)?;
+            for unit in &outcome.rejected {
+                println!("does not link: {unit}");
+            }
+            println!(
+                "{version}: {} units link into the original, {} do not ({} links)",
+                outcome.accepted.len(),
+                outcome.rejected.len(),
+                outcome.links
             );
         }
         "split" => {

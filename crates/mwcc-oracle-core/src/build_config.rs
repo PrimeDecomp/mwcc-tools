@@ -119,6 +119,8 @@ pub struct Generation {
     pub ninja: String,
     pub objdiff: Option<Value>,
     pub mode: String,
+    /// The normal link's inputs, in link mode.
+    pub link_inputs: Option<Vec<String>>,
 }
 fn strings(value: &Value) -> Result<Vec<String>> {
     value
@@ -465,6 +467,7 @@ pub fn generate(root: &Path, request: &Request) -> Result<Generation> {
         objects.push(object);
     }
     let mut objdiff_config = None;
+    let mut link_inputs = None;
     if linking {
         let splits = executable::read_splits(&fs::read_to_string(root.join(&split_file))?)?;
         let units: Vec<_> = splits.units.iter().map(|u| u.name.clone()).collect();
@@ -675,6 +678,7 @@ pub fn generate(root: &Path, request: &Request) -> Result<Generation> {
         out.extend([format!("build build/{version}/mwcceppc.exe | build/{version}/ok: link {} | {tool_dep}build/compilers/pro53/mwld.exe $tools_dep || lib/ok",inputs.iter().map(|p|ninja_path(p)).collect::<Vec<_>>().join(" ")),
             format!("build build/{version}/report.json: report | build/{version}/ok {objdiff_tool} {}",objects.iter().map(|p|ninja_path(p)).collect::<Vec<_>>().join(" "))]);
         objdiff_config = Some(objdiff(&tree, &config, &sources, &units));
+        link_inputs = Some(inputs);
     } else {
         let configs = format!(
             "config/{version}/config.json config/{version}/functions.json config/{version}/bindings.json config/sources.json"
@@ -712,6 +716,7 @@ pub fn generate(root: &Path, request: &Request) -> Result<Generation> {
         ninja: out.join("\n"),
         objdiff: objdiff_config,
         mode: mode.into(),
+        link_inputs,
     })
 }
 pub fn run(root: &Path, request: &Request) -> Result<Generation> {

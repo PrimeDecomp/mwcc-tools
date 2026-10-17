@@ -86,6 +86,8 @@ pub struct Request {
     pub oracle: bool,
     /// Link from the version's source tree (crate::source_tree): its objects and splits.
     pub source: bool,
+    /// Write build/VERSION/ok when the link is the original (not for trial links).
+    pub record: bool,
     pub timeout: Duration,
 }
 #[derive(Debug)]
@@ -626,7 +628,7 @@ pub fn run(request: &Request) -> Result<Report> {
     let splits = executable::read_splits(&fs::read_to_string(
         request.root.join(&tree.config_dir).join("splits.txt"),
     )?)?;
-    if identical {
+    if identical && request.record {
         write(
             &request.root,
             &format!("build/{version}/ok"),
