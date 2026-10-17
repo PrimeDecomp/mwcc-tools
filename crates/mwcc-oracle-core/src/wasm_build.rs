@@ -1,34 +1,26 @@
-//! `mwcc-tools wasm-build GC_2_7`: the compiler of a vendored tree (gc2's 2.7) built for wasm32 with clang and wasm-ld,
-//! to run in process (crates/mwcc-wasm). Not part of the build: it needs LLVM, and nothing else uses its output. MSL's
-//! headers are the library tree's (`gc2/lib`, downloaded).
+//! The compiler of gc2's sources built for WebAssembly, to run in process (crates/mwcc-wasm): the build of GC 2.6 and
+//! 2.7 (`build/<version>/wasm/mwcceppc.wasm`, one of `configure`'s default targets). It needs LLVM's clang and wasm-ld
+//! (`$clang`, `$wasm_ld`), and MSL's headers from the library tree (`gc2/lib`, downloaded).
 //!
-//! Each source is compiled with clang from the arguments the build gives it (its defines, include paths and
-//! `-align`); the module is linked from them and from `wasm/src`, which stands in for what is x86 or Windows-only:
+//! Each source is compiled with clang from the arguments the build gives it (its defines, among them `VERSION`, its
+//! include paths and `-align`); the module is linked from them and from `wasm/src`, which stands in for what is x86 or
+//! Windows-only:
 //!
 //! * the startup (`src/runtime`, but for `setupargs.c`), which `start.c` replaces;
-//! * MSL's x87 code: `x87.c` emulates `__dec2num` and `__num2dec`'s 80-bit arithmetic, and `msl_extras.c` has
-//!   `extras.c`'s functions and `mem_funcs.c`'s copies in C;
+//! * MSL's x87 code: `x87.c` emulates `__dec2num` and `__num2dec`'s 80-bit arithmetic, and the double rounding of the
+//!   compiler's constant folding (gc2's `CMACH_FOLD`); `msl_extras.c` has `extras.c`'s functions and `mem_funcs.c`'s
+//!   copies in C;
 //! * `setjmp` (`sjlj.c`, on wasm exceptions), `operator new` (`new.cpp`) and the license calls (`platform.c`).
 //!
 //! `wasm/include` has the C headers clang lacks and Windows headers made of gc2's `include/compiler/win32.h`; the
-//! Win32 functions are the module's imports. A function called through a pointer to another type traps in wasm
-//! where x86 drops the extra argument: those (ADAPT) are given the pointer's parameters, in a copy of their source.
-//! The compiler folds floating-point constants on the x87, which `__dec2num` (the first literal read) leaves at 64-bit
-//! precision: each result is rounded twice, to 64 bits and then to a double. Its folding (X87) calls x87.c's
-//! emulation of that instead.
-use crate::build_config;
-use anyhow::{Context, Result, bail, ensure};
-use regex::Regex;
-use std::{
-    fs,
-    path::{Path, PathBuf},
-    process::Command,
-    sync::{
-        Mutex,
-        atomic::{AtomicUsize, Ordering},
-    },
-    thread,
-};
+//! Win32 functions are the module's imports. What WebAssembly needs of the sources themselves is in gc2, under
+//! `#ifdef __wasm__`.
+use crate::{build_config, source_tree::SourceTree};
+use anyhow::{Context, Result, ensure};
+use std::path::Path;
+
+/// The versions gc2's sources build (`VERSION`), and so the module.
+pub const VERSIONS: [&str; 2] = ["GC_2_6", "GC_2_7"];
 
 /// Sources the module does without (wasm/src replaces them).
 const SKIP: &[&str] = &[
@@ -49,56 +41,32 @@ const PLATFORM: &[(&str, &str)] = &[
     ("wasm/src/platform.c", "src/driver/CLPlugins.c"),
     ("wasm/src/new.cpp", "src/driver/CLDropinCallbacks_V10.cpp"),
 ];
+/// The tag `longjmp` throws (an assembly source).
+const TAG: &str = "wasm/src/sjlj_tag.s";
 
-/// Functions called through a pointer of another type: (source, pattern, replacement).
-const ADAPT: &[(&str, &str, &str)] = &[
-    // (cprep_tokenize's handlers are called with the character)
-    (
-        "src/frontend/CPrepTokenizer.c",
-        r"(?m)^static short (t\w+)\(void\) \{",
-        "static short ${1}(short unused) {",
-    ),
-    // (CompareParams's are called with the parameter alone)
-    (
-        "src/driver/Parameter.c",
-        r"CompareParam_SetString\(SETSTRING_T\* p, int flags\)",
-        "CompareParam_SetString(SETSTRING_T* p)",
-    ),
-];
-
-/// The folding of floating-point constants, made the x87's (x87.c's `__x87_double`): (source, pattern, replacement).
-const X87: &[(&str, &str, &str)] = &[
-    (
-        "src/backend/CMachine.c",
-        r"(?m)^Float CMach_CalcFloatDiadic\(",
-        "double __x87_double(int op, double a, double b);\nFloat CMach_CalcFloatDiadic(",
-    ),
-    (
-        "src/backend/CMachine.c",
-        r"left\.data\.value ([-+*/])= right\.data\.value;",
-        "left.data.value = __x87_double('$1', left.data.value, right.data.value);",
-    ),
-    (
-        "src/backend/CMachine.c",
-        r"flt\.data\.value = 1\.0 / flt\.data\.value;",
-        "flt.data.value = __x87_double('/', 1.0, flt.data.value);",
-    ),
-];
-
-pub struct Request<'a> {
-    pub root: &'a Path,
-    pub version: &'a str,
-    pub clang: &'a str,
-    pub wasm_ld: &'a str,
+pub fn supported(version: &str) -> bool {
+    VERSIONS.contains(&version)
 }
 
-pub struct Outcome {
-    pub output: PathBuf,
-    pub objects: usize,
+pub fn directory(version: &str) -> String {
+    format!("build/{version}/wasm")
 }
 
+/// The module: the compiler as it is.
 pub fn output(version: &str) -> String {
-    format!("build/{version}/wasm/mwcceppc.wasm")
+    format!("{}/mwcceppc.wasm", directory(version))
+}
+
+/// The oracle: the module with the Rust hooks linked in.
+pub fn oracle_output(version: &str) -> String {
+    format!("{}/oracle.wasm", directory(version))
+}
+
+/// A source of the module: its name (the object's path under `obj/`), the file and clang's arguments.
+pub struct Unit {
+    pub name: String,
+    pub input: String,
+    pub arguments: Vec<String>,
 }
 
 /// clang's arguments for SOURCE (of the tree at PREFIX) from the build's ARGUMENTS for it.
@@ -193,171 +161,127 @@ fn clang_arguments(source: &str, prefix: &str, arguments: &[String]) -> Vec<Stri
     out
 }
 
-pub fn run(request: &Request) -> Result<Outcome> {
-    let Request {
-        root,
-        version,
-        clang,
-        wasm_ld,
-    } = *request;
+/// The module's sources for VERSION (TAG aside).
+pub fn units(root: &Path, version: &str) -> Result<Vec<Unit>> {
     ensure!(
-        version == "GC_2_7",
-        "only GC_2_7's tree builds for wasm (its x87 emulation and adaptations are 2.7's)"
+        supported(version),
+        "{version}: only {} build from gc2's sources for WebAssembly",
+        VERSIONS.join(" and ")
     );
-    let (tree, sources) = build_config::source_arguments(root, version)?;
-    ensure!(tree.vendored(), "{version} has no source tree");
-    let prefix = tree.prefix.clone();
-    // (MSL's headers are the library tree's)
-    let library = format!("{prefix}lib/ok.pro53");
-    ensure!(
-        root.join(&library).is_file(),
-        "{library} is missing: the library tree is needed (ninja {library})"
-    );
-    let directory = format!("build/{version}/wasm");
-    let objects = root.join(&directory).join("obj");
-    // (path in the module's build, path to compile, the build's arguments)
-    let mut units: Vec<(String, String, Vec<String>)> = sources
+    let tree = SourceTree::gc2(version);
+    let sources = build_config::source_arguments(root, version, &tree)?;
+    let prefix = &tree.prefix;
+    let mut units: Vec<Unit> = sources
         .iter()
         .filter(|(s, _)| {
             (!s.starts_with(SKIP_DIRECTORY) || s == KEEP) && !SKIP.contains(&s.as_str())
         })
-        .map(|(s, a)| (s.clone(), format!("{prefix}{s}"), a.clone()))
+        .map(|(s, a)| Unit {
+            name: s.clone(),
+            input: format!("{prefix}{s}"),
+            arguments: clang_arguments(s, prefix, a),
+        })
         .collect();
     for (path, like) in PLATFORM {
-        let arguments = sources
+        let arguments = &sources
             .iter()
             .find(|(s, _)| s == like)
             .with_context(|| format!("{like} is not a source of the tree"))?
-            .1
-            .clone();
-        units.push((path.to_string(), path.to_string(), arguments));
+            .1;
+        units.push(Unit {
+            name: path.to_string(),
+            input: path.to_string(),
+            arguments: clang_arguments(path, prefix, arguments),
+        });
     }
-    let next = AtomicUsize::new(0);
-    let failures = Mutex::new(vec![]);
-    let compile = |(name, path, arguments): &(String, String, Vec<String>)| -> Result<()> {
-        let object = objects.join(format!("{name}.o"));
-        fs::create_dir_all(object.parent().unwrap())?;
-        let mut command = Command::new(clang);
-        command
-            .current_dir(root)
-            .args(clang_arguments(name, &prefix, arguments));
-        let mut input = path.clone();
-        let adaptations: Vec<_> = ADAPT
-            .iter()
-            .chain(X87)
-            .filter(|(s, _, _)| s == name)
-            .collect();
-        if !adaptations.is_empty() {
-            let mut text: String = fs::read(root.join(path))?
-                .iter()
-                .map(|b| char::from(*b))
-                .collect();
-            for (_, pattern, replacement) in adaptations {
-                let pattern = Regex::new(pattern)?;
-                ensure!(
-                    pattern.is_match(&text),
-                    "{name}: nothing to adapt for {pattern}"
-                );
-                text = pattern.replace_all(&text, *replacement).into_owned();
-            }
-            let adapted = root.join(&directory).join("adapted").join(name);
-            fs::create_dir_all(adapted.parent().unwrap())?;
-            fs::write(
-                &adapted,
-                text.chars().map(|c| c as u32 as u8).collect::<Vec<_>>(),
-            )?;
-            // (its includes are found beside the original)
-            let beside = Path::new(path).parent().unwrap_or(Path::new("."));
-            command.arg("-iquote").arg(beside);
-            input = adapted.to_string_lossy().into_owned();
-        }
-        let output = command
-            .arg("-c")
-            .arg(&input)
-            .arg("-o")
-            .arg(&object)
-            .output();
-        let output = output.with_context(|| format!("run {clang}"))?;
-        if !output.status.success() {
-            failures.lock().unwrap().push(format!(
-                "{name}:\n{}",
-                String::from_utf8_lossy(&output.stderr)
-            ));
-        }
-        Ok(())
+    Ok(units)
+}
+
+/// A path as ninja reads it.
+fn escape(path: &str) -> String {
+    path.replace('$', "$$")
+        .replace(' ', "$ ")
+        .replace(':', "$:")
+}
+
+/// An argument as the build's shell reads it (the arguments have no quotes or spaces but for `-D__option(x)=...`).
+fn quote(argument: &str) -> String {
+    let argument = argument.replace('$', "$$");
+    if argument.contains(['(', ')', '#', ' ']) {
+        format!("\"{argument}\"")
+    } else {
+        argument
+    }
+}
+
+/// The ninja rules of the module's build (once per build.ninja): clang and wasm-ld are `CLANG` and `WASM_LD`'s, or
+/// found on the path.
+pub fn rules() -> Vec<String> {
+    let tool = |variable: &str, default: &str| {
+        let value = std::env::var(variable).unwrap_or_else(|_| default.into());
+        quote(&value.replace('\\', "/"))
     };
-    let errors = Mutex::new(vec![]);
-    thread::scope(|scope| {
-        for _ in 0..thread::available_parallelism().map_or(4, usize::from) {
-            scope.spawn(|| {
-                while let Some(unit) = units.get(next.fetch_add(1, Ordering::Relaxed)) {
-                    if let Err(e) = compile(unit) {
-                        errors.lock().unwrap().push(e);
-                    }
-                }
-            });
-        }
-    });
-    if let Some(error) = errors.into_inner().unwrap().into_iter().next() {
-        return Err(error);
+    let mut out = vec![
+        format!("clang = {}", tool("CLANG", "clang")),
+        format!("wasm_ld = {}", tool("WASM_LD", "wasm-ld")),
+    ];
+    out.extend([
+        "rule wasm_cc",
+        "  command = $clang $cflags -MD -MF $out.d -c $in -o $out",
+        "  description = CLANG $in",
+        "  depfile = $out.d",
+        "  deps = gcc",
+        "rule wasm_ld",
+        // (gnu89's extern inline functions are defined in each unit that includes them: any one is taken)
+        "  command = $wasm_ld --no-entry --export=_start --allow-undefined --allow-multiple-definition -z stack-size=8388608 $ldflags @$out.rsp -o $out",
+        "  rspfile = $out.rsp",
+        "  rspfile_content = $in",
+        "  description = WASM-LD $out",
+    ]
+    .map(String::from));
+    out
+}
+
+/// VERSION's edges: each object, and the module. LIBRARY is the library tree's download target.
+pub fn edges(root: &Path, version: &str, library: &str) -> Result<Vec<String>> {
+    let directory = directory(version);
+    let mut out = vec![];
+    let mut objects = vec![];
+    for unit in units(root, version)? {
+        let object = format!("{directory}/obj/{}.o", unit.name);
+        out.push(format!(
+            "build {}: wasm_cc {} || {}",
+            escape(&object),
+            escape(&unit.input),
+            escape(library)
+        ));
+        out.push(format!(
+            "  cflags = {}",
+            unit.arguments
+                .iter()
+                .map(|a| quote(a))
+                .collect::<Vec<_>>()
+                .join(" ")
+        ));
+        objects.push(object);
     }
-    let failures = failures.into_inner().unwrap();
-    if !failures.is_empty() {
-        bail!(
-            "{} of {} sources do not compile:\n{}",
-            failures.len(),
-            units.len(),
-            failures.join("\n")
-        );
-    }
-    let tag = objects.join("wasm/src/sjlj_tag.o");
-    let status = Command::new(clang)
-        .current_dir(root)
-        .args([
-            "--target=wasm32-unknown-unknown",
-            "-mexception-handling",
-            "-c",
-            "wasm/src/sjlj_tag.s",
-            "-o",
-        ])
-        .arg(&tag)
-        .status()
-        .with_context(|| format!("run {clang}"))?;
-    ensure!(status.success(), "clang fails on wasm/src/sjlj_tag.s");
-    let mut list: Vec<String> = units
-        .iter()
-        .map(|(name, _, _)| {
-            objects
-                .join(format!("{name}.o"))
-                .to_string_lossy()
-                .replace('\\', "/")
-        })
-        .collect();
-    list.push(tag.to_string_lossy().replace('\\', "/"));
-    let response = root.join(&directory).join("objects.txt");
-    fs::write(&response, list.join("\n"))?;
-    let output = root.join(self::output(version));
-    // (gnu89's extern inline functions are defined in each unit that includes them: any one is taken)
-    let status = Command::new(wasm_ld)
-        .current_dir(root)
-        .args([
-            "--no-entry",
-            "--export=_start",
-            "--allow-undefined",
-            "--allow-multiple-definition",
-            "-z",
-            "stack-size=8388608",
-        ])
-        .arg(format!("@{}", response.display()))
-        .arg("-o")
-        .arg(&output)
-        .status()
-        .with_context(|| format!("run {wasm_ld}"))?;
-    ensure!(status.success(), "{wasm_ld} fails");
-    Ok(Outcome {
-        output: output.strip_prefix(root).unwrap_or(&output).to_path_buf(),
-        objects: list.len(),
-    })
+    let tag = format!("{directory}/obj/{TAG}.o");
+    out.extend([
+        format!("build {}: wasm_cc {TAG}", escape(&tag)),
+        "  cflags = --target=wasm32-unknown-unknown -mexception-handling".into(),
+    ]);
+    objects.push(tag);
+    out.push(format!(
+        "build {}: wasm_ld {}",
+        escape(&output(version)),
+        objects
+            .iter()
+            .map(|o| escape(o))
+            .collect::<Vec<_>>()
+            .join(" ")
+    ));
+    out.push(String::new());
+    Ok(out)
 }
 
 #[cfg(test)]
@@ -388,34 +312,11 @@ mod tests {
     }
 
     #[test]
-    fn folding_calls_the_x87s_arithmetic() {
-        let mut text =
-            "Float CMach_CalcFloatDiadic(Type* type) {\n    left.data.value *= right.data.value;\n"
-                .to_owned();
-        for (_, pattern, replacement) in X87.iter().take(2) {
-            text = Regex::new(pattern)
-                .unwrap()
-                .replace_all(&text, *replacement)
-                .into_owned();
-        }
-        assert!(text.starts_with(
-            "double __x87_double(int op, double a, double b);\nFloat CMach_CalcFloatDiadic("
-        ));
-        assert!(
-            text.contains(
-                "left.data.value = __x87_double('*', left.data.value, right.data.value);"
-            )
-        );
-    }
-
-    #[test]
-    fn adaptations_give_the_pointers_parameters() {
-        let (_, pattern, replacement) = ADAPT[0];
-        let text = "static short tille(void) {\nstatic short tnumb(short t) {\n";
-        let adapted = Regex::new(pattern).unwrap().replace_all(text, replacement);
+    fn the_option_macro_is_quoted_for_the_shell() {
         assert_eq!(
-            adapted,
-            "static short tille(short unused) {\nstatic short tnumb(short t) {\n"
+            quote("-D__option(x)=__option_##x"),
+            "\"-D__option(x)=__option_##x\""
         );
+        assert_eq!(quote("-Igc2/include"), "-Igc2/include");
     }
 }

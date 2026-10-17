@@ -652,6 +652,7 @@ dependencies = [
  "crc32fast",
  "flate2",
  "indexmap",
+ "mwcc-wasm",
  "regex",
  "serde",
  "serde_json",
@@ -672,7 +673,6 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "mwcc-oracle-core",
- "mwcc-wasm",
  "serde",
  "serde_json",
  "sha2",
@@ -683,7 +683,6 @@ dependencies = [
 name = "mwcc-wasm"
 version = "0.1.0"
 dependencies = [
- "mwcc-oracle-core",
  "wasmtime",
 ]
 

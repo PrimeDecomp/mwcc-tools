@@ -19,3 +19,8 @@ ureq.workspace = true
 zip.workspace = true
 flate2.workspace = true
 crc32fast.workspace = true
+mwcc-wasm = { path = "../mwcc-wasm", optional = true }
+
+[features]
+# Run the compilers gc2's sources build as WebAssembly, in process (crate::in_process)
+wasm = ["dep:mwcc-wasm"]

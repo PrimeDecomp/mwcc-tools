@@ -85,6 +85,18 @@ extern void CMach_ParseGlobalRegisterVariable(DeclInfo* declinfo);
 extern void CMach_GetBackEndOptions(struct CInlineBackendOptions* options);
 extern void CMach_SetBackEndOptions(struct CInlineBackendOptions* options);
 
+// Constant folding's arithmetic (CMach_CalcFloatDiadic, CMach_FloatReciprocal). The original folds on the x87, which
+// __dec2num leaves at 64-bit precision: from the first literal on, each result is rounded twice. In WebAssembly,
+// wasm/src/x87.c's emulation does that.
+#ifdef __wasm__
+double __x87_double(int op, double a, double b);
+#define CMACH_FOLD(left, op, right) ((left) = __x87_double(#op[0], (left), (right)))
+#define CMACH_RECIPROCAL(value) ((value) = __x87_double('/', 1.0, (value)))
+#else
+#define CMACH_FOLD(left, op, right) ((left) op##= (right))
+#define CMACH_RECIPROCAL(value) ((value) = 1.0 / (value))
+#endif
+
 #ifdef __cplusplus
 }
 #endif

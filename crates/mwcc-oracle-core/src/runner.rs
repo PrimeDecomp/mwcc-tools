@@ -209,7 +209,43 @@ pub struct Invocation<'a> {
 pub fn execute(invocation: Invocation<'_>) -> Result<Execution> {
     execute_controlled(invocation, &|| false)
 }
+/// Run the compiler: in this process where its module is built (crate::in_process), else as a process.
 pub fn execute_controlled(
+    invocation: Invocation<'_>,
+    cancel: &dyn Fn() -> bool,
+) -> Result<Execution> {
+    #[cfg(feature = "wasm")]
+    if let Some((version, module)) =
+        crate::in_process::module(invocation.root, invocation.executable)
+    {
+        if cancel() {
+            return Err(Cancelled.into());
+        }
+        ensure!(
+            !invocation.timeout.is_zero(),
+            "compiler timeout must be positive"
+        );
+        return crate::in_process::execute(&invocation, version, &module, cancel);
+    }
+    execute_process_controlled(invocation, cancel)
+}
+/// The environment the compiler's process gets: ours, the trace options and file in place of ours.
+pub(crate) fn process_environment(invocation: &Invocation<'_>) -> Vec<(String, String)> {
+    let mut environment: BTreeMap<String, String> = std::env::vars()
+        .filter(|(key, _)| !TRACE_ENV.contains(&key.as_str()))
+        .collect();
+    environment.insert(
+        "MWCC_ORACLE_TRACE_FILE".into(),
+        invocation.trace_file.display().to_string(),
+    );
+    environment.extend(invocation.options.environment());
+    environment.into_iter().collect()
+}
+/// Run the executable itself, as a process (the reference a module is compared with).
+pub fn execute_process(invocation: Invocation<'_>) -> Result<Execution> {
+    execute_process_controlled(invocation, &|| false)
+}
+fn execute_process_controlled(
     invocation: Invocation<'_>,
     cancel: &dyn Fn() -> bool,
 ) -> Result<Execution> {
@@ -438,12 +474,21 @@ pub fn compile_controlled(
         "build/compilers/GC/{}/mwcceppc.exe",
         request.version.compiler_directory()
     ));
-    let fallback = !oracle.is_file() && request.original_fallback && original.is_file();
+    let in_process = |path: &Path| {
+        #[cfg(feature = "wasm")]
+        return crate::in_process::module(&root, path).map(|(_, module)| module);
+        #[cfg(not(feature = "wasm"))]
+        return None::<PathBuf>;
+    };
+    let fallback = !oracle.is_file()
+        && in_process(&oracle).is_none()
+        && request.original_fallback
+        && original.is_file();
     if fallback {
         oracle = original.clone();
     }
     ensure!(
-        oracle.is_file(),
+        oracle.is_file() || in_process(&oracle).is_some(),
         "{} is missing; build the oracle for {}",
         oracle.display(),
         request.version.name()
@@ -467,9 +512,14 @@ pub fn compile_controlled(
             original = patched_copy(&original, &scratch.path().join("original"), request)?;
         }
     }
-    let producer_sha256 = format!("{:x}", Sha256::digest(fs::read(&oracle)?));
-    let original_sha256 = if original.is_file() {
-        Some(format!("{:x}", Sha256::digest(fs::read(&original)?)))
+    // (of what runs: the module, where it runs in process)
+    let producer_sha256 = format!(
+        "{:x}",
+        Sha256::digest(fs::read(in_process(&oracle).unwrap_or(oracle.clone()))?)
+    );
+    let original_runs = in_process(&original).unwrap_or(original.clone());
+    let original_sha256 = if original_runs.is_file() {
+        Some(format!("{:x}", Sha256::digest(fs::read(&original_runs)?)))
     } else {
         None
     };
@@ -532,7 +582,7 @@ pub fn compile_controlled(
     let mut differences = vec![];
     let check_status = if !request.check {
         CheckStatus::Skipped
-    } else if !original.is_file() {
+    } else if !original_runs.is_file() {
         CheckStatus::OriginalUnavailable
     } else {
         let other = scratch.path().join("original.o");

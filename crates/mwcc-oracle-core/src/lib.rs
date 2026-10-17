@@ -28,6 +28,8 @@ pub mod evidence;
 pub mod executable;
 pub mod graph_history;
 pub mod header_impact;
+#[cfg(feature = "wasm")]
+pub mod in_process;
 pub mod inline_calibrate;
 pub mod inline_diff;
 pub mod inline_window;

@@ -692,7 +692,7 @@ fn corpus_command(args: &[String]) -> Result<()> {
         inputs.truncate(limit);
     }
     let in_process = wasm
-        .map(|module| wasm_compiler(&root, &module))
+        .map(|module| wasm_compiler(version, &module))
         .transpose()?;
     let report = corpus::run(&corpus::Request {
         root,
@@ -764,7 +764,7 @@ fn help() {
   inline-calibrate --project DIR --callee NAME [--unit UNIT] [--binary] [--json FILE]
   corpus --canaries DIR | --project DIR [--oracle-root ROOT] [--version V] [--jobs N] [--all-traces]
          [--exe ORACLE] [--trace-reference OTHER_ORACLE] [--wasm MODULE]
-      --wasm runs MODULE (wasm-build's) in process in the oracle's place (built with the `wasm` feature)
+      --wasm runs MODULE (build/VERSION/wasm/*.wasm) in process in the oracle's place
   object compare ORACLE.o ORIGINAL.o
   pe inspect|read|find FILE [options]
   implib DEF OUTPUT
@@ -777,9 +777,6 @@ fn help() {
       link the compiler of a source tree's sources alone, build/VERSION/<tree>/source-only/mwcceppc.exe
       (after ninja all_source; compare it with the original: corpus --exe); --oracle links the Rust hooks in,
       build/VERSION/<tree>/source-oracle/mwcceppc.exe
-  wasm-build VERSION [--root DIR] [--clang PATH] [--wasm-ld PATH]
-      the compiler of a source tree's sources for wasm32 (GC_2_7; LLVM's clang and wasm-ld),
-      build/VERSION/wasm/mwcceppc.wasm
   compare extract|compare|report VERSION [--root DIR]
   locate VERSION SOURCE... [--root DIR]
   bindfrom VERSION [--root DIR]
@@ -1022,8 +1019,8 @@ fn run() -> Result<()> {
         Some("inline-calibrate") => calibrate_cli::run(&args[1..])?,
         Some(
             "pe" | "implib" | "rsrc2res" | "split" | "link" | "relink-check" | "source-only"
-            | "wasm-build" | "compare" | "locate" | "bindfrom" | "funcmatch" | "remap"
-            | "derive-splits" | "disasm" | "fdiff" | "nearest",
+            | "compare" | "locate" | "bindfrom" | "funcmatch" | "remap" | "derive-splits"
+            | "disasm" | "fdiff" | "nearest",
         ) => binary_cli::run(&args[0], &args[1..])?,
         Some("object") if args.get(1).map(String::as_str) == Some("compare") => {
             let a = fs::read(
@@ -1053,59 +1050,18 @@ fn main() -> ExitCode {
     }
 }
 
-/// `corpus --wasm MODULE`: the module run in process in the oracle's place, as the path the oracle would run as, with
-/// the version information of gc2's resource script.
+/// `corpus --wasm MODULE`: the module run in process in the oracle's place (as `runner` runs one by default).
 #[cfg(feature = "wasm")]
-fn wasm_compiler(root: &std::path::Path, module: &std::path::Path) -> Result<corpus::InProcess> {
-    let gc2 = root.join("gc2");
-    let resources = mwcc_oracle_core::source_only::compile_resources(
-        &fs::read_to_string(gc2.join("src/driver/mwcceppc.rc"))?,
-        &fs::read_to_string(gc2.join("include/version.h"))?,
-        5,
-        &fs::read(gc2.join("src/driver/mwcceppc.ico"))?,
-    )?;
-    let version_info = resources
-        .into_iter()
-        .next()
-        .context("the resource script has no version information")?
-        .data;
-    let compiler =
-        mwcc_wasm::Compiler::new(&fs::read(module)?).map_err(|e| anyhow::anyhow!("{e:?}"))?;
-    let environment: Vec<(String, String)> = std::env::vars()
-        .filter(|(k, _)| !k.starts_with("MWCC_ORACLE_"))
-        .collect();
+fn wasm_compiler(version: Version, module: &std::path::Path) -> Result<corpus::InProcess> {
+    let module = std::path::absolute(module)?;
     Ok(corpus::InProcess(Box::new(
         move |invocation: runner::Invocation<'_>| {
-            let mut args = invocation.flags.to_vec();
-            args.extend([
-                "-c".into(),
-                invocation.source.into(),
-                "-o".into(),
-                invocation.output.display().to_string(),
-            ]);
-            if invocation.output.exists() {
-                fs::remove_file(invocation.output)?;
-            }
-            let outcome = compiler
-                .run(&mwcc_wasm::Request {
-                    args: &args,
-                    directory: invocation.directory,
-                    environment: &environment,
-                    program: &invocation.executable.display().to_string(),
-                    version_info: &version_info,
-                })
-                .map_err(|e| anyhow::anyhow!("{e:?}"))?;
-            Ok(runner::Execution {
-                exit_code: Some(outcome.exit_code),
-                timed_out: false,
-                diagnostics: outcome.console.iter().map(|b| char::from(*b)).collect(),
-                cancelled: false,
-            })
+            mwcc_oracle_core::in_process::execute(&invocation, version, &module, &|| false)
         },
     )))
 }
 
 #[cfg(not(feature = "wasm"))]
-fn wasm_compiler(_: &std::path::Path, _: &std::path::Path) -> Result<corpus::InProcess> {
+fn wasm_compiler(_: Version, _: &std::path::Path) -> Result<corpus::InProcess> {
     bail!("--wasm needs mwcc-tools built with the `wasm` feature")
 }

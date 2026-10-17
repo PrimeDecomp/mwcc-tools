@@ -683,16 +683,16 @@ void CMach_InitVectorMem(Type* type, MWVector128 val, void* mem, Boolean flag) {
 Float CMach_CalcFloatDiadic(Type* type, Float left, short op, Float right) {
     switch (op) {
         case '+':
-            left.data.value += right.data.value;
+            CMACH_FOLD(left.data.value, +, right.data.value);
             break;
         case '-':
-            left.data.value -= right.data.value;
+            CMACH_FOLD(left.data.value, -, right.data.value);
             break;
         case '*':
-            left.data.value *= right.data.value;
+            CMACH_FOLD(left.data.value, *, right.data.value);
             break;
         case '/':
-            left.data.value /= right.data.value;
+            CMACH_FOLD(left.data.value, /, right.data.value);
             break;
         default:
             CError_FATAL(683);
@@ -2165,7 +2165,7 @@ CInt64 CMach_CustomIntConvert(Type* type, Type* oldtype, CInt64 value) {
 #endif
 
 Float CMach_FloatReciprocal(Float flt) {
-    flt.data.value = 1.0 / flt.data.value;
+    CMACH_RECIPROCAL(flt.data.value);
     return flt;
 }
 

@@ -13,11 +13,15 @@ use std::{
     fs,
     io::{Read, Seek, SeekFrom, Write},
     path::{Path, PathBuf},
-    time::{Instant, SystemTime, UNIX_EPOCH},
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 use wasmtime::{
-    Caller, Config, Engine, Extern, Linker, Memory, Module, Result, Store, bail, error::Context,
-    format_err,
+    Caller, Config, Engine, Extern, InstancePre, Linker, Memory, Module, Result, Store,
+    UpdateDeadline, bail, error::Context, format_err,
 };
 
 const ERROR_FILE_NOT_FOUND: u32 = 2;
@@ -42,8 +46,11 @@ const FILETIME_UNIX: u64 = 116_444_736_000_000_000;
 /// The compiled module, ready to run (compiled once; each run instantiates it).
 pub struct Compiler {
     engine: Engine,
-    module: Module,
+    module: InstancePre<State>,
 }
+
+/// How often a run checks its timeout and cancellation.
+const TICK: Duration = Duration::from_millis(10);
 
 /// One compiler run.
 pub struct Request<'a> {
@@ -57,6 +64,10 @@ pub struct Request<'a> {
     pub program: &'a str,
     /// Its VS_VERSIONINFO resource, as GetFileVersionInfoA gives it.
     pub version_info: &'a [u8],
+    /// How long it may run.
+    pub timeout: Option<Duration>,
+    /// Set to stop it.
+    pub cancel: Option<Arc<AtomicBool>>,
 }
 
 pub struct Outcome {
@@ -65,6 +76,9 @@ pub struct Outcome {
     pub stderr: Vec<u8>,
     /// Both, in the order written (as a console, or one file for both, has them).
     pub console: Vec<u8>,
+    /// Stopped: it ran past its timeout, or was cancelled.
+    pub timed_out: bool,
+    pub cancelled: bool,
 }
 
 enum Handle {
@@ -119,14 +133,44 @@ impl std::fmt::Display for Exit {
 }
 impl std::error::Error for Exit {}
 
+/// The run was stopped.
+#[derive(Debug)]
+enum Stopped {
+    TimedOut,
+    Cancelled,
+}
+
+impl std::fmt::Display for Stopped {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Stopped::TimedOut => "timed out",
+            Stopped::Cancelled => "cancelled",
+        })
+    }
+}
+impl std::error::Error for Stopped {}
+
 impl Compiler {
     pub fn new(wasm: &[u8]) -> Result<Self> {
         let mut config = Config::new();
         config.wasm_exceptions(true);
+        config.epoch_interruption(true);
         // (the compiler recurses deeply: its own 8 MiB shadow stack, and room on the host's)
         config.max_wasm_stack(2 << 20);
         let engine = Engine::new(&config)?;
         let module = Module::new(&engine, wasm).context("compile the compiler's module")?;
+        let mut linker = Linker::new(&engine);
+        imports(&mut linker)?;
+        let module = linker.instantiate_pre(&module)?;
+        // (the clock of every run's deadline)
+        let clock = engine.weak();
+        std::thread::spawn(move || {
+            while let Some(engine) = clock.upgrade() {
+                engine.increment_epoch();
+                drop(engine);
+                std::thread::sleep(TICK);
+            }
+        });
         Ok(Self { engine, module })
     }
 
@@ -149,9 +193,20 @@ impl Compiler {
             command_line_at: None,
         };
         let mut store = Store::new(&self.engine, state);
-        let mut linker = Linker::new(&self.engine);
-        imports(&mut linker)?;
-        let instance = linker.instantiate(&mut store, &self.module)?;
+        let started = Instant::now();
+        let timeout = request.timeout;
+        let cancel = request.cancel.clone();
+        store.set_epoch_deadline(1);
+        store.epoch_deadline_callback(move |_| {
+            if cancel.as_ref().is_some_and(|c| c.load(Ordering::Relaxed)) {
+                return Err(Stopped::Cancelled.into());
+            }
+            if timeout.is_some_and(|t| started.elapsed() >= t) {
+                return Err(Stopped::TimedOut.into());
+            }
+            Ok(UpdateDeadline::Continue(1))
+        });
+        let instance = self.module.instantiate(&mut store)?;
         let memory = instance
             .get_memory(&mut store, "memory")
             .context("the module exports no memory")?;
@@ -159,11 +214,23 @@ impl Compiler {
         store.data_mut().heap.top = pages << 16;
         store.data_mut().heap.end = pages << 16;
         let start = instance.get_typed_func::<(), ()>(&mut store, "_start")?;
+        let (mut timed_out, mut cancelled) = (false, false);
         let exit_code = match start.call(&mut store, ()) {
             Ok(()) => 0,
-            Err(error) => match error.downcast_ref::<Exit>() {
-                Some(Exit(code)) => *code,
-                None => return Err(error.context("the compiler trapped")),
+            Err(error) => match (
+                error.downcast_ref::<Exit>(),
+                error.downcast_ref::<Stopped>(),
+            ) {
+                (Some(Exit(code)), _) => *code,
+                (_, Some(Stopped::TimedOut)) => {
+                    timed_out = true;
+                    1
+                }
+                (_, Some(Stopped::Cancelled)) => {
+                    cancelled = true;
+                    1
+                }
+                _ => return Err(error.context("the compiler trapped")),
             },
         };
         let state = store.into_data();
@@ -172,6 +239,8 @@ impl Compiler {
             stdout: state.stdout,
             stderr: state.stderr,
             console: state.console,
+            timed_out,
+            cancelled,
         })
     }
 }

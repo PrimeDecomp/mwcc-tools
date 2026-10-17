@@ -235,9 +235,9 @@ fn objdiff(tree: &SourceTree, config: &Value, sources: &Value, units: &[String])
 /// Sources and their compiler arguments.
 pub type SourceArguments = Vec<(String, Vec<String>)>;
 
-/// Each source of VERSION's tree with the arguments the build compiles it with (`-c`, its flags, the version's
+/// Each source of TREE with the arguments the build compiles it with for VERSION (`-c`, its flags, the version's
 /// define and include paths, as `generate` gives them), in `sources.json`'s order.
-pub fn source_arguments(root: &Path, version: &str) -> Result<(SourceTree, SourceArguments)> {
+pub fn source_arguments(root: &Path, version: &str, tree: &SourceTree) -> Result<SourceArguments> {
     let version_index = VERSIONS
         .iter()
         .position(|v| *v == version)
@@ -246,7 +246,6 @@ pub fn source_arguments(root: &Path, version: &str) -> Result<(SourceTree, Sourc
     let ours: Value = serde_json::from_slice(
         &fs::read(&ours).with_context(|| format!("read {}", ours.display()))?,
     )?;
-    let tree = SourceTree::of(root, version, false)?;
     let config = tree.config(root, &ours)?;
     let define = tree.version_define(root, version)?.unwrap_or(version_index);
     let sources = tree.sources(root)?;
@@ -259,7 +258,7 @@ pub fn source_arguments(root: &Path, version: &str) -> Result<(SourceTree, Sourc
             compiler_arguments(&config, settings, define, Some(source), false, &tree.prefix)?;
         out.push((source.clone(), arguments));
     }
-    Ok((tree, out))
+    Ok(out)
 }
 
 pub fn generate(root: &Path, request: &Request) -> Result<Generation> {
@@ -840,8 +839,23 @@ pub fn generate(root: &Path, request: &Request) -> Result<Generation> {
             ),
         ]);
     }
+    // (the compiler of gc2's sources for WebAssembly, which runs in process: crate::wasm_build)
+    let mut defaults = format!("build/{version}/ok all_source");
+    if crate::wasm_build::supported(version) {
+        let library = "gc2/lib/ok.pro53";
+        if !(tree.vendored() && prefix == "gc2/") {
+            out.extend([
+                format!("build {library}: download"),
+                "  tool = lib-2x".into(),
+            ]);
+        }
+        out.extend(crate::wasm_build::rules());
+        out.extend(crate::wasm_build::edges(root, version, library)?);
+        defaults.push(' ');
+        defaults.push_str(&crate::wasm_build::output(version));
+    }
     out.extend([format!("build all_source: phony {}",objects.iter().map(|p|ninja_path(p)).collect::<Vec<_>>().join(" ")),format!("build progress: phony build/{version}/report.json"),
-        format!("build build.ninja: configure | $tools_dep {prefix}config/sources.json config/{version}/config.json{}{}",if tree.vendored() {format!(" {}/config.json {}/state.json",tree.config_dir,tree.config_dir)} else {String::new()},if linking {format!(" {split_file}")} else {String::new()}),format!("default build/{version}/ok all_source"),String::new()]);
+        format!("build build.ninja: configure | $tools_dep {prefix}config/sources.json config/{version}/config.json{}{}",if tree.vendored() {format!(" {}/config.json {}/state.json",tree.config_dir,tree.config_dir)} else {String::new()},if linking {format!(" {split_file}")} else {String::new()}),format!("default {defaults}"),String::new()]);
     Ok(Generation {
         ninja: out.join("\n"),
         objdiff: objdiff_config,

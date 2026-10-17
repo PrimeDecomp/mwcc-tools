@@ -299,7 +299,8 @@ pub fn run(request: &Request) -> Result<Report> {
         let b = scratch.path().join(format!("{index}.oracle.o"));
         let trace = scratch.path().join(format!("{index}.oracle.trace"));
         let reference_trace = scratch.path().join(format!("{index}.reference.trace"));
-        let real = runner::execute(runner::Invocation {
+        // (the original itself: what the module, or the oracle, is compared with)
+        let real = runner::execute_process(runner::Invocation {
             root: &request.root,
             executable: &original,
             flags: &job.flags,

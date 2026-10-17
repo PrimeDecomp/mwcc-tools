@@ -41,6 +41,16 @@ impl SourceTree {
         })
     }
 
+    /// gc2's tree for VERSION, whether or not the version's normal build uses it (the WebAssembly compiler is built
+    /// from it: crate::wasm_build).
+    pub fn gc2(version: &str) -> Self {
+        Self {
+            prefix: "gc2/".into(),
+            config_dir: format!("gc2/config/{version}"),
+            build_dir: format!("build/{version}/gc2"),
+        }
+    }
+
     pub fn vendored(&self) -> bool {
         !self.prefix.is_empty()
     }
