@@ -710,6 +710,45 @@ pub fn generate(root: &Path, request: &Request) -> Result<Generation> {
             ),
         ]);
     }
+    // (the compiler of the tree's sources alone, on request: ninja build/VERSION/<tree>/source-only/mwcceppc.exe)
+    if tree.vendored()
+        && let Some(own) = crate::source_only::tree(root, version)?
+    {
+        let mut inputs: Vec<String> = crate::source_only::IMPORT_LIBRARIES
+            .iter()
+            .map(|name| format!("{prefix}src/imports/{name}.def"))
+            .collect();
+        let resources = crate::source_only::RESOURCES;
+        inputs.extend([
+            format!("{prefix}{resources}"),
+            format!("{prefix}{}", resources.replace(".rc", ".ico")),
+            format!("{prefix}include/version.h"),
+            format!("{prefix}{}", crate::source_only::LICENSING),
+            format!("{}/functions.json", own.config_dir),
+            format!("{}/bindings.json", own.config_dir),
+            "build/compilers/pro53/mwld.exe".into(),
+            lib_ok.clone(),
+        ]);
+        out.extend([
+            "rule source_only".into(),
+            "  command = $tools source-only $version".into(),
+            "  description = LINK (source only) $out".into(),
+            format!(
+                "build {}: source_only {} | {tool_dep}{} $tools_dep",
+                crate::source_only::output(&own),
+                objects
+                    .iter()
+                    .map(|p| ninja_path(p))
+                    .collect::<Vec<_>>()
+                    .join(" "),
+                inputs
+                    .iter()
+                    .map(|p| ninja_path(p))
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            ),
+        ]);
+    }
     out.extend([format!("build all_source: phony {}",objects.iter().map(|p|ninja_path(p)).collect::<Vec<_>>().join(" ")),format!("build progress: phony build/{version}/report.json"),
         format!("build build.ninja: configure | $tools_dep {prefix}config/sources.json config/{version}/config.json{}{}",if tree.vendored() {format!(" {}/config.json {}/state.json",tree.config_dir,tree.config_dir)} else {String::new()},if linking {format!(" {split_file}")} else {String::new()}),format!("default build/{version}/ok all_source"),String::new()]);
     Ok(Generation {

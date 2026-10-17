@@ -173,6 +173,8 @@ pub fn run(request: &Request) -> Result<Report> {
         "oracle compiler missing: {}",
         oracle.display()
     );
+    // (the driver finds itself by the path it is run as, from the job's directory)
+    let oracle = std::path::absolute(&oracle)?;
     let scratch = tempfile::TempDir::new()?;
     let next = AtomicUsize::new(0);
     let outcomes: Mutex<Vec<Option<Result<Outcome>>>> =

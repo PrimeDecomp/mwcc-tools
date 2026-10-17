@@ -142,6 +142,11 @@ pub fn definition(text: &str) -> Result<(String, Vec<Export>)> {
     Ok((dll, exports))
 }
 pub fn import_library(dll: &str, exports: &[Export]) -> Result<Vec<u8>> {
+    import_library_of(dll, exports, false)
+}
+/// An import library for DLL, in the format Microsoft's LIB writes. Each export is data (its `__imp_` pointer), or
+/// with THUNKS a function with its thunk as well.
+pub fn import_library_of(dll: &str, exports: &[Export], thunks: bool) -> Result<Vec<u8>> {
     let base = dll.rsplit_once('.').map_or(dll, |(b, _)| b);
     let descriptor = format!("__IMPORT_DESCRIPTOR_{base}");
     let null_descriptor = "__NULL_IMPORT_DESCRIPTOR";
@@ -231,9 +236,14 @@ pub fn import_library(dll: &str, exports: &[Export]) -> Result<Vec<u8>> {
         header.extend([0; 4]);
         header.extend((strings.len() as u32).to_le_bytes());
         header.extend(export.ordinal.to_le_bytes());
-        header.extend((1u16 | if export.named { 3 << 2 } else { 0 }).to_le_bytes());
+        let kind = if thunks { 0u16 } else { 1 };
+        header.extend((kind | if export.named { 3 << 2 } else { 0 }).to_le_bytes());
         header.extend(strings.as_bytes());
-        members.push((header, vec![format!("__imp__{}", export.symbol)]));
+        let mut names = vec![format!("__imp__{}", export.symbol)];
+        if thunks {
+            names.push(format!("_{}", export.symbol));
+        }
+        members.push((header, names));
     }
     let symbol_members: Vec<_> = members
         .iter()

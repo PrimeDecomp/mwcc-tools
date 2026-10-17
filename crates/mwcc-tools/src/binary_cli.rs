@@ -329,6 +329,35 @@ pub fn run(command: &str, args: &[String]) -> Result<()> {
                 outcome.links
             );
         }
+        "source-only" => {
+            let mut root = std::env::current_dir()?;
+            let mut version = None;
+            let mut i = 0;
+            while i < args.len() {
+                match args[i].as_str() {
+                    "--root" => {
+                        i += 1;
+                        root = args.get(i).context("--root needs a value")?.into();
+                    }
+                    v if !v.starts_with('-') && version.is_none() => version = Some(v),
+                    other => bail!("unknown source-only argument {other}"),
+                }
+                i += 1;
+            }
+            let version = version.context("source-only requires VERSION")?;
+            let outcome = mwcc_oracle_core::source_only::run(&root, version)?;
+            for function in &outcome.trapped {
+                println!("traps (the original does not have it): {function}");
+            }
+            println!(
+                "{version}: {}: {} objects; {} COMDATs made any, {} duplicate definitions dropped, {} functions trap",
+                outcome.output,
+                outcome.objects,
+                outcome.comdats,
+                outcome.duplicates,
+                outcome.trapped.len()
+            );
+        }
         "split" => {
             let mut root = std::env::current_dir()?;
             let mut output = None;

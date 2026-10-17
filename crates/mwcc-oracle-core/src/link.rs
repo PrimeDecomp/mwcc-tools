@@ -104,7 +104,17 @@ fn write(root: &Path, path: &str, data: &[u8]) -> Result<()> {
     Ok(())
 }
 fn execute(request: &Request, inputs: &[String]) -> Result<(Option<i32>, String)> {
-    let root = request.root.canonicalize()?;
+    mwld(&request.root, inputs, &request.output, request.timeout)
+}
+/// Link INPUTS (paths from ROOT) into OUTPUT as the original was linked, with a map beside it: the linker's exit
+/// status and messages.
+pub fn mwld(
+    root: &Path,
+    inputs: &[String],
+    output: &str,
+    timeout: Duration,
+) -> Result<(Option<i32>, String)> {
+    let root = root.canonicalize()?;
     let executable = root.join("build/compilers/pro53/mwld.exe");
     let mut command = runner::launcher(&root, &executable)?;
     command
@@ -116,8 +126,8 @@ fn execute(request: &Request, inputs: &[String]) -> Result<(Option<i32>, String)
             "_mainCRTStartup",
         ])
         .args(inputs)
-        .args(["-o", &request.output, "-map"])
-        .arg(Path::new(&request.output).with_extension("map"))
+        .args(["-o", output, "-map"])
+        .arg(Path::new(output).with_extension("map"))
         .current_dir(root);
     let log = crate::temporary::diagnostic_log()?;
     let stream = log.reopen()?;
@@ -133,12 +143,9 @@ fn execute(request: &Request, inputs: &[String]) -> Result<(Option<i32>, String)
         if let Some(status) = child.try_wait()? {
             break status;
         }
-        if start.elapsed() >= request.timeout {
+        if start.elapsed() >= timeout {
             process_tree::terminate(&mut child)?;
-            anyhow::bail!(
-                "linker timed out after {} seconds",
-                request.timeout.as_secs_f64()
-            );
+            anyhow::bail!("linker timed out after {} seconds", timeout.as_secs_f64());
         }
         thread::sleep(Duration::from_millis(10));
     };
