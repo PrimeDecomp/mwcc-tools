@@ -111,8 +111,11 @@ The module's imports are 63 Win32 functions of kernel32 and version.dll. MSL's W
 * The link fails if a hook and its function differ in signature (in wasm, that call would trap). It also fails if
   the module imports anything the stock module does not.
 
-As with the source-built oracle, the guarded probes are not installed, so the `pv.*` provenance streams are absent.
-Two scalarization bindings, which need the x86 caller's EBX and return address, are gaps.
+As with the source-built oracle, the guarded probes are not installed, so the `pv.*` provenance streams they write
+(dispatch, counters, coalescing, call arguments' contexts) are absent from the module's traces. Two scalarization
+bindings, which need the x86 caller's EBX and return address, are gaps. An oracle run that asks for the source arena or
+node streams (`--source-arenas`, `--source-nodes`) runs the x86 oracle, and fails if it is not built. Use
+`MWCC_IN_PROCESS=0` to run the x86 oracle for any other provenance.
 
 ## Floating point: the x87
 
