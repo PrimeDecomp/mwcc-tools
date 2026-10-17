@@ -193,7 +193,12 @@ pub fn generate(
                     {
                         stop = following;
                     }
-                    pieces.push((*address, stop));
+                    // (a function the section's alignment cannot place, such as an import thunk, stays in the
+                    // piece before it)
+                    match pieces.last_mut() {
+                        Some(last) if address % align != 0 => last.1 = stop,
+                        _ => pieces.push((*address, stop)),
+                    }
                 }
             }
             for (piece_start, piece_end) in pieces {

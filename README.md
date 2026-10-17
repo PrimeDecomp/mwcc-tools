@@ -24,7 +24,7 @@ Supported versions:
 - `GC_1_2_5`: GameCube 1.2.5
 - `GC_1_2_5n`: GameCube 1.2.5n (1.2.5 with Ninji's patch)
 - `GC_1_3`: GameCube 1.3
-- `GC_1_3_2`: GameCube 1.3.2 (106 of 242 units from the GC 2.x sources in `gc2/`, see `docs/gc132-differences.md`)
+- `GC_1_3_2`: GameCube 1.3.2 (130 of 242 units from the GC 2.x sources in `gc2/`, see `docs/gc132-differences.md`)
 - `GC_2_7`: GameCube 2.7 (220 of 253 units from the GC 2.x sources in `gc2/`, see `docs/gc27-differences.md`)
 
 `gc2/` is NWPlayer123's GC 2.x decompilation (CC0), vendored with
