@@ -27,13 +27,12 @@ pub fn instantiation(trace: &Trace, version: Version) -> Result<Vec<Value>> {
                 }
             }
             if let Some(caller) = r.fields.get("caller") {
-                let address = u32::from_str_radix(caller, 16)?;
-                let name = version::function_at(version, address);
-                let caller = version::function_name(version, address)
+                // By name, not symbol: 1.3.2 also calls the function at 0x5114e0 fn_005114e0.
+                let caller = version::function_name(version, u32::from_str_radix(caller, 16)?)
                     .unwrap_or_else(|| format!("0x{caller}"));
                 e["caller"] = json!(caller);
-                e["why"]=json!(match name {
-                    Some("fn_005114e0")=>"a call or address of it left in the code after inlining".into(),
+                e["why"]=json!(match caller.split(' ').next() {
+                    Some("CInline_ExportCheck")=>"a call or address of it left in the code after inlining".into(),
                     Some("CExcept_CheckStackRefs")=>"the destructor of an object live in a statement (its exception actions), even when every call of it was inlined".into(),
                     Some("emit_object")=>"referenced by data emitted (a vtable, an initializer)".into(),
                     _=>format!("referenced by {caller}")});

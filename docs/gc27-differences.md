@@ -90,6 +90,39 @@ The 343, by the source file the function had in 1.3.2:
 * The globals `data_00582468` (the inline depth, at 0x5E3B4C) and `data_005dfb68` (the cost threshold, at 0x5E3AE0)
   are carried.
 
+**Names from the GC 2.x decompilation**
+
+NWPlayer123's CC0 GC 2.x decompilation (at commit `888bd76d`) names every function and most globals of the same 2.7
+executable. Its function names fill [`names.txt`](oracle.md#function-names). Its names for the globals and functions
+the hooks use confirm what the trace takes them to be:
+
+| our symbol | 2.7 address | its name | the hooks' use |
+| --- | ---: | --- | --- |
+| `data_00582468` | 0x5E3B4C | `cinline_level` | the inliner's round (`inl.can depth=`) |
+| `data_005dfb68` | 0x5E3AE0 | `inline_max_size` | the cost threshold |
+| `data_005dfb66` | 0x5E3ADE | `recursive_inline` | set when the callee is the function being compiled (`--full-cost`) |
+| `data_005dfb62` | 0x5E3ADA | `expanding_function` | `tp.* expanding=` |
+| `data_0058245a` | 0x5E3B58 | `local_aobjects` | the inline formals' slots (`lc.arg`) |
+| `data_005875b8` | 0x5EA5A4 | `FunctionName` | |
+| `_fn_00507070` | 0x5088D0 | `simplifygraph` | `ra.graph`, `ra.node`, `ra.order` |
+| `_fn_00506f50` | 0x5087B0 | `colorgraph` | `ra.select` |
+| `_fn_00506cd0` | 0x508530 | `colorinstructions` | allocation entry |
+| `_fn_004f7fb0` | 0x4F9800 | `compute_frame_sizes` | `fr.*` |
+| `_fn_0055e600` | 0x561070 | `CInline_EstimateSizeOfExpr` | the body cost |
+| `_fn_0050f240` | 0x55CEE0 | `CInline_ObjectAddrRef` | `tp.emit` |
+| `_fn_005114e0` | 0x55F000 | `CInline_ExportCheck` | a `tp.emit` caller: calls left after inlining |
+| `_fn_00460780` | 0x461620 | `IRO_ScalarizeClassDataMembers` | `lc.pass`, `lc.part` |
+| `_fn_004601f0` | 0x461090 | `CheckAddressConsistency` | `lc.use` |
+| `_fn_00460c90` | 0x461B30 | `FunctionCallMightUseOrKillAnyAddressedVar` | `lc.call` |
+| `_fn_00436390` | 0x434AF0 | `expressionstatement` | `bk.stmt` |
+| `_fn_00454030` | 0x454AA0 | `IRO_SetupDump` | optimizer dump activation |
+
+In 1.3.2 and 2.7, two `fn_` names are each given to two functions (`scope:local`): 1.3.2's `fn_004ab460` and
+`fn_005114e0`, and 2.7's `fn_00453e10` and `fn_004a5b70`. One of each pair is the version's own address name, and
+the other is carried from 1.3. No hook uses them. The expression-dispatch audit looks for `fn_00453e10`, but it picks
+the function by size and byte hash. Any other match on the name alone would also take the other function. The `tp.emit` caller
+explanation matches on `CInline_ExportCheck` from `names.txt` for that reason.
+
 ## Status
 
 * `mwcc-tools corpus --version GC_2_7 --canaries …`: 2313/2313 identical.
