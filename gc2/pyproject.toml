@@ -1,0 +1,18 @@
+[project]
+name = "mwcc-gc2"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "capstone>=5",
+]
+
+[dependency-groups]
+dev = [
+    "clang-format==23.1.2",
+    "ruff==0.17.0",
+]
+
+# (the tools are written to 120 columns; the C sources' 100 is .clang-format's)
+[tool.ruff]
+line-length = 120
+target-version = "py311"
