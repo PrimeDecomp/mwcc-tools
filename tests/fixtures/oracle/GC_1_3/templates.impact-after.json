@@ -1248,7 +1248,7 @@
           "link": "combine__F5Value",
           "inline": true,
           "chain": [],
-          "reason": "auto-inline decision",
+          "reason": "bottom-up inline decision",
           "outcome": "inlined",
           "count": 1,
           "depths": [

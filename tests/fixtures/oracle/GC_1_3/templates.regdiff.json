@@ -115,7 +115,7 @@
       "   Value::__dt: INLINE - estimated cost 30 is within the threshold 512 (8 statements)  (x2)  (line 16)",
       "   consume: call kept - not declared inline (and not a method defined in its class)  (x28)  (depth 1, 2, 3, 4, 5, 6, 7)  (line 16)",
       "   __dl: call kept - not declared inline (and not a method defined in its class)  (x28)  (depth 1, 2, 3, 4, 5, 6, 7)  (line 16)",
-      "   combine: INLINE - auto-inline decision  (depth 7)  (line 16)",
+      "   combine: INLINE - bottom-up inline decision  (depth 7)  (line 16)",
       "",
       "== with_value: PCode before the allocation ==",
       "   block 0 (weight 1) -> 1",

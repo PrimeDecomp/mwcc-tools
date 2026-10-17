@@ -182,7 +182,7 @@
         "link": "combine__F5Value",
         "inline": true,
         "chain": [],
-        "reason": "auto-inline decision",
+        "reason": "bottom-up inline decision",
         "outcome": "inlined",
         "count": 1,
         "depths": [
@@ -511,7 +511,7 @@
           "with_value (with_value__Fii)"
         ],
         "reasons": [
-          "auto-inline decision"
+          "bottom-up inline decision"
         ],
         "chains": [],
         "limit_paths": [],
@@ -520,7 +520,7 @@
       "report": [
         "   A: inlined x8; estimate 20, whole cost 20, rounds 0, 1, 2, 3, 4, 5, 6, 7",
         "      in with_value (with_value__Fii)",
-        "      because: auto-inline decision"
+        "      because: bottom-up inline decision"
       ],
       "verdict_present": null,
       "verdict_absent": "the target keeps a call this TU inlines every time (8x, rounds 0, 1, 2, 3, 4, 5, 6, 7, with its body); depth could: inlined at round 7; cost would need +493 to keep it"

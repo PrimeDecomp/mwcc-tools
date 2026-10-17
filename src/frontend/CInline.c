@@ -2623,7 +2623,7 @@ Boolean can_inline(ENode *node)
         (function->datatype == DFUNC || (function->datatype == DVFUNC && (node->flags & ENODE_FLAG_80)))) {
         if (copts.alwaysinline != 0)
             return 1;
-        if (copts.inlineAuto != 0) {
+        if (copts.inlineBottomUp != 0) {
             if (function->u.func.u == NULL)
                 return 0;
             if (copts.inlineLimit == 0)
@@ -3502,7 +3502,7 @@ void inline_statement_list(Statement *list)
 
     if (copts.dontinline == 0 && copts.inlineLimit >= 0) {
 #if VERSION >= VERSION_GC_1_3
-        if (copts.inlineAuto != 0) {
+        if (copts.inlineBottomUp != 0) {
             data_005dfb68 = copts.inlineAutoSize;
             while (data_005dfb68 > 1 && fn_0055e330(list) > copts.inlineAutoMax)
                 data_005dfb68 >>= 1;
@@ -3538,11 +3538,11 @@ void inline_statement_list(Statement *list)
                 }
             }
 #if VERSION >= VERSION_GC_1_3
-            if (copts.inlineAuto == 0 && data_00582467 == 0)
+            if (copts.inlineBottomUp == 0 && data_00582467 == 0)
                 break;
-            if (copts.alwaysinline == 0 || copts.inlineAuto != 0) {
+            if (copts.alwaysinline == 0 || copts.inlineBottomUp != 0) {
                 if ((limit = copts.inlineLimit) == 0) {
-                    if (copts.inlineAuto != 0) {
+                    if (copts.inlineBottomUp != 0) {
                         if (data_00582468 + 1 >= 8)
                             break;
                     } else if (data_00582468 >= 3) {

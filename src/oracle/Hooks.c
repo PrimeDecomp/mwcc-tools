@@ -431,12 +431,13 @@ CColoringNode *select_ready_coloring_node(CColoringNode *list, UInt16 cycle)
 #endif
 
 /* 1.3.2 put three bytes into the options before alwaysinline (0xd5 in 1.3, 0xd8 in 1.3.2), and 2.7 four more before
- * inlineLimit (0x68 in 1.3.2, 0x6c in 2.7; everything from there on moved by four). CInlineInfo's kind is two bytes
+ * inlineLimit (0x68 in 1.3.2, 0x6c in 2.7; everything from there on moved by four). The trace's auto= is
+ * inline_bottom_up (0x72, 0x76 in 2.7), as the pragma tables name it; auto_inline (0x89, 0x8d in 2.7) is not traced. CInlineInfo's kind is two bytes
  * further on in each (0xa0 in 1.3, as the sources lay it out, 0xa2 in 1.3.2, 0xa4 in 2.7: inline_call_expression's
  * read of it). */
 #if VERSION >= VERSION_GC_2_7
 #define ALWAYS_INLINE (*((unsigned char *)&copts + 0xdc))
-#define INLINE_AUTO (*((unsigned char *)&copts + 0x76))
+#define INLINE_BOTTOM_UP (*((unsigned char *)&copts + 0x76))
 #define INLINE_LIMIT (*(SInt16 *)((unsigned char *)&copts + 0x6c))
 #define INFO_KIND(info) (*((unsigned char *)(info) + 0xa4))
 #elif VERSION >= VERSION_GC_1_3_2
@@ -445,8 +446,8 @@ CColoringNode *select_ready_coloring_node(CColoringNode *list, UInt16 cycle)
 #else
 #define ALWAYS_INLINE copts.alwaysinline
 #endif
-#ifndef INLINE_AUTO
-#define INLINE_AUTO copts.inlineAuto
+#ifndef INLINE_BOTTOM_UP
+#define INLINE_BOTTOM_UP copts.inlineBottomUp
 #define INLINE_LIMIT copts.inlineLimit
 #endif
 #ifndef INFO_KIND
@@ -685,7 +686,7 @@ Boolean CAN_INLINE(ENode *node)
     result = CAN_INLINE_RETAIL(node);
     OracleTrace_Printf("inl.can function=%s result=%d depth=%d inline_bit=%d always=%d auto=%d limit=%d body=%d "
                        "nstmts=%d line=%d link=", callee_name(function), (int)result, (int)data_00582468,
-                       (int)((function->qual & Q_INLINE) != 0), (int)ALWAYS_INLINE, (int)INLINE_AUTO,
+                       (int)((function->qual & Q_INLINE) != 0), (int)ALWAYS_INLINE, (int)INLINE_BOTTOM_UP,
                        (int)INLINE_LIMIT, info != NULL, info != NULL ? (int)info->nstmts : -1, inline_line());
     OracleTrace_Printf("%s chain=", link_name(function));
     print_chain(node);

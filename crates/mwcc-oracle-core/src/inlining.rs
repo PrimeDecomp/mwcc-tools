@@ -309,7 +309,7 @@ pub fn decisions(events: &[Record], bodies: &BTreeMap<String, i64>) -> Result<Ve
                         }
                         reason
                     } else {
-                        "auto-inline decision".into()
+                        "bottom-up inline decision".into()
                     }
                 } else {
                     format!(

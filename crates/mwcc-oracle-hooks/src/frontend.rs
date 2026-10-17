@@ -1,5 +1,6 @@
 //! Version-specific frontend observers. All compiler work stays in retail code.
 use core::{ffi::c_char, mem::MaybeUninit, ptr};
+// COpts always_inline, inline_bottom_up (traced as auto=), inline limit; CInlineInfo kind.
 #[cfg(feature = "frontend-gc13")]
 const OFFSETS: (usize, usize, usize, usize) = (0xd5, 0x72, 0x68, 0xa0);
 #[cfg(feature = "frontend-gc132")]

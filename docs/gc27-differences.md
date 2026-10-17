@@ -117,6 +117,26 @@ the hooks use confirm what the trace takes them to be:
 | `_fn_00436390` | 0x434AF0 | `expressionstatement` | `bk.stmt` |
 | `_fn_00454030` | 0x454AA0 | `IRO_SetupDump` | optimizer dump activation |
 
+The audit against its headers (and the retail code) found the hooks' 2.7 struct offsets right: COpts, CInlineInfo,
+ENode, Object, Type, Statement, PCode, IGNode, the scheduler's nodes and the frame globals. One name was wrong in
+every version: the byte the hooks trace as `auto=` (`copts.inlineBottomUp`, 0x72, 0x76 in 2.7) is
+`#pragma inline_bottom_up`, as the compilers' own pragma tables name it. `auto_inline` is at 0x89 (0x8d in 2.7)
+and is not traced.
+
+What its sources and notes say about the 2.x inliner, not yet checked here through the oracle:
+
+* `-inline auto` (`auto_inline`) makes a function not declared `inline` a candidate (`FUNC_FLAGS_800`) when
+  `CInline_GenFunc` finds it small: at most 30 statements other than NOPs and labels, and at most 1024 bytes of
+  locals (its `src/frontend/CInline.c`, `CInline_IsSmallFunction`; Pro7's limit was 15).
+* `inline_bottom_up` is on by default. It runs the cost-threshold loop (`inline_max_size`, then lowered while the
+  total is over `inline_max_total_size`), which is the oracle's cost explanation.
+* `CI_FuncData` keeps the back-end options a function was defined with, and deferred code generation restores them,
+  so a function compiled from its saved body can be scheduled and optimized with other options than the current
+  pragmas (its `include/compiler/CInline.h`).
+* 2.7 differs from 2.6 in the object writer (a hashed symbol table and one symbol per DWARF entry) and in assert lines
+  (its `docs/agents-notes.md`, "The version round"). Its analyses of 2.6's allocator, scheduler, inliner and frames
+  apply to 2.7.
+
 In 1.3.2 and 2.7, two `fn_` names are each given to two functions (`scope:local`): 1.3.2's `fn_004ab460` and
 `fn_005114e0`, and 2.7's `fn_00453e10` and `fn_004a5b70`. One of each pair is the version's own address name, and
 the other is carried from 1.3. No hook uses them. The expression-dispatch audit looks for `fn_00453e10`, but it picks

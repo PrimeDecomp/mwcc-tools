@@ -2235,7 +2235,7 @@ UInt8 CPrep_Compile(CPrepCU *cu)
     copts.extended_errorcheck = 0;
     if (copts.cplusplus)
         copts.const_strings = 1;
-    copts.inlineAuto = 1;
+    copts.inlineBottomUp = 1;
 #endif
 
     if (CompilerTools_InitHeaps(CError_LongJump) != 0) {

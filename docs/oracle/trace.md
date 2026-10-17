@@ -23,7 +23,7 @@ Link names are the mangled ones; the compiler computes them if it has not yet.
 | `ra.order` | The stack, first coloured first, with each node's spill cost. |
 | `ra.select mask= after= ok=` | Each node's colour and flags. |
 | `fr.begin` ... `fr.end` | The frame: `fr.local` / `fr.temp name= offset= size= reg= used=`, and `fr.layout linkage= outgoing= locals= above= size=`. |
-| `inl.can`, `inl.begin` | An inline candidate and an expansion. `line=` is the source line of the call's statement, `link=` the callee. `inl.can` also has `chain=`: the inlined bodies the call is in, outermost first, separated by `\|`. |
+| `inl.can`, `inl.begin` | An inline candidate and an expansion. `line=` is the source line of the call's statement, `link=` the callee. `inl.can` also has `chain=`: the inlined bodies the call is in, outermost first, separated by `\|`. `always=` is `#pragma always_inline`; `auto=` is `#pragma inline_bottom_up` (on by default; then the cost estimate decides), not `auto_inline`, which is not traced. |
 | `inl.cost nest=`, `inl.end` | A cost estimate, and the end of an expansion. |
 
 ### Turned on by environment variables
