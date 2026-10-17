@@ -363,6 +363,12 @@ pub fn patch_limits(
             ],
             0xff3fd,
         ),
+        Version::Gc26 => (
+            &[
+                0x32b75, 0x32c11, 0x32c71, 0x32cd1, 0x32db4, 0x32e41, 0x32eb5,
+            ],
+            0x10025d,
+        ),
         Version::Gc27 => (
             &[
                 0x32b75, 0x32c11, 0x32c71, 0x32cd1, 0x32db4, 0x32e41, 0x32eb5,

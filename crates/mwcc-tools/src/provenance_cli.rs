@@ -128,6 +128,31 @@ pub fn run(args: &[String]) -> Result<()> {
     if args.first().map(String::as_str) == Some("compare") {
         return compare(&args[1..]);
     }
+    if args.first().map(String::as_str) == Some("derive-guards") {
+        let mut root = std::env::current_dir()?;
+        let mut version = None;
+        let mut names = vec![];
+        let mut i = 1;
+        while i < args.len() {
+            match args[i].as_str() {
+                option @ ("--root" | "--version") => {
+                    i += 1;
+                    let value = args.get(i).context("derive-guards option needs a value")?;
+                    if option == "--root" {
+                        root = value.into();
+                    } else {
+                        version = Some(value.clone());
+                    }
+                }
+                name => names.push(name.to_owned()),
+            }
+            i += 1;
+        }
+        let version = version.context("derive-guards needs --version")?;
+        let guards = mwcc_oracle_core::source_arena_probe::derive_guards(&root, &version, &names)?;
+        println!("{}", serde_json::to_string_pretty(&guards)?);
+        return Ok(());
+    }
     if matches!(
         args.first().map(String::as_str),
         Some("audit-counters" | "audit-dispatch" | "audit-source-arenas")

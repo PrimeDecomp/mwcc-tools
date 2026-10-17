@@ -1,8 +1,9 @@
 # GC 2.7 against GC 1.3.2
 
-`config/GC_2_7` is the split and relink of the 2.7 executable (Ver 2.4.7 build 108, `VERSION_GC_2_7` = 7). It is
-carried over from 1.3.2 directly; 2.0 to 2.6 are not built. To add one, insert it before 2.7 in `build_config.rs`
-`VERSIONS` and `include/version.h` and renumber 2.7.
+`config/GC_2_7` is the split and relink of the 2.7 executable (Ver 2.4.7 build 108, `VERSION_GC_2_7` = 8). It is
+carried over from 1.3.2 directly. 2.6 (build 107) was later carried over from 2.7; see
+[gc26-differences.md](gc26-differences.md). 2.0 to 2.5 are not built. To add one, insert it in order in
+`build_config.rs` `VERSIONS` and `include/version.h`, and renumber the versions after it.
 
 ## How the configuration was made
 

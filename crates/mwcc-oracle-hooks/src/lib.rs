@@ -104,13 +104,17 @@ compile_error!("frontend and trace-output are separate objects");
     not(any(
         feature = "frontend-gc13",
         feature = "frontend-gc132",
+        feature = "frontend-gc26",
         feature = "frontend-gc27"
     ))
 ))]
 compile_error!("select exactly one frontend version");
 #[cfg(any(
     all(feature = "frontend-gc13", feature = "frontend-gc132"),
+    all(feature = "frontend-gc13", feature = "frontend-gc26"),
     all(feature = "frontend-gc13", feature = "frontend-gc27"),
-    all(feature = "frontend-gc132", feature = "frontend-gc27")
+    all(feature = "frontend-gc132", feature = "frontend-gc26"),
+    all(feature = "frontend-gc132", feature = "frontend-gc27"),
+    all(feature = "frontend-gc26", feature = "frontend-gc27")
 ))]
 compile_error!("frontend versions cannot be combined");

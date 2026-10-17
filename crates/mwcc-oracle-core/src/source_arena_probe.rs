@@ -56,6 +56,7 @@ fn version_name(version: u8) -> Option<&'static str> {
         1 => Some("GC_1_3"),
         2 => Some("GC_1_3_2"),
         3 => Some("GC_2_7"),
+        4 => Some("GC_2_6"),
         _ => None,
     }
 }
@@ -64,6 +65,7 @@ fn version_number(version: &str) -> Result<u8> {
         "GC_1_3" => Ok(1),
         "GC_1_3_2" => Ok(2),
         "GC_2_7" => Ok(3),
+        "GC_2_6" => Ok(4),
         _ => anyhow::bail!("unsupported arena probe version"),
     }
 }
@@ -378,35 +380,32 @@ pub fn plan(root: &Path, version: &str) -> Result<Vec<Site>> {
     Ok(result)
 }
 
-pub(crate) fn check_guard(object: &Object<'_>, g: &Guard, original: &[u8]) -> Result<()> {
+/// The guard a split object's definition of `name` gives, checked against the original's bytes: how the
+/// checked-in catalogs are made, and how a new version's are derived from them (`provenance derive-guards`).
+pub fn derive_guard(
+    object: &Object<'_>,
+    name: &str,
+    address: u32,
+    size: u32,
+    original: &[u8],
+) -> Result<Guard> {
     let found = object
         .symbols
         .values()
-        .filter(|s| s.section > 0 && s.name == g.name)
+        .filter(|s| s.section > 0 && s.name == name)
         .collect::<Vec<_>>();
     ensure!(
         found.len() == 1,
-        "duplicate/missing arena split definition: {}",
-        g.name
+        "duplicate/missing arena split definition: {name}"
     );
     let s = found[0];
-    let d = &g.definition;
-    ensure!(
-        s.value == d.value
-            && s.section == d.section
-            && s.kind == d.kind
-            && s.storage == d.storage
-            && aux_hex(s) == d.auxiliary_hex,
-        "arena definition identity changed: {}",
-        g.name
-    );
     let section = object
         .sections
         .get(s.section as usize - 1)
         .context("arena definition section missing")?;
     let end = s
         .value
-        .checked_add(g.size)
+        .checked_add(size)
         .context("arena guard extent overflow")?;
     let mut actual = section
         .data
@@ -421,8 +420,7 @@ pub(crate) fn check_guard(object: &Object<'_>, g: &Guard, original: &[u8]) -> Re
             .relocations
             .iter()
             .any(|r| { r.offset < s.value && u64::from(r.offset) + 4 > u64::from(s.value) }),
-        "relocation crosses guarded arena region start: {}",
-        g.name
+        "relocation crosses guarded arena region start: {name}"
     );
     let mut relocs = section
         .relocations
@@ -458,13 +456,105 @@ pub(crate) fn check_guard(object: &Object<'_>, g: &Guard, original: &[u8]) -> Re
         actual[at..at + 4].fill(0);
         expected[at..at + 4].fill(0);
     }
+    ensure!(actual == expected, "arena split body changed: {name}");
+    Ok(Guard {
+        name: name.into(),
+        address,
+        size,
+        code_sha256: digest(original),
+        normalized_sha256: digest(&actual),
+        relocation_identity_sha256: format!("{:x}", ids.finalize()),
+        definition: Definition {
+            value: s.value,
+            section: s.section,
+            kind: s.kind,
+            storage: s.storage,
+            auxiliary_hex: aux_hex(s),
+        },
+    })
+}
+
+/// Derive guards for `names` (`NAME` or `NAME=SIZE`, for a guard shorter than its metadata) from
+/// `version`'s symbols, original executable and split objects (`build/<version>/obj`).
+pub fn derive_guards(root: &Path, version: &str, names: &[String]) -> Result<Vec<Guard>> {
+    let original = Original::read(root, version)?;
+    let pe = original.pe()?;
+    let metadata = executable::read_symbols(&fs::read_to_string(
+        root.join(format!("config/{version}/symbols.txt")),
+    )?)?;
+    let mut objects = vec![];
+    let mut pending = vec![root.join(format!("build/{version}/obj"))];
+    while let Some(directory) = pending.pop() {
+        for entry in fs::read_dir(&directory)
+            .with_context(|| format!("split objects {}", directory.display()))?
+        {
+            let path = entry?.path();
+            if path.is_dir() {
+                pending.push(path);
+            } else if path.extension().is_some_and(|e| e == "obj") {
+                objects.push(fs::read(path)?);
+            }
+        }
+    }
+    let objects = objects
+        .iter()
+        .map(|bytes| Object::parse(bytes))
+        .collect::<Result<Vec<_>>>()?;
+    names
+        .iter()
+        .map(|request| {
+            let (name, size) = match request.split_once('=') {
+                Some((name, size)) => (name, Some(executable::hex(size)?)),
+                None => (request.as_str(), None),
+            };
+            let matching = metadata
+                .iter()
+                .filter(|s| s.name == name)
+                .collect::<Vec<_>>();
+            ensure!(matching.len() == 1, "duplicate/missing metadata: {name}");
+            let symbol = matching[0];
+            let size = match size {
+                Some(size) => size,
+                None => executable::size(&symbol.options)?,
+            };
+            let defining = objects
+                .iter()
+                .filter(|o| o.symbols.values().any(|s| s.section > 0 && s.name == name))
+                .collect::<Vec<_>>();
+            ensure!(
+                defining.len() == 1,
+                "duplicate/missing split definition: {name}"
+            );
+            derive_guard(
+                defining[0],
+                name,
+                symbol.address,
+                size,
+                pe.read(symbol.address, size as usize)?,
+            )
+        })
+        .collect()
+}
+
+pub(crate) fn check_guard(object: &Object<'_>, g: &Guard, original: &[u8]) -> Result<()> {
+    let actual = derive_guard(object, &g.name, g.address, g.size, original)?;
+    let (d, e) = (&actual.definition, &g.definition);
     ensure!(
-        actual == expected && digest(&actual) == g.normalized_sha256,
+        d.value == e.value
+            && d.section == e.section
+            && d.kind == e.kind
+            && d.storage == e.storage
+            && d.auxiliary_hex == e.auxiliary_hex,
+        "arena definition identity changed: {}",
+        g.name
+    );
+    ensure!(
+        actual.normalized_sha256 == g.normalized_sha256,
         "arena split body changed: {}",
         g.name
     );
     ensure!(
-        format!("{:x}", ids.finalize()) == g.relocation_identity_sha256,
+        actual.relocation_identity_sha256 == g.relocation_identity_sha256,
         "arena relocation target/addend identity changed: {}",
         g.name
     );
@@ -806,7 +896,7 @@ pub fn install(root: &Path, version: &str, inputs: &[(String, Vec<u8>)]) -> Resu
     let lock = match version_id {
         1 => 0x5db510,
         2 => 0x5dd510,
-        3 => 0x5df568,
+        3 | 4 => 0x5df568,
         _ => unreachable!(),
     };
     ensure!(
@@ -1149,7 +1239,7 @@ mod tests {
     }
     #[test]
     fn canonical_sites_and_callback_abi_are_closed() {
-        for version in 1..=3 {
+        for version in 1..=4 {
             let c = &catalogs()[version_name(version).unwrap()];
             assert_eq!(c.guards.len(), 22);
             for p in PAIRS {

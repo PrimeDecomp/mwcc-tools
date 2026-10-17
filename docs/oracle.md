@@ -2,7 +2,7 @@
 
 The oracle is the original CodeWarrior compiler relinked with Rust trace hooks.
 `mwcc-tools` uses its trace to explain register allocation, inlining, scheduling
-and stack layout. Supported oracle versions are `GC_1_3`, `GC_1_3_2` and `GC_2_7`.
+and stack layout. Supported oracle versions are `GC_1_3`, `GC_1_3_2`, `GC_2_6` and `GC_2_7`.
 
 Compilation checks compare the oracle's object with the stock compiler's object.
 Use a verified result before relying on the trace to explain your build.
@@ -222,7 +222,8 @@ is `CreateNewLoopExitSuccessor`, `CreatePreHeader` and `CreateRIS`, and the name
 is used. 1.3 and 1.3.2 take a 2.7 name only where the same `fn_` symbol has the same size (822 and 841 symbols).
 With call targets and addresses masked, all but six of each are at least 90% the same bytes as 2.7's. Five of those
 six are at 78–89% and keep the name. `fn_005288e0` (`findinitializer` in 2.7) is at 20% and is left out. Their other `fn_` symbols changed by
-2.7 and stay unnamed.
+2.7 and stay unnamed. 2.6's table is made the same way from that commit's 2.6 `symbols.txt` (1090 of its 1091 `fn_`
+symbols); see [2.6's differences](gc26-differences.md).
 
 ## Check many inputs
 

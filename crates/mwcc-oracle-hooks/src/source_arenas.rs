@@ -156,7 +156,7 @@ unsafe fn enter() -> bool {
             let g = globals();
             let event = next(ptr::addr_of_mut!(EVENT));
             OracleTrace_Printf(c"pv.arena.begin schema=1 stream=1 event=%lu scope=guarded_retail_arenas_v1 version=%lu pools=%08lx lock=%08lx\n".as_ptr(),event,g.version,g.pools as u32,g.lock as u32);
-            if g.pools.is_null() || g.lock.is_null() || !(1..=3).contains(&g.version) {
+            if g.pools.is_null() || g.lock.is_null() || !(1..=4).contains(&g.version) {
                 gap(c"invalid_globals", 0);
             }
         }

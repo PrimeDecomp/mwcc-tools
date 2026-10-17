@@ -119,7 +119,7 @@ pub fn frontend_hooks(version: &str) -> Result<[&'static str; 5]> {
             "_CInline_DispatchNextDeferredNode",
         ],
         "GC_1_3_2" => ["_fn_0055ed70", "_fn_0055f350", "_fn_0055a7f0"],
-        "GC_2_7" => ["_fn_00560c80", "_fn_00561260", "_fn_0055c730"],
+        "GC_2_6" | "GC_2_7" => ["_fn_00560c80", "_fn_00561260", "_fn_0055c730"],
         _ => anyhow::bail!("unsupported Rust frontend version {version}"),
     };
     Ok([names[0], names[1], names[2], "_fn_0055e540", "_fn_0055e600"])
@@ -345,6 +345,7 @@ fn build_object(
         let feature = match version {
             "GC_1_3" => "frontend-gc13",
             "GC_1_3_2" => "frontend-gc132",
+            "GC_2_6" => "frontend-gc26",
             "GC_2_7" => "frontend-gc27",
             _ => unreachable!(),
         };

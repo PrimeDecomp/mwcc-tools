@@ -44,6 +44,7 @@ fn version_number(version: &str) -> Result<u32> {
         "GC_1_3" => Ok(1),
         "GC_1_3_2" => Ok(2),
         "GC_2_7" => Ok(3),
+        "GC_2_6" => Ok(4),
         _ => anyhow::bail!("unsupported source node probe version"),
     }
 }
@@ -51,7 +52,7 @@ fn version_number(version: &str) -> Result<u32> {
 pub fn valid_site(version: u8, site: u32) -> bool {
     matches!(
         (version, site),
-        (1, 0x4f1c9e) | (2, 0x4f274e) | (3, 0x4f360e)
+        (1, 0x4f1c9e) | (2, 0x4f274e) | (3, 0x4f360e) | (4, 0x4f36ee)
     )
 }
 #[derive(Clone, Debug, Serialize)]

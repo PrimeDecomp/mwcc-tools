@@ -411,9 +411,9 @@ CColoringNode *select_ready_coloring_node(CColoringNode *list, UInt16 cycle)
 /* The inliner: whether a call is to be inlined (can_inline), what the body costs where the automatic inliner asks
  * (fn_0055e540, the recursion over the callees' bodies) and what happens to the call (inline_call_expression, which
  * leaves the call as it was when the body is not usable yet). The functions are named as the sources do in 1.3; in
- * 1.3.2 they changed and are not matched, and the original's own names are used (in 2.7, those of its addresses: the
+ * 1.3.2 they changed and are not matched, and the original's own names are used (in 2.6 and 2.7, 2.7's addresses: the
  * code is 1.3.2's, but for where CInlineInfo's kind is). */
-#if VERSION >= VERSION_GC_2_7
+#if VERSION >= VERSION_GC_2_6
 #define CAN_INLINE fn_00560c80
 #define CAN_INLINE_RETAIL fn_00560c80__retail
 #define INLINE_CALL fn_00561260
@@ -434,8 +434,8 @@ CColoringNode *select_ready_coloring_node(CColoringNode *list, UInt16 cycle)
  * inlineLimit (0x68 in 1.3.2, 0x6c in 2.7; everything from there on moved by four). The trace's auto= is
  * inline_bottom_up (0x72, 0x76 in 2.7), as the pragma tables name it; auto_inline (0x89, 0x8d in 2.7) is not traced. CInlineInfo's kind is two bytes
  * further on in each (0xa0 in 1.3, as the sources lay it out, 0xa2 in 1.3.2, 0xa4 in 2.7: inline_call_expression's
- * read of it). */
-#if VERSION >= VERSION_GC_2_7
+ * read of it). 2.6 has 2.7's offsets. */
+#if VERSION >= VERSION_GC_2_6
 #define ALWAYS_INLINE (*((unsigned char *)&copts + 0xdc))
 #define INLINE_BOTTOM_UP (*((unsigned char *)&copts + 0x76))
 #define INLINE_LIMIT (*(SInt16 *)((unsigned char *)&copts + 0x6c))
@@ -993,7 +993,7 @@ ENode *INLINE_CALL(ENode *expr)
  *                               body=1 when the inliner has its body after
  *   tp.func link=               a template function instance compiled
  *   tp.gen link=                a function's code generated from its saved body (inlining deferred) */
-#if VERSION >= VERSION_GC_2_7
+#if VERSION >= VERSION_GC_2_6
 #define DISPATCH fn_0055c730
 #define DISPATCH_RETAIL fn_0055c730__retail
 #elif VERSION >= VERSION_GC_1_3_2

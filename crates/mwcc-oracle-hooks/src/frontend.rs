@@ -5,7 +5,7 @@ use core::{ffi::c_char, mem::MaybeUninit, ptr};
 const OFFSETS: (usize, usize, usize, usize) = (0xd5, 0x72, 0x68, 0xa0);
 #[cfg(feature = "frontend-gc132")]
 const OFFSETS: (usize, usize, usize, usize) = (0xd8, 0x72, 0x68, 0xa2);
-#[cfg(feature = "frontend-gc27")]
+#[cfg(any(feature = "frontend-gc26", feature = "frontend-gc27"))]
 const OFFSETS: (usize, usize, usize, usize) = (0xdc, 0x76, 0x6c, 0xa4);
 unsafe extern "C" {
     fn OracleTrace_Printf(format: *const c_char, ...);
@@ -26,21 +26,30 @@ unsafe extern "C" {
     static mut anyerrors: u8;
     #[cfg_attr(feature = "frontend-gc13", link_name = "can_inline__retail")]
     #[cfg_attr(feature = "frontend-gc132", link_name = "fn_0055ed70__retail")]
-    #[cfg_attr(feature = "frontend-gc27", link_name = "fn_00560c80__retail")]
+    #[cfg_attr(
+        any(feature = "frontend-gc26", feature = "frontend-gc27"),
+        link_name = "fn_00560c80__retail"
+    )]
     fn decision_retail(node: *const u8) -> u8;
     #[cfg_attr(
         feature = "frontend-gc13",
         link_name = "inline_call_expression__retail"
     )]
     #[cfg_attr(feature = "frontend-gc132", link_name = "fn_0055f350__retail")]
-    #[cfg_attr(feature = "frontend-gc27", link_name = "fn_00561260__retail")]
+    #[cfg_attr(
+        any(feature = "frontend-gc26", feature = "frontend-gc27"),
+        link_name = "fn_00561260__retail"
+    )]
     fn expansion_retail(node: *const u8) -> *const u8;
     #[cfg_attr(
         feature = "frontend-gc13",
         link_name = "CInline_DispatchNextDeferredNode__retail"
     )]
     #[cfg_attr(feature = "frontend-gc132", link_name = "fn_0055a7f0__retail")]
-    #[cfg_attr(feature = "frontend-gc27", link_name = "fn_0055c730__retail")]
+    #[cfg_attr(
+        any(feature = "frontend-gc26", feature = "frontend-gc27"),
+        link_name = "fn_0055c730__retail"
+    )]
     fn dispatch_retail() -> u8;
     fn fn_0055e540__retail(info: *const u8, running: i32, depth: i32) -> i32;
     fn fn_0055e600__retail(expression: *const u8, running: i32, depth: i32) -> i32;
@@ -127,7 +136,10 @@ unsafe fn candidate(object: *const u8, reference: *const u8) -> bool {
 }
 #[cfg_attr(feature = "frontend-gc13", unsafe(export_name = "can_inline"))]
 #[cfg_attr(feature = "frontend-gc132", unsafe(export_name = "fn_0055ed70"))]
-#[cfg_attr(feature = "frontend-gc27", unsafe(export_name = "fn_00560c80"))]
+#[cfg_attr(
+    any(feature = "frontend-gc26", feature = "frontend-gc27"),
+    unsafe(export_name = "fn_00560c80")
+)]
 unsafe extern "C" fn decision(node: *const u8) -> u8 {
     unsafe {
         let mut function = read::<*const u8>(node, 14);
@@ -470,7 +482,10 @@ unsafe extern "C" fn fn_0055e600(expr: *const u8, running: i32, depth: i32) -> i
     unsafe(export_name = "inline_call_expression")
 )]
 #[cfg_attr(feature = "frontend-gc132", unsafe(export_name = "fn_0055f350"))]
-#[cfg_attr(feature = "frontend-gc27", unsafe(export_name = "fn_00561260"))]
+#[cfg_attr(
+    any(feature = "frontend-gc26", feature = "frontend-gc27"),
+    unsafe(export_name = "fn_00561260")
+)]
 unsafe extern "C" fn expansion(expr: *const u8) -> *const u8 {
     unsafe {
         let mut function = read::<*const u8>(read(expr, 14), 14);
@@ -525,7 +540,10 @@ unsafe extern "C" fn expansion(expr: *const u8) -> *const u8 {
     unsafe(export_name = "CInline_DispatchNextDeferredNode")
 )]
 #[cfg_attr(feature = "frontend-gc132", unsafe(export_name = "fn_0055a7f0"))]
-#[cfg_attr(feature = "frontend-gc27", unsafe(export_name = "fn_0055c730"))]
+#[cfg_attr(
+    any(feature = "frontend-gc26", feature = "frontend-gc27"),
+    unsafe(export_name = "fn_0055c730")
+)]
 unsafe extern "C" fn dispatch() -> u8 {
     unsafe {
         let work = ptr::addr_of!(pending_prec_nodes).read();

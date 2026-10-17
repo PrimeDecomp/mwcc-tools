@@ -66,7 +66,7 @@ pub fn capture(root: &Path, version: &str) -> Result<Audit> {
     let lock_address = match version {
         "GC_1_3" => 0x5db510,
         "GC_1_3_2" => 0x5dd510,
-        "GC_2_7" => 0x5df568,
+        "GC_2_6" | "GC_2_7" => 0x5df568,
         _ => anyhow::bail!("unsupported source arena version {version}"),
     };
     let original = Original::read(root, version)?;

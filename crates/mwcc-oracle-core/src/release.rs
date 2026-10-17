@@ -166,7 +166,7 @@ pub fn assemble_with_notices(
                 .to_owned(),
         );
     }
-    for version in ["GC_1_3", "GC_1_3_2", "GC_2_7"] {
+    for version in ["GC_1_3", "GC_1_3_2", "GC_2_6", "GC_2_7"] {
         collect(root, &format!("config/{version}/symbols.txt"), &mut source)?;
         collect(root, &format!("config/{version}/names.txt"), &mut source)?;
     }

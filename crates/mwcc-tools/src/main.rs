@@ -733,6 +733,7 @@ fn help() {
   source-nodes snapshot|write|clone TRACE_OR_CAPTURE.json ID
   provenance compare FIRST SECOND --link NAME [--second-link NAME] [--class 4] [--first-round 0] [--second-round 0] [--version GC_2_7] [--json]
   provenance audit-counters|audit-dispatch|audit-source-arenas --root ORACLE_ROOT --version GC_2_7
+  provenance derive-guards --version V [--root DIR] NAME[=SIZE]...
   oracle run-unit --project DIR --unit NAME [--candidate FILE] [--fast] -- VIEW OPTIONS
   oracle regdiff --project DIR --unit NAME --function QUERY [--full] [--json]
   colouring verify|target|force|search|replay|remap [SOURCE | --load PREFIX] [options]
