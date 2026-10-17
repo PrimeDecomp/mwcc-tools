@@ -48,6 +48,20 @@ pub fn supported(version: &str) -> bool {
     VERSIONS.contains(&version)
 }
 
+/// Whether ROOT has what VERSION's module is built from: gc2's config for it, and the sources wasm/src's borrow
+/// their arguments from.
+pub fn available(root: &Path, version: &str) -> bool {
+    let tree = SourceTree::gc2(version);
+    supported(version)
+        && root.join(&tree.config_dir).join("config.json").is_file()
+        && root.join("wasm/src").is_dir()
+        && tree.sources(root).is_ok_and(|sources| {
+            PLATFORM
+                .iter()
+                .all(|(_, like)| sources.get(*like).is_some())
+        })
+}
+
 pub fn directory(version: &str) -> String {
     format!("build/{version}/wasm")
 }

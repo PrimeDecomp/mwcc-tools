@@ -841,7 +841,7 @@ pub fn generate(root: &Path, request: &Request) -> Result<Generation> {
     }
     // (the compiler of gc2's sources for WebAssembly, which runs in process: crate::wasm_build)
     let mut defaults = format!("build/{version}/ok all_source");
-    if crate::wasm_build::supported(version) {
+    if crate::wasm_build::available(root, version) {
         let library = "gc2/lib/ok.pro53";
         if !(tree.vendored() && prefix == "gc2/") {
             out.extend([
