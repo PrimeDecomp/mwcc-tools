@@ -140,11 +140,53 @@ pub fn function_at(version: Version, address: u32) -> Option<&'static str> {
         Version::Gc27 => &*GC27,
         _ => return None,
     };
+    containing(functions, address)
+}
+
+fn containing(functions: &[(u32, u32, String)], address: u32) -> Option<&str> {
     let i = functions
         .partition_point(|(start, _, _)| *start <= address)
         .checked_sub(1)?;
     let (start, size, name) = &functions[i];
     (u64::from(address) < u64::from(*start) + u64::from(*size)).then_some(name.as_str())
+}
+
+/// The function containing `address` as a reader would name it: `function_at`'s symbol, or for an unnamed
+/// (`fn_`) one, the name `config/<version>/names.txt` gives the function there followed by the symbol, which
+/// hooks and the matches on `function_at` keep using.
+pub fn function_name(version: Version, address: u32) -> Option<String> {
+    type Function = (u32, u32, String);
+    fn table(text: &str) -> Vec<Function> {
+        let mut functions: Vec<_> = text
+            .lines()
+            .filter(|line| !line.starts_with('#'))
+            .filter_map(|line| {
+                let mut fields = line.split_whitespace();
+                let start = u32::from_str_radix(fields.next()?.strip_prefix("0x")?, 16).ok()?;
+                let size = u32::from_str_radix(fields.next()?.strip_prefix("0x")?, 16).ok()?;
+                Some((start, size, fields.next()?.to_owned()))
+            })
+            .collect();
+        functions.sort();
+        functions
+    }
+    static GC13: LazyLock<Vec<Function>> =
+        LazyLock::new(|| table(include_str!("../../../config/GC_1_3/names.txt")));
+    static GC132: LazyLock<Vec<Function>> =
+        LazyLock::new(|| table(include_str!("../../../config/GC_1_3_2/names.txt")));
+    static GC27: LazyLock<Vec<Function>> =
+        LazyLock::new(|| table(include_str!("../../../config/GC_2_7/names.txt")));
+    let symbol = function_at(version, address)?;
+    let names = match version {
+        Version::Gc13 => &*GC13,
+        Version::Gc132 => &*GC132,
+        Version::Gc27 => &*GC27,
+        _ => return Some(symbol.into()),
+    };
+    Some(match containing(names, address) {
+        Some(name) if symbol.starts_with("fn_") => format!("{name} ({symbol})"),
+        _ => symbol.into(),
+    })
 }
 
 pub fn enode_names() -> &'static BTreeMap<i64, String> {

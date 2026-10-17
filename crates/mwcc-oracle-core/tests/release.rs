@@ -46,6 +46,11 @@ fn fixture() -> tempfile::TempDir {
             &format!("config/{version}/symbols.txt"),
             b"symbols\n",
         );
+        put(
+            root.path(),
+            &format!("config/{version}/names.txt"),
+            b"names\n",
+        );
     }
     for target in release::TARGETS {
         notices(

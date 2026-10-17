@@ -5196,7 +5196,7 @@
       "position": 292,
       "from": "with_value__Fii",
       "expanding": "with_value__Fii",
-      "caller": "fn_005114e0",
+      "caller": "CInline_ExportCheck (fn_005114e0)",
       "why": "a call or address of it left in the code after inlining"
     },
     {

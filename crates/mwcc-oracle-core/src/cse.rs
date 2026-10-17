@@ -169,7 +169,8 @@ pub fn temp_creator(version: crate::version::Version, caller: u32) -> String {
         "fn_00460780" => Some("scalarizer: a member of a local aggregate"),
         _ => None,
     };
-    why.map_or_else(|| name.into(), |why| format!("{name}: {why}"))
+    let name = crate::version::function_name(version, caller).unwrap_or_else(|| name.into());
+    why.map_or(name.clone(), |why| format!("{name}: {why}"))
 }
 pub fn origin(
     function: &Function,

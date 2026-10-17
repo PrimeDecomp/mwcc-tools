@@ -311,32 +311,32 @@
         {
           "class": "SPR",
           "number": 0,
-          "text": "@26, a temporary made by fn_0046ec50: linearization: an EFORCELOAD's temporary (an inlined function's return, or a value loaded once)"
+          "text": "@26, a temporary made by GenerateForceLoadTempAssignment (fn_0046ec50): linearization: an EFORCELOAD's temporary (an inlined function's return, or a value loaded once)"
         },
         {
           "class": "SPR",
           "number": 0,
-          "text": "@26, a temporary made by fn_0046ec50: linearization: an EFORCELOAD's temporary (an inlined function's return, or a value loaded once)"
+          "text": "@26, a temporary made by GenerateForceLoadTempAssignment (fn_0046ec50): linearization: an EFORCELOAD's temporary (an inlined function's return, or a value loaded once)"
         },
         {
           "class": "SPR",
           "number": 0,
-          "text": "@26, a temporary made by fn_0046ec50: linearization: an EFORCELOAD's temporary (an inlined function's return, or a value loaded once)"
+          "text": "@26, a temporary made by GenerateForceLoadTempAssignment (fn_0046ec50): linearization: an EFORCELOAD's temporary (an inlined function's return, or a value loaded once)"
         },
         {
           "class": "SPR",
           "number": 0,
-          "text": "@26, a temporary made by fn_0046ec50: linearization: an EFORCELOAD's temporary (an inlined function's return, or a value loaded once)"
+          "text": "@26, a temporary made by GenerateForceLoadTempAssignment (fn_0046ec50): linearization: an EFORCELOAD's temporary (an inlined function's return, or a value loaded once)"
         },
         {
           "class": "SPR",
           "number": 0,
-          "text": "@26, a temporary made by fn_0046ec50: linearization: an EFORCELOAD's temporary (an inlined function's return, or a value loaded once)"
+          "text": "@26, a temporary made by GenerateForceLoadTempAssignment (fn_0046ec50): linearization: an EFORCELOAD's temporary (an inlined function's return, or a value loaded once)"
         },
         {
           "class": "SPR",
           "number": 0,
-          "text": "@26, a temporary made by fn_0046ec50: linearization: an EFORCELOAD's temporary (an inlined function's return, or a value loaded once)"
+          "text": "@26, a temporary made by GenerateForceLoadTempAssignment (fn_0046ec50): linearization: an EFORCELOAD's temporary (an inlined function's return, or a value loaded once)"
         },
         {
           "class": "GPR",
@@ -351,7 +351,7 @@
         {
           "class": "SPR",
           "number": 0,
-          "text": "@26, a temporary made by fn_0046ec50: linearization: an EFORCELOAD's temporary (an inlined function's return, or a value loaded once)"
+          "text": "@26, a temporary made by GenerateForceLoadTempAssignment (fn_0046ec50): linearization: an EFORCELOAD's temporary (an inlined function's return, or a value loaded once)"
         }
       ]
     }

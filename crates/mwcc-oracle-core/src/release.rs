@@ -168,6 +168,7 @@ pub fn assemble_with_notices(
     }
     for version in ["GC_1_3", "GC_1_3_2", "GC_2_7"] {
         collect(root, &format!("config/{version}/symbols.txt"), &mut source)?;
+        collect(root, &format!("config/{version}/names.txt"), &mut source)?;
     }
     let hashes: BTreeMap<_, _> = source
         .iter()

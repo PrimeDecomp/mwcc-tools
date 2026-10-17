@@ -27,8 +27,10 @@ pub fn instantiation(trace: &Trace, version: Version) -> Result<Vec<Value>> {
                 }
             }
             if let Some(caller) = r.fields.get("caller") {
-                let name = version::function_at(version, u32::from_str_radix(caller, 16)?);
-                let caller = name.map_or_else(|| format!("0x{caller}"), str::to_owned);
+                let address = u32::from_str_radix(caller, 16)?;
+                let name = version::function_at(version, address);
+                let caller = version::function_name(version, address)
+                    .unwrap_or_else(|| format!("0x{caller}"));
                 e["caller"] = json!(caller);
                 e["why"]=json!(match name {
                     Some("fn_005114e0")=>"a call or address of it left in the code after inlining".into(),

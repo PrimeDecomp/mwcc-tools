@@ -123,8 +123,8 @@
         "   pass 2: no temporaries made, no repeats replaced (its IR is numbered anew: the indices are not pass 1's)",
         "   other temporaries in registers (the function that made each):",
         "      @19 -> %r37  made by create_bound_offset_temporary",
-        "      @22 -> %r36  made by fn_004a7500: loop optimizer (probably strength reduction, as fn_00461860 in 1.3.2)",
-        "      @23 -> %r35  made by fn_004a7500: loop optimizer (probably strength reduction, as fn_00461860 in 1.3.2)",
+        "      @22 -> %r36  made by CreateRIS (fn_004a7500): loop optimizer (probably strength reduction, as fn_00461860 in 1.3.2)",
+        "      @23 -> %r35  made by CreateRIS (fn_004a7500): loop optimizer (probably strength reduction, as fn_00461860 in 1.3.2)",
         "   (1 other temporaries are in memory or gone by the allocation)"
       ],
       "ir_all": [
@@ -519,8 +519,8 @@
         "      #45    (*@22 = *values): copy propagation (IRO_CopyAndConstantPropagation): the left side's uses read the right side instead",
         "   other temporaries in registers (the function that made each):",
         "      @19 -> %r37  made by create_bound_offset_temporary",
-        "      @22 -> %r36  made by fn_004a7500: loop optimizer (probably strength reduction, as fn_00461860 in 1.3.2)",
-        "      @23 -> %r35  made by fn_004a7500: loop optimizer (probably strength reduction, as fn_00461860 in 1.3.2)",
+        "      @22 -> %r36  made by CreateRIS (fn_004a7500): loop optimizer (probably strength reduction, as fn_00461860 in 1.3.2)",
+        "      @23 -> %r35  made by CreateRIS (fn_004a7500): loop optimizer (probably strength reduction, as fn_00461860 in 1.3.2)",
         "   (1 other temporaries are in memory or gone by the allocation)"
       ],
       "ir_line": [
@@ -531,20 +531,20 @@
         "   pass 2: linear IR of line 3 (index, node, operands; expressions with their temporary or the one they repeat)",
         "   other temporaries in registers (the function that made each):",
         "      @19 -> %r37  made by create_bound_offset_temporary",
-        "      @22 -> %r36  made by fn_004a7500: loop optimizer (probably strength reduction, as fn_00461860 in 1.3.2)",
-        "      @23 -> %r35  made by fn_004a7500: loop optimizer (probably strength reduction, as fn_00461860 in 1.3.2)",
+        "      @22 -> %r36  made by CreateRIS (fn_004a7500): loop optimizer (probably strength reduction, as fn_00461860 in 1.3.2)",
+        "      @23 -> %r35  made by CreateRIS (fn_004a7500): loop optimizer (probably strength reduction, as fn_00461860 in 1.3.2)",
         "   (1 other temporaries are in memory or gone by the allocation)"
       ],
       "origins": [
         {
           "class": "GPR",
           "number": 35,
-          "text": "@23, a temporary made by fn_004a7500: loop optimizer (probably strength reduction, as fn_00461860 in 1.3.2)"
+          "text": "@23, a temporary made by CreateRIS (fn_004a7500): loop optimizer (probably strength reduction, as fn_00461860 in 1.3.2)"
         },
         {
           "class": "GPR",
           "number": 36,
-          "text": "@22, a temporary made by fn_004a7500: loop optimizer (probably strength reduction, as fn_00461860 in 1.3.2)"
+          "text": "@22, a temporary made by CreateRIS (fn_004a7500): loop optimizer (probably strength reduction, as fn_00461860 in 1.3.2)"
         },
         {
           "class": "GPR",
