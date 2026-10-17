@@ -36,6 +36,8 @@ Windows and Mac groups; tool `lib-2x`, about 8 minutes the first time). The orac
 split executables of `config/<version>` (2.7's can also be built from the sources alone, see `docs/oracle.md`).
 `ninja build/GC_2_7/gc2/source-only/mwcceppc.exe` links 2.7's compiler from the sources alone, the units that do not
 match too (`docs/gc27-differences.md`).
+`mwcc-tools wasm-build GC_2_7` builds that compiler for WebAssembly instead (with clang), and `corpus --wasm` runs it
+inside `mwcc-tools`, built with `--features wasm` (`docs/wasm.md`).
 
 Dependencies
 ============

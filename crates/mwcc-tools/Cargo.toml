@@ -12,3 +12,8 @@ serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 mwcc-oracle-core = { path = "../mwcc-oracle-core" }
+mwcc-wasm = { path = "../mwcc-wasm", optional = true }
+
+[features]
+# `corpus --wasm MODULE`: the GC 2.7 compiler built from gc2 for wasm32, run in process (wasmtime)
+wasm = ["dep:mwcc-wasm"]

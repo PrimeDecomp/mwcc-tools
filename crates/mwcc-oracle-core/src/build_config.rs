@@ -232,6 +232,36 @@ fn objdiff(tree: &SourceTree, config: &Value, sources: &Value, units: &[String])
     }).collect();
     json!({"$schema":"https://raw.githubusercontent.com/encounter/objdiff/main/config.schema.json","min_version":"3.8.0","custom_make":"ninja","build_target":false,"build_base":true,"watch_patterns":["src/**/*.c","src/**/*.cpp","include/**/*.h","config/**/*.json","config/**/*.txt"],"units":units,"progress_categories":[{"id":"compiler","name":"Compiler"},{"id":"runtime","name":"MSL and runtime"}]})
 }
+/// Sources and their compiler arguments.
+pub type SourceArguments = Vec<(String, Vec<String>)>;
+
+/// Each source of VERSION's tree with the arguments the build compiles it with (`-c`, its flags, the version's
+/// define and include paths, as `generate` gives them), in `sources.json`'s order.
+pub fn source_arguments(root: &Path, version: &str) -> Result<(SourceTree, SourceArguments)> {
+    let version_index = VERSIONS
+        .iter()
+        .position(|v| *v == version)
+        .context("unsupported build version")?;
+    let ours = root.join(format!("config/{version}/config.json"));
+    let ours: Value = serde_json::from_slice(
+        &fs::read(&ours).with_context(|| format!("read {}", ours.display()))?,
+    )?;
+    let tree = SourceTree::of(root, version, false)?;
+    let config = tree.config(root, &ours)?;
+    let define = tree.version_define(root, version)?.unwrap_or(version_index);
+    let sources = tree.sources(root)?;
+    let mut out = vec![];
+    for (source, settings) in sources
+        .as_object()
+        .context("source settings are not an object")?
+    {
+        let arguments =
+            compiler_arguments(&config, settings, define, Some(source), false, &tree.prefix)?;
+        out.push((source.clone(), arguments));
+    }
+    Ok((tree, out))
+}
+
 pub fn generate(root: &Path, request: &Request) -> Result<Generation> {
     ensure!(
         !request.rust_hooks || request.oracle,

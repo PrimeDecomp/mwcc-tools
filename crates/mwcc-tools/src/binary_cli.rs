@@ -329,6 +329,43 @@ pub fn run(command: &str, args: &[String]) -> Result<()> {
                 outcome.links
             );
         }
+        "wasm-build" => {
+            let mut root = std::env::current_dir()?;
+            let mut version = None;
+            let (mut clang, mut wasm_ld) = ("clang".to_owned(), "wasm-ld".to_owned());
+            let mut i = 0;
+            while i < args.len() {
+                match args[i].as_str() {
+                    option @ ("--root" | "--clang" | "--wasm-ld") => {
+                        i += 1;
+                        let value = args
+                            .get(i)
+                            .with_context(|| format!("{option} needs a value"))?;
+                        match option {
+                            "--root" => root = value.into(),
+                            "--clang" => clang = value.clone(),
+                            _ => wasm_ld = value.clone(),
+                        }
+                    }
+                    v if !v.starts_with('-') && version.is_none() => version = Some(v),
+                    other => bail!("unknown wasm-build argument {other}"),
+                }
+                i += 1;
+            }
+            let version = version.context("wasm-build requires VERSION")?;
+            let outcome =
+                mwcc_oracle_core::wasm_build::run(&mwcc_oracle_core::wasm_build::Request {
+                    root: &root,
+                    version,
+                    clang: &clang,
+                    wasm_ld: &wasm_ld,
+                })?;
+            println!(
+                "{version}: {}: {} objects",
+                outcome.output.display(),
+                outcome.objects
+            );
+        }
         "source-only" => {
             let mut root = std::env::current_dir()?;
             let mut version = None;

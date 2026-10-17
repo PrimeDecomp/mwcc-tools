@@ -131,6 +131,19 @@ pub struct Request {
     pub all_traces: bool,
     /// Another oracle to compare the oracle's trace with (the same streams, on each input).
     pub trace_reference: Option<PathBuf>,
+    /// A compiler run in this process instead of the oracle (`executable` is then the path it runs as).
+    pub in_process: Option<InProcess>,
+}
+
+/// A compiler run in this process: it takes an invocation as `runner::execute` does.
+pub struct InProcess(
+    pub Box<dyn Fn(runner::Invocation<'_>) -> Result<runner::Execution> + Send + Sync>,
+);
+
+impl std::fmt::Debug for InProcess {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("InProcess")
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -248,7 +261,7 @@ pub fn run(request: &Request) -> Result<Report> {
         original.display()
     );
     ensure!(
-        oracle.is_file(),
+        oracle.is_file() || request.in_process.is_some(),
         "oracle compiler missing: {}",
         oracle.display()
     );
@@ -297,7 +310,7 @@ pub fn run(request: &Request) -> Result<Report> {
             options: &TraceOptions::default(),
             timeout: request.timeout,
         })?;
-        let ours = runner::execute(runner::Invocation {
+        let invocation = runner::Invocation {
             root: &request.root,
             executable: &oracle,
             flags: &job.flags,
@@ -307,7 +320,11 @@ pub fn run(request: &Request) -> Result<Report> {
             trace_file: if reference.is_some() { &trace } else { null },
             options: &options,
             timeout: request.timeout,
-        })?;
+        };
+        let ours = match &request.in_process {
+            Some(InProcess(compile)) => compile(invocation)?,
+            None => runner::execute(invocation)?,
+        };
         let traces = match &reference {
             Some(executable) => {
                 let c = scratch.path().join(format!("{index}.reference.o"));
