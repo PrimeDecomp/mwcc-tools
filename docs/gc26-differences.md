@@ -136,6 +136,12 @@ Most of these values are derived rather than written by hand:
 * `--oracle-root` must be an absolute path. With a relative one, both compilers fail with "Cannot find my executable"
   and every input is reported as "messages differ".
 * After the renumbering, the 2.7 oracle was rebuilt and still gives 2313/2313.
-* No game built with 2.6 was available here. `mwcc-tools corpus --version GC_2_6 --project path/to/ttyd` (the
-  doldecomp TTYD decompilation) is still to be run. `--project` takes the plain `mwcc` rules whose `mw_version` is
-  `GC/2.6`.
+* Paper Mario: The Thousand-Year Door (doldecomp/ttyd at `62131fc`): 134/134 identical with all traces.
+  * `mwcc-tools corpus --version GC_2_6 --project path/to/ttyd` was used. It takes the plain `mwcc` rules whose
+    `mw_version` is `GC/2.6`.
+  * Without the game, dtk-template's `configure.py` writes only its bootstrap graph. So the `build.ninja` used was
+    generated from `configure.py`'s own `config.libs`: one `mwcc` edge per C object with existing source, carrying
+    the flags `tools/project.py`'s `c_build` gives it.
+  * Of the units with sources, 134 build with GC/2.6. 133 of them compile to an object with the retail compiler.
+  * `src/manager/cardmgr.c` includes an asset extracted from the disc (`assets/_mariost_icon_tex.inc`), so both
+    compilers stop on it the same way.
