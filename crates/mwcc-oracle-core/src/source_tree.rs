@@ -81,11 +81,14 @@ impl SourceTree {
         Ok(config)
     }
 
-    /// The tree's `-DVERSION` value for `version` (its `include/version.h`), or None for ours.
+    /// The tree's `-DVERSION` value for `version` (its `include/version.h`), or None for ours. A version the tree
+    /// has no number for compiles as the one its config.json's `source_version` names (1.3.2 as 2.7).
     pub fn version_define(&self, root: &Path, version: &str) -> Result<Option<usize>> {
         if !self.vendored() {
             return Ok(None);
         }
+        let config = read_json(&root.join(format!("config/{version}/config.json")))?;
+        let version = config["source_version"].as_str().unwrap_or(version);
         let header = fs::read_to_string(root.join(format!("{}include/version.h", self.prefix)))?;
         let name = format!("VERSION_{}", version.to_uppercase());
         let pattern = Regex::new(&format!(r"(?m)^#define {name} (\d+)"))?;
