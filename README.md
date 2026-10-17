@@ -36,8 +36,8 @@ Windows and Mac groups; tool `lib-2x`, about 8 minutes the first time). The orac
 split executables of `config/<version>` (2.7's can also be built from the sources alone, see `docs/oracle.md`).
 `ninja build/GC_2_7/gc2/source-only/mwcceppc.exe` links 2.7's compiler from the sources alone, the units that do not
 match too (`docs/gc27-differences.md`).
-`mwcc-tools wasm-build GC_2_7` builds that compiler for WebAssembly instead (with clang), and `corpus --wasm` runs it
-inside `mwcc-tools`, built with `--features wasm` (`docs/wasm.md`).
+For 2.6 and 2.7, the default build also makes that compiler, and the oracle, as WebAssembly (with clang). `mwcc-tools`
+then runs them in process in place of the executables (`docs/wasm.md`).
 
 Dependencies
 ============
@@ -45,6 +45,8 @@ Dependencies
 - Rust 1.96.0 and a C compiler to build `mwcc-tools`, or a prebuilt native distribution
 - [ninja](https://github.com/ninja-build/ninja)
 - [unshield](https://github.com/twogood/unshield), to unpack the CodeWarrior Pro 5.3 updater
+- For 2.6 and 2.7's WebAssembly builds: LLVM 22 or later (`clang`, `wasm-ld`) and Rust's `wasm32-unknown-unknown`
+  target
 
 macOS: `brew install ninja unshield`. Linux: `apt install ninja-build unshield`.
 Windows: `winget install Ninja-build.Ninja`, and unshield through WSL (`wsl sudo apt install unshield`).

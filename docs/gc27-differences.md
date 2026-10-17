@@ -197,4 +197,5 @@ Its imports are the original's 66, in the definitions' order. The canary corpus 
 1.3.2 has no source-only compiler: it builds 2.7's sources, which would make it 2.7's.
 With the Rust hooks linked in, the same compiler is an oracle (`ninja build/GC_2_7/gc2/source-oracle/mwcceppc.exe`).
 See [oracle.md](oracle.md#gc-27-without-the-original-compiler).
-The same sources also build for WebAssembly and run in process (`mwcc-tools wasm-build`): see [wasm.md](wasm.md).
+The same sources also build for WebAssembly, the compiler and the oracle, which run in process by default: see
+[wasm.md](wasm.md).

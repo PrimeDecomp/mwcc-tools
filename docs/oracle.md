@@ -52,7 +52,11 @@ For a decomp kit, follow the [native kit workflow](../integrations/decomp-kits/o
 
 ### GC 2.7 without the original compiler
 
-The normal GC 2.7 configure (the vendored `gc2/` tree, without `--oracle`) can also build an oracle whose compiler
+For GC 2.6 and 2.7, the default build makes the oracle as WebAssembly, `build/<version>/wasm/oracle.wasm`, and
+`mwcc-tools` runs it in process wherever it would run `build/<version>/oracle/mwcceppc.exe` (see
+[wasm.md](wasm.md#the-oracle)). `MWCC_IN_PROCESS=0` runs the executable instead.
+
+The normal GC 2.7 configure (the vendored `gc2/` tree, without `--oracle`) can also build an x86 oracle whose compiler
 is made from the GC 2.x sources alone. It is opt-in and not built by default:
 
 ```text
