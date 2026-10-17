@@ -2,7 +2,8 @@
 //!
 //! A vendored tree's link trusts its Matching list, less `state.json`'s `relink_exclude`; this finds that list. The
 //! candidates (the tree's Matching sources) are tried with trial links on top of those already accepted, a group at a
-//! time, halving a group that does not give the original's SHA-1 down to the units that do not.
+//! time, halving a group that does not give the original's SHA-1 down to the units that do not. Those are tried again,
+//! one at a time, until no more of them link.
 use crate::{build_config, link, source_tree::SourceTree};
 use anyhow::{Context, Result, ensure};
 use serde_json::{Value, json};
@@ -136,6 +137,16 @@ pub fn run(root: &Path, version: &str, tools: &str, write: bool) -> Result<Outco
         links: 0,
     };
     trial.check(&candidates)?;
+    // (a unit can need one accepted after it: retry the others until none more link)
+    loop {
+        let before = trial.accepted.len();
+        for path in std::mem::take(&mut trial.rejected) {
+            trial.check(&[path])?;
+        }
+        if trial.accepted.len() == before {
+            break;
+        }
+    }
     let unit = |p: &String| p[prefix.len()..p.len() - ".obj".len()].to_owned();
     let accepted: Vec<_> = trial.accepted.iter().map(unit).collect();
     let rejected: Vec<_> = trial.rejected.iter().map(unit).collect();

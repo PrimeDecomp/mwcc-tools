@@ -51,7 +51,7 @@ What this means for the oracle:
 
 `config/GC_1_3_2/config.json` names `"source_tree": "gc2"` and `"source_version": "GC_2_7"`. The build compiles
 `gc2/src` with `-DVERSION` of 2.7 (`gc2/include/version.h` has no 1.3.2), against a split of 1.3.2 in
-`gc2/config/GC_1_3_2`. 106 of its 242 units link into the original's SHA-1, and the others link as split. The split was
+`gc2/config/GC_1_3_2`. 130 of its 242 units link into the original's SHA-1, and the others link as split. The split was
 made from the bundle's 2.7 configuration:
 
 1. `mwcc-tools remap 2.7 1.3.2 --symbols`, run in a scratch root that holds `gc2/config/GC_2_7` as `config/GC_2_7`.
@@ -62,7 +62,20 @@ made from the bundle's 2.7 configuration:
    the 1.3.2 symbols take the 2.7 names in address order.
 5. Call targets and absolute operands of the paired functions vote for more address pairs, which renamed 1591
    symbols.
-6. `mwcc-tools relink-check GC_1_3_2 --write`.
+6. Link-and-diff pairing, unit by unit: link one excluded unit's compiled object on top of the accepted ones, with a
+   stub object that defines each name the link lacks as an absolute address far outside the image. Where the result's
+   bytes hold a stub address, the original's bytes at the same place give the real one. A name found that way renames
+   the symbol at that address, or splits the symbol that contains it (the shortened symbol ends at its last
+   instruction, not at the zero padding). 33 names, four of them import thunks (`_lp_checkout`, `_lp_checkin`,
+   `_lp_errstring`, `_GetFileVersionInfoSizeA@8`) and one function at an unaligned address: `split` keeps a function
+   that its section's alignment cannot place in the piece before it.
+7. Split boundaries: where one unit's compiled `.data` or `.bss` is longer than its split range by what the next unit's
+   is shorter (or has none), the boundary moves to the compiled size (`ctype.c`/`ansifp_x86.c`,
+   `LinkErrorsPPC_EABI.c`/`DateTimeUtils.c`, `CInt64.c`/`Intrinsics.c`, `COptimizer.c`/`CMangler.c`,
+   `CException.c`/`CSOM.c`, `string.c`/`ansi_files.c`, `ELF_Lib_Import.c`/`MacFileTypes.c`).
+8. `mwcc-tools relink-check GC_1_3_2 --write`. It retries the units it rejects until no more link, since a unit can
+   need one accepted after it.
 
-Of the 210 Matching candidates, most of the 104 that do not link refer to a symbol the split does not name: better
-naming, not code changes, is what would build more of 1.3.2.
+Of the 210 Matching candidates, 80 do not link. Some still lack names or split boundaries; others compile to different
+code or data. LiveVariables and CBrowse,
+for instance, read fields of `copts` 4 bytes off, since the sources are built with 2.7's `VERSION`.
