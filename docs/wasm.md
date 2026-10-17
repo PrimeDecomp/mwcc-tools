@@ -1,11 +1,12 @@
 # The GC 2.7 compiler as WebAssembly
 
-The GC 2.7 compiler can be built from the vendored `gc2/` sources for wasm32 and run inside `mwcc-tools`, without
-starting a process and without any Metrowerks or Windows binary. It is opt-in: the normal build and the oracle do not
-use it.
+The GC 2.7 compiler can be built from the vendored `gc2/` sources for wasm32 and run inside `mwcc-tools`. A run
+starts no process and needs no Metrowerks or Windows binary. The build still reads MSL's headers from the downloaded
+library tree, `gc2/lib`. It is opt-in: the normal build and the oracle do not use it.
 
 ```text
 mwcc-tools configure --version GC_2_7
+ninja gc2/lib/ok.pro53
 mwcc-tools wasm-build GC_2_7
 cargo build --release -p mwcc-tools --features wasm
 mwcc-tools corpus --version GC_2_7 --canaries DIR --wasm build/GC_2_7/wasm/mwcceppc.wasm
@@ -114,7 +115,9 @@ source-only executable. It maps `config/GC_2_7/symbols.txt`'s names to gc2's by 
 1. **Link by name with `wasm-ld --wrap`.** wasm-ld redirects calls to `__wrap_X` and gives the original as `__real_X`.
    The hook table that `source_oracle` already prints (`hook` = gc2 function) becomes `--wrap=simplifygraph` and so
    on, plus small aliases from the hooks' `fn_` names to `__wrap_`/`__real_` names. The rename of COFF objects is not
-   needed. Variables the hooks read are named by gc2's symbols. Its statics need a global alias, which the adapted
+   needed. Unlike ELF's `--wrap`, wasm-ld's also redirects calls from the function's own object (checked with clang 23),
+   and so from inside its own body too. Where the oracle keeps a recursive call retail, the adapted copy calls
+   `__real_X` there. Variables the hooks read are named by gc2's symbols. Its statics need a global alias, which the adapted
    copies can add, as `__x87_double`'s prototype is added now.
 2. **Build the hooks crate for wasm32-unknown-unknown.** It is `no_std` and reads the compiler's structures by
    offset. wasm32 is ILP32, and the build packs structures as MWCC's `-align` does, so most offsets carry over. A

@@ -1,5 +1,6 @@
 //! `mwcc-tools wasm-build GC_2_7`: the compiler of a vendored tree (gc2's 2.7) built for wasm32 with clang and wasm-ld,
-//! to run in process (crates/mwcc-wasm). Not part of the build: it needs LLVM, and nothing else uses its output.
+//! to run in process (crates/mwcc-wasm). Not part of the build: it needs LLVM, and nothing else uses its output. MSL's
+//! headers are the library tree's (`gc2/lib`, downloaded).
 //!
 //! Each source is compiled with clang from the arguments the build gives it (its defines, include paths and
 //! `-align`); the module is linked from them and from `wasm/src`, which stands in for what is x86 or Windows-only:
@@ -206,6 +207,12 @@ pub fn run(request: &Request) -> Result<Outcome> {
     let (tree, sources) = build_config::source_arguments(root, version)?;
     ensure!(tree.vendored(), "{version} has no source tree");
     let prefix = tree.prefix.clone();
+    // (MSL's headers are the library tree's)
+    let library = format!("{prefix}lib/ok.pro53");
+    ensure!(
+        root.join(&library).is_file(),
+        "{library} is missing: the library tree is needed (ninja {library})"
+    );
     let directory = format!("build/{version}/wasm");
     let objects = root.join(&directory).join("obj");
     // (path in the module's build, path to compile, the build's arguments)
