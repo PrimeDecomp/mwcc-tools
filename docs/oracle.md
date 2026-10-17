@@ -87,14 +87,19 @@ Only the hooks are linked. The guarded probes that the oracle installs into the 
 (dispatch, call arguments, arenas, source nodes, counters, coalescing), because they are pinned to that split's
 bytes and the original's image. So:
 
-* Every `pv.*` provenance record of those probes is absent (`--backend` explanations, counters, expression
-  dispatch, argument observations). The scalarizer stream writes `pv.scalar.gap`.
+* The provenance streams are not supported on this executable: `--backend` explanations, `--source-nodes`, and every
+  `pv.*` record of the probes (counters, expression dispatch, argument observations, coalescing).
+  * The counter probe also gives the hooks their function context (`pv.function.begin`). Without it, the graph
+    wrapper writes `pv.gap reason=graph_context` instead of `pv.graph.*`. The scalarizer writes `pv.scalar.gap
+    reason=scalar_function_context`.
+  * The source-node stream is written but incomplete.
+  * The hooks' own records (`ra.*`, `fr.*`, `sc.*`, `lc.*`, `ce.*`, `tp.*`, `bk.*`, ...) are complete.
 * `OracleRust_ArenaGlobals` is a zero stand-in. The `--source-arenas` stream reports `invalid_globals` and
   `unsupported=1`, with resets but no allocations. `OracleRust_ArgumentForceGprRetail` is a `ud2` stand-in that
   only an installed probe would call.
 * Two traced fields are return addresses into the compiler: `ce.object caller=` and `tp.emit caller=`. They are
   this executable's addresses. Names that a report resolves through `config/GC_2_7/symbols.txt` are wrong for them.
-  Use `source-oracle/mwcceppc.map` instead.
+  No tool reads `source-oracle/mwcceppc.map` yet, so look callers up there by hand.
 
 Check it against the oracle with `corpus --trace-reference`. It runs a second oracle with the same streams and
 compares the two traces. The `pv.*` records are left out, and addresses are masked: the image and heap differ
