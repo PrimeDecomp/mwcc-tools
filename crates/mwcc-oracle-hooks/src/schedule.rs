@@ -15,6 +15,23 @@ struct Globals {
     machine: *const u8,
     rank: *const u8,
 }
+#[cfg(target_arch = "wasm32")]
+unsafe extern "C" {
+    // (gc2's names: the WebAssembly module has no x86 code to find them in)
+    static MI: *const u8;
+    static opcodeinfo: [u8; 0];
+}
+#[cfg(target_arch = "wasm32")]
+unsafe fn globals() -> Option<Globals> {
+    unsafe {
+        Some(Globals {
+            machine: ptr::addr_of!(MI).read_unaligned(),
+            // (OpcodeInfo.rank, in 18-byte entries)
+            rank: ptr::addr_of!(opcodeinfo).cast::<u8>().add(9),
+        })
+    }
+}
+#[cfg(not(target_arch = "wasm32"))]
 unsafe fn globals() -> Option<Globals> {
     unsafe {
         let code = select_ready_coloring_node__retail as *const () as *const u8;

@@ -4,7 +4,7 @@ use crate::{
     expression::{object_name, type_id, type_size},
     pcode,
 };
-use core::{arch::naked_asm, ptr};
+use core::ptr;
 unsafe extern "C" {
     fn create_temp_object__retail(ty: *const u8) -> *const u8;
     fn fn_004601f0__retail(node: *const u8, var: *const u8, offset: i32, ty: *const u8) -> i32;
@@ -132,12 +132,19 @@ unsafe fn pending_end() {
     }
 }
 
+#[cfg(target_arch = "x86")]
 #[unsafe(naked)]
 #[unsafe(no_mangle)]
 unsafe extern "C" fn create_temp_object(_ty: *const u8) -> *const u8 {
     // EBX is the retail scalarizer's current IROVarPart at its sole audited
     // temp-object call. Save the original value before Rust can use this register.
-    naked_asm!("push ebx", "push dword ptr [esp + 4]", "push dword ptr [esp + 12]", "call {handler}", "add esp, 12", "ret", handler = sym create_temp);
+    core::arch::naked_asm!("push ebx", "push dword ptr [esp + 4]", "push dword ptr [esp + 12]", "call {handler}", "add esp, 12", "ret", handler = sym create_temp);
+}
+// (WebAssembly has neither the return address nor EBX: the bindings, provenance records, are gaps)
+#[cfg(target_arch = "wasm32")]
+#[unsafe(no_mangle)]
+unsafe extern "C" fn create_temp_object(ty: *const u8) -> *const u8 {
+    unsafe { create_temp(ty, 0, ptr::null()) }
 }
 unsafe extern "C" fn create_temp(ty: *const u8, caller: u32, part: *const u8) -> *const u8 {
     unsafe {

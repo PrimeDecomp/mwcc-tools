@@ -88,10 +88,10 @@ static mut EPISODES: [Episode; 256] = [NO_EPISODE; 256];
 static mut EPISODE_DEPTH: usize = 0;
 static mut NEXT_EPISODE: u32 = 0;
 unsafe extern "C" {
-    fn FunctionCalls_GenerateCall__retail(item: u32, output: u32) -> u32;
+    fn FunctionCalls_GenerateCall__retail(item: u32, output: u32);
     fn assign_argument_locations__retail(a: u32, b: u32, c: u32, d: u32, e: u32, f: u32) -> u32;
-    fn load_argument_registers__retail(context: u32) -> u32;
-    fn store_argument_on_stack__retail(context: u32) -> u32;
+    fn load_argument_registers__retail(context: u32);
+    fn store_argument_on_stack__retail(context: u32);
     fn OracleRust_ArgumentForceGprRetail(operand: u32, ty: u32, requested: u32) -> u32;
     static mut gCurrentBlock: *const u8;
 }
@@ -443,7 +443,7 @@ unsafe fn bind(head: *const u8, list: *const u8, skip: *const u8) {
     }
 }
 #[unsafe(no_mangle)]
-unsafe extern "C" fn FunctionCalls_GenerateCall(item: u32, output: u32) -> u32 {
+unsafe extern "C" fn FunctionCalls_GenerateCall(item: u32, output: u32) {
     unsafe {
         if !lifecycle::enabled() || lifecycle::function_id() == 0 {
             return FunctionCalls_GenerateCall__retail(item, output);
@@ -525,7 +525,7 @@ unsafe extern "C" fn FunctionCalls_GenerateCall(item: u32, output: u32) -> u32 {
         if !supported || ret.is_null() {
             gap(depth, 0, 0, c"unsupported_call_item")
         }
-        let result = FunctionCalls_GenerateCall__retail(item, output);
+        FunctionCalls_GenerateCall__retail(item, output);
         if ptr::addr_of!(EPISODE_DEPTH).read() != (*c).episode_base {
             gap(depth, 0, 0, c"call_episode_unbalanced");
             ptr::addr_of_mut!(EPISODE_DEPTH).write((*c).episode_base)
@@ -540,7 +540,6 @@ unsafe extern "C" fn FunctionCalls_GenerateCall(item: u32, output: u32) -> u32 {
         }
         OracleTrace_Printf(c"pv.call.end schema=1 function=%lu call=%lu arguments=%lu episodes=%lu births=%lu operands=%lu instructions=%lu complete=%u\n".as_ptr(),(*c).function,id,(*c).count as u32,(*c).episodes,(*c).births,(*c).operands,(*c).instructions,u32::from((*c).complete));
         ptr::addr_of_mut!(CALL_DEPTH).write(depth);
-        result
     }
 }
 #[unsafe(no_mangle)]
@@ -566,7 +565,7 @@ unsafe extern "C" fn assign_argument_locations(
         result
     }
 }
-unsafe fn primary(context: u32, stack: bool) -> u32 {
+unsafe fn primary(context: u32, stack: bool) {
     unsafe {
         let token = if lifecycle::enabled() {
             find(context as *const u8, false)
@@ -574,11 +573,11 @@ unsafe fn primary(context: u32, stack: bool) -> u32 {
         } else {
             0
         };
-        let result = if stack {
+        if stack {
             store_argument_on_stack__retail(context)
         } else {
             load_argument_registers__retail(context)
-        };
+        }
         if token != 0 {
             if let Some(e) = active()
                 && e.id == token
@@ -587,15 +586,14 @@ unsafe fn primary(context: u32, stack: bool) -> u32 {
             }
             end(token)
         }
-        result
     }
 }
 #[unsafe(no_mangle)]
-unsafe extern "C" fn load_argument_registers(context: u32) -> u32 {
+unsafe extern "C" fn load_argument_registers(context: u32) {
     unsafe { primary(context, false) }
 }
 #[unsafe(no_mangle)]
-unsafe extern "C" fn store_argument_on_stack(context: u32) -> u32 {
+unsafe extern "C" fn store_argument_on_stack(context: u32) {
     unsafe { primary(context, true) }
 }
 #[unsafe(export_name = "OracleRust_ArgumentForceGpr")]

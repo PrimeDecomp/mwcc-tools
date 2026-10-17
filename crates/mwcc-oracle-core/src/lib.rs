@@ -71,6 +71,7 @@ pub mod trace;
 pub mod value_history;
 pub mod version;
 pub mod wasm_build;
+pub mod wasm_oracle;
 pub mod x86;
 
 pub const SCHEMA_VERSION: u32 = 6;

@@ -773,8 +773,9 @@ fn help() {
   relink-check VERSION [--write] [--root DIR]
       which compiled units of a source tree's build link into the original (after ninja all_source);
       --write records the others as its state.json's relink_exclude
-  source-only VERSION [--oracle] [--root DIR]
-      link the compiler of a source tree's sources alone, build/VERSION/<tree>/source-only/mwcceppc.exe
+  source-only VERSION [--oracle [--wasm [--clang FILE] [--wasm-ld FILE]]] [--root DIR]
+      link the compiler of a source tree's sources alone, build/VERSION/<tree>/source-only/mwcceppc.exe;
+      --wasm: the oracle's WebAssembly module, build/VERSION/wasm/oracle.wasm (ninja builds both)
       (after ninja all_source; compare it with the original: corpus --exe); --oracle links the Rust hooks in,
       build/VERSION/<tree>/source-oracle/mwcceppc.exe
   compare extract|compare|report VERSION [--root DIR]
@@ -788,7 +789,7 @@ fn help() {
   nearest VERSION SOURCE... [--root DIR]
   link [--oracle | --source] VERSION OUTPUT INPUT... [--root DIR] [--timeout SECS]
   configure [--version V] [--mode link|compare] [--split-only] [--oracle [--producer rust|c]] [--root DIR]
-  build-hooks OUTPUT [--trace-shim | --frontend-version V] [--root DIR] [--rustc FILE] [--timeout SECS]
+  build-hooks OUTPUT [--trace-shim | --frontend-version V] [--wasm] [--root DIR] [--rustc FILE] [--timeout SECS]
   package-release OUTPUT.zip --binary FILE --target TARGET [--root DIR] [--source-revision COMMIT] [--notices DIR]
   transform-dep DEP OUT [--root DIR]
   download TOOL OUTPUT [OTHER_OUTPUT...] [--root DIR] [--timeout SECS]

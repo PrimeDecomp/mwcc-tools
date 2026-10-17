@@ -9,6 +9,7 @@ pub fn run(command: &str, args: &[String]) -> Result<()> {
     let mut oracle = false;
     let mut producer = None;
     let mut trace_shim = false;
+    let mut wasm = false;
     let mut frontend_version = None;
     let mut rustc = std::env::var_os("RUSTC")
         .map(PathBuf::from)
@@ -27,6 +28,7 @@ pub fn run(command: &str, args: &[String]) -> Result<()> {
                 producer = Some(true);
             }
             "--trace-shim" if command == "build-hooks" => trace_shim = true,
+            "--wasm" if command == "build-hooks" => wasm = true,
             "--root" | "--version" | "--mode" | "--timeout" | "--ninja" | "--jobs" | "--rustc"
             | "--frontend-version" | "--producer" => {
                 let option = &args[i];
@@ -84,8 +86,22 @@ pub fn run(command: &str, args: &[String]) -> Result<()> {
         "build-hooks" => {
             ensure!(
                 positional.len() == 1,
-                "build-hooks OUTPUT [--trace-shim | --frontend-version V] [--root DIR] [--rustc FILE] [--timeout SECS]"
+                "build-hooks OUTPUT [--trace-shim | --frontend-version V] [--wasm] [--root DIR] [--rustc FILE] [--timeout SECS]"
             );
+            if wasm {
+                ensure!(
+                    !trace_shim,
+                    "the WebAssembly oracle writes traces in C (wasm/src/oracle.c)"
+                );
+                mwcc_oracle_core::producer::build_wasm(
+                    &root,
+                    &PathBuf::from(&positional[0]),
+                    &rustc,
+                    timeout,
+                    frontend_version.as_deref(),
+                )?;
+                return Ok(());
+            }
             ensure!(
                 !trace_shim || frontend_version.is_none(),
                 "trace output and frontend must be separate objects"

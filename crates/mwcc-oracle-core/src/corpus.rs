@@ -329,7 +329,8 @@ pub fn run(request: &Request) -> Result<Report> {
         let traces = match &reference {
             Some(executable) => {
                 let c = scratch.path().join(format!("{index}.reference.o"));
-                runner::execute(runner::Invocation {
+                // (the executable itself, as the original: never a module run in its place)
+                runner::execute_process(runner::Invocation {
                     root: &request.root,
                     executable,
                     flags: &job.flags,

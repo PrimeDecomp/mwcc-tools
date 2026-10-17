@@ -277,10 +277,24 @@ fn validate_surface(data: &[u8], exports: &[&str], imports: &[&str]) -> Result<(
     Ok(())
 }
 pub fn build(root: &Path, output: &Path, rustc: &Path, timeout: Duration) -> Result<()> {
-    build_object(root, output, rustc, timeout, false, None)
+    build_object(root, output, rustc, timeout, false, None, false)
 }
 pub fn build_trace(root: &Path, output: &Path, rustc: &Path, timeout: Duration) -> Result<()> {
-    build_object(root, output, rustc, timeout, true, None)
+    build_object(root, output, rustc, timeout, true, None, false)
+}
+/// The hooks (or VERSION's frontend hooks) for the WebAssembly oracle (crate::wasm_oracle): wasm32 LLVM IR, whose
+/// names the oracle's link takes to gc2's.
+pub fn build_wasm(
+    root: &Path,
+    output: &Path,
+    rustc: &Path,
+    timeout: Duration,
+    frontend: Option<&str>,
+) -> Result<()> {
+    if let Some(version) = frontend {
+        frontend_hooks(version)?;
+    }
+    build_object(root, output, rustc, timeout, false, frontend, true)
 }
 pub fn build_frontend(
     root: &Path,
@@ -290,7 +304,7 @@ pub fn build_frontend(
     version: &str,
 ) -> Result<()> {
     frontend_hooks(version)?;
-    build_object(root, output, rustc, timeout, false, Some(version))
+    build_object(root, output, rustc, timeout, false, Some(version), false)
 }
 fn build_object(
     root: &Path,
@@ -299,6 +313,7 @@ fn build_object(
     timeout: Duration,
     trace: bool,
     frontend: Option<&str>,
+    wasm: bool,
 ) -> Result<()> {
     ensure!(!timeout.is_zero(), "Rust producer timeout must be positive");
     let root = root.canonicalize()?;
@@ -321,12 +336,16 @@ fn build_object(
         "--edition",
         "2024",
         "--target",
-        "i686-pc-windows-msvc",
+        if wasm {
+            "wasm32-unknown-unknown"
+        } else {
+            "i686-pc-windows-msvc"
+        },
         "--crate-name",
         "mwcc_oracle_hooks",
         "--crate-type",
         "lib",
-        "--emit=obj",
+        if wasm { "--emit=llvm-ir" } else { "--emit=obj" },
         "-D",
         "warnings",
         "-C",
@@ -363,7 +382,14 @@ fn build_object(
         .stdout(Stdio::from(stream.try_clone()?))
         .stderr(Stdio::from(stream));
     process_tree::prepare(&mut command);
-    let mut child = command.spawn().context("launch rustc for i686-pc-windows-msvc (install the target with rustup target add i686-pc-windows-msvc)")?;
+    let target = if wasm {
+        "wasm32-unknown-unknown"
+    } else {
+        "i686-pc-windows-msvc"
+    };
+    let mut child = command.spawn().with_context(|| {
+        format!("launch rustc for {target} (install the target with rustup target add {target})")
+    })?;
     let began = Instant::now();
     let status = loop {
         if let Some(status) = child.try_wait()? {
@@ -381,7 +407,9 @@ fn build_object(
         String::from_utf8_lossy(&fs::read(log.path())?)
     );
     let data = fs::read(temporary.path())?;
-    if let Some(version) = frontend {
+    if wasm {
+        // (its names are checked where the oracle is linked)
+    } else if let Some(version) = frontend {
         validate_frontend(&data, version)?;
     } else if trace {
         validate_trace(&data)?;

@@ -851,8 +851,14 @@ pub fn generate(root: &Path, request: &Request) -> Result<Generation> {
         }
         out.extend(crate::wasm_build::rules());
         out.extend(crate::wasm_build::edges(root, version, library)?);
-        defaults.push(' ');
-        defaults.push_str(&crate::wasm_build::output(version));
+        out.extend(crate::wasm_oracle::edges(root, version)?);
+        for module in [
+            crate::wasm_build::output(version),
+            crate::wasm_build::oracle_output(version),
+        ] {
+            defaults.push(' ');
+            defaults.push_str(&module);
+        }
     }
     out.extend([format!("build all_source: phony {}",objects.iter().map(|p|ninja_path(p)).collect::<Vec<_>>().join(" ")),format!("build progress: phony build/{version}/report.json"),
         format!("build build.ninja: configure | $tools_dep {prefix}config/sources.json config/{version}/config.json{}{}",if tree.vendored() {format!(" {}/config.json {}/state.json",tree.config_dir,tree.config_dir)} else {String::new()},if linking {format!(" {split_file}")} else {String::new()}),format!("default {defaults}"),String::new()]);

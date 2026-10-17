@@ -5,10 +5,10 @@ use crate::{
     abi::{OracleTrace_Printf, read, wanted},
     backend::Registers,
 };
-use core::{arch::naked_asm, ffi::CStr, ptr};
+use core::{ffi::CStr, ptr};
 
 unsafe extern "C" {
-    fn CFunc_ParseFuncDef__retail(a: u32, b: u32, c: u32, d: u32, e: u32, f: u32) -> u32;
+    fn CFunc_ParseFuncDef__retail(a: u32, b: u32, c: u32, d: u32, e: u32, f: u32);
     fn fn_00513040__retail(node: u32, mode: u32) -> u32;
     fn fn_00513240__retail(node: u32) -> u32;
     static mut evalMode: u8;
@@ -415,12 +415,11 @@ unsafe fn frame_end(id: u32, output: u32, clone: bool) {
     }
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn CFunc_ParseFuncDef(a: u32, b: u32, c: u32, d: u32, e: u32, f: u32) -> u32 {
+pub unsafe extern "C" fn CFunc_ParseFuncDef(a: u32, b: u32, c: u32, d: u32, e: u32, f: u32) {
     unsafe {
         let id = owner_begin(a);
-        let result = CFunc_ParseFuncDef__retail(a, b, c, d, e, f);
+        CFunc_ParseFuncDef__retail(a, b, c, d, e, f);
         owner_end(id);
-        result
     }
 }
 #[unsafe(no_mangle)]
@@ -432,10 +431,17 @@ pub unsafe extern "C" fn fn_00513040(node: u32, mode: u32) -> u32 {
         result
     }
 }
+#[cfg(target_arch = "x86")]
 #[unsafe(naked)]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fn_00513240(_node: u32) -> u32 {
-    naked_asm!("push dword ptr [esp]","push dword ptr [esp + 8]","call {handler}","add esp, 8","ret",handler=sym clone_node);
+    core::arch::naked_asm!("push dword ptr [esp]","push dword ptr [esp + 8]","call {handler}","add esp, 8","ret",handler=sym clone_node);
+}
+// (WebAssembly has no return address to read)
+#[cfg(target_arch = "wasm32")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fn_00513240(node: u32) -> u32 {
+    unsafe { clone_node(node, 0) }
 }
 unsafe extern "C" fn clone_node(node: u32, caller: u32) -> u32 {
     unsafe {

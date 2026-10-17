@@ -333,6 +333,9 @@ pub fn run(command: &str, args: &[String]) -> Result<()> {
             let mut root = std::env::current_dir()?;
             let mut version = None;
             let mut oracle = false;
+            let mut wasm = false;
+            let mut clang = std::env::var("CLANG").unwrap_or_else(|_| "clang".into());
+            let mut wasm_ld = std::env::var("WASM_LD").unwrap_or_else(|_| "wasm-ld".into());
             let mut i = 0;
             while i < args.len() {
                 match args[i].as_str() {
@@ -341,12 +344,38 @@ pub fn run(command: &str, args: &[String]) -> Result<()> {
                         root = args.get(i).context("--root needs a value")?.into();
                     }
                     "--oracle" => oracle = true,
+                    "--wasm" => wasm = true,
+                    "--clang" => {
+                        i += 1;
+                        clang = args.get(i).context("--clang needs a value")?.clone();
+                    }
+                    "--wasm-ld" => {
+                        i += 1;
+                        wasm_ld = args.get(i).context("--wasm-ld needs a value")?.clone();
+                    }
                     v if !v.starts_with('-') && version.is_none() => version = Some(v),
                     other => bail!("unknown source-only argument {other}"),
                 }
                 i += 1;
             }
             let version = version.context("source-only requires VERSION")?;
+            if wasm {
+                ensure!(oracle, "--wasm links the oracle (--oracle)");
+                let outcome = mwcc_oracle_core::wasm_oracle::run(&root, version, &clang, &wasm_ld)?;
+                for hook in &outcome.hooks {
+                    println!("hook {} = {} ({})", hook.hook, hook.function, hook.unit);
+                }
+                for name in &outcome.renamed {
+                    println!("renamed {name} (gc2 defines it too)");
+                }
+                println!(
+                    "{version}: {}: {} hooks, {} names read",
+                    outcome.output,
+                    outcome.hooks.len(),
+                    outcome.imports.len()
+                );
+                return Ok(());
+            }
             if oracle {
                 let outcome = mwcc_oracle_core::source_oracle::run(&root, version)?;
                 for hook in &outcome.hooks {

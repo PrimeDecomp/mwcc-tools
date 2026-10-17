@@ -48,6 +48,33 @@ unsafe fn objects(kind: &CStr, mut list: *const u8) {
     }
 }
 
+#[cfg(target_arch = "wasm32")]
+unsafe extern "C" {
+    // (gc2's names: the WebAssembly module has no x86 code to find them in)
+    static linkage_area_size: i32;
+    static parameter_area_size: i32;
+    static local_data_size: i32;
+    static nonvolatile_save_size: i32;
+    static frame_size: i32;
+}
+
+#[cfg(target_arch = "wasm32")]
+unsafe fn layout() {
+    unsafe {
+        OracleTrace_Printf(
+            c"fr.layout linkage=%d outgoing=%d locals=%d above=%d size=%d
+"
+            .as_ptr(),
+            ptr::addr_of!(linkage_area_size).read_unaligned(),
+            ptr::addr_of!(parameter_area_size).read_unaligned(),
+            ptr::addr_of!(local_data_size).read_unaligned(),
+            ptr::addr_of!(nonvolatile_save_size).read_unaligned(),
+            ptr::addr_of!(frame_size).read_unaligned(),
+        );
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 unsafe fn layout() {
     unsafe {
         let code = fn_004f7fb0__retail as *const () as *const u8;

@@ -115,6 +115,8 @@ fn clang_arguments(source: &str, prefix: &str, arguments: &[String]) -> Vec<Stri
         "-Iwasm/include",
         "-fms-extensions",
         "-fno-ms-compatibility",
+        // (MWCC's enums are as small as their values allow, enumsalwaysint off: the layout the hooks read)
+        "-fshort-enums",
         "-D__MWERKS__=0x2407",
         // (MSL's long double is double)
         "-Xclang",
@@ -239,21 +241,52 @@ pub fn rules() -> Vec<String> {
         format!("clang = {}", tool("CLANG", "clang")),
         format!("wasm_ld = {}", tool("WASM_LD", "wasm-ld")),
     ];
+    out.extend(
+        [
+            "rule wasm_cc",
+            "  command = $clang $cflags -MD -MF $out.d -c $in -o $out",
+            "  description = CLANG $in",
+            "  depfile = $out.d",
+            "  deps = gcc",
+            "rule wasm_ld",
+        ]
+        .map(String::from),
+    );
     out.extend([
-        "rule wasm_cc",
-        "  command = $clang $cflags -MD -MF $out.d -c $in -o $out",
-        "  description = CLANG $in",
-        "  depfile = $out.d",
-        "  deps = gcc",
-        "rule wasm_ld",
-        // (gnu89's extern inline functions are defined in each unit that includes them: any one is taken)
-        "  command = $wasm_ld --no-entry --export=_start --allow-undefined --allow-multiple-definition -z stack-size=8388608 $ldflags @$out.rsp -o $out",
-        "  rspfile = $out.rsp",
-        "  rspfile_content = $in",
-        "  description = WASM-LD $out",
-    ]
-    .map(String::from));
+        format!(
+            "  command = $wasm_ld {} $ldflags @$out.rsp -o $out",
+            LINK_FLAGS.join(" ")
+        ),
+        "  rspfile = $out.rsp".into(),
+        "  rspfile_content = $in".into(),
+        "  description = WASM-LD $out".into(),
+    ]);
     out
+}
+
+/// wasm-ld's arguments for the module (and the oracle's, crate::wasm_oracle). gnu89's extern inline functions are
+/// defined in each unit that includes them: any one is taken.
+pub const LINK_FLAGS: [&str; 6] = [
+    "--no-entry",
+    "--export=_start",
+    "--allow-undefined",
+    "--allow-multiple-definition",
+    "-z",
+    "stack-size=8388608",
+];
+
+/// The module's objects, in link order: each unit's name and object (TAG's last).
+pub fn objects(root: &Path, version: &str) -> Result<Vec<(String, String)>> {
+    let directory = directory(version);
+    let mut out: Vec<(String, String)> = units(root, version)?
+        .into_iter()
+        .map(|unit| {
+            let object = format!("{directory}/obj/{}.o", unit.name);
+            (unit.name, object)
+        })
+        .collect();
+    out.push((TAG.into(), format!("{directory}/obj/{TAG}.o")));
+    Ok(out)
 }
 
 /// VERSION's edges: each object, and the module. LIBRARY is the library tree's download target.

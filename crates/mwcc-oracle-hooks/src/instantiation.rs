@@ -3,7 +3,7 @@ use crate::{
     abi::{OracleTrace_Printf, read, wanted},
     pcode::link_name,
 };
-use core::{arch::naked_asm, ffi::c_char, ptr};
+use core::{ffi::c_char, ptr};
 
 unsafe extern "C" {
     static mut pendingInlineWork: *const u8;
@@ -149,10 +149,17 @@ unsafe extern "C" fn CTemplateNew_InstantiateFunction(
     }
 }
 // Read EIP before any Rust prologue, just as the C wrapper's [ebp+4] does.
+#[cfg(target_arch = "x86")]
 #[unsafe(naked)]
 #[unsafe(no_mangle)]
 unsafe extern "C" fn fn_0050f240(_object: *const u8) {
-    naked_asm!("push dword ptr [esp]", "push dword ptr [esp + 8]", "call {handler}", "add esp, 8", "ret", handler = sym emit);
+    core::arch::naked_asm!("push dword ptr [esp]", "push dword ptr [esp + 8]", "call {handler}", "add esp, 8", "ret", handler = sym emit);
+}
+// (WebAssembly has no return address to read)
+#[cfg(target_arch = "wasm32")]
+#[unsafe(no_mangle)]
+unsafe extern "C" fn fn_0050f240(object: *const u8) {
+    unsafe { emit(object, 0) }
 }
 unsafe extern "C" fn emit(object: *const u8, caller: u32) {
     unsafe {

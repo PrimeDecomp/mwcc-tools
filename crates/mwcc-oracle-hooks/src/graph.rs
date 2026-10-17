@@ -45,6 +45,26 @@ struct Globals {
     count: *const i32,
     graph: *const *mut OracleNode,
 }
+#[cfg(target_arch = "wasm32")]
+unsafe extern "C" {
+    // (gc2's names: the WebAssembly module has no x86 code to find them in)
+    static coloring_class: i8;
+    static n_real_registers: [i32; 5];
+    static used_virtual_registers: [i32; 5];
+    static interferencegraph: *mut *mut OracleNode;
+}
+#[cfg(target_arch = "wasm32")]
+unsafe fn globals() -> Option<Globals> {
+    unsafe {
+        Some(Globals {
+            class: ptr::addr_of!(coloring_class),
+            start: ptr::addr_of!(n_real_registers).cast(),
+            count: ptr::addr_of!(used_virtual_registers).cast(),
+            graph: ptr::addr_of!(interferencegraph).read_unaligned(),
+        })
+    }
+}
+#[cfg(not(target_arch = "wasm32"))]
 unsafe fn globals() -> Option<Globals> {
     unsafe {
         let code = fn_00507070__retail as *const () as *const u8;
