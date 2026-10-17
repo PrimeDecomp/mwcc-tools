@@ -70,11 +70,6 @@ pub fn module(root: &Path, executable: &Path) -> Option<(Version, PathBuf)> {
     None
 }
 
-/// Whether MODULE is VERSION's oracle (not its stock compiler).
-pub fn is_oracle(version: Version, module: &Path) -> bool {
-    module.ends_with(wasm_build::oracle_output(version.name()))
-}
-
 /// The VS_VERSIONINFO of VERSION's driver (gc2's `mwcceppc.rc`, with its `VERSION`).
 fn version_info(root: &Path, version: Version) -> Result<Vec<u8>> {
     let tree = SourceTree::gc2(version.name());

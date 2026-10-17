@@ -220,86 +220,188 @@ pub unsafe extern "C" fn observe(r: &Registers, d: &Descriptor) {
             return;
         };
         if d.action == 1 {
-            let id = next(ptr::addr_of_mut!(REQUESTS));
-            let depth = ptr::addr_of!(REQUEST_DEPTH).read();
-            let stack = ptr::addr_of_mut!(REQUEST_STACK).cast::<Request>();
-            let parent = if depth == 0 {
-                0
-            } else {
-                stack.add((depth - 1) as usize).read().id
-            };
-            if depth < LIMIT {
-                stack.add(depth as usize).write(Request {
-                    id,
-                    pair: d.pair,
-                    pool,
-                    size,
-                    esp,
-                    epoch: epoch(pool),
-                });
-                ptr::addr_of_mut!(REQUEST_DEPTH).write(depth + 1);
-            } else {
-                gap(c"request_capacity", d.site);
-            }
-            let event = next(ptr::addr_of_mut!(EVENT));
-            OracleTrace_Printf(c"pv.arena.request schema=1 stream=1 event=%lu request=%lu parent_request=%lu pair=%lu pool=%lu requested=%lu retail_esp=%08lx site=%08lx epoch=%lu depth=%lu\n".as_ptr(),event,id,parent,d.pair,pool,size,esp,d.site,epoch(pool),depth+1);
+            request(d.site, d.pair, pool, size, esp);
         } else if d.action == 2 {
-            let id = next(ptr::addr_of_mut!(ALLOCATIONS));
-            let depth = ptr::addr_of!(REQUEST_DEPTH).read();
-            let request = if depth == 0 {
-                EMPTY_REQUEST
-            } else {
-                ptr::addr_of!(REQUEST_STACK)
-                    .cast::<Request>()
-                    .add((depth - 1) as usize)
-                    .read()
-            };
-            let matched = depth > 0
-                && request.pair == d.pair
-                && request.pool == pool
-                && request.esp == esp
-                && request.epoch == epoch(pool);
-            if matched {
-                ptr::addr_of_mut!(REQUEST_DEPTH).write(depth - 1);
-            } else {
-                gap(c"request_commit_mismatch", d.site);
-            }
-            let address = selected(r, d.result_kind, d.result).unwrap_or(0);
             let g = globals();
-            let (block, freep, free) = if g.pools.is_null() {
-                (0, 0, -1)
+            let heap = if g.pools.is_null() {
+                ptr::null()
             } else {
-                let descriptor = g.pools.add(pool as usize * 20);
-                (
-                    read::<u32>(descriptor, 8),
-                    read::<u32>(descriptor, 12),
-                    read::<i32>(descriptor, 16),
-                )
+                g.pools.add(pool as usize * 20)
             };
-            let rounded = (request.size & !7).checked_add(8);
-            let valid = matched
-                && d.result_kind == 1
-                && size > 0
-                && size <= i32::MAX as u32
-                && rounded == Some(size)
-                && request.size <= size
-                && address != 0
-                && address.checked_add(size) == Some(freep)
-                && block != 0
-                && free >= 0;
-            if !valid {
-                gap(c"invalid_allocation_span", d.site);
-            }
-            if ptr::addr_of!(RESET_DEPTH).read() != 0 {
-                gap(c"allocation_during_reset", d.site);
-            }
-            let complete = u32::from(valid && ptr::addr_of!(UNSUPPORTED).read() == 0);
-            let event = next(ptr::addr_of_mut!(EVENT));
-            OracleTrace_Printf(c"pv.arena.alloc schema=1 stream=1 event=%lu allocation=%lu request=%lu pair=%lu pool=%lu requested=%lu requested_known=%lu reserved=%lu address=%08lx block=%08lx freep=%08lx free=%ld retail_esp=%08lx site=%08lx epoch=%lu complete=%lu\n".as_ptr(),event,id,request.id,d.pair,pool,request.size,u32::from(matched),size,address,block,freep,free,esp,d.site,epoch(pool),complete);
+            let address = selected(r, d.result_kind, d.result);
+            commit(d.site, d.pair, pool, size, address, heap, esp);
         } else {
             gap(c"invalid_action", d.site);
         }
         leave();
+    }
+}
+
+/// A request of PAIR's (POOL's) of SIZE bytes, at SITE, in the frame ESP.
+unsafe fn request(site: u32, pair: u32, pool: u32, size: u32, esp: u32) {
+    unsafe {
+        let id = next(ptr::addr_of_mut!(REQUESTS));
+        let depth = ptr::addr_of!(REQUEST_DEPTH).read();
+        let stack = ptr::addr_of_mut!(REQUEST_STACK).cast::<Request>();
+        let parent = if depth == 0 {
+            0
+        } else {
+            stack.add((depth - 1) as usize).read().id
+        };
+        if depth < LIMIT {
+            stack.add(depth as usize).write(Request {
+                id,
+                pair,
+                pool,
+                size,
+                esp,
+                epoch: epoch(pool),
+            });
+            ptr::addr_of_mut!(REQUEST_DEPTH).write(depth + 1);
+        } else {
+            gap(c"request_capacity", site);
+        }
+        let event = next(ptr::addr_of_mut!(EVENT));
+        OracleTrace_Printf(c"pv.arena.request schema=1 stream=1 event=%lu request=%lu parent_request=%lu pair=%lu pool=%lu requested=%lu retail_esp=%08lx site=%08lx epoch=%lu depth=%lu\n".as_ptr(),event,id,parent,pair,pool,size,esp,site,epoch(pool),depth+1);
+    }
+}
+
+/// The commit of PAIR's (POOL's) request: SIZE bytes reserved at ADDRESS (if it is known), of the pool HEAP (its
+/// descriptor, if known), at SITE, in the frame ESP.
+unsafe fn commit(
+    site: u32,
+    pair: u32,
+    pool: u32,
+    size: u32,
+    address: Option<u32>,
+    heap: *const u8,
+    esp: u32,
+) {
+    unsafe {
+        let id = next(ptr::addr_of_mut!(ALLOCATIONS));
+        let depth = ptr::addr_of!(REQUEST_DEPTH).read();
+        let request = if depth == 0 {
+            EMPTY_REQUEST
+        } else {
+            ptr::addr_of!(REQUEST_STACK)
+                .cast::<Request>()
+                .add((depth - 1) as usize)
+                .read()
+        };
+        let matched = depth > 0
+            && request.pair == pair
+            && request.pool == pool
+            && request.esp == esp
+            && request.epoch == epoch(pool);
+        if matched {
+            ptr::addr_of_mut!(REQUEST_DEPTH).write(depth - 1);
+        } else {
+            gap(c"request_commit_mismatch", site);
+        }
+        let (block, freep, free) = if heap.is_null() {
+            (0, 0, -1)
+        } else {
+            (
+                read::<u32>(heap, 8),
+                read::<u32>(heap, 12),
+                read::<i32>(heap, 16),
+            )
+        };
+        let rounded = (request.size & !7).checked_add(8);
+        let valid = matched
+            && address.is_some()
+            && size > 0
+            && size <= i32::MAX as u32
+            && rounded == Some(size)
+            && request.size <= size
+            && address != Some(0)
+            && address.and_then(|a| a.checked_add(size)) == Some(freep)
+            && block != 0
+            && free >= 0;
+        if !valid {
+            gap(c"invalid_allocation_span", site);
+        }
+        if ptr::addr_of!(RESET_DEPTH).read() != 0 {
+            gap(c"allocation_during_reset", site);
+        }
+        let complete = u32::from(valid && ptr::addr_of!(UNSUPPORTED).read() == 0);
+        let event = next(ptr::addr_of_mut!(EVENT));
+        OracleTrace_Printf(c"pv.arena.alloc schema=1 stream=1 event=%lu allocation=%lu request=%lu pair=%lu pool=%lu requested=%lu requested_known=%lu reserved=%lu address=%08lx block=%08lx freep=%08lx free=%ld retail_esp=%08lx site=%08lx epoch=%lu complete=%lu\n".as_ptr(),event,id,request.id,pair,pool,request.size,u32::from(matched),size,address.unwrap_or(0),block,freep,free,esp,site,epoch(pool),complete);
+    }
+}
+
+/// The original's request and commit sites of each pair (1 to 9), in 2.6 and 2.7 (gc2's probes name the pair).
+const SOURCE_SITES: [(u32, u32); 9] = [
+    (0x440d65, 0x440d80),
+    (0x440d25, 0x440d40),
+    (0x440ce5, 0x440d00),
+    (0x440ca5, 0x440cc0),
+    (0x4414d1, 0x4414ee),
+    (0x4415aa, 0x4415c5),
+    (0x441639, 0x441654),
+    (0x44171a, 0x441735),
+    (0x4417c9, 0x4417e4),
+];
+/// The original's call of the heap's error callback (MoreHeapSpace's), in 2.6 and 2.7.
+const SOURCE_CALLBACK: u32 = 0x44113a;
+
+/// PAIR's sites, for gc2's probes.
+fn source_sites(pair: u32) -> Option<(u32, u32)> {
+    SOURCE_SITES.get(pair.checked_sub(1)? as usize).copied()
+}
+
+/// gc2's probe of a request (`include/compiler/OracleProbes.h`).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn OracleProbe_ArenaRequest(pair: u32, requested: u32, frame: *const u8) {
+    unsafe {
+        if !enter() {
+            return;
+        }
+        match (source_sites(pair), pool_for_pair(pair)) {
+            (Some((site, _)), Some(pool)) => request(site, pair, pool, requested, frame as u32),
+            _ => gap(c"invalid_pair", 0),
+        }
+        leave();
+    }
+}
+
+/// gc2's probe of a commit.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn OracleProbe_ArenaCommit(
+    pair: u32,
+    reserved: u32,
+    address: *const u8,
+    heap: *const u8,
+    frame: *const u8,
+) {
+    unsafe {
+        if !enter() {
+            return;
+        }
+        match (source_sites(pair), pool_for_pair(pair)) {
+            (Some((_, site)), Some(pool)) => commit(
+                site,
+                pair,
+                pool,
+                reserved,
+                Some(address as u32),
+                heap,
+                frame as u32,
+            ),
+            _ => gap(c"invalid_pair", 0),
+        }
+        leave();
+    }
+}
+
+/// gc2's probe of the heap's error callback.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn OracleProbe_ArenaCallback() {
+    unsafe {
+        if enter() {
+            gap(c"allocator_callback", SOURCE_CALLBACK);
+            leave();
+        }
     }
 }
 

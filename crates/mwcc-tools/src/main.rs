@@ -639,6 +639,8 @@ fn corpus_command(args: &[String]) -> Result<()> {
     let mut list = None;
     let mut jobs = std::thread::available_parallelism().map_or(4, usize::from);
     let mut all_traces = false;
+    let mut source_arenas = false;
+    let mut source_nodes = false;
     let mut trace_reference = None;
     let mut wasm: Option<PathBuf> = None;
     let mut json_output = false;
@@ -652,6 +654,12 @@ fn corpus_command(args: &[String]) -> Result<()> {
         }
         if args[i] == "--json" {
             json_output = true;
+            i += 1;
+            continue;
+        }
+        if args[i] == "--source-arenas" || args[i] == "--source-nodes" {
+            source_arenas = true;
+            source_nodes |= args[i] == "--source-nodes";
             i += 1;
             continue;
         }
@@ -703,6 +711,8 @@ fn corpus_command(args: &[String]) -> Result<()> {
         keep,
         timeout,
         all_traces,
+        source_arenas,
+        source_nodes,
         trace_reference,
         in_process,
     })?;
@@ -763,8 +773,9 @@ fn help() {
   header-impact --from-ninja FILE (--git REV | --override PATH=FILE) [--unit TEXT] [--jobs N] [--json]
   inline-calibrate --project DIR --callee NAME [--unit UNIT] [--binary] [--json FILE]
   corpus --canaries DIR | --project DIR [--oracle-root ROOT] [--version V] [--jobs N] [--all-traces]
-         [--exe ORACLE] [--trace-reference OTHER_ORACLE] [--wasm MODULE]
+         [--source-arenas | --source-nodes] [--exe ORACLE] [--trace-reference OTHER_ORACLE] [--wasm MODULE]
       --wasm runs MODULE (build/VERSION/wasm/*.wasm) in process in the oracle's place
+      --source-arenas, --source-nodes trace those streams too, and compare them with the reference's
   object compare ORACLE.o ORIGINAL.o
   pe inspect|read|find FILE [options]
   implib DEF OUTPUT

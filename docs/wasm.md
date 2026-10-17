@@ -93,7 +93,8 @@ The module's imports are 63 Win32 functions of kernel32 and version.dll. MSL's W
 ### The oracle
 
 `crates/mwcc-oracle-core/src/wasm_oracle.rs` (`mwcc-tools source-only VERSION --oracle --wasm`, a ninja edge) links
-`oracle.wasm`.
+`oracle.wasm`. Its objects are compiled again with `ORACLE_PROBES` defined, in `build/<version>/wasm/oracle-obj`
+(below, [Probes](#probes)). The stock module's are compiled without it.
 
 * `build-hooks --wasm` builds the hooks, and the version's frontend hooks, for `wasm32-unknown-unknown` as LLVM IR.
   `trace_output.rs` and the naked trampolines are x86 only. In wasm, a C variadic call passes one pointer to its
@@ -103,22 +104,47 @@ The module's imports are 63 Win32 functions of kernel32 and version.dll. MSL's W
   to IR (`-disable-llvm-passes`) and edited:
   * the function becomes `<hook>__retail`, global, and keeps its calls to itself;
   * the unit's other references go to the Rust wrapper;
-  * a global function of another name becomes a thunk to the wrapper, for the other units' calls.
+  * a global function of another name becomes a thunk to the wrapper, for the other units' calls;
+  * a function of the unit that the original lacks (MWCC inlined it everywhere), that the hooked function calls and
+    that calls it back, gets a copy for it whose calls stay retail. In the original, those calls are the function's
+    calls to itself, which the hook does not see. (`CInline_CopyNodes`'s `CInline_CopyExpressionSave` and
+    `CInline_CopyEMemberInfo`.)
 * A static variable the hooks read gets a global alias. A static function gets a global entry. The Rust IR then
   names gc2's symbols, with offsets as constant addresses (`copts+0xf8`). A name that the hooks and gc2 both define
   (`initheaps`) is renamed on the Rust side.
 * Where an x86 hook finds a variable in the retail function's machine code (the frame layout, the colouring graph's
   globals, the scheduler's machine and opcode table), the wasm build reads it by gc2's name.
 * `wasm/src/oracle.c` has the trace writer (`MWCC_ORACLE_TRACE_FILE`, or stderr), the variadic entry of
-  `IroDump_Print`, and the source-built oracle's stand-ins for the probes' islands.
+  `IroDump_Print`, and the source-built oracle's stand-in for the call arguments' probe island.
 * The link fails if a hook and its function differ in signature (in wasm, that call would trap). It also fails if
   the module imports anything the stock module does not.
 
-As with the source-built oracle, the guarded probes are not installed, so the `pv.*` provenance streams they write
-(dispatch, counters, coalescing, call arguments' contexts) are absent from the module's traces. Two scalarization
-bindings, which need the x86 caller's EBX and return address, are gaps. An oracle run that asks for the source arena or
-node streams (`--source-arenas`, `--source-nodes`) runs the x86 oracle, and fails if it is not built. Use
-`MWCC_IN_PROCESS=0` to run the x86 oracle for any other provenance.
+#### Probes
+
+The x86 oracle installs guarded probes at instructions of the original's split objects. They read its registers and
+write the `pv.*` provenance streams. The module has them in gc2's sources instead: `include/compiler/OracleProbes.h`
+declares a call for each, which `ORACLE_PROBE(...)` makes only under `ORACLE_PROBES`. Each call passes the values the
+probe reads, and the hooks give the records the original's site.
+
+* The source arenas (`pv.arena.*`, `--source-arenas`): `CompilerTools.c`'s allocators report each request and commit.
+  The original inlines `galloc` in `InitNameHash` and in `GetHashNameNode` and `GetHashNameNodeExport` (pairs 5 to 9);
+  under `ORACLE_PROBES` they call `galloc_at`, which names the pair. The request's stack pointer, by which a commit
+  is matched with its request, is the address of the allocator's local. gc2 defines the arena globals there.
+* The source nodes (`pv.source.*`, `--source-nodes`): `parse_statement` reports each expression statement. A clone's
+  `caller` (its return address in the original) is 0: nothing reads it.
+
+The other streams' probes (dispatch, counters, coalescing, call arguments' contexts) are not in gc2's sources yet, so
+those streams are absent from the module's traces. Two scalarization bindings, which need the x86 caller's EBX and
+return address, are gaps. Use `MWCC_IN_PROCESS=0` to run the x86 oracle for them.
+
+`corpus --source-arenas` (or `--source-nodes`) traces those streams and compares them with `--trace-reference`'s, the
+x86 oracle's. Addresses are masked, but not the original's sites. Between two other records, requests and commits are
+compared as a multiset, without their numbers and the pool's free space: their order follows the order in which the
+compiler evaluates a call's arguments, which C leaves unspecified (MWCC evaluates them from the last, clang from the
+first: `pclabel(makepcblock(), makepclabel())` allocates the label first in the original). Nothing joins two traces
+by these numbers. On the canaries, for 2.6 and 2.7, the streams compare equal but for the inputs that stop on too many
+errors. Those report a user break, and how far the compiler gets before it checks for one depends on the clock
+(`CWUserBreak` every 8 ticks), in the original too.
 
 ## Floating point: the x87
 

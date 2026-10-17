@@ -468,19 +468,49 @@ pub unsafe extern "C" fn observe(r: &Registers, d: &Descriptor) {
             leave();
             return;
         }
-        let root = read::<u32>(statement as *const u8, 10);
+        emission(d.site, statement, read::<u32>(statement as *const u8, 10));
+        leave();
+    }
+}
+
+/// The emission of STATEMENT, whose expression is ROOT, at SITE.
+unsafe fn emission(site: u32, statement: u32, root: u32) {
+    unsafe {
         let own = owner();
         let current = ptr::addr_of!(cscope_currentfunc).read() as u32;
         let id = next(ptr::addr_of_mut!(EMISSIONS));
         let depth = ptr::addr_of!(EMISSION_DEPTH).read();
         ptr::addr_of_mut!(EMISSION_DEPTH).write(depth.saturating_add(1));
         let event = next(ptr::addr_of_mut!(EVENT));
-        OracleTrace_Printf(c"pv.source.emission.begin schema=1 stream=1 event=%lu emission=%lu owner=%lu function=%08lx current_function=%08lx statement=%08lx root=%08lx site=%08lx depth=%lu\n".as_ptr(),event,id,own.id,own.function,current,statement,root,d.site,depth+1);
+        OracleTrace_Printf(c"pv.source.emission.begin schema=1 stream=1 event=%lu emission=%lu owner=%lu function=%08lx current_function=%08lx statement=%08lx root=%08lx site=%08lx depth=%lu\n".as_ptr(),event,id,own.id,own.function,current,statement,root,site,depth+1);
         let result = tree(id, 1, root);
         next(ptr::addr_of_mut!(EMISSION_ENDS));
         ptr::addr_of_mut!(EMISSION_DEPTH).write(depth);
         let event = next(ptr::addr_of_mut!(EVENT));
-        OracleTrace_Printf(c"pv.source.emission.end schema=1 stream=1 event=%lu emission=%lu owner=%lu function=%08lx current_function=%08lx statement=%08lx root=%08lx site=%08lx snapshot=%lu depth=%lu\n".as_ptr(),event,id,own.id,own.function,current,statement,root,d.site,result,depth);
+        OracleTrace_Printf(c"pv.source.emission.end schema=1 stream=1 event=%lu emission=%lu owner=%lu function=%08lx current_function=%08lx statement=%08lx root=%08lx site=%08lx snapshot=%lu depth=%lu\n".as_ptr(),event,id,own.id,own.function,current,statement,root,site,result,depth);
+    }
+}
+
+/// The original's site, parse_statement's, for gc2's probe: by the arena globals' version (3 is 2.7, 4 is 2.6).
+fn source_emission_site(version: u32) -> Option<u32> {
+    match version {
+        3 => Some(0x4f360e),
+        4 => Some(0x4f36ee),
+        _ => None,
+    }
+}
+
+/// gc2's probe (`include/compiler/OracleProbes.h`): parse_statement has stored STATEMENT's expression, EXPRESSION.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn OracleProbe_SourceEmission(statement: *const u8, expression: *const u8) {
+    unsafe {
+        if !enter() {
+            return;
+        }
+        match source_emission_site(crate::source_arenas::version()) {
+            Some(site) => emission(site, statement as u32, expression as u32),
+            None => gap(c"descriptor", 0, 0, 0, 0),
+        }
         leave();
     }
 }

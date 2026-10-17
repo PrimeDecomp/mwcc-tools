@@ -218,17 +218,6 @@ pub fn execute_controlled(
     if let Some((version, module)) =
         crate::in_process::module(invocation.root, invocation.executable)
     {
-        // (the source arena and node streams come from the guarded probes, which only the x86 oracle has)
-        let probes = invocation.options.source_arenas || invocation.options.source_nodes;
-        if probes && crate::in_process::is_oracle(version, &module) {
-            ensure!(
-                invocation.executable.is_file(),
-                "{} is not built: the source arena and node streams need its guarded probes, which the \
-                 WebAssembly oracle does not have",
-                invocation.executable.display()
-            );
-            return execute_process_controlled(invocation, cancel);
-        }
         if cancel() {
             return Err(Cancelled.into());
         }

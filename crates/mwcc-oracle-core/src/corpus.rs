@@ -129,6 +129,10 @@ pub struct Request {
     pub keep: Option<PathBuf>,
     pub timeout: Duration,
     pub all_traces: bool,
+    /// The source arena stream (`pv.arena.*`), and (SOURCE_NODES) the source node stream: traced, and compared
+    /// with the reference's.
+    pub source_arenas: bool,
+    pub source_nodes: bool,
     /// Another oracle to compare the oracle's trace with (the same streams, on each input).
     pub trace_reference: Option<PathBuf>,
     /// A compiler run in this process instead of the oracle (`executable` is then the path it runs as).
@@ -222,8 +226,96 @@ pub fn comparable_record(line: &str) -> Option<String> {
 
 /// How trace OURS differs from THEIRS (comparable_record), if it does.
 pub fn trace_difference(ours: &str, theirs: &str) -> Option<String> {
-    let a: Vec<_> = ours.lines().filter_map(comparable_record).collect();
-    let b: Vec<_> = theirs.lines().filter_map(comparable_record).collect();
+    trace_difference_with(ours, theirs, false)
+}
+
+/// The fields of a provenance record that hold an address in the compiler's memory, or its stack: made `*`.
+/// (`caller`: a clone's return address, which the WebAssembly oracle cannot read and gives as 0)
+const PROVENANCE_ADDRESSES: [&str; 7] = [
+    "pools",
+    "lock",
+    "retail_esp",
+    "address",
+    "block",
+    "freep",
+    "caller",
+];
+/// The fields that hold one of the original's addresses, the same in both: kept.
+const PROVENANCE_SITES: [&str; 1] = ["site"];
+/// The fields that depend on the order the compiler made its records in: their numbers, and a pool's free space
+/// after an allocation. Dropped from the records whose order is not compared (PROVENANCE_UNORDERED), as `event` is
+/// from every record.
+const PROVENANCE_ORDER: [&str; 5] = ["request", "parent_request", "allocation", "event", "free"];
+/// The records whose order follows the compiler's evaluation order, which C leaves unspecified (a call's arguments:
+/// MWCC evaluates them from the last, clang from the first). Between two other records, they are compared as a
+/// multiset.
+const PROVENANCE_UNORDERED: [&str; 2] = ["pv.arena.request", "pv.arena.alloc"];
+
+/// A provenance record (`pv.*`) as two oracles give it: its addresses (PROVENANCE_ADDRESSES, and is_address's but
+/// for the original's, PROVENANCE_SITES) made `*`, and its numbers in the compiler's order (PROVENANCE_ORDER)
+/// dropped.
+pub fn comparable_provenance(line: &str) -> Option<String> {
+    static FIELD: std::sync::LazyLock<Regex> =
+        std::sync::LazyLock::new(|| Regex::new(r"\b([a-z_0-9]+)=([0-9a-f]{8})\b").unwrap());
+    static ORDER: std::sync::LazyLock<Regex> =
+        std::sync::LazyLock::new(|| Regex::new(r" ([a-z_]+)=[0-9]+\b").unwrap());
+    if !line.starts_with("pv.") {
+        return None;
+    }
+    let unordered = PROVENANCE_UNORDERED.contains(&line.split(' ').next().unwrap_or(""));
+    let line = ORDER.replace_all(line, |c: &regex::Captures| {
+        let field = &c[1];
+        if field == "event" || (unordered && PROVENANCE_ORDER.contains(&field)) {
+            String::new()
+        } else {
+            c[0].to_owned()
+        }
+    });
+    Some(
+        FIELD
+            .replace_all(&line, |c: &regex::Captures| {
+                let address = PROVENANCE_ADDRESSES.contains(&&c[1])
+                    || (!PROVENANCE_SITES.contains(&&c[1])
+                        && u32::from_str_radix(&c[2], 16).is_ok_and(is_address));
+                if address {
+                    format!("{}=*", &c[1])
+                } else {
+                    c[0].to_owned()
+                }
+            })
+            .into_owned(),
+    )
+}
+
+/// The provenance records of TRACE (comparable_provenance's): each run of PROVENANCE_UNORDERED's, sorted.
+fn provenance_records(trace: &str) -> Vec<String> {
+    let mut out = vec![];
+    let mut run: Vec<String> = vec![];
+    for record in trace.lines().filter_map(comparable_provenance) {
+        if PROVENANCE_UNORDERED.contains(&record.split(' ').next().unwrap_or("")) {
+            run.push(record);
+            continue;
+        }
+        run.sort();
+        out.append(&mut run);
+        out.push(record);
+    }
+    run.sort();
+    out.append(&mut run);
+    out
+}
+
+/// How trace OURS differs from THEIRS, if it does: comparable_record's, and (PROVENANCE) provenance_records'.
+pub fn trace_difference_with(ours: &str, theirs: &str, provenance: bool) -> Option<String> {
+    let records = |trace: &str| -> Vec<String> {
+        let mut out: Vec<String> = trace.lines().filter_map(comparable_record).collect();
+        if provenance {
+            out.extend(provenance_records(trace));
+        }
+        out
+    };
+    let a = records(ours);
+    let b = records(theirs);
     if a == b {
         return None;
     }
@@ -271,7 +363,8 @@ pub fn run(request: &Request) -> Result<Report> {
     let next = AtomicUsize::new(0);
     let outcomes: Mutex<Vec<Option<Result<Outcome>>>> =
         Mutex::new((0..request.jobs.len()).map(|_| None).collect());
-    let options = if request.all_traces {
+    let source_arenas = request.source_arenas || request.source_nodes;
+    let mut options = if request.all_traces {
         TraceOptions {
             backend: true,
             source_arenas: false,
@@ -288,6 +381,8 @@ pub fn run(request: &Request) -> Result<Report> {
     } else {
         TraceOptions::default()
     };
+    options.source_arenas = source_arenas;
+    options.source_nodes = request.source_nodes;
     let null = Path::new(if cfg!(windows) { "NUL" } else { "/dev/null" });
     let reference = request
         .trace_reference
@@ -381,7 +476,7 @@ pub fn run(request: &Request) -> Result<Report> {
             ));
         }
         if let Some((ours, theirs)) = &traces
-            && let Some(difference) = trace_difference(ours, theirs)
+            && let Some(difference) = trace_difference_with(ours, theirs, source_arenas)
         {
             problems.push(difference);
         }

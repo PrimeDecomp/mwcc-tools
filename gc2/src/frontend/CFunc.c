@@ -25,6 +25,7 @@
 #include "compiler/InlineAsmPPC.h"
 #include "compiler/objects.h"
 #include "compiler/ObjGen_PPC_EABI.h"
+#include "compiler/OracleProbes.h"
 #include "compiler/PCode.h"
 #include "compiler/Registers.h"
 #include "compiler/scopes.h"
@@ -2395,6 +2396,7 @@ static void statement(DeclThing* thing) {
 
             stmt = CFunc_AppendStatement(ST_EXPRESSION);
             stmt->expr = expression();
+            ORACLE_PROBE(OracleProbe_SourceEmission(stmt, stmt->expr));
             CExpr_CheckUnusedExpression(stmt->expr);
     }
 

@@ -120,3 +120,39 @@ fn traces_compare_without_addresses_or_provenance() {
         Some("x text=1048576 line=12")
     );
 }
+
+#[test]
+fn provenance_records_compare_without_the_order_of_allocations() {
+    let request = |id: u32, size: u32, esp: &str| {
+        format!(
+            "pv.arena.request schema=1 stream=1 event={id} request={id} parent_request=0 pair=2 pool=3 \
+             requested={size} retail_esp={esp} site=00440d25 epoch=1 depth=1"
+        )
+    };
+    let reset = "pv.arena.reset.begin schema=1 stream=1 event=9 reset=1 op=2".to_owned();
+    let trace = |records: &[String]| records.join("\n");
+    let ours = trace(&[
+        request(1, 44, "007ff47c"),
+        request(2, 12, "007ff47c"),
+        reset.clone(),
+    ]);
+    let theirs = trace(&[
+        request(1, 12, "001af7a8"),
+        request(2, 44, "001af7a8"),
+        reset.clone(),
+    ]);
+    // (two allocations in another order, from another evaluation order of a call's arguments)
+    assert_eq!(corpus::trace_difference_with(&ours, &theirs, true), None);
+    // (but not across another record)
+    let moved = trace(&[
+        request(1, 12, "001af7a8"),
+        reset,
+        request(2, 44, "001af7a8"),
+    ]);
+    assert!(corpus::trace_difference_with(&ours, &moved, true).is_some());
+    // (the original's sites are compared)
+    let elsewhere = theirs.replace("site=00440d25", "site=00440d65");
+    assert!(corpus::trace_difference_with(&ours, &elsewhere, true).is_some());
+    // (and without provenance, not at all)
+    assert_eq!(corpus::trace_difference(&ours, &moved), None);
+}

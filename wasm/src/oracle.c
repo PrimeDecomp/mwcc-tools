@@ -37,9 +37,8 @@ void ORACLE_IRO_DUMP(const char* message, ...)
     va_end(arguments);
 }
 
-/* The stand-ins for the probes' islands, as in the source-built oracle: the arena globals are zero, and the forced-GPR
- * entry, which only an installed probe calls, traps. */
-unsigned char OracleRust_ArenaGlobals[12];
+/* The stand-in for a probe's island, as in the source-built oracle: the forced-GPR entry, which only an installed probe
+ * calls, traps. (gc2 defines the arena globals, under ORACLE_PROBES.) */
 
 unsigned long OracleRust_ArgumentForceGprRetail(unsigned long operand, unsigned long type, unsigned long requested)
 {

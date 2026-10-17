@@ -69,7 +69,7 @@ pub const HOOKS: [&str; 41] = [
     "_load_argument_registers",
     "_store_argument_on_stack",
 ];
-pub const SUPPORT: [&str; 15] = [
+pub const SUPPORT: [&str; 19] = [
     "_OracleRust_SourceProbeV1",
     "_OracleRust_ArenaProbeV1",
     "_OracleRust_ExpressionProbeV1",
@@ -85,6 +85,11 @@ pub const SUPPORT: [&str; 15] = [
     "_OracleRust_OriginWalk",
     "_OracleRust_PrintChain",
     "_OracleRust_InlineLine",
+    // (the probes in gc2's sources, under ORACLE_PROBES: include/compiler/OracleProbes.h)
+    "_OracleProbe_ArenaRequest",
+    "_OracleProbe_ArenaCommit",
+    "_OracleProbe_ArenaCallback",
+    "_OracleProbe_SourceEmission",
 ];
 pub const SOURCES: [&str; 19] = [
     "source_nodes.rs",

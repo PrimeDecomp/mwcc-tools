@@ -407,10 +407,89 @@ struct UnitEdit {
     aliases: Vec<(String, String, u32)>,
     /// The global entries it gives its static functions: (entry, gc2's name).
     entries: Vec<(String, String)>,
+    /// The unit's functions that the original has (gc2's names): one it lacks, the original inlined everywhere.
+    retail: BTreeSet<String>,
+}
+
+/// The functions of IR (their names) and the names each one's body references.
+fn function_references(ir: &str) -> BTreeMap<String, BTreeSet<String>> {
+    let mut out: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    let mut current: Option<String> = None;
+    for line in ir.lines() {
+        if line.starts_with("define ") {
+            current = NAME.captures(line).map(|c| name_of(&c));
+            if let Some(f) = &current {
+                out.entry(f.clone()).or_default();
+            }
+            continue;
+        }
+        if line == "}" {
+            current = None;
+        } else if let Some(f) = &current {
+            out.get_mut(f)
+                .unwrap()
+                .extend(NAME.captures_iter(line).map(|c| name_of(&c)));
+        }
+    }
+    out
+}
+
+/// For each hook's function g, the functions of the unit that the original inlined everywhere (EDIT's `retail`
+/// lacks them), that g calls and that call g back, through each other: in the original, those calls are g's calls
+/// to itself, which stay retail. Each gets a copy for g (`<name>__in_<hook>`).
+fn inlined_callers(
+    functions: &BTreeMap<String, BTreeSet<String>>,
+    edit: &UnitEdit,
+) -> BTreeMap<String, BTreeSet<String>> {
+    let inlined = |f: &String| !edit.retail.contains(f) && !edit.hooks.contains_key(f);
+    let mut out = BTreeMap::new();
+    for g in edit.hooks.keys() {
+        // (the inlined functions g reaches through inlined functions)
+        let mut reached = BTreeSet::new();
+        let mut pending: Vec<&String> = functions
+            .get(g)
+            .into_iter()
+            .flatten()
+            .filter(|f| functions.contains_key(*f) && inlined(f))
+            .collect();
+        while let Some(f) = pending.pop() {
+            if reached.insert(f.clone()) {
+                pending.extend(
+                    functions[f]
+                        .iter()
+                        .filter(|n| functions.contains_key(*n) && inlined(n)),
+                );
+            }
+        }
+        // (those of them that reach g back)
+        let mut back: BTreeSet<String> = BTreeSet::new();
+        loop {
+            let more: Vec<String> = reached
+                .iter()
+                .filter(|f| !back.contains(*f))
+                .filter(|f| functions[*f].iter().any(|n| n == g || back.contains(n)))
+                .cloned()
+                .collect();
+            if more.is_empty() {
+                break;
+            }
+            back.extend(more);
+        }
+        if !back.is_empty() {
+            out.insert(g.clone(), back);
+        }
+    }
+    out
+}
+
+/// The copy of inlined function F for hook H's function.
+fn inlined_copy(f: &str, hook: &str) -> String {
+    format!("{f}__in_{hook}")
 }
 
 /// UNIT's IR, edited.
 fn edit_unit(ir: &str, edit: &UnitEdit) -> Result<(String, Vec<String>)> {
+    let copies = inlined_callers(&function_references(ir), edit);
     let mut headers: BTreeMap<String, Header> = BTreeMap::new();
     let mut statics = BTreeSet::new();
     for line in ir.lines() {
@@ -445,7 +524,13 @@ fn edit_unit(ir: &str, edit: &UnitEdit) -> Result<(String, Vec<String>)> {
                     ir_name(&format!("{hook}__retail"))
                 }
                 Some((_, wrapper)) => ir_name(wrapper),
-                None => c.get(0).unwrap().as_str().to_owned(),
+                None => match current.as_ref().and_then(|g| Some((g, copies.get(g)?))) {
+                    // (g's call of a function the original inlined in it)
+                    Some((g, inlined)) if !defining && inlined.contains(&name) => {
+                        ir_name(&inlined_copy(&name, &edit.hooks[g].0))
+                    }
+                    _ => c.get(0).unwrap().as_str().to_owned(),
+                },
             }
         });
         let mut replaced = replaced.into_owned();
@@ -459,6 +544,44 @@ fn edit_unit(ir: &str, edit: &UnitEdit) -> Result<(String, Vec<String>)> {
         out.push('\n');
         if line == "}" {
             current = None;
+        }
+    }
+    // (the copies of the functions the original inlined in a hook's function: their calls of it stay retail)
+    for (g, inlined) in &copies {
+        let hook = &edit.hooks[g].0;
+        let mut current: Option<String> = None;
+        for line in ir.lines() {
+            if line.starts_with("define ") {
+                current = NAME
+                    .captures(line)
+                    .map(|c| name_of(&c))
+                    .filter(|f| inlined.contains(f));
+            }
+            if current.is_none() {
+                continue;
+            }
+            let replaced = NAME.replace_all(line, |c: &Captures<'_>| {
+                let name = name_of(c);
+                if name == *g {
+                    ir_name(&format!("{hook}__retail"))
+                } else if inlined.contains(&name) {
+                    ir_name(&inlined_copy(&name, hook))
+                } else if let Some((_, wrapper)) = edit.hooks.get(&name) {
+                    ir_name(wrapper)
+                } else {
+                    c.get(0).unwrap().as_str().to_owned()
+                }
+            });
+            let replaced = if line.starts_with("define ") && !line.starts_with("define internal ") {
+                replaced.replacen("define ", "define internal ", 1)
+            } else {
+                replaced.into_owned()
+            };
+            out.push_str(&replaced);
+            out.push('\n');
+            if line == "}" {
+                current = None;
+            }
         }
     }
     let (defined, declared) = interface(&out);
@@ -754,6 +877,7 @@ pub fn run(root: &Path, version: &str, clang: &str, wasm_ld: &str) -> Result<Out
                     let mut arguments = unit.arguments.clone();
                     arguments.extend(
                         [
+                            wasm_build::PROBES,
                             "-S",
                             "-emit-llvm",
                             "-Xclang",
@@ -825,6 +949,9 @@ pub fn run(root: &Path, version: &str, clang: &str, wasm_ld: &str) -> Result<Out
             );
         }
     }
+    for edit in edits.values_mut() {
+        edit.retail = resolver.names.clone();
+    }
     let mut jobs = vec![];
     for (name, edit) in &edits {
         if edit.hooks.is_empty() && edit.aliases.is_empty() && edit.entries.is_empty() {
@@ -879,8 +1006,8 @@ pub fn run(root: &Path, version: &str, clang: &str, wasm_ld: &str) -> Result<Out
         }
         Ok(())
     })?;
-    // (the link: the stock objects, the edited units in their place, and the oracle's)
-    let mut objects: Vec<String> = wasm_build::objects(root, version)?
+    // (the link: the oracle's objects, the edited units in their place, and the hooks')
+    let mut objects: Vec<String> = wasm_build::objects(root, version, true)?
         .into_iter()
         .map(|(unit, object)| replaced.get(&unit).cloned().unwrap_or(object))
         .collect();
@@ -930,7 +1057,7 @@ pub fn edges(root: &Path, version: &str) -> Result<Vec<String>> {
             .collect::<Vec<_>>()
             .join(" ")
     };
-    let objects: Vec<String> = wasm_build::objects(root, version)?
+    let objects: Vec<String> = wasm_build::objects(root, version, true)?
         .into_iter()
         .map(|(_, object)| object)
         .collect();
@@ -1012,5 +1139,26 @@ mod tests {
         assert!(out.contains("load i8, ptr getelementptr (i8, ptr @copts, i32 248)"));
         assert!(!out.contains("@ipa"));
         assert_eq!(out.matches("@copts = external").count(), 1);
+    }
+
+    #[test]
+    fn a_function_inlined_in_a_hooks_function_gets_a_copy_that_calls_it_retail() {
+        // (s, which the original inlined everywhere, calls g back; t, which it has, does too)
+        let ir = "define internal void @g(i32 %0) {\n  call void @s(i32 1)\n  call void @t()\n  ret void\n}\n\
+                  define internal void @s(i32 %0) {\n  call void @g(i32 2)\n  ret void\n}\n\
+                  define void @t() {\n  call void @g(i32 3)\n  ret void\n}\n";
+        let mut edit = UnitEdit::default();
+        edit.hooks
+            .insert("g".into(), ("hook".into(), "hook".into()));
+        edit.retail = BTreeSet::from(["g".to_owned(), "t".to_owned()]);
+        let (out, _) = edit_unit(ir, &edit).unwrap();
+        assert!(out.contains("call void @s__in_hook(i32 1)"));
+        assert!(out.contains(
+            "define internal void @s__in_hook(i32 %0) {\n  call void @hook__retail(i32 2)"
+        ));
+        // (the others' calls go to the wrapper)
+        assert!(out.contains("define internal void @s(i32 %0) {\n  call void @hook(i32 2)"));
+        assert!(out.contains("define void @t() {\n  call void @hook(i32 3)"));
+        assert!(out.contains("call void @t()"));
     }
 }

@@ -277,53 +277,76 @@ pub const LINK_FLAGS: [&str; 6] = [
     "stack-size=8388608",
 ];
 
-/// The module's objects, in link order: each unit's name and object (TAG's last).
-pub fn objects(root: &Path, version: &str) -> Result<Vec<(String, String)>> {
-    let directory = directory(version);
+/// The define the oracle's objects are compiled with: gc2's probes (`include/compiler/OracleProbes.h`) call the
+/// hooks. The stock module's objects are compiled without it.
+pub const PROBES: &str = "-DORACLE_PROBES";
+
+/// The directory of VERSION's objects: the stock module's, or (ORACLE) the oracle's.
+fn objects_directory(version: &str, oracle: bool) -> String {
+    format!(
+        "{}/{}",
+        directory(version),
+        if oracle { "oracle-obj" } else { "obj" }
+    )
+}
+
+/// The module's objects, in link order: each unit's name and object (TAG's last). ORACLE: the oracle's.
+pub fn objects(root: &Path, version: &str, oracle: bool) -> Result<Vec<(String, String)>> {
+    let directory = objects_directory(version, oracle);
     let mut out: Vec<(String, String)> = units(root, version)?
         .into_iter()
         .map(|unit| {
-            let object = format!("{directory}/obj/{}.o", unit.name);
+            let object = format!("{directory}/{}.o", unit.name);
             (unit.name, object)
         })
         .collect();
-    out.push((TAG.into(), format!("{directory}/obj/{TAG}.o")));
+    out.push((TAG.into(), format!("{directory}/{TAG}.o")));
     Ok(out)
 }
 
-/// VERSION's edges: each object, and the module. LIBRARY is the library tree's download target.
+/// VERSION's edges: each object, the stock module's and the oracle's, and the stock module. LIBRARY is the
+/// library tree's download target.
 pub fn edges(root: &Path, version: &str, library: &str) -> Result<Vec<String>> {
-    let directory = directory(version);
+    let units = units(root, version)?;
     let mut out = vec![];
-    let mut objects = vec![];
-    for unit in units(root, version)? {
-        let object = format!("{directory}/obj/{}.o", unit.name);
-        out.push(format!(
-            "build {}: wasm_cc {} || {}",
-            escape(&object),
-            escape(&unit.input),
-            escape(library)
-        ));
-        out.push(format!(
-            "  cflags = {}",
-            unit.arguments
-                .iter()
-                .map(|a| quote(a))
-                .collect::<Vec<_>>()
-                .join(" ")
-        ));
-        objects.push(object);
+    let mut stock = vec![];
+    for oracle in [false, true] {
+        let directory = objects_directory(version, oracle);
+        for unit in &units {
+            let object = format!("{directory}/{}.o", unit.name);
+            out.push(format!(
+                "build {}: wasm_cc {} || {}",
+                escape(&object),
+                escape(&unit.input),
+                escape(library)
+            ));
+            out.push(format!(
+                "  cflags = {}",
+                unit.arguments
+                    .iter()
+                    .map(String::as_str)
+                    .chain(oracle.then_some(PROBES))
+                    .map(quote)
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            ));
+            if !oracle {
+                stock.push(object);
+            }
+        }
+        let tag = format!("{directory}/{TAG}.o");
+        out.extend([
+            format!("build {}: wasm_cc {TAG}", escape(&tag)),
+            "  cflags = --target=wasm32-unknown-unknown -mexception-handling".into(),
+        ]);
+        if !oracle {
+            stock.push(tag);
+        }
     }
-    let tag = format!("{directory}/obj/{TAG}.o");
-    out.extend([
-        format!("build {}: wasm_cc {TAG}", escape(&tag)),
-        "  cflags = --target=wasm32-unknown-unknown -mexception-handling".into(),
-    ]);
-    objects.push(tag);
     out.push(format!(
         "build {}: wasm_ld {}",
         escape(&output(version)),
-        objects
+        stock
             .iter()
             .map(|o| escape(o))
             .collect::<Vec<_>>()

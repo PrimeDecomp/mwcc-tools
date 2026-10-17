@@ -89,7 +89,8 @@ symbol at the same address (`gc2/config/GC_2_7/symbols.txt`):
 
 Only the hooks are linked. The guarded probes that the oracle installs into the original's split objects are not
 (dispatch, call arguments, arenas, source nodes, counters, coalescing), because they are pinned to that split's
-bytes and the original's image. So:
+bytes and the original's image. (The WebAssembly oracle has the arena and source node streams from calls in gc2's
+sources, under `ORACLE_PROBES`: [wasm.md](wasm.md#probes). This executable is built without them.) So:
 
 * The provenance streams are not supported on this executable: `--backend` explanations, `--source-nodes`, and every
   `pv.*` record of the probes (counters, expression dispatch, argument observations, coalescing).
