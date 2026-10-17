@@ -849,7 +849,7 @@ static void load_TOC_pointers(void) {
                         if (!group->base) {
                             group->reg = vi->reg;
                         } else {
-                            SInt32 reg = used_virtual_registers[RegClass_GPR]++;
+                            SInt32 reg = ALLOC_GPR();
                             emitpcode(PC_ADDIS, reg, vi->reg, 0, HIGH_PART(group->base));
                             group->reg = reg;
                         }

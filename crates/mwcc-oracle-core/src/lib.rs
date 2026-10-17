@@ -15,6 +15,7 @@ pub mod colouring;
 pub mod compare;
 pub mod corpus;
 pub mod counter_probe;
+pub mod counter_sources;
 pub mod cse;
 pub mod data_diff;
 pub mod derive_splits;

@@ -545,7 +545,7 @@ static void strengthreduceinductionvariable(BasicInductionVar* biv) {
             iv->instr->block &&
             (iv->source_operand == 0 || iv->instr->args[2].kind != PCOp_IMMEDIATE)) {
             if (iv->destination_register == -1) {
-                iv->destination_register = used_virtual_registers[RegClass_GPR]++;
+                iv->destination_register = ALLOC_GPR();
                 initializeinductionvariable(iv);
                 incrementinductionvariable(iv);
                 if (iv->step == 1) {

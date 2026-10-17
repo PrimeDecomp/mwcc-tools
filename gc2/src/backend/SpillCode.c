@@ -362,7 +362,7 @@ static void spillinstruction(PCodeBlock* block, PCode* instr) {
             op->data.reg.reg <
             regs &&
             ((node = interferencegraph[reg = op->data.reg.reg])->flags & fSpilled)) {
-            reg2 = used_virtual_registers[coloring_class]++;
+            reg2 = ALLOC_REG(coloring_class);
             // (2.6: too many virtual registers)
             if (reg2 > 0x7FFF) {
                 PPCError_ErrorTerm(PPCErrorStr219);
@@ -416,7 +416,7 @@ static void spillcopy(PCodeBlock* block, PCode* instr) {
 
     if (node1->flags & fSpilled) {
         if (node2->flags & fSpilled) {
-            reg = used_virtual_registers[coloring_class]++;
+            reg = ALLOC_REG(coloring_class);
             if (reg > 0x7FFF) {
                 PPCError_ErrorTerm(PPCErrorStr219);
             }
@@ -570,10 +570,10 @@ void insertspillcode(void) {
 
             if (flag) {
                 if (coloring_class == RegClass_FPR && rTEMP_for_PS_spill == 0) {
-                    rTEMP_for_PS_spill = used_virtual_registers[RegClass_GPR]++;
+                    rTEMP_for_PS_spill = ALLOC_GPR();
                 }
                 if (coloring_class == RegClass_VR && rTEMP_for_VR_spill == 0) {
-                    rTEMP_for_VR_spill = used_virtual_registers[RegClass_GPR]++;
+                    rTEMP_for_VR_spill = ALLOC_GPR();
                 }
 
                 if (instr->flags & fIsMove) {

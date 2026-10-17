@@ -737,16 +737,16 @@ void call_function(ENode* expr, Operand* output) {
 
     if (IS_TYPE_FLOAT_NOT_VEC2X32FLOAT(resultType) && !TYPE_IS_SOFT_FLOAT(resultType)) {
         output->optype = OpndType_FPR;
-        output->reg = used_virtual_registers[RegClass_FPR]++;
+        output->reg = ALLOC_FPR();
         emitpcode(PC_FMR, output->reg, 1);
     } else if (IS_TYPE_VECTOR(resultType)) {
         output->optype = OpndType_VR;
-        output->reg = used_virtual_registers[RegClass_VR]++;
+        output->reg = ALLOC_VR();
         emitpcode(PC_VMR, output->reg, 2);
     } else if (IS_TYPE_VEC2X32FLOAT(resultType) && copts.processor == CPU_PPCGEKKO) {
         // 2.6
         output->optype = OpndType_FPR;
-        output->reg = used_virtual_registers[RegClass_FPR]++;
+        output->reg = ALLOC_FPR();
         emitpcode(PC_PS_MR, output->reg, 1);
     } else if (((IS_TYPE_STRUCT(resultType) || IS_TYPE_CLASS(resultType)) &&
                 !Type_RequiresMemoryReturn(resultType)) ||
@@ -755,13 +755,13 @@ void call_function(ENode* expr, Operand* output) {
         // (2.6: small structs come back in r3 and r4, soft floating point in GPRs)
         if (resultType->size > 4) {
             output->optype = OpndType_GPRPair;
-            output->reg = used_virtual_registers[RegClass_GPR]++;
-            output->regHi = used_virtual_registers[RegClass_GPR]++;
+            output->reg = ALLOC_GPR();
+            output->regHi = ALLOC_GPR();
             emitpcode(PC_MR, output->reg, low_reg);
             emitpcode(PC_MR, output->regHi, high_reg);
         } else {
             output->optype = OpndType_GPR;
-            output->reg = used_virtual_registers[RegClass_GPR]++;
+            output->reg = ALLOC_GPR();
             emitpcode(PC_MR, output->reg, 3);
         }
     } else {

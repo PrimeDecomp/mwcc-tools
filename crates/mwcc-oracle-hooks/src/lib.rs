@@ -31,6 +31,11 @@ mod call_arguments;
     target_pointer_width = "32",
     not(any(feature = "trace-output", feature = "frontend"))
 ))]
+mod counter_sites;
+#[cfg(all(
+    target_pointer_width = "32",
+    not(any(feature = "trace-output", feature = "frontend"))
+))]
 mod cse;
 #[cfg(all(
     target_pointer_width = "32",

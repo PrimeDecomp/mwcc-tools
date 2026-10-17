@@ -64,10 +64,6 @@ extern void update_asm_nonvolatile_registers(void);
 
 #define OBJECT_REG(obj) (Registers_GetVarInfo((obj)) ? (Registers_GetVarInfo((obj))->reg) : 0)
 #define OBJECT_REG_HI(obj) (Registers_GetVarInfo((obj)) ? (Registers_GetVarInfo((obj))->regHi) : 0)
-// a new virtual register of a class
-#define ALLOC_GPR() (used_virtual_registers[RegClass_GPR]++)
-#define ALLOC_FPR() (used_virtual_registers[RegClass_FPR]++)
-#define ALLOC_VR() (used_virtual_registers[RegClass_VR]++)
 
 #ifdef __cplusplus
 }

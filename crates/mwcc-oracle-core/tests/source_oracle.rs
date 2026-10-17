@@ -142,7 +142,10 @@ fn provenance_records_compare_without_the_order_of_allocations() {
         reset.clone(),
     ]);
     // (two allocations in another order, from another evaluation order of a call's arguments)
-    assert_eq!(corpus::trace_difference_with(&ours, &theirs, &["pv.arena."]), None);
+    assert_eq!(
+        corpus::trace_difference_with(&ours, &theirs, &["pv.arena."]),
+        None
+    );
     // (but not across another record)
     let moved = trace(&[
         request(1, 12, "001af7a8"),

@@ -391,8 +391,8 @@ void assign_GPR_pair(Object* obj) {
 
     vi = Registers_GetVarInfo(obj);
     if (optimizing) {
-        reg = used_virtual_registers[RegClass_GPR]++;
-        regHi = used_virtual_registers[RegClass_GPR]++;
+        reg = ALLOC_GPR();
+        regHi = ALLOC_GPR();
     } else {
         CError_ASSERT(554, assignable_registers[RegClass_GPR] >= 2);
         reg = obtain_nonvolatile_register(RegClass_GPR);

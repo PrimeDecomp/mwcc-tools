@@ -143,6 +143,7 @@ unsafe extern "C" fn create_temp_object(_ty: *const u8) -> *const u8 {
 /// The scalarizer's call that gc2's probe announced (`include/compiler/OracleProbes.h`): its part.
 static mut SOURCE_PART: *const u8 = ptr::null();
 /// The original's return site of that call, in 2.6 and 2.7 (IRO_ScalarizeClassDataMembers's).
+#[cfg(target_arch = "wasm32")]
 const SOURCE_SITE: u32 = 0x461748;
 
 /// gc2's probe: IRO_ScalarizeClassDataMembers is about to make PART's temporary.

@@ -69,7 +69,7 @@ pub const HOOKS: [&str; 41] = [
     "_load_argument_registers",
     "_store_argument_on_stack",
 ];
-pub const SUPPORT: [&str; 21] = [
+pub const SUPPORT: [&str; 24] = [
     "_OracleRust_SourceProbeV1",
     "_OracleRust_ArenaProbeV1",
     "_OracleRust_ExpressionProbeV1",
@@ -92,8 +92,11 @@ pub const SUPPORT: [&str; 21] = [
     "_OracleProbe_SourceEmission",
     "_OracleProbe_ScalarTemporary",
     "_OracleProbe_Counter",
+    "_OracleProbe_CounterIncrement",
+    "_OracleProbe_InlinedBegin",
+    "_OracleProbe_InlinedEnd",
 ];
-pub const SOURCES: [&str; 19] = [
+pub const SOURCES: [&str; 20] = [
     "source_nodes.rs",
     "source_arenas.rs",
     "lifecycle.rs",
@@ -113,6 +116,7 @@ pub const SOURCES: [&str; 19] = [
     "origins.rs",
     "instantiation.rs",
     "bindings.rs",
+    "counter_sites.rs",
 ];
 pub const TRACE_SOURCES: [&str; 2] = ["lib.rs", "trace_output.rs"];
 pub const TRACE_EXPORTS: [&str; 2] = ["_OracleTrace_Enabled", "_OracleTrace_Printf"];

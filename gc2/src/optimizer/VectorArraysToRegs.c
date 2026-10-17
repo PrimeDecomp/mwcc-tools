@@ -539,7 +539,7 @@ static void convert_arrays_to_registers(LocalVectorArray* arrays) {
 
         while (array) {
             for (i = 0; i < array->elementCount; i++) {
-                array->elements[i] = used_virtual_registers[RegClass_VR]++;
+                array->elements[i] = ALLOC_VR();
             }
             array = array->next;
         }

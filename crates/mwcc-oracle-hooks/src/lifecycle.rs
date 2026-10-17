@@ -996,23 +996,166 @@ pub unsafe extern "C" fn OracleProbe_Counter(role: u32, rclass: i32, function: *
             counter_globals(),
             counter_site(crate::source_arenas::version(), role),
         ) else {
-            OracleTrace_Printf(c"pv.gap reason=counter_descriptor role=%lu\n".as_ptr(), role);
+            OracleTrace_Printf(
+                c"pv.gap reason=counter_descriptor role=%lu\n".as_ptr(),
+                role,
+            );
             return;
         };
-        let descriptor = Descriptor {
-            counter: globals.counts.add(rclass.clamp(0, 4) as usize),
-            counts: globals.counts,
-            physical: globals.physical,
+        if role == 6 && ptr::addr_of!(STATE.id).read() == 0 {
+            // (calls left by a compilation that stopped in one)
+            ptr::addr_of_mut!(INLINED_DEPTH).write(0);
+        }
+        observe(
+            &Registers::accumulator(function as u32),
+            site,
+            &globals.descriptor(role, rclass),
+        );
+    }
+}
+
+impl CounterGlobals {
+    /// The descriptor of a site of ROLE for RCLASS's counter.
+    unsafe fn descriptor(&self, role: u32, rclass: i32) -> Descriptor {
+        Descriptor {
+            counter: unsafe { self.counts.add(rclass.clamp(0, 4) as usize) },
+            counts: self.counts,
+            physical: self.physical,
             selector: rclass,
             role,
-            initial: globals.initial,
-            first: globals.first,
-            last: globals.last,
+            initial: self.initial,
+            first: self.first,
+            last: self.last,
             object_binding: 0,
             operand_binding: 0,
             data_link_offset: 54,
             origin_binding: 0,
+        }
+    }
+}
+
+/// The calls being made that the original inlines (OracleProbe_InlinedBegin): each one's file and line.
+static mut INLINED: [(usize, u32); 8] = [(0, 0); 8];
+static mut INLINED_DEPTH: usize = 0;
+/// The files the probes have named, and their units in counter_sites::UNITS (u8::MAX: none).
+static mut FILES: [(usize, u8); 32] = [(0, 0); 32];
+
+/// The unit of FILE (a path ending with one of counter_sites::UNITS), or u8::MAX.
+unsafe fn unit_of(file: *const core::ffi::c_char) -> u8 {
+    unsafe {
+        let files = &mut *ptr::addr_of_mut!(FILES);
+        if let Some(&(_, unit)) = files.iter().find(|(f, _)| *f == file as usize) {
+            return unit;
+        }
+        // (measured here: the x86 oracle's producer imports no strlen)
+        let mut length = 0;
+        while length < 1024 && file.add(length).read() != 0 {
+            length += 1;
+        }
+        let path = core::slice::from_raw_parts(file.cast::<u8>(), length);
+        let unit = crate::counter_sites::UNITS
+            .iter()
+            .position(|u| {
+                let u = u.as_bytes();
+                path.len() >= u.len()
+                    && path[path.len() - u.len()..]
+                        .iter()
+                        .zip(u)
+                        .all(|(a, b)| a == b || (*a == b'\\' && *b == b'/'))
+                    && (path.len() == u.len()
+                        || matches!(path.get(path.len() - u.len() - 1), Some(b'/' | b'\\')))
+            })
+            .map_or(u8::MAX, |i| i as u8);
+        if let Some(slot) = files.iter_mut().find(|(f, _)| *f == 0) {
+            *slot = (file as usize, unit);
+        }
+        unit
+    }
+}
+
+/// The original's site of the write at LINE of UNIT, in the inlined calls being made: at the outermost call of the
+/// same file the original inlines it at, or at none.
+unsafe fn increment_site(file: *const core::ffi::c_char, unit: u8, line: u16) -> Option<u32> {
+    unsafe {
+        let find = |inlined: u16| {
+            crate::counter_sites::SITES
+                .binary_search_by(|s| (s.0, s.1, s.2).cmp(&(unit, line, inlined)))
+                .ok()
+                .and_then(|i| crate::counter_sites::SITES.get(i).copied())
         };
-        observe(&Registers::accumulator(function as u32), site, &descriptor);
+        let depth = ptr::addr_of!(INLINED_DEPTH).read().min(8);
+        let calls = &*ptr::addr_of!(INLINED);
+        let site = calls
+            .iter()
+            .take(depth)
+            .filter(|(f, _)| *f == file as usize)
+            .find_map(|&(_, call)| find(call as u16))
+            .or_else(|| find(0))?;
+        Some(if crate::source_arenas::version() == 4 {
+            site.4
+        } else {
+            site.3
+        })
+    }
+}
+
+/// gc2's probe (`include/compiler/OracleProbes.h`): a call the original inlines, at LINE of FILE, begins.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn OracleProbe_InlinedBegin(
+    file: *const core::ffi::c_char,
+    line: i32,
+) -> i32 {
+    unsafe {
+        let depth = ptr::addr_of!(INLINED_DEPTH).read();
+        if let Some(call) = (*ptr::addr_of_mut!(INLINED)).get_mut(depth) {
+            *call = (file as usize, line as u32);
+        }
+        ptr::addr_of_mut!(INLINED_DEPTH).write(depth + 1);
+    }
+    0
+}
+
+/// gc2's probe: the call OracleProbe_InlinedBegin began returns.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn OracleProbe_InlinedEnd(_: *mut i32) {
+    unsafe {
+        let depth = ptr::addr_of!(INLINED_DEPTH).read();
+        ptr::addr_of_mut!(INLINED_DEPTH).write(depth.saturating_sub(1));
+    }
+}
+
+/// gc2's probe: the write at LINE of FILE has incremented RCLASS's counter from OLD. Returns OLD.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn OracleProbe_CounterIncrement(
+    file: *const core::ffi::c_char,
+    line: i32,
+    rclass: i32,
+    old: i32,
+) -> i32 {
+    unsafe {
+        if !enabled() {
+            return old;
+        }
+        let unit = unit_of(file);
+        let Some(globals) = counter_globals() else {
+            return old;
+        };
+        match increment_site(file, unit, line as u16) {
+            Some(site) => observe(
+                &Registers::accumulator(0),
+                site,
+                &globals.descriptor(1, rclass),
+            ),
+            // (a write the original's probes do not cover)
+            None if crate::counter_sites::NONE.contains(&(unit, line as u16)) => {}
+            None => {
+                OracleTrace_Printf(
+                    c"pv.gap reason=counter_write unit=%lu line=%ld\n".as_ptr(),
+                    u32::from(unit),
+                    line,
+                );
+            }
+        }
+        old
     }
 }

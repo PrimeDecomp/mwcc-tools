@@ -124,9 +124,55 @@ fn compare(args: &[String]) -> Result<()> {
     Ok(())
 }
 
+/// `provenance counter-sites [--write] [--root DIR]`: the WebAssembly oracle's counter table, checked against (or
+/// written to) its file.
+fn counter_sites(args: &[String]) -> Result<()> {
+    use mwcc_oracle_core::counter_sources;
+    let mut root = std::env::current_dir()?;
+    let mut write = false;
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--write" => write = true,
+            "--root" => {
+                i += 1;
+                root = args.get(i).context("--root needs a value")?.into();
+            }
+            other => anyhow::bail!("unknown counter-sites argument {other}"),
+        }
+        i += 1;
+    }
+    let table = counter_sources::generate(&root)?;
+    let text = counter_sources::render(&table);
+    let path = root.join(counter_sources::OUTPUT);
+    println!(
+        "{} increments, {} writes without one, {} inlined functions",
+        table.sites.len(),
+        table.none.len(),
+        table.inlined.len()
+    );
+    if write {
+        std::fs::write(&path, text)?;
+        println!("wrote {}", path.display());
+    } else if std::fs::read_to_string(&path)
+        .unwrap_or_default()
+        .replace('\r', "")
+        != text
+    {
+        anyhow::bail!(
+            "{} is stale: run provenance counter-sites --write",
+            path.display()
+        );
+    }
+    Ok(())
+}
+
 pub fn run(args: &[String]) -> Result<()> {
     if args.first().map(String::as_str) == Some("compare") {
         return compare(&args[1..]);
+    }
+    if args.first().map(String::as_str) == Some("counter-sites") {
+        return counter_sites(&args[1..]);
     }
     if args.first().map(String::as_str) == Some("derive-guards") {
         let mut root = std::env::current_dir()?;

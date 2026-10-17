@@ -382,7 +382,7 @@ void load_store_register(
         } else if (opcode == PC_LWZ && dest_reg == 11) {
             offset_reg2 = 11;
         } else {
-            offset_reg2 = used_virtual_registers[RegClass_GPR]++;
+            offset_reg2 = ALLOC_GPR();
         }
 
         emitpcode(
@@ -399,11 +399,11 @@ void load_store_register(
         if (obj) {
             short addi_tmp;
 
-            addi_tmp = used_virtual_registers[RegClass_GPR]++;
+            addi_tmp = ALLOC_GPR();
             emitpcode(PC_ADDI, addi_tmp, offset_reg1, obj, offset);
             offset_reg1 = addi_tmp;
         } else if (offset) {
-            index_reg = used_virtual_registers[RegClass_GPR]++;
+            index_reg = ALLOC_GPR();
             emitpcode(PC_LI, index_reg, offset);
         }
         if (!index_reg) {
@@ -461,11 +461,11 @@ void gecko_load_store_register(
     } else if (opcode == PC_PSQ_LX || opcode == PC_PSQ_STX) {
         offset_reg2 = 0;
         if (obj) {
-            addi_tmp = used_virtual_registers[RegClass_GPR]++;
+            addi_tmp = ALLOC_GPR();
             emitpcode(PC_ADDI, addi_tmp, offset_reg1, obj, offset);
             offset_reg1 = addi_tmp;
         } else if (offset) {
-            offset_reg2 = used_virtual_registers[RegClass_GPR]++;
+            offset_reg2 = ALLOC_GPR();
             emitpcode(PC_LI, offset_reg2, offset);
         }
         if (!offset_reg2) {

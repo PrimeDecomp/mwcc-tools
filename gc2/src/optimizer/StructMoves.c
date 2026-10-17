@@ -23,7 +23,7 @@ void make_addressable(Operand* operand, SInt32 offset, int n) {
     if (operand->optype !=
         OpndType_IndirectGPR_ImmOffset ||
         (operand->immOffset + offset) > 0x7FFF) {
-        reg = used_virtual_registers[RegClass_GPR]++;
+        reg = ALLOC_GPR();
         load_address(reg, operand);
         operand->optype = OpndType_IndirectGPR_ImmOffset;
         operand->reg = reg;
@@ -32,10 +32,14 @@ void make_addressable(Operand* operand, SInt32 offset, int n) {
     }
 }
 
+#ifdef ORACLE_PROBES
+#define make_addressable(...) ORACLE_INLINED(make_addressable(__VA_ARGS__))
+#endif
+
 static void load_displaced_address(Operand* opnd, SInt32 offset) {
     int reg;
 
-    reg = used_virtual_registers[RegClass_GPR]++;
+    reg = ALLOC_GPR();
     if (opnd->optype == OpndType_IndirectSymbol) {
         coerce_to_addressable(opnd);
     }
@@ -116,7 +120,7 @@ static void move_block_via_load_store(Operand* dst, Operand* src, SInt32 len, SI
     }
 
     if (copts.use_fp != 0 && copts.soft_float == 0 && len == 8) {
-        floatReg = used_virtual_registers[RegClass_FPR]++;
+        floatReg = ALLOC_FPR();
         if (src->optype == OpndType_IndirectGPR_ImmOffset) {
             load_store_register(PC_LFD, floatReg, src->reg, src->object, src->immOffset);
             setpcodeflags(src->flags);
@@ -159,7 +163,7 @@ static void move_block_via_load_store(Operand* dst, Operand* src, SInt32 len, SI
         }
 
         for (pos = 0; len != 0; len -= step, pos += step) {
-            reg = used_virtual_registers[RegClass_GPR]++;
+            reg = ALLOC_GPR();
             if (src->optype == OpndType_IndirectGPR_ImmOffset) {
                 load_store_register(
                     (step == 1)       ? PC_LBZ
@@ -226,8 +230,8 @@ static void move_block_via_load_store_sequence(
 
     if (copts.use_fp && !copts.soft_float && (align % 8) == 0) {
         while (len >= 16) {
-            int reg1 = used_virtual_registers[RegClass_FPR]++;
-            int reg2 = used_virtual_registers[RegClass_FPR]++;
+            int reg1 = ALLOC_FPR();
+            int reg2 = ALLOC_FPR();
             load_store_register(PC_LFD, reg1, src->reg, src->object, src->immOffset + pos);
             setpcodeflags(src->flags);
             load_store_register(PC_LFD, reg2, src->reg, src->object, src->immOffset + pos + 8);
@@ -245,7 +249,7 @@ static void move_block_via_load_store_sequence(
 
     while (len >= 8) {
         if (copts.use_fp && !copts.soft_float && (align % 8) == 0) {
-            int reg = used_virtual_registers[RegClass_FPR]++;
+            int reg = ALLOC_FPR();
 
             load_store_register(PC_LFD, reg, src->reg, src->object, src->immOffset + pos);
             setpcodeflags(src->flags);
@@ -259,8 +263,8 @@ static void move_block_via_load_store_sequence(
             step = GetStep(len, align);
 
             for (i = 0; i < 8; i += (step * 2)) {
-                int reg1 = used_virtual_registers[RegClass_GPR]++;
-                int reg2 = used_virtual_registers[RegClass_GPR]++;
+                int reg1 = ALLOC_GPR();
+                int reg2 = ALLOC_GPR();
 
                 load_store_register(
                     (step == 1)       ? PC_LBZ
@@ -316,7 +320,7 @@ static void move_block_via_load_store_sequence(
         int reg;
 
         step = GetStep(len, align);
-        reg = used_virtual_registers[RegClass_GPR]++;
+        reg = ALLOC_GPR();
 
         load_store_register(
             (step == 1)       ? PC_LBZ
@@ -353,12 +357,16 @@ static inline void copy_chunk(Operand* dst, Operand* src, int width, int pos) {
     // allocating the register); the original's helper evidently held it in a local of its own
     int w = width;
 
-    reg = used_virtual_registers[RegClass_GPR]++;
+    reg = ALLOC_GPR();
     load_store_register((w == 1) ? PC_LBZ : (w == 2) ? PC_LHZ : PC_LWZ, reg, src->reg, NULL, pos);
     setpcodeflags(src->flags);
     load_store_register((w == 1) ? PC_STB : (w == 2) ? PC_STH : PC_STW, reg, dst->reg, NULL, pos);
     setpcodeflags(dst->flags);
 }
+
+#ifdef ORACLE_PROBES
+#define copy_chunk(...) ORACLE_INLINED(copy_chunk(__VA_ARGS__))
+#endif
 
 static void move_block_via_inline_loop(Operand* dst, Operand* src, SInt32 len, SInt32 align) {
     PCodeLabel* label;
@@ -382,12 +390,12 @@ static void move_block_via_inline_loop(Operand* dst, Operand* src, SInt32 len, S
     CError_ASSERT(381, (len / step) != 0);
 
     step2 = step * 2;
-    load_immediate(reg1 = used_virtual_registers[RegClass_GPR]++, len / step2);
+    load_immediate(reg1 = ALLOC_GPR(), len / step2);
     emitpcode(PC_MTCTR, reg1);
     branch_label(label);
 
-    reg1 = used_virtual_registers[RegClass_GPR]++;
-    reg2 = used_virtual_registers[RegClass_GPR]++;
+    reg1 = ALLOC_GPR();
+    reg2 = ALLOC_GPR();
 
     load_store_register(
         (step == 1)       ? PC_LBZ
@@ -477,7 +485,7 @@ static void load_word_of_small_struct(
 
     switch (len) {
         case 1:
-            tmpReg = used_virtual_registers[RegClass_GPR]++;
+            tmpReg = ALLOC_GPR();
             load_store_register(PC_LBZ, tmpReg, srcReg, opnd->object, offset);
             setpcodeflags(opnd->flags);
             emitpcode(PC_RLWINM, dstReg, tmpReg, 24, 0, 7);
@@ -485,8 +493,8 @@ static void load_word_of_small_struct(
             break;
         case 2:
         case 3:
-            tmpReg = used_virtual_registers[RegClass_GPR]++;
-            resultReg = (dstReg != srcReg) ? dstReg : used_virtual_registers[RegClass_GPR]++;
+            tmpReg = ALLOC_GPR();
+            resultReg = (dstReg != srcReg) ? dstReg : ALLOC_GPR();
             if (align > 1) {
                 load_store_register(PC_LHZ, tmpReg, srcReg, opnd->object, offset);
                 extra += 2;
@@ -520,8 +528,8 @@ static void load_word_of_small_struct(
                 load_store_register(PC_LWZ, dstReg, srcReg, opnd->object, offset);
                 setpcodeflags(opnd->flags);
             } else if (align > 1) {
-                tmpReg = used_virtual_registers[RegClass_GPR]++;
-                resultReg = (dstReg != srcReg) ? dstReg : used_virtual_registers[RegClass_GPR]++;
+                tmpReg = ALLOC_GPR();
+                resultReg = (dstReg != srcReg) ? dstReg : ALLOC_GPR();
                 load_store_register(PC_LHZ, tmpReg, srcReg, opnd->object, offset);
                 setpcodeflags(opnd->flags);
                 emitpcode(PC_RLWINM, resultReg, tmpReg, 16, 0, 15);
@@ -535,8 +543,8 @@ static void load_word_of_small_struct(
                     emitpcode(PC_MR, dstReg, resultReg);
                 }
             } else {
-                tmpReg = used_virtual_registers[RegClass_GPR]++;
-                resultReg = (dstReg != srcReg) ? dstReg : used_virtual_registers[RegClass_GPR]++;
+                tmpReg = ALLOC_GPR();
+                resultReg = (dstReg != srcReg) ? dstReg : ALLOC_GPR();
                 load_store_register(PC_LBZ, tmpReg, srcReg, opnd->object, offset);
                 setpcodeflags(opnd->flags);
                 emitpcode(PC_RLWINM, resultReg, tmpReg, 24, 0, 7);
@@ -573,7 +581,7 @@ void load_small_block_into_reg(short dstReg, Operand* srcOpnd, Type* type, SInt3
     coerce_to_addressable(srcOpnd);
 
     if (srcOpnd->optype == OpndType_IndirectGPR_Indexed) {
-        reg = used_virtual_registers[RegClass_GPR]++;
+        reg = ALLOC_GPR();
         load_address(reg, srcOpnd);
         srcOpnd->optype = OpndType_IndirectGPR_ImmOffset;
         srcOpnd->reg = reg;
@@ -591,22 +599,22 @@ void load_small_block_into_reg(short dstReg, Operand* srcOpnd, Type* type, SInt3
         case OpndType_GPR:
             return;
         case OpndType_GPR_ImmOffset:
-            finalReg = dstReg ? dstReg : used_virtual_registers[RegClass_GPR]++;
+            finalReg = dstReg ? dstReg : ALLOC_GPR();
             add_immediate(finalReg, srcOpnd->reg, srcOpnd->object, srcOpnd->immOffset);
             break;
         case OpndType_GPR_Indexed:
-            finalReg = dstReg ? dstReg : used_virtual_registers[RegClass_GPR]++;
+            finalReg = dstReg ? dstReg : ALLOC_GPR();
             emitpcode(PC_ADD, finalReg, srcOpnd->reg, srcOpnd->regOffset);
             break;
         case OpndType_Absolute:
-            finalReg = dstReg ? dstReg : used_virtual_registers[RegClass_GPR]++;
+            finalReg = dstReg ? dstReg : ALLOC_GPR();
             absAddress = srcOpnd->immediate;
             if (FITS_IN_SHORT(absAddress)) {
                 emitpcode(PC_LI, finalReg, absAddress);
             } else {
                 tmpReg = finalReg;
                 if (copts.optimizationlevel > 1 && LOW_PART(absAddress)) {
-                    tmpReg = used_virtual_registers[RegClass_GPR]++;
+                    tmpReg = ALLOC_GPR();
                 }
                 emitpcode(PC_LIS, tmpReg, 0, HIGH_PART(absAddress));
                 if (LOW_PART(absAddress)) {
@@ -615,7 +623,7 @@ void load_small_block_into_reg(short dstReg, Operand* srcOpnd, Type* type, SInt3
             }
             break;
         case OpndType_IndirectGPR_ImmOffset:
-            finalReg = dstReg ? dstReg : used_virtual_registers[RegClass_GPR]++;
+            finalReg = dstReg ? dstReg : ALLOC_GPR();
             load_word_of_small_struct(
                 finalReg, srcOpnd->reg, srcOpnd, srcOpnd->immOffset, type->size, align
             );
@@ -643,7 +651,7 @@ void load_small_block_into_reg_pair(
     coerce_to_addressable(srcOpnd);
 
     if (srcOpnd->optype == OpndType_IndirectGPR_Indexed) {
-        reg = used_virtual_registers[RegClass_GPR]++;
+        reg = ALLOC_GPR();
         load_address(reg, srcOpnd);
         srcOpnd->optype = OpndType_IndirectGPR_ImmOffset;
         srcOpnd->reg = reg;
@@ -658,10 +666,10 @@ void load_small_block_into_reg_pair(
     switch (srcOpnd->optype) {
         case OpndType_GPRPair:
             if (dstRegLo != 0 && dstRegHi == 0) {
-                dstRegHi = used_virtual_registers[RegClass_GPR]++;
+                dstRegHi = ALLOC_GPR();
             }
             if (dstRegHi != 0 && dstRegLo == 0) {
-                dstRegLo = used_virtual_registers[RegClass_GPR]++;
+                dstRegLo = ALLOC_GPR();
             }
 
             if (srcOpnd->reg != dstRegLo || srcOpnd->regHi != dstRegHi) {
@@ -706,14 +714,14 @@ void load_small_block_into_reg_pair(
             CError_FATAL(721);
             break;
         case OpndType_Absolute:
-            finalRegLo = dstRegLo ? dstRegLo : used_virtual_registers[RegClass_GPR]++;
+            finalRegLo = dstRegLo ? dstRegLo : ALLOC_GPR();
             absAddress = srcOpnd->immediate;
             if (FITS_IN_SHORT(absAddress)) {
                 emitpcode(PC_LI, finalRegLo, absAddress);
             } else {
                 tmpReg = finalRegLo;
                 if (copts.optimizationlevel > 1 && LOW_PART(absAddress)) {
-                    tmpReg = used_virtual_registers[RegClass_GPR]++;
+                    tmpReg = ALLOC_GPR();
                 }
                 emitpcode(PC_LIS, tmpReg, 0, HIGH_PART(absAddress));
                 if (LOW_PART(absAddress)) {
@@ -721,7 +729,7 @@ void load_small_block_into_reg_pair(
                 }
             }
 
-            finalRegHi = dstRegHi ? dstRegHi : used_virtual_registers[RegClass_GPR]++;
+            finalRegHi = dstRegHi ? dstRegHi : ALLOC_GPR();
             if (is_unsigned(type) || absAddress >= 0) {
                 load_immediate(finalRegHi, 0);
             } else {
@@ -729,8 +737,8 @@ void load_small_block_into_reg_pair(
             }
             break;
         case OpndType_IndirectGPR_ImmOffset:
-            finalRegLo = dstRegLo ? dstRegLo : used_virtual_registers[RegClass_GPR]++;
-            finalRegHi = dstRegHi ? dstRegHi : used_virtual_registers[RegClass_GPR]++;
+            finalRegLo = dstRegLo ? dstRegLo : ALLOC_GPR();
+            finalRegHi = dstRegHi ? dstRegHi : ALLOC_GPR();
             if (srcOpnd->reg == finalRegHi) {
                 if (srcOpnd->reg == finalRegLo) {
                     CError_FATAL(753);
@@ -787,7 +795,7 @@ static void store_word_of_small_struct(
 
     switch (len) {
         case 1:
-            tmpReg = used_virtual_registers[RegClass_GPR]++;
+            tmpReg = ALLOC_GPR();
             emitpcode(PC_RLWINM, tmpReg, srcReg, 8, 24, 31);
             setpcodeflags(opnd->flags);
             load_store_register(PC_STB, tmpReg, dstReg, opnd->object, offset);
@@ -796,14 +804,14 @@ static void store_word_of_small_struct(
         case 2:
         case 3:
             if (align > 1) {
-                tmpReg = used_virtual_registers[RegClass_GPR]++;
+                tmpReg = ALLOC_GPR();
                 emitpcode(PC_RLWINM, tmpReg, srcReg, 16, 16, 31);
                 setpcodeflags(opnd->flags);
                 load_store_register(PC_STH, tmpReg, dstReg, opnd->object, offset);
                 extra += 2;
                 setpcodeflags(opnd->flags);
             } else {
-                tmpReg = used_virtual_registers[RegClass_GPR]++;
+                tmpReg = ALLOC_GPR();
                 emitpcode(PC_RLWINM, tmpReg, srcReg, 8, 24, 31);
                 setpcodeflags(opnd->flags);
                 load_store_register(PC_STB, tmpReg, dstReg, opnd->object, offset);
@@ -827,7 +835,7 @@ static void store_word_of_small_struct(
                 load_store_register(PC_STW, srcReg, dstReg, opnd->object, offset);
                 setpcodeflags(opnd->flags);
             } else if (align > 1) {
-                tmpReg = used_virtual_registers[RegClass_GPR]++;
+                tmpReg = ALLOC_GPR();
                 emitpcode(PC_RLWINM, tmpReg, srcReg, 16, 16, 31);
                 setpcodeflags(opnd->flags);
                 load_store_register(PC_STH, tmpReg, dstReg, opnd->object, offset);
@@ -836,7 +844,7 @@ static void store_word_of_small_struct(
                 load_store_register(PC_STH, srcReg, dstReg, opnd->object, offset + 2);
                 setpcodeflags(opnd->flags);
             } else {
-                tmpReg = used_virtual_registers[RegClass_GPR]++;
+                tmpReg = ALLOC_GPR();
                 emitpcode(PC_RLWINM, tmpReg, srcReg, 8, 24, 31);
                 setpcodeflags(opnd->flags);
                 load_store_register(PC_STB, tmpReg, dstReg, opnd->object, offset);
@@ -865,7 +873,7 @@ void store_small_block_from_reg(short srcReg, Operand* dstOpnd, Type* type, SInt
     coerce_to_addressable(dstOpnd);
 
     if (dstOpnd->optype == OpndType_IndirectGPR_Indexed) {
-        tmpReg = used_virtual_registers[RegClass_GPR]++;
+        tmpReg = ALLOC_GPR();
         load_address(tmpReg, dstOpnd);
         dstOpnd->optype = OpndType_IndirectGPR_ImmOffset;
         dstOpnd->reg = tmpReg;
@@ -890,7 +898,7 @@ void store_small_block_from_reg_pair(
     coerce_to_addressable(dstOpnd);
 
     if (dstOpnd->optype == OpndType_IndirectGPR_Indexed) {
-        tmpReg = used_virtual_registers[RegClass_GPR]++;
+        tmpReg = ALLOC_GPR();
         load_address(tmpReg, dstOpnd);
         dstOpnd->optype = OpndType_IndirectGPR_ImmOffset;
         dstOpnd->reg = tmpReg;

@@ -250,6 +250,9 @@ const PROVENANCE_ORDER: [&str; 5] = ["request", "parent_request", "allocation", 
 /// MWCC evaluates them from the last, clang from the first). Between two other records, they are compared as a
 /// multiset.
 const PROVENANCE_UNORDERED: [&str; 2] = ["pv.arena.request", "pv.arena.alloc"];
+/// The fields that number another stream's records, which the WebAssembly oracle lacks yet (a birth's expression,
+/// the expression stream's): dropped.
+const PROVENANCE_PENDING: [(&str, &str); 1] = [("pv.value.birth", "expression")];
 
 /// A provenance record (`pv.*`) as two oracles give it: its addresses (PROVENANCE_ADDRESSES, and is_address's but
 /// for the original's, PROVENANCE_SITES) made `*`, and its numbers in the compiler's order (PROVENANCE_ORDER)
@@ -262,10 +265,14 @@ pub fn comparable_provenance(line: &str) -> Option<String> {
     if !line.starts_with("pv.") {
         return None;
     }
-    let unordered = PROVENANCE_UNORDERED.contains(&line.split(' ').next().unwrap_or(""));
+    let kind = line.split(' ').next().unwrap_or("");
+    let unordered = PROVENANCE_UNORDERED.contains(&kind);
     let line = ORDER.replace_all(line, |c: &regex::Captures| {
         let field = &c[1];
-        if field == "event" || (unordered && PROVENANCE_ORDER.contains(&field)) {
+        if field == "event"
+            || (unordered && PROVENANCE_ORDER.contains(&field))
+            || PROVENANCE_PENDING.contains(&(kind, field))
+        {
             String::new()
         } else {
             c[0].to_owned()
@@ -395,9 +402,15 @@ pub fn run(request: &Request) -> Result<Report> {
         streams.push("pv.source.");
     }
     if request.all_traces {
-        // (the functions' beginnings and the scalarization bindings; the rest of the counter stream waits for its
-        // increments)
-        streams.extend(["pv.function.begin", "pv.scalar."]);
+        // (the register counters' records, and the scalarization bindings; not yet the functions' ends, which count
+        // the other streams' records)
+        streams.extend([
+            "pv.function.begin",
+            "pv.value.birth",
+            "pv.counter.",
+            "pv.category.",
+            "pv.scalar.",
+        ]);
     }
     let null = Path::new(if cfg!(windows) { "NUL" } else { "/dev/null" });
     let reference = request

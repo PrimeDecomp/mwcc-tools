@@ -1239,7 +1239,7 @@ void move_varargs_to_memory(void) {
     dummyvaparam->u.var.info->noregister = TRUE;
     Registers_GetVarInfo(dummyvaparam)->flags =
         (Registers_GetVarInfo(dummyvaparam)->flags & ~VarInfoFlag1) | VarInfoFlag1;
-    local_base_register(dummyvaparam);
+    ORACLE_INLINED(local_base_register(dummyvaparam));
 
     // 2.6: the FPR arguments are stored only when the caller set CR bit 6
     if (!copts.soft_float && copts.use_fp) {
@@ -1251,7 +1251,11 @@ void move_varargs_to_memory(void) {
         branch_label(save);
         for (reg = 1; (int)reg <= 8; reg++) {
             emitpcode(
-                PC_STFD, reg, local_base_register(dummyvalocal), dummyvalocal, (reg - 1) * 8 + 32
+                PC_STFD,
+                reg,
+                ORACLE_INLINED(local_base_register(dummyvalocal)),
+                dummyvalocal,
+                (reg - 1) * 8 + 32
             );
             setpcodeflags(fIsPtrOp | fIsArgInit);
         }
@@ -1259,10 +1263,16 @@ void move_varargs_to_memory(void) {
     }
 
     for (reg = 3; (int)reg <= 10; reg++) {
-        emitpcode(PC_STW, reg, local_base_register(dummyvalocal), dummyvalocal, (reg - 3) * 4);
+        emitpcode(
+            PC_STW,
+            reg,
+            ORACLE_INLINED(local_base_register(dummyvalocal)),
+            dummyvalocal,
+            (reg - 3) * 4
+        );
         setpcodeflags(fIsPtrOp | fIsArgInit);
     }
-    local_base_register(dummyvaparam);
+    ORACLE_INLINED(local_base_register(dummyvaparam));
 }
 
 void assign_arguments_to_memory(Object* func, UInt8 mysteryFlag, Boolean hasVarargs) {
@@ -1475,7 +1485,7 @@ SInt32 local_offset_32(Object* obj) {
     }
 
     if (obj->u.var.info->flags & VarInfoFlag1) {
-        if (local_base_register(obj) == _FP_ && frame_size) {
+        if (ORACLE_INLINED(local_base_register(obj)) == _FP_ && frame_size) {
             base = genuine_frame_size + 8;
         } else {
             base = 8;
@@ -1526,7 +1536,7 @@ int local_base_register(Object* obj) {
 
     if (obj->u.var.info->flags & VarInfoFlag1) {
         if (coloring && _CALLER_SP_ == -1) {
-            reg = used_virtual_registers[RegClass_GPR]++;
+            reg = ALLOC_GPR();
             _CALLER_SP_ = reg;
             setup_caller_sp = makepcode(PC_LWZ, _CALLER_SP_, 1, 0, 0);
             appendpcode(prologue, setup_caller_sp);
@@ -1535,6 +1545,10 @@ int local_base_register(Object* obj) {
     }
     return _FP_;
 }
+
+#ifdef ORACLE_PROBES
+#define local_base_register(...) ORACLE_INLINED(local_base_register(__VA_ARGS__))
+#endif
 
 static UInt32 align_bits(UInt32 value, UInt8 bitcount) {
     UInt32 base = bitcount ? 32 : 31;

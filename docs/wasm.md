@@ -132,24 +132,34 @@ probe reads, and the hooks give the records the original's site.
   is matched with its request, is the address of the allocator's local. gc2 defines the arena globals there.
 * The source nodes (`pv.source.*`, `--source-nodes`): `parse_statement` reports each expression statement. A clone's
   `caller` (its return address in the original) is 0: nothing reads it.
-
 * The register counters' structural sites (`pv.function.*`, `pv.category.*`, `pv.counter.change`): `CodeGen_Generator`
   reports a function's beginning and end, `set_last_exception_registers` and `open_fe_temp_registers` the ranges,
   and `Registers.c` and `colorinstructions` each reset of a counter. gc2 defines the counter globals in `Registers.c`.
+* The register counters' increments (`pv.value.birth`): each is an `ALLOC_GPR()`, `ALLOC_FPR()`, `ALLOC_VR()` or
+  `ALLOC_REG(c)` (`include/compiler/Registers.h`), which reports its file and line. The hooks look the original's
+  site up in `crates/mwcc-oracle-hooks/src/counter_sites.rs`, which `mwcc-tools provenance counter-sites --write`
+  generates (after `ninja all_source` for GC 2.7: see `crates/mwcc-oracle-core/src/counter_sources.rs`; a test
+  checks it is fresh). It aligns each function's increments in the original with its writes by the line numbers of
+  gc2's objects. The original inlines 23 functions at some or all of their calls, and their increments are then at
+  the call: those calls go through `ORACLE_INLINED`, which reports the call's line too. A wrapper macro after each
+  such function's definition makes its later calls so (`#define f(...) ORACLE_INLINED(f(__VA_ARGS__))`), and the
+  calls before it are written `ORACLE_INLINED(f(...))`.
 * The scalarization bindings (`pv.scalar.*`): `IRO_ScalarizeClassDataMembers` names the part whose temporary
   `create_temp_object` makes next.
 
-The other streams' probes (the counters' increments, dispatch, coalescing, call arguments' contexts) are not in gc2's
-sources yet, so those streams are absent from the module's traces, and the counts that the counter records give of
-them (`births`, `dispatches`, a counter's `old`) are 0. Use `MWCC_IN_PROCESS=0` to run the x86 oracle for them.
+The other streams' probes (expressions, dispatch, coalescing, the bindings of births to objects and operands,
+materializations, call results, and call arguments' contexts) are not in gc2's sources yet, so those streams are
+absent from the module's traces, or partial. A birth's `expression` and the counts a function's end gives of them
+differ. Use `MWCC_IN_PROCESS=0` to run the x86 oracle for them.
 
 `corpus --source-arenas` (or `--source-nodes`) traces those streams and compares them with `--trace-reference`'s, the
 x86 oracle's. Addresses are masked, but not the original's sites. Between two other records, requests and commits are
 compared as a multiset, without their numbers and the pool's free space: their order follows the order in which the
 compiler evaluates a call's arguments, which C leaves unspecified (MWCC evaluates them from the last, clang from the
 first: `pclabel(makepcblock(), makepclabel())` allocates the label first in the original). Nothing joins two traces
-by these numbers. With `--all-traces`, the functions' beginnings and the scalarization bindings are compared too. On
-the canaries, for 2.6 and 2.7, the streams compare equal but for the inputs that stop on too many
+by these numbers. With `--all-traces`, the functions' beginnings, the counters' changes and ranges and the
+scalarization bindings are compared too (the births are, but for their `expression`: 268 of the 574 increments on the
+canaries). On the canaries, for 2.6 and 2.7, the streams compare equal but for the inputs that stop on too many
 errors. Those report a user break, and how far the compiler gets before it checks for one depends on the clock
 (`CWUserBreak` every 8 ticks), in the original too.
 

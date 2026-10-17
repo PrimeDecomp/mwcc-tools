@@ -33,8 +33,11 @@ struct {
     short* first;
     SInt32* last;
 } OracleRust_CounterGlobals = {
-    used_virtual_registers, n_real_registers, &last_exception_register[RegClass_VR],
-    &first_fe_temporary_register[RegClass_VR], &last_temporary_register[RegClass_VR]
+    used_virtual_registers,
+    n_real_registers,
+    &last_exception_register[RegClass_VR],
+    &first_fe_temporary_register[RegClass_VR],
+    &last_temporary_register[RegClass_VR]
 };
 #endif
 
@@ -69,7 +72,7 @@ void assign_register_to_variable(Object* obj, RegClass rclass) {
 
     vi = Registers_GetVarInfo(obj);
     if (optimizing) {
-        reg = used_virtual_registers[rclass]++;
+        reg = ALLOC_REG(rclass);
     } else {
         reg = obtain_nonvolatile_register(rclass);
         retain_register(obj, rclass, reg);

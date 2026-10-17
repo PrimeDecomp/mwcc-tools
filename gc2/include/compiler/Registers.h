@@ -2,6 +2,7 @@
 #define COMPILER_REGISTERS_H
 
 #include "compiler/common.h"
+#include "compiler/OracleProbes.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -37,6 +38,17 @@ extern char* register_class_name[RegClassMax];
 extern char* register_class_format[RegClassMax];
 extern int coloring;
 extern int optimizing;
+
+// a new virtual register of a class (the oracle's probe reports each)
+#ifdef ORACLE_PROBES
+#define ALLOC_REG(rclass) \
+    OracleProbe_CounterIncrement(__FILE__, __LINE__, (rclass), used_virtual_registers[rclass]++)
+#else
+#define ALLOC_REG(rclass) (used_virtual_registers[rclass]++)
+#endif
+#define ALLOC_GPR() ALLOC_REG(RegClass_GPR)
+#define ALLOC_FPR() ALLOC_REG(RegClass_FPR)
+#define ALLOC_VR() ALLOC_REG(RegClass_VR)
 
 extern void init_registers(void);
 extern void assign_register_to_variable(Object* obj, RegClass rclass);

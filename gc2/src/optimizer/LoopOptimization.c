@@ -723,7 +723,7 @@ static void unrollunknownBDNZ(Loop* loop) {
         }
     }
 
-    mtctr_shifted_reg = used_virtual_registers[RegClass_GPR]++;
+    mtctr_shifted_reg = ALLOC_GPR();
     appendpcode(
         newblock1,
         makepcode(
@@ -734,7 +734,7 @@ static void unrollunknownBDNZ(Loop* loop) {
     appendpcode(newblock1, makepcode(PC_CMPLI, 0, mtctr_shifted_reg, 0));
 
     if (instr28) {
-        reg25 = used_virtual_registers[RegClass_GPR]++;
+        reg25 = ALLOC_GPR();
         if (loop->step == 1) {
             instr = makepcode(PC_MR, reg25, mtctr_reg);
         } else if (loop->step == -1) {
@@ -883,9 +883,7 @@ static void rewriteloopwithBDNZ(Loop* loop) {
     PCode* instr;
 
     if (!FITS_IN_SHORT(loop->iterationCount)) {
-        instr = makepcode(
-            PC_LIS, used_virtual_registers[RegClass_GPR]++, 0, HIGH_PART(loop->iterationCount)
-        );
+        instr = makepcode(PC_LIS, ALLOC_GPR(), 0, HIGH_PART(loop->iterationCount));
         insertpcodebefore(loop->preheader->lastPCode, instr);
 
         if (LOW_PART(loop->iterationCount) != 0) {
@@ -901,7 +899,7 @@ static void rewriteloopwithBDNZ(Loop* loop) {
             );
         }
     } else {
-        instr = makepcode(PC_LI, used_virtual_registers[RegClass_GPR]++, loop->iterationCount);
+        instr = makepcode(PC_LI, ALLOC_GPR(), loop->iterationCount);
         insertpcodebefore(loop->preheader->lastPCode, instr);
     }
 
@@ -1101,7 +1099,7 @@ static void rewriteunknownloopwithBDNZ(Loop* loop) {
         loop->bodySize--;
     }
 
-    counterReg = used_virtual_registers[RegClass_GPR]++;
+    counterReg = ALLOC_GPR();
     if (mode == 1) {
         if (value2 == 0) {
             insertpcodebefore(loop->preheader->lastPCode, makepcode(PC_NEG, counterReg, reg1));
@@ -1205,7 +1203,7 @@ static void rewriteunknownloopwithBDNZ(Loop* loop) {
                 makepcode(PC_RLWINM, counterReg, counterReg, 32 - bits, bits, 31)
             );
         } else {
-            tmpReg = used_virtual_registers[RegClass_GPR]++;
+            tmpReg = ALLOC_GPR();
             insertpcodebefore(loop->preheader->lastPCode, makepcode(PC_LI, tmpReg, absStep));
             insertpcodebefore(
                 loop->preheader->lastPCode, makepcode(PC_DIVWU, counterReg, counterReg, tmpReg)
@@ -1220,8 +1218,7 @@ static void rewriteunknownloopwithBDNZ(Loop* loop) {
             if (FITS_IN_USHORT(value1)) {
                 insertpcodebefore(loop->preheader->lastPCode, makepcode(PC_CMPLI, 0, reg1, value1));
             } else {
-                high =
-                    makepcode(PC_LIS, used_virtual_registers[RegClass_GPR]++, 0, HIGH_PART(value1));
+                high = makepcode(PC_LIS, ALLOC_GPR(), 0, HIGH_PART(value1));
                 insertpcodebefore(loop->preheader->lastPCode, high);
                 // (a bug of the original, kept: this tests the iteration count's low half, not the
                 // bound's (`cmp word ptr [loop + 0x3c], 0`); copied from rewriteloopwithBDNZ)
@@ -1247,8 +1244,7 @@ static void rewriteunknownloopwithBDNZ(Loop* loop) {
             if (value1 == lo) {
                 insertpcodebefore(loop->preheader->lastPCode, makepcode(PC_CMPI, 0, reg1, value1));
             } else {
-                lis =
-                    makepcode(PC_LIS, used_virtual_registers[RegClass_GPR]++, 0, HIGH_PART(value1));
+                lis = makepcode(PC_LIS, ALLOC_GPR(), 0, HIGH_PART(value1));
                 insertpcodebefore(loop->preheader->lastPCode, lis);
                 // (the same bug as above)
                 if (LOW_PART(loop->iterationCount) != 0) {
@@ -1603,9 +1599,9 @@ void changearraytoregisters(void) {
             for (; array; array = array->next) {
                 for (i = 0; i < array->elementCount; i++) {
                     if (array->isFloat) {
-                        array->elements[i] = used_virtual_registers[RegClass_FPR]++;
+                        array->elements[i] = ALLOC_FPR();
                     } else {
-                        array->elements[i] = used_virtual_registers[RegClass_GPR]++;
+                        array->elements[i] = ALLOC_GPR();
                     }
                 }
             }

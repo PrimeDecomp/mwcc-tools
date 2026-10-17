@@ -28,15 +28,19 @@ static UInt32 used_regs_r3[RegClassMax] = {0, 0, 0, 0, (1 << 3)};
 // TODO: invented names (gc1's) for the helpers below; 2.6 inlines every call to them
 static inline void lift_result(Operand* op, int kind) {
     op->optype = kind;
-    op->reg = used_virtual_registers[RegClass_GPR]++;
+    op->reg = ALLOC_GPR();
     if (kind == OpndType_GPR) {
         emitpcode(PC_MR, op->reg, 3);
     } else {
-        op->regHi = used_virtual_registers[RegClass_GPR]++;
+        op->regHi = ALLOC_GPR();
         emitpcode(PC_MR, op->reg, low_reg);
         emitpcode(PC_MR, op->regHi, high_reg);
     }
 }
+
+#ifdef ORACLE_PROBES
+#define lift_result(...) ORACLE_INLINED(lift_result(__VA_ARGS__))
+#endif
 
 static inline void LoadFloatArg(int reg) {
     union {
@@ -122,7 +126,7 @@ void SFPE_gen_OP(ENode* node, SInt16 requestedReg, SInt16 requestedRegHi, Operan
         }
 
         result->optype = OpndType_GPR;
-        result->reg = used_virtual_registers[RegClass_GPR]++;
+        result->reg = ALLOC_GPR();
         emitpcode(PC_MR, result->reg, 3);
     } else {
         GEN_NODE(right, &rightOperand);
@@ -171,8 +175,8 @@ void SFPE_gen_OP(ENode* node, SInt16 requestedReg, SInt16 requestedRegHi, Operan
         }
 
         result->optype = OpndType_GPRPair;
-        result->reg = used_virtual_registers[RegClass_GPR]++;
-        result->regHi = used_virtual_registers[RegClass_GPR]++;
+        result->reg = ALLOC_GPR();
+        result->regHi = ALLOC_GPR();
         emitpcode(PC_MR, result->reg, low_reg);
         emitpcode(PC_MR, result->regHi, high_reg);
     }
@@ -185,7 +189,7 @@ void SFPE_gen_FLOATCONST(ENode* node, SInt16 regA, SInt16 regB, Operand* out) {
             SInt32 l;
         } u;
         int reg;
-        reg = regA ? regA : used_virtual_registers[RegClass_GPR]++;
+        reg = regA ? regA : ALLOC_GPR();
         u.f = node->data.floatval.data.value;
         insert_load_immediate_after(reg, u.l);
         out->optype = OpndType_GPR;
@@ -194,8 +198,8 @@ void SFPE_gen_FLOATCONST(ENode* node, SInt16 regA, SInt16 regB, Operand* out) {
         int regHi;
         int reg;
         CInt64 v;
-        reg = regA ? regA : used_virtual_registers[RegClass_GPR]++;
-        regHi = regB ? regB : used_virtual_registers[RegClass_GPR]++;
+        reg = regA ? regA : ALLOC_GPR();
+        regHi = regB ? regB : ALLOC_GPR();
         v = node->data.intval;
         insert_load_immediate_after(regHi, v.lo);
         insert_load_immediate_after(reg, v.hi);
@@ -217,7 +221,7 @@ void SFPE_gen_MONMIN(ENode* expr, SInt16 lowReg, SInt16 highReg, Operand* result
         if (operand.optype) {
             Coerce_to_register(&operand, subexpr->rtype, 0);
         }
-        resultReg = lowReg ? lowReg : used_virtual_registers[RegClass_GPR]++;
+        resultReg = lowReg ? lowReg : ALLOC_GPR();
         emitpcode(PC_XORIS, resultReg, operand.reg, 0x8000);
         result->optype = OpndType_GPR;
         result->reg = resultReg;
@@ -225,9 +229,9 @@ void SFPE_gen_MONMIN(ENode* expr, SInt16 lowReg, SInt16 highReg, Operand* result
         SInt32 resultLowReg, resultHighReg;
         GEN_NODE(subexpr, &operand);
         coerce_to_register_pair(&operand, subexpr->rtype, 0, 0);
-        resultHighReg = highReg ? highReg : used_virtual_registers[RegClass_GPR]++;
+        resultHighReg = highReg ? highReg : ALLOC_GPR();
         emitpcode(PC_XORIS, resultHighReg, operand.regHi, 0x8000);
-        resultLowReg = lowReg ? lowReg : used_virtual_registers[RegClass_GPR]++;
+        resultLowReg = lowReg ? lowReg : ALLOC_GPR();
         if (resultLowReg != operand.reg) {
             emitpcode(PC_MR, resultLowReg, operand.reg);
         }
@@ -346,12 +350,10 @@ void SFPE_gen_POSTINCDEC(ENode* expr, SInt16 outputReg, SInt16 outputReg2, Opera
             // call (`sourceReg2 = ...->regHi;` matches this function but not SFPE_gen_ASS)
             Registers_GetVarInfo(inner->data.objref);
             result->optype = OpndType_GPR;
-            result->reg = (outputReg != 0 && outputReg != sourceReg)
-                ? outputReg
-                : used_virtual_registers[RegClass_GPR]++;
+            result->reg = (outputReg != 0 && outputReg != sourceReg) ? outputReg : ALLOC_GPR();
             CError_ASSERT(546, sourceReg != result->reg);
             emitpcode(PC_MR, result->reg, sourceReg);
-            argumentReg = used_virtual_registers[RegClass_GPR]++;
+            argumentReg = ALLOC_GPR();
             LoadFloatArg(argumentReg);
             if (sourceReg != 3) {
                 emitpcode(PC_MR, 3, sourceReg);
@@ -376,8 +378,8 @@ void SFPE_gen_POSTINCDEC(ENode* expr, SInt16 outputReg, SInt16 outputReg2, Opera
                 Coerce_to_register(&value, type, 0);
             }
             result->optype = OpndType_GPR;
-            result->reg = used_virtual_registers[RegClass_GPR]++;
-            argumentReg = used_virtual_registers[RegClass_GPR]++;
+            result->reg = ALLOC_GPR();
+            argumentReg = ALLOC_GPR();
             LoadFloatArgGPR(argumentReg);
             emitpcode(PC_MR, result->reg, value.reg);
             // a block-local SInt32 copy, as CodeGen.c compares `opnd.reg` (gc1 compares value.reg
@@ -405,10 +407,10 @@ void SFPE_gen_POSTINCDEC(ENode* expr, SInt16 outputReg, SInt16 outputReg2, Opera
             result->regHi =
                 (outputReg2 != 0 && (outputReg2 != sourceReg2 && outputReg2 != sourceReg))
                 ? outputReg2
-                : used_virtual_registers[RegClass_GPR]++;
+                : ALLOC_GPR();
             result->reg = (outputReg != 0 && (outputReg != sourceReg && outputReg != sourceReg2))
                 ? outputReg
-                : used_virtual_registers[RegClass_GPR]++;
+                : ALLOC_GPR();
             CError_ASSERT(654, sourceReg != result->reg && sourceReg2 != result->reg);
             CError_ASSERT(655, sourceReg != result->regHi && sourceReg2 != result->regHi);
             emitpcode(PC_MR, result->regHi, sourceReg2);
@@ -419,8 +421,8 @@ void SFPE_gen_POSTINCDEC(ENode* expr, SInt16 outputReg, SInt16 outputReg2, Opera
             if (sourceReg != low_reg) {
                 emitpcode(PC_MR, low_reg, sourceReg);
             }
-            argumentReg = used_virtual_registers[RegClass_GPR]++;
-            argumentReg2 = used_virtual_registers[RegClass_GPR]++;
+            argumentReg = ALLOC_GPR();
+            argumentReg2 = ALLOC_GPR();
             LoadDoubleArg(argumentReg, argumentReg2);
             if (expr->type == EPOSTINC) {
                 branch_subroutine(rt_sfpe_d_add, 0, used_regs_r3_r6);
@@ -438,8 +440,8 @@ void SFPE_gen_POSTINCDEC(ENode* expr, SInt16 outputReg, SInt16 outputReg2, Opera
             value = operand;
             coerce_to_register_pair(&value, type, 0, 0);
             result->optype = OpndType_GPRPair;
-            result->reg = used_virtual_registers[RegClass_GPR]++;
-            result->regHi = used_virtual_registers[RegClass_GPR]++;
+            result->reg = ALLOC_GPR();
+            result->regHi = ALLOC_GPR();
             emitpcode(PC_MR, result->reg, value.reg);
             emitpcode(PC_MR, result->regHi, value.regHi);
             if (value.regHi != high_reg) {
@@ -448,8 +450,8 @@ void SFPE_gen_POSTINCDEC(ENode* expr, SInt16 outputReg, SInt16 outputReg2, Opera
             if (value.reg != low_reg) {
                 emitpcode(PC_MR, low_reg, value.reg);
             }
-            argumentReg = used_virtual_registers[RegClass_GPR]++;
-            argumentReg2 = used_virtual_registers[RegClass_GPR]++;
+            argumentReg = ALLOC_GPR();
+            argumentReg2 = ALLOC_GPR();
             LoadDoubleArg(argumentReg, argumentReg2);
             if (expr->type == EPOSTINC) {
                 branch_subroutine(rt_sfpe_d_add, 0, used_regs_r3_r6);
@@ -612,7 +614,7 @@ void SFPE_gen_condition(ENode* node, Operand* result, int branch) {
 
     if (branch) {
         result->optype = OpndType_GPR;
-        result->reg = used_virtual_registers[RegClass_GPR]++;
+        result->reg = ALLOC_GPR();
         emitpcode(PC_MR, result->reg, 3);
     } else {
         emitpcode(PC_CMPI, 0, 3, 1);
