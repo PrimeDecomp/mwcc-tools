@@ -44,16 +44,19 @@ CI builds both modules for 2.6 and 2.7 on Linux, and compares them with the orig
   x86 traces show a stale pointer.
 * Floating point: folding matches the original on 40,000 random `+ - * /` of doubles, 20,000 of floats and 20,000
   of converted integers (see below).
-* Metroid Prime 2: Echoes (`corpus --prime`, 2.7): 948/950 identical. The 2 that differ are known limitations:
-  * `src\Runtime\Gecko_ExceptionPPC.cp`, `extab`. `Exceptions.c` builds its action records in a structure with
-    padding (`AACCC`, `AACC`) on the stack, and the original writes the padding bytes as the stack had them
-    (`1a 00`, `9a 00`, `ff ff`, depending on the call path). The module's stack holds other bytes.
-  * `src\MetroidPrime\Enemies\CSandworm.cpp`, `UpdateEyes`: 1420 vs 1416 bytes. Peephole's `L_S` (eliminate a store
-    of a value just loaded from the same place) checks the stores in between for overlap. For a store to another
-    object, it compares `defInstrOffset` and `scanOffset`, which only a store to the same object sets. The original
-    compares two stack slots (`[esp+0xc]`, `[esp+0x10]`) that earlier calls left behind: it deletes the first of three
-    `stfs` back to where they were loaded, and keeps the other two. The module deletes none. Traces of both oracles
-    agree up to there.
+* Metroid Prime 2: Echoes (`corpus --prime`, 2.7): 949/950 identical. The one that differs depends on the host:
+  * `src\Runtime\Gecko_ExceptionPPC.cp`, `extab`. `Exceptions.c` builds its action records in structures with
+    padding (`AACCC`, `AACC`) on the stack, and the original writes the padding bytes as the stack had them. For the
+    catch record here, that is the high half of a stack address that `Memory_NewHandle` pushed (`lea eax,[esp]`): `1a
+    00` on Windows (the stack's base is `0x1b0000`), `ff 7f` under wibo. The module writes the high half of its own
+    stack's address (`a5 00`).
+* Uninitialized reads the module reproduces:
+  * Peephole's `L_S` (eliminate a store of a value just loaded from the same place) checks the stores in between for
+    overlap. For a store to another object, it compares `defInstrOffset` and `scanOffset`, which only a store to the
+    same object sets. The original then compares two stack slots (`[esp+0xc]`, `[esp+0x10]`). The second holds the
+    `nop` pointer that `computeinstructionpredecessors` left there, so the stores never overlap. Under `__wasm__` the
+    offsets start as 0 and `0x7FFFFFFF`, which compare the same way. In Echoes' `CSandworm::UpdateEyes`, this deletes
+    the first of three `stfs` that store values back to where they were loaded.
 
 ## How it is built
 

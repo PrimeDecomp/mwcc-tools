@@ -1231,6 +1231,14 @@ static int L_S(PCode* instr, UInt32* masks) {
     SInt32 scanOffset;
     SInt32 storeSize;
 
+#ifdef __wasm__
+    /* A store between to another object leaves both offsets unset, and the original compares its stack slots as
+       earlier calls left them. The scan offset's slot holds a pointer, as computeinstructionpredecessors leaves it
+       (its nop), so the offsets never overlap. (This assumes no L_S call since then has set them.) */
+    defInstrOffset = 0;
+    scanOffset = 0x7FFFFFFF;
+#endif
+
     if (PCODE_FLAG_SET_F(instr) & (fIsVolatile | fSideEffects | fUpdatesPtr)) {
         return 0;
     }
