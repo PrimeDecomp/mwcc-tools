@@ -48,8 +48,9 @@ pub struct Write {
 
 #[derive(Debug, Default)]
 pub struct Table {
-    /// Each write the original has an increment for, with that increment's site in GC 2.7 and in GC 2.6.
-    pub sites: BTreeMap<Write, (u32, u32)>,
+    /// Each write the original has an increment for, with that increment's site in GC 2.7 and in GC 2.6, and
+    /// its bindings (counter_probe::Site's object_binding, operand_binding and origin_binding).
+    pub sites: BTreeMap<Write, (u32, u32, [u8; 3])>,
     /// The writes it has none for (UNIT, LINE): not in a function of the original's that its probes cover.
     pub none: BTreeSet<(String, u32)>,
     /// The functions the original inlines at some call (UNIT, NAME).
@@ -276,6 +277,7 @@ struct Increment {
     site: u32,
     line: Option<u32>,
     class: Option<u8>,
+    bindings: [u8; 3],
 }
 
 /// A place an increment can come from: its lines (a call's), its write, and the costs of leaving it out and of
@@ -489,6 +491,11 @@ pub fn generate(root: &Path) -> Result<Table> {
                 site: site.address,
                 line: lines[&unit].line(&f.2, offset),
                 class: u8::try_from(site.selector).ok(),
+                bindings: [
+                    site.object_binding as u8,
+                    site.operand_binding as u8,
+                    site.origin_binding as u8,
+                ],
             });
     }
     ensure!(
@@ -580,9 +587,14 @@ pub fn generate(root: &Path) -> Result<Table> {
                     .context("inlined write without its call")?;
                 table.inlined.insert((unit_name.clone(), callee));
             }
-            let previous = table
-                .sites
-                .insert(write.clone(), (increment.site, moved_site[&increment.site]));
+            let previous = table.sites.insert(
+                write.clone(),
+                (
+                    increment.site,
+                    moved_site[&increment.site],
+                    increment.bindings,
+                ),
+            );
             ensure!(previous.is_none(), "two increments for {write:?}");
         }
     }
@@ -700,21 +712,24 @@ pub fn render(table: &Table) -> String {
     let _ = writeln!(
         out,
         "/// The writes the original has an increment for: (unit, line, the line of the call the original inlines it\n\
-         /// at or 0, its site in GC 2.7, in GC 2.6), in order."
+         /// at or 0, its site in GC 2.7, in GC 2.6, its object, operand and origin bindings), in order."
     );
     let _ = writeln!(
         out,
-        "pub const SITES: [(u8, u16, u16, u32, u32); {}] = [",
+        "pub const SITES: [(u8, u16, u16, u32, u32, [u8; 3]); {}] = [",
         table.sites.len()
     );
     let mut sites: Vec<_> = table
         .sites
         .iter()
-        .map(|(w, s)| (index(&w.unit), w.line, w.inlined, s.0, s.1))
+        .map(|(w, s)| (index(&w.unit), w.line, w.inlined, s.0, s.1, s.2))
         .collect();
     sites.sort();
-    for (unit, line, inlined, a, b) in sites {
-        let _ = writeln!(out, "    ({unit}, {line}, {inlined}, {a:#x}, {b:#x}),");
+    for (unit, line, inlined, a, b, [object, operand, origin]) in sites {
+        let _ = writeln!(
+            out,
+            "    ({unit}, {line}, {inlined}, {a:#x}, {b:#x}, [{object}, {operand}, {origin}]),"
+        );
     }
     out.push_str("];\n");
     let _ = writeln!(

@@ -231,7 +231,7 @@ pub fn trace_difference(ours: &str, theirs: &str) -> Option<String> {
 
 /// The fields of a provenance record that hold an address in the compiler's memory, or its stack: made `*`.
 /// (`caller`: a clone's return address, which the WebAssembly oracle cannot read and gives as 0)
-const PROVENANCE_ADDRESSES: [&str; 7] = [
+const PROVENANCE_ADDRESSES: [&str; 9] = [
     "pools",
     "lock",
     "retail_esp",
@@ -239,6 +239,8 @@ const PROVENANCE_ADDRESSES: [&str; 7] = [
     "block",
     "freep",
     "caller",
+    "operand",
+    "output",
 ];
 /// The fields that hold one of the original's addresses, the same in both: kept.
 const PROVENANCE_SITES: [&str; 1] = ["site"];
@@ -402,11 +404,11 @@ pub fn run(request: &Request) -> Result<Report> {
         streams.push("pv.source.");
     }
     if request.all_traces {
-        // (the register counters' records, and the scalarization bindings; not yet the functions' ends, which count
-        // the other streams' records)
+        // (the register counters' records with the births' bindings, and the scalarization bindings; not yet the
+        // functions' ends, which count the other streams' records)
         streams.extend([
             "pv.function.begin",
-            "pv.value.birth",
+            "pv.value.",
             "pv.counter.",
             "pv.category.",
             "pv.scalar.",

@@ -391,6 +391,7 @@ void assign_GPR_pair(Object* obj) {
 
     vi = Registers_GetVarInfo(obj);
     if (optimizing) {
+        ORACLE_PROBE(OracleProbe_Binding(obj, vi, NULL));
         reg = ALLOC_GPR();
         regHi = ALLOC_GPR();
     } else {

@@ -34,6 +34,13 @@ void OracleProbe_ScalarTemporary(void* part);
 // exception registers, 9 open_fe_temp_registers has opened the front-end temporaries.
 void OracleProbe_Counter(UInt32 role, SInt32 rclass, void* function);
 
+// The values the next counter increments bind their births to, at the original's sites that do
+// (`pv.value.object`, `pv.value.materialization`, `pv.value.array`, `pv.value.call_result`): an
+// object and its VarInfo (assign_register_to_variable, assign_GPR_pair), an operand and its object
+// (the symbol's address in Operands.c), an array's promotion and the element's index
+// (LoopOptimization.c), or a call, its result's operand and its type (call_function).
+void OracleProbe_Binding(const void* a, const void* b, const void* c);
+
 // The register counters' increments (`pv.value.birth`; ALLOC_REG, include/compiler/Registers.h):
 // the write at LINE of FILE has incremented RCLASS's counter from OLD. Returns OLD.
 SInt32 OracleProbe_CounterIncrement(const char* file, int line, SInt32 rclass, SInt32 old);

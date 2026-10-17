@@ -69,7 +69,7 @@ pub const HOOKS: [&str; 41] = [
     "_load_argument_registers",
     "_store_argument_on_stack",
 ];
-pub const SUPPORT: [&str; 24] = [
+pub const SUPPORT: [&str; 25] = [
     "_OracleRust_SourceProbeV1",
     "_OracleRust_ArenaProbeV1",
     "_OracleRust_ExpressionProbeV1",
@@ -95,6 +95,7 @@ pub const SUPPORT: [&str; 24] = [
     "_OracleProbe_CounterIncrement",
     "_OracleProbe_InlinedBegin",
     "_OracleProbe_InlinedEnd",
+    "_OracleProbe_Binding",
 ];
 pub const SOURCES: [&str; 20] = [
     "source_nodes.rs",

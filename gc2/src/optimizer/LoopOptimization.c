@@ -1598,6 +1598,7 @@ void changearraytoregisters(void) {
             optimizedloop_trans_regs = TRUE;
             for (; array; array = array->next) {
                 for (i = 0; i < array->elementCount; i++) {
+                    ORACLE_PROBE(OracleProbe_Binding(array, (void*)(long)i, NULL));
                     if (array->isFloat) {
                         array->elements[i] = ALLOC_FPR();
                     } else {

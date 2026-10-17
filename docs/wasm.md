@@ -144,12 +144,15 @@ probe reads, and the hooks give the records the original's site.
   the call: those calls go through `ORACLE_INLINED`, which reports the call's line too. A wrapper macro after each
   such function's definition makes its later calls so (`#define f(...) ORACLE_INLINED(f(__VA_ARGS__))`), and the
   calls before it are written `ORACLE_INLINED(f(...))`.
+* The births' bindings (`pv.value.object`, `pv.value.materialization`, `pv.value.array`, `pv.value.call_result`):
+  before each of the 13 increments that bind their birth, a call gives what the x86 probe reads in its registers and
+  frame (an object and its VarInfo, an operand and its object, an array's promotion and the element's index, or a
+  call, its output and its type). The table gives each site's bindings.
 * The scalarization bindings (`pv.scalar.*`): `IRO_ScalarizeClassDataMembers` names the part whose temporary
   `create_temp_object` makes next.
 
-The other streams' probes (expressions, dispatch, coalescing, the bindings of births to objects and operands,
-materializations, call results, and call arguments' contexts) are not in gc2's sources yet, so those streams are
-absent from the module's traces, or partial. A birth's `expression` and the counts a function's end gives of them
+The other streams' probes (expressions, dispatch, coalescing and call arguments' contexts) are not in gc2's sources
+yet, so those streams are absent from the module's traces, or partial. A birth's `expression` and the counts a function's end gives of them
 differ. Use `MWCC_IN_PROCESS=0` to run the x86 oracle for them.
 
 `corpus --source-arenas` (or `--source-nodes`) traces those streams and compares them with `--trace-reference`'s, the
@@ -157,9 +160,9 @@ x86 oracle's. Addresses are masked, but not the original's sites. Between two ot
 compared as a multiset, without their numbers and the pool's free space: their order follows the order in which the
 compiler evaluates a call's arguments, which C leaves unspecified (MWCC evaluates them from the last, clang from the
 first: `pclabel(makepcblock(), makepclabel())` allocates the label first in the original). Nothing joins two traces
-by these numbers. With `--all-traces`, the functions' beginnings, the counters' changes and ranges and the
-scalarization bindings are compared too (the births are, but for their `expression`: 268 of the 574 increments on the
-canaries). On the canaries, for 2.6 and 2.7, the streams compare equal but for the inputs that stop on too many
+by these numbers. With `--all-traces`, the functions' beginnings, the counters' changes and ranges, the births
+and their bindings (but for a birth's `expression`) and the scalarization bindings are compared too. The canaries reach
+268 of the 574 increments, with Echoes 300 (20 of the 62 in inlined calls); Echoes' counter records compare equal too. On the canaries, for 2.6 and 2.7, the streams compare equal but for the inputs that stop on too many
 errors. Those report a user break, and how far the compiler gets before it checks for one depends on the clock
 (`CWUserBreak` every 8 ticks), in the original too.
 

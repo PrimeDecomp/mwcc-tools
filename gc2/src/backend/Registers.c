@@ -72,6 +72,7 @@ void assign_register_to_variable(Object* obj, RegClass rclass) {
 
     vi = Registers_GetVarInfo(obj);
     if (optimizing) {
+        ORACLE_PROBE(OracleProbe_Binding(obj, vi, NULL));
         reg = ALLOC_REG(rclass);
     } else {
         reg = obtain_nonvolatile_register(rclass);

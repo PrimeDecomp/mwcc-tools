@@ -470,13 +470,14 @@ unsafe fn object_binding(r: &Registers, d: &Descriptor, function: u32, value: u3
         if d.object_binding == 0 {
             return;
         }
-        let (object, info) = match d.object_binding {
+        let (object, info) = match (d.object_binding, probe_binding()) {
+            (1..=3, Some([object, info, _])) => (object as *const u8, info as *const u8),
             // The island's CALL return slot is in addition to PUSHFD's slot.
-            1 => (
+            (1, None) => (
                 read::<*const u8>(r.slot(3).unwrap().wrapping_add(8) as *const u8, 0x1c),
                 r.slot(4).unwrap() as *const u8,
             ),
-            2 | 3 => (
+            (2 | 3, None) => (
                 r.slot(4).unwrap() as *const u8,
                 r.slot(0).unwrap() as *const u8,
             ),
@@ -527,8 +528,9 @@ unsafe fn operand_binding(r: &Registers, d: &Descriptor, function: u32, value: u
         if d.operand_binding == 0 {
             return;
         }
-        let operand = r.slot(4).unwrap_or(0) as *const u8;
-        let object = r.slot(2).unwrap_or(0) as *const u8;
+        let [operand, object, _] = probe_binding()
+            .unwrap_or([r.slot(4).unwrap_or(0), r.slot(2).unwrap_or(0), 0])
+            .map(|v| v as *const u8);
         if !matches!(d.operand_binding, 1 | 2)
             || operand.is_null()
             || object.is_null()
@@ -601,8 +603,15 @@ unsafe fn bounded_hex(text: *const u8, limit: usize) -> (usize, bool) {
 /// and consuming loop establish the original object and element meanings.
 unsafe fn array_origin(r: &Registers, function: u32, value: u32, class: u32, register: u32) {
     unsafe {
-        let promotion = r.slot(1).unwrap_or(0) as *const u8; // ESI
-        let index = r.slot(6).unwrap_or(u32::MAX); // ECX
+        // (ESI and ECX, and EAX the register; or what gc2's probe gives)
+        let [promotion, index, _] =
+            probe_binding().unwrap_or([r.slot(1).unwrap_or(0), r.slot(6).unwrap_or(u32::MAX), 0]);
+        let promotion = promotion as *const u8;
+        let accumulator = if probe_binding().is_some() {
+            Some(register)
+        } else {
+            r.slot(7)
+        };
         if promotion.is_null() {
             OracleTrace_Printf(
                 c"pv.gap function=%lu value=%lu reason=array_origin_null\n".as_ptr(),
@@ -624,7 +633,7 @@ unsafe fn array_origin(r: &Registers, function: u32, value: u32, class: u32, reg
             || flags & 1 != 0
             || !matches!(class, 3 | 4)
             || (flags & 2 != 0) != (class == 3)
-            || r.slot(7) != Some(register)
+            || accumulator != Some(register)
         {
             OracleTrace_Printf(
                 c"pv.gap function=%lu value=%lu reason=array_origin_bounds\n".as_ptr(),
@@ -680,15 +689,23 @@ unsafe fn call_result_origin(
     binding: u32,
 ) {
     unsafe {
+        // (call_function's expression, output and result type: in its frame and EAX, or what gc2's probe gives)
         let stack = r.slot(3).unwrap_or(0).wrapping_add(8) as *const u8;
-        let item = read::<*const u8>(stack, 0x64);
-        let output = r.slot(7).unwrap_or(0) as *const u8;
-        let return_type = read::<*const u8>(stack, 0xc);
+        let probe = probe_binding();
+        let [item, output, return_type] = probe
+            .unwrap_or_else(|| {
+                [
+                    read::<u32>(stack, 0x64),
+                    r.slot(7).unwrap_or(0),
+                    read::<u32>(stack, 0xc),
+                ]
+            })
+            .map(|v| v as *const u8);
         let part = binding - 1;
         if item.is_null()
             || output.is_null()
             || return_type.is_null()
-            || read::<*const u8>(stack, 0x68) != output
+            || (probe.is_none() && read::<*const u8>(stack, 0x68) != output)
             || !matches!(item.read(), 54 | 55)
         {
             OracleTrace_Printf(
@@ -1073,9 +1090,13 @@ unsafe fn unit_of(file: *const core::ffi::c_char) -> u8 {
     }
 }
 
-/// The original's site of the write at LINE of UNIT, in the inlined calls being made: at the outermost call of the
-/// same file the original inlines it at, or at none.
-unsafe fn increment_site(file: *const core::ffi::c_char, unit: u8, line: u16) -> Option<u32> {
+/// The original's site of the write at LINE of UNIT, in the inlined calls being made (at the outermost call of the
+/// same file the original inlines it at, or at none), and its bindings.
+unsafe fn increment_site(
+    file: *const core::ffi::c_char,
+    unit: u8,
+    line: u16,
+) -> Option<(u32, [u8; 3])> {
     unsafe {
         let find = |inlined: u16| {
             crate::counter_sites::SITES
@@ -1091,12 +1112,32 @@ unsafe fn increment_site(file: *const core::ffi::c_char, unit: u8, line: u16) ->
             .filter(|(f, _)| *f == file as usize)
             .find_map(|&(_, call)| find(call as u16))
             .or_else(|| find(0))?;
-        Some(if crate::source_arenas::version() == 4 {
+        let address = if crate::source_arenas::version() == 4 {
             site.4
         } else {
             site.3
-        })
+        };
+        Some((address, site.5))
     }
+}
+
+/// The values gc2's binding probe gave last (OracleProbe_Binding), and whether a binding site's increment is being
+/// observed with them: they stand for the registers and frame the x86 oracle reads there.
+static mut BINDING: [u32; 3] = [0; 3];
+static mut BINDING_ACTIVE: bool = false;
+
+unsafe fn probe_binding() -> Option<[u32; 3]> {
+    unsafe {
+        ptr::addr_of!(BINDING_ACTIVE)
+            .read()
+            .then(|| ptr::addr_of!(BINDING).read())
+    }
+}
+
+/// gc2's probe: the next increments at binding sites bind their births to A, B and C.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn OracleProbe_Binding(a: *const u8, b: *const u8, c: *const u8) {
+    unsafe { ptr::addr_of_mut!(BINDING).write([a as u32, b as u32, c as u32]) }
 }
 
 /// gc2's probe (`include/compiler/OracleProbes.h`): a call the original inlines, at LINE of FILE, begins.
@@ -1141,11 +1182,15 @@ pub unsafe extern "C" fn OracleProbe_CounterIncrement(
             return old;
         };
         match increment_site(file, unit, line as u16) {
-            Some(site) => observe(
-                &Registers::accumulator(0),
-                site,
-                &globals.descriptor(1, rclass),
-            ),
+            Some((site, [object, operand, origin])) => {
+                let mut descriptor = globals.descriptor(1, rclass);
+                descriptor.object_binding = object.into();
+                descriptor.operand_binding = operand.into();
+                descriptor.origin_binding = origin.into();
+                ptr::addr_of_mut!(BINDING_ACTIVE).write(object | operand | origin != 0);
+                observe(&Registers::accumulator(0), site, &descriptor);
+                ptr::addr_of_mut!(BINDING_ACTIVE).write(false);
+            }
             // (a write the original's probes do not cover)
             None if crate::counter_sites::NONE.contains(&(unit, line as u16)) => {}
             None => {
