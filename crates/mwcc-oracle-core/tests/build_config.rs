@@ -1,4 +1,7 @@
-use mwcc_oracle_core::build_config::{self, Platform, Request};
+use mwcc_oracle_core::{
+    build_config::{self, Platform, Request},
+    relink_check,
+};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::{fs, path::PathBuf};
@@ -239,8 +242,8 @@ fn rust_hook_builds_are_regenerable_and_require_the_migrated_abi() {
         assert!(ninja.contains(&format!("crates/mwcc-oracle-hooks/src/{file}")));
     }
 }
-#[test]
-fn vendored_source_tree_builds_from_its_own_sources_and_split() {
+/// The project with 2.7 and 1.3.2 built from a vendored tree, gc2/ (1.3.2 with 2.7's sources).
+fn vendored_project() -> tempfile::TempDir {
     let root = project();
     let path = root.path();
     let write = |relative: &str, text: &str| {
@@ -275,6 +278,13 @@ fn vendored_source_tree_builds_from_its_own_sources_and_split() {
         "gc2/include/version.h",
         "#define VERSION_GC_2_6 4\n#define VERSION_GC_2_7 5\n",
     );
+    root
+}
+
+#[test]
+fn vendored_source_tree_builds_from_its_own_sources_and_split() {
+    let root = vendored_project();
+    let path = root.path();
     for version in ["GC_2_7", "GC_1_3_2"] {
         let request = |oracle| Request {
             version: version.into(),
@@ -320,4 +330,17 @@ fn vendored_source_tree_builds_from_its_own_sources_and_split() {
             "{version}: the oracle build uses the tree"
         );
     }
+}
+
+#[test]
+fn relink_check_leaves_the_state_alone_without_write() {
+    let root = vendored_project();
+    let state = root.path().join("gc2/config/GC_2_7/state.json");
+    let before = fs::read(&state).unwrap();
+    // (nothing is built, so the check stops before its trial links)
+    let error = relink_check::run(root.path(), "GC_2_7", "mwcc-tools", false)
+        .err()
+        .unwrap();
+    assert!(error.to_string().contains("is not built"), "{error:#}");
+    assert_eq!(fs::read(&state).unwrap(), before);
 }

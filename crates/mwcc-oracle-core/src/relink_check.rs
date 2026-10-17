@@ -14,6 +14,20 @@ pub struct Outcome {
     pub links: usize,
 }
 
+/// Puts state.json back as it was unless the new one is kept.
+struct Restore<'a> {
+    path: &'a Path,
+    original: Option<Vec<u8>>,
+}
+
+impl Drop for Restore<'_> {
+    fn drop(&mut self) {
+        if let Some(original) = self.original.take() {
+            let _ = fs::write(self.path, original);
+        }
+    }
+}
+
 struct Trial<'a> {
     root: &'a Path,
     version: &'a str,
@@ -70,12 +84,17 @@ impl Trial<'_> {
 }
 
 /// Try VERSION's compiled candidates (built beforehand: ninja all_source). With WRITE, the tree's state.json gets
-/// the units that do not link as its `relink_exclude`.
+/// the units that do not link as its `relink_exclude`; without, state.json is left as it was.
 pub fn run(root: &Path, version: &str, tools: &str, write: bool) -> Result<Outcome> {
     let tree = SourceTree::of(root, version, false)?;
     ensure!(tree.vendored(), "{version} builds from no source tree");
     let state_path = root.join(&tree.config_dir).join("state.json");
-    let mut state: Value = serde_json::from_slice(&fs::read(&state_path)?)?;
+    let original = fs::read(&state_path)?;
+    let mut state: Value = serde_json::from_slice(&original)?;
+    let mut restore = Restore {
+        path: &state_path,
+        original: Some(original),
+    };
     // (every Matching source is a candidate again, those excluded before too)
     state["relink_exclude"] = json!({});
     fs::write(&state_path, serde_json::to_string_pretty(&state)? + "\n")?;
@@ -127,7 +146,9 @@ pub fn run(root: &Path, version: &str, tools: &str, write: bool) -> Result<Outco
             .collect::<serde_json::Map<_, _>>()
             .into();
         fs::write(&state_path, serde_json::to_string_pretty(&state)? + "\n")?;
+        restore.original = None;
     }
+    drop(restore);
     Ok(Outcome {
         accepted,
         rejected,
