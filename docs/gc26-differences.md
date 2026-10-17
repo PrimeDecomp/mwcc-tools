@@ -77,6 +77,9 @@ scalarizer and the CSE hooks. The struct offsets the hooks read are therefore 2.
   * `#pragma inline_bottom_up off` gives `auto=0`.
   * `inl.begin` gives `kind=6` for ordinary inline functions.
 
+* The PCode opcode numbers are 2.7's (and so 1.3.2's): the assembler's mnemonic table (stride 20, `{name*, u16 PC_op, ...}`)
+  maps the same 1058 mnemonics to the same numbers.
+
 **Data moved, and the layout did not.**
 
 * `copts` is at 0x5EB092, 0x4000 below 2.7's 0x5EF092. Every operand of the matched functions in its range moves by
