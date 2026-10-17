@@ -88,6 +88,7 @@ jobs:
         run: |
           cargo clippy --locked -p mwcc-oracle-hooks --target i686-pc-windows-msvc --features frontend-gc13 -- -D warnings
           cargo clippy --locked -p mwcc-oracle-hooks --target i686-pc-windows-msvc --features frontend-gc132 -- -D warnings
+          cargo clippy --locked -p mwcc-oracle-hooks --target i686-pc-windows-msvc --features frontend-gc26 -- -D warnings
           cargo clippy --locked -p mwcc-oracle-hooks --target i686-pc-windows-msvc --features frontend-gc27 -- -D warnings
       - name: Test synthetic reference fixtures
         run: cargo test --locked --workspace
@@ -99,6 +100,7 @@ jobs:
         run: |
           cargo run --locked -p mwcc-tools -- build-hooks build/frontend13.obj --frontend-version GC_1_3
           cargo run --locked -p mwcc-tools -- build-hooks build/frontend132.obj --frontend-version GC_1_3_2
+          cargo run --locked -p mwcc-tools -- build-hooks build/frontend26.obj --frontend-version GC_2_6
           cargo run --locked -p mwcc-tools -- build-hooks build/frontend27.obj --frontend-version GC_2_7
       - name: Collect macOS dependency and Rust library notices
         if: runner.os == 'macOS'

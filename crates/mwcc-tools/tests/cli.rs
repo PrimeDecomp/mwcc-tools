@@ -193,7 +193,7 @@ fn configure_defaults_to_rust_and_preserves_the_explicit_c_rollback() {
         )
         .unwrap();
     }
-    for version in ["GC_1_3", "GC_1_3_2", "GC_2_7"] {
+    for version in ["GC_1_3", "GC_1_3_2", "GC_2_6", "GC_2_7"] {
         let directory = root.join("config").join(version);
         fs::create_dir_all(&directory).unwrap();
         for file in ["config.json", "splits.txt"] {
@@ -405,10 +405,10 @@ fn verification_cli_rejects_failed_ninja_even_when_old_success_markers_exist() {
         .unwrap();
     assert!(!output.status.success());
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert_eq!(stdout.matches("FAILED").count(), 8, "{stdout}");
+    assert_eq!(stdout.matches("FAILED").count(), 9, "{stdout}");
     assert_eq!(
         stdout.matches("deliberate Ninja failure").count(),
-        8,
+        9,
         "{stdout}"
     );
     assert!(!stdout.contains("STALE success"));

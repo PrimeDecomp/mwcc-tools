@@ -460,7 +460,7 @@ fn parse_event(r: &Record) -> Result<Event> {
             let pools = hex(r, "pools")?;
             let lock = hex(r, "lock")?;
             ensure!(
-                (1..=3).contains(&version) && pools != 0 && lock != 0,
+                (1..=4).contains(&version) && pools != 0 && lock != 0,
                 "invalid arena header"
             );
             EventKind::Begin {

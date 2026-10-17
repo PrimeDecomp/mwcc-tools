@@ -40,7 +40,7 @@ fn fixture() -> tempfile::TempDir {
             br#"{"sha1":"0123456789012345678901234567890123456789"}"#,
         );
     }
-    for version in ["GC_1_3", "GC_1_3_2", "GC_2_7"] {
+    for version in ["GC_1_3", "GC_1_3_2", "GC_2_6", "GC_2_7"] {
         put(
             root.path(),
             &format!("config/{version}/symbols.txt"),

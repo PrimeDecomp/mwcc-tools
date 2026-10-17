@@ -566,7 +566,7 @@ impl Validator {
                 );
                 let version = r.number("version")?;
                 ensure!(
-                    (1..=3).contains(&version),
+                    (1..=4).contains(&version),
                     "unsupported source compiler version"
                 );
                 self.history.version = Some(version);

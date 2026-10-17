@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{collections::BTreeSet, fs, path::Path};
 pub mod depfile;
-pub const VERSIONS: [&str; 8] = [
+pub const VERSIONS: [&str; 9] = [
     "GC_1_0",
     "GC_1_1",
     "GC_1_1p1",
@@ -13,6 +13,7 @@ pub const VERSIONS: [&str; 8] = [
     "GC_1_2_5n",
     "GC_1_3",
     "GC_1_3_2",
+    "GC_2_6",
     "GC_2_7",
 ];
 pub const PRIMARY: &str = "GC_1_2_5";

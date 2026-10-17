@@ -25,6 +25,7 @@ Supported versions:
 - `GC_1_2_5n`: GameCube 1.2.5n (1.2.5 with Ninji's patch)
 - `GC_1_3`: GameCube 1.3
 - `GC_1_3_2`: GameCube 1.3.2 (split and relinked; no sources of its own, see `docs/gc132-differences.md`)
+- `GC_2_6`: GameCube 2.6 (split and relinked from 2.7's symbols; no sources of its own, see `docs/gc26-differences.md`)
 - `GC_2_7`: GameCube 2.7 (split and relinked from 1.3.2's symbols; no sources of its own, see `docs/gc27-differences.md`)
 
 Dependencies
@@ -69,9 +70,9 @@ from the compiled objects of the Matching sources and the split objects of the o
 original's SHA-1. A source is Matching when its object, code and data, links into the original. For the other versions,
 each compiled function is compared with the original's; `ninja` fails when a function of a Matching source differs.
 
-`mwcc-tools verify` builds and checks all eight versions and each Matching source's functions.
+`mwcc-tools verify` builds and checks all nine versions and each Matching source's functions.
 
-For 1.3, 1.3.2 and 2.7, the [oracle tools](docs/oracle.md) explain register
+For 1.3, 1.3.2, 2.6 and 2.7, the [oracle tools](docs/oracle.md) explain register
 assignment, inlining, scheduling and stack layout using the original compiler's trace.
 
 Diffing

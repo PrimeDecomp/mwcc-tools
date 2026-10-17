@@ -107,7 +107,7 @@ fn role(version: &str, r: &Reference) -> Result<Role> {
         "_fn_00506cd0" => Ok(Role::AllocationReset),
         "_fn_004fca40" if version == "GC_1_3" => Ok(Role::Rewind),
         "_fn_004fd4f0" if version == "GC_1_3_2" => Ok(Role::Rewind),
-        "_fn_004fe270" if version == "GC_2_7" => Ok(Role::Rewind),
+        "_fn_004fe270" if ["GC_2_6", "GC_2_7"].contains(&version) => Ok(Role::Rewind),
         _ => bail!("unclassified retail counter write at {:#x}", r.address),
     }
 }
@@ -136,6 +136,7 @@ pub fn plan(root: &Path, version: &str) -> Result<Vec<Site>> {
             match version {
                 "GC_1_3" => "88000852a003dd11fdb26a09aa0478f824455ed1085d95aaca22ca3c892be775",
                 "GC_1_3_2" => "9be52856aced363fcf061bb65d04c374551da079d16f88bb35a4718d45cec2dc",
+                "GC_2_6" => "661952cee2725f163136ce15fce88cd57992390f90cadeea7224709227a3e924",
                 "GC_2_7" => "d5dc7b3e3f3af83612de6d9abbecc79e0007f709299e049bcc3d301fdab8481a",
                 _ => unreachable!(),
             },
@@ -146,6 +147,7 @@ pub fn plan(root: &Path, version: &str) -> Result<Vec<Site>> {
             match version {
                 "GC_1_3" => "50733c3c5312a6e3c44affbad1c4dd39ec3aef9d33bef0d0a38a4337622433f1",
                 "GC_1_3_2" => "e08fcf3949adf20eb89dde10ccc0f05b671d1e97875642f412505aa9ba923483",
+                "GC_2_6" => "2390155a13678b3dbcbaa6b7aee6b1ca4b2e186480cbac2e9dc17a2554cd663c",
                 "GC_2_7" => "06de28c6947a8d5470191498dcff2b2cc29b955634759550edc67c6bde6afcfe",
                 _ => unreachable!(),
             },
@@ -156,6 +158,7 @@ pub fn plan(root: &Path, version: &str) -> Result<Vec<Site>> {
             match version {
                 "GC_1_3" => "a2ee6b2cb813b5b24ff22f8764ae4ddaa4a787d7fa3a91f452e683838d0e79e1",
                 "GC_1_3_2" => "cada9817ceac0a35abc55a941fec25e290316d57ea3010d000d574bdc8d36b33",
+                "GC_2_6" => "30d603132533c3a708f3ad3da47d9e02ec595a331de0a9b9678648791e6b75b3",
                 "GC_2_7" => "23d41eee3041387ab0cc7f97c6d8de2d628f029853b03293bebe59659f03aa29",
                 _ => unreachable!(),
             },
@@ -178,9 +181,13 @@ pub fn plan(root: &Path, version: &str) -> Result<Vec<Site>> {
     decoder.set_detail(true)?;
     let mut sites = vec![];
     // The reconstructed Object header still has the GC 1.3 data suffix in all
-    // versions. Retail GC 2.7 omits that two-byte field. Use guarded retail
+    // versions. Retail GC 2.6 and 2.7 omit that two-byte field. Use guarded retail
     // cache accesses, not sizeof/offsetof on that reconstructed declaration.
-    let data_link_offset = if version == "GC_2_7" { 54 } else { 56 };
+    let data_link_offset = if ["GC_2_6", "GC_2_7"].contains(&version) {
+        54
+    } else {
+        56
+    };
     let cache_function = metadata
         .iter()
         .find(|s| s.name == "_COptimizer_GetFunctionObject")
@@ -215,6 +222,11 @@ pub fn plan(root: &Path, version: &str) -> Result<Vec<Site>> {
             "_fn_004e10c0",
             "7d4343a886a40c4dff88f279a091567a016d93b834b6d4fe187fee93171b9d0e",
             [0x4e231a, 0x4e2326],
+        ),
+        "GC_2_6" => (
+            "_fn_004e1d90",
+            "7d4343a886a40c4dff88f279a091567a016d93b834b6d4fe187fee93171b9d0e",
+            [0x4e316a, 0x4e3176],
         ),
         "GC_2_7" => (
             "_fn_004e1d90",
@@ -265,6 +277,7 @@ pub fn plan(root: &Path, version: &str) -> Result<Vec<Site>> {
     let builder_hash = match version {
         "GC_1_3" => "084ecf59c2d0aaf301f2581df94d468013b1df8a3fff018327f6314e91b4cd37",
         "GC_1_3_2" => "b011ab9c2d7652b78e6f00abab6468fccf52f501a72beb39a3601cae6730e217",
+        "GC_2_6" => "e9a67312f1baf4b3b9a5e554a987ac404c9a1497f6eb3c4c34e9ad43bd6034ba",
         "GC_2_7" => "aa78233ab4f31a3906968dad68aacb7470763b4f386871873e83c6a3083ae00b",
         _ => unreachable!(),
     };
@@ -370,7 +383,7 @@ pub fn plan(root: &Path, version: &str) -> Result<Vec<Site>> {
     let expected = match version {
         "GC_1_3" => 570,
         "GC_1_3_2" => 571,
-        "GC_2_7" => 578,
+        "GC_2_6" | "GC_2_7" => 578,
         _ => unreachable!(),
     };
     ensure!(
@@ -382,7 +395,7 @@ pub fn plan(root: &Path, version: &str) -> Result<Vec<Site>> {
     let generator = match version {
         "GC_1_3" => 0x433590,
         "GC_1_3_2" => 0x433310,
-        "GC_2_7" => 0x4333f0,
+        "GC_2_6" | "GC_2_7" => 0x4333f0,
         _ => unreachable!(),
     };
     ensure!(
@@ -626,7 +639,7 @@ pub fn install(root: &Path, version: &str, inputs: &[(String, Vec<u8>)]) -> Resu
                 ("GC_1_3_2", "_fn_00460780") => {
                     "646bd4f9909f58c6a7f4a5bea4d11b7142e167020f79fe14108a7f416540797f"
                 }
-                ("GC_2_7", "_fn_00460780") => {
+                ("GC_2_6" | "GC_2_7", "_fn_00460780") => {
                     "c6033a48c09cb6aaabe3ed9ee04891d3067a1e90fc3497ec521ef5645d9cb4fe"
                 }
                 ("GC_1_3", "_fn_004601f0") => {
@@ -635,7 +648,7 @@ pub fn install(root: &Path, version: &str, inputs: &[(String, Vec<u8>)]) -> Resu
                 ("GC_1_3_2", "_fn_004601f0") => {
                     "233250dac2d5aa99f7feb8d2b37c383df67a3a357944efcee5cbfb5d94896140"
                 }
-                ("GC_2_7", "_fn_004601f0") => {
+                ("GC_2_6" | "GC_2_7", "_fn_004601f0") => {
                     "e20d28166fb5c73263bead158939639bdd0039dc27e6fa137274224b7935c357"
                 }
                 ("GC_1_3", "_create_temp_object") => {
@@ -643,6 +656,9 @@ pub fn install(root: &Path, version: &str, inputs: &[(String, Vec<u8>)]) -> Resu
                 }
                 ("GC_1_3_2", "_create_temp_object") => {
                     "e38b575766bf848f91a6893638daf76231e92d0d1ee4004858e28e62744be1ba"
+                }
+                ("GC_2_6", "_create_temp_object") => {
+                    "de1a36122c4793c81071fd47ac8f184852712ccb63bf53fca14c86f13007d980"
                 }
                 ("GC_2_7", "_create_temp_object") => {
                     "be61889a29289834952d942e7419e9d2441430b169ac096773d1db2532d00404"

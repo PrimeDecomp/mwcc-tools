@@ -53,7 +53,7 @@ pub struct Audit {
 }
 pub fn capture(root: &Path, version: &str) -> Result<Audit> {
     ensure!(
-        ["GC_1_3", "GC_1_3_2", "GC_2_7"].contains(&version),
+        ["GC_1_3", "GC_1_3_2", "GC_2_6", "GC_2_7"].contains(&version),
         "unsupported expression-dispatch version"
     );
     let original = Original::read(root, version)?;

@@ -64,12 +64,16 @@ pub fn plan(mode: Mode) -> Vec<Step> {
         })
         .collect();
     if mode == Mode::Gates {
-        steps.extend(["GC_1_3", "GC_1_3_2", "GC_2_7"].into_iter().map(|v| Step {
-            version: v.into(),
-            mode: Some("link".into()),
-            split_only: v != "GC_1_3",
-            target: Some(format!("build/{v}/ok")),
-        }));
+        steps.extend(
+            ["GC_1_3", "GC_1_3_2", "GC_2_6", "GC_2_7"]
+                .into_iter()
+                .map(|v| Step {
+                    version: v.into(),
+                    mode: Some("link".into()),
+                    split_only: v != "GC_1_3",
+                    target: Some(format!("build/{v}/ok")),
+                }),
+        );
     }
     steps
 }

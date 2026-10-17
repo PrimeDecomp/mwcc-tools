@@ -151,6 +151,22 @@
       },
       {
         "command": "configure",
+        "version": "GC_2_6"
+      },
+      {
+        "command": "ninja",
+        "version": "GC_2_6",
+        "targets": []
+      },
+      {
+        "command": "ninja",
+        "version": "GC_2_6",
+        "targets": [
+          "progress"
+        ]
+      },
+      {
+        "command": "configure",
         "version": "GC_2_7"
       },
       {
@@ -183,7 +199,7 @@
       }
     ],
     "exit_code": 0,
-    "stdout": "GC_1_0 synthetic completion\nGC_1_1 synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\nGC_1_1p1 synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\nGC_1_2_5n synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\nGC_1_3 synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\nGC_1_3_2 synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\nGC_2_7 synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\nGC_1_2_5 synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\n"
+    "stdout": "GC_1_0 synthetic completion\nGC_1_1 synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\nGC_1_1p1 synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\nGC_1_2_5n synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\nGC_1_3 synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\nGC_1_3_2 synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\nGC_2_6 synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\nGC_2_7 synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\nGC_1_2_5 synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\n"
   },
   {
     "name": "differing",
@@ -344,6 +360,22 @@
       },
       {
         "command": "configure",
+        "version": "GC_2_6"
+      },
+      {
+        "command": "ninja",
+        "version": "GC_2_6",
+        "targets": []
+      },
+      {
+        "command": "ninja",
+        "version": "GC_2_6",
+        "targets": [
+          "progress"
+        ]
+      },
+      {
+        "command": "configure",
         "version": "GC_2_7"
       },
       {
@@ -376,7 +408,7 @@
       }
     ],
     "exit_code": 1,
-    "stdout": "GC_1_0 synthetic completion\nGC_1_1 synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\n  differs: a/diff\n  differs: a/missing_percent\nGC_1_1p1 synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\n  differs: a/diff\n  differs: a/missing_percent\nGC_1_2_5n synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\n  differs: a/diff\n  differs: a/missing_percent\nGC_1_3 synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\n  differs: a/diff\n  differs: a/missing_percent\nGC_1_3_2 synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\n  differs: a/diff\n  differs: a/missing_percent\nGC_2_7 synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\n  differs: a/diff\n  differs: a/missing_percent\nGC_1_2_5 synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\n  differs: a/diff\n  differs: a/missing_percent\n"
+    "stdout": "GC_1_0 synthetic completion\nGC_1_1 synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\n  differs: a/diff\n  differs: a/missing_percent\nGC_1_1p1 synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\n  differs: a/diff\n  differs: a/missing_percent\nGC_1_2_5n synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\n  differs: a/diff\n  differs: a/missing_percent\nGC_1_3 synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\n  differs: a/diff\n  differs: a/missing_percent\nGC_1_3_2 synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\n  differs: a/diff\n  differs: a/missing_percent\nGC_2_6 synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\n  differs: a/diff\n  differs: a/missing_percent\nGC_2_7 synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\n  differs: a/diff\n  differs: a/missing_percent\nGC_1_2_5 synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\n  differs: a/diff\n  differs: a/missing_percent\n"
   },
   {
     "name": "failed_build",
@@ -523,6 +555,22 @@
       },
       {
         "command": "configure",
+        "version": "GC_2_6"
+      },
+      {
+        "command": "ninja",
+        "version": "GC_2_6",
+        "targets": []
+      },
+      {
+        "command": "ninja",
+        "version": "GC_2_6",
+        "targets": [
+          "progress"
+        ]
+      },
+      {
+        "command": "configure",
         "version": "GC_2_7"
       },
       {
@@ -555,7 +603,7 @@
       }
     ],
     "exit_code": 1,
-    "stdout": "GC_1_0 synthetic completion\nsynthetic Ninja failure\n\nGC_1_1p1 synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\nGC_1_2_5n synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\nGC_1_3 synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\nGC_1_3_2 synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\nGC_2_7 synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\nGC_1_2_5 synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\n"
+    "stdout": "GC_1_0 synthetic completion\nsynthetic Ninja failure\n\nGC_1_1p1 synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\nGC_1_2_5n synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\nGC_1_3 synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\nGC_1_3_2 synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\nGC_2_6 synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\nGC_2_7 synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\nGC_1_2_5 synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\n"
   },
   {
     "name": "failed_progress",
@@ -709,6 +757,22 @@
       },
       {
         "command": "configure",
+        "version": "GC_2_6"
+      },
+      {
+        "command": "ninja",
+        "version": "GC_2_6",
+        "targets": []
+      },
+      {
+        "command": "ninja",
+        "version": "GC_2_6",
+        "targets": [
+          "progress"
+        ]
+      },
+      {
+        "command": "configure",
         "version": "GC_2_7"
       },
       {
@@ -741,6 +805,6 @@
       }
     ],
     "exit_code": 1,
-    "stdout": "GC_1_0 synthetic completion\nsynthetic Ninja failure\n\nGC_1_1p1 synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\nGC_1_2_5n synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\nGC_1_3 synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\nGC_1_3_2 synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\nGC_2_7 synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\nGC_1_2_5 synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\n"
+    "stdout": "GC_1_0 synthetic completion\nsynthetic Ninja failure\n\nGC_1_1p1 synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\nGC_1_2_5n synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\nGC_1_3 synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\nGC_1_3_2 synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\nGC_2_6 synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\nGC_2_7 synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\nGC_1_2_5 synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\n"
   }
 ]

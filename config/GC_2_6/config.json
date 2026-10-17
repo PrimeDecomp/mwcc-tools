@@ -1,0 +1,68 @@
+{
+  "original": "build/compilers/GC/2.6/mwcceppc.exe",
+  "sha1": "1110a7a9924a09a608967efdf79ecf09900344e7",
+  "mode": "link",
+  "validate_units": true,
+  "imports": [
+    "config/kernel32_27.def",
+    "config/version.def"
+  ],
+  "compilers": {
+    "pro53": "pro6",
+    "pro5": "pro53"
+  },
+  "matching": [],
+  "compiler_overrides": {
+    "src/driver/CLStaticMain.c": "pro53",
+    "src/driver/cc-eabi-ppc-mw.c": "pro53"
+  },
+  "sym_on": [
+    "src/driver/CWParserPluginsPrivate.c",
+    "src/driver/CWParserPluginsPrivate13.cpp",
+    "src/driver/libimp-eabi-ppc.c"
+  ],
+  "sym_off": [
+    "src/backend/MachineSimulation603.c",
+    "src/frontend/CError.c"
+  ],
+  "oracle": {
+    "template": "src/backend/Coloring.c",
+    "extra": [
+      "src/oracle/Hooks.c"
+    ],
+    "hooks": [
+      "_fn_00460780",
+      "_fn_00460c90",
+      "_setup_inline_locals_and_arguments",
+      "_fn_004601f0",
+      "_create_temp_object",
+      "_fn_00454030",
+      "_fn_00506cd0",
+      "_fn_00560c80",
+      "_fn_0055e540",
+      "_fn_00561260",
+      "_fn_00507070",
+      "_fn_00506f50",
+      "_fn_004f7fb0",
+      "_schedule_block",
+      "_select_ready_coloring_node",
+      "_fn_0055e600",
+      "_inline_statement",
+      "_generate_inline_statements",
+      "_fn_0055c730",
+      "_CInline_AddFunctionPrecNode",
+      "_CInline_AddSpecialization",
+      "_CTemplateNew_InstantiateInlineTemplateObject",
+      "_CTemplateNew_InstantiateFunction",
+      "_generate_inline_code",
+      "_fn_0050f240",
+      "_fn_00436390",
+      "_COptimizer_Optimize",
+      "_Peephole_MergeAdjacentBlocks",
+      "_IRO_CommonSubs",
+      "_move_common_sub",
+      "_IroDump_Print"
+    ],
+    "units": []
+  }
+}

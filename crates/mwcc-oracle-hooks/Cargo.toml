@@ -11,6 +11,7 @@ trace-output = []
 frontend = []
 frontend-gc13 = ["frontend"]
 frontend-gc132 = ["frontend"]
+frontend-gc26 = ["frontend"]
 frontend-gc27 = ["frontend"]
 
 [lib]

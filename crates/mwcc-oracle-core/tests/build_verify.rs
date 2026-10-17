@@ -157,6 +157,7 @@ fn gates_preserve_the_full_matrix_and_restore_the_primary_configuration() {
             "GC_1_3",
             "GC_1_3 link",
             "GC_1_3_2 link",
+            "GC_2_6 link",
             "GC_2_7 link"
         ]
     );
@@ -166,7 +167,7 @@ fn gates_preserve_the_full_matrix_and_restore_the_primary_configuration() {
             .filter(|s| s.split_only)
             .map(|s| s.version.as_str())
             .collect::<Vec<_>>(),
-        ["GC_1_3_2", "GC_2_7"]
+        ["GC_1_3_2", "GC_2_6", "GC_2_7"]
     );
     for step in &steps[6..] {
         assert_eq!(step.target, Some(format!("build/{}/ok", step.version)));
@@ -179,7 +180,7 @@ fn gates_preserve_the_full_matrix_and_restore_the_primary_configuration() {
     let report =
         build_verify::run_with(&request(root.path(), Mode::Gates), &mut backend, |_| {}).unwrap();
     assert!(!report.passed);
-    assert_eq!(report.steps.len(), 9);
+    assert_eq!(report.steps.len(), 10);
     assert_eq!(backend.active, build_config::PRIMARY);
     assert!(
         backend

@@ -108,6 +108,24 @@
         ]
       }
     },
+    "GC_2_6": {
+      "original": "build/compilers/GC/2.6/mwcceppc.exe",
+      "matching": [],
+      "imports": [
+        "config/kernel.def",
+        "config/version.def"
+      ],
+      "oracle": {
+        "template": "src/a.c",
+        "units": [],
+        "extra": [
+          "src/oracle/Hooks.c"
+        ],
+        "hooks": [
+          "_entry"
+        ]
+      }
+    },
     "GC_2_7": {
       "original": "build/compilers/GC/2.7/mwcceppc.exe",
       "matching": [],
@@ -134,6 +152,7 @@
     "GC_1_2_5n": "Sections:\n\t.text type:code align:16\n\t.data type:data align:8\n\t.bss type:bss align:8\nsrc/a.c:\n\t.text start:0x00401000 end:0x00401010\nsrc/runtime/main.c:\n\t.text start:0x00401010 end:0x00401020\nsrc/driver/CLWriteObjectFile.c:\n\t.text start:0x00401020 end:0x00401030\nsrc/local.cpp:\n\t.text start:0x00401030 end:0x00401040\ncexc.obj:\n\t.text start:0x00401040 end:0x00401050\nccinit.obj:\n\t.text start:0x00401050 end:0x00401060\ngenerated:\n\t.text start:0x00401060 end:0x00401070\ncommon:\n\t.bss start:0x00403000 end:0x00403008\n",
     "GC_1_3": "Sections:\n\t.text type:code align:16\n\t.data type:data align:8\n\t.bss type:bss align:8\nsrc/a.c:\n\t.text start:0x00401000 end:0x00401010\nsrc/runtime/main.c:\n\t.text start:0x00401010 end:0x00401020\nsrc/driver/CLWriteObjectFile.c:\n\t.text start:0x00401020 end:0x00401030\nsrc/local.cpp:\n\t.text start:0x00401030 end:0x00401040\ncexc.obj:\n\t.text start:0x00401040 end:0x00401050\nccinit.obj:\n\t.text start:0x00401050 end:0x00401060\ngenerated:\n\t.text start:0x00401060 end:0x00401070\ncommon:\n\t.bss start:0x00403000 end:0x00403008\n",
     "GC_1_3_2": "Sections:\n\t.text type:code align:16\n\t.data type:data align:8\n\t.bss type:bss align:8\n\t.rsrc type:data align:4\nsrc/a.c:\n\t.text start:0x00401000 end:0x00401010\nsrc/runtime/main.c:\n\t.text start:0x00401010 end:0x00401020\nsrc/driver/CLWriteObjectFile.c:\n\t.text start:0x00401020 end:0x00401030\nsrc/local.cpp:\n\t.text start:0x00401030 end:0x00401040\ncexc.obj:\n\t.text start:0x00401040 end:0x00401050\nccinit.obj:\n\t.text start:0x00401050 end:0x00401060\ngenerated:\n\t.text start:0x00401060 end:0x00401070\ncommon:\n\t.bss start:0x00403000 end:0x00403008\n",
+    "GC_2_6": "Sections:\n\t.text type:code align:16\n\t.data type:data align:8\n\t.bss type:bss align:8\n\t.rsrc type:data align:4\nsrc/a.c:\n\t.text start:0x00401000 end:0x00401010\nsrc/runtime/main.c:\n\t.text start:0x00401010 end:0x00401020\nsrc/driver/CLWriteObjectFile.c:\n\t.text start:0x00401020 end:0x00401030\nsrc/local.cpp:\n\t.text start:0x00401030 end:0x00401040\ncexc.obj:\n\t.text start:0x00401040 end:0x00401050\nccinit.obj:\n\t.text start:0x00401050 end:0x00401060\ngenerated:\n\t.text start:0x00401060 end:0x00401070\ncommon:\n\t.bss start:0x00403000 end:0x00403008\n",
     "GC_2_7": "Sections:\n\t.text type:code align:16\n\t.data type:data align:8\n\t.bss type:bss align:8\n\t.rsrc type:data align:4\nsrc/a.c:\n\t.text start:0x00401000 end:0x00401010\nsrc/runtime/main.c:\n\t.text start:0x00401010 end:0x00401020\nsrc/driver/CLWriteObjectFile.c:\n\t.text start:0x00401020 end:0x00401030\nsrc/local.cpp:\n\t.text start:0x00401030 end:0x00401040\ncexc.obj:\n\t.text start:0x00401040 end:0x00401050\nccinit.obj:\n\t.text start:0x00401050 end:0x00401060\ngenerated:\n\t.text start:0x00401060 end:0x00401070\ncommon:\n\t.bss start:0x00403000 end:0x00403008\n"
   }
 }

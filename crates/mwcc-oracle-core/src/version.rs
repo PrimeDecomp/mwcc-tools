@@ -20,6 +20,8 @@ pub enum Version {
     Gc13,
     #[serde(rename = "GC_1_3_2")]
     Gc132,
+    #[serde(rename = "GC_2_6")]
+    Gc26,
     #[serde(rename = "GC_2_7")]
     Gc27,
 }
@@ -34,6 +36,7 @@ impl Version {
             "GC_1_2_5n" | "GC/1.2.5n" => Ok(Self::Gc125n),
             "GC_1_3" | "GC/1.3" => Ok(Self::Gc13),
             "GC_1_3_2" | "GC/1.3.2" => Ok(Self::Gc132),
+            "GC_2_6" | "GC/2.6" => Ok(Self::Gc26),
             "GC_2_7" | "GC/2.7" => Ok(Self::Gc27),
             _ => bail!("unsupported oracle compiler version {text}"),
         }
@@ -48,6 +51,7 @@ impl Version {
             Self::Gc125n => "GC_1_2_5n",
             Self::Gc13 => "GC_1_3",
             Self::Gc132 => "GC_1_3_2",
+            Self::Gc26 => "GC_2_6",
             Self::Gc27 => "GC_2_7",
         }
     }
@@ -61,12 +65,13 @@ impl Version {
             Self::Gc125n => "1.2.5n",
             Self::Gc13 => "1.3",
             Self::Gc132 => "1.3.2",
+            Self::Gc26 => "2.6",
             Self::Gc27 => "2.7",
         }
     }
 
     pub fn has_oracle(self) -> bool {
-        matches!(self, Self::Gc13 | Self::Gc132 | Self::Gc27)
+        matches!(self, Self::Gc13 | Self::Gc132 | Self::Gc26 | Self::Gc27)
     }
 }
 
@@ -132,11 +137,14 @@ pub fn function_at(version: Version, address: u32) -> Option<&'static str> {
         LazyLock::new(|| table(include_str!("../../../config/GC_1_3/symbols.txt")));
     static GC132: LazyLock<Vec<Function>> =
         LazyLock::new(|| table(include_str!("../../../config/GC_1_3_2/symbols.txt")));
+    static GC26: LazyLock<Vec<Function>> =
+        LazyLock::new(|| table(include_str!("../../../config/GC_2_6/symbols.txt")));
     static GC27: LazyLock<Vec<Function>> =
         LazyLock::new(|| table(include_str!("../../../config/GC_2_7/symbols.txt")));
     let functions = &match version {
         Version::Gc13 => &*GC13,
         Version::Gc132 => &*GC132,
+        Version::Gc26 => &*GC26,
         Version::Gc27 => &*GC27,
         _ => return None,
     };
@@ -174,12 +182,15 @@ pub fn function_name(version: Version, address: u32) -> Option<String> {
         LazyLock::new(|| table(include_str!("../../../config/GC_1_3/names.txt")));
     static GC132: LazyLock<Vec<Function>> =
         LazyLock::new(|| table(include_str!("../../../config/GC_1_3_2/names.txt")));
+    static GC26: LazyLock<Vec<Function>> =
+        LazyLock::new(|| table(include_str!("../../../config/GC_2_6/names.txt")));
     static GC27: LazyLock<Vec<Function>> =
         LazyLock::new(|| table(include_str!("../../../config/GC_2_7/names.txt")));
     let symbol = function_at(version, address)?;
     let names = match version {
         Version::Gc13 => &*GC13,
         Version::Gc132 => &*GC132,
+        Version::Gc26 => &*GC26,
         Version::Gc27 => &*GC27,
         _ => return Some(symbol.into()),
     };
