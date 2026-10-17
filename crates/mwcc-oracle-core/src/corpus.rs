@@ -261,7 +261,7 @@ pub fn run(request: &Request) -> Result<Report> {
         original.display()
     );
     ensure!(
-        oracle.is_file() || request.in_process.is_some(),
+        runner::runs(&request.root, &oracle) || request.in_process.is_some(),
         "oracle compiler missing: {}",
         oracle.display()
     );

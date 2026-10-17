@@ -230,6 +230,7 @@ pub fn execute_controlled(
     execute_process_controlled(invocation, cancel)
 }
 /// The environment the compiler's process gets: ours, the trace options and file in place of ours.
+#[cfg(feature = "wasm")]
 pub(crate) fn process_environment(invocation: &Invocation<'_>) -> Vec<(String, String)> {
     let mut environment: BTreeMap<String, String> = std::env::vars()
         .filter(|(key, _)| !TRACE_ENV.contains(&key.as_str()))
@@ -242,6 +243,22 @@ pub(crate) fn process_environment(invocation: &Invocation<'_>) -> Vec<(String, S
     environment.into_iter().collect()
 }
 /// Run the executable itself, as a process (the reference a module is compared with).
+/// The module that runs in EXECUTABLE's place (crate::in_process), if any.
+fn module(root: &Path, executable: &Path) -> Option<PathBuf> {
+    #[cfg(feature = "wasm")]
+    return crate::in_process::module(root, executable).map(|(_, module)| module);
+    #[cfg(not(feature = "wasm"))]
+    return {
+        let _ = (root, executable);
+        None
+    };
+}
+
+/// Whether EXECUTABLE can run: it is there, or a module runs in its place.
+pub fn runs(root: &Path, executable: &Path) -> bool {
+    executable.is_file() || module(root, executable).is_some()
+}
+
 pub fn execute_process(invocation: Invocation<'_>) -> Result<Execution> {
     execute_process_controlled(invocation, &|| false)
 }
@@ -474,21 +491,13 @@ pub fn compile_controlled(
         "build/compilers/GC/{}/mwcceppc.exe",
         request.version.compiler_directory()
     ));
-    let in_process = |path: &Path| {
-        #[cfg(feature = "wasm")]
-        return crate::in_process::module(&root, path).map(|(_, module)| module);
-        #[cfg(not(feature = "wasm"))]
-        return None::<PathBuf>;
-    };
-    let fallback = !oracle.is_file()
-        && in_process(&oracle).is_none()
-        && request.original_fallback
-        && original.is_file();
+    let in_process = |path: &Path| module(&root, path);
+    let fallback = !runs(&root, &oracle) && request.original_fallback && original.is_file();
     if fallback {
         oracle = original.clone();
     }
     ensure!(
-        oracle.is_file() || in_process(&oracle).is_some(),
+        runs(&root, &oracle),
         "{} is missing; build the oracle for {}",
         oracle.display(),
         request.version.name()

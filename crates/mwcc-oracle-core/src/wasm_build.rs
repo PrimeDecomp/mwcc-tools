@@ -113,6 +113,8 @@ fn clang_arguments(source: &str, prefix: &str, arguments: &[String]) -> Vec<Stri
         "--target=wasm32-unknown-unknown",
         "-nostdinc",
         "-Iwasm/include",
+        // (the spellings of its headers that a case-sensitive file system lacks)
+        "-Iwasm/include-case",
         "-fms-extensions",
         "-fno-ms-compatibility",
         // (MWCC's enums are as small as their values allow, enumsalwaysint off: the layout the hooks read)

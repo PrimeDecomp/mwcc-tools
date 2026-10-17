@@ -96,6 +96,8 @@ struct Entry {
 
 struct State {
     directory: PathBuf,
+    /// The run's directory as the compiler sees it (guest_path).
+    guest_directory: String,
     program: String,
     version_info: Vec<u8>,
     command_line: String,
@@ -177,9 +179,10 @@ impl Compiler {
     pub fn run(&self, request: &Request) -> Result<Outcome> {
         let state = State {
             directory: plain(request.directory),
-            program: request.program.into(),
+            guest_directory: guest_path(&plain(request.directory).to_string_lossy()),
+            program: guest_path(request.program),
             version_info: request.version_info.to_vec(),
-            command_line: command_line(request.program, request.args),
+            command_line: command_line(&guest_path(request.program), request.args),
             environment: request.environment.to_vec(),
             stdout: vec![],
             stderr: vec![],
@@ -413,12 +416,27 @@ fn heap_alloc(caller: &mut Caller<'_, State>, size: u32, zero: bool) -> Result<u
 
 // ------------------------------------------------------------------------------------------------ paths
 
+/// How the compiler sees the host's PATH: on a Unix host, the file system is drive `Z:` (as wibo has it).
+fn guest_path(path: &str) -> String {
+    if cfg!(windows) {
+        path.to_owned()
+    } else if path.starts_with('/') {
+        format!("Z:{}", path.replace('/', "\\"))
+    } else {
+        path.replace('/', "\\")
+    }
+}
+
 /// The host path of the compiler's PATH, relative ones from the run's directory.
 fn host_path(state: &State, path: &str) -> PathBuf {
     let native = if cfg!(windows) {
         path.to_owned()
     } else {
-        path.replace('\\', "/")
+        let path = path.replace('\\', "/");
+        match path.get(..2) {
+            Some("Z:" | "z:") => path[2..].to_owned(),
+            _ => path,
+        }
     };
     state.directory.join(native)
 }
@@ -437,7 +455,7 @@ fn full_path(state: &State, path: &str) -> String {
     let absolute = if path.starts_with("\\\\") || path.get(1..3) == Some(":\\") {
         path
     } else {
-        let directory = state.directory.to_string_lossy().replace('/', "\\");
+        let directory = state.guest_directory.clone();
         if path.starts_with('\\') {
             format!("{}{path}", directory.get(..2).unwrap_or(""))
         } else {
@@ -1293,12 +1311,7 @@ fn imports(linker: &mut Linker<State>) -> Result<()> {
                                              size: u32,
                                              buffer: u32|
      -> u32 {
-        let directory = c.data().directory.to_string_lossy().into_owned();
-        let directory = if cfg!(windows) {
-            directory
-        } else {
-            directory.replace('/', "\\")
-        };
+        let directory = c.data().guest_directory.clone();
         give_string(c, &directory, buffer, size)
     });
     import!(linker, "GetFullPathNameA", |c,

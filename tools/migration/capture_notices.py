@@ -21,20 +21,55 @@ def run(*arguments):
     return subprocess.check_output(arguments, cwd=ROOT, text=True, encoding="utf-8")
 
 
+# Crates of the wasmtime project that publish no licence file, and the crate of the
+# same project whose verbatim LICENSE they carry instead (each of the project's
+# crates in the graph that ships one ships the same file, under the same licence).
+PROJECT_NOTICES = {
+    "cranelift-assembler-x64": "cranelift-codegen",
+    "cranelift-assembler-x64-meta": "cranelift-codegen",
+    "cranelift-bitset": "cranelift-codegen",
+    "cranelift-isle": "cranelift-codegen",
+    "cranelift-srcgen": "cranelift-codegen",
+    "pulley-interpreter": "wasmtime",
+    "pulley-macros": "wasmtime",
+    "wasmtime-internal-component-util": "wasmtime",
+    "wasmtime-internal-core": "wasmtime",
+    "wasmtime-internal-jit-debug": "wasmtime",
+    "wasmtime-internal-jit-icache-coherence": "wasmtime",
+    "wasmtime-internal-versioned-export-macros": "wasmtime",
+}
+
+
+def notice_files(base):
+    return sorted(p for p in base.rglob("*") if p.is_file()
+                  and p.name.upper().startswith(("LICENSE", "LICENCE", "COPYING", "NOTICE", "UNLICENSE")))
+
+
 def collect(target):
     metadata = json.loads(run("cargo", "metadata", "--locked", "--offline", "--format-version", "1", "--filter-platform", target))
     resolved = {node["id"] for node in metadata["resolve"]["nodes"]}
+    by_name = {}
+    for package in metadata["packages"]:
+        if package["id"] in resolved:
+            by_name.setdefault(package["name"], []).append(package)
     packages, blocks = [], {}
     for package in sorted(metadata["packages"], key=lambda p: (p["name"], p["version"])):
         if package["id"] not in resolved:
             continue
         base = Path(package["manifest_path"]).parent
         workspace = package["id"] in metadata["workspace_members"]
+        carried = None
         if workspace:
             paths = [ROOT / "LICENSE"]
         else:
-            paths = sorted(p for p in base.rglob("*") if p.is_file()
-                           and p.name.upper().startswith(("LICENSE", "LICENCE", "COPYING", "NOTICE", "UNLICENSE")))
+            paths = notice_files(base)
+            if not paths and package["name"] in PROJECT_NOTICES:
+                [donor] = by_name[PROJECT_NOTICES[package["name"]]]
+                assert donor["license"] == package["license"], (package["name"], donor["name"])
+                carried = f"{donor['name']} {donor['version']}"
+                base = Path(donor["manifest_path"]).parent
+                paths = [base / "LICENSE"]
+                assert paths[0].is_file(), paths[0]
             if package.get("license_file"):
                 explicit = (base / package["license_file"]).resolve()
                 assert explicit.is_relative_to(base.resolve()), (package["name"], explicit)
@@ -48,9 +83,14 @@ def collect(target):
             assert data, path
             relative = path.relative_to(ROOT if workspace else base).as_posix()
             sha256 = digest(data)
-            notices.append(dict(path=relative, sha256=sha256))
+            notice = dict(path=relative, sha256=sha256)
+            owner = f"{package['name']} {package['version']}: {relative}"
+            if carried:
+                notice["carried_from"] = carried
+                owner += f" (the project's, as {carried} ships it)"
+            notices.append(notice)
             block = blocks.setdefault(sha256, dict(data=data, owners=[]))
-            block["owners"].append(f"{package['name']} {package['version']}: {relative}")
+            block["owners"].append(owner)
         packages.append(dict(name=package["name"], version=package["version"], license=package["license"],
             source="workspace" if workspace else package["source"], notices=notices))
     # Retain additional decoder notices even when they live beneath a vendored
