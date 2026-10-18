@@ -264,6 +264,47 @@ changes), and runs each compile on a thread of its own.
 * `ExitProcess` ends the run with its status.
 * The timeout is wasmtime's epoch interruption, ticked every 10 ms. A cancelled run stops the same way.
 
+## A project's build: `mwcc-tools run`
+
+`mwcc-tools run [sjiswrap.exe] EXE ARGS...` is a wrapper in wibo's place, for a dtk-template project's
+`configure.py --wrapper`, which puts it before every compiler and linker command. A link or copy of `mwcc-tools` named
+`mwcc-run` is the same command in one path. dtk-template writes the configure arguments back into `build.ninja`
+unquoted, so a wrapper with arguments breaks when ninja runs configure again.
+
+```text
+mklink /H target\release\mwcc-run.exe target\release\mwcc-tools.exe
+python configure.py --wrapper F:\...\mwcc\target\release\mwcc-run.exe
+```
+
+* An EXE with the bytes of `build/compilers/GC/<dir>/mwcceppc.exe` (2.6 or 2.7), with that version's module built, runs
+  in process. It gets the wrapper's arguments, directory and environment as they are, and writes the object and the
+  `-MMD` `.d` file itself. The wrapper prints its stdout and stderr and exits with its status. The modules are
+  `MWCC_ORACLE_ROOT`'s, or else the checkout the executable was built in.
+* Anything else runs as a process: natively on Windows, through wibo elsewhere. That covers the linker and the
+  other compilers.
+* `sjiswrap.exe` is skipped for a compiler that runs in process. The sources are read as they are, so this is only
+  right for sources that are all ASCII.
+* A process loads the module from `mwcceppc.cache/` in about 7 ms. A trivial unit takes 24 ms, against 16 ms for the
+  executable and 20 ms with sjiswrap. With no artifact, each process compiles the module, which takes 3 to 3.5 s with
+  24 at once. They all succeed and leave one artifact.
+
+Metroid Prime 2: Echoes (2026-10-18, Windows, 24 jobs, from clean, both runs of each):
+
+| | USA (G2ME01) | PAL (G2MP01) |
+|---|---|---|
+| GC/2.7 objects identical | 950 / 951 | 733 / 734 |
+| GC/2.7 `.d` files identical | 951 / 951 | 734 / 734 |
+| GC/1.3.2 and 1.2.5n (run as processes) identical | 112 / 112 | 111 / 111 |
+| Hash checks; linked binaries identical | pass (87 files); DOL, 86 RELs | pass (DOL); DOL |
+| Full build, executable | 60.9 s, 61.8 s | 44.6 s, 42.0 s |
+| Full build, `mwcc-run` | 41.0 s, 35.8 s | 25.5 s, 30.4 s |
+| A GC/2.7 compile on average, executable | 1.31 s | 1.15 to 1.23 s |
+| A GC/2.7 compile on average, `mwcc-run` | 0.63 to 0.72 s | 0.56 to 0.63 s |
+
+The object that differs is `Gecko_ExceptionPPC.o`, which is not linked: extab padding taken from a stack address (see
+[Status](#status)). The executable writes different bytes from one run to the next (`6f 00`, `2f 01`, `f6 00`,
+`53 00`), and the module always writes `a5 00`. One unit run on its own is about 10% slower in process (1.65 s against 1.46 s).
+
 ## Parse once, compile many: `persist.wasm`
 
 `build/<version>/wasm/persist.wasm` is the stock module with `CPrep.c` and `CParser.c` compiled again with
