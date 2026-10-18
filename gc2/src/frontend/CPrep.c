@@ -1599,6 +1599,82 @@ void CPrep_GetPrepPos(CPrepFileInfo** file, SInt32* ppos) {
     }
 }
 
+#ifdef MWCC_PERSIST
+/* Persistent compiles (crates/mwcc-wasm's Persistent): the source is a context, the marker line
+ * `#define MWCC_PERSIST_MARKER ...` and a slot. The context is parsed once; at the marker the host snapshots the
+ * module, and each candidate it writes into the slot is compiled from there, from the snapshot again.
+ *
+ * The module's stack is the host's, so the frames live at the checkpoint must stay live and unchanged for every
+ * candidate: the checkpoint is in C_Compiler, the one frame live both at the marker and after the object is built.
+ * The marker unwinds the parser to it (its top-level lex(): nothing of the parser is on the stack, and lex() keeps
+ * nothing across preprocessor()), and each candidate ends by jumping back to it once its object is built, never by
+ * returning through it. */
+static const char persist_marker_name[] = "MWCC_PERSIST_MARKER";
+static jmp_buf persist_marker;
+static jmp_buf persist_restart;
+static Boolean persisting;
+static char* persist_pos;
+
+extern Boolean cparser_toplevel_lex;
+extern void cparser_resume(void);
+extern SInt32 GetHandleSize(Handle h);
+extern Boolean CheckForUserBreak(void);
+/* The host: snapshot the module (the first call) or restore it, then write the next candidate into the slot, which
+ * ends at END; give a candidate's result: the driver's exit status and its object. */
+extern void persist_checkpoint(char* pos, char* end);
+extern void persist_done(int status, void* object, SInt32 size);
+
+/* The #define being read is the marker's, in the main file at the top level. */
+static Boolean CPrep_IsPersistMarker(void) {
+    char* p;
+    size_t n;
+
+    if (!cparser_toplevel_lex || filesp != 0 || tokenstacklevel != 0) {
+        return FALSE;
+    }
+    p = pos;
+    while (*p == ' ' || *p == '\t') {
+        p++;
+    }
+    n = sizeof(persist_marker_name) - 1;
+    return !strncmp(p, persist_marker_name, n) &&
+        (p[n] == ' ' || p[n] == '\t' || p[n] == '\r' || p[n] == '\n');
+}
+
+static void CPrep_PersistMarker(void) {
+    cparser_toplevel_lex = FALSE;
+    persist_pos = pos;
+    longjmp(persist_marker, 1);
+}
+
+static void CPrep_PersistCheckpoint(void) {
+    persisting = TRUE;
+    fflush(stdout);
+    fflush(stderr);
+    persist_checkpoint(persist_pos, prep_file_end);
+}
+
+/* A candidate is compiled (CODE 1, its object in cparamblkptr) or failed: give it to the host, with the status the
+ * driver would exit with (CompileFilesInProject's: a failure after a user break, as too many errors are, is a
+ * cancel), and start the next. */
+static void CPrep_PersistDone(UInt8 code) {
+    Handle object;
+
+    if (!persisting) {
+        return;
+    }
+    fflush(stdout);
+    fflush(stderr);
+    if (code) {
+        object = cparamblkptr->objectdata;
+        persist_done(0, *object, GetHandleSize(object));
+    } else {
+        persist_done(CheckForUserBreak() ? 2 : 1, NULL, 0);
+    }
+    longjmp(persist_restart, 1);
+}
+#endif
+
 UInt8 C_Compiler(CompilerLinkerParamBlk* param) {
     TStreamElement ts;
     UInt8 code;
@@ -1665,7 +1741,19 @@ UInt8 C_Compiler(CompilerLinkerParamBlk* param) {
             if (param->preprocess) {
                 CPrep_Preprocess();
             } else {
+#ifdef MWCC_PERSIST
+                if (setjmp(persist_marker) == 0) {
+                    cparser();
+                } else {
+                    // (each candidate starts here)
+                    setjmp(persist_restart);
+                    code = 0;
+                    CPrep_PersistCheckpoint();
+                    cparser_resume();
+                }
+#else
                 cparser();
+#endif
             }
 
             if (CWDisplayLines(param->context, lines) != cwNoErr) {
@@ -1701,8 +1789,14 @@ UInt8 C_Compiler(CompilerLinkerParamBlk* param) {
                 pplist.data = NULL;
                 cparamblkptr->browsedata = NULL;
             }
+#ifdef MWCC_PERSIST
+            CPrep_PersistDone(code);
+#endif
         } else {
             CWDisplayLines(param->context, lines);
+#ifdef MWCC_PERSIST
+            CPrep_PersistDone(0);
+#endif
         }
 
         CParser_Cleanup();
@@ -4824,6 +4918,13 @@ void preprocessor(void) {
     }
 
     pos = ReadIdentifier(pos - 1);
+#ifdef MWCC_PERSIST
+    if (!strcmp("define", tkidentifier->name) && CPrep_IsPersistMarker()) {
+        CPrep_Define();
+        macrocheck = TRUE;
+        CPrep_PersistMarker();
+    }
+#endif
     if (!strcmp("define", tkidentifier->name)) {
         CPrep_Define();
         macrocheck = TRUE;

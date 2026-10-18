@@ -263,3 +263,44 @@ changes), and runs each compile on a thread of its own.
   its program. Its `VS_VERSIONINFO` is `source_only::compile_resources`'s, from gc2's `mwcceppc.rc`.
 * `ExitProcess` ends the run with its status.
 * The timeout is wasmtime's epoch interruption, ticked every 10 ms. A cancelled run stops the same way.
+
+## Parse once, compile many: `persist.wasm`
+
+`build/<version>/wasm/persist.wasm` is the stock module with `CPrep.c` and `CParser.c` compiled again with
+`MWCC_PERSIST`, and its stack pointer exported. `mwcc_wasm::Compiler::persistent` runs it on a source that
+`persistent_source` makes: a context (the headers and declarations many candidates share), a `;`, the line
+`#define MWCC_PERSIST_MARKER 1` and a slot. The context is parsed once. Each `Persistent::compile` writes a candidate
+into the slot and gives its exit status, its object and its messages, as a compile of the same text would give them.
+mwdec's search loop compiles many candidates after one context, as `persist.rs` did with the executable under a
+debugger.
+
+* The module's call stack is wasmtime's, on the host's stack: a copy of the memory cannot bring back the frames that
+  were live at the marker. gc2 keeps them live and unchanged instead. The checkpoint is in `C_Compiler`, the one frame
+  live both at the marker and after the object is built:
+  * the marker's `#define`, read by the `lex()` of `cparser`'s top-level loop, unwinds the parser to `C_Compiler`
+    (`longjmp`). `lex` keeps nothing across `preprocessor()`, so a new `lex()` reads on as the old one would have. The
+    `;` before the marker makes sure the top level reads it: after a function's definition, among others, the parser
+    reads a token ahead;
+  * `C_Compiler` calls `persist_checkpoint` (the host) and `cparser_resume`, the rest of `cparser`. Once the object is
+    built (`ObjGen_Finish`), or the compile failed, `persist_done` gives the result to the host, and a `longjmp`
+    starts the next candidate in `C_Compiler`. The cleanups, the driver's tail and `ExitProcess` never run for a
+    candidate.
+* The first `persist_checkpoint` snapshots the module: its memory, its stack pointer (its one mutable global) and what
+  the host keeps of the run (`GlobalAlloc`'s heap, TLS slots, the last error, the console, the find handles; no file
+  may be open). Each later one restores it, and zeroes the memory above it that the last candidate's heap used: fresh
+  memory reads as zero, and the compiler reads uninitialized heap. The restore is done before the next candidate is
+  asked for.
+* A run lives on a thread of its own, which owns its store; the imports wait on channels between candidates. Each
+  candidate has its own timeout.
+* The exit status is the driver's: 0, 1 when the compile failed, 2 when it failed after a user break (too many
+  errors), as `CompileFilesInProject` returns. The messages are the compiler's; the driver's `User break,
+  cancelled...` is not written.
+* Checked against the stock module on the same text (`crates/mwcc-wasm/examples/persist_bench.rs`), both versions:
+  Echoes' `CWorldTransManager.cpp` cut into 83 candidates (its whole body, the body without each of its 38 top-level
+  declarations, each alone, a syntax error, a `#pragma`, static initializers, 300 functions) for 3 rounds; mwdec's
+  `persist-bench --mixed` candidates after `CStateManager.hpp` and `CActor.hpp`; contexts that end in a function's
+  definition, a class, a template, a macro. Identical objects, exit statuses and messages in every case.
+* Measured (2.7, Windows): `CStateManager.hpp` + `CActor.hpp` context, 120 mixed candidates: 1.9 ms per candidate (a
+  restore of 15 MB, 1.0 ms, and the compile, 1.5 ms), against 234 ms for a compile of the module and 17.7 ms for the
+  executable under a debugger. `CWorldTransManager.cpp`'s candidates: from 0.3 ms (a single declaration that fails) to
+  170 ms (its whole body), against about 650 to 800 ms; the start (the context and the snapshot) costs 0.3 to 0.6 s.

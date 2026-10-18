@@ -21,6 +21,9 @@ use std::{
     },
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
+
+mod persist;
+pub use persist::{Candidate, MARKER, Persistent, persistent_source, slot_text};
 use wasmtime::{
     Caller, Config, Engine, Extern, InstancePre, Linker, Memory, Module, Result, Store,
     UpdateDeadline, bail, error::Context, format_err,
@@ -114,6 +117,8 @@ struct State {
     started: Instant,
     command_line_at: Option<u32>,
     listings: Listings,
+    /// A persistent run's link to its owner (persist.rs).
+    persist: Option<persist::Link>,
 }
 
 /// The first handle a run gives.
@@ -138,6 +143,7 @@ impl State {
             started: Instant::now(),
             command_line_at: None,
             listings: Listings::default(),
+            persist: None,
         }
     }
 
@@ -159,7 +165,7 @@ impl State {
 /// block merges with its free neighbours, and a block grows in place where the memory after it is free. (The compiler
 /// grows its buffers by GlobalReAlloc in small steps: blocks that always moved left each old one behind, and a
 /// compile with debugging information used almost the whole 4 GiB.)
-#[derive(Default)]
+#[derive(Clone, Default)]
 struct Heap {
     /// Each block in use: its size.
     sizes: HashMap<u32, u32>,
@@ -170,6 +176,8 @@ struct Heap {
     /// The end of the blocks given out; the memory is grown to `end`.
     top: u32,
     end: u32,
+    /// The highest top since the memory was last restored (persist.rs: what is to be zeroed above the snapshot).
+    peak: u32,
 }
 
 /// The run ended (ExitProcess), with this status.
@@ -329,6 +337,18 @@ impl Compiler {
         Ok(Self { engine, module })
     }
 
+    /// A new instance in STORE, its heap above the module's memory: its entry.
+    fn instantiate(&self, store: &mut Store<State>) -> Result<wasmtime::TypedFunc<(), ()>> {
+        let instance = self.module.instantiate(&mut *store)?;
+        let memory = instance
+            .get_memory(&mut *store, "memory")
+            .context("the module exports no memory")?;
+        let pages = memory.size(&*store) as u32;
+        store.data_mut().heap.top = pages << 16;
+        store.data_mut().heap.end = pages << 16;
+        instance.get_typed_func::<(), ()>(&mut *store, "_start")
+    }
+
     pub fn run(&self, request: &Request) -> Result<Outcome> {
         let mut store = Store::new(&self.engine, State::new(request));
         let started = Instant::now();
@@ -344,14 +364,7 @@ impl Compiler {
             }
             Ok(UpdateDeadline::Continue(1))
         });
-        let instance = self.module.instantiate(&mut store)?;
-        let memory = instance
-            .get_memory(&mut store, "memory")
-            .context("the module exports no memory")?;
-        let pages = memory.size(&store) as u32;
-        store.data_mut().heap.top = pages << 16;
-        store.data_mut().heap.end = pages << 16;
-        let start = instance.get_typed_func::<(), ()>(&mut store, "_start")?;
+        let start = self.instantiate(&mut store)?;
         let (mut timed_out, mut cancelled) = (false, false);
         let exit_code = match start.call(&mut store, ()) {
             Ok(()) => 0,
@@ -594,6 +607,7 @@ impl Heap {
             self.end += pages << 16;
         }
         self.top = top;
+        self.peak = self.peak.max(top);
         Ok(())
     }
 
@@ -1784,7 +1798,7 @@ fn imports(linker: &mut Linker<State>) -> Result<()> {
     import!(linker, "FindClose", |c, handle: u32| -> u32 {
         Ok(u32::from(c.data_mut().handles.remove(&handle).is_some()))
     });
-    Ok(())
+    persist::imports(linker)
 }
 
 /// WIN32_FIND_DATAA: attributes, three FILETIMEs, the size (high, low), two reserved words, the name and the 8.3

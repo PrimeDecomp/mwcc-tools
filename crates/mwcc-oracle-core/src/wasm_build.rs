@@ -79,6 +79,18 @@ pub fn oracle_output(version: &str) -> String {
     format!("{}/oracle.wasm", directory(version))
 }
 
+/// The persistent compiler (mwcc-wasm's `Persistent`): the module with PERSIST_UNITS compiled with `MWCC_PERSIST`,
+/// which parses a context once and compiles many candidates after it. It exports its stack pointer, which the host
+/// checks at each checkpoint.
+pub fn persist_output(version: &str) -> String {
+    format!("{}/persist.wasm", directory(version))
+}
+
+/// The define, and the units it changes: the checkpoint in C_Compiler and preprocessor (CPrep.c), the top-level loop
+/// resumed after it (CParser.c).
+pub const PERSIST: &str = "-DMWCC_PERSIST";
+const PERSIST_UNITS: &[&str] = &["src/frontend/CPrep.c", "src/frontend/CParser.c"];
+
 /// A source of the module: its name (the object's path under `obj/`), the file and clang's arguments.
 pub struct Unit {
     pub name: String,
@@ -295,7 +307,8 @@ pub fn objects(root: &Path, version: &str, oracle: bool) -> Result<Vec<(String, 
     Ok(out)
 }
 
-/// VERSION's edges: each object, the stock module's and the oracle's, and the stock module.
+/// VERSION's edges: each object, the stock module's and the oracle's, the stock module, and the persistent one (the
+/// stock objects but PERSIST_UNITS', compiled again with PERSIST).
 pub fn edges(root: &Path, version: &str) -> Result<Vec<String>> {
     let units = units(root, version)?;
     let mut out = vec![];
@@ -341,6 +354,52 @@ pub fn edges(root: &Path, version: &str) -> Result<Vec<String>> {
             .collect::<Vec<_>>()
             .join(" ")
     ));
+    let mut persist = stock.clone();
+    for unit in units
+        .iter()
+        .filter(|u| PERSIST_UNITS.contains(&u.name.as_str()))
+    {
+        let object = format!("{}/persist-obj/{}.o", directory(version), unit.name);
+        out.push(format!(
+            "build {}: wasm_cc {}",
+            escape(&object),
+            escape(&unit.input)
+        ));
+        out.push(format!(
+            "  cflags = {}",
+            unit.arguments
+                .iter()
+                .map(String::as_str)
+                .chain([PERSIST])
+                .map(quote)
+                .collect::<Vec<_>>()
+                .join(" ")
+        ));
+        let stock_object = format!("{}/{}.o", objects_directory(version, false), unit.name);
+        let at = persist.iter().position(|o| *o == stock_object).unwrap();
+        persist[at] = object;
+    }
+    ensure!(
+        persist.len() == stock.len()
+            && persist
+                .iter()
+                .filter(|o| o.contains("/persist-obj/"))
+                .count()
+                == PERSIST_UNITS.len(),
+        "the persistent module's units ({PERSIST_UNITS:?}) are not all among the module's"
+    );
+    out.extend([
+        format!(
+            "build {}: wasm_ld {}",
+            escape(&persist_output(version)),
+            persist
+                .iter()
+                .map(|o| escape(o))
+                .collect::<Vec<_>>()
+                .join(" ")
+        ),
+        "  ldflags = --export=__stack_pointer".into(),
+    ]);
     out.push(String::new());
     Ok(out)
 }

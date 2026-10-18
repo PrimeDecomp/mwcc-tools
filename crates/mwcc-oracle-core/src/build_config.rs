@@ -848,6 +848,7 @@ pub fn generate(root: &Path, request: &Request) -> Result<Generation> {
         for module in [
             crate::wasm_build::output(version),
             crate::wasm_build::oracle_output(version),
+            crate::wasm_build::persist_output(version),
         ] {
             defaults.push(' ');
             defaults.push_str(&module);
