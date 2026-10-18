@@ -1,0 +1,96 @@
+//! `mwcc-tools run [sjiswrap.exe] EXE ARGS...`: a wrapper for a project's build, in the place of wibo (its
+//! configure's `--wrapper`). A compiler whose module is built runs in this process, as the executable's process
+//! would: the same arguments, directory and environment, its console output on stdout and stderr, its exit code, and
+//! the files it writes (the object, `-MMD`'s `.d`). Anything else (the linker, a compiler without a module) runs as
+//! it is: natively on Windows, through wibo elsewhere.
+//!
+//! `sjiswrap.exe` converts the UTF-8 sources and headers its compiler reads to Shift JIS. A compiler that runs in
+//! process reads them as they are: the same, for sources that are all ASCII.
+use anyhow::{Context, Result, bail};
+use mwcc_oracle_core::runner;
+use std::{
+    env,
+    io::Write,
+    path::{Path, PathBuf},
+    time::Instant,
+};
+
+const USAGE: &str = "mwcc-tools run [sjiswrap.exe] EXE ARGS...\n\n\
+Runs EXE with ARGS. A compiler whose WebAssembly module is built (one with the bytes of MWCC_ORACLE_ROOT's \
+build/compilers/GC/<dir>/mwcceppc.exe) runs in process; anything else runs as a process (through wibo off \
+Windows). MWCC_IN_PROCESS=0 runs every executable. MWCC_RUN_TIMING=1 prints where the time went.";
+
+/// The checkout the modules are in: `MWCC_ORACLE_ROOT`, else the one this executable was built in.
+fn root() -> Result<PathBuf> {
+    if let Some(root) = env::var_os("MWCC_ORACLE_ROOT") {
+        return Ok(root.into());
+    }
+    let exe = env::current_exe()?;
+    exe.ancestors()
+        .find(|dir| dir.join("gc2").is_dir() && dir.join("Cargo.toml").is_file())
+        .map(Path::to_path_buf)
+        .context("set MWCC_ORACLE_ROOT to the mwcc checkout")
+}
+
+fn is_sjiswrap(path: &str) -> bool {
+    Path::new(path)
+        .file_stem()
+        .is_some_and(|stem| stem.eq_ignore_ascii_case("sjiswrap"))
+}
+
+/// The exit code of the command ARGS.
+pub fn run(args: &[String]) -> Result<i32> {
+    if args.is_empty() || matches!(args[0].as_str(), "--help" | "-h") {
+        println!("{USAGE}");
+        return Ok(0);
+    }
+    let began = Instant::now();
+    let root = root()?;
+    let compiler = if is_sjiswrap(&args[0]) { 1 } else { 0 };
+    let (executable, compiler_args) = match args.get(compiler) {
+        Some(executable) => (Path::new(executable), &args[compiler + 1..]),
+        None => bail!("{} needs the compiler to run", args[0]),
+    };
+    #[cfg(feature = "wasm")]
+    if let Some((version, module)) = mwcc_oracle_core::in_process::module_of_copy(&root, executable)
+    {
+        let timing = env::var_os("MWCC_RUN_TIMING").is_some_and(|v| v == "1");
+        let loading = Instant::now();
+        mwcc_oracle_core::in_process::preload(&root, version, &module)?;
+        let loaded = loading.elapsed();
+        let environment: Vec<(String, String)> = env::vars().collect();
+        let outcome = mwcc_oracle_core::in_process::run(
+            &mwcc_oracle_core::in_process::Run {
+                root: &root,
+                version,
+                module: &module,
+                program: executable,
+                args: compiler_args,
+                directory: &env::current_dir()?,
+                environment: &environment,
+                timeout: None,
+            },
+            &|| false,
+        )?;
+        std::io::stdout().write_all(&outcome.stdout)?;
+        std::io::stdout().flush()?;
+        std::io::stderr().write_all(&outcome.stderr)?;
+        if timing {
+            eprintln!(
+                "mwcc-tools run: {} in process ({}): {:.1} ms, of which {:.1} ms loading the module",
+                executable.display(),
+                version.name(),
+                began.elapsed().as_secs_f64() * 1e3,
+                loaded.as_secs_f64() * 1e3
+            );
+        }
+        return Ok(outcome.exit_code);
+    }
+    #[cfg(not(feature = "wasm"))]
+    let _ = compiler_args;
+    let status = runner::launcher(&root, Path::new(&args[0]))?
+        .args(&args[1..])
+        .status()
+        .with_context(|| format!("launch {}", args[0]))?;
+    Ok(status.code().unwrap_or(1))
+}

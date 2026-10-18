@@ -71,6 +71,38 @@ pub fn module(root: &Path, executable: &Path) -> Option<(Version, PathBuf)> {
     None
 }
 
+/// The module that runs in place of EXECUTABLE, a compiler anywhere (a project's own copy): [`module`] where it is
+/// one of ROOT's, else the module of the version whose stock compiler has EXECUTABLE's bytes.
+pub fn module_of_copy(root: &Path, executable: &Path) -> Option<(Version, PathBuf)> {
+    if let Some(found) = module(root, executable) {
+        return Some(found);
+    }
+    if !enabled() {
+        return None;
+    }
+    let size = fs::metadata(executable).ok()?.len();
+    let mut bytes = None;
+    for name in wasm_build::VERSIONS {
+        let version = Version::parse(name).ok()?;
+        let stock = root.join(format!(
+            "build/compilers/GC/{}/mwcceppc.exe",
+            version.compiler_directory()
+        ));
+        if fs::metadata(&stock).map_or(true, |m| m.len() != size) {
+            continue;
+        }
+        let bytes = match &bytes {
+            Some(bytes) => bytes,
+            None => bytes.insert(fs::read(executable).ok()?),
+        };
+        if fs::read(&stock).is_ok_and(|stock| &stock == bytes) {
+            let module = root.join(wasm_build::output(name));
+            return module.is_file().then_some((version, module));
+        }
+    }
+    None
+}
+
 /// The VS_VERSIONINFO of VERSION's driver (gc2's `mwcceppc.rc`, with its `VERSION`).
 fn version_info(root: &Path, version: Version) -> Result<Vec<u8>> {
     let tree = SourceTree::gc2(version.name());
@@ -122,7 +154,6 @@ pub fn execute(
     module: &Path,
     cancel: &dyn Fn() -> bool,
 ) -> Result<Execution> {
-    let loaded = load(invocation.root, version, module)?;
     let environment = crate::runner::process_environment(invocation);
     let mut args = invocation.flags.to_vec();
     args.extend([
@@ -134,43 +165,81 @@ pub fn execute(
     if invocation.output.exists() {
         fs::remove_file(invocation.output)?;
     }
-    let program = std::path::absolute(invocation.executable)?;
+    let outcome = run(
+        &Run {
+            root: invocation.root,
+            version,
+            module,
+            program: invocation.executable,
+            args: &args,
+            directory: invocation.directory,
+            environment: &environment,
+            timeout: Some(invocation.timeout),
+        },
+        cancel,
+    )?;
+    Ok(Execution {
+        exit_code: Some(outcome.exit_code),
+        timed_out: outcome.timed_out,
+        diagnostics: outcome.console.iter().map(|b| char::from(*b)).collect(),
+        cancelled: outcome.cancelled,
+    })
+}
+
+/// Load MODULE (VERSION's) now, so the runs that follow find it loaded.
+pub fn preload(root: &Path, version: Version, module: &Path) -> Result<()> {
+    load(root, version, module).map(|_| ())
+}
+
+/// A run of a module in place of its executable's process.
+pub struct Run<'a> {
+    pub root: &'a Path,
+    pub version: Version,
+    pub module: &'a Path,
+    /// The executable it stands for (the process's argv[0]).
+    pub program: &'a Path,
+    /// The arguments, as the process gets them (without argv[0]).
+    pub args: &'a [String],
+    pub directory: &'a Path,
+    pub environment: &'a [(String, String)],
+    pub timeout: Option<std::time::Duration>,
+}
+
+/// RUN's module run as its process would be, on a thread of its own (with room for the compiler's recursion) while
+/// this one polls CANCEL.
+pub fn run(run: &Run<'_>, cancel: &dyn Fn() -> bool) -> Result<mwcc_wasm::Outcome> {
+    let loaded = load(run.root, run.version, run.module)?;
+    let program = std::path::absolute(run.program)?;
     let program = program.display().to_string();
     let stop = Arc::new(AtomicBool::new(false));
-    // (the run on a thread of its own, with room for the compiler's recursion; this one polls the cancellation)
     let caller = std::thread::current();
-    let outcome = std::thread::scope(|scope| -> Result<mwcc_wasm::Outcome> {
-        let run = std::thread::Builder::new()
+    std::thread::scope(|scope| -> Result<mwcc_wasm::Outcome> {
+        let thread = std::thread::Builder::new()
             .stack_size(64 << 20)
             .spawn_scoped(scope, || {
                 let outcome = loaded
                     .compiler
                     .run(&mwcc_wasm::Request {
-                        args: &args,
-                        directory: invocation.directory,
-                        environment: &environment,
+                        args: run.args,
+                        directory: run.directory,
+                        environment: run.environment,
                         program: &program,
                         version_info: &loaded.version_info,
-                        timeout: Some(invocation.timeout),
+                        timeout: run.timeout,
                         cancel: Some(stop.clone()),
                     })
                     .map_err(|e| anyhow!("{e:?}"));
                 caller.unpark();
                 outcome
             })?;
-        while !run.is_finished() {
+        while !thread.is_finished() {
             if cancel() {
                 stop.store(true, Ordering::Relaxed);
             }
             std::thread::park_timeout(std::time::Duration::from_millis(10));
         }
-        run.join()
+        thread
+            .join()
             .map_err(|_| anyhow!("the in-process compiler panicked"))?
-    })?;
-    Ok(Execution {
-        exit_code: Some(outcome.exit_code),
-        timed_out: outcome.timed_out,
-        diagnostics: outcome.console.iter().map(|b| char::from(*b)).collect(),
-        cancelled: outcome.cancelled,
     })
 }

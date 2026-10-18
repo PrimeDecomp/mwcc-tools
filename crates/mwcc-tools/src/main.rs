@@ -15,6 +15,7 @@ mod header_impact_cli;
 mod kit_cli;
 mod provenance_cli;
 mod release_cli;
+mod run_cli;
 mod source_arenas_cli;
 mod source_index_cli;
 mod source_nodes_cli;
@@ -774,6 +775,8 @@ fn help() {
   data-diff SOURCE [--from-ninja FILE] [--target [DIR]] [--section NAME] [--all] [--json]
   header-impact --from-ninja FILE (--git REV | --override PATH=FILE) [--unit TEXT] [--jobs N] [--json]
   inline-calibrate --project DIR --callee NAME [--unit UNIT] [--binary] [--json FILE]
+  run [sjiswrap.exe] EXE ARGS...
+      a build's compiler wrapper (as wibo): a compiler with a built module runs in process, anything else as itself
   corpus --canaries DIR | --project DIR [--oracle-root ROOT] [--version V] [--jobs N] [--all-traces]
          [--source-arenas | --source-nodes] [--exe ORACLE] [--trace-reference OTHER_ORACLE] [--wasm MODULE]
       --wasm runs MODULE (build/VERSION/wasm/*.wasm) in process in the oracle's place
@@ -1013,6 +1016,10 @@ fn run() -> Result<()> {
                 );
             }
             println!("{}", serde_json::to_string_pretty(&output)?);
+        }
+        Some("run") => {
+            let code = run_cli::run(&args[1..])?;
+            std::process::exit(code);
         }
         Some("oracle") => compile_trace(&args[1..], true)?,
         Some("corpus") => corpus_command(&args[1..])?,
