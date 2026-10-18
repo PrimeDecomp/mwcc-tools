@@ -24,6 +24,15 @@ struct Unit {
     project: PathBuf,
     candidate: Option<PathBuf>,
 }
+/// The unit's target asm, as dtk writes it beside the target object (`build/<version>/obj/<path>.o` has
+/// `build/<version>/asm/<path>.s`). The source path need not have the object's shape (Echoes'
+/// `src/Echoes/<path>.cpp`), so it is not looked up from the source.
+fn target_asm(unit: &Unit) -> Option<PathBuf> {
+    let target = unit.value["target_path"].as_str()?.replace('\\', "/");
+    let (directory, object) = target.split_once("/obj/")?;
+    let asm = path(&unit.project, &format!("{directory}/asm/{object}")).with_extension("s");
+    asm.is_file().then_some(asm)
+}
 fn unit(root: &Path, name: &str, oracle: &Path, candidate: Option<PathBuf>) -> Result<Unit> {
     let root = root.canonicalize().context("project directory missing")?;
     let config: Value = serde_json::from_slice(&fs::read(root.join("objdiff.json"))?)?;
@@ -429,6 +438,13 @@ pub fn colouring_unit(arguments: &[String]) -> Result<()> {
         .any(|a| a == "--version" || a.starts_with("--version="))
     {
         child.extend(["--version".into(), unit.request.version.name().into()]);
+    }
+    if !child
+        .iter()
+        .any(|a| a == "--target-asm" || a.starts_with("--target-asm="))
+        && let Some(asm) = target_asm(&unit)
+    {
+        child.extend(["--target-asm".into(), asm.to_string_lossy().into_owned()]);
     }
     if let Some(candidate) = unit.candidate {
         child.extend([
