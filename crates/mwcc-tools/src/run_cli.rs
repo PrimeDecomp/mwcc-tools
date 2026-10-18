@@ -4,6 +4,9 @@
 //! the files it writes (the object, `-MMD`'s `.d`). Anything else (the linker, a compiler without a module) runs as
 //! it is: natively on Windows, through wibo elsewhere.
 //!
+//! A copy or link of `mwcc-tools` named `mwcc-run` is `mwcc-tools run`: one path, as a configure's `--wrapper` takes
+//! (dtk-template writes its arguments back into build.ninja unquoted).
+//!
 //! `sjiswrap.exe` converts the UTF-8 sources and headers its compiler reads to Shift JIS. A compiler that runs in
 //! process reads them as they are: the same, for sources that are all ASCII.
 use anyhow::{Context, Result, bail};
@@ -15,7 +18,7 @@ use std::{
     time::Instant,
 };
 
-const USAGE: &str = "mwcc-tools run [sjiswrap.exe] EXE ARGS...\n\n\
+const USAGE: &str = "mwcc-tools run [sjiswrap.exe] EXE ARGS...\nmwcc-run [sjiswrap.exe] EXE ARGS...\n\n\
 Runs EXE with ARGS. A compiler whose WebAssembly module is built (one with the bytes of MWCC_ORACLE_ROOT's \
 build/compilers/GC/<dir>/mwcceppc.exe) runs in process; anything else runs as a process (through wibo off \
 Windows). MWCC_IN_PROCESS=0 runs every executable. MWCC_RUN_TIMING=1 prints where the time went.";
@@ -30,6 +33,23 @@ fn root() -> Result<PathBuf> {
         .find(|dir| dir.join("gc2").is_dir() && dir.join("Cargo.toml").is_file())
         .map(Path::to_path_buf)
         .context("set MWCC_ORACLE_ROOT to the mwcc checkout")
+}
+
+/// The command to run, when this process is `mwcc-tools run COMMAND` or `mwcc-run COMMAND`.
+pub fn wrapped_command() -> Option<Vec<String>> {
+    let mut args = env::args();
+    let program = args.next()?;
+    let named = Path::new(&program)
+        .file_stem()
+        .is_some_and(|stem| stem.eq_ignore_ascii_case("mwcc-run"));
+    let args: Vec<String> = args.collect();
+    if named {
+        Some(args)
+    } else if args.first().is_some_and(|a| a == "run") {
+        Some(args[1..].to_vec())
+    } else {
+        None
+    }
 }
 
 fn is_sjiswrap(path: &str) -> bool {
