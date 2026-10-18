@@ -9,7 +9,7 @@
 //!
 //! Each run instantiates the module afresh: the compiler keeps its state in globals and is not reentrant.
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::{BTreeMap, BTreeSet, HashMap},
     fs,
     io::{Read, Seek, SeekFrom, Write},
     path::{Path, PathBuf},
@@ -152,12 +152,20 @@ impl State {
     }
 }
 
-/// The heap GlobalAlloc gives: blocks of the wasm memory above what the module uses, grown as needed. A freed block
-/// is reused for a request of its size (MSL's pools ask for the same sizes again).
+/// The heap GlobalAlloc gives: blocks of the wasm memory above what the module uses, grown as needed. As Windows's
+/// heap, it reuses freed memory: a request takes the smallest free block it fits in (its rest stays free), a freed
+/// block merges with its free neighbours, and a block grows in place where the memory after it is free. (The compiler
+/// grows its buffers by GlobalReAlloc in small steps: blocks that always moved left each old one behind, and a
+/// compile with debugging information used almost the whole 4 GiB.)
 #[derive(Default)]
 struct Heap {
+    /// Each block in use: its size.
     sizes: HashMap<u32, u32>,
-    free: BTreeMap<u32, Vec<u32>>,
+    /// The free blocks below `top`, by address: their sizes. No two are adjacent.
+    free: BTreeMap<u32, u32>,
+    /// The same, by (size, address).
+    by_size: BTreeSet<(u32, u32)>,
+    /// The end of the blocks given out; the memory is grown to `end`.
     top: u32,
     end: u32,
 }
@@ -383,6 +391,11 @@ fn give_string(caller: &mut Caller<'_, State>, text: &str, buffer: u32, size: u3
     Ok(len)
 }
 
+/// SIZE as the heap gives it: a multiple of 16, at least 16.
+fn block_size(size: u32) -> u32 {
+    (size.max(1) + 15) & !15
+}
+
 impl Heap {
     fn alloc(
         &mut self,
@@ -390,34 +403,101 @@ impl Heap {
         store: &mut impl wasmtime::AsContextMut,
         size: u32,
     ) -> Result<u32> {
-        let size = (size.max(1) + 15) & !15;
-        if let Some(blocks) = self.free.get_mut(&size)
-            && let Some(at) = blocks.pop()
-        {
+        let size = block_size(size);
+        if let Some(&(free, at)) = self.by_size.range((size, 0)..).next() {
+            self.take_free(at, free);
+            if free > size {
+                self.add_free(at + size, free - size);
+            }
             self.sizes.insert(at, size);
             return Ok(at);
         }
-        if self.top + size > self.end {
-            let pages = (self.top + size - self.end).div_ceil(1 << 16);
+        let at = self.top;
+        self.extend(memory, store, at + size)?;
+        self.sizes.insert(at, size);
+        Ok(at)
+    }
+
+    /// Grow the block at AT to SIZE where it is, if the memory after it is free (or the top): whether it grew.
+    fn grow_in_place(
+        &mut self,
+        memory: &Memory,
+        store: &mut impl wasmtime::AsContextMut,
+        at: u32,
+        size: u32,
+    ) -> Result<bool> {
+        let size = block_size(size);
+        let old = self.sizes[&at];
+        if size <= old {
+            return Ok(true);
+        }
+        let next = at + old;
+        if next == self.top {
+            self.extend(memory, store, at + size)?;
+        } else if let Some(&free) = self.free.get(&next)
+            && old + free >= size
+        {
+            self.take_free(next, free);
+            if old + free > size {
+                self.add_free(at + size, old + free - size);
+            }
+        } else {
+            return Ok(false);
+        }
+        self.sizes.insert(at, size);
+        Ok(true)
+    }
+
+    fn free(&mut self, at: u32) -> bool {
+        let Some(mut size) = self.sizes.remove(&at) else {
+            return false;
+        };
+        let mut at = at;
+        if let Some(&next) = self.free.get(&(at + size)) {
+            self.take_free(at + size, next);
+            size += next;
+        }
+        if let Some((&previous, &previous_size)) = self.free.range(..at).next_back()
+            && previous + previous_size == at
+        {
+            self.take_free(previous, previous_size);
+            at = previous;
+            size += previous_size;
+        }
+        if at + size == self.top {
+            self.top = at;
+        } else {
+            self.add_free(at, size);
+        }
+        true
+    }
+
+    /// Move the top to TOP, growing the memory if it ends before.
+    fn extend(
+        &mut self,
+        memory: &Memory,
+        store: &mut impl wasmtime::AsContextMut,
+        top: u32,
+    ) -> Result<()> {
+        if top > self.end {
+            let pages = (top - self.end).div_ceil(1 << 16);
             memory
                 .grow(&mut *store, u64::from(pages))
                 .map_err(|_| format_err!("out of memory"))?;
             self.end += pages << 16;
         }
-        let at = self.top;
-        self.top += size;
-        self.sizes.insert(at, size);
-        Ok(at)
+        self.top = top;
+        Ok(())
     }
 
-    fn free(&mut self, at: u32) -> bool {
-        match self.sizes.remove(&at) {
-            Some(size) => {
-                self.free.entry(size).or_default().push(at);
-                true
-            }
-            None => false,
-        }
+    fn add_free(&mut self, at: u32, size: u32) {
+        self.free.insert(at, size);
+        self.by_size.insert((size, at));
+    }
+
+    fn take_free(&mut self, at: u32, size: u32) {
+        self.free.remove(&at);
+        self.by_size.remove(&(size, at));
     }
 }
 
@@ -977,10 +1057,19 @@ fn imports(linker: &mut Linker<State>) -> Result<()> {
         let Some(old) = old else {
             return fail(c, ERROR_INVALID_HANDLE);
         };
-        if (size + 15) & !15 <= old {
+        let zero = flags & 0x40 != 0;
+        let m = memory(c)?;
+        let mut heap = std::mem::take(&mut c.data_mut().heap);
+        let grown = heap.grow_in_place(&m, c, at, size);
+        c.data_mut().heap = heap;
+        if grown? {
+            let new = c.data().heap.sizes[&at];
+            if zero && new > old {
+                write_bytes(c, at + old, &vec![0; (new - old) as usize])?;
+            }
             return Ok(at);
         }
-        let new = heap_alloc(c, size, flags & 0x40 != 0)?;
+        let new = heap_alloc(c, size, zero)?;
         let data = read_bytes(c, at, old as usize)?;
         write_bytes(c, new, &data)?;
         c.data_mut().heap.free(at);
@@ -1720,6 +1809,63 @@ mod tests {
             .collect();
         assert!(names.contains(&"Header.h".to_owned()) && names.contains(&"sub".to_owned()));
         fs::remove_dir_all(&directory).unwrap();
+    }
+
+    /// A heap of its own memory (no module): the engine, a store and a memory of one page.
+    fn heap() -> (Store<()>, Memory, Heap) {
+        let engine = Engine::default();
+        let mut store = Store::new(&engine, ());
+        let memory = Memory::new(&mut store, wasmtime::MemoryType::new(1, None)).unwrap();
+        let heap = Heap {
+            top: 1 << 16,
+            end: 1 << 16,
+            ..Heap::default()
+        };
+        (store, memory, heap)
+    }
+
+    #[test]
+    fn heap_reuses_and_merges_freed_blocks() {
+        let (mut store, memory, mut heap) = heap();
+        let base = heap.top;
+        let a = heap.alloc(&memory, &mut store, 100).unwrap();
+        let b = heap.alloc(&memory, &mut store, 100).unwrap();
+        let c = heap.alloc(&memory, &mut store, 100).unwrap();
+        assert_eq!((a, b, c), (base, base + 112, base + 224));
+        // (a and b merge: a block of both sizes fits where they were)
+        assert!(heap.free(a) && heap.free(b));
+        assert_eq!(heap.alloc(&memory, &mut store, 200).unwrap(), a);
+        // (a smaller one takes the start of a free block, and leaves the rest free)
+        assert!(heap.free(a));
+        assert_eq!(heap.alloc(&memory, &mut store, 10).unwrap(), a);
+        assert_eq!(heap.free.get(&(a + 16)), Some(&208));
+        // (freeing the last block lowers the top)
+        assert!(heap.free(c) && heap.free(a));
+        assert_eq!(
+            (heap.top, heap.free.len(), heap.by_size.len()),
+            (base, 0, 0)
+        );
+        assert!(!heap.free(a));
+    }
+
+    #[test]
+    fn heap_grows_blocks_in_place() {
+        let (mut store, memory, mut heap) = heap();
+        // (a buffer grown in small steps stays where it is, at the top or into the free memory after it)
+        let buffer = heap.alloc(&memory, &mut store, 16).unwrap();
+        for size in (32..1 << 20).step_by(4096) {
+            assert!(
+                heap.grow_in_place(&memory, &mut store, buffer, size)
+                    .unwrap()
+            );
+        }
+        assert!(heap.end - heap.top < 1 << 16);
+        let a = heap.alloc(&memory, &mut store, 64).unwrap();
+        let b = heap.alloc(&memory, &mut store, 64).unwrap();
+        let _c = heap.alloc(&memory, &mut store, 64).unwrap();
+        assert!(heap.free(b));
+        assert!(heap.grow_in_place(&memory, &mut store, a, 128).unwrap());
+        assert!(!heap.grow_in_place(&memory, &mut store, a, 129).unwrap());
     }
 
     #[test]

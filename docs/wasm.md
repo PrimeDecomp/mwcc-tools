@@ -252,7 +252,10 @@ changes), and runs each compile on a thread of its own.
     leaves verbatim (`\\?\`) paths as they are. The run's directory is given without the verbatim prefix, as a
     process's current directory has it.
   * There is one thread: thread-local slots and no-op critical sections (the x86 oracle's MSL calls them).
-  * `GlobalAlloc` has its own heap above the module's memory, because the allocator gets its pools from it.
+  * `GlobalAlloc` has its own heap above the module's memory, because the allocator gets its pools from it. As
+    Windows's heap, it reuses freed memory (the smallest free block that fits, neighbours merged) and grows a block in
+    place where it can: the compiler grows its buffers by `GlobalReAlloc` in small steps, and blocks that always moved
+    took a compile with `-g` of a large context to almost 4 GiB (76 MB now).
   * Times are UTC.
   * `CreateProcessA` fails, because nothing in a compile calls it. `FindResourceA` fails with 1813, as the original
     does.
