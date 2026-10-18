@@ -293,14 +293,23 @@ debugger.
 * A run lives on a thread of its own, which owns its store; the imports wait on channels between candidates. Each
   candidate has its own timeout.
 * The exit status is the driver's: 0, 1 when the compile failed, 2 when it failed after a user break (too many
-  errors), as `CompileFilesInProject` returns. The messages are the compiler's; the driver's `User break,
-  cancelled...` is not written.
-* Checked against the stock module on the same text (`crates/mwcc-wasm/examples/persist_bench.rs`), both versions:
-  Echoes' `CWorldTransManager.cpp` cut into 83 candidates (its whole body, the body without each of its 38 top-level
-  declarations, each alone, a syntax error, a `#pragma`, static initializers, 300 functions) for 3 rounds; mwdec's
-  `persist-bench --mixed` candidates after `CStateManager.hpp` and `CActor.hpp`; contexts that end in a function's
-  definition, a class, a template, a macro. Identical objects, exit statuses and messages in every case.
+  errors), as `CompileFilesInProject` returns. The messages are the compiler's; the driver's tail (`User break,
+  cancelled...`, `Errors caused tool to abort.`) is not written.
+* A timeout or a trap ends the run: `compile` fails and the `Persistent` is no longer `alive()`; start another.
+* Checked against the stock module (`crates/mwcc-wasm/examples/persist_bench.rs`), both versions, on the same text
+  and (`PLAIN=1`) on the context and the candidate alone, as a project builds them:
+  * Echoes' `CWorldTransManager.cpp` cut into 83 candidates (its whole body, the body without each of its 38
+    top-level declarations, each alone, a syntax error, a `#pragma`, static initializers, 300 functions), for 3
+    rounds;
+  * mwdec's `persist-bench --mixed` candidates after `CStateManager.hpp` and `CActor.hpp`;
+  * contexts that end in a function's definition, a class, a template, a macro;
+  * C (two MusyX units, also with `-w all -w error` and `-sym on`, and `-ansi strict` on a small unit).
+
+  Identical objects and exit statuses in every case, and identical messages on the same text. With `-sym on`, an
+  object records its source's modification time, so the reference must have the persistent source's; on the plain
+  text its line numbers differ by the two lines before the slot.
 * Measured (2.7, Windows): `CStateManager.hpp` + `CActor.hpp` context, 120 mixed candidates: 1.9 ms per candidate (a
-  restore of 15 MB, 1.0 ms, and the compile, 1.5 ms), against 234 ms for a compile of the module and 17.7 ms for the
-  executable under a debugger. `CWorldTransManager.cpp`'s candidates: from 0.3 ms (a single declaration that fails) to
-  170 ms (its whole body), against about 650 to 800 ms; the start (the context and the snapshot) costs 0.3 to 0.6 s.
+  restore of 15 MB, 1.0 ms, and the compile, 1.5 ms), against 234 ms for a compile of the module. (mwdec's debugger
+  path measured 17.7 ms per candidate on these candidates, before Echoes' headers moved, with its own flags.)
+  `CWorldTransManager.cpp`'s candidates: from 0.3 ms (a single declaration that fails) to 170 ms (its whole body),
+  against about 650 to 800 ms; the start (the context and the snapshot) costs 0.3 to 0.6 s.

@@ -284,6 +284,12 @@ impl Persistent {
     }
 }
 
+// (a Persistent may move between threads: it holds its run's channels and thread)
+const _: fn() = || {
+    fn send<T: Send>() {}
+    send::<Persistent>();
+};
+
 impl Drop for Persistent {
     fn drop(&mut self) {
         let _ = self.jobs.send(Job::Stop);

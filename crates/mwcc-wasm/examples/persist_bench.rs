@@ -255,12 +255,28 @@ fn main() {
     let persist = Compiler::new(&std::fs::read(modules.join("persist.wasm")).unwrap()).unwrap();
     eprintln!("modules compiled in {:?}", t.elapsed());
 
+    // PLAIN=1: the reference is a compile of the context and the candidate alone (no sentinel, marker or padding), as
+    // the project builds it; messages are not compared then (their line numbers differ)
+    let plain = std::env::var_os("PLAIN").is_some();
     let normal = |candidate: &str| -> Normal {
-        let mut text = persistent_text[..marker_end].to_vec();
-        text.extend(slot_text(candidate.as_bytes(), capacity).unwrap());
+        let mut text;
+        if plain {
+            text = context.clone().into_bytes();
+            text.extend(candidate.replace("\r\n", "\n").bytes());
+        } else {
+            text = persistent_text[..marker_end].to_vec();
+            text.extend(slot_text(candidate.as_bytes(), capacity).unwrap());
+        }
         let src = rdir.join(&name);
         let obj = rdir.join("out.o");
         std::fs::write(&src, &text).unwrap();
+        // (the persistent source's modification time: `-sym on` objects record it)
+        if let Ok(time) = std::fs::metadata(&persist_src).and_then(|m| m.modified()) {
+            let _ = std::fs::File::options()
+                .write(true)
+                .open(&src)
+                .and_then(|f| f.set_modified(time));
+        }
         let _ = std::fs::remove_file(&obj);
         let a = args(&src, &obj);
         let t = Instant::now();
@@ -310,6 +326,39 @@ fn main() {
         p.snapshot_bytes >> 20
     );
 
+    // TIMEOUT_TEST=1: the first candidate with a 5 ms timeout ends the run; a new one starts and compiles
+    if std::env::var_os("TIMEOUT_TEST").is_some() {
+        let t = Instant::now();
+        let r = p.compile(candidates[0].1.as_bytes(), Some(Duration::from_millis(5)));
+        eprintln!(
+            "timeout test: {} after {:?}, alive {}",
+            match &r {
+                Ok(c) => format!("Ok (exit {})", c.exit_code),
+                Err(e) => format!("Err ({})", e.to_string().lines().next().unwrap_or("")),
+            },
+            t.elapsed(),
+            p.alive()
+        );
+        let t = Instant::now();
+        drop(p);
+        eprintln!("dropped in {:?}", t.elapsed());
+        p = persist
+            .persistent(
+                &Request {
+                    args: &pa,
+                    directory: &root,
+                    environment: &environment,
+                    program: &program,
+                    version_info: &version_info,
+                    timeout: Some(Duration::from_secs(120)),
+                    cancel: None,
+                },
+                capacity,
+            )
+            .unwrap_or_else(|e| panic!("restart: {e:?}"));
+        eprintln!("restarted");
+    }
+
     let (mut same, mut differ) = (0, 0);
     let (mut p_total, mut n_total, mut restore_total, mut compile_total) = (
         Duration::ZERO,
@@ -342,15 +391,16 @@ fn main() {
                 String::from_utf8_lossy(c).replace(&*dir.to_string_lossy(), "<dir>")
             };
             let p_msgs = mask(&r.console, &pdir);
-            // (the driver's tail, which a persistent compile does not run, adds this after a user break)
+            // (the driver's tail, which a persistent compile does not run, ends a failed compile with one of these)
             let n_msgs = mask(&n.console, &rdir);
             let n_msgs = n_msgs.trim_end();
-            let n_msgs = n_msgs
-                .strip_suffix("User break, cancelled...")
+            let n_msgs = ["User break, cancelled...", "Errors caused tool to abort."]
+                .iter()
+                .find_map(|tail| n_msgs.strip_suffix(tail))
                 .unwrap_or(n_msgs)
                 .trim_end()
                 .to_owned();
-            let msgs_ok = n_msgs.ends_with(p_msgs.trim_end());
+            let msgs_ok = plain || n_msgs.ends_with(p_msgs.trim_end());
             if !msgs_ok {
                 eprintln!("[{i}] messages differ:\n--- persist\n{p_msgs}\n--- normal\n{n_msgs}");
             }
