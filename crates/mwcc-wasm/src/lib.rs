@@ -8,14 +8,16 @@
 //! version information is `version_info`. `ExitProcess` ends the run.
 //!
 //! Each run instantiates the module afresh: the compiler keeps its state in globals and is not reentrant.
+use sha2::{Digest as _, Sha256};
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
     fs,
+    hash::{Hash, Hasher},
     io::{Read, Seek, SeekFrom, Write},
     path::{Path, PathBuf},
     sync::{
         Arc,
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
     },
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
@@ -198,18 +200,123 @@ impl std::fmt::Display for Stopped {
 }
 impl std::error::Error for Stopped {}
 
+/// The engine the compiler's module is compiled for (and its cached artifacts: they load only into an engine of the
+/// same settings).
+fn engine() -> Result<Engine> {
+    let mut config = Config::new();
+    config.wasm_exceptions(true);
+    config.epoch_interruption(true);
+    // (the compiler recurses deeply: its own 8 MiB shadow stack, and room on the host's)
+    config.max_wasm_stack(2 << 20);
+    Engine::new(&config)
+}
+
+/// The name of WASM's artifact for ENGINE: a hash of the module and of the engine's settings and version.
+fn artifact_name(engine: &Engine, wasm: &[u8]) -> String {
+    struct Digest(Sha256);
+    impl Hasher for Digest {
+        fn write(&mut self, bytes: &[u8]) {
+            self.0.update(bytes);
+        }
+        fn finish(&self) -> u64 {
+            u64::from_le_bytes(self.0.clone().finalize()[..8].try_into().unwrap())
+        }
+    }
+    let mut digest = Digest(Sha256::new());
+    digest.write_usize(wasm.len());
+    digest.write(wasm);
+    engine.precompile_compatibility_hash().hash(&mut digest);
+    let hash = digest.0.finalize();
+    let hex: String = hash[..16].iter().map(|b| format!("{b:02x}")).collect();
+    format!("{hex}.{ARTIFACT}")
+}
+
+const ARTIFACT: &str = "cwasm";
+
+/// WASM compiled for ENGINE: loaded from its artifact in CACHE (true), or compiled and its artifact written there.
+fn cached(engine: &Engine, wasm: &[u8], cache: &Path) -> Result<(Module, bool)> {
+    let path = cache.join(artifact_name(engine, wasm));
+    if path.is_file() {
+        // SAFETY: the cache's artifacts are written by `store` only: whole, under another name and then renamed, and
+        // never changed after; and named for this module and engine (whose settings wasmtime checks again).
+        if let Ok(module) = unsafe { Module::deserialize_file(engine, &path) } {
+            return Ok((module, true));
+        }
+    }
+    let artifact = engine
+        .precompile_module(wasm)
+        .context("compile the compiler's module")?;
+    // SAFETY: ENGINE has just compiled it.
+    let module = unsafe { Module::deserialize(engine, &artifact) }?;
+    // (a cache that cannot be written only means compiling again)
+    let _ = store(cache, &path, &artifact);
+    Ok((module, false))
+}
+
+/// Writes ARTIFACT at PATH in CACHE, and removes the cache's other artifacts (of earlier builds of the module) and
+/// the temporary files of writes that did not finish.
+fn store(cache: &Path, path: &Path, artifact: &[u8]) -> std::io::Result<()> {
+    static WRITES: AtomicUsize = AtomicUsize::new(0);
+    fs::create_dir_all(cache)?;
+    let temporary = path.with_extension(format!(
+        "{}-{}.{TEMPORARY}",
+        std::process::id(),
+        WRITES.fetch_add(1, Ordering::Relaxed)
+    ));
+    // (on the disk before it has its name; when another process has written and loaded it meanwhile, the rename
+    // fails: its artifact stays)
+    let written = fs::File::create(&temporary)
+        .and_then(|mut file| {
+            file.write_all(artifact)?;
+            file.sync_all()
+        })
+        .and_then(|()| fs::rename(&temporary, path));
+    if written.is_err() {
+        let _ = fs::remove_file(&temporary);
+        return written;
+    }
+    for entry in fs::read_dir(cache)?.flatten() {
+        let other = entry.path();
+        let unfinished = || {
+            other.extension().is_some_and(|e| e == TEMPORARY)
+                && entry
+                    .metadata()
+                    .and_then(|m| m.modified())
+                    .is_ok_and(|t| t.elapsed().is_ok_and(|age| age > UNFINISHED))
+        };
+        // (one that is loaded stays, on Windows)
+        if other != path && (other.extension().is_some_and(|e| e == ARTIFACT) || unfinished()) {
+            let _ = fs::remove_file(other);
+        }
+    }
+    Ok(())
+}
+
+const TEMPORARY: &str = "tmp";
+/// How old a temporary file is before it is taken for one of a write that did not finish (and not one being written).
+const UNFINISHED: Duration = Duration::from_secs(10 * 60);
+
 impl Compiler {
     pub fn new(wasm: &[u8]) -> Result<Self> {
-        let mut config = Config::new();
-        config.wasm_exceptions(true);
-        config.epoch_interruption(true);
-        // (the compiler recurses deeply: its own 8 MiB shadow stack, and room on the host's)
-        config.max_wasm_stack(2 << 20);
-        let engine = Engine::new(&config)?;
+        let engine = engine()?;
         let module = Module::new(&engine, wasm).context("compile the compiler's module")?;
+        Self::with_module(engine, &module)
+    }
+
+    /// [`Compiler::new`], with the compiled module kept in CACHE, a directory of the module's own: later processes
+    /// load it from there instead of compiling it again. Its artifact is named for the module and the engine; one
+    /// that does not load, or cannot be written, means compiling the module. Writing one removes the directory's
+    /// others.
+    pub fn new_cached(wasm: &[u8], cache: &Path) -> Result<Self> {
+        let engine = engine()?;
+        let (module, _) = cached(&engine, wasm, cache)?;
+        Self::with_module(engine, &module)
+    }
+
+    fn with_module(engine: Engine, module: &Module) -> Result<Self> {
         let mut linker = Linker::new(&engine);
         imports(&mut linker)?;
-        let module = linker.instantiate_pre(&module)?;
+        let module = linker.instantiate_pre(module)?;
         // (the clock of every run's deadline)
         let clock = engine.weak();
         std::thread::spawn(move || {
@@ -1866,6 +1973,52 @@ mod tests {
         assert!(heap.free(b));
         assert!(heap.grow_in_place(&memory, &mut store, a, 128).unwrap());
         assert!(!heap.grow_in_place(&memory, &mut store, a, 129).unwrap());
+    }
+
+    #[test]
+    fn modules_load_from_the_cache() {
+        let cache = std::env::temp_dir().join(format!("mwcc-wasm-cache-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&cache);
+        let engine = engine().unwrap();
+        let artifacts = || -> Vec<String> {
+            fs::read_dir(&cache)
+                .unwrap()
+                .map(|e| e.unwrap().file_name().into_string().unwrap())
+                .collect()
+        };
+        let empty = b"\0asm\x01\0\0\0";
+        // (the first compiles it and writes its artifact; the next load it)
+        assert!(!cached(&engine, empty, &cache).unwrap().1);
+        let written = artifacts();
+        assert_eq!(written, [artifact_name(&engine, empty)]);
+        assert!(cached(&engine, empty, &cache).unwrap().1);
+        assert!(cached(&engine, empty, &cache).unwrap().1);
+        // (an artifact that does not load is compiled again, and replaced)
+        fs::write(cache.join(&written[0]), b"not an artifact").unwrap();
+        assert!(!cached(&engine, empty, &cache).unwrap().1);
+        assert!(cached(&engine, empty, &cache).unwrap().1);
+        // (another build of the module replaces it)
+        let named = b"\0asm\x01\0\0\0\0\x02\x01x";
+        assert!(!cached(&engine, named, &cache).unwrap().1);
+        assert_eq!(artifacts(), [artifact_name(&engine, named)]);
+        assert!(Compiler::new_cached(named, &cache).is_ok());
+        // (and so do the temporary files of writes that did not finish, once they are old)
+        let (old, new) = (cache.join("a.1-0.tmp"), cache.join("a.1-1.tmp"));
+        fs::write(&old, "").unwrap();
+        fs::File::options()
+            .write(true)
+            .open(&old)
+            .unwrap()
+            .set_modified(SystemTime::now() - Duration::from_secs(3600))
+            .unwrap();
+        fs::write(&new, "").unwrap();
+        assert!(!cached(&engine, empty, &cache).unwrap().1);
+        assert!(!old.exists() && new.exists());
+        // (a cache that cannot be written still compiles)
+        let file = cache.join("file");
+        fs::write(&file, "").unwrap();
+        assert!(!cached(&engine, empty, &file).unwrap().1);
+        fs::remove_dir_all(&cache).unwrap();
     }
 
     #[test]

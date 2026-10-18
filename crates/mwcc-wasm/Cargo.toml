@@ -7,5 +7,6 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+sha2.workspace = true
 wasmtime = { version = "=49.0.3", default-features = false, features = ["cranelift", "runtime", "std", "gc", "gc-drc", "anyhow"] }
 

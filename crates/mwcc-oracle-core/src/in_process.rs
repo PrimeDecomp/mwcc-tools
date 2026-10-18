@@ -3,9 +3,10 @@
 //! its WebAssembly module instead, when the module is built: no process, no Windows executable. `runner` dispatches
 //! here; `MWCC_IN_PROCESS=0` turns it off.
 //!
-//! A module is compiled once per process (and again when its file changes). Each run instantiates it afresh, with
-//! the environment a process would get (the trace options and file) and the version information of gc2's resource
-//! script, which the driver reads from its executable.
+//! A module is loaded once per process (and again when its file changes), from the compiled artifact the first
+//! process to load it wrote beside it (`mwcceppc.cache/` for `mwcceppc.wasm`): compiling it takes seconds. Each run
+//! instantiates it afresh, with the environment a process would get (the trace options and file) and the version
+//! information of gc2's resource script, which the driver reads from its executable.
 use crate::{
     runner::{Execution, Invocation},
     source_only,
@@ -100,9 +101,10 @@ fn load(root: &Path, version: Version, module: &Path) -> Result<Arc<Loaded>> {
     {
         return Ok(it.clone());
     }
-    let compiler = mwcc_wasm::Compiler::new(&fs::read(module)?)
-        .map_err(|e| anyhow!("{e:?}"))
-        .with_context(|| format!("load {}", module.display()))?;
+    let compiler =
+        mwcc_wasm::Compiler::new_cached(&fs::read(module)?, &module.with_extension("cache"))
+            .map_err(|e| anyhow!("{e:?}"))
+            .with_context(|| format!("load {}", module.display()))?;
     let it = Arc::new(Loaded {
         compiler,
         version_info: version_info(root, version)?,
