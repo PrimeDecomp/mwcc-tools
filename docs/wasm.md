@@ -272,9 +272,12 @@ changes), and runs each compile on a thread of its own.
 unquoted, so a wrapper with arguments breaks when ninja runs configure again.
 
 ```text
-mklink /H target\release\mwcc-run.exe target\release\mwcc-tools.exe
+copy target\release\mwcc-tools.exe target\release\mwcc-run.exe
 python configure.py --wrapper F:\...\mwcc\target\release\mwcc-run.exe
 ```
+
+Copy it again after each `cargo build`. A hard link made before a rebuild keeps running the old executable, because
+cargo replaces `mwcc-tools.exe` with a new file.
 
 * An EXE with the bytes of `build/compilers/GC/<dir>/mwcceppc.exe` (2.6 or 2.7), with that version's module built, runs
   in process. It gets the wrapper's arguments, directory and environment as they are, and writes the object and the
