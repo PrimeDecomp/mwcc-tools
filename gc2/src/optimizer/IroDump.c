@@ -13,6 +13,7 @@
 #include "compiler/CParser.h"
 #include "compiler/CPrep.h"
 #include "compiler/objects.h"
+#include "compiler/OracleProbes.h"
 #include "driver/CCompiler.h"
 #include "driver/COSToolsCLT.h"
 #include <stdarg.h>
@@ -366,6 +367,7 @@ void IRO_DumpBits(char* name, BitVector* bv) {
 }
 
 void IRO_DumpAfterPhase(char* str, Boolean flag) {
+    ORACLE_PROBE(flag = OracleProbe_DumpPhase(str, flag));
     if (flag) {
         IRO_Dump(
             "Dumping function %s after %s \n",

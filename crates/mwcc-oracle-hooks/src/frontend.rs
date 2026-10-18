@@ -151,6 +151,7 @@ unsafe extern "C" fn decision(node: *const u8) -> u8 {
         } else {
             ptr::null()
         };
+        let max = ptr::addr_of!(data_005dfb68).read();
         let result = decision_retail(node);
         let options = ptr::addr_of!(copts);
         let name = callee_name(function);
@@ -174,7 +175,28 @@ unsafe extern "C" fn decision(node: *const u8) -> u8 {
         OracleTrace_Printf(c"%s chain=".as_ptr(), link);
         OracleRust_PrintChain(node);
         OracleTrace_Printf(c"\n".as_ptr());
+        // (the plain names, and what decided: an inline candidate or not, the expansion pass and the size limit)
+        if wanted(c"MWCC_ORACLE_NAMES".as_ptr()) {
+            OracleTrace_Printf(
+                c"inl.decide caller=%s callee=%s candidate=%d pass=%d max=%ld\n".as_ptr(),
+                plain_name(ptr::addr_of!(data_005dfb62).read()),
+                plain_name(function),
+                i32::from(candidate(function, node)),
+                nesting,
+                max,
+            );
+        }
         result
+    }
+}
+/// An object's own name (HashNameNode.name is an inline tail at byte 10).
+unsafe fn plain_name(object: *const u8) -> *const c_char {
+    unsafe {
+        if object.is_null() || read::<*const u8>(object, 10).is_null() {
+            c"?".as_ptr()
+        } else {
+            read::<*const u8>(object, 10).add(10).cast()
+        }
     }
 }
 #[unsafe(no_mangle)]

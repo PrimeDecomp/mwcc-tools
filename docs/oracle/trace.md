@@ -144,12 +144,42 @@ The `lc.arg` fields:
 | `ce.object name= caller=` | Each temporary object made (create_temp_object), with the caller's return address. |
 | `ce.vreg name= reg= class= noregister=` | Each local's register as the allocation starts (a virtual register number), before `ra.before`. |
 | `st.codegen` / `st.optimized function= link=` ... `st.end` | With `MWCC_ORACLE_STAGES=1`, the PCode as code generation made it and as the global optimizer (COptimizer) left it, in the `ra.before` format (`st.block`, `st.i`). The peephole forward pass then gives the allocator's, `ra.before`. |
+| `st.presched` / `st.precolor.gpr` / `st.precolor.fpr function= link=` ... `st.end` | With `MWCC_ORACLE_STAGES=1` too: the PCode as the first scheduling pass begins (a probe of gc2's sources: the WebAssembly and source-built oracles only), and as select colours a class (once a round). |
 | `pp.copy at= line= tree=` | An assignment copy propagation forwards (IRO_CopyAndConstantPropagation): the left side's uses read the right side. |
 | `pp.expression at= line= tree=` | An assignment expression propagation may forward into a single use in its block (IroPropagate_PropagateExpressions). |
 | `pp.dead at= line= tree=` | A dead assignment removed (IROUseDef). Its tree is already gone: match `at` to an earlier `pp.copy` or `pp.expression`. |
 
 **`MWCC_ORACLE_IRO_DUMP=FILE`** turns on the global optimizer's own dump (IroDump, normally written to `<source>.log`
-in debug builds), appended to FILE.
+in debug builds), appended to FILE. **`MWCC_ORACLE_IRO_PHASES=NAME`** adds the flowgraph after the phase NAME (as
+`IRO_DumpAfterPhase` names it, such as `After IRO_Optimizer`), or after every phase with `all`; the compiler itself
+asks for none (a probe of gc2's sources).
+
+**`MWCC_ORACLE_NAMES`**: what a reader needs to name values and spell instructions as the compiler's listings do.
+Records marked (gc2) come from probes of gc2's sources (the WebAssembly and source-built oracles only), and
+`ra.temporaries` reads gc2's names (the WebAssembly oracle only).
+
+| Lines | Content |
+|---|---|
+| `pc.opcode op= rank= name=` | An opcode's name and scheduling rank, before the first instruction record with it. |
+| `pc.object p= name=` | After an instruction record, for each operand that refers to an object: its name. |
+| `ra.temporaries cls= fe= first=` | After `ra.node`: the class's first front-end temporary and first temporary of the code generator. |
+| `ra.value v= object= remat= argument= name=` | After it, each node's object (0: a temporary of the code generator), whether the value can be rematerialized, whether the object is an argument of the function, and its name (`-`: none). |
+| `inl.decide caller= callee= candidate= pass= max=` | After `inl.can`: the plain names of the function being expanded and of the callee, whether the callee is an inline candidate, the expansion pass and the size limit. |
+| `inl.expand function=` | (gc2) A function's body about to be expanded. |
+
+**`MWCC_ORACLE_COPYPROP`** (gc2): the PCode copy propagation.
+
+| Lines | Content |
+|---|---|
+| `cp.use reason= accepted=` | Whether the copy propagates into one of its uses, then the copy (`cp.copy`) and the use (`cp.into`). `reason`: the test that decided, 0 the use is a move, 1 it reads and writes the copied register, 2 the source is redefined between them, 3 the copy does not reach the use's block, 4 the source is redefined in that block before the use, 5 none failed. |
+| `cp.remove removed=` | A copy every use took, then it (`cp.copy`): removed, or kept (an exception register, or a physical source in the less aggressive pass). |
+
+**`MWCC_ORACLE_PEEPHOLE`** (gc2): the peephole pass after the allocation.
+
+| Lines | Content |
+|---|---|
+| `ph.hit rule=` | A pattern (gc2's name) that changed an instruction, then it as it was (`ph.before`) and, unless the pattern removed it, as it is (`ph.after`). |
+| `ph.dead` | A dead instruction about to be removed, then it (`ph.before`). |
 
 ## JSON
 

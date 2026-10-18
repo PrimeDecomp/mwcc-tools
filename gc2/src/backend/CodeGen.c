@@ -1498,6 +1498,7 @@ void CodeGen_Generator(
         if (copts.debuglisting) {
             pclistblocks_start_scheduler(CMangler_GetLinkName(func)->name, "BEFORE SCHEDULING");
         }
+        ORACLE_PROBE(OracleProbe_Presched(func));
         scheduleinstructions(0);
         if (copts.debuglisting) {
             pclistblocks_end_scheduler();

@@ -1,6 +1,6 @@
 //! Existing inline-call ancestry and allocation/statement entry observers.
 use crate::{
-    abi::{OracleTrace_Printf, read},
+    abi::{OracleTrace_Printf, read, wanted},
     cse, pcode,
 };
 use core::{ffi::c_char, mem::MaybeUninit, ptr};
@@ -200,9 +200,37 @@ pub unsafe extern "C" fn inline_line() -> i32 {
         }
     }
 }
+/// gc2's probe: CInline_Expand is about to expand FUNCTION's body (`inl.expand`, MWCC_ORACLE_NAMES).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn OracleProbe_Expand(function: *const u8) {
+    unsafe {
+        if !wanted(c"MWCC_ORACLE_NAMES") {
+            return;
+        }
+        // (HashNameNode.name is an inline tail at byte 10)
+        let name = if function.is_null() || read::<*const u8>(function, 10).is_null() {
+            c"?".as_ptr()
+        } else {
+            read::<*const u8>(function, 10).add(10).cast()
+        };
+        OracleTrace_Printf(c"inl.expand function=%s\n".as_ptr(), name);
+    }
+}
+/// gc2's probe: the first scheduling pass is about to begin (`st.presched`, MWCC_ORACLE_STAGES).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn OracleProbe_Presched(function: *const u8) {
+    unsafe {
+        if wanted(c"MWCC_ORACLE_STAGES") {
+            pcode::snapshot(c"st".as_ptr(), c"presched".as_ptr(), function);
+        }
+    }
+}
+/// The function whose registers are being allocated.
+pub static mut ALLOCATING: *const u8 = ptr::null();
 #[unsafe(no_mangle)]
 unsafe extern "C" fn fn_00506cd0(function: *const u8) {
     unsafe {
+        ptr::addr_of_mut!(ALLOCATING).write(function);
         reset();
         cse::cse_vregs();
         pcode::snapshot(c"ra".as_ptr(), c"before".as_ptr(), function);

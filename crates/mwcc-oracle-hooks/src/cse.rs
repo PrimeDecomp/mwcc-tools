@@ -39,6 +39,21 @@ unsafe extern "C" fn fn_00454030() {
         fn_00454030__retail();
     }
 }
+/// gc2's probe: whether the optimizer's dump has the flowgraph after the phase NAME. MWCC_ORACLE_IRO_PHASES names
+/// the phases dumped (`all`: every one); without it, the compiler's own choice, DUMP.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn OracleProbe_DumpPhase(name: *const c_char, dump: u8) -> u8 {
+    unsafe {
+        let phases = getenv(c"MWCC_ORACLE_IRO_PHASES".as_ptr()).cast::<c_char>();
+        if phases.is_null() || *phases == 0 {
+            return dump;
+        }
+        let length = strlen(phases);
+        let all = length == 3 && strncmp(phases, c"all".as_ptr(), 3) == 0;
+        let named = !name.is_null() && strlen(name) == length && strncmp(name, phases, length) == 0;
+        u8::from(all || named)
+    }
+}
 unsafe fn line(linear: *const u8) -> i32 {
     unsafe {
         if linear.is_null() {

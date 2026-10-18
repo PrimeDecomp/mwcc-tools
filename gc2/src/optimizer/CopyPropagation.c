@@ -4,6 +4,7 @@
 #include "compiler/CompilerTools.h"
 #include "compiler/CParser.h"
 #include "compiler/CPrep.h"
+#include "compiler/OracleProbes.h"
 #include "compiler/PCodeListing.h"
 #include "compiler/RegisterInfo.h"
 #include "compiler/UseDefChains.h"
@@ -415,6 +416,7 @@ static int copypropagatestouse(int candidateID, int useID) {
     reg2 = pcode->args[1].data.reg.reg;
 
     if (use->pcode->flags & fIsMove) {
+        ORACLE_PROBE(OracleProbe_CopyUse(pcode, use->pcode, 0, FALSE));
         return FALSE;
     }
 
@@ -429,6 +431,7 @@ static int copypropagatestouse(int candidateID, int useID) {
             op->data.reg.reg ==
             reg1 &&
             (op->data.reg.effect & (EffectRead | EffectWrite)) == (EffectRead | EffectWrite)) {
+            ORACLE_PROBE(OracleProbe_CopyUse(pcode, use->pcode, 1, FALSE));
             return FALSE;
         }
         op++;
@@ -445,6 +448,7 @@ static int copypropagatestouse(int candidateID, int useID) {
                     rclass &&
                     (op->data.reg.effect & EffectWrite) &&
                     op->data.reg.reg == reg2) {
+                    ORACLE_PROBE(OracleProbe_CopyUse(pcode, use->pcode, 2, FALSE));
                     return FALSE;
                 }
                 op++;
@@ -452,6 +456,7 @@ static int copypropagatestouse(int candidateID, int useID) {
         }
     } else {
         if (!bitvectorgetbit(candidateID, propinfo[use->pcode->block->blockIndex].in)) {
+            ORACLE_PROBE(OracleProbe_CopyUse(pcode, use->pcode, 3, FALSE));
             return FALSE;
         }
 
@@ -465,6 +470,7 @@ static int copypropagatestouse(int candidateID, int useID) {
                     rclass &&
                     (op->data.reg.effect & EffectWrite) &&
                     op->data.reg.reg == reg2) {
+                    ORACLE_PROBE(OracleProbe_CopyUse(pcode, use->pcode, 4, FALSE));
                     return FALSE;
                 }
                 op++;
@@ -475,6 +481,7 @@ static int copypropagatestouse(int candidateID, int useID) {
         }
     }
 
+    ORACLE_PROBE(OracleProbe_CopyUse(pcode, use->pcode, 5, TRUE));
     return TRUE;
 }
 
@@ -493,10 +500,12 @@ static void propagateandremovecopy(int id) {
     reg2 = candidate->pcode->args[1].data.reg.reg;
 
     if (rclass == RegClass_GPR && reg1 >= 32 && reg1 <= last_exception_register[RegClass_GPR]) {
+        ORACLE_PROBE(OracleProbe_CopyRemove(candidate->pcode, FALSE));
         return;
     }
 
     if (!moreaggressiveoptimization && reg2 < n_real_registers[rclass]) {
+        ORACLE_PROBE(OracleProbe_CopyRemove(candidate->pcode, FALSE));
         return;
     }
 
@@ -517,6 +526,7 @@ static void propagateandremovecopy(int id) {
         }
     }
 
+    ORACLE_PROBE(OracleProbe_CopyRemove(candidate->pcode, TRUE));
     deletepcode(candidate->pcode);
     propagated_instructions = TRUE;
 }

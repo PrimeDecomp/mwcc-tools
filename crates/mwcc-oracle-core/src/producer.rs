@@ -69,7 +69,7 @@ pub const HOOKS: [&str; 41] = [
     "_load_argument_registers",
     "_store_argument_on_stack",
 ];
-pub const SUPPORT: [&str; 25] = [
+pub const SUPPORT: [&str; 34] = [
     "_OracleRust_SourceProbeV1",
     "_OracleRust_ArenaProbeV1",
     "_OracleRust_ExpressionProbeV1",
@@ -96,6 +96,15 @@ pub const SUPPORT: [&str; 25] = [
     "_OracleProbe_InlinedBegin",
     "_OracleProbe_InlinedEnd",
     "_OracleProbe_Binding",
+    "_OracleProbe_Expand",
+    "_OracleProbe_Presched",
+    "_OracleProbe_DumpPhase",
+    "_OracleProbe_CopyUse",
+    "_OracleProbe_CopyRemove",
+    "_OracleProbe_PeepholePattern",
+    "_OracleProbe_PeepholeTry",
+    "_OracleProbe_PeepholeHit",
+    "_OracleProbe_PeepholeDead",
 ];
 pub const SOURCES: [&str; 20] = [
     "source_nodes.rs",
@@ -168,7 +177,7 @@ pub fn validate_frontend(data: &[u8], version: &str) -> Result<()> {
         &imports.iter().map(String::as_str).collect::<Vec<_>>(),
     )
 }
-pub const IMPORTS: [&str; 74] = [
+pub const IMPORTS: [&str; 75] = [
     "_CFunc_ParseFuncDef__retail",
     "_fn_00513040__retail",
     "_fn_00513240__retail",
@@ -197,6 +206,7 @@ pub const IMPORTS: [&str; 74] = [
     "_fn_004fcb20",
     "_fn_004f7fb0__retail",
     "_locals",
+    "_arguments",
     "_temporary_objects",
     "_getenv",
     "_OracleTrace_Printf",

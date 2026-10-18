@@ -27,6 +27,32 @@ void OracleProbe_SourceEmission(void* statement, void* expression);
 // PART's temporary (create_temp_object, whose hook takes PART).
 void OracleProbe_ScalarTemporary(void* part);
 
+// The functions in the order their bodies are expanded (`inl.expand`): CInline_Expand is about to
+// expand FUNCTION's (expanding_function).
+void OracleProbe_Expand(void* function);
+
+// The PCode before the first scheduling pass (`st.presched`, MWCC_ORACLE_STAGES): FUNCTION's.
+void OracleProbe_Presched(void* function);
+
+// The optimizer's dump after the phase NAME (MWCC_ORACLE_IRO_PHASES): whether to dump it, where
+// IRO_DumpAfterPhase was told DUMP.
+unsigned char OracleProbe_DumpPhase(const char* name, unsigned char dump);
+
+// Copy propagation (`cp.*`, MWCC_ORACLE_COPYPROP): copypropagatestouse has decided whether the copy
+// COPY propagates into USE (ACCEPTED), by the test REASON (0 the use is a move, 1 it reads and
+// writes the register, 2 the source is redefined between them, 3 the copy does not reach the use's
+// block, 4 the source is redefined in that block, 5 none failed); propagateandremovecopy has
+// REMOVED COPY, or kept it.
+void OracleProbe_CopyUse(void* copy, void* use, int reason, int accepted);
+void OracleProbe_CopyRemove(void* copy, int removed);
+
+// The peephole (`ph.*`, MWCC_ORACLE_PEEPHOLE): installpattern has installed FUNC, NAME; FUNC is
+// about to try INSTRUCTION, and has changed it (or removed it); INSTRUCTION was dead.
+void OracleProbe_PeepholePattern(void* func, const char* name);
+void OracleProbe_PeepholeTry(void* instruction, void* func);
+void OracleProbe_PeepholeHit(void* instruction);
+void OracleProbe_PeepholeDead(void* instruction);
+
 // The register counters (`pv.function.*`, `pv.category.*`, `pv.counter.change`). ROLE is the
 // original's site's: 2 close_temp_registers has raised RCLASS's counter to its last temporary, 3
 // check_temp_registers has rewound it, 4 init_registers and 5 colorinstructions have reset it, 6

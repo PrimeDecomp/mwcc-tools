@@ -53,6 +53,11 @@ unsafe fn globals() -> Option<Globals> {
     }
 }
 
+/// The opcode table: 18-byte OpcodeInfo entries, the name first and the rank at 9.
+pub unsafe fn opcode_table() -> Option<*const u8> {
+    unsafe { globals().map(|g| g.rank.sub(9)) }
+}
+
 #[unsafe(no_mangle)]
 unsafe extern "C" fn schedule_block(block: *const u8) {
     unsafe {

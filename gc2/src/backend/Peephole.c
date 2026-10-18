@@ -6,6 +6,7 @@
 #include "compiler/CPrep.h"
 #include "compiler/InstrSelection.h"
 #include "compiler/objects.h"
+#include "compiler/OracleProbes.h"
 #include "compiler/PCode.h"
 #include "compiler/PCodeInfo.h"
 #include "compiler/PCodeUtilities.h"
@@ -2170,12 +2171,15 @@ static void peepholeoptimizeblock(PCodeBlock* block) {
 
     for (instr = block->lastPCode; instr; instr = instr->prevPCode) {
         if (dead(instr, masks)) {
+            ORACLE_PROBE(OracleProbe_PeepholeDead(instr));
             deletepcode(instr);
         } else {
             pattern = peepholepatterns[instr->op];
 
             while (pattern) {
+                ORACLE_PROBE(OracleProbe_PeepholeTry(instr, (void*)pattern->func));
                 if (pattern->func(instr, masks)) {
+                    ORACLE_PROBE(OracleProbe_PeepholeHit(instr));
                     if (!instr->block) {
                         break;
                     }
@@ -2869,6 +2873,11 @@ static void installpattern(short opcode, PeepholeFunc func) {
     pattern->next = peepholepatterns[opcode];
     peepholepatterns[opcode] = pattern;
 }
+
+#ifdef ORACLE_PROBES
+// (the oracle names the patterns it reports)
+#define installpattern(opcode, func) (OracleProbe_PeepholePattern((void*)func, #func), installpattern(opcode, func))
+#endif
 
 static void installpeepholepatterns(void) {
     int i;

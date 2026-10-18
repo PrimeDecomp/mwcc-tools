@@ -13,8 +13,8 @@ The original 26 common wrappers are:
 | Symbol | Records |
 |---|---|
 | `fn_00460c90` | `lc.call` |
-| `fn_00507070` | `ra.graph`, `ra.node`, `ra.order`, backend `pv.graph.*` |
-| `fn_00506f50` | `ra.select` |
+| `fn_00507070` | `ra.graph`, `ra.node`, `ra.order`, backend `pv.graph.*`; `ra.temporaries`, `ra.value` (names) |
+| `fn_00506f50` | `ra.select`; `st.precolor.*` (stages) |
 | `fn_004f7fb0` | `fr.begin`, `fr.layout`, `fr.local`, `fr.temp`, `fr.end` |
 | `schedule_block` | `sc.block`, `sc.i`, `sc.after` |
 | `select_ready_coloring_node` | `sc.node`, `sc.pick` |
@@ -120,6 +120,13 @@ mangler call is made. The retail data-name cache offset is selected by audited
 version (56 in GC 1.3/1.3.2, 54 in GC 2.7), rather than the reconstructed header.
 See the source checkout's `docs/oracle/provenance.md` for typed dispatch capture,
 result uncertainty and the remaining exact-origin/lifetime limits.
+
+The tracer's records (`MWCC_ORACLE_NAMES`, `MWCC_ORACLE_COPYPROP`, `MWCC_ORACLE_PEEPHOLE`, `MWCC_ORACLE_IRO_PHASES`
+and the stages' `st.presched` / `st.precolor.*`; see the source checkout's `docs/oracle/trace.md`) add `pc.opcode`
+and `pc.object` to every instruction record, `ra.value` to the graph and `inl.decide` to each inline decision. The
+rest comes from probes of gc2's sources (`OracleProbe_Expand`, `OracleProbe_Presched`, `OracleProbe_DumpPhase`,
+`OracleProbe_CopyUse`, `OracleProbe_CopyRemove` and the four `OracleProbe_Peephole*`), so only the WebAssembly and
+source-built oracles have it. They query the environment where the frozen C producer does not.
 
 The frontend object implements inline decisions, body/expression costs, call
 expansion and deferred-node dispatch. Rust default selection and native packaging

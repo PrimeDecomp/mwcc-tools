@@ -38,6 +38,7 @@ unsafe extern "C" {
     fn fn_004fcb70(class: i8) -> i32;
     fn fn_004ceda0(class: i8);
     fn fn_004fcb20(class: i8) -> u32;
+    static arguments: *const u8;
 }
 struct Globals {
     class: *const i8,
@@ -52,6 +53,8 @@ unsafe extern "C" {
     static n_real_registers: [i32; 5];
     static used_virtual_registers: [i32; 5];
     static interferencegraph: *mut *mut OracleNode;
+    static first_fe_temporary_register: [i16; 5];
+    static first_temporary_register: [i32; 5];
 }
 #[cfg(target_arch = "wasm32")]
 unsafe fn globals() -> Option<Globals> {
@@ -185,6 +188,64 @@ unsafe fn capture(g: &Globals, class: i8, start: i32, count: i32) {
         );
     }
 }
+// ra.value (MWCC_ORACLE_NAMES): what each node of the class's graph holds, for the readers that name values: its
+// object (0: a temporary of the code generator), whether that is an argument of the function, and whether the value
+// can be rematerialized. ra.temporaries: the class's first front-end temporary and first temporary of the code
+// generator (gc2's names, so only in the WebAssembly module).
+#[cfg_attr(not(target_arch = "wasm32"), allow(unused_variables))]
+unsafe fn values(g: &Globals, class: i8, start: i32, count: i32) {
+    unsafe {
+        #[cfg(target_arch = "wasm32")]
+        OracleTrace_Printf(
+            c"ra.temporaries cls=%d fe=%d first=%ld\n".as_ptr(),
+            i32::from(class),
+            i32::from(
+                ptr::addr_of!(first_fe_temporary_register)
+                    .cast::<i16>()
+                    .add(class as usize)
+                    .read_unaligned(),
+            ),
+            ptr::addr_of!(first_temporary_register)
+                .cast::<i32>()
+                .add(class as usize)
+                .read_unaligned(),
+        );
+        for index in start..count {
+            let node = g.graph.offset(index as isize).read_unaligned();
+            let object = ptr::addr_of!((*node).f4).read_unaligned() as usize as *const u8;
+            let mut argument = false;
+            let mut list = ptr::addr_of!(arguments).read_unaligned();
+            let mut guard = 0;
+            while !object.is_null() && !list.is_null() && guard < 4096 {
+                if read::<*const u8>(list, 4) == object {
+                    argument = true;
+                    break;
+                }
+                list = read(list, 0);
+                guard += 1;
+            }
+            // (HashNameNode.name is an inline tail at byte 10)
+            let name = if object.is_null() {
+                c"-".as_ptr()
+            } else {
+                let name = read::<*const u8>(object, 10);
+                if name.is_null() {
+                    c"?".as_ptr()
+                } else {
+                    name.add(10).cast()
+                }
+            };
+            OracleTrace_Printf(
+                c"ra.value v=%d object=%08x remat=%d argument=%d name=%s\n".as_ptr(),
+                index,
+                object as u32,
+                i32::from(ptr::addr_of!((*node).f8).read_unaligned() != 0),
+                i32::from(argument),
+                name,
+            );
+        }
+    }
+}
 #[unsafe(no_mangle)]
 unsafe extern "C" fn fn_00507070() -> *mut OracleNode {
     unsafe {
@@ -221,6 +282,9 @@ unsafe extern "C" fn fn_00507070() -> *mut OracleNode {
                 }
                 OracleTrace_Printf(c"\n".as_ptr());
             }
+            if wanted(c"MWCC_ORACLE_NAMES") {
+                values(g, class, start, count);
+            }
         } else if wanted(c"MWCC_ORACLE_BACKEND") {
             OracleTrace_Printf(c"pv.gap reason=graph_byte_guard\n".as_ptr());
         }
@@ -248,6 +312,22 @@ unsafe extern "C" fn fn_00507070() -> *mut OracleNode {
 unsafe extern "C" fn fn_00506f50(stack: *mut OracleNode) -> i32 {
     unsafe {
         let known = globals();
+        // (st.precolor.*: the PCode select colours, MWCC_ORACLE_STAGES)
+        if let Some(g) = &known
+            && !ptr::addr_of!(crate::origins::ALLOCATING).read().is_null()
+            && wanted(c"MWCC_ORACLE_STAGES")
+        {
+            let phase = if g.class.read_unaligned() == 3 {
+                c"precolor.fpr"
+            } else {
+                c"precolor.gpr"
+            };
+            pcode::snapshot(
+                c"st".as_ptr(),
+                phase.as_ptr(),
+                ptr::addr_of!(crate::origins::ALLOCATING).read(),
+            );
+        }
         let before = if let Some(g) = &known {
             let class = g.class.read_unaligned();
             fn_004ceda0(class);

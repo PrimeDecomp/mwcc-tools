@@ -23,6 +23,7 @@
 #include "compiler/InlineAsm.h"
 #include "compiler/objects.h"
 #include "compiler/ObjGen_PPC_EABI.h"
+#include "compiler/OracleProbes.h"
 #include "compiler/scopes.h"
 #include "compiler/Switch.h"
 #include "compiler/templates.h"
@@ -3251,6 +3252,7 @@ static void CInline_ExportCheck(ENode* expr) {
 static void CInline_Expand(Statement* stmt) {
     Statement* scan;
 
+    ORACLE_PROBE(OracleProbe_Expand(expanding_function));
     if (!copts.dontinline && copts.inlinelevel >= 0) {
         if (copts.inline_bottom_up) {
             inline_max_size = copts.inlinemaxsize;
