@@ -279,12 +279,19 @@ python configure.py --wrapper F:\...\mwcc\target\release\mwcc-run.exe
 Copy it again after each `cargo build`. A hard link made before a rebuild keeps running the old executable, because
 cargo replaces `mwcc-tools.exe` with a new file.
 
-* An EXE with the bytes of `build/compilers/GC/<dir>/mwcceppc.exe` (2.6 or 2.7), with that version's module built, runs
-  in process. It gets the wrapper's arguments, directory and environment as they are, and writes the object and the
-  `-MMD` `.d` file itself. The wrapper prints its stdout and stderr and exits with its status. The modules are
-  `MWCC_ORACLE_ROOT`'s, or else the checkout the executable was built in.
-* Anything else runs as a process: natively on Windows, through wibo elsewhere. That covers the linker and the
-  other compilers.
+* An EXE that is the original 2.6 or 2.7 compiler, wherever it is, runs in process when that version's module is
+  built. It is recognised by the size and SHA-1 in `config/<version>/config.json` (`size`, `sha1`), so the checkout
+  needs no copy of the compilers in `build/compilers`. An executable of another size is never read.
+  It gets the wrapper's arguments, directory and environment as they are, and writes the object and the `-MMD` `.d`
+  file itself. The wrapper prints its stdout and stderr and exits with its status. The modules and configs are
+  `MWCC_ORACLE_ROOT`'s, or else those of the checkout the executable was built in.
+* Anything else runs as a process. That covers the linker and the other compilers. On Windows it runs natively.
+  Elsewhere it runs through wibo, which is taken from the first of these:
+  * `MWCC_WIBO`;
+  * the project's own `build/tools/wibo`, relative to the directory the build runs in, which is the one its build
+    downloads;
+  * the checkout's `build/tools/wibo`;
+  * `wibo` on the path.
 * `sjiswrap.exe` is skipped for a compiler that runs in process. The sources are read as they are, so this is only
   right for sources that are all ASCII.
 * A process loads the module from `mwcceppc.cache/` in about 7 ms. A trivial unit takes 24 ms, against 16 ms for the

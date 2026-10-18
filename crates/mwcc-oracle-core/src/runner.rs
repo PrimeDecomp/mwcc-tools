@@ -170,26 +170,40 @@ impl std::fmt::Display for Cancelled {
 impl std::error::Error for Cancelled {}
 
 pub fn launcher(root: &Path, executable: &Path) -> Result<Command> {
-    launcher_with_override(root, executable, std::env::var_os("MWCC_WIBO"))
+    launcher_with_override(&[root], executable, std::env::var_os("MWCC_WIBO"))
 }
+
+/// [`launcher`] for a project's build in PROJECT: the project's own wibo (`build/tools/wibo`, the one its build
+/// downloads) before ROOT's.
+pub fn project_launcher(project: &Path, root: &Path, executable: &Path) -> Result<Command> {
+    launcher_with_override(&[project, root], executable, std::env::var_os("MWCC_WIBO"))
+}
+
 fn launcher_with_override(
-    root: &Path,
+    roots: &[&Path],
     executable: &Path,
     selected: Option<OsString>,
 ) -> Result<Command> {
     if cfg!(windows) {
         return Ok(Command::new(executable));
     }
-    let local = root.join("build/tools/wibo");
-    let mut command = Command::new(if let Some(selected) = selected {
-        selected
-    } else if local.is_file() {
-        local.into_os_string()
-    } else {
-        OsString::from("wibo")
-    });
+    let mut command = Command::new(wibo(roots, selected));
     command.arg(executable);
     Ok(command)
+}
+
+/// The wibo that runs a Windows executable: SELECTED (`MWCC_WIBO`), else the first of ROOTS' `build/tools/wibo`,
+/// else the one on the path.
+fn wibo(roots: &[&Path], selected: Option<OsString>) -> OsString {
+    selected
+        .or_else(|| {
+            roots
+                .iter()
+                .map(|root| root.join("build/tools/wibo"))
+                .find(|local| local.is_file())
+                .map(PathBuf::into_os_string)
+        })
+        .unwrap_or_else(|| OsString::from("wibo"))
 }
 
 /// Redirect both streams to the same file: no pipe deadlocks and diagnostic
@@ -753,12 +767,12 @@ mod tests {
         fs::create_dir_all(local.parent().unwrap()).unwrap();
         fs::write(&local, b"local runner").unwrap();
         let selected = launcher_with_override(
-            root.path(),
+            &[root.path()],
             &executable,
             Some(override_path.clone().into_os_string()),
         )
         .unwrap();
-        let fallback = launcher_with_override(root.path(), &executable, None).unwrap();
+        let fallback = launcher_with_override(&[root.path()], &executable, None).unwrap();
         if cfg!(windows) {
             assert_eq!(selected.get_program(), executable.as_os_str());
             assert!(selected.get_args().next().is_none());
@@ -770,5 +784,26 @@ mod tests {
                 [executable.as_os_str()]
             );
         }
+    }
+    #[test]
+    fn a_projects_own_wibo_comes_before_the_roots() {
+        let project = tempfile::tempdir().unwrap();
+        let root = tempfile::tempdir().unwrap();
+        let wibo_of = |dir: &Path| {
+            let path = dir.join("build/tools/wibo");
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(&path, b"wibo").unwrap();
+            path
+        };
+        let roots = [project.path(), root.path()];
+        assert_eq!(wibo(&roots, None), OsString::from("wibo"));
+        let roots_wibo = wibo_of(root.path());
+        assert_eq!(wibo(&roots, None), roots_wibo.as_os_str());
+        let projects_wibo = wibo_of(project.path());
+        assert_eq!(wibo(&roots, None), projects_wibo.as_os_str());
+        assert_eq!(
+            wibo(&roots, Some(OsString::from("chosen"))),
+            OsString::from("chosen")
+        );
     }
 }

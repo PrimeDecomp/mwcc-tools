@@ -15,6 +15,7 @@ use crate::{
     wasm_build,
 };
 use anyhow::{Context, Result, anyhow};
+use sha1::{Digest, Sha1};
 use std::{
     collections::HashMap,
     fs,
@@ -72,7 +73,8 @@ pub fn module(root: &Path, executable: &Path) -> Option<(Version, PathBuf)> {
 }
 
 /// The module that runs in place of EXECUTABLE, a compiler anywhere (a project's own copy): [`module`] where it is
-/// one of ROOT's, else the module of the version whose stock compiler has EXECUTABLE's bytes.
+/// one of ROOT's, else the module of the version whose original it is: the size and SHA-1 its `config.json` gives
+/// (`size`, `sha1`). Only an executable of one of those sizes is read.
 pub fn module_of_copy(root: &Path, executable: &Path) -> Option<(Version, PathBuf)> {
     if let Some(found) = module(root, executable) {
         return Some(found);
@@ -81,21 +83,23 @@ pub fn module_of_copy(root: &Path, executable: &Path) -> Option<(Version, PathBu
         return None;
     }
     let size = fs::metadata(executable).ok()?.len();
-    let mut bytes = None;
+    let mut digest = None;
     for name in wasm_build::VERSIONS {
         let version = Version::parse(name).ok()?;
-        let stock = root.join(format!(
-            "build/compilers/GC/{}/mwcceppc.exe",
-            version.compiler_directory()
-        ));
-        if fs::metadata(&stock).map_or(true, |m| m.len() != size) {
+        let Ok(config) = fs::read(root.join(format!("config/{name}/config.json"))) else {
+            continue;
+        };
+        let Ok(config) = serde_json::from_slice::<serde_json::Value>(&config) else {
+            continue;
+        };
+        if config["size"].as_u64() != Some(size) {
             continue;
         }
-        let bytes = match &bytes {
-            Some(bytes) => bytes,
-            None => bytes.insert(fs::read(executable).ok()?),
+        let digest = match &digest {
+            Some(digest) => digest,
+            None => digest.insert(format!("{:x}", Sha1::digest(fs::read(executable).ok()?))),
         };
-        if fs::read(&stock).is_ok_and(|stock| &stock == bytes) {
+        if config["sha1"].as_str() == Some(digest.as_str()) {
             let module = root.join(wasm_build::output(name));
             return module.is_file().then_some((version, module));
         }
@@ -242,4 +246,66 @@ pub fn run(run: &Run<'_>, cancel: &dyn Fn() -> bool) -> Result<mwcc_wasm::Outcom
             .join()
             .map_err(|_| anyhow!("the in-process compiler panicked"))?
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_copy_is_known_by_the_size_and_sha1_of_its_versions_config() {
+        let root = tempfile::tempdir().unwrap();
+        let project = tempfile::tempdir().unwrap();
+        let compiler = project.path().join("mwcceppc.exe");
+        fs::write(&compiler, b"a compiler").unwrap();
+        let linker = project.path().join("mwldeppc.exe");
+        fs::write(&linker, b"a linker").unwrap();
+        let config = root.path().join("config/GC_2_7/config.json");
+        fs::create_dir_all(config.parent().unwrap()).unwrap();
+        fs::write(
+            &config,
+            serde_json::json!({
+                "original": "build/compilers/GC/2.7/mwcceppc.exe",
+                "sha1": format!("{:x}", Sha1::digest(b"a compiler")),
+                "size": 10,
+            })
+            .to_string(),
+        )
+        .unwrap();
+        // (no stock compiler in the root, and no module yet)
+        assert!(!root.path().join("build/compilers").exists());
+        assert_eq!(module_of_copy(root.path(), &compiler), None);
+        let module = root.path().join(wasm_build::output("GC_2_7"));
+        fs::create_dir_all(module.parent().unwrap()).unwrap();
+        fs::write(&module, b"").unwrap();
+        assert_eq!(
+            module_of_copy(root.path(), &compiler),
+            Some((Version::parse("GC_2_7").unwrap(), module))
+        );
+        assert_eq!(module_of_copy(root.path(), &linker), None);
+        // (the same size, other bytes)
+        fs::write(&compiler, b"b compiler").unwrap();
+        assert_eq!(module_of_copy(root.path(), &compiler), None);
+    }
+
+    #[test]
+    fn the_configs_give_the_originals_sizes() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        for name in wasm_build::VERSIONS {
+            let config: serde_json::Value = serde_json::from_slice(
+                &fs::read(root.join(format!("config/{name}/config.json"))).unwrap(),
+            )
+            .unwrap();
+            assert!(config["size"].as_u64().is_some(), "{name}");
+            let original = root.join(config["original"].as_str().unwrap());
+            if let Ok(data) = fs::read(original) {
+                assert_eq!(config["size"].as_u64(), Some(data.len() as u64), "{name}");
+                assert_eq!(
+                    config["sha1"],
+                    format!("{:x}", Sha1::digest(&data)),
+                    "{name}"
+                );
+            }
+        }
+    }
 }

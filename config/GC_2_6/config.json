@@ -1,6 +1,7 @@
 {
   "original": "build/compilers/GC/2.6/mwcceppc.exe",
   "sha1": "1110a7a9924a09a608967efdf79ecf09900344e7",
+  "size": 2066432,
   "mode": "link",
   "validate_units": true,
   "imports": [

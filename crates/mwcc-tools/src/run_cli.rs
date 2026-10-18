@@ -1,8 +1,10 @@
 //! `mwcc-tools run [sjiswrap.exe] EXE ARGS...`: a wrapper for a project's build, in the place of wibo (its
 //! configure's `--wrapper`). A compiler whose module is built runs in this process, as the executable's process
 //! would: the same arguments, directory and environment, its console output on stdout and stderr, its exit code, and
-//! the files it writes (the object, `-MMD`'s `.d`). Anything else (the linker, a compiler without a module) runs as
-//! it is: natively on Windows, through wibo elsewhere.
+//! the files it writes (the object, `-MMD`'s `.d`). The compiler is known by the size and SHA-1 of its version's
+//! original (`config/<version>/config.json`), wherever it is. Anything else (the linker, a compiler without a module)
+//! runs as it is: natively on Windows, elsewhere through wibo: `MWCC_WIBO`, else the project's own
+//! (`build/tools/wibo` in the directory the build runs in), else this checkout's, else the one on the path.
 //!
 //! A copy or link of `mwcc-tools` named `mwcc-run` is `mwcc-tools run`: one path, as a configure's `--wrapper` takes
 //! (dtk-template writes its arguments back into build.ninja unquoted).
@@ -19,9 +21,9 @@ use std::{
 };
 
 const USAGE: &str = "mwcc-tools run [sjiswrap.exe] EXE ARGS...\nmwcc-run [sjiswrap.exe] EXE ARGS...\n\n\
-Runs EXE with ARGS. A compiler whose WebAssembly module is built (one with the bytes of MWCC_ORACLE_ROOT's \
-build/compilers/GC/<dir>/mwcceppc.exe) runs in process; anything else runs as a process (through wibo off \
-Windows). MWCC_IN_PROCESS=0 runs every executable. MWCC_RUN_TIMING=1 prints where the time went.";
+Runs EXE with ARGS. A compiler whose WebAssembly module is built (one with the size and SHA-1 in \
+MWCC_ORACLE_ROOT's config/<version>/config.json) runs in process; anything else runs as a process (off Windows \
+through MWCC_WIBO, else build/tools/wibo here, else the checkout's, else wibo on the path). MWCC_IN_PROCESS=0 runs every executable. MWCC_RUN_TIMING=1 prints where the time went.";
 
 /// The checkout the modules are in: `MWCC_ORACLE_ROOT`, else the one this executable was built in.
 fn root() -> Result<PathBuf> {
@@ -108,7 +110,7 @@ pub fn run(args: &[String]) -> Result<i32> {
     }
     #[cfg(not(feature = "wasm"))]
     let _ = compiler_args;
-    let status = runner::launcher(&root, Path::new(&args[0]))?
+    let status = runner::project_launcher(&env::current_dir()?, &root, Path::new(&args[0]))?
         .args(&args[1..])
         .status()
         .with_context(|| format!("launch {}", args[0]))?;
