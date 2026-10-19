@@ -1,8 +1,5 @@
 name: Build
 
-# Every push and pull request builds mwcc-tools for Windows x64, Linux x64 and macOS arm64, and GC 2.7's WebAssembly
-# compiler bundle on Linux, as artifacts. A `v*` tag (`v` + the workspace version) also publishes them as a release.
-
 on:
   push:
     branches: ['**']
@@ -33,16 +30,19 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: actions/setup-python@v5
+
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.13'
+
       - name: Install the pinned Rust toolchain
         run: |
           rustup show
           rustup component add rust-docs
+
       - name: Check formatting, lints and tests
         if: matrix.check
         run: |
@@ -50,20 +50,24 @@ jobs:
           cargo clippy --locked --workspace --all-targets -- -D warnings
           cargo test --locked --workspace
           python -m unittest discover -s python/tests -p 'test_*.py'
+
       - name: Build
         run: cargo build --locked --release -p mwcc-tools
+
       # (the locked dependencies' notices and the pinned toolchain's library notices, from this runner)
       - name: Collect the dependency notices
         run: |
           cargo fetch --locked --target ${{ matrix.target }}
           python tools/migration/capture_notices.py --target ${{ matrix.target }} --output build/notices/${{ matrix.target }}
+
       - name: Package
         run: |
           version=$(python -c "import tomllib; print(tomllib.load(open('Cargo.toml', 'rb'))['workspace']['package']['version'])")
           target/release/${{ matrix.executable }} package-release "build/releases/mwcc-tools-$version-${{ matrix.target }}.zip" \
             --binary target/release/${{ matrix.executable }} --target ${{ matrix.target }} \
             --source-revision "$GITHUB_SHA"
-      - uses: actions/upload-artifact@v4
+            
+      - uses: actions/upload-artifact@v7
         with:
           name: mwcc-tools-${{ matrix.target }}
           path: build/releases/
@@ -79,25 +83,29 @@ jobs:
       CLANG: clang-22
       WASM_LD: wasm-ld-22
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
+
       - name: Install ninja and LLVM 22 (clang, wasm-ld)
         run: |
           sudo apt-get update && sudo apt-get install -y ninja-build
           wget -qO llvm.sh https://apt.llvm.org/llvm.sh
           sudo bash llvm.sh 22
           sudo apt-get install -y lld-22
+
       - name: Install the pinned Rust toolchain
         run: |
           rustup show
           rustup target add wasm32-unknown-unknown
+
       - name: Build
         run: |
           cargo build --locked --release -p mwcc-tools
           target/release/mwcc-tools configure --version GC_2_7
           ninja build/GC_2_7/wasm/mwcc.wasm build/GC_2_7/wasm/mwcceppc.wasm build/GC_2_7/wasm/oracle.wasm \
             build/GC_2_7/wasm/persist.wasm
+
       - name: Package
         run: |
           version=$(python3 -c "import tomllib; print(tomllib.load(open('Cargo.toml', 'rb'))['workspace']['package']['version'])")
@@ -106,7 +114,8 @@ jobs:
           zip -X "$archive" LICENSE build/GC_2_7/wasm/mwcc.wasm build/GC_2_7/wasm/mwcc.version \
             build/GC_2_7/wasm/mwcceppc.wasm build/GC_2_7/wasm/oracle.wasm build/GC_2_7/wasm/persist.wasm
           (cd build/releases && sha256sum "$(basename "$archive")" > "$(basename "$archive").sha256")
-      - uses: actions/upload-artifact@v4
+
+      - uses: actions/upload-artifact@v7
         with:
           name: mwcc-wasm-GC_2_7
           path: build/releases/
@@ -122,10 +131,10 @@ jobs:
       group: release-${{ github.ref }}
       cancel-in-progress: false
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: release-input
       - name: Publish the release
