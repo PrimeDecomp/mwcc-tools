@@ -1,0 +1,28 @@
+[package]
+name = "mwcc-oracle-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+regex.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tempfile.workspace = true
+sha2.workspace = true
+sha1.workspace = true
+indexmap.workspace = true
+capstone.workspace = true
+ureq.workspace = true
+zip.workspace = true
+flate2.workspace = true
+crc32fast.workspace = true
+mwcc-trace = { path = "../mwcc-trace" }
+mwcc-project = { path = "../mwcc-project" }
+mwcc-wasm = { path = "../mwcc-wasm", optional = true }
+
+[features]
+# Run the compilers gc2's sources build as WebAssembly, in process (crate::in_process)
+wasm = ["dep:mwcc-wasm"]

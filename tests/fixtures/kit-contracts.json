@@ -1,0 +1,21 @@
+[
+  {
+    "archive": "echoes-agent-workflow-mcp-2026-10-15-r3.zip",
+    "sha256": "b1c43f52eef2ca14105c4843a775947efcb73f7a0acf9ae587554a54610b8908",
+    "scripts": {
+      "inline-calibrate.py": "e8f9f9b1c63ca9035a769c3aae75a712c8d51b9d727922f2a38d54d61d7416e9",
+      "oracle-colouring.py": "b1c535eb855f72437af635c17e2c316c330ca45820aeeb0a8b123e29660182fe",
+      "oracle-regdiff.py": "c637115453e41dcd929c3fe7c89bdbb95a31ec5e29f14628ae45841e98509d52",
+      "oracle-run.py": "1a201e89d164e3442be1f28801c60bfeb4f6d3f08ae03dc912025f8e2ac5c248"
+    }
+  },
+  {
+    "archive": "prime-agent-workflow-mcp-2026-10-14-r3.zip",
+    "sha256": "842ecab9e5ae81d7490f7022b7a0687fb2addaaf8382ca2df604b2deba02d924",
+    "scripts": {
+      "inline-calibrate.py": "538d2f20cae6aea43bfe7b715ddbc29f4b6f929f955fcc521346f4df4cdb67e8",
+      "oracle-regdiff.py": "c637115453e41dcd929c3fe7c89bdbb95a31ec5e29f14628ae45841e98509d52",
+      "oracle-run.py": "e6c65c5a473948d7b2da3fa6470f383de7e7fbee2fa8ee33b5d490118b116b44"
+    }
+  }
+]

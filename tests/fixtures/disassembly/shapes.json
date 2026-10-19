@@ -1,0 +1,52 @@
+[
+  {
+    "text": "mov eax, dword ptr [esp + 0x10]",
+    "field": false,
+    "shape": "mov eax, dword ptr [esp + N]"
+  },
+  {
+    "text": "mov eax, dword ptr [esp + 0x10]",
+    "field": true,
+    "shape": "mov eax, dword ptr [esp + N] R"
+  },
+  {
+    "text": "call 0x401020",
+    "field": false,
+    "shape": "call N"
+  },
+  {
+    "text": "call 0x401020",
+    "field": true,
+    "shape": "call N R"
+  },
+  {
+    "text": "push -4",
+    "field": false,
+    "shape": "push -N"
+  },
+  {
+    "text": "push -4",
+    "field": true,
+    "shape": "push -N R"
+  },
+  {
+    "text": "ret",
+    "field": false,
+    "shape": "ret"
+  },
+  {
+    "text": "ret",
+    "field": true,
+    "shape": "ret R"
+  },
+  {
+    "text": "pshufd xmm1, xmm2, 0xff",
+    "field": false,
+    "shape": "pshufd xmm1, xmm2, N"
+  },
+  {
+    "text": "pshufd xmm1, xmm2, 0xff",
+    "field": true,
+    "shape": "pshufd xmm1, xmm2, N R"
+  }
+]

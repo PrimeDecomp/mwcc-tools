@@ -103,7 +103,7 @@ struct CompilerLinkerOptions {
     SInt16 inlineLimit;
     SInt32 inlineAutoSize;
     SInt32 inlineAutoMax;
-    UInt8 inlineAuto;
+    UInt8 inlineBottomUp; /* #pragma inline_bottom_up (0x72), not auto_inline (0x89) */
     UInt8 cplusplus;
     UInt8 ecplusplus;
     UInt8 objective_c;

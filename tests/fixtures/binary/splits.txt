@@ -1,0 +1,9 @@
+Sections:
+	.text type:code align:16
+	.data type:data align:4
+	.bss type:bss align:8
+src/unit.c:
+	.text start:0x00401000 end:0x00401006
+	.data start:0x00402000 end:0x00402004 rename:.data$A
+common:
+	.bss start:0x00403000 end:0x00403008 common:true

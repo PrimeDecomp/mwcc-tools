@@ -1,0 +1,39 @@
+[
+  {
+    "name": "license",
+    "dll": "LMGR326B.dll",
+    "exports": [
+      {
+        "symbol": "lp_checkin",
+        "ordinal": 189,
+        "named": false
+      },
+      {
+        "symbol": "lp_checkout",
+        "ordinal": 190,
+        "named": false
+      },
+      {
+        "symbol": "lp_errstring",
+        "ordinal": 191,
+        "named": false
+      }
+    ]
+  },
+  {
+    "name": "named",
+    "dll": "sample.dll",
+    "exports": [
+      {
+        "symbol": "foo@8",
+        "ordinal": 3,
+        "named": true
+      },
+      {
+        "symbol": "by_ordinal",
+        "ordinal": 7,
+        "named": false
+      }
+    ]
+  }
+]

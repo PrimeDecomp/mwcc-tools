@@ -1,0 +1,21 @@
+[package]
+name = "mwcc-oracle-hooks"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "32-bit no_std observation hooks linked into the historical compiler"
+
+[features]
+trace-output = []
+frontend = []
+frontend-gc13 = ["frontend"]
+frontend-gc132 = ["frontend"]
+frontend-gc26 = ["frontend"]
+frontend-gc27 = ["frontend"]
+
+[lib]
+test = false
+doctest = false
+
+[dependencies]

@@ -1,0 +1,11 @@
+{
+  "reference_commit": "b75c4e5e0b4bc97ae06c26ea9d6aad8379ac1722",
+  "reference_sha256": "7ae95d4ac5d867baf238448fe34b2a83215e75d4a6d7d50f3333fb11269ba8f4",
+  "files": {
+    "cases.json": "5a891c8a830492233e60152c7b13a577c030e48e18e1789ef4ad1cc8e1733fc7",
+    "depfiles-Posix.json": "8da40ac3ea64f49721cd3c97fd1ec16f80b1b6aba4fa3a3b201bbc43b418cdf5",
+    "depfiles-Windows.json": "90db67a6bced4ce21861d8983dd7912f1a559c3c53330d54ff6ddbceb185e727",
+    "project.json": "d14c7304468d320966d786e1b54973201cf08c3b36d65becd5f8735304878419",
+    "quotes.json": "ea965856c0cfcb46eb2873056149f383b82f49d834994861e657fd7e5bcef922"
+  }
+}

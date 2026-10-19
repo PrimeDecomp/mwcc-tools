@@ -1,0 +1,37 @@
+{
+  "format_version": 1,
+  "flags": [
+    "-nodefaults",
+    "-proc",
+    "gekko",
+    "-fp",
+    "hardware",
+    "-Cpp_exceptions",
+    "off",
+    "-O4,p"
+  ],
+  "cases": [
+    {
+      "source": "ordinary_writes.cpp",
+      "sha256": "514a0a10c61cf33a106947bbd053a7db88807490883e9437c19070bd8bcc37ab",
+      "bytes": 279,
+      "aim": "Three ordinary flag-array assignment statements; no declaration-initializer claim",
+      "backend": false
+    },
+    {
+      "source": "inline_arrays.cpp",
+      "sha256": "e50b198a4a48842b0cf55cb6f8e8eef07a3f9baf66287e5998e23b7cad2ef2bd",
+      "bytes": 562,
+      "aim": "Two distinct actual arrays and nested helper calls; actual clone/substitution paths must be observed",
+      "backend": true
+    },
+    {
+      "source": "unsupported_call.cpp",
+      "sha256": "62687478501f44202d1e95cfcaed6fda676980044cde2f2e9002f3adaf18e3a8",
+      "bytes": 280,
+      "aim": "Indirect call statement remains an opaque unsupported tree, not inferred ancestry",
+      "backend": false
+    }
+  ],
+  "scope": "Guarded source assignments and actual clone observations only; no declaration initialization, node equivalence or semantic lifetime claim"
+}

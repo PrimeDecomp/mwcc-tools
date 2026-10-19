@@ -1,0 +1,63 @@
+{
+  "near": [],
+  "suggestions": {
+    "accumualte": [
+      [
+        "accumulate",
+        "accumulate"
+      ],
+      [
+        "across_calls",
+        "across_calls"
+      ]
+    ],
+    "does_not_exist": [
+      [
+        "across_calls",
+        "across_calls"
+      ],
+      [
+        "accumulate",
+        "accumulate"
+      ]
+    ]
+  },
+  "near_report": [
+    "== inline decisions within 8 of the threshold (cost, threshold, decision, callee link name, in which function) ==",
+    "   none"
+  ],
+  "instantiation_report": [
+    "== when the bodies of  came to be, and the decisions about calling them (trace line, event) ==",
+    "         0  call kept in across_calls, round 0, NO BODY yet  [external]",
+    "         1  call kept in across_calls, round 0, NO BODY yet  [external]",
+    "         2  call kept in across_calls, round 0, NO BODY yet  [external]",
+    "         3  call kept in across_calls, round 1, NO BODY yet  [external]",
+    "         4  call kept in across_calls, round 1, NO BODY yet  [external]",
+    "         5  call kept in across_calls, round 1, NO BODY yet  [external]",
+    "         6  call kept in across_calls, round 2, NO BODY yet  [external]",
+    "         7  call kept in across_calls, round 2, NO BODY yet  [external]",
+    "         8  call kept in across_calls, round 2, NO BODY yet  [external]",
+    "         9  call kept in across_calls, round 3, NO BODY yet  [external]",
+    "        10  call kept in across_calls, round 3, NO BODY yet  [external]",
+    "        11  call kept in across_calls, round 3, NO BODY yet  [external]",
+    "        12  call kept in across_calls, round 4, NO BODY yet  [external]",
+    "        13  call kept in across_calls, round 4, NO BODY yet  [external]",
+    "        14  call kept in across_calls, round 4, NO BODY yet  [external]",
+    "        15  call kept in across_calls, round 5, NO BODY yet  [external]",
+    "        16  call kept in across_calls, round 5, NO BODY yet  [external]",
+    "        17  call kept in across_calls, round 5, NO BODY yet  [external]",
+    "        18  call kept in across_calls, round 6, NO BODY yet  [external]",
+    "        19  call kept in across_calls, round 6, NO BODY yet  [external]",
+    "        20  call kept in across_calls, round 6, NO BODY yet  [external]",
+    "        21  call kept in across_calls, round 7, NO BODY yet  [external]",
+    "        22  call kept in across_calls, round 7, NO BODY yet  [external]",
+    "        23  call kept in across_calls, round 7, NO BODY yet  [external]",
+    "       251  compiled (allocated)  [across_calls]",
+    "      1508  compiled (allocated)  [accumulate]"
+  ],
+  "raw_selected": {
+    "common": [],
+    "pipeline": [],
+    "does_not_exist": []
+  }
+}

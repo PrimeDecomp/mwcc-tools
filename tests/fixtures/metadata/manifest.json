@@ -1,0 +1,18 @@
+{
+  "reference_commit": "b75c4e5e0b4bc97ae06c26ea9d6aad8379ac1722",
+  "reference_scripts": {
+    "remap.py": "32966074b705d363a65a01ba8a567198d01d17734b37b3e3bec1f09aab31b403",
+    "derive_splits.py": "4ebb4720fda5c7528f814e665b7eca58e0381e13ab2da646f15c77bc7ebb398a",
+    "split.py": "a507d1beddbf63bcfd65ce95299ff7183c7748080300f59660c7c725100045eb",
+    "pe.py": "82b8d42ce4737f950c49f819d8599f9259e91d44375f97e2e3c26ce6aa3d8a7d"
+  },
+  "files": {
+    "assignment.json": "b415e318d12941d0761109778ccf716078bd9fa1b901cba9cf57d5bb457a85b6",
+    "from.pe": "e82b2bfee852cc2322d2bf64900017f85918cf2575ca489fd3f76354f4f762b1",
+    "patterns.json": "99f8c80dccb5297b18f2314763acc931e2c9e1ed4fdb4794f4013d0bb545a831",
+    "project.json": "00dad17e98c4a7f9f03c20cd8c7ee681ebc24ac7d9ac3aecd8a7110a9fdf5f8c",
+    "src-one.c.obj": "09c62dde47e10b66a1a8cfddee0e5c84c812b1b79b8a2dc0e3469f21f299edaa",
+    "src-two.c.obj": "b796d42b86d37439c2e2ef533c767fe85853e517ae1f9b4496d18e4f39067951",
+    "to.pe": "2d20d8177b3246d874ff8ff0e4af0f17a6139aa11497121c701196699c2636e4"
+  }
+}

@@ -1,0 +1,93 @@
+{
+  "symbols": [
+    {
+      "name": "_entry",
+      "section": ".text",
+      "address": 4198400,
+      "options": {
+        "type": "function",
+        "size": "0x6"
+      }
+    },
+    {
+      "name": "local_label",
+      "section": ".text",
+      "address": 4198402,
+      "options": {
+        "type": "label",
+        "scope": "local"
+      }
+    },
+    {
+      "name": "_data",
+      "section": ".data",
+      "address": 4202496,
+      "options": {
+        "type": "object",
+        "size": "0x4",
+        "scope": "local",
+        "force_active": true
+      }
+    }
+  ],
+  "splits": {
+    "sections": {
+      ".text": {
+        "type": "code",
+        "align": "16"
+      },
+      ".data": {
+        "type": "data",
+        "align": "4"
+      },
+      ".bss": {
+        "type": "bss",
+        "align": "8"
+      }
+    },
+    "units": [
+      {
+        "name": "src/unit.c",
+        "ranges": [
+          {
+            "section": ".text",
+            "start": 4198400,
+            "end": 4198406,
+            "options": {}
+          },
+          {
+            "section": ".data",
+            "start": 4202496,
+            "end": 4202500,
+            "options": {
+              "rename": ".data$A"
+            }
+          }
+        ]
+      },
+      {
+        "name": "common",
+        "ranges": [
+          {
+            "section": ".bss",
+            "start": 4206592,
+            "end": 4206600,
+            "options": {
+              "common": "true"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "common_names": [
+    "_common_0_0",
+    "_common_1_5"
+  ],
+  "common_layout": {
+    "_double": 4206600,
+    "_word": 4206608,
+    "_one": 4206612,
+    "_odd": 4206613
+  }
+}

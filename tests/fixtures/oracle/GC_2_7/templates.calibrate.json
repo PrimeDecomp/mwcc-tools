@@ -1,0 +1,387 @@
+[
+  {
+    "callee": "Value::__ct",
+    "target": {
+      "name": "synthetic",
+      "metadata": {
+        "source_path": "sources/templates.cpp"
+      },
+      "functions": [
+        {
+          "name": "Value::__ct<P5Value>__4rstlFPC5Value"
+        }
+      ]
+    },
+    "rows": [
+      {
+        "unit": "synthetic",
+        "kind": "missing",
+        "instance": "Value::__ct<P5Value>__4rstlFPC5Value",
+        "element": null,
+        "need": "call",
+        "costs": [],
+        "threshold": null,
+        "ok": null,
+        "decisions": []
+      }
+    ],
+    "report": [
+      "missing  synthetic: None  target needs call (cost > None); ours []: no decision found"
+    ],
+    "binaries": [
+      {
+        "symbols": [],
+        "table": {
+          "__ct__5ValueFii": {
+            "present": false,
+            "costs": [
+              19
+            ],
+            "units": [
+              "synthetic"
+            ],
+            "thresholds": [
+              512
+            ]
+          },
+          "__ct__5ValueFRC5Value": {
+            "present": false,
+            "costs": [
+              23
+            ],
+            "units": [
+              "synthetic"
+            ],
+            "thresholds": [
+              512
+            ]
+          }
+        },
+        "report": [
+          "target    ours min..max  instance (units)"
+        ]
+      },
+      {
+        "symbols": [
+          "__ct__5ValueFRC5Value",
+          "__ct__5ValueFii"
+        ],
+        "table": {
+          "__ct__5ValueFii": {
+            "present": true,
+            "costs": [
+              19
+            ],
+            "units": [
+              "synthetic"
+            ],
+            "thresholds": [
+              512
+            ]
+          },
+          "__ct__5ValueFRC5Value": {
+            "present": true,
+            "costs": [
+              23
+            ],
+            "units": [
+              "synthetic"
+            ],
+            "thresholds": [
+              512
+            ]
+          }
+        },
+        "report": [
+          "target    ours min..max  instance (units)",
+          "called       19..19      __ct__5ValueFii (1)  needs +494",
+          "called       23..23      __ct__5ValueFRC5Value (1)  needs +490"
+        ]
+      }
+    ]
+  },
+  {
+    "callee": "Value::__dt",
+    "target": {
+      "name": "synthetic",
+      "metadata": {
+        "source_path": "sources/templates.cpp"
+      },
+      "functions": [
+        {
+          "name": "Value::__dt<P5Value>__4rstlFPC5Value"
+        }
+      ]
+    },
+    "rows": [
+      {
+        "unit": "synthetic",
+        "kind": "missing",
+        "instance": "Value::__dt<P5Value>__4rstlFPC5Value",
+        "element": null,
+        "need": "call",
+        "costs": [],
+        "threshold": null,
+        "ok": null,
+        "decisions": []
+      }
+    ],
+    "report": [
+      "missing  synthetic: None  target needs call (cost > None); ours []: no decision found"
+    ],
+    "binaries": [
+      {
+        "symbols": [],
+        "table": {
+          "__dt__5ValueFv": {
+            "present": false,
+            "costs": [
+              30
+            ],
+            "units": [
+              "synthetic"
+            ],
+            "thresholds": [
+              512
+            ]
+          }
+        },
+        "report": [
+          "target    ours min..max  instance (units)"
+        ]
+      },
+      {
+        "symbols": [
+          "__dt__5ValueFv"
+        ],
+        "table": {
+          "__dt__5ValueFv": {
+            "present": true,
+            "costs": [
+              30
+            ],
+            "units": [
+              "synthetic"
+            ],
+            "thresholds": [
+              512
+            ]
+          }
+        },
+        "report": [
+          "target    ours min..max  instance (units)",
+          "called       30..30      __dt__5ValueFv (1)  needs +483"
+        ]
+      }
+    ]
+  },
+  {
+    "callee": "adjust",
+    "target": {
+      "name": "synthetic",
+      "metadata": {
+        "source_path": "sources/templates.cpp"
+      },
+      "functions": [
+        {
+          "name": "adjust<i>__Fi"
+        },
+        {
+          "name": "adjust<P5Value>__4rstlFPC5Value"
+        }
+      ]
+    },
+    "rows": [
+      {
+        "unit": "synthetic",
+        "kind": "missing",
+        "instance": "adjust<i>__Fi",
+        "element": "i",
+        "need": "call",
+        "costs": [],
+        "threshold": null,
+        "ok": null,
+        "decisions": []
+      },
+      {
+        "unit": "synthetic",
+        "kind": "missing",
+        "instance": "adjust<P5Value>__4rstlFPC5Value",
+        "element": "Value",
+        "need": "call",
+        "costs": [],
+        "threshold": null,
+        "ok": null,
+        "decisions": []
+      }
+    ],
+    "report": [
+      "missing  synthetic: i  target needs call (cost > None); ours []: no decision found",
+      "missing  synthetic: Value  target needs call (cost > None); ours []: no decision found"
+    ],
+    "binaries": [
+      {
+        "symbols": [],
+        "table": {
+          "adjust<i>__Fi": {
+            "present": false,
+            "costs": [
+              10
+            ],
+            "units": [
+              "synthetic"
+            ],
+            "thresholds": [
+              512
+            ]
+          }
+        },
+        "report": [
+          "target    ours min..max  instance (units)"
+        ]
+      },
+      {
+        "symbols": [
+          "adjust<i>__Fi"
+        ],
+        "table": {
+          "adjust<i>__Fi": {
+            "present": true,
+            "costs": [
+              10
+            ],
+            "units": [
+              "synthetic"
+            ],
+            "thresholds": [
+              512
+            ]
+          }
+        },
+        "report": [
+          "target    ours min..max  instance (units)",
+          "called       10..10      adjust<i>__Fi (1)  needs +503"
+        ]
+      }
+    ]
+  },
+  {
+    "callee": "combine",
+    "target": {
+      "name": "synthetic",
+      "metadata": {
+        "source_path": "sources/templates.cpp"
+      },
+      "functions": [
+        {
+          "name": "combine<P5Value>__4rstlFPC5Value"
+        }
+      ]
+    },
+    "rows": [
+      {
+        "unit": "synthetic",
+        "kind": "missing",
+        "instance": "combine<P5Value>__4rstlFPC5Value",
+        "element": "Value",
+        "need": "call",
+        "costs": [],
+        "threshold": null,
+        "ok": null,
+        "decisions": []
+      },
+      {
+        "unit": "synthetic",
+        "kind": "near",
+        "instance": "with_value__Fii",
+        "element": null,
+        "need": "call",
+        "costs": [
+          514
+        ],
+        "threshold": 512,
+        "ok": null,
+        "decisions": [
+          {
+            "caller": "with_value__Fii",
+            "cost": 514,
+            "inline": false,
+            "breakdown": {
+              "running": 0,
+              "nstmts": 1,
+              "statements": [
+                {
+                  "kind": "breakdown",
+                  "what": "*(*(arg0)+4)+adjust()",
+                  "type": 15,
+                  "cost": 9,
+                  "parts": [],
+                  "calls": [
+                    [
+                      "!",
+                      "adjust<i>__Fi"
+                    ]
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      }
+    ],
+    "report": [
+      "missing  synthetic: Value  target needs call (cost > None); ours []: no decision found",
+      "",
+      "decisions within 3 of the threshold (whatever the target needs, a header change that moves them crosses it):",
+      "  synthetic: 514 vs 512 in with_value__Fii"
+    ],
+    "binaries": [
+      {
+        "symbols": [],
+        "table": {
+          "combine__F5Value": {
+            "present": false,
+            "costs": [
+              20,
+              514
+            ],
+            "units": [
+              "synthetic"
+            ],
+            "thresholds": [
+              512
+            ]
+          }
+        },
+        "report": [
+          "target    ours min..max  instance (units)",
+          "inlined      20..514     combine__F5Value (1)  needs -2"
+        ]
+      },
+      {
+        "symbols": [
+          "combine__F5Value"
+        ],
+        "table": {
+          "combine__F5Value": {
+            "present": true,
+            "costs": [
+              20,
+              514
+            ],
+            "units": [
+              "synthetic"
+            ],
+            "thresholds": [
+              512
+            ]
+          }
+        },
+        "report": [
+          "target    ours min..max  instance (units)",
+          "called       20..514     combine__F5Value (1)"
+        ]
+      }
+    ]
+  }
+]

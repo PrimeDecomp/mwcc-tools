@@ -1,0 +1,597 @@
+{
+  "objects": {
+    "src/one.c": "src-one.c.obj",
+    "src/two.c": "src-two.c.obj"
+  },
+  "functions_from": [
+    {
+      "name": "a0",
+      "address": "0x401000",
+      "size": 16
+    },
+    {
+      "name": "b32",
+      "address": "0x401020",
+      "size": 16
+    },
+    {
+      "name": "c64",
+      "address": "0x401040",
+      "size": 16
+    },
+    {
+      "name": "d96",
+      "address": "0x401060",
+      "size": 16
+    },
+    {
+      "name": "e128",
+      "address": "0x401080",
+      "size": 16
+    },
+    {
+      "name": "f160",
+      "address": "0x4010a0",
+      "size": 16
+    },
+    {
+      "name": "f192",
+      "address": "0x4010c0",
+      "size": 16
+    }
+  ],
+  "functions_to": [
+    {
+      "name": "a0",
+      "address": "0x401000",
+      "size": 16
+    },
+    {
+      "name": "b32",
+      "address": "0x401020",
+      "size": 16
+    },
+    {
+      "name": "c64",
+      "address": "0x401040",
+      "size": 16
+    },
+    {
+      "name": "d96",
+      "address": "0x401060",
+      "size": 16
+    },
+    {
+      "name": "e128",
+      "address": "0x401080",
+      "size": 16
+    },
+    {
+      "name": "f160",
+      "address": "0x4010a0",
+      "size": 16
+    },
+    {
+      "name": "f192",
+      "address": "0x4010c0",
+      "size": 16
+    },
+    {
+      "name": "duplicate-a",
+      "address": "0x4010e0",
+      "size": 16
+    }
+  ],
+  "splits": "Sections:\n\t.text type:code align:16\nsrc/one.c:\n\t.text start:0x00401000 end:0x00401020\nsrc/two.c:\n\t.text start:0x00401020 end:0x00401100\n",
+  "bindings": {
+    "_address": "0x00402099",
+    "_old": "0x00402000"
+  },
+  "functions": {
+    "src/one.c": [
+      {
+        "name": "_a",
+        "code": [
+          85,
+          139,
+          236,
+          131,
+          236,
+          16,
+          104,
+          0,
+          0,
+          0,
+          0,
+          131,
+          196,
+          16,
+          93,
+          195
+        ],
+        "wild": [
+          7,
+          8,
+          9,
+          10
+        ],
+        "relocations": [
+          {
+            "offset": 7,
+            "symbol": "_address",
+            "kind": 6,
+            "addend": 0
+          }
+        ]
+      },
+      {
+        "name": "_b",
+        "code": [
+          85,
+          139,
+          236,
+          131,
+          236,
+          32,
+          232,
+          252,
+          255,
+          255,
+          255,
+          131,
+          196,
+          16,
+          93,
+          195
+        ],
+        "wild": [
+          7,
+          8,
+          9,
+          10
+        ],
+        "relocations": [
+          {
+            "offset": 7,
+            "symbol": "_call",
+            "kind": 20,
+            "addend": -4
+          }
+        ]
+      },
+      {
+        "name": "_c",
+        "code": [
+          85,
+          139,
+          236,
+          131,
+          236,
+          48,
+          104,
+          0,
+          0,
+          0,
+          0,
+          131,
+          196,
+          16,
+          93,
+          195
+        ],
+        "wild": [
+          7,
+          8,
+          9,
+          10
+        ],
+        "relocations": [
+          {
+            "offset": 7,
+            "symbol": "_conflict",
+            "kind": 6,
+            "addend": 0
+          }
+        ]
+      },
+      {
+        "name": "_d",
+        "code": [
+          85,
+          139,
+          236,
+          131,
+          236,
+          64,
+          104,
+          0,
+          0,
+          0,
+          0,
+          131,
+          196,
+          16,
+          93,
+          195
+        ],
+        "wild": [
+          7,
+          8,
+          9,
+          10
+        ],
+        "relocations": [
+          {
+            "offset": 7,
+            "symbol": "_conflict",
+            "kind": 6,
+            "addend": 0
+          }
+        ]
+      },
+      {
+        "name": "_e",
+        "code": [
+          85,
+          139,
+          236,
+          131,
+          236,
+          80,
+          104,
+          0,
+          0,
+          0,
+          0,
+          131,
+          196,
+          16,
+          93,
+          195
+        ],
+        "wild": [
+          7,
+          8,
+          9,
+          10
+        ],
+        "relocations": [
+          {
+            "offset": 7,
+            "symbol": "_@tmp",
+            "kind": 6,
+            "addend": 0
+          }
+        ]
+      },
+      {
+        "name": "_f",
+        "code": [
+          85,
+          139,
+          236,
+          131,
+          236,
+          96,
+          104,
+          0,
+          0,
+          0,
+          0,
+          131,
+          196,
+          16,
+          93,
+          195
+        ],
+        "wild": [
+          7,
+          8,
+          9,
+          10
+        ],
+        "relocations": [
+          {
+            "offset": 7,
+            "symbol": "_ambiguous",
+            "kind": 6,
+            "addend": 0
+          }
+        ]
+      },
+      {
+        "name": "_g",
+        "code": [
+          85,
+          139,
+          236,
+          131,
+          236,
+          112,
+          104,
+          0,
+          0,
+          0,
+          0,
+          131,
+          196,
+          16,
+          93,
+          195
+        ],
+        "wild": [
+          7,
+          8,
+          9,
+          10
+        ],
+        "relocations": [
+          {
+            "offset": 7,
+            "symbol": "_missing",
+            "kind": 6,
+            "addend": 0
+          }
+        ]
+      },
+      {
+        "name": "section9",
+        "code": [
+          204,
+          204,
+          204,
+          204,
+          204,
+          204,
+          204,
+          204
+        ],
+        "wild": [],
+        "relocations": []
+      }
+    ],
+    "src/two.c": [
+      {
+        "name": "_a",
+        "code": [
+          85,
+          139,
+          236,
+          131,
+          236,
+          16,
+          104,
+          0,
+          0,
+          0,
+          0,
+          131,
+          196,
+          16,
+          93,
+          195
+        ],
+        "wild": [
+          7,
+          8,
+          9,
+          10
+        ],
+        "relocations": [
+          {
+            "offset": 7,
+            "symbol": "_address",
+            "kind": 6,
+            "addend": 0
+          }
+        ]
+      },
+      {
+        "name": "section3",
+        "code": [
+          204,
+          204,
+          204,
+          204,
+          204,
+          204,
+          204,
+          204
+        ],
+        "wild": [],
+        "relocations": []
+      }
+    ]
+  },
+  "inferred": {
+    "src/one.c": {
+      "_address": 4202496,
+      "_call": 4198528,
+      "_@tmp": 4202512
+    },
+    "src/two.c": {
+      "_address": 4202496
+    }
+  },
+  "locate": "src/one.c:\n  _a                                                   16  0x00401000\n  _b                                                   16  0x00401020  <- src/two.c\n  _c                                                   16  0x00401040  <- src/two.c\n  _d                                                   16  0x00401060  <- src/two.c\n  _e                                                   16  0x00401080  <- src/two.c\n  _f                                                   16  0x004010a0  (ambiguous)  <- src/two.c\n  _g                                                   16  not found\n  section9                                              8  0x004010d0  <- src/two.c\n  1 in its unit, 6 in others, 1 not found; unit range 0x00401000-0x00401020\nsrc/two.c:\n  _a                                                   16  0x00401000  <- src/one.c\n  section3                                              8  0x004010d0\n  1 in its unit, 1 in others, 0 not found; unit range 0x00401020-0x00401100\n",
+  "bindfrom": "1 symbols bound; 2 at another address\n  conflict _address 0x00402099 0x402000 src/one.c\n  conflict _address 0x00402099 0x402000 src/two.c\n",
+  "bound": {
+    "_address": "0x00402099",
+    "_call": "0x00401080",
+    "_old": "0x00402000"
+  },
+  "matched": {
+    "result": {
+      "4198432": 4198432,
+      "4198464": 4198464,
+      "4198496": 4198496,
+      "4198528": 4198528
+    },
+    "ambiguous": {
+      "4198400": [
+        4198400,
+        4198624
+      ],
+      "4198560": [
+        4198560,
+        4198592
+      ],
+      "4198592": [
+        4198560,
+        4198592
+      ]
+    },
+    "total": 7
+  },
+  "masked": [
+    {
+      "address": 4198400,
+      "size": 16,
+      "bytes": [
+        85,
+        139,
+        236,
+        131,
+        236,
+        16,
+        104,
+        0,
+        0,
+        0,
+        0,
+        131,
+        196,
+        16,
+        93,
+        195
+      ]
+    },
+    {
+      "address": 4198432,
+      "size": 16,
+      "bytes": [
+        85,
+        139,
+        236,
+        131,
+        236,
+        32,
+        232,
+        0,
+        0,
+        0,
+        0,
+        131,
+        196,
+        16,
+        93,
+        195
+      ]
+    },
+    {
+      "address": 4198400,
+      "size": 8,
+      "bytes": [
+        85,
+        139,
+        236,
+        131,
+        236,
+        16,
+        104,
+        0
+      ]
+    },
+    {
+      "address": 4198400,
+      "size": 9,
+      "bytes": [
+        85,
+        139,
+        236,
+        131,
+        236,
+        16,
+        104,
+        0,
+        0
+      ]
+    },
+    {
+      "address": 4198400,
+      "size": 10,
+      "bytes": [
+        85,
+        139,
+        236,
+        131,
+        236,
+        16,
+        104,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "address": 4198400,
+      "size": 11,
+      "bytes": [
+        85,
+        139,
+        236,
+        131,
+        236,
+        16,
+        104,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "address": 4198400,
+      "size": 1,
+      "bytes": [
+        85
+      ]
+    },
+    {
+      "address": 4198560,
+      "size": 16,
+      "bytes": [
+        85,
+        139,
+        236,
+        131,
+        236,
+        96,
+        104,
+        0,
+        0,
+        0,
+        0,
+        131,
+        196,
+        16,
+        93,
+        195
+      ]
+    },
+    {
+      "address": 4198608,
+      "size": 8,
+      "bytes": [
+        204,
+        204,
+        204,
+        204,
+        204,
+        204,
+        204,
+        204
+      ]
+    }
+  ]
+}

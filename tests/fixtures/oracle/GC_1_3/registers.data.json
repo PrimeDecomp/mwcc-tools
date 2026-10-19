@@ -1,0 +1,298 @@
+{
+  "object": {
+    ".sdata2": {
+      "align": 8,
+      "size": 4,
+      "items": [
+        {
+          "section": ".sdata2",
+          "offset": 0,
+          "size": 4,
+          "name": "@24",
+          "value": "float 0",
+          "key": "00000000()",
+          "bytes": "00000000",
+          "symbols": "()",
+          "users": [
+            "accumulate"
+          ],
+          "local": true
+        }
+      ]
+    }
+  },
+  "mine": {
+    ".sdata2": {
+      "align": 8,
+      "size": 4,
+      "items": [
+        {
+          "section": ".sdata2",
+          "offset": 0,
+          "size": 4,
+          "name": "@24",
+          "value": "float 0",
+          "key": "00000000()",
+          "bytes": "00000000",
+          "symbols": "()",
+          "users": [
+            "accumulate"
+          ],
+          "local": true
+        }
+      ]
+    }
+  },
+  "theirs": {
+    ".sdata2": {
+      "align": 8,
+      "size": 12,
+      "items": [
+        {
+          "section": ".sdata2",
+          "offset": 0,
+          "size": 4,
+          "name": "literal",
+          "value": "float 1.25",
+          "key": "3fa00000()",
+          "bytes": "3fa00000",
+          "symbols": "()",
+          "users": [
+            "use literals",
+            "(data) pointer"
+          ]
+        },
+        {
+          "section": ".sdata2",
+          "offset": 4,
+          "size": 8,
+          "name": "wide",
+          "value": "double -1.23456789e-05",
+          "key": "bee9e409301b5a02()",
+          "bytes": "bee9e409301b5a02",
+          "symbols": "()",
+          "users": [
+            "use literals"
+          ]
+        }
+      ]
+    },
+    ".data": {
+      "align": 4,
+      "size": 43,
+      "items": [
+        {
+          "section": ".data",
+          "offset": 0,
+          "size": 35,
+          "name": "blob",
+          "value": "ffffffff80000000 &callee 0001fffe007fff &elsewhere+? 6c696e650a414109...",
+          "key": "ffffffff80000000000000000001fffe007fff000000006c696e650a41410900000000((8, 'callee'), (19, '*'))",
+          "bytes": "ffffffff80000000000000000001fffe007fff000000006c696e650a41410900000000",
+          "symbols": "((8, 'callee'), (19, '*'))",
+          "users": []
+        },
+        {
+          "section": ".data",
+          "offset": 35,
+          "size": 4,
+          "name": "(padding)",
+          "value": "pad 4",
+          "key": "pad 4",
+          "bytes": "00000000",
+          "symbols": "()",
+          "users": []
+        },
+        {
+          "section": ".data",
+          "offset": 39,
+          "size": 4,
+          "name": "pointer",
+          "value": "&literal",
+          "key": "00000000((0, 'literal'),)",
+          "bytes": "00000000",
+          "symbols": "((0, 'literal'),)",
+          "users": []
+        }
+      ]
+    },
+    ".rodata": {
+      "align": 4,
+      "size": 13,
+      "items": [
+        {
+          "section": ".rodata",
+          "offset": 0,
+          "size": 6,
+          "name": "@stringBase0",
+          "value": "\"alpha\"",
+          "key": "str alpha",
+          "bytes": "616c70686100",
+          "symbols": "()",
+          "users": []
+        },
+        {
+          "section": ".rodata",
+          "offset": 6,
+          "size": 5,
+          "name": "@stringBase0",
+          "value": "\"beta\"",
+          "key": "str beta",
+          "bytes": "6265746100",
+          "symbols": "()",
+          "users": []
+        }
+      ]
+    },
+    ".bss": {
+      "align": 16,
+      "size": 16,
+      "items": [
+        {
+          "section": ".bss",
+          "offset": 0,
+          "size": 16,
+          "name": "buffer",
+          "value": "zero*16",
+          "key": "00000000000000000000000000000000()",
+          "bytes": "00000000000000000000000000000000",
+          "symbols": "()",
+          "users": []
+        }
+      ]
+    },
+    "(common)": {
+      "align": 0,
+      "size": 0,
+      "items": [
+        {
+          "section": "(common)",
+          "offset": 0,
+          "size": 16,
+          "name": "shared",
+          "value": "zero*16",
+          "key": "00000000000000000000000000000000()",
+          "bytes": "00000000000000000000000000000000",
+          "symbols": "()",
+          "users": []
+        }
+      ]
+    }
+  },
+  "comparisons": {
+    ".sdata2": {
+      "report": [
+        "== .sdata2: differs: oracle 0x4 bytes, align 8; target 0xc, align 8  (- target, + oracle)",
+        "   -    0x0    0x4  float 1.25  literal  first used in use literals (+1)",
+        "   -    0x4    0x8  double -1.23456789e-05  wide  first used in use literals",
+        "   +    0x0    0x4  float 0  @24  first used in accumulate"
+      ],
+      "default": [
+        "== .sdata2: differs: oracle 0x4 bytes, align 8; target 0xc, align 8  (- target, + oracle)",
+        "   -    0x0    0x4  float 1.25  literal  first used in use literals (+1)",
+        "   -    0x4    0x8  double -1.23456789e-05  wide  first used in use literals",
+        "   +    0x0    0x4  float 0  @24  first used in accumulate"
+      ],
+      "differences": [
+        {
+          "tag": "replace",
+          "target": [
+            {
+              "section": ".sdata2",
+              "offset": 0,
+              "size": 4,
+              "name": "literal",
+              "value": "float 1.25",
+              "key": "3fa00000()",
+              "bytes": "3fa00000",
+              "symbols": "()",
+              "users": [
+                "use literals",
+                "(data) pointer"
+              ]
+            },
+            {
+              "section": ".sdata2",
+              "offset": 4,
+              "size": 8,
+              "name": "wide",
+              "value": "double -1.23456789e-05",
+              "key": "bee9e409301b5a02()",
+              "bytes": "bee9e409301b5a02",
+              "symbols": "()",
+              "users": [
+                "use literals"
+              ]
+            }
+          ],
+          "oracle": [
+            {
+              "section": ".sdata2",
+              "offset": 0,
+              "size": 4,
+              "name": "@24",
+              "value": "float 0",
+              "key": "00000000()",
+              "bytes": "00000000",
+              "symbols": "()",
+              "users": [
+                "accumulate"
+              ],
+              "local": true
+            }
+          ]
+        }
+      ]
+    },
+    ".data": {
+      "report": [
+        "== .data: not in the oracle's object (0x2b bytes, 3 objects)",
+        "   -    0x0   0x23  ffffffff80000000 &callee 0001fffe007fff &elsewhere+? 6c696e650a414109...  blob",
+        "   -   0x23    0x4  pad 4",
+        "   -   0x27    0x4  &literal  pointer"
+      ],
+      "default": [
+        "== .data: not in the oracle's object (0x2b bytes, 3 objects)",
+        "   -    0x0   0x23  ffffffff80000000 &callee 0001fffe007fff &elsewhere+? 6c696e650a414109...  blob",
+        "   -   0x23    0x4  pad 4",
+        "   -   0x27    0x4  &literal  pointer"
+      ],
+      "differences": null
+    },
+    ".rodata": {
+      "report": [
+        "== .rodata: not in the oracle's object (0xd bytes, 2 objects)",
+        "   -    0x0    0x6  \"alpha\"  @stringBase0",
+        "   -    0x6    0x5  \"beta\"  @stringBase0"
+      ],
+      "default": [
+        "== .rodata: not in the oracle's object (0xd bytes, 2 objects)",
+        "   -    0x0    0x6  \"alpha\"  @stringBase0",
+        "   -    0x6    0x5  \"beta\"  @stringBase0"
+      ],
+      "differences": null
+    },
+    ".bss": {
+      "report": [
+        "== .bss: not in the oracle's object (0x10 bytes, 1 objects)",
+        "   -    0x0   0x10  zero*16  buffer"
+      ],
+      "default": [
+        "== .bss: not in the oracle's object (0x10 bytes, 1 objects)",
+        "   -    0x0   0x10  zero*16  buffer"
+      ],
+      "differences": null
+    },
+    "(common)": {
+      "report": [
+        "== (common): not in the oracle's object (0x0 bytes, 1 objects)",
+        "   -    0x0   0x10  zero*16  shared"
+      ],
+      "default": [
+        "== (common): not in the oracle's object (0x0 bytes, 1 objects)",
+        "   -    0x0   0x10  zero*16  shared"
+      ],
+      "differences": null
+    }
+  }
+}

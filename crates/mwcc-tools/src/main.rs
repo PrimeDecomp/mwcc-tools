@@ -1,0 +1,335 @@
+use anyhow::{Context, Result, bail};
+use mwcc_oracle_core::{
+    corpus, elf,
+    runner::{self},
+    version::Version,
+};
+use serde_json::json;
+use std::{env, fs, path::PathBuf, process::ExitCode, time::Duration};
+mod binary_cli;
+mod build_cli;
+mod provenance_cli;
+mod release_cli;
+mod run_cli;
+mod serve_cli;
+
+fn corpus_command(args: &[String]) -> Result<()> {
+    let mut root = env::var_os("MWCC_ORACLE_ROOT")
+        .map(PathBuf::from)
+        .unwrap_or(env::current_dir()?);
+    let mut version = Version::Gc132;
+    let mut canaries = None;
+    let mut project = None;
+    let mut keep = None;
+    let mut exe = None;
+    let mut limit = None;
+    let mut list = None;
+    let mut jobs = std::thread::available_parallelism().map_or(4, usize::from);
+    let mut all_traces = false;
+    let mut source_arenas = false;
+    let mut source_nodes = false;
+    let mut trace_reference = None;
+    let mut wasm: Option<PathBuf> = None;
+    let mut json_output = false;
+    let mut timeout = Duration::from_secs(600);
+    let mut i = 0;
+    while i < args.len() {
+        if args[i] == "--all-traces" {
+            all_traces = true;
+            i += 1;
+            continue;
+        }
+        if args[i] == "--json" {
+            json_output = true;
+            i += 1;
+            continue;
+        }
+        if args[i] == "--source-arenas" || args[i] == "--source-nodes" {
+            source_arenas = true;
+            source_nodes |= args[i] == "--source-nodes";
+            i += 1;
+            continue;
+        }
+        let option = args[i].as_str();
+        let value = args
+            .get(i + 1)
+            .with_context(|| format!("{option} needs a value"))?;
+        match option {
+            "--oracle-root" => root = value.into(),
+            "--version" => version = Version::parse(value)?,
+            "--canaries" => canaries = Some(PathBuf::from(value)),
+            "--prime" | "--project" => project = Some(PathBuf::from(value)),
+            "--keep" => keep = Some(PathBuf::from(value)),
+            "--exe" => exe = Some(PathBuf::from(value)),
+            "--trace-reference" => trace_reference = Some(PathBuf::from(value)),
+            "--wasm" => wasm = Some(PathBuf::from(value)),
+            "--limit" => limit = Some(value.parse::<usize>()?),
+            "--list" => list = Some(PathBuf::from(value)),
+            "--jobs" => jobs = value.parse()?,
+            "--timeout" => timeout = Duration::try_from_secs_f64(value.parse()?)?,
+            _ => bail!("unknown corpus option {option}"),
+        }
+        i += 2;
+    }
+    let mut inputs = vec![];
+    if let Some(path) = canaries {
+        inputs.extend(corpus::canary_jobs(&path)?);
+    }
+    if let Some(path) = project {
+        inputs.extend(corpus::project_jobs(&path, version)?);
+    }
+    if let Some(path) = list {
+        let names = fs::read_to_string(path)?;
+        let names: std::collections::BTreeSet<_> = names.lines().map(str::trim).collect();
+        inputs.retain(|j| names.contains(j.name.as_str()));
+    }
+    if let Some(limit) = limit {
+        inputs.truncate(limit);
+    }
+    let in_process = wasm
+        .map(|module| wasm_compiler(version, &module))
+        .transpose()?;
+    let report = corpus::run(&corpus::Request {
+        root,
+        version,
+        executable: exe,
+        jobs: inputs,
+        parallelism: jobs,
+        keep,
+        timeout,
+        all_traces,
+        source_arenas,
+        source_nodes,
+        trace_reference,
+        in_process,
+    })?;
+    if json_output {
+        println!("{}", serde_json::to_string_pretty(&report)?);
+    } else {
+        for outcome in &report.outcomes {
+            if !outcome.problems.is_empty() {
+                println!("DIFF {}: {}", outcome.name, outcome.problems.join("; "));
+            }
+        }
+        println!("{}/{} identical", report.identical, report.total);
+    }
+    anyhow::ensure!(
+        report.identical == report.total,
+        "{} corpus input(s) differ",
+        report.total - report.identical
+    );
+    Ok(())
+}
+
+fn help() {
+    println!(
+        r#"mwcc-tools
+
+  serve [--project DIR]              the engine's methods over JSON lines on stdin/stdout (serve --help)
+  call METHOD [@PARAMS.json | KEY=VALUE ...]   one method, in a fresh session (call --help)
+  methods [METHOD]                   the methods, or one's parameter and result schemas
+  provenance audit-counters|audit-dispatch|audit-source-arenas --root ORACLE_ROOT --version GC_2_7
+  provenance counter-sites [--write] [--root DIR]
+      the WebAssembly oracle's table of the original's counter increments, from gc2's sources (after ninja all_source)
+  provenance derive-guards --version V [--root DIR] NAME[=SIZE]...
+  run [sjiswrap.exe] EXE ARGS...
+      a build's compiler wrapper (as wibo): a compiler with a built module runs in process, anything else as itself;
+      a copy or link of this executable named mwcc-run runs as `mwcc-tools run`
+  corpus --canaries DIR | --project DIR [--oracle-root ROOT] [--version V] [--jobs N] [--all-traces]
+         [--source-arenas | --source-nodes] [--exe ORACLE] [--trace-reference OTHER_ORACLE] [--wasm MODULE]
+      --wasm runs MODULE (build/VERSION/wasm/*.wasm) in process in the oracle's place
+      --source-arenas, --source-nodes trace those streams too, and compare them with the reference's
+  object compare ORACLE.o ORIGINAL.o
+  pe inspect|read|find FILE [options]
+  implib DEF OUTPUT
+  rsrc2res EXE OUTPUT
+  split VERSION [--source] [--root DIR] [--output DIR]
+  relink-check VERSION [--write] [--root DIR]
+      which compiled units of a source tree's build link into the original (after ninja all_source);
+      --write records the others as its state.json's relink_exclude
+  source-only VERSION [--oracle [--wasm [--clang FILE] [--wasm-ld FILE]]] [--root DIR]
+      link the compiler of a source tree's sources alone, build/VERSION/<tree>/source-only/mwcceppc.exe;
+      --wasm: the oracle's WebAssembly module, build/VERSION/wasm/oracle.wasm (ninja builds both)
+      (after ninja all_source; compare it with the original: corpus --exe); --oracle links the Rust hooks in,
+      build/VERSION/<tree>/source-oracle/mwcceppc.exe
+  compare extract|compare|report VERSION [--root DIR]
+  locate VERSION SOURCE... [--root DIR]
+  bindfrom VERSION [--root DIR]
+  funcmatch FROM TO [--root DIR] [--json]
+  remap FROM TO [--symbols] [--root DIR]
+  derive-splits VERSION [--reference V] [--exe FILE] [--out DIR] [--root DIR]
+  disasm VERSION ADDRESS [SIZE] [--root DIR]
+  fdiff VERSION SOURCE FUNCTION ADDRESS [--root DIR]
+  nearest VERSION SOURCE... [--root DIR]
+  link [--oracle | --source] VERSION OUTPUT INPUT... [--root DIR] [--timeout SECS]
+  configure [--version V] [--mode link|compare] [--split-only] [--oracle [--producer rust|c]] [--root DIR]
+  build-hooks OUTPUT [--trace-shim | --frontend-version V] [--wasm] [--root DIR] [--rustc FILE] [--timeout SECS]
+  package-release OUTPUT.zip --binary FILE --target TARGET [--root DIR] [--source-revision COMMIT] [--notices DIR]
+  transform-dep DEP OUT [--root DIR]
+  download TOOL OUTPUT [OTHER_OUTPUT...] [--root DIR] [--timeout SECS]
+  verify|gates [--root DIR] [--ninja FILE] [--jobs N] [--timeout SECS]
+
+The oracle, colouring, inlining, TU, provenance and source-guided tools are methods: `methods` lists them,
+`call` runs one, `serve` keeps a session (docs/api.md; the Python package mwcc_tools).
+Guides: docs/oracle.md and docs/oracle-source-guided-status.md."#
+    );
+}
+
+fn run() -> Result<()> {
+    let mut args = vec![];
+    let mut compiler_flags = false;
+    for arg in env::args().skip(1) {
+        if arg == "--" {
+            compiler_flags = true;
+        }
+        if !compiler_flags
+            && let Some((option, value)) = arg.split_once('=')
+            && matches!(
+                option,
+                "--oracle-root"
+                    | "--working-directory"
+                    | "--from-ninja"
+                    | "--version"
+                    | "--override"
+                    | "--keep-object"
+                    | "--cut-limit"
+                    | "--merge-limit"
+                    | "--timeout"
+                    | "--function"
+                    | "--link"
+                    | "--near"
+                    | "--ir"
+                    | "--exchange"
+                    | "--target"
+                    | "--inline-cost"
+                    | "--instantiation"
+                    | "--source"
+                    | "--load"
+                    | "--save"
+                    | "--class"
+                    | "--canaries"
+                    | "--prime"
+                    | "--project"
+                    | "--keep"
+                    | "--exe"
+                    | "--limit"
+                    | "--list"
+                    | "--jobs"
+                    | "--target-asm"
+                    | "--want"
+                    | "--order"
+                    | "--move"
+                    | "--drop"
+                    | "--degree"
+                    | "--unlink"
+                    | "--iterations"
+                    | "--seed"
+                    | "--restarts"
+                    | "--top"
+                    | "--fixed"
+                    | "--nodes"
+                    | "--kinds"
+                    | "--callee"
+                    | "--section"
+                    | "--git"
+                    | "--unit"
+                    | "--candidate"
+                    | "--objdiff"
+                    | "--trace"
+                    | "--diff-json"
+                    | "--object"
+                    | "--compiler"
+                    | "--root"
+                    | "--output"
+                    | "--reference"
+                    | "--out"
+                    | "--mode"
+                    | "--producer"
+                    | "--binary"
+                    | "--source-revision"
+                    | "--notices"
+                    | "--frontend-version"
+                    | "--first-round"
+                    | "--second-round"
+                    | "--first-snapshot"
+                    | "--second-snapshot"
+                    | "--ninja"
+                    | "--rustc"
+            )
+        {
+            args.push(option.to_owned());
+            args.push(value.to_owned());
+        } else {
+            args.push(arg);
+        }
+    }
+    match args.first().map(String::as_str) {
+        Some("serve") => serve_cli::serve(&args[1..])?,
+        Some("call") => serve_cli::call(&args[1..])?,
+        Some("methods") => serve_cli::methods(&args[1..])?,
+        Some("provenance") => provenance_cli::run(&args[1..])?,
+        Some("--version") => println!("mwcc-tools {}", env!("CARGO_PKG_VERSION")),
+        Some("package-release") => release_cli::run(&args[1..])?,
+        Some("configure" | "transform-dep" | "download" | "verify" | "gates" | "build-hooks") => {
+            build_cli::run(&args[0], &args[1..])?
+        }
+        Some("--help" | "-h") | None => help(),
+        Some("corpus") => corpus_command(&args[1..])?,
+        Some(
+            "pe" | "implib" | "rsrc2res" | "split" | "link" | "relink-check" | "source-only"
+            | "compare" | "locate" | "bindfrom" | "funcmatch" | "remap" | "derive-splits"
+            | "disasm" | "fdiff" | "nearest",
+        ) => binary_cli::run(&args[0], &args[1..])?,
+        Some("object") if args.get(1).map(String::as_str) == Some("compare") => {
+            let a = fs::read(
+                args.get(2)
+                    .context("object compare requires ORACLE.o ORIGINAL.o")?,
+            )?;
+            let b = fs::read(args.get(3).context("object compare requires ORIGINAL.o")?)?;
+            println!(
+                "{}",
+                serde_json::to_string_pretty(
+                    &json!({"identical": a == b, "differences": elf::differences(&a, &b)?})
+                )?
+            );
+        }
+        Some(command) => bail!("unknown command {command}; use --help"),
+    }
+    Ok(())
+}
+
+fn main() -> ExitCode {
+    // (`run`'s arguments are the wrapped command's, as they are)
+    if let Some(args) = run_cli::wrapped_command() {
+        match run_cli::run(&args) {
+            Ok(code) => std::process::exit(code),
+            Err(error) => {
+                eprintln!("{error:#}");
+                return ExitCode::FAILURE;
+            }
+        }
+    }
+    match run() {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("{error:#}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+/// `corpus --wasm MODULE`: the module run in process in the oracle's place (as `runner` runs one by default).
+#[cfg(feature = "wasm")]
+fn wasm_compiler(version: Version, module: &std::path::Path) -> Result<corpus::InProcess> {
+    let module = std::path::absolute(module)?;
+    Ok(corpus::InProcess(Box::new(
+        move |invocation: runner::Invocation<'_>| {
+            mwcc_oracle_core::in_process::execute(&invocation, version, &module, &|| false)
+        },
+    )))
+}
+
+#[cfg(not(feature = "wasm"))]
+fn wasm_compiler(_: Version, _: &std::path::Path) -> Result<corpus::InProcess> {
+    bail!("--wasm needs mwcc-tools built with the `wasm` feature")
+}

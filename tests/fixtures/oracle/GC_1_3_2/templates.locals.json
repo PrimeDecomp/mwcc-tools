@@ -1,0 +1,917 @@
+[
+  {
+    "link": "adjust<i>__Fi",
+    "plain": [
+      "== adjust: locals (the scalarizer: IRO_ScalarizeClassDataMembers) =="
+    ],
+    "summary": [],
+    "asm": ".fn \"adjust<i>__Fi\", global\n/* 00000000 94 21 FE 00 */ stwu r1, -512(r1)\n/* 00000000 BF C1 01 E0 */ stmw r30, 480(r1)\n/* 00000000 38 83 00 03 */ addi r4, r3, 3\n/* 00000000 38 03 FF FE */ addi r0, r3, -2\n/* 00000000 7C 64 01 D6 */ .long 0x7c6401d6\n/* 00000000 4E 80 00 20 */ .long 0x4e800020\n/* 00000000 90 61 01 40 */ stw r3, 320(r1)\n/* 00000000 90 81 01 44 */ stw r4, 324(r1)\n/* 00000000 90 A1 01 48 */ stw r5, 328(r1)\n/* 00000000 90 61 01 4C */ stw r3, 332(r1)\n/* 00000000 90 81 01 50 */ stw r4, 336(r1)\n/* 00000000 90 A1 01 54 */ stw r5, 340(r1)\n/* 00000000 90 61 01 58 */ stw r3, 344(r1)\n/* 00000000 90 81 01 5C */ stw r4, 348(r1)\n/* 00000000 90 A1 01 60 */ stw r5, 352(r1)\n/* 00000000 80 C1 01 40 */ lwz r6, 320(r1)\n/* 00000000 38 E1 01 4C */ addi r7, r1, 332\n.endfn \"adjust<i>__Fi\"",
+    "target": {
+      "size": 512,
+      "uses": {
+        "320": [
+          [
+            4,
+            "lwz"
+          ],
+          [
+            4,
+            "stw"
+          ]
+        ],
+        "324": [
+          [
+            4,
+            "stw"
+          ]
+        ],
+        "328": [
+          [
+            4,
+            "stw"
+          ]
+        ],
+        "332": [
+          [
+            0,
+            "addi"
+          ],
+          [
+            4,
+            "stw"
+          ]
+        ],
+        "336": [
+          [
+            4,
+            "stw"
+          ]
+        ],
+        "340": [
+          [
+            4,
+            "stw"
+          ]
+        ],
+        "344": [
+          [
+            4,
+            "stw"
+          ]
+        ],
+        "348": [
+          [
+            4,
+            "stw"
+          ]
+        ],
+        "352": [
+          [
+            4,
+            "stw"
+          ]
+        ]
+      },
+      "limit": 480
+    },
+    "words": [
+      948109315,
+      939786238,
+      2086928854,
+      1317011488
+    ],
+    "target_words": [
+      2485255680,
+      3217097184,
+      948109315,
+      939786238,
+      2086928854,
+      1317011488,
+      2422276416,
+      2424373572,
+      2426470728,
+      2422276428,
+      2424373584,
+      2426470740,
+      2422276440,
+      2424373596,
+      2426470752,
+      2160132416,
+      954270028
+    ],
+    "limit": 0,
+    "target_report": [
+      "== adjust: locals (the scalarizer: IRO_ScalarizeClassDataMembers) ==",
+      "   frame: target 0x200 (512), ours 0x0 (0): +512 bytes in the target's",
+      "   the target's locals area, by the r1 offsets its code uses (addi: the address is taken):",
+      "      r1+0x140..0x163 (36 bytes) 0x140:lwz/stw, 0x144:stw, 0x148:stw, 0x14c:addi/stw, 0x150:stw, 0x154:stw, 0x158:stw, 0x15c:stw, 0x160:stw"
+    ],
+    "shifts": {},
+    "shift_report": [],
+    "runs": [
+      {
+        "start": 320,
+        "end": 356,
+        "accesses": {
+          "stw": 9,
+          "lwz": 1,
+          "addi": 1
+        },
+        "copies": [
+          {
+            "size": 12,
+            "offsets": [
+              320,
+              332,
+              344
+            ],
+            "reloaded": {
+              "320": [
+                [
+                  0,
+                  "lwz"
+                ]
+              ]
+            },
+            "registers": [
+              "r3",
+              "r4",
+              "r5"
+            ],
+            "order": "copy by copy",
+            "first": 320
+          }
+        ]
+      }
+    ],
+    "mine": [],
+    "unpaired_report": [
+      "   in the target's memory, with no access of ours paired (kept in memory there; ours has it in registers, elsewhere, or not at all):",
+      "      r1+0x140..0x163 (36 bytes): stw x9, lwz x1, addi x1 (its address passed on)",
+      "         3 identical copies of a 12-byte value (r3, r4, r5) at r1+0x140, 0x14c, 0x158, stored copy by copy (first: 0x140)",
+      "            read back: the copy at 0x140: +0 (lwz); the 2 other(s) never read (dead stores)",
+      "         (one value copied whole into several temporaries the target keeps in memory: a chain of whole copies, by-value returns or arguments, each a temporary of its own; compare with our locals of that size split into scalars, above)"
+    ],
+    "target_summary": [
+      "== adjust: kept in memory (summary) ==",
+      "   target: 3 copies of a 12-byte value at r1+0x140, 0x14c, 0x158, 1 read back (a value made again for each use: a macro or inline that evaluates its argument more than once, or a by-value chain)"
+    ]
+  },
+  {
+    "link": "with_value__Fii",
+    "plain": [
+      "== with_value: locals (the scalarizer: IRO_ScalarizeClassDataMembers) ==",
+      "   pass 1 (pointer analysis off):",
+      "      v (8 bytes): KEPT IN MEMORY (memory r1+16), no part made",
+      "         because: its address is taken (noregister), and pointer analysis is off: its 6 member use(s) were not recorded",
+      "            it would be split if its address were not taken: no &x, no binding to a reference or pointer formal of a call that is not inlined, no member function call on it that is not inlined",
+      "      @14 (8 bytes): KEPT IN MEMORY (no slot of its own (listed at offset 0)), no part made",
+      "         because: its address is taken (noregister), and pointer analysis is off: its 4 member use(s) were not recorded",
+      "            it would be split if its address were not taken: no &x, no binding to a reference or pointer formal of a call that is not inlined, no member function call on it that is not inlined",
+      "   pass 2 (pointer analysis off):",
+      "      v (8 bytes): KEPT IN MEMORY (memory r1+16), no part made",
+      "         because: its address is taken (noregister), and pointer analysis is off: its 3 member use(s) were not recorded",
+      "            it would be split if its address were not taken: no &x, no binding to a reference or pointer formal of a call that is not inlined, no member function call on it that is not inlined",
+      "      @14 (8 bytes): KEPT IN MEMORY (no slot of its own (listed at offset 0)), no part made",
+      "         because: its address is taken (noregister), and pointer analysis is off: its 2 member use(s) were not recorded",
+      "            it would be split if its address were not taken: no &x, no binding to a reference or pointer formal of a call that is not inlined, no member function call on it that is not inlined",
+      "   formals of the calls inlined into it (substituted: the caller's expression stands for it, aliased; reference: bound to the temporary the argument constructs (a BY VALUE formal's is the caller's copy; a reference formal's, a temporary such as V(a, b, c)); local: a fresh local holding the argument, or its address for a reference formal):",
+      "      __ct__5ValueFii",
+      "         #0 this (pointer 4): substituted -> v (memory r1+16)",
+      "         #1 a (int 4): substituted",
+      "         #2 b (int 4): substituted",
+      "      __ct__5ValueFRC5Value",
+      "         #0 this (pointer 4): substituted -> @14 (no slot of its own (listed at offset 0))",
+      "         #1 @no_name@ (reference): substituted -> v (memory r1+16)",
+      "      __dt__5ValueFv",
+      "         #0 this (pointer 4): substituted x2 -> @14 (no slot of its own (listed at offset 0)), v (memory r1+16)",
+      "         #1 @no_name@ (int 2): substituted x2"
+    ],
+    "summary": [
+      "== with_value: kept in memory (summary) ==",
+      "   ours: v (8 bytes): its address is taken (pointer analysis off); through Value::Value (constructor) (made by the compiler), line 16",
+      "   ours: @14 (8 bytes): its address is taken (pointer analysis off)"
+    ],
+    "asm": ".fn \"with_value__Fii\", global\n/* 00000000 94 21 FE 00 */ stwu r1, -512(r1)\n/* 00000000 BF C1 01 E0 */ stmw r30, 480(r1)\n/* 00000000 94 21 FF E0 */ stwu r1, -32(r1)\n/* 00000000 7C 08 02 A6 */ .long 0x7c0802a6\n/* 00000000 90 01 00 24 */ stw r0, 36(r1)\n/* 00000000 93 E1 00 1C */ stw r31, 28(r1)\n/* 00000000 81 80 00 00 */ lwz r12, 0(r0)\n/* 00000000 90 61 00 10 */ stw r3, 16(r1)\n/* 00000000 90 81 00 14 */ stw r4, 20(r1)\n/* 00000000 90 61 00 08 */ stw r3, 8(r1)\n/* 00000000 90 81 00 0C */ stw r4, 12(r1)\n/* 00000000 7D 89 03 A6 */ .long 0x7d8903a6\n/* 00000000 4E 80 04 21 */ .long 0x4e800421\n/* 00000000 7C 7F 1B 78 */ .long 0x7c7f1b78\n/* 00000000 38 61 00 08 */ addi r3, r1, 8\n/* 00000000 48 00 00 01 */ .long 0x48000001\n/* 00000000 80 01 00 08 */ lwz r0, 8(r1)\n/* 00000000 7F E3 FA 14 */ .long 0x7fe3fa14\n/* 00000000 2C 00 00 00 */ .long 0x2c000000\n/* 00000000 40 80 00 0C */ .long 0x4080000c\n/* 00000000 80 61 00 0C */ lwz r3, 12(r1)\n/* 00000000 48 00 00 01 */ .long 0x48000001\n/* 00000000 80 01 00 10 */ lwz r0, 16(r1)\n/* 00000000 2C 00 00 00 */ .long 0x2c000000\n/* 00000000 40 80 00 0C */ .long 0x4080000c\n/* 00000000 80 61 00 14 */ lwz r3, 20(r1)\n/* 00000000 48 00 00 01 */ .long 0x48000001\n/* 00000000 80 01 00 24 */ lwz r0, 36(r1)\n/* 00000000 7F E3 FB 78 */ .long 0x7fe3fb78\n/* 00000000 83 E1 00 1C */ lwz r31, 28(r1)\n/* 00000000 7C 08 03 A6 */ .long 0x7c0803a6\n/* 00000000 38 21 00 20 */ addi r1, r1, 32\n/* 00000000 4E 80 00 20 */ .long 0x4e800020\n/* 00000000 90 61 01 40 */ stw r3, 320(r1)\n/* 00000000 90 81 01 44 */ stw r4, 324(r1)\n/* 00000000 90 A1 01 48 */ stw r5, 328(r1)\n/* 00000000 90 61 01 4C */ stw r3, 332(r1)\n/* 00000000 90 81 01 50 */ stw r4, 336(r1)\n/* 00000000 90 A1 01 54 */ stw r5, 340(r1)\n/* 00000000 90 61 01 58 */ stw r3, 344(r1)\n/* 00000000 90 81 01 5C */ stw r4, 348(r1)\n/* 00000000 90 A1 01 60 */ stw r5, 352(r1)\n/* 00000000 80 C1 01 40 */ lwz r6, 320(r1)\n/* 00000000 38 E1 01 4C */ addi r7, r1, 332\n.endfn \"with_value__Fii\"",
+    "target": {
+      "size": 512,
+      "uses": {
+        "36": [
+          [
+            4,
+            "lwz"
+          ],
+          [
+            4,
+            "stw"
+          ]
+        ],
+        "28": [
+          [
+            4,
+            "lwz"
+          ],
+          [
+            4,
+            "stw"
+          ]
+        ],
+        "16": [
+          [
+            4,
+            "lwz"
+          ],
+          [
+            4,
+            "stw"
+          ]
+        ],
+        "20": [
+          [
+            4,
+            "lwz"
+          ],
+          [
+            4,
+            "stw"
+          ]
+        ],
+        "8": [
+          [
+            0,
+            "addi"
+          ],
+          [
+            4,
+            "lwz"
+          ],
+          [
+            4,
+            "stw"
+          ]
+        ],
+        "12": [
+          [
+            4,
+            "lwz"
+          ],
+          [
+            4,
+            "stw"
+          ]
+        ],
+        "32": [
+          [
+            0,
+            "addi"
+          ]
+        ],
+        "320": [
+          [
+            4,
+            "lwz"
+          ],
+          [
+            4,
+            "stw"
+          ]
+        ],
+        "324": [
+          [
+            4,
+            "stw"
+          ]
+        ],
+        "328": [
+          [
+            4,
+            "stw"
+          ]
+        ],
+        "332": [
+          [
+            0,
+            "addi"
+          ],
+          [
+            4,
+            "stw"
+          ]
+        ],
+        "336": [
+          [
+            4,
+            "stw"
+          ]
+        ],
+        "340": [
+          [
+            4,
+            "stw"
+          ]
+        ],
+        "344": [
+          [
+            4,
+            "stw"
+          ]
+        ],
+        "348": [
+          [
+            4,
+            "stw"
+          ]
+        ],
+        "352": [
+          [
+            4,
+            "stw"
+          ]
+        ]
+      },
+      "limit": 480
+    },
+    "words": [
+      2485256160,
+      2080899750,
+      2415984676,
+      2480996380,
+      2172649472,
+      2422276112,
+      2424373268,
+      2422276104,
+      2424373260,
+      2106131366,
+      1317012513,
+      2088704888,
+      945881096,
+      1207959553,
+      2147549192,
+      2145647124,
+      738197504,
+      1082130444,
+      2153840652,
+      1207959553,
+      2147549200,
+      738197504,
+      1082130444,
+      2153840660,
+      1207959553,
+      2147549220,
+      2145647480,
+      2212560924,
+      2080900006,
+      941686816,
+      1317011488
+    ],
+    "target_words": [
+      2485255680,
+      3217097184,
+      2485256160,
+      2080899750,
+      2415984676,
+      2480996380,
+      2172649472,
+      2422276112,
+      2424373268,
+      2422276104,
+      2424373260,
+      2106131366,
+      1317012513,
+      2088704888,
+      945881096,
+      1207959553,
+      2147549192,
+      2145647124,
+      738197504,
+      1082130444,
+      2153840652,
+      1207959553,
+      2147549200,
+      738197504,
+      1082130444,
+      2153840660,
+      1207959553,
+      2147549220,
+      2145647480,
+      2212560924,
+      2080900006,
+      941686816,
+      1317011488,
+      2422276416,
+      2424373572,
+      2426470728,
+      2422276428,
+      2424373584,
+      2426470740,
+      2422276440,
+      2424373596,
+      2426470752,
+      2160132416,
+      954270028
+    ],
+    "limit": 24,
+    "target_report": [
+      "== with_value: locals (the scalarizer: IRO_ScalarizeClassDataMembers) ==",
+      "   pass 1 (pointer analysis off):",
+      "      v (8 bytes): KEPT IN MEMORY (memory r1+16), no part made",
+      "         because: its address is taken (noregister), and pointer analysis is off: its 6 member use(s) were not recorded",
+      "            it would be split if its address were not taken: no &x, no binding to a reference or pointer formal of a call that is not inlined, no member function call on it that is not inlined",
+      "      @14 (8 bytes): KEPT IN MEMORY (no slot of its own (listed at offset 0)), no part made",
+      "         because: its address is taken (noregister), and pointer analysis is off: its 4 member use(s) were not recorded",
+      "            it would be split if its address were not taken: no &x, no binding to a reference or pointer formal of a call that is not inlined, no member function call on it that is not inlined",
+      "   pass 2 (pointer analysis off):",
+      "      v (8 bytes): KEPT IN MEMORY (memory r1+16), no part made",
+      "         because: its address is taken (noregister), and pointer analysis is off: its 3 member use(s) were not recorded",
+      "            it would be split if its address were not taken: no &x, no binding to a reference or pointer formal of a call that is not inlined, no member function call on it that is not inlined",
+      "      @14 (8 bytes): KEPT IN MEMORY (no slot of its own (listed at offset 0)), no part made",
+      "         because: its address is taken (noregister), and pointer analysis is off: its 2 member use(s) were not recorded",
+      "            it would be split if its address were not taken: no &x, no binding to a reference or pointer formal of a call that is not inlined, no member function call on it that is not inlined",
+      "   formals of the calls inlined into it (substituted: the caller's expression stands for it, aliased; reference: bound to the temporary the argument constructs (a BY VALUE formal's is the caller's copy; a reference formal's, a temporary such as V(a, b, c)); local: a fresh local holding the argument, or its address for a reference formal):",
+      "      __ct__5ValueFii",
+      "         #0 this (pointer 4): substituted -> v (memory r1+16)",
+      "         #1 a (int 4): substituted",
+      "         #2 b (int 4): substituted",
+      "      __ct__5ValueFRC5Value",
+      "         #0 this (pointer 4): substituted -> @14 (no slot of its own (listed at offset 0))",
+      "         #1 @no_name@ (reference): substituted -> v (memory r1+16)",
+      "      __dt__5ValueFv",
+      "         #0 this (pointer 4): substituted x2 -> @14 (no slot of its own (listed at offset 0)), v (memory r1+16)",
+      "         #1 @no_name@ (int 2): substituted x2",
+      "   frame: target 0x200 (512), ours 0x20 (32): +480 bytes in the target's",
+      "   the target's locals area, by the r1 offsets its code uses (addi: the address is taken):",
+      "      r1+0x8..0x17 (16 bytes) 0x8:addi/lwz/stw, 0xc:lwz/stw, 0x10:lwz/stw, 0x14:lwz/stw   ours there: v, 3 compiler temporaries listed at offset 0 (no slot of their own)",
+      "      r1+0x1c..0x1f (4 bytes) 0x1c:lwz/stw, 0x20:addi",
+      "      r1+0x24..0x27 (4 bytes) 0x24:lwz/stw",
+      "      r1+0x140..0x163 (36 bytes) 0x140:lwz/stw, 0x144:stw, 0x148:stw, 0x14c:addi/stw, 0x150:stw, 0x154:stw, 0x158:stw, 0x15c:stw, 0x160:stw"
+    ],
+    "shifts": {
+      "v": {
+        "0": 4
+      },
+      "?": {
+        "0": 5
+      }
+    },
+    "shift_report": [
+      "   slot shifts (target offset - ours, by the object our paired r1 accesses are in; the smallest groups are the objects the target places in another order):",
+      "      +0x0: 2 object(s): v (8@r1+0x10), ? (?)"
+    ],
+    "runs": [
+      {
+        "start": 320,
+        "end": 356,
+        "accesses": {
+          "stw": 9,
+          "lwz": 1,
+          "addi": 1
+        },
+        "copies": [
+          {
+            "size": 12,
+            "offsets": [
+              320,
+              332,
+              344
+            ],
+            "reloaded": {
+              "320": [
+                [
+                  0,
+                  "lwz"
+                ]
+              ]
+            },
+            "registers": [
+              "r3",
+              "r4",
+              "r5"
+            ],
+            "order": "copy by copy",
+            "first": 320
+          }
+        ]
+      }
+    ],
+    "mine": [],
+    "unpaired_report": [
+      "   in the target's memory, with no access of ours paired (kept in memory there; ours has it in registers, elsewhere, or not at all):",
+      "      r1+0x140..0x163 (36 bytes): stw x9, lwz x1, addi x1 (its address passed on)",
+      "         3 identical copies of a 12-byte value (r3, r4, r5) at r1+0x140, 0x14c, 0x158, stored copy by copy (first: 0x140)",
+      "            read back: the copy at 0x140: +0 (lwz); the 2 other(s) never read (dead stores)",
+      "         (one value copied whole into several temporaries the target keeps in memory: a chain of whole copies, by-value returns or arguments, each a temporary of its own; compare with our locals of that size split into scalars, above)"
+    ],
+    "target_summary": [
+      "== with_value: kept in memory (summary) ==",
+      "   ours: v (8 bytes): its address is taken (pointer analysis off); through Value::Value (constructor) (made by the compiler), line 16",
+      "   ours: @14 (8 bytes): its address is taken (pointer analysis off)",
+      "   target: 3 copies of a 12-byte value at r1+0x140, 0x14c, 0x158, 1 read back (a value made again for each use: a macro or inline that evaluates its argument more than once, or a by-value chain)"
+    ]
+  },
+  {
+    "link": "combine__F5Value",
+    "plain": [
+      "== combine: locals (the scalarizer: IRO_ScalarizeClassDataMembers) ==",
+      "   formals of the calls inlined into it (substituted: the caller's expression stands for it, aliased; reference: bound to the temporary the argument constructs (a BY VALUE formal's is the caller's copy; a reference formal's, a temporary such as V(a, b, c)); local: a fresh local holding the argument, or its address for a reference formal):",
+      "      adjust<i>__Fi",
+      "         #0 x (int 4): local -> @28 (reg 5)"
+    ],
+    "summary": [],
+    "asm": ".fn \"combine__F5Value\", global\n/* 00000000 94 21 FE 00 */ stwu r1, -512(r1)\n/* 00000000 BF C1 01 E0 */ stmw r30, 480(r1)\n/* 00000000 80 A3 00 00 */ lwz r5, 0(r3)\n/* 00000000 80 83 00 04 */ lwz r4, 4(r3)\n/* 00000000 38 65 00 03 */ addi r3, r5, 3\n/* 00000000 38 05 FF FE */ addi r0, r5, -2\n/* 00000000 7C 03 01 D6 */ .long 0x7c0301d6\n/* 00000000 7C 64 02 14 */ .long 0x7c640214\n/* 00000000 4E 80 00 20 */ .long 0x4e800020\n/* 00000000 90 61 01 40 */ stw r3, 320(r1)\n/* 00000000 90 81 01 44 */ stw r4, 324(r1)\n/* 00000000 90 A1 01 48 */ stw r5, 328(r1)\n/* 00000000 90 61 01 4C */ stw r3, 332(r1)\n/* 00000000 90 81 01 50 */ stw r4, 336(r1)\n/* 00000000 90 A1 01 54 */ stw r5, 340(r1)\n/* 00000000 90 61 01 58 */ stw r3, 344(r1)\n/* 00000000 90 81 01 5C */ stw r4, 348(r1)\n/* 00000000 90 A1 01 60 */ stw r5, 352(r1)\n/* 00000000 80 C1 01 40 */ lwz r6, 320(r1)\n/* 00000000 38 E1 01 4C */ addi r7, r1, 332\n.endfn \"combine__F5Value\"",
+    "target": {
+      "size": 512,
+      "uses": {
+        "320": [
+          [
+            4,
+            "lwz"
+          ],
+          [
+            4,
+            "stw"
+          ]
+        ],
+        "324": [
+          [
+            4,
+            "stw"
+          ]
+        ],
+        "328": [
+          [
+            4,
+            "stw"
+          ]
+        ],
+        "332": [
+          [
+            0,
+            "addi"
+          ],
+          [
+            4,
+            "stw"
+          ]
+        ],
+        "336": [
+          [
+            4,
+            "stw"
+          ]
+        ],
+        "340": [
+          [
+            4,
+            "stw"
+          ]
+        ],
+        "344": [
+          [
+            4,
+            "stw"
+          ]
+        ],
+        "348": [
+          [
+            4,
+            "stw"
+          ]
+        ],
+        "352": [
+          [
+            4,
+            "stw"
+          ]
+        ]
+      },
+      "limit": 480
+    },
+    "words": [
+      2158166016,
+      2156068868,
+      946143235,
+      939917310,
+      2080571862,
+      2086928916,
+      1317011488
+    ],
+    "target_words": [
+      2485255680,
+      3217097184,
+      2158166016,
+      2156068868,
+      946143235,
+      939917310,
+      2080571862,
+      2086928916,
+      1317011488,
+      2422276416,
+      2424373572,
+      2426470728,
+      2422276428,
+      2424373584,
+      2426470740,
+      2422276440,
+      2424373596,
+      2426470752,
+      2160132416,
+      954270028
+    ],
+    "limit": 0,
+    "target_report": [
+      "== combine: locals (the scalarizer: IRO_ScalarizeClassDataMembers) ==",
+      "   formals of the calls inlined into it (substituted: the caller's expression stands for it, aliased; reference: bound to the temporary the argument constructs (a BY VALUE formal's is the caller's copy; a reference formal's, a temporary such as V(a, b, c)); local: a fresh local holding the argument, or its address for a reference formal):",
+      "      adjust<i>__Fi",
+      "         #0 x (int 4): local -> @28 (reg 5)",
+      "   frame: target 0x200 (512), ours 0x0 (0): +512 bytes in the target's",
+      "   the target's locals area, by the r1 offsets its code uses (addi: the address is taken):",
+      "      r1+0x140..0x163 (36 bytes) 0x140:lwz/stw, 0x144:stw, 0x148:stw, 0x14c:addi/stw, 0x150:stw, 0x154:stw, 0x158:stw, 0x15c:stw, 0x160:stw"
+    ],
+    "shifts": {},
+    "shift_report": [],
+    "runs": [
+      {
+        "start": 320,
+        "end": 356,
+        "accesses": {
+          "stw": 9,
+          "lwz": 1,
+          "addi": 1
+        },
+        "copies": [
+          {
+            "size": 12,
+            "offsets": [
+              320,
+              332,
+              344
+            ],
+            "reloaded": {
+              "320": [
+                [
+                  0,
+                  "lwz"
+                ]
+              ]
+            },
+            "registers": [
+              "r3",
+              "r4",
+              "r5"
+            ],
+            "order": "copy by copy",
+            "first": 320
+          }
+        ]
+      }
+    ],
+    "mine": [],
+    "unpaired_report": [
+      "   in the target's memory, with no access of ours paired (kept in memory there; ours has it in registers, elsewhere, or not at all):",
+      "      r1+0x140..0x163 (36 bytes): stw x9, lwz x1, addi x1 (its address passed on)",
+      "         3 identical copies of a 12-byte value (r3, r4, r5) at r1+0x140, 0x14c, 0x158, stored copy by copy (first: 0x140)",
+      "            read back: the copy at 0x140: +0 (lwz); the 2 other(s) never read (dead stores)",
+      "         (one value copied whole into several temporaries the target keeps in memory: a chain of whole copies, by-value returns or arguments, each a temporary of its own; compare with our locals of that size split into scalars, above)"
+    ],
+    "target_summary": [
+      "== combine: kept in memory (summary) ==",
+      "   target: 3 copies of a 12-byte value at r1+0x140, 0x14c, 0x158, 1 read back (a value made again for each use: a macro or inline that evaluates its argument more than once, or a by-value chain)"
+    ]
+  },
+  {
+    "link": "__dt__5ValueFv",
+    "plain": [
+      "== __dt: locals (the scalarizer: IRO_ScalarizeClassDataMembers) =="
+    ],
+    "summary": [],
+    "asm": ".fn \"__dt__5ValueFv\", global\n/* 00000000 94 21 FE 00 */ stwu r1, -512(r1)\n/* 00000000 BF C1 01 E0 */ stmw r30, 480(r1)\n/* 00000000 94 21 FF F0 */ stwu r1, -16(r1)\n/* 00000000 7C 08 02 A6 */ .long 0x7c0802a6\n/* 00000000 90 01 00 14 */ stw r0, 20(r1)\n/* 00000000 93 E1 00 0C */ stw r31, 12(r1)\n/* 00000000 7C 9F 23 78 */ .long 0x7c9f2378\n/* 00000000 93 C1 00 08 */ stw r30, 8(r1)\n/* 00000000 7C 7E 1B 79 */ .long 0x7c7e1b79\n/* 00000000 41 82 00 28 */ .long 0x41820028\n/* 00000000 80 1E 00 00 */ lwz r0, 0(r30)\n/* 00000000 2C 00 00 00 */ .long 0x2c000000\n/* 00000000 40 80 00 0C */ .long 0x4080000c\n/* 00000000 80 7E 00 04 */ lwz r3, 4(r30)\n/* 00000000 48 00 00 01 */ .long 0x48000001\n/* 00000000 7F E0 07 35 */ .long 0x7fe00735\n/* 00000000 40 81 00 0C */ .long 0x4081000c\n/* 00000000 7F C3 F3 78 */ .long 0x7fc3f378\n/* 00000000 48 00 00 01 */ .long 0x48000001\n/* 00000000 80 01 00 14 */ lwz r0, 20(r1)\n/* 00000000 7F C3 F3 78 */ .long 0x7fc3f378\n/* 00000000 83 E1 00 0C */ lwz r31, 12(r1)\n/* 00000000 83 C1 00 08 */ lwz r30, 8(r1)\n/* 00000000 7C 08 03 A6 */ .long 0x7c0803a6\n/* 00000000 38 21 00 10 */ addi r1, r1, 16\n/* 00000000 4E 80 00 20 */ .long 0x4e800020\n/* 00000000 90 61 01 40 */ stw r3, 320(r1)\n/* 00000000 90 81 01 44 */ stw r4, 324(r1)\n/* 00000000 90 A1 01 48 */ stw r5, 328(r1)\n/* 00000000 90 61 01 4C */ stw r3, 332(r1)\n/* 00000000 90 81 01 50 */ stw r4, 336(r1)\n/* 00000000 90 A1 01 54 */ stw r5, 340(r1)\n/* 00000000 90 61 01 58 */ stw r3, 344(r1)\n/* 00000000 90 81 01 5C */ stw r4, 348(r1)\n/* 00000000 90 A1 01 60 */ stw r5, 352(r1)\n/* 00000000 80 C1 01 40 */ lwz r6, 320(r1)\n/* 00000000 38 E1 01 4C */ addi r7, r1, 332\n.endfn \"__dt__5ValueFv\"",
+    "target": {
+      "size": 512,
+      "uses": {
+        "20": [
+          [
+            4,
+            "lwz"
+          ],
+          [
+            4,
+            "stw"
+          ]
+        ],
+        "12": [
+          [
+            4,
+            "lwz"
+          ],
+          [
+            4,
+            "stw"
+          ]
+        ],
+        "8": [
+          [
+            4,
+            "lwz"
+          ],
+          [
+            4,
+            "stw"
+          ]
+        ],
+        "16": [
+          [
+            0,
+            "addi"
+          ]
+        ],
+        "320": [
+          [
+            4,
+            "lwz"
+          ],
+          [
+            4,
+            "stw"
+          ]
+        ],
+        "324": [
+          [
+            4,
+            "stw"
+          ]
+        ],
+        "328": [
+          [
+            4,
+            "stw"
+          ]
+        ],
+        "332": [
+          [
+            0,
+            "addi"
+          ],
+          [
+            4,
+            "stw"
+          ]
+        ],
+        "336": [
+          [
+            4,
+            "stw"
+          ]
+        ],
+        "340": [
+          [
+            4,
+            "stw"
+          ]
+        ],
+        "344": [
+          [
+            4,
+            "stw"
+          ]
+        ],
+        "348": [
+          [
+            4,
+            "stw"
+          ]
+        ],
+        "352": [
+          [
+            4,
+            "stw"
+          ]
+        ]
+      },
+      "limit": 480
+    },
+    "words": [
+      2485256176,
+      2080899750,
+      2415984660,
+      2480996364,
+      2090804088,
+      2478899208,
+      2088639353,
+      1099038760,
+      2149449728,
+      738197504,
+      1082130444,
+      2155741188,
+      1207959553,
+      2145388341,
+      1082195980,
+      2143548280,
+      1207959553,
+      2147549204,
+      2143548280,
+      2212560908,
+      2210463752,
+      2080900006,
+      941686800,
+      1317011488
+    ],
+    "target_words": [
+      2485255680,
+      3217097184,
+      2485256176,
+      2080899750,
+      2415984660,
+      2480996364,
+      2090804088,
+      2478899208,
+      2088639353,
+      1099038760,
+      2149449728,
+      738197504,
+      1082130444,
+      2155741188,
+      1207959553,
+      2145388341,
+      1082195980,
+      2143548280,
+      1207959553,
+      2147549204,
+      2143548280,
+      2212560908,
+      2210463752,
+      2080900006,
+      941686800,
+      1317011488,
+      2422276416,
+      2424373572,
+      2426470728,
+      2422276428,
+      2424373584,
+      2426470740,
+      2422276440,
+      2424373596,
+      2426470752,
+      2160132416,
+      954270028
+    ],
+    "limit": 8,
+    "target_report": [
+      "== __dt: locals (the scalarizer: IRO_ScalarizeClassDataMembers) ==",
+      "   frame: target 0x200 (512), ours 0x10 (16): +496 bytes in the target's",
+      "   the target's locals area, by the r1 offsets its code uses (addi: the address is taken):",
+      "      r1+0x8..0xf (8 bytes) 0x8:lwz/stw, 0xc:lwz/stw, 0x10:addi",
+      "      r1+0x14..0x17 (4 bytes) 0x14:lwz/stw",
+      "      r1+0x140..0x163 (36 bytes) 0x140:lwz/stw, 0x144:stw, 0x148:stw, 0x14c:addi/stw, 0x150:stw, 0x154:stw, 0x158:stw, 0x15c:stw, 0x160:stw"
+    ],
+    "shifts": {},
+    "shift_report": [],
+    "runs": [
+      {
+        "start": 320,
+        "end": 356,
+        "accesses": {
+          "stw": 9,
+          "lwz": 1,
+          "addi": 1
+        },
+        "copies": [
+          {
+            "size": 12,
+            "offsets": [
+              320,
+              332,
+              344
+            ],
+            "reloaded": {
+              "320": [
+                [
+                  0,
+                  "lwz"
+                ]
+              ]
+            },
+            "registers": [
+              "r3",
+              "r4",
+              "r5"
+            ],
+            "order": "copy by copy",
+            "first": 320
+          }
+        ]
+      }
+    ],
+    "mine": [],
+    "unpaired_report": [
+      "   in the target's memory, with no access of ours paired (kept in memory there; ours has it in registers, elsewhere, or not at all):",
+      "      r1+0x140..0x163 (36 bytes): stw x9, lwz x1, addi x1 (its address passed on)",
+      "         3 identical copies of a 12-byte value (r3, r4, r5) at r1+0x140, 0x14c, 0x158, stored copy by copy (first: 0x140)",
+      "            read back: the copy at 0x140: +0 (lwz); the 2 other(s) never read (dead stores)",
+      "         (one value copied whole into several temporaries the target keeps in memory: a chain of whole copies, by-value returns or arguments, each a temporary of its own; compare with our locals of that size split into scalars, above)"
+    ],
+    "target_summary": [
+      "== __dt: kept in memory (summary) ==",
+      "   target: 3 copies of a 12-byte value at r1+0x140, 0x14c, 0x158, 1 read back (a value made again for each use: a macro or inline that evaluates its argument more than once, or a by-value chain)"
+    ]
+  }
+]

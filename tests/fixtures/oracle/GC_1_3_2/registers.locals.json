@@ -1,0 +1,460 @@
+[
+  {
+    "link": "across_calls",
+    "plain": [
+      "== across_calls: locals (the scalarizer: IRO_ScalarizeClassDataMembers) =="
+    ],
+    "summary": [],
+    "asm": ".fn \"across_calls\", global\n/* 00000000 94 21 FE 00 */ stwu r1, -512(r1)\n/* 00000000 BF C1 01 E0 */ stmw r30, 480(r1)\n/* 00000000 94 21 FF E0 */ stwu r1, -32(r1)\n/* 00000000 7C 08 02 A6 */ .long 0x7c0802a6\n/* 00000000 90 01 00 24 */ stw r0, 36(r1)\n/* 00000000 39 61 00 20 */ addi r11, r1, 32\n/* 00000000 48 00 00 01 */ .long 0x48000001\n/* 00000000 7C 7B 1B 78 */ .long 0x7c7b1b78\n/* 00000000 7C 9C 23 78 */ .long 0x7c9c2378\n/* 00000000 7C BD 2B 78 */ .long 0x7cbd2b78\n/* 00000000 48 00 00 01 */ .long 0x48000001\n/* 00000000 7C 7E 1B 78 */ .long 0x7c7e1b78\n/* 00000000 7F 83 E3 78 */ .long 0x7f83e378\n/* 00000000 48 00 00 01 */ .long 0x48000001\n/* 00000000 7C 7F 1B 78 */ .long 0x7c7f1b78\n/* 00000000 7F A3 EB 78 */ .long 0x7fa3eb78\n/* 00000000 48 00 00 01 */ .long 0x48000001\n/* 00000000 7C 1F 1A 14 */ .long 0x7c1f1a14\n/* 00000000 7C 00 DA 14 */ .long 0x7c00da14\n/* 00000000 7C 00 E2 14 */ .long 0x7c00e214\n/* 00000000 7C 60 EA 14 */ .long 0x7c60ea14\n/* 00000000 7C 7E 1A 14 */ .long 0x7c7e1a14\n/* 00000000 39 61 00 20 */ addi r11, r1, 32\n/* 00000000 48 00 00 01 */ .long 0x48000001\n/* 00000000 80 01 00 24 */ lwz r0, 36(r1)\n/* 00000000 7C 08 03 A6 */ .long 0x7c0803a6\n/* 00000000 38 21 00 20 */ addi r1, r1, 32\n/* 00000000 4E 80 00 20 */ .long 0x4e800020\n/* 00000000 90 61 01 40 */ stw r3, 320(r1)\n/* 00000000 90 81 01 44 */ stw r4, 324(r1)\n/* 00000000 90 A1 01 48 */ stw r5, 328(r1)\n/* 00000000 90 61 01 4C */ stw r3, 332(r1)\n/* 00000000 90 81 01 50 */ stw r4, 336(r1)\n/* 00000000 90 A1 01 54 */ stw r5, 340(r1)\n/* 00000000 90 61 01 58 */ stw r3, 344(r1)\n/* 00000000 90 81 01 5C */ stw r4, 348(r1)\n/* 00000000 90 A1 01 60 */ stw r5, 352(r1)\n/* 00000000 80 C1 01 40 */ lwz r6, 320(r1)\n/* 00000000 38 E1 01 4C */ addi r7, r1, 332\n.endfn \"across_calls\"",
+    "target": {
+      "size": 512,
+      "uses": {
+        "36": [
+          [
+            4,
+            "lwz"
+          ],
+          [
+            4,
+            "stw"
+          ]
+        ],
+        "32": [
+          [
+            0,
+            "addi"
+          ]
+        ],
+        "320": [
+          [
+            4,
+            "lwz"
+          ],
+          [
+            4,
+            "stw"
+          ]
+        ],
+        "324": [
+          [
+            4,
+            "stw"
+          ]
+        ],
+        "328": [
+          [
+            4,
+            "stw"
+          ]
+        ],
+        "332": [
+          [
+            0,
+            "addi"
+          ],
+          [
+            4,
+            "stw"
+          ]
+        ],
+        "336": [
+          [
+            4,
+            "stw"
+          ]
+        ],
+        "340": [
+          [
+            4,
+            "stw"
+          ]
+        ],
+        "344": [
+          [
+            4,
+            "stw"
+          ]
+        ],
+        "348": [
+          [
+            4,
+            "stw"
+          ]
+        ],
+        "352": [
+          [
+            4,
+            "stw"
+          ]
+        ]
+      },
+      "limit": 480
+    },
+    "words": [
+      2485256160,
+      2080899750,
+      2415984676,
+      962658336,
+      1207959553,
+      2088442744,
+      2090607480,
+      2092772216,
+      1207959553,
+      2088639352,
+      2139349880,
+      1207959553,
+      2088704888,
+      2141449080,
+      1207959553,
+      2082413076,
+      2080430612,
+      2080432660,
+      2086726164,
+      2088638996,
+      962658336,
+      1207959553,
+      2147549220,
+      2080900006,
+      941686816,
+      1317011488
+    ],
+    "target_words": [
+      2485255680,
+      3217097184,
+      2485256160,
+      2080899750,
+      2415984676,
+      962658336,
+      1207959553,
+      2088442744,
+      2090607480,
+      2092772216,
+      1207959553,
+      2088639352,
+      2139349880,
+      1207959553,
+      2088704888,
+      2141449080,
+      1207959553,
+      2082413076,
+      2080430612,
+      2080432660,
+      2086726164,
+      2088638996,
+      962658336,
+      1207959553,
+      2147549220,
+      2080900006,
+      941686816,
+      1317011488,
+      2422276416,
+      2424373572,
+      2426470728,
+      2422276428,
+      2424373584,
+      2426470740,
+      2422276440,
+      2424373596,
+      2426470752,
+      2160132416,
+      954270028
+    ],
+    "limit": 8,
+    "target_report": [
+      "== across_calls: locals (the scalarizer: IRO_ScalarizeClassDataMembers) ==",
+      "   frame: target 0x200 (512), ours 0x20 (32): +480 bytes in the target's",
+      "   the target's locals area, by the r1 offsets its code uses (addi: the address is taken):",
+      "      r1+0x20..0x20 (1 bytes) 0x20:addi",
+      "      r1+0x24..0x27 (4 bytes) 0x24:lwz/stw",
+      "      r1+0x140..0x163 (36 bytes) 0x140:lwz/stw, 0x144:stw, 0x148:stw, 0x14c:addi/stw, 0x150:stw, 0x154:stw, 0x158:stw, 0x15c:stw, 0x160:stw"
+    ],
+    "shifts": {},
+    "shift_report": [],
+    "runs": [
+      {
+        "start": 320,
+        "end": 356,
+        "accesses": {
+          "stw": 9,
+          "lwz": 1,
+          "addi": 1
+        },
+        "copies": [
+          {
+            "size": 12,
+            "offsets": [
+              320,
+              332,
+              344
+            ],
+            "reloaded": {
+              "320": [
+                [
+                  0,
+                  "lwz"
+                ]
+              ]
+            },
+            "registers": [
+              "r3",
+              "r4",
+              "r5"
+            ],
+            "order": "copy by copy",
+            "first": 320
+          }
+        ]
+      }
+    ],
+    "mine": [],
+    "unpaired_report": [
+      "   in the target's memory, with no access of ours paired (kept in memory there; ours has it in registers, elsewhere, or not at all):",
+      "      r1+0x140..0x163 (36 bytes): stw x9, lwz x1, addi x1 (its address passed on)",
+      "         3 identical copies of a 12-byte value (r3, r4, r5) at r1+0x140, 0x14c, 0x158, stored copy by copy (first: 0x140)",
+      "            read back: the copy at 0x140: +0 (lwz); the 2 other(s) never read (dead stores)",
+      "         (one value copied whole into several temporaries the target keeps in memory: a chain of whole copies, by-value returns or arguments, each a temporary of its own; compare with our locals of that size split into scalars, above)"
+    ],
+    "target_summary": [
+      "== across_calls: kept in memory (summary) ==",
+      "   target: 3 copies of a 12-byte value at r1+0x140, 0x14c, 0x158, 1 read back (a value made again for each use: a macro or inline that evaluates its argument more than once, or a by-value chain)"
+    ]
+  },
+  {
+    "link": "accumulate",
+    "plain": [
+      "== accumulate: locals (the scalarizer: IRO_ScalarizeClassDataMembers) =="
+    ],
+    "summary": [],
+    "asm": ".fn \"accumulate\", global\n/* 00000000 94 21 FE 00 */ stwu r1, -512(r1)\n/* 00000000 BF C1 01 E0 */ stmw r30, 480(r1)\n/* 00000000 2C 04 00 00 */ .long 0x2c040000\n/* 00000000 C0 E0 00 00 */ lfs f7, 0(r0)\n/* 00000000 38 E0 00 00 */ addi r7, r0, 0\n/* 00000000 40 81 00 9C */ .long 0x4081009c\n/* 00000000 2C 04 00 08 */ .long 0x2c040008\n/* 00000000 38 A4 FF F8 */ addi r5, r4, -8\n/* 00000000 40 81 00 68 */ .long 0x40810068\n/* 00000000 38 05 00 07 */ addi r0, r5, 7\n/* 00000000 7C 66 1B 78 */ .long 0x7c661b78\n/* 00000000 54 00 E8 FE */ .long 0x5400e8fe\n/* 00000000 7C 09 03 A6 */ .long 0x7c0903a6\n/* 00000000 2C 05 00 00 */ .long 0x2c050000\n/* 00000000 40 81 00 50 */ .long 0x40810050\n/* 00000000 C0 46 00 00 */ lfs f2, 0(r6)\n/* 00000000 38 E7 00 08 */ addi r7, r7, 8\n/* 00000000 C0 06 00 04 */ lfs f0, 4(r6)\n/* 00000000 EC E1 38 BA */ .long 0xece138ba\n/* 00000000 C0 C6 00 08 */ lfs f6, 8(r6)\n/* 00000000 C0 A6 00 0C */ lfs f5, 12(r6)\n/* 00000000 C0 86 00 10 */ lfs f4, 16(r6)\n/* 00000000 EC E1 38 3A */ .long 0xece1383a\n/* 00000000 C0 66 00 14 */ lfs f3, 20(r6)\n/* 00000000 C0 46 00 18 */ lfs f2, 24(r6)\n/* 00000000 C0 06 00 1C */ lfs f0, 28(r6)\n/* 00000000 38 C6 00 20 */ addi r6, r6, 32\n/* 00000000 EC E1 39 BA */ .long 0xece139ba\n/* 00000000 EC E1 39 7A */ .long 0xece1397a\n/* 00000000 EC E1 39 3A */ .long 0xece1393a\n/* 00000000 EC E1 38 FA */ .long 0xece138fa\n/* 00000000 EC E1 38 BA */ .long 0xece138ba\n/* 00000000 EC E1 38 3A */ .long 0xece1383a\n/* 00000000 42 00 FF B8 */ .long 0x4200ffb8\n/* 00000000 54 E5 10 3A */ .long 0x54e5103a\n/* 00000000 7C 07 20 50 */ .long 0x7c072050\n/* 00000000 7C 63 2A 14 */ .long 0x7c632a14\n/* 00000000 7C 09 03 A6 */ .long 0x7c0903a6\n/* 00000000 7C 07 20 00 */ .long 0x7c072000\n/* 00000000 40 80 00 14 */ .long 0x40800014\n/* 00000000 C0 03 00 00 */ lfs f0, 0(r3)\n/* 00000000 38 63 00 04 */ addi r3, r3, 4\n/* 00000000 EC E1 38 3A */ .long 0xece1383a\n/* 00000000 42 00 FF F4 */ .long 0x4200fff4\n/* 00000000 FC 20 38 90 */ .long 0xfc203890\n/* 00000000 4E 80 00 20 */ .long 0x4e800020\n/* 00000000 90 61 01 40 */ stw r3, 320(r1)\n/* 00000000 90 81 01 44 */ stw r4, 324(r1)\n/* 00000000 90 A1 01 48 */ stw r5, 328(r1)\n/* 00000000 90 61 01 4C */ stw r3, 332(r1)\n/* 00000000 90 81 01 50 */ stw r4, 336(r1)\n/* 00000000 90 A1 01 54 */ stw r5, 340(r1)\n/* 00000000 90 61 01 58 */ stw r3, 344(r1)\n/* 00000000 90 81 01 5C */ stw r4, 348(r1)\n/* 00000000 90 A1 01 60 */ stw r5, 352(r1)\n/* 00000000 80 C1 01 40 */ lwz r6, 320(r1)\n/* 00000000 38 E1 01 4C */ addi r7, r1, 332\n.endfn \"accumulate\"",
+    "target": {
+      "size": 512,
+      "uses": {
+        "320": [
+          [
+            4,
+            "lwz"
+          ],
+          [
+            4,
+            "stw"
+          ]
+        ],
+        "324": [
+          [
+            4,
+            "stw"
+          ]
+        ],
+        "328": [
+          [
+            4,
+            "stw"
+          ]
+        ],
+        "332": [
+          [
+            0,
+            "addi"
+          ],
+          [
+            4,
+            "stw"
+          ]
+        ],
+        "336": [
+          [
+            4,
+            "stw"
+          ]
+        ],
+        "340": [
+          [
+            4,
+            "stw"
+          ]
+        ],
+        "344": [
+          [
+            4,
+            "stw"
+          ]
+        ],
+        "348": [
+          [
+            4,
+            "stw"
+          ]
+        ],
+        "352": [
+          [
+            4,
+            "stw"
+          ]
+        ]
+      },
+      "limit": 480
+    },
+    "words": [
+      738459648,
+      3235905536,
+      954204160,
+      1082196124,
+      738459656,
+      950337528,
+      1082196072,
+      939851783,
+      2087066488,
+      1409345790,
+      2080965542,
+      738525184,
+      1082196048,
+      3225812992,
+      954662920,
+      3221618692,
+      3974183098,
+      3234201608,
+      3232104460,
+      3230007312,
+      3974182970,
+      3227910164,
+      3225813016,
+      3221618716,
+      952500256,
+      3974183354,
+      3974183290,
+      3974183226,
+      3974183162,
+      3974183098,
+      3974182970,
+      1107361720,
+      1424298042,
+      2080841808,
+      2086873620,
+      2080965542,
+      2080841728,
+      1082130452,
+      3221422080,
+      946012164,
+      3974182970,
+      1107361780,
+      4229970064,
+      1317011488
+    ],
+    "target_words": [
+      2485255680,
+      3217097184,
+      738459648,
+      3235905536,
+      954204160,
+      1082196124,
+      738459656,
+      950337528,
+      1082196072,
+      939851783,
+      2087066488,
+      1409345790,
+      2080965542,
+      738525184,
+      1082196048,
+      3225812992,
+      954662920,
+      3221618692,
+      3974183098,
+      3234201608,
+      3232104460,
+      3230007312,
+      3974182970,
+      3227910164,
+      3225813016,
+      3221618716,
+      952500256,
+      3974183354,
+      3974183290,
+      3974183226,
+      3974183162,
+      3974183098,
+      3974182970,
+      1107361720,
+      1424298042,
+      2080841808,
+      2086873620,
+      2080965542,
+      2080841728,
+      1082130452,
+      3221422080,
+      946012164,
+      3974182970,
+      1107361780,
+      4229970064,
+      1317011488,
+      2422276416,
+      2424373572,
+      2426470728,
+      2422276428,
+      2424373584,
+      2426470740,
+      2422276440,
+      2424373596,
+      2426470752,
+      2160132416,
+      954270028
+    ],
+    "limit": 0,
+    "target_report": [
+      "== accumulate: locals (the scalarizer: IRO_ScalarizeClassDataMembers) ==",
+      "   frame: target 0x200 (512), ours 0x0 (0): +512 bytes in the target's",
+      "   the target's locals area, by the r1 offsets its code uses (addi: the address is taken):",
+      "      r1+0x140..0x163 (36 bytes) 0x140:lwz/stw, 0x144:stw, 0x148:stw, 0x14c:addi/stw, 0x150:stw, 0x154:stw, 0x158:stw, 0x15c:stw, 0x160:stw"
+    ],
+    "shifts": {},
+    "shift_report": [],
+    "runs": [
+      {
+        "start": 320,
+        "end": 356,
+        "accesses": {
+          "stw": 9,
+          "lwz": 1,
+          "addi": 1
+        },
+        "copies": [
+          {
+            "size": 12,
+            "offsets": [
+              320,
+              332,
+              344
+            ],
+            "reloaded": {
+              "320": [
+                [
+                  0,
+                  "lwz"
+                ]
+              ]
+            },
+            "registers": [
+              "r3",
+              "r4",
+              "r5"
+            ],
+            "order": "copy by copy",
+            "first": 320
+          }
+        ]
+      }
+    ],
+    "mine": [],
+    "unpaired_report": [
+      "   in the target's memory, with no access of ours paired (kept in memory there; ours has it in registers, elsewhere, or not at all):",
+      "      r1+0x140..0x163 (36 bytes): stw x9, lwz x1, addi x1 (its address passed on)",
+      "         3 identical copies of a 12-byte value (r3, r4, r5) at r1+0x140, 0x14c, 0x158, stored copy by copy (first: 0x140)",
+      "            read back: the copy at 0x140: +0 (lwz); the 2 other(s) never read (dead stores)",
+      "         (one value copied whole into several temporaries the target keeps in memory: a chain of whole copies, by-value returns or arguments, each a temporary of its own; compare with our locals of that size split into scalars, above)"
+    ],
+    "target_summary": [
+      "== accumulate: kept in memory (summary) ==",
+      "   target: 3 copies of a 12-byte value at r1+0x140, 0x14c, 0x158, 1 read back (a value made again for each use: a macro or inline that evaluates its argument more than once, or a by-value chain)"
+    ]
+  }
+]

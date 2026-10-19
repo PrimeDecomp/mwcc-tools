@@ -1,0 +1,59 @@
+{
+  "decisions": {},
+  "summaries": {},
+  "emission": {},
+  "target": {},
+  "module": {},
+  "predictions": {
+    "false": {},
+    "true": {}
+  },
+  "emission_report": [
+    "== A: sources/empty.c: emitted differently from the target: 0 here only (nowhere in the module), 0 there only; 0 here whose copy the module keeps in another TU"
+  ],
+  "object_calls": {},
+  "windows": [
+    {
+      "calls": {},
+      "bounds": [],
+      "window": [
+        null,
+        null
+      ],
+      "report": [
+        "== sources/empty.c: limit None, the target agrees with -..-"
+      ],
+      "verbose": [
+        "== sources/empty.c: limit None, the target agrees with -..-"
+      ]
+    },
+    {
+      "calls": {},
+      "bounds": [],
+      "window": [
+        null,
+        null
+      ],
+      "report": [
+        "== sources/empty.c: limit None, the target agrees with -..-"
+      ],
+      "verbose": [
+        "== sources/empty.c: limit None, the target agrees with -..-"
+      ]
+    },
+    {
+      "calls": {},
+      "bounds": [],
+      "window": [
+        null,
+        null
+      ],
+      "report": [
+        "== sources/empty.c: limit None, the target agrees with -..-"
+      ],
+      "verbose": [
+        "== sources/empty.c: limit None, the target agrees with -..-"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,116 @@
+[
+  {
+    "seed": 0,
+    "threshold": null,
+    "suffix": "0",
+    "hash": 48
+  },
+  {
+    "seed": 0,
+    "threshold": 0,
+    "suffix": "0",
+    "hash": 48
+  },
+  {
+    "seed": 1,
+    "threshold": null,
+    "suffix": "0",
+    "hash": 50
+  },
+  {
+    "seed": 1,
+    "threshold": 0,
+    "suffix": "0",
+    "hash": 50
+  },
+  {
+    "seed": 255,
+    "threshold": null,
+    "suffix": "0",
+    "hash": 462
+  },
+  {
+    "seed": 255,
+    "threshold": 0,
+    "suffix": "0",
+    "hash": 462
+  },
+  {
+    "seed": 255,
+    "threshold": 1000,
+    "suffix": "100",
+    "hash": 1900
+  },
+  {
+    "seed": 255,
+    "threshold": 3455,
+    "suffix": "1000",
+    "hash": 3816
+  },
+  {
+    "seed": 1023,
+    "threshold": null,
+    "suffix": "0",
+    "hash": 1998
+  },
+  {
+    "seed": 1023,
+    "threshold": 0,
+    "suffix": "0",
+    "hash": 1998
+  },
+  {
+    "seed": 1023,
+    "threshold": 1000,
+    "suffix": "0",
+    "hash": 1998
+  },
+  {
+    "seed": 1023,
+    "threshold": 3455,
+    "suffix": "10",
+    "hash": 4014
+  },
+  {
+    "seed": 3454,
+    "threshold": null,
+    "suffix": "0",
+    "hash": 2765
+  },
+  {
+    "seed": 3454,
+    "threshold": 0,
+    "suffix": "0",
+    "hash": 2765
+  },
+  {
+    "seed": 3454,
+    "threshold": 1000,
+    "suffix": "0",
+    "hash": 2765
+  },
+  {
+    "seed": 4095,
+    "threshold": null,
+    "suffix": "0",
+    "hash": 4047
+  },
+  {
+    "seed": 4095,
+    "threshold": 0,
+    "suffix": "0",
+    "hash": 4047
+  },
+  {
+    "seed": 4095,
+    "threshold": 1000,
+    "suffix": "0",
+    "hash": 4047
+  },
+  {
+    "seed": 4095,
+    "threshold": 3455,
+    "suffix": "0",
+    "hash": 4047
+  }
+]

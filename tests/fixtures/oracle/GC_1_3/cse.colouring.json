@@ -1,0 +1,72 @@
+[
+  {
+    "function": "common_integer",
+    "link": "common_integer",
+    "class": "GPR",
+    "nodes": 8,
+    "rounds": 1,
+    "order_agrees": true,
+    "colour_disagreements": [],
+    "claims": [
+      31,
+      30
+    ],
+    "traced_claims": [
+      31,
+      30
+    ],
+    "preused": [],
+    "inferred": false,
+    "spilled": [],
+    "traced_spilled": [],
+    "ok": true
+  },
+  {
+    "function": "common_float",
+    "link": "common_float",
+    "class": "GPR",
+    "nodes": 4,
+    "rounds": 1,
+    "order_agrees": true,
+    "colour_disagreements": [],
+    "claims": [],
+    "traced_claims": [],
+    "preused": [],
+    "inferred": true,
+    "spilled": [],
+    "traced_spilled": [],
+    "ok": true
+  },
+  {
+    "function": "common_float",
+    "link": "common_float",
+    "class": "FPR",
+    "nodes": 5,
+    "rounds": 1,
+    "order_agrees": true,
+    "colour_disagreements": [],
+    "claims": [],
+    "traced_claims": [],
+    "preused": [],
+    "inferred": true,
+    "spilled": [],
+    "traced_spilled": [],
+    "ok": true
+  },
+  {
+    "function": "common_branch",
+    "link": "common_branch",
+    "class": "GPR",
+    "nodes": 7,
+    "rounds": 1,
+    "order_agrees": true,
+    "colour_disagreements": [],
+    "claims": [],
+    "traced_claims": [],
+    "preused": [],
+    "inferred": true,
+    "spilled": [],
+    "traced_spilled": [],
+    "ok": true
+  }
+]

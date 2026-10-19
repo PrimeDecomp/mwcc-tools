@@ -1,0 +1,810 @@
+[
+  {
+    "name": "matching",
+    "report": {
+      "measures": {
+        "matched_code_percent": 99.999,
+        "complete_code_percent": 84.327,
+        "matched_data_percent": 12.345,
+        "complete_data_percent": 0
+      },
+      "units": [
+        {
+          "name": "a",
+          "metadata": {
+            "source_path": "src/a.c"
+          },
+          "functions": [
+            {
+              "name": "good",
+              "fuzzy_match_percent": 100
+            },
+            {
+              "name": "___patched",
+              "fuzzy_match_percent": 0
+            }
+          ]
+        },
+        {
+          "name": "unlisted",
+          "metadata": {
+            "source_path": "src/b.c"
+          },
+          "functions": [
+            {
+              "name": "ignored",
+              "fuzzy_match_percent": 0
+            }
+          ]
+        },
+        {
+          "name": "no_source",
+          "functions": [
+            {
+              "name": "ignored",
+              "fuzzy_match_percent": 0
+            }
+          ]
+        }
+      ]
+    },
+    "config": {
+      "matching": [
+        "src/a.c"
+      ]
+    },
+    "functions": [
+      {
+        "name": "patched",
+        "binary_patch": true
+      }
+    ],
+    "calls": [
+      {
+        "command": "configure",
+        "version": "GC_1_0"
+      },
+      {
+        "command": "ninja",
+        "version": "GC_1_0",
+        "targets": []
+      },
+      {
+        "command": "configure",
+        "version": "GC_1_1"
+      },
+      {
+        "command": "ninja",
+        "version": "GC_1_1",
+        "targets": []
+      },
+      {
+        "command": "ninja",
+        "version": "GC_1_1",
+        "targets": [
+          "progress"
+        ]
+      },
+      {
+        "command": "configure",
+        "version": "GC_1_1p1"
+      },
+      {
+        "command": "ninja",
+        "version": "GC_1_1p1",
+        "targets": []
+      },
+      {
+        "command": "ninja",
+        "version": "GC_1_1p1",
+        "targets": [
+          "progress"
+        ]
+      },
+      {
+        "command": "configure",
+        "version": "GC_1_2_5n"
+      },
+      {
+        "command": "ninja",
+        "version": "GC_1_2_5n",
+        "targets": []
+      },
+      {
+        "command": "ninja",
+        "version": "GC_1_2_5n",
+        "targets": [
+          "progress"
+        ]
+      },
+      {
+        "command": "configure",
+        "version": "GC_1_3"
+      },
+      {
+        "command": "ninja",
+        "version": "GC_1_3",
+        "targets": []
+      },
+      {
+        "command": "ninja",
+        "version": "GC_1_3",
+        "targets": [
+          "progress"
+        ]
+      },
+      {
+        "command": "configure",
+        "version": "GC_1_3_2"
+      },
+      {
+        "command": "ninja",
+        "version": "GC_1_3_2",
+        "targets": []
+      },
+      {
+        "command": "ninja",
+        "version": "GC_1_3_2",
+        "targets": [
+          "progress"
+        ]
+      },
+      {
+        "command": "configure",
+        "version": "GC_2_6"
+      },
+      {
+        "command": "ninja",
+        "version": "GC_2_6",
+        "targets": []
+      },
+      {
+        "command": "ninja",
+        "version": "GC_2_6",
+        "targets": [
+          "progress"
+        ]
+      },
+      {
+        "command": "configure",
+        "version": "GC_2_7"
+      },
+      {
+        "command": "ninja",
+        "version": "GC_2_7",
+        "targets": []
+      },
+      {
+        "command": "ninja",
+        "version": "GC_2_7",
+        "targets": [
+          "progress"
+        ]
+      },
+      {
+        "command": "configure",
+        "version": "GC_1_2_5"
+      },
+      {
+        "command": "ninja",
+        "version": "GC_1_2_5",
+        "targets": []
+      },
+      {
+        "command": "ninja",
+        "version": "GC_1_2_5",
+        "targets": [
+          "progress"
+        ]
+      }
+    ],
+    "exit_code": 0,
+    "stdout": "GC_1_0 synthetic completion\nGC_1_1 synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\nGC_1_1p1 synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\nGC_1_2_5n synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\nGC_1_3 synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\nGC_1_3_2 synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\nGC_2_6 synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\nGC_2_7 synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\nGC_1_2_5 synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\n"
+  },
+  {
+    "name": "differing",
+    "report": {
+      "measures": {
+        "matched_code_percent": 99.999,
+        "complete_code_percent": 84.327,
+        "matched_data_percent": 12.345,
+        "complete_data_percent": 0
+      },
+      "units": [
+        {
+          "name": "a",
+          "metadata": {
+            "source_path": "src/a.c"
+          },
+          "functions": [
+            {
+              "name": "good",
+              "fuzzy_match_percent": 100
+            },
+            {
+              "name": "___patched",
+              "fuzzy_match_percent": 0
+            },
+            {
+              "name": "diff",
+              "fuzzy_match_percent": 99.999
+            },
+            {
+              "name": "missing_percent"
+            }
+          ]
+        },
+        {
+          "name": "unlisted",
+          "metadata": {
+            "source_path": "src/b.c"
+          },
+          "functions": [
+            {
+              "name": "ignored",
+              "fuzzy_match_percent": 0
+            }
+          ]
+        },
+        {
+          "name": "no_source",
+          "functions": [
+            {
+              "name": "ignored",
+              "fuzzy_match_percent": 0
+            }
+          ]
+        }
+      ]
+    },
+    "config": {
+      "matching": [
+        "src/a.c"
+      ]
+    },
+    "functions": [
+      {
+        "name": "patched",
+        "binary_patch": true
+      }
+    ],
+    "calls": [
+      {
+        "command": "configure",
+        "version": "GC_1_0"
+      },
+      {
+        "command": "ninja",
+        "version": "GC_1_0",
+        "targets": []
+      },
+      {
+        "command": "configure",
+        "version": "GC_1_1"
+      },
+      {
+        "command": "ninja",
+        "version": "GC_1_1",
+        "targets": []
+      },
+      {
+        "command": "ninja",
+        "version": "GC_1_1",
+        "targets": [
+          "progress"
+        ]
+      },
+      {
+        "command": "configure",
+        "version": "GC_1_1p1"
+      },
+      {
+        "command": "ninja",
+        "version": "GC_1_1p1",
+        "targets": []
+      },
+      {
+        "command": "ninja",
+        "version": "GC_1_1p1",
+        "targets": [
+          "progress"
+        ]
+      },
+      {
+        "command": "configure",
+        "version": "GC_1_2_5n"
+      },
+      {
+        "command": "ninja",
+        "version": "GC_1_2_5n",
+        "targets": []
+      },
+      {
+        "command": "ninja",
+        "version": "GC_1_2_5n",
+        "targets": [
+          "progress"
+        ]
+      },
+      {
+        "command": "configure",
+        "version": "GC_1_3"
+      },
+      {
+        "command": "ninja",
+        "version": "GC_1_3",
+        "targets": []
+      },
+      {
+        "command": "ninja",
+        "version": "GC_1_3",
+        "targets": [
+          "progress"
+        ]
+      },
+      {
+        "command": "configure",
+        "version": "GC_1_3_2"
+      },
+      {
+        "command": "ninja",
+        "version": "GC_1_3_2",
+        "targets": []
+      },
+      {
+        "command": "ninja",
+        "version": "GC_1_3_2",
+        "targets": [
+          "progress"
+        ]
+      },
+      {
+        "command": "configure",
+        "version": "GC_2_6"
+      },
+      {
+        "command": "ninja",
+        "version": "GC_2_6",
+        "targets": []
+      },
+      {
+        "command": "ninja",
+        "version": "GC_2_6",
+        "targets": [
+          "progress"
+        ]
+      },
+      {
+        "command": "configure",
+        "version": "GC_2_7"
+      },
+      {
+        "command": "ninja",
+        "version": "GC_2_7",
+        "targets": []
+      },
+      {
+        "command": "ninja",
+        "version": "GC_2_7",
+        "targets": [
+          "progress"
+        ]
+      },
+      {
+        "command": "configure",
+        "version": "GC_1_2_5"
+      },
+      {
+        "command": "ninja",
+        "version": "GC_1_2_5",
+        "targets": []
+      },
+      {
+        "command": "ninja",
+        "version": "GC_1_2_5",
+        "targets": [
+          "progress"
+        ]
+      }
+    ],
+    "exit_code": 1,
+    "stdout": "GC_1_0 synthetic completion\nGC_1_1 synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\n  differs: a/diff\n  differs: a/missing_percent\nGC_1_1p1 synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\n  differs: a/diff\n  differs: a/missing_percent\nGC_1_2_5n synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\n  differs: a/diff\n  differs: a/missing_percent\nGC_1_3 synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\n  differs: a/diff\n  differs: a/missing_percent\nGC_1_3_2 synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\n  differs: a/diff\n  differs: a/missing_percent\nGC_2_6 synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\n  differs: a/diff\n  differs: a/missing_percent\nGC_2_7 synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\n  differs: a/diff\n  differs: a/missing_percent\nGC_1_2_5 synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\n  differs: a/diff\n  differs: a/missing_percent\n"
+  },
+  {
+    "name": "failed_build",
+    "report": {
+      "measures": {
+        "matched_code_percent": 99.999,
+        "complete_code_percent": 84.327,
+        "matched_data_percent": 12.345,
+        "complete_data_percent": 0
+      },
+      "units": [
+        {
+          "name": "a",
+          "metadata": {
+            "source_path": "src/a.c"
+          },
+          "functions": [
+            {
+              "name": "good",
+              "fuzzy_match_percent": 100
+            },
+            {
+              "name": "___patched",
+              "fuzzy_match_percent": 0
+            }
+          ]
+        },
+        {
+          "name": "unlisted",
+          "metadata": {
+            "source_path": "src/b.c"
+          },
+          "functions": [
+            {
+              "name": "ignored",
+              "fuzzy_match_percent": 0
+            }
+          ]
+        },
+        {
+          "name": "no_source",
+          "functions": [
+            {
+              "name": "ignored",
+              "fuzzy_match_percent": 0
+            }
+          ]
+        }
+      ]
+    },
+    "config": {
+      "matching": [
+        "src/a.c"
+      ]
+    },
+    "functions": [
+      {
+        "name": "patched",
+        "binary_patch": true
+      }
+    ],
+    "calls": [
+      {
+        "command": "configure",
+        "version": "GC_1_0"
+      },
+      {
+        "command": "ninja",
+        "version": "GC_1_0",
+        "targets": []
+      },
+      {
+        "command": "configure",
+        "version": "GC_1_1"
+      },
+      {
+        "command": "ninja",
+        "version": "GC_1_1",
+        "targets": []
+      },
+      {
+        "command": "configure",
+        "version": "GC_1_1p1"
+      },
+      {
+        "command": "ninja",
+        "version": "GC_1_1p1",
+        "targets": []
+      },
+      {
+        "command": "ninja",
+        "version": "GC_1_1p1",
+        "targets": [
+          "progress"
+        ]
+      },
+      {
+        "command": "configure",
+        "version": "GC_1_2_5n"
+      },
+      {
+        "command": "ninja",
+        "version": "GC_1_2_5n",
+        "targets": []
+      },
+      {
+        "command": "ninja",
+        "version": "GC_1_2_5n",
+        "targets": [
+          "progress"
+        ]
+      },
+      {
+        "command": "configure",
+        "version": "GC_1_3"
+      },
+      {
+        "command": "ninja",
+        "version": "GC_1_3",
+        "targets": []
+      },
+      {
+        "command": "ninja",
+        "version": "GC_1_3",
+        "targets": [
+          "progress"
+        ]
+      },
+      {
+        "command": "configure",
+        "version": "GC_1_3_2"
+      },
+      {
+        "command": "ninja",
+        "version": "GC_1_3_2",
+        "targets": []
+      },
+      {
+        "command": "ninja",
+        "version": "GC_1_3_2",
+        "targets": [
+          "progress"
+        ]
+      },
+      {
+        "command": "configure",
+        "version": "GC_2_6"
+      },
+      {
+        "command": "ninja",
+        "version": "GC_2_6",
+        "targets": []
+      },
+      {
+        "command": "ninja",
+        "version": "GC_2_6",
+        "targets": [
+          "progress"
+        ]
+      },
+      {
+        "command": "configure",
+        "version": "GC_2_7"
+      },
+      {
+        "command": "ninja",
+        "version": "GC_2_7",
+        "targets": []
+      },
+      {
+        "command": "ninja",
+        "version": "GC_2_7",
+        "targets": [
+          "progress"
+        ]
+      },
+      {
+        "command": "configure",
+        "version": "GC_1_2_5"
+      },
+      {
+        "command": "ninja",
+        "version": "GC_1_2_5",
+        "targets": []
+      },
+      {
+        "command": "ninja",
+        "version": "GC_1_2_5",
+        "targets": [
+          "progress"
+        ]
+      }
+    ],
+    "exit_code": 1,
+    "stdout": "GC_1_0 synthetic completion\nsynthetic Ninja failure\n\nGC_1_1p1 synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\nGC_1_2_5n synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\nGC_1_3 synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\nGC_1_3_2 synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\nGC_2_6 synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\nGC_2_7 synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\nGC_1_2_5 synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\n"
+  },
+  {
+    "name": "failed_progress",
+    "report": {
+      "measures": {
+        "matched_code_percent": 99.999,
+        "complete_code_percent": 84.327,
+        "matched_data_percent": 12.345,
+        "complete_data_percent": 0
+      },
+      "units": [
+        {
+          "name": "a",
+          "metadata": {
+            "source_path": "src/a.c"
+          },
+          "functions": [
+            {
+              "name": "good",
+              "fuzzy_match_percent": 100
+            },
+            {
+              "name": "___patched",
+              "fuzzy_match_percent": 0
+            }
+          ]
+        },
+        {
+          "name": "unlisted",
+          "metadata": {
+            "source_path": "src/b.c"
+          },
+          "functions": [
+            {
+              "name": "ignored",
+              "fuzzy_match_percent": 0
+            }
+          ]
+        },
+        {
+          "name": "no_source",
+          "functions": [
+            {
+              "name": "ignored",
+              "fuzzy_match_percent": 0
+            }
+          ]
+        }
+      ]
+    },
+    "config": {
+      "matching": [
+        "src/a.c"
+      ]
+    },
+    "functions": [
+      {
+        "name": "patched",
+        "binary_patch": true
+      }
+    ],
+    "calls": [
+      {
+        "command": "configure",
+        "version": "GC_1_0"
+      },
+      {
+        "command": "ninja",
+        "version": "GC_1_0",
+        "targets": []
+      },
+      {
+        "command": "configure",
+        "version": "GC_1_1"
+      },
+      {
+        "command": "ninja",
+        "version": "GC_1_1",
+        "targets": []
+      },
+      {
+        "command": "ninja",
+        "version": "GC_1_1",
+        "targets": [
+          "progress"
+        ]
+      },
+      {
+        "command": "configure",
+        "version": "GC_1_1p1"
+      },
+      {
+        "command": "ninja",
+        "version": "GC_1_1p1",
+        "targets": []
+      },
+      {
+        "command": "ninja",
+        "version": "GC_1_1p1",
+        "targets": [
+          "progress"
+        ]
+      },
+      {
+        "command": "configure",
+        "version": "GC_1_2_5n"
+      },
+      {
+        "command": "ninja",
+        "version": "GC_1_2_5n",
+        "targets": []
+      },
+      {
+        "command": "ninja",
+        "version": "GC_1_2_5n",
+        "targets": [
+          "progress"
+        ]
+      },
+      {
+        "command": "configure",
+        "version": "GC_1_3"
+      },
+      {
+        "command": "ninja",
+        "version": "GC_1_3",
+        "targets": []
+      },
+      {
+        "command": "ninja",
+        "version": "GC_1_3",
+        "targets": [
+          "progress"
+        ]
+      },
+      {
+        "command": "configure",
+        "version": "GC_1_3_2"
+      },
+      {
+        "command": "ninja",
+        "version": "GC_1_3_2",
+        "targets": []
+      },
+      {
+        "command": "ninja",
+        "version": "GC_1_3_2",
+        "targets": [
+          "progress"
+        ]
+      },
+      {
+        "command": "configure",
+        "version": "GC_2_6"
+      },
+      {
+        "command": "ninja",
+        "version": "GC_2_6",
+        "targets": []
+      },
+      {
+        "command": "ninja",
+        "version": "GC_2_6",
+        "targets": [
+          "progress"
+        ]
+      },
+      {
+        "command": "configure",
+        "version": "GC_2_7"
+      },
+      {
+        "command": "ninja",
+        "version": "GC_2_7",
+        "targets": []
+      },
+      {
+        "command": "ninja",
+        "version": "GC_2_7",
+        "targets": [
+          "progress"
+        ]
+      },
+      {
+        "command": "configure",
+        "version": "GC_1_2_5"
+      },
+      {
+        "command": "ninja",
+        "version": "GC_1_2_5",
+        "targets": []
+      },
+      {
+        "command": "ninja",
+        "version": "GC_1_2_5",
+        "targets": [
+          "progress"
+        ]
+      }
+    ],
+    "exit_code": 1,
+    "stdout": "GC_1_0 synthetic completion\nsynthetic Ninja failure\n\nGC_1_1p1 synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\nGC_1_2_5n synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\nGC_1_3 synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\nGC_1_3_2 synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\nGC_2_6 synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\nGC_2_7 synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\nGC_1_2_5 synthetic completion\n  code 99.99% matched, 84.32% linked; data 12.34% matched, 0.00% linked\n"
+  }
+]

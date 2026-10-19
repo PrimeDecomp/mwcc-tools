@@ -1,0 +1,224 @@
+name: Rust tools
+
+on:
+  push:
+    branches: ['**']
+    tags: ['v*']
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  metadata:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.package.outputs.version }}
+      revision: ${{ steps.package.outputs.revision }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Validate package version and release tag
+        id: package
+        shell: python
+        run: |
+          import os, pathlib, re, subprocess, tomllib
+          version = tomllib.loads(pathlib.Path("Cargo.toml").read_text())["workspace"]["package"]["version"]
+          if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?", version):
+              raise SystemExit("Workspace version must be a filename-safe semantic version")
+          if os.environ["GITHUB_REF_TYPE"] == "tag" and os.environ["GITHUB_REF_NAME"] != f"v{version}":
+              raise SystemExit(f"Release tag must be v{version}")
+          revision = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+          if not re.fullmatch(r"[0-9a-f]{40}", revision):
+              raise SystemExit("Expected a complete checked-out commit ID")
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"version={version}\nrevision={revision}\n")
+  offline:
+    needs: metadata
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2022, macos-15, macos-15-intel]
+        include:
+          - os: ubuntu-24.04
+            native_target: x86_64-unknown-linux-gnu
+            executable: mwcc-tools
+            notice_dir: licenses/dependencies/x86_64-unknown-linux-gnu
+          - os: windows-2022
+            native_target: x86_64-pc-windows-msvc
+            executable: mwcc-tools.exe
+            notice_dir: licenses/dependencies/x86_64-pc-windows-msvc
+          - os: macos-15
+            native_target: aarch64-apple-darwin
+            executable: mwcc-tools
+            notice_dir: build/notices/aarch64-apple-darwin
+          - os: macos-15-intel
+            native_target: x86_64-apple-darwin
+            executable: mwcc-tools
+            notice_dir: build/notices/x86_64-apple-darwin
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Test trace, notice and platform validators
+        run: python -m unittest discover -s tools/migration -p 'test_*.py'
+      - name: Test the Python package's client (against a fake server)
+        run: python -m unittest discover -s python/tests -p 'test_*.py'
+      - name: Install pinned Rust toolchain
+        run: |
+          rustup show
+          rustup component add rust-docs
+      - name: Install 32-bit producer target
+        run: rustup target add i686-pc-windows-msvc
+      - name: Install WebAssembly producer target
+        run: rustup target add wasm32-unknown-unknown
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+      - name: Lint
+        run: cargo clippy --locked --workspace --all-targets -- -D warnings
+      - name: Lint producer on its actual target
+        run: cargo clippy --locked -p mwcc-oracle-hooks --target i686-pc-windows-msvc -- -D warnings
+      - name: Lint separate trace writer on its actual target
+        run: cargo clippy --locked -p mwcc-oracle-hooks --target i686-pc-windows-msvc --features trace-output -- -D warnings
+      - name: Lint each frontend version on its actual target
+        run: |
+          cargo clippy --locked -p mwcc-oracle-hooks --target i686-pc-windows-msvc --features frontend-gc13 -- -D warnings
+          cargo clippy --locked -p mwcc-oracle-hooks --target i686-pc-windows-msvc --features frontend-gc132 -- -D warnings
+          cargo clippy --locked -p mwcc-oracle-hooks --target i686-pc-windows-msvc --features frontend-gc26 -- -D warnings
+          cargo clippy --locked -p mwcc-oracle-hooks --target i686-pc-windows-msvc --features frontend-gc27 -- -D warnings
+      - name: Lint producer for the WebAssembly oracle
+        run: |
+          cargo clippy --locked -p mwcc-oracle-hooks --target wasm32-unknown-unknown -- -D warnings
+          cargo clippy --locked -p mwcc-oracle-hooks --target wasm32-unknown-unknown --features frontend-gc26 -- -D warnings
+          cargo clippy --locked -p mwcc-oracle-hooks --target wasm32-unknown-unknown --features frontend-gc27 -- -D warnings
+      - name: Test synthetic reference fixtures
+        run: cargo test --locked --workspace
+      - name: Build and validate the standalone producer object
+        run: cargo run --locked -p mwcc-tools -- build-hooks build/rust-hooks.obj
+      - name: Build and validate the separate Rust trace writer
+        run: cargo run --locked -p mwcc-tools -- build-hooks build/rust-trace.obj --trace-shim
+      - name: Build and validate all frontend object interfaces
+        run: |
+          cargo run --locked -p mwcc-tools -- build-hooks build/frontend13.obj --frontend-version GC_1_3
+          cargo run --locked -p mwcc-tools -- build-hooks build/frontend132.obj --frontend-version GC_1_3_2
+          cargo run --locked -p mwcc-tools -- build-hooks build/frontend26.obj --frontend-version GC_2_6
+          cargo run --locked -p mwcc-tools -- build-hooks build/frontend27.obj --frontend-version GC_2_7
+      - name: Build the WebAssembly oracle's producer IR
+        run: |
+          cargo run --locked -p mwcc-tools -- build-hooks build/hooks.ll --wasm
+          cargo run --locked -p mwcc-tools -- build-hooks build/frontend26.ll --wasm --frontend-version GC_2_6
+          cargo run --locked -p mwcc-tools -- build-hooks build/frontend27.ll --wasm --frontend-version GC_2_7
+      - name: Collect macOS dependency and Rust library notices
+        if: runner.os == 'macOS'
+        run: python tools/migration/capture_notices.py --target ${{ matrix.native_target }} --output ${{ matrix.notice_dir }}
+      - name: Check locked dependency and Rust library notices
+        run: python tools/migration/capture_notices.py --target ${{ matrix.native_target }} --output ${{ matrix.notice_dir }} --check
+      - name: Build release executable
+        run: cargo build --locked --release -p mwcc-tools
+      - name: Require unchanged tracked release inputs
+        run: git diff --exit-code HEAD --
+      - name: Assemble native distribution
+        run: target/release/${{ matrix.executable }} package-release build/releases/mwcc-tools-${{ needs.metadata.outputs.version }}-${{ matrix.native_target }}.zip --binary target/release/${{ matrix.executable }} --target ${{ matrix.native_target }} --notices ${{ matrix.notice_dir }} --source-revision ${{ needs.metadata.outputs.revision }}
+      - name: Audit archive and standalone execution
+        run: python tools/migration/audit_release.py build/releases/mwcc-tools-${{ needs.metadata.outputs.version }}-${{ matrix.native_target }}.zip --source-root . --binary target/release/${{ matrix.executable }} --output build/releases/audit.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-${{ needs.metadata.outputs.version }}-${{ matrix.native_target }}
+          path: build/releases/
+          if-no-files-found: error
+  publish:
+    needs: [metadata, offline]
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    concurrency:
+      group: native-release-${{ github.ref }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: actions/download-artifact@v4
+        with:
+          name: native-${{ needs.metadata.outputs.version }}-x86_64-unknown-linux-gnu
+          path: release-input/x86_64-unknown-linux-gnu
+      - uses: actions/download-artifact@v4
+        with:
+          name: native-${{ needs.metadata.outputs.version }}-x86_64-pc-windows-msvc
+          path: release-input/x86_64-pc-windows-msvc
+      - uses: actions/download-artifact@v4
+        with:
+          name: native-${{ needs.metadata.outputs.version }}-aarch64-apple-darwin
+          path: release-input/aarch64-apple-darwin
+      - uses: actions/download-artifact@v4
+        with:
+          name: native-${{ needs.metadata.outputs.version }}-x86_64-apple-darwin
+          path: release-input/x86_64-apple-darwin
+      - name: Recheck all four audited packages before publication
+        shell: python
+        env:
+          RELEASE_VERSION: ${{ needs.metadata.outputs.version }}
+          SOURCE_REVISION: ${{ needs.metadata.outputs.revision }}
+        run: |
+          import hashlib, json, os, pathlib, shutil, zipfile
+          version, revision = os.environ["RELEASE_VERSION"], os.environ["SOURCE_REVISION"]
+          destination = pathlib.Path("release-files")
+          destination.mkdir()
+          for target in ("x86_64-unknown-linux-gnu", "x86_64-pc-windows-msvc",
+                         "aarch64-apple-darwin", "x86_64-apple-darwin"):
+              directory = pathlib.Path("release-input") / target
+              archive = directory / f"mwcc-tools-{version}-{target}.zip"
+              sidecar = archive.with_suffix(".zip.sha256")
+              if {p.name for p in directory.iterdir()} != {archive.name, sidecar.name, "audit.json"}:
+                  raise SystemExit(f"Unexpected or missing package files: {target}")
+              digest = hashlib.sha256(archive.read_bytes()).hexdigest()
+              if sidecar.read_text().split() != [digest, archive.name]:
+                  raise SystemExit(f"Archive checksum mismatch: {target}")
+              audit = json.loads((directory / "audit.json").read_text())
+              with zipfile.ZipFile(archive) as bundle:
+                  if bundle.testzip() is not None:
+                      raise SystemExit(f"ZIP integrity failure: {target}")
+                  metadata = json.loads(bundle.read("release.json"))
+              if not (metadata["format_version"] == 1 and metadata["package"] == "mwcc-tools"
+                      and metadata["version"] == version and metadata["target"] == target
+                      and metadata["source_revision"] == revision):
+                  raise SystemExit(f"Release metadata does not match this tag/build: {target}")
+              if not (audit["complete"] is True and audit["target"] == target
+                      and audit["archive_sha256"] == digest
+                      and audit["binary_sha256"] == metadata["executable_sha256"]
+                      and audit["source_catalogue_sha256"] == metadata["source_catalogue_sha256"]
+                      and audit["standalone_trace_cases"] == 3):
+                  raise SystemExit(f"Missing or mismatched native audit: {target}")
+              for file in (archive, sidecar):
+                  shutil.copyfile(file, destination / file.name)
+      - name: Publish a new release with all four native packages
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_VERSION: ${{ needs.metadata.outputs.version }}
+          SOURCE_REVISION: ${{ needs.metadata.outputs.revision }}
+        run: |
+          set -euo pipefail
+          test "$RELEASE_TAG" = "v$RELEASE_VERSION"
+          remote_revision="$(gh api "repos/$GH_REPO/commits/$RELEASE_TAG" --jq .sha)"
+          test "$remote_revision" = "$SOURCE_REVISION"
+          existing="$(gh api --paginate "repos/$GH_REPO/releases?per_page=100" --jq ".[] | select(.tag_name == \"$RELEASE_TAG\") | .id")"
+          test -z "$existing"
+          options=(--draft --verify-tag --generate-notes --title "mwcc-tools $RELEASE_VERSION")
+          if [[ "${RELEASE_VERSION%%+*}" == *-* ]]; then
+            options+=(--prerelease --latest=false)
+          fi
+          gh release create "$RELEASE_TAG" "${options[@]}"
+          gh release upload "$RELEASE_TAG" release-files/*.zip release-files/*.zip.sha256
+          gh release edit "$RELEASE_TAG" --draft=false

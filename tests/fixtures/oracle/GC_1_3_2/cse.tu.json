@@ -1,0 +1,215 @@
+{
+  "decisions": {
+    "consume": [
+      {
+        "kind": "decision",
+        "event": "decision",
+        "callee": "consume",
+        "link": "consume",
+        "inline": false,
+        "chain": [],
+        "reason": "not declared inline (and not a method defined in its class)",
+        "outcome": "kept",
+        "count": 8,
+        "depths": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "lines": [
+          6
+        ],
+        "function": "common_integer (common_integer)"
+      }
+    ]
+  },
+  "summaries": {
+    "consume": {
+      "summary": {
+        "outcomes": {
+          "kept": 8
+        },
+        "costs": [],
+        "full_costs": [],
+        "rounds": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "functions": [
+          "common_integer (common_integer)"
+        ],
+        "reasons": [
+          "not declared inline (and not a method defined in its class)"
+        ],
+        "chains": [],
+        "limit_paths": [],
+        "sensitivity": []
+      },
+      "report": [
+        "   A: kept x8; estimate -, whole cost -, rounds 0, 1, 2, 3, 4, 5, 6, 7",
+        "      in common_integer (common_integer)",
+        "      because: not declared inline (and not a method defined in its class)"
+      ],
+      "verdict_present": null,
+      "verdict_absent": null
+    }
+  },
+  "emission": {
+    "common_integer": "",
+    "common_float": "",
+    "common_branch": ""
+  },
+  "target": {},
+  "module": {
+    "common_float": "another.s"
+  },
+  "predictions": {
+    "false": {
+      "common_float": [
+        "target: not emitted (the module keeps its one copy in another.s); emitted here too",
+        false
+      ],
+      "common_integer": [
+        "target: not emitted (nor anywhere in the module); MISPREDICTED: emitted here",
+        true
+      ],
+      "consume": [
+        "target: not emitted",
+        false
+      ],
+      "common_branch": [
+        "target: not emitted (nor anywhere in the module); MISPREDICTED: emitted here",
+        true
+      ]
+    },
+    "true": {
+      "common_float": [
+        "target: not emitted (the module keeps its one copy in another.s); emitted here too",
+        false
+      ],
+      "common_integer": [
+        "target: not emitted (the main program strips unreferenced weak functions); emitted here",
+        false
+      ],
+      "consume": [
+        "target: not emitted",
+        false
+      ],
+      "common_branch": [
+        "target: not emitted (the main program strips unreferenced weak functions); emitted here",
+        false
+      ]
+    }
+  },
+  "emission_report": [
+    "== A: sources/cse.c: emitted differently from the target: 2 here only (nowhere in the module), 0 there only; 1 here whose copy the module keeps in another TU",
+    "   here only: common_integer",
+    "   here only: common_branch"
+  ],
+  "object_calls": {
+    "common_integer": {
+      "consume": 1
+    }
+  },
+  "windows": [
+    {
+      "calls": {
+        "common_integer": {
+          "consume": 1
+        },
+        "common_float": {},
+        "common_branch": {}
+      },
+      "bounds": [],
+      "window": [
+        null,
+        null
+      ],
+      "report": [
+        "== sources/cse.c: limit None, the target agrees with -..-"
+      ],
+      "verbose": [
+        "== sources/cse.c: limit None, the target agrees with -..-"
+      ]
+    },
+    {
+      "calls": {
+        "common_integer": {
+          "consume": 0
+        },
+        "common_float": {},
+        "common_branch": {}
+      },
+      "bounds": [
+        {
+          "function": "common_integer",
+          "link": "common_integer",
+          "callee": "consume",
+          "callee_link": "consume",
+          "ours": 1,
+          "target": 0,
+          "threshold": null,
+          "side": null,
+          "why": "not declared inline (and not a method defined in its class)"
+        }
+      ],
+      "window": [
+        null,
+        null
+      ],
+      "report": [
+        "== sources/cse.c: limit None, the target agrees with -..-",
+        "   not a limit question: consume in common_integer (calls: ours 1, target 0): not declared inline (and not a method defined in its class)"
+      ],
+      "verbose": [
+        "== sources/cse.c: limit None, the target agrees with -..-",
+        "   not a limit question: consume in common_integer (calls: ours 1, target 0): not declared inline (and not a method defined in its class)"
+      ]
+    },
+    {
+      "calls": {
+        "common_integer": {
+          "consume": 2
+        },
+        "common_float": {},
+        "common_branch": {}
+      },
+      "bounds": [
+        {
+          "function": "common_integer",
+          "link": "common_integer",
+          "callee": "consume",
+          "callee_link": "consume",
+          "ours": 1,
+          "target": 2,
+          "threshold": null,
+          "side": null,
+          "why": "not declared inline (and not a method defined in its class)"
+        }
+      ],
+      "window": [
+        null,
+        null
+      ],
+      "report": [
+        "== sources/cse.c: limit None, the target agrees with -..-",
+        "   not a limit question: consume in common_integer (calls: ours 1, target 2): not declared inline (and not a method defined in its class)"
+      ],
+      "verbose": [
+        "== sources/cse.c: limit None, the target agrees with -..-",
+        "   not a limit question: consume in common_integer (calls: ours 1, target 2): not declared inline (and not a method defined in its class)"
+      ]
+    }
+  ]
+}

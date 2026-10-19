@@ -1,0 +1,115 @@
+{
+  "format_version": 1,
+  "version": "0.1.0",
+  "source_revision": "9e67176bcb7310559bb74455026f6643fd505e40",
+  "implementation_status": "complete",
+  "delivery": "local artifacts with complete source bundle",
+  "source_bundle": {
+    "file": "mwcc-oracle-9e67176.bundle",
+    "bytes": 5484360,
+    "sha256": "9f99648acfd8027455fcc693a969c1c82cf76a8278ab39a25d2dab7fc657434d"
+  },
+  "native_artifacts": {
+    "x86_64-pc-windows-msvc": {
+      "file": "mwcc-tools-0.1.0-9e67176-x86_64-pc-windows-msvc.zip",
+      "bytes": 4729824,
+      "sha256": "ac7d50fc92c04fda8cde513f3a61b782fc23e45e4b140f1a6b956da88c5c3774",
+      "executable_sha256": "842fb269c627ef39857badbb60915d7c00d2f9806e89f1718feadf5b6ac240d7",
+      "source_catalogue_sha256": "41a66bf61116b807738dd13b4852895abc5d0088172796f13e458a418041040c",
+      "protocols": {
+        "compilation": 1,
+        "register_difference": 1,
+        "oracle_report": 6
+      }
+    },
+    "x86_64-unknown-linux-gnu": {
+      "file": "mwcc-tools-0.1.0-9e67176-x86_64-unknown-linux-gnu.zip",
+      "bytes": 5419148,
+      "sha256": "f9d2529241dd1a028e27d99f5186b6d43a4c32d34f875a0aaebb7b2fb2af9b03",
+      "executable_sha256": "4f71418eff514f43689495d3e80841cfdb4d4e507f465e1ff5bca38f4762bbf1",
+      "source_catalogue_sha256": "41a66bf61116b807738dd13b4852895abc5d0088172796f13e458a418041040c",
+      "protocols": {
+        "compilation": 1,
+        "register_difference": 1,
+        "oracle_report": 6
+      }
+    }
+  },
+  "kit_archives": {
+    "prime": {
+      "file": "prime-agent-workflow-mcp-2026-10-16-rust.zip",
+      "bytes": 18262622,
+      "sha256": "b7b7df10fa9c85593406094bdb64916be9c4ec7d6568f93f6b845d19091ccdd7",
+      "source_revision": "9e67176bcb7310559bb74455026f6643fd505e40",
+      "audits": {
+        "windows": {
+          "audit_sha256": "45c0465de4fbdb8ae26e8e4dbe83c15fdaa9f37530fea1cc5787819aca5c7d6b",
+          "unit": "main/GuiSys/CGuiFrame",
+          "functions": 35,
+          "check_status": "verified",
+          "object_sha256": "a51d8e3c200ab15202c6bc81a9407c1dca2edbaec4f1e74cca8e0a15d8a1d1c5",
+          "producer_sha256": "fab413d81f58c70e9f9d347cfa53034c3735dd3c61aa9f12da3f057c4378480f",
+          "inputs": 1788
+        },
+        "linux": {
+          "audit_sha256": "93e807d76f7967b4afce78913ea28984994b635f5a795fef6a1af60b9c05d7b5",
+          "unit": "main/GuiSys/CGuiFrame",
+          "functions": 35,
+          "check_status": "verified",
+          "object_sha256": "a51d8e3c200ab15202c6bc81a9407c1dca2edbaec4f1e74cca8e0a15d8a1d1c5",
+          "producer_sha256": "318e5fb606ba7b3403286248e7e20c1f99593258f132c5b52fb375659b9e0f9f",
+          "inputs": 1788
+        }
+      }
+    },
+    "echoes": {
+      "file": "echoes-agent-workflow-mcp-2026-10-16-rust.zip",
+      "bytes": 35921624,
+      "sha256": "4e90831e6e76149e8ae71bbf600e68a3f1a2c8ff1079f786676e5856836b2113",
+      "source_revision": "9e67176bcb7310559bb74455026f6643fd505e40",
+      "audits": {
+        "windows": {
+          "audit_sha256": "9d04bb9e6f32705989549316dd4ce88a15d7bfd4d5493564d3f21ad7c63d3fd0",
+          "unit": "main/Kyoto/Particles/CElementGen",
+          "functions": 136,
+          "check_status": "verified",
+          "object_sha256": "8c1304a643c8e8ab49fa2dd2331073d5d2c0ec0341bfb58270417becac835161",
+          "producer_sha256": "14f69ee4eedb042ea5dce0c2f6778d10e7c858adff7b199b804616971805355f",
+          "inputs": 3475
+        },
+        "linux": {
+          "audit_sha256": "40d26dad8d5c7a2f1d1c6685e3b513e4eea8542f57941e85b2626b63544eddb8",
+          "unit": "main/Kyoto/Particles/CElementGen",
+          "functions": 136,
+          "check_status": "verified",
+          "object_sha256": "8c1304a643c8e8ab49fa2dd2331073d5d2c0ec0341bfb58270417becac835161",
+          "producer_sha256": "9a79f5f1055556625dbd4e8da8bc41ebd9a67e4c01b5d2aa5f0f2bff090245a3",
+          "inputs": 3475
+        }
+      }
+    }
+  },
+  "validation": {
+    "workspace_offline_tests_per_host": 81,
+    "hosts": [
+      "Windows x86-64",
+      "Linux x86-64 / WSL Debian"
+    ],
+    "fresh_default_fixture_compilations_per_host": 36,
+    "real_configuration_comparisons_per_host": 26,
+    "final_native_kit_contract_tests_per_kit_per_host": 2,
+    "final_kit_archive_install_test_per_kit_windows": 1,
+    "previous_complete_windows_kit_suites": {
+      "prime": 69,
+      "echoes": 52
+    },
+    "producer_objects_identical_to_full_corpus_proofs": true,
+    "producer_images_equal_to_full_corpus_proofs_except_pe_timestamp": true
+  },
+  "deferred_extensions": [
+    "Complete backend provenance and coalescing explanations",
+    "Graph-directed C++ source-variant search",
+    "Mechanism-preserving reduction",
+    "Matched-source trace indexing"
+  ]
+}

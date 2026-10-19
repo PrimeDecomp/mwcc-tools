@@ -53,9 +53,15 @@ class Version:
 def _read_versions() -> tuple[Version, ...]:
     """The versions, in release order, from include/version.h's VERSION_<NAME> defines (the single list). Each needs a
     config directory of the same name (case aside: version.h spells GC_2_0p1 GC_2_0P1); a config.json with
-    "derived_from" makes it a derived version of that one."""
+    "derived_from" makes it a derived version of that one. A directory whose config.json names "source_version" is
+    not one: it is another compiler's split, which the repository above builds from these sources as that version
+    (GC_1_3_2 as GC_2_7), and these tools leave it alone."""
     header = (ROOT / "include/version.h").read_text()
-    directories = {p.name.upper(): p.name for p in (ROOT / "config").iterdir() if (p / "config.json").exists()}
+    directories = {
+        p.name.upper(): p.name
+        for p in (ROOT / "config").iterdir()
+        if (p / "config.json").exists() and '"source_version":' not in (p / "config.json").read_text()
+    }
     versions = []
     for name, index in re.findall(r"^#define VERSION_(\w+) (\d+)$", header, re.M):
         if name.upper() not in directories:

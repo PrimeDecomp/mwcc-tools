@@ -1,0 +1,110 @@
+{
+  "functions": {
+    "common_integer": [
+      2485256176,
+      2080899750,
+      2093163028,
+      2415984660,
+      2080643152,
+      2480996364,
+      2145780182,
+      2478899208,
+      2092837752,
+      2145647480,
+      1207959553,
+      2082413076,
+      2086730260,
+      2088638996,
+      2212560908,
+      2210463752,
+      2147549204,
+      2080900006,
+      941686800,
+      1317011488
+    ],
+    "common_float": [
+      1417678906,
+      2088960532,
+      2082669614,
+      3221487620,
+      3961585714,
+      3959490602,
+      3961522218,
+      1317011488
+    ],
+    "common_branch": [
+      2093163028,
+      2080643152,
+      2080768470,
+      738525184,
+      2086666320,
+      1300365344,
+      2086666772,
+      1317011488
+    ]
+  },
+  "decisions": {
+    "common_integer": {
+      "consume": [
+        {
+          "kept": 8
+        },
+        []
+      ]
+    },
+    "common_float": {},
+    "common_branch": {}
+  },
+  "frames": {
+    "common_integer": {},
+    "common_float": {
+      "x": 0
+    },
+    "common_branch": {
+      "x": 0
+    }
+  },
+  "comparison": [
+    {
+      "link": "added_by_header_change",
+      "function": "added_by_header_change",
+      "size": [
+        null,
+        8
+      ],
+      "inlining": [],
+      "frame": [],
+      "frame_size": [
+        null,
+        0
+      ]
+    }
+  ],
+  "report": [
+    "== src/unit.cpp (includes include/header.hpp): 1 function(s) changed",
+    "   added_by_header_change (only after)",
+    "      frame None -> 0 bytes"
+  ],
+  "asm": ".fn \"common_integer\", global\n/* 00000000 94 21 FE 00 */ stwu r1, -512(r1)\n/* 00000000 BF C1 01 E0 */ stmw r30, 480(r1)\n/* 00000000 94 21 FF F0 */ stwu r1, -16(r1)\n/* 00000000 7C 08 02 A6 */ .long 0x7c0802a6\n/* 00000000 7C C3 22 14 */ .long 0x7cc32214\n/* 00000000 90 01 00 14 */ stw r0, 20(r1)\n/* 00000000 7C 04 18 50 */ .long 0x7c041850\n/* 00000000 93 E1 00 0C */ stw r31, 12(r1)\n/* 00000000 7F E6 01 D6 */ .long 0x7fe601d6\n/* 00000000 93 C1 00 08 */ stw r30, 8(r1)\n/* 00000000 7C BE 2B 78 */ .long 0x7cbe2b78\n/* 00000000 7F E3 FB 78 */ .long 0x7fe3fb78\n/* 00000000 48 00 00 01 */ .long 0x48000001\n/* 00000000 7C 1F 1A 14 */ .long 0x7c1f1a14\n/* 00000000 7C 60 FA 14 */ .long 0x7c60fa14\n/* 00000000 7C 7E 1A 14 */ .long 0x7c7e1a14\n/* 00000000 83 E1 00 0C */ lwz r31, 12(r1)\n/* 00000000 83 C1 00 08 */ lwz r30, 8(r1)\n/* 00000000 80 01 00 14 */ lwz r0, 20(r1)\n/* 00000000 7C 08 03 A6 */ .long 0x7c0803a6\n/* 00000000 38 21 00 10 */ addi r1, r1, 16\n/* 00000000 4E 80 00 20 */ .long 0x4e800020\n/* 00000000 90 61 01 40 */ stw r3, 320(r1)\n/* 00000000 90 81 01 44 */ stw r4, 324(r1)\n/* 00000000 90 A1 01 48 */ stw r5, 328(r1)\n/* 00000000 90 61 01 4C */ stw r3, 332(r1)\n/* 00000000 90 81 01 50 */ stw r4, 336(r1)\n/* 00000000 90 A1 01 54 */ stw r5, 340(r1)\n/* 00000000 90 61 01 58 */ stw r3, 344(r1)\n/* 00000000 90 81 01 5C */ stw r4, 348(r1)\n/* 00000000 90 A1 01 60 */ stw r5, 352(r1)\n/* 00000000 80 C1 01 40 */ lwz r6, 320(r1)\n/* 00000000 38 E1 01 4C */ addi r7, r1, 332\n.endfn \"common_integer\"\n.fn \"common_float\", global\n/* 00000000 94 21 FE 00 */ stwu r1, -512(r1)\n/* 00000000 BF C1 01 E0 */ stmw r30, 480(r1)\n/* 00000000 54 80 10 3A */ .long 0x5480103a\n/* 00000000 7C 83 02 14 */ .long 0x7c830214\n/* 00000000 7C 23 04 2E */ .long 0x7c23042e\n/* 00000000 C0 04 00 04 */ lfs f0, 4(r4)\n/* 00000000 EC 21 00 32 */ .long 0xec210032\n/* 00000000 EC 01 08 2A */ .long 0xec01082a\n/* 00000000 EC 20 08 2A */ .long 0xec20082a\n/* 00000000 4E 80 00 20 */ .long 0x4e800020\n/* 00000000 90 61 01 40 */ stw r3, 320(r1)\n/* 00000000 90 81 01 44 */ stw r4, 324(r1)\n/* 00000000 90 A1 01 48 */ stw r5, 328(r1)\n/* 00000000 90 61 01 4C */ stw r3, 332(r1)\n/* 00000000 90 81 01 50 */ stw r4, 336(r1)\n/* 00000000 90 A1 01 54 */ stw r5, 340(r1)\n/* 00000000 90 61 01 58 */ stw r3, 344(r1)\n/* 00000000 90 81 01 5C */ stw r4, 348(r1)\n/* 00000000 90 A1 01 60 */ stw r5, 352(r1)\n/* 00000000 80 C1 01 40 */ lwz r6, 320(r1)\n/* 00000000 38 E1 01 4C */ addi r7, r1, 332\n.endfn \"common_float\"\n.fn \"common_branch\", global\n/* 00000000 94 21 FE 00 */ stwu r1, -512(r1)\n/* 00000000 BF C1 01 E0 */ stmw r30, 480(r1)\n/* 00000000 7C C3 22 14 */ .long 0x7cc32214\n/* 00000000 7C 04 18 50 */ .long 0x7c041850\n/* 00000000 7C 06 01 D6 */ .long 0x7c0601d6\n/* 00000000 2C 05 00 00 */ .long 0x2c050000\n/* 00000000 7C 60 00 50 */ .long 0x7c600050\n/* 00000000 4D 82 00 20 */ .long 0x4d820020\n/* 00000000 7C 60 02 14 */ .long 0x7c600214\n/* 00000000 4E 80 00 20 */ .long 0x4e800020\n/* 00000000 90 61 01 40 */ stw r3, 320(r1)\n/* 00000000 90 81 01 44 */ stw r4, 324(r1)\n/* 00000000 90 A1 01 48 */ stw r5, 328(r1)\n/* 00000000 90 61 01 4C */ stw r3, 332(r1)\n/* 00000000 90 81 01 50 */ stw r4, 336(r1)\n/* 00000000 90 A1 01 54 */ stw r5, 340(r1)\n/* 00000000 90 61 01 58 */ stw r3, 344(r1)\n/* 00000000 90 81 01 5C */ stw r4, 348(r1)\n/* 00000000 90 A1 01 60 */ stw r5, 352(r1)\n/* 00000000 80 C1 01 40 */ lwz r6, 320(r1)\n/* 00000000 38 E1 01 4C */ addi r7, r1, 332\n.endfn \"common_branch\"",
+  "with_target": [
+    {
+      "link": "added_by_header_change",
+      "function": "added_by_header_change",
+      "size": [
+        null,
+        8
+      ],
+      "inlining": [],
+      "frame": [],
+      "frame_size": [
+        null,
+        0
+      ]
+    }
+  ],
+  "target_report": [
+    "== src/unit.cpp (includes include/header.hpp): 1 function(s) changed",
+    "   added_by_header_change (only after)",
+    "      frame None -> 0 bytes"
+  ]
+}

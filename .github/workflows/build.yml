@@ -22,14 +22,73 @@ jobs:
           path: |
             build/compilers
             lib
-          key: compilers-${{ hashFiles('tools/download_tool.py') }}
+            gc2/lib
+          key: compilers-${{ runner.os }}-${{ hashFiles('crates/mwcc-oracle-core/src/download.rs', 'crates/mwcc-oracle-core/src/download/*.rs') }}
+
+      - name: Install pinned Rust toolchain
+        run: rustup show
+
+      - name: Build native tools
+        run: cargo build --locked --release -p mwcc-tools
 
       - name: Build
         run: |
-          python3 configure.py --version ${{ matrix.version }}
+          target/release/mwcc-tools configure --version ${{ matrix.version }}
           ninja all_source progress
 
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.version }}_report
           path: build/${{ matrix.version }}/report.json
+
+  # The compiler of gc2's sources, and the oracle, as WebAssembly (run in process; docs/wasm.md)
+  wasm:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - version: GC_2_6
+            compiler: '2.6'
+          - version: GC_2_7
+            compiler: '2.7'
+    env:
+      # (the hooks' IR is LLVM 22's, as Rust's: clang reads it)
+      CLANG: clang-22
+      WASM_LD: wasm-ld-22
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+
+      - name: Install LLVM 22 (clang, wasm-ld)
+        run: |
+          wget -qO llvm.sh https://apt.llvm.org/llvm.sh
+          sudo bash llvm.sh 22
+          sudo apt-get install -y lld-22
+
+      # (the original compilers, the comparison's reference: the modules themselves need nothing downloaded)
+      - uses: actions/cache@v4
+        with:
+          path: |
+            build/compilers
+          key: original-compilers-${{ runner.os }}-${{ hashFiles('crates/mwcc-oracle-core/src/download.rs', 'crates/mwcc-oracle-core/src/download/*.rs') }}
+
+      - name: Install pinned Rust toolchain
+        run: |
+          rustup show
+          rustup target add wasm32-unknown-unknown
+
+      - name: Build native tools
+        run: cargo build --locked --release -p mwcc-tools
+
+      - name: Build the compiler and the oracle as WebAssembly
+        run: |
+          target/release/mwcc-tools configure --version ${{ matrix.version }}
+          ninja build/${{ matrix.version }}/wasm/mwcceppc.wasm build/${{ matrix.version }}/wasm/oracle.wasm build/compilers/ok build/tools/wibo
+
+      - name: Compare them with the original compiler
+        run: |
+          target/release/mwcc-tools corpus --version ${{ matrix.version }} --canaries tests/fixtures/oracle/sources --exe build/compilers/GC/${{ matrix.compiler }}/mwcceppc.exe
+          target/release/mwcc-tools corpus --version ${{ matrix.version }} --canaries tests/fixtures/oracle/sources --all-traces

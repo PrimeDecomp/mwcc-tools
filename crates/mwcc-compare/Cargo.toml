@@ -1,0 +1,24 @@
+[package]
+name = "mwcc-compare"
+description = "Compares a unit's object with its target: identical bytes, objdiff-core's scores and rows, residual-scan's verdicts, and mwdec's profile of what differs"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+# serde_json at its default features, so that a dependent's own JSON is as it would be without this crate.
+[dependencies]
+anyhow.workspace = true
+serde.workspace = true
+serde_json = "1.0.145"
+sha1.workspace = true
+objdiff-core = { version = "=3.8.2", default-features = false, features = ["std", "ppc", "demangler", "bindings", "serde"] }
+# (objdiff-cli 3.8.2's lock: similar 3.2 aligns long functions differently)
+similar = { version = "=3.1.1", default-features = false }
+# (objdiff-core's: one copy of it)
+object = { version = "0.39.1", default-features = false, features = ["read_core", "elf", "std"] }
+# (objdiff-core's decoder: the strict level's notes)
+powerpc = "0.4.1"
+
+[dev-dependencies]
+mwcc-project = { path = "../mwcc-project" }

@@ -1,0 +1,201 @@
+{
+  "near": [
+    {
+      "kind": "near",
+      "function": "with_value",
+      "function_link": "with_value__Fii",
+      "callee": "combine",
+      "link": "combine__F5Value",
+      "inline": false,
+      "cost": 514,
+      "threshold": 512,
+      "margin": -2,
+      "count": 1,
+      "lines": [
+        16
+      ],
+      "depths": [
+        7
+      ],
+      "chain": [],
+      "outcome": "limit",
+      "limit_paths": [
+        [
+          "adjust<i>__Fi"
+        ]
+      ],
+      "sensitivity": [],
+      "full_cost": 10,
+      "full_margin": 502,
+      "depth_limited": true
+    }
+  ],
+  "suggestions": {
+    "accumualte": [
+      [
+        "adjust",
+        "adjust<i>__Fi"
+      ],
+      [
+        "combine",
+        "combine__F5Value"
+      ],
+      [
+        "with_value",
+        "with_value__Fii"
+      ],
+      [
+        "__dt",
+        "__dt__5ValueFv"
+      ]
+    ],
+    "does_not_exist": [
+      [
+        "adjust",
+        "adjust<i>__Fi"
+      ],
+      [
+        "__dt",
+        "__dt__5ValueFv"
+      ],
+      [
+        "combine",
+        "combine__F5Value"
+      ],
+      [
+        "with_value",
+        "with_value__Fii"
+      ]
+    ]
+  },
+  "near_report": [
+    "== inline decisions within 8 of the threshold (cost, threshold, decision, callee link name, in which function) ==",
+    "    514  512  LIMIT    combine__F5Value  in with_value  line 16  depth 7  (whole cost 10, DEPTH LIMIT)\n          at the depth limit [limit +1]:\n             adjust<i>__Fi"
+  ],
+  "instantiation_report": [
+    "== when the bodies of  came to be, and the decisions about calling them (trace line, event) ==",
+    "         0  queued for parsing: a template function instance  [adjust<i>__Fi]",
+    "         2  template function instance compiled  [adjust<i>__Fi]",
+    "        71  compiled (allocated)  [adjust<i>__Fi]",
+    "       111  parsed (a template function instance): its body is there for the inliner  [adjust<i>__Fi]",
+    "       112  queued for parsing: an inline definition expanding=adjust<i>__Fi  [__ct__5ValueFii]",
+    "       113  queued for parsing: an inline definition expanding=adjust<i>__Fi  [__dt__5ValueFv]",
+    "       115  parsed (an inline definition): its body is there for the inliner  [__dt__5ValueFv]",
+    "       117  parsed (an inline definition): its body is there for the inliner  [__ct__5ValueFii]",
+    "       120  parsed (a compiler-made method): its body is there for the inliner  [__ct__5ValueFRC5Value]",
+    "       121  code generated from its saved body  [with_value__Fii]",
+    "       152  call INLINED in with_value__Fii, round 0  [__ct__5ValueFii]",
+    "       160  call INLINED in with_value__Fii, round 0  [__ct__5ValueFRC5Value]",
+    "       167  call INLINED in with_value__Fii, round 0  [combine__F5Value]",
+    "       177  call INLINED in with_value__Fii, round 0  [__dt__5ValueFv]",
+    "       187  call INLINED in with_value__Fii, round 0  [__dt__5ValueFv]",
+    "       194  call INLINED in with_value__Fii, round 1  [combine__F5Value]",
+    "       197  call kept in with_value__Fii, round 1, NO BODY yet, inside __dt__5ValueFv  [consume__Fi]",
+    "       198  call kept in with_value__Fii, round 1, NO BODY yet, inside __dt__5ValueFv  [consume__Fi]",
+    "       199  call kept in with_value__Fii, round 1, NO BODY yet, inside __dt__5ValueFv  [__dl__FPv]",
+    "       200  call kept in with_value__Fii, round 1, NO BODY yet, inside __dt__5ValueFv  [__dl__FPv]",
+    "       201  call kept in with_value__Fii, round 1, NO BODY yet, inside __dt__5ValueFv  [consume__Fi]",
+    "       202  call kept in with_value__Fii, round 1, NO BODY yet, inside __dt__5ValueFv  [consume__Fi]",
+    "       203  call kept in with_value__Fii, round 1, NO BODY yet, inside __dt__5ValueFv  [__dl__FPv]",
+    "       204  call kept in with_value__Fii, round 1, NO BODY yet, inside __dt__5ValueFv  [__dl__FPv]",
+    "       209  call INLINED in with_value__Fii, round 2  [combine__F5Value]",
+    "       212  call kept in with_value__Fii, round 2, NO BODY yet, inside __dt__5ValueFv  [consume__Fi]",
+    "       213  call kept in with_value__Fii, round 2, NO BODY yet, inside __dt__5ValueFv  [consume__Fi]",
+    "       214  call kept in with_value__Fii, round 2, NO BODY yet, inside __dt__5ValueFv  [__dl__FPv]",
+    "       215  call kept in with_value__Fii, round 2, NO BODY yet, inside __dt__5ValueFv  [__dl__FPv]",
+    "       216  call kept in with_value__Fii, round 2, NO BODY yet, inside __dt__5ValueFv  [consume__Fi]",
+    "       217  call kept in with_value__Fii, round 2, NO BODY yet, inside __dt__5ValueFv  [consume__Fi]",
+    "       218  call kept in with_value__Fii, round 2, NO BODY yet, inside __dt__5ValueFv  [__dl__FPv]",
+    "       219  call kept in with_value__Fii, round 2, NO BODY yet, inside __dt__5ValueFv  [__dl__FPv]",
+    "       224  call INLINED in with_value__Fii, round 3  [combine__F5Value]",
+    "       227  call kept in with_value__Fii, round 3, NO BODY yet, inside __dt__5ValueFv  [consume__Fi]",
+    "       228  call kept in with_value__Fii, round 3, NO BODY yet, inside __dt__5ValueFv  [consume__Fi]",
+    "       229  call kept in with_value__Fii, round 3, NO BODY yet, inside __dt__5ValueFv  [__dl__FPv]",
+    "       230  call kept in with_value__Fii, round 3, NO BODY yet, inside __dt__5ValueFv  [__dl__FPv]",
+    "       231  call kept in with_value__Fii, round 3, NO BODY yet, inside __dt__5ValueFv  [consume__Fi]",
+    "       232  call kept in with_value__Fii, round 3, NO BODY yet, inside __dt__5ValueFv  [consume__Fi]",
+    "       233  call kept in with_value__Fii, round 3, NO BODY yet, inside __dt__5ValueFv  [__dl__FPv]",
+    "       234  call kept in with_value__Fii, round 3, NO BODY yet, inside __dt__5ValueFv  [__dl__FPv]",
+    "       239  call INLINED in with_value__Fii, round 4  [combine__F5Value]",
+    "       242  call kept in with_value__Fii, round 4, NO BODY yet, inside __dt__5ValueFv  [consume__Fi]",
+    "       243  call kept in with_value__Fii, round 4, NO BODY yet, inside __dt__5ValueFv  [consume__Fi]",
+    "       244  call kept in with_value__Fii, round 4, NO BODY yet, inside __dt__5ValueFv  [__dl__FPv]",
+    "       245  call kept in with_value__Fii, round 4, NO BODY yet, inside __dt__5ValueFv  [__dl__FPv]",
+    "       246  call kept in with_value__Fii, round 4, NO BODY yet, inside __dt__5ValueFv  [consume__Fi]",
+    "       247  call kept in with_value__Fii, round 4, NO BODY yet, inside __dt__5ValueFv  [consume__Fi]",
+    "       248  call kept in with_value__Fii, round 4, NO BODY yet, inside __dt__5ValueFv  [__dl__FPv]",
+    "       249  call kept in with_value__Fii, round 4, NO BODY yet, inside __dt__5ValueFv  [__dl__FPv]",
+    "       254  call INLINED in with_value__Fii, round 5  [combine__F5Value]",
+    "       257  call kept in with_value__Fii, round 5, NO BODY yet, inside __dt__5ValueFv  [consume__Fi]",
+    "       258  call kept in with_value__Fii, round 5, NO BODY yet, inside __dt__5ValueFv  [consume__Fi]",
+    "       259  call kept in with_value__Fii, round 5, NO BODY yet, inside __dt__5ValueFv  [__dl__FPv]",
+    "       260  call kept in with_value__Fii, round 5, NO BODY yet, inside __dt__5ValueFv  [__dl__FPv]",
+    "       261  call kept in with_value__Fii, round 5, NO BODY yet, inside __dt__5ValueFv  [consume__Fi]",
+    "       262  call kept in with_value__Fii, round 5, NO BODY yet, inside __dt__5ValueFv  [consume__Fi]",
+    "       263  call kept in with_value__Fii, round 5, NO BODY yet, inside __dt__5ValueFv  [__dl__FPv]",
+    "       264  call kept in with_value__Fii, round 5, NO BODY yet, inside __dt__5ValueFv  [__dl__FPv]",
+    "       269  call INLINED in with_value__Fii, round 6  [combine__F5Value]",
+    "       272  call kept in with_value__Fii, round 6, NO BODY yet, inside __dt__5ValueFv  [consume__Fi]",
+    "       273  call kept in with_value__Fii, round 6, NO BODY yet, inside __dt__5ValueFv  [consume__Fi]",
+    "       274  call kept in with_value__Fii, round 6, NO BODY yet, inside __dt__5ValueFv  [__dl__FPv]",
+    "       275  call kept in with_value__Fii, round 6, NO BODY yet, inside __dt__5ValueFv  [__dl__FPv]",
+    "       276  call kept in with_value__Fii, round 6, NO BODY yet, inside __dt__5ValueFv  [consume__Fi]",
+    "       277  call kept in with_value__Fii, round 6, NO BODY yet, inside __dt__5ValueFv  [consume__Fi]",
+    "       278  call kept in with_value__Fii, round 6, NO BODY yet, inside __dt__5ValueFv  [__dl__FPv]",
+    "       279  call kept in with_value__Fii, round 6, NO BODY yet, inside __dt__5ValueFv  [__dl__FPv]",
+    "       282  call kept in with_value__Fii, round 7  [combine__F5Value]",
+    "       283  call kept in with_value__Fii, round 7, NO BODY yet, inside __dt__5ValueFv  [consume__Fi]",
+    "       284  call kept in with_value__Fii, round 7, NO BODY yet, inside __dt__5ValueFv  [consume__Fi]",
+    "       285  call kept in with_value__Fii, round 7, NO BODY yet, inside __dt__5ValueFv  [__dl__FPv]",
+    "       286  call kept in with_value__Fii, round 7, NO BODY yet, inside __dt__5ValueFv  [__dl__FPv]",
+    "       287  call kept in with_value__Fii, round 7, NO BODY yet, inside __dt__5ValueFv  [consume__Fi]",
+    "       288  call kept in with_value__Fii, round 7, NO BODY yet, inside __dt__5ValueFv  [consume__Fi]",
+    "       289  call kept in with_value__Fii, round 7, NO BODY yet, inside __dt__5ValueFv  [__dl__FPv]",
+    "       290  call kept in with_value__Fii, round 7, NO BODY yet, inside __dt__5ValueFv  [__dl__FPv]",
+    "       291  to be emitted: the destructor of an object live in a statement (its exception actions), even when every call of it was inlined from=with_value__Fii expanding=with_value__Fii  [__dt__5ValueFv]",
+    "       292  to be emitted: a call or address of it left in the code after inlining from=with_value__Fii expanding=with_value__Fii  [combine__F5Value]",
+    "       736  compiled (allocated)  [with_value__Fii]",
+    "       946  code generated from its saved body  [combine__F5Value]",
+    "       951  call INLINED in combine__F5Value, round 0  [adjust<i>__Fi]",
+    "      1115  compiled (allocated)  [combine__F5Value]",
+    "      1170  code generated from its saved body  [__dt__5ValueFv]",
+    "      1171  call kept in __dt__5ValueFv, round 0, NO BODY yet  [consume__Fi]",
+    "      1172  call kept in __dt__5ValueFv, round 0, NO BODY yet  [consume__Fi]",
+    "      1173  call kept in __dt__5ValueFv, round 0, NO BODY yet  [__dl__FPv]",
+    "      1174  call kept in __dt__5ValueFv, round 0, NO BODY yet  [__dl__FPv]",
+    "      1175  call kept in __dt__5ValueFv, round 1, NO BODY yet  [consume__Fi]",
+    "      1176  call kept in __dt__5ValueFv, round 1, NO BODY yet  [consume__Fi]",
+    "      1177  call kept in __dt__5ValueFv, round 1, NO BODY yet  [__dl__FPv]",
+    "      1178  call kept in __dt__5ValueFv, round 1, NO BODY yet  [__dl__FPv]",
+    "      1179  call kept in __dt__5ValueFv, round 2, NO BODY yet  [consume__Fi]",
+    "      1180  call kept in __dt__5ValueFv, round 2, NO BODY yet  [consume__Fi]",
+    "      1181  call kept in __dt__5ValueFv, round 2, NO BODY yet  [__dl__FPv]",
+    "      1182  call kept in __dt__5ValueFv, round 2, NO BODY yet  [__dl__FPv]",
+    "      1183  call kept in __dt__5ValueFv, round 3, NO BODY yet  [consume__Fi]",
+    "      1184  call kept in __dt__5ValueFv, round 3, NO BODY yet  [consume__Fi]",
+    "      1185  call kept in __dt__5ValueFv, round 3, NO BODY yet  [__dl__FPv]",
+    "      1186  call kept in __dt__5ValueFv, round 3, NO BODY yet  [__dl__FPv]",
+    "      1187  call kept in __dt__5ValueFv, round 4, NO BODY yet  [consume__Fi]",
+    "      1188  call kept in __dt__5ValueFv, round 4, NO BODY yet  [consume__Fi]",
+    "      1189  call kept in __dt__5ValueFv, round 4, NO BODY yet  [__dl__FPv]",
+    "      1190  call kept in __dt__5ValueFv, round 4, NO BODY yet  [__dl__FPv]",
+    "      1191  call kept in __dt__5ValueFv, round 5, NO BODY yet  [consume__Fi]",
+    "      1192  call kept in __dt__5ValueFv, round 5, NO BODY yet  [consume__Fi]",
+    "      1193  call kept in __dt__5ValueFv, round 5, NO BODY yet  [__dl__FPv]",
+    "      1194  call kept in __dt__5ValueFv, round 5, NO BODY yet  [__dl__FPv]",
+    "      1195  call kept in __dt__5ValueFv, round 6, NO BODY yet  [consume__Fi]",
+    "      1196  call kept in __dt__5ValueFv, round 6, NO BODY yet  [consume__Fi]",
+    "      1197  call kept in __dt__5ValueFv, round 6, NO BODY yet  [__dl__FPv]",
+    "      1198  call kept in __dt__5ValueFv, round 6, NO BODY yet  [__dl__FPv]",
+    "      1199  call kept in __dt__5ValueFv, round 7, NO BODY yet  [consume__Fi]",
+    "      1200  call kept in __dt__5ValueFv, round 7, NO BODY yet  [consume__Fi]",
+    "      1201  call kept in __dt__5ValueFv, round 7, NO BODY yet  [__dl__FPv]",
+    "      1202  call kept in __dt__5ValueFv, round 7, NO BODY yet  [__dl__FPv]",
+    "      1391  compiled (allocated)  [__dt__5ValueFv]"
+  ],
+  "raw_selected": {
+    "common": [],
+    "pipeline": [],
+    "does_not_exist": []
+  }
+}

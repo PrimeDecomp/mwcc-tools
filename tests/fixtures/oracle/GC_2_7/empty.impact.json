@@ -1,0 +1,48 @@
+{
+  "functions": {},
+  "decisions": {},
+  "frames": {},
+  "comparison": [
+    {
+      "link": "added_by_header_change",
+      "function": "added_by_header_change",
+      "size": [
+        null,
+        8
+      ],
+      "inlining": [],
+      "frame": [],
+      "frame_size": [
+        null,
+        0
+      ]
+    }
+  ],
+  "report": [
+    "== src/unit.cpp (includes include/header.hpp): 1 function(s) changed",
+    "   added_by_header_change (only after)",
+    "      frame None -> 0 bytes"
+  ],
+  "asm": "",
+  "with_target": [
+    {
+      "link": "added_by_header_change",
+      "function": "added_by_header_change",
+      "size": [
+        null,
+        8
+      ],
+      "inlining": [],
+      "frame": [],
+      "frame_size": [
+        null,
+        0
+      ]
+    }
+  ],
+  "target_report": [
+    "== src/unit.cpp (includes include/header.hpp): 1 function(s) changed",
+    "   added_by_header_change (only after)",
+    "      frame None -> 0 bytes"
+  ]
+}

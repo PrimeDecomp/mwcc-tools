@@ -1,0 +1,19 @@
+[package]
+name = "mwcc-experiment"
+description = "Plans of candidates (spaces, stages, strategies, budgets), run against a unit with controls, results.jsonl and timing"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+# serde_json at its default features, so that a dependent's own JSON is as it would be without this crate.
+[dependencies]
+anyhow.workspace = true
+serde.workspace = true
+serde_json = "1.0.145"
+sha1.workspace = true
+mwcc-project = { path = "../mwcc-project" }
+mwcc-compare = { path = "../mwcc-compare" }
+
+[dev-dependencies]
+tempfile.workspace = true

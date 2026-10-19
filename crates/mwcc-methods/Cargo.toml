@@ -1,0 +1,26 @@
+[package]
+name = "mwcc-methods"
+description = "The method registry: every engine capability as a typed function, with JSON schemas, over a session that keeps what it loads"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha1.workspace = true
+sha2.workspace = true
+schemars = "1.0.4"
+regex.workspace = true
+tempfile.workspace = true
+mwcc-trace = { path = "../mwcc-trace" }
+mwcc-wasm = { path = "../mwcc-wasm" }
+mwcc-project = { path = "../mwcc-project" }
+mwcc-compare = { path = "../mwcc-compare" }
+mwcc-experiment = { path = "../mwcc-experiment" }
+mwcc-oracle-core = { path = "../mwcc-oracle-core" }
+
+[dev-dependencies]
+tempfile.workspace = true

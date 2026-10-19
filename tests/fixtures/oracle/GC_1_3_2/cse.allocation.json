@@ -1,0 +1,1441 @@
+[
+  {
+    "function": "common_integer",
+    "link": "common_integer",
+    "blocks": 5,
+    "instructions": 9,
+    "classes": {
+      "GPR": {
+        "rounds": [
+          {
+            "k": 29,
+            "mask": 8185,
+            "ok": true,
+            "nodes": 8,
+            "spilled": []
+          }
+        ],
+        "vregs": [
+          {
+            "vreg": 32,
+            "class": "GPR",
+            "phys": 0,
+            "defs": 0,
+            "uses": 0,
+            "live_blocks": 0,
+            "across_call": 0,
+            "first_call_block": null,
+            "degree": 0,
+            "neighbors": [],
+            "graph_flags": 0,
+            "in_pcode": false,
+            "state": "colored",
+            "order": 7,
+            "select": {
+              "how": "lowest free",
+              "free": 3221233657,
+              "predicted": 0,
+              "agrees": true,
+              "taken": {},
+              "mask": 3221233657,
+              "color": 0,
+              "flags": 2
+            },
+            "pushed": {
+              "why": "degree",
+              "degree": 0,
+              "k": 29,
+              "pass": 1
+            }
+          },
+          {
+            "vreg": 33,
+            "class": "GPR",
+            "phys": 0,
+            "defs": 0,
+            "uses": 0,
+            "live_blocks": 0,
+            "across_call": 0,
+            "first_call_block": null,
+            "degree": 0,
+            "neighbors": [],
+            "graph_flags": 0,
+            "in_pcode": false,
+            "state": "colored",
+            "order": 6,
+            "select": {
+              "how": "lowest free",
+              "free": 3221233657,
+              "predicted": 0,
+              "agrees": true,
+              "taken": {},
+              "mask": 3221233657,
+              "color": 0,
+              "flags": 2
+            },
+            "pushed": {
+              "why": "degree",
+              "degree": 0,
+              "k": 29,
+              "pass": 1
+            }
+          },
+          {
+            "vreg": 34,
+            "class": "GPR",
+            "phys": 30,
+            "defs": 1,
+            "uses": 1,
+            "live_blocks": 3,
+            "across_call": 1,
+            "first_call_block": 2,
+            "def": {
+              "block": 1,
+              "line": null,
+              "instruction": "mr %r34, r5, -"
+            },
+            "degree": 13,
+            "neighbors": [
+              {
+                "vreg": 0,
+                "phys": 0
+              },
+              {
+                "vreg": 3,
+                "phys": 3
+              },
+              {
+                "vreg": 4,
+                "phys": 4
+              },
+              {
+                "vreg": 5,
+                "phys": 5
+              },
+              {
+                "vreg": 6,
+                "phys": 6
+              },
+              {
+                "vreg": 7,
+                "phys": 7
+              },
+              {
+                "vreg": 8,
+                "phys": 8
+              },
+              {
+                "vreg": 9,
+                "phys": 9
+              },
+              {
+                "vreg": 10,
+                "phys": 10
+              },
+              {
+                "vreg": 11,
+                "phys": 11
+              },
+              {
+                "vreg": 12,
+                "phys": 12
+              },
+              {
+                "vreg": 35,
+                "phys": 31
+              },
+              {
+                "vreg": 39,
+                "phys": 0
+              }
+            ],
+            "graph_flags": 0,
+            "state": "colored",
+            "order": 5,
+            "select": {
+              "how": "claimed",
+              "free": 0,
+              "predicted": 30,
+              "agrees": true,
+              "taken": {
+                "0": [
+                  0,
+                  39
+                ],
+                "3": [
+                  3
+                ],
+                "4": [
+                  4
+                ],
+                "5": [
+                  5
+                ],
+                "6": [
+                  6
+                ],
+                "7": [
+                  7
+                ],
+                "8": [
+                  8
+                ],
+                "9": [
+                  9
+                ],
+                "10": [
+                  10
+                ],
+                "11": [
+                  11
+                ],
+                "12": [
+                  12
+                ],
+                "31": [
+                  35
+                ]
+              },
+              "mask": 2147491833,
+              "color": 30,
+              "flags": 2
+            },
+            "pushed": {
+              "why": "degree",
+              "degree": 13,
+              "k": 29,
+              "pass": 1
+            }
+          },
+          {
+            "vreg": 35,
+            "class": "GPR",
+            "phys": 31,
+            "defs": 1,
+            "uses": 3,
+            "live_blocks": 3,
+            "across_call": 1,
+            "first_call_block": 2,
+            "def": {
+              "block": 1,
+              "line": 6,
+              "instruction": "mullw %r35, %r36, %r37"
+            },
+            "degree": 13,
+            "neighbors": [
+              {
+                "vreg": 0,
+                "phys": 0
+              },
+              {
+                "vreg": 3,
+                "phys": 3
+              },
+              {
+                "vreg": 4,
+                "phys": 4
+              },
+              {
+                "vreg": 5,
+                "phys": 5
+              },
+              {
+                "vreg": 6,
+                "phys": 6
+              },
+              {
+                "vreg": 7,
+                "phys": 7
+              },
+              {
+                "vreg": 8,
+                "phys": 8
+              },
+              {
+                "vreg": 9,
+                "phys": 9
+              },
+              {
+                "vreg": 10,
+                "phys": 10
+              },
+              {
+                "vreg": 11,
+                "phys": 11
+              },
+              {
+                "vreg": 12,
+                "phys": 12
+              },
+              {
+                "vreg": 34,
+                "phys": 30
+              },
+              {
+                "vreg": 39,
+                "phys": 0
+              }
+            ],
+            "graph_flags": 0,
+            "state": "colored",
+            "order": 4,
+            "select": {
+              "how": "claimed",
+              "free": 0,
+              "predicted": 31,
+              "agrees": true,
+              "taken": {
+                "0": [
+                  0,
+                  39
+                ],
+                "3": [
+                  3
+                ],
+                "4": [
+                  4
+                ],
+                "5": [
+                  5
+                ],
+                "6": [
+                  6
+                ],
+                "7": [
+                  7
+                ],
+                "8": [
+                  8
+                ],
+                "9": [
+                  9
+                ],
+                "10": [
+                  10
+                ],
+                "11": [
+                  11
+                ],
+                "12": [
+                  12
+                ]
+              },
+              "mask": 8185,
+              "color": 31,
+              "flags": 2
+            },
+            "pushed": {
+              "why": "degree",
+              "degree": 12,
+              "k": 29,
+              "pass": 1
+            }
+          },
+          {
+            "vreg": 36,
+            "class": "GPR",
+            "phys": 6,
+            "defs": 1,
+            "uses": 1,
+            "live_blocks": 1,
+            "across_call": 0,
+            "first_call_block": null,
+            "def": {
+              "block": 1,
+              "line": 6,
+              "instruction": "add %r36, r3, r4"
+            },
+            "degree": 4,
+            "neighbors": [
+              {
+                "vreg": 3,
+                "phys": 3
+              },
+              {
+                "vreg": 4,
+                "phys": 4
+              },
+              {
+                "vreg": 5,
+                "phys": 5
+              },
+              {
+                "vreg": 37,
+                "phys": 0
+              }
+            ],
+            "graph_flags": 0,
+            "state": "colored",
+            "order": 3,
+            "select": {
+              "how": "lowest free",
+              "free": 8128,
+              "predicted": 6,
+              "agrees": true,
+              "taken": {
+                "3": [
+                  3
+                ],
+                "4": [
+                  4
+                ],
+                "5": [
+                  5
+                ],
+                "0": [
+                  37
+                ]
+              },
+              "mask": 8185,
+              "color": 6,
+              "flags": 2
+            },
+            "pushed": {
+              "why": "degree",
+              "degree": 4,
+              "k": 29,
+              "pass": 1
+            }
+          },
+          {
+            "vreg": 37,
+            "class": "GPR",
+            "phys": 0,
+            "defs": 1,
+            "uses": 1,
+            "live_blocks": 1,
+            "across_call": 0,
+            "first_call_block": null,
+            "def": {
+              "block": 1,
+              "line": 6,
+              "instruction": "subf %r37, r4, r3"
+            },
+            "degree": 2,
+            "neighbors": [
+              {
+                "vreg": 5,
+                "phys": 5
+              },
+              {
+                "vreg": 36,
+                "phys": 6
+              }
+            ],
+            "graph_flags": 0,
+            "state": "colored",
+            "order": 2,
+            "select": {
+              "how": "lowest free",
+              "free": 8153,
+              "predicted": 0,
+              "agrees": true,
+              "taken": {
+                "5": [
+                  5
+                ]
+              },
+              "mask": 8185,
+              "color": 0,
+              "flags": 2
+            },
+            "pushed": {
+              "why": "degree",
+              "degree": 1,
+              "k": 29,
+              "pass": 1
+            }
+          },
+          {
+            "vreg": 38,
+            "class": "GPR",
+            "phys": 0,
+            "defs": 0,
+            "uses": 0,
+            "live_blocks": 0,
+            "across_call": 0,
+            "first_call_block": null,
+            "degree": 0,
+            "neighbors": [],
+            "graph_flags": 0,
+            "in_pcode": false,
+            "state": "colored",
+            "order": 1,
+            "select": {
+              "how": "lowest free",
+              "free": 8185,
+              "predicted": 0,
+              "agrees": true,
+              "taken": {},
+              "mask": 8185,
+              "color": 0,
+              "flags": 2
+            },
+            "pushed": {
+              "why": "degree",
+              "degree": 0,
+              "k": 29,
+              "pass": 1
+            }
+          },
+          {
+            "vreg": 39,
+            "class": "GPR",
+            "phys": 0,
+            "defs": 1,
+            "uses": 1,
+            "live_blocks": 1,
+            "across_call": 0,
+            "first_call_block": null,
+            "def": {
+              "block": 3,
+              "line": 6,
+              "instruction": "add %r39, %r35, r3"
+            },
+            "degree": 2,
+            "neighbors": [
+              {
+                "vreg": 34,
+                "phys": 30
+              },
+              {
+                "vreg": 35,
+                "phys": 31
+              }
+            ],
+            "graph_flags": 0,
+            "state": "colored",
+            "order": 0,
+            "select": {
+              "how": "lowest free",
+              "free": 8185,
+              "predicted": 0,
+              "agrees": true,
+              "taken": {},
+              "mask": 8185,
+              "color": 0,
+              "flags": 2
+            },
+            "pushed": {
+              "why": "degree",
+              "degree": 0,
+              "k": 29,
+              "pass": 1
+            }
+          }
+        ],
+        "k": 29,
+        "mask": 8185,
+        "order": [
+          39,
+          38,
+          37,
+          36,
+          35,
+          34,
+          33,
+          32
+        ],
+        "simplify_replay_agrees": true,
+        "select_replay_agrees": 8,
+        "select_replayed": 8
+      }
+    },
+    "removed": [],
+    "inserted": [],
+    "frame": [
+      {
+        "kind": "local",
+        "name": "@5",
+        "offset": 0,
+        "size": 4,
+        "reg": 31,
+        "used": true
+      },
+      {
+        "kind": "local",
+        "name": "y",
+        "offset": 0,
+        "size": 4,
+        "reg": 0,
+        "used": false
+      },
+      {
+        "kind": "local",
+        "name": "x",
+        "offset": 0,
+        "size": 4,
+        "reg": 0,
+        "used": false
+      }
+    ],
+    "layout": {
+      "linkage": 8,
+      "outgoing": 0,
+      "locals": 0,
+      "above": 8,
+      "size": 16
+    }
+  },
+  {
+    "function": "common_float",
+    "link": "common_float",
+    "blocks": 4,
+    "instructions": 7,
+    "classes": {
+      "GPR": {
+        "rounds": [
+          {
+            "k": 29,
+            "mask": 8185,
+            "ok": true,
+            "nodes": 4,
+            "spilled": []
+          }
+        ],
+        "vregs": [
+          {
+            "vreg": 32,
+            "class": "GPR",
+            "phys": 0,
+            "defs": 0,
+            "uses": 0,
+            "live_blocks": 0,
+            "across_call": 0,
+            "first_call_block": null,
+            "degree": 0,
+            "neighbors": [],
+            "graph_flags": 0,
+            "in_pcode": false,
+            "state": "colored",
+            "order": 3,
+            "select": {
+              "how": "lowest free",
+              "free": 8185,
+              "predicted": 0,
+              "agrees": true,
+              "taken": {},
+              "mask": 8185,
+              "color": 0,
+              "flags": 2
+            },
+            "pushed": {
+              "why": "degree",
+              "degree": 0,
+              "k": 29,
+              "pass": 1
+            }
+          },
+          {
+            "vreg": 33,
+            "class": "GPR",
+            "phys": 0,
+            "defs": 0,
+            "uses": 0,
+            "live_blocks": 0,
+            "across_call": 0,
+            "first_call_block": null,
+            "degree": 0,
+            "neighbors": [],
+            "graph_flags": 0,
+            "in_pcode": false,
+            "state": "colored",
+            "order": 2,
+            "select": {
+              "how": "lowest free",
+              "free": 8185,
+              "predicted": 0,
+              "agrees": true,
+              "taken": {},
+              "mask": 8185,
+              "color": 0,
+              "flags": 2
+            },
+            "pushed": {
+              "why": "degree",
+              "degree": 0,
+              "k": 29,
+              "pass": 1
+            }
+          },
+          {
+            "vreg": 34,
+            "class": "GPR",
+            "phys": 0,
+            "defs": 1,
+            "uses": 2,
+            "live_blocks": 1,
+            "across_call": 0,
+            "first_call_block": null,
+            "def": {
+              "block": 2,
+              "line": 10,
+              "instruction": "rlwinm %r34, r4, #2, #0, #29"
+            },
+            "degree": 2,
+            "neighbors": [
+              {
+                "vreg": 3,
+                "phys": 3
+              },
+              {
+                "vreg": 35,
+                "phys": 4
+              }
+            ],
+            "graph_flags": 0,
+            "state": "colored",
+            "order": 1,
+            "select": {
+              "how": "lowest free",
+              "free": 8161,
+              "predicted": 0,
+              "agrees": true,
+              "taken": {
+                "3": [
+                  3
+                ],
+                "4": [
+                  35
+                ]
+              },
+              "mask": 8185,
+              "color": 0,
+              "flags": 2
+            },
+            "pushed": {
+              "why": "degree",
+              "degree": 2,
+              "k": 29,
+              "pass": 1
+            }
+          },
+          {
+            "vreg": 35,
+            "class": "GPR",
+            "phys": 4,
+            "defs": 1,
+            "uses": 1,
+            "live_blocks": 1,
+            "across_call": 0,
+            "first_call_block": null,
+            "def": {
+              "block": 2,
+              "line": 10,
+              "instruction": "add %r35, r3, %r34"
+            },
+            "degree": 3,
+            "neighbors": [
+              {
+                "vreg": 0,
+                "phys": 0
+              },
+              {
+                "vreg": 3,
+                "phys": 3
+              },
+              {
+                "vreg": 34,
+                "phys": 0
+              }
+            ],
+            "graph_flags": 0,
+            "state": "colored",
+            "order": 0,
+            "select": {
+              "how": "lowest free",
+              "free": 8176,
+              "predicted": 4,
+              "agrees": true,
+              "taken": {
+                "0": [
+                  0
+                ],
+                "3": [
+                  3
+                ]
+              },
+              "mask": 8185,
+              "color": 4,
+              "flags": 2
+            },
+            "pushed": {
+              "why": "degree",
+              "degree": 2,
+              "k": 29,
+              "pass": 1
+            }
+          }
+        ],
+        "k": 29,
+        "mask": 8185,
+        "order": [
+          35,
+          34,
+          33,
+          32
+        ],
+        "simplify_replay_agrees": true,
+        "select_replay_agrees": 4,
+        "select_replayed": 4
+      },
+      "FPR": {
+        "rounds": [
+          {
+            "k": 32,
+            "mask": 16383,
+            "ok": true,
+            "nodes": 5,
+            "spilled": []
+          }
+        ],
+        "vregs": [
+          {
+            "vreg": 32,
+            "class": "FPR",
+            "phys": 0,
+            "defs": 0,
+            "uses": 0,
+            "live_blocks": 0,
+            "across_call": 0,
+            "first_call_block": null,
+            "degree": 0,
+            "neighbors": [],
+            "graph_flags": 0,
+            "in_pcode": false,
+            "state": "colored",
+            "order": 4,
+            "select": {
+              "how": "lowest free",
+              "free": 16383,
+              "predicted": 0,
+              "agrees": true,
+              "taken": {},
+              "mask": 16383,
+              "color": 0,
+              "flags": 2
+            },
+            "pushed": {
+              "why": "degree",
+              "degree": 0,
+              "k": 32,
+              "pass": 1
+            }
+          },
+          {
+            "vreg": 33,
+            "class": "FPR",
+            "phys": 1,
+            "defs": 1,
+            "uses": 2,
+            "live_blocks": 1,
+            "across_call": 0,
+            "first_call_block": null,
+            "def": {
+              "block": 2,
+              "line": 10,
+              "instruction": "fmuls %f33, %f34, %f35"
+            },
+            "degree": 1,
+            "neighbors": [
+              {
+                "vreg": 36,
+                "phys": 0
+              }
+            ],
+            "graph_flags": 0,
+            "state": "colored",
+            "order": 3,
+            "select": {
+              "how": "lowest free",
+              "free": 16382,
+              "predicted": 1,
+              "agrees": true,
+              "taken": {
+                "0": [
+                  36
+                ]
+              },
+              "mask": 16383,
+              "color": 1,
+              "flags": 2
+            },
+            "pushed": {
+              "why": "degree",
+              "degree": 1,
+              "k": 32,
+              "pass": 1
+            }
+          },
+          {
+            "vreg": 34,
+            "class": "FPR",
+            "phys": 1,
+            "defs": 1,
+            "uses": 1,
+            "live_blocks": 1,
+            "across_call": 0,
+            "first_call_block": null,
+            "def": {
+              "block": 2,
+              "line": 10,
+              "instruction": "lfsx %f34, r3, %r34"
+            },
+            "degree": 1,
+            "neighbors": [
+              {
+                "vreg": 35,
+                "phys": 0
+              }
+            ],
+            "graph_flags": 0,
+            "state": "colored",
+            "order": 2,
+            "select": {
+              "how": "lowest free",
+              "free": 16382,
+              "predicted": 1,
+              "agrees": true,
+              "taken": {
+                "0": [
+                  35
+                ]
+              },
+              "mask": 16383,
+              "color": 1,
+              "flags": 2
+            },
+            "pushed": {
+              "why": "degree",
+              "degree": 1,
+              "k": 32,
+              "pass": 1
+            }
+          },
+          {
+            "vreg": 35,
+            "class": "FPR",
+            "phys": 0,
+            "defs": 1,
+            "uses": 1,
+            "live_blocks": 1,
+            "across_call": 0,
+            "first_call_block": null,
+            "def": {
+              "block": 2,
+              "line": 10,
+              "instruction": "lfs %f35, %r35, #4"
+            },
+            "degree": 1,
+            "neighbors": [
+              {
+                "vreg": 34,
+                "phys": 1
+              }
+            ],
+            "graph_flags": 0,
+            "state": "colored",
+            "order": 1,
+            "select": {
+              "how": "lowest free",
+              "free": 16383,
+              "predicted": 0,
+              "agrees": true,
+              "taken": {},
+              "mask": 16383,
+              "color": 0,
+              "flags": 2
+            },
+            "pushed": {
+              "why": "degree",
+              "degree": 0,
+              "k": 32,
+              "pass": 1
+            }
+          },
+          {
+            "vreg": 36,
+            "class": "FPR",
+            "phys": 0,
+            "defs": 1,
+            "uses": 1,
+            "live_blocks": 1,
+            "across_call": 0,
+            "first_call_block": null,
+            "def": {
+              "block": 2,
+              "line": 11,
+              "instruction": "fadds %f36, %f33, %f33"
+            },
+            "degree": 1,
+            "neighbors": [
+              {
+                "vreg": 33,
+                "phys": 1
+              }
+            ],
+            "graph_flags": 0,
+            "state": "colored",
+            "order": 0,
+            "select": {
+              "how": "lowest free",
+              "free": 16383,
+              "predicted": 0,
+              "agrees": true,
+              "taken": {},
+              "mask": 16383,
+              "color": 0,
+              "flags": 2
+            },
+            "pushed": {
+              "why": "degree",
+              "degree": 0,
+              "k": 32,
+              "pass": 1
+            }
+          }
+        ],
+        "k": 32,
+        "mask": 16383,
+        "order": [
+          36,
+          35,
+          34,
+          33,
+          32
+        ],
+        "simplify_replay_agrees": true,
+        "select_replay_agrees": 5,
+        "select_replayed": 5
+      }
+    },
+    "removed": [],
+    "inserted": [],
+    "frame": [
+      {
+        "kind": "local",
+        "name": "@13",
+        "offset": 0,
+        "size": 4,
+        "reg": 1,
+        "used": true
+      },
+      {
+        "kind": "local",
+        "name": "@12",
+        "offset": 0,
+        "size": 4,
+        "reg": 0,
+        "used": true,
+        "r1": 0
+      },
+      {
+        "kind": "local",
+        "name": "x",
+        "offset": 0,
+        "size": 4,
+        "reg": 0,
+        "used": true,
+        "r1": 0
+      }
+    ],
+    "layout": {
+      "linkage": 0,
+      "outgoing": 0,
+      "locals": 0,
+      "above": 0,
+      "size": 0
+    }
+  },
+  {
+    "function": "common_branch",
+    "link": "common_branch",
+    "blocks": 6,
+    "instructions": 8,
+    "classes": {
+      "GPR": {
+        "rounds": [
+          {
+            "k": 29,
+            "mask": 8185,
+            "ok": true,
+            "nodes": 8,
+            "spilled": []
+          }
+        ],
+        "vregs": [
+          {
+            "vreg": 32,
+            "class": "GPR",
+            "phys": 0,
+            "defs": 0,
+            "uses": 0,
+            "live_blocks": 0,
+            "across_call": 0,
+            "first_call_block": null,
+            "degree": 0,
+            "neighbors": [],
+            "graph_flags": 0,
+            "in_pcode": false,
+            "state": "colored",
+            "order": 6,
+            "select": {
+              "how": "lowest free",
+              "free": 8185,
+              "predicted": 0,
+              "agrees": true,
+              "taken": {},
+              "mask": 8185,
+              "color": 0,
+              "flags": 2
+            },
+            "pushed": {
+              "why": "degree",
+              "degree": 0,
+              "k": 29,
+              "pass": 1
+            }
+          },
+          {
+            "vreg": 33,
+            "class": "GPR",
+            "phys": 0,
+            "defs": 0,
+            "uses": 0,
+            "live_blocks": 0,
+            "across_call": 0,
+            "first_call_block": null,
+            "degree": 0,
+            "neighbors": [],
+            "graph_flags": 0,
+            "in_pcode": false,
+            "state": "colored",
+            "order": 5,
+            "select": {
+              "how": "lowest free",
+              "free": 8185,
+              "predicted": 0,
+              "agrees": true,
+              "taken": {},
+              "mask": 8185,
+              "color": 0,
+              "flags": 2
+            },
+            "pushed": {
+              "why": "degree",
+              "degree": 0,
+              "k": 29,
+              "pass": 1
+            }
+          },
+          {
+            "vreg": 34,
+            "class": "GPR",
+            "phys": 0,
+            "defs": 0,
+            "uses": 0,
+            "live_blocks": 0,
+            "across_call": 0,
+            "first_call_block": null,
+            "degree": 0,
+            "neighbors": [],
+            "graph_flags": 0,
+            "in_pcode": false,
+            "state": "colored",
+            "order": 4,
+            "select": {
+              "how": "lowest free",
+              "free": 8185,
+              "predicted": 0,
+              "agrees": true,
+              "taken": {},
+              "mask": 8185,
+              "color": 0,
+              "flags": 2
+            },
+            "pushed": {
+              "why": "degree",
+              "degree": 0,
+              "k": 29,
+              "pass": 1
+            }
+          },
+          {
+            "vreg": 35,
+            "class": "GPR",
+            "phys": 0,
+            "defs": 0,
+            "uses": 0,
+            "live_blocks": 0,
+            "across_call": 0,
+            "first_call_block": null,
+            "degree": 0,
+            "neighbors": [],
+            "graph_flags": 0,
+            "in_pcode": false,
+            "state": "colored",
+            "order": 3,
+            "select": {
+              "how": "lowest free",
+              "free": 8185,
+              "predicted": 0,
+              "agrees": true,
+              "taken": {},
+              "mask": 8185,
+              "color": 0,
+              "flags": 2
+            },
+            "pushed": {
+              "why": "degree",
+              "degree": 0,
+              "k": 29,
+              "pass": 1
+            }
+          },
+          {
+            "vreg": 36,
+            "class": "GPR",
+            "phys": 0,
+            "defs": 1,
+            "uses": 2,
+            "live_blocks": 2,
+            "across_call": 0,
+            "first_call_block": null,
+            "def": {
+              "block": 2,
+              "line": 15,
+              "instruction": "mullw %r36, %r37, %r38"
+            },
+            "degree": 3,
+            "neighbors": [
+              {
+                "vreg": 3,
+                "phys": 3
+              },
+              {
+                "vreg": 5,
+                "phys": 5
+              },
+              {
+                "vreg": 39,
+                "phys": 3
+              }
+            ],
+            "graph_flags": 0,
+            "state": "colored",
+            "order": 2,
+            "select": {
+              "how": "lowest free",
+              "free": 8145,
+              "predicted": 0,
+              "agrees": true,
+              "taken": {
+                "3": [
+                  3,
+                  39
+                ],
+                "5": [
+                  5
+                ]
+              },
+              "mask": 8185,
+              "color": 0,
+              "flags": 2
+            },
+            "pushed": {
+              "why": "degree",
+              "degree": 3,
+              "k": 29,
+              "pass": 1
+            }
+          },
+          {
+            "vreg": 37,
+            "class": "GPR",
+            "phys": 6,
+            "defs": 1,
+            "uses": 1,
+            "live_blocks": 1,
+            "across_call": 0,
+            "first_call_block": null,
+            "def": {
+              "block": 2,
+              "line": 15,
+              "instruction": "add %r37, r3, r4"
+            },
+            "degree": 4,
+            "neighbors": [
+              {
+                "vreg": 3,
+                "phys": 3
+              },
+              {
+                "vreg": 4,
+                "phys": 4
+              },
+              {
+                "vreg": 5,
+                "phys": 5
+              },
+              {
+                "vreg": 38,
+                "phys": 0
+              }
+            ],
+            "graph_flags": 0,
+            "state": "colored",
+            "order": 1,
+            "select": {
+              "how": "lowest free",
+              "free": 8128,
+              "predicted": 6,
+              "agrees": true,
+              "taken": {
+                "3": [
+                  3
+                ],
+                "4": [
+                  4
+                ],
+                "5": [
+                  5
+                ],
+                "0": [
+                  38
+                ]
+              },
+              "mask": 8185,
+              "color": 6,
+              "flags": 2
+            },
+            "pushed": {
+              "why": "degree",
+              "degree": 4,
+              "k": 29,
+              "pass": 1
+            }
+          },
+          {
+            "vreg": 38,
+            "class": "GPR",
+            "phys": 0,
+            "defs": 1,
+            "uses": 1,
+            "live_blocks": 1,
+            "across_call": 0,
+            "first_call_block": null,
+            "def": {
+              "block": 2,
+              "line": 15,
+              "instruction": "subf %r38, r4, r3"
+            },
+            "degree": 2,
+            "neighbors": [
+              {
+                "vreg": 5,
+                "phys": 5
+              },
+              {
+                "vreg": 37,
+                "phys": 6
+              }
+            ],
+            "graph_flags": 0,
+            "state": "colored",
+            "order": 0,
+            "select": {
+              "how": "lowest free",
+              "free": 8153,
+              "predicted": 0,
+              "agrees": true,
+              "taken": {
+                "5": [
+                  5
+                ]
+              },
+              "mask": 8185,
+              "color": 0,
+              "flags": 2
+            },
+            "pushed": {
+              "why": "degree",
+              "degree": 1,
+              "k": 29,
+              "pass": 1
+            }
+          },
+          {
+            "vreg": 39,
+            "class": "GPR",
+            "phys": 3,
+            "defs": 2,
+            "uses": 1,
+            "live_blocks": 2,
+            "across_call": 0,
+            "first_call_block": null,
+            "def": {
+              "block": 2,
+              "line": 17,
+              "instruction": "subf %r39, %r36, %r36"
+            },
+            "degree": 1,
+            "neighbors": [
+              {
+                "vreg": 36,
+                "phys": 0
+              }
+            ],
+            "graph_flags": 4,
+            "state": "coalesced",
+            "coalesced_into": 3
+          }
+        ],
+        "k": 29,
+        "mask": 8185,
+        "order": [
+          38,
+          37,
+          36,
+          35,
+          34,
+          33,
+          32
+        ],
+        "simplify_replay_agrees": true,
+        "select_replay_agrees": 7,
+        "select_replayed": 7
+      }
+    },
+    "removed": [
+      "mr r3, %r39, -"
+    ],
+    "inserted": [],
+    "frame": [
+      {
+        "kind": "local",
+        "name": "@22",
+        "offset": 0,
+        "size": 4,
+        "reg": 0,
+        "used": true,
+        "r1": 0
+      },
+      {
+        "kind": "local",
+        "name": "x",
+        "offset": 0,
+        "size": 4,
+        "reg": 0,
+        "used": true,
+        "r1": 0
+      }
+    ],
+    "layout": {
+      "linkage": 0,
+      "outgoing": 0,
+      "locals": 0,
+      "above": 0,
+      "size": 0
+    }
+  }
+]

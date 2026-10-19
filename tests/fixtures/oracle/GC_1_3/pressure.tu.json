@@ -1,0 +1,196 @@
+{
+  "decisions": {
+    "external": [
+      {
+        "kind": "decision",
+        "event": "decision",
+        "callee": "external",
+        "link": "external",
+        "inline": false,
+        "chain": [],
+        "reason": "not declared inline (and not a method defined in its class)",
+        "outcome": "kept",
+        "count": 8,
+        "depths": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "lines": [
+          13
+        ],
+        "function": "pressure (pressure)"
+      }
+    ]
+  },
+  "summaries": {
+    "external": {
+      "summary": {
+        "outcomes": {
+          "kept": 8
+        },
+        "costs": [],
+        "full_costs": [],
+        "rounds": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "functions": [
+          "pressure (pressure)"
+        ],
+        "reasons": [
+          "not declared inline (and not a method defined in its class)"
+        ],
+        "chains": [],
+        "limit_paths": [],
+        "sensitivity": []
+      },
+      "report": [
+        "   A: kept x8; estimate -, whole cost -, rounds 0, 1, 2, 3, 4, 5, 6, 7",
+        "      in pressure (pressure)",
+        "      because: not declared inline (and not a method defined in its class)"
+      ],
+      "verdict_present": null,
+      "verdict_absent": null
+    }
+  },
+  "emission": {
+    "pressure": ""
+  },
+  "target": {},
+  "module": {},
+  "predictions": {
+    "false": {
+      "external": [
+        "target: not emitted",
+        false
+      ],
+      "pressure": [
+        "target: not emitted (nor anywhere in the module); MISPREDICTED: emitted here",
+        true
+      ]
+    },
+    "true": {
+      "external": [
+        "target: not emitted",
+        false
+      ],
+      "pressure": [
+        "target: not emitted (the main program strips unreferenced weak functions); emitted here",
+        false
+      ]
+    }
+  },
+  "emission_report": [
+    "== A: sources/pressure.c: emitted differently from the target: 1 here only (nowhere in the module), 0 there only; 0 here whose copy the module keeps in another TU",
+    "   here only: pressure"
+  ],
+  "object_calls": {
+    "pressure": {
+      "_savegpr_14": 1,
+      "external": 1,
+      "_restgpr_14": 1
+    }
+  },
+  "windows": [
+    {
+      "calls": {
+        "pressure": {
+          "_savegpr_14": 1,
+          "external": 1,
+          "_restgpr_14": 1
+        }
+      },
+      "bounds": [],
+      "window": [
+        null,
+        null
+      ],
+      "report": [
+        "== sources/pressure.c: limit None, the target agrees with -..-"
+      ],
+      "verbose": [
+        "== sources/pressure.c: limit None, the target agrees with -..-"
+      ]
+    },
+    {
+      "calls": {
+        "pressure": {
+          "_savegpr_14": 1,
+          "external": 0,
+          "_restgpr_14": 1
+        }
+      },
+      "bounds": [
+        {
+          "function": "pressure",
+          "link": "pressure",
+          "callee": "external",
+          "callee_link": "external",
+          "ours": 1,
+          "target": 0,
+          "threshold": null,
+          "side": null,
+          "why": "not declared inline (and not a method defined in its class)"
+        }
+      ],
+      "window": [
+        null,
+        null
+      ],
+      "report": [
+        "== sources/pressure.c: limit None, the target agrees with -..-",
+        "   not a limit question: external in pressure (calls: ours 1, target 0): not declared inline (and not a method defined in its class)"
+      ],
+      "verbose": [
+        "== sources/pressure.c: limit None, the target agrees with -..-",
+        "   not a limit question: external in pressure (calls: ours 1, target 0): not declared inline (and not a method defined in its class)"
+      ]
+    },
+    {
+      "calls": {
+        "pressure": {
+          "_savegpr_14": 1,
+          "external": 2,
+          "_restgpr_14": 1
+        }
+      },
+      "bounds": [
+        {
+          "function": "pressure",
+          "link": "pressure",
+          "callee": "external",
+          "callee_link": "external",
+          "ours": 1,
+          "target": 2,
+          "threshold": null,
+          "side": null,
+          "why": "not declared inline (and not a method defined in its class)"
+        }
+      ],
+      "window": [
+        null,
+        null
+      ],
+      "report": [
+        "== sources/pressure.c: limit None, the target agrees with -..-",
+        "   not a limit question: external in pressure (calls: ours 1, target 2): not declared inline (and not a method defined in its class)"
+      ],
+      "verbose": [
+        "== sources/pressure.c: limit None, the target agrees with -..-",
+        "   not a limit question: external in pressure (calls: ours 1, target 2): not declared inline (and not a method defined in its class)"
+      ]
+    }
+  ]
+}

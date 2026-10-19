@@ -1,0 +1,696 @@
+//! Historical-linker orchestration with retail hooks, supplements and exact SHA gates.
+use crate::{coff, executable, pe, process_tree, runner};
+use anyhow::{Context, Result, ensure};
+use indexmap::IndexMap;
+use regex::Regex;
+use serde_json::Value;
+use sha1::{Digest, Sha1};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fs,
+    path::{Path, PathBuf},
+    process::Stdio,
+    thread,
+    time::{Duration, Instant},
+};
+fn basename(path: &str) -> &str {
+    path.rsplit(['\\', '/']).next().unwrap()
+}
+/// A compiled object's split counterpart; BUILD is the source tree's build directory (crate::source_tree).
+fn split_path(build: &str, path: &str) -> String {
+    path.replacen(&format!("{build}/compiled/"), &format!("{build}/obj/"), 1)
+}
+pub fn usable(root: &Path, build: &str, path: &str) -> Result<bool> {
+    let split = root.join(split_path(build, path));
+    if !split.is_file() {
+        return Ok(false);
+    }
+    Ok(
+        coff::section_sizes(&fs::read(root.join(path))?)?
+            == coff::section_sizes(&fs::read(split)?)?,
+    )
+}
+pub fn revert_conflicts(
+    root: &Path,
+    build: &str,
+    inputs: &[String],
+    text: &str,
+) -> Result<BTreeSet<String>> {
+    let compiled: IndexMap<_, _> = inputs
+        .iter()
+        .filter(|p| p.starts_with(&format!("{build}/compiled/")))
+        .map(|p| (basename(p), p))
+        .collect();
+    let undefined = Regex::new(r"Undefined symbol: (\S+) in\s+#\s+(\S+)")?;
+    let duplicate = Regex::new(r"Multiple definitions of symbol: (\S+) in\s+#\s+([^\n]+)")?;
+    let mut reverted = BTreeSet::new();
+    let mut counterparts = None;
+    for c in undefined.captures_iter(text) {
+        if let Some(path) = compiled.get(&c[2]) {
+            reverted.insert((*path).clone());
+            continue;
+        }
+        if counterparts.is_none() {
+            counterparts = Some(
+                compiled
+                    .values()
+                    .map(|p| {
+                        Ok((
+                            (*p).clone(),
+                            coff::defined_symbols(&fs::read(root.join(split_path(build, p)))?)?,
+                        ))
+                    })
+                    .collect::<Result<BTreeMap<_, _>>>()?,
+            );
+        }
+        for (path, names) in counterparts.as_ref().unwrap() {
+            if names.contains(&c[1]) {
+                reverted.insert(path.clone());
+            }
+        }
+    }
+    for c in duplicate.captures_iter(text) {
+        for name in c[2].split(',').map(str::trim) {
+            if let Some(path) = compiled.get(name) {
+                reverted.insert((*path).clone());
+            }
+        }
+    }
+    Ok(reverted)
+}
+pub struct Request {
+    pub root: PathBuf,
+    pub version: String,
+    pub output: String,
+    pub inputs: Vec<String>,
+    pub oracle: bool,
+    /// Link from the version's source tree (crate::source_tree): its objects and splits.
+    pub source: bool,
+    /// Write build/VERSION/ok when the link is the original (not for trial links).
+    pub record: bool,
+    pub timeout: Duration,
+}
+#[derive(Debug)]
+pub struct Report {
+    pub identical: Option<bool>,
+    pub sha1: String,
+    pub messages: Vec<String>,
+    pub linked_from_source: usize,
+}
+fn write(root: &Path, path: &str, data: &[u8]) -> Result<()> {
+    let path = root.join(path);
+    fs::create_dir_all(path.parent().context("output lacks parent")?)?;
+    fs::write(path, data)?;
+    Ok(())
+}
+fn execute(request: &Request, inputs: &[String]) -> Result<(Option<i32>, String)> {
+    mwld(&request.root, inputs, &request.output, request.timeout)
+}
+/// Link INPUTS (paths from ROOT) into OUTPUT as the original was linked, with a map beside it: the linker's exit
+/// status and messages.
+pub fn mwld(
+    root: &Path,
+    inputs: &[String],
+    output: &str,
+    timeout: Duration,
+) -> Result<(Option<i32>, String)> {
+    let root = root.canonicalize()?;
+    let executable = root.join("build/compilers/pro53/mwld.exe");
+    let mut command = runner::launcher(&root, &executable)?;
+    command
+        .args([
+            "-nostdlib",
+            "-subsystem",
+            "console",
+            "-m",
+            "_mainCRTStartup",
+        ])
+        .args(inputs)
+        .args(["-o", output, "-map"])
+        .arg(Path::new(output).with_extension("map"))
+        .current_dir(root);
+    let log = crate::temporary::diagnostic_log()?;
+    let stream = log.reopen()?;
+    command
+        .stdout(Stdio::from(stream.try_clone()?))
+        .stderr(Stdio::from(stream));
+    process_tree::prepare(&mut command);
+    let mut child = command
+        .spawn()
+        .with_context(|| format!("launch {}", executable.display()))?;
+    let start = Instant::now();
+    let status = loop {
+        if let Some(status) = child.try_wait()? {
+            break status;
+        }
+        if start.elapsed() >= timeout {
+            process_tree::terminate(&mut child)?;
+            anyhow::bail!("linker timed out after {} seconds", timeout.as_secs_f64());
+        }
+        thread::sleep(Duration::from_millis(10));
+    };
+    let data = fs::read(log.path())?;
+    let text = data
+        .iter()
+        .map(|b| char::from(*b))
+        .collect::<String>()
+        .replace("\r\n", "\n");
+    Ok((status.code(), text))
+}
+pub fn run(request: &Request) -> Result<Report> {
+    ensure!(
+        !request.timeout.is_zero(),
+        "linker timeout must be positive"
+    );
+    let config: Value = serde_json::from_slice(&fs::read(
+        request
+            .root
+            .join("config")
+            .join(&request.version)
+            .join("config.json"),
+    )?)?;
+    let mut inputs = request.inputs.clone();
+    let mut messages = vec![];
+    let version = &request.version;
+    let tree = crate::source_tree::SourceTree::of(
+        &request.root,
+        version,
+        request.oracle || !request.source,
+    )?;
+    let build = tree.build_dir.as_str();
+    let compiled_prefix = format!("{build}/compiled/");
+    // (a vendored tree's Matching list was checked by linking each unit into the original, and the linker strips
+    // what its objects have beyond the unit's range: the SHA-1 below is the check, not section sizes)
+    if config["validate_units"] == true && !request.oracle && !tree.vendored() {
+        let mut replaced = BTreeSet::new();
+        for input in &inputs {
+            if input.starts_with(&compiled_prefix) && !usable(&request.root, build, input)? {
+                replaced.insert(input.clone());
+            }
+        }
+        inputs = inputs
+            .into_iter()
+            .map(|p| {
+                if replaced.contains(&p) {
+                    split_path(build, &p)
+                } else {
+                    p
+                }
+            })
+            .collect();
+        messages.push(format!(
+            "{} compiled units do not fit their ranges and are linked as split",
+            replaced.len()
+        ));
+    }
+    let compiled_objects: Vec<_> = inputs
+        .iter()
+        .filter(|p| p.replace('\\', "/").contains("/oracle/compiled/"))
+        .cloned()
+        .collect();
+    if request.oracle {
+        // The Rust support export identifies the native producer. C rollback
+        // builds keep their original input objects and do not install probes.
+        let native = compiled_objects.iter().any(|p| {
+            fs::read(request.root.join(p))
+                .ok()
+                .and_then(|b| coff::defined_symbols(&b).ok())
+                .is_some_and(|s| s.contains("_OracleRust_BackendProbe"))
+        });
+        if native {
+            ensure!(
+                compiled_objects
+                    .iter()
+                    .any(|p| fs::read(request.root.join(p))
+                        .ok()
+                        .and_then(|b| coff::defined_symbols(&b).ok())
+                        .is_some_and(|s| s.contains(crate::dispatch_probe::HANDLER))),
+                "Rust expression observer is stale; rebuild the common hooks with the current sources"
+            );
+            ensure!(
+                compiled_objects
+                    .iter()
+                    .any(|p| fs::read(request.root.join(p))
+                        .ok()
+                        .and_then(|b| coff::defined_symbols(&b).ok())
+                        .is_some_and(|s| s.contains("_OracleRust_CounterProbeV6"))),
+                "Rust counter observer ABI is stale; rebuild the common hooks with the current sources"
+            );
+            ensure!(
+                compiled_objects
+                    .iter()
+                    .any(|p| fs::read(request.root.join(p))
+                        .ok()
+                        .and_then(|b| coff::defined_symbols(&b).ok())
+                        .is_some_and(|symbols| symbols
+                            .contains(crate::call_argument_probe::FORCE_HANDLER)
+                            && crate::producer::ARGUMENT_HOOKS
+                                .iter()
+                                .all(|hook| symbols.contains(*hook)))),
+                "Rust V6 argument observer hooks are missing; rebuild the common hooks with the current sources"
+            );
+            ensure!(
+                compiled_objects
+                    .iter()
+                    .any(|p| fs::read(request.root.join(p))
+                        .ok()
+                        .and_then(|b| coff::defined_symbols(&b).ok())
+                        .is_some_and(|symbols| symbols.contains("_OracleRust_ArenaProbeV1")
+                            && crate::producer::ARENA_HOOKS
+                                .iter()
+                                .all(|hook| symbols.contains(*hook)))),
+                "Rust arena observer hooks are missing; rebuild the common hooks with the current sources"
+            );
+            ensure!(
+                compiled_objects
+                    .iter()
+                    .any(|p| fs::read(request.root.join(p))
+                        .ok()
+                        .and_then(|b| coff::defined_symbols(&b).ok())
+                        .is_some_and(|symbols| symbols.contains("_OracleRust_SourceProbeV1")
+                            && crate::producer::SOURCE_HOOKS
+                                .iter()
+                                .all(|hook| symbols.contains(*hook)))),
+                "Rust source observers are stale; rebuild the common hooks with the current sources"
+            );
+            let mut dispatchers = 0;
+            for input in &mut inputs {
+                if !input.ends_with(".obj") {
+                    continue;
+                }
+                let data = fs::read(request.root.join(&*input))?;
+                if !coff::Object::parse(&data)?
+                    .symbols
+                    .values()
+                    .any(|s| s.section > 0 && s.name == crate::dispatch_audit::INITIALIZER)
+                {
+                    continue;
+                }
+                let installed = crate::dispatch_probe::instrument(&request.root, version, &data)?;
+                let output = format!("build/{version}/oracle/dispatch/{}", basename(input));
+                write(&request.root, &output, &installed.object)?;
+                write(
+                    &request.root,
+                    &format!("build/{version}/oracle/dispatch/audit.json"),
+                    &serde_json::to_vec_pretty(&installed.audit)?,
+                )?;
+                *input = output;
+                dispatchers += 1;
+            }
+            ensure!(
+                dispatchers == 1,
+                "native provenance requires exactly one expression initializer"
+            );
+            messages.push("installed guarded retail expression dispatch observations".into());
+            let argument_inputs = inputs
+                .iter()
+                .filter(|p| p.ends_with(".obj") && !compiled_objects.contains(p))
+                .map(|p| Ok((p.clone(), fs::read(request.root.join(p))?)))
+                .collect::<Result<Vec<_>>>()?;
+            let arguments =
+                crate::call_argument_probe::install(&request.root, version, &argument_inputs)?;
+            for input in &mut inputs {
+                if let Some(data) = arguments.objects.get(input) {
+                    let output = format!("build/{version}/oracle/arguments/{}", basename(input));
+                    write(&request.root, &output, data)?;
+                    *input = output;
+                }
+            }
+            let argument_island =
+                format!("build/{version}/oracle/compiled/rust/argument-islands.obj");
+            write(&request.root, &argument_island, &arguments.islands)?;
+            inputs.push(argument_island);
+            write(
+                &request.root,
+                &format!("build/{version}/oracle/arguments/guards.json"),
+                &serde_json::to_vec_pretty(&arguments.guards)?,
+            )?;
+            messages.push("installed guarded regular-call argument observations".into());
+            let arena_inputs = inputs
+                .iter()
+                .filter(|p| p.ends_with(".obj") && !compiled_objects.contains(p))
+                .map(|p| Ok((p.clone(), fs::read(request.root.join(p))?)))
+                .collect::<Result<Vec<_>>>()?;
+            let arenas = crate::source_arena_probe::install(&request.root, version, &arena_inputs)?;
+            for input in &mut inputs {
+                if let Some(data) = arenas.objects.get(input) {
+                    let output = format!("build/{version}/oracle/arenas/{}", basename(input));
+                    write(&request.root, &output, data)?;
+                    *input = output;
+                }
+            }
+            let arena_islands = format!("build/{version}/oracle/compiled/rust/arena-islands.obj");
+            write(&request.root, &arena_islands, &arenas.islands)?;
+            inputs.push(arena_islands);
+            write(
+                &request.root,
+                &format!("build/{version}/oracle/arenas/sites.json"),
+                &serde_json::to_vec_pretty(&arenas.sites)?,
+            )?;
+            write(
+                &request.root,
+                &format!("build/{version}/oracle/arenas/guards.json"),
+                &serde_json::to_vec_pretty(&arenas.guards)?,
+            )?;
+            messages.push(format!(
+                "installed {} guarded arena observations",
+                arenas.sites.len()
+            ));
+            let source_inputs = inputs
+                .iter()
+                .filter(|p| p.ends_with(".obj") && !compiled_objects.contains(p))
+                .map(|p| Ok((p.clone(), fs::read(request.root.join(p))?)))
+                .collect::<Result<Vec<_>>>()?;
+            let sources =
+                crate::source_node_probe::install(&request.root, version, &source_inputs)?;
+            for input in &mut inputs {
+                if let Some(data) = sources.objects.get(input) {
+                    let output = format!("build/{version}/oracle/source-nodes/{}", basename(input));
+                    write(&request.root, &output, data)?;
+                    *input = output;
+                }
+            }
+            let source_islands = format!("build/{version}/oracle/compiled/rust/source-islands.obj");
+            write(&request.root, &source_islands, &sources.islands)?;
+            inputs.push(source_islands);
+            write(
+                &request.root,
+                &format!("build/{version}/oracle/source-nodes/sites.json"),
+                &serde_json::to_vec_pretty(&sources.sites)?,
+            )?;
+            write(
+                &request.root,
+                &format!("build/{version}/oracle/source-nodes/guards.json"),
+                &serde_json::to_vec_pretty(&sources.guards)?,
+            )?;
+            messages.push("installed guarded source expression observations".into());
+            let counter_inputs = inputs
+                .iter()
+                .filter(|p| p.ends_with(".obj") && !compiled_objects.contains(p))
+                .map(|p| Ok((p.clone(), fs::read(request.root.join(p))?)))
+                .collect::<Result<Vec<_>>>()?;
+            let counters = crate::counter_probe::install(&request.root, version, &counter_inputs)?;
+            let mut counter_destinations = BTreeSet::new();
+            for input in &mut inputs {
+                if let Some(data) = counters.objects.get(input) {
+                    let output = format!("build/{version}/oracle/counters/{}", basename(input));
+                    ensure!(
+                        counter_destinations.insert(output.clone()),
+                        "counter object output name collision"
+                    );
+                    write(&request.root, &output, data)?;
+                    *input = output;
+                }
+            }
+            let islands = format!("build/{version}/oracle/compiled/rust/counter-islands.obj");
+            write(&request.root, &islands, &counters.islands)?;
+            inputs.push(islands);
+            write(
+                &request.root,
+                &format!("build/{version}/oracle/counters/sites.json"),
+                &serde_json::to_vec_pretty(&counters.sites)?,
+            )?;
+            messages.push(format!(
+                "installed {} guarded counter/context observations",
+                counters.sites.len()
+            ));
+            let mut count = 0;
+            for input in &mut inputs {
+                if !input.ends_with(".obj") {
+                    continue;
+                }
+                let data = fs::read(request.root.join(&*input))?;
+                crate::backend_probe::validate_incoming(&data)?;
+                if !coff::defined_symbols(&data)?.contains(crate::backend_probe::FUNCTION) {
+                    continue;
+                }
+                let output = format!("build/{version}/oracle/probes/{}", basename(input));
+                write(
+                    &request.root,
+                    &output,
+                    &crate::backend_probe::instrument(&data)?,
+                )?;
+                *input = output;
+                count += 1;
+            }
+            ensure!(
+                count == 1,
+                "native provenance requires exactly one retail coalescer"
+            );
+            messages.push("installed guarded retail coalescing observations".into());
+        }
+        let mut hooks = config["oracle"]["hooks"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .collect::<Vec<_>>();
+        if native {
+            for hook in crate::producer::ARGUMENT_HOOKS
+                .into_iter()
+                .chain(crate::producer::ARENA_HOOKS)
+                .chain(crate::producer::SOURCE_HOOKS)
+            {
+                if !hooks.contains(&hook) {
+                    hooks.push(hook);
+                }
+            }
+        }
+        for symbol in hooks {
+            let mut held = vec![];
+            for path in &inputs {
+                if path.ends_with(".obj")
+                    && !path.replace('\\', "/").contains("/oracle/compiled/")
+                    && coff::defined_symbols(&fs::read(request.root.join(path))?)?.contains(symbol)
+                {
+                    held.push(path.clone());
+                }
+            }
+            ensure!(
+                held.len() == 1,
+                "hook {symbol}: defined by {} objects",
+                held.len()
+            );
+            let patched = format!("build/{version}/oracle/hooked/{}", basename(&held[0]));
+            let names = BTreeSet::from([symbol.to_owned()]);
+            write(
+                &request.root,
+                &patched,
+                &coff::hook_symbols(&fs::read(request.root.join(&held[0]))?, &names)?,
+            )?;
+            for input in &mut inputs {
+                if *input == held[0] {
+                    *input = patched.clone();
+                }
+            }
+        }
+    }
+    let duplicate = Regex::new(r"Multiple definitions of symbol: (\S+) in\s+#\s+([^\n]+)")?;
+    let undefined = Regex::new(r"Undefined symbol: (\S+) in")?;
+    let mut attempts = BTreeSet::new();
+    loop {
+        ensure!(
+            attempts.insert(inputs.clone()),
+            "linker retry made no progress\n{}",
+            messages.join("\n")
+        );
+        let (code, text) = execute(request, &inputs)?;
+        if code == Some(0) {
+            break;
+        }
+        if request.oracle {
+            let wanted: BTreeSet<_> = undefined
+                .captures_iter(&text)
+                .map(|c| c[1].to_owned())
+                .collect();
+            let mut joined = false;
+            if !wanted.is_empty() {
+                let mut ours = BTreeSet::new();
+                for path in &compiled_objects {
+                    ours.extend(coff::defined_symbols(&fs::read(request.root.join(path))?)?);
+                }
+                for path in &compiled_objects {
+                    let split = path.replacen("/oracle/compiled/", "/obj/", 1);
+                    let patched = format!("build/{version}/oracle/supplement/{}", basename(&split));
+                    if inputs.contains(&patched) || !request.root.join(&split).is_file() {
+                        continue;
+                    }
+                    let defined = coff::defined_symbols(&fs::read(request.root.join(&split))?)?;
+                    if defined.difference(&ours).any(|s| wanted.contains(s)) {
+                        write(
+                            &request.root,
+                            &patched,
+                            &coff::undefine_symbols(&fs::read(request.root.join(&split))?, &ours)?,
+                        )?;
+                        inputs.push(patched);
+                        joined = true;
+                    }
+                }
+            }
+            if joined {
+                continue;
+            }
+            let mut stripped: IndexMap<String, BTreeSet<String>> = IndexMap::new();
+            for c in duplicate.captures_iter(&text) {
+                let names: BTreeSet<_> = c[2].split(',').map(str::trim).collect();
+                let ours: Vec<_> = inputs
+                    .iter()
+                    .filter(|p| {
+                        p.replace('\\', "/").contains("/oracle/compiled/")
+                            && names.contains(basename(p))
+                    })
+                    .collect();
+                if ours.len() == 1 {
+                    stripped
+                        .entry(ours[0].clone())
+                        .or_default()
+                        .insert(c[1].into());
+                }
+            }
+            if !stripped.is_empty() {
+                for (path, names) in stripped {
+                    let patched = format!("build/{version}/oracle/patched/{}", basename(&path));
+                    write(
+                        &request.root,
+                        &patched,
+                        &coff::undefine_symbols(&fs::read(request.root.join(&path))?, &names)?,
+                    )?;
+                    for input in &mut inputs {
+                        if *input == path {
+                            *input = patched.clone();
+                        }
+                    }
+                    messages.push(format!(
+                        "{}: {} symbols taken from the original",
+                        basename(&path),
+                        names.len()
+                    ));
+                }
+                continue;
+            }
+        }
+        let reverted = if config["validate_units"] == true && !request.oracle {
+            revert_conflicts(&request.root, build, &inputs, &text)?
+        } else {
+            BTreeSet::new()
+        };
+        ensure!(
+            !reverted.is_empty(),
+            "{}{}",
+            if messages.is_empty() {
+                String::new()
+            } else {
+                format!("{}\n", messages.join("\n"))
+            },
+            text
+        );
+        messages.push(format!(
+            "{} compiled units are linked as split, for the symbols they define or need: {}",
+            reverted.len(),
+            reverted
+                .iter()
+                .map(|p| basename(p))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+        for input in &mut inputs {
+            if reverted.contains(input) {
+                *input = split_path(build, input);
+            }
+        }
+    }
+    let output = request.root.join(&request.output);
+    let mut linked = fs::read(&output)?;
+    let built = inputs
+        .iter()
+        .filter(|p| p.starts_with(&compiled_prefix))
+        .count();
+    if request.oracle {
+        let stub = request.root.join("tools/lmgr_stub/lmgr326b.dll");
+        if stub.is_file() {
+            fs::copy(
+                stub,
+                output
+                    .parent()
+                    .context("oracle output lacks directory")?
+                    .join("lmgr326b.dll"),
+            )?;
+        }
+        return Ok(Report {
+            identical: None,
+            sha1: format!("{:x}", Sha1::digest(&linked)),
+            messages,
+            linked_from_source: built,
+        });
+    }
+    let original = executable::Original::read(&request.root, version)?;
+    let stamp = pe::u32le(&original.data, 0x3c)? as usize + 8;
+    linked
+        .get_mut(stamp..stamp + 4)
+        .context("linked image lacks timestamp field")?
+        .copy_from_slice(pe::bytes(&original.data, stamp, 4)?);
+    fs::write(&output, &linked)?;
+    let actual = format!("{:x}", Sha1::digest(&linked));
+    let identical = config["sha1"] == actual;
+    let splits = executable::read_splits(&fs::read_to_string(
+        request.root.join(&tree.config_dir).join("splits.txt"),
+    )?)?;
+    if identical && request.record {
+        write(
+            &request.root,
+            &format!("build/{version}/ok"),
+            format!(
+                "{version}: the original, {built} of {} units linked from source{}",
+                splits.units.len(),
+                if cfg!(windows) { "\r\n" } else { "\n" }
+            )
+            .as_bytes(),
+        )?;
+    } else {
+        messages.push(format!(
+            "{}: SHA-1 is not {}",
+            request.output,
+            config["sha1"].as_str().unwrap_or("?")
+        ));
+        if linked.len() != original.data.len() {
+            messages.push(format!(
+                "  {} bytes, not {}",
+                linked.len(),
+                original.data.len()
+            ));
+        }
+        let pe = original.pe()?;
+        let mut shown = BTreeSet::new();
+        for (offset, (a, b)) in linked.iter().zip(&original.data).enumerate() {
+            if a == b {
+                continue;
+            }
+            let address = pe.offset_to_address(offset).ok();
+            let unit = splits
+                .units
+                .iter()
+                .find(|u| {
+                    u.ranges
+                        .iter()
+                        .any(|r| address.is_some_and(|a| r.start <= a && a < r.end))
+                })
+                .map_or("-", |u| u.name.as_str());
+            if shown.insert(unit.to_owned()) {
+                messages.push(format!(
+                    "  differs at {} ({unit})",
+                    address
+                        .map_or_else(|| format!("offset 0x{offset:x}"), |a| format!("0x{a:08x}"))
+                ));
+                if shown.len() == 10 {
+                    break;
+                }
+            }
+        }
+    }
+    Ok(Report {
+        identical: Some(identical),
+        sha1: actual,
+        messages,
+        linked_from_source: built,
+    })
+}

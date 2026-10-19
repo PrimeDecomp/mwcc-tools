@@ -1,0 +1,9 @@
+{
+  "schema_version": 6,
+  "oracle": "build\\GC_1_3_2\\oracle\\mwcceppc.exe",
+  "version": "GC_1_3_2",
+  "source": "sources/empty.c",
+  "identical": true,
+  "differences": [],
+  "functions": []
+}

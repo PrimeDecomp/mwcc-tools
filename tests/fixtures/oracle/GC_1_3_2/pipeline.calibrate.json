@@ -1,0 +1,167 @@
+[
+  {
+    "callee": "nested",
+    "target": {
+      "name": "synthetic",
+      "metadata": {
+        "source_path": "sources/pipeline.cpp"
+      },
+      "functions": [
+        {
+          "name": "nested<P5Value>__4rstlFPC5Value"
+        }
+      ]
+    },
+    "rows": [
+      {
+        "unit": "synthetic",
+        "kind": "missing",
+        "instance": "nested<P5Value>__4rstlFPC5Value",
+        "element": "Value",
+        "need": "call",
+        "costs": [],
+        "threshold": null,
+        "ok": null,
+        "decisions": []
+      }
+    ],
+    "report": [
+      "missing  synthetic: Value  target needs call (cost > None); ours []: no decision found"
+    ],
+    "binaries": [
+      {
+        "symbols": [],
+        "table": {
+          "nested__Fi": {
+            "present": false,
+            "costs": [
+              11
+            ],
+            "units": [
+              "synthetic"
+            ],
+            "thresholds": [
+              512
+            ]
+          }
+        },
+        "report": [
+          "target    ours min..max  instance (units)"
+        ]
+      },
+      {
+        "symbols": [
+          "nested__Fi"
+        ],
+        "table": {
+          "nested__Fi": {
+            "present": true,
+            "costs": [
+              11
+            ],
+            "units": [
+              "synthetic"
+            ],
+            "thresholds": [
+              512
+            ]
+          }
+        },
+        "report": [
+          "target    ours min..max  instance (units)",
+          "called       11..11      nested__Fi (1)  needs +502"
+        ]
+      }
+    ]
+  },
+  {
+    "callee": "twice",
+    "target": {
+      "name": "synthetic",
+      "metadata": {
+        "source_path": "sources/pipeline.cpp"
+      },
+      "functions": [
+        {
+          "name": "twice<i>__Fi"
+        },
+        {
+          "name": "twice<P5Value>__4rstlFPC5Value"
+        }
+      ]
+    },
+    "rows": [
+      {
+        "unit": "synthetic",
+        "kind": "missing",
+        "instance": "twice<i>__Fi",
+        "element": "i",
+        "need": "call",
+        "costs": [],
+        "threshold": null,
+        "ok": null,
+        "decisions": []
+      },
+      {
+        "unit": "synthetic",
+        "kind": "missing",
+        "instance": "twice<P5Value>__4rstlFPC5Value",
+        "element": "Value",
+        "need": "call",
+        "costs": [],
+        "threshold": null,
+        "ok": null,
+        "decisions": []
+      }
+    ],
+    "report": [
+      "missing  synthetic: i  target needs call (cost > None); ours []: no decision found",
+      "missing  synthetic: Value  target needs call (cost > None); ours []: no decision found"
+    ],
+    "binaries": [
+      {
+        "symbols": [],
+        "table": {
+          "twice<i>__Fi": {
+            "present": false,
+            "costs": [
+              6
+            ],
+            "units": [
+              "synthetic"
+            ],
+            "thresholds": [
+              512
+            ]
+          }
+        },
+        "report": [
+          "target    ours min..max  instance (units)"
+        ]
+      },
+      {
+        "symbols": [
+          "twice<i>__Fi"
+        ],
+        "table": {
+          "twice<i>__Fi": {
+            "present": true,
+            "costs": [
+              6
+            ],
+            "units": [
+              "synthetic"
+            ],
+            "thresholds": [
+              512
+            ]
+          }
+        },
+        "report": [
+          "target    ours min..max  instance (units)",
+          "called        6..6       twice<i>__Fi (1)  needs +507"
+        ]
+      }
+    ]
+  }
+]

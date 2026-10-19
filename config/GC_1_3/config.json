@@ -3,7 +3,50 @@
   "sha1": "b18d7887262e6b591c146c9dc4f58a4be7c0e939",
   "mode": "compare",
   "validate_units": true,
-  "imports": ["config/kernel32_13.def", "config/version.def"],
+  "oracle": {
+    "template": "src/backend/Coloring.c",
+    "extra": [
+      "src/oracle/Hooks.c"
+    ],
+    "hooks": [
+      "_fn_00460780",
+      "_fn_00460c90",
+      "_setup_inline_locals_and_arguments",
+      "_fn_004601f0",
+      "_create_temp_object",
+      "_fn_00454030",
+      "_fn_00506cd0",
+      "_can_inline",
+      "_fn_0055e540",
+      "_inline_call_expression",
+      "_fn_00507070",
+      "_fn_00506f50",
+      "_fn_004f7fb0",
+      "_schedule_block",
+      "_select_ready_coloring_node",
+      "_fn_0055e600",
+      "_inline_statement",
+      "_generate_inline_statements",
+      "_CInline_DispatchNextDeferredNode",
+      "_CInline_AddFunctionPrecNode",
+      "_CInline_AddSpecialization",
+      "_CTemplateNew_InstantiateInlineTemplateObject",
+      "_CTemplateNew_InstantiateFunction",
+      "_generate_inline_code",
+      "_fn_0050f240",
+      "_fn_00436390",
+      "_COptimizer_Optimize",
+      "_Peephole_MergeAdjacentBlocks",
+      "_IRO_CommonSubs",
+      "_move_common_sub",
+      "_IroDump_Print"
+    ],
+    "units": []
+  },
+  "imports": [
+    "config/kernel32_13.def",
+    "config/version.def"
+  ],
   "compilers": {
     "pro53": "pro6",
     "pro5": "pro53"
@@ -20,7 +63,7 @@
     "src/backend/MachineSimulation821.c",
     "src/backend/PCodeListing.c",
     "src/driver/Arguments.c",
-    "src/driver/CLErrors.c",
+    "src/driver/CLWriteObjectFile.c",
     "src/driver/CLFiles.c",
     "src/driver/CLLoadAndCache.c",
     "src/driver/CLOverlays.c",

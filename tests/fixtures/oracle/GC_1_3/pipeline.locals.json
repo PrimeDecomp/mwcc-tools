@@ -1,0 +1,349 @@
+[
+  {
+    "link": "pipeline__Fii",
+    "plain": [
+      "== pipeline: locals (the scalarizer: IRO_ScalarizeClassDataMembers) ==",
+      "   pass 1 (pointer analysis off):",
+      "      p (8 bytes): KEPT IN MEMORY (memory r1+8)",
+      "         because: used as a class of 8 bytes at offset 0 (node 4): copied as a whole (an assignment or copy construction that copies it bitwise, a by-value argument, a return)",
+      "            it would be split if that copy were made member by member, or went away. An operator= the compiler makes copies a member whose class has no user operator= whole, even when that class has a user copy constructor; an implicit copy constructor does the same for a member whose class has no user copy constructor. So for an assignment, give the class copied whole a user operator= that copies each member (inlined); for a construction, a user copy constructor. The copy functions it is bound to are listed below",
+      "         bytes 0..7     class 8, 1 use(s)",
+      "   pass 2 (pointer analysis off):",
+      "      p (8 bytes): KEPT IN MEMORY (memory r1+8), no part made",
+      "         because: used as a class of 8 bytes at offset 0 (node 4): copied as a whole (an assignment or copy construction that copies it bitwise, a by-value argument, a return)",
+      "            it would be split if that copy were made member by member, or went away. An operator= the compiler makes copies a member whose class has no user operator= whole, even when that class has a user copy constructor; an implicit copy constructor does the same for a member whose class has no user copy constructor. So for an assignment, give the class copied whole a user operator= that copies each member (inlined); for a construction, a user copy constructor. The copy functions it is bound to are listed below",
+      "   formals of the calls inlined into it (substituted: the caller's expression stands for it, aliased; reference: bound to the temporary the argument constructs (a BY VALUE formal's is the caller's copy; a reference formal's, a temporary such as V(a, b, c)); local: a fresh local holding the argument, or its address for a reference formal):",
+      "      nested__Fi",
+      "         #0 a (int 4): substituted x2 -> input (not in the frame: split, folded or dead), i (reg 29)",
+      "      twice<i>__Fi",
+      "         #0 x (int 4): substituted x2 -> input (not in the frame: split, folded or dead), i (reg 29)"
+    ],
+    "summary": [
+      "== pipeline: kept in memory (summary) ==",
+      "   ours: p (8 bytes): a class of 8 bytes: a member aggregate copied whole"
+    ],
+    "asm": ".fn \"pipeline__Fii\", global\n/* 00000000 94 21 FE 00 */ stwu r1, -512(r1)\n/* 00000000 BF C1 01 E0 */ stmw r30, 480(r1)\n/* 00000000 94 21 FF E0 */ stwu r1, -32(r1)\n/* 00000000 7C 08 02 A6 */ .long 0x7c0802a6\n/* 00000000 90 01 00 24 */ stw r0, 36(r1)\n/* 00000000 38 03 00 01 */ addi r0, r3, 1\n/* 00000000 93 E1 00 1C */ stw r31, 28(r1)\n/* 00000000 7F E3 02 14 */ .long 0x7fe30214\n/* 00000000 93 C1 00 18 */ stw r30, 24(r1)\n/* 00000000 7F C3 F9 D6 */ .long 0x7fc3f9d6\n/* 00000000 93 A1 00 14 */ stw r29, 20(r1)\n/* 00000000 3B A0 00 00 */ addi r29, r0, 0\n/* 00000000 93 81 00 10 */ stw r28, 16(r1)\n/* 00000000 7C 9C 23 78 */ .long 0x7c9c2378\n/* 00000000 38 80 00 00 */ addi r4, r0, 0\n/* 00000000 80 A0 00 00 */ lwz r5, 0(r0)\n/* 00000000 80 00 00 00 */ lwz r0, 0(r0)\n/* 00000000 90 A1 00 08 */ stw r5, 8(r1)\n/* 00000000 90 01 00 0C */ stw r0, 12(r1)\n/* 00000000 90 61 00 08 */ stw r3, 8(r1)\n/* 00000000 93 E1 00 0C */ stw r31, 12(r1)\n/* 00000000 48 00 00 38 */ .long 0x48000038\n/* 00000000 2C 1D 00 00 */ .long 0x2c1d0000\n/* 00000000 38 1D 00 01 */ addi r0, r29, 1\n/* 00000000 7C 1D 02 14 */ .long 0x7c1d0214\n/* 00000000 41 82 00 08 */ .long 0x41820008\n/* 00000000 7F C0 F3 78 */ .long 0x7fc0f378\n/* 00000000 7C 80 22 14 */ .long 0x7c802214\n/* 00000000 7C 9E 22 14 */ .long 0x7c9e2214\n/* 00000000 54 80 07 FF */ .long 0x548007ff\n/* 00000000 41 82 00 10 */ .long 0x41820010\n/* 00000000 7C 83 23 78 */ .long 0x7c832378\n/* 00000000 48 00 00 01 */ .long 0x48000001\n/* 00000000 7C 64 1B 78 */ .long 0x7c641b78\n/* 00000000 3B BD 00 01 */ addi r29, r29, 1\n/* 00000000 7C 1D E0 00 */ .long 0x7c1de000\n/* 00000000 41 80 FF C8 */ .long 0x4180ffc8\n/* 00000000 80 01 00 24 */ lwz r0, 36(r1)\n/* 00000000 7C 64 FA 14 */ .long 0x7c64fa14\n/* 00000000 83 E1 00 1C */ lwz r31, 28(r1)\n/* 00000000 83 C1 00 18 */ lwz r30, 24(r1)\n/* 00000000 83 A1 00 14 */ lwz r29, 20(r1)\n/* 00000000 83 81 00 10 */ lwz r28, 16(r1)\n/* 00000000 7C 08 03 A6 */ .long 0x7c0803a6\n/* 00000000 38 21 00 20 */ addi r1, r1, 32\n/* 00000000 4E 80 00 20 */ .long 0x4e800020\n/* 00000000 90 61 01 40 */ stw r3, 320(r1)\n/* 00000000 90 81 01 44 */ stw r4, 324(r1)\n/* 00000000 90 A1 01 48 */ stw r5, 328(r1)\n/* 00000000 90 61 01 4C */ stw r3, 332(r1)\n/* 00000000 90 81 01 50 */ stw r4, 336(r1)\n/* 00000000 90 A1 01 54 */ stw r5, 340(r1)\n/* 00000000 90 61 01 58 */ stw r3, 344(r1)\n/* 00000000 90 81 01 5C */ stw r4, 348(r1)\n/* 00000000 90 A1 01 60 */ stw r5, 352(r1)\n/* 00000000 80 C1 01 40 */ lwz r6, 320(r1)\n/* 00000000 38 E1 01 4C */ addi r7, r1, 332\n.endfn \"pipeline__Fii\"",
+    "target": {
+      "size": 512,
+      "uses": {
+        "36": [
+          [
+            4,
+            "lwz"
+          ],
+          [
+            4,
+            "stw"
+          ]
+        ],
+        "28": [
+          [
+            4,
+            "lwz"
+          ],
+          [
+            4,
+            "stw"
+          ]
+        ],
+        "24": [
+          [
+            4,
+            "lwz"
+          ],
+          [
+            4,
+            "stw"
+          ]
+        ],
+        "20": [
+          [
+            4,
+            "lwz"
+          ],
+          [
+            4,
+            "stw"
+          ]
+        ],
+        "16": [
+          [
+            4,
+            "lwz"
+          ],
+          [
+            4,
+            "stw"
+          ]
+        ],
+        "8": [
+          [
+            4,
+            "stw"
+          ]
+        ],
+        "12": [
+          [
+            4,
+            "stw"
+          ]
+        ],
+        "32": [
+          [
+            0,
+            "addi"
+          ]
+        ],
+        "320": [
+          [
+            4,
+            "lwz"
+          ],
+          [
+            4,
+            "stw"
+          ]
+        ],
+        "324": [
+          [
+            4,
+            "stw"
+          ]
+        ],
+        "328": [
+          [
+            4,
+            "stw"
+          ]
+        ],
+        "332": [
+          [
+            0,
+            "addi"
+          ],
+          [
+            4,
+            "stw"
+          ]
+        ],
+        "336": [
+          [
+            4,
+            "stw"
+          ]
+        ],
+        "340": [
+          [
+            4,
+            "stw"
+          ]
+        ],
+        "344": [
+          [
+            4,
+            "stw"
+          ]
+        ],
+        "348": [
+          [
+            4,
+            "stw"
+          ]
+        ],
+        "352": [
+          [
+            4,
+            "stw"
+          ]
+        ]
+      },
+      "limit": 480
+    },
+    "words": [
+      2485256160,
+      2080899750,
+      2415984676,
+      939720705,
+      2480996380,
+      2145583636,
+      2478899224,
+      2143549910,
+      2476802068,
+      1000341504,
+      2474704912,
+      2090607480,
+      947912704,
+      2157969408,
+      2147483648,
+      2426470408,
+      2415984652,
+      2422276104,
+      2480996364,
+      1207959608,
+      740098048,
+      941424641,
+      2082275860,
+      1099038728,
+      2143351672,
+      2088772116,
+      2090738196,
+      1417676799,
+      1099038736,
+      2088969080,
+      1207959553,
+      2086935416,
+      1002242049,
+      2082332672,
+      1098973128,
+      2147549220,
+      2086992404,
+      2212560924,
+      2210463768,
+      2208366612,
+      2206269456,
+      2080900006,
+      941686816,
+      1317011488
+    ],
+    "target_words": [
+      2485255680,
+      3217097184,
+      2485256160,
+      2080899750,
+      2415984676,
+      939720705,
+      2480996380,
+      2145583636,
+      2478899224,
+      2143549910,
+      2476802068,
+      1000341504,
+      2474704912,
+      2090607480,
+      947912704,
+      2157969408,
+      2147483648,
+      2426470408,
+      2415984652,
+      2422276104,
+      2480996364,
+      1207959608,
+      740098048,
+      941424641,
+      2082275860,
+      1099038728,
+      2143351672,
+      2088772116,
+      2090738196,
+      1417676799,
+      1099038736,
+      2088969080,
+      1207959553,
+      2086935416,
+      1002242049,
+      2082332672,
+      1098973128,
+      2147549220,
+      2086992404,
+      2212560924,
+      2210463768,
+      2208366612,
+      2206269456,
+      2080900006,
+      941686816,
+      1317011488,
+      2422276416,
+      2424373572,
+      2426470728,
+      2422276428,
+      2424373584,
+      2426470740,
+      2422276440,
+      2424373596,
+      2426470752,
+      2160132416,
+      954270028
+    ],
+    "limit": 16,
+    "target_report": [
+      "== pipeline: locals (the scalarizer: IRO_ScalarizeClassDataMembers) ==",
+      "   pass 1 (pointer analysis off):",
+      "      p (8 bytes): KEPT IN MEMORY (memory r1+8)",
+      "         because: used as a class of 8 bytes at offset 0 (node 4): copied as a whole (an assignment or copy construction that copies it bitwise, a by-value argument, a return)",
+      "            it would be split if that copy were made member by member, or went away. An operator= the compiler makes copies a member whose class has no user operator= whole, even when that class has a user copy constructor; an implicit copy constructor does the same for a member whose class has no user copy constructor. So for an assignment, give the class copied whole a user operator= that copies each member (inlined); for a construction, a user copy constructor. The copy functions it is bound to are listed below",
+      "         bytes 0..7     class 8, 1 use(s)",
+      "   pass 2 (pointer analysis off):",
+      "      p (8 bytes): KEPT IN MEMORY (memory r1+8), no part made",
+      "         because: used as a class of 8 bytes at offset 0 (node 4): copied as a whole (an assignment or copy construction that copies it bitwise, a by-value argument, a return)",
+      "            it would be split if that copy were made member by member, or went away. An operator= the compiler makes copies a member whose class has no user operator= whole, even when that class has a user copy constructor; an implicit copy constructor does the same for a member whose class has no user copy constructor. So for an assignment, give the class copied whole a user operator= that copies each member (inlined); for a construction, a user copy constructor. The copy functions it is bound to are listed below",
+      "   formals of the calls inlined into it (substituted: the caller's expression stands for it, aliased; reference: bound to the temporary the argument constructs (a BY VALUE formal's is the caller's copy; a reference formal's, a temporary such as V(a, b, c)); local: a fresh local holding the argument, or its address for a reference formal):",
+      "      nested__Fi",
+      "         #0 a (int 4): substituted x2 -> input (not in the frame: split, folded or dead), i (reg 29)",
+      "      twice<i>__Fi",
+      "         #0 x (int 4): substituted x2 -> input (not in the frame: split, folded or dead), i (reg 29)",
+      "   frame: target 0x200 (512), ours 0x20 (32): +480 bytes in the target's",
+      "   the target's locals area, by the r1 offsets its code uses (addi: the address is taken):",
+      "      r1+0x8..0x1f (24 bytes) 0x8:stw, 0xc:stw, 0x10:lwz/stw, 0x14:lwz/stw, 0x18:lwz/stw, 0x1c:lwz/stw, 0x20:addi   ours there: p, 2 compiler temporaries listed at offset 0 (no slot of their own)",
+      "      r1+0x24..0x27 (4 bytes) 0x24:lwz/stw",
+      "      r1+0x140..0x163 (36 bytes) 0x140:lwz/stw, 0x144:stw, 0x148:stw, 0x14c:addi/stw, 0x150:stw, 0x154:stw, 0x158:stw, 0x15c:stw, 0x160:stw"
+    ],
+    "shifts": {
+      "p": {
+        "0": 4
+      }
+    },
+    "shift_report": [
+      "   slot shifts (target offset - ours, by the object our paired r1 accesses are in; the smallest groups are the objects the target places in another order):",
+      "      +0x0: 1 object(s): p (8@r1+0x8)"
+    ],
+    "runs": [
+      {
+        "start": 320,
+        "end": 356,
+        "accesses": {
+          "stw": 9,
+          "lwz": 1,
+          "addi": 1
+        },
+        "copies": [
+          {
+            "size": 12,
+            "offsets": [
+              320,
+              332,
+              344
+            ],
+            "reloaded": {
+              "320": [
+                [
+                  0,
+                  "lwz"
+                ]
+              ]
+            },
+            "registers": [
+              "r3",
+              "r4",
+              "r5"
+            ],
+            "order": "copy by copy",
+            "first": 320
+          }
+        ]
+      }
+    ],
+    "mine": [],
+    "unpaired_report": [
+      "   in the target's memory, with no access of ours paired (kept in memory there; ours has it in registers, elsewhere, or not at all):",
+      "      r1+0x140..0x163 (36 bytes): stw x9, lwz x1, addi x1 (its address passed on)",
+      "         3 identical copies of a 12-byte value (r3, r4, r5) at r1+0x140, 0x14c, 0x158, stored copy by copy (first: 0x140)",
+      "            read back: the copy at 0x140: +0 (lwz); the 2 other(s) never read (dead stores)",
+      "         (one value copied whole into several temporaries the target keeps in memory: a chain of whole copies, by-value returns or arguments, each a temporary of its own; compare with our locals of that size split into scalars, above)"
+    ],
+    "target_summary": [
+      "== pipeline: kept in memory (summary) ==",
+      "   ours: p (8 bytes): a class of 8 bytes: a member aggregate copied whole",
+      "   target: 3 copies of a 12-byte value at r1+0x140, 0x14c, 0x158, 1 read back (a value made again for each use: a macro or inline that evaluates its argument more than once, or a by-value chain)"
+    ]
+  }
+]

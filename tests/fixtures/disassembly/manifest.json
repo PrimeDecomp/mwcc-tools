@@ -1,0 +1,23 @@
+{
+  "reference_commit": "b75c4e5e0b4bc97ae06c26ea9d6aad8379ac1722",
+  "capstone_package": "5.0.9",
+  "capstone_module": "5.0.7",
+  "capstone_api": [
+    5,
+    0,
+    1280
+  ],
+  "reference_scripts": {
+    "disasm.py": "58c8cc42f0bce17c33d0942fce0af677fc04b745ec2761b60513054e769d619a",
+    "fdiff.py": "75b3093044a1ff4c0673f33007698ffb59ad89f52a0112fe460013eabc2c27d6",
+    "nearest.py": "e32bee98c53395e3de5b59d133efdb254d249cf5eaf9fcd1238e06e28ddf0834"
+  },
+  "files": {
+    "instructions.json": "8e0c5cb63ceab17dff0f0736ce985b1134bfe7ce616ac44d3da2286ee4ff1a83",
+    "original.pe": "e82b2bfee852cc2322d2bf64900017f85918cf2575ca489fd3f76354f4f762b1",
+    "project.json": "fb1b4a94d6f124e3c81dcbe478d00618043cc668a2bf1c7d69d6f275c2e70cb0",
+    "shapes.json": "36469ae54630485bc0a5e6f119c8358945a36e351e1686619c5b0fa91397d295",
+    "src-one.c.obj": "09c62dde47e10b66a1a8cfddee0e5c84c812b1b79b8a2dc0e3469f21f299edaa",
+    "src-two.c.obj": "b796d42b86d37439c2e2ef533c767fe85853e517ae1f9b4496d18e4f39067951"
+  }
+}

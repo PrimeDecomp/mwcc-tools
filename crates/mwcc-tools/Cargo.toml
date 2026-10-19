@@ -1,0 +1,21 @@
+[package]
+name = "mwcc-tools"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+tempfile.workspace = true
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+mwcc-oracle-core = { path = "../mwcc-oracle-core" }
+mwcc-project = { path = "../mwcc-project" }
+mwcc-methods = { path = "../mwcc-methods" }
+
+[features]
+default = ["wasm"]
+# The compilers of gc2's sources (GC 2.6, 2.7) run in process, as WebAssembly, where their modules are built
+wasm = ["mwcc-oracle-core/wasm"]

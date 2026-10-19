@@ -1,0 +1,72 @@
+{
+  "schema_version": 6,
+  "oracle": "build\\GC_2_7\\oracle\\mwcceppc.exe",
+  "version": "GC_2_7",
+  "source": "sources/empty.c",
+  "identical": null,
+  "differences": [],
+  "functions": [
+    {
+      "function": "added_by_header_change",
+      "link": "added_by_header_change",
+      "blocks": 3,
+      "instructions": 2,
+      "classes": {
+        "GPR": {
+          "rounds": [
+            {
+              "k": 29,
+              "mask": 8185,
+              "ok": true,
+              "nodes": 1,
+              "spilled": []
+            }
+          ],
+          "vregs": [
+            {
+              "vreg": 32,
+              "class": "GPR",
+              "phys": 3,
+              "defs": 1,
+              "uses": 1,
+              "live_blocks": 1,
+              "across_call": 0,
+              "first_call_block": null,
+              "def": {
+                "block": 1,
+                "line": null,
+                "instruction": "mr %r32, r3, -"
+              },
+              "degree": 0,
+              "neighbors": [],
+              "graph_flags": 4,
+              "state": "coalesced",
+              "coalesced_into": 3
+            }
+          ],
+          "k": 29,
+          "mask": 8185,
+          "order": [],
+          "simplify_replay_agrees": true,
+          "select_replay_agrees": 0,
+          "select_replayed": 0
+        }
+      },
+      "removed": [
+        "mr %r32, r3, -"
+      ],
+      "inserted": [],
+      "frame": [],
+      "layout": {
+        "linkage": 0,
+        "outgoing": 0,
+        "locals": 0,
+        "above": 0,
+        "size": 0
+      },
+      "schema_version": 6,
+      "inlining": [],
+      "schedule": []
+    }
+  ]
+}

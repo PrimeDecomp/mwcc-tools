@@ -1,100 +1,87 @@
-MWCC
-====
+mwcc-tools
+==========
 
-[![Build Status]][actions] [![1.0]][progress] [![1.1]][progress] [![1.1p1]][progress] [![1.2.5]][progress]
-[![1.2.5n]][progress] [![1.3]][progress]
+[![Build Status]][actions]
 
 [Build Status]: https://github.com/rayanht/mwcc/actions/workflows/build.yml/badge.svg
 [actions]: https://github.com/rayanht/mwcc/actions/workflows/build.yml
-[1.0]: https://decomp.dev/rayanht/mwcc/GC_1_0.svg?mode=shield&measure=code&label=1.0
-[1.1]: https://decomp.dev/rayanht/mwcc/GC_1_1.svg?mode=shield&measure=code&label=1.1
-[1.1p1]: https://decomp.dev/rayanht/mwcc/GC_1_1p1.svg?mode=shield&measure=code&label=1.1p1
-[1.2.5]: https://decomp.dev/rayanht/mwcc/GC_1_2_5.svg?mode=shield&measure=code&label=1.2.5
-[1.2.5n]: https://decomp.dev/rayanht/mwcc/GC_1_2_5n.svg?mode=shield&measure=code&label=1.2.5n
-[1.3]: https://decomp.dev/rayanht/mwcc/GC_1_3.svg?mode=shield&measure=code&label=1.3
-[progress]: https://decomp.dev/rayanht/mwcc
 
-A matching decompilation of `mwcceppc.exe`, the Windows/x86 CodeWarrior compiler for GameCube.
+Tools for matching code compiled by `mwcceppc.exe`, the CodeWarrior compiler for GameCube. They explain register
+assignment, inlining, scheduling and stack layout from a trace of the compiler (the oracle), and search,
+reduce and compare candidate sources against it.
 
-Supported versions:
+Getting started
+===============
 
-- `GC_1_0`: GameCube 1.0
-- `GC_1_1`: GameCube 1.1
-- `GC_1_1p1`: GameCube 1.1p1 (a patched 1.1)
-- `GC_1_2_5`: GameCube 1.2.5
-- `GC_1_2_5n`: GameCube 1.2.5n (1.2.5 with Ninji's patch)
-- `GC_1_3`: GameCube 1.3
-- `GC_1_3_2`: GameCube 1.3.2 (split and relinked; no sources of its own)
-- `GC_2_7`: GameCube 2.7 (split and relinked from 1.3.2's symbols; no sources of its own, see `docs/gc27-differences.md`)
+The tools are built with Rust, and GC 2.6 and 2.7's compiler and oracle are built from the compiler's sources in
+`gc2/` as WebAssembly, which `mwcc-tools` runs in process. The build needs:
 
-Dependencies
-============
-
-- Python 3.11+
+- Rust (the version pinned in `rust-toolchain.toml`, which rustup installs) with the `wasm32-unknown-unknown`
+  target, and a C compiler for the bundled Capstone decoder
 - [ninja](https://github.com/ninja-build/ninja)
-- [unshield](https://github.com/twogood/unshield), to unpack the CodeWarrior Pro 5.3 updater
+- LLVM 22 or later (`clang`, `wasm-ld`), on the path or named by `CLANG` and `WASM_LD` when running `configure`
 
-macOS: `brew install ninja unshield`. Linux: `apt install ninja-build unshield`.
-Windows: `winget install Ninja-build.Ninja`, and unshield through WSL (`wsl sudo apt install unshield`).
-
-[wibo](https://github.com/decompals/wibo) runs the compilers and is downloaded automatically.
-
-Building
-========
+macOS: `brew install ninja llvm lld` (Homebrew's LLVM is not on the path: set `CLANG` and `WASM_LD`).
+Linux: `apt install ninja-build`, and clang-22 and wasm-ld-22 from [apt.llvm.org](https://apt.llvm.org).
+Windows: `winget install Ninja-build.Ninja` and `winget install LLVM.LLVM`.
 
 ```sh
-python configure.py
-ninja
+rustup target add wasm32-unknown-unknown
+cargo build --locked --release -p mwcc-tools
+target/release/mwcc-tools configure --version GC_2_7
+ninja build/GC_2_7/wasm/mwcc.wasm
 ```
 
-For another version, `python configure.py --version GC_1_2_5n` (or `GC_1_3`).
+On Windows, use `target/release/mwcc-tools.exe`. Use `--version GC_2_6` for 2.6. Test the tools with
+`cargo test --locked --workspace`.
 
-The build downloads what it needs but this repository does not contain:
+Using the tools
+===============
 
-- the original executables, from the [decomp.dev compiler archive](https://files.decomp.dev), checked against
-  their published SHA-1 (`build/compilers/GC`)
-- the CodeWarrior Pro 4, 5, 5.3 and 6 Windows/x86 compilers that built them and the Pro 5.3 linker, from the
-  Internet Archive (`build/compilers/pro*`)
-- the MSL C library and runtime sources of CodeWarrior Pro 5, from the same Internet Archive disc, and the runtime
-  sources of its 5.3 updater (`lib/`), with the compiler's own changes to `printf.c`, `time.c`, `time.win32.c`,
-  `startup.win32.c`, `ThreadLocalData.c` and `exchand.cpp` applied (`lib/extra`), and the Win32 import library the
-  executable links
+The oracle's tools are methods: JSON parameters in, JSON results out. `mwcc-tools call METHOD KEY=VALUE ...` runs
+one (a VALUE that is JSON is read as JSON), `mwcc-tools serve` keeps a session over JSON lines, and the Python
+package `mwcc_tools` drives that session.
 
-For 1.1, 1.1p1, 1.2.5 and 1.2.5n, as in [decomp-toolkit](https://github.com/encounter/decomp-toolkit) projects, the
-original is split into one object per translation unit, and `ninja` links the executable with the CodeWarrior linker
-from the compiled objects of the Matching sources and the split objects of the others, then checks it against the
-original's SHA-1. A source is Matching when its object, code and data, links into the original. For the other versions,
-each compiled function is compared with the original's; `ninja` fails when a function of a Matching source differs.
+```sh
+mwcc-tools call oracle.trace project=../project unit=main/Foo function=Draw views.text=true
+mwcc-tools call oracle.analyze trace_path=saved.trace version=GC_2_7
+mwcc-tools call oracle.regdiff project=../project unit=main/Foo function=Draw text=true full=true
+```
 
-`python tools/verify.py` builds and checks every version, and that every function of a source matches.
+```python
+from mwcc_tools import Engine, Trace
+with Engine() as engine:
+    print('\n'.join(Trace(engine, load='saved', version='GC_2_7').verify(text=True)['text']))
+```
 
-Diffing
-=======
+Set `MWCC_ORACLE_ROOT` to this checkout (or pass `--oracle-root`) when running the tools from elsewhere. Offline
+analysis of a saved trace needs only the `mwcc-tools` executable. `mwcc-tools methods` lists every method and
+[api.md](docs/api.md) gives their parameters and results; the [oracle guide](docs/oracle.md) says which to use when.
 
-Open the project in [objdiff](https://github.com/encounter/objdiff) after building.
+The WebAssembly oracle does not have every provenance stream yet (expressions, dispatch, coalescing and call
+arguments' contexts; see [wasm.md](docs/wasm.md#probes)).
 
-Project structure
-=================
+Documentation
+=============
 
-- `config/sources.json`: each source's compiler, flags and status (Matching or NonMatching)
-- `config/<version>/config.json`: the original executable and its SHA-1; for the versions other than 1.2.5, the
-  sources Matching in that version; for 1.3, the compilers that replace Pro 5 and 5.3, and for 1.0, the options that
-  replace the sources' (it does not auto-inline)
-- `config/<version>/symbols.txt`, `splits.txt` (1.1, 1.1p1, 1.2.5, 1.2.5n): the original's symbols and its
-  translation units, in decomp-toolkit's formats
-- `config/<version>/functions.json`: each function's address, size and source (none yet for a function not
-  decompiled)
-- `config/<version>/bindings.json`: the addresses of the data and functions the sources reference
-- `config/lmgr326b.def`: the FLEXlm library the compiler imports by ordinal
-- `src/`: the compiler (`driver`, `frontend`, `optimizer`, `backend`) and its statically linked C library and
-  runtime (`msl`, `runtime`: one source per object of the original, which builds the library's source of it)
-- `include/`: headers; `include/libc` is the C library as the compiler's sources see it
-- `lib/` (downloaded): the MSL C library and runtime sources, built by `src/msl` and `src/runtime`
+| Documentation | Covers |
+|---|---|
+| [Oracle guide](docs/oracle.md) | Build, tool selection and everyday commands. |
+| [WebAssembly builds](docs/wasm.md) | The modules in detail: CI, Linux, the probes in the compiler's sources. |
+| [Native kit workflow](integrations/decomp-kits/overlay/.agents/docs/oracle-native.md) | Project units, candidates, register differences and structured checks. |
+| [Trace/API reference](docs/oracle/trace.md) | Raw records and versioned JSON. |
+| [Source-guided tools](docs/oracle-source-guided-status.md) | Provenance, source search, reduction and the matched-source index. |
+| [Decompilation](docs/decompilation.md) | The compilers' sources and their other builds. |
+| [Migration status](docs/oracle-rust-status.md) | Completed scope and release evidence. |
+| [Benchmarks](docs/oracle-rust-benchmarks.md) | Analysis/search speed and memory costs. |
 
-The source is formatted with `clang-format` (`uv run clang-format -i FILE`).
+Third-party notices are under [licenses](licenses/README.md).
 
 License
 =======
 
-The project's files are dedicated to the public domain under CC0 (`LICENSE`); it started from
-[inspiredrobot/mwcc](https://github.com/inspiredrobot/mwcc), also CC0.
+The project's own files are dedicated to the public domain under CC0 (`LICENSE`); third-party components retain their
+upstream licenses. The project started from
+[inspiredrobot/mwcc](https://github.com/inspiredrobot/mwcc), also CC0. `gc2/` is NWPlayer123's GC 2.x
+decompilation, CC0 (`gc2/LICENSE`). `wasm/libc` adapts parts of the MSL of
+[PrimeDecomp/echoes](https://github.com/PrimeDecomp/echoes), the Metroid Prime 2: Echoes decompilation, also CC0.

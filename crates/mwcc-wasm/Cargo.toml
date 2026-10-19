@@ -1,0 +1,17 @@
+[package]
+name = "mwcc-wasm"
+description = "Runs the GC 2.7 compiler built from gc2's sources as WebAssembly, in process, with its Win32 imports"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+encoding_rs = "0.8.35"
+sha2.workspace = true
+wasmtime = { version = "=49.0.3", default-features = false, features = ["cranelift", "runtime", "std", "gc", "gc-drc", "anyhow"] }
+
+
+[dev-dependencies]
+tempfile.workspace = true
+encoding_rs = "0.8.35"

@@ -1,0 +1,20 @@
+{
+  "near": [],
+  "suggestions": {
+    "accumualte": [],
+    "does_not_exist": []
+  },
+  "near_report": [
+    "== inline decisions within 8 of the threshold (cost, threshold, decision, callee link name, in which function) ==",
+    "   none"
+  ],
+  "instantiation_report": [
+    "== when the bodies of  came to be, and the decisions about calling them (trace line, event) ==",
+    "   nothing"
+  ],
+  "raw_selected": {
+    "common": [],
+    "pipeline": [],
+    "does_not_exist": []
+  }
+}

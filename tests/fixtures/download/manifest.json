@@ -1,0 +1,160 @@
+{
+  "reference_commit": "b75c4e5e0b4bc97ae06c26ea9d6aad8379ac1722",
+  "reference_sha256": "77c4605203714cd162ed733c47f7d1a36acd5e4fae476ce8baf9e6aec2f021fd",
+  "urls": [
+    {
+      "system": "Windows",
+      "machine": "AMD64",
+      "objdiff": "https://github.com/encounter/objdiff/releases/download/v3.8.1/objdiff-cli-windows-x86_64.exe",
+      "wibo": "https://github.com/decompals/wibo/releases/download/1.2.0/wibo-amd64"
+    },
+    {
+      "system": "Windows",
+      "machine": "ARM64",
+      "objdiff": "https://github.com/encounter/objdiff/releases/download/v3.8.1/objdiff-cli-windows-aarch64.exe",
+      "wibo": "https://github.com/decompals/wibo/releases/download/1.2.0/wibo-arm64"
+    },
+    {
+      "system": "Linux",
+      "machine": "x86_64",
+      "objdiff": "https://github.com/encounter/objdiff/releases/download/v3.8.1/objdiff-cli-linux-x86_64",
+      "wibo": "https://github.com/decompals/wibo/releases/download/1.2.0/wibo-x86_64"
+    },
+    {
+      "system": "Linux",
+      "machine": "aarch64",
+      "objdiff": "https://github.com/encounter/objdiff/releases/download/v3.8.1/objdiff-cli-linux-aarch64",
+      "wibo": "https://github.com/decompals/wibo/releases/download/1.2.0/wibo-aarch64"
+    },
+    {
+      "system": "Linux",
+      "machine": "arm64",
+      "objdiff": "https://github.com/encounter/objdiff/releases/download/v3.8.1/objdiff-cli-linux-aarch64",
+      "wibo": "https://github.com/decompals/wibo/releases/download/1.2.0/wibo-arm64"
+    },
+    {
+      "system": "Darwin",
+      "machine": "arm64",
+      "objdiff": "https://github.com/encounter/objdiff/releases/download/v3.8.1/objdiff-cli-macos-arm64",
+      "wibo": "https://github.com/decompals/wibo/releases/download/1.2.0/wibo-macos"
+    },
+    {
+      "system": "Darwin",
+      "machine": "x86_64",
+      "objdiff": "https://github.com/encounter/objdiff/releases/download/v3.8.1/objdiff-cli-macos-x86_64",
+      "wibo": "https://github.com/decompals/wibo/releases/download/1.2.0/wibo-macos"
+    }
+  ],
+  "discs": [
+    {
+      "raw": false,
+      "requests": [
+        [
+          0,
+          262143
+        ],
+        [
+          524288,
+          786431
+        ],
+        [
+          262144,
+          524287
+        ]
+      ],
+      "member_sha256": "fd3a5887823e9315a0ae229922c240b35f5dc912e04fa6fe1f59b82d16facbfc"
+    },
+    {
+      "raw": true,
+      "requests": [
+        [
+          0,
+          301055
+        ],
+        [
+          602112,
+          903167
+        ],
+        [
+          301056,
+          602111
+        ]
+      ],
+      "member_sha256": "fd3a5887823e9315a0ae229922c240b35f5dc912e04fa6fe1f59b82d16facbfc"
+    }
+  ],
+  "disc_member": "Tools/Command Line Tools/mwcc.exe",
+  "library_files": {
+    "extra/exchand.cpp": "23941362ef7f794b61eb616bdebd264e9d559de5c38cb29d486057953094bb53",
+    "extra/os_enum.h": "9eeafeeda2ef3eb3abcebe6aa863e050a5b463a6740385d3b5369d838fcc420e",
+    "extra/printf.c": "b64d31e31cfdd74c1bf09b7ffef83f1d1c810958178f022dc2ec0782e3b9aed1",
+    "extra/startup.win32.c": "9cfa6fe6ef40244dab6fe17e179f15e6b809c3f3e18c2e00c361058ff08a626a",
+    "extra/ThreadLocalData.c": "b4fdecfbc6755f7f4ec35757dfce9ef1368e3e8e111d3783ffc35d15ec4c9be0",
+    "extra/time.c": "822787df8fcd8574f1d321f908d896bb7ca1ed962d907ae8cb5d33bb808fc595",
+    "extra/time.win32.c": "9131d9ccc1629b74d85e21f2981a97eb9742eb6cf3e8692c19a5e0e7f402d5d2",
+    "extra/x86_prefix.h": "7b9c499aef76ea5e8cd77f1cdf1397d80257f3fb6c1ab36b3f31315e251ac5f6",
+    "msl/MSL_Common/Include/fixture.h": "ad926125307b7caa65f112398dc1ed048de358c648cc2d4e8ac6fd6258475e52",
+    "msl/MSL_Common/Include/nested/fixture.c": "f89d789faf7d706e4ae0712e591688e2db4c93b418ba65a3cf6bc46c7db12b51",
+    "msl/MSL_Common/Include/os_enum.h": "9eeafeeda2ef3eb3abcebe6aa863e050a5b463a6740385d3b5369d838fcc420e",
+    "msl/MSL_Common/Src/fixture.h": "3aa8f1ec5a2b557099a02334409d92b25108135a0270e52a28e7a75a8785c175",
+    "msl/MSL_Common/Src/nested/fixture.c": "ca014ac8e582480f295af3d48e695900e2e881459eabeb833c865b8d01fa370f",
+    "msl/MSL_Common/Src/printf.c": "92d8df472531ba1ac3013fd3031298e6abb57b0cbff099454b60829ee55a91fb",
+    "msl/MSL_Common/Src/time.c": "c9bb8eb2f9e3254827fbc2ce6dbcfc40940396bca8bd29d3fd829fb25c394b1b",
+    "msl/MSL_Cpp/MSL_Common/Include/fixture.h": "8ab69bc7986c18a99effd0492532771c2094b6dbdc0ba2b3007654ec91a586ac",
+    "msl/MSL_Cpp/MSL_Common/Include/nested/fixture.c": "cee63148fa20db9a609ca1932e9e63e457e1bbebe4358641f00c1f653b95d1c7",
+    "msl/MSL_Cpp/MSL_Common/Src/fixture.h": "a71997622e45e4861f2d79dedb8d5614bfd4548ca0acd6200070ca15b44263e0",
+    "msl/MSL_Cpp/MSL_Common/Src/nested/fixture.c": "5b503b17a5fae20f8975fdacd5f265da4041ea3d7e3fe58287dda3de4ed9e305",
+    "msl/MSL_Win32/Include/fixture.h": "ef7b8cbe19c4ba8fc996ca97d0a9c9d7c5684a7c1b4dd5a25b2d11d1e6ef2def",
+    "msl/MSL_Win32/Include/nested/fixture.c": "be0d20750707dc62b311b501d2067aefca5c4100951e7ab18838f66b640cb1e3",
+    "msl/MSL_Win32/Src/fixture.h": "aaaa61bf27098e60cb89b0d5b269725acf4ec9ceca31c56b7200fa69c056283e",
+    "msl/MSL_Win32/Src/nested/fixture.c": "37fe3e47c947e07c1a9329cc5f58d69b0b93e9bea2f3d07694de09655bc4bd35",
+    "msl/MSL_Win32/Src/startup.win32.c": "a051fbbcc595d9fec68b224d0ae0c555a265099df147ac3d7b2595c6fb9ff79b",
+    "msl/MSL_Win32/Src/ThreadLocalData.c": "167c4137be9c61962fa507cb88638f32570a21679e0579633c423876a6aa03a8",
+    "msl/MSL_Win32/Src/time.win32.c": "5baacb777125381be7c02ffd8d0dd2c401857340aaba85b12514d732677cbfbf",
+    "msl/MSL_X86/fixture.h": "1e27710a9d43a6b0f8ba58f5431a3fcacd7d71e5d3a77b4bfef76c864676e8b3",
+    "msl/MSL_X86/nested/fixture.c": "08b75a20f37084429e817c45274bc283998fae7d3a4b7b106912d30e81961719",
+    "msl/win32sdk/BaseTsd.h": "d43b1a412f3c71df02ab3da977d43f9d770fdbed88f6961c24c3a8cd89ea4a47",
+    "msl/win32sdk/EXCPT.H": "1e0bda9730561fb60baee218fe8febc1a73a9621a9894c60a55eac6a5b60ec5f",
+    "msl/win32sdk/IMM.H": "92f858e219c8da604a9aea50f4447bdae6acdbc71954df7343f0b3ae8d88054f",
+    "msl/win32sdk/MCX.H": "759bf1b1e4e127cb8fd730db36297901bd09cb27bd4aa20fdebbdc1c3264a5d5",
+    "msl/win32sdk/POPPACK.H": "0a22635d85119ced68c21fa2de166acd134a36606e4424040fd3bf1e4cad1d72",
+    "msl/win32sdk/PSHPACK1.H": "be350e26b3351d9765cce99676b4e28abb3ec9437bbf5c8d5b4126f026839414",
+    "msl/win32sdk/PSHPACK2.H": "8e8ae6606e1d2e92c48b1cbc49af8beb397334d3ea3b08b7afd7f326902a8a65",
+    "msl/win32sdk/PSHPACK4.H": "a52d2ae31205606a456e7d92df5055480860ff6328cb2aca2c99dca739a427f5",
+    "msl/win32sdk/PSHPACK8.H": "4048998b28f87f5899c2ef2b61628eefb76c0f48bf9c77eeceed6acc32f2270d",
+    "msl/win32sdk/sys/TYPES.H": "f9e140c9126e52325873dccbf78413aed9470bdc22fbb14e9cf650dae7e8edca",
+    "msl/win32sdk/TCHAR.H": "8e7aaa8aff334e6e3bd424347dd7751cb4384b1f490b18efeb4103a128b9d859",
+    "msl/win32sdk/WINBASE.H": "ddcd134e141a1f6ad0482c45308335d44edecc6855ad8e72660b3c9958e54cfe",
+    "msl/win32sdk/WINCON.H": "301d997569daa52462b13fa1553abd063ac58cce830c01e6f054c331cb6ed575",
+    "msl/win32sdk/WINDEF.H": "296a69925169d3eb0bcedd5730cf4ffffffc15a021b713fe882e774f52d8faf0",
+    "msl/win32sdk/WINDOWS.H": "64a38e05a376b287faff2e480b90529a5affc732e5e014bfd335af762a595aa5",
+    "msl/win32sdk/WINERROR.H": "f8281cbae8d3453a6a860b61fc787bf7c8dbf3a3bcd6e807a82b0aeba6dfbcc9",
+    "msl/win32sdk/WINGDI.H": "479bbda81443ee2b794e2e2f919835ebe50e328be8403e752955a69552d98f10",
+    "msl/win32sdk/WINNETWK.H": "a89c9eabc98a66a4793df6a47ffebddf25682eb2f22fbaef40bfb090f2c536dc",
+    "msl/win32sdk/WINNLS.H": "c7297698bbfa00a3b797ea60368adddd270c621af448bda196aa2bc4c131052b",
+    "msl/win32sdk/WINNT.H": "ad5f2bb9b5a0445bf30bd52695b0a1a8102e90530c738d4b2d4c4d1bf86c1461",
+    "msl/win32sdk/WINREG.H": "f8ccc2aed3dc520a749b7c279292b0fcdef2e49648b1a7fb0c3c55957fc0468d",
+    "msl/win32sdk/WINSVC.H": "4707b8d37ce4af45312c4e086e9868b0db6be9db8a68a8c00c3371dc61f36247",
+    "msl/win32sdk/WINUSER.H": "cc1b347b6dda7f1f6b6e9d6f5a9e372aa90ad406c630685af78bdf530e3ce700",
+    "msl/win32sdk/WINVER.H": "8e93b950a5cd38f1974810cd1c70d2de912e5eaa6a156ad820fc70bdf66cd652",
+    "ok": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "runtime/exchand.cpp": "a573fa529d8efffdbf8db81452e7a759013e0a29d2fdf399103b56789b5fd011",
+    "runtime/fixture.h": "f26c50f3be0ee37632c1daeff158f6ff8260bd6565849ada34c9aafce2166d68",
+    "runtime/nested/fixture.c": "3c36083fd7d83d5d24225dc832e248283659f1bd373cce003b96dd818962cd08",
+    "runtime53/nested/runtime.c": "e179807e2c248d2f55ac0ede1f6d2724648c96fb2f7d7d95a3fb12e13095996b",
+    "win32sdk/KERNEL32.LIB": "fe7004460d0981423fe16756f2c6774656cea78cfc6b040cc8683a111ec57ccd"
+  },
+  "updater_offsets": [
+    17,
+    211
+  ],
+  "updater_members": {
+    "data1.cab": "392914b3f34d9af4ac3d8491bc30942bc490ae32f43f92e031f342da5c761f5a",
+    "data1.hdr": "725c04b99900df65b488695a54f7fc37b20084576c575284c86f9cf270ccd4aa"
+  },
+  "files": {
+    "disc.iso": "63eb9da962911937b79a8940600de6aa98300d740b1b966e5c015325ce735c9c",
+    "library.zip": "94b57b906e8e38c7c0465713ca168a9f9b18f59e9ce719492d77a89df5901fcf",
+    "updater.bin": "d6bce7189b0aada1feca5f036da5b9fbd0883e37760dcf5e14d5074687bb4d41"
+  }
+}
