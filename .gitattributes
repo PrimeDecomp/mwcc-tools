@@ -3,5 +3,4 @@
 /LICENSE text eol=lf
 tests/fixtures/** -text -whitespace
 tests/fixtures/**/*.o binary
-licenses/dependencies/** -text
 licenses/** -text -whitespace

@@ -1,94 +1,146 @@
 name: Build
 
+# Every push and pull request builds mwcc-tools for Windows x64, Linux x64 and macOS arm64, and GC 2.7's WebAssembly
+# compiler bundle on Linux, as artifacts. A `v*` tag (`v` + the workspace version) also publishes them as a release.
+
 on:
   push:
+    branches: ['**']
+    tags: ['v*']
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
-  build:
-    runs-on: ubuntu-24.04
-    strategy:
-      fail-fast: false
-      matrix:
-        version: [GC_1_0, GC_1_1, GC_1_1p1, GC_1_2_5, GC_1_2_5n, GC_1_3]
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y ninja-build unshield
-
-      - uses: actions/cache@v4
-        with:
-          path: |
-            build/compilers
-            lib
-            gc2/lib
-          key: compilers-${{ runner.os }}-${{ hashFiles('crates/mwcc-oracle-core/src/download.rs', 'crates/mwcc-oracle-core/src/download/*.rs') }}
-
-      - name: Install pinned Rust toolchain
-        run: rustup show
-
-      - name: Build native tools
-        run: cargo build --locked --release -p mwcc-tools
-
-      - name: Build
-        run: |
-          target/release/mwcc-tools configure --version ${{ matrix.version }}
-          ninja all_source progress
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.version }}_report
-          path: build/${{ matrix.version }}/report.json
-
-  # The compiler of gc2's sources, and the oracle, as WebAssembly (run in process; docs/wasm.md)
-  wasm:
-    runs-on: ubuntu-24.04
+  binaries:
     strategy:
       fail-fast: false
       matrix:
         include:
-          - version: GC_2_6
-            compiler: '2.6'
-          - version: GC_2_7
-            compiler: '2.7'
+          - os: windows-2022
+            target: x86_64-pc-windows-msvc
+            executable: mwcc-tools.exe
+          - os: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+            executable: mwcc-tools
+            check: true
+          - os: macos-15
+            target: aarch64-apple-darwin
+            executable: mwcc-tools
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install the pinned Rust toolchain
+        run: |
+          rustup show
+          rustup component add rust-docs
+      - name: Check formatting, lints and tests
+        if: matrix.check
+        run: |
+          cargo fmt --all -- --check
+          cargo clippy --locked --workspace --all-targets -- -D warnings
+          cargo test --locked --workspace
+          python -m unittest discover -s python/tests -p 'test_*.py'
+      - name: Build
+        run: cargo build --locked --release -p mwcc-tools
+      # (the locked dependencies' notices and the pinned toolchain's library notices, from this runner)
+      - name: Collect the dependency notices
+        run: |
+          cargo fetch --locked --target ${{ matrix.target }}
+          python tools/migration/capture_notices.py --target ${{ matrix.target }} --output build/notices/${{ matrix.target }}
+      - name: Package
+        run: |
+          version=$(python -c "import tomllib; print(tomllib.load(open('Cargo.toml', 'rb'))['workspace']['package']['version'])")
+          target/release/${{ matrix.executable }} package-release "build/releases/mwcc-tools-$version-${{ matrix.target }}.zip" \
+            --binary target/release/${{ matrix.executable }} --target ${{ matrix.target }} \
+            --source-revision "$GITHUB_SHA"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mwcc-tools-${{ matrix.target }}
+          path: build/releases/
+          if-no-files-found: error
+
+  # GC 2.7's compiler built from gc2/ as WebAssembly (docs/wasm.md): mwcc.wasm (with its .version), which mwcc-tools
+  # runs in process, and mwcceppc.wasm, oracle.wasm and persist.wasm, which mwdec loads. The archive keeps their
+  # paths, so it unpacks into a checkout (or MWCC_ORACLE_ROOT).
+  wasm:
+    runs-on: ubuntu-24.04
     env:
       # (the hooks' IR is LLVM 22's, as Rust's: clang reads it)
       CLANG: clang-22
       WASM_LD: wasm-ld-22
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y ninja-build
-
-      - name: Install LLVM 22 (clang, wasm-ld)
+        with:
+          persist-credentials: false
+      - name: Install ninja and LLVM 22 (clang, wasm-ld)
         run: |
+          sudo apt-get update && sudo apt-get install -y ninja-build
           wget -qO llvm.sh https://apt.llvm.org/llvm.sh
           sudo bash llvm.sh 22
           sudo apt-get install -y lld-22
-
-      # (the original compilers, the comparison's reference: the modules themselves need nothing downloaded)
-      - uses: actions/cache@v4
-        with:
-          path: |
-            build/compilers
-          key: original-compilers-${{ runner.os }}-${{ hashFiles('crates/mwcc-oracle-core/src/download.rs', 'crates/mwcc-oracle-core/src/download/*.rs') }}
-
-      - name: Install pinned Rust toolchain
+      - name: Install the pinned Rust toolchain
         run: |
           rustup show
           rustup target add wasm32-unknown-unknown
-
-      - name: Build native tools
-        run: cargo build --locked --release -p mwcc-tools
-
-      - name: Build the compiler and the oracle as WebAssembly
+      - name: Build
         run: |
-          target/release/mwcc-tools configure --version ${{ matrix.version }}
-          ninja build/${{ matrix.version }}/wasm/mwcceppc.wasm build/${{ matrix.version }}/wasm/oracle.wasm build/compilers/ok build/tools/wibo
-
-      - name: Compare them with the original compiler
+          cargo build --locked --release -p mwcc-tools
+          target/release/mwcc-tools configure --version GC_2_7
+          ninja build/GC_2_7/wasm/mwcc.wasm build/GC_2_7/wasm/mwcceppc.wasm build/GC_2_7/wasm/oracle.wasm \
+            build/GC_2_7/wasm/persist.wasm
+      - name: Package
         run: |
-          target/release/mwcc-tools corpus --version ${{ matrix.version }} --canaries tests/fixtures/oracle/sources --exe build/compilers/GC/${{ matrix.compiler }}/mwcceppc.exe
-          target/release/mwcc-tools corpus --version ${{ matrix.version }} --canaries tests/fixtures/oracle/sources --all-traces
+          version=$(python3 -c "import tomllib; print(tomllib.load(open('Cargo.toml', 'rb'))['workspace']['package']['version'])")
+          mkdir -p build/releases
+          archive="build/releases/mwcc-wasm-GC_2_7-$version.zip"
+          zip -X "$archive" LICENSE build/GC_2_7/wasm/mwcc.wasm build/GC_2_7/wasm/mwcc.version \
+            build/GC_2_7/wasm/mwcceppc.wasm build/GC_2_7/wasm/oracle.wasm build/GC_2_7/wasm/persist.wasm
+          (cd build/releases && sha256sum "$(basename "$archive")" > "$(basename "$archive").sha256")
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mwcc-wasm-GC_2_7
+          path: build/releases/
+          if-no-files-found: error
+
+  publish:
+    needs: [binaries, wasm]
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    concurrency:
+      group: release-${{ github.ref }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-input
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          version=$(python3 -c "import tomllib; print(tomllib.load(open('Cargo.toml', 'rb'))['workspace']['package']['version'])")
+          test "$TAG" = "v$version" || { echo "the tag must be v$version"; exit 1; }
+          files=(release-input/*/*.zip release-input/*/*.zip.sha256)
+          test "${#files[@]}" -eq 8 || { echo "expected 4 archives and their checksums: ${files[*]}"; exit 1; }
+          options=(--verify-tag --generate-notes --title "mwcc-tools $version")
+          if [[ "${version%%+*}" == *-* ]]; then
+            options+=(--prerelease --latest=false)
+          fi
+          gh release create "$TAG" "${options[@]}" "${files[@]}"

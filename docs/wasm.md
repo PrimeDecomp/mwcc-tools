@@ -27,8 +27,9 @@ path, or `CLANG` and `WASM_LD` at `configure` time. It also needs Rust's `wasm32
 downloaded: the C library is `wasm/libc`'s, not MSL's. The 203 units compile in about 4 seconds. Cranelift compiles a
 module once per process (1.5 to 2 seconds); a compile then takes 5 to 8 ms.
 
-CI builds both modules for 2.6 and 2.7 on Linux, and compares them with the original compiler under wibo on
-`tests/fixtures/oracle/sources`.
+CI builds GC 2.7's modules on Linux and publishes them with each release (`mwcc-wasm-GC_2_7-VERSION.zip`). The
+comparison with the original compiler (the `corpus` commands above, on `tests/fixtures/oracle/sources`) is run
+locally.
 
 ## Status
 

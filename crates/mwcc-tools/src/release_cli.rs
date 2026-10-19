@@ -50,7 +50,7 @@ pub fn run(args: &[String]) -> Result<()> {
     );
     let binary = binary.context("--binary is required")?;
     let target = target.context("--target is required")?;
-    let notices = notices.unwrap_or_else(|| root.join("licenses/dependencies").join(target));
+    let notices = notices.unwrap_or_else(|| root.join("build/notices").join(target));
     let digest = mwcc_oracle_core::release::write_with_notices(
         &root, &binary, target, revision, &output, &notices,
     )?;

@@ -2,7 +2,10 @@
 
 This is a conservative inventory of the resolved Cargo graph, including build
 dependencies; it does not assert that every listed crate is linked into the CLI.
-No licence text is synthesized and no licence alternatives are silently chosen.
+Notices are copied verbatim from the locked sources. A crate that ships no licence
+file, and that no other crate of its project covers, gets the standard text of each
+licence it declares (MIT, Apache-2.0: the pinned toolchain's SPDX copies), labelled
+as such; no licence alternative is chosen.
 """
 import argparse
 import hashlib
@@ -40,6 +43,25 @@ PROJECT_NOTICES = {
 }
 
 
+# The licences whose standard text a crate without a licence file gets.
+STANDARD = {"MIT": "MIT.txt", "Apache-2.0": "Apache-2.0.txt"}
+
+
+def standard_texts(package, licenses):
+    """The standard texts of PACKAGE's declared licences, or an error naming the one there is none for."""
+    names = [n.strip("() ") for n in package["license"].replace("/", " OR ").split(" OR ")]
+    unknown = [n for n in names if n not in STANDARD]
+    assert not unknown, f"No licence file in {package['name']} {package['version']}, and no standard text for {unknown}"
+    texts = []
+    for name in names:
+        data = (licenses / STANDARD[name]).read_bytes()
+        if name == "MIT":
+            holders = ", ".join(package.get("authors") or []) or f"the authors of {package['name']}"
+            data = data.replace(b"Copyright (c) <year> <copyright holders>", f"Copyright (c) {holders}".encode())
+        texts.append((name, data))
+    return texts
+
+
 def notice_files(base):
     return sorted(p for p in base.rglob("*") if p.is_file()
                   and p.name.upper().startswith(("LICENSE", "LICENCE", "COPYING", "NOTICE", "UNLICENSE")))
@@ -52,6 +74,7 @@ def collect(target):
     for package in metadata["packages"]:
         if package["id"] in resolved:
             by_name.setdefault(package["name"], []).append(package)
+    licenses = Path(run("rustc", "--print", "sysroot").strip()) / "share/doc/rust/licenses"
     packages, blocks = [], {}
     for package in sorted(metadata["packages"], key=lambda p: (p["name"], p["version"])):
         if package["id"] not in resolved:
@@ -76,8 +99,16 @@ def collect(target):
                 if explicit not in paths:
                     paths.append(explicit)
         assert package["license"] or package.get("license_file"), package["name"]
-        assert paths, f"No actual notice files found for {package['name']} {package['version']}"
         notices = []
+        if not paths:
+            # (no licence file in the crate: its declared licences' standard texts, labelled)
+            for name, data in standard_texts(package, licenses):
+                sha256 = digest(data)
+                notices.append(dict(path=None, standard=name, sha256=sha256))
+                owner = (f"{package['name']} {package['version']}: the standard {name} text "
+                         "(the crate ships no licence file; its Cargo.toml declares the licence)")
+                block = blocks.setdefault(sha256, dict(data=data, owners=[]))
+                block["owners"].append(owner)
         for path in sorted(paths, key=lambda p: p.relative_to(ROOT if workspace else base).as_posix()):
             data = path.read_bytes()
             assert data, path
@@ -100,7 +131,8 @@ def collect(target):
                for name in ["capstone/LICENSE.TXT", "capstone/LICENSE_LLVM.TXT"])
     header = (f"mwcc-tools third-party notices: {target}\n"
               "Resolved Cargo graph, including build dependencies. See inventory.json.\n"
-              "The following notices are copied verbatim from the locked sources.\n\n").encode()
+              "The notices are copied verbatim from the locked sources, except those labelled as a\n"
+              "standard licence text: those crates ship no licence file.\n\n").encode()
     sections = [header]
     for sha256, block in sorted(blocks.items()):
         sections.append(("=" * 72 + "\n" + "\n".join(sorted(block["owners"])) +

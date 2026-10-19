@@ -15,7 +15,10 @@ artifacts; these are test builds.
 | Windows x64 | `x86_64-pc-windows-msvc` |
 | Linux x64 | `x86_64-unknown-linux-gnu` |
 | macOS Apple Silicon | `aarch64-apple-darwin` |
-| macOS Intel | `x86_64-apple-darwin` |
+
+GC 2.7's WebAssembly compiler is published beside them as `mwcc-wasm-GC_2_7-VERSION.zip` (with a `.zip.sha256`):
+`build/GC_2_7/wasm/mwcc.wasm` and its `.version`, which `mwcc-tools` runs in process, and `mwcceppc.wasm`,
+`oracle.wasm` and `persist.wasm`, which mwdec loads. Unpack it into the checkout `MWCC_ORACLE_ROOT` names.
 
 The build host sets the system-library requirements; the target name does not promise older Linux or macOS
 releases.
@@ -25,8 +28,8 @@ releases.
 - `bin/mwcc-tools` (`.exe` on Windows);
 - `README.md` (this file), `docs/oracle-native.md` (the kit workflow) and `docs/producer.md` (building the
   observation hooks);
-- `LICENSE`, the Capstone notices and the target's locked dependency and Rust library notices. Keep them when
-  redistributing the executable;
+- `LICENSE`, the Capstone notices and the target's locked dependency and Rust library notices (standard licence
+  texts, labelled, for crates that ship none). Keep them when redistributing the executable;
 - `release.json`: the executable's hash, protocol versions, stock compiler identities, a catalogue of the source
   inputs and every file's hash.
 
@@ -56,13 +59,13 @@ repository).
 
 ### Publish a version
 
-The `Rust tools` workflow (`.github/workflows/rust.yml`) builds, tests and audits the four packages. Only a pushed
-`vVERSION` tag publishes, and `VERSION` must equal `workspace.package.version` in `Cargo.toml`. Any failed matrix
-job stops publication; only the tag job has `contents: write`.
+The `Build` workflow (`.github/workflows/build.yml`) builds the three packages (Linux also runs fmt, clippy and the
+tests) and the GC 2.7 WebAssembly bundle on every push and pull request, as artifacts. A pushed `vVERSION` tag also
+publishes them; `VERSION` must equal `workspace.package.version` in `Cargo.toml`. Any failed job stops publication;
+only the publish job has `contents: write`.
 
-1. Update the workspace version and `Cargo.lock` together. If the lockfile or toolchain changed, regenerate and
-   check the dependency notices. Commit.
-2. Wait for the four host checks to pass.
+1. Update the workspace version and `Cargo.lock` together, and commit.
+2. Wait for the workflow to pass on that commit.
 3. Tag that commit and push the tag:
 
    ```text
@@ -70,22 +73,21 @@ job stops publication; only the tag job has `contents: write`.
    git push origin v0.1.0
    ```
 
-The tag run rebuilds the packages, checks their hashes, identities and audits, checks that the tag still names the
-built commit, then creates a draft release, uploads the eight files and publishes it. A version with a prerelease
-suffix is marked as a prerelease. Releases are never overwritten: if publication fails after the draft exists,
-inspect it, delete it only if it was never published, and rerun. Never move a published tag; make a new version.
+The tag run creates the release with the four archives and their checksums. A version with a prerelease suffix is
+marked as a prerelease. Never move a published tag; make a new version.
 
 ### Build a local package
 
 ```text
 cargo build --locked --release -p mwcc-tools
+cargo fetch --locked --target TARGET
 python tools/migration/capture_notices.py --target TARGET --output build/notices/TARGET
-python tools/migration/capture_notices.py --target TARGET --output build/notices/TARGET --check
-mwcc-tools package-release build/releases/mwcc-tools-0.1.0-TARGET.zip --binary PATH_TO_BUILT_EXECUTABLE --target TARGET --notices build/notices/TARGET
+mwcc-tools package-release build/releases/mwcc-tools-0.1.0-TARGET.zip --binary PATH_TO_BUILT_EXECUTABLE --target TARGET
 ```
 
-Run from the repository or pass `--root`; pass `--source-revision COMMIT` to record a pin. The packager rejects a
-stale lockfile hash, changed, missing or extra notice files, symlink inputs and a binary for the wrong
-architecture. Entries are sorted with fixed timestamps, so the same inputs give the same archive bytes (the Rust
-build itself is not claimed reproducible). `tools/migration/audit_release.py` checks an archive independently:
-contents, notices, extraction and offline execution outside the checkout.
+Run from the repository or pass `--root`; `--notices DIR` overrides `build/notices/TARGET`, and
+`--source-revision COMMIT` records a pin. The packager rejects a stale lockfile hash, changed, missing or extra
+notice files, symlink inputs and a binary for the wrong architecture. Entries are sorted with fixed timestamps, so
+the same inputs give the same archive bytes (the Rust build itself is not claimed reproducible).
+`tools/migration/audit_release.py` checks an archive independently: contents, notices, extraction and offline
+execution outside the checkout.

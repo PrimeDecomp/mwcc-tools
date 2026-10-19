@@ -11,23 +11,22 @@ Source: [capstone-rust/capstone-rs, commit 04f196369ee64f4ad1821a9453670e9a9ce9b
 | C decoder | `capstone-sys/capstone/LICENSE.TXT` | [capstone-5.0.9-LICENSE.txt](capstone-5.0.9-LICENSE.txt) |
 | Decoder's LLVM-derived components | `capstone-sys/capstone/LICENSE_LLVM.TXT` | [capstone-5.0.9-LICENSE_LLVM.txt](capstone-5.0.9-LICENSE_LLVM.txt) |
 
-The locked dependency inventories also retain the actual notice files from the resolved Cargo graph and the pinned Rust standard library:
-
-| Native target | Inventory | Verbatim notices |
-|---|---|---|
-| Windows x86-64 | [69 packages](dependencies/x86_64-pc-windows-msvc/inventory.json) | [Cargo notices](dependencies/x86_64-pc-windows-msvc/THIRD-PARTY-NOTICES.txt), [Rust library attribution](dependencies/x86_64-pc-windows-msvc/rust/COPYRIGHT-library.html) |
-| Linux x86-64 | [72 packages](dependencies/x86_64-unknown-linux-gnu/inventory.json) | [Cargo notices](dependencies/x86_64-unknown-linux-gnu/THIRD-PARTY-NOTICES.txt), [Rust library attribution](dependencies/x86_64-unknown-linux-gnu/rust/COPYRIGHT-library.html) |
-
-This is a conservative inventory including build dependencies, rather than a claim that every listed crate is linked into the CLI. It includes nested decoder notices, ring's BoringSSL/other-bits notices, Unicode terms, webpki root-certificate terms and the Rust library's accompanying license texts. The manifest records the Cargo.lock hash, exact source/package versions, individual notice hashes and hashes of the generated files. Notice contents are retained verbatim; Git text conversion is disabled for these generated artifacts. The 67 packages common to the two targets have identical notice inventories, and the Rust library notices agree across hosts.
-
-Regenerate on each release host from the pinned toolchain and already available locked sources; add `--check` to validate without writing:
+Each release package also carries its target's dependency notices, collected on the runner that builds it
+(`build/notices/TARGET`, stored in the archive under `licenses/dependencies/TARGET`):
 
 ```text
-python tools/migration/capture_notices.py --output licenses/dependencies/x86_64-pc-windows-msvc --check
-python tools/migration/capture_notices.py --output licenses/dependencies/x86_64-unknown-linux-gnu --check
+cargo fetch --locked --target TARGET
+python tools/migration/capture_notices.py --target TARGET --output build/notices/TARGET
 ```
 
-Run only the command matching that host. The collector uses offline, target-filtered Cargo metadata and requires the toolchain's installed library attribution/license files. It rejects missing notices and detects stale lockfiles, changed notice bytes and unexpected inventory files. Regenerate after dependency/toolchain changes. Native `package-release` includes the target's inventory and every inventoried file, checks their hashes against the lockfile and bundles the decoder notices separately. See the [distribution guide](../docs/oracle-rust-release.md).
+The collector reads offline, target-filtered Cargo metadata of the locked graph, including build dependencies (a
+conservative inventory, not a claim that every listed crate is linked), and the pinned toolchain's Rust library
+notices. It copies every crate's notice files verbatim. A crate that ships no licence file (objdiff-core,
+cwdemangle and powerpc, for example) gets the standard text of each licence its `Cargo.toml` declares (MIT,
+Apache-2.0, from the toolchain's SPDX copies, with the crate's authors as MIT's copyright holders), labelled as such
+in `THIRD-PARTY-NOTICES.txt` and `inventory.json`; a licence with no standard text is an error. `inventory.json`
+records the `Cargo.lock` hash, the package versions and every notice's hash, and `package-release` checks them. See
+the [distribution guide](../docs/oracle-rust-release.md).
 
 `LICENSE` and `Cargo.lock` are pinned to LF in `.gitattributes`. The collector
 preserves their actual bytes: CRLF conversion changes both the workspace notice
@@ -35,9 +34,3 @@ block and its hash. After updating attributes in an existing Windows checkout,
 refresh those files before regenerating inventories. The checkout regression
 test compares notice output from real Git checkouts with `core.autocrlf` enabled
 and disabled.
-
-macOS release jobs collect the locked target graph and installed Rust library
-notices on the native Intel or Apple Silicon runner into `build/notices/TARGET`.
-They verify that inventory and pass it to `package-release --notices DIR`; the
-archive still stores notices under `licenses/dependencies/TARGET`. No macOS
-inventory is fabricated from another host's Rust installation.
