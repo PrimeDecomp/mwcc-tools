@@ -15,15 +15,17 @@ In use:
 
 The others were written against the CLI and the Python tools as they were before the methods:
 
-* `audit_native_kits.py`, `benchmark*.py`, `capture_colouring.py`, `capture_regdiff.py`, `compare_*.py`,
-  `verify_backend_probes.py`, `verify_call_arguments.py`, `verify_frontend_switches.py`, `verify_native_kit_api.py`,
-  `verify_oracle_views.py`, `verify_producer.py`, `verify_source_arena_runtime.py` and `verify_source_nodes.py` call
-  commands that no longer exist (`oracle compile-trace`, `oracle regdiff`, `colouring`, `inline-diff`,
-  `source-search state`, `source-nodes inspect`, `source-arenas inspect`).
-* `verify_link.py`, `verify_producer.py`, `capture_baseline.py` and `compare_backends.py` import a separate pinned
-  checkout of the old Python tools (`--oracle-root`, `--reference`).
+* `benchmark.py`, `benchmark_worker.py`, `capture_baseline.py`, `capture_colouring.py`, `capture_header_impact.py`,
+  `capture_regdiff.py`, `capture_tu_tools.py`, `compare_backends.py`, `verify_link.py` and `verify_producer.py`
+  import a separate pinned checkout of the old Python tools (`--oracle-root`, `--reference`).
+* `compare_backends.py` and `verify_producer.py` also run the removed `oracle` command (`oracle compile-trace`). They
+  stay for the helpers other scripts import: `difference` and `normalize`, and `full_trace`, `graph_trace` and
+  `trace_line_endings` (`test_producer_trace.py` tests these).
 
-They run only against the commit they were written for.
+They run only against the commit they were written for. The scripts that only drove removed commands
+(`oracle compile-trace`, `oracle regdiff`, `colouring`, `inline-diff`, `header-impact`, `source-nodes`,
+`source-arenas`, `source-search`) were deleted; `mwcc-tools call oracle.trace` ([docs/api.md](../../docs/api.md))
+replaces the traced compile.
 
 Keep reference checkouts and retained evidence directories unchanged; a script that captures new evidence writes to
 a new output directory.

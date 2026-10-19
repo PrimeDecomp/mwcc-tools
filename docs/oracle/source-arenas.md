@@ -65,7 +65,6 @@ heap-block header is 16. The storage addresses per version are in `source_arena_
 
 - `python tools/migration/verify_source_arenas.py --tools MWCC_TOOLS --oracle-root ROOT --output NEW_DIR` keeps the
   reports, commands and hashes; `--compare OTHER_OUTPUT` checks them across hosts.
-- `python tools/migration/verify_source_arena_runtime.py` exercises the runtime fixtures.
 
 ## Rust API: histories and ledgers
 
