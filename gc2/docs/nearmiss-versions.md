@@ -1,22 +1,14 @@
 # Near misses in the other versions
 
-`docs/nearmiss-2.6.md`'s companion for GC_2_0 (2.0p1 follows it), GC_2_5 and GC_2_7: functions exact in 2.6 whose
-version-specific code does not match yet, with what differs, what was tried and the leads left. The same rules: read
-an entry before working on its function, append what you try, remove the entry when the function goes exact.
-Functions inexact in 2.6 itself are 2.6's ledger's. From the October 17, 2026 version round (agents V20A, V20B, V25,
-V27).
+[nearmiss-2.6.md](nearmiss-2.6.md)'s companion for GC_2_0 (2.0p1 follows it), GC_2_5 and GC_2_7: functions exact in
+2.6 whose version-specific code does not match yet, with what differs, what was tried and the leads left. The same
+rules: read an entry before working on its function, append what you try, remove the entry when the function goes
+exact. Functions inexact in 2.6 itself are 2.6's ledger's.
 
 ## GC_2_0
 
-None left (NM5, October 17; was five); every row but the three version.dll import thunks (as in 2.6) is compared.
-Made exact in NM5: gather_instruction_alias (case 2 sets `alias_choice` inside its two inner ifs, so their branches
-reach the store with worst_case_ptr still in eax; the fUpdatesPtr tail reads `pcode->alias` with no `alias` local),
-computeglobalusedefinfo and computeglobaldefuseinfo (2.6's head with a `block` local, then `decl-order --swaps`),
-computeusedeflists (each clear loop's two stores as one comma statement, as 2.6's loop has them),
-gen_negated_condition_gpr (2.0's EEQU peephole sets `output->reg = tmpReg` in its `value == mask` case, a bug fixed
-in 2.5). Alias.c and UseDefChains.c now link in 2.0 and 2.0p1.
-
-- (ParseLocationSet and gen_AND differ as in 2.6: 2.6's ledger.)
+None left; every row but the three version.dll import thunks (as in 2.6) is compared. ParseLocationSet and gen_AND
+differ as in 2.6 (2.6's ledger).
 
 ## GC_2_5
 

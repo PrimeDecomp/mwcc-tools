@@ -42,7 +42,7 @@ then runs them in process in place of the executables ([wasm.md](wasm.md)).
 
 ## Dependencies
 
-- Rust 1.96.0 and a C compiler to build `mwcc-tools`
+- Rust (the version in `rust-toolchain.toml`) and a C compiler to build `mwcc-tools`
 - [ninja](https://github.com/ninja-build/ninja)
 - [unshield](https://github.com/twogood/unshield), to unpack the CodeWarrior Pro 5.3 updater
 - For 2.6 and 2.7's WebAssembly builds: LLVM 22 or later (`clang`, `wasm-ld`) and Rust's `wasm32-unknown-unknown`
@@ -61,9 +61,8 @@ target/release/mwcc-tools configure
 ninja
 ```
 
-On Windows, use `target/release/mwcc-tools.exe`. For another version, pass
-`configure --version GC_1_2_5n` (or `GC_1_3`). Python is used by independent migration
-validation and unrelated kit support, not the native production build commands.
+On Windows, use `target/release/mwcc-tools.exe`. For another version, pass `configure --version GC_1_2_5n` (or
+`GC_1_3`). The build needs no Python.
 
 The build downloads what it needs but this repository does not contain:
 

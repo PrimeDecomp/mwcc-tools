@@ -171,7 +171,7 @@ fn help() {
 
 The oracle, colouring, inlining, TU, provenance and source-guided tools are methods: `methods` lists them,
 `call` runs one, `serve` keeps a session (docs/api.md; the Python package mwcc_tools).
-Guides: docs/oracle.md and docs/oracle-source-guided-status.md."#
+Guides: docs/oracle.md; what is open: docs/open-work.md."#
     );
 }
 

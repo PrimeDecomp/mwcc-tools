@@ -65,8 +65,8 @@ with Engine(project='../echoes') as engine:
                              views={'blocks': True, 'text': True}, cut_limit='77', object_path='sinit-77.o')
 ```
 
-These compile with other block limits, to test whether the target's blocks were cut at other places than ours. For
-example, give the size that a guessed source would reach, then compare the object with the target.
+These compile with other block limits, to test whether the target's blocks were cut elsewhere: give the size a
+guessed source would reach, then compare the object with the target.
 
 * `cut_limit: "N"`: a new block at the start of a statement once the block holds more than N instructions.
 * `merge_limit: "N"`: blocks are merged when together they hold N or fewer.
@@ -74,11 +74,9 @@ example, give the size that a guessed source would reach, then compare the objec
 * `object_path: PATH`: also write the oracle's object to PATH, to disassemble or diff. It works without the limits
   too, and on a unit.
 
-The native runner patches temporary copies of both the oracle and stock compiler;
-files in `build/` are unchanged. The stock-object check still compares the two,
-and the report's first line gives the chosen limits. Rust callers use
-`runner::patch_limits` in `mwcc-oracle-core`, which validates all patch sites before
-changing them for GC 1.3, 1.3.2 and 2.7. All seven inlined cut checks are patched.
+The runner patches temporary copies of the oracle and the stock compiler (`build/` is unchanged), so the stock
+check still compares the two; the report's first line gives the limits. `runner::patch_limits` in `mwcc-oracle-core`
+checks every patch site (all seven inlined cut checks) before changing any, for GC 1.3, 1.3.2 and 2.7.
 
 ## Example
 

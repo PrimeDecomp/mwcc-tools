@@ -2,9 +2,8 @@
 
 Part of the [oracle documentation](../oracle.md).
 
-Use `oracle.trace` with `capture_path` to save an annotated capture and `oracle.analyze`
-to read an existing trace. The [native API](#native-api) describes the JSON
-envelope; the sections below define the underlying records.
+The trace's records, the report's JSON, and the [native API](#native-api) (`oracle.trace`'s `capture_path`,
+`oracle.analyze`).
 
 ## The raw trace
 
@@ -29,44 +28,6 @@ Link names are the mangled ones; the compiler computes them if it has not yet.
 ### Turned on by environment variables
 
 Set each to `1`. The methods set them from `streams`, and for the views that need them.
-
-Development lifetime capture uses `MWCC_ORACLE_SOURCE_ARENAS` (`streams.source_arenas`)
-and the compilation-wide `pv.arena.*` records. See [arena queries](source-arenas.md)
-for allocation, reset and checkpoint semantics.
-
-Experimental frontend capture uses `MWCC_ORACLE_SOURCE_NODES` (`streams.source_nodes`)
-and `pv.source.*` records. It also enables arena capture. See
-[source-node observations](source-nodes.md) for snapshot/write/clone queries and
-validation status. Neither stream is accepted by graph fingerprint format 4 yet.
-
-**`MWCC_ORACLE_BACKEND`** (`streams.backend`, current development Rust producer):
-`pv.coalesce.begin`, `candidate`, `check`, `merge` and `end` record actual retail
-coalescing paths. `pv.function.*`, `pv.value.birth`, `pv.counter.*` and
-`pv.expression.*` add direct counter writes, function/creation identities, reuse
-and available partial statement-root origins. `pv.value.object` adds guarded
-single/pair object bindings and byte-preserving names. `pv.category.initial/window`
-record completed range markers; graph headers sample their current bounds. Use `provenance.inspect`
-(`trace_path=TRACE`) for format-2 decisions/history and explicit coverage. `pv.graph.*`
-pairs nodes with the instructions present immediately before graph simplification,
-including a birth cutoff, current visibility, and per-function graph counts. See
-[backend provenance](provenance.md); semantic categories, complete origins and
-semantic lifetime correspondence remain incomplete.
-
-V4 adds `pv.value.array` for guarded scalar-array promotion (original Object,
-element bounds/index and complete known name/type) and `pv.value.call_result`
-for six guarded call-result paths (original call ENode, return type, result part
-and a partial output Operand). Call output bytes are explicitly incomplete at
-birth; only their tag is initialized. Function scopes/totals provide separate
-array and call-result coverage. Vector-array promotion and complete inline/source
-lifetimes are not covered. Typed reports include the exact input trace SHA-256
-and each observed coalescing pass's end position.
-
-V5 adds `pv.scalar.begin/binding/gap/end` and independent function-end
-scalarization totals. These record actual frontend aggregate-part temporary
-creation and exact Object/VarInfo joins to backend births. Typed reports expose
-`scalarization.passes` and `scalarization.backend_values`; absent or ambiguous
-joins remain indeterminate. See [frontend scalarization](scalarization.md) for
-the record scope, temporal checks and real promoted-flag example.
 
 **`MWCC_ORACLE_SCHEDULE`** (`streams.schedule`):
 
@@ -143,7 +104,7 @@ The `lc.arg` fields:
 | `ce.replace at= with=` | A repeat replaced by the temporary of the expression at `with`. |
 | `ce.object name= caller=` | Each temporary object made (create_temp_object), with the caller's return address. |
 | `ce.vreg name= reg= class= noregister=` | Each local's register as the allocation starts (a virtual register number), before `ra.before`. |
-| `st.codegen` / `st.optimized function= link=` ... `st.end` | With `MWCC_ORACLE_STAGES=1`, the PCode as code generation made it and as the global optimizer (COptimizer) left it, in the `ra.before` format (`st.block`, `st.i`). The peephole forward pass then gives the allocator's, `ra.before`. |
+| `st.codegen` / `st.optimized function= link=` ... `st.end` | With `MWCC_ORACLE_STAGES=1` (`streams.stages`), the PCode as code generation made it and as the global optimizer (COptimizer) left it, in the `ra.before` format (`st.block`, `st.i`). The peephole forward pass then gives the allocator's, `ra.before`. |
 | `st.presched` / `st.precolor.gpr` / `st.precolor.fpr function= link=` ... `st.end` | With `MWCC_ORACLE_STAGES=1` too: the PCode as the first scheduling pass begins (a probe of gc2's sources: the WebAssembly and source-built oracles only), and as select colours a class (once a round). |
 | `pp.copy at= line= tree=` | An assignment copy propagation forwards (IRO_CopyAndConstantPropagation): the left side's uses read the right side. |
 | `pp.expression at= line= tree=` | An assignment expression propagation may forward into a single use in its block (IroPropagate_PropagateExpressions). |
@@ -154,7 +115,7 @@ in debug builds), appended to FILE. **`MWCC_ORACLE_IRO_PHASES=NAME`** adds the f
 `IRO_DumpAfterPhase` names it, such as `After IRO_Optimizer`), or after every phase with `all`; the compiler itself
 asks for none (a probe of gc2's sources).
 
-**`MWCC_ORACLE_NAMES`**: what a reader needs to name values and spell instructions as the compiler's listings do.
+**`MWCC_ORACLE_NAMES`** (`streams.names`): what a reader needs to name values and spell instructions as the compiler's listings do.
 Records marked (gc2) come from probes of gc2's sources (the WebAssembly and source-built oracles only), and
 `ra.temporaries` reads gc2's names (the WebAssembly oracle only).
 
@@ -167,19 +128,38 @@ Records marked (gc2) come from probes of gc2's sources (the WebAssembly and sour
 | `inl.decide caller= callee= candidate= pass= max=` | After `inl.can`: the plain names of the function being expanded and of the callee, whether the callee is an inline candidate, the expansion pass and the size limit. |
 | `inl.expand function=` | (gc2) A function's body about to be expanded. |
 
-**`MWCC_ORACLE_COPYPROP`** (gc2): the PCode copy propagation.
+**`MWCC_ORACLE_COPYPROP`** (`streams.copy_propagation`, gc2): the PCode copy propagation.
 
 | Lines | Content |
 |---|---|
 | `cp.use reason= accepted=` | Whether the copy propagates into one of its uses, then the copy (`cp.copy`) and the use (`cp.into`). `reason`: the test that decided, 0 the use is a move, 1 it reads and writes the copied register, 2 the source is redefined between them, 3 the copy does not reach the use's block, 4 the source is redefined in that block before the use, 5 none failed. |
 | `cp.remove removed=` | A copy every use took, then it (`cp.copy`): removed, or kept (an exception register, or a physical source in the less aggressive pass). |
 
-**`MWCC_ORACLE_PEEPHOLE`** (gc2): the peephole pass after the allocation.
+**`MWCC_ORACLE_PEEPHOLE`** (`streams.peephole`, gc2): the peephole pass after the allocation.
 
 | Lines | Content |
 |---|---|
 | `ph.hit rule=` | A pattern (gc2's name) that changed an instruction, then it as it was (`ph.before`) and, unless the pattern removed it, as it is (`ph.after`). |
 | `ph.dead` | A dead instruction about to be removed, then it (`ph.before`). |
+
+The development streams (provenance):
+
+* `MWCC_ORACLE_SOURCE_ARENAS` (`streams.source_arenas`): the compilation-wide `pv.arena.*` records
+  ([arena queries](source-arenas.md)).
+* `MWCC_ORACLE_SOURCE_NODES` (`streams.source_nodes`): the frontend's `pv.source.*` records, with arena capture
+  ([source-node observations](source-nodes.md)).
+* `MWCC_ORACLE_BACKEND` (`streams.backend`), read by `provenance.inspect` ([backend provenance](provenance.md)):
+  * `pv.coalesce.begin`, `candidate`, `check`, `merge`, `end`: the retail coalescing paths;
+  * `pv.function.*`, `pv.value.birth`, `pv.counter.*`, `pv.expression.*`: counter writes, function and creation
+    identities, partial statement-root origins;
+  * `pv.value.object`, `pv.value.array`, `pv.value.call_result`: guarded object bindings, scalar-array promotion and
+    call results (a call's output bytes are incomplete at birth);
+  * `pv.category.initial/window`: range markers; `pv.graph.*`: the graph's nodes paired with the instructions before
+    simplification;
+  * `pv.scalar.begin/binding/gap/end`: the frontend's aggregate-part temporaries joined to backend births
+    ([frontend scalarization](scalarization.md)).
+
+  Semantic categories, complete origins and vector-array promotion are not covered.
 
 ## JSON
 
@@ -210,26 +190,19 @@ Records marked (gc2) come from probes of gc2's sources (the WebAssembly and sour
 
 ## Native API
 
-Use the methods and their versioned JSON for kit automation ([api.md](../api.md) gives every parameter and result):
-
 ```sh
 mwcc-tools call oracle.trace source=SOURCE version=GC_1_3_2 flags='["COMPILER_FLAGS"]' capture_path=capture.json
 mwcc-tools call oracle.analyze trace_path=saved.trace version=GC_1_3_2
 mwcc-tools call oracle.regdiff project=PROJECT unit=UNIT function=FUNCTION
 ```
 
-`capture_path` writes a format-1 envelope with `compilation` and the schema-6
-`report`. Check `compilation.check_status.status`: `verified` means full-object
-equality with the stock compiler; skipped/unavailable checks are not successes.
-Handle a method's `error`. `oracle.trace`'s `document` is the schema-6 report
-itself. Regdiff has its own format-1 document
-and structured register explanations; do not parse the `text` lines.
+* `capture_path` writes a format-1 envelope: `compilation` and the schema-6 `report`.
+* `compilation.check_status.status` is `verified` for full-object equality with the stock compiler; a skipped or
+  unavailable check is not a success.
+* `oracle.trace`'s `document` is the schema-6 report itself. `oracle.regdiff` has its own format-1 document with
+  structured explanations. Read the JSON, not the `text` lines, and handle a method's `error`.
 
-See the [native kit guide](../../integrations/decomp-kits/overlay/.agents/docs/oracle-native.md)
-for project units, candidates, explicit check states, saved graphs and calibration.
-Rust callers can use the workspace source API in `mwcc-oracle-core`, including
-`trace`, `document`, `allocation`, `colouring`, `runner`, `provenance`,
-`value_history`, `graph_history`, `allocation_category`, `scalarization` and `backend_audit`.
-
-The Python implementations in Git history are historical behavior references. Their
-imports, function signatures and rendered text are not supported production APIs.
+[api.md](../api.md) gives every parameter and result, and the
+[native kit guide](../../integrations/decomp-kits/overlay/.agents/docs/oracle-native.md) the kit workflow. Rust
+callers use `mwcc-oracle-core` (`trace`, `document`, `allocation`, `colouring`, `runner`, `provenance`,
+`value_history`, `graph_history`, `allocation_category`, `scalarization`, `backend_audit`).

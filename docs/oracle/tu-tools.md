@@ -13,14 +13,9 @@ mwcc-tools call inline.diff a.unit=main/MetroidPrime/Player/CPlayer \
 mwcc-tools call inline.diff @params.json --project ../echoes  # {"a": {"unit": ..., "files": {...}}, "all": true}
 ```
 
-Compiles both translation units with the `full_cost` stream. For each callee (by link name) that the two decide on
-differently, it shows side by side:
-
-* the outcomes, the estimate and the whole cost;
-* the passes, the functions and the chains;
-* the calls at the depth limit (`[limit +1]`), the sensitive terms and the reasons.
-
-Chains and paths are printed as trees.
+Compiles both translation units with the `full_cost` stream. For each callee (by link name) the two decide on
+differently, it shows side by side the outcomes, the estimate and the whole cost; the passes, functions and chains
+(as trees); and the calls at the depth limit (`[limit +1]`), the sensitive terms and the reasons.
 
 * `a` and `b` are each a unit with its `files` (in place of the disk's) and `inline_max_size`. `b` defaults to A's
   unit as on disk, so an `a` with `files` shows what the edit changes.
@@ -72,8 +67,8 @@ compiled). A literal in another place usually means a function compiled in anoth
 have. When a target literal comes before the literals of a function compiled before its first user, the report says
 so: `made earlier, before F's literals (after G's)`. It also lists the oracle's functions compiled between G and F that
 the target's text lacks: one of them made the literal, or one whose use of it was optimized away. (2.7 merged
-`TOC_GetFloatObject` and `EmitFloatObject` into their callers, so they cannot be hooked there. A literal's first user
-in compile order is still what made it.)
+`TOC_GetFloatObject` and `EmitFloatObject` into their callers, so they are not hooked; the first user in compile
+order still made the literal.)
 
 **Compared as linked:**
 
@@ -83,9 +78,8 @@ in compile order is still what made it.)
   as the object file tells.
 * The target's alignment, and the padding at the end of a section, come from the split and are not compared.
 
-A unit whose compiler has no WebAssembly module (Echoes' GC 1.2.5n SDK units) cannot be traced in process, so it is
-refused: these methods read the trace. (The removed command compiled such units with the original compiler; on
-Echoes' 73 matching TUs, 67 of the 68 it could build came out the same.)
+A unit whose compiler has no WebAssembly module (Echoes' GC 1.2.5n SDK units) is refused: these methods read the
+trace.
 
 ## `inline.window`: the inline limit a TU's target agrees with
 
@@ -125,6 +119,15 @@ a limit question". The bounds are first-order: inlining one call changes the cos
 function calls one callee several times, the calls are not told apart, so the bound is the one that holds for at least
 one of them.
 
+## `inline.calibrate`: a callee's costs against the target
+
+```sh
+mwcc-tools call inline.calibrate project=../echoes callee=rstl::vector text=true
+```
+
+Compiles the units that have an instance of `callee` the target has and ours lacks (or `units`), and lists our inline
+cost of each instance beside whether the target inlined it. `binary: true` covers every instance across the binary.
+
 ## `tu.header_impact`: what a header change does to every unit
 
 ```sh
@@ -139,14 +142,10 @@ with Engine(project='../echoes') as engine:
     print('\n'.join(engine.call_one('tu.header_impact', files=edited, text=True)['text']))
 ```
 
-Run it before merging a change to shared headers. It finds the units that include a changed file (from ninja's deps
-log), and compiles each one with the oracle before and after the change. For every function whose code differs, it
-shows:
-
-* its size before and after;
-* its similarity to the target before and after, marked `WORSE` or `better`;
-* the inlining decisions that changed, with their costs;
-* the frame size and the stack slots that moved.
+Run it before merging a change to shared headers. It finds the units that include a changed file (ninja's deps log)
+and compiles each with the oracle before and after the change. For every function whose code differs, it shows its
+size and its similarity to the target before and after (marked `WORSE` or `better`), the inlining decisions that
+changed with their costs, and the frame size and stack slots that moved.
 
 When neither inlining nor the frame changed, the difference is in register allocation or scheduling. The last line
 lists the functions that moved away from the target.
@@ -157,10 +156,8 @@ The change is given one of two ways:
   file, after is the working tree's.
 * `files: {PATH: TEXT}`: after is each PATH with TEXT in place of its own; before is the checkout.
 
-The native `header_impact::similarity` compares instruction tokens with frame offsets,
-relocated fields and branch targets masked. Its score is twice the matched sequence
-length divided by the combined lengths, with popularity filtering disabled. It is
-a diagnostic similarity measure, not objdiff's score.
+The similarity (`header_impact::similarity`) compares instruction tokens with frame offsets, relocated fields and
+branch targets masked: twice the matched sequence length over the combined lengths. It is not objdiff's score.
 
 * Functions are paired by name with the compiler's local numbers left out, so `__arraydtor$89` and `__arraydtor$91`
   are the same function.
@@ -168,5 +165,5 @@ a diagnostic similarity measure, not objdiff's score.
   compile's trace.
 * A header included through a path relative to the including file, rather than through the include path, is not
   replaced by `files`.
-* Each unit is compiled twice. Shared headers can affect hundreds of units; use
-  `units` to narrow the run and `jobs` to control concurrency.
+* Each unit is compiled twice, and a shared header can reach hundreds: `units` narrows the run, `jobs` sets the
+  concurrency.

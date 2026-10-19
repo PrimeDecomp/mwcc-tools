@@ -1,7 +1,7 @@
 # GC 1.3.2 against GC 1.3
 
 `config/GC_1_3_2` is the split and relink of the 1.3.2 executable (build number of mwcceppc.exe 1.3.2, `VERSION_GC_1_3_2` = 6).
-Its symbols were carried over from 1.3 by relocation-masked code matching (now `mwcc-tools remap`): 3585 of the
+Its symbols were carried over from 1.3 by relocation-masked code matching (`mwcc-tools remap`): 3585 of the
 4055 functions of 1.3 are found again unchanged in size and shape, 3288 of 3309 bindings of source files to addresses are
 carried, 470 functions differ or are not found.
 

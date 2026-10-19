@@ -27,9 +27,9 @@ target in its manifest.
 ## Pinned kits and development tools
 
 Each kit pins the mwcc commit it was tested with (its source bundle, and the Echoes kit's `selftest.py` checks the
-checkout is at or after it). Archived releases remain immutable; editing this overlay does not change them.
+checkout is at or after it). Editing this overlay does not change released kits.
 
-Development workflows are documented in the source checkout:
+Development workflows:
 [provenance](../../docs/oracle/provenance.md),
 [source search](../../docs/oracle/source-search.md),
 [reduction](../../docs/oracle/source-reduce.md),
@@ -38,6 +38,5 @@ Development workflows are documented in the source checkout:
 
 ## Maintain the integration
 
-`tools/migration/adopt_native_kits.py` derives kit sources from archived releases; `audit_native_kits.py` checks
-packaged files, source identity and installation. Supply `--macos-arm64-release` and/or `--macos-intel-release`
-when assembling a kit with macOS assets.
+`tools/migration/adopt_native_kits.py` derives kit sources from archived releases (`--macos-arm64-release`,
+`--macos-intel-release` for a kit with macOS assets). Kit releases are made outside this repository.

@@ -1,8 +1,8 @@
 # Matching MWCC-compiled code: a field guide
 
 What this project learned matching CodeWarrior for GameCube 2.6 (`mwcceppc.exe`) byte for byte, boiled down to the
-method and the compiler behaviour behind it. AGENTS.md has the full history with every example; this file is the
-general part, for anyone matching code built by Metrowerks' compilers.
+method and the compiler behaviour behind it, for anyone matching code built by Metrowerks' compilers. The
+repository's own conventions and pitfalls are in [agents-notes.md](agents-notes.md).
 
 **Which compiler each lesson is about.** mwcceppc.exe is an x86 program built by MWCC x86 (Pro 5/5.3/6, front end
 about 2.4), so everything here was observed on MWCC x86 output. Each lesson is tagged:
@@ -11,6 +11,8 @@ about 2.4), so everything here was observed on MWCC x86 output. Each lesson is t
   register allocation *order*. MWCC's targets share this code, so it most likely holds for mwcceppc's own PPC output
   too (the source is in this repo: `src/frontend`, `src/optimizer`, `src/backend`). Confirm it there before relying
   on it.
+- **[x86]**: the x86 code generator (register names, `lea`/`movsx` choices, padding): specific to MWCC x86.
+- **[LD]**: the linker (mwld): COMMON layout, section order, alignment.
 
 **Decompiling another Metrowerks compiler** (mwccarm for DS, the Wii mwcceppc): sections 1 and 4 are the method. Check
 which host compiler built each one first:
@@ -24,8 +26,6 @@ mwccarm's front end is also a newer generation than 2.6's: CPrepLexer, CTemplate
 ExpandIR. 122 of its 153 assert file names are also in Wii 1.0RC1, and only 77 in GC 2.6. For mwccarm the Wii
 compilers' CodeView (publics, module tables, global types) is the name source and nearest reference; Pro7 and this
 repo cover only the code that changed little (much of the Iro optimizer, parts of the front end).
-- **[x86]**: the x86 code generator (register names, `lea`/`movsx` choices, padding): specific to MWCC x86.
-- **[LD]**: the linker (mwld): COMMON layout, section order, alignment.
 
 ---
 
@@ -358,30 +358,11 @@ section: .text, .data and .bss each tell a different story.
 
 ## 4. The toolkit in this repo
 
-Everything is a command over `tools/mw/`, and every command prints its usage with `--help`.
-
-- **One function:**
-  - `fn.py show` prints the original's code with names.
-  - `fn.py diff` compares it with the compiled code, references resolved.
-  - `fn.py variants` judges alternative source bodies in parallel and reports which neighbours they change.
-  - `fn.py decl-order` searches the declaration order of locals.
-- **One unit:**
-  - `unit.py check` compiles the unit.
-  - `status.py VERSION --todo` lists the units nearest to linking, with their blockers.
-  - `relink.py --only` links just that unit.
-  - `layout.py` places the unit's ranges, warns on overlaps and stale names, and reads statics from CodeView.
-- **Headers:**
-  - `headers.py bisect` finds which header edit moved a function's code.
-  - `includes.py trim` (clang decides) and `includes.py fix` (MWCC decides) trim a unit's includes.
-- **Names and evidence:**
-  - `evidence.py pair|sweep|review` pairs functions with a later compiler's CodeView by code.
-  - `bindings.py refs [--wii]` lists who references an address or a name.
-  - `rename.py` renames globally, members included.
-- **Behaviour:**
-  - `equivalent.py` builds a runnable compiler from the exact functions plus the original's code for the rest.
-    Compile test files with it and with the original, then compare.
-  - `clang_check.py` catches implicit declarations and missing macros.
-- **Asserts:** `update_assert_lines.py` rewrites assert line numbers from the reference to the original's.
+Every tool is a command over `tools/mw/` and prints its usage with `--help`; the README lists them. The ones this
+guide relies on: `fn.py show|diff|variants|decl-order` (one function), `unit.py check`, `status.py --todo`,
+`relink.py --only` and `layout.py` (one unit), `headers.py bisect` and `includes.py trim|fix` (headers),
+`evidence.py`, `bindings.py refs [--wii]` and `rename.py` (names), `equivalent.py` and `clang_check.py` (behaviour),
+`update_assert_lines.py` (asserts).
 
 ### 4.1 Sources of truth, best first
 
@@ -393,42 +374,3 @@ Everything is a command over `tools/mw/`, and every command prints its usage wit
    there, dead functions included.
 5. Strings in .data, and data layout.
 6. The ledger: what has already been tried.
-
----
-
-## 5. For the next phase: questions the compiler's own source can answer
-
-Once the decompiled mwcceppc builds from source, these questions about its output (and about the MWCC family) can be
-answered by reading and instrumenting the code instead of guessing. Each needs checking against the PPC back end
-before carrying over an x86 lesson.
-
-- **Inlining.**
-  - `CInline.c`: `CInline_IsSmallFunction`'s exact count rules.
-  - What deferred mode changes.
-  - How `inline`, `static inline` and `#pragma dont_inline` interact.
-- **Register allocation.**
-  - `Coloring.c`, `InterferenceGraph.c`, `SpillCode.c`, `LiveVariables.c`: node order, coloring order, spill-cost
-    heuristics.
-  - Why declaration order and first use decide registers.
-  - When a parameter stays in its home slot.
-- **Peephole and scheduling.** `Peephole.c`, `Scheduler.c` and the `MachineSimulation*.c` machine models: which
-  patterns fire, in what order, per CPU.
-- **IR optimizer.** `src/optimizer/Iro*.c`: CSE, copy and constant propagation, loop transforms, pointer analysis.
-  These answer "why is this value reloaded" and "why was this expression hoisted".
-- **RTTI and exceptions.** `CRTTI.c`, `CException.c`, `Exceptions.c`: table layouts and the order of emitted data.
-- **Data layout.** `CMachine.c` (alignment, struct layout, bitfields), `ObjGen_PPC_EABI.c` and `BE_elf.c` (section
-  and symbol order), and the CPrep pragma table (`compileroptions`), which lists every option the compiler can
-  read.
-- **Known logic bugs in 2.6 itself, a starting list for a bug hunt:**
-  - `I8_ShiftLeftImmediate` emits `srawi` by `shift` where `32 - shift` was meant.
-  - `rotatedefinedusedtest` scans the wrong instruction's operands.
-  - `I8_extract_bitfield` has a dead `offset == 0` path.
-  - A non-calling interrupt routine restores registers from the wrong slots when its mask is sparse.
-  - The paired-single load path passes `reg` where `vi->reg` was meant.
-  - Error 122 is passed an Object where its name was meant.
-  - The psq side-effect test omits STU/STUX.
-  - The build's `errno` reads the wrong word.
-  - `new T[n]` with a variable `n` gives one different exception-table byte in the equivalent compiler. That one is
-    ours, not 2.6's, and is still open.
-
-  Each is recorded where it was found: the review entries in `docs/review-2.6.md`, and comments in the source.

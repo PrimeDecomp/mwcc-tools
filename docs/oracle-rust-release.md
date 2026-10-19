@@ -1,110 +1,81 @@
-# Native mwcc tools distribution
+# mwcc-tools native package
 
-Download a versioned package and its `.zip.sha256` sidecar from GitHub Releases.
-From a repository checkout, for example:
+This archive holds one `mwcc-tools` executable for one host. Packages are published on GitHub Releases as
+`mwcc-tools-VERSION-TARGET.zip` with a `.zip.sha256` sidecar:
 
 ```text
 gh release download v0.1.0 --pattern 'mwcc-tools-0.1.0-x86_64-pc-windows-msvc.zip*' --dir downloads
 ```
 
-Choose a target from the table below and substitute the desired release version.
-Outside a checkout, add `--repo OWNER/REPOSITORY`. Pull requests and
-branch pushes also provide versioned packages as Actions artifacts; these are
-test builds, not published releases.
+Outside a checkout, add `--repo OWNER/REPOSITORY`. Pull requests and branch pushes also produce packages as Actions
+artifacts; these are test builds.
 
-Add this archive's `bin` directory to PATH, or invoke its `mwcc-tools` executable
-directly. `mwcc-tools --help` lists commands. The native kit guide in
-`docs/oracle-native.md` documents unit compilation, structured checks, register
-differences, graph work and inline calibration. New integrations should use native
-commands and versioned JSON rather than Python imports or human report text.
+| Host | Target |
+|---|---|
+| Windows x64 | `x86_64-pc-windows-msvc` |
+| Linux x64 | `x86_64-unknown-linux-gnu` |
+| macOS Apple Silicon | `aarch64-apple-darwin` |
+| macOS Intel | `x86_64-apple-darwin` |
 
-Offline trace analysis and graph replay require only the executable. Compiler
-execution additionally needs a built oracle checkout, selected with
-`MWCC_ORACLE_ROOT` or `--oracle-root`. Original compiler executables, the historical
-linker/runtime, Ninja, objdiff and wibo are external components and are not
-bundled. Compiler execution on Linux and macOS requires wibo 1.2.0;
-`MWCC_WIBO` selects it explicitly. macOS uses the pinned `wibo-macos` asset.
-That asset is Intel-only, so compiler execution on Apple Silicon also requires
-Rosetta 2. The native ARM host tools and offline analysis do not require Rosetta.
-The macOS compiler/runtime setup has not been validated locally. Building Rust
-observation hooks requires Rust 1.96.0 and its `i686-pc-windows-msvc` target.
-The bundled `docs/producer.md` describes that source build.
+The build host sets the system-library requirements; the target name does not promise older Linux or macOS
+releases.
 
-CI builds these native distributions:
+## Contents
 
-| Host | Package target | Actions runner |
-| --- | --- | --- |
-| Windows x64 | `x86_64-pc-windows-msvc` | `windows-2022` |
-| Linux x64 | `x86_64-unknown-linux-gnu` | `ubuntu-24.04` |
-| macOS Apple Silicon | `aarch64-apple-darwin` | `macos-15` |
-| macOS Intel | `x86_64-apple-darwin` | `macos-15-intel` |
+- `bin/mwcc-tools` (`.exe` on Windows);
+- `README.md` (this file), `docs/oracle-native.md` (the kit workflow) and `docs/producer.md` (building the
+  observation hooks);
+- `LICENSE`, the Capstone notices and the target's locked dependency and Rust library notices. Keep them when
+  redistributing the executable;
+- `release.json`: the executable's hash, protocol versions, stock compiler identities, a catalogue of the source
+  inputs and every file's hash.
 
-The macOS jobs test native host tools and offline analysis, and build/validate
-the Windows COFF observation objects. These are separate architecture packages,
-not a universal binary. The runner labels follow GitHub's
-[hosted runner reference](https://docs.github.com/en/actions/reference/runners/github-hosted-runners).
-The build host determines system-library requirements; the target name does not
-promise compatibility with older Linux or macOS releases.
+No compiler binaries, game source, game objects or traces are included.
 
-`release.json` records executable identity, versioned JSON protocols, stock
-compiler identities, a source-input catalogue and matching dependency notices.
-The optional source revision is informational: the catalogue identifies supplied
-source bytes, and the executable has its own hash. These are not an attestation
-that an arbitrary executable was built from a clean commit. No compiler binaries,
-game source, game objects or private traces are included.
+## Verify
 
-The archive contains the project license, Capstone notices and the complete
-locked dependency/Rust library notices for its target. Keep these when
-redistributing the executable. Verify the `.zip.sha256` sidecar and then the
-individual file hashes in `release.json`. A sidecar detects changed bytes; it is
-not a signature or publisher authentication.
+Check the `.zip.sha256` sidecar, then the file hashes in `release.json`. The sidecar detects changed bytes; it is
+not a signature. The optional source revision in `release.json` is informational, not an attestation that the
+executable was built from a clean commit.
 
-## Publish a version
+## Use
 
-The `Rust tools` workflow tests and audits all four host packages before publishing.
-Only a pushed `vVERSION` tag can publish, and `VERSION` must exactly match
-`workspace.package.version` in `Cargo.toml`. A failed or cancelled matrix job
-prevents publication. Build jobs have read-only repository permissions; only the
-tag-only publication job has `contents: write`.
+Add `bin` to `PATH`, or run the executable directly. `mwcc-tools --help` lists the commands; `mwcc-tools methods`
+lists the methods, and `mwcc-tools call METHOD` or `mwcc-tools serve` runs them (see `docs/api.md` in the source
+repository).
 
-CI installs the pinned toolchain's documentation component to collect its actual
-Rust library notices. Windows and Linux retain strict byte-for-byte checks of
-their committed inventories. `LICENSE` and `Cargo.lock` use LF on every host.
-The macOS jobs collect their host's exact notices into `build/notices/TARGET`,
-check that inventory, and package it through `--notices`. No macOS golden notice
-inventory or completed native macOS validation is claimed before those jobs run.
+- Offline trace analysis and graph replay need only the executable.
+- Compiling needs a built mwcc checkout, selected with `MWCC_ORACLE_ROOT` or `--oracle-root`, and the original
+  compiler executables. The historical linker and runtime, Ninja, objdiff and wibo are not bundled.
+- On Linux and macOS, compiling the x86 executables needs wibo 1.2.0 (`MWCC_WIBO` selects one). macOS uses the
+  pinned `wibo-macos` asset, which is Intel-only, so Apple Silicon also needs Rosetta 2. The macOS compiler setup
+  is not validated.
+- Building the observation hooks needs Rust 1.96.0 with the `i686-pc-windows-msvc` target (`docs/producer.md`).
 
-1. Update the workspace version and lockfile together. Check dependency notices
-   if the lockfile or Rust toolchain changed, then commit the release inputs.
-2. Let all four host Actions checks pass. Review their audited
-   packages before tagging the same commit.
-3. Create and push an annotated tag when ready to publish:
+## Maintainers
+
+### Publish a version
+
+The `Rust tools` workflow (`.github/workflows/rust.yml`) builds, tests and audits the four packages. Only a pushed
+`vVERSION` tag publishes, and `VERSION` must equal `workspace.package.version` in `Cargo.toml`. Any failed matrix
+job stops publication; only the tag job has `contents: write`.
+
+1. Update the workspace version and `Cargo.lock` together. If the lockfile or toolchain changed, regenerate and
+   check the dependency notices. Commit.
+2. Wait for the four host checks to pass.
+3. Tag that commit and push the tag:
 
    ```text
    git tag -a v0.1.0 -m "mwcc-tools 0.1.0"
    git push origin v0.1.0
    ```
 
-The tag run builds fresh packages named
-`mwcc-tools-VERSION-TARGET.zip` and matching `.zip.sha256` files. It downloads
-all four versioned Actions artifacts, checks their hashes, package identities and
-native audit results, and verifies that the remote tag still names the built
-commit. The publication job uses GitHub CLI to create a draft, upload all eight
-files, then publish. Versions containing a prerelease suffix are marked as
-prereleases and are not marked latest.
+The tag run rebuilds the packages, checks their hashes, identities and audits, checks that the tag still names the
+built commit, then creates a draft release, uploads the eight files and publishes it. A version with a prerelease
+suffix is marked as a prerelease. Releases are never overwritten: if publication fails after the draft exists,
+inspect it, delete it only if it was never published, and rerun. Never move a published tag; make a new version.
 
-Existing releases are not overwritten. If publication fails after draft creation,
-inspect the draft and failed run; a rerun will not replace it automatically.
-Delete an incomplete draft only after confirming it was never published, then
-rerun the failed job. Do not move a published version tag or replace its assets;
-make a new version instead. Repository release immutability and tag protection
-can enforce that policy.
-
-These steps use [`gh release create --verify-tag`](https://cli.github.com/manual/gh_release_create),
-[`gh release upload`](https://cli.github.com/manual/gh_release_upload) and
-[`gh release edit`](https://cli.github.com/manual/gh_release_edit).
-
-## Build a local package
+### Build a local package
 
 ```text
 cargo build --locked --release -p mwcc-tools
@@ -113,16 +84,8 @@ python tools/migration/capture_notices.py --target TARGET --output build/notices
 mwcc-tools package-release build/releases/mwcc-tools-0.1.0-TARGET.zip --binary PATH_TO_BUILT_EXECUTABLE --target TARGET --notices build/notices/TARGET
 ```
 
-Run from the repository, or supply `--root`. Supply `--source-revision` with a full
-commit ID when recording a release pin. Use the target's own locked notice
-inventory; regenerate/check it after dependency or toolchain changes. The packager
-rejects stale lockfile hashes, changed/missing/extra notice files, symlink inputs
-and a binary with the wrong architecture/container. It sorts ZIP entries, fixes
-timestamps and preserves executable permissions, so the same inputs produce
-the same archive bytes. This does not claim reproducible Rust compilation.
-
-Use `tools/migration/audit_release.py` in the source repository for independent
-archive/metadata checks, extraction and offline execution outside the checkout.
-Local package assembly does not publish a release. CI's native audit checks
-archive contents, notices and offline execution on each host; it does not run
-private game builds or establish complete producer/runtime validation.
+Run from the repository or pass `--root`; pass `--source-revision COMMIT` to record a pin. The packager rejects a
+stale lockfile hash, changed, missing or extra notice files, symlink inputs and a binary for the wrong
+architecture. Entries are sorted with fixed timestamps, so the same inputs give the same archive bytes (the Rust
+build itself is not claimed reproducible). `tools/migration/audit_release.py` checks an archive independently:
+contents, notices, extraction and offline execution outside the checkout.

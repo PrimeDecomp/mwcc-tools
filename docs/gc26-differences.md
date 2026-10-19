@@ -92,10 +92,9 @@ scalarizer and the CSE hooks. The struct offsets the hooks read are therefore 2.
 
 * `Version::Gc26` is the oracle version `GC_2_6` / `GC/2.6`.
 * Its Rust frontend feature is `frontend-gc26`. It shares 2.7's export and link names and offsets.
-* In the arena and source-node trace headers (`pv.arena.begin version=`, `pv.source.begin version=`), 2.6 is 4. 2.7
-  stays 3, so traces captured before this change still parse.
-* `Hooks.c`'s `VERSION >= VERSION_GC_2_7` branches are now `VERSION_GC_2_6`. The C producer also builds, and passes
-  the corpus on 2.6.
+* In the arena and source-node trace headers (`pv.arena.begin version=`, `pv.source.begin version=`), 2.6 is 4 and
+  2.7 keeps 3, so saved 2.7 traces still parse.
+* `Hooks.c`'s 2.x branches test `VERSION >= VERSION_GC_2_6`, so the C producer also builds for 2.6.
 
 **Probe guards.** The native oracle link installs guarded probes. Each guard pins a helper's bytes in the original and
 in its split object. The probes and what 2.6 got:
@@ -130,12 +129,10 @@ Most of these values are derived rather than written by hand:
 ## Status
 
 * The split-only relink is the original (`ninja build/GC_2_6/ok`).
-* `mwcc-tools corpus --version GC_2_6 --canaries …`, with all traces:
-  * Rust hooks: 2313/2313 identical.
-  * C producer: 2313/2313 identical.
+* `mwcc-tools corpus --version GC_2_6 --canaries …`, with all traces: 2313/2313 identical, with the Rust hooks and
+  with the C producer.
 * `--oracle-root` must be an absolute path. With a relative one, both compilers fail with "Cannot find my executable"
   and every input is reported as "messages differ".
-* After the renumbering, the 2.7 oracle was rebuilt and still gives 2313/2313.
 * Paper Mario: The Thousand-Year Door (doldecomp/ttyd at `62131fc`): 134/134 identical with all traces.
   * `mwcc-tools corpus --version GC_2_6 --project path/to/ttyd` was used. It takes the plain `mwcc` rules whose
     `mw_version` is `GC/2.6`.

@@ -1,15 +1,7 @@
 # Source-node observations (experimental)
 
-The `source_nodes.*` methods inspect immutable reads of selected frontend expression fields,
-ordinary assignment emission and actual clone/substitution calls.
-
-This API is implemented in the working tree. Eleven focused host parser tests
-pass on Windows and Linux; native producer/runtime validation is pending. Use the
-[current status](../oracle-source-guided-status.md) for accepted milestones.
-
-## Capture and query
-
-Build current tools and the Rust producer before using these methods:
+The `source_nodes.*` methods inspect reads of selected frontend expression fields, assignment emission and actual
+clone/substitution calls.
 
 ```sh
 mwcc-tools call oracle.trace source=SOURCE version=GC_2_7 flags='["COMPILER_FLAGS"]' streams.source_nodes=true \
@@ -20,37 +12,28 @@ mwcc-tools call source_nodes.write capture=capture.json id=EMISSION_ID
 mwcc-tools call source_nodes.clone capture=capture.json id=INVOCATION_ID
 ```
 
-`streams.source_nodes` also enables arena capture. Backend tracing is optional.
-`inspect` lists parsed observations and IDs. The other methods validate raw
-source records and arena lifetimes from the same capture, then return
-`{ "value": ..., "observations": ... }` as their `document`. An unsupported or incomplete query
-has indeterminate evidence and may return a null value.
+`streams.source_nodes` also enables [arena capture](source-arenas.md); backend tracing is optional. `inspect` lists
+the observations and their IDs. The other methods validate the raw source records and arena lifetimes, and return
+`{ "value": ..., "observations": ... }` as their `document`; an unsupported or incomplete query has indeterminate
+evidence and may have a null value.
 
 | Query | What it establishes |
 |---|---|
 | `snapshot` | Selected tagged fields and child observations at one recorded read, with allocation receipts. |
 | `write` | An observed assignment's root, LHS, RHS, statement and owning frontend function. |
-| `clone` | One actual recursive call's input, input after the call and returned output, with nesting/mode context. |
+| `clone` | One recursive call's input, input after the call and returned output, with nesting/mode context. |
 
-## Interpret the result
+## Interpreting
 
-Every read gets a new snapshot ID, even when its address and bytes are unchanged.
-A storage lifetime and a snapshot are separate identities. Equal addresses cannot
-join observations across a reset or establish that contents stayed unchanged.
+- Every read gets a new snapshot ID, even with unchanged address and bytes. Equal addresses cannot join observations
+  across a reset or show that contents stayed unchanged.
+- Only supported tagged fields are read, not all of an ENode. An Object leaf records its Object pointer without its
+  byte offset, so it does not identify an array element. Unsupported tags and walk limits give opaque observations.
+- An assignment is stage-local compiler context: not a C++ declaration initializer, the first executed write or
+  proof of dominance. A clone edge records what the compiler called and returned, not semantic equivalence or
+  complete ancestry.
+- Missing records, invalid nesting, counter mismatches and uncertain lifetimes prevent a complete answer.
+  Fingerprint format 4 does not accept source-node captures.
 
-The capture reads supported tagged fields, not all bytes of an ENode.
-An Object leaf records its Object pointer without its byte offset; it cannot
-identify an array element by itself. Unsupported tags or bounded-walk limits
-produce opaque observations.
-
-An assignment is stage-local compiler context. It is not automatically a C++
-declaration initializer, the first executed write or proof of runtime dominance.
-A clone edge records what the compiler called and returned; it does not establish
-semantic equivalence or complete original-source ancestry.
-
-Validated checkpoints cover earlier prefixes. Missing records, invalid nesting,
-counter mismatches and uncertain allocation lifetimes prevent a complete answer.
-Graph fingerprint format 4 does not accept source-node captures yet.
-
-The [source-write audit](../oracle-source-origin-audit.md) describes the remaining
-declaration, lowering, scalar-replacement and reconstruction edges.
+The remaining declaration, lowering, scalar-replacement and reconstruction edges are described in the
+[source-origin audit](../oracle-source-origin-audit.md).

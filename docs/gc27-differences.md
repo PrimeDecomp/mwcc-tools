@@ -1,7 +1,7 @@
 # GC 2.7 against GC 1.3.2
 
 `config/GC_2_7` is the split and relink of the 2.7 executable (Ver 2.4.7 build 108, `VERSION_GC_2_7` = 8). It is
-carried over from 1.3.2 directly. 2.6 (build 107) was later carried over from 2.7; see
+carried over from 1.3.2 directly. 2.6 (build 107) is carried over from 2.7; see
 [gc26-differences.md](gc26-differences.md). 2.0 to 2.5 are not built. To add one, insert it in order in
 `build_config.rs` `VERSIONS` and `include/version.h`, and renumber the versions after it.
 
@@ -69,7 +69,7 @@ The 343, by the source file the function had in 1.3.2:
 | `inline_call_expression` | `_fn_00561260` | 0x561260 | changed in one place only |
 
   The one change in `inline_call_expression` is that it reads `CInlineInfo`'s `kind` at 0xa4: 0xa0 in 1.3 (where the
-  sources put it), 0xa2 in 1.3.2. `remap.py` does not find the function, because of that operand. It has the same size
+  sources put it), 0xa2 in 1.3.2. remap does not find the function, because of that operand. It has the same size
   as 1.3.2's and the same instructions (a mnemonic comparison gives a ratio of 1.0).
 
 **Options (`copts`, at 0x5EF092)**

@@ -1,8 +1,10 @@
 # Experiments
 
+Part of the [oracle documentation](../oracle.md).
+
 An **experiment** compiles and scores many candidate versions of a unit's files against its target, without
 touching the project: every compile reads its candidate's files through an **overlay** in place of the disk's. It
-is the `experiment.run` method (docs/api.md), `Unit.experiment` in the Python package, and the engine under
+is the `experiment.run` method ([api.md](../api.md#experimentrun)), `Unit.experiment` in the Python package, and the engine under
 `source.variants` and `unit.inline_sweep`.
 
 ```python
@@ -142,9 +144,8 @@ session (each is a snapshot and a module).
   persistent one rejected, that persistent compiler is dropped.
 - The control is never compiled persistently: it is the check against the build.
 - A cut that is not at the top level only fails to start; that context's candidates then compile normally.
-- The gain is the context's share of the source: a candidate compiles the text after the cut in full. On Echoes'
-  CStateManager, with variants of a declaration in the middle, a candidate took 0.85 s against 1.7 s, and a
-  failure 10-23 ms.
+- The gain is the context's share of the source. On Echoes' CStateManager, with variants of a declaration in the
+  middle, a candidate takes 0.85 s against 1.7 s, and a failure 10-23 ms.
 - A persistent compiler idle for 2 minutes is dropped. Each holds its snapshot and its module's memory: about
   70 MB for CStateManager's context (a 29 MB snapshot).
 - `MWCC_PERSIST=0` in the server's environment turns it off, and `MWCC_PERSIST_VERIFY=1` compiles each persistent
@@ -182,10 +183,10 @@ natively on Windows and through wibo elsewhere, through sjiswrap where the edge 
 
 ## Score parity
 
-`unit.score`'s scores are objdiff-cli 3.8.2's: the same objdiff-core, with `similar` pinned to 3.1.1 (the version
-objdiff-cli 3.8.2's lock has; 3.2 aligns long functions differently). On 20 Echoes units the fuzzy match, every
-function's match and the diff document (`oracle.regdiff`'s, `Target::diff_document`) equal objdiff-cli's.
-report.json uses objdiff's report options, so its numbers can differ from a diff's where those options differ.
+`unit.score`'s scores are objdiff-cli 3.8.2's: the same objdiff-core, with `similar` pinned to 3.1.1 (objdiff-cli
+3.8.2's lock; 3.2 aligns long functions differently). On 20 Echoes units the fuzzy match, every function's match and
+the diff document (`Target::diff_document`, also `oracle.regdiff`'s) equal objdiff-cli's. report.json uses objdiff's
+report options, so its numbers can differ from a diff's where those options differ.
 
 ## The strict level
 

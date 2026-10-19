@@ -67,13 +67,12 @@ Documentation
 | Documentation | Covers |
 |---|---|
 | [Oracle guide](docs/oracle.md) | Build, tool selection and everyday commands. |
-| [WebAssembly builds](docs/wasm.md) | The modules in detail: CI, Linux, the probes in the compiler's sources. |
+| [Methods](docs/api.md) | Every method's parameters and results. |
+| [WebAssembly builds](docs/wasm.md) | The modules in detail: how they are built and run, the probes in the compiler's sources. |
 | [Native kit workflow](integrations/decomp-kits/overlay/.agents/docs/oracle-native.md) | Project units, candidates, register differences and structured checks. |
-| [Trace/API reference](docs/oracle/trace.md) | Raw records and versioned JSON. |
-| [Source-guided tools](docs/oracle-source-guided-status.md) | Provenance, source search, reduction and the matched-source index. |
+| [Trace reference](docs/oracle/trace.md) | Raw records and versioned JSON. |
+| [Provenance](docs/oracle/provenance.md), [source search](docs/oracle/source-search.md) | Value origins, source search, reduction and the matched-source index. |
 | [Decompilation](docs/decompilation.md) | The compilers' sources and their other builds. |
-| [Migration status](docs/oracle-rust-status.md) | Completed scope and release evidence. |
-| [Benchmarks](docs/oracle-rust-benchmarks.md) | Analysis/search speed and memory costs. |
 
 Third-party notices are under [licenses](licenses/README.md).
 

@@ -1,65 +1,35 @@
-# Development Rust producer and observer ABIs
+# The Rust producer and its observer ABIs
 
-Build a fresh producer from the current sources with `mwcc-tools configure
---oracle --root ORACLE_ROOT --version GC_2_7`, then build its generated target.
-Repeat for GC 1.3 and GC 1.3.2 when checking all supported development observers.
-Keep retained producer trees immutable: a new observer needs a new build root.
-The kit's pinned migration release may predate these development capabilities.
+`mwcc-tools configure --oracle --root ORACLE_ROOT --version VERSION` configures an oracle with the Rust producer
+(`--producer c` selects the C hooks); then build its generated target. Keep built producer trees immutable: a new
+observer needs a new build root.
 
-## Native surface and descriptor
+## Native surface
 
-`producer::validate` checks the complete common COFF surface. The working tree
-has 41 hook definitions, 15 support exports and exactly 74 imports, including the
-experimental source-node extension. The last accepted arena producer has
-38 hooks, 14 support exports and 69 imports. Native source-node validation is
-pending; see [current status](../oracle-source-guided-status.md).
+`producer::validate` checks the complete common COFF surface against the constants in `producer.rs`: `HOOKS`,
+`SUPPORT` and `IMPORTS` (with `ARGUMENT_HOOKS`, `ARENA_HOOKS` and `SOURCE_HOOKS` among them), and
+`TRACE_EXPORTS`/`TRACE_IMPORTS` for the separate Rust trace writer. The frontend object exports five hooks per
+version. Unexpected compiler runtime helpers fail the build instead of being linked silently.
 
-The separately built frontend object exports five hooks per compiler
-version; the separate Rust trace writer exports two symbols and imports five C
-runtime symbols. These inventories are code in `producer.rs`, not inferred from
-the presence of a few familiar exports. Unexpected compiler runtime helpers fail
-the build instead of being silently linked.
+- **Call arguments:** `_OracleRust_CounterProbeV6`, `_OracleRust_ArgumentForceGpr` and four regular-call
+  wrappers (`_FunctionCalls_GenerateCall`, `_assign_argument_locations`, `_load_argument_registers`,
+  `_store_argument_on_stack`). Linking renames the original definitions to `__retail` and redirects their callers
+  to the wrappers.
+- **Arenas:** `_OracleRust_ArenaProbeV1` and the eight reset/release/initialization wrappers. The linker provides
+  `_OracleRust_ArenaGlobals` (12 bytes: relocated first pool descriptor pointer, local lock pointer, version). Each
+  arena island passes a 36-byte descriptor: that globals pointer, canonical site, action, pair, pool and size/result
+  selectors. Islands preserve registers, flags and FXSAVE state; allocation commits run their original descriptor
+  stores before the observer; the failure-callback island restores the retail stack before calling the original
+  callback. See [source arenas](source-arenas.md).
+- **Source nodes:** `_OracleRust_SourceProbeV1` and three wrappers (frontend ownership, mode changes, recursive
+  cloning). A guarded statement-store island records assignment emission. See [source nodes](source-nodes.md).
 
-V6 requires `_OracleRust_CounterProbeV6`,
-`_OracleRust_ArgumentForceGpr` and all four regular-call wrappers:
+Link-name lookup can allocate compiler hash entries, so frontend inline and template observers resolve every link
+before emitting the first fragment of a multipart trace line.
 
-```text
-_FunctionCalls_GenerateCall
-_assign_argument_locations
-_load_argument_registers
-_store_argument_on_stack
-```
+## Counter descriptor
 
-The native linker rejects older observer objects. These four names are supplied
-by `producer::ARGUMENT_HOOKS` only on the Rust path. The configured C hook list and
-C rollback producer remain unchanged. Linking renames the original definitions
-to `__retail` and redirects their callers to the wrappers.
-
-The arena extension additionally requires `_OracleRust_ArenaProbeV1` and the
-eight reset/release/initialization wrappers in `producer::ARENA_HOOKS`. They are
-native-only additions; older V6 common objects are rejected before installation.
-The linker provides `_OracleRust_ArenaGlobals`: a 12-byte structure containing
-the relocated first pool descriptor pointer, local lock pointer and version
-number. Each arena island passes a separate 36-byte descriptor containing that
-globals pointer, canonical site, action, pair, pool and size/result selectors.
-These layouts are distinct from the counter descriptor below. Guarded islands
-preserve registers, flags and FXSAVE state; allocation commits execute their
-original descriptor stores before the observer. The failure-callback island
-restores the original retail stack before invoking the original callback.
-See [source arenas](source-arenas.md) for the opt-in stream and query contract.
-
-The experimental source-node extension adds `_OracleRust_SourceProbeV1` and three
-wrappers for frontend ownership, mode changes and recursive cloning. A guarded
-statement-store island records ordinary assignment emission.
-[Source-node observations](source-nodes.md) defines the bounded query API.
-
-Link-name lookup can allocate compiler hash entries. Frontend inline and
-template observers resolve every link before emitting the first fragment of a
-multipart trace line, preserving record boundaries when arena capture is active.
-
-The counter descriptor remains 48 bytes, aligned to four bytes, on the i686
-producer target. V6 changes the observer capability and routing rather than
-adding an argument pointer to each counter descriptor.
+48 bytes, 4-byte aligned, on the i686 target (compile-time size/alignment/offset assertions):
 
 | Byte offset | Field |
 | --- | --- |
@@ -69,82 +39,35 @@ adding an argument pointer to each counter descriptor.
 | 32, 36 | Object-binding and operand-binding selectors |
 | 40, 44 | Version-specific data-link offset and origin-binding selector |
 
-The hook has compile-time size/alignment/offset assertions. Counter call islands
-execute the original relocated instruction and preserve the saved machine state
-as described in [backend provenance](provenance.md). Regular-call wrappers use
-the verified C calling convention: two raw words for GenerateCall, **six** for
-location assignment, and one for either register loading or stack storage. The
-audited scalar ForceGPR call forwards three raw words through a separate retail
-jump thunk. In particular, assignment does not use the reconstructed C prototype,
-and the upper bits of partially initialized incoming words are forwarded intact.
+Counter call islands run the original relocated instruction and preserve the machine state. Regular-call wrappers
+use the verified calling convention: two raw words for GenerateCall, **six** for location assignment, one for
+register loading or stack storage. ForceGPR forwards three raw words through a separate retail jump thunk.
+Assignment does not use the reconstructed C prototype; the upper bits of partially initialized words are forwarded
+intact.
 
 ## Construction guards
 
-`call_argument_probe::install` validates the pinned original PE, symbol address
-and size metadata, complete supplied split bodies, and relocation identities
-before installing argument observations. Each relocation identity includes its
-offset, kind, target name/value/section/type/storage/auxiliary records and raw
-addend. A matching opcode with a different helper target is insufficient.
+`call_argument_probe::install` validates the original PE, symbol addresses and sizes, the complete split bodies
+and their relocation identities (offset, kind, target name/value/section/type/storage/auxiliary records, raw
+addend) before installing argument observations. A matching opcode with a different helper target is
+insufficient. The guarded helpers (GenerateCall, reverse evaluation, register loading, stack storage, location
+assignment, PCode append, call/intrinsic dispatch, ForceGPR and Normalize or their containing body), their
+addresses, sizes and hashes are in `call_argument_probe.rs`; each producer writes them to
+`build/VERSION/oracle/arguments/guards.json`.
 
-| Guarded helper | GC 1.3 | GC 1.3.2 | GC 2.7 | Bytes |
-| --- | --- | --- | --- | --- |
-| GenerateCall | `5267c0` | `527320` | `5281b0` | `6a6` |
-| Reverse evaluation | `526e70` | `5279d0` | `528860` | `12b` |
-| Register loading | `526fa0` | `527b00` | `528990` | `6e7` |
-| Stack storage | `527690` | `5281f0` | `529080` | `38d` |
-| Location assignment | `527a20` | `528580` | `529410` | `60f` |
+The constructor changes only the REL32 target/addend at register-loader offset `+0x2ee`, after the audited CALL at
+`+0x2ed`. GC 1.3 targets the named ForceGPR helper; later versions target the guarded container at `+0xd00`
+through the retail thunk. Section sizes, other bytes, other relocations and public symbols stay fixed.
 
-Addresses and sizes above are hexadecimal canonical retail coordinates. Guards
-also cover PCode append and regular-call/intrinsic dispatch, plus ForceGPR and
-Normalize in GC 1.3 or their complete containing body in later versions. There
-are nine guarded bodies in GC 1.3 and eight in each later version. Full hashes
-and relocation digests are defined in `call_argument_probe.rs` and retained in
-`build/VERSION/oracle/arguments/guards.json` in each new producer.
+At runtime each 48-byte argument context is bound to its source-list node. Calls, contexts, episodes and
+same-block PCode walks are bounded; unsupported locations, inconsistent identities, block changes and exceeded
+limits emit gaps. Only tag-defined operand fields are read, and callee names come from the cache without calling
+the mangler. See [call arguments](call-arguments.md).
 
-The constructor changes only the REL32 target/addend at register-loader offset
-`+0x2ee`, following the audited CALL opcode at `+0x2ed`. GC 1.3 targets the named
-ForceGPR helper; later versions target the guarded container at `+0xd00` through
-the retail thunk. Original section sizes, other bytes, other relocation targets
-and public symbol locations remain fixed. Existing counter and coalescer probes
-are installed separately, after these argument guards.
+## Checks
 
-Runtime validation binds each returned 48-byte argument context to its actual
-source-list node. Calls, contexts, episodes and same-block PCode walks have
-explicit bounds. Unsupported locations, inconsistent identities, block changes
-and exceeded limits emit gaps. Only initialized, tag-defined operand fields are
-observed. Cached callee names are read without invoking the mangler. The scope
-is [guarded regular-call arguments](call-arguments.md), not complete C++ argument
-semantics, all intrinsic paths or value lifetimes.
-
-## Reproduce the fixture audit
-
-The committed `tests/fixtures/backend/call_arguments.cpp` is byte-identical to
-the audited fixture: SHA-256
-`9e60c5370527f025e13eb257a402ffee9b3cb9fa50abe3386dc69c1ff0289e50`.
-It covers a symbolic address, a global reference, a nested call, and register,
-stack, floating-point and two-word argument lowering. It is a standalone
-development audit; it does not add cases to the standard backend manifest.
-
-With an already built V6 producer and Python 3.11 or newer:
-
-```text
-python tools/migration/verify_call_arguments.py --binary MWCC_TOOLS --oracle-root V6_PRODUCER --output NEW_AUDIT_DIRECTORY
-```
-
-The script retains exact commands, compiler captures, objects, diagnostics,
-inspection results and hashes. It compiles with observation disabled/enabled,
-keeps independent stock checking enabled, and verifies unchanged existing trace
-records. The address argument at lowered ordinal 1 owns two guarded Normalize
-births; the reference argument owns zero. The nested call's observed block
-transition remains an explicit gap. Planned GPR4 and helper operands are not
-reported as proof of final instruction ownership or semantic lifetime.
-
-On Linux, use the producer's pinned loader through `MWCC_WIBO` when required.
-The script neither configures nor rebuilds the supplied producer. Use a new
-output directory to preserve prior evidence.
-
-The ignored constructor test `guarded_argument_retarget_preserves_other_bytes_and_rejects_corruption`
-in `tests/call_argument_probe.rs` uses `MWCC_ORACLE_TEST_ROOT` to read existing
-split originals. Across all three versions it checks the preserved layout and
-rejects 91 byte, relocation-target, addend and symbol-value corruptions. It does
-not modify the supplied producer.
+- `tests/fixtures/backend/call_arguments.cpp` covers a symbolic address, a global reference, a nested call and
+  register, stack, floating-point and two-word argument lowering.
+- The ignored test `guarded_argument_retarget_preserves_other_bytes_and_rejects_corruption`
+  (`crates/mwcc-oracle-core/tests/call_argument_probe.rs`, with `MWCC_ORACLE_TEST_ROOT`) checks the preserved layout
+  and rejects byte, relocation-target, addend and symbol-value corruptions.

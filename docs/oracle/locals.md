@@ -7,10 +7,8 @@ mwcc-tools call oracle.trace project=../echoes unit=main/GuiSys/CAuiBitmapMeter 
     views.locals=true views.text=true
 ```
 
-`oracle.trace`'s `views.locals` explains why a local struct or class ends up in registers or on the stack. With the
-target asm, it also shows where the target's frame differs from ours. Use it with `function`.
-
-The report has five parts:
+`views.locals` explains why a local struct or class ends up in registers or on the stack and, with the target asm,
+where the target's frame differs from ours. Use it with `function`. The report has five parts:
 
 1. [The scalarizer](#the-scalarizer): each local aggregate, split into scalars or kept in memory, and why.
 2. [Formals of inlined calls](#formals-of-inlined-calls): how the inliner bound each argument.
@@ -44,9 +42,7 @@ Locals in memory that the pass never saw are listed after.
 | Address taken, pointer analysis off | Its member uses are not even recorded. |
 | Address taken, pointer analysis on | A call may reach it. |
 
-### Copies: which ones keep a local in memory
-
-All of this was checked on 2.7.
+### Copies: which ones keep a local in memory (checked on 2.7)
 
 | Copy | Effect |
 |---|---|
@@ -82,29 +78,25 @@ For every call inlined into the function, grouped by callee, the report shows ho
 
 Each local and temporary is shown with where it ended up.
 
-**By-value class arguments.** These come as `reference`: the caller copy-constructs the argument into a temporary.
+**By-value class arguments** come as `reference`: the caller copy-constructs the argument into a temporary, and
 `v (reference): reference -> @5 (memory r1+8)` is that stack copy. A const reference to the same lvalue is
-substituted instead, with no copy. A by-value formal that is missing in ours explains a target's extra stack copy of an
-argument.
-
-By then the inline variable is already a reference, so `reference` alone does not tell a by-value formal from a
-`const &` bound to a temporary such as `V(a, b, c)`. The report labels each formal from the callee's declared argument
-types: `BY VALUE, a class of N` when the declaration takes it by value.
+substituted, with no copy. So a by-value formal missing in ours explains a target's extra stack copy of an argument.
+`reference` alone does not tell a by-value formal from a `const &` bound to a temporary such as `V(a, b, c)`; the
+report labels the first `BY VALUE, a class of N` from the callee's declared argument types.
 
 **What a local pointer formal holds.** An inlined member function's `this`, or a `const &` with side effects, can
-become a local holding an address. The report shows what that address is:
+become a local holding an address. The report shows it:
 
 * `@729=&tmp`: the address of an object, followed through other such locals;
 * otherwise the argument in short form. `@729=(data((*..+188))+12)` is element 1 of a reserved_vector member at
   this+188, and `@654=__vc((*this+188),..)` is that vector's operator[].
 
-An object whose address such a local holds is address-taken. These objects are listed under "objects whose address an
-inlined call holds", in the order the formals were bound.
+Such objects are address-taken; they are listed under "objects whose address an inlined call holds", in the order
+the formals were bound.
 
 ## The target's frame
 
-The report compares the target's frame size with ours. It gives the target's locals area by the r1 offsets its code
-uses, grouped into runs:
+The target's frame size against ours, and the target's locals area by the r1 offsets its code uses, in runs:
 
 * the loads, stores and `addi` at each offset (an `addi` means the address is taken);
 * our locals at those offsets.
@@ -118,12 +110,9 @@ Our instructions are paired with the target's: difflib over the instruction word
 fields and branch targets masked. For each pair of r1 accesses below the register saves, the report takes the target's
 offset minus ours, and files it under the object of ours that the access is in.
 
-Objects are grouped by their usual delta, smallest group first:
-
-* A group of one is an object the target places in another order. The report names the object of ours at the offset
-  where the target has it.
-* Our temporaries get their slots in the order they are made. So that object is the one whose place in the order the
-  original source differs on.
+Objects are grouped by their usual delta, smallest group first. A group of one is an object the target places in
+another order; the report names the object of ours at the offset where the target has it. Temporaries get their slots
+in the order they are made, so that object is the one whose place in that order the original source differs on.
 
 Example, LoadSurfaceCamera: `-0x120: @996 (12@r1+0x154)`. The target has @996 where ours has @1043, while the 24 other
 12-byte temporaries are all at +0xc.
@@ -137,9 +126,9 @@ The same pairing finds the objects only one side keeps in memory:
   in memory, member by member, where ours splits it.
 * **Ours only:** our in-memory objects with no paired access of the target's.
 
-**Identical copies.** Within a target-only run, the report names copies of one value: stores of the same registers, not
-rewritten in between, in the same order at the same distances. For each group, it gives where the copies are, whether
-they were stored copy by copy or interleaved, which copy was stored first, and which members are read back.
+**Identical copies.** Within a target-only run, the report names copies of one value (stores of the same registers,
+not rewritten in between, in the same order at the same distances): where they are, whether stored copy by copy or
+interleaved, which was stored first, and which members are read back.
 
 Example, CAuiBitmapMeter::Draw (Echoes):
 
@@ -152,7 +141,7 @@ These are temporaries the target keeps and ours splits. Only one member of one c
 
 ## Summary
 
-The report for each function ends with a short list of what is kept in memory:
+Each function's report ends with what is kept in memory:
 
 * **ours:** each local or temporary, with its reason in a few words and the copy functions it goes through, with the
   source lines they are inlined on;

@@ -1,7 +1,7 @@
 # Near-miss ledger: GC_2_6's inexact functions
 
-Snapshot of October 16, 2026, 13:30 (counts updated after the S_BACK/S_FRONT spot fixes). Taken from `build/GC_2_6/compare.json` and `tools/status.py GC_2_6 --todo`:
-4018/4077 functions exact; 2806/4080 linked (68.8%, 52.0% of bytes).
+Each inexact function of GC_2_6 with what differs, what was tried and the leads left. `tools/status.py GC_2_6
+--todo` is the current state.
 
 Sources read: AGENTS.md, docs/review-2.6.md, docs/audit-2.6.md, docs/audit-data-2.6.md, HANDOFF.md, and every agent
 REVIEW*.md (mwcc-agent-kit and the scratchpad agents). Also the near-miss prompts (NM/N3/R4), the AGENTS.md copies in
@@ -13,30 +13,6 @@ recorded)". Anything marked "(inferred)" is a reading of the diff, not something
 Round names, oldest first: rewrite round 1 (Oct 15 ~19:00, per-unit agents), NM = near-miss round 1, R_ = rewrite
 round 2, N3 = near-miss round 3, R4 = near-miss round 4, then the review rounds V/W/X/Y/Z/H/RB (scratchpad, Oct 16
 early), then review round Y (agent-kit Y_*) and RB_DECL/RB_INL (Oct 16 ~12:00).
-
-## Counts
-
-- 50 inexact functions in 27 sources after NM5 (October 17: vformatpcode, CPrec_GetTypePatch, DoTransformations24,
-  canoptimizevectorconst, gen_CONDASS and I8_insert_bitfield exact, and AddNodeAndSuccessorsRecursively exact again
-  through a neighbour's parameter copy; 4027/4077 exact; PCodeInfo links in every version). No source with a row
-  links while it has an inexact function, and every one of the 27 is all-exact apart from these.
-- 13 units are one function from linking: SpillCode (insertspillcode 91.1), VectorArraysToRegs (computeaddilist
-  94.8), CPrepTokenizer (tquot 97.7), CDecl (CDecl_AddFunctionMember 99.3), CInline (CInline_UnpackIFunctionData
-  92.2), CodeMotion (isloopinvariant 97.3), FunctionCalls (analyze_arguments 92.5), IroPropagate (IRO_CopyAndConstantPropagation 99.7), IroUnrollLoop (UnrollWhileLoop 89.1),
-  ConstantPropagation (propagateconstantstoblock 98.9), and since NM5 IroTransform (DoTransformations11 96.0), TOC
-  (rewrite_opassign 66.3) and Operands
-  (I8_extract_bitfield 83.8).
-- The lowest are rewrite_opassign 66.3, adjustforward 68.1, compress_data_area 73.1, statement 73.6,
-  GeneratePossibleCondAss 78.0 and gen_COND 80.8 (NM5: 78.3 -> 80.8).
-- 2 functions differ in size from the original. These are not register-only: adjustforward +32 and gen_ASS +31
-  (NM5 fixed CPrec_GetTypePatch's +64, DoTransformations24's -80 and canoptimizevectorconst's +32). Smaller size gaps: rewrite_opassign -16, gen_COND -16, I8_gen_DIV_MOD -16,
-  CPrec_DumpColorSymbolTable -16, GeneratePossibleCondAss -16, UnrollWhileLoop +4, CDecl_AddFunctionMember +5,
-  CPrep_PragmaOnce +4, I8_extract_bitfield +1.
-- Most of them are recorded as checked equivalent to the original statement by statement (IDA/Ghidra pseudocode),
-  so the remaining work is matching the original's code shape, not fixing behaviour. Real bugs found earlier while
-  matching, and already fixed: gen_ASS (`copts.gprfloatcopy`), user_assign_check (`explicit` tested on the Object's
-  qual), GeneratePossibleCondAss (two, round 4). I8_extract_bitfield reproduces a dead `offset == 0` path that 2.6
-  has.
 
 ## Recurring patterns (each function's "Pattern" line has the details)
 

@@ -1,7 +1,5 @@
 These standalone inputs exercise the bounded source-node observation contract.
-They need no game files or headers. Run `tools/migration/verify_source_nodes.py`
-with a frozen native CLI, an already built producer and a new output directory.
-The script never builds or changes the producer.
+They need no game files or headers.
 
 `ordinary_writes.cpp` contains three ordinary assignment statements.
 `inline_arrays.cpp` applies a small helper to two distinct arrays and nests
