@@ -67,6 +67,21 @@ void OracleProbe_AliasAccess(void* pcode, int index);
 void OracleProbe_AliasEnd(void);
 void OracleProbe_AliasQuery(int kind, void* a, void* b, void* object, int result);
 
+// The value numbering (`vn.*`, MWCC_ORACLE_VN; optimizer/ValueNumbering.c): removecommonsubexpressions
+// begins FUNCTION's pass (AGGRESSIVE: its flag), an extended basic block at BLOCK, the block BLOCK and
+// the instruction PCODE, and ends (REMOVED: whether it removed any); a load or CSE operation's
+// OUTCOME (0 not a candidate, 1 an available value's, OTHER, is reused, 2 the store OTHER's value is,
+// REASON its kind, 3 it is kept, for REASON: see ValueNumbering.c's oracle_kept), with its alias
+// ALIAS (-1: none); the instruction PCODE kills the memory value of the alias ALIAS, or every value.
+void OracleProbe_VnBegin(void* function, int aggressive);
+void OracleProbe_VnExtendedBlock(void* block);
+void OracleProbe_VnBlock(void* block);
+void OracleProbe_VnInstruction(void* pcode);
+void OracleProbe_VnDecision(void* pcode, int outcome, int reason, void* other, int alias);
+void OracleProbe_VnKill(int alias, void* pcode);
+void OracleProbe_VnKillAll(void* pcode);
+void OracleProbe_VnEnd(int removed);
+
 // The register counters (`pv.function.*`, `pv.category.*`, `pv.counter.change`). ROLE is the
 // original's site's: 2 close_temp_registers has raised RCLASS's counter to its last temporary, 3
 // check_temp_registers has rewound it, 4 init_registers and 5 colorinstructions have reset it, 6

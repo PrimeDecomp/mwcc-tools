@@ -348,6 +348,109 @@ pub unsafe extern "C" fn OracleProbe_AliasQuery(
     }
 }
 
+// Whether removecommonsubexpressions is numbering (a kill outside its pass is not one of its).
+static mut NUMBERING: i32 = 0;
+
+/// gc2's probe: removecommonsubexpressions begins FUNCTION's pass (`vn.begin`; MWCC_ORACLE_VN).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn OracleProbe_VnBegin(function: *const u8, aggressive: i32) {
+    unsafe {
+        if wanted(c"MWCC_ORACLE_VN") {
+            ptr::addr_of_mut!(NUMBERING).write(1);
+            OracleTrace_Printf(
+                c"vn.begin aggressive=%d function=%s link=%s\n".as_ptr(),
+                i32::from(aggressive != 0),
+                object_name(function),
+                link_name(function),
+            );
+        }
+    }
+}
+
+/// gc2's probe: an extended basic block begins at BLOCK, with no values available (`vn.ebb`).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn OracleProbe_VnExtendedBlock(block: *const u8) {
+    unsafe {
+        if wanted(c"MWCC_ORACLE_VN") {
+            OracleTrace_Printf(c"vn.ebb block=%d\n".as_ptr(), read::<i32>(block, 28));
+        }
+    }
+}
+
+/// gc2's probe: the block BLOCK is numbered next (`vn.block`).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn OracleProbe_VnBlock(block: *const u8) {
+    unsafe {
+        if wanted(c"MWCC_ORACLE_VN") {
+            OracleTrace_Printf(c"vn.block block=%d\n".as_ptr(), read::<i32>(block, 28));
+        }
+    }
+}
+
+/// gc2's probe: PCODE is numbered next, its copies propagated (`vn.i`).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn OracleProbe_VnInstruction(pcode: *const u8) {
+    unsafe {
+        if wanted(c"MWCC_ORACLE_VN") {
+            instruction(c"vn.i".as_ptr(), pcode);
+        }
+    }
+}
+
+/// gc2's probe: what became of the load or operation PCODE (`vn.decide`, by the instructions' `p=`).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn OracleProbe_VnDecision(
+    pcode: *const u8,
+    outcome: i32,
+    reason: i32,
+    other: *const u8,
+    alias: i32,
+) {
+    unsafe {
+        if wanted(c"MWCC_ORACLE_VN") {
+            OracleTrace_Printf(
+                c"vn.decide p=%08x outcome=%d reason=%d other=%08x alias=%d\n".as_ptr(),
+                pcode as u32,
+                outcome,
+                reason,
+                other as u32,
+                alias,
+            );
+        }
+    }
+}
+
+/// gc2's probe: PCODE kills the memory value of the alias ALIAS (`vn.kill`).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn OracleProbe_VnKill(alias: i32, pcode: *const u8) {
+    unsafe {
+        if ptr::addr_of!(NUMBERING).read() != 0 && wanted(c"MWCC_ORACLE_VN") {
+            OracleTrace_Printf(c"vn.kill alias=%d p=%08x\n".as_ptr(), alias, pcode as u32);
+        }
+    }
+}
+
+/// gc2's probe: PCODE (a call) kills every available value (`vn.killall`).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn OracleProbe_VnKillAll(pcode: *const u8) {
+    unsafe {
+        if ptr::addr_of!(NUMBERING).read() != 0 && wanted(c"MWCC_ORACLE_VN") {
+            OracleTrace_Printf(c"vn.killall p=%08x\n".as_ptr(), pcode as u32);
+        }
+    }
+}
+
+/// gc2's probe: the pass ends, REMOVED whether it removed any (`vn.end`).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn OracleProbe_VnEnd(removed: i32) {
+    unsafe {
+        if ptr::addr_of!(NUMBERING).read() != 0 && wanted(c"MWCC_ORACLE_VN") {
+            OracleTrace_Printf(c"vn.end removed=%d\n".as_ptr(), i32::from(removed != 0));
+        }
+        ptr::addr_of_mut!(NUMBERING).write(0);
+    }
+}
+
 #[unsafe(export_name = "OracleRust_Snapshot")]
 pub unsafe extern "C" fn snapshot(
     prefix: *const c_char,

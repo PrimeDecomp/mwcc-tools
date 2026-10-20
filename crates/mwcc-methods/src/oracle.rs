@@ -59,6 +59,8 @@ pub struct Streams {
     pub alias: bool,
     #[serde(default)]
     pub alias_queries: bool,
+    #[serde(default)]
+    pub value_numbering: bool,
 }
 
 /// The text views to give (`text`): one of near, instantiation, cse/ir, blocks and locals, else each function's
@@ -87,11 +89,25 @@ pub struct ViewParams {
     pub inline_cost: Option<String>,
     #[serde(default)]
     pub pcode: bool,
+    /// With `pcode`: each instruction's flags (`; fIsRead fIsConst ...`).
+    #[serde(default)]
+    pub flags: bool,
     #[serde(default)]
     pub schedule: bool,
     /// The trace's raw lines (the selected function's, when one is).
     #[serde(default)]
     pub raw: bool,
+    /// The alias analysis's tables: each alias and each access's (`backend.alias`; gc2's probes, GC 2.6 and 2.7
+    /// in process).
+    #[serde(default)]
+    pub alias: bool,
+    /// What the value numbering did with each load and operation, and what killed the memory's values
+    /// (`backend.value_numbering`; gc2's probes).
+    #[serde(default)]
+    pub value_numbering: bool,
+    /// Two source lines, `A,B`: why the value numbering did or did not reuse line A's loads and operations at line
+    /// B (`backend.why_not_cse`; gc2's probes).
+    pub why_not_cse: Option<String>,
 }
 
 #[derive(Debug, Default, Deserialize, JsonSchema)]
@@ -147,6 +163,10 @@ pub struct TraceResult {
     pub text: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub raw: Option<Vec<String>>,
+    /// The backend views (`views.alias`, `views.value_numbering`, `views.why_not_cse`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schemars(with = "Option<Value>")]
+    pub backend: Option<Value>,
     /// The object equals the build's (a unit) or the original compiler's (a source).
     pub identical: Option<bool>,
     pub differences: Vec<String>,
@@ -178,6 +198,7 @@ impl Streams {
             peephole: self.peephole,
             alias: self.alias,
             alias_queries: self.alias_queries,
+            value_numbering: self.value_numbering,
             ..TraceOptions::default()
         }
     }
@@ -192,7 +213,134 @@ fn needed(streams: &Streams, views: &ViewParams) -> TraceOptions {
     options.cse |= views.cse || views.ir.is_some() || views.exchange.is_some();
     options.inline_cost |= views.near.is_some() || views.inline_cost.is_some();
     options.instantiation |= views.instantiation.is_some();
+    options.alias |= views.alias;
+    options.value_numbering |= views.value_numbering || views.why_not_cse.is_some();
+    // (the instructions' opcode names)
+    options.names |= options.alias || options.value_numbering;
     options
+}
+
+/// The backend views of TRACE (see [`ViewParams`]), FUNCTION's (its name or link name) or LINK's.
+fn backend_views(
+    trace: &str,
+    function: Option<&str>,
+    link: Option<&str>,
+    views: &ViewParams,
+) -> Result<Option<Value>> {
+    let lines = views
+        .why_not_cse
+        .as_deref()
+        .map(|lines| {
+            let (a, b) = lines
+                .split_once(',')
+                .context("why_not_cse is two source lines, A,B")?;
+            anyhow::Ok((a.trim().parse::<i32>()?, b.trim().parse::<i32>()?))
+        })
+        .transpose()?;
+    if !views.alias && !views.value_numbering && lines.is_none() {
+        return Ok(None);
+    }
+    let parsed = mwcc_trace::records::parse(
+        trace,
+        &mwcc_trace::records::Selection {
+            alias: views.alias,
+            value_numbering: views.value_numbering || lines.is_some(),
+            ..Default::default()
+        },
+    );
+    let selected = |name: &str, linked: &str| {
+        link.is_none_or(|l| l == linked)
+            && function.is_none_or(|f| f.is_empty() || f == name || f == linked)
+    };
+    let passes: Vec<_> = parsed
+        .value_numbering
+        .iter()
+        .filter(|p| selected(&p.function, &p.link))
+        .collect();
+    let mut backend = serde_json::Map::new();
+    if views.alias {
+        let tables: Vec<_> = parsed
+            .alias
+            .iter()
+            .filter(|t| selected(&t.function, &t.link))
+            .collect();
+        backend.insert("alias".into(), json!(tables));
+    }
+    if views.value_numbering {
+        backend.insert("value_numbering".into(), json!(passes));
+    }
+    if let Some((a, b)) = lines {
+        backend.insert("why_not_cse".into(), json!(why_not_cse(&passes, a, b)));
+    }
+    Ok(Some(Value::Object(backend)))
+}
+
+/// For each value numbering pass, what became of line B's loads and operations, and whether it is line A's value
+/// that they reused or could not.
+fn why_not_cse(passes: &[&mwcc_trace::records::VnPass], a: i32, b: i32) -> Vec<Value> {
+    let mut answers = vec![];
+    for (index, pass) in passes.iter().enumerate() {
+        let at_a: Vec<_> = pass.decisions.iter().filter(|d| d.line == a).collect();
+        let at_b: Vec<_> = pass.decisions.iter().filter(|d| d.line == b).collect();
+        if at_b.is_empty() {
+            answers.push(json!({
+                "pass": index, "function": pass.function, "aggressive": pass.aggressive,
+                "answer": format!("no load or CSE operation of line {b} in this pass (a store, a call, or an operation \
+                                   the pass does not number: a real register's li or lis, a record bit, a carry)"),
+            }));
+            continue;
+        }
+        for d in at_b {
+            let from_a = d.other_line == Some(a);
+            let answer = match d.outcome.as_str() {
+                "reused" if from_a => format!(
+                    "reused line {a}'s value ({})",
+                    d.other.as_deref().unwrap_or("?")
+                ),
+                "reused" => format!(
+                    "reused line {}'s value, not line {a}'s",
+                    d.other_line.unwrap_or(0)
+                ),
+                "forwarded" => format!("took the value line {} stored", d.other_line.unwrap_or(0)),
+                "skipped" => {
+                    "not a candidate: volatile, or it writes more than one register".to_string()
+                }
+                _ => {
+                    let reason = d.reason.clone().unwrap_or_default();
+                    let mut answer = if from_a || at_a.is_empty() || d.other_line.is_none() {
+                        reason
+                    } else {
+                        format!(
+                            "{reason} (the nearest available value is line {}'s)",
+                            d.other_line.unwrap_or(0)
+                        )
+                    };
+                    if let Some(killer) = &d.killed_by {
+                        answer.push_str(&format!("; killed by {killer}"));
+                    }
+                    if !at_a.is_empty() && at_a.iter().all(|x| x.extended_block != d.extended_block)
+                    {
+                        answer.push_str(&format!(
+                            "; line {a} is in another extended basic block (B{} against B{}): its values are not \
+                             available here",
+                            at_a[0].extended_block, d.extended_block
+                        ));
+                    } else if at_a.is_empty() {
+                        answer.push_str(&format!(
+                            "; line {a} has no load or CSE operation in this pass"
+                        ));
+                    }
+                    answer
+                }
+            };
+            answers.push(json!({
+                "pass": index, "function": pass.function, "aggressive": pass.aggressive,
+                "instruction": d.instruction, "flags": d.flags, "outcome": d.outcome, "other": d.other,
+                "other_line": d.other_line, "killed_by": d.killed_by, "answer": answer,
+            }));
+        }
+    }
+    answers
 }
 
 /// A traced compile: the trace, the object, its version, and how it compares.
@@ -408,12 +556,14 @@ fn documented(
                 exchange: views.exchange.as_deref(),
                 inline_cost: views.inline_cost.as_deref(),
                 pcode: views.pcode,
+                flags: views.flags,
                 schedule: views.schedule,
             },
         )?)
     } else {
         None
     };
+    let backend = backend_views(&traced.trace, function, link, views)?;
     let raw = views.raw.then(|| {
         if function.is_some_and(|f| !f.is_empty()) || link.is_some() {
             trace::raw_selected(&traced.trace, function, link)
@@ -425,6 +575,7 @@ fn documented(
         document,
         text,
         raw,
+        backend,
         identical: traced.identical,
         differences: traced.differences.clone(),
         version: traced.version.name().into(),
@@ -607,7 +758,7 @@ fn oracle_regdiff(call: &mut Call<'_>, params: RegdiffParams) -> Result<RegdiffR
     }
     let pcode = params
         .pcode
-        .then(|| report::pcode(&allocation.before, version::opcode_names(version)));
+        .then(|| report::pcode(&allocation.before, version::opcode_names(version), false));
     let text = if params.text {
         Some(regdiff_text(
             &document,
@@ -695,6 +846,7 @@ fn regdiff_text(
         out.extend(report::pcode(
             &parsed.allocations[index].before,
             version::opcode_names(version),
+            false,
         ));
     }
     out.extend(regdiff::report(document, params.full, params.inlining));

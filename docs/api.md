@@ -356,6 +356,7 @@ Result:
 | `document` | `any` | **required**; The schema-6 document (docs/oracle/trace.md). |
 | `text` | `[string]` | The views' lines (with `views.text`). |
 | `raw` | `[string]` |  |
+| `backend` | `any` | The backend views (`views.alias`, `views.value_numbering`, `views.why_not_cse`). |
 | `identical` | `boolean` | The object equals the build's (a unit) or the original compiler's (a source). |
 | `differences` | `[string]` | **required** |
 | `version` | `string` | **required** |
@@ -1418,8 +1419,12 @@ Result:
 | `exchange` | `string` | Two registers (`A,B`): what an exchange of them would change. |
 | `inline_cost` | `string` | The inlining decisions about callees whose names have this, with their costs. |
 | `pcode` | `boolean` |  |
+| `flags` | `boolean` | With `pcode`: each instruction's flags (`; fIsRead fIsConst ...`). |
 | `schedule` | `boolean` |  |
 | `raw` | `boolean` | The trace's raw lines (the selected function's, when one is). |
+| `alias` | `boolean` | The alias analysis's tables: each alias and each access's (`backend.alias`; gc2's probes, GC 2.6 and 2.7 in process). |
+| `value_numbering` | `boolean` | What the value numbering did with each load and operation, and what killed the memory's values (`backend.value_numbering`; gc2's probes). |
+| `why_not_cse` | `string` | Two source lines, `A,B`: why the value numbering did or did not reuse line A's loads and operations at line B (`backend.why_not_cse`; gc2's probes). |
 
 <a id="type-windowunit"></a>**`WindowUnit`**
 

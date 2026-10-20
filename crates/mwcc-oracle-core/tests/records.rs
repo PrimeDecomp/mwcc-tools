@@ -23,7 +23,8 @@ fn every_part_of_the_model_is_read_from_the_module() {
          inline float dot(const V& a, const V& b) { return a.x * b.x + a.y * b.y + a.z * b.z; }\n\
          float length2(const V& a) { return dot(a, a); }\n\
          int sum(int* p, int n) { int s = 0; int t = n; for (int i = 0; i < n; i++) { s += p[i] * (i + 3); t = s; } return s + t; }\n\
-         unsigned char flag(unsigned int x) { return (x >> 3) & 1; }\n",
+         unsigned char flag(unsigned int x) { return (x >> 3) & 1; }\n\
+         float reload(float* p, float* q) { float x = *p; *q = 0.0f; return x + *p; }\n",
     )
     .unwrap();
     let selection = Selection {
@@ -35,6 +36,7 @@ fn every_part_of_the_model_is_read_from_the_module() {
         peephole: true,
         alias: true,
         alias_queries: true,
+        value_numbering: true,
         ..Selection::default()
     };
     let flags: Vec<String> = [
@@ -74,6 +76,11 @@ fn every_part_of_the_model_is_read_from_the_module() {
         compile(Default::default()).object_sha256,
         "tracing changed the object"
     );
+    std::fs::write(
+        std::env::temp_dir().join("alias_trace_dump.txt"),
+        &compiled.trace,
+    )
+    .unwrap();
     let trace = records::parse(&compiled.trace, &selection);
     assert!(!trace.inline.is_empty(), "no inlining decisions");
     assert!(
@@ -129,6 +136,37 @@ fn every_part_of_the_model_is_read_from_the_module() {
             .any(|a| a.instruction.starts_with("lwz")),
         "no load among the accesses: {:?}",
         table.accesses
+    );
+    let numbering: Vec<_> = trace
+        .value_numbering
+        .iter()
+        .filter(|p| p.function.contains("length2"))
+        .collect();
+    assert!(!numbering.is_empty(), "no value numbering of length2");
+    let reload: Vec<_> = trace
+        .value_numbering
+        .iter()
+        .filter(|p| p.function.contains("reload"))
+        .collect();
+    assert!(
+        reload
+            .iter()
+            .flat_map(|p| &p.decisions)
+            .any(|d| d.outcome == "kept"
+                && d.reason
+                    .as_deref()
+                    .is_some_and(|r| r.contains("memory's value changed"))
+                && d.killed_by
+                    .as_deref()
+                    .is_some_and(|k| k.starts_with("stfs"))),
+        "the reload of *p is not kept for the store through q: {reload:?}"
+    );
+    assert!(
+        numbering
+            .iter()
+            .flat_map(|p| &p.decisions)
+            .any(|d| d.outcome == "kept" && d.instruction.starts_with("lfs")),
+        "no load the value numbering kept: {numbering:?}"
     );
     assert!(
         trace

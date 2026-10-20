@@ -35,6 +35,8 @@ pub struct Views<'a> {
     pub exchange: Option<&'a str>,
     pub inline_cost: Option<&'a str>,
     pub pcode: bool,
+    /// With `pcode`: each instruction's flags.
+    pub flags: bool,
     pub schedule: bool,
 }
 
@@ -230,6 +232,7 @@ pub fn text(document: &Value, traced: &Traced<'_>, views: &Views<'_>) -> Result<
             out.extend(report::pcode(
                 &a.before,
                 crate::version::opcode_names(version),
+                views.flags,
             ));
         }
         out.extend(report::allocation(analysis));

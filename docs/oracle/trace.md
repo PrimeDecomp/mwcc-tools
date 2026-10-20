@@ -155,6 +155,18 @@ which is many: every pair of a block's loads and stores the scheduler orders, an
 | `al.query kind= a= b= result=` | At level 2, whether the access `a` may alias `b` (pointers of `al.i`): `kind` 0 may_alias, 1 may_alias_scheduling (2.0p2's scheduler, which takes a direct access to a global for one through a pointer). |
 | `al.query kind=2 a= object= result= name=` | At level 2, whether `a` may touch the object (may_alias_object, the use-def chains and code motion). |
 
+**`MWCC_ORACLE_VN`** (`streams.value_numbering`, gc2): the backend's value numbering (`optimizer/ValueNumbering.c`),
+read into the [value numbering views](value-numbering.md).
+
+| Lines | Content |
+|---|---|
+| `vn.begin aggressive= function= link=` ... `vn.end removed=` | One pass of removecommonsubexpressions. |
+| `vn.ebb block=`, `vn.block block=` | An extended basic block begins (no values are available), and each of its blocks. |
+| `vn.i` | Each instruction, as it is numbered (the `sc.i` format). |
+| `vn.decide p= outcome= reason= other= alias=` | What became of a load or an operation: `outcome` 0 not a candidate, 1 an available value's (`other`) reused, 2 the store `other`'s value forwarded (`reason`: how), 3 kept, `reason` 0 no value of its opcode, 1 other operands, 2 the memory's value changed, 3 other flags, 4 the value's registers redefined (`other`: the nearest value). |
+| `vn.kill alias= p=` | The instruction `p` changes the memory value of the alias. |
+| `vn.killall p=` | The call `p` kills every available value. |
+
 The development streams (provenance):
 
 * `MWCC_ORACLE_SOURCE_ARENAS` (`streams.source_arenas`): the compilation-wide `pv.arena.*` records

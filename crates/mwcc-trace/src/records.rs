@@ -17,6 +17,8 @@
 //!   names;
 //! - alias analysis: each table gather_alias_info leaves (`al.begin`, its aliases, `al.alias`, the alias of each
 //!   access, `al.access`, and `al.end`) and, if asked, every query (`al.query`);
+//! - value numbering: each pass (`vn.begin` ... `vn.end`), what became of each load and operation (`vn.decide`, by
+//!   the instructions `vn.i` lists) and what killed the memory's values (`vn.kill`, `vn.killall`);
 //! - names: `pc.opcode` (an opcode's name, the first time) and `pc.object` (the object an instruction's operand
 //!   refers to, after it).
 use crate::{
@@ -150,6 +152,7 @@ pub struct AliasAccess {
 #[derive(Clone, Debug, Serialize)]
 pub struct AliasTable {
     pub function: String,
+    pub link: String,
     /// gathered while the registers are virtual (the accesses' aliases follow the address registers' definitions)
     pub coloring: bool,
     pub aliases: Vec<Alias>,
@@ -166,6 +169,88 @@ pub struct AliasQuery {
     /// the other access, or the object's name (`may_alias_object`)
     pub b: String,
     pub may: bool,
+}
+
+/// What the value numbering did with a load or an operation.
+#[derive(Clone, Debug, Serialize)]
+pub struct VnDecision {
+    /// the block it is in, the first of its extended basic block (the values it can reuse are the extended block's),
+    /// and its source line
+    pub block: i32,
+    pub extended_block: i32,
+    pub line: i32,
+    pub instruction: String,
+    /// its flags' names ([`flag_names`])
+    pub flags: Vec<String>,
+    /// `skipped` (volatile, or it writes more than one register), `reused` (an available value's: `other`),
+    /// `forwarded` (the value the store `other` wrote) or `kept` (a new available value: `reason` says why)
+    pub outcome: String,
+    pub reason: Option<String>,
+    /// the instruction it reused, was forwarded from, or (kept) the nearest available value
+    pub other: Option<String>,
+    pub other_line: Option<i32>,
+    /// kept because the memory's value changed: the instruction that changed it last (a store or a call)
+    pub killed_by: Option<String>,
+    /// its alias's index in the pass's table (`Trace::alias`)
+    pub alias: Option<u32>,
+}
+
+/// One pass of the value numbering (removecommonsubexpressions: twice a function, before and after the allocation).
+#[derive(Clone, Debug, Serialize)]
+pub struct VnPass {
+    pub function: String,
+    pub link: String,
+    /// the more aggressive pass (compares and `li` / `lis` of temporaries are candidates too)
+    pub aggressive: bool,
+    pub removed: bool,
+    pub decisions: Vec<VnDecision>,
+}
+
+/// The names of the PCode flags FLAGS has (an instruction's that is not a branch; PCode.h), the unnamed ones in
+/// hexadecimal.
+pub fn flag_names(flags: u32) -> Vec<String> {
+    const NAMES: [(u32, &str); 21] = [
+        (0x2, "fIsRead"),
+        (0x4, "fIsWrite"),
+        (0x8, "fIsCall"),
+        (0x10, "fIsMove"),
+        (0x20, "fIsPtrOp"),
+        (0x40, "fIsConst"),
+        (0x80, "fIsVolatile"),
+        (0x100, "fSideEffects"),
+        (0x2000, "fCommutative"),
+        (0x4000, "fIsCSE"),
+        (0x8000, "fIsArgInit"),
+        (0x20000, "fOpFromMemory"),
+        (0x40000, "fOpToMemory"),
+        (0x400000, "fHasBaseReg"),
+        (0x800000, "fOverflow"),
+        (0x2000000, "fUpdatesPtr"),
+        (0x4000000, "fCanSetCarry"),
+        (0x8000000, "fCanSetRecordBit"),
+        (0x10000000, "fSetsCarry"),
+        (0x20000000, "fRecordBit"),
+        (0x1, "fIsBranch"),
+    ];
+    let mut names = vec![];
+    let mut rest = flags;
+    for (bit, name) in NAMES {
+        if flags & bit != 0 {
+            names.push(name.to_string());
+            rest &= !bit;
+        }
+    }
+    match flags & 0xC000_0000 {
+        0x4000_0000 => names.push("fOpTypeFPR".into()),
+        0x8000_0000 => names.push("fOpTypeGPR".into()),
+        0xC000_0000 => names.push("fOpTypeVR".into()),
+        _ => {}
+    }
+    rest &= !0xC000_0000;
+    if rest != 0 {
+        names.push(format!("{rest:#x}"));
+    }
+    names
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -193,6 +278,8 @@ pub struct Trace {
     pub alias: Vec<AliasTable>,
     /// the alias analysis's queries (with `Selection::alias_queries`)
     pub alias_queries: Vec<AliasQuery>,
+    /// the value numbering's passes
+    pub value_numbering: Vec<VnPass>,
     pub pcode: Vec<PcodeDump>,
     /// the front-end optimizer's own dump (IRO passes, expression trees), when requested
     pub iro: String,
@@ -309,6 +396,8 @@ pub struct Selection {
     pub alias: bool,
     /// and its queries (`Trace::alias_queries`)
     pub alias_queries: bool,
+    /// the value numbering's decisions (`Trace::value_numbering`)
+    pub value_numbering: bool,
 }
 
 /// The phase whose IRO dump is the final form of a function (`MWCC_ORACLE_IRO_PHASES`).
@@ -325,6 +414,7 @@ impl Selection {
             peephole: self.peephole,
             alias: self.alias,
             alias_queries: self.alias_queries,
+            value_numbering: self.value_numbering,
             iro_dump: self.iro.then(|| iro_dump.to_string_lossy().into_owned()),
             iro_phases: self.iro.then(|| {
                 if self.iro_all_stages {
@@ -621,6 +711,14 @@ pub fn parse(text: &str, opts: &Selection) -> Trace {
     // (the function the last table was gathered in, and the instructions it listed, by their pointers)
     let mut alias_function = String::new();
     let mut accessed: HashMap<u32, String> = HashMap::new();
+    // (the pass being read: its instructions by their pointers, with their flags, its block, what last killed each
+    // alias's value, and the call that last killed every value in the extended block)
+    let mut numbering: Option<VnPass> = None;
+    let mut numbered: HashMap<u32, (String, u32, i32)> = HashMap::new();
+    let mut vn_block = 0;
+    let mut vn_extended = 0;
+    let mut killed: HashMap<i64, u32> = HashMap::new();
+    let mut killed_all: Option<u32> = None;
     let expanding = opts.inline
         || opts.coloring
         || opts.sched
@@ -628,6 +726,7 @@ pub fn parse(text: &str, opts: &Selection) -> Trace {
         || opts.peephole
         || opts.alias
         || opts.alias_queries
+        || opts.value_numbering
         || !opts.pcode.is_empty();
     let scheduled = |function: &str| {
         opts.sched_filter
@@ -887,6 +986,7 @@ pub fn parse(text: &str, opts: &Selection) -> Trace {
                 accessed.clear();
                 table = Some(AliasTable {
                     function: alias_function.clone(),
+                    link: r.get("link").unwrap_or("?").to_string(),
                     coloring: r.int("coloring") != 0,
                     aliases: vec![],
                     accesses: vec![],
@@ -954,6 +1054,105 @@ pub fn parse(text: &str, opts: &Selection) -> Trace {
                     },
                     may: r.int("result") != 0,
                 });
+            }
+            "vn.begin" if opts.value_numbering => {
+                numbered.clear();
+                killed.clear();
+                killed_all = None;
+                numbering = Some(VnPass {
+                    function: r.get("function").unwrap_or("?").to_string(),
+                    link: r.get("link").unwrap_or("?").to_string(),
+                    aggressive: r.int("aggressive") != 0,
+                    removed: false,
+                    decisions: vec![],
+                });
+            }
+            "vn.ebb" => {
+                killed_all = None;
+                vn_block = r.int("block") as i32;
+                vn_extended = vn_block;
+            }
+            "vn.block" => vn_block = r.int("block") as i32,
+            "vn.i" if numbering.is_some() => {
+                let text = instruction(&records, at, &opcodes).rendered.text;
+                numbered.insert(r.hex("p"), (text, r.hex("flags"), r.int("line") as i32));
+            }
+            "vn.kill" => {
+                killed.insert(r.int("alias"), r.hex("p"));
+            }
+            "vn.killall" => killed_all = Some(r.hex("p")),
+            "vn.decide" => {
+                if let Some(pass) = numbering.as_mut() {
+                    let text = |p: u32| {
+                        numbered
+                            .get(&p)
+                            .map_or_else(|| format!("{p:08x}"), |(t, _, _)| t.clone())
+                    };
+                    let (instruction, flags, line) = numbered
+                        .get(&r.hex("p"))
+                        .cloned()
+                        .unwrap_or_else(|| (format!("{:08x}", r.hex("p")), 0, 0));
+                    let other = r.hex("other");
+                    let alias = r.int("alias");
+                    let reason = r.int("reason");
+                    let (outcome, why, killed_by) = match r.int("outcome") {
+                        0 => ("skipped", None, None),
+                        1 => ("reused", None, None),
+                        2 => (
+                            "forwarded",
+                            Some(format!("the stored value, reused as kind {reason}")),
+                            None,
+                        ),
+                        _ => {
+                            let other_flags = numbered.get(&other).map_or(flags, |o| o.1);
+                            let why = match reason {
+                                0 => "no value of its opcode is available".to_string(),
+                                1 => "the available values of its opcode have other operands".to_string(),
+                                2 => "an available value has its operands, but the memory's value changed since"
+                                    .to_string(),
+                                3 => {
+                                    let mine = flag_names(flags);
+                                    let theirs = flag_names(other_flags);
+                                    let only = |a: &[String], b: &[String]| {
+                                        a.iter().filter(|f| !b.contains(f)).cloned().collect::<Vec<_>>()
+                                    };
+                                    format!(
+                                        "an available value has its operands, but other flags: it has {:?}, the value {:?}",
+                                        only(&mine, &theirs),
+                                        only(&theirs, &mine)
+                                    )
+                                }
+                                _ => "an available value has its operands, but its registers hold other values now"
+                                    .to_string(),
+                            };
+                            let killed_by = match reason {
+                                2 => killed.get(&alias).map(|&p| text(p)),
+                                0 => killed_all.map(text),
+                                _ => None,
+                            };
+                            ("kept", Some(why), killed_by)
+                        }
+                    };
+                    pass.decisions.push(VnDecision {
+                        block: vn_block,
+                        extended_block: vn_extended,
+                        line,
+                        instruction,
+                        flags: flag_names(flags),
+                        outcome: outcome.into(),
+                        reason: why,
+                        other: (other != 0).then(|| text(other)),
+                        other_line: numbered.get(&other).map(|o| o.2),
+                        killed_by,
+                        alias: u32::try_from(alias).ok(),
+                    });
+                }
+            }
+            "vn.end" => {
+                if let Some(mut pass) = numbering.take() {
+                    pass.removed = r.int("removed") != 0;
+                    t.value_numbering.push(pass);
+                }
             }
             "ph.hit" | "ph.dead" if opts.peephole => {
                 let Some(before) = after(&records, at, "ph.before") else {
