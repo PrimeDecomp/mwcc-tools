@@ -99,7 +99,7 @@ fn target_directory(loaded: &Loaded, target: Option<&Path>) -> Result<PathBuf> {
 
 /// LOADED's target asm: beside its target object, else found from its source under DIRECTORY.
 fn own_asm(loaded: &Loaded, directory: &Path) -> Result<PathBuf> {
-    match loaded.unit.target_asm() {
+    match loaded.unit.target_asm_or_disassembled() {
         Some(asm) => Ok(asm),
         None => project::target_asm(directory, &loaded.unit.source)?.with_context(|| {
             format!(

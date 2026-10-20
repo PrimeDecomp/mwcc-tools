@@ -19,7 +19,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
     collections::BTreeMap,
-    path::{Path, PathBuf},
+    path::PathBuf,
     time::{Duration, Instant},
 };
 
@@ -382,13 +382,9 @@ pub(crate) struct Traced {
 }
 
 /// The unit's target asm, as dtk writes it beside the target object (`build/<version>/obj/<path>.o` has
-/// `build/<version>/asm/<path>.s`).
+/// `build/<version>/asm/<path>.s`), disassembled by the project's dtk when the project has not.
 fn target_asm(loaded: &Loaded) -> Option<PathBuf> {
-    let target = loaded.unit.target_path.as_ref()?;
-    let text = target.to_string_lossy().replace('\\', "/");
-    let (directory, object) = text.rsplit_once("/obj/")?;
-    let asm = Path::new(&format!("{directory}/asm/{object}")).with_extension("s");
-    asm.is_file().then_some(asm)
+    loaded.unit.target_asm_or_disassembled()
 }
 
 /// LOADED compiled with a trace of OPTIONS through FILES.
