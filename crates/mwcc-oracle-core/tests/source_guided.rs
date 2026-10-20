@@ -182,6 +182,7 @@ fn compilation(trace: &str, source: &[u8]) -> Compilation {
     )
     .unwrap();
     Compilation {
+        module: None,
         version: Version::Gc27,
         source: "model.c".into(),
         oracle: "model".into(),

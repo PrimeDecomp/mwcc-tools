@@ -106,6 +106,7 @@ fn compilation(trace: &str) -> Compilation {
     )
     .unwrap();
     Compilation {
+        module: None,
         version: Version::Gc27,
         source: "model.cpp".into(),
         oracle: "model".into(),

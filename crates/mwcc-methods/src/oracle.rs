@@ -362,7 +362,7 @@ fn documented(
     views: &ViewParams,
 ) -> Result<TraceResult> {
     let parsed = trace::parse(&traced.trace)?;
-    let document = document::build(
+    let mut document = document::build(
         &parsed,
         traced.version,
         &traced.source,
@@ -375,6 +375,11 @@ fn documented(
             near: views.near,
         },
     )?;
+    // (what ran: the oracle names the executable, and the module that ran in its place, in process, with its hash)
+    if let Some(compilation) = &traced.compilation {
+        document["module"] = json!(compilation.module);
+        document["producer_sha256"] = json!(compilation.producer_sha256);
+    }
     let text = if views.text {
         let asm = traced
             .target_asm

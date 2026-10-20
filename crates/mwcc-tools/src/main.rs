@@ -163,6 +163,9 @@ fn help() {
   nearest VERSION SOURCE... [--root DIR]
   link [--oracle | --source] VERSION OUTPUT INPUT... [--root DIR] [--timeout SECS]
   configure [--version V] [--mode link|compare] [--split-only] [--oracle [--producer rust|c]] [--root DIR]
+  probe-build [--version V] [--from CHECKOUT] [--root DIR]
+      the in-process module of a checkout with changed gc2 sources (configure, then build/V/wasm/mwcc.wasm);
+      COMMAND --help gives a build command's options
   build-hooks OUTPUT [--trace-shim | --frontend-version V] [--wasm] [--root DIR] [--rustc FILE] [--timeout SECS]
   package-release OUTPUT.zip --binary FILE --target TARGET [--root DIR] [--source-revision COMMIT] [--notices DIR]
   transform-dep DEP OUT [--root DIR]
@@ -270,9 +273,10 @@ fn run() -> Result<()> {
         Some("provenance") => provenance_cli::run(&args[1..])?,
         Some("--version") => println!("mwcc-tools {}", env!("CARGO_PKG_VERSION")),
         Some("package-release") => release_cli::run(&args[1..])?,
-        Some("configure" | "transform-dep" | "download" | "verify" | "gates" | "build-hooks") => {
-            build_cli::run(&args[0], &args[1..])?
-        }
+        Some(
+            "configure" | "probe-build" | "transform-dep" | "download" | "verify" | "gates"
+            | "build-hooks",
+        ) => build_cli::run(&args[0], &args[1..])?,
         Some("--help" | "-h") | None => help(),
         Some("corpus") => corpus_command(&args[1..])?,
         Some(
