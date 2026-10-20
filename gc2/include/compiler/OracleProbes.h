@@ -82,6 +82,13 @@ void OracleProbe_VnKill(int alias, void* pcode);
 void OracleProbe_VnKillAll(void* pcode);
 void OracleProbe_VnEnd(int removed);
 
+// The PCode at each stage the compiler's debug listing names (`st.stage`, MWCC_ORACLE_LISTING): the
+// sites that list the blocks under copts.debuglisting list them under ORACLE_LISTING(copts.debuglisting)
+// too, which is also true when the trace asks (OracleProbe_Listing), and pclistblocks (a stub in 2.x)
+// reports FUNCTION's blocks after STAGE.
+int OracleProbe_Listing(void);
+void OracleProbe_ListBlocks(void* function, const char* stage);
+
 // The register counters (`pv.function.*`, `pv.category.*`, `pv.counter.change`). ROLE is the
 // original's site's: 2 close_temp_registers has raised RCLASS's counter to its last temporary, 3
 // check_temp_registers has rewound it, 4 init_registers and 5 colorinstructions have reset it, 6
@@ -128,6 +135,8 @@ extern int OracleTrace_On;
         } \
     } while (0)
 
+#define ORACLE_LISTING(listing) ((listing) || (ORACLE_TRACING && OracleProbe_Listing()))
+
 #ifdef __wasm__
 // A function's scope in the trace (wasm/src/oracle.c): its inline expansion and code generation, between
 // ORACLE_SCOPE(1) and ORACLE_SCOPE(0). The host keeps a scope's records only for the functions a run asks for
@@ -141,6 +150,7 @@ void OracleTrace_Scope(int entering);
 #else
 
 #define ORACLE_PROBE(call)
+#define ORACLE_LISTING(listing) (listing)
 #define ORACLE_INLINED(call) call
 #define ORACLE_SCOPE(entering)
 

@@ -155,6 +155,12 @@ which is many: every pair of a block's loads and stores the scheduler orders, an
 | `al.query kind= a= b= result=` | At level 2, whether the access `a` may alias `b` (pointers of `al.i`): `kind` 0 may_alias, 1 may_alias_scheduling (2.0p2's scheduler, which takes a direct access to a global for one through a pointer). |
 | `al.query kind=2 a= object= result= name=` | At level 2, whether `a` may touch the object (may_alias_object, the use-def chains and code motion). |
 
+**`MWCC_ORACLE_LISTING`** (`streams.listing`, gc2): the PCode at each stage the compiler's debug listing names
+(`AFTER VALUE NUMBERING 2`, `AFTER COPY PROPAGATION`, `AFTER REGISTER COLORING`, `FINAL CODE`...), where the
+listing would list it: `st.stage name=` then the snapshot `st.listing function= link=` ... `st.end`, in the
+`st.codegen` format. A stage that only lists when its pass changed something (value numbering, copy propagation)
+is absent when it did not. `oracle.trace`'s `views.stages` filters them by name.
+
 **`MWCC_ORACLE_VN`** (`streams.value_numbering`, gc2): the backend's value numbering (`optimizer/ValueNumbering.c`),
 read into the [value numbering views](value-numbering.md).
 

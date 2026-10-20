@@ -378,7 +378,8 @@ pub fn render_pcode(
 pub struct Selection {
     pub inline: bool,
     pub coloring: bool,
-    /// any of "initial", "presched", "precolor"
+    /// any of "initial", "presched", "precolor", or a stage the compiler's debug listing names (`AFTER VALUE
+    /// NUMBERING 2`, or a part of the name, without regard to case: `value numbering`; `listing`: every one)
     pub pcode: Vec<String>,
     /// the compiler's own IRO dump (`Trace::iro`), into the file `iro_dump`: the final form of every function
     pub iro: bool,
@@ -400,6 +401,9 @@ pub struct Selection {
     pub value_numbering: bool,
 }
 
+/// The stages of [`Selection::pcode`] that are not the debug listing's.
+const STAGES: [&str; 3] = ["initial", "presched", "precolor"];
+
 /// The phase whose IRO dump is the final form of a function (`MWCC_ORACLE_IRO_PHASES`).
 pub const IRO_FINAL_STAGE: &str = "After IRO_Optimizer";
 
@@ -410,6 +414,7 @@ impl Selection {
             names: true,
             schedule: self.sched,
             stages: !self.pcode.is_empty(),
+            listing: self.pcode.iter().any(|s| !STAGES.contains(&s.as_str())),
             copy_propagation: self.copyprop,
             peephole: self.peephole,
             alias: self.alias,
@@ -707,6 +712,7 @@ pub fn parse(text: &str, opts: &Selection) -> Trace {
     let mut can: Option<usize> = None;
     let mut cost: Option<(i32, i32)> = None;
     let mut dump: Option<PcodeDump> = None;
+    let mut listed = String::new();
     let mut table: Option<AliasTable> = None;
     // (the function the last table was gathered in, and the instructions it listed, by their pointers)
     let mut alias_function = String::new();
@@ -917,18 +923,27 @@ pub fn parse(text: &str, opts: &Selection) -> Trace {
                     t.sched.push(b);
                 }
             }
+            "st.stage" => listed = r.tail("name").to_string(),
             kind if kind.starts_with("st.") && !matches!(kind, "st.block" | "st.i" | "st.end") => {
                 let stage = match kind {
                     "st.codegen" => "initial",
                     "st.presched" => "presched",
                     "st.precolor.gpr" => "precolor-gpr",
                     "st.precolor.fpr" => "precolor-fpr",
+                    "st.listing" => listed.as_str(),
                     _ => "",
                 };
-                let wanted = opts
-                    .pcode
-                    .iter()
-                    .any(|s| s == stage || s == "precolor" && stage.starts_with("precolor-"));
+                let wanted = if kind == "st.listing" {
+                    let name = stage.to_lowercase();
+                    opts.pcode.iter().any(|s| {
+                        !STAGES.contains(&s.as_str())
+                            && (s == "listing" || name.contains(&s.to_lowercase()))
+                    })
+                } else {
+                    opts.pcode
+                        .iter()
+                        .any(|s| s == stage || s == "precolor" && stage.starts_with("precolor-"))
+                };
                 // (the debugger names the function select colours by its object, the others by the expansion)
                 let name = if kind.starts_with("st.precolor") {
                     r.get("function").unwrap_or("?")

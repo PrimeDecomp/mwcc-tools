@@ -21,6 +21,7 @@ pub const TRACE_ENV: &[&str] = &[
     "MWCC_ORACLE_PEEPHOLE",
     "MWCC_ORACLE_ALIAS",
     "MWCC_ORACLE_VN",
+    "MWCC_ORACLE_LISTING",
     "MWCC_ORACLE_IRO_DUMP",
     "MWCC_ORACLE_IRO_PHASES",
     "MWCC_ORACLE_FUNCTIONS",
@@ -63,6 +64,9 @@ pub struct TraceOptions {
     /// The value numbering's decisions on each load and operation, and what killed the memory's values (`vn.*`).
     #[serde(skip_serializing_if = "is_false")]
     pub value_numbering: bool,
+    /// The PCode at each stage the compiler's debug listing names (`st.stage`, `st.listing`).
+    #[serde(skip_serializing_if = "is_false")]
+    pub listing: bool,
     /// The file the optimizer's own dump goes to, and the phases it dumps after (`all`, or a phase's name).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub iro_dump: Option<String>,
@@ -95,6 +99,7 @@ impl TraceOptions {
             ("MWCC_ORACLE_COPYPROP", self.copy_propagation, "1"),
             ("MWCC_ORACLE_PEEPHOLE", self.peephole, "1"),
             ("MWCC_ORACLE_VN", self.value_numbering, "1"),
+            ("MWCC_ORACLE_LISTING", self.listing, "1"),
         ] {
             if enabled {
                 env.insert(key.into(), value.into());

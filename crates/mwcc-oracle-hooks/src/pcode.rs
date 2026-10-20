@@ -348,6 +348,25 @@ pub unsafe extern "C" fn OracleProbe_AliasQuery(
     }
 }
 
+/// gc2's probe: whether the trace lists the PCode at the debug listing's stages (MWCC_ORACLE_LISTING).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn OracleProbe_Listing() -> i32 {
+    unsafe { i32::from(wanted(c"MWCC_ORACLE_LISTING")) }
+}
+
+/// gc2's probe: the debug listing lists FUNCTION's blocks after STAGE (`st.stage name=`, then the snapshot
+/// `st.listing`).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn OracleProbe_ListBlocks(function: *const u8, stage: *const c_char) {
+    unsafe {
+        if function.is_null() || !wanted(c"MWCC_ORACLE_LISTING") {
+            return;
+        }
+        OracleTrace_Printf(c"st.stage name=%s\n".as_ptr(), stage);
+        snapshot(c"st".as_ptr(), c"listing".as_ptr(), function);
+    }
+}
+
 // Whether removecommonsubexpressions is numbering (a kill outside its pass is not one of its).
 static mut NUMBERING: i32 = 0;
 

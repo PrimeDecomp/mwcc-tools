@@ -108,6 +108,11 @@ pub struct ViewParams {
     /// Two source lines, `A,B`: why the value numbering did or did not reuse line A's loads and operations at line
     /// B (`backend.why_not_cse`; gc2's probes).
     pub why_not_cse: Option<String>,
+    /// The PCode at the stages the compiler's debug listing names (`AFTER VALUE NUMBERING 2`, `AFTER COPY
+    /// PROPAGATION`, `AFTER REGISTER COLORING`...), those whose names have one of these, comma-separated, without
+    /// regard to case (`value numbering,coloring`; `listing`: every stage) (`backend.stages`, and `text` with
+    /// `views.text`; gc2's probes).
+    pub stages: Option<String>,
 }
 
 #[derive(Debug, Default, Deserialize, JsonSchema)]
@@ -215,8 +220,9 @@ fn needed(streams: &Streams, views: &ViewParams) -> TraceOptions {
     options.instantiation |= views.instantiation.is_some();
     options.alias |= views.alias;
     options.value_numbering |= views.value_numbering || views.why_not_cse.is_some();
+    options.listing |= views.stages.is_some();
     // (the instructions' opcode names)
-    options.names |= options.alias || options.value_numbering;
+    options.names |= options.alias || options.value_numbering || options.listing;
     options
 }
 
@@ -237,7 +243,14 @@ fn backend_views(
             anyhow::Ok((a.trim().parse::<i32>()?, b.trim().parse::<i32>()?))
         })
         .transpose()?;
-    if !views.alias && !views.value_numbering && lines.is_none() {
+    let stages: Vec<String> = views
+        .stages
+        .iter()
+        .flat_map(|s| s.split(','))
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+    if !views.alias && !views.value_numbering && lines.is_none() && stages.is_empty() {
         return Ok(None);
     }
     let parsed = mwcc_trace::records::parse(
@@ -245,6 +258,7 @@ fn backend_views(
         &mwcc_trace::records::Selection {
             alias: views.alias,
             value_numbering: views.value_numbering || lines.is_some(),
+            pcode: stages.clone(),
             ..Default::default()
         },
     );
@@ -271,6 +285,14 @@ fn backend_views(
     }
     if let Some((a, b)) = lines {
         backend.insert("why_not_cse".into(), json!(why_not_cse(&passes, a, b)));
+    }
+    if !stages.is_empty() {
+        let dumps: Vec<_> = parsed
+            .pcode
+            .iter()
+            .filter(|d| function.is_none_or(|f| f.is_empty() || d.function == f))
+            .collect();
+        backend.insert("stages".into(), json!(dumps));
     }
     Ok(Some(Value::Object(backend)))
 }

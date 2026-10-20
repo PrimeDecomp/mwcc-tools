@@ -30,7 +30,12 @@ fn every_part_of_the_model_is_read_from_the_module() {
     let selection = Selection {
         inline: true,
         coloring: true,
-        pcode: vec!["initial".into(), "presched".into(), "precolor".into()],
+        pcode: vec![
+            "initial".into(),
+            "presched".into(),
+            "precolor".into(),
+            "register coloring".into(),
+        ],
         sched: true,
         copyprop: true,
         peephole: true,
@@ -100,7 +105,12 @@ fn every_part_of_the_model_is_read_from_the_module() {
         "no colouring round for sum"
     );
     assert!(!trace.sched.is_empty(), "no scheduled blocks");
-    for stage in ["initial", "presched", "precolor-gpr"] {
+    for stage in [
+        "initial",
+        "presched",
+        "precolor-gpr",
+        "AFTER REGISTER COLORING",
+    ] {
         assert!(
             trace
                 .pcode

@@ -1425,6 +1425,7 @@ Result:
 | `alias` | `boolean` | The alias analysis's tables: each alias and each access's (`backend.alias`; gc2's probes, GC 2.6 and 2.7 in process). |
 | `value_numbering` | `boolean` | What the value numbering did with each load and operation, and what killed the memory's values (`backend.value_numbering`; gc2's probes). |
 | `why_not_cse` | `string` | Two source lines, `A,B`: why the value numbering did or did not reuse line A's loads and operations at line B (`backend.why_not_cse`; gc2's probes). |
+| `stages` | `string` | The PCode at the stages the compiler's debug listing names (`AFTER VALUE NUMBERING 2`, `AFTER COPY PROPAGATION`, `AFTER REGISTER COLORING`...), those whose names have one of these, comma-separated, without regard to case (`value numbering,coloring`; `listing`: every stage) (`backend.stages`, and `text` with `views.text`; gc2's probes). |
 
 <a id="type-windowunit"></a>**`WindowUnit`**
 

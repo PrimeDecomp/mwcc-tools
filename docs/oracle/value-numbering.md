@@ -34,5 +34,9 @@ Two accesses may alias when their aliases overlap, which is what orders a load a
 what kills an available load in the value numbering. `streams.alias_queries` adds every query and its answer
 ([trace.md](trace.md)).
 
+`views.stages: "value numbering,copy propagation"` gives the PCode after each stage of the debug listing whose name
+has one of these (`backend.stages`: `stage`, `function`, `lines`; `listing` for all of them): before and after each
+value numbering pass, copy propagation, the allocation and the scheduler. A pass that changed nothing is not listed.
+
 `views.flags`, with `views.pcode`, adds each instruction's flags to the PCode before the allocation
 (`lfs %f33, r0, sym  ; fIsRead fIsConst`): the value numbering only matches two instructions whose flags are the same.
