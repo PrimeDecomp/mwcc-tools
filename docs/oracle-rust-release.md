@@ -59,8 +59,8 @@ repository).
 
 ### Publish a version
 
-The `Build` workflow (`.github/workflows/build.yml`) builds the three packages (Linux also runs fmt, clippy and the
-tests) and the GC 2.7 WebAssembly bundle on every push and pull request, as artifacts. A pushed `vVERSION` tag also
+The `Build` workflow (`.github/workflows/build.yml`) runs fmt, clippy and the tests on Linux, and builds the three
+packages and the GC 2.7 WebAssembly bundle, on every push and pull request (the builds as artifacts). A pushed `vVERSION` tag also
 publishes them; `VERSION` must equal `workspace.package.version` in `Cargo.toml`. Any failed job stops publication;
 only the publish job has `contents: write`.
 
