@@ -3,8 +3,8 @@ mwcc-tools
 
 [![Build Status]][actions]
 
-[Build Status]: https://github.com/rayanht/mwcc/actions/workflows/build.yml/badge.svg
-[actions]: https://github.com/rayanht/mwcc/actions/workflows/build.yml
+[Build Status]: https://github.com/PrimeDecomp/mwcc-tools/actions/workflows/build.yml/badge.svg
+[actions]: https://github.com/PrimeDecomp/mwcc-tools/actions/workflows/build.yml
 
 Tools for matching code compiled by `mwcceppc.exe`, the CodeWarrior compiler for GameCube. They explain register
 assignment, inlining, scheduling and stack layout from a trace of the compiler (the oracle), and search,
@@ -13,27 +13,25 @@ reduce and compare candidate sources against it.
 Getting started
 ===============
 
-The tools are built with Rust, and GC 2.6 and 2.7's compiler and oracle are built from the compiler's sources in
-`gc2/` as WebAssembly, which `mwcc-tools` runs in process. The build needs:
-
-- Rust (the version pinned in `rust-toolchain.toml`, which rustup installs) with the `wasm32-unknown-unknown`
-  target, and a C compiler for the bundled Capstone decoder
-- [ninja](https://github.com/ninja-build/ninja)
-- LLVM 22 or later (`clang`, `wasm-ld`), on the path or named by `CLANG` and `WASM_LD` when running `configure`
-
-macOS: `brew install ninja llvm lld` (Homebrew's LLVM is not on the path: set `CLANG` and `WASM_LD`).
-Linux: `apt install ninja-build`, and clang-22 and wasm-ld-22 from [apt.llvm.org](https://apt.llvm.org).
-Windows: `winget install Ninja-build.Ninja` and `winget install LLVM.LLVM`.
+GC 2.6 and 2.7's compiler and oracle run in process as WebAssembly, built from the compiler's sources in `gc2/`.
+The expected setup downloads GC 2.7's prebuilt modules instead of building them:
 
 ```sh
-rustup target add wasm32-unknown-unknown
+git clone https://github.com/PrimeDecomp/mwcc-tools
+cd mwcc-tools
+gh release download --repo PrimeDecomp/mwcc-tools --pattern 'mwcc-wasm-GC_2_7-*.zip'
+unzip -o mwcc-wasm-GC_2_7-*.zip
 cargo build --locked --release -p mwcc-tools
-target/release/mwcc-tools configure --version GC_2_7
-ninja build/GC_2_7/wasm/mwcc.wasm
 ```
 
-On Windows, use `target/release/mwcc-tools.exe`. Use `--version GC_2_6` for 2.6. Test the tools with
-`cargo test --locked --workspace`.
+The archive keeps the modules' paths (`build/GC_2_7/wasm/`), so it unpacks into the checkout; the tools read the
+checkout's `config/` beside them. Each release also has a prebuilt `mwcc-tools` for Windows x64, Linux x64 and
+macOS arm64 ([native package](docs/oracle-rust-release.md)) in place of the `cargo build`: set `MWCC_ORACLE_ROOT`
+to the checkout to use one. Builds of `main` between releases are the Build workflow's artifacts.
+
+Building the tools needs Rust (the version pinned in `rust-toolchain.toml`, which rustup installs) and a C compiler
+for the bundled Capstone decoder. On Windows, use `target/release/mwcc-tools.exe`. Test the tools with
+`cargo test --locked --workspace` (the WebAssembly tests are skipped without the modules).
 
 Using the tools
 ===============
@@ -75,6 +73,26 @@ Documentation
 | [Decompilation](docs/decompilation.md) | The compilers' sources and their other builds. |
 
 Third-party notices are under [licenses](licenses/README.md).
+
+Building the WebAssembly modules
+================================
+
+Needed for GC 2.6 (only 2.7's are published) or to change the compiler's sources. Besides Rust, the build needs:
+
+- the `wasm32-unknown-unknown` target (`rustup target add wasm32-unknown-unknown`)
+- [ninja](https://github.com/ninja-build/ninja)
+- LLVM 22 or later (`clang`, `wasm-ld`), on the path or named by `CLANG` and `WASM_LD` when running `configure`
+
+macOS: `brew install ninja llvm lld` (Homebrew's LLVM is not on the path: set `CLANG` and `WASM_LD`).
+Linux: `apt install ninja-build`, and clang-22 and wasm-ld-22 from [apt.llvm.org](https://apt.llvm.org).
+Windows: `winget install Ninja-build.Ninja` and `winget install LLVM.LLVM`.
+
+```sh
+target/release/mwcc-tools configure --version GC_2_7
+ninja build/GC_2_7/wasm/mwcc.wasm
+```
+
+Use `--version GC_2_6` for 2.6. [wasm.md](docs/wasm.md) has the details.
 
 License
 =======
