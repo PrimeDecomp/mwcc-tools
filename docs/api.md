@@ -100,6 +100,32 @@ Result:
 
 `[`[`MethodInfo`](#type-methodinfo)`]`
 
+### project
+
+#### `project.scan`
+
+instruction patterns over a project's units, the targets' objects against the build's (literal_reload, repeated_load): the functions each side has them in, and those only one has; each function's instructions as JSON.
+
+Parameters:
+
+| field | type | |
+|---|---|---|
+| `project` | `string` |  |
+| `units` | `[string]` | The units to scan (objdiff.json's names, or a part of them); none: every unit with a target and a built object. |
+| `patterns` | `[string]` | The patterns to look for (default: all): `literal_reload` (one symbol, a literal or a global, loaded twice in a function) and `repeated_load` (the same load, of one base register and offset or of one symbol, twice with no store, call or write of the base register between them, in the order of the code: a branch between them is not followed). |
+| `function` | `string` | Only the functions whose names have this. |
+| `instructions` | `boolean` | Each scanned function's instructions too (`{offset, text, symbol}`, target and ours), for scans of one's own. |
+| `differing` | `boolean` | Only the functions one side has a pattern in and the other has not (the whole of Echoes' scan is 2 MB). |
+
+Result:
+
+| field | type | |
+|---|---|---|
+| `units` | `integer` | **required** |
+| `patterns` | `{string: any}` | **required**; For each pattern, the functions of the target and of ours that have it, and those that only one side has. |
+| `functions` | `[any]` | **required**; With `instructions`: each function's, by unit. |
+| `skipped` | `[string]` | **required**; Units skipped: no target, no built object, or an object that does not load. |
+
 ### unit
 
 #### `unit.load`

@@ -29,6 +29,7 @@ mod realize;
 pub mod reference;
 mod residuals;
 mod source;
+mod scan;
 mod unit;
 
 /// The version of the methods' parameters and results: a change that breaks a caller bumps it.
@@ -314,6 +315,7 @@ pub fn methods() -> &'static [Method] {
                 list
             ),
         ];
+        all.extend(scan::methods());
         all.extend(unit::methods());
         all.extend(experiment::methods());
         all.extend(residuals::methods());
