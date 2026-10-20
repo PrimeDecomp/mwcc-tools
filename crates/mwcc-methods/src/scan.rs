@@ -138,6 +138,11 @@ fn find(pattern: &str, instructions: &[Instruction]) -> Vec<Value> {
                 let Some((destination, base, _)) = load_operands(&first.text) else {
                     continue;
                 };
+                // A load of its own base (a pointer chase) or an update form changes what a second one reads.
+                let m = mnemonic(&first.text);
+                if first.symbol.is_none() && (base == destination || m.ends_with('u') || m.ends_with("ux")) {
+                    continue;
+                }
                 for later in &instructions[at + 1..] {
                     if later.text == first.text && later.symbol == first.symbol {
                         hits.push(json!({
@@ -152,7 +157,7 @@ fn find(pattern: &str, instructions: &[Instruction]) -> Vec<Value> {
                         || m.starts_with("bl")
                         || m == "bctrl"
                         // A relocated load's base (r2, r13 or its high half's register) is not in its text.
-                        || first.symbol.is_none() && (writes(&later.text, base) || base == destination)
+                        || first.symbol.is_none() && writes(&later.text, base)
                     {
                         break;
                     }
@@ -301,6 +306,10 @@ mod tests {
             ("lwz r3, 0x10(r31)", None),
             ("addi r31, r31, 0x4", None),
             ("lwz r3, 0x10(r31)", None),
+            ("lwz r4, 0x0(r4)", None),
+            ("lwz r4, 0x0(r4)", None),
+            ("lwzu r5, 0x4(r6)", None),
+            ("lwzu r5, 0x4(r6)", None),
         ]);
         let reloads = find("literal_reload", &code);
         assert_eq!(reloads.len(), 1);
