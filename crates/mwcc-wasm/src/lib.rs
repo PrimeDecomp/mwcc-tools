@@ -813,10 +813,11 @@ fn heap_alloc(caller: &mut Caller<'_, State>, size: u32, zero: bool) -> Result<u
 
 // ------------------------------------------------------------------------------------------------ paths
 
-/// How the compiler sees the host's PATH: on a Unix host, the file system is drive `Z:` (as wibo has it).
+/// How the compiler sees the host's PATH: on a Unix host, the file system is drive `Z:` (as wibo has it). Its
+/// separators are Windows's (`C:/work`, which Windows takes, fails the compiler's own path checks: MacSpecs.c).
 fn guest_path(path: &str) -> String {
     if cfg!(windows) {
-        path.to_owned()
+        path.replace('/', "\\")
     } else if path.starts_with('/') {
         format!("Z:{}", path.replace('/', "\\"))
     } else {
