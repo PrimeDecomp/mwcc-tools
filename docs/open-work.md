@@ -23,8 +23,8 @@ demwcc-echoes (mwdec) depends on four crates by path (`../mwcc/crates/...`). Cha
 - `mwcc-trace`: `records::parse` and `records::Selection` (its tracer), `sched` (its scheduler model), and
   `trace::{Node, Round}`, `allocation::simplify` and `colouring::select` (its colouring prediction);
 - `mwcc-compare`: `strict::compare`, `strict::Index`, `ExternIndex`, `DiffClass`, `masked_words`, `reloc_mask`,
-  `is_generated_name` and `PlaceholderProver` (its comparator), and `strict::elf`'s object model and `load` (its
-  object files);
+  `is_generated_name` and `PlaceholderProver` (its comparator), `strict::elf`'s object model and `load` (its
+  object files), and `score::Target` with `ScoreOptions::from_objdiff_unit` (the objdiff % its search reports);
 - `mwcc-project`: `Project::open`, `module_of` and `module_objects`, and `ninja::parse` / `CompileRule` (its units
   and flag profiles).
 

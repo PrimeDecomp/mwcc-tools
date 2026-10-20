@@ -65,20 +65,11 @@ pub(crate) fn resolve(call: &mut Call<'_>, which: &UnitRef) -> Result<Arc<Loaded
     Ok(loaded)
 }
 
-/// The scoring options objdiff.json gives the unit: its `options` and `symbol_mappings`.
+/// The scoring options objdiff.json gives the unit (its `options` and `symbol_mappings`), with the strict level.
 pub(crate) fn score_options(unit: &Unit) -> ScoreOptions {
-    let text = |v: &Value| v.as_str().map_or_else(|| v.to_string(), String::from);
     ScoreOptions {
-        config: unit.metadata["options"]
-            .as_object()
-            .map(|o| o.iter().map(|(k, v)| (k.clone(), text(v))).collect())
-            .unwrap_or_default(),
-        mappings: unit.metadata["symbol_mappings"]
-            .as_object()
-            .map(|o| o.iter().map(|(k, v)| (k.clone(), text(v))).collect())
-            .unwrap_or_default(),
         strict: true,
-        ..ScoreOptions::default()
+        ..ScoreOptions::from_objdiff_unit(&unit.metadata)
     }
 }
 

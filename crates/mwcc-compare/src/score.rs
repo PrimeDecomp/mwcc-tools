@@ -37,6 +37,25 @@ pub struct ScoreOptions {
     pub strict: bool,
 }
 
+impl ScoreOptions {
+    /// The options a unit's entry of objdiff.json gives (`options` and `symbol_mappings`; a value that is not a
+    /// string as its JSON text), the others their defaults: what objdiff and the kit's tools score the unit with.
+    pub fn from_objdiff_unit(unit: &serde_json::Value) -> Self {
+        let text = |v: &serde_json::Value| v.as_str().map_or_else(|| v.to_string(), String::from);
+        let pairs = |key: &str| -> Vec<(String, String)> {
+            unit[key]
+                .as_object()
+                .map(|o| o.iter().map(|(k, v)| (k.clone(), text(v))).collect())
+                .unwrap_or_default()
+        };
+        Self {
+            config: pairs("options"),
+            mappings: pairs("symbol_mappings").into_iter().collect(),
+            ..Self::default()
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize)]
 pub struct UnitScore {
     /// The size-weighted match of the target's functions (an unpaired one counts 0); `None` without code. It is
@@ -656,5 +675,25 @@ mod tests {
             })
             .is_err()
         );
+    }
+
+    #[test]
+    fn options_come_from_the_objdiff_entry() {
+        let options = ScoreOptions::from_objdiff_unit(&serde_json::json!({
+            "name": "main/Foo",
+            "options": {"functionRelocDiffs": "none", "ppcCalculatePoolRelocations": false},
+            "symbol_mappings": {"fn_80001234": "Foo__Fv"},
+        }));
+        assert_eq!(
+            options.config,
+            [
+                ("functionRelocDiffs".to_owned(), "none".to_owned()),
+                ("ppcCalculatePoolRelocations".to_owned(), "false".to_owned()),
+            ]
+        );
+        assert_eq!(options.mappings["fn_80001234"], "Foo__Fv");
+        assert!(!options.strict && !options.rows && options.symbols.is_none());
+        let bare = ScoreOptions::from_objdiff_unit(&serde_json::json!({"name": "main/Foo"}));
+        assert!(bare.config.is_empty() && bare.mappings.is_empty());
     }
 }
