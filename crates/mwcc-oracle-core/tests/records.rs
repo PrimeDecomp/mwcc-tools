@@ -33,6 +33,8 @@ fn every_part_of_the_model_is_read_from_the_module() {
         sched: true,
         copyprop: true,
         peephole: true,
+        alias: true,
+        alias_queries: true,
         ..Selection::default()
     };
     let flags: Vec<String> = [
@@ -47,22 +49,31 @@ fn every_part_of_the_model_is_read_from_the_module() {
     ]
     .map(String::from)
     .into();
-    let compiled = runner::compile(&CompileRequest {
-        root: root.clone(),
-        working_directory: work.path().to_path_buf(),
-        source: source.display().to_string(),
-        flags,
-        version: Version::parse("GC_2_7").unwrap(),
-        options: selection.trace_options(&work.path().join("iro.log")),
-        overrides: vec![],
-        check: false,
-        original_fallback: false,
-        cut_limit: None,
-        merge_limit: None,
-        keep_object: None,
-        timeout: Duration::from_secs(120),
-    })
-    .unwrap();
+    let compile = |options| {
+        runner::compile(&CompileRequest {
+            root: root.clone(),
+            working_directory: work.path().to_path_buf(),
+            source: source.display().to_string(),
+            flags: flags.clone(),
+            version: Version::parse("GC_2_7").unwrap(),
+            options,
+            overrides: vec![],
+            check: false,
+            original_fallback: false,
+            cut_limit: None,
+            merge_limit: None,
+            keep_object: None,
+            timeout: Duration::from_secs(120),
+        })
+        .unwrap()
+    };
+    let compiled = compile(selection.trace_options(&work.path().join("iro.log")));
+    // (the streams observe the compile: the object is the one a compile that traces nothing makes)
+    assert_eq!(
+        compiled.object_sha256,
+        compile(Default::default()).object_sha256,
+        "tracing changed the object"
+    );
     let trace = records::parse(&compiled.trace, &selection);
     assert!(!trace.inline.is_empty(), "no inlining decisions");
     assert!(
@@ -92,6 +103,40 @@ fn every_part_of_the_model_is_read_from_the_module() {
         );
     }
     assert!(!trace.copyprop.is_empty(), "no copy propagation decisions");
+    let table = trace
+        .alias
+        .iter()
+        .rfind(|t| t.function.contains("sum"))
+        .expect("no alias table for sum");
+    assert!(
+        table
+            .aliases
+            .iter()
+            .any(|a| a.kind == records::AliasKind::Set && a.object.is_none()),
+        "no alias set"
+    );
+    assert!(
+        table
+            .accesses
+            .iter()
+            .all(|a| table.aliases.iter().any(|b| b.index == a.alias)),
+        "an access whose alias is not in the table"
+    );
+    assert!(
+        table
+            .accesses
+            .iter()
+            .any(|a| a.instruction.starts_with("lwz")),
+        "no load among the accesses: {:?}",
+        table.accesses
+    );
+    assert!(
+        trace
+            .alias_queries
+            .iter()
+            .any(|q| q.kind == "may_alias" && !q.a.chars().all(|c| c.is_ascii_hexdigit())),
+        "no may_alias query of a listed access"
+    );
     assert!(
         trace
             .pcode

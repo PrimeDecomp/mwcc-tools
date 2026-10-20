@@ -55,6 +55,10 @@ pub struct Streams {
     pub copy_propagation: bool,
     #[serde(default)]
     pub peephole: bool,
+    #[serde(default)]
+    pub alias: bool,
+    #[serde(default)]
+    pub alias_queries: bool,
 }
 
 /// The text views to give (`text`): one of near, instantiation, cse/ir, blocks and locals, else each function's
@@ -172,6 +176,8 @@ impl Streams {
             names: self.names,
             copy_propagation: self.copy_propagation,
             peephole: self.peephole,
+            alias: self.alias,
+            alias_queries: self.alias_queries,
             ..TraceOptions::default()
         }
     }

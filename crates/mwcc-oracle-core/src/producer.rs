@@ -69,7 +69,7 @@ pub const HOOKS: [&str; 41] = [
     "_load_argument_registers",
     "_store_argument_on_stack",
 ];
-pub const SUPPORT: [&str; 34] = [
+pub const SUPPORT: [&str; 39] = [
     "_OracleRust_SourceProbeV1",
     "_OracleRust_ArenaProbeV1",
     "_OracleRust_ExpressionProbeV1",
@@ -105,6 +105,11 @@ pub const SUPPORT: [&str; 34] = [
     "_OracleProbe_PeepholeTry",
     "_OracleProbe_PeepholeHit",
     "_OracleProbe_PeepholeDead",
+    "_OracleProbe_AliasBegin",
+    "_OracleProbe_Alias",
+    "_OracleProbe_AliasAccess",
+    "_OracleProbe_AliasEnd",
+    "_OracleProbe_AliasQuery",
 ];
 pub const SOURCES: [&str; 20] = [
     "source_nodes.rs",

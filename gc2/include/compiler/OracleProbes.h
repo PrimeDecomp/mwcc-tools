@@ -53,6 +53,20 @@ void OracleProbe_PeepholeTry(void* instruction, void* func);
 void OracleProbe_PeepholeHit(void* instruction);
 void OracleProbe_PeepholeDead(void* instruction);
 
+// The alias analysis (`al.*`, MWCC_ORACLE_ALIAS; optimizer/Alias.c): gather_alias_info has left
+// FUNCTION's alias table (COLORING: as coloring is, COUNT aliases), each alias INDEX of TYPE (0 an
+// object, 1 a part of one, 2 a set) with its OBJECT, OFFSET and SIZE and, for a set, its MEMBERS
+// (a bit vector over the COUNT indices), and each instruction with an alias, PCODE, and its alias
+// INDEX. At level 2, a query: whether A may alias B, or the object OBJECT (KIND 0 may_alias, 1
+// may_alias_scheduling, 2 may_alias_object), and its RESULT.
+void OracleProbe_AliasBegin(void* function, int coloring, int count);
+void OracleProbe_Alias(
+    int index, int type, void* object, SInt32 offset, SInt32 size, const UInt32* members
+);
+void OracleProbe_AliasAccess(void* pcode, int index);
+void OracleProbe_AliasEnd(void);
+void OracleProbe_AliasQuery(int kind, void* a, void* b, void* object, int result);
+
 // The register counters (`pv.function.*`, `pv.category.*`, `pv.counter.change`). ROLE is the
 // original's site's: 2 close_temp_registers has raised RCLASS's counter to its last temporary, 3
 // check_temp_registers has rewound it, 4 init_registers and 5 colorinstructions have reset it, 6

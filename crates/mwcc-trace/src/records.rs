@@ -15,6 +15,8 @@
 //!   instruction, `ph.dead`, a dead one removed);
 //! - the optimizer's dump, into the file `MWCC_ORACLE_IRO_DUMP` names, after the phases `MWCC_ORACLE_IRO_PHASES`
 //!   names;
+//! - alias analysis: each table gather_alias_info leaves (`al.begin`, its aliases, `al.alias`, the alias of each
+//!   access, `al.access`, and `al.end`) and, if asked, every query (`al.query`);
 //! - names: `pc.opcode` (an opcode's name, the first time) and `pc.object` (the object an instruction's operand
 //!   refers to, after it).
 use crate::{
@@ -115,6 +117,57 @@ pub struct PeepholeHit {
     pub after: Option<String>,
 }
 
+/// What an alias stands for: an object, a part of one (`offset`, `size`), or a set of aliases.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AliasKind {
+    Object,
+    Part,
+    Set,
+}
+
+/// One alias of the alias analysis's table.
+#[derive(Clone, Debug, Serialize)]
+pub struct Alias {
+    pub index: u32,
+    pub kind: AliasKind,
+    /// the object's name (None: a set)
+    pub object: Option<String>,
+    pub offset: i32,
+    pub size: i32,
+    /// a set's members (the aliases' indices, and their parts')
+    pub members: Vec<u32>,
+}
+
+/// A load, store or call and its alias.
+#[derive(Clone, Debug, Serialize)]
+pub struct AliasAccess {
+    pub instruction: String,
+    pub alias: u32,
+}
+
+/// The table gather_alias_info left (the scheduler and the global optimizer's passes each gather one).
+#[derive(Clone, Debug, Serialize)]
+pub struct AliasTable {
+    pub function: String,
+    /// gathered while the registers are virtual (the accesses' aliases follow the address registers' definitions)
+    pub coloring: bool,
+    pub aliases: Vec<Alias>,
+    pub accesses: Vec<AliasAccess>,
+}
+
+/// One query of the alias analysis: may the access `a` touch what `b` does?
+#[derive(Clone, Debug, Serialize)]
+pub struct AliasQuery {
+    pub function: String,
+    /// `may_alias`, `may_alias_scheduling` (2.0p2's scheduler) or `may_alias_object`
+    pub kind: String,
+    pub a: String,
+    /// the other access, or the object's name (`may_alias_object`)
+    pub b: String,
+    pub may: bool,
+}
+
 #[derive(Clone, Debug, Serialize)]
 pub struct PcodeDump {
     pub stage: String,
@@ -136,6 +189,10 @@ pub struct Trace {
     pub copyprop_removals: Vec<CopyRemoval>,
     /// post-RA peephole rule hits (and dead instructions removed)
     pub peephole: Vec<PeepholeHit>,
+    /// the alias analysis's tables, in the order they were gathered
+    pub alias: Vec<AliasTable>,
+    /// the alias analysis's queries (with `Selection::alias_queries`)
+    pub alias_queries: Vec<AliasQuery>,
     pub pcode: Vec<PcodeDump>,
     /// the front-end optimizer's own dump (IRO passes, expression trees), when requested
     pub iro: String,
@@ -248,6 +305,10 @@ pub struct Selection {
     pub copyprop: bool,
     /// post-RA peephole rule hits (`Trace::peephole`)
     pub peephole: bool,
+    /// the alias analysis's tables (`Trace::alias`)
+    pub alias: bool,
+    /// and its queries (`Trace::alias_queries`)
+    pub alias_queries: bool,
 }
 
 /// The phase whose IRO dump is the final form of a function (`MWCC_ORACLE_IRO_PHASES`).
@@ -262,6 +323,8 @@ impl Selection {
             stages: !self.pcode.is_empty(),
             copy_propagation: self.copyprop,
             peephole: self.peephole,
+            alias: self.alias,
+            alias_queries: self.alias_queries,
             iro_dump: self.iro.then(|| iro_dump.to_string_lossy().into_owned()),
             iro_phases: self.iro.then(|| {
                 if self.iro_all_stages {
@@ -554,11 +617,17 @@ pub fn parse(text: &str, opts: &Selection) -> Trace {
     let mut can: Option<usize> = None;
     let mut cost: Option<(i32, i32)> = None;
     let mut dump: Option<PcodeDump> = None;
+    let mut table: Option<AliasTable> = None;
+    // (the function the last table was gathered in, and the instructions it listed, by their pointers)
+    let mut alias_function = String::new();
+    let mut accessed: HashMap<u32, String> = HashMap::new();
     let expanding = opts.inline
         || opts.coloring
         || opts.sched
         || opts.copyprop
         || opts.peephole
+        || opts.alias
+        || opts.alias_queries
         || !opts.pcode.is_empty();
     let scheduled = |function: &str| {
         opts.sched_filter
@@ -812,6 +881,79 @@ pub fn parse(text: &str, opts: &Selection) -> Trace {
                         removed: r.int("removed") != 0,
                     });
                 }
+            }
+            "al.begin" if opts.alias || opts.alias_queries => {
+                alias_function = r.get("function").unwrap_or("?").to_string();
+                accessed.clear();
+                table = Some(AliasTable {
+                    function: alias_function.clone(),
+                    coloring: r.int("coloring") != 0,
+                    aliases: vec![],
+                    accesses: vec![],
+                });
+            }
+            "al.alias" => {
+                if let Some(table) = table.as_mut() {
+                    let kind = match r.int("type") {
+                        0 => AliasKind::Object,
+                        1 => AliasKind::Part,
+                        _ => AliasKind::Set,
+                    };
+                    table.aliases.push(Alias {
+                        index: r.int("index") as u32,
+                        kind,
+                        object: (r.hex("object") != 0).then(|| r.tail("name").to_string()),
+                        offset: r.int("offset") as i32,
+                        size: r.int("size") as i32,
+                        members: r
+                            .get("members")
+                            .unwrap_or("")
+                            .split(',')
+                            .filter_map(|m| m.parse().ok())
+                            .collect(),
+                    });
+                }
+            }
+            "al.access" => {
+                if let (Some(table), Some(i)) = (table.as_mut(), after(&records, at, "al.i")) {
+                    let text = instruction(&records, i, &opcodes).rendered.text;
+                    accessed.insert(records[i].hex("p"), text.clone());
+                    table.accesses.push(AliasAccess {
+                        instruction: text,
+                        alias: r.int("alias") as u32,
+                    });
+                }
+            }
+            "al.end" => {
+                if let Some(table) = table.take()
+                    && opts.alias
+                {
+                    t.alias.push(table);
+                }
+            }
+            "al.query" if opts.alias_queries => {
+                let access = |p: u32| {
+                    accessed
+                        .get(&p)
+                        .cloned()
+                        .unwrap_or_else(|| format!("{p:08x}"))
+                };
+                let kind = match r.int("kind") {
+                    0 => "may_alias",
+                    1 => "may_alias_scheduling",
+                    _ => "may_alias_object",
+                };
+                t.alias_queries.push(AliasQuery {
+                    function: alias_function.clone(),
+                    kind: kind.into(),
+                    a: access(r.hex("a")),
+                    b: if r.get("object").is_some() {
+                        r.tail("name").to_string()
+                    } else {
+                        access(r.hex("b"))
+                    },
+                    may: r.int("result") != 0,
+                });
             }
             "ph.hit" | "ph.dead" if opts.peephole => {
                 let Some(before) = after(&records, at, "ph.before") else {

@@ -17,6 +17,7 @@
 #include "compiler/UseDefChains.h"
 #include "compiler/ValueNumbering.h"
 #include "compiler/objects.h"
+#include "compiler/OracleProbes.h"
 #include "compiler/types.h"
 #include "compiler/CPrep.h"
 
@@ -1238,6 +1239,35 @@ static void gather_instruction_alias(PCode* pcode, UInt32* myvec) {
 }
 #endif
 
+#ifdef ORACLE_PROBES
+// The alias table and each access's alias, as gather_alias_info has left them (`al.*`)
+static void report_aliases(void) {
+    Alias* alias;
+    PCodeBlock* block;
+    PCode* pcode;
+
+    OracleProbe_AliasBegin(gFunction, coloring, n_aliases);
+    for (alias = aliases; alias; alias = alias->next) {
+        OracleProbe_Alias(
+            alias->index,
+            alias->type,
+            alias->object,
+            alias->offset,
+            alias->size,
+            alias->type == AliasType_Set ? alias->membervec : NULL
+        );
+    }
+    for (block = pcbasicblocks; block; block = block->nextBlock) {
+        for (pcode = block->firstPCode; pcode; pcode = pcode->nextPCode) {
+            if (pcode->alias) {
+                OracleProbe_AliasAccess(pcode, pcode->alias->index);
+            }
+        }
+    }
+    OracleProbe_AliasEnd();
+}
+#endif
+
 void gather_alias_info(void) {
     Alias* alias;
     AliasMember* member;
@@ -1319,6 +1349,8 @@ void gather_alias_info(void) {
         }
         n_gathered_aliases = n_aliases;
     }
+
+    ORACLE_PROBE(report_aliases());
 }
 
 static Boolean may_alias_alias(Alias* a, Alias* b) {
@@ -1357,17 +1389,32 @@ static Boolean may_alias_alias(Alias* a, Alias* b) {
 }
 
 Boolean may_alias(PCode* a, PCode* b) {
+#ifdef ORACLE_PROBES
+    Boolean result = may_alias_alias(a->alias, b->alias);
+    ORACLE_PROBE(OracleProbe_AliasQuery(0, a, b, NULL, result));
+    return result;
+#else
     return may_alias_alias(a->alias, b->alias);
+#endif
 }
 
 #if VERSION == VERSION_GC_2_0P2
 // 2.0p2: the scheduler orders a direct access to a global like one through a pointer: BFBB's code
 // keeps such a load below any store a pointer could make (TODO: invented name)
 Boolean may_alias_scheduling(PCode* a, PCode* b) {
+#ifdef ORACLE_PROBES
+    Boolean result = may_alias_alias(
+        is_direct_global_access(a) ? worst_case_ptr : a->alias,
+        is_direct_global_access(b) ? worst_case_ptr : b->alias
+    );
+    ORACLE_PROBE(OracleProbe_AliasQuery(1, a, b, NULL, result));
+    return result;
+#else
     return may_alias_alias(
         is_direct_global_access(a) ? worst_case_ptr : a->alias,
         is_direct_global_access(b) ? worst_case_ptr : b->alias
     );
+#endif
 }
 #endif
 
@@ -1395,7 +1442,13 @@ Boolean uniquely_aliases(PCode* a, PCode* b) {
 #endif
 
 Boolean may_alias_object(PCode* pcode, Object* object) {
+#ifdef ORACLE_PROBES
+    Boolean result = may_alias_alias(pcode->alias, make_alias(object, 0, 0));
+    ORACLE_PROBE(OracleProbe_AliasQuery(2, pcode, NULL, object, result));
+    return result;
+#else
     return may_alias_alias(pcode->alias, make_alias(object, 0, 0));
+#endif
 }
 
 #if VERSION >= VERSION_GC_2_5
