@@ -140,6 +140,7 @@ Parameters:
 | `object_path` | `string` | Where to write the object. |
 | `timeout_ms` | `integer` |  |
 | `cache` | `boolean` | Whether the session's compile cache may answer (default true; never for a traced compile). |
+| `compiler` | `string` | Another of the project's compilers in place of the unit's own, by its directory under `build/compilers` (`GC/2.0p1`), or an executable: an experiment with another version (docs/versions.md). It runs as a process (only GC 2.6 and 2.7 have modules), where only the unit's source can be given in `files`. |
 
 Result:
 
@@ -176,6 +177,7 @@ Parameters:
 | `rows` | `boolean` | Every function's rows. |
 | `cache` | `boolean` |  |
 | `scores` | `[string]` | decomp_experiment's `score_symbols` entries of these functions (each by its name, demangled name or short method name, then by a unique substring), as an experiment's rows give them. |
+| `compiler` | `string` | Another of the project's compilers in place of the unit's own, by its directory under `build/compilers` (`GC/2.0p1`), or an executable: an experiment with another version (docs/versions.md). It runs as a process (only GC 2.6 and 2.7 have modules), where only the unit's source can be given in `files`. |
 
 Result:
 
