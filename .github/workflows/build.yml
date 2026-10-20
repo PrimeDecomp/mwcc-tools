@@ -9,6 +9,10 @@ on:
 permissions:
   contents: read
 
+env:
+  # (no debug info in dev builds: they are only checked, tested and used to run configure, and build faster)
+  CARGO_PROFILE_DEV_DEBUG: 0
+
 jobs:
   binaries:
     strategy:
@@ -42,6 +46,11 @@ jobs:
         run: |
           rustup show
           rustup component add rust-docs
+
+      # (the dependencies' builds and the cargo registry, by OS, toolchain and Cargo.lock; saved from main only)
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Check formatting, lints and tests
         if: matrix.check
@@ -99,10 +108,15 @@ jobs:
           rustup show
           rustup target add wasm32-unknown-unknown
 
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      # (a dev build of mwcc-tools: it only runs configure and ninja's light steps, such as building the hooks)
       - name: Build
         run: |
-          cargo build --locked --release -p mwcc-tools
-          target/release/mwcc-tools configure --version GC_2_7
+          cargo build --locked -p mwcc-tools
+          target/debug/mwcc-tools configure --version GC_2_7
           ninja build/GC_2_7/wasm/mwcc.wasm build/GC_2_7/wasm/mwcceppc.wasm build/GC_2_7/wasm/oracle.wasm \
             build/GC_2_7/wasm/persist.wasm
 
