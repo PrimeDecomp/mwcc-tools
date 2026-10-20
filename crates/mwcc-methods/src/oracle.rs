@@ -113,6 +113,11 @@ pub struct ViewParams {
     /// regard to case (`value numbering,coloring`; `listing`: every stage) (`backend.stages`, and `text` with
     /// `views.text`; gc2's probes).
     pub stages: Option<String>,
+    /// The static objects each function refers to that the compile made, or that are the unit's own (local):
+    /// literals, constants' reference temporaries, string literals, static locals, with their sections, sizes and
+    /// bytes (`backend.objects`; from the object, any version).
+    #[serde(default)]
+    pub objects: bool,
 }
 
 #[derive(Debug, Default, Deserialize, JsonSchema)]
@@ -250,7 +255,12 @@ fn backend_views(
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
         .collect();
-    if !views.alias && !views.value_numbering && lines.is_none() && stages.is_empty() {
+    if !views.alias
+        && !views.value_numbering
+        && lines.is_none()
+        && stages.is_empty()
+        && !views.objects
+    {
         return Ok(None);
     }
     let parsed = mwcc_trace::records::parse(
@@ -295,6 +305,81 @@ fn backend_views(
         backend.insert("stages".into(), json!(dumps));
     }
     Ok(Some(Value::Object(backend)))
+}
+
+/// For each function of OBJECT (FUNCTION's or LINK's, when given), the static objects it refers to that the compile
+/// made or that are the unit's own: what each is, by its name, section and contents.
+fn compiled_objects(object: &[u8], function: Option<&str>, link: Option<&str>) -> Result<Value> {
+    use mwcc_compare::strict::elf::{self, Binding};
+    let object = elf::load(object)?;
+    let mut out = vec![];
+    for f in &object.functions {
+        if link.is_some_and(|l| l != f.name)
+            || function.is_some_and(|n| {
+                !n.is_empty() && f.name != n && !f.name.starts_with(&format!("{n}__"))
+            })
+        {
+            continue;
+        }
+        let mut referred: Vec<Value> = vec![];
+        let mut seen = std::collections::BTreeSet::new();
+        for r in &f.relocs {
+            let Some(data) = object.data.get(&r.target) else {
+                continue;
+            };
+            let made = data.name.starts_with('@') || data.name.contains("...");
+            if !(made || data.binding == Binding::Local) || !seen.insert(data.name.clone()) {
+                continue;
+            }
+            let section = data.section.as_str();
+            let text = data.bytes.last() == Some(&0)
+                && data.bytes.len() > 1
+                && data.bytes[..data.bytes.len() - 1]
+                    .iter()
+                    .all(|b| b.is_ascii_graphic() || *b == b' ' || (8..=13).contains(b));
+            let constant = matches!(section, ".sdata2" | ".rodata" | ".sbss2");
+            let what = match (made, constant, text) {
+                (_, _, true) => "a string literal",
+                (true, true, _) => {
+                    "a literal of the constant pool (a floating-point or other constant the code loads)"
+                }
+                (true, false, _) if matches!(section, ".data" | ".sdata" | ".bss" | ".sbss") => {
+                    "an object the compiler made, writable: a constant's reference temporary (get_address_of_temp_copy: a \
+                     const reference or address taken of a constant), a static guard or a compiler temporary"
+                }
+                (true, false, _) => "an object the compiler made",
+                (false, true, _) => "a static constant of the unit",
+                (false, false, _) => "a static variable of the unit (or a function's static local)",
+            };
+            // (a 4- or 8-byte object read as the float it may be)
+            let value = match (data.bytes.len(), text) {
+                (4, false) => Some(json!(f32::from_be_bytes(data.bytes[..4].try_into()?))),
+                (8, false) => Some(json!(f64::from_be_bytes(data.bytes[..8].try_into()?))),
+                _ => None,
+            };
+            let uses: Vec<String> = f
+                .relocs
+                .iter()
+                .filter(|o| o.target == data.name)
+                .map(|o| format!("{:#x}", o.offset))
+                .collect();
+            referred.push(json!({
+                "name": data.name,
+                "section": section,
+                "size": data.size,
+                "local": data.binding == Binding::Local,
+                "what": what,
+                "bytes": data.bytes.iter().take(32).map(|b| format!("{b:02x}")).collect::<String>(),
+                "value": value,
+                "text": text.then(|| String::from_utf8_lossy(&data.bytes[..data.bytes.len() - 1]).into_owned()),
+                "uses": uses,
+            }));
+        }
+        if !referred.is_empty() {
+            out.push(json!({"function": f.name, "objects": referred}));
+        }
+    }
+    Ok(json!(out))
 }
 
 /// For each value numbering pass, what became of line B's loads and operations, and whether it is line A's value
@@ -581,7 +666,14 @@ fn documented(
     } else {
         None
     };
-    let backend = backend_views(&traced.trace, function, link, views)?;
+    let mut backend = backend_views(&traced.trace, function, link, views)?;
+    if views.objects {
+        let objects = compiled_objects(&traced.object, function, link)?;
+        backend
+            .get_or_insert_with(|| json!({}))
+            .as_object_mut()
+            .map(|b| b.insert("objects".into(), objects));
+    }
     let raw = views.raw.then(|| {
         if function.is_some_and(|f| !f.is_empty()) || link.is_some() {
             trace::raw_selected(&traced.trace, function, link)

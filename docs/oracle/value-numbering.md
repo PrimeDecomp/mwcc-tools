@@ -38,5 +38,11 @@ what kills an available load in the value numbering. `streams.alias_queries` add
 has one of these (`backend.stages`: `stage`, `function`, `lines`; `listing` for all of them): before and after each
 value numbering pass, copy propagation, the allocation and the scheduler. A pass that changed nothing is not listed.
 
+`views.objects` lists, for each function, the static objects it refers to that the compile made (named `@N`) or
+that are the unit's own (local): their section, size, bytes (a constant's value, a string's text), the offsets that
+refer to them, and what each probably is. A constant whose address is taken or that binds a const reference gets a
+writable copy in `.data` or `.sdata` (get_address_of_temp_copy), not the `.sdata2` literal a load of it uses; a
+string literal is in `.data` or `.sdata`. `value` reads a 4- or 8-byte object as a float. It reads the object, so it works for any version.
+
 `views.flags`, with `views.pcode`, adds each instruction's flags to the PCode before the allocation
 (`lfs %f33, r0, sym  ; fIsRead fIsConst`): the value numbering only matches two instructions whose flags are the same.
