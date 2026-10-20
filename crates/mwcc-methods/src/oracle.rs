@@ -77,7 +77,7 @@ pub struct ViewParams {
     pub instantiation: Option<String>,
     #[serde(default)]
     pub cse: bool,
-    /// The common subexpression pass's IR, after this pass.
+    /// The common subexpression pass's linear IR of this source line (`all`: the whole function), as each pass starts.
     pub ir: Option<String>,
     #[serde(default)]
     pub blocks: bool,

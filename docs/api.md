@@ -1413,7 +1413,7 @@ Result:
 | `near` | `integer` | Inlining decisions within this many cost units of the limit. |
 | `instantiation` | `string` | The instantiations of templates whose names have this. |
 | `cse` | `boolean` |  |
-| `ir` | `string` | The common subexpression pass's IR, after this pass. |
+| `ir` | `string` | The common subexpression pass's linear IR of this source line (`all`: the whole function), as each pass starts. |
 | `blocks` | `boolean` |  |
 | `locals` | `boolean` |  |
 | `exchange` | `string` | Two registers (`A,B`): what an exchange of them would change. |
