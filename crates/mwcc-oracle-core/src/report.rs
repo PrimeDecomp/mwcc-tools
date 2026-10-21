@@ -405,7 +405,8 @@ pub fn inlining(decisions: &[Value], links: bool) -> Vec<String> {
     out
 }
 
-pub fn pcode(before: &Snapshot, names: &BTreeMap<i32, String>) -> Vec<String> {
+/// The PCode before the allocation; FLAGS: each instruction's flags too (`; fIsRead fIsConst ...`).
+pub fn pcode(before: &Snapshot, names: &BTreeMap<i32, String>, flags: bool) -> Vec<String> {
     let mut out = vec![format!(
         "== {}: PCode before the allocation ==",
         before.function
@@ -440,14 +441,21 @@ pub fn pcode(before: &Snapshot, names: &BTreeMap<i32, String>) -> Vec<String> {
                 operands.truncate(3);
                 operands.push(format!("... {n} more (the registers the call clobbers)"));
             }
-            out.push(format!(
+            let mut line = format!(
                 "      {} {}",
                 names
                     .get(&i.opcode)
                     .cloned()
                     .unwrap_or_else(|| format!("op{}", i.opcode)),
                 operands.join(", ")
-            ));
+            );
+            if flags {
+                line.push_str(&format!(
+                    "  ; {}",
+                    mwcc_trace::records::flag_names(i.flags).join(" ")
+                ));
+            }
+            out.push(line);
         }
     }
     out

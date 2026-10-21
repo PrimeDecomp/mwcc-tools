@@ -133,3 +133,44 @@ int mwcc_project_cache_probe;
     assert!(compile_cached(&unit, &overlay, &root, Some(&cache)).cached);
     assert_eq!((cache.hits(), cache.misses()), (2, 2));
 }
+
+#[test]
+fn a_units_target_asm_is_disassembled_by_the_projects_dtk_when_it_has_none() {
+    let Some(project) = echoes() else { return };
+    let unit = project.unit("main/MetroidPrime/CControlMapper").unwrap();
+    let (Some(target), Some(listed)) = (unit.target_path.clone(), unit.target_asm()) else {
+        eprintln!("(skipped: the unit has no target object or asm)");
+        return;
+    };
+    // (the unit in a project of its own: the target object and dtk, no asm)
+    let work = tempfile::tempdir().unwrap();
+    let object = work.path().join("build/G2ME01/obj/CControlMapper.o");
+    fs::create_dir_all(object.parent().unwrap()).unwrap();
+    fs::copy(&target, &object).unwrap();
+    fs::create_dir_all(work.path().join("build/tools")).unwrap();
+    for dtk in ["dtk.exe", "dtk"] {
+        let from = unit.directory.join("build/tools").join(dtk);
+        if from.is_file() {
+            fs::copy(&from, work.path().join("build/tools").join(dtk)).unwrap();
+        }
+    }
+    let mut alone = unit.clone();
+    alone.target_path = Some(object);
+    alone.directory = work.path().to_path_buf();
+    assert!(alone.target_asm().is_none());
+    let asm = alone
+        .target_asm_or_disassembled()
+        .expect("dtk disassembled nothing");
+    // (the project's listing is dtk's split of the executable: its addresses and relocated bytes are the
+    // executable's, the instructions the same)
+    let instructions = |path: &Path| -> Vec<String> {
+        fs::read_to_string(path)
+            .unwrap()
+            .lines()
+            .filter_map(|l| l.split_once("*/	").map(|(_, i)| i.to_string()))
+            .collect()
+    };
+    let disassembled = instructions(&asm);
+    assert!(!disassembled.is_empty());
+    assert_eq!(disassembled, instructions(&listed));
+}

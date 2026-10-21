@@ -23,16 +23,25 @@ fn every_part_of_the_model_is_read_from_the_module() {
          inline float dot(const V& a, const V& b) { return a.x * b.x + a.y * b.y + a.z * b.z; }\n\
          float length2(const V& a) { return dot(a, a); }\n\
          int sum(int* p, int n) { int s = 0; int t = n; for (int i = 0; i < n; i++) { s += p[i] * (i + 3); t = s; } return s + t; }\n\
-         unsigned char flag(unsigned int x) { return (x >> 3) & 1; }\n",
+         unsigned char flag(unsigned int x) { return (x >> 3) & 1; }\n\
+         float reload(float* p, float* q) { float x = *p; *q = 0.0f; return x + *p; }\n",
     )
     .unwrap();
     let selection = Selection {
         inline: true,
         coloring: true,
-        pcode: vec!["initial".into(), "presched".into(), "precolor".into()],
+        pcode: vec![
+            "initial".into(),
+            "presched".into(),
+            "precolor".into(),
+            "register coloring".into(),
+        ],
         sched: true,
         copyprop: true,
         peephole: true,
+        alias: true,
+        alias_queries: true,
+        value_numbering: true,
         ..Selection::default()
     };
     let flags: Vec<String> = [
@@ -47,21 +56,35 @@ fn every_part_of_the_model_is_read_from_the_module() {
     ]
     .map(String::from)
     .into();
-    let compiled = runner::compile(&CompileRequest {
-        root: root.clone(),
-        working_directory: work.path().to_path_buf(),
-        source: source.display().to_string(),
-        flags,
-        version: Version::parse("GC_2_7").unwrap(),
-        options: selection.trace_options(&work.path().join("iro.log")),
-        overrides: vec![],
-        check: false,
-        original_fallback: false,
-        cut_limit: None,
-        merge_limit: None,
-        keep_object: None,
-        timeout: Duration::from_secs(120),
-    })
+    let compile = |options| {
+        runner::compile(&CompileRequest {
+            root: root.clone(),
+            working_directory: work.path().to_path_buf(),
+            source: source.display().to_string(),
+            flags: flags.clone(),
+            version: Version::parse("GC_2_7").unwrap(),
+            options,
+            overrides: vec![],
+            check: false,
+            original_fallback: false,
+            cut_limit: None,
+            merge_limit: None,
+            keep_object: None,
+            timeout: Duration::from_secs(120),
+        })
+        .unwrap()
+    };
+    let compiled = compile(selection.trace_options(&work.path().join("iro.log")));
+    // (the streams observe the compile: the object is the one a compile that traces nothing makes)
+    assert_eq!(
+        compiled.object_sha256,
+        compile(Default::default()).object_sha256,
+        "tracing changed the object"
+    );
+    std::fs::write(
+        std::env::temp_dir().join("alias_trace_dump.txt"),
+        &compiled.trace,
+    )
     .unwrap();
     let trace = records::parse(&compiled.trace, &selection);
     assert!(!trace.inline.is_empty(), "no inlining decisions");
@@ -82,7 +105,12 @@ fn every_part_of_the_model_is_read_from_the_module() {
         "no colouring round for sum"
     );
     assert!(!trace.sched.is_empty(), "no scheduled blocks");
-    for stage in ["initial", "presched", "precolor-gpr"] {
+    for stage in [
+        "initial",
+        "presched",
+        "precolor-gpr",
+        "AFTER REGISTER COLORING",
+    ] {
         assert!(
             trace
                 .pcode
@@ -92,6 +120,71 @@ fn every_part_of_the_model_is_read_from_the_module() {
         );
     }
     assert!(!trace.copyprop.is_empty(), "no copy propagation decisions");
+    let table = trace
+        .alias
+        .iter()
+        .rfind(|t| t.function.contains("sum"))
+        .expect("no alias table for sum");
+    assert!(
+        table
+            .aliases
+            .iter()
+            .any(|a| a.kind == records::AliasKind::Set && a.object.is_none()),
+        "no alias set"
+    );
+    assert!(
+        table
+            .accesses
+            .iter()
+            .all(|a| table.aliases.iter().any(|b| b.index == a.alias)),
+        "an access whose alias is not in the table"
+    );
+    assert!(
+        table
+            .accesses
+            .iter()
+            .any(|a| a.instruction.starts_with("lwz")),
+        "no load among the accesses: {:?}",
+        table.accesses
+    );
+    let numbering: Vec<_> = trace
+        .value_numbering
+        .iter()
+        .filter(|p| p.function.contains("length2"))
+        .collect();
+    assert!(!numbering.is_empty(), "no value numbering of length2");
+    let reload: Vec<_> = trace
+        .value_numbering
+        .iter()
+        .filter(|p| p.function.contains("reload"))
+        .collect();
+    assert!(
+        reload
+            .iter()
+            .flat_map(|p| &p.decisions)
+            .any(|d| d.outcome == "kept"
+                && d.reason
+                    .as_deref()
+                    .is_some_and(|r| r.contains("memory's value changed"))
+                && d.killed_by
+                    .as_deref()
+                    .is_some_and(|k| k.starts_with("stfs"))),
+        "the reload of *p is not kept for the store through q: {reload:?}"
+    );
+    assert!(
+        numbering
+            .iter()
+            .flat_map(|p| &p.decisions)
+            .any(|d| d.outcome == "kept" && d.instruction.starts_with("lfs")),
+        "no load the value numbering kept: {numbering:?}"
+    );
+    assert!(
+        trace
+            .alias_queries
+            .iter()
+            .any(|q| q.kind == "may_alias" && !q.a.chars().all(|c| c.is_ascii_hexdigit())),
+        "no may_alias query of a listed access"
+    );
     assert!(
         trace
             .pcode

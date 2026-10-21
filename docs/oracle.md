@@ -133,6 +133,11 @@ others ([trace.md](oracle/trace.md)).
 | `locals` | Scalarization and the frame against the target's. | [locals](oracle/locals.md) |
 | `blocks` | Block cuts and rejected merges. | [blocks](oracle/blocks.md) |
 | `cse`, `ir` | Common-subexpression temporaries, and the IR of a line. | [CSE](oracle/cse.md) |
+| `value_numbering`, `why_not_cse`, `alias` | What the backend's value numbering reused or kept and why; the alias analysis. | [value numbering](oracle/value-numbering.md) |
+| `memory_order` | The memory accesses the scheduler moved because the alias analysis said they cannot alias (a const method's `this`, say), and the order had they may-aliased. | [memory order](oracle/memory-order.md) |
+| `flags` (with `pcode`) | Each instruction's PCode flags. | [value numbering](oracle/value-numbering.md) |
+| `objects` | The static objects each function refers to that the compile made (literals, reference temporaries, strings) or that are the unit's own. | [value numbering](oracle/value-numbering.md) |
+| `stages` | The PCode after the debug listing's stages (value numbering, copy propagation, colouring...). | [value numbering](oracle/value-numbering.md) |
 | `raw` | The raw trace records. | [trace](oracle/trace.md) |
 
 ## Save results

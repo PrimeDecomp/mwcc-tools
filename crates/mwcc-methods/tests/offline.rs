@@ -55,6 +55,7 @@ fn source_search_state_distinguishes_normalization_gaps_from_invalid_captures() 
         "pv.function.begin schema=1 function=1 parent=0 c0=4 c1=8 c2=32 c3=32 c4=32 coverage=direct_counter_writes link=pipeline__Fii\nra.before function=pipeline link=pipeline__Fii\nra.block p=100 index=0 weight=1 flags=0 succ=\nra.i {instruction}\nra.end\npv.graph.begin schema=1 function=1 graph=1 births=0 cls=4 physical=32 start=32 count=32 phase=3 boundary=before_simplify\npv.graph.instruction {instruction}\npv.graph.end function=1 graph=1 nodes=0 instructions=1 complete=1\nra.graph cls=4 k=29 start=32 count=32\nra.after function=pipeline link=pipeline__Fii\nra.block p=100 index=0 weight=1 flags=0 succ=\nra.i {instruction}\nra.end\npv.function.end function=1 births=0 graphs=1 c0=4 c1=8 c2=32 c3=32 c4=32\n"
     );
     let mut compilation = Compilation {
+        module: None,
         version: Version::Gc27,
         source: "model.cpp".into(),
         oracle: "model".into(),
@@ -270,6 +271,7 @@ fn source_search_evaluate_checks_hashes_stock_semantics_and_the_baseline_triplet
     let bytes = fs::read(fixture("GC_2_7/pipeline.o")).unwrap();
     fs::write(&object, &bytes).unwrap();
     let compilation = Compilation {
+        module: None,
         version: Version::Gc27,
         source: "model.cpp".into(),
         oracle: "model".into(),

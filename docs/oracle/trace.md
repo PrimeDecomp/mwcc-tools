@@ -142,6 +142,37 @@ Records marked (gc2) come from probes of gc2's sources (the WebAssembly and sour
 | `ph.hit rule=` | A pattern (gc2's name) that changed an instruction, then it as it was (`ph.before`) and, unless the pattern removed it, as it is (`ph.after`). |
 | `ph.dead` | A dead instruction about to be removed, then it (`ph.before`). |
 
+**`MWCC_ORACLE_ALIAS`** (`streams.alias`, gc2): the alias analysis (`optimizer/Alias.c`), the memory locations a
+load, store or call can touch. The scheduler orders two memory instructions, and the global optimizer's passes keep a
+definition or a use in place, when they may alias. `MWCC_ORACLE_ALIAS=2` (`streams.alias_queries`) adds each query,
+which is many: every pair of a block's loads and stores the scheduler orders, and each use-def chain's object.
+
+| Lines | Content |
+|---|---|
+| `al.begin coloring= count= function= link=` ... `al.end` | The table gather_alias_info has left, once a call: the scheduler's passes and the global optimizer's (use-def chains, value numbering) each gather one. `coloring`: the registers are still virtual, and an access's alias follows the definitions of its address register; otherwise an access without an alias of its own gets the worst case's. `count`: the aliases. |
+| `al.alias index= type= object= offset= size= members= name=` | Each alias, newest first. `type`: 0 an object, 1 a part of one (`offset`, `size` in bytes), 2 a set. `members`: a set's, the indices of the aliases it holds and of their parts. `name`: the object's (`-` for a set). The sets of `@worst_case@` are the pointers of unknown origin (the first, index 0) and, from 2.5, the calls (index 2). |
+| `al.access alias=` | An instruction with an alias (a load, a store or a call), then it (`al.i`, the `sc.i` format: `p=` joins the two). |
+| `al.query kind= a= b= result=` | At level 2, whether the access `a` may alias `b` (pointers of `al.i`): `kind` 0 may_alias, 1 may_alias_scheduling (2.0p2's scheduler, which takes a direct access to a global for one through a pointer). |
+| `al.query kind=2 a= object= result= name=` | At level 2, whether `a` may touch the object (may_alias_object, the use-def chains and code motion). |
+
+**`MWCC_ORACLE_LISTING`** (`streams.listing`, gc2): the PCode at each stage the compiler's debug listing names
+(`AFTER VALUE NUMBERING 2`, `AFTER COPY PROPAGATION`, `AFTER REGISTER COLORING`, `FINAL CODE`...), where the
+listing would list it: `st.stage name=` then the snapshot `st.listing function= link=` ... `st.end`, in the
+`st.codegen` format. A stage that only lists when its pass changed something (value numbering, copy propagation)
+is absent when it did not. `oracle.trace`'s `views.stages` filters them by name.
+
+**`MWCC_ORACLE_VN`** (`streams.value_numbering`, gc2): the backend's value numbering (`optimizer/ValueNumbering.c`),
+read into the [value numbering views](value-numbering.md).
+
+| Lines | Content |
+|---|---|
+| `vn.begin aggressive= function= link=` ... `vn.end removed=` | One pass of removecommonsubexpressions. |
+| `vn.ebb block=`, `vn.block block=` | An extended basic block begins (no values are available), and each of its blocks. |
+| `vn.i` | Each instruction, as it is numbered (the `sc.i` format). |
+| `vn.decide p= outcome= reason= other= alias=` | What became of a load or an operation: `outcome` 0 not a candidate, 1 an available value's (`other`) reused, 2 the store `other`'s value forwarded (`reason`: how), 3 kept, `reason` 0 no value of its opcode, 1 other operands, 2 the memory's value changed, 3 other flags, 4 the value's registers redefined (`other`: the nearest value). |
+| `vn.kill alias= p=` | The instruction `p` changes the memory value of the alias. |
+| `vn.killall p=` | The call `p` kills every available value. |
+
 The development streams (provenance):
 
 * `MWCC_ORACLE_SOURCE_ARENAS` (`streams.source_arenas`): the compilation-wide `pv.arena.*` records

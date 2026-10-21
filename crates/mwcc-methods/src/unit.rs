@@ -153,6 +153,10 @@ pub struct CompileParams {
     pub timeout_ms: Option<u64>,
     /// Whether the session's compile cache may answer (default true; never for a traced compile).
     pub cache: Option<bool>,
+    /// Another of the project's compilers in place of the unit's own, by its directory under `build/compilers`
+    /// (`GC/2.0p1`), or an executable: an experiment with another version (docs/versions.md). It runs as a process
+    /// (only GC 2.6 and 2.7 have modules), where only the unit's source can be given in `files`.
+    pub compiler: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, JsonSchema, PartialEq, Eq)]
@@ -203,8 +207,9 @@ pub(crate) fn compile_with(
         }
     }
 
+    let unit = with_compiler(loaded, params.compiler.as_deref())?;
     let compiled: Compiled = compile_unit(
-        &loaded.unit,
+        &unit,
         &overlay,
         &CompileOptions {
             oracle_root: &session.oracle_root,
@@ -255,6 +260,40 @@ pub(crate) fn compile_with(
     ))
 }
 
+/// LOADED's unit, compiled by COMPILER (see [`CompileParams::compiler`]) when one is given.
+fn with_compiler<'a>(
+    loaded: &'a Loaded,
+    compiler: Option<&str>,
+) -> Result<std::borrow::Cow<'a, Unit>> {
+    let Some(compiler) = compiler else {
+        return Ok(std::borrow::Cow::Borrowed(&loaded.unit));
+    };
+    let path = PathBuf::from(compiler);
+    let executable = if path
+        .extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("exe"))
+    {
+        loaded.project.root.join(path)
+    } else {
+        loaded
+            .project
+            .root
+            .join("build/compilers")
+            .join(compiler)
+            .join("mwcceppc.exe")
+    };
+    anyhow::ensure!(
+        executable.is_file(),
+        "no compiler {} (the project's are under build/compilers: GC/2.0p1, GC/2.7...)",
+        executable.display()
+    );
+    let mut unit = loaded.unit.clone();
+    unit.compiler = executable;
+    unit.mw_version = Some(compiler.replace('\\', "/"));
+    unit.version = mwcc_oracle_core::version::Version::parse(compiler).ok();
+    Ok(std::borrow::Cow::Owned(unit))
+}
+
 fn compile(call: &mut Call<'_>, params: CompileParams) -> Result<CompileResult> {
     let loaded = resolve(
         call,
@@ -299,6 +338,10 @@ pub struct ScoreParams {
     /// method name, then by a unique substring), as an experiment's rows give them.
     #[serde(default)]
     pub scores: Vec<String>,
+    /// Another of the project's compilers in place of the unit's own, by its directory under `build/compilers`
+    /// (`GC/2.0p1`), or an executable: an experiment with another version (docs/versions.md). It runs as a process
+    /// (only GC 2.6 and 2.7 have modules), where only the unit's source can be given in `files`.
+    pub compiler: Option<String>,
 }
 
 #[derive(Serialize, JsonSchema)]
@@ -348,6 +391,7 @@ fn score(call: &mut Call<'_>, params: ScoreParams) -> Result<ScoreResult> {
                 object_path: params.object_path.clone(),
                 timeout_ms: params.timeout_ms,
                 cache: params.cache,
+                compiler: params.compiler.clone(),
                 ..CompileParams::default()
             },
         )?;

@@ -813,10 +813,11 @@ fn heap_alloc(caller: &mut Caller<'_, State>, size: u32, zero: bool) -> Result<u
 
 // ------------------------------------------------------------------------------------------------ paths
 
-/// How the compiler sees the host's PATH: on a Unix host, the file system is drive `Z:` (as wibo has it).
+/// How the compiler sees the host's PATH: on a Unix host, the file system is drive `Z:` (as wibo has it). Its
+/// separators are Windows's (`C:/work`, which Windows takes, fails the compiler's own path checks: MacSpecs.c).
 fn guest_path(path: &str) -> String {
     if cfg!(windows) {
-        path.to_owned()
+        path.replace('/', "\\")
     } else if path.starts_with('/') {
         format!("Z:{}", path.replace('/', "\\"))
     } else {
@@ -1274,7 +1275,15 @@ fn imports(linker: &mut Linker<State>) -> Result<()> {
             && state.scopes.is_empty()
             && !scope_wanted(&state.trace[at..], &state.functions)
         {
+            // (the opcodes' names are recorded once, where an opcode is first printed: the scopes kept need them)
+            let names: Vec<u8> = state.trace[at..]
+                .split_inclusive(|b| *b == b'\n')
+                .filter(|line| line.starts_with(b"pc.opcode "))
+                .flatten()
+                .copied()
+                .collect();
             state.trace.truncate(at);
+            state.trace.extend_from_slice(&names);
         }
         Ok(())
     });

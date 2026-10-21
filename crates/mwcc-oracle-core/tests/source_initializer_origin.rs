@@ -74,6 +74,7 @@ fn evaluate_trace(text: String, objective: Objective) -> objective::EvaluationRe
         version: Version::Gc27,
         source: "model.cpp".into(),
         oracle: "model".into(),
+        module: None,
         producer_sha256: "producer".into(),
         original_sha256: Some("stock".into()),
         source_sha256: state::digest(source),

@@ -53,6 +53,42 @@ void OracleProbe_PeepholeTry(void* instruction, void* func);
 void OracleProbe_PeepholeHit(void* instruction);
 void OracleProbe_PeepholeDead(void* instruction);
 
+// The alias analysis (`al.*`, MWCC_ORACLE_ALIAS; optimizer/Alias.c): gather_alias_info has left
+// FUNCTION's alias table (COLORING: as coloring is, COUNT aliases), each alias INDEX of TYPE (0 an
+// object, 1 a part of one, 2 a set) with its OBJECT, OFFSET and SIZE and, for a set, its MEMBERS
+// (a bit vector over the COUNT indices), and each instruction with an alias, PCODE, and its alias
+// INDEX. At level 2, a query: whether A may alias B, or the object OBJECT (KIND 0 may_alias, 1
+// may_alias_scheduling, 2 may_alias_object), and its RESULT.
+void OracleProbe_AliasBegin(void* function, int coloring, int count);
+void OracleProbe_Alias(
+    int index, int type, void* object, SInt32 offset, SInt32 size, const UInt32* members
+);
+void OracleProbe_AliasAccess(void* pcode, int index);
+void OracleProbe_AliasEnd(void);
+void OracleProbe_AliasQuery(int kind, void* a, void* b, void* object, int result);
+
+// The value numbering (`vn.*`, MWCC_ORACLE_VN; optimizer/ValueNumbering.c): removecommonsubexpressions
+// begins FUNCTION's pass (AGGRESSIVE: its flag), an extended basic block at BLOCK, the block BLOCK and
+// the instruction PCODE, and ends (REMOVED: whether it removed any); a load or CSE operation's
+// OUTCOME (0 not a candidate, 1 an available value's, OTHER, is reused, 2 the store OTHER's value is,
+// REASON its kind, 3 it is kept, for REASON: see ValueNumbering.c's oracle_kept), with its alias
+// ALIAS (-1: none); the instruction PCODE kills the memory value of the alias ALIAS, or every value.
+void OracleProbe_VnBegin(void* function, int aggressive);
+void OracleProbe_VnExtendedBlock(void* block);
+void OracleProbe_VnBlock(void* block);
+void OracleProbe_VnInstruction(void* pcode);
+void OracleProbe_VnDecision(void* pcode, int outcome, int reason, void* other, int alias);
+void OracleProbe_VnKill(int alias, void* pcode);
+void OracleProbe_VnKillAll(void* pcode);
+void OracleProbe_VnEnd(int removed);
+
+// The PCode at each stage the compiler's debug listing names (`st.stage`, MWCC_ORACLE_LISTING): the
+// sites that list the blocks under copts.debuglisting list them under ORACLE_LISTING(copts.debuglisting)
+// too, which is also true when the trace asks (OracleProbe_Listing), and pclistblocks (a stub in 2.x)
+// reports FUNCTION's blocks after STAGE.
+int OracleProbe_Listing(void);
+void OracleProbe_ListBlocks(void* function, const char* stage);
+
 // The register counters (`pv.function.*`, `pv.category.*`, `pv.counter.change`). ROLE is the
 // original's site's: 2 close_temp_registers has raised RCLASS's counter to its last temporary, 3
 // check_temp_registers has rewound it, 4 init_registers and 5 colorinstructions have reset it, 6
@@ -99,6 +135,8 @@ extern int OracleTrace_On;
         } \
     } while (0)
 
+#define ORACLE_LISTING(listing) ((listing) || (ORACLE_TRACING && OracleProbe_Listing()))
+
 #ifdef __wasm__
 // A function's scope in the trace (wasm/src/oracle.c): its inline expansion and code generation, between
 // ORACLE_SCOPE(1) and ORACLE_SCOPE(0). The host keeps a scope's records only for the functions a run asks for
@@ -112,6 +150,7 @@ void OracleTrace_Scope(int entering);
 #else
 
 #define ORACLE_PROBE(call)
+#define ORACLE_LISTING(listing) (listing)
 #define ORACLE_INLINED(call) call
 #define ORACLE_SCOPE(entering)
 

@@ -184,6 +184,24 @@ Echoes 300. On the canaries the streams compare equal but for inputs that stop o
 user break, and how far the compiler gets before it checks for one depends on the clock (`CWUserBreak` every 8
 ticks), in the original too.
 
+#### A probe of your own
+
+Every compile and trace of GC 2.6 or 2.7 runs `build/<version>/wasm/mwcc.wasm`, the module of gc2's sources compiled
+with `ORACLE_PROBES` and the Rust hooks (not `oracle.wasm` or `mwcceppc.wasm`, which only mwdec loads). A trace's
+document names it: `oracle` is the executable the compile stands for (`build/<version>/oracle/mwcceppc.exe`), `module`
+the module that ran in its place and `producer_sha256` its hash (`module` is absent when the oracle ran as a process).
+
+To observe something no stream records, change gc2's sources in a checkout of your own and build its module:
+
+1. Declare the probe in `include/compiler/OracleProbes.h` and call it at the site with `ORACLE_PROBE(...)` (nothing
+   without `ORACLE_PROBES`, so the matching builds are unchanged). Pass it the values it reports: the Rust hooks read
+   the compiler's structures by offset, and a value passed needs none. A probe that only prints can call
+   `OracleTrace_Printf` (`wasm/src/oracle.c`) directly; one the trace readers know is defined in
+   `crates/mwcc-oracle-hooks`, gated on its `MWCC_ORACLE_*` variable, and listed in `producer.rs`'s exports.
+2. `mwcc-tools probe-build --from MAIN_CHECKOUT` in the checkout copies the downloaded compilers and tools from the
+   main checkout (when it has none), configures GC 2.7 (`--version` for another) and builds `mwcc.wasm`.
+3. Run that checkout's `mwcc-tools` with the checkout as its root: its compiles use the new module.
+
 ## Floating point: the x87
 
 The original compiler runs on the x87, and two of its behaviors reach its output:

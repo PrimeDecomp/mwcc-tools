@@ -28,6 +28,7 @@ mod profiles;
 mod realize;
 pub mod reference;
 mod residuals;
+mod scan;
 mod source;
 mod unit;
 
@@ -314,6 +315,7 @@ pub fn methods() -> &'static [Method] {
                 list
             ),
         ];
+        all.extend(scan::methods());
         all.extend(unit::methods());
         all.extend(experiment::methods());
         all.extend(residuals::methods());

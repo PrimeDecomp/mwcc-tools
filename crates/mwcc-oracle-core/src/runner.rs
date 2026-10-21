@@ -82,6 +82,10 @@ pub struct Compilation {
     pub version: Version,
     pub source: String,
     pub oracle: String,
+    /// The module that ran in the oracle's place, in process (relative to the root; None: the oracle ran as a
+    /// process). `producer_sha256` is its hash.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub module: Option<String>,
     pub producer_sha256: String,
     pub original_sha256: Option<String>,
     pub source_sha256: String,
@@ -455,10 +459,17 @@ pub fn compile_controlled(
         }
     }
     // (of what runs: the module, where it runs in process)
+    let module = in_process(&oracle);
     let producer_sha256 = format!(
         "{:x}",
-        Sha256::digest(fs::read(in_process(&oracle).unwrap_or(oracle.clone()))?)
+        Sha256::digest(fs::read(module.clone().unwrap_or(oracle.clone()))?)
     );
+    let module = module.map(|m| {
+        m.strip_prefix(&root)
+            .unwrap_or(&m)
+            .to_string_lossy()
+            .replace('\\', "/")
+    });
     let original_runs = in_process(&original).unwrap_or(original.clone());
     let original_sha256 = if original_runs.is_file() {
         Some(format!("{:x}", Sha256::digest(fs::read(&original_runs)?)))
@@ -564,6 +575,7 @@ pub fn compile_controlled(
         version: request.version,
         source: request.source.clone(),
         oracle: oracle_label,
+        module,
         producer_sha256,
         original_sha256,
         source_sha256,
