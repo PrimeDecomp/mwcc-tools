@@ -109,7 +109,8 @@ fn writes(text: &str, register: &str) -> bool {
     let operands = text.split_once(' ').map_or("", |o| o.1);
     let first = operands.split(", ").next().unwrap_or("");
     first == register
-        || (m.ends_with('u') || m.ends_with("ux")) && load_operands(text).is_some_and(|o| o.1 == register)
+        || (m.ends_with('u') || m.ends_with("ux"))
+            && load_operands(text).is_some_and(|o| o.1 == register)
 }
 
 /// The places PATTERN occurs in INSTRUCTIONS: each a list of its instructions' offsets and texts.
@@ -140,7 +141,9 @@ fn find(pattern: &str, instructions: &[Instruction]) -> Vec<Value> {
                 };
                 // A load of its own base (a pointer chase) or an update form changes what a second one reads.
                 let m = mnemonic(&first.text);
-                if first.symbol.is_none() && (base == destination || m.ends_with('u') || m.ends_with("ux")) {
+                if first.symbol.is_none()
+                    && (base == destination || m.ends_with('u') || m.ends_with("ux"))
+                {
                     continue;
                 }
                 for later in &instructions[at + 1..] {
@@ -185,7 +188,12 @@ fn scan(call: &mut Call<'_>, params: ScanParams) -> Result<ScanResult> {
     }
     let mut names = project.unit_names()?;
     if !params.units.is_empty() {
-        names.retain(|n| params.units.iter().any(|u| n == u || n.contains(u.as_str())));
+        names.retain(|n| {
+            params
+                .units
+                .iter()
+                .any(|u| n == u || n.contains(u.as_str()))
+        });
     }
     // (pattern -> side -> function -> hits)
     let mut found: BTreeMap<String, [BTreeMap<String, Vec<Value>>; 2]> = BTreeMap::new();
@@ -217,7 +225,11 @@ fn scan(call: &mut Call<'_>, params: ScanParams) -> Result<ScanResult> {
         scanned += 1;
         for (side, object) in [&target, &ours].into_iter().enumerate() {
             for f in &object.functions {
-                if params.function.as_deref().is_some_and(|w| !f.name.contains(w)) {
+                if params
+                    .function
+                    .as_deref()
+                    .is_some_and(|w| !f.name.contains(w))
+                {
                     continue;
                 }
                 let listed = instructions(f);

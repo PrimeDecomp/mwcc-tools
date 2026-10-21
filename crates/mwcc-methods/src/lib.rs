@@ -28,8 +28,8 @@ mod profiles;
 mod realize;
 pub mod reference;
 mod residuals;
-mod source;
 mod scan;
+mod source;
 mod unit;
 
 /// The version of the methods' parameters and results: a change that breaks a caller bumps it.
