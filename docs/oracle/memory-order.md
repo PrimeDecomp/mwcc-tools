@@ -22,7 +22,8 @@ told cannot alias, that nothing else orders, and whose order the answer changed:
 * for a read-only or restrict pointer's memory, the source that makes it so, and what undoes it.
 
 It needs gc2's alias probes (`streams.alias_queries`, which it turns on with the scheduler's stream): GC 2.6 and
-2.7 in process. `backend.memory_order` has the same as JSON: `blocks` (each with its instructions, the recorded
+2.7 in process, from a module built with them. When `MWCC_ORACLE_ROOT` names another checkout, its module runs: one
+built before the probes gives no `al.*` records, and the view finds nothing (`0 unordered`). `backend.memory_order` has the same as JSON: `blocks` (each with its instructions, the recorded
 order and its `pairs`), `unordered` (all the pairs left unordered), `scheduled` and `replayed`.
 
 ## Read-only memory
@@ -81,5 +82,5 @@ view gives, for each of the 27 cases:
 The method is const and `CKnockBackMgr` has no `mutable` member, so the scheduler moves the store of `mType` into the
 load's empty cycle, before the compare. Had they may-aliased, the order would be `lwz, li, cntlzw, stw`: the zero is
 live across the compare, which then takes r3, as in the target. A `mutable` member of `CKnockBackMgr` gives that
-order: the function, and the unit, match (96.1% to 100%), and the view lists nothing. All 299 scheduled blocks of the
+order: the function goes from 86.6% to 100%, every function of the unit scores 100%, and the view lists nothing. All 299 scheduled blocks of the
 unit schedule again as recorded.

@@ -251,6 +251,9 @@ six moves. Compare seeds, and recompile to confirm one: a graph solution is not 
   that may realize it, and an experiment shows which do. Run `trace.remap` to see how a variant changed the graph.
 * The search is randomised. When it finds nothing, try another `seed`, more `iterations`, a narrower `nodes`,
   or `kinds` with `link`.
+* When `verify` is exact and no edit gives the target, the graph may come from the scheduler's order before the
+  allocation. A store moved above a load whose memory cannot alias it, for example. See
+  [memory order](memory-order.md).
 
 ## Native API
 
