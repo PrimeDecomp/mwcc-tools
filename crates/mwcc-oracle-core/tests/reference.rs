@@ -286,7 +286,7 @@ fn human_reports_match_reference_including_whitespace() {
             "allocation":report::allocation(analysis),"frame":report::frame(analysis),"inlining":report::inlining(analysis["inlining"].as_array().unwrap(),false),
             "inlining_links":report::inlining(analysis["inlining"].as_array().unwrap(),true),"schedule":report::schedule(analysis["function"].as_str().unwrap(),analysis["schedule"].as_array().unwrap()),
                     "costs":analysis["inlining"].as_array().unwrap().iter().map(|d|report::cost(d,version::enode_names())).collect::<Vec<_>>(),
-            "pcode":report::pcode(&a.before,version::opcode_names(version))})).collect();
+            "pcode":report::pcode(&a.before,version::opcode_names(version),false)})).collect();
         if let Some(d) =
             first_difference(&serde_json::to_value(actual).unwrap(), &expected, "reports")
         {

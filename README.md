@@ -68,6 +68,7 @@ Documentation
 | [Methods](docs/api.md) | Every method's parameters and results. |
 | [WebAssembly builds](docs/wasm.md) | The modules in detail: how they are built and run, the probes in the compiler's sources. |
 | [Native kit workflow](integrations/decomp-kits/overlay/.agents/docs/oracle-native.md) | Project units, candidates, register differences and structured checks. |
+| [Project scan](docs/scan.md), [other versions](docs/versions.md) | Instruction patterns over a whole project; compiling a unit with another of its compilers. |
 | [Trace reference](docs/oracle/trace.md) | Raw records and versioned JSON. |
 | [Provenance](docs/oracle/provenance.md), [source search](docs/oracle/source-search.md) | Value origins, source search, reduction and the matched-source index. |
 | [Decompilation](docs/decompilation.md) | The compilers' sources and their other builds. |

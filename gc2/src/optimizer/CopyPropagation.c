@@ -376,7 +376,7 @@ void propagateinstructions(Object* proc, Propagation* config, int passCount, Boo
         propagatecandidates();
         passCount--;
 
-        if (propagated_instructions && copts.debuglisting) {
+        if (propagated_instructions && ORACLE_LISTING(copts.debuglisting)) {
             sprintf(buf, "AFTER %s PROPAGATION", config->name);
             pclistblocks(CMangler_GetLinkName(proc)->name, buf);
         }

@@ -1503,7 +1503,7 @@ void CodeGen_Generator(
         if (copts.debuglisting) {
             pclistblocks_end_scheduler();
         }
-        if (copts.debuglisting) {
+        if (ORACLE_LISTING(copts.debuglisting)) {
             pclistblocks(CMangler_GetLinkName(func)->name, "AFTER INSTRUCTION SCHEDULING");
         }
     }
@@ -1513,19 +1513,19 @@ void CodeGen_Generator(
             peepholemergeblocks(func, 0);
         }
         peepholeoptimizeforward(func);
-        if (copts.debuglisting) {
+        if (ORACLE_LISTING(copts.debuglisting)) {
             pclistblocks(CMangler_GetLinkName(func)->name, "AFTER PEEPHOLE FORWARD");
         }
     }
 
     colorinstructions(func);
-    if (copts.debuglisting) {
+    if (ORACLE_LISTING(copts.debuglisting)) {
         pclistblocks(CMangler_GetLinkName(func)->name, "AFTER REGISTER COLORING");
     }
 
     if (copts.optimizationlevel > 1 && !disable_optimizer) {
         removecommonsubexpressions(func, 1);
-        if (removedcommonsubexpressions && copts.debuglisting) {
+        if (removedcommonsubexpressions && ORACLE_LISTING(copts.debuglisting)) {
             pclistblocks(CMangler_GetLinkName(func)->name, "AFTER VALUE NUMBERING (POST COLORING)");
         }
     }
@@ -1537,19 +1537,19 @@ void CodeGen_Generator(
     }
     generate_epilogue(epilogue, 1);
 
-    if (copts.debuglisting) {
+    if (ORACLE_LISTING(copts.debuglisting)) {
         pclistblocks(CMangler_GetLinkName(func)->name, "AFTER GENERATING EPILOGUE, PROLOGUE");
     }
 
     if (copts.peephole) {
         if (copts.schedule_factor) {
             peepholemergeblocks(func, 1);
-            if (copts.debuglisting) {
+            if (ORACLE_LISTING(copts.debuglisting)) {
                 pclistblocks(CMangler_GetLinkName(func)->name, "AFTER MERGING EPILOGUE, PROLOGUE");
             }
         }
         peepholeoptimizepcode(func);
-        if (copts.debuglisting) {
+        if (ORACLE_LISTING(copts.debuglisting)) {
             pclistblocks(CMangler_GetLinkName(func)->name, "AFTER PEEPHOLE OPTIMIZATION");
         }
     }
@@ -1562,13 +1562,13 @@ void CodeGen_Generator(
         if (copts.debuglisting) {
             pclistblocks_end_scheduler();
         }
-        if (copts.debuglisting) {
+        if (ORACLE_LISTING(copts.debuglisting)) {
             pclistblocks(
                 CMangler_GetLinkName(func)->name, "FINAL CODE AFTER INSTRUCTION SCHEDULING"
             );
         }
     } else {
-        if (copts.debuglisting) {
+        if (ORACLE_LISTING(copts.debuglisting)) {
             pclistblocks(CMangler_GetLinkName(func)->name, "FINAL CODE");
         }
     }

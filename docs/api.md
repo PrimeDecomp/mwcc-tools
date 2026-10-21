@@ -100,6 +100,32 @@ Result:
 
 `[`[`MethodInfo`](#type-methodinfo)`]`
 
+### project
+
+#### `project.scan`
+
+instruction patterns over a project's units, the targets' objects against the build's (literal_reload, repeated_load): the functions each side has them in, and those only one has; each function's instructions as JSON.
+
+Parameters:
+
+| field | type | |
+|---|---|---|
+| `project` | `string` |  |
+| `units` | `[string]` | The units to scan (objdiff.json's names, or a part of them); none: every unit with a target and a built object. |
+| `patterns` | `[string]` | The patterns to look for (default: all): `literal_reload` (one symbol, a literal or a global, loaded twice in a function) and `repeated_load` (the same load, of one base register and offset or of one symbol, twice with no store, call or write of the base register between them, in the order of the code: a branch between them is not followed). |
+| `function` | `string` | Only the functions whose names have this. |
+| `instructions` | `boolean` | Each scanned function's instructions too (`{offset, text, symbol}`, target and ours), for scans of one's own. |
+| `differing` | `boolean` | Only the functions one side has a pattern in and the other has not (the whole of Echoes' scan is 2 MB). |
+
+Result:
+
+| field | type | |
+|---|---|---|
+| `units` | `integer` | **required** |
+| `patterns` | `{string: any}` | **required**; For each pattern, the functions of the target and of ours that have it, and those that only one side has. |
+| `functions` | `[any]` | **required**; With `instructions`: each function's, by unit. |
+| `skipped` | `[string]` | **required**; Units skipped: no target, no built object, or an object that does not load. |
+
 ### unit
 
 #### `unit.load`
@@ -140,6 +166,7 @@ Parameters:
 | `object_path` | `string` | Where to write the object. |
 | `timeout_ms` | `integer` |  |
 | `cache` | `boolean` | Whether the session's compile cache may answer (default true; never for a traced compile). |
+| `compiler` | `string` | Another of the project's compilers in place of the unit's own, by its directory under `build/compilers` (`GC/2.0p1`), or an executable: an experiment with another version (docs/versions.md). It runs as a process (only GC 2.6 and 2.7 have modules), where only the unit's source can be given in `files`. |
 
 Result:
 
@@ -176,6 +203,7 @@ Parameters:
 | `rows` | `boolean` | Every function's rows. |
 | `cache` | `boolean` |  |
 | `scores` | `[string]` | decomp_experiment's `score_symbols` entries of these functions (each by its name, demangled name or short method name, then by a unique substring), as an experiment's rows give them. |
+| `compiler` | `string` | Another of the project's compilers in place of the unit's own, by its directory under `build/compilers` (`GC/2.0p1`), or an executable: an experiment with another version (docs/versions.md). It runs as a process (only GC 2.6 and 2.7 have modules), where only the unit's source can be given in `files`. |
 
 Result:
 
@@ -356,6 +384,7 @@ Result:
 | `document` | `any` | **required**; The schema-6 document (docs/oracle/trace.md). |
 | `text` | `[string]` | The views' lines (with `views.text`). |
 | `raw` | `[string]` |  |
+| `backend` | `any` | The backend views (`views.alias`, `views.value_numbering`, `views.why_not_cse`). |
 | `identical` | `boolean` | The object equals the build's (a unit) or the original compiler's (a source). |
 | `differences` | `[string]` | **required** |
 | `version` | `string` | **required** |
@@ -1412,14 +1441,20 @@ Result:
 | `near` | `integer` | Inlining decisions within this many cost units of the limit. |
 | `instantiation` | `string` | The instantiations of templates whose names have this. |
 | `cse` | `boolean` |  |
-| `ir` | `string` | The common subexpression pass's IR, after this pass. |
+| `ir` | `string` | The common subexpression pass's linear IR of this source line (`all`: the whole function), as each pass starts. |
 | `blocks` | `boolean` |  |
 | `locals` | `boolean` |  |
 | `exchange` | `string` | Two registers (`A,B`): what an exchange of them would change. |
 | `inline_cost` | `string` | The inlining decisions about callees whose names have this, with their costs. |
 | `pcode` | `boolean` |  |
+| `flags` | `boolean` | With `pcode`: each instruction's flags (`; fIsRead fIsConst ...`). |
 | `schedule` | `boolean` |  |
 | `raw` | `boolean` | The trace's raw lines (the selected function's, when one is). |
+| `alias` | `boolean` | The alias analysis's tables: each alias and each access's (`backend.alias`; gc2's probes, GC 2.6 and 2.7 in process). |
+| `value_numbering` | `boolean` | What the value numbering did with each load and operation, and what killed the memory's values (`backend.value_numbering`; gc2's probes). |
+| `why_not_cse` | `string` | Two source lines, `A,B`: why the value numbering did or did not reuse line A's loads and operations at line B (`backend.why_not_cse`; gc2's probes). |
+| `stages` | `string` | The PCode at the stages the compiler's debug listing names (`AFTER VALUE NUMBERING 2`, `AFTER COPY PROPAGATION`, `AFTER REGISTER COLORING`...), those whose names have one of these, comma-separated, without regard to case (`value numbering,coloring`; `listing`: every stage) (`backend.stages`, and `text` with `views.text`; gc2's probes). |
+| `objects` | `boolean` | The static objects each function refers to that the compile made, or that are the unit's own (local): literals, constants' reference temporaries, string literals, static locals, with their sections, sizes and bytes (`backend.objects`; from the object, any version). |
 
 <a id="type-windowunit"></a>**`WindowUnit`**
 

@@ -242,6 +242,33 @@ impl Unit {
         asm.is_file().then_some(asm)
     }
 
+    /// The target's asm ([`Unit::target_asm`]), else disassembled from the target object by the project's dtk
+    /// (`build/tools/dtk elf disasm`) where dtk writes it, when the project has both. None: neither.
+    pub fn target_asm_or_disassembled(&self) -> Option<PathBuf> {
+        if let Some(asm) = self.target_asm() {
+            return Some(asm);
+        }
+        let target = self.target_path.as_ref().filter(|t| t.is_file())?;
+        let text = target.to_string_lossy().replace('\\', "/");
+        let (directory, object) = text.rsplit_once("/obj/")?;
+        let asm = PathBuf::from(format!("{directory}/asm/{object}")).with_extension("s");
+        let dtk = ["build/tools/dtk.exe", "build/tools/dtk"]
+            .iter()
+            .map(|d| self.directory.join(d))
+            .find(|d| d.is_file())?;
+        std::fs::create_dir_all(asm.parent()?).ok()?;
+        let status = std::process::Command::new(dtk)
+            .args(["elf", "disasm"])
+            .arg(target)
+            .arg(&asm)
+            .current_dir(&self.directory)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .ok()?;
+        (status.success() && asm.is_file()).then_some(asm)
+    }
+
     /// The precompiled header the unit's flags include (`-prefix X.mch`), if any.
     fn prefix(&self) -> Option<&str> {
         self.flags

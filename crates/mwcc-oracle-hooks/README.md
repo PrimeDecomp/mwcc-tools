@@ -63,11 +63,11 @@ Support exports, not hooks (checked separately, not in `oracle.hooks`): `OracleR
 `OracleRust_ArgumentForceGpr` and `OracleRust_ArenaProbeV1`. The frontend object imports the origin, chain, inline-line
 and link-name functions from the common object.
 
-The tracer's records (`MWCC_ORACLE_NAMES`, `MWCC_ORACLE_COPYPROP`, `MWCC_ORACLE_PEEPHOLE`, `MWCC_ORACLE_IRO_PHASES`
+The tracer's records (`MWCC_ORACLE_NAMES`, `MWCC_ORACLE_COPYPROP`, `MWCC_ORACLE_PEEPHOLE`, `MWCC_ORACLE_ALIAS`, `MWCC_ORACLE_IRO_PHASES`
 and the stages' `st.presched` / `st.precolor.*`; the source checkout's `docs/oracle/trace.md`) add `pc.opcode` and
 `pc.object` to every instruction record, `ra.value` to the graph and `inl.decide` to each inline decision. The rest
 comes from probes in gc2's sources (`OracleProbe_Expand`, `OracleProbe_Presched`, `OracleProbe_DumpPhase`,
-`OracleProbe_CopyUse`, `OracleProbe_CopyRemove` and the four `OracleProbe_Peephole*`), so only the WebAssembly and
+`OracleProbe_CopyUse`, `OracleProbe_CopyRemove`, the four `OracleProbe_Peephole*` and the five `OracleProbe_Alias*`), so only the WebAssembly and
 source-built oracles have them.
 
 ## ABI

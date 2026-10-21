@@ -128,6 +128,7 @@ fn fixture(kind: RunKind, script: bool) -> Result<Fixture> {
             version,
             source: source.to_string_lossy().into_owned(),
             oracle: oracle.to_string_lossy().into_owned(),
+            module: None,
             producer_sha256: runtime[0].sha256.clone(),
             original_sha256: Some(runtime[1].sha256.clone()),
             source_sha256: digest(bytes),
