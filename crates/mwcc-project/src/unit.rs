@@ -5,6 +5,7 @@ use crate::{
     compilers,
     ninja::{self, CompileRule},
     paths::display_path,
+    process_tree,
 };
 use anyhow::{Context, Result, bail, ensure};
 use mwcc_trace::{
@@ -229,17 +230,22 @@ impl Unit {
         host_path(&self.directory, &self.source)
     }
 
-    /// The target's asm, as dtk writes it beside the target object (`build/<version>/obj/<path>.o` has
-    /// `build/<version>/asm/<path>.s`), if it is there.
-    pub fn target_asm(&self) -> Option<PathBuf> {
+    /// Where dtk writes the target's asm, beside the target object (`build/<version>/obj/<path>.o` has
+    /// `build/<version>/asm/<path>.s`).
+    fn target_asm_path(&self) -> Option<PathBuf> {
         let target = self
             .target_path
             .as_ref()?
             .to_string_lossy()
             .replace('\\', "/");
         let (directory, object) = target.rsplit_once("/obj/")?;
-        let asm = PathBuf::from(format!("{directory}/asm/{object}")).with_extension("s");
-        asm.is_file().then_some(asm)
+        Some(PathBuf::from(format!("{directory}/asm/{object}")).with_extension("s"))
+    }
+
+    /// The target's asm, as dtk writes it beside the target object (`build/<version>/obj/<path>.o` has
+    /// `build/<version>/asm/<path>.s`), if it is there.
+    pub fn target_asm(&self) -> Option<PathBuf> {
+        self.target_asm_path().filter(|asm| asm.is_file())
     }
 
     /// The target's asm ([`Unit::target_asm`]), else disassembled from the target object by the project's dtk
@@ -249,9 +255,7 @@ impl Unit {
             return Some(asm);
         }
         let target = self.target_path.as_ref().filter(|t| t.is_file())?;
-        let text = target.to_string_lossy().replace('\\', "/");
-        let (directory, object) = text.rsplit_once("/obj/")?;
-        let asm = PathBuf::from(format!("{directory}/asm/{object}")).with_extension("s");
+        let asm = self.target_asm_path()?;
         let dtk = ["build/tools/dtk.exe", "build/tools/dtk"]
             .iter()
             .map(|d| self.directory.join(d))
@@ -412,7 +416,7 @@ pub fn compile_unit(
                     a.as_bytes().to_vec()
                 }
             }));
-            let mut environment = environment.clone();
+            let mut environment: Vec<_> = environment.iter().collect();
             environment.sort();
             parts.extend(
                 environment
@@ -510,7 +514,7 @@ pub fn compile_unit(
                     None => fs::read(&source).ok()?,
                 };
                 let split = mwcc_wasm::split_point(persist.reference, &text);
-                if std::env::var_os("MWCC_PERSIST_LOG").is_some() {
+                if pool::persist_log() {
                     eprintln!(
                         "mwcc-project: {} cut at byte {split} of {}",
                         unit.name,
@@ -618,32 +622,26 @@ fn run_process(
     }
     let console_path = scratch.join("console.txt");
     let console = fs::File::create(&console_path)?;
-    let mut child = command
+    command
         .args(args)
         .current_dir(&unit.directory)
         .stdin(Stdio::null())
         .stdout(console.try_clone()?)
-        .stderr(console)
+        .stderr(console);
+    // (its own process group, so that a stopped compile takes sjiswrap's child with it)
+    process_tree::prepare(&mut command);
+    let mut child = command
         .spawn()
         .with_context(|| format!("run {}", program.display()))?;
-    let started = Instant::now();
-    let (mut timed_out, mut cancelled) = (false, false);
-    let status = loop {
-        if let Some(status) = child.try_wait()? {
-            break Some(status);
-        }
-        timed_out = started.elapsed() >= options.timeout;
-        cancelled = (options.cancel)();
-        if timed_out || cancelled {
-            let _ = child.kill();
-            let _ = child.wait();
-            break None;
-        }
-        std::thread::sleep(Duration::from_millis(5));
-    };
+    let process_tree::Waited {
+        status,
+        timed_out,
+        cancelled,
+    } = process_tree::wait(&mut child, options.timeout, options.cancel)?;
+    let stopped = timed_out || cancelled;
     Ok(Compiled {
         console: fs::read(&console_path)?,
-        exit_code: status.and_then(|s| s.code()).unwrap_or(-1),
+        exit_code: status.code().filter(|_| !stopped).unwrap_or(-1),
         timed_out,
         cancelled,
         ..Compiled::default()

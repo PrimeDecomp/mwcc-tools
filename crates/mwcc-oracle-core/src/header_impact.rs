@@ -26,13 +26,7 @@ pub fn object_functions(data: &[u8]) -> Result<IndexMap<String, Vec<u32>>> {
     let mut out = IndexMap::new();
     for symbol in elf.symbols()? {
         if symbol.kind == 2 && symbol.section < elf.sections.len() && symbol.size > 0 {
-            out.insert(
-                symbol.name.clone(),
-                elf.function_bytes(&symbol)?
-                    .chunks_exact(4)
-                    .map(|b| u32::from_be_bytes(b.try_into().unwrap()))
-                    .collect(),
-            );
+            out.insert(symbol.name.clone(), elf.function_words(&symbol)?);
         }
     }
     Ok(out)

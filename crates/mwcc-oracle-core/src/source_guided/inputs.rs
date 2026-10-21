@@ -14,8 +14,7 @@ use std::{
     fs,
     path::{Path, PathBuf},
     process::{Command, Stdio},
-    thread,
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -60,7 +59,7 @@ pub fn environment_digest() -> String {
         .map(|(k, v)| (os_bytes(&k), os_bytes(&v)))
         .collect::<Vec<_>>();
     values.sort();
-    digest(&serde_json::to_vec(&values).unwrap())
+    digest(serde_json::to_vec(&values).unwrap())
 }
 /// Analysis identity is checked once per run; it is not a compiler input and
 /// does not need to be repeatedly copied into every compilation artifact.
@@ -360,23 +359,18 @@ pub fn semantic_check(
         .stderr(Stdio::from(log.as_file().try_clone()?));
     process_tree::prepare(&mut command);
     let mut child = command.spawn()?;
-    let began = Instant::now();
-    let mut timed_out = false;
-    let status = loop {
-        if let Some(status) = child.try_wait()? {
-            break status;
-        }
-        if cancel() {
-            process_tree::terminate(&mut child)?;
-            return Err(runner::Cancelled.into());
-        }
-        if began.elapsed() >= Duration::from_secs(check.timeout_seconds) {
-            timed_out = true;
-            process_tree::terminate(&mut child)?;
-            break child.wait()?;
-        }
-        thread::sleep(Duration::from_millis(10));
-    };
+    let process_tree::Waited {
+        status,
+        timed_out,
+        cancelled,
+    } = process_tree::wait(
+        &mut child,
+        Duration::from_secs(check.timeout_seconds),
+        cancel,
+    )?;
+    if cancelled {
+        return Err(runner::Cancelled.into());
+    }
     Ok(CheckOutcome {
         command: std::iter::once(program.to_string_lossy().into_owned())
             .chain(arguments)

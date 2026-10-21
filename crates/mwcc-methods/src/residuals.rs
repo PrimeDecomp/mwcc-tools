@@ -9,14 +9,7 @@ use crate::{
 use anyhow::{Context, Result, bail};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use std::{
-    collections::BTreeMap,
-    path::PathBuf,
-    sync::{
-        Arc, Mutex,
-        atomic::{AtomicUsize, Ordering},
-    },
-};
+use std::{collections::BTreeMap, path::PathBuf, sync::Arc};
 
 #[derive(Debug, Default, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -100,7 +93,7 @@ fn scan(
     loaded: &Loaded,
     params: &ResidualParams,
     timing: &mut Timing,
-) -> Result<Result<Vec<ResidualRow>, UnitFailure>> {
+) -> Result<Scanned> {
     let unit = &loaded.unit;
     let object = if params.built {
         std::fs::read(&unit.base_path)
@@ -204,43 +197,21 @@ fn residuals(call: &mut Call<'_>, params: ResidualParams) -> Result<ResidualResu
     if loaded.len() > 1 && !params.files.is_empty() {
         bail!("`files` replace one unit's: give one unit");
     }
-    let next = AtomicUsize::new(0);
-    let results: Mutex<Vec<(usize, Scanned)>> = Mutex::default();
-    let timing = Mutex::new(Timing::default());
-    let jobs = params.jobs.unwrap_or(8).clamp(1, loaded.len().max(1));
     let shared = &*call;
-    std::thread::scope(|scope| {
-        for _ in 0..jobs {
-            scope.spawn(|| {
-                loop {
-                    let index = next.fetch_add(1, Ordering::Relaxed);
-                    let Some(unit) = loaded.get(index) else { break };
-                    if (shared.cancel)() {
-                        break;
-                    }
-                    let mut own = Timing::default();
-                    let outcome = scan(shared, unit, &params, &mut own).unwrap_or_else(|e| {
-                        Err(UnitFailure {
-                            unit: unit.unit.name.clone(),
-                            error: format!("{e:#}"),
-                            console: None,
-                        })
-                    });
-                    timing.lock().unwrap().add(&own);
-                    results.lock().unwrap().push((index, outcome));
-                }
-            });
-        }
-    });
-    if (call.cancel)() {
-        bail!("cancelled");
-    }
-    call.timing.add(&timing.into_inner().unwrap());
-    let mut results = results.into_inner().unwrap();
-    results.sort_by_key(|(index, _)| *index);
+    let (results, timing) =
+        crate::each(shared, &loaded, params.jobs.unwrap_or(8), |unit, timing| {
+            scan(shared, unit, &params, timing).unwrap_or_else(|e| {
+                Err(UnitFailure {
+                    unit: unit.unit.name.clone(),
+                    error: format!("{e:#}"),
+                    console: None,
+                })
+            })
+        })?;
+    call.timing.add(&timing);
     let mut rows = vec![];
     let mut failed = vec![];
-    for (_, outcome) in results {
+    for outcome in results {
         match outcome {
             Ok(mut unit_rows) => {
                 unit_rows.sort_by(|a, b| b.percent.total_cmp(&a.percent));

@@ -1,19 +1,11 @@
+mod common;
+use common::collect;
 use mwcc_oracle_core::{coff::Object, counter_probe, executable};
 use std::{
     collections::BTreeMap,
     env, fs,
     path::{Path, PathBuf},
 };
-fn collect(root: &Path, objects: &mut Vec<(String, Vec<u8>)>) {
-    for item in fs::read_dir(root).unwrap() {
-        let path = item.unwrap().path();
-        if path.is_dir() {
-            collect(&path, objects);
-        } else if path.extension().is_some_and(|v| v == "obj") {
-            objects.push((path.to_string_lossy().into(), fs::read(path).unwrap()));
-        }
-    }
-}
 #[test]
 #[ignore = "requires split originals and a counter-instrumented producer in MWCC_ORACLE_TEST_ROOT"]
 fn counter_islands_preserve_all_unpatched_bytes_symbols_sizes_and_guard_sites() {

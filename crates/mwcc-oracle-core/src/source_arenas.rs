@@ -21,12 +21,6 @@ const MAX_DEPTH: usize = 64;
 fn gap(detail: impl Into<String>) -> Evaluation {
     Evaluation::indeterminate(EvidenceGap::SourceArenaCoverage, detail)
 }
-fn known() -> Evaluation {
-    Evaluation {
-        state: EvaluationState::Satisfied,
-        reasons: vec![],
-    }
-}
 pub fn is_record(kind: &str) -> bool {
     kind.starts_with("pv.arena.")
 }
@@ -520,7 +514,7 @@ fn parse_event(r: &Record) -> Result<Event> {
             unsupported: bit(r, "unsupported")?,
             function: r.number("function")?,
             epochs: epochs(r)?,
-            observations: known(),
+            observations: Evaluation::satisfied(),
         }),
         _ => return Err(anyhow!("unknown arena record {}", r.kind)),
     };
@@ -959,7 +953,7 @@ fn validate(records: Vec<Record>) -> History {
     } else if validator.intervals.is_empty() {
         gap("arena stream has no balanced reconciled checkpoint")
     } else {
-        known()
+        Evaluation::satisfied()
     };
     History {
         format_version: 1,
@@ -1167,7 +1161,7 @@ impl PreparedHistory {
                                         checkpoint_position,
                                     },
                                 }),
-                                observations: known(),
+                                observations: Evaluation::satisfied(),
                             },
                             None => HistoricalResolution {
                                 reference: None,

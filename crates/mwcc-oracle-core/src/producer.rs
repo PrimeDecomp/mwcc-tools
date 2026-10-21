@@ -6,8 +6,7 @@ use std::{
     fs,
     path::Path,
     process::{Command, Stdio},
-    thread,
-    time::{Duration, Instant},
+    time::Duration,
 };
 pub const ARGUMENT_HOOKS: [&str; 4] = [
     "_FunctionCalls_GenerateCall",
@@ -427,17 +426,11 @@ fn build_object(
     let mut child = command.spawn().with_context(|| {
         format!("launch rustc for {target} (install the target with rustup target add {target})")
     })?;
-    let began = Instant::now();
-    let status = loop {
-        if let Some(status) = child.try_wait()? {
-            break status;
-        }
-        if began.elapsed() >= timeout {
-            process_tree::terminate(&mut child)?;
-            anyhow::bail!("Rust producer compilation timed out");
-        }
-        thread::sleep(Duration::from_millis(10));
-    };
+    let waited = process_tree::wait(&mut child, timeout, &|| false)?;
+    if waited.timed_out {
+        anyhow::bail!("Rust producer compilation timed out");
+    }
+    let status = waited.status;
     ensure!(
         status.success(),
         "Rust producer compilation failed:\n{}",

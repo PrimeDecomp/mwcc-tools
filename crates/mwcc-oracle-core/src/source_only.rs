@@ -43,9 +43,7 @@ pub const RESOURCES: &str = "src/driver/mwcceppc.rc";
 /// The FlexLM license library the compiler loads: the tree's stand-in, put beside it.
 pub const LICENSING: &str = "tools/lmgr_stub/lmgr326b.dll";
 
-const EXTERNAL: u8 = 2;
-const STATIC: u8 = 3;
-const FUNCTION_TYPE: u16 = 0x20;
+use crate::coff::{EXTERNAL, FUNCTION_TYPE, STATIC};
 const LINK_COMDAT: u32 = 0x1000;
 const UD2: [u8; 2] = [0x0f, 0x0b];
 

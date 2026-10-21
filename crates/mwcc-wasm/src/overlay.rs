@@ -44,7 +44,7 @@ pub(crate) fn normal(directory: &Path, path: &Path) -> PathBuf {
 }
 
 /// The overlay's key of a plain path: its text, separators unified and ASCII upper case.
-fn key(path: &Path) -> String {
+pub(crate) fn key(path: &Path) -> String {
     path.to_string_lossy()
         .replace('\\', "/")
         .to_ascii_uppercase()
@@ -80,12 +80,18 @@ impl Overlay {
         self.files.is_empty()
     }
 
-    /// Each entry's key and the SHA-256 of its bytes (`None`: absent), by key: what the overlay gives a run.
-    pub(crate) fn fingerprint(&self) -> Vec<(String, Option<[u8; 32]>)> {
+    /// Each entry's key and the SHA-256 of its bytes (`None`: absent), by key: what the overlay gives a run (without
+    /// PATH's entry, as if it were [`Overlay::remove`]d).
+    pub(crate) fn fingerprint_without(
+        &self,
+        path: Option<&Path>,
+    ) -> Vec<(String, Option<[u8; 32]>)> {
         use sha2::{Digest, Sha256};
+        let without = path.map(|path| key(&Self::absolute(path)));
         let mut out: Vec<_> = self
             .files
             .iter()
+            .filter(|(k, _)| without.as_ref() != Some(*k))
             .map(|(k, (_, bytes))| {
                 (
                     k.clone(),

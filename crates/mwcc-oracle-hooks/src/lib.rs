@@ -2,10 +2,9 @@
 //! The host CLI builds the 32-bit object separately with panic=abort and no runtime.
 #![no_std]
 
-#[cfg(all(
-    target_pointer_width = "32",
-    not(any(feature = "trace-output", feature = "frontend"))
-))]
+// (the frontend object uses part of it)
+#[cfg(all(target_pointer_width = "32", not(feature = "trace-output")))]
+#[cfg_attr(feature = "frontend", allow(dead_code))]
 mod abi;
 #[cfg(all(
     target_pointer_width = "32",

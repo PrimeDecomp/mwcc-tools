@@ -3,16 +3,8 @@ use anyhow::{Context, Result, bail, ensure};
 use serde::Serialize;
 mod resources;
 pub use resources::{Resource, ResourceName, res_file, resources};
-pub(crate) fn bytes(data: &[u8], offset: usize, len: usize) -> Result<&[u8]> {
-    let end = offset.checked_add(len).context("binary range overflow")?;
-    data.get(offset..end).context("binary range outside file")
-}
-pub(crate) fn u16le(data: &[u8], offset: usize) -> Result<u16> {
-    Ok(u16::from_le_bytes(bytes(data, offset, 2)?.try_into()?))
-}
-pub(crate) fn u32le(data: &[u8], offset: usize) -> Result<u32> {
-    Ok(u32::from_le_bytes(bytes(data, offset, 4)?.try_into()?))
-}
+// (the readers' old home)
+pub(crate) use crate::bytes::{bytes, u16le, u32le};
 #[derive(Clone, Debug, Serialize)]
 pub struct Section {
     pub name: String,
@@ -119,6 +111,8 @@ impl<'a> Pe<'a> {
         self.read(address, needle.len())
             .is_ok_and(|data| data == needle)
     }
+    /// The addresses of NEEDLE in the initialized sections, up to LIMIT of them (as Python's search: an empty NEEDLE
+    /// is at every offset, which tests/binary.rs's fixture pins).
     pub fn find(&self, needle: &[u8], limit: Option<usize>) -> Vec<u32> {
         let mut out = vec![];
         for section in &self.sections {

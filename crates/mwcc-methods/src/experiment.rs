@@ -1,7 +1,7 @@
 //! `experiment.run`: a plan (mwcc-experiment's) run against a unit, one result per finished candidate (`row`) as it
 //! is written to `results.jsonl`, then the run's summary.
 use crate::{
-    Call, Method, Timing,
+    Call, Method,
     unit::{Loaded, UnitRef, resolve, score_options},
 };
 use anyhow::Result;
@@ -31,18 +31,6 @@ pub struct RunResult {
     /// The run: its candidates, statuses, controls, why it stopped, and its timing.
     #[schemars(with = "Value")]
     pub summary: Summary,
-}
-
-fn convert(timing: &mwcc_experiment::Timing) -> Timing {
-    Timing {
-        load: timing.load,
-        compile: timing.compile,
-        score: timing.score,
-        trace: timing.trace,
-        model: timing.model,
-        queue: timing.queue,
-        other: timing.other,
-    }
 }
 
 fn run(call: &mut Call<'_>, params: RunParams) -> Result<RunResult> {
@@ -88,7 +76,7 @@ pub(crate) fn run_loaded(
         run_plan(plan, &cx, &|row| on_row(call, row))?
     };
     // (the rows carry their own timing; the call's is the run's)
-    let timing = convert(&summary.timing);
+    let timing = summary.timing;
     call.timing.compile += timing.compile;
     call.timing.score += timing.score;
     call.timing.model += timing.model;

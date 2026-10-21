@@ -237,12 +237,6 @@ pub fn is_record(kind: &str) -> bool {
 fn gap(detail: &str) -> Evaluation {
     Evaluation::indeterminate(EvidenceGap::BackendLifecycleCoverage, detail)
 }
-fn known() -> Evaluation {
-    Evaluation {
-        state: EvaluationState::Satisfied,
-        reasons: vec![],
-    }
-}
 fn n(r: &Record, key: &str) -> Result<u32> {
     r.number(key)
 }
@@ -441,11 +435,11 @@ pub fn parse(text: &str) -> Result<History> {
                 if state.ranges_valid
                     && f.expected_ranges.map(|v| v as usize) == Some(f.ranges.len())
                 {
-                    f.range_observations = known();
+                    f.range_observations = Evaluation::satisfied();
                 }
                 stack.pop();
                 if state.valid {
-                    f.counter_observations = known();
+                    f.counter_observations = Evaluation::satisfied();
                 }
                 let final_counts = state.counts;
                 if let Some(parent) = stack.last() {
@@ -804,7 +798,7 @@ pub fn parse(text: &str) -> Result<History> {
                 .iter()
                 .all(|e| e.end_position.is_some() && !e.abandoned && e.result.is_some())
         {
-            function.dispatch_observations = known();
+            function.dispatch_observations = Evaluation::satisfied();
         }
         if state.valid
             && function.ended
@@ -828,7 +822,7 @@ pub fn parse(text: &str) -> Result<History> {
                 })
                 .all(|b| b.materialization.is_some())
         {
-            function.materialization_observations = known();
+            function.materialization_observations = Evaluation::satisfied();
         }
         crate::birth_origin::finish(function, state.valid);
         if !state.valid {
@@ -856,7 +850,7 @@ pub fn parse(text: &str) -> Result<History> {
             .iter()
             .all(|f| f.counter_observations.state == EvaluationState::Satisfied)
     {
-        history.counter_observations = known();
+        history.counter_observations = Evaluation::satisfied();
     } else {
         history.counter_observations =
             gap("incomplete direct-counter/function capture, discontinuity or orphan writes");

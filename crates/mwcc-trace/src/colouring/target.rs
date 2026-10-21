@@ -3,7 +3,7 @@ use super::final_colours;
 use crate::{
     ppc, sequence,
     trace::{Allocation, Instruction, Snapshot},
-    version::class_name,
+    version::is_class,
 };
 use anyhow::Result;
 use serde::Serialize;
@@ -475,7 +475,7 @@ pub fn derive(
         .rounds
         .iter()
         .rev()
-        .find(|r| class_name(r.class) == class)
+        .find(|r| is_class(r.class, class))
     {
         let mut colours: BTreeMap<_, _> = round
             .order
@@ -604,13 +604,13 @@ pub fn graph_difference(
         .rounds
         .iter()
         .rev()
-        .find(|r| class_name(r.class) == class)?;
+        .find(|r| is_class(r.class, class))?;
     let b = second
         .before
         .rounds
         .iter()
         .rev()
-        .find(|r| class_name(r.class) == class)?;
+        .find(|r| is_class(r.class, class))?;
     let pairs: BTreeMap<_, _> = a
         .nodes
         .keys()

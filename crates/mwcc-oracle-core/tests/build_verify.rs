@@ -1,3 +1,4 @@
+mod common;
 use mwcc_oracle_core::{
     build_config,
     build_verify::{self, Backend, CommandResult, Mode, Request},
@@ -10,7 +11,7 @@ use std::{
     time::Duration,
 };
 fn fixtures() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/build-verify")
+    common::fixtures("build-verify")
 }
 fn cases() -> Vec<Value> {
     serde_json::from_slice(&fs::read(fixtures().join("cases.json")).unwrap()).unwrap()

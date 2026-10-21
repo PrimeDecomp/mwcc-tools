@@ -1,9 +1,10 @@
+mod common;
 use mwcc_oracle_core::disassembly;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{fs, path::PathBuf};
 fn fixtures() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/disassembly")
+    common::fixtures("disassembly")
 }
 #[test]
 fn decoder_text_boundaries_and_shapes_match_python() {

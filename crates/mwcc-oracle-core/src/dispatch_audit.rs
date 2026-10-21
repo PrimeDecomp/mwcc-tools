@@ -1,13 +1,9 @@
 //! Direct references and guarded initialization of the retail expression table.
 //! Retail bytes, not reconstructed array declarations or function names, establish
 //! its extent. Two GC 2.7 local functions have the same metadata name.
-use crate::{
-    backend_audit, disassembly,
-    executable::{self, Original},
-};
+use crate::{backend_audit, disassembly, executable};
 use anyhow::{Context, Result, ensure};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use std::{collections::BTreeMap, fs, path::Path};
 
 pub const TABLE: &str = "_data_00560648";
@@ -56,13 +52,9 @@ pub fn capture(root: &Path, version: &str) -> Result<Audit> {
         ["GC_1_3", "GC_1_3_2", "GC_2_6", "GC_2_7"].contains(&version),
         "unsupported expression-dispatch version"
     );
-    let original = Original::read(root, version)?;
-    let pe = original.pe()?;
-    let metadata = fs::read(root.join(format!("config/{version}/symbols.txt")))?;
-    let symbols = executable::read_symbols(std::str::from_utf8(&metadata)?)?;
-    let splits = executable::read_splits(&fs::read_to_string(
-        root.join(format!("config/{version}/splits.txt")),
-    )?)?;
+    let retail = backend_audit::Retail::read(root, version)?;
+    let pe = retail.original.pe()?;
+    let symbols = &retail.symbols;
     let table = symbols
         .iter()
         .find(|s| s.name == TABLE)
@@ -71,8 +63,8 @@ pub fn capture(root: &Path, version: &str) -> Result<Audit> {
     let declaration = fs::read(root.join("include/compiler/enode.h"))?;
     let direct = backend_audit::references(
         &pe,
-        &symbols,
-        &splits,
+        symbols,
+        &retail.splits,
         table
             ..table
                 .checked_add(KINDS * 4)
@@ -212,20 +204,16 @@ pub fn capture(root: &Path, version: &str) -> Result<Audit> {
                 .take(index.min(8) + 4)
                 .map(|i| Instruction {
                     address: i.address() as u32,
-                    bytes: i.bytes().iter().map(|b| format!("{b:02x}")).collect(),
-                    instruction: format!(
-                        "{} {}",
-                        i.mnemonic().unwrap_or("?"),
-                        i.op_str().unwrap_or("")
-                    ),
+                    bytes: disassembly::instruction_bytes(i),
+                    instruction: disassembly::instruction_text(i),
                 })
                 .collect();
             contexts.insert(reference.address, context);
         }
     }
     Ok(Audit {
-        format_version:1, version:version.into(), compiler_sha256:format!("{:x}",Sha256::digest(&original.data)),
-        symbol_metadata_sha256:format!("{:x}",Sha256::digest(metadata)), declaration_sha256:format!("{:x}",Sha256::digest(declaration)),
+        format_version:1, version:version.into(), compiler_sha256:retail.compiler_sha256(),
+        symbol_metadata_sha256:retail.symbol_metadata_sha256(), declaration_sha256:crate::hash::sha256_hex(declaration),
         table_base:table, initialized_entries:KINDS, initialization, direct, contexts, coverage_complete:false,
         limitations:vec!["Retail initialization fills entries 0 through 77 inclusive; reconstructed array sizes are not authoritative".into(),
             "Direct relocated references do not resolve register-derived aliases or prove a call ABI".into(),

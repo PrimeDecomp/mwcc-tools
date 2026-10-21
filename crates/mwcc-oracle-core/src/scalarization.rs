@@ -123,12 +123,6 @@ pub fn summary(record: &Record) -> Result<Option<Summary>> {
 pub fn gap(detail: impl Into<String>) -> Evaluation {
     Evaluation::indeterminate(EvidenceGap::ScalarizationCoverage, detail)
 }
-fn known() -> Evaluation {
-    Evaluation {
-        state: EvaluationState::Satisfied,
-        reasons: vec![],
-    }
-}
 impl Default for History {
     fn default() -> Self {
         Self {
@@ -365,7 +359,7 @@ pub fn parse(text: &str) -> Result<History> {
                     && !pass.link.is_empty()
                     && pass.link != "?"
                 {
-                    pass.observations = known();
+                    pass.observations = Evaluation::satisfied();
                 }
                 active = None;
             }
@@ -380,7 +374,7 @@ pub fn parse(text: &str) -> Result<History> {
             .iter()
             .all(|p| p.observations.state == EvaluationState::Satisfied)
     {
-        result.observations = known();
+        result.observations = Evaluation::satisfied();
     }
     Ok(result)
 }
@@ -569,7 +563,7 @@ pub fn object_origin<'a>(
         Ok((pass, binding)) => ObjectOrigin {
             pass: Some(pass),
             binding: Some(binding),
-            evidence: known(),
+            evidence: Evaluation::satisfied(),
         },
         Err(error) => ObjectOrigin {
             pass: None,

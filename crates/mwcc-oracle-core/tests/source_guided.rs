@@ -13,12 +13,6 @@ use mwcc_oracle_core::{
     version::Version,
 };
 use std::{fs, path::PathBuf};
-fn known() -> Evaluation {
-    Evaluation {
-        state: EvaluationState::Satisfied,
-        reasons: vec![],
-    }
-}
 #[test]
 fn ranking_keeps_hard_constraints_and_known_extreme_costs_ahead_of_unknowns() {
     let known = objective::Score {
@@ -747,11 +741,11 @@ fn range_objective_requires_real_change_and_independent_hard_constraints() {
         EvaluationState::Indeterminate
     );
     let checked_from = Input {
-        semantic_check: Some(known()),
+        semantic_check: Some(Evaluation::satisfied()),
         ..from
     };
     let checked_to = Input {
-        semantic_check: Some(known()),
+        semantic_check: Some(Evaluation::satisfied()),
         ..to
     };
     assert_eq!(
@@ -794,7 +788,7 @@ fn range_objective_requires_real_change_and_independent_hard_constraints() {
         compilation: &changed,
         provenance: &br,
         source,
-        semantic_check: Some(known()),
+        semantic_check: Some(Evaluation::satisfied()),
     };
     assert_eq!(
         objective::evaluate(&c, &checked_from, &different_flags)

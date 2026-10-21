@@ -8,6 +8,12 @@ pub use object::{BuildSection, Builder, Object, ObjectSection, ObjectSymbol};
 pub use patch::{
     SymbolEdit, defined_symbols, edit_symbols, hook_symbols, section_sizes, undefine_symbols,
 };
+/// Storage class of an external symbol.
+pub const EXTERNAL: u8 = 2;
+/// Storage class of a static symbol.
+pub const STATIC: u8 = 3;
+/// Symbol type of a function.
+pub const FUNCTION_TYPE: u16 = 0x20;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Relocation {
     pub offset: u32,

@@ -159,17 +159,11 @@ pub struct Comparison {
     pub lifetime_correspondence: Evaluation,
     pub elimination: Evaluation,
 }
-fn known() -> Evaluation {
-    Evaluation {
-        state: EvaluationState::Satisfied,
-        reasons: vec![],
-    }
-}
 fn gap(detail: &str) -> Evaluation {
     Evaluation::indeterminate(EvidenceGap::AmbiguousCorrespondence, detail)
 }
 fn combine(values: impl IntoIterator<Item = Evaluation>) -> Evaluation {
-    let mut r = known();
+    let mut r = Evaluation::satisfied();
     for e in values {
         if e.state != EvaluationState::Satisfied {
             r.state = EvaluationState::Indeterminate;
@@ -352,7 +346,7 @@ fn side(f: &Function, g: &Graph, s: &Selection, coverage: Evaluation) -> Side {
         .map(|b| {
             let mut current = b.register;
             let mut chain = vec![];
-            let mut evidence = known();
+            let mut evidence = Evaluation::satisfied();
             for m in &g.merges {
                 if m.child == current
                     && m.trace_position > b.trace_position
@@ -494,7 +488,7 @@ pub fn compare(
     let (af, a, ac) = selected(first, first_selection)?;
     let (bf, b, bc) = selected(second, second_selection)?;
     let physical = if a.physical_limit == b.physical_limit {
-        known()
+        Evaluation::satisfied()
     } else {
         gap("observed physical-register boundaries differ")
     };

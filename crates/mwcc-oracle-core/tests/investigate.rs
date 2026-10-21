@@ -1,9 +1,10 @@
+mod common;
 use mwcc_oracle_core::{coff::Object, executable, investigate, pe::Pe};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{fs, path::PathBuf};
 fn fixtures() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/investigate")
+    common::fixtures("investigate")
 }
 #[test]
 fn masked_searches_match_python() {

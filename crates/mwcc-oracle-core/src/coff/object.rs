@@ -34,14 +34,7 @@ pub struct Object<'a> {
     pub string_size: u32,
 }
 fn string(data: &[u8], offset: usize) -> Result<String> {
-    let data = data
-        .get(offset..)
-        .context("COFF string offset outside table")?;
-    let end = data
-        .iter()
-        .position(|b| *b == 0)
-        .context("unterminated COFF string")?;
-    Ok(data[..end].iter().map(|b| char::from(*b)).collect())
+    crate::bytes::latin1_string(data, offset, "COFF")
 }
 fn symbol_name(raw: &[u8], strings: &[u8]) -> Result<String> {
     if raw[..4] == [0; 4] {

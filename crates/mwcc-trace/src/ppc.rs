@@ -30,27 +30,35 @@ pub fn r1_offset(word: u32) -> Option<i32> {
         i32::from(word as u16 as i16)
     })
 }
-pub fn target_words(text: &str, link: &str) -> Option<Vec<u32>> {
+/// The lines of function LINK's body in a target listing (dtk's assembly): those after its `.fn` up to its `.endfn`,
+/// without the `.fn` and `.endfn` lines of any function.
+pub(crate) fn fn_body<'a>(text: &'a str, link: &'a str) -> impl Iterator<Item = &'a str> + 'a {
     static MARKER: LazyLock<Regex> =
         LazyLock::new(|| Regex::new(r#"^\s*\.(fn|endfn)\s+("[^"]*"|[^\s,]+)"#).unwrap());
+    let mut inside = false;
+    text.lines()
+        .map_while(move |line| {
+            if let Some(c) = MARKER.captures(line) {
+                if c[2].trim_matches('"') == link {
+                    if &c[1] == "endfn" {
+                        return None;
+                    }
+                    inside = true;
+                }
+                return Some(None);
+            }
+            Some(inside.then_some(line))
+        })
+        .flatten()
+}
+
+pub fn target_words(text: &str, link: &str) -> Option<Vec<u32>> {
     static WORD: LazyLock<Regex> = LazyLock::new(|| {
         Regex::new(r"/\*.*?\b((?:[0-9A-Fa-f]{2} ){3}[0-9A-Fa-f]{2})\s*\*/").unwrap()
     });
-    let mut words = vec![];
-    let mut inside = false;
-    for line in text.lines() {
-        if let Some(c) = MARKER.captures(line) {
-            if c[2].trim_matches('"') == link {
-                if &c[1] == "endfn" {
-                    break;
-                }
-                inside = true;
-            }
-            continue;
-        }
-        if inside && let Some(c) = WORD.captures(line) {
-            words.push(u32::from_str_radix(&c[1].replace(' ', ""), 16).unwrap());
-        }
-    }
+    let words: Vec<u32> = fn_body(text, link)
+        .filter_map(|line| WORD.captures(line))
+        .map(|c| u32::from_str_radix(&c[1].replace(' ', ""), 16).unwrap())
+        .collect();
     (!words.is_empty()).then_some(words)
 }

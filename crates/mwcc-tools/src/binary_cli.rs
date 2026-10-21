@@ -17,10 +17,7 @@ pub fn run(command: &str, args: &[String]) -> Result<()> {
             let mut i = 0;
             while i < args.len() {
                 match args[i].as_str() {
-                    "--root" => {
-                        i += 1;
-                        root = args.get(i).context("--root requires DIR")?.into();
-                    }
+                    "--root" => root = crate::option_value(args, &mut i)?.into(),
                     value if !value.starts_with('-') => positional.push(value.to_owned()),
                     value => bail!("unknown {command} argument {value}"),
                 }
@@ -83,10 +80,7 @@ pub fn run(command: &str, args: &[String]) -> Result<()> {
                             command == "derive-splits" || option == "--root",
                             "{option} is only supported by derive-splits"
                         );
-                        i += 1;
-                        let value = args
-                            .get(i)
-                            .context("binary metadata option needs a value")?;
+                        let value = crate::option_value(args, &mut i)?;
                         match option.as_str() {
                             "--root" => root = value.into(),
                             "--reference" => reference = value.clone(),
@@ -134,10 +128,7 @@ pub fn run(command: &str, args: &[String]) -> Result<()> {
             let mut i = 0;
             while i < args.len() {
                 match args[i].as_str() {
-                    "--root" => {
-                        i += 1;
-                        root = args.get(i).context("--root requires DIR")?.into();
-                    }
+                    "--root" => root = crate::option_value(args, &mut i)?.into(),
                     "--json" if command == "funcmatch" => json_output = true,
                     value if !value.starts_with('-') => positional.push(value.to_owned()),
                     value => bail!("unknown {command} argument {value}"),
@@ -200,10 +191,7 @@ pub fn run(command: &str, args: &[String]) -> Result<()> {
             let mut i = 0;
             while i < args.len() {
                 match args[i].as_str() {
-                    "--root" => {
-                        i += 1;
-                        root = args.get(i).context("--root requires DIR")?.into();
-                    }
+                    "--root" => root = crate::option_value(args, &mut i)?.into(),
                     value if !value.starts_with('-') => positional.push(value),
                     value => bail!("unknown compare argument {value}"),
                 }
@@ -263,12 +251,11 @@ pub fn run(command: &str, args: &[String]) -> Result<()> {
                     "--source" => source = true,
                     "--root" | "--timeout" => {
                         let option = &args[i];
-                        i += 1;
-                        let value = args.get(i).context("link option needs a value")?;
+                        let value = crate::option_value(args, &mut i)?;
                         if option == "--root" {
                             root = value.into();
                         } else {
-                            timeout = std::time::Duration::try_from_secs_f64(value.parse()?)?;
+                            timeout = crate::timeout(value)?;
                         }
                     }
                     v => positional.push(v.to_owned()),
@@ -307,10 +294,7 @@ pub fn run(command: &str, args: &[String]) -> Result<()> {
             while i < args.len() {
                 match args[i].as_str() {
                     "--write" => write = true,
-                    "--root" => {
-                        i += 1;
-                        root = args.get(i).context("--root needs a value")?.into();
-                    }
+                    "--root" => root = crate::option_value(args, &mut i)?.into(),
                     v if !v.starts_with('-') && version.is_none() => version = Some(v),
                     other => bail!("unknown relink-check argument {other}"),
                 }
@@ -340,21 +324,12 @@ pub fn run(command: &str, args: &[String]) -> Result<()> {
             let mut i = 0;
             while i < args.len() {
                 match args[i].as_str() {
-                    "--root" => {
-                        i += 1;
-                        root = args.get(i).context("--root needs a value")?.into();
-                    }
+                    "--root" => root = crate::option_value(args, &mut i)?.into(),
                     "--oracle" => oracle = true,
                     "--wasm" => wasm = true,
                     "--persist" => persist = true,
-                    "--clang" => {
-                        i += 1;
-                        clang = args.get(i).context("--clang needs a value")?.clone();
-                    }
-                    "--wasm-ld" => {
-                        i += 1;
-                        wasm_ld = args.get(i).context("--wasm-ld needs a value")?.clone();
-                    }
+                    "--clang" => clang = crate::option_value(args, &mut i)?.clone(),
+                    "--wasm-ld" => wasm_ld = crate::option_value(args, &mut i)?.clone(),
                     v if !v.starts_with('-') && version.is_none() => version = Some(v),
                     other => bail!("unknown source-only argument {other}"),
                 }
@@ -422,8 +397,7 @@ pub fn run(command: &str, args: &[String]) -> Result<()> {
                     "--source" => source = true,
                     "--root" | "--output" => {
                         let option = &args[i];
-                        i += 1;
-                        let value = args.get(i).context("split option needs a value")?;
+                        let value = crate::option_value(args, &mut i)?;
                         if option == "--root" {
                             root = value.into();
                         } else {

@@ -5,7 +5,6 @@ use crate::{
 };
 use anyhow::{Context, Result, ensure};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -76,12 +75,6 @@ fn integer(r: &Record, field: &str) -> Result<u32> {
 }
 fn hex(fields: &BTreeMap<String, String>, name: &str) -> Option<u32> {
     u32::from_str_radix(fields.get(name)?, 16).ok()
-}
-fn known() -> Evaluation {
-    Evaluation {
-        state: EvaluationState::Satisfied,
-        reasons: vec![],
-    }
 }
 fn gap(detail: &str) -> Evaluation {
     Evaluation::indeterminate(EvidenceGap::CoalescingCoverage, detail)
@@ -288,7 +281,7 @@ pub fn parse(text: &str) -> Result<Report> {
             p.header.get("schema").is_some_and(|v| v == "1") && (2..=4).contains(&p.class);
         for c in &mut p.candidates {
             c.evidence = if schema_supported && valid_path(p.class, &p.header, c) {
-                known()
+                Evaluation::satisfied()
             } else {
                 gap("incomplete or inconsistent retail decision path")
             };
@@ -300,7 +293,7 @@ pub fn parse(text: &str) -> Result<Report> {
                 .iter()
                 .all(|c| c.evidence.state == EvaluationState::Satisfied)
         {
-            p.decisions = known();
+            p.decisions = Evaluation::satisfied();
         }
     }
     let decisions = if !passes.is_empty()
@@ -310,7 +303,7 @@ pub fn parse(text: &str) -> Result<Report> {
             .iter()
             .all(|p| p.decisions.state == EvaluationState::Satisfied)
     {
-        known()
+        Evaluation::satisfied()
     } else {
         gap("no complete supported coalescing capture, or missing decisions/context")
     };
@@ -323,7 +316,7 @@ pub fn parse(text: &str) -> Result<Report> {
     let source_nodes = crate::source_nodes::parse(text)?;
     Ok(Report {
         format_version: 2,
-        trace_sha256: format!("{:x}", Sha256::digest(text.as_bytes())),
+        trace_sha256: crate::hash::sha256_hex(text),
         passes,
         decisions,
         lifecycle: Evaluation::indeterminate(

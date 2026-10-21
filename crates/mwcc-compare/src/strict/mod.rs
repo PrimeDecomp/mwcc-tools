@@ -258,11 +258,11 @@ impl<'a> Index<'a> {
             .iter()
             .map(|s| (s.name.as_str(), s))
             .collect();
-        let functions = object
-            .functions
-            .iter()
-            .map(|f| (f.name.as_str(), f))
-            .collect();
+        // (of two functions with one name, the first, as Object::function and by_name have it)
+        let mut functions = HashMap::new();
+        for f in &object.functions {
+            functions.entry(f.name.as_str()).or_insert(f);
+        }
         Index {
             object,
             by_name,
@@ -367,8 +367,9 @@ fn has_numbered_suffix(n: &str) -> bool {
 
 /// The name without the `_XXXXXXXX` (address) dtk appends to tell duplicate local names apart.
 fn strip_dtk_suffix(n: &str) -> &str {
-    if n.len() > 9 {
-        let (a, b) = n.split_at(n.len() - 9);
+    if n.len() > 9
+        && let Some((a, b)) = n.split_at_checked(n.len() - 9)
+    {
         let generated_base = matches!(a, "lbl" | "fn" | "func" | "jumptable" | "switch" | "gap");
         if !generated_base
             && b.starts_with('_')
@@ -758,11 +759,11 @@ fn prove_placeholder(
                 remember(p, key, false);
                 return false;
             };
-            let Some(of) = object.function(symbol) else {
-                return false;
-            };
             let mut oi = Index::new(&object).with_prover(Some(p));
             oi.externs = o.externs;
+            let Some(of) = oi.function(symbol) else {
+                return false;
+            };
             nested(|| compare(t, tf, &oi, of).exact).unwrap_or(false)
         }
     };

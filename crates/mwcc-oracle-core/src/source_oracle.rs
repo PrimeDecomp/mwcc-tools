@@ -29,9 +29,7 @@ use std::{
     path::Path,
 };
 
-const EXTERNAL: u8 = 2;
-const STATIC: u8 = 3;
-const FUNCTION_TYPE: u16 = 0x20;
+use crate::coff::{EXTERNAL, FUNCTION_TYPE, STATIC};
 /// The imports the hooks take from the probes' islands, and their stand-ins.
 pub const ARENA_GLOBALS: &str = crate::source_arena_probe::GLOBALS;
 pub const FORCE_RETAIL: &str = crate::call_argument_probe::FORCE_RETAIL;

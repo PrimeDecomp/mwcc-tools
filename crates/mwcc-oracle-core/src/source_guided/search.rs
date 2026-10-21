@@ -504,7 +504,7 @@ pub(super) fn checker(
 fn checked(value: &Option<CheckOutcome>) -> Option<Evaluation> {
     value.as_ref().map(|v| {
         if v.exit_code == Some(0) && !v.timed_out {
-            known()
+            Evaluation::satisfied()
         } else {
             Evaluation {
                 state: EvaluationState::Unsatisfied,
@@ -515,12 +515,6 @@ fn checked(value: &Option<CheckOutcome>) -> Option<Evaluation> {
             }
         }
     })
-}
-fn known() -> Evaluation {
-    Evaluation {
-        state: EvaluationState::Satisfied,
-        reasons: vec![],
-    }
 }
 pub(super) fn input<'a>(
     saved: &'a Saved,
@@ -722,7 +716,7 @@ pub fn run(plan: &Plan, output: &Path, budget: &Budget, resume: bool) -> Result<
                     == elf::comparable_sections(&baseline.compilation.object)?,
                 "private source override changes baseline output/include resolution; adjust the build context"
             );
-            progress.baseline_calibration = Some(known());
+            progress.baseline_calibration = Some(Evaluation::satisfied());
         }
         let baseline_report = provenance::parse(&baseline.compilation.trace)?;
         let baseline_object = output.join("cache").join(&baseline_key).join("object.o");

@@ -3,25 +3,22 @@ use anyhow::{Context, Result, ensure};
 use serde::Serialize;
 use std::collections::BTreeMap;
 
-fn bytes(data: &[u8], offset: usize, length: usize) -> Result<&[u8]> {
-    let end = offset.checked_add(length).context("ELF offset overflow")?;
-    data.get(offset..end).context("ELF range outside file")
-}
-fn u16be(data: &[u8], offset: usize) -> Result<u16> {
-    Ok(u16::from_be_bytes(bytes(data, offset, 2)?.try_into()?))
-}
-fn u32be(data: &[u8], offset: usize) -> Result<u32> {
-    Ok(u32::from_be_bytes(bytes(data, offset, 4)?.try_into()?))
-}
+use crate::bytes::{bytes, u16be, u32be};
+
 fn string(data: &[u8], offset: usize) -> Result<String> {
-    let tail = data
-        .get(offset..)
-        .context("ELF string offset outside table")?;
-    let end = tail
-        .iter()
-        .position(|b| *b == 0)
-        .context("unterminated ELF string")?;
-    Ok(tail[..end].iter().map(|b| char::from(*b)).collect())
+    crate::bytes::latin1_string(data, offset, "ELF")
+}
+/// The symbol whose 16-byte entry is at AT of symbol table TABLE, its names in STRINGS.
+fn symbol_at(table: &[u8], at: usize, strings: &[u8]) -> Result<Symbol> {
+    let data = bytes(table, at, 16)?;
+    Ok(Symbol {
+        name: string(strings, u32be(data, 0)? as usize)?,
+        value: u32be(data, 4)?,
+        size: u32be(data, 8)?,
+        kind: data[12] & 15,
+        binding: data[12] >> 4,
+        section: u16be(data, 14)? as usize,
+    })
 }
 
 #[derive(Clone, Debug)]
@@ -141,15 +138,7 @@ impl<'a> Elf<'a> {
                 "invalid ELF symbol table size"
             );
             for at in (0..section.data.len()).step_by(width) {
-                let info = section.data[at + 12];
-                result.push(Symbol {
-                    name: string(strings.data, u32be(section.data, at)? as usize)?,
-                    value: u32be(section.data, at + 4)?,
-                    size: u32be(section.data, at + 8)?,
-                    kind: info & 15,
-                    binding: info >> 4,
-                    section: u16be(section.data, at + 14)? as usize,
-                });
+                result.push(symbol_at(section.data, at, strings.data)?);
             }
         }
         Ok(result)
@@ -196,16 +185,11 @@ impl<'a> Elf<'a> {
             );
             for at in (0..section.data.len()).step_by(width) {
                 let info = u32be(section.data, at + 4)?;
-                let symbol_at = (info >> 8) as usize * symbol_width;
-                let data = bytes(symtab.data, symbol_at, 16)?;
-                let symbol = Symbol {
-                    name: string(strings.data, u32be(data, 0)? as usize)?,
-                    value: u32be(data, 4)?,
-                    size: u32be(data, 8)?,
-                    kind: data[12] & 15,
-                    binding: data[12] >> 4,
-                    section: u16be(data, 14)? as usize,
-                };
+                let symbol = symbol_at(
+                    symtab.data,
+                    (info >> 8) as usize * symbol_width,
+                    strings.data,
+                )?;
                 out.push(Relocation {
                     section: section.info,
                     offset: u32be(section.data, at)?,
@@ -224,6 +208,14 @@ impl<'a> Elf<'a> {
             .get(symbol.section)
             .context("invalid ELF function section")?;
         bytes(section.data, symbol.value as usize, symbol.size as usize)
+    }
+    /// [`Self::function_bytes`] as big-endian words (a trailing partial word is left out).
+    pub fn function_words(&self, symbol: &Symbol) -> Result<Vec<u32>> {
+        Ok(self
+            .function_bytes(symbol)?
+            .chunks_exact(4)
+            .map(|b| u32::from_be_bytes(b.try_into().unwrap()))
+            .collect())
     }
 }
 
@@ -282,27 +274,29 @@ pub fn differences(mine: &[u8], theirs: &[u8]) -> Result<Vec<String>> {
     if mine.starts_with(b"\x7fELF") && theirs.starts_with(b"\x7fELF") {
         let a = Elf::parse(mine)?;
         let b = Elf::parse(theirs)?;
-        let sa: BTreeMap<_, _> = a
-            .symbols()?
-            .into_iter()
-            .filter(|s| s.kind == 2)
-            .map(|s| (s.name.clone(), s))
-            .collect();
-        let sb: BTreeMap<_, _> = b
-            .symbols()?
-            .into_iter()
-            .filter(|s| s.kind == 2)
-            .map(|s| (s.name.clone(), s))
-            .collect();
+        let functions = |elf: &Elf<'_>| -> Result<BTreeMap<_, _>> {
+            Ok(elf
+                .symbols()?
+                .into_iter()
+                .filter(|s| s.kind == 2)
+                .map(|s| (s.name.clone(), s))
+                .collect())
+        };
+        let sa = functions(&a)?;
+        let sb = functions(&b)?;
+        // (none of a function outside the sections, e.g. an absolute one, as ppc::function_words skips them)
+        fn code<'d>(elf: &Elf<'d>, s: &Symbol) -> Result<Option<&'d [u8]>> {
+            (s.section < elf.sections.len())
+                .then(|| elf.function_bytes(s))
+                .transpose()
+        }
         for name in sa
             .keys()
             .chain(sb.keys())
             .collect::<std::collections::BTreeSet<_>>()
         {
             match (sa.get(name), sb.get(name)) {
-                (Some(x), Some(y))
-                    if x.size != y.size || a.function_bytes(x)? != b.function_bytes(y)? =>
-                {
+                (Some(x), Some(y)) if x.size != y.size || code(&a, x)? != code(&b, y)? => {
                     out.push(format!(
                         "function {name} differs ({} bytes against {})",
                         x.size, y.size

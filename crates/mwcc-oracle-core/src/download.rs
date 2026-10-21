@@ -165,7 +165,7 @@ fn command_output(
     command: &mut std::process::Command,
     timeout: Duration,
 ) -> Result<std::process::Output> {
-    use std::{process::Stdio, thread, time::Instant};
+    use std::process::Stdio;
     let stdout = crate::temporary::diagnostic_log()?;
     let stderr = crate::temporary::diagnostic_log()?;
     crate::process_tree::prepare(command);
@@ -174,20 +174,14 @@ fn command_output(
         .stderr(Stdio::from(stderr.reopen()?))
         .spawn()
         .with_context(|| format!("launch {command:?}"))?;
-    let began = Instant::now();
-    let status = loop {
-        if let Some(status) = child.try_wait()? {
-            break status;
-        }
-        if began.elapsed() >= timeout {
-            crate::process_tree::terminate(&mut child)?;
-            bail!(
-                "download extraction command timed out after {} seconds: {command:?}",
-                timeout.as_secs_f64()
-            );
-        }
-        thread::sleep(Duration::from_millis(10));
-    };
+    let waited = crate::process_tree::wait(&mut child, timeout, &|| false)?;
+    if waited.timed_out {
+        bail!(
+            "download extraction command timed out after {} seconds: {command:?}",
+            timeout.as_secs_f64()
+        );
+    }
+    let status = waited.status;
     Ok(std::process::Output {
         status,
         stdout: fs::read(stdout.path())?,

@@ -21,7 +21,7 @@
 //! matches is a suggestion to review, not a proof.
 use crate::{
     Call, Method,
-    colouring::{class_of, describe, edits, loaded, names, one},
+    colouring::{class_of, describe, edits, loaded, one},
 };
 use anyhow::{Context, Result, ensure};
 use mwcc_experiment::plan::Candidate;
@@ -420,6 +420,8 @@ fn next_statement(code: &Code, span: Span, end: usize) -> Option<Statement> {
 }
 
 static IDENT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"[A-Za-z_]\w*").unwrap());
+/// An assignment (`=` that is not part of `==`, `!=`, `<=` or `>=`).
+static ASSIGNMENT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"[^=!<>]=[^=]").unwrap());
 
 fn identifiers(text: &str) -> BTreeSet<String> {
     IDENT
@@ -900,7 +902,7 @@ fn subexpressions(code: &Code, s: &Statement) -> Vec<(usize, usize)> {
             && !t.contains("--")
             && !t.contains("&&")
             && !t.contains("||")
-            && !Regex::new(r"[^=!<>]=[^=]").unwrap().is_match(t)
+            && !ASSIGNMENT.is_match(t)
     });
     out
 }
@@ -1149,9 +1151,9 @@ fn realize(call: &mut Call<'_>, params: RealizeParams) -> Result<RealizeResult> 
                 allocation.before.function
             )
         })?;
-    let names = names(&input, allocation)?;
     let parsed = cse::parse(&input.trace.records)?;
     let function = parsed.get(&allocation.before.link);
+    let names = function.map(cse::names).transpose()?.unwrap_or_default();
     let edits = edits(&params.edits)?;
     ensure!(!edits.is_empty(), "no edits to realize");
     let code = Code::new(source);

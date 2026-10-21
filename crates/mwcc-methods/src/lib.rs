@@ -15,7 +15,10 @@ use serde_json::{Map, Value, json};
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicUsize, Ordering},
+    },
     time::{Duration, Instant},
 };
 
@@ -35,48 +38,7 @@ mod unit;
 /// The version of the methods' parameters and results: a change that breaks a caller bumps it.
 pub const SCHEMA_VERSION: u32 = 1;
 
-/// Where a method's time went, in milliseconds.
-#[derive(Clone, Copy, Debug, Default, Serialize, PartialEq)]
-pub struct Timing {
-    pub load: f64,
-    pub compile: f64,
-    pub score: f64,
-    pub trace: f64,
-    pub model: f64,
-    pub queue: f64,
-    pub other: f64,
-}
-
-impl Timing {
-    pub fn add(&mut self, other: &Timing) {
-        self.load += other.load;
-        self.compile += other.compile;
-        self.score += other.score;
-        self.trace += other.trace;
-        self.model += other.model;
-        self.queue += other.queue;
-        self.other += other.other;
-    }
-
-    pub fn total(&self) -> f64 {
-        self.load + self.compile + self.score + self.trace + self.model + self.queue + self.other
-    }
-
-    /// The share of the time in compiling, scoring and models.
-    pub fn productive(&self) -> f64 {
-        let total = self.total();
-        if total > 0.0 {
-            (self.compile + self.score + self.model) / total
-        } else {
-            0.0
-        }
-    }
-}
-
-/// Milliseconds of DURATION.
-pub fn ms(duration: Duration) -> f64 {
-    duration.as_secs_f64() * 1e3
-}
+pub use mwcc_experiment::{Timing, ms};
 
 /// What a session keeps between calls.
 pub struct Session {
@@ -113,7 +75,7 @@ impl Session {
             projects: Mutex::new(HashMap::new()),
             units: Mutex::new(HashMap::new()),
             traces: Mutex::new(HashMap::new()),
-            loaded_traces: std::sync::atomic::AtomicUsize::new(0),
+            loaded_traces: AtomicUsize::new(0),
             externs: Mutex::new(HashMap::new()),
         }
     }
@@ -167,9 +129,7 @@ impl Session {
 
     /// Keep TRACE: its handle.
     pub(crate) fn keep_trace(&self, trace: Arc<colouring::LoadedTrace>) -> String {
-        let n = self
-            .loaded_traces
-            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let n = self.loaded_traces.fetch_add(1, Ordering::Relaxed);
         let handle = format!("trace:{}", n + 1);
         self.traces.lock().unwrap().insert(handle.clone(), trace);
         handle
@@ -394,6 +354,52 @@ pub fn call(
         Some(_) => bail!("`inputs` must be a list"),
     }
     Ok(total)
+}
+
+/// A compile's time limit when a method's `timeout_ms` is not given.
+pub(crate) const DEFAULT_TIMEOUT: Duration = Duration::from_secs(600);
+
+/// The time limit of a method's `timeout_ms`.
+pub(crate) fn timeout(ms: Option<u64>) -> Duration {
+    ms.map_or(DEFAULT_TIMEOUT, Duration::from_millis)
+}
+
+/// RUN on each of ITEMS, JOBS at once, in order; stops at a cancel.
+pub(crate) fn each<T: Sync, R: Send>(
+    call: &Call<'_>,
+    items: &[T],
+    jobs: usize,
+    run: impl Fn(&T, &mut Timing) -> R + Sync,
+) -> Result<(Vec<R>, Timing)> {
+    let next = AtomicUsize::new(0);
+    let results: Mutex<Vec<(usize, R)>> = Mutex::default();
+    let timing = Mutex::new(Timing::default());
+    std::thread::scope(|scope| {
+        for _ in 0..jobs.clamp(1, items.len().max(1)) {
+            scope.spawn(|| {
+                loop {
+                    let index = next.fetch_add(1, Ordering::Relaxed);
+                    let Some(item) = items.get(index) else { break };
+                    if (call.cancel)() {
+                        break;
+                    }
+                    let mut own = Timing::default();
+                    let result = run(item, &mut own);
+                    timing.lock().unwrap().add(&own);
+                    results.lock().unwrap().push((index, result));
+                }
+            });
+        }
+    });
+    if (call.cancel)() {
+        bail!("cancelled");
+    }
+    let mut results = results.into_inner().unwrap();
+    results.sort_by_key(|(index, _)| *index);
+    Ok((
+        results.into_iter().map(|(_, r)| r).collect(),
+        timing.into_inner().unwrap(),
+    ))
 }
 
 #[cfg(test)]

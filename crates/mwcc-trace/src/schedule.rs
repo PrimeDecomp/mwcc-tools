@@ -1,3 +1,4 @@
+use crate::sched::{Criterion, Priority, pick_rule};
 use crate::trace::{Instruction, ScheduledBlock};
 use anyhow::{Context, Result};
 use serde_json::{Value, json};
@@ -8,55 +9,39 @@ fn n(v: &Value, key: &str) -> i64 {
 }
 
 fn compare(best: &Value, other: &Value, cycle: i64, virtual_: bool) -> (bool, String) {
-    if n(best, "latest") <= cycle && n(other, "latest") > cycle {
-        return (
-            false,
-            format!(
-                "the pick must issue by this cycle (latest {}), this one need not",
-                n(best, "latest")
-            ),
-        );
-    }
-    if n(best, "latest") > cycle && n(other, "latest") <= cycle {
-        return (
-            true,
-            format!(
-                "this one must issue by this cycle (latest {}), the pick need not",
-                n(other, "latest")
-            ),
-        );
-    }
-    if n(best, "count") != n(other, "count") {
-        return (
-            n(other, "count") > n(best, "count"),
-            format!(
-                "the pick makes {} dependent(s) ready, this one {}",
-                n(best, "count"),
-                n(other, "count")
-            ),
-        );
-    }
-    if n(best, "height") != n(other, "height") {
-        return (
-            n(other, "height") > n(best, "height"),
-            format!(
-                "the pick's height (the longest latency path to the end of the block) is {}, this one's {}",
-                n(best, "height"),
-                n(other, "height")
-            ),
-        );
-    }
-    if virtual_ && n(best, "rank") != n(other, "rank") && n(best, "rank") >= 0 {
-        return (
-            n(other, "rank") < n(best, "rank"),
-            format!(
-                "the pick's opcode rank is {}, this one's {} (the lower wins)",
-                n(best, "rank"),
-                n(other, "rank")
-            ),
-        );
-    }
-    (false, "a tie: the pick comes first in the block".into())
+    let priority = |v: &Value| Priority {
+        deadline: n(v, "latest"),
+        uncovers: n(v, "count"),
+        height: n(v, "height"),
+        opcode_rank: n(v, "rank"),
+    };
+    let (b, o) = (priority(best), priority(other));
+    // (an unknown rank, -1, does not take part)
+    let (wins, criterion) = pick_rule(b, o, cycle, virtual_ && b.opcode_rank >= 0);
+    let why = match criterion {
+        Criterion::Urgent if wins => format!(
+            "this one must issue by this cycle (latest {}), the pick need not",
+            o.deadline
+        ),
+        Criterion::Urgent => format!(
+            "the pick must issue by this cycle (latest {}), this one need not",
+            b.deadline
+        ),
+        Criterion::Uncovers => format!(
+            "the pick makes {} dependent(s) ready, this one {}",
+            b.uncovers, o.uncovers
+        ),
+        Criterion::Height => format!(
+            "the pick's height (the longest latency path to the end of the block) is {}, this one's {}",
+            b.height, o.height
+        ),
+        Criterion::OpcodeRank => format!(
+            "the pick's opcode rank is {}, this one's {} (the lower wins)",
+            b.opcode_rank, o.opcode_rank
+        ),
+        Criterion::Tie => "a tie: the pick comes first in the block".into(),
+    };
+    (wins, why)
 }
 
 fn text(instruction: &Instruction, names: &BTreeMap<i32, String>) -> String {

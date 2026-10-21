@@ -2,6 +2,7 @@
 use crate::{
     coff::{Builder, Relocation},
     executable::{self, Splits, Symbol, option, size},
+    fsutil::write_under as store,
     pe::{self, Pe},
     x86,
 };
@@ -58,12 +59,6 @@ fn resolve<'a>(value: u32, unit: &str, targets: &'a [Target], pe: &Pe<'_>) -> Op
         .iter()
         .filter(|t| t.section == *section && t.unit.as_deref() == Some(unit))
         .min_by_key(|t| t.address.abs_diff(value))
-}
-fn store(root: &Path, name: &str, data: &[u8]) -> Result<PathBuf> {
-    let path = root.join(name);
-    fs::create_dir_all(path.parent().context("output has no directory")?)?;
-    fs::write(&path, data)?;
-    Ok(path)
 }
 fn target(symbol: &Symbol, ranges: &Ranges) -> Result<Target> {
     Ok(Target {

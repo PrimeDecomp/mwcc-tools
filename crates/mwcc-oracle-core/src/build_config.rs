@@ -86,7 +86,8 @@ fn join(arguments: &[String], platform: Platform) -> String {
         .join(" ")
         .replace('$', "$$")
 }
-fn ninja_path(path: &str) -> String {
+/// A path as ninja reads it.
+pub(crate) fn ninja_path(path: &str) -> String {
     path.replace('$', "$$")
         .replace(' ', "$ ")
         .replace(':', "$:")

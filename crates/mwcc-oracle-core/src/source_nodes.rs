@@ -20,12 +20,6 @@ pub const SCOPE: &str = "guarded_source_nodes_v1";
 const MAX_EVENTS: usize = 2_000_000;
 const MAX_FRAMES: usize = 64;
 const MAX_TREE_RECORDS: usize = 2049;
-fn known() -> Evaluation {
-    Evaluation {
-        state: EvaluationState::Satisfied,
-        reasons: vec![],
-    }
-}
 fn gap(detail: impl Into<String>) -> Evaluation {
     Evaluation::indeterminate(EvidenceGap::SourceNodeCoverage, detail)
 }
@@ -174,7 +168,7 @@ impl<T> Answer<T> {
     fn known(value: T) -> Self {
         Self {
             value: Some(value),
-            observations: known(),
+            observations: Evaluation::satisfied(),
         }
     }
 }
@@ -990,7 +984,7 @@ impl Validator {
             if unsupported {
                 gap("source checkpoint covers only the prefix before a gap")
             } else {
-                known()
+                Evaluation::satisfied()
             }
         } else {
             gap("source checkpoint has active frames")
@@ -1064,7 +1058,7 @@ pub fn parse(text: &str) -> Result<History> {
     }) {
         gap("source stream has no final balanced reconciled checkpoint")
     } else {
-        known()
+        Evaluation::satisfied()
     };
     v.history.records = records;
     v.history.trace = text.into();

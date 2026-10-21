@@ -35,12 +35,6 @@ pub struct Bounds {
 fn gap(detail: &str) -> Evaluation {
     Evaluation::indeterminate(EvidenceGap::AllocationCategoryCoverage, detail)
 }
-fn known() -> Evaluation {
-    Evaluation {
-        state: EvaluationState::Satisfied,
-        reasons: vec![],
-    }
-}
 pub fn unknown() -> Observation {
     Observation {
         category: None,
@@ -68,7 +62,7 @@ impl Bounds {
         };
         Observation {
             category: Some(category),
-            evidence: known(),
+            evidence: Evaluation::satisfied(),
         }
     }
 }
@@ -130,7 +124,7 @@ pub fn from_graph(
             && bounds.first <= bounds.last
             && bounds.last <= 65536
         {
-            bounds.evidence = known();
+            bounds.evidence = Evaluation::satisfied();
         }
     }
     Ok(Some(bounds))

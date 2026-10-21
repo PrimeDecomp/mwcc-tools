@@ -27,7 +27,17 @@ fn configuration(root: &Path, version: &str) -> Result<Value> {
         folder(version)
     )))?)?)
 }
-fn image(root: &Path, version: &str) -> Result<Vec<u8>> {
+/// VERSION's stock compiler in ROOT, `build/compilers/GC/<dir>/mwcceppc.exe`, `<dir>` [`folder`]'s dotted spelling
+/// (`GC_1_3_2` is `1.3.2`). Any folder name: the fixtures' are not a [`crate::version::Version`].
+pub fn stock_compiler(root: &Path, version: &str) -> PathBuf {
+    let dotted = folder(version)
+        .strip_prefix("GC_")
+        .unwrap()
+        .replace('_', ".");
+    root.join(format!("build/compilers/GC/{dotted}/mwcceppc.exe"))
+}
+/// The bytes of VERSION's original executable (its config's `original`), unchecked.
+pub(crate) fn image(root: &Path, version: &str) -> Result<Vec<u8>> {
     let config = configuration(root, version)?;
     Ok(fs::read(
         root.join(
@@ -244,21 +254,6 @@ pub fn locate(root: &Path, version: &str, sources: &[String]) -> Result<String> 
     }
     Ok(output)
 }
-fn object_paths(directory: &Path, out: &mut Vec<PathBuf>) -> Result<()> {
-    if !directory.is_dir() {
-        return Ok(());
-    }
-    for entry in fs::read_dir(directory)? {
-        let entry = entry?;
-        let file_type = entry.file_type()?;
-        if file_type.is_dir() {
-            object_paths(&entry.path(), out)?;
-        } else if file_type.is_file() && entry.path().extension().is_some_and(|s| s == "obj") {
-            out.push(entry.path());
-        }
-    }
-    Ok(())
-}
 fn signed_hex(value: i64, width: usize) -> String {
     if value < 0 {
         format!(
@@ -276,9 +271,9 @@ pub fn bindfrom(root: &Path, version: &str) -> Result<String> {
     let mut bindings: IndexMap<String, String> =
         serde_json::from_slice(&fs::read(root.join(&path))?)?;
     let compiled = root.join(format!("build/{folder}/compiled"));
-    let mut objects = vec![];
-    object_paths(&compiled, &mut objects)?;
-    objects.sort();
+    let objects = crate::fsutil::files(&compiled, true)?
+        .into_iter()
+        .filter(|p| p.extension().is_some_and(|s| s == "obj"));
     let mut added = 0;
     let mut conflicts = vec![];
     for object in objects {
@@ -323,13 +318,11 @@ pub fn bindfrom(root: &Path, version: &str) -> Result<String> {
     }
     Ok(output)
 }
+/// The SIZE bytes at ADDRESS with the 32-bit fields of FIXUPS (sorted, as [`executable::base_relocations`] returns
+/// them) and of relative branches zeroed.
 pub fn masked(pe: &Pe<'_>, fixups: &[u32], address: u32, size: usize) -> Result<Vec<u8>> {
     let mut code = pe.read(address, size)?.to_vec();
-    for at in fixups
-        .iter()
-        .copied()
-        .filter(|a| *a >= address && u64::from(*a) < u64::from(address) + size as u64)
-    {
+    for &at in executable::fixups_in(fixups, address, size as u64) {
         code[at as usize - address as usize..(at as usize - address as usize + 4).min(size)]
             .fill(0);
     }
@@ -347,9 +340,8 @@ pub struct FunctionMatches {
     pub total: usize,
 }
 pub fn funcmatch(root: &Path, from: &str, to: &str) -> Result<FunctionMatches> {
-    let versions = [from, to].map(|v| folder(v).strip_prefix("GC_").unwrap().replace('_', "."));
-    let data_a = fs::read(root.join(format!("build/compilers/GC/{}/mwcceppc.exe", versions[0])))?;
-    let data_b = fs::read(root.join(format!("build/compilers/GC/{}/mwcceppc.exe", versions[1])))?;
+    let data_a = fs::read(stock_compiler(root, from))?;
+    let data_b = fs::read(stock_compiler(root, to))?;
     let a = Pe::parse(&data_a)?;
     let b = Pe::parse(&data_b)?;
     let fix_a = executable::base_relocations(&a)?;

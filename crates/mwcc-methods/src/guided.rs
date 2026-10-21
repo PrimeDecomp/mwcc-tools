@@ -5,6 +5,7 @@
 //! tools' JSON documents. A cancel of a run writes its cancel file, which the run polls.
 use crate::{Call, Method};
 use anyhow::{Context, Result, bail, ensure};
+use mwcc_oracle_core::source_tree::read_json;
 use mwcc_oracle_core::{
     evidence::EvaluationState,
     provenance,
@@ -69,11 +70,6 @@ fn cancellable<T>(
         done.store(true, Ordering::Relaxed);
         result
     })
-}
-
-fn read_json(path: &Path) -> Result<Value> {
-    serde_json::from_slice(&fs::read(path).with_context(|| format!("read {}", path.display()))?)
-        .with_context(|| format!("parse {}", path.display()))
 }
 
 /// A raw trace, or a capture's (`trace`, or `compilation.trace`).

@@ -1,6 +1,6 @@
 use super::{items, number as n, text as s, truth as t};
 use crate::{
-    ppc::{instruction_token, r1_offset},
+    ppc::{fn_body, instruction_token, r1_offset},
     sequence::matching_blocks_with_autojunk,
 };
 use indexmap::IndexMap;
@@ -18,62 +18,53 @@ pub struct TargetFrame {
     pub uses: BTreeMap<i64, BTreeSet<(i64, String)>>,
     pub limit: i64,
 }
-fn integer(s: &str) -> i64 {
-    let (sign, s) = if let Some(s) = s.strip_prefix('-') {
-        (-1, s)
-    } else {
-        (1, s)
+/// A decimal or `0x` hexadecimal integer, optionally negative; None when it does not fit.
+fn integer(s: &str) -> Option<i64> {
+    let (negative, s) = match s.strip_prefix('-') {
+        Some(s) => (true, s),
+        None => (false, s),
     };
-    sign * if let Some(s) = s.strip_prefix("0x") {
-        i64::from_str_radix(s, 16).unwrap()
+    let value = match s.strip_prefix("0x") {
+        Some(s) => i64::from_str_radix(s, 16).ok()?,
+        None => s.parse::<i64>().ok()?,
+    };
+    if negative {
+        value.checked_neg()
     } else {
-        s.parse::<i64>().unwrap()
+        Some(value)
     }
 }
 pub fn frame(text: &str, link: &str) -> Option<TargetFrame> {
-    static MARKER: LazyLock<Regex> =
-        LazyLock::new(|| Regex::new(r#"^\s*\.(fn|endfn)\s+("[^"]*"|[^\s,]+)"#).unwrap());
     static SIZE: LazyLock<Regex> =
-        LazyLock::new(|| Regex::new(r"^stwu r1, -(0x[0-9a-fA-F]+|\d+)\(r1\)").unwrap());
+        LazyLock::new(|| Regex::new(r"^stwu r1, -(0x[0-9a-fA-F]+|[0-9]+)\(r1\)").unwrap());
     static SAVES: LazyLock<Regex> = LazyLock::new(|| {
-        Regex::new(r"^(stmw r\d+|stfd f(?:1[4-9]|2\d|3[01])|psq_st f(?:1[4-9]|2\d|3[01])), (0x[0-9a-fA-F]+|\d+)\(r1\)").unwrap()
+        Regex::new(r"^(stmw r[0-9]+|stfd f(?:1[4-9]|2[0-9]|3[01])|psq_st f(?:1[4-9]|2[0-9]|3[01])), (0x[0-9a-fA-F]+|[0-9]+)\(r1\)").unwrap()
     });
     static ACCESS: LazyLock<Regex> =
-        LazyLock::new(|| Regex::new(r"^(\w+) \w+, (-?0x[0-9a-fA-F]+|-?\d+)\(r1\)").unwrap());
+        LazyLock::new(|| Regex::new(r"^(\w+) \w+, (-?0x[0-9a-fA-F]+|-?[0-9]+)\(r1\)").unwrap());
     static ADDRESS: LazyLock<Regex> =
-        LazyLock::new(|| Regex::new(r"^addi \w+, r1, (0x[0-9a-fA-F]+|\d+)$").unwrap());
-    let mut body = vec![];
-    let mut inside = false;
-    for line in text.lines() {
-        if let Some(c) = MARKER.captures(line) {
-            if c[2].trim_matches('"') == link {
-                if &c[1] == "endfn" {
-                    break;
-                }
-                inside = true;
-            }
-            continue;
-        }
-        if inside {
-            body.push(line.rsplit("*/").next().unwrap().trim());
-        }
-    }
+        LazyLock::new(|| Regex::new(r"^addi \w+, r1, (0x[0-9a-fA-F]+|[0-9]+)$").unwrap());
+    let body: Vec<&str> = fn_body(text, link)
+        .map(|line| line.rsplit("*/").next().unwrap().trim())
+        .collect();
     let mut size = None;
     let mut saves = None;
     let mut uses: BTreeMap<i64, BTreeSet<(i64, String)>> = BTreeMap::new();
     for (number, ins) in body.iter().enumerate() {
-        if let Some(c) = SIZE.captures(ins)
-            && size.is_none()
+        if size.is_none()
+            && let Some(bytes) = SIZE.captures(ins).and_then(|c| integer(&c[1]))
         {
-            size = Some(integer(&c[1]));
+            size = Some(bytes);
             continue;
         }
         if number < 16
-            && let Some(c) = SAVES.captures(ins)
+            && let Some(offset) = SAVES.captures(ins).and_then(|c| integer(&c[2]))
         {
-            saves = Some(saves.unwrap_or(1 << 30).min(integer(&c[2])));
+            saves = Some(saves.unwrap_or(1 << 30).min(offset));
         }
-        if let Some(c) = ACCESS.captures(ins) {
+        if let Some(c) = ACCESS.captures(ins)
+            && let Some(offset) = integer(&c[2])
+        {
             let mnemonic = &c[1];
             let width = if mnemonic.starts_with("psq") {
                 8
@@ -85,14 +76,12 @@ pub fn frame(text: &str, link: &str) -> Option<TargetFrame> {
                     _ => 4,
                 }
             };
-            uses.entry(integer(&c[2]))
+            uses.entry(offset)
                 .or_default()
                 .insert((width, mnemonic.into()));
         }
-        if let Some(c) = ADDRESS.captures(ins) {
-            uses.entry(integer(&c[1]))
-                .or_default()
-                .insert((0, "addi".into()));
+        if let Some(offset) = ADDRESS.captures(ins).and_then(|c| integer(&c[1])) {
+            uses.entry(offset).or_default().insert((0, "addi".into()));
         }
     }
     let size = size?;

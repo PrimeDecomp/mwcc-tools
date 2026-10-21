@@ -8,7 +8,6 @@ use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::{
     collections::{BTreeMap, BTreeSet},
-    fs,
     path::Path,
 };
 pub const FORCE_HANDLER: &str = "_OracleRust_ArgumentForceGpr";
@@ -328,9 +327,6 @@ pub struct Installed {
     pub islands: Vec<u8>,
     pub guards: Vec<Guard>,
 }
-fn digest(bytes: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(bytes))
-}
 pub fn install(root: &Path, version: &str, inputs: &[(String, Vec<u8>)]) -> Result<Installed> {
     let guards = GUARDS
         .iter()
@@ -340,9 +336,7 @@ pub fn install(root: &Path, version: &str, inputs: &[(String, Vec<u8>)]) -> Resu
     ensure!(!guards.is_empty(), "unsupported call argument version");
     let original = Original::read(root, version)?;
     let pe = original.pe()?;
-    let metadata = executable::read_symbols(&fs::read_to_string(
-        root.join(format!("config/{version}/symbols.txt")),
-    )?)?;
+    let metadata = executable::retail_symbols(root, &version)?;
     for g in &guards {
         let s = metadata
             .iter()
@@ -354,7 +348,7 @@ pub fn install(root: &Path, version: &str, inputs: &[(String, Vec<u8>)]) -> Resu
             g.name
         );
         ensure!(
-            digest(pe.read(g.address, g.size as usize)?) == g.code_sha256,
+            crate::hash::sha256_hex(pe.read(g.address, g.size as usize)?) == g.code_sha256,
             "call argument helper PE guard failed for {}",
             g.name
         );
@@ -418,7 +412,7 @@ pub fn install(root: &Path, version: &str, inputs: &[(String, Vec<u8>)]) -> Resu
                 expected[at..at + 4].fill(0);
             }
             ensure!(
-                actual == expected && digest(&actual) == g.normalized_sha256,
+                actual == expected && crate::hash::sha256_hex(&actual) == g.normalized_sha256,
                 "call argument helper split byte guard failed for {}",
                 g.name
             );

@@ -435,8 +435,8 @@ impl Target {
             let strict = other
                 .zip(strict_indexes.as_ref())
                 .and_then(|(o, (t, ours))| {
-                    let tf = t.object.function(&symbol.name)?;
-                    let of = ours.object.function(&right.symbols[o].name)?;
+                    let tf = t.function(&symbol.name)?;
+                    let of = ours.function(&right.symbols[o].name)?;
                     Some(strict::compare(t, tf, ours, of))
                 });
             let profile = other.and_then(|o| {

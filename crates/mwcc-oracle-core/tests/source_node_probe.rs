@@ -1,19 +1,11 @@
+mod common;
+use common::collect;
 use mwcc_oracle_core::{
     coff::Object,
     source_node_probe::{self, Site},
 };
 use std::{env, fs, path::Path};
 
-fn collect(root: &Path, objects: &mut Vec<(String, Vec<u8>)>) {
-    for entry in fs::read_dir(root).unwrap() {
-        let path = entry.unwrap().path();
-        if path.is_dir() {
-            collect(&path, objects)
-        } else if path.extension().is_some_and(|s| s == "obj") {
-            objects.push((path.to_string_lossy().into(), fs::read(path).unwrap()));
-        }
-    }
-}
 fn identity(object: &Object<'_>, index: u32) -> (String, u32, i16, u16, u8, Vec<[u8; 18]>) {
     let s = &object.symbols[&index];
     (

@@ -197,12 +197,6 @@ pub struct Input<'a> {
     pub source: &'a [u8],
     pub semantic_check: Option<Evaluation>,
 }
-fn known() -> Evaluation {
-    Evaluation {
-        state: EvaluationState::Satisfied,
-        reasons: vec![],
-    }
-}
 fn false_result(detail: &str) -> Evaluation {
     Evaluation {
         state: EvaluationState::Unsatisfied,
@@ -216,7 +210,7 @@ fn gap(code: EvidenceGap, detail: &str) -> Evaluation {
     Evaluation::indeterminate(code, detail)
 }
 fn combine(values: impl IntoIterator<Item = Evaluation>) -> Evaluation {
-    let mut result = known();
+    let mut result = Evaluation::satisfied();
     for value in values {
         if value.state == EvaluationState::Unsatisfied
             || (value.state == EvaluationState::Indeterminate
@@ -502,7 +496,7 @@ fn promoted_copy(
                 _ => false,
             };
             if matched {
-                known()
+                Evaluation::satisfied()
             } else {
                 false_result(
                     "the observed incoming-copy decision differs from the requested outcome",
@@ -809,7 +803,7 @@ fn category(g: &Graph, register: u32) -> Result<crate::allocation_category::Obse
     if register < g.physical_limit {
         Ok(crate::allocation_category::Observation {
             category: Some(Category::Physical),
-            evidence: known(),
+            evidence: Evaluation::satisfied(),
         })
     } else {
         Ok(g.nodes
@@ -834,7 +828,7 @@ fn relocation_check(input: &Input<'_>, c: &Contract) -> Evaluation {
                     .count()
                     >= r.minimum
             }) {
-                known()
+                Evaluation::satisfied()
             } else {
                 false_result("required symbolic relocations were not retained")
             }
@@ -1408,7 +1402,7 @@ fn definition_projection(
     let same =
         compatible_instruction(initializer, final_instruction) && registers[0] as i32 == assigned;
     let result = if same {
-        known()
+        Evaluation::satisfied()
     } else {
         false_result("initialization is not directly in the anchored value's final register")
     };
@@ -1429,7 +1423,7 @@ pub fn evaluate(
         if state::digest(baseline.source) == baseline.compilation.source_sha256
             && state::digest(candidate.source) == candidate.compilation.source_sha256
         {
-            known()
+            Evaluation::satisfied()
         } else {
             gap(
                 EvidenceGap::BuildInputCoverage,
@@ -1442,7 +1436,7 @@ pub fn evaluate(
         if state::digest(&baseline.compilation.object) == baseline.compilation.object_sha256
             && state::digest(&candidate.compilation.object) == candidate.compilation.object_sha256
         {
-            known()
+            Evaluation::satisfied()
         } else {
             gap(
                 EvidenceGap::BuildInputCoverage,
@@ -1456,7 +1450,7 @@ pub fn evaluate(
             && candidate.provenance.trace_sha256
                 == state::digest(candidate.compilation.trace.as_bytes())
         {
-            known()
+            Evaluation::satisfied()
         } else {
             gap(
                 EvidenceGap::BuildInputCoverage,
@@ -1487,7 +1481,7 @@ pub fn evaluate(
             && serde_json::to_value(&baseline.compilation.trace_options)?
                 == serde_json::to_value(&candidate.compilation.trace_options)?
         {
-            known()
+            Evaluation::satisfied()
         } else {
             false_result("compiler identities, ordered flags or trace options changed")
         },
@@ -1498,7 +1492,7 @@ pub fn evaluate(
             [baseline.compilation, candidate.compilation].map(|compilation| {
                 match &compilation.check_status {
                     CheckStatus::Verified => match compilation.identical {
-                        Some(true) => known(),
+                        Some(true) => Evaluation::satisfied(),
                         Some(false) => false_result(
                             "verified stock-check status contradicts non-identical output",
                         ),
@@ -1530,7 +1524,7 @@ pub fn evaluate(
             &baseline.semantic_check,
             &candidate.semantic_check,
         ) {
-            (Purpose::MechanismReproducer, None, None) => known(),
+            (Purpose::MechanismReproducer, None, None) => Evaluation::satisfied(),
             (_, Some(a), Some(b)) => combine([a.clone(), b.clone()]),
             _ => gap(
                 EvidenceGap::MissingSemanticCheck,
@@ -1677,7 +1671,7 @@ pub fn evaluate(
                         .as_u64()
                         .context("missing materialization count")?;
                     let result = if u64::from(*minimum) <= count && count <= u64::from(*maximum) {
-                        known()
+                        Evaluation::satisfied()
                     } else {
                         false_result(
                             "the observed symbolic-address pair count is outside the requested bounds",
@@ -1707,7 +1701,7 @@ pub fn evaluate(
                         .as_u64()
                         .context("missing argument pair count")?;
                     let result = if u64::from(*minimum) <= count && count <= u64::from(*maximum) {
-                        known()
+                        Evaluation::satisfied()
                     } else {
                         false_result(
                             "the observed argument address-pair count is outside the requested bounds",
@@ -1739,7 +1733,7 @@ pub fn evaluate(
                         let result = if observed.evidence.state != EvaluationState::Satisfied {
                             observed.evidence.clone()
                         } else if observed.category == Some(*target) {
-                            known()
+                            Evaluation::satisfied()
                         } else {
                             false_result(
                                 "the anchored value is not in the requested current allocation range",
@@ -1757,7 +1751,7 @@ pub fn evaluate(
                         let y = category(b, to_root)?;
                         let instruction_state = combine([
                             if state::instructions(a)? == state::instructions(b)? {
-                                known()
+                                Evaluation::satisfied()
                             } else {
                                 false_result("graph-boundary instruction structure changed")
                             },
@@ -1768,7 +1762,7 @@ pub fn evaluate(
                                 &candidate.compilation.object,
                                 &c.selection.link,
                             )? {
-                                known()
+                                Evaluation::satisfied()
                             } else {
                                 false_result(
                                     "final instruction structure or symbolic relocations changed",
@@ -1782,7 +1776,7 @@ pub fn evaluate(
                             combine([x.evidence.clone(), y.evidence.clone()])
                         } else {
                             if x.category != Some(*target) && y.category == Some(*target) {
-                                known()
+                                Evaluation::satisfied()
                             } else {
                                 false_result(
                                     "the anchored value did not change into the requested allocation range",

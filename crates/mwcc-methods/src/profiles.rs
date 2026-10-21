@@ -12,10 +12,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeMap,
     path::{Path, PathBuf},
-    sync::{
-        Arc, Mutex,
-        atomic::{AtomicUsize, Ordering},
-    },
+    sync::Arc,
     time::Instant,
 };
 
@@ -144,34 +141,12 @@ fn parallel<T: Sync, R: Send>(
     jobs: usize,
     work: impl Fn(&Call<'_>, &T, &mut Timing) -> R + Sync,
 ) -> Result<Vec<R>> {
-    let next = AtomicUsize::new(0);
-    let results: Mutex<Vec<(usize, R)>> = Mutex::default();
-    let timing = Mutex::new(Timing::default());
     let shared = &*call;
-    std::thread::scope(|scope| {
-        for _ in 0..jobs.clamp(1, items.len().max(1)) {
-            scope.spawn(|| {
-                loop {
-                    let index = next.fetch_add(1, Ordering::Relaxed);
-                    let Some(item) = items.get(index) else { break };
-                    if (shared.cancel)() {
-                        break;
-                    }
-                    let mut own = Timing::default();
-                    let result = work(shared, item, &mut own);
-                    timing.lock().unwrap().add(&own);
-                    results.lock().unwrap().push((index, result));
-                }
-            });
-        }
-    });
-    if (call.cancel)() {
-        bail!("cancelled");
-    }
-    call.timing.add(&timing.into_inner().unwrap());
-    let mut results = results.into_inner().unwrap();
-    results.sort_by_key(|(index, _)| *index);
-    Ok(results.into_iter().map(|(_, r)| r).collect())
+    let (results, timing) = crate::each(shared, items, jobs, |item, timing| {
+        work(shared, item, timing)
+    })?;
+    call.timing.add(&timing);
+    Ok(results)
 }
 
 type Measured = Result<(Status, Option<UnitScore>, String), String>;

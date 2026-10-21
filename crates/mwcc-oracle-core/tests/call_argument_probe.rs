@@ -1,15 +1,7 @@
+mod common;
+use common::collect;
 use mwcc_oracle_core::{call_argument_probe, coff::Object};
-use std::{env, fs, path::Path};
-fn collect(root: &Path, objects: &mut Vec<(String, Vec<u8>)>) {
-    for item in fs::read_dir(root).unwrap() {
-        let path = item.unwrap().path();
-        if path.is_dir() {
-            collect(&path, objects)
-        } else if path.extension().is_some_and(|v| v == "obj") {
-            objects.push((path.to_string_lossy().into(), fs::read(path).unwrap()))
-        }
-    }
-}
+use std::{env, path::Path};
 #[test]
 fn unsupported_version_is_rejected_without_inputs() {
     assert!(call_argument_probe::install(Path::new("."), "unknown", &[]).is_err());

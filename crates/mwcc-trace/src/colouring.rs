@@ -3,7 +3,7 @@
 use crate::{
     allocation,
     trace::{Allocation, Round},
-    version::class_name,
+    version::is_class,
 };
 use anyhow::{Context, Result, ensure};
 use serde::Serialize;
@@ -370,19 +370,28 @@ pub fn select(
     })
 }
 
+/// Follow a coalesced node's chain from `into` (the node it was coalesced into) while it names a virtual register:
+/// each one's colour from `colour`, else the round's node colour (-1 for no node). Gives where the chain ends (a
+/// physical register below 32, or what it stopped at on a cycle or a missing colour).
+pub(crate) fn follow_coalesced(
+    mut into: i32,
+    round: &Round,
+    colour: impl Fn(u32) -> Option<i32>,
+) -> i32 {
+    let mut seen = BTreeSet::new();
+    while into >= 32 && seen.insert(into) {
+        into = colour(into as u32)
+            .unwrap_or_else(|| round.nodes.get(&(into as u32)).map_or(-1, |n| n.color));
+    }
+    into
+}
+
 pub fn final_colours(round: &Round, colours: &mut BTreeMap<u32, i32>) {
     for (v, node) in &round.nodes {
         if colours.contains_key(v) || node.flags & 4 == 0 {
             continue;
         }
-        let mut into = node.color;
-        let mut seen = BTreeSet::new();
-        while into >= 32 && seen.insert(into) {
-            into = colours
-                .get(&(into as u32))
-                .copied()
-                .unwrap_or_else(|| round.nodes.get(&(into as u32)).map_or(-1, |n| n.color));
-        }
+        let into = follow_coalesced(node.color, round, |r| colours.get(&r).copied());
         if (0..32).contains(&into) {
             colours.insert(*v, into);
         }
@@ -435,7 +444,7 @@ pub fn verify(allocation: &Allocation, class: &str) -> Result<Option<Value>> {
         .before
         .rounds
         .iter()
-        .filter(|r| class_name(r.class) == class)
+        .filter(|r| is_class(r.class, class))
         .collect();
     let Some(round) = rounds.last() else {
         return Ok(None);

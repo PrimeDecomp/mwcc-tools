@@ -225,19 +225,19 @@ pub fn load(data: &[u8]) -> Result<Object> {
 
     let sec_names: Vec<String> = sections.iter().map(|s| s.name.clone()).collect();
     // (a section and offset: the named symbol that contains it, innermost first)
+    // (the greatest containing address wins; at equal addresses, the first in sort order)
     let resolve = |si: usize, off: i64| -> (String, i64) {
+        let syms = &per_sec[si];
+        let hi = syms.partition_point(|s| (s.address as i64) <= off);
         let mut best: Option<&SymInfo> = None;
-        for s in &per_sec[si] {
-            if (s.address as i64) > off {
+        for s in syms[..hi].iter().rev() {
+            if best.is_some_and(|b| b.address != s.address) {
                 break;
             }
             let end = s.address as i64 + s.size as i64;
             let contains = off < end || (s.size == 0 && s.address as i64 == off);
             if contains {
-                match best {
-                    Some(b) if b.address >= s.address => {}
-                    _ => best = Some(s),
-                }
+                best = Some(s);
             }
         }
         match best {
@@ -296,7 +296,7 @@ pub fn load(data: &[u8]) -> Result<Object> {
         let lo = rs.partition_point(|r| r.offset < start);
         rs[lo..]
             .iter()
-            .take_while(|r| r.offset < start + size)
+            .take_while(|r| r.offset < start.saturating_add(size))
             .map(|r| Reloc {
                 offset: r.offset - start,
                 ..r.clone()
@@ -338,11 +338,9 @@ pub fn load(data: &[u8]) -> Result<Object> {
                 } else {
                     // (unsized: up to the next symbol or the section's end)
                     let next = syms
-                        .iter()
-                        .map(|o| o.address)
-                        .filter(|&a| a > s.address)
-                        .min();
-                    next.unwrap_or(sections[si].size) - s.address
+                        .get(syms.partition_point(|o| o.address <= s.address))
+                        .map(|o| o.address);
+                    next.unwrap_or(sections[si].size).saturating_sub(s.address)
                 };
                 functions.push(Function {
                     name: s.name.clone(),

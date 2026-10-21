@@ -1,5 +1,5 @@
 //! Shared PCode observations. Historical layouts are checked by pcode_layout.c.
-use crate::abi::{OracleTrace_Printf, getenv, read, sprintf, wanted};
+use crate::abi::{OracleTrace_Printf, level, read, sprintf, wanted};
 use core::{ffi::c_char, ptr};
 
 unsafe extern "C" {
@@ -323,8 +323,7 @@ pub unsafe extern "C" fn OracleProbe_AliasQuery(
     result: i32,
 ) {
     unsafe {
-        let level = getenv(c"MWCC_ORACLE_ALIAS".as_ptr());
-        if level.is_null() || *level != b'2' {
+        if level(c"MWCC_ORACLE_ALIAS") != b'2' {
             return;
         }
         if object.is_null() {

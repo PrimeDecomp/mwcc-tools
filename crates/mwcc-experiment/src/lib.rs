@@ -5,6 +5,7 @@ pub mod run;
 pub mod variants;
 
 use serde::{Deserialize, Serialize};
+use std::time::Duration;
 
 /// Where time went, in milliseconds.
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq)]
@@ -32,14 +33,9 @@ impl Timing {
     pub fn total(&self) -> f64 {
         self.load + self.compile + self.score + self.trace + self.model + self.queue + self.other
     }
+}
 
-    /// The share of the time in compiling, scoring and models.
-    pub fn productive(&self) -> f64 {
-        let total = self.total();
-        if total > 0.0 {
-            (self.compile + self.score + self.model) / total
-        } else {
-            0.0
-        }
-    }
+/// Milliseconds of DURATION.
+pub fn ms(duration: Duration) -> f64 {
+    duration.as_secs_f64() * 1e3
 }

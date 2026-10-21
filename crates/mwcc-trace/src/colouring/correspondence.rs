@@ -4,7 +4,7 @@ use crate::evidence::EvidenceGap;
 pub use crate::evidence::{Evaluation, EvaluationState};
 use crate::{
     trace::{Allocation, Round, Snapshot},
-    version::class_name,
+    version::is_class,
 };
 use anyhow::{Result, ensure};
 use serde::{Deserialize, Serialize};
@@ -130,7 +130,7 @@ fn select<'a>(
         .rounds
         .iter()
         .enumerate()
-        .filter(|(_, r)| class_name(r.class) == class)
+        .filter(|(_, r)| is_class(r.class, class))
         .collect();
     if let Some(round) = selection.round {
         ensure!(

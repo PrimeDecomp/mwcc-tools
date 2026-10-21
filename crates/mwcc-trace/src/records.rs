@@ -503,7 +503,8 @@ fn instruction(records: &[Record], at: usize, opcodes: &HashMap<i16, (String, u8
         .tail("ops")
         .split_whitespace()
         .flat_map(|g| {
-            (0..g.len() / 2).map(move |i| u8::from_str_radix(&g[2 * i..2 * i + 2], 16).unwrap_or(0))
+            crate::trace::operand_digits(g)
+                .map(|d| d.and_then(|d| u8::from_str_radix(d, 16).ok()).unwrap_or(0))
         })
         .collect();
     let objects: HashMap<u32, &str> = records[at + 1..]

@@ -1,3 +1,4 @@
+mod common;
 use mwcc_oracle_core::download::{self, Disc, Fetch, HttpFetcher};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -12,7 +13,7 @@ use std::{
 };
 
 fn fixtures() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/download")
+    common::fixtures("download")
 }
 fn manifest() -> Value {
     serde_json::from_slice(&fs::read(fixtures().join("manifest.json")).unwrap()).unwrap()

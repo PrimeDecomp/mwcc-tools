@@ -224,12 +224,6 @@ impl Default for History {
         }
     }
 }
-fn known() -> Evaluation {
-    Evaluation {
-        state: EvaluationState::Satisfied,
-        reasons: vec![],
-    }
-}
 pub fn gap(detail: impl Into<String>) -> Evaluation {
     Evaluation::indeterminate(EvidenceGap::CallArgumentCoverage, detail)
 }
@@ -799,7 +793,7 @@ fn finalize(result: &mut History, values: &value_history::History) -> Result<()>
                 e.tail_after.as_ref() == Some(&e.tail_before)
             };
             if valid {
-                e.observations = known()
+                e.observations = Evaluation::satisfied()
             }
         }
         let valid_function = function.is_some_and(|f| {
@@ -858,7 +852,7 @@ fn finalize(result: &mut History, values: &value_history::History) -> Result<()>
             && expression_valid
             && valid_pointers
         {
-            c.observations = known()
+            c.observations = Evaluation::satisfied()
         }
     }
     // Every actual counter birth inside an episode must have exactly one owner,
@@ -929,7 +923,7 @@ fn finalize(result: &mut History, values: &value_history::History) -> Result<()>
             && !local_gap
             && !unknown_call_stream
         {
-            f.event_totals = known();
+            f.event_totals = Evaluation::satisfied();
         }
         if f.event_totals.state == EvaluationState::Satisfied
             && f.end_scope.as_deref() == Some(SCOPE)
@@ -937,7 +931,7 @@ fn finalize(result: &mut History, values: &value_history::History) -> Result<()>
                 .iter()
                 .all(|c| c.observations.state == EvaluationState::Satisfied)
         {
-            f.observations = known()
+            f.observations = Evaluation::satisfied()
         }
         if f.event_totals.state != EvaluationState::Satisfied {
             for c in &mut result.calls {
@@ -959,7 +953,7 @@ fn finalize(result: &mut History, values: &value_history::History) -> Result<()>
             .iter()
             .all(|c| c.observations.state == EvaluationState::Satisfied)
     {
-        result.observations = known()
+        result.observations = Evaluation::satisfied()
     }
     Ok(())
 }

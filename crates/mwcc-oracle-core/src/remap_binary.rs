@@ -1,6 +1,6 @@
 //! Carry executable function metadata and bindings using nearby wildcard matches.
 use crate::{
-    compare, executable, investigate,
+    compare, disassembly, executable, investigate,
     pe::{Pe, u32le},
     x86,
 };
@@ -17,6 +17,8 @@ fn address(f: &Value) -> Result<u32> {
             .context("function lacks hexadecimal address")?,
     )
 }
+/// The SIZE bytes at ADDRESS and the offsets of their fields of FIXUPS (sorted, as
+/// [`executable::base_relocations`] returns them) and relative branches.
 pub fn wildcards(
     pe: &Pe<'_>,
     fixups: &[u32],
@@ -25,11 +27,7 @@ pub fn wildcards(
 ) -> Result<(Vec<u8>, BTreeSet<usize>)> {
     let code = pe.read(address, size)?.to_vec();
     let mut wild = BTreeSet::new();
-    for at in fixups
-        .iter()
-        .copied()
-        .filter(|a| *a >= address && u64::from(*a) < u64::from(address) + size as u64)
-    {
+    for &at in executable::fixups_in(fixups, address, size as u64) {
         wild.extend(at as usize - address as usize..(at as usize - address as usize + 4).min(size));
     }
     if let Ok(branches) = x86::branches(&code, address) {
@@ -144,11 +142,8 @@ pub fn data_pairs(
         let Some(other) = found.get(&address) else {
             continue;
         };
-        for at in fixups
-            .iter()
-            .copied()
-            .filter(|at| *at >= address && u64::from(*at) + 4 <= u64::from(address) + size)
-        {
+        // (the fixups whose whole field is in the function)
+        for &at in executable::fixups_in(fixups, address, size.saturating_sub(3)) {
             let value_a = u32le(a.read(at, 4)?, 0)?;
             let value_b = u32le(
                 b.read(
@@ -167,12 +162,29 @@ pub fn data_pairs(
     pairs.retain(|k, _| !conflicts.contains(k));
     Ok(pairs)
 }
+/// ADDRESS's counterpart: its pair, or the address between two paired neighbours in its section that are moved alike.
 pub fn carry(address: u32, pairs: &IndexMap<u32, u32>, pe: &Pe<'_>) -> Result<Option<u32>> {
     if let Some(value) = pairs.get(&address) {
         return Ok(Some(*value));
     }
+    carry_sorted(address, pairs, &sorted_keys(pairs), pe)
+}
+/// PAIRS' addresses, sorted, for [`carry_sorted`].
+pub fn sorted_keys(pairs: &IndexMap<u32, u32>) -> Vec<u32> {
     let mut known: Vec<_> = pairs.keys().copied().collect();
     known.sort();
+    known
+}
+/// [`carry`] with PAIRS' addresses already sorted ([`sorted_keys`]).
+pub fn carry_sorted(
+    address: u32,
+    pairs: &IndexMap<u32, u32>,
+    known: &[u32],
+    pe: &Pe<'_>,
+) -> Result<Option<u32>> {
+    if let Some(value) = pairs.get(&address) {
+        return Ok(Some(*value));
+    }
     let k = known.partition_point(|a| *a <= address);
     if k == 0 || k >= known.len() {
         return Ok(None);
@@ -196,18 +208,11 @@ pub fn carry(address: u32, pairs: &IndexMap<u32, u32>, pe: &Pe<'_>) -> Result<Op
     Ok(None)
 }
 pub fn run(root: &Path, from: &str, to: &str, symbols: bool) -> Result<String> {
-    let dotted = |v: &str| {
-        investigate::folder(v)
-            .strip_prefix("GC_")
-            .unwrap()
-            .replace('_', ".")
-    };
-    let version_a = dotted(from);
-    let version_b = dotted(to);
-    let data_a = fs::read(root.join(format!("build/compilers/GC/{version_a}/mwcceppc.exe")))?;
-    let data_b = fs::read(root.join(format!("build/compilers/GC/{version_b}/mwcceppc.exe")))?;
+    let data_a = fs::read(investigate::stock_compiler(root, from))?;
+    let data_b = fs::read(investigate::stock_compiler(root, to))?;
     let a = Pe::parse(&data_a)?;
     let b = Pe::parse(&data_b)?;
+    // (a destination whose relocation directory is malformed is refused, though only the source's fixups are used)
     executable::base_relocations(&b)?;
     let fix_a = executable::base_relocations(&a)?;
     let source = root.join("config").join(investigate::folder(from));
@@ -215,14 +220,10 @@ pub fn run(root: &Path, from: &str, to: &str, symbols: bool) -> Result<String> {
         serde_json::from_slice(&fs::read(source.join("functions.json"))?)?;
     if symbols {
         let listed: BTreeSet<_> = functions.iter().map(address).collect::<Result<_>>()?;
-        let regex =
-            Regex::new(r"^(\S+) = \.text:0x([0-9A-Fa-f]+);.*type:function size:0x([0-9A-Fa-f]+)")?;
-        for line in fs::read_to_string(source.join("symbols.txt"))?.lines() {
-            if let Some(c) = regex.captures(line) {
-                let address = u32::from_str_radix(&c[2], 16)?;
-                if !listed.contains(&address) {
-                    functions.push(json!({"name":c[1].strip_prefix('_').unwrap_or(&c[1]),"address":format!("0x{address:08x}"),"size":u32::from_str_radix(&c[3],16)?,"carried":true}));
-                }
+        let text = fs::read_to_string(source.join("symbols.txt"))?;
+        for (name, address, size) in disassembly::text_functions(&text)? {
+            if !listed.contains(&address) {
+                functions.push(json!({"name":name.strip_prefix('_').unwrap_or(name),"address":format!("0x{address:08x}"),"size":size,"carried":true}));
             }
         }
     }
@@ -254,8 +255,9 @@ pub fn run(root: &Path, from: &str, to: &str, symbols: bool) -> Result<String> {
     compare::write_json(root, &format!("{target}/functions.json"), &json!(output))?;
     let mut carried = IndexMap::new();
     let mut lost = vec![];
+    let known = sorted_keys(&pairs);
     for (name, text) in &bindings {
-        if let Some(address) = carry(executable::hex(text)?, &pairs, &a)? {
+        if let Some(address) = carry_sorted(executable::hex(text)?, &pairs, &known, &a)? {
             carried.insert(name.clone(), format!("0x{address:08x}"));
         } else {
             lost.push(name);

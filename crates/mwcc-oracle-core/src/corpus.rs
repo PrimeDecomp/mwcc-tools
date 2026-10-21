@@ -349,10 +349,7 @@ pub fn trace_difference_with(ours: &str, theirs: &str, streams: &[&str]) -> Opti
 pub fn run(request: &Request) -> Result<Report> {
     ensure!(request.parallelism > 0, "--jobs must be positive");
     ensure!(!request.jobs.is_empty(), "no corpus inputs");
-    let original = request.root.join(format!(
-        "build/compilers/GC/{}/mwcceppc.exe",
-        request.version.compiler_directory()
-    ));
+    let original = mwcc_project::compilers::stock_executable(&request.root, request.version);
     let oracle = request.executable.clone().unwrap_or_else(|| {
         request.root.join(format!(
             "build/{}/oracle/mwcceppc.exe",

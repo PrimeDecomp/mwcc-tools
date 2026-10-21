@@ -183,10 +183,7 @@ impl Compiler {
             transcode_sjis: request.transcode_sjis,
         };
         let timeout = request.timeout;
-        let compiler = Compiler {
-            engine: self.engine.clone(),
-            module: self.module.clone(),
-        };
+        let compiler = self.clone();
         let (jobs, job_rx) = channel();
         let (event_tx, events) = channel();
         let thread = std::thread::Builder::new()

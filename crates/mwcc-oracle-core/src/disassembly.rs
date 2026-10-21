@@ -1,10 +1,15 @@
 //! Capstone-compatible x86 listings, instruction diffs and nearest-function search.
-use crate::{coff::Object, executable, investigate, pe::Pe, sequence};
+use crate::{
+    coff::Object,
+    executable,
+    investigate::{self, image},
+    pe::Pe,
+    sequence,
+};
 use anyhow::{Context, Result, ensure};
 use capstone::prelude::*;
 use regex::Regex;
 use serde::Serialize;
-use serde_json::Value;
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
@@ -25,6 +30,18 @@ pub fn decoder() -> Result<Capstone> {
         .mode(arch::x86::ArchMode::Mode32)
         .syntax(arch::x86::ArchSyntax::Intel)
         .build()?)
+}
+/// I as the audits record it: its mnemonic and operands, untrimmed (one without operands ends in a space).
+pub fn instruction_text(i: &capstone::Insn<'_>) -> String {
+    format!(
+        "{} {}",
+        i.mnemonic().unwrap_or("?"),
+        i.op_str().unwrap_or("")
+    )
+}
+/// I's bytes in lowercase hexadecimal.
+pub fn instruction_bytes(i: &capstone::Insn<'_>) -> String {
+    i.bytes().iter().map(|b| format!("{b:02x}")).collect()
 }
 pub fn decode(
     decoder: &Capstone,
@@ -60,19 +77,6 @@ pub fn shape(text: &str, field: bool) -> String {
         if field { " R" } else { "" }
     )
 }
-fn image(root: &Path, version: &str) -> Result<Vec<u8>> {
-    let config: Value = serde_json::from_slice(&fs::read(root.join(format!(
-        "config/{}/config.json",
-        investigate::folder(version)
-    )))?)?;
-    Ok(fs::read(
-        root.join(
-            config["original"]
-                .as_str()
-                .context("config lacks original")?,
-        ),
-    )?)
-}
 fn symbol_text(root: &Path, version: &str) -> Result<String> {
     let path = root.join(format!(
         "config/{}/symbols.txt",
@@ -95,6 +99,22 @@ pub fn symbols_of(text: &str) -> Result<BTreeMap<u32, (String, u32)>> {
         }
     }
     Ok(symbols)
+}
+/// The functions in `.text` that symbols.txt TEXT lists with a size: their names, addresses and sizes.
+pub fn text_functions(text: &str) -> Result<Vec<(&str, u32, u32)>> {
+    let regex =
+        Regex::new(r"^(\S+) = \.text:0x([0-9A-Fa-f]+);.*type:function size:0x([0-9A-Fa-f]+)")?;
+    let mut functions = vec![];
+    for line in text.lines() {
+        if let Some(c) = regex.captures(line) {
+            functions.push((
+                c.get(1).unwrap().as_str(),
+                executable::hex(&c[2])?,
+                executable::hex(&c[3])?,
+            ));
+        }
+    }
+    Ok(functions)
 }
 pub fn disasm(root: &Path, version: &str, address: u32, size: Option<usize>) -> Result<String> {
     let data = image(root, version)?;
@@ -276,27 +296,22 @@ pub fn nearest(root: &Path, version: &str, sources: &[String]) -> Result<String>
             .map(|i| i.mnemonic)
             .collect())
     };
-    let regex =
-        Regex::new(r"^(\S+) = \.text:0x([0-9A-Fa-f]+);.*type:function size:0x([0-9A-Fa-f]+)")?;
     let mut candidates = vec![];
-    for line in symbol_text(root, version)?.lines() {
-        if let Some(c) = regex.captures(line) {
-            let address = executable::hex(&c[2])?;
-            let size = executable::hex(&c[3])? as usize;
-            // Preserve Python's bounded text slice; a symbol can extend into padding.
-            let begin = address
-                .checked_sub(text.virtual_address)
-                .context("candidate starts before .text")? as usize;
-            let code = blob
-                .get(begin..(begin + size).min(blob.len()))
-                .unwrap_or_default();
-            candidates.push(Candidate {
-                name: c[1].into(),
-                address,
-                size,
-                mnemonics: mnemonics(code)?,
-            });
-        }
+    for (name, address, size) in text_functions(&symbol_text(root, version)?)? {
+        let size = size as usize;
+        // Preserve Python's bounded text slice; a symbol can extend into padding.
+        let begin = address
+            .checked_sub(text.virtual_address)
+            .context("candidate starts before .text")? as usize;
+        let code = blob
+            .get(begin..(begin + size).min(blob.len()))
+            .unwrap_or_default();
+        candidates.push(Candidate {
+            name: name.into(),
+            address,
+            size,
+            mnemonics: mnemonics(code)?,
+        });
     }
     let mut output = String::new();
     for source in sources {

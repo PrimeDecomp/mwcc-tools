@@ -17,8 +17,9 @@ use mwcc_oracle_core::{
         target,
     },
     cse, ppc,
+    release::sha256,
     runner::TraceOptions,
-    trace::{self, Allocation, Round, Trace},
+    trace::{self, Allocation, Round, Snapshot, Trace},
     version::{Version, class_name},
 };
 use schemars::JsonSchema;
@@ -28,7 +29,6 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     path::PathBuf,
     sync::Arc,
-    time::Duration,
 };
 
 /// A trace the session keeps: its records, its object, the target's asm, and its compiler's version.
@@ -78,11 +78,6 @@ pub struct LoadResult {
     /// The functions allocated, in order.
     pub functions: Vec<TracedFunction>,
     pub has_target_asm: bool,
-}
-
-fn sha256(bytes: &[u8]) -> String {
-    use sha2::{Digest, Sha256};
-    format!("{:x}", Sha256::digest(bytes))
 }
 
 /// PREFIX.trace, PREFIX.o, PREFIX.source and PREFIX.manifest.json, as `save` wrote them.
@@ -186,7 +181,7 @@ fn load(call: &mut Call<'_>, params: LoadParams) -> Result<LoadResult> {
             &params.files,
             params.inline_max_size,
             &options,
-            Duration::from_millis(params.timeout_ms.unwrap_or(600_000)),
+            crate::timeout(params.timeout_ms),
         )?;
         call.timing.add(&timing);
         // (the overlay's text when it has the source: its paths are the project's, as trace_unit reads them)
@@ -1193,13 +1188,15 @@ fn remap(call: &mut Call<'_>, params: RemapParams) -> Result<Report> {
         round: params.second_round,
         phase: phase(&params.second_snapshot)?,
     };
-    let snapshot = |allocation: &'_ Allocation, selection: Selection| match selection.phase {
-        SnapshotPhase::Before => allocation.before.clone(),
-        SnapshotPhase::After => allocation.after.clone(),
-    };
+    fn snapshot(allocation: &Allocation, selection: Selection) -> &Snapshot {
+        match selection.phase {
+            SnapshotPhase::Before => &allocation.before,
+            SnapshotPhase::After => &allocation.after,
+        }
+    }
     let inferred = target::remap_snapshots(
-        &snapshot(first, first_graph),
-        &snapshot(second, second_graph),
+        snapshot(first, first_graph),
+        snapshot(second, second_graph),
         a.version,
     );
     let comparison =

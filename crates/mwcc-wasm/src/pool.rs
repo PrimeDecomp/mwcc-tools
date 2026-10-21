@@ -159,6 +159,12 @@ fn capacity(len: usize) -> usize {
     capacity
 }
 
+/// Whether `MWCC_PERSIST_LOG` is in the environment: why a start or a persistent compile failed is written to stderr.
+pub fn persist_log() -> bool {
+    static LOG: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *LOG.get_or_init(|| std::env::var_os("MWCC_PERSIST_LOG").is_some())
+}
+
 fn key(context: &Context, capacity: usize) -> u64 {
     let mut h = std::collections::hash_map::DefaultHasher::new();
     (Arc::as_ptr(&context.module) as usize).hash(&mut h);
@@ -170,19 +176,15 @@ fn key(context: &Context, capacity: usize) -> u64 {
         }
     }
     context.directory.hash(&mut h);
-    let mut environment = context.environment.clone();
+    let mut environment: Vec<_> = context.environment.iter().collect();
     environment.sort();
     environment.hash(&mut h);
     context.program.hash(&mut h);
-    let mut overlay = context.overlay.clone();
-    overlay.remove(&context.source);
-    overlay.fingerprint().hash(&mut h);
     context
-        .source
-        .to_string_lossy()
-        .replace('\\', "/")
-        .to_ascii_uppercase()
+        .overlay
+        .fingerprint_without(Some(&context.source))
         .hash(&mut h);
+    super::overlay::key(&context.source).hash(&mut h);
     context.text.hash(&mut h);
     (context.transcode_sjis, capacity).hash(&mut h);
     h.finish()
@@ -307,7 +309,7 @@ impl PersistPool {
             },
             // (a trap or a timeout: the persistent compiler has ended)
             Err(e) => {
-                if std::env::var_os("MWCC_PERSIST_LOG").is_some() {
+                if persist_log() {
                     eprintln!("mwcc-wasm: a persistent compile failed: {e:?}");
                 }
                 drop(lease);
@@ -518,7 +520,7 @@ impl PersistPool {
                         });
                     }
                     Err(e) => {
-                        if std::env::var_os("MWCC_PERSIST_LOG").is_some() {
+                        if persist_log() {
                             eprintln!(
                                 "mwcc-wasm: a persistent compile of {} did not start: {e:?}",
                                 context.source.display()

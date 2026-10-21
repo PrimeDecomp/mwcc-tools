@@ -1,5 +1,6 @@
 use anyhow::{Context, Result, bail, ensure};
 use mwcc_oracle_core::build_config::{self, Platform, Request};
+use mwcc_project::process_tree;
 use std::path::PathBuf;
 /// Each build command's usage (`COMMAND --help`).
 fn usage(command: &str) -> &'static str {
@@ -75,8 +76,7 @@ pub fn run(command: &str, args: &[String]) -> Result<()> {
                                 .contains(&option.as_str())),
                     "unknown {command} argument {option}"
                 );
-                i += 1;
-                let value = args.get(i).context("build option requires a value")?;
+                let value = crate::option_value(args, &mut i)?;
                 match option.as_str() {
                     "--root" => root = value.into(),
                     "--version" => version = value.clone(),
@@ -101,11 +101,7 @@ pub fn run(command: &str, args: &[String]) -> Result<()> {
                         ensure!(n > 0, "jobs must be positive");
                         jobs = Some(n);
                     }
-                    "--timeout" => {
-                        timeout = std::time::Duration::try_from_secs_f64(value.parse()?)
-                            .context("timeout must be finite and positive")?;
-                        ensure!(!timeout.is_zero(), "timeout must be positive");
-                    }
+                    "--timeout" => timeout = crate::timeout(value)?,
                     _ => mode = Some(value.clone()),
                 }
             }
@@ -267,23 +263,17 @@ fn probe_build(
         },
     )?;
     let module = mwcc_project::compilers::module_output(version);
-    let mut child = std::process::Command::new(ninja)
-        .arg(&module)
-        .current_dir(root)
+    let mut command = std::process::Command::new(ninja);
+    command.arg(&module).current_dir(root);
+    process_tree::prepare(&mut command);
+    let mut child = command
         .spawn()
         .with_context(|| format!("running {}", ninja.display()))?;
-    let started = std::time::Instant::now();
-    let status = loop {
-        if let Some(status) = child.try_wait()? {
-            break status;
-        }
-        if started.elapsed() > timeout {
-            let _ = child.kill();
-            bail!("ninja {module}: timed out after {:?}", timeout);
-        }
-        std::thread::sleep(std::time::Duration::from_millis(200));
-    };
-    ensure!(status.success(), "ninja {module} failed");
+    let waited = process_tree::wait(&mut child, timeout, &|| false)?;
+    if waited.timed_out {
+        bail!("ninja {module}: timed out after {:?}", timeout);
+    }
+    ensure!(waited.status.success(), "ninja {module} failed");
     println!("{}", root.join(&module).display());
     Ok(())
 }

@@ -1,6 +1,7 @@
 use super::*;
 use crate::{
     coff::Object,
+    fsutil::files,
     pe::{Pe, u32le},
     x86,
 };
@@ -26,21 +27,6 @@ pub fn section_end(section: &crate::pe::Section) -> Result<u32> {
         .virtual_address
         .checked_add(section.virtual_size)
         .context("section address overflow")
-}
-fn files(directory: &Path, recursive: bool) -> Result<Vec<std::path::PathBuf>> {
-    let mut out = vec![];
-    if !directory.is_dir() {
-        return Ok(out);
-    }
-    for entry in fs::read_dir(directory)? {
-        let entry = entry?;
-        if entry.file_type()?.is_dir() && recursive {
-            out.extend(files(&entry.path(), true)?);
-        } else if entry.file_type()?.is_file() {
-            out.push(entry.path());
-        }
-    }
-    Ok(out)
 }
 pub fn compiled_symbols(
     root: &Path,

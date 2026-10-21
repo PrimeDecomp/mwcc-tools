@@ -76,13 +76,29 @@ impl Version {
 }
 
 pub fn class_name(class: u8) -> String {
-    match class {
-        4 => "GPR".into(),
-        3 => "FPR".into(),
-        2 => "VR".into(),
-        1 => "CR".into(),
-        0 => "SPR".into(),
-        _ => format!("class{class}"),
+    match class_str(class) {
+        Some(name) => name.into(),
+        None => format!("class{class}"),
+    }
+}
+
+/// The name of a known register class (None for one [`class_name`] calls `class{N}`).
+pub fn class_str(class: u8) -> Option<&'static str> {
+    Some(match class {
+        4 => "GPR",
+        3 => "FPR",
+        2 => "VR",
+        1 => "CR",
+        0 => "SPR",
+        _ => return None,
+    })
+}
+
+/// Whether register class CLASS is named NAME (`class_name(class) == name`, without allocating).
+pub fn is_class(class: u8, name: &str) -> bool {
+    match class_str(class) {
+        Some(known) => known == name,
+        None => class_name(class) == name,
     }
 }
 

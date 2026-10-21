@@ -218,7 +218,7 @@ fn corpus_rejects_incomplete_absence_and_detects_tampering() {
     let mut legacy = stored.clone();
     legacy.coverage.as_object_mut().unwrap().remove("origins");
     legacy.id.clear();
-    legacy.id = state::digest(&serde_json::to_vec(&legacy).unwrap());
+    legacy.id = state::digest(serde_json::to_vec(&legacy).unwrap());
     fs::write(
         corpus.join("entries").join(format!("{}.json", legacy.id)),
         serde_json::to_vec_pretty(&legacy).unwrap(),

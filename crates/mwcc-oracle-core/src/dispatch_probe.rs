@@ -7,8 +7,7 @@ use crate::{
     executable,
 };
 use anyhow::{Context, Result, ensure};
-use sha2::{Digest, Sha256};
-use std::{collections::BTreeMap, fs, path::Path};
+use std::{collections::BTreeMap, path::Path};
 
 pub const HANDLER: &str = "_OracleRust_ExpressionProbeV1";
 pub struct Installed {
@@ -21,9 +20,7 @@ pub fn instrument(root: &Path, version: &str, data: &[u8]) -> Result<Installed> 
         audit.version == version && audit.initialized_entries == 78,
         "wrong dispatch audit"
     );
-    let metadata = executable::read_symbols(&fs::read_to_string(
-        root.join(format!("config/{version}/symbols.txt")),
-    )?)?;
+    let metadata = executable::retail_symbols(root, &version)?;
     let object = Object::parse(data)?;
     let candidates = object
         .symbols
@@ -157,7 +154,7 @@ pub fn instrument(root: &Path, version: &str, data: &[u8]) -> Result<Installed> 
         }
     }
     ensure!(
-        format!("{:x}", Sha256::digest(normalized)) == audit.initialization.normalized_sha256,
+        crate::hash::sha256_hex(&normalized) == audit.initialization.normalized_sha256,
         "expression initializer body changed"
     );
     let mut builder = Builder::default();

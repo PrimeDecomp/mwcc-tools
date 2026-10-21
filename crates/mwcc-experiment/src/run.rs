@@ -3,7 +3,7 @@
 //! finishes, the control repeated at the end, and `coverage.json`. The project's files are never written: every
 //! compile reads its candidate's files through the overlay.
 use crate::{
-    Timing,
+    Timing, ms,
     plan::{Files, Plan, Rendered, ScoreStage, Stage},
 };
 use anyhow::{Context as _, Result, bail};
@@ -185,10 +185,6 @@ pub struct Summary {
     pub productive: f64,
     pub jobs: usize,
     pub wall_ms: f64,
-}
-
-fn ms(duration: Duration) -> f64 {
-    duration.as_secs_f64() * 1e3
 }
 
 fn sha1(bytes: &[u8]) -> String {

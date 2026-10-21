@@ -8,10 +8,8 @@ use crate::{
 };
 use anyhow::{Context, Result, ensure};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use std::{
     collections::{BTreeMap, BTreeSet},
-    fs,
     path::Path,
     sync::OnceLock,
 };
@@ -92,9 +90,7 @@ pub fn plan(root: &Path, version: &str) -> Result<Vec<Site>> {
     );
     let original = Original::read(root, version)?;
     let pe = original.pe()?;
-    let metadata = executable::read_symbols(&fs::read_to_string(
-        root.join(format!("config/{version}/symbols.txt")),
-    )?)?;
+    let metadata = executable::retail_symbols(root, &version)?;
     for g in c.guards.iter().chain(&c.tables) {
         let matching = metadata
             .iter()
@@ -112,7 +108,7 @@ pub fn plan(root: &Path, version: &str) -> Result<Vec<Site>> {
             g.name
         );
         ensure!(
-            format!("{:x}", Sha256::digest(pe.read(g.address, g.size as usize)?)) == g.code_sha256,
+            crate::hash::sha256_hex(pe.read(g.address, g.size as usize)?) == g.code_sha256,
             "source PE guard changed: {}",
             g.name
         );

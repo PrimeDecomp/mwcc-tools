@@ -3,7 +3,7 @@ use anyhow::{Context, Result, anyhow, ensure};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::LazyLock;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -245,6 +245,14 @@ fn list(text: &str) -> Vec<String> {
         .collect()
 }
 
+/// An operand's hex digits, two for each byte (a trailing odd digit ignored); None for a pair that splits a
+/// character.
+pub(crate) fn operand_digits(hex: &str) -> impl Iterator<Item = Option<&str>> + '_ {
+    hex.as_bytes()
+        .chunks_exact(2)
+        .map(|pair| std::str::from_utf8(pair).ok())
+}
+
 pub fn instruction(record: &Record) -> Result<Instruction> {
     let operands = record
         .get("ops")?
@@ -255,8 +263,8 @@ pub fn instruction(record: &Record) -> Result<Instruction> {
                 "operand must contain 12 bytes"
             );
             let mut raw = [0; 12];
-            for (i, b) in raw.iter_mut().enumerate() {
-                *b = u8::from_str_radix(&hex[2 * i..2 * i + 2], 16)
+            for (b, digits) in raw.iter_mut().zip(operand_digits(hex)) {
+                *b = u8::from_str_radix(digits.context("invalid operand hex")?, 16)
                     .context("invalid operand hex")?;
             }
             Ok(Operand { raw })
@@ -279,11 +287,12 @@ pub fn instruction(record: &Record) -> Result<Instruction> {
     })
 }
 
-fn pointer_index(round: &Round, pointer: &str) -> Result<u32> {
-    round
-        .nodes
-        .iter()
-        .find_map(|(i, n)| (n.pointer == pointer).then_some(*i))
+/// The graph node POINTER names in the current round, from its nodes' pointers (POINTERS: of two nodes with one
+/// pointer, the lower index).
+fn pointer_index(pointers: &HashMap<String, u32>, pointer: &str) -> Result<u32> {
+    pointers
+        .get(pointer)
+        .copied()
         .ok_or_else(|| anyhow!("unknown graph node pointer {pointer}"))
 }
 
@@ -297,6 +306,10 @@ pub fn parse(text: &str) -> Result<Trace> {
     let mut before: Option<Snapshot> = None;
     let mut current: Option<(bool, Snapshot)> = None;
     let mut rounds: Vec<Round> = vec![];
+    // (the last round's node pointers, the current snapshot's block pointers, the scheduled block's node pointers)
+    let mut round_pointers: HashMap<String, u32> = HashMap::new();
+    let mut block_pointers: HashSet<String> = HashSet::new();
+    let mut node_pointers: HashSet<String> = HashSet::new();
     let mut frame: Option<Vec<Value>> = None;
     let mut layout: Option<Value> = None;
     let mut scheduled: Option<ScheduledBlock> = None;
@@ -311,6 +324,7 @@ pub fn parse(text: &str) -> Result<Trace> {
                     if is_before {
                         ensure!(before.is_none(), "unpaired before snapshot");
                         rounds.clear();
+                        round_pointers.clear();
                     } else {
                         ensure!(before.is_some(), "after snapshot without before");
                     }
@@ -319,13 +333,14 @@ pub fn parse(text: &str) -> Result<Trace> {
                     if is_before {
                         snapshot.schedule = std::mem::take(&mut schedule_pending);
                     }
+                    block_pointers.clear();
                     current = Some((is_before, snapshot));
                 }
                 "ra.block" => {
                     let snapshot = &mut current.as_mut().context("block outside snapshot")?.1;
                     let pointer = record.get("p")?.to_owned();
                     ensure!(
-                        !snapshot.blocks.iter().any(|b| b.pointer == pointer),
+                        block_pointers.insert(pointer.clone()),
                         "duplicate block {pointer}"
                     );
                     snapshot.blocks.push(Block {
@@ -368,13 +383,16 @@ pub fn parse(text: &str) -> Result<Trace> {
                         });
                     }
                 }
-                "ra.graph" => rounds.push(Round {
-                    class: record.number("cls")?,
-                    k: record.number("k")?,
-                    start: record.number("start")?,
-                    count: record.number("count")?,
-                    ..Round::default()
-                }),
+                "ra.graph" => {
+                    rounds.push(Round {
+                        class: record.number("cls")?,
+                        k: record.number("k")?,
+                        start: record.number("start")?,
+                        count: record.number("count")?,
+                        ..Round::default()
+                    });
+                    round_pointers.clear();
+                }
                 "ra.node" => {
                     let r = rounds.last_mut().context("node before graph")?;
                     let index = record.number("v")?;
@@ -388,10 +406,15 @@ pub fn parse(text: &str) -> Result<Trace> {
                             .map(|x| x.parse().context("invalid neighbor"))
                             .collect::<Result<_>>()?,
                     };
+                    let pointer = node.pointer.clone();
                     ensure!(
                         r.nodes.insert(index, node).is_none(),
                         "duplicate graph node {index}"
                     );
+                    round_pointers
+                        .entry(pointer)
+                        .and_modify(|i| *i = (*i).min(index))
+                        .or_insert(index);
                 }
                 "ra.order" | "ra.select" => {
                     let r = rounds.last_mut().context("order/select before graph")?;
@@ -404,7 +427,7 @@ pub fn parse(text: &str) -> Result<Trace> {
                             let (pointer, cost) =
                                 item.split_once(':').context("invalid order entry")?;
                             r.order.push((
-                                pointer_index(r, pointer)?,
+                                pointer_index(&round_pointers, pointer)?,
                                 cost.parse().context("invalid spill cost")?,
                             ));
                         }
@@ -417,7 +440,7 @@ pub fn parse(text: &str) -> Result<Trace> {
                         for item in list(record.get("v")?) {
                             let fields: Vec<_> = item.split(':').collect();
                             ensure!(fields.len() == 3, "invalid select entry");
-                            let i = pointer_index(r, fields[0])?;
+                            let i = pointer_index(&round_pointers, fields[0])?;
                             ensure!(!r.colors.contains_key(&i), "duplicate selected graph node");
                             r.color_order.push(i);
                             r.colors.insert(
@@ -471,6 +494,7 @@ pub fn parse(text: &str) -> Result<Trace> {
                 }
                 "sc.block" => {
                     ensure!(scheduled.is_none(), "scheduler block before sc.after");
+                    node_pointers.clear();
                     scheduled = Some(ScheduledBlock {
                         pointer: record.get("p")?.into(),
                         index: record.number("index")?,
@@ -502,7 +526,7 @@ pub fn parse(text: &str) -> Result<Trace> {
                         .nodes;
                     let pointer = record.get("i")?;
                     ensure!(
-                        !nodes.iter().any(|(p, _)| p == pointer),
+                        node_pointers.insert(pointer.into()),
                         "duplicate scheduler node"
                     );
                     nodes.push((pointer.into(), value));

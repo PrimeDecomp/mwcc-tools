@@ -19,7 +19,8 @@ pub struct SourceTree {
     pub build_dir: String,
 }
 
-fn read_json(path: &Path) -> Result<Value> {
+/// The JSON document at PATH.
+pub fn read_json(path: &Path) -> Result<Value> {
     serde_json::from_slice(&fs::read(path).with_context(|| format!("read {}", path.display()))?)
         .with_context(|| format!("parse {}", path.display()))
 }

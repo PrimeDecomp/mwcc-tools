@@ -3,6 +3,7 @@
 use crate::{
     disassembly,
     executable::{self, Original},
+    hash::sha256_hex,
     pe,
 };
 use anyhow::{Context, Result, ensure};
@@ -11,7 +12,6 @@ use capstone::{
     arch::{DetailsArchInsn, x86::X86OperandType},
 };
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
@@ -79,18 +79,47 @@ pub struct NamedFunctionGuard {
     pub guard: FunctionGuard,
 }
 
+/// What an audit of VERSION's retail compiler reads: the original (its SHA-1 checked) and its symbols
+/// (`config/<version>/symbols.txt`, as read and parsed) and splits.
+pub struct Retail {
+    pub original: Original,
+    pub metadata: Vec<u8>,
+    pub symbols: Vec<executable::Symbol>,
+    pub splits: executable::Splits,
+}
+impl Retail {
+    pub fn read(root: &Path, version: &str) -> Result<Self> {
+        let original = Original::read(root, version)?;
+        let metadata = fs::read(root.join(format!("config/{version}/symbols.txt")))?;
+        let symbols = executable::read_symbols(std::str::from_utf8(&metadata)?)?;
+        let splits = executable::read_splits(&fs::read_to_string(
+            root.join(format!("config/{version}/splits.txt")),
+        )?)?;
+        Ok(Self {
+            original,
+            metadata,
+            symbols,
+            splits,
+        })
+    }
+    /// The original's SHA-256.
+    pub fn compiler_sha256(&self) -> String {
+        sha256_hex(&self.original.data)
+    }
+    /// The symbols' SHA-256.
+    pub fn symbol_metadata_sha256(&self) -> String {
+        sha256_hex(&self.metadata)
+    }
+}
+
 pub fn capture(root: &Path, version: &str) -> Result<Audit> {
     ensure!(
         ["GC_1_3", "GC_1_3_2", "GC_2_6", "GC_2_7"].contains(&version),
         "unsupported backend audit version {version}"
     );
-    let original = Original::read(root, version)?;
-    let pe = original.pe()?;
-    let metadata = fs::read(root.join(format!("config/{version}/symbols.txt")))?;
-    let symbols = executable::read_symbols(std::str::from_utf8(&metadata)?)?;
-    let splits = executable::read_splits(&fs::read_to_string(
-        root.join(format!("config/{version}/splits.txt")),
-    )?)?;
+    let retail = Retail::read(root, version)?;
+    let pe = retail.original.pe()?;
+    let symbols = &retail.symbols;
     let mut counters = BTreeMap::new();
     for class in ["VR", "FPR", "GPR"] {
         let name = format!("_gUsedVirtualRegisters{class}");
@@ -110,7 +139,7 @@ pub fn capture(root: &Path, version: &str) -> Result<Audit> {
         counters["FPR"] == table_base + 12 && counters["GPR"] == table_base + 16,
         "unexpected counter layout"
     );
-    let audit = references(&pe, &symbols, &splits, table_base..table_base + 20)?;
+    let audit = references(&pe, symbols, &retail.splits, table_base..table_base + 20)?;
     let mut functions = BTreeMap::new();
     for function in audit.functions {
         ensure!(
@@ -118,8 +147,8 @@ pub fn capture(root: &Path, version: &str) -> Result<Audit> {
             "ambiguous counter container name"
         );
     }
-    Ok(Audit{format_version:1,version:version.into(),compiler_sha256:format!("{:x}",Sha256::digest(&original.data)),
-        symbol_metadata_sha256:format!("{:x}",Sha256::digest(metadata)),counters,table_base,
+    Ok(Audit{format_version:1,version:version.into(),compiler_sha256:retail.compiler_sha256(),
+        symbol_metadata_sha256:retail.symbol_metadata_sha256(),counters,table_base,
         references:audit.references,functions,unresolved:audit.unresolved,
         lifecycle_coverage_complete:false,limitations:vec![
             "Direct PE HIGHLOW references only: register-derived aliases, bulk writes and dataflow require further audit".into(),
@@ -182,7 +211,7 @@ pub fn references(
         let decoded_bytes = instructions.iter().map(|i| i.bytes().len()).sum();
         let mut normalized = code.to_vec();
         let mut normalized_fields = vec![];
-        for &at in fixups.iter().filter(|&&a| symbol.address <= a && a < end) {
+        for &at in executable::fixups_in(&fixups, symbol.address, u64::from(size)) {
             let offset = (at - symbol.address) as usize;
             normalized
                 .get_mut(offset..offset + 4)
@@ -249,12 +278,8 @@ pub fn references(
                             .any(|r| r.section == ".text" && r.start <= address && address < r.end)
                     })
                     .map(|u| u.name.clone()),
-                instruction: format!(
-                    "{} {}",
-                    i.mnemonic().unwrap_or("?"),
-                    i.op_str().unwrap_or("")
-                ),
-                bytes: i.bytes().iter().map(|b| format!("{b:02x}")).collect(),
+                instruction: disassembly::instruction_text(i),
+                bytes: disassembly::instruction_bytes(i),
                 relocations: inside.iter().map(|(a, _)| *a).collect(),
                 targets: inside.iter().map(|(_, t)| *t).collect(),
                 read,
@@ -273,8 +298,8 @@ pub fn references(
             guard: FunctionGuard {
                 address: symbol.address,
                 size,
-                code_sha256: format!("{:x}", Sha256::digest(code)),
-                normalized_sha256: format!("{:x}", Sha256::digest(normalized)),
+                code_sha256: sha256_hex(code),
+                normalized_sha256: sha256_hex(normalized),
                 normalized_fields,
                 decoded_bytes,
             },

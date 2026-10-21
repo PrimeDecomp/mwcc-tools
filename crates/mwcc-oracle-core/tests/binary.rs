@@ -1,8 +1,9 @@
+mod common;
 use mwcc_oracle_core::{coff, pe};
 use serde_json::{Value, json};
 use std::{fs, path::PathBuf};
 fn fixtures() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/binary")
+    common::fixtures("binary")
 }
 #[test]
 fn pe_addresses_resources_and_search_match_python() {

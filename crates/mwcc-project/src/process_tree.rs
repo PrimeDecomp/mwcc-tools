@@ -1,6 +1,10 @@
 //! Private process groups for commands whose children can keep writing after a timeout.
 use anyhow::{Context, Result};
-use std::process::{Child, Command};
+use std::{
+    process::{Child, Command, ExitStatus},
+    thread,
+    time::{Duration, Instant},
+};
 
 #[derive(Debug)]
 pub struct TerminationFailed(pub String);
@@ -68,4 +72,36 @@ fn terminate_inner(child: &mut Child) -> Result<()> {
     child.kill()?;
     child.wait().context("reap timed-out command")?;
     Ok(())
+}
+
+/// How a [`wait`] ended: the command's status, and whether it was stopped (at most one of the two).
+#[derive(Debug, Clone, Copy)]
+pub struct Waited {
+    pub status: ExitStatus,
+    pub timed_out: bool,
+    pub cancelled: bool,
+}
+/// Wait for a [`prepare`]d command, terminating its tree when `cancel` says so or `timeout`
+/// passes (a cancel seen at the timeout counts as the cancel).
+pub fn wait(child: &mut Child, timeout: Duration, cancel: &dyn Fn() -> bool) -> Result<Waited> {
+    let began = Instant::now();
+    loop {
+        if let Some(status) = child.try_wait()? {
+            return Ok(Waited {
+                status,
+                timed_out: false,
+                cancelled: false,
+            });
+        }
+        let cancelled = cancel();
+        if cancelled || began.elapsed() >= timeout {
+            terminate(child)?;
+            return Ok(Waited {
+                status: child.wait()?,
+                timed_out: !cancelled,
+                cancelled,
+            });
+        }
+        thread::sleep(Duration::from_millis(10));
+    }
 }

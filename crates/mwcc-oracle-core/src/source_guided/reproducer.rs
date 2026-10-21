@@ -580,7 +580,7 @@ pub fn export(
         identity(
             &analyzer_sha,
             checker_inputs.as_ref(),
-            target.as_ref().map(|b| state::digest(b)).as_deref()
+            target.as_ref().map(state::digest).as_deref()
         )? == analysis_sha,
         "original analyzer/checker/proof inputs/target do not match retained analysis identity"
     );

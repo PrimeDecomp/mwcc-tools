@@ -91,12 +91,6 @@ pub fn is_record(kind: &str) -> bool {
 fn gap(detail: &str) -> Evaluation {
     Evaluation::indeterminate(EvidenceGap::MissingGraphSnapshot, detail)
 }
-fn known() -> Evaluation {
-    Evaluation {
-        state: EvaluationState::Satisfied,
-        reasons: vec![],
-    }
-}
 fn number(r: &Record, field: &str) -> Result<u32> {
     r.number(field)
 }
@@ -306,7 +300,7 @@ pub fn parse(text: &str, history: &History, passes: &[Pass]) -> Result<GraphHist
                     .filter(|n| *n >= p.graph.physical_limit && !p.graph.nodes.contains_key(n))
                     .collect();
                 if p.valid {
-                    p.graph.observations = known();
+                    p.graph.observations = Evaluation::satisfied();
                 }
                 let p = pending.take().unwrap();
                 result.graphs.push(p.graph);
@@ -358,7 +352,7 @@ pub fn parse(text: &str, history: &History, passes: &[Pass]) -> Result<GraphHist
                     .iter()
                     .all(|g| g.observations.state == EvaluationState::Satisfied)
             {
-                known()
+                Evaluation::satisfied()
             } else {
                 gap("function-end graph count is missing or disagrees with complete graph captures")
             },
@@ -371,7 +365,7 @@ pub fn parse(text: &str, history: &History, passes: &[Pass]) -> Result<GraphHist
             .iter()
             .all(|g| g.observations.state == EvaluationState::Satisfied)
     {
-        result.observations = known();
+        result.observations = Evaluation::satisfied();
     } else {
         result.observations =
             gap("missing, unsupported, inconsistent or incomplete graph-phase capture");
@@ -480,7 +474,7 @@ fn bind(graph: &mut Graph, f: &Function, passes: &[Pass]) {
                     } else if graph.observations.state != EvaluationState::Satisfied {
                         gap("graph observation is incomplete")
                     } else {
-                        known()
+                        Evaluation::satisfied()
                     },
                 });
             }
@@ -526,7 +520,7 @@ fn bind(graph: &mut Graph, f: &Function, passes: &[Pass]) {
         } else if graph.observations.state != EvaluationState::Satisfied {
             gap("graph observation is incomplete")
         } else if node.binding.physical || !node.binding.direct.is_empty() {
-            known()
+            Evaluation::satisfied()
         } else {
             unknown_binding().evidence
         };

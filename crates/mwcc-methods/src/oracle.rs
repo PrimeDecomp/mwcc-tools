@@ -742,7 +742,7 @@ fn trace_source(
         cut_limit: limit(&params.cut_limit)?,
         merge_limit: limit(&params.merge_limit)?,
         keep_object: None,
-        timeout: Duration::from_millis(params.timeout_ms.unwrap_or(600_000)),
+        timeout: crate::timeout(params.timeout_ms),
     };
     let started = Instant::now();
     let compiled = runner::compile_controlled(&request, call.cancel)?;
@@ -894,7 +894,7 @@ fn oracle_trace(call: &mut Call<'_>, params: TraceParams) -> Result<TraceResult>
         .filter(|f| !f.is_empty())
         .cloned()
         .collect();
-    let timeout = Duration::from_millis(params.timeout_ms.unwrap_or(600_000));
+    let timeout = crate::timeout(params.timeout_ms);
     let which = unit_ref(&params);
     let loaded = which.as_ref().map(|w| resolve(call, w)).transpose()?;
     let mut timing = Timing::default();
@@ -1017,7 +1017,7 @@ fn oracle_regdiff(call: &mut Call<'_>, params: RegdiffParams) -> Result<RegdiffR
             &params.files,
             params.inline_max_size,
             &TraceOptions::default(),
-            Duration::from_millis(params.timeout_ms.unwrap_or(600_000)),
+            crate::timeout(params.timeout_ms),
         )?;
         let target = loaded.target(call.session, &mut timing)?;
         let started = Instant::now();

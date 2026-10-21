@@ -11,10 +11,7 @@ fn counter_sites(args: &[String]) -> Result<()> {
     while i < args.len() {
         match args[i].as_str() {
             "--write" => write = true,
-            "--root" => {
-                i += 1;
-                root = args.get(i).context("--root needs a value")?.into();
-            }
+            "--root" => root = crate::option_value(args, &mut i)?.into(),
             other => anyhow::bail!("unknown counter-sites argument {other}"),
         }
         i += 1;
@@ -56,8 +53,7 @@ pub fn run(args: &[String]) -> Result<()> {
         while i < args.len() {
             match args[i].as_str() {
                 option @ ("--root" | "--version") => {
-                    i += 1;
-                    let value = args.get(i).context("derive-guards option needs a value")?;
+                    let value = crate::option_value(args, &mut i)?;
                     if option == "--root" {
                         root = value.into();
                     } else {
@@ -82,10 +78,7 @@ pub fn run(args: &[String]) -> Result<()> {
         let mut i = 1;
         while i < args.len() {
             let option = &args[i];
-            i += 1;
-            let value = args
-                .get(i)
-                .context("provenance audit option needs a value")?;
+            let value = crate::option_value(args, &mut i)?;
             match option.as_str() {
                 "--root" => root = value.into(),
                 "--version" => version = value.clone(),

@@ -11,16 +11,13 @@ use crate::{
 use anyhow::{Context, Result, ensure};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 mod call_arguments;
 mod definitions;
 
 pub const FINGERPRINT_FORMAT_VERSION: u32 = 4;
 
-pub fn digest(bytes: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(bytes))
-}
+pub use crate::hash::sha256_hex as digest;
 pub fn graph<'a>(report: &'a Report, link: &str, class: u8, round: usize) -> Result<&'a Graph> {
     let functions: Vec<_> = report
         .history
@@ -273,9 +270,14 @@ pub fn fingerprint(g: &Graph, report: &Report, compilation: &Compilation) -> Res
         let normalized=binding.map(|b|json!({"name":b.source.name_bytes,"name_known":b.source.name_known,"name_complete":b.source.name_complete,"datatype":b.source.datatype,"storage":b.source.storage,"source_type_kind":b.source.type_kind,"source_type_size":b.source.type_size,"element_known":b.source.element_known,"element_type_kind":b.source.element_type_kind,"element_type_size":b.source.element_type_size,"byte_offset":b.byte_offset,"byte_size":b.byte_size,"bit_first":b.bit_first,"bit_last":b.bit_last,"flags":b.flags&3,"source_kind":b.source_kind,"temporary_type_kind":b.temporary.type_kind,"temporary_type_size":b.temporary.type_size}));
         (value.value,json!({"origin":normalized,"array_element":value.array_element,"observations":value.observations}))
     }).collect::<BTreeMap<_,_>>();
+    let f = report
+        .history
+        .functions
+        .iter()
+        .find(|f| f.id == g.function)
+        .unwrap();
     let mut nodes=g.nodes.iter().map(|(r,n)| {
         let neighbors=n.recorded_neighbors.iter().map(&rename).collect::<Vec<_>>();
-        let f=report.history.functions.iter().find(|f|f.id==g.function).unwrap();
         let origins=n.binding.direct.iter().chain(&n.binding.contributors).map(|id| {
             let b=&f.births[(id.sequence-1) as usize];
             json!({"site":b.site,"phase":b.phase,"generation":b.generation,"object":b.object.as_ref().map(|o|json!({"part":o.part,"datatype":o.datatype,"storage":o.storage,"type_kind":o.type_kind,"type_size":o.type_size,"name":o.name_bytes,"complete":o.name_complete,"known":o.name_known})),

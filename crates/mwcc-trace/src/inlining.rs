@@ -1,5 +1,6 @@
 use crate::trace::Record;
 use anyhow::{Context, Result};
+use indexmap::IndexMap;
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 
@@ -90,7 +91,8 @@ fn sensitivity(
     terms: &[(Vec<String>, String, Option<i64>)],
     bodies: &BTreeMap<String, i64>,
 ) -> Vec<Value> {
-    let mut out: Vec<Value> = vec![];
+    // (each path, kind and delta once, in first-seen order: whether it flips the decision, and how often)
+    let mut seen: IndexMap<(&[String], &str, i64), (bool, u64)> = IndexMap::new();
     for (path, kind, cost) in terms {
         let delta = if kind == "body" {
             cost.map(|c| 1 - c)
@@ -110,18 +112,17 @@ fn sensitivity(
                 && record["full_cost"].as_i64().unwrap_or(0) + delta <= threshold
         };
         if flips || delta.abs() <= 2 {
-            if let Some(existing) = out
-                .iter_mut()
-                .find(|v| v["path"] == json!(path) && v["kind"] == *kind && v["delta"] == delta)
-            {
-                existing["count"] = json!(existing["count"].as_u64().unwrap() + 1);
-            } else {
-                out.push(
-                    json!({"path": path, "kind": kind, "delta": delta, "flips": flips, "count": 1}),
-                );
-            }
+            seen.entry((path.as_slice(), kind.as_str(), delta))
+                .or_insert((flips, 0))
+                .1 += 1;
         }
     }
+    let mut out: Vec<Value> = seen
+        .into_iter()
+        .map(|((path, kind, delta), (flips, count))| {
+            json!({"path": path, "kind": kind, "delta": delta, "flips": flips, "count": count})
+        })
+        .collect();
     out.sort_by_key(|s| (s["flips"] != true, s["delta"].as_i64().unwrap().abs()));
     out
 }

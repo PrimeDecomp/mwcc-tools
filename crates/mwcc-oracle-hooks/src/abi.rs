@@ -51,6 +51,34 @@ pub unsafe fn wanted(name: &CStr) -> bool {
         !value.is_null() && *value != 0 && *value != b'0'
     }
 }
+/// The first byte of the variable NAME's value (a level, as `2`): 0 when it is not set.
+pub unsafe fn level(name: &CStr) -> u8 {
+    unsafe {
+        let value = getenv(name.as_ptr());
+        if value.is_null() { 0 } else { *value }
+    }
+}
+/// Write TEXT's bytes (at most LIMIT of them; none when it is null) to OUT as lower-case hex, and a NUL: how many,
+/// and whether that is all of TEXT (it is not null, and its NUL is within LIMIT or right after).
+pub unsafe fn hex_into(out: *mut u8, text: *const u8, limit: usize) -> (usize, bool) {
+    unsafe {
+        let mut length = 0;
+        if !text.is_null() {
+            while length < limit && text.add(length).read() != 0 {
+                let byte = text.add(length).read();
+                let digit = |v: u8| if v < 10 { b'0' + v } else { b'a' + v - 10 };
+                out.add(length * 2).write(digit(byte >> 4));
+                out.add(length * 2 + 1).write(digit(byte & 15));
+                length += 1;
+            }
+        }
+        out.add(length * 2).write(0);
+        (
+            length,
+            !text.is_null() && (length < limit || text.add(length).read() == 0),
+        )
+    }
+}
 /// Read a packed field or unaligned x86 instruction operand without making references.
 pub unsafe fn read<T: Copy>(base: *const u8, offset: usize) -> T {
     unsafe { ptr::read_unaligned(base.add(offset).cast::<T>()) }

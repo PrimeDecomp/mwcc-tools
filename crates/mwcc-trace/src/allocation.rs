@@ -1,6 +1,6 @@
 //! Allocation analysis with schema-6 trace semantics.
 use crate::trace::{Allocation, Instruction, Round, Snapshot};
-use crate::version::{Version, class_name, opcode_names};
+use crate::version::{Version, is_class, opcode_names};
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -353,7 +353,7 @@ pub fn analyze(allocation: &Allocation, version: Version) -> Value {
         let rounds: Vec<_> = before
             .rounds
             .iter()
-            .filter(|r| class_name(r.class) == class)
+            .filter(|r| is_class(r.class, class))
             .collect();
         let last = rounds.last().copied();
         let mut numbers: BTreeSet<_> = live
@@ -418,15 +418,10 @@ pub fn analyze(allocation: &Allocation, version: Version) -> Value {
                 entry["state"] = json!("coalesced");
                 entry["coalesced_into"] = json!((n.color >= 0).then_some(n.color));
                 if colors.is_empty() && n.color >= 0 {
-                    let mut into = n.color;
-                    let mut seen = BTreeSet::new();
                     let r = last.unwrap();
-                    while into >= 32 && seen.insert(into) {
-                        into = r.colors.get(&(into as u32)).map_or_else(
-                            || r.nodes.get(&(into as u32)).map_or(-1, |n| n.color),
-                            |c| c.0,
-                        );
-                    }
+                    let into = crate::colouring::follow_coalesced(n.color, r, |v| {
+                        r.colors.get(&v).map(|c| c.0)
+                    });
                     entry["phys"] = json!((0..32).contains(&into).then_some(into));
                 }
             } else if traced.is_some_and(|c| c.1 & 1 != 0) {

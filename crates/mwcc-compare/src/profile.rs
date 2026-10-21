@@ -179,30 +179,21 @@ pub fn penalty(t: &[u32], o: &[u32]) -> (u64, Profile) {
     let ok: Vec<u32> = o.iter().map(|&w| opkey(w)).collect();
     let pairs = align(&tk, &ok);
     let mut pen = 0;
-    let mut tm = vec![false; t.len()];
-    let mut om = vec![false; o.len()];
     for &(i, j) in &pairs {
-        tm[i] = true;
-        om[j] = true;
         pen += classify_pair(t[i], o[j], &mut prof);
     }
     // Unmatched instructions per alignment gap: pairs of different opcodes in the same gap are
     // substitutions; the rest are paired by opcode across gaps as reorderings, else ins/del.
     let mut del: Vec<u32> = Vec::new();
     let mut ins: Vec<u32> = Vec::new();
-    let mut bounds: Vec<(usize, usize)> = pairs.clone();
-    bounds.push((t.len(), o.len()));
+    let bounds = pairs.iter().copied().chain([(t.len(), o.len())]);
     let (mut pi, mut pj) = (0usize, 0usize);
-    for &(bi, bj) in &bounds {
-        let gd: Vec<u32> = (pi..bi).map(|i| tk[i]).collect();
-        let gi: Vec<u32> = (pj..bj).map(|j| ok[j]).collect();
-        let k = gd.len().min(gi.len());
+    for (bi, bj) in bounds {
         // Same opcode in one gap would have been aligned unless order differs: keep those for
         // reorder pairing; substitute the rest pairwise.
         let mut gd_rest = Vec::new();
-        let mut gi_rest = gi.clone();
-        let mut subst = 0;
-        for &d in &gd {
+        let mut gi_rest: Vec<u32> = ok[pj..bj].to_vec();
+        for &d in &tk[pi..bi] {
             if let Some(pos) = gi_rest.iter().position(|&x| x == d) {
                 // equal opcode within the gap: a local reordering
                 gi_rest.remove(pos);
@@ -213,13 +204,10 @@ pub fn penalty(t: &[u32], o: &[u32]) -> (u64, Profile) {
             }
         }
         let k2 = gd_rest.len().min(gi_rest.len());
-        let _ = k;
-        subst += k2;
         prof.substituted += k2 as u32;
         pen += k2 as u64 * PEN_SUBST;
         del.extend(gd_rest.into_iter().skip(k2));
         ins.extend(gi_rest.into_iter().skip(k2));
-        let _ = subst;
         pi = bi + 1;
         pj = bj + 1;
     }

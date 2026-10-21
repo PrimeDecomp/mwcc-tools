@@ -19,7 +19,6 @@ use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::{
     collections::{BTreeMap, BTreeSet},
-    fs,
     path::Path,
 };
 
@@ -123,9 +122,7 @@ pub fn plan(root: &Path, version: &str) -> Result<Vec<Site>> {
     );
     let original = Original::read(root, version)?;
     let pe = original.pe()?;
-    let metadata = executable::read_symbols(&fs::read_to_string(
-        root.join(format!("config/{version}/symbols.txt")),
-    )?)?;
+    let metadata = executable::retail_symbols(root, &version)?;
     // The temp-object wrapper reads saved EBX only at the scalarizer's sole
     // audited call return. Guard both the consumer and the field constructor;
     // reconstructed IROVarPart declarations alone do not establish these bytes.
@@ -283,7 +280,7 @@ pub fn plan(root: &Path, version: &str) -> Result<Vec<Site>> {
     };
     ensure!(
         executable::size(&builder.options)? == 0x1e3
-            && format!("{:x}", Sha256::digest(pe.read(builder.address, 0x1e3)?)) == builder_hash,
+            && crate::hash::sha256_hex(pe.read(builder.address, 0x1e3)?) == builder_hash,
         "scalar array builder layout guard failed"
     );
     for r in audit.references.iter().filter(|r| r.write) {
@@ -540,9 +537,7 @@ pub fn install(root: &Path, version: &str, inputs: &[(String, Vec<u8>)]) -> Resu
     let original = Original::read(root, version)?;
     let pe = original.pe()?;
     let fixups = executable::base_relocations(&pe)?;
-    let metadata = executable::read_symbols(&fs::read_to_string(
-        root.join(format!("config/{version}/symbols.txt")),
-    )?)?;
+    let metadata = executable::retail_symbols(root, &version)?;
     let scalar_helpers = ["_fn_00460780", "_fn_004601f0", "_create_temp_object"];
     let mut scalar_checked = BTreeSet::new();
     // Check the actual split inputs too: a pristine PE alone cannot establish

@@ -2,6 +2,7 @@
 use crate::{
     coff::Object,
     executable::{self, Original},
+    fsutil::write_under as write,
 };
 use anyhow::{Context, Result, ensure};
 use indexmap::IndexMap;
@@ -176,12 +177,6 @@ pub fn single_coff(data: &[u8], name: Option<&str>, code: bool, bss_size: u32) -
     out.extend(strings);
     Ok(out)
 }
-fn write(root: &Path, path: &str, data: &[u8]) -> Result<()> {
-    let path = root.join(path);
-    fs::create_dir_all(path.parent().context("output lacks parent")?)?;
-    fs::write(path, data)?;
-    Ok(())
-}
 pub fn extract(root: &Path, version: &str) -> Result<()> {
     let inventory = inventory(root, version)?;
     let pe = inventory.original.pe()?;
@@ -277,14 +272,11 @@ pub fn check(root: &Path, version: &str, inventory: &Inventory) -> Result<IndexM
                     .filter(|r| r.kind == 6)
                     .map(|r| u64::from(address) + r.offset as u64)
                     .collect();
-                let expected: BTreeSet<_> = fixups
-                    .iter()
-                    .filter(|a| {
-                        u64::from(**a) >= u64::from(address)
-                            && u64::from(**a) < u64::from(address) + u64::from(size)
-                    })
-                    .map(|a| u64::from(*a))
-                    .collect();
+                let expected: BTreeSet<_> =
+                    executable::fixups_in(&fixups, address, u64::from(size))
+                        .iter()
+                        .map(|a| u64::from(*a))
+                        .collect();
                 let exact = body == pe.read(address, size as usize)? && actual == expected;
                 Check {
                     body: Some(body),
@@ -403,7 +395,8 @@ pub fn write_text(root: &Path, path: &str, text: &str) -> Result<()> {
     } else {
         text.to_owned()
     };
-    write(root, path, text.as_bytes())
+    write(root, path, text.as_bytes())?;
+    Ok(())
 }
 pub fn write_json(root: &Path, path: &str, value: &Value) -> Result<()> {
     write_text(root, path, &(serde_json::to_string_pretty(value)? + "\n"))

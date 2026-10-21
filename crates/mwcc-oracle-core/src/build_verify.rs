@@ -8,8 +8,7 @@ use std::{
     fs,
     path::{Path, PathBuf},
     process::{Command, Stdio},
-    thread,
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -116,20 +115,14 @@ impl Backend for Native {
         let mut child = command
             .spawn()
             .with_context(|| format!("launch {command:?}"))?;
-        let began = Instant::now();
-        let status = loop {
-            if let Some(status) = child.try_wait()? {
-                break status;
-            }
-            if began.elapsed() >= request.timeout {
-                crate::process_tree::terminate(&mut child)?;
-                anyhow::bail!(
-                    "Ninja timed out after {} seconds",
-                    request.timeout.as_secs_f64()
-                );
-            }
-            thread::sleep(Duration::from_millis(10));
-        };
+        let waited = crate::process_tree::wait(&mut child, request.timeout, &|| false)?;
+        if waited.timed_out {
+            anyhow::bail!(
+                "Ninja timed out after {} seconds",
+                request.timeout.as_secs_f64()
+            );
+        }
+        let status = waited.status;
         Ok(CommandResult {
             success: status.success(),
             output: String::from_utf8_lossy(&fs::read(log.path())?).replace("\r\n", "\n"),

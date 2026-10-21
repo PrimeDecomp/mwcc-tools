@@ -6,9 +6,8 @@ use sha2::{Digest, Sha256};
 use std::{
     fs,
     path::{Path, PathBuf},
-    process::{Child, ExitStatus, Stdio},
-    thread,
-    time::{Duration, Instant},
+    process::Stdio,
+    time::Duration,
 };
 use tempfile::TempDir;
 
@@ -236,7 +235,11 @@ fn execute_process_controlled(
     let mut child = command
         .spawn()
         .with_context(|| format!("launch {}", executable.display()))?;
-    let (status, timed_out, cancelled) = wait_controlled(&mut child, timeout, cancel)?;
+    let process_tree::Waited {
+        status,
+        timed_out,
+        cancelled,
+    } = process_tree::wait(&mut child, timeout, cancel)?;
     let bytes = fs::read(log.path())?;
     let diagnostics = bytes.iter().map(|b| char::from(*b)).collect();
     Ok(Execution {
@@ -250,25 +253,6 @@ fn execute_process_controlled(
             vec![]
         },
     })
-}
-
-fn wait_controlled(
-    child: &mut Child,
-    timeout: Duration,
-    cancel: &dyn Fn() -> bool,
-) -> Result<(ExitStatus, bool, bool)> {
-    let began = Instant::now();
-    loop {
-        if let Some(status) = child.try_wait()? {
-            return Ok((status, false, false));
-        }
-        let cancelled = cancel();
-        if cancelled || began.elapsed() >= timeout {
-            process_tree::terminate(child)?;
-            return Ok((child.wait()?, !cancelled, cancelled));
-        }
-        thread::sleep(Duration::from_millis(10));
-    }
 }
 
 fn absolute(base: &Path, path: &Path) -> Result<PathBuf> {
@@ -596,7 +580,7 @@ pub fn compile_controlled(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::process::Command;
+    use std::{process::Command, thread, time::Instant};
     #[test]
     fn compiler_timeout_or_cancellation_stops_descendants_before_reporting_completion() {
         for cancellation in [false, true] {
@@ -656,8 +640,12 @@ mod tests {
                 thread::sleep(Duration::from_millis(10));
             }
             let was_ready = ready.exists();
-            let (status, timed_out, cancelled) =
-                wait_controlled(&mut child, Duration::from_millis(20), &|| cancellation).unwrap();
+            let process_tree::Waited {
+                status,
+                timed_out,
+                cancelled,
+            } = process_tree::wait(&mut child, Duration::from_millis(20), &|| cancellation)
+                .unwrap();
             assert!(was_ready, "compiler did not start its descendant");
             assert_eq!(timed_out, !cancellation);
             assert_eq!(cancelled, cancellation);

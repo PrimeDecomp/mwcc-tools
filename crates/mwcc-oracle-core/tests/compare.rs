@@ -1,9 +1,10 @@
+mod common;
 use mwcc_oracle_core::{coff::Object, compare, pe::Pe};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{fs, path::PathBuf};
 fn fixtures() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/compare")
+    common::fixtures("compare")
 }
 #[test]
 fn reference_inputs_have_pinned_provenance() {

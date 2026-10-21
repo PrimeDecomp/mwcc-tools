@@ -5,7 +5,6 @@ use indexmap::IndexMap;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use sha1::{Digest, Sha1};
 use std::{fs, path::Path};
 pub fn hex(value: &str) -> Result<u32> {
     Ok(u32::from_str_radix(
@@ -40,6 +39,13 @@ pub struct Splits {
     pub sections: IndexMap<String, IndexMap<String, String>>,
     pub units: Vec<Unit>,
 }
+/// The symbols of `config/VERSION/symbols.txt` under ROOT.
+pub fn retail_symbols(root: &Path, version: &impl std::fmt::Display) -> Result<Vec<Symbol>> {
+    read_symbols(&fs::read_to_string(
+        root.join(format!("config/{version}/symbols.txt")),
+    )?)
+}
+
 pub fn read_symbols(text: &str) -> Result<Vec<Symbol>> {
     let regex = Regex::new(r"^(\S+) = ([^:\s]+):0x([0-9A-Fa-f]+);(?: // (.*))?$")?;
     let mut out = vec![];
@@ -141,7 +147,7 @@ impl Original {
                 .context("config has no original executable")?,
         );
         let data = fs::read(&path).with_context(|| format!("read {}", path.display()))?;
-        let actual = format!("{:x}", Sha1::digest(&data));
+        let actual = crate::hash::sha1_hex(&data);
         ensure!(
             config["sha1"] == actual,
             "{}: SHA-1 is not {}",
@@ -194,6 +200,13 @@ pub fn base_relocations(pe: &Pe<'_>) -> Result<Vec<u32>> {
     }
     fixups.sort();
     Ok(fixups)
+}
+/// The FIXUPS (sorted, as [`base_relocations`] returns them) at ADDRESS..ADDRESS + SIZE.
+pub fn fixups_in(fixups: &[u32], address: u32, size: u64) -> &[u32] {
+    let end = u64::from(address) + size;
+    let low = fixups.partition_point(|a| *a < address);
+    let high = fixups.partition_point(|a| u64::from(*a) < end);
+    &fixups[low..high.max(low)]
 }
 pub fn section_flags(kind: &str) -> Result<u32> {
     Ok(match kind {

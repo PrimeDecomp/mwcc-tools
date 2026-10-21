@@ -1,6 +1,6 @@
 //! Scalarization observers and a cdecl entry that preserves the original caller.
 use crate::{
-    abi::{OracleTrace_Printf, read, wanted},
+    abi::{OracleTrace_Printf, hex_into, read, wanted},
     expression::{object_name, type_id, type_size},
     pcode,
 };
@@ -265,17 +265,7 @@ unsafe fn scalar_binding(ty: *const u8, site: u32, part: *const u8, temporary: *
             name.add(10)
         };
         let hex = ptr::addr_of_mut!(NAME_HEX).cast::<u8>();
-        let mut length = 0;
-        if !text.is_null() {
-            while length < 256 && text.add(length).read() != 0 {
-                let byte = text.add(length).read();
-                let digit = |v: u8| if v < 10 { b'0' + v } else { b'a' + v - 10 };
-                hex.add(length * 2).write(digit(byte >> 4));
-                hex.add(length * 2 + 1).write(digit(byte & 15));
-                length += 1;
-            }
-        }
-        hex.add(length * 2).write(0);
+        let (_, complete) = hex_into(hex, text, 256);
         let binding = ptr::addr_of!(SCALAR_BINDINGS).read().wrapping_add(1);
         ptr::addr_of_mut!(SCALAR_BINDINGS).write(binding);
         OracleTrace_Printf(c"pv.scalar.binding schema=1 pass=%lu binding=%lu function=%lu function_object=%08x site=%lx part=%08x source_linear=%08x source_index=%lu source_kind=%lu variable=%08x source_object=%08x source_info=%08x source_type=%08x source_type_kind=%d source_type_size=%ld source_datatype=%lu source_storage=%lu source_name_known=%d source_name_complete=%d source_name_hex=%s byte_offset=%ld byte_size=%ld bit_first=%ld bit_last=%ld flags=%lu temporary=%08x temporary_info=%08x temporary_type=%08x temporary_type_kind=%d temporary_type_size=%ld source_element_known=%d source_element_type_kind=%d source_element_type_size=%ld\n".as_ptr(),
@@ -283,7 +273,7 @@ unsafe fn scalar_binding(ty: *const u8, site: u32, part: *const u8, temporary: *
             part as u32,source as u32,u32::from(read::<u16>(source,8)),u32::from(read::<u8>(source,0)),variable as u32,
             object as u32,source_info as u32,source_type as u32,type_id(source_type),source_size,
             u32::from(read::<u8>(object,2)),u32::from(read::<u16>(object,22)),i32::from(!name.is_null()),
-            i32::from(!name.is_null() && (length < 256 || text.add(length).read() == 0)),hex.cast::<core::ffi::c_char>(),
+            i32::from(complete),hex.cast::<core::ffi::c_char>(),
             offset,size,read::<i32>(part,18),read::<i32>(part,22),u32::from(flags),temporary as u32,
             temporary_info as u32,temporary_type as u32,type_id(temporary_type),type_size(temporary_type),
             i32::from(!element.is_null()),type_id(element),type_size(element));

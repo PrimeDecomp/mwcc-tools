@@ -1,3 +1,4 @@
+mod common;
 use mwcc_oracle_core::{
     build_config::{self, Platform, Request},
     relink_check,
@@ -6,7 +7,7 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::{fs, path::PathBuf};
 fn fixtures() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/build-config")
+    common::fixtures("build-config")
 }
 fn normalize(text: &str) -> String {
     let mut lines = vec![];

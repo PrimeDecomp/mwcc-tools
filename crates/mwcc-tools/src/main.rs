@@ -13,10 +13,24 @@ mod release_cli;
 mod run_cli;
 mod serve_cli;
 
+/// The value of the option ARGS[I], the argument after it (I moves to it).
+fn option_value<'a>(args: &'a [String], i: &mut usize) -> Result<&'a String> {
+    let option = &args[*i];
+    *i += 1;
+    args.get(*i)
+        .with_context(|| format!("{option} needs a value"))
+}
+
+/// A `--timeout SECS` value: finite and positive.
+fn timeout(value: &str) -> Result<Duration> {
+    let timeout = Duration::try_from_secs_f64(value.parse()?)
+        .context("timeout must be finite and positive")?;
+    anyhow::ensure!(!timeout.is_zero(), "timeout must be positive");
+    Ok(timeout)
+}
+
 fn corpus_command(args: &[String]) -> Result<()> {
-    let mut root = env::var_os("MWCC_ORACLE_ROOT")
-        .map(PathBuf::from)
-        .unwrap_or(env::current_dir()?);
+    let mut root = None;
     let mut version = Version::Gc132;
     let mut canaries = None;
     let mut project = None;
@@ -51,11 +65,9 @@ fn corpus_command(args: &[String]) -> Result<()> {
             continue;
         }
         let option = args[i].as_str();
-        let value = args
-            .get(i + 1)
-            .with_context(|| format!("{option} needs a value"))?;
+        let value = option_value(args, &mut i)?;
         match option {
-            "--oracle-root" => root = value.into(),
+            "--oracle-root" => root = Some(PathBuf::from(value)),
             "--version" => version = Version::parse(value)?,
             "--canaries" => canaries = Some(PathBuf::from(value)),
             "--prime" | "--project" => project = Some(PathBuf::from(value)),
@@ -66,10 +78,10 @@ fn corpus_command(args: &[String]) -> Result<()> {
             "--limit" => limit = Some(value.parse::<usize>()?),
             "--list" => list = Some(PathBuf::from(value)),
             "--jobs" => jobs = value.parse()?,
-            "--timeout" => timeout = Duration::try_from_secs_f64(value.parse()?)?,
+            "--timeout" => timeout = self::timeout(value)?,
             _ => bail!("unknown corpus option {option}"),
         }
-        i += 2;
+        i += 1;
     }
     let mut inputs = vec![];
     if let Some(path) = canaries {
@@ -90,7 +102,7 @@ fn corpus_command(args: &[String]) -> Result<()> {
         .map(|module| wasm_compiler(version, &module))
         .transpose()?;
     let report = corpus::run(&corpus::Request {
-        root,
+        root: root.map_or_else(run_cli::root, Ok)?,
         version,
         executable: exe,
         jobs: inputs,
@@ -179,6 +191,7 @@ Guides: docs/oracle.md; what is open: docs/open-work.md."#
 }
 
 fn run() -> Result<()> {
+    // (`--option=value` is `--option value`, up to a `--`, after which the arguments are a compiler's)
     let mut args = vec![];
     let mut compiler_flags = false;
     for arg in env::args().skip(1) {
@@ -186,79 +199,8 @@ fn run() -> Result<()> {
             compiler_flags = true;
         }
         if !compiler_flags
+            && arg.starts_with("--")
             && let Some((option, value)) = arg.split_once('=')
-            && matches!(
-                option,
-                "--oracle-root"
-                    | "--working-directory"
-                    | "--from-ninja"
-                    | "--version"
-                    | "--override"
-                    | "--keep-object"
-                    | "--cut-limit"
-                    | "--merge-limit"
-                    | "--timeout"
-                    | "--function"
-                    | "--link"
-                    | "--near"
-                    | "--ir"
-                    | "--exchange"
-                    | "--target"
-                    | "--inline-cost"
-                    | "--instantiation"
-                    | "--source"
-                    | "--load"
-                    | "--save"
-                    | "--class"
-                    | "--canaries"
-                    | "--prime"
-                    | "--project"
-                    | "--keep"
-                    | "--exe"
-                    | "--limit"
-                    | "--list"
-                    | "--jobs"
-                    | "--target-asm"
-                    | "--want"
-                    | "--order"
-                    | "--move"
-                    | "--drop"
-                    | "--degree"
-                    | "--unlink"
-                    | "--iterations"
-                    | "--seed"
-                    | "--restarts"
-                    | "--top"
-                    | "--fixed"
-                    | "--nodes"
-                    | "--kinds"
-                    | "--callee"
-                    | "--section"
-                    | "--git"
-                    | "--unit"
-                    | "--candidate"
-                    | "--objdiff"
-                    | "--trace"
-                    | "--diff-json"
-                    | "--object"
-                    | "--compiler"
-                    | "--root"
-                    | "--output"
-                    | "--reference"
-                    | "--out"
-                    | "--mode"
-                    | "--producer"
-                    | "--binary"
-                    | "--source-revision"
-                    | "--notices"
-                    | "--frontend-version"
-                    | "--first-round"
-                    | "--second-round"
-                    | "--first-snapshot"
-                    | "--second-snapshot"
-                    | "--ninja"
-                    | "--rustc"
-            )
         {
             args.push(option.to_owned());
             args.push(value.to_owned());

@@ -1,5 +1,5 @@
 //! Historical-linker orchestration with retail hooks, supplements and exact SHA gates.
-use crate::{coff, executable, pe, process_tree, runner};
+use crate::{coff, executable, fsutil::write_under as write, pe, process_tree, runner};
 use anyhow::{Context, Result, ensure};
 use indexmap::IndexMap;
 use regex::Regex;
@@ -10,8 +10,7 @@ use std::{
     fs,
     path::{Path, PathBuf},
     process::Stdio,
-    thread,
-    time::{Duration, Instant},
+    time::Duration,
 };
 fn basename(path: &str) -> &str {
     path.rsplit(['\\', '/']).next().unwrap()
@@ -97,12 +96,6 @@ pub struct Report {
     pub messages: Vec<String>,
     pub linked_from_source: usize,
 }
-fn write(root: &Path, path: &str, data: &[u8]) -> Result<()> {
-    let path = root.join(path);
-    fs::create_dir_all(path.parent().context("output lacks parent")?)?;
-    fs::write(path, data)?;
-    Ok(())
-}
 fn execute(request: &Request, inputs: &[String]) -> Result<(Option<i32>, String)> {
     mwld(&request.root, inputs, &request.output, request.timeout)
 }
@@ -138,17 +131,11 @@ pub fn mwld(
     let mut child = command
         .spawn()
         .with_context(|| format!("launch {}", executable.display()))?;
-    let start = Instant::now();
-    let status = loop {
-        if let Some(status) = child.try_wait()? {
-            break status;
-        }
-        if start.elapsed() >= timeout {
-            process_tree::terminate(&mut child)?;
-            anyhow::bail!("linker timed out after {} seconds", timeout.as_secs_f64());
-        }
-        thread::sleep(Duration::from_millis(10));
-    };
+    let waited = process_tree::wait(&mut child, timeout, &|| false)?;
+    if waited.timed_out {
+        anyhow::bail!("linker timed out after {} seconds", timeout.as_secs_f64());
+    }
+    let status = waited.status;
     let data = fs::read(log.path())?;
     let text = data
         .iter()

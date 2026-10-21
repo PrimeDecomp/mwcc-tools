@@ -8,7 +8,6 @@ use crate::{
 };
 use anyhow::{Context, Result, ensure};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use std::{fs, path::Path};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -53,10 +52,6 @@ const POOLS: [(&str, &str); 5] = [
     ("local", "_data_0057fd84"),
     ("global", "_galloc_pool"),
 ];
-
-fn digest(bytes: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(bytes))
-}
 
 /// Audit all five pool descriptors, the local-heap lock, and the OOM callback.
 /// Pool descriptors are split over metadata symbols; the first symbol's size
@@ -131,9 +126,9 @@ pub fn capture(root: &Path, version: &str) -> Result<Audit> {
     Ok(Audit {
         format_version: 1,
         version: version.into(),
-        compiler_sha256: digest(&original.data),
-        symbol_metadata_sha256: digest(&metadata),
-        split_metadata_sha256: digest(&split_metadata),
+        compiler_sha256: crate::hash::sha256_hex(&original.data),
+        symbol_metadata_sha256: crate::hash::sha256_hex(&metadata),
+        split_metadata_sha256: crate::hash::sha256_hex(&split_metadata),
         local_lock_address: lock_address,
         local_lock: backend_audit::references(
             &pe,

@@ -1,6 +1,6 @@
 //! Block/stage observers. C layout and flag values are probed in blocks_layout.c.
 use crate::{
-    abi::{OracleTrace_Printf, getenv, read, wanted},
+    abi::{OracleTrace_Printf, level, read, wanted},
     pcode,
 };
 use core::{ffi::CStr, ptr};
@@ -33,7 +33,7 @@ unsafe fn list_count(mut link: *const u8) -> i32 {
 }
 unsafe fn block_list(phase: &CStr, function: *const u8) {
     unsafe {
-        let level = getenv(c"MWCC_ORACLE_BLOCKS".as_ptr());
+        let level = level(c"MWCC_ORACLE_BLOCKS");
         OracleTrace_Printf(
             c"bk.list phase=%s link=%s\n".as_ptr(),
             phase.as_ptr(),
@@ -52,7 +52,7 @@ unsafe fn block_list(phase: &CStr, function: *const u8) {
                 successors,
                 predecessors,
             );
-            if !level.is_null() && *level == b'2' {
+            if level == b'2' {
                 let mut ins = read::<*const u8>(block, 20);
                 while !ins.is_null() {
                     pcode::instruction(c"bk.i".as_ptr(), ins);

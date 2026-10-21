@@ -4,11 +4,11 @@
 //! bounds the target's calls imply), `tu.data_diff` (the data sections' layout against the target's) and
 //! `tu.header_impact` (what a header change does to the units that include it).
 use crate::{
-    Call, Method, Timing,
+    Call, Method, Timing, each,
     oracle::{Traced, trace_unit},
     unit::{Loaded, UnitRef, resolve},
 };
-use anyhow::{Context, Result, bail, ensure};
+use anyhow::{Context, Result, ensure};
 use mwcc_oracle_core::{
     SCHEMA_VERSION, data_diff, document, header_impact, inline_calibrate, inline_diff,
     inline_window, project, runner::TraceOptions, trace,
@@ -20,14 +20,8 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     path::{Path, PathBuf},
     process::Command,
-    sync::{
-        Arc, Mutex,
-        atomic::{AtomicUsize, Ordering},
-    },
-    time::Duration,
+    sync::Arc,
 };
-
-const TIMEOUT: Duration = Duration::from_secs(600);
 
 /// A unit and the files in place of the disk's.
 #[derive(Clone, Debug, Default, Deserialize, JsonSchema)]
@@ -74,7 +68,7 @@ fn documented(
         files,
         inline_max_size,
         options,
-        TIMEOUT,
+        crate::DEFAULT_TIMEOUT,
     )?;
     let parsed = trace::parse(&traced.trace)?;
     let document = document::build(
@@ -109,44 +103,6 @@ fn own_asm(loaded: &Loaded, directory: &Path) -> Result<PathBuf> {
             )
         }),
     }
-}
-
-/// RUN on each of ITEMS, JOBS at once, in order; stops at a cancel.
-fn each<T: Sync, R: Send>(
-    call: &Call<'_>,
-    items: &[T],
-    jobs: usize,
-    run: impl Fn(&T, &mut Timing) -> R + Sync,
-) -> Result<(Vec<R>, Timing)> {
-    let next = AtomicUsize::new(0);
-    let results: Mutex<Vec<(usize, R)>> = Mutex::default();
-    let timing = Mutex::new(Timing::default());
-    std::thread::scope(|scope| {
-        for _ in 0..jobs.clamp(1, items.len().max(1)) {
-            scope.spawn(|| {
-                loop {
-                    let index = next.fetch_add(1, Ordering::Relaxed);
-                    let Some(item) = items.get(index) else { break };
-                    if (call.cancel)() {
-                        break;
-                    }
-                    let mut own = Timing::default();
-                    let result = run(item, &mut own);
-                    timing.lock().unwrap().add(&own);
-                    results.lock().unwrap().push((index, result));
-                }
-            });
-        }
-    });
-    if (call.cancel)() {
-        bail!("cancelled");
-    }
-    let mut results = results.into_inner().unwrap();
-    results.sort_by_key(|(index, _)| *index);
-    Ok((
-        results.into_iter().map(|(_, r)| r).collect(),
-        timing.into_inner().unwrap(),
-    ))
 }
 
 #[derive(Debug, Default, Deserialize, JsonSchema)]
@@ -671,7 +627,7 @@ fn data_diff_method(call: &mut Call<'_>, params: DataDiffParams) -> Result<DataD
             full_cost: true,
             ..TraceOptions::default()
         },
-        TIMEOUT,
+        crate::DEFAULT_TIMEOUT,
     )?;
     call.timing.add(&timing);
     let directory = target_directory(&loaded, params.target_directory.as_deref())?;

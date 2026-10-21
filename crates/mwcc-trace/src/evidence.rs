@@ -45,6 +45,14 @@ pub struct Evaluation {
 }
 
 impl Evaluation {
+    /// Satisfied, with no reasons.
+    pub fn satisfied() -> Self {
+        Self {
+            state: EvaluationState::Satisfied,
+            reasons: Vec::new(),
+        }
+    }
+
     pub fn indeterminate(code: EvidenceGap, detail: impl Into<String>) -> Self {
         Self {
             state: EvaluationState::Indeterminate,

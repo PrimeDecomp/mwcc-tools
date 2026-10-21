@@ -4,7 +4,6 @@
 //! that an arbitrary executable was built from that checkout.
 use anyhow::{Context, Result, ensure};
 use serde_json::{Value, json};
-use sha2::{Digest, Sha256};
 use std::{collections::BTreeMap, fs, io::Write, path::Path};
 use zip::{CompressionMethod, ZipWriter, write::SimpleFileOptions};
 
@@ -16,7 +15,7 @@ pub const TARGETS: [&str; 4] = [
 ];
 
 pub fn sha256(bytes: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(bytes))
+    crate::hash::sha256_hex(bytes)
 }
 
 fn collect(root: &Path, relative: &str, files: &mut BTreeMap<String, Vec<u8>>) -> Result<()> {
@@ -325,18 +324,11 @@ pub fn write_with_notices(
 ) -> Result<String> {
     let bytes = assemble_with_notices(root, &fs::read(binary)?, target, revision, notice_dir)?;
     let digest = sha256(&bytes);
-    let parent = output
-        .parent()
-        .filter(|p| !p.as_os_str().is_empty())
-        .unwrap_or(Path::new("."));
-    fs::create_dir_all(parent)?;
     let name = output
         .file_name()
         .and_then(|n| n.to_str())
         .context("archive must have a UTF-8 filename")?;
-    let mut temp = tempfile::NamedTempFile::new_in(parent)?;
-    temp.write_all(&bytes)?;
-    temp.persist(output)?;
+    crate::fsutil::write_atomic(output, &bytes)?;
     fs::write(
         output.with_extension("zip.sha256"),
         format!("{digest}  {name}\n"),

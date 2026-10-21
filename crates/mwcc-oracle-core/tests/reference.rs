@@ -1,10 +1,11 @@
+mod common;
 use mwcc_oracle_core::{allocation, elf::Elf, trace, version::Version};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::{fs, path::PathBuf};
 
 fn fixtures() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/oracle")
+    common::fixtures("oracle")
 }
 
 #[test]

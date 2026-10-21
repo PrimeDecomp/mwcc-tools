@@ -1,4 +1,5 @@
-//! The GC 2.7 compiler built from gc2's sources as WebAssembly (`wasm/`, `mwcc-tools wasm build`), run in process.
+//! The compilers gc2's sources build (GC 2.6 and 2.7) as WebAssembly modules (`wasm/`; `mwcc-tools configure` and
+//! Ninja build them: docs/wasm.md), run in process.
 //!
 //! The module is the compiler, MSL and its Win32 layer; what it imports is the Win32 API that layer and the driver
 //! call (63 functions of kernel32 and version.dll). This crate implements them on the host: files and directories
@@ -55,7 +56,8 @@ const MODULE: u32 = 0x0040_0000;
 /// 100-ns intervals from 1601 to 1970
 const FILETIME_UNIX: u64 = 116_444_736_000_000_000;
 
-/// The compiled module, ready to run (compiled once; each run instantiates it).
+/// The compiled module, ready to run (compiled once; each run instantiates it). A clone shares it.
+#[derive(Clone)]
 pub struct Compiler {
     engine: Engine,
     module: InstancePre<State>,
@@ -179,6 +181,8 @@ struct State {
     consulted: Option<(Vec<Consulted>, std::collections::HashSet<Consulted>)>,
     /// The memory the run may grow to ([`memory_limit`]).
     limits: wasmtime::StoreLimits,
+    /// The instance's memory, once it is instantiated.
+    memory: Option<Memory>,
 }
 
 /// The environment's MWCC_ORACLE_FUNCTIONS: the functions a trace keeps the scopes of, one per line: a scope is kept
@@ -283,6 +287,7 @@ impl State {
             limits: wasmtime::StoreLimitsBuilder::new()
                 .memory_size(memory_limit())
                 .build(),
+            memory: None,
         }
     }
 
@@ -505,6 +510,7 @@ impl Compiler {
             .get_memory(&mut *store, "memory")
             .context("the module exports no memory")?;
         let pages = memory.size(&*store) as u32;
+        store.data_mut().memory = Some(memory);
         store.data_mut().heap.top = pages << 16;
         store.data_mut().heap.end = pages << 16;
         instance.get_typed_func::<(), ()>(&mut *store, "_start")
@@ -571,7 +577,7 @@ impl Compiler {
 }
 /// PATH without a verbatim prefix (`\\?\`, as canonicalized paths have on Windows): the form a process's current
 /// directory takes.
-fn plain(path: &Path) -> PathBuf {
+pub fn plain(path: &Path) -> PathBuf {
     let text = path.to_string_lossy();
     match text.strip_prefix(r"\\?\") {
         Some(rest) => match rest.strip_prefix(r"UNC\") {
@@ -624,6 +630,9 @@ fn command_line(program: &str, args: &[String]) -> String {
 // ------------------------------------------------------------------------------------------------ memory
 
 fn memory(caller: &mut Caller<'_, State>) -> Result<Memory> {
+    if let Some(memory) = caller.data().memory {
+        return Ok(memory);
+    }
     match caller.get_export("memory") {
         Some(Extern::Memory(m)) => Ok(m),
         _ => bail!("the module exports no memory"),
@@ -650,9 +659,9 @@ fn write_u32(caller: &mut Caller<'_, State>, at: u32, value: u32) -> Result<()> 
 }
 
 fn read_u32(caller: &mut Caller<'_, State>, at: u32) -> Result<u32> {
-    Ok(u32::from_le_bytes(
-        read_bytes(caller, at, 4)?.try_into().unwrap(),
-    ))
+    let mut bytes = [0; 4];
+    memory(caller)?.read(&*caller, at as usize, &mut bytes)?;
+    Ok(u32::from_le_bytes(bytes))
 }
 
 /// The NUL-terminated string at AT (Windows-1252, as the compiler's char strings are).
@@ -660,7 +669,9 @@ fn read_string(caller: &mut Caller<'_, State>, at: u32) -> Result<String> {
     let m = memory(caller)?;
     let data = m.data(&*caller);
     let start = at as usize;
-    let end = data[start..]
+    let end = data
+        .get(start..)
+        .with_context(|| format!("string at {at:#x} is outside memory"))?
         .iter()
         .position(|b| *b == 0)
         .map(|n| start + n)
@@ -1306,7 +1317,7 @@ fn imports(linker: &mut Linker<State>) -> Result<()> {
         if let Some(at) = c.data().command_line_at {
             return Ok(at);
         }
-        let mut text = latin1(&c.data().command_line.clone());
+        let mut text = latin1(&c.data().command_line);
         text.push(0);
         let at = heap_alloc(c, text.len() as u32, false)?;
         write_bytes(c, at, &text)?;
@@ -1315,7 +1326,7 @@ fn imports(linker: &mut Linker<State>) -> Result<()> {
     });
     import!(linker, "GetEnvironmentStrings", |c| -> u32 {
         let mut block = vec![];
-        for (name, value) in c.data().environment.clone() {
+        for (name, value) in &c.data().environment {
             block.extend(latin1(&format!("{name}={value}")));
             block.push(0);
         }
@@ -1787,13 +1798,20 @@ fn imports(linker: &mut Linker<State>) -> Result<()> {
             write_u32(c, read, 0)?;
             return Ok(1);
         }
-        let mut data = vec![0; count as usize];
-        let result = match c.data_mut().handles.get_mut(&handle) {
+        // (read into the buffer in the guest's memory)
+        let memory = memory(c)?;
+        let (guest, state) = memory.data_and_store_mut(&mut *c);
+        let target = guest
+            .get_mut(buffer as usize..)
+            .and_then(|rest| rest.get_mut(..count as usize))
+            .with_context(|| format!("ReadFile's buffer at {buffer:#x} is outside memory"));
+        let result = match state.handles.get_mut(&handle) {
             Some(Handle::Memory {
                 data: contents,
                 position,
                 ..
             }) => {
+                let data = target?;
                 let start = (*position as usize).min(contents.len());
                 let n = (contents.len() - start).min(data.len());
                 data[..n].copy_from_slice(&contents[start..start + n]);
@@ -1801,6 +1819,7 @@ fn imports(linker: &mut Linker<State>) -> Result<()> {
                 Ok(n)
             }
             Some(Handle::File { file, .. }) => {
+                let data = target?;
                 let mut total = 0;
                 loop {
                     match file.read(&mut data[total..]) {
@@ -1819,7 +1838,6 @@ fn imports(linker: &mut Linker<State>) -> Result<()> {
         };
         match result {
             Ok(n) => {
-                write_bytes(c, buffer, &data[..n])?;
                 write_u32(c, read, n as u32)?;
                 Ok(1)
             }

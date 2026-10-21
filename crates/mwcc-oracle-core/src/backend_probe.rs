@@ -4,7 +4,6 @@ use crate::{
     disassembly,
 };
 use anyhow::{Context, Result, ensure};
-use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 
 pub const FUNCTION: &str = "_SpillCode_CoalesceCopies";
@@ -81,7 +80,7 @@ pub fn instrument(data: &[u8]) -> Result<Vec<u8>> {
             .fill(0);
     }
     ensure!(
-        format!("{:x}", Sha256::digest(&normalized)) == HASH,
+        crate::hash::sha256_hex(&normalized) == HASH,
         "retail coalescer byte guard failed"
     );
     let decoder = disassembly::decoder()?;

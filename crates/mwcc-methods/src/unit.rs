@@ -13,7 +13,7 @@ use std::{
     collections::BTreeMap,
     path::PathBuf,
     sync::{Arc, Mutex},
-    time::{Duration, Instant},
+    time::Instant,
 };
 
 /// A unit a session has loaded, and its target once read.
@@ -215,7 +215,7 @@ pub(crate) fn compile_with(
             oracle_root: &session.oracle_root,
             inline_max_size: params.inline_max_size,
             trace: params.trace.as_ref(),
-            timeout: Duration::from_millis(params.timeout_ms.unwrap_or(600_000)),
+            timeout: crate::timeout(params.timeout_ms),
             cancel,
             cache: params
                 .cache

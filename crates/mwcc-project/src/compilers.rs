@@ -7,10 +7,13 @@ use anyhow::Result;
 use mwcc_trace::version::Version;
 use sha1::{Digest, Sha1};
 use std::{
+    collections::HashMap,
     ffi::OsString,
     fs,
     path::{Path, PathBuf},
     process::Command,
+    sync::Mutex,
+    time::{Duration, SystemTime},
 };
 
 /// The versions gc2's sources build.
@@ -34,6 +37,14 @@ fn same(a: &Path, b: &Path) -> bool {
     }
 }
 
+/// VERSION's stock compiler in ROOT (`build/compilers/GC/<dir>/mwcceppc.exe`).
+pub fn stock_executable(root: &Path, version: Version) -> PathBuf {
+    root.join(format!(
+        "build/compilers/GC/{}/mwcceppc.exe",
+        version.compiler_directory()
+    ))
+}
+
 /// VERSION's oracle executable in ROOT (what a traced run stands for).
 fn oracle_executable(root: &Path, version: &str) -> PathBuf {
     root.join(format!("build/{version}/oracle/mwcceppc.exe"))
@@ -46,10 +57,7 @@ pub fn module(root: &Path, executable: &Path) -> Option<(Version, PathBuf)> {
     }
     for name in VERSIONS {
         let version = Version::parse(name).ok()?;
-        let stock = root.join(format!(
-            "build/compilers/GC/{}/mwcceppc.exe",
-            version.compiler_directory()
-        ));
+        let stock = stock_executable(root, version);
         if !same(executable, &stock) && !same(executable, &oracle_executable(root, name)) {
             continue;
         }
@@ -68,18 +76,85 @@ pub fn traces(root: &Path, executable: &Path) -> bool {
 
 /// The module that runs in place of EXECUTABLE, a compiler anywhere (a project's own copy): [`module`] where it is
 /// one of ROOT's, else the module of the version whose original it is: the size and SHA-1 its `config.json` gives
-/// (`size`, `sha1`). Only an executable of one of those sizes is read.
+/// (`size`, `sha1`). Only an executable of one of those sizes is read, once while its file is unchanged.
 pub fn module_of_copy(root: &Path, executable: &Path) -> Option<(Version, PathBuf)> {
-    if let Some(found) = module(root, executable) {
-        return Some(found);
-    }
     if !enabled() {
         return None;
     }
-    let size = fs::metadata(executable).ok()?.len();
+    let identity = identity(root, executable);
+    [identity.own, identity.copy]
+        .into_iter()
+        .flatten()
+        .find_map(|name| {
+            let module = root.join(module_output(name));
+            module
+                .is_file()
+                .then(|| Some((Version::parse(name).ok()?, module)))
+                .flatten()
+        })
+}
+
+/// Which of [`VERSIONS`] an executable is: by its path, one of ROOT's compilers (the first that is), and by its
+/// size and SHA-1, a copy of the original a version's `config.json` gives (the first whose size it has).
+#[derive(Clone, Copy)]
+struct Identity {
+    own: Option<&'static str>,
+    copy: Option<&'static str>,
+}
+
+/// (ROOT, an executable) to the executable's stamp and identity.
+type Identities = HashMap<(PathBuf, PathBuf), ((SystemTime, u64), Identity)>;
+/// How long ago a file's last change must be for its stamp to identify it.
+const SETTLED: Duration = Duration::from_secs(2);
+static IDENTITIES: Mutex<Option<Identities>> = Mutex::new(None);
+
+/// [`Identity`] of EXECUTABLE, from this process's earlier look while its file is unchanged (its modification time
+/// and size). A file changed in the last [`SETTLED`] is looked at afresh, as a rewrite within its modification
+/// time's resolution would keep its stamp.
+fn identity(root: &Path, executable: &Path) -> Identity {
+    let metadata = fs::metadata(executable).ok();
+    let stamp = metadata.as_ref().and_then(|m| {
+        let modified = m.modified().ok()?;
+        let age = SystemTime::now().duration_since(modified).ok()?;
+        (age >= SETTLED).then_some((modified, m.len()))
+    });
+    let key = (root.to_path_buf(), executable.to_path_buf());
+    if let Some(stamp) = stamp
+        && let Some((known, identity)) = IDENTITIES
+            .lock()
+            .unwrap()
+            .as_ref()
+            .and_then(|m| m.get(&key))
+        && *known == stamp
+    {
+        return *identity;
+    }
+    let own = VERSIONS.into_iter().find(|name| {
+        let stock = Version::parse(name).map(|version| {
+            root.join(format!(
+                "build/compilers/GC/{}/mwcceppc.exe",
+                version.compiler_directory()
+            ))
+        });
+        stock.is_ok_and(|stock| same(executable, &stock))
+            || same(executable, &oracle_executable(root, name))
+    });
+    let copy = metadata.and_then(|metadata| copy_of(root, executable, metadata.len()));
+    let identity = Identity { own, copy };
+    if let Some(stamp) = stamp {
+        IDENTITIES
+            .lock()
+            .unwrap()
+            .get_or_insert_with(HashMap::new)
+            .insert(key, (stamp, identity));
+    }
+    identity
+}
+
+/// The first of [`VERSIONS`] whose `config.json` gives EXECUTABLE's SIZE and SHA-1.
+fn copy_of(root: &Path, executable: &Path, size: u64) -> Option<&'static str> {
     let mut digest = None;
     for name in VERSIONS {
-        let version = Version::parse(name).ok()?;
         let Ok(config) = fs::read(root.join(format!("config/{name}/config.json"))) else {
             continue;
         };
@@ -94,8 +169,7 @@ pub fn module_of_copy(root: &Path, executable: &Path) -> Option<(Version, PathBu
             None => digest.insert(format!("{:x}", Sha1::digest(fs::read(executable).ok()?))),
         };
         if config["sha1"].as_str() == Some(digest.as_str()) {
-            let module = root.join(module_output(name));
-            return module.is_file().then_some((version, module));
+            return Some(name);
         }
     }
     None

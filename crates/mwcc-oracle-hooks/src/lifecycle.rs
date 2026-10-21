@@ -1,7 +1,7 @@
 //! Counter observations execute after the actual retail memory write. Value IDs
 //! are function/sequence observations; semantic correspondence is a host task.
 use crate::{
-    abi::{OracleTrace_Printf, read, wanted},
+    abi::{OracleTrace_Printf, hex_into, read, wanted},
     backend::Registers,
     expression, pcode,
 };
@@ -403,15 +403,7 @@ unsafe fn expression_scope(
         // piece. Reserve physical slack and retain boundedness as explicit data.
         expression::describe(buffer.cast(), 512, node, 8);
         let hex = ptr::addr_of_mut!(HEX).cast::<u8>();
-        let mut length = 0usize;
-        while length < 2047 && buffer.add(length).read() != 0 {
-            let byte = buffer.add(length).read();
-            let digit = |v: u8| if v < 10 { b'0' + v } else { b'a' + v - 10 };
-            hex.add(length * 2).write(digit(byte >> 4));
-            hex.add(length * 2 + 1).write(digit(byte & 15));
-            length += 1;
-        }
-        hex.add(length * 2).write(0);
+        hex_into(hex, buffer, 2047);
         OracleTrace_Printf(c"pv.expression.begin function=%lu expression=%lu node=%08x kind=%d line=%ld scope=%s complete=0 parent=%lu target=%lx a=%lx b=%lx tree_hex=%s\n".as_ptr(),
             function_id(),next,node as u32,if node.is_null(){-1}else{i32::from(read::<u8>(node,0))},
             if statement.is_null(){-1}else{read::<i32>(statement,22)},scope.as_ptr(),previous,target,a,b,hex.cast::<core::ffi::c_char>());
@@ -501,22 +493,12 @@ unsafe fn object_binding(r: &Registers, d: &Descriptor, function: u32, value: u3
             name.add(10)
         };
         let hex = ptr::addr_of_mut!(HEX).cast::<u8>();
-        let mut length = 0usize;
-        if !text.is_null() {
-            while length < 256 && text.add(length).read() != 0 {
-                let byte = text.add(length).read();
-                let digit = |v: u8| if v < 10 { b'0' + v } else { b'a' + v - 10 };
-                hex.add(length * 2).write(digit(byte >> 4));
-                hex.add(length * 2 + 1).write(digit(byte & 15));
-                length += 1;
-            }
-        }
-        hex.add(length * 2).write(0);
+        let (_, complete) = hex_into(hex, text, 256);
         let ty = read::<*const u8>(object, 14);
         OracleTrace_Printf(c"pv.value.object function=%lu value=%lu object=%08x info=%08x part=%lu datatype=%d storage=%u flags_before=%u type_kind=%d type_size=%ld name_known=%d name_complete=%d name_hex=%s\n".as_ptr(),
             function,value,object as u32,info as u32,d.object_binding,i32::from(read::<u8>(object,2)),u32::from(read::<u16>(object,22)),
             u32::from(read::<u8>(info,36)),expression::type_id(ty),expression::type_size(ty),i32::from(!name.is_null()),
-            i32::from(!name.is_null() && (length < 256 || text.add(length).read() == 0)),hex.cast::<core::ffi::c_char>());
+            i32::from(complete),hex.cast::<core::ffi::c_char>());
     }
 }
 
@@ -558,44 +540,17 @@ unsafe fn operand_binding(r: &Registers, d: &Descriptor, function: u32, value: u
             link.add(10)
         };
         let hex = ptr::addr_of_mut!(HEX).cast::<u8>();
-        let mut length = 0;
-        if !text.is_null() {
-            while length < 512 && text.add(length).read() != 0 {
-                let byte = text.add(length).read();
-                let digit = |v: u8| if v < 10 { b'0' + v } else { b'a' + v - 10 };
-                hex.add(length * 2).write(digit(byte >> 4));
-                hex.add(length * 2 + 1).write(digit(byte & 15));
-                length += 1;
-            }
-        }
-        hex.add(length * 2).write(0);
+        let (_, complete) = hex_into(hex, text, 512);
         OracleTrace_Printf(c"pv.value.materialization schema=1 function=%lu value=%lu part=%lu operand=%08x kind=%lu object=%08x displacement=%ld datatype=%lu storage=%lu symbol_known=%d symbol_complete=%d symbol_hex=%s\n".as_ptr(),
             function, value, d.operand_binding, operand as u32, u32::from(operand.read()), object as u32,
             read::<i32>(operand, 8), u32::from(datatype), u32::from(read::<u16>(object, 22)),
-            i32::from(!link.is_null()), i32::from(!link.is_null() && (length < 512 || text.add(length).read() == 0)),
+            i32::from(!link.is_null()), i32::from(complete),
             hex.cast::<core::ffi::c_char>());
     }
 }
 
 unsafe fn bounded_hex(text: *const u8, limit: usize) -> (usize, bool) {
-    unsafe {
-        let hex = ptr::addr_of_mut!(HEX).cast::<u8>();
-        let mut length = 0;
-        if !text.is_null() {
-            while length < limit && text.add(length).read() != 0 {
-                let byte = text.add(length).read();
-                let digit = |v: u8| if v < 10 { b'0' + v } else { b'a' + v - 10 };
-                hex.add(length * 2).write(digit(byte >> 4));
-                hex.add(length * 2 + 1).write(digit(byte & 15));
-                length += 1;
-            }
-        }
-        hex.add(length * 2).write(0);
-        (
-            length,
-            !text.is_null() && (length < limit || text.add(length).read() == 0),
-        )
-    }
+    unsafe { hex_into(ptr::addr_of_mut!(HEX).cast::<u8>(), text, limit) }
 }
 
 /// These fields are read at the two actual scalar-array counter increments,

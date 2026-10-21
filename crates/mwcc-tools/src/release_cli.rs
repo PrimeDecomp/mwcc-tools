@@ -29,10 +29,7 @@ pub fn run(args: &[String]) -> Result<()> {
                 .contains(&option.as_str()),
                 "unknown package-release option {option}"
             );
-            i += 1;
-            let value = args
-                .get(i)
-                .context("package-release option requires a value")?;
+            let value = crate::option_value(args, &mut i)?;
             match option.as_str() {
                 "--root" => root = value.into(),
                 "--binary" => binary = Some(PathBuf::from(value)),

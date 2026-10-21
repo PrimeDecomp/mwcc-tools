@@ -1,7 +1,7 @@
 //! Guarded backend creation paths. These observations retain source objects and
 //! direct lowering inputs without claiming complete inline or lifetime ancestry.
 use crate::{
-    evidence::{Evaluation, EvaluationState, EvidenceGap},
+    evidence::{Evaluation, EvidenceGap},
     trace::Record,
     value_history::{Birth, Function},
 };
@@ -228,12 +228,6 @@ pub fn call(record: &Record, birth: &Birth) -> Result<CallResult> {
         tree_bytes,
     })
 }
-fn known() -> Evaluation {
-    Evaluation {
-        state: EvaluationState::Satisfied,
-        reasons: vec![],
-    }
-}
 pub fn array_gap() -> Evaluation {
     Evaluation::indeterminate(
         EvidenceGap::ArrayPromotionCoverage,
@@ -264,7 +258,7 @@ pub fn finish(function: &mut Function, valid: bool) {
             .filter(|b| array_class(b.site).is_some())
             .all(|b| b.array_promotion.is_some())
     {
-        function.array_promotion_observations = known();
+        function.array_promotion_observations = Evaluation::satisfied();
     }
     if valid
         && function.ended
@@ -284,7 +278,7 @@ pub fn finish(function: &mut Function, valid: bool) {
             .all(|b| b.call_result.is_some())
         && call_pairs(function)
     {
-        function.call_result_observations = known();
+        function.call_result_observations = Evaluation::satisfied();
     }
 }
 fn call_pairs(function: &Function) -> bool {

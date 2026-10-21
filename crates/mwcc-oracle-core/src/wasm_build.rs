@@ -16,7 +16,10 @@
 //! `wasm/include` has the C headers clang lacks and Windows headers made of gc2's `include/compiler/win32.h`; the
 //! Win32 functions are the module's imports. What WebAssembly needs of the sources themselves is in gc2, under
 //! `#ifdef __wasm__`.
-use crate::{build_config, source_tree::SourceTree};
+use crate::{
+    build_config::{self, ninja_path as escape},
+    source_tree::SourceTree,
+};
 use anyhow::{Context, Result, ensure};
 use std::path::Path;
 
@@ -245,13 +248,6 @@ pub fn units(root: &Path, version: &str) -> Result<Vec<Unit>> {
         });
     }
     Ok(units)
-}
-
-/// A path as ninja reads it.
-fn escape(path: &str) -> String {
-    path.replace('$', "$$")
-        .replace(' ', "$ ")
-        .replace(':', "$:")
 }
 
 /// An argument as the build's shell reads it (the arguments have no quotes or spaces but for `-D__option(x)=...`).

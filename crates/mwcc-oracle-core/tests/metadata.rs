@@ -1,9 +1,10 @@
+mod common;
 use mwcc_oracle_core::{derive_splits, executable, pe::Pe, remap_binary};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{fs, path::PathBuf};
 fn fixtures() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/metadata")
+    common::fixtures("metadata")
 }
 fn stage() -> (tempfile::TempDir, Value) {
     let fixtures = fixtures();

@@ -218,6 +218,101 @@ pub(crate) fn classify_edges(mut nodes: Vec<SchedNode>, regs: &[Vec<Operand>]) -
     nodes
 }
 
+/// A ready instruction as the pick rule compares it.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Priority {
+    /// the cycle from which it is urgent
+    pub deadline: i64,
+    /// the successors issuing it makes ready
+    pub uncovers: i64,
+    pub height: i64,
+    pub opcode_rank: i64,
+}
+
+/// What decided a comparison of the pick rule.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Criterion {
+    /// one of the two is urgent (deadline reached) and the other is not
+    Urgent,
+    Uncovers,
+    Height,
+    OpcodeRank,
+    /// nothing: the earlier one in program order stays
+    Tie,
+}
+
+/// The pick rule's comparison at `cycle`: does the later ready candidate `cand` replace the pick `best`, and what
+/// decided it. `rank`: the opcode-rank tie-break applies (pre-RA).
+pub(crate) fn pick_rule(
+    best: Priority,
+    cand: Priority,
+    cycle: i64,
+    rank: bool,
+) -> (bool, Criterion) {
+    let (b_urgent, c_urgent) = (best.deadline <= cycle, cand.deadline <= cycle);
+    if b_urgent != c_urgent {
+        (c_urgent, Criterion::Urgent)
+    } else if cand.uncovers != best.uncovers {
+        (cand.uncovers > best.uncovers, Criterion::Uncovers)
+    } else if cand.height != best.height {
+        (cand.height > best.height, Criterion::Height)
+    } else if rank && cand.opcode_rank != best.opcode_rank {
+        (cand.opcode_rank < best.opcode_rank, Criterion::OpcodeRank)
+    } else {
+        (false, Criterion::Tie)
+    }
+}
+
+/// The recorded picks replayed: which instructions are ready, and what each one uncovers.
+struct Replay<'a> {
+    nodes: &'a [SchedNode],
+    preds_left: Vec<u16>,
+    earliest: Vec<u16>,
+    done: Vec<bool>,
+}
+
+impl<'a> Replay<'a> {
+    fn new(nodes: &'a [SchedNode]) -> Self {
+        let n = nodes.len();
+        let mut preds_left: Vec<u16> = vec![0; n];
+        for a in nodes {
+            for e in &a.succs {
+                preds_left[e.to] += 1;
+            }
+        }
+        Replay {
+            nodes,
+            preds_left,
+            earliest: vec![0; n],
+            done: vec![false; n],
+        }
+    }
+
+    /// The nodes ready at `cycle`, in program order.
+    fn ready(&self, cycle: u16) -> Vec<usize> {
+        (0..self.nodes.len())
+            .filter(|&i| !self.done[i] && self.preds_left[i] == 0 && self.earliest[i] <= cycle)
+            .collect()
+    }
+
+    /// The successors of `i` that issuing it makes ready.
+    fn uncover(&self, i: usize) -> usize {
+        self.nodes[i]
+            .succs
+            .iter()
+            .filter(|e| self.preds_left[e.to] == 1)
+            .count()
+    }
+
+    fn issue(&mut self, x: usize, cycle: u16) {
+        self.done[x] = true;
+        for e in &self.nodes[x].succs {
+            self.preds_left[e.to] = self.preds_left[e.to].saturating_sub(1);
+            self.earliest[e.to] = self.earliest[e.to].max(cycle + e.latency);
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 pub enum PickReason {
     /// the only ready instruction
@@ -363,17 +458,13 @@ impl SchedBlock {
                         best = Some(i);
                         continue;
                     };
-                    let (b_urgent, c_urgent) = (deadline[b] <= cycle, deadline[i] <= cycle);
-                    let wins = if b_urgent != c_urgent {
-                        c_urgent
-                    } else if uncover(i) != uncover(b) {
-                        uncover(i) > uncover(b)
-                    } else if height[i] != height[b] {
-                        height[i] > height[b]
-                    } else {
-                        self.pre_ra && self.nodes[i].opcode_rank < self.nodes[b].opcode_rank
+                    let priority = |x: usize| Priority {
+                        deadline: deadline[x].into(),
+                        uncovers: uncover(x) as i64,
+                        height: height[x].into(),
+                        opcode_rank: self.nodes[x].opcode_rank.into(),
                     };
-                    if wins {
+                    if pick_rule(priority(b), priority(i), cycle.into(), self.pre_ra).0 {
                         best = Some(i);
                     }
                 }
@@ -404,9 +495,12 @@ impl SchedBlock {
     /// The memory accesses the scheduler asked about and was told cannot alias, and that nothing else orders:
     /// what a may-alias answer would have added, and whether it would have changed the schedule.
     pub fn unordered_memory(&self) -> Vec<UnorderedAccesses> {
+        if self.memory.is_empty() {
+            return vec![];
+        }
         let cycle_of = |i: usize| self.picks.iter().find(|p| p.node == i).map(|p| p.cycle);
-        let width = self.issue_width();
-        let agrees = self.simulation_agrees();
+        // (scheduling the block again only when an access pair needs it)
+        let agrees_once = std::cell::OnceCell::new();
         let mut out: Vec<UnorderedAccesses> = vec![];
         for q in &self.memory {
             if q.may
@@ -424,8 +518,9 @@ impl SchedBlock {
             };
             let latency = self.nodes[q.first].latency;
             let binding = second_cycle < first_cycle + latency;
-            let with_edge =
-                (binding && agrees).then(|| self.simulate(&[(q.first, q.second, latency)], width));
+            let agrees = *agrees_once.get_or_init(|| self.simulation_agrees());
+            let with_edge = (binding && agrees)
+                .then(|| self.simulate(&[(q.first, q.second, latency)], self.issue_width()));
             out.push(UnorderedAccesses {
                 reorders: agrees.then(|| {
                     with_edge
@@ -475,34 +570,19 @@ impl SchedBlock {
         uncover: &dyn Fn(usize) -> usize,
         rank: bool,
     ) -> Option<PickReason> {
-        let (b, c) = (&self.nodes[best], &self.nodes[cand]);
-        let b_urgent = b.deadline <= cycle;
-        let c_urgent = c.deadline <= cycle;
-        if b_urgent && !c_urgent {
-            return None;
+        let priority = |x: usize| Priority {
+            deadline: self.nodes[x].deadline.into(),
+            uncovers: uncover(x) as i64,
+            height: self.nodes[x].height.into(),
+            opcode_rank: self.nodes[x].opcode_rank.into(),
+        };
+        match pick_rule(priority(best), priority(cand), cycle.into(), rank) {
+            (false, _) | (true, Criterion::Tie) => None,
+            (true, Criterion::Urgent) => Some(PickReason::Urgent),
+            (true, Criterion::Uncovers) => Some(PickReason::Uncovers),
+            (true, Criterion::Height) => Some(PickReason::Height),
+            (true, Criterion::OpcodeRank) => Some(PickReason::OpcodeRank),
         }
-        if !b_urgent && c_urgent {
-            return Some(PickReason::Urgent);
-        }
-        let (ub, uc) = (uncover(best), uncover(cand));
-        if uc != ub {
-            return if uc > ub {
-                Some(PickReason::Uncovers)
-            } else {
-                None
-            };
-        }
-        if c.height != b.height {
-            return if c.height > b.height {
-                Some(PickReason::Height)
-            } else {
-                None
-            };
-        }
-        if rank && c.opcode_rank < b.opcode_rank {
-            return Some(PickReason::OpcodeRank);
-        }
-        None
     }
 
     /// Evidence for a variant of the pick rule (opcode-rank tie-break on or off): replays the
@@ -511,28 +591,12 @@ impl SchedBlock {
     /// (`contradict`: the unit model accepted it, so the variant would have issued it first), or
     /// another node (`other`: unit availability may explain it).
     pub fn rule_evidence(&self, rank: bool) -> RuleEvidence {
-        let n = self.nodes.len();
-        let mut preds_left: Vec<u16> = vec![0; n];
-        for a in &self.nodes {
-            for e in &a.succs {
-                preds_left[e.to] += 1;
-            }
-        }
-        let mut earliest = vec![0u16; n];
-        let mut done = vec![false; n];
+        let mut replay = Replay::new(&self.nodes);
         let mut ev = RuleEvidence::default();
         for (k, pk) in self.picks.iter().enumerate() {
             let cycle = pk.cycle;
-            let ready: Vec<usize> = (0..n)
-                .filter(|&i| !done[i] && preds_left[i] == 0 && earliest[i] <= cycle)
-                .collect();
-            let uncover = |i: usize| {
-                self.nodes[i]
-                    .succs
-                    .iter()
-                    .filter(|e| preds_left[e.to] == 1)
-                    .count()
-            };
+            let ready = replay.ready(cycle);
+            let uncover = |i: usize| replay.uncover(i);
             if ready.len() > 1 && ready.contains(&pk.node) {
                 let mut best = ready[0];
                 for &r in &ready[1..] {
@@ -552,39 +616,19 @@ impl SchedBlock {
                     ev.other += 1;
                 }
             }
-            done[pk.node] = true;
-            for e in &self.nodes[pk.node].succs {
-                preds_left[e.to] = preds_left[e.to].saturating_sub(1);
-                earliest[e.to] = earliest[e.to].max(cycle + e.latency);
-            }
+            replay.issue(pk.node, cycle);
         }
         ev
     }
 
     /// Replay the recorded picks with the exact rule and give each pick its reason.
     pub fn analyze(&self) -> Vec<PickInfo> {
-        let n = self.nodes.len();
-        let mut preds_left: Vec<u16> = vec![0; n];
-        for a in &self.nodes {
-            for e in &a.succs {
-                preds_left[e.to] += 1;
-            }
-        }
-        let mut earliest = vec![0u16; n];
-        let mut done = vec![false; n];
+        let mut replay = Replay::new(&self.nodes);
         let mut out = vec![];
         for pk in &self.picks {
             let cycle = pk.cycle;
-            let ready: Vec<usize> = (0..n)
-                .filter(|&i| !done[i] && preds_left[i] == 0 && earliest[i] <= cycle)
-                .collect();
-            let uncover = |i: usize| {
-                self.nodes[i]
-                    .succs
-                    .iter()
-                    .filter(|e| preds_left[e.to] == 1)
-                    .count()
-            };
+            let ready = replay.ready(cycle);
+            let uncover = |i: usize| replay.uncover(i);
             // the rule over all ready nodes (unit availability unknown)
             let mut best: Option<usize> = None;
             let mut best_reason = PickReason::ProgramOrder;
@@ -621,15 +665,11 @@ impl SchedBlock {
             out.push(PickInfo {
                 cycle,
                 node: x,
-                ready: ready.clone(),
+                ready,
                 reason,
                 over,
             });
-            done[x] = true;
-            for e in &self.nodes[x].succs {
-                preds_left[e.to] = preds_left[e.to].saturating_sub(1);
-                earliest[e.to] = earliest[e.to].max(cycle + e.latency);
-            }
+            replay.issue(x, cycle);
         }
         out
     }

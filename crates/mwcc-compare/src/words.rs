@@ -5,6 +5,8 @@ use object::{
 };
 use std::collections::HashMap;
 
+use crate::strict::{elf::RelocKind, reloc_mask};
+
 /// A function's code: its words (big-endian) and its relocations (offset in the function, ELF `R_PPC_*` type).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Code {
@@ -25,18 +27,9 @@ impl Code {
     }
 }
 
-/// The bits of an instruction word a relocation of ELF type KIND covers.
+/// The bits of an instruction word a relocation of ELF type KIND covers ([`reloc_mask`] of its kind).
 pub fn mask(kind: u32) -> u32 {
-    match kind {
-        // R_PPC_ADDR16_LO, _HI, _HA
-        4..=6 => 0x0000_ffff,
-        // R_PPC_EMB_SDA21: rA (r0, r2 or r13, the linker's) and the displacement
-        109 => 0x001f_ffff,
-        // R_PPC_REL24, R_PPC_REL14
-        10 => 0x03ff_fffc,
-        11 => 0x0000_fffc,
-        _ => 0xffff_ffff,
-    }
+    reloc_mask(RelocKind::of(kind))
 }
 
 /// Each function of the object DATA (a text symbol with a size) by name; of two with one name, the first.

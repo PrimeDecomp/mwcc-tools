@@ -1,4 +1,5 @@
 //! Version-specific frontend observers. All compiler work stays in retail code.
+use crate::abi::{OracleTrace_Printf, read, sprintf, strlen as length, wanted};
 use core::{ffi::c_char, mem::MaybeUninit, ptr};
 // COpts always_inline, inline_bottom_up (traced as auto=), inline limit; CInlineInfo kind.
 #[cfg(feature = "frontend-gc13")]
@@ -8,10 +9,6 @@ const OFFSETS: (usize, usize, usize, usize) = (0xd8, 0x72, 0x68, 0xa2);
 #[cfg(any(feature = "frontend-gc26", feature = "frontend-gc27"))]
 const OFFSETS: (usize, usize, usize, usize) = (0xdc, 0x76, 0x6c, 0xa4);
 unsafe extern "C" {
-    fn OracleTrace_Printf(format: *const c_char, ...);
-    fn sprintf(output: *mut c_char, format: *const c_char, ...) -> i32;
-    #[link_name = "getenv"]
-    fn retail_getenv(name: *const c_char) -> *const u8;
     fn OracleRust_LinkName(object: *const u8) -> *const c_char;
     fn OracleRust_OriginFind(reference: *const u8) -> i32;
     fn OracleRust_OriginWalk(expression: *const u8, parent: i32, link: *const c_char, level: i32);
@@ -54,30 +51,11 @@ unsafe extern "C" {
     fn fn_0055e540__retail(info: *const u8, running: i32, depth: i32) -> i32;
     fn fn_0055e600__retail(expression: *const u8, running: i32, depth: i32) -> i32;
 }
-static QUERY: unsafe extern "C" fn(*const c_char) -> *const u8 = retail_getenv;
 static mut NAME: [u8; 512] = [0; 512];
 static mut CALLS: [u8; 4096] = [0; 4096];
 static mut NEST: i32 = 0;
 static mut QUIET: i32 = 0;
 const FULL_LIMIT: i32 = 0x3fffffff;
-unsafe fn read<T: Copy>(p: *const u8, offset: usize) -> T {
-    unsafe { p.add(offset).cast::<T>().read_unaligned() }
-}
-unsafe fn wanted(name: *const c_char) -> bool {
-    unsafe {
-        let value = ptr::addr_of!(QUERY).read_volatile()(name);
-        !value.is_null() && *value != 0 && *value != b'0'
-    }
-}
-unsafe fn length(text: *const c_char) -> usize {
-    unsafe {
-        let mut n = 0;
-        while text.add(n).read_volatile() != 0 {
-            n += 1;
-        }
-        n
-    }
-}
 unsafe fn copy(out: *mut u8, text: *const c_char, n: usize) {
     unsafe {
         for i in 0..n {
@@ -176,7 +154,7 @@ unsafe extern "C" fn decision(node: *const u8) -> u8 {
         OracleRust_PrintChain(node);
         OracleTrace_Printf(c"\n".as_ptr());
         // (the plain names, and what decided: an inline candidate or not, the expansion pass and the size limit)
-        if wanted(c"MWCC_ORACLE_NAMES".as_ptr()) {
+        if wanted(c"MWCC_ORACLE_NAMES") {
             OracleTrace_Printf(
                 c"inl.decide caller=%s callee=%s candidate=%d pass=%d max=%ld\n".as_ptr(),
                 plain_name(ptr::addr_of!(data_005dfb62).read()),
@@ -235,7 +213,7 @@ unsafe extern "C" fn fn_0055e540(info: *const u8, running: i32, depth: i32) -> i
     unsafe {
         if ptr::addr_of!(NEST).read() == 0
             && ptr::addr_of!(QUIET).read() == 0
-            && wanted(c"MWCC_ORACLE_FULL_COST".as_ptr())
+            && wanted(c"MWCC_ORACLE_FULL_COST")
         {
             let met = ptr::addr_of!(data_005dfb66).read();
             ptr::addr_of_mut!(QUIET).write(1);
@@ -450,8 +428,7 @@ unsafe fn body_calls(node: *const u8, depth: i32, buffer: *mut u8, used: &mut us
 unsafe extern "C" fn fn_0055e600(expr: *const u8, running: i32, depth: i32) -> i32 {
     unsafe {
         if ptr::addr_of!(QUIET).read() != 0
-            || !(wanted(c"MWCC_ORACLE_INLINE_COST".as_ptr())
-                || wanted(c"MWCC_ORACLE_FULL_COST".as_ptr()))
+            || !(wanted(c"MWCC_ORACLE_INLINE_COST") || wanted(c"MWCC_ORACLE_FULL_COST"))
         {
             return fn_0055e600__retail(expr, running, depth);
         }
@@ -600,7 +577,7 @@ unsafe extern "C" fn expansion(expr: *const u8) -> *const u8 {
 unsafe extern "C" fn dispatch() -> u8 {
     unsafe {
         let work = ptr::addr_of!(pending_prec_nodes).read();
-        if !wanted(c"MWCC_ORACLE_INSTANTIATION".as_ptr()) {
+        if !wanted(c"MWCC_ORACLE_INSTANTIATION") {
             return dispatch_retail();
         }
         if !work.is_null() && ptr::addr_of!(anyerrors).read() == 0 {

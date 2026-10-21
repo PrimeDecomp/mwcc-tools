@@ -332,32 +332,44 @@ pub(crate) fn path_key(base: &Path, value: &str) -> String {
     }
 }
 
-pub fn find_rule(path: &Path, source: &str) -> Result<(CompileRule, PathBuf)> {
+/// The first compile edge of the Ninja file PATH that EDGE says has WANTED among its paths (as their keys under the
+/// file's directory compare: [`path_key`]), and that directory; MISSING says why there is none.
+fn find_edge(
+    path: &Path,
+    wanted: &str,
+    edge: impl Fn(&CompileRule, &dyn Fn(&str) -> bool) -> bool,
+    missing: impl FnOnce() -> String,
+) -> Result<(CompileRule, PathBuf)> {
     let absolute = fs::canonicalize(path).with_context(|| format!("read {}", path.display()))?;
     let root = absolute
         .parent()
         .context("Ninja file has no parent")?
         .to_owned();
-    let wanted = path_key(&root, source);
+    let wanted = path_key(&root, wanted);
+    let is_wanted = |path: &str| path_key(&root, path) == wanted;
     let rule = parse(&fs::read_to_string(&absolute)?)?
         .into_iter()
-        .find(|r| path_key(&root, &r.source) == wanted)
-        .with_context(|| format!("{} has no mwcc rule for {source}", path.display()))?;
+        .find(|r| edge(r, &is_wanted))
+        .with_context(missing)?;
     Ok((rule, root))
 }
 
+pub fn find_rule(path: &Path, source: &str) -> Result<(CompileRule, PathBuf)> {
+    find_edge(
+        path,
+        source,
+        |r, is_wanted| is_wanted(&r.source),
+        || format!("{} has no mwcc rule for {source}", path.display()),
+    )
+}
+
 pub fn find_output_rule(path: &Path, output: &str) -> Result<(CompileRule, PathBuf)> {
-    let absolute = fs::canonicalize(path)?;
-    let root = absolute
-        .parent()
-        .context("Ninja file has no parent")?
-        .to_owned();
-    let wanted = path_key(&root, output);
-    let rule = parse(&fs::read_to_string(&absolute)?)?
-        .into_iter()
-        .find(|r| r.outputs.iter().any(|o| path_key(&root, o) == wanted))
-        .with_context(|| format!("{} has no mwcc edge for {output}", path.display()))?;
-    Ok((rule, root))
+    find_edge(
+        path,
+        output,
+        |r, is_wanted| r.outputs.iter().any(|o| is_wanted(o)),
+        || format!("{} has no mwcc edge for {output}", path.display()),
+    )
 }
 
 #[cfg(test)]

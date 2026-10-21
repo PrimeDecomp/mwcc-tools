@@ -1,7 +1,8 @@
 //! CSE/propagation and dump observers. No Rust formatting or allocator is used.
 use crate::{
     abi::{
-        OracleTrace_Printf, fopen, getenv, read, sprintf, strcat, strlen, strncmp, vfprintf, wanted,
+        OracleTrace_Printf, fopen, getenv, level, read, sprintf, strcat, strlen, strncmp, vfprintf,
+        wanted,
     },
     expression::{describe, object_name},
     frame, pcode, scalar,
@@ -156,7 +157,8 @@ unsafe fn linear_list() {
 #[unsafe(export_name = "IRO_CommonSubs")]
 unsafe extern "C" fn common_subs() {
     unsafe {
-        let level = getenv(c"MWCC_ORACLE_CSE".as_ptr());
+        // (the level, then whether it is on: two queries, as the C observer makes them)
+        let level = level(c"MWCC_ORACLE_CSE");
         if !wanted(c"MWCC_ORACLE_CSE") {
             IRO_CommonSubs__retail();
             return;
@@ -177,7 +179,7 @@ unsafe extern "C" fn common_subs() {
                 pcode::link_name(function)
             },
         );
-        if *level == b'2' {
+        if level == b'2' {
             linear_list();
         }
         IRO_CommonSubs__retail();

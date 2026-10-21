@@ -242,9 +242,6 @@ pub struct Installed {
     pub sites: Vec<Site>,
     pub guards: Vec<Guard>,
 }
-fn digest(bytes: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(bytes))
-}
 fn aux_hex(s: &ObjectSymbol) -> String {
     s.auxiliary
         .iter()
@@ -347,9 +344,7 @@ pub fn plan(root: &Path, version: &str) -> Result<Vec<Site>> {
     let c = &catalogs()[version];
     let original = Original::read(root, version)?;
     let pe = original.pe()?;
-    let metadata = executable::read_symbols(&fs::read_to_string(
-        root.join(format!("config/{version}/symbols.txt")),
-    )?)?;
+    let metadata = executable::retail_symbols(root, &version)?;
     for g in c
         .guards
         .iter()
@@ -368,7 +363,7 @@ pub fn plan(root: &Path, version: &str) -> Result<Vec<Site>> {
             g.name
         );
         ensure!(
-            digest(pe.read(g.address, g.size as usize)?) == g.code_sha256,
+            crate::hash::sha256_hex(pe.read(g.address, g.size as usize)?) == g.code_sha256,
             "arena PE body guard failed: {}",
             g.name
         );
@@ -461,8 +456,8 @@ pub fn derive_guard(
         name: name.into(),
         address,
         size,
-        code_sha256: digest(original),
-        normalized_sha256: digest(&actual),
+        code_sha256: crate::hash::sha256_hex(original),
+        normalized_sha256: crate::hash::sha256_hex(&actual),
         relocation_identity_sha256: format!("{:x}", ids.finalize()),
         definition: Definition {
             value: s.value,
@@ -479,9 +474,7 @@ pub fn derive_guard(
 pub fn derive_guards(root: &Path, version: &str, names: &[String]) -> Result<Vec<Guard>> {
     let original = Original::read(root, version)?;
     let pe = original.pe()?;
-    let metadata = executable::read_symbols(&fs::read_to_string(
-        root.join(format!("config/{version}/symbols.txt")),
-    )?)?;
+    let metadata = executable::retail_symbols(root, &version)?;
     let mut objects = vec![];
     let mut pending = vec![root.join(format!("build/{version}/obj"))];
     while let Some(directory) = pending.pop() {
@@ -754,12 +747,10 @@ pub(crate) fn validate_incoming_windows(
     let c = &catalogs()[version];
     let original = Original::read(root, version)?;
     let pe = original.pe()?;
-    let metadata = executable::read_symbols(&fs::read_to_string(
-        root.join(format!("config/{version}/symbols.txt")),
-    )?)?
-    .into_iter()
-    .map(|s| (s.name, s.address))
-    .collect::<BTreeMap<_, _>>();
+    let metadata = executable::retail_symbols(root, &version)?
+        .into_iter()
+        .map(|s| (s.name, s.address))
+        .collect::<BTreeMap<_, _>>();
     let sites = window_sites(windows);
     let mut checked = BTreeSet::new();
     for (_, bytes) in inputs {
@@ -776,7 +767,8 @@ pub(crate) fn validate_incoming_windows(
                 );
                 ensure!(
                     metadata.get(&g.name) == Some(&g.address)
-                        && digest(pe.read(g.address, g.size as usize)?) == g.code_sha256,
+                        && crate::hash::sha256_hex(pe.read(g.address, g.size as usize)?)
+                            == g.code_sha256,
                     "incoming group PE guard changed"
                 );
                 check_guard(&object, g, pe.read(g.address, g.size as usize)?)?;
@@ -887,12 +879,10 @@ pub fn install(root: &Path, version: &str, inputs: &[(String, Vec<u8>)]) -> Resu
     let sites = plan(root, version)?;
     let original = Original::read(root, version)?;
     let pe = original.pe()?;
-    let metadata = executable::read_symbols(&fs::read_to_string(
-        root.join(format!("config/{version}/symbols.txt")),
-    )?)?
-    .into_iter()
-    .map(|s| (s.name, s.address))
-    .collect::<BTreeMap<_, _>>();
+    let metadata = executable::retail_symbols(root, &version)?
+        .into_iter()
+        .map(|s| (s.name, s.address))
+        .collect::<BTreeMap<_, _>>();
     let lock = match version_id {
         1 => 0x5db510,
         2 => 0x5dd510,
@@ -1203,9 +1193,9 @@ mod tests {
             name: "_helper".into(),
             address: 0x1004,
             size: 4,
-            code_sha256: digest(&[0x90; 4]),
-            normalized_sha256: digest(&[0x90; 4]),
-            relocation_identity_sha256: digest(&[]),
+            code_sha256: crate::hash::sha256_hex([0x90; 4]),
+            normalized_sha256: crate::hash::sha256_hex([0x90; 4]),
+            relocation_identity_sha256: crate::hash::sha256_hex([]),
             definition: Definition {
                 value: 4,
                 section: text,

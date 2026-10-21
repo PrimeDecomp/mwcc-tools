@@ -1,6 +1,6 @@
 [package]
 name = "mwcc-wasm"
-description = "Runs the GC 2.7 compiler built from gc2's sources as WebAssembly, in process, with its Win32 imports"
+description = "Runs the GC 2.6 and 2.7 compilers built from gc2's sources as WebAssembly, in process, with their Win32 imports"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
