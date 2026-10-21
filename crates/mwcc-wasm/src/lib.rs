@@ -1275,7 +1275,15 @@ fn imports(linker: &mut Linker<State>) -> Result<()> {
             && state.scopes.is_empty()
             && !scope_wanted(&state.trace[at..], &state.functions)
         {
+            // (the opcodes' names are recorded once, where an opcode is first printed: the scopes kept need them)
+            let names: Vec<u8> = state.trace[at..]
+                .split_inclusive(|b| *b == b'\n')
+                .filter(|line| line.starts_with(b"pc.opcode "))
+                .flatten()
+                .copied()
+                .collect();
             state.trace.truncate(at);
+            state.trace.extend_from_slice(&names);
         }
         Ok(())
     });

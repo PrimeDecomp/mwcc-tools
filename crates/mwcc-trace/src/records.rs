@@ -489,6 +489,9 @@ fn records(text: &str) -> Vec<Record<'_>> {
 struct Instruction {
     pointer: u32,
     rendered: PInstr,
+    flags: u32,
+    /// the GPR its first operand writes, if it does
+    first_def: Option<i16>,
 }
 
 /// Read the instruction record `records[at]` and the `pc.object` records after it.
@@ -524,9 +527,14 @@ fn instruction(records: &[Record], at: usize, opcodes: &HashMap<i16, (String, u8
             objects.get(&p).map_or("?".into(), |n| n.to_string())
         })
     };
+    // (operand 0: a register, of the GPR class, written)
+    let first_def = (argc > 0 && raw.len() >= 12 && raw[0] == 0 && raw[1] == 4 && raw[2] & 2 != 0)
+        .then(|| i16::from_le_bytes([raw[4], raw[5]]));
     Instruction {
         pointer: r.hex("p"),
         rendered,
+        flags: r.hex("flags"),
+        first_def,
     }
 }
 
@@ -640,10 +648,16 @@ struct Block {
     /// instruction -> (latency, height, deadline, predecessors, successors and their latencies)
     nodes: HashMap<u32, Node>,
     picks: Vec<(u16, u32)>,
+    /// the alias table the scheduler gathered for this pass (its aliases, and each access's, by pointer)
+    aliases: Vec<Alias>,
+    alias_of: HashMap<u32, u32>,
+    /// the alias queries made while the block's DAG was built: (a, b, may alias)
+    queries: Vec<(u32, u32, bool)>,
 }
 
 impl Block {
     fn finish(self, function: &str, opcodes: &HashMap<i16, (String, u8)>) -> Option<SchedBlock> {
+        use crate::sched::MemoryQuery;
         // (a block the scheduler made no DAG for, as the debugger tracer has it)
         if self.nodes.is_empty() {
             return None;
@@ -661,6 +675,17 @@ impl Block {
                 self.nodes.get(&x.pointer).cloned().unwrap_or_default();
             regs.push(x.rendered.regs.clone());
             nodes.push(SchedNode {
+                alias: self.alias_of.get(&x.pointer).copied(),
+                op: x.rendered.op,
+                flags: x.flags,
+                gprs: x
+                    .rendered
+                    .regs
+                    .iter()
+                    .filter(|r| r.0 == 4 && (r.2 || r.3))
+                    .map(|r| r.1)
+                    .collect(),
+                first_def: x.first_def,
                 opcode_rank: opcodes.get(&x.rendered.op).map_or(0, |o| o.1),
                 text: x.rendered.text,
                 latency,
@@ -679,6 +704,18 @@ impl Block {
             pre_ra: self.pre_ra,
             block: self.index,
             nodes: classify_edges(nodes, &regs),
+            aliases: self.aliases,
+            memory: self
+                .queries
+                .iter()
+                .filter_map(|&(a, b, may)| {
+                    Some(MemoryQuery {
+                        first: *index.get(&a)?,
+                        second: *index.get(&b)?,
+                        may,
+                    })
+                })
+                .collect(),
             picks: self
                 .picks
                 .iter()
@@ -717,6 +754,9 @@ pub fn parse(text: &str, opts: &Selection) -> Trace {
     // (the function the last table was gathered in, and the instructions it listed, by their pointers)
     let mut alias_function = String::new();
     let mut accessed: HashMap<u32, String> = HashMap::new();
+    // (the last table gathered: its aliases and each access's alias by its pointer, for the scheduler's blocks)
+    let mut scheduler_aliases: Vec<Alias> = vec![];
+    let mut scheduler_alias_of: HashMap<u32, u32> = HashMap::new();
     // (the pass being read: its instructions by their pointers, with their flags, its block, what last killed each
     // alias's value, and the call that last killed every value in the extended block)
     let mut numbering: Option<VnPass> = None;
@@ -879,6 +919,9 @@ pub fn parse(text: &str, opts: &Selection) -> Trace {
                     instructions: vec![],
                     nodes: HashMap::new(),
                     picks: vec![],
+                    aliases: scheduler_aliases.clone(),
+                    alias_of: scheduler_alias_of.clone(),
+                    queries: vec![],
                 })
             }
             "sc.i" => {
@@ -999,6 +1042,7 @@ pub fn parse(text: &str, opts: &Selection) -> Trace {
             "al.begin" if opts.alias || opts.alias_queries => {
                 alias_function = r.get("function").unwrap_or("?").to_string();
                 accessed.clear();
+                scheduler_alias_of.clear();
                 table = Some(AliasTable {
                     function: alias_function.clone(),
                     link: r.get("link").unwrap_or("?").to_string(),
@@ -1033,6 +1077,7 @@ pub fn parse(text: &str, opts: &Selection) -> Trace {
                 if let (Some(table), Some(i)) = (table.as_mut(), after(&records, at, "al.i")) {
                     let text = instruction(&records, i, &opcodes).rendered.text;
                     accessed.insert(records[i].hex("p"), text.clone());
+                    scheduler_alias_of.insert(records[i].hex("p"), r.int("alias") as u32);
                     table.accesses.push(AliasAccess {
                         instruction: text,
                         alias: r.int("alias") as u32,
@@ -1040,10 +1085,11 @@ pub fn parse(text: &str, opts: &Selection) -> Trace {
                 }
             }
             "al.end" => {
-                if let Some(table) = table.take()
-                    && opts.alias
-                {
-                    t.alias.push(table);
+                if let Some(table) = table.take() {
+                    scheduler_aliases = table.aliases.clone();
+                    if opts.alias {
+                        t.alias.push(table);
+                    }
                 }
             }
             "al.query" if opts.alias_queries => {
@@ -1069,6 +1115,12 @@ pub fn parse(text: &str, opts: &Selection) -> Trace {
                     },
                     may: r.int("result") != 0,
                 });
+                if let Some(b) = block.as_mut()
+                    && r.get("object").is_none()
+                {
+                    b.queries
+                        .push((r.hex("a"), r.hex("b"), r.int("result") != 0));
+                }
             }
             "vn.begin" if opts.value_numbering => {
                 numbered.clear();

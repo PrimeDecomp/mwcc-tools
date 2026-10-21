@@ -7,6 +7,8 @@ pub mod colouring;
 pub mod evidence;
 pub mod inlining;
 pub mod locals;
+mod m750;
+mod machine;
 pub mod options;
 pub mod ppc;
 pub mod python_random;

@@ -1455,6 +1455,7 @@ Result:
 | `why_not_cse` | `string` | Two source lines, `A,B`: why the value numbering did or did not reuse line A's loads and operations at line B (`backend.why_not_cse`; gc2's probes). |
 | `stages` | `string` | The PCode at the stages the compiler's debug listing names (`AFTER VALUE NUMBERING 2`, `AFTER COPY PROPAGATION`, `AFTER REGISTER COLORING`...), those whose names have one of these, comma-separated, without regard to case (`value numbering,coloring`; `listing`: every stage) (`backend.stages`, and `text` with `views.text`; gc2's probes). |
 | `objects` | `boolean` | The static objects each function refers to that the compile made, or that are the unit's own (local): literals, constants' reference temporaries, string literals, static locals, with their sections, sizes and bytes (`backend.objects`; from the object, any version). |
+| `memory_order` | `boolean` | The memory accesses each scheduling pass left unordered because the alias analysis said they cannot alias, where an answer that they may would have changed the order: their aliases, the block scheduled again with the edge, and what makes a pointer's memory its own (`backend.memory_order`, and `text` with `views.text`; gc2's probes, GC 2.6 and 2.7 in process). |
 
 <a id="type-windowunit"></a>**`WindowUnit`**
 

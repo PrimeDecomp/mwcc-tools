@@ -118,6 +118,12 @@ pub struct ViewParams {
     /// bytes (`backend.objects`; from the object, any version).
     #[serde(default)]
     pub objects: bool,
+    /// The memory accesses each scheduling pass left unordered because the alias analysis said they cannot alias,
+    /// where an answer that they may would have changed the order: their aliases, the block scheduled again
+    /// with the edge, and what makes a pointer's memory its own (`backend.memory_order`, and `text` with
+    /// `views.text`; gc2's probes, GC 2.6 and 2.7 in process).
+    #[serde(default)]
+    pub memory_order: bool,
 }
 
 #[derive(Debug, Default, Deserialize, JsonSchema)]
@@ -223,7 +229,9 @@ fn needed(streams: &Streams, views: &ViewParams) -> TraceOptions {
     options.cse |= views.cse || views.ir.is_some() || views.exchange.is_some();
     options.inline_cost |= views.near.is_some() || views.inline_cost.is_some();
     options.instantiation |= views.instantiation.is_some();
-    options.alias |= views.alias;
+    options.alias |= views.alias || views.memory_order;
+    options.alias_queries |= views.memory_order;
+    options.schedule |= views.memory_order;
     options.value_numbering |= views.value_numbering || views.why_not_cse.is_some();
     options.listing |= views.stages.is_some();
     // (the instructions' opcode names)
@@ -305,6 +313,161 @@ fn backend_views(
         backend.insert("stages".into(), json!(dumps));
     }
     Ok(Some(Value::Object(backend)))
+}
+
+/// The memory_order view of TRACE (FUNCTION's or LINK's blocks): for each scheduled block, the memory accesses the
+/// scheduler was told cannot alias and that nothing else orders, where a may-alias answer would have changed the
+/// schedule. Its JSON and its text.
+fn memory_order(trace: &str, function: Option<&str>, link: Option<&str>) -> (Value, Vec<String>) {
+    use mwcc_trace::sched::{describe_alias, is_distinct_pointee};
+    let parsed = mwcc_trace::records::parse(
+        trace,
+        &mwcc_trace::records::Selection {
+            sched: true,
+            alias_queries: true,
+            ..Default::default()
+        },
+    );
+    let selected = |name: &str| {
+        function.is_none_or(|f| f.is_empty() || f == name)
+            && link.is_none_or(|l| l == name || l.starts_with(&format!("{name}__")))
+    };
+    let mut blocks = vec![];
+    let mut lines = vec![];
+    let mut heading = String::new();
+    let (mut binding, mut distinct, mut unordered) = (0, 0, 0);
+    let (mut scheduled, mut replayed) = (0, 0);
+    for b in parsed.sched.iter().filter(|b| selected(&b.function)) {
+        scheduled += 1;
+        replayed += usize::from(b.simulation_agrees());
+        let pairs = b.unordered_memory();
+        unordered += pairs.len();
+        // (those the edge would have reordered; where the block cannot be scheduled again as it was, those it
+        // would have delayed)
+        let pairs: Vec<_> = pairs
+            .into_iter()
+            .filter(|p| p.reorders.unwrap_or(p.binding))
+            .collect();
+        if pairs.is_empty() {
+            continue;
+        }
+        let pass = if b.pre_ra {
+            "before the allocation"
+        } else {
+            "after the allocation"
+        };
+        if heading != b.function {
+            heading = b.function.clone();
+            lines.push(format!("== {}: memory order ==", b.function));
+        }
+        let text = |i: usize| b.nodes[i].text.clone();
+        let alias = |i: usize| {
+            b.nodes[i].alias.map_or("no alias recorded".into(), |a| {
+                describe_alias(&b.aliases, a)
+            })
+        };
+        let order = |picks: &[mwcc_trace::sched::SchedPick]| {
+            picks
+                .iter()
+                .map(|p| format!("#{}", p.node))
+                .collect::<Vec<_>>()
+                .join(" ")
+        };
+        lines.push(format!(
+            "-- block {} ({pass}): {} pair(s) of accesses left unordered changed the order",
+            b.block,
+            pairs.len()
+        ));
+        for (i, x) in b.nodes.iter().enumerate() {
+            lines.push(format!("   #{i:<3} {}", x.text));
+        }
+        let mut rows = vec![];
+        for p in &pairs {
+            binding += 1;
+            let readonly = [p.first, p.second].iter().any(|&i| {
+                b.nodes[i]
+                    .alias
+                    .is_some_and(|a| is_distinct_pointee(&b.aliases, a))
+            });
+            distinct += usize::from(readonly);
+            lines.push(format!(
+                "   #{} [{}] and #{} [{}] cannot alias: #{} issued at cycle {}, not at {} or later",
+                p.first,
+                text(p.first),
+                p.second,
+                text(p.second),
+                p.second,
+                p.second_cycle,
+                p.first_cycle + p.latency
+            ));
+            lines.push(format!("      #{}: {}", p.first, alias(p.first)));
+            lines.push(format!("      #{}: {}", p.second, alias(p.second)));
+            match &p.with_edge {
+                Some(picks) => lines.push(format!(
+                    "      had they may-aliased: {}  (recorded: {})",
+                    order(picks),
+                    order(&b.picks)
+                )),
+                None => lines.push(format!(
+                    "      (scheduling the block again gives {}, not the recorded {}: no what-if)",
+                    order(&b.simulate(&[], b.issue_width())),
+                    order(&b.picks)
+                )),
+            }
+            if readonly {
+                lines.push(
+                    "      a read-only pointer's memory (a const method's `this`, a `const T*` parameter, of a class \
+                     with no `mutable` member in itself, its bases or its members' classes) or a restrict \
+                     pointer's is an object no other pointer reaches. A `mutable` member, a non-const method or \
+                     pointer (or no restrict) makes it the worst case: the two accesses may alias."
+                        .into(),
+                );
+            }
+            rows.push(json!({
+                "first": p.first,
+                "second": p.second,
+                "first_alias": alias(p.first),
+                "second_alias": alias(p.second),
+                "first_cycle": p.first_cycle,
+                "second_cycle": p.second_cycle,
+                "latency": p.latency,
+                "reorders": p.reorders,
+                "read_only_pointee": readonly,
+                "with_edge": p.with_edge.as_ref().map(|picks| picks.iter().map(|q| q.node).collect::<Vec<_>>()),
+            }));
+        }
+        blocks.push(json!({
+            "function": b.function,
+            "block": b.block,
+            "pre_ra": b.pre_ra,
+            "instructions": b.nodes.iter().map(|x| x.text.clone()).collect::<Vec<_>>(),
+            "order": b.order(),
+            "pairs": rows,
+        }));
+    }
+    let replay =
+        format!("scheduled again, {replayed} of {scheduled} blocks give the recorded order");
+    if lines.is_empty() {
+        lines.push(format!(
+            "== memory order: no pair of accesses left unordered changed the order ({unordered} unordered; \
+             {replay}) =="
+        ));
+    } else {
+        lines.push(format!(
+            "   {binding} pair(s) in {} block(s) ({unordered} unordered in all); {distinct} with a read-only or \
+             restrict pointer's memory; {replay}",
+            blocks.len()
+        ));
+    }
+    (
+        json!({
+            "blocks": blocks,
+            "unordered": unordered,
+            "scheduled": scheduled,
+            "replayed": replayed,
+        }),
+        lines,
+    )
 }
 
 /// For each function of OBJECT (FUNCTION's or LINK's, when given), the static objects it refers to that the compile
@@ -667,6 +830,17 @@ fn documented(
         None
     };
     let mut backend = backend_views(&traced.trace, function, link, views)?;
+    let mut text = text;
+    if views.memory_order {
+        let (value, lines) = memory_order(&traced.trace, function, link);
+        backend
+            .get_or_insert_with(|| json!({}))
+            .as_object_mut()
+            .map(|b| b.insert("memory_order".into(), value));
+        if let Some(text) = text.as_mut() {
+            text.extend(lines);
+        }
+    }
     if views.objects {
         let objects = compiled_objects(&traced.object, function, link)?;
         backend

@@ -24,3 +24,5 @@ mwcc-oracle-core = { path = "../mwcc-oracle-core" }
 
 [dev-dependencies]
 tempfile.workspace = true
+# (the in-process tests run the WebAssembly modules)
+mwcc-oracle-core = { path = "../mwcc-oracle-core", features = ["wasm"] }
