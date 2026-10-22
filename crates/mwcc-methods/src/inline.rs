@@ -139,7 +139,8 @@ pub struct CalibrateResult {
     pub units: Vec<String>,
     /// The rows (or, with `binary`, the table by instance).
     pub rows: Value,
-    /// The units whose oracle object differs from the build's.
+    /// The units whose oracle object differs from the one it is compared with: the build's, or the stock compiler's
+    /// of the same compile (a native oracle's unit through `files`).
     pub differing: Vec<String>,
     pub failed: Vec<Failure>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -233,7 +234,7 @@ fn calibrate(call: &mut Call<'_>, params: CalibrateParams) -> Result<CalibrateRe
             Ok(document) => {
                 if document["identical"] == false && !params.binary {
                     text.push(format!(
-                        "{name}: WARNING the oracle object differs from the original compiler's"
+                        "{name}: WARNING the oracle object differs from the build's (or, through files by a native oracle, the stock compiler's)"
                     ));
                     differing.push(name.clone());
                 }
@@ -834,12 +835,20 @@ fn header_impact_method(
         shared,
         &items,
         params.jobs.unwrap_or(4),
-        |((source, _), l), timing| {
+        |((source, included), l), timing| {
             let l = l
                 .as_ref()
                 .with_context(|| format!("objdiff.json has no unit of {source}"))?;
-            let (a, ad) = documented(shared, timing, l, &before, None, &options)?;
-            let (b, bd) = documented(shared, timing, l, &params.files, None, &options)?;
+            // (only the changed files the unit includes: a native oracle's compile replaces no others)
+            let only = |files: &BTreeMap<String, Option<String>>| -> BTreeMap<_, _> {
+                files
+                    .iter()
+                    .filter(|(name, _)| included.contains(name))
+                    .map(|(name, text)| (name.clone(), text.clone()))
+                    .collect()
+            };
+            let (a, ad) = documented(shared, timing, l, &only(&before), None, &options)?;
+            let (b, bd) = documented(shared, timing, l, &only(&params.files), None, &options)?;
             let directory = target_directory(l, params.target_directory.as_deref())?;
             let asm = own_asm(l, &directory)
                 .ok()

@@ -385,7 +385,8 @@ Result:
 | `text` | `[string]` | The views' lines (with `views.text`). |
 | `raw` | `[string]` |  |
 | `backend` | `any` | The backend views (`views.alias`, `views.value_numbering`, `views.why_not_cse`). |
-| `identical` | `boolean` | The object equals the build's (a unit) or the original compiler's (a source). |
+| `identical` | `boolean` | The object equals the one `compared_with` names. |
+| `compared_with` | [`Comparison`](#type-comparison) | What the object was compared with: `build` (the build's object of the unit, compiled as the build compiles it), `stock_compiler` (the stock compiler's object of the same compile), or nothing (null). |
 | `differences` | `[string]` | **required** |
 | `version` | `string` | **required** |
 | `trace_bytes` | `integer` | **required** |
@@ -692,7 +693,7 @@ Result:
 |---|---|---|
 | `units` | `[string]` | **required** |
 | `rows` | `any` | **required**; The rows (or, with `binary`, the table by instance). |
-| `differing` | `[string]` | **required**; The units whose oracle object differs from the build's. |
+| `differing` | `[string]` | **required**; The units whose oracle object differs from the one it is compared with: the build's, or the stock compiler's of the same compile (a native oracle's unit through `files`). |
 | `failed` | `[`[`Failure`](#type-failure)`]` | **required** |
 | `text` | `[string]` |  |
 
@@ -1278,6 +1279,10 @@ Result:
 | `function` | `string` | **required** |
 | `demangled` | `string` |  |
 | `percent` | `number` |  |
+
+<a id="type-comparison"></a>**`Comparison`**: What a traced compile's object is compared with.
+
+`"build" \| "stock_compiler"`
 
 <a id="type-compileresult"></a>**`CompileResult`**
 

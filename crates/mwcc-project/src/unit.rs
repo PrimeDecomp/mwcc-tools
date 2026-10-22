@@ -289,6 +289,13 @@ impl Unit {
         output: &str,
         inline_max_size: Option<u32>,
     ) -> Vec<String> {
+        let mut args = self.flags_with(inline_max_size);
+        args.extend(["-c".into(), source.into(), "-o".into(), output.into()]);
+        args
+    }
+
+    /// The flags, with INLINE_MAX_SIZE in place of the last `inline_max_size(N)`, or added.
+    pub fn flags_with(&self, inline_max_size: Option<u32>) -> Vec<String> {
         let mut args = self.flags.clone();
         if let Some(size) = inline_max_size {
             let pragma = format!("inline_max_size({size})");
@@ -300,8 +307,29 @@ impl Unit {
                 None => args.extend(["-pragma".into(), pragma]),
             }
         }
-        args.extend(["-c".into(), source.into(), "-o".into(), output.into()]);
         args
+    }
+
+    /// Refuse an overlay of a header (any of OVERLAY's files but the source) when the unit uses a precompiled
+    /// header, which may have it.
+    pub fn refuse_precompiled_overlay(&self, overlay: &Overlay) -> Result<()> {
+        let source_key = file_key(&self.source_path());
+        let header = overlay
+            .entries()
+            .map(|(path, _)| path)
+            .find(|path| file_key(path) != source_key);
+        if let Some(header) = header
+            && let Some(precompiled) = self
+                .prefix()
+                .or(self.precompile.then_some(self.source.as_str()))
+        {
+            bail!(
+                "header {} is overlaid, but {} uses the precompiled header {precompiled}, which may have it",
+                header.display(),
+                self.name
+            );
+        }
+        Ok(())
     }
 }
 
@@ -370,17 +398,7 @@ pub fn compile_unit(
         .map(|(path, _)| path)
         .filter(|path| file_key(path) != source_key)
         .collect();
-    if let Some(header) = headers.first()
-        && let Some(precompiled) = unit
-            .prefix()
-            .or(unit.precompile.then_some(unit.source.as_str()))
-    {
-        bail!(
-            "header {} is overlaid, but {} uses the precompiled header {precompiled}, which may have it",
-            header.display(),
-            unit.name
-        );
-    }
+    unit.refuse_precompiled_overlay(overlay)?;
     let scratch = tempfile::Builder::new().prefix("mwcc-unit").tempdir()?;
     let output = scratch.path().join("unit.o");
     let output_text = display_path(&output);
@@ -564,7 +582,7 @@ pub fn compile_unit(
     } else {
         ensure!(
             options.trace.is_none(),
-            "a traced compile of {} needs a module of its compiler {}",
+            "a traced compile of {} in process needs a module of its compiler {}: oracle.trace and the other trace methods run its version's native oracle instead",
             unit.name,
             unit.compiler.display()
         );

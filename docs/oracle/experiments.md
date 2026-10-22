@@ -178,8 +178,26 @@ natively on Windows and through wibo elsewhere, through sjiswrap where the edge 
   before `-c` so its includes resolve as in the build. `__FILE__` is the scratch copy's path, so a unit whose
   code embeds `__FILE__` (asserts, logging) differs from the build in its data: compare its control, which goes
   through the same copy;
-- an overlaid header, and a traced compile, are errors;
+- an overlaid header is an error;
 - compiles are not cached.
+
+A traced compile of such a unit (`oracle.trace`, `oracle.regdiff`, `inline.*`, `tu.*`, `trace.*`) runs its
+version's native oracle (`build/<version>/oracle/mwcceppc.exe`, GC 1.3 and 1.3.2), the source form's runner with the
+unit's source, flags and directory. The project's compiler must be the original the oracle is built from (the SHA-1 of
+`config/<version>/config.json`). Each traced compile is a process, and the native oracle traces every function
+whatever `function` selects: on Windows, 0.1 s for Prime's `CArchMsgParmInt32Int32VoidPtr`, 13 s for its `main`
+and 20 s for `CPlayer` (an 11 MB trace). Then:
+
+- `files` become the runner's overrides: the source as a scratch copy of the same name (with `-i <the source's
+  directory>` before the flags; `__FILE__` names the copy, as above), a header as a copy in a shadow tree put before
+  the include directory it is under. A file given as absent, one not on disk, and a header under no include directory
+  are errors; a header included relative to its includer, not through the include path, is not replaced. A unit that
+  uses a precompiled header refuses an overlaid header, and a unit that makes one (`-precompile`) is not traced;
+- the oracle does not run through sjiswrap: a unit whose edge runs it so compiles alike only while its source and
+  headers are ASCII (a difference says so);
+- without `files` and `inline_max_size`, the object is compared with the build's (`compared_with: build`); with
+  them, with the stock compiler's of the same compile (`stock_compiler`). The build's object of a unit whose edge
+  cleans its extab with dtk after the compile has been through that, and the oracle's has not, as with a module.
 
 ## Score parity
 

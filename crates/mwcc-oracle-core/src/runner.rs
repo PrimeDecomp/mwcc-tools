@@ -312,7 +312,7 @@ pub(crate) fn apply_overrides(
         }
         ensure!(
             found,
-            "--override: {path} is not under an include directory (-i/-I)"
+            "{path} is not under an include directory (-i/-I): only the source, or a header under one, can be replaced"
         );
     }
     Ok(())

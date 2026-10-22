@@ -13,7 +13,10 @@ use mwcc_oracle_core::{
     version::{self, Version},
     views,
 };
-use mwcc_project::{CompileOptions, Overlay, compile_unit};
+use mwcc_project::{
+    CompileOptions, Overlay, compile_unit,
+    compilers::{self, TraceRoute},
+};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -183,8 +186,11 @@ pub struct TraceResult {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schemars(with = "Option<Value>")]
     pub backend: Option<Value>,
-    /// The object equals the build's (a unit) or the original compiler's (a source).
+    /// The object equals the one `compared_with` names.
     pub identical: Option<bool>,
+    /// What the object was compared with: `build` (the build's object of the unit, compiled as the build compiles
+    /// it), `stock_compiler` (the stock compiler's object of the same compile), or nothing (null).
+    pub compared_with: Option<Comparison>,
     pub differences: Vec<String>,
     pub version: String,
     pub trace_bytes: usize,
@@ -613,6 +619,17 @@ fn why_not_cse(passes: &[&mwcc_trace::records::VnPass], a: i32, b: i32) -> Vec<V
     answers
 }
 
+/// What a traced compile's object is compared with.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum Comparison {
+    /// The build's object of the unit (a unit compiled as its build compiles it).
+    Build,
+    /// The stock compiler's object of the same compile (a source, or a unit through files or another
+    /// `inline_max_size` by the native oracle).
+    StockCompiler,
+}
+
 /// A traced compile: the trace, the object, its version, and how it compares.
 pub(crate) struct Traced {
     pub trace: String,
@@ -621,6 +638,8 @@ pub(crate) struct Traced {
     pub source: String,
     pub oracle: String,
     pub identical: Option<bool>,
+    /// What the object was compared with, if anything.
+    pub compared_with: Option<Comparison>,
     pub differences: Vec<String>,
     pub original_fallback: bool,
     /// The unit's target asm, for the locals view.
@@ -635,7 +654,9 @@ fn target_asm(loaded: &Loaded) -> Option<PathBuf> {
     loaded.unit.target_asm_or_disassembled()
 }
 
-/// LOADED compiled with a trace of OPTIONS through FILES.
+/// LOADED compiled with a trace of OPTIONS through FILES: in process where a module runs its compiler, else by its
+/// version's native oracle ([`mwcc_project::compilers::trace_route`]). Without FILES and INLINE_MAX_SIZE the object
+/// is compared with the build's; the native oracle's with them, with the stock compiler's of the same compile.
 pub(crate) fn trace_unit(
     call: &Call<'_>,
     timing: &mut Timing,
@@ -646,11 +667,14 @@ pub(crate) fn trace_unit(
     timeout: Duration,
 ) -> Result<Traced> {
     let unit = &loaded.unit;
-    let version = Version::parse(
-        unit.mw_version
-            .as_deref()
-            .context("the unit has no mw_version")?,
-    )?;
+    let root = &call.session.oracle_root;
+    let route = compilers::trace_route(
+        root,
+        &unit.compiler,
+        unit.version,
+        unit.mw_version.as_deref(),
+    )
+    .with_context(|| format!("a traced compile of {}", unit.name))?;
     let mut overlay = Overlay::new();
     for (path, text) in files {
         let path = loaded.project.root.join(path);
@@ -659,50 +683,126 @@ pub(crate) fn trace_unit(
             None => overlay.insert_absent(path),
         }
     }
-    let compiled = compile_unit(
-        unit,
-        &overlay,
-        &CompileOptions {
-            oracle_root: &call.session.oracle_root,
-            inline_max_size,
-            trace: Some(options),
-            timeout,
-            cancel: call.cancel,
-            cache: None,
-            persist: None,
-        },
-    )?;
-    timing.trace += ms(compiled.time);
-    if compiled.cancelled {
-        bail!("cancelled");
+    let native = matches!(route, TraceRoute::Native { .. });
+    let with_build = compares_with_build(loaded, files, inline_max_size);
+    let (object, trace, version, oracle, stock) = match route {
+        TraceRoute::Module { version, .. } => {
+            let compiled = compile_unit(
+                unit,
+                &overlay,
+                &CompileOptions {
+                    oracle_root: root,
+                    inline_max_size,
+                    trace: Some(options),
+                    timeout,
+                    cancel: call.cancel,
+                    cache: None,
+                    persist: None,
+                },
+            )?;
+            timing.trace += ms(compiled.time);
+            if compiled.cancelled {
+                bail!("cancelled");
+            }
+            ensure!(!compiled.timed_out, "the compile timed out");
+            let object = match compiled.object {
+                Some(object) if compiled.exit_code == 0 => object,
+                _ => bail!(
+                    "the unit does not compile:\n{}",
+                    String::from_utf8_lossy(&compiled.console)
+                ),
+            };
+            let trace = String::from_utf8(compiled.trace).context("the trace is not UTF-8")?;
+            (
+                object,
+                trace,
+                version,
+                unit.compiler.display().to_string(),
+                None,
+            )
+        }
+        TraceRoute::Native { version, .. } => {
+            ensure!(
+                !unit.precompile,
+                "{} makes a precompiled header, which the native oracle's compile does not trace",
+                unit.name
+            );
+            unit.refuse_precompiled_overlay(&overlay)?;
+            let scratch = tempfile::Builder::new().prefix("mwcc-unit").tempdir()?;
+            let overrides = native_overrides(loaded, files, scratch.path())?;
+            let request = CompileRequest {
+                root: root.clone(),
+                working_directory: unit.directory.clone(),
+                source: unit.source.clone(),
+                flags: unit.flags_with(inline_max_size),
+                version,
+                options: options.clone(),
+                overrides,
+                // (the build's object is the reference where it is one; else the stock compiler's)
+                check: !with_build,
+                original_fallback: false,
+                cut_limit: None,
+                merge_limit: None,
+                keep_object: None,
+                timeout,
+            };
+            let started = Instant::now();
+            let compiled = runner::compile_controlled(&request, call.cancel).map_err(|e| {
+                match e.downcast_ref::<runner::Cancelled>() {
+                    Some(_) => anyhow::anyhow!("cancelled"),
+                    None => e.context(format!("the native oracle's compile of {}", unit.name)),
+                }
+            })?;
+            timing.trace += ms(started.elapsed());
+            let stock = compiled
+                .identical
+                .map(|identical| (identical, compiled.differences.clone()));
+            (
+                compiled.object,
+                compiled.trace,
+                version,
+                compiled.oracle,
+                stock,
+            )
+        }
+    };
+    let (compared_with, identical, mut differences) = if let Some((identical, differences)) = stock
+    {
+        (
+            Some(Comparison::StockCompiler),
+            Some(identical),
+            differences,
+        )
+    } else {
+        match with_build.then(|| std::fs::read(&unit.base_path)) {
+            Some(Ok(built)) => {
+                let differences = if built == object {
+                    vec![]
+                } else {
+                    mwcc_oracle_core::elf::differences(&object, &built).unwrap_or_default()
+                };
+                (Some(Comparison::Build), Some(built == object), differences)
+            }
+            _ => (None, None, vec![]),
+        }
+    };
+    if identical == Some(false)
+        && compared_with == Some(Comparison::Build)
+        && unit.sjiswrap.is_some()
+        && native
+    {
+        differences.push(
+            "the build runs the compiler through sjiswrap (UTF-8 read as Shift JIS), and the oracle's compile does not: non-ASCII text in the source or its headers reads differently".into(),
+        );
     }
-    ensure!(!compiled.timed_out, "the compile timed out");
-    let object = match compiled.object {
-        Some(object) if compiled.exit_code == 0 => object,
-        _ => bail!(
-            "the unit does not compile:\n{}",
-            String::from_utf8_lossy(&compiled.console)
-        ),
-    };
-    let built = std::fs::read(&unit.base_path).ok();
-    let (identical, differences) = match &built {
-        Some(built) if files.is_empty() && inline_max_size.is_none() => (
-            Some(*built == object),
-            if *built == object {
-                vec![]
-            } else {
-                mwcc_oracle_core::elf::differences(&object, built).unwrap_or_default()
-            },
-        ),
-        _ => (None, vec![]),
-    };
     Ok(Traced {
-        trace: String::from_utf8(compiled.trace).context("the trace is not UTF-8")?,
+        trace,
         object,
         version,
         source: unit.source.clone(),
-        oracle: unit.compiler.display().to_string(),
+        oracle,
         identical,
+        compared_with,
         differences,
         original_fallback: false,
         target_asm: target_asm(loaded),
@@ -710,6 +810,43 @@ pub(crate) fn trace_unit(
     })
 }
 
+/// Whether a unit's traced compile is compared with the build's object: it is the reference when the compile is the
+/// build's (no files, the flags' own `inline_max_size`) and the object is there.
+fn compares_with_build(
+    loaded: &Loaded,
+    files: &BTreeMap<String, Option<String>>,
+    inline_max_size: Option<u32>,
+) -> bool {
+    files.is_empty() && inline_max_size.is_none() && loaded.unit.base_path.is_file()
+}
+
+/// FILES (paths relative to the project, and their text) as the runner's `PATH=REPLACEMENT` overrides, each written
+/// under SCRATCH with the name of the file it replaces (the source's name is in `__FILE__` and in an anonymous
+/// namespace's symbols). Only a file that is on disk can be replaced, and a header only under an include directory.
+fn native_overrides(
+    loaded: &Loaded,
+    files: &BTreeMap<String, Option<String>>,
+    scratch: &std::path::Path,
+) -> Result<Vec<String>> {
+    let mut overrides = vec![];
+    for (index, (path, text)) in files.iter().enumerate() {
+        let full = loaded.project.root.join(path);
+        let text = text.as_ref().with_context(|| {
+            format!("{path} is given as absent: only a compile in process (a module) can leave a file out")
+        })?;
+        ensure!(
+            full.is_file(),
+            "{path} is not on disk: the native oracle's compile replaces files, and adds none"
+        );
+        let copy = scratch
+            .join(index.to_string())
+            .join(full.file_name().context("a file has no name")?);
+        std::fs::create_dir_all(copy.parent().context("no directory")?)?;
+        std::fs::write(&copy, text)?;
+        overrides.push(format!("{}={}", full.display(), copy.display()));
+    }
+    Ok(overrides)
+}
 fn limit(text: &Option<String>) -> Result<Option<BlockLimit>> {
     text.as_deref().map(BlockLimit::parse).transpose()
 }
@@ -762,6 +899,7 @@ fn trace_source(
         source: compiled.source,
         oracle: compiled.oracle,
         identical: compiled.identical,
+        compared_with: compiled.identical.map(|_| Comparison::StockCompiler),
         differences: compiled.differences,
         original_fallback: compiled.original_fallback,
         target_asm,
@@ -861,6 +999,7 @@ fn documented(
         raw,
         backend,
         identical: traced.identical,
+        compared_with: traced.compared_with,
         differences: traced.differences.clone(),
         version: traced.version.name().into(),
         trace_bytes: traced.trace.len(),
@@ -1028,7 +1167,9 @@ fn oracle_regdiff(call: &mut Call<'_>, params: RegdiffParams) -> Result<RegdiffR
         let header = json!({
             "unit": loaded.unit.name,
             "files": params.files.keys().collect::<Vec<_>>(),
-            "project_object_identical": traced.identical,
+            "project_object_identical": traced.identical.filter(|_| traced.compared_with == Some(Comparison::Build)),
+            "compared_with": traced.compared_with,
+            "identical": traced.identical,
             "relocation_policy": "functionRelocDiffs=data_value",
         });
         (parsed, diff, traced.version, Some(header))
@@ -1082,17 +1223,30 @@ fn regdiff_text(
             document["version"].as_str().unwrap_or("?"),
             header["unit"].as_str().unwrap_or("?")
         ));
-        if header["files"].as_array().is_some_and(|f| !f.is_empty()) {
-            out.push("candidate files: compared with the target only".into());
-        } else {
-            out.push(format!(
+        let identical = header["identical"] == true;
+        match header["compared_with"].as_str() {
+            Some("build") => out.push(format!(
                 "oracle object equals the project object: {}",
-                if header["project_object_identical"] == true {
+                if identical {
                     "yes"
                 } else {
                     "NO (the project object is stale: run ninja; or the oracle differs and the explanation may not hold)"
                 }
-            ));
+            )),
+            Some("stock_compiler") => out.push(format!(
+                "oracle object equals the stock compiler's of the same files and flags: {}",
+                if identical {
+                    "yes"
+                } else {
+                    "NO (the oracle differs and the explanation may not hold)"
+                }
+            )),
+            _ if header["files"].as_array().is_some_and(|f| !f.is_empty()) => {
+                out.push("candidate files: compared with the target only".into())
+            }
+            _ => out.push(
+                "oracle object not compared (another inline_max_size, or no project object)".into(),
+            ),
         }
     }
     if document["target"].is_null() {

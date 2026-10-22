@@ -111,9 +111,13 @@ mwcc-tools call oracle.trace project=../echoes unit=main/GuiSys/CGuiFrame functi
 mwcc-tools call oracle.trace source=example.cpp version=GC_2_7 flags='["-O4,p","-inline","auto"]' views.text=true
 ```
 
-* A unit (`project` and `unit`, or a `handle` from `unit.load`) compiles as its build compiles it, in process by its
-  version's WebAssembly oracle (GC 2.6, 2.7). For a GC 1.3 or 1.3.2 unit, compile its source with the `source`,
-  `flags`, `directory` and `version` that `unit.load` gives ([example](oracle/blocks.md#other-limits-cut_limit-merge_limit)).
+* A unit (`project` and `unit`, or a `handle` from `unit.load`) compiles as its build compiles it: in process by its
+  version's WebAssembly oracle (GC 2.6, 2.7), else as a process by its version's native oracle
+  (`build/<version>/oracle/mwcceppc.exe`, GC 1.3 and 1.3.2; [without a module](oracle/experiments.md#without-a-module)).
+  A unit of another compiler (GC 1.2.5n) is refused, and one whose native oracle is not built is told how to build it.
+* `compared_with` says what the object was compared with, and `identical` the outcome: `build` (the build's object
+  of the unit, without `files` and `inline_max_size`), `stock_compiler` (the stock compiler's of the same compile: a
+  source, or a native oracle's unit through `files` or `inline_max_size`), or null (a module's unit through them).
 * A source compiles with `flags` in `directory` (default the current one). `version` defaults to `GC_1_3_2`.
 * `function` matches a display or link name; `link` takes an exact link name.
 * `document` is the schema-6 report. With `views.text`, `text` is the printed report: the object check, then

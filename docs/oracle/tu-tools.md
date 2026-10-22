@@ -78,8 +78,9 @@ order still made the literal.)
   as the object file tells.
 * The target's alignment, and the padding at the end of a section, come from the split and are not compared.
 
-A unit whose compiler has no WebAssembly module (Echoes' GC 1.2.5n SDK units) is refused: these methods read the
-trace.
+A unit whose compiler has neither a WebAssembly module nor a native oracle (Echoes' and Prime's GC 1.2.5n SDK units)
+is refused: these methods read the trace. GC 1.3 and 1.3.2 units trace through their native oracle once it is built
+([without a module](experiments.md#without-a-module)).
 
 ## `inline.window`: the inline limit a TU's target agrees with
 
@@ -161,8 +162,8 @@ branch targets masked: twice the matched sequence length over the combined lengt
 
 * Functions are paired by name with the compiler's local numbers left out, so `__arraydtor$89` and `__arraydtor$91`
   are the same function.
-* Units whose compiler has no WebAssembly module (GC 1.2.5n) are reported with an error: the comparison reads each
-  compile's trace.
+* Units whose compiler has neither a WebAssembly module nor a native oracle (GC 1.2.5n) are reported with an error:
+  the comparison reads each compile's trace.
 * A header included through a path relative to the including file, rather than through the include path, is not
   replaced by `files`.
 * Each unit is compiled twice, and a shared header can reach hundreds: `units` narrows the run, `jobs` sets the
