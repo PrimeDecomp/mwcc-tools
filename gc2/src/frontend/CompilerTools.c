@@ -1,4 +1,5 @@
 #include "compiler/CompilerTools.h"
+#include "compiler/OracleProbes.h"
 #include "compiler/CParser.h"
 #include "driver/CCompiler.h"
 #include "driver/COSToolsCLT.h"
@@ -40,6 +41,38 @@ static HeapMem oheap;
 static HeapMem bheap;
 static heaperror_t heaperror;
 static short lheaplockcount;
+
+#ifdef ORACLE_PROBES
+// (what the arena probes read: a heap, lheap's lock and the original's version)
+struct {
+    void* pools;
+    short* lock;
+    UInt32 version;
+} OracleRust_ArenaGlobals = {&bheap, &lheaplockcount,
+                             VERSION == VERSION_GC_2_7 ? 3 : VERSION == VERSION_GC_1_3_2 ? 2 : 4};
+
+static void MoreHeapSpace(HeapMem* heapp, SInt32 size);
+
+// galloc, which the original inlines at PAIR's sites
+static void* galloc_at(SInt32 s, UInt32 pair) {
+    char* cp;
+
+    OracleProbe_ArenaRequest(pair, s, &cp);
+    s = (s & ~7) + 8;
+    if (gheap.curfree < s) {
+        MoreHeapSpace(&gheap, s);
+    }
+
+    gheap.curfree -= s;
+    cp = gheap.curfreep;
+    gheap.curfreep += s;
+    OracleProbe_ArenaCommit(pair, s, cp, &gheap, &cp);
+    return cp;
+}
+#define GALLOC_AT(s, pair) galloc_at(s, pair)
+#else
+#define GALLOC_AT(s, pair) galloc(s)
+#endif
 long hash_name_id;
 HashNameNode** name_hash_nodes;
 void (*GListErrorProc)(void);
@@ -351,7 +384,7 @@ HashNameNode* GetHashNameNode(const char* name) {
     SInt16 hashval;
 
     if ((node = name_hash_nodes[hashval = CHash(name)]) == NULL) {
-        name_hash_nodes[hashval] = node = galloc(strlen(name) + sizeof(HashNameNode));
+        name_hash_nodes[hashval] = node = GALLOC_AT(strlen(name) + sizeof(HashNameNode), 8);
         node->next = NULL;
         node->id = hash_name_id++;
         node->hashval = hashval;
@@ -367,7 +400,7 @@ HashNameNode* GetHashNameNode(const char* name) {
             }
 
             if (node->next == NULL) {
-                node->next = galloc(strlen(name) + sizeof(HashNameNode));
+                node->next = GALLOC_AT(strlen(name) + sizeof(HashNameNode), 9);
                 node = node->next;
                 node->next = NULL;
                 node->id = hash_name_id++;
@@ -450,7 +483,7 @@ HashNameNode* GetHashNameNodeExport(const char* name) {
     SInt16 hashval;
 
     if ((node = name_hash_nodes[hashval = CHash(name)]) == NULL) {
-        node = galloc(strlen(name) + sizeof(HashNameNode));
+        node = GALLOC_AT(strlen(name) + sizeof(HashNameNode), 6);
         name_hash_nodes[hashval] = node;
         node->next = NULL;
         node->id = -1;
@@ -464,7 +497,7 @@ HashNameNode* GetHashNameNodeExport(const char* name) {
             }
 
             if (node->next == NULL) {
-                node->next = galloc(strlen(name) + sizeof(HashNameNode));
+                node->next = GALLOC_AT(strlen(name) + sizeof(HashNameNode), 7);
                 node = node->next;
                 node->next = NULL;
                 node->id = -1;
@@ -580,7 +613,7 @@ void NameHashWriteTargetEndianNameTable(GList* glist) {
 }
 
 void InitNameHash(void) {
-    name_hash_nodes = galloc(2048 * sizeof(HashNameNode*));
+    name_hash_nodes = GALLOC_AT(2048 * sizeof(HashNameNode*), 5);
     memclrw(name_hash_nodes, 2048 * sizeof(HashNameNode*));
     hash_name_id = 1;
 }
@@ -686,6 +719,7 @@ static void MoreHeapSpace(HeapMem* heapp, SInt32 size) {
     }
 
     if (heaperror) {
+        ORACLE_PROBE(OracleProbe_ArenaCallback());
         heaperror();
     }
     return;
@@ -811,6 +845,7 @@ void releaseoheap(void) {
 void* galloc(SInt32 size) {
     char* cp;
 
+    ORACLE_PROBE(OracleProbe_ArenaRequest(1, size, &cp));
     size = (size & ~7) + 8;
     if (gheap.curfree < size) {
         MoreHeapSpace(&gheap, size);
@@ -819,12 +854,14 @@ void* galloc(SInt32 size) {
     gheap.curfree -= size;
     cp = gheap.curfreep;
     gheap.curfreep += size;
+    ORACLE_PROBE(OracleProbe_ArenaCommit(1, size, cp, &gheap, &cp));
     return cp;
 }
 
 void* lalloc(SInt32 size) {
     char* cp;
 
+    ORACLE_PROBE(OracleProbe_ArenaRequest(2, size, &cp));
     size = (size & ~7) + 8;
     if (lheap.curfree < size) {
         MoreHeapSpace(&lheap, size);
@@ -833,12 +870,14 @@ void* lalloc(SInt32 size) {
     lheap.curfree -= size;
     cp = lheap.curfreep;
     lheap.curfreep += size;
+    ORACLE_PROBE(OracleProbe_ArenaCommit(2, size, cp, &lheap, &cp));
     return cp;
 }
 
 void* aalloc(SInt32 size) {
     char* cp;
 
+    ORACLE_PROBE(OracleProbe_ArenaRequest(3, size, &cp));
     size = (size & ~7) + 8;
     if (aheap.curfree < size) {
         MoreHeapSpace(&aheap, size);
@@ -847,12 +886,14 @@ void* aalloc(SInt32 size) {
     aheap.curfree -= size;
     cp = aheap.curfreep;
     aheap.curfreep += size;
+    ORACLE_PROBE(OracleProbe_ArenaCommit(3, size, cp, &aheap, &cp));
     return cp;
 }
 
 void* oalloc(SInt32 size) {
     char* cp;
 
+    ORACLE_PROBE(OracleProbe_ArenaRequest(4, size, &cp));
     size = (size & ~7) + 8;
     if (oheap.curfree < size) {
         MoreHeapSpace(&oheap, size);
@@ -861,6 +902,7 @@ void* oalloc(SInt32 size) {
     oheap.curfree -= size;
     cp = oheap.curfreep;
     oheap.curfreep += size;
+    ORACLE_PROBE(OracleProbe_ArenaCommit(4, size, cp, &oheap, &cp));
     return cp;
 }
 

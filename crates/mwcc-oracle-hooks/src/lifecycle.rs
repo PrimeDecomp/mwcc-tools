@@ -1129,7 +1129,9 @@ pub unsafe extern "C" fn OracleProbe_CounterIncrement(
     old: i32,
 ) -> i32 {
     unsafe {
-        if !enabled() {
+        // (the sites are GC 2.7's and 2.6's, crate::counter_sites: a version without them, GC 1.3.2, reports no
+        // increments)
+        if !enabled() || !matches!(crate::source_arenas::version(), 3 | 4) {
             return old;
         }
         let unit = unit_of(file);

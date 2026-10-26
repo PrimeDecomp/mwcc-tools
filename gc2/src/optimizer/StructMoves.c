@@ -27,6 +27,10 @@ void make_addressable(Operand* operand, SInt32 offset, int n) {
     }
 }
 
+#ifdef ORACLE_PROBES
+#define make_addressable(...) ORACLE_INLINED(make_addressable(__VA_ARGS__))
+#endif
+
 static void load_displaced_address(Operand* opnd, SInt32 offset) {
     int reg;
 
@@ -344,6 +348,10 @@ static inline void copy_chunk(Operand* dst, Operand* src, int width, int pos) {
     load_store_register((w == 1) ? PC_STB : (w == 2) ? PC_STH : PC_STW, reg, dst->reg, NULL, pos);
     setpcodeflags(dst->flags);
 }
+
+#ifdef ORACLE_PROBES
+#define copy_chunk(...) ORACLE_INLINED(copy_chunk(__VA_ARGS__))
+#endif
 
 static void move_block_via_inline_loop(Operand* dst, Operand* src, SInt32 len, SInt32 align) {
     PCodeLabel* label;

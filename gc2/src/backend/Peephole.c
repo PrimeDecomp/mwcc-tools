@@ -5,6 +5,7 @@
 #include "compiler/CParser.h"
 #include "compiler/InstrSelection.h"
 #include "compiler/objects.h"
+#include "compiler/OracleProbes.h"
 #include "compiler/PCode.h"
 #include "compiler/PCodeInfo.h"
 #include "compiler/PCodeUtilities.h"
@@ -1287,6 +1288,15 @@ static int L_S(PCode* instr, UInt32* masks) {
 #endif
     SInt32 storeSize;
 
+#if defined(__MWERKS__) && defined(__wasm__)
+    /* A store between to another object leaves both offsets unset, and the original compares its stack slots as
+       earlier calls left them. The scan offset's slot holds a pointer, as computeinstructionpredecessors leaves it
+       (its nop), so the offsets never overlap. (This assumes no L_S call since then has set them.) The clang-x86
+       build's ls_frame emulation (#ifndef __MWERKS__) is not compiled here. */
+    defInstrOffset = 0;
+    scanOffset = 0x7FFFFFFF;
+#endif
+
     if (PCODE_FLAG_SET_F(instr) & (fIsVolatile | fSideEffects | fUpdatesPtr)) {
         return FALSE;
     }
@@ -2224,12 +2234,15 @@ static void peepholeoptimizeblock(PCodeBlock* block) {
 
     for (instr = block->lastPCode; instr; instr = instr->prevPCode) {
         if (dead(instr, masks)) {
+            ORACLE_PROBE(OracleProbe_PeepholeDead(instr));
             deletepcode(instr);
         } else {
             pattern = peepholepatterns[instr->op];
 
             while (pattern) {
+                ORACLE_PROBE(OracleProbe_PeepholeTry(instr, (void*)pattern->func));
                 if (pattern->func(instr, masks)) {
+                    ORACLE_PROBE(OracleProbe_PeepholeHit(instr));
                     if (!instr->block) {
                         break;
                     }
@@ -2894,6 +2907,11 @@ static void installpattern(short opcode, PeepholeFunc func) {
     pattern->next = peepholepatterns[opcode];
     peepholepatterns[opcode] = pattern;
 }
+
+#ifdef ORACLE_PROBES
+// (the oracle names the patterns it reports)
+#define installpattern(opcode, func) (OracleProbe_PeepholePattern((void*)func, #func), installpattern(opcode, func))
+#endif
 
 static void installpeepholepatterns(void) {
     int i;

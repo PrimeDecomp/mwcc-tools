@@ -9,6 +9,10 @@
 #include "compiler/objects.h"
 #include "compiler/PCode.h"
 #include "compiler/PCodeInfo.h"
+#include "compiler/OracleProbes.h"
+#ifdef ORACLE_PROBES
+#include "compiler/CodeGen.h"
+#endif
 #include <stdio.h>
 #include <string.h>
 
@@ -176,7 +180,13 @@ void pcinitlisting(void) {}
 
 void pccleanuplisting(void) {}
 
+#ifdef ORACLE_PROBES
+void pclistblocks(char* name1, char* name2) {
+    ORACLE_PROBE(OracleProbe_ListBlocks(gFunction, name2));
+}
+#else
 void pclistblocks(char* name1, char* name2) {}
+#endif
 
 void pclistdataflow(void) {}
 

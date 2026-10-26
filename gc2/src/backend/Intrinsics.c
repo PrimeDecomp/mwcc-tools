@@ -2291,6 +2291,10 @@ static void abs_intrinsic(ENode* expr, short outputReg, Operand* output) {
     output->reg = resultReg;
 }
 
+#ifdef ORACLE_PROBES
+#define abs_intrinsic(...) ORACLE_INLINED(abs_intrinsic(__VA_ARGS__))
+#endif
+
 static void setflm_intrinsic(ENode* expr, short outputReg, Operand* output, int resultIgnored) {
     int reg;
     Operand op;
@@ -2306,6 +2310,10 @@ static void setflm_intrinsic(ENode* expr, short outputReg, Operand* output, int 
 
     emitpcode(PC_MTFSF, 255, op.reg);
 }
+
+#ifdef ORACLE_PROBES
+#define setflm_intrinsic(...) ORACLE_INLINED(setflm_intrinsic(__VA_ARGS__))
+#endif
 
 static void alloca_intrinsic(ENode* expr, short outputReg, Operand* output) {
     SInt32 reg;
@@ -2328,6 +2336,10 @@ static void alloca_intrinsic(ENode* expr, short outputReg, Operand* output) {
     output->optype = OpndType_GPR;
     output->reg = reg;
 }
+
+#ifdef ORACLE_PROBES
+#define alloca_intrinsic(...) ORACLE_INLINED(alloca_intrinsic(__VA_ARGS__))
+#endif
 
 static void load_bytereversed_intrinsic(
     short opcode, ENode* expr1, ENode* expr2, short outputReg, Operand* output
@@ -3028,6 +3040,10 @@ static void vector_intrinsic_mfvscr(short outputReg, short opcode, Operand* outp
     output->reg = reg;
 }
 
+#ifdef ORACLE_PROBES
+#define vector_intrinsic_mfvscr(...) ORACLE_INLINED(vector_intrinsic_mfvscr(__VA_ARGS__))
+#endif
+
 static void vector_intrinsic_1arg(ENode* arg1, short outputReg, Operand* output, short opcode) {
     Operand op1;
     short reg;
@@ -3042,6 +3058,10 @@ static void vector_intrinsic_1arg(ENode* arg1, short outputReg, Operand* output,
     output->optype = OpndType_VR;
     output->reg = reg;
 }
+
+#ifdef ORACLE_PROBES
+#define vector_intrinsic_1arg(...) ORACLE_INLINED(vector_intrinsic_1arg(__VA_ARGS__))
+#endif
 
 static void vector_intrinsic_splats(ENode* arg1, short outputReg, Operand* output, short opcode) {
     Operand op1;
@@ -3059,6 +3079,10 @@ static void vector_intrinsic_splats(ENode* arg1, short outputReg, Operand* outpu
     output->reg = reg;
 }
 
+#ifdef ORACLE_PROBES
+#define vector_intrinsic_splats(...) ORACLE_INLINED(vector_intrinsic_splats(__VA_ARGS__))
+#endif
+
 static void vector_intrinsic_splatu8(ENode* arg1, short outputReg, Operand* output, short opcode) {
     Operand op1;
     short reg;
@@ -3074,6 +3098,10 @@ static void vector_intrinsic_splatu8(ENode* arg1, short outputReg, Operand* outp
     output->optype = OpndType_VR;
     output->reg = reg;
 }
+
+#ifdef ORACLE_PROBES
+#define vector_intrinsic_splatu8(...) ORACLE_INLINED(vector_intrinsic_splatu8(__VA_ARGS__))
+#endif
 
 static void vector_intrinsic_splatu16(ENode* arg1, short outputReg, Operand* output, short opcode) {
     Operand op1;
@@ -3091,6 +3119,10 @@ static void vector_intrinsic_splatu16(ENode* arg1, short outputReg, Operand* out
     output->reg = reg;
 }
 
+#ifdef ORACLE_PROBES
+#define vector_intrinsic_splatu16(...) ORACLE_INLINED(vector_intrinsic_splatu16(__VA_ARGS__))
+#endif
+
 static void vector_intrinsic_splatu32(ENode* arg1, short outputReg, Operand* output, short opcode) {
     Operand op1;
     short reg;
@@ -3106,6 +3138,10 @@ static void vector_intrinsic_splatu32(ENode* arg1, short outputReg, Operand* out
     output->optype = OpndType_VR;
     output->reg = reg;
 }
+
+#ifdef ORACLE_PROBES
+#define vector_intrinsic_splatu32(...) ORACLE_INLINED(vector_intrinsic_splatu32(__VA_ARGS__))
+#endif
 
 static void vector_intrinsic_dss(ENode* arg1) {
     Operand op1;
@@ -3137,6 +3173,10 @@ static void vector_intrinsic_2args(
     output->reg = reg;
 }
 
+#ifdef ORACLE_PROBES
+#define vector_intrinsic_2args(...) ORACLE_INLINED(vector_intrinsic_2args(__VA_ARGS__))
+#endif
+
 static void vector_intrinsic_2args1const(
     ENode* arg1, ENode* arg2, short outputReg, Operand* output, short opcode
 ) {
@@ -3157,6 +3197,10 @@ static void vector_intrinsic_2args1const(
     output->optype = OpndType_VR;
     output->reg = reg;
 }
+
+#ifdef ORACLE_PROBES
+#define vector_intrinsic_2args1const(...) ORACLE_INLINED(vector_intrinsic_2args1const(__VA_ARGS__))
+#endif
 
 static void vector_intrinsic_3args(
     ENode* arg1, ENode* arg2, ENode* arg3, short outputReg, Operand* output, short opcode
@@ -3223,6 +3267,10 @@ static void vector_intrinsic_sld(
     output->optype = OpndType_VR;
     output->reg = reg;
 }
+
+#ifdef ORACLE_PROBES
+#define vector_intrinsic_sld(...) ORACLE_INLINED(vector_intrinsic_sld(__VA_ARGS__))
+#endif
 
 static void vector_intrinsic_load(
     ENode* arg1, ENode* arg2, short outputReg, Operand* output, short opcode

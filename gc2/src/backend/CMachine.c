@@ -687,37 +687,37 @@ void CMach_InitVectorMem(Type* type, MWVector128 val, void* mem, Boolean endian_
 Float CMach_CalcFloatDiadic(Type* type, Float left, short op, Float right) {
     switch (op) {
         case '+':
-#ifdef __MWERKS__
-            left.data.value += right.data.value;
-#elif defined(__wasm__)
+#if defined(__wasm__)
             left.data.value = __x87_double('+', left.data.value, right.data.value);
+#elif defined(__MWERKS__)
+            left.data.value += right.data.value;
 #else
             left.data.value = X87_Arithmetic(left.data.value, X87_ADD, right.data.value);
 #endif
             break;
         case '-':
-#ifdef __MWERKS__
-            left.data.value -= right.data.value;
-#elif defined(__wasm__)
+#if defined(__wasm__)
             left.data.value = __x87_double('-', left.data.value, right.data.value);
+#elif defined(__MWERKS__)
+            left.data.value -= right.data.value;
 #else
             left.data.value = X87_Arithmetic(left.data.value, X87_SUB, right.data.value);
 #endif
             break;
         case '*':
-#ifdef __MWERKS__
-            left.data.value *= right.data.value;
-#elif defined(__wasm__)
+#if defined(__wasm__)
             left.data.value = __x87_double('*', left.data.value, right.data.value);
+#elif defined(__MWERKS__)
+            left.data.value *= right.data.value;
 #else
             left.data.value = X87_Arithmetic(left.data.value, X87_MUL, right.data.value);
 #endif
             break;
         case '/':
-#ifdef __MWERKS__
-            left.data.value /= right.data.value;
-#elif defined(__wasm__)
+#if defined(__wasm__)
             left.data.value = __x87_double('/', left.data.value, right.data.value);
+#elif defined(__MWERKS__)
+            left.data.value /= right.data.value;
 #else
             left.data.value = X87_Arithmetic(left.data.value, X87_DIV, right.data.value);
 #endif

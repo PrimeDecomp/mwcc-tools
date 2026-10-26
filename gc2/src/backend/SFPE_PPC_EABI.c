@@ -33,6 +33,10 @@ static inline void lift_result(Operand* op, int kind) {
     }
 }
 
+#ifdef ORACLE_PROBES
+#define lift_result(...) ORACLE_INLINED(lift_result(__VA_ARGS__))
+#endif
+
 static inline void LoadFloatArg(int reg) {
     union {
         float f;

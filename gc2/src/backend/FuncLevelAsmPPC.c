@@ -9,6 +9,7 @@
 #include "compiler/CPrep.h"
 #include "compiler/CPrepTokenizer.h"
 #include "compiler/DumpIR.h"
+#include "compiler/OracleProbes.h"
 #include "compiler/InlineAsm.h"
 #include "compiler/InlineAsmPPC.h"
 #include "compiler/InlineAsmRegisters.h"
@@ -322,18 +323,18 @@ void Assembler(Object* func) {
                             }
 
                             pccomputepredecessors();
-                            if (copts.debuglisting) {
+                            if (ORACLE_LISTING(copts.debuglisting)) {
                                 pclistblocks(name, "[FUNCTION-LEVEL ASM] INITIAL CODE");
                             }
                             StackFrame_has_vectors = set_vr_reg_flags();
                             colorinstructions(func);
-                            if (copts.debuglisting) {
+                            if (ORACLE_LISTING(copts.debuglisting)) {
                                 pclistblocks(name, "[FUNCTION-LEVEL ASM] AFTER REGISTER COLORING");
                             }
                             compute_frame_sizes();
                             generate_prologue(prologue, FALSE);
                             generate_epilogue(epilogue = pclastblock, FALSE);
-                            if (copts.debuglisting) {
+                            if (ORACLE_LISTING(copts.debuglisting)) {
                                 pclistblocks(
                                     name, "[FUNCTION-LEVEL ASM] AFTER PROLOGUE/EPILOGUE CREATION"
                                 );
@@ -377,7 +378,7 @@ void Assembler(Object* func) {
 
         pccomputepredecessors();
         StackFrame_has_vectors = set_vr_reg_flags();
-        if (copts.debuglisting) {
+        if (ORACLE_LISTING(copts.debuglisting)) {
             pclistblocks(name, "[FUNCTION-LEVEL ASM] INITIAL CODE");
         }
 
@@ -387,7 +388,7 @@ void Assembler(Object* func) {
                 return;
             }
 
-            if (copts.debuglisting) {
+            if (ORACLE_LISTING(copts.debuglisting)) {
                 pclistblocks(name, "[FUNCTION-LEVEL ASM] AFTER REGISTER COLORING");
             }
         }
@@ -406,7 +407,7 @@ void Assembler(Object* func) {
             generate_epilogue(epilogue, !(asm_alloc_flags[6] || asm_alloc_flags[7]));
         }
 
-        if (copts.debuglisting) {
+        if (ORACLE_LISTING(copts.debuglisting)) {
             pclistblocks(name, "[FUNCTION-LEVEL ASM] AFTER PROLOGUE/EPILOGUE CREATION");
         }
     }
@@ -452,7 +453,7 @@ void Assembler(Object* func) {
     assemblefunction(func, entrypoints_head);
     copts.peephole = save_peephole;
 
-    if (copts.debuglisting) {
+    if (ORACLE_LISTING(copts.debuglisting)) {
         pclistblocks(CMangler_GetLinkName(func)->name, "[FUNCTION-LEVEL ASM] FINAL CODE");
     }
 

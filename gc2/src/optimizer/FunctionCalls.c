@@ -724,6 +724,7 @@ void call_function(ENode* expr, Operand* output) {
         branch_subroutine_indirect_ctr(&opnd, used_regs);
     }
 
+    ORACLE_PROBE(OracleProbe_Binding(expr, output, resultType));
     if (IS_TYPE_FLOAT_NOT_VEC2X32FLOAT(resultType) && !TYPE_IS_SOFT_FLOAT(resultType)) {
         output->optype = OpndType_FPR;
         output->reg = ALLOC_FPR();

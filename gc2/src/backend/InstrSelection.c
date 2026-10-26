@@ -359,7 +359,7 @@ void gen_MONMIN(ENode* expr, short outputReg, short outputRegHi, Operand* output
     }
 
     if (TYPE_IS_8BYTES(type)) {
-        I8_gen_MONMIN(expr, outputReg, outputRegHi, output);
+        ORACLE_INLINED(I8_gen_MONMIN(expr, outputReg, outputRegHi, output));
         return;
     }
 
@@ -396,7 +396,7 @@ void gen_MONMIN(ENode* expr, short outputReg, short outputRegHi, Operand* output
                 output
             );
         } else {
-            fp_unary_operator(PC_FNEG, inner, outputReg, output);
+            ORACLE_INLINED(fp_unary_operator(PC_FNEG, inner, outputReg, output));
         }
     } else {
         scan = inner;
@@ -419,7 +419,7 @@ void gen_MONMIN(ENode* expr, short outputReg, short outputRegHi, Operand* output
             default:
                 break;
         }
-        unary_operator(PC_NEG, inner, outputReg, output);
+        ORACLE_INLINED(unary_operator(PC_NEG, inner, outputReg, output));
     }
 }
 
@@ -438,7 +438,7 @@ void gen_BINNOT(ENode* expr, short outputReg, short outputRegHi, Operand* output
     }
 
     if (TYPE_IS_8BYTES(expr->rtype)) {
-        I8_gen_BINNOT(expr, outputReg, outputRegHi, output);
+        ORACLE_INLINED(I8_gen_BINNOT(expr, outputReg, outputRegHi, output));
         return;
     }
 
@@ -455,7 +455,7 @@ void gen_BINNOT(ENode* expr, short outputReg, short outputRegHi, Operand* output
             PC_EQV, inner->data.diadic.left, inner->data.diadic.right, outputReg, output
         );
     } else {
-        unary_operator(PC_NOT, inner, outputReg, output);
+        ORACLE_INLINED(unary_operator(PC_NOT, inner, outputReg, output));
     }
 }
 #if VERSION == VERSION_GC_1_3_2
@@ -662,7 +662,7 @@ void gen_DIV(ENode* expr, short outputReg, short outputRegHi, Operand* output) {
         fp_binary_operator(PC_PS_DIV, left, right, outputReg, output);
     } else if (is_unsigned(type)) {
         if (ENODE_IS(right, EINTCONST) && (shift = ispowerof2(right->data.intval.lo))) {
-            shift_right_immediate(left, type, shift, outputReg, output);
+            ORACLE_INLINED(shift_right_immediate(left, type, shift, outputReg, output));
 #if VERSION < VERSION_GC_2_0
         } else if (!copts.optimizesize && ENODE_IS(right, EINTCONST) && right->data.intval.lo != 1) {
 #else
@@ -827,7 +827,7 @@ void gen_MODULO(ENode* expr, short outputReg, short outputRegHi, Operand* output
 
     if (ENODE_IS(right, EINTCONST) && (shift = ispowerof2(right->data.intval.lo))) {
         if (is_unsigned(expr->rtype)) {
-            shift_and_mask(left, 0, 32 - shift, 31, outputReg, output);
+            ORACLE_INLINED(shift_and_mask(left, 0, 32 - shift, 31, outputReg, output));
         } else {
             signed_mod_by_power_of_2(left, shift, 0, outputReg, output);
         }
@@ -1220,7 +1220,7 @@ void gen_SHR(ENode* expr, short outputReg, short outputRegHi, Operand* output) {
     }
 
     if (ENODE_IS(right, EINTCONST)) {
-        shift_right_immediate(left, type, right->data.intval.lo, outputReg, output);
+        ORACLE_INLINED(shift_right_immediate(left, type, right->data.intval.lo, outputReg, output));
     } else {
         binary_operator(is_unsigned(type) ? PC_SRW : PC_SRAW, left, right, outputReg, output);
     }
@@ -1253,32 +1253,32 @@ void gen_AND(ENode* expr, short outputReg, short outputRegHi, Operand* output) {
         if (ENODE_IS(left, ESHL) &&
             ENODE_IS(left->data.diadic.right, EINTCONST) &&
             (int)(left->data.diadic.right->data.intval.lo + last) < 32) {
-            shift_and_mask(
+            ORACLE_INLINED(shift_and_mask(
                 left->data.diadic.left,
                 left->data.diadic.right->data.intval.lo,
                 first,
                 last,
                 outputReg,
                 output
-            );
+            ));
         } else if (ENODE_IS(left, ESHR) &&
                    ENODE_IS(left->data.diadic.right, EINTCONST) &&
                    (int)left->data.diadic.right->data.intval.lo <= first &&
                    last >= first) {
             if (left->data.diadic.right->data.intval.lo == 0) {
-                shift_and_mask(left->data.diadic.left, 0, first, last, outputReg, output);
+                ORACLE_INLINED(shift_and_mask(left->data.diadic.left, 0, first, last, outputReg, output));
             } else {
-                shift_and_mask(
+                ORACLE_INLINED(shift_and_mask(
                     left->data.diadic.left,
                     32 - left->data.diadic.right->data.intval.lo,
                     first,
                     last,
                     outputReg,
                     output
-                );
+                ));
             }
         } else {
-            shift_and_mask(left, 0, first, last, outputReg, output);
+            ORACLE_INLINED(shift_and_mask(left, 0, first, last, outputReg, output));
         }
     } else if (ENODE_IS(right, EINTCONST) &&
                (right->data.intval.lo & 0xFFFF) == right->data.intval.lo) {
@@ -1289,31 +1289,31 @@ void gen_AND(ENode* expr, short outputReg, short outputRegHi, Operand* output) {
         if (ENODE_IS(right, ESHL) &&
             ENODE_IS(right->data.diadic.right, EINTCONST) &&
             (int)(right->data.diadic.right->data.intval.lo + last) < 32) {
-            shift_and_mask(
+            ORACLE_INLINED(shift_and_mask(
                 right->data.diadic.left,
                 right->data.diadic.right->data.intval.lo,
                 first,
                 last,
                 outputReg,
                 output
-            );
+            ));
         } else if (ENODE_IS(right, ESHR) &&
                    ENODE_IS(right->data.diadic.right, EINTCONST) &&
                    (int)right->data.diadic.right->data.intval.lo <= first) {
             if (right->data.diadic.right->data.intval.lo == 0) {
-                shift_and_mask(right->data.diadic.left, 0, first, last, outputReg, output);
+                ORACLE_INLINED(shift_and_mask(right->data.diadic.left, 0, first, last, outputReg, output));
             } else {
-                shift_and_mask(
+                ORACLE_INLINED(shift_and_mask(
                     right->data.diadic.left,
                     32 - right->data.diadic.right->data.intval.lo,
                     first,
                     last,
                     outputReg,
                     output
-                );
+                ));
             }
         } else {
-            shift_and_mask(right, 0, first, last, outputReg, output);
+            ORACLE_INLINED(shift_and_mask(right, 0, first, last, outputReg, output));
         }
     } else if (ENODE_IS(left, EINTCONST) &&
                (left->data.intval.lo & 0xFFFF) == left->data.intval.lo) {
@@ -1905,7 +1905,7 @@ void gen_BITFIELD(ENode* expr, short outputReg, short outputRegHi, Operand* outp
 
 void gen_INTCONST(ENode* expr, short outputReg, short outputRegHi, Operand* output) {
     if (TYPE_IS_8BYTES(expr->rtype)) {
-        I8_gen_INTCONST(expr, outputReg, outputRegHi, output);
+        ORACLE_INLINED(I8_gen_INTCONST(expr, outputReg, outputRegHi, output));
         return;
     }
 
@@ -3181,6 +3181,10 @@ void unary_operator(Opcode opcode, ENode* expr, short outputReg, Operand* output
     output->reg = reg;
 }
 
+#ifdef ORACLE_PROBES
+#define unary_operator(...) ORACLE_INLINED(unary_operator(__VA_ARGS__))
+#endif
+
 static void or_xor_immediate(
     short opcode, ENode* expr, SInt32 value, short outputReg, Operand* output
 ) {
@@ -3273,6 +3277,10 @@ static void shift_right_immediate(
     output->optype = OpndType_GPR;
     output->reg = reg;
 }
+
+#ifdef ORACLE_PROBES
+#define shift_right_immediate(...) ORACLE_INLINED(shift_right_immediate(__VA_ARGS__))
+#endif
 
 static void signed_divide_by_power_of_2(
     ENode* expr, int shift, int negate, short outputReg, Operand* output
@@ -3383,6 +3391,10 @@ void fp_unary_operator(Opcode opcode, ENode* expr, short outputReg, Operand* out
     output->optype = OpndType_FPR;
     output->reg = reg;
 }
+
+#ifdef ORACLE_PROBES
+#define fp_unary_operator(...) ORACLE_INLINED(fp_unary_operator(__VA_ARGS__))
+#endif
 
 void fp_multiply_add(
     Opcode opcode, ENode* a, ENode* b, ENode* c, short outputReg, Operand* output
@@ -5610,6 +5622,10 @@ static void shift_and_mask(
     output->reg = reg;
 }
 
+#ifdef ORACLE_PROBES
+#define shift_and_mask(...) ORACLE_INLINED(shift_and_mask(__VA_ARGS__))
+#endif
+
 int ispostincrementopportunity(ENode* expr, Operand* op, SInt32* value) {
     Type* type;
     int reg;
@@ -5844,6 +5860,10 @@ void I8_gen_INTCONST(ENode* expr, short outputReg, short outputRegHi, Operand* o
     output->reg = reg;
     output->regHi = regHi;
 }
+
+#ifdef ORACLE_PROBES
+#define I8_gen_INTCONST(...) ORACLE_INLINED(I8_gen_INTCONST(__VA_ARGS__))
+#endif
 
 #if VERSION == VERSION_GC_1_3_2
 #undef CError_LINE_DELTA
@@ -6670,6 +6690,10 @@ void I8_gen_BINNOT(ENode* expr, short outputReg, short outputRegHi, Operand* out
     output->regHi = regHi;
 }
 
+#ifdef ORACLE_PROBES
+#define I8_gen_BINNOT(...) ORACLE_INLINED(I8_gen_BINNOT(__VA_ARGS__))
+#endif
+
 void I8_gen_MONMIN(ENode* expr, short outputReg, short outputRegHi, Operand* output) {
     ENode* inner;
     Operand op;
@@ -6690,6 +6714,10 @@ void I8_gen_MONMIN(ENode* expr, short outputReg, short outputRegHi, Operand* out
     output->reg = reg;
     output->regHi = regHi;
 }
+
+#ifdef ORACLE_PROBES
+#define I8_gen_MONMIN(...) ORACLE_INLINED(I8_gen_MONMIN(__VA_ARGS__))
+#endif
 
 #if VERSION == VERSION_GC_1_3_2
 #undef CError_LINE_DELTA

@@ -28,6 +28,7 @@
 #include "compiler/Intrinsics.h"
 #include "compiler/objects.h"
 #include "compiler/ObjGen_PPC_EABI.h"
+#include "compiler/OracleProbes.h"
 #include "compiler/Operands.h"
 #include "compiler/PCode.h"
 #include "compiler/PCodeAssembly.h"
@@ -1397,6 +1398,7 @@ void CodeGen_Generator(
     }
 
     gFunction = func;
+    ORACLE_PROBE(OracleProbe_Counter(6, 0, func));
     has_varargs = has_vararglist(func);
     init_endian();
     init_stack_globals(func);
@@ -1577,11 +1579,12 @@ void CodeGen_Generator(
         if (copts.debuglisting) {
             pclistblocks_start_scheduler(CMangler_GetLinkName(func)->name, "BEFORE SCHEDULING");
         }
+        ORACLE_PROBE(OracleProbe_Presched(func));
         scheduleinstructions(FALSE);
         if (copts.debuglisting) {
             pclistblocks_end_scheduler();
         }
-        if (copts.debuglisting) {
+        if (ORACLE_LISTING(copts.debuglisting)) {
             pclistblocks(CMangler_GetLinkName(func)->name, "AFTER INSTRUCTION SCHEDULING");
         }
     }
@@ -1591,19 +1594,19 @@ void CodeGen_Generator(
             peepholemergeblocks(func, FALSE);
         }
         peepholeoptimizeforward(func);
-        if (copts.debuglisting) {
+        if (ORACLE_LISTING(copts.debuglisting)) {
             pclistblocks(CMangler_GetLinkName(func)->name, "AFTER PEEPHOLE FORWARD");
         }
     }
 
     colorinstructions(func);
-    if (copts.debuglisting) {
+    if (ORACLE_LISTING(copts.debuglisting)) {
         pclistblocks(CMangler_GetLinkName(func)->name, "AFTER REGISTER COLORING");
     }
 
     if (copts.optimizationlevel > 1 && !disable_optimizer) {
         removecommonsubexpressions(func, 1);
-        if (removedcommonsubexpressions && copts.debuglisting) {
+        if (removedcommonsubexpressions && ORACLE_LISTING(copts.debuglisting)) {
             pclistblocks(CMangler_GetLinkName(func)->name, "AFTER VALUE NUMBERING (POST COLORING)");
         }
     }
@@ -1615,19 +1618,19 @@ void CodeGen_Generator(
     }
     generate_epilogue(epilogue, TRUE);
 
-    if (copts.debuglisting) {
+    if (ORACLE_LISTING(copts.debuglisting)) {
         pclistblocks(CMangler_GetLinkName(func)->name, "AFTER GENERATING EPILOGUE, PROLOGUE");
     }
 
     if (copts.peephole) {
         if (copts.schedule_factor) {
             peepholemergeblocks(func, TRUE);
-            if (copts.debuglisting) {
+            if (ORACLE_LISTING(copts.debuglisting)) {
                 pclistblocks(CMangler_GetLinkName(func)->name, "AFTER MERGING EPILOGUE, PROLOGUE");
             }
         }
         peepholeoptimizepcode(func);
-        if (copts.debuglisting) {
+        if (ORACLE_LISTING(copts.debuglisting)) {
             pclistblocks(CMangler_GetLinkName(func)->name, "AFTER PEEPHOLE OPTIMIZATION");
         }
     }
@@ -1640,13 +1643,13 @@ void CodeGen_Generator(
         if (copts.debuglisting) {
             pclistblocks_end_scheduler();
         }
-        if (copts.debuglisting) {
+        if (ORACLE_LISTING(copts.debuglisting)) {
             pclistblocks(
                 CMangler_GetLinkName(func)->name, "FINAL CODE AFTER INSTRUCTION SCHEDULING"
             );
         }
     } else {
-        if (copts.debuglisting) {
+        if (ORACLE_LISTING(copts.debuglisting)) {
             pclistblocks(CMangler_GetLinkName(func)->name, "FINAL CODE");
         }
     }
@@ -1665,6 +1668,7 @@ void CodeGen_Generator(
     if (saveheaperror) {
         setheaperror(saveheaperror);
     }
+    ORACLE_PROBE(OracleProbe_Counter(7, 0, func));
 }
 #if VERSION == VERSION_GC_1_3_2
 #undef CError_LINE_DELTA

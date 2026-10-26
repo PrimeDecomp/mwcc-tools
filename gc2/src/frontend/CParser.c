@@ -3968,6 +3968,23 @@ static void CParser_ParseDeclaration(DeclInfo* di) {
     }
 }
 
+#ifdef MWCC_PERSIST
+/* A persistent compile (CPrep_PersistMarker) takes its checkpoint only in the lex() of the loop below: between two
+ * declarations, with nothing of the parser on the stack. */
+Boolean cparser_toplevel_lex;
+
+static short toplevel_lex(void) {
+    short t;
+
+    cparser_toplevel_lex = TRUE;
+    t = lex();
+    cparser_toplevel_lex = FALSE;
+    return t;
+}
+
+#define lex toplevel_lex
+#endif
+
 void cparser(void) {
     DeclInfo di;
 
@@ -4010,3 +4027,41 @@ void cparser(void) {
     CSOM_Cleanup();
     CInit_DefineTentativeData();
 }
+
+#ifdef MWCC_PERSIST
+/* cparser from its loop's lex() on: a persistent compile's candidate, after the checkpoint. */
+void cparser_resume(void) {
+    DeclInfo di;
+
+    while ((tk = lex())) {
+        CPrep_NewFileOffsetInfo(&cparser_fileoffset, NULL);
+        symdecloffset = cparser_fileoffset.tokenline;
+        symdecltoken = *CPrep_CurStreamElement();
+
+        memclrw(&di, sizeof(DeclInfo));
+        CParser_ParseDeclaration(&di);
+        if (!tk) {
+            break;
+        }
+    }
+
+    CInit_DefineTentativeData();
+    copts.defer_codegen = FALSE;
+    CParser_GlobalCleanup(TRUE);
+
+    if (cparamblkptr->precompile != 1) {
+        CInline_Finish();
+        CParser_GlobalCleanup(TRUE);
+    }
+
+    CClass_GenThunks();
+    if (cparamblkptr->precompile != 1) {
+        CObjC_GenerateModule();
+    }
+
+    CSOM_Cleanup();
+    CInit_DefineTentativeData();
+}
+
+#undef lex
+#endif

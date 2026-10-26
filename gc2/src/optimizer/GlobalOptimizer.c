@@ -15,10 +15,11 @@
 #include "compiler/UseDefChains.h"
 #include "compiler/ValueNumbering.h"
 #include "compiler/VectorArraysToRegs.h"
+#include "compiler/OracleProbes.h"
 
 static void optimizelevel2(Object* func) {
     removecommonsubexpressions(func, TRUE);
-    if (removedcommonsubexpressions && copts.debuglisting) {
+    if (removedcommonsubexpressions && ORACLE_LISTING(copts.debuglisting)) {
         pclistblocks(CMangler_GetLinkName(func)->name, "AFTER CSE");
     }
 
@@ -33,13 +34,13 @@ static void optimizelevel3(Object* func) {
         }
 
         peepholeoptimizeforward(func);
-        if (copts.debuglisting) {
+        if (ORACLE_LISTING(copts.debuglisting)) {
             pclistblocks(CMangler_GetLinkName(func)->name, "AFTER PEEPHOLE FORWARD");
         }
     }
 
     removecommonsubexpressions(func, FALSE);
-    if (removedcommonsubexpressions && copts.debuglisting) {
+    if (removedcommonsubexpressions && ORACLE_LISTING(copts.debuglisting)) {
         pclistblocks(CMangler_GetLinkName(func)->name, "AFTER VALUE NUMBERING");
     }
 
@@ -52,7 +53,7 @@ static void optimizelevel3(Object* func) {
         computeusedefchains(TRUE);
         analyzeloopsinflowgraph();
         moveloopinvariantcode();
-        if (movedloopinvariantcode && copts.debuglisting) {
+        if (movedloopinvariantcode && ORACLE_LISTING(copts.debuglisting)) {
             pclistblocks(CMangler_GetLinkName(func)->name, "AFTER CODE MOTION");
         }
 
@@ -60,7 +61,7 @@ static void optimizelevel3(Object* func) {
         analyzeForCountableLoops(loopsinflowgraph);
         strengthreduceloops();
         if (strengthreducedloops) {
-            if (copts.debuglisting) {
+            if (ORACLE_LISTING(copts.debuglisting)) {
                 pclistblocks(CMangler_GetLinkName(func)->name, "AFTER STRENGTH REDUCTION");
             }
             propagatecopyinstructions(func, TRUE);
@@ -68,7 +69,7 @@ static void optimizelevel3(Object* func) {
 
         optimizeloops();
         if (optimizedloops) {
-            if (copts.debuglisting) {
+            if (ORACLE_LISTING(copts.debuglisting)) {
                 pclistblocks(CMangler_GetLinkName(func)->name, "AFTER LOOP TRANSFORMATIONS");
             }
             propagatecopyinstructions(func, TRUE);
@@ -78,14 +79,14 @@ static void optimizelevel3(Object* func) {
 
     if (!propagatedcopies) {
         propagatecopyinstructions(func, TRUE);
-        if (propagatedcopies && copts.debuglisting) {
+        if (propagatedcopies && ORACLE_LISTING(copts.debuglisting)) {
             pclistblocks(CMangler_GetLinkName(func)->name, "AFTER COPY PROPAGATION");
         }
     }
 
     propagateconstants();
     if (propagatedconstants) {
-        if (copts.debuglisting) {
+        if (ORACLE_LISTING(copts.debuglisting)) {
             pclistblocks(CMangler_GetLinkName(func)->name, "AFTER CONSTANT PROPAGATION");
         }
 
@@ -99,14 +100,14 @@ static void optimizelevel3(Object* func) {
         }
 
         peepholeoptimizeforward(func);
-        if (copts.debuglisting) {
+        if (ORACLE_LISTING(copts.debuglisting)) {
             pclistblocks(CMangler_GetLinkName(func)->name, "AFTER PEEPHOLE FORWARD 2");
         }
     }
 
     removecommonsubexpressions(func, TRUE);
     if (removedcommonsubexpressions) {
-        if (copts.debuglisting) {
+        if (ORACLE_LISTING(copts.debuglisting)) {
             pclistblocks(CMangler_GetLinkName(func)->name, "AFTER VALUE NUMBERING 2");
         }
         propagatecopyinstructions(func, TRUE);
@@ -120,13 +121,13 @@ static void optimizelevel4(Object* func) {
         }
 
         peepholeoptimizeforward(func);
-        if (copts.debuglisting) {
+        if (ORACLE_LISTING(copts.debuglisting)) {
             pclistblocks(CMangler_GetLinkName(func)->name, "AFTER PEEPHOLE FORWARD");
         }
     }
 
     removecommonsubexpressions(func, FALSE);
-    if (removedcommonsubexpressions && copts.debuglisting) {
+    if (removedcommonsubexpressions && ORACLE_LISTING(copts.debuglisting)) {
         pclistblocks(CMangler_GetLinkName(func)->name, "AFTER VALUE NUMBERING");
     }
 
@@ -139,7 +140,7 @@ static void optimizelevel4(Object* func) {
         computeusedefchains(TRUE);
         analyzeloopsinflowgraph();
         moveloopinvariantcode();
-        if (movedloopinvariantcode && copts.debuglisting) {
+        if (movedloopinvariantcode && ORACLE_LISTING(copts.debuglisting)) {
             pclistblocks(CMangler_GetLinkName(func)->name, "AFTER CODE MOTION");
         }
 
@@ -147,7 +148,7 @@ static void optimizelevel4(Object* func) {
         analyzeForCountableLoops(loopsinflowgraph);
         strengthreduceloops();
         if (strengthreducedloops) {
-            if (copts.debuglisting) {
+            if (ORACLE_LISTING(copts.debuglisting)) {
                 pclistblocks(CMangler_GetLinkName(func)->name, "AFTER STRENGTH REDUCTION");
             }
             propagatecopyinstructions(func, TRUE);
@@ -156,7 +157,7 @@ static void optimizelevel4(Object* func) {
 
         optimizeloops();
         if (optimizedloops) {
-            if (copts.debuglisting) {
+            if (ORACLE_LISTING(copts.debuglisting)) {
                 pclistblocks(CMangler_GetLinkName(func)->name, "AFTER LOOP TRANSFORMATIONS");
             }
             propagatecopyinstructions(func, TRUE);
@@ -170,7 +171,7 @@ static void optimizelevel4(Object* func) {
 
     propagateconstants();
     if (propagatedconstants) {
-        if (copts.debuglisting) {
+        if (ORACLE_LISTING(copts.debuglisting)) {
             pclistblocks(CMangler_GetLinkName(func)->name, "AFTER CONSTANT PROPAGATION");
         }
 
@@ -185,7 +186,7 @@ static void optimizelevel4(Object* func) {
             if (optimizedloop_trans_regs && copts.debuglisting) {
                 pclistblocks(CMangler_GetLinkName(func)->name, "AFTER ARRAY => REGISTER TRANSFORM");
                 propagateconstants();
-                if (copts.debuglisting) {
+                if (ORACLE_LISTING(copts.debuglisting)) {
                     pclistblocks(CMangler_GetLinkName(func)->name, "AFTER CONSTANT PROPAGATION 2");
                 }
                 if (propagatedconstants) {
@@ -201,21 +202,21 @@ static void optimizelevel4(Object* func) {
         }
 
         peepholeoptimizeforward(func);
-        if (copts.debuglisting) {
+        if (ORACLE_LISTING(copts.debuglisting)) {
             pclistblocks(CMangler_GetLinkName(func)->name, "AFTER PEEPHOLE FORWARD 2");
         }
     }
 
     removecommonsubexpressions(func, TRUE);
     if (removedcommonsubexpressions) {
-        if (copts.debuglisting) {
+        if (ORACLE_LISTING(copts.debuglisting)) {
             pclistblocks(CMangler_GetLinkName(func)->name, "AFTER VALUE NUMBERING 2");
         }
         propagatecopyinstructions(func, TRUE);
     }
 
     if (has_altivec_arrays && vectorarraystoregs()) {
-        if (copts.debuglisting) {
+        if (ORACLE_LISTING(copts.debuglisting)) {
             pclistblocks(CMangler_GetLinkName(func)->name, "AFTER VECTOR ARRAY CONVERSION");
         }
         propagatecopyinstructions(func, FALSE);
@@ -230,13 +231,13 @@ static void optimizelevel4(Object* func) {
     computeusedefchains(TRUE);
     analyzeloopsinflowgraph();
     moveloopinvariantcode();
-    if (movedloopinvariantcode && copts.debuglisting) {
+    if (movedloopinvariantcode && ORACLE_LISTING(copts.debuglisting)) {
         pclistblocks(CMangler_GetLinkName(func)->name, "AFTER CODE MOTION 2");
     }
 
     removecommonsubexpressions(func, TRUE);
     if (removedcommonsubexpressions) {
-        if (copts.debuglisting) {
+        if (ORACLE_LISTING(copts.debuglisting)) {
             pclistblocks(CMangler_GetLinkName(func)->name, "AFTER VALUE NUMBERING 3");
         }
         propagatecopyinstructions(func, TRUE);
@@ -244,7 +245,7 @@ static void optimizelevel4(Object* func) {
 }
 
 void globallyoptimizepcode(Object* func) {
-    if (copts.debuglisting) {
+    if (ORACLE_LISTING(copts.debuglisting)) {
         pclistblocks(CMangler_GetLinkName(func)->name, "BEFORE GLOBAL OPTIMIZATION");
     }
 

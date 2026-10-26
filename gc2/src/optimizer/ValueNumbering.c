@@ -6,6 +6,10 @@
 #include "compiler/PCodeInfo.h"
 #include "compiler/RegisterInfo.h"
 #include "compiler/Registers.h"
+#include "compiler/OracleProbes.h"
+#ifdef ORACLE_PROBES
+#include "compiler/CodeGen.h"
+#endif
 
 typedef struct ValueLabel {
     struct ValueLabel* next;
@@ -47,6 +51,12 @@ static RegValue* regvalue[RegClassMax];
 static StackedValue* stackedvalues;
 static int valueceiling;
 static int moreaggressiveoptimization;
+#ifdef ORACLE_PROBES
+// The instruction being numbered (what kills the memory values), and the value a match found
+static PCode* oracle_current;
+static PCode* oracle_found;
+#define ORACLE_ALIAS(pcode) ((pcode)->alias ? (pcode)->alias->index : -1)
+#endif
 
 static void allocatecsedatastructures(void) {
     RegClass rclass;
@@ -165,6 +175,7 @@ static int killregister(PCodeArg* op) {
 }
 
 void killmemory(Alias* alias, PCode* newValue) {
+    ORACLE_PROBE(OracleProbe_VnKill(alias->index, oracle_current));
     if (alias->valuenumber < valueceiling && nextvaluenumber >= valueceiling) {
         stackmemoryvalue(alias);
     }
@@ -194,6 +205,7 @@ static void killallCSEs(void) {
     ValueLabel* labelled;
     int i;
 
+    ORACLE_PROBE(OracleProbe_VnKillAll(oracle_current));
     for (i = 0; i < OPCODE_MAX; i++) {
         for (av = opvalue[i]; av; av = av->next) {
             for (labelled = av->labelled; labelled; labelled = labelled->next) {
@@ -351,12 +363,66 @@ static int findavailablevalue(PCode* pcode, PCodeArg* op) {
                 }
             }
             chooselocation(av, op);
+            ORACLE_PROBE(oracle_found = av->pcode);
             return TRUE;
         }
     }
 
     return FALSE;
 }
+
+#ifdef ORACLE_PROBES
+// Why PCODE found no available value (`vn.decide outcome=3`): 0 none of its opcode is available, 1 those
+// that are have other operands, 2 one has its operands but the memory's value has changed since, 3 one
+// has its operands but other flags, 4 one has its operands but its registers hold other values now
+static void oracle_kept(PCode* pcode) {
+    AvailableValue* av;
+    PCode* other;
+    int reason;
+    int found;
+    int number;
+    int memory;
+
+    reason = 0;
+    other = NULL;
+    memory = (pcode->flags & (fIsRead | fOpFromMemory)) && pcode->alias;
+    for (av = opvalue[pcode->op]; av; av = av->next) {
+        if (av->pcode->argCount != pcode->argCount) {
+            continue;
+        }
+        if (!reason) {
+            reason = 1;
+            other = av->pcode;
+        }
+        // (the operands, the memory's value aside)
+        if (memory) {
+            number = av->aliasnumber;
+            av->aliasnumber = pcode->alias->valuenumber;
+            found = matchvalues(av, pcode);
+            av->aliasnumber = number;
+        } else {
+            found = matchvalues(av, pcode);
+        }
+        if (!found) {
+            continue;
+        }
+        if (av->pcode->flags != pcode->flags) {
+            found = 3;
+        } else if (!av->labelled) {
+            found = 4;
+        } else if (memory && av->aliasnumber != pcode->alias->valuenumber) {
+            found = 2;
+        } else {
+            continue;
+        }
+        if (reason < 2 || found == 3) {
+            reason = found;
+            other = av->pcode;
+        }
+    }
+    OracleProbe_VnDecision(pcode, 3, reason, other, ORACLE_ALIAS(pcode));
+}
+#endif
 
 static void addavailablevalue(PCode* pcode) {
     AvailableValue* av;
@@ -478,8 +544,10 @@ static void simpleload(PCode* pcode) {
 
     origOp = &pcode->args[0];
     if ((pcode->flags & fIsVolatile) || !isCSEload(pcode)) {
+        ORACLE_PROBE(OracleProbe_VnDecision(pcode, 0, 0, NULL, ORACLE_ALIAS(pcode)));
         killregisters(pcode);
     } else if (findavailablevalue(pcode, &op)) {
+        ORACLE_PROBE(OracleProbe_VnDecision(pcode, 1, 0, oracle_found, ORACLE_ALIAS(pcode)));
         if (!samevalue(origOp, &op)) {
             insertpcodebefore(pcode, makecopyinstruction(&op, origOp));
             copyregister(&op, origOp);
@@ -492,6 +560,7 @@ static void simpleload(PCode* pcode) {
             kind = can_reuse_stored_value(rs, pcode);
         }
         if (rs && kind) {
+            ORACLE_PROBE(OracleProbe_VnDecision(pcode, 2, kind, rs, ORACLE_ALIAS(pcode)));
             if (kind != 1 || !samevalue(origOp, &op)) {
                 copy = makecopyforload(kind, &op, origOp);
                 insertpcodebefore(pcode, copy);
@@ -504,6 +573,7 @@ static void simpleload(PCode* pcode) {
             deletepcode(pcode);
             removedcommonsubexpressions = TRUE;
         } else {
+            ORACLE_PROBE(oracle_kept(pcode));
             addavailablevalue(pcode);
         }
     }
@@ -524,8 +594,10 @@ static void pointerload(PCode* pcode) {
     op = &pcode->args[0];
 
     if ((pcode->flags & fIsVolatile) || !isCSEload(pcode)) {
+        ORACLE_PROBE(OracleProbe_VnDecision(pcode, 0, 0, NULL, ORACLE_ALIAS(pcode)));
         killregisters(pcode);
     } else if (findavailablevalue(pcode, &buf)) {
+        ORACLE_PROBE(OracleProbe_VnDecision(pcode, 1, 0, oracle_found, ORACLE_ALIAS(pcode)));
         if (!samevalue(op, &buf)) {
             insertpcodebefore(pcode, makecopyinstruction(&buf, op));
             copyregister(&buf, op);
@@ -533,6 +605,7 @@ static void pointerload(PCode* pcode) {
         deletepcode(pcode);
         removedcommonsubexpressions = TRUE;
     } else {
+        ORACLE_PROBE(oracle_kept(pcode));
         addavailablevalue(pcode);
     }
 }
@@ -552,6 +625,7 @@ static void arithmeticop(PCode* pcode) {
     op = &pcode->args[0];
 
     if (findavailablevalue(pcode, &buf)) {
+        ORACLE_PROBE(OracleProbe_VnDecision(pcode, 1, 0, oracle_found, -1));
         if (!samevalue(op, &buf)) {
             insertpcodebefore(pcode, makecopyinstruction(&buf, op));
             copyregister(&buf, op);
@@ -559,6 +633,7 @@ static void arithmeticop(PCode* pcode) {
         deletepcode(pcode);
         removedcommonsubexpressions = TRUE;
     } else {
+        ORACLE_PROBE(oracle_kept(pcode));
         addavailablevalue(pcode);
     }
 }
@@ -604,9 +679,11 @@ static void removecsesfrombasicblock(PCodeBlock* block) {
     PCode* pcode;
     PCode* next;
 
+    ORACLE_PROBE(OracleProbe_VnBlock(block));
     for (pcode = block->firstPCode; pcode; pcode = next) {
         next = pcode->nextPCode;
         propagatecopiesto(pcode);
+        ORACLE_PROBE((oracle_current = pcode, OracleProbe_VnInstruction(pcode)));
         if (pcode->flags & fIsMove) {
             registercopy(pcode);
         } else if ((pcode->flags & fIsCall) && (pcode->flags & (fLink | fSideEffects))) {
@@ -719,6 +796,7 @@ void removecommonsubexpressions(Object* proc, int moreAggressive) {
     moreaggressiveoptimization = moreAggressive;
     removedcommonsubexpressions = FALSE;
     gather_alias_info();
+    ORACLE_PROBE(OracleProbe_VnBegin(gFunction, moreAggressive));
     allocatecsedatastructures();
 
     for (block = pcbasicblocks; block; block = block->nextBlock) {
@@ -728,9 +806,11 @@ void removecommonsubexpressions(Object* proc, int moreAggressive) {
     for (block = pcbasicblocks; block; block = block->nextBlock) {
         if (!(block->flags & fVisited)) {
             initializecsedatastructures();
+            ORACLE_PROBE(OracleProbe_VnExtendedBlock(block));
             removecsesfromextendedbasicblock(block);
         }
     }
 
+    ORACLE_PROBE((oracle_current = NULL, OracleProbe_VnEnd(removedcommonsubexpressions)));
     freeoheap();
 }

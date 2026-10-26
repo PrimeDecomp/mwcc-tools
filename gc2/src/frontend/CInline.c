@@ -22,6 +22,7 @@
 #include "compiler/Exceptions.h"
 #include "compiler/InlineAsm.h"
 #include "compiler/objects.h"
+#include "compiler/OracleProbes.h"
 #include "compiler/ObjGen_PPC_EABI.h"
 #include "compiler/scopes.h"
 #include "compiler/Switch.h"
@@ -3267,6 +3268,7 @@ static void CInline_ExportCheck(ENode* expr) {
 static void CInline_Expand(Statement* stmt) {
     Statement* scan;
 
+    ORACLE_PROBE(OracleProbe_Expand(expanding_function));
     if (!copts.dontinline && copts.inlinelevel >= 0) {
         if (copts.inline_bottom_up) {
             inline_max_size = copts.inlinemaxsize;
@@ -3907,6 +3909,7 @@ static void CInline_GenIFunctionCode(Object* object, CI_FuncData* func, UInt8 ol
         copts.filesyminfo = FALSE;
     }
 
+    ORACLE_SCOPE(1);
     expanding_function = object;
     recursive_inline = FALSE;
     CInline_Expand(&firstStmt);
@@ -3917,6 +3920,7 @@ static void CInline_GenIFunctionCode(Object* object, CI_FuncData* func, UInt8 ol
         }
         CodeGen_Generator(&firstStmt, object, oldStyleParameters, FALSE);
     }
+    ORACLE_SCOPE(0);
 
     CScope_RestoreScope(&saveScope);
     copts.filesyminfo = saveDebugInfo;
@@ -4434,6 +4438,7 @@ void CInline_GenFunc(Statement* stmt, Object* object, UInt8 oldStyleParameters) 
         export->next = cinline_exportlist;
         cinline_exportlist = export;
     } else {
+        ORACLE_SCOPE(1);
         expanding_function = object;
         recursive_inline = FALSE;
         CInline_Expand(stmt);
@@ -4445,6 +4450,7 @@ void CInline_GenFunc(Statement* stmt, Object* object, UInt8 oldStyleParameters) 
         if (!anyerrors) {
             CodeGen_Generator(stmt, object, oldStyleParameters, FALSE);
         }
+        ORACLE_SCOPE(0);
     }
 }
 
@@ -4703,6 +4709,7 @@ void CInline_Finish(void) {
 
     CFunc_CodeCleanup(&firstStmt);
 
+    ORACLE_SCOPE(1);
     expanding_function = NULL;
     recursive_inline = FALSE;
     CInline_Expand(&firstStmt);
@@ -4713,6 +4720,7 @@ void CInline_Finish(void) {
         }
         CodeGen_Generator(&firstStmt, NULL, 0, TRUE);
     }
+    ORACLE_SCOPE(0);
 
     cscope_current = nspace->parent;
     copts.filesyminfo = saveDebugInfo;

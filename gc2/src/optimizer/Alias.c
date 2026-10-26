@@ -9,6 +9,7 @@
 #include "compiler/CopyPropagation.h"
 #include "compiler/CParser.h"
 #include "compiler/objects.h"
+#include "compiler/OracleProbes.h"
 #include "compiler/PCode.h"
 #include "compiler/PCodeInfo.h"
 #include "compiler/RegisterInfo.h"
@@ -1149,6 +1150,35 @@ static void gather_instruction_alias(PCode* pcode, UInt32* myvec) {
 }
 #endif
 
+#ifdef ORACLE_PROBES
+// The alias table and each access's alias, as gather_alias_info has left them (`al.*`)
+static void report_aliases(void) {
+    Alias* alias;
+    PCodeBlock* block;
+    PCode* pcode;
+
+    OracleProbe_AliasBegin(gFunction, coloring, n_aliases);
+    for (alias = aliases; alias; alias = alias->next) {
+        OracleProbe_Alias(
+            alias->index,
+            alias->type,
+            alias->object,
+            alias->offset,
+            alias->size,
+            alias->type == AliasType_Set ? alias->membervec : NULL
+        );
+    }
+    for (block = pcbasicblocks; block; block = block->nextBlock) {
+        for (pcode = block->firstPCode; pcode; pcode = pcode->nextPCode) {
+            if (pcode->alias) {
+                OracleProbe_AliasAccess(pcode, pcode->alias->index);
+            }
+        }
+    }
+    OracleProbe_AliasEnd();
+}
+#endif
+
 void gather_alias_info(void) {
     Alias* alias;
     AliasMember* member;
@@ -1230,6 +1260,8 @@ void gather_alias_info(void) {
         }
         n_gathered_aliases = n_aliases;
     }
+
+    ORACLE_PROBE(report_aliases());
 }
 
 #if VERSION == VERSION_GC_1_3_2
@@ -1272,7 +1304,13 @@ static Boolean may_alias_alias(Alias* a, Alias* b) {
 }
 
 Boolean may_alias(PCode* a, PCode* b) {
+#ifdef ORACLE_PROBES
+    Boolean result = may_alias_alias(a->alias, b->alias);
+    ORACLE_PROBE(OracleProbe_AliasQuery(0, a, b, NULL, result));
+    return result;
+#else
     return may_alias_alias(a->alias, b->alias);
+#endif
 }
 
 #if VERSION == VERSION_GC_2_0P2
@@ -1317,6 +1355,20 @@ static inline Boolean is_direct_small_data_store(PCode* pcode) {
 }
 
 Boolean may_alias_scheduling(PCode* a, PCode* b) {
+#ifdef ORACLE_PROBES
+    Boolean result;
+    if ((is_small_data_load(a) && is_direct_small_data_store(b)) ||
+        (is_small_data_load(b) && is_direct_small_data_store(a))) {
+        result = TRUE;
+    } else {
+        result = may_alias_alias(
+            is_pointer_like_load(a) ? worst_case_ptr : a->alias,
+            is_pointer_like_load(b) ? worst_case_ptr : b->alias
+        );
+    }
+    ORACLE_PROBE(OracleProbe_AliasQuery(1, a, b, NULL, result));
+    return result;
+#else
     if ((is_small_data_load(a) && is_direct_small_data_store(b)) ||
         (is_small_data_load(b) && is_direct_small_data_store(a))) {
         return TRUE;
@@ -1325,6 +1377,7 @@ Boolean may_alias_scheduling(PCode* a, PCode* b) {
         is_pointer_like_load(a) ? worst_case_ptr : a->alias,
         is_pointer_like_load(b) ? worst_case_ptr : b->alias
     );
+#endif
 }
 #endif
 
@@ -1347,7 +1400,13 @@ Boolean uniquely_aliases(PCode* a, PCode* b) {
 #endif
 
 Boolean may_alias_object(PCode* pcode, Object* object) {
+#ifdef ORACLE_PROBES
+    Boolean result = may_alias_alias(pcode->alias, make_alias(object, 0, 0));
+    ORACLE_PROBE(OracleProbe_AliasQuery(2, pcode, NULL, object, result));
+    return result;
+#else
     return may_alias_alias(pcode->alias, make_alias(object, 0, 0));
+#endif
 }
 
 #if VERSION >= VERSION_GC_2_5

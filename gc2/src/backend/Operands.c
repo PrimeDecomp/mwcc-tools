@@ -395,6 +395,7 @@ void coerce_to_addressable(Operand* op) {
                 } else {
                     reg = base_register(obj);
                     if (!is_16bitdata(obj)) {
+                        ORACLE_PROBE(OracleProbe_Binding(op, obj, NULL));
                         hiReg = ALLOC_GPR();
                         reg = ALLOC_GPR();
                         op_absolute_ha(hiReg, 0, obj, 0, 1);
