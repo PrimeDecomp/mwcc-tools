@@ -2,25 +2,19 @@
 #include "compiler/CompilerTools.h"
 #include <string.h>
 
-// 2.5: the compressed bit vectors
 #if VERSION >= VERSION_GC_2_5
-// TODO: invented names: a vector bitvector_compress could reuse; nothing frees one into the list,
-// so it stays empty
 typedef struct FreeCompressedBitVector {
     UInt32 nwords;
     struct FreeCompressedBitVector* next;
 } FreeCompressedBitVector;
 
-// TODO: invented names (2.6's statics)
 static FreeCompressedBitVector* free_compressed_bitvectors;
 static CompressedBitVector* compress_buffer;
 static UInt16 empty_compressed_bitvector[2];
 
-SInt32 bvc_bytes_used; // (Wii's name; a COMMON)
+SInt32 bvc_bytes_used;
 #endif
 
-// 2.6's loops count down to 0 with the pointers stepped apart (Pro7's `while (i--)` with
-// `*(dst++)` does not match)
 void bitvectorcopy(UInt32* dst, UInt32* src, SInt32 len) {
     int i = (len + 31) >> 5;
 
@@ -34,13 +28,13 @@ void bitvectorcopy(UInt32* dst, UInt32* src, SInt32 len) {
 
 int bitvectorchanged(UInt32* dst, UInt32* src, SInt32 len) {
     int i = (len + 31) >> 5;
-    int flag = FALSE;
+    int changed = FALSE;
     UInt32 v;
 
     while (i != 0) {
         v = *src;
         if (*dst != v) {
-            flag = TRUE;
+            changed = TRUE;
         }
         *dst = v;
         dst++;
@@ -48,7 +42,7 @@ int bitvectorchanged(UInt32* dst, UInt32* src, SInt32 len) {
         i--;
     }
 
-    return flag;
+    return changed;
 }
 
 void bitvectorinitialize(UInt32* vec, SInt32 len, UInt32 initval) {
@@ -61,9 +55,7 @@ void bitvectorinitialize(UInt32* vec, SInt32 len, UInt32 initval) {
     }
 }
 
-// 2.5: the bit ranges (2.0 has neither function)
 #if VERSION >= VERSION_GC_2_5
-// initialize a bit range of `count` bits starting at bit `first`, filling its words with `value`
 void bitvectorinitialize_range(BitVectorRange* range, SInt32 first, SInt32 count, UInt32 value) {
     SInt32 i;
     SInt32 n;
@@ -76,7 +68,6 @@ void bitvectorinitialize_range(BitVectorRange* range, SInt32 first, SInt32 count
     }
 }
 
-// allocate a zeroed bit range of `count` bits starting at bit `first`
 BitVectorRange* bitvectorcreate_range(SInt32 first, SInt32 count) {
     BitVectorRange* range;
     SInt32 size;
@@ -111,8 +102,6 @@ void bitvectorunion(UInt32* dst, UInt32* src, SInt32 len) {
     }
 }
 
-// Pro7's bitvectorcount: dead in 2.6 (the linker dropped it), kept for its `nbits` table, which is
-// this object's .data (0x5d7d60, after SpillCode's)
 int bitvectorcount(UInt32* vec, int len) {
     // clang-format off
     static unsigned char nbits[] = {
@@ -198,7 +187,6 @@ CompressedBitVector* bitvector_compress(UInt32* vec, int bitCount) {
 
     nwords = (bitCount + 31) >> 5;
     size = 4;
-    // (2.6 sets `i` here, not in the for: 99.3% there)
     i = 0;
     nruns = 0;
     count = 0;
@@ -245,7 +233,6 @@ CompressedBitVector* bitvector_compress(UInt32* vec, int bitCount) {
         return (CompressedBitVector*)empty_compressed_bitvector;
     }
 
-    // (2.6 never advances scan: a mismatch would loop forever, but the list is always empty)
     prev = &free_compressed_bitvectors;
     scan = free_compressed_bitvectors;
     while (scan) {

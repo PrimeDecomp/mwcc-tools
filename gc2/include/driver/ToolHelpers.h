@@ -7,9 +7,6 @@
 extern "C" {
 #endif
 
-// outputOrdering: where an -o name goes. None before any, After when it followed a source
-// file (it names the last one), Before when it came before them (it names the next one added).
-// TODO: invented names (Pro7's are placeholders: OutputOrdering0 .. 2)
 enum {
     OutputOrdering_None = 0,
     OutputOrdering_After = 1,

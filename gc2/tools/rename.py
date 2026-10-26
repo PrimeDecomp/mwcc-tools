@@ -1,32 +1,4 @@
 #!/usr/bin/env python3
-"""python tools/rename.py OLD NEW [OLD NEW...] [--force NEW...] [--no-code] [--source SRC] [--dry-run]: rename functions
-and variables everywhere the repository names them, in every version:
-
-  rows       functions.json's row named OLD
-  bindings   every spelling of OLD (_OLD, _OLD@8, @OLD@8; not the import slots, which are the DLL's names)
-  symbols    symbols.txt's names, the same way (tools/layout.py would write the same)
-  code       OLD as an identifier in src/ and include/: not in literals, not as a struct member (after . or ->, or
-             declared in a struct or union body: listed, to rename with --member), but in comments; unless --no-code.
-             An alias `#define NEW OLD` left as `#define NEW NEW` is deleted.
-
-The pairs are applied at once (chains and swaps need no temporaries), all or nothing: a NEW that already names
-another row, would bind one name at two addresses, or is already an identifier in the code is refused (--force NEW
-renames anyway once the code is ready: the existing uses then mean the renamed one). --source assigns the renamed
-rows to SRC. A rename never changes code generation: rebuild, then tools/verify.py.
-
-python tools/rename.py --unit OLD NEW [--dry-run]: rename a source file (repository paths): the file, sources.json,
-every version's rows, config.json, state.json, splits.txt and name review, and `#include "OLD"` in the code (the
-unit's header is left alone).
-
-python tools/rename.py --member [--filter TEXT] [--dry-run] RECORD.OLD[.MORE]=NEW...: rename struct members at every
-use. Rename the member in the record's definition first; this then fixes the uses clang reports. A spec's RECORD is a
-struct or union name, OLD the member it no longer has, NEW the text written in its place (`PCodeBlock.next=nextBlock`);
-a dotted spec replaces a member path (`PCode.operandData.operands=args` rewrites `x->operandData.operands[i]` as
-`x->args[i]`; the longest path written at a site wins). Every source (whose path contains TEXT) is compiled with
-clang -fsyntax-only (tools/mw/clang.py) in parallel; each "no member named 'OLD' in 'struct RECORD'" names the token,
-in a macro body when the access was expanded from one; passes repeat until clang reports none. Exits 1 when uses are
-left (code clang cannot see, such as `#ifdef __MWERKS__`, is not reported: build with MWCC after).
-"""
 
 import argparse
 import concurrent.futures
@@ -44,16 +16,16 @@ def report(plan, dry_run):
         sys.exit("nothing renamed:\n" + "\n".join(f"  {p}" for p in plan.problems))
     for s in plan.left:
         print(f"left (a member of that name): {project.relative(s.path)}:{s.line}")
+    if not plan.changes:
+        sys.exit("error: nothing to rename (no row, binding, symbol, source or code names OLD)")
     if dry_run:
-        print("\n".join(plan.changes) or "nothing to rename")
+        print("\n".join(plan.changes))
         return
     changed = plan.tx.commit()
-    print("\n".join(plan.changes) or "nothing to rename")
+    print("\n".join(plan.changes))
     if changed:
         print(f"{len(changed)} files changed")
 
-
-# ---------------------------------------------------------------------------------------------------------- members
 
 _DIAGNOSTIC = re.compile(r"^(.+?):(\d+):(\d+): (error|note): (.*)$")
 _MISSING = re.compile(r"no member named '(\w+)' in '(?:(?:struct|union) )?(\w+)'")
@@ -78,7 +50,6 @@ def spells(where, member):
 
 
 def member_sites(entries, specs):
-    """{(path, line, column): (record, member)} of the missing members SPECS rename."""
     with concurrent.futures.ThreadPoolExecutor(os.cpu_count() or 4) as pool:
         results = list(pool.map(diagnostics, entries))
     found = {}
@@ -87,8 +58,6 @@ def member_sites(entries, specs):
             m = _MISSING.search(text) if kind == "error" else None
             if not m or (m[2], m[1]) not in specs:
                 continue
-            # (the token itself: the primary location, or a macro body it was expanded from; the first that spells
-            # the member, since a macro argument's notes lead to the macro's parameter)
             candidates = [(path, line, column)]
             for kind2, text2, path2, line2, column2 in diags[i + 1 :]:
                 if kind2 != "note" or "expanded from macro" not in text2:
@@ -106,8 +75,9 @@ def apply_members(found, specs, dry_run):
     for (path, line, column), key in found.items():
         by_file.setdefault(path, []).append((line, column, key))
     count = 0
+    tx = project.Transaction()
     for path, edits in by_file.items():
-        lines = path.read_text(encoding="latin-1").split("\n")
+        lines = tx.read_bytes(path).decode("latin-1").split("\n")
         for line, column, (record, member) in sorted(edits, key=lambda e: (e[0], -e[1])):
             text, i = lines[line - 1], column - 1
             best = None
@@ -121,9 +91,9 @@ def apply_members(found, specs, dry_run):
             lines[line - 1] = text[:i] + best[2] + text[i + best[1] :]
             count += 1
             print(f"{project.relative(path)}:{line}: {lines[line - 1].strip()[:110]}")
-        if not dry_run:
-            with project.locked():
-                project.write_atomic(path, "\n".join(lines).encode("latin-1"))
+        tx.write(path, "\n".join(lines).encode("latin-1"))
+    if not dry_run:
+        tx.commit()
     return count
 
 
@@ -133,7 +103,7 @@ def rename_members(spec_texts, filter_text, dry_run):
         old, equals, new = spec.partition("=")
         record, *member_path = old.split(".")
         if not equals or not member_path or not re.fullmatch(r"\w+", record):
-            sys.exit(f"{spec!r} is not RECORD.OLD=NEW")
+            sys.exit(f"error: {spec!r} is not RECORD.OLD=NEW")
         specs.setdefault((record, member_path[0]), []).append((member_path, new))
     entries = [c for c in build.compilations() if filter_text in c.source]
     total = 0
@@ -152,15 +122,23 @@ def rename_members(spec_texts, filter_text, dry_run):
 
 
 def main():
-    parser = argparse.ArgumentParser(usage=__doc__.split("\n")[0][len("python tools/rename.py ") :])
-    parser.add_argument("names", nargs="+")
-    parser.add_argument("--unit", action="store_true")
-    parser.add_argument("--member", action="store_true")
-    parser.add_argument("--filter", default="")
-    parser.add_argument("--force", nargs="+", default=[], metavar="NEW")
-    parser.add_argument("--no-code", action="store_true")
-    parser.add_argument("--source")
-    parser.add_argument("--dry-run", action="store_true")
+    parser = argparse.ArgumentParser(
+        prog="tools/rename.py",
+        usage="%(prog)s OLD NEW [OLD NEW...] [--force NEW...] [--no-code] [--source SRC] [--dry-run]\n"
+        "       %(prog)s --unit OLD NEW [--dry-run]\n"
+        "       %(prog)s --member [--filter TEXT] [--dry-run] RECORD.OLD[.MORE]=NEW...",
+        description="Rename functions and variables everywhere the repository names them, in every version.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument("names", nargs="+", metavar="NAME")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--unit", action="store_true", help="rename a source file")
+    mode.add_argument("--member", action="store_true", help="rename struct members at every use")
+    parser.add_argument("--filter", default="", metavar="TEXT", help="with --member: only sources whose path has TEXT")
+    parser.add_argument("--force", nargs="+", default=[], metavar="NEW", help="rename to NEW though it is in the code")
+    parser.add_argument("--no-code", action="store_true", help="leave src/ and include/ alone")
+    parser.add_argument("--source", metavar="SRC", help="assign the renamed rows to SRC")
+    parser.add_argument("--dry-run", action="store_true", help="print what would change, write nothing")
     args = parser.parse_args()
     try:
         if args.member:

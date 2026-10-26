@@ -7,7 +7,6 @@
 extern "C" {
 #endif
 
-// The library importer's diagnostics (Wii's LinkErrorsPPC_EABI module)
 extern void linkwarning(SInt32 code, ...);
 extern void linkerror(SInt32 code, ...);
 extern void linkfailed(SInt32 code, int status, ...);

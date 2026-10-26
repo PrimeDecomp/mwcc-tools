@@ -1,16 +1,15 @@
 #!/usr/bin/env python3
-"""python tools/transform_dep.py DEP OUT: MWCC's -MD dependency file (written to the working directory, its paths
-Windows paths as wibo maps them) as a ninja depfile for OUT."""
 
+import argparse
 import os
 import re
-import sys
 from pathlib import Path
 
-if sys.argv[1:2] in (["-h"], ["--help"]):
-    print(__doc__)
-    sys.exit()
-dep, out = Path(sys.argv[1]), sys.argv[2]
+parser = argparse.ArgumentParser(description="MWCC's -MD dependency file as a ninja depfile for OUT.")
+parser.add_argument("dep", type=Path, metavar="DEP")
+parser.add_argument("outs", nargs="+", metavar="OUT", help="the object (ninja may name further outputs after it)")
+args = parser.parse_args()
+dep, out = args.dep, args.outs[0]
 paths = []
 for token in re.split(r"\s+", dep.read_text(encoding="latin-1").replace("\\\n", " "))[1:]:
     if token:

@@ -1,8 +1,6 @@
-// InlineAsmMnemonicsPPC.c: Pro7's file, deferred; its table is 2.6's, generated from
-// the original's bytes.
 #include "compiler/InlineAsmMnemonicsPPC.h"
 #include "compiler/CompilerTools.h"
-#include "compiler/PCode.h"
+#include "compiler/PCodeInfo.h"
 #include <string.h>
 
 #pragma pool_strings on

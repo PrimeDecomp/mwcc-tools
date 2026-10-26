@@ -7,7 +7,6 @@
 #include "compiler/CInt64.h"
 #include "compiler/CMachine.h"
 #include "compiler/CMangler.h"
-#include "compiler/CObjC.h"
 #include "compiler/CompilerTools.h"
 #include "compiler/CParser.h"
 #include "compiler/CPrep.h"
@@ -16,6 +15,7 @@
 #include "compiler/enode.h"
 #include "compiler/objects.h"
 #include "compiler/scopes.h"
+#include "compiler/tokens.h"
 #include "compiler/types.h"
 #include <string.h>
 
@@ -27,7 +27,6 @@ typedef struct Offset {
 static Offset* crtti_offsets;
 static OLinkList* crtti_olinks;
 
-// forward decls
 static Object* CRTTI_ConstructTypeInfoObject(Type* type, UInt32 qual);
 
 typedef struct RTTISubClassList {
@@ -42,18 +41,16 @@ typedef struct RTTIBaseList {
     RTTISubClassList* subclasses;
     SInt32 voffset;
     short numsubclasses;
-    // TODO: invented names (Pro7: x12, x13): reached only through a private base; reached at two
-    // offsets (an ambiguous base)
     Boolean isprivate;
     Boolean isambiguous;
 } RTTIBaseList;
 
 static RTTIBaseList* CRTTI_CreateBaseList(
-    TypeClass* tclass, TypeClass* tclassbase, RTTIBaseList* list, SInt32 voffset, Boolean flag
+    TypeClass* tclass, TypeClass* tclassbase, RTTIBaseList* list, SInt32 voffset, Boolean isPrivate
 ) {
     RTTIBaseList* scan;
     ClassList* base;
-    Boolean ambiguous; // TODO: invented name (Pro7: flag27)
+    Boolean ambiguous;
     SInt32 newvoffset;
 
     if (tclass != tclassbase) {
@@ -62,7 +59,7 @@ static RTTIBaseList* CRTTI_CreateBaseList(
         for (scan = list; scan; scan = scan->next) {
             if (scan->base == tclassbase) {
                 if (scan->voffset == voffset) {
-                    if (!flag) {
+                    if (!isPrivate) {
                         scan->isprivate = FALSE;
                     }
                     ambiguous = FALSE;
@@ -82,7 +79,7 @@ static RTTIBaseList* CRTTI_CreateBaseList(
             list = scan;
             scan->base = tclassbase;
             scan->voffset = voffset;
-            scan->isprivate = flag;
+            scan->isprivate = isPrivate;
             scan->isambiguous = ambiguous;
         }
     }
@@ -95,7 +92,7 @@ static RTTIBaseList* CRTTI_CreateBaseList(
         }
 
         list = CRTTI_CreateBaseList(
-            tclass, base->base, list, newvoffset, flag || base->access == ACCESSPRIVATE
+            tclass, base->base, list, newvoffset, isPrivate || base->access == ACCESSPRIVATE
         );
     }
 
@@ -103,7 +100,11 @@ static RTTIBaseList* CRTTI_CreateBaseList(
 }
 
 static void CRTTI_CreateSubClassList(
-    TypeClass* tclass, RTTIBaseList* baselist, TypeClass* tclassbase, SInt32 voffset, Boolean flag
+    TypeClass* tclass,
+    RTTIBaseList* baselist,
+    TypeClass* tclassbase,
+    SInt32 voffset,
+    Boolean unambiguous
 ) {
     ClassList* base;
     RTTISubClassList* scan;
@@ -130,7 +131,7 @@ static void CRTTI_CreateSubClassList(
     for (base = tclassbase->bases; base; base = base->next) {
         if (base->access == ACCESSPUBLIC) {
             if (base->is_virtual) {
-                if (!flag) {
+                if (!unambiguous) {
                     continue;
                 }
                 newvoffset = CClass_VirtualBaseOffset(tclass, base->base);
@@ -138,7 +139,7 @@ static void CRTTI_CreateSubClassList(
                 newvoffset = voffset + base->offset;
             }
 
-            CRTTI_CreateSubClassList(tclass, baselist, base->base, newvoffset, flag);
+            CRTTI_CreateSubClassList(tclass, baselist, base->base, newvoffset, unambiguous);
         }
     }
 }
@@ -149,8 +150,8 @@ static Object* CRTTI_CreateBaseListObject(TypeClass* tclass) {
     Object* object;
     SInt32* buf;
     SInt32 size;
-    short count1;
-    short count2;
+    short simpleCount;
+    short ambigCount;
     OLinkList* ref;
     RTTIBaseList* scan;
     short total;
@@ -162,24 +163,24 @@ static Object* CRTTI_CreateBaseListObject(TypeClass* tclass) {
     if (!baselist) {
         return NULL;
     }
-    count1 = 0;
-    count2 = 0;
+    simpleCount = 0;
+    ambigCount = 0;
     total = 0;
     for (scan = baselist; scan; scan = scan->next) {
         if (scan->isambiguous || scan->isprivate) {
             CRTTI_CreateSubClassList(tclass, scan, scan->base, scan->voffset, !scan->isambiguous);
             if (scan->numsubclasses) {
-                count2++;
+                ambigCount++;
                 total += scan->numsubclasses;
             }
         } else {
-            count1++;
+            simpleCount++;
         }
     }
-    if (!count1 && !count2) {
+    if (!simpleCount && !ambigCount) {
         return NULL;
     }
-    size = (count1 + total) * 8 + count2 * 12 + 4;
+    size = (simpleCount + total) * 8 + ambigCount * 12 + 4;
     buf = lalloc(size);
     memclrw(buf, size);
     object = CParser_NewCompilerDefDataObject();
@@ -189,7 +190,7 @@ static Object* CRTTI_CreateBaseListObject(TypeClass* tclass) {
     object->sclass = TK_STATIC;
     refs = NULL;
     work = buf;
-    if (count1) {
+    if (simpleCount) {
         for (scan = baselist; scan; scan = scan->next) {
             if (!scan->isprivate && !scan->isambiguous) {
                 ref = lalloc(sizeof(OLinkList));
@@ -203,7 +204,7 @@ static Object* CRTTI_CreateBaseListObject(TypeClass* tclass) {
             }
         }
     }
-    if (count2) {
+    if (ambigCount) {
         for (scan = baselist; scan; scan = scan->next) {
             if (scan->numsubclasses) {
                 ref = lalloc(sizeof(OLinkList));
@@ -276,9 +277,9 @@ static Object* CRTTI_ConstructTypeInfoObject(Type* type, UInt32 qual) {
     list = CScope_FindName(cscope_root, rttiname);
 
     if (!list || (object = OBJECT(list->object))->otype != OT_OBJECT || object->datatype != DDATA) {
-        namestr = CError_GetTypeName(type, qual, 0);
+        namestr = CError_GetTypeName(type, qual, FALSE);
         namelen = strlen(namestr) + 1;
-        nameobj = CInit_DeclareString(namestr, namelen, 0, 0);
+        nameobj = CInit_DeclareString(namestr, namelen, FALSE, FALSE);
 
         baselistobj = NULL;
         if (IS_TYPE_CLASS(type)) {
@@ -325,7 +326,7 @@ static void CRTTI_ConstructVTableHeader(
     ClassList* base;
     Offset* o;
     OLinkList* olink;
-    SInt32 tmp;
+    SInt32 stored;
     SInt32 newoffset;
     SInt32 newvoffset;
 
@@ -351,8 +352,8 @@ static void CRTTI_ConstructVTableHeader(
 
             ((SInt32*)(data + voffset))[1] = CTool_EndianConvertWord32(-offset);
         } else {
-            tmp = ((SInt32*)(data + voffset))[1];
-            CError_ASSERT(404, tmp == CTool_EndianConvertWord32(-offset));
+            stored = ((SInt32*)(data + voffset))[1];
+            CError_ASSERT(404, stored == (SInt32)CTool_EndianConvertWord32(-offset));
         }
     }
 
@@ -452,7 +453,7 @@ ENode* CRTTI_ParseTypeID(void) {
         if (IS_TYPE_CLASS(type) && TYPE_CLASS(type)->vtable) {
             expr = funccallexpr(
                 Rgtid_func,
-                getnodeaddress(expr, 0),
+                getnodeaddress(expr, FALSE),
                 intconstnode(TYPE(&stsignedlong), TYPE_CLASS(type)->vtable->offset),
                 NULL,
                 NULL
@@ -481,10 +482,10 @@ static void CRTTI_ConstCastQualCheck(UInt32 qual1, UInt32 qual2) {
 }
 
 static void CRTTI_ConstCastCheck(Type* type1, UInt32 qual1, Type* type2, UInt32 qual2) {
-    Boolean flag = TRUE;
+    Boolean topLevel = TRUE;
     if (IS_TYPE_REFERENCE(type2)) {
         type2 = TPTR_TARGET(type2);
-        flag = FALSE;
+        topLevel = FALSE;
     }
 
     while (1) {
@@ -494,30 +495,33 @@ static void CRTTI_ConstCastCheck(Type* type1, UInt32 qual1, Type* type2, UInt32 
 
         switch (type1->type) {
             case TYPEPOINTER:
-                if (!flag) {
+                if (!topLevel) {
                     CRTTI_ConstCastQualCheck(TPTR_QUAL(type1), TPTR_QUAL(type2));
                 }
                 type1 = TPTR_TARGET(type1);
                 type2 = TPTR_TARGET(type2);
-                flag = FALSE;
+                topLevel = FALSE;
                 continue;
 
             case TYPEMEMBERPOINTER:
-                if (!flag) {
+                if (!topLevel) {
                     CRTTI_ConstCastQualCheck(
                         TYPE_MEMBER_POINTER(type1)->qual, TYPE_MEMBER_POINTER(type2)->qual
                     );
                 }
                 type1 = TYPE_MEMBER_POINTER(type1)->ty1;
                 type2 = TYPE_MEMBER_POINTER(type2)->ty1;
-                flag = FALSE;
+                topLevel = FALSE;
                 continue;
+
+            default:
+                break;
         }
 
         break;
     }
 
-    if (!flag && !IS_TYPE_FUNC(type1) && !IS_TYPE_FUNC(type2)) {
+    if (!topLevel && !IS_TYPE_FUNC(type1) && !IS_TYPE_FUNC(type2)) {
         CRTTI_ConstCastQualCheck(
             CParser_GetCVTypeQualifiers(type1, qual1), CParser_GetCVTypeQualifiers(type2, qual2)
         );
@@ -535,7 +539,7 @@ static ENode* CRTTI_ParseCast(DeclInfo* di) {
     tk = lex();
 
     memclrw(di, sizeof(DeclInfo));
-    CParser_GetDeclSpecs(di, 0);
+    CParser_GetDeclSpecs(di, FALSE);
     scandeclarator(di);
 
     if (di->name) {
@@ -580,7 +584,6 @@ static void CRTTI_IncompleteCheck(Type* type) {
     }
 }
 
-// (inline: 2.6 has no out-of-line copy of it, whose switch table would sit in the unit's .data)
 static inline Boolean CRTTI_IsSameType(Type* a, Type* b) {
     while (1) {
         if (a->type != b->type) {
@@ -606,13 +609,12 @@ static inline Boolean CRTTI_IsSameType(Type* a, Type* b) {
 }
 
 static ENode* CRTTI_UniversalCast(ENode* expr, Type* type, UInt32 qual, UInt8 mode) {
-    // type/qual are the target type
     Boolean isSimpleCast;
     Boolean needsTypcon;
     Boolean failed;
 
     if (ENODE_IS(expr, EOBJLIST)) {
-        return CExpr_AssignmentPromotion(expr, type, qual & (Q_CONST | Q_VOLATILE), 1);
+        return CExpr_AssignmentPromotion(expr, type, qual & (Q_CONST | Q_VOLATILE), TRUE);
     }
 
     isSimpleCast = needsTypcon = failed = FALSE;
@@ -628,8 +630,7 @@ static ENode* CRTTI_UniversalCast(ENode* expr, Type* type, UInt32 qual, UInt8 mo
         case TYPEPOINTER:
             if (TPTR_QUAL(type) & Q_REFERENCE) {
                 if (!CRTTI_IsSameType(TPTR_TARGET(type), expr->rtype) &&
-                    mode ==
-                    2 &&
+                    mode == 2 &&
                     !(IS_TYPE_CLASS(TPTR_TARGET(type)) &&
                       IS_TYPE_CLASS(expr->rtype) &&
                       (CClass_IsBaseClass(
@@ -641,29 +642,27 @@ static ENode* CRTTI_UniversalCast(ENode* expr, Type* type, UInt32 qual, UInt8 mo
                     failed = TRUE;
                 }
             } else if (IS_TYPE_POINTER_ONLY(expr->rtype)) {
-                if (mode ==
-                    3 ||
+                if (mode == 3 ||
                     CRTTI_IsSameType(type, expr->rtype) ||
                     IS_TYPE_VOID(TPTR_TARGET(type)) ||
                     IS_TYPE_VOID(TPTR_TARGET(expr->rtype))) {
                     isSimpleCast = needsTypcon = TRUE;
-                } else if (mode ==
-                           2 &&
+                } else if (mode == 2 &&
                            !(IS_TYPE_CLASS(TPTR_TARGET(type)) &&
                              IS_TYPE_CLASS(TPTR_TARGET(expr->rtype)) &&
                              (CClass_IsBaseClass(
                                   TYPE_CLASS(TPTR_TARGET(type)),
                                   TYPE_CLASS(TPTR_TARGET(expr->rtype)),
                                   NULL,
-                                  0,
-                                  1
+                                  FALSE,
+                                  TRUE
                               ) ||
                               CClass_IsBaseClass(
                                   TYPE_CLASS(TPTR_TARGET(expr->rtype)),
                                   TYPE_CLASS(TPTR_TARGET(type)),
                                   NULL,
-                                  0,
-                                  1
+                                  FALSE,
+                                  TRUE
                               )))) {
                     failed = TRUE;
                 }
@@ -692,6 +691,9 @@ static ENode* CRTTI_UniversalCast(ENode* expr, Type* type, UInt32 qual, UInt8 mo
                 failed = TRUE;
             }
             break;
+
+        default:
+            break;
     }
 
     if (failed) {
@@ -714,7 +716,7 @@ static ENode* CRTTI_UniversalCast(ENode* expr, Type* type, UInt32 qual, UInt8 mo
     }
 
     if (!copts.old_argmatch) {
-        return CExpr_Convert(expr, type, qual, 1, 1);
+        return CExpr_Convert(expr, type, qual, TRUE, TRUE);
     }
 
     return do_typecast(expr, type, qual);
@@ -769,12 +771,13 @@ ENode* CRTTI_Parse_dynamic_cast(void) {
 
         srcclass = TYPE_CLASS(expr->rtype);
         if (destclass) {
-            if (srcclass == destclass || CClass_IsBaseClass(srcclass, destclass, NULL, 0, 1)) {
+            if (srcclass == destclass ||
+                CClass_IsBaseClass(srcclass, destclass, NULL, FALSE, TRUE)) {
                 return do_typecast(expr, di.thetype, di.qual);
             }
         }
 
-        expr = getnodeaddress(expr, 1);
+        expr = getnodeaddress(expr, TRUE);
     } else {
         if (!IS_TYPE_POINTER_ONLY(expr->rtype) || !IS_TYPE_CLASS(TPTR_TARGET(expr->rtype))) {
             CError_Error(ERR_ILLEGAL_TYPE_CAST);
@@ -783,7 +786,8 @@ ENode* CRTTI_Parse_dynamic_cast(void) {
 
         srcclass = TYPE_CLASS(TPTR_TARGET(expr->rtype));
         if (destclass) {
-            if (srcclass == destclass || CClass_IsBaseClass(srcclass, destclass, NULL, 0, 1)) {
+            if (srcclass == destclass ||
+                CClass_IsBaseClass(srcclass, destclass, NULL, FALSE, TRUE)) {
                 return do_typecast(expr, di.thetype, di.qual);
             }
         }
@@ -848,7 +852,7 @@ ENode* CRTTI_Parse_static_cast(void) {
 
     if (IS_TYPE_REFERENCE(di.thetype)) {
         if (IS_TYPE_CLASS(expr->rtype) && CExpr_CanImplicitlyConvert(expr, di.thetype, di.qual)) {
-            expr = CExpr_Convert(expr, di.thetype, di.qual, 0, 1);
+            expr = CExpr_Convert(expr, di.thetype, di.qual, FALSE, TRUE);
             CError_ASSERT(959, IS_TYPE_POINTER_ONLY(expr->rtype));
 
             expr = makemonadicnode(expr, EINDIRECT);
@@ -858,7 +862,7 @@ ENode* CRTTI_Parse_static_cast(void) {
         }
     } else {
         if (CExpr_CanImplicitlyConvert(expr, di.thetype, di.qual)) {
-            return CExpr_Convert(expr, di.thetype, di.qual, 1, 1);
+            return CExpr_Convert(expr, di.thetype, di.qual, TRUE, TRUE);
         }
     }
 
@@ -884,7 +888,7 @@ ENode* CRTTI_Parse_reinterpret_cast(void) {
     CRTTI_ConstCastCheck(expr->rtype, expr->flags, di.thetype, di.qual);
 
     if (IS_TYPE_REFERENCE(di.thetype)) {
-        expr = CExpr_LValue(expr, 0, 1);
+        expr = CExpr_LValue(expr, FALSE, TRUE);
         if (!ENODE_IS(expr, EINDIRECT)) {
             return expr;
         }

@@ -3,32 +3,40 @@
 #include "compiler/CError.h"
 #include "compiler/CMachine.h"
 #include "compiler/CMangler.h"
-#include "compiler/CParser.h"
-#include "compiler/CPrep.h"
 #include "compiler/CodeGen.h"
+#include "compiler/CompilerTools.h"
+#include "compiler/CParser.h"
+#include "compiler/ELF_Endian.h"
 #include "compiler/objects.h"
 #include "compiler/ObjGen_PPC_EABI.h"
 #include "compiler/RegisterInfo.h"
 #include "compiler/TOC.h"
+#include "compiler/tokens.h"
+#include "compiler/types.h"
 #include <string.h>
-
-// 2.6 builds this file -inline auto,deferred: the binary holds its functions in reverse order.
 
 BE_SymbolTable TheSymbolTable;
 
-// Where elf_declare_symbol inserts the next section symbol.
-// TODO: invented name (the original's static at 0x5e0af8)
 static BE_SymNode* last_section_symbol;
 
 BE_SymNode* First(void) {
     return TheSymbolTable.current = TheSymbolTable.first;
 }
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -4
+#endif
 BE_SymNode* Next(void) {
     CError_ASSERT(58, TheSymbolTable.current != NULL);
     return TheSymbolTable.current = TheSymbolTable.current->next;
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION >= VERSION_GC_2_0
 BE_SymNode* AddSymbol(
     BE_SymNode* node,
     SInt32 size,
@@ -71,7 +79,42 @@ BE_SymNode* AddSymbol(
     return node;
 }
 
+#endif
+
 BE_SymNode* AddObject(Object* obj, SInt32 size, ObjGenSection* section) {
+#if VERSION < VERSION_GC_2_0
+    UInt8 binding;
+    UInt8 linkageKind;
+    BE_SymNode* node;
+
+    linkageKind = 0;
+    if (obj->type->type == TYPEFUNC) {
+        return AddFunction(obj, size, section);
+    }
+    if (obj->qual & Q_IMPLICIT_WEAK) {
+        binding = STB_WEAK;
+        linkageKind = 13;
+    } else if (obj->qual & Q_WEAK) {
+        binding = STB_WEAK;
+        linkageKind = 14;
+    } else if (CParser_HasInternalLinkage(obj)) {
+        binding = STB_LOCAL;
+    } else {
+        binding = STB_GLOBAL;
+    }
+    node = MakeSymbolTableEntry(obj);
+    node->elf.st_info = ELF32_ST_INFO(binding, STT_OBJECT);
+    node->elf.st_size = size;
+    node->elf.st_shndx = SHN_UNDEF;
+    node->section = section;
+    node->alignment = CMach_AllocationAlignment(obj->type, obj->qual);
+    node->linkageKind = linkageKind;
+    node->linkageFlags = 0;
+    if (copts.force_active) {
+        node->linkageFlags |= 8;
+    }
+    return node;
+#else
     BE_SymNode* node;
     SInt16 sclass;
 
@@ -93,6 +136,7 @@ BE_SymNode* AddObject(Object* obj, SInt32 size, ObjGenSection* section) {
         obj->flags,
         section
     );
+#endif
 }
 
 BE_SymNode* AddFunction(Object* obj, SInt32 size, ObjGenSection* section) {
@@ -161,8 +205,6 @@ BE_SymNode* AddEntry(Object* obj, ObjGenSection* section) {
 }
 
 #if VERSION >= VERSION_GC_2_7
-// The bucket of TheSymbolTable.hash that holds NAME's symbols.
-// TODO: invented name
 static inline UInt32 BE_SymbolHash(HashNameNode* name) {
     UInt32 hash;
     size_t i;
@@ -210,8 +252,10 @@ BE_SymNode* InorderFirst(void) {
     return TheSymbolTable.inorder;
 }
 
-// TODO: invented name (part of Wii's MakeNamedSymbolTableEntry). Written into it, the search
-// loses the `node = NULL` 2.6 has after the loop.
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -60
+#endif
 static inline BE_SymNode* FindSymbolTableEntry(HashNameNode* name, SInt16 sclass) {
     BE_SymNode* node;
 #if VERSION >= VERSION_GC_2_7
@@ -227,7 +271,11 @@ static inline BE_SymNode* FindSymbolTableEntry(HashNameNode* name, SInt16 sclass
 }
 
 #if VERSION >= VERSION_GC_2_7
-BE_SymNode* MakeNamedSymbolTableEntry(HashNameNode* name, SInt16 sclass) {
+BE_SymNode* MakeNamedSymbolTableEntry(HashNameNode* name, SInt16 sclass)
+#else
+static inline BE_SymNode* MakeNamedSymbolTableEntry(HashNameNode* name, SInt16 sclass)
+#endif
+{
     BE_SymNode* node;
     UInt8 binding;
 
@@ -240,41 +288,24 @@ BE_SymNode* MakeNamedSymbolTableEntry(HashNameNode* name, SInt16 sclass) {
     } else {
         binding = STB_GLOBAL;
     }
+#if VERSION >= VERSION_GC_2_7
     node = AddSymbolTableEntry(name);
+#else
+    node = galloc(sizeof(BE_SymNode));
+    memset(node, 0, sizeof(BE_SymNode));
+    node->name = name;
+    if (TheSymbolTable.first != NULL) {
+        TheSymbolTable.current->next = node;
+    } else {
+        TheSymbolTable.first = node;
+    }
+    TheSymbolTable.current = node;
+#endif
     node->elf.st_info = ELF32_ST_INFO(binding, STT_NOTYPE);
     node->sclass = sclass;
     node->section = ELFfile.null_section;
     return node;
 }
-#else
-// 2.6 inlines it everywhere.
-static inline BE_SymNode* MakeNamedSymbolTableEntry(HashNameNode* name, SInt16 sclass) {
-    BE_SymNode* node;
-    UInt8 binding;
-
-    if ((node = FindSymbolTableEntry(name, sclass)) == NULL) {
-        if (sclass == TK_STATIC) {
-            binding = STB_LOCAL;
-        } else {
-            binding = STB_GLOBAL;
-        }
-        // AddSymbolTableEntry written out: a call to it here is not 2.6's code in the callers
-        node = galloc(sizeof(BE_SymNode));
-        memset(node, 0, sizeof(BE_SymNode));
-        node->name = name;
-        if (TheSymbolTable.first != NULL) {
-            TheSymbolTable.current->next = node;
-        } else {
-            TheSymbolTable.first = node;
-        }
-        TheSymbolTable.current = node;
-        node->elf.st_info = ELF32_ST_INFO(binding, STT_NOTYPE);
-        node->sclass = sclass;
-        node->section = ELFfile.null_section;
-    }
-    return node;
-}
-#endif
 
 BE_SymNode* MakeSymbolTableEntry(Object* obj) {
     HashNameNode* name;
@@ -350,8 +381,6 @@ BE_SymNode* CreateDataPoolAnchorSymbol(ObjGenSection* section, Object* anchor) {
     return node;
 }
 
-// The extension (a 64 KB window of the pool) that holds OFFSET, added when there is none.
-// TODO: invented name (Wii has this static unnamed)
 static BE_SymGroup* FindOrAddObjectExtension(ObjGenSymbolLink* link, SInt32 offset) {
     BE_SymGroup* group;
     SInt32 base;
@@ -390,7 +419,6 @@ BE_SymGroup* GetObjectExtension(Object* obj) {
     return NULL;
 }
 
-// TODO: invented name. Written into its two callers, the search compiles shorter than 2.6's.
 static inline BE_SymGroup* FindUsedObjectExtension(ObjGenSymbolLink* link, SInt32 offset) {
     BE_SymGroup* group;
     for (group = link->groups; group != NULL; group = group->next) {
@@ -447,22 +475,17 @@ Object* GetDataPoolRoot(Object* obj) {
     if ((obj->qual & Q_TENTATIVE) && node->elf.st_size == 0) {
         ObjGen_DeclareData(obj, NULL, NULL, obj->type->size);
     }
-    // Two copies of the link, chained: 2.6 copies it into a second register. One local, the copy as
-    // a statement of its own and an inline helper for the condition were tried (95-97%).
     pool = link = node->section->symbolLink;
 
     if (copts.pool_data &&
-        link !=
-        NULL &&
-        link->symbol !=
-        NULL &&
+        link != NULL &&
+        link->symbol != NULL &&
         !(obj->qual & Q_IMPLICIT_WEAK) &&
         !(obj->qual & Q_WEAK) &&
         !(obj->datatype == DFUNC || obj->datatype == DVFUNC || obj->datatype == DINLINEFUNC) &&
         !is_16bitdata(obj) &&
-        node->elf.st_size <
-        FindOrAddObjectExtension(pool, node->elf.st_value)->base +
-        0x8000U) {
+        (UInt32)node->elf.st_size <
+            FindOrAddObjectExtension(pool, node->elf.st_value)->base + 0x8000U) {
         return pool->object;
     }
     return NULL;
@@ -481,3 +504,8 @@ Boolean NeedsXREF(Object* obj) {
     }
     return TRUE;
 }
+
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif

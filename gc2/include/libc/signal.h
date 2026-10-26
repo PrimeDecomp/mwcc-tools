@@ -5,7 +5,6 @@
 extern "C" {
 #endif
 
-/* MSL's signal (lib/msl/MSL_Common/Include/csignal). */
 typedef void (*__signal_func_ptr)(int);
 #define SIGABRT 1
 __signal_func_ptr signal(int signal, __signal_func_ptr signal_func);

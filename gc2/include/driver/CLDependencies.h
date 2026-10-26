@@ -32,8 +32,6 @@ struct Incls {
     char* buffer;
     struct Paths* allPaths;
 };
-// CPrep's include stack and its depth (COMMONs: Pro7 defines them in CLDependencies.c, the repo in
-// CPrep.c). 2.6 indexes the stack directly where Pro7's CPrepFileInfoStack* is dereferenced first.
 extern SInt16* CLT_filesp;
 extern struct CPrepFileInfo** CLT_filestack;
 

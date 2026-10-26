@@ -1,13 +1,10 @@
 #ifndef COMPILER_WIN32_H
 #define COMPILER_WIN32_H
 
-#include "compiler/common.h"
-
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-/* (WINERROR.H: the codes the OS layer returns and maps) */
 #define ERROR_FILE_NOT_FOUND 2L
 #define ERROR_PATH_NOT_FOUND 3L
 #define ERROR_TOO_MANY_OPEN_FILES 4L
@@ -19,7 +16,6 @@ extern "C" {
 #define ERROR_OUTOFMEMORY 14L
 #define ERROR_INVALID_DRIVE 15L
 #define ERROR_CURRENT_DIRECTORY 16L
-#define ERROR_NO_MORE_FILES 18L
 #define ERROR_WRITE_PROTECT 19L
 #define ERROR_NOT_READY 21L
 #define ERROR_CRC 23L
@@ -41,7 +37,6 @@ extern "C" {
 #define ERROR_ALREADY_EXISTS 183L
 #define ERROR_DIRECTORY 267L
 
-/* (WINNT.H and WINBASE.H) */
 #define GENERIC_READ (0x80000000L)
 #define GENERIC_WRITE (0x40000000L)
 #define FILE_SHARE_READ 0x00000001
@@ -64,7 +59,6 @@ extern "C" {
 #define STD_ERROR_HANDLE ((DWORD)(-12))
 #define FORMAT_MESSAGE_FROM_SYSTEM 0x00001000
 
-/* (WINDEF.H and WINNT.H) */
 typedef int BOOL;
 typedef unsigned char BYTE;
 typedef unsigned short WORD;
@@ -73,17 +67,14 @@ typedef unsigned int UINT;
 typedef short SHORT;
 typedef long LONG;
 typedef char CHAR;
-typedef unsigned short WCHAR;
 typedef unsigned long ULONG_PTR;
 typedef ULONG_PTR SIZE_T;
-typedef void* PVOID;
 typedef void* LPVOID;
 typedef const void* LPCVOID;
 typedef BYTE* LPBYTE;
 typedef DWORD* LPDWORD;
 typedef LONG* PLONG;
 typedef CHAR* LPSTR;
-typedef CHAR* LPCH;
 typedef const CHAR* LPCSTR;
 typedef void* HANDLE;
 typedef HANDLE HGLOBAL;
@@ -101,31 +92,6 @@ typedef struct HRSRC__* HRSRC;
 typedef char* va_list;
 #endif
 
-typedef struct _LIST_ENTRY {
-    struct _LIST_ENTRY* Flink;
-    struct _LIST_ENTRY* Blink;
-} LIST_ENTRY;
-
-typedef struct _RTL_CRITICAL_SECTION_DEBUG {
-    WORD Type;
-    WORD CreatorBackTraceIndex;
-    struct _RTL_CRITICAL_SECTION* CriticalSection;
-    LIST_ENTRY ProcessLocksList;
-    DWORD EntryCount;
-    DWORD ContentionCount;
-    DWORD Spare[2];
-} RTL_CRITICAL_SECTION_DEBUG, *PRTL_CRITICAL_SECTION_DEBUG;
-
-typedef struct _RTL_CRITICAL_SECTION {
-    PRTL_CRITICAL_SECTION_DEBUG DebugInfo;
-    LONG LockCount;
-    LONG RecursionCount;
-    HANDLE OwningThread;
-    HANDLE LockSemaphore;
-    DWORD SpinCount;
-} RTL_CRITICAL_SECTION, *PRTL_CRITICAL_SECTION;
-
-/* (WINBASE.H and WINCON.H) */
 typedef struct _FILETIME {
     DWORD dwLowDateTime;
     DWORD dwHighDateTime;
@@ -197,9 +163,6 @@ typedef struct _WIN32_FIND_DATAA {
     CHAR cAlternateFileName[14];
 } WIN32_FIND_DATAA, *PWIN32_FIND_DATAA, *LPWIN32_FIND_DATAA;
 
-typedef RTL_CRITICAL_SECTION CRITICAL_SECTION;
-typedef PRTL_CRITICAL_SECTION LPCRITICAL_SECTION;
-
 typedef struct _COORD {
     SHORT X;
     SHORT Y;
@@ -250,10 +213,7 @@ __declspec(dllimport) BOOL __stdcall CreateProcessA(
     LPSTARTUPINFOA lpStartupInfo,
     LPPROCESS_INFORMATION lpProcessInformation
 );
-__declspec(dllimport) void __stdcall DeleteCriticalSection(LPCRITICAL_SECTION lpCriticalSection);
 __declspec(dllimport) BOOL __stdcall DeleteFileA(LPCSTR lpFileName);
-__declspec(dllimport) void __stdcall EnterCriticalSection(LPCRITICAL_SECTION lpCriticalSection);
-__declspec(dllimport) void __stdcall ExitProcess(UINT uExitCode);
 __declspec(dllimport) BOOL __stdcall FileTimeToSystemTime(
     const FILETIME* lpFileTime, LPSYSTEMTIME lpSystemTime
 );
@@ -264,7 +224,6 @@ __declspec(dllimport) HANDLE __stdcall FindFirstFileA(
 __declspec(dllimport) BOOL __stdcall FindNextFileA(
     HANDLE hFindFile, LPWIN32_FIND_DATAA lpFindFileData
 );
-// (winver.h: the fixed part of a version resource)
 typedef struct tagVS_FIXEDFILEINFO {
     DWORD dwSignature;
     DWORD dwStrucVersion;
@@ -297,13 +256,11 @@ __declspec(dllimport) DWORD __stdcall FormatMessageA(
     DWORD nSize,
     va_list* Arguments
 );
-__declspec(dllimport) BOOL __stdcall FreeEnvironmentStringsA(LPSTR);
 __declspec(dllimport) LPSTR __stdcall GetCommandLineA(void);
 __declspec(dllimport) BOOL __stdcall GetConsoleScreenBufferInfo(
     HANDLE hConsoleOutput, PCONSOLE_SCREEN_BUFFER_INFO lpConsoleScreenBufferInfo
 );
 __declspec(dllimport) DWORD __stdcall GetCurrentDirectoryA(DWORD nBufferLength, LPSTR lpBuffer);
-__declspec(dllimport) LPSTR __stdcall GetEnvironmentStrings(void);
 __declspec(dllimport) BOOL __stdcall GetExitCodeProcess(HANDLE hProcess, LPDWORD lpExitCode);
 __declspec(dllimport) DWORD __stdcall GetFileAttributesA(LPCSTR lpFileName);
 __declspec(dllimport) DWORD __stdcall GetFileSize(HANDLE hFile, LPDWORD lpFileSizeHigh);
@@ -314,7 +271,6 @@ __declspec(dllimport) DWORD __stdcall GetFullPathNameA(
     LPCSTR lpFileName, DWORD nBufferLength, LPSTR lpBuffer, LPSTR* lpFilePart
 );
 __declspec(dllimport) DWORD __stdcall GetLastError(void);
-__declspec(dllimport) void __stdcall GetLocalTime(LPSYSTEMTIME lpSystemTime);
 __declspec(dllimport) HMODULE __stdcall GetModuleHandleA(LPCSTR lpModuleName);
 __declspec(dllimport) HANDLE __stdcall GetStdHandle(DWORD nStdHandle);
 __declspec(dllimport) UINT __stdcall GetSystemDirectoryA(LPSTR lpBuffer, UINT uSize);
@@ -328,14 +284,10 @@ __declspec(dllimport) HGLOBAL __stdcall GlobalAlloc(UINT uFlags, SIZE_T dwBytes)
 __declspec(dllimport) UINT __stdcall GlobalFlags(HGLOBAL hMem);
 __declspec(dllimport) HGLOBAL __stdcall GlobalFree(HGLOBAL hMem);
 __declspec(dllimport) HGLOBAL __stdcall GlobalReAlloc(HGLOBAL hMem, SIZE_T dwBytes, UINT uFlags);
-__declspec(dllimport) void __stdcall InitializeCriticalSection(
-    LPCRITICAL_SECTION lpCriticalSection
-);
 __declspec(dllimport) BOOL __stdcall IsDBCSLeadByte(BYTE TestChar);
 __declspec(dllimport) DWORD __stdcall GetShortPathNameA(
     LPCSTR lpszLongPath, LPSTR lpszShortPath, DWORD cchBuffer
 );
-__declspec(dllimport) void __stdcall LeaveCriticalSection(LPCRITICAL_SECTION lpCriticalSection);
 __declspec(dllimport) HGLOBAL __stdcall LoadResource(HMODULE hModule, HRSRC hResInfo);
 __declspec(dllimport) LPVOID __stdcall LockResource(HGLOBAL hResData);
 __declspec(dllimport) BOOL __stdcall ReadFile(

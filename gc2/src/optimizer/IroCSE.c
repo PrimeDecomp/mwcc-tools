@@ -14,7 +14,6 @@
 #include "compiler/CInt64.h"
 #include "compiler/CompilerTools.h"
 #include "compiler/CParser.h"
-#include "compiler/CPrep.h"
 #include "compiler/enode.h"
 #include "compiler/objects.h"
 #include <string.h>
@@ -28,10 +27,8 @@ IROExpr* IRO_LastExpr;
 SInt32 IRO_NumExprs;
 static Boolean HasVectorOperand;
 
-static void IRO_DependsOnForDataFlow(IROLinear* linear, Boolean flag);
+static void IRO_DependsOnForDataFlow(IROLinear* linear, Boolean isIndirect);
 
-// (2.6's pointer-analysis walks test resultList and walk both times with scan, where Pro7 copies
-// it to `list` first; in this unit's walkers Pro7's declaration order gives other registers)
 static void GetDependsOfIndirect(IROLinear* nd) {
     IROListNode* resultList;
     IROListNode* next;
@@ -130,7 +127,6 @@ static void GetDependsOfIndirect(IROLinear* nd) {
     }
 }
 
-// (2.6: the walk as above, and a counter i of its own for the arguments, where Pro7 reuses index)
 static void GetDependsOfFunctionCallForDataFlow(IROLinear* nd) {
     IROLinear* innernd;
     IROListNode* resultList;
@@ -252,9 +248,7 @@ static void GetDependsOfFunctionCallForDataFlow(IROLinear* nd) {
     }
 }
 
-// (2.6 returns early where Pro7 nests the switch in `if (!IRO_NotSubable)` and the cases in else
-// arms)
-static void IRO_DependsOn(IROLinear* linear, Boolean flag) {
+static void IRO_DependsOn(IROLinear* linear, Boolean isIndirect) {
     VarRecord* var;
     IROLinear* inner;
 
@@ -269,7 +263,7 @@ static void IRO_DependsOn(IROLinear* linear, Boolean flag) {
 
     switch (linear->type) {
         case IROLinearOperand:
-            if (flag && linear->u.node->type == EOBJREF) {
+            if (isIndirect && linear->u.node->type == EOBJREF) {
                 if ((var = IRO_FindVar(linear->u.node->data.objref, FALSE, TRUE))) {
                     if (is_volatile_object(var->object)) {
                         IRO_IsVolatile = TRUE;
@@ -313,17 +307,17 @@ static void IRO_DependsOn(IROLinear* linear, Boolean flag) {
                 }
             }
 
-            IRO_DependsOn(linear->u.diadic.left, flag);
-            IRO_DependsOn(linear->u.diadic.right, flag);
+            IRO_DependsOn(linear->u.diadic.left, isIndirect);
+            IRO_DependsOn(linear->u.diadic.right, isIndirect);
             break;
         case IROLinearOp3Arg:
             if (IRO_IsAssignOp[linear->nodetype]) {
                 IRO_NotSubable = TRUE;
                 return;
             }
-            IRO_DependsOn(linear->u.args3.a, flag);
-            IRO_DependsOn(linear->u.args3.b, flag);
-            IRO_DependsOn(linear->u.args3.c, flag);
+            IRO_DependsOn(linear->u.args3.a, isIndirect);
+            IRO_DependsOn(linear->u.args3.b, isIndirect);
+            IRO_DependsOn(linear->u.args3.c, isIndirect);
             break;
         case IROLinearFunccall:
             IRO_NotSubable = TRUE;
@@ -333,7 +327,7 @@ static void IRO_DependsOn(IROLinear* linear, Boolean flag) {
     }
 }
 
-static void IRO_DependsOnForDataFlow(IROLinear* linear, Boolean flag) {
+static void IRO_DependsOnForDataFlow(IROLinear* linear, Boolean isIndirect) {
     VarRecord* var;
     IROLinear* inner;
 
@@ -344,7 +338,7 @@ static void IRO_DependsOnForDataFlow(IROLinear* linear, Boolean flag) {
 
     switch (linear->type) {
         case IROLinearOperand:
-            if (flag && linear->u.node->type == EOBJREF) {
+            if (isIndirect && linear->u.node->type == EOBJREF) {
                 if ((var = IRO_FindVar(linear->u.node->data.objref, FALSE, TRUE))) {
                     if (is_volatile_object(var->object)) {
                         IRO_IsVolatile = TRUE;
@@ -388,17 +382,17 @@ static void IRO_DependsOnForDataFlow(IROLinear* linear, Boolean flag) {
                 }
             }
 
-            IRO_DependsOnForDataFlow(linear->u.diadic.left, flag);
-            IRO_DependsOnForDataFlow(linear->u.diadic.right, flag);
+            IRO_DependsOnForDataFlow(linear->u.diadic.left, isIndirect);
+            IRO_DependsOnForDataFlow(linear->u.diadic.right, isIndirect);
             break;
         case IROLinearOp3Arg:
             if (IRO_IsAssignOp[linear->nodetype]) {
                 IRO_NotSubable = TRUE;
             }
 
-            IRO_DependsOnForDataFlow(linear->u.args3.a, flag);
-            IRO_DependsOnForDataFlow(linear->u.args3.b, flag);
-            IRO_DependsOnForDataFlow(linear->u.args3.c, flag);
+            IRO_DependsOnForDataFlow(linear->u.args3.a, isIndirect);
+            IRO_DependsOnForDataFlow(linear->u.args3.b, isIndirect);
+            IRO_DependsOnForDataFlow(linear->u.args3.c, isIndirect);
             break;
         case IROLinearFunccall:
             IRO_NotSubable = TRUE;
@@ -430,22 +424,20 @@ static void VecAct(IROLinear* linear, Boolean isFirst) {
     }
 }
 
-// (`!HasVectorOperand`: Pro7's `HasVectorOperand == 0` changes IRO_AddExpression, where it is
-// inlined)
 static Boolean IRO_DoesNotHaveVectorOperand(IROLinear* linear) {
     HasVectorOperand = FALSE;
     IRO_WalkTree(linear, VecAct);
     return !HasVectorOperand;
 }
 
-static void IRO_AddExpression(IROLinear* linear, IRONode* node, Boolean flag) {
+static void IRO_AddExpression(IROLinear* linear, IRONode* node, Boolean unused) {
     IROExpr* expr;
 
     if ((linear->flags & IROLF_Reffed) &&
         IRO_IsSubableExpression(linear) &&
         IRO_DoesNotHaveVectorOperand(linear)) {
         expr = oalloc(sizeof(IROExpr));
-        expr->state = FALSE;
+        expr->flags = FALSE;
         expr->index = ++IRO_NumExprs;
         expr->linear = linear;
         expr->temp = NULL;
@@ -466,7 +458,7 @@ static void IRO_AddExpression(IROLinear* linear, IRONode* node, Boolean flag) {
     }
 }
 
-void IRO_FindExpressions(BitVector* bv, Boolean flag) {
+void IRO_FindExpressions(BitVector* bv, Boolean unused) {
     IROLinear* nd;
     IRONode* fnode;
 
@@ -477,7 +469,7 @@ void IRO_FindExpressions(BitVector* bv, Boolean flag) {
         if (!bv || Bv_IsBitSet(fnode->index, bv)) {
             for (nd = fnode->first; nd; nd = nd->next) {
                 nd->expr = NULL;
-                IRO_AddExpression(nd, fnode, flag);
+                IRO_AddExpression(nd, fnode, unused);
                 if (nd == fnode->last) {
                     break;
                 }
@@ -537,10 +529,8 @@ static void GetExprKillsByIndirectAssignment(IROLinear* linear) {
     }
 
     if (linear &&
-        linear->type ==
-        IROLinearOp1Arg &&
-        linear->nodetype ==
-        EINDIRECT &&
+        linear->type == IROLinearOp1Arg &&
+        linear->nodetype == EINDIRECT &&
         (inner = linear->u.monadic) &&
         copts.opt_pointer_analysis &&
         inner->pointsToFunction &&
@@ -732,7 +722,6 @@ static void GetExprKillsByFunctionCall(IROLinear* funccall) {
     }
 }
 
-// (2.6 declares the locals at function scope; Pro7's block-local ones give other registers)
 static void IRO_GetExprKills(IROLinear* linear) {
     VarRecord* var;
     int index;
@@ -770,6 +759,8 @@ static void IRO_GetExprKills(IROLinear* linear) {
         case IROLinearFunccall:
             GetExprKillsByFunctionCall(linear);
             break;
+        default:
+            break;
     }
 }
 
@@ -778,7 +769,7 @@ void IRO_ComputeAvail(void) {
     IROLinear* linear;
     SInt32 counter;
     BitVector* bv;
-    Boolean flag;
+    Boolean changed;
 
     counter = 0;
     node = IRO_FirstNode;
@@ -823,9 +814,8 @@ void IRO_ComputeAvail(void) {
 
     Bv_AllocVector(&bv, IRO_NumExprs);
     do {
-        // (2.6 walks with a variable of its own here; reusing node, as Pro7 does, swaps registers)
         IRONode* scan;
-        flag = FALSE;
+        changed = FALSE;
         for (scan = IRO_FirstNode; scan; scan = scan->nextnode) {
             if (!scan->numpred) {
                 Bv_Clear(bv);
@@ -838,7 +828,7 @@ void IRO_ComputeAvail(void) {
             }
 
             if (!Bv_Compare(bv, scan->in)) {
-                flag = TRUE;
+                changed = TRUE;
                 Bv_Copy(bv, scan->in);
             }
 
@@ -847,7 +837,7 @@ void IRO_ComputeAvail(void) {
             Bv_Or(scan->gen, scan->out);
         }
         IRO_CheckForUserBreak();
-    } while (flag);
+    } while (changed);
 }
 
 static void IRO_MakeReplacementEmbedded(IROExpr* expr) {
@@ -885,7 +875,7 @@ static void IRO_MakeReplacementEmbedded(IROExpr* expr) {
 
 static void IRO_ActUnmarkSubExpressions(IROLinear* linear, Boolean isFirst) {
     if (isFirst) {
-        linear->flags &= ~IROLF_8;
+        linear->flags &= ~IROLF_ReplaceCSE;
     }
 }
 
@@ -898,7 +888,7 @@ static void CheckCommonSub(IROLinear* linear) {
                 !expr->notSubable &&
                 IRO_ExprsSame(linear, expr->linear)) {
                 IRO_WalkTree(linear, IRO_ActUnmarkSubExpressions);
-                linear->flags |= IROLF_8;
+                linear->flags |= IROLF_ReplaceCSE;
                 linear->expr->use = expr;
                 break;
             }
@@ -906,8 +896,6 @@ static void CheckCommonSub(IROLinear* linear) {
     }
 }
 
-// (2.6's declaration order, and scan loaded before sz2 is cleared; Pro7's order of either gives
-// other registers)
 static void MoveCommonSub(IROExpr* expr) {
     IROExpr* scanexpr;
     SInt32 sz1;
@@ -1034,7 +1022,7 @@ void IRO_CommonSubs(void) {
 
     for (node = IRO_FirstNode; node; node = node->nextnode) {
         for (linear = node->first; linear; linear = linear->next) {
-            if (linear->expr && (linear->flags & IROLF_8) && !IRO_HasSideEffect(linear)) {
+            if (linear->expr && (linear->flags & IROLF_ReplaceCSE) && !IRO_HasSideEffect(linear)) {
                 ReplaceCommonSub(linear);
             }
             if (linear == node->last) {
@@ -1052,8 +1040,6 @@ void IRO_CommonSubs(void) {
     IRO_CheckForUserBreak();
 }
 
-// (Pro7's; nothing calls them, in Pro7 or 2.6, so the linker drops them: Wii still has
-// IRO_GenerateTopLevelExprsForSubableOperands in IroCSE)
 static Boolean CountThisSubableOperandUse(IROUse* use) {
     return use->reachingDefCount != 0;
 }

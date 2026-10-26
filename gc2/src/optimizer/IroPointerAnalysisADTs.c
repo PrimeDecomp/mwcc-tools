@@ -1,7 +1,3 @@
-// Pointer analysis data types (1.3). IroPointerAnalysis.c includes this file, so the analysis and
-// these inline helpers are one translation unit: the helpers inline into the analysis, and the
-// copies the inliner leaves out of line are the rows named below. Assertions are compiled in (the
-// original reports them through __assertion_failed).
 #ifdef IRO_POINTER_ANALYSIS_TU
 #include "compiler/common.h"
 #include "driver/CLIO.h"
@@ -20,20 +16,16 @@
     ((expr) ? (void)0 \
             : __assertion_failed(#expr, "IroPointerAnalysisADTs.c", (line) + CError_LINE_SHIFT))
 
-/* an assertion whose code in the original keeps its value (PointsToFunction_RemoveByLocationSet's) */
 #define IRO_ASSERT_T(line, expr) \
     ((expr) \
          ? 0 \
          : (__assertion_failed(#expr, "IroPointerAnalysisADTs.c", (line) + CError_LINE_SHIFT), 0))
-// an assertion whose text in the original differs from our spelling of the expression
 #define IRO_ASSERT_MSG(line, expr, text) \
     ((expr) ? (void)0 \
             : __assertion_failed(text, "IroPointerAnalysisADTs.c", (line) + CError_LINE_SHIFT))
 #define IRO_DEBUG_CLEAR(obj, size) memset((obj), 0xFF, (size))
 
-// the out-of-line copies of the helpers (rows of the original)
-
-inline UInt32 gcd(UInt32 a, UInt32 b) {
+HEADER_INLINE UInt32 gcd(UInt32 a, UInt32 b) {
     UInt32 chk;
 
     if (!a) {
@@ -53,15 +45,6 @@ inline UInt32 gcd(UInt32 a, UInt32 b) {
     }
 }
 
-// TODO: invented names. Pro7 leaves these helpers as placeholders (Stack_sub_48A660 ...); they are named
-// after the LocationSetSet_* family they mirror, and only those Wii also has (ObjectSet_Add,
-// ExtendedParamSet_Term/Delete, ParamMappingFunction_Add, ...) are confirmed: StackElement_key,
-// StackElement_KeysEqual, Stack_Push, Stack_Pop, Stack_FindByKey, ObjectSet_Find, ObjectSet_SimpleAdd,
-// ObjectSet_AddSet, ObjectSet_RemoveSet, ObjectSets_Equal, ExtendedParam_AddObject,
-// ExtendedParam_RemoveObjects, ExtendedParam_num, ExtendedParamSet_New/Init/ForEach/Find/SimpleAdd/Add,
-// PAHeapBlock_New/Init, PALocalVar_SetObject/obj/name, LocationSet_SetField/SetStride,
-// LocationSetSet_RemoveSet, ParamMappingFunction_ForEach/AddAll, PointsToFunction_AddAll,
-// PartialTransferFunction_funcModifies/contextNd/contextPTF/SetFlag, PTFList_Find/SimpleAdd/Add
 typedef UInt32 uint32;
 typedef struct ExtendedParam ExtendedParam;
 typedef struct ExtendedParamSet ExtendedParamSet;
@@ -185,7 +168,7 @@ struct PartialTransferFunction {
     PointsToFunction* finalPointsToFn;
     LocationSetSet* funcModifies;
     LocationSet* returnLocation;
-    Boolean x10;
+    Boolean analyzed;
     struct {
         IROLinear* nd;
         PartialTransferFunction* ptf;
@@ -197,8 +180,6 @@ struct PTFList {
     PTFList* otherPTFs;
 };
 
-// EvalProcAction's parameters (Pro7 defines the struct just before EvalProcAction; 2.6's .bss has it
-// between stMaxPassCount and stExceptionFNode, so it is declared here)
 typedef struct EvalProcActionStatic {
     Object* proc;
     IRONode* fnode;
@@ -206,15 +187,14 @@ typedef struct EvalProcActionStatic {
     PartialTransferFunction* ptf;
     PointsToFunction* pointsToFunc;
     Boolean* changed;
-    Boolean x18;
-    Boolean x19;
+    Boolean needMeet;
+    Boolean nodeChanged;
 } EvalProcActionStatic;
 #pragma pack(pop)
 
 static UInt32 stExtendedParamNum;
 static PartialTransferFunction* stUnknownPTF;
 static UInt32 stIndentationLevel;
-// TODO: Pro7's "unused mystery object" (0x2C bytes there); 2.6's .bss leaves 0x2A bytes for it
 static UInt8 stTabs[0x2A];
 static Stack* stCallingContextStack;
 static ObjectList* stParamObjs;
@@ -233,20 +213,22 @@ static PAMemoryBlock* stUnknownMb = &stDummyMemoryBlock;
 static LocationSet stDummyLocationSet = {&stDummyMemoryBlock};
 static LocationSet* stUnknownLs = &stDummyLocationSet;
 
-inline StackElement* Stack_Pop(Stack** stackPtr);
-inline void ObjectSet_RemoveAll(ObjectSet* procList);
-inline void ExtendedParamSet_RemoveAll(ExtendedParamSet* epList);
-inline void LocationSet_Copy(LocationSet* dest, LocationSet* src);
-inline Boolean LocationSet_IsUnknown(LocationSet* ls);
-inline void LocationSetSet_RemoveAll(LocationSetSet* lss);
-inline void LocationSetSet_AddSet(LocationSetSet* dest, LocationSetSet* src);
-inline void ParamMappingFunction_RemoveAll(ParamMappingFunction* pmf);
-inline void ParamMappingFunction_AddAll(ParamMappingFunction* dest, ParamMappingFunction* src);
-inline void PointsToFunction_RemoveAll(PointsToFunction* pointsToFunc);
-inline void PointsToFunction_AddAll(PointsToFunction* dest, PointsToFunction* src);
-inline void PTFList_RemoveAll(PTFList* ptfList);
+HEADER_INLINE StackElement* Stack_Pop(Stack** stackPtr);
+HEADER_INLINE void ObjectSet_RemoveAll(ObjectSet* procList);
+HEADER_INLINE void ExtendedParamSet_RemoveAll(ExtendedParamSet* epList);
+HEADER_INLINE void LocationSet_Copy(LocationSet* dest, LocationSet* src);
+HEADER_INLINE Boolean LocationSet_IsUnknown(LocationSet* ls);
+HEADER_INLINE void LocationSetSet_RemoveAll(LocationSetSet* lss);
+HEADER_INLINE void LocationSetSet_AddSet(LocationSetSet* dest, LocationSetSet* src);
+HEADER_INLINE void ParamMappingFunction_RemoveAll(ParamMappingFunction* pmf);
+HEADER_INLINE void ParamMappingFunction_AddAll(
+    ParamMappingFunction* dest, ParamMappingFunction* src
+);
+HEADER_INLINE void PointsToFunction_RemoveAll(PointsToFunction* pointsToFunc);
+HEADER_INLINE void PointsToFunction_AddAll(PointsToFunction* dest, PointsToFunction* src);
+HEADER_INLINE void PTFList_RemoveAll(PTFList* ptfList);
 
-inline StackElement* StackElement_New(void) {
+HEADER_INLINE StackElement* StackElement_New(void) {
     StackElement* stackElement = IRO_malloc(sizeof(StackElement));
     IRO_ASSERT(103, stackElement != NULL);
     stackElement->proc = NULL;
@@ -256,7 +238,7 @@ inline StackElement* StackElement_New(void) {
     return stackElement;
 }
 
-inline void StackElement_Delete(StackElement* stackElement) {
+HEADER_INLINE void StackElement_Delete(StackElement* stackElement) {
     IRO_ASSERT(117, stackElement != NULL);
     IRO_ASSERT(118, stackElement->proc == NULL);
     IRO_ASSERT(119, stackElement->ptf == NULL);
@@ -266,7 +248,7 @@ inline void StackElement_Delete(StackElement* stackElement) {
     IRO_free(stackElement);
 }
 
-inline void StackElement_Init(
+HEADER_INLINE void StackElement_Init(
     StackElement* stackElement,
     Object* proc,
     PartialTransferFunction* ptf,
@@ -284,13 +266,13 @@ inline void StackElement_Init(
     stackElement->funcCall = funcCall;
 }
 
-inline void StackElement_Copy(StackElement* dest, StackElement* src) {
+HEADER_INLINE void StackElement_Copy(StackElement* dest, StackElement* src) {
     IRO_ASSERT(145, dest != NULL);
     IRO_ASSERT(146, src != NULL);
     StackElement_Init(dest, src->proc, src->ptf, src->map, src->funcCall);
 }
 
-inline void StackElement_Term(StackElement* stackElement) {
+HEADER_INLINE void StackElement_Term(StackElement* stackElement) {
     IRO_ASSERT(156, stackElement != NULL);
     stackElement->proc = NULL;
     stackElement->ptf = NULL;
@@ -298,38 +280,38 @@ inline void StackElement_Term(StackElement* stackElement) {
     stackElement->funcCall = NULL;
 }
 
-inline void* StackElement_key(StackElement* stackElement) {
+HEADER_INLINE void* StackElement_key(StackElement* stackElement) {
     IRO_ASSERT(213, stackElement != NULL);
     return stackElement->proc;
 }
 
-inline Boolean StackElement_KeysEqual(void* key1, void* key2) {
+HEADER_INLINE Boolean StackElement_KeysEqual(void* key1, void* key2) {
     IRO_ASSERT(220, key1 != NULL);
     IRO_ASSERT(221, key2 != NULL);
     return key1 == key2;
 }
 
-inline Object* StackElement_proc(StackElement* stackElement) {
+HEADER_INLINE Object* StackElement_proc(StackElement* stackElement) {
     IRO_ASSERT(228, stackElement != NULL);
     return stackElement->proc;
 }
 
-inline PartialTransferFunction* StackElement_ptf(StackElement* stackElement) {
+HEADER_INLINE PartialTransferFunction* StackElement_ptf(StackElement* stackElement) {
     IRO_ASSERT(235, stackElement != NULL);
     return stackElement->ptf;
 }
 
-inline ParamMappingFunction* StackElement_map(StackElement* stackElement) {
+HEADER_INLINE ParamMappingFunction* StackElement_map(StackElement* stackElement) {
     IRO_ASSERT(242, stackElement != NULL);
     return stackElement->map;
 }
 
-inline IROLinear* StackElement_funcCall(StackElement* stackElement) {
+HEADER_INLINE IROLinear* StackElement_funcCall(StackElement* stackElement) {
     IRO_ASSERT(249, stackElement != NULL);
     return stackElement->funcCall;
 }
 
-inline Stack* Stack_New(void) {
+HEADER_INLINE Stack* Stack_New(void) {
     Stack* stack = IRO_malloc(sizeof(Stack));
     IRO_ASSERT(265, stack != NULL);
     stack->top = NULL;
@@ -337,7 +319,7 @@ inline Stack* Stack_New(void) {
     return stack;
 }
 
-inline void Stack_Delete(Stack* stack) {
+HEADER_INLINE void Stack_Delete(Stack* stack) {
     IRO_ASSERT(277, stack != NULL);
     IRO_ASSERT(278, stack->top == NULL);
     IRO_ASSERT(279, stack->next == NULL);
@@ -345,13 +327,13 @@ inline void Stack_Delete(Stack* stack) {
     IRO_free(stack);
 }
 
-inline void Stack_Init(Stack* stack) {
+HEADER_INLINE void Stack_Init(Stack* stack) {
     IRO_ASSERT(289, stack != NULL);
     stack->top = NULL;
     stack->next = NULL;
 }
 
-inline void Stack_Term(Stack** stackPtr) {
+HEADER_INLINE void Stack_Term(Stack** stackPtr) {
     StackElement* stackElement;
 
     IRO_ASSERT(299, stackPtr != NULL);
@@ -364,7 +346,7 @@ inline void Stack_Term(Stack** stackPtr) {
     }
 }
 
-inline void Stack_Push(Stack** stackPtr, StackElement* stackElement) {
+HEADER_INLINE void Stack_Push(Stack** stackPtr, StackElement* stackElement) {
     StackElement* newElement;
     Stack* newStack;
 
@@ -380,8 +362,7 @@ inline void Stack_Push(Stack** stackPtr, StackElement* stackElement) {
     *stackPtr = newStack;
 }
 
-// 2.6 returns through a local (Pro7 returns `(*stackPtr)->top` directly): Lookup's registers
-inline StackElement* Stack_Top(Stack** stackPtr) {
+HEADER_INLINE StackElement* Stack_Top(Stack** stackPtr) {
     StackElement* top;
 
     IRO_ASSERT(331, stackPtr != NULL);
@@ -391,14 +372,14 @@ inline StackElement* Stack_Top(Stack** stackPtr) {
     return top;
 }
 
-inline Stack* Stack_Next(Stack** stackPtr) {
+HEADER_INLINE Stack* Stack_Next(Stack** stackPtr) {
     IRO_ASSERT(343, stackPtr != NULL);
     IRO_ASSERT(344, *stackPtr != NULL);
 
     return (*stackPtr)->next;
 }
 
-inline StackElement* Stack_Pop(Stack** stackPtr) {
+HEADER_INLINE StackElement* Stack_Pop(Stack** stackPtr) {
     StackElement* stackElement;
 
     IRO_ASSERT(357, stackPtr != NULL);
@@ -416,7 +397,7 @@ inline StackElement* Stack_Pop(Stack** stackPtr) {
     return stackElement;
 }
 
-inline StackElement* Stack_FindByKey(Stack** stackPtr, void* key) {
+HEADER_INLINE StackElement* Stack_FindByKey(Stack** stackPtr, void* key) {
     Stack* stack;
 
     IRO_ASSERT(379, stackPtr != NULL);
@@ -434,7 +415,7 @@ inline StackElement* Stack_FindByKey(Stack** stackPtr, void* key) {
     return NULL;
 }
 
-inline ObjectSet* ObjectSet_New(void) {
+HEADER_INLINE ObjectSet* ObjectSet_New(void) {
     ObjectSet* procList;
 
     procList = IRO_malloc(sizeof(ObjectSet));
@@ -444,7 +425,7 @@ inline ObjectSet* ObjectSet_New(void) {
     return procList;
 }
 
-inline void ObjectSet_Delete(ObjectSet* procList) {
+HEADER_INLINE void ObjectSet_Delete(ObjectSet* procList) {
     IRO_ASSERT(451, procList != NULL);
     IRO_ASSERT(452, procList->proc == NULL);
     IRO_ASSERT(453, procList->otherProcs == NULL);
@@ -452,20 +433,22 @@ inline void ObjectSet_Delete(ObjectSet* procList) {
     IRO_free(procList);
 }
 
-inline void ObjectSet_Init(ObjectSet* procList) {
+HEADER_INLINE void ObjectSet_Init(ObjectSet* procList) {
     IRO_ASSERT(463, procList != NULL);
     procList->proc = NULL;
     procList->otherProcs = NULL;
 }
 
-inline void ObjectSet_Term(ObjectSet* procList) {
+HEADER_INLINE void ObjectSet_Term(ObjectSet* procList) {
     IRO_ASSERT(481, procList != NULL);
     ObjectSet_RemoveAll(procList);
     procList->proc = NULL;
     procList->otherProcs = NULL;
 }
 
-inline void ObjectSet_ForEach(ObjectSet* procList, void (*action)(Object*, void*), void* refcon) {
+HEADER_INLINE void ObjectSet_ForEach(
+    ObjectSet* procList, void (*action)(Object*, void*), void* refcon
+) {
     IRO_ASSERT(528, procList != NULL);
     IRO_ASSERT(529, action != NULL);
     IRO_ASSERT(530, refcon == NULL || refcon != NULL);
@@ -476,7 +459,7 @@ inline void ObjectSet_ForEach(ObjectSet* procList, void (*action)(Object*, void*
     }
 }
 
-inline Object* ObjectSet_Find(ObjectSet* procList, Object* proc) {
+HEADER_INLINE Object* ObjectSet_Find(ObjectSet* procList, Object* proc) {
     IRO_ASSERT(540, procList != NULL);
     IRO_ASSERT(541, proc != NULL);
     while (procList && procList->proc) {
@@ -488,12 +471,12 @@ inline Object* ObjectSet_Find(ObjectSet* procList, Object* proc) {
     return NULL;
 }
 
-inline Object* ObjectSet_FindFirst(ObjectSet* procList) {
+HEADER_INLINE Object* ObjectSet_FindFirst(ObjectSet* procList) {
     IRO_ASSERT(552, procList != NULL);
     return procList->proc;
 }
 
-inline int ObjectSet_Count(ObjectSet* procList) {
+HEADER_INLINE int ObjectSet_Count(ObjectSet* procList) {
     int count;
 
     IRO_ASSERT(561, procList != NULL);
@@ -507,7 +490,7 @@ inline int ObjectSet_Count(ObjectSet* procList) {
     return count;
 }
 
-inline void ObjectSet_SimpleAdd(ObjectSet* procList, Object* proc) {
+HEADER_INLINE void ObjectSet_SimpleAdd(ObjectSet* procList, Object* proc) {
     ObjectSet* newProcList;
 
     IRO_ASSERT(574, procList != NULL);
@@ -524,7 +507,7 @@ inline void ObjectSet_SimpleAdd(ObjectSet* procList, Object* proc) {
     procList->proc = proc;
 }
 
-inline void ObjectSet_Add(ObjectSet* procList, Object* proc) {
+HEADER_INLINE void ObjectSet_Add(ObjectSet* procList, Object* proc) {
     IRO_ASSERT(592, procList != NULL);
     IRO_ASSERT(593, proc != NULL);
 
@@ -533,9 +516,9 @@ inline void ObjectSet_Add(ObjectSet* procList, Object* proc) {
     }
 }
 
-inline void ObjectSet_Remove(ObjectSet* procList, Object* proc) {
+HEADER_INLINE void ObjectSet_Remove(ObjectSet* procList, Object* proc) {
     ObjectSet* prev;
-    ObjectSet* tmp;
+    ObjectSet* second;
 
     IRO_ASSERT(605, procList != NULL);
     IRO_ASSERT(606, proc != NULL);
@@ -547,13 +530,13 @@ inline void ObjectSet_Remove(ObjectSet* procList, Object* proc) {
                 if (procList->otherProcs == NULL) {
                     procList->proc = NULL;
                 } else {
-                    tmp = procList->otherProcs;
+                    second = procList->otherProcs;
                     procList->proc = procList->otherProcs->proc;
                     procList->otherProcs = procList->otherProcs->otherProcs;
-                    tmp->proc = NULL;
-                    tmp->otherProcs = NULL;
-                    ObjectSet_Term(tmp);
-                    ObjectSet_Delete(tmp);
+                    second->proc = NULL;
+                    second->otherProcs = NULL;
+                    ObjectSet_Term(second);
+                    ObjectSet_Delete(second);
                 }
             } else {
                 prev->otherProcs = procList->otherProcs;
@@ -569,7 +552,7 @@ inline void ObjectSet_Remove(ObjectSet* procList, Object* proc) {
     }
 }
 
-inline void ObjectSet_RemoveAll(ObjectSet* procList) {
+HEADER_INLINE void ObjectSet_RemoveAll(ObjectSet* procList) {
     IRO_ASSERT(645, procList != NULL);
 
     while (procList && procList->proc) {
@@ -577,21 +560,21 @@ inline void ObjectSet_RemoveAll(ObjectSet* procList) {
     }
 }
 
-inline void ObjectSet_AddSetAction(Object* proc, void* refcon) {
+HEADER_INLINE void ObjectSet_AddSetAction(Object* proc, void* refcon) {
     IRO_ASSERT(655, proc != NULL);
     IRO_ASSERT(656, refcon != NULL);
 
     ObjectSet_Add(refcon, proc);
 }
 
-inline void ObjectSet_SimpleAddSetAction(Object* proc, void* refcon) {
+HEADER_INLINE void ObjectSet_SimpleAddSetAction(Object* proc, void* refcon) {
     IRO_ASSERT(663, proc != NULL);
     IRO_ASSERT(664, refcon != NULL);
 
     ObjectSet_SimpleAdd(refcon, proc);
 }
 
-inline void ObjectSet_AddSet(ObjectSet* dest, ObjectSet* src) {
+HEADER_INLINE void ObjectSet_AddSet(ObjectSet* dest, ObjectSet* src) {
     IRO_ASSERT(671, dest != NULL);
     IRO_ASSERT(672, src != NULL);
 
@@ -602,46 +585,46 @@ inline void ObjectSet_AddSet(ObjectSet* dest, ObjectSet* src) {
     }
 }
 
-inline void ObjectSet_RemoveSetAction(Object* proc, void* refcon) {
+HEADER_INLINE void ObjectSet_RemoveSetAction(Object* proc, void* refcon) {
     IRO_ASSERT(682, proc != NULL);
     IRO_ASSERT(683, refcon != NULL);
 
     ObjectSet_Remove(refcon, proc);
 }
 
-inline void ObjectSet_RemoveSet(ObjectSet* dest, ObjectSet* src) {
+HEADER_INLINE void ObjectSet_RemoveSet(ObjectSet* dest, ObjectSet* src) {
     IRO_ASSERT(690, dest != NULL);
     IRO_ASSERT(691, src != NULL);
 
     ObjectSet_ForEach(src, ObjectSet_RemoveSetAction, dest);
 }
 
-inline Boolean ObjectSets_Equal(ObjectSet* os1, ObjectSet* os2) {
+HEADER_INLINE Boolean ObjectSets_Equal(ObjectSet* os1, ObjectSet* os2) {
     ObjectSet* scan;
 
     IRO_ASSERT(700, os1 != NULL);
     IRO_ASSERT(701, os2 != NULL);
 
     if (os1 == os2) {
-        return 1;
+        return TRUE;
     }
 
     for (scan = os1; scan && scan->proc; scan = scan->otherProcs) {
         if (!ObjectSet_Find(os2, scan->proc)) {
-            return 0;
+            return FALSE;
         }
     }
 
     for (scan = os2; scan && scan->proc; scan = scan->otherProcs) {
         if (!ObjectSet_Find(os1, scan->proc)) {
-            return 0;
+            return FALSE;
         }
     }
 
-    return 1;
+    return TRUE;
 }
 
-inline ExtendedParam* ExtendedParam_New(void) {
+HEADER_INLINE ExtendedParam* ExtendedParam_New(void) {
     ExtendedParam* ep = IRO_malloc(sizeof(ExtendedParam));
 
     IRO_ASSERT(755, ep != NULL);
@@ -649,14 +632,14 @@ inline ExtendedParam* ExtendedParam_New(void) {
     return ep;
 }
 
-inline void ExtendedParam_Delete(ExtendedParam* ep) {
+HEADER_INLINE void ExtendedParam_Delete(ExtendedParam* ep) {
     IRO_ASSERT(762, ep != NULL);
     IRO_ASSERT(763, ep->objectSet == NULL);
     IRO_DEBUG_CLEAR(ep, sizeof(ExtendedParam));
     IRO_free(ep);
 }
 
-inline void ExtendedParam_Init(ExtendedParam* ep, Object* obj) {
+HEADER_INLINE void ExtendedParam_Init(ExtendedParam* ep, Object* obj) {
     IRO_ASSERT(777, ep != NULL);
     IRO_ASSERT(778, obj != NULL);
     IRO_ASSERT(779, obj->extParam == NULL);
@@ -670,11 +653,11 @@ inline void ExtendedParam_Init(ExtendedParam* ep, Object* obj) {
     ep->num = stExtendedParamNum++;
 }
 
-inline void ExtendedParam_TermAction(Object* obj, void* refcon) {
+HEADER_INLINE void ExtendedParam_TermAction(Object* obj, void* refcon) {
     obj->extParam = NULL;
 }
 
-inline void ExtendedParam_Term(ExtendedParam* ep) {
+HEADER_INLINE void ExtendedParam_Term(ExtendedParam* ep) {
     IRO_ASSERT(800, ep != NULL);
 
     ObjectSet_ForEach(ep->objectSet, ExtendedParam_TermAction, NULL);
@@ -682,26 +665,26 @@ inline void ExtendedParam_Term(ExtendedParam* ep) {
     ObjectSet_Delete(ep->objectSet);
 }
 
-inline Boolean ExtendedParams_Equal(ExtendedParam* ep1, ExtendedParam* ep2) {
+HEADER_INLINE Boolean ExtendedParams_Equal(ExtendedParam* ep1, ExtendedParam* ep2) {
     IRO_ASSERT(841, ep1 != NULL);
     IRO_ASSERT(842, ep2 != NULL);
     IRO_ASSERT(843, ep1->objectSet != NULL);
     IRO_ASSERT(844, ep2->objectSet != NULL);
 
     if (ep1 == ep2) {
-        return 1;
+        return TRUE;
     }
 
     return ep1->num == ep2->num && ObjectSets_Equal(ep1->objectSet, ep2->objectSet);
 }
 
-inline ExtendedParam* ExtendedParam_FindByObject(Object* obj) {
+HEADER_INLINE ExtendedParam* ExtendedParam_FindByObject(Object* obj) {
     IRO_ASSERT(856, obj != NULL);
 
     return obj->extParam;
 }
 
-inline void ExtendedParam_AddObject(ExtendedParam* ep, Object* obj) {
+HEADER_INLINE void ExtendedParam_AddObject(ExtendedParam* ep, Object* obj) {
     IRO_ASSERT(863, ep != NULL);
     IRO_ASSERT(864, ep->objectSet != NULL);
     IRO_ASSERT(865, obj != NULL);
@@ -710,7 +693,7 @@ inline void ExtendedParam_AddObject(ExtendedParam* ep, Object* obj) {
     obj->extParam = ep;
 }
 
-inline void ExtendedParam_RemoveObjects(ExtendedParam* ep, ObjectSet* objSet) {
+HEADER_INLINE void ExtendedParam_RemoveObjects(ExtendedParam* ep, ObjectSet* objSet) {
     IRO_ASSERT(888, ep != NULL);
     IRO_ASSERT(889, ep->objectSet != NULL);
     IRO_ASSERT(890, objSet != NULL);
@@ -719,19 +702,19 @@ inline void ExtendedParam_RemoveObjects(ExtendedParam* ep, ObjectSet* objSet) {
     ObjectSet_ForEach(objSet, ExtendedParam_TermAction, NULL);
 }
 
-inline ObjectSet* ExtendedParam_objectSet(ExtendedParam* ep) {
+HEADER_INLINE ObjectSet* ExtendedParam_objectSet(ExtendedParam* ep) {
     IRO_ASSERT(898, ep != NULL);
 
     return ep->objectSet;
 }
 
-inline UInt32 ExtendedParam_num(ExtendedParam* ep) {
+HEADER_INLINE UInt32 ExtendedParam_num(ExtendedParam* ep) {
     IRO_ASSERT(905, ep != NULL);
 
     return ep->num;
 }
 
-inline ExtendedParamSet* ExtendedParamSet_New(void) {
+HEADER_INLINE ExtendedParamSet* ExtendedParamSet_New(void) {
     ExtendedParamSet* epList = IRO_malloc(sizeof(ExtendedParamSet));
 
     IRO_ASSERT(924, epList != NULL);
@@ -740,7 +723,7 @@ inline ExtendedParamSet* ExtendedParamSet_New(void) {
     return epList;
 }
 
-inline void ExtendedParamSet_Delete(ExtendedParamSet* epList) {
+HEADER_INLINE void ExtendedParamSet_Delete(ExtendedParamSet* epList) {
     IRO_ASSERT(936, epList != NULL);
     IRO_ASSERT(937, epList->ep == NULL);
     IRO_ASSERT(938, epList->otherEps == NULL);
@@ -748,20 +731,20 @@ inline void ExtendedParamSet_Delete(ExtendedParamSet* epList) {
     IRO_free(epList);
 }
 
-inline void ExtendedParamSet_Init(ExtendedParamSet* epList) {
+HEADER_INLINE void ExtendedParamSet_Init(ExtendedParamSet* epList) {
     IRO_ASSERT(948, epList != NULL);
     epList->ep = NULL;
     epList->otherEps = NULL;
 }
 
-inline void ExtendedParamSet_Term(ExtendedParamSet* epList) {
+HEADER_INLINE void ExtendedParamSet_Term(ExtendedParamSet* epList) {
     IRO_ASSERT(966, epList != NULL);
     ExtendedParamSet_RemoveAll(epList);
     epList->ep = NULL;
     epList->otherEps = NULL;
 }
 
-inline void ExtendedParamSet_ForEach(
+HEADER_INLINE void ExtendedParamSet_ForEach(
     ExtendedParamSet* epList, void (*action)(ExtendedParam*, void*), void* refcon
 ) {
     IRO_ASSERT(1010, epList != NULL);
@@ -773,7 +756,7 @@ inline void ExtendedParamSet_ForEach(
     }
 }
 
-inline ExtendedParam* ExtendedParamSet_Find(ExtendedParamSet* epList, ExtendedParam* ep) {
+HEADER_INLINE ExtendedParam* ExtendedParamSet_Find(ExtendedParamSet* epList, ExtendedParam* ep) {
     IRO_ASSERT(1022, epList != NULL);
     IRO_ASSERT(1023, ep != NULL);
 
@@ -787,7 +770,7 @@ inline ExtendedParam* ExtendedParamSet_Find(ExtendedParamSet* epList, ExtendedPa
     return NULL;
 }
 
-inline void ExtendedParamSet_SimpleAdd(ExtendedParamSet* epList, ExtendedParam* ep) {
+HEADER_INLINE void ExtendedParamSet_SimpleAdd(ExtendedParamSet* epList, ExtendedParam* ep) {
     IRO_ASSERT(1056, epList != NULL);
     IRO_ASSERT(1057, ep != NULL);
 
@@ -802,7 +785,7 @@ inline void ExtendedParamSet_SimpleAdd(ExtendedParamSet* epList, ExtendedParam* 
     epList->ep = ep;
 }
 
-inline void ExtendedParamSet_Add(ExtendedParamSet* epList, ExtendedParam* ep) {
+HEADER_INLINE void ExtendedParamSet_Add(ExtendedParamSet* epList, ExtendedParam* ep) {
     IRO_ASSERT(1076, epList != NULL);
     IRO_ASSERT(1077, ep != NULL);
 
@@ -811,9 +794,9 @@ inline void ExtendedParamSet_Add(ExtendedParamSet* epList, ExtendedParam* ep) {
     }
 }
 
-inline void ExtendedParamSet_Remove(ExtendedParamSet* epList, ExtendedParam* ep) {
+HEADER_INLINE void ExtendedParamSet_Remove(ExtendedParamSet* epList, ExtendedParam* ep) {
     ExtendedParamSet* prev;
-    ExtendedParamSet* tmp;
+    ExtendedParamSet* second;
 
     IRO_ASSERT(1089, epList != NULL);
     IRO_ASSERT(1090, ep != NULL);
@@ -825,13 +808,13 @@ inline void ExtendedParamSet_Remove(ExtendedParamSet* epList, ExtendedParam* ep)
                 if (epList->otherEps == NULL) {
                     epList->ep = NULL;
                 } else {
-                    tmp = epList->otherEps;
+                    second = epList->otherEps;
                     epList->ep = epList->otherEps->ep;
                     epList->otherEps = epList->otherEps->otherEps;
-                    tmp->ep = NULL;
-                    tmp->otherEps = NULL;
-                    ExtendedParamSet_Term(tmp);
-                    ExtendedParamSet_Delete(tmp);
+                    second->ep = NULL;
+                    second->otherEps = NULL;
+                    ExtendedParamSet_Term(second);
+                    ExtendedParamSet_Delete(second);
                 }
             } else {
                 prev->otherEps = epList->otherEps;
@@ -847,7 +830,7 @@ inline void ExtendedParamSet_Remove(ExtendedParamSet* epList, ExtendedParam* ep)
     }
 }
 
-inline void ExtendedParamSet_RemoveAll(ExtendedParamSet* epList) {
+HEADER_INLINE void ExtendedParamSet_RemoveAll(ExtendedParamSet* epList) {
     IRO_ASSERT(1129, epList != NULL);
 
     while (epList && epList->ep) {
@@ -855,7 +838,7 @@ inline void ExtendedParamSet_RemoveAll(ExtendedParamSet* epList) {
     }
 }
 
-inline PAHeapBlock* PAHeapBlock_New(void) {
+HEADER_INLINE PAHeapBlock* PAHeapBlock_New(void) {
     PAHeapBlock* hb = IRO_malloc(sizeof(PAHeapBlock));
 
     IRO_ASSERT(1225, hb != NULL);
@@ -863,20 +846,20 @@ inline PAHeapBlock* PAHeapBlock_New(void) {
     return hb;
 }
 
-inline void PAHeapBlock_Init(PAHeapBlock* hb, IROLinear* nd) {
+HEADER_INLINE void PAHeapBlock_Init(PAHeapBlock* hb, IROLinear* nd) {
     IRO_ASSERT(1247, hb == NULL || hb != NULL);
 
     hb->nd = nd;
 }
 
-inline Boolean PAHeapBlocks_Equal(PAHeapBlock* hb1, PAHeapBlock* hb2) {
+HEADER_INLINE Boolean PAHeapBlocks_Equal(PAHeapBlock* hb1, PAHeapBlock* hb2) {
     IRO_ASSERT(1296, hb1 != NULL);
     IRO_ASSERT(1297, hb2 != NULL);
 
     return (hb1 == hb2) || (hb1->nd == hb2->nd);
 }
 
-inline PALocalVar* PALocalVar_New(void) {
+HEADER_INLINE PALocalVar* PALocalVar_New(void) {
     PALocalVar* local = IRO_malloc(sizeof(PALocalVar));
 
     IRO_ASSERT(1333, local != NULL);
@@ -885,12 +868,12 @@ inline PALocalVar* PALocalVar_New(void) {
     return local;
 }
 
-inline void PALocalVar_InitByObject(PALocalVar* local, Object* obj) {
+HEADER_INLINE void PALocalVar_InitByObject(PALocalVar* local, Object* obj) {
     IRO_ASSERT(1357, local != NULL);
     IRO_ASSERT(1358, obj != NULL);
 
     local->obj = obj;
-    if (obj->name && obj->name->name) {
+    if (obj->name && &obj->name->name[0]) {
         local->name = IRO_malloc(strlen(obj->name->name) + 1);
         strcpy(local->name, obj->name->name);
     } else {
@@ -898,7 +881,7 @@ inline void PALocalVar_InitByObject(PALocalVar* local, Object* obj) {
     }
 }
 
-inline void PALocalVar_InitByName(PALocalVar* local, char* name) {
+HEADER_INLINE void PALocalVar_InitByName(PALocalVar* local, char* name) {
     IRO_ASSERT(1372, local != NULL);
     IRO_ASSERT(1373, name != NULL);
 
@@ -907,15 +890,15 @@ inline void PALocalVar_InitByName(PALocalVar* local, char* name) {
     strcpy(local->name, name);
 }
 
-inline Boolean PALocalVars_Equal(PALocalVar* local1, PALocalVar* local2) {
+HEADER_INLINE Boolean PALocalVars_Equal(PALocalVar* local1, PALocalVar* local2) {
     IRO_ASSERT(1419, local1 == NULL || local1 != NULL);
     IRO_ASSERT(1420, local2 == NULL || local2 != NULL);
 
     if (local1 == local2) {
-        return 1;
+        return TRUE;
     }
     if (!local1 || !local2) {
-        return 0;
+        return FALSE;
     }
 
     if (!local1->obj || !local2->obj) {
@@ -927,24 +910,24 @@ inline Boolean PALocalVars_Equal(PALocalVar* local1, PALocalVar* local2) {
     return local1->obj == local2->obj;
 }
 
-inline void PALocalVar_SetObject(PALocalVar* local, Object* obj) {
+HEADER_INLINE void PALocalVar_SetObject(PALocalVar* local, Object* obj) {
     IRO_ASSERT(1436, local != NULL);
     IRO_ASSERT(1437, obj == NULL || obj != NULL);
 
     local->obj = obj;
 }
 
-inline Object* PALocalVar_obj(PALocalVar* local) {
+HEADER_INLINE Object* PALocalVar_obj(PALocalVar* local) {
     IRO_ASSERT(1444, local != NULL);
     return local->obj;
 }
 
-inline char* PALocalVar_name(PALocalVar* local) {
+HEADER_INLINE char* PALocalVar_name(PALocalVar* local) {
     IRO_ASSERT(1451, local != NULL);
     return local->name;
 }
 
-inline PAMemoryBlock* PAMemoryBlock_New(void) {
+HEADER_INLINE PAMemoryBlock* PAMemoryBlock_New(void) {
     PAMemoryBlock* mb = IRO_malloc(sizeof(PAMemoryBlock));
 
     IRO_ASSERT(1491, mb != NULL);
@@ -952,14 +935,14 @@ inline PAMemoryBlock* PAMemoryBlock_New(void) {
     return mb;
 }
 
-inline void PAMemoryBlock_Delete(PAMemoryBlock* mb) {
+HEADER_INLINE void PAMemoryBlock_Delete(PAMemoryBlock* mb) {
     IRO_ASSERT(1502, mb != NULL);
     IRO_ASSERT(1503, mb->kind == PAMEMORYBLOCKKIND_INVALID);
     IRO_DEBUG_CLEAR(mb, sizeof(PAMemoryBlock));
     IRO_free(mb);
 }
 
-inline void PAMemoryBlock_Init(PAMemoryBlock* mb, PAMemoryBlockKind kind, void* thing) {
+HEADER_INLINE void PAMemoryBlock_Init(PAMemoryBlock* mb, PAMemoryBlockKind kind, void* thing) {
     IRO_ASSERT(1513, mb != NULL);
     IRO_ASSERT(1514, thing == NULL || thing != NULL);
 
@@ -985,22 +968,22 @@ inline void PAMemoryBlock_Init(PAMemoryBlock* mb, PAMemoryBlockKind kind, void* 
     }
 }
 
-inline void PAMemoryBlock_Term(PAMemoryBlock* mb) {
+HEADER_INLINE void PAMemoryBlock_Term(PAMemoryBlock* mb) {
     IRO_ASSERT(1552, mb != NULL);
 
     mb->kind = PAMEMORYBLOCKKIND_INVALID;
 }
 
-inline Boolean MemoryBlocks_Equal(PAMemoryBlock* mb1, PAMemoryBlock* mb2) {
+HEADER_INLINE Boolean MemoryBlocks_Equal(PAMemoryBlock* mb1, PAMemoryBlock* mb2) {
     IRO_ASSERT(1657, mb1 == NULL || mb1 != NULL);
     IRO_ASSERT(1658, mb2 == NULL || mb2 != NULL);
 
     if (mb1 == mb2) {
-        return 1;
+        return TRUE;
     }
 
     if (!mb1 || !mb2 || mb1->kind != mb2->kind) {
-        return 0;
+        return FALSE;
     }
 
     switch (mb1->kind) {
@@ -1016,17 +999,17 @@ inline Boolean MemoryBlocks_Equal(PAMemoryBlock* mb1, PAMemoryBlock* mb2) {
             return mb1->u.other == mb2->u.other;
         default:
             CError_FATAL(1684);
-            return 0;
+            return FALSE;
     }
 }
 
-inline PAMemoryBlockKind PAMemoryBlock_kind(PAMemoryBlock* mb) {
+HEADER_INLINE PAMemoryBlockKind PAMemoryBlock_kind(PAMemoryBlock* mb) {
     IRO_ASSERT(1692, mb != NULL);
 
     return mb->kind;
 }
 
-inline void* PAMemoryBlock_thing(PAMemoryBlock* mb) {
+HEADER_INLINE void* PAMemoryBlock_thing(PAMemoryBlock* mb) {
     IRO_ASSERT(1699, mb != NULL);
 
     switch (mb->kind) {
@@ -1046,7 +1029,7 @@ inline void* PAMemoryBlock_thing(PAMemoryBlock* mb) {
     }
 }
 
-inline LocationSet* LocationSet_New(void) {
+HEADER_INLINE LocationSet* LocationSet_New(void) {
     LocationSet* ls = IRO_malloc(sizeof(LocationSet));
 
     IRO_ASSERT(1767, ls != NULL);
@@ -1057,7 +1040,7 @@ inline LocationSet* LocationSet_New(void) {
     return ls;
 }
 
-inline void LocationSet_Delete(LocationSet* ls) {
+HEADER_INLINE void LocationSet_Delete(LocationSet* ls) {
     IRO_ASSERT(1781, ls != NULL);
     IRO_ASSERT(1782, ls != stUnknownLs);
     IRO_ASSERT(1783, ls->block == NULL);
@@ -1068,7 +1051,7 @@ inline void LocationSet_Delete(LocationSet* ls) {
     IRO_free(ls);
 }
 
-inline void LocationSet_InitKnown(
+HEADER_INLINE void LocationSet_InitKnown(
     LocationSet* ls, PAMemoryBlock* block, CInt64 field, UInt32 stride, Type* rtype
 ) {
     IRO_ASSERT(1796, ls != NULL);
@@ -1081,7 +1064,7 @@ inline void LocationSet_InitKnown(
     ls->u.known.stride = stride;
 }
 
-inline void LocationSet_InitUnknown(
+HEADER_INLINE void LocationSet_InitUnknown(
     LocationSet* ls, Type* rtype, PAMemoryBlock* restriction, LocationSet* bitfieldOf
 ) {
     IRO_ASSERT(1809, ls != NULL);
@@ -1101,7 +1084,7 @@ inline void LocationSet_InitUnknown(
     }
 }
 
-inline void LocationSet_Copy(LocationSet* dest, LocationSet* src) {
+HEADER_INLINE void LocationSet_Copy(LocationSet* dest, LocationSet* src) {
     IRO_ASSERT(1829, src != NULL);
     IRO_ASSERT(1830, dest != NULL);
 
@@ -1122,7 +1105,7 @@ inline void LocationSet_Copy(LocationSet* dest, LocationSet* src) {
     }
 }
 
-inline void LocationSet_Term(LocationSet* ls) {
+HEADER_INLINE void LocationSet_Term(LocationSet* ls) {
     IRO_ASSERT(1857, ls != NULL);
     IRO_ASSERT(1858, ls != stUnknownLs);
 
@@ -1136,12 +1119,9 @@ inline void LocationSet_Term(LocationSet* ls) {
     ls->u.known.stride = 0;
 }
 
-// TODO: 2.6 compiled this function with symbols off (the -sym off register rotation); the original
-// evidently had a per-function debug setting here.
 #pragma sym off
-inline Boolean LocationSets_Overlap(
-    LocationSet* ls1, Type* rtype1, LocationSet* ls2, Type* rtype2
-) {
+HEADER_INLINE Boolean
+LocationSets_Overlap(LocationSet* ls1, Type* rtype1, LocationSet* ls2, Type* rtype2) {
     Boolean isUnknown1, isUnknown2;
     PAMemoryBlock *restriction1, *restriction2;
 
@@ -1151,7 +1131,7 @@ inline Boolean LocationSets_Overlap(
     IRO_ASSERT(1977, rtype2 == NULL || rtype2 != NULL);
 
     if (ls1 == ls2) {
-        return 1;
+        return TRUE;
     }
 
     isUnknown1 = LocationSet_IsUnknown(ls1);
@@ -1163,11 +1143,11 @@ inline Boolean LocationSets_Overlap(
     if ((isUnknown1 && !restriction1) ||
         (isUnknown2 && !restriction2) ||
         (isUnknown1 && isUnknown2 && MemoryBlocks_Equal(restriction1, restriction2))) {
-        return 1;
+        return TRUE;
     }
 
     if (isUnknown1 || isUnknown2) {
-        return 0;
+        return FALSE;
     }
 
     if (MemoryBlocks_Equal(ls1->block, ls2->block)) {
@@ -1180,13 +1160,13 @@ inline Boolean LocationSets_Overlap(
         if (rtype1) {
             size1 = rtype1->size;
         } else {
-            size1 = -1;
+            size1 = (UInt32)-1;
         }
 
         if (rtype2) {
             size2 = rtype2->size;
         } else {
-            size2 = -1;
+            size2 = (UInt32)-1;
         }
 
         if (ls1->u.known.stride == ls2->u.known.stride) {
@@ -1208,11 +1188,11 @@ inline Boolean LocationSets_Overlap(
 
             CInt64_SetULong(&longgcd, gcd(ls1->u.known.stride, ls2->u.known.stride));
             if (CInt64_Equal(CInt64_ModU(work, longgcd), cint64_zero)) {
-                return 1;
+                return TRUE;
             }
 
-            if (size1 == -1) {
-                return 1;
+            if (size1 == (UInt32)-1) {
+                return TRUE;
             }
 
             for (i = 1; i < size1; i++) {
@@ -1223,12 +1203,12 @@ inline Boolean LocationSets_Overlap(
                     work = CInt64_Neg(work);
                 }
                 if (CInt64_Equal(CInt64_ModU(work, longgcd), cint64_zero)) {
-                    return 1;
+                    return TRUE;
                 }
             }
 
-            if (size2 == -1) {
-                return 1;
+            if (size2 == (UInt32)-1) {
+                return TRUE;
             }
 
             for (i = 1; i < size2; i++) {
@@ -1239,19 +1219,19 @@ inline Boolean LocationSets_Overlap(
                     work = CInt64_Neg(work);
                 }
                 if (CInt64_Equal(CInt64_ModU(work, longgcd), cint64_zero)) {
-                    return 1;
+                    return TRUE;
                 }
             }
 
-            return 0;
+            return FALSE;
         }
     }
 
-    return 0;
+    return FALSE;
 }
 
 #pragma sym reset
-inline Boolean LocationSets_Equal(LocationSet* ls1, LocationSet* ls2) {
+HEADER_INLINE Boolean LocationSets_Equal(LocationSet* ls1, LocationSet* ls2) {
     IRO_ASSERT(2080, ls1 != NULL);
     IRO_ASSERT(2081, ls2 != NULL);
 
@@ -1259,10 +1239,8 @@ inline Boolean LocationSets_Equal(LocationSet* ls1, LocationSet* ls2) {
         ((LocationSet_IsUnknown(ls1) && LocationSet_IsUnknown(ls2)) &&
          (MemoryBlocks_Equal(ls1->u.unknown.restriction, ls2->u.unknown.restriction)) &&
          ((ls1->u.unknown.bitfieldOf == ls2->u.unknown.bitfieldOf) ||
-          (ls1->u.unknown.bitfieldOf !=
-           NULL &&
-           ls2->u.unknown.bitfieldOf !=
-           NULL &&
+          (ls1->u.unknown.bitfieldOf != NULL &&
+           ls2->u.unknown.bitfieldOf != NULL &&
            LocationSets_Equal(ls1->u.unknown.bitfieldOf, ls2->u.unknown.bitfieldOf))) &&
          ((ls1->rtype == ls2->rtype) ||
           (ls1->rtype != NULL && ls2->rtype != NULL && ls1->rtype->size == ls2->rtype->size))) ||
@@ -1274,7 +1252,7 @@ inline Boolean LocationSets_Equal(LocationSet* ls1, LocationSet* ls2) {
          MemoryBlocks_Equal(ls1->block, ls2->block));
 }
 
-inline Boolean LocationSets_LookupCompatible(LocationSet* ls1, LocationSet* ls2) {
+HEADER_INLINE Boolean LocationSets_LookupCompatible(LocationSet* ls1, LocationSet* ls2) {
     IRO_ASSERT(2119, ls1 != NULL);
     IRO_ASSERT(2120, ls2 != NULL);
 
@@ -1282,15 +1260,13 @@ inline Boolean LocationSets_LookupCompatible(LocationSet* ls1, LocationSet* ls2)
         (LocationSet_IsUnknown(ls1) &&
          LocationSet_IsUnknown(ls2) &&
          MemoryBlocks_Equal(ls1->u.unknown.restriction, ls2->u.unknown.restriction) &&
-         (ls1->rtype ==
-          ls2->rtype ||
+         (ls1->rtype == ls2->rtype ||
           (ls1->rtype && ls2->rtype && ls1->rtype->size == ls2->rtype->size)))) {
-        return 1;
+        return TRUE;
     }
 
     if ((!LocationSet_IsUnknown(ls1) && !LocationSet_IsUnknown(ls2)) &&
-        (ls1->rtype ==
-         ls2->rtype ||
+        (ls1->rtype == ls2->rtype ||
          (ls1->rtype && ls2->rtype && ls1->rtype->size == ls2->rtype->size)) &&
         MemoryBlocks_Equal(ls1->block, ls2->block)) {
         CInt64 work;
@@ -1309,12 +1285,11 @@ inline Boolean LocationSets_LookupCompatible(LocationSet* ls1, LocationSet* ls2)
         return CInt64_Equal(CInt64_ModU(work, longgcd), cint64_zero);
     }
 
-    return 0;
+    return FALSE;
 }
 
-inline Boolean LocationSet_Contains(
-    LocationSet* ls1, Type* rtype1, LocationSet* ls2, Type* rtype2
-) {
+HEADER_INLINE Boolean
+LocationSet_Contains(LocationSet* ls1, Type* rtype1, LocationSet* ls2, Type* rtype2) {
     Boolean unknown1;
     Boolean unknown2;
     PAMemoryBlock* restriction1;
@@ -1328,7 +1303,7 @@ inline Boolean LocationSet_Contains(
     IRO_ASSERT(2171, rtype2 != NULL);
 
     if (ls1 == ls2) {
-        return 1;
+        return TRUE;
     }
 
     unknown1 = LocationSet_IsUnknown(ls1);
@@ -1355,8 +1330,7 @@ inline Boolean LocationSet_Contains(
     return !LocationSet_IsUnknown(ls2) &&
         (ls1->u.known.stride == 0) &&
         (ls2->u.known.stride == 0) &&
-        rtype1->size >=
-        rtype2->size &&
+        rtype1->size >= rtype2->size &&
         CInt64_LessEqual(ls1->u.known.field, ls2->u.known.field) &&
         CInt64_GreaterEqual(
             CInt64_Add(ls1->u.known.field, longsize1), CInt64_Add(ls2->u.known.field, longsize2)
@@ -1364,24 +1338,23 @@ inline Boolean LocationSet_Contains(
         MemoryBlocks_Equal(ls1->block, ls2->block);
 }
 
-inline Boolean LocationSet_IsUnknown(LocationSet* ls) {
+HEADER_INLINE Boolean LocationSet_IsUnknown(LocationSet* ls) {
     IRO_ASSERT(2233, ls != NULL);
 
     return (ls == stUnknownLs) || (ls->block == stUnknownMb);
 }
 
-inline Boolean LocationSet_IsLocalVarBase(LocationSet* ls) {
+HEADER_INLINE Boolean LocationSet_IsLocalVarBase(LocationSet* ls) {
     IRO_ASSERT(2251, ls != NULL);
 
     return !LocationSet_IsUnknown(ls) &&
         (ls->u.known.stride == 0) &&
         CInt64_IsZero(&ls->u.known.field) &&
-        PAMemoryBlock_kind(ls->block) ==
-        PAMEMORYBLOCKKIND_LOCALVAR &&
+        PAMemoryBlock_kind(ls->block) == PAMEMORYBLOCKKIND_LOCALVAR &&
         PAMemoryBlock_thing(ls->block) == NULL;
 }
 
-inline void LocationSet_SetRtype(LocationSet* ls, Type* rtype) {
+HEADER_INLINE void LocationSet_SetRtype(LocationSet* ls, Type* rtype) {
     IRO_ASSERT(2263, ls != NULL);
     IRO_ASSERT(2264, ls != stUnknownLs);
     IRO_ASSERT(2265, rtype != NULL);
@@ -1389,62 +1362,62 @@ inline void LocationSet_SetRtype(LocationSet* ls, Type* rtype) {
     ls->rtype = rtype;
 }
 
-inline void LocationSet_SetField(LocationSet* ls, CInt64 field) {
+HEADER_INLINE void LocationSet_SetField(LocationSet* ls, CInt64 field) {
     IRO_ASSERT(2272, ls != NULL);
     IRO_ASSERT(2273, !LocationSet_IsUnknown(ls));
 
     ls->u.known.field = field;
 }
 
-inline void LocationSet_SetStride(LocationSet* ls, SInt32 stride) {
+HEADER_INLINE void LocationSet_SetStride(LocationSet* ls, SInt32 stride) {
     IRO_ASSERT(2280, ls != NULL);
     IRO_ASSERT(2281, !LocationSet_IsUnknown(ls));
 
     ls->u.known.stride = stride;
 }
 
-inline PAMemoryBlock* LocationSet_block(LocationSet* ls) {
+HEADER_INLINE PAMemoryBlock* LocationSet_block(LocationSet* ls) {
     IRO_ASSERT(2298, ls != NULL);
 
     return ls->block;
 }
 
-inline Type* LocationSet_rtype(LocationSet* ls) {
+HEADER_INLINE Type* LocationSet_rtype(LocationSet* ls) {
     IRO_ASSERT(2306, ls != NULL);
     IRO_ASSERT(2307, ls != stUnknownLs);
 
     return ls->rtype;
 }
 
-inline CInt64 LocationSet_field(LocationSet* ls) {
+HEADER_INLINE CInt64 LocationSet_field(LocationSet* ls) {
     IRO_ASSERT(2314, ls != NULL);
     IRO_ASSERT(2315, !LocationSet_IsUnknown(ls));
 
     return ls->u.known.field;
 }
 
-inline UInt32 LocationSet_stride(LocationSet* ls) {
+HEADER_INLINE UInt32 LocationSet_stride(LocationSet* ls) {
     IRO_ASSERT(2322, ls != NULL);
     IRO_ASSERT(2323, !LocationSet_IsUnknown(ls));
 
     return ls->u.known.stride;
 }
 
-inline PAMemoryBlock* LocationSet_restriction(LocationSet* ls) {
+HEADER_INLINE PAMemoryBlock* LocationSet_restriction(LocationSet* ls) {
     IRO_ASSERT(2330, ls != NULL);
     IRO_ASSERT(2331, LocationSet_IsUnknown(ls));
 
     return ls->u.unknown.restriction;
 }
 
-inline LocationSet* LocationSet_bitfieldOf(LocationSet* ls) {
+HEADER_INLINE LocationSet* LocationSet_bitfieldOf(LocationSet* ls) {
     IRO_ASSERT(2338, ls != NULL);
     IRO_ASSERT(2339, LocationSet_IsUnknown(ls));
 
     return ls->u.unknown.bitfieldOf;
 }
 
-inline LocationSetSet* LocationSetSet_New(void) {
+HEADER_INLINE LocationSetSet* LocationSetSet_New(void) {
     LocationSetSet* lss = IRO_malloc(sizeof(LocationSetSet));
 
     IRO_ASSERT(2356, lss != NULL);
@@ -1454,7 +1427,7 @@ inline LocationSetSet* LocationSetSet_New(void) {
     return lss;
 }
 
-inline void LocationSetSet_Delete(LocationSetSet* lss) {
+HEADER_INLINE void LocationSetSet_Delete(LocationSetSet* lss) {
     IRO_ASSERT(2369, lss != NULL);
     IRO_ASSERT(2370, lss->loc == NULL);
     IRO_ASSERT(2371, lss->otherLocs == NULL);
@@ -1463,7 +1436,7 @@ inline void LocationSetSet_Delete(LocationSetSet* lss) {
     IRO_free(lss);
 }
 
-inline void LocationSetSet_Init(LocationSetSet* lss) {
+HEADER_INLINE void LocationSetSet_Init(LocationSetSet* lss) {
     IRO_ASSERT(2382, lss != NULL);
 
     lss->loc = NULL;
@@ -1471,7 +1444,7 @@ inline void LocationSetSet_Init(LocationSetSet* lss) {
     lss->count = 0;
 }
 
-inline void LocationSetSet_Copy(LocationSetSet* dest, LocationSetSet* src) {
+HEADER_INLINE void LocationSetSet_Copy(LocationSetSet* dest, LocationSetSet* src) {
     IRO_ASSERT(2391, dest != NULL);
     IRO_ASSERT(2392, src != NULL);
 
@@ -1481,7 +1454,7 @@ inline void LocationSetSet_Copy(LocationSetSet* dest, LocationSetSet* src) {
     LocationSetSet_AddSet(dest, src);
 }
 
-inline void LocationSetSet_Term(LocationSetSet* lss) {
+HEADER_INLINE void LocationSetSet_Term(LocationSetSet* lss) {
     IRO_ASSERT(2402, lss != NULL);
 
     LocationSetSet_RemoveAll(lss);
@@ -1490,7 +1463,7 @@ inline void LocationSetSet_Term(LocationSetSet* lss) {
     lss->count = 0;
 }
 
-inline void LocationSetSet_ForEach(
+HEADER_INLINE void LocationSetSet_ForEach(
     LocationSetSet* lss, void (*action)(LocationSet*, void*), void* refcon
 ) {
     IRO_ASSERT(2446, lss != NULL);
@@ -1503,7 +1476,7 @@ inline void LocationSetSet_ForEach(
     }
 }
 
-inline LocationSet* LocationSetSet_Find(LocationSetSet* lss, LocationSet* ls) {
+HEADER_INLINE LocationSet* LocationSetSet_Find(LocationSetSet* lss, LocationSet* ls) {
     IRO_ASSERT(2458, lss != NULL);
     IRO_ASSERT(2459, ls != NULL);
 
@@ -1517,7 +1490,7 @@ inline LocationSet* LocationSetSet_Find(LocationSetSet* lss, LocationSet* ls) {
     return NULL;
 }
 
-inline LocationSet* LocationSetSet_FindUnknown(LocationSetSet* lss) {
+HEADER_INLINE LocationSet* LocationSetSet_FindUnknown(LocationSetSet* lss) {
     IRO_ASSERT(2470, lss != NULL);
 
     if (!lss->loc) {
@@ -1534,23 +1507,25 @@ inline LocationSet* LocationSetSet_FindUnknown(LocationSetSet* lss) {
     return NULL;
 }
 
-inline LocationSet* LocationSetSet_FindFirst(LocationSetSet* lss) {
+HEADER_INLINE LocationSet* LocationSetSet_FindFirst(LocationSetSet* lss) {
     IRO_ASSERT(2498, lss != NULL);
 
     return lss->loc;
 }
 
-inline int LocationSetSet_Count(LocationSetSet* lss) {
+HEADER_INLINE int LocationSetSet_Count(LocationSetSet* lss) {
     IRO_ASSERT(2505, lss != NULL);
 
     return lss->count;
 }
 
-inline void LocationSetSet_RemoveAllWithMemoryBlock(LocationSetSet* lss, PAMemoryBlock* block) {
+HEADER_INLINE void LocationSetSet_RemoveAllWithMemoryBlock(
+    LocationSetSet* lss, PAMemoryBlock* block
+) {
     LocationSetSet* first;
     LocationSetSet* prev;
     LocationSetSet* next;
-    LocationSetSet* tmp;
+    LocationSetSet* second;
 
     IRO_ASSERT(2514, lss != NULL);
     IRO_ASSERT(2515, block != NULL);
@@ -1569,13 +1544,13 @@ inline void LocationSetSet_RemoveAllWithMemoryBlock(LocationSetSet* lss, PAMemor
                     lss->loc = NULL;
                     prev = lss;
                 } else {
-                    tmp = lss->otherLocs;
+                    second = lss->otherLocs;
                     lss->loc = lss->otherLocs->loc;
                     lss->otherLocs = lss->otherLocs->otherLocs;
-                    tmp->loc = NULL;
-                    tmp->otherLocs = NULL;
-                    LocationSetSet_Term(tmp);
-                    LocationSetSet_Delete(tmp);
+                    second->loc = NULL;
+                    second->otherLocs = NULL;
+                    LocationSetSet_Term(second);
+                    LocationSetSet_Delete(second);
                     prev = NULL;
                     next = lss;
                 }
@@ -1593,7 +1568,7 @@ inline void LocationSetSet_RemoveAllWithMemoryBlock(LocationSetSet* lss, PAMemor
     }
 }
 
-inline void LocationSetSet_SimpleAdd(LocationSetSet* lss, LocationSet* ls) {
+HEADER_INLINE void LocationSetSet_SimpleAdd(LocationSetSet* lss, LocationSet* ls) {
     LocationSet* ls2;
 
     IRO_ASSERT(2572, lss != NULL);
@@ -1634,7 +1609,7 @@ inline void LocationSetSet_SimpleAdd(LocationSetSet* lss, LocationSet* ls) {
     }
 }
 
-inline void LocationSetSet_Add(LocationSetSet* lss, LocationSet* ls) {
+HEADER_INLINE void LocationSetSet_Add(LocationSetSet* lss, LocationSet* ls) {
     IRO_ASSERT(2622, lss != NULL);
     IRO_ASSERT(2623, ls != NULL);
 
@@ -1646,7 +1621,7 @@ inline void LocationSetSet_Add(LocationSetSet* lss, LocationSet* ls) {
     }
 }
 
-inline void LocationSetSet_AddUnknown(
+HEADER_INLINE void LocationSetSet_AddUnknown(
     LocationSetSet* lss, Type* rtype, PAMemoryBlock* restriction, LocationSet* bitfieldOf
 ) {
     LocationSet* ls;
@@ -1663,10 +1638,10 @@ inline void LocationSetSet_AddUnknown(
     LocationSet_Delete(ls);
 }
 
-inline void LocationSetSet_Remove(LocationSetSet* lss, LocationSet* ls) {
+HEADER_INLINE void LocationSetSet_Remove(LocationSetSet* lss, LocationSet* ls) {
     LocationSetSet* first;
     LocationSetSet* prev;
-    LocationSetSet* tmp;
+    LocationSetSet* second;
 
     IRO_ASSERT(2659, lss != NULL);
     IRO_ASSERT(2660, ls != NULL);
@@ -1683,13 +1658,13 @@ inline void LocationSetSet_Remove(LocationSetSet* lss, LocationSet* ls) {
                 if (lss->otherLocs == NULL) {
                     lss->loc = NULL;
                 } else {
-                    tmp = lss->otherLocs;
+                    second = lss->otherLocs;
                     lss->loc = lss->otherLocs->loc;
                     lss->otherLocs = lss->otherLocs->otherLocs;
-                    tmp->loc = NULL;
-                    tmp->otherLocs = NULL;
-                    LocationSetSet_Term(tmp);
-                    LocationSetSet_Delete(tmp);
+                    second->loc = NULL;
+                    second->otherLocs = NULL;
+                    LocationSetSet_Term(second);
+                    LocationSetSet_Delete(second);
                 }
             } else {
                 prev->otherLocs = lss->otherLocs;
@@ -1707,7 +1682,7 @@ inline void LocationSetSet_Remove(LocationSetSet* lss, LocationSet* ls) {
     }
 }
 
-inline void LocationSetSet_RemoveAll(LocationSetSet* lss) {
+HEADER_INLINE void LocationSetSet_RemoveAll(LocationSetSet* lss) {
     IRO_ASSERT(2707, lss != NULL);
 
     while (lss && lss->loc) {
@@ -1715,21 +1690,21 @@ inline void LocationSetSet_RemoveAll(LocationSetSet* lss) {
     }
 }
 
-inline void LocationSetSet_AddSetAction(LocationSet* ls, void* refcon) {
+HEADER_INLINE void LocationSetSet_AddSetAction(LocationSet* ls, void* refcon) {
     IRO_ASSERT(2717, ls != NULL);
     IRO_ASSERT(2718, refcon != NULL);
 
     LocationSetSet_Add((LocationSetSet*)refcon, ls);
 }
 
-inline void LocationSetSet_SimpleAddSetAction(LocationSet* ls, void* refcon) {
+HEADER_INLINE void LocationSetSet_SimpleAddSetAction(LocationSet* ls, void* refcon) {
     IRO_ASSERT(2725, ls != NULL);
     IRO_ASSERT(2726, refcon != NULL);
 
     LocationSetSet_SimpleAdd((LocationSetSet*)refcon, ls);
 }
 
-inline void LocationSetSet_AddSet(LocationSetSet* dest, LocationSetSet* src) {
+HEADER_INLINE void LocationSetSet_AddSet(LocationSetSet* dest, LocationSetSet* src) {
     IRO_ASSERT(2733, dest != NULL);
     IRO_ASSERT(2734, src != NULL);
 
@@ -1740,42 +1715,42 @@ inline void LocationSetSet_AddSet(LocationSetSet* dest, LocationSetSet* src) {
     }
 }
 
-inline void LocationSetSet_RemoveSetAction(LocationSet* ls, void* refcon) {
+HEADER_INLINE void LocationSetSet_RemoveSetAction(LocationSet* ls, void* refcon) {
     IRO_ASSERT(2744, ls != NULL);
     IRO_ASSERT(2745, refcon != NULL);
 
     LocationSetSet_Remove((LocationSetSet*)refcon, ls);
 }
 
-inline void LocationSetSet_RemoveSet(LocationSetSet* dest, LocationSetSet* src) {
+HEADER_INLINE void LocationSetSet_RemoveSet(LocationSetSet* dest, LocationSetSet* src) {
     IRO_ASSERT(2752, dest != NULL);
     IRO_ASSERT(2753, src != NULL);
 
     LocationSetSet_ForEach(src, LocationSetSet_RemoveSetAction, dest);
 }
 
-inline Boolean LocationSetSets_Equal(LocationSetSet* lss1, LocationSetSet* lss2) {
+HEADER_INLINE Boolean LocationSetSets_Equal(LocationSetSet* lss1, LocationSetSet* lss2) {
     IRO_ASSERT(2826, lss1 != NULL);
     IRO_ASSERT(2827, lss2 != NULL);
 
     if (lss1 == lss2) {
-        return 1;
+        return TRUE;
     }
     if (LocationSetSet_Count(lss1) != LocationSetSet_Count(lss2)) {
-        return 0;
+        return FALSE;
     }
 
     while (lss1 && lss1->loc) {
         if (!LocationSetSet_Find(lss2, lss1->loc)) {
-            return 0;
+            return FALSE;
         }
         lss1 = lss1->otherLocs;
     }
 
-    return 1;
+    return TRUE;
 }
 
-inline ParamMapping* ParamMapping_New(void) {
+HEADER_INLINE ParamMapping* ParamMapping_New(void) {
     ParamMapping* pm = IRO_malloc(sizeof(ParamMapping));
 
     IRO_ASSERT(2885, pm != NULL);
@@ -1785,7 +1760,7 @@ inline ParamMapping* ParamMapping_New(void) {
     return pm;
 }
 
-inline void ParamMapping_Delete(ParamMapping* pm) {
+HEADER_INLINE void ParamMapping_Delete(ParamMapping* pm) {
     IRO_ASSERT(2898, pm != NULL);
     IRO_ASSERT(2899, pm->actual == NULL);
     IRO_ASSERT(2900, pm->formal == NULL);
@@ -1794,7 +1769,7 @@ inline void ParamMapping_Delete(ParamMapping* pm) {
     IRO_free(pm);
 }
 
-inline void ParamMapping_Init(
+HEADER_INLINE void ParamMapping_Init(
     ParamMapping* pm, IROLinear* actual, Object* formal, ExtendedParam* extended
 ) {
     IRO_ASSERT(2911, pm != NULL);
@@ -1804,7 +1779,7 @@ inline void ParamMapping_Init(
     pm->extended = extended;
 }
 
-inline void ParamMapping_Copy(ParamMapping* dest, ParamMapping* src) {
+HEADER_INLINE void ParamMapping_Copy(ParamMapping* dest, ParamMapping* src) {
     IRO_ASSERT(2920, src != NULL);
     IRO_ASSERT(2921, dest != NULL);
 
@@ -1813,7 +1788,7 @@ inline void ParamMapping_Copy(ParamMapping* dest, ParamMapping* src) {
     dest->extended = src->extended;
 }
 
-inline void ParamMapping_Term(ParamMapping* pm) {
+HEADER_INLINE void ParamMapping_Term(ParamMapping* pm) {
     IRO_ASSERT(2933, pm != NULL);
 
     pm->actual = NULL;
@@ -1821,25 +1796,25 @@ inline void ParamMapping_Term(ParamMapping* pm) {
     pm->extended = NULL;
 }
 
-inline void ParamMapping_SetExtended(ParamMapping* pm, ExtendedParam* ep) {
+HEADER_INLINE void ParamMapping_SetExtended(ParamMapping* pm, ExtendedParam* ep) {
     IRO_ASSERT(2992, pm != NULL);
 
     pm->extended = ep;
 }
 
-inline IROLinear* ParamMapping_actual(ParamMapping* pm) {
+HEADER_INLINE IROLinear* ParamMapping_actual(ParamMapping* pm) {
     IRO_ASSERT(2999, pm != NULL);
 
     return pm->actual;
 }
 
-inline ExtendedParam* ParamMapping_extended(ParamMapping* pm) {
+HEADER_INLINE ExtendedParam* ParamMapping_extended(ParamMapping* pm) {
     IRO_ASSERT(3011, pm != NULL);
 
     return pm->extended;
 }
 
-inline ParamMappingFunction* ParamMappingFunction_New(void) {
+HEADER_INLINE ParamMappingFunction* ParamMappingFunction_New(void) {
     ParamMappingFunction* pmf = IRO_malloc(sizeof(ParamMappingFunction));
 
     IRO_ASSERT(3026, pmf != NULL);
@@ -1848,7 +1823,7 @@ inline ParamMappingFunction* ParamMappingFunction_New(void) {
     return pmf;
 }
 
-inline void ParamMappingFunction_Delete(ParamMappingFunction* pmf) {
+HEADER_INLINE void ParamMappingFunction_Delete(ParamMappingFunction* pmf) {
     IRO_ASSERT(3038, pmf != NULL);
     IRO_ASSERT(3039, pmf->mapping == NULL);
     IRO_ASSERT(3040, pmf->otherMappings == NULL);
@@ -1856,14 +1831,16 @@ inline void ParamMappingFunction_Delete(ParamMappingFunction* pmf) {
     IRO_free(pmf);
 }
 
-inline void ParamMappingFunction_Init(ParamMappingFunction* pmf) {
+HEADER_INLINE void ParamMappingFunction_Init(ParamMappingFunction* pmf) {
     IRO_ASSERT(3050, pmf != NULL);
 
     pmf->mapping = NULL;
     pmf->otherMappings = NULL;
 }
 
-inline void ParamMappingFunction_Copy(ParamMappingFunction* dest, ParamMappingFunction* src) {
+HEADER_INLINE void ParamMappingFunction_Copy(
+    ParamMappingFunction* dest, ParamMappingFunction* src
+) {
     IRO_ASSERT(3058, src != NULL);
     IRO_ASSERT(3059, dest != NULL);
 
@@ -1872,7 +1849,7 @@ inline void ParamMappingFunction_Copy(ParamMappingFunction* dest, ParamMappingFu
     ParamMappingFunction_AddAll(dest, src);
 }
 
-inline void ParamMappingFunction_Term(ParamMappingFunction* pmf) {
+HEADER_INLINE void ParamMappingFunction_Term(ParamMappingFunction* pmf) {
     IRO_ASSERT(3068, pmf != NULL);
 
     ParamMappingFunction_RemoveAll(pmf);
@@ -1880,7 +1857,7 @@ inline void ParamMappingFunction_Term(ParamMappingFunction* pmf) {
     pmf->otherMappings = NULL;
 }
 
-inline void ParamMappingFunction_ForEach(
+HEADER_INLINE void ParamMappingFunction_ForEach(
     ParamMappingFunction* pmf, void (*action)(ParamMapping*, void*), void* refcon
 ) {
     IRO_ASSERT(3111, pmf != NULL);
@@ -1893,7 +1870,7 @@ inline void ParamMappingFunction_ForEach(
     }
 }
 
-inline ParamMapping* ParamMappingFunction_FindMappingByFormal(
+HEADER_INLINE ParamMapping* ParamMappingFunction_FindMappingByFormal(
     ParamMappingFunction* pmf, Object* formal
 ) {
     IRO_ASSERT(3123, pmf != NULL);
@@ -1909,7 +1886,7 @@ inline ParamMapping* ParamMappingFunction_FindMappingByFormal(
     return NULL;
 }
 
-inline void ParamMappingFunction_Add(ParamMappingFunction* pmf, ParamMapping* mapping) {
+HEADER_INLINE void ParamMappingFunction_Add(ParamMappingFunction* pmf, ParamMapping* mapping) {
     ParamMapping* existing;
 
     IRO_ASSERT(3138, pmf != NULL);
@@ -1933,9 +1910,9 @@ inline void ParamMappingFunction_Add(ParamMappingFunction* pmf, ParamMapping* ma
     }
 }
 
-inline void ParamMappingFunction_Remove(ParamMappingFunction* pmf, ParamMapping* mapping) {
+HEADER_INLINE void ParamMappingFunction_Remove(ParamMappingFunction* pmf, ParamMapping* mapping) {
     ParamMappingFunction* prev;
-    ParamMappingFunction* tmp;
+    ParamMappingFunction* second;
 
     IRO_ASSERT(3170, pmf != NULL);
     IRO_ASSERT(3171, mapping != NULL);
@@ -1949,13 +1926,13 @@ inline void ParamMappingFunction_Remove(ParamMappingFunction* pmf, ParamMapping*
                 if (pmf->otherMappings == NULL) {
                     pmf->mapping = NULL;
                 } else {
-                    tmp = pmf->otherMappings;
+                    second = pmf->otherMappings;
                     pmf->mapping = pmf->otherMappings->mapping;
                     pmf->otherMappings = pmf->otherMappings->otherMappings;
-                    tmp->mapping = NULL;
-                    tmp->otherMappings = NULL;
-                    ParamMappingFunction_Term(tmp);
-                    ParamMappingFunction_Delete(tmp);
+                    second->mapping = NULL;
+                    second->otherMappings = NULL;
+                    ParamMappingFunction_Term(second);
+                    ParamMappingFunction_Delete(second);
                 }
             } else {
                 prev->otherMappings = pmf->otherMappings;
@@ -1972,7 +1949,7 @@ inline void ParamMappingFunction_Remove(ParamMappingFunction* pmf, ParamMapping*
     }
 }
 
-inline void ParamMappingFunction_RemoveAll(ParamMappingFunction* pmf) {
+HEADER_INLINE void ParamMappingFunction_RemoveAll(ParamMappingFunction* pmf) {
     IRO_ASSERT(3213, pmf != NULL);
 
     while (pmf && pmf->mapping) {
@@ -1980,21 +1957,23 @@ inline void ParamMappingFunction_RemoveAll(ParamMappingFunction* pmf) {
     }
 }
 
-inline void ParamMappingFunction_AddFunctionAction(ParamMapping* mapping, void* refcon) {
+HEADER_INLINE void ParamMappingFunction_AddFunctionAction(ParamMapping* mapping, void* refcon) {
     IRO_ASSERT(3223, mapping != NULL);
     IRO_ASSERT(3224, refcon != NULL);
 
     ParamMappingFunction_Add((ParamMappingFunction*)refcon, mapping);
 }
 
-inline void ParamMappingFunction_AddAll(ParamMappingFunction* dest, ParamMappingFunction* src) {
+HEADER_INLINE void ParamMappingFunction_AddAll(
+    ParamMappingFunction* dest, ParamMappingFunction* src
+) {
     IRO_ASSERT(3231, dest != NULL);
     IRO_ASSERT(3232, src != NULL);
 
     ParamMappingFunction_ForEach(src, ParamMappingFunction_AddFunctionAction, dest);
 }
 
-inline PointsToEntry* PointsToEntry_New(void) {
+HEADER_INLINE PointsToEntry* PointsToEntry_New(void) {
     PointsToEntry* pte = IRO_malloc(sizeof(PointsToEntry));
 
     IRO_ASSERT(3288, pte != NULL);
@@ -2003,7 +1982,7 @@ inline PointsToEntry* PointsToEntry_New(void) {
     return pte;
 }
 
-inline void PointsToEntry_Delete(PointsToEntry* pte) {
+HEADER_INLINE void PointsToEntry_Delete(PointsToEntry* pte) {
     IRO_ASSERT(3300, pte != NULL);
     IRO_ASSERT(3301, pte->loc == NULL);
     IRO_ASSERT(3302, pte->locs == NULL);
@@ -2011,7 +1990,7 @@ inline void PointsToEntry_Delete(PointsToEntry* pte) {
     IRO_free(pte);
 }
 
-inline void PointsToEntry_Init(PointsToEntry* pte, LocationSet* loc, LocationSetSet* locs) {
+HEADER_INLINE void PointsToEntry_Init(PointsToEntry* pte, LocationSet* loc, LocationSetSet* locs) {
     IRO_ASSERT(3312, pte != NULL);
     IRO_ASSERT(3313, loc != NULL);
     IRO_ASSERT(3314, !LocationSet_IsUnknown(loc));
@@ -2024,14 +2003,14 @@ inline void PointsToEntry_Init(PointsToEntry* pte, LocationSet* loc, LocationSet
     LocationSetSet_Copy(pte->locs, locs);
 }
 
-inline void PointsToEntry_Copy(PointsToEntry* dest, PointsToEntry* src) {
+HEADER_INLINE void PointsToEntry_Copy(PointsToEntry* dest, PointsToEntry* src) {
     IRO_ASSERT(3325, src != NULL);
     IRO_ASSERT(3326, dest != NULL);
 
     PointsToEntry_Init(dest, src->loc, src->locs);
 }
 
-inline void PointsToEntry_Term(PointsToEntry* pte) {
+HEADER_INLINE void PointsToEntry_Term(PointsToEntry* pte) {
     IRO_ASSERT(3333, pte != NULL);
 
     LocationSet_Term(pte->loc);
@@ -2042,31 +2021,31 @@ inline void PointsToEntry_Term(PointsToEntry* pte) {
     pte->locs = NULL;
 }
 
-inline Boolean PointsToEntries_Equal(PointsToEntry* pte1, PointsToEntry* pte2) {
+HEADER_INLINE Boolean PointsToEntries_Equal(PointsToEntry* pte1, PointsToEntry* pte2) {
     IRO_ASSERT(3381, pte1 != NULL);
     IRO_ASSERT(3382, pte2 != NULL);
 
     if (pte1 == pte2) {
-        return 1;
+        return TRUE;
     }
 
     return LocationSets_Equal(pte1->loc, pte2->loc) &&
         LocationSetSets_Equal(pte1->locs, pte2->locs);
 }
 
-inline LocationSet* PointsToEntry_loc(PointsToEntry* pte) {
+HEADER_INLINE LocationSet* PointsToEntry_loc(PointsToEntry* pte) {
     IRO_ASSERT(3407, pte != NULL);
 
     return pte->loc;
 }
 
-inline LocationSetSet* PointsToEntry_locs(PointsToEntry* pte) {
+HEADER_INLINE LocationSetSet* PointsToEntry_locs(PointsToEntry* pte) {
     IRO_ASSERT(3414, pte != NULL);
 
     return pte->locs;
 }
 
-inline PointsToFunction* PointsToFunction_New(void) {
+HEADER_INLINE PointsToFunction* PointsToFunction_New(void) {
     PointsToFunction* pointsToFunc = IRO_malloc(sizeof(PointsToFunction));
 
     IRO_ASSERT(3430, pointsToFunc != NULL);
@@ -2075,7 +2054,7 @@ inline PointsToFunction* PointsToFunction_New(void) {
     return pointsToFunc;
 }
 
-inline void PointsToFunction_Delete(PointsToFunction* pointsToFunc) {
+HEADER_INLINE void PointsToFunction_Delete(PointsToFunction* pointsToFunc) {
     IRO_ASSERT(3442, pointsToFunc != NULL);
     IRO_ASSERT(3443, pointsToFunc->pte == NULL);
     IRO_ASSERT(3444, pointsToFunc->otherPtes == NULL);
@@ -2083,14 +2062,14 @@ inline void PointsToFunction_Delete(PointsToFunction* pointsToFunc) {
     IRO_free(pointsToFunc);
 }
 
-inline void PointsToFunction_Init(PointsToFunction* pointsToFunc) {
+HEADER_INLINE void PointsToFunction_Init(PointsToFunction* pointsToFunc) {
     IRO_ASSERT(3454, pointsToFunc != NULL);
 
     pointsToFunc->pte = NULL;
     pointsToFunc->otherPtes = NULL;
 }
 
-inline void PointsToFunction_Copy(PointsToFunction* dest, PointsToFunction* src) {
+HEADER_INLINE void PointsToFunction_Copy(PointsToFunction* dest, PointsToFunction* src) {
     IRO_ASSERT(3462, src != NULL);
     IRO_ASSERT(3463, dest != NULL);
 
@@ -2099,7 +2078,7 @@ inline void PointsToFunction_Copy(PointsToFunction* dest, PointsToFunction* src)
     PointsToFunction_AddAll(dest, src);
 }
 
-inline void PointsToFunction_Term(PointsToFunction* pointsToFunc) {
+HEADER_INLINE void PointsToFunction_Term(PointsToFunction* pointsToFunc) {
     IRO_ASSERT(3472, pointsToFunc != NULL);
 
     PointsToFunction_RemoveAll(pointsToFunc);
@@ -2107,7 +2086,7 @@ inline void PointsToFunction_Term(PointsToFunction* pointsToFunc) {
     pointsToFunc->otherPtes = NULL;
 }
 
-inline void PointsToFunction_ForEach(
+HEADER_INLINE void PointsToFunction_ForEach(
     PointsToFunction* pointsToFunc, void (*action)(PointsToEntry*, void*), void* refcon
 ) {
     IRO_ASSERT(3515, pointsToFunc != NULL);
@@ -2120,7 +2099,7 @@ inline void PointsToFunction_ForEach(
     }
 }
 
-inline PointsToEntry* PointsToFunction_FindByLocationSet(
+HEADER_INLINE PointsToEntry* PointsToFunction_FindByLocationSet(
     PointsToFunction* pointsToFunc, LocationSet* ls
 ) {
     IRO_ASSERT(3527, pointsToFunc != NULL);
@@ -2136,13 +2115,13 @@ inline PointsToEntry* PointsToFunction_FindByLocationSet(
     return NULL;
 }
 
-inline PointsToEntry* PointsToFunction_FindFirst(PointsToFunction* pointsToFunc) {
+HEADER_INLINE PointsToEntry* PointsToFunction_FindFirst(PointsToFunction* pointsToFunc) {
     IRO_ASSERT(3539, pointsToFunc != NULL);
 
     return pointsToFunc->pte;
 }
 
-inline PointsToEntry* PointsToFunction_FindByLookupCompatibleLocationSet(
+HEADER_INLINE PointsToEntry* PointsToFunction_FindByLookupCompatibleLocationSet(
     PointsToFunction* pointsToFunc, LocationSet* ls
 ) {
     IRO_ASSERT(3546, pointsToFunc != NULL);
@@ -2162,7 +2141,7 @@ inline PointsToEntry* PointsToFunction_FindByLookupCompatibleLocationSet(
     return NULL;
 }
 
-inline PointsToEntry* PointsToFunction_FindContainingLocationSet(
+HEADER_INLINE PointsToEntry* PointsToFunction_FindContainingLocationSet(
     PointsToFunction* pointsToFunc, LocationSet* ls, Type* rtype
 ) {
     IRO_ASSERT(3565, pointsToFunc != NULL);
@@ -2184,7 +2163,7 @@ inline PointsToEntry* PointsToFunction_FindContainingLocationSet(
     return NULL;
 }
 
-inline void PointsToFunction_RemoveOverlappingLocations(
+HEADER_INLINE void PointsToFunction_RemoveOverlappingLocations(
     PointsToFunction* pointsToFunc, PointsToEntry* pte
 ) {
     Type* rtype2;
@@ -2192,7 +2171,7 @@ inline void PointsToFunction_RemoveOverlappingLocations(
     PointsToFunction* prev;
     PointsToFunction* next;
     Type* rtype1;
-    PointsToFunction* tmp;
+    PointsToFunction* second;
 
     IRO_ASSERT(3601, pointsToFunc != NULL);
     IRO_ASSERT(3602, pte != NULL);
@@ -2223,13 +2202,13 @@ inline void PointsToFunction_RemoveOverlappingLocations(
                     pointsToFunc->pte = NULL;
                     prev = pointsToFunc;
                 } else {
-                    tmp = pointsToFunc->otherPtes;
+                    second = pointsToFunc->otherPtes;
                     pointsToFunc->pte = pointsToFunc->otherPtes->pte;
                     pointsToFunc->otherPtes = pointsToFunc->otherPtes->otherPtes;
-                    tmp->pte = NULL;
-                    tmp->otherPtes = NULL;
-                    PointsToFunction_Term(tmp);
-                    PointsToFunction_Delete(tmp);
+                    second->pte = NULL;
+                    second->otherPtes = NULL;
+                    PointsToFunction_Term(second);
+                    PointsToFunction_Delete(second);
                     prev = NULL;
                     next = pointsToFunc;
                 }
@@ -2247,11 +2226,9 @@ inline void PointsToFunction_RemoveOverlappingLocations(
     }
 }
 
-// 2.6 tests the loop's first location set with `unknown` (Pro7 has a `tmp` of its own)
-inline Boolean ShouldAddNewPointsToEntryToFunction(
-    PointsToFunction* pointsToFunc, PointsToEntry* pte
-) {
-    Boolean flag;
+HEADER_INLINE Boolean
+ShouldAddNewPointsToEntryToFunction(PointsToFunction* pointsToFunc, PointsToEntry* pte) {
+    Boolean anyOverlap;
     Boolean isKnown;
     SInt32 stride;
     PointsToFunction* next;
@@ -2261,15 +2238,13 @@ inline Boolean ShouldAddNewPointsToEntryToFunction(
     Type* rtype2;
     LocationSetSet* locs2;
     LocationSet* unknown;
-    Boolean flag2;
-    Boolean flag3;
+    Boolean otherNotPlainUnknown;
+    Boolean overlaps;
 
     IRO_ASSERT(3675, pointsToFunc != NULL);
     IRO_ASSERT(3676, pte != NULL);
     IRO_ASSERT(3677, pte->locs != NULL);
     IRO_ASSERT(3678, PointsToFunction_FindByLookupCompatibleLocationSet(pointsToFunc, pte->loc) == NULL);
-    // TODO: 2.6 has the registers of `FindFirst(locs2 = pte->locs)` here (both this function and
-    // its copy inlined in PointsToFunction_Add), but the assert's text is Pro7's expression
     IRO_ASSERT_MSG(
         3679,
         (unknown = LocationSetSet_FindFirst(locs2 = pte->locs)) != NULL,
@@ -2293,7 +2268,7 @@ inline Boolean ShouldAddNewPointsToEntryToFunction(
         stride = LocationSet_stride(loc);
     }
 
-    flag = 0;
+    anyOverlap = FALSE;
     while (pointsToFunc && pointsToFunc->pte) {
         next = pointsToFunc->otherPtes;
 
@@ -2307,29 +2282,30 @@ inline Boolean ShouldAddNewPointsToEntryToFunction(
 
         loc2 = pointsToFunc->pte->loc;
 
-        flag2 = (unknown = LocationSetSet_FindFirst(locs2)) ==
-            NULL ||
+        otherNotPlainUnknown = (unknown = LocationSetSet_FindFirst(locs2)) == NULL ||
             !LocationSet_IsUnknown(unknown) ||
             LocationSet_bitfieldOf(unknown) ||
             LocationSet_restriction(unknown);
 
-        flag3 = LocationSets_Overlap(loc, rtype1, loc2, rtype2);
+        overlaps = LocationSets_Overlap(loc, rtype1, loc2, rtype2);
 
-        if (!flag && flag3) {
-            flag = 1;
+        if (!anyOverlap && overlaps) {
+            anyOverlap = TRUE;
         }
 
-        if (flag3 && (flag2 || (isKnown && stride && LocationSet_stride(loc2) == 0))) {
-            return 1;
+        if (overlaps &&
+            (otherNotPlainUnknown || (isKnown && stride && LocationSet_stride(loc2) == 0))) {
+            return TRUE;
         }
 
         pointsToFunc = next;
     }
 
-    return !flag;
+    return !anyOverlap;
 }
 
-inline Boolean PointsToFunction_SimpleAdd(PointsToFunction* pointsToFunc, PointsToEntry* pte) {
+HEADER_INLINE Boolean
+PointsToFunction_SimpleAdd(PointsToFunction* pointsToFunc, PointsToEntry* pte) {
     PointsToEntry* newPTE;
 
     IRO_ASSERT(3741, pointsToFunc != NULL);
@@ -2345,10 +2321,10 @@ inline Boolean PointsToFunction_SimpleAdd(PointsToFunction* pointsToFunc, Points
         pointsToFunc->otherPtes = newPointsToFunc;
     }
     pointsToFunc->pte = newPTE;
-    return 1;
+    return TRUE;
 }
 
-inline Boolean PointsToFunction_Add(PointsToFunction* pointsToFunc, PointsToEntry* pte) {
+HEADER_INLINE Boolean PointsToFunction_Add(PointsToFunction* pointsToFunc, PointsToEntry* pte) {
     IRO_ASSERT(3766, pointsToFunc != NULL);
     IRO_ASSERT(3767, pte != NULL);
 
@@ -2363,16 +2339,15 @@ inline Boolean PointsToFunction_Add(PointsToFunction* pointsToFunc, PointsToEntr
             if (!LocationSet_IsUnknown(pte->loc) || pte->loc->rtype) {
                 PointsToFunction_SimpleAdd(pointsToFunc, pte);
             }
-            return 1;
+            return TRUE;
         }
     }
 
-    return 0;
+    return FALSE;
 }
 
-inline Boolean PointsToFunction_AddWithoutChecking(
-    PointsToFunction* pointsToFunc, PointsToEntry* pte
-) {
+HEADER_INLINE Boolean
+PointsToFunction_AddWithoutChecking(PointsToFunction* pointsToFunc, PointsToEntry* pte) {
     LocationSet* ls;
 
     IRO_ASSERT(3793, pointsToFunc != NULL);
@@ -2387,15 +2362,17 @@ inline Boolean PointsToFunction_AddWithoutChecking(
         if (!LocationSet_IsUnknown(pte->loc) || pte->loc->rtype) {
             PointsToFunction_SimpleAdd(pointsToFunc, pte);
         }
-        return 1;
+        return TRUE;
     }
 
-    return 0;
+    return FALSE;
 }
 
-inline void PointsToFunction_RemoveByLocationSet(PointsToFunction* pointsToFunc, LocationSet* ls) {
+HEADER_INLINE void PointsToFunction_RemoveByLocationSet(
+    PointsToFunction* pointsToFunc, LocationSet* ls
+) {
     PointsToFunction* prev;
-    PointsToFunction* tmp;
+    PointsToFunction* second;
 
     IRO_ASSERT(3818, pointsToFunc != NULL);
     IRO_ASSERT(3819, ls != NULL);
@@ -2410,13 +2387,13 @@ inline void PointsToFunction_RemoveByLocationSet(PointsToFunction* pointsToFunc,
                 if (pointsToFunc->otherPtes == NULL) {
                     pointsToFunc->pte = NULL;
                 } else {
-                    tmp = pointsToFunc->otherPtes;
+                    second = pointsToFunc->otherPtes;
                     pointsToFunc->pte = pointsToFunc->otherPtes->pte;
                     pointsToFunc->otherPtes = pointsToFunc->otherPtes->otherPtes;
-                    tmp->pte = NULL;
-                    tmp->otherPtes = NULL;
-                    PointsToFunction_Term(tmp);
-                    PointsToFunction_Delete(tmp);
+                    second->pte = NULL;
+                    second->otherPtes = NULL;
+                    PointsToFunction_Term(second);
+                    PointsToFunction_Delete(second);
                 }
             } else {
                 prev->otherPtes = pointsToFunc->otherPtes;
@@ -2433,7 +2410,7 @@ inline void PointsToFunction_RemoveByLocationSet(PointsToFunction* pointsToFunc,
     }
 }
 
-inline void PointsToFunction_RemoveAll(PointsToFunction* pointsToFunc) {
+HEADER_INLINE void PointsToFunction_RemoveAll(PointsToFunction* pointsToFunc) {
     IRO_ASSERT(3862, pointsToFunc != NULL);
 
     while (pointsToFunc && pointsToFunc->pte) {
@@ -2441,21 +2418,21 @@ inline void PointsToFunction_RemoveAll(PointsToFunction* pointsToFunc) {
     }
 }
 
-inline void PointsToFunction_AddFunctionAction(PointsToEntry* pte, void* refcon) {
+HEADER_INLINE void PointsToFunction_AddFunctionAction(PointsToEntry* pte, void* refcon) {
     IRO_ASSERT(3872, pte != NULL);
     IRO_ASSERT(3873, refcon != NULL);
 
     PointsToFunction_Add((PointsToFunction*)refcon, pte);
 }
 
-inline void PointsToFunction_SimpleAddFunctionAction(PointsToEntry* pte, void* refcon) {
+HEADER_INLINE void PointsToFunction_SimpleAddFunctionAction(PointsToEntry* pte, void* refcon) {
     IRO_ASSERT(3880, pte != NULL);
     IRO_ASSERT(3881, refcon != NULL);
 
     PointsToFunction_SimpleAdd((PointsToFunction*)refcon, pte);
 }
 
-inline void PointsToFunction_AddAll(PointsToFunction* dest, PointsToFunction* src) {
+HEADER_INLINE void PointsToFunction_AddAll(PointsToFunction* dest, PointsToFunction* src) {
     IRO_ASSERT(3888, dest != NULL);
     IRO_ASSERT(3889, src != NULL);
 
@@ -2466,7 +2443,7 @@ inline void PointsToFunction_AddAll(PointsToFunction* dest, PointsToFunction* sr
     }
 }
 
-inline void PointsToFunction_SortByExtendedParamNum(PointsToFunction* pointsToFunc) {
+HEADER_INLINE void PointsToFunction_SortByExtendedParamNum(PointsToFunction* pointsToFunc) {
     UInt32 value1;
     UInt32 value2;
     PointsToFunction* scan;
@@ -2515,9 +2492,8 @@ inline void PointsToFunction_SortByExtendedParamNum(PointsToFunction* pointsToFu
     }
 }
 
-inline Boolean PointsToFunctions_Equal(
-    PointsToFunction* pointsToFunc1, PointsToFunction* pointsToFunc2
-) {
+HEADER_INLINE Boolean
+PointsToFunctions_Equal(PointsToFunction* pointsToFunc1, PointsToFunction* pointsToFunc2) {
     PointsToFunction* scan;
     PointsToEntry* pte;
 
@@ -2525,33 +2501,32 @@ inline Boolean PointsToFunctions_Equal(
     IRO_ASSERT(3969, pointsToFunc2 != NULL);
 
     if (pointsToFunc1 == pointsToFunc2) {
-        return 1;
+        return TRUE;
     }
 
     for (scan = pointsToFunc1; scan && scan->pte; scan = scan->otherPtes) {
         pte = PointsToFunction_FindByLocationSet(pointsToFunc2, scan->pte->loc);
         if (!pte || !PointsToEntries_Equal(pte, scan->pte)) {
-            return 0;
+            return FALSE;
         }
     }
 
     for (scan = pointsToFunc2; scan && scan->pte; scan = scan->otherPtes) {
         pte = PointsToFunction_FindByLocationSet(pointsToFunc1, scan->pte->loc);
         if (!pte || !PointsToEntries_Equal(pte, scan->pte)) {
-            return 0;
+            return FALSE;
         }
     }
 
-    return 1;
+    return TRUE;
 }
 
-inline Boolean PointsToFunctions_Match(
-    PointsToFunction* pointsToFunc1, PointsToFunction* pointsToFunc2
-) {
-    return 1;
+HEADER_INLINE Boolean
+PointsToFunctions_Match(PointsToFunction* pointsToFunc1, PointsToFunction* pointsToFunc2) {
+    return TRUE;
 }
 
-inline PartialTransferFunction* PartialTransferFunction_New(void) {
+HEADER_INLINE PartialTransferFunction* PartialTransferFunction_New(void) {
     PartialTransferFunction* ptf = IRO_malloc(sizeof(PartialTransferFunction));
 
     IRO_ASSERT(4110, ptf != NULL);
@@ -2564,7 +2539,7 @@ inline PartialTransferFunction* PartialTransferFunction_New(void) {
     return ptf;
 }
 
-inline void PartialTransferFunction_Delete(PartialTransferFunction* ptf) {
+HEADER_INLINE void PartialTransferFunction_Delete(PartialTransferFunction* ptf) {
     IRO_ASSERT(4126, ptf != NULL);
     IRO_ASSERT(4127, ptf->initialPointsToFn == NULL);
     IRO_ASSERT(4128, ptf->finalPointsToFn == NULL);
@@ -2576,7 +2551,7 @@ inline void PartialTransferFunction_Delete(PartialTransferFunction* ptf) {
     IRO_free(ptf);
 }
 
-inline void PartialTransferFunction_Init(
+HEADER_INLINE void PartialTransferFunction_Init(
     PartialTransferFunction* ptf, IROLinear* contextNd, PartialTransferFunction* contextPTF
 ) {
     IRO_ASSERT(4142, ptf != NULL);
@@ -2593,13 +2568,13 @@ inline void PartialTransferFunction_Init(
     LocationSetSet_AddUnknown(ptf->funcModifies, NULL, NULL, NULL);
 
     ptf->returnLocation = NULL;
-    ptf->x10 = 0;
+    ptf->analyzed = FALSE;
 
     ptf->context.nd = contextNd;
     ptf->context.ptf = contextPTF;
 }
 
-inline void PartialTransferFunction_Copy(
+HEADER_INLINE void PartialTransferFunction_Copy(
     PartialTransferFunction* dest, PartialTransferFunction* src
 ) {
     IRO_ASSERT(4164, src != NULL);
@@ -2620,11 +2595,11 @@ inline void PartialTransferFunction_Copy(
         dest->returnLocation = NULL;
     }
 
-    dest->x10 = src->x10;
+    dest->analyzed = src->analyzed;
     dest->context = src->context;
 }
 
-inline void PartialTransferFunction_Term(PartialTransferFunction* ptf) {
+HEADER_INLINE void PartialTransferFunction_Term(PartialTransferFunction* ptf) {
     IRO_ASSERT(4190, ptf != NULL);
 
     PointsToFunction_Term(ptf->initialPointsToFn);
@@ -2649,25 +2624,29 @@ inline void PartialTransferFunction_Term(PartialTransferFunction* ptf) {
     ptf->context.ptf = NULL;
 }
 
-inline PointsToFunction* PartialTransferFunction_initialPointsToFn(PartialTransferFunction* ptf) {
+HEADER_INLINE PointsToFunction* PartialTransferFunction_initialPointsToFn(
+    PartialTransferFunction* ptf
+) {
     IRO_ASSERT(4221, ptf != NULL);
 
     return ptf->initialPointsToFn;
 }
 
-inline PointsToFunction* PartialTransferFunction_finalPointsToFn(PartialTransferFunction* ptf) {
+HEADER_INLINE PointsToFunction* PartialTransferFunction_finalPointsToFn(
+    PartialTransferFunction* ptf
+) {
     IRO_ASSERT(4227, ptf != NULL);
 
     return ptf->finalPointsToFn;
 }
 
-inline LocationSetSet* PartialTransferFunction_funcModifies(PartialTransferFunction* ptf) {
+HEADER_INLINE LocationSetSet* PartialTransferFunction_funcModifies(PartialTransferFunction* ptf) {
     IRO_ASSERT(4233, ptf != NULL);
 
     return ptf->funcModifies;
 }
 
-inline LocationSet* PartialTransferFunction_returnLocation(PartialTransferFunction* ptf) {
+HEADER_INLINE LocationSet* PartialTransferFunction_returnLocation(PartialTransferFunction* ptf) {
     IRO_ASSERT(4249, ptf != NULL);
 
     if (!ptf->returnLocation) {
@@ -2684,25 +2663,29 @@ inline LocationSet* PartialTransferFunction_returnLocation(PartialTransferFuncti
     return ptf->returnLocation;
 }
 
-inline IROLinear* PartialTransferFunction_contextNd(PartialTransferFunction* ptf) {
+HEADER_INLINE IROLinear* PartialTransferFunction_contextNd(PartialTransferFunction* ptf) {
     IRO_ASSERT(4265, ptf != NULL);
 
     return ptf->context.nd;
 }
 
-inline PartialTransferFunction* PartialTransferFunction_contextPTF(PartialTransferFunction* ptf) {
+HEADER_INLINE PartialTransferFunction* PartialTransferFunction_contextPTF(
+    PartialTransferFunction* ptf
+) {
     IRO_ASSERT(4271, ptf != NULL);
 
     return ptf->context.ptf;
 }
 
-inline void PartialTransferFunction_SetFlag(PartialTransferFunction* ptf, Boolean value) {
+HEADER_INLINE void PartialTransferFunction_SetAnalyzed(
+    PartialTransferFunction* ptf, Boolean value
+) {
     IRO_ASSERT(4298, ptf != NULL);
 
-    ptf->x10 = (value != 0) ? 1 : 0;
+    ptf->analyzed = (value != 0) ? TRUE : FALSE;
 }
 
-inline PTFList* PTFList_New(void) {
+HEADER_INLINE PTFList* PTFList_New(void) {
     PTFList* ptfList = IRO_malloc(sizeof(PTFList));
 
     IRO_ASSERT(4393, ptfList != NULL);
@@ -2711,7 +2694,7 @@ inline PTFList* PTFList_New(void) {
     return ptfList;
 }
 
-inline void PTFList_Delete(PTFList* ptfList) {
+HEADER_INLINE void PTFList_Delete(PTFList* ptfList) {
     IRO_ASSERT(4405, ptfList != NULL);
     IRO_ASSERT(4406, ptfList->ptf == NULL);
     IRO_ASSERT(4407, ptfList->otherPTFs == NULL);
@@ -2719,14 +2702,14 @@ inline void PTFList_Delete(PTFList* ptfList) {
     IRO_free(ptfList);
 }
 
-inline void PTFList_Init(PTFList* ptfList) {
+HEADER_INLINE void PTFList_Init(PTFList* ptfList) {
     IRO_ASSERT(4417, ptfList != NULL);
 
     ptfList->ptf = NULL;
     ptfList->otherPTFs = NULL;
 }
 
-inline void PTFList_Term(PTFList* ptfList) {
+HEADER_INLINE void PTFList_Term(PTFList* ptfList) {
     IRO_ASSERT(4435, ptfList != NULL);
 
     PTFList_RemoveAll(ptfList);
@@ -2734,7 +2717,7 @@ inline void PTFList_Term(PTFList* ptfList) {
     ptfList->otherPTFs = NULL;
 }
 
-inline void PTFList_ForEach(
+HEADER_INLINE void PTFList_ForEach(
     PTFList* ptfList, void (*action)(PartialTransferFunction*, void*), void* refcon
 ) {
     IRO_ASSERT(4478, ptfList != NULL);
@@ -2747,7 +2730,9 @@ inline void PTFList_ForEach(
     }
 }
 
-inline PartialTransferFunction* PTFList_Find(PTFList* ptfList, PartialTransferFunction* ptf) {
+HEADER_INLINE PartialTransferFunction* PTFList_Find(
+    PTFList* ptfList, PartialTransferFunction* ptf
+) {
     IRO_ASSERT(4490, ptfList != NULL);
     IRO_ASSERT(4491, ptf != NULL);
 
@@ -2762,13 +2747,13 @@ inline PartialTransferFunction* PTFList_Find(PTFList* ptfList, PartialTransferFu
     return NULL;
 }
 
-inline PartialTransferFunction* PTFList_FindFirst(PTFList* ptfList) {
+HEADER_INLINE PartialTransferFunction* PTFList_FindFirst(PTFList* ptfList) {
     IRO_ASSERT(4502, ptfList != NULL);
 
     return ptfList->ptf;
 }
 
-inline void PTFList_SimpleAdd(PTFList* ptfList, PartialTransferFunction* ptf) {
+HEADER_INLINE void PTFList_SimpleAdd(PTFList* ptfList, PartialTransferFunction* ptf) {
     IRO_ASSERT(4511, ptfList != NULL);
     IRO_ASSERT(4512, ptf != NULL);
 
@@ -2783,7 +2768,7 @@ inline void PTFList_SimpleAdd(PTFList* ptfList, PartialTransferFunction* ptf) {
     ptfList->ptf = ptf;
 }
 
-inline void PTFList_Add(PTFList* ptfList, PartialTransferFunction* ptf) {
+HEADER_INLINE void PTFList_Add(PTFList* ptfList, PartialTransferFunction* ptf) {
     IRO_ASSERT(4529, ptfList != NULL);
     IRO_ASSERT(4530, ptf != NULL);
 
@@ -2792,9 +2777,9 @@ inline void PTFList_Add(PTFList* ptfList, PartialTransferFunction* ptf) {
     }
 }
 
-inline void PTFList_Remove(PTFList* ptfList, PartialTransferFunction* ptf) {
+HEADER_INLINE void PTFList_Remove(PTFList* ptfList, PartialTransferFunction* ptf) {
     PTFList* prev;
-    PTFList* tmp;
+    PTFList* second;
 
     IRO_ASSERT(4542, ptfList != NULL);
     IRO_ASSERT(4543, ptf != NULL);
@@ -2806,13 +2791,13 @@ inline void PTFList_Remove(PTFList* ptfList, PartialTransferFunction* ptf) {
                 if (ptfList->otherPTFs == NULL) {
                     ptfList->ptf = NULL;
                 } else {
-                    tmp = ptfList->otherPTFs;
+                    second = ptfList->otherPTFs;
                     ptfList->ptf = ptfList->otherPTFs->ptf;
                     ptfList->otherPTFs = ptfList->otherPTFs->otherPTFs;
-                    tmp->ptf = NULL;
-                    tmp->otherPTFs = NULL;
-                    PTFList_Term(tmp);
-                    PTFList_Delete(tmp);
+                    second->ptf = NULL;
+                    second->otherPTFs = NULL;
+                    PTFList_Term(second);
+                    PTFList_Delete(second);
                 }
             } else {
                 prev->otherPTFs = ptfList->otherPTFs;
@@ -2829,7 +2814,7 @@ inline void PTFList_Remove(PTFList* ptfList, PartialTransferFunction* ptf) {
     }
 }
 
-inline void PTFList_RemoveAll(PTFList* ptfList) {
+HEADER_INLINE void PTFList_RemoveAll(PTFList* ptfList) {
     IRO_ASSERT(4582, ptfList != NULL);
 
     while (ptfList && ptfList->ptf) {

@@ -15,7 +15,7 @@ extern void Param_DescHelp(
 );
 extern int Param_Compare(PARAM_T* param);
 extern int Params_Parse(PARAM_T* param, int flags);
-extern void Param_Error(SInt16 id, ...);
+extern void Param_Error(VarArgShort id, ...);
 
 #ifdef __cplusplus
 }

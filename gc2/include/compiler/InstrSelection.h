@@ -61,7 +61,9 @@ extern void gen_COMPARE(ENode* expr, short outputReg, short outputRegHi, Operand
 extern void gen_LOGICAL(ENode* expr, short outputReg, short outputRegHi, Operand* output);
 extern void gen_NULLCHECK(ENode* expr, short outputReg, short outputRegHi, Operand* output);
 extern void gen_PRECOMP(ENode* expr, short outputReg, short outputRegHi, Operand* output);
-extern void logical_expression(ENode* cond, PCodeLabel* a, PCodeLabel* b, PCodeLabel* c);
+extern void logical_expression(
+    ENode* cond, PCodeLabel* if_true, PCodeLabel* if_false, PCodeLabel* end
+);
 extern void gen_condition(ENode* cond, Operand* output);
 extern void gen_condition_gpr(ENode* cond, Operand* output, short outputReg);
 extern void gen_negated_condition_gpr(ENode* cond, Operand* output, short outputReg);
@@ -78,16 +80,7 @@ extern void I8_gen_SUB(ENode* expr, short outputReg, short outputRegHi, Operand*
 extern void I8_gen_XOR(ENode* expr, short outputReg, short outputRegHi, Operand* output);
 extern void I8_gen_OR(ENode* expr, short outputReg, short outputRegHi, Operand* output);
 extern void I8_gen_AND(ENode* expr, short outputReg, short outputRegHi, Operand* output);
-extern int I8_getbit(long long val);
 extern int I8_log2n(long long val);
-extern void I8_ShiftLeftImmediate(
-    Operand opnd, SInt32 value, int is_unsigned, SInt32 size, short reg, short regHi
-);
-// TODO: invented name (Pro7: unk): `for_division` is set by I8_gen_DIV_MOD, whose signed quotient
-// by a power of 2 then rounds toward zero (the shift sets the carry for its addze)
-extern void I8_ShiftRightImmediate(
-    Operand opnd, SInt32 value, int is_unsigned, short reg, short regHi, int for_division
-);
 extern void I8_gen_MUL(ENode* expr, short outputReg, short outputRegHi, Operand* output);
 extern void I8_gen_BINNOT(ENode* expr, short outputReg, short outputRegHi, Operand* output);
 extern void I8_gen_MONMIN(ENode* expr, short outputReg, short outputRegHi, Operand* output);
@@ -100,7 +93,6 @@ extern void I8_gen_DIV_MOD(ENode* expr, short outputReg, short outputRegHi, Oper
 extern void I8_gen_TYPCON(ENode* expr, short outputReg, short outputRegHi, Operand* output);
 extern void gen_VECTOR128CONST(ENode* expr, short outputReg, short outputRegHi, Operand* output);
 
-// Pro7's code generation helpers: generate a node into an Operand, then force it into a register.
 #define GEN_NODE(node, opnd) cgdispatch[(node)->type]((node), 0, 0, (opnd))
 #define GEN_NODE_TO_REG(node, reg, regHi, opnd) \
     cgdispatch[(node)->type]((node), (reg), (regHi), (opnd))

@@ -7,7 +7,7 @@
 extern "C" {
 #endif
 
-#pragma pack(push, 2) // Pro7: options align=mac68k
+#pragma pack(push, 2)
 struct IROAssign {
     IROLinear* linear;
     UInt16 index;
@@ -18,7 +18,6 @@ struct IROAssign {
     VarRecord* var;
     IROAssign* next;
     IROAssign* prev;
-    // TODO: invented name (Pro7: x20); IRO_ExpressionPropagation counts the variable's uses
     UInt16 useCount;
     IRONode* node;
 };

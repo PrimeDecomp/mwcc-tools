@@ -1,5 +1,7 @@
 #include "driver/StringUtils.h"
+#include "compiler/win32.h"
 #include "driver/Memory.h"
+#include "driver/oslib.h"
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -12,9 +14,6 @@ StringPtr _pstrcpy(StringPtr dst, ConstStringPtr src) {
     return dst;
 }
 
-// (2.6 reads a's length before b's and tests the assignments, where Pro7 has `int d = *(b++), n =
-// *(a++); if (n - d)`; Pro7's spelling, and the assignments as statements of their own, compile
-// otherwise)
 int pstrcmp(ConstStringPtr a, ConstStringPtr b) {
     int n;
     int d;

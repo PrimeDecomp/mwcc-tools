@@ -2,23 +2,20 @@
 #include "compiler/BE_symbol.h"
 #include "compiler/CDecl.h"
 #include "compiler/CError.h"
-#include "compiler/CMachine.h"
-#include "compiler/CodeGen.h"
 #include "compiler/CompilerTools.h"
 #include "compiler/CParser.h"
 #include "compiler/CPrep.h"
-#include "compiler/CScope.h"
 #include "compiler/DWARF.h"
 #include "compiler/ELF_Endian.h"
-#include "compiler/objects.h"
 #include "compiler/ObjGen_PPC_EABI.h"
 #include "compiler/PPCError.h"
 #include "compiler/RegisterInfo.h"
+#include "compiler/tokens.h"
 #include "driver/CodeGenOptPPC.h"
 #include "driver/COSToolsCLT.h"
+#include "driver/oslib.h"
+#include "driver/TextUtils.h"
 #include <string.h>
-
-// 2.6 builds this file -inline auto,deferred: the binary holds its functions in reverse order.
 
 ElfFile ELFfile;
 GList elfmodule;
@@ -26,15 +23,11 @@ Elf32_Ehdr ElfHeader;
 ObjGenRelocation* allrelocations;
 UInt16 SpecificNum;
 
-// write_codewarrior_version_record's two-byte processor field, copied byte by byte
 typedef union U16Bytes {
     UInt16 w;
     UInt8 b[2];
 } U16Bytes;
 
-// (the original's statics; global while a lifted function of this unit still uses them)
-// TODO: invented names (Wii's BE_elf has these statics unnamed). The zeros padding is copied from:
-// padding_buffer until a pad needs more.
 UInt8 elfBigEndian;
 SInt32 symbol_order_count;
 UInt8 padding_buffer[128];
@@ -42,9 +35,6 @@ ObjGenSection** ordered_section_index;
 void* padding_data = padding_buffer;
 SInt32 max_padding_size = 128;
 
-// TODO: 2.6's own COMMONs (Pro7 has neither), tentatively defined here as in the repository's first
-// split; ObjGen's ELF_Setup resets both, so they are probably its. Neither name is in COMMON hash
-// order at its address (previous_ps_ID is Wii's name; interrupt_generation_records is invented)
 SInt32 previous_ps_ID;
 InterruptGenerationRecord* interrupt_generation_records;
 
@@ -62,7 +52,6 @@ void SectionAlign(GList* list, SInt32 alignment) {
     AppendGListData(list, padding_data, size);
 }
 
-// TODO: invented name (a static Wii's BE_elf has unnamed)
 static void assign_symbol_order(void) {
     BE_SymNode* tail;
     BE_SymNode* sym;
@@ -74,7 +63,6 @@ static void assign_symbol_order(void) {
     tail->section = ELFfile.null_section;
     TheSymbolTable.inorder = tail;
     for (sym = First(); sym != NULL; sym = Next()) {
-        // the locals first, then the globals and weaks
         if (ELF32_ST_BIND(sym->elf.st_info) == STB_LOCAL && (sym->elf.st_other & 0x40) == 0) {
             tail->orderNext = sym;
             tail = sym;
@@ -93,9 +81,6 @@ static void assign_symbol_order(void) {
     }
 }
 
-// TODO: invented name (a static Wii's BE_elf has unnamed). 2.6 calls it out of line from
-// Initialize_Specific: a test per field with `continue` is over -inline auto's size limit, where one
-// `&&` condition (for/break, for/return, while) gets inlined
 static SectionSymbolAttributes* find_section_symbol_attributes(
     ObjGenSection* section,
     UInt8 dataMode,
@@ -150,7 +135,7 @@ SectionSymbolAttributes* Initialize_Specific(
     record->auxiliary = auxiliary;
 
     if (SpecificNum == 0x7FFF) {
-        PPCError_Error(PPCErrorStr164, 0x7fff);
+        PPCError_Error(PPCERR_TOO_MANY_SECTION_PRAGMAS, 0x7fff);
     }
 
     record->index = SpecificNum;
@@ -294,7 +279,6 @@ ObjGenSection* InitElfSection(
             list = &ELFfile.abs_section;
             break;
         case SectionKind_MWCATS:
-            // .mwcats' section type (CodeWarrior's own)
             section->shdr.sh_type = 0xca2a82c2;
             section->shdr.sh_entsize = 1;
             break;
@@ -328,10 +312,8 @@ ObjGenSection* GetSectionByName(const char* name, SInt32 context, UInt8 flags) {
         return NULL;
     }
     for (section = ELFfile.section_list; section; section = section->next) {
-        if (section->context ==
-            context &&
-            strcmp(section->name, name) ==
-            0 &&
+        if (section->context == context &&
+            strcmp(section->name, name) == 0 &&
             flags == section->flags) {
             return section;
         }
@@ -381,7 +363,7 @@ ObjGenSection* DoElfContentSection(
                 align,
                 size,
                 rec,
-                permissions & ~0x40000004, // not executable or compressed
+                permissions & ~0x40000004,
                 symbolLink
             );
         }
@@ -424,7 +406,6 @@ ObjGenSection* CloneSection(ObjGenSection* input, SInt32 context, UInt8 flags) {
         memset(symbolLink, 0, sizeof(*symbolLink));
     }
     if (flags) {
-        // compressed, allocated, executable
         permissions = 0x40000006;
     }
     (section = InitElfSection(rec->sectionName, input->kind, 4, 200, rec, permissions, symbolLink))
@@ -467,23 +448,21 @@ void DoParseDeclSpec(char* name, DeclInfo* declinfo) {
     }
 
     for (section = ELFfile.section_list->next; section != NULL; section = section->next) {
-        if (section->kind ==
-            SectionKind_BSS ||
-            section->kind ==
-            SectionKind_Common ||
-            section->kind ==
-            SectionKind_Content ||
-            section->kind ==
-            SectionKind_Ctors ||
+        if (section->kind == SectionKind_BSS ||
+            section->kind == SectionKind_Common ||
+            section->kind == SectionKind_Content ||
+            section->kind == SectionKind_Ctors ||
             section->kind == SectionKind_Dtors) {
             if (strcmp(name, section->name) == 0) {
                 if (section->kind == SectionKind_BSS || section->kind == SectionKind_Common) {
-                    PPCError_Error(PPCErrorStr143, name);
+                    PPCError_Error(PPCERR_SECTION_NAME_IS_BSS, name);
                     return;
                 }
                 targetIndex = pseudo_section_index(declinfo->section);
                 if (targetIndex != 0 && targetIndex != section->header->index) {
-                    PPCError_Error(PPCErrorStr129, declinfo->name->name, section->name);
+                    PPCError_Error(
+                        PPCERR_DEFINED_IN_OTHER_SECTION, declinfo->name->name, section->name
+                    );
                     return;
                 }
                 record->sectionIndex = section->header->index;
@@ -491,17 +470,28 @@ void DoParseDeclSpec(char* name, DeclInfo* declinfo) {
             }
         }
     }
-    PPCError_Error(PPCErrorStr147, name);
+    PPCError_Error(PPCERR_UNKNOWN_SECTION_NAME, name);
 }
 
+#if VERSION < VERSION_GC_2_0
+static char init_elf_filename[256];
+#endif
+
 void InitElfFile(void) {
+#if VERSION >= VERSION_GC_2_0
     char filename[257];
     SInt32 length;
+#endif
     BE_SymNode* sym;
 
     SpecificNum = 1;
     memset(&ELFfile, 0, sizeof(ELFfile));
     InitElfSections();
+#if VERSION < VERSION_GC_2_0
+    COS_FileGetFSSpecInfo(&cparamblkptr->sourcefile, NULL, NULL, (StringPtr)init_elf_filename);
+    p2cstr((StringPtr)init_elf_filename);
+    sym = AddSymbolTableEntry(GetHashNameNode(init_elf_filename));
+#else
     COS_FileGetFSSpecInfo(&cparamblkptr->sourcefile, NULL, NULL, (StringPtr)filename);
     length = filename[0];
     if (length > 255) {
@@ -510,6 +500,7 @@ void InitElfFile(void) {
     filename[length + 1] = 0;
 
     sym = AddSymbolTableEntry(GetHashNameNode(&filename[1]));
+#endif
     sym->elf.st_info = ELF32_ST_INFO(STB_LOCAL, STT_FILE);
     sym->section = ELFfile.abs_section;
     sym->alignment = 1;
@@ -531,7 +522,6 @@ void CleanupElfSections(void) {
     }
 }
 
-// TODO: invented name (a static Wii's BE_elf has unnamed)
 static void build_ordered_section_index(void) {
     int count;
     ObjGenSection* section;
@@ -576,10 +566,8 @@ static void build_ordered_section_index(void) {
         }
     }
     for (section = ELFfile.section_list->next; section != NULL; section = section->next) {
-        if (section->kind >=
-            SectionKind_Rel &&
-            section->kind <
-            SectionKind_Symtab &&
+        if (section->kind >= SectionKind_Rel &&
+            section->kind < SectionKind_Symtab &&
             section->buffer.size != 0) {
             ordered_section_index[count] = section;
             section->index = count;
@@ -636,7 +624,7 @@ void WriteSstrtab(void) {
     offset++;
     sym = InorderFirst()->orderNext;
     for (; sym != NULL; sym = sym->orderNext) {
-        if (ELF32_ST_TYPE(sym->elf.st_info) == STT_SECTION) { // a section symbol has no name
+        if (ELF32_ST_TYPE(sym->elf.st_info) == STT_SECTION) {
             sym->elf.st_name = 0;
         } else {
             sym->elf.st_name = offset;
@@ -660,7 +648,6 @@ void TransferSectionData(GList* dst, GList* src) {
     dst->size += src->size;
 }
 
-// TODO: invented name (a static Wii's BE_elf has unnamed): writes the .comment section's header
 static void write_codewarrior_version_record(void) {
     struct {
         char name[11];
@@ -701,7 +688,11 @@ static void write_codewarrior_version_record(void) {
 #endif
     record.minorVersion = 2;
     record.patchVersion = 4;
+#if VERSION < VERSION_GC_2_0
+    record.reservedVersion = 2;
+#else
     record.reservedVersion = 7;
+#endif
     record.versionFormat = 1;
 
     record.abiOption = copts.pool_data ? 1 : 0;
@@ -744,7 +735,6 @@ static void write_codewarrior_version_record(void) {
     AppendGListData(&ELFfile.comment_section->buffer, &record, sizeof(record));
 }
 
-// TODO: invented name: a static Wii's BE_elf has unnamed (0x568960), inlined in 2.6
 static inline void WriteSectionData(void) {
     SInt32 i;
     ObjGenSection* section;
@@ -760,20 +750,12 @@ static inline void WriteSectionData(void) {
     }
 }
 
-// Wii's ObjGen_PPC_EABI defines it out of line; 2.6 has no copy of it anywhere, so 2.6's was an
-// inline function or a macro (where 2.6 defined it is not known)
 static inline int is_big_endian(void) {
     return !copts.littleendian;
 }
 
-// TODO: 2.6 picks this function's scratch registers the way a -sym off build does: -sym off for the
-// whole unit costs eight other functions, so it is turned off for this function alone (with symbols
-// on it is 86.7%); what in 2.6's source makes that so is not yet found
 #pragma sym off
 
-// Writes the ELF object file: the header, the relocations' symbol indices, the section links, the
-// section-name table, each section's contents at its alignment and the section header table, in the
-// target's byte order.
 void BackEnd_WriteElf(void) {
     ObjGenSection* section;
     Elf32_Rela* rela;
@@ -791,7 +773,7 @@ void BackEnd_WriteElf(void) {
                 (UInt8*)*ELFfile.dwarf_line_section->buffer.data,
                 ELFfile.dwarf_line_section->buffer.size,
                 CError_Internal,
-                1
+                TRUE
             );
             COS_UnlockHandle(ELFfile.dwarf_line_section->buffer.data);
             COS_LockHandle(ELFfile.dwarf_info_section->buffer.data);
@@ -799,7 +781,7 @@ void BackEnd_WriteElf(void) {
                 (UInt8*)*ELFfile.dwarf_info_section->buffer.data,
                 ELFfile.dwarf_info_section->buffer.size,
                 CError_Internal,
-                1
+                TRUE
             );
             COS_UnlockHandle(ELFfile.dwarf_info_section->buffer.data);
         }
@@ -815,13 +797,13 @@ void BackEnd_WriteElf(void) {
     ElfHeader.e_ident[4] = 1;
     ElfHeader.e_ident[5] = is_big_endian() ? 2 : 1;
     ElfHeader.e_ident[6] = 1;
-    ElfHeader.e_type = CTool_EndianConvertWord16(1); // ET_REL
-    ElfHeader.e_machine = CTool_EndianConvertWord16(20); // EM_PPC
+    ElfHeader.e_type = CTool_EndianConvertWord16(1);
+    ElfHeader.e_machine = CTool_EndianConvertWord16(20);
     ElfHeader.e_version = CTool_EndianConvertWord32(1);
     ElfHeader.e_entry = 0;
     ElfHeader.e_phoff = 0;
     ElfHeader.e_shoff = 0;
-    ElfHeader.e_flags = CTool_EndianConvertWord32(0x80000000); // EF_PPC_EMB
+    ElfHeader.e_flags = CTool_EndianConvertWord32(0x80000000);
     ElfHeader.e_ehsize = CTool_EndianConvertWord16(sizeof(Elf32_Ehdr));
     ElfHeader.e_phentsize = 0;
     ElfHeader.e_phnum = 0;
@@ -835,7 +817,7 @@ void BackEnd_WriteElf(void) {
             rela = (Elf32_Rela*)*reloc->section->buffer.data;
             rela += reloc->index;
             if (!reloc->symbol) {
-                reloc->symbol = elf_declare_symbol((ObjGenSection*)reloc->source);
+                reloc->symbol = elf_declare_symbol(reloc->source);
             }
             rela->r_info = (reloc->symbol->order << 8) + (reloc->kind & 255);
             Convert_Elf32_Rela(rela);
@@ -891,18 +873,23 @@ void BackEnd_WriteElf(void) {
 }
 
 #pragma sym reset
+#if VERSION < VERSION_GC_2_0
+ObjGenRelocation* WriteDebugRelocation(
+    ObjGenSection* context, int offset, Object* symbol, void* source, int value, int adjustment
+) {
+#else
 ObjGenRelocation* WriteDebugRelocation(
     ObjGenSection* context, int offset, BE_SymNode* symbol, void* source, int value, int adjustment
 ) {
+#endif
     ObjGenSection* section;
     ObjGenRelocation* reloc;
     int kind;
     reloc = NULL;
 #if VERSION >= VERSION_GC_2_7
-    // 2.7 writes every DWARF relocation unaligned
     kind = 24;
 #else
-    kind = 1;
+    kind = R_PPC_ADDR32;
 #endif
     section = context->relocations;
     if (copts.dwarf_relocations != 0) {
@@ -910,11 +897,18 @@ ObjGenRelocation* WriteDebugRelocation(
         section->relocationCount += 1;
         reloc = galloc(sizeof(ObjGenRelocation));
         reloc->symbol = NULL;
-        reloc->source = 0;
+        reloc->source = NULL;
+#if VERSION < VERSION_GC_2_0
+        if (symbol != NULL) {
+            reloc->symbol = MakeSymbolTableEntry(symbol);
+        } else
+#else
         if (symbol != NULL) {
             reloc->symbol = symbol;
-        } else {
-            reloc->source = (SInt32)source;
+        } else
+#endif
+        {
+            reloc->source = source;
         }
         offset += adjustment;
 #if VERSION < VERSION_GC_2_7
@@ -935,15 +929,21 @@ ObjGenRelocation* WriteDebugRelocation(
     return reloc;
 }
 
+#if VERSION < VERSION_GC_2_0
+void BackPatchRelocationAddend(ObjGenRelocation* reloc, unsigned int value) {
+#else
 void BackPatchRelocationAddend(ObjGenRelocation* reloc, unsigned int value, BE_SymNode* symbol) {
+#endif
     Elf32_Rela* rela = (Elf32_Rela*)*reloc->section->buffer.data;
     rela += reloc->index;
     rela->r_addend = value;
+#if VERSION >= VERSION_GC_2_0
     if (symbol) {
 #if VERSION < VERSION_GC_2_7
         CError_FATAL(1025);
 #endif
         reloc->symbol = symbol;
-        reloc->source = 0;
+        reloc->source = NULL;
     }
+#endif
 }

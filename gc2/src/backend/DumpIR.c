@@ -1,5 +1,4 @@
 #include "compiler/DumpIR.h"
-#include "compiler/CException.h"
 #include "compiler/CFunc.h"
 #include "compiler/CInt64.h"
 #include "compiler/CMachine.h"
@@ -12,14 +11,7 @@
 #include <stdio.h>
 #include <string.h>
 
-// 2.6 is built without the IR dump: DumpIR and CleanupDumpIR are empty, and the dumping functions
-// are dead. They are Pro7's, kept because their literals (and the nodenames table) are in the
-// unit's .data; 2.6's spell "\r\n" where Pro7 has "\r".
-
 static FILE* outfile;
-// TODO: invented: 2.6's object has 20 bytes of .bss (Wii's DumpIR too; 2.6's next object starts
-// 8-aligned at 0x5e0d80) where Pro7's statics (outfile, DumpExpression's bt and i) are 12. Nothing
-// references the other 8, so this stands in for them.
 static char unknown_statics[8];
 
 static void spell(Type* type, char* buf);
@@ -72,7 +64,6 @@ static void WriteCString(FILE* file, char* str) {
 static void StaticSetupDumpIR(void) {}
 
 void SetupDumpIR(void) {
-    // unknown args
     StaticSetupDumpIR();
 }
 
@@ -248,8 +239,6 @@ void DumpExpression(ENode* expr, int indent) {
                     case DFUNC:
                         fprintf(outfile, "[%s{PR}]", CMangler_GetLinkName(expr->data.objref)->name);
                         break;
-                    // TODO: 2.6 spells a third kind "TD" between PR and RW (Pro7: NL for
-                    // DNONLAZYPTR, which 2.6 lacks); the kind is a guess
                     case DVFUNC:
                         fprintf(outfile, "[%s{TD}]", CMangler_GetLinkName(expr->data.objref)->name);
                         break;
@@ -308,17 +297,7 @@ void DumpExpression(ENode* expr, int indent) {
                 indent++;
                 break;
 
-            case EPOSTINC:
-            case EPOSTDEC:
-            case EPREINC:
-            case EPREDEC:
-            case EINDIRECT:
-            case EMONMIN:
-            case EBINNOT:
-            case ELOGNOT:
-            case EFORCELOAD:
-            case ETYPCON:
-            case EBITFIELD:
+ENODE_CASE_MONADIC:
                 DumpType(expr->rtype);
                 fprintf(outfile, "\r\n");
                 expr = expr->data.monadic;
@@ -328,8 +307,8 @@ void DumpExpression(ENode* expr, int indent) {
             case EMFPOINTER:
                 DumpType(expr->rtype);
                 fprintf(outfile, "\r\n");
-                DumpExpression(expr->data.diadic.left, indent + 1);
-                expr = expr->data.diadic.right;
+                DumpExpression(expr->data.mfpointer.accessnode, indent + 1);
+                expr = expr->data.mfpointer.mfpointer;
                 indent++;
                 break;
 
@@ -343,7 +322,7 @@ void DumpExpression(ENode* expr, int indent) {
                 break;
 
             case EPRECOMP:
-                fprintf(outfile, " unique [%ld]", expr->data.longval);
+                fprintf(outfile, " unique [%ld]", expr->data.precompid);
                 DumpType(expr->rtype);
                 fprintf(outfile, "\r\n");
                 return;
@@ -377,7 +356,7 @@ void DumpExpression(ENode* expr, int indent) {
                 return;
 
             case EDEFINE:
-                fprintf(outfile, "[%.8lX]", expr);
+                fprintf(outfile, "[%.8lX]", (unsigned long)expr);
                 DumpType(expr->rtype);
                 fputs("\r\n", outfile);
                 expr = expr->data.monadic;
@@ -385,7 +364,7 @@ void DumpExpression(ENode* expr, int indent) {
                 break;
 
             case EREUSE:
-                fprintf(outfile, "[%.8lX]", expr->data.monadic);
+                fprintf(outfile, "[%.8lX]", (unsigned long)expr->data.monadic);
                 DumpType(expr->rtype);
                 fputs("\r\n", outfile);
                 return;
@@ -469,8 +448,7 @@ static void spell(Type* type, char* buf) {
             break;
         case TYPEFLOAT:
             switch (TYPE_INTEGRAL(type)->integral) {
-                // 2.6: Gekko's paired-single type
-                case 0x13:
+                case IT_VEC2X32FLOAT:
                     strcpy(buf, "__vec2x32float__");
                     break;
                 case IT_FLOAT:
@@ -582,6 +560,8 @@ static void spell(Type* type, char* buf) {
             strcat(buf, ",");
             strcat(buf, mybuf2);
             strcat(buf, ")");
+            break;
+        default:
             break;
     }
 }
@@ -710,6 +690,8 @@ void DumpStack(ExceptionAction* act) {
                 break;
             case EAT_TERMINATE:
                 fprintf(outfile, "EAT_TERMINATE%s", "\r\n");
+                break;
+            default:
                 break;
         }
         act = act->prev;

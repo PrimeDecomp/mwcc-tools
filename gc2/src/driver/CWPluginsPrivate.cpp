@@ -1,18 +1,13 @@
-// Pro7's PluginLib/Src/Library/CWPluginsPrivate.cpp: the plugin side of the base callbacks, each
-// checking the context and calling the shell through its CW_BasePluginCallbacks. 2.6 keeps the
-// ones its plugins call; the others are Pro7's dead code the linker dropped (they have no data).
 #include "driver/CWPluginsPrivate.h"
 #include "driver/CLDropinCallbacks_V10.h"
+#include "driver/CWPlugins.h"
+#include "driver/Files.h"
 
 extern "C" {
-
-// (static, as in Pro7; inside extern "C" they keep their C names)
 static Boolean ValidateContext(CWPluginContext context) {
     return (context && context->shellSignature == 'CWIE') &&
-        !(context->request ==
-          reqInitialize ||
-          context->request ==
-          reqTerminate ||
+        !(context->request == reqInitialize ||
+          context->request == reqTerminate ||
           context->request == reqIdle);
 }
 
@@ -182,7 +177,6 @@ CW_CALLBACK CWReleaseFileText(CWPluginContext context, const char* text) {
         return cwErrInvalidParameter;
     }
 
-    // (2.6: an early return where Pro7 has if/else)
     if (!text) {
         return cwNoErr;
     }

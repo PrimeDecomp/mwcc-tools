@@ -3,13 +3,13 @@
 
 #include "compiler/common.h"
 #include "driver/cmdline.h"
-#include "driver/CWPluginsPrivate.h"
+#include "driver/CWPlugins.h"
+#include "driver/Files.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-// (Pro7's plugin_internal.h: the shell's context for a plugin)
 #pragma pack(push, 2)
 typedef struct shellContextType {
     struct Plugin* plugin;
@@ -18,7 +18,6 @@ typedef struct shellContextType {
 } shellContextType;
 #pragma pack(pop)
 
-// (Pro7's plugin.h, 2-byte aligned like the SDK's structs)
 #pragma pack(push, 2)
 struct IDEAccessPathList {
     SInt32 userPathCount;
@@ -36,7 +35,6 @@ struct IDEAccessPath {
 };
 #pragma pack(pop)
 
-// The base table's callbacks other units call (Pro7's plugin.h declares them all)
 extern CW_CALLBACK UCBFindAndLoadFile(
     CWPluginContext context, const char* infilename, CWFileInfo* fileinfo
 );

@@ -1,18 +1,4 @@
 #!/usr/bin/env python3
-"""python tools/relink.py [VERSION...]: which Matching sources' compiled objects link into the original (default: every
-version with a layout).
-
-Each Matching source's object is put in the place of its unit's split object, one at a time on top of those that
-already passed, and the link checked against the original's SHA-1. config/VERSION/state.json's "relink_exclude"
-becomes {source: why} for those that do not, which the relink build (ninja build/VERSION/relink/ok) then takes as split
-objects; the reason is what differs between the compiled object and the unit.
-
-python tools/relink.py VERSION --only SOURCE...: try just those sources (Matching or not, on top of the sources that
-link now) and say for each what differs, and where the link's bytes first differ from the original's; nothing is
-written. The quick check while fixing one unit's data or .bss.
-
-The objects it links are brought up to date first (ninja: the comparison, the split objects, the import libraries).
-"""
 
 import argparse
 import bisect
@@ -48,7 +34,6 @@ class Relink:
         self.pe = original(self.version)
 
     def link(self, compiled):
-        """None if the units with their compiled objects in COMPILED link into the original, else why not."""
         result = link.mwld(link.inputs(self.version, self.units, compiled), self.output)
         if result.returncode:
             return "the link fails: " + "; ".join(link.errors(result)[:2])
@@ -56,8 +41,6 @@ class Relink:
         return None if project.digest(linked) == self.cfg.sha1 else "links, but not to the original"
 
     def first_differences(self, count=6):
-        """Where the last link's bytes differ from the original's: (address and the symbol at or before it) for the
-        first COUNT differing runs, and the number of differing bytes."""
         linked = self.output.read_bytes()
         data = self.pe.data
         named = sorted((s.address, s.name) for s in self.symbols)
@@ -81,7 +64,6 @@ class Relink:
         return found, total
 
     def differences(self, unit):
-        """What makes UNIT's compiled object other than its split one."""
         obj = Object.read(build.object_path(self.version, unit))
         ranges = self.ranges.get(unit, {})
         out = []
@@ -100,7 +82,6 @@ class Relink:
                 )
                 defined += [s.name for s in functions]
                 local |= {s.name for s in functions if s.storage == 3}
-        # (a static the original lacks was inlined everywhere, and a global it lacks is dead: the linker drops both)
         everywhere = {s.name for s in self.symbols if s.section == ".text"}
         extra = [n for n in defined if n not in original and n not in local and n in everywhere]
         missing = [n for n in original if n not in defined]
@@ -109,13 +90,11 @@ class Relink:
         if missing:
             out.append(f"lacks {len(missing)} of the unit's functions ({', '.join(missing[:3])})")
         kept = [n for n in defined if n in original or (n not in local and n in everywhere)]
-        # (a unit built -inline deferred emits its functions in reverse; the linker lays them out as the original's)
         if not extra and not missing and original not in (kept, kept[::-1]):
             out.append("defines its functions in another order than the original")
         dropped = {n for n in defined if n not in original}
 
         def dead(section):
-            """A jump table of a function the linker drops (dead, or a static inlined everywhere) goes with it."""
             targets = [obj.by_index.get(r.symbol) for r in section.relocations]
             return bool(targets) and all(t and t.function and t.name in dropped for t in targets)
 
@@ -125,7 +104,6 @@ class Relink:
                 if section.name.split("$")[0] == name and not dead(section):
                     size = -(-size // section.alignment) * section.alignment + section.size
             expected = sum(end - start for start, end in ranges.get(name, []))
-            # (a range runs to the next unit's aligned start: up to 7 bytes more than the object's are padding)
             if size != expected and not 0 < size <= expected < size + 8:
                 out.append(f"{name} is {size} bytes, the unit's {expected}")
         addresses = {s.name: s.address for s in self.symbols}
@@ -141,10 +119,8 @@ class Relink:
         return f"{failure}{': ' + detail if detail else ''}"
 
     def solve(self):
-        """(the Matching sources whose objects link, {the others: why})."""
         candidates = [u for u in self.units if u in self.sources and u in self.cfg.matching]
         linked, excluded = set(), {}
-        # (again until none is added: a source can link only once another has, as one defining a COMMON before it)
         remaining = candidates
         while remaining:
             failed = []
@@ -163,7 +139,6 @@ class Relink:
 
 
 def bring_up_to_date(versions):
-    """Build what the links take: the comparison (the compiled objects), the split objects, the import libraries."""
     targets = []
     for v in versions:
         targets += [f"build/{v}/compare.json", f"build/{v}/obj/ok", *link.import_libraries(v)]
@@ -181,13 +156,14 @@ def solve(version):
 
 def main():
     parser = argparse.ArgumentParser(
-        description=__doc__.split("\n\n")[0], formatter_class=argparse.RawDescriptionHelpFormatter
+        description="Which Matching sources' compiled objects link into the original (default: every version with a layout).",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("versions", nargs="*", metavar="VERSION")
     parser.add_argument("--only", nargs="+", metavar="SOURCE", help="try these sources; write nothing")
     args = parser.parse_args()
     try:
-        versions = [project.version(v) for v in args.versions] or [
+        versions = [project.version(v, original=True) for v in args.versions] or [
             v for v in project.VERSIONS if (v.config / "splits.txt").exists()
         ]
         if args.only:
@@ -214,7 +190,6 @@ def main():
             results = dict(zip(versions, pool.map(solve, versions)))
         with project.Transaction() as tx:
             for v, (linked, excluded, count) in results.items():
-                # (Matching may have changed while the links ran: keep the exclusions of what is still Matching)
                 path = v.config / "state.json"
                 now = config.state(v, tx.read(path))
                 tx.write(

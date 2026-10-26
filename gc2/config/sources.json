@@ -906,6 +906,8 @@
       "-sym",
       "off",
       "-Cpp_exceptions",
+      "off",
+      "-bool",
       "off"
     ],
     "include_dirs": [
@@ -3923,6 +3925,8 @@
       "-sym",
       "off",
       "-Cpp_exceptions",
+      "off",
+      "-bool",
       "off"
     ],
     "include_dirs": [

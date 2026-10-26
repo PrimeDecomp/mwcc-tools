@@ -7,10 +7,6 @@
 extern "C" {
 #endif
 
-// What an Operand holds (Operand.optype), as Operands.c and InstrSelection.c treat each: a general,
-// floating-point or vector register, an address register plus a displacement or an index register,
-// a register pair, an immediate, a condition-register field, a symbol, memory at one of those
-// (Pro7's OperandType: a byte, as MWCC sizes an enum to its values).
 enum OperandType {
     OpndType_GPR = 0,
     OpndType_GPR_ImmOffset = 1,
@@ -26,7 +22,6 @@ enum OperandType {
     OpndType_IndirectSymbol = 11,
 };
 
-// Operand.flags
 enum {
     OpndFlags_Const = 0x40,
     OpndFlags_Volatile = 0x80
@@ -62,7 +57,7 @@ extern void vectorstore(short reg, Operand* op, Type* type);
 extern void store(short reg, Operand* op, Type* type);
 extern void store_pair(short reg, short regHi, Operand* op, Type* type);
 extern void store_fp(short reg, Operand* op, Type* type);
-extern void store_v(short reg, Operand* op, Type* tstruct);
+extern void store_v(short reg, Operand* op, Type* type);
 extern void extend32(Operand* op, Type* type, short output_reg);
 extern void extend64(Operand* op, Type* type, short output_reg, short output_regHi);
 extern void load_floating_constant(short reg, Type* type, Float* data);

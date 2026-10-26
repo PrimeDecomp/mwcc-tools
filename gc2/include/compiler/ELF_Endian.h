@@ -7,9 +7,6 @@
 extern "C" {
 #endif
 
-// The ELF structures, with the ELF specification's names (the functions converting them are named
-// after them).
-// The ELF specification's constants, those the compiler uses
 #define SHN_UNDEF 0
 
 #define SHT_NULL 0
@@ -20,7 +17,6 @@ extern "C" {
 #define SHT_NOBITS 8
 #define SHT_REL 9
 
-#define SHF_WRITE 1
 #define SHF_ALLOC 2
 #define SHF_EXECINSTR 4
 
@@ -68,8 +64,6 @@ typedef struct Elf32_Shdr {
     UInt32 sh_entsize;
 } Elf32_Shdr;
 
-// st_value and st_size are signed in 2.6 (ObjGen_DeclareExceptionTables' chained
-// `st_value = base = buffer.size` compiles otherwise with the specification's unsigned types)
 typedef struct Elf32_Sym {
     UInt32 st_name;
     SInt32 st_value;
@@ -86,10 +80,10 @@ typedef struct Elf32_Rela {
 } Elf32_Rela;
 
 extern void Convert_DWARF_Info(
-    UInt8* data, UInt32 size, void (*errorHandler)(char*, int), char swapBeforeRead
+    UInt8* data, UInt32 size, void (*errorHandler)(char*, int), char readBeforeSwap
 );
 extern void Convert_DWARF_line_info(
-    UInt8* data, int size, void (*errorHandler)(char*, int), char swapBeforeRead
+    UInt8* data, int size, void (*errorHandler)(char*, int), char readBeforeSwap
 );
 extern void Convert_Elf32_Rela(Elf32_Rela* rela);
 extern void Convert_Elf32_Sym(Elf32_Sym* sym);

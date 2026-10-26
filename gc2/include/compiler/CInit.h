@@ -12,12 +12,10 @@ typedef void (*InsertExprCB)(ENode* expr);
 typedef ENode* (*RegisterObjectCB)(Type* type, Object* obj, SInt32 offset, Boolean flag);
 typedef ENode* (*TempNodeCB)(Type* type, Boolean flag);
 
-// a relocation of initialized data: the word at `offset` holds the address of `obj` plus `addend`
 struct OLinkList {
     struct OLinkList* next;
     struct Object* obj;
     SInt32 offset;
-    // TODO: invented name (Pro7: somevalue)
     SInt32 addend;
 };
 
@@ -36,7 +34,9 @@ typedef struct PooledString {
 extern TempNodeCB cinit_tempnodefunc;
 
 extern void CInit_Init(void);
-extern Boolean CInit_RelocInitCheck(ENode* expr, Object** objptr, CInt64* valptr, Boolean flag);
+extern Boolean CInit_RelocInitCheck(
+    ENode* expr, Object** objptr, CInt64* valptr, Boolean allowLocal
+);
 extern void CInit_ExportConst(Object* obj);
 extern Statement* CInit_ConstructClassArray(
     Statement* stmt, TypeClass* tclass, Object* ctor, Object* dtor, ENode* firstarg, SInt32 count
@@ -49,8 +49,7 @@ extern void CInit_InitializeStaticData(Object* obj, InitExprRegisterCB cb);
 extern void CInit_InitializeData(Object* obj);
 extern Object* CInit_DeclareString(char* data, SInt32 size, Boolean ispascal, Boolean iswide);
 extern PooledString* CInit_DeclarePooledString(char* data, SInt32 size, Boolean ispascal);
-extern PooledString* CInit_DeclarePooledWString(char* data, SInt32 size);
-extern void CInit_RewriteString(ENode* expr, Boolean flag);
+extern void CInit_RewriteString(ENode* expr, Boolean unused);
 extern void CInit_DeclarePooledStrings(void);
 extern void CInit_DeclareData(Object* obj, void* data, OLinkList* list, SInt32 size);
 extern void CInit_DeclareReadOnlyData(Object* obj, void* data, OLinkList* list, SInt32 size);

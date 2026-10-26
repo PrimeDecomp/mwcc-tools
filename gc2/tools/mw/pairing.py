@@ -1,24 +1,3 @@
-"""Pairing two builds' functions by their code, without names: the original's with a later compiler's (the Wii
-compilers, front end 4.2+, are later builds of the same sources by a later MWCC), whose CodeView names them.
-
-A function's code differs between the two in registers and scheduling but keeps its instructions' kinds, the strings
-it references, the imports it calls and its place in the call graph. Each side is a list of Functions (in address
-order; the other build's with the module, its object, each came from). The pairing:
-
-  anchors     a string, an import set or a constant set that one function of each binary alone references, when
-              their code agrees (similarity >= 0.4)
-  propagate   from each pair, its callees, its callers and its neighbours (the next functions in address order on our
-              side, in its module on theirs): the mutually best pairs among the unpaired ones, similarity >= 0.5
-  order       within a module, between pairs whose order agrees (and past its first and last), the unpaired functions
-              aligned in order, similarity >= 0.3: twins (identical code) are paired only this way
-  global      the rest: each unpaired function's most similar unpaired function of theirs (candidates by shared
-              instruction 4-grams), when mutually best, >= 0.7 and 0.1 ahead of the next; then propagate again
-
-Similarity is difflib's ratio of the two instruction sequences, each instruction its mnemonic and its operands' kinds
-(register, stack slot, memory, immediate, string, data, call target), blended with the overlap of the strings,
-imports and constants the two reference. The result is deterministic.
-"""
-
 from __future__ import annotations
 
 import bisect
@@ -43,7 +22,6 @@ class Function:
     address: int
     size: int
     module: str | None = None
-    # (the features, filled by features())
     sequence: list = field(default_factory=list)
     strings: list = field(default_factory=list)
     calls: list = field(default_factory=list)
@@ -56,7 +34,6 @@ class Function:
 
 class _Binary:
     def __init__(self, path, asserts=()):
-        # (ASSERTS: the assert functions' addresses, whose calls and the code reaching them only one side may have)
         self.asserts = set(asserts)
         self.pe = PEFile(path)
         self.iat = {
@@ -98,7 +75,6 @@ class _Binary:
         if code[:2] == b"\xff\x25":
             thunk = self.iat.get(struct.unpack_from("<I", code, 2)[0])
         instructions = list(self.md.disasm(code, address))
-        # (an assert: [cmp/test; jcc;] up to three pushes, the call, the stack fix-up)
         dropped = set()
         for k, ins in enumerate(instructions):
             if (
@@ -176,9 +152,8 @@ def _features(job):
 
 
 def features(path, functions: list[Function], asserts=()) -> None:
-    """Fill FUNCTIONS' features from the executable at PATH (in parallel)."""
     jobs = [(str(path), f.address, f.size, tuple(sorted(asserts))) for f in functions]
-    with ProcessPoolExecutor(int(os.environ.get("JOBS", 0)) or os.cpu_count() or 1) as pool:
+    with ProcessPoolExecutor(int(os.environ.get("JOBS") or 0) or os.cpu_count() or 1) as pool:
         for f, found in zip(functions, pool.map(_features, jobs, chunksize=64)):
             for key, value in found.items():
                 setattr(f, key, value)
@@ -202,7 +177,6 @@ class Matcher:
             for i, f in enumerate(side):
                 for c in f.callees:
                     side[c].callers.append(i)
-            # (a call to an import thunk is a call to the import)
             for f in side:
                 f.imports = f.imports + [side[index[c]].thunk for c in f.calls if c in index and side[index[c]].thunk]
 
@@ -264,7 +238,6 @@ class Matcher:
                         self.pair(i, j, f"{name}-{key}", score)
 
     def mutual(self, left, right, floor, how):
-        """Pair the mutually best (similarity >= FLOOR) among unpaired LEFT (ours) and RIGHT (theirs)."""
         left = [i for i in dict.fromkeys(left) if i not in self.g2w]
         right = [j for j in dict.fromkeys(right) if j not in self.w2g]
         if not left or not right or len(left) * len(right) > 400:
@@ -275,7 +248,6 @@ class Matcher:
                 break
             if i in self.g2w or j in self.w2g:
                 continue
-            # (mutually best among the still unpaired, and not tied: twins are left to fill_gaps' order)
             row_i = sorted(((self.similarity(i, k), k) for k in right if k not in self.w2g), reverse=True)
             row_j = sorted(((self.similarity(k, j), k) for k in left if k not in self.g2w), reverse=True)
             tied = (
@@ -313,8 +285,6 @@ class Matcher:
                     changed |= bool(self.mutual(near_g, near_w, 0.5, "neighbour"))
 
     def align(self, left, right, floor, how):
-        """Pair LEFT (ours, in order) with RIGHT (theirs, in the matching order) monotonically, maximizing the sum of
-        the similarities >= FLOOR."""
         n, m = len(left), len(right)
         if not n or not m or n * m > 2500:
             return 0
@@ -337,8 +307,6 @@ class Matcher:
         return made
 
     def fill_gaps(self, floor=0.3, reach=40, edge=12):
-        """Within each module, between consecutive pairs whose order agrees (a deferred unit's runs backwards on one
-        side), align the unpaired functions in order; likewise past the module's first and last pairs."""
         module_order = self._modules()
         place = {j: k for js in module_order.values() for k, j in enumerate(js)}
         made = 0
@@ -430,7 +398,6 @@ class Matcher:
 
 
 def _longest_chain(pairs, sign):
-    """The longest subsequence of PAIRS [(i, k)] (sorted by i) whose k rise (SIGN 1) or fall (-1)."""
     back, tails, tail_index = {}, [], []
     for n, (_, k) in enumerate(pairs):
         key = sign * k

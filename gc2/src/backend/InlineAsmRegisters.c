@@ -1,4 +1,3 @@
-// InlineAsmRegisters.c: Pro7's file, deferred (2.6 has its three functions in reverse).
 #include "compiler/InlineAsmRegisters.h"
 #include "compiler/CompilerTools.h"
 #include <string.h>

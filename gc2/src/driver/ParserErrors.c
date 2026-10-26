@@ -47,7 +47,7 @@ char* CLPGetErrorString(SInt16 errid, char* buffer) {
     return buffer;
 }
 
-void CLPReportError(SInt16 errid, ...) {
+void CLPReportError(VarArgShort errid, ...) {
     char format[256];
     va_list va;
 
@@ -57,7 +57,7 @@ void CLPReportError(SInt16 errid, ...) {
     va_end(va);
 }
 
-void CLPReportWarning(SInt16 errid, ...) {
+void CLPReportWarning(VarArgShort errid, ...) {
     char format[256];
     va_list va;
 
@@ -67,7 +67,7 @@ void CLPReportWarning(SInt16 errid, ...) {
     va_end(va);
 }
 
-void CLPReport(SInt16 errid, ...) {
+void CLPReport(VarArgShort errid, ...) {
     char format[256];
     va_list va;
 
@@ -77,8 +77,7 @@ void CLPReport(SInt16 errid, ...) {
     va_end(va);
 }
 
-// (Pro7's; no caller in 2.6, which the linker dropped)
-void CLPAlert(SInt16 errid, ...) {
+void CLPAlert(VarArgShort errid, ...) {
     char format[256];
     va_list va;
 
@@ -88,18 +87,17 @@ void CLPAlert(SInt16 errid, ...) {
     va_end(va);
 }
 
-void CLPOSAlert(SInt16 errid, SInt16 err, ...) {
+void CLPOSAlert(SInt16 errid, VarArgShort err, ...) {
     char format[256];
     va_list va;
 
     CLPGetErrorString(errid, format);
     va_start(va, err);
-    CLPOSAlert_V(format, err, va);
+    CLPOSAlert_V(format, (SInt16)err, va);
     va_end(va);
 }
 
-// (Pro7's; no caller in 2.6, which the linker dropped)
-void CLPProgress(SInt16 errid, ...) {
+void CLPProgress(VarArgShort errid, ...) {
     char format[256];
     va_list va;
 
@@ -109,7 +107,7 @@ void CLPProgress(SInt16 errid, ...) {
     va_end(va);
 }
 
-void CLPStatus(SInt16 errid, ...) {
+void CLPStatus(VarArgShort errid, ...) {
     char format[256];
     va_list va;
 

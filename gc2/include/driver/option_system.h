@@ -8,9 +8,6 @@
 extern "C" {
 #endif
 
-// The option system's types (Pro7's option_system.h): the parameter kinds, the options and their
-// lists, packed to 1 byte (Pro7's `#pragma options align=packed`; 2.6's tables have the 10-byte
-// PARAM_T header and unaligned fields).
 #pragma pack(push, 1)
 enum {
     OptParseError = 0,
@@ -74,7 +71,7 @@ typedef struct SETTING_T {
     char flags;
     char* myname;
     PARAM_T* next;
-    int (*parse)(const char* a, const char* b); // (Pro7: "TODO name these args")
+    int (*parse)(const char* name, const char* value);
     char* valuename;
 } SETTING_T;
 typedef struct TOGGLE_T {
@@ -153,9 +150,8 @@ typedef struct Option {
     char* help;
 } Option;
 
-// TODO: the numbered names are Pro7's placeholders for flags whose meaning is not known
 enum {
-    HELPFLAGS_1 = 1,
+    HELPFLAGS_ONE_OPTION = 1,
     HELPFLAGS_IGNORED = 2,
     HELPFLAGS_OBSOLETE = 4,
     HELPFLAGS_DEPRECATED = 8,
@@ -168,10 +164,8 @@ enum {
     HELPFLAGS_TOOL_THIS = 0x400,
     HELPFLAGS_TOOL_OTHER = 0x800,
     HELPFLAGS_TOOL_BOTH = 0xC00,
-    HELPFLAGS_1000 = 0x1000,
-    HELPFLAGS_2000 = 0x2000,
     HELPFLAGS_USAGE = 0x4000,
-    HELPFLAGS_8000 = 0x8000
+    HELPFLAGS_SEARCH_HELP = 0x8000
 };
 enum {
     OTF_GLOBAL = 1,
@@ -184,8 +178,6 @@ enum {
     OTF_TOOL_DISASSEMBLER = 0x80,
     OTF_TOOL_COMPILER = 0x100,
     OTF_TOOL_MASK = OTF_TOOL_LINKER | OTF_TOOL_DISASSEMBLER | OTF_TOOL_COMPILER,
-    OTF200 = 0x200,
-    OTF400 = 0x400,
     OTF_IGNORED = 0x800,
     OTF_SECRET = 0x1000,
     OTF_HIDE_DEFAULT = 0x2000,
@@ -195,22 +187,13 @@ enum {
     OTF_ONLY_ONCE = 0x20000,
     OTF_HAS_CONFLICTS = 0x40000,
     OTF_WARNING = 0x80000,
-    OTF_SLFLAGS_8 = 0x100000,
-    OTF_SLFLAGS_10 = 0x200000,
-    OTF_SLFLAGS_20 = 0x400000,
-    OTF_SLFLAGS_MASK = OTF_SLFLAGS_8 | OTF_SLFLAGS_10 | OTF_SLFLAGS_20,
+    OTF_NO_PREFIX = 0x100000,
+    OTF_MINUS_PREFIX = 0x200000,
+    OTF_NO_DASH_PREFIX = 0x400000,
+    OTF_PREFIX_MASK = OTF_NO_PREFIX | OTF_MINUS_PREFIX | OTF_NO_DASH_PREFIX,
     OTF_MEANINGLESS = 0x800000,
-    OTF_ALL_HIDDEN_BY_DEFAULT = OTF_OBSOLETE |
-        OTF_DEPRECATED |
-        OTF_IGNORED |
-        OTF_SECRET |
+    OTF_ALL_HIDDEN_BY_DEFAULT = OTF_OBSOLETE | OTF_DEPRECATED | OTF_IGNORED | OTF_SECRET |
         OTF_MEANINGLESS,
-    OTF1000000 = 0x1000000,
-    OTF2000000 = 0x2000000,
-    OTF4000000 = 0x4000000,
-    OTF8000000 = 0x8000000,
-    OTF10000000 = 0x10000000,
-    OTF20000000 = 0x20000000,
     OTF_INTERNAL_SEEN_CONFLICTED = 0x40000000,
     OTF_INTERNAL_ALREADY_SEEN = 0x80000000
 };
@@ -234,68 +217,58 @@ enum {
     PARAMWHICH_MAX = 0x10
 };
 enum {
-    PARAMFLAGS_1 = 1,
-    PARAMFLAGS_2 = 2,
-    PARAMFLAGS_3 = 3,
-    PARAMFLAGS_4 = 4,
-    PARAMFLAGS_8 = 8,
-    PARAMFLAGS_10 = 0x10,
-    PARAMFLAGS_12 = 0x12
+    PARAMFLAGS_NO_ARG = 1,
+    PARAMFLAGS_OPTIONAL_ARG = 2,
+    PARAMFLAGS_ARG_MASK = 3,
+    PARAMFLAGS_SUBARGS = 4,
+    PARAMFLAGS_EQUALS_AFTER = 8,
+    PARAMFLAGS_NOT_FILE = 0x10,
+    PARAMFLAGS_OPTIONAL_NOT_FILE = 0x12
 };
 enum {
-    PARAMPARSEFLAGS_0 = 0,
-    PARAMPARSEFLAGS_1 = 1,
-    PARAMPARSEFLAGS_2 = 2,
-    PARAMPARSEFLAGS_4 = 4,
-    PARAMPARSEFLAGS_8 = 8,
-    PARAMPARSEFLAGS_10 = 0x10,
-    PARAMPARSEFLAGS_20 = 0x20,
-    PARAMPARSEFLAGS_40 = 0x40,
-    PARAMPARSEFLAGS_80 = 0x80,
-    PARAMPARSEFLAGS_100 = 0x100
+    PARAMPARSEFLAGS_NO_EXECUTE = 1,
+    PARAMPARSEFLAGS_TO_LINKER = 2,
+    PARAMPARSEFLAGS_SUBOPTION = 4,
+    PARAMPARSEFLAGS_NEGATED = 8,
+    PARAMPARSEFLAGS_FIRST = 0x10,
+    PARAMPARSEFLAGS_HAS_SUBARGS = 0x20,
+    PARAMPARSEFLAGS_EQUALS_OK = 0x40
 };
 enum {
-    SLFLAGS_1 = 1,
-    SLFLAGS_2 = 2,
-    SLFLAGS_4 = 4, // displays =...
-    SLFLAGS_8 = 8, // displays [no]: e.g. [no]err[or] | [no]iserr[or], [no]implicit[conv]
-    SLFLAGS_10 = 0x10, // displays [-]
-    SLFLAGS_20 = 0x20, // displays [no-]
-    SLFLAGS_40 = 0x40
+    SLFLAGS_OPTCHAR = 1,
+    SLFLAGS_SUBOPTION = 2,
+    SLFLAGS_NO_PREFIX = 8,
+    SLFLAGS_MINUS_PREFIX = 0x10,
+    SLFLAGS_NO_DASH_PREFIX = 0x20,
+    SLFLAGS_STICKY = 0x40
 };
 enum {
     LISTFLAGS_NONE = 0,
     LISTFLAGS_EXCLUSIVE = 1,
     LISTFLAGS_ALLOW_UNKNOWNS = 2,
-    LISTFLAGS_4 = 4,
+    LISTFLAGS_UNNAMED = 4,
     LISTFLAGS_COMPILER = 0x100,
     LISTFLAGS_LINKER = 0x200,
     LISTFLAGS_DISASSEMBLER = 0x400,
     LISTFLAGS_TOOL_MASK = LISTFLAGS_COMPILER | LISTFLAGS_LINKER | LISTFLAGS_DISASSEMBLER
 };
 enum {
-    OFLAGS_1 = 1,
-    OFLAGS_2 = 2,
-    OFLAGS_4 = 4,
-    OFLAGS_8 = 8,
-    OFLAGS_10 = 0x10,
-    OFLAGS_20 = 0x20,
-    OFLAGS_40 = 0x40,
-    OFLAGS_80 = 0x80
+    OFLAGS_GLOBAL = 1,
+    OFLAGS_SUBOPTION = 2,
+    OFLAGS_OPTIONAL = 4,
+    OFLAGS_NEGATED = 8,
+    OFLAGS_NESTED = 0x10,
+    OFLAGS_NO_EXECUTE = 0x40
 };
 enum {
-    PFLAGS_1 = 1,
-    PFLAGS_2 = 2,
-    PFLAGS_4 = 4,
-    PFLAGS_8 = 8,
-    PFLAGS_10 = 0x10,
-    PFLAGS_20 = 0x20,
-    PFLAGS_40 = 0x40,
-    PFLAGS_80 = 0x80
+    PFLAGS_NO_EXECUTE = 1,
+    PFLAGS_TO_LINKER = 2,
+    PFLAGS_SUBOPTION = 4,
+    PFLAGS_NEGATED = 8,
+    PFLAGS_HAS_SUBARGS = 0x20
 };
 #pragma pack(pop)
 
-/* Arguments.c */
 typedef struct ArgToken {
     SInt16 val;
     char* text;
@@ -308,27 +281,6 @@ enum {
     ATK_EQUALS,
     ATK_COMMA
 };
-
-/* Option.c */
-// An entry of the option stack (Args_Push): an option list, an option and its spelling, or a
-// parameter. TODO: Opt48/Opt50/Opt52 are Pro7's placeholder names.
-typedef struct Opt50 {
-    void* first;
-    void* second;
-} Opt50;
-typedef struct Opt52 {
-    Option* opt;
-    char* curopt;
-} Opt52;
-typedef struct Opt48 {
-    union {
-        Opt50 v;
-        OptionList* lst;
-        Opt52 o;
-        char* param;
-    } e;
-    SInt16 flags;
-} Opt48;
 
 #ifdef __cplusplus
 }

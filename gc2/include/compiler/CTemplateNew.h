@@ -2,7 +2,6 @@
 #define COMPILER_CTEMPLATENEW_H
 
 #include "compiler/common.h"
-#include "compiler/templates.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -23,10 +22,14 @@ extern void CTempl_ParseInstanceScopeFunction(
     Object* funcobj, TemplClassInst* inst, TypeClass* tclass
 );
 extern Boolean CTempl_GenFuncInstance(
-    TemplateFunction* templ, TemplFuncInstance* inst, Boolean flag
+    TemplateFunction* templ, TemplFuncInstance* inst, Boolean isExplicit
 );
 extern void CTempl_InstantiateMember(
-    TemplClass* templ, TemplClassInst* inst, TemplateMember* tmemb, Object* object, Boolean flag
+    TemplClass* templ,
+    TemplClassInst* inst,
+    TemplateMember* tmemb,
+    Object* object,
+    Boolean isExplicit
 );
 extern Boolean CTempl_Instantiate(void);
 extern Boolean CTempl_InlineFunctionCheck(Object* funcobj);

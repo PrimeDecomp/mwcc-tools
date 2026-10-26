@@ -1,7 +1,6 @@
 #ifndef DRIVER_CC_EABI_PPC_MW_H
 #define DRIVER_CC_EABI_PPC_MW_H
 
-#include "compiler/common.h"
 #include "driver/oslib.h"
 
 #ifdef __cplusplus

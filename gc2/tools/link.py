@@ -1,9 +1,6 @@
 #!/usr/bin/env python3
-"""python tools/link.py VERSION OUTPUT INPUT...: link the objects, libraries and resources into the executable with the
-CodeWarrior Windows/x86 linker the original was linked with (the Pro 5.3 updater's mwld), give it the original's time
-stamp (the linker writes the time it runs) and check it against the original's SHA-1, writing OUTPUT's directory's ok
-when it is the original. ninja's relink step (configure.py --relink); tools/relink.py tries links of its own."""
 
+import argparse
 import sys
 from pathlib import Path
 
@@ -13,16 +10,18 @@ from mw.pe import original
 
 
 def main():
-    if sys.argv[1:2] in (["-h"], ["--help"]):
-        print(__doc__)
-        return
-    if len(sys.argv) < 4:
-        sys.exit(__doc__.strip())
-    version, output, *inputs = sys.argv[1:]
+    parser = argparse.ArgumentParser(
+        description="Link the relink's executable with the original's linker and check it against the original."
+    )
+    parser.add_argument("version", metavar="VERSION")
+    parser.add_argument("output", metavar="OUTPUT")
+    parser.add_argument("inputs", nargs="+", metavar="INPUT")
+    args = parser.parse_args()
+    version, output, inputs = args.version, args.output, args.inputs
     try:
-        v = project.version(version)
+        v = project.version(version, original=True)
         pe = original(v)
-        Path(output).with_name("ok").unlink(missing_ok=True)
+        Path(output).with_name("relink.ok").unlink(missing_ok=True)
         result = link.mwld(inputs, output, "-map", str(Path(output).with_suffix(".map")))
         if result.returncode:
             sys.exit(f"{output}: the link fails:\n" + "\n".join(link.errors(result) or [result.stdout[-2000:]]))
@@ -32,10 +31,10 @@ def main():
         if project.digest(linked) == config.version_config(v).sha1:
             built = sum(path.startswith(f"build/{v}/compiled/") for path in inputs)
             project.write_atomic(
-                Path(output).with_name("ok"), f"{v}: the original, {built} of {len(units)} units linked from source\n"
+                Path(output).with_name("relink.ok"),
+                f"{v}: the original, {built} of {len(units)} units linked from source\n",
             )
             return
-        # (where the link differs: the units whose ranges hold the first differing bytes)
         ranges = [(r.start, r.end, u.name) for u in units for r in u.ranges]
         print(f"{output}: not the original", file=sys.stderr)
         if len(linked) != len(pe.data):

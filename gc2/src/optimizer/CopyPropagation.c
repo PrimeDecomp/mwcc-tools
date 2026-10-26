@@ -3,10 +3,11 @@
 #include "compiler/CMangler.h"
 #include "compiler/CompilerTools.h"
 #include "compiler/CParser.h"
-#include "compiler/CPrep.h"
-#include "compiler/OracleProbes.h"
+#include "compiler/PCode.h"
+#include "compiler/PCodeInfo.h"
 #include "compiler/PCodeListing.h"
 #include "compiler/RegisterInfo.h"
+#include "compiler/Registers.h"
 #include "compiler/UseDefChains.h"
 #include <stdio.h>
 
@@ -19,7 +20,7 @@ PropInfo* propinfo;
 int* ncandidatesinblock;
 int* firstcandidateinblock;
 static int moreaggressiveoptimization;
-static UInt32 cp_mask; // TODO: invented name: 2.6's copy of the Propagation's mask
+static UInt32 cp_mask;
 static PropagateAndFinishFunc propagateandfinish;
 static PropagatesToUseFunc propagatestouse;
 static IsCandidateFunc is_candidate;
@@ -68,8 +69,7 @@ static void computecandidatelist(void) {
             bitvectorcopy(vec, usedefinfo[block->blockIndex].useout, number_of_Uses);
             candidate = &Candidates
                             [firstcandidateinblock[block->blockIndex] +
-                             ncandidatesinblock[block->blockIndex] -
-                             1];
+                             ncandidatesinblock[block->blockIndex] - 1];
             for (pcode = block->lastPCode; pcode; pcode = pcode->prevPCode) {
                 if (!(pcode->flags & fIsBranch) && pcode->argCount) {
                     if (is_candidate(pcode)) {
@@ -86,7 +86,12 @@ static void computecandidatelist(void) {
                             }
                         }
 
+#if VERSION < VERSION_GC_2_0
+                        // 1.3.2: the read/write test is always true (precedence slip)
+                        if (((pcode->flags & fIsRead) | fIsWrite) && (pcode->flags & fUpdatesPtr)) {
+#else
                         if (PCODE_FLAG_SET_F(pcode) & fUpdatesPtr) {
+#endif
                             for (list = reg_Uses[pcode->args[1].arg][pcode->args[1].data.reg.reg];
                                  list;
                                  list = list->next) {
@@ -138,12 +143,12 @@ static void allocatepropinfo(void) {
     }
 }
 
-static void computelocalpropinfo(Boolean flag) {
+static void computelocalpropinfo(Boolean localflag) {
     PropInfo* info;
     PCode* pcode;
     PCodeBlock* block;
-    UInt32* vec0;
-    UInt32* vec4;
+    UInt32* gen;
+    UInt32* kill;
     int index;
     PCodeArg* op;
     PCodeArg* candOp;
@@ -154,35 +159,32 @@ static void computelocalpropinfo(Boolean flag) {
 
     for (block = pcbasicblocks; block; block = block->nextBlock) {
         info = &propinfo[block->blockIndex];
-        vec0 = info->gen;
-        vec4 = info->kill;
-        bitvectorinitialize(vec0, number_of_candidates, 0);
-        bitvectorinitialize(vec4, number_of_candidates, 0);
+        gen = info->gen;
+        kill = info->kill;
+        bitvectorinitialize(gen, number_of_candidates, 0);
+        bitvectorinitialize(kill, number_of_candidates, 0);
         index = firstcandidateinblock[block->blockIndex];
 
-        if (flag) {
+        if (localflag) {
             for (pcode = block->firstPCode; pcode; pcode = pcode->nextPCode) {
                 if (!(pcode->flags & fIsBranch) && pcode->argCount) {
                     op = pcode->args;
                     i = pcode->argCount;
                     while (i--) {
-                        if (op->kind ==
-                            PCOp_REGISTER &&
-                            op->arg ==
-                            RegClass_GPR &&
+                        if (op->kind == PCOp_REGISTER &&
+                            op->arg == RegClass_GPR &&
                             (op->data.reg.effect & EffectWrite)) {
                             for (cndi = 0, candidate = Candidates; number_of_candidates > cndi;
                                  cndi++, candidate++) {
                                 for (j = 0; j < candidate->pcode->argCount; j++) {
                                     candOp = candidate->pcode->args + j;
-                                    if (candOp->kind ==
-                                        PCOp_REGISTER &&
+                                    if (candOp->kind == PCOp_REGISTER &&
                                         candOp->arg == RegClass_GPR) {
                                         if (candOp->data.reg.reg == op->data.reg.reg) {
                                             if (candidate->pcode->block == block) {
-                                                bitvectorclearbit(cndi, vec0);
+                                                bitvectorclearbit(cndi, gen);
                                             } else {
-                                                bitvectorsetbit(cndi, vec4);
+                                                bitvectorsetbit(cndi, kill);
                                             }
                                             break;
                                         }
@@ -194,7 +196,7 @@ static void computelocalpropinfo(Boolean flag) {
                     }
 
                     if (is_candidate(pcode)) {
-                        bitvectorsetbit(index, vec0);
+                        bitvectorsetbit(index, gen);
                         index++;
                     }
                 }
@@ -213,9 +215,9 @@ static void computelocalpropinfo(Boolean flag) {
                                     if (candOp->kind == PCOp_REGISTER && candOp->arg == op->arg) {
                                         if (candOp->data.reg.reg == op->data.reg.reg) {
                                             if (candidate->pcode->block == block) {
-                                                bitvectorclearbit(cndi, vec0);
+                                                bitvectorclearbit(cndi, gen);
                                             } else {
-                                                bitvectorsetbit(cndi, vec4);
+                                                bitvectorsetbit(cndi, kill);
                                             }
                                             break;
                                         }
@@ -231,7 +233,7 @@ static void computelocalpropinfo(Boolean flag) {
                     }
 
                     if (is_candidate(pcode)) {
-                        bitvectorsetbit(index, vec0);
+                        bitvectorsetbit(index, gen);
                         index++;
                     }
                 }
@@ -245,61 +247,59 @@ static void computeglobalpropinfo(void) {
     PropInfo* info;
     PCodeBlock* block;
     int bitvecsize;
-    UInt32* vec0;
-    UInt32* vec4;
-    UInt32* vec8;
-    UInt32* vecC;
+    UInt32* gen;
+    UInt32* kill;
+    UInt32* in;
+    UInt32* out;
     int i;
     int blockIndex;
-    int flag;
+    int changed;
     UInt32 val;
 
     bitvecsize = (number_of_candidates + 31) >> 5;
-    flag = TRUE;
+    changed = TRUE;
     info = &propinfo[pcbasicblocks->blockIndex];
     bitvectorinitialize(info->in, number_of_candidates, 0);
     bitvectorcopy(info->out, info->gen, number_of_candidates);
 
     for (block = pcbasicblocks->nextBlock; block; block = block->nextBlock) {
         info = &propinfo[block->blockIndex];
-        vecC = info->out;
-        vec4 = info->kill;
-        for (i = 0; i < bitvecsize; vecC++, vec4++, i++) {
-            *vecC = ~*vec4;
+        out = info->out;
+        kill = info->kill;
+        for (i = 0; i < bitvecsize; out++, kill++, i++) {
+            *out = ~*kill;
         }
     }
 
-    while (flag) {
-        flag = FALSE;
+    while (changed) {
+        changed = FALSE;
         for (blockIndex = 0; blockIndex < pcblockcount; blockIndex++) {
             if (depthfirstordering[blockIndex]) {
                 info = &propinfo[depthfirstordering[blockIndex]->blockIndex];
                 if ((preds = depthfirstordering[blockIndex]->predecessors)) {
-                    vec8 = info->in;
-                    bitvectorcopy(
-                        vec8, propinfo[preds->block->blockIndex].out, number_of_candidates
-                    );
+                    in = info->in;
+                    bitvectorcopy(in, propinfo[preds->block->blockIndex].out, number_of_candidates);
                     for (preds = preds->nextLink; preds; preds = preds->nextLink) {
                         bitvectorintersect(
-                            vec8, propinfo[preds->block->blockIndex].out, number_of_candidates
+                            in, propinfo[preds->block->blockIndex].out, number_of_candidates
                         );
                     }
                 }
 
-                vecC = info->out;
-                vec8 = info->in;
-                vec0 = info->gen;
-                vec4 = info->kill;
+                out = info->out;
+                in = info->in;
+                gen = info->gen;
+                kill = info->kill;
                 for (i = 0; i < bitvecsize; i++) {
-                    val = *vec0 | (*vec8 & ~*vec4);
-                    if (val != *vecC) {
-                        *vecC = val;
-                        flag = TRUE;
+                    val = *gen | (*in & ~*kill);
+                    if (val != *out) {
+                        *out = val;
+                        changed = TRUE;
                     }
-                    vec8++;
-                    vecC++;
-                    vec4++;
-                    vec0++;
+                    in++;
+                    out++;
+                    kill++;
+                    gen++;
                 }
             }
         }
@@ -307,7 +307,6 @@ static void computeglobalpropinfo(void) {
 }
 
 #if VERSION < VERSION_GC_2_5
-// (2.5 moves it to UseDefChains.c)
 int precedes(PCode* a, PCode* b) {
     for (a = a->nextPCode; a; a = a->nextPCode) {
         if (a == b) {
@@ -362,12 +361,12 @@ void propagateinstructions(Object* proc, Propagation* config, int passCount, Boo
         if (number_of_candidates <= 0) {
             freeoheap();
             if (config->computesUseDefChains) {
-                computeusedefchains(0);
+                computeusedefchains(FALSE);
             }
             return;
         }
 
-        computeusedefchains(0);
+        computeusedefchains(FALSE);
         computecandidatelist();
         allocatepropinfo();
         computelocalpropinfo(localflag);
@@ -376,7 +375,7 @@ void propagateinstructions(Object* proc, Propagation* config, int passCount, Boo
         propagatecandidates();
         passCount--;
 
-        if (propagated_instructions && ORACLE_LISTING(copts.debuglisting)) {
+        if (propagated_instructions && copts.debuglisting) {
             sprintf(buf, "AFTER %s PROPAGATION", config->name);
             pclistblocks(CMangler_GetLinkName(proc)->name, buf);
         }
@@ -392,8 +391,6 @@ void propagateinstructions(Object* proc, Propagation* config, int passCount, Boo
     }
 }
 
-// 2.6 tests `!(reg < n_real_registers[...])` (Pro7: `>=`, which compiles without the materialised
-// comparison value)
 static int is_copy(PCode* pcode) {
     return (pcode->flags & fIsMove) &&
         !(pcode->args[0].data.reg.reg < n_real_registers[pcode->args[0].arg]);
@@ -401,8 +398,8 @@ static int is_copy(PCode* pcode) {
 
 static int copypropagatestouse(int candidateID, int useID) {
     UseOrDef* use;
-    int reg1;
-    int reg2;
+    int destReg;
+    int srcReg;
     RegClass rclass;
     PCode* pcode;
     int i;
@@ -412,26 +409,20 @@ static int copypropagatestouse(int candidateID, int useID) {
     pcode = Candidates[candidateID].pcode;
     use = Uses + useID;
     rclass = pcode->args[0].arg;
-    reg1 = pcode->args[0].data.reg.reg;
-    reg2 = pcode->args[1].data.reg.reg;
+    destReg = pcode->args[0].data.reg.reg;
+    srcReg = pcode->args[1].data.reg.reg;
 
     if (use->pcode->flags & fIsMove) {
-        ORACLE_PROBE(OracleProbe_CopyUse(pcode, use->pcode, 0, FALSE));
         return FALSE;
     }
 
-    // 2.6: no use that reads and writes the register (Pro7: only rlwimi's)
     op = use->pcode->args;
     i = use->pcode->argCount;
     while (i--) {
-        if (op->kind ==
-            PCOp_REGISTER &&
-            op->arg ==
-            rclass &&
-            op->data.reg.reg ==
-            reg1 &&
+        if (op->kind == PCOp_REGISTER &&
+            op->arg == rclass &&
+            op->data.reg.reg == destReg &&
             (op->data.reg.effect & (EffectRead | EffectWrite)) == (EffectRead | EffectWrite)) {
-            ORACLE_PROBE(OracleProbe_CopyUse(pcode, use->pcode, 1, FALSE));
             return FALSE;
         }
         op++;
@@ -442,13 +433,10 @@ static int copypropagatestouse(int candidateID, int useID) {
             op = scan->args;
             i = scan->argCount;
             while (i--) {
-                if (op->kind ==
-                    PCOp_REGISTER &&
-                    op->arg ==
-                    rclass &&
+                if (op->kind == PCOp_REGISTER &&
+                    op->arg == rclass &&
                     (op->data.reg.effect & EffectWrite) &&
-                    op->data.reg.reg == reg2) {
-                    ORACLE_PROBE(OracleProbe_CopyUse(pcode, use->pcode, 2, FALSE));
+                    op->data.reg.reg == srcReg) {
                     return FALSE;
                 }
                 op++;
@@ -456,7 +444,6 @@ static int copypropagatestouse(int candidateID, int useID) {
         }
     } else {
         if (!bitvectorgetbit(candidateID, propinfo[use->pcode->block->blockIndex].in)) {
-            ORACLE_PROBE(OracleProbe_CopyUse(pcode, use->pcode, 3, FALSE));
             return FALSE;
         }
 
@@ -464,13 +451,10 @@ static int copypropagatestouse(int candidateID, int useID) {
             op = scan->args;
             i = scan->argCount;
             while (i--) {
-                if (op->kind ==
-                    PCOp_REGISTER &&
-                    op->arg ==
-                    rclass &&
+                if (op->kind == PCOp_REGISTER &&
+                    op->arg == rclass &&
                     (op->data.reg.effect & EffectWrite) &&
-                    op->data.reg.reg == reg2) {
-                    ORACLE_PROBE(OracleProbe_CopyUse(pcode, use->pcode, 4, FALSE));
+                    op->data.reg.reg == srcReg) {
                     return FALSE;
                 }
                 op++;
@@ -481,31 +465,30 @@ static int copypropagatestouse(int candidateID, int useID) {
         }
     }
 
-    ORACLE_PROBE(OracleProbe_CopyUse(pcode, use->pcode, 5, TRUE));
     return TRUE;
 }
 
 static void propagateandremovecopy(int id) {
     Candidate* candidate;
     RegClass rclass;
-    int reg1;
-    int reg2;
+    int destReg;
+    int srcReg;
     int i;
     RegUseOrDef* list;
     PCodeArg* op;
 
     candidate = &Candidates[id];
     rclass = candidate->pcode->args[0].arg;
-    reg1 = candidate->pcode->args[0].data.reg.reg;
-    reg2 = candidate->pcode->args[1].data.reg.reg;
+    destReg = candidate->pcode->args[0].data.reg.reg;
+    srcReg = candidate->pcode->args[1].data.reg.reg;
 
-    if (rclass == RegClass_GPR && reg1 >= 32 && reg1 <= last_exception_register[RegClass_GPR]) {
-        ORACLE_PROBE(OracleProbe_CopyRemove(candidate->pcode, FALSE));
+    if (rclass == RegClass_GPR &&
+        destReg >= 32 &&
+        destReg <= last_exception_register[RegClass_GPR]) {
         return;
     }
 
-    if (!moreaggressiveoptimization && reg2 < n_real_registers[rclass]) {
-        ORACLE_PROBE(OracleProbe_CopyRemove(candidate->pcode, FALSE));
+    if (!moreaggressiveoptimization && srcReg < n_real_registers[rclass]) {
         return;
     }
 
@@ -513,20 +496,16 @@ static void propagateandremovecopy(int id) {
         op = Uses[list->id].pcode->args;
         i = Uses[list->id].pcode->argCount;
         while (i--) {
-            if (op->kind ==
-                PCOp_REGISTER &&
-                op->arg ==
-                rclass &&
-                op->data.reg.reg ==
-                reg1 &&
+            if (op->kind == PCOp_REGISTER &&
+                op->arg == rclass &&
+                op->data.reg.reg == destReg &&
                 (op->data.reg.effect & EffectRead)) {
-                op->data.reg.reg = reg2;
+                op->data.reg.reg = srcReg;
             }
             op++;
         }
     }
 
-    ORACLE_PROBE(OracleProbe_CopyRemove(candidate->pcode, TRUE));
     deletepcode(candidate->pcode);
     propagated_instructions = TRUE;
 }
@@ -539,13 +518,13 @@ static Propagation copy_prop = {
     "COPY",
     "COPIES",
     "c%ld",
-    fSideEffects | fRecordBit, // 2.6: Pro7 tests these flags of every candidate in canidatepropagatestoalluses
-    0
+    fSideEffects | fRecordBit,
+    FALSE
 };
 // clang-format on
 
-void propagatecopyinstructions(Object* proc, int flag) {
-    moreaggressiveoptimization = flag;
-    propagateinstructions(proc, &copy_prop, 1, 0);
+void propagatecopyinstructions(Object* proc, int moreAggressive) {
+    moreaggressiveoptimization = moreAggressive;
+    propagateinstructions(proc, &copy_prop, 1, FALSE);
     propagatedcopies = propagated_instructions;
 }

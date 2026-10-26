@@ -28,6 +28,7 @@
 #include "compiler/Registers.h"
 #include "compiler/StackFrame.h"
 #include "compiler/TOC.h"
+#include "compiler/tokens.h"
 #include "compiler/types.h"
 #include "driver/CodeGenOptPPC.h"
 #include <ctype.h>
@@ -45,17 +46,14 @@ AssemblerType assembler_type;
 char volatileasm;
 Boolean InlineAsm_gccmode;
 Boolean InlineAsm_labelref;
-// 2.6: `warn_def_reserved_reg on|off` (TODO: invented name)
 static Boolean warn_def_reserved_reg;
-// 2.6: `volatile`, `nonvolatile` and `scheduling off|on`; starts as volatileasm (TODO: invented name)
 static Boolean asm_volatile;
-// (2.6 keeps it static, and nothing uses it: the EABI has no PIC base)
 static CLabel* pic_base_label;
 
-// (2.6's TYPEINT integrals IT_17 and IT_18, CMachine's custom types of tokens 0x113 and 0x114,
-// are 8 bytes in a GPR pair like the paired single; TODO: Pro7's placeholder names)
+#define OPCODE_PART_1(opcode) ((opcode) >> 26)
+#define OPCODE_PART_2(opcode) (((opcode) >> 21) & 0x1F)
+#define OPCODE_PART_3(opcode) (((opcode) >> 1) & 0x3FF)
 
-// forward decls
 static SInt32 InlineAsm_ConstantExpressionPPC(SInt32 value);
 static Object* isvariableoperand(void);
 static Object* isregisterstructpointeroperand(void);
@@ -97,7 +95,6 @@ static void IllegalObjectOperator(HashNameNode* name1, HashNameNode* name2, shor
         case '>':
             opstr = ">";
             break;
-        // (Pro7's: these two are swapped)
         case TK_LESS_EQUAL:
             opstr = ">=";
             break;
@@ -131,34 +128,33 @@ static void IllegalObjectOperator(HashNameNode* name1, HashNameNode* name2, shor
     }
 
     if (name2 == NULL) {
-        PPCError_Error(PPCErrorStr119, opstr, name1->name);
+        PPCError_Error(PPCERR_ASM_ONLY_OBJECT_PLUS_CONSTANT, opstr, name1->name);
     } else if (name1 == NULL) {
-        PPCError_Error(PPCErrorStr120, opstr, name2->name);
+        PPCError_Error(PPCERR_ASM_ONLY_CONSTANT_PLUS_OBJECT, opstr, name2->name);
     } else {
-        PPCError_Error(PPCErrorStr118, name1->name, opstr, name2->name);
+        PPCError_Error(PPCERR_ASM_ONLY_OBJECT_DIFFERENCE, name1->name, opstr, name2->name);
     }
 }
 
 static void IllegalObjectInConst(IAExpr* expr) {
     if (expr->var) {
-        PPCError_Error(PPCErrorStr122, expr->var->name->name);
+        PPCError_Error(PPCERR_ASM_OBJECT_IN_CONSTANT, expr->var->name->name);
     } else if (expr->object) {
-        PPCError_Error(PPCErrorStr122, expr->object->name->name);
+        PPCError_Error(PPCERR_ASM_OBJECT_IN_CONSTANT, expr->object->name->name);
     } else if (expr->label) {
-        PPCError_Error(PPCErrorStr166, expr->label->name->name);
+        PPCError_Error(PPCERR_ASM_UNDEFINED_SYMBOL, expr->label->name->name);
     }
 }
 
 static void NotInRegisterError(char* name, char rclass) {
-    PPCError_Error(PPCErrorStr167, name, register_class_name[rclass]);
+    PPCError_Error(PPCERR_ASM_NOT_IN_REGISTER, name, register_class_name[rclass]);
 }
 
 static int isregisteroperand(char rclass) {
     IARegister* reg;
 
     return (
-        tk ==
-        TK_IDENTIFIER &&
+        tk == TK_IDENTIFIER &&
         (reg = InlineAsm_LookupRegisterPPCName(tkidentifier)) &&
         reg->rclass == rclass
     );
@@ -169,13 +165,12 @@ static SInt32 getcroperand(char rclass) {
     IARegister* reg;
 
     value = 0;
-    if (tk ==
-        TK_IDENTIFIER &&
+    if (tk == TK_IDENTIFIER &&
         (reg = InlineAsm_LookupRegisterPPCName(tkidentifier)) &&
         reg->rclass == rclass) {
         value = reg->num;
     } else {
-        PPCError_Error(PPCErrorStr167, tkidentifier->name);
+        PPCError_Error(PPCERR_ASM_NOT_IN_REGISTER, tkidentifier->name);
     }
 
     tk = lex();
@@ -194,7 +189,7 @@ static void PrimaryExpressionPPC(IAExpr* expr, SInt32 value) {
     Object* obj;
     IALookupResult result;
     IAExpr subexpr;
-    IAExprType type = IAExpr_0;
+    IAExprType type = IAExpr_None;
     SInt32 v;
 
     switch (tk) {
@@ -250,7 +245,7 @@ static void PrimaryExpressionPPC(IAExpr* expr, SInt32 value) {
                 return;
             }
 
-            if (InlineAsm_LookupSymbolOrTag(tkidentifier, &result, 1)) {
+            if (InlineAsm_LookupSymbolOrTag(tkidentifier, &result, TRUE)) {
                 if (result.has_value) {
                     tk = lex();
                     InlineAsm_InitExpr5(expr, result.value);
@@ -282,12 +277,11 @@ static void PrimaryExpressionPPC(IAExpr* expr, SInt32 value) {
                     InlineAsm_InitExpr5(expr, getcroperand(RegClass_CRFIELD));
                     return;
                 }
-                if (isregisteroperand(RegClass_6)) {
-                    InlineAsm_InitExpr5(expr, getcroperand(RegClass_6));
+                if (isregisteroperand(RegClass_CRBIT)) {
+                    InlineAsm_InitExpr5(expr, getcroperand(RegClass_CRBIT));
                     return;
                 }
-                if (strlen(tkidentifier->name) ==
-                    6 &&
+                if (strlen(tkidentifier->name) == 6 &&
                     !strncmp(tkidentifier->name, "cr", 2) &&
                     tkidentifier->name[3] == '_') {
                     IARegister* reg;
@@ -303,7 +297,7 @@ static void PrimaryExpressionPPC(IAExpr* expr, SInt32 value) {
                         regname[1] = tkidentifier->name[5];
                         regname[2] = 0;
                         if ((reg = InlineAsm_LookupRegisterPPC(regname)) &&
-                            reg->rclass == RegClass_6) {
+                            reg->rclass == RegClass_CRBIT) {
                             tk = lex();
                             InlineAsm_InitExpr5(expr, v + reg->num);
                             return;
@@ -313,14 +307,14 @@ static void PrimaryExpressionPPC(IAExpr* expr, SInt32 value) {
             }
 
             if (!strcmp("ha16", tkidentifier->name)) {
-                type = IAExpr_8;
+                type = IAExpr_Ha;
             } else if (!strcmp("hi16", tkidentifier->name)) {
-                type = IAExpr_7;
+                type = IAExpr_Hi;
             } else if (!strcmp("lo16", tkidentifier->name)) {
-                type = IAExpr_6;
+                type = IAExpr_Lo;
             }
 
-            if (type != IAExpr_0) {
+            if (type != IAExpr_None) {
                 tk = lex();
                 if (tk == '(') {
                     tk = lex();
@@ -333,7 +327,7 @@ static void PrimaryExpressionPPC(IAExpr* expr, SInt32 value) {
                     tk = lex();
                     if (InlineAsm_CheckExpr(expr)) {
                         expr->value = InlineAsm_GetExprValue(expr);
-                        expr->type = IAExpr_5;
+                        expr->type = IAExpr_Value;
                     }
                     return;
                 }
@@ -345,7 +339,7 @@ static void PrimaryExpressionPPC(IAExpr* expr, SInt32 value) {
                 }
 
                 InlineAsm_InitExpr5(expr, 0);
-                expr->flags |= IAFlag1;
+                expr->flags |= IAFlag_Directive;
                 expr->label = result.label;
                 tk = lex();
                 return;
@@ -423,20 +417,22 @@ static void DiadicOperatorPPC(IAExpr* left, short token, IAExpr* right) {
 
     if (left->var) {
         if (right->label) {
-            PPCError_Error(PPCErrorStr124, left->var->name->name, right->label->name->name);
+            PPCError_Error(
+                PPCERR_ASM_LABEL_AND_OBJECT, left->var->name->name, right->label->name->name
+            );
         }
 
         if (right->var) {
             if (left->var2) {
                 PPCError_Error(
-                    PPCErrorStr121,
+                    PPCERR_ASM_TOO_MANY_OBJECTS,
                     left->var->name->name,
                     left->var2->name->name,
                     right->var->name->name
                 );
             } else if (right->var2) {
                 PPCError_Error(
-                    PPCErrorStr121,
+                    PPCERR_ASM_TOO_MANY_OBJECTS,
                     left->var->name->name,
                     right->var->name->name,
                     right->var2->name->name
@@ -454,7 +450,9 @@ static void DiadicOperatorPPC(IAExpr* left, short token, IAExpr* right) {
         }
     } else if (right->var) {
         if (right->label) {
-            PPCError_Error(PPCErrorStr124, right->var->name->name, right->label->name->name);
+            PPCError_Error(
+                PPCERR_ASM_LABEL_AND_OBJECT, right->var->name->name, right->label->name->name
+            );
         }
 
         if (token == '+') {
@@ -466,20 +464,22 @@ static void DiadicOperatorPPC(IAExpr* left, short token, IAExpr* right) {
         }
     } else if (left->label) {
         if (left->var) {
-            PPCError_Error(PPCErrorStr124, left->label->name->name, left->var->name->name);
+            PPCError_Error(
+                PPCERR_ASM_LABEL_AND_OBJECT, left->label->name->name, left->var->name->name
+            );
         }
 
         if (right->label) {
             if (left->label2) {
                 PPCError_Error(
-                    PPCErrorStr121,
+                    PPCERR_ASM_TOO_MANY_OBJECTS,
                     left->label->name->name,
                     left->label2->name->name,
                     right->label->name->name
                 );
             } else if (right->label2) {
                 PPCError_Error(
-                    PPCErrorStr121,
+                    PPCERR_ASM_TOO_MANY_OBJECTS,
                     left->label->name->name,
                     right->label->name->name,
                     right->label2->name->name
@@ -508,13 +508,13 @@ static void DiadicOperatorPPC(IAExpr* left, short token, IAExpr* right) {
     }
 
     left->flags |= right->flags;
-    if (left->type == IAExpr_5) {
-        if (right->type != IAExpr_5) {
+    if (left->type == IAExpr_Value) {
+        if (right->type != IAExpr_Value) {
             left->type = right->type;
         }
     } else {
-        if (right->type != IAExpr_5 && right->type != left->type) {
-            PPCError_Error(PPCErrorStr126);
+        if (right->type != IAExpr_Value && right->type != left->type) {
+            PPCError_Error(PPCERR_ASM_MULTIPLE_RELOCATIONS);
         }
     }
 }
@@ -562,7 +562,7 @@ static void immediateoperand(IAOperand* op, SInt32 minval, SInt32 maxval) {
         }
         op->type = IAOpnd_GCCImm;
         op->u.gccimm.value = value;
-        op->u.gccimm.kind = 1;
+        op->u.gccimm.kind = TRUE;
         op->u.gccimm.effect = 0;
         op->u.gccimm.rclass = 0;
         tk = lex();
@@ -602,15 +602,15 @@ static void InlineAsm_ExpressionPPC(IAExpr* expr, SInt32 value) {
         ExpressionTailPPC(expr, value);
     }
 
-    if (expr->type == IAExpr_5 && tk == TK_IDENTIFIER) {
+    if (expr->type == IAExpr_Value && tk == TK_IDENTIFIER) {
         if (!strcmp(tkidentifier->name, "@l")) {
-            expr->type = IAExpr_6;
+            expr->type = IAExpr_Lo;
             tk = lex();
         } else if (!strcmp(tkidentifier->name, "@ha")) {
-            expr->type = IAExpr_8;
+            expr->type = IAExpr_Ha;
             tk = lex();
         } else if (!strcmp(tkidentifier->name, "@h")) {
-            expr->type = IAExpr_7;
+            expr->type = IAExpr_Hi;
             tk = lex();
         }
     }
@@ -650,7 +650,7 @@ static void floatoperand(IAOperand* op, InlineAsm* ia, Type* type) {
     ia->argcount++;
     op[1].type = IAOpnd_GlobalObj;
     op[1].u.obj.obj = obj;
-    op[1].u.obj.reftype = IAExpr_2;
+    op[1].u.obj.reftype = IAExpr_Addr16;
     op[1].u.obj.offset = 0;
     tk = lex();
 }
@@ -662,7 +662,11 @@ static inline Object* isvariableoperand(void) {
     if (tk == TK_IDENTIFIER) {
         InlineAsm_LookupSymbol(tkidentifier, &result);
         if ((obj = result.object)) {
-            PPC_EABI_SetSection(obj, obj->type->size, 0, 0);
+#if VERSION < VERSION_GC_2_0
+            PPC_EABI_SetSection(obj, obj->type->size, FALSE);
+#else
+            PPC_EABI_SetSection(obj, obj->type->size, FALSE, FALSE);
+#endif
             if (obj->datatype == DLOCAL) {
                 if (OBJECT_REG(obj)) {
                     obj = NULL;
@@ -673,7 +677,7 @@ static inline Object* isvariableoperand(void) {
                 if (obj->datatype != DDATA && !is_16bitdata(obj)) {
                     return NULL;
                 }
-                createIndirect(obj, 0, 0);
+                createIndirect(obj, FALSE, FALSE);
             }
             return obj;
         }
@@ -710,17 +714,16 @@ static Object* isregisterstructpointeroperand(void) {
     return NULL;
 }
 
-static void memoryoperand(IAOperand* op, InlineAsm* ia, Boolean flag, int effect) {
+static void memoryoperand(IAOperand* op, InlineAsm* ia, Boolean allowBaseReg, int effect) {
     IAExpr expr;
 
     InlineAsm_ExpressionPPC(&expr, 0);
     if (expr.object) {
-        if (!flag) {
+        if (!allowBaseReg) {
             CError_Error(ERR_ILLEGAL_ADDRESSING_MODE);
         }
         if (expr.var) {
-            // (the original's bug, Pro7's too: the object for the message's name)
-            PPCError_Error(PPCErrorStr122, expr.var);
+            PPCError_Error(PPCERR_ASM_OBJECT_IN_CONSTANT, expr.var);
         }
 
         op[0].type = IAOpnd_Reg;
@@ -737,12 +740,12 @@ static void memoryoperand(IAOperand* op, InlineAsm* ia, Boolean flag, int effect
         ia->argcount++;
         op[1].type = IAOpnd_Imm;
         switch (expr.type) {
-            case IAExpr_5:
-                expr.type = IAExpr_2;
-            case IAExpr_2:
-            case IAExpr_6:
-            case IAExpr_7:
-            case IAExpr_8:
+            case IAExpr_Value:
+                expr.type = IAExpr_Addr16;
+            case IAExpr_Addr16:
+            case IAExpr_Lo:
+            case IAExpr_Hi:
+            case IAExpr_Ha:
                 op[1].u.imm.value = InlineAsm_GetExprValue(&expr);
                 break;
             default:
@@ -755,12 +758,14 @@ static void memoryoperand(IAOperand* op, InlineAsm* ia, Boolean flag, int effect
 
     if (expr.var) {
         if (expr.var2) {
-            PPCError_Error(PPCErrorStr123, expr.var->name->name, expr.var2->name->name);
+            PPCError_Error(
+                PPCERR_ASM_ILLEGAL_OBJECT_DIFFERENCE, expr.var->name->name, expr.var2->name->name
+            );
         }
 
-        if (flag) {
+        if (allowBaseReg) {
             if (tk == '(') {
-                if (flag) {
+                if (allowBaseReg) {
                     tk = lex();
                     registeroperand(op, RegClass_GPR, effect);
                     if (tk != ')') {
@@ -787,11 +792,11 @@ static void memoryoperand(IAOperand* op, InlineAsm* ia, Boolean flag, int effect
 
         if (expr.var->datatype == DLOCAL) {
             op[0].type = IAOpnd_LocalObj;
-            op[0].u.obj.reftype = IAExpr_1;
+            op[0].u.obj.reftype = IAExpr_Local16;
         } else {
             op[0].type = IAOpnd_GlobalObj;
-            if (expr.type == IAExpr_5) {
-                expr.type = IAExpr_2;
+            if (expr.type == IAExpr_Value) {
+                expr.type = IAExpr_Addr16;
             }
             op[0].u.obj.reftype = expr.type;
         }
@@ -802,7 +807,7 @@ static void memoryoperand(IAOperand* op, InlineAsm* ia, Boolean flag, int effect
         return;
     }
 
-    if (flag) {
+    if (allowBaseReg) {
         if (tk == '(') {
             tk = lex();
             registeroperand(op, RegClass_GPR, effect);
@@ -825,12 +830,12 @@ static void memoryoperand(IAOperand* op, InlineAsm* ia, Boolean flag, int effect
     if (expr.label) {
         if (expr.label2) {
             op->type = IAOpnd_LabDiff;
-            op->negated = 0;
+            op->negated = FALSE;
             op->u.labdiff.label1 = expr.label;
             op->u.labdiff.label2 = expr.label2;
             op->u.labdiff.offset = expr.value;
         } else {
-            PPCError_Error(PPCErrorStr125, expr.label->name->name);
+            PPCError_Error(PPCERR_ASM_ILLEGAL_LABEL, expr.label->name->name);
         }
     } else {
         op->type = IAOpnd_Imm;
@@ -838,8 +843,6 @@ static void memoryoperand(IAOperand* op, InlineAsm* ia, Boolean flag, int effect
     }
 }
 
-// 2.6: a Gekko quantized load or store's d(b): a 12-bit displacement, then the base register
-// (TODO: invented name)
 static IAOperand* parse_displacement_operand(IAOperand* op, InlineAsm* ia, int effect) {
     IAExpr expr;
     SInt32 value;
@@ -882,8 +885,7 @@ static void registeroperand(IAOperand* op, char rclass, int effect) {
     IARegister* reg;
     Object* obj;
 
-    if (tk ==
-        TK_IDENTIFIER &&
+    if (tk == TK_IDENTIFIER &&
         (reg = InlineAsm_LookupRegisterPPCName(tkidentifier)) &&
         reg->rclass == rclass) {
         SInt32 num;
@@ -896,7 +898,7 @@ static void registeroperand(IAOperand* op, char rclass, int effect) {
         op->u.reg.effect = effect;
         if (obj) {
             reg->object->flags |= OBJECT_USED;
-            Registers_GetVarInfo(obj)->flags |= VarInfoFlag40;
+            Registers_GetVarInfo(obj)->flags |= VarInfoFlag_AsmNamed;
         }
     } else if (rclass == RegClass_CRFIELD) {
         op->type = IAOpnd_Reg;
@@ -934,7 +936,7 @@ static void registeroperand(IAOperand* op, char rclass, int effect) {
     } else if (tk == TK_IDENTIFIER) {
         NotInRegisterError(tkidentifier->name, rclass);
     } else {
-        PPCError_Error(PPCErrorStr171);
+        PPCError_Error(PPCERR_ASM_EXPECTED_REGISTER);
     }
 
     tk = lex();
@@ -946,7 +948,7 @@ static void registeroperand(IAOperand* op, char rclass, int effect) {
         if (reg->object) {
             op->u.reg.num = -3;
         } else {
-            PPCError_Error(PPCErrorStr168);
+            PPCError_Error(PPCERR_ASM_ILLEGAL_HIWORD);
         }
         tk = lex();
         return;
@@ -958,7 +960,7 @@ static void registeroperand(IAOperand* op, char rclass, int effect) {
                 !(IS_TYPE_INT(type) && TYPE_INTEGRAL(type)->integral == IT_18) &&
                 !IS_TYPE_VEC2X32FLOAT(type)) {
                 HashNameNode* name = reg->object->name;
-                PPCError_Error(PPCErrorStr127, name->name, name->name, name->name);
+                PPCError_Error(PPCERR_ASM_REGISTER_PAIR, name->name, name->name, name->name);
             }
         }
     }
@@ -994,7 +996,7 @@ static void r0_operand(IAOperand* op) {
 }
 
 static void labeloperand(
-    InlineAsm* ia, IAOperand* op, Boolean flag1, Boolean flag2, Boolean flag3
+    InlineAsm* ia, IAOperand* op, Boolean isUncondBranch, Boolean isAbsolute, Boolean isLink
 ) {
     IALookupResult result;
 
@@ -1007,22 +1009,22 @@ static void labeloperand(
             op->type = IAOpnd_Lab;
             op->u.lab.label = result.label;
         } else if (result.object && result.object->datatype == DFUNC) {
-            if (flag3) {
-                ia->flags |= IAFlag2;
+            if (isLink) {
+                ia->flags |= IAFlag_Call;
             }
             op->type = IAOpnd_GlobalObj;
             op->u.obj.obj = result.object;
             op->u.obj.offset = 0;
 
-            if (flag1) {
-                op->u.obj.reftype = IAExpr_4;
-                if (flag2) {
-                    op->u.obj.reftype = IAExpr_9;
+            if (isUncondBranch) {
+                op->u.obj.reftype = IAExpr_Branch;
+                if (isAbsolute) {
+                    op->u.obj.reftype = IAExpr_AbsBranch;
                 }
             } else {
-                op->u.obj.reftype = IAExpr_2;
-                if (flag2) {
-                    op->u.obj.reftype = IAExpr_10;
+                op->u.obj.reftype = IAExpr_Addr16;
+                if (isAbsolute) {
+                    op->u.obj.reftype = IAExpr_LoAlt;
                 }
             }
         } else {
@@ -1031,19 +1033,19 @@ static void labeloperand(
 
         tk = lex();
     } else if (tk == '*') {
-        if (!flag2) {
+        if (!isAbsolute) {
             tk = lex();
             if (tk == '+') {
                 tk = lex();
-                if (flag1) {
+                if (isUncondBranch) {
                     immediateoperand(op, -0x2000000, 0x1FFFFFF);
                 } else {
                     immediateoperand(op, -0x8000, 0xFFFF);
                 }
             } else if (tk == '-') {
                 tk = lex();
-                op->u.imm.value = flag1 ? -immediatevalue(op, -0x1FFFFFF, 0x2000000)
-                                        : -immediatevalue(op, -0x7FFF, 0x10000);
+                op->u.imm.value = isUncondBranch ? -immediatevalue(op, -0x1FFFFFF, 0x2000000)
+                                                 : -immediatevalue(op, -0x7FFF, 0x10000);
             } else {
                 CError_Error(ERR_ILLEGAL_OPERAND);
             }
@@ -1051,8 +1053,8 @@ static void labeloperand(
             CError_Error(ERR_ILLEGAL_OPERAND);
         }
     } else {
-        if (flag2) {
-            if (flag1) {
+        if (isAbsolute) {
+            if (isUncondBranch) {
                 immediateoperand(op, -0x2000000, 0x1FFFFFF);
             } else {
                 immediateoperand(op, -0x8000, 0xFFFF);
@@ -1074,10 +1076,8 @@ static void imm_or_labeldiff_operand(
 
     if ((obj = expr.var) &&
         !expr.var2 &&
-        expr.type ==
-        IAExpr_5 &&
-        obj->datatype ==
-        DDATA &&
+        expr.type == IAExpr_Value &&
+        obj->datatype == DDATA &&
         IS_TYPE_INT_OR_ENUM(obj->type) &&
         (obj->qual & Q_INLINE_DATA)) {
         switch (ia->opcode) {
@@ -1097,6 +1097,8 @@ static void imm_or_labeldiff_operand(
             case PC_OPWORD:
                 InlineAsm_InitExpr5(&expr, expr.value + CInt64_GetULong(&obj->u.data.u.intconst));
                 break;
+            default:
+                break;
         }
     }
 
@@ -1104,29 +1106,29 @@ static void imm_or_labeldiff_operand(
         if (expr.label2) {
             op->type = IAOpnd_LabDiff;
             if (negate) {
-                op->negated = 1;
+                op->negated = TRUE;
             } else {
-                op->negated = 0;
+                op->negated = FALSE;
             }
             op->u.labdiff.label1 = expr.label;
             op->u.labdiff.label2 = expr.label2;
             op->u.labdiff.offset = expr.value;
         } else {
-            PPCError_Error(PPCErrorStr125, expr.label->name->name);
+            PPCError_Error(PPCERR_ASM_ILLEGAL_LABEL, expr.label->name->name);
         }
     } else if (expr.var) {
         if (!expr.var2) {
-            if (ia->opcode != PC_OPWORD && expr.type == IAExpr_5) {
+            if (ia->opcode != PC_OPWORD && expr.type == IAExpr_Value) {
                 IllegalObjectInConst(&expr);
                 return;
             } else {
                 if (expr.var->datatype == DLOCAL) {
                     op->type = IAOpnd_LocalObj;
-                    op->u.obj.reftype = IAExpr_1;
+                    op->u.obj.reftype = IAExpr_Local16;
                 } else {
                     op->type = IAOpnd_GlobalObj;
-                    if (expr.type == IAExpr_5) {
-                        expr.type = IAExpr_2;
+                    if (expr.type == IAExpr_Value) {
+                        expr.type = IAExpr_Addr16;
                     }
                     op->u.obj.reftype = expr.type;
                 }
@@ -1134,7 +1136,9 @@ static void imm_or_labeldiff_operand(
                 op->u.obj.offset = expr.value;
             }
         } else {
-            PPCError_Error(PPCErrorStr123, expr.var->name->name, expr.var2->name->name);
+            PPCError_Error(
+                PPCERR_ASM_ILLEGAL_OBJECT_DIFFERENCE, expr.var->name->name, expr.var2->name->name
+            );
         }
     } else {
         value = InlineAsm_GetExprValue(&expr);
@@ -1173,7 +1177,7 @@ static InlineAsm* InlineAsm_ScanAssemblyOperands(IAMnemonic* mnemonic) {
     Boolean has_excl;
     Boolean has_question;
     Boolean negate;
-    UInt32 t;
+    UInt32 opType;
 
     info = &opcodeinfo[mnemonic->opcode];
     argcount = info->operand_count;
@@ -1211,9 +1215,9 @@ static InlineAsm* InlineAsm_ScanAssemblyOperands(IAMnemonic* mnemonic) {
         }
 
         effect = EffectRead;
-        has_excl = 0;
-        has_question = 0;
-        negate = 0;
+        has_excl = FALSE;
+        has_question = FALSE;
+        negate = FALSE;
         if (*format == '=') {
             effect = EffectWrite;
             format++;
@@ -1222,7 +1226,6 @@ static InlineAsm* InlineAsm_ScanAssemblyOperands(IAMnemonic* mnemonic) {
             format++;
         }
 
-        // 2.6: the paired-single operand halves
         if (*format == '^') {
             effect |= EffectPS1;
             format++;
@@ -1238,17 +1241,17 @@ static InlineAsm* InlineAsm_ScanAssemblyOperands(IAMnemonic* mnemonic) {
         }
 
         if (*format == '-') {
-            negate = 1;
+            negate = TRUE;
             format++;
         }
 
         if (*format == '?') {
-            has_question = 1;
+            has_question = TRUE;
             format++;
         }
 
         if (*format == '!') {
-            has_excl = 1;
+            has_excl = TRUE;
             format++;
         }
 
@@ -1317,9 +1320,8 @@ static InlineAsm* InlineAsm_ScanAssemblyOperands(IAMnemonic* mnemonic) {
                         format++;
                     } else {
 #if VERSION < VERSION_GC_2_6
-// 2.0 and 2.5's file has 3 lines fewer above here
 #undef CError_LINE_SHIFT
-#define CError_LINE_SHIFT -3
+#define CError_LINE_SHIFT (-3 + CError_LINE_DELTA)
 #endif
                         CError_FATAL(1822);
                     }
@@ -1427,12 +1429,12 @@ static InlineAsm* InlineAsm_ScanAssemblyOperands(IAMnemonic* mnemonic) {
                     case PC_B:
                     case PC_BL:
                         labeloperand(
-                            ia, op, 1, mnemonic->instruction & 2, mnemonic->instruction & 1
+                            ia, op, TRUE, mnemonic->instruction & 2, mnemonic->instruction & 1
                         );
                         break;
                     default:
                         labeloperand(
-                            ia, op, 0, mnemonic->instruction & 2, mnemonic->instruction & 1
+                            ia, op, FALSE, mnemonic->instruction & 2, mnemonic->instruction & 1
                         );
                         break;
                 }
@@ -1484,14 +1486,14 @@ static InlineAsm* InlineAsm_ScanAssemblyOperands(IAMnemonic* mnemonic) {
                         if (tk == TK_FLOATCONST) {
                             floatoperand(op, ia, TYPE(&stfloat));
                         } else {
-                            memoryoperand(op, ia, 1, effect2);
+                            memoryoperand(op, ia, TRUE, effect2);
                         }
                         break;
                     case PC_LFD:
                         if (tk == TK_FLOATCONST) {
                             floatoperand(op, ia, TYPE(&stdouble));
                         } else {
-                            memoryoperand(op, ia, 1, effect2);
+                            memoryoperand(op, ia, TRUE, effect2);
                         }
                         break;
                     case PC_PSQ_L:
@@ -1505,7 +1507,7 @@ static InlineAsm* InlineAsm_ScanAssemblyOperands(IAMnemonic* mnemonic) {
                         op = parse_displacement_operand(op, ia, effect2);
                         break;
                     default:
-                        memoryoperand(op, ia, 1, effect2);
+                        memoryoperand(op, ia, TRUE, effect2);
                 }
 
                 break;
@@ -1520,8 +1522,7 @@ static InlineAsm* InlineAsm_ScanAssemblyOperands(IAMnemonic* mnemonic) {
                 break;
 
             case 'D':
-                if (tk ==
-                    TK_IDENTIFIER &&
+                if (tk == TK_IDENTIFIER &&
                     (reg = InlineAsm_LookupDCRRegister(tkidentifier->name))) {
                     op->type = IAOpnd_Imm;
                     op->u.imm.value = reg->num;
@@ -1596,10 +1597,10 @@ static InlineAsm* InlineAsm_ScanAssemblyOperands(IAMnemonic* mnemonic) {
                 op->type = IAOpnd_Reg;
                 op->u.reg.rclass = RegClass_CRFIELD;
                 op->u.reg.object = NULL;
-                t = info->flags & fOpTypeMask;
-                if (t == fOpTypeFPR) {
+                opType = info->flags & fOpTypeMask;
+                if (opType == fOpTypeFPR) {
                     op->u.reg.num = 1;
-                } else if (t == fOpTypeVR) {
+                } else if (opType == fOpTypeVR) {
                     op->u.reg.num = 6;
                 } else {
                     op->u.reg.num = 0;
@@ -1614,8 +1615,8 @@ static InlineAsm* InlineAsm_ScanAssemblyOperands(IAMnemonic* mnemonic) {
         while (format[1] && strchr("/<>|*@", format[1])) {
             int index;
             SInt32 value;
-            IAOperand tmp;
-            SInt32 value2;
+            IAOperand swap;
+            SInt32 otherValue;
             switch ((code = *(++format))) {
                 case '/':
                     index = -1;
@@ -1624,9 +1625,9 @@ static InlineAsm* InlineAsm_ScanAssemblyOperands(IAMnemonic* mnemonic) {
                         index = -2;
                     }
 
-                    tmp = op[index];
+                    swap = op[index];
                     op[index] = op[0];
-                    op[0] = tmp;
+                    op[0] = swap;
                     break;
                 case '*':
                 case '<':
@@ -1644,33 +1645,33 @@ static InlineAsm* InlineAsm_ScanAssemblyOperands(IAMnemonic* mnemonic) {
                     if (format[1] == 'p') {
                         format++;
                         if (op[-1].type == IAOpnd_Imm) {
-                            value2 = op[-1].u.imm.value;
+                            otherValue = op[-1].u.imm.value;
                         } else if (op[-1].type == IAOpnd_Reg) {
-                            value2 = op[-1].u.reg.num;
+                            otherValue = op[-1].u.reg.num;
                         } else {
                             CError_FATAL(2341);
                         }
                     } else if (isdigit(format[1])) {
-                        format += pcode_const_from_format(format + 1, &value2);
+                        format += pcode_const_from_format(format + 1, &otherValue);
                     } else {
                         CError_FATAL(2346);
                     }
 
                     switch (code) {
                         case '<':
-                            value = value2 - value;
+                            value = otherValue - value;
                             break;
                         case '>':
-                            value = value - value2;
+                            value = value - otherValue;
                             break;
                         case '|':
-                            value = value + value2;
+                            value = value + otherValue;
                             break;
                         case '*':
-                            value = value * value2;
+                            value = value * otherValue;
                             break;
                         case '@':
-                            value = value & (0xFFFFFFFF >> (32 - value2));
+                            value = value & (0xFFFFFFFF >> (32 - otherValue));
                             break;
                         default:
                             CError_FATAL(2371);
@@ -1698,47 +1699,47 @@ static InlineAsm* InlineAsm_ScanAssemblyOperands(IAMnemonic* mnemonic) {
 }
 
 static int mnemonic_has_overflow(char* buf) {
-    int result = 0;
+    int result = FALSE;
 
     if (buf[strlen(buf) - 1] == 'o') {
         if (!strcmp(buf, "bso")) {
-            return 0;
+            return FALSE;
         }
         if (!strcmp(buf, "fcmpo")) {
-            return 0;
+            return FALSE;
         }
         if (!strcmp(buf, "eieio")) {
-            return 0;
+            return FALSE;
         }
         if (!strcmp(buf, "vslo")) {
-            return 0;
+            return FALSE;
         }
         if (!strcmp(buf, "vsro")) {
-            return 0;
+            return FALSE;
         }
-        result = 1;
+        result = TRUE;
     }
 
     return result;
 }
 
 static int mnemonic_has_absolute(const char* buf) {
-    int result = 0;
+    int result = FALSE;
     char last = buf[strlen(buf) - 1];
 
     if (buf[0] == 'b' && last == 'a') {
-        result = 1;
+        result = TRUE;
     }
 
     return result;
 }
 
 static int mnemonic_has_linkregister(const char* buf) {
-    int result = 0;
+    int result = FALSE;
     char last = buf[strlen(buf) - 1];
 
     if (buf[0] == 'b' && last == 'l') {
-        result = 1;
+        result = TRUE;
     }
 
     return result;
@@ -1748,7 +1749,7 @@ void InlineAsm_InitializePPC(void) {
     Test_Version_Numbers();
     asm_volatile = volatileasm;
     warn_def_reserved_reg = TRUE;
-    allow_array_expressions = 1;
+    allow_array_expressions = TRUE;
     supports_hardware_fpu = TRUE;
     assembledinstructions = 0;
 
@@ -1855,12 +1856,12 @@ void InlineAsm_Initialize(AssemblerType assemblertype) {
     InlineAsm_InitializeRegistersPPC();
 
     if (assembler_type != AssemblerType_Statements) {
-        process_arguments(setup_assembly_argument, 0);
+        process_arguments(setup_assembly_argument, FALSE);
         assign_local_addresses();
     }
 }
 
-static InlineAsm* InlineAsm_CreateEntryPoint(HashNameNode* name, Boolean flag) {
+static InlineAsm* InlineAsm_CreateEntryPoint(HashNameNode* name, Boolean isStatic) {
     Object* obj;
     IAEntryPoint* ep;
     InlineAsm* ia;
@@ -1872,13 +1873,13 @@ static InlineAsm* InlineAsm_CreateEntryPoint(HashNameNode* name, Boolean flag) {
         }
 
         obj->flags |= OBJECT_DEFINED;
-        obj->sclass = flag ? TK_STATIC : TK_EXTERN;
+        obj->sclass = isStatic ? TK_STATIC : TK_EXTERN;
 
         ep = lalloc(sizeof(IAEntryPoint));
         memclrw(ep, sizeof(IAEntryPoint));
         ia = (InlineAsm*)ep;
         ia->opcode = IADirective_Entry;
-        ia->flags = IAFlag1;
+        ia->flags = IAFlag_Directive;
         ep->object = obj;
         ep->size = assembledinstructions * 4;
     } else {
@@ -1929,16 +1930,16 @@ SInt32 InlineAsm_IsDirective(AssemblerType assemblertype) {
 }
 
 void InlineAsm_ProcessDirective(SInt32 directive) {
-    Boolean flag;
+    Boolean isStatic;
     Statement* stmt;
     int token;
 
     switch (directive) {
         case IADirective_Entry:
-            flag = 0;
+            isStatic = FALSE;
             tk = lex();
             if ((token = tk) == TK_STATIC) {
-                flag = 1;
+                isStatic = TRUE;
                 tk = lex();
             } else if (token == TK_EXTERN) {
                 tk = lex();
@@ -1950,7 +1951,7 @@ void InlineAsm_ProcessDirective(SInt32 directive) {
 
             stmt = CFunc_AppendStatement(ST_ASM);
             stmt->expr = NULL;
-            stmt->expr = (ENode*)InlineAsm_CreateEntryPoint(tkidentifier, flag);
+            stmt->expr = (ENode*)InlineAsm_CreateEntryPoint(tkidentifier, isStatic);
             stmt->sourceoffset = -1;
             tk = lex();
             break;
@@ -1974,21 +1975,21 @@ void InlineAsm_ProcessDirective(SInt32 directive) {
                 Object* offset;
                 SInt32 value;
                 InlineAsm_ExpressionPPC(&expr, 0);
-                absolute = 0;
-                noNodes = 0;
+                absolute = FALSE;
+                noNodes = FALSE;
                 if ((base = expr.var) == NULL && expr.object == NULL) {
-                    noNodes = 1;
+                    noNodes = TRUE;
                 }
                 if (noNodes && expr.label == NULL) {
-                    absolute = 1;
+                    absolute = TRUE;
                 }
                 if (!absolute) {
                     if (base != NULL) {
-                        PPCError_Error(PPCErrorStr122, base->name->name);
+                        PPCError_Error(PPCERR_ASM_OBJECT_IN_CONSTANT, base->name->name);
                     } else if ((offset = expr.object) != NULL) {
-                        PPCError_Error(PPCErrorStr122, offset->name->name);
+                        PPCError_Error(PPCERR_ASM_OBJECT_IN_CONSTANT, offset->name->name);
                     } else if (expr.label) {
-                        PPCError_Error(PPCErrorStr166, expr.label->name->name);
+                        PPCError_Error(PPCERR_ASM_UNDEFINED_SYMBOL, expr.label->name->name);
                     }
                     value = 0;
                 } else {
@@ -2000,8 +2001,8 @@ void InlineAsm_ProcessDirective(SInt32 directive) {
                 fralloc_parameter_area_size = value;
             }
 
-            requires_frame = 1;
-            asm_alloc_flags[0] = 1;
+            requires_frame = TRUE;
+            asm_alloc_flags[0] = TRUE;
             break;
 
         case IADirective_NoFrAlloc:
@@ -2016,8 +2017,8 @@ void InlineAsm_ProcessDirective(SInt32 directive) {
             }
             tk = lex();
 
-            asm_alloc_flags[1] = 1;
-            user_responsible_for_frame = 1;
+            asm_alloc_flags[1] = TRUE;
+            user_responsible_for_frame = TRUE;
             break;
 
         case IADirective_FrFree: {
@@ -2027,13 +2028,13 @@ void InlineAsm_ProcessDirective(SInt32 directive) {
                 CError_Error(ERR_FUNCTION_NO_INITIALIZED_STACKFRAME);
             }
 
-            asm_alloc_flags[2] = 1;
+            asm_alloc_flags[2] = TRUE;
             node = CFunc_AppendStatement(ST_ASM);
             node->expr = NULL;
             ia = lalloc(sizeof(InlineAsm));
             memclrw(ia, sizeof(InlineAsm));
             ia->opcode = IADirective_FrFree;
-            ia->flags = IAFlag1;
+            ia->flags = IAFlag_Directive;
             node->expr = (ENode*)ia;
             if (copts.filesyminfo) {
                 node->sourceoffset = CPrep_GetFileOffsetInfo(&cparser_fileoffset);
@@ -2224,12 +2225,9 @@ void InlineAsm_ScanAssemblyDirective(void) {
 void InlineAsm_ScanAssemblyInstruction(void) {
     Boolean record_flag;
     Statement* stmt;
-    // TODO: 2.6 stores these three as words and tests their low byte, which only this spelling
-    // gives (Pro7's `Boolean flag3 = a && b;` 87.3, Boolean flags set in an `if` 88.7, words
-    // tested whole 94.1); what the original declared is not known
-    UInt32 flag3, flag4, flag5;
-    Boolean flag1 = 0;
-    Boolean flag2 = 0;
+    UInt32 overflow_flag, absolute_flag, link_flag;
+    Boolean plus_flag = FALSE;
+    Boolean minus_flag = FALSE;
     char buf[20];
     char* name;
     IAMnemonic* mnemonic;
@@ -2254,10 +2252,10 @@ void InlineAsm_ScanAssemblyInstruction(void) {
 
     strncpy(buf, tkidentifier->name, sizeof(buf));
     name = buf;
-    record_flag = 0;
+    record_flag = FALSE;
     if (lookahead() == '.') {
         tk = lex();
-        record_flag = 1;
+        record_flag = TRUE;
         strcat(name, ".");
     }
 
@@ -2267,21 +2265,20 @@ void InlineAsm_ScanAssemblyInstruction(void) {
     }
 
     info = &opcodeinfo[mnemonic->opcode];
-    flag3 = 0;
+    overflow_flag = FALSE;
     if ((FLAG_SET_F(info->flags) & fCanSetCarry) && (mnemonic->instruction & 0x400)) {
-        flag3 = 1;
+        overflow_flag = TRUE;
     }
-    flag4 = 0;
+    absolute_flag = FALSE;
     if ((FLAG_SET_T(info->flags) & fCanBeAbsolute) && (mnemonic->instruction & 2)) {
-        flag4 = 1;
+        absolute_flag = TRUE;
     }
-    flag5 = 0;
+    link_flag = FALSE;
     if ((FLAG_SET_T(info->flags) & fCanLink) && (mnemonic->instruction & 1)) {
-        flag5 = 1;
+        link_flag = TRUE;
     }
 
-    if (cpu ==
-        CPUMask_Generic &&
+    if (cpu == CPUMask_Generic &&
         (cpu & CPUFLAG_LOW_MASK) != (cpu & mnemonic->cpu & CPUFLAG_LOW_MASK)) {
         CError_Error(ERR_ILLEGAL_INSTRUCTION_PROCESSOR);
     } else if ((cpu & mnemonic->cpu & CPUFLAG_LOW_MASK) == 0) {
@@ -2304,29 +2301,24 @@ void InlineAsm_ScanAssemblyInstruction(void) {
         CError_Error(ERR_ILLEGAL_INSTRUCTION_PROCESSOR);
     } else if (mnemonic->cpu & CPUFLAG_FPU) {
         if (!supports_hardware_fpu) {
-            PPCError_Error(PPCErrorStr132);
+            PPCError_Error(PPCERR_NO_HARDWARE_FLOAT);
         }
     }
 
     tk = lex();
     if (tk == '+' || tk == '-') {
-        if ((((mnemonic->instruction >> 26) & 0x3F) ==
-             16 &&
+        if ((((mnemonic->instruction >> 26) & 0x3F) == 16 &&
              OPCODE_PART_2(mnemonic->instruction) != 20) ||
-            (((mnemonic->instruction >> 26) & 0x3F) ==
-             19 &&
-             OPCODE_PART_3(mnemonic->instruction) ==
-             528 &&
+            (((mnemonic->instruction >> 26) & 0x3F) == 19 &&
+             OPCODE_PART_3(mnemonic->instruction) == 528 &&
              OPCODE_PART_2(mnemonic->instruction) != 20) ||
-            (((mnemonic->instruction >> 26) & 0x3F) ==
-             19 &&
-             OPCODE_PART_3(mnemonic->instruction) ==
-             16 &&
+            (((mnemonic->instruction >> 26) & 0x3F) == 19 &&
+             OPCODE_PART_3(mnemonic->instruction) == 16 &&
              OPCODE_PART_2(mnemonic->instruction) != 20)) {
             if (tk == '+') {
-                flag1 = 1;
+                plus_flag = TRUE;
             } else if (tk == '-') {
-                flag2 = 1;
+                minus_flag = TRUE;
             }
             tk = lex();
         } else {
@@ -2340,19 +2332,19 @@ void InlineAsm_ScanAssemblyInstruction(void) {
     if (record_flag) {
         ia->flags2 |= IAFlagsB_Record;
     }
-    if ((Boolean)flag3) {
+    if ((Boolean)overflow_flag) {
         ia->flags2 |= IAFlagsB_Overflow;
     }
-    if ((Boolean)flag4) {
+    if ((Boolean)absolute_flag) {
         ia->flags2 |= IAFlagsB_Absolute;
     }
-    if ((Boolean)flag5) {
+    if ((Boolean)link_flag) {
         ia->flags2 |= IAFlagsB_Link;
     }
-    if (flag1) {
+    if (plus_flag) {
         ia->flags2 |= IAFlagsB_HintPlus;
     }
-    if (flag2) {
+    if (minus_flag) {
         ia->flags2 |= IAFlagsB_HintMinus;
     }
     if (asm_volatile) {
@@ -2404,17 +2396,14 @@ static PCode* InlineAsm_TranslateIRtoPCodePPC(
         ia->flags2 |= IAFlagsB_Volatile;
     }
 
-    if (ia->opcode ==
-        PC_TWI ||
-        ia->opcode ==
-        PC_TW ||
-        ia->opcode ==
-        PC_TRAP ||
+    if (ia->opcode == PC_TWI ||
+        ia->opcode == PC_TW ||
+        ia->opcode == PC_TRAP ||
         ia->opcode == PC_SC) {
-        ia->flags |= IAFlag2;
+        ia->flags |= IAFlag_Call;
     }
 
-    if (ia->flags & IAFlag2) {
+    if (ia->flags & IAFlag_Call) {
         newargcount = argcount + branch_count_volatiles();
         if (copts.exceptions && current_statement && assembler_type == AssemblerType_Statements) {
             newargcount += countexceptionactionregisters(current_statement->dobjstack);
@@ -2465,35 +2454,38 @@ static PCode* InlineAsm_TranslateIRtoPCodePPC(
                     break;
 
                 case IAOpnd_Reg: {
-                    int r20;
-                    r20 = 0;
+                    int regnum;
+                    regnum = 0;
                     if (src->u.reg.object) {
-                        if (Registers_GetVarInfo(src->u.reg.object)->flags & VarInfoFlag2) {
+                        if (Registers_GetVarInfo(src->u.reg.object)->flags & VarInfoFlag_InReg) {
                             if (src->u.reg.num == -3) {
-                                r20 = OBJECT_REG_HI(src->u.reg.object);
+                                regnum = OBJECT_REG_HI(src->u.reg.object);
                             } else {
-                                r20 = OBJECT_REG(src->u.reg.object);
+                                regnum = OBJECT_REG(src->u.reg.object);
                             }
                         } else {
-                            if (Registers_GetVarInfo(src->u.reg.object)->flags & VarInfoFlag40) {
-                                PPCError_Error(PPCErrorStr172, src->u.reg.object->name->name);
+                            if (Registers_GetVarInfo(src->u.reg.object)->flags &
+                                VarInfoFlag_AsmNamed) {
+                                PPCError_Error(
+                                    PPCERR_OUT_OF_REGISTERS_FOR_LOCAL, src->u.reg.object->name->name
+                                );
                             } else {
-                                PPCError_Error(PPCErrorStr167, src->u.reg.object->name->name);
+                                PPCError_Error(
+                                    PPCERR_ASM_NOT_IN_REGISTER, src->u.reg.object->name->name
+                                );
                             }
                         }
                     } else {
-                        r20 = src->u.reg.num;
+                        regnum = src->u.reg.num;
                     }
 
                     dest->kind = PCOp_REGISTER;
                     dest->arg = src->u.reg.rclass;
-                    dest->data.reg.reg = r20;
+                    dest->data.reg.reg = regnum;
                     dest->data.reg.effect = src->u.reg.effect;
-                    if (pc->op ==
-                        PC_RLWIMI &&
+                    if (pc->op == PC_RLWIMI &&
                         (dest->data.reg.effect & EffectWrite) &&
-                        dest->arg ==
-                        RegClass_GPR &&
+                        dest->arg == RegClass_GPR &&
                         !(dest->data.reg.effect & EffectRead)) {
                         CError_FATAL(3558);
                     }
@@ -2524,7 +2516,7 @@ static PCode* InlineAsm_TranslateIRtoPCodePPC(
                                 pcsetsideeffects(pc);
                                 break;
                         }
-                    } else if (dest->arg == RegClass_6 || dest->arg == RegClass_DCR) {
+                    } else if (dest->arg == RegClass_CRBIT || dest->arg == RegClass_DCR) {
                         SInt32 save = dest->data.reg.reg;
                         dest->kind = PCOp_IMMEDIATE;
                         dest->data.imm.value = save;
@@ -2535,16 +2527,17 @@ static PCode* InlineAsm_TranslateIRtoPCodePPC(
                     if ((src->u.reg.effect & EffectWrite) &&
                         dest->data.reg.reg < n_real_registers[dest->arg]) {
                         if (warn_def_reserved_reg &&
-                            dest->data.reg.reg <
-                            n_real_registers[dest->arg] &&
-                            reg_state[dest->arg][dest->data.reg.reg] ==
-                            RegState2 &&
+                            dest->data.reg.reg < n_real_registers[dest->arg] &&
+                            reg_state[dest->arg][dest->data.reg.reg] == RegState_Reserved &&
                             assemblertype == AssemblerType_Statements) {
-                            PPCError_Warning(PPCErrorStr212, info->name, dest->data.reg.reg);
+                            PPCError_Warning(
+                                PPCERR_ASM_DEFINES_RESERVED_REGISTER, info->name, dest->data.reg.reg
+                            );
                             pcsetsideeffects(pc);
                         }
                         if (src->u.reg.object) {
-                            if (Registers_GetVarInfo(src->u.reg.object)->flags & VarInfoFlag4) {
+                            if (Registers_GetVarInfo(src->u.reg.object)->flags &
+                                VarInfoFlag_RegPair) {
                                 int reg, regHi;
                                 CError_ASSERT(3615, dest->arg == RegClass_GPR);
 
@@ -2628,7 +2621,7 @@ static PCode* InlineAsm_TranslateIRtoPCodePPC(
         }
     }
 
-    if (ia->flags & IAFlag2) {
+    if (ia->flags & IAFlag_Call) {
         UInt32 masks[5] = {0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF};
         branch_record_volatiles(dest, masks);
         if (copts.exceptions && current_statement && assembler_type == AssemblerType_Statements) {
@@ -2672,7 +2665,7 @@ void InlineAsm_TranslateIRtoPCode(Statement* stmt) {
             int i;
             for (i = 0; i < pc->argCount; i++) {
                 if (pc->args[i].kind == PCOp_LABEL) {
-                    PPCError_Error(PPCErrorStr177);
+                    PPCError_Error(PPCERR_ASM_ABSOLUTE_BRANCH_TARGET);
                     break;
                 }
             }
@@ -2685,21 +2678,21 @@ void InlineAsm_TranslateIRtoPCode(Statement* stmt) {
     if (ia->flags2 & IAFlagsB_Link) {
         if (PCODE_FLAG_SET_T(pc) & fCanLink) {
             pcsetlinkbit(pclastblock->lastPCode);
-            if (!(ia->flags & IAFlag2)) {
+            if (!(ia->flags & IAFlag_Call)) {
                 pclastblock->lastPCode->flags &= ~fIsCall;
                 pclastblock->lastPCode->flags |= fIsBranch;
             }
-            makes_call = 1;
+            makes_call = TRUE;
         } else {
             CError_Error(ERR_UNKNOWN_ASSEMBLER_INSTRUCTION_MNEMONIC);
         }
     }
 
     if (ia->flags2 & IAFlagsB_HintPlus) {
-        setpcodeflags(fCanSetRecordBit);
+        setpcodeflags(fBranchTaken);
     }
     if (ia->flags2 & IAFlagsB_HintMinus) {
-        setpcodeflags(fCanSetCarry);
+        setpcodeflags(fBranchNotTaken);
     }
 
     if (OPCODE_PART_1(opcodeinfo[pc->op].insn) == 16) {
@@ -2755,26 +2748,25 @@ void InlineAsm_TranslateIRtoPCode(Statement* stmt) {
             case PC_BLR:
             case PC_RFI:
                 if (asm_alloc_flags[3]) {
-                    asm_alloc_flags[9] = 1;
+                    asm_alloc_flags[9] = TRUE;
                 } else {
-                    asm_alloc_flags[8] = 1;
+                    asm_alloc_flags[8] = TRUE;
                 }
 
                 if (asm_alloc_flags[4]) {
-                    asm_alloc_flags[5] = 1;
+                    asm_alloc_flags[5] = TRUE;
                 }
 
                 if (pc->op == PC_BLR) {
-                    asm_alloc_flags[6] = 1;
+                    asm_alloc_flags[6] = TRUE;
                 } else {
-                    asm_alloc_flags[7] = 1;
+                    asm_alloc_flags[7] = TRUE;
                 }
                 break;
         }
     }
 }
 
-// (dead in 2.6: only InlineAsm.c's dead InlineAsm_DumpStatement calls it; Wii has it here)
 const char* InlineAsm_GetMnemonic(InlineAsm* ia) {
     return opcodeinfo[ia->opcode].name;
 }
@@ -2914,41 +2906,41 @@ void CodeGen_GetAsmEffects(Statement* stmt, IAEffects* effects) {
 
     effects->numoperands = 0;
     effects->numlabels = 0;
-    effects->writesMemory = 0;
-    effects->readsMemory = 0;
-    effects->unmodeledControlFlow = 0;
-    effects->branchWithLink = 0;
-    effects->optimizationBarrier = 0;
-    effects->noFallthrough = 0;
+    effects->writesMemory = FALSE;
+    effects->readsMemory = FALSE;
+    effects->unmodeledControlFlow = FALSE;
+    effects->branchWithLink = FALSE;
+    effects->optimizationBarrier = FALSE;
+    effects->noFallthrough = FALSE;
 
     if (!effects->numoperands && (info->flags & fIsRead)) {
-        effects->readsMemory = 1;
+        effects->readsMemory = TRUE;
     }
     if (!effects->numoperands && (info->flags & fIsWrite)) {
-        effects->writesMemory = 1;
+        effects->writesMemory = TRUE;
     }
 
     if (FLAG_SET_T(info->flags) & fCanLink) {
         if (ia->flags2 & IAFlagsB_Link) {
-            effects->branchWithLink = 1;
+            effects->branchWithLink = TRUE;
         } else if ((info->flags & fIsCall) || (info->flags & fIsWrite)) {
-            effects->unmodeledControlFlow = 1;
+            effects->unmodeledControlFlow = TRUE;
         }
 
         if (ia->opcode == PC_B) {
             if (ia->args[0].type == IAOpnd_Imm) {
-                effects->optimizationBarrier = 1;
+                effects->optimizationBarrier = TRUE;
             }
-            effects->noFallthrough = 1;
+            effects->noFallthrough = TRUE;
         }
     }
 
     if (info->flags & fSideEffects) {
-        effects->optimizationBarrier = 1;
+        effects->optimizationBarrier = TRUE;
     }
 
     if (ia->opcode == PC_BC && (ia->flags2 & IAFlagsB_Link)) {
-        effects->branchWithLink = 1;
+        effects->branchWithLink = TRUE;
     }
 
     for (i = 0, op = ia->args; i < ia->argcount; i++, op++) {
@@ -2959,7 +2951,7 @@ void CodeGen_GetAsmEffects(Statement* stmt, IAEffects* effects) {
             case IAOpnd_Reg:
                 if (op->u.reg.object) {
                     if ((vi = Registers_GetVarInfo(op->u.reg.object))) {
-                        vi->flags |= VarInfoFlag40;
+                        vi->flags |= VarInfoFlag_AsmNamed;
                     }
                     if (op->u.reg.effect & EffectRead) {
                         Type* type = op->u.reg.object->type;
@@ -3014,7 +3006,7 @@ void CodeGen_GetAsmEffects(Statement* stmt, IAEffects* effects) {
                 effects->numlabels++;
                 effects->labels[effects->numlabels] = op->u.labdiff.label2;
                 effects->numlabels++;
-                effects->unmodeledControlFlow = 1;
+                effects->unmodeledControlFlow = TRUE;
                 break;
             default:
                 CError_FATAL(4232);
@@ -3029,7 +3021,7 @@ void CodeGen_GetAsmEffects(Statement* stmt, IAEffects* effects) {
             case IAOpnd_Reg:
                 if (op->u.reg.object) {
                     if ((vi = Registers_GetVarInfo(op->u.reg.object))) {
-                        vi->flags |= VarInfoFlag40;
+                        vi->flags |= VarInfoFlag_AsmNamed;
                     }
                     if (op->u.reg.effect & EffectWrite) {
                         Type* type = op->u.reg.object->type;
@@ -3069,13 +3061,15 @@ void CodeGen_GetAsmEffects(Statement* stmt, IAEffects* effects) {
                     }
                 }
                 break;
+            default:
+                break;
         }
 
         CError_ASSERT(4296, (UInt32)effects->numoperands <= IAMaxOperands);
     }
 
     if ((info->flags & (fIsBranch | fIsCall)) && effects->numlabels == 0) {
-        effects->unmodeledControlFlow = 1;
+        effects->unmodeledControlFlow = TRUE;
     }
 }
 
@@ -3091,8 +3085,7 @@ void CodeGen_PropagateIntoAsm(Statement* stmt, Object* obj, ENode* expr) {
             for (i = 0; i < ia->argcount; i++) {
                 switch (ia->args[i].type) {
                     case IAOpnd_Reg:
-                        if (ia->args[i].u.reg.object ==
-                            obj &&
+                        if (ia->args[i].u.reg.object == obj &&
                             (ia->args[i].u.reg.effect & (EffectRead | EffectWrite)) == EffectRead) {
                             if (TYPE_FITS_IN_REGISTER(newobj->type) &&
                                 ia->args[i].u.reg.rclass == RegClass_GPR) {
@@ -3112,6 +3105,8 @@ void CodeGen_PropagateIntoAsm(Statement* stmt, Object* obj, ENode* expr) {
                             ia->args[i].u.obj.obj == obj) {
                             ia->args[i].u.obj.obj = newobj;
                         }
+                        break;
+                    default:
                         break;
                 }
             }

@@ -1,8 +1,5 @@
 #include "compiler/CompilerTools.h"
-#include "compiler/OracleProbes.h"
-#include "compiler/CInt64.h"
 #include "compiler/CParser.h"
-#include "compiler/CPrep.h"
 #include "driver/CCompiler.h"
 #include "driver/COSToolsCLT.h"
 #include <ctype.h>
@@ -21,51 +18,32 @@ UInt32 bit_masks[32] = {
 };
 // clang-format on
 
-// (2.6 has lheaplockcount lowest: statics are allocated in reverse declaration order, so these
-// are declared in the reverse of Pro7's order)
+typedef struct HeapBlock {
+    struct HeapBlock* next;
+    Handle blockhandle;
+    SInt32 blocksize;
+    SInt32 blockfree;
+} HeapBlock;
+
+typedef struct HeapMem {
+    HeapBlock* blocks;
+    SInt32 allocsize;
+    HeapBlock* curblock;
+    char* curfreep;
+    SInt32 curfree;
+} HeapMem;
+
 static HeapMem gheap;
 static HeapMem lheap;
 static HeapMem aheap;
 static HeapMem oheap;
 static HeapMem bheap;
-static void (*heaperror)();
+static heaperror_t heaperror;
 static short lheaplockcount;
-
-#ifdef ORACLE_PROBES
-// (what the arena probes read: a heap, lheap's lock and the original's version)
-struct {
-    void* pools;
-    short* lock;
-    UInt32 version;
-} OracleRust_ArenaGlobals = {&bheap, &lheaplockcount, VERSION == VERSION_GC_2_7 ? 3 : 4};
-
-static void MoreHeapSpace(HeapMem* heapp, SInt32 size);
-
-// galloc, which the original inlines at PAIR's sites
-static void* galloc_at(SInt32 s, UInt32 pair) {
-    char* cp;
-
-    OracleProbe_ArenaRequest(pair, s, &cp);
-    s = (s & ~7) + 8;
-    if (gheap.curfree < s) {
-        MoreHeapSpace(&gheap, s);
-    }
-
-    gheap.curfree -= s;
-    cp = gheap.curfreep;
-    gheap.curfreep += s;
-    OracleProbe_ArenaCommit(pair, s, cp, &gheap, &cp);
-    return cp;
-}
-#define GALLOC_AT(s, pair) galloc_at(s, pair)
-#else
-#define GALLOC_AT(s, pair) galloc(s)
-#endif
 long hash_name_id;
 HashNameNode** name_hash_nodes;
-void (*GListErrorProc)();
+void (*GListErrorProc)(void);
 
-// (Pro7's CompilerGetPString is not here: 2.6's COSToolsCLT has no COS_GetPString to call)
 void CompilerGetCString(short index, char* string) {
     COS_GetString(string, 10100, index);
 }
@@ -266,7 +244,6 @@ SInt16 GetGListWord(GList* gl) {
         short s;
     } data;
 
-    // according to stabs, this one just uses a local short called 'n', not a union
     ptr = *gl->data + gl->size;
     gl->size += 2;
     data.bytes[0] = ptr[0];
@@ -281,7 +258,6 @@ SInt32 GetGListLong(GList* gl) {
         long l;
     } data;
 
-    // according to stabs, this one just uses a local long called 'n', not a union
     ptr = *gl->data + gl->size;
     gl->size += 4;
     data.bytes[0] = ptr[0];
@@ -292,21 +268,21 @@ SInt32 GetGListLong(GList* gl) {
 }
 
 short GetGListID(GList* gl, char* name) {
-    short n;
-    char* a;
-    char* b;
+    short len;
+    char* src;
+    char* dst;
 
-    n = 1;
-    a = *gl->data + gl->size;
-    b = name;
-    while (*a) {
-        *(b++) = *(a++);
-        n++;
+    len = 1;
+    src = *gl->data + gl->size;
+    dst = name;
+    while (*src) {
+        *(dst++) = *(src++);
+        len++;
     }
 
-    *b = *a;
-    gl->size += n;
-    return n;
+    *dst = *src;
+    gl->size += len;
+    return len;
 }
 
 void GetGListData(GList* gl, char* where, SInt32 size) {
@@ -372,13 +348,13 @@ SInt16 CHash(const char* string) {
 
 HashNameNode* GetHashNameNode(const char* name) {
     HashNameNode* node;
-    SInt16 n;
+    SInt16 hashval;
 
-    if ((node = name_hash_nodes[n = CHash(name)]) == NULL) {
-        name_hash_nodes[n] = node = GALLOC_AT(strlen(name) + sizeof(HashNameNode), 8);
+    if ((node = name_hash_nodes[hashval = CHash(name)]) == NULL) {
+        name_hash_nodes[hashval] = node = galloc(strlen(name) + sizeof(HashNameNode));
         node->next = NULL;
         node->id = hash_name_id++;
-        node->hashval = n;
+        node->hashval = hashval;
         strcpy(node->name, name);
         return node;
     } else {
@@ -391,11 +367,11 @@ HashNameNode* GetHashNameNode(const char* name) {
             }
 
             if (node->next == NULL) {
-                node->next = GALLOC_AT(strlen(name) + sizeof(HashNameNode), 9);
+                node->next = galloc(strlen(name) + sizeof(HashNameNode));
                 node = node->next;
                 node->next = NULL;
                 node->id = hash_name_id++;
-                node->hashval = n;
+                node->hashval = hashval;
                 strcpy(node->name, name);
                 return node;
             } else {
@@ -471,14 +447,14 @@ HashNameNode* GetHashNameNodeHash2(const char* name, SInt16 hashval) {
 
 HashNameNode* GetHashNameNodeExport(const char* name) {
     HashNameNode* node;
-    SInt16 n;
+    SInt16 hashval;
 
-    if ((node = name_hash_nodes[n = CHash(name)]) == NULL) {
-        node = GALLOC_AT(strlen(name) + sizeof(HashNameNode), 6);
-        name_hash_nodes[n] = node;
+    if ((node = name_hash_nodes[hashval = CHash(name)]) == NULL) {
+        node = galloc(strlen(name) + sizeof(HashNameNode));
+        name_hash_nodes[hashval] = node;
         node->next = NULL;
         node->id = -1;
-        node->hashval = n;
+        node->hashval = hashval;
         strcpy(node->name, name);
         return node;
     } else {
@@ -488,11 +464,11 @@ HashNameNode* GetHashNameNodeExport(const char* name) {
             }
 
             if (node->next == NULL) {
-                node->next = GALLOC_AT(strlen(name) + sizeof(HashNameNode), 7);
+                node->next = galloc(strlen(name) + sizeof(HashNameNode));
                 node = node->next;
                 node->next = NULL;
                 node->id = -1;
-                node->hashval = n;
+                node->hashval = hashval;
                 strcpy(node->name, name);
                 return node;
             } else {
@@ -604,7 +580,7 @@ void NameHashWriteTargetEndianNameTable(GList* glist) {
 }
 
 void InitNameHash(void) {
-    name_hash_nodes = GALLOC_AT(2048 * sizeof(HashNameNode*), 5);
+    name_hash_nodes = galloc(2048 * sizeof(HashNameNode*));
     memclrw(name_hash_nodes, 2048 * sizeof(HashNameNode*));
     hash_name_id = 1;
 }
@@ -693,7 +669,6 @@ static void MoreHeapSpace(HeapMem* heapp, SInt32 size) {
         }
     }
 
-    // create new block
     size += heapp->allocsize;
     if (systemHandles) {
         hndl = COS_NewOSHandle(size << 1);
@@ -711,7 +686,6 @@ static void MoreHeapSpace(HeapMem* heapp, SInt32 size) {
     }
 
     if (heaperror) {
-        ORACLE_PROBE(OracleProbe_ArenaCallback());
         heaperror();
     }
     return;
@@ -834,81 +808,73 @@ void releaseoheap(void) {
     MoreHeapSpace(&oheap, 0);
 }
 
-void* galloc(SInt32 s) {
+void* galloc(SInt32 size) {
     char* cp;
 
-    ORACLE_PROBE(OracleProbe_ArenaRequest(1, s, &cp));
-    s = (s & ~7) + 8;
-    if (gheap.curfree < s) {
-        MoreHeapSpace(&gheap, s);
+    size = (size & ~7) + 8;
+    if (gheap.curfree < size) {
+        MoreHeapSpace(&gheap, size);
     }
 
-    gheap.curfree -= s;
+    gheap.curfree -= size;
     cp = gheap.curfreep;
-    gheap.curfreep += s;
-    ORACLE_PROBE(OracleProbe_ArenaCommit(1, s, cp, &gheap, &cp));
+    gheap.curfreep += size;
     return cp;
 }
 
-void* lalloc(SInt32 s) {
+void* lalloc(SInt32 size) {
     char* cp;
 
-    ORACLE_PROBE(OracleProbe_ArenaRequest(2, s, &cp));
-    s = (s & ~7) + 8;
-    if (lheap.curfree < s) {
-        MoreHeapSpace(&lheap, s);
+    size = (size & ~7) + 8;
+    if (lheap.curfree < size) {
+        MoreHeapSpace(&lheap, size);
     }
 
-    lheap.curfree -= s;
+    lheap.curfree -= size;
     cp = lheap.curfreep;
-    lheap.curfreep += s;
-    ORACLE_PROBE(OracleProbe_ArenaCommit(2, s, cp, &lheap, &cp));
+    lheap.curfreep += size;
     return cp;
 }
 
-void* aalloc(SInt32 s) {
+void* aalloc(SInt32 size) {
     char* cp;
 
-    ORACLE_PROBE(OracleProbe_ArenaRequest(3, s, &cp));
-    s = (s & ~7) + 8;
-    if (aheap.curfree < s) {
-        MoreHeapSpace(&aheap, s);
+    size = (size & ~7) + 8;
+    if (aheap.curfree < size) {
+        MoreHeapSpace(&aheap, size);
     }
 
-    aheap.curfree -= s;
+    aheap.curfree -= size;
     cp = aheap.curfreep;
-    aheap.curfreep += s;
-    ORACLE_PROBE(OracleProbe_ArenaCommit(3, s, cp, &aheap, &cp));
+    aheap.curfreep += size;
     return cp;
 }
 
-void* oalloc(SInt32 s) {
+void* oalloc(SInt32 size) {
     char* cp;
 
-    ORACLE_PROBE(OracleProbe_ArenaRequest(4, s, &cp));
-    s = (s & ~7) + 8;
-    if (oheap.curfree < s) {
-        MoreHeapSpace(&oheap, s);
+    size = (size & ~7) + 8;
+    if (oheap.curfree < size) {
+        MoreHeapSpace(&oheap, size);
     }
 
-    oheap.curfree -= s;
+    oheap.curfree -= size;
     cp = oheap.curfreep;
-    oheap.curfreep += s;
-    ORACLE_PROBE(OracleProbe_ArenaCommit(4, s, cp, &oheap, &cp));
+    oheap.curfreep += size;
     return cp;
 }
 
-void* balloc(SInt32 s) {
+void* balloc(SInt32 size) {
     char* cp;
 
-    s = (s & ~7) + 8;
-    if (bheap.curfree < s) {
-        MoreHeapSpace(&bheap, s);
+    size = (size & ~7) + 8;
+    if (bheap.curfree < size) {
+        MoreHeapSpace(&bheap, size);
     }
 
-    bheap.curfree -= s;
+    bheap.curfree -= size;
     cp = bheap.curfreep;
-    bheap.curfreep = cp + s;
+    bheap.curfreep = cp + size;
     return cp;
 }
 
@@ -922,10 +888,6 @@ void unlocklheap(void) {
     }
 }
 
-// TODO (workaround): 2.6's freelheap, freeaheap and freeoheap alternate registers the way MWCC does
-// with symbols off (edx for the block, ecx for its fields); with -sym on they reuse one. Tried
-// without effect: a chained curblock assignment, a for loop, curblock read back; -sym off for the
-// whole unit loses 22 functions.
 #pragma sym off
 void freelheap(void) {
     HeapBlock* blockp;
@@ -988,9 +950,9 @@ void freebheap(void) {
 
 char* ScanHex(char* string, UInt32* result, Boolean* overflow) {
     short c;
-    UInt32 x;
+    UInt32 value;
 
-    x = 0;
+    value = 0;
     *overflow = FALSE;
 
     for (;;) {
@@ -1005,22 +967,22 @@ char* ScanHex(char* string, UInt32* result, Boolean* overflow) {
             break;
         }
 
-        if (x & 0xF0000000) {
+        if (value & 0xF0000000) {
             *overflow = TRUE;
         }
-        x = (x << 4) | c;
+        value = (value << 4) | c;
         ++string;
     }
 
-    *result = x;
+    *result = value;
     return string;
 }
 
 char* ScanOct(char* string, UInt32* result, Boolean* overflow) {
     short c;
-    UInt32 x;
+    UInt32 value;
 
-    x = 0;
+    value = 0;
     *overflow = FALSE;
 
     for (;;) {
@@ -1035,39 +997,39 @@ char* ScanOct(char* string, UInt32* result, Boolean* overflow) {
             break;
         }
 
-        if (x & 0xE0000000) {
+        if (value & 0xE0000000) {
             *overflow = TRUE;
         }
-        x = (x << 3) | c;
+        value = (value << 3) | c;
         ++string;
     }
 
-    *result = x;
+    *result = value;
     return string;
 }
 
 char* ScanDec(char* string, UInt32* result, Boolean* overflow) {
     short c;
-    UInt32 x;
+    UInt32 value;
 
-    x = 0;
+    value = 0;
     *overflow = FALSE;
 
     for (;;) {
         c = *string - '0';
         if (c >= 0 && c <= 9) {
-            if (x >= 0x19999999 && (x > 0x19999999 || c > 5)) {
+            if (value >= 0x19999999 && (value > 0x19999999 || c > 5)) {
                 *overflow = TRUE;
             }
         } else {
             break;
         }
 
-        x = (x << 3) + (x << 1) + c;
+        value = (value << 3) + (value << 1) + c;
         ++string;
     }
 
-    *result = x;
+    *result = value;
     return string;
 }
 
@@ -1121,7 +1083,7 @@ static char* UnmangleClassname(
     return name + n;
 }
 
-static char* UnmangleAppend(char* name, char namesize, char** out, short* outsize) {
+static void UnmangleAppend(char* name, char namesize, char** out, short* outsize) {
     char* cp;
     short i;
     short os;
@@ -1202,12 +1164,12 @@ invalid:
     *out = 0;
 }
 
-short hash(char* a) {
+short hash(char* str) {
     char hash = 0;
 
-    while (*a) {
+    while (*str) {
         hash = hash << 1;
-        hash ^= *(a++);
+        hash ^= *(str++);
     }
 
     return hash & 0x7F;
@@ -1221,12 +1183,12 @@ void memclrw(void* ptr, SInt32 size) {
     memset(ptr, 0, size);
 }
 
-void CToLowercase(char* a, char* b) {
-    while ((*b++ = (char)tolower(*a++)) != 0) {}
+void CToLowercase(char* src, char* dst) {
+    while ((*dst++ = (char)tolower(*src++)) != 0) {}
 }
 
-short getbit(SInt32 l) {
-    switch (l) {
+short getbit(SInt32 mask) {
+    switch (mask) {
         case 0:
             return -1;
         case 1:
@@ -1329,24 +1291,24 @@ UInt32 CTool_EndianConvertWord32(UInt32 theword) {
 }
 
 void CTool_EndianConvertMem(void* data, short len) {
-    UInt8* a;
-    UInt8* b;
+    UInt8* front;
+    UInt8* back;
     UInt8 val;
 
     if (copts.littleendian) {
         return;
     }
-    a = data;
-    b = (UInt8*)data + len;
+    front = data;
+    back = (UInt8*)data + len;
     for (;;) {
-        b--;
-        if (b <= a) {
+        back--;
+        if (back <= front) {
             break;
         }
-        val = *b;
-        *b = *a;
-        *a = val;
-        a++;
+        val = *back;
+        *back = *front;
+        *front = val;
+        front++;
     }
 }
 
@@ -1372,7 +1334,7 @@ UInt32 CTool_EndianConvertInPlaceWord32Ptr(UInt32* x) {
     return *x;
 }
 
-void CTool_EndianConvertVector128() {}
+void CTool_EndianConvertVector128(void) {}
 
 HashNameNode* CTool_GetPathName(const struct FSSpec* fss, SInt32* moddateptr) {
     char name[256];
@@ -1407,7 +1369,4 @@ int strcat_safe(char* dest, const char* src, SInt32 len) {
     }
 }
 
-// TODO: the original's statics are 2-byte aligned (heaperror at +2). MWCC lays out .bss with the
-// packing in effect at the end of the file, so some header of 2.6's evidently left pack(2) on;
-// this stands in for it.
 #pragma pack(2)

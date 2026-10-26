@@ -7,8 +7,6 @@
 extern "C" {
 #endif
 
-// The tokens the lexer returns in tk: a character is its own token, the rest are these (keywords as
-// the lexer names them, operators in the lexer's order); numbers, as tk is a short.
 #define TK_EOF 0
 #define TK_EOL -7
 #define TK_ILLEGAL -6
@@ -40,16 +38,14 @@ extern "C" {
 #define TK_UNION 272
 #define TK_ENUM 273
 #define TK_CLASS 274
-// TODO: Pro7's placeholders: no keyword 2.6's tokenizer knows gives these (but 0x115)
-#define TK_UNK_113 275
-#define TK_UNK_114 276
-// TODO: invented name: 2.6's __vec2x32float__ (Gekko's paired-single vector type)
+#define TK_CUSTOM_TYPE_113 275
+#define TK_CUSTOM_TYPE_114 276
 #define TK_UU_VEC2X32FLOAT_UU 277
-#define TK_UNK_116 278
-#define TK_UNK_117 279
-#define TK_UNK_118 280
-#define TK_UNK_119 281
-#define TK_UNK_11A 282
+#define TK_CUSTOM_TYPE_116 278
+#define TK_CUSTOM_TYPE_117 279
+#define TK_CUSTOM_TYPE_118 280
+#define TK_CUSTOM_TYPE_119 281
+#define TK_CUSTOM_TYPE_11A 282
 #define TK_UU_VECTOR 283
 #define TK_UU_TYPEOF_UU 284
 #define TK_BOOL 285
@@ -158,7 +154,6 @@ extern "C" {
 #define TK_UU_UUIDOF 391
 
 #pragma pack(push, 2)
-// where a declaration or statement is in the source
 struct FileOffsetInfo {
     struct CPrepFileInfo* file;
     SInt32 tokenline;
@@ -166,7 +161,6 @@ struct FileOffsetInfo {
     Boolean is_inline;
 };
 
-// a token's value
 typedef union TData {
     struct HashNameNode* tkidentifier;
     CInt64 tkintconst;
@@ -176,7 +170,6 @@ typedef union TData {
         SInt32 size;
     } tkstring;
 } TData;
-// a token of a token stream, with where it came from
 struct TStreamElement {
     SInt16 tokentype;
     SInt16 subtype;
@@ -185,7 +178,6 @@ struct TStreamElement {
     SInt32 tokenline;
     TData data;
 };
-// a run of tokens kept to be read again (an inline function's or a template's body)
 struct TokenStream {
     SInt32 tokens;
     TStreamElement* firsttoken;

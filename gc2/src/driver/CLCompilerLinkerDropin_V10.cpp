@@ -1,18 +1,26 @@
-// The shell's callbacks for compilers and linkers (Pro7's CmdLine
-// Callbacks/CLCompilerLinkerDropin_V10.cpp), built -bool off.
+#include "driver/CLDependencies.h"
 #include "driver/CLDropinCallbacks_V10.h"
 #include "driver/CLErrors.h"
 #include "driver/CLFileOps.h"
+#include "driver/CLFiles.h"
 #include "driver/CLIncludeFileCache.h"
 #include "driver/CLIO.h"
 #include "driver/CLMain.h"
 #include "driver/CLPlugins.h"
+#include "driver/cmdline.h"
+#include "driver/CWPlugins.h"
+#include "driver/CWPluginsPrivate.h"
+#include "driver/DropInCompilerLinker.h"
 #include "driver/ErrMgr.h"
 #include "driver/FileHandles.h"
+#include "driver/Files.h"
 #include "driver/Generic.h"
 #include "driver/MacSpecs.h"
+#include "driver/Memory.h"
 #include "driver/MemUtils.h"
-#include "driver/TargetOptimizerHelpers-eabi-ppc.h"
+#include "driver/MsDos.h"
+#include "driver/oslib.h"
+#include "driver/pref_structs.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -29,7 +37,7 @@ CW_CALLBACK UCBCachePrecompiledHeader(
     OSSpec spec;
     OS_FSSpec_To_OSSpec(filespec, &spec);
     UCBSecretDetachHandle(context, pchhandle, &handle);
-    CacheIncludeFile(&spec, handle, 1);
+    CacheIncludeFile(&spec, handle, TRUE);
     return cwNoErr;
 }
 
@@ -89,9 +97,9 @@ CW_CALLBACK UCBStoreObjectData(CWPluginContext context, SInt32 whichfile, CWObje
     filedata->idatasize = object->idatasize;
     filedata->compiledlines = object->compiledlines;
     if (filedata->dropinflags & kGeneratesrsrcs) {
-        filedata->hasresources = 1;
+        filedata->hasresources = TRUE;
     } else {
-        filedata->hasobjectcode = 1;
+        filedata->hasobjectcode = TRUE;
     }
     filedata->recompileDependents = object->dependencyCount && object->interfaceChanged;
     OS_GetTime(&filedata->outmoddate);
@@ -103,19 +111,19 @@ CW_CALLBACK UCBStoreObjectData(CWPluginContext context, SInt32 whichfile, CWObje
         char* newname = reinterpret_cast<char*>(object->reserved2);
         CWFileInfo fi;
         if (OS_MakeSpec(newname, &filedata->srcfss, NULL) || OS_Status(&filedata->srcfss)) {
-            fi.fullsearch = 1;
+            fi.fullsearch = TRUE;
             fi.dependencyType = cwNoDependency;
             fi.isdependentoffile = -1;
-            fi.suppressload = 1;
+            fi.suppressload = TRUE;
             if (UCBFindAndLoadFile(context, newname, &fi) == cwNoErr) {
                 OS_FSSpec_To_OSSpec(&fi.filespec, &filedata->srcfss);
             } else {
                 char* fnptr = OS_GetFileNamePtr(newname);
                 if (fnptr != newname) {
-                    fi.fullsearch = 1;
+                    fi.fullsearch = TRUE;
                     fi.dependencyType = cwNoDependency;
                     fi.isdependentoffile = -1;
-                    fi.suppressload = 1;
+                    fi.suppressload = TRUE;
                     if (UCBFindAndLoadFile(context, fnptr, &fi) == cwNoErr) {
                         OS_FSSpec_To_OSSpec(&fi.filespec, &filedata->srcfss);
                     }
@@ -192,7 +200,6 @@ CW_CALLBACK UCBGetPrecompiledHeaderSpec(
     OSSpec outfss;
     File* file;
     const CWObjectFlags* cof;
-    // (2.6: a Win32 path's size, also passed as the size of the 256-byte File.outfilename)
     char target[260];
 
     if (context->pluginType == CWDROPINCOMPILERTYPE || context->pluginType == CWDROPINLINKERTYPE) {
@@ -213,7 +220,7 @@ CW_CALLBACK UCBGetPrecompiledHeaderSpec(
                 return cwErrInvalidParameter;
             }
 
-            err = OS_MakeSpecWithPath(&file->srcfss.path, target, 0, &outfss);
+            err = OS_MakeSpecWithPath(&file->srcfss.path, target, FALSE, &outfss);
             if (err) {
                 CLReportOSError(CLStr97, err, target);
                 return cwErrRequestFailed;
@@ -235,7 +242,6 @@ CW_CALLBACK UCBGetPrecompiledHeaderSpec(
             OS_MakeSpecWithPath(
                 &gTarg->outputDirectory,
                 file->srcfilename,
-                // (2.6: Pro7's "== 0" compiles to a sete)
                 !optsCompiler.relPathInOutputDir,
                 &outfss
             );
@@ -253,7 +259,7 @@ CW_CALLBACK UCBGetPrecompiledHeaderSpec(
 
         OS_OSSpec_To_FSSpec(&outfss, pchspec);
     } else {
-        err = OS_MakeSpecWithPath(&gTarg->outputDirectory, file->outfilename, 0, &outfss);
+        err = OS_MakeSpecWithPath(&gTarg->outputDirectory, file->outfilename, FALSE, &outfss);
         if (err) {
             CLReportOSError(CLStr97, err, file->outfilename);
             return cwErrRequestFailed;
@@ -299,7 +305,7 @@ static int UnitNameToSBMName(OSSpec* spec, File* srcfile) {
     err = OS_NameSpecChangeExtension(
         &spec->name,
         cof->pchFileExt ? cof->pchFileExt : ".sbm",
-        cof->pchFileExt ? (cof->pchFileExt[0] == '.') : 0
+        cof->pchFileExt ? (cof->pchFileExt[0] == '.') : FALSE
     );
     return err;
 }
@@ -320,7 +326,7 @@ CW_CALLBACK UCBLookUpUnit(
     OSSpec sbmspec;
     OSTime unittime;
     UInt32 unitmactime;
-    char sbmpath[260]; // (2.6: a Win32 path's size; Pro7 256)
+    char sbmpath[260];
     int err;
     CWCompilerLinkerContext* c;
     File* srcfile;
@@ -338,19 +344,18 @@ CW_CALLBACK UCBLookUpUnit(
     *unitdata = NULL;
     *unitdatalength = 0;
 
-    if (optsCompiler.sbmState ==
-        OptsCompilerSbmState_1 ||
-        optsCompiler.sbmState == OptsCompilerSbmState_3) {
+    if (optsCompiler.sbmState == OptsCompilerSbmState_Rebuild ||
+        optsCompiler.sbmState == OptsCompilerSbmState_Clean) {
         if (clState.pluginDebug) {
             CLPrint("UCBLookUpUnit:  sbmState == sbmRebuild or sbmClean; failing\n");
         }
         return cwErrSBMNotFound;
     }
 
-    includeinfo.fullsearch = 1;
+    includeinfo.fullsearch = TRUE;
     includeinfo.dependencyType = isdependency ? cwNormalDependency : cwNoDependency;
     includeinfo.isdependentoffile = -1;
-    includeinfo.suppressload = 1;
+    includeinfo.suppressload = TRUE;
     if (UCBFindAndLoadFile(context, name, &includeinfo) != cwNoErr) {
         if (clState.pluginDebug) {
             CLPrint("UCBLookUpUnit:  could not find source '%s'; failing\n", name);
@@ -385,10 +390,10 @@ CW_CALLBACK UCBLookUpUnit(
         }
     }
 
-    includeinfo.fullsearch = 1;
+    includeinfo.fullsearch = TRUE;
     includeinfo.dependencyType = isdependency ? cwNormalDependency : cwNoDependency;
     includeinfo.isdependentoffile = -1;
-    includeinfo.suppressload = 0;
+    includeinfo.suppressload = FALSE;
     if (UCBFindAndLoadFile(context, sbmpath, &includeinfo) != cwNoErr || !includeinfo.filedata) {
         if (clState.pluginDebug) {
             CLPrint(
@@ -428,8 +433,6 @@ CW_CALLBACK UCBLookUpUnit(
     if (!sbmfile) {
         sbmfile = File_New();
         sbmfile->srcfss = unitspec;
-        // (2.6 passes a Win32 path's size for File's 256-byte names, here and below: a latent
-        // overrun in the original)
         OS_SpecToString(&sbmfile->srcfss, sbmfile->srcfilename, sizeof(sbmpath));
         sbmfile->outfss = sbmspec;
         OS_SpecToString(&sbmfile->outfss, sbmfile->outfilename, sizeof(sbmpath));
@@ -479,7 +482,7 @@ CW_CALLBACK UCBStoreUnit(
         CLPrint("Callback: %s\n", "UCBStoreUnit");
     }
 
-    char unitname[260]; // (2.6: a Win32 path's size; Pro7 256)
+    char unitname[260];
     OSSpec sbmspec;
     int err;
     Handle h;
@@ -494,11 +497,9 @@ CW_CALLBACK UCBStoreUnit(
         return cwErrInvalidParameter;
     }
 
-    if (optsCompiler.sbmState ==
-        OptsCompilerSbmState_0 ||
-        optsCompiler.sbmState == OptsCompilerSbmState_1) {
-        if (context->pluginType ==
-            CWDROPINCOMPILERTYPE ||
+    if (optsCompiler.sbmState == OptsCompilerSbmState_Normal ||
+        optsCompiler.sbmState == OptsCompilerSbmState_Rebuild) {
+        if (context->pluginType == CWDROPINCOMPILERTYPE ||
             context->pluginType == CWDROPINLINKERTYPE) {
             c = static_cast<CWCompilerLinkerContext*>(context);
         } else {
@@ -509,7 +510,7 @@ CW_CALLBACK UCBStoreUnit(
         OS_ASSERT(791, srcfile != NULL);
 
         if (optsCompiler.sbmPath[0]) {
-            err = OS_MakeSpecWithPath(&clState.sbmPathSpec, unitname, 1, &sbmspec);
+            err = OS_MakeSpecWithPath(&clState.sbmPathSpec, unitname, TRUE, &sbmspec);
             if (err) {
                 if (clState.pluginDebug) {
                     CLPrint(
@@ -554,7 +555,7 @@ CW_CALLBACK UCBStoreUnit(
 
         UCBSecretDetachHandle(context, unitdata, &h);
         OS_DestroyMacHandle(h, &unithand);
-        err = OS_NewFileHandle(&sbmspec, &unithand, 1, &fhand);
+        err = OS_NewFileHandle(&sbmspec, &unithand, TRUE, &fhand);
         if (err || (err = OS_FreeFileHandle(&fhand))) {
             CLReportOSError(
                 CLStr18,
@@ -692,7 +693,6 @@ CW_CALLBACK UCBGetStoredObjectFileSpec(
 }
 }
 
-// (Pro7's CWCompilerLinkerCallbacks; 2.6's has no framework callbacks)
 CWCompilerLinkerCallbacks sCompilerLinkerCallbacks = {
     UCBCachePrecompiledHeader,
     UCBLoadObjectData,
@@ -726,7 +726,6 @@ CWCompilerLinkerContext::CWCompilerLinkerContext()
         targetinfo->targetCPU = gTarg->cpu;
         targetinfo->targetOS = gTarg->os;
     } else {
-        // (2.6: one chained assignment, where Pro7 has two)
         targetinfo->targetCPU = targetinfo->targetOS = targetCPUAny;
     }
 
@@ -735,10 +734,9 @@ CWCompilerLinkerContext::CWCompilerLinkerContext()
     sourcetext = NULL;
     sourcetextsize = 0;
 
-    // (2.6: chained, where Pro7 has three assignments)
-    precompile = autoprecompile = preprocess = 0;
-    cachingPCH = 0;
-    debuginfo = 0;
+    precompile = autoprecompile = preprocess = FALSE;
+    cachingPCH = FALSE;
+    debuginfo = FALSE;
     fileID = 0;
     memset(&browseoptions, 0, sizeof(browseoptions));
     reserved = NULL;

@@ -8,7 +8,7 @@ extern "C" {
 #endif
 
 extern void peepholeoptimizeforward(Object* func);
-extern void peepholemergeblocks(Object* func, Boolean flag);
+extern void peepholemergeblocks(Object* func, Boolean mergePrologEpilog);
 extern void peepholeoptimizepcode(Object* func);
 
 #ifdef __cplusplus

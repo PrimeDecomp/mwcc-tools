@@ -530,7 +530,14 @@ pub fn compile_resources(
         };
         let active = stack.iter().all(|(taken, _)| *taken);
         let directive = line.trim_start();
-        if let Some(expression) = directive.strip_prefix("#if ") {
+        let defined = |name: &str| macros.iter().any(|(m, _)| m == name.trim());
+        if let Some(name) = directive.strip_prefix("#ifdef ") {
+            let value = active && defined(name);
+            stack.push((value, value));
+        } else if let Some(name) = directive.strip_prefix("#ifndef ") {
+            let value = active && !defined(name);
+            stack.push((value, value));
+        } else if let Some(expression) = directive.strip_prefix("#if ") {
             let value = active && evaluate(expression, &constants)?;
             stack.push((value, value));
         } else if let Some(expression) = directive.strip_prefix("#elif ") {

@@ -7,7 +7,6 @@
 extern "C" {
 #endif
 
-// ExceptionAction.type
 typedef enum ExceptionActionType {
     EAT_NOP,
     EAT_DESTROYLOCAL,
@@ -31,8 +30,6 @@ typedef enum ExceptionActionType {
 } ExceptionActionType;
 
 #pragma pack(push, 2)
-// an action to undo when an exception unwinds past it: the statements'
-// dobjstack lists, newest first
 struct ExceptionAction {
     struct ExceptionAction* prev;
     union {

@@ -12,10 +12,10 @@
 #include "compiler/CFunc.h"
 #include "compiler/CInt64.h"
 #include "compiler/CMachine.h"
-#include "compiler/CodeGen.h"
 #include "compiler/CompilerTools.h"
 #include "compiler/CParser.h"
-#include "compiler/CPrep.h"
+#include "compiler/enode.h"
+#include "compiler/InlineAsm.h"
 #include "compiler/InlineAsmPPC.h"
 #include "compiler/objects.h"
 #include "compiler/types.h"
@@ -39,7 +39,7 @@ IROUse* IRO_LastVarUse;
 
 static void AddDefToRange(IRODef* def);
 
-static void MakeDef(VarRecord* var, IROLinear* linear, IRONode* node, Boolean flag) {
+static void MakeDef(VarRecord* var, IROLinear* linear, IRONode* node, Boolean definite) {
     IRODef* def = oalloc(sizeof(IRODef));
 
     def->index = NumDefs++;
@@ -50,7 +50,7 @@ static void MakeDef(VarRecord* var, IROLinear* linear, IRONode* node, Boolean fl
     def->useCount = 0;
     def->global = Inline_IsObjectData(var->object);
     def->noregister = var->noregister;
-    def->definite = flag;
+    def->definite = definite;
     def->removable = FALSE;
 
     if (FirstDef) {
@@ -155,6 +155,8 @@ static void FindDefsAndUses(void) {
                                     (effects.operands[i].size == var->object->type->size)
                             );
                             break;
+                        default:
+                            break;
                     }
                 }
             }
@@ -187,14 +189,11 @@ static void MarkUses(Object* obj) {
 }
 
 static Boolean IsIncOrDec(IROLinear* linear) {
-    switch (linear->type) {
+    switch ((int)linear->type) {
         case IROLinearOp1Arg:
-            if (linear->nodetype ==
-                EPOSTINC ||
-                linear->nodetype ==
-                EPOSTDEC ||
-                linear->nodetype ==
-                EPREINC ||
+            if (linear->nodetype == EPOSTINC ||
+                linear->nodetype == EPOSTDEC ||
+                linear->nodetype == EPREINC ||
                 linear->nodetype == EPREDEC) {
                 if (!(linear->u.monadic->flags & IROLF_BitfieldIndirect)) {
                     return TRUE;
@@ -229,7 +228,11 @@ static Boolean IsOtherSelfAssignment(IROLinear* linear) {
                         return TRUE;
                     }
                     break;
+                default:
+                    break;
             }
+            break;
+        default:
             break;
     }
 
@@ -285,8 +288,7 @@ CInt64 IRO_GetSelfAssignmentVal(IROLinear* linear) {
     return result;
 }
 
-// 2.6 (not in Pro7): Wii names it, a public of its IroType.c; 2.6 has it here, called by the type
-// promotion UpdateUse and UpdateUseForOtherSelfAssignment gained
+#if VERSION >= VERSION_GC_2_5
 static IROLinear* IRO_AddTypeConversion(IROLinear* node, Type* type, IROList* list) {
     IROLinear* first;
     IROLinear* last;
@@ -333,6 +335,7 @@ static IROLinear* IRO_AddTypeConversion(IROLinear* node, Type* type, IROList* li
     }
     return last;
 }
+#endif
 
 static void UpdateUse(IROLinear* linear, CInt64 val, Type* type) {
 #if VERSION < VERSION_GC_2_5
@@ -365,6 +368,8 @@ static void UpdateUse(IROLinear* linear, CInt64 val, Type* type) {
                         father->u.diadic.right = repl;
                         IRO_PasteAfter(repl, repl, linear);
                         return;
+                    default:
+                        break;
                 }
                 break;
             case IROLinearOp2Arg:
@@ -380,14 +385,17 @@ static void UpdateUse(IROLinear* linear, CInt64 val, Type* type) {
                             father->u.diadic.right->u.node->data.intval =
                                 CInt64_Sub(father->u.diadic.right->u.node->data.intval, val);
                             return;
+                        default:
+                            break;
                     }
                 }
+                break;
+            default:
                 break;
         }
     }
 
 #if VERSION < VERSION_GC_2_5
-    // 2.0: the step is added in the use's own type, without promotion
     repl = IRO_NewIntConst(val, type);
     newdiadic = IRO_NewLinear(IROLinearOp2Arg);
     newdiadic->index = ++IRO_NumLinear;
@@ -632,19 +640,18 @@ static void UpdateUseForOtherSelfAssignment(IROLinear* a, IROLinear* b, Type* ty
 
     val = IRO_GetSelfAssignmentVal(b);
     if ((father = IRO_LocateFather(a)) &&
-        father->type ==
-        IROLinearOp2Arg &&
+        father->type == IROLinearOp2Arg &&
         IRO_IsIntConstant(father->u.diadic.right)) {
-        CInt64 var_30 = father->u.diadic.right->u.node->data.intval;
+        CInt64 fatherval = father->u.diadic.right->u.node->data.intval;
         if (AssignmentFoldingFunction[b->nodetype] &&
             ((father->nodetype == b->nodetype) ||
              (father->nodetype == IRO_NonAssignmentOp[b->nodetype]))) {
             CInt64 v;
             CInt64 folded;
             CInt64_SetLong(&v, b->rtype->size * 8);
-            folded = AssignmentFoldingFunction[b->nodetype](var_30, val);
+            folded = AssignmentFoldingFunction[b->nodetype](fatherval, val);
             if (b->nodetype == ESHRASS && !is_unsigned(b->rtype)) {
-                if (CInt64_LessU(var_30, v) && CInt64_LessU(val, v)) {
+                if (CInt64_LessU(fatherval, v) && CInt64_LessU(val, v)) {
                     if (CInt64_GreaterEqualU(folded, v)) {
                         folded = CInt64_Sub(v, cint64_one);
                     }
@@ -664,12 +671,14 @@ static void UpdateUseForOtherSelfAssignment(IROLinear* a, IROLinear* b, Type* ty
                         if (IRO_IsPow2(b->u.diadic.right, &powvalue)) {
                             if (powvalue > 0) {
                                 CInt64_SetLong(&v, powvalue);
-                                father->u.diadic.right->u.node->data.intval = CInt64_Add(v, var_30);
+                                father->u.diadic.right->u.node->data.intval =
+                                    CInt64_Add(v, fatherval);
                             }
                         } else {
                             father->nodetype = (father->nodetype == ESHL) ? EMUL : EMULASS;
-                            var_30 = CInt64_Shl(cint64_one, var_30);
-                            father->u.diadic.right->u.node->data.intval = CInt64_Mul(var_30, val);
+                            fatherval = CInt64_Shl(cint64_one, fatherval);
+                            father->u.diadic.right->u.node->data.intval =
+                                CInt64_Mul(fatherval, val);
                         }
                         return;
                     }
@@ -682,12 +691,14 @@ static void UpdateUseForOtherSelfAssignment(IROLinear* a, IROLinear* b, Type* ty
                         if (IRO_IsPow2(b->u.diadic.right, &powvalue)) {
                             if (powvalue > 0) {
                                 CInt64_SetLong(&v, powvalue);
-                                father->u.diadic.right->u.node->data.intval = CInt64_Add(v, var_30);
+                                father->u.diadic.right->u.node->data.intval =
+                                    CInt64_Add(v, fatherval);
                             }
                         } else {
                             father->nodetype = (father->nodetype == ESHR) ? EDIV : EDIVASS;
-                            var_30 = CInt64_Shl(cint64_one, var_30);
-                            father->u.diadic.right->u.node->data.intval = CInt64_Mul(var_30, val);
+                            fatherval = CInt64_Shl(cint64_one, fatherval);
+                            father->u.diadic.right->u.node->data.intval =
+                                CInt64_Mul(fatherval, val);
                         }
                         return;
                     }
@@ -704,11 +715,12 @@ static void UpdateUseForOtherSelfAssignment(IROLinear* a, IROLinear* b, Type* ty
                             }
                         } else {
                             val = CInt64_Shl(cint64_one, val);
-                            father->u.diadic.right->u.node->data.intval = CInt64_Mul(var_30, val);
+                            father->u.diadic.right->u.node->data.intval =
+                                CInt64_Mul(fatherval, val);
                         }
                         return;
                     } else if (father->nodetype == ESHR || father->nodetype == ESHRASS) {
-                        if (CInt64_Equal(var_30, val) && is_unsigned(father->rtype)) {
+                        if (CInt64_Equal(fatherval, val) && is_unsigned(father->rtype)) {
                             father->nodetype = (father->nodetype == ESHR) ? EAND : EANDASS;
                             if (father->rtype->size < 8) {
                                 CInt64 v;
@@ -734,11 +746,12 @@ static void UpdateUseForOtherSelfAssignment(IROLinear* a, IROLinear* b, Type* ty
                             }
                         } else {
                             val = CInt64_Shl(cint64_one, val);
-                            father->u.diadic.right->u.node->data.intval = CInt64_Mul(var_30, val);
+                            father->u.diadic.right->u.node->data.intval =
+                                CInt64_Mul(fatherval, val);
                         }
                         return;
                     } else if (father->nodetype == ESHL || father->nodetype == ESHLASS) {
-                        if (CInt64_Equal(var_30, val)) {
+                        if (CInt64_Equal(fatherval, val)) {
                             father->nodetype = (father->nodetype == ESHL) ? EAND : EANDASS;
                             father->u.diadic.right->u.node->data.intval =
                                 CInt64_Shl(cint64_negone, val);
@@ -746,12 +759,13 @@ static void UpdateUseForOtherSelfAssignment(IROLinear* a, IROLinear* b, Type* ty
                         }
                     }
                     break;
+                default:
+                    break;
             }
         }
     }
 
 #if VERSION < VERSION_GC_2_5
-    // 2.0: the operation is done in the use's own type, without promotion
     repl = IRO_NewIntConst(val, type);
     newdiadic = IRO_NewLinear(IROLinearOp2Arg);
     newdiadic->index = ++IRO_NumLinear;
@@ -825,10 +839,8 @@ static Boolean PropagateIncsAndDecs(void) {
 
             for (use = def->var->uses, i = 0; use; use = use->varnext) {
                 if (Bv_IsBitSet(def->index, use->reachingDefs)) {
-                    if (use->reachingDefCount ==
-                        1 &&
-                        use->linear->type ==
-                        IROLinearOperand &&
+                    if (use->reachingDefCount == 1 &&
+                        use->linear->type == IROLinearOperand &&
                         (father = IRO_LocateFather(use->linear)) &&
                         IRO_IsVariable(father) &&
                         IRO_TypesEqual(def->linear->rtype, father->rtype)) {
@@ -857,7 +869,6 @@ static Boolean PropagateIncsAndDecs(void) {
                         father = IRO_LocateFather(use->linear);
                         val = IRO_GetSelfAssignmentVal(def->linear);
 #if VERSION < VERSION_GC_2_5
-                        // 2.0: the step's type is the variable's (an address steps as unsigned long)
                         type = def->linear->rtype;
                         if (IS_TYPE_POINTER_ONLY(def->linear->rtype)) {
                             type = TYPE(&stunsignedlong);
@@ -912,10 +923,8 @@ static Boolean PropagateOtherSelfAssignments(void) {
 
             for (use = def->var->uses, i = 0; use; use = use->varnext) {
                 if (Bv_IsBitSet(def->index, use->reachingDefs)) {
-                    if (use->reachingDefCount ==
-                        1 &&
-                        use->linear->type ==
-                        IROLinearOperand &&
+                    if (use->reachingDefCount == 1 &&
+                        use->linear->type == IROLinearOperand &&
                         (father = IRO_LocateFather(use->linear)) &&
                         IRO_IsVariable(father) &&
                         IRO_TypesEqual(def->linear->rtype, father->rtype)) {
@@ -973,9 +982,8 @@ nextDef:
 }
 
 #if VERSION < VERSION_GC_2_5
-// 2.0's file has 159 lines fewer above here
 #undef CError_LINE_SHIFT
-#define CError_LINE_SHIFT -159
+#define CError_LINE_SHIFT (-159 + CError_LINE_DELTA)
 #endif
 static void MarkUsesByIndirect(IROLinear* linear, BitVector* a, BitVector* b) {
     IROListNode* scan;
@@ -1186,10 +1194,10 @@ static Boolean UseOfVarIsInsideASimpleDefOfVar(IROUse* use) {
     VarRecord* var;
     VarRecord* varAss;
     IROLinear* nd;
-    IROLinear* nd2;
+    IROLinear* rhs;
 
     if ((var = use->var)) {
-        if ((nd = use->linear) && (nd->flags & IROLF_4000)) {
+        if ((nd = use->linear) && (nd->flags & IROLF_InCallArg)) {
             return FALSE;
         }
 
@@ -1200,11 +1208,10 @@ static Boolean UseOfVarIsInsideASimpleDefOfVar(IROUse* use) {
         if (nd &&
             IRO_IsAssignment(nd) &&
             (varAss = IRO_FindAssigned(nd)) &&
-            varAss ==
-            var &&
+            varAss == var &&
             !IRO_HasSideEffect((nd->type == IROLinearOp1Arg) ? nd->u.monadic : nd->u.diadic.left) &&
-            (!(nd2 = (nd->type == IROLinearOp1Arg) ? NULL : nd->u.diadic.right) ||
-             !IRO_HasSideEffect(nd2))) {
+            (!(rhs = (nd->type == IROLinearOp1Arg) ? NULL : nd->u.diadic.right) ||
+             !IRO_HasSideEffect(rhs))) {
             return TRUE;
         }
     }
@@ -1301,7 +1308,7 @@ Boolean IRO_UseDef(Boolean optDeadAssignments, Boolean optPropagation) {
     IROUse* use;
     IRONode* node;
     IROLinear* nd;
-    Boolean flag;
+    Boolean changed;
     BitVector* bv3;
     BitVector* bv2;
     BitVector* bv;
@@ -1361,7 +1368,7 @@ Boolean IRO_UseDef(Boolean optDeadAssignments, Boolean optPropagation) {
     Bv_AllocVector(&bv3, NumDefs);
 
     do {
-        flag = FALSE;
+        changed = FALSE;
         for (node = IRO_FirstNode; node; node = node->nextnode) {
             Bv_Clear(node->in);
             if (node->numpred) {
@@ -1378,12 +1385,12 @@ Boolean IRO_UseDef(Boolean optDeadAssignments, Boolean optPropagation) {
             Bv_Or(node->gen, bv3);
             if (!Bv_Compare(bv3, node->out)) {
                 Bv_Copy(bv3, node->out);
-                flag = TRUE;
+                changed = TRUE;
             }
         }
 
         IRO_CheckForUserBreak();
-    } while (flag);
+    } while (changed);
 
     gdef = FirstDef;
     guse = IRO_FirstVarUse;
@@ -1407,19 +1414,14 @@ Boolean IRO_UseDef(Boolean optDeadAssignments, Boolean optPropagation) {
 
             if (nd->type == IROLinearFunccall) {
                 MarkUsesByFunctionCall(nd, bv2, bv);
-            } else if (nd->type ==
-                       IROLinearOp1Arg &&
-                       nd->nodetype ==
-                       EINDIRECT &&
+            } else if (nd->type == IROLinearOp1Arg &&
+                       nd->nodetype == EINDIRECT &&
                        !IRO_IsVariable(nd)) {
                 MarkUsesByIndirect(nd, bv2, bv);
             } else if ((nd->type == IROLinearFunccall) ||
-                       (nd->type ==
-                        IROLinearOp1Arg &&
-                        nd->nodetype ==
-                        EINDIRECT &&
+                       (nd->type == IROLinearOp1Arg &&
+                        nd->nodetype == EINDIRECT &&
                         !IRO_IsVariable(nd))) {
-                // 2.6 walks the definitions here with a variable of its own (Pro7 reuses def)
                 IRODef* d;
                 Bv_Copy(Reaches, bv2);
                 Bv_And(bv, bv2);
@@ -1429,8 +1431,7 @@ Boolean IRO_UseDef(Boolean optDeadAssignments, Boolean optPropagation) {
                         d->useCount++;
                     }
                 }
-                if (nd->type ==
-                    IROLinearFunccall &&
+                if (nd->type == IROLinearFunccall &&
                     nd->stmt &&
                     IRO_FunctionCallMightThrowException(nd)) {
                     IRO_WalkExcActions(nd->stmt->dobjstack, MarkUses);
@@ -1483,8 +1484,7 @@ Boolean IRO_UseDef(Boolean optDeadAssignments, Boolean optPropagation) {
             if (def->linear &&
                 (!Bv_IsBitSet(def->index, MightReachAnyUse) || def->removable) &&
                 (copts.opt_pointer_analysis || !def->noregister) &&
-                def->linear->type !=
-                IROLinearAsm &&
+                def->linear->type != IROLinearAsm &&
                 (!def->linear->rtype ||
                  !CParser_IsVolatile(
                      def->linear->rtype, def->linear->nodeflags & ENODE_FLAG_QUALS
@@ -1557,7 +1557,6 @@ static IROLinear* GetAssigned(IROLinear* nd) {
 
     nd = nd->u.monadic;
 
-    // 2.6: a bitfield's address
     if (nd->type == IROLinearOp1Arg && nd->nodetype == EBITFIELD) {
         nd = nd->u.monadic;
     }
@@ -1603,10 +1602,8 @@ static void ReplaceAssigned(IROLinear* nd, Object* from, Object* to) {
     IROLinear* assigned;
 
     if (!(assigned = GetAssigned(nd)) ||
-        assigned->type !=
-        IROLinearOperand ||
-        assigned->u.node->type !=
-        EOBJREF ||
+        assigned->type != IROLinearOperand ||
+        assigned->u.node->type != EOBJREF ||
         assigned->u.node->data.objref != from) {
         CError_FATAL(2621);
     }
@@ -1656,7 +1653,7 @@ void IRO_SplitLifetimes(void) {
     SInt32 numVars;
     IRODef* def;
     IROUse* use;
-    Boolean flag;
+    Boolean firstRange;
 
     Bv_AllocVector(&alldefs, NumDefs);
     Bv_AllocVector(&alluses, NumUses);
@@ -1667,8 +1664,7 @@ void IRO_SplitLifetimes(void) {
     numVars = IRO_NumVars;
 
     while (var && var->index <= numVars) {
-        if (var->object->datatype ==
-            DLOCAL &&
+        if (var->object->datatype == DLOCAL &&
             !is_volatile_object(var->object) &&
             !var->usedAtCall &&
             !var->noregister &&
@@ -1690,7 +1686,7 @@ void IRO_SplitLifetimes(void) {
                 Bv_SetBit(use->index, alluses);
             }
 
-            flag = TRUE;
+            firstRange = TRUE;
             while (1) {
                 Bv_Clear(defset);
                 Bv_Clear(useset);
@@ -1709,10 +1705,10 @@ void IRO_SplitLifetimes(void) {
                     break;
                 }
 
-                if (!flag) {
+                if (!firstRange) {
                     SplitOffRange(var);
                 }
-                flag = FALSE;
+                firstRange = FALSE;
             }
         }
 

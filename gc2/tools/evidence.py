@@ -1,68 +1,10 @@
 #!/usr/bin/env python3
-"""python tools/evidence.py COMMAND ...: what independent evidence says each of the original's functions is, and the
-decisions made from it. The evidence: the original's own assert sites (files and lines), a reference decompilation
-of a nearby compiler (Ninji's Mac Pro 7 tree; its assert lines often equal 2.6's), the Wii compilers (later builds of
-the same sources, whose CodeView names every function's object and the public ones), MSL in lib/, and the gc1
-decompilation (whose names are partly invented).
-
-  pair [--version V] [--exe EXE]
-      Pair the version's functions with a Wii compiler's by their code, no names used (tools/mw/pairing.py; default
-      EXE build/compilers/Wii/1.0RC1/mwcceppc.exe). Writes build/V/wii_match.json: each row's Wii function (address,
-      size, module, public name) with the pairing's method and similarity. Run again when the rows' bounds change.
-  sweep [--version V] [--pro7 DIR] [--gc1 DIR]
-      Every row's name and unit checked against the evidence (after a build and `pair`): writes build/V/name_sweep.json
-      and docs/names-V.md, with the review's decisions over the evidence's verdicts. Evidence kinds:
-        provenance  where the row's name exists: Pro7 (P), a Wii compiler's publics (W), MSL and the runtime in lib/
-                    (M), gc1 (g); a name only gc1 has, or nobody, was made up: "unconfirmed", not wrong
-        assert      the Pro7 function in the file the row's own asserts name whose assert lines are the same (exactly,
-                    or at one offset: 2.6's lines are Pro7's shifted after its additions); "assert line" a single line
-                    at the offset of the sure matches around it
-        strings     the Pro7 function whose literals include strings the row references, when few Pro7 functions do
-        wii         the paired Wii function's name and module: strong when anchored by strings/imports/constants or
-                    similarity >= 0.65, medium >= 0.5, weak below
-        order       each unit's rows aligned in order (or reversed: deferred units) with the Pro7 files they point to
-        body        the repository's body for the row is Pro7's function of that name (and exact)
-      Verdicts: confirmed, likely, plausible, unconfirmed, unnamed (fn_), check, rename, conflict; reviewed and open
-      (a decision of the review; a note starting "OPEN" keeps a row undecided).
-  review [--version V] {show,accept,set,ok,unit,drop,batch} ...
-      Record decisions in config/V/name_review.json (run sweep after):
-        show SOURCE...                      the rows of the sources (substrings) with the sweep's verdicts and evidence
-        accept ADDRESS... [-n NOTE]         the sweep's proposed name (or the row's own, when it proposes none)
-        set ADDRESS NAME [-n NOTE] [-u UNIT]  the row's name is NAME (and its unit UNIT, when not its source)
-        ok ADDRESS... [-n NOTE]             the row's current name stands
-        unit SOURCE NOTE...                 a finding about a unit's bounds
-        drop ADDRESS...                     forget the decisions
-        batch FILE [-n NOTE] [-u UNIT]      a `set` per line: ADDRESS NAME [| NOTE] (NAME `=` keeps the row's name;
-                                            # comments)
-      ADDRESS is a row's address (0x00436e10 or 436e10); A-B takes every row from A to B. Each decision records the
-      row's name when it was made ("was").
-  apply [--version V] [--write] [--only NAME...] [--force NAME...]
-      Rename the rows as the decisions say, everywhere (tools/mw/renaming.py: every version, all at once). A decision
-      applies while its row still has the name it was made over; one whose row was renamed since is stale and listed.
-      A rename whose new name already means something in the code is held back and listed with its uses (--force
-      NAME, old or new, applies it once the code is ready); so is one onto a name a held rename keeps. Names with `::`
-      (C++ members) are left. Without --write, prints what it would do.
-  unit [--version V] UNIT | START END
-      The original's functions over one unit's .text (a substring of its name) or an address range, each with its
-      state, name, whether a Wii compiler has a public of that name (and its module), its source when another unit's,
-      and the files and lines its own asserts push.
-  units [--version V] [--pro7 DIR] [-o OUT]
-      The table of translation units (default docs/units-V-table.md): each unit's range, exact functions and bytes,
-      host compiler, order ("rev": its asserts' lines descend along .text, so it was built -inline auto,deferred;
-      "asc", "mixed", or "-" with fewer than three), the evidence for its file name (its own asserts, a Wii module,
-      Pro7's tree), and whether it links.
-  align UNIT [--version V] [--rev] [--pro7 DIR]
-      A unit's functions in the original beside the definitions of the Pro7 file of that name (statics marked "s"),
-      to name them and find the ones it inlined or the linker dropped. --rev lists the original's in descending
-      address order (a unit built -inline auto,deferred emits its functions in reverse source order).
-
-The reference trees default to ../MWCC_Pro7 and ../mwcc-gc1/src; a missing tree is an error, not empty evidence.
-"""
 
 import argparse
 import bisect
 import collections
 import difflib
+import functools
 import itertools
 import json
 import math
@@ -81,9 +23,6 @@ WII_COMPILERS = project.ROOT / "build/compilers/Wii"
 
 STRENGTHS = ["weak", "medium", "strong"]
 
-# (units the trees name differently: Pro7's Mac-hosted OSLib is Posix.c where the Windows host's is MsDos.c; the
-# repository's MSL units carry a "_g" suffix the library's files lack; 2.x spells "eabi-ppc" where Pro7 spells
-# "mach-ppc" and Wii "eppc")
 UNIT_ALIASES = {
     "posix": "msdos",
     "printf": "printf_g",
@@ -109,7 +48,6 @@ UNIT_ALIASES = {
 
 
 def demangle(name):
-    """A plain name for a C++ one: `?f@@YA...` -> f, `?f@C@@...` -> C::f, `??0C@@` -> C::C."""
     if not name.startswith("?"):
         return name
     m = re.match(r"\?\?(\d|_\w)(\w+)@", name)
@@ -123,12 +61,12 @@ def short(name):
     return demangle(name).split("::")[-1]
 
 
+@functools.cache
 def stem(path):
     return Path(path).name.rsplit(".", 1)[0].lower() if path else None
 
 
 def unit_key(path):
-    """A unit's name for comparing trees."""
     s = stem(path) or ""
     for target in ("mach-ppc", "eabi-ppc", "ppc-mach", "ppc-eabi", "eppc"):
         s = s.replace(target, "TARGET")
@@ -147,16 +85,12 @@ def wii_executables():
 
 
 def wii_names():
-    """{short name: module} of every Wii compiler's functions (the first compiler naming it)."""
     out = {}
     for exe in wii_executables():
         image = wii.read(exe)
         for address, name in image.names().items():
             out.setdefault(short(name), image.module_at(address))
     return out
-
-
-# ----------------------------------------------------------------------------------------------------------- pair
 
 
 def rows_digest(rows):
@@ -216,18 +150,16 @@ def load_pairs(version, rows):
     return {e["address"]: e for e in data["functions"]}
 
 
-# ---------------------------------------------------------------------------------------------------------- sweep
-
-
-def similar_tokens(a, b):
+def similar_tokens(a, b, floor=0.0):
     if not a or not b or not 0.33 <= len(a) / len(b) <= 3:
         return 0.0
-    return difflib.SequenceMatcher(None, a, b, autojunk=False).ratio()
+    matcher = difflib.SequenceMatcher(None, a, b, autojunk=False)
+    if floor and (matcher.real_quick_ratio() <= floor or matcher.quick_ratio() <= floor):
+        return 0.0
+    return matcher.ratio()
 
 
 def assert_match(lines, candidates):
-    """[(score, exact, function, offset)] of CANDIDATES (Pro7 functions) by their assert lines against LINES: the
-    Jaccard overlap at the best single offset; 1.0 at offset 0 is "exact"."""
     out = []
     lines = set(lines)
     for f in candidates:
@@ -246,7 +178,6 @@ def assert_match(lines, candidates):
 
 
 def align(rows, functions, score):
-    """Monotone pairing of ROWS with FUNCTIONS (each in its order) maximizing the sum of SCORE(row, function) > 0."""
     n, m = len(rows), len(functions)
     table = [[0.0] * (m + 1) for _ in range(n + 1)]
     cache = {}
@@ -268,8 +199,6 @@ def align(rows, functions, score):
 
 
 def align_costed(rows, functions, score, skip_row, skip_function):
-    """Monotone pairing of ROWS with FUNCTIONS maximizing the pairs' SCORE less SKIP_ROW(row) for each row left out
-    and SKIP_FUNCTION(function) for each function left out (pairs scoring None are not allowed)."""
     n, m = len(rows), len(functions)
     neg = float("-inf")
     table = [[neg] * (m + 1) for _ in range(n + 1)]
@@ -308,7 +237,7 @@ def read_review(version):
     return json.loads(path.read_text()) if path.exists() else {"functions": {}, "units": {}}
 
 
-def sweep(version, pro7_root, gc1_root):
+def sweep(version, pro7_root, gc1_root, output=None):
     pe = original(version)
     exact = {a for a, v in verdict.load(version).items() if v.exact}
     rows = config.functions(version)
@@ -333,7 +262,7 @@ def sweep(version, pro7_root, gc1_root):
     ours_by_name = collections.defaultdict(list)
     for f in ours:
         ours_by_name[short(f["name"])].append(f)
-    string_owners = collections.defaultdict(set)  # (a string literal's Pro7 owners)
+    string_owners = collections.defaultdict(set)
     for k, f in enumerate(pro7):
         for s in f["strings"]:
             if len(s) >= 3:
@@ -362,7 +291,7 @@ def sweep(version, pro7_root, gc1_root):
         info.append(dict(asserts=found, strings=[s for s in strings if s not in files], callees=callees))
 
     entries = []
-    line_samples = collections.defaultdict(list)  # (file stem: [(2.6 line, offset to Pro7's)] of sure matches)
+    line_samples = collections.defaultdict(list)
     for i, r in enumerate(rows):
         plain = short(r.name)
         e = dict(
@@ -373,7 +302,6 @@ def sweep(version, pro7_root, gc1_root):
             exact=r.address in exact,
             evidence=[],
         )
-        # (a library function's name may carry its unit as a prefix, for the global row names: alloc_g_link)
         library = (r.source or "").startswith(("src/msl/", "src/runtime/"))
         unprefixed = plain.removeprefix(Path(r.source or "").stem + "_") if library else plain
         e["provenance"] = "".join(
@@ -400,8 +328,6 @@ def sweep(version, pro7_root, gc1_root):
                 lines = [s.line for s in sites if s.file == files[0]]
                 candidates = pro7_by_stem.get(stem(files[0]), [])
                 ranked = assert_match(lines, candidates)
-                # (the same lines exactly, in one Pro7 function of the file: that one, however few the lines; else
-                # the one sharing most lines unshifted, when half of them; two lines fit many functions at some shift)
                 exact_ones = [x for x in ranked if x[1]]
                 unshifted = sorted(
                     (
@@ -432,7 +358,7 @@ def sweep(version, pro7_root, gc1_root):
                             detail=f"{'exact' if is_exact else f'{score:.2f}'} lines",
                         )
                     )
-        votes = collections.Counter()  # (strings few Pro7 functions have)
+        votes = collections.Counter()
         for s in sorted(set(info[i]["strings"])):
             owners = string_owners.get(s, ())
             if 1 <= len(owners) <= 2:
@@ -455,7 +381,6 @@ def sweep(version, pro7_root, gc1_root):
             sim, method = w["similarity"], w["method"]
             anchored = method.split("-")[0] in ("strings", "imports", "constants")
             strength = "strong" if sim >= 0.65 or anchored and sim >= 0.45 else "medium" if sim >= 0.5 else "weak"
-            # (a short function matches many: by its calls alone it says little, by its place a little more)
             if w.get("instructions", 99) < 8 and not anchored:
                 strength = (
                     "weak" if method in ("callee", "caller", "global") else min(strength, "medium", key=STRENGTHS.index)
@@ -479,14 +404,12 @@ def sweep(version, pro7_root, gc1_root):
                 )
         if plain in pro7_by_name and plain in ours_by_name and r.source:
             mine = [f for f in ours_by_name[plain] if stem(f["file"]) == stem(r.source)] or ours_by_name[plain]
-            best = (
-                max(
-                    ((similar_tokens(m["tokens"], p["tokens"]), p) for m in mine for p in pro7_by_name[plain]),
-                    key=lambda x: x[0],
-                )
-                if mine
-                else (0, None)
-            )
+            best = (0.0, None)
+            for m in mine:
+                for p in pro7_by_name[plain]:
+                    score = similar_tokens(m["tokens"], p["tokens"], max(best[0], 0.6 - 1e-9))
+                    if score > best[0]:
+                        best = (score, p)
             if best[0] >= 0.6:
                 e["evidence"].append(
                     dict(
@@ -542,14 +465,12 @@ def sweep(version, pro7_root, gc1_root):
         f"not built deferred",
         file=sys.stderr,
     )
-    write_report(entries, review, version, project.ROOT / f"docs/names-{version_doc_name(version)}.md", checks)
+    path = Path(output) if output else project.ROOT / f"docs/names-{version_doc_name(version)}.md"
+    write_report(entries, review, version, path, checks)
+    print(project.relative(path))
 
 
 def assert_positions(entries, info, line_samples, pro7_by_stem, pro7_by_name):
-    """Assert position: a line of 2.6's, shifted by the offset of the sure matches around it, is a Pro7 assert's line:
-    that function's. One line is enough where the offsets on both sides agree. A file with few sure matches takes the
-    offsets two or more functions' lines share, kept where they rise along the file (2.6 grew from Pro7 by
-    additions, so the offset grows)."""
     rows_lines = collections.defaultdict(list)
     for i, x in enumerate(info):
         for s in x["asserts"]:
@@ -570,7 +491,6 @@ def assert_positions(entries, info, line_samples, pro7_by_stem, pro7_by_name):
             for d, owners in support.items()
             if len(owners) >= 2 and l + d in theirs and i in owners
         )
-        # (the longest chain of samples whose offsets (Pro7 line - 2.6 line) do not rise along the file)
         best = []
         for k, (l, d) in enumerate(votes):
             chain = max((c for c in best[:k] if c[-1][1] >= d), key=len, default=[])
@@ -612,13 +532,10 @@ def assert_positions(entries, info, line_samples, pro7_by_stem, pro7_by_name):
                         detail=f"{n} line(s) at the neighbours' offset",
                     )
                 )
-    # (one row per Pro7 function: a function several rows reach by position says the offsets are wrong there)
     claims = collections.Counter(ev["name"] for e in entries for ev in e["evidence"] if ev["kind"] == "assertpos")
     for e in entries:
         e["evidence"] = [ev for ev in e["evidence"] if ev["kind"] != "assertpos" or claims[ev["name"]] == 1]
 
-    # (inlining: a function's asserts include its inlined callees' (and theirs): an assert naming a function its Pro7
-    # namesake calls says nothing against the name)
     for e in entries:
         own = pro7_by_name.get(short(e["name"]), [])
         first = {c for f in own for c in f["calls"]}
@@ -634,10 +551,6 @@ def assert_positions(entries, info, line_samples, pro7_by_stem, pro7_by_name):
 
 
 def order_and_verdicts(entries, rows, info, pro7, pro7_by_name, pro7_by_stem):
-    """Each source's rows aligned with the Pro7 files its rows point to, then each row's verdict; three rounds, each
-    round's names for the rows (the confident proposals, else the rows' own) the next round's names of callees and
-    callers."""
-    # (bytes of 2.6 code per Pro7 token, over the functions whose body is Pro7's and exact)
     ratios = sorted(
         e["size"] / len(p["tokens"])
         for e in entries
@@ -672,7 +585,6 @@ def order_and_verdicts(entries, rows, info, pro7, pro7_by_name, pro7_by_stem):
         return assert_match(lines, [f])[0][0] if lines and f["asserts"] else 0.0
 
     def anchor_score(i, f):
-        """What says row I is Pro7 function F, besides their places."""
         s = 0.0
         for ev in entries[i]["evidence"]:
             if ev.get("file") == f["file"] and ev["name"] == short(f["name"]):
@@ -684,7 +596,6 @@ def order_and_verdicts(entries, rows, info, pro7, pro7_by_name, pro7_by_stem):
         fit = assert_fit(i, f)
         if fit >= 0.5 and len(f["asserts"]) >= 2:
             s += 1.5 * fit
-        # (the call graph by name: the callees' and the callers' names against the Pro7 function's)
         for mine, theirs in (
             ({effective[c] for c in info[i]["callees"]}, set(f["calls"])),
             ({effective[c] for c in callers[i]}, pro7_callers.get(short(f["name"]), set())),
@@ -732,7 +643,6 @@ def order_and_verdicts(entries, rows, info, pro7, pro7_by_name, pro7_by_stem):
                 order = functions if total == forward[0] else functions[::-1]
                 direction = "forward" if order is functions else "reverse"
                 found = [(a, b, s, "anchor") for a, b, s in anchors]
-                # (between anchors: as many rows as Pro7 functions pair in order; else by size and asserts, as hints)
                 bounds = [(-1, -1)] + [(a, b) for a, b, _ in anchors] + [(len(indices), len(order))]
                 for (a1, b1), (a2, b2) in zip(bounds, bounds[1:]):
                     left, right = list(range(a1 + 1, a2)), list(range(b1 + 1, b2))
@@ -747,10 +657,7 @@ def order_and_verdicts(entries, rows, info, pro7, pro7_by_name, pro7_by_stem):
                         found += [(a, b, gap_score(indices[a], order[b]), "tight") for a, b in zip(left, right)]
                         continue
                     if edge:
-                        # (past the first or last anchor only the nearest few: the rest may be another file's)
                         left, right = (left[-6:], right[-6:]) if a1 == -1 else (left[:6], right[:6])
-                    # (Pro7 has more functions where 2.6 inlined its small statics: leaving one of those out costs
-                    # little, a larger one or a row more)
                     loose = align_costed(
                         [indices[a] for a in left],
                         [order[b] for b in right],
@@ -814,8 +721,6 @@ def order_and_verdicts(entries, rows, info, pro7, pro7_by_name, pro7_by_stem):
 
 
 def judge(e):
-    """The row's verdict: each name's support, its evidence kinds' strengths added (strong 3, medium 2, weak 1; the
-    kinds are independent, so two that agree outweigh one)."""
     plain = short(e["name"])
     support = collections.Counter()
     best_kind = {}
@@ -829,8 +734,6 @@ def judge(e):
     strong = {ev["name"] for ev in e["evidence"] if ev["strength"] == "strong"}
     real = bool(set(e["provenance"]) & set("PWM"))
     unnamed = e["name"].startswith("fn_")
-    # (Wii is later than 2.6, Pro7 earlier: a Wii name for a function whose row has its unit's Pro7 name is a later
-    # rename -- Pro7's PPCLibImport_GetDropInFlags is Wii's CWPlugin_GetDropInFlags)
     own_unit = unit_key(e["source"]) if e.get("source") else None
     if own_unit and any(unit_key(f) == own_unit for f in e.get("pro7_files", [])):
         for name in [n for n in support if n != plain]:
@@ -842,13 +745,11 @@ def judge(e):
     others = [(v, n) for n, v in support.items() if n != plain]
     top, rival = max(others) if others else (0, None)
     if any(ev["kind"] == "library" for ev in e["evidence"]):
-        result = "confirmed"  # (the library's own source; Wii's later MSL renamed some: __msl_read)
+        result = "confirmed"
     elif any(ev["kind"] == "body" and ev["strength"] == "strong" for ev in e["evidence"]) and not any(
         ev["kind"] in ("assert", "assertpos", "strings") and ev["strength"] == "strong" and ev["name"] != plain
         for ev in e["evidence"]
     ):
-        # (the code is Pro7's function of that name, byte for byte: only asserts or strings outrank it -- Wii pairs
-        # twins by their calls)
         result = "confirmed"
     elif mine >= 3 and plain in strong and top < 3:
         result = "confirmed"
@@ -884,12 +785,11 @@ def judge(e):
 
 
 def final_name(e):
-    """The row's name once the list is applied: the review's, else a proposed rename, else its own."""
     if e.get("reviewed"):
         return e["reviewed"].get("name") or short(e["name"])
     if e["verdict"] == "rename" and e.get("proposed"):
         return e["proposed"]
-    return e["name"] if e["name"].startswith("?") else short(e["name"])  # (C++ methods: one short name, many classes)
+    return e["name"] if e["name"].startswith("?") else short(e["name"])
 
 
 def final_unit(e):
@@ -897,7 +797,6 @@ def final_unit(e):
 
 
 def longest_monotone(points):
-    """The longest run of POINTS [(row, line)] (in address order) whose lines only ascend: indexes into POINTS."""
     previous = [None] * len(points)
     tails, tail_index = [], []
     for k, (_, line) in enumerate(points):
@@ -917,9 +816,6 @@ def longest_monotone(points):
 
 
 def consistency(entries, pro7_by_name):
-    """Checks over the list as a whole: a name given to several rows; rows whose (final) Pro7 name sits out of the
-    order their unit's other Pro7 names follow (forward, or reversed for a deferred unit); each unit's direction
-    against its build flags (`-inline auto,deferred` or `#pragma defer_codegen`)."""
     by_name = collections.defaultdict(list)
     for e in entries:
         by_name[final_name(e)].append(e)
@@ -946,8 +842,6 @@ def consistency(entries, pro7_by_name):
         backward = longest_monotone([(e, -line) for e, line in points])
         reversed_ = len(backward) > len(forward)
         keep = set(backward if reversed_ else forward)
-        # (a unit with no order, like IroPointerAnalysis' included ADTs of inline functions, each emitted after its
-        # first user, says nothing about single rows)
         ordered = len(keep) >= 0.6 * len(points)
         for k, (e, line) in enumerate(points):
             if k not in keep and ordered:
@@ -998,7 +892,6 @@ KIND = {
 
 
 def write_report(entries, review, version, path, checks):
-    """The list: per unit (in link order) its bounds' evidence and every row that is not confirmed."""
 
     def describe(e):
         parts = []
@@ -1019,22 +912,7 @@ def write_report(entries, review, version, path, checks):
     lines = [
         f"# {version}: function names and unit bounds",
         "",
-        "Generated by `tools/evidence.py sweep` (after `tools/evidence.py pair`; decisions from reading the code",
-        f"are in `config/{version}/name_review.json` and override the evidence). Every row of `functions.json` is",
-        "checked against Pro7 (Ninji's decompilation), the Wii compilers' CodeView (names and modules), MSL, and",
-        "2.6's own assert files and lines. A name only the gc1 decompilation has, or nobody has, was made up by an",
-        "earlier pass: unconfirmed, not necessarily wrong (2.x has functions Pro7 and Wii lack).",
-        "",
-        "Verdicts: **reviewed** (a decision from reading the code), **open** (read, still undecided), **rename** "
-        "(the evidence names it otherwise),",
-        "**conflict** (strong evidence disagrees), **check** (medium evidence names it otherwise, or its name's",
-        "Pro7 file is another unit), **unnamed** (fn_), **unconfirmed** (an invented name, nothing names it),",
-        "**plausible** (a real name, unconfirmed), **likely** / **confirmed** (named so by medium / strong",
-        "evidence; not listed per row). Evidence: asserts (Pro7 function with the same assert lines), assert",
-        "line (one line at the neighbours' offset), strings (Pro7 literals few functions share), Wii (paired",
-        "code; strength by similarity and method), order (aligned with the Pro7 file in order, or reversed for",
-        "deferred units: anchor / tight gap / gap / loose), body (the source's body is Pro7's, exact); s/m/w =",
-        "strong / medium / weak. Pro7 gap: the Pro7 functions between the aligned neighbours.",
+        "Evidence strength: s/m/w = strong / medium / weak.",
         "",
         "| verdict | rows |",
         "|---|---|",
@@ -1047,10 +925,6 @@ def write_report(entries, review, version, path, checks):
         "",
         "## Names on several rows",
         "",
-        "Once the list is applied (review, else a proposed rename, else the row's name), these names would be",
-        "given to more than one row: statics of different units with one name need a unit prefix (functions.json",
-        "names are global), anything else is a mistake to settle.",
-        "",
     ]
     lines += [
         f"- `{n}`: " + ", ".join(f"{a} (`{by_address[a]['name']}`, {final_unit(by_address[a])})" for a in addresses)
@@ -1059,13 +933,6 @@ def write_report(entries, review, version, path, checks):
     lines += [
         "",
         "## Out of Pro7's order",
-        "",
-        "Rows whose final name is a Pro7 function of their unit's file but out of the order the unit's other",
-        "Pro7 names follow (the longest ascending, or for deferred units descending, run of Pro7 lines in",
-        "address order). Each is a name to re-check, confirmed and exact rows included: a body matched under",
-        "a lookalike's name, or a function filed in the wrong unit. Where the Pro7 file is not the unit's own",
-        "(ObjGen_PPC_EABI against ObjGenMachO, MsDos against Posix) the names are by analogy and the order",
-        "need not agree; `CW_INLINE` helpers' copies follow their first user (CLIO).",
         "",
         "| address | row | final name | Pro7 | verdict | unit |",
         "|---|---|---|---|---|---|",
@@ -1078,11 +945,6 @@ def write_report(entries, review, version, path, checks):
     lines += [
         "",
         "## Deferred units",
-        "",
-        "A unit whose functions run in reverse of Pro7's file was built `-inline auto,deferred`. Units the repo",
-        "builds without it are written in the binary's order instead, which matches only while no function is",
-        "inlined into one defined before it (deferred inlining can, `-inline auto` cannot): those near-misses",
-        "need Pro7's order and the flag.",
         "",
         "| unit | Pro7 file | named rows in order | original | repo |",
         "|---|---|---|---|---|",
@@ -1129,12 +991,11 @@ def write_report(entries, review, version, path, checks):
     project.write_atomic(path, "\n".join(lines) + "\n")
 
 
-# --------------------------------------------------------------------------------------------------------- review
-
-
 def review_addresses(specs, known):
     out = []
     for spec in specs:
+        if not re.fullmatch(r"(0x)?[0-9a-fA-F]+(-(0x)?[0-9a-fA-F]+)?", spec):
+            raise project.Error(f"{spec}: not an ADDRESS or A-B (hexadecimal)")
         if "-" in spec:
             lo, hi = (int(x, 16) for x in spec.split("-"))
             out += [a for a in known if lo <= int(a, 16) <= hi]
@@ -1169,7 +1030,6 @@ def review(version, command, args, note, unit):
                 f"{e['name'][:38]:38} {e['provenance']:4} {proposed[:34]:34}{module} | {evidence}{gap}{files}"
             )
         return
-    # (the rows' current names, which each decision records as "was")
     current = {config.format_address(r.address): r for r in config.functions(version)}
     with project.Transaction() as tx:
         path = version.config / "name_review.json"
@@ -1191,11 +1051,17 @@ def review(version, command, args, note, unit):
                 raise project.Error("unit SOURCE NOTE...")
             decisions["units"][args[0]] = " ".join(args[1:])
         elif command == "batch":
-            for line in Path(args[0]).read_text().splitlines():
+            try:
+                batch = Path(args[0]).read_text().splitlines()
+            except OSError as e:
+                raise project.Error(f"{args[0]}: {e.strerror}") from None
+            for line in batch:
                 line = line.strip() if line.lstrip().startswith("0x") else line.split("#", 1)[0].strip()
                 if not line:
                     continue
                 spec, _, line_note = line.partition("|")
+                if len(spec.split()) < 2:
+                    raise project.Error(f"{args[0]}: {line!r} is not ADDRESS NAME [| NOTE]")
                 address, name = spec.split()[:2]
                 address = review_addresses([address], current)[0]
                 decide(address, current[address].name if name == "=" else name)
@@ -1220,9 +1086,6 @@ def review(version, command, args, note, unit):
                     decide(address, current[address].name)
         decisions["functions"] = dict(sorted(decisions["functions"].items()))
         tx.write(path, json.dumps(decisions, indent=2) + "\n")
-
-
-# ---------------------------------------------------------------------------------------------------------- apply
 
 
 def apply(version, write, only, force):
@@ -1252,7 +1115,6 @@ def apply(version, write, only, force):
                 print(f"    {project.relative(s.path)}:{s.line}: {text.splitlines()[s.line - 1].strip()[:100]}")
     for old in held:
         del mapping[old]
-    # (a rename onto a name that a held one keeps waits too)
     kept = set(rows.values()) - set(mapping)
     while blocked := [o for o, n in mapping.items() if n in kept]:
         for o in blocked:
@@ -1267,9 +1129,6 @@ def apply(version, write, only, force):
     if write:
         plan.tx.commit()
     print("\n".join(plan.changes))
-
-
-# ------------------------------------------------------------------------------------------------- unit and units
 
 
 def unit_view(version, where):
@@ -1328,12 +1187,11 @@ def units_table(version, pro7_root, output):
         image_modules |= {c.module.lower() for c in image.contributions}
         for address, name in image.names().items():
             names_wii.setdefault(name, image.module_at(address))
+    if not Path(pro7_root).is_dir():
+        raise project.Error(f"{pro7_root} does not exist (--pro7 DIR: Ninji's Pro 7 decompilation)")
     pro7_stems = {unit_key(p.name) for p in Path(pro7_root).rglob("*.c*")}
     out = [
-        f"# {version}: translation units (generated by tools/evidence.py units)",
-        "",
-        "Columns: see `tools/evidence.py`. `order` is read from the original's own assert lines along each unit's "
-        ".text; `rev` units were built `-inline auto,deferred` (reverse source order).",
+        f"# {version}: translation units",
         "",
         "| unit | range | fns | bytes | host | order | name | link |",
         "|---|---|---|---|---|---|---|---|",
@@ -1347,8 +1205,6 @@ def units_table(version, pro7_root, output):
             _, found = asserts.sites(pe, pe.read(r.address, r.size), r.address, targets)
             if any(unit_key(s.file) == key for s in found):
                 named.add("assert")
-            # (the first line each asserting function pushes for the unit's own file, in address order: an #included
-            # .c or a header has lines of its own)
             own = [s.line for s in found if unit_key(s.file) == key and not s.file.lower().endswith(".h")]
             if own:
                 lines.append(min(own) if not lines else min(own, key=lambda l: abs(l - lines[-1])))
@@ -1358,8 +1214,6 @@ def units_table(version, pro7_root, output):
             down = sum(1 for a, b in zip(lines, lines[1:]) if b < a)
             up = sum(1 for a, b in zip(lines, lines[1:]) if b > a)
             order = "rev" if down >= 3 * max(up, 1) else "asc" if up >= 3 * max(down, 1) else "mixed"
-        # (a Wii module of the name: by its own publics here, or only by name -- the Wii codebase is later, but it
-        # keeps the file names)
         if any(unit_key(names_wii.get(r.name, "") + ".c") == key for r in inside):
             named.add("wii")
         elif key in {unit_key(m + ".c") for m in image_modules}:
@@ -1379,6 +1233,8 @@ def units_table(version, pro7_root, output):
 
 
 def align_view(version, unit, reverse, pro7_root):
+    if not Path(pro7_root).is_dir():
+        raise project.Error(f"{pro7_root} does not exist (--pro7 DIR: Ninji's Pro 7 decompilation)")
     reference = []
     found = [p for p in Path(pro7_root).rglob(f"{unit}.c")]
     if len(found) > 1:
@@ -1401,15 +1257,23 @@ def align_view(version, unit, reverse, pro7_root):
 
 
 def main():
-    signal.signal(signal.SIGPIPE, signal.SIG_DFL)
-    parser = argparse.ArgumentParser(usage=__doc__.split("\n")[0][len("python tools/evidence.py ") :])
-    parser.add_argument("--version", default=project.PRIMARY)
-    commands = parser.add_subparsers(dest="command", required=True)
+    if hasattr(signal, "SIGPIPE"):
+        if hasattr(signal, "SIGPIPE"):
+        signal.signal(signal.SIGPIPE, signal.SIG_DFL)
+    parser = argparse.ArgumentParser(
+        prog="tools/evidence.py",
+        usage="%(prog)s [--version V] pair|sweep|review|apply|unit|units|align ...",
+        description="What independent evidence says each of the original's functions is, and the decisions made from it.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument("--version", default=project.PRIMARY, help=f"default {project.PRIMARY}")
+    commands = parser.add_subparsers(dest="command", required=True, metavar="COMMAND")
     p = commands.add_parser("pair")
     p.add_argument("--exe", default=wii.DEFAULT)
     p = commands.add_parser("sweep")
     p.add_argument("--pro7", default=PRO7)
     p.add_argument("--gc1", default=GC1)
+    p.add_argument("-o", "--output")
     p = commands.add_parser("review")
     p.add_argument("action", choices=["show", "accept", "set", "ok", "unit", "drop", "batch"])
     p.add_argument("args", nargs="+")
@@ -1428,7 +1292,6 @@ def main():
     p.add_argument("unit")
     p.add_argument("--rev", action="store_true")
     p.add_argument("--pro7", default=PRO7)
-    # (--version may come after the command too)
     for sub in commands.choices.values():
         sub.add_argument("--version", default=argparse.SUPPRESS)
     args = parser.parse_args()
@@ -1437,7 +1300,7 @@ def main():
         if args.command == "pair":
             pair(version, Path(args.exe))
         elif args.command == "sweep":
-            sweep(version, args.pro7, args.gc1)
+            sweep(version, args.pro7, args.gc1, args.output)
         elif args.command == "review":
             review(version, args.action, args.args, args.note, args.unit)
         elif args.command == "apply":

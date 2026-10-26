@@ -1,13 +1,14 @@
 #include "driver/CLLoadAndCache.h"
 #include "driver/CLIncludeFileCache.h"
-#include "driver/CLIO.h"
 #include "driver/MacFileTypes.h"
+#include "driver/Memory.h"
 #include "driver/MemUtils.h"
+#include "driver/MsDos.h"
+#include "driver/oslib.h"
 #include <setjmp.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "driver/MsDos.h"
 
 short FixTextHandle(Handle txt) {
     char* tptr;

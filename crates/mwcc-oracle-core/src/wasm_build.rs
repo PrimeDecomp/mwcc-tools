@@ -24,7 +24,7 @@ use anyhow::{Context, Result, ensure};
 use std::path::Path;
 
 /// The versions gc2's sources build (`VERSION`), and so the module.
-pub const VERSIONS: [&str; 2] = mwcc_project::compilers::VERSIONS;
+pub const VERSIONS: [&str; 3] = mwcc_project::compilers::VERSIONS;
 
 /// Sources the module does without (wasm/ replaces them).
 const SKIP: &[&str] = &["src/driver/LicenseImports.c"];
@@ -219,7 +219,7 @@ pub fn units(root: &Path, version: &str) -> Result<Vec<Unit>> {
     ensure!(
         supported(version),
         "{version}: only {} build from gc2's sources for WebAssembly",
-        VERSIONS.join(" and ")
+        VERSIONS.join(", ")
     );
     let tree = SourceTree::gc2(version);
     let sources = build_config::source_arguments(root, version, &tree)?;

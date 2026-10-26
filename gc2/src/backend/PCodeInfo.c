@@ -2,8 +2,8 @@
 #include "compiler/Alias.h"
 #include "compiler/CError.h"
 #include "compiler/CMangler.h"
-#include "compiler/CParser.h"
 #include "compiler/CompilerTools.h"
+#include "compiler/CParser.h"
 #include "compiler/objects.h"
 #include "compiler/ObjGen_PPC_EABI.h"
 #include "compiler/PCode.h"
@@ -51,7 +51,6 @@ void pcode_get_hi_lo(int bits, char typechar, SInt32* hi, SInt32* lo) {
 }
 
 int pcode_check_imm_bits(SInt32 value, int bits, char typechar) {
-    // Pro7 has buf[2]; 2.6's frame is 8 bytes, which buf[2] does not give
     char buf[4];
     int forcedBits;
     SInt32 hi;
@@ -87,16 +86,16 @@ int pcode_check_imm_bits(SInt32 value, int bits, char typechar) {
         }
 
         if ((value < lo) || (value > hi)) {
-            return 1;
+            return TRUE;
         }
         if (forcedBits > 0 && value != ((value >> forcedBits) << forcedBits)) {
-            return 1;
+            return TRUE;
         }
     } else if (bits > 32) {
         CError_FATAL(113);
     }
 
-    return 0;
+    return FALSE;
 }
 
 int pcode_const_from_format(const char* format, SInt32* pResult) {
@@ -124,7 +123,7 @@ PCode* vformatpcode(short opcode, va_list argList) {
     PCodeArg* lastArg;
     int pcode_size;
     int tmp;
-    int tmp2;
+    int foundSysreg;
     int i;
     SInt32 pbits;
     SInt32 spr;
@@ -184,7 +183,6 @@ PCode* vformatpcode(short opcode, va_list argList) {
             format++;
         }
 
-        // 2.6: Gekko's paired-single halves
         if (*format == '^') {
             effect |= EffectPS1;
             format++;
@@ -312,19 +310,18 @@ PCode* vformatpcode(short opcode, va_list argList) {
                     format += pcode_const_from_format(format + 1, &pbits);
                 } else {
 #if VERSION < VERSION_GC_2_5
-// 2.0's file has 4 lines fewer above here
 #undef CError_LINE_SHIFT
-#define CError_LINE_SHIFT -4
+#define CError_LINE_SHIFT (-4 + CError_LINE_DELTA)
 #endif
                     CError_FATAL(331);
                 }
             case 's': {
                 int sysreg;
                 tmp = va_arg(argList, int);
-                tmp2 = -1;
+                foundSysreg = -1;
                 for (sysreg = 0; sysreg < 4; sysreg++) {
                     if (tmp == spr_to_sysreg[sysreg]) {
-                        tmp2 = sysreg;
+                        foundSysreg = sysreg;
                         arg->kind = PCOp_REGISTER;
                         arg->arg = RegClass_SPR;
                         arg->data.reg.reg = sysreg;
@@ -336,7 +333,7 @@ PCode* vformatpcode(short opcode, va_list argList) {
                     }
                 }
 
-                if (tmp2 < 0) {
+                if (foundSysreg < 0) {
                     pcsetsideeffects(pcode);
                     arg->kind = PCOp_SYSREG;
                     arg->arg = RegClass_SPR;
@@ -373,7 +370,7 @@ PCode* vformatpcode(short opcode, va_list argList) {
 
             case 'S': {
                 int sysreg;
-                tmp2 = -1;
+                foundSysreg = -1;
                 if (isdigit(format[1])) {
                     format += pcode_const_from_format(format + 1, &spr);
                 } else {
@@ -382,7 +379,7 @@ PCode* vformatpcode(short opcode, va_list argList) {
 
                 for (sysreg = 0; sysreg < 4; sysreg++) {
                     if (spr == spr_to_sysreg[sysreg]) {
-                        tmp2 = sysreg;
+                        foundSysreg = sysreg;
                         arg->kind = PCOp_REGISTER;
                         arg->arg = RegClass_SPR;
                         arg->data.reg.reg = sysreg;
@@ -394,7 +391,7 @@ PCode* vformatpcode(short opcode, va_list argList) {
                     }
                 }
 
-                if (tmp2 < 0) {
+                if (foundSysreg < 0) {
                     pcsetsideeffects(pcode);
                     arg->kind = PCOp_SYSREG;
                     arg->arg = RegClass_SPR;
@@ -484,7 +481,7 @@ PCode* vformatpcode(short opcode, va_list argList) {
                     CError_ASSERT(488, obj->otype == OT_OBJECT);
                     arg->data.mem.obj = obj;
                     arg->data.mem.offset = 0;
-                    arg->arg = RefType_4;
+                    arg->arg = (RegClass)RefType_Branch;
                 }
                 break;
 
@@ -553,21 +550,19 @@ PCode* vformatpcode(short opcode, va_list argList) {
                         }
 
                         if (pcode->flags & (fIsBranch | fIsCall)) {
-                            arg->arg = RefType_4;
+                            arg->arg = (RegClass)RefType_Branch;
                         } else if (obj->datatype == DLOCAL) {
                             if (!local_is_16bit_offset(obj)) {
-                                arg->arg = RefType_D;
+                                arg->arg = (RegClass)RefType_LocalLo;
                             } else {
-                                arg->arg = RefType_1;
+                                arg->arg = (RegClass)RefType_Local16;
                             }
                         } else if (is_16bitdata(obj)) {
-                            // 2.6: small data
-                            arg->arg = RefType_2;
+                            arg->arg = (RegClass)RefType_Addr16;
                         } else if (is_pooled_object(obj)) {
-                            // 2.6: pooled data
-                            arg->arg = RefType_E;
+                            arg->arg = (RegClass)RefType_Pooled;
                         } else {
-                            arg->arg = RefType_6;
+                            arg->arg = (RegClass)RefType_Lo;
                         }
                     }
                 } else {
@@ -604,9 +599,9 @@ PCode* vformatpcode(short opcode, va_list argList) {
                         }
 
                         if (obj->datatype == DLOCAL) {
-                            arg->arg = RefType_C;
+                            arg->arg = (RegClass)RefType_LocalHa;
                         } else {
-                            arg->arg = RefType_8;
+                            arg->arg = (RegClass)RefType_Ha;
                         }
                     }
                 } else {
@@ -672,19 +667,15 @@ PCode* vformatpcode(short opcode, va_list argList) {
     return pcode;
 }
 
-// Pro7's operand formatters: dead in 2.6 (nothing calls them), but their literals are in the unit's
-// .data (without Pro7's PIC base, "-B%d")
-// TODO: 2.6's object defines neither variable (no .bss); Pro7 has a COMMON orig_buf and a static
-// do_show_basic_blocks
 extern char* orig_buf;
 extern int do_show_basic_blocks;
 
 int expectandformatoperand(
-    PCodeArg* operand, PCOpKind expectedKind, char a3, int bitCount, char* buf
+    PCodeArg* operand, PCOpKind expectedKind, char kind, int bitCount, char* buf
 ) {
     int errorlen;
     char* name;
-    int tmp;
+    int len;
     int regclass;
     int refis1;
     int b_null;
@@ -718,184 +709,185 @@ int expectandformatoperand(
             default:
                 kindstr = "unknown kind";
         }
-        tmp = sprintf(buf, "{EXPECTED %s}", kindstr);
-        errorlen += tmp;
-        buf += tmp;
+        len = sprintf(buf, "{EXPECTED %s}", kindstr);
+        errorlen += len;
+        buf += len;
         pclist_bad_operand = 1;
     }
 
     switch (operand->kind) {
         case PCOp_REGISTER:
-            if (operand->arg != (regclass = a3)) {
-                tmp = sprintf(buf, "{EXPECTED %s}", register_class_name[regclass]);
-                errorlen += tmp;
-                buf += tmp;
+            if (operand->arg != (regclass = kind)) {
+                len = sprintf(buf, "{EXPECTED %s}", register_class_name[regclass]);
+                errorlen += len;
+                buf += len;
             }
-            if (operand->data.reg.reg <
-                n_real_registers[regclass] &&
+            if (operand->data.reg.reg < n_real_registers[regclass] &&
                 (name = special_register_names[operand->arg][operand->data.reg.reg])) {
-                tmp = sprintf(buf, "%s", name);
+                len = sprintf(buf, "%s", name);
             } else {
-                tmp = sprintf(buf, register_class_format[operand->arg], operand->data.reg.reg);
+                len = sprintf(buf, register_class_format[operand->arg], operand->data.reg.reg);
             }
-            errorlen += tmp;
+            errorlen += len;
             break;
         case PCOp_SYSREG:
             if (operand->arg != RegClass_SPR) {
-                tmp = sprintf(buf, "{EXPECTED %s}", register_class_name[RegClass_SPR]);
-                errorlen += tmp;
-                buf += tmp;
+                len = sprintf(buf, "{EXPECTED %s}", register_class_name[RegClass_SPR]);
+                errorlen += len;
+                buf += len;
             }
-            tmp = sprintf(buf, register_class_format[RegClass_SPR], operand->data.reg.reg);
-            errorlen += tmp;
+            len = sprintf(buf, register_class_format[RegClass_SPR], operand->data.reg.reg);
+            errorlen += len;
             break;
         case PCOp_IMMEDIATE:
-            switch (a3) {
+            switch (kind) {
                 case 'x':
-                    tmp = sprintf(buf, "0x%x", operand->data.imm.value);
+                    len = sprintf(buf, "0x%x", (unsigned int)operand->data.imm.value);
                     break;
                 case 'u':
-                    tmp = sprintf(buf, "%u", operand->data.imm.value);
+                    len = sprintf(buf, "%u", (unsigned int)operand->data.imm.value);
                     break;
                 default:
-                    tmp = sprintf(buf, "%ld", operand->data.imm.value);
+                    len = sprintf(buf, "%ld", operand->data.imm.value);
                     break;
             }
-            errorlen += tmp;
-            buf += tmp;
+            errorlen += len;
+            buf += len;
             if (operand->data.imm.obj) {
                 name = CMangler_GetLinkName(operand->data.imm.obj)->name;
                 if (strlen(name) > 50) {
-                    tmp = sprintf(buf, "{%45.45s...}", name);
+                    len = sprintf(buf, "{%45.45s...}", name);
                 } else {
-                    tmp = sprintf(buf, "{%s}", name);
+                    len = sprintf(buf, "{%s}", name);
                 }
-                errorlen += tmp;
-                buf += tmp;
+                errorlen += len;
+                buf += len;
             }
-            if (pcode_check_imm_bits(operand->data.imm.value, bitCount, (char)a3)) {
+            if (pcode_check_imm_bits(operand->data.imm.value, bitCount, (char)kind)) {
                 errorlen += sprintf(buf, "{IMM too large %i bits}", bitCount);
                 pclist_bad_operand = 1;
             }
             break;
         case PCOp_MEMORY:
             switch ((unsigned char)operand->arg) {
-                case RefType_0:
-                case RefType_1:
-                case RefType_2:
-                case RefType_3:
-                case RefType_4:
-                case RefType_5:
-                case RefType_9:
+                case RefType_None:
+                case RefType_Local16:
+                case RefType_Addr16:
+                case RefType_Lo16:
+                case RefType_Branch:
+                case RefType_Value:
+                case RefType_AbsBranch:
                     break;
-                case RefType_8:
-                case RefType_B:
-                case RefType_C:
-                    tmp = sprintf(buf, "HA(");
-                    errorlen += tmp;
-                    buf += tmp;
+                case RefType_Ha:
+                case RefType_HaAlt:
+                case RefType_LocalHa:
+                    len = sprintf(buf, "HA(");
+                    errorlen += len;
+                    buf += len;
                     break;
-                case RefType_7:
-                    tmp = sprintf(buf, "HI(");
-                    errorlen += tmp;
-                    buf += tmp;
+                case RefType_Hi:
+                    len = sprintf(buf, "HI(");
+                    errorlen += len;
+                    buf += len;
                     break;
-                case RefType_6:
-                case RefType_A:
-                case RefType_D:
-                    tmp = sprintf(buf, "LO(");
-                    errorlen += tmp;
-                    buf += tmp;
+                case RefType_Lo:
+                case RefType_LoAlt:
+                case RefType_LocalLo:
+                    len = sprintf(buf, "LO(");
+                    errorlen += len;
+                    buf += len;
                     break;
                 default:
-                    tmp = sprintf(buf, "{UNEXPECTED reftype = %d}", (unsigned char)operand->arg);
-                    errorlen += tmp;
-                    buf += tmp;
+                    len = sprintf(buf, "{UNEXPECTED reftype = %d}", (unsigned char)operand->arg);
+                    errorlen += len;
+                    buf += len;
             }
             name = CMangler_GetLinkName(operand->data.mem.obj)->name;
             if (strlen(name) == 0 || strlen(name) > 3200 || name[0] < 0) {
                 CError_FATAL(849);
             }
             if (strlen(name) > 50) {
-                tmp = sprintf(buf, "%45.45s...", name);
+                len = sprintf(buf, "%45.45s...", name);
             } else {
-                tmp = sprintf(buf, "%s", name);
+                len = sprintf(buf, "%s", name);
             }
-            errorlen += tmp;
-            buf += tmp;
+            errorlen += len;
+            buf += len;
             if (operand->data.mem.offset > 0) {
-                tmp = sprintf(buf, "+%d", operand->data.mem.offset);
+                len = sprintf(buf, "+%d", (int)operand->data.mem.offset);
             } else if (operand->data.mem.offset != 0) {
-                tmp = sprintf(buf, "-%d", -operand->data.mem.offset);
+                len = sprintf(buf, "-%d", (int)-operand->data.mem.offset);
             } else {
-                tmp = 0;
+                len = 0;
             }
-            errorlen += tmp;
-            buf += tmp;
+            errorlen += len;
+            buf += len;
             switch ((unsigned char)operand->arg) {
-                case RefType_6:
-                case RefType_7:
-                case RefType_8:
-                case RefType_A:
-                case RefType_B:
-                case RefType_C:
-                case RefType_D:
+                case RefType_Lo:
+                case RefType_Hi:
+                case RefType_Ha:
+                case RefType_LoAlt:
+                case RefType_HaAlt:
+                case RefType_LocalHa:
+                case RefType_LocalLo:
                     errorlen += sprintf(buf, ")");
             }
             break;
         case PCOp_LABEL:
             if (do_show_basic_blocks) {
                 if (!operand->data.label.label->block) {
-                    tmp = sprintf(buf, "B<unknown>");
+                    len = sprintf(buf, "B<unknown>");
                 } else {
-                    tmp = sprintf(buf, "B%ld", operand->data.label.label->block->blockIndex);
+                    len = sprintf(buf, "B%ld", (long)operand->data.label.label->block->blockIndex);
                 }
             } else {
-                tmp = sprintf(buf, "%.8lX", operand->data.label.label->block->codeOffset);
+                len = sprintf(
+                    buf, "%.8lX", (unsigned long)operand->data.label.label->block->codeOffset
+                );
             }
-            errorlen += tmp;
+            errorlen += len;
             break;
         case PCOp_LABELDIFF:
-            refis1 = ((unsigned char)operand->arg == RefType_1);
+            refis1 = ((unsigned char)operand->arg == RefType_Local16);
             b_null = !operand->data.labeldiff.labelB->block;
             if (operand->data.labeldiff.labelA->block == NULL) {
                 if (b_null) {
-                    tmp = sprintf(
+                    len = sprintf(
                         buf,
                         "%sB<unknown>-B<unknown>+%ld",
                         refis1 ? "-" : "",
-                        operand->data.labeldiff.offset
+                        (long)operand->data.labeldiff.offset
                     );
                 } else {
-                    tmp = sprintf(
+                    len = sprintf(
                         buf,
                         "%sB<unknown>-B%ld+%ld",
                         refis1 ? "-" : "",
-                        operand->data.labeldiff.labelB->block->blockIndex,
-                        operand->data.labeldiff.offset
+                        (long)operand->data.labeldiff.labelB->block->blockIndex,
+                        (long)operand->data.labeldiff.offset
                     );
                 }
             } else {
                 if (b_null) {
-                    tmp = sprintf(
+                    len = sprintf(
                         buf,
                         "%sB%ld-B<unknown>+%ld",
                         refis1 ? "-" : "",
-                        operand->data.labeldiff.labelA->block->blockIndex,
-                        operand->data.labeldiff.offset
+                        (long)operand->data.labeldiff.labelA->block->blockIndex,
+                        (long)operand->data.labeldiff.offset
                     );
                 } else {
-                    tmp = sprintf(
+                    len = sprintf(
                         buf,
                         "%sB%ld-B%ld+%ld",
                         refis1 ? "-" : "",
-                        operand->data.labeldiff.labelA->block->blockIndex,
-                        operand->data.labeldiff.labelB->block->blockIndex,
-                        operand->data.labeldiff.offset
+                        (long)operand->data.labeldiff.labelA->block->blockIndex,
+                        (long)operand->data.labeldiff.labelB->block->blockIndex,
+                        (long)operand->data.labeldiff.offset
                     );
                 }
             }
-            errorlen += tmp;
+            errorlen += len;
             break;
         case PCOp_PLACEHOLDEROPERAND:
             errorlen += sprintf(buf, "{placeholder}");
@@ -914,16 +906,13 @@ int formatoperand(PCodeArg* operand, char* buf) {
 }
 
 void formatoperands(PCode* pcode, char* buf, int showBasicBlocks) {
-    const char* format; // r29
-    // there might be a PCodeArg *arg in r28
-    // not sure lol
+    const char* format;
     PCodeArg* pa;
-    int arg_index; // r27
-
+    int arg_index;
     char* name;
     int i;
-    int tmp;
-    int tmp2;
+    int code;
+    int hasConstant;
     SInt32 pbits;
     SInt32 spr;
     SInt32 suffix;
@@ -1054,10 +1043,8 @@ void formatoperands(PCode* pcode, char* buf, int showBasicBlocks) {
                     *(buf++) = ',';
                     pa++;
                     arg_index++;
-                } while (arg_index <
-                         pcode->argCount &&
-                         pa->kind ==
-                         PCOp_REGISTER &&
+                } while (arg_index < pcode->argCount &&
+                         pa->kind == PCOp_REGISTER &&
                          pa->arg == RegClass_GPR);
                 buf--;
                 pa--;
@@ -1070,10 +1057,8 @@ void formatoperands(PCode* pcode, char* buf, int showBasicBlocks) {
                     *(buf++) = ',';
                     pa++;
                     arg_index++;
-                } while (arg_index <
-                         pcode->argCount &&
-                         pa->kind ==
-                         PCOp_REGISTER &&
+                } while (arg_index < pcode->argCount &&
+                         pa->kind == PCOp_REGISTER &&
                          pa->arg == RegClass_CRFIELD);
                 buf--;
                 pa--;
@@ -1086,12 +1071,9 @@ void formatoperands(PCode* pcode, char* buf, int showBasicBlocks) {
                 pa++;
                 arg_index++;
             case 'q':
-                if (pa->kind ==
-                    PCOp_IMMEDIATE &&
-                    pa->data.imm.value >=
-                    0 &&
-                    pa->data.imm.value <
-                    4 &&
+                if (pa->kind == PCOp_IMMEDIATE &&
+                    pa->data.imm.value >= 0 &&
+                    pa->data.imm.value < 4 &&
                     (name = cc[pa->data.imm.value])[0]) {
                     buf += sprintf(buf, "%s", name);
                 } else {
@@ -1103,22 +1085,22 @@ void formatoperands(PCode* pcode, char* buf, int showBasicBlocks) {
             case 'i':
             case 'u':
             case 'x':
-                tmp = *format;
-                if (tmp == 'a') {
+                code = *format;
+                if (code == 'a') {
                     if (isdigit(format[1])) {
                         format++;
-                        tmp = *format;
+                        code = *format;
                     } else {
                         CError_FATAL(1227);
                     }
                 }
-                if ((tmp2 = isdigit(format[1]))) {
+                if ((hasConstant = isdigit(format[1]))) {
                     format += pcode_const_from_format(format + 1, &spr);
                 }
-                if (!tmp2) {
+                if (!hasConstant) {
                     spr = -1;
                 }
-                buf += expectandformatoperand(pa, PCOp_IMMEDIATE, tmp, spr, buf);
+                buf += expectandformatoperand(pa, PCOp_IMMEDIATE, code, spr, buf);
                 break;
 
             case 'N':
@@ -1130,12 +1112,9 @@ void formatoperands(PCode* pcode, char* buf, int showBasicBlocks) {
                 break;
 
             case 't':
-                if (pa->kind ==
-                    PCOp_IMMEDIATE &&
-                    pa->data.imm.value >
-                    0 &&
-                    pa->data.imm.value <
-                    31 &&
+                if (pa->kind == PCOp_IMMEDIATE &&
+                    pa->data.imm.value > 0 &&
+                    pa->data.imm.value < 31 &&
                     (name = to[pa->data.imm.value])[0]) {
                     buf += sprintf(buf, "%s", name);
                     break;
@@ -1209,7 +1188,10 @@ void formatoperands(PCode* pcode, char* buf, int showBasicBlocks) {
             case 'M':
                 if (pa->kind == PCOp_MEMORY) {
                     CError_ASSERT(
-                        1335, pa->arg == RefType_8 || pa->arg == RefType_B || pa->arg == RefType_C
+                        1335,
+                        (int)pa->arg == RefType_Ha ||
+                            (int)pa->arg == RefType_HaAlt ||
+                            (int)pa->arg == RefType_LocalHa
                     );
                     buf += expectandformatoperand(pa, PCOp_MEMORY, 0, -1, buf);
                 } else if (pa->kind == PCOp_LABELDIFF) {
@@ -1316,26 +1298,27 @@ void formatoperands(PCode* pcode, char* buf, int showBasicBlocks) {
 }
 
 #if VERSION < VERSION_GC_2_5
-// 2.0's file has 8 lines fewer above here
 #undef CError_LINE_SHIFT
-#define CError_LINE_SHIFT -8
+#define CError_LINE_SHIFT (-8 + CError_LINE_DELTA)
 #endif
-PCode* makecopyinstruction(PCodeArg* a, PCodeArg* b) {
-    if (b->kind == PCOp_REGISTER) {
-        switch (b->arg) {
+PCode* makecopyinstruction(PCodeArg* src, PCodeArg* dst) {
+    if (dst->kind == PCOp_REGISTER) {
+        switch (dst->arg) {
             case RegClass_GPR:
-                return makepcode(PC_MR, b->data.reg.reg, a->data.reg.reg);
+                return makepcode(PC_MR, dst->data.reg.reg, src->data.reg.reg);
             case RegClass_FPR:
-                if ((a->data.reg.effect & EffectPS1) ||
-                    (a->data.reg.effect & EffectPS0) ||
-                    (a->data.reg.effect & (EffectPS0 | EffectPS1))) {
-                    return makepcode(PC_PS_MR, b->data.reg.reg, a->data.reg.reg);
+                if ((src->data.reg.effect & EffectPS1) ||
+                    (src->data.reg.effect & EffectPS0) ||
+                    (src->data.reg.effect & (EffectPS0 | EffectPS1))) {
+                    return makepcode(PC_PS_MR, dst->data.reg.reg, src->data.reg.reg);
                 }
-                return makepcode(PC_FMR, b->data.reg.reg, a->data.reg.reg);
+                return makepcode(PC_FMR, dst->data.reg.reg, src->data.reg.reg);
             case RegClass_VR:
-                return makepcode(PC_VMR, b->data.reg.reg, a->data.reg.reg);
+                return makepcode(PC_VMR, dst->data.reg.reg, src->data.reg.reg);
             case RegClass_CRFIELD:
-                return makepcode(PC_MCRF, b->data.reg.reg, a->data.reg.reg);
+                return makepcode(PC_MCRF, dst->data.reg.reg, src->data.reg.reg);
+            default:
+                break;
         }
     }
 
@@ -1352,36 +1335,34 @@ int is_location_independent(PCode* pcode) {
         case PC_VSPLTISB:
         case PC_VSPLTISH:
         case PC_VSPLTISW:
-            return 1;
+            return TRUE;
         case PC_ADDI:
         case PC_ADDIS:
         case PC_ORI:
         case PC_ORIS:
             reg = pcode->args[1].data.reg.reg;
             if (reg == 13 || reg == 2) {
-                return 1;
+                return TRUE;
             }
             return reg == _FP_;
         case PC_LWZ:
-            if (pcode->args[1].data.reg.reg ==
-                1 &&
-                pcode->args[2].kind ==
-                PCOp_IMMEDIATE &&
+            if (pcode->args[1].data.reg.reg == 1 &&
+                pcode->args[2].kind == PCOp_IMMEDIATE &&
                 pcode->args[2].data.imm.value == 0) {
-                return 1;
+                return TRUE;
             }
     }
 
-    return 0;
+    return FALSE;
 }
 
-int can_reuse_stored_value(PCode* a, PCode* b) {
-    switch (b->op) {
+int can_reuse_stored_value(PCode* store, PCode* load) {
+    switch (load->op) {
         case PC_LBZ:
         case PC_LBZU:
         case PC_LBZX:
         case PC_LBZUX:
-            switch (a->op) {
+            switch (store->op) {
                 case PC_STB:
                 case PC_STBU:
                 case PC_STBX:
@@ -1393,7 +1374,7 @@ int can_reuse_stored_value(PCode* a, PCode* b) {
         case PC_LHZU:
         case PC_LHZX:
         case PC_LHZUX:
-            switch (a->op) {
+            switch (store->op) {
                 case PC_STH:
                 case PC_STHU:
                 case PC_STHX:
@@ -1405,7 +1386,7 @@ int can_reuse_stored_value(PCode* a, PCode* b) {
         case PC_LHAU:
         case PC_LHAX:
         case PC_LHAUX:
-            switch (a->op) {
+            switch (store->op) {
                 case PC_STH:
                 case PC_STHU:
                 case PC_STHX:
@@ -1417,7 +1398,7 @@ int can_reuse_stored_value(PCode* a, PCode* b) {
         case PC_LWZU:
         case PC_LWZX:
         case PC_LWZUX:
-            switch (a->op) {
+            switch (store->op) {
                 case PC_STW:
                 case PC_STWU:
                 case PC_STWX:
@@ -1429,7 +1410,7 @@ int can_reuse_stored_value(PCode* a, PCode* b) {
         case PC_LFSU:
         case PC_LFSX:
         case PC_LFSUX:
-            switch (a->op) {
+            switch (store->op) {
                 case PC_STFS:
                 case PC_STFSU:
                 case PC_STFSX:
@@ -1441,7 +1422,7 @@ int can_reuse_stored_value(PCode* a, PCode* b) {
         case PC_LFDU:
         case PC_LFDX:
         case PC_LFDUX:
-            switch (a->op) {
+            switch (store->op) {
                 case PC_STFD:
                 case PC_STFDU:
                 case PC_STFDX:
@@ -1450,7 +1431,7 @@ int can_reuse_stored_value(PCode* a, PCode* b) {
             }
             break;
         case PC_LVX:
-            if (a->op == PC_STVX) {
+            if (store->op == PC_STVX) {
                 return 1;
             }
             break;
@@ -1458,14 +1439,17 @@ int can_reuse_stored_value(PCode* a, PCode* b) {
         case PC_PSQ_LU:
         case PC_PSQ_LX:
         case PC_PSQ_LUX:
-            switch (a->op) {
+            switch (store->op) {
                 case PC_PSQ_ST:
                 case PC_PSQ_STX:
-                    if (a->args[4].data.reg.reg ==
-                        SPR_GQR0 &&
-                        b->args[4].data.reg.reg ==
-                        SPR_GQR0 &&
-                        a->args[3].data.imm.value == b->args[3].data.imm.value) {
+#if VERSION < VERSION_GC_2_0
+                    if (store->args[4].data.reg.reg == SPR_GQR0 &&
+                        load->args[4].data.reg.reg == SPR_GQR0) {
+#else
+                    if (store->args[4].data.reg.reg == SPR_GQR0 &&
+                        load->args[4].data.reg.reg == SPR_GQR0 &&
+                        store->args[3].data.imm.value == load->args[3].data.imm.value) {
+#endif
                         return 1;
                     }
             }
@@ -1475,24 +1459,36 @@ int can_reuse_stored_value(PCode* a, PCode* b) {
     return 0;
 }
 
-PCode* makecopyforload(int kind, PCodeArg* a, PCodeArg* b) {
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -3
+#endif
+PCode* makecopyforload(int kind, PCodeArg* src, PCodeArg* dst) {
     switch (kind) {
         case 1:
-            return makecopyinstruction(a, b);
+            return makecopyinstruction(src, dst);
         case 2:
-            return makepcode(PC_RLWINM, b->data.reg.reg, a->data.reg.reg, 0, 24, 31);
+            return makepcode(PC_RLWINM, dst->data.reg.reg, src->data.reg.reg, 0, 24, 31);
         case 3:
-            return makepcode(PC_RLWINM, b->data.reg.reg, a->data.reg.reg, 0, 16, 31);
+            return makepcode(PC_RLWINM, dst->data.reg.reg, src->data.reg.reg, 0, 16, 31);
         case 4:
-            return makepcode(PC_EXTSH, b->data.reg.reg, a->data.reg.reg);
+            return makepcode(PC_EXTSH, dst->data.reg.reg, src->data.reg.reg);
         case 5:
-            return makepcode(PC_FRSP, b->data.reg.reg, a->data.reg.reg);
+            return makepcode(PC_FRSP, dst->data.reg.reg, src->data.reg.reg);
         default:
             CError_FATAL(1933);
             return NULL;
     }
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -17
+#endif
 int nbytes_loaded_or_stored_by(PCode* pcode) {
     OpcodeInfo* oinfo = opcodeinfo + pcode->op;
     if (oinfo->flags & (fIsRead | fIsWrite)) {
@@ -1593,10 +1589,14 @@ int nbytes_loaded_or_stored_by(PCode* pcode) {
             case PC_PSQ_STU:
             case PC_PSQ_STX:
             case PC_PSQ_STUX:
+#if VERSION < VERSION_GC_2_0
+                return 8;
+#else
                 if (pcode->args[4].data.reg.reg == SPR_GQR0 && pcode->args[3].data.imm.value == 1) {
                     return 4;
                 }
                 return 8;
+#endif
             default:
                 CError_FATAL(2135);
         }
@@ -1605,7 +1605,15 @@ int nbytes_loaded_or_stored_by(PCode* pcode) {
     CError_FATAL(2138);
     return 0;
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -17
+#endif
 void change_num_operands(PCode* pcode, int newNum) {
     int i;
 
@@ -1617,10 +1625,12 @@ void change_num_operands(PCode* pcode, int newNum) {
 
     pcode->argCount = newNum;
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
 void change_opcode(PCode* pcode, short opcode) {
-    // 2.6 reads the new flags back once into a local (Pro7's `pcode->flags &= ~fIsMove` through
-    // PCODE_FLAG_SET_F compiles 6 bytes shorter)
     UInt32 flags;
 
     pcode->flags =

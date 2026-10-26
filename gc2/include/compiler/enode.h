@@ -15,15 +15,10 @@ extern "C" {
 #define ENODE_IS4(_enode, _etype1, _etype2, _etype3, _etype4) \
     (ENODE_IS3(_enode, _etype1, _etype2, _etype3) || ENODE_IS(_enode, (_etype4)))
 #define ENODE_IS_RANGE(_enode, _lo, _hi) (((_enode)->type >= (_lo)) && ((_enode)->type <= (_hi)))
-#define ENODE_IS_ASSIGN(_enode) (ENODE_IS_RANGE((_enode), EASS, EORASS))
-#define ENODE_IS_ASSIGN_TO(_enode, _etype) \
-    (ENODE_IS_RANGE((_enode), EASS, EORASS) && \
-     ENODE_IS((_enode)->data.diadic.left->data.monadic, (_etype)))
 #define ENODE_QUALS(_enode) ((UInt32)((_enode)->flags & ENODE_FLAG_QUALS))
 #define ENODE_IS_INDIRECT_TO(_enode, _etype) \
     (ENODE_IS((_enode), EINDIRECT) && ENODE_IS((_enode)->data.monadic, (_etype)))
 
-// The case labels of a switch over expression kinds (Pro7's). 0 to 8, 0x30 to 0x31
 #define ENODE_CASE_MONADIC \
     case EPOSTINC: \
     case EPOSTDEC: \
@@ -37,45 +32,6 @@ extern "C" {
     case ETYPCON: \
     case EBITFIELD
 
-// 9 to 0x1B
-#define ENODE_CASE_DIADIC_1 \
-    case EMUL: \
-    case EMULV: \
-    case EDIV: \
-    case EMODULO: \
-    case EADDV: \
-    case ESUBV: \
-    case EADD: \
-    case ESUB: \
-    case ESHL: \
-    case ESHR: \
-    case ELESS: \
-    case EGREATER: \
-    case ELESSEQU: \
-    case EGREATEREQU: \
-    case EEQU: \
-    case ENOTEQU: \
-    case EAND: \
-    case EXOR: \
-    case EOR
-
-// 0x1E to 0x28, 0x2D, 0x2F
-#define ENODE_CASE_ASSIGN \
-    case EASS: \
-    case EMULASS: \
-    case EDIVASS: \
-    case EMODASS: \
-    case EADDASS: \
-    case ESUBASS: \
-    case ESHLASS: \
-    case ESHRASS: \
-    case EANDASS: \
-    case EXORASS: \
-    case EORASS: \
-    case EBCLR: \
-    case EBSET
-
-// 9 to 0x2F
 #define ENODE_CASE_DIADIC_ALL \
     case EMUL: \
     case EMULV: \
@@ -117,13 +73,6 @@ extern "C" {
     case EBTST: \
     case EBSET
 
-// The expression node kinds, in the order and with the names of the compiler's own table of them
-// (DumpIR's, at 0x55268c: index = kind).
-//
-// The order is 2.x's (2.0 through 2.7, and 1.3.2), as each one's own name table says (the strings
-// at 0x5bc980 in 2.6, which IroDump.c fills): Ninji's 2.4.5 order. 1.2.5 carries an older table as
-// well, with EQUALNAME and ETEMPX and without EINITTRYCATCH, from a unit not rebuilt since; this
-// header followed that one until 2.6's names were checked against its table.
 typedef enum ENodeType {
     EPOSTINC,
     EPOSTDEC,
@@ -208,8 +157,11 @@ enum {
     ENODE_FLAG_CONST = Q_CONST,
     ENODE_FLAG_VOLATILE = Q_VOLATILE,
     ENODE_FLAG_QUALS = Q_CONST | Q_VOLATILE,
-    ENODE_FLAG_10 = 0x10,
-    ENODE_FLAG_80 = 0x80
+    ENODE_FLAG_SOM_ENV_CHECK = 0x10,
+    ENODE_FLAG_NONVIRTUAL = 0x80,
+    ENODE_FLAG_PARENS = 0x80,
+    ENODE_FLAG_SAME_TYPE_CAST = 0x80,
+    ENODE_FLAG_RESULT_VIA_TEMP = 0x80
 };
 #pragma pack(push, 2)
 struct EMemberInfo {
@@ -217,9 +169,7 @@ struct EMemberInfo {
     ENode* expr;
     NameSpaceObjectList* list;
     TemplArg* templargs;
-    // TODO: invented name (Pro7: pr_1D): the name was qualified
     Boolean is_qualified;
-    // TODO: invented name (Pro7: x11): the member's address is taken
     Boolean addressTaken;
     Boolean isambig;
 };
@@ -326,7 +276,6 @@ union ENodeUnion {
         TemplDepSubType subtype;
     } templdep;
 };
-// sizeof(ENode) is 0x1e: 2.6's allocation sites request 30 bytes (galloc(26) was an overrun).
 struct ENode {
     ENodeType type;
     UInt8 cost;
@@ -334,7 +283,7 @@ struct ENode {
     Boolean ignored;
     Boolean hascall;
     Type* rtype;
-    struct PointsToFunction* pointsTo; // (IrOptimizer's BuildExpr, from IROLinear pointsToFunction)
+    struct PointsToFunction* pointsTo;
     ENodeUnion data;
 };
 #pragma pack(pop)

@@ -2,16 +2,14 @@
 #include "compiler/Alias.h"
 #include "compiler/BitVectors.h"
 #include "compiler/CompilerTools.h"
+#include "compiler/objects.h"
 #include "compiler/PCode.h"
 #include "compiler/PCodeInfo.h"
 #include "compiler/RegisterInfo.h"
 #include "compiler/Registers.h"
 #include "compiler/StackFrame.h"
 #include "compiler/UseDefChains.h"
-#include "compiler/objects.h"
 
-// (the original's statics; global while a lifted function of this unit still uses them, under names
-// of their own: binding names are global, and Peephole has a defininginstruction too)
 #define changed constprop_changed
 #define defininginstruction constprop_defininginstruction
 #define fprdefininginstruction constprop_fprdefininginstruction
@@ -20,7 +18,6 @@
 int propagatedconstants;
 int changed;
 PCode** defininginstruction;
-// 2.6 (TODO: invented name)
 PCode** fprdefininginstruction;
 PCode** vrdefininginstruction;
 
@@ -43,7 +40,6 @@ static void computedefininginstructions(PCodeBlock* block) {
         defininginstruction[i] = instr;
     }
 
-    // 2.6
     for (i = 0; i < used_virtual_registers[RegClass_FPR]; i++) {
         for (instr = NULL, list = reg_Defs[RegClass_FPR][i]; list; list = list->next) {
             if (bitvectorgetbit(list->id, usedefinfo[block->blockIndex].defin)) {
@@ -77,8 +73,7 @@ static PCode* isstackoperand(PCodeArg* op, SInt16* resultValue, SInt16 addend) {
     PCode* instr;
 
     if ((instr = defininginstruction[op->data.reg.reg]) && instr->op == PC_ADDI) {
-        if (instr->args[2].kind ==
-            PCOp_MEMORY &&
+        if (instr->args[2].kind == PCOp_MEMORY &&
             (instr->args[1].data.reg.reg == _FP_ || instr->args[1].data.reg.reg == _CALLER_SP_) &&
             instr->args[2].data.mem.obj->datatype == DLOCAL) {
             if (can_add_displ_to_local(instr->args[2].data.mem.obj, addend)) {
@@ -99,8 +94,7 @@ static int isconstantoperand(PCodeArg* op, SInt16* resultValue) {
     PCode* instr;
 
     if ((instr = defininginstruction[op->data.reg.reg]) &&
-        instr->op ==
-        PC_LI &&
+        instr->op == PC_LI &&
         instr->args[1].kind == PCOp_IMMEDIATE) {
         *resultValue = instr->args[1].data.imm.value;
         return TRUE;
@@ -113,10 +107,8 @@ static int isuint16constantoperand(PCodeArg* op, SInt16* resultValue) {
     PCode* instr;
 
     if ((instr = defininginstruction[op->data.reg.reg]) &&
-        instr->op ==
-        PC_LI &&
-        instr->args[1].kind ==
-        PCOp_IMMEDIATE &&
+        instr->op == PC_LI &&
+        instr->args[1].kind == PCOp_IMMEDIATE &&
         FITS_IN_USHORT(instr->args[1].data.imm.value)) {
         *resultValue = instr->args[1].data.imm.value;
         return TRUE;
@@ -151,13 +143,13 @@ static int isunsignedloadoperand(PCodeArg* op) {
                 return 1;
             }
         } else if (instr->op == PC_RLWINM) {
-            int var3 = instr->args[3].data.imm.value;
-            int var4 = instr->args[4].data.imm.value;
-            if (var4 == 31) {
-                if (var3 == 24) {
+            int mb = instr->args[3].data.imm.value;
+            int me = instr->args[4].data.imm.value;
+            if (me == 31) {
+                if (mb == 24) {
                     return 1;
                 }
-                if (var3 == 16) {
+                if (mb == 16) {
                     return 2;
                 }
             }
@@ -212,9 +204,6 @@ static int issignedloadoperand(PCodeArg* op) {
     return 0;
 }
 
-// 2.6: whether the operand's value is single precision already (TODO: invented name). `inline`:
-// 2.6's .data has only the jump table of its copy inlined in propagateconstantstoblock, where a
-// plain static's out-of-line copy adds a second one
 static inline int issingleoperand(PCodeArg* op) {
     PCode* instr;
 
@@ -254,7 +243,6 @@ static void propagateconstantstoblock(PCodeBlock* block) {
     int i;
 
     for (instr = block->firstPCode; instr; instr = instr->nextPCode) {
-        // 2.6
         if (instr->flags & fIsVolatile) {
             continue;
         }
@@ -280,8 +268,7 @@ static void propagateconstantstoblock(PCodeBlock* block) {
                 break;
             case PC_RLWINM:
                 if (!(PCODE_FLAG_SET_F(instr) & fRecordBit) &&
-                    instr->args[2].data.imm.value ==
-                    0 &&
+                    instr->args[2].data.imm.value == 0 &&
                     instr->args[4].data.imm.value == 31) {
                     if (isconstantoperand(&instr->args[1], &value1)) {
                         if ((instr->args[3].data.imm.value == 16 && value1 == (value1 & 0x7FFF)) ||
@@ -306,8 +293,6 @@ static void propagateconstantstoblock(PCodeBlock* block) {
                     }
 
                     if (ismaskedoperand(&instr->args[1], &mask)) {
-                        // 2.6 reuses loadSize for Pro7's mask2 (the registers of the EXTSH case
-                        // after it follow); TODO: one register pair here still differs
                         if (instr->args[3].data.imm.value <= instr->args[4].data.imm.value) {
                             loadSize = ((instr->args[3].data.imm.value > 31)
                                             ? 0
@@ -361,8 +346,7 @@ static void propagateconstantstoblock(PCodeBlock* block) {
                 }
 
                 if (isconstantoperand(&instr->args[1], &value1) &&
-                    value1 >=
-                    -128 &&
+                    value1 >= -128 &&
                     value1 <= 127) {
                     change_opcode(instr, PC_LI);
                     instr->args[1].kind = PCOp_IMMEDIATE;
@@ -382,7 +366,6 @@ static void propagateconstantstoblock(PCodeBlock* block) {
                 break;
 
             case PC_FRSP:
-                // 2.6
                 if (PCODE_FLAG_SET_F(instr) & fRecordBit) {
                     break;
                 }
@@ -398,7 +381,6 @@ static void propagateconstantstoblock(PCodeBlock* block) {
                 if (PCODE_FLAG_SET_F(instr) & fRecordBit) {
                     break;
                 }
-                // 2.6
                 if (instr->args[2].kind != PCOp_IMMEDIATE) {
                     break;
                 }
@@ -413,7 +395,6 @@ static void propagateconstantstoblock(PCodeBlock* block) {
                     change_num_operands(instr, 2);
                     changed = propagatedconstants = TRUE;
                 } else if (immAddend == 0) {
-                    // 2.6
                     change_opcode(instr, PC_MR);
                     change_num_operands(instr, 2);
                     changed = propagatedconstants = TRUE;
@@ -663,22 +644,16 @@ static void propagateconstantstoblock(PCodeBlock* block) {
         }
 
         for (i = 0, op = instr->args; i < instr->argCount; i++, op++) {
-            if (op->kind ==
-                PCOp_REGISTER &&
-                op->arg ==
-                RegClass_GPR &&
+            if (op->kind == PCOp_REGISTER &&
+                op->arg == RegClass_GPR &&
                 (op->data.reg.effect & EffectWrite)) {
                 defininginstruction[op->data.reg.reg] = instr;
-            } else if (op->kind ==
-                       PCOp_REGISTER &&
-                       op->arg ==
-                       RegClass_FPR &&
+            } else if (op->kind == PCOp_REGISTER &&
+                       op->arg == RegClass_FPR &&
                        (op->data.reg.effect & EffectWrite)) {
                 fprdefininginstruction[op->data.reg.reg] = instr;
-            } else if (op->kind ==
-                       PCOp_REGISTER &&
-                       op->arg ==
-                       RegClass_VR &&
+            } else if (op->kind == PCOp_REGISTER &&
+                       op->arg == RegClass_VR &&
                        (op->data.reg.effect & EffectWrite)) {
                 vrdefininginstruction[op->data.reg.reg] = instr;
             }
@@ -691,7 +666,7 @@ void propagateconstants(void) {
     SInt32 i;
 
     propagatedconstants = FALSE;
-    computeusedefchains(0);
+    computeusedefchains(FALSE);
     defininginstruction = galloc(sizeof(PCode*) * used_virtual_registers[RegClass_GPR]);
     fprdefininginstruction = galloc(sizeof(PCode*) * used_virtual_registers[RegClass_FPR]);
     vrdefininginstruction = galloc(sizeof(PCode*) * used_virtual_registers[RegClass_VR]);

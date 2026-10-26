@@ -3,8 +3,8 @@
 #include "compiler/CError.h"
 #include "compiler/CFunc.h"
 #include "compiler/CMangler.h"
+#include "compiler/CompilerTools.h"
 #include "compiler/CParser.h"
-#include "compiler/CPrep.h"
 #include "compiler/DWARF.h"
 #include "compiler/objects.h"
 #include "compiler/ObjGen_PPC_EABI.h"
@@ -15,6 +15,14 @@
 #include "compiler/RegisterInfo.h"
 #include "compiler/StackFrame.h"
 #include <string.h>
+
+#pragma pack(push, 2)
+struct WeirdOperand {
+    SInt16 type;
+    struct Object* object;
+    UInt32 addend;
+};
+#pragma pack(pop)
 
 static UInt32 codebase;
 
@@ -29,13 +37,13 @@ static SInt32 pcode_update_mem_labeldiff_imm(PCode* instr, const PCodeArg* op, W
         switch (object->datatype) {
             case DLOCAL:
                 switch ((UInt8)op->arg) {
-                    case 1:
+                    case RefType_Local16:
                         offset += local_offset_16(object);
                         break;
-                    case 13:
+                    case RefType_LocalLo:
                         offset = local_offset_lo(object, offset);
                         break;
-                    case 12:
+                    case RefType_LocalHa:
                         offset = local_offset_ha(object, offset);
                         break;
                     default:
@@ -43,21 +51,19 @@ static SInt32 pcode_update_mem_labeldiff_imm(PCode* instr, const PCodeArg* op, W
                 }
                 break;
             case DDATA:
-                // `arg` read as a reference type is cast `(UInt8)` as in Pro7's switches; the
-                // comparisons 2.6 adds also match without the cast
                 if (instr->flags & (fIsRead | fIsWrite)) {
-                    if ((UInt8)op->arg == 10 || NeedsXREF(object)) {
+                    if ((UInt8)op->arg == RefType_LoAlt || NeedsXREF(object)) {
                         switch ((UInt8)op->arg) {
-                            case 2:
-                            case 3:
-                            case 6:
-                            case 10:
+                            case RefType_Addr16:
+                            case RefType_Lo16:
+                            case RefType_Lo:
+                            case RefType_LoAlt:
                                 break;
                             default:
                                 CError_FATAL(100);
                         }
                     } else {
-                        if ((UInt8)op->arg == 14) {
+                        if ((UInt8)op->arg == RefType_Pooled) {
                             offset += GetPooledObjectOffset(object);
                             if (offset != (SInt16)offset) {
                                 CError_FATAL(106);
@@ -66,7 +72,7 @@ static SInt32 pcode_update_mem_labeldiff_imm(PCode* instr, const PCodeArg* op, W
                         break;
                     }
                 }
-                if ((UInt8)op->arg == 14) {
+                if ((UInt8)op->arg == RefType_Pooled) {
                     offset += GetPooledObjectOffset(object);
                     if (offset != (SInt16)offset) {
                         CError_FATAL(114);
@@ -76,25 +82,25 @@ static SInt32 pcode_update_mem_labeldiff_imm(PCode* instr, const PCodeArg* op, W
             case DFUNC:
             case DVFUNC:
                 switch ((UInt8)op->arg) {
-                    case 6:
+                    case RefType_Lo:
                         wop->type = 5;
                         break;
-                    case 2:
+                    case RefType_Addr16:
                         wop->type = 3;
                         break;
-                    case 3:
+                    case RefType_Lo16:
                         wop->type = 4;
                         break;
-                    case 8:
+                    case RefType_Ha:
                         wop->type = 7;
                         break;
-                    case 7:
+                    case RefType_Hi:
                         wop->type = 6;
                         break;
-                    case 10:
+                    case RefType_LoAlt:
                         wop->type = 14;
                         break;
-                    case 11:
+                    case RefType_HaAlt:
                         wop->type = 15;
                         break;
                     default:
@@ -108,8 +114,6 @@ static SInt32 pcode_update_mem_labeldiff_imm(PCode* instr, const PCodeArg* op, W
                 CError_FATAL(174);
         }
     } else if (op->kind == PCOp_LABELDIFF) {
-        // Pro7 computes the difference in `offset` itself (65% here: other registers and 16 more
-        // bytes); 2.6 has a variable of its own. `arg` is the field's RegClass (Pro7's UInt8: 92%).
         SInt32 diff;
 
         arg = op->arg;
@@ -122,9 +126,9 @@ static SInt32 pcode_update_mem_labeldiff_imm(PCode* instr, const PCodeArg* op, W
         }
 
         if (diff > 0x7FFF) {
-            PPCError_Error(PPCErrorStr109);
+            PPCError_Error(PPCERR_LABEL_TOO_FAR);
         } else if (diff < -0x8000) {
-            PPCError_Error(PPCErrorStr109);
+            PPCError_Error(PPCERR_LABEL_TOO_FAR);
         }
         offset = diff;
     } else if (op->kind == PCOp_IMMEDIATE) {
@@ -138,8 +142,7 @@ static SInt32 pcode_update_mem_labeldiff_imm(PCode* instr, const PCodeArg* op, W
 
 UInt32 assemblepcode(PCode* instr, UInt32 offset, WeirdOperand* wop) {
     UInt32 bits;
-    // one `flag` for the function: Pro7's per-case `int flag` gives other registers (99.0%)
-    int flag;
+    int isAbsolute;
 
     bits = opcodeinfo[instr->op].insn;
     wop->type = -1;
@@ -147,12 +150,12 @@ UInt32 assemblepcode(PCode* instr, UInt32 offset, WeirdOperand* wop) {
 
     switch (instr->op) {
         case PC_BL: {
-            flag = PCODE_FLAG_SET_T(instr) & fAbsolute;
+            isAbsolute = PCODE_FLAG_SET_T(instr) & fAbsolute;
             if (instr->args[0].kind == PCOp_MEMORY) {
                 bits |= instr->args[0].data.mem.offset & 0x3FFFFFC;
                 wop->type = 2;
                 wop->object = instr->args[0].data.mem.obj;
-                if (flag == 0) {
+                if (isAbsolute == 0) {
                     wop->type = 2;
                 } else {
                     wop->type = 10;
@@ -160,12 +163,12 @@ UInt32 assemblepcode(PCode* instr, UInt32 offset, WeirdOperand* wop) {
                 }
             } else if (instr->args[0].kind == PCOp_IMMEDIATE) {
                 bits |= instr->args[0].data.imm.value & 0x3FFFFFC;
-                if (flag) {
+                if (isAbsolute) {
                     bits |= 2;
                 }
             } else {
                 bits |= (instr->args[0].data.label.label->block->codeOffset - offset) & 0x3FFFFFC;
-                if (flag) {
+                if (isAbsolute) {
                     CError_FATAL(271);
                 }
             }
@@ -173,11 +176,11 @@ UInt32 assemblepcode(PCode* instr, UInt32 offset, WeirdOperand* wop) {
         }
 
         case PC_B: {
-            flag = PCODE_FLAG_SET_T(instr) & fAbsolute;
+            isAbsolute = PCODE_FLAG_SET_T(instr) & fAbsolute;
             if (instr->args[0].kind == PCOp_MEMORY) {
                 bits |= instr->args[0].data.mem.offset & 0x3FFFFFC;
                 wop->object = instr->args[0].data.mem.obj;
-                if (flag == 0) {
+                if (isAbsolute == 0) {
                     wop->type = 2;
                 } else {
                     wop->type = 10;
@@ -185,12 +188,12 @@ UInt32 assemblepcode(PCode* instr, UInt32 offset, WeirdOperand* wop) {
                 }
             } else if (instr->args[0].kind == PCOp_IMMEDIATE) {
                 bits |= instr->args[0].data.imm.value & 0x3FFFFFC;
-                if (flag) {
+                if (isAbsolute) {
                     bits |= 2;
                 }
             } else {
                 bits |= (instr->args[0].data.label.label->block->codeOffset - offset) & 0x3FFFFFC;
-                if (flag) {
+                if (isAbsolute) {
                     CError_FATAL(312);
                 }
             }
@@ -202,11 +205,11 @@ UInt32 assemblepcode(PCode* instr, UInt32 offset, WeirdOperand* wop) {
 
         case PC_BDNZ:
         case PC_BDZ: {
-            flag = PCODE_FLAG_SET_T(instr) & fAbsolute;
+            isAbsolute = PCODE_FLAG_SET_T(instr) & fAbsolute;
             if (instr->args[0].kind == PCOp_MEMORY) {
                 bits |= instr->args[0].data.mem.offset & 0xFFFC;
                 wop->object = instr->args[0].data.mem.obj;
-                if (flag == 0) {
+                if (isAbsolute == 0) {
                     wop->type = 8;
                 } else {
                     wop->type = 10;
@@ -238,14 +241,14 @@ UInt32 assemblepcode(PCode* instr, UInt32 offset, WeirdOperand* wop) {
         }
 
         case PC_BC: {
-            flag = PCODE_FLAG_SET_T(instr) & fAbsolute;
+            isAbsolute = PCODE_FLAG_SET_T(instr) & fAbsolute;
             bits |= (instr->args[0].data.imm.value & 31) << 21;
             bits |= ((instr->args[1].data.reg.reg * 4 + instr->args[2].data.imm.value) & 31) << 16;
 
             if (instr->args[3].kind == PCOp_MEMORY) {
                 bits |= instr->args[3].data.mem.offset & 0xFFFC;
                 wop->object = instr->args[3].data.mem.obj;
-                if (flag == 0) {
+                if (isAbsolute == 0) {
                     wop->type = 8;
                 } else {
                     wop->type = 10;
@@ -282,13 +285,13 @@ UInt32 assemblepcode(PCode* instr, UInt32 offset, WeirdOperand* wop) {
         case PC_BDNZF:
         case PC_BDZT:
         case PC_BDZF: {
-            flag = PCODE_FLAG_SET_T(instr) & fAbsolute;
+            isAbsolute = PCODE_FLAG_SET_T(instr) & fAbsolute;
             bits |= ((instr->args[0].data.reg.reg * 4 + instr->args[1].data.imm.value) & 31) << 16;
 
             if (instr->args[2].kind == PCOp_MEMORY) {
                 bits |= instr->args[2].data.mem.offset & 0xFFFC;
                 wop->object = instr->args[2].data.mem.obj;
-                if (flag == 0) {
+                if (isAbsolute == 0) {
                     wop->type = 8;
                 } else {
                     wop->type = 10;
@@ -298,12 +301,12 @@ UInt32 assemblepcode(PCode* instr, UInt32 offset, WeirdOperand* wop) {
                 SInt32 value;
                 if (instr->args[2].kind == PCOp_IMMEDIATE) {
                     value = instr->args[2].data.imm.value;
-                    if (flag) {
+                    if (isAbsolute) {
                         bits |= 2;
                     }
                 } else {
                     value = instr->args[2].data.label.label->block->codeOffset - offset;
-                    CError_ASSERT(468, !flag);
+                    CError_ASSERT(468, !isAbsolute);
                 }
 
                 bits |= (UInt16)value;
@@ -1380,7 +1383,6 @@ static void insertlongbranches(SInt32 max, SInt32 min) {
     PCodeBlock* block;
     PCodeLabel* label;
     SInt32 i;
-    // the branch's own offset: Pro7 reuses `i` for it (92.5%)
     SInt32 offset;
 
     i = 0;
@@ -1531,8 +1533,6 @@ SInt32 optimizefinalbranches(SInt32 codesize) {
                 continue;
             }
 
-            // `instr` and (below) `label` are assigned inside the expressions that use them: Pro7's
-            // separate statements give other registers (98.0%; `label`: 93-97%)
             if (!((instr = block->lastPCode)->flags & fIsBranch)) {
                 continue;
             }
@@ -1546,8 +1546,7 @@ SInt32 optimizefinalbranches(SInt32 codesize) {
                     deletepcode(instr);
                     changed = deleted = TRUE;
                 } else if (target->op == PC_B) {
-                    if (target->args[0].kind ==
-                        PCOp_LABEL &&
+                    if (target->args[0].kind == PCOp_LABEL &&
                         target->args[0].data.label.label != instr->args[0].data.label.label) {
                         instr->args[0].data.label.label = target->args[0].data.label.label;
                         changed = TRUE;
@@ -1560,15 +1559,14 @@ SInt32 optimizefinalbranches(SInt32 codesize) {
             }
 
             if ((instr->op == PC_BT || instr->op == PC_BF) && instr->args[2].kind == PCOp_LABEL) {
-                PCodeBlock* block2 = instr->block;
+                PCodeBlock* branchBlock = instr->block;
                 target = targetinstruction(label = instr->args[2].data.label.label);
 
                 if (label->block->codeOffset == (offset + 4)) {
                     deletepcode(instr);
                     changed = deleted = TRUE;
                 } else if (target->op == PC_B) {
-                    if (target->args[0].kind ==
-                        PCOp_LABEL &&
+                    if (target->args[0].kind == PCOp_LABEL &&
                         target->args[0].data.label.label != instr->args[2].data.label.label) {
                         instr->args[2].data.label.label = target->args[0].data.label.label;
                         changed = TRUE;
@@ -1590,40 +1588,36 @@ SInt32 optimizefinalbranches(SInt32 codesize) {
                         }
                         instr->argCount = 2;
                         changed = TRUE;
-                    } else if (block2->nextBlock &&
-                               block2->nextBlock->firstPCode &&
-                               block2->nextBlock->firstPCode->op ==
-                               PC_BLR &&
+                    } else if (branchBlock->nextBlock &&
+                               branchBlock->nextBlock->firstPCode &&
+                               branchBlock->nextBlock->firstPCode->op == PC_BLR &&
                                label->block->codeOffset == (offset + 8)) {
-                        if (block2->nextBlock->predecessors &&
-                            block2->nextBlock->predecessors->block ==
-                            block2 &&
-                            !block2->nextBlock->predecessors->nextLink) {
+                        if (branchBlock->nextBlock->predecessors &&
+                            branchBlock->nextBlock->predecessors->block == branchBlock &&
+                            !branchBlock->nextBlock->predecessors->nextLink) {
                             if (instr->op == PC_BT) {
                                 instr->op = PC_BFLR;
                             } else {
                                 instr->op = PC_BTLR;
                             }
                             change_num_operands(instr, 2);
-                            deletepcode(block2->nextBlock->firstPCode);
+                            deletepcode(branchBlock->nextBlock->firstPCode);
                             changed = deleted = TRUE;
                         }
-                    } else if (block2->nextBlock &&
-                               block2->nextBlock->firstPCode &&
-                               block2->nextBlock->firstPCode->op ==
-                               PC_BCTR &&
+                    } else if (branchBlock->nextBlock &&
+                               branchBlock->nextBlock->firstPCode &&
+                               branchBlock->nextBlock->firstPCode->op == PC_BCTR &&
                                label->block->codeOffset == (offset + 8)) {
-                        if (block2->nextBlock->predecessors &&
-                            block2->nextBlock->predecessors->block ==
-                            block2 &&
-                            !block2->nextBlock->predecessors->nextLink) {
+                        if (branchBlock->nextBlock->predecessors &&
+                            branchBlock->nextBlock->predecessors->block == branchBlock &&
+                            !branchBlock->nextBlock->predecessors->nextLink) {
                             if (instr->op == PC_BT) {
                                 instr->op = PC_BFCTR;
                             } else {
                                 instr->op = PC_BTCTR;
                             }
                             change_num_operands(instr, 2);
-                            deletepcode(block2->nextBlock->firstPCode);
+                            deletepcode(branchBlock->nextBlock->firstPCode);
                             changed = deleted = TRUE;
                         }
                     }
@@ -1631,20 +1625,17 @@ SInt32 optimizefinalbranches(SInt32 codesize) {
                 continue;
             }
 
-            if (instr->op ==
-                PC_BC &&
-                instr->args[3].kind ==
-                PCOp_LABEL &&
+            if (instr->op == PC_BC &&
+                instr->args[3].kind == PCOp_LABEL &&
                 !(PCODE_FLAG_SET_T(instr) & (fSideEffects | fLink))) {
-                PCodeBlock* block2 = instr->block;
+                PCodeBlock* branchBlock = instr->block;
                 target = targetinstruction(label = instr->args[3].data.label.label);
 
                 if (label->block->codeOffset == (offset + 4)) {
                     deletepcode(instr);
                     changed = deleted = TRUE;
                 } else if (target->op == PC_B) {
-                    if (target->args[0].kind ==
-                        PCOp_LABEL &&
+                    if (target->args[0].kind == PCOp_LABEL &&
                         target->args[0].data.label.label != instr->args[3].data.label.label) {
                         instr->args[3].data.label.label = target->args[0].data.label.label;
                         changed = TRUE;
@@ -1658,17 +1649,13 @@ SInt32 optimizefinalbranches(SInt32 codesize) {
                         instr->op = PC_BCCTR;
                         instr->argCount = 3;
                         changed = TRUE;
-                    } else if (block2->nextBlock &&
-                               block2->nextBlock->firstPCode &&
-                               block2->nextBlock->firstPCode->op ==
-                               PC_BLR &&
+                    } else if (branchBlock->nextBlock &&
+                               branchBlock->nextBlock->firstPCode &&
+                               branchBlock->nextBlock->firstPCode->op == PC_BLR &&
                                label->block->codeOffset == (offset + 8)) {
                         SInt32 val = instr->args[0].data.imm.value & 30;
-                        // 2.6 keeps the predecessor list in a register of its own here: Pro7's
-                        // three reads through block2->nextBlock give 98.9% (the other three
-                        // copies of this test match either way)
-                        PCLink* pred = block2->nextBlock->predecessors;
-                        if (pred && pred->block == block2 && !pred->nextLink) {
+                        PCLink* pred = branchBlock->nextBlock->predecessors;
+                        if (pred && pred->block == branchBlock && !pred->nextLink) {
                             if ((val & 30) == 4) {
                                 instr->args[0].data.imm.value = val | 12;
                             } else if ((val & 30) == 12) {
@@ -1676,19 +1663,17 @@ SInt32 optimizefinalbranches(SInt32 codesize) {
                             }
                             instr->op = PC_BCLR;
                             instr->argCount = 3;
-                            deletepcode(block2->nextBlock->firstPCode);
+                            deletepcode(branchBlock->nextBlock->firstPCode);
                             changed = deleted = TRUE;
                         }
-                    } else if (block2->nextBlock &&
-                               block2->nextBlock->firstPCode &&
-                               block2->nextBlock->firstPCode->op ==
-                               PC_BCTR &&
+                    } else if (branchBlock->nextBlock &&
+                               branchBlock->nextBlock->firstPCode &&
+                               branchBlock->nextBlock->firstPCode->op == PC_BCTR &&
                                label->block->codeOffset == (offset + 8)) {
                         SInt32 val = instr->args[0].data.imm.value & 30;
-                        if (block2->nextBlock->predecessors &&
-                            block2->nextBlock->predecessors->block ==
-                            block2 &&
-                            !block2->nextBlock->predecessors->nextLink) {
+                        if (branchBlock->nextBlock->predecessors &&
+                            branchBlock->nextBlock->predecessors->block == branchBlock &&
+                            !branchBlock->nextBlock->predecessors->nextLink) {
                             if ((val & 30) == 4) {
                                 instr->args[0].data.imm.value = val | 12;
                             } else if ((val & 30) == 12) {
@@ -1696,7 +1681,7 @@ SInt32 optimizefinalbranches(SInt32 codesize) {
                             }
                             instr->op = PC_BCCTR;
                             instr->argCount = 3;
-                            deletepcode(block2->nextBlock->firstPCode);
+                            deletepcode(branchBlock->nextBlock->firstPCode);
                             changed = deleted = TRUE;
                         }
                     }
@@ -1721,21 +1706,17 @@ static SInt32 insert_align_nops(Object* func, SInt32 codesize) {
         changed = FALSE;
 
         for (block = pcbasicblocks; block; block = block->nextBlock) {
-            if ((block->flags & (fInnerLoop | fUnrolled)) ==
-                fInnerLoop &&
+            if ((block->flags & (fInnerLoop | fUnrolled)) == fInnerLoop &&
                 (block->codeOffset & 7) &&
-                block->pcodeCount <
-                8 &&
+                block->pcodeCount < 8 &&
                 (prev = block->prevBlock) &&
                 !(prev->flags & fInnerLoop)) {
                 if (prev->lastPCode &&
-                    prev->lastPCode->op ==
-                    PC_NOP &&
+                    prev->lastPCode->op == PC_NOP &&
                     !(prev->lastPCode->flags & fSideEffects)) {
                     deletepcode(prev->lastPCode);
                 } else {
                     PCode* nop = makepcode(PC_NOP);
-                    // Pro7's `&=` compiles 19 bytes shorter
                     nop->flags = nop->flags & ~fSideEffects;
                     appendpcode(prev, nop);
                 }
@@ -1747,7 +1728,7 @@ static SInt32 insert_align_nops(Object* func, SInt32 codesize) {
 
         if (changed) {
             pclistblocks(CMangler_GetLinkName(func)->name, "AFTER INSERT ALIGN NOPs");
-            if (codesize >= (copts.bc_range >> 1)) {
+            if ((UInt32)codesize >= (copts.bc_range >> 1)) {
                 insertlongbranches((copts.bc_range >> 1) - 1, -(copts.bc_range >> 1));
                 codesize = pccomputeoffsets();
             }
@@ -1773,14 +1754,14 @@ SInt32 assemblefunction(Object* func, EntryPoint* entrypoints) {
 
     codesize = pccomputeoffsets();
     if (codesize <= 0) {
-        PPCError_Error(PPCErrorStr190, func->name->name);
+        PPCError_Error(PPCERR_FUNCTION_HAS_NO_INSTRUCTIONS, func->name->name);
     }
 
     if (copts.peephole || copts.optimizationlevel >= 3) {
         codesize = optimizefinalbranches(codesize);
     }
 
-    if (codesize >= (copts.bc_range >> 1)) {
+    if ((UInt32)codesize >= (copts.bc_range >> 1)) {
         insertlongbranches((copts.bc_range >> 1) - 1, -(copts.bc_range >> 1));
         codesize = pccomputeoffsets();
     }
@@ -1808,7 +1789,6 @@ SInt32 assemblefunction(Object* func, EntryPoint* entrypoints) {
     gl = ObjGen_GetSectionGList(section);
 
     codebase = gl->size;
-    // 2.6 reads `offset` here, Pro7 `tbsize` (the same value)
     AppendGListNoData(gl, codesize + offset);
 
     if (copts.filesyminfo) {
@@ -1816,7 +1796,6 @@ SInt32 assemblefunction(Object* func, EntryPoint* entrypoints) {
         ObjGen_SourceRef(functionbodyoffset, 0);
 #if VERSION >= VERSION_GC_2_7
     } else {
-        // only the function's .line symbol, in a section that has debugging information
         newDWARF_function(func, codesize + tbsize, codebase, section);
 #endif
     }
@@ -1837,8 +1816,7 @@ SInt32 assemblefunction(Object* func, EntryPoint* entrypoints) {
 
             *((UInt32*)(*gl->data + codebase + offset2)) = assemblepcode(instr, offset2, &wop);
 
-            // TODO: an unnamed PCode flag (0x80000) marking an exit MWCATS records
-            if (instr->flags & 0x80000) {
+            if (instr->flags & fMWCATSExit) {
                 MWCATS_AddExit(section, offset2);
             }
 

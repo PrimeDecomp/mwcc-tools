@@ -5,12 +5,13 @@
 #include "driver/CLIO.h"
 #include "driver/CLMain.h"
 #include "driver/CLPlugins.h"
-#include "driver/CLTarg.h"
+#include "driver/cmdline.h"
 #include "driver/CWPlugins.h"
 #include "driver/Generic.h"
 #include "driver/MacSpecs.h"
 #include "driver/MemUtils.h"
 #include "driver/MsDos.h"
+#include "driver/oslib.h"
 #include "driver/pref_structs.h"
 #include <ctype.h>
 #include <stdio.h>
@@ -42,7 +43,6 @@ static int CopyArgumentList(int argc, char** argv, int* Argc, char*** Argv) {
 }
 
 static int FreeArgumentList(char** argv) {
-    // 2.6 indexes (Pro7 walks a `char** scan`: a pointer in esi where 2.6 has `[ebx + ebp*4]`)
     int x;
     for (x = 0; argv[x]; x++) {
         xfree(argv[x]);
@@ -58,8 +58,7 @@ static int SetupLinkerCommandLine(SInt32 dropinflags, File* file, CWCommandLineA
     OSSpec spec;
 
     for (x = 0; x < numPlugins; x++) {
-        if (pluginInfo[x].plugintype ==
-            CWDROPINLINKERTYPE &&
+        if (pluginInfo[x].plugintype == CWDROPINLINKERTYPE &&
             ((dropinflags & (isPostLinker | isPreLinker)) ==
              (pluginInfo[x].dropinflags & (isPostLinker | isPreLinker)))) {
             break;
@@ -177,7 +176,6 @@ int DeleteTemporaries(void) {
     return TRUE;
 }
 
-// 2.6's name buffer is 256 bytes (Pro7: 64; 2.6's frame is 0x318).
 int ExecuteLinker(
     Plugin* plugin, SInt32 dropinflags, File* file, char* stdoutfile, char* stderrfile
 ) {
@@ -221,13 +219,6 @@ int ExecuteLinker(
             (ptr = strstr(cname, "pas")) ||
             (ptr = strstr(cname, "asm"))) {
             if (ptr[0] != 'c') {
-                // TODO: 2.6 offsets `ptr` as an integer, in the Mac idiom `(Ptr)((long)p + n)` (Pro7's
-                // IroMalloc): a copy of ptr, then `+ 3` and `+ 2` on it; below, `ptr + 2` twice and `+ 3`
-                // on the second, unfolded. `long`, `int`, `UInt32` and `size_t` casts all match. Not
-                // matching (97-98.8): Pro7's plain `ptr + 2` and its `ptr2` (char*, unsigned char*, void*,
-                // const char*; assigned before or inside the call), `&ptr[2]`, `&*ptr`, `2 + ptr`,
-                // pointer casts, `2L`/`2u` offsets, `register ptr`, an offset macro, `cname + (ptr -
-                // cname)`, and memmove declared with char*, int or no parameters, or implicitly.
                 memmove((char*)((long)ptr + 2), (char*)((long)ptr + 3), strlen(ptr) - 3);
                 ptr[strlen(ptr) - 1] = '\0';
             }

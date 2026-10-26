@@ -1,6 +1,5 @@
 #include "compiler/CError.h"
 #include "compiler/CClass.h"
-#include "compiler/CExpr.h"
 #include "compiler/CFunc.h"
 #include "compiler/CInt64.h"
 #include "compiler/CMangler.h"
@@ -15,25 +14,32 @@
 #include "compiler/objects.h"
 #include "compiler/scopes.h"
 #include "compiler/templates.h"
-#include "compiler/tokens.h"
+#include "compiler/types.h"
 #include "compiler/Unmangle.h"
 #include "driver/COSToolsCLT.h"
+#include "driver/CWPlugins.h"
 #include "driver/CWPluginsPrivate.h"
 #include "driver/DropInCompilerLinker.h"
+#include "driver/Files.h"
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
+
+typedef struct CErrorBuffer {
+    char* start;
+    char* end;
+    UInt32 size;
+    UInt32 remaining;
+} CErrorBuffer;
 
 TStreamElement* cerror_locktoken;
 static TStreamElement* cerror_token;
 static short cerror_errorcount;
 static SInt32 cerror_lasterrorline;
-// (Pro7's name; its COMMON hash, 242, sits between symdecltoken's 222 and all's 304, as in 2.6)
 char cerror_synchdata[32];
 short cerror_synchoffset;
 int CError_BreakPointcount;
 
-// forward decls
 static void CError_BufferAppendType(CErrorBuffer* eb, Type* ty, UInt32 qual);
 static void CError_AppendObjectName(CErrorBuffer* eb, Object* obj);
 
@@ -153,6 +159,8 @@ static void CError_BufferAppendTemplArgExpr(CErrorBuffer* eb, ENode* node) {
                 CError_BufferAppendChar(eb, '&');
                 CError_AppendObjectName(eb, node->data.objref);
                 return;
+            default:
+                break;
         }
     }
 
@@ -231,6 +239,8 @@ static void CError_BufferAppendPType(CErrorBuffer* eb, Type* ty) {
             CError_BufferAppendString(eb, "::*");
             CError_BufferAppendQualifier(eb, TYPE_MEMBER_POINTER(ty)->qual);
             return;
+        default:
+            break;
     }
 }
 
@@ -239,9 +249,9 @@ static void CError_BufferAppendTemplDepType(CErrorBuffer* eb, TypeTemplDep* type
     switch (type->dtype) {
         case TEMPLDEP_ARGUMENT:
             if (type->u.pid.nindex) {
-                sprintf(buf, "T%ld_%ld", type->u.pid.nindex, type->u.pid.index);
+                sprintf(buf, "T%ld_%ld", (SInt32)type->u.pid.nindex, (SInt32)type->u.pid.index);
             } else {
-                sprintf(buf, "T%ld", type->u.pid.index);
+                sprintf(buf, "T%ld", (SInt32)type->u.pid.index);
             }
             CError_BufferAppendString(eb, buf);
             break;
@@ -457,6 +467,8 @@ next_ptr:
                 case TYPEMEMBERPOINTER:
                     scan = TYPE_MEMBER_POINTER(scan)->ty1;
                     goto next_ptr;
+                default:
+                    break;
             }
 
             CError_BufferAppendQualifier(eb, qual);
@@ -496,7 +508,7 @@ next_ptr:
             CError_BufferAppendQualifier(eb, qual);
             CError_BufferAppendType(eb, TYPE_FUNC(ty)->functype, 0);
             CError_BufferAppendChar(eb, ' ');
-            CError_BufferAppendFuncArgs(eb, TYPE_FUNC(ty), 0);
+            CError_BufferAppendFuncArgs(eb, TYPE_FUNC(ty), FALSE);
             return;
         case TYPEARRAY:
             CError_BufferAppendQualifier(eb, qual);
@@ -524,7 +536,7 @@ append_array_lengths:
             CError_BufferAppendString(eb, "T");
             return;
         case TYPEBITFIELD:
-            sprintf(buf, "bitfield:%ld", TYPE_BITFIELD(ty)->bitlength);
+            sprintf(buf, "bitfield:%ld", (SInt32)TYPE_BITFIELD(ty)->bitlength);
             CError_BufferAppendString(eb, buf);
             return;
         default:
@@ -553,21 +565,21 @@ char* CError_GetTypeName(Type* ty, UInt32 qual, Boolean useGlobalHeap) {
 static void CError_AppendUnqualFunctionName(
     CErrorBuffer* eb, NameSpace* nspace, HashNameNode* name, TypeFunc* tfunc
 ) {
-    Boolean flag = FALSE;
+    Boolean isCtorDtor = FALSE;
     char* opname;
 
     if (nspace && nspace->theclass) {
         if (name == constructor_name_node) {
             CError_BufferAppendString(eb, nspace->theclass->classname->name);
-            flag = TRUE;
+            isCtorDtor = TRUE;
         } else if (name == destructor_name_node) {
             CError_BufferAppendChar(eb, '~');
             CError_BufferAppendString(eb, nspace->theclass->classname->name);
-            flag = TRUE;
+            isCtorDtor = TRUE;
         }
     }
 
-    if (!flag) {
+    if (!isCtorDtor) {
         opname = CMangler_GetOperator(name);
         if (!opname) {
             if (tfunc && (tfunc->flags & FUNC_CONVERSION)) {
@@ -596,7 +608,7 @@ static void CError_AppendFunctionName(
         if (!templargs && (tfunc->flags & FUNC_IS_TEMPL)) {
             CError_BufferAppendString(eb, "<...>");
         }
-        CError_BufferAppendFuncArgs(eb, tfunc, 0);
+        CError_BufferAppendFuncArgs(eb, tfunc, FALSE);
     } else {
         CError_BufferAppendString(eb, "()");
     }
@@ -702,7 +714,7 @@ char* CError_GetNameString(NameSpace* nspace, HashNameNode* operatorName) {
     }
 }
 
-void CError_ErrorMessage(int errTable, char* str, Boolean flag1, Boolean flag2) {
+void CError_ErrorMessage(int errTable, char* str, Boolean isTerminal, Boolean isWarning) {
     CWMessageRef myref;
     TStreamElement* token;
     int messagetype;
@@ -715,7 +727,7 @@ void CError_ErrorMessage(int errTable, char* str, Boolean flag1, Boolean flag2) 
         CError_UserBreak();
     }
 
-    if (!in_assembler && !flag1 && cerror_lasterrorline == lines) {
+    if (!in_assembler && !isTerminal && cerror_lasterrorline == lines) {
         if (cerror_errorcount++ >= 50) {
             if (cerror_errorcount > 60) {
                 longjmp(errorreturn, 1);
@@ -729,12 +741,12 @@ void CError_ErrorMessage(int errTable, char* str, Boolean flag1, Boolean flag2) 
             }
         }
     } else {
-        if (!flag2) {
+        if (!isWarning) {
             cerror_lasterrorline = lines;
             cerror_errorcount = 0;
         }
         if (copts.warningerrors) {
-            flag2 = FALSE;
+            isWarning = FALSE;
         }
 
         if (cerror_token) {
@@ -744,7 +756,6 @@ void CError_ErrorMessage(int errTable, char* str, Boolean flag1, Boolean flag2) 
         } else {
             token = NULL;
         }
-        //token = cerror_token ? cerror_token : cerror_locktoken ? cerror_locktoken : NULL;
         if ((SInt32)token == -1) {
             ref = NULL;
         } else {
@@ -764,8 +775,8 @@ void CError_ErrorMessage(int errTable, char* str, Boolean flag1, Boolean flag2) 
             myref.sourcefile = tokenfile->textfile;
             ref = &myref;
         }
-        messagetype = flag2 ? messagetypeWarning : messagetypeError;
-        if (!flag2) {
+        messagetype = isWarning ? messagetypeWarning : messagetypeError;
+        if (!isWarning) {
             fatalerrors = anyerrors = TRUE;
         }
         if (CWReportMessage(cparamblkptr->context, ref, str, buf, messagetype, errTable) !=
@@ -808,7 +819,7 @@ static void CError_BufferAppendTemplateStack(CErrorBuffer* eb) {
 }
 
 void CError_ErrorMessageVA(
-    int code, const char* format, va_list list, Boolean flag1, Boolean flag2
+    int code, const char* format, va_list list, Boolean isTerminal, Boolean isWarning
 ) {
     CErrorBuffer eb;
     char buf[256];
@@ -878,14 +889,14 @@ void CError_ErrorMessageVA(
     } while (1);
 
     CError_BufferAppendTemplateStack(&eb);
-    CError_ErrorMessage(code, eb.start, flag1, flag2);
+    CError_ErrorMessage(code, eb.start, isTerminal, isWarning);
 }
 
-static void CError_VAErrorMessage(int code, va_list list, Boolean flag1, Boolean flag2) {
+static void CError_VAErrorMessage(int code, va_list list, Boolean isTerminal, Boolean isWarning) {
     char buf[256];
 
     CError_GetErrorString(buf, code);
-    CError_ErrorMessageVA(code + 10000, buf, list, flag1, flag2);
+    CError_ErrorMessageVA(code + 10000, buf, list, isTerminal, isWarning);
 }
 
 void CError_Error(int code, ...) {
@@ -1006,7 +1017,6 @@ exit_main_loop:
 }
 
 void CError_OverloadedFunctionError2(Object* obj, ObjectList* olst, ENodeList* argNodes) {
-    // not sure if the arg is actually ObjectList since it's never called lmao
     NameSpaceObjectList first;
     NameSpaceObjectList* current;
 
@@ -1024,7 +1034,6 @@ void CError_OverloadedFunctionError2(Object* obj, ObjectList* olst, ENodeList* a
 }
 
 void CError_OverloadedFunctionError(Object* obj, ObjectList* olst) {
-    // not sure if this arg is ObjectList or NameSpaceObjectList
     CErrorBuffer eb;
     char buf[256];
 
@@ -1080,12 +1089,12 @@ void CError_BreakPoint(const char* a, const char* b) {
 }
 
 void CError_Internal(char* filename, int line) {
-    char tmp[128];
-    CompilerGetCString(5, tmp);
-    sprintf(string, tmp, filename, line);
+    char format[128];
+    CompilerGetCString(5, format);
+    sprintf(string, format, filename, line);
     CError_ErrorMessage(10001, string, TRUE, FALSE);
     longjmp(errorreturn, 1);
-    CError_BreakPoint(0, 0);
+    CError_BreakPoint(NULL, NULL);
 }
 
 void CError_ExpressionTooComplex(void) {
@@ -1197,7 +1206,4 @@ void CError_QualifierCheck(UInt32 qual) {
     }
 }
 
-// TODO: the original's statics are 2-byte aligned (cerror_token at +6). MWCC lays out .bss with the
-// packing in effect at the end of the file, so some header of 2.6's evidently left pack(2) on; this
-// stands in for it (CompilerTools ends the same way).
 #pragma pack(2)

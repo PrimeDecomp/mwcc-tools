@@ -1,25 +1,4 @@
 #!/usr/bin/env python3
-"""python tools/includes.py (trim | add | fix | sort) SOURCE... [--dry-run]: keep sources' #include lists to what they
-use.
-
-  trim  drop each "compiler/" or "driver/" include (not the source's own header, not common.h) whose removal changes
-        nothing: no new clang error and the same MWCC object (every section but .bss and debug) in every version.
-        MWCC's code can follow the declarations in scope, so clang alone does not decide. (clangd's include-cleaner is
-        no guide here: it credits a struct to the typedef in common.h and calls the header defining it unused.)
-  add   for each clang error naming an undeclared function, identifier or type, include the header that declares
-        it (when one header of include/compiler or include/driver does; several are listed, not chosen).
-  fix   compile with MWCC and, for each "undefined identifier X" or "incomplete struct X" error, include the header
-        that defines X (declarations as clang reads them; macros from the headers' #defines); repeat until it
-        compiles or nothing is left to add.
-  sort  sort each run of includes before the source's first code: its own header, the Iro* headers, the other
-        compiler/ headers, driver/, then <system> ones; common.h goes where the own header is there (every header
-        includes it). Includes after code or inside an #if, and the lines between runs (a #define the next includes
-        read), stay where they are.
-
-Only an include before the first code and outside any #if is removed, and added ones go after the last of those.
-Sources run in parallel; each file's edit is atomic and fails if the file changed meanwhile. MWCC's code generation
-can change with what is in scope: check with tools/verify.py after.
-"""
 
 import argparse
 import collections
@@ -55,15 +34,10 @@ def remove_line(text: str, directive: csrc.Directive) -> str:
 
 
 def leading(text: csrc.Text) -> list[csrc.Include]:
-    """TEXT's includes before its first code and outside any #if."""
     return [i for i in text.includes() if not i.conditional and not i.late]
 
 
-# ------------------------------------------------------------------------------------------------------------ trim
-
-
 def _errors(path: str, text: str) -> list[collections.Counter]:
-    """clang's errors under each version, positions dropped (removing a line moves the later ones)."""
     return [
         collections.Counter(re.sub(r":\d+:\d+:", ":", e) for e in clang.errors(build.compilation(v, path), text))
         for v in project.VERSIONS
@@ -105,7 +79,6 @@ def trim(path: str, workspace: isolated.Workspace, dry_run: bool) -> str:
             text = remove_line(text, i.directive)
         return text
 
-    # (each alone, in parallel; then all that pass together, or one at a time when together they do not)
     alone = list(isolated.parallel(lambda i: outcome(without([i])) == base, candidates))
     removable = [i for i, ok in zip(candidates, alone) if ok]
     if removable and outcome(without(removable)) != base:
@@ -118,11 +91,7 @@ def trim(path: str, workspace: isolated.Workspace, dry_run: bool) -> str:
     return f"{path}: -{len(removable)} " + " ".join(i.target.strip('"') for i in removable)
 
 
-# ------------------------------------------------------------------------------------------------------- add, fix
-
-
 def providers(version, macros: bool) -> dict[str, set[str]]:
-    """{name: the headers of include/compiler and include/driver declaring it} (with MACROS, their #defines too)."""
     out = collections.defaultdict(set)
     for d in csrc.project_declarations(version):
         if d.file.startswith(PROVIDERS) and d.storage != "static" and d.name:
@@ -140,7 +109,6 @@ def providers(version, macros: bool) -> dict[str, set[str]]:
 
 
 def include_header(text: str, header: str) -> str | None:
-    """TEXT with `#include "HEADER"` (a path under include/) after its last leading include; None when it has it."""
     trivia = csrc.Text("", text)
     name = header.removeprefix("include/")
     if any(i.target == f'"{name}"' for i in trivia.includes()):
@@ -200,9 +168,6 @@ def fix(path: str, found, workspace: isolated.Workspace, dry_run: bool) -> str:
     return "\n".join(notes + [f"{path}: +{len(added)} {' '.join(added)}"])
 
 
-# ------------------------------------------------------------------------------------------------------------ sort
-
-
 def sort_key(target: str, own: str):
     name = target.strip('"<>')
     stem = Path(name).stem
@@ -220,7 +185,6 @@ def sort(path: str, dry_run: bool) -> str:
     text = source.text
     own = Path(path).stem.lower()
     has_own = any(sort_key(i.target, own)[0] == 0 for i in source.includes())
-    # (runs: includes with nothing but space between them)
     runs, run = [], []
     for i in leading(source):
         if run and source.only_space(run[-1].directive.end, i.directive.start):
@@ -246,14 +210,15 @@ def main():
     import signal
 
     if hasattr(signal, "SIGPIPE"):
-        signal.signal(signal.SIGPIPE, signal.SIG_DFL)  # (piped into head: stop quietly)
+        if hasattr(signal, "SIGPIPE"):
+        signal.signal(signal.SIGPIPE, signal.SIG_DFL)
     parser = argparse.ArgumentParser(
-        description=__doc__.split("\n\n")[0],
+        prog="tools/includes.py",
+        description="Keep sources' #include lists to what they use.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=__doc__[__doc__.index("\n\n") + 2 :],
     )
     parser.add_argument("action", choices=("trim", "add", "fix", "sort"))
-    parser.add_argument("sources", nargs="+")
+    parser.add_argument("sources", nargs="+", metavar="SOURCE")
     parser.add_argument("--dry-run", action="store_true", help="print what would change")
     args = parser.parse_args()
     try:

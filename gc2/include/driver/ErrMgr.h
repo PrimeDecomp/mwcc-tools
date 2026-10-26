@@ -7,7 +7,6 @@
 extern "C" {
 #endif
 
-// The Mac error texts (Pro7's MacEmul/ErrMgr.c)
 extern char* __stdcall GetSysErrText(SInt16 msgNbr, char* errMsg);
 
 #ifdef __cplusplus

@@ -1,5 +1,9 @@
+#include "compiler/CInt64.h"
 #include "compiler/common.h"
-#include "driver/CLIO.h"
+#include "compiler/objects.h"
+#include "compiler/tokens.h"
+#include "compiler/types.h"
+#include "driver/oslib.h"
 #define IRO_POINTER_ANALYSIS_TU
 #include "compiler/IroEval.h"
 #include "compiler/IroFlowgraph.h"
@@ -8,27 +12,22 @@
 #include "compiler/IroUtil.h"
 #include "compiler/IroVars.h"
 #include "compiler/BitVector.h"
-#include "compiler/CABI.h"
 #include "compiler/CDecl.h"
 #include "compiler/CError.h"
 #include "compiler/CExpr.h"
 #include "compiler/CFunc.h"
 #include "compiler/CMachine.h"
-#include "compiler/CodeGen.h"
 #include "compiler/CompilerTools.h"
 #include "compiler/CParser.h"
 #include "compiler/CPrep.h"
 #include "compiler/CPrepTokenizer.h"
 #include "compiler/CScope.h"
 #include "compiler/enode.h"
-#include "compiler/InlineAsm.h"
 #include "compiler/InlineAsmPPC.h"
-#include "compiler/Registers.h"
 #include "compiler/scopes.h"
 #include <setjmp.h>
 #include <stdio.h>
 #include <time.h>
-// (Pro7 includes the ADTs after every header)
 #include "IroPointerAnalysisADTs.c"
 
 #undef IRO_ASSERT
@@ -37,7 +36,6 @@
 #define IRO_ASSERT(line, expr) \
     ((expr) ? (void)0 \
             : __assertion_failed(#expr, "IroPointerAnalysis.c", (line) + CError_LINE_SHIFT))
-// an assertion whose text in the original differs from our spelling of the expression
 #define IRO_ASSERT_MSG(line, expr, text) \
     ((expr) ? (void)0 \
             : __assertion_failed(text, "IroPointerAnalysis.c", (line) + CError_LINE_SHIFT))
@@ -51,7 +49,7 @@ typedef struct EvalExprAction3Params {
     PartialTransferFunction* ptf;
     PointsToFunction* pointsToFunc;
     Type* indRtype;
-    Boolean x1C;
+    Boolean result;
 } EvalExprAction3Params;
 
 typedef struct MatchPTFActionParams {
@@ -66,7 +64,7 @@ typedef struct ExpandLocationSetSetActionParams {
     LocationSetSet* toBeAdded;
     Stack** stackPtr;
     ParamMappingFunction* map;
-    Boolean x10;
+    Boolean result;
 } ExpandLocationSetSetActionParams;
 
 typedef struct EPParams {
@@ -74,14 +72,14 @@ typedef struct EPParams {
     ExtendedParam* ep;
     Object* proc;
     Object* var;
-    unsigned char x10;
-    unsigned char x11;
+    Boolean foundVar;
+    Boolean result;
 } EPParams;
 
 typedef struct FindAliasingParams {
-    LocationSetSet* x0;
-    LocationSet* x4;
-    Boolean x8;
+    LocationSetSet* set;
+    LocationSet* loc;
+    Boolean aliased;
 } FindAliasingParams;
 
 typedef struct CreateEPActionParams {
@@ -96,7 +94,7 @@ typedef struct KillLocationParams {
     PartialTransferFunction* ptf;
     PointsToFunction* toBeKilled;
     LocationSet* dst;
-    Boolean x18;
+    Boolean result;
 } KillLocationParams;
 
 typedef struct EvalCallActionParams {
@@ -105,10 +103,10 @@ typedef struct EvalCallActionParams {
     IROLinear* nd;
     PartialTransferFunction* ptf;
     ParamMappingFunction* map;
-    int x14;
-    Boolean x18;
-    Boolean x19;
-    Boolean x1A;
+    int targetCount;
+    Boolean stop;
+    Boolean result;
+    Boolean visitTarget;
 } EvalCallActionParams;
 
 typedef struct EvalAssignActionParams {
@@ -117,9 +115,9 @@ typedef struct EvalAssignActionParams {
     IROLinear* nd;
     IRONode* fnode;
     LocationSetSet* srcs;
-    Boolean x14;
-    Boolean x15;
-    Boolean x16;
+    Boolean singleDst;
+    Boolean result;
+    Boolean assignChanged;
 } EvalAssignActionParams;
 
 typedef struct ApplySummaryActionParams {
@@ -131,9 +129,9 @@ typedef struct ApplySummaryActionParams {
     ParamMappingFunction* map;
     LocationSet* loc;
     LocationSetSet* locs;
-    Boolean x20;
-    Boolean x21;
-    Boolean x22;
+    Boolean singleTarget;
+    Boolean result;
+    Boolean assignChanged;
 } ApplySummaryActionParams;
 
 typedef struct GetPTFActionParams {
@@ -142,8 +140,8 @@ typedef struct GetPTFActionParams {
     IROLinear* nd;
     PartialTransferFunction* ptf;
     Boolean* needVisit;
-    PartialTransferFunction* x14;
-    PartialTransferFunction* x18;
+    PartialTransferFunction* contextPTF;
+    PartialTransferFunction* match;
 } GetPTFActionParams;
 #pragma pack(pop)
 
@@ -181,14 +179,14 @@ typedef struct EvalMeetActionParams {
     IRONode* pred;
     IROLinear* nd;
     PartialTransferFunction* ptf;
-    Boolean x14;
-    Boolean x15;
+    Boolean result;
+    Boolean assignChanged;
 } EvalMeetActionParams;
 
 typedef struct EvalAssignAction2Params {
-    CInt64 x0;
+    CInt64 value;
     IROLinear* nd;
-    Boolean xC;
+    Boolean failed;
 } EvalAssignAction2Params;
 
 typedef struct EvalProcActionParams {
@@ -202,20 +200,19 @@ typedef struct AssignEachInPointsToFunctionActionParams {
     IROLinear* nd;
     IRONode* fnode;
     PartialTransferFunction* ptf;
-    Boolean x10;
+    Boolean result;
 } AssignEachInPointsToFunctionActionParams;
 #pragma pack(pop)
 
-// forward decls
 static void UpdatePTFDomain(void* home);
-static Object* GetLocalObject(PALocalVar* local, Object* proc, Boolean flag);
+static Object* GetLocalObject(PALocalVar* local, Object* proc, Boolean searchArgs);
 static Boolean GetActualLocsOfExtendedParam(
     LocationSetSet* set,
     LocationSet* ls,
     Object* var,
     Stack** stackPtr,
     ParamMappingFunction* map,
-    Boolean flag
+    Boolean recordInputs
 );
 static Boolean ExpandLocationSetSetToActuals(
     Stack** stackPtr, ParamMappingFunction* map, LocationSetSet* thingsPointedTo
@@ -228,7 +225,7 @@ static Boolean Lookup(
     PartialTransferFunction* ptf,
     LocationSet* dst,
     PointsToFunction* pointsToFunc,
-    Boolean unk,
+    Boolean recordInputs,
     Type* indRtype
 );
 static ExtendedParam* CreateExtendedParam(
@@ -253,7 +250,7 @@ static Boolean ApplySummary(
     IROLinear* nd,
     PartialTransferFunction* ptf,
     ParamMappingFunction* map,
-    Boolean flag
+    Boolean singleTarget
 );
 static PartialTransferFunction* GetPTF(
     ParamMappingFunction* map,
@@ -278,7 +275,7 @@ static Boolean LocationIsVolatile(LocationSet* loc, Object* proc) {
     IRO_ASSERT(932, loc != NULL);
     IRO_ASSERT(933, proc != NULL);
 
-    result = 0;
+    result = FALSE;
 
     rtype = LocationSet_rtype(loc);
     if (rtype) {
@@ -297,7 +294,7 @@ static Boolean LocationIsVolatile(LocationSet* loc, Object* proc) {
                 qual = 0;
         }
         if (qual & Q_VOLATILE) {
-            result = 1;
+            result = TRUE;
         }
     }
 
@@ -309,7 +306,7 @@ static Boolean LocationIsVolatile(LocationSet* loc, Object* proc) {
             case PAMEMORYBLOCKKIND_LOCALVAR: {
                 PALocalVar* local = PAMemoryBlock_thing(block);
                 if (local) {
-                    obj = GetLocalObject(local, proc, 0);
+                    obj = GetLocalObject(local, proc, FALSE);
                 }
                 break;
             }
@@ -327,17 +324,19 @@ static Boolean LocationIsVolatile(LocationSet* loc, Object* proc) {
                 }
                 break;
             }
+            default:
+                break;
         }
 
         if (obj && is_volatile_object(obj)) {
-            result = 1;
+            result = TRUE;
         }
     }
 
     return result;
 }
 
-static Object* GetLocalObject(PALocalVar* local, Object* proc, Boolean flag) {
+static Object* GetLocalObject(PALocalVar* local, Object* proc, Boolean searchArgs) {
     ObjectList* list;
     Object* arg;
     Object* obj;
@@ -349,10 +348,10 @@ static Object* GetLocalObject(PALocalVar* local, Object* proc, Boolean flag) {
     obj = PALocalVar_obj(local);
     name = PALocalVar_name(local);
 
-    if (proc != &stUnknown && !obj && name && name[0] && flag) {
+    if (proc != &stUnknown && !obj && name && name[0] && searchArgs) {
         for (list = FunctionArguments(proc); list && !obj; list = list->next) {
             arg = list->object;
-            if (arg && arg != &stUnknown && arg->name && arg->name->name) {
+            if (arg && arg != &stUnknown && arg->name && &arg->name->name[0]) {
                 if (!strcmp(arg->name->name, name)) {
                     obj = arg;
                 }
@@ -371,29 +370,36 @@ static Boolean ObjectIsAnExtendedParamCandidate(Object* obj) {
     IRO_ASSERT(1042, obj != NULL);
 
     return Inline_IsObjectData(obj) ||
-#if VERSION < VERSION_GC_2_5
-        // (2.0 also tests DABSOLUTE, which Inline_IsObjectData accepts)
-        obj->datatype ==
-        DABSOLUTE ||
+#if VERSION >= VERSION_GC_2_0 && VERSION < VERSION_GC_2_5
+        obj->datatype == DABSOLUTE ||
 #endif
-        obj->datatype ==
-        DFUNC ||
-        obj->datatype ==
-        DVFUNC ||
+        obj->datatype == DFUNC ||
+        obj->datatype == DVFUNC ||
         obj->datatype == DINLINEFUNC;
 }
 
 #if VERSION < VERSION_GC_2_5
-// 2.0's file has 1 line more above here
 #undef CError_LINE_SHIFT
-#define CError_LINE_SHIFT 1
+#define CError_LINE_SHIFT (1 + CError_LINE_DELTA)
+#endif
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -1
 #endif
 static Boolean ObjectIsAFunction(Object* obj) {
     IRO_ASSERT(1053, obj != NULL);
 
     return obj->datatype == DFUNC || obj->datatype == DVFUNC || obj->datatype == DINLINEFUNC;
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -1
+#endif
 static Boolean LocationSetRepresentsSingleLocation(
     LocationSet* ls, Object* proc, PointsToFunction* pointsToFunc
 ) {
@@ -407,20 +413,20 @@ static Boolean LocationSetRepresentsSingleLocation(
     IRO_ASSERT(1073, proc == NULL || proc != NULL);
     IRO_ASSERT(1074, pointsToFunc == NULL || pointsToFunc != NULL);
 
-    result = 1;
+    result = TRUE;
     if (LocationSet_IsUnknown(ls) || LocationSet_stride(ls)) {
-        result = 0;
+        result = FALSE;
     } else {
         mb = LocationSet_block(ls);
         IRO_ASSERT(1083, mb != NULL);
 
         kind = PAMemoryBlock_kind(mb);
         if (kind == PAMEMORYBLOCKKIND_HEAPBLOCK) {
-            result = 0;
+            result = FALSE;
         } else if (kind == PAMEMORYBLOCKKIND_EXTENDEDPARAM) {
             ep = PAMemoryBlock_thing(mb);
             if (!ep) {
-                result = 0;
+                result = FALSE;
             } else {
                 if ((objSet = ExtendedParam_objectSet(ep)) && ObjectSet_Count(objSet) > 1) {
                     Object* obj = NULL;
@@ -428,27 +434,26 @@ static Boolean LocationSetRepresentsSingleLocation(
 
                     if (!obj) {
                         LocationSetSet* lss;
-                        LocationSet* tmp;
+                        LocationSet* first;
                         ExtendedParam* ep;
                         ObjectSet* objSet;
 
                         lss = LocationSetSet_New();
                         LocationSetSet_Init(lss);
                         GetActualLocsOfExtendedParam(
-                            lss, ls, NULL, &stCallingContextStack, NULL, 0
+                            lss, ls, NULL, &stCallingContextStack, NULL, FALSE
                         );
-                        if (LocationSetSet_Count(lss) !=
-                            1 ||
-                            !(tmp = LocationSetSet_FindFirst(lss)) ||
-                            LocationSet_IsUnknown(tmp) ||
-                            (!((mb = LocationSet_block(tmp)) &&
+                        if (LocationSetSet_Count(lss) != 1 ||
+                            !(first = LocationSetSet_FindFirst(lss)) ||
+                            LocationSet_IsUnknown(first) ||
+                            (!((mb = LocationSet_block(first)) &&
                                (PAMemoryBlock_kind(mb) == PAMEMORYBLOCKKIND_EXTENDEDPARAM) &&
                                (ep = PAMemoryBlock_thing(mb)) &&
                                (objSet = ExtendedParam_objectSet(ep)) &&
                                (ObjectSet_Count(objSet) == 1) &&
                                ObjectIsAnExtendedParamCandidate(ObjectSet_FindFirst(objSet))) &&
-                             !LocationSetRepresentsSingleLocation(tmp, proc, pointsToFunc))) {
-                            result = 0;
+                             !LocationSetRepresentsSingleLocation(first, proc, pointsToFunc))) {
+                            result = FALSE;
                         }
 
                         LocationSetSet_Term(lss);
@@ -461,7 +466,15 @@ static Boolean LocationSetRepresentsSingleLocation(
 
     return result;
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -1
+#endif
 static void EvalExprAction(LocationSet* ls, void* refcon) {
     CInt64 value;
     UInt32 stride;
@@ -491,7 +504,15 @@ static void EvalExprAction(LocationSet* ls, void* refcon) {
         LocationSet_SetField(ls, value);
     }
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -1
+#endif
 static void EvalExprAction2(LocationSet* ls, void* refcon) {
     UInt32 value;
 
@@ -505,7 +526,15 @@ static void EvalExprAction2(LocationSet* ls, void* refcon) {
     }
     LocationSet_SetStride(ls, value);
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -1
+#endif
 static void EvalExprAction3(LocationSet* ls, void* refcon) {
     EvalExprAction3Params* params;
 
@@ -514,7 +543,7 @@ static void EvalExprAction3(LocationSet* ls, void* refcon) {
 
     params = refcon;
 
-    params->x1C |= Lookup(
+    params->result |= Lookup(
         params->set,
         params->stackPtr,
         params->proc,
@@ -522,11 +551,19 @@ static void EvalExprAction3(LocationSet* ls, void* refcon) {
         params->ptf,
         ls,
         params->pointsToFunc,
-        1,
+        TRUE,
         params->indRtype
     );
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -1
+#endif
 static void EvalExprAction4(LocationSet* ls, void* refcon) {
     Type* type;
     PAMemoryBlock* mb;
@@ -559,7 +596,15 @@ static void EvalExprAction4(LocationSet* ls, void* refcon) {
         LocationSet_SetRtype(ls, type);
     }
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -1
+#endif
 static Boolean EvalExpr(
     LocationSetSet* set,
     Object* proc,
@@ -582,7 +627,7 @@ static Boolean EvalExpr(
     IRO_ASSERT(1287, ptf == NULL || ptf != NULL);
     IRO_ASSERT(1288, stackPtr == NULL || *stackPtr == NULL || *stackPtr != NULL);
 
-    result = 0;
+    result = FALSE;
     lss = LocationSetSet_New();
     LocationSetSet_Init(lss);
 
@@ -621,9 +666,9 @@ static Boolean EvalExpr(
             params.pointsToFunc = Int->pointsToFunction;
         }
         params.indRtype = indirect->rtype;
-        params.x1C = 0;
+        params.result = FALSE;
         LocationSetSet_ForEach(lss2, EvalExprAction3, &params);
-        result |= params.x1C;
+        result |= params.result;
         LocationSetSet_Term(lss2);
         LocationSetSet_Delete(lss2);
     } else if (Int->type == IROLinearFunccall) {
@@ -644,9 +689,9 @@ static Boolean EvalExpr(
         params.ptf = ptf;
         params.pointsToFunc = Int->pointsToFunction;
         params.indRtype = Int->rtype;
-        params.x1C = 0;
+        params.result = FALSE;
         LocationSetSet_ForEach(lss2, EvalExprAction3, &params);
-        result |= params.x1C;
+        result |= params.result;
         LocationSetSet_Term(lss2);
         LocationSetSet_Delete(lss2);
     } else if (Int->type == IROLinearOp2Arg && Int->nodetype == EADD) {
@@ -658,15 +703,13 @@ static Boolean EvalExpr(
             CInt64 value;
             CInt64 max;
             CInt64 work;
-            // 2.6 walks addr->misc and addr->ints with one `list` and one `nd` (Pro7: block locals
-            // `list`, `nd` and `list`, `addend`)
             IROElmList* list;
             IROLinear* nd;
-            Boolean flag2;
-            Boolean flag1;
+            Boolean foundPointerBase;
+            Boolean foundIntegerBase;
 
             CInt64_SetLong(&value, 0);
-            flag2 = flag1 = 0;
+            foundPointerBase = foundIntegerBase = FALSE;
             if (addr->numObjRefs == 1) {
                 Object* obj;
                 IRO_ASSERT_MSG(
@@ -682,7 +725,7 @@ static Boolean EvalExpr(
                 obj = ((IROLinear*)addr->objRefs->element)->u.node->data.objref;
                 IRO_ASSERT(1386, obj != NULL);
                 result |= EvalExpr(lss, proc, addr->objRefs->element, stackPtr, map, ptf);
-                flag2 = 1;
+                foundPointerBase = TRUE;
             }
 
             if (addr->numMisc != 0) {
@@ -744,7 +787,7 @@ static Boolean EvalExpr(
                                 max = cint64_one;
                             }
                         } else {
-                            LocationSet* tmp;
+                            LocationSet* first;
                             PAMemoryBlock* mb;
 
                             lss2 = LocationSetSet_New();
@@ -753,28 +796,27 @@ static Boolean EvalExpr(
 
                             if (LocationSetSet_FindUnknown(lss2)) {
                                 max = cint64_one;
-                            } else if (LocationSetSet_Count(lss2) ==
-                                       1 &&
-                                       (tmp = LocationSetSet_FindFirst(lss2)) &&
-                                       (LocationSet_stride(tmp) == 0) &&
-                                       (mb = LocationSet_block(tmp)) &&
+                            } else if (LocationSetSet_Count(lss2) == 1 &&
+                                       (first = LocationSetSet_FindFirst(lss2)) &&
+                                       (LocationSet_stride(first) == 0) &&
+                                       (mb = LocationSet_block(first)) &&
                                        (PAMemoryBlock_kind(mb) == PAMEMORYBLOCKKIND_INT)) {
                                 value = CInt64_Add(value, *((CInt64*)PAMemoryBlock_thing(mb)));
-                            } else if (!flag2 &&
+                            } else if (!foundPointerBase &&
                                        (IS_TYPE_POINTER(nd->rtype) ||
                                         IS_TYPE_MEMBERPOINTER(nd->rtype))) {
-                                if (flag1) {
+                                if (foundIntegerBase) {
                                     LocationSetSet_RemoveAll(lss);
                                     max = cint64_one;
                                 }
                                 LocationSetSet_AddSet(lss, lss2);
-                                flag2 = 1;
+                                foundPointerBase = TRUE;
                             } else if (IS_TYPE_POINTER(nd->rtype) ||
                                        IS_TYPE_MEMBERPOINTER(nd->rtype)) {
                                 LocationSetSet_AddUnknown(lss, NULL, NULL, NULL);
-                            } else if (!flag1) {
+                            } else if (!foundIntegerBase) {
                                 LocationSetSet_AddSet(lss, lss2);
-                                flag1 = 1;
+                                foundIntegerBase = TRUE;
                             } else {
                                 LocationSetSet_AddUnknown(lss, NULL, NULL, NULL);
                             }
@@ -860,7 +902,7 @@ static Boolean EvalExpr(
             } else {
                 kind = PAMEMORYBLOCKKIND_LOCALVAR;
                 thing = PALocalVar_New();
-                if (obj->name && obj->name->name && ObjectIsARealFunctionArgument(proc, obj)) {
+                if (obj->name && &obj->name->name[0] && ObjectIsARealFunctionArgument(proc, obj)) {
                     PALocalVar_InitByName(thing, obj->name->name);
                 } else {
                     PALocalVar_InitByObject(thing, obj);
@@ -911,9 +953,10 @@ static Boolean EvalExpr(
 
     return result;
 }
-
-// Pro7's; dead in 2.6 (the linker drops it), but its literals and the inline functions it
-// uses are in the object
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
 static IROAddrRecord* IRO_InitENodeAddrRecordPointer(ENode* enode) {
     IROAddrRecord* addr = IRO_malloc(sizeof(IROAddrRecord));
@@ -930,9 +973,6 @@ static IROAddrRecord* IRO_InitENodeAddrRecordPointer(ENode* enode) {
     return addr;
 }
 
-// Pro7's; dead in 2.6 (the linker drops it), but its literals and the inline functions it
-// uses are in the object
-
 static void IRO_AddENodeElmToList(ENode* linear, IROElmList** list) {
     IROElmList* elmlist = IRO_malloc(sizeof(IROElmList));
     elmlist->element = (IROLinear*)linear;
@@ -944,9 +984,6 @@ static void IRO_AddENodeElmToList(ENode* linear, IROElmList** list) {
         *list = elmlist;
     }
 }
-
-// Pro7's; dead in 2.6 (the linker drops it), but its literals and the inline functions it
-// uses are in the object
 
 static void IRO_DecomposeENodeAddressExpression(ENode* node, IROAddrRecord* addr) {
     if (node->data.diadic.left->type == EADD) {
@@ -976,9 +1013,6 @@ static void IRO_DecomposeENodeAddressExpression(ENode* node, IROAddrRecord* addr
     }
 }
 
-// Pro7's; dead in 2.6 (the linker drops it), but its literals and the inline functions it
-// uses are in the object
-
 static Boolean EvalENodeExpr(
     LocationSetSet* set,
     Object* proc,
@@ -1000,7 +1034,7 @@ static Boolean EvalENodeExpr(
     IRO_ASSERT(0, map == NULL || map != NULL);
     IRO_ASSERT(0, stackPtr == NULL || *stackPtr == NULL || *stackPtr != NULL);
 
-    result = 0;
+    result = FALSE;
     lss = LocationSetSet_New();
     LocationSetSet_Init(lss);
 
@@ -1012,12 +1046,9 @@ static Boolean EvalENodeExpr(
     IRO_ASSERT(0, enode != NULL);
 
     if (IRO_IsAssignOp[enode->type]) {
-        if (enode->type ==
-            EPOSTINC ||
-            enode->type ==
-            EPOSTDEC ||
-            enode->type ==
-            EPREINC ||
+        if (enode->type == EPOSTINC ||
+            enode->type == EPOSTDEC ||
+            enode->type == EPREINC ||
             enode->type == EPREDEC) {
             indirect = enode->data.monadic;
         } else {
@@ -1041,9 +1072,9 @@ static Boolean EvalENodeExpr(
             params.pointsToFunc = enode->pointsTo;
         }
         params.indRtype = indirect->rtype;
-        params.x1C = 0;
+        params.result = FALSE;
         LocationSetSet_ForEach(lss2, EvalExprAction3, &params);
-        result |= params.x1C;
+        result |= params.result;
         LocationSetSet_Term(lss2);
         LocationSetSet_Delete(lss2);
     } else if (enode->type == EINDIRECT) {
@@ -1059,9 +1090,9 @@ static Boolean EvalENodeExpr(
         params.ptf = ptf;
         params.pointsToFunc = enode->pointsTo;
         params.indRtype = enode->rtype;
-        params.x1C = 0;
+        params.result = FALSE;
         LocationSetSet_ForEach(lss2, EvalExprAction3, &params);
-        result |= params.x1C;
+        result |= params.result;
         LocationSetSet_Term(lss2);
         LocationSetSet_Delete(lss2);
     } else if (enode->type == EADD) {
@@ -1073,12 +1104,12 @@ static Boolean EvalENodeExpr(
             CInt64 value;
             CInt64 max;
             CInt64 work;
-            Boolean flag1;
-            Boolean flag2;
+            Boolean foundIntegerBase;
+            Boolean foundPointerBase;
 
             CInt64_SetLong(&value, 0);
-            flag1 = 0;
-            flag2 = 0;
+            foundIntegerBase = FALSE;
+            foundPointerBase = FALSE;
             if (addr->numObjRefs == 1) {
                 Object* obj;
                 IRO_ASSERT_MSG(
@@ -1090,7 +1121,7 @@ static Boolean EvalENodeExpr(
                 IRO_ASSERT(0, obj != NULL);
                 result |=
                     EvalENodeExpr(lss, proc, (ENode*)addr->objRefs->element, stackPtr, map, ptf);
-                flag2 = 1;
+                foundPointerBase = TRUE;
             }
 
             if (addr->numMisc != 0) {
@@ -1106,8 +1137,7 @@ static Boolean EvalENodeExpr(
 
                     if (nd) {
                         if (nd->type == EMUL) {
-                            if (nd->data.diadic.left->type ==
-                                EINTCONST &&
+                            if (nd->data.diadic.left->type == EINTCONST &&
                                 nd->data.diadic.right->type == EINTCONST) {
                                 if (is_unsigned(nd->rtype)) {
                                     work = CInt64_MulU(
@@ -1136,8 +1166,7 @@ static Boolean EvalENodeExpr(
                                 max = cint64_one;
                             }
                         } else if (nd->type == ESHL) {
-                            if (nd->data.diadic.left->type ==
-                                EINTCONST &&
+                            if (nd->data.diadic.left->type == EINTCONST &&
                                 nd->data.diadic.right->type == EINTCONST) {
                                 work = CInt64_Shl(
                                     nd->data.diadic.left->data.intval,
@@ -1155,7 +1184,7 @@ static Boolean EvalENodeExpr(
                                 max = cint64_one;
                             }
                         } else {
-                            LocationSet* tmp;
+                            LocationSet* first;
                             PAMemoryBlock* mb;
 
                             lss2 = LocationSetSet_New();
@@ -1164,28 +1193,27 @@ static Boolean EvalENodeExpr(
 
                             if (LocationSetSet_FindUnknown(lss2)) {
                                 max = cint64_one;
-                            } else if (LocationSetSet_Count(lss2) ==
-                                       1 &&
-                                       (tmp = LocationSetSet_FindFirst(lss2)) &&
-                                       (LocationSet_stride(tmp) == 0) &&
-                                       (mb = LocationSet_block(tmp)) &&
+                            } else if (LocationSetSet_Count(lss2) == 1 &&
+                                       (first = LocationSetSet_FindFirst(lss2)) &&
+                                       (LocationSet_stride(first) == 0) &&
+                                       (mb = LocationSet_block(first)) &&
                                        (PAMemoryBlock_kind(mb) == PAMEMORYBLOCKKIND_INT)) {
                                 value = CInt64_Add(value, *((CInt64*)PAMemoryBlock_thing(mb)));
-                            } else if (!flag2 &&
+                            } else if (!foundPointerBase &&
                                        (IS_TYPE_POINTER(nd->rtype) ||
                                         IS_TYPE_MEMBERPOINTER(nd->rtype))) {
-                                if (flag1) {
+                                if (foundIntegerBase) {
                                     LocationSetSet_RemoveAll(lss);
                                     max = cint64_one;
                                 }
                                 LocationSetSet_AddSet(lss, lss2);
-                                flag2 = 1;
+                                foundPointerBase = TRUE;
                             } else if (IS_TYPE_POINTER(nd->rtype) ||
                                        IS_TYPE_MEMBERPOINTER(nd->rtype)) {
                                 LocationSetSet_AddUnknown(lss, NULL, NULL, NULL);
-                            } else if (!flag1) {
+                            } else if (!foundIntegerBase) {
                                 LocationSetSet_AddSet(lss, lss2);
-                                flag1 = 1;
+                                foundIntegerBase = TRUE;
                             } else {
                                 LocationSetSet_AddUnknown(lss, NULL, NULL, NULL);
                             }
@@ -1274,7 +1302,7 @@ static Boolean EvalENodeExpr(
             } else {
                 kind = PAMEMORYBLOCKKIND_LOCALVAR;
                 thing = PALocalVar_New();
-                if (obj->name && obj->name->name && ObjectIsARealFunctionArgument(proc, obj)) {
+                if (obj->name && &obj->name->name[0] && ObjectIsARealFunctionArgument(proc, obj)) {
                     PALocalVar_InitByName(thing, obj->name->name);
                 } else {
                     PALocalVar_InitByObject(thing, obj);
@@ -1326,9 +1354,6 @@ static Boolean EvalENodeExpr(
     return result;
 }
 
-// Pro7's; dead in 2.6 (the linker drops it), but its literals and the inline functions it
-// uses are in the object
-
 static Boolean EvalVarAddr(
     LocationSetSet* set, Object* proc, VarRecord* var, Stack** stackPtr, ParamMappingFunction* map
 ) {
@@ -1341,7 +1366,7 @@ static Boolean EvalVarAddr(
 
     IRO_ASSERT_MSG(0, var->object != NULL, "var->obj != NULL");
 
-    result = 0;
+    result = FALSE;
     obj = var->object;
 
     if (ObjectIsAnExtendedParamCandidate(obj)) {
@@ -1350,7 +1375,7 @@ static Boolean EvalVarAddr(
     } else {
         kind = PAMEMORYBLOCKKIND_LOCALVAR;
         thing = PALocalVar_New();
-        if (obj->name && obj->name->name && ObjectIsAFunctionArgument(proc, obj)) {
+        if (obj->name && &obj->name->name[0] && ObjectIsAFunctionArgument(proc, obj)) {
             PALocalVar_InitByName(thing, obj->name->name);
         } else {
             PALocalVar_InitByObject(thing, obj);
@@ -1368,9 +1393,6 @@ static Boolean EvalVarAddr(
 
     return result;
 }
-
-// Pro7's; dead in 2.6 (the linker drops it), but its literals and the inline functions it
-// uses are in the object
 
 static Boolean EvalVariable(
     LocationSetSet* set,
@@ -1397,16 +1419,20 @@ static Boolean EvalVariable(
     params.ptf = ptf;
     params.pointsToFunc = pointsToFunc;
     params.indRtype = var->object->type;
-    params.x1C = 0;
+    params.result = FALSE;
     LocationSetSet_ForEach(locs, EvalExprAction3, &params);
 
-    result |= params.x1C;
+    result |= params.result;
     LocationSetSet_Term(locs);
     LocationSetSet_Delete(locs);
 
     return result;
 }
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -1
+#endif
 static void StoreReturnedLocationsAction(LocationSet* loc, void* refcon) {
     IROLinear* nd;
 
@@ -1437,7 +1463,15 @@ static void StoreReturnedLocationsAction(LocationSet* loc, void* refcon) {
         }
     }
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -1
+#endif
 static void StoreReturnedLocations(
     IROLinear* nd, PartialTransferFunction* ptf, ParamMappingFunction* map
 ) {
@@ -1465,13 +1499,21 @@ static void StoreReturnedLocations(
         NULL,
         retLoc,
         PartialTransferFunction_finalPointsToFn(ptf),
-        0,
+        FALSE,
         NULL
     );
     ExpandLocationSetSetToActuals(&stCallingContextStack, map, retLocs);
     LocationSetSet_ForEach(retLocs, StoreReturnedLocationsAction, nd);
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -1
+#endif
 static void FillInAppropriateMappingsWithExtParamAction(Object* obj, void* refcon) {
     EPParams* params;
     ParamMapping* mapping;
@@ -1498,20 +1540,28 @@ static void FillInAppropriateMappingsWithExtParamAction(Object* obj, void* refco
             ParamMappingFunction_Add(params->map, mapping);
             ParamMapping_Term(mapping);
             ParamMapping_Delete(mapping);
-            params->x11 = 1;
+            params->result = TRUE;
         }
     } else {
         if (ParamMapping_extended(mapping) != params->ep) {
             ParamMapping_SetExtended(mapping, params->ep);
-            params->x11 = 1;
+            params->result = TRUE;
         }
     }
 
     if (obj == params->var) {
-        params->x10 = 1;
+        params->foundVar = TRUE;
     }
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -1
+#endif
 static Boolean FillInAppropriateMappingsWithExtParam(
     ParamMappingFunction* map, Object* var, ExtendedParam* ep, Object* proc
 ) {
@@ -1530,21 +1580,29 @@ static Boolean FillInAppropriateMappingsWithExtParam(
     params.ep = ep;
     params.proc = proc;
     params.var = var;
-    params.x10 = 0;
-    params.x11 = 0;
+    params.foundVar = FALSE;
+    params.result = FALSE;
 
     if ((objSet = ExtendedParam_objectSet(ep))) {
         ObjectSet_ForEach(objSet, FillInAppropriateMappingsWithExtParamAction, &params);
     }
 
-    if (var && !params.x10) {
+    if (var && !params.foundVar) {
         ExtendedParam_AddObject(ep, var);
         FillInAppropriateMappingsWithExtParamAction(var, &params);
     }
 
-    return params.x11;
+    return params.result;
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -1
+#endif
 static void MatchPTFHelper(
     LocationSet* loc,
     LocationSetSet* locs,
@@ -1580,7 +1638,7 @@ static void MatchPTFHelper(
         local = PAMemoryBlock_thing(block);
         IRO_ASSERT(2465, local != NULL);
 
-        obj = GetLocalObject(local, proc, 1);
+        obj = GetLocalObject(local, proc, TRUE);
         if (obj && ObjectIsAFunctionArgument(proc, obj)) {
             if (LocationSetSet_Count(locs) == 1) {
                 LocationSet* ls;
@@ -1621,7 +1679,15 @@ static void MatchPTFHelper(
         PointsToEntry_Delete(pte);
     }
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -1
+#endif
 static void MatchPTFAction1(PointsToEntry* tgtPTE, void* refcon) {
     MatchPTFActionParams* params;
     LocationSet* loc;
@@ -1649,7 +1715,15 @@ static void MatchPTFAction1(PointsToEntry* tgtPTE, void* refcon) {
         }
     }
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -1
+#endif
 static void MatchPTFAction2(PointsToEntry* tgtPTE, void* refcon) {
     MatchPTFActionParams* params;
     LocationSet* loc;
@@ -1675,7 +1749,15 @@ static void MatchPTFAction2(PointsToEntry* tgtPTE, void* refcon) {
         }
     }
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -1
+#endif
 static Boolean MatchPTF(
     PartialTransferFunction* tgtPTF,
     Object* proc,
@@ -1730,7 +1812,15 @@ static Boolean MatchPTF(
 
     return result;
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -1
+#endif
 static void FindCallTargetsAction2(Object* obj, void* refcon) {
     ObjectSet* procList;
 
@@ -1743,7 +1833,15 @@ static void FindCallTargetsAction2(Object* obj, void* refcon) {
         ObjectSet_Add(procList, obj);
     }
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -1
+#endif
 static void FindCallTargetsAction(LocationSet* ls, void* refcon) {
     ObjectSet* procList;
 
@@ -1763,7 +1861,15 @@ static void FindCallTargetsAction(LocationSet* ls, void* refcon) {
         FindCallTargetsAction2(&stUnknown, procList);
     }
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -1
+#endif
 static Boolean FindCallTargets(
     ObjectSet* procList,
     Object* proc,
@@ -1791,7 +1897,15 @@ static Boolean FindCallTargets(
 
     return result;
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -1
+#endif
 static Boolean LookupParam(
     LocationSetSet* set,
     LocationSet* ls,
@@ -1800,7 +1914,7 @@ static Boolean LookupParam(
     Object* proc,
     ParamMappingFunction* map,
     PartialTransferFunction* ptf,
-    Boolean unkflag
+    Boolean recordInputs
 ) {
     Boolean result;
     ExtendedParam* ep;
@@ -1813,7 +1927,7 @@ static Boolean LookupParam(
     IRO_ASSERT(2732, map == NULL || map != NULL);
     IRO_ASSERT(2733, ptf == NULL || ptf != NULL);
 
-    result = 0;
+    result = FALSE;
 
     ep = ExtendedParam_FindByObject(var);
     if (!ep) {
@@ -1837,7 +1951,7 @@ static Boolean LookupParam(
             LocationSetSet_Add(set, newLS);
         }
 
-        if (unkflag) {
+        if (recordInputs) {
             if (map) {
                 result |= FillInAppropriateMappingsWithExtParam(map, var, ep, proc);
             }
@@ -1885,14 +1999,22 @@ static Boolean LookupParam(
 
     return result;
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -1
+#endif
 static Boolean GetActualLocsOfExtendedParam(
     LocationSetSet* set,
     LocationSet* ls,
     Object* var,
     Stack** stackPtr,
     ParamMappingFunction* map,
-    Boolean flag
+    Boolean recordInputs
 ) {
     Stack* next;
     StackElement* element;
@@ -1913,9 +2035,9 @@ static Boolean GetActualLocsOfExtendedParam(
     IRO_ASSERT(2824, stackPtr == NULL || *stackPtr == NULL || *stackPtr != NULL);
     IRO_ASSERT(2825, map == NULL || map != NULL);
 
-    result = 0;
+    result = FALSE;
     block = NULL;
-    nd = 0;
+    nd = NULL;
     ep = NULL;
     mapping = NULL;
 
@@ -1956,7 +2078,7 @@ static Boolean GetActualLocsOfExtendedParam(
     IRO_ASSERT(2869, var != NULL);
 
     if (map && var != &stUnknown) {
-        if (flag) {
+        if (recordInputs) {
             result |= FillInAppropriateMappingsWithExtParam(map, var, ep, NULL);
         }
         mapping = ParamMappingFunction_FindMappingByFormal(map, var);
@@ -1978,9 +2100,9 @@ static Boolean GetActualLocsOfExtendedParam(
 
             if (var != &stUnknown) {
                 ep = CreateExtendedParam(stackPtr, NULL, var, &result);
-                if (flag && mapping && ParamMapping_extended(mapping) != ep) {
+                if (recordInputs && mapping && ParamMapping_extended(mapping) != ep) {
                     ParamMapping_SetExtended(mapping, ep);
-                    result = 1;
+                    result = TRUE;
                 }
 
                 block = PAMemoryBlock_New();
@@ -2002,11 +2124,11 @@ static Boolean GetActualLocsOfExtendedParam(
         if (block == LocationSet_block(stUnknownLs)) {
             LocationSetSet_AddUnknown(newSet, savedRtype, NULL, NULL);
         } else {
-            LocationSet* tmp = LocationSet_New();
-            LocationSet_InitKnown(tmp, block, savedField, savedStride, savedRtype);
-            LocationSetSet_Add(newSet, tmp);
-            LocationSet_Term(tmp);
-            LocationSet_Delete(tmp);
+            LocationSet* loc = LocationSet_New();
+            LocationSet_InitKnown(loc, block, savedField, savedStride, savedRtype);
+            LocationSetSet_Add(newSet, loc);
+            LocationSet_Term(loc);
+            LocationSet_Delete(loc);
         }
     } else {
         if (stackPtr &&
@@ -2014,8 +2136,6 @@ static Boolean GetActualLocsOfExtendedParam(
             (next = Stack_Next(stackPtr)) &&
             (element = Stack_Top(&next))) {
             if (ls) {
-                // 2.6 builds both additions with one variable for the right operand (Pro7: `ic` and
-                // `call`)
                 IROLinear* right;
 
                 if (!savedStride && !CInt64_IsZero(&savedField)) {
@@ -2064,7 +2184,15 @@ static Boolean GetActualLocsOfExtendedParam(
 
     return result;
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -1
+#endif
 static void ExpandLocationSetSetToActualsAction(LocationSet* ls, void* refcon) {
     ExpandLocationSetSetActionParams* params;
 
@@ -2089,15 +2217,23 @@ static void ExpandLocationSetSetToActualsAction(LocationSet* ls, void* refcon) {
                 ObjectSet_ForEach(objSet, FindGlobalObjectAction, &obj);
                 if (!obj) {
                     LocationSetSet_Add(params->toBeRemoved, ls);
-                    params->x10 |= GetActualLocsOfExtendedParam(
-                        params->toBeAdded, ls, NULL, params->stackPtr, params->map, 0
+                    params->result |= GetActualLocsOfExtendedParam(
+                        params->toBeAdded, ls, NULL, params->stackPtr, params->map, FALSE
                     );
                 }
             }
         }
     }
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -1
+#endif
 static Boolean ExpandLocationSetSetToActuals(
     Stack** stackPtr, ParamMappingFunction* map, LocationSetSet* thingsPointedTo
 ) {
@@ -2121,11 +2257,11 @@ static Boolean ExpandLocationSetSetToActuals(
     params.toBeAdded = toBeAdded;
     params.stackPtr = stackPtr;
     params.map = map;
-    params.x10 = 0;
+    params.result = FALSE;
 
     LocationSetSet_ForEach(thingsPointedTo, ExpandLocationSetSetToActualsAction, &params);
 
-    result = params.x10;
+    result = params.result;
     LocationSetSet_RemoveSet(thingsPointedTo, toBeRemoved);
     LocationSetSet_AddSet(thingsPointedTo, toBeAdded);
 
@@ -2137,7 +2273,15 @@ static Boolean ExpandLocationSetSetToActuals(
 
     return result;
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -1
+#endif
 static void EvaluatePartialAbsolute(
     LocationSetSet* set, LocationSetSet* thingsPointedTo, LocationSet* dst, Type* indRtype
 ) {
@@ -2162,9 +2306,17 @@ static void EvaluatePartialAbsolute(
         LocationSetSet_AddUnknown(set, indRtype, NULL, NULL);
     }
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -1
+#endif
 static Boolean AddToInitialPointsToFunc(
-    Boolean flag, PartialTransferFunction* ptf, LocationSet* dst, LocationSetSet* set
+    Boolean recordInputs, PartialTransferFunction* ptf, LocationSet* dst, LocationSetSet* set
 ) {
     Boolean result;
     LocationSet* ls;
@@ -2175,9 +2327,9 @@ static Boolean AddToInitialPointsToFunc(
     IRO_ASSERT(3192, dst != NULL);
     IRO_ASSERT(3193, set != NULL);
 
-    result = 0;
+    result = FALSE;
 
-    if (flag && ptf) {
+    if (recordInputs && ptf) {
         if (!(ls = LocationSetSet_FindUnknown(set)) || LocationSet_rtype(ls)) {
             if ((initial = PartialTransferFunction_initialPointsToFn(ptf)) &&
                 !PointsToFunction_FindByLookupCompatibleLocationSet(initial, dst)) {
@@ -2194,7 +2346,15 @@ static Boolean AddToInitialPointsToFunc(
 
     return result;
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -1
+#endif
 static Boolean Lookup(
     LocationSetSet* set,
     Stack** stackPtr,
@@ -2203,7 +2363,7 @@ static Boolean Lookup(
     PartialTransferFunction* ptf,
     LocationSet* dst,
     PointsToFunction* pointsToFunc,
-    Boolean unk,
+    Boolean recordInputs,
     Type* indRtype
 ) {
     LocationSetSet* mySet;
@@ -2215,7 +2375,7 @@ static Boolean Lookup(
     ObjectSet* objSet;
     PointsToEntry* pte;
     LocationSetSet* lss3;
-    LocationSet* tmp;
+    LocationSet* unknown;
     EvalExprAction3Params params;
     Object* obj;
     Stack* next;
@@ -2230,7 +2390,7 @@ static Boolean Lookup(
     IRO_ASSERT(3250, pointsToFunc == NULL || pointsToFunc != NULL);
     IRO_ASSERT(3251, indRtype == NULL || indRtype != NULL);
 
-    result = 0;
+    result = FALSE;
 
     set2 = NULL;
 
@@ -2268,8 +2428,7 @@ static Boolean Lookup(
         if (!LocationSet_IsUnknown(dst) && LocationSet_stride(dst)) {
             LocationSetSet_AddUnknown(mySet, indRtype, NULL, NULL);
         } else if (block &&
-                   PAMemoryBlock_kind(block) ==
-                   PAMEMORYBLOCKKIND_EXTENDEDPARAM &&
+                   PAMemoryBlock_kind(block) == PAMEMORYBLOCKKIND_EXTENDEDPARAM &&
                    (ep = PAMemoryBlock_thing(block)) &&
                    (objSet = ExtendedParam_objectSet(ep))) {
             obj = NULL;
@@ -2277,7 +2436,8 @@ static Boolean Lookup(
             if (!obj) {
                 lss3 = LocationSetSet_New();
                 LocationSetSet_Init(lss3);
-                result |= GetActualLocsOfExtendedParam(lss3, dst, NULL, stackPtr, map, unk);
+                result |=
+                    GetActualLocsOfExtendedParam(lss3, dst, NULL, stackPtr, map, recordInputs);
 
                 memset(&params, 0, sizeof(params));
                 params.set = mySet;
@@ -2287,27 +2447,28 @@ static Boolean Lookup(
                 params.ptf = ptf;
                 params.pointsToFunc = pointsToFunc;
                 params.indRtype = indRtype;
-                params.x1C = 0;
+                params.result = FALSE;
                 LocationSetSet_ForEach(lss3, EvalExprAction3, &params);
-                result |= params.x1C;
+                result |= params.result;
 
                 LocationSetSet_Term(lss3);
                 LocationSetSet_Delete(lss3);
 
-                if ((tmp = LocationSetSet_FindUnknown(mySet))) {
-                    if (!LocationSet_restriction(tmp) && ObjectSet_Count(objSet) == 1) {
+                if ((unknown = LocationSetSet_FindUnknown(mySet))) {
+                    if (!LocationSet_restriction(unknown) && ObjectSet_Count(objSet) == 1) {
                         if ((obj = ObjectSet_FindFirst(objSet))) {
                             if (ObjectIsRestrictQualified(obj)) {
-                                LocationSet_Term(tmp);
-                                LocationSet_InitUnknown(tmp, indRtype, block, NULL);
+                                LocationSet_Term(unknown);
+                                LocationSet_InitUnknown(unknown, indRtype, block, NULL);
                             }
                         }
                     }
                 }
 
-                result |= AddToInitialPointsToFunc(unk, ptf, dst, mySet);
+                result |= AddToInitialPointsToFunc(recordInputs, ptf, dst, mySet);
             } else {
-                result |= GetActualLocsOfExtendedParam(NULL, dst, NULL, stackPtr, map, unk);
+                result |=
+                    GetActualLocsOfExtendedParam(NULL, dst, NULL, stackPtr, map, recordInputs);
                 if (stackPtr &&
                     *stackPtr &&
                     (next = Stack_Next(stackPtr)) &&
@@ -2320,23 +2481,22 @@ static Boolean Lookup(
                         StackElement_ptf(element),
                         dst,
                         StackElement_funcCall(element)->pointsToFunction,
-                        unk,
+                        recordInputs,
                         indRtype
                     );
                 } else {
                     LocationSetSet_AddUnknown(mySet, indRtype, NULL, NULL);
                 }
 
-                result |= AddToInitialPointsToFunc(unk, ptf, dst, mySet);
+                result |= AddToInitialPointsToFunc(recordInputs, ptf, dst, mySet);
             }
         } else if (block &&
-                   PAMemoryBlock_kind(block) ==
-                   PAMEMORYBLOCKKIND_LOCALVAR &&
+                   PAMemoryBlock_kind(block) == PAMEMORYBLOCKKIND_LOCALVAR &&
                    (local = PAMemoryBlock_thing(block)) &&
                    proc &&
-                   (obj = GetLocalObject(local, proc, 1)) &&
+                   (obj = GetLocalObject(local, proc, TRUE)) &&
                    ObjectIsAFunctionArgument(proc, obj)) {
-            result |= LookupParam(mySet, dst, obj, stackPtr, proc, map, ptf, unk);
+            result |= LookupParam(mySet, dst, obj, stackPtr, proc, map, ptf, recordInputs);
         } else {
             LocationSetSet_AddUnknown(mySet, indRtype, NULL, NULL);
         }
@@ -2351,16 +2511,32 @@ static Boolean Lookup(
 
     return result;
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -1
+#endif
 static Boolean InputsHaveNewPointerValues(
     PartialTransferFunction* tgtPTF, PartialTransferFunction* ptf
 ) {
     IRO_ASSERT(3392, tgtPTF != NULL);
     IRO_ASSERT(3393, ptf != NULL);
 
-    return 0;
+    return FALSE;
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -1
+#endif
 static void CreateExtendedParamAction(ParamMapping* mapping, void* refcon) {
     CreateEPActionParams* params;
     ExtendedParam* ep;
@@ -2405,7 +2581,15 @@ static void CreateExtendedParamAction(ParamMapping* mapping, void* refcon) {
         }
     }
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -1
+#endif
 static ExtendedParam* FindMatchingExtendedParam(
     Stack** stackPtr,
     ParamMappingFunction* map,
@@ -2437,7 +2621,7 @@ static ExtendedParam* FindMatchingExtendedParam(
         lowestLSS = LocationSetSet_New();
         LocationSetSet_Init(lowestLSS);
 
-        *result |= GetActualLocsOfExtendedParam(lowestLSS, lowestLS, NULL, stackPtr, map, 0);
+        *result |= GetActualLocsOfExtendedParam(lowestLSS, lowestLS, NULL, stackPtr, map, FALSE);
         if (LocationSetSets_Equal(lowestLSS, lss)) {
             ep = lowestEP;
         }
@@ -2451,7 +2635,15 @@ static ExtendedParam* FindMatchingExtendedParam(
 
     return ep;
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -1
+#endif
 static ExtendedParam* CreateExtendedParam(
     Stack** stackPtr, ParamMappingFunction* map, Object* var, Boolean* result
 ) {
@@ -2477,7 +2669,7 @@ static ExtendedParam* CreateExtendedParam(
     } else if (map && !ObjectIsRestrictQualified(var)) {
         lss = LocationSetSet_New();
         LocationSetSet_Init(lss);
-        *result |= GetActualLocsOfExtendedParam(lss, NULL, var, stackPtr, map, 0);
+        *result |= GetActualLocsOfExtendedParam(lss, NULL, var, stackPtr, map, FALSE);
 
         memset(&params, 0, sizeof(params));
         params.last = NULL;
@@ -2513,11 +2705,18 @@ static ExtendedParam* CreateExtendedParam(
 
     return ep;
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
 #if VERSION < VERSION_GC_2_5
-// 2.0's file has 1 line fewer above here
 #undef CError_LINE_SHIFT
-#define CError_LINE_SHIFT -1
+#define CError_LINE_SHIFT (-1 + CError_LINE_DELTA)
+#endif
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -1
 #endif
 static void RecordActuals(IROLinear* nd, Object* proc, ParamMappingFunction* map) {
     IRO_ASSERT(3629, nd != NULL);
@@ -2559,7 +2758,15 @@ static void RecordActuals(IROLinear* nd, Object* proc, ParamMappingFunction* map
         }
     }
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -1
+#endif
 static Boolean IsAddressableLocation(
     LocationSet* loc, Object* proc, IRONode* fnode, IROLinear* nd
 ) {
@@ -2575,31 +2782,36 @@ static Boolean IsAddressableLocation(
         ObjectSet* objSet;
 
         block = LocationSet_block(loc);
-        if (PAMemoryBlock_kind(block) ==
-            PAMEMORYBLOCKKIND_LOCALVAR &&
+        if (PAMemoryBlock_kind(block) == PAMEMORYBLOCKKIND_LOCALVAR &&
             (local = PAMemoryBlock_thing(block)) &&
-            (obj = GetLocalObject(local, proc, 0)) &&
+            (obj = GetLocalObject(local, proc, FALSE)) &&
             fnode->addressed &&
             !ObjectSet_Find(fnode->addressed, obj)) {
-            return 0;
+            return FALSE;
         }
 
-        if (PAMemoryBlock_kind(block) ==
-            PAMEMORYBLOCKKIND_EXTENDEDPARAM &&
+        if (PAMemoryBlock_kind(block) == PAMEMORYBLOCKKIND_EXTENDEDPARAM &&
             (ep = PAMemoryBlock_thing(block)) &&
             (objSet = ExtendedParam_objectSet(ep)) &&
-            ObjectSet_Count(objSet) ==
-            1 &&
+            ObjectSet_Count(objSet) == 1 &&
             (obj = ObjectSet_FindFirst(objSet)) &&
             ObjectIsAFunctionArgument(proc, obj) &&
             ObjectIsRestrictQualified(obj)) {
-            return 0;
+            return FALSE;
         }
     }
 
-    return 1;
+    return TRUE;
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -1
+#endif
 static Boolean LocationSetsAlias(LocationSet* ls1, LocationSet* ls2) {
     IRO_ASSERT(3720, ls1 != NULL);
     IRO_ASSERT(3721, ls2 != NULL);
@@ -2607,26 +2819,32 @@ static Boolean LocationSetsAlias(LocationSet* ls1, LocationSet* ls2) {
     return (ls1 == ls2) ||
         LocationSet_IsUnknown(ls1) ||
         LocationSet_IsUnknown(ls2) ||
-        ((LocationSet_stride(ls1) !=
-          0 ||
-          LocationSet_stride(ls2) !=
-          0 ||
+        ((LocationSet_stride(ls1) != 0 ||
+          LocationSet_stride(ls2) != 0 ||
           CInt64_Equal(LocationSet_field(ls1), LocationSet_field(ls2))) &&
          MemoryBlocks_Equal(LocationSet_block(ls1), LocationSet_block(ls2)));
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
 static void FindAliasingAction2(LocationSet* ls, void* refcon) {
     FindAliasingParams* params;
 
     params = refcon;
 
-    if (!params->x8) {
-        if (LocationSetsAlias(params->x4, ls)) {
-            params->x8 = 1;
+    if (!params->aliased) {
+        if (LocationSetsAlias(params->loc, ls)) {
+            params->aliased = TRUE;
         }
     }
 }
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -1
+#endif
 static void FindAliasingAction(LocationSet* loc, void* refcon) {
     FindAliasingParams* params;
 
@@ -2635,12 +2853,20 @@ static void FindAliasingAction(LocationSet* loc, void* refcon) {
 
     params = refcon;
 
-    if (!params->x8) {
-        params->x4 = loc;
-        LocationSetSet_ForEach(params->x0, FindAliasingAction2, params);
+    if (!params->aliased) {
+        params->loc = loc;
+        LocationSetSet_ForEach(params->set, FindAliasingAction2, params);
     }
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -1
+#endif
 static void KillAllAddressableLocationsAction(PointsToEntry* pte, void* refcon) {
     KillLocationParams* params;
     LocationSet* loc;
@@ -2666,7 +2892,15 @@ static void KillAllAddressableLocationsAction(PointsToEntry* pte, void* refcon) 
         PointsToFunction_Add(toBeKilled, pte);
     }
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -1
+#endif
 static void KillAllAliasingExtParamLocsAction(PointsToEntry* pte, void* refcon) {
     KillLocationParams* params;
     LocationSet* loc;
@@ -2700,17 +2934,14 @@ static void KillAllAliasingExtParamLocsAction(PointsToEntry* pte, void* refcon) 
 
             if ((ep = PAMemoryBlock_thing(LocationSet_block(params->dst))) &&
                 (objSet = ExtendedParam_objectSet(ep)) &&
-                (ObjectSet_Count(objSet) !=
-                 1 ||
+                (ObjectSet_Count(objSet) != 1 ||
                  !(obj = ObjectSet_FindFirst(objSet)) ||
                  !ObjectIsRestrictQualified(obj)) &&
                 (block = LocationSet_block(loc)) &&
-                PAMemoryBlock_kind(block) ==
-                PAMEMORYBLOCKKIND_EXTENDEDPARAM &&
+                PAMemoryBlock_kind(block) == PAMEMORYBLOCKKIND_EXTENDEDPARAM &&
                 (ep = PAMemoryBlock_thing(block)) &&
                 (objSet = ExtendedParam_objectSet(ep)) &&
-                (ObjectSet_Count(objSet) !=
-                 1 ||
+                (ObjectSet_Count(objSet) != 1 ||
                  !(obj = ObjectSet_FindFirst(objSet)) ||
                  !ObjectIsRestrictQualified(obj))) {
                 LocationSetSet* lss1;
@@ -2723,18 +2954,19 @@ static void KillAllAliasingExtParamLocsAction(PointsToEntry* pte, void* refcon) 
                 lss2 = LocationSetSet_New();
                 LocationSetSet_Init(lss2);
 
-                changed =
-                    GetActualLocsOfExtendedParam(lss1, loc, NULL, &stCallingContextStack, NULL, 0);
+                changed = GetActualLocsOfExtendedParam(
+                    lss1, loc, NULL, &stCallingContextStack, NULL, FALSE
+                );
                 changed |= GetActualLocsOfExtendedParam(
-                    lss2, params->dst, NULL, &stCallingContextStack, NULL, 0
+                    lss2, params->dst, NULL, &stCallingContextStack, NULL, FALSE
                 );
                 IRO_ASSERT(3863, !changed);
 
                 memset(&aparams, 0, sizeof(aparams));
-                aparams.x8 = 0;
-                aparams.x0 = lss2;
+                aparams.aliased = FALSE;
+                aparams.set = lss2;
                 LocationSetSet_ForEach(lss1, FindAliasingAction, &aparams);
-                if (aparams.x8) {
+                if (aparams.aliased) {
                     PointsToFunction_Add(params->toBeKilled, pte);
                 }
 
@@ -2746,7 +2978,15 @@ static void KillAllAliasingExtParamLocsAction(PointsToEntry* pte, void* refcon) 
         }
     }
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -1
+#endif
 static void KillLocationsAction(PointsToEntry* pte, void* refcon) {
     KillLocationParams* params;
     LocationSet* loc;
@@ -2772,12 +3012,20 @@ static void KillLocationsAction(PointsToEntry* pte, void* refcon) {
     LocationSetSet_Init(lss);
     LocationSetSet_AddUnknown(lss, NULL, NULL, NULL);
 
-    params->x18 |= Assign(params->ptf, loc, lss, params->proc, params->nd, params->fnode);
+    params->result |= Assign(params->ptf, loc, lss, params->proc, params->nd, params->fnode);
 
     LocationSetSet_Term(lss);
     LocationSetSet_Delete(lss);
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -1
+#endif
 static Boolean KillAllAddressableLocations(
     Object* proc, IRONode* fnode, IROLinear* nd, PartialTransferFunction* ptf
 ) {
@@ -2811,7 +3059,7 @@ static Boolean KillAllAddressableLocations(
     params.ptf = ptf;
     params.toBeKilled = toBeKilled;
     params.dst = NULL;
-    params.x18 = 0;
+    params.result = FALSE;
 
     if (pointsToFunc) {
         PointsToFunction_ForEach(pointsToFunc, KillAllAddressableLocationsAction, &params);
@@ -2821,10 +3069,10 @@ static Boolean KillAllAddressableLocations(
     PointsToFunction_Term(toBeKilled);
     PointsToFunction_Delete(toBeKilled);
 
-    if (params.x18) {
+    if (params.result) {
         result = !PointsToFunctions_Equal(pointsToFuncCopy, pointsToFunc);
     } else {
-        result = 0;
+        result = FALSE;
     }
 
     PointsToFunction_Term(pointsToFuncCopy);
@@ -2832,7 +3080,15 @@ static Boolean KillAllAddressableLocations(
 
     return result;
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -1
+#endif
 static void KillAllAliasingExtParamLocs(
     Object* proc, IRONode* fnode, IROLinear* nd, PartialTransferFunction* ptf, LocationSet* dst
 ) {
@@ -2864,7 +3120,7 @@ static void KillAllAliasingExtParamLocs(
             params.ptf = ptf;
             params.toBeKilled = toBeKilled;
             params.dst = dst;
-            params.x18 = 0;
+            params.result = FALSE;
 
             if (pointsToFunc) {
                 PointsToFunction_ForEach(pointsToFunc, KillAllAliasingExtParamLocsAction, &params);
@@ -2876,7 +3132,15 @@ static void KillAllAliasingExtParamLocs(
         }
     }
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -1
+#endif
 static Boolean Assign(
     PartialTransferFunction* ptf,
     LocationSet* dst,
@@ -2949,7 +3213,15 @@ static Boolean Assign(
 
     return result;
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -1
+#endif
 static void EvalMeetAction(PointsToEntry* pte, void* refcon) {
     EvalMeetActionParams* params;
     LocationSet* loc;
@@ -2976,7 +3248,7 @@ static void EvalMeetAction(PointsToEntry* pte, void* refcon) {
     for (i = 0; i < params->fnode->numpred; i++) {
         IRONode* pred = FunctionNodeTable(params->proc)[params->fnode->pred[i]];
         if (pred->marked && pred != params->pred) {
-            params->x14 |= Lookup(
+            params->result |= Lookup(
                 set,
                 &stCallingContextStack,
                 params->proc,
@@ -2984,17 +3256,25 @@ static void EvalMeetAction(PointsToEntry* pte, void* refcon) {
                 params->ptf,
                 loc,
                 pred->last->pointsToFunction,
-                0,
+                FALSE,
                 NULL
             );
         }
     }
 
-    params->x15 |= Assign(params->ptf, loc, set, params->proc, params->nd, params->fnode);
+    params->assignChanged |= Assign(params->ptf, loc, set, params->proc, params->nd, params->fnode);
     LocationSetSet_Term(set);
     LocationSetSet_Delete(set);
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -1
+#endif
 static Boolean EvalMeet(Object* proc, IRONode* fnode, IROLinear* nd, PartialTransferFunction* ptf) {
     PointsToFunction* pointsToFunc;
     EvalMeetActionParams params;
@@ -3017,8 +3297,8 @@ static Boolean EvalMeet(Object* proc, IRONode* fnode, IROLinear* nd, PartialTran
     params.fnode = fnode;
     params.nd = nd;
     params.ptf = ptf;
-    params.x14 = 0;
-    params.x15 = 0;
+    params.result = FALSE;
+    params.assignChanged = FALSE;
 
     for (i = 0; i < fnode->numpred; i++) {
         IRONode* pred = params.pred = FunctionNodeTable(proc)[fnode->pred[i]];
@@ -3027,20 +3307,28 @@ static Boolean EvalMeet(Object* proc, IRONode* fnode, IROLinear* nd, PartialTran
         }
     }
 
-    if (!params.x14 && params.x15) {
+    if (!params.result && params.assignChanged) {
         if (nd->pointsToFunction) {
-            params.x14 = !PointsToFunctions_Equal(pointsToFunc, nd->pointsToFunction);
+            params.result = !PointsToFunctions_Equal(pointsToFunc, nd->pointsToFunction);
         } else {
-            params.x14 = PointsToFunction_FindFirst(pointsToFunc) != NULL;
+            params.result = PointsToFunction_FindFirst(pointsToFunc) != NULL;
         }
     }
 
     PointsToFunction_Term(pointsToFunc);
     PointsToFunction_Delete(pointsToFunc);
 
-    return params.x14;
+    return params.result;
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -1
+#endif
 static PartialTransferFunction* AllocatePTF(
     Object* proc, IROLinear* nd, PartialTransferFunction* ptf
 ) {
@@ -3056,13 +3344,29 @@ static PartialTransferFunction* AllocatePTF(
     PTFList_Add(proc->u.func.ptfList, newPTF);
     return newPTF;
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -1
+#endif
 static Object* FindMainEntryPoint(Object* function) {
     IRO_ASSERT(4230, function != NULL);
 
     return function;
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -1
+#endif
 static ObjectList* FunctionArguments(Object* proc) {
     ObjectList* prev;
     Object* search;
@@ -3083,7 +3387,7 @@ static ObjectList* FunctionArguments(Object* proc) {
                 prev = NULL;
                 for (scan = proc->u.func.argList; scan; scan = scan->next) {
                     prev = scan;
-                    if ((search = scan->object) && search->name && search->name->name) {
+                    if ((search = scan->object) && search->name && &search->name->name[0]) {
                         if (!strcmp(name, search->name->name)) {
                             break;
                         }
@@ -3130,7 +3434,7 @@ static ObjectList* FunctionArguments(Object* proc) {
                 prev = NULL;
                 for (scan = proc->u.func.argList; scan; scan = scan->next) {
                     prev = scan;
-                    if ((search = scan->object) && search->name && search->name->name) {
+                    if ((search = scan->object) && search->name && &search->name->name[0]) {
                         if (!strcmp(name, search->name->name)) {
                             break;
                         }
@@ -3168,7 +3472,15 @@ static ObjectList* FunctionArguments(Object* proc) {
 
     return proc->u.func.argList;
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -1
+#endif
 static IRONode** FunctionNodeTable(Object* proc) {
     IRO_ASSERT(4384, proc != NULL);
 
@@ -3176,7 +3488,15 @@ static IRONode** FunctionNodeTable(Object* proc) {
 
     return IRO_NodeTable;
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -1
+#endif
 static IRONode* FunctionFirstNode(Object* proc) {
     IRO_ASSERT(4402, proc != NULL);
 
@@ -3184,23 +3504,25 @@ static IRONode* FunctionFirstNode(Object* proc) {
 
     return IRO_FirstNode;
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
-// Pro7's; dead in 2.6 (the linker drops it), but its literals and the inline functions it
-// uses are in the object
-// TODO: 2.6's UpdatePTFDomain asserts `home != NULL` (the literal sits in the original's .data
-// between EvalCallAction's and AllocatePTF's); the rest of its body, the parameter's type and the
-// assert's line are not known (Pro7's source spans 49 lines from FunctionFirstNode's last assert to
-// EvalCallAction's first)
 static void UpdatePTFDomain(void* home) {
     IRO_ASSERT(4420, home != NULL);
 }
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -1
+#endif
 static void EvalCallAction(Object* proc, void* refcon) {
     ParamMappingFunction* pmf;
     PartialTransferFunction* tgtPTF;
     EvalCallActionParams* params;
-    Boolean flag;
-    Boolean flag2;
+    Boolean pushed;
+    Boolean needVisit;
 
     IRO_ASSERT(4459, proc != NULL);
     IRO_ASSERT(4460, refcon != NULL);
@@ -3213,35 +3535,35 @@ static void EvalCallAction(Object* proc, void* refcon) {
     IRO_ASSERT(4467, params->ptf != NULL);
     IRO_ASSERT(4468, params->map == NULL || params->map != NULL);
 
-    if (!params->x18) {
+    if (!params->stop) {
         pmf = ParamMappingFunction_New();
         ParamMappingFunction_Init(pmf);
         RecordActuals(params->nd, proc, pmf);
 
-        flag = 0;
+        pushed = FALSE;
         if (!Stack_FindByKey(&stCallingContextStack, proc)) {
             StackElement* element;
 
-            flag2 = 0;
-            tgtPTF = GetPTF(pmf, proc, params->nd, params->ptf, &flag2);
+            needVisit = FALSE;
+            tgtPTF = GetPTF(pmf, proc, params->nd, params->ptf, &needVisit);
 
             element = StackElement_New();
             StackElement_Init(element, proc, tgtPTF, pmf, params->nd);
             Stack_Push(&stCallingContextStack, element);
             StackElement_Term(element);
             StackElement_Delete(element);
-            flag = 1;
+            pushed = TRUE;
 
             IRO_ASSERT(4491, tgtPTF != NULL);
 
             if (stPTFList) {
                 PTFList_Add(stPTFList, tgtPTF);
             }
-            PartialTransferFunction_SetFlag(tgtPTF, 0);
+            PartialTransferFunction_SetAnalyzed(tgtPTF, FALSE);
 
-            if (flag2 || params->x1A) {
-                if (params->x1A) {
-                    params->x1A = 0;
+            if (needVisit || params->visitTarget) {
+                if (params->visitTarget) {
+                    params->visitTarget = FALSE;
                     EvalProc(proc, pmf, tgtPTF);
                 } else {
                     tgtPTF = stUnknownPTF;
@@ -3252,7 +3574,7 @@ static void EvalCallAction(Object* proc, void* refcon) {
         }
 
         if (params->map) {
-            params->x19 |= ApplySummary(
+            params->result |= ApplySummary(
                 tgtPTF,
                 pmf,
                 params->proc,
@@ -3260,11 +3582,11 @@ static void EvalCallAction(Object* proc, void* refcon) {
                 params->nd,
                 params->ptf,
                 params->map,
-                params->x14 == 1
+                params->targetCount == 1
             );
         }
 
-        if (flag) {
+        if (pushed) {
             StackElement* element = Stack_Pop(&stCallingContextStack);
             StackElement_Term(element);
             StackElement_Delete(element);
@@ -3274,7 +3596,15 @@ static void EvalCallAction(Object* proc, void* refcon) {
         ParamMappingFunction_Delete(pmf);
     }
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -1
+#endif
 static Boolean EvalCall(
     Object* proc,
     IRONode* fnode,
@@ -3297,23 +3627,31 @@ static Boolean EvalCall(
     params.nd = nd;
     params.ptf = ptf;
     params.map = map;
-    params.x18 = 0;
-    params.x19 = 0;
-    params.x1A = 0;
+    params.stop = FALSE;
+    params.result = FALSE;
+    params.visitTarget = FALSE;
 
     objSet = ObjectSet_New();
     ObjectSet_Init(objSet);
 
-    params.x19 |= FindCallTargets(objSet, proc, nd, map, ptf);
-    params.x14 = ObjectSet_Count(objSet);
+    params.result |= FindCallTargets(objSet, proc, nd, map, ptf);
+    params.targetCount = ObjectSet_Count(objSet);
     ObjectSet_ForEach(objSet, EvalCallAction, &params);
 
     ObjectSet_Term(objSet);
     ObjectSet_Delete(objSet);
 
-    return params.x19;
+    return params.result;
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -1
+#endif
 static void AdjustTypesForVolatilityAction(LocationSet* ls, void* refcon) {
     Type* type;
     Type* newtype;
@@ -3349,11 +3687,17 @@ static void AdjustTypesForVolatilityAction(LocationSet* ls, void* refcon) {
                 memcpy(newtype, type, sizeof(TypeMemberPointer));
                 TYPE_MEMBER_POINTER(newtype)->qual |= Q_VOLATILE;
                 break;
+            default:
+                break;
         }
 
         LocationSet_SetRtype(ls, newtype);
     }
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
 static void AdjustTypesForVolatility(LocationSetSet* set, Object* proc, IROLinear* nd) {
     if (nd->rtype && CParser_IsVolatile(nd->rtype, nd->nodeflags & 3)) {
@@ -3361,6 +3705,10 @@ static void AdjustTypesForVolatility(LocationSetSet* set, Object* proc, IROLinea
     }
 }
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -1
+#endif
 static void EvalAssignAction2(LocationSet* ls, void* refcon) {
     EvalAssignAction2Params* params;
     CInt64 value;
@@ -3375,8 +3723,8 @@ static void EvalAssignAction2(LocationSet* ls, void* refcon) {
 
     params = refcon;
 
-    if (!params->xC && !LocationSet_IsUnknown(ls)) {
-        value = params->x0;
+    if (!params->failed && !LocationSet_IsUnknown(ls)) {
+        value = params->value;
         nd = params->nd;
         IRO_ASSERT(4666, nd != NULL);
         oper = nd->nodetype;
@@ -3413,7 +3761,7 @@ static void EvalAssignAction2(LocationSet* ls, void* refcon) {
                             CError_SetErrorToken(e);
                         }
                         CError_Warning(ERR_DIVISION_BY_0);
-                        params->xC = 1;
+                        params->failed = TRUE;
                     } else {
                         if (is_unsigned(nd->rtype)) {
                             value = CInt64_DivU(*((CInt64*)PAMemoryBlock_thing(block)), value);
@@ -3430,7 +3778,7 @@ static void EvalAssignAction2(LocationSet* ls, void* refcon) {
                             CError_SetErrorToken(e);
                         }
                         CError_Warning(ERR_DIVISION_BY_0);
-                        params->xC = 1;
+                        params->failed = TRUE;
                     } else {
                         if (is_unsigned(nd->rtype)) {
                             value = CInt64_ModU(*((CInt64*)PAMemoryBlock_thing(block)), value);
@@ -3479,20 +3827,28 @@ static void EvalAssignAction2(LocationSet* ls, void* refcon) {
                 case ESUBASS:
                     value = CInt64_Add(LocationSet_field(ls), value);
                     if (stride) {
-                        CInt64 tmp;
-                        CInt64_SetLong(&tmp, stride);
-                        value = CInt64_Mod(value, tmp);
+                        CInt64 strideValue;
+                        CInt64_SetLong(&strideValue, stride);
+                        value = CInt64_Mod(value, strideValue);
                     }
                     LocationSet_SetField(ls, value);
                     break;
                 default:
-                    params->xC = 1;
+                    params->failed = TRUE;
                     break;
             }
         }
     }
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -1
+#endif
 static void EvalAssignAction(LocationSet* dst, void* refcon) {
     EvalAssignActionParams* params;
     LocationSetSet* srcs;
@@ -3509,13 +3865,13 @@ static void EvalAssignAction(LocationSet* dst, void* refcon) {
     IRO_ASSERT(4807, params->srcs != NULL);
 
     srcs = params->srcs;
-    if (!params->x14 ||
+    if (!params->singleDst ||
         !LocationSetRepresentsSingleLocation(dst, params->proc, params->nd->pointsToFunction) ||
         LocationIsVolatile(dst, params->proc) ||
         LocationSet_IsLocalVarBase(dst)) {
         LocationSetSet* set = LocationSetSet_New();
         LocationSetSet_Init(set);
-        params->x15 |= Lookup(
+        params->result |= Lookup(
             set,
             &stCallingContextStack,
             params->proc,
@@ -3523,7 +3879,7 @@ static void EvalAssignAction(LocationSet* dst, void* refcon) {
             params->ptf,
             dst,
             params->nd->pointsToFunction,
-            0,
+            FALSE,
             params->nd->rtype
         );
         LocationSetSet_AddSet(srcs, set);
@@ -3531,9 +3887,18 @@ static void EvalAssignAction(LocationSet* dst, void* refcon) {
         LocationSetSet_Delete(set);
     }
 
-    params->x16 |= Assign(params->ptf, dst, srcs, params->proc, params->nd, params->fnode);
+    params->assignChanged |=
+        Assign(params->ptf, dst, srcs, params->proc, params->nd, params->fnode);
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -1
+#endif
 static Boolean EvalAssign(
     Object* proc,
     IROLinear* nd,
@@ -3544,7 +3909,7 @@ static Boolean EvalAssign(
     EvalAssignActionParams params;
     EvalAssignAction2Params params2;
     LocationSetSet* set;
-    LocationSet* tmp;
+    LocationSet* first;
     PAMemoryBlock* block;
     Type* type;
 
@@ -3559,8 +3924,8 @@ static Boolean EvalAssign(
     params.ptf = ptf;
     params.nd = nd;
     params.fnode = fnode;
-    params.x15 = 0;
-    params.x16 = 0;
+    params.result = FALSE;
+    params.assignChanged = FALSE;
 
     set = LocationSetSet_New();
     params.srcs = LocationSetSet_New();
@@ -3574,10 +3939,10 @@ static Boolean EvalAssign(
             "nd->u.Diadic.left->lt == Lt_Monadic && nd->u.Diadic.left->oper == EINDIRECT"
         );
 
-        params.x15 |=
+        params.result |=
             EvalExpr(set, proc, nd->u.diadic.left->u.monadic, &stCallingContextStack, map, ptf);
         AdjustTypesForVolatility(set, proc, nd->u.diadic.left);
-        params.x15 |=
+        params.result |=
             EvalExpr(params.srcs, proc, nd->u.diadic.right, &stCallingContextStack, map, ptf);
 
         if (nd->nodetype != EASS) {
@@ -3592,31 +3957,30 @@ static Boolean EvalAssign(
                 case EANDASS:
                 case EXORASS:
                 case EORASS:
-                    if (LocationSetSet_Count(params.srcs) ==
-                        1 &&
-                        (tmp = LocationSetSet_FindFirst(params.srcs)) &&
-                        !LocationSet_IsUnknown(tmp) &&
-                        !LocationSet_stride(tmp) &&
-                        (block = LocationSet_block(tmp)) &&
+                    if (LocationSetSet_Count(params.srcs) == 1 &&
+                        (first = LocationSetSet_FindFirst(params.srcs)) &&
+                        !LocationSet_IsUnknown(first) &&
+                        !LocationSet_stride(first) &&
+                        (block = LocationSet_block(first)) &&
                         PAMemoryBlock_kind(block) == PAMEMORYBLOCKKIND_INT) {
                         LocationSetSet_Term(params.srcs);
                         LocationSetSet_Init(params.srcs);
-                        params.x15 |= EvalExpr(
+                        params.result |= EvalExpr(
                             params.srcs, proc, nd->u.diadic.left, &stCallingContextStack, map, ptf
                         );
 
                         memset(&params2, 0, sizeof(params2));
-                        params2.x0 = *((CInt64*)PAMemoryBlock_thing(block));
-                        IRO_TruncateValueToType(&params2.x0, nd->u.diadic.right->rtype);
+                        params2.value = *((CInt64*)PAMemoryBlock_thing(block));
+                        IRO_TruncateValueToType(&params2.value, nd->u.diadic.right->rtype);
                         params2.nd = nd;
-                        params2.xC = 0;
+                        params2.failed = FALSE;
 
-                        if (!CInt64_IsZero(&params2.x0)) {
+                        if (!CInt64_IsZero(&params2.value)) {
                             LocationSetSet_ForEach(params.srcs, EvalAssignAction2, &params2);
-                            if (params2.xC) {
+                            if (params2.failed) {
                                 LocationSetSet_Term(params.srcs);
                                 LocationSetSet_Init(params.srcs);
-                                params.x15 |= EvalExpr(
+                                params.result |= EvalExpr(
                                     params.srcs,
                                     proc,
                                     nd->u.diadic.left,
@@ -3634,7 +3998,7 @@ static Boolean EvalAssign(
                     } else {
                         LocationSetSet_Term(params.srcs);
                         LocationSetSet_Init(params.srcs);
-                        params.x15 |= EvalExpr(
+                        params.result |= EvalExpr(
                             params.srcs, proc, nd->u.diadic.left, &stCallingContextStack, map, ptf
                         );
                         if (!LocationSetSet_FindUnknown(params.srcs)) {
@@ -3658,10 +4022,11 @@ static Boolean EvalAssign(
             "nd->u.Monadic.expr->lt == Lt_Monadic && nd->u.Monadic.expr->oper == EINDIRECT"
         );
 
-        params.x15 |=
+        params.result |=
             EvalExpr(set, proc, nd->u.monadic->u.monadic, &stCallingContextStack, map, ptf);
         AdjustTypesForVolatility(set, proc, nd->u.monadic);
-        params.x15 |= EvalExpr(params.srcs, proc, nd->u.monadic, &stCallingContextStack, map, ptf);
+        params.result |=
+            EvalExpr(params.srcs, proc, nd->u.monadic, &stCallingContextStack, map, ptf);
 
         switch (nd->nodetype) {
             case EPOSTINC:
@@ -3669,9 +4034,9 @@ static Boolean EvalAssign(
             case EPREINC:
             case EPREDEC:
                 memset(&params2, 0, sizeof(params2));
-                params2.x0 = cint64_one;
+                params2.value = cint64_one;
                 params2.nd = nd;
-                params2.xC = 0;
+                params2.failed = FALSE;
 
                 type = NULL;
                 if (IS_TYPE_POINTER(nd->rtype)) {
@@ -3681,15 +4046,15 @@ static Boolean EvalAssign(
                 }
 
                 if (type) {
-                    CInt64_SetLong(&params2.x0, type->size);
+                    CInt64_SetLong(&params2.value, type->size);
                 }
 
-                if (!CInt64_IsZero(&params2.x0)) {
+                if (!CInt64_IsZero(&params2.value)) {
                     LocationSetSet_ForEach(params.srcs, EvalAssignAction2, &params2);
-                    if (params2.xC) {
+                    if (params2.failed) {
                         LocationSetSet_Term(params.srcs);
                         LocationSetSet_Init(params.srcs);
-                        params.x15 |= EvalExpr(
+                        params.result |= EvalExpr(
                             params.srcs, proc, nd->u.monadic, &stCallingContextStack, map, ptf
                         );
                         if (!LocationSetSet_FindUnknown(params.srcs)) {
@@ -3721,14 +4086,14 @@ static Boolean EvalAssign(
             PointsToFunction_Init(pointsToFunc);
         }
 
-        params.x14 = LocationSetSet_Count(set) == 1;
+        params.singleDst = LocationSetSet_Count(set) == 1;
         LocationSetSet_ForEach(set, EvalAssignAction, &params);
 
-        if (!params.x15 && params.x16) {
+        if (!params.result && params.assignChanged) {
             if (nd->pointsToFunction) {
-                params.x15 = !PointsToFunctions_Equal(pointsToFunc, nd->pointsToFunction);
+                params.result = !PointsToFunctions_Equal(pointsToFunc, nd->pointsToFunction);
             } else {
-                params.x15 = PointsToFunction_FindFirst(pointsToFunc) != NULL;
+                params.result = PointsToFunction_FindFirst(pointsToFunc) != NULL;
             }
         }
 
@@ -3741,9 +4106,17 @@ static Boolean EvalAssign(
     LocationSetSet_Delete(set);
     LocationSetSet_Delete(params.srcs);
 
-    return params.x15;
+    return params.result;
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -1
+#endif
 static Boolean EvalReturn(
     Object* proc,
     IROLinear* nd,
@@ -3766,29 +4139,38 @@ static Boolean EvalReturn(
     params.ptf = ptf;
     params.nd = nd;
     params.fnode = fnode;
-    params.x15 = 0;
-    params.x16 = 0;
+    params.result = FALSE;
+    params.assignChanged = FALSE;
 
     if (nd->u.monadic) {
         params.srcs = LocationSetSet_New();
         LocationSetSet_Init(params.srcs);
 
         loc = PartialTransferFunction_returnLocation(ptf);
-        params.x15 |= EvalExpr(params.srcs, proc, nd->u.monadic, &stCallingContextStack, map, ptf);
+        params.result |=
+            EvalExpr(params.srcs, proc, nd->u.monadic, &stCallingContextStack, map, ptf);
 
         if (LocationSetSet_Count(params.srcs) != 0) {
-            params.x14 = 1;
+            params.singleDst = TRUE;
             EvalAssignAction(loc, &params);
-            params.x15 |= params.x16;
+            params.result |= params.assignChanged;
         }
 
         LocationSetSet_Term(params.srcs);
         LocationSetSet_Delete(params.srcs);
     }
 
-    return params.x15;
+    return params.result;
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -1
+#endif
 static void ApplySummaryAction2(ParamMapping* mapping, void* refcon) {
     ApplySummaryActionParams* params;
     PAMemoryBlock* block;
@@ -3824,7 +4206,7 @@ static void ApplySummaryAction2(ParamMapping* mapping, void* refcon) {
     if (ParamMapping_extended(mapping) == ep && (nd = ParamMapping_actual(mapping))) {
         set = LocationSetSet_New();
         LocationSetSet_Init(set);
-        params->x21 |=
+        params->result |=
             EvalExpr(set, params->proc, nd, &stCallingContextStack, params->map, params->ptf);
 
         if (!LocationSetSet_FindUnknown(set)) {
@@ -3844,19 +4226,27 @@ static void ApplySummaryAction2(ParamMapping* mapping, void* refcon) {
         assignParams.nd = params->nd;
         assignParams.fnode = params->fnode;
         assignParams.srcs = params->locs;
-        assignParams.x14 = params->x20 && (LocationSetSet_Count(set) == 1);
-        assignParams.x15 = 0;
-        assignParams.x16 = 0;
+        assignParams.singleDst = params->singleTarget && (LocationSetSet_Count(set) == 1);
+        assignParams.result = FALSE;
+        assignParams.assignChanged = FALSE;
         LocationSetSet_ForEach(set, EvalAssignAction, &assignParams);
 
         LocationSetSet_Term(set);
         LocationSetSet_Delete(set);
 
-        params->x21 |= assignParams.x15;
-        params->x22 |= assignParams.x16;
+        params->result |= assignParams.result;
+        params->assignChanged |= assignParams.assignChanged;
     }
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -1
+#endif
 static void ApplySummaryAction(PointsToEntry* pte, void* refcon) {
     ApplySummaryActionParams* params;
     LocationSet* loc;
@@ -3887,7 +4277,15 @@ static void ApplySummaryAction(PointsToEntry* pte, void* refcon) {
         ParamMappingFunction_ForEach(params->tgtMap, ApplySummaryAction2, params);
     }
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -1
+#endif
 static Boolean ApplySummary(
     PartialTransferFunction* tgtPTF,
     ParamMappingFunction* tgtMap,
@@ -3896,7 +4294,7 @@ static Boolean ApplySummary(
     IROLinear* nd,
     PartialTransferFunction* ptf,
     ParamMappingFunction* map,
-    Boolean flag
+    Boolean singleTarget
 ) {
     Boolean result;
     ApplySummaryActionParams params;
@@ -3931,16 +4329,16 @@ static Boolean ApplySummary(
         params.map = map;
         params.loc = NULL;
         params.locs = NULL;
-        params.x20 = flag;
-        params.x21 = 0;
-        params.x22 = 0;
+        params.singleTarget = singleTarget;
+        params.result = FALSE;
+        params.assignChanged = FALSE;
 
         PointsToFunction_ForEach(
             PartialTransferFunction_finalPointsToFn(tgtPTF), ApplySummaryAction, &params
         );
 
-        result = params.x21;
-        if (!result && params.x22) {
+        result = params.result;
+        if (!result && params.assignChanged) {
             if (nd->pointsToFunction) {
                 result = !PointsToFunctions_Equal(pointsToFunc, nd->pointsToFunction);
             } else {
@@ -3951,7 +4349,15 @@ static Boolean ApplySummary(
 
     return result;
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -1
+#endif
 static void GetPTFAction2(ParamMapping* mapping, void* refcon) {
     IRO_ASSERT(5332, mapping != NULL);
 
@@ -3959,7 +4365,15 @@ static void GetPTFAction2(ParamMapping* mapping, void* refcon) {
         ParamMapping_SetExtended(mapping, NULL);
     }
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -1
+#endif
 static void GetPTFAction(PartialTransferFunction* tgtPTF, void* refcon) {
     GetPTFActionParams* params;
 
@@ -3975,24 +4389,31 @@ static void GetPTFAction(PartialTransferFunction* tgtPTF, void* refcon) {
     IRO_ASSERT(5369, params->ptf != NULL);
     IRO_ASSERT(5370, params->needVisit != NULL);
 
-    if (!params->x18) {
+    if (!params->match) {
         if (MatchPTF(tgtPTF, params->proc, params->map, params->nd, params->ptf)) {
             if (InputsHaveNewPointerValues(tgtPTF, params->ptf)) {
-                *params->needVisit = 1;
+                *params->needVisit = TRUE;
             }
-            params->x18 = tgtPTF;
+            params->match = tgtPTF;
             return;
         } else {
             ParamMappingFunction_ForEach(params->map, GetPTFAction2, NULL);
-            if (PartialTransferFunction_contextNd(tgtPTF) ==
-                params->nd &&
+            if (PartialTransferFunction_contextNd(tgtPTF) == params->nd &&
                 PartialTransferFunction_contextPTF(tgtPTF) == params->ptf) {
-                params->x14 = tgtPTF;
+                params->contextPTF = tgtPTF;
             }
         }
     }
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -1
+#endif
 static PartialTransferFunction* GetPTF(
     ParamMappingFunction* map,
     Object* proc,
@@ -4019,8 +4440,8 @@ static PartialTransferFunction* GetPTF(
         params.ptf = PartialTransferFunction_New();
         PartialTransferFunction_Init(params.ptf, nd, ptf);
         params.needVisit = needVisit;
-        params.x14 = NULL;
-        params.x18 = NULL;
+        params.contextPTF = NULL;
+        params.match = NULL;
 
         if (!proc->u.func.ptfList) {
             proc->u.func.ptfList = PTFList_New();
@@ -4029,8 +4450,7 @@ static PartialTransferFunction* GetPTF(
 
         PTFList_ForEach(proc->u.func.ptfList, GetPTFAction, &params);
 
-        // 2.6 has no `found` (Pro7's): the match found goes through `result`
-        result = params.x18;
+        result = params.match;
         if (result && !*needVisit) {
             PartialTransferFunction* copy = PartialTransferFunction_New();
             PartialTransferFunction_Copy(copy, result);
@@ -4045,21 +4465,34 @@ static PartialTransferFunction* GetPTF(
 
     return result;
 }
-
-// Pro7's; dead in 2.6 (the linker drops it), but its literals and the inline functions it
-// uses are in the object
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
 static Boolean IsMeetNode(IRONode* fnode, IROLinear* nd) {
     return (fnode->numpred > 1) && (fnode->first == nd);
 }
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -1
+#endif
 static Boolean IsExitNode(Object* proc, IRONode* fnode) {
     IRO_ASSERT(5468, proc != NULL);
     IRO_ASSERT(5469, fnode != NULL);
 
     return (fnode->numsucc == 0) && Bv_IsBitSet(FunctionFirstNode(proc)->index, fnode->dom);
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -1
+#endif
 static Boolean SomePredecessorHasBeenVisited(Object* proc, IRONode* fnode) {
     UInt16 i;
 
@@ -4068,15 +4501,16 @@ static Boolean SomePredecessorHasBeenVisited(Object* proc, IRONode* fnode) {
 
     for (i = 0; i < fnode->numpred; i++) {
         if (FunctionNodeTable(proc)[fnode->pred[i]]->marked) {
-            return 1;
+            return TRUE;
         }
     }
 
-    return 0;
+    return FALSE;
 }
-
-// Pro7's; dead in 2.6 (the linker drops it), but its literals and the inline functions it
-// uses are in the object
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
 static Boolean AllPredecessorsHaveBeenVisited(Object* proc, IRONode* fnode) {
     UInt16 i;
@@ -4086,13 +4520,17 @@ static Boolean AllPredecessorsHaveBeenVisited(Object* proc, IRONode* fnode) {
 
     for (i = 0; i < fnode->numpred; i++) {
         if (!FunctionNodeTable(proc)[fnode->pred[i]]->marked) {
-            return 0;
+            return FALSE;
         }
     }
 
-    return 1;
+    return TRUE;
 }
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -1
+#endif
 static void EvalProcAction2(PointsToEntry* pte, void* refcon) {
     EvalProcActionParams* params;
     LocationSet* dst;
@@ -4132,7 +4570,7 @@ static void EvalProcAction2(PointsToEntry* pte, void* refcon) {
                         params->ptf,
                         dst,
                         node->last->pointsToFunction,
-                        0,
+                        FALSE,
                         NULL
                     );
                 }
@@ -4145,7 +4583,15 @@ static void EvalProcAction2(PointsToEntry* pte, void* refcon) {
         LocationSetSet_Delete(set);
     }
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -1
+#endif
 static void AssignEachInPointsToFunctionAction(PointsToEntry* pte, void* refcon) {
     AssignEachInPointsToFunctionActionParams* params;
     LocationSet* dst;
@@ -4166,11 +4612,19 @@ static void AssignEachInPointsToFunctionAction(PointsToEntry* pte, void* refcon)
     srcs = LocationSetSet_New();
     LocationSetSet_Init(srcs);
     LocationSetSet_AddSet(srcs, PointsToEntry_locs(pte));
-    params->x10 |= Assign(params->ptf, dst, srcs, params->proc, params->nd, params->fnode);
+    params->result |= Assign(params->ptf, dst, srcs, params->proc, params->nd, params->fnode);
     LocationSetSet_Term(srcs);
     LocationSetSet_Delete(srcs);
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -1
+#endif
 static void AssignEachInPointsToFunction(PointsToFunction* pointsTo, void* refcon) {
     AssignEachInPointsToFunctionActionParams* params;
     PointsToFunction* pointsToFunc;
@@ -4199,21 +4653,29 @@ static void AssignEachInPointsToFunction(PointsToFunction* pointsTo, void* refco
         }
 
         PointsToFunction_Copy(params->nd->pointsToFunction, pointsTo);
-        params->x10 = 1;
+        params->result = TRUE;
     }
 
-    if (params->x10) {
+    if (params->result) {
         if (params->nd->pointsToFunction) {
-            params->x10 = !PointsToFunctions_Equal(pointsToFunc, params->nd->pointsToFunction);
+            params->result = !PointsToFunctions_Equal(pointsToFunc, params->nd->pointsToFunction);
         } else {
-            params->x10 = PointsToFunction_FindFirst(pointsToFunc) != NULL;
+            params->result = PointsToFunction_FindFirst(pointsToFunc) != NULL;
         }
     }
 
     PointsToFunction_Term(pointsToFunc);
     PointsToFunction_Delete(pointsToFunc);
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -1
+#endif
 static Boolean ObjectIsAFunctionArgument(Object* proc, Object* obj) {
     ObjectList* list;
 
@@ -4224,14 +4686,22 @@ static Boolean ObjectIsAFunctionArgument(Object* proc, Object* obj) {
     if (obj->datatype == DLOCAL) {
         for (list = FunctionArguments(proc); list; list = list->next) {
             if (obj == list->object) {
-                return 1;
+                return TRUE;
             }
         }
     }
 
-    return 0;
+    return FALSE;
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -1
+#endif
 static Boolean ObjectIsARealFunctionArgument(Object* proc, Object* obj) {
     ObjectList* list;
 
@@ -4242,14 +4712,22 @@ static Boolean ObjectIsARealFunctionArgument(Object* proc, Object* obj) {
     if (obj->datatype == DLOCAL && proc == cscope_currentfunc) {
         for (list = arguments; list; list = list->next) {
             if (obj == list->object) {
-                return 1;
+                return TRUE;
             }
         }
     }
 
-    return 0;
+    return FALSE;
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -1
+#endif
 static void AddLocalVarsAddressedByExceptionUses(Object* var) {
     IRO_ASSERT(5700, var != NULL);
     IRO_ASSERT(5701, stExceptionFNode != NULL);
@@ -4259,6 +4737,10 @@ static void AddLocalVarsAddressedByExceptionUses(Object* var) {
         ObjectSet_Add(stExceptionFNode->addressed, var);
     }
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
 static Boolean LinearNodeIsInFlowgraphNode(IROLinear* nd, IRONode* fnode) {
     IROLinear* first;
@@ -4268,15 +4750,19 @@ static Boolean LinearNodeIsInFlowgraphNode(IROLinear* nd, IRONode* fnode) {
     if (fnode && (first = fnode->first) && (last = fnode->last)) {
         for (scan = first; scan && scan != last->next; scan = scan->next) {
             if (scan == nd) {
-                return 1;
+                return TRUE;
             }
         }
     }
 
-    return 0;
+    return FALSE;
 }
 
-static void EvalProcAction(IROLinear* Int, Boolean flag) {
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -1
+#endif
+static void EvalProcAction(IROLinear* Int, Boolean isFirst) {
 #if VERSION < VERSION_GC_2_5
     ParamMappingFunction* map;
     Boolean result;
@@ -4285,15 +4771,15 @@ static void EvalProcAction(IROLinear* Int, Boolean flag) {
     IRONode* fnode;
     PointsToFunction* pointsToFunc;
     Boolean* changed;
-    Boolean x18;
-    Boolean x19;
+    Boolean needMeet;
+    Boolean nodeChanged;
 #else
     Boolean* changed;
     Boolean result;
     Object* proc;
     PartialTransferFunction* ptf;
-    Boolean x18;
-    Boolean x19;
+    Boolean needMeet;
+    Boolean nodeChanged;
     IRONode* fnode;
     PointsToFunction* pointsToFunc;
     ParamMappingFunction* map;
@@ -4303,7 +4789,7 @@ static void EvalProcAction(IROLinear* Int, Boolean flag) {
 
     static int userBreakCounter;
 
-    if (!flag && !Int->evaluated) {
+    if (!isFirst && !Int->evaluated) {
         IRO_ASSERT(5749, Int != NULL);
         IRO_ASSERT(5750, stEvalProcActionParams.changed != NULL);
 
@@ -4313,8 +4799,8 @@ static void EvalProcAction(IROLinear* Int, Boolean flag) {
         ptf = stEvalProcActionParams.ptf;
         pointsToFunc = stEvalProcActionParams.pointsToFunc;
         changed = stEvalProcActionParams.changed;
-        x18 = stEvalProcActionParams.x18;
-        x19 = stEvalProcActionParams.x19;
+        needMeet = stEvalProcActionParams.needMeet;
+        nodeChanged = stEvalProcActionParams.nodeChanged;
 
         IRO_ASSERT(5761, proc != NULL);
         IRO_ASSERT(5762, fnode != NULL);
@@ -4326,9 +4812,9 @@ static void EvalProcAction(IROLinear* Int, Boolean flag) {
             userBreakCounter = 0;
         }
 
-        result = 0;
+        result = FALSE;
 
-        if (x19 && Int->pointsToFunction) {
+        if (nodeChanged && Int->pointsToFunction) {
             PointsToFunction_Term(Int->pointsToFunction);
             PointsToFunction_Delete(Int->pointsToFunction);
             Int->pointsToFunction = NULL;
@@ -4339,27 +4825,27 @@ static void EvalProcAction(IROLinear* Int, Boolean flag) {
         params.nd = Int;
         params.fnode = fnode;
         params.ptf = ptf;
-        params.x10 = 0;
+        params.result = FALSE;
 
-        if (x18) {
+        if (needMeet) {
             PointsToFunction* initial = PartialTransferFunction_initialPointsToFn(ptf);
             if (fnode == FunctionFirstNode(proc) && initial) {
                 AssignEachInPointsToFunction(initial, &params);
-                result |= params.x10;
+                result |= params.result;
             }
             result |= EvalMeet(proc, fnode, Int, ptf);
             pointsToFunc = Int->pointsToFunction;
-            x18 = 0;
+            needMeet = FALSE;
         } else if (!Int->pointsToFunction) {
             if (pointsToFunc) {
                 AssignEachInPointsToFunction(pointsToFunc, &params);
             }
-            result |= params.x10;
+            result |= params.result;
             pointsToFunc = Int->pointsToFunction;
         }
 
         if (IRO_IsAssignment(Int)) {
-            if (Int->flags & IROLF_4000) {
+            if (Int->flags & IROLF_InCallArg) {
                 longjmp(stAbortPointerAnalysis, 1);
             }
             result |= EvalAssign(proc, Int, fnode, map, ptf);
@@ -4368,7 +4854,7 @@ static void EvalProcAction(IROLinear* Int, Boolean flag) {
             result |= EvalReturn(proc, Int, fnode, map, ptf);
             pointsToFunc = Int->pointsToFunction;
         } else if (Int->type == IROLinearFunccall) {
-            if (Int->flags & IROLF_4000) {
+            if (Int->flags & IROLF_InCallArg) {
                 longjmp(stAbortPointerAnalysis, 1);
             }
             if (Int->stmt && IRO_FunctionCallMightThrowException(Int)) {
@@ -4377,31 +4863,25 @@ static void EvalProcAction(IROLinear* Int, Boolean flag) {
             }
             result |= EvalCall(proc, fnode, Int, map, ptf);
             pointsToFunc = Int->pointsToFunction;
-        } else if (Int->type ==
-                   IROLinearOp1Arg &&
-                   Int->nodetype ==
-                   EINDIRECT &&
+        } else if (Int->type == IROLinearOp1Arg &&
+                   Int->nodetype == EINDIRECT &&
                    (!(Int->flags & IROLF_Assigned) || (Int->flags & IROLF_Used))) {
             result |= EvalExpr(NULL, proc, Int, &stCallingContextStack, map, ptf);
-        } else if (Int->type ==
-                   IROLinearOperand &&
+        } else if (Int->type == IROLinearOperand &&
                    !(Int->flags & IROLF_Ind) &&
-                   Int->u.node->type ==
-                   EOBJREF &&
+                   Int->u.node->type == EOBJREF &&
                    (obj = Int->u.node->data.objref) &&
                    obj->datatype == DLOCAL) {
             ObjectSet_Add(fnode->addressed, obj);
         } else if (Int->type == IROLinearAsm) {
-#if VERSION < VERSION_GC_2_5
-            // 2.0 analyses an asm statement: the locals whose address it takes are addressed
+#if VERSION >= VERSION_GC_2_0 && VERSION < VERSION_GC_2_5
             IAEffects effects;
             int i;
             CodeGen_GetAsmEffects(Int->u.asm_stmt, &effects);
             for (i = 0; i < effects.numoperands; i++) {
                 obj = effects.operands[i].object;
                 if (obj &&
-                    obj->datatype ==
-                    DLOCAL &&
+                    obj->datatype == DLOCAL &&
                     effects.operands[i].type == IAEffect_AddressOf) {
                     ObjectSet_Add(fnode->addressed, obj);
                 }
@@ -4418,19 +4898,19 @@ static void EvalProcAction(IROLinear* Int, Boolean flag) {
         }
 
         *changed |= result;
-        x19 |= result;
+        nodeChanged |= result;
 
         stEvalProcActionParams.pointsToFunc = pointsToFunc;
-        stEvalProcActionParams.x18 = x18;
-        stEvalProcActionParams.x19 = x19;
+        stEvalProcActionParams.needMeet = needMeet;
+        stEvalProcActionParams.nodeChanged = nodeChanged;
 
-        Int->evaluated = 1;
+        Int->evaluated = TRUE;
 
         if (Int->type != IROLinearReturn) {
             IROLinear* father = IRO_LocateFather(Int);
             if (father && father->type == IROLinearReturn) {
                 if (LinearNodeIsInFlowgraphNode(father, fnode)) {
-                    EvalProcAction(father, 0);
+                    EvalProcAction(father, FALSE);
                 } else {
                     longjmp(stAbortPointerAnalysis, 1);
                 }
@@ -4438,11 +4918,18 @@ static void EvalProcAction(IROLinear* Int, Boolean flag) {
         }
     }
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
 #if VERSION < VERSION_GC_2_5
-// 2.0's file has 9 lines more above here
 #undef CError_LINE_SHIFT
-#define CError_LINE_SHIFT 9
+#define CError_LINE_SHIFT (9 + CError_LINE_DELTA)
+#endif
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -11
 #endif
 static void EvalProc(Object* proc, ParamMappingFunction* map, PartialTransferFunction* ptf) {
     IRONode* fnode;
@@ -4459,13 +4946,13 @@ static void EvalProc(Object* proc, ParamMappingFunction* map, PartialTransferFun
     IRO_ASSERT(5957, ptf != NULL);
 
     for (fnode = FunctionFirstNode(proc); fnode; fnode = fnode->nextnode) {
-        fnode->marked = 0;
+        fnode->marked = FALSE;
     }
 
     passCount = 0;
     do {
         clock();
-        changed = 0;
+        changed = FALSE;
         for (fnode = FunctionFirstNode(proc); fnode; fnode = fnode->nextnode) {
             if (fnode->last &&
                 ((fnode->numpred == 0) || SomePredecessorHasBeenVisited(proc, fnode))) {
@@ -4489,40 +4976,40 @@ static void EvalProc(Object* proc, ParamMappingFunction* map, PartialTransferFun
                 stEvalProcActionParams.ptf = ptf;
                 stEvalProcActionParams.pointsToFunc = NULL;
                 stEvalProcActionParams.changed = &changed;
-                stEvalProcActionParams.x18 = 1;
-                stEvalProcActionParams.x19 = 0;
+                stEvalProcActionParams.needMeet = TRUE;
+                stEvalProcActionParams.nodeChanged = FALSE;
 
                 for (nd = fnode->first; nd && nd != fnode->last->next; nd = nd->next) {
-                    nd->evaluated = 0;
+                    nd->evaluated = FALSE;
                 }
                 IRO_WalkInts(fnode->first, fnode->last, (IROWalkTreeFunc)EvalProcAction);
 
-                if (stEvalProcActionParams.x18 || !fnode->last->pointsToFunction) {
+                if (stEvalProcActionParams.needMeet || !fnode->last->pointsToFunction) {
                     memset(&assignParams, 0, sizeof(assignParams));
                     assignParams.proc = proc;
                     assignParams.nd = fnode->last;
                     assignParams.fnode = fnode;
                     assignParams.ptf = ptf;
-                    assignParams.x10 = 0;
-                    if (stEvalProcActionParams.x18) {
+                    assignParams.result = FALSE;
+                    if (stEvalProcActionParams.needMeet) {
                         PointsToFunction* initial = PartialTransferFunction_initialPointsToFn(ptf);
                         if (fnode == FunctionFirstNode(proc) && initial) {
                             AssignEachInPointsToFunction(initial, &assignParams);
-                            changed |= assignParams.x10;
+                            changed |= assignParams.result;
                         }
                         changed |= EvalMeet(proc, fnode, fnode->last, ptf);
-                        stEvalProcActionParams.x18 = 0;
+                        stEvalProcActionParams.needMeet = FALSE;
                     } else {
                         if (stEvalProcActionParams.pointsToFunc) {
                             AssignEachInPointsToFunction(
                                 stEvalProcActionParams.pointsToFunc, &assignParams
                             );
                         }
-                        changed |= assignParams.x10;
+                        changed |= assignParams.result;
                     }
                 }
 
-                fnode->marked = 1;
+                fnode->marked = TRUE;
                 clock();
             }
         }
@@ -4537,7 +5024,7 @@ static void EvalProc(Object* proc, ParamMappingFunction* map, PartialTransferFun
         stMaxPassCount = passCount;
     }
 
-    PartialTransferFunction_SetFlag(ptf, 1);
+    PartialTransferFunction_SetAnalyzed(ptf, TRUE);
 
     memset(&params, 0, sizeof(params));
     params.proc = proc;
@@ -4549,6 +5036,10 @@ static void EvalProc(Object* proc, ParamMappingFunction* map, PartialTransferFun
         }
     }
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
 static void PointerAnalysis_Init(void) {
     stCallingContextStack = Stack_New();
@@ -4564,6 +5055,10 @@ static void PointerAnalysis_Init(void) {
     PTFList_Init(stPTFList);
 }
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -11
+#endif
 static void CleanseLocationSet(LocationSet* loc, void* refcon) {
     PAMemoryBlock* block;
     PALocalVar* local;
@@ -4573,12 +5068,15 @@ static void CleanseLocationSet(LocationSet* loc, void* refcon) {
 
     if (!LocationSet_IsUnknown(loc) &&
         (block = LocationSet_block(loc)) &&
-        PAMemoryBlock_kind(block) ==
-        PAMEMORYBLOCKKIND_LOCALVAR &&
+        PAMemoryBlock_kind(block) == PAMEMORYBLOCKKIND_LOCALVAR &&
         (local = PAMemoryBlock_thing(block))) {
         PALocalVar_SetObject(local, NULL);
     }
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -11
+#endif
 
 static void CleansePointsToEntry(PointsToEntry* pte, void* refcon) {
     IRO_ASSERT(6168, pte != NULL);
@@ -4588,6 +5086,10 @@ static void CleansePointsToEntry(PointsToEntry* pte, void* refcon) {
     LocationSetSet_ForEach(PointsToEntry_locs(pte), CleanseLocationSet, NULL);
 }
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -11
+#endif
 static void PointerAnalysis_TermAction4(PartialTransferFunction* ptf, void* refcon) {
     IRO_ASSERT(6178, ptf != NULL);
     IRO_ASSERT(6179, refcon == NULL);
@@ -4601,9 +5103,10 @@ static void PointerAnalysis_TermAction4(PartialTransferFunction* ptf, void* refc
         );
     }
 }
-
-// Pro7's; dead in 2.6 (the linker drops it), but its literals and the inline functions it
-// uses are in the object
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
 static void PointerAnalysis_TermAction3(ExtendedParam* ep) {
     ExtendedParam_Term(ep);
@@ -4618,8 +5121,7 @@ static void PointerAnalysis_TermAction2(Object* obj, void* refcon) {
     objSet = refcon;
 
     if (!ObjectIsAnExtendedParamCandidate(obj)) {
-        if (obj->datatype ==
-            DLOCAL &&
+        if (obj->datatype == DLOCAL &&
             obj->u.var.info &&
             (proc = obj->u.var.info->func) &&
             ObjectIsAFunction(proc) &&
@@ -4685,6 +5187,10 @@ static void PointerAnalysis_Term(void) {
     stCallingContextStack = NULL;
 }
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -11
+#endif
 static void InvalidatePointsToFunctions(Object* proc) {
     IRONode* fnode;
     IROLinear* nd;
@@ -4709,6 +5215,10 @@ static void InvalidatePointsToFunctions(Object* proc) {
         }
     }
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
 static void InitialSetup(void) {}
 
@@ -4736,6 +5246,10 @@ void PointerAnalysis_Cleanup(void) {
     IRO_TerminateAllocator();
 }
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -11
+#endif
 void IRO_AnalyzePointers(Object* function) {
     EvalCallActionParams params;
     IROLinear nd;
@@ -4756,9 +5270,9 @@ void IRO_AnalyzePointers(Object* function) {
     params.nd = &nd;
     params.ptf = stUnknownPTF;
     params.map = NULL;
-    params.x18 = 0;
-    params.x19 = 0;
-    params.x1A = 1;
+    params.stop = FALSE;
+    params.result = FALSE;
+    params.visitTarget = TRUE;
 
     stCurrentProc = FindMainEntryPoint(function);
 
@@ -4780,9 +5294,10 @@ void IRO_AnalyzePointers(Object* function) {
         }
     }
 }
-
-// Pro7's; dead in 2.6 (the linker drops it), but its literals and the inline functions it
-// uses are in the object
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
 static void RemoveRestrictedExtendedParamsAction(LocationSet* ls, void* refcon) {
     LocationSetSet* locs;
@@ -4795,21 +5310,16 @@ static void RemoveRestrictedExtendedParamsAction(LocationSet* ls, void* refcon) 
 
     if (!LocationSet_IsUnknown(ls) &&
         (block = LocationSet_block(ls)) &&
-        PAMemoryBlock_kind(block) ==
-        PAMEMORYBLOCKKIND_EXTENDEDPARAM &&
+        PAMemoryBlock_kind(block) == PAMEMORYBLOCKKIND_EXTENDEDPARAM &&
         (ep = PAMemoryBlock_thing(block))) {
         objSet = ExtendedParam_objectSet(ep);
-        if (ObjectSet_Count(objSet) ==
-            1 &&
+        if (ObjectSet_Count(objSet) == 1 &&
             (obj = ObjectSet_FindFirst(objSet)) &&
             ObjectIsRestrictQualified(obj)) {
             LocationSetSet_Add(locs, ls);
         }
     }
 }
-
-// Pro7's; dead in 2.6 (the linker drops it), but its literals and the inline functions it
-// uses are in the object
 
 static void RemoveRestrictedExtendedParams(LocationSetSet* locs) {
     LocationSetSet* set;
@@ -4821,9 +5331,6 @@ static void RemoveRestrictedExtendedParams(LocationSetSet* locs) {
     LocationSetSet_Term(set);
     LocationSetSet_Delete(set);
 }
-
-// Pro7's; dead in 2.6 (the linker drops it), but its literals and the inline functions it
-// uses are in the object
 
 Boolean PointerAnalysis_TwoLinearNodePointerExprsMightAlias(
     Object* proc, IROLinear* nd1, IROLinear* nd2
@@ -4846,10 +5353,10 @@ Boolean PointerAnalysis_TwoLinearNodePointerExprsMightAlias(
     }
 
     if (copts.opt_pointer_analysis_mode == 2 && !is_typeequal(nd1->rtype, nd2->rtype)) {
-        return 0;
+        return FALSE;
     }
     if (!pointsTo1 || !pointsTo2) {
-        return 1;
+        return TRUE;
     }
 
     lss1 = LocationSetSet_New();
@@ -4868,25 +5375,25 @@ Boolean PointerAnalysis_TwoLinearNodePointerExprsMightAlias(
     nd2->pointsToFunction = savePointsTo2;
 
     memset(&params, 0, sizeof(params));
-    params.x8 = 0;
-    params.x0 = lss2;
+    params.aliased = FALSE;
+    params.set = lss2;
     LocationSetSet_ForEach(lss1, FindAliasingAction, &params);
 
-    if (!params.x8) {
-        params.x0 = lss1;
+    if (!params.aliased) {
+        params.set = lss1;
         LocationSetSet_ForEach(lss2, FindAliasingAction, &params);
 
-        if (!params.x8) {
+        if (!params.aliased) {
             RemoveRestrictedExtendedParams(lss1);
             RemoveRestrictedExtendedParams(lss2);
             ExpandLocationSetSetToActuals(&stCallingContextStack, NULL, lss1);
             ExpandLocationSetSetToActuals(&stCallingContextStack, NULL, lss2);
 
-            params.x0 = lss2;
+            params.set = lss2;
             LocationSetSet_ForEach(lss1, FindAliasingAction, &params);
 
-            if (!params.x8) {
-                params.x0 = lss1;
+            if (!params.aliased) {
+                params.set = lss1;
                 LocationSetSet_ForEach(lss2, FindAliasingAction, &params);
             }
         }
@@ -4897,11 +5404,8 @@ Boolean PointerAnalysis_TwoLinearNodePointerExprsMightAlias(
     LocationSetSet_Term(lss2);
     LocationSetSet_Delete(lss2);
 
-    return params.x8;
+    return params.aliased;
 }
-
-// Pro7's; dead in 2.6 (the linker drops it), but its literals and the inline functions it
-// uses are in the object
 
 Boolean PointerAnalysis_TwoENodePointerExprsMightAlias(Object* proc, ENode* nd1, ENode* nd2) {
     LocationSetSet* lss1;
@@ -4922,10 +5426,10 @@ Boolean PointerAnalysis_TwoENodePointerExprsMightAlias(Object* proc, ENode* nd1,
     }
 
     if (copts.opt_pointer_analysis_mode == 2 && !is_typeequal(nd1->rtype, nd2->rtype)) {
-        return 0;
+        return FALSE;
     }
     if (!pointsTo1 || !pointsTo2) {
-        return 1;
+        return TRUE;
     }
 
     lss1 = LocationSetSet_New();
@@ -4944,25 +5448,25 @@ Boolean PointerAnalysis_TwoENodePointerExprsMightAlias(Object* proc, ENode* nd1,
     nd2->pointsTo = savePointsTo2;
 
     memset(&params, 0, sizeof(params));
-    params.x8 = 0;
-    params.x0 = lss2;
+    params.aliased = FALSE;
+    params.set = lss2;
     LocationSetSet_ForEach(lss1, FindAliasingAction, &params);
 
-    if (!params.x8) {
-        params.x0 = lss1;
+    if (!params.aliased) {
+        params.set = lss1;
         LocationSetSet_ForEach(lss2, FindAliasingAction, &params);
 
-        if (!params.x8) {
+        if (!params.aliased) {
             RemoveRestrictedExtendedParams(lss1);
             RemoveRestrictedExtendedParams(lss2);
             ExpandLocationSetSetToActuals(&stCallingContextStack, NULL, lss1);
             ExpandLocationSetSetToActuals(&stCallingContextStack, NULL, lss2);
 
-            params.x0 = lss2;
+            params.set = lss2;
             LocationSetSet_ForEach(lss1, FindAliasingAction, &params);
 
-            if (!params.x8) {
-                params.x0 = lss1;
+            if (!params.aliased) {
+                params.set = lss1;
                 LocationSetSet_ForEach(lss2, FindAliasingAction, &params);
             }
         }
@@ -4973,7 +5477,7 @@ Boolean PointerAnalysis_TwoENodePointerExprsMightAlias(Object* proc, ENode* nd1,
     LocationSetSet_Term(lss2);
     LocationSetSet_Delete(lss2);
 
-    return params.x8;
+    return params.aliased;
 }
 
 Boolean PointerAnalysis_IsLinearNodePointerExprDefinite(Object* proc, IROLinear* nd) {
@@ -4982,7 +5486,7 @@ Boolean PointerAnalysis_IsLinearNodePointerExprDefinite(Object* proc, IROLinear*
     Boolean result;
 
     if (!nd->pointsToFunction) {
-        return 0;
+        return FALSE;
     }
 
     lss = LocationSetSet_New();
@@ -4999,16 +5503,13 @@ Boolean PointerAnalysis_IsLinearNodePointerExprDefinite(Object* proc, IROLinear*
     return result;
 }
 
-// Pro7's; dead in 2.6 (the linker drops it), but its literals and the inline functions it
-// uses are in the object
-
 Boolean PointerAnalysis_IsENodePointerExprDefinite(Object* proc, ENode* nd) {
     LocationSetSet* lss;
     LocationSet* loc;
     Boolean result;
 
     if (!nd->pointsTo) {
-        return 0;
+        return FALSE;
     }
 
     lss = LocationSetSet_New();
@@ -5025,9 +5526,6 @@ Boolean PointerAnalysis_IsENodePointerExprDefinite(Object* proc, ENode* nd) {
     return result;
 }
 
-// Pro7's; dead in 2.6 (the linker drops it), but its literals and the inline functions it
-// uses are in the object
-
 Boolean PointerAnalysis_IsVariableValueDefinite(
     Object* proc, VarRecord* var, PointsToFunction* pointsTo
 ) {
@@ -5036,7 +5534,7 @@ Boolean PointerAnalysis_IsVariableValueDefinite(
     Boolean result;
 
     if (!pointsTo) {
-        return 0;
+        return FALSE;
     }
 
     lss = LocationSetSet_New();
@@ -5060,6 +5558,10 @@ static void FindGlobalObjectAction(Object* object, void* refcon) {
     }
 }
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -11
+#endif
 static void GetDefiniteObjectOfExtendedParamLoc(
     LocationSet* loc, Object** resultObj, CInt64* resultField
 ) {
@@ -5069,7 +5571,7 @@ static void GetDefiniteObjectOfExtendedParamLoc(
     ExtendedParam* ep;
     ObjectSet* objSet;
     LocationSetSet* locs;
-    LocationSet* tmp;
+    LocationSet* first;
     PALocalVar* local;
 
     IRO_ASSERT(6754, loc != NULL);
@@ -5090,25 +5592,22 @@ static void GetDefiniteObjectOfExtendedParamLoc(
     if (!obj) {
         locs = LocationSetSet_New();
         LocationSetSet_Init(locs);
-        GetActualLocsOfExtendedParam(locs, loc, NULL, &stCallingContextStack, NULL, 0);
+        GetActualLocsOfExtendedParam(locs, loc, NULL, &stCallingContextStack, NULL, FALSE);
 
-        if (LocationSetSet_Count(locs) ==
-            1 &&
-            (tmp = LocationSetSet_FindFirst(locs)) &&
-            !LocationSet_IsUnknown(tmp)) {
-            field = CInt64_Add(field, LocationSet_field(tmp));
-            if ((block = LocationSet_block(tmp)) &&
-                PAMemoryBlock_kind(block) ==
-                PAMEMORYBLOCKKIND_EXTENDEDPARAM &&
+        if (LocationSetSet_Count(locs) == 1 &&
+            (first = LocationSetSet_FindFirst(locs)) &&
+            !LocationSet_IsUnknown(first)) {
+            field = CInt64_Add(field, LocationSet_field(first));
+            if ((block = LocationSet_block(first)) &&
+                PAMemoryBlock_kind(block) == PAMEMORYBLOCKKIND_EXTENDEDPARAM &&
                 (ep = PAMemoryBlock_thing(block)) &&
                 (objSet = ExtendedParam_objectSet(ep))) {
                 IRO_ASSERT(6792, obj == NULL);
                 ObjectSet_ForEach(objSet, FindGlobalObjectAction, &obj);
-            } else if ((block = LocationSet_block(tmp)) &&
-                       PAMemoryBlock_kind(block) ==
-                       PAMEMORYBLOCKKIND_LOCALVAR &&
+            } else if ((block = LocationSet_block(first)) &&
+                       PAMemoryBlock_kind(block) == PAMEMORYBLOCKKIND_LOCALVAR &&
                        (local = PAMemoryBlock_thing(block))) {
-                obj = GetLocalObject(local, &stUnknown, 0);
+                obj = GetLocalObject(local, &stUnknown, FALSE);
             }
         }
 
@@ -5119,7 +5618,15 @@ static void GetDefiniteObjectOfExtendedParamLoc(
     *resultObj = obj;
     *resultField = field;
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -11
+#endif
 static void CreateExpressionForLocationSet(
     LocationSet* loc, IROList* list, Type* rtype, Object* proc
 ) {
@@ -5155,7 +5662,7 @@ static void CreateExpressionForLocationSet(
             }
             break;
         case PAMEMORYBLOCKKIND_LOCALVAR:
-            obj = GetLocalObject(thing, proc, 0);
+            obj = GetLocalObject(thing, proc, FALSE);
             if (obj) {
                 if (ObjectIsAFunctionArgument(proc, obj) && obj->u.var.realObj) {
                     obj = obj->u.var.realObj;
@@ -5180,22 +5687,30 @@ static void CreateExpressionForLocationSet(
     }
 
     if (nd && !CInt64_IsZero(&field)) {
-        IROLinear* nd2;
-        IROLinear* nd3;
+        IROLinear* offsetNd;
+        IROLinear* sumNd;
 
-        nd2 = IRO_NewIntConst(field, (Type*)&stunsignedlong);
-        IRO_AddToList(nd2, list);
+        offsetNd = IRO_NewIntConst(field, (Type*)&stunsignedlong);
+        IRO_AddToList(offsetNd, list);
 
-        nd3 = IRO_NewLinear(IROLinearOp2Arg);
-        nd3->nodetype = EADD;
-        nd3->index = ++IRO_NumLinear;
-        nd3->rtype = rtype;
-        nd3->u.diadic.left = nd;
-        nd3->u.diadic.right = nd2;
-        IRO_AddToList(nd3, list);
+        sumNd = IRO_NewLinear(IROLinearOp2Arg);
+        sumNd->nodetype = EADD;
+        sumNd->index = ++IRO_NumLinear;
+        sumNd->rtype = rtype;
+        sumNd->u.diadic.left = nd;
+        sumNd->u.diadic.right = offsetNd;
+        IRO_AddToList(sumNd, list);
     }
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -11
+#endif
 static void LookupLinearExprAction(LocationSet* loc, void* refcon) {
     LookupLinearExprActionParams* params;
     IROListNode* list;
@@ -5219,7 +5734,15 @@ static void LookupLinearExprAction(LocationSet* loc, void* refcon) {
 
     params->list = &list->nextList;
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -11
+#endif
 void PointerAnalysis_LookupLinearNodePointerExpr(
     Object* proc, IROLinear* indirect, IROListNode** list
 ) {
@@ -5245,9 +5768,10 @@ void PointerAnalysis_LookupLinearNodePointerExpr(
     LocationSetSet_Term(set);
     LocationSetSet_Delete(set);
 }
-
-// Pro7's; dead in 2.6 (the linker drops it), but its literals and the inline functions it
-// uses are in the object
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
 static void CreateENodeForLocationSet(
     LocationSet* loc, ENode** enodePtr, Type* rtype, Object* proc
@@ -5281,7 +5805,7 @@ static void CreateENodeForLocationSet(
             }
             break;
         case PAMEMORYBLOCKKIND_LOCALVAR:
-            obj = GetLocalObject(thing, proc, 0);
+            obj = GetLocalObject(thing, proc, FALSE);
             if (obj) {
                 if (ObjectIsAFunctionArgument(proc, obj) && obj->u.var.realObj) {
                     obj = obj->u.var.realObj;
@@ -5304,26 +5828,23 @@ static void CreateENodeForLocationSet(
     }
 
     if (nd && !CInt64_IsZero(&field)) {
-        ENode* nd2;
-        ENode* nd3;
+        ENode* offsetExpr;
+        ENode* sumExpr;
 
-        nd2 = IRO_NewENode(EINTCONST);
-        nd2->data.intval = field;
-        nd2->rtype = TYPE(&stunsignedlong);
+        offsetExpr = IRO_NewENode(EINTCONST);
+        offsetExpr->data.intval = field;
+        offsetExpr->rtype = TYPE(&stunsignedlong);
 
-        nd3 = IRO_NewENode(EADD);
-        nd3->data.diadic.left = nd;
-        nd3->data.diadic.right = nd2;
-        nd3->rtype = rtype;
+        sumExpr = IRO_NewENode(EADD);
+        sumExpr->data.diadic.left = nd;
+        sumExpr->data.diadic.right = offsetExpr;
+        sumExpr->rtype = rtype;
 
-        *enodePtr = nd3;
+        *enodePtr = sumExpr;
     } else {
         *enodePtr = nd;
     }
 }
-
-// Pro7's; dead in 2.6 (the linker drops it), but its literals and the inline functions it
-// uses are in the object
 
 static void LookupENodeExprAction(LocationSet* loc, void* refcon) {
     LookupENodeExprActionParams* params;
@@ -5348,9 +5869,6 @@ static void LookupENodeExprAction(LocationSet* loc, void* refcon) {
 
     params->list = &list->next;
 }
-
-// Pro7's; dead in 2.6 (the linker drops it), but its literals and the inline functions it
-// uses are in the object
 
 void PointerAnalysis_LookupENodePointerExpr(Object* proc, ENode* indirect, ENodeList** list) {
     LocationSetSet* set;
@@ -5377,9 +5895,6 @@ void PointerAnalysis_LookupENodePointerExpr(Object* proc, ENode* indirect, ENode
     }
 }
 
-// Pro7's; dead in 2.6 (the linker drops it), but its literals and the inline functions it
-// uses are in the object
-
 void PointerAnalysis_LookupVariableIntoLinearNodeExprs(
     Object* proc, VarRecord* var, PointsToFunction* pointsTo, IROListNode** list
 ) {
@@ -5403,9 +5918,6 @@ void PointerAnalysis_LookupVariableIntoLinearNodeExprs(
         LocationSetSet_Delete(set);
     }
 }
-
-// Pro7's; dead in 2.6 (the linker drops it), but its literals and the inline functions it
-// uses are in the object
 
 void PointerAnalysis_LookupVariableIntoENodeExprs(
     Object* proc, VarRecord* var, PointsToFunction* pointsTo, ENodeList** list
@@ -5431,6 +5943,10 @@ void PointerAnalysis_LookupVariableIntoENodeExprs(
     }
 }
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -11
+#endif
 static void GetFunctionDepsOrKillsAction(LocationSet* ls, void* refcon) {
     GetFunctionDepsOrKillsActionParams* params;
     ObjectList* list;
@@ -5466,11 +5982,13 @@ static void GetFunctionDepsOrKillsAction(LocationSet* ls, void* refcon) {
                 break;
             case PAMEMORYBLOCKKIND_LOCALVAR:
                 if ((local = PAMemoryBlock_thing(block))) {
-                    obj = GetLocalObject(local, &stUnknown, 0);
+                    obj = GetLocalObject(local, &stUnknown, FALSE);
                     if (ObjectIsAFunctionArgument(FunctionName, obj) && obj->u.var.realObj) {
                         obj = obj->u.var.realObj;
                     }
                 }
+                break;
+            default:
                 break;
         }
 
@@ -5479,7 +5997,15 @@ static void GetFunctionDepsOrKillsAction(LocationSet* ls, void* refcon) {
 
     params->list = &list->next;
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -11
+#endif
 static void GetFunctionDepsOrKillsAction2(PointsToEntry* pte, void* refcon) {
     GetFunctionDepsOrKillsActionParams* params;
     LocationSet* loc;
@@ -5505,12 +6031,16 @@ static void GetFunctionDepsOrKillsAction2(PointsToEntry* pte, void* refcon) {
     if (block && PAMemoryBlock_kind(block) == PAMEMORYBLOCKKIND_EXTENDEDPARAM) {
         set = LocationSetSet_New();
         LocationSetSet_Init(set);
-        GetActualLocsOfExtendedParam(set, loc, NULL, &stCallingContextStack, params->map, 0);
+        GetActualLocsOfExtendedParam(set, loc, NULL, &stCallingContextStack, params->map, FALSE);
         LocationSetSet_ForEach(set, GetFunctionDepsOrKillsAction, params);
         LocationSetSet_Term(set);
         LocationSetSet_Delete(set);
     }
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
 static void CreateFalseContext(
     Object* proc,
@@ -5535,7 +6065,7 @@ static void CreateFalseContext(
     ParamMappingFunction_Init(map);
     RecordActuals(&myFunccall, FunctionName, map);
 
-    needVisit = 0;
+    needVisit = FALSE;
     ptf = GetPTF(map, FunctionName, &myFunccall, stUnknownPTF, &needVisit);
 
     stackElement = StackElement_New();
@@ -5549,7 +6079,7 @@ static void CreateFalseContext(
     RecordActuals(funccall, proc, map2);
 
     if (FunctionName != proc) {
-        needVisit = 0;
+        needVisit = FALSE;
         ptf2 = GetPTF(map2, proc, funccall, ptf, &needVisit);
 
         stackElement2 = StackElement_New();
@@ -5589,7 +6119,7 @@ static void DestroyFalseContext(
     PointerAnalysis_Term();
 }
 
-int NoPTF(Object* proc, PartialTransferFunction** ptf) {
+static inline int NoPTF(Object* proc, PartialTransferFunction** ptf) {
     int fail = 1;
     if (proc->u.func.ptfList && (*ptf = PTFList_FindFirst(proc->u.func.ptfList))) {
         fail = 0;
@@ -5597,6 +6127,10 @@ int NoPTF(Object* proc, PartialTransferFunction** ptf) {
     return fail;
 }
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -11
+#endif
 void PointerAnalysis_GetFunctionKills(Object* proc, IROLinear* funccall, ObjectList** list) {
     Boolean fail;
     PartialTransferFunction* ptf;
@@ -5632,8 +6166,12 @@ void PointerAnalysis_GetFunctionKills(Object* proc, IROLinear* funccall, ObjectL
         (*list)->next = NULL;
     }
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
-int NoPTFList(Object* proc) {
+static inline int NoPTFList(Object* proc) {
     int fail = 1;
     if (proc->u.func.ptfList && PTFList_FindFirst(proc->u.func.ptfList)) {
         fail = 0;
@@ -5641,6 +6179,10 @@ int NoPTFList(Object* proc) {
     return fail;
 }
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -11
+#endif
 void PointerAnalysis_GetFunctionDependencies(Object* proc, IROLinear* funccall, ObjectList** list) {
     Boolean fail;
     PointsToFunction* finalPointsTo;
@@ -5661,8 +6203,7 @@ void PointerAnalysis_GetFunctionDependencies(Object* proc, IROLinear* funccall, 
         CreateFalseContext(proc, funccall, &ptf, &map);
         {
             int noFinal = 1;
-            if ((ptf == NULL || map == NULL) ==
-                0 &&
+            if ((ptf == NULL || map == NULL) == 0 &&
                 (finalPointsTo = PartialTransferFunction_finalPointsToFn(ptf))) {
                 noFinal = 0;
             }
@@ -5686,6 +6227,10 @@ void PointerAnalysis_GetFunctionDependencies(Object* proc, IROLinear* funccall, 
         (*list)->next = NULL;
     }
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
 void PointerAnalysis_PragmaMode(void) {
     if (cparamblkptr->preprocess) {
@@ -5720,29 +6265,30 @@ void PointerAnalysis_PragmaMode(void) {
     skipendofline();
 }
 
-// TODO: not exact either way; with symbols off (as LocationSets_Overlap) only a few registers
-// differ (93.6 -> 97.8%): 2.6 copies CreateExtendedParam's result to `thing` through a second
-// register, and swaps the heap block's registers.
 #pragma sym off
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -11
+#endif
 static void ParseLocationSet(
     LocationSet* loc,
     Type* rtype,
     Object* proc,
     CreateNewParamObjects createNewParamObjects,
-    Boolean arg5,
-    int arg6,
-    Boolean* arg7,
+    Boolean allowReturnValue,
+    int nested,
+    Boolean* resultIsReturnValue,
     Boolean* resultFailed
 ) {
     CInt64 field;
-    CInt64 tmp;
+    CInt64 strideValue;
     PAMemoryBlock* block;
     UInt32 stride;
     PAMemoryBlock* restriction;
     Boolean failed;
-    Boolean flag37;
+    Boolean takesSelector;
     Boolean epFlag;
-    Boolean anotherFlag;
+    Boolean isReturnValue;
     Boolean isUnknown;
     PAMemoryBlockKind kind;
     void* thing;
@@ -5757,24 +6303,24 @@ static void ParseLocationSet(
     IRO_ASSERT(7549, proc != NULL);
     IRO_ASSERT(7550, proc == NULL || ObjectIsAFunction(proc));
 
-    failed = 0;
-    isUnknown = 0;
-    anotherFlag = 0;
+    failed = FALSE;
+    isUnknown = FALSE;
+    isReturnValue = FALSE;
     field = cint64_zero;
     stride = 0;
 
     tk = lex();
     if (tk == TK_IDENTIFIER) {
         if (!strcmp(tkidentifier->name, "__unknown")) {
-            flag37 = 0;
-            isUnknown = 1;
+            takesSelector = FALSE;
+            isUnknown = TRUE;
             tk = lookahead();
             if (tk == '(') {
                 lex();
                 tk = lex();
                 if (tk != TK_IDENTIFIER) {
                     CError_Error(ERR_IDENTIFIER_EXPECTED);
-                    failed = 1;
+                    failed = TRUE;
                 }
                 if (!failed) {
                     PALocalVar* local;
@@ -5787,7 +6333,7 @@ static void ParseLocationSet(
                     tk = lex();
                     if (tk != ')') {
                         CError_Error(ERR_RPAREN_EXPECTED);
-                        failed = 1;
+                        failed = TRUE;
                     }
                     if (!failed) {
                         rtype = NULL;
@@ -5798,27 +6344,27 @@ static void ParseLocationSet(
                 rtype = NULL;
                 restriction = NULL;
             }
-        } else if (arg5 && !strcmp(tkidentifier->name, "__return_value")) {
-            flag37 = 0;
-            anotherFlag = 1;
+        } else if (allowReturnValue && !strcmp(tkidentifier->name, "__return_value")) {
+            takesSelector = FALSE;
+            isReturnValue = TRUE;
         } else if (!strcmp(tkidentifier->name, "__unique_heap_allocation")) {
             PAHeapBlock* hb;
 
-            flag37 = 0;
+            takesSelector = FALSE;
             hb = PAHeapBlock_New();
             PAHeapBlock_Init(hb, NULL);
 
             block = PAMemoryBlock_New();
             PAMemoryBlock_Init(block, PAMEMORYBLOCKKIND_HEAPBLOCK, hb);
         } else if (!strcmp(tkidentifier->name, "__parameter_representative")) {
-            flag37 = 1;
+            takesSelector = TRUE;
             tk = lex();
 
             if (tk == '(') {
                 tk = lex();
                 if (tk != TK_INTCONST) {
                     CError_Error(ERR_DECLARATION_SYNTAX_ERROR);
-                    failed = 1;
+                    failed = TRUE;
                 }
                 if (!failed) {
                     Object* obj;
@@ -5827,7 +6373,7 @@ static void ParseLocationSet(
                     obj = NULL;
                     for (list = stParamObjs; list; list = list->next) {
                         if ((obj = list->object) &&
-                            (obj->u.var.uid == CInt64_GetULong(&tkintconst))) {
+                            ((UInt32)obj->u.var.uid == CInt64_GetULong(&tkintconst))) {
                             break;
                         }
                     }
@@ -5857,7 +6403,7 @@ static void ParseLocationSet(
                             char buf[64];
                             sprintf(buf, "__parameter_representative(%ld)", obj->u.var.uid);
                             CError_Error(ERR_UNDEFINED_IDENTIFIER, buf);
-                            failed = 1;
+                            failed = TRUE;
                         }
                     } else {
                         ep = obj->extParam;
@@ -5868,7 +6414,7 @@ static void ParseLocationSet(
                         tk = lex();
                         if (tk != ')') {
                             CError_Error(ERR_RPAREN_EXPECTED);
-                            failed = 1;
+                            failed = TRUE;
                         }
                     }
                     if (!failed) {
@@ -5898,7 +6444,7 @@ static void ParseLocationSet(
                 for (chk = FunctionArguments(proc); chk; chk = chk->next) {
                     if (chk->object &&
                         chk->object->name &&
-                        chk->object->name->name &&
+                        &chk->object->name->name[0] &&
                         !strcmp(tkidentifier->name, chk->object->name->name)) {
                         obj = chk->object;
                     }
@@ -5912,7 +6458,7 @@ static void ParseLocationSet(
                 } else {
                     kind = PAMEMORYBLOCKKIND_LOCALVAR;
                     thing = PALocalVar_New();
-                    if (obj->name && obj->name->name && ObjectIsAFunctionArgument(proc, obj)) {
+                    if (obj->name && &obj->name->name[0] && ObjectIsAFunctionArgument(proc, obj)) {
                         PALocalVar_InitByName(thing, obj->name->name);
                     } else {
                         PALocalVar_InitByObject(thing, obj);
@@ -5924,29 +6470,31 @@ static void ParseLocationSet(
                 rtype = CDecl_NewPointerType(obj->type);
             } else {
                 CError_Error(ERR_UNDEFINED_IDENTIFIER, tkidentifier->name);
-                failed = 1;
+                failed = TRUE;
             }
         }
     } else if (tk == TK_INTCONST) {
-        flag37 = 0;
+        takesSelector = FALSE;
         thing = &tkintconst;
         block = PAMemoryBlock_New();
         PAMemoryBlock_Init(block, PAMEMORYBLOCKKIND_INT, thing);
     } else if (tk == '(') {
-        ParseLocationSet(loc, rtype, proc, createNewParamObjects, arg5, 1, &anotherFlag, &failed);
+        ParseLocationSet(
+            loc, rtype, proc, createNewParamObjects, allowReturnValue, 1, &isReturnValue, &failed
+        );
         if (!failed) {
             tk = plex();
             if (tk != ')') {
                 CError_Error(ERR_RPAREN_EXPECTED);
             }
-            failed = 1;
+            failed = TRUE;
         }
     } else {
         CError_Error(ERR_DECLARATION_SYNTAX_ERROR);
-        failed = 1;
+        failed = TRUE;
     }
 
-    if (!failed && flag37) {
+    if (!failed && takesSelector) {
         tk = lookahead();
         if (tk == '[') {
             lex();
@@ -5954,8 +6502,8 @@ static void ParseLocationSet(
                 tk = lex();
                 if (tk == ']') {
                     if ((stride = rtype->size)) {
-                        CInt64_SetLong(&tmp, stride);
-                        field = CInt64_Mod(field, tmp);
+                        CInt64_SetLong(&strideValue, stride);
+                        field = CInt64_Mod(field, strideValue);
                     }
                     rtype = TPTR_TARGET(rtype);
                 } else {
@@ -5991,7 +6539,7 @@ static void ParseLocationSet(
         }
     }
 
-    if (!failed && !anotherFlag) {
+    if (!failed && !isReturnValue) {
         LocationSet_Term(loc);
         if (!isUnknown) {
             LocationSet_InitKnown(loc, block, field, stride, rtype);
@@ -6000,11 +6548,19 @@ static void ParseLocationSet(
         }
     }
 
-    *arg7 = anotherFlag;
+    *resultIsReturnValue = isReturnValue;
     *resultFailed = failed;
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 #pragma sym reset
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -11
+#endif
 static void ParseLocationSetSet(
     LocationSetSet* locs,
     Type* rtype,
@@ -6023,16 +6579,16 @@ static void ParseLocationSetSet(
     IRO_ASSERT(7889, proc != NULL);
     IRO_ASSERT(7890, proc == NULL || ObjectIsAFunction(proc));
 
-    failed = 0;
+    failed = FALSE;
 
     tk = lex();
     if (tk != '(') {
         CError_Error(ERR_LPAREN_EXPECTED);
-        failed = 1;
+        failed = TRUE;
     }
 
     if (!failed) {
-        Boolean anotherFlag;
+        Boolean isReturnValue;
 
         LocationSet* ls;
         ls = LocationSet_New();
@@ -6040,7 +6596,9 @@ static void ParseLocationSetSet(
 
         tk = lookahead();
         while (!failed && tk != ')') {
-            ParseLocationSet(ls, rtype, proc, createNewParamObjects, 0, 0, &anotherFlag, &failed);
+            ParseLocationSet(
+                ls, rtype, proc, createNewParamObjects, FALSE, 0, &isReturnValue, &failed
+            );
             if (!failed) {
                 LocationSetSet_Add(locs, ls);
             }
@@ -6053,7 +6611,7 @@ static void ParseLocationSetSet(
                 } else if (tk != ')') {
                     lex();
                     CError_Error(ERR_DECLARATION_SYNTAX_ERROR);
-                    failed = 1;
+                    failed = TRUE;
                 }
             }
         }
@@ -6068,17 +6626,25 @@ static void ParseLocationSetSet(
 
     *resultFailed = failed;
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -11
+#endif
 static Object* GetFunctionObjectFromDeclInfo(DeclInfo* di) {
     Object* proc;
 
     IRO_ASSERT(7944, di != NULL);
 
     if (di->storageclass != TK_TYPEDEF && IS_TYPE_FUNC(di->thetype)) {
-        Boolean flag;
-        proc = CDecl_GetFunctionObject(di, NULL, &flag, 1);
-        if (flag) {
-            di->firstDeclaration = 1;
+        Boolean isFirstDeclaration;
+        proc = CDecl_GetFunctionObject(di, NULL, &isFirstDeclaration, TRUE);
+        if (isFirstDeclaration) {
+            di->firstDeclaration = TRUE;
         }
     } else {
         proc = NULL;
@@ -6086,11 +6652,19 @@ static Object* GetFunctionObjectFromDeclInfo(DeclInfo* di) {
 
     return proc;
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -11
+#endif
 void PointerAnalysis_ParseEntryPointsToSpecifier(DeclInfo* di) {
     Object* proc;
     Boolean failed;
-    Boolean anotherFlag;
+    Boolean isReturnValue;
 
     IRO_ASSERT(7973, di != NULL);
 
@@ -6105,12 +6679,12 @@ void PointerAnalysis_ParseEntryPointsToSpecifier(DeclInfo* di) {
             "tk == TIDENTIFIER && strcmp(tkidentifier->name,\"entry_points_to\") == 0"
         );
 
-        failed = 0;
+        failed = FALSE;
 
         tk = lex();
         if (tk != '(') {
             CError_Error(ERR_LPAREN_EXPECTED);
-            failed = 1;
+            failed = TRUE;
         }
 
         if (!failed) {
@@ -6118,12 +6692,12 @@ void PointerAnalysis_ParseEntryPointsToSpecifier(DeclInfo* di) {
             ls = LocationSet_New();
             LocationSet_InitUnknown(ls, NULL, NULL, NULL);
             ParseLocationSet(
-                ls, NULL, proc, CREATE_NEW_PARAM_OBJECTS_FALSE, 0, 0, &anotherFlag, &failed
+                ls, NULL, proc, CREATE_NEW_PARAM_OBJECTS_FALSE, FALSE, 0, &isReturnValue, &failed
             );
             if (!failed) {
                 if ((tk = lex()) != ',') {
                     CError_Error(ERR_COMMA_EXPECTED);
-                    failed = 1;
+                    failed = TRUE;
                 }
             }
             if (!failed) {
@@ -6144,7 +6718,7 @@ void PointerAnalysis_ParseEntryPointsToSpecifier(DeclInfo* di) {
                 if (!failed) {
                     if ((tk = lex()) != ')') {
                         CError_Error(ERR_RPAREN_EXPECTED);
-                        failed = 1;
+                        failed = TRUE;
                     }
                 }
                 if (!failed) {
@@ -6176,11 +6750,19 @@ void PointerAnalysis_ParseEntryPointsToSpecifier(DeclInfo* di) {
         }
     }
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -11
+#endif
 void PointerAnalysis_ParseExitPointsToSpecifier(DeclInfo* di) {
     Object* proc;
     Boolean failed;
-    Boolean anotherFlag;
+    Boolean isReturnValue;
 
     IRO_ASSERT(8088, di != NULL);
 
@@ -6195,12 +6777,12 @@ void PointerAnalysis_ParseExitPointsToSpecifier(DeclInfo* di) {
             "tk == TIDENTIFIER && strcmp(tkidentifier->name,\"exit_points_to\") == 0"
         );
 
-        failed = 0;
+        failed = FALSE;
 
         tk = lex();
         if (tk != '(') {
             CError_Error(ERR_LPAREN_EXPECTED);
-            failed = 1;
+            failed = TRUE;
         }
 
         if (!failed) {
@@ -6208,12 +6790,12 @@ void PointerAnalysis_ParseExitPointsToSpecifier(DeclInfo* di) {
             ls = LocationSet_New();
             LocationSet_InitUnknown(ls, NULL, NULL, NULL);
             ParseLocationSet(
-                ls, NULL, proc, CREATE_NEW_PARAM_OBJECTS_FALSE, 1, 0, &anotherFlag, &failed
+                ls, NULL, proc, CREATE_NEW_PARAM_OBJECTS_FALSE, TRUE, 0, &isReturnValue, &failed
             );
             if (!failed) {
                 if ((tk = lex()) != ',') {
                     CError_Error(ERR_COMMA_EXPECTED);
-                    failed = 1;
+                    failed = TRUE;
                 }
             }
             if (!failed) {
@@ -6234,7 +6816,7 @@ void PointerAnalysis_ParseExitPointsToSpecifier(DeclInfo* di) {
                 if (!failed) {
                     if ((tk = lex()) != ')') {
                         CError_Error(ERR_RPAREN_EXPECTED);
-                        failed = 1;
+                        failed = TRUE;
                     }
                 }
                 if (!failed) {
@@ -6253,7 +6835,7 @@ void PointerAnalysis_ParseExitPointsToSpecifier(DeclInfo* di) {
 
                     pointsToFunc = PartialTransferFunction_finalPointsToFn(ptf);
                     pte = PointsToEntry_New();
-                    if (anotherFlag) {
+                    if (isReturnValue) {
                         PointsToEntry_Init(pte, PartialTransferFunction_returnLocation(ptf), lss);
                     } else {
                         PointsToEntry_Init(pte, ls, lss);
@@ -6270,7 +6852,15 @@ void PointerAnalysis_ParseExitPointsToSpecifier(DeclInfo* di) {
         }
     }
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -11
+#endif
 void PointerAnalysis_ParseFunctionModifiesSpecifier(DeclInfo* di) {
     Object* proc;
     Boolean failed;
@@ -6291,7 +6881,7 @@ void PointerAnalysis_ParseFunctionModifiesSpecifier(DeclInfo* di) {
             "tk == TIDENTIFIER && strcmp(tkidentifier->name,\"function_modifies\") == 0"
         );
 
-        failed = 0;
+        failed = FALSE;
         lss = LocationSetSet_New();
         LocationSetSet_Init(lss);
         ParseLocationSetSet(lss, NULL, proc, CREATE_NEW_PARAM_OBJECTS_FALSE, &failed);
@@ -6312,7 +6902,9 @@ void PointerAnalysis_ParseFunctionModifiesSpecifier(DeclInfo* di) {
         LocationSetSet_Delete(lss);
     }
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
-// TODO: 2.6 lays out this unit's .bss at 2-byte packing (stMaxPassCount at 0x5e0272): the packing in
-// force at the end of the file decides it (as in CompilerTools.c)
 #pragma pack(2)

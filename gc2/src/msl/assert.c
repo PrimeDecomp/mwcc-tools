@@ -1,4 +1,3 @@
-/* MSL's assert.c as 2.6 links it: the console branch (to stderr), where lib/msl's copy has the Win32 MessageBox one */
 #include "ansi_prefix.Win32.h"
 #include <assert.h>
 #include <stdio.h>

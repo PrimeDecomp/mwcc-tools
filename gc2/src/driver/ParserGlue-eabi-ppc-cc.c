@@ -3,6 +3,7 @@
 #include "driver/IO.h"
 #include "driver/OptimizerHelpers.h"
 #include "driver/option_system.h"
+#include "driver/parser.h"
 #include "driver/ParserErrors.h"
 #include "driver/ParserFace.h"
 #include "driver/ParserHelpers.h"
@@ -16,26 +17,25 @@
 #include "driver/ToolHelpers-cc.h"
 #include "driver/WarningHelpers.h"
 
-// The command line compiler's preference panels, option tables and parse hooks (Pro7's
-// ParserGlue-mach-ppc-cc.c and ParserGlue-mach-ppc-common.h; the tables are generated from the
-// original's .data by tools/gen_options.py)
-
-PCmdLine pCmdLine = {0x1002, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2};
+PCmdLine pCmdLine = {
+    0x1002, 0, 0, 0, 0, FALSE, FALSE, 0, FALSE, FALSE, FALSE, FALSE, 0, 0, 0, FALSE, 2
+};
 PCmdLineCompiler pCmdLineCompiler = {0x1005};
 PCmdLineLinker pCmdLineLinker = {0x1000};
-PBackEnd pBackEnd = {0xb, 2, 0, 1, 0, 0, 0, 0, {0}, 0, 0, 0, 1, 0, 0x14};
+PBackEnd pBackEnd = {0xb, 2, FALSE, TRUE, 0, FALSE, 0, FALSE, {0}, FALSE, 0, FALSE, 1, FALSE, 0x14};
 // clang-format off
-PLinker pLinker = {5,          0,         0,          0,          0,          0,      0,     0, 0, 0, 0, 0, 0, 0, 0,
+PLinker pLinker = {5,          FALSE,         0,          FALSE,          FALSE,          FALSE,      FALSE,     FALSE, FALSE, FALSE, FALSE, 0, FALSE, FALSE, FALSE,
                    0x10000,    0x3000,    0,          0,          0x3dfff0,   0x2800000, 0xffe00000, 0x1a, 1, 0,
                    "__start"};
 // clang-format on
-PDisassembler pDisassembler = {3, 0, 0, 0, 0, 1, 1, 0, 1, 0, 1, 1};
+PDisassembler pDisassembler = {
+    3, FALSE, FALSE, FALSE, 0, TRUE, TRUE, FALSE, TRUE, FALSE, TRUE, TRUE
+};
 PProject pProject = {7, {0}, 0x400, 0x40, 1, 8, 8, 1};
 PCLTExtras pCLTExtras = {1};
 
 static Boolean useDefaultIncludes = TRUE;
 static Boolean useDefaultLibraries = TRUE;
-// (a COMMON Pro7's Mach-O tool lacks, as it lacks the option; the debugging options set it)
 Boolean symFullPath;
 
 #include "Opts-eabi-ppc-cc/OptsCmdLine.opt"
@@ -79,40 +79,39 @@ static PrefDataPanel stPrefPanels[] = {
 };
 // clang-format on
 
-PFrontEndC pFrontEndC = {0xc, 0, 0, 0, 0, 0, 0, 0, "", 0, 0, 1, 1, 0, 0, 0, 1, 0, 0, 0, 1};
+PFrontEndC pFrontEndC = {0xc,  FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, "",    FALSE, FALSE,
+                         TRUE, TRUE,  FALSE, FALSE, FALSE, TRUE,  FALSE, FALSE, FALSE, TRUE};
 PWarningC pWarningC = {4};
 PGlobalOptimizer pGlobalOptimizer = {1, 0, 1};
 
 static int PreParse(void) {
-    // (2.6: the linker's -sreceol default, where Pro7 resets schedule_ppc_default)
     pLinker.sreceol = TRUE;
     setLinkerOutputFilename = FALSE;
     linkerOutputFilename[0] = 0;
     definesHandle = NULL;
     useDefaultIncludes = TRUE;
-    return 1;
+    return TRUE;
 }
 
 static int MidParse(void) {
     const char* match;
     const char* env;
-    // (2.6 compiles and links by default; Pro7's Mach-O tool only compiles)
     if (!pCmdLine.state) {
         pCmdLine.state = OptsCmdLineState_CompileAndLink;
     }
     if (parseopts.possibleFiles > 0 && useDefaultIncludes) {
-        if ((env = GetEnvVar("MWCEABIPPCIncludes\0MWCIncludes\0", 1, &match))) {
-            if (!AddAccessPathList(env, ';', ':', 1, (char*)match, 1, -1, 0)) {
-                return 0;
+        if ((env = GetEnvVar("MWCEABIPPCIncludes\0MWCIncludes\0", TRUE, &match))) {
+            if (!AddAccessPathList(env, ';', ':', 1, (char*)match, TRUE, -1, FALSE)) {
+                return FALSE;
             }
         }
     }
-    return 1;
+    return TRUE;
 }
 
 static int PostParse(void) {
     if (!SetupPragmas(irPragmas) || !SetupPragmas(warningPragmas)) {
-        return 0;
+        return FALSE;
     }
     if (definesHandle) {
         static const char* name = "(command-line defines)";
@@ -125,10 +124,9 @@ static int PostParse(void) {
         pFrontEndC.oldprefixname[0] = 0;
     }
     FinishCompilerTool();
-    if (!ValidateToolState(1)) {
-        return 0;
+    if (!ValidateToolState(TRUE)) {
+        return FALSE;
     }
-    // (2.6)
     if (pBackEnd.use_lmw_stmw && !pProject.endian) {
         CLPReport(
             CLPStr28_WarningText,
@@ -142,10 +140,9 @@ static int PostParse(void) {
         Arg_AddToToolArgs(&linkargs, ATK_ARG, linkerOutputFilename);
         Arg_AddToToolArgs(&linkargs, ATK_ARG_END, NULL);
     }
-    // (2.6)
     pLinker.debugInfo = pCmdLine.debugInfo;
     pLinker.symfullpath = symFullPath;
-    return 1;
+    return TRUE;
 }
 
 // clang-format off

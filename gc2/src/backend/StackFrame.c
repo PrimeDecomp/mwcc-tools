@@ -7,11 +7,11 @@
 #include "compiler/CodeGen.h"
 #include "compiler/CompilerTools.h"
 #include "compiler/CParser.h"
-#include "compiler/CPrep.h"
 #include "compiler/CScope.h"
 #include "compiler/objects.h"
 #include "compiler/ObjGen_PPC_EABI.h"
 #include "compiler/PCode.h"
+#include "compiler/PCodeInfo.h"
 #include "compiler/PCodeUtilities.h"
 #include "compiler/PPCError.h"
 #include "compiler/RegisterInfo.h"
@@ -20,27 +20,25 @@
 #include <stdio.h>
 #include <string.h>
 
-// Pro7's StackFrame.c with 2.6's EABI frame, built -inline auto,deferred: the back chain at 0(r1),
-// LR saved at 4 in the caller's frame, an 8-byte linkage area, register save slots sized per class
-// (a Gekko paired single takes 16 bytes), `#pragma interrupt` routines (compute_interrupt_frame,
-// save_interrupt_registers, restore_interrupt_registers), the "<valocal>" area a varargs function's
-// register arguments go to, and `__rtos_change_stack` (fixup_rtos_stacks).
-
 #define ALIGN(thing, alignment) (~((alignment) - 1) & ((thing) + (alignment) - 1))
 #define ALIGN_REMAINDER(thing, alignment) (ALIGN(thing, alignment) - (thing))
 
+typedef enum ObjClass {
+    ObjClass_Local,
+    ObjClass_LargeNear,
+    ObjClass_LargeFar,
+    ObjClassMax
+} ObjClass;
+
 #pragma pack(push, 2)
-// The traceback table generate_traceback builds (Pro7's; 2.6 writes funcsize and namelen
-// big-endian). TODO: Pro7's members x0..xB are named after the XCOFF traceback table's fields
-// (AIX <sys/debug.h>), which this is
 typedef struct Traceback {
-    UInt8 zero[4]; // (the word of zeros that marks the table)
+    UInt8 zero[4];
     UInt8 version;
-    UInt8 lang; // (0 C, 9 C++)
+    UInt8 lang;
 
     UInt8 globallink : 1;
     UInt8 is_eprol : 1;
-    UInt8 has_tboff : 1; // set to 1
+    UInt8 has_tboff : 1;
     UInt8 int_proc : 1;
     UInt8 has_ctl : 1;
     UInt8 tocless : 1;
@@ -48,19 +46,19 @@ typedef struct Traceback {
     UInt8 log_abort : 1;
 
     UInt8 int_hndl : 1;
-    UInt8 name_present : 1; // set to 1
-    UInt8 has_dynamic_stack : 1; // set to 1 if dynamic_stack
+    UInt8 name_present : 1;
+    UInt8 has_dynamic_stack : 1;
     UInt8 cl_dis_inv : 3;
-    UInt8 uses_CRs : 1; // set to 1 if CRs used
-    UInt8 needs_link_register : 1; // set to 1 if link register used
+    UInt8 uses_CRs : 1;
+    UInt8 needs_link_register : 1;
 
-    UInt8 has_frame_size : 1; // set to 1 if frame_size is nonzero
-    UInt8 fixup : 1; // set to 0
-    UInt8 used_FPRs : 6; // stores non-volatile FPRs used
+    UInt8 has_frame_size : 1;
+    UInt8 fixup : 1;
+    UInt8 used_FPRs : 6;
 
-    UInt8 spare : 1; // set to 0
-    UInt8 has_vec_info : 1; // set to 1 if VRs or vrsave used
-    UInt8 used_GPRs : 6; // stores non-volatile GPRs used
+    UInt8 spare : 1;
+    UInt8 has_vec_info : 1;
+    UInt8 used_GPRs : 6;
 
     UInt8 fixedparms;
     UInt8 floatparms : 7;
@@ -80,7 +78,6 @@ typedef struct TracebackExtra {
 } TracebackExtra;
 #pragma pack(pop)
 
-// 2.6: a __rtos_change_stack's `stwu r1` (TODO: the type's name is made up)
 typedef struct FixupRTOSStack {
     struct FixupRTOSStack* next;
     PCode* stwu;
@@ -91,9 +88,8 @@ Boolean makes_call;
 Boolean uses_globals;
 Boolean dynamic_stack;
 Boolean large_stack;
-Boolean StackFrame_has_vectors; // 2.6: the function keeps paired singles in its nonvolatile FPRs
+Boolean StackFrame_has_vectors;
 
-// Pro7's statics (allocated in reverse declaration order) with 2.6's additions
 static SInt32 out_param_alignment;
 static SInt32 in_parameter_size;
 static SInt32 in_param_alignment;
@@ -106,22 +102,20 @@ static SInt32 local_data_size;
 static SInt32 local_data_limit;
 static SInt32 large_data_near_size;
 static SInt32 large_data_far_size;
-static Boolean frame_sizes_computed; // 2.6; TODO: the name is made up
+static Boolean frame_sizes_computed;
 static ObjectList* local_objects[ObjClassMax];
 static ObjectList* local_objects_tail[ObjClassMax];
 static SInt32 non_volatile_save_offset[RegClassMax];
-// 2.6: the save area of a `#pragma interrupt` routine. TODO: these names are made up.
-static SInt32
-    interrupt_class_offset[RegClassMax]; // each class's save slots, from the start of the area
-static SInt32 r11_save_offset; // where r11 and r0 are saved first (-1: r11 is not)
+static SInt32 interrupt_class_offset[RegClassMax];
+static SInt32 r11_save_offset;
 static SInt32 r0_save_offset;
 static SInt32 interrupt_saved_count[RegClassMax];
 static UInt32 interrupt_saved_mask[RegClassMax];
-static SInt32 save_slot_size[RegClassMax]; // a saved register's slot (FPR: 16 with paired singles)
-static SInt32 interrupt_save_offset; // the area's offset in the frame
+static SInt32 save_slot_size[RegClassMax];
+static SInt32 interrupt_save_offset;
 static SInt32 interrupt_save_size;
 static SInt32 interrupt_save_align;
-static SInt32 interrupt_spr_offset; // where SRR0/SRR1, DAR and DSISR go in the area
+static SInt32 interrupt_spr_offset;
 static SInt32 VRSAVE_save_offset;
 static SInt32 LR_save_offset;
 static SInt32 nonvolatile_save_size;
@@ -140,12 +134,8 @@ static short vrsave_register;
 static PCode* loadvrsave;
 static PCode* storevrsave;
 Object* dummyvaparam;
-Object* dummyvalocal; // 2.6: the "<valocal>" area (Wii's name)
-// 2.6: the function's `#pragma interrupt` record (Wii's name; TODO: Wii's is the
-// flags, 2.6's the record)
+Object* dummyvalocal;
 InterruptGenerationRecord* interrupt_routine_flags;
-// 2.6: the `stwu r1` of each __rtos_change_stack, patched with the outgoing
-// parameter area (Wii's name)
 FixupRTOSStack* fixup_rtos_stacks;
 
 static void insert_local_object(UInt8 oclass, Object* obj);
@@ -161,12 +151,14 @@ static void restore_nonvolatile_VRs(int reg, SInt32 offset);
 static void save_nonvolatile_GPRs(int reg, SInt32 offset);
 static void restore_nonvolatile_GPRs(int reg, SInt32 offset);
 static void do_allocate_dynamic_stack_space(
-    Boolean isConstantSize, int reg1, int reg2, SInt32 size
+    Boolean isConstantSize, int sizeReg, int backChainReg, SInt32 size
 );
 static void allocate_valocal(void);
 static void save_interrupt_registers(void);
 static void restore_interrupt_registers(void);
 static void compute_interrupt_frame(void);
+void update_out_param_align(int align);
+void update_in_param_align(int align);
 
 void init_stack_globals(Object* funcobj) {
     RegClass rclass;
@@ -241,7 +233,11 @@ void init_stack_globals(Object* funcobj) {
     }
 
     if (funcobj->qual & Q_INTERRUPT) {
-        PPC_EABI_SetSection(funcobj, 0, 0, TRUE);
+#if VERSION < VERSION_GC_2_0
+        PPC_EABI_SetSection(funcobj, 0, FALSE);
+#else
+        PPC_EABI_SetSection(funcobj, 0, FALSE, TRUE);
+#endif
         interrupt_routine_flags = GetInterruptRoutineFlags(funcobj);
     }
 }
@@ -249,11 +245,11 @@ void init_stack_globals(Object* funcobj) {
 void init_frame_sizes(Boolean has_varargs) {
     ObjectList* scan;
     Object* obj;
-    SInt32 r30;
+    SInt32 fixed_size;
     SInt32 align;
 
-    r30 = in_parameter_size + 8 + parameter_area_size_estimate;
-    frame_size_estimate = r30 + 2460;
+    fixed_size = in_parameter_size + 8 + parameter_area_size_estimate;
+    frame_size_estimate = fixed_size + 2460;
     for (scan = locals; scan; scan = scan->next) {
         obj = scan->object;
         align = CMach_AllocationAlignment(obj->type, obj->qual);
@@ -272,7 +268,7 @@ void init_frame_sizes(Boolean has_varargs) {
         requires_frame = TRUE;
     }
 
-    local_data_limit = 0x8000 - (r30 + 2460);
+    local_data_limit = 0x8000 - (fixed_size + 2460);
 
     if (dynamic_stack) {
         requires_frame = TRUE;
@@ -283,14 +279,14 @@ void init_frame_sizes(Boolean has_varargs) {
         dummylocal->name = GetHashNameNode("<dummy>");
         dummylocal->datatype = DLOCAL;
         dummylocal->u.var.info = CodeGen_GetNewVarInfo();
-        dummylocal->u.var.info->flags |= VarInfoFlag80;
+        dummylocal->u.var.info->flags |= VarInfoFlag_HasMemory;
         dummylocal->u.var.info->noregister = TRUE;
     }
 
     if (dynamic_stack) {
-        // 2.6: r31 is the frame pointer, which a global register variable must not have taken
-        if (n_real_registers[RegClass_GPR] > 31 && reg_state[RegClass_GPR][31] == RegState1) {
-            PPCError_ErrorTerm(PPCErrorStr215, 31);
+        if (n_real_registers[RegClass_GPR] > 31 &&
+            reg_state[RegClass_GPR][31] == RegState_Retained) {
+            PPCError_ErrorTerm(PPCERR_ASM_FRAME_POINTER, 31);
         }
         retain_register(NULL, RegClass_GPR, 31);
         _FP_ = 31;
@@ -304,37 +300,37 @@ void assign_local_memory(Object* obj) {
     VarInfo* vi;
 
     align = CMach_AllocationAlignment(obj->type, obj->qual);
-    if (!compressing_data_area && (obj->u.var.info->flags & VarInfoFlag80)) {
+    if (!compressing_data_area && (obj->u.var.info->flags & VarInfoFlag_HasMemory)) {
         return;
     }
 
     update_frame_align(align);
     if (local_data_size +
-        (ALIGN_REMAINDER(local_data_size, align) + ALIGN(obj->type->size, align)) <
+            (ALIGN_REMAINDER(local_data_size, align) + ALIGN(obj->type->size, align)) <
         local_data_limit) {
         local_data_size = ALIGN(local_data_size, align);
         vi = Registers_GetVarInfo(obj);
-        vi->flags &= ~VarInfoFlag2;
-        vi->flags |= VarInfoFlag80;
+        vi->flags &= ~VarInfoFlag_InReg;
+        vi->flags |= VarInfoFlag_HasMemory;
         obj->u.var.uid = local_data_size;
         local_data_size += ALIGN(obj->type->size, align);
-        insert_local_object(ObjClass0, obj);
+        insert_local_object(ObjClass_Local, obj);
     } else if (compressing_data_area || obj->type->size <= 32) {
         large_data_near_size = ALIGN(large_data_near_size, align);
         vi = Registers_GetVarInfo(obj);
-        vi->flags &= ~VarInfoFlag2;
-        vi->flags |= VarInfoFlag80;
+        vi->flags &= ~VarInfoFlag_InReg;
+        vi->flags |= VarInfoFlag_HasMemory;
         obj->u.var.uid = 0x8000 + large_data_near_size;
         large_data_near_size += ALIGN(obj->type->size, align);
-        insert_local_object(ObjClass1, obj);
+        insert_local_object(ObjClass_LargeNear, obj);
     } else {
         large_data_far_size = ALIGN(large_data_far_size, align);
         vi = Registers_GetVarInfo(obj);
-        vi->flags &= ~VarInfoFlag2;
-        vi->flags |= VarInfoFlag80;
+        vi->flags &= ~VarInfoFlag_InReg;
+        vi->flags |= VarInfoFlag_HasMemory;
         obj->u.var.uid = 0x10000 + large_data_far_size;
         large_data_far_size += ALIGN(obj->type->size, align);
-        insert_local_object(ObjClass2, obj);
+        insert_local_object(ObjClass_LargeFar, obj);
     }
 }
 
@@ -401,8 +397,7 @@ void compute_frame_sizes(void) {
     non_volatile_save_offset[RegClass_FPR] =
         -(save_slot_size[RegClass_FPR] * used_nonvolatile_registers[RegClass_FPR]);
     non_volatile_save_offset[RegClass_GPR] =
-        -(save_slot_size[RegClass_GPR] *
-          used_nonvolatile_registers[RegClass_GPR] -
+        -(save_slot_size[RegClass_GPR] * used_nonvolatile_registers[RegClass_GPR] -
           non_volatile_save_offset[RegClass_FPR]);
     nonvolatile_save_size = -non_volatile_save_offset[RegClass_GPR];
     if (used_nonvolatile_registers[RegClass_CRFIELD] && !interrupt_routine_flags) {
@@ -488,23 +483,23 @@ void compute_frame_sizes(void) {
     frame_sizes_computed = TRUE;
 }
 
-static void allocate_new_frame(int reg1, int reg2) {
+static void allocate_new_frame(int scratchReg, int callerReg) {
     if (dynamic_align_stack) {
-        emitpcode(PC_RLWINM, reg1, 1, 0, align_bits(frame_alignment, 1), 31);
+        emitpcode(PC_RLWINM, scratchReg, 1, 0, align_bits(frame_alignment, 1), 31);
         if (frame_size > 0x7FFF) {
             CError_FATAL(1151);
         } else {
             if (frame_size) {
-                emitpcode(PC_SUBFIC, reg1, reg1, -frame_size);
+                emitpcode(PC_SUBFIC, scratchReg, scratchReg, -frame_size);
             } else {
-                emitpcode(PC_SUBFIC, reg1, reg1, -genuine_frame_size);
+                emitpcode(PC_SUBFIC, scratchReg, scratchReg, -genuine_frame_size);
             }
 
-            if (reg2) {
-                emitpcode(PC_MR, reg2, 1);
+            if (callerReg) {
+                emitpcode(PC_MR, callerReg, 1);
             }
 
-            emitpcode(PC_STWUX, 1, 1, reg1);
+            emitpcode(PC_STWUX, 1, 1, scratchReg);
         }
     } else {
         if (frame_size > 0x7FFF) {
@@ -513,8 +508,8 @@ static void allocate_new_frame(int reg1, int reg2) {
             emitpcode(PC_STWU, 1, 1, 0, -frame_size);
         }
 
-        if (reg2) {
-            emitpcode(PC_MR, reg2, 1);
+        if (callerReg) {
+            emitpcode(PC_MR, callerReg, 1);
         }
     }
 }
@@ -553,12 +548,9 @@ void generate_prologue(PCodeBlock* block, Boolean has_varargs) {
     if (setup_caller_sp && setup_caller_sp->block) {
         CError_ASSERT(
             1241,
-            !(setup_caller_sp->op ==
-              PC_MR &&
-              setup_caller_sp->args[1].kind ==
-              PCOp_REGISTER &&
-              setup_caller_sp->args[1].arg ==
-              RegClass_GPR &&
+            !(setup_caller_sp->op == PC_MR &&
+              setup_caller_sp->args[1].kind == PCOp_REGISTER &&
+              setup_caller_sp->args[1].arg == RegClass_GPR &&
               setup_caller_sp->args[1].data.reg.reg == _FP_)
         );
         _CALLER_SP_ = setup_caller_sp->args[0].data.reg.reg;
@@ -672,7 +664,7 @@ void generate_prologue(PCodeBlock* block, Boolean has_varargs) {
     }
 
     if (large_stack) {
-        do_allocate_dynamic_stack_space(1, 11, 0, large_data_near_size);
+        do_allocate_dynamic_stack_space(TRUE, 11, 0, large_data_near_size);
     }
 
     block->flags |= fIsProlog;
@@ -801,8 +793,6 @@ static void load_base_offset(int dest_reg, int base_reg, SInt32 offset) {
     }
 }
 
-// TODO: 2.6 converts i once for `32 - i` and the offset arithmetic (a long), so the register
-// number is written `32L - i`; what the original spelled is not known.
 static void save_nonvolatile_FPRs(int reg, SInt32 offset) {
     short i;
 
@@ -811,10 +801,9 @@ static void save_nonvolatile_FPRs(int reg, SInt32 offset) {
     if (!use_helper_function(RegClass_FPR)) {
         for (i = 1; i <= used_nonvolatile_registers[RegClass_FPR]; i++) {
             if (StackFrame_has_vectors) {
-                // 2.6: a paired single's second half goes 8 bytes after its double
-                if (used_nonvolatile_registers[RegClass_FPR] *
-                    save_slot_size[RegClass_FPR] +
-                    offset < 0x1000) {
+                if (used_nonvolatile_registers[RegClass_FPR] * save_slot_size[RegClass_FPR] +
+                        offset <
+                    0x1000) {
                     emitpcode(
                         PC_STFD,
                         32L - i,
@@ -822,7 +811,7 @@ static void save_nonvolatile_FPRs(int reg, SInt32 offset) {
                         NULL,
                         offset +
                             (used_nonvolatile_registers[RegClass_FPR] - i) *
-                            save_slot_size[RegClass_FPR]
+                                save_slot_size[RegClass_FPR]
                     );
                     setpcodeflags(fIsVolatile);
                     emitpcode(
@@ -830,10 +819,9 @@ static void save_nonvolatile_FPRs(int reg, SInt32 offset) {
                         32L - i,
                         reg,
                         0,
-                        offset +
-                            8 +
+                        offset + 8 +
                             (used_nonvolatile_registers[RegClass_FPR] - i) *
-                            save_slot_size[RegClass_FPR],
+                                save_slot_size[RegClass_FPR],
                         0,
                         SPR_GQR0
                     );
@@ -841,10 +829,9 @@ static void save_nonvolatile_FPRs(int reg, SInt32 offset) {
                     emitpcode(
                         PC_LI,
                         0,
-                        offset +
-                            8 +
+                        offset + 8 +
                             (used_nonvolatile_registers[RegClass_FPR] - i) *
-                            save_slot_size[RegClass_FPR]
+                                save_slot_size[RegClass_FPR]
                     );
                     setpcodeflags(fIsVolatile);
                     emitpcode(
@@ -854,7 +841,7 @@ static void save_nonvolatile_FPRs(int reg, SInt32 offset) {
                         NULL,
                         offset +
                             (used_nonvolatile_registers[RegClass_FPR] - i) *
-                            save_slot_size[RegClass_FPR]
+                                save_slot_size[RegClass_FPR]
                     );
                     setpcodeflags(fIsVolatile);
                     emitpcode(PC_PSQ_STX, 32L - i, reg, 0, 0, SPR_GQR0);
@@ -876,8 +863,6 @@ static void save_nonvolatile_FPRs(int reg, SInt32 offset) {
     }
 }
 
-// TODO: 2.6 converts i once for `32 - i` and the offset arithmetic (a long), so the register
-// number is written `32L - i`; what the original spelled is not known.
 static void save_nonvolatile_VRs(int reg, SInt32 offset) {
     short i;
 
@@ -895,8 +880,6 @@ static void save_nonvolatile_VRs(int reg, SInt32 offset) {
     }
 }
 
-// TODO: 2.6 converts i once for `32 - i` and the offset arithmetic (a long), so the register
-// number is written `32L - i`; what the original spelled is not known.
 static void restore_nonvolatile_FPRs(int reg, SInt32 offset) {
     short i;
 
@@ -905,18 +888,17 @@ static void restore_nonvolatile_FPRs(int reg, SInt32 offset) {
     if (!use_helper_function(RegClass_FPR)) {
         for (i = 1; i <= used_nonvolatile_registers[RegClass_FPR]; i++) {
             if (StackFrame_has_vectors) {
-                if (used_nonvolatile_registers[RegClass_FPR] *
-                    save_slot_size[RegClass_FPR] +
-                    offset < 0x1000) {
+                if (used_nonvolatile_registers[RegClass_FPR] * save_slot_size[RegClass_FPR] +
+                        offset <
+                    0x1000) {
                     emitpcode(
                         PC_PSQ_L,
                         32L - i,
                         reg,
                         0,
-                        offset +
-                            8 +
+                        offset + 8 +
                             (used_nonvolatile_registers[RegClass_FPR] - i) *
-                            save_slot_size[RegClass_FPR],
+                                save_slot_size[RegClass_FPR],
                         0,
                         SPR_GQR0
                     );
@@ -928,17 +910,16 @@ static void restore_nonvolatile_FPRs(int reg, SInt32 offset) {
                         NULL,
                         offset +
                             (used_nonvolatile_registers[RegClass_FPR] - i) *
-                            save_slot_size[RegClass_FPR]
+                                save_slot_size[RegClass_FPR]
                     );
                     setpcodeflags(fIsVolatile);
                 } else {
                     emitpcode(
                         PC_LI,
                         0,
-                        offset +
-                            8 +
+                        offset + 8 +
                             (used_nonvolatile_registers[RegClass_FPR] - i) *
-                            save_slot_size[RegClass_FPR]
+                                save_slot_size[RegClass_FPR]
                     );
                     setpcodeflags(fIsVolatile);
                     emitpcode(PC_PSQ_LX, 32L - i, reg, 0, 0, SPR_GQR0);
@@ -950,7 +931,7 @@ static void restore_nonvolatile_FPRs(int reg, SInt32 offset) {
                         NULL,
                         offset +
                             (used_nonvolatile_registers[RegClass_FPR] - i) *
-                            save_slot_size[RegClass_FPR]
+                                save_slot_size[RegClass_FPR]
                     );
                     setpcodeflags(fIsVolatile);
                 }
@@ -971,8 +952,6 @@ static void restore_nonvolatile_FPRs(int reg, SInt32 offset) {
     }
 }
 
-// TODO: 2.6 converts i once for `32 - i` and the offset arithmetic (a long), so the register
-// number is written `32L - i`; what the original spelled is not known.
 static void restore_nonvolatile_VRs(int reg, SInt32 offset) {
     short i;
 
@@ -1012,7 +991,7 @@ static void save_nonvolatile_GPRs(int reg, SInt32 offset) {
                     0,
                     offset +
                         (used_nonvolatile_registers[RegClass_GPR] - i) *
-                        save_slot_size[RegClass_GPR]
+                            save_slot_size[RegClass_GPR]
                 );
             }
         }
@@ -1054,37 +1033,37 @@ static void restore_nonvolatile_GPRs(int reg, SInt32 offset) {
 }
 
 static void do_allocate_dynamic_stack_space(
-    Boolean isConstantSize, int reg1, int reg2, SInt32 size
+    Boolean isConstantSize, int sizeReg, int backChainReg, SInt32 size
 ) {
-    load_store_register(PC_LWZ, reg2, 1, NULL, 0);
+    load_store_register(PC_LWZ, backChainReg, 1, NULL, 0);
     if (isConstantSize) {
         size = ALIGN(size, frame_alignment);
         if (size < 0x8000) {
-            emitpcode(PC_STWU, reg2, 1, 0, -size);
+            emitpcode(PC_STWU, backChainReg, 1, 0, -size);
         } else {
-            emitpcode(PC_LIS, reg1, 0, HIGH_PART(-size));
+            emitpcode(PC_LIS, sizeReg, 0, HIGH_PART(-size));
             if (LOW_PART(-size)) {
-                emitpcode(PC_ADDI, reg1, reg1, 0, LOW_PART(-size));
+                emitpcode(PC_ADDI, sizeReg, sizeReg, 0, LOW_PART(-size));
             }
-            emitpcode(PC_STWUX, reg2, 1, reg1);
+            emitpcode(PC_STWUX, backChainReg, 1, sizeReg);
             setpcodeflags(fIsVolatile | fSideEffects);
         }
     } else {
-        emitpcode(PC_STWUX, reg2, 1, reg1);
+        emitpcode(PC_STWUX, backChainReg, 1, sizeReg);
         setpcodeflags(fIsVolatile | fSideEffects);
     }
 }
 
-void allocate_dynamic_stack_space(Boolean isConstantSize, int reg1, int reg2, SInt32 size) {
+void allocate_dynamic_stack_space(
+    Boolean isConstantSize, int resultReg, int backChainReg, SInt32 size
+) {
     if (copts.altivec_model) {
         update_frame_align(16);
     }
-    do_allocate_dynamic_stack_space(isConstantSize, reg1, reg2, size);
-    add_immediate(reg1, 1, dummylocal, 0);
+    do_allocate_dynamic_stack_space(isConstantSize, resultReg, backChainReg, size);
+    add_immediate(resultReg, 1, dummylocal, 0);
 }
 
-// 2.6: __rtos_change_stack moves the stack pointer to REG, keeping room for the outgoing parameters
-// (the size is only known once the frame is, so generate_prologue patches it)
 void change_dynamic_stack_space(int reg) {
     SInt32 size;
     FixupRTOSStack* fixup;
@@ -1113,9 +1092,7 @@ char* generate_traceback(SInt32 funcsize, char* funcname, SInt32* tbsize, Object
 
     namelen = strlen(funcname);
     bufsize = ALIGN(
-        sizeof(Traceback) +
-            namelen +
-            (dynamic_stack ? 1 : 0) +
+        sizeof(Traceback) + namelen + (dynamic_stack ? 1 : 0) +
             ((used_nonvolatile_registers[RegClass_VR] || vrsave_mask) ? sizeof(TracebackExtra) : 0),
         4
     );
@@ -1143,8 +1120,6 @@ char* generate_traceback(SInt32 funcsize, char* funcname, SInt32* tbsize, Object
     buf->fixup = 0;
     buf->spare = 0;
     buf->has_vec_info = (used_nonvolatile_registers[RegClass_VR] || vrsave_mask) ? 1 : 0;
-    // 2.6: funcsize and namelen are written big-endian through the cursor (assigning the fields
-    // themselves gives other code)
     work = (char*)&buf->funcsize;
     *((SInt32*)work) = CTool_EndianConvertWord32(funcsize);
     *((SInt16*)(work + 4)) = CTool_EndianConvertWord16(namelen);
@@ -1238,10 +1213,10 @@ void move_varargs_to_memory(void) {
     dummyvaparam->u.var.uid = in_parameter_size;
     dummyvaparam->u.var.info->noregister = TRUE;
     Registers_GetVarInfo(dummyvaparam)->flags =
-        (Registers_GetVarInfo(dummyvaparam)->flags & ~VarInfoFlag1) | VarInfoFlag1;
-    ORACLE_INLINED(local_base_register(dummyvaparam));
+        (Registers_GetVarInfo(dummyvaparam)->flags & ~VarInfoFlag_ParamArea) |
+        VarInfoFlag_ParamArea;
+    local_base_register(dummyvaparam);
 
-    // 2.6: the FPR arguments are stored only when the caller set CR bit 6
     if (!copts.soft_float && copts.use_fp) {
         skip = makepclabel();
         save = makepclabel();
@@ -1251,11 +1226,7 @@ void move_varargs_to_memory(void) {
         branch_label(save);
         for (reg = 1; (int)reg <= 8; reg++) {
             emitpcode(
-                PC_STFD,
-                reg,
-                ORACLE_INLINED(local_base_register(dummyvalocal)),
-                dummyvalocal,
-                (reg - 1) * 8 + 32
+                PC_STFD, reg, local_base_register(dummyvalocal), dummyvalocal, (reg - 1) * 8 + 32
             );
             setpcodeflags(fIsPtrOp | fIsArgInit);
         }
@@ -1263,19 +1234,13 @@ void move_varargs_to_memory(void) {
     }
 
     for (reg = 3; (int)reg <= 10; reg++) {
-        emitpcode(
-            PC_STW,
-            reg,
-            ORACLE_INLINED(local_base_register(dummyvalocal)),
-            dummyvalocal,
-            (reg - 3) * 4
-        );
+        emitpcode(PC_STW, reg, local_base_register(dummyvalocal), dummyvalocal, (reg - 3) * 4);
         setpcodeflags(fIsPtrOp | fIsArgInit);
     }
-    ORACLE_INLINED(local_base_register(dummyvaparam));
+    local_base_register(dummyvaparam);
 }
 
-void assign_arguments_to_memory(Object* func, UInt8 mysteryFlag, Boolean hasVarargs) {
+void assign_arguments_to_memory(Object* func, UInt8 oldStyleParameters, Boolean hasVarargs) {
     SInt32 pos;
     ObjectList* list;
     Object* obj;
@@ -1284,7 +1249,7 @@ void assign_arguments_to_memory(Object* func, UInt8 mysteryFlag, Boolean hasVara
     short fpr;
     short vr;
     int chk;
-    Boolean flag;
+    Boolean inMemory;
 
     pos = 0;
     gpr = 3;
@@ -1298,23 +1263,22 @@ void assign_arguments_to_memory(Object* func, UInt8 mysteryFlag, Boolean hasVara
         obj = list->object;
         type = obj->type;
         if (!IS_TYPE_VECTOR(type)) {
-            flag = TRUE;
+            inMemory = TRUE;
             if ((TYPE_IS_8BYTES(type) ||
                  (TYPE_IS_SOFT_FLOAT(type) &&
-                  type->size !=
-                  4 &&
+                  type->size != 4 &&
                   !copts.incompatible_sfpe_double_params)) &&
                 (gpr % 2) == 0) {
                 gpr++;
             }
             if (IS_TYPE_FLOAT_NOT_VEC2X32FLOAT(type) && !TYPE_IS_SOFT_FLOAT(type)) {
                 if (fpr <= 8) {
-                    flag = FALSE;
+                    inMemory = FALSE;
                 }
                 fpr++;
             } else {
                 if (gpr <= 10) {
-                    flag = FALSE;
+                    inMemory = FALSE;
                 }
                 if (TYPE_IS_GPR_PAIR(type)) {
                     gpr += 2;
@@ -1329,7 +1293,7 @@ void assign_arguments_to_memory(Object* func, UInt8 mysteryFlag, Boolean hasVara
                 }
             }
 
-            if (flag) {
+            if (inMemory) {
                 obj->datatype = DLOCAL;
                 obj->u.var.info = CodeGen_GetNewVarInfo();
                 if (TYPE_IS_8BYTES(type) ||
@@ -1350,7 +1314,8 @@ void assign_arguments_to_memory(Object* func, UInt8 mysteryFlag, Boolean hasVara
                 }
                 obj->u.var.uid = pos;
                 Registers_GetVarInfo(obj)->flags =
-                    (Registers_GetVarInfo(obj)->flags & ~VarInfoFlag1) | VarInfoFlag1;
+                    (Registers_GetVarInfo(obj)->flags & ~VarInfoFlag_ParamArea) |
+                    VarInfoFlag_ParamArea;
                 if (!copts.littleendian &&
                     (IS_TYPE_INT(obj->type) || IS_TYPE_ENUM(obj->type)) &&
                     obj->type->size < 4) {
@@ -1367,20 +1332,22 @@ void assign_arguments_to_memory(Object* func, UInt8 mysteryFlag, Boolean hasVara
             obj->u.var.info = CodeGen_GetNewVarInfo();
             obj->u.var.uid = 0;
             obj->datatype = DLOCAL;
-            flag = TRUE;
+            inMemory = TRUE;
             if (vr <= 13) {
-                flag = FALSE;
+                inMemory = FALSE;
             }
-            if (flag) {
+            if (inMemory) {
                 pos = ALIGN(pos + 8, 16) - 8;
                 obj->u.var.uid = pos;
                 pos += 16;
                 update_in_param_align(16);
                 Registers_GetVarInfo(obj)->flags =
-                    (Registers_GetVarInfo(obj)->flags & ~VarInfoFlag1) | VarInfoFlag1;
+                    (Registers_GetVarInfo(obj)->flags & ~VarInfoFlag_ParamArea) |
+                    VarInfoFlag_ParamArea;
             } else {
                 assign_local_memory(obj);
-                Registers_GetVarInfo(obj)->flags = Registers_GetVarInfo(obj)->flags & ~VarInfoFlag1;
+                Registers_GetVarInfo(obj)->flags =
+                    Registers_GetVarInfo(obj)->flags & ~VarInfoFlag_ParamArea;
             }
             vr++;
         }
@@ -1390,38 +1357,40 @@ void assign_arguments_to_memory(Object* func, UInt8 mysteryFlag, Boolean hasVara
     CError_ASSERT(2542, !dummyvaparam);
 }
 
-SInt32 set_out_param_displ(SInt32 a, Type* type, Boolean flag, SInt32* outvar, SInt32 b) {
+SInt32 set_out_param_displ(
+    SInt32 displ, Type* type, Boolean passOnStack, SInt32* outvar, SInt32 size
+) {
     int argAlign;
 
-    if (!flag) {
-        *outvar = a;
-        return a;
+    if (!passOnStack) {
+        *outvar = displ;
+        return displ;
     }
 
     if (TYPE_IS_8BYTES(type) || (IS_TYPE_FLOAT_NOT_VEC2X32FLOAT(type) && type->size != 4)) {
         update_out_param_align(8);
-        a = ALIGN(a, 8);
+        displ = ALIGN(displ, 8);
     } else {
-        a = ALIGN(a, 4);
+        displ = ALIGN(displ, 4);
     }
 
     if (IS_TYPE_VECTOR(type)) {
         update_out_param_align(16);
-        a = ALIGN(a + 8, 16) - 8;
+        displ = ALIGN(displ + 8, 16) - 8;
     } else if (IS_TYPE_ARRAY(type) ||
                IS_TYPE_NONVECTOR_STRUCT(type) ||
                IS_TYPE_CLASS(type) ||
                IS_TYPE_12BYTES_MEMBERPOINTER(type)) {
         argAlign = CMach_ArgumentAlignment(type);
         if (argAlign > 4) {
-            a = ALIGN(a + 8, argAlign) - 8;
+            displ = ALIGN(displ + 8, argAlign) - 8;
             update_in_param_align(argAlign);
         }
     }
 
-    *outvar = a;
-    a += b;
-    return a;
+    *outvar = displ;
+    displ += size;
+    return displ;
 }
 
 SInt32 out_param_displ_to_offset(SInt32 displ) {
@@ -1466,14 +1435,12 @@ void update_frame_align(int align) {
     }
 }
 
-// (2.6 has Pro7's localsbase and parametersbase written out here: as calls to them the function is
-// short enough for -inline auto to inline into local_offset_lo and the others, which 2.6 calls)
 SInt32 local_offset_32(Object* obj) {
     short align;
     SInt32 offset;
     SInt32 base;
 
-    if (obj->u.var.info->flags & VarInfoFlag1) {
+    if (obj->u.var.info->flags & VarInfoFlag_ParamArea) {
         align = CMach_ArgumentAlignment(obj->type);
     } else {
         align = CMach_AllocationAlignment(obj->type, obj->qual);
@@ -1484,8 +1451,8 @@ SInt32 local_offset_32(Object* obj) {
         offset = 0x8000 - offset - ALIGN(obj->type->size, align);
     }
 
-    if (obj->u.var.info->flags & VarInfoFlag1) {
-        if (ORACLE_INLINED(local_base_register(obj)) == _FP_ && frame_size) {
+    if (obj->u.var.info->flags & VarInfoFlag_ParamArea) {
+        if (local_base_register(obj) == _FP_ && frame_size) {
             base = genuine_frame_size + 8;
         } else {
             base = 8;
@@ -1534,7 +1501,7 @@ Boolean local_is_16bit_offset(Object* obj) {
 int local_base_register(Object* obj) {
     SInt32 reg;
 
-    if (obj->u.var.info->flags & VarInfoFlag1) {
+    if (obj->u.var.info->flags & VarInfoFlag_ParamArea) {
         if (coloring && _CALLER_SP_ == -1) {
             reg = ALLOC_GPR();
             _CALLER_SP_ = reg;
@@ -1545,10 +1512,6 @@ int local_base_register(Object* obj) {
     }
     return _FP_;
 }
-
-#ifdef ORACLE_PROBES
-#define local_base_register(...) ORACLE_INLINED(local_base_register(__VA_ARGS__))
-#endif
 
 static UInt32 align_bits(UInt32 value, UInt8 bitcount) {
     UInt32 base = bitcount ? 32 : 31;
@@ -1726,7 +1689,7 @@ static SInt32 nearest_power_of_two(SInt32 n) {
 }
 
 static void compress_data_area(void) {
-    SInt32 r0;
+    SInt32 param_size;
     ObjectList* list;
     Object* obj;
     PCodeBlock* block;
@@ -1736,48 +1699,46 @@ static void compress_data_area(void) {
     compressing_data_area = TRUE;
 
     if (large_stack) {
-        r0 = 0;
+        param_size = 0;
     } else if (parameter_area_size < 0) {
-        r0 = 0;
+        param_size = 0;
     } else {
-        r0 = parameter_area_size;
+        param_size = parameter_area_size;
     }
     local_data_limit = 0x8000 -
-        ALIGN(ALIGN(r0 + interrupt_save_size + 8, frame_alignment) +
-                  nonvolatile_save_size +
+        ALIGN(ALIGN(param_size + interrupt_save_size + 8, frame_alignment) + nonvolatile_save_size +
                   in_parameter_size,
               frame_alignment);
 
-    if (local_objects_tail[ObjClass0]) {
-        if (local_objects[ObjClass1]) {
-            local_objects_tail[ObjClass0]->next = local_objects[ObjClass1];
-            local_objects_tail[ObjClass0] = local_objects_tail[ObjClass1];
+    if (local_objects_tail[ObjClass_Local]) {
+        if (local_objects[ObjClass_LargeNear]) {
+            local_objects_tail[ObjClass_Local]->next = local_objects[ObjClass_LargeNear];
+            local_objects_tail[ObjClass_Local] = local_objects_tail[ObjClass_LargeNear];
         }
-        if (local_objects[ObjClass2]) {
-            local_objects_tail[ObjClass0]->next = local_objects[ObjClass2];
-            local_objects_tail[ObjClass0] = local_objects_tail[ObjClass2];
+        if (local_objects[ObjClass_LargeFar]) {
+            local_objects_tail[ObjClass_Local]->next = local_objects[ObjClass_LargeFar];
+            local_objects_tail[ObjClass_Local] = local_objects_tail[ObjClass_LargeFar];
         }
-    } else if (local_objects_tail[ObjClass1]) {
-        local_objects[ObjClass0] = local_objects[ObjClass1];
-        local_objects_tail[ObjClass0] = local_objects_tail[ObjClass1];
-        if (local_objects[ObjClass2]) {
-            local_objects_tail[ObjClass0]->next = local_objects[ObjClass2];
-            local_objects_tail[ObjClass0] = local_objects_tail[ObjClass2];
+    } else if (local_objects_tail[ObjClass_LargeNear]) {
+        local_objects[ObjClass_Local] = local_objects[ObjClass_LargeNear];
+        local_objects_tail[ObjClass_Local] = local_objects_tail[ObjClass_LargeNear];
+        if (local_objects[ObjClass_LargeFar]) {
+            local_objects_tail[ObjClass_Local]->next = local_objects[ObjClass_LargeFar];
+            local_objects_tail[ObjClass_Local] = local_objects_tail[ObjClass_LargeFar];
         }
     } else {
-        local_objects[ObjClass0] = local_objects[ObjClass2];
-        local_objects_tail[ObjClass0] = local_objects_tail[ObjClass2];
+        local_objects[ObjClass_Local] = local_objects[ObjClass_LargeFar];
+        local_objects_tail[ObjClass_Local] = local_objects_tail[ObjClass_LargeFar];
     }
 
-    for (list = local_objects[ObjClass0]; list; list = list->next) {
+    for (list = local_objects[ObjClass_Local]; list; list = list->next) {
         Registers_GetVarInfo(list->object)->used = FALSE;
     }
 
     for (block = pcbasicblocks; block; block = block->nextBlock) {
         for (pc = block->firstPCode; pc; pc = pc->nextPCode) {
             for (i = 0; i < pc->argCount; i++) {
-                if (pc->args[i].kind ==
-                    PCOp_MEMORY &&
+                if (pc->args[i].kind == PCOp_MEMORY &&
                     pc->args[i].data.mem.obj &&
                     pc->args[i].data.mem.obj->datatype == DLOCAL) {
                     Registers_GetVarInfo(pc->args[i].data.mem.obj)->used = TRUE;
@@ -1790,7 +1751,7 @@ static void compress_data_area(void) {
     large_data_near_size = 0;
     large_data_far_size = 0;
 
-    for (list = local_objects[ObjClass0]; list; list = list->next) {
+    for (list = local_objects[ObjClass_Local]; list; list = list->next) {
         obj = list->object;
         if (Registers_GetVarInfo(obj)->used) {
             assign_local_memory(obj);
@@ -1815,8 +1776,6 @@ static void insert_local_object(UInt8 oclass, Object* obj) {
     }
 }
 
-// 2.6: a varargs function's register arguments are stored in "<valocal>", the first local: 8 GPRs,
-// and 8 FPRs after them when the FPU is used. TODO: the name is made up.
 static void allocate_valocal(void) {
     int size = 0;
 
@@ -1837,11 +1796,8 @@ static void allocate_valocal(void) {
     assign_local_memory(dummyvalocal);
 }
 
-// 2.6: a `#pragma interrupt` routine's prologue: the frame, r0 and r11 (and the frame's
-// realignment), CTR, XER, CR, LR and the MSR, the scratch registers it uses, and SRR0/SRR1, DAR and
-// DSISR when asked for. TODO: the name is made up.
 static void save_interrupt_registers(void) {
-    SInt32 o;
+    SInt32 offset;
     int i;
     int reg;
 
@@ -1878,103 +1834,96 @@ static void save_interrupt_registers(void) {
         setpcodeflags(fIsArgInit);
     }
 
-    o = interrupt_save_offset;
+    offset = interrupt_save_offset;
     emitpcode(PC_MFCTR, 0);
-    emitpcode(PC_STW, 0, 1, 0, o);
+    emitpcode(PC_STW, 0, 1, 0, offset);
     emitpcode(PC_MFXER, 0);
-    emitpcode(PC_STW, 0, 1, 0, o + 4);
+    emitpcode(PC_STW, 0, 1, 0, offset + 4);
     emitpcode(PC_MFCR, 0);
-    emitpcode(PC_STW, 0, 1, 0, o + 8);
+    emitpcode(PC_STW, 0, 1, 0, offset + 8);
     emitpcode(PC_MFLR, 0);
-    emitpcode(PC_STW, 0, 1, 0, o + 12);
+    emitpcode(PC_STW, 0, 1, 0, offset + 12);
     if (interrupt_saved_count[RegClass_VR] || interrupt_saved_count[RegClass_FPR]) {
         emitpcode(PC_MFMSR, 0);
-        o += 16;
-        emitpcode(PC_STW, 0, 1, 0, o);
+        offset += 16;
+        emitpcode(PC_STW, 0, 1, 0, offset);
     }
 
     if (interrupt_saved_count[RegClass_GPR]) {
-        o = interrupt_class_offset[RegClass_GPR];
+        offset = interrupt_class_offset[RegClass_GPR];
         for (i = 0; i < n_scratch_registers[RegClass_GPR]; i++) {
             reg = scratch_registers[RegClass_GPR][i];
-            if (reg !=
-                0 &&
+            if (reg != 0 &&
                 (reg != 11 || r11_save_offset == -1) &&
                 (interrupt_saved_mask[RegClass_GPR] & (1 << reg))) {
-                emitpcode(PC_STW, reg, 1, 0, o + i * save_slot_size[RegClass_GPR]);
+                emitpcode(PC_STW, reg, 1, 0, offset + i * save_slot_size[RegClass_GPR]);
             }
         }
     }
 
     if (interrupt_saved_count[RegClass_VR]) {
-        // make AltiVec available
         emitpcode(PC_MFMSR, 0);
         emitpcode(PC_ORIS, 0, 0, 0x200);
         emitpcode(PC_MTMSR, 0);
         setpcodeflags(fIsVolatile | fSideEffects);
         emitpcode(PC_SYNC);
-        o = interrupt_class_offset[RegClass_VR];
+        offset = interrupt_class_offset[RegClass_VR];
         for (i = 0; i < n_scratch_registers[RegClass_VR]; i++) {
             reg = scratch_registers[RegClass_VR][i];
             if (interrupt_saved_mask[RegClass_VR] & (1 << reg)) {
-                emitpcode(PC_LI, 0, o);
+                emitpcode(PC_LI, 0, offset);
                 emitpcode(PC_STVX, reg, 1, 0);
-                o += save_slot_size[RegClass_VR];
+                offset += save_slot_size[RegClass_VR];
             }
         }
     }
 
     if (interrupt_saved_count[RegClass_FPR]) {
-        // make the FPU available
         emitpcode(PC_MFMSR, 0);
         emitpcode(PC_ORI, 0, 0, 0x2000);
         emitpcode(PC_MTMSR, 0);
         setpcodeflags(fIsVolatile | fSideEffects);
         emitpcode(PC_SYNC);
-        o = interrupt_class_offset[RegClass_FPR];
+        offset = interrupt_class_offset[RegClass_FPR];
         for (i = 0; i < n_scratch_registers[RegClass_FPR]; i++) {
             reg = scratch_registers[RegClass_FPR][i];
             if (interrupt_saved_mask[RegClass_FPR] & (1 << reg)) {
-                emitpcode(PC_STFD, reg, 1, 0, o + i * save_slot_size[RegClass_FPR]);
+                emitpcode(PC_STFD, reg, 1, 0, offset + i * save_slot_size[RegClass_FPR]);
             }
         }
     }
 
-    o = interrupt_save_offset + interrupt_spr_offset;
+    offset = interrupt_save_offset + interrupt_spr_offset;
     if (interrupt_routine_flags->flags & Interrupt_SRR) {
         emitpcode(PC_MFSPR, 0, 26);
-        emitpcode(PC_STW, 0, 1, 0, o);
+        emitpcode(PC_STW, 0, 1, 0, offset);
         emitpcode(PC_MFSPR, 0, 27);
-        emitpcode(PC_STW, 0, 1, 0, o + 4);
-        o += 8;
+        emitpcode(PC_STW, 0, 1, 0, offset + 4);
+        offset += 8;
     }
     if (interrupt_routine_flags->flags & Interrupt_DAR) {
         emitpcode(PC_MFSPR, 0, 19);
-        emitpcode(PC_STW, 0, 1, 0, o);
-        o += 4;
+        emitpcode(PC_STW, 0, 1, 0, offset);
+        offset += 4;
     }
     if (interrupt_routine_flags->flags & Interrupt_DSISR) {
         emitpcode(PC_MFSPR, 0, 18);
-        emitpcode(PC_STW, 0, 1, 0, o);
+        emitpcode(PC_STW, 0, 1, 0, offset);
     }
     if (interrupt_routine_flags->flags & Interrupt_Enable) {
-        // enable interrupts (EE) and keep RI
         emitpcode(PC_MFMSR, 0);
         emitpcode(PC_ORI, 0, 0, 0x8002);
         emitpcode(PC_MTMSR, 0);
     }
 }
 
-// 2.6: a `#pragma interrupt` routine's epilogue, save_interrupt_registers in reverse. TODO:
-// the name is made up.
 static void restore_interrupt_registers(void) {
     int base;
-    SInt32 o;
+    SInt32 offset;
     int i;
     int reg;
 
     if (interrupt_routine_flags->flags & Interrupt_Enable) {
-        // disable interrupts again
         emitpcode(PC_MFMSR, 0);
         emitpcode(PC_ADDIS, 11, 0, 0, 1);
         emitpcode(PC_ADDI, 11, 11, 0, -0x7FFE);
@@ -1989,72 +1938,72 @@ static void restore_interrupt_registers(void) {
         setpcodeflags(fSideEffects);
     }
 
-    o = interrupt_save_offset + interrupt_spr_offset;
+    offset = interrupt_save_offset + interrupt_spr_offset;
     if (interrupt_routine_flags->flags & Interrupt_SRR) {
-        emitpcode(PC_LWZ, 0, base, 0, o);
+        emitpcode(PC_LWZ, 0, base, 0, offset);
         emitpcode(PC_MTSPR, 26, 0);
-        emitpcode(PC_LWZ, 0, base, 0, o + 4);
+        emitpcode(PC_LWZ, 0, base, 0, offset + 4);
         emitpcode(PC_MTSPR, 27, 0);
-        o += 8;
+        offset += 8;
     }
     if (interrupt_routine_flags->flags & Interrupt_DAR) {
-        emitpcode(PC_LWZ, 0, base, 0, o);
+        emitpcode(PC_LWZ, 0, base, 0, offset);
         emitpcode(PC_MTSPR, 19, 0);
-        o += 4;
+        offset += 4;
     }
     if (interrupt_routine_flags->flags & Interrupt_DSISR) {
-        emitpcode(PC_LWZ, 0, base, 0, o);
+        emitpcode(PC_LWZ, 0, base, 0, offset);
         emitpcode(PC_MTSPR, 18, 0);
     }
 
     if (interrupt_saved_count[RegClass_FPR]) {
-        o = interrupt_class_offset[RegClass_FPR];
+        offset = interrupt_class_offset[RegClass_FPR];
         for (i = 0; i < n_scratch_registers[RegClass_FPR]; i++) {
             reg = scratch_registers[RegClass_FPR][i];
             if (interrupt_saved_mask[RegClass_FPR] & (1 << reg)) {
-                emitpcode(PC_LFD, reg, base, 0, o);
-                o += save_slot_size[RegClass_FPR];
+                emitpcode(PC_LFD, reg, base, 0, offset);
+                offset += save_slot_size[RegClass_FPR];
             }
         }
     }
 
     if (interrupt_saved_count[RegClass_VR]) {
-        o = interrupt_class_offset[RegClass_VR];
+        offset = interrupt_class_offset[RegClass_VR];
         for (i = 0; i < n_scratch_registers[RegClass_VR]; i++) {
             reg = scratch_registers[RegClass_VR][i];
             if (interrupt_saved_mask[RegClass_VR] & (1 << reg)) {
-                emitpcode(PC_LI, 0, o);
+                emitpcode(PC_LI, 0, offset);
                 emitpcode(PC_LVX, reg, base, 0);
-                o += save_slot_size[RegClass_VR];
+                offset += save_slot_size[RegClass_VR];
             }
         }
     }
 
     if (interrupt_saved_count[RegClass_GPR]) {
-        o = interrupt_class_offset[RegClass_GPR];
+        offset = interrupt_class_offset[RegClass_GPR];
         for (i = 0; i < n_scratch_registers[RegClass_GPR]; i++) {
             reg = scratch_registers[RegClass_GPR][i];
             if (interrupt_saved_mask[RegClass_GPR] & (1 << reg)) {
                 if (reg != 0 && (reg != 11 || r11_save_offset == -1)) {
-                    emitpcode(PC_LWZ, reg, base, 0, o);
+                    emitpcode(PC_LWZ, reg, base, 0, offset);
                 }
-                o += save_slot_size[RegClass_GPR];
+                offset += save_slot_size[RegClass_GPR];
             }
         }
     }
 
-    o = interrupt_save_offset;
-    emitpcode(PC_LWZ, 0, base, 0, o);
+    offset = interrupt_save_offset;
+    emitpcode(PC_LWZ, 0, base, 0, offset);
     emitpcode(PC_MTCTR, 0);
-    emitpcode(PC_LWZ, 0, base, 0, o + 4);
+    emitpcode(PC_LWZ, 0, base, 0, offset + 4);
     emitpcode(PC_MTXER, 0);
-    emitpcode(PC_LWZ, 0, base, 0, o + 8);
+    emitpcode(PC_LWZ, 0, base, 0, offset + 8);
     emitpcode(PC_MTCRF, 255, 0);
-    emitpcode(PC_LWZ, 0, base, 0, o + 12);
+    emitpcode(PC_LWZ, 0, base, 0, offset + 12);
     emitpcode(PC_MTLR, 0);
     if (interrupt_saved_count[RegClass_VR] || interrupt_saved_count[RegClass_FPR]) {
-        o += 16;
-        emitpcode(PC_LWZ, 0, base, 0, o);
+        offset += 16;
+        emitpcode(PC_LWZ, 0, base, 0, offset);
         emitpcode(PC_MTMSR, 0);
     }
 
@@ -2075,9 +2024,6 @@ static void restore_interrupt_registers(void) {
     setpcodeflags(fSideEffects | fIsArgInit);
 }
 
-// 2.6: lays out a `#pragma interrupt` routine's save area: every scratch register when it calls out
-// (they may all change), else those its code writes, r0 and (for a moved or realigned frame) r11
-// always. TODO: the name is made up.
 static void compute_interrupt_frame(void) {
     RegClass rclass;
     int count;
@@ -2102,8 +2048,7 @@ static void compute_interrupt_frame(void) {
             reg = scratch_registers[RegClass_GPR][i];
             if (reg == 0) {
                 r0_save_offset = offset;
-            } else if (reg ==
-                       11 &&
+            } else if (reg == 11 &&
                        (dynamic_stack ||
                         dynamic_align_stack ||
                         (interrupt_routine_flags->flags & Interrupt_Enable))) {
@@ -2123,8 +2068,7 @@ static void compute_interrupt_frame(void) {
         for (block = pcbasicblocks; block; block = block->nextBlock) {
             for (pc = block->firstPCode; pc; pc = pc->nextPCode) {
                 for (i = 0; i < pc->argCount; i++) {
-                    if (pc->args[i].kind ==
-                        PCOp_REGISTER &&
+                    if (pc->args[i].kind == PCOp_REGISTER &&
                         (pc->args[i].data.reg.effect & EffectWrite)) {
                         interrupt_saved_mask[pc->args[i].arg] |= 1 << pc->args[i].data.reg.reg;
                     }
@@ -2140,8 +2084,7 @@ static void compute_interrupt_frame(void) {
                         if (rclass == RegClass_GPR) {
                             if (reg == 0) {
                                 r0_save_offset = count * save_slot_size[rclass];
-                            } else if (reg ==
-                                       11 &&
+                            } else if (reg == 11 &&
                                        (dynamic_stack ||
                                         dynamic_align_stack ||
                                         (interrupt_routine_flags->flags & Interrupt_Enable))) {
@@ -2175,8 +2118,6 @@ static void compute_interrupt_frame(void) {
 
     for (rclass = 0; rclass < RegClassMax; rclass++) {
         if (save_slot_size[rclass] > 0 && (rclass != RegClass_VR || copts.altivec_model)) {
-            // (2.6 reads save_slot_size[rclass] at each use, and rounds up with the sum on the left:
-            // ALIGN or a `size` local give other code)
             update_frame_align(save_slot_size[rclass]);
             interrupt_save_size =
                 (interrupt_save_size + save_slot_size[rclass] - 1) & ~(save_slot_size[rclass] - 1);
@@ -2193,7 +2134,4 @@ static void compute_interrupt_frame(void) {
     interrupt_save_size = ALIGN(interrupt_save_size, frame_alignment);
 }
 
-// TODO: 2.6 lays out this unit's .bss with 2-byte packing in force at the end of the file (the
-// statics' offsets need it: natural alignment makes .bss 260 bytes, the original's 256); evidently a
-// header of the original's left `#pragma pack(2)` (Pro7's options align=mac68k) on
 #pragma pack(2)

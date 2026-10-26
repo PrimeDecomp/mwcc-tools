@@ -12,35 +12,24 @@ extern "C" {
 struct BE_SymNode {
     HashNameNode* name;
     struct ObjGenSection* section;
-    // the symbol table entry WriteSsymtab writes; until then st_other holds the back end's flags
-    // (0x40: not written, as for a pooled section's anchor; WriteSsymtab clears the upper bits)
     Elf32_Sym elf;
     struct BE_SymNode* next;
 #if VERSION >= VERSION_GC_2_7
-    // the next symbol in its name's bucket of TheSymbolTable.hash
-    struct BE_SymNode* hashNext; // TODO: invented name
+    struct BE_SymNode* hashNext;
 #endif
     struct BE_SymNode* orderNext;
     SInt32 order;
-    // alignment and the three fields after it are the 8-byte record WriteSsymtab appends to the
-    // .comment section for the symbol: the alignment, a linkage byte (13 implicitly weak, 14 weak),
-    // flags (8 force-active or exported, 0x10 a pool's anchor) and 2 bytes of zero padding.
-    // TODO: invented names (linkageKind, linkageFlags, reserved2a)
     SInt32 alignment;
     char linkageKind;
     char linkageFlags;
-    char reserved2a[2];
-    SInt16 sclass; // TK_STATIC (internal linkage) or TK_EXTERN
+    char reserved[2];
+    SInt16 sclass;
     struct InterruptGenerationRecord* interruptInfo;
 };
 #pragma pack(pop)
-// The symbol table: every symbol in the order added, the cursor First/Next walk with (also the last
-// added), and the head of the ELF order assign_symbol_order builds (Wii's COMMON `TheSymbolTable`).
-// TODO: invented type and member names
 typedef struct BE_SymbolTable {
 #if VERSION >= VERSION_GC_2_7
-    // 2.7 finds symbols by name through a hash table (BE_SymbolHash)
-    BE_SymNode* hash[0x1000]; // TODO: invented name
+    BE_SymNode* hash[0x1000];
 #endif
     BE_SymNode* first;
     BE_SymNode* current;

@@ -8,7 +8,6 @@
 extern "C" {
 #endif
 
-// A file's contents in a handle, written back when freed (Pro7's OSLib/FileHandles.c)
 extern int __stdcall OS_NewFileHandle(
     const OSSpec* spec, OSHandle* src, Boolean writeable, OSFileHandle* hand
 );

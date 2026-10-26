@@ -4,20 +4,19 @@
 #include "compiler/CompilerTools.h"
 #include "compiler/CParser.h"
 #include "compiler/PCode.h"
+#include "compiler/PCodeInfo.h"
 #include "compiler/Registers.h"
-#include "compiler/CPrep.h"
 
 #pragma pack(2)
-// TODO: invented member names (Pro7: x0, x4, x10, x12, x14, x16; DGSuccessor's x8)
 typedef struct DGNode {
     struct DGNode* next;
     struct DGNode* prev;
     struct DGSuccessor* successors;
     PCode* instr;
     UInt16 latency;
-    UInt16 earliest; // (the first cycle it can issue in)
-    UInt16 latest; // (the last cycle it can issue in without lengthening the critical path)
-    UInt16 height; // (the critical path from it to the block's end)
+    UInt16 earliest;
+    UInt16 latest;
+    UInt16 height;
     short predCount;
 } DGNode;
 
@@ -32,8 +31,6 @@ typedef struct DGNodeList {
     DGNode* node;
 } DGNodeList;
 
-// 2.6 lays these out at 2-byte packing (66 bytes of .bss): Pro7's `options align=mac68k` is still in
-// force at the end of the file
 static DGNodeList** register_uses[RegClassMax];
 static DGNodeList** register_defs[RegClassMax];
 static DGNodeList* memory_uses;
@@ -145,22 +142,22 @@ int is_same_operand(PCodeArg* a, PCodeArg* b) {
                 return FALSE;
             }
             break;
+        default:
+            break;
     }
 
     return TRUE;
 }
 
-static void addsuccessor(DGNode* a, DGNode* b, Boolean flag) {
+static void addsuccessor(DGNode* a, DGNode* b, Boolean hasLatency) {
     int latency;
     DGSuccessor* succ;
 
-    // (2.6 returns early where Pro7 wraps the body in `if (a != b)` and clamps the latency at 0; Pro7's
-    // shape does not match)
     if (a == b) {
         return;
     }
 
-    if (flag) {
+    if (hasLatency) {
         latency = a->latency;
     } else {
         latency = 0;
@@ -184,7 +181,7 @@ static void addsuccessor(DGNode* a, DGNode* b, Boolean flag) {
     a->successors = succ;
     succ->latency = latency;
 
-    if (flag && (succ->node->instr->flags & fIsBranch)) {
+    if (hasLatency && (succ->node->instr->flags & fIsBranch)) {
         succ->latency += MI->branch_latency;
     }
 
@@ -301,8 +298,7 @@ static void findsuccessors(DGNode* nodes, DGNode* node) {
             case PCOp_MEMORY:
                 break;
             case PCOp_REGISTER:
-                if (op->data.reg.reg <
-                    0 ||
+                if (op->data.reg.reg < 0 ||
                     op->data.reg.reg > used_virtual_registers[(char)op->arg]) {
                     CError_FATAL(470);
                 }
@@ -311,13 +307,10 @@ static void findsuccessors(DGNode* nodes, DGNode* node) {
                     if (op->data.reg.reg == Register2) {
                         break;
                     }
-                    // (2.6: r13, EABI's small data base; an int compare of the sign-extended register, as
-                    // 2.6 does it: without the cast it does not match)
                     if ((int)op->data.reg.reg == 13) {
                         break;
                     }
-                    if (op->data.reg.reg ==
-                        Register0 &&
+                    if (op->data.reg.reg == Register0 &&
                         !(op->data.reg.effect & (EffectRead | EffectWrite))) {
                         break;
                     }
@@ -331,6 +324,8 @@ static void findsuccessors(DGNode* nodes, DGNode* node) {
                     op->data.reg.effect & EffectWrite
                 );
 
+                break;
+            default:
                 break;
         }
     }
@@ -346,7 +341,7 @@ static void findsuccessors(DGNode* nodes, DGNode* node) {
         addtolist(&volatile_refs, node);
     }
 
-    if (((instr->flags & fIsCall | fIsBranch) && (instr->flags & fLink)) ||
+    if ((((instr->flags & fIsCall) | fIsBranch) && (instr->flags & fLink)) ||
         (instr->flags & fSideEffects) ||
         MI->serializes(instr)) {
         serializeall(nodes, node);
@@ -389,9 +384,9 @@ static int uncovering(DGNode* node) {
 
 static DGNode* selectinstruction(DGNode* nodes, UInt16 counter) {
     DGNode* node;
-    DGNode* node2;
-    int a;
-    int b;
+    DGNode* candidate;
+    int nodeUncovers;
+    int candidateUncovers;
 
     node = nodes;
     while (node) {
@@ -405,47 +400,43 @@ static DGNode* selectinstruction(DGNode* nodes, UInt16 counter) {
         return NULL;
     }
 
-    for (node2 = node->next; node2; node2 = node2->next) {
-        if (node2->predCount ==
-            0 &&
-            node2->earliest <=
-            counter &&
-            MI->can_issue(node2->instr) &&
-            (node->latest > counter || node2->latest <= counter)) {
-            if (node->latest > counter && node2->latest <= counter) {
-                node = node2;
+    for (candidate = node->next; candidate; candidate = candidate->next) {
+        if (candidate->predCount == 0 &&
+            candidate->earliest <= counter &&
+            MI->can_issue(candidate->instr) &&
+            (node->latest > counter || candidate->latest <= counter)) {
+            if (node->latest > counter && candidate->latest <= counter) {
+                node = candidate;
                 continue;
             }
 
-            // (2.6 counts node2's uncovered successors first; Pro7's
-            // `(a = uncovering(node)) > (b = uncovering(node2))` does not match)
-            b = uncovering(node2);
-            a = uncovering(node);
-            if (a > b) {
+            candidateUncovers = uncovering(candidate);
+            nodeUncovers = uncovering(node);
+            if (nodeUncovers > candidateUncovers) {
                 continue;
             }
 
-            if (a < b) {
-                node = node2;
+            if (nodeUncovers < candidateUncovers) {
+                node = candidate;
                 continue;
             }
 
-            if (node->height > node2->height) {
+            if (node->height > candidate->height) {
                 continue;
             }
 
-            if (node->height < node2->height) {
-                node = node2;
+            if (node->height < candidate->height) {
+                node = candidate;
                 continue;
             }
 
             if (coloring) {
-                if (opcodeinfo[node->instr->op].rank < opcodeinfo[node2->instr->op].rank) {
+                if (opcodeinfo[node->instr->op].rank < opcodeinfo[candidate->instr->op].rank) {
                     continue;
                 }
 
-                if (opcodeinfo[node->instr->op].rank > opcodeinfo[node2->instr->op].rank) {
-                    node = node2;
+                if (opcodeinfo[node->instr->op].rank > opcodeinfo[candidate->instr->op].rank) {
+                    node = candidate;
                 }
             }
         }
@@ -488,8 +479,6 @@ static void scheduleblock(PCodeBlock* block) {
     }
 
     computedeadlines(head);
-    // (2.6 reuses `node` in the loop above where Pro7 declares a block-local `DGNode *n`; with Pro7's
-    // `n`, MWCC keeps `block` in a register for these stores where 2.6 reloads it for each)
     block->firstPCode = block->lastPCode = NULL;
     block->pcodeCount = 0;
 
@@ -523,7 +512,7 @@ static void scheduleblock(PCodeBlock* block) {
     freeoheap();
 }
 
-void scheduleinstructions(Boolean flag) {
+void scheduleinstructions(Boolean includePrologEpilog) {
     PCodeBlock* block;
     int cpu;
 
@@ -553,9 +542,8 @@ void scheduleinstructions(Boolean flag) {
     gather_alias_info();
 
     for (block = pcbasicblocks; block; block = block->nextBlock) {
-        if (block->pcodeCount >
-            2 &&
-            (flag || !(block->flags & (fIsProlog | fIsEpilogue))) &&
+        if (block->pcodeCount > 2 &&
+            (includePrologEpilog || !(block->flags & (fIsProlog | fIsEpilogue))) &&
             !(block->flags & fScheduled)) {
             scheduleblock(block);
             block->flags |= fScheduled;
@@ -570,22 +558,16 @@ int is_dependent(PCode* a, PCode* b, char rclass) {
     PCodeArg* def;
 
     if (b) {
-        // (a local for b's first operand: Pro7's `b->args[0]` throughout does not match)
         def = b->args;
-        if (b->argCount >=
-            1 &&
-            def->kind ==
-            PCOp_REGISTER &&
-            (char)def->arg ==
-            rclass &&
+        if (b->argCount >= 1 &&
+            def->kind == PCOp_REGISTER &&
+            (char)def->arg == rclass &&
             (def->data.reg.effect & EffectWrite)) {
             reg = def->data.reg.reg;
             for (i = 0; i < a->argCount; i++) {
                 op = &a->args[i];
-                if (op->kind ==
-                    PCOp_REGISTER &&
-                    (char)op->arg ==
-                    rclass &&
+                if (op->kind == PCOp_REGISTER &&
+                    (char)op->arg == rclass &&
                     (op->data.reg.effect & (EffectRead | EffectWrite)) &&
                     op->data.reg.reg == reg) {
                     return TRUE;

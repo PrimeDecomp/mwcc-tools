@@ -4,18 +4,24 @@
 #include "compiler/CClass.h"
 #include "compiler/CDecl.h"
 #include "compiler/CError.h"
-#include "compiler/CFunc.h"
+#include "compiler/CInline.h"
 #include "compiler/CInt64.h"
 #include "compiler/CMachine.h"
 #include "compiler/CMangler.h"
 #include "compiler/CompilerTools.h"
 #include "compiler/CParser.h"
+#include "compiler/CPrep.h"
 #include "compiler/CPrepTokenizer.h"
 #include "compiler/CScope.h"
 #include "compiler/CTemplateFunc.h"
 #include "compiler/CTemplateNew.h"
+#include "compiler/CTemplateTools.h"
+#include "compiler/enode.h"
+#include "compiler/objects.h"
 #include "compiler/scopes.h"
 #include "compiler/templates.h"
+#include "compiler/tokens.h"
+#include "compiler/types.h"
 #include <stdlib.h>
 
 TemplClass* CTemplClass_GetMasterTemplate(TemplClass* tmclass) {
@@ -157,7 +163,8 @@ void CTemplClass_RegisterEnumerator(
 
     action->type = TAT_ENUMERATOR;
     action->u.enumerator.objenumconst = objenumconst;
-    action->u.enumerator.initexpr = initexpr ? CInline_CopyExpression(initexpr, CopyMode1) : NULL;
+    action->u.enumerator.initexpr =
+        initexpr ? CInline_CopyExpression(initexpr, CopyModeGlobal) : NULL;
 
     CTemplClass_AppendTemplateAction(tmclass, action);
 }
@@ -170,7 +177,7 @@ void CTemplClass_RegisterObjectInit(TemplClass* tmclass, Object* object, ENode* 
 
     action->type = TAT_OBJECTINIT;
     action->u.objectinit.object = object;
-    action->u.objectinit.initexpr = CInline_CopyExpression(initexpr, CopyMode1);
+    action->u.objectinit.initexpr = CInline_CopyExpression(initexpr, CopyModeGlobal);
 
     CTemplClass_AppendTemplateAction(tmclass, action);
 }
@@ -221,7 +228,7 @@ static TemplClassInst* CTemplClass_NewInstance(
     inst->oargs = oargs;
     inst->parent = templ->inst_parent;
 
-    nspace = CScope_NewListNameSpace(name, 1);
+    nspace = CScope_NewListNameSpace(name, TRUE);
     nspace->theclass = TYPE_CLASS(inst);
     if (templ->templ_parent && templ->inst_parent) {
         nspace->parent = TYPE_CLASS(templ->inst_parent)->nspace;
@@ -252,6 +259,10 @@ static TemplClassInst* CTemplClass_NewInstance(
     return inst;
 }
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -3
+#endif
 TemplClassInst* CTemplClass_GetInstance(TemplClass* tmclass, TemplArg* inst_args, TemplArg* oargs) {
     TemplClassInst* inst;
 
@@ -265,6 +276,10 @@ TemplClassInst* CTemplClass_GetInstance(TemplClass* tmclass, TemplArg* inst_args
 
     return CTemplClass_NewInstance(tmclass, inst_args, oargs);
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
 TemplateMember* CTemplClass_DefineMember(
     TemplClass* tmclass, Object* object, FileOffsetInfo* foi, TokenStream* stream
@@ -302,7 +317,7 @@ static void CTemplClass_ParseBody(TemplClass* templ, short mode, SInt32* offset)
     di.sourceoffset = *offset;
     di.pendingClass = templ;
 
-    CDecl_ParseClass(&di, mode, 1, 0);
+    CDecl_ParseClass(&di, mode, TRUE, 0);
 
     if (tk == TK_UU_ATTRIBUTE_UU) {
         CParser_ParseAttribute(di.thetype, NULL);
@@ -314,8 +329,12 @@ static void CTemplClass_ParseBody(TemplClass* templ, short mode, SInt32* offset)
     CBrowse_NewTemplateClass(templ, di.file2, di.sourceoffset, CPrep_BrowserFileOffset() + 1);
 }
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -3
+#endif
 void CTemplClass_ParsePartialSpecialization(
-    TemplateScopeState* what_is_this, TemplParam* params, short mode, SInt32* offset
+    TemplateScopeState* templateScope, TemplParam* params, short mode, SInt32* offset
 ) {
     TemplClass* tmclass;
     Type* type;
@@ -326,7 +345,7 @@ void CTemplClass_ParsePartialSpecialization(
     TemplArg* arg;
     TemplParam* param;
 
-    nspace = what_is_this->scope;
+    nspace = templateScope->scope;
 
     if ((tk = lex()) != TK_IDENTIFIER) {
         CError_Error(ERR_IDENTIFIER_EXPECTED);
@@ -419,7 +438,9 @@ void CTemplClass_ParsePartialSpecialization(
         memclrw(templ, sizeof(TemplClass));
 
         templ->templ__params = params;
-        CDecl_DefineClass(nspace, tmclass->theclass.classname, TYPE_CLASS(templ), mode, 0, 0);
+        CDecl_DefineClass(
+            nspace, tmclass->theclass.classname, TYPE_CLASS(templ), mode, FALSE, FALSE
+        );
 
         templ->theclass.flags = CLASS_IS_TEMPL;
         templ->pspec_owner = tmclass;
@@ -455,16 +476,20 @@ void CTemplClass_ParsePartialSpecialization(
             CError_Error(ERR_DECLARATION_SYNTAX_ERROR);
     }
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
 void CTemplClass_ParseClass(
-    TemplateScopeState* what_is_this, TemplParam* params, short mode, SInt32* offset
+    TemplateScopeState* templateScope, TemplParam* params, short mode, SInt32* offset
 ) {
     TemplClass* templ;
     NameSpace* nspace;
     Type* type;
     UInt8 classDeclSpec = 0;
 
-    nspace = what_is_this->scope;
+    nspace = templateScope->scope;
     if ((tk = lex()) == TK_UU_DECLSPEC) {
         CDecl_ParseClassDeclSpec(&classDeclSpec);
     }
@@ -483,7 +508,7 @@ void CTemplClass_ParseClass(
         ctempl_templates = templ;
 
         templ->templ__params = params;
-        CDecl_DefineClass(nspace, tkidentifier, TYPE_CLASS(templ), mode, 0, 1);
+        CDecl_DefineClass(nspace, tkidentifier, TYPE_CLASS(templ), mode, FALSE, TRUE);
         templ->theclass.flags = CLASS_IS_TEMPL;
         templ->theclass.eflags = classDeclSpec;
 
@@ -547,8 +572,12 @@ static Boolean CTemplClass_TypeParamCompare(TemplArg* arg, Type* type, UInt32 qu
     return is_typesame(type, arg->data.typeparam.type) && arg->data.typeparam.qual == qual;
 }
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -11
+#endif
 static TemplArg* CTemplClass_PartialTemplateArgMatch(
-    TemplPartialSpec* pspec, TemplArg* args, Boolean flag
+    TemplPartialSpec* pspec, TemplArg* args, Boolean buildArgs
 ) {
     TemplArg* argA;
     TemplArg* argB;
@@ -556,7 +585,7 @@ static TemplArg* CTemplClass_PartialTemplateArgMatch(
     int index;
     DeduceInfo info;
 
-    if (!CTemplTool_InitDeduceInfo(&info, pspec->templ->templ__params, NULL, 1)) {
+    if (!CTemplTool_InitDeduceInfo(&info, pspec->templ->templ__params, NULL, TRUE)) {
         return NULL;
     }
 
@@ -575,7 +604,7 @@ static TemplArg* CTemplClass_PartialTemplateArgMatch(
                 }
             }
 
-            return flag ? CTemplTool_MakeTemplArgList(&info) : args;
+            return buildArgs ? CTemplTool_MakeTemplArgList(&info) : args;
         }
 
         if (!argB) {
@@ -595,8 +624,8 @@ static TemplArg* CTemplClass_PartialTemplateArgMatch(
                             argB->data.typeparam.type,
                             argB->data.typeparam.qual,
                             info.args,
-                            0,
-                            0
+                            FALSE,
+                            FALSE
                         )) {
                         return NULL;
                     }
@@ -636,7 +665,13 @@ static TemplArg* CTemplClass_PartialTemplateArgMatch(
             case TPT_TEMPLATE:
                 if (CTemplTool_IsTemplateArgumentDependentType(argA->data.ttargtype)) {
                     if (!CTempl_DeduceType(
-                            argA->data.ttargtype, 0, argB->data.ttargtype, 0, info.args, 0, 0
+                            argA->data.ttargtype,
+                            0,
+                            argB->data.ttargtype,
+                            0,
+                            info.args,
+                            FALSE,
+                            FALSE
                         )) {
                         return NULL;
                     }
@@ -656,7 +691,15 @@ static TemplArg* CTemplClass_PartialTemplateArgMatch(
         i++;
     }
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -11
+#endif
 static Boolean CTemplClass_PartialClassIsAtLeastAsSpecialized(
     TemplPartialSpec* pspec1, TemplPartialSpec* pspec2
 ) {
@@ -665,7 +708,7 @@ static Boolean CTemplClass_PartialClassIsAtLeastAsSpecialized(
     int i;
     DeduceInfo info;
 
-    if (!CTemplTool_InitDeduceInfo(&info, pspec2->templ->templ__params, NULL, 1)) {
+    if (!CTemplTool_InitDeduceInfo(&info, pspec2->templ->templ__params, NULL, TRUE)) {
         return FALSE;
     }
 
@@ -696,8 +739,8 @@ static Boolean CTemplClass_PartialClassIsAtLeastAsSpecialized(
                         argA->data.typeparam.type,
                         argA->data.typeparam.qual,
                         info.args,
-                        0,
-                        0
+                        FALSE,
+                        FALSE
                     )) {
                     return FALSE;
                 }
@@ -740,7 +783,7 @@ static Boolean CTemplClass_PartialClassIsAtLeastAsSpecialized(
 
             case TPT_TEMPLATE:
                 if (!CTempl_DeduceType(
-                        argB->data.ttargtype, 0, argA->data.ttargtype, 0, info.args, 0, 0
+                        argB->data.ttargtype, 0, argA->data.ttargtype, 0, info.args, FALSE, FALSE
                     )) {
                     return FALSE;
                 }
@@ -754,6 +797,10 @@ static Boolean CTemplClass_PartialClassIsAtLeastAsSpecialized(
         argB = argB->next;
     }
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
 static Boolean CTemplClass_PartialClassIsMoreSpecialized(
     TemplPartialSpec* pspec1, TemplPartialSpec* pspec2
@@ -790,8 +837,7 @@ static PSpecList* CTemplClass_FindMostSpecializedPartialSpecializations(PSpecLis
         if (array[i]) {
             for (j = 0; j < count; j++) {
                 if (array[j] &&
-                    i !=
-                    j &&
+                    i != j &&
                     CTemplClass_PartialClassIsMoreSpecialized(array[i]->pspec, array[j]->pspec)) {
                     array[j] = NULL;
                 }
@@ -873,7 +919,7 @@ TemplClass* CTemplClass_DefineNestedClass(TemplClass* parent, HashNameNode* name
 
     templ->templ_parent = parent;
     templ->templ__params = NULL;
-    CDecl_DefineClass(parent->theclass.nspace, name, TYPE_CLASS(templ), mode, 0, 1);
+    CDecl_DefineClass(parent->theclass.nspace, name, TYPE_CLASS(templ), mode, FALSE, TRUE);
 
     templ->theclass.flags = CLASS_IS_TEMPL;
     templ->align = copts.structalignment;
@@ -928,6 +974,10 @@ static void CTemplClass_CopyNestedClass(TypeDeduce* deduce, TemplClass* templ) {
     CScope_AddObject(deduce->inst->theclass.nspace, templ->theclass.classname, OBJ_BASE(tag));
 }
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -11
+#endif
 static void CTemplClass_CopyBaseClasses(
     TypeDeduce* deduce, TemplClassInst* inst, TemplClass* templ
 ) {
@@ -937,10 +987,6 @@ static void CTemplClass_CopyBaseClasses(
     ClassList* base;
     ClassList* scan;
     UInt32 qual = 0;
-    // TODO: fakematch. 2.6 holds &qual in a callee-saved register for the one call that takes it
-    // (lea ebx, [esp]; push ebx), which only an assignment of it to a pointer variable reproduces;
-    // Pro7's plain &qual, a Type* temporary for the call's result and the pointer declared first
-    // were tried
     UInt32* pqual;
 
     for (base = templ->theclass.bases; base; base = base->next) {
@@ -1018,6 +1064,10 @@ static void CTemplClass_CopyBaseClasses(
         CDecl_MakeVBaseList(TYPE_CLASS(inst));
     }
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
 static void CTemplClass_CopyEnum(TypeDeduce* deduce, TemplateAction* action) {
     TypeEnum* srcenum;
@@ -1058,8 +1108,7 @@ static void CTemplClass_CopyEnum(TypeDeduce* deduce, TemplateAction* action) {
     }
 
     for (scanaction = deduce->tmclass->actions; scanaction; scanaction = scanaction->next) {
-        if (scanaction->type ==
-            TAT_ENUMERATOR &&
+        if (scanaction->type == TAT_ENUMERATOR &&
             (src = scanaction->u.enumerator.objenumconst)->type == TYPE(srcenum)) {
             CTemplClass_NewDefAction(deduce, action)->enumtype = destenum;
             return;
@@ -1067,6 +1116,10 @@ static void CTemplClass_CopyEnum(TypeDeduce* deduce, TemplateAction* action) {
     }
 }
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -11
+#endif
 static void CTemplClass_CompleteEnumType(
     TypeDeduce* deduce, TemplateAction* action, TypeEnum* destenum
 ) {
@@ -1117,6 +1170,10 @@ static void CTemplClass_CompleteEnumType(
 
     CDecl_ComputeUnderlyingEnumType(destenum);
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
 static void CTemplClass_CopyObjMemberVarPath(TypeDeduce* deduce, ObjMemberVarPath* ivar) {
     ObjMemberVarPath* copy;
@@ -1125,13 +1182,17 @@ static void CTemplClass_CopyObjMemberVarPath(TypeDeduce* deduce, ObjMemberVarPat
     *copy = *ivar;
 
     if (copy->path && copy->path->type == TYPE(deduce->tmclass)) {
-        copy->path = CClass_GetPathCopy(copy->path, 1);
+        copy->path = CClass_GetPathCopy(copy->path, TRUE);
         copy->path->type = TYPE(deduce->inst);
     }
 
     CScope_AddObject(deduce->inst->theclass.nspace, copy->name, OBJ_BASE(copy));
 }
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -11
+#endif
 static void CTemplClass_CopyIVars(TypeDeduce* deduce, TemplClassInst* inst, TemplClass* templ) {
     ObjMemberVar* src;
     ObjMemberVar* dest;
@@ -1173,7 +1234,15 @@ static void CTemplClass_CopyIVars(TypeDeduce* deduce, TemplClassInst* inst, Temp
         src = src->next;
     }
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -11
+#endif
 static void CTemplClass_CopyObjType(TypeDeduce* deduce, ObjType* src, HashNameNode* name) {
     TemplateAction* scanaction;
     NameSpaceObjectList* list;
@@ -1210,6 +1279,10 @@ static void CTemplClass_CopyObjType(TypeDeduce* deduce, ObjType* src, HashNameNo
         CScope_AddObject(deduce->inst->theclass.nspace, name, OBJ_BASE(dest));
     }
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
 static void CTemplClass_CopyObjTypeTag(TypeDeduce* deduce, ObjTypeTag* src, HashNameNode* name) {
     UInt32 qual = 0;
@@ -1221,6 +1294,10 @@ static void CTemplClass_CopyObjTypeTag(TypeDeduce* deduce, ObjTypeTag* src, Hash
     CScope_AddObject(deduce->inst->theclass.nspace, name, OBJ_BASE(dest));
 }
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -11
+#endif
 static void CTemplClass_CopyMemberTemplate(TypeDeduce* deduce, Object* src) {
     TemplateFunction* desttempl;
     TemplateFunction* srctempl;
@@ -1279,17 +1356,25 @@ static void CTemplClass_CopyMemberTemplate(TypeDeduce* deduce, Object* src) {
 
     CScope_AddObject(deduce->inst->theclass.nspace, dest->name, OBJ_BASE(dest));
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -11
+#endif
 static void CTemplClass_CopyObject(TypeDeduce* deduce, Object* src) {
     ObjectTemplated* dest;
     TemplateAction* action;
-    Boolean flag;
+    Boolean inClassScope;
     DefAction* defAction;
 
-    flag = TRUE;
+    inClassScope = TRUE;
     if (src->nspace != deduce->tmclass->theclass.nspace) {
         CError_ASSERT(1598, src->datatype == DALIAS);
-        flag = FALSE;
+        inClassScope = FALSE;
     }
 
     if (IS_TEMPL_FUNC(src->type)) {
@@ -1314,7 +1399,7 @@ static void CTemplClass_CopyObject(TypeDeduce* deduce, Object* src) {
             CTemplTool_DeduceTypeCopy(deduce, dest->object.type, &dest->object.qual);
     }
 
-    if (flag) {
+    if (inClassScope) {
         dest->object.nspace = deduce->inst->theclass.nspace;
     }
 
@@ -1373,7 +1458,7 @@ static void CTemplClass_CopyObject(TypeDeduce* deduce, Object* src) {
         case DALIAS:
             if (dest->object.u.alias.member &&
                 dest->object.u.alias.member->type == TYPE(deduce->tmclass)) {
-                dest->object.u.alias.member = CClass_GetPathCopy(dest->object.u.alias.member, 1);
+                dest->object.u.alias.member = CClass_GetPathCopy(dest->object.u.alias.member, TRUE);
                 dest->object.u.alias.member->type = TYPE(deduce->inst);
             }
             break;
@@ -1388,7 +1473,15 @@ static void CTemplClass_CopyObject(TypeDeduce* deduce, Object* src) {
 
     CScope_AddObject(deduce->inst->theclass.nspace, dest->object.name, OBJ_BASE(dest));
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -11
+#endif
 static void CTemplClass_CompleteObject(
     TypeDeduce* deduce, TemplateAction* action, ObjBase* refobj
 ) {
@@ -1401,8 +1494,7 @@ static void CTemplClass_CompleteObject(
             CDecl_CompleteType(OBJ_MEMBER_VAR(refobj)->type);
             if (!copts.experimental ||
                 OBJ_MEMBER_VAR(refobj)->next ||
-                OBJ_MEMBER_VAR(refobj)->type->size !=
-                0 ||
+                OBJ_MEMBER_VAR(refobj)->type->size != 0 ||
                 !IS_TYPE_ARRAY(OBJ_MEMBER_VAR(refobj)->type)) {
                 IsCompleteType(OBJ_MEMBER_VAR(refobj)->type);
             }
@@ -1474,6 +1566,10 @@ static void CTemplClass_CompleteObject(
         }
     }
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
 static void CTemplClass_CompleteObjectInit(
     TypeDeduce* deduce, TemplateAction* action, Object* object
@@ -1490,6 +1586,10 @@ static void CTemplClass_CompleteObjectInit(
     }
 }
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -11
+#endif
 static void CTemplClass_CopyNameSpace(TypeDeduce* deduce, TemplClassInst* inst, TemplClass* templ) {
     NameSpaceName* nsname;
     NameSpaceObjectList* list;
@@ -1522,7 +1622,15 @@ static void CTemplClass_CopyNameSpace(TypeDeduce* deduce, TemplClassInst* inst, 
         }
     }
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -11
+#endif
 static void CTemplClass_CopyUsingDecl(TypeDeduce* deduce, TypeTemplDep* type, AccessType access) {
     TypeClass* tclass;
     UInt32 qual = 0;
@@ -1538,14 +1646,22 @@ static void CTemplClass_CopyUsingDecl(TypeDeduce* deduce, TypeTemplDep* type, Ac
     CDecl_CompleteType(TYPE(tclass));
     CScope_AddClassUsingDeclaration(TYPE_CLASS(deduce->inst), tclass, type->u.qual.name, access);
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -11
+#endif
 static void CTemplClass_CopyFriend(TypeDeduce* deduce, TemplateFriend* tfriend) {
     TemplArg* arg;
     Object* funcobj;
     NameSpace* nspace;
     DeclInfo di;
     CScopeSave saveScope;
-    Boolean flag;
+    Boolean firstDecl;
 
     CDecl_UnpackDeclInfo(&di, &tfriend->decl);
 
@@ -1582,14 +1698,14 @@ static void CTemplClass_CopyFriend(TypeDeduce* deduce, TemplateFriend* tfriend) 
     if (IS_TYPE_FUNC(di.thetype)) {
         nspace = CScope_FindGlobalNS(deduce->inst->theclass.nspace);
         CScope_SetNameSpaceScope(nspace, &saveScope);
-        funcobj = CDecl_GetFunctionObject(&di, NULL, &flag, 0);
+        funcobj = CDecl_GetFunctionObject(&di, NULL, &firstDecl, FALSE);
         CScope_RestoreScope(&saveScope);
 
         if (funcobj) {
             CDecl_AddFriend(TYPE_CLASS(deduce->inst), funcobj, NULL);
             if (tfriend->stream.tokens) {
                 CInline_AddInlineFunctionAction(
-                    funcobj, TYPE_CLASS(deduce->inst), &tfriend->fileoffset, &tfriend->stream, 0
+                    funcobj, TYPE_CLASS(deduce->inst), &tfriend->fileoffset, &tfriend->stream, FALSE
                 );
             }
         } else {
@@ -1600,7 +1716,15 @@ static void CTemplClass_CopyFriend(TypeDeduce* deduce, TemplateFriend* tfriend) 
         CDecl_AddFriend(TYPE_CLASS(deduce->inst), NULL, TYPE_CLASS(di.thetype));
     }
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -11
+#endif
 Boolean CTempl_InstantiateTemplateClass(TypeClass* tclass) {
     TemplClassInst* inst;
     ParserTryBlock* tryBlock;
@@ -1628,7 +1752,7 @@ Boolean CTempl_InstantiateTemplateClass(TypeClass* tclass) {
     }
 
     templ = inst->templ;
-    if (!(templ->flags & TEMPLCLASS_FLAGS_2)) {
+    if (!(templ->flags & TEMPLCLASS_IS_SPECIALIZATION)) {
         templ = CTemplClass_GetMasterTemplate(templ);
     }
 
@@ -1665,16 +1789,12 @@ Boolean CTempl_InstantiateTemplateClass(TypeClass* tclass) {
     CError_ASSERT(2060, !templ->theclass.vtable);
 
     inst->theclass.flags |= templ->theclass.flags &
-        (CLASS_ABSTRACT |
-         CLASS_SINGLE_OBJECT |
-         CLASS_HAS_VBASES |
-         CLASS_IS_CONVERTIBLE |
+        (CLASS_ABSTRACT | CLASS_SINGLE_OBJECT | CLASS_HAS_VBASES | CLASS_IS_CONVERTIBLE |
          CLASS_COM_OBJECT);
 
     CTemplClass_CopyBaseClasses(&deduce, inst, templ);
 
-    deduce.hasNewVBases = (inst->theclass.flags & CLASS_HAS_VBASES) !=
-        0 &&
+    deduce.hasNewVBases = (inst->theclass.flags & CLASS_HAS_VBASES) != 0 &&
         (templ->theclass.flags & CLASS_HAS_VBASES) == 0;
 
     for (action = templ->actions; action; action = action->next) {
@@ -1758,6 +1878,8 @@ Boolean CTempl_InstantiateTemplateClass(TypeClass* tclass) {
                     }
                 }
                 break;
+            default:
+                break;
         }
     }
 
@@ -1781,3 +1903,7 @@ Boolean CTempl_InstantiateTemplateClass(TypeClass* tclass) {
 
     return TRUE;
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif

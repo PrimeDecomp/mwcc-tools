@@ -7,24 +7,20 @@
 extern "C" {
 #endif
 
-#pragma pack(push, 2) // Pro7: options align=mac68k
+#pragma pack(push, 2)
 struct IROExpr {
-    Boolean state; // TODO: invented name (Pro7: x0)
+    Boolean flags;
     UInt16 index;
     IROLinear* linear;
-    Object* temp; // TODO: invented name (Pro7: x8)
+    Object* temp;
     IRONode* node;
     BitVector* depends;
-    IROExpr* use; // TODO: invented name (Pro7: x14)
-    // IRO_AddExpression copies IRO_CouldError (unknown indirection or possibly zero divisor);
-    // IroLoop requires mustreach before hoisting
+    IROExpr* use;
     Boolean couldError;
-    // IRO_AddExpression copies IRO_NotSubable (volatile access, effectful operator or call);
-    // IroCSE excludes these candidates
     Boolean notSubable;
-    IROLinear* factor; // TODO: invented name (Pro7: x1A)
-    VarRecord* var; // TODO: invented name (Pro7: x1E)
-    IROLinear* expr; // TODO: invented name (Pro7: x22)
+    IROLinear* factor;
+    VarRecord* var;
+    IROLinear* indOperand;
     IROExpr* next;
 };
 #pragma pack(pop)
@@ -39,7 +35,7 @@ extern SInt32 IRO_NumExprs;
 
 extern void IRO_FindDepends_NoAlloc(IROLinear* linear);
 extern void IRO_FindDepends(IROLinear* linear);
-extern void IRO_FindExpressions(BitVector* bv, Boolean flag);
+extern void IRO_FindExpressions(BitVector* bv, Boolean unused);
 extern void IRO_RemoveExpr(IROExpr* expr);
 extern void IRO_ComputeAvail(void);
 extern void IRO_CommonSubs(void);

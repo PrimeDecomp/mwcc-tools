@@ -1,31 +1,4 @@
 #!/usr/bin/env python3
-"""python tools/unit.py COMMAND ...: a source as a whole.
-
-  check SOURCE... [--version V | --all]
-      compile sources outside the build and list each function, exact or how close (and why not exact), marking what
-      changed since the last build's comparison: "+" newly exact, "-" no longer exact. Exits 1 when a function that
-      was exact is not.
-  order SOURCE (--address | --deferred) [--version V] [--dry-run]
-      put the source's functions that are rows in the original's order: ascending addresses, or descending for a
-      unit built -inline auto,deferred (whose functions the binary holds in reverse source order). Each function
-      takes the place of another (its comments, and the pragmas and #if group that belong to it alone, go with it);
-      the rest of the file stays as it is: functions without a row (inlined statics, dead code), declarations.
-      Refused when a function would change #pragma settings or #if branch.
-  move DEST NAME... [--version V]
-      move functions' definitions into the source DEST and make DEST their source in every version's
-      functions.json. Each goes before DEST's first function (a row) that follows it in the original's order:
-      ascending addresses, descending when DEST is built deferred. A DEST that does not exist yet is created, built
-      like the first function's source (config/sources.json). Declarations the moved code needs are not moved: build
-      after and add what DEST lacks (tools/includes.py fix DEST). Refused for a definition inside an #if of more than
-      itself; a change of #pragma settings is reported.
-  assign SOURCE NAME... [--version V]
-      make SOURCE the source of the functions NAME..., for functions newly written there (SOURCE "" unassigns them).
-      A name is the same function in every version, so every version's row of that name is assigned, unless
-      --version picks one. Every name must be some version's row.
-
-Functions are found with clang (tools/mw/csrc.py). Edits are one transaction: every file is written, or none (a file
-that changed while the command ran fails it).
-"""
 
 import argparse
 import json
@@ -35,9 +8,6 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 from mw import build, config, csrc, isolated, project, verdict
-
-
-# ---------------------------------------------------------------------------------------------------------- check
 
 
 def check_one(version, source, workspace) -> bool:
@@ -69,11 +39,7 @@ def check(args) -> bool:
         return all([check_one(v, s, workspace) for v in versions for s in sources])
 
 
-# ---------------------------------------------------------------------------------------------------------- order
-
-
 def source_path(name: str) -> str:
-    """NAME (any spelling of a path) as config/sources.json names it."""
     path = project.relative(Path(name).resolve())
     if path not in config.sources():
         raise project.Error(f"{path} is not in config/sources.json")
@@ -87,7 +53,6 @@ def deferred(version, source: str, text: str) -> bool:
 
 
 def placed(version, source: csrc.Source) -> list[tuple[int, csrc.Declaration]]:
-    """[(address, definition)] of SOURCE's definitions that are rows of its own, in text order."""
     return source.placed({r.name: r.address for r in verdict.rows(version) if r.source == source.path})
 
 
@@ -96,7 +61,11 @@ def order(args):
     path = source_path(args.source)
     source = csrc.Source(path, version=v)
     functions = placed(v, source)
-    text, moved = source.ordered(functions, descending=args.deferred)
+    built = deferred(v, path, source.text)
+    descending = args.deferred or (built and not args.address)
+    if descending != built:
+        print(f"note: {path} is built {'deferred' if built else 'in source order'}; ordering it the other way")
+    text, moved = source.ordered(functions, descending=descending)
     if not moved:
         print(f"{path}: its {len(functions)} functions are in order already")
         return
@@ -109,11 +78,7 @@ def order(args):
     print(f"{path}: {moved} of {len(functions)} functions moved")
 
 
-# ----------------------------------------------------------------------------------------------------------- move
-
-
 def cut(text: str, spans: list[tuple[int, int]]) -> str:
-    """TEXT without SPANS (whole lines), leaving one blank line where one was cut out between others."""
     for start, end in sorted(spans, reverse=True):
         before, after = text[:start], text[end:]
         if not after.strip():
@@ -132,7 +97,7 @@ def move(args):
         raise project.Error(f"{dest}: a source is a .c or .cpp file under src/")
     rows = {r.name: r for r in verdict.rows(v)}
     sources = {}
-    moving = []  # (address, name, extent text, pragma state there)
+    moving = []
     for name in dict.fromkeys(args.names):
         row = rows.get(name)
         if row is None or not row.source:
@@ -167,14 +132,13 @@ def move(args):
             target = csrc.Source(dest, version=v)
             text, here = target.text, placed(v, target)
             descending = deferred(v, dest, text)
-        # (where each goes: before the first of DEST's functions it precedes in the original's order)
         inserts = []
         for address, name, source, (start, end), state in moving:
             follows = (lambda other: other < address) if descending else (lambda other: other > address)
             before = next((d for other, d in here if follows(other)), None)
             if before:
                 at = target.extent(before)[0]
-            else:  # (after DEST's last function: a file can end with pragmas for the whole unit)
+            else:
                 at = target.extent(here[-1][1])[1] if here else len(text)
             there = target.pragma_state(at) if target else ()
             if there != state:
@@ -193,7 +157,6 @@ def move(args):
             tx.write(path, cut(source.text, spans).encode("latin-1"))
         if new:
             raw = json.loads(tx.read(config.SOURCES_PATH))
-            # (beside the source it is built like)
             raw = {
                 k: e
                 for key, value in raw.items()
@@ -211,10 +174,7 @@ def move(args):
     for _, name, source, _, _ in sorted(moving):
         print(f"{name}: {source} -> {dest}")
     if new:
-        print(f"created {dest}, built like {moving[0][2]} (config/sources.json)")
-
-
-# --------------------------------------------------------------------------------------------------------- assign
+        print(f"created {dest}, built like {moving[0][2]} (config/sources.json): run configure.py again")
 
 
 def assign(args):
@@ -242,23 +202,24 @@ def main():
     import signal
 
     if hasattr(signal, "SIGPIPE"):
-        signal.signal(signal.SIGPIPE, signal.SIG_DFL)  # (piped into head: stop quietly)
+        if hasattr(signal, "SIGPIPE"):
+        signal.signal(signal.SIGPIPE, signal.SIG_DFL)
     parser = argparse.ArgumentParser(
-        description=__doc__.split("\n\n")[0],
+        prog="tools/unit.py",
+        description="A source as a whole.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=__doc__[__doc__.index("\n\n") + 2 :],
     )
     common = argparse.ArgumentParser(add_help=False)
-    common.add_argument("--version")
-    commands = parser.add_subparsers(dest="command", required=True)
+    common.add_argument("--version", help=f"default {project.PRIMARY}")
+    commands = parser.add_subparsers(dest="command", required=True, metavar="COMMAND")
     p = commands.add_parser("check", parents=[common])
     p.add_argument("sources", nargs="+")
     p.add_argument("--all", action="store_true", help="every version")
     p = commands.add_parser("order", parents=[common])
     p.add_argument("source")
-    how = p.add_mutually_exclusive_group(required=True)
-    how.add_argument("--address", action="store_true")
-    how.add_argument("--deferred", action="store_true")
+    how = p.add_mutually_exclusive_group()
+    how.add_argument("--address", action="store_true", help="ascending addresses")
+    how.add_argument("--deferred", action="store_true", help="descending addresses")
     p.add_argument("--dry-run", action="store_true")
     p = commands.add_parser("move", parents=[common])
     p.add_argument("dest")

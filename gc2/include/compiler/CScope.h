@@ -8,15 +8,12 @@ extern "C" {
 #endif
 
 #pragma pack(push, 2)
-// The current scope, saved while another is entered and put back by CScope_RestoreScope.
 struct CScopeSave {
     struct NameSpace* current;
     struct TypeClass* currentclass;
     struct Object* currentfunc;
     Boolean is_member_func;
 };
-// A name's lookup result. TODO: invented names (Pro7's have only offsets: nspace_0, name_4,
-// obj_10, nsol_14, bcl_18, x1C, x1D, x20, x21), from what their users do with them
 struct NameResult {
     struct NameSpace* nspace;
     struct HashNameNode* name;
@@ -25,16 +22,11 @@ struct NameResult {
     struct ObjBase* object;
     struct NameSpaceObjectList* objects;
     struct BClassList* basePath;
-    // a qualified destructor name (N::~N)
     Boolean is_destructor;
-    // the name was qualified (N::name), so the lookup does not continue in enclosing scopes
     Boolean is_qualified;
     Boolean isambig;
-    // TODO: no user in Pro7 or 2.6 is known
-    Boolean x1F;
-    // the name is a type
+    Boolean unused;
     Boolean is_type;
-    // a qualified conversion function name (N::operator T)
     Boolean is_conv_operator;
 };
 #pragma pack(pop)
@@ -68,7 +60,7 @@ extern NameSpaceObjectList* CScope_FindName(NameSpace* nspace, HashNameNode* nam
 extern NameSpaceName* CScope_FindNameSpaceName(NameSpace* nspace, HashNameNode* name);
 extern NameSpaceObjectList* CScope_InsertName(NameSpace* nspace, HashNameNode* name);
 extern NameSpaceObjectList* CScope_ArgumentDependentNameLookup(
-    NameSpaceObjectList* list, HashNameNode* name, ENodeList* argNodes, Boolean flag
+    NameSpaceObjectList* list, HashNameNode* name, ENodeList* argNodes, Boolean skipMethods
 );
 extern NameSpace* CScope_NewHashNameSpace(HashNameNode* name);
 extern NameSpace* CScope_NewListNameSpace(HashNameNode* name, Boolean is_global);
@@ -85,7 +77,9 @@ extern Type* CScope_GetType(NameSpace* nspace, HashNameNode* name, UInt32* qual)
 extern Type* CScope_GetTagType(NameSpace* nspace, HashNameNode* name);
 extern Boolean CScope_ParseExprName(NameResult* result);
 extern Boolean CScope_ParseDeclName(NameResult* result);
-extern Boolean CScope_ParseQualifiedNameSpace(NameResult* result, Boolean flag1, Boolean flag2);
+extern Boolean CScope_ParseQualifiedNameSpace(
+    NameResult* result, Boolean allowOperator, Boolean noTemplateArgs
+);
 extern Boolean CScope_ParseElaborateName(NameResult* result);
 extern Boolean CScope_FindNonClassObject(NameSpace* nspace, NameResult* result, HashNameNode* name);
 extern NameSpaceObjectList* CScope_FindObjectList(NameResult* result, HashNameNode* name);
@@ -101,11 +95,11 @@ extern Type* CScope_GetLocalTagType(NameSpace* nspace, HashNameNode* name);
 extern Boolean CScope_FindTypeName(NameSpace* nspace, HashNameNode* name, NameResult* result);
 extern NameSpaceObjectList* CScope_GetLocalObject(NameSpace* nspace, HashNameNode* name);
 extern BClassList* CScope_GetClassAccessPath(BClassList* list, TypeClass* tclass);
-extern Boolean CScope_ParseMemberName(TypeClass* tclass, NameResult* result, Boolean flag);
+extern Boolean CScope_ParseMemberName(TypeClass* tclass, NameResult* result, Boolean isTemplate);
 extern void CScope_AddClassUsingDeclaration(
     TypeClass* tclass, TypeClass* tclass2, HashNameNode* name, AccessType access
 );
-extern void CScope_ParseUsingDeclaration(NameSpace* nspace, AccessType access, Boolean flag);
+extern void CScope_ParseUsingDeclaration(NameSpace* nspace, AccessType access, Boolean unused);
 extern void CScope_ParseNameSpaceAlias(HashNameNode* name);
 extern void CScope_ParseUsingDirective(NameSpace* nspace);
 

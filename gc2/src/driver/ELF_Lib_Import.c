@@ -1,10 +1,9 @@
 #include "driver/ELF_Lib_Import.h"
-#include "compiler/CError.h"
 #include "compiler/CompilerTools.h"
 #include "compiler/CParser.h"
-#include "compiler/CPrep.h"
 #include "compiler/ELF_Endian.h"
 #include "driver/COSToolsCLT.h"
+#include "driver/CWPlugins.h"
 #include "driver/CWPluginsPrivate.h"
 #include "driver/CWSecretPluginCallbacks.h"
 #include "driver/DateTimeUtils.h"
@@ -20,8 +19,6 @@
 #include <stdio.h>
 #include <string.h>
 
-// COMMONs. objudatasize and objidatasize (the imported uninitialized and initialized data sizes)
-// fit 2.6's COMMON hash order where Wii's later Import_objudatasize/Import_objidatasize do not
 jmp_buf linkerexit;
 SInt32 objudatasize;
 SInt32 Imported_Obj_Codesize;
@@ -30,11 +27,6 @@ LinkInfo linkinfo;
 SInt32 objidatasize;
 SInt32 linkerwarnings;
 char Target64;
-
-// The parameters the plugin interface gives the importer and the object data it gives back: the
-// compiler's CompilerLinkerParamBlk (CPrep.h) as far as SYMinfo, then another SDK revision's
-// fields (0x10c bytes where the compiler's is 0x104: the unit's .bss says so). TODO: the fields
-// after caching_includes are guesses; only the ones before are used
 
 struct LibImportCU {
     struct CWPluginPrivateContext* context;
@@ -47,41 +39,42 @@ struct LibImportCU {
     SInt32 numfiles;
     SInt32 whichfile;
     CWFileSpec sourcefile;
-    UInt32 sourcetext;
-    UInt32 sourcetextsize;
-    UInt8 precompile;
-    UInt8 autoprecompile;
-    UInt8 preprocess;
-    UInt8 SYMinfo;
-    UInt8 caching_includes;
-    UInt8 pad_e9;
-    UInt8 browseOptions[16]; // (CWBrowseOptions, byte-aligned here)
-    UInt8 compiling;
-    UInt8 pad_fb;
-    UInt16 mainFileAttributes;
-    SInt32 platformCode1;
-    SInt32 platformCode0;
-    char* optionString;
+    const char* sourcetext;
+    SInt32 sourcetextsize;
+    Boolean precompile;
+    Boolean autoprecompile;
+    Boolean preprocess;
+    Boolean SYMinfo;
+    Boolean caching_includes;
+    CWBrowseOptions browseoptions;
+    Boolean recordbrowseinfo;
+    SInt16 browserfileID;
+    SInt32 targetOS;
+    SInt32 targetCPU;
+    char* idetargetname;
 };
 
-// A file Link_GetFileText reads: an ELF object, or each member of an archive. TODO: invented type
-// and member names
-typedef struct FileInputNode {
-    struct FileInputNode* next; // the archive's next member
-    // what it is: 0 unknown, 1 an archive member, 2 an ELF member, 3 the long-name table, 4 an
-    // ELF object (IsMWLibraryFile, Import_Archive)
-    UInt8 kind;
-    char** dataHandle; // its contents
-    char* archiveMemberHeader; // its 60-byte ar header (archive members)
-} FileInputNode;
+typedef enum Import_Types {
+    Unknown_File,
+    Archive_Member,
+    Archive_Object_Member,
+    Archive_String_Table,
+    Object_File
+} Import_Types;
+
+typedef struct ArchiveInfo {
+    struct ArchiveInfo* next;
+    UInt8 type;
+    char** dataHandle;
+    char* header;
+} ArchiveInfo;
 
 static struct LibImportCU libimp_cu;
 static UInt8 nonNativeByteOrder;
 
-// (defined below)
-FileInputNode* Link_GetFileText(CWFileSpec* name, SInt16* err);
-void DeleteArchiveInfo(FileInputNode* args);
-short Import_File(FileInputNode* record, char* buffer);
+ArchiveInfo* Link_GetFileText(CWFileSpec* name, SInt16* err);
+void DeleteArchiveInfo(ArchiveInfo* args);
+short Import_File(ArchiveInfo* record, char* buffer);
 
 void out_of_memory() {
     linkfailed(13, memFullErr);
@@ -109,11 +102,10 @@ char** ImportObjectLibrary(
 ) {
     short err;
     int length;
-    FileInputNode* rec;
+    ArchiveInfo* rec;
     char** contents;
     char buf[256];
 
-    // (big-endian target != the host's byte order: perhaps macros in the original)
     nonNativeByteOrder = (!copts.littleendian) != 0;
     linkererrors = linkerwarnings = 0;
 
@@ -126,7 +118,7 @@ char** ImportObjectLibrary(
         }
         return NULL;
     }
-    if (rec->kind == 0) {
+    if (rec->type == Unknown_File) {
         linkerror(0x1e, name->name);
         DeleteArchiveInfo(rec);
         return NULL;
@@ -140,8 +132,6 @@ char** ImportObjectLibrary(
         DeleteArchiveInfo(rec);
         return NULL;
     }
-    // (the header's length, set where it is first used: 2.6 loads the 8 into a register for this
-    // call only; a separate `length = 8;` or a plain 8 pushes the constant)
     contents = COS_NewOSHandle(length = 8);
     if (contents == NULL) {
         contents = COS_NewHandle(length);
@@ -152,7 +142,7 @@ char** ImportObjectLibrary(
         }
     }
     COS_LockHandle(contents);
-    if (rec->kind == 1) {
+    if (rec->type == Archive_Member) {
         strncpy(*contents, "!<arch>\n", length);
     } else {
         COS_LockHandle(rec->dataHandle);
@@ -167,8 +157,6 @@ char** ImportObjectLibrary(
     return contents;
 }
 
-// Pro7's CCompiler.c setup_param_block (the prefix keeps row names unique), for what the importer
-// needs
 char ELF_Lib_Import_setup_param_block(CWPluginPrivateContext* handle) {
     libimp_cu.context = handle;
     memset(&libimp_cu.object, 0, sizeof(CWObjectData));
@@ -184,8 +172,6 @@ char ELF_Lib_Import_setup_param_block(CWPluginPrivateContext* handle) {
     return TRUE;
 }
 
-// (Pro7's CCompiler.c store_compile_results, for the importer's object data.) The result
-// variable holds the object handle first; each call's result is returned when not cwNoErr
 unsigned int store_compile_results(void) {
     unsigned int result = libimp_cu.objectdata;
 
@@ -203,11 +189,6 @@ unsigned int store_compile_results(void) {
     return result;
 }
 
-// TODO: 2.6 builds the file at -O4,p up to here and at optimization level 2 from here to its end
-// (each function before matches only at -O4,p, each after only with this pragma; -O2,p for the
-// whole file, or other pragmas here, match neither). It is one object, not two files: functions on
-// both sides push the one "!<arch>\n" literal and use the static libimp_cu. How the original
-// spelled the setting is not known
 #pragma optimization_level 2
 CWPLUGIN_ENTRY(ELFImport_main)(CWPluginPrivateContext* context) {
     int result;
@@ -218,16 +199,16 @@ CWPLUGIN_ENTRY(ELFImport_main)(CWPluginPrivateContext* context) {
     Handle projectHandle;
     Handle linkerHandle;
 
-    result = 0;
+    result = cwNoErr;
     CWGetPluginRequest(context, &mode);
     switch (mode) {
-        case -2:
-            result = 0;
+        case reqInitialize:
+            result = cwNoErr;
             break;
-        case -1:
-            result = 0;
+        case reqTerminate:
+            result = cwNoErr;
             break;
-        case 0:
+        case reqCompile:
             memset(&copts, 0, 264);
             memset(&linkinfo, 0, sizeof(linkinfo));
             projectHandle = NULL;
@@ -241,7 +222,7 @@ CWPLUGIN_ENTRY(ELFImport_main)(CWPluginPrivateContext* context) {
             if (linkerHandle != NULL) {
                 linker = *((PLinker*)*linkerHandle);
             }
-            linkinfo.nowarnings = linker.suppresswarn;
+            linkinfo.nolinkwarnings = linker.suppresswarn;
             Target64 = 0;
             ELF_Lib_Import_setup_param_block(context);
             libimp_cu.browsedata = 0;
@@ -249,7 +230,7 @@ CWPLUGIN_ENTRY(ELFImport_main)(CWPluginPrivateContext* context) {
             libimp_cu.objectdata = 0;
             if (initgheap(out_of_memory) != 0) {
                 out_of_memory();
-                result = 2;
+                result = cwErrRequestFailed;
                 break;
             }
             status = ImportObjectLibrary(
@@ -262,7 +243,7 @@ CWPLUGIN_ENTRY(ELFImport_main)(CWPluginPrivateContext* context) {
             if (status != NULL) {
                 result = store_compile_results();
             } else {
-                result = 2;
+                result = cwErrRequestFailed;
             }
             releasegheap();
             break;
@@ -279,8 +260,7 @@ void OSAlert(char* message, short error) {
     CWReportMessage(libimp_cu.context, NULL, message, NULL, 2, error);
 }
 
-// The tick count at which the importer next lets the IDE break in. TODO: invented name
-static SInt32 next_break_check;
+static UInt32 next_break_check;
 
 void Linker_UserBreakCheck(void) {
     if (TickCount() > next_break_check) {
@@ -291,7 +271,6 @@ void Linker_UserBreakCheck(void) {
     }
 }
 
-// TODO: invented name. The test it is used for returns 0 either way
 static char mwmagic[] = "mw";
 
 unsigned char IsMWLibraryFile(CWFileSpec* input) {
@@ -310,16 +289,16 @@ unsigned char IsMWLibraryFile(CWFileSpec* input) {
     }
     if (ok) {
         if (IsELF((char*)header)) {
-            return 4;
+            return Object_File;
         }
         if (strncmp((char*)header, "!<arch>\n", 8) == 0) {
-            return 1;
+            return Archive_Member;
         }
         if (header[0] == mwmagic[0] && header[1] == mwmagic[1]) {
-            return 0;
+            return Unknown_File;
         }
     }
-    return 0;
+    return Unknown_File;
 }
 
 char** Link_GetFileSpecTextHandle(CWFileSpec* file, short* error, SInt32 extraBytes) {
@@ -361,11 +340,11 @@ char** Link_GetFileSpecTextHandle(CWFileSpec* file, short* error, SInt32 extraBy
     return NULL;
 }
 
-FileInputNode* Link_GetFileText(CWFileSpec* name, SInt16* err) {
-    FileInputNode* member;
+ArchiveInfo* Link_GetFileText(CWFileSpec* name, SInt16* err) {
+    ArchiveInfo* member;
     unsigned char type;
-    FileInputNode* head;
-    FileInputNode* last;
+    ArchiveInfo* head;
+    ArchiveInfo* last;
     char** data;
     char* header;
     SInt32 size;
@@ -376,14 +355,14 @@ FileInputNode* Link_GetFileText(CWFileSpec* name, SInt16* err) {
     SInt32 position;
 
     type = IsMWLibraryFile(name);
-    if (type == 4) {
-        member = (FileInputNode*)galloc(sizeof(FileInputNode));
-        memset(member, 0, sizeof(FileInputNode));
+    if (type == Object_File) {
+        member = (ArchiveInfo*)galloc(sizeof(ArchiveInfo));
+        memset(member, 0, sizeof(ArchiveInfo));
         member->dataHandle = Link_GetFileSpecTextHandle(name, err, 0);
-        member->kind = type;
+        member->type = type;
         return member;
     }
-    if (type == 1) {
+    if (type == Archive_Member) {
         *err = FSpOpenDF(name, 1, &handle);
         if (*err != 0) {
             return NULL;
@@ -402,7 +381,7 @@ FileInputNode* Link_GetFileText(CWFileSpec* name, SInt16* err) {
         }
         position = sizeof(buffer);
         while (position < size) {
-            member = (FileInputNode*)galloc(sizeof(FileInputNode));
+            member = (ArchiveInfo*)galloc(sizeof(ArchiveInfo));
             if (member == NULL) {
                 FSClose(handle);
                 *err = memFullErr;
@@ -416,11 +395,11 @@ FileInputNode* Link_GetFileText(CWFileSpec* name, SInt16* err) {
             if (head == NULL) {
                 head = member;
             }
-            memset(member, 0, sizeof(FileInputNode));
-            member->kind = 1;
-            count = 60; // an ar member header
-            member->archiveMemberHeader = galloc(60);
-            if (member->archiveMemberHeader == NULL) {
+            memset(member, 0, sizeof(ArchiveInfo));
+            member->type = Archive_Member;
+            count = 60;
+            member->header = galloc(60);
+            if (member->header == NULL) {
                 FSClose(handle);
                 for (member = head; member; member = member->next) {
                     if (member->dataHandle) {
@@ -429,7 +408,7 @@ FileInputNode* Link_GetFileText(CWFileSpec* name, SInt16* err) {
                 }
                 return NULL;
             }
-            *err = FSRead(handle, &count, member->archiveMemberHeader);
+            *err = FSRead(handle, &count, member->header);
             if (*err != 0 || count != 60) {
                 FSClose(handle);
                 for (member = head; member; member = member->next) {
@@ -439,9 +418,9 @@ FileInputNode* Link_GetFileText(CWFileSpec* name, SInt16* err) {
                 }
                 return NULL;
             }
-            header = member->archiveMemberHeader;
+            header = member->header;
             position += 60;
-            sscanf(header + 48, "%ld", &length); // its ar_size
+            sscanf(header + 48, "%ld", &length);
             data = COS_NewOSHandle(length);
             if (data == NULL) {
                 data = COS_NewHandle(length);
@@ -496,7 +475,7 @@ FileInputNode* Link_GetFileText(CWFileSpec* name, SInt16* err) {
     return NULL;
 }
 
-void DeleteArchiveInfo(FileInputNode* args) {
+void DeleteArchiveInfo(ArchiveInfo* args) {
     while (args != NULL) {
         if (args->dataHandle != NULL) {
             COS_FreeHandle(args->dataHandle);
@@ -507,7 +486,6 @@ void DeleteArchiveInfo(FileInputNode* args) {
 }
 
 unsigned char Inspect_ELF_Header(Elf32_Ehdr* record, char* location, char* name) {
-    // EI_DATA: ELFDATA2LSB, ELFDATA2MSB; EI_CLASS: ELFCLASS32, ELFCLASS64; e_machine: EM_PPC, and 17
     if (record->e_ident[5] == 1) {
         if (!copts.littleendian) {
             linkwarning(48, location, name);
@@ -552,7 +530,7 @@ unsigned char Inspect_ELF_Header(Elf32_Ehdr* record, char* location, char* name)
     return TRUE;
 }
 
-void Import_Object_File(FileInputNode* input, char* location, char* name) {
+void Import_Object_File(ArchiveInfo* input, char* location, char* name) {
     Elf32_Ehdr* header;
     Elf32_Shdr* section;
     int section_index;
@@ -586,7 +564,7 @@ void Import_Object_File(FileInputNode* input, char* location, char* name) {
 
 char* Get_AR_Name(char** baseOffset, char* text) {
     char* base;
-    int index;
+    SInt32 index;
     index = 0;
     base = NULL;
 
@@ -630,47 +608,47 @@ void term_ar_string_table(char** buffer, int length) {
     }
 }
 
-void Import_Archive(FileInputNode* list, char* arg) {
+void Import_Archive(ArchiveInfo* list, char* location) {
     char** longNames;
     char* name;
     char** data;
-    FileInputNode* node;
+    ArchiveInfo* node;
     char* header;
 
     longNames = NULL;
     for (node = list; node; node = node->next) {
-        header = node->archiveMemberHeader;
+        header = node->header;
         data = node->dataHandle;
         name = Get_AR_Name(longNames, header);
 
         if (!GetHandleSize(data)) {
-            linkwarning(0x7e, arg, name);
+            linkwarning(0x7e, location, name);
             continue;
         }
         if (!memcmp(name, "//", 3)) {
             longNames = data;
             COS_LockHandleHi(data);
             term_ar_string_table(data, GetHandleSize(data));
-            node->kind = 3;
+            node->type = Archive_String_Table;
         }
         if (!IsELF(*data)) {
             continue;
         }
-        node->kind = 2;
-        Import_Object_File(node, arg, name);
+        node->type = Archive_Object_Member;
+        Import_Object_File(node, location, name);
     }
     if (longNames) {
         COS_UnlockHandle(longNames);
     }
 }
 
-short Import_File(FileInputNode* record, char* buffer) {
+short Import_File(ArchiveInfo* record, char* buffer) {
     short result = setjmp(linkerexit);
 
     if (result == 0) {
-        if (record->kind == 1) {
+        if (record->type == Archive_Member) {
             Import_Archive(record, buffer);
-        } else if (record->kind == 4) {
+        } else if (record->type == Object_File) {
             Import_Object_File(record, buffer, "");
         } else {
             linkerror(0x39, buffer);

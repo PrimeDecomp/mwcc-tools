@@ -1,9 +1,8 @@
 #include "driver/StdTargetWarningHelpers-cc.h"
-#include "driver/OptimizerHelpers.h"
+#include "driver/parser.h"
 #include "driver/pref_structs.h"
 #include "driver/StringUtils.h"
 
-// (Pro7's pref_structs.h, its name assumed there) the pragma-only C warnings
 typedef struct PExtraWarningC {
     UInt8 warn_largeargs;
     UInt8 warn_padding;

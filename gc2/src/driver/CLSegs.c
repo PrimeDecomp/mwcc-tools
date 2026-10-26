@@ -1,6 +1,6 @@
 #include "driver/CLSegs.h"
-#include "driver/CLIO.h"
 #include "driver/MemUtils.h"
+#include "driver/oslib.h"
 #include <string.h>
 
 Segment* Segment_New(const char* name, UInt16 attrs) {
@@ -81,8 +81,6 @@ Boolean Segments_AddSegment(Segments* segs, Segment* seg, UInt16* index) {
     }
 }
 
-// Dead in 2.6 (the linker dropped it, Pro7 has no caller either); kept: the asserts after it have
-// Pro7's line numbers.
 Boolean Segments_InsertSegment(Segments* segs, UInt16 index, Segment* seg) {
     UInt16 ni;
 
@@ -102,7 +100,6 @@ Boolean Segments_InsertSegment(Segments* segs, UInt16 index, Segment* seg) {
     }
 }
 
-// Dead in 2.6, as Segments_InsertSegment.
 Boolean Segments_DeleteSegment(Segments* segs, UInt16 index) {
     if (index >= segs->segsCount) {
         return FALSE;

@@ -7,7 +7,6 @@
 extern "C" {
 #endif
 
-// (Pro7: common.h)
 enum {
     CR = 13,
     LF = 10
@@ -15,12 +14,11 @@ enum {
 
 extern short prepskipnextchar(void);
 extern short prepnextchar(void);
-extern short prepnextstringchar(unsigned char* str, Boolean flag);
-extern void CPrep_MatchChar(char ch, Boolean flag);
-extern char* CPrep_MatchChar2(char* start, char ch, Boolean flag);
+extern short prepnextstringchar(unsigned char* str, Boolean countNewlines);
+extern void CPrep_MatchChar(char ch, Boolean countNewlines);
+extern char* CPrep_MatchChar2(char* start, char ch, Boolean countNewlines);
 extern short prepcurchar(void);
 extern char* ReadIdentifier(const char* p);
-extern unsigned char* CPrep_SkipNewComment(unsigned char* str);
 extern Boolean skipendoflinematch(unsigned char* str, short token);
 extern void skipendofline(void);
 extern short lookahead(void);

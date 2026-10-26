@@ -4,14 +4,12 @@
 #include <string.h>
 
 void Bv_AllocVector(BitVector** bv, UInt32 size) {
-    // 2.6 reuses the parameter where Pro7 has a local `long_size` (with the local, other registers)
     size = (size / 32) + 1;
     *bv = oalloc(sizeof(BitVector) + sizeof(UInt32) * size);
     (*bv)->size = size;
     Bv_Clear(*bv);
 }
 
-// Pro7's; nothing calls it in 2.6 (the linker drops it, and it has no data of its own).
 void Bv_AllocVectorLocal(BitVector** bv, UInt32 size) {
     UInt32 long_size = (size / 32) + 1;
     *bv = lalloc(sizeof(BitVector) + sizeof(UInt32) * long_size);
@@ -96,10 +94,10 @@ void Bv_Set(BitVector* bv) {
 }
 
 Boolean Bv_IsSubset(const BitVector* a, const BitVector* b) {
-    int i; // Pro7: UInt32 (2.6 copies the counter for the comparison)
+    int i;
 
-    for (i = 0; i < a->size; i++) {
-        if (b->size < i) {
+    for (i = 0; (UInt32)i < a->size; i++) {
+        if (b->size < (UInt32)i) {
             if (a->data[i]) {
                 return FALSE;
             }

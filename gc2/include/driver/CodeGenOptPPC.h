@@ -1,8 +1,6 @@
 #ifndef DRIVER_CODEGENOPTPPC_H
 #define DRIVER_CODEGENOPTPPC_H
 
-#include "compiler/common.h"
-
 #ifdef __cplusplus
 extern "C" {
 #endif

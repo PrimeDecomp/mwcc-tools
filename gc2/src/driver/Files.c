@@ -3,6 +3,7 @@
 #include "driver/MacFileTypes.h"
 #include "driver/MacSpecs.h"
 #include "driver/MsDos.h"
+#include "driver/oslib.h"
 #include "driver/Resources.h"
 #include "driver/StringUtils.h"
 #include <stdio.h>
@@ -20,7 +21,6 @@ typedef struct MacFileInfo {
     SInt8 ioFlAttrib;
 } MacFileInfo;
 
-// (Pro7's macemul.h API; no other unit of 2.6 calls them)
 OSErr __stdcall FSpGetFInfo(const FSSpec* fss, FInfo* fndrInfo);
 OSErr __stdcall FSpSetFInfo(const FSSpec* fss, const FInfo* fndrInfo);
 OSErr __stdcall PBHSetFInfoSync(HParmBlkPtr paramBlock);
@@ -69,7 +69,9 @@ static int OS_GetFileParamInfo(const OSSpec* spec, MacFileInfo* mfi, FInfo* fi) 
 
     OS_GetMacFileTypeMagic(buffer, count, &ft);
     fc = 'CWIE';
-    if (OS_UsingMacResourceForkInfo() && !OS_GetRsrcOSSpec(spec, &rsrc, 0) && !OS_Status(&rsrc)) {
+    if (OS_UsingMacResourceForkInfo() &&
+        !OS_GetRsrcOSSpec(spec, &rsrc, FALSE) &&
+        !OS_Status(&rsrc)) {
         isopen = OS_SearchMacResourceForkList(&rsrc, &ref);
         if (isopen || !OS_Open(&rsrc, 0, &ref)) {
             if (mfi) {
@@ -111,7 +113,9 @@ static int OS_SetFileParamInfo(const OSSpec* spec, MacFileInfo* mfi, FInfo* fi) 
 
     OS_SetMacFileType(spec, fi->fdType);
 
-    if (OS_UsingMacResourceForkInfo() && !OS_GetRsrcOSSpec(spec, &rspec, 0) && !OS_Status(&rspec)) {
+    if (OS_UsingMacResourceForkInfo() &&
+        !OS_GetRsrcOSSpec(spec, &rspec, FALSE) &&
+        !OS_Status(&rspec)) {
         isopen = OS_SearchMacResourceForkList(&rspec, &ref);
         if (!isopen && OS_Open(&rspec, OSReadWrite, &ref)) {
             return 0;
@@ -252,7 +256,7 @@ OSErr __stdcall FSpDelete(const FSSpec* fss) {
     }
 
     err = OS_Delete(&spec);
-    if (!OS_GetRsrcOSSpec(&spec, &rspec, 0)) {
+    if (!OS_GetRsrcOSSpec(&spec, &rspec, FALSE)) {
         err = OS_Delete(&rspec);
         OS_CleanupMacResourceForkDir(&rspec.path);
     }
@@ -297,7 +301,6 @@ OSErr __stdcall FSpSetFInfo(const FSSpec* fss, const FInfo* fndrInfo) {
     return err;
 }
 
-// (dead in 2.6: the linker dropped it, but its "" is in the unit's .data)
 OSErr __stdcall HGetVol(StringPtr volName, SInt16* vRefNum, SInt32* dirID) {
     OSSpec spec;
     int err;
@@ -396,7 +399,6 @@ OSErr __stdcall GetFPos(SInt16 fRefNum, SInt32* pos) {
     return OS_OSErrorToMacError(OS_Tell(OS_MacToRef(fRefNum), pos));
 }
 
-// (Pro7's PBWriteSync, dead in 2.6 and not in its .data, read it; it stays in the unit's .data)
 static OSSeekMode MacSeek[4] = {OSSeekAbs, OSSeekAbs, OSSeekEnd, OSSeekRel};
 
 OSErr __stdcall SetFPos(SInt16 fRefNum, SInt16 posMode, SInt32 posOffset) {
@@ -412,8 +414,6 @@ OSErr __stdcall SetFPos(SInt16 fRefNum, SInt16 posMode, SInt32 posOffset) {
         return rfNumErr;
     }
 
-    // (2.6 masks the short and works on an int copy where Pro7 tests `posMode & 3` each time;
-    // `mode = posMode & 3` compiles otherwise)
     posMode &= 3;
     mode = posMode;
     if (mode) {
@@ -442,7 +442,7 @@ OSErr __stdcall SetFPos(SInt16 fRefNum, SInt16 posMode, SInt32 posOffset) {
             return OS_OSErrorToMacError(err);
         }
 
-        if (npos > size) {
+        if ((UInt32)npos > size) {
             OS_Seek(ref, OSSeekAbs, pos);
             return eofErr;
         }
@@ -520,7 +520,7 @@ OSErr __stdcall FSMakeFSSpec(SInt16 vRefNum, SInt32 dirID, ConstStringPtr pathNa
     OSSpec spec;
     int err;
     char path[260];
-    FSSpec tmpfss;
+    FSSpec dirfss;
     int idx;
     char* pptr;
     char vol[64];
@@ -539,10 +539,10 @@ OSErr __stdcall FSMakeFSSpec(SInt16 vRefNum, SInt32 dirID, ConstStringPtr pathNa
         OS_PathSpecToString(&spec.path, path, sizeof(path));
     } else {
         OS_ASSERT(840, vRefNum!=0);
-        tmpfss.vRefNum = vRefNum;
-        tmpfss.parID = dirID == 0 ? 2 : dirID;
-        tmpfss.name[0] = 0;
-        err = OS_FSSpec_To_OSSpec(&tmpfss, &spec);
+        dirfss.vRefNum = vRefNum;
+        dirfss.parID = dirID == 0 ? 2 : dirID;
+        dirfss.name[0] = 0;
+        err = OS_FSSpec_To_OSSpec(&dirfss, &spec);
         if (err) {
             fss->name[0] = 0;
             return OS_OSErrorToMacError(err);
@@ -559,7 +559,6 @@ OSErr __stdcall FSMakeFSSpec(SInt16 vRefNum, SInt32 dirID, ConstStringPtr pathNa
                 }
                 vol[idx - 1] = pathName[idx];
                 idx++;
-                // (2.6's volume names are 64 bytes, Pro7's 8; a signed compare, not sizeof(vol))
                 if (idx >= 64) {
                     fss->name[0] = 0;
                     return nsvErr;
@@ -579,7 +578,6 @@ OSErr __stdcall FSMakeFSSpec(SInt16 vRefNum, SInt32 dirID, ConstStringPtr pathNa
         while (idx <= pathName[0]) {
             if (pathName[idx] == ':') {
                 if (idx < pathName[0] && pathName[idx + 1] == ':') {
-                    // (2.6's Win32 separator; the increment a statement of its own)
                     do {
                         pptr += sprintf(pptr, "..\\");
                         idx++;
@@ -604,7 +602,7 @@ OSErr __stdcall FSMakeFSSpec(SInt16 vRefNum, SInt32 dirID, ConstStringPtr pathNa
     } else {
         nmptr = OS_GetFileNamePtr(path);
         len = strlen(nmptr);
-        if (len >= sizeof(fss->name)) {
+        if ((size_t)len >= sizeof(fss->name)) {
             len = 63;
         }
         fss->name[0] = len;

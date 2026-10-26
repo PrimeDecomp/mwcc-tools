@@ -2,10 +2,7 @@
 #define COMPILER_TEMPLATES_H
 
 #include "compiler/common.h"
-#include "compiler/objects.h"
 #include "compiler/types.h"
-#include "compiler/CInline.h"
-#include "compiler/CPrep.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -19,7 +16,6 @@ struct PackedDeclInfo {
     HashNameNode* name;
     TemplArg* expltargs;
     SInt16 storageclass;
-    // 2.6: Pro7's Section, a halfword
     SInt16 section;
     UInt8 exportflags;
     Boolean has_expltargs;
@@ -85,7 +81,6 @@ struct DeduceInfo {
     TemplArg argBuffer[16];
     int maxCount;
     int count;
-    // TODO: invented name (Pro7: x12C): the deduced parameters' nindex
     UInt8 nindex;
 };
 
@@ -93,7 +88,6 @@ struct DefAction {
     DefAction* next;
     TemplateAction* action;
     ObjBase* refobj;
-    // TODO: Pro7's placeholder name; never read or written
     int xC;
     TypeEnum* enumtype;
 };
@@ -104,13 +98,9 @@ struct TypeDeduce {
     TemplParam* params;
     TemplArg* args;
     DefAction* defActions;
-    // TODO: invented name (Pro7: x14)
     Boolean processingClassTypes;
-    // TODO: invented name (Pro7: x15)
     Boolean processingArgument;
-    // TODO: invented name (Pro7: x16, never set): quiets errors 124 and 232 when set
     Boolean suppressErrors;
-    // TODO: invented name (Pro7: x17): the instance has virtual bases its template lacks
     Boolean hasNewVBases;
     UInt8 nindex;
 };
@@ -131,8 +121,6 @@ struct TemplStack {
     Boolean is_poi;
 };
 
-/* Classes */
-
 struct TemplClass {
     TypeClass theclass;
     TemplClass* next;
@@ -149,10 +137,9 @@ struct TemplClass {
     UInt8 flags;
 };
 
-// TemplClass::flags
 enum {
     TEMPLCLASS_HAS_VTABLE = 1,
-    TEMPLCLASS_FLAGS_2 = 2
+    TEMPLCLASS_IS_SPECIALIZATION = 2
 };
 
 struct TemplClassInst {
@@ -173,11 +160,8 @@ struct TemplClassInst {
 #define IS_TEMPL_CLASS(ty) (IS_TYPE_CLASS(ty) && (TYPE_CLASS(ty)->flags & CLASS_IS_TEMPL))
 #define IS_TEMPL_CLASS_INST(ty) (IS_TYPE_CLASS(ty) && (TYPE_CLASS(ty)->flags & CLASS_IS_TEMPL_INST))
 
-/* Functions */
-
 struct TemplateFunction {
     TemplateFunction* next;
-    // TODO: invented name (Pro7: unk4): the template this one was copied from
     TemplateFunction* original;
     HashNameNode* name;
     TemplParam* params;
@@ -199,11 +183,7 @@ struct TemplFuncInstance {
     Boolean is_extern;
 };
 
-#define TEMPL_FUNC(ty) ((TemplateFunction*)(ty))
-#define TEMPL_FUNC_INST(ty) ((TemplFuncInstance*)(ty))
 #define IS_TEMPL_FUNC(ty) (IS_TYPE_FUNC(ty) && (TYPE_FUNC(ty)->flags & FUNC_IS_TEMPL))
-
-/* Actions */
 
 typedef enum TemplateActionType {
     TAT_NESTEDCLASS,
@@ -247,7 +227,6 @@ struct TemplateAction {
     TemplateActionType type;
 };
 
-// TODO: Pro7's DeclFucker (CDecl.h): the scope a template declaration is parsed in
 struct TemplateScopeState {
     NameSpace* scope;
     NameSpace* linkedNamespace;

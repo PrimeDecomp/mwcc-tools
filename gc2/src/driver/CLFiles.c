@@ -1,9 +1,10 @@
 #include "driver/CLFiles.h"
-#include "driver/CLIO.h"
 #include "driver/CLLoadAndCache.h"
+#include "driver/cmdline.h"
 #include "driver/Memory.h"
 #include "driver/MemUtils.h"
 #include "driver/MsDos.h"
+#include "driver/oslib.h"
 #include <stddef.h>
 #include <string.h>
 
@@ -72,7 +73,6 @@ Boolean Files_InsertFile(Files* this, File* file, SInt32 position) {
     }
 
     scan = &this->fileList;
-    // 2.6 counts down in the test (Pro7: `while (position > 0)`, `position--` in the body)
     while (position-- > 0) {
         scan = &(*scan)->next;
     }

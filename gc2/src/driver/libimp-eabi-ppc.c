@@ -1,7 +1,6 @@
-// The library importer plugin's description of itself (Pro7's
-// Plugin/libimp-mach-ppc.c; Wii's "imp-elf").
 #include "driver/libimp-eabi-ppc.h"
 #include "driver/ClientGlue.h"
+#include "driver/CWPlugins.h"
 #include "driver/DropInCompilerLinker.h"
 #include "driver/ELF_Lib_Import.h"
 
@@ -126,5 +125,5 @@ int RegisterStaticLibImporterPlugin(void) {
 }
 
 int RegisterLibImporterResources(void) {
-    return 1;
+    return TRUE;
 }

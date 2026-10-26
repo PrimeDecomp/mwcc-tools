@@ -9,10 +9,6 @@
 extern "C" {
 #endif
 
-// MSL and runtime internals (lib/msl/MSL_Common/Include/ansi_files.h, file_io.h, strtold.h,
-// MSL_Win32 unistd.win32.h, lib/runtime/NMWException.h). The last group are static in their MSL
-// sources: the functions here that call them are MSL code of those same translation units.
-
 typedef struct CatchInfo {
     void* location;
     void* typeinfo;

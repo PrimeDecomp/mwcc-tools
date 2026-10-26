@@ -7,7 +7,6 @@
 extern "C" {
 #endif
 
-// The MSL stdlib functions the compiler links (lib/msl/MSL_Common/Include/cstdlib).
 typedef int (*_compare_function)(const void*, const void*);
 typedef struct {
     int quot;

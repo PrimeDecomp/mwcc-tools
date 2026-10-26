@@ -9,8 +9,7 @@ extern "C" {
 
 extern void IRO_InitializeIsAssociativeENodeTypeArray(void);
 extern void IRO_TruncateValueToType(CInt64* val, Type* type);
-// 2.6: its third parameter is a TypeBitfield * (Pro7: Type *), which the prologue loads
-extern void IRO_TruncateBitfieldValueToType(CInt64* val, Type* type, TypeBitfield* type2);
+extern void IRO_TruncateBitfieldValueToType(CInt64* val, Type* type, TypeBitfield* bitfieldType);
 extern void IRO_ConstantFolding(void);
 extern Boolean IRO_EvaluateConditionals(void);
 extern int IRO_SimplifyConditionals(void);

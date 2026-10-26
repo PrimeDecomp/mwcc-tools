@@ -1,4 +1,5 @@
 #include "driver/Help.h"
+#include "compiler/win32.h"
 #include "driver/Arguments.h"
 #include "driver/CWParserPluginsPrivate.h"
 #include "driver/CWPlugins.h"
@@ -6,6 +7,7 @@
 #include "driver/IO.h"
 #include "driver/Memory.h"
 #include "driver/Option.h"
+#include "driver/option_system.h"
 #include "driver/Parameter.h"
 #include "driver/ParserFace.h"
 #include "driver/StringUtils.h"
@@ -16,7 +18,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-// One column of the help screen: text queued in a 1 KB ring and laid out a line at a time
 typedef struct Side {
     short offset;
     short width;
@@ -30,8 +31,6 @@ typedef struct Side {
     Boolean impInd;
 } Side;
 
-// (Pro7's and Wii's COMMONs, which no 2.6 code uses: 2.6's .bss has them where their names'
-// hash order puts them, 0x5eb08c and 0x5eb3b4)
 short helpExtras;
 Boolean showedHelp;
 Side left;
@@ -221,11 +220,9 @@ int Help_Option(OptionList* lst, Option* opt, int subprint, const char* keyword)
     PARAM_T* lastparam;
     Boolean print;
     Boolean printMe;
-    // TODO: invented name. 2.6 copies each parameter it describes into a register it never reads
-    // (0x42cc78), a local Pro7 lacks.
     PARAM_T* currentArg;
 
-    if (!opt->names[0] && !(lst->flags & LISTFLAGS_4)) {
+    if (!opt->names[0] && !(lst->flags & LISTFLAGS_UNNAMED)) {
         return FALSE;
     }
 
@@ -269,24 +266,24 @@ int Help_Option(OptionList* lst, Option* opt, int subprint, const char* keyword)
         if ((opt->avail & OTF_GLOBAL) && !subprint) {
             Side_Print(&right, "global; ");
         }
-        if (compat != 1 && (opt->avail & OTF_CASED)) {
+        if (compat != COMPAT_DOS && (opt->avail & OTF_CASED)) {
             Side_Print(&right, "cased; ");
         }
 
-        slflags = !subprint ? (char)SLFLAGS_1 : (char)SLFLAGS_2;
-        switch (opt->avail & OTF_SLFLAGS_MASK) {
-            case OTF_SLFLAGS_8:
-                slflags |= SLFLAGS_8;
+        slflags = !subprint ? (char)SLFLAGS_OPTCHAR : (char)SLFLAGS_SUBOPTION;
+        switch (opt->avail & OTF_PREFIX_MASK) {
+            case OTF_NO_PREFIX:
+                slflags |= SLFLAGS_NO_PREFIX;
                 break;
-            case OTF_SLFLAGS_10:
-                slflags |= SLFLAGS_10;
+            case OTF_MINUS_PREFIX:
+                slflags |= SLFLAGS_MINUS_PREFIX;
                 break;
-            case OTF_SLFLAGS_20:
-                slflags |= SLFLAGS_20;
+            case OTF_NO_DASH_PREFIX:
+                slflags |= SLFLAGS_NO_DASH_PREFIX;
                 break;
         }
         if (opt->avail & OTF_STICKY) {
-            slflags |= SLFLAGS_40;
+            slflags |= SLFLAGS_STICKY;
         }
 
         Utils_SpellList(opt->names[0] ? opt->names : "...", pfbuf, slflags);
@@ -374,7 +371,7 @@ int Help_Option(OptionList* lst, Option* opt, int subprint, const char* keyword)
             const char* help;
             const char* defaul;
             while (scan) {
-                if ((scan->flags & PARAMFLAGS_3) != PARAMFLAGS_1) {
+                if ((scan->flags & PARAMFLAGS_ARG_MASK) != PARAMFLAGS_NO_ARG) {
                     currentArg = scan;
                     if (!firstparam) {
                         firstparam = scan;
@@ -383,9 +380,8 @@ int Help_Option(OptionList* lst, Option* opt, int subprint, const char* keyword)
                     allNoArgs = FALSE;
                     Param_DescHelp(scan, &desc, &help, &defaul);
                     if (desc) {
-                        if (((scan->flags & PARAMFLAGS_3) == PARAMFLAGS_2) &&
-                            scan->which !=
-                            PARAMWHICH_Setting &&
+                        if (((scan->flags & PARAMFLAGS_ARG_MASK) == PARAMFLAGS_OPTIONAL_ARG) &&
+                            scan->which != PARAMWHICH_Setting &&
                             scan->which != PARAMWHICH_IfArg) {
                             if (SEPOPTSTR[0] == ' ') {
                                 Side_Print(
@@ -414,14 +410,13 @@ int Help_Option(OptionList* lst, Option* opt, int subprint, const char* keyword)
                             );
                         }
                         Side_Print(&left, "%s", desc);
-                        if (((scan->flags & PARAMFLAGS_3) == PARAMFLAGS_2) &&
-                            scan->which !=
-                            PARAMWHICH_Setting &&
+                        if (((scan->flags & PARAMFLAGS_ARG_MASK) == PARAMFLAGS_OPTIONAL_ARG) &&
+                            scan->which != PARAMWHICH_Setting &&
                             scan->which != PARAMWHICH_IfArg) {
                             Side_Print(&left, "]");
                         }
                         if (help) {
-                            if ((scan->flags & PARAMFLAGS_3) != PARAMFLAGS_2) {
+                            if ((scan->flags & PARAMFLAGS_ARG_MASK) != PARAMFLAGS_OPTIONAL_ARG) {
                                 Side_Print(&right, "; for '%s', %s", desc, help);
                             } else {
                                 Side_Print(&right, "; if parameter specified, %s", help);
@@ -464,8 +459,8 @@ int Help_Option(OptionList* lst, Option* opt, int subprint, const char* keyword)
                     &left,
                     "%s",
                     (opt->avail & OTF_SUB_OPTIONS_OPTIONAL)
-                        ? ((lastparam->flags & PARAMFLAGS_8) ? "[=" : "[,")
-                        : ((lastparam->flags & PARAMFLAGS_8) ? "=" : ",")
+                        ? ((lastparam->flags & PARAMFLAGS_EQUALS_AFTER) ? "[=" : "[,")
+                        : ((lastparam->flags & PARAMFLAGS_EQUALS_AFTER) ? "=" : ",")
                 );
             } else if (!(opt->avail & OTF_STICKY)) {
                 if (opt->avail & OTF_SUB_OPTIONS_OPTIONAL) {
@@ -487,7 +482,7 @@ int Help_Option(OptionList* lst, Option* opt, int subprint, const char* keyword)
                 &left,
                 "%s%s%s",
                 opt->sub->help ? opt->sub->help : "keyword",
-                (opt->sub->flags & PARAMFLAGS_1) ? "" : "[,...]",
+                (opt->sub->flags & PARAMFLAGS_NO_ARG) ? "" : "[,...]",
                 (opt->avail & OTF_SUB_OPTIONS_OPTIONAL) ? "]" : ""
             );
 
@@ -506,7 +501,7 @@ int Help_Option(OptionList* lst, Option* opt, int subprint, const char* keyword)
     return TRUE;
 }
 
-void Help_Options(struct OptionList* lst, int subprint, const char* keyword) {
+void Help_Options(OptionList* lst, int subprint, const char* keyword) {
     Option** opts;
     int toolflags;
     Boolean show;
@@ -520,14 +515,12 @@ void Help_Options(struct OptionList* lst, int subprint, const char* keyword) {
     }
 
     if (!subprint && (parseopts.helpFlags & HELPFLAGS_TOOL)) {
-        if ((parseopts.helpFlags & HELPFLAGS_TOOL_BOTH) ==
-            HELPFLAGS_TOOL_THIS &&
+        if ((parseopts.helpFlags & HELPFLAGS_TOOL_BOTH) == HELPFLAGS_TOOL_THIS &&
             (lst->flags & LISTFLAGS_TOOL_MASK) &&
             !(lst->flags & toolflags)) {
             return;
         }
-        if ((parseopts.helpFlags & HELPFLAGS_TOOL_BOTH) ==
-            HELPFLAGS_TOOL_OTHER &&
+        if ((parseopts.helpFlags & HELPFLAGS_TOOL_BOTH) == HELPFLAGS_TOOL_OTHER &&
             (((lst->flags & LISTFLAGS_TOOL_MASK) == (unsigned int)toolflags) ||
              ((lst->flags & LISTFLAGS_TOOL_MASK) == (unsigned int)LISTFLAGS_NONE))) {
             return;
@@ -547,7 +540,7 @@ void Help_Options(struct OptionList* lst, int subprint, const char* keyword) {
             if (((parseopts.helpFlags & HELPFLAGS_TOOL_BOTH) == HELPFLAGS_TOOL_BOTH) &&
                 (parseopts.passingArgs ? (Option_ForTool(*opts, OTF_TOOL_LINKER) ||
                                           Option_ForTool(*opts, OTF_TOOL_DISASSEMBLER))
-                                       : 1) &&
+                                       : TRUE) &&
                 Option_ForThisTool(*opts)) {
                 show = TRUE;
             }
@@ -590,7 +583,7 @@ void Help_Usage(void) {
     Side_Print(
         &all,
         "\tFor most options, the option and the parameters are separated by a %sspace.  When the option's name is '~~xxx+', however, the parameter must directly follow the option, without the '+' (as in '~~xxx45').\b",
-        (compat != 1) ? "" : "colon or "
+        (compat != COMPAT_DOS) ? "" : "colon or "
     );
     Side_Print(
         &all,
@@ -603,7 +596,7 @@ void Help_Usage(void) {
         "\t%s-- \"compatability\" indicates that the option is borrowed from another vendor's tool and may only approximate its counterpart.\r"
         "-- \"global\" indicates that the option has an effect over the entire command line and is parsed before any other options.  When several global options are specified, they are interpreted in order.\r"
         "-- \"deprecated\" indicates that the option will be eliminated in the future and should not be used any longer.  An alternative form is supplied.\r",
-        (compat != 1)
+        (compat != COMPAT_DOS)
             ? "-- \"cased\" indicates that the option is case-sensitive.  By default, no options are case-sensitive.\r"
             : ""
     );
@@ -622,7 +615,7 @@ void Help_Usage(void) {
     Side_Print(
         &all,
         "\tThe symbols ',' %s separate options and parameters unconditionally; to include one of these symbols in a parameter or filename, escape it (e.g., as '\\,' in mwcc file.c\\,v).\b\n",
-        (compat != 1) ? "and '='" : ", ':', and '='"
+        (compat != COMPAT_DOS) ? "and '='" : ", ':', and '='"
     );
     Help_OutputSingle(&all);
 
@@ -635,7 +628,6 @@ void Help_Usage(void) {
     Help_OutputSingle(&all);
 }
 
-// (Pro7's; no caller in 2.6, which the linker dropped: its literal stays in the unit's .data)
 void Help_Null(void) {
     Side_Print(
         &all,

@@ -1,4 +1,3 @@
-// GCCInlineAsm.c: Pro7's file, deferred.
 #include "compiler/GCCInlineAsm.h"
 #include "compiler/CError.h"
 #include "compiler/CExpr.h"
@@ -7,9 +6,10 @@
 #include "compiler/CParser.h"
 #include "compiler/CPrep.h"
 #include "compiler/CPrepTokenizer.h"
+#include "compiler/enode.h"
 #include "compiler/InlineAsm.h"
 #include "compiler/objects.h"
-#include "compiler/Registers.h"
+#include "compiler/tokens.h"
 
 Statement* first_ST_ASM;
 IALookupResult gcc_name_list[20];
@@ -25,9 +25,7 @@ void InlineAsm_SkipComment(void) {
         }
 
         tk = lex();
-        while (!((tk = lex()) == '*' && (tk = lex()) == '/')) {
-            // nothing
-        }
+        while (!((tk = lex()) == '*' && (tk = lex()) == '/')) {}
         tk = lex();
     }
 }
@@ -43,9 +41,7 @@ static char gcc_parse_attribute(void) {
         CError_Error(ERR_ILLEGAL_TOKEN);
     }
 
-    while ((tk = lex()) != TK_IDENTIFIER) {
-        // nothing
-    }
+    while ((tk = lex()) != TK_IDENTIFIER) {}
 
     ch = tkidentifier->name[0];
 
@@ -57,7 +53,7 @@ static char gcc_parse_attribute(void) {
     return ch;
 }
 
-static void gcc_parse_name(Boolean flag, char attribute) {
+static void gcc_parse_name(Boolean isOutput, char attribute) {
     ENode* expr;
     IALookupResult* nameentry;
     Object* tempobj;
@@ -74,7 +70,7 @@ static void gcc_parse_name(Boolean flag, char attribute) {
 
     tk = lex();
 
-    if (flag) {
+    if (isOutput) {
         if (tk != TK_IDENTIFIER) {
             CError_Error(ERR_ILLEGAL_TOKEN);
         }
@@ -130,9 +126,9 @@ static void gcc_parse_name(Boolean flag, char attribute) {
     tk = lex();
 }
 
-static void gcc_parse_expression(Boolean flag) {
+static void gcc_parse_expression(Boolean isOutput) {
     while (1) {
-        gcc_parse_name(flag, gcc_parse_attribute());
+        gcc_parse_name(isOutput, gcc_parse_attribute());
         if (tk != ',') {
             break;
         }
@@ -222,6 +218,8 @@ static void gcc_replace_arg_st_asm(Statement* stmt) {
                 case IAOpnd_GCCImm:
                     op->type = IAOpnd_Imm;
                     op->u.imm.value = gcc_name_list[op->u.gccimm.value].value;
+                    break;
+                default:
                     break;
             }
         }

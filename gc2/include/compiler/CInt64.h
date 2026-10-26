@@ -13,25 +13,25 @@ extern const CInt64 cint64_one;
 extern const CInt64 cint64_max;
 extern const CInt64 cint64_min;
 
-inline Boolean CInt64_IsNegative(const CInt64* n) {
+HEADER_INLINE Boolean CInt64_IsNegative(const CInt64* n) {
     return (n->hi & 0x80000000) != 0;
 }
-inline UInt32 CInt64_GetULong(const CInt64* n) {
+HEADER_INLINE UInt32 CInt64_GetULong(const CInt64* n) {
     return n->lo;
 }
-inline void CInt64_SetLong(CInt64* pN, SInt32 n) {
+HEADER_INLINE void CInt64_SetLong(CInt64* pN, SInt32 n) {
     pN->lo = n;
     pN->hi = (n < 0) ? 0xFFFFFFFF : 0;
 }
-inline void CInt64_SetULong(CInt64* pN, UInt32 n) {
+HEADER_INLINE void CInt64_SetULong(CInt64* pN, UInt32 n) {
     pN->lo = n;
     pN->hi = 0;
 }
 
-inline Boolean CInt64_IsZero(CInt64* n) {
+HEADER_INLINE Boolean CInt64_IsZero(CInt64* n) {
     return n->hi == 0 && n->lo == 0;
 }
-inline Boolean CInt64_IsOne(CInt64* n) {
+HEADER_INLINE Boolean CInt64_IsOne(CInt64* n) {
     return n->hi == 0 && n->lo == 1;
 }
 
@@ -43,7 +43,6 @@ extern CInt64 CInt64_Neg(CInt64 input);
 extern CInt64 CInt64_Sub(CInt64 lhs, CInt64 rhs);
 extern CInt64 CInt64_MulU(CInt64 lhs, CInt64 rhs);
 extern CInt64 CInt64_Mul(CInt64 lhs, CInt64 rhs);
-extern void CInt64_DivMod(const CInt64* lhs, const CInt64* rhs, CInt64* pDiv, CInt64* pMod);
 extern CInt64 CInt64_Div(CInt64 lhs, CInt64 rhs);
 extern CInt64 CInt64_DivU(CInt64 lhs, CInt64 rhs);
 extern CInt64 CInt64_Mod(CInt64 lhs, CInt64 rhs);
@@ -51,8 +50,6 @@ extern CInt64 CInt64_ModU(CInt64 lhs, CInt64 rhs);
 extern CInt64 CInt64_Shl(CInt64 lhs, CInt64 rhs);
 extern CInt64 CInt64_Shr(CInt64 lhs, CInt64 rhs);
 extern CInt64 CInt64_ShrU(CInt64 lhs, CInt64 rhs);
-extern int CInt64_UnsignedCompare(const CInt64* lhs, const CInt64* rhs);
-extern int CInt64_SignedCompare(const CInt64* lhs, const CInt64* rhs);
 extern Boolean CInt64_Less(CInt64 lhs, CInt64 rhs);
 extern Boolean CInt64_LessU(CInt64 lhs, CInt64 rhs);
 extern Boolean CInt64_Greater(CInt64 lhs, CInt64 rhs);
@@ -82,10 +79,7 @@ extern char* CInt64_ScanOctString(CInt64* pResult, char* str, Boolean* pFail);
 extern char* CInt64_ScanDecString(CInt64* pResult, char* str, Boolean* pFail);
 extern char* CInt64_ScanHexString(CInt64* pResult, char* str, Boolean* pFail);
 extern char* CInt64_ScanBinString(CInt64* pResult, char* str, Boolean* pFail);
-extern char* CInt64_ScanAsmNumber(CInt64* pResult, char* str, Boolean* pFail);
 extern int CInt64_PrintDec(char* output, CInt64 value);
-extern int CInt64_PrintHex(char* output, CInt64 value);
-extern int CInt64_PrintBin(char* output, CInt64 value);
 
 #ifdef __cplusplus
 }

@@ -8,7 +8,6 @@
 extern "C" {
 #endif
 
-// The Mac low-memory globals the command line emulates (Pro7's MacEmul/LowMem.c)
 extern UInt32 LMGetTicks(void);
 extern OSErr LMGetMemErr(void);
 

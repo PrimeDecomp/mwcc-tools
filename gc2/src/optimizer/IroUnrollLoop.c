@@ -7,13 +7,15 @@
 #include "compiler/IroUtil.h"
 #include "compiler/IroVars.h"
 #include "compiler/BitVector.h"
+#include "compiler/CError.h"
 #include "compiler/CFunc.h"
 #include "compiler/CInt64.h"
 #include "compiler/CMachine.h"
+#include "compiler/CompilerTools.h"
 #include "compiler/CParser.h"
-#include "compiler/CTemplateNew.h"
+#include "compiler/enode.h"
 #include "compiler/LoopDetection.h"
-#include "compiler/ObjGen_PPC_EABI.h"
+#include "compiler/types.h"
 #include <string.h>
 
 #pragma pack(push, 2)
@@ -22,13 +24,12 @@ typedef struct LoopList {
     BitVector* bv;
     struct LoopList* next;
     IRONode* fnode;
-    int xE; // TODO: placeholder name (Pro7's); IRO_FindLoops_Unroll clears it, nothing reads it
+    int unused;
 } LoopList;
 #pragma pack(pop)
 
-// forward decls
 static void IRO_FindLoops_Unroll(void);
-static void LoopUnroll(int count, IRONode* fnode);
+static void LoopUnroll(int count, IRONode* header);
 static int IsLoopUnrollable(IROLoop* loop);
 static int IsDifferenceOfTermsConstant(
     IROAddrRecord* lowerRec, IROAddrRecord* upperRec, int isUnsigned, CInt64* pval
@@ -66,7 +67,7 @@ void ChangeInductionReference(IROLinear* first, IROLinear* last, CInt64 val, IRO
 IROLinear* UpdateInductionIncrement(IROLoop* loop, SInt32 value, IROLinear* before);
 
 void IRO_LoopUnroller(void) {
-    VectorPhaseCalledFromUnroll = 1;
+    VectorPhaseCalledFromUnroll = TRUE;
     IRO_FindLoops_Unroll();
     IRO_CheckForUserBreak();
 }
@@ -75,24 +76,24 @@ static void IRO_FindLoops_Unroll(void) {
     IRONode* fnode;
     IRONode* pred;
     UInt16 i;
-    UInt16 flag;
+    UInt16 isHeader;
     LoopList* list;
-    LoopList* list2;
+    LoopList* other;
 
     fnode = IRO_FirstNode;
     LoopList_First = NULL;
 
     while (fnode) {
-        flag = 0;
+        isHeader = FALSE;
         for (i = 0; i < fnode->numpred; i++) {
             pred = IRO_NodeTable[fnode->pred[i]];
             if (Bv_IsBitSet(fnode->index, pred->dom)) {
-                if (!flag) {
+                if (!isHeader) {
                     Bv_AllocVector(&InLoop, IRO_NumNodes + 1);
                     Bv_Clear(InLoop);
                     Bv_SetBit(fnode->index, InLoop);
                 }
-                flag = 1;
+                isHeader = TRUE;
                 Bv_SetBit(pred->index, InLoop);
                 if (pred != fnode) {
                     AddPreds(pred);
@@ -100,7 +101,7 @@ static void IRO_FindLoops_Unroll(void) {
             }
         }
 
-        if (flag) {
+        if (isHeader) {
             if (!LoopList_First) {
                 list = oalloc(sizeof(LoopList));
                 list->next = NULL;
@@ -114,7 +115,7 @@ static void IRO_FindLoops_Unroll(void) {
             list->flags |= 1;
             Bv_Copy(InLoop, list->bv);
             list->fnode = fnode;
-            list->xE = 0;
+            list->unused = 0;
         }
 
         fnode = fnode->nextnode;
@@ -123,15 +124,15 @@ static void IRO_FindLoops_Unroll(void) {
     list = LoopList_First;
     Bv_AllocVector(&LoopTemp, IRO_NumNodes + 1);
     while (list) {
-        for (list2 = LoopList_First; list2; list2 = list2->next) {
-            if (list2 != list) {
-                IRO_Dump(" header = %d \n", list2->fnode->index);
+        for (other = LoopList_First; other; other = other->next) {
+            if (other != list) {
+                IRO_Dump(" header = %d \n", other->fnode->index);
                 IRO_Dump(" l1 bit vector=\n");
-                IRO_DumpBits("", list2->bv);
+                IRO_DumpBits("", other->bv);
                 IRO_Dump(" l bit vector=\n");
                 IRO_DumpBits("", list->bv);
-                if (Bv_IsSubset(list->bv, list2->bv)) {
-                    list2->flags &= ~1;
+                if (Bv_IsSubset(list->bv, other->bv)) {
+                    other->flags &= ~1;
                 }
             }
         }
@@ -151,9 +152,6 @@ static void IRO_FindLoops_Unroll(void) {
     }
 }
 
-// Pro7's text with `i` initialized and an `else` (two more statements): 2.6 keeps this out of line,
-// and Pro7's spelling (or either change alone) is small enough that -inline auto puts it into
-// PatternMatchLoop, which then differs
 static int CheckConstant(CInt64 a, CInt64 b, CInt64* result) {
     CInt64 shl = cint64_zero;
     CInt64 work = cint64_zero;
@@ -164,24 +162,24 @@ static int CheckConstant(CInt64 a, CInt64 b, CInt64* result) {
         shl = CInt64_Shl(b, i);
         and = CInt64_And(shl, work);
         if (CInt64_NotEqual(and, cint64_zero)) {
-            return 0;
+            return FALSE;
         } else {
             work = CInt64_Or(shl, work);
         }
     }
 
     *result = work;
-    return 1;
+    return TRUE;
 }
 
 typedef struct LoopPattern {
-    IROLinear* nd0;
-    IROLinear* nd4;
-    Type* type;
-    IROLinear* ndC;
-    IROLinear* nd10;
-    CInt64 val14;
-    CInt64 val1C;
+    IROLinear* indexExpr;
+    IROLinear* baseExpr;
+    Type* addrType;
+    IROLinear* bitExpr;
+    IROLinear* valueExpr;
+    CInt64 bits;
+    CInt64 shift;
 } LoopPattern;
 
 static void UnrollWhileLoopBody(
@@ -196,15 +194,15 @@ static void UnrollWhileLoopBody(
     int pass;
     IROLinear* firstnode;
     IROLinear* lastnd;
-    IROLinear* nd1;
-    IROLinear* nd2;
+    IROLinear* indexNd;
+    IROLinear* offsetNd;
     IROLinear* nd;
-    IROLinear* nd3;
-    IROLinear* nd4;
-    IROLinear* nd5;
-    IROLinear* nd6;
-    IROLinear* nd8;
-    IROLinear* nd7;
+    IROLinear* baseNd;
+    IROLinear* addressNd;
+    IROLinear* targetNd;
+    IROLinear* assignNd;
+    IROLinear* valueNd;
+    IROLinear* bitsNd;
     ENode* expr;
     IROList list;
     CInt64 zero;
@@ -222,101 +220,98 @@ static void UnrollWhileLoopBody(
             nd = scan->first;
             while (1) {
                 if (nd->stmt) {
-                    nd->stmt->flags |= StmtFlag_10;
+                    nd->stmt->flags |= StmtFlag_Unrolled;
                 }
 
                 if ((nd->index < loop->lo || nd->index > loop->hi) &&
-                    nd->type !=
-                    IROLinearLabel &&
-                    nd->type !=
-                    IROLinearNop &&
+                    nd->type != IROLinearLabel &&
+                    nd->type != IROLinearNop &&
                     !(nd->flags & IROLF_Reffed)) {
                     CError_ASSERT(
                         345,
                         nd->nodetype == EORASS || nd->nodetype == EANDASS || nd->nodetype == EXORASS
                     );
 
-                    IRO_DuplicateExpr(pattern->nd0, &list);
-                    nd1 = list.tail;
+                    IRO_DuplicateExpr(pattern->indexExpr, &list);
+                    indexNd = list.tail;
 
                     shiftval = cint64_one;
-                    shiftval = CInt64_Shl(shiftval, pattern->val1C);
+                    shiftval = CInt64_Shl(shiftval, pattern->shift);
 
-                    nd2 = IRO_NewLinear(IROLinearOperand);
-                    nd2->index = ++IRO_NumLinear;
-                    nd2->rtype = pattern->nd0->rtype;
+                    offsetNd = IRO_NewLinear(IROLinearOperand);
+                    offsetNd->index = ++IRO_NumLinear;
+                    offsetNd->rtype = pattern->indexExpr->rtype;
                     expr = IRO_NewENode(EINTCONST);
-                    expr->rtype = pattern->nd0->rtype;
+                    expr->rtype = pattern->indexExpr->rtype;
                     CInt64_SetLong(&expr->data.intval, pass * CInt64_GetULong(&shiftval));
-                    nd2->u.node = expr;
-                    IRO_AddToList(nd2, &list);
+                    offsetNd->u.node = expr;
+                    IRO_AddToList(offsetNd, &list);
 
-                    IRO_DuplicateExpr(pattern->nd4, &list);
+                    IRO_DuplicateExpr(pattern->baseExpr, &list);
 
-                    nd3 = IRO_NewLinear(IROLinearOp2Arg);
-                    nd3->index = ++IRO_NumLinear;
-                    nd3->nodetype = EADD;
-                    nd3->rtype = pattern->type;
-                    nd3->u.diadic.left = list.tail;
-                    nd3->u.diadic.right = nd2;
-                    IRO_AddToList(nd3, &list);
+                    baseNd = IRO_NewLinear(IROLinearOp2Arg);
+                    baseNd->index = ++IRO_NumLinear;
+                    baseNd->nodetype = EADD;
+                    baseNd->rtype = pattern->addrType;
+                    baseNd->u.diadic.left = list.tail;
+                    baseNd->u.diadic.right = offsetNd;
+                    IRO_AddToList(baseNd, &list);
 
-                    nd4 = IRO_NewLinear(IROLinearOp2Arg);
-                    nd4->index = ++IRO_NumLinear;
-                    nd4->nodetype = EADD;
-                    nd4->rtype = pattern->type;
-                    nd4->u.diadic.left = nd3;
-                    nd4->u.diadic.right = nd1;
-                    IRO_AddToList(nd4, &list);
+                    addressNd = IRO_NewLinear(IROLinearOp2Arg);
+                    addressNd->index = ++IRO_NumLinear;
+                    addressNd->nodetype = EADD;
+                    addressNd->rtype = pattern->addrType;
+                    addressNd->u.diadic.left = baseNd;
+                    addressNd->u.diadic.right = indexNd;
+                    IRO_AddToList(addressNd, &list);
 
-                    nd5 = IRO_NewLinear(IROLinearOp1Arg);
-                    nd5->index = ++IRO_NumLinear;
-                    nd5->nodetype = EINDIRECT;
-                    nd5->rtype = nd->rtype;
-                    nd5->u.monadic = nd4;
-                    IRO_AddToList(nd5, &list);
+                    targetNd = IRO_NewLinear(IROLinearOp1Arg);
+                    targetNd->index = ++IRO_NumLinear;
+                    targetNd->nodetype = EINDIRECT;
+                    targetNd->rtype = nd->rtype;
+                    targetNd->u.monadic = addressNd;
+                    IRO_AddToList(targetNd, &list);
 
-                    nd6 = IRO_NewLinear(IROLinearOp2Arg);
-                    *nd6 = *nd;
-                    nd6->index = ++IRO_NumLinear;
-                    nd6->u.diadic.left = list.tail;
-                    nd6->next = NULL;
+                    assignNd = IRO_NewLinear(IROLinearOp2Arg);
+                    *assignNd = *nd;
+                    assignNd->index = ++IRO_NumLinear;
+                    assignNd->u.diadic.left = list.tail;
+                    assignNd->next = NULL;
 
-                    nd7 = IRO_NewLinear(IROLinearOperand);
-                    nd7->index = ++IRO_NumLinear;
-                    nd7->rtype = pattern->ndC->rtype;
+                    bitsNd = IRO_NewLinear(IROLinearOperand);
+                    bitsNd->index = ++IRO_NumLinear;
+                    bitsNd->rtype = pattern->bitExpr->rtype;
                     expr = IRO_NewENode(EINTCONST);
-                    expr->rtype = pattern->ndC->rtype;
-                    nd7->u.node = expr;
-                    nd7->next = NULL;
-                    expr->data.intval = pattern->val14;
+                    expr->rtype = pattern->bitExpr->rtype;
+                    bitsNd->u.node = expr;
+                    bitsNd->next = NULL;
+                    expr->data.intval = pattern->bits;
 
-                    if (IS_LINEAR_DIADIC(nd, EANDASS) &&
-                        CInt64_Equal(pattern->val14, cint64_zero)) {
-                        nd6->nodetype = EASS;
-                    } else if (IS_LINEAR_DIADIC(nd, EORASS) && !pattern->val14.hi) {
-                        UInt32 tmp = CInt64_GetULong(&pattern->val14);
-                        if ((nd->rtype->size == 1 && tmp == 0xFF) ||
-                            (nd->rtype->size == 2 && tmp == 0xFFFF) ||
-                            (nd->rtype->size == 4 && tmp == 0xFFFFFFFF)) {
-                            nd6->nodetype = EASS;
+                    if (IS_LINEAR_DIADIC(nd, EANDASS) && CInt64_Equal(pattern->bits, cint64_zero)) {
+                        assignNd->nodetype = EASS;
+                    } else if (IS_LINEAR_DIADIC(nd, EORASS) && !pattern->bits.hi) {
+                        UInt32 mask = CInt64_GetULong(&pattern->bits);
+                        if ((nd->rtype->size == 1 && mask == 0xFF) ||
+                            (nd->rtype->size == 2 && mask == 0xFFFF) ||
+                            (nd->rtype->size == 4 && mask == 0xFFFFFFFF)) {
+                            assignNd->nodetype = EASS;
                         }
                     }
 
-                    IRO_AddToList(nd7, &list);
+                    IRO_AddToList(bitsNd, &list);
 
-                    if (IS_LINEAR_MONADIC(pattern->nd10, ETYPCON)) {
-                        nd8 = IRO_NewLinear(IROLinearOp1Arg);
-                        *nd8 = *pattern->nd10;
-                        nd8->index = ++IRO_NumLinear;
-                        nd8->u.monadic = nd7;
-                        nd8->next = NULL;
-                        IRO_AddToList(nd8, &list);
+                    if (IS_LINEAR_MONADIC(pattern->valueExpr, ETYPCON)) {
+                        valueNd = IRO_NewLinear(IROLinearOp1Arg);
+                        *valueNd = *pattern->valueExpr;
+                        valueNd->index = ++IRO_NumLinear;
+                        valueNd->u.monadic = bitsNd;
+                        valueNd->next = NULL;
+                        IRO_AddToList(valueNd, &list);
                     } else {
-                        nd8 = nd7;
+                        valueNd = bitsNd;
                     }
-                    nd6->u.diadic.right = nd8;
-                    IRO_AddToList(nd6, &list);
+                    assignNd->u.diadic.right = valueNd;
+                    IRO_AddToList(assignNd, &list);
 
                     if (!firstnode) {
                         firstnode = list.head;
@@ -341,14 +336,14 @@ static int PatternMatchLoop(
     IROLoop* loop,
     IROLoopInd* ind,
     UInt32* unrollFactor,
-    SInt32* result1,
-    SInt32* result2,
+    SInt32* matchCount,
+    SInt32* bitOpCount,
     LoopPattern* pattern
 ) {
     IROLinear* scan;
     IROLinear* varnode;
-    IROLinear* nd1;
-    IROLinear* nd2;
+    IROLinear* indexNd;
+    IROLinear* maskNd;
     IROLinear* left1;
     IROLinear* left2;
     IROLinear* right1;
@@ -358,94 +353,93 @@ static int PatternMatchLoop(
     CInt64 shl;
     CInt64 val;
 
-    *result1 = 0;
-    *result2 = 0;
+    *matchCount = 0;
+    *bitOpCount = 0;
 
     if ((scan = fnode->first)) {
         while (1) {
             if ((scan->index < loop->lo || scan->index > loop->hi) &&
                 !(scan->flags & IROLF_Reffed) &&
-                scan->type !=
-                IROLinearNop &&
+                scan->type != IROLinearNop &&
                 scan->type != IROLinearLabel) {
                 if (IS_LINEAR_DIADIC_3(scan, EORASS, EXORASS, EANDASS)) {
-                    (*result2)++;
+                    (*bitOpCount)++;
                     if (IS_LINEAR_MONADIC(scan->u.diadic.left, EINDIRECT)) {
                         varnode = scan->u.diadic.left->u.monadic;
                         if (IS_LINEAR_DIADIC(varnode, EADD)) {
-                            pattern->nd4 = varnode->u.diadic.left;
-                            pattern->type = varnode->rtype;
+                            pattern->baseExpr = varnode->u.diadic.left;
+                            pattern->addrType = varnode->rtype;
                             if (IRO_IsVariable(varnode->u.diadic.left)) {
-                                pattern->nd0 = varnode->u.diadic.right;
-                                if (IS_LINEAR_DIADIC(pattern->nd0, ESHL) &&
-                                    IRO_IsConstant(pattern->nd0->u.diadic.right)) {
-                                    pattern->val1C =
-                                        pattern->nd0->u.diadic.right->u.node->data.intval;
-                                    nd1 = pattern->nd0->u.diadic.left;
+                                pattern->indexExpr = varnode->u.diadic.right;
+                                if (IS_LINEAR_DIADIC(pattern->indexExpr, ESHL) &&
+                                    IRO_IsConstant(pattern->indexExpr->u.diadic.right)) {
+                                    pattern->shift =
+                                        pattern->indexExpr->u.diadic.right->u.node->data.intval;
+                                    indexNd = pattern->indexExpr->u.diadic.left;
                                 } else {
-                                    return 0;
+                                    return FALSE;
                                 }
                             } else {
-                                return 0;
+                                return FALSE;
                             }
                         } else {
-                            return 0;
+                            return FALSE;
                         }
                     } else {
-                        return 0;
+                        return FALSE;
                     }
 
-                    pattern->nd10 = scan->u.diadic.right;
+                    pattern->valueExpr = scan->u.diadic.right;
 
-                    if (IS_LINEAR_MONADIC(pattern->nd10, ETYPCON)) {
+                    if (IS_LINEAR_MONADIC(pattern->valueExpr, ETYPCON)) {
                         if (IS_LINEAR_DIADIC(scan, EANDASS)) {
-                            if (IS_LINEAR_MONADIC(pattern->nd10->u.monadic, EBINNOT)) {
-                                pattern->ndC = pattern->nd10->u.monadic->u.monadic;
+                            if (IS_LINEAR_MONADIC(pattern->valueExpr->u.monadic, EBINNOT)) {
+                                pattern->bitExpr = pattern->valueExpr->u.monadic->u.monadic;
                             } else {
-                                return 0;
+                                return FALSE;
                             }
                         } else {
-                            pattern->ndC = pattern->nd10->u.monadic;
+                            pattern->bitExpr = pattern->valueExpr->u.monadic;
                         }
 
-                        if (IS_LINEAR_DIADIC(pattern->ndC, ESHL) &&
-                            IRO_IsConstant(pattern->ndC->u.diadic.left)) {
-                            val = pattern->ndC->u.diadic.left->u.node->data.intval;
-                            nd2 = pattern->ndC->u.diadic.right;
+                        if (IS_LINEAR_DIADIC(pattern->bitExpr, ESHL) &&
+                            IRO_IsConstant(pattern->bitExpr->u.diadic.left)) {
+                            val = pattern->bitExpr->u.diadic.left->u.node->data.intval;
+                            maskNd = pattern->bitExpr->u.diadic.right;
                         } else {
-                            return 0;
+                            return FALSE;
                         }
-                    } else if (IS_LINEAR_DIADIC(pattern->nd10, ESHL) &&
+                    } else if (IS_LINEAR_DIADIC(pattern->valueExpr, ESHL) &&
                                IS_LINEAR_DIADIC_2(scan, EORASS, EXORASS)) {
-                        pattern->ndC = pattern->nd10;
-                        if (IRO_IsConstant(pattern->ndC->u.diadic.left)) {
-                            val = pattern->ndC->u.diadic.left->u.node->data.intval;
-                            nd2 = pattern->ndC->u.diadic.right;
+                        pattern->bitExpr = pattern->valueExpr;
+                        if (IRO_IsConstant(pattern->bitExpr->u.diadic.left)) {
+                            val = pattern->bitExpr->u.diadic.left->u.node->data.intval;
+                            maskNd = pattern->bitExpr->u.diadic.right;
                         } else {
-                            return 0;
+                            return FALSE;
                         }
-                    } else if (IS_LINEAR_MONADIC(pattern->nd10, EBINNOT) &&
+                    } else if (IS_LINEAR_MONADIC(pattern->valueExpr, EBINNOT) &&
                                IS_LINEAR_DIADIC(scan, EANDASS)) {
-                        pattern->ndC = pattern->nd10->u.monadic;
-                        if (IS_LINEAR_DIADIC(pattern->ndC, ESHL) &&
-                            IRO_IsConstant(pattern->ndC->u.diadic.left)) {
-                            val = pattern->ndC->u.diadic.left->u.node->data.intval;
-                            nd2 = pattern->ndC->u.diadic.right;
+                        pattern->bitExpr = pattern->valueExpr->u.monadic;
+                        if (IS_LINEAR_DIADIC(pattern->bitExpr, ESHL) &&
+                            IRO_IsConstant(pattern->bitExpr->u.diadic.left)) {
+                            val = pattern->bitExpr->u.diadic.left->u.node->data.intval;
+                            maskNd = pattern->bitExpr->u.diadic.right;
                         } else {
-                            return 0;
+                            return FALSE;
                         }
                     } else {
-                        return 0;
+                        return FALSE;
                     }
 
-                    if (IS_LINEAR_DIADIC(nd2, EAND) && IS_LINEAR_DIADIC(nd1, ESHR)) {
-                        left1 = nd1->u.diadic.left;
-                        left2 = nd2->u.diadic.left;
+                    if (IS_LINEAR_DIADIC(maskNd, EAND) && IS_LINEAR_DIADIC(indexNd, ESHR)) {
+                        left1 = indexNd->u.diadic.left;
+                        left2 = maskNd->u.diadic.left;
                         obj1 = IRO_IsVariable(left1);
                         obj2 = IRO_IsVariable(left2);
                         if (obj1 == obj2 && obj1 == ind->var->object) {
-                            right1 = nd1->u.diadic.right;
-                            right2 = nd2->u.diadic.right;
+                            right1 = indexNd->u.diadic.right;
+                            right2 = maskNd->u.diadic.right;
                             if (IRO_IsConstant(right1) && IRO_IsConstant(right2)) {
                                 shl = cint64_one;
                                 shl = CInt64_Shl(shl, right1->u.node->data.intval);
@@ -454,30 +448,30 @@ static int PatternMatchLoop(
                                     if (shl.hi == 0) {
                                         *unrollFactor = CInt64_GetULong(&shl) + 1;
                                         if (CheckConstant(
-                                                CInt64_Add(shl, cint64_one), val, &pattern->val14
+                                                CInt64_Add(shl, cint64_one), val, &pattern->bits
                                             )) {
-                                            (*result1)++;
+                                            (*matchCount)++;
                                             if (IS_LINEAR_DIADIC(scan, EANDASS)) {
-                                                pattern->val14 = CInt64_Not(pattern->val14);
+                                                pattern->bits = CInt64_Not(pattern->bits);
                                             }
                                         }
                                     } else {
-                                        return 0;
+                                        return FALSE;
                                     }
                                 } else {
-                                    return 0;
+                                    return FALSE;
                                 }
                             } else {
-                                return 0;
+                                return FALSE;
                             }
                         } else {
-                            return 0;
+                            return FALSE;
                         }
                     } else {
-                        return 0;
+                        return FALSE;
                     }
                 } else {
-                    return 0;
+                    return FALSE;
                 }
             }
 
@@ -488,7 +482,7 @@ static int PatternMatchLoop(
         }
     }
 
-    return 1;
+    return TRUE;
 }
 
 static UInt32 UnrollWhileLoop(
@@ -510,13 +504,13 @@ static UInt32 UnrollWhileLoop(
     IROLinear* savedHead2;
     CLabel* label2;
     IROLinear* indvar;
-    IROLinear* loophead25;
+    IROLinear* bodyHead;
     IROLinear* loopExitTest;
     IROLinear* saveTail;
     IROLinear* newFinalValue;
     IROLinear* saveTail2;
     IROLinear* origIterationCount;
-    IROLinear* savedHead60;
+    IROLinear* iterCountHead;
     IROLinear* unrolledBodyEntryTest;
     IROLinear* savedHead3;
     IROLinear* less2;
@@ -524,11 +518,11 @@ static UInt32 UnrollWhileLoop(
     IROLinear* loopend;
     IROLinear* updIndInc;
     IROLinear* less3;
-    IROLinear* wtf;
+    IROLinear* exitCond;
     IROLinear* constnd;
     IROLinear* ass;
-    IROLinear* nd18;
-    IRONode* fn19;
+    IROLinear* oldLast;
+    IRONode* oldNext;
     IRONode* newfnode2;
     IRONode* newfnode1;
     IROLinear* lastlabelnode;
@@ -540,17 +534,17 @@ static UInt32 UnrollWhileLoop(
     IROLinear* lastnd;
     ENode* expr;
     IROList list;
-    SInt32 result1;
-    SInt32 result2;
+    SInt32 matchCount;
+    SInt32 bitOpCount;
     LoopPattern pattern;
 
     IRO_Dump("while(n--) loop \n");
 
-    if (loop->flags & LoopFlags_800) {
+    if (loop->flags & LP_IND_USED_IN_LOOP) {
         IRO_Dump("loop not unrolled because induction used in loop \n");
         return 0;
     }
-    if (loop->flags & LoopFlags_1000) {
+    if (loop->flags & LP_HAS_MULTIPLE_EXITS) {
         IRO_Dump("loop not unrolled because loop has multiple exits \n");
         return 0;
     }
@@ -580,10 +574,8 @@ static UInt32 UnrollWhileLoop(
                 return 0;
             }
         } else if (ind->nd->nodetype == EASS) {
-            if (ind->nd->u.diadic.right->type !=
-                IROLinearOp2Arg ||
-                ind->nd->u.diadic.right->nodetype !=
-                EADD ||
+            if (ind->nd->u.diadic.right->type != IROLinearOp2Arg ||
+                ind->nd->u.diadic.right->nodetype != EADD ||
                 !IRO_IsConstant(ind->nd->u.diadic.right->u.diadic.right)) {
                 return 0;
             }
@@ -594,10 +586,8 @@ static UInt32 UnrollWhileLoop(
         } else {
             return 0;
         }
-    } else if (ind->nd->type ==
-               IROLinearOp1Arg &&
-               ind->nd->nodetype !=
-               EPREINC &&
+    } else if (ind->nd->type == IROLinearOp1Arg &&
+               ind->nd->nodetype != EPREINC &&
                ind->nd->nodetype != EPOSTINC) {
         return 0;
     }
@@ -610,14 +600,16 @@ static UInt32 UnrollWhileLoop(
     memset(&pattern, 0, sizeof(pattern));
     while (scan) {
         if (Bv_IsBitSet(scan->index, InLoop) && scan != header) {
-            if (!PatternMatchLoop(scan, loop, ind, &unrollFactor, &result1, &result2, &pattern)) {
+            if (!PatternMatchLoop(
+                    scan, loop, ind, &unrollFactor, &matchCount, &bitOpCount, &pattern
+                )) {
                 return 0;
             }
         }
         scan = scan->nextnode;
     }
 
-    if (result1 > 1 || result2 > 1) {
+    if (matchCount > 1 || bitOpCount > 1) {
         return 0;
     }
 
@@ -642,7 +634,7 @@ static UInt32 UnrollWhileLoop(
     IRO_InitList(&list);
     origIterationCount = BuildOrigIterationCount_DoWhile(&list, loop);
     IRO_Paste(list.head, list.tail, fnode2->last);
-    savedHead60 = list.head;
+    iterCountHead = list.head;
 
     IRO_InitList(&list);
     preAlignTemp = BuildPreAlignTemp(ind, unrollFactor, &list);
@@ -667,19 +659,19 @@ static UInt32 UnrollWhileLoop(
     IRO_Paste(list.head, list.tail, fnode2->last);
 
     savedHead2 = list.head;
-    loophead25 = NULL;
+    bodyHead = NULL;
     for (scan = fnode3; scan && scan != header; scan = scan->nextnode) {
         IRO_InitList(&list);
         loopend = scan->last;
         loopscan = scan->first;
         while (1) {
             if (loopscan->stmt) {
-                loopscan->stmt->flags |= StmtFlag_10;
+                loopscan->stmt->flags |= StmtFlag_Unrolled;
             }
             if (loopscan->type != IROLinearLabel && !(loopscan->flags & IROLF_Reffed)) {
                 IRO_DuplicateExpr(loopscan, &list);
-                if (!loophead25) {
-                    loophead25 = list.head;
+                if (!bodyHead) {
+                    bodyHead = list.head;
                 }
             }
             if (loopscan == loopend) {
@@ -745,7 +737,7 @@ static UInt32 UnrollWhileLoop(
     label2nd = IRO_NewLinear(IROLinearLabel);
     label2nd->index = IRO_NumLinear++;
     label2nd->u.label.label = label2;
-    label2nd->flags |= IROLF_1;
+    label2nd->flags |= IROLF_StartsNode;
     IRO_AddToList(label2nd, &list);
     IRO_Paste(list.head, list.tail, fnode2->last);
 
@@ -803,7 +795,7 @@ static UInt32 UnrollWhileLoop(
     IRO_AddToList(less3, &list);
     less3->flags |= IROLF_Reffed;
 
-    wtf = LoopNode->last->u.label.cond;
+    exitCond = LoopNode->last->u.label.cond;
     IRO_Paste(list.head, list.tail, LoopNode->last);
     LoopNode->last->u.label.cond = list.tail;
 
@@ -812,14 +804,14 @@ static UInt32 UnrollWhileLoop(
     constnd = IRO_NewLinear(IROLinearOperand);
     constnd->index = ++IRO_NumLinear;
     expr = IRO_NewENode(EINTCONST);
-    expr->rtype = wtf->u.diadic.left->rtype;
+    expr->rtype = exitCond->u.diadic.left->rtype;
     expr->data.intval = cint64_zero;
     constnd->u.node = expr;
     constnd->rtype = expr->rtype;
     IRO_AddToList(constnd, &list);
     constnd->flags |= IROLF_Reffed;
 
-    IRO_DuplicateExpr(wtf->u.diadic.left, &list);
+    IRO_DuplicateExpr(exitCond->u.diadic.left, &list);
 
     ass = IRO_NewLinear(IROLinearOp2Arg);
     ass->nodetype = EASS;
@@ -831,14 +823,14 @@ static UInt32 UnrollWhileLoop(
     IRO_AddToList(ass, &list);
     ass->flags |= IROLF_Assigned;
 
-    IRO_NopOut(wtf);
+    IRO_NopOut(exitCond);
 
-    fn19 = fnode2->nextnode;
-    nd18 = fnode2->last;
+    oldNext = fnode2->nextnode;
+    oldLast = fnode2->last;
     fnode2->last = earlyLoopExitTest;
 
     newfnode1 = IRO_NewFlowGraphNode();
-    newfnode1->first = savedHead60;
+    newfnode1->first = iterCountHead;
     newfnode1->last = unrolledBodyEntryTest;
     fnode2->nextnode = newfnode1;
 
@@ -866,10 +858,10 @@ static UInt32 UnrollWhileLoop(
     newfnode4->nextnode = newfnode5;
 
     newfnode6 = IRO_NewFlowGraphNode();
-    newfnode6->first = nd18;
-    newfnode6->last = nd18;
+    newfnode6->first = oldLast;
+    newfnode6->last = oldLast;
     newfnode5->nextnode = newfnode6;
-    newfnode6->nextnode = fn19;
+    newfnode6->nextnode = oldNext;
 
     newfnode7 = oalloc(sizeof(IRONode));
     memset(newfnode7, 0, sizeof(IRONode));
@@ -894,7 +886,7 @@ static UInt32 UnrollWhileLoop(
     lastnd->index = IRO_NumLinear++;
     lastnd->next = NULL;
     lastnd->u.label.label = earlyLoopExitTestLabel;
-    lastnd->flags |= IROLF_1;
+    lastnd->flags |= IROLF_StartsNode;
     earlyLoopExitTestLabel->stmt = (Statement*)newfnode8;
 
     newfnode8->first = lastnd;
@@ -916,7 +908,7 @@ void IRO_IterateForLoopBody(
     IROLinear* destnode,
     SInt32 addConst,
     CInt64* val,
-    Boolean funkyFlag
+    Boolean notFirstCopy
 ) {
     IROLinear* first = NULL;
     IROLinear* last = NULL;
@@ -932,12 +924,11 @@ void IRO_IterateForLoopBody(
         nd = fnode->first;
         while (1) {
             if (nd->stmt) {
-                nd->stmt->flags |= StmtFlag_10;
+                nd->stmt->flags |= StmtFlag_Unrolled;
             }
 
             if ((nd->index < loop->lo || nd->index > loop->hi) &&
-                nd->type !=
-                IROLinearLabel &&
+                nd->type != IROLinearLabel &&
                 !(nd->flags & IROLF_Reffed)) {
                 IRO_DuplicateExpr(nd, &list);
                 if (!first) {
@@ -957,7 +948,7 @@ void IRO_IterateForLoopBody(
         }
     }
 
-    if (funkyFlag) {
+    if (notFirstCopy) {
         *val = CInt64_Add(*val, IRO_MakeLong(loop->induction->addConst));
         ChangeInductionReference(first, last, *val, loop);
     }
@@ -979,7 +970,7 @@ void IRO_LinearizeForLoopPostLoop(
     newnd = IRO_NewLinear(IROLinearNop);
     newnd->index = IRO_NumLinear++;
     newnd->next = NULL;
-    newnd->flags |= IROLF_1;
+    newnd->flags |= IROLF_StartsNode;
 
     newfnode->first = newfnode->last = newnd;
 
@@ -990,7 +981,7 @@ void IRO_LinearizeForLoopPostLoop(
     fnode3->last->next = newnd;
 
     val = cint64_zero;
-    for (i = 0; i < unrollFactor; i++) {
+    for (i = 0; (UInt32)i < unrollFactor; i++) {
         IRO_IterateForLoopBody(
             fnode2, fnode1, loop, newfnode->last, loop->induction->addConst, &val, i > 0
         );
@@ -1025,7 +1016,7 @@ static UInt32 UnrollForLoop(
     IROLinear* saveTail4;
     IROLinear* labelNd3;
     IROLinear* scan;
-    IRONode* nd18;
+    IRONode* oldNext;
     IRONode* newfnode1;
     IRONode* newfnode2;
     IRONode* newfnode3;
@@ -1035,9 +1026,9 @@ static UInt32 UnrollForLoop(
     SInt32 i;
     IROList list;
     int isConstant;
-    UInt32 needOrigLoop = 0;
-    UInt32 needUnrollBodyTest = 0;
-    UInt32 resetUnrolledFinalValue = 0;
+    UInt32 needOrigLoop = FALSE;
+    UInt32 needUnrollBodyTest = FALSE;
+    UInt32 resetUnrolledFinalValue = FALSE;
     SInt32 leftOver;
     CInt64 iterCount;
     CInt64 val;
@@ -1061,9 +1052,9 @@ static UInt32 UnrollForLoop(
     IRO_Paste(list.head, list.tail, fnode2->last);
 
     isConstant = IsIterationCountConstant(loop, &iterCount);
-    needOrigLoop = 1;
-    needUnrollBodyTest = 1;
-    resetUnrolledFinalValue = 0;
+    needOrigLoop = TRUE;
+    needUnrollBodyTest = TRUE;
+    resetUnrolledFinalValue = FALSE;
     if (isConstant) {
         IRO_TestConstantIterationCount(
             loop,
@@ -1106,7 +1097,7 @@ static UInt32 UnrollForLoop(
     saveHead2 = list.head;
 
     val = cint64_zero;
-    for (i = 0; i < unrollFactor; i++) {
+    for (i = 0; (UInt32)i < unrollFactor; i++) {
         IRO_IterateForLoopBody(
             fnode3, header, loop, fnode2->last, loop->induction->addConst, &val, i > 0
         );
@@ -1117,7 +1108,7 @@ static UInt32 UnrollForLoop(
     labelNd = IRO_NewLinear(IROLinearLabel);
     labelNd->index = IRO_NumLinear++;
     labelNd->u.label.label = label;
-    labelNd->flags |= IROLF_1;
+    labelNd->flags |= IROLF_StartsNode;
     IRO_AddToList(labelNd, &list);
     IRO_Paste(list.head, list.tail, fnode2->last);
 
@@ -1157,12 +1148,12 @@ static UInt32 UnrollForLoop(
     labelNd2 = IRO_NewLinear(IROLinearLabel);
     labelNd2->index = IRO_NumLinear++;
     labelNd2->u.label.label = lastlabel;
-    labelNd2->flags |= IROLF_1;
+    labelNd2->flags |= IROLF_StartsNode;
     IRO_AddToList(labelNd2, &list);
     IRO_Paste(list.head, list.tail, fnode2->last);
 
     lastnd = fnode2->last;
-    nd18 = fnode2->nextnode;
+    oldNext = fnode2->nextnode;
     fnode2->last = earlyLoopExitTest;
 
     newfnode1 = IRO_NewFlowGraphNode();
@@ -1196,7 +1187,7 @@ static UInt32 UnrollForLoop(
     newfnode5->first = labelNd2;
     newfnode5->last = lastnd;
     newfnode4->nextnode = newfnode5;
-    newfnode5->nextnode = nd18;
+    newfnode5->nextnode = oldNext;
 
     newfnode6 = oalloc(sizeof(IRONode));
     memset(newfnode6, 0, sizeof(IRONode));
@@ -1207,7 +1198,7 @@ static UInt32 UnrollForLoop(
     labelNd3->index = IRO_NumLinear++;
     labelNd3->next = NULL;
     labelNd3->u.label.label = earlyLoopExitTestLabel;
-    labelNd3->flags |= IROLF_1;
+    labelNd3->flags |= IROLF_StartsNode;
     earlyLoopExitTestLabel->stmt = (Statement*)newfnode6;
 
     newfnode6->first = labelNd3;
@@ -1255,7 +1246,7 @@ static UInt32 UnrollForLoop(
 static UInt32 UnrollStandardLoop(IRONode* header, IRONode* fnode2, IRONode* fnode3, int count) {
     IROLoop* loop;
 
-    ConditionalHeaderAtBottom = 1;
+    ConditionalHeaderAtBottom = TRUE;
     loop = ExtractLoopInfo(header);
     loop->preheader = fnode2;
     loop->body = fnode3;
@@ -1269,7 +1260,7 @@ static UInt32 UnrollStandardLoop(IRONode* header, IRONode* fnode2, IRONode* fnod
         return 0;
     }
 
-    if (loop->flags & LoopFlags_10000) {
+    if (loop->flags & LP_WHILE_LOOP) {
         return UnrollWhileLoop(header, fnode2, fnode3, loop, count);
     } else {
         return UnrollForLoop(header, fnode2, fnode3, loop, count);
@@ -1278,20 +1269,20 @@ static UInt32 UnrollStandardLoop(IRONode* header, IRONode* fnode2, IRONode* fnod
 
 static void LoopUnroll(int count, IRONode* header) {
     VarRecord* var;
-    IRONode* tmp;
+    IRONode* node;
     IRONode* next;
     UInt16 i;
     IRONode* prevpred;
     IRONode* prevsucc;
     int foundpred;
     UInt32 predcount;
-    UInt32 success = 0;
+    UInt32 success = FALSE;
 
     LoopNode = header;
     FindMustReach();
 
     for (var = IRO_FirstVar; var; var = var->next) {
-        var->inductionState = 1;
+        var->inductionState = TRUE;
     }
 
     ComputeLoopKills();
@@ -1299,17 +1290,17 @@ static void LoopUnroll(int count, IRONode* header) {
     ComputeLoopInduction();
 
     LoopNode = header;
-    ConditionalHeaderAtBottom = 0;
+    ConditionalHeaderAtBottom = FALSE;
 
     prevpred = NULL;
-    foundpred = 0;
+    foundpred = FALSE;
     for (i = 0; i < LoopNode->numpred; i++) {
-        tmp = IRO_NodeTable[LoopNode->pred[i]];
-        if (!Bv_IsBitSet(tmp->index, InLoop)) {
-            foundpred = 1;
-            if (tmp->nextnode == header) {
-                CError_ASSERT(2101, !prevpred || tmp == prevpred);
-                prevpred = tmp;
+        node = IRO_NodeTable[LoopNode->pred[i]];
+        if (!Bv_IsBitSet(node->index, InLoop)) {
+            foundpred = TRUE;
+            if (node->nextnode == header) {
+                CError_ASSERT(2101, !prevpred || node == prevpred);
+                prevpred = node;
             }
         }
     }
@@ -1324,29 +1315,26 @@ static void LoopUnroll(int count, IRONode* header) {
         if (next && !Bv_IsBitSet(next->index, InLoop)) {
             prevsucc = NULL;
             for (i = 0; i < LoopNode->numsucc; i++) {
-                tmp = IRO_NodeTable[LoopNode->succ[i]];
-                if (Bv_IsBitSet(tmp->index, InLoop)) {
+                node = IRO_NodeTable[LoopNode->succ[i]];
+                if (Bv_IsBitSet(node->index, InLoop)) {
                     CError_ASSERT(2159, !prevsucc);
-                    prevsucc = tmp;
+                    prevsucc = node;
                 }
             }
 
             prevpred = NULL;
             predcount = 0;
             for (i = 0; i < LoopNode->numpred; i++) {
-                tmp = IRO_NodeTable[LoopNode->pred[i]];
-                if (!Bv_IsBitSet(tmp->index, InLoop)) {
+                node = IRO_NodeTable[LoopNode->pred[i]];
+                if (!Bv_IsBitSet(node->index, InLoop)) {
                     predcount++;
-                    prevpred = tmp;
+                    prevpred = node;
                 }
             }
 
-            if (predcount ==
-                1 &&
-                prevpred->last->type ==
-                IROLinearGoto &&
-                prevpred->nextnode ==
-                prevsucc &&
+            if (predcount == 1 &&
+                prevpred->last->type == IROLinearGoto &&
+                prevpred->nextnode == prevsucc &&
                 prevsucc != LoopNode) {
                 success = UnrollStandardLoop(header, prevpred, prevsucc, count);
             }
@@ -1358,8 +1346,8 @@ static void LoopUnroll(int count, IRONode* header) {
     if (success) {
         IRO_NodeTable = oalloc(sizeof(IRONode*) * IRO_NumNodes);
         memset(IRO_NodeTable, 0, sizeof(IRONode*) * IRO_NumNodes);
-        for (tmp = IRO_FirstNode; tmp; tmp = tmp->nextnode) {
-            IRO_NodeTable[tmp->index] = tmp;
+        for (node = IRO_FirstNode; node; node = node->nextnode) {
+            IRO_NodeTable[node->index] = node;
         }
         IRO_ComputeSuccPred();
         IRO_ComputeDom();
@@ -1370,54 +1358,54 @@ static void LoopUnroll(int count, IRONode* header) {
 }
 
 static int IsLoopUnrollable(IROLoop* loop) {
-    CInt64 tmp;
+    CInt64 iterCount;
 
     if (loop->flags & LP_LOOP_HAS_ASM) {
         IRO_Dump("IsLoopUnrollable:No due to LP_LOOP_HAS_ASM \n");
-        return 0;
+        return FALSE;
     }
     if (loop->flags & LP_IFEXPR_NON_CANONICAL) {
         IRO_Dump("IsLoopUnrollable:No due to LP_IFEXPR_NON_CANONICAL \n");
-        return 0;
+        return FALSE;
     }
     if (loop->flags & LP_LOOP_HAS_CALLS) {
         IRO_Dump("IsLoopUnrollable:No due to LP_LOOP_HAS_CALLS \n");
-        return 0;
+        return FALSE;
     }
     if (loop->flags & LP_LOOP_HAS_CNTRLFLOW) {
         IRO_Dump("IsLoopUnrollable:No due to LP_LOOP_HAS_CNTRLFLOW \n");
-        return 0;
+        return FALSE;
     }
     if (loop->flags & LP_INDUCTION_NOT_FOUND) {
         IRO_Dump("IsLoopUnrollable:No due to LP_INDUCTION_NOT_FOUND \n");
-        return 0;
+        return FALSE;
     }
     if (loop->flags & LP_LOOP_HDR_HAS_SIDEEFFECTS) {
         IRO_Dump("IsLoopUnrollable:No due to LP_LOOP_HDR_HAS_SIDEEFFECTS \n");
-        return 0;
+        return FALSE;
     }
-    if (!(loop->flags & LoopFlags_200)) {
+    if (!(loop->flags & LP_HEADER_FOLLOWS_UPDATE)) {
         IRO_Dump("IsLoopUnrollable:No because header does not follow induction update \n");
-        return 0;
+        return FALSE;
     }
 
-    if (!(loop->flags & LoopFlags_10000)) {
+    if (!(loop->flags & LP_WHILE_LOOP)) {
         IROLinear* upperBound = loop->cond->u.diadic.right;
         if (!IRO_IsIntConstant(upperBound) && !(upperBound->flags & IROLF_LoopInvariant)) {
             IRO_Dump("IsLoopUnrollable:No because Loop Upper Bound is Variant in the loop\n");
-            return 0;
+            return FALSE;
         }
         if (!loop->init) {
             IRO_Dump(
                 "IsLoopUnrollable:No because there is no initialization of loop index in PreHeader\n"
             );
-            return 0;
+            return FALSE;
         }
         if (!IRO_IsVariable(loop->init->u.diadic.left)) {
             IRO_Dump(
                 "IsLoopUnrollable:No because initial value of induction stored thru pointer\n"
             );
-            return 0;
+            return FALSE;
         }
 
         if (!is_unsigned(loop->init->rtype)) {
@@ -1428,15 +1416,15 @@ static int IsLoopUnrollable(IROLoop* loop) {
                     IRO_Dump(
                         "IsLoopUnrollable:No because initial value of induction is signed but init < 0\n"
                     );
-                    return 0;
+                    return FALSE;
                 }
-            } else if (IsIterationCountConstant(loop, &tmp)) {
+            } else if (IsIterationCountConstant(loop, &iterCount)) {
                 IRO_Dump("IsLoopUnrollable:Yes, the limits substract out to be constants\n");
             } else {
                 IRO_Dump(
                     "IsLoopUnrollable:No because initial value of induction is signed and not constant\n"
                 );
-                return 0;
+                return FALSE;
             }
         }
 
@@ -1444,28 +1432,28 @@ static int IsLoopUnrollable(IROLoop* loop) {
             IRO_Dump(
                 "IsLoopUnrollable:No because LP_LOOP_STEP_ISADD  is not set i.e induciton is not updated by 1\n"
             );
-            return 0;
+            return FALSE;
         }
 
     } else {
         if (!is_unsigned(loop->cond->u.diadic.left->rtype)) {
             IRO_Dump("IsLoopUnrollable:No because the while loop induction is signed\n");
-            return 0;
+            return FALSE;
         }
-        if (!(loop->flags & LoopFlags_2000)) {
+        if (!(loop->flags & LP_STEP_IS_NEG_ONE)) {
             IRO_Dump(
                 "IsLoopUnrollable:No because the while loop operator is not of decrement form\n"
             );
-            return 0;
+            return FALSE;
         }
     }
 
-    if (loop->count > copts.unrollinstrfactor) {
+    if (loop->weight > copts.unrollinstrfactor) {
         IRO_Dump("IsLoopUnrollable:No because loop size greater than threshold\n");
-        return 0;
+        return FALSE;
     }
 
-    return 1;
+    return TRUE;
 }
 
 IROLinear* BuildEarlyLoopExitTest(IROLinearType type, IROList* list) {
@@ -1501,7 +1489,7 @@ int IsIterationCountConstant(IROLoop* loop, CInt64* pval) {
     CInt64 negOne;
 
     lowerBound = loop->init->u.diadic.right;
-    if (loop->flags & LoopFlags_1) {
+    if (loop->flags & LP_INDUCTION_AT_LEFT) {
         upperBound = loop->cond->u.diadic.right;
         type = loop->cond->u.diadic.right->rtype;
     } else {
@@ -1516,11 +1504,11 @@ int IsIterationCountConstant(IROLoop* loop, CInt64* pval) {
         upperval = upperBound->u.node->data.intval;
         if (isUnsigned) {
             if (CInt64_LessEqualU(upperval, lowerval)) {
-                return 0;
+                return FALSE;
             }
         } else {
             if (CInt64_LessEqual(upperval, lowerval)) {
-                return 0;
+                return FALSE;
             }
         }
 
@@ -1542,7 +1530,7 @@ int IsIterationCountConstant(IROLoop* loop, CInt64* pval) {
         }
 
         if (CInt64_Equal(*pval, cint64_zero)) {
-            return 0;
+            return FALSE;
         }
 
         if (isUnsigned) {
@@ -1551,7 +1539,7 @@ int IsIterationCountConstant(IROLoop* loop, CInt64* pval) {
             CError_ASSERT(2517, !CInt64_LessEqual(*pval, cint64_zero));
         }
 
-        return 1;
+        return TRUE;
     }
 
     lowerRec = IRO_InitAddrRecordPointer(lowerBound);
@@ -1589,10 +1577,10 @@ int IsIterationCountConstant(IROLoop* loop, CInt64* pval) {
         if (IS_LINEAR_DIADIC(loop->cond, ELESSEQU)) {
             *pval = CInt64_Add(*pval, cint64_one);
         }
-        return 1;
+        return TRUE;
     }
 
-    return 0;
+    return FALSE;
 }
 
 static int IsDifferenceOfTermsConstant(
@@ -1606,20 +1594,19 @@ static int IsDifferenceOfTermsConstant(
     IROLinear* nd;
 
     if (upperRec->numObjRefs == lowerRec->numObjRefs && upperRec->numObjRefs != 0) {
-        return 0;
+        return FALSE;
     } else if (upperRec->numObjRefs != lowerRec->numObjRefs) {
-        return 0;
+        return FALSE;
     }
 
     if (upperRec->numMisc == lowerRec->numMisc && upperRec->numMisc != 0) {
         for (i = 0; i < upperRec->numMisc; i++) {
-            // bug? surely this should index on i...?
             if (!IRO_ExprsSame(lowerRec->misc->element, upperRec->misc->element)) {
-                return 0;
+                return FALSE;
             }
         }
     } else if (upperRec->numMisc != lowerRec->numMisc) {
-        return 0;
+        return FALSE;
     }
 
     upperval = cint64_zero;
@@ -1635,15 +1622,15 @@ static int IsDifferenceOfTermsConstant(
     }
 
     if (CInt64_Equal(upperval, lowerval)) {
-        return 0;
+        return FALSE;
     }
 
     if (CInt64_Greater(upperval, lowerval)) {
         diff = CInt64_Sub(upperval, lowerval);
         *pval = diff;
-        return 1;
+        return TRUE;
     } else {
-        return 0;
+        return FALSE;
     }
 }
 
@@ -1670,9 +1657,9 @@ void IRO_TestConstantIterationCount(
 ) {
     UInt32 isUnsigned;
     CInt64 val;
-    CInt64 val3;
+    CInt64 strideRemainder;
     CInt64 mod;
-    CInt64 val2;
+    CInt64 factor;
     CInt64 loopvar3;
     CInt64 loopvar1;
     CInt64 loopvar2;
@@ -1681,16 +1668,16 @@ void IRO_TestConstantIterationCount(
     CError_ASSERT(2737, *unrollFactor);
 
     isUnsigned = is_unsigned(
-        (loop->flags & LoopFlags_1) ? loop->cond->u.diadic.right->rtype
-                                    : loop->cond->u.diadic.left->rtype
+        (loop->flags & LP_INDUCTION_AT_LEFT) ? loop->cond->u.diadic.right->rtype
+                                             : loop->cond->u.diadic.left->rtype
     );
 
     CError_ASSERT(2756, vectorStride);
 
     strideVal = IRO_MakeLong(vectorStride);
     if (isUnsigned ? CInt64_LessU(*iterCount, strideVal) : CInt64_Less(*iterCount, strideVal)) {
-        *needOrigLoop = 1;
-        *needUnrollBodyTest = 0;
+        *needOrigLoop = TRUE;
+        *needUnrollBodyTest = FALSE;
         *unrollFactor = 0;
         *leftOver = CInt64_GetULong(iterCount);
     } else {
@@ -1718,48 +1705,48 @@ void IRO_TestConstantIterationCount(
             *unrollFactor = CInt64_GetULong(&val);
         }
 
-        CInt64_SetLong(&val2, *unrollFactor);
+        CInt64_SetLong(&factor, *unrollFactor);
         switch (vectorStride) {
             case 1:
-                val3 = cint64_zero;
+                strideRemainder = cint64_zero;
                 break;
             case 2:
-                val3 = CInt64_And(*iterCount, cint64_one);
+                strideRemainder = CInt64_And(*iterCount, cint64_one);
                 break;
             case 4:
-                val3 = CInt64_And(*iterCount, IRO_MakeLong(3));
+                strideRemainder = CInt64_And(*iterCount, IRO_MakeLong(3));
                 break;
             case 8:
-                val3 = CInt64_And(*iterCount, IRO_MakeLong(7));
+                strideRemainder = CInt64_And(*iterCount, IRO_MakeLong(7));
                 break;
             case 16:
-                val3 = CInt64_And(*iterCount, IRO_MakeLong(15));
+                strideRemainder = CInt64_And(*iterCount, IRO_MakeLong(15));
                 break;
             default:
-                val3 = CInt64_Mod(*iterCount, strideVal);
+                strideRemainder = CInt64_Mod(*iterCount, strideVal);
         }
 
         if (CInt64_LessEqualU(val, IRO_MakeLong(8))) {
             *needUnrollBodyTest = vectorStride > 1;
             *unrollFactor = CInt64_GetULong(&val);
-            *leftOver = CInt64_GetULong(&val3);
+            *leftOver = CInt64_GetULong(&strideRemainder);
             *needOrigLoop = *leftOver != 0;
             *resetUnrolledFinalValue = !(*needOrigLoop && *needUnrollBodyTest);
         } else {
             loopvar1 = IRO_MakeLong(0x7FFFFFFF);
             loopvar2 = IRO_MakeLong(0x7FFFFFFF);
             do {
-                mod = CInt64_Mod(val, val2);
-                loopvar3 = CInt64_Add(CInt64_Mul(mod, strideVal), val3);
+                mod = CInt64_Mod(val, factor);
+                loopvar3 = CInt64_Add(CInt64_Mul(mod, strideVal), strideRemainder);
                 if (CInt64_Less(loopvar3, loopvar2)) {
                     loopvar2 = loopvar3;
-                    loopvar1 = val2;
+                    loopvar1 = factor;
                 }
                 if (vectorStride > 1) {
                     break;
                 }
-                val2 = CInt64_Add(val2, cint64_negone);
-            } while (CInt64_GreaterEqualU(CInt64_Mul(val2, val2), val));
+                factor = CInt64_Add(factor, cint64_negone);
+            } while (CInt64_GreaterEqualU(CInt64_Mul(factor, factor), val));
 
             *unrollFactor = CInt64_GetULong(&loopvar1);
             *leftOver = CInt64_GetULong(&loopvar2);
@@ -1787,30 +1774,30 @@ IROLinear* BuildOrigIterationCount(IROList* list, IROLoop* loop) {
     IROLinear* ass;
     Object* tempobj;
     IROLinear* finalCount;
-    IROLinear* tmp;
+    IROLinear* prevSum;
     IROLinear* negone;
     ENode* expr;
     IROLinear* iterCount;
     IROLinear* lowerBound;
     IROLinear* upperBound;
-    IROLinear* nd25;
+    IROLinear* stepCopy;
     Boolean isZeroBase;
-    IROLinear* nd29b;
+    IROLinear* sum;
     IROLinear* divisor;
     int powval;
 
-    isZeroBase = 0;
+    isZeroBase = FALSE;
     lowerBound = loop->init->u.diadic.right;
     if (IRO_IsIntConstant(lowerBound) &&
         CInt64_Equal(lowerBound->u.node->data.intval, cint64_zero)) {
-        isZeroBase = 1;
+        isZeroBase = TRUE;
     }
 
     if (!isZeroBase) {
         lowerBound = IRO_DuplicateExpr(lowerBound, list);
     }
 
-    if (loop->flags & LoopFlags_1) {
+    if (loop->flags & LP_INDUCTION_AT_LEFT) {
         upperBound = IRO_DuplicateExpr(loop->cond->u.diadic.right, list);
         type = loop->cond->u.diadic.right->rtype;
     } else {
@@ -1841,18 +1828,18 @@ IROLinear* BuildOrigIterationCount(IROList* list, IROLoop* loop) {
         IRO_AddToList(iterCount, list);
     }
 
-    nd25 = IRO_DuplicateExpr(divisor, list);
+    stepCopy = IRO_DuplicateExpr(divisor, list);
 
-    nd29b = IRO_NewLinear(IROLinearOp2Arg);
-    nd29b->index = ++IRO_NumLinear;
-    nd29b->nodetype = EADD;
-    nd29b->u.diadic.left = iterCount;
-    nd29b->u.diadic.right = nd25;
-    nd29b->rtype = type;
-    IRO_AddToList(nd29b, list);
+    sum = IRO_NewLinear(IROLinearOp2Arg);
+    sum->index = ++IRO_NumLinear;
+    sum->nodetype = EADD;
+    sum->u.diadic.left = iterCount;
+    sum->u.diadic.right = stepCopy;
+    sum->rtype = type;
+    IRO_AddToList(sum, list);
 
     if (loop->cond->type == IROLinearOp2Arg && loop->cond->nodetype == ELESS) {
-        tmp = nd29b;
+        prevSum = sum;
 
         negone = IRO_NewLinear(IROLinearOperand);
         negone->index = ++IRO_NumLinear;
@@ -1863,26 +1850,25 @@ IROLinear* BuildOrigIterationCount(IROList* list, IROLoop* loop) {
         negone->u.node = expr;
         IRO_AddToList(negone, list);
 
-        nd29b = IRO_NewLinear(IROLinearOp2Arg);
-        nd29b->index = ++IRO_NumLinear;
-        nd29b->nodetype = EADD;
-        nd29b->u.diadic.left = tmp;
-        nd29b->u.diadic.right = negone;
-        nd29b->rtype = type;
-        IRO_AddToList(nd29b, list);
+        sum = IRO_NewLinear(IROLinearOp2Arg);
+        sum->index = ++IRO_NumLinear;
+        sum->nodetype = EADD;
+        sum->u.diadic.left = prevSum;
+        sum->u.diadic.right = negone;
+        sum->rtype = type;
+        IRO_AddToList(sum, list);
     }
 
     if (CInt64_Equal(divisor->u.node->data.intval, cint64_one)) {
-        finalCount = nd29b;
+        finalCount = sum;
     } else {
-        if (divisor->rtype->size <=
-            4 &&
+        if (divisor->rtype->size <= 4 &&
             IS_TYPE_INT(divisor->rtype) &&
             IRO_IsPow2(divisor, &powval)) {
             finalCount = IRO_NewLinear(IROLinearOp2Arg);
             finalCount->index = ++IRO_NumLinear;
             finalCount->nodetype = ESHL;
-            finalCount->u.diadic.left = nd29b;
+            finalCount->u.diadic.left = sum;
             finalCount->u.diadic.right = divisor;
             CInt64_SetLong(&divisor->u.node->data.intval, powval);
             finalCount->rtype = type;
@@ -1892,7 +1878,7 @@ IROLinear* BuildOrigIterationCount(IROList* list, IROLoop* loop) {
             finalCount = IRO_NewLinear(IROLinearOp2Arg);
             finalCount->index = ++IRO_NumLinear;
             finalCount->nodetype = EDIV;
-            finalCount->u.diadic.left = nd29b;
+            finalCount->u.diadic.left = sum;
             finalCount->u.diadic.right = divisor;
             finalCount->rtype = type;
             IRO_AddToList(divisor, list);
@@ -1901,7 +1887,7 @@ IROLinear* BuildOrigIterationCount(IROList* list, IROLoop* loop) {
     }
 
     tempobj = create_temp_object(type);
-    IRO_FindVar(tempobj, 1, 1);
+    IRO_FindVar(tempobj, TRUE, TRUE);
 
     ass = IRO_NewLinear(IROLinearOp2Arg);
     ass->index = ++IRO_NumLinear;
@@ -1949,7 +1935,7 @@ static IROLinear* BuildOrigIterationCount_DoWhile(IROList* list, IROLoop* loop) 
     IRO_AddToList(finalCount, list);
 
     tempobj = create_temp_object(type);
-    IRO_FindVar(tempobj, 1, 1);
+    IRO_FindVar(tempobj, TRUE, TRUE);
 
     ass = IRO_NewLinear(IROLinearOp2Arg);
     ass->index = ++IRO_NumLinear;
@@ -1986,7 +1972,7 @@ IROLinear* BuildNewFinalvalue(
     addvalue->u.node = expr;
     IRO_AddToList(addvalue, list);
 
-    if (loop->flags & LoopFlags_1) {
+    if (loop->flags & LP_INDUCTION_AT_LEFT) {
         dupbound = IRO_DuplicateExpr(loop->cond->u.diadic.right, list);
     } else {
         dupbound = IRO_DuplicateExpr(loop->cond->u.diadic.left, list);
@@ -2001,7 +1987,7 @@ IROLinear* BuildNewFinalvalue(
     IRO_AddToList(sub, list);
 
     tempobj = create_temp_object(type);
-    IRO_FindVar(tempobj, 1, 1);
+    IRO_FindVar(tempobj, TRUE, TRUE);
 
     ass = IRO_NewLinear(IROLinearOp2Arg);
     ass->index = ++IRO_NumLinear;
@@ -2090,7 +2076,7 @@ static IROLinear* BuildPreAlignTemp(IROLoopInd* ind, UInt32 unrollFactor, IROLis
     mul->flags |= IROLF_Reffed;
 
     tempobj = create_temp_object(type);
-    IRO_FindVar(tempobj, 1, 1);
+    IRO_FindVar(tempobj, TRUE, TRUE);
 
     ass = IRO_NewLinear(IROLinearOp2Arg);
     ass->index = ++IRO_NumLinear;
@@ -2158,7 +2144,7 @@ static IROLinear* BuildNewFinalvalue_DoWhile(
     add->flags |= IROLF_Reffed;
 
     tempobj = create_temp_object(type);
-    IRO_FindVar(tempobj, 1, 1);
+    IRO_FindVar(tempobj, TRUE, TRUE);
 
     ass = IRO_NewLinear(IROLinearOp2Arg);
     ass->index = ++IRO_NumLinear;
@@ -2247,7 +2233,7 @@ static IROLinear* BuildUnrolledFinalvalue_DoWhile(
     add->flags |= IROLF_Reffed;
 
     tempobj = create_temp_object(type);
-    IRO_FindVar(tempobj, 1, 1);
+    IRO_FindVar(tempobj, TRUE, TRUE);
 
     ass = IRO_NewLinear(IROLinearOp2Arg);
     ass->index = ++IRO_NumLinear;
@@ -2267,7 +2253,7 @@ void BuildUnrolledBodyEntryTest(
     IROList* list, IROLinear* iterCount, UInt32 unrollFactor, CLabel* label
 ) {
     IROLinear* value;
-    IROLinear* var;
+    IROLinear* countCopy;
     IROLinear* ifnot;
     IROLinear* comp;
     Type* type;
@@ -2284,12 +2270,12 @@ void BuildUnrolledBodyEntryTest(
     value->u.node = expr;
     IRO_AddToList(value, list);
 
-    var = IRO_DuplicateExpr(iterCount, list);
+    countCopy = IRO_DuplicateExpr(iterCount, list);
 
     comp = IRO_NewLinear(IROLinearOp2Arg);
     comp->index = ++IRO_NumLinear;
     comp->nodetype = EGREATER;
-    comp->u.diadic.left = var;
+    comp->u.diadic.left = countCopy;
     comp->u.diadic.right = value;
     comp->u.diadic.right->flags |= IROLF_Reffed;
     comp->rtype = type;
@@ -2311,18 +2297,18 @@ void ChangeInductionReference(IROLinear* first, IROLinear* last, CInt64 val, IRO
     IROLinear* add;
     UInt32 isUnsigned;
     IROLinear* father;
-    Boolean flag;
+    Boolean typconWidens;
     IROLinear* father2;
     IROLinear* father3;
-    Type* tmp;
-    UInt32 flag2;
+    Type* fatherType;
+    UInt32 foldedIntoAdd;
     Object* varobj;
     IROLinear* next;
     ENode* expr;
     Type* type;
 
-    CInt64 val2;
-    CInt64 val1;
+    CInt64 scale;
+    CInt64 product;
     IROList list;
 
     type = loop->induction->nd->rtype;
@@ -2347,38 +2333,37 @@ void ChangeInductionReference(IROLinear* first, IROLinear* last, CInt64 val, IRO
             add->rtype = type;
 
             father = IRO_LocateFather(nd);
-            flag = 1;
+            typconWidens = TRUE;
             if (father && IS_LINEAR_MONADIC(father, ETYPCON)) {
-                tmp = father->rtype;
+                fatherType = father->rtype;
                 father = IRO_LocateFather(father);
-                if (tmp->type != nd->rtype->type || tmp->size < nd->rtype->size) {
-                    flag = 0;
+                if (fatherType->type != nd->rtype->type || fatherType->size < nd->rtype->size) {
+                    typconWidens = FALSE;
                 }
             }
 
-            flag2 = 0;
-            if (flag &&
+            foldedIntoAdd = 0;
+            if (typconWidens &&
                 father &&
                 IS_LINEAR_DIADIC_2(father, ESHL, EMUL) &&
                 IRO_IsIntConstant(father->u.diadic.right) &&
                 (father2 = IRO_LocateFather(father)) &&
                 IS_LINEAR_DIADIC(father2, EADD) &&
-                father2->u.diadic.right ==
-                father &&
+                father2->u.diadic.right == father &&
                 (father3 = IRO_LocateFather(father2))) {
                 IRO_InitList(&list);
-                val2 = father->u.diadic.right->u.node->data.intval;
+                scale = father->u.diadic.right->u.node->data.intval;
                 if (father->nodetype == ESHL) {
-                    val2 = CInt64_Shl(cint64_one, val2);
+                    scale = CInt64_Shl(cint64_one, scale);
                 }
 
-                val1 = value->u.node->data.intval;
+                product = value->u.node->data.intval;
                 if (isUnsigned) {
-                    val1 = CInt64_MulU(val2, val1);
+                    product = CInt64_MulU(scale, product);
                 } else {
-                    val1 = CInt64_Mul(val2, val1);
+                    product = CInt64_Mul(scale, product);
                 }
-                value->u.node->data.intval = val1;
+                value->u.node->data.intval = product;
 
                 IRO_AddToList(value, &list);
                 IRO_AddToList(add, &list);
@@ -2387,10 +2372,10 @@ void ChangeInductionReference(IROLinear* first, IROLinear* last, CInt64 val, IRO
                 IRO_LocateFather_Cut_And_Paste_Without_Nopping(father2, add);
                 add->u.diadic.left = father2;
                 add->rtype = father2->rtype;
-                flag2 = 1;
+                foldedIntoAdd = 1;
             }
 
-            if (!flag2) {
+            if (!foldedIntoAdd) {
                 add->u.diadic.right = value;
                 add->u.diadic.right->flags |= IROLF_Reffed;
                 value->next = add;

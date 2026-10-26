@@ -1,20 +1,6 @@
 #!/usr/bin/env python3
-"""python tools/crosscheck.py [VERSION]: where the comparison's verdict on a function (build/VERSION/compare.json,
-tools/mw/verdict.py) and objdiff's (the --relink build's build/VERSION/report.json, `ninja progress`) disagree, and why.
 
-The comparison calls a function exact when its compiled bytes, every reference resolved to the original's address,
-are the original's, and every datum it reaches is (tools/mw/verdict.py). objdiff compares the compiled object with the
-unit's split object, function by function, relocations by the names of their targets. They disagree when:
-  - a function is in another unit than its source: the split (the original's layout) puts its address in another
-    translation unit, so objdiff has no function of that name to compare it with;
-  - a name is an alias: the linker kept one copy of identical functions, and the report lists one name per address,
-    or symbols.txt names the address otherwise;
-  - objdiff scores 100% what is not the original: a reference to the wrong variable or literal, which objdiff, going by
-    names, does not see;
-  - the comparison's function is exact and objdiff's is not: the split function runs on over code functions.json does not
-    list (a function missing from it).
-Run after a build of both (python configure.py && ninja; python configure.py --relink && ninja progress)."""
-
+import argparse
 import json
 import re
 import sys
@@ -27,18 +13,25 @@ from mw import formats, project, verdict
 
 
 def main():
-    if sys.argv[1:2] in (["-h"], ["--help"]):
-        print(__doc__)
-        return
+    parser = argparse.ArgumentParser(
+        description="Where the comparison's verdict on a function and objdiff's disagree, and why."
+    )
+    parser.add_argument("version", nargs="?", metavar="VERSION")
+    args = parser.parse_args()
     try:
-        version = project.version(sys.argv[1] if len(sys.argv) > 1 else None)
+        version = project.version(args.version)
         results = verdict.load(version)
         rows = verdict.rows(version)
     except project.Error as e:
         sys.exit(f"error: {e}")
     report_path = version.build / "report.json"
     if not report_path.exists():
-        sys.exit(f"error: {project.relative(report_path)} does not exist: configure --relink, then ninja progress")
+        sys.exit(f"error: {project.relative(report_path)} does not exist: configure --matching, then ninja progress")
+    if report_path.stat().st_mtime < (version.build / "compare.json").stat().st_mtime:
+        sys.exit(
+            f"error: {project.relative(report_path)} is older than the comparison: "
+            f"ninja {project.relative(report_path)} (with the build configured --matching)"
+        )
     report = json.loads(report_path.read_text())
     undecorate = lambda name: re.sub(r"@\d+$", "", name)
     scores = {}
@@ -92,7 +85,7 @@ def main():
         (
             cut_short,
             "exact, but objdiff's function is longer: code after it that functions.json does not list",
-            lambda e: f"{e[0]} ({e[1]:.1f}%)",
+            lambda e: f"{e[0]} ({e[1]:.3f}%)",
         ),
         (
             too_kind,

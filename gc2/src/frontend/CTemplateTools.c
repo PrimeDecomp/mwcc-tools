@@ -4,15 +4,19 @@
 #include "compiler/CError.h"
 #include "compiler/CExpr.h"
 #include "compiler/CFunc.h"
+#include "compiler/CInline.h"
 #include "compiler/CInt64.h"
 #include "compiler/CMachine.h"
+#include "compiler/CompilerTools.h"
 #include "compiler/CParser.h"
 #include "compiler/CScope.h"
 #include "compiler/CTemplateClass.h"
-#include "compiler/CTemplateFunc.h"
 #include "compiler/CTemplateNew.h"
-#include "compiler/ObjGen_PPC_EABI.h"
+#include "compiler/enode.h"
+#include "compiler/objects.h"
 #include "compiler/scopes.h"
+#include "compiler/templates.h"
+#include "compiler/types.h"
 #include <string.h>
 
 short ctempl_instdepth;
@@ -43,7 +47,7 @@ void CTemplTool_PopInstance(TemplStack* stack) {
 }
 
 Boolean CTemplTool_InitDeduceInfo(
-    DeduceInfo* info, TemplParam* params, TemplArg* args, Boolean flag
+    DeduceInfo* info, TemplParam* params, TemplArg* args, Boolean checkUndeduced
 ) {
     TemplArg* buffer;
     TemplParam* param;
@@ -59,9 +63,6 @@ Boolean CTemplTool_InitDeduceInfo(
 
     memclrw(info, sizeof(DeduceInfo));
 
-    // Where 2.6 departs from Pro7 here it has 1.x's shapes (gc1's InitDeduceInfo): counters
-    // incremented before the advance, a while loop for the ids, `arg` as a copy of `args`; Pro7's
-    // spellings of each were tried and do not match.
     i = 0;
     param = params;
     while (param) {
@@ -103,8 +104,7 @@ Boolean CTemplTool_InitDeduceInfo(
         buffer[i].is_deduced = TRUE;
         info->count++;
 
-        if (param->pid.type ==
-            TPT_NONTYPE &&
+        if (param->pid.type == TPT_NONTYPE &&
             !CTemplTool_IsTemplateArgumentDependentType(param->data.paramdecl.type)) {
             if (CExpr_CanImplicitlyConvert(
                     buffer[i].data.paramdecl.expr,
@@ -115,7 +115,7 @@ Boolean CTemplTool_InitDeduceInfo(
                     buffer[i].data.paramdecl.expr,
                     param->data.paramdecl.type,
                     param->data.paramdecl.qual,
-                    0
+                    FALSE
                 );
             } else {
                 return FALSE;
@@ -126,7 +126,7 @@ Boolean CTemplTool_InitDeduceInfo(
         param = param->next;
     }
 
-    if (flag) {
+    if (checkUndeduced) {
         for (param = params, i = 0; param; param = param->next, i++) {
             if (!buffer[i].is_deduced && !param->name) {
                 switch (param->pid.type) {
@@ -210,30 +210,24 @@ Boolean CTemplTool_IsIdenticalTemplArgList(TemplArg* args, TemplParam* params) {
         switch (args->pid.type) {
             case TPT_TYPE:
                 if (!IS_TYPE_TEMPLATE(args->data.typeparam.type) ||
-                    TYPE_TEMPLATE(args->data.typeparam.type)->dtype !=
-                    TEMPLDEP_ARGUMENT ||
-                    TYPE_TEMPLATE(args->data.typeparam.type)->u.pid.index !=
-                    params->pid.index ||
+                    TYPE_TEMPLATE(args->data.typeparam.type)->dtype != TEMPLDEP_ARGUMENT ||
+                    TYPE_TEMPLATE(args->data.typeparam.type)->u.pid.index != params->pid.index ||
                     TYPE_TEMPLATE(args->data.typeparam.type)->u.pid.nindex != params->pid.nindex) {
                     return FALSE;
                 }
                 break;
             case TPT_NONTYPE:
                 if (!ENODE_IS(args->data.paramdecl.expr, ETEMPLDEP) ||
-                    args->data.paramdecl.expr->data.templdep.subtype !=
-                    TDE_PARAM ||
-                    args->data.paramdecl.expr->data.templdep.u.pid.index !=
-                    params->pid.index ||
+                    args->data.paramdecl.expr->data.templdep.subtype != TDE_PARAM ||
+                    args->data.paramdecl.expr->data.templdep.u.pid.index != params->pid.index ||
                     args->data.paramdecl.expr->data.templdep.u.pid.nindex != params->pid.nindex) {
                     return FALSE;
                 }
                 break;
             case TPT_TEMPLATE:
                 if (!IS_TYPE_TEMPLATE(args->data.typeparam.type) ||
-                    TYPE_TEMPLATE(args->data.typeparam.type)->dtype !=
-                    TEMPLDEP_ARGUMENT ||
-                    TYPE_TEMPLATE(args->data.typeparam.type)->u.pid.index !=
-                    params->pid.index ||
+                    TYPE_TEMPLATE(args->data.typeparam.type)->dtype != TEMPLDEP_ARGUMENT ||
+                    TYPE_TEMPLATE(args->data.typeparam.type)->u.pid.index != params->pid.index ||
                     TYPE_TEMPLATE(args->data.typeparam.type)->u.pid.nindex != params->pid.nindex) {
                     return FALSE;
                 }
@@ -246,7 +240,6 @@ Boolean CTemplTool_IsIdenticalTemplArgList(TemplArg* args, TemplParam* params) {
         params = params->next;
     }
 
-    // sete: `params == NULL` (Pro7's `!params` compiles to a branch)
     return params == NULL;
 }
 
@@ -409,7 +402,6 @@ void CTemplTool_MergeArgNames(TypeFunc* src, TypeFunc* dest) {
 Boolean CTemplTool_EqualParams(TemplParam* a, TemplParam* b, Boolean copyNames) {
     while (1) {
         if (!a) {
-            // sete: `b == NULL`, where Pro7's `!b` compiles to a branch
             return b == NULL;
         }
         if (!b) {
@@ -454,7 +446,6 @@ NameSpace* CTemplTool_SetupTemplateArgumentNameSpace(
 
     clear_global = FALSE;
     if (!is_global && trychain) {
-        // 2.6 chains the two (Pro7: two statements): is_global is stored from clear_global
         is_global = clear_global = TRUE;
     }
 
@@ -510,7 +501,7 @@ NameSpace* CTemplTool_SetupTemplateArgumentNameSpace(
                         object->u.expr->rtype = TPTR_TARGET(params->data.paramdecl.type);
                     }
                     if (is_global) {
-                        object->u.expr = CInline_CopyExpression(object->u.expr, CopyMode1);
+                        object->u.expr = CInline_CopyExpression(object->u.expr, CopyModeGlobal);
                     }
                     CScope_AddObject(nspace, params->name, OBJ_BASE(object));
                     break;
@@ -642,7 +633,6 @@ Boolean CTemplTool_IsTemplateArgumentDependentExpression(ENode* expr) {
         return FALSE;
     }
 
-    // 2.6 returns the comparison (sete), where Pro7 returns 1 or 0 from an if
     return IS_TYPE_TEMPLDEPEXPR(expr->rtype);
 }
 
@@ -658,22 +648,17 @@ Boolean CTemplTool_IsSameTemplate(TemplParam* params, TemplArg* args) {
         switch (args->pid.type) {
             case TPT_TYPE:
                 if (!IS_TYPE_TEMPLATE(args->data.typeparam.type) ||
-                    TYPE_TEMPLATE(args->data.typeparam.type)->dtype !=
-                    TEMPLDEP_ARGUMENT ||
-                    TYPE_TEMPLATE(args->data.typeparam.type)->u.pid.nindex !=
-                    params->pid.nindex ||
-                    TYPE_TEMPLATE(args->data.typeparam.type)->u.pid.index !=
-                    params->pid.index ||
+                    TYPE_TEMPLATE(args->data.typeparam.type)->dtype != TEMPLDEP_ARGUMENT ||
+                    TYPE_TEMPLATE(args->data.typeparam.type)->u.pid.nindex != params->pid.nindex ||
+                    TYPE_TEMPLATE(args->data.typeparam.type)->u.pid.index != params->pid.index ||
                     args->data.typeparam.qual != 0) {
                     return FALSE;
                 }
                 break;
             case TPT_NONTYPE:
                 if (!ENODE_IS(args->data.paramdecl.expr, ETEMPLDEP) ||
-                    args->data.paramdecl.expr->data.templdep.subtype !=
-                    TDE_PARAM ||
-                    args->data.paramdecl.expr->data.templdep.u.pid.nindex !=
-                    params->pid.nindex ||
+                    args->data.paramdecl.expr->data.templdep.subtype != TDE_PARAM ||
+                    args->data.paramdecl.expr->data.templdep.u.pid.nindex != params->pid.nindex ||
                     args->data.paramdecl.expr->data.templdep.u.pid.index != params->pid.index) {
                     return FALSE;
                 }
@@ -751,8 +736,7 @@ Type* CTemplTool_IsDependentTemplate(TemplClass* tmclass, TemplArg* args) {
         }
     }
 done:
-    if (cscope_current->theclass ==
-        TYPE_CLASS(tmclass) &&
+    if (cscope_current->theclass == TYPE_CLASS(tmclass) &&
         CTemplTool_IsSameTemplate(tmclass->templ__params, args)) {
         return TYPE(tmclass);
     }
@@ -796,8 +780,7 @@ Boolean CTemplTool_EqualExprTypes(ENode* a, ENode* b) {
 
             switch (a->data.templdep.subtype) {
                 case TDE_PARAM:
-                    return a->data.templdep.u.pid.nindex ==
-                        b->data.templdep.u.pid.nindex &&
+                    return a->data.templdep.u.pid.nindex == b->data.templdep.u.pid.nindex &&
                         a->data.templdep.u.pid.index == b->data.templdep.u.pid.index;
                 case TDE_SIZEOF:
                 case TDE_ALIGNOF:
@@ -896,7 +879,6 @@ void CTemplTool_CheckTemplArgType(Type* type) {
         if (IsTempName(TYPE_CLASS(type)->classname) ||
             CScope_IsInLocalNameSpace(TYPE_CLASS(type)->nspace)) {
             CError_Error(ERR_ILLEGAL_TEMPLATE_ARGUMENTS);
-            // 2.6 has an epilogue of its own here (Pro7 falls through)
             return;
         }
     }
@@ -957,7 +939,7 @@ TemplArg* CTemplTool_MakeGlobalTemplArgCopy(TemplArg* args) {
         *copy = *args;
         if (copy->pid.type == TPT_NONTYPE && copy->data.paramdecl.expr) {
             copy->data.paramdecl.expr =
-                CInline_CopyExpression(copy->data.paramdecl.expr, CopyMode1);
+                CInline_CopyExpression(copy->data.paramdecl.expr, CopyModeGlobal);
         }
 
         args = args->next;
@@ -981,8 +963,7 @@ Boolean CTemplTool_TemplDepTypeCompare(TypeTemplDep* a, TypeTemplDep* b) {
             return CTemplTool_TemplDepTypeCompare(a->u.qual.type, b->u.qual.type) &&
                 a->u.qual.name == b->u.qual.name;
         case TEMPLDEP_TEMPLATE:
-            return a->u.templ.templ ==
-                b->u.templ.templ &&
+            return a->u.templ.templ == b->u.templ.templ &&
                 CTemplTool_EqualArgs(a->u.templ.args, b->u.templ.args);
         case TEMPLDEP_ARRAY:
             return is_typesame(a->u.array.type, b->u.array.type) &&
@@ -1011,8 +992,7 @@ Type* CTemplTool_DeduceArgDepType(TemplArg* args, Type* type, UInt32 qual, UInt3
                 return NULL;
             }
 
-            if (arg->pid.index ==
-                TYPE_TEMPLATE(type)->u.pid.index &&
+            if (arg->pid.index == TYPE_TEMPLATE(type)->u.pid.index &&
                 arg->pid.nindex == TYPE_TEMPLATE(type)->u.pid.nindex) {
                 break;
             }
@@ -1029,38 +1009,38 @@ Type* CTemplTool_DeduceArgDepType(TemplArg* args, Type* type, UInt32 qual, UInt3
 }
 
 static TemplClassInst* CTemplTool_FindNestedClassInstance(
-    TemplClass* a, TemplClass* b, TemplClassInst* c
+    TemplClass* templ, TemplClass* outer, TemplClassInst* outerInst
 ) {
     TemplClass* array[32];
     TemplClassInst* inst;
     int i;
 
-    array[0] = a;
+    array[0] = templ;
     i = 0;
     while (1) {
         CError_ASSERT(1338, i < 32);
-        CError_ASSERT(1339, a = a->templ_parent);
+        CError_ASSERT(1339, templ = templ->templ_parent);
 
-        if (a == b) {
+        if (templ == outer) {
             break;
         }
 
-        CError_ASSERT(1341, a->templ__params == NULL);
+        CError_ASSERT(1341, templ->templ__params == NULL);
 
-        array[++i] = a;
+        array[++i] = templ;
     }
 
     while (1) {
         inst = array[i--]->instances;
         while (1) {
             CError_ASSERT(1350, inst);
-            if (inst->parent == c) {
+            if (inst->parent == outerInst) {
                 break;
             }
             inst = inst->next;
         }
 
-        c = inst;
+        outerInst = inst;
         if (i < 0) {
             break;
         }
@@ -1134,7 +1114,7 @@ static Type* CTemplTool_FindTemplateInstance(TypeDeduce* deduce, TemplClass* tem
         CError_ASSERT(1416, scaninst = scaninst->parent);
     }
 
-    if (dtempl->flags & 2) {
+    if (dtempl->flags & TEMPLCLASS_IS_SPECIALIZATION) {
         scantempl = TEMPL_CLASS(dtempl->theclass.nspace->theclass);
         CError_ASSERT(1422, scantempl->theclass.flags & CLASS_IS_TEMPL);
         scaninst = dinst;
@@ -1212,8 +1192,7 @@ ENode* CTemplTool_DeduceExpr(TypeDeduce* deduce, ENode* expr) {
                     }
 
                     for (arg = deduce->args; arg; arg = arg->next) {
-                        if (arg->pid.index ==
-                            expr->data.templdep.u.pid.index &&
+                        if (arg->pid.index == expr->data.templdep.u.pid.index &&
                             arg->pid.nindex == expr->data.templdep.u.pid.nindex) {
                             CError_ASSERT(
                                 1562, arg->pid.type == TPT_NONTYPE && arg->data.paramdecl.expr
@@ -1226,8 +1205,7 @@ ENode* CTemplTool_DeduceExpr(TypeDeduce* deduce, ENode* expr) {
 
                     for (inst = deduce->inst; inst; inst = inst->parent) {
                         for (arg = inst->inst_args; arg; arg = arg->next) {
-                            if (arg->pid.index ==
-                                expr->data.templdep.u.pid.index &&
+                            if (arg->pid.index == expr->data.templdep.u.pid.index &&
                                 arg->pid.nindex == expr->data.templdep.u.pid.nindex) {
                                 CError_ASSERT(
                                     1575, arg->pid.type == TPT_NONTYPE && arg->data.paramdecl.expr
@@ -1336,7 +1314,6 @@ ENode* CTemplTool_DeduceExpr(TypeDeduce* deduce, ENode* expr) {
                     return newExpr;
 
                 case TDE_ADDRESS_OF:
-                    // 2.6 pushes the flag after the call (Pro7: the call as the argument)
                     newExpr = CTemplTool_DeduceExpr(deduce, expr->data.templdep.u.monadic);
                     return getnodeaddress(newExpr, TRUE);
 
@@ -1408,7 +1385,6 @@ ENode* CTemplTool_DeduceDefaultArg(Object* func, ENode* expr) {
     if ((TYPE_FUNC(func->type)->flags & FUNC_METHOD) &&
         (TYPE_METHOD(func->type)->theclass->flags & CLASS_IS_TEMPL_INST)) {
         deduce.inst = TEMPL_CLASS_INST(TYPE_METHOD(func->type)->theclass);
-        // 2.6 reads the template through the stored instance (Pro7: through the method again)
         deduce.tmclass = deduce.inst->templ;
     }
 
@@ -1427,8 +1403,7 @@ static TemplClass* CTemplTool_FindNestedTemplateInstance(TypeDeduce* deduce, Tem
     CError_ASSERT(1776, (dtempl = deduce->tmclass) && (dinst = deduce->inst));
 
     while (1) {
-        if (templ->templ_parent ==
-            dtempl &&
+        if (templ->templ_parent == dtempl &&
             (type = CScope_GetLocalTagType(dinst->theclass.nspace, templ->theclass.classname)) &&
             IS_TYPE_CLASS(type) &&
             (TYPE_CLASS(type)->flags & CLASS_IS_TEMPL) &&
@@ -1502,7 +1477,7 @@ static Type* CTemplTool_DeduceClassInstanceCopy(
                         CTemplTool_DeduceExpr(deduce, last->data.paramdecl.expr)
                     );
                     last->data.paramdecl.expr =
-                        CInline_CopyExpression(last->data.paramdecl.expr, CopyMode1);
+                        CInline_CopyExpression(last->data.paramdecl.expr, CopyModeGlobal);
                 }
                 break;
 
@@ -1674,7 +1649,6 @@ static Type* CTemplTool_DeduceBitfieldCopy(
             maxsize = 32;
             break;
         case 8:
-            // 2.6 adds 64-bit bitfields (Pro7 stops at 4 bytes)
             maxsize = 64;
             break;
         default:
@@ -1715,7 +1689,6 @@ static Type* CTemplTool_DeduceTemplDepType(
 
     qual = 0;
 
-    // 2.6 gives each branch its own `arg` (Pro7: one at function scope): the registers say so
     if (deduce->processingClassTypes) {
         TemplArg* arg;
 

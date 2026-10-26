@@ -1,8 +1,10 @@
 #include "driver/IO.h"
 #include "driver/Arguments.h"
 #include "driver/CWParserPluginsPrivate.h"
+#include "driver/CWPlugins.h"
 #include "driver/CWSecretPluginCallbacks.h"
 #include "driver/Generic.h"
+#include "driver/Memory.h"
 #include "driver/ParserErrors.h"
 #include "driver/ParserFace.h"
 #include "driver/StringUtils.h"
@@ -27,9 +29,6 @@ void ShowTextHandle(const char* description, Handle text) {
 void ShowVersion(Boolean decorate) {
     char* vplugin;
     char* valtplugin;
-    // TODO: invented names. 2.6 stores the driver's and the parser's version strings and never
-    // reads them, as 1.x does (gc1's ShowVersion: a driver and a parser version, both unused);
-    // Pro7, where the Mac compiler dropped the dead stores, has `continue`s
     char* vdriver;
     char* vparser;
     const char* bdate;

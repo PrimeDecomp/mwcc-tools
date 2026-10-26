@@ -6,33 +6,35 @@
 #include "compiler/IroUtil.h"
 #include "compiler/IroVars.h"
 #include "compiler/BitVector.h"
+#include "compiler/CError.h"
 #include "compiler/CInt64.h"
 #include "compiler/CParser.h"
+#include "compiler/enode.h"
 
 static int EmptyLoop(IRONode* fnode);
 static int CanRemoveRedundantLoop(IROLoop* loop);
 static int CanRemoveRedundantLoop1(IROLoop* loop);
 static int RedundantLoopCheck(IROLoop* loop);
-static int CheckStepOverFlow1_EmptyLoop(IROLoop* loop, CInt64* val1, CInt64* val2);
-static int CheckStepOverFlow2_EmptyLoop(IROLoop* loop, CInt64* val1, CInt64* val2);
+static int CheckStepOverFlow1_EmptyLoop(IROLoop* loop, CInt64* iterCount, CInt64* finalValue);
+static int CheckStepOverFlow2_EmptyLoop(IROLoop* loop, CInt64* iterCount, CInt64* finalValue);
 
 void IRO_FindEmptyLoops(void) {
     IRONode* fnode;
     IRONode* pred;
     UInt16 i;
-    UInt16 x;
+    UInt16 found;
 
     for (fnode = IRO_FirstNode; fnode; fnode = fnode->nextnode) {
-        x = FALSE;
+        found = FALSE;
         for (i = 0; i < fnode->numpred; i++) {
             pred = IRO_NodeTable[fnode->pred[i]];
             if (Bv_IsBitSet(fnode->index, pred->dom)) {
-                if (!x) {
+                if (!found) {
                     Bv_AllocVector(&InLoop, IRO_NumNodes + 1);
                     Bv_Clear(InLoop);
                     Bv_SetBit(fnode->index, InLoop);
                 }
-                x = TRUE;
+                found = TRUE;
                 Bv_SetBit(pred->index, InLoop);
                 if (pred != fnode) {
                     AddPreds(pred);
@@ -40,7 +42,7 @@ void IRO_FindEmptyLoops(void) {
             }
         }
 
-        if (x) {
+        if (found) {
             IRO_Dump("IRO_FindEmptyLoops:Found loop with header %d\n", fnode->index);
             IRO_DumpBits("Loop includes: ", InLoop);
             EmptyLoop(fnode);
@@ -51,40 +53,36 @@ void IRO_FindEmptyLoops(void) {
     IRO_CheckForUserBreak();
 }
 
-// TODO: 2.6's register allocation needs this declaration order, the separate counter `k`, the
-// block-local variables below and the counters incremented before the assignments beside them (Pro7
-// shares `i`, `type20`, `constnd` and `save` and re-indexes IRO_NodeTable; its body is 56.7%). Found
-// by search: plausible as the original's, not proven.
 static int EmptyLoop(IRONode* fnode) {
     ENode* enode;
-    int counter2;
-    int counter;
+    int loopPredCount;
+    int loopSuccCount;
     IROLoop* loop;
     IRONode* succ;
     IRONode* pred;
     int j;
     IRONode* bestpred;
     IROLinear* constnd;
-    Boolean flag;
+    Boolean isSelfLoop;
     UInt16 i;
-    IRONode* r24;
-    UInt32 counter3;
-    IRONode* r20;
-    int flag2;
+    IRONode* preheader;
+    UInt32 outsidePredCount;
+    IRONode* walk;
+    int hasOutsidePred;
     IRONode* bestsucc;
-    IRONode* r21;
+    IRONode* tail;
     VarRecord* var;
-    Type* type20;
+    Type* type;
     IROLinear* save;
     UInt16 k;
 
-    flag = FALSE;
-    counter = 0;
+    isSelfLoop = FALSE;
+    loopSuccCount = 0;
     LoopNode = fnode;
     FindMustReach();
 
     for (var = IRO_FirstVar; var; var = var->next) {
-        var->inductionState = 1;
+        var->inductionState = TRUE;
     }
 
     ComputeLoopKills();
@@ -95,11 +93,11 @@ static int EmptyLoop(IRONode* fnode) {
     ConditionalHeaderAtBottom = FALSE;
 
     bestpred = NULL;
-    flag2 = FALSE;
+    hasOutsidePred = FALSE;
     for (i = 0; i < LoopNode->numpred; i++) {
         pred = IRO_NodeTable[LoopNode->pred[i]];
         if (!Bv_IsBitSet(pred->index, InLoop)) {
-            flag2 = TRUE;
+            hasOutsidePred = TRUE;
             if (pred->nextnode == fnode) {
                 CError_ASSERT(173, !bestpred || pred == bestpred);
                 bestpred = pred;
@@ -107,7 +105,7 @@ static int EmptyLoop(IRONode* fnode) {
         }
     }
 
-    if (!flag2) {
+    if (!hasOutsidePred) {
         IRO_Dump("No predecessor outside the loop\n");
         return FALSE;
     }
@@ -116,53 +114,54 @@ static int EmptyLoop(IRONode* fnode) {
     for (k = 0; k < LoopNode->numsucc; k++) {
         succ = IRO_NodeTable[LoopNode->succ[k]];
         if (Bv_IsBitSet(succ->index, InLoop)) {
-            counter++;
+            loopSuccCount++;
             bestsucc = succ;
         }
     }
 
-    if (LoopNode == bestsucc && counter == 1) {
-        flag = TRUE;
+    if (LoopNode == bestsucc && loopSuccCount == 1) {
+        isSelfLoop = TRUE;
     }
 
-    if (LoopNode->last->type != IROLinearIf || LoopNode->last->type != IROLinearIfNot || flag) {
-        counter2 = 0;
+    if (LoopNode->last->type != IROLinearIf ||
+        LoopNode->last->type != IROLinearIfNot ||
+        isSelfLoop) {
+        loopPredCount = 0;
         for (j = 0; j < LoopNode->numpred; j++) {
             IRONode* node = IRO_NodeTable[LoopNode->pred[j]];
             if (Bv_IsBitSet(node->index, InLoop)) {
-                counter2++;
-                r21 = node;
+                loopPredCount++;
+                tail = node;
             }
         }
 
-        r24 = NULL;
-        counter3 = 0;
+        preheader = NULL;
+        outsidePredCount = 0;
         for (j = 0; j < LoopNode->numpred; j++) {
             if (!Bv_IsBitSet(IRO_NodeTable[LoopNode->pred[j]]->index, InLoop)) {
-                counter3++;
-                r24 = IRO_NodeTable[LoopNode->pred[j]];
+                outsidePredCount++;
+                preheader = IRO_NodeTable[LoopNode->pred[j]];
             }
         }
 
-        if (counter2 == 1 && counter3 == 1) {
-            if (r21->last->type == IROLinearIf) {
+        if (loopPredCount == 1 && outsidePredCount == 1) {
+            if (tail->last->type == IROLinearIf) {
                 if ((Bv_IsBitSet(LoopNode->nextnode->index, InLoop) &&
-                     !Bv_IsBitSet(r21->nextnode->index, InLoop)) ||
-                    flag) {
+                     !Bv_IsBitSet(tail->nextnode->index, InLoop)) ||
+                    isSelfLoop) {
                     IRO_Dump("Standard while loop layout\n");
-                    loop = ExtractLoopInfo(r21);
-                    if (flag) {
-                        loop->flags |= LoopFlags_20000;
+                    loop = ExtractLoopInfo(tail);
+                    if (isSelfLoop) {
+                        loop->flags |= LP_RECURSIVE_LOOP;
                     }
-                    FindAssignmenttoInductionVar(loop, r24);
-                    r20 = r24;
-                    while (r20 &&
+                    FindAssignmenttoInductionVar(loop, preheader);
+                    walk = preheader;
+                    while (walk &&
                            !loop->init &&
-                           r20->numpred ==
-                           1 &&
-                           IRO_NodeTable[r20->pred[0]]->numsucc == 1) {
-                        FindAssignmenttoInductionVar(loop, IRO_NodeTable[r20->pred[0]]);
-                        r20 = IRO_NodeTable[r20->pred[0]];
+                           walk->numpred == 1 &&
+                           IRO_NodeTable[walk->pred[0]]->numsucc == 1) {
+                        FindAssignmenttoInductionVar(loop, IRO_NodeTable[walk->pred[0]]);
+                        walk = IRO_NodeTable[walk->pred[0]];
                     }
 
                     if (CanRemoveRedundantLoop(loop)) {
@@ -171,16 +170,16 @@ static int EmptyLoop(IRONode* fnode) {
                             CInt64_GetULong(&loop->iterCount),
                             CInt64_GetULong(&loop->finalStoreVal)
                         );
-                        IRO_NopOut(r21->last->u.label.cond);
-                        r21->last->type = IROLinearNop;
-                        type20 = loop->induction->nd->rtype;
+                        IRO_NopOut(tail->last->u.label.cond);
+                        tail->last->type = IROLinearNop;
+                        type = loop->induction->nd->rtype;
                         constnd = IRO_NewLinear(IROLinearOperand);
                         constnd->index = ++IRO_NumLinear;
                         enode = IRO_NewENode(EINTCONST);
-                        enode->rtype = type20;
+                        enode->rtype = type;
                         enode->data.intval = loop->finalStoreVal;
                         constnd->u.node = enode;
-                        constnd->rtype = type20;
+                        constnd->rtype = type;
 
                         if (loop->induction->nd->type == IROLinearOp1Arg) {
                             save = loop->induction->nd->u.monadic;
@@ -202,7 +201,7 @@ static int EmptyLoop(IRONode* fnode) {
 
                         IRO_Dump("EmptyLoop: self recursive dowhile(--n ) loop\n");
 
-                        r21->last->type = IROLinearNop;
+                        tail->last->type = IROLinearNop;
                         type2 = loop->induction->nd->rtype;
                         const2 = IRO_NewLinear(IROLinearOperand);
                         const2->index = ++IRO_NumLinear;
@@ -236,7 +235,7 @@ static int EmptyLoop(IRONode* fnode) {
 static int CanRemoveRedundantLoop(IROLoop* loop) {
     IROLinear* inner;
 
-    if (loop->flags & LoopFlags_10000) {
+    if (loop->flags & LP_WHILE_LOOP) {
         IRO_Dump(
             "CanRemoveRedundantLoop:No because detection of dowhile(n--) loop not supported\n"
         );
@@ -278,12 +277,12 @@ static int CanRemoveRedundantLoop(IROLoop* loop) {
         return FALSE;
     }
 
-    if (!(loop->flags & LoopFlags_200)) {
+    if (!(loop->flags & LP_HEADER_FOLLOWS_UPDATE)) {
         IRO_Dump("CanRemoveRedundantLoop:No because header does not follow induction update \n");
         return FALSE;
     }
 
-    if (!(loop->flags & LoopFlags_10000)) {
+    if (!(loop->flags & LP_WHILE_LOOP)) {
         inner = loop->cond->u.diadic.right;
         if (!IRO_IsIntConstant(inner) && !(inner->flags & IROLF_LoopInvariant)) {
             IRO_Dump("CanRemoveRedundantLoop:No because Loop Upper Bound is Variant in the loop\n");
@@ -349,7 +348,7 @@ static int CanRemoveRedundantLoop(IROLoop* loop) {
 }
 
 static int CanRemoveRedundantLoop1(IROLoop* loop) {
-    if ((loop->flags & LoopFlags_10000) && (loop->flags & LoopFlags_20000)) {
+    if ((loop->flags & LP_WHILE_LOOP) && (loop->flags & LP_RECURSIVE_LOOP)) {
         if (loop->flags & LP_LOOP_HAS_ASM) {
             IRO_Dump("CanRemoveRedundantLoop1:No due to LP_LOOP_HAS_ASM \n");
             return FALSE;
@@ -385,15 +384,14 @@ static int CanRemoveRedundantLoop1(IROLoop* loop) {
             return FALSE;
         }
 
-        if (!(loop->flags & LoopFlags_200)) {
+        if (!(loop->flags & LP_HEADER_FOLLOWS_UPDATE)) {
             IRO_Dump(
                 "CanRemoveRedundantLoop1:No because header does not follow induction update \n"
             );
             return FALSE;
         }
 
-        if (loop->induction->nd->type ==
-            IROLinearOp1Arg &&
+        if (loop->induction->nd->type == IROLinearOp1Arg &&
             loop->induction->nd->nodetype == EPREDEC) {
             if (is_unsigned(loop->induction->nd->rtype)) {
                 return TRUE;
@@ -417,8 +415,7 @@ static int RedundantLoopCheck(IROLoop* loop) {
         if (Bv_IsBitSet(fnode->index, InLoop) && fnode != loop->fnode && (nd = fnode->first)) {
             while (1) {
                 if ((nd->index < loop->lo || nd->index > loop->hi) &&
-                    nd->type !=
-                    IROLinearNop &&
+                    nd->type != IROLinearNop &&
                     nd->type != IROLinearLabel) {
                     if (IS_LINEAR_DIADIC(nd, EASS)) {
                         if (!(nd->flags & IROLF_Reffed)) {
@@ -475,83 +472,83 @@ static int RedundantLoopCheck(IROLoop* loop) {
     return TRUE;
 }
 
-static int CheckStepOverFlow1_EmptyLoop(IROLoop* loop, CInt64* val1, CInt64* val2) {
+static int CheckStepOverFlow1_EmptyLoop(IROLoop* loop, CInt64* iterCount, CInt64* finalValue) {
     Boolean isUnsigned;
-    IROLinear* nd2;
-    IROLinear* nd1;
-    CInt64 nd2value;
-    CInt64 nd1value;
+    IROLinear* initNd;
+    IROLinear* limitNd;
+    CInt64 initValue;
+    CInt64 limitValue;
     CInt64 addConst;
     CInt64 work;
     CInt64 neg1;
 
-    nd2 = loop->init->u.diadic.right;
-    nd1 = loop->cond->u.diadic.right;
+    initNd = loop->init->u.diadic.right;
+    limitNd = loop->cond->u.diadic.right;
     isUnsigned = is_unsigned(loop->cond->u.diadic.right->rtype);
 
-    if (IRO_IsIntConstant(nd2) && IRO_IsIntConstant(nd1)) {
-        nd2value = nd2->u.node->data.intval;
-        nd1value = nd1->u.node->data.intval;
+    if (IRO_IsIntConstant(initNd) && IRO_IsIntConstant(limitNd)) {
+        initValue = initNd->u.node->data.intval;
+        limitValue = limitNd->u.node->data.intval;
         if (isUnsigned) {
-            if (CInt64_LessEqualU(nd1value, nd2value)) {
+            if (CInt64_LessEqualU(limitValue, initValue)) {
                 return TRUE;
             }
         } else {
-            if (CInt64_LessEqual(nd1value, nd2value)) {
+            if (CInt64_LessEqual(limitValue, initValue)) {
                 return TRUE;
             }
         }
 
         CInt64_SetLong(&addConst, loop->induction->addConst);
         CInt64_SetLong(&neg1, -1);
-        *val1 = CInt64_Sub(nd1value, nd2value);
-        *val1 = CInt64_Add(*val1, addConst);
+        *iterCount = CInt64_Sub(limitValue, initValue);
+        *iterCount = CInt64_Add(*iterCount, addConst);
         if (IS_LINEAR_DIADIC(loop->cond, ELESS)) {
-            *val1 = CInt64_Add(*val1, neg1);
+            *iterCount = CInt64_Add(*iterCount, neg1);
         }
 
         CError_ASSERT(855, !CInt64_IsZero(&addConst));
 
         if (isUnsigned) {
-            *val1 = CInt64_DivU(*val1, addConst);
+            *iterCount = CInt64_DivU(*iterCount, addConst);
         } else {
-            *val1 = CInt64_Div(*val1, addConst);
+            *iterCount = CInt64_Div(*iterCount, addConst);
         }
 
-        if (CInt64_Equal(*val1, cint64_zero)) {
+        if (CInt64_Equal(*iterCount, cint64_zero)) {
             return TRUE;
         }
 
         if (isUnsigned) {
-            if (CInt64_LessEqualU(*val1, cint64_zero)) {
+            if (CInt64_LessEqualU(*iterCount, cint64_zero)) {
                 CError_FATAL(877);
             }
         } else {
-            if (CInt64_LessEqual(*val1, cint64_zero)) {
+            if (CInt64_LessEqual(*iterCount, cint64_zero)) {
                 CError_FATAL(886);
             }
         }
 
         if (isUnsigned) {
-            *val2 = CInt64_MulU(*val1, addConst);
-            *val2 = CInt64_Add(*val2, nd2value);
+            *finalValue = CInt64_MulU(*iterCount, addConst);
+            *finalValue = CInt64_Add(*finalValue, initValue);
         } else {
-            *val2 = CInt64_Mul(*val1, addConst);
-            *val2 = CInt64_Add(*val2, nd2value);
+            *finalValue = CInt64_Mul(*iterCount, addConst);
+            *finalValue = CInt64_Add(*finalValue, initValue);
         }
     } else {
         return TRUE;
     }
 
     CInt64_SetLong(&addConst, loop->induction->addConst);
-    work = CInt64_Add(nd1value, addConst);
+    work = CInt64_Add(limitValue, addConst);
 
     if (isUnsigned) {
-        if (CInt64_LessU(work, nd1value)) {
+        if (CInt64_LessU(work, limitValue)) {
             return TRUE;
         }
     } else {
-        if (CInt64_Less(work, nd1value)) {
+        if (CInt64_Less(work, limitValue)) {
             return TRUE;
         }
     }
@@ -559,83 +556,83 @@ static int CheckStepOverFlow1_EmptyLoop(IROLoop* loop, CInt64* val1, CInt64* val
     return FALSE;
 }
 
-static int CheckStepOverFlow2_EmptyLoop(IROLoop* loop, CInt64* val1, CInt64* val2) {
+static int CheckStepOverFlow2_EmptyLoop(IROLoop* loop, CInt64* iterCount, CInt64* finalValue) {
     Boolean isUnsigned;
-    IROLinear* nd2;
-    IROLinear* nd1;
-    CInt64 nd2value;
-    CInt64 nd1value;
+    IROLinear* limitNd;
+    IROLinear* initNd;
+    CInt64 limitValue;
+    CInt64 initValue;
     CInt64 addConst;
     CInt64 work;
     CInt64 neg1;
 
-    nd1 = loop->init->u.diadic.right;
-    nd2 = loop->cond->u.diadic.right;
+    initNd = loop->init->u.diadic.right;
+    limitNd = loop->cond->u.diadic.right;
     isUnsigned = is_unsigned(loop->cond->u.diadic.right->rtype);
 
-    if (IRO_IsIntConstant(nd2) && IRO_IsIntConstant(nd1)) {
-        nd2value = nd2->u.node->data.intval;
-        nd1value = nd1->u.node->data.intval;
+    if (IRO_IsIntConstant(limitNd) && IRO_IsIntConstant(initNd)) {
+        limitValue = limitNd->u.node->data.intval;
+        initValue = initNd->u.node->data.intval;
         if (isUnsigned) {
-            if (CInt64_LessEqualU(nd1value, nd2value)) {
+            if (CInt64_LessEqualU(initValue, limitValue)) {
                 return TRUE;
             }
         } else {
-            if (CInt64_LessEqual(nd1value, nd2value)) {
+            if (CInt64_LessEqual(initValue, limitValue)) {
                 return TRUE;
             }
         }
 
         CInt64_SetLong(&addConst, loop->induction->addConst);
         CInt64_SetLong(&neg1, -1);
-        *val1 = CInt64_Sub(nd1value, nd2value);
-        *val1 = CInt64_Add(*val1, addConst);
+        *iterCount = CInt64_Sub(initValue, limitValue);
+        *iterCount = CInt64_Add(*iterCount, addConst);
         if (IS_LINEAR_DIADIC(loop->cond, EGREATER)) {
-            *val1 = CInt64_Add(*val1, neg1);
+            *iterCount = CInt64_Add(*iterCount, neg1);
         }
 
         CError_ASSERT(995, !CInt64_IsZero(&addConst));
 
         if (isUnsigned) {
-            *val1 = CInt64_DivU(*val1, addConst);
+            *iterCount = CInt64_DivU(*iterCount, addConst);
         } else {
-            *val1 = CInt64_Div(*val1, addConst);
+            *iterCount = CInt64_Div(*iterCount, addConst);
         }
 
-        if (CInt64_Equal(*val1, cint64_zero)) {
+        if (CInt64_Equal(*iterCount, cint64_zero)) {
             return TRUE;
         }
 
         if (isUnsigned) {
-            if (CInt64_LessEqualU(*val1, cint64_zero)) {
+            if (CInt64_LessEqualU(*iterCount, cint64_zero)) {
                 return FALSE;
             }
         } else {
-            if (CInt64_LessEqual(*val1, cint64_zero)) {
+            if (CInt64_LessEqual(*iterCount, cint64_zero)) {
                 return FALSE;
             }
         }
 
         if (isUnsigned) {
-            *val2 = CInt64_MulU(*val1, addConst);
-            *val2 = CInt64_Sub(nd1value, *val2);
+            *finalValue = CInt64_MulU(*iterCount, addConst);
+            *finalValue = CInt64_Sub(initValue, *finalValue);
         } else {
-            *val2 = CInt64_Mul(*val1, addConst);
-            *val2 = CInt64_Sub(nd1value, *val2);
+            *finalValue = CInt64_Mul(*iterCount, addConst);
+            *finalValue = CInt64_Sub(initValue, *finalValue);
         }
     } else {
         return TRUE;
     }
 
     CInt64_SetLong(&addConst, loop->induction->addConst);
-    work = CInt64_Sub(nd2value, addConst);
+    work = CInt64_Sub(limitValue, addConst);
 
     if (isUnsigned) {
-        if (CInt64_GreaterU(work, nd2value)) {
+        if (CInt64_GreaterU(work, limitValue)) {
             return TRUE;
         }
     } else {
-        if (CInt64_Greater(work, nd1value)) {
+        if (CInt64_Greater(work, initValue)) {
             return TRUE;
         }
     }

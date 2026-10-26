@@ -20,10 +20,10 @@
 #include "compiler/CError.h"
 #include "compiler/CompilerTools.h"
 #include "compiler/CParser.h"
-#include "compiler/CPrep.h"
+#include "compiler/enode.h"
+#include "compiler/InlineAsm.h"
 #include "compiler/InlineAsmPPC.h"
 #include "compiler/objects.h"
-#include "compiler/Registers.h"
 
 Boolean DoScalarize;
 Boolean DoLinearize;
@@ -35,7 +35,7 @@ static Boolean stIsSetup;
 
 static void CountRefToObject(Object* object, int depth) {
     static unsigned short LoopUsage[] = {1, 4, 16, 64};
-    int index = depth; // Pro7 clamps `depth` itself (2.6's code clamps a copy)
+    int index = depth;
 
     if (index > 3) {
         index = 3;
@@ -100,8 +100,7 @@ static void CountUsage(void) {
                         Object* object = effects.operands[i].object;
                         if (object->datatype == DLOCAL && object->u.var.info) {
                             CountRefToObject(object, fnode->loopdepth);
-                            if (effects.operands[i].type ==
-                                IAOpnd_GlobalObj &&
+                            if (effects.operands[i].type == IAEffect_AddressOf &&
                                 !object->u.var.info->noregister) {
                                 object->u.var.info->noregister = 2;
                             }
@@ -394,7 +393,6 @@ void IRO_Setup(void) {
     }
 }
 
-// Pro7's; nothing calls it in 2.6 (the linker drops it, and it has no data of its own).
 void IRO_Cleanup(void) {
     if (stIsSetup) {
         IRO_CleanupDump();
@@ -403,7 +401,6 @@ void IRO_Cleanup(void) {
 }
 
 void CodeGen_UpdateOptimizerOptions(void) {
-    // Pro7 stores each level's test in a `flag` local; 2.6's code is these chained assignments
     copts.deadcode = copts.optimizationlevel >= 1;
     copts.commonsubs = copts.propagation = copts.optimizationlevel >= 2;
     copts.loopinvariants = copts.strengthreduction = copts.lifetimes = copts.deadstore =

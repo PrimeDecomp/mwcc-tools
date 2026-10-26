@@ -1,8 +1,7 @@
-// The compiler plugin's description of itself and its linker stub, and their message tables (Pro7's
-// Plugin/cc-mach-ppc.c; Wii's "cc-eppc").
 #include "driver/cc-eabi-ppc.h"
 #include "driver/CCompiler.h"
 #include "driver/ClientGlue.h"
+#include "driver/CWPlugins.h"
 #include "driver/DropInCompilerLinker.h"
 
 CWPLUGIN_ENTRY(CWPlugin_GetDropInFlags)(const DropInFlags** flags, SInt32* flagsSize) {

@@ -1,5 +1,3 @@
-// CExprConvMatch.c (2.6: 0x54cab0..0x5518b0): Pro7's file, built -inline auto,deferred (the
-// functions run in the reverse of the source order in the binary).
 #include "compiler/CABI.h"
 #include "compiler/CClass.h"
 #include "compiler/CDecl.h"
@@ -15,37 +13,34 @@
 #include "compiler/CParser.h"
 #include "compiler/CScope.h"
 #include "compiler/CTemplateFunc.h"
+#include "compiler/enode.h"
 #include "compiler/objects.h"
 #include "compiler/scopes.h"
 #include "compiler/templates.h"
+#include "compiler/tokens.h"
+#include "compiler/types.h"
 
 #pragma pack(push, 2)
-// A standard conversion sequence: from type1/qual1 to type2/qual2, and which of its steps it takes.
-// TODO: invented member names (Pro7: x10..x15), after what sets and ranks them.
 typedef struct StandardConv {
     Type* type1;
     Type* type2;
     UInt32 qual1;
     UInt32 qual2;
-    // x10: never set or read in 2.6 (named after the step of a standard conversion the others lack)
     Boolean lvalue_transform;
-    Boolean qual_adjust; // x11: a qualification adjustment (CExpr_SetQualConversionResult)
-    Boolean promotion; // x12: SSCR_PROMOTION
-    Boolean conversion; // x13: SSCR_CONVERSION
-    Boolean ref_binding; // is_ref_binding: the conversion binds a reference
-    // x15: the user conversion's function returns a non-const reference
+    Boolean qual_adjust;
+    Boolean promotion;
+    Boolean conversion;
+    Boolean ref_binding;
     Boolean nonconst_ref_result;
 } StandardConv;
 
-// An implicit conversion sequence's kind, worst first. TODO: invented names (Pro7: ICT_0..ICT_3).
 typedef enum EImplicitConvType {
-    ICT_NONE, // no conversion (the implicit object argument of a non-member)
-    ICT_ELLIPSIS, // an argument matched by `...`
-    ICT_USER, // a user-defined conversion through u.user.func
-    ICT_STANDARD // a standard conversion
+    ICT_NONE,
+    ICT_ELLIPSIS,
+    ICT_USER,
+    ICT_STANDARD
 } EImplicitConvType;
 
-// TODO: invented member names (Pro7: ic2, ic3, x2).
 typedef struct ImplicitConv {
     EImplicitConvType type;
     union {
@@ -78,9 +73,13 @@ typedef struct Match {
 } Match;
 #pragma pack(pop)
 
-// forward decls
 static inline ENode* CExpr_DerivedToBase(
-    ENode* expr, Type* type2, UInt32 qual2, Boolean flag1, Boolean flag2, Boolean flag3
+    ENode* expr,
+    Type* type2,
+    UInt32 qual2,
+    Boolean checkAccess,
+    Boolean nullcheckflag,
+    Boolean pathcheckflag
 );
 
 static Type* CExpr_GetImplictObjectParamType(Object* object, UInt32* qual) {
@@ -134,9 +133,9 @@ static Boolean CExpr_HasNParams(Object* object, int count) {
 }
 
 typedef enum TypeCompareMode {
-    TCM_0,
-    TCM_1,
-    TCM_2
+    TCM_IGNORE_CV,
+    TCM_POINTER_CV,
+    TCM_SAME_CV
 } TypeCompareMode;
 
 static Boolean CExpr_TypeCompare(
@@ -147,7 +146,7 @@ static Boolean CExpr_TypeCompare(
     }
 
     switch (mode) {
-        case TCM_0:
+        case TCM_IGNORE_CV:
             while (1) {
                 switch (typeA->type) {
                     case TYPEPOINTER:
@@ -170,12 +169,14 @@ static Boolean CExpr_TypeCompare(
                             return FALSE;
                         }
                         continue;
+                    default:
+                        break;
                 }
                 break;
             }
             break;
 
-        case TCM_1:
+        case TCM_POINTER_CV:
             switch (typeA->type) {
                 case TYPEPOINTER:
                     if ((qualA & Q_CV) != (qualB & Q_CV)) {
@@ -199,10 +200,12 @@ static Boolean CExpr_TypeCompare(
                     typeA = TYPE_MEMBER_POINTER(typeA)->ty1;
                     typeB = TYPE_MEMBER_POINTER(typeB)->ty1;
                     break;
+                default:
+                    break;
             }
             break;
 
-        case TCM_2:
+        case TCM_SAME_CV:
             if ((qualA & Q_CV) != (qualB & Q_CV)) {
                 return FALSE;
             }
@@ -216,7 +219,7 @@ static int CExpr_IsReferenceCompatible(Type* typeA, UInt32 qualA, Type* typeB, U
     if (CParser_IsSameOrMoreCVQualified(
             CParser_GetCVTypeQualifiers(typeA, qualA), CParser_GetCVTypeQualifiers(typeB, qualB)
         )) {
-        if (CExpr_TypeCompare(typeA, qualA, typeB, qualB, TCM_1)) {
+        if (CExpr_TypeCompare(typeA, qualA, typeB, qualB, TCM_POINTER_CV)) {
             return 1;
         }
 
@@ -256,36 +259,34 @@ static Boolean CExpr_IsBetterClassConversion(
     return FALSE;
 }
 
-// A pointer or member pointer converted to bool (ranked below other conversions).
-// TODO: invented name (Pro7: Inline_501D40)
 static inline Boolean CExpr_IsPointerToBoolConv(Type* a, Type* b) {
     return (a == TYPE(&stbool)) && (IS_TYPE_POINTER_ONLY(b) || IS_TYPE_MEMBERPOINTER(b));
 }
 
 static Boolean CExpr_IsBetterStandardConv(StandardConv* a, StandardConv* b) {
-    Boolean flag10;
-    Boolean flag3;
+    Boolean a_subset;
+    Boolean b_has_more;
 
-    flag10 = TRUE;
-    flag3 = FALSE;
+    a_subset = TRUE;
+    b_has_more = FALSE;
 
     if (b->qual_adjust) {
         if (!a->qual_adjust) {
-            flag3 = TRUE;
+            b_has_more = TRUE;
         }
     } else {
         if (a->qual_adjust) {
-            flag10 = FALSE;
+            a_subset = FALSE;
         }
     }
 
     if (b->promotion) {
         if (!a->promotion) {
-            flag3 = TRUE;
+            b_has_more = TRUE;
         }
     } else {
         if (a->promotion) {
-            flag10 = FALSE;
+            a_subset = FALSE;
         }
     }
 
@@ -301,15 +302,15 @@ static Boolean CExpr_IsBetterStandardConv(StandardConv* a, StandardConv* b) {
                 }
             }
         } else {
-            flag3 = TRUE;
+            b_has_more = TRUE;
         }
     } else {
         if (a->conversion) {
-            flag10 = FALSE;
+            a_subset = FALSE;
         }
     }
 
-    if (flag10 && flag3) {
+    if (a_subset && b_has_more) {
         return TRUE;
     }
 
@@ -347,8 +348,7 @@ static Boolean CExpr_IsBetterStandardConv(StandardConv* a, StandardConv* b) {
                     return TRUE;
                 }
             } else {
-                if (TPTR_TARGET(a->type1) ==
-                    TPTR_TARGET(b->type1) &&
+                if (TPTR_TARGET(a->type1) == TPTR_TARGET(b->type1) &&
                     IS_TYPE_CLASS(TPTR_TARGET(a->type2))) {
                     return TRUE;
                 }
@@ -394,7 +394,7 @@ static Boolean CExpr_IsBetterStandardConv(StandardConv* a, StandardConv* b) {
 
     if (a->ref_binding &&
         b->ref_binding &&
-        CExpr_TypeCompare(a->type2, a->qual2, b->type2, b->qual2, TCM_1) &&
+        CExpr_TypeCompare(a->type2, a->qual2, b->type2, b->qual2, TCM_POINTER_CV) &&
         CParser_IsMoreCVQualified(
             CParser_GetTypeQualifiers(b->type2, b->qual2),
             CParser_GetTypeQualifiers(a->type2, a->qual2)
@@ -417,10 +417,8 @@ static Boolean CExpr_IsBetterImplicitConv(ImplicitConv* a, ImplicitConv* b) {
         return CExpr_IsBetterStandardConv(&a->u.standard.standardConv, &b->u.standard.standardConv);
     }
 
-    if (a->type ==
-        ICT_USER &&
-        a->u.user.func ==
-        b->u.user.func &&
+    if (a->type == ICT_USER &&
+        a->u.user.func == b->u.user.func &&
         CExpr_IsBetterStandardConv(&a->u.user.standardConv, &b->u.user.standardConv)) {
         return TRUE;
     }
@@ -428,7 +426,6 @@ static Boolean CExpr_IsBetterImplicitConv(ImplicitConv* a, ImplicitConv* b) {
     return FALSE;
 }
 
-// TODO: invented names (Pro7: SSCR_0..SSCR_2)
 typedef enum SSCRMode {
     SSCR_EXACT,
     SSCR_PROMOTION,
@@ -487,14 +484,12 @@ static Boolean CExpr_SetupStandardConversionResult(
     return TRUE;
 }
 
-// CExpr_CompareQualifiers' result. TODO: invented names (Pro7: MysteryEnum, ME_0, ME_1, ME_255).
 typedef enum QualDiff {
-    QD_SAME, // the same cv-qualifiers
-    QD_MORE, // the first has qualifiers the second lacks, and not the reverse
-    QD_LESS = 255 // the second has a qualifier the first lacks
+    QD_SAME,
+    QD_MORE,
+    QD_LESS = 255
 } QualDiff;
 
-// TODO: invented name (Pro7: Inline_501FF0)
 static inline QualDiff CExpr_CompareQualifiers(UInt32 qual1, UInt32 qual2) {
     if ((qual1 & Q_CV) == (qual2 & Q_CV)) {
         return QD_SAME;
@@ -511,7 +506,7 @@ static inline QualDiff CExpr_CompareQualifiers(UInt32 qual1, UInt32 qual2) {
 static Boolean CExpr_SetQualConversionResult(
     Type* type1, UInt32 qual1, Type* type2, UInt32 qual2, StandardConv* result
 ) {
-    Boolean flag = TRUE;
+    Boolean allConst = TRUE;
     UInt32 cv1;
     UInt32 cv2;
 
@@ -525,7 +520,7 @@ static Boolean CExpr_SetQualConversionResult(
 
             case QD_MORE:
                 result->qual_adjust = TRUE;
-                if (!flag) {
+                if (!allConst) {
                     return FALSE;
                 }
                 break;
@@ -535,7 +530,7 @@ static Boolean CExpr_SetQualConversionResult(
         }
 
         if (!(cv1 & Q_CONST)) {
-            flag = FALSE;
+            allConst = FALSE;
         }
 
         if (IS_TYPE_POINTER_ONLY(type1)) {
@@ -562,100 +557,101 @@ static Boolean CExpr_OverloadFuncMatch(
     FuncArg* arg;
     int i;
     ObjectList* objlist;
-    Object* object26;
+    Object* found;
     TemplFuncInstance* inst;
-    ObjectList* objlist25;
-    ObjectList* objlist24;
-    Boolean flag23;
+    ObjectList* ambiguous;
+    ObjectList* templates;
+    Boolean found_nontemplate;
     TypeFunc* functype;
 
     if (!IS_TYPE_POINTER_ONLY(type) || !IS_TYPE_FUNC(functype = TYPE_FUNC(TPTR_TARGET(type)))) {
         return FALSE;
     }
 
-    object26 = NULL;
-    objlist25 = NULL;
-    objlist24 = NULL;
+    found = NULL;
+    ambiguous = NULL;
+    templates = NULL;
     type = TYPE(functype);
-    flag23 = FALSE;
+    found_nontemplate = FALSE;
 
     while (list) {
         object = OBJECT(list->object);
         if (object->otype == OT_OBJECT) {
             if (IS_TEMPL_FUNC(object->type)) {
-                if (!flag23 && CTempl_CanDeduceFunc(object, TYPE_FUNC(type), templargs)) {
+                if (!found_nontemplate &&
+                    CTempl_CanDeduceFunc(object, TYPE_FUNC(type), templargs)) {
                     CError_ASSERT(
                         685,
                         inst = CTempl_DeduceFunc(object, TYPE_FUNC(type), templargs, NULL, FALSE)
                     );
                     if (is_typesame(inst->object->type, type)) {
                         objlist = lalloc(sizeof(ObjectList));
-                        objlist->next = objlist24;
+                        objlist->next = templates;
                         objlist->object = object;
-                        objlist24 = objlist;
+                        templates = objlist;
 
-                        if (object26 && object26 != inst->object) {
+                        if (found && found != inst->object) {
                             objlist = lalloc(sizeof(ObjectList));
-                            objlist->next = objlist25;
+                            objlist->next = ambiguous;
                             objlist->object = inst->object;
-                            objlist25 = objlist;
+                            ambiguous = objlist;
                         } else {
-                            object26 = inst->object;
+                            found = inst->object;
                         }
                     }
                 }
             } else if (is_typesame(object->type, type)) {
-                if (object26 && flag23) {
+                if (found && found_nontemplate) {
                     Object *checkA, *checkB;
                     checkA = object;
                     if (checkA->datatype == DALIAS) {
                         checkA = checkA->u.alias.object;
                     }
-                    checkB = object26;
+                    checkB = found;
                     if (checkB->datatype == DALIAS) {
                         checkB = checkB->u.alias.object;
                     }
                     if (checkA != checkB) {
                         objlist = lalloc(sizeof(ObjectList));
-                        objlist->next = objlist25;
+                        objlist->next = ambiguous;
                         objlist->object = object;
-                        objlist25 = objlist;
+                        ambiguous = objlist;
                     }
                 } else {
-                    objlist25 = NULL;
-                    object26 = object;
+                    ambiguous = NULL;
+                    found = object;
                 }
-                flag23 = TRUE;
+                found_nontemplate = TRUE;
             }
         }
         list = list->next;
     }
 
-    if (object26) {
+    if (found) {
         if (outExpr) {
-            if (objlist25) {
+            if (ambiguous) {
                 i = 0;
                 for (arg = TYPE_FUNC(object->type)->args; arg; arg = arg->next) {
                     i++;
                 }
 
-                if (!flag23 &&
-                    (object = CTempl_PartialOrdering(objlist24->object, objlist24->next, i))) {
+                if (!found_nontemplate &&
+                    (object = CTempl_PartialOrdering(templates->object, templates->next, i))) {
                     CError_ASSERT(
                         741, inst = CTempl_DeduceFunc(object, functype, templargs, NULL, FALSE)
                     );
-                    object26 = inst->object;
+                    found = inst->object;
                 } else {
-                    CError_OverloadedFunctionError(object26, objlist25);
+                    CError_OverloadedFunctionError(found, ambiguous);
                 }
             }
 
-            expr = CExpr_MakeObjRefNode(object26, TRUE);
+            expr = CExpr_MakeObjRefNode(found, TRUE);
             *outExpr = expr;
-            expr->rtype = CDecl_NewPointerType(object26->type);
+            expr->rtype = CDecl_NewPointerType(found->type);
             expr->flags = object->qual & ENODE_FLAG_QUALS;
-            object26->flags |= OBJECT_USED;
-            if (object26->datatype == DINLINEFUNC) {
+            found->flags |= OBJECT_USED;
+            if (found->datatype == DINLINEFUNC) {
                 CError_Error(ERR_ILLEGAL_USE_INLINE_FUNCTION);
             }
         }
@@ -666,10 +662,6 @@ static Boolean CExpr_OverloadFuncMatch(
     return FALSE;
 }
 
-// implicit_object (Pro7: x14; TODO: invented name): the conversion is to a member operator's implicit
-// object parameter (CExpr_MatchOperands), which an rvalue may bind. It is passed as the setup's
-// refFlag, except at the null pointer and CObjC conversions, which pass it and refFlag the other way
-// round, as Pro7 does.
 static Boolean CExpr_StandardConversionMatch(
     ENode* expr, Type* type2, UInt32 qual2, Boolean implicit_object, StandardConv* result
 ) {
@@ -736,13 +728,10 @@ static Boolean CExpr_StandardConversionMatch(
 
         if (IS_TYPE_POINTER_ONLY(type1)) {
             if (ENODE_IS(expr, ESTRINGCONST) &&
-                TPTR_TARGET(type2) ==
-                TPTR_TARGET(type1) &&
+                TPTR_TARGET(type2) == TPTR_TARGET(type1) &&
                 !(qual2 & Q_CONST) &&
-                (TPTR_TARGET(type2) ==
-                 TYPE(&stchar) ||
-                 TPTR_TARGET(type2) ==
-                 TYPE(&stunsignedchar) ||
+                (TPTR_TARGET(type2) == TYPE(&stchar) ||
+                 TPTR_TARGET(type2) == TYPE(&stunsignedchar) ||
                  TPTR_TARGET(type2) == CParser_GetWCharType())) {
                 if (CExpr_SetupStandardConversionResult(
                         expr, type2, qual2, SSCR_EXACT, refFlag, implicit_object, result
@@ -928,8 +917,7 @@ static Boolean CExpr_StandardConversionMatch(
                 return FALSE;
             }
 
-            if (TYPE_MEMBER_POINTER(type2)->ty2 ==
-                TYPE_MEMBER_POINTER(type1)->ty2 ||
+            if (TYPE_MEMBER_POINTER(type2)->ty2 == TYPE_MEMBER_POINTER(type1)->ty2 ||
                 CClass_GetBasePath(
                     TYPE_CLASS(TYPE_MEMBER_POINTER(type2)->ty2),
                     TYPE_CLASS(TYPE_MEMBER_POINTER(type1)->ty2),
@@ -1061,41 +1049,41 @@ static ENode* CExpr_UserConversion(
     Type* type2,
     UInt32 qual2,
     ImplicitConv* result,
-    Boolean flag1,
+    Boolean doConvert,
     Boolean isExplicit,
-    Boolean flag3
+    Boolean bindReference
 ) {
-    StandardConv sc3;
-    StandardConv sc2;
-    StandardConv sc1;
+    StandardConv conv_std;
+    StandardConv ctor_std;
+    StandardConv cand_std;
     ConversionIterator convIter;
-    Object* object28;
-    Object* object27;
-    Object* object26;
-    ObjectList* objlist25;
-    ObjectList* objlist24;
+    Object* best_conv;
+    Object* best_ctor;
+    Object* cand;
+    ObjectList* ambig_convs;
+    ObjectList* ambig_ctors;
     ObjectList* objlist;
-    TypeFunc* tfunc23;
-    Type* tmptype23;
+    TypeFunc* tfunc;
+    Type* argtype;
     ENodeList* arglist;
-    NameSpaceObjectList* list22;
-    Boolean flag22;
-    Boolean flag21;
-    FuncArg* arg21;
-    Boolean flag20;
+    NameSpaceObjectList* ctors;
+    Boolean cv_mismatch_ok;
+    Boolean cv_differs;
+    FuncArg* arg;
+    Boolean nonconst_ref;
     ENode* newExpr;
     ENode* funcref;
-    ENode* tmpExpr;
+    ENode* converted;
     UInt32 q1;
     UInt32 q2;
     ENodeList myarglist;
     ObjectList myobjlist;
     BClassList path;
 
-    object28 = NULL;
-    object27 = NULL;
-    objlist25 = NULL;
-    objlist24 = NULL;
+    best_conv = NULL;
+    best_ctor = NULL;
+    ambig_convs = NULL;
+    ambig_ctors = NULL;
 
     if (type2->size == 0) {
         CDecl_CompleteType(type2);
@@ -1106,32 +1094,32 @@ static ENode* CExpr_UserConversion(
 
     if (IS_TYPE_CLASS(expr->rtype)) {
         CExpr_ConversionIteratorInit(&convIter, TYPE_CLASS(expr->rtype));
-        flag22 = TRUE;
-        while ((object26 = CExpr_ConversionIteratorNext(&convIter))) {
-            tfunc23 = TYPE_FUNC(object26->type);
-            if (tfunc23->flags & FUNC_IS_TEMPL) {
-                object26 = CTempl_DeduceFromConversion(object26, type2, qual2);
-                if (!object26) {
+        cv_mismatch_ok = TRUE;
+        while ((cand = CExpr_ConversionIteratorNext(&convIter))) {
+            tfunc = TYPE_FUNC(cand->type);
+            if (tfunc->flags & FUNC_IS_TEMPL) {
+                cand = CTempl_DeduceFromConversion(cand, type2, qual2);
+                if (!cand) {
                     continue;
                 }
-                tfunc23 = TYPE_FUNC(object26->type);
+                tfunc = TYPE_FUNC(cand->type);
             }
 
-            if (flag3) {
-                if (!IS_TYPE_REFERENCE(tfunc23->functype) ||
+            if (bindReference) {
+                if (!IS_TYPE_REFERENCE(tfunc->functype) ||
                     !CExpr_IsReferenceCompatible(
-                        type2, qual2, TPTR_TARGET(tfunc23->functype), tfunc23->qual
+                        type2, qual2, TPTR_TARGET(tfunc->functype), tfunc->qual
                     )) {
                     continue;
                 }
             }
 
-            CError_ASSERT(1230, tfunc23->args && IS_TYPE_POINTER_ONLY(tfunc23->args->type));
+            CError_ASSERT(1230, tfunc->args && IS_TYPE_POINTER_ONLY(tfunc->args->type));
 
             q1 = expr->flags;
-            q2 = tfunc23->args->qual;
+            q2 = tfunc->args->qual;
             if ((q1 & Q_CV) != (q2 & Q_CV)) {
-                if (!flag22) {
+                if (!cv_mismatch_ok) {
                     continue;
                 }
                 if ((q1 & Q_CONST) && !(q2 & Q_CONST)) {
@@ -1140,207 +1128,206 @@ static ENode* CExpr_UserConversion(
                 if ((q1 & Q_VOLATILE) && !(q2 & Q_VOLATILE)) {
                     continue;
                 }
-                flag21 = TRUE;
+                cv_differs = TRUE;
             } else {
-                flag21 = FALSE;
+                cv_differs = FALSE;
             }
 
             newExpr = CExpr_NewENode(ETEMP);
-            newExpr->rtype = tfunc23->functype;
-            newExpr->flags = tfunc23->qual & ENODE_FLAG_QUALS;
-            flag20 = FALSE;
+            newExpr->rtype = tfunc->functype;
+            newExpr->flags = tfunc->qual & ENODE_FLAG_QUALS;
+            nonconst_ref = FALSE;
 
             if (IS_TYPE_REFERENCE(newExpr->rtype)) {
                 newExpr->rtype = TPTR_TARGET(newExpr->rtype);
-                if (!CParser_IsConst(newExpr->rtype, tfunc23->qual)) {
+                if (!CParser_IsConst(newExpr->rtype, tfunc->qual)) {
                     newExpr = makemonadicnode(newExpr, EINDIRECT);
                     newExpr->data.monadic->rtype = TYPE(&void_ptr);
                     newExpr = makemonadicnode(newExpr, EINDIRECT);
                     newExpr->data.monadic->rtype = TYPE(&void_ptr);
-                    flag20 = TRUE;
+                    nonconst_ref = TRUE;
                 }
             }
 
-            if (CExpr_StandardConversionMatch(newExpr, type2, qual2, FALSE, &sc1)) {
-                if (flag22 && !flag21) {
-                    object28 = NULL;
-                    objlist25 = NULL;
-                    flag22 = FALSE;
+            if (CExpr_StandardConversionMatch(newExpr, type2, qual2, FALSE, &cand_std)) {
+                if (cv_mismatch_ok && !cv_differs) {
+                    best_conv = NULL;
+                    ambig_convs = NULL;
+                    cv_mismatch_ok = FALSE;
                 }
 
-                if (object28 && object28 != object26) {
-                    if (CExpr_IsBetterStandardConv(&sc3, &sc1)) {
+                if (best_conv && best_conv != cand) {
+                    if (CExpr_IsBetterStandardConv(&conv_std, &cand_std)) {
                         continue;
                     }
 
-                    if (!CExpr_IsBetterStandardConv(&sc1, &sc3)) {
+                    if (!CExpr_IsBetterStandardConv(&cand_std, &conv_std)) {
                         objlist = lalloc(sizeof(ObjectList));
-                        objlist->next = objlist25;
-                        objlist->object = object28;
-                        objlist25 = objlist;
+                        objlist->next = ambig_convs;
+                        objlist->object = best_conv;
+                        ambig_convs = objlist;
                     } else {
-                        objlist25 = NULL;
+                        ambig_convs = NULL;
                     }
                 }
 
-                object28 = object26;
-                sc3 = sc1;
-                sc3.nonconst_ref_result = flag20;
+                best_conv = cand;
+                conv_std = cand_std;
+                conv_std.nonconst_ref_result = nonconst_ref;
             }
         }
     }
 
-    if (!flag3 && IS_TYPE_CLASS(type2) && (list22 = CClass_Constructor(TYPE_CLASS(type2)))) {
-        for (; list22; list22 = list22->next) {
-            object26 = OBJECT(list22->object);
-            if (object26->otype ==
-                OT_OBJECT &&
-                IS_TYPE_FUNC(object26->type) &&
-                (isExplicit || !(object26->qual & Q_EXPLICIT))) {
-                tfunc23 = TYPE_FUNC(object26->type);
-                if (tfunc23->flags & FUNC_IS_TEMPL) {
+    if (!bindReference && IS_TYPE_CLASS(type2) && (ctors = CClass_Constructor(TYPE_CLASS(type2)))) {
+        for (; ctors; ctors = ctors->next) {
+            cand = OBJECT(ctors->object);
+            if (cand->otype == OT_OBJECT &&
+                IS_TYPE_FUNC(cand->type) &&
+                (isExplicit || !(cand->qual & Q_EXPLICIT))) {
+                tfunc = TYPE_FUNC(cand->type);
+                if (tfunc->flags & FUNC_IS_TEMPL) {
                     myarglist.next = NULL;
                     myarglist.node = expr;
-                    object26 = CTempl_DeduceFromFunctionCall(object26, NULL, &myarglist);
-                    if (!object26) {
+                    cand = CTempl_DeduceFromFunctionCall(cand, NULL, &myarglist);
+                    if (!cand) {
                         continue;
                     }
-                    tfunc23 = TYPE_FUNC(object26->type);
+                    tfunc = TYPE_FUNC(cand->type);
                 }
 
-                if (!(arg21 = tfunc23->args)) {
+                if (!(arg = tfunc->args)) {
                     continue;
                 }
-                if (!(arg21 = arg21->next)) {
+                if (!(arg = arg->next)) {
                     continue;
                 }
-                if ((TYPE_CLASS(type2)->flags & CLASS_HAS_VBASES) && !(arg21 = arg21->next)) {
+                if ((TYPE_CLASS(type2)->flags & CLASS_HAS_VBASES) && !(arg = arg->next)) {
                     continue;
                 }
-                if (arg21 == &elipsis) {
+                if (arg == &elipsis) {
                     continue;
                 }
-                if (arg21->next && !arg21->next->dexpr && arg21->next != &elipsis) {
+                if (arg->next && !arg->next->dexpr && arg->next != &elipsis) {
                     continue;
                 }
 
-                tmptype23 = arg21->type;
-                if (IS_TYPE_REFERENCE(tmptype23)) {
-                    tmptype23 = TPTR_TARGET(tmptype23);
-                    if (!CParser_IsConst(tmptype23, arg21->qual) && !CExpr_IsLValue(expr)) {
+                argtype = arg->type;
+                if (IS_TYPE_REFERENCE(argtype)) {
+                    argtype = TPTR_TARGET(argtype);
+                    if (!CParser_IsConst(argtype, arg->qual) && !CExpr_IsLValue(expr)) {
                         continue;
                     }
                 }
 
-                if (CExpr_StandardConversionMatch(expr, tmptype23, arg21->qual, FALSE, &sc1)) {
-                    if (object27) {
-                        if (object26->u.func.inst && !object27->u.func.inst) {
+                if (CExpr_StandardConversionMatch(expr, argtype, arg->qual, FALSE, &cand_std)) {
+                    if (best_ctor) {
+                        if (cand->u.func.inst && !best_ctor->u.func.inst) {
                             continue;
                         }
-                        if (CExpr_IsBetterStandardConv(&sc2, &sc1)) {
+                        if (CExpr_IsBetterStandardConv(&ctor_std, &cand_std)) {
                             continue;
                         }
 
-                        if (!CExpr_IsBetterStandardConv(&sc1, &sc2)) {
-                            if (!object26->u.func.inst && object27->u.func.inst) {
-                                objlist24 = NULL;
+                        if (!CExpr_IsBetterStandardConv(&cand_std, &ctor_std)) {
+                            if (!cand->u.func.inst && best_ctor->u.func.inst) {
+                                ambig_ctors = NULL;
                             } else {
                                 objlist = lalloc(sizeof(ObjectList));
-                                objlist->next = objlist24;
-                                objlist->object = object27;
-                                objlist24 = objlist;
+                                objlist->next = ambig_ctors;
+                                objlist->object = best_ctor;
+                                ambig_ctors = objlist;
                             }
                         } else {
-                            objlist24 = NULL;
+                            ambig_ctors = NULL;
                         }
                     }
 
-                    object27 = object26;
-                    sc2 = sc1;
+                    best_ctor = cand;
+                    ctor_std = cand_std;
                 }
             }
         }
     }
 
-    if (object28 && object27) {
-        if (!CExpr_IsBetterStandardConv(&sc2, &sc3)) {
-            if (!CExpr_IsBetterStandardConv(&sc3, &sc2)) {
+    if (best_conv && best_ctor) {
+        if (!CExpr_IsBetterStandardConv(&ctor_std, &conv_std)) {
+            if (!CExpr_IsBetterStandardConv(&conv_std, &ctor_std)) {
                 if (result) {
                     result->type = ICT_USER;
-                    result->u.user.func = object28;
-                    result->u.user.standardConv = sc3;
+                    result->u.user.func = best_conv;
+                    result->u.user.standardConv = conv_std;
                 }
-                if (flag1) {
+                if (doConvert) {
                     myobjlist.next = NULL;
-                    myobjlist.object = object27;
-                    CError_OverloadedFunctionError(object28, &myobjlist);
+                    myobjlist.object = best_ctor;
+                    CError_OverloadedFunctionError(best_conv, &myobjlist);
                 }
             } else {
-                object27 = NULL;
+                best_ctor = NULL;
             }
         } else {
-            object28 = NULL;
+            best_conv = NULL;
         }
     }
 
-    if (object28) {
+    if (best_conv) {
         if (result) {
             result->type = ICT_USER;
-            result->u.user.func = object28;
-            result->u.user.standardConv = sc3;
+            result->u.user.func = best_conv;
+            result->u.user.standardConv = conv_std;
         }
-        if (!flag1) {
+        if (!doConvert) {
             return expr;
         }
-        if (objlist25) {
-            CError_OverloadedFunctionError(object28, objlist25);
+        if (ambig_convs) {
+            CError_OverloadedFunctionError(best_conv, ambig_convs);
         }
-        tfunc23 = TYPE_FUNC(object28->type);
-        CError_ASSERT(1416, IS_TYPEFUNC_METHOD(tfunc23));
+        tfunc = TYPE_FUNC(best_conv->type);
+        CError_ASSERT(1416, IS_TYPEFUNC_METHOD(tfunc));
 
-        funcref = create_objectrefnode(object28);
-        object28->flags |= OBJECT_USED;
+        funcref = create_objectrefnode(best_conv);
+        best_conv->flags |= OBJECT_USED;
 
         arglist = lalloc(sizeof(ENodeList));
         arglist->next = NULL;
 
         expr = getnodeaddress(expr, FALSE);
         arglist->node = CExpr_AssignmentPromotion(
-            expr, CDecl_NewPointerType(TYPE(TYPE_METHOD(tfunc23)->theclass)), expr->flags, FALSE
+            expr, CDecl_NewPointerType(TYPE(TYPE_METHOD(tfunc)->theclass)), expr->flags, FALSE
         );
 
         newExpr = lalloc(sizeof(ENode));
         newExpr->type = EFUNCCALL;
         newExpr->cost = 4;
-        newExpr->rtype = tfunc23->functype;
-        newExpr->flags = tfunc23->qual & ENODE_FLAG_QUALS;
+        newExpr->rtype = tfunc->functype;
+        newExpr->flags = tfunc->qual & ENODE_FLAG_QUALS;
         newExpr->data.funccall.funcref = funcref;
         newExpr->data.funccall.args = arglist;
-        newExpr->data.funccall.functype = TYPE_FUNC(object28->type);
+        newExpr->data.funccall.functype = TYPE_FUNC(best_conv->type);
         newExpr = CExpr_AdjustFunctionCall(newExpr);
         newExpr = checkreference(newExpr);
 
         if (newExpr->rtype != type2) {
-            if (flag3 &&
-                (tmpExpr = CExpr_DerivedToBase(newExpr, type2, qual2, TRUE, FALSE, TRUE))) {
-                return tmpExpr;
+            if (bindReference &&
+                (converted = CExpr_DerivedToBase(newExpr, type2, qual2, TRUE, FALSE, TRUE))) {
+                return converted;
             }
             newExpr = CExpr_Convert(newExpr, type2, qual2, FALSE, TRUE);
         }
         return newExpr;
     }
 
-    if (object27) {
+    if (best_ctor) {
         if (result) {
             result->type = ICT_USER;
-            result->u.user.func = object27;
-            result->u.user.standardConv = sc2;
+            result->u.user.func = best_ctor;
+            result->u.user.standardConv = ctor_std;
         }
-        if (!flag1) {
+        if (!doConvert) {
             return expr;
         }
-        if (objlist24) {
-            CError_OverloadedFunctionError(object27, objlist24);
+        if (ambig_ctors) {
+            CError_OverloadedFunctionError(best_ctor, ambig_ctors);
         }
 
         arglist = lalloc(sizeof(ENodeList));
@@ -1360,17 +1347,17 @@ static ENode* CExpr_UserConversion(
         newExpr = makemonadicnode(create_temp_node(type2), EINDIRECT);
         newExpr->rtype = type2;
 
-        tmpExpr = CExpr_GenericFuncCall(
-            &path, newExpr, FALSE, object27, NULL, NULL, arglist, FALSE, FALSE, TRUE
+        converted = CExpr_GenericFuncCall(
+            &path, newExpr, FALSE, best_ctor, NULL, NULL, arglist, FALSE, FALSE, TRUE
         );
 
-        if (ENODE_IS2(tmpExpr, EFUNCCALL, EFUNCCALLP)) {
-            tmpExpr->rtype = CDecl_NewPointerType(type2);
-            tmpExpr = makemonadicnode(tmpExpr, EINDIRECT);
-            tmpExpr->rtype = type2;
+        if (ENODE_IS2(converted, EFUNCCALL, EFUNCCALLP)) {
+            converted->rtype = CDecl_NewPointerType(type2);
+            converted = makemonadicnode(converted, EINDIRECT);
+            converted->rtype = type2;
         }
 
-        return tmpExpr;
+        return converted;
     }
 
     return NULL;
@@ -1379,17 +1366,17 @@ static ENode* CExpr_UserConversion(
 static Boolean CExpr_UserConversionMatch(
     ENode* expr, Type* type2, UInt32 qual2, ImplicitConv* result
 ) {
-    Boolean flag;
+    Boolean bindReference;
 
     if (IS_TYPE_REFERENCE(type2)) {
         type2 = TPTR_TARGET(type2);
-        flag = !CParser_IsConst(type2, qual2);
+        bindReference = !CParser_IsConst(type2, qual2);
     } else {
         expr = pointer_generation(expr);
-        flag = FALSE;
+        bindReference = FALSE;
     }
 
-    if (CExpr_UserConversion(expr, type2, qual2, result, FALSE, FALSE, flag)) {
+    if (CExpr_UserConversion(expr, type2, qual2, result, FALSE, FALSE, bindReference)) {
         return TRUE;
     }
 
@@ -1427,7 +1414,7 @@ static inline ENode* CExpr_DerivedToBase(
     ENode* expr,
     Type* type2,
     UInt32 qual2,
-    Boolean flag1,
+    Boolean checkAccess,
     Boolean nullcheckflag,
     Boolean pathcheckflag
 ) {
@@ -1443,7 +1430,7 @@ static inline ENode* CExpr_DerivedToBase(
         if (isambigbase) {
             CError_Error(ERR_AMBIGUOUS_ACCESS_CLASS_STRUCT_UNION_MEMBER);
         }
-        if (flag1) {
+        if (checkAccess) {
             CClass_CheckPathAccess(path, NULL, ACCESSPUBLIC);
         }
 
@@ -1506,7 +1493,7 @@ static ENode* CExpr_ClassReferenceConversion(
 static ENode* CExpr_BindToReference(ENode* expr, Type* type2, UInt32 qual2) {
     UInt32 cv;
     int refcompat;
-    ENode* tmp;
+    ENode* converted;
 
     cv = CParser_GetCVTypeQualifiers(type2, qual2);
 
@@ -1530,8 +1517,8 @@ static ENode* CExpr_BindToReference(ENode* expr, Type* type2, UInt32 qual2) {
     }
 
     if (IS_TYPE_CLASS(expr->rtype)) {
-        if ((tmp = CExpr_UserConversion(expr, type2, qual2, NULL, TRUE, FALSE, TRUE))) {
-            return getnodeaddress(tmp, FALSE);
+        if ((converted = CExpr_UserConversion(expr, type2, qual2, NULL, TRUE, FALSE, TRUE))) {
+            return getnodeaddress(converted, FALSE);
         }
     }
 
@@ -1560,7 +1547,9 @@ static ENode* CExpr_BindToReference(ENode* expr, Type* type2, UInt32 qual2) {
     return expr;
 }
 
-ENode* CExpr_Convert(ENode* expr, Type* type, UInt32 qual, Boolean isExplicit, Boolean flag2) {
+ENode* CExpr_Convert(
+    ENode* expr, Type* type, UInt32 qual, Boolean isExplicit, Boolean checkAccess
+) {
     UInt32 cv;
     ENode* refExpr;
     ENode* newExpr;
@@ -1586,7 +1575,7 @@ ENode* CExpr_Convert(ENode* expr, Type* type, UInt32 qual, Boolean isExplicit, B
 
     if (IS_TYPE_REFERENCE(type)) {
         if (isExplicit) {
-            refExpr = CExpr_ClassReferenceConversion(expr, TPTR_TARGET(type), qual, flag2);
+            refExpr = CExpr_ClassReferenceConversion(expr, TPTR_TARGET(type), qual, checkAccess);
             if (refExpr) {
                 return refExpr;
             }
@@ -1595,7 +1584,7 @@ ENode* CExpr_Convert(ENode* expr, Type* type, UInt32 qual, Boolean isExplicit, B
             typeCopy = galloc(sizeof(TypePointer));
             *TYPE_POINTER(typeCopy) = *TYPE_POINTER(type);
             TPTR_QUAL(typeCopy) &= ~Q_REFERENCE;
-            expr = CExpr_Convert(expr, typeCopy, qual, FALSE, flag2);
+            expr = CExpr_Convert(expr, typeCopy, qual, FALSE, checkAccess);
             expr = makemonadicnode(expr, EINDIRECT);
             expr->rtype = TPTR_TARGET(type);
             expr->flags = cv;
@@ -1637,7 +1626,7 @@ ENode* CExpr_Convert(ENode* expr, Type* type, UInt32 qual, Boolean isExplicit, B
                     return expr;
                 }
 
-                refExpr = CExpr_DerivedToBase(expr, type, qual, flag2, FALSE, TRUE);
+                refExpr = CExpr_DerivedToBase(expr, type, qual, checkAccess, FALSE, TRUE);
                 if (refExpr) {
                     return refExpr;
                 }
@@ -1674,6 +1663,8 @@ ENode* CExpr_Convert(ENode* expr, Type* type, UInt32 qual, Boolean isExplicit, B
                         case TYPEMEMBERPOINTER:
                         case TYPEPOINTER:
                             return CExpr_ConvertToBool(expr, isExplicit);
+                        default:
+                            break;
                     }
                 } else {
                     switch (expr->rtype->type) {
@@ -1683,15 +1674,12 @@ ENode* CExpr_Convert(ENode* expr, Type* type, UInt32 qual, Boolean isExplicit, B
                         case TYPEFLOAT:
 do_int_float_conversion:
                             if (ENODE_IS(expr, ETYPCON) &&
-                                expr->rtype->type ==
-                                type->type &&
-                                expr->rtype->size ==
-                                type->size &&
-                                is_unsigned(expr->rtype) ==
-                                is_unsigned(type) &&
+                                expr->rtype->type == type->type &&
+                                expr->rtype->size == type->size &&
+                                is_unsigned(expr->rtype) == is_unsigned(type) &&
                                 ENODE_QUALS(expr) == qual) {
                                 expr->rtype = type;
-                                expr->flags |= ENODE_FLAG_80;
+                                expr->flags |= ENODE_FLAG_SAME_TYPE_CAST;
                                 return expr;
                             } else {
                                 refExpr = promote(expr, type);
@@ -1723,6 +1711,8 @@ do_int_float_conversion:
                             expr->rtype = type;
                             expr->flags = cv;
                             return expr;
+                        default:
+                            break;
                     }
                 }
                 break;
@@ -1734,11 +1724,14 @@ do_int_float_conversion:
                     case TYPEINT:
                     case TYPEFLOAT:
                         goto do_int_float_conversion;
+                    default:
+                        break;
                 }
                 break;
 
             case TYPEENUM:
-                expr = CExpr_Convert(expr, TYPE_ENUM(type)->enumtype, qual, isExplicit, flag2);
+                expr =
+                    CExpr_Convert(expr, TYPE_ENUM(type)->enumtype, qual, isExplicit, checkAccess);
                 if (!ENODE_IS(expr, EINTCONST)) {
                     expr = makemonadicnode(expr, ETYPCON);
                 }
@@ -1770,7 +1763,7 @@ do_int_float_conversion:
                                 TYPE_CLASS(TPTR_TARGET(expr->rtype)),
                                 TYPE_CLASS(TPTR_TARGET(type)),
                                 TRUE,
-                                flag2
+                                checkAccess
                             );
                         }
                         if (!ENODE_IS(expr, ETYPCON)) {
@@ -1779,6 +1772,8 @@ do_int_float_conversion:
                         expr->rtype = type;
                         expr->flags = cv;
                         return CodeGen_CheckExpr(expr);
+                    default:
+                        break;
                 }
                 break;
 
@@ -1789,11 +1784,16 @@ do_int_float_conversion:
 
                 if (IS_TYPE_MEMBERPOINTER(expr->rtype)) {
                     expr = PointerToMemberCast(
-                        expr, TYPE_MEMBER_POINTER(expr->rtype), TYPE_MEMBER_POINTER(type), flag2
+                        expr,
+                        TYPE_MEMBER_POINTER(expr->rtype),
+                        TYPE_MEMBER_POINTER(type),
+                        checkAccess
                     );
                     expr->flags = cv;
                     return expr;
                 }
+                break;
+            default:
                 break;
         }
     }
@@ -1814,11 +1814,11 @@ do_int_float_conversion:
     return nullnode();
 }
 
-ENode* CExpr_AssignmentPromotion(ENode* expr, Type* type2, UInt32 qual2, Boolean flag) {
+ENode* CExpr_AssignmentPromotion(ENode* expr, Type* type2, UInt32 qual2, Boolean checkAccess) {
     ImplicitConv result;
 
     if (copts.old_argmatch) {
-        return oldassignmentpromotion(expr, type2, qual2, flag);
+        return oldassignmentpromotion(expr, type2, qual2, checkAccess);
     }
 
     if (ENODE_IS(expr, EMEMBER)) {
@@ -1832,25 +1832,25 @@ ENode* CExpr_AssignmentPromotion(ENode* expr, Type* type2, UInt32 qual2, Boolean
         return nullnode();
     }
 
-    return CExpr_Convert(expr, type2, qual2, FALSE, flag);
+    return CExpr_Convert(expr, type2, qual2, FALSE, checkAccess);
 }
 
 static Boolean CExpr_IsBetterMatch(Match* a, Match* b, int count) {
     ImplicitConv* convA;
     ImplicitConv* convB;
     int i;
-    Boolean flag;
+    Boolean better;
 
     convA = a->conv;
     convB = b->conv;
-    flag = FALSE;
+    better = FALSE;
 
     if (convA->type != ICT_NONE && convB->type != ICT_NONE) {
         if (CExpr_IsBetterImplicitConv(convB, convA)) {
             return FALSE;
         }
         if (CExpr_IsBetterImplicitConv(convA, convB)) {
-            flag = TRUE;
+            better = TRUE;
         }
     }
 
@@ -1861,11 +1861,11 @@ static Boolean CExpr_IsBetterMatch(Match* a, Match* b, int count) {
             return FALSE;
         }
         if (CExpr_IsBetterImplicitConv(convA, convB)) {
-            flag = TRUE;
+            better = TRUE;
         }
     }
 
-    if (flag) {
+    if (better) {
         return TRUE;
     }
 
@@ -2044,9 +2044,9 @@ void CExpr_FuncArgMatch(
     NameSpaceObjectList* list,
     TemplArg* templargs,
     ENodeList* argexprs,
-    ArgMatch* match13,
+    ArgMatch* bestmatch,
     ENode* expr,
-    Boolean flag
+    Boolean excludeExplicit
 ) {
     NameSpaceObjectList* i;
     NameSpaceObjectList* j;
@@ -2069,10 +2069,9 @@ void CExpr_FuncArgMatch(
 
     for (i = list; i; i = i->next) {
         object = OBJECT(i->object);
-        if (object->otype ==
-            OT_OBJECT &&
+        if (object->otype == OT_OBJECT &&
             IS_TYPE_FUNC(type = object->type) &&
-            (!flag || !(object->qual & Q_EXPLICIT))) {
+            (!excludeExplicit || !(object->qual & Q_EXPLICIT))) {
             if (object->datatype == DALIAS && (TYPE_FUNC(type)->flags & FUNC_METHOD)) {
                 for (j = list; j; j = j->next) {
                     if (j == i) {
@@ -2080,11 +2079,10 @@ void CExpr_FuncArgMatch(
                     }
 
                     object2 = OBJECT(j->object);
-                    if (object2->otype ==
-                        OT_OBJECT &&
+                    if (object2->otype == OT_OBJECT &&
                         IS_TYPE_METHOD(object2->type) &&
                         (TYPE_FUNC(object2->type)->flags & FUNC_FLAGS_CV) ==
-                        (TYPE_FUNC(object->type)->flags & FUNC_FLAGS_CV)) {
+                            (TYPE_FUNC(object->type)->flags & FUNC_FLAGS_CV)) {
                         FuncArg* argsA;
                         FuncArg* argsB;
                         argsA = TYPE_FUNC(object->type)->args;
@@ -2133,8 +2131,8 @@ void CExpr_FuncArgMatch(
         return;
     }
 
-    matches = CExpr_FindBestMatch(matches, argcount, NULL, &match13->list, argexprs);
-    match13->object = matches->object;
+    matches = CExpr_FindBestMatch(matches, argcount, NULL, &bestmatch->list, argexprs);
+    bestmatch->object = matches->object;
 }
 
 static ConversionTypeList* CExpr_BuildConversionTypeList(ENode* expr) {
@@ -2284,8 +2282,7 @@ static Match* CExpr_MatchBuiltin(
                 for (scan = matches; scan; scan = scan->next) {
                     if (!scan->object &&
                         is_typesame(scan->type, leftType) &&
-                        scan->qual ==
-                        leftQual &&
+                        scan->qual == leftQual &&
                         is_typesame(scan->type2, rightType) &&
                         scan->qual2 == rightQual) {
                         return matches;
@@ -2340,6 +2337,8 @@ static Match* CExpr_CheckIncDecBuiltin(Match* matches, short token, ENode* expr1
                                 0
                             );
                         }
+                        break;
+                    default:
                         break;
                 }
             }
@@ -2543,6 +2542,8 @@ static Match* CExpr_CheckBinaryBuiltin(Match* matches, ENode* left, short token,
                     );
                 }
                 break;
+            default:
+                break;
         }
     }
 
@@ -2557,9 +2558,9 @@ static Boolean CExpr_MatchOperands(
     Type* rightType,
     UInt32 rightQual,
     ImplicitConv* twoResults,
-    Boolean flag
+    Boolean leftStandardOnly
 ) {
-    if (flag) {
+    if (leftStandardOnly) {
         if (!CExpr_StandardConversionMatch(
                 left, leftType, leftQual, TRUE, &twoResults[0].u.standard.standardConv
             )) {
@@ -2818,8 +2819,7 @@ static ENode* CExpr_ClassCopyInit(TypeClass* tclass, ENode* expr1, ENode* expr2)
 
     for (list = CClass_Constructor(tclass); list; list = list->next) {
         object = OBJECT(list->object);
-        if (object->otype ==
-            OT_OBJECT &&
+        if (object->otype == OT_OBJECT &&
             IS_TYPE_FUNC(object->type) &&
             !(object->qual & Q_EXPLICIT)) {
             arg = TYPE_FUNC(object->type)->args;
@@ -2833,8 +2833,7 @@ static ENode* CExpr_ClassCopyInit(TypeClass* tclass, ENode* expr1, ENode* expr2)
             }
 
             if (arg &&
-                arg !=
-                &elipsis &&
+                arg != &elipsis &&
                 (!arg->next || arg->next->dexpr) &&
                 CExpr_ImplicitConversionMatch(expr2, arg->type, arg->qual, &conv)) {
                 if (!best || CExpr_IsBetterImplicitConv(&conv, &bestConv)) {
@@ -2860,8 +2859,7 @@ static ENode* CExpr_ClassCopyInit(TypeClass* tclass, ENode* expr1, ENode* expr2)
             }
 
             if (IS_TYPE_CLASS(type) &&
-                (tclass ==
-                 TYPE_CLASS(type) ||
+                (tclass == TYPE_CLASS(type) ||
                  CClass_IsBaseClass(tclass, TYPE_CLASS(type), NULL, FALSE, FALSE))) {
                 CError_ASSERT(
                     3248,

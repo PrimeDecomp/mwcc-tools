@@ -1,17 +1,16 @@
 #include "compiler/CMangler.h"
 #include "compiler/CError.h"
-#include "compiler/CExpr.h"
 #include "compiler/CFunc.h"
 #include "compiler/CInt64.h"
 #include "compiler/CompilerTools.h"
 #include "compiler/CParser.h"
-#include "compiler/CPrep.h"
 #include "compiler/CScope.h"
 #include "compiler/CTemplateTools.h"
 #include "compiler/enode.h"
 #include "compiler/objects.h"
 #include "compiler/scopes.h"
 #include "compiler/templates.h"
+#include "compiler/tokens.h"
 #include "compiler/types.h"
 #include "driver/COSToolsCLT.h"
 #include <ctype.h>
@@ -22,7 +21,6 @@ HashNameNode* constructor_name_node;
 HashNameNode* destructor_name_node;
 HashNameNode* asop_name_node;
 
-// forward decls
 static void CMangler_MangleClassName(TypeClass* tclass);
 static void CMangler_MangleTypeAppend(Type* type, UInt32 qual);
 static void CMangler_MangleArgs(FuncArg* args);
@@ -400,9 +398,6 @@ static void CMangler_AppendTemplateArgumentList(TemplArg* arg) {
 HashNameNode* CMangler_TemplateInstanceName(HashNameNode* basename, TemplArg* args) {
     HashNameNode* name;
 
-    // TODO (workaround): 2.6 tests the inlined CMangler_CheckTemplateArguments' copy of `args` (edi)
-    // where the plain call tests `args` itself (ebx); only a cast through void* keeps the copy. Tried
-    // without effect: a local copy, a for loop in the callee, a const parameter, the statement order.
     CMangler_CheckTemplateArguments((TemplArg*)(void*)args);
     name_mangle_list.size = 0;
     AppendGListName(&name_mangle_list, basename->name);
@@ -531,8 +526,6 @@ static void CMangler_MangleTypeAppend(Type* type, UInt32 qual) {
                 case IT_LONGDOUBLE:
                     AppendGListByte(&name_mangle_list, 'r');
                     return;
-                // 2.6 mangles the integral types after IT_LONGDOUBLE (Pro7's unnamed IT_17..IT_24;
-                // IT_VEC2X32FLOAT is Gekko's paired single) as digits
                 case IT_17:
                     AppendGListByte(&name_mangle_list, '0');
                     return;

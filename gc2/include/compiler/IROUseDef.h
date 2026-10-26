@@ -8,8 +8,7 @@
 extern "C" {
 #endif
 
-#pragma pack(push, 2) // Pro7: options align=mac68k
-// A use of a variable (FindDefsAndUses; chained from IRO_FirstVarUse).
+#pragma pack(push, 2)
 struct IROUse {
     SInt32 index;
     IRONode* node;
@@ -17,10 +16,9 @@ struct IROUse {
     VarRecord* var;
     IROUse* globalnext;
     IROUse* varnext;
-    BitVector* reachingDefs; // TODO: invented name (Pro7: x18); the definitions reaching it
-    UInt16 reachingDefCount; // TODO: invented name (Pro7: x1C); their count
+    BitVector* reachingDefs;
+    UInt16 reachingDefCount;
 };
-// A definition of a variable (MakeDef; chained from FirstDef).
 struct IRODef {
     SInt32 index;
     IRONode* node;
@@ -28,11 +26,11 @@ struct IRODef {
     VarRecord* var;
     IRODef* globalnext;
     IRODef* varnext;
-    UInt16 useCount; // TODO: invented name (Pro7: x18); the uses it reaches
-    Boolean global; // TODO: invented name (Pro7: x1A)
-    Boolean noregister; // TODO: invented name (Pro7: x1B); MakeDef copies the variable's
-    Boolean definite; // TODO: invented name (Pro7: x1C)
-    Boolean removable; // TODO: invented name (Pro7: x1D); set by MarkRemovableLoopDefs
+    UInt16 useCount;
+    Boolean global;
+    Boolean noregister;
+    Boolean definite;
+    Boolean removable;
 };
 #pragma pack(pop)
 

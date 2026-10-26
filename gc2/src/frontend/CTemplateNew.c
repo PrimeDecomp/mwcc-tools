@@ -5,15 +5,22 @@
 #include "compiler/CExpr.h"
 #include "compiler/CFunc.h"
 #include "compiler/CInit.h"
+#include "compiler/CInline.h"
 #include "compiler/CMachine.h"
 #include "compiler/CMangler.h"
 #include "compiler/CompilerTools.h"
 #include "compiler/CParser.h"
+#include "compiler/CPrep.h"
 #include "compiler/CPrepTokenizer.h"
 #include "compiler/CScope.h"
 #include "compiler/CTemplateClass.h"
-#include "compiler/CTemplateFunc.h"
+#include "compiler/CTemplateTools.h"
+#include "compiler/enode.h"
+#include "compiler/objects.h"
 #include "compiler/scopes.h"
+#include "compiler/templates.h"
+#include "compiler/tokens.h"
+#include "compiler/types.h"
 #include <setjmp.h>
 #include <string.h>
 
@@ -23,9 +30,8 @@ TemplStack* ctempl_curinstance;
 static jmp_buf ctempl_parseparse;
 static Boolean ctempl_scanfuncparams;
 
-// forward decls
 static TemplParam* CTempl_ParseParamList(NameSpace* nspace, UInt8 nindex);
-static Boolean CTempl_GenClassInstance(TemplClassInst* inst, Boolean flag);
+static Boolean CTempl_GenClassInstance(TemplClassInst* inst, Boolean isExplicit);
 
 void CTempl_Setup(void) {
     ctempl_curinstance = NULL;
@@ -37,9 +43,6 @@ void CTempl_Setup(void) {
 
 void CTempl_Cleanup(void) {}
 
-// CTempl_MemberParseLex, CTempl_MemberParseTempl and CTempl_ParseTemplateMember are Pro7's: only
-// the first survives in 2.6's code (inlined into CTempl_MemberParseTemplArgList), but 2.6's assert
-// lines from here on equal Pro7's, so its file still has the other two (dead)
 static short CTempl_MemberParseLex(void) {
     switch ((tk = lex())) {
         case ';':
@@ -218,7 +221,7 @@ static Type* CTempl_ParseTemplArgType(UInt32* resultQual) {
     DeclInfo di;
 
     memclrw(&di, sizeof(di));
-    CParser_GetDeclSpecs(&di, 0);
+    CParser_GetDeclSpecs(&di, FALSE);
 
     if (di.storageclass) {
         CError_Error(ERR_ILLEGAL_STORAGE_CLASS);
@@ -257,7 +260,7 @@ static ENode* CTempl_ParseTemplArgExpr(Type* type, UInt32 qual) {
     if (type &&
         !CTemplTool_IsTemplateArgumentDependentType(type) &&
         !IS_TYPE_TEMPLDEPEXPR(expr->rtype)) {
-        expr = argumentpromotion(expr, type, qual, 1);
+        expr = argumentpromotion(expr, type, qual, TRUE);
         if (IS_TYPE_POINTER_ONLY(type)) {
             if (ENODE_IS(expr, ETYPCON) && ENODE_IS(expr->data.monadic, EINTCONST)) {
                 expr = expr->data.monadic;
@@ -294,7 +297,7 @@ static ENode* CTempl_ParseTemplArgExpr(Type* type, UInt32 qual) {
         *copy = *expr;
         return copy;
     } else {
-        return CInline_CopyExpression(expr, CopyMode1);
+        return CInline_CopyExpression(expr, CopyModeGlobal);
     }
 }
 
@@ -310,7 +313,7 @@ static Type* CTempl_ParseTemplArgTempl(TemplParam* params) {
     if (IS_TEMPL_CLASS(pr.type)) {
         if (params &&
             !CTemplTool_EqualParams(
-                params->data.templparam.plist, TEMPL_CLASS(pr.type)->templ__params, 0
+                params->data.templparam.plist, TEMPL_CLASS(pr.type)->templ__params, FALSE
             )) {
             CError_Error(ERR_TEMPLATE_PARAMETER_MISMATCH);
             tk = lex();
@@ -339,8 +342,6 @@ static UInt8 CTempl_GetTemplateNestIndex(NameSpace* nspace) {
     return count;
 }
 
-// 2.6 leaves params (the list so far) unread and builds the new parameter in a local of its own,
-// where Pro7 reuses the parameter
 static TemplParam* CTempl_ParseParam(
     NameSpace* nspace, TemplParam* params, UInt16 index, UInt8 nindex
 ) {
@@ -422,7 +423,7 @@ static TemplParam* CTempl_ParseParam(
         default:
 defaultProc:
             memclrw(&di, sizeof(di));
-            CParser_GetDeclSpecs(&di, 0);
+            CParser_GetDeclSpecs(&di, FALSE);
 
             if (di.storageclass) {
                 CError_Error(ERR_ILLEGAL_STORAGE_CLASS);
@@ -558,13 +559,13 @@ TemplArg* CTempl_ParseUncheckTemplArgs(TemplParam* params, Boolean is_global) {
         if (!params) {
             Type* type;
             UInt32 qual;
-            Boolean flag;
+            Boolean isTemplateName;
 
             last->pid.index = index;
             last->pid.nindex = 0;
 
-            if ((type = CParser_ParseTypeID(&qual, &flag))) {
-                if (flag) {
+            if ((type = CParser_ParseTypeID(&qual, &isTemplateName))) {
+                if (isTemplateName) {
                     last->data.ttargtype = type;
                     last->pid.type = TPT_TEMPLATE;
                 } else {
@@ -644,10 +645,6 @@ static TemplArg* CTempl_ParseTemplArgs(TemplClass** resultTempl, TemplArg** resu
         if (tk != '>') {
             switch (arg->pid.type) {
                 case TPT_TYPE: {
-                    // TODO: fakematch. 2.6 keeps &arg->data.typeparam.qual in a register across the
-                    // inlined CTempl_ParseTemplArgType (lea edi, [ebp + 0xc] before its body), where
-                    // Pro7's direct argument (what the other two callers pass, and match with) is
-                    // folded into the store; only a pointer variable reproduces it
                     UInt32* q = &arg->data.typeparam.qual;
                     arg->data.typeparam.type = CTempl_ParseTemplArgType(q);
                     break;
@@ -732,7 +729,7 @@ static TemplArg* CTempl_ParseTemplArgs(TemplClass** resultTempl, TemplArg** resu
 
                         arg->data.paramdecl.expr = CInline_CopyExpression(
                             CTemplTool_DeduceExpr(&deduce, param->data.paramdecl.defaultarg),
-                            CopyMode1
+                            CopyModeGlobal
                         );
                     } else {
                         arg->data.paramdecl.expr = param->data.paramdecl.defaultarg;
@@ -802,9 +799,6 @@ Type* CTempl_ClassGetType(TemplClass* templ) {
     TemplClass* pspecOwner;
     Type* type;
 
-    // 2.6 copies templ through a second register for the pspec_owner test; only this chained form
-    // does (owner = templ; then a test of owner->pspec_owner or templ->pspec_owner, separately or
-    // assigned in the condition, were tried)
     pspecOwner = (owner = templ)->pspec_owner;
     if (pspecOwner) {
         owner = pspecOwner;
@@ -821,15 +815,14 @@ Type* CTempl_ClassGetType(TemplClass* templ) {
     return TYPE(CTemplClass_GetInstance(owner, args, ownerArgs));
 }
 
-static void CTempl_SetupClassParamNameSpace(TemplateScopeState* what_is_this, TypeClass* tclass) {
+static void CTempl_SetupClassParamNameSpace(TemplateScopeState* templateScope, TypeClass* tclass) {
     cscope_current = tclass->nspace;
 }
 
 Boolean CTempl_IsQualifiedMember(DeclInfo* di, Type* type, NameSpace** resultnspace) {
     TemplClass* templ;
 
-    if (TYPE_TEMPLATE(type)->dtype ==
-        TEMPLDEP_QUALNAME &&
+    if (TYPE_TEMPLATE(type)->dtype == TEMPLDEP_QUALNAME &&
         (templ =
              TEMPL_CLASS(CTemplTool_GetSelfRefTemplate(TYPE(TYPE_TEMPLATE(type)->u.qual.type))))) {
         *resultnspace = templ->theclass.nspace;
@@ -843,10 +836,7 @@ Boolean CTempl_IsQualifiedMember(DeclInfo* di, Type* type, NameSpace** resultnsp
     return FALSE;
 }
 
-// Pro7's (dead in Pro7 and 2.6 alike: nothing calls it, and 2.6's later assert lines equal Pro7's,
-// so the file still has it). TODO: invented names for the three unused parameters (Pro7's
-// decompilation has placeholders)
-static void* CTempl_ParseMemberFunction(int arg1, int arg2, int arg3, Object* func) {
+static void* CTempl_ParseMemberFunction(int unused1, int unused2, int unused3, Object* func) {
     CError_ASSERT(974, TYPE_FUNC(func->type)->flags & FUNC_METHOD);
 
     return NULL;
@@ -858,7 +848,7 @@ static void CTempl_ParseMember(
     Object* object;
     NameSpaceObjectList* nsol;
     TokenStream stream;
-    Boolean flag;
+    Boolean firstDecl;
     CPrepFileInfo* file;
     SInt32 offset;
     Boolean saveForceLoc;
@@ -869,7 +859,7 @@ static void CTempl_ParseMember(
     }
 
     if (IS_TYPE_FUNC(di->thetype)) {
-        if (!(object = CDecl_GetFunctionObject(di, NULL, &flag, 0))) {
+        if (!(object = CDecl_GetFunctionObject(di, NULL, &firstDecl, FALSE))) {
             CError_Error(ERR_UNDEFINED_IDENTIFIER, di->name->name);
             return;
         }
@@ -914,7 +904,7 @@ static void CTempl_ParseMember(
 
         if (!is_typesame(di->thetype, object->type) ||
             (object->qual & (Q_CONST | Q_VOLATILE | Q_PASCAL)) !=
-            (di->qual & (Q_CONST | Q_VOLATILE | Q_PASCAL))) {
+                (di->qual & (Q_CONST | Q_VOLATILE | Q_PASCAL))) {
             CError_Error(
                 ERR_IDENTIFIER_REDECLARED_WAS_DECLARED_AS_NOW,
                 CError_GetObjectName(object),
@@ -957,15 +947,16 @@ static void CTempl_ParseMember(
 }
 
 static TemplateFunction* CTempl_DeclareTemplateFunction(
-    DeclInfo* di, TemplParam* params, TypeClass* tclass, AccessType access, Boolean flag
+    DeclInfo* di, TemplParam* params, TypeClass* tclass, AccessType access, Boolean isStatic
 ) {
     TemplateFunction* templ;
     Object* object;
 
     if (tclass) {
         CError_ASSERT(1122, cscope_current->theclass);
-        di->thetype =
-            TYPE(CDecl_MakeTypeMemberFunc(TYPE_FUNC(di->thetype), cscope_current->theclass, flag));
+        di->thetype = TYPE(
+            CDecl_MakeTypeMemberFunc(TYPE_FUNC(di->thetype), cscope_current->theclass, isStatic)
+        );
     } else {
         access = ACCESSPUBLIC;
     }
@@ -1063,7 +1054,7 @@ static HashNameNode* CTempl_FindConversionFuncName(TypeClass* tclass, Type* type
     } while (!IS_TYPE_FUNC(object->type) ||
              !(TYPE_FUNC(object->type)->flags & FUNC_CONVERSION) ||
              (TYPE_FUNC(object->type)->qual & (Q_CONST | Q_VOLATILE)) !=
-             (qual & (Q_CONST | Q_VOLATILE)) ||
+                 (qual & (Q_CONST | Q_VOLATILE)) ||
              !is_typesame(TYPE_FUNC(object->type)->functype, type));
 
     return object->name;
@@ -1071,7 +1062,7 @@ static HashNameNode* CTempl_FindConversionFuncName(TypeClass* tclass, Type* type
 
 static void CTempl_ParseConversionFunctionTemplate(
     DeclInfo* di,
-    TemplateScopeState* what_is_this,
+    TemplateScopeState* templateScope,
     TemplParam* params,
     TypeClass* tclass,
     SInt32* startOffset,
@@ -1092,8 +1083,8 @@ static void CTempl_ParseConversionFunctionTemplate(
     CDecl_NewConvFuncType(di);
 
     if (cscope_current->is_templ) {
-        CError_ASSERT(1260, cscope_current == what_is_this->scope);
-        cscope_current = what_is_this->scope->parent;
+        CError_ASSERT(1260, cscope_current == templateScope->scope);
+        cscope_current = templateScope->scope->parent;
     }
 
     templfunc = CTempl_DeclareTemplateFunction(di, params, tclass, access, FALSE);
@@ -1101,12 +1092,12 @@ static void CTempl_ParseConversionFunctionTemplate(
 }
 
 static void CTempl_ParseFunctionOrMemberTemplate(
-    TemplateScopeState* what_is_this,
+    TemplateScopeState* templateScope,
     TemplParam* params,
     TypeClass* tclass,
     SInt32* startOffset,
     AccessType access,
-    Boolean mysteryFlag
+    Boolean allowTemplateArguments
 ) {
     NameSpaceObjectList* nsol;
     TemplParam* param;
@@ -1147,16 +1138,16 @@ static void CTempl_ParseFunctionOrMemberTemplate(
     ctempl_scanfuncparams = TRUE;
 
     memclrw(&di, sizeof(di));
-    di.allowTemplateArguments = mysteryFlag;
+    di.allowTemplateArguments = allowTemplateArguments;
 
     if (tk == TK_OPERATOR) {
         CTempl_ParseConversionFunctionTemplate(
-            &di, what_is_this, params, tclass, startOffset, access
+            &di, templateScope, params, tclass, startOffset, access
         );
         return;
     }
 
-    CParser_GetDeclSpecs(&di, 1);
+    CParser_GetDeclSpecs(&di, TRUE);
     if (tk == ';' && IS_TEMPL_CLASS(di.thetype)) {
         return;
     }
@@ -1212,22 +1203,13 @@ static void CTempl_ParseFunctionOrMemberTemplate(
 
     CError_QualifierCheck(
         di.qual &
-        ~(Q_CONST |
-          Q_VOLATILE |
-          Q_ASM |
-          Q_PASCAL |
-          Q_INLINE |
-          Q_EXPLICIT |
-          Q_IMPLICIT_WEAK |
-          Q_WEAK |
-          Q_ALIGNED_MASK |
-          // 2.6 adds Q_INTERRUPT
-          Q_INTERRUPT)
+        ~(Q_CONST | Q_VOLATILE | Q_ASM | Q_PASCAL | Q_INLINE | Q_EXPLICIT | Q_IMPLICIT_WEAK |
+          Q_WEAK | Q_ALIGNED_MASK | Q_INTERRUPT)
     );
 
     if (tk == TK_OPERATOR && di.parserOption) {
         CTempl_ParseConversionFunctionTemplate(
-            &di, what_is_this, params, tclass, startOffset, access
+            &di, templateScope, params, tclass, startOffset, access
         );
         return;
     }
@@ -1258,7 +1240,7 @@ static void CTempl_ParseFunctionOrMemberTemplate(
                 TYPE_FUNC(di.thetype)->flags |= FUNC_IS_CTOR;
                 di.name = constructor_name_node;
 
-                what_is_this->scope->tparams = NULL;
+                templateScope->scope->tparams = NULL;
 
                 templfunc =
                     CTempl_DeclareTemplateFunction(&di, params, tclass, access, disallowCVFlag);
@@ -1271,10 +1253,8 @@ static void CTempl_ParseFunctionOrMemberTemplate(
         }
 
         if (IS_TYPE_TEMPLATE(di.thetype)) {
-            if (tk ==
-                '(' &&
-                TYPE_TEMPLATE(di.thetype)->dtype ==
-                TEMPLDEP_QUALNAME &&
+            if (tk == '(' &&
+                TYPE_TEMPLATE(di.thetype)->dtype == TEMPLDEP_QUALNAME &&
                 (tclass2 = TYPE_CLASS(
                      CTemplTool_GetSelfRefTemplate(TYPE(TYPE_TEMPLATE(di.thetype)->u.qual.type))
                  )) &&
@@ -1286,7 +1266,7 @@ static void CTempl_ParseFunctionOrMemberTemplate(
                 di.thetype = TYPE(&void_ptr);
                 di.isConstructor = TRUE;
 
-                CTempl_SetupClassParamNameSpace(what_is_this, tclass2);
+                CTempl_SetupClassParamNameSpace(templateScope, tclass2);
 
                 tk = lex();
                 CDecl_ParseDirectFuncDecl(&di);
@@ -1306,20 +1286,16 @@ static void CTempl_ParseFunctionOrMemberTemplate(
                 return;
             }
 
-            if (tk ==
-                TK_COLON_COLON &&
-                TYPE_TEMPLATE(di.thetype)->dtype ==
-                TEMPLDEP_TEMPLATE &&
+            if (tk == TK_COLON_COLON &&
+                TYPE_TEMPLATE(di.thetype)->dtype == TEMPLDEP_TEMPLATE &&
                 (tclass2 = TYPE_CLASS(CTemplTool_GetSelfRefTemplate(di.thetype)))) {
                 if (tclass) {
                     CError_Error(ERR_ILLEGAL_TEMPLATE_DECLARATION);
                 }
 
                 if ((tk = lex()) == '~') {
-                    if ((tk = lex()) !=
-                        TK_IDENTIFIER ||
-                        tkidentifier !=
-                        tclass2->classname ||
+                    if ((tk = lex()) != TK_IDENTIFIER ||
+                        tkidentifier != tclass2->classname ||
                         (tk = lex()) != '(') {
                         if (tk == '<') {
                             DeclInfo di2;
@@ -1329,16 +1305,15 @@ static void CTempl_ParseFunctionOrMemberTemplate(
                             tkidentifier = tclass2->classname;
 
                             memclrw(&di2, sizeof(di2));
-                            CParser_GetDeclSpecs(&di2, 0);
+                            CParser_GetDeclSpecs(&di2, FALSE);
                             if (tk != '(') {
                                 CError_Error(ERR_ILLEGAL_CONSTRUCTOR_DESTRUCTOR_DECLARATION);
                             }
 
-                            if (di2.thetype !=
-                                TYPE(tclass2) &&
+                            if (di2.thetype != TYPE(tclass2) &&
                                 (!IS_TYPE_TEMPLATE(di2.thetype) ||
                                  CTemplTool_IsTemplate(TYPE_TEMPLATE(di2.thetype)) !=
-                                 TEMPL_CLASS(tclass2))) {
+                                     TEMPL_CLASS(tclass2))) {
                                 CError_Error(ERR_ILLEGAL_CONSTRUCTOR_DESTRUCTOR_DECLARATION);
                             }
                         } else {
@@ -1348,7 +1323,7 @@ static void CTempl_ParseFunctionOrMemberTemplate(
 
                     di.thetype = TYPE(&void_ptr);
 
-                    CTempl_SetupClassParamNameSpace(what_is_this, tclass2);
+                    CTempl_SetupClassParamNameSpace(templateScope, tclass2);
                     tk = lex();
                     CDecl_ParseDirectFuncDecl(&di);
 
@@ -1370,7 +1345,7 @@ static void CTempl_ParseFunctionOrMemberTemplate(
                 }
 
                 if (tk == TK_OPERATOR) {
-                    CTempl_SetupClassParamNameSpace(what_is_this, tclass2);
+                    CTempl_SetupClassParamNameSpace(templateScope, tclass2);
                     if (CMangler_OperatorName((tk = lex()))) {
                         CError_Error(ERR_IMPLICIT_INT_NO_LONGER_SUPPORTED_C);
                         return;
@@ -1405,14 +1380,14 @@ static void CTempl_ParseFunctionOrMemberTemplate(
     }
 
     di.templateParameters = params;
-    di.templateScope = what_is_this;
+    di.templateScope = templateScope;
     scandeclarator(&di);
     ctempl_scanfuncparams = FALSE;
 
 skipPastStuff:
     if (cscope_current->is_templ) {
-        CError_ASSERT(1589, cscope_current == what_is_this->scope);
-        what_is_this->scope->tparams = NULL;
+        CError_ASSERT(1589, cscope_current == templateScope->scope);
+        templateScope->scope->tparams = NULL;
     }
 
     if (!di.name) {
@@ -1480,17 +1455,17 @@ skipPastStuff:
 }
 
 static void CTempl_ExplicitInstantiation(void) {
-    Boolean flag;
+    Boolean instantiate;
     short saveToken;
     Object* object;
     DeclInfo di;
 
     memclrw(&di, sizeof(di));
     di.allowTemplateArguments = TRUE;
-    flag = TRUE;
+    instantiate = TRUE;
 
     if (tk == TK_IDENTIFIER && !strcmp(tkidentifier->name, "__dont_instantiate")) {
-        flag = FALSE;
+        instantiate = FALSE;
         tk = lex();
     }
 
@@ -1499,13 +1474,13 @@ static void CTempl_ExplicitInstantiation(void) {
         case TK_UNION:
         case TK_CLASS:
             memclrw(&di, sizeof(di));
-            CParser_GetDeclSpecs(&di, 0);
+            CParser_GetDeclSpecs(&di, FALSE);
             if (tk == ';') {
                 if (IS_TEMPL_CLASS_INST(di.thetype)) {
                     CTempl_InstantiateTemplateClass(TYPE_CLASS(di.thetype));
                     if ((TYPE_CLASS(di.thetype)->flags & CLASS_COMPLETED) &&
                         !(TYPE_CLASS(di.thetype)->eflags & CLASS_EFLAGS_IMPORT)) {
-                        if (flag) {
+                        if (instantiate) {
                             CTempl_GenClassInstance(TEMPL_CLASS_INST(di.thetype), TRUE);
                         } else {
                             TEMPL_CLASS_INST(di.thetype)->is_extern = TRUE;
@@ -1523,7 +1498,7 @@ static void CTempl_ExplicitInstantiation(void) {
             break;
         default:
             memclrw(&di, sizeof(di));
-            CParser_GetDeclSpecs(&di, 0);
+            CParser_GetDeclSpecs(&di, FALSE);
     }
 
     di.allowTemplateArguments = TRUE;
@@ -1535,11 +1510,11 @@ static void CTempl_ExplicitInstantiation(void) {
     di.templateFunction = NULL;
     if (di.name &&
         IS_TYPE_FUNC(di.thetype) &&
-        (object = CDecl_GetFunctionObject(&di, di.nspace, NULL, 1)) &&
+        (object = CDecl_GetFunctionObject(&di, di.nspace, NULL, TRUE)) &&
         IS_TYPE_FUNC(object->type) &&
         object->u.func.inst &&
         di.templateFunction) {
-        if (!flag) {
+        if (!instantiate) {
             object->u.func.inst->is_extern = TRUE;
         } else {
             CTempl_GenFuncInstance(di.templateFunction, object->u.func.inst, TRUE);
@@ -1554,17 +1529,14 @@ static void CTempl_ExplicitInstantiation(void) {
 }
 
 static void CTempl_ExplicitSpecialization(void) {
-    Boolean flag;
+    Boolean hasParams;
     TemplParam* params;
     int counter;
     DeclInfo di;
-    TemplateScopeState what_is_this;
+    TemplateScopeState templateScope;
 
-    flag = FALSE;
+    hasParams = FALSE;
     counter = 1;
-    // 2.6 enters this loop with a jump to its test where MWCC duplicates a plain `tk == TK_TEMPLATE`
-    // above the body (Pro7's spelling; for (;;) with a break, a for loop and a goto were tried);
-    // the (int) comparison is the front end's (CExpr, CScope, CDecl compare tokens this way)
     while ((int)tk == TK_TEMPLATE) {
         if ((tk = lex()) != '<') {
             CError_Error(ERR_LESS_EXPECTED);
@@ -1572,19 +1544,19 @@ static void CTempl_ExplicitSpecialization(void) {
         }
 
         if ((tk = lex()) != '>') {
-            if (!flag) {
-                what_is_this.scope = cscope_current;
-                what_is_this.linkedNamespace = NULL;
+            if (!hasParams) {
+                templateScope.scope = cscope_current;
+                templateScope.linkedNamespace = NULL;
                 cscope_current->tparams = NULL;
-                flag = TRUE;
+                hasParams = TRUE;
             }
 
-            params = CTempl_ParseParamList(what_is_this.scope, counter);
+            params = CTempl_ParseParamList(templateScope.scope, counter);
             if (tk != '>') {
                 CError_Error(ERR_GREATER_EXPECTED);
             }
         } else {
-            if (flag) {
+            if (hasParams) {
                 CError_Error(ERR_ILLEGAL_EXPLICIT_TEMPLATE_SPECIALIZATION);
             }
         }
@@ -1593,10 +1565,10 @@ static void CTempl_ExplicitSpecialization(void) {
         tk = lex();
     }
 
-    if (flag) {
+    if (hasParams) {
         SInt32 startOffset = -1;
         CTempl_ParseFunctionOrMemberTemplate(
-            &what_is_this, params, NULL, &startOffset, ACCESSPUBLIC, 1
+            &templateScope, params, NULL, &startOffset, ACCESSPUBLIC, TRUE
         );
         return;
     }
@@ -1604,7 +1576,7 @@ static void CTempl_ExplicitSpecialization(void) {
     memclrw(&di, sizeof(di));
     di.requireTemplateClassMember = counter;
     di.allowTemplateArguments = TRUE;
-    CParser_GetDeclSpecs(&di, 1);
+    CParser_GetDeclSpecs(&di, TRUE);
 
     if (tk == ';') {
         if (IS_TEMPL_CLASS_INST(di.thetype)) {
@@ -1619,8 +1591,8 @@ static void CTempl_ExplicitSpecialization(void) {
         }
     }
 
-    if (flag) {
-        what_is_this.scope->tparams = NULL;
+    if (hasParams) {
+        templateScope.scope->tparams = NULL;
     }
 }
 
@@ -1628,9 +1600,9 @@ void CTempl_Parse(TemplClass* templ, AccessType access) {
     TemplParam* params;
     UInt8 i;
     short mode;
-    Boolean flag;
+    Boolean isPartial;
     CScopeSave savedScope;
-    TemplateScopeState what_is_this;
+    TemplateScopeState templateScope;
     SInt32 startOffset;
     SInt32 savedState;
     UInt8 classDeclSpec;
@@ -1657,13 +1629,13 @@ void CTempl_Parse(TemplClass* templ, AccessType access) {
         return;
     }
 
-    what_is_this.scope = cscope_current;
-    what_is_this.linkedNamespace = NULL;
+    templateScope.scope = cscope_current;
+    templateScope.linkedNamespace = NULL;
     cscope_current->tparams = NULL;
-    i = CTempl_GetTemplateNestIndex(what_is_this.scope);
+    i = CTempl_GetTemplateNestIndex(templateScope.scope);
 
     while (1) {
-        params = CTempl_ParseParamList(what_is_this.scope, i);
+        params = CTempl_ParseParamList(templateScope.scope, i);
         if (tk != '>') {
             CError_Error(ERR_GREATER_EXPECTED);
         }
@@ -1701,7 +1673,7 @@ void CTempl_Parse(TemplClass* templ, AccessType access) {
 
     if (mode >= 0) {
         classDeclSpec = 0;
-        flag = FALSE;
+        isPartial = FALSE;
 
         CPrep_TokenStreamGetState(&savedState);
         if ((tk = lex()) == TK_UU_DECLSPEC) {
@@ -1712,7 +1684,7 @@ void CTempl_Parse(TemplClass* templ, AccessType access) {
             if ((tk = lex()) == '<') {
                 if (setjmp(ctempl_parseparse) == 0) {
                     CTempl_MemberParseTemplArgList();
-                    flag = TRUE;
+                    isPartial = TRUE;
                     tk = lex();
                 }
             }
@@ -1722,12 +1694,12 @@ void CTempl_Parse(TemplClass* templ, AccessType access) {
                 case ';':
                 case '{':
                     CPrep_TokenStreamSetCurState(&savedState);
-                    if (flag) {
+                    if (isPartial) {
                         CTemplClass_ParsePartialSpecialization(
-                            &what_is_this, params, mode, &startOffset
+                            &templateScope, params, mode, &startOffset
                         );
                     } else {
-                        CTemplClass_ParseClass(&what_is_this, params, mode, &startOffset);
+                        CTemplClass_ParseClass(&templateScope, params, mode, &startOffset);
                     }
                     goto done;
             }
@@ -1737,11 +1709,11 @@ void CTempl_Parse(TemplClass* templ, AccessType access) {
     }
 
     CTempl_ParseFunctionOrMemberTemplate(
-        &what_is_this, params, TYPE_CLASS(templ), &startOffset, access, 0
+        &templateScope, params, TYPE_CLASS(templ), &startOffset, access, FALSE
     );
 
 done:
-    what_is_this.scope->tparams = NULL;
+    templateScope.scope->tparams = NULL;
     CScope_RestoreScope(&savedScope);
 }
 
@@ -1776,22 +1748,22 @@ void CTempl_ParseInstanceScopeFunction(Object* funcobj, TemplClassInst* inst, Ty
     }
 
     memclrw(&di, sizeof(di));
-    CFunc_ParseFuncDef(funcobj, &di, NULL, 0, 0, tclass ? cscope_current : NULL);
+    CFunc_ParseFuncDef(funcobj, &di, NULL, FALSE, FALSE, tclass ? cscope_current : NULL);
 
     CTemplTool_RemoveTemplateArgumentNameSpace(nspace, inst, &savedScope);
     CTemplTool_PopInstance(&stack);
 }
 
-Boolean CTempl_GenFuncInstance(TemplateFunction* templ, TemplFuncInstance* inst, Boolean flag) {
+Boolean CTempl_GenFuncInstance(
+    TemplateFunction* templ, TemplFuncInstance* inst, Boolean isExplicit
+) {
     Boolean saveDebugInfo;
     NameSpace* nspace;
     SInt32 streamState;
     DeclInfo di;
     TemplStack stack;
 
-    // 2.6 has no copts.no_implicit_templates (Pro7's first test here and in
-    // CTempl_InstantiateMember and CTempl_GenClassInstance)
-    if (inst->is_extern && !flag) {
+    if (inst->is_extern && !isExplicit) {
         return FALSE;
     }
 
@@ -1806,7 +1778,7 @@ Boolean CTempl_GenFuncInstance(TemplateFunction* templ, TemplFuncInstance* inst,
     }
 
     if (!templ->stream.tokens) {
-        if (flag) {
+        if (isExplicit) {
             CError_SetErrorToken(&templ->deftoken);
             CError_Error(ERR_CANNOT_INSTANTIATE, inst->object);
         }
@@ -1819,7 +1791,7 @@ Boolean CTempl_GenFuncInstance(TemplateFunction* templ, TemplFuncInstance* inst,
 
     saveDebugInfo = copts.filesyminfo;
     if (copts.nosyminline || !templ->deftoken.tokenfile) {
-        copts.filesyminfo = 0;
+        copts.filesyminfo = FALSE;
     }
 
     CError_ASSERT(2112, (tk = lex()) == '{' || tk == ':' || tk == TK_TRY);
@@ -1831,10 +1803,8 @@ Boolean CTempl_GenFuncInstance(TemplateFunction* templ, TemplFuncInstance* inst,
         symdecloffset = cparser_fileoffset.tokenline;
     }
 
-    // 2.6: an explicit instantiation (flag) gets external linkage where Pro7 makes every
-    // instance weak
     if (inst->object->sclass != TK_STATIC) {
-        if (flag) {
+        if (isExplicit) {
             inst->object->sclass = TK_EXTERN;
         } else {
             inst->object->qual |= Q_WEAK;
@@ -1849,12 +1819,12 @@ Boolean CTempl_GenFuncInstance(TemplateFunction* templ, TemplFuncInstance* inst,
     CTemplTool_PushInstance(&stack, NULL, inst->object);
     CTemplTool_MergeArgNames(TYPE_FUNC(templ->tfunc->type), TYPE_FUNC(inst->object->type));
 
-    nspace = CTemplTool_SetupTemplateArgumentNameSpace(templ->params, inst->args, 0);
+    nspace = CTemplTool_SetupTemplateArgumentNameSpace(templ->params, inst->args, FALSE);
     nspace->parent = inst->object->nspace;
     inst->object->nspace = nspace;
 
     CTemplTool_SetupOuterTemplateArgumentNameSpace(nspace);
-    CFunc_ParseFuncDef(inst->object, &di, NULL, 0, 0, nspace);
+    CFunc_ParseFuncDef(inst->object, &di, NULL, FALSE, FALSE, nspace);
     CTemplTool_RemoveOuterTemplateArgumentNameSpace(nspace);
 
     inst->object->nspace = nspace->parent;
@@ -1872,7 +1842,11 @@ Boolean CTempl_GenFuncInstance(TemplateFunction* templ, TemplFuncInstance* inst,
 }
 
 void CTempl_InstantiateMember(
-    TemplClass* templ, TemplClassInst* inst, TemplateMember* tmemb, Object* object, Boolean flag
+    TemplClass* templ,
+    TemplClassInst* inst,
+    TemplateMember* tmemb,
+    Object* object,
+    Boolean isExplicit
 ) {
     Boolean saveDebugInfo;
     NameSpace* nspace;
@@ -1902,10 +1876,8 @@ void CTempl_InstantiateMember(
         symdecloffset = cparser_fileoffset.tokenline;
     }
 
-    // 2.6: an explicit instantiation (flag) clears the storage class where Pro7 makes every
-    // member weak
     if (object->sclass != TK_STATIC) {
-        if (flag) {
+        if (isExplicit) {
             object->sclass = 0;
         } else {
             object->qual |= Q_WEAK;
@@ -1921,7 +1893,7 @@ void CTempl_InstantiateMember(
         case DFUNC:
         case DVFUNC:
             CTemplTool_MergeArgNames(TYPE_FUNC(tmemb->object->type), TYPE_FUNC(object->type));
-            CFunc_ParseFuncDef(object, &di, TYPE_CLASS(inst), 0, 0, NULL);
+            CFunc_ParseFuncDef(object, &di, TYPE_CLASS(inst), FALSE, FALSE, NULL);
             break;
 
         case DDATA:
@@ -1941,7 +1913,7 @@ void CTempl_InstantiateMember(
 }
 
 static Boolean CTempl_GenMemberInstance(
-    TemplClassInst* inst, ObjectTemplated* objtempl, Boolean flag
+    TemplClassInst* inst, ObjectTemplated* objtempl, Boolean isExplicit
 ) {
     TemplateMember* member;
     Object* parent = objtempl->parent;
@@ -1949,44 +1921,43 @@ static Boolean CTempl_GenMemberInstance(
     for (member = CTemplClass_GetMasterTemplate(inst->templ)->members; member;
          member = member->next) {
         if (member->object == parent) {
-            CTempl_InstantiateMember(inst->templ, inst, member, OBJECT(objtempl), flag);
+            CTempl_InstantiateMember(inst->templ, inst, member, OBJECT(objtempl), isExplicit);
             return TRUE;
         }
     }
 
-    if (flag) {
+    if (isExplicit) {
         CError_Warning(ERR_CANNOT_INSTANTIATE, objtempl);
     }
     return FALSE;
 }
 
-static Boolean CTempl_GenClassInstance(TemplClassInst* inst, Boolean flag) {
+static Boolean CTempl_GenClassInstance(TemplClassInst* inst, Boolean isExplicit) {
     Object* object;
     Boolean result;
     CScopeObjectIterator iter;
 
     result = FALSE;
 
-    if (!flag && inst->is_extern) {
+    if (!isExplicit && inst->is_extern) {
         return FALSE;
     }
 
     CScope_InitObjectIterator(&iter, inst->theclass.nspace);
     while ((object = OBJECT(CScope_NextObjectIteratorObject(&iter)))) {
         if (IS_TYPE_FUNC(object->type) && object->datatype != DALIAS) {
-            if ((flag || (object->flags & OBJECT_FLAGS_2)) &&
+            if ((isExplicit || (object->flags & OBJECT_REFERENCED)) &&
                 !(TYPE_FUNC(object->type)->flags & (FUNC_DEFINED | FUNC_AUTO_GENERATED)) &&
-                CTempl_GenMemberInstance(inst, OBJECT_TEMPL(object), flag) &&
+                CTempl_GenMemberInstance(inst, OBJECT_TEMPL(object), isExplicit) &&
                 (TYPE_FUNC(object->type)->flags & FUNC_DEFINED)) {
                 result = TRUE;
             }
         } else {
             if (!inst->static_instantiated &&
-                object->datatype ==
-                DDATA &&
+                object->datatype == DDATA &&
                 !(object->qual & Q_INLINE_DATA) &&
                 !(object->flags & OBJECT_DEFINED) &&
-                CTempl_GenMemberInstance(inst, OBJECT_TEMPL(object), flag)) {
+                CTempl_GenMemberInstance(inst, OBJECT_TEMPL(object), isExplicit)) {
                 result = TRUE;
             }
         }
@@ -2028,7 +1999,7 @@ Boolean CTempl_Instantiate(void) {
         for (instf = templf->instances; instf; instf = instf->next) {
             if (!instf->is_instantiated &&
                 !instf->is_specialized &&
-                (instf->object->flags & OBJECT_FLAGS_2) &&
+                (instf->object->flags & OBJECT_REFERENCED) &&
                 !(TYPE_FUNC(instf->object->type)->flags & FUNC_DEFINED)) {
                 instf->is_instantiated = TRUE;
                 if (CTempl_GenFuncInstance(templf, instf, FALSE)) {
@@ -2061,7 +2032,7 @@ Boolean CTempl_InlineFunctionCheck(Object* funcobj) {
                             TYPE_FUNC(member->object->type), TYPE_FUNC(funcobj->type)
                         );
                         CInline_AddInlineFunctionAction(
-                            funcobj, TYPE_CLASS(inst), &member->fileoffset, &member->stream, 0
+                            funcobj, TYPE_CLASS(inst), &member->fileoffset, &member->stream, FALSE
                         );
                         return TRUE;
                     }
@@ -2073,7 +2044,4 @@ Boolean CTempl_InlineFunctionCheck(Object* funcobj) {
     return FALSE;
 }
 
-// TODO: 2.6 packs ctempl_parseparse 2-byte aligned after ctempl_scanfuncparams. MWCC lays out .bss
-// with the packing in force at the end of the file; some header of 2.6's evidently left pack(2)
-// in effect (CExpr.h once leaked it here).
 #pragma pack(2)

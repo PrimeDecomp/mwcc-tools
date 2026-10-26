@@ -1,18 +1,7 @@
-# One style for the project's own C and C++ (src/{driver,frontend,optimizer,backend}, include/; lib/ and the MSL and
-# runtime wrappers are .clang-format-ignore's): `.venv/bin/clang-format -i FILE...` (pyproject.toml pins the version).
-#
-# Rust-flavoured, roughly rustfmt's defaults: 4-space indent, 100 columns, braces attached, block-indented (not
-# visually aligned) continuations, one item per line once a list doesn't fit, no column alignment.
-#
-# Matching constraints: MWCC's code can follow the source's shape, so nothing here changes what the compiler sees
-# beyond braces (InsertBraces: check a reformat with tools/verify.py). Includes keep their order (a #define can come
-# before the header that reads it), comments are not reflowed, string literals are not split, and no parenthesis or
-# semicolon is added or removed.
 ---
 BasedOnStyle: LLVM
 Standard: Latest
 
-# --- Layout ---------------------------------------------------------------
 ColumnLimit: 100
 IndentWidth: 4
 TabWidth: 4
@@ -32,11 +21,9 @@ KeepEmptyLines:
 InsertNewlineAtEOF: true
 LineEnding: LF
 
-# --- Braces: always, on the same line --------------------------------------
 BreakBeforeBraces: Attach
 InsertBraces: true
 
-# --- Short things ----------------------------------------------------------
 AllowShortFunctionsOnASingleLine: Empty
 AllowShortIfStatementsOnASingleLine: Never
 AllowShortLoopsOnASingleLine: false
@@ -44,9 +31,7 @@ AllowShortBlocksOnASingleLine: Empty
 AllowShortCaseLabelsOnASingleLine: false
 AllowShortEnumsOnASingleLine: false
 
-# --- Breaking / wrapping (rustfmt-style block indent) ---------------------
 AlignAfterOpenBracket: BlockIndent
-# (an if's condition breaks like any expression: no lone `) {`, the same for `if` and `else if`)
 BreakAfterOpenBracketIf: false
 BreakBeforeCloseBracketIf: false
 AlignOperands: DontAlign
@@ -64,15 +49,16 @@ AllowAllArgumentsOnNextLine: true
 AllowAllParametersOfDeclarationOnNextLine: true
 BreakAfterReturnType: None
 PenaltyReturnTypeOnItsOwnLine: 10000
-# (an operator ends the line: no `== 0) {` alone after a call broken over lines)
 BreakBeforeBinaryOperators: None
 BreakBeforeTernaryOperators: true
-# (a condition or expression too long for a line: one operand per line, as rustfmt does)
-BreakBinaryOperations: OnePerLine
+BreakBinaryOperations:
+  Default: Never
+  PerOperator:
+    - Operators: ["&&", "||"]
+      Style: OnePerLine
 Cpp11BracedListStyle: true
 SeparateDefinitionBlocks: Leave
 
-# --- Pointers, spacing ----------------------------------------------------
 DerivePointerAlignment: false
 PointerAlignment: Left
 ReferenceAlignment: Pointer
@@ -85,7 +71,6 @@ SpacesBeforeTrailingComments: 1
 SpacesInParens: Never
 SpacesInSquareBrackets: false
 
-# --- Things that must not change what MWCC compiles -----------------------
 SortIncludes: Never
 IncludeBlocks: Preserve
 ReflowComments: false
@@ -93,5 +78,4 @@ BreakStringLiterals: false
 RemoveParentheses: Leave
 RemoveSemicolon: false
 RemoveBracesLLVM: false
-# (these stringify their condition into the assertion message: its spelling is the original's bytes)
 WhitespaceSensitiveMacros: [OS_ASSERT, OPTION_ASSERT, IRO_ASSERT, IRO_ASSERT_T]

@@ -12,10 +12,12 @@
 #include "compiler/PCode.h"
 #include "compiler/PCodeUtilities.h"
 #include "compiler/RegisterInfo.h"
-#include "compiler/Registers.h"
 #include "compiler/TOC.h"
+#include "common.h"
+#include "PCodeInfo.h"
+#include "tokens.h"
+#include "types.h"
 #include <stdlib.h>
-#include "compiler/CPrep.h"
 
 typedef struct CaseRange {
     CInt64 min;
@@ -133,11 +135,10 @@ static void build_case_ranges(Type* type, SwitchCase* cases, CLabel* label) {
     nranges_minus1 = currange - caseranges;
 }
 
-// 2.6 declares `reg` and `value` at the top (Pro7: in the block that uses them); the registers follow
 static void treecompare(SInt32 start, SInt32 end) {
     int reg;
-    SInt32 r30;
-    SInt32 r29;
+    SInt32 below;
+    SInt32 pivot;
     int count;
     SInt32 value;
     CaseRange* currange;
@@ -145,16 +146,16 @@ static void treecompare(SInt32 start, SInt32 end) {
     count = end - start;
     CError_ASSERT(175, selector_type->size <= 4);
 
-    r29 = start + (count >> 1) + 1;
-    currange = caseranges + r29;
+    pivot = start + (count >> 1) + 1;
+    currange = caseranges + pivot;
 
     if (CInt64_Equal(currange[-1].range, cint64_zero) &&
         (!(count & 1) || (CInt64_NotEqual(currange->range, cint64_zero) && count > 1))) {
         currange--;
-        r29--;
+        pivot--;
     }
 
-    r30 = r29 - 1;
+    below = pivot - 1;
 
     if (selector_type->size < 4 && is_unsigned(selector_type)) {
         emitpcode(PC_CMPLI, 0, selector_gpr, CInt64_GetULong(&currange->min));
@@ -163,19 +164,18 @@ static void treecompare(SInt32 start, SInt32 end) {
         if (FITS_IN_SHORT(value)) {
             emitpcode(PC_CMPI, 0, selector_gpr, value);
         } else {
-            // the register is allocated after `value` is pushed (a separate statement allocates first)
             load_immediate(reg = ALLOC_GPR(), value);
             emitpcode(PC_CMP, 0, selector_gpr, reg);
         }
     }
 
-    if (CInt64_Equal(currange->range, cint64_zero) && r29 < end) {
+    if (CInt64_Equal(currange->range, cint64_zero) && pivot < end) {
         branch_conditional(0, EEQU, 1, currange->label);
-        r29++;
+        pivot++;
     }
 
-    if (r29 == end) {
-        if (start == r30) {
+    if (pivot == end) {
+        if (start == below) {
             if (caseranges[start].label == caseranges[end].label) {
                 branch_always(caseranges[start].label);
             } else {
@@ -184,44 +184,43 @@ static void treecompare(SInt32 start, SInt32 end) {
             }
         } else {
             branch_conditional(0, EGREATEREQU, 1, caseranges[end].label);
-            treecompare(start, r30);
+            treecompare(start, below);
         }
     } else {
-        if (start == r30) {
+        if (start == below) {
             branch_conditional(0, ELESS, 1, caseranges[start].label);
-            treecompare(r29, end);
+            treecompare(pivot, end);
         } else {
             PCodeLabel* label = makepclabel();
             branch_conditional(0, EGREATEREQU, 1, label);
-            treecompare(start, r30);
+            treecompare(start, below);
             branch_label(label);
-            treecompare(r29, end);
+            treecompare(pivot, end);
         }
     }
 }
 
 static void I8_treecompare(SInt32 start, SInt32 end) {
-    SInt32 r30;
-    SInt32 r29;
+    SInt32 below;
+    SInt32 pivot;
     CaseRange* currange;
     int count;
-    // one set for every branch (Pro7 declares them in each block; the registers follow)
     short a, b, c, d;
 
     count = end - start;
 
-    r29 = start + (count >> 1) + 1;
-    currange = caseranges + r29;
+    pivot = start + (count >> 1) + 1;
+    currange = caseranges + pivot;
 
     if (CInt64_Equal(currange[-1].range, cint64_zero) &&
         (!(count & 1) || (CInt64_NotEqual(currange->range, cint64_zero) && count > 1))) {
         currange--;
-        r29--;
+        pivot--;
     }
 
-    r30 = r29 - 1;
+    below = pivot - 1;
 
-    if (CInt64_Equal(currange->range, cint64_zero) && r29 < end) {
+    if (CInt64_Equal(currange->range, cint64_zero) && pivot < end) {
         a = ALLOC_GPR();
         b = ALLOC_GPR();
         load_immediate(a, currange->min.lo);
@@ -231,11 +230,11 @@ static void I8_treecompare(SInt32 start, SInt32 end) {
         emitpcode(PC_OR, b, a, b);
         emitpcode(PC_CMPI, 0, b, 0);
         branch_conditional(0, EEQU, 1, currange->label);
-        r29++;
+        pivot++;
     }
 
-    if (r29 == end) {
-        if (start == r30) {
+    if (pivot == end) {
+        if (start == below) {
             if (caseranges[start].label == caseranges[end].label) {
                 branch_always(caseranges[start].label);
             } else {
@@ -245,8 +244,7 @@ static void I8_treecompare(SInt32 start, SInt32 end) {
                 d = ALLOC_GPR();
                 load_immediate(a, currange->min.lo);
                 load_immediate(b, currange->min.hi);
-                if (TYPE_INTEGRAL(selector_type)->integral !=
-                    IT_ULONGLONG &&
+                if (TYPE_INTEGRAL(selector_type)->integral != IT_ULONGLONG &&
                     TYPE_INTEGRAL(selector_type)->integral != IT_ULONGLONG) {
                     emitpcode(PC_XORIS, c, selector_gprHi, 0x8000);
                     emitpcode(PC_XORIS, d, b, 0x8000);
@@ -269,8 +267,7 @@ static void I8_treecompare(SInt32 start, SInt32 end) {
             d = ALLOC_GPR();
             load_immediate(a, currange->min.lo);
             load_immediate(b, currange->min.hi);
-            if (TYPE_INTEGRAL(selector_type)->integral !=
-                IT_ULONGLONG &&
+            if (TYPE_INTEGRAL(selector_type)->integral != IT_ULONGLONG &&
                 TYPE_INTEGRAL(selector_type)->integral != IT_ULONGLONG) {
                 emitpcode(PC_XORIS, c, selector_gprHi, 0x8000);
                 emitpcode(PC_XORIS, d, b, 0x8000);
@@ -284,18 +281,17 @@ static void I8_treecompare(SInt32 start, SInt32 end) {
             emitpcode(PC_NEG, b, b);
             emitpcode(PC_CMPI, 0, b, 0);
             branch_conditional(0, EEQU, 1, caseranges[end].label);
-            I8_treecompare(start, r30);
+            I8_treecompare(start, below);
         }
     } else {
-        if (start == r30) {
+        if (start == below) {
             a = ALLOC_GPR();
             b = ALLOC_GPR();
             c = ALLOC_GPR();
             d = ALLOC_GPR();
             load_immediate(a, currange->min.lo);
             load_immediate(b, currange->min.hi);
-            if (TYPE_INTEGRAL(selector_type)->integral !=
-                IT_ULONGLONG &&
+            if (TYPE_INTEGRAL(selector_type)->integral != IT_ULONGLONG &&
                 TYPE_INTEGRAL(selector_type)->integral != IT_ULONGLONG) {
                 emitpcode(PC_XORIS, c, selector_gprHi, 0x8000);
                 emitpcode(PC_XORIS, d, b, 0x8000);
@@ -308,9 +304,8 @@ static void I8_treecompare(SInt32 start, SInt32 end) {
             emitpcode(PC_SUBFE, b, a, a);
             emitpcode(PC_NEG, b, b);
             emitpcode(PC_CMPI, 0, b, 0);
-            // 2.6: the range below the pivot, caseranges[start] (Pro7 branches to caseranges[end])
             branch_conditional(0, ENOTEQU, 1, caseranges[start].label);
-            I8_treecompare(r29, end);
+            I8_treecompare(pivot, end);
         } else {
             PCodeLabel* label;
             a = ALLOC_GPR();
@@ -319,8 +314,7 @@ static void I8_treecompare(SInt32 start, SInt32 end) {
             d = ALLOC_GPR();
             load_immediate(a, currange->min.lo);
             load_immediate(b, currange->min.hi);
-            if (TYPE_INTEGRAL(selector_type)->integral !=
-                IT_ULONGLONG &&
+            if (TYPE_INTEGRAL(selector_type)->integral != IT_ULONGLONG &&
                 TYPE_INTEGRAL(selector_type)->integral != IT_ULONGLONG) {
                 emitpcode(PC_XORIS, c, selector_gprHi, 0x8000);
                 emitpcode(PC_XORIS, d, b, 0x8000);
@@ -335,9 +329,9 @@ static void I8_treecompare(SInt32 start, SInt32 end) {
             emitpcode(PC_CMPI, 0, b, 0);
             label = makepclabel();
             branch_conditional(0, EEQU, 1, label);
-            I8_treecompare(start, r30);
+            I8_treecompare(start, below);
             branch_label(label);
-            I8_treecompare(r29, end);
+            I8_treecompare(pivot, end);
         }
     }
 }
@@ -384,15 +378,13 @@ static Object* create_switch_table(void) {
     obj->toc = NULL;
     obj->sclass = TK_STATIC;
     obj->qual = Q_CONST;
-    obj->flags |= OBJECT_FLAGS_2 | OBJECT_DEFINED;
+    obj->flags |= OBJECT_REFERENCED | OBJECT_DEFINED;
     obj->u.data.linkname = obj->name;
     obj->type = NULL;
-    // 2.6: the table goes in the data section, and its type is set before createIndirect
     obj->section = GetCurrentSection(SECT_DATA);
     obj->type = TYPE(&void_ptr);
-    createIndirect(obj, 0, 0);
+    createIndirect(obj, FALSE, FALSE);
 
-    // the size is stored, then read back for lalloc's argument
     obj->u.data.u.switchtable.data =
         lalloc(4 * (obj->u.data.u.switchtable.size = CInt64_GetULong(&range) + 1));
 
@@ -420,15 +412,15 @@ static void generate_table(ENode* expr, SwitchInfo* info) {
     short reg;
     SwitchCase* curcase;
     short reg2;
-    short reg3;
+    short targetReg;
     Operand op1;
     Operand op2;
 
-    CInt64 val3 = {0, 3};
+    CInt64 three = {0, 3};
     memclrw(&op1, sizeof(Operand));
     memclrw(&op2, sizeof(Operand));
 
-    if (CInt64_Greater(first, cint64_zero) && CInt64_Less(first, val3)) {
+    if (CInt64_Greater(first, cint64_zero) && CInt64_Less(first, three)) {
         range = CInt64_Add(range, first);
         first = cint64_zero;
     }
@@ -449,7 +441,6 @@ static void generate_table(ENode* expr, SwitchInfo* info) {
         value = -CInt64_GetULong(&first);
         if (!FITS_IN_SHORT(value)) {
             emitpcode(PC_ADDIS, reg, op1.reg, 0, HIGH_PART(value));
-            // 2.6 tests the low half (Pro7: `value`, never 0 here)
             if (LOW_PART(value)) {
                 emitpcode(PC_ADDI, reg, reg, 0, LOW_PART(value));
             }
@@ -459,7 +450,6 @@ static void generate_table(ENode* expr, SwitchInfo* info) {
     }
 
     if (!FITS_IN_USHORT(CInt64_GetULong(&range))) {
-        // 2.6 uses reg2 here (Pro7: a block-local `tmp`), allocated after the value is pushed
         load_immediate(reg2 = ALLOC_GPR(), CInt64_GetULong(&range));
         emitpcode(PC_CMPL, 0, reg, reg2);
     } else {
@@ -495,13 +485,13 @@ static void generate_table(ENode* expr, SwitchInfo* info) {
         emitpcode(PC_RLWINM, reg, reg, 2, 0, 29);
     }
 
-    reg3 = reg2;
-    emitpcode(PC_LWZX, reg3, reg3, reg);
+    targetReg = reg2;
+    emitpcode(PC_LWZX, targetReg, targetReg, reg);
     for (curcase = info->cases; curcase; curcase = curcase->next) {
         pcbranch(pclastblock, curcase->label->pclabel);
     }
     pcbranch(pclastblock, info->defaultlabel->pclabel);
-    emitpcode(PC_MTCTR, reg3);
+    emitpcode(PC_MTCTR, targetReg);
     branch_indirect(table);
 }
 
@@ -510,7 +500,6 @@ void switchstatement(ENode* expr, SwitchInfo* info) {
     SwitchCase* swcase;
 
     use_table = copts.switch_tables;
-    // 2.6: no jump tables when preparing for code compression
     if (copts.prepare_compress) {
         use_table = FALSE;
     }
@@ -532,7 +521,6 @@ void switchstatement(ENode* expr, SwitchInfo* info) {
 
     build_case_ranges(expr->rtype, info->cases, info->defaultlabel);
 
-    // one if/else chain (Pro7 returns after the first generate_tree)
     if (TYPE_IS_8BYTES(expr->rtype)) {
         generate_tree(expr);
     } else if (!use_table || nranges_minus1 < 8 || (nranges_minus1 * 2) < ((range.lo / 2) + 4)) {
@@ -542,7 +530,6 @@ void switchstatement(ENode* expr, SwitchInfo* info) {
     }
 }
 
-// declared in this order for 2.6's registers (Pro7: table, list, size, array)
 void dumpswitchtables(Object* funcobj) {
     SInt32 size;
     UInt32* array;
@@ -558,7 +545,6 @@ void dumpswitchtables(Object* funcobj) {
 
         size = table->u.data.u.switchtable.size;
         array = (UInt32*)table->u.data.u.switchtable.data;
-        // Pro7: `while (size--)`, which counts down another way
         while (size) {
             *array = CTool_EndianConvertWord32(((PCodeLabel*)*array)->block->codeOffset);
             size--;

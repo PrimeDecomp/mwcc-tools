@@ -299,6 +299,8 @@ struct Place {
     offset: u32,
     unit: String,
     function: bool,
+    /// gc2's symbol is global (`scope:global`): the link finds it whichever unit defines it.
+    global: bool,
 }
 
 struct Resolver {
@@ -408,6 +410,10 @@ impl Resolver {
             offset,
             unit: unit.name.clone(),
             function,
+            global: theirs
+                .options
+                .get("scope")
+                .is_some_and(|s| s.as_str() == Some("global")),
         })
     }
 }
@@ -1036,7 +1042,9 @@ pub fn run(
                 place.offset,
             ));
             renames.insert(import.name.clone(), ir_name(&alias));
-        } else {
+        } else if !place.global {
+            // (a global needs no alias: where gc2's splits are coarser than its units, as 1.3.2's, the unit they
+            // give may not be the one that defines it)
             ensure!(
                 interface(ir).0.contains(&place.name),
                 "{}: {unit} does not define {}",

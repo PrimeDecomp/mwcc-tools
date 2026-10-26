@@ -1,33 +1,24 @@
-// COptimizer.c: Pro7's file without its statement-level CSE (BasicBlockAnalyze and the rest), which
-// 2.6 lacks: no 2.6 function calls it and its jump tables are not in 2.6's .data. The CSE's statics
-// stay, as 2.6's .bss has them.
 #include "compiler/COptimizer.h"
 #include "compiler/IrOptimizer.h"
 #include "compiler/CError.h"
-#include "compiler/CException.h"
 #include "compiler/CExpr.h"
 #include "compiler/CFunc.h"
 #include "compiler/CInt64.h"
 #include "compiler/CodeGen.h"
 #include "compiler/CompilerTools.h"
 #include "compiler/CParser.h"
-#include "compiler/CPrep.h"
 #include "compiler/enode.h"
 #include "compiler/Exceptions.h"
 #include "compiler/InlineAsm.h"
 #include "compiler/objects.h"
-#include "compiler/Registers.h"
 #include "compiler/Switch.h"
 #include "compiler/types.h"
 
-// The dead CSE's types (Pro7 defines them in COptimizer.h): only its statics' pointers remain
 typedef struct COptBlock COptBlock;
 typedef struct COptCSE COptCSE;
 typedef struct COptCSEList COptCSEList;
 
 Boolean copt_isleaffunction;
-// (Pro7's, but setbytes is declared second and objrefnode and objrefnodes are gone, as the .bss
-// says; the CSE's are used by no function 2.6 keeps)
 static Boolean stmtchanged;
 static short setbytes;
 static COptBlock* currentblock;
@@ -40,7 +31,6 @@ static Boolean cse_invals;
 static Boolean static_for_inlines;
 static short replaces;
 
-// (the dead CSE's set-bit table: unused, but 2.6's .data starts with it)
 // clang-format off
 static short bitmasks[] = {
     1, 2, 4, 8, 0x10, 0x20, 0x40, 0x80,
@@ -58,7 +48,7 @@ static CLabel* finallabel(CLabel* label, Statement* stmt) {
             }
             if (scan->type == ST_GOTO) {
                 if (scan->label != label) {
-                    stmtchanged = 1;
+                    stmtchanged = TRUE;
                 }
                 return scan->label;
             }
@@ -75,7 +65,7 @@ static void optimizegoto(Statement* stmt) {
     for (scan = stmt->next; scan; scan = scan->next) {
         if (stmt->label->stmt == scan) {
             stmt->type = ST_NOP;
-            stmtchanged = 1;
+            stmtchanged = TRUE;
             return;
         }
         if (scan->type > ST_LABEL) {
@@ -86,78 +76,76 @@ static void optimizegoto(Statement* stmt) {
     stmt->label = finallabel(stmt->label, stmt);
 }
 
-static void removeif(Statement* stmt, Boolean flag) {
-    if (((stmt->type == ST_IFGOTO) && flag) || ((stmt->type == ST_IFNGOTO) && !flag)) {
+static void removeif(Statement* stmt, Boolean condValue) {
+    if (((stmt->type == ST_IFGOTO) && condValue) || ((stmt->type == ST_IFNGOTO) && !condValue)) {
         Statement* copy = lalloc(sizeof(Statement));
         *copy = *stmt;
         copy->type = ST_GOTO;
         stmt->next = copy;
     }
     stmt->type = ST_EXPRESSION;
-    stmtchanged = 1;
+    stmtchanged = TRUE;
 }
 
 static void optimizeif(Statement* stmt) {
     Statement* scan;
-    Statement* scan2;
-    Boolean flag;
+    Statement* jump;
+    Boolean sawLabel;
 
     if (iszero(stmt->expr)) {
-        removeif(stmt, 0);
+        removeif(stmt, FALSE);
         return;
     }
     if (isnotzero(stmt->expr)) {
-        removeif(stmt, 1);
+        removeif(stmt, TRUE);
         return;
     }
 
-    for (scan = stmt->next, flag = 0; scan; scan = scan->next) {
+    for (scan = stmt->next, sawLabel = FALSE; scan; scan = scan->next) {
         if (scan->type > ST_LABEL) {
             if (scan->type == ST_GOTO) {
                 if (scan->label == stmt->label) {
                     stmt->type = ST_EXPRESSION;
-                    stmtchanged = 1;
+                    stmtchanged = TRUE;
                     return;
                 }
 
-                if (!flag) {
-                    // (2.6 walks on with scan and keeps the goto in scan2, where Pro7 walks with scan2;
-                    // the outer loop ends after either)
-                    scan2 = scan;
+                if (!sawLabel) {
+                    jump = scan;
                     for (scan = scan->next; scan; scan = scan->next) {
                         if (scan->type > ST_LABEL) {
                             break;
                         }
                         if (stmt->label->stmt == scan) {
-                            stmt->label = scan2->label;
-                            scan2->type = ST_NOP;
+                            stmt->label = jump->label;
+                            jump->type = ST_NOP;
                             if (stmt->type == ST_IFGOTO) {
                                 stmt->type = ST_IFNGOTO;
                             } else {
                                 stmt->type = ST_IFGOTO;
                             }
-                            stmtchanged = 1;
+                            stmtchanged = TRUE;
                             stmt->label = finallabel(stmt->label, stmt);
                             return;
                         }
                     }
                 }
-            } else if (scan->type == ST_RETURN && !scan->expr && !static_for_inlines && !flag) {
-                scan2 = scan;
+            } else if (scan->type == ST_RETURN && !scan->expr && !static_for_inlines && !sawLabel) {
+                jump = scan;
                 for (scan = scan->next; scan; scan = scan->next) {
                     if (scan->type > ST_LABEL) {
                         break;
                     }
                     if (stmt->label->stmt == scan) {
                         stmt->label = cleanreturnlabel;
-                        needs_cleanup = 1;
-                        scan2->type = ST_NOP;
+                        needs_cleanup = TRUE;
+                        jump->type = ST_NOP;
                         if (stmt->type == ST_IFGOTO) {
                             stmt->type = ST_IFNGOTO;
                         } else {
                             stmt->type = ST_IFGOTO;
                         }
-                        stmtchanged = 1;
+                        stmtchanged = TRUE;
                         return;
                     }
                 }
@@ -166,12 +154,12 @@ static void optimizeif(Statement* stmt) {
         }
 
         if (scan->type == ST_LABEL) {
-            flag = 1;
+            sawLabel = TRUE;
         }
 
         if (stmt->label->stmt == scan) {
             stmt->type = ST_EXPRESSION;
-            stmtchanged = 1;
+            stmtchanged = TRUE;
             return;
         }
     }
@@ -193,8 +181,11 @@ static void optimizeswitch(Statement* stmt) {
 
     if (ENODE_IS(stmt->expr, EINTCONST)) {
         for (swcase = info->cases; swcase; swcase = swcase->next) {
-            // (2.6's cases are single values; Pro7's are ranges)
+#if VERSION < VERSION_GC_2_0
+            if (CInt64_GreaterEqual(swcase->min, stmt->expr->data.intval) && CInt64_LessEqual(swcase->max, stmt->expr->data.intval)) {
+#else
             if (CInt64_Equal(swcase->min, stmt->expr->data.intval)) {
+#endif
                 break;
             }
         }
@@ -211,7 +202,7 @@ static void removeunusedlabels(Statement* stmt) {
     ExceptionAction* action;
 
     for (scan = stmt; scan; scan = scan->next) {
-        scan->marked = 0;
+        scan->marked = FALSE;
     }
 
     for (scan = stmt; scan; scan = scan->next) {
@@ -221,48 +212,48 @@ static void removeunusedlabels(Statement* stmt) {
             case ST_IFNGOTO:
             case ST_OVF:
                 if (scan->label->stmt) {
-                    scan->label->stmt->marked = 1;
+                    scan->label->stmt->marked = TRUE;
                 }
                 break;
             case ST_SWITCH:
-                ((SwitchInfo*)scan->label)->defaultlabel->stmt->marked = 1;
+                ((SwitchInfo*)scan->label)->defaultlabel->stmt->marked = TRUE;
                 for (swcase = ((SwitchInfo*)scan->label)->cases; swcase; swcase = swcase->next) {
-                    swcase->label->stmt->marked = 1;
+                    swcase->label->stmt->marked = TRUE;
                 }
                 break;
             case ST_ASM:
                 if ((label = InlineAsm_GetReferencedLabel(scan))) {
-                    label->stmt->marked = 1;
+                    label->stmt->marked = TRUE;
                 }
                 if ((label = InlineAsm_GetReferencedLabel2(scan))) {
-                    label->stmt->marked = 1;
+                    label->stmt->marked = TRUE;
                 }
                 break;
             case ST_BEGINLOOP:
-                ((LoopInfo*)scan->expr)->stmt->marked = 1;
+                ((LoopInfo*)scan->expr)->stmt->marked = TRUE;
                 break;
             case ST_ENDLOOP:
                 if (scan->next->type == ST_GOTO && scan->next->next->type == ST_LABEL) {
-                    scan->next->next->marked = 1;
+                    scan->next->next->marked = TRUE;
                 }
                 break;
             default:
                 for (action = scan->dobjstack; action; action = action->prev) {
                     if (action->type == EAT_CATCHBLOCK) {
-                        action->data.catch_block.catch_label->stmt->marked = 1;
-                        action->data.catch_block.catch_label->stmt->flags |= StmtFlag_1;
+                        action->data.catch_block.catch_label->stmt->marked = TRUE;
+                        action->data.catch_block.catch_label->stmt->flags |= StmtFlag_KeepLabel;
                     } else if (action->type == EAT_SPECIFICATION) {
-                        action->data.specification.unexp_label->stmt->marked = 1;
-                        action->data.specification.unexp_label->stmt->flags |= StmtFlag_1;
+                        action->data.specification.unexp_label->stmt->marked = TRUE;
+                        action->data.specification.unexp_label->stmt->flags |= StmtFlag_KeepLabel;
                     }
                 }
         }
     }
 
     for (scan = stmt; scan; scan = scan->next) {
-        if (scan->type == ST_LABEL && !scan->marked && !(scan->flags & StmtFlag_1)) {
+        if (scan->type == ST_LABEL && !scan->marked && !(scan->flags & StmtFlag_KeepLabel)) {
             scan->type = ST_NOP;
-            stmtchanged = 1;
+            stmtchanged = TRUE;
         }
     }
 }
@@ -283,6 +274,8 @@ static void optimizebranches(Statement* stmt) {
             case ST_SWITCH:
                 optimizeswitch(scan);
                 break;
+            default:
+                break;
         }
     }
 }
@@ -292,13 +285,12 @@ void SetVarUsage(Object* obj, Boolean noregister) {
 
     CError_ASSERT(1875, obj->datatype != DALIAS);
 
-    // (Pro7 also counts DNONLAZYPTR objects, which are Mach-O's)
     if (obj->datatype != DLOCAL) {
         return;
     }
 
     vi = obj->u.var.info;
-    vi->used = 1;
+    vi->used = TRUE;
     if (!copts.globaloptimizer) {
         if (copts.optimizesize) {
             vi->usage++;
@@ -308,7 +300,7 @@ void SetVarUsage(Object* obj, Boolean noregister) {
     }
 
     if (noregister) {
-        vi->noregister = 1;
+        vi->noregister = TRUE;
     }
 }
 
@@ -318,18 +310,18 @@ static void checkexpression(ENode* expr) {
     while (1) {
         switch (expr->type) {
             case EOBJREF:
-                SetVarUsage(expr->data.objref, 1);
+                SetVarUsage(expr->data.objref, TRUE);
                 return;
             case EINDIRECT:
                 if (ENODE_IS(expr->data.monadic, EOBJREF)) {
-                    SetVarUsage(expr->data.monadic->data.objref, 0);
+                    SetVarUsage(expr->data.monadic->data.objref, FALSE);
                     return;
                 }
                 expr = expr->data.monadic;
                 break;
             case EFUNCCALL:
             case EFUNCCALLP:
-                copt_isleaffunction = 0;
+                copt_isleaffunction = FALSE;
                 checkexpression(expr->data.funccall.funcref);
                 for (list = expr->data.funccall.args; list; list = list->next) {
                     checkexpression(list->node);
@@ -432,7 +424,7 @@ static void colorcode(Statement* stmt) {
     SwitchCase* swcase;
 
     while (stmt && !stmt->marked) {
-        stmt->marked = 1;
+        stmt->marked = TRUE;
         switch (stmt->type) {
             case ST_GOTOEXPR:
                 return;
@@ -464,7 +456,7 @@ static void colorcode(Statement* stmt) {
             case ST_ENDLOOP:
                 if (stmt->next && stmt->next->type == ST_GOTO) {
                     stmt = stmt->next;
-                    stmt->marked = 1;
+                    stmt->marked = TRUE;
                 }
                 break;
             case ST_NOP:
@@ -487,12 +479,12 @@ static void removeunusedcode(Statement* stmt) {
     Statement* scan;
 
     for (scan = stmt; scan; scan = scan->next) {
-        scan->marked = 0;
+        scan->marked = FALSE;
     }
 
     colorcode(stmt);
     for (scan = stmt; scan; scan = scan->next) {
-        if (!scan->marked && (scan->flags & StmtFlag_1)) {
+        if (!scan->marked && (scan->flags & StmtFlag_KeepLabel)) {
             colorcode(scan);
         }
     }
@@ -500,7 +492,7 @@ static void removeunusedcode(Statement* stmt) {
     for (scan = stmt; scan; scan = scan->next) {
         if (!scan->marked && scan->type != ST_NOP) {
             scan->type = ST_NOP;
-            stmtchanged = 1;
+            stmtchanged = TRUE;
         }
     }
 }
@@ -509,8 +501,6 @@ static void COpt_ReturnCheck(Object* obj, Statement* stmt) {
     Statement* scan;
 
     if ((copts.pedantic || copts.cplusplus) && obj && TYPE_FUNC(obj->type)->functype != &stvoid) {
-        // (a copy of the parameter where Pro7 walks stmt itself: walking the parameter changes the
-        // registers)
         scan = stmt;
         while (scan) {
             if (!scan->next && scan->type != ST_GOTO && scan->type != ST_RETURN) {
@@ -518,7 +508,7 @@ static void COpt_ReturnCheck(Object* obj, Statement* stmt) {
                 break;
             }
 
-            if (scan->type == ST_RETURN && !scan->expr && !(scan->flags & StmtFlag_8)) {
+            if (scan->type == ST_RETURN && !scan->expr && !(scan->flags & StmtFlag_AfterNoReturn)) {
                 CError_Warning(ERR_RETURN_VALUE_EXPECTED);
                 break;
             }
@@ -533,7 +523,7 @@ static void COpt_Optimize(Object* obj, Statement* stmt) {
     Statement** ptr;
 
     do {
-        stmtchanged = 0;
+        stmtchanged = FALSE;
         optimizebranches(stmt->next);
         removeunusedcode(stmt->next);
     } while (stmtchanged);
@@ -550,7 +540,7 @@ static void COpt_Optimize(Object* obj, Statement* stmt) {
 
 static void COpt_ELABELCallBack(ENode* expr) {
     CError_ASSERT(2195, expr->data.label->stmt && expr->data.label->stmt->type == ST_LABEL);
-    expr->data.label->stmt->flags |= StmtFlag_1;
+    expr->data.label->stmt->flags |= StmtFlag_KeepLabel;
 }
 
 void COpt_SimpleOptimizer(Object* obj, Statement* stmt) {
@@ -562,19 +552,19 @@ void COpt_SimpleOptimizer(Object* obj, Statement* stmt) {
         }
     }
 
-    static_for_inlines = 1;
+    static_for_inlines = TRUE;
     cleanreturnlabel = NULL;
     COpt_Optimize(obj, stmt);
     COpt_ReturnCheck(obj, stmt);
 }
 
 Statement* COpt_Optimizer(Object* obj, Statement* stmt) {
-    copt_isleaffunction = 1;
+    copt_isleaffunction = TRUE;
     if (copts.globaloptimizer) {
         stmt = IRO_Optimizer(obj, stmt);
     }
 
-    static_for_inlines = 0;
+    static_for_inlines = FALSE;
     COpt_Optimize(obj, stmt);
 
     if (obj && !(obj->qual & Q_INLINE)) {

@@ -1,29 +1,4 @@
 #!/usr/bin/env python3
-"""python tools/bindings.py COMMAND ...: config/VERSION/bindings.json against what the original's code says. Each
-reads the build's objects: run ninja first.
-
-  learn VERSION... [--write]
-      The address of each external symbol the sources reference without a binding, where functions that are the
-      original's but for their relocated fields all say the same: a binding to add (--write adds them). Not learned,
-      and listed: an address that is a row's (the code calls a function by another name than its row's), an address
-      bound under another name (the two names are one variable: rename one), symbols the functions disagree about.
-  audit VERSION [--fix]
-      Each bound name that every reference from such functions puts at one other address: a wrong binding (--fix moves
-      it there). A row whose callers all call another address is listed too (swapped row names), never fixed.
-  infer SOURCE [--version V] [--min-votes N] [--write]
-      Like learn, for one source and from all its functions: an inexact function's references count where its code
-      and the original's line up around them. Each symbol with the address its references agree on (at least N, default
-      2, or all of them when one function references it) and the names already there: when SOURCE is written with the
-      reference's names (Pro7's), those are the repository's stand-ins for the same variable (rename them). --write
-      adds the agreed symbols nothing is bound at.
-  refs VERSION ADDRESS...
-      The original's functions with an absolute reference to each ADDRESS (a field at an offset into a struct is
-      another address).
-  refs --wii [--exe EXE] NAME...  /  refs --wii [--exe EXE] --function FUNCTION...
-      The Wii compiler's functions referencing each data public NAME, or the data publics each Wii FUNCTION
-      references (C names; default EXE build/compilers/Wii/1.0RC1/mwcceppc.exe). Two names bound at one address: the
-      functions that reference it in the original, against the ones that reference a Wii public, say which it is.
-"""
 
 import argparse
 import bisect
@@ -42,7 +17,6 @@ def hexes(counter):
 
 
 def names_at(version):
-    """{address: [names]} of the bindings and rows."""
     out = collections.defaultdict(list)
     for name, address in config.bindings(version).items():
         if not is_import(name):
@@ -155,12 +129,10 @@ def infer(version, source, min_votes, write):
 
 
 class Referrers:
-    """The functions of an executable with an absolute reference to an address (its base-relocated words)."""
-
     def __init__(self, pe, functions):
-        self.functions = sorted(functions)  # [(start, end, label)]
+        self.functions = sorted(functions)
         self.starts = [f[0] for f in self.functions]
-        self.sites = collections.defaultdict(list)  # value -> [site]
+        self.sites = collections.defaultdict(list)
         for site in pe.base_relocations:
             self.sites[pe.word(site)].append(site)
 
@@ -216,8 +188,13 @@ def wii_refs(exe, names, functions):
 
 
 def main():
-    parser = argparse.ArgumentParser(usage=__doc__.split("\n")[0][len("python tools/bindings.py ") :])
-    commands = parser.add_subparsers(dest="command", required=True)
+    parser = argparse.ArgumentParser(
+        prog="tools/bindings.py",
+        usage="%(prog)s learn|audit|infer|refs ...",
+        description="Check config/VERSION/bindings.json against the original's code (run ninja first).",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    commands = parser.add_subparsers(dest="command", required=True, metavar="COMMAND")
     p = commands.add_parser("learn")
     p.add_argument("versions", nargs="+")
     p.add_argument("--write", action="store_true")
@@ -245,7 +222,13 @@ def main():
         elif args.wii:
             wii_refs(args.exe, [] if args.function else args.args, args.args if args.function else [])
         else:
-            refs(project.version(args.args[0]), [int(a, 16) for a in args.args[1:]])
+            if len(args.args) < 2:
+                parser.error("refs VERSION ADDRESS...")
+            try:
+                addresses = [int(a, 16) for a in args.args[1:]]
+            except ValueError:
+                parser.error(f"refs takes hexadecimal addresses, not {' '.join(args.args[1:])}")
+            refs(project.version(args.args[0]), addresses)
     except project.Error as e:
         sys.exit(f"error: {e}")
 

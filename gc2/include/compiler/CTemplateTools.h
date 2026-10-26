@@ -3,7 +3,6 @@
 
 #include "compiler/common.h"
 #include "compiler/enode.h"
-#include "compiler/types.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -14,7 +13,7 @@ extern short ctempl_instdepth;
 extern void CTemplTool_PushInstance(TemplStack* stack, TypeClass* tmclass, Object* func);
 extern void CTemplTool_PopInstance(TemplStack* stack);
 extern Boolean CTemplTool_InitDeduceInfo(
-    DeduceInfo* info, TemplParam* params, TemplArg* args, Boolean flag
+    DeduceInfo* info, TemplParam* params, TemplArg* args, Boolean checkUndeduced
 );
 extern void CTemplTool_InsertTemplateParameter(NameSpace* nspace, TemplParam* param);
 extern TemplArg* CTemplTool_MakeTemplArgList(DeduceInfo* info);

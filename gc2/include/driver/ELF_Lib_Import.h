@@ -9,18 +9,14 @@
 extern "C" {
 #endif
 
-// The linker's state (Wii's COMMON `linkinfo`, 0x598 bytes): the compiler's importer clears it and
-// uses only the byte at 0x290, set from the linker panel's PLinker.suppresswarn, which keeps
-// linkwarning quiet. TODO: invented type and member names
 typedef struct LinkInfo {
     UInt8 unknown000[0x290];
-    UInt8 nowarnings;
+    UInt8 nolinkwarnings;
     UInt8 unknown291[0x307];
 } LinkInfo;
 
 extern jmp_buf linkerexit;
 extern LinkInfo linkinfo;
-// (the linker diagnostics' counts: Wii's names, which fit the COMMONs' hash order)
 extern SInt32 linkererrors;
 extern SInt32 linkerwarnings;
 

@@ -2,9 +2,10 @@
 #include "driver/IO.h"
 #include "driver/Memory.h"
 #include "driver/Option.h"
+#include "driver/option_system.h"
+#include "driver/parser.h"
 #include "driver/ParserErrors.h"
 #include "driver/pref_structs.h"
-#include "driver/Projects.h"
 #include "driver/StringUtils.h"
 #include "driver/TargetOptimizerHelpers-eabi-ppc.h"
 #include <stdlib.h>
@@ -12,7 +13,6 @@
 
 Boolean setOldOptimizerOptions;
 
-// (Pro7's assumed name)
 typedef struct PIROptimizer {
     Boolean commonsubs;
     Boolean loopinvariants;
@@ -23,7 +23,7 @@ typedef struct PIROptimizer {
     Boolean lifetimes;
 } PIROptimizer;
 
-static PIROptimizer pIrOptimizer = {0};
+static PIROptimizer pIrOptimizer = {FALSE};
 
 // clang-format off
 Pragma irPragmas[] = {
@@ -40,7 +40,7 @@ Pragma irPragmas[] = {
 
 int SetPragmaOptimizationsToUnspecified(const char* opt, void* str, const char* param, int flags) {
     if (setOldOptimizerOptions) {
-        Option_Warning(62);
+        Option_Warning(CLPStr62);
     }
 
     memset(&pIrOptimizer, 0, sizeof(pIrOptimizer));
@@ -57,13 +57,11 @@ int SetOptFlags(const char* opt, void* str, const char* param, int flags) {
     int bar;
 
     ptr = (unsigned char*)str;
-    if (flags & PARAMPARSEFLAGS_8) {
+    if (flags & PARAMPARSEFLAGS_NEGATED) {
         no = TRUE;
     } else {
         no = FALSE;
     }
-    // TODO: as in WarningHelpers' SetWarningFlags (tried there), 2.6 keeps `no` and `no ^ 1` in
-    // two int stack slots that the '-' and '|' cases read
     set = bar = (minus = no) ^ 1;
 
     while (*ptr) {
@@ -124,8 +122,6 @@ int SetOptFlags(const char* opt, void* str, const char* param, int flags) {
                 case 'G4':
                     pGlobalOptimizer.optimizationlevel = set ? 4 : 0;
                     break;
-                // 2.6 stores byte constants here (`mov al`), not Pro7's ints: probably a byte-sized
-                // enum for speed/size whose names are lost
                 case 'Gs':
                     pGlobalOptimizer.optfor = set ? (Boolean)1 : (Boolean)0;
                     break;
@@ -170,7 +166,6 @@ int DisplayOptimizationOptions(const char* opt, void* str, const char* param, in
     if (pIrOptimizer.loopinvariants) {
         HPrintF(h, "\t- loop invariants %s\n", (pIrOptimizer.loopinvariants == 1) ? "on" : "off");
     }
-    // (2.6 tests propagation; Pro7's text tests commonsubs)
     if (pIrOptimizer.propagation) {
         HPrintF(h, "\t- constant propagation %s\n", (pIrOptimizer.propagation == 1) ? "on" : "off");
     }

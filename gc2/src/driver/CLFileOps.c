@@ -1,20 +1,32 @@
 #include "driver/CLFileOps.h"
+#include "driver/CLAccessPaths.h"
 #include "driver/CLBrowser.h"
+#include "driver/CLDependencies.h"
 #include "driver/CLErrors.h"
+#include "driver/CLFiles.h"
 #include "driver/CLIncludeFileCache.h"
 #include "driver/CLIO.h"
 #include "driver/CLMain.h"
 #include "driver/CLPluginRequests.h"
 #include "driver/CLPlugins.h"
+#include "driver/CLTarg.h"
 #include "driver/CLToolExec.h"
 #include "driver/CLWriteObjectFile.h"
+#include "driver/cmdline.h"
+#include "driver/CWPlugins.h"
+#include "driver/DropInCompilerLinker.h"
+#include "driver/Files.h"
 #include "driver/Generic.h"
 #include "driver/MacSpecs.h"
+#include "driver/Memory.h"
+#include "driver/MsDos.h"
+#include "driver/oslib.h"
+#include "driver/pref_structs.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-static void set_bytes(UInt32 size, int* n, const char** unit);
+static void set_bytes(UInt32 size, int* amount, const char** unit);
 
 static int OutputTextData(File* file, SInt16 stage, OSType maccreator, OSType mactype) {
     int ret = 0;
@@ -175,14 +187,14 @@ int GetOutputFile(File* file, SInt16 stage) {
                     CLReportError(CLStr102, targetoutfilename);
                     file->writeToDisk &= ~stage;
                     file->tempOnDisk &= ~stage;
-                    return 0;
+                    return FALSE;
                 }
                 file->writeToDisk &= ~stage;
                 file->tempOnDisk &= ~stage;
             }
         } else {
             CLReportOSError(
-                9,
+                CLStr9,
                 err,
                 targetoutfilename,
                 OS_PathSpecToString(&gTarg->outputDirectory, STSbuf, sizeof(STSbuf))
@@ -191,14 +203,14 @@ int GetOutputFile(File* file, SInt16 stage) {
         return err == 0;
     }
 
-    return 1;
+    return TRUE;
 }
 
 static int SyntaxCheckFile(File* file) {
     if (!SendCompilerRequest(file->compiler, file, 0)) {
-        return 0;
+        return FALSE;
     }
-    return 1;
+    return TRUE;
 }
 
 static int PreprocessFile(File* file) {
@@ -206,15 +218,15 @@ static int PreprocessFile(File* file) {
 
     if (!(file->dropinflags & kCanpreprocess)) {
         CLReportWarning(CLStr53, Plugin_GetDropInName(file->compiler), file->srcfilename);
-        return 1;
+        return TRUE;
     }
 
-    if (!SendCompilerRequest(file->compiler, file, 1)) {
-        return 0;
+    if (!SendCompilerRequest(file->compiler, file, CmdLineStageMask_Pp)) {
+        return FALSE;
     }
 
     if (!GetOutputFile(file, CmdLineStageMask_Pp)) {
-        return 0;
+        return FALSE;
     }
 
     if (file->textdata) {
@@ -228,7 +240,7 @@ static int PreprocessFile(File* file) {
     }
 
     CLReportError(CLStr96, "preprocessing", file->srcfilename);
-    return 0;
+    return FALSE;
 }
 
 static int DependencyMapFile(File* file, Boolean compileifnecessary) {
@@ -238,19 +250,19 @@ static int DependencyMapFile(File* file, Boolean compileifnecessary) {
     cof = Plugin_CL_GetObjectFlags(file->compiler);
     if (!(optsCmdLine.stages & (CmdLineStageMask_Pp | CmdLineStageMask_Cg)) && compileifnecessary) {
         if (!SendCompilerRequest(file->compiler, file, CmdLineStageMask_Dp)) {
-            return 0;
+            return FALSE;
         }
     }
 
     if (!GetOutputFile(file, CmdLineStageMask_Cg)) {
-        return 0;
+        return FALSE;
     }
 
     Deps_ListDependencies(&gTarg->incls, file, &mf);
     file->textdata = OS_CreateMacHandle(&mf);
 
     if (!GetOutputFile(file, CmdLineStageMask_Dp)) {
-        return 0;
+        return FALSE;
     }
 
     if (OutputTextData(
@@ -259,9 +271,9 @@ static int DependencyMapFile(File* file, Boolean compileifnecessary) {
             optsCompiler.depFileCreator ? optsCompiler.depFileCreator : cof->depFileCreator,
             optsCompiler.depFileType ? optsCompiler.depFileType : cof->depFileType
         )) {
-        return 1;
+        return TRUE;
     } else {
-        return 0;
+        return FALSE;
     }
 }
 
@@ -269,7 +281,7 @@ static int RecordBrowseInfo(File* file) {
     const CWObjectFlags* cof;
 
     if (!file->recordbrowseinfo) {
-        return 1;
+        return TRUE;
     }
 
     if (!file->browsedata) {
@@ -278,7 +290,7 @@ static int RecordBrowseInfo(File* file) {
             Plugin_GetDropInName(file->compiler),
             OS_SpecToStringRelative(&file->srcfss, NULL, STSbuf, sizeof(STSbuf))
         );
-        return 0;
+        return FALSE;
     }
 
     if ((optsCmdLine.toDisk & CmdLineStageMask_Cg) && optsCompiler.browserEnabled) {
@@ -288,18 +300,18 @@ static int RecordBrowseInfo(File* file) {
                 optsCompiler.brsFileCreator ? optsCompiler.brsFileCreator : cof->brsFileCreator,
                 optsCompiler.brsFileType ? optsCompiler.brsFileType : cof->brsFileType
             )) {
-            return 0;
+            return FALSE;
         }
     }
 
-    return 1;
+    return TRUE;
 }
 
 static int RecordObjectData(File* file) {
     const CWObjectFlags* cof = Plugin_CL_GetObjectFlags(file->compiler);
 
     if (!file->objectdata) {
-        return 1;
+        return TRUE;
     }
 
     if (!WriteObjectFile(
@@ -307,44 +319,44 @@ static int RecordObjectData(File* file) {
             optsCompiler.objFileCreator ? optsCompiler.objFileCreator : cof->objFileCreator,
             optsCompiler.objFileType ? optsCompiler.objFileType : cof->objFileType
         )) {
-        return 0;
+        return FALSE;
     }
 
-    return 1;
+    return TRUE;
 }
 
 int StoreObjectFile(File* file) {
     if (file->wroteToDisk & CmdLineStageMask_Cg) {
-        return 1;
+        return TRUE;
     }
 
     if (!file->objectdata && !file->browsedata) {
-        return 1;
+        return TRUE;
     }
 
     if (GetOutputFile(file, CmdLineStageMask_Cg)) {
         if (!((file->writeToDisk | file->tempOnDisk) & CmdLineStageMask_Cg)) {
-            return 1;
+            return TRUE;
         }
 
         if (!RecordBrowseInfo(file) || !RecordObjectData(file)) {
-            return 0;
+            return FALSE;
         }
 
         file->wroteToDisk |= CmdLineStageMask_Cg;
-        return 1;
+        return TRUE;
     }
 
-    return 0;
+    return FALSE;
 }
 
 static int CompileFile(File* file) {
-    int ret = 1;
+    int ret = TRUE;
 
     if (!(file->dropinflags & kCanprecompile) &&
         ((optsCompiler.forcePrecompile == 1) || (file->mappingflags & kPrecompile))) {
         CLReportWarning(CLStr54, Plugin_GetDropInName(file->compiler), file->srcfilename);
-        return 1;
+        return TRUE;
     }
 
     if (optsCompiler.browserEnabled) {
@@ -355,7 +367,7 @@ static int CompileFile(File* file) {
         OS_SpecToString(&file->srcfss, fullpath, sizeof(fullpath));
         ret = Browser_SearchAndAddFile(&clState.browseTableHandle, fullpath, &id);
         if (!ret) {
-            return 0;
+            return FALSE;
         }
         file->recordbrowseinfo = ret < 0;
         file->browseFileID = id;
@@ -364,21 +376,21 @@ static int CompileFile(File* file) {
         }
     } else {
         memset(file->browseoptions, 0, sizeof(file->browseoptions));
-        file->recordbrowseinfo = 0;
-        file->recordbrowseinfo = 0;
+        file->recordbrowseinfo = FALSE;
+        file->recordbrowseinfo = FALSE;
         file->browseFileID = 0;
     }
 
-    if (!SendCompilerRequest(file->compiler, file, 2)) {
-        ret = 0;
+    if (!SendCompilerRequest(file->compiler, file, CmdLineStageMask_Cg)) {
+        ret = FALSE;
     } else {
         if ((!file->hasobjectcode || !file->objectdata) &&
             (file->dropinflags & kGeneratescode) &&
-            (file->objectUsage & 2)) {
+            (file->objectUsage & CmdLineStageMask_Cg)) {
             CLReportError(CLStr96, "compiling", file->srcfilename);
-            ret = 0;
+            ret = FALSE;
         } else if (optsCmdLine.state == OptsCmdLineState_Compile && !StoreObjectFile(file)) {
-            ret = 0;
+            ret = FALSE;
         }
     }
 
@@ -408,16 +420,16 @@ static int DisassembleWithLinker(File* file, Plugin* linker, SInt32 linkerDropin
 static int DisassembleFile(File* file) {
     if (!file->hasobjectcode && !file->hasresources) {
         CLReportError(CLStr56, file->srcfilename);
-        return 0;
+        return FALSE;
     }
 
     if (!GetOutputFile(file, CmdLineStageMask_Ds)) {
-        return 0;
+        return FALSE;
     }
 
     if (file->dropinflags & kCandisassemble) {
         if (!SendDisassemblerRequest(file->compiler, file)) {
-            return 0;
+            return FALSE;
         }
 
         if (file->textdata) {
@@ -430,7 +442,7 @@ static int DisassembleFile(File* file) {
             );
         }
         CLReportError(CLStr96, "disassembling", file->srcfilename);
-        return 0;
+        return FALSE;
 
     } else {
         if ((gTarg->linkerDropinFlags & isExecutableTool) &&
@@ -456,7 +468,7 @@ static int DisassembleFile(File* file) {
                 }
                 CLReportError(CLStr96, "disassembling", file->srcfilename);
             }
-            return 0;
+            return FALSE;
         }
         if (gTarg->preLinker && !(gTarg->preLinkerDropinFlags & cantDisassemble)) {
             if (SendDisassemblerRequest(gTarg->preLinker, file)) {
@@ -472,7 +484,7 @@ static int DisassembleFile(File* file) {
                 }
                 CLReportError(CLStr96, "disassembling", file->srcfilename);
             }
-            return 0;
+            return FALSE;
         }
 
         if (gTarg->linker) {
@@ -486,7 +498,7 @@ static int DisassembleFile(File* file) {
             CLReportError(CLStr57, Plugin_GetDropInName(file->compiler), file->srcfilename);
         }
 
-        return 0;
+        return FALSE;
     }
 }
 
@@ -499,14 +511,14 @@ static int CompileEntry(File* file, Boolean* compiled) {
 
     if (optsCmdLine.dryRun) {
         *compiled = TRUE;
-        return 1;
+        return TRUE;
     }
 
-    if (!(file->sourceUsage & 1)) {
+    if (!(file->sourceUsage & CmdLineStageMask_Pp)) {
         if (file->mappingflags & kRsrcfile) {
             *compiled = TRUE;
         }
-        return 1;
+        return TRUE;
     }
 
     OS_ASSERT(835, file->compiler);
@@ -517,19 +529,19 @@ static int CompileEntry(File* file, Boolean* compiled) {
     Deps_ChangeSpecialAccessPath(&file->srcfss, TRUE);
 
     if ((optsCmdLine.stages == 0) && !SyntaxCheckFile(file)) {
-        return 0;
+        return FALSE;
     }
     if ((optsCmdLine.stages & CmdLineStageMask_Pp) && !PreprocessFile(file)) {
-        return 0;
+        return FALSE;
     }
     if ((optsCmdLine.stages & (CmdLineStageMask_Cg | CmdLineStageMask_Ds)) && !CompileFile(file)) {
-        return 0;
+        return FALSE;
     }
     if ((optsCmdLine.stages & CmdLineStageMask_Dp) && !DependencyMapFile(file, TRUE)) {
-        return 0;
+        return FALSE;
     }
     if ((optsCmdLine.stages & CmdLineStageMask_Ds) && !DisassembleFile(file)) {
-        return 0;
+        return FALSE;
     }
 
     if (optsCmdLine.verbose && (optsCmdLine.stages & CmdLineStageMask_Cg)) {
@@ -563,13 +575,11 @@ static int CompileEntry(File* file, Boolean* compiled) {
         }
     }
 
-    return 1;
+    return TRUE;
 }
 
-// (2.6, where Pro7 writes `cun = dun = uun = "bytes"`) a size and its unit for the verbose statistics.
-// TODO: invented name (gc1's; Wii's CLFileOps has this static unnamed)
-static void set_bytes(UInt32 size, int* n, const char** unit) {
-    *n = size;
+static void set_bytes(UInt32 size, int* amount, const char** unit) {
+    *amount = size;
     *unit = "bytes";
 }
 
@@ -706,8 +716,8 @@ int CompileFilesInProject(void) {
                 failed = TRUE;
                 clState.countWarnings = 0;
                 clState.countErrors = 0;
-                clState.withholdWarnings = 0;
-                clState.withholdErrors = 0;
+                clState.withholdWarnings = FALSE;
+                clState.withholdErrors = FALSE;
             } else {
                 return CheckForUserBreak() ? Result_Cancelled : Result_Failed;
             }
@@ -726,8 +736,8 @@ int CompileFilesInProject(void) {
                     failed = TRUE;
                     clState.countWarnings = 0;
                     clState.countErrors = 0;
-                    clState.withholdWarnings = 0;
-                    clState.withholdErrors = 0;
+                    clState.withholdWarnings = FALSE;
+                    clState.withholdErrors = FALSE;
                 } else {
                     return CheckForUserBreak() ? Result_Cancelled : Result_Failed;
                 }

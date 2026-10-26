@@ -5,10 +5,10 @@
 #include "compiler/CInit.h"
 #include "compiler/CompilerTools.h"
 #include "compiler/CParser.h"
-#include "compiler/CPrep.h"
 #include "compiler/objects.h"
 #include "compiler/ObjGen_PPC_EABI.h"
 #include "compiler/PCode.h"
+#include "compiler/PCodeInfo.h"
 #include "compiler/PCodeUtilities.h"
 #include "compiler/RegisterInfo.h"
 #include "compiler/Registers.h"
@@ -19,7 +19,7 @@ typedef struct EANode {
     struct EANode* prev;
     ExceptionAction* action;
     UInt16 count;
-    UInt16 actionOffset; // (its actions' offset in the table; TODO: invented name, Pro7: xE)
+    UInt16 actionOffset;
 } EANode;
 
 typedef struct PCAction {
@@ -91,8 +91,6 @@ static void addrelocation(Object* obj, SInt32 offset) {
     last_except_ref = ref;
 }
 
-// The table records. Pro7 lays them out mac68k-packed; 2.6's are naturally aligned, so a record's
-// relocated word (the last) sits at its natural offset.
 typedef struct AABC {
     UInt8 a;
     UInt8 b;
@@ -198,7 +196,7 @@ typedef struct AA {
 static void allocateactioninfo(EANode* node) {
     ExceptionAction* ea;
     SInt32 offset;
-    UInt32 flag26;
+    UInt32 lastFlag;
     int reg;
     int reg2;
 
@@ -208,7 +206,7 @@ static void allocateactioninfo(EANode* node) {
             node->actionOffset = offset;
         }
 
-        flag26 = node->prev ? 0 : 0x80;
+        lastFlag = node->prev ? 0 : 0x80;
 
         ea = node->action;
 
@@ -219,7 +217,7 @@ static void allocateactioninfo(EANode* node) {
             case EAT_DESTROYLOCAL: {
                 if (local_is_16bit_offset(ea->data.destroy_local.local)) {
                     AABC e;
-                    e.a = flag26 | 2;
+                    e.a = lastFlag | 2;
                     e.b = 0;
                     e.c = CTool_EndianConvertWord16(local_offset_16(ea->data.destroy_local.local));
                     e.d = 0;
@@ -227,7 +225,7 @@ static void allocateactioninfo(EANode* node) {
                     addrelocation(ea->data.destroy_local.dtor, offset + 4);
                 } else {
                     AACC e;
-                    e.a = flag26 | 0x11;
+                    e.a = lastFlag | 0x11;
                     e.b = 0;
                     e.c = CTool_EndianConvertWord32(local_offset_32(ea->data.destroy_local.local));
                     e.d = 0;
@@ -241,7 +239,7 @@ static void allocateactioninfo(EANode* node) {
                 if ((reg || local_is_16bit_offset(ea->data.destroy_local_cond.cond)) &&
                     local_is_16bit_offset(ea->data.destroy_local_cond.local)) {
                     AABBC e;
-                    e.a = flag26 | 3;
+                    e.a = lastFlag | 3;
                     e.b = (reg ? 1 : 0) << 7;
                     e.c = CTool_EndianConvertWord16(
                         reg ? reg : local_offset_16(ea->data.destroy_local_cond.cond)
@@ -254,7 +252,7 @@ static void allocateactioninfo(EANode* node) {
                     addrelocation(ea->data.destroy_local_cond.dtor, offset + 8);
                 } else {
                     AACCC e;
-                    e.a = flag26 | 0x12;
+                    e.a = lastFlag | 0x12;
                     e.b = (reg ? 1 : 0) << 7;
                     e.c = CTool_EndianConvertWord32(
                         reg ? reg : local_offset_32(ea->data.destroy_local_cond.cond)
@@ -271,7 +269,7 @@ static void allocateactioninfo(EANode* node) {
             case EAT_DESTROYLOCALOFFSET: {
                 if (local_is_16bit_offset(ea->data.destroy_local_offset.local)) {
                     AABC e;
-                    e.a = flag26 | 2;
+                    e.a = lastFlag | 2;
                     e.b = 0;
                     e.c = CTool_EndianConvertWord16(
                         ea->data.destroy_local_offset.offset +
@@ -282,7 +280,7 @@ static void allocateactioninfo(EANode* node) {
                     addrelocation(ea->data.destroy_local_offset.dtor, offset + 4);
                 } else {
                     AACC e;
-                    e.a = flag26 | 0x11;
+                    e.a = lastFlag | 0x11;
                     e.b = 0;
                     e.c = CTool_EndianConvertWord32(
                         ea->data.destroy_local_offset.offset +
@@ -298,7 +296,7 @@ static void allocateactioninfo(EANode* node) {
                 reg = OBJECT_REG(ea->data.destroy_local_pointer.pointer);
                 if (reg || local_is_16bit_offset(ea->data.destroy_local_pointer.pointer)) {
                     AABC e;
-                    e.a = flag26 | 4;
+                    e.a = lastFlag | 4;
                     e.b = (reg ? 1 : 0) << 7;
                     e.c = CTool_EndianConvertWord16(
                         reg ? reg : local_offset_16(ea->data.destroy_local_pointer.pointer)
@@ -308,7 +306,7 @@ static void allocateactioninfo(EANode* node) {
                     addrelocation(ea->data.destroy_local_pointer.dtor, offset + 4);
                 } else {
                     AACC e;
-                    e.a = flag26 | 0x13;
+                    e.a = lastFlag | 0x13;
                     e.b = (reg ? 1 : 0) << 7;
                     e.c = CTool_EndianConvertWord32(
                         reg ? reg : local_offset_32(ea->data.destroy_local_pointer.pointer)
@@ -322,7 +320,7 @@ static void allocateactioninfo(EANode* node) {
             case EAT_DESTROYLOCALARRAY: {
                 if (local_is_16bit_offset(ea->data.destroy_local_array.localarray)) {
                     AABBBC e;
-                    e.a = flag26 | 5;
+                    e.a = lastFlag | 5;
                     e.b = 0;
                     e.c = CTool_EndianConvertWord16(
                         local_offset_16(ea->data.destroy_local_array.localarray)
@@ -334,7 +332,7 @@ static void allocateactioninfo(EANode* node) {
                     addrelocation(ea->data.destroy_local_array.dtor, offset + 8);
                 } else {
                     AACCCC e;
-                    e.a = flag26 | 0x14;
+                    e.a = lastFlag | 0x14;
                     e.b = 0;
                     e.c = CTool_EndianConvertWord32(
                         local_offset_32(ea->data.destroy_local_array.localarray)
@@ -351,7 +349,7 @@ static void allocateactioninfo(EANode* node) {
                 reg = OBJECT_REG(ea->data.destroy_member.objectptr);
                 if (reg || local_is_16bit_offset(ea->data.destroy_member.objectptr)) {
                     AABCC e;
-                    e.a = flag26 | 7;
+                    e.a = lastFlag | 7;
                     e.b = (reg ? 1 : 0) << 7;
                     e.c = CTool_EndianConvertWord16(
                         reg ? reg : local_offset_16(ea->data.destroy_member.objectptr)
@@ -362,7 +360,7 @@ static void allocateactioninfo(EANode* node) {
                     addrelocation(ea->data.destroy_member.dtor, offset + 8);
                 } else {
                     AACCC e;
-                    e.a = flag26 | 0x16;
+                    e.a = lastFlag | 0x16;
                     e.b = (reg ? 1 : 0) << 7;
                     e.c = CTool_EndianConvertWord32(
                         reg ? reg : local_offset_32(ea->data.destroy_member.objectptr)
@@ -378,7 +376,7 @@ static void allocateactioninfo(EANode* node) {
                 reg = OBJECT_REG(ea->data.destroy_base.objectptr);
                 if (reg || local_is_16bit_offset(ea->data.destroy_base.objectptr)) {
                     AABCC e;
-                    e.a = flag26 | 6;
+                    e.a = lastFlag | 6;
                     e.b = (reg ? 1 : 0) << 7;
                     e.c = CTool_EndianConvertWord16(
                         reg ? reg : local_offset_16(ea->data.destroy_base.objectptr)
@@ -389,7 +387,7 @@ static void allocateactioninfo(EANode* node) {
                     addrelocation(ea->data.destroy_base.dtor, offset + 8);
                 } else {
                     AACCC e;
-                    e.a = flag26 | 0x15;
+                    e.a = lastFlag | 0x15;
                     e.b = (reg ? 1 : 0) << 7;
                     e.c = CTool_EndianConvertWord32(
                         reg ? reg : local_offset_32(ea->data.destroy_base.objectptr)
@@ -407,7 +405,7 @@ static void allocateactioninfo(EANode* node) {
                 if ((reg || local_is_16bit_offset(ea->data.destroy_member_cond.cond)) &&
                     (reg2 || local_is_16bit_offset(ea->data.destroy_member_cond.objectptr))) {
                     AABBCC e;
-                    e.a = flag26 | 8;
+                    e.a = lastFlag | 8;
                     e.b = ((reg ? 1 : 0) << 7) | (((reg2 ? 1 : 0) & 1) << 6);
                     e.c = CTool_EndianConvertWord16(
                         reg ? reg : local_offset_16(ea->data.destroy_member_cond.cond)
@@ -421,7 +419,7 @@ static void allocateactioninfo(EANode* node) {
                     addrelocation(ea->data.destroy_member_cond.dtor, offset + 12);
                 } else {
                     AACCCC e;
-                    e.a = flag26 | 0x17;
+                    e.a = lastFlag | 0x17;
                     e.b = ((reg ? 1 : 0) << 7) | (((reg2 ? 1 : 0) & 1) << 6);
                     e.c = CTool_EndianConvertWord32(
                         reg ? reg : local_offset_32(ea->data.destroy_member_cond.cond)
@@ -440,7 +438,7 @@ static void allocateactioninfo(EANode* node) {
                 reg = OBJECT_REG(ea->data.destroy_member_array.objectptr);
                 if (reg || local_is_16bit_offset(ea->data.destroy_member_array.objectptr)) {
                     AABCCCC e;
-                    e.a = flag26 | 9;
+                    e.a = lastFlag | 9;
                     e.b = (reg ? 1 : 0) << 7;
                     e.c = CTool_EndianConvertWord16(
                         reg ? reg : local_offset_16(ea->data.destroy_member_array.objectptr)
@@ -453,7 +451,7 @@ static void allocateactioninfo(EANode* node) {
                     addrelocation(ea->data.destroy_member_array.dtor, offset + 16);
                 } else {
                     AACCCCC e;
-                    e.a = flag26 | 0x18;
+                    e.a = lastFlag | 0x18;
                     e.b = (reg ? 1 : 0) << 7;
                     e.c = CTool_EndianConvertWord32(
                         reg ? reg : local_offset_32(ea->data.destroy_member_array.objectptr)
@@ -472,7 +470,7 @@ static void allocateactioninfo(EANode* node) {
                 reg = OBJECT_REG(ea->data.delete_pointer.pointerobject);
                 if (reg || local_is_16bit_offset(ea->data.delete_pointer.pointerobject)) {
                     AABC e;
-                    e.a = flag26 | 0xA;
+                    e.a = lastFlag | 0xA;
                     e.b = (reg ? 1 : 0) << 7;
                     e.c = CTool_EndianConvertWord16(
                         reg ? reg : local_offset_16(ea->data.delete_pointer.pointerobject)
@@ -482,7 +480,7 @@ static void allocateactioninfo(EANode* node) {
                     addrelocation(ea->data.delete_pointer.deletefunc, offset + 4);
                 } else {
                     AACC e;
-                    e.a = flag26 | 0x19;
+                    e.a = lastFlag | 0x19;
                     e.b = (reg ? 1 : 0) << 7;
                     e.c = CTool_EndianConvertWord32(
                         reg ? reg : local_offset_32(ea->data.delete_pointer.pointerobject)
@@ -499,7 +497,7 @@ static void allocateactioninfo(EANode* node) {
                 if ((reg || local_is_16bit_offset(ea->data.delete_pointer_cond.cond)) &&
                     (reg2 || local_is_16bit_offset(ea->data.delete_pointer_cond.pointerobject))) {
                     AABBC e;
-                    e.a = flag26 | 0xB;
+                    e.a = lastFlag | 0xB;
                     e.b = ((reg ? 1 : 0) << 7) | (((reg2 ? 1 : 0) & 1) << 6);
                     e.c = CTool_EndianConvertWord16(
                         reg ? reg : local_offset_16(ea->data.delete_pointer_cond.cond)
@@ -512,7 +510,7 @@ static void allocateactioninfo(EANode* node) {
                     addrelocation(ea->data.delete_pointer_cond.deletefunc, offset + 8);
                 } else {
                     AACCC e;
-                    e.a = flag26 | 0x1A;
+                    e.a = lastFlag | 0x1A;
                     e.b = ((reg ? 1 : 0) << 7) | (((reg2 ? 1 : 0) & 1) << 6);
                     e.c = CTool_EndianConvertWord32(
                         reg ? reg : local_offset_32(ea->data.delete_pointer_cond.cond)
@@ -528,7 +526,7 @@ static void allocateactioninfo(EANode* node) {
             }
             case EAT_CATCHBLOCK: {
                 AACCC e;
-                e.a = flag26 | 0x10;
+                e.a = lastFlag | 0x10;
                 e.b = 0;
                 e.c = 0;
                 if (ea->data.catch_block.catch_label->pclabel) {
@@ -550,7 +548,7 @@ static void allocateactioninfo(EANode* node) {
             case EAT_ACTIVECATCHBLOCK: {
                 if (local_is_16bit_offset(ea->data.active_catch_block.catch_info_object)) {
                     AAB e;
-                    e.a = flag26 | 0xD;
+                    e.a = lastFlag | 0xD;
                     e.b = 0;
                     e.c = CTool_EndianConvertWord16(
                         local_offset_16(ea->data.active_catch_block.catch_info_object)
@@ -558,7 +556,7 @@ static void allocateactioninfo(EANode* node) {
                     AppendGListData(&exceptmodule, &e, sizeof(e));
                 } else {
                     AAC e;
-                    e.a = flag26 | 0x1B;
+                    e.a = lastFlag | 0x1B;
                     e.b = 0;
                     e.c = CTool_EndianConvertWord32(
                         local_offset_32(ea->data.active_catch_block.catch_info_object)
@@ -571,7 +569,7 @@ static void allocateactioninfo(EANode* node) {
                 AABCC e;
                 int i;
 
-                e.a = flag26 | 0xF;
+                e.a = lastFlag | 0xF;
                 e.b = 0;
                 e.c = CTool_EndianConvertWord16(ea->data.specification.unexp_ids);
                 if (ea->data.specification.unexp_label->pclabel) {
@@ -592,7 +590,7 @@ static void allocateactioninfo(EANode* node) {
             }
             case EAT_TERMINATE: {
                 AA e;
-                e.a = flag26 | 0xE;
+                e.a = lastFlag | 0xE;
                 e.b = 0;
                 AppendGListData(&exceptmodule, &e, sizeof(e));
                 break;
@@ -613,7 +611,6 @@ static void allocateactioninfo(EANode* node) {
     }
 }
 
-// (dead in 2.6, as in Pro7; the assert's line is Pro7's)
 static UInt32 findPC(PCode* instr) {
     UInt32 pc = instr->block->codeOffset;
     instr = instr->prevPCode;
@@ -697,6 +694,8 @@ int countexceptionactionregisters(ExceptionAction* actions) {
                 if (OBJECT_REG(actions->data.delete_pointer_cond.pointerobject)) {
                     count++;
                 }
+                break;
+            default:
                 break;
         }
         actions = actions->prev;
@@ -808,6 +807,8 @@ void noteexceptionactionregisters(ExceptionAction* actions, PCodeArg* ops) {
                     ops++;
                 }
                 break;
+            default:
+                break;
         }
         actions = actions->prev;
     }
@@ -836,8 +837,7 @@ void recordexceptionactions(PCode* instr, ExceptionAction* actions) {
     while (actions) {
         if (actions->type == EAT_CATCHBLOCK && actions->data.catch_block.catch_label->pclabel) {
             pcbranch(instr->block, actions->data.catch_block.catch_label->pclabel);
-        } else if (actions->type ==
-                   EAT_SPECIFICATION &&
+        } else if (actions->type == EAT_SPECIFICATION &&
                    actions->data.catch_block.catch_label->pclabel) {
             pcbranch(instr->block, actions->data.catch_block.catch_label->pclabel);
         }
@@ -902,19 +902,18 @@ static int mergeexceptionactions(void) {
     return count;
 }
 
-// A range of code and its actions (TODO: invented member names; Pro7: x0, x4, x6)
-typedef struct ExceptionThing {
+typedef struct ExceptionRange {
     UInt32 pcOffset;
-    UInt16 pcCount; // (in instructions)
+    UInt16 pcCount;
     UInt16 actionOffset;
-} ExceptionThing;
+} ExceptionRange;
 
 void dumpexceptiontables(Object* function, SInt32 codesize) {
     PCAction* pca;
     UInt32 insn_start;
     UInt32 insn_count;
     UInt16* sh;
-    ExceptionThing* thing;
+    ExceptionRange* range;
     int count;
     char* data;
     SInt32 zero = 0;
@@ -926,7 +925,6 @@ void dumpexceptiontables(Object* function, SInt32 codesize) {
 
     for (pca = pc_actions; pca; pca = pca->next) {
         if (pca->node->count == 0 && pca->node->actionOffset == 0) {
-            // 2.6: each action chain starts 4-aligned
             if (exceptmodule.size & 3) {
                 AppendGListData(
                     &exceptmodule, &zero, ((exceptmodule.size + 3) & ~3) - exceptmodule.size
@@ -942,8 +940,7 @@ void dumpexceptiontables(Object* function, SInt32 codesize) {
         sh[0] = (used_nonvolatile_registers[RegClass_GPR] << 11) |
             ((used_nonvolatile_registers[RegClass_FPR] & 0x1F) << 6) |
             (((used_nonvolatile_registers[RegClass_CRFIELD] != 0) & 1) << 5) |
-            ((dynamic_stack & 1) << 4) |
-            8;
+            ((dynamic_stack & 1) << 4) | 8;
         sh[0] = sh[0] | 4;
         sh[0] = CTool_EndianConvertWord16(sh[0]);
         if (copts.altivec_vrsave) {
@@ -956,9 +953,7 @@ void dumpexceptiontables(Object* function, SInt32 codesize) {
         sh[0] = (used_nonvolatile_registers[RegClass_GPR] << 11) |
             ((used_nonvolatile_registers[RegClass_FPR] & 0x1F) << 6) |
             (((used_nonvolatile_registers[RegClass_CRFIELD] != 0) & 1) << 5) |
-            ((dynamic_stack & 1) << 4) |
-            8;
-        // 2.6: paired singles saved in the nonvolatile FPRs
+            ((dynamic_stack & 1) << 4) | 8;
         if ((copts.processor == CPU_PPCELF || copts.processor == CPU_PPCGEKKO) &&
             StackFrame_has_vectors) {
             sh[0] = sh[0] | 2;
@@ -967,17 +962,17 @@ void dumpexceptiontables(Object* function, SInt32 codesize) {
         sh[1] = 0;
     }
 
-    thing = (ExceptionThing*)(data + 4);
+    range = (ExceptionRange*)(data + 4);
     pca = pc_actions;
     while (pca) {
         insn_start = findPC_long(pca->firstInstr);
         insn_count = (findPC_long(pca->lastInstr) - insn_start) / 4;
         CError_ASSERT(1264, (insn_count & 0xFFFF0000) == 0);
-        thing->pcOffset = CTool_EndianConvertWord32(insn_start + 4);
-        thing->pcCount = CTool_EndianConvertWord16(insn_count);
-        thing->actionOffset = CTool_EndianConvertWord16(pca->node->actionOffset);
+        range->pcOffset = CTool_EndianConvertWord32(insn_start + 4);
+        range->pcCount = CTool_EndianConvertWord16(insn_count);
+        range->actionOffset = CTool_EndianConvertWord16(pca->node->actionOffset);
         pca = pca->next;
-        thing++;
+        range++;
     }
 
     LockGList(&exceptmodule);

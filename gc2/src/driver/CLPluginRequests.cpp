@@ -1,22 +1,25 @@
-// Pro7's CmdLine/Src/CLPluginRequests.cpp: the driver's requests to its plugins.
-// (the command line's C++ sources are built with `bool` off: comparisons are ints; the plugin
-// library's, CWPluginsPrivate.cpp and CWSecretPluginCallbacks.cpp, with it on)
-#pragma bool off
-
 #include "driver/CLPluginRequests.h"
 #include "driver/CLDropinCallbacks_V10.h"
 #include "driver/CLErrors.h"
-#include "driver/CLFileOps.h"
-#include "driver/CLIO.h"
+#include "driver/CLFiles.h"
 #include "driver/CLLicenses.h"
 #include "driver/CLMain.h"
+#include "driver/CLOverlays.h"
 #include "driver/CLPlugins.h"
-#include "driver/Generic.h"
+#include "driver/CLTarg.h"
+#include "driver/cmdline.h"
+#include "driver/CWPlugins.h"
 #include "driver/CWPluginsPrivate.h"
+#include "driver/DropInCompilerLinker.h"
+#include "driver/Files.h"
+#include "driver/Generic.h"
+#include "driver/MacFileTypes.h"
 #include "driver/MacSpecs.h"
+#include "driver/MsDos.h"
+#include "driver/oslib.h"
+#include "driver/pref_structs.h"
 #include <string.h>
 
-// (static, as in Pro7; inside extern "C" so that they keep their C names)
 extern "C" {
 static CW_CALLBACK CallPlugin(Plugin* plugin) {
     return Plugin_Call(plugin, plugin->context);
@@ -29,7 +32,6 @@ static void SetupPluginContext(Plugin* plugin, CWResult request) {
 
     sc = static_cast<shellContextType*>(plugin->context->shellContext);
     sc->plugin = plugin;
-    // (2.6 chains the assignments here and to the OS errors below, where Pro7 has two each)
     sc->userAccessPathsChanged = sc->systemAccessPathsChanged = TRUE;
     plugin->context->request = request;
     plugin->context->apiVersion = 12;
@@ -38,11 +40,11 @@ static void SetupPluginContext(Plugin* plugin, CWResult request) {
     OS_MakeFileSpec("Project.mcp", &spec);
     OS_OSSpec_To_FSSpec(&spec, &plugin->context->projectFile);
     if (gTarg) {
-        OS_MakeSpecWithPath(&gTarg->outputDirectory, NULL, 0, &spec);
+        OS_MakeSpecWithPath(&gTarg->outputDirectory, NULL, FALSE, &spec);
         OS_OSSpec_To_FSSpec(&spec, &plugin->context->outputFileDirectory);
     } else {
         OS_GetCWD(&cwd);
-        OS_MakeSpecWithPath(&cwd, NULL, 0, &spec);
+        OS_MakeSpecWithPath(&cwd, NULL, FALSE, &spec);
         OS_OSSpec_To_FSSpec(&spec, &plugin->context->outputFileDirectory);
     }
 
@@ -70,8 +72,8 @@ Boolean SendParserRequest(
     Plugin* plugin,
     Target* target,
     CWCommandLineArgs* args,
-    UInt32 cpu,
-    UInt32 os,
+    OSType cpu,
+    OSType os,
     int numPlugins,
     const CLPluginInfo* pluginInfo,
     int numPanels,
@@ -108,9 +110,9 @@ Boolean SendParserRequest(
         return FALSE;
     }
 
-    target->linkmodel = (target->targetinfo->linkType == exelinkageSegmented) ? LinkModel1
-        : (target->targetinfo->linkType == exelinkageOverlay1)                ? LinkModel2
-                                                                              : LinkModel0;
+    target->linkmodel = (target->targetinfo->linkType == exelinkageSegmented) ? LinkModel_Segmented
+        : (target->targetinfo->linkType == exelinkageOverlay1)                ? LinkModel_Overlay1
+                                                                              : LinkModel_Flat;
 
     if (!Plugin_VerifyPanels(plugin)) {
         return FALSE;
@@ -138,7 +140,7 @@ Boolean SendCompilerRequest(Plugin* plugin, File* file, SInt16 stage) {
     SInt16 type;
     OSType mactype;
     const char* pn;
-    int v;
+    int detailed;
 
     if (stage & CmdLineStageMask_Cg) {
         if (optsCompiler.forcePrecompile == 1) {
@@ -154,21 +156,21 @@ Boolean SendCompilerRequest(Plugin* plugin, File* file, SInt16 stage) {
 
     if (optsCmdLine.verbose) {
         pn = Plugin_GetDropInName(plugin);
-        v = optsCmdLine.verbose > 1;
+        detailed = optsCmdLine.verbose > 1;
         if (stage & CmdLineStageMask_Pp) {
-            CLReport(CLStr34 + v, file->srcfilename, pn);
+            CLReport(CLStr34 + detailed, file->srcfilename, pn);
         } else if (stage & CmdLineStageMask_Cg) {
             if (precompiling) {
-                CLReport(CLStr32 + v, file->srcfilename, pn);
+                CLReport(CLStr32 + detailed, file->srcfilename, pn);
             } else {
-                CLReport(CLStr30 + v, file->srcfilename, pn);
+                CLReport(CLStr30 + detailed, file->srcfilename, pn);
             }
         } else if (stage & CmdLineStageMask_Dp) {
-            CLReport(CLStr36 + v, file->srcfilename, pn);
+            CLReport(CLStr36 + detailed, file->srcfilename, pn);
         } else if (stage & CmdLineStageMask_Ds) {
-            CLReport(CLStr46 + v, file->srcfilename, pn);
+            CLReport(CLStr46 + detailed, file->srcfilename, pn);
         } else if (!stage) {
-            CLReport(CLStr48 + v, file->srcfilename, pn);
+            CLReport(CLStr48 + detailed, file->srcfilename, pn);
         }
     }
 
@@ -199,20 +201,20 @@ Boolean SendCompilerRequest(Plugin* plugin, File* file, SInt16 stage) {
 
     if (stage & (CmdLineStageMask_Pp | CmdLineStageMask_Dp)) {
         if (stage & CmdLineStageMask_Pp) {
-            cc->preprocess = 1;
+            cc->preprocess = TRUE;
         } else {
             cc->preprocess = 2;
         }
     } else {
-        cc->preprocess = 0;
+        cc->preprocess = FALSE;
     }
 
     if ((stage & CmdLineStageMask_Cg) && precompiling) {
-        cc->precompile = 1;
-        cc->autoprecompile = 1;
+        cc->precompile = TRUE;
+        cc->autoprecompile = TRUE;
     } else {
-        cc->precompile = 0;
-        cc->autoprecompile = 0;
+        cc->precompile = FALSE;
+        cc->autoprecompile = FALSE;
     }
 
     if (!(stage & (CmdLineStageMask_Pp | CmdLineStageMask_Cg | CmdLineStageMask_Dp))) {
@@ -267,7 +269,7 @@ Boolean SendTargetInfoRequest(Target* targ, Plugin* linker, SInt32 dropinflags) 
         targ->targetinfo->outfileCreator = 'CWIE';
         targ->targetinfo->outfileType = 'APPL';
         targ->targetinfo->debuggerCreator = 'MWDB';
-        targ->targetinfo->runHelperCreator = '?\?\?\?'; // ('????', escaped from the trigraphs)
+        targ->targetinfo->runHelperCreator = '?\?\?\?';
         result = cwNoErr;
     }
 
@@ -278,17 +280,17 @@ Boolean SendLinkerRequest(Plugin* plugin, SInt32 dropinflags, CWTargetInfo* targ
     CWResult result;
     CWCompilerLinkerContext* cc;
     const char* nm;
-    int v;
+    int detailed;
 
     if (optsCmdLine.verbose) {
         nm = Plugin_GetDropInName(plugin);
-        v = optsCmdLine.verbose > 1;
+        detailed = optsCmdLine.verbose > 1;
         if (dropinflags & isPostLinker) {
-            CLReport(CLStr44 + v, nm);
+            CLReport(CLStr44 + detailed, nm);
         } else if (dropinflags & isPreLinker) {
-            CLReport(CLStr42 + v, nm);
+            CLReport(CLStr42 + detailed, nm);
         } else {
-            CLReport(CLStr40 + v, nm);
+            CLReport(CLStr40 + detailed, nm);
         }
     }
 

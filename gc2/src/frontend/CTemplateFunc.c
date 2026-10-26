@@ -4,11 +4,16 @@
 #include "compiler/CError.h"
 #include "compiler/CExpr.h"
 #include "compiler/CFunc.h"
+#include "compiler/CInline.h"
 #include "compiler/CInt64.h"
+#include "compiler/CompilerTools.h"
 #include "compiler/CParser.h"
-#include "compiler/ObjGen_PPC_EABI.h"
+#include "compiler/CTemplateTools.h"
+#include "compiler/enode.h"
+#include "compiler/objects.h"
 #include "compiler/scopes.h"
 #include "compiler/templates.h"
+#include "compiler/types.h"
 #include <string.h>
 
 static Boolean ctempl_conversion_deduction;
@@ -16,12 +21,16 @@ static UInt8 ctempl_explicitargs_nindex;
 static int ctempl_explicitargs_num;
 static Boolean ctempl_explicitargs_all;
 
-// forward decls
 static Boolean CTempl_DeduceTypeTemplDep(
-    TypeTemplDep* type1, UInt32 qual1, Type* type2, UInt32 qual2, TemplArg* argArray, Boolean flag
+    TypeTemplDep* type1,
+    UInt32 qual1,
+    Type* type2,
+    UInt32 qual2,
+    TemplArg* argArray,
+    Boolean exactQuals
 );
 static Boolean CTempl_DeduceType1(
-    Type* type1, UInt32 qual1, Type* type2, UInt32 qual2, TemplArg* argArray, Boolean flag
+    Type* type1, UInt32 qual1, Type* type2, UInt32 qual2, TemplArg* argArray, Boolean exactQuals
 );
 
 static void CTemplFunc_SetupTypeDeduce(
@@ -40,8 +49,8 @@ Boolean CTempl_CanDeduceFunc(Object* object, TypeFunc* tfunc, TemplArg* args) {
     DeduceInfo info;
     int i;
 
-    if (CTemplTool_InitDeduceInfo(&info, CTemplTool_GetFuncTempl(object)->params, args, 0)) {
-        if (CTempl_DeduceType(object->type, 0, TYPE(tfunc), 0, info.args, 0, 0)) {
+    if (CTemplTool_InitDeduceInfo(&info, CTemplTool_GetFuncTempl(object)->params, args, FALSE)) {
+        if (CTempl_DeduceType(object->type, 0, TYPE(tfunc), 0, info.args, FALSE, FALSE)) {
             for (i = 0; i < info.maxCount; i++) {
                 if (!info.args[i].is_deduced) {
                     return FALSE;
@@ -109,7 +118,7 @@ static TemplFuncInstance* CTempl_GetCreateFuncInstance(
         if (last->pid.type == TPT_NONTYPE) {
             CError_ASSERT(114, last->data.paramdecl.expr);
             last->data.paramdecl.expr =
-                CInline_CopyExpression(last->data.paramdecl.expr, CopyMode1);
+                CInline_CopyExpression(last->data.paramdecl.expr, CopyModeGlobal);
         }
     }
 
@@ -175,11 +184,11 @@ TemplFuncInstance* CTempl_CheckFuncInstance(
     int i;
 
     templ = CTemplTool_GetFuncTempl(object1);
-    if (!CTemplTool_InitDeduceInfo(&info, templ->params, args, 1)) {
+    if (!CTemplTool_InitDeduceInfo(&info, templ->params, args, TRUE)) {
         return NULL;
     }
 
-    if (!CTempl_DeduceType(object1->type, 0, TYPE(tfunc), 0, info.args, 0, 0)) {
+    if (!CTempl_DeduceType(object1->type, 0, TYPE(tfunc), 0, info.args, FALSE, FALSE)) {
         return NULL;
     }
 
@@ -194,7 +203,7 @@ TemplFuncInstance* CTempl_CheckFuncInstance(
 }
 
 TemplFuncInstance* CTempl_DeduceFunc(
-    Object* object1, TypeFunc* tfunc, TemplArg* args, Object* object2, Boolean flag
+    Object* object1, TypeFunc* tfunc, TemplArg* args, Object* object2, Boolean unused
 ) {
     return CTempl_CheckFuncInstance(object1, tfunc, args, object2);
 }
@@ -231,7 +240,7 @@ static Boolean CTempl_FuncIsAtLeastAsSpecialized(Object* func1, Object* func2) {
         count++;
     }
 
-    if (!CTemplTool_InitDeduceInfo(&info, CTemplTool_GetFuncTempl(func2)->params, NULL, 0)) {
+    if (!CTemplTool_InitDeduceInfo(&info, CTemplTool_GetFuncTempl(func2)->params, NULL, FALSE)) {
         return FALSE;
     }
 
@@ -278,7 +287,7 @@ static Boolean CTempl_FuncIsAtLeastAsSpecialized(Object* func1, Object* func2) {
                 return FALSE;
             }
         } else {
-            if (!CTempl_DeduceType(type2, qual2, type1, qual1, info.args, 0, 0)) {
+            if (!CTempl_DeduceType(type2, qual2, type1, qual1, info.args, FALSE, FALSE)) {
                 return FALSE;
             }
         }
@@ -295,8 +304,6 @@ Boolean CTempl_FuncIsMoreSpecialized(Object* object1, Object* object2) {
         !CTempl_FuncIsAtLeastAsSpecialized(object2, object1);
 }
 
-// TODO: invented name: Pro7 reuses this parameter (which nothing reads) as the count of candidates;
-// 2.6's frame has a local of its own for that
 Object* CTempl_PartialOrdering(Object* object, ObjectList* list, int argcount) {
     int j;
     Object** array;
@@ -475,7 +482,7 @@ static Boolean CTempl_DeduceTemplateType(
 }
 
 static Boolean CTempl_DeduceTemplateTypeBase(
-    TemplClass* templ, TemplArg* args, TemplClassInst* inst, TemplArg* argArray, Boolean flag
+    TemplClass* templ, TemplArg* args, TemplClassInst* inst, TemplArg* argArray, Boolean searchBases
 ) {
     ClassList* base;
 
@@ -483,7 +490,7 @@ static Boolean CTempl_DeduceTemplateTypeBase(
         return TRUE;
     }
 
-    if (flag) {
+    if (searchBases) {
         for (base = inst->theclass.bases; base; base = base->next) {
             if (CTempl_DeduceTemplateType(templ, args, TEMPL_CLASS_INST(base->base), argArray)) {
                 ctempl_conversion_deduction = TRUE;
@@ -558,21 +565,26 @@ static Boolean CTempl_DeduceQualTemplate(
 }
 
 static Boolean CTempl_DeduceTypeTemplDep(
-    TypeTemplDep* type1, UInt32 qual1, Type* type2, UInt32 qual2, TemplArg* argArray, Boolean flag
+    TypeTemplDep* type1,
+    UInt32 qual1,
+    Type* type2,
+    UInt32 qual2,
+    TemplArg* argArray,
+    Boolean exactQuals
 ) {
-    Type* tmptype;
-    UInt32 tmpqual;
+    Type* deducedType;
+    UInt32 deducedQual;
     short index;
-    Boolean f;
+    Boolean modified;
     UInt32 modqual;
 
     switch (type1->dtype) {
         case TEMPLDEP_ARGUMENT:
             index = type1->u.pid.index;
-            tmptype = type2;
+            deducedType = type2;
             if (type1->u.pid.type == TPT_TEMPLATE) {
                 if (argArray[index].is_deduced) {
-                    if (!is_typesame(tmptype, argArray[index].data.ttargtype)) {
+                    if (!is_typesame(deducedType, argArray[index].data.ttargtype)) {
                         return FALSE;
                     }
                 } else {
@@ -585,80 +597,80 @@ static Boolean CTempl_DeduceTypeTemplDep(
 
             switch (type2->type) {
                 case TYPEPOINTER:
-                    tmpqual = qual2;
-                    f = FALSE;
+                    deducedQual = qual2;
+                    modified = FALSE;
                     modqual = qual2 = TPTR_QUAL(type2);
 
                     if ((modqual & Q_CONST) && (qual1 & Q_CONST)) {
                         modqual &= ~Q_CONST;
-                        f = TRUE;
+                        modified = TRUE;
                     }
                     if ((modqual & Q_VOLATILE) && (qual1 & Q_VOLATILE)) {
                         modqual &= ~Q_VOLATILE;
-                        f = TRUE;
+                        modified = TRUE;
                     }
 
-                    if (f) {
-                        tmptype = galloc(sizeof(TypePointer));
-                        *TYPE_POINTER(tmptype) = *TYPE_POINTER(type2);
-                        TPTR_QUAL(tmptype) = modqual;
+                    if (modified) {
+                        deducedType = galloc(sizeof(TypePointer));
+                        *TYPE_POINTER(deducedType) = *TYPE_POINTER(type2);
+                        TPTR_QUAL(deducedType) = modqual;
                     }
 
-                    if (flag && (qual2 | modqual) != (qual1 | modqual)) {
+                    if (exactQuals && (qual2 | modqual) != (qual1 | modqual)) {
                         return FALSE;
                     }
 
                     break;
 
                 case TYPEMEMBERPOINTER:
-                    tmpqual = qual2;
-                    f = FALSE;
+                    deducedQual = qual2;
+                    modified = FALSE;
                     qual2 = TYPE_MEMBER_POINTER(type2)->qual;
                     modqual = qual2;
 
                     if ((modqual & Q_CONST) && (qual1 & Q_CONST)) {
                         modqual &= ~Q_CONST;
-                        f = TRUE;
+                        modified = TRUE;
                     }
                     if ((modqual & Q_VOLATILE) && (qual1 & Q_VOLATILE)) {
                         modqual &= ~Q_VOLATILE;
-                        f = TRUE;
+                        modified = TRUE;
                     }
 
-                    if (f) {
-                        tmptype = galloc(sizeof(TypeMemberPointer));
-                        *TYPE_MEMBER_POINTER(tmptype) = *TYPE_MEMBER_POINTER(type2);
-                        TYPE_MEMBER_POINTER(tmptype)->qual = modqual;
+                    if (modified) {
+                        deducedType = galloc(sizeof(TypeMemberPointer));
+                        *TYPE_MEMBER_POINTER(deducedType) = *TYPE_MEMBER_POINTER(type2);
+                        TYPE_MEMBER_POINTER(deducedType)->qual = modqual;
                     }
 
-                    if (flag && (qual2 | modqual) != (qual1 | modqual)) {
+                    if (exactQuals && (qual2 | modqual) != (qual1 | modqual)) {
                         return FALSE;
                     }
 
                     break;
 
                 default:
-                    tmpqual = 0;
+                    deducedQual = 0;
                     if ((qual2 & Q_CONST) && !(qual1 & Q_CONST)) {
-                        tmpqual |= Q_CONST;
+                        deducedQual |= Q_CONST;
                     }
                     if ((qual2 & Q_VOLATILE) && !(qual1 & Q_VOLATILE)) {
-                        tmpqual |= Q_VOLATILE;
+                        deducedQual |= Q_VOLATILE;
                     }
 
-                    if (flag && (qual2 | tmpqual) != (qual1 | tmpqual)) {
+                    if (exactQuals && (qual2 | deducedQual) != (qual1 | deducedQual)) {
                         return FALSE;
                     }
             }
 
             if (argArray[index].is_deduced) {
-                if (!is_typesame(tmptype, argArray[index].data.typeparam.type) ||
-                    tmpqual != argArray[index].data.typeparam.qual) {
+                if (!is_typesame(deducedType, argArray[index].data.typeparam.type) ||
+                    deducedQual != argArray[index].data.typeparam.qual) {
                     return FALSE;
                 }
             } else {
-                argArray[index].data.typeparam.type = tmptype;
-                argArray[index].data.typeparam.qual = tmpqual;
+                argArray[index].data.typeparam.type = deducedType;
+                argArray[index].data.typeparam.qual = deducedQual;
                 argArray[index].pid.type = TPT_TYPE;
                 argArray[index].is_deduced = TRUE;
             }
@@ -695,7 +707,7 @@ static Boolean CTempl_DeduceTypeTemplDep(
                 SInt32 elements;
 
                 if (!CTempl_DeduceType1(
-                        type1->u.array.type, qual1, TPTR_TARGET(type2), qual2, argArray, flag
+                        type1->u.array.type, qual1, TPTR_TARGET(type2), qual2, argArray, exactQuals
                     )) {
                     return FALSE;
                 }
@@ -703,7 +715,7 @@ static Boolean CTempl_DeduceTypeTemplDep(
                 if (ENODE_IS(type1->u.array.index, EINTCONST)) {
                     CError_ASSERT(963, TPTR_TARGET(type2)->size);
                     elements = type2->size / TPTR_TARGET(type2)->size;
-                    return elements == CInt64_GetULong(&type1->u.array.index->data.intval);
+                    return elements == (SInt32)CInt64_GetULong(&type1->u.array.index->data.intval);
                 }
 
                 if (!ENODE_IS(type1->u.array.index, ETEMPLDEP) ||
@@ -718,7 +730,7 @@ static Boolean CTempl_DeduceTypeTemplDep(
                 if (argArray[index].is_deduced) {
                     CError_ASSERT(978, ENODE_IS(argArray[index].data.paramdecl.expr, EINTCONST));
                     return elements ==
-                        CInt64_GetULong(&argArray[index].data.paramdecl.expr->data.intval);
+                        (SInt32)CInt64_GetULong(&argArray[index].data.paramdecl.expr->data.intval);
                 } else {
                     argArray[index].data.paramdecl.expr =
                         intconstnode(CABI_GetPtrDiffTType(), elements);
@@ -733,7 +745,7 @@ static Boolean CTempl_DeduceTypeTemplDep(
                         TYPE_TEMPLATE(type2)->u.array.type,
                         qual2,
                         argArray,
-                        flag
+                        exactQuals
                     )) {
                     return FALSE;
                 }
@@ -825,13 +837,13 @@ static Boolean CTempl_DeduceFuncType(TypeFunc* tfunc1, TypeFunc* tfunc2, TemplAr
 }
 
 static Boolean CTempl_DeduceType1(
-    Type* type1, UInt32 qual1, Type* type2, UInt32 qual2, TemplArg* argArray, Boolean flag
+    Type* type1, UInt32 qual1, Type* type2, UInt32 qual2, TemplArg* argArray, Boolean exactQuals
 ) {
     while (1) {
         switch (type1->type) {
             case TYPETEMPLATE:
                 return CTempl_DeduceTypeTemplDep(
-                    TYPE_TEMPLATE(type1), qual1, type2, qual2, argArray, flag
+                    TYPE_TEMPLATE(type1), qual1, type2, qual2, argArray, exactQuals
                 );
 
             case TYPEVOID:
@@ -843,8 +855,7 @@ static Boolean CTempl_DeduceType1(
                 return type1 == type2;
 
             case TYPEMEMBERPOINTER:
-                if (type1->type !=
-                    type2->type ||
+                if (type1->type != type2->type ||
                     TYPE_MEMBER_POINTER(type1)->qual != TYPE_MEMBER_POINTER(type2)->qual) {
                     return FALSE;
                 }
@@ -854,7 +865,7 @@ static Boolean CTempl_DeduceType1(
                         TYPE_MEMBER_POINTER(type2)->ty1,
                         qual2,
                         argArray,
-                        flag
+                        exactQuals
                     )) {
                     return FALSE;
                 }
@@ -889,7 +900,7 @@ static Boolean CTempl_DeduceType1(
                         TYPE_FUNC(type2)->functype,
                         TYPE_FUNC(type2)->qual,
                         argArray,
-                        flag
+                        exactQuals
                     )) {
                     return FALSE;
                 }
@@ -951,12 +962,12 @@ static Boolean CTempl_DeduceType2(
 static Boolean CTempl_DeduceType3(
     Type* type1, UInt32 qual1, Type* type2, UInt32 qual2, TemplArg* argArray
 ) {
-    Boolean flag = FALSE;
+    Boolean throughPointer = FALSE;
 
     while (1) {
         switch (type1->type) {
             case TYPEPOINTER:
-                flag = TRUE;
+                throughPointer = TRUE;
                 if (type2->type != TYPEPOINTER) {
                     return FALSE;
                 }
@@ -968,7 +979,7 @@ static Boolean CTempl_DeduceType3(
                 continue;
 
             case TYPEMEMBERPOINTER:
-                flag = TRUE;
+                throughPointer = TRUE;
                 if (type2->type != TYPEMEMBERPOINTER) {
                     return FALSE;
                 }
@@ -991,7 +1002,7 @@ static Boolean CTempl_DeduceType3(
                 continue;
 
             default:
-                if (!flag) {
+                if (!throughPointer) {
                     return FALSE;
                 }
                 if (!CParser_IsSameOrMoreCVQualified(qual2, qual1)) {
@@ -1019,8 +1030,7 @@ static Boolean CTempl_DeduceType4(
     }
 
     if (IS_TYPE_TEMPLATE(type1) &&
-        TYPE_TEMPLATE(type1)->dtype ==
-        TEMPLDEP_TEMPLATE &&
+        TYPE_TEMPLATE(type1)->dtype == TEMPLDEP_TEMPLATE &&
         IS_TYPE_CLASS(type2)) {
         if (CParser_IsSameOrMoreCVQualified(qual1, qual2)) {
             return CTempl_DeduceTemplateTypeBase(
@@ -1044,19 +1054,19 @@ Boolean CTempl_DeduceType(
     Type* type2,
     UInt32 qual2,
     TemplArg* argArray,
-    Boolean flag1,
-    Boolean flag2
+    Boolean fromCall,
+    Boolean fromConversion
 ) {
-    Boolean flag31;
-    Boolean flag8;
+    Boolean wasReference;
+    Boolean exactQuals;
 
-    flag31 = FALSE;
-    flag8 = TRUE;
+    wasReference = FALSE;
+    exactQuals = TRUE;
 
-    if (flag1 || flag2) {
+    if (fromCall || fromConversion) {
         if (IS_TYPE_REFERENCE(type1)) {
             type1 = TPTR_TARGET(type1);
-            flag31 = TRUE;
+            wasReference = TRUE;
         } else {
             switch (type2->type) {
                 case TYPEFUNC:
@@ -1065,26 +1075,28 @@ Boolean CTempl_DeduceType(
                 case TYPEARRAY:
                     type2 = CDecl_NewPointerType(TPTR_TARGET(type2));
                     break;
+                default:
+                    break;
             }
 
             type1 = CParser_RemoveTopMostQualifiers(type1, &qual1);
             type2 = CParser_RemoveTopMostQualifiers(type2, &qual2);
         }
-        flag8 = FALSE;
+        exactQuals = FALSE;
     }
 
-    if (CTempl_DeduceType1(type1, qual1, type2, qual2, argArray, flag8)) {
+    if (CTempl_DeduceType1(type1, qual1, type2, qual2, argArray, exactQuals)) {
         return TRUE;
     }
 
-    if (flag1 || flag2) {
-        if (flag31 && CTempl_DeduceType2(type1, qual1, type2, qual2, argArray)) {
+    if (fromCall || fromConversion) {
+        if (wasReference && CTempl_DeduceType2(type1, qual1, type2, qual2, argArray)) {
             return TRUE;
         }
         if (CTempl_DeduceType3(type1, qual1, type2, qual2, argArray)) {
             return TRUE;
         }
-        if (flag1 && CTempl_DeduceType4(type1, qual1, type2, qual2, argArray)) {
+        if (fromCall && CTempl_DeduceType4(type1, qual1, type2, qual2, argArray)) {
             return TRUE;
         }
     }
@@ -1101,8 +1113,7 @@ static Boolean CTempl_TypeNeedsDeduction(Type* type) {
             case TYPETEMPLATE:
                 switch (TYPE_TEMPLATE(type)->dtype) {
                     case TEMPLDEP_ARGUMENT:
-                        if (TYPE_TEMPLATE(type)->u.pid.index >=
-                            ctempl_explicitargs_num ||
+                        if (TYPE_TEMPLATE(type)->u.pid.index >= ctempl_explicitargs_num ||
                             TYPE_TEMPLATE(type)->u.pid.nindex != ctempl_explicitargs_nindex) {
                             ctempl_explicitargs_all = FALSE;
                         }
@@ -1174,12 +1185,12 @@ static Boolean CTempl_TypeNeedsDeduction(Type* type) {
 }
 
 static Boolean CTempl_MatchTemplFunc(
-    Object* object, DeduceInfo* info, FuncArg* args, ENodeList* exprs, ArgMatch* match13ptr
+    Object* object, DeduceInfo* info, FuncArg* args, ENodeList* exprs, ArgMatch* best
 ) {
-    ArgMatch match13;
+    ArgMatch match;
     int i;
 
-    memclrw(&match13, sizeof(match13));
+    memclrw(&match, sizeof(match));
 
     while (1) {
         if (!args || args->type == &stvoid) {
@@ -1248,8 +1259,7 @@ static Boolean CTempl_MatchTemplFunc(
                     NameSpaceObjectList* list;
 
                     for (list = exprs->node->data.objlist.list; list; list = list->next) {
-                        if (list->object->otype ==
-                            OT_OBJECT &&
+                        if (list->object->otype == OT_OBJECT &&
                             IS_TEMPL_FUNC(OBJECT(list->object)->type)) {
                             break;
                         }
@@ -1270,13 +1280,13 @@ static Boolean CTempl_MatchTemplFunc(
                 }
 
                 if (ctempl_conversion_deduction) {
-                    match13.standard.conversions++;
+                    match.standard.conversions++;
                 } else {
-                    match13.standard.exactMatches++;
+                    match.standard.exactMatches++;
                 }
 
                 if (IS_TYPE_POINTER_ONLY(args->type)) {
-                    CExpr_MatchCV(type2, qual2, args->type, args->qual, &match13);
+                    CExpr_MatchCV(type2, qual2, args->type, args->qual, &match);
                 }
 
             } else {
@@ -1286,13 +1296,13 @@ static Boolean CTempl_MatchTemplFunc(
                 if ((type = CTempl_GetSpecifiedType(
                          CTemplTool_GetFuncTempl(object), args->type, args->qual, info->args, &qual
                      )) &&
-                    !CExpr_MatchAssign(type, qual, exprs->node, &match13)) {
+                    !CExpr_MatchAssign(type, qual, exprs->node, &match)) {
                     return FALSE;
                 }
             }
         } else {
             if (copts.old_argmatch &&
-                !CExpr_MatchAssign(args->type, args->qual, exprs->node, &match13)) {
+                !CExpr_MatchAssign(args->type, args->qual, exprs->node, &match)) {
                 return FALSE;
             }
         }
@@ -1309,15 +1319,11 @@ static Boolean CTempl_MatchTemplFunc(
     }
     info->args[info->maxCount].next = NULL;
 
-    return CExpr_MatchCompare(object, match13ptr, &match13);
+    return CExpr_MatchCompare(object, best, &match);
 }
 
 void CTempl_FuncMatch(
-    NameSpaceObjectList* list,
-    TemplArg* args,
-    ENodeList* argexprs,
-    ArgMatch* match13ptr,
-    ENode* expr
+    NameSpaceObjectList* list, TemplArg* args, ENodeList* argexprs, ArgMatch* best, ENode* expr
 ) {
     Object* obj;
     Object* success;
@@ -1326,18 +1332,15 @@ void CTempl_FuncMatch(
     DeduceInfo info;
     DeduceInfo info2;
 
-    object1 = match13ptr->object;
+    object1 = best->object;
     success = NULL;
     while (list) {
         obj = OBJECT(list->object);
-        if (obj->otype ==
-            OT_OBJECT &&
+        if (obj->otype == OT_OBJECT &&
             IS_TEMPL_FUNC(obj->type) &&
             CExpr_GetFuncMatchArgs(obj, argexprs, expr, &funcMatchArgs) &&
-            CTemplTool_InitDeduceInfo(&info, CTemplTool_GetFuncTempl(obj)->params, args, 0) &&
-            CTempl_MatchTemplFunc(
-                obj, &info, funcMatchArgs.args, funcMatchArgs.exprs, match13ptr
-            )) {
+            CTemplTool_InitDeduceInfo(&info, CTemplTool_GetFuncTempl(obj)->params, args, FALSE) &&
+            CTempl_MatchTemplFunc(obj, &info, funcMatchArgs.args, funcMatchArgs.exprs, best)) {
             info2 = info;
             if (info.args == info.argBuffer) {
                 info2.args = info2.argBuffer;
@@ -1348,7 +1351,7 @@ void CTempl_FuncMatch(
     }
 
     if (success) {
-        if (match13ptr->list) {
+        if (best->list) {
             ENodeList* argexpr = argexprs;
             int argexprcount = 0;
             while (argexpr) {
@@ -1356,28 +1359,27 @@ void CTempl_FuncMatch(
                 argexpr = argexpr->next;
             }
 
-            obj = CTempl_PartialOrdering(match13ptr->object, match13ptr->list, argexprcount);
+            obj = CTempl_PartialOrdering(best->object, best->list, argexprcount);
             if (!obj) {
-                CError_OverloadedFunctionError(match13ptr->object, match13ptr->list);
-                match13ptr->list = NULL;
+                CError_OverloadedFunctionError(best->object, best->list);
+                best->list = NULL;
                 if (object1) {
-                    match13ptr->object = object1;
+                    best->object = object1;
                 } else {
-                    match13ptr->object =
-                        CTempl_GetCreateFuncInstance(success, info2.args, NULL)->object;
+                    best->object = CTempl_GetCreateFuncInstance(success, info2.args, NULL)->object;
                 }
             } else {
                 NameSpaceObjectList mylist;
                 mylist.next = NULL;
                 mylist.object = OBJ_BASE(obj);
-                memclrw(match13ptr, sizeof(ArgMatch));
-                CTempl_FuncMatch(&mylist, args, argexprs, match13ptr, expr);
+                memclrw(best, sizeof(ArgMatch));
+                CTempl_FuncMatch(&mylist, args, argexprs, best, expr);
             }
         } else {
-            match13ptr->object = CTempl_GetCreateFuncInstance(success, info2.args, NULL)->object;
+            best->object = CTempl_GetCreateFuncInstance(success, info2.args, NULL)->object;
         }
     } else {
-        match13ptr->object = object1;
+        best->object = object1;
     }
 }
 
@@ -1424,7 +1426,9 @@ Object* CTempl_DeduceFromFunctionCall(Object* funcobj, TemplArg* templargs, ENod
 
     CError_ASSERT(1657, IS_TEMPL_FUNC(funcobj->type));
 
-    if (CTemplTool_InitDeduceInfo(&info, CTemplTool_GetFuncTempl(funcobj)->params, templargs, 0)) {
+    if (CTemplTool_InitDeduceInfo(
+            &info, CTemplTool_GetFuncTempl(funcobj)->params, templargs, FALSE
+        )) {
         arg = TYPE_FUNC(funcobj->type)->args;
         if (IS_TYPEFUNC_NONSTATIC_METHOD(TYPE_FUNC(funcobj->type))) {
             CError_ASSERT(1666, arg);
@@ -1507,7 +1511,7 @@ Object* CTempl_DeduceFromConversion(Object* funcobj, Type* type, UInt32 qual) {
 
     CError_ASSERT(1747, IS_TEMPL_FUNC(funcobj->type));
 
-    if (!CTemplTool_InitDeduceInfo(&info, CTemplTool_GetFuncTempl(funcobj)->params, NULL, 0)) {
+    if (!CTemplTool_InitDeduceInfo(&info, CTemplTool_GetFuncTempl(funcobj)->params, NULL, FALSE)) {
         return NULL;
     }
 
@@ -1615,8 +1619,7 @@ Object* CTempl_TemplateFunctionCheck(DeclInfo* di, NameSpaceObjectList* nsol) {
     if (arg) {
         while (nsol) {
             object = OBJECT(nsol->object);
-            if (object->otype ==
-                OT_OBJECT &&
+            if (object->otype == OT_OBJECT &&
                 IS_TEMPL_FUNC(object->type) &&
                 CTemplTool_IsSameTemplate(CTemplTool_GetFuncTempl(object)->params, di->expltargs) &&
                 CTemplFunc_SameFuncType(
@@ -1630,8 +1633,7 @@ Object* CTempl_TemplateFunctionCheck(DeclInfo* di, NameSpaceObjectList* nsol) {
     } else {
         while (nsol) {
             object = OBJECT(nsol->object);
-            if (object->otype ==
-                OT_OBJECT &&
+            if (object->otype == OT_OBJECT &&
                 IS_TEMPL_FUNC(object->type) &&
                 (inst = CTempl_DeduceFunc(
                      object, TYPE_FUNC(di->thetype), di->expltargs, NULL, TRUE
@@ -1672,6 +1674,4 @@ Object* CTempl_TemplateFunctionCheck(DeclInfo* di, NameSpaceObjectList* nsol) {
     return NULL;
 }
 
-// TODO: the original's statics are 2-byte aligned. MWCC lays out .bss with the packing in effect at
-// the end of the file; CExpr.h used to leak pack(2) here, and some header of 2.6's evidently did.
 #pragma pack(2)

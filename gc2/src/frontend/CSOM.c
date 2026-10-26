@@ -14,20 +14,23 @@
 #include "compiler/CParser.h"
 #include "compiler/CPrep.h"
 #include "compiler/CPrepTokenizer.h"
+#include "compiler/CScope.h"
+#include "compiler/enode.h"
 #include "compiler/objects.h"
 #include "compiler/scopes.h"
+#include "compiler/som.h"
+#include "compiler/tokens.h"
+#include "compiler/types.h"
 #include "driver/COSToolsCLT.h"
 #include <stdio.h>
 #include <string.h>
 
-// all pointers have been converted to UInt32 for the sake of maintaining 32-bit compat
-
 typedef struct {
     SInt32 zero;
-    /* struct somStaticClassInfo * */ UInt32 sci;
-    /* void * */ UInt32 instanceDataToken;
+    UInt32 sci;
+    UInt32 instanceDataToken;
     SInt32 reserved[3];
-    /* void * */ UInt32 tokens[1];
+    UInt32 tokens[1];
 } somClassDataStructure;
 
 enum {
@@ -97,31 +100,31 @@ typedef UInt16 somSelectedInherited;
 typedef UInt32 somParentVersions;
 
 typedef struct {
-    /* const char * */ UInt32 className;
+    UInt32 className;
     UInt32 instanceDataSize;
-    /* const somParentVersions * */ UInt32 parentVersions;
-    /* const somSlotUsage * */ UInt32 ttSlotUsage;
-    /* const somSignatureInfo * */ UInt32 signatureInfo;
-    /* const char * */ UInt32 methodNames;
-    /* const somOverrideData * */ UInt32 overrideData;
-    /* const somMigratedMethods * */ UInt32 migratedMethods;
-    /* const somSelectedInherited * */ UInt32 selectedInherited;
-    /* const void * */ UInt32 unused;
-    /* const void * */ UInt32 dummy4b[4];
+    UInt32 parentVersions;
+    UInt32 ttSlotUsage;
+    UInt32 signatureInfo;
+    UInt32 methodNames;
+    UInt32 overrideData;
+    UInt32 migratedMethods;
+    UInt32 selectedInherited;
+    UInt32 unused;
+    UInt32 dummy4b[4];
 } somStaticClassDescription;
 
 typedef struct somStaticClassInfo {
     UInt32 layoutVersion;
-    /* somClassDataStructure * */ UInt32 tokenTable;
-    /* somMethodPtr * */ UInt32 overrideMethods;
-    /* somClassDataStructure ** */ UInt32 specifiedAncestry;
-    /* somOpaque */ UInt32 DLLDesignator;
-    /* somMethodPtr * */ UInt32 specialProcs;
-    /* somRuntimeClassInfo * */ UInt32 runtimeClassInfo;
+    UInt32 tokenTable;
+    UInt32 overrideMethods;
+    UInt32 specifiedAncestry;
+    UInt32 DLLDesignator;
+    UInt32 specialProcs;
+    UInt32 runtimeClassInfo;
     SInt32 interesting;
-    /* somClassDataStructure ** */ UInt32 actualAncestry;
-    /* void * */ UInt32 extra[4];
-    /* const somStaticClassCounts * */ UInt32 classCounts;
+    UInt32 actualAncestry;
+    UInt32 extra[4];
+    UInt32 classCounts;
     somStaticClassDescription classDescription;
 } somStaticClassInfo;
 
@@ -131,12 +134,12 @@ static HashNameNode* csom_uninitname;
 static HashNameNode* csom_envname;
 static HashNameNode* csom_selfname;
 
-static FuncArg SOMIDT_arg1 = {NULL, NULL, NULL, TYPE(&void_ptr), 0, 0, 0};
+static FuncArg SOMIDT_arg1 = {NULL, NULL, NULL, TYPE(&void_ptr), 0, 0, FALSE};
 
 static TypeFunc SOMIDT_type = {TYPEFUNC, 0, &SOMIDT_arg1, NULL, TYPE(&void_ptr), 0, 0};
 
-void CSOM_Setup(Boolean flag) {
-    if (!flag) {
+void CSOM_Setup(Boolean isPrecompiler) {
+    if (!isPrecompiler) {
         csom_stubs = NULL;
     }
 
@@ -199,7 +202,6 @@ static Type* CSOM_FindClassType(HashNameNode* name) {
     type = CScope_GetTagType(cscope_current, name);
     if (!type) {
         CPrep_ErrorName(ERR_SOM_TYPE_UNDEFINED, name->name);
-        // an early return (Pro7 assigns type): 2.6 sets its caller's variable in each branch
         return &stvoid;
     }
 
@@ -215,22 +217,20 @@ static SInt32 CSOM_GetTokenOffset(Object* object) {
     return 24 + 4 * CSOM_GetTokenTableIndex(object);
 }
 
-// TODO: invented names (Pro7's x0, x1, x2): the signature's argument count, its fg* flags and its
-// return type's pd* code
 typedef struct TypeSig {
     UInt8 argCount;
     UInt8 flags;
     UInt8 returnType;
 } TypeSig;
 
-static int CSOM_GetTypeSig(TypeSig* sig, Type* type, Boolean flag) {
+static int CSOM_GetTypeSig(TypeSig* sig, Type* type, Boolean isReturnType) {
     if (type->size > 4) {
         sig->flags |= fgAnyNon4Bytes;
     }
 
     switch (type->type) {
         case TYPEVOID:
-            if (flag) {
+            if (isReturnType) {
                 return pdVoid;
             }
             break;
@@ -281,7 +281,7 @@ static int CSOM_GetTypeSig(TypeSig* sig, Type* type, Boolean flag) {
             return pdNPtr;
         case TYPESTRUCT:
         case TYPECLASS:
-            if (flag) {
+            if (isReturnType) {
                 if (type->size <= 2) {
                     sig->flags |= fgShortOrChars;
                     return pdVSAgg;
@@ -292,13 +292,15 @@ static int CSOM_GetTypeSig(TypeSig* sig, Type* type, Boolean flag) {
                 }
             }
             break;
+        default:
+            break;
     }
 
     CError_Error(ERR_ILLEGAL_SOM_FUNCTION_PARAMETERS_RETURN_TYPE);
-    return 5;
+    return pdSLong;
 }
 
-static void CSOM_GetFuncSig(TypeFunc* tfunc, Boolean flag) {
+static void CSOM_GetFuncSig(TypeFunc* tfunc, Boolean isMethod) {
     FuncArg* arg;
     Boolean pendingData;
     UInt8 work;
@@ -317,7 +319,7 @@ static void CSOM_GetFuncSig(TypeFunc* tfunc, Boolean flag) {
         CSOM_GetTypeSig(&sig, arg->type, FALSE);
     }
 
-    if (flag) {
+    if (isMethod) {
         if ((arg = tfunc->args)) {
             if (TYPE_METHOD(tfunc)->is_static == 0) {
                 arg = arg->next;
@@ -355,9 +357,9 @@ void CSOM_CheckFuncType(TypeFunc* tfunc) {
     CSOM_GetFuncSig(tfunc, FALSE);
 }
 
-static Object* CSOM_MakeObject(char* name1, char* name2, SInt32 size) {
+static Object* CSOM_MakeObject(char* prefix, char* suffix, SInt32 size) {
     Object* object = CParser_NewCompilerDefDataObject();
-    object->name = CParser_NameConcat(name1, name2);
+    object->name = CParser_NameConcat(prefix, suffix);
     object->type = CDecl_NewStructType(size, 4);
     CScope_AddObject(object->nspace, object->name, OBJ_BASE(object));
     return object;
@@ -385,7 +387,7 @@ void CSOM_MakeSOMClass(TypeClass* tclass) {
 
 static Boolean CSOM_IsTokenListFunc(Object* object) {
     if (IS_TYPE_FUNC(object->type) &&
-        !(TYPE_FUNC(object->type)->flags & FUNC_FLAGS_20) &&
+        !(TYPE_FUNC(object->type)->flags & FUNC_OVERRIDE) &&
         !TYPE_METHOD(object->type)->is_static &&
         (!(object->qual & Q_INLINE) || object->datatype == DVFUNC)) {
         return TRUE;
@@ -507,13 +509,11 @@ void CSOM_ClassComplete(TypeClass* tclass) {
             break;
         }
 
-        if (nsol->object->otype ==
-            OT_OBJECT &&
+        if (nsol->object->otype == OT_OBJECT &&
             nsol->next &&
             nsol->next->object->otype == OT_OBJECT) {
             while (nsol) {
-                if (nsol->object->otype ==
-                    OT_OBJECT &&
+                if (nsol->object->otype == OT_OBJECT &&
                     (!(OBJECT(nsol->object)->qual & Q_INLINE) ||
                      OBJECT(nsol->object)->datatype == DVFUNC)) {
                     CError_Error(ERR_ILLEGAL_SOM_FUNCTION_OVERLOAD, nsol->object);
@@ -532,15 +532,15 @@ void CSOM_ClassComplete(TypeClass* tclass) {
         if (!(object->qual & Q_INLINE)) {
             CError_ASSERT(529, IS_TYPE_FUNC(object->type));
 
-            TYPE_FUNC(object->type)->flags |= FUNC_FLAGS_4;
-            tclass->action = CLASS_ACTION_1;
+            TYPE_FUNC(object->type)->flags |= FUNC_KEY_FUNCTION;
+            tclass->action = CLASS_ACTION_KEY_FUNCTION;
             while (1) {
                 if (!(object = OBJECT(CScope_NextObjectIteratorObject(&iter)))) {
                     break;
                 }
 
                 if (IS_TYPE_FUNC(object->type)) {
-                    TYPE_FUNC(object->type)->flags &= ~FUNC_FLAGS_4;
+                    TYPE_FUNC(object->type)->flags &= ~FUNC_KEY_FUNCTION;
                 }
             }
             break;
@@ -559,11 +559,8 @@ void CSOM_ClassComplete(TypeClass* tclass) {
             }
 
             if (IS_TYPE_FUNC(object->type) &&
-                TYPE_METHOD(object->type)->is_static ==
-                0 &&
-                !(TYPE_FUNC(object->type)->flags & FUNC_FLAGS_20) &&
-                // the argument walked through a local (Pro7 spells out TYPE_FUNC(...)->args->next),
-                // the idiom of 2.6's CObjC_DefineMethod too
+                TYPE_METHOD(object->type)->is_static == 0 &&
+                !(TYPE_FUNC(object->type)->flags & FUNC_OVERRIDE) &&
                 !((arg = TYPE_FUNC(object->type)->args) &&
                   (arg = arg->next) &&
                   IS_TYPE_POINTER_ONLY(arg->type) &&
@@ -573,7 +570,7 @@ void CSOM_ClassComplete(TypeClass* tclass) {
         }
     }
 
-    if (tclass->action == CLASS_ACTION_0) {
+    if (tclass->action == CLASS_ACTION_NONE) {
         CError_Error(ERR_SOM_CLASS_MUST_ONE_NON_INLINE);
     }
 }
@@ -581,16 +578,14 @@ void CSOM_ClassComplete(TypeClass* tclass) {
 #pragma pack(push, 2)
 typedef struct SOMOverride {
     struct SOMOverride* next;
-    Object* a;
-    Object* b;
+    Object* overrider;
+    Object* overridden;
 } SOMOverride;
 
 typedef struct SOMAncestor {
     struct SOMAncestor* next;
     TypeClass* tclass;
     SOMOverride* overrides;
-    // TODO: invented names (Pro7's xC, xD): the ancestor is the class's metaclass, or one of its
-    // direct parents (somStaticClassCounts' numMetaClasses and numDirectParents count them)
     Boolean isMetaClass;
     Boolean isDirectParent;
 } SOMAncestor;
@@ -601,8 +596,8 @@ typedef struct SOMMethod {
     union {
         Object* object;
         struct {
-            UInt16 a;
-            UInt16 b;
+            UInt16 ancestorIndex;
+            UInt16 methodIndex;
         } pair;
     } u;
     SOMMethodState state;
@@ -630,7 +625,6 @@ static SOMAncestor* CSOM_FindAddAncestor(
     SOMAncestor* scan;
     UInt16 index;
 
-    // gen->ancestors read again below, not through a local (Pro7: ancestor = gen->ancestors first)
     for (scan = gen->ancestors, index = 0; scan; scan = scan->next, index++) {
         if (scan->tclass == ancestorClass) {
             if (resultIndex) {
@@ -702,7 +696,7 @@ static void CSOM_GenerateOverrideIntroLists(SOMGenerator* gen, TypeClass* tclass
             break;
         }
 
-        if (IS_TYPE_FUNC(object->type) && (TYPE_FUNC(object->type)->flags & FUNC_FLAGS_20)) {
+        if (IS_TYPE_FUNC(object->type) && (TYPE_FUNC(object->type)->flags & FUNC_OVERRIDE)) {
             for (vbase = tclass->vbases; vbase; vbase = vbase->next) {
                 CScope_InitObjectIterator(&iter2, vbase->base->nspace);
                 while (1) {
@@ -711,16 +705,13 @@ static void CSOM_GenerateOverrideIntroLists(SOMGenerator* gen, TypeClass* tclass
                     }
 
                     if (IS_TYPE_FUNC(object2->type) &&
-                        object->name ==
-                        object2->name &&
-                        object2->datatype ==
-                        DVFUNC &&
-                        !(TYPE_FUNC(object2->type)->flags & FUNC_FLAGS_20) &&
+                        object->name == object2->name &&
+                        object2->datatype == DVFUNC &&
+                        !(TYPE_FUNC(object2->type)->flags & FUNC_OVERRIDE) &&
                         CClass_GetOverrideKind(
                             TYPE_FUNC(object->type), TYPE_FUNC(object2->type), FALSE
                         ) != 0) {
                         ancestor = CSOM_FindAddAncestor(gen, tclass, vbase->base, NULL);
-                        // (sic: override is assigned the list head, then a new node)
                         if ((override = ancestor->overrides)) {
                             override = lalloc(sizeof(SOMOverride));
                             memclrw(override, sizeof(SOMOverride));
@@ -732,8 +723,8 @@ static void CSOM_GenerateOverrideIntroLists(SOMGenerator* gen, TypeClass* tclass
                             ancestor->overrides = override;
                             gen->counts.numOverriddenAncestors++;
                         }
-                        override->a = object;
-                        override->b = object2;
+                        override->overrider = object;
+                        override->overridden = object2;
                         break;
                     }
                 }
@@ -758,8 +749,10 @@ static void CSOM_GenerateOverrideIntroLists(SOMGenerator* gen, TypeClass* tclass
                         for (order2 = vbase->base->sominfo->order, index2 = 0; order2;
                              order2 = order2->next, index2++) {
                             if (order->name == order2->name && order2->state == SOMMS_Method) {
-                                CSOM_FindAddAncestor(gen, tclass, vbase->base, &method->u.pair.a);
-                                method->u.pair.b = index2;
+                                CSOM_FindAddAncestor(
+                                    gen, tclass, vbase->base, &method->u.pair.ancestorIndex
+                                );
+                                method->u.pair.methodIndex = index2;
                                 break;
                             }
                         }
@@ -787,6 +780,9 @@ static void CSOM_GenerateOverrideIntroLists(SOMGenerator* gen, TypeClass* tclass
                     }
 
                     CError_ASSERT(737, object != NULL);
+                    break;
+
+                default:
                     break;
             }
 
@@ -851,8 +847,6 @@ static void CSOM_GenerateOverrideProcs(SOMGenerator* gen, TypeClass* tclass) {
     char* buf;
 
     if (gen->overrideProcsCount) {
-        // computed in two steps: Pro7's gen->overrideProcsCount * 4 multiplies before the object is
-        // made, 2.6 at its use
         size = gen->overrideProcsCount;
         size *= 4;
         object = CSOM_MakeObject(tclass->classname->name, "OverrideProcs", size);
@@ -866,7 +860,7 @@ static void CSOM_GenerateOverrideProcs(SOMGenerator* gen, TypeClass* tclass) {
                     OLinkList* reloc = lalloc(sizeof(OLinkList));
                     reloc->next = relocs;
                     relocs = reloc;
-                    reloc->obj = override->a;
+                    reloc->obj = override->overrider;
                     reloc->offset = offset;
                     reloc->addend = 0;
                     offset += 4;
@@ -905,14 +899,14 @@ static Object* CSOM_GenerateOverrideData(SOMGenerator* gen) {
             for (override = ancestor->overrides; override; override = override->next) {
                 AppendGListWord(
                     &name_mangle_list,
-                    CTool_EndianConvertWord16(CSOM_GetTokenTableIndex(override->b))
+                    CTool_EndianConvertWord16(CSOM_GetTokenTableIndex(override->overridden))
                 );
             }
         }
     }
 
     COS_LockHandle(name_mangle_list.data);
-    object = CInit_DeclareString(*name_mangle_list.data, name_mangle_list.size, 0, 0);
+    object = CInit_DeclareString(*name_mangle_list.data, name_mangle_list.size, FALSE, FALSE);
     COS_UnlockHandle(name_mangle_list.data);
     return object;
 }
@@ -925,14 +919,18 @@ static Object* CSOM_GenerateMigrateData(SOMGenerator* gen) {
     name_mangle_list.size = 0;
     for (method = gen->methods, index = 0; method; method = method->next, index++) {
         if (method->state == SOMMS_Migrated) {
-            AppendGListWord(&name_mangle_list, CTool_EndianConvertWord16(method->u.pair.a));
-            AppendGListWord(&name_mangle_list, CTool_EndianConvertWord16(method->u.pair.b));
+            AppendGListWord(
+                &name_mangle_list, CTool_EndianConvertWord16(method->u.pair.ancestorIndex)
+            );
+            AppendGListWord(
+                &name_mangle_list, CTool_EndianConvertWord16(method->u.pair.methodIndex)
+            );
             AppendGListWord(&name_mangle_list, CTool_EndianConvertWord16(index));
         }
     }
 
     COS_LockHandle(name_mangle_list.data);
-    object = CInit_DeclareString(*name_mangle_list.data, name_mangle_list.size, 0, 0);
+    object = CInit_DeclareString(*name_mangle_list.data, name_mangle_list.size, FALSE, FALSE);
     COS_UnlockHandle(name_mangle_list.data);
     return object;
 }
@@ -1036,13 +1034,9 @@ static Object* CSOM_GenerateParentVersion(SOMGenerator* gen) {
         }
     }
 
-    return CInit_DeclareString((char*)buf, size, 0, 0);
+    return CInit_DeclareString((char*)buf, size, FALSE, FALSE);
 }
 
-// 2.6 inlines this into CSOM_GenerateSlotUsage, which is inlined itself: at that depth the
-// inliner takes a callee of at most 10 statements, so the body is short (Pro7's, with block-local
-// left/right temporaries, is not inlined). TODO: the original's exact spelling is unknown; this one
-// gives 2.6's code, and its SInt32 offset the copy of the caller's int counter
 static void CSOM_SetNibble(char* buf, SInt32 offset, UInt8 value) {
     buf += offset >> 1;
     if (offset & 1) {
@@ -1075,7 +1069,7 @@ static Object* CSOM_GenerateSlotUsage(SOMGenerator* gen) {
         }
     }
 
-    return CInit_DeclareString(buf, size, 0, 0);
+    return CInit_DeclareString(buf, size, FALSE, FALSE);
 }
 
 static Object* CSOM_GenerateSignature(SOMGenerator* gen) {
@@ -1091,7 +1085,7 @@ static Object* CSOM_GenerateSignature(SOMGenerator* gen) {
     }
 
     COS_LockHandle(name_mangle_list.data);
-    object = CInit_DeclareString(*name_mangle_list.data, name_mangle_list.size, 0, 0);
+    object = CInit_DeclareString(*name_mangle_list.data, name_mangle_list.size, FALSE, FALSE);
     COS_UnlockHandle(name_mangle_list.data);
     return object;
 }
@@ -1111,7 +1105,7 @@ static Object* CSOM_GenerateMethodNames(SOMGenerator* gen) {
     }
 
     COS_LockHandle(name_mangle_list.data);
-    object = CInit_DeclareString(*name_mangle_list.data, name_mangle_list.size, 0, 0);
+    object = CInit_DeclareString(*name_mangle_list.data, name_mangle_list.size, FALSE, FALSE);
     COS_UnlockHandle(name_mangle_list.data);
     return object;
 }
@@ -1175,7 +1169,6 @@ static void CSOM_GenerateSCIObject(SOMGenerator* gen, TypeClass* tclass) {
     memclrw(&sci, sizeof(sci));
     sci.layoutVersion = CTool_EndianConvertWord32(70);
 
-    // the list starts empty like the others (Pro7: reloc->next = NULL)
     relocs = NULL;
     reloc = lalloc(sizeof(OLinkList));
     reloc->next = relocs;
@@ -1225,15 +1218,16 @@ static void CSOM_GenerateSCIObject(SOMGenerator* gen, TypeClass* tclass) {
     reloc = lalloc(sizeof(OLinkList));
     reloc->next = relocs;
     relocs = reloc;
-    reloc->obj = CInit_DeclareString((char*)&classCounts, sizeof(classCounts), 0, 0);
+    reloc->obj = CInit_DeclareString((char*)&classCounts, sizeof(classCounts), FALSE, FALSE);
     reloc->offset = 52;
     reloc->addend = 0;
 
     reloc = lalloc(sizeof(OLinkList));
     reloc->next = relocs;
     relocs = reloc;
-    reloc->obj =
-        CInit_DeclareString(tclass->classname->name, strlen(tclass->classname->name) + 1, 0, 0);
+    reloc->obj = CInit_DeclareString(
+        tclass->classname->name, strlen(tclass->classname->name) + 1, FALSE, FALSE
+    );
     reloc->offset = 56;
     reloc->addend = 0;
 
@@ -1355,7 +1349,7 @@ void CSOM_PragmaReleaseOrder(void) {
     SOMReleaseOrder* firstOrder;
     SOMReleaseOrder* order;
     SOMReleaseOrder** ptr;
-    Boolean flag;
+    Boolean noParen;
     short token;
 
     if (!(tclass = CSOM_GetCurrentSOMClass())) {
@@ -1377,14 +1371,14 @@ void CSOM_PragmaReleaseOrder(void) {
             }
         }
 
-        flag = TRUE;
+        noParen = TRUE;
     } else {
-        flag = FALSE;
+        noParen = FALSE;
         token = CPrep_PragmaLex(FALSE);
     }
 
     firstOrder = NULL;
-    if (flag || token != ')') {
+    if (noParen || token != ')') {
         ptr = &firstOrder;
         while (1) {
             if (token != TK_IDENTIFIER) {
@@ -1407,7 +1401,7 @@ void CSOM_PragmaReleaseOrder(void) {
             order->name = tkidentifier;
             order->state = SOMMS_Deleted;
 
-            if (flag) {
+            if (noParen) {
                 token = CPrep_PragmaLex(TRUE);
                 if (!token) {
                     break;
@@ -1424,7 +1418,7 @@ void CSOM_PragmaReleaseOrder(void) {
                 return;
             }
 
-            token = CPrep_PragmaLex(flag);
+            token = CPrep_PragmaLex(noParen);
         }
     }
 
@@ -1566,8 +1560,7 @@ static Object* CSOM_FindRTFunc(char* namestr, char* sig) {
         nsol->object->otype == OT_OBJECT) {
         object = OBJECT(nsol->object);
         if (IS_TYPE_FUNC(object->type) &&
-            *(sig++) ==
-            'p' &&
+            *(sig++) == 'p' &&
             IS_TYPE_POINTER_ONLY(TYPE_FUNC(object->type)->functype)) {
             for (arg = TYPE_FUNC(object->type)->args; arg; arg = arg->next) {
                 switch (*(sig++)) {
@@ -1674,7 +1667,6 @@ ENode* CSOM_New(TypeClass* tclass) {
     if (copts.som_env_check && !copts.som_call_optimize) {
         tempExpr = CExpr_GetETEMPCopy(expr);
         checkExpr = funccallexpr(rt_som_newcheck, nullnode(), NULL, NULL, NULL);
-        // 2.6 negates the call itself, not its temporary copy (Pro7)
         notExpr = makemonadicnode(expr, ELOGNOT);
         notExpr->rtype = CParser_GetBoolType();
         expr = CSOM_MakeTempCondition(NULL, notExpr, checkExpr, tempExpr);
@@ -1716,7 +1708,7 @@ static void CSOM_FindIntroClassOffset(
     VClassList* vbase;
     CScopeObjectIterator iter;
 
-    if (!(TYPE_FUNC(func->type)->flags & FUNC_FLAGS_20)) {
+    if (!(TYPE_FUNC(func->type)->flags & FUNC_OVERRIDE)) {
         CScope_InitObjectIterator(&iter, tclass->nspace);
         while (1) {
             if (!(scan = OBJECT(CScope_NextObjectIteratorObject(&iter)))) {
@@ -1754,9 +1746,8 @@ static void CSOM_FindIntroClassOffset(
 
                 if (scan->name == func->name) {
                     if (IS_TYPE_FUNC(scan->type) &&
-                        scan->datatype ==
-                        DVFUNC &&
-                        !(TYPE_FUNC(scan->type)->flags & FUNC_FLAGS_20) &&
+                        scan->datatype == DVFUNC &&
+                        !(TYPE_FUNC(scan->type)->flags & FUNC_OVERRIDE) &&
                         CClass_GetOverrideKind(
                             TYPE_FUNC(func->type), TYPE_FUNC(scan->type), FALSE
                         )) {
@@ -1827,7 +1818,6 @@ void CSOM_InitSOMSelf(TypeClass* tclass, Statement* stmt) {
 
             selfExpr = CSOM_ComputeSOMSelf(tclass, selfExpr);
 
-            // a local of its own (Pro7 reuses stmt), which leaves stmt in memory
             newStmt = CFunc_InsertStatement(ST_EXPRESSION, stmt);
             newStmt->expr = makediadicnode(create_objectnode(list->object), selfExpr, EASS);
             break;
@@ -1892,7 +1882,6 @@ ENode* CSOM_EnvCheck(ENode* funccall, ENodeList* checkArg) {
     }
 
     if (copts.som_call_optimize) {
-        // the call is built before the comma node (Pro7 nests it as an argument)
         ENode* checkCall;
         checkCall = funccallexpr(rt_som_check, objTemp, NULL, NULL, NULL);
         funccall = makediadicnode(funccall, checkCall, ECOMMA);
@@ -1922,7 +1911,6 @@ static Boolean CSOM_CanUseGlueCall(TypeFunc* tfunc) {
     gprCounter = 8;
     fprCounter = 13;
     if (CMach_GetFunctionResultClass(tfunc) != 0) {
-        // (Pro7: gprCounter = 7, which 2.6 does not compile to)
         gprCounter--;
     }
 
@@ -1981,14 +1969,12 @@ static ENode* CSOM_SOMGlueCall(TypeClass* tclass, SInt32 offset, Object* object)
         funcResultClass = CMach_GetFunctionResultClass(TYPE_FUNC(object->type));
 
         bufsize = strlen(tclass->sominfo->classdataobject->name->name) + 32;
-        // an if/else (Pro7: a conditional expression, which 2.6 does not compile to)
         if (bufsize > sizeof(mybuf)) {
             buf = lalloc(bufsize);
         } else {
             buf = mybuf;
         }
 
-        // 2.6: no leading underscore for ELF (Pro7: "___glue_")
         ptr = CSOM_AppendString(buf, "__glue_");
         if (tclass->sominfo->oidl_callstyle == 0) {
             if (funcResultClass == 0) {
@@ -2001,7 +1987,7 @@ static ENode* CSOM_SOMGlueCall(TypeClass* tclass, SInt32 offset, Object* object)
         }
         *(ptr++) = '_';
 
-        sprintf(numberbuf, "%ld", strlen(tclass->sominfo->classdataobject->name->name));
+        sprintf(numberbuf, "%ld", (long)strlen(tclass->sominfo->classdataobject->name->name));
         ptr = CSOM_AppendString(ptr, numberbuf);
         ptr = CSOM_AppendString(ptr, tclass->sominfo->classdataobject->name->name);
         *(ptr++) = '_';
@@ -2056,10 +2042,8 @@ ENode* CSOM_MemberVarAccess(BClassList* path, ObjMemberVar* ivar, ENode* thisExp
 
     thisExpr = thisExpr->data.monadic;
 
-    if (path->next ==
-        NULL &&
-        cscope_currentclass ==
-        TYPE_CLASS(path->type) &&
+    if (path->next == NULL &&
+        cscope_currentclass == TYPE_CLASS(path->type) &&
         ENODE_IS(thisExpr, EOBJREF) &&
         thisExpr->data.objref->name == this_name_node) {
         thisExpr = CSOM_SOMSelfObjectExpr(cscope_currentclass);
@@ -2079,7 +2063,7 @@ ENode* CSOM_MemberVarAccess(BClassList* path, ObjMemberVar* ivar, ENode* thisExp
     return CClass_AccessMember(thisExpr, ivar->type, ivar->qual, ivar->offset);
 }
 
-ENode* CSOM_MethodAccess(BClassList* path, Object* func, Boolean flag) {
+ENode* CSOM_MethodAccess(BClassList* path, Object* func, Boolean isQualified) {
     TypeClass* tclass;
     TypeClass* tclass2;
     TypeClass* tclass3;
@@ -2099,7 +2083,7 @@ ENode* CSOM_MethodAccess(BClassList* path, Object* func, Boolean flag) {
     }
     tclass2 = TYPE_CLASS(path->type);
 
-    if (flag) {
+    if (isQualified) {
         counter = 0;
         if (tclass != tclass2) {
             for (base = tclass->bases; base; base = base->next) {
@@ -2115,7 +2099,6 @@ ENode* CSOM_MethodAccess(BClassList* path, Object* func, Boolean flag) {
         }
 
         CSOM_FindIntroClassOffset(tclass2, func, &tclass3, &offset);
-        // the class data reference in a variable of its own (Pro7 reuses expr)
         classref = create_objectrefnode(tclass3->sominfo->classdataobject);
         indirectExpr = makediadicnode(classref, intconstnode(TYPE(&stsignedlong), offset), EADD);
         indirectExpr = makemonadicnode(indirectExpr, EINDIRECT);
@@ -2135,7 +2118,7 @@ ENode* CSOM_MethodAccess(BClassList* path, Object* func, Boolean flag) {
         );
         expr->rtype = indirectExpr->rtype;
         if (copts.som_env_check && tclass3->sominfo->oidl_callstyle == 0) {
-            expr->flags |= ENODE_FLAG_10;
+            expr->flags |= ENODE_FLAG_SOM_ENV_CHECK;
         }
     } else {
         CSOM_FindIntroClassOffset(tclass2, func, &tclass3, &offset);
@@ -2148,7 +2131,7 @@ ENode* CSOM_MethodAccess(BClassList* path, Object* func, Boolean flag) {
         expr = makemonadicnode(expr, EINDIRECT);
         expr->rtype = CDecl_NewPointerType(func->type);
         if (copts.som_env_check && tclass3->sominfo->oidl_callstyle == 0) {
-            expr->flags |= ENODE_FLAG_10;
+            expr->flags |= ENODE_FLAG_SOM_ENV_CHECK;
         }
     }
 

@@ -1,24 +1,23 @@
 #ifndef DRIVER_PARSERFACE_H
 #define DRIVER_PARSERFACE_H
 
-#include <setjmp.h>
 #include "compiler/common.h"
 #include "driver/cmdline.h"
 #include "driver/CWPlugins.h"
+#include "driver/oslib.h"
 #include "driver/parser.h"
+#include <setjmp.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-// A preference panel's default settings the parser stores (Pro7's parser.h)
 struct PrefDataPanel {
     char* name;
     void* ptr;
     SInt32 size;
 };
 
-// The command line parser's tool (Pro7's parser.h; ParserGlue-eabi-ppc-cc.c's `parser`)
 struct ParserTool {
     OSType TYPE;
     OSType LANG;
@@ -37,7 +36,6 @@ struct ParserTool {
     int (*PostParse)(void);
 };
 
-// The parser's state (Pro7's parser.h)
 typedef struct ParseOptsType {
     struct CWPluginPrivateContext* context;
     char helpKey[64];
@@ -81,7 +79,7 @@ extern const char* failedCallback;
 extern jmp_buf exit_plugin;
 extern ParseOptsType parseopts;
 
-extern CWResult Parser_StorePanels(struct CWPluginPrivateContext* context);
+extern CWResult Parser_StorePanels(CWPluginContext context);
 extern CWPLUGIN_ENTRY(CWParser_GetDropInFlags)(const DropInFlags** flags, SInt32* flagsSize);
 extern CWPLUGIN_ENTRY(CWParser_GetDropInName)(const char** dropinName);
 extern CWPLUGIN_ENTRY(CWParser_GetDisplayName)(const char** displayName);

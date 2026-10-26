@@ -6,13 +6,14 @@
 #include "compiler/CMangler.h"
 #include "compiler/CompilerTools.h"
 #include "compiler/CParser.h"
-#include "compiler/CPrep.h"
 #include "compiler/CScope.h"
+#include "compiler/enode.h"
 #include "compiler/FunctionCalls.h"
 #include "compiler/InstrSelection.h"
 #include "compiler/objects.h"
 #include "compiler/Operands.h"
 #include "compiler/PCode.h"
+#include "compiler/PCodeInfo.h"
 #include "compiler/PCodeUtilities.h"
 #include "compiler/PPCError.h"
 #include "compiler/RegisterInfo.h"
@@ -23,7 +24,6 @@
 
 Object* __memcpy_object;
 static Object* intrinsics[MaxIntrinsics];
-// (Pro7 defines an unused `int VectorConditions;` here; 2.6 has no such COMMON)
 static Object* cur_intrinsic_object;
 
 static void va_info_intrinsic(short opcode, ENode* expr, short outputReg, Operand* output);
@@ -49,7 +49,6 @@ static TypePointer stunsignedint_ptr = {TYPEPOINTER, 4, TYPE(&stunsignedint), 0}
 static TypePointer stsignedint_ptr = {TYPEPOINTER, 4, TYPE(&stsignedint), 0};
 static TypePointer stfloat_ptr = {TYPEPOINTER, 4, TYPE(&stfloat), 0};
 
-// (Verify1VectorArg2Ops)
 typedef struct TypeTable22 {
     Type* rtype;
     Type* arg1;
@@ -57,20 +56,17 @@ typedef struct TypeTable22 {
     int opcode2;
 } TypeTable22;
 
-// (VerifyNoVectorArgs)
 typedef struct TypeTable11 {
     Type* rtype;
     int opcode;
 } TypeTable11;
 
-// (Verify1VectorArg)
 typedef struct TypeTable21 {
     Type* rtype;
     Type* arg1;
     int opcode;
 } TypeTable21;
 
-// (Verify2VectorArgs)
 typedef struct TypeTable31 {
     Type* rtype;
     Type* arg1;
@@ -78,7 +74,6 @@ typedef struct TypeTable31 {
     int opcode;
 } TypeTable31;
 
-// (Verify3VectorArgs)
 typedef struct TypeTable41 {
     Type* rtype;
     Type* arg1;
@@ -1124,9 +1119,6 @@ static TypeTable31 vector_all_le_type_table[] = {
     NULL, NULL, NULL, 0
 };
 // clang-format on
-// (No NULL entry, as in Pro7: a failed search in Verify2VectorArgs runs on into
-// vector_all_nan_type_table, reads its opcode PC_VCMPEQFP as an arg2 type and faults on address
-// 0x119; the original crashes there on `vec_all_lt(vector float, vector signed int)`.)
 // clang-format off
 static TypeTable31 vector_all_lt_type_table[] = {
     TYPE(&stsignedint), TYPE(&stvectorunsignedchar), TYPE(&stvectorunsignedchar), PC_VCMPGTUB,
@@ -1368,7 +1360,6 @@ static TypeTable31 vector_any_out_type_table[] = {
     NULL, NULL, NULL, 0
 };
 // clang-format on
-// (dead in 2.6: vec_step's element counts; nothing refers to it)
 // clang-format off
 static TypeTable21 vector_step_type_table[] = {
     TYPE(&stsignedint), TYPE(&stvectorunsignedchar), PC_BDZF,
@@ -2266,7 +2257,7 @@ static void* typeTable[] = {
     vector_xor_type_table,
     vector_abs_type_table,
     vector_abss_type_table,
-    NULL, // (2.6's 311-314: no type tables)
+    NULL,
     NULL,
     NULL,
     NULL,
@@ -2277,42 +2268,37 @@ static void* typeTable[] = {
 int is_intrinsic_function_call(ENode* funccall) {
     ENode* funcref = funccall->data.funccall.funcref;
     return ENODE_IS(funcref, EOBJREF) &&
-        funcref->data.objref->datatype ==
-        DFUNC &&
+        funcref->data.objref->datatype == DFUNC &&
         (TYPE_FUNC(funcref->data.objref->type)->flags & FUNC_INTRINSIC);
 }
 
 static void abs_intrinsic(ENode* expr, short outputReg, Operand* output) {
-    int reg1;
-    int reg2;
+    int signReg;
+    int resultReg;
     Operand op;
 
     memclrw(&op, sizeof(op));
     GEN_NODE_TO_GPR(expr, &op, expr->rtype, 0);
 
-    reg1 = ALLOC_GPR();
-    emitpcode(PC_SRAWI, reg1, op.reg, 31);
+    signReg = ALLOC_GPR();
+    emitpcode(PC_SRAWI, signReg, op.reg, 31);
 
-    reg2 = outputReg ? outputReg : ALLOC_GPR();
-    emitpcode(PC_XOR, reg2, reg1, op.reg);
-    emitpcode(PC_SUBF, reg2, reg1, reg2);
+    resultReg = outputReg ? outputReg : ALLOC_GPR();
+    emitpcode(PC_XOR, resultReg, signReg, op.reg);
+    emitpcode(PC_SUBF, resultReg, signReg, resultReg);
 
     output->optype = OpndType_GPR;
-    output->reg = reg2;
+    output->reg = resultReg;
 }
 
-#ifdef ORACLE_PROBES
-#define abs_intrinsic(...) ORACLE_INLINED(abs_intrinsic(__VA_ARGS__))
-#endif
-
-static void setflm_intrinsic(ENode* expr, short outputReg, Operand* output, int flag) {
+static void setflm_intrinsic(ENode* expr, short outputReg, Operand* output, int resultIgnored) {
     int reg;
     Operand op;
 
     memclrw(&op, sizeof(op));
     GEN_NODE_TO_FPR(expr, &op, expr->rtype, 0);
 
-    if (!flag) {
+    if (!resultIgnored) {
         output->optype = OpndType_FPR;
         reg = (outputReg && outputReg != op.reg) ? outputReg : ALLOC_FPR();
         emitpcode(PC_MFFS, output->reg = reg);
@@ -2320,10 +2306,6 @@ static void setflm_intrinsic(ENode* expr, short outputReg, Operand* output, int 
 
     emitpcode(PC_MTFSF, 255, op.reg);
 }
-
-#ifdef ORACLE_PROBES
-#define setflm_intrinsic(...) ORACLE_INLINED(setflm_intrinsic(__VA_ARGS__))
-#endif
 
 static void alloca_intrinsic(ENode* expr, short outputReg, Operand* output) {
     SInt32 reg;
@@ -2333,23 +2315,19 @@ static void alloca_intrinsic(ENode* expr, short outputReg, Operand* output) {
 
     if (ENODE_IS(expr, EINTCONST)) {
         reg = outputReg ? outputReg : ALLOC_GPR();
-        allocate_dynamic_stack_space(1, reg, ALLOC_GPR(), CInt64_GetULong(&expr->data.intval));
+        allocate_dynamic_stack_space(TRUE, reg, ALLOC_GPR(), CInt64_GetULong(&expr->data.intval));
     } else {
         GEN_NODE_TO_GPR(expr, &op, expr->rtype, 0);
         reg = outputReg ? outputReg : ALLOC_GPR();
 
         emitpcode(PC_NEG, reg, op.reg);
         emitpcode(PC_RLWINM, reg, reg, 0, 0, get_alloca_alignment());
-        allocate_dynamic_stack_space(0, reg, ALLOC_GPR(), 0);
+        allocate_dynamic_stack_space(FALSE, reg, ALLOC_GPR(), 0);
     }
 
     output->optype = OpndType_GPR;
     output->reg = reg;
 }
-
-#ifdef ORACLE_PROBES
-#define alloca_intrinsic(...) ORACLE_INLINED(alloca_intrinsic(__VA_ARGS__))
-#endif
 
 static void load_bytereversed_intrinsic(
     short opcode, ENode* expr1, ENode* expr2, short outputReg, Operand* output
@@ -2468,18 +2446,22 @@ static SInt32 checkconstintarg(ENode* expr, char* name, SInt32 min, SInt32 max, 
     SInt32 value;
 
     if (!ENODE_IS(expr, EINTCONST)) {
-        PPCError_ErrorTerm(PPCErrorStr210, name, 3);
+        PPCError_ErrorTerm(PPCERR_INTRINSIC_ARGUMENT_NOT_CONSTANT, name, 3);
     }
 
     value = expr->data.intval.lo;
 
     if (value < min) {
-        PPCError_Warning(PPCErrorStr211, name, argnum, value, min, max, min);
+        PPCError_Warning(
+            PPCERR_INTRINSIC_ARGUMENT_OUT_OF_RANGE, name, argnum, value, min, max, min
+        );
         return min;
     }
 
     if (value > max) {
-        PPCError_Warning(PPCErrorStr211, name, argnum, value, min, max, value & max);
+        PPCError_Warning(
+            PPCERR_INTRINSIC_ARGUMENT_OUT_OF_RANGE, name, argnum, value, min, max, value & max
+        );
         value = value & max;
     }
 
@@ -2495,9 +2477,9 @@ static void rlwimi_intrinsic(
     short outputReg,
     Operand* output
 ) {
-    SInt32 arg3;
-    SInt32 arg4;
-    SInt32 arg5;
+    SInt32 sh;
+    SInt32 mb;
+    SInt32 me;
     Operand op1;
     Operand op2;
     int reg;
@@ -2506,9 +2488,9 @@ static void rlwimi_intrinsic(
     memclrw(&op1, sizeof(op1));
     memclrw(&op2, sizeof(op2));
 
-    arg3 = checkconstintarg(expr3, name, 0, 31, 3);
-    arg4 = checkconstintarg(expr4, name, 0, 31, 4);
-    arg5 = checkconstintarg(expr5, name, 0, 31, 5);
+    sh = checkconstintarg(expr3, name, 0, 31, 3);
+    mb = checkconstintarg(expr4, name, 0, 31, 4);
+    me = checkconstintarg(expr5, name, 0, 31, 5);
 
     GEN_NODE_TO_GPR(expr1, &op1, expr1->rtype, 0);
 
@@ -2520,7 +2502,7 @@ static void rlwimi_intrinsic(
     }
     ENSURE_GPR(&op2, expr2->rtype, 0);
 
-    emitpcode(PC_RLWIMI, op1.reg, op2.reg, arg3, arg4, arg5);
+    emitpcode(PC_RLWIMI, op1.reg, op2.reg, sh, mb, me);
 
     output->optype = OpndType_GPR;
     output->reg = op1.reg;
@@ -2531,20 +2513,20 @@ static void rlwinm_intrinsic(
 ) {
     char* name = "__rlwinm";
     short reg;
-    short arg2;
-    short arg3;
-    short arg4;
+    short sh;
+    short mb;
+    short me;
     Operand op1;
 
     memclrw(&op1, sizeof(op1));
-    arg2 = checkconstintarg(expr2, name, 0, 31, 2);
-    arg3 = checkconstintarg(expr3, name, 0, 31, 3);
-    arg4 = checkconstintarg(expr4, name, 0, 31, 4);
+    sh = checkconstintarg(expr2, name, 0, 31, 2);
+    mb = checkconstintarg(expr3, name, 0, 31, 3);
+    me = checkconstintarg(expr4, name, 0, 31, 4);
 
     GEN_NODE_TO_GPR(expr1, &op1, expr1->rtype, 0);
 
     reg = outputReg ? outputReg : ALLOC_GPR();
-    emitpcode(PC_RLWINM, reg, op1.reg, arg2, arg3, arg4);
+    emitpcode(PC_RLWINM, reg, op1.reg, sh, mb, me);
 
     output->optype = OpndType_GPR;
     output->reg = reg;
@@ -2554,34 +2536,27 @@ static void rlwnm_intrinsic(
     ENode* expr1, ENode* expr2, ENode* expr3, ENode* expr4, short outputReg, Operand* output
 ) {
     short reg;
-    short arg3;
-    short arg4;
+    short mb;
+    short me;
     char* name = "__rlwnm";
     Operand op1;
     Operand op2;
 
     memclrw(&op1, sizeof(op1));
     memclrw(&op2, sizeof(op2));
-    arg3 = checkconstintarg(expr3, name, 0, 31, 3);
-    arg4 = checkconstintarg(expr4, name, 0, 31, 4);
+    mb = checkconstintarg(expr3, name, 0, 31, 3);
+    me = checkconstintarg(expr4, name, 0, 31, 4);
 
     GEN_NODE_TO_GPR(expr1, &op1, expr1->rtype, 0);
     GEN_NODE_TO_GPR(expr2, &op2, expr2->rtype, 0);
 
     reg = outputReg ? outputReg : ALLOC_GPR();
-    emitpcode(PC_RLWNM, reg, op1.reg, op2.reg, arg3, arg4);
+    emitpcode(PC_RLWNM, reg, op1.reg, op2.reg, mb, me);
 
     output->optype = OpndType_GPR;
     output->reg = reg;
 }
 
-// TODO: 2.6 keeps this out of line where -inline auto inlines Pro7's body into the FindOpcode and
-// Verify functions; `dont_inline` stands in for whatever kept it out. A body of more than 15
-// statements (CInline_IsSmallFunction) also keeps it out, but none tried compiles to 2.6's code:
-// one `if (b == X) return TRUE;` per type (147 bytes), the same as an else-if chain, a `result`
-// flag set per type, a `goto yes` per type (with `bi`: 87.1), a block-local `bi` (inlined, 96.8),
-// a separate inline or static `is_promotable_to_int(b)` helper (66.7). The TypeIntegral copy of
-// `b` is 2.6's: it keeps b in a second register (`mov edx, eax`).
 #pragma push
 #pragma dont_inline on
 static Boolean promotable_types_are_equal(Type* a, Type* b) {
@@ -2593,20 +2568,13 @@ static Boolean promotable_types_are_equal(Type* a, Type* b) {
 
     bi = TYPE_INTEGRAL(b);
     if (a == TYPE(&stsignedint)) {
-        if (bi ==
-            &stunsignedint ||
-            bi ==
-            &stsignedchar ||
-            bi ==
-            &stunsignedchar ||
-            bi ==
-            &stsignedshort ||
-            bi ==
-            &stunsignedshort ||
-            bi ==
-            &stsignedlong ||
-            bi ==
-            &stunsignedlong ||
+        if (bi == &stunsignedint ||
+            bi == &stsignedchar ||
+            bi == &stunsignedchar ||
+            bi == &stsignedshort ||
+            bi == &stunsignedshort ||
+            bi == &stsignedlong ||
+            bi == &stunsignedlong ||
             bi == &stbool) {
             return TRUE;
         }
@@ -2629,7 +2597,7 @@ static int Intrinsics_VerifyParameterCount(int wantedCount, ENodeList* args, Has
     }
 
     if (count != wantedCount) {
-        PPCError_Error(PPCErrorStr103, name->name, count, wantedCount);
+        PPCError_Error(PPCERR_ALTIVEC_ARGUMENT_COUNT, name->name, count, wantedCount);
         return FALSE;
     }
 
@@ -2683,7 +2651,7 @@ static Type* Intrinsics_Verify1VectorArg2Ops(Intrinsics id, ENodeList* args, Has
     }
 
     if (!table->rtype) {
-        PPCError_Error(PPCErrorStr104, name->name, name->name, arg1->rtype, 0);
+        PPCError_Error(PPCERR_ALTIVEC_INVALID_ARGUMENT, name->name, name->name, arg1->rtype, 0);
         return NULL;
     }
     return table->rtype;
@@ -2728,11 +2696,11 @@ static Type* Intrinsics_Verify1VectorArg(Intrinsics id, ENodeList* args, HashNam
             if (ENODE_IS(arg1, EINTCONST)) {
                 SInt32 val = arg1->data.intval.lo;
                 if (val > 15 || val < -16) {
-                    PPCError_Error(PPCErrorStr108, name->name, name->name, 5);
+                    PPCError_Error(PPCERR_ALTIVEC_INVALID_CONSTANT, name->name, name->name, 5);
                     return NULL;
                 }
             } else {
-                PPCError_Error(PPCErrorStr108, name->name, name->name, 5);
+                PPCError_Error(PPCERR_ALTIVEC_INVALID_CONSTANT, name->name, name->name, 5);
                 return NULL;
             }
             break;
@@ -2740,19 +2708,21 @@ static Type* Intrinsics_Verify1VectorArg(Intrinsics id, ENodeList* args, HashNam
             if (ENODE_IS(arg1, EINTCONST)) {
                 SInt32 val = arg1->data.intval.lo;
                 if (val > 3 || val < 0) {
-                    PPCError_Error(PPCErrorStr108, name->name, name->name, 2);
+                    PPCError_Error(PPCERR_ALTIVEC_INVALID_CONSTANT, name->name, name->name, 2);
                     return NULL;
                 }
             } else {
-                PPCError_Error(PPCErrorStr108, name->name, name->name, 2);
+                PPCError_Error(PPCERR_ALTIVEC_INVALID_CONSTANT, name->name, name->name, 2);
                 return NULL;
             }
+            break;
+        default:
             break;
     }
 
     rtype = table->rtype;
     if (!rtype) {
-        PPCError_Error(PPCErrorStr104, name->name, name->name, arg1->rtype, 0);
+        PPCError_Error(PPCERR_ALTIVEC_INVALID_ARGUMENT, name->name, name->name, arg1->rtype, 0);
         return NULL;
     }
     return rtype;
@@ -2785,13 +2755,15 @@ static Type* Intrinsics_Verify2VectorArgs(Intrinsics id, ENodeList* args, HashNa
         case Intrinsic_vec_vspltw:
             if (ENODE_IS(arg2, EINTCONST)) {
                 if (arg2->data.intval.lo > 31 || arg2->data.intval.hi < 0) {
-                    PPCError_Error(PPCErrorStr108, name->name, name->name, 5);
+                    PPCError_Error(PPCERR_ALTIVEC_INVALID_CONSTANT, name->name, name->name, 5);
                     return NULL;
                 }
             } else {
-                PPCError_Error(PPCErrorStr108, name->name, name->name, 5);
+                PPCError_Error(PPCERR_ALTIVEC_INVALID_CONSTANT, name->name, name->name, 5);
                 return NULL;
             }
+            break;
+        default:
             break;
     }
 
@@ -2815,7 +2787,15 @@ static Type* Intrinsics_Verify2VectorArgs(Intrinsics id, ENodeList* args, HashNa
     }
 
     if (!table->rtype) {
-        PPCError_Error(PPCErrorStr105, name->name, name->name, arg1->rtype, 0, arg2->rtype, 0);
+        PPCError_Error(
+            PPCERR_ALTIVEC_INVALID_ARGUMENTS2,
+            name->name,
+            name->name,
+            arg1->rtype,
+            0,
+            arg2->rtype,
+            0
+        );
         return NULL;
     }
 
@@ -2824,8 +2804,10 @@ static Type* Intrinsics_Verify2VectorArgs(Intrinsics id, ENodeList* args, HashNa
         case Intrinsic_vec_lde:
         case Intrinsic_vec_ldl:
             if (arg2->flags & ENODE_FLAG_VOLATILE) {
-                PPCError_Warning(PPCErrorStr178, name->name);
+                PPCError_Warning(PPCERR_ALTIVEC_VOLATILE_ARGUMENT, name->name);
             }
+        default:
+            break;
     }
 
     return table->rtype;
@@ -2881,11 +2863,11 @@ static Type* Intrinsics_Verify3VectorArgs(Intrinsics id, ENodeList* args, HashNa
             if (ENODE_IS(arg3, EINTCONST)) {
                 SInt32 val = arg3->data.intval.lo;
                 if (val > 3 || val < 0) {
-                    PPCError_Error(PPCErrorStr108, name->name, name->name, 2);
+                    PPCError_Error(PPCERR_ALTIVEC_INVALID_CONSTANT, name->name, name->name, 2);
                     return NULL;
                 }
             } else {
-                PPCError_Error(PPCErrorStr108, name->name, name->name, 2);
+                PPCError_Error(PPCERR_ALTIVEC_INVALID_CONSTANT, name->name, name->name, 2);
                 return NULL;
             }
             break;
@@ -2893,19 +2875,29 @@ static Type* Intrinsics_Verify3VectorArgs(Intrinsics id, ENodeList* args, HashNa
         case Intrinsic_vec_vsldoi:
             if (ENODE_IS(arg3, EINTCONST)) {
                 if (arg3->data.intval.lo > 15 || arg3->data.intval.hi < 0) {
-                    PPCError_Error(PPCErrorStr108, name->name, name->name, 4);
+                    PPCError_Error(PPCERR_ALTIVEC_INVALID_CONSTANT, name->name, name->name, 4);
                     return NULL;
                 }
             } else {
-                PPCError_Error(PPCErrorStr108, name->name, name->name, 4);
+                PPCError_Error(PPCERR_ALTIVEC_INVALID_CONSTANT, name->name, name->name, 4);
                 return NULL;
             }
+            break;
+        default:
             break;
     }
 
     if (!table->rtype) {
         PPCError_Error(
-            PPCErrorStr106, name->name, name->name, arg1->rtype, 0, arg2->rtype, 0, arg3->rtype, 0
+            PPCERR_ALTIVEC_INVALID_ARGUMENTS3,
+            name->name,
+            name->name,
+            arg1->rtype,
+            0,
+            arg2->rtype,
+            0,
+            arg3->rtype,
+            0
         );
         return NULL;
     }
@@ -2915,8 +2907,10 @@ static Type* Intrinsics_Verify3VectorArgs(Intrinsics id, ENodeList* args, HashNa
         case Intrinsic_vec_ste:
         case Intrinsic_vec_stl:
             if (arg3->flags & ENODE_FLAG_VOLATILE) {
-                PPCError_Warning(PPCErrorStr178, name->name);
+                PPCError_Warning(PPCERR_ALTIVEC_VOLATILE_ARGUMENT, name->name);
             }
+        default:
+            break;
     }
 
     return table->rtype;
@@ -3034,10 +3028,6 @@ static void vector_intrinsic_mfvscr(short outputReg, short opcode, Operand* outp
     output->reg = reg;
 }
 
-#ifdef ORACLE_PROBES
-#define vector_intrinsic_mfvscr(...) ORACLE_INLINED(vector_intrinsic_mfvscr(__VA_ARGS__))
-#endif
-
 static void vector_intrinsic_1arg(ENode* arg1, short outputReg, Operand* output, short opcode) {
     Operand op1;
     short reg;
@@ -3052,10 +3042,6 @@ static void vector_intrinsic_1arg(ENode* arg1, short outputReg, Operand* output,
     output->optype = OpndType_VR;
     output->reg = reg;
 }
-
-#ifdef ORACLE_PROBES
-#define vector_intrinsic_1arg(...) ORACLE_INLINED(vector_intrinsic_1arg(__VA_ARGS__))
-#endif
 
 static void vector_intrinsic_splats(ENode* arg1, short outputReg, Operand* output, short opcode) {
     Operand op1;
@@ -3073,10 +3059,6 @@ static void vector_intrinsic_splats(ENode* arg1, short outputReg, Operand* outpu
     output->reg = reg;
 }
 
-#ifdef ORACLE_PROBES
-#define vector_intrinsic_splats(...) ORACLE_INLINED(vector_intrinsic_splats(__VA_ARGS__))
-#endif
-
 static void vector_intrinsic_splatu8(ENode* arg1, short outputReg, Operand* output, short opcode) {
     Operand op1;
     short reg;
@@ -3092,10 +3074,6 @@ static void vector_intrinsic_splatu8(ENode* arg1, short outputReg, Operand* outp
     output->optype = OpndType_VR;
     output->reg = reg;
 }
-
-#ifdef ORACLE_PROBES
-#define vector_intrinsic_splatu8(...) ORACLE_INLINED(vector_intrinsic_splatu8(__VA_ARGS__))
-#endif
 
 static void vector_intrinsic_splatu16(ENode* arg1, short outputReg, Operand* output, short opcode) {
     Operand op1;
@@ -3113,10 +3091,6 @@ static void vector_intrinsic_splatu16(ENode* arg1, short outputReg, Operand* out
     output->reg = reg;
 }
 
-#ifdef ORACLE_PROBES
-#define vector_intrinsic_splatu16(...) ORACLE_INLINED(vector_intrinsic_splatu16(__VA_ARGS__))
-#endif
-
 static void vector_intrinsic_splatu32(ENode* arg1, short outputReg, Operand* output, short opcode) {
     Operand op1;
     short reg;
@@ -3132,10 +3106,6 @@ static void vector_intrinsic_splatu32(ENode* arg1, short outputReg, Operand* out
     output->optype = OpndType_VR;
     output->reg = reg;
 }
-
-#ifdef ORACLE_PROBES
-#define vector_intrinsic_splatu32(...) ORACLE_INLINED(vector_intrinsic_splatu32(__VA_ARGS__))
-#endif
 
 static void vector_intrinsic_dss(ENode* arg1) {
     Operand op1;
@@ -3167,10 +3137,6 @@ static void vector_intrinsic_2args(
     output->reg = reg;
 }
 
-#ifdef ORACLE_PROBES
-#define vector_intrinsic_2args(...) ORACLE_INLINED(vector_intrinsic_2args(__VA_ARGS__))
-#endif
-
 static void vector_intrinsic_2args1const(
     ENode* arg1, ENode* arg2, short outputReg, Operand* output, short opcode
 ) {
@@ -3191,10 +3157,6 @@ static void vector_intrinsic_2args1const(
     output->optype = OpndType_VR;
     output->reg = reg;
 }
-
-#ifdef ORACLE_PROBES
-#define vector_intrinsic_2args1const(...) ORACLE_INLINED(vector_intrinsic_2args1const(__VA_ARGS__))
-#endif
 
 static void vector_intrinsic_3args(
     ENode* arg1, ENode* arg2, ENode* arg3, short outputReg, Operand* output, short opcode
@@ -3261,10 +3223,6 @@ static void vector_intrinsic_sld(
     output->optype = OpndType_VR;
     output->reg = reg;
 }
-
-#ifdef ORACLE_PROBES
-#define vector_intrinsic_sld(...) ORACLE_INLINED(vector_intrinsic_sld(__VA_ARGS__))
-#endif
 
 static void vector_intrinsic_load(
     ENode* arg1, ENode* arg2, short outputReg, Operand* output, short opcode
@@ -3343,7 +3301,7 @@ static void vector_intrinsic_abs(
     Type* typeA;
     short reg1;
     short reg2;
-    short reg3;
+    short resultReg;
     Operand op1;
 
     for (table = typeTable[id - Intrinsic_vec_add]; table->rtype; table++) {
@@ -3362,7 +3320,7 @@ static void vector_intrinsic_abs(
 
     reg1 = ALLOC_VR();
     reg2 = ALLOC_VR();
-    reg3 = outputReg ? outputReg : ALLOC_VR();
+    resultReg = outputReg ? outputReg : ALLOC_VR();
 
     memclrw(&op1, sizeof(op1));
     GEN_NODE_TO_VR(arg1, &op1, arg1->rtype, 0);
@@ -3370,15 +3328,15 @@ static void vector_intrinsic_abs(
     if (arg1->rtype == TYPE(&stvectorfloat)) {
         emitpcode(PC_VSPLTISW, reg1, -1);
         emitpcode(PC_VSLW, reg2, reg1, reg1);
-        emitpcode(table->opcode1, reg3, op1.reg, reg2);
+        emitpcode(table->opcode1, resultReg, op1.reg, reg2);
     } else {
         emitpcode(PC_VSPLTISB, reg1, 0);
         emitpcode(table->opcode1, reg2, reg1, op1.reg);
-        emitpcode(table->opcode2, reg3, op1.reg, reg2);
+        emitpcode(table->opcode2, resultReg, op1.reg, reg2);
     }
 
     output->optype = OpndType_VR;
-    output->reg = reg3;
+    output->reg = resultReg;
 }
 
 static void vector_intrinsic_abss(
@@ -3387,9 +3345,9 @@ static void vector_intrinsic_abss(
     TypeTable22* table;
     Type* typeB;
     Type* typeA;
-    short reg1;
-    short reg2;
-    short reg3;
+    short zeroReg;
+    short negatedReg;
+    short resultReg;
     Operand op1;
 
     for (table = typeTable[id - Intrinsic_vec_add]; table->rtype; table++) {
@@ -3406,19 +3364,19 @@ static void vector_intrinsic_abss(
 
     CError_ASSERT(4711, table->rtype);
 
-    reg1 = ALLOC_VR();
-    reg2 = ALLOC_VR();
-    reg3 = outputReg ? outputReg : ALLOC_VR();
+    zeroReg = ALLOC_VR();
+    negatedReg = ALLOC_VR();
+    resultReg = outputReg ? outputReg : ALLOC_VR();
 
     memclrw(&op1, sizeof(op1));
     GEN_NODE_TO_VR(arg1, &op1, arg1->rtype, 0);
 
-    emitpcode(PC_VSPLTISB, reg1, 0);
-    emitpcode(table->opcode1, reg2, reg1, op1.reg);
-    emitpcode(table->opcode2, reg3, op1.reg, reg2);
+    emitpcode(PC_VSPLTISB, zeroReg, 0);
+    emitpcode(table->opcode1, negatedReg, zeroReg, op1.reg);
+    emitpcode(table->opcode2, resultReg, op1.reg, negatedReg);
 
     output->optype = OpndType_VR;
-    output->reg = reg3;
+    output->reg = resultReg;
 }
 
 static void vector_intrinsic_mtvscr(ENode* arg1, Operand* output, short opcode) {
@@ -3434,9 +3392,9 @@ static void vector_predicate_2args(
 ) {
     Operand op1;
     Operand op2;
-    short reg1;
-    short reg2;
-    short reg3;
+    short resultReg;
+    short leftReg;
+    short rightReg;
     short cond;
 
     memclrw(&op1, sizeof(op1));
@@ -3445,28 +3403,23 @@ static void vector_predicate_2args(
     GEN_NODE_TO_VR(arg1, &op1, arg1->rtype, 0);
     GEN_NODE_TO_VR(arg2, &op2, arg2->rtype, 0);
 
-    reg1 = ALLOC_VR();
-    reg2 = op1.reg;
-    reg3 = op2.reg;
+    resultReg = ALLOC_VR();
+    leftReg = op1.reg;
+    rightReg = op2.reg;
     if (((id == Intrinsic_vec_all_ge || id == Intrinsic_vec_any_ge) &&
          arg1->rtype != TYPE(&stvectorfloat)) ||
         ((id == Intrinsic_vec_all_le || id == Intrinsic_vec_any_le) &&
          arg1->rtype == TYPE(&stvectorfloat)) ||
-        id ==
-        Intrinsic_vec_all_lt ||
-        id ==
-        Intrinsic_vec_any_lt ||
-        id ==
-        Intrinsic_vec_any_nle ||
-        id ==
-        Intrinsic_vec_all_nle ||
-        id ==
-        Intrinsic_vec_all_nlt ||
+        id == Intrinsic_vec_all_lt ||
+        id == Intrinsic_vec_any_lt ||
+        id == Intrinsic_vec_any_nle ||
+        id == Intrinsic_vec_all_nle ||
+        id == Intrinsic_vec_all_nlt ||
         id == Intrinsic_vec_any_nlt) {
-        reg3 = op1.reg;
-        reg2 = op2.reg;
+        rightReg = op1.reg;
+        leftReg = op2.reg;
     }
-    emitpcode(opcode, reg1, reg2, reg3);
+    emitpcode(opcode, resultReg, leftReg, rightReg);
     pcsetrecordbit(pclastblock->lastPCode);
 
     if (arg1->rtype == TYPE(&stvectorfloat)) {
@@ -3883,15 +3836,14 @@ ENode* Intrinsics_HandleIntrinsicCall(Object* func, ENodeList* args) {
                     }
                 }
                 break;
+            default:
+                break;
         }
     }
 
     return callexpr;
 }
 
-// __rtos_change_stack (id 311, 2.6's): switch to the stack its argument points to. A helper of its
-// own: the case's Operand written in call_intrinsic_function sits elsewhere in the frame.
-// TODO: invented name (2.6 inlines it; Pro7 lacks it).
 static void rtos_change_stack_intrinsic(ENode* expr) {
     Operand op;
 
@@ -3908,42 +3860,42 @@ void call_intrinsic_function(ENode* funccall, short outputReg, Operand* output) 
     short reg;
 
     // clang-format off
-    static short opcode[MaxIntrinsics] = {/* Intrinsic_eieio */ PC_EIEIO,
-                                          /* Intrinsic_sync */ PC_SYNC,
-                                          /* Intrinsic_isync */ PC_ISYNC,   0, 0,
-                                          /* Intrinsic_fabs */ PC_FABS,
-                                          /* Intrinsic_fnabs */ PC_FNABS,   0, 0,
-                                          /* Intrinsic_cntlzw */ PC_CNTLZW,
-                                          /* Intrinsic_lhbrx */ PC_LHBRX,
-                                          /* Intrinsic_lwbrx */ PC_LWBRX,
-                                          /* Intrinsic_sthbrx */ PC_STHBRX,
-                                          /* Intrinsic_stwbrx */ PC_STWBRX,
-                                          /* Intrinsic_dcbf */ PC_DCBF,
-                                          /* Intrinsic_dcbt */ PC_DCBT,
-                                          /* Intrinsic_dcbst */ PC_DCBST,
-                                          /* Intrinsic_dcbtst */ PC_DCBTST,
-                                          /* Intrinsic_dcbz */ PC_DCBZ,
-                                          /* Intrinsic_mulhw */ PC_MULHW,
-                                          /* Intrinsic_mulhwu */ PC_MULHWU,
-                                          /* Intrinsic_divw */ PC_DIVW,
-                                          /* Intrinsic_divwu */ PC_DIVWU,
-                                          /* Intrinsic_fmadd */ PC_FMADD,
-                                          /* Intrinsic_fmsub */ PC_FMSUB,
-                                          /* Intrinsic_fnmadd */ PC_FNMADD,
-                                          /* Intrinsic_fnmsub */ PC_FNMSUB,
-                                          /* Intrinsic_fmadds */ PC_FMADDS,
-                                          /* Intrinsic_fmsubs */ PC_FMSUBS,
-                                          /* Intrinsic_fnmadds */ PC_FNMADDS,
-                                          /* Intrinsic_fnmsubs */ PC_FNMSUBS,
-                                          /* Intrinsic_mffs */ PC_MFFS,
-                                          /* Intrinsic_fres */ PC_FRES,
-                                          /* Intrinsic_frsqrte */ PC_FRSQRTE,
-                                          /* Intrinsic_fsel */ PC_FSEL,    0, 0,
-                                          /* Intrinsic_rlwimi */ PC_RLWIMI,
-                                          /* Intrinsic_rlwinm */ PC_RLWINM,
-                                          /* Intrinsic_rlwnm */ PC_RLWNM,
-                                          /* Intrinsic_fabsf */ PC_FABS,
-                                          /* Intrinsic_fnabsf */ PC_FNABS};
+    static short opcode[MaxIntrinsics] = {  PC_EIEIO,
+                                            PC_SYNC,
+                                            PC_ISYNC,   0, 0,
+                                            PC_FABS,
+                                            PC_FNABS,   0, 0,
+                                            PC_CNTLZW,
+                                            PC_LHBRX,
+                                            PC_LWBRX,
+                                            PC_STHBRX,
+                                            PC_STWBRX,
+                                            PC_DCBF,
+                                            PC_DCBT,
+                                            PC_DCBST,
+                                            PC_DCBTST,
+                                            PC_DCBZ,
+                                            PC_MULHW,
+                                            PC_MULHWU,
+                                            PC_DIVW,
+                                            PC_DIVWU,
+                                            PC_FMADD,
+                                            PC_FMSUB,
+                                            PC_FNMADD,
+                                            PC_FNMSUB,
+                                            PC_FMADDS,
+                                            PC_FMSUBS,
+                                            PC_FNMADDS,
+                                            PC_FNMSUBS,
+                                            PC_MFFS,
+                                            PC_FRES,
+                                            PC_FRSQRTE,
+                                            PC_FSEL,    0, 0,
+                                            PC_RLWIMI,
+                                            PC_RLWINM,
+                                            PC_RLWNM,
+                                            PC_FABS,
+                                            PC_FNABS};
     // clang-format on
 
     args = funccall->data.funccall.args;
@@ -3970,7 +3922,9 @@ void call_intrinsic_function(ENode* funccall, short outputReg, Operand* output) 
         case Intrinsic_fnabsf:
             if ((!copts.use_fp || copts.soft_float) &&
                 ENODE_IS(funccall->data.funccall.funcref, EOBJREF)) {
-                PPCError_ErrorTerm(PPCErrorStr131, CMangler_GetLinkName(intrinsics[id])->name);
+                PPCError_ErrorTerm(
+                    PPCERR_SYMBOL_NEEDS_FLOAT, CMangler_GetLinkName(intrinsics[id])->name
+                );
                 break;
             }
             fp_unary_operator(opcode[id], args->node, outputReg, output);
@@ -3978,7 +3932,9 @@ void call_intrinsic_function(ENode* funccall, short outputReg, Operand* output) 
         case Intrinsic_setflm:
             if ((!copts.use_fp || copts.soft_float) &&
                 ENODE_IS(funccall->data.funccall.funcref, EOBJREF)) {
-                PPCError_ErrorTerm(PPCErrorStr131, CMangler_GetLinkName(intrinsics[id])->name);
+                PPCError_ErrorTerm(
+                    PPCERR_SYMBOL_NEEDS_FLOAT, CMangler_GetLinkName(intrinsics[id])->name
+                );
                 break;
             }
             setflm_intrinsic(args->node, outputReg, output, funccall->ignored);
@@ -4027,7 +3983,9 @@ void call_intrinsic_function(ENode* funccall, short outputReg, Operand* output) 
         case Intrinsic_fsel:
             if ((!copts.use_fp || copts.soft_float) &&
                 ENODE_IS(funccall->data.funccall.funcref, EOBJREF)) {
-                PPCError_ErrorTerm(PPCErrorStr131, CMangler_GetLinkName(intrinsics[id])->name);
+                PPCError_ErrorTerm(
+                    PPCERR_SYMBOL_NEEDS_FLOAT, CMangler_GetLinkName(intrinsics[id])->name
+                );
                 break;
             }
             fp_multiply_add(
@@ -4037,7 +3995,9 @@ void call_intrinsic_function(ENode* funccall, short outputReg, Operand* output) 
         case Intrinsic_mffs:
             if ((!copts.use_fp || copts.soft_float) &&
                 ENODE_IS(funccall->data.funccall.funcref, EOBJREF)) {
-                PPCError_ErrorTerm(PPCErrorStr131, CMangler_GetLinkName(intrinsics[id])->name);
+                PPCError_ErrorTerm(
+                    PPCERR_SYMBOL_NEEDS_FLOAT, CMangler_GetLinkName(intrinsics[id])->name
+                );
                 break;
             }
             reg = outputReg ? outputReg : ALLOC_FPR();
@@ -4369,6 +4329,8 @@ void call_intrinsic_function(ENode* funccall, short outputReg, Operand* output) 
                     break;
                 case Intrinsic_vec_dstt:
                     op = PC_DSTT;
+                    break;
+                default:
                     break;
             }
             vector_intrinsic_datastream(args->node, args->next->node, args->next->next->node, op);
@@ -4853,8 +4815,8 @@ static Object* CheckRuntimeObject(char* name) {
     return NULL;
 }
 
-Boolean Intrinsics_ReInitRuntimeObjects(Boolean flag) {
-    if (flag) {
+Boolean Intrinsics_ReInitRuntimeObjects(Boolean isPrecompiler) {
+    if (isPrecompiler) {
         if (!(intrinsics[Intrinsic_eieio] = CheckRuntimeObject("__eieio"))) {
             return FALSE;
         }
@@ -5796,38 +5758,31 @@ Boolean Intrinsics_IsPublicRuntimeObject(Object* object) {
     return FALSE;
 }
 
-// __va_setup and __builtin_va_info (ids 313, 314): fill the va_list OUTPUT points at
-// with the counts of argument registers used and the addresses of the overflow area and
-// the register save area.
-// TODO: invented name: Pro7 (the Mac ABI) has no such intrinsic, and in Wii's CodeView it is an
-// unnamed static of the Intrinsics module (right below Intrinsics_IsPublicRuntimeObject).
 static void va_info_intrinsic(short opcode, ENode* expr, short outputReg, Operand* output) {
     Operand op;
     SInt32 reg;
-    // TODO: invented names: the GPR and FPR counts, stored as two bytes and read as one halfword
-    // (the original builds them in a 2-byte stack slot)
     union {
         struct {
-            UInt8 lowByte;
-            UInt8 highByte;
+            UInt8 gprs;
+            UInt8 fprs;
         } bytes;
-        UInt16 packedWord;
+        UInt16 halfword;
     } counts;
 
     if (!dummyvaparam || !dummyvalocal) {
-        PPCError_ErrorTerm(PPCErrorStr214);
+        PPCError_ErrorTerm(PPCERR_VA_START_NEEDS_ELLIPSIS);
     }
 
     memclrw(&op, sizeof(Operand));
     GEN_NODE_TO_GPR(expr, &op, expr->rtype, 0);
 
     reg = ALLOC_GPR();
-    counts.bytes.lowByte = last_argument_register[RegClass_GPR] - 2;
-    counts.bytes.highByte = last_argument_register[RegClass_FPR];
+    counts.bytes.gprs = last_argument_register[RegClass_GPR] - 2;
+    counts.bytes.fprs = last_argument_register[RegClass_FPR];
     if (copts.littleendian) {
-        emitpcode(PC_LI, reg, CTool_EndianConvertWord16(counts.packedWord));
+        emitpcode(PC_LI, reg, CTool_EndianConvertWord16(counts.halfword));
     } else {
-        emitpcode(PC_LIS, reg, 0, CTool_EndianConvertWord16(counts.packedWord));
+        emitpcode(PC_LIS, reg, 0, CTool_EndianConvertWord16(counts.halfword));
     }
     emitpcode(PC_STW, reg, op.reg, 0, 0);
 

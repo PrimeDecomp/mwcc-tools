@@ -1,9 +1,3 @@
-"""PE32 executables: the original compiler (read by virtual address), its imports and base relocations.
-
-original(version) is the one way to get a version's original executable: it checks the file's SHA-1 against the
-version's config.json, so nothing ever works from a different or damaged binary.
-"""
-
 from __future__ import annotations
 
 import functools
@@ -12,21 +6,21 @@ import struct
 from dataclasses import dataclass
 from pathlib import Path
 
-from .project import Error, Version, relative, version as get_version
+from .project import Error, Version, relative
+from .project import version as get_version
 
 CODE = 0x20
 INITIALIZED = 0x40
 UNINITIALIZED = 0x80
 EXECUTE = 0x20000000
 
-# data directory indices
 EXPORTS, IMPORTS, RESOURCES, BASE_RELOCATIONS, TLS = 0, 1, 2, 5, 9
 
 
 @dataclass(frozen=True)
 class Section:
     name: str
-    virtual_address: int  # absolute (image base included)
+    virtual_address: int
     virtual_size: int
     file_offset: int
     file_size: int
@@ -42,16 +36,15 @@ class Section:
 
     @property
     def bss(self) -> bool:
-        """Uninitialized data with no bytes in the file."""
         return bool(self.characteristics & UNINITIALIZED) and self.file_size == 0
 
 
 @dataclass(frozen=True)
 class Import:
     dll: str
-    name: str | None  # None when imported by ordinal
-    number: int  # the ordinal, or the name's hint
-    slot: int  # the address of its import address table entry
+    name: str | None
+    number: int
+    slot: int
 
 
 class PEFile:
@@ -88,8 +81,6 @@ class PEFile:
         self.sections = tuple(sections)
         self._found: dict = {}
 
-    # ------------------------------------------------------------------ addresses
-
     def section_for_address(self, address: int) -> Section:
         for section in self.sections:
             if section.virtual_address <= address < section.end:
@@ -103,7 +94,6 @@ class PEFile:
         return section.file_offset + address - section.virtual_address
 
     def read(self, address: int, size: int) -> bytes:
-        """SIZE bytes at ADDRESS (fewer at the end of a section's file data)."""
         offset = self.address_to_offset(address)
         return self.data[offset : offset + size]
 
@@ -111,7 +101,6 @@ class PEFile:
         return struct.unpack("<I", self.read(address, 4))[0]
 
     def find(self, needle: bytes, limit: int | None = None) -> list[int]:
-        """The addresses NEEDLE occurs at in the data (non-code) sections, the first LIMIT of them."""
         key = (needle, limit)
         if key not in self._found:
             addresses = []
@@ -126,10 +115,7 @@ class PEFile:
             self._found[key] = addresses
         return self._found[key]
 
-    # ------------------------------------------------------------------ directories
-
     def directory(self, index: int) -> tuple[int, int]:
-        """(absolute address, size) of data directory INDEX; (0, 0) when absent."""
         rva, size = struct.unpack_from("<II", self.data, self.optional + 96 + 8 * index)
         return (self.image_base + rva if rva else 0), size
 
@@ -138,7 +124,6 @@ class PEFile:
 
     @functools.cached_property
     def imports(self) -> tuple[Import, ...]:
-        """Every import, in the import directory's order."""
         address, _ = self.directory(IMPORTS)
         out = []
         while address:
@@ -161,7 +146,6 @@ class PEFile:
 
     @functools.cached_property
     def base_relocations(self) -> tuple[int, ...]:
-        """The addresses of the absolute (HIGHLOW) fixups of the base relocation table, sorted."""
         address, size = self.directory(BASE_RELOCATIONS)
         offset, fixups = self.address_to_offset(address), []
         end = offset + size
@@ -181,14 +165,14 @@ class PEFile:
 
 @functools.cache
 def original(version: Version | str | None = None) -> PEFile:
-    """VERSION's original executable, checked against the SHA-1 its config.json gives."""
     from .config import version_config
 
-    cfg = version_config(get_version(version))
+    v = get_version(version, original=True)
+    cfg = version_config(v)
     path = cfg.original
     if not path.exists():
         raise Error(f"{relative(path)} does not exist: ninja downloads the original compilers")
     data = path.read_bytes()
     if hashlib.sha1(data).hexdigest() != cfg.sha1:
-        raise Error(f"{relative(path)}: SHA-1 is not {cfg.sha1} (config/{get_version(version)}/config.json)")
+        raise Error(f"{relative(path)}: SHA-1 is not {cfg.sha1} (config/{v}/config.json)")
     return PEFile(path)

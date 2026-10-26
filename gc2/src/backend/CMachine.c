@@ -2,22 +2,31 @@
 #include "compiler/CClass.h"
 #include "compiler/CDecl.h"
 #include "compiler/CError.h"
-#include "compiler/CFunc.h"
 #include "compiler/CInline.h"
 #include "compiler/CInt64.h"
+#include "compiler/CompilerTools.h"
 #include "compiler/CParser.h"
 #include "compiler/CPrep.h"
 #include "compiler/CPrepTokenizer.h"
 #include "compiler/CScope.h"
-#include "compiler/CompilerTools.h"
+#include "compiler/objects.h"
 #include "compiler/PPCError.h"
 #include "compiler/RegisterInfo.h"
-#include "compiler/Registers.h"
 #include "compiler/ScanFloat.h"
-#include "compiler/objects.h"
+#include "compiler/tokens.h"
 #include "compiler/types.h"
 #include <stdio.h>
 #include <string.h>
+#ifndef __MWERKS__
+#include "x87.h"
+#endif
+
+#ifdef __wasm__
+// Constant folding's arithmetic (CMach_CalcFloatDiadic, CMach_FloatReciprocal). The original folds on the x87, which
+// __dec2num leaves at 64-bit precision: from the first literal on, each result is rounded twice, and once before it.
+// wasm/src/x87.c's emulation follows that state.
+double __x87_double(int op, double a, double b);
+#endif
 
 // clang-format off
 TypeIntegral stbool = {TYPEINT, 1, IT_BOOL};
@@ -37,11 +46,8 @@ TypeIntegral stfloat = {TYPEFLOAT, 4, IT_FLOAT};
 TypeIntegral stshortdouble = {TYPEFLOAT, 8, IT_SHORTDOUBLE};
 TypeIntegral stdouble = {TYPEFLOAT, 8, IT_DOUBLE};
 TypeIntegral stlongdouble = {TYPEFLOAT, 8, IT_LONGDOUBLE};
-// 2.6: the custom types of tokens 0x113 and 0x114 (CMach_GetCustomType), 8-byte integers
-// TODO: invented names
 TypeIntegral stcustomtype113 = {TYPEINT, 8, IT_17};
 TypeIntegral stcustomtype114 = {TYPEINT, 8, IT_18};
-// 2.6: Gekko's paired single, __vec2x32float__
 TypeIntegral stvec2x32float = {TYPEFLOAT, 8, IT_VEC2X32FLOAT};
 
 static StructMember stVUC_unsignedchar15 = {NULL, (Type *) &stunsignedchar, NULL, 15, 0};
@@ -136,16 +142,13 @@ static short cmach_curbfsize;
 static short cmach_curbfbasesize;
 static int cmach_curbfoffset;
 #if VERSION == VERSION_GC_2_5
-// 2.5: the integral type of the current storage unit's first bitfield
-// TODO: invented name
 static int cmach_curbfintegral;
 #endif
 
 static short cmach_packsize[] = {1, 2, 4, 8, 16};
 
-// forward declarations
-static SInt16 CMach_GetQualifiedTypeAlign(Type* type, Boolean flag);
-static SInt16 CMach_GetMemberAlignment(Type* type, SInt32 var, Boolean flag);
+static SInt16 CMach_GetQualifiedTypeAlign(Type* type, Boolean qualified);
+static SInt16 CMach_GetMemberAlignment(Type* type, SInt32 min_align, Boolean qualified);
 
 void CMach_Configure(void) {}
 
@@ -209,7 +212,6 @@ SInt32 CMach_ArgumentAlignment(Type* type) {
 
 SInt32 CMach_AllocationAlignment(Type* type, UInt32 qual) {
     SInt32 align;
-    // 2.6 reuses one variable for the qualifier's alignment and the pointer alignment below
     SInt32 tmpalign;
     int argalign;
 
@@ -236,15 +238,11 @@ SInt32 CMach_AllocationAlignment(Type* type, UInt32 qual) {
     }
 
     if (copts.optimizationlevel > 0) {
-        if (type->type ==
-            TYPEARRAY ||
-            (type->type ==
-             TYPESTRUCT &&
-             (TYPE_STRUCT(type)->stype <
-              STRUCT_VECTOR_UCHAR ||
+        if (type->type == TYPEARRAY ||
+            (type->type == TYPESTRUCT &&
+             (TYPE_STRUCT(type)->stype < STRUCT_VECTOR_UCHAR ||
               TYPE_STRUCT(type)->stype > STRUCT_VECTOR_PIXEL)) ||
-            type->type ==
-            TYPECLASS ||
+            type->type == TYPECLASS ||
             (type->type == TYPEMEMBERPOINTER && (UInt32)type->size == 12)) {
             return (copts.min_struct_alignment > align) ? copts.min_struct_alignment : align;
         }
@@ -252,8 +250,6 @@ SInt32 CMach_AllocationAlignment(Type* type, UInt32 qual) {
 
     return align;
 }
-
-#define ISZERO64(v) ((Boolean)(((v).hi == 0) && ((v).lo == 0)))
 
 CInt64 CMach_CalcIntDiadic(Type* type, CInt64 left, short op, CInt64 right) {
     if (is_unsigned(type)) {
@@ -565,11 +561,19 @@ CInt64 CMach_CalcIntConvertFromFloat(Type* type, Float fval) {
             CInt64_ConvertFromLongDouble(&result, fval.data.value);
         }
     } else {
+#ifdef __MWERKS__
         if (is_unsigned(type)) {
             CInt64_SetULong(&result, fval.data.value);
         } else {
             CInt64_SetLong(&result, fval.data.value);
         }
+#else
+        if (is_unsigned(type)) {
+            CInt64_SetULong(&result, (UInt32)X87_TruncateToInt64(fval.data.value));
+        } else {
+            CInt64_SetLong(&result, X87_TruncateToInt32(fval.data.value));
+        }
+#endif
     }
 
     return result;
@@ -608,7 +612,7 @@ void CMach_InitIntMem(Type* type, CInt64 val, void* mem) {
     }
 }
 
-void CMach_InitVectorMem(Type* type, MWVector128 val, void* mem, Boolean flag) {
+void CMach_InitVectorMem(Type* type, MWVector128 val, void* mem, Boolean endian_convert) {
     unsigned char uc[16];
     unsigned short us[8];
     unsigned int ul[4];
@@ -640,7 +644,7 @@ void CMach_InitVectorMem(Type* type, MWVector128 val, void* mem, Boolean flag) {
                         } else {
                             us[i] = val.us[7 - i];
                         }
-                        if (flag) {
+                        if (endian_convert) {
                             us[i] = CTool_EndianConvertWord16(us[i]);
                         }
                     }
@@ -655,7 +659,7 @@ void CMach_InitVectorMem(Type* type, MWVector128 val, void* mem, Boolean flag) {
                         } else {
                             ul[i] = val.ul[3 - i];
                         }
-                        if (flag) {
+                        if (endian_convert) {
                             ul[i] = CTool_EndianConvertWord32(ul[i]);
                         }
                     }
@@ -683,16 +687,40 @@ void CMach_InitVectorMem(Type* type, MWVector128 val, void* mem, Boolean flag) {
 Float CMach_CalcFloatDiadic(Type* type, Float left, short op, Float right) {
     switch (op) {
         case '+':
-            CMACH_FOLD(left.data.value, +, right.data.value);
+#ifdef __MWERKS__
+            left.data.value += right.data.value;
+#elif defined(__wasm__)
+            left.data.value = __x87_double('+', left.data.value, right.data.value);
+#else
+            left.data.value = X87_Arithmetic(left.data.value, X87_ADD, right.data.value);
+#endif
             break;
         case '-':
-            CMACH_FOLD(left.data.value, -, right.data.value);
+#ifdef __MWERKS__
+            left.data.value -= right.data.value;
+#elif defined(__wasm__)
+            left.data.value = __x87_double('-', left.data.value, right.data.value);
+#else
+            left.data.value = X87_Arithmetic(left.data.value, X87_SUB, right.data.value);
+#endif
             break;
         case '*':
-            CMACH_FOLD(left.data.value, *, right.data.value);
+#ifdef __MWERKS__
+            left.data.value *= right.data.value;
+#elif defined(__wasm__)
+            left.data.value = __x87_double('*', left.data.value, right.data.value);
+#else
+            left.data.value = X87_Arithmetic(left.data.value, X87_MUL, right.data.value);
+#endif
             break;
         case '/':
-            CMACH_FOLD(left.data.value, /, right.data.value);
+#ifdef __MWERKS__
+            left.data.value /= right.data.value;
+#elif defined(__wasm__)
+            left.data.value = __x87_double('/', left.data.value, right.data.value);
+#else
+            left.data.value = X87_Arithmetic(left.data.value, X87_DIV, right.data.value);
+#endif
             break;
         default:
             CError_FATAL(683);
@@ -726,7 +754,7 @@ Boolean CMach_CalcFloatDiadicBool(Type* type, Float left, short op, Float right)
             return left.data.value < right.data.value;
         default:
             CError_FATAL(718);
-            return 0;
+            return FALSE;
     }
 }
 
@@ -818,8 +846,6 @@ void CMach_InitFloatMem(Type* type, Float val, void* mem) {
     CError_FATAL(870);
 }
 
-// (dead in 2.6: its "%g" stays in the unit's data; 2.6's has no jump table, so it does not go
-// through CMach_InitFloatMem as Pro7's does)
 void CMach_PrintFloat(char* buf, Float val) {
     sprintf(buf, "%g", val.data.value);
 }
@@ -834,17 +860,11 @@ void CMach_PragmaParams(void) {
     }
 }
 
-// (dead in 2.6: no caller)
 void CMach_AdjustFuntionArgs(void) {}
 
-// TODO: invented name. Mac OS/AIX "power" alignment (a double 8-aligned only as a struct's first
-// member or in an 8-aligned struct), which the EABI target lacks: 2.6 compiles none of Pro7's rules
-// below yet never inlines the function, as a body this size gives, so the body is there behind a
-// constant that folds to 0 (the original's spelling is not known; `#pragma dont_inline` around the
-// one-line body also matched)
 #define CMACH_POWER_ALIGNMENT 0
 
-static SInt32 CMach_GetPPCTypeAlign(Type* type, Boolean flag1, Boolean flag2) {
+static SInt32 CMach_GetPPCTypeAlign(Type* type, Boolean align_double, Boolean qualified) {
     ClassList* base;
     ObjMemberVar* ivar;
     StructMember* member;
@@ -852,13 +872,13 @@ static SInt32 CMach_GetPPCTypeAlign(Type* type, Boolean flag1, Boolean flag2) {
     SInt32 ivarAlign;
     SInt32 qualAlign;
 
-    SInt32 align = CMach_GetQualifiedTypeAlign(type, flag2);
+    SInt32 align = CMach_GetQualifiedTypeAlign(type, qualified);
     if (CMACH_POWER_ALIGNMENT && align <= 8) {
         while (type->type == TYPEARRAY) {
             type = TYPE_POINTER(type)->target;
         }
 
-        if (flag1) {
+        if (align_double) {
             if (type->type == TYPEFLOAT && type->size > 4 && align < 8) {
                 return 8;
             }
@@ -871,11 +891,11 @@ static SInt32 CMach_GetPPCTypeAlign(Type* type, Boolean flag1, Boolean flag2) {
                     }
                 }
                 for (ivar = TYPE_CLASS(type)->ivars; ivar; ivar = ivar->next) {
-                    ivarAlign = CMach_GetPPCTypeAlign(ivar->type, 0, flag2);
+                    ivarAlign = CMach_GetPPCTypeAlign(ivar->type, FALSE, qualified);
                     if (ivarAlign > best) {
                         best = ivarAlign;
                     }
-                    if (flag2) {
+                    if (qualified) {
                         qualAlign = CMach_GetQUALalign(ivar->type, ivar->qual);
                         if (qualAlign > best) {
                             best = qualAlign;
@@ -887,11 +907,11 @@ static SInt32 CMach_GetPPCTypeAlign(Type* type, Boolean flag1, Boolean flag2) {
             if (type->type == TYPESTRUCT) {
                 best = 4;
                 for (member = TYPE_STRUCT(type)->members; member; member = member->next) {
-                    ivarAlign = CMach_GetPPCTypeAlign(member->type, 0, flag2);
+                    ivarAlign = CMach_GetPPCTypeAlign(member->type, FALSE, qualified);
                     if (ivarAlign > best) {
                         best = ivarAlign;
                     }
-                    if (flag2) {
+                    if (qualified) {
                         qualAlign = CMach_GetQUALalign(member->type, member->qual);
                         if (qualAlign > best) {
                             best = qualAlign;
@@ -906,7 +926,7 @@ static SInt32 CMach_GetPPCTypeAlign(Type* type, Boolean flag1, Boolean flag2) {
     return align;
 }
 
-static SInt16 CMach_GetQualifiedStructAlign(const TypeStruct* tstruct, Boolean flag) {
+static SInt16 CMach_GetQualifiedStructAlign(const TypeStruct* tstruct, Boolean qualified) {
     StructMember* member;
     SInt32 best;
     SInt32 align;
@@ -939,11 +959,11 @@ static SInt16 CMach_GetQualifiedStructAlign(const TypeStruct* tstruct, Boolean f
         case AlignMode6_8Byte:
         case AlignMode7_16Byte:
             for (member = tstruct->members; member; member = member->next) {
-                align = CMach_GetQualifiedTypeAlign(member->type, flag);
+                align = CMach_GetQualifiedTypeAlign(member->type, qualified);
                 if (align > best) {
                     best = align;
                 }
-                if (flag) {
+                if (qualified) {
                     align = CMach_GetQUALalign(member->type, member->qual);
                     if (align > best) {
                         best = align;
@@ -954,11 +974,11 @@ static SInt16 CMach_GetQualifiedStructAlign(const TypeStruct* tstruct, Boolean f
         case AlignMode2_PPC:
             if (copts.oldalignment) {
                 for (member = tstruct->members; member; member = member->next) {
-                    align = CMach_GetQualifiedTypeAlign(member->type, flag);
+                    align = CMach_GetQualifiedTypeAlign(member->type, qualified);
                     if (align > best) {
                         best = align;
                     }
-                    if (flag) {
+                    if (qualified) {
                         align = CMach_GetQUALalign(member->type, member->qual);
                         if (align > best) {
                             best = align;
@@ -967,11 +987,11 @@ static SInt16 CMach_GetQualifiedStructAlign(const TypeStruct* tstruct, Boolean f
                 }
             } else if (TYPE_STRUCT(tstruct)->stype == STRUCT_TYPE_UNION) {
                 for (member = tstruct->members; member; member = member->next) {
-                    align = CMach_GetPPCTypeAlign(member->type, TRUE, flag);
+                    align = CMach_GetPPCTypeAlign(member->type, TRUE, qualified);
                     if (align > best) {
                         best = align;
                     }
-                    if (flag) {
+                    if (qualified) {
                         align = CMach_GetQUALalign(member->type, member->qual);
                         if (align > best) {
                             best = align;
@@ -981,11 +1001,11 @@ static SInt16 CMach_GetQualifiedStructAlign(const TypeStruct* tstruct, Boolean f
             } else {
                 isFirst = TRUE;
                 for (member = tstruct->members; member; member = member->next) {
-                    align = CMach_GetPPCTypeAlign(member->type, isFirst || (best >= 8), flag);
+                    align = CMach_GetPPCTypeAlign(member->type, isFirst || (best >= 8), qualified);
                     if (align > best) {
                         best = align;
                     }
-                    if (flag) {
+                    if (qualified) {
                         align = CMach_GetQUALalign(member->type, member->qual);
                         if (align > best) {
                             best = align;
@@ -999,10 +1019,10 @@ static SInt16 CMach_GetQualifiedStructAlign(const TypeStruct* tstruct, Boolean f
 }
 
 UInt16 CMach_GetStructAlign(TypeStruct* str) {
-    return CMach_GetQualifiedStructAlign(str, 1);
+    return CMach_GetQualifiedStructAlign(str, TRUE);
 }
 
-static SInt16 CMach_GetQualifiedClassAlign(TypeClass* tclass, Boolean flag) {
+static SInt16 CMach_GetQualifiedClassAlign(TypeClass* tclass, Boolean qualified) {
     ClassList* base;
     ObjMemberVar* ivar;
     SInt32 best;
@@ -1036,7 +1056,9 @@ static SInt16 CMach_GetQualifiedClassAlign(TypeClass* tclass, Boolean flag) {
             }
             for (ivar = tclass->ivars; ivar; ivar = ivar->next) {
                 align = CMach_GetMemberAlignment(
-                    ivar->type, flag ? CMach_GetQUALalign(ivar->type, ivar->qual) : 0, flag
+                    ivar->type,
+                    qualified ? CMach_GetQUALalign(ivar->type, ivar->qual) : 0,
+                    qualified
                 );
                 if (align > best) {
                     best = align;
@@ -1053,7 +1075,9 @@ static SInt16 CMach_GetQualifiedClassAlign(TypeClass* tclass, Boolean flag) {
                 }
                 for (ivar = tclass->ivars; ivar; ivar = ivar->next) {
                     align = CMach_GetMemberAlignment(
-                        ivar->type, flag ? CMach_GetQUALalign(ivar->type, ivar->qual) : 0, flag
+                        ivar->type,
+                        qualified ? CMach_GetQUALalign(ivar->type, ivar->qual) : 0,
+                        qualified
                     );
                     if (align > best) {
                         best = align;
@@ -1069,11 +1093,11 @@ static SInt16 CMach_GetQualifiedClassAlign(TypeClass* tclass, Boolean flag) {
                 }
                 if (tclass->mode == CLASS_MODE_UNION) {
                     for (ivar = tclass->ivars; ivar; ivar = ivar->next) {
-                        align = CMach_GetPPCTypeAlign(ivar->type, TRUE, flag);
+                        align = CMach_GetPPCTypeAlign(ivar->type, TRUE, qualified);
                         if (align > best) {
                             best = align;
                         }
-                        if (flag) {
+                        if (qualified) {
                             align = CMach_GetQUALalign(ivar->type, ivar->qual);
                             if (align > best) {
                                 best = align;
@@ -1085,11 +1109,12 @@ static SInt16 CMach_GetQualifiedClassAlign(TypeClass* tclass, Boolean flag) {
                         if (ivar->offset && align != 8) {
                             isFirst = FALSE;
                         }
-                        align = CMach_GetPPCTypeAlign(ivar->type, isFirst || (best >= 8), flag);
+                        align =
+                            CMach_GetPPCTypeAlign(ivar->type, isFirst || (best >= 8), qualified);
                         if (align > best) {
                             best = align;
                         }
-                        if (flag) {
+                        if (qualified) {
                             align = CMach_GetQUALalign(ivar->type, ivar->qual);
                             if (align > best) {
                                 best = align;
@@ -1103,7 +1128,7 @@ static SInt16 CMach_GetQualifiedClassAlign(TypeClass* tclass, Boolean flag) {
 }
 
 SInt16 CMach_GetClassAlign(TypeClass* tclass) {
-    return CMach_GetQualifiedClassAlign(tclass, 1);
+    return CMach_GetQualifiedClassAlign(tclass, TRUE);
 }
 
 static SInt16 CMach_GetWinTypeAlign(Type* type) {
@@ -1124,14 +1149,12 @@ static SInt16 CMach_GetWinMinimizeAlign(SInt16 align) {
     return align;
 }
 
-static SInt16 CMach_GetQualifiedTypeAlign(Type* type, Boolean flag) {
+static SInt16 CMach_GetQualifiedTypeAlign(Type* type, Boolean qualified) {
     Boolean isWin;
     SInt16 align;
 
-    if (type->type ==
-        TYPESTRUCT &&
-        TYPE_STRUCT(type)->stype >=
-        STRUCT_VECTOR_UCHAR &&
+    if (type->type == TYPESTRUCT &&
+        TYPE_STRUCT(type)->stype >= STRUCT_VECTOR_UCHAR &&
         TYPE_STRUCT(type)->stype <= STRUCT_VECTOR_PIXEL) {
         return 16;
     }
@@ -1217,7 +1240,7 @@ restart:
                 if (copts.structalignment == AlignMode1_Mac68k4byte || type->size < 8) {
                     return 4;
                 }
-                align = CMach_GetQualifiedTypeAlign(TYPE_POINTER(type)->target, flag);
+                align = CMach_GetQualifiedTypeAlign(TYPE_POINTER(type)->target, qualified);
                 if (align > 4) {
                     return align;
                 } else {
@@ -1228,10 +1251,10 @@ restart:
                 goto restart;
             }
         case TYPESTRUCT:
-            if (flag) {
+            if (qualified) {
                 align = TYPE_STRUCT(type)->align;
             } else {
-                align = CMach_GetQualifiedStructAlign(TYPE_STRUCT(type), flag);
+                align = CMach_GetQualifiedStructAlign(TYPE_STRUCT(type), qualified);
             }
             if (isWin) {
                 return CMach_GetWinMinimizeAlign(align);
@@ -1239,10 +1262,10 @@ restart:
                 return align;
             }
         case TYPECLASS:
-            if (flag) {
+            if (qualified) {
                 align = TYPE_CLASS(type)->align;
             } else {
-                align = CMach_GetQualifiedClassAlign(TYPE_CLASS(type), flag);
+                align = CMach_GetQualifiedClassAlign(TYPE_CLASS(type), qualified);
             }
             if (isWin) {
                 return CMach_GetWinMinimizeAlign(align);
@@ -1261,13 +1284,13 @@ restart:
 }
 
 SInt16 CMach_GetTypeAlign(Type* type) {
-    return CMach_GetQualifiedTypeAlign(type, 1);
+    return CMach_GetQualifiedTypeAlign(type, TRUE);
 }
 
-static SInt16 CMach_GetMemberAlignment(Type* type, SInt32 var, Boolean flag) {
+static SInt16 CMach_GetMemberAlignment(Type* type, SInt32 min_align, Boolean qualified) {
     SInt32 align;
 
-    align = CMach_GetQualifiedTypeAlign(type, flag);
+    align = CMach_GetQualifiedTypeAlign(type, qualified);
     if (align < 1) {
         align = 1;
     }
@@ -1293,11 +1316,11 @@ static SInt16 CMach_GetMemberAlignment(Type* type, SInt32 var, Boolean flag) {
         case AlignMode2_PPC:
             if (!copts.oldalignment) {
                 align = CMach_GetPPCTypeAlign(
-                    type, cmach_structoffset == 0 || (cmach_structalign >= 8), flag
+                    type, cmach_structoffset == 0 || (cmach_structalign >= 8), qualified
                 );
             }
-            if (var > align) {
-                align = var;
+            if (min_align > align) {
+                align = min_align;
             }
             break;
     }
@@ -1308,18 +1331,18 @@ static SInt16 CMach_GetMemberAlignment(Type* type, SInt32 var, Boolean flag) {
     return align;
 }
 
-SInt16 CMach_MemberAlignValue(Type* type, SInt32 var) {
+SInt16 CMach_MemberAlignValue(Type* type, SInt32 offset) {
     SInt16 align = CMach_GetMemberAlignment(type, 0, TRUE);
     if ((SInt32)align <= 1) {
         return 0;
     }
 
-    return (align - 1) & (align - (var & (align - 1)));
+    return (align - 1) & (align - (offset & (align - 1)));
 }
 
-static SInt16 MemberAlignValue(Type* type, SInt32 var1, SInt32 var2) {
-    SInt16 align = CMach_GetMemberAlignment(type, var2, TRUE);
-    return (align - 1) & (align - (var1 & (align - 1)));
+static SInt16 MemberAlignValue(Type* type, SInt32 offset, SInt32 min_align) {
+    SInt16 align = CMach_GetMemberAlignment(type, min_align, TRUE);
+    return (align - 1) & (align - (offset & (align - 1)));
 }
 
 void CMach_StructLayoutInitOffset(SInt32 offset) {
@@ -1396,8 +1419,6 @@ SInt32 CMach_StructLayoutGetOffset(Type* type, UInt32 qual) {
     return offset;
 }
 
-// 2.6: a bitfield that starts a new storage unit
-// TODO: invented name
 static SInt32 CMach_StructLayoutNewBitfieldUnit(TypeBitfield* tbitfield, SInt16 basesize) {
     if (!tbitfield->bitlength) {
         return cmach_structoffset;
@@ -1410,8 +1431,6 @@ static SInt32 CMach_StructLayoutNewBitfieldUnit(TypeBitfield* tbitfield, SInt16 
     return cmach_curbfoffset;
 }
 
-// 2.6: a bitfield placed in the current storage unit
-// TODO: invented name
 static SInt32 CMach_StructLayoutAppendBitfield(TypeBitfield* tbitfield, SInt16 basesize) {
     tbitfield->offset = cmach_curbfsize;
     cmach_curbfsize += tbitfield->bitlength;
@@ -1421,8 +1440,6 @@ static SInt32 CMach_StructLayoutAppendBitfield(TypeBitfield* tbitfield, SInt16 b
     return cmach_curbfoffset;
 }
 
-// 2.6: the bytes from `offset` to the next multiple of `align`
-// TODO: invented name
 static int CMach_BitfieldPadding(int offset, int align) {
     if (align && (offset & (align - 1))) {
         return align - (offset & (align - 1));
@@ -1430,11 +1447,8 @@ static int CMach_BitfieldPadding(int offset, int align) {
     return 0;
 }
 
-// 2.6: the bitfield layout without #pragma old_style_bitfields: a field shares a storage unit
-// with the previous ones while its bits fit
-// TODO: invented name
 static SInt32 CMach_StructLayoutPackedBitfield(
-    SInt16 basesize, TypeBitfield* tbitfield, int align, int required
+    SInt16 basesize, TypeBitfield* tbitfield, int unit_align, int qual_align
 ) {
     int padding;
     int unitsize;
@@ -1453,16 +1467,13 @@ static SInt32 CMach_StructLayoutPackedBitfield(
     if (unitbits < tbitfield->bitlength) {
         CError_FATAL(1624);
     }
-    if (align && (cmach_structoffset & (align - 1))) {
-        padding = align - (cmach_structoffset & (align - 1));
+    if (unit_align && (cmach_structoffset & (unit_align - 1))) {
+        padding = unit_align - (cmach_structoffset & (unit_align - 1));
     }
-    if (!cmach_structoffset || unnamedzero || required) {
+    if (!cmach_structoffset || unnamedzero || qual_align) {
         if (unnamedzero) {
             cmach_curbfsize = 0;
-            // TODO: 2.6 computes the mask in unitsize's own (spilled) slot, `dec [esp]` then the
-            // `and` stored back, with the old value kept in a register for the subtraction; this
-            // spelling gives that, but the function is still not the original's (registers)
-            if (align < (u = unitsize) && basesize) {
+            if (unit_align < (u = unitsize) && basesize) {
                 if ((unitsize = (unitsize - 1) & cmach_structoffset)) {
                     padding = u - unitsize;
                 }
@@ -1505,21 +1516,17 @@ static SInt32 CMach_StructLayoutPackedBitfield(
         return CMach_StructLayoutAppendBitfield(tbitfield, basesize);
     }
     cmach_structoffset = bitpos ? offset + 1 : offset;
-    cmach_structoffset += CMach_BitfieldPadding(cmach_structoffset, align);
+    cmach_structoffset += CMach_BitfieldPadding(cmach_structoffset, unit_align);
     return CMach_StructLayoutNewBitfieldUnit(tbitfield, basesize);
 }
 
 #if VERSION == VERSION_GC_2_5
-// 2.5: 2.0's layout (each unit of the bitfield's type) refined, unless #pragma old_style_bitfields:
-// a first bitfield after other members shares the unit those members end when its bits fit, a field
-// of a smaller type that fits the bits left in a larger unit is retyped to the unit's size, and a
-// unit grows into a larger type only while the field stays within one unit of that type
 SInt32 CMach_StructLayoutBitfield(TypeBitfield* tbitfield, UInt32 qual) {
     SInt16 align;
     SInt16 padding_at_start;
     SInt16 basesize;
     SInt16 basesize_bits;
-    SInt16 r4;
+    SInt16 unit_align;
     Boolean old_style;
     Boolean inunit;
     Boolean overflow;
@@ -1557,8 +1564,7 @@ SInt32 CMach_StructLayoutBitfield(TypeBitfield* tbitfield, UInt32 qual) {
             required_alignment = 2;
             break;
         case 4:
-            if (copts.structalignment !=
-                AlignMode0_Mac68k &&
+            if (copts.structalignment != AlignMode0_Mac68k &&
                 copts.structalignment != AlignMode4_2Byte) {
                 required_alignment = 4;
             } else {
@@ -1583,13 +1589,13 @@ SInt32 CMach_StructLayoutBitfield(TypeBitfield* tbitfield, UInt32 qual) {
             break;
     }
 
-    r4 = required_alignment;
+    unit_align = required_alignment;
     if (align > required_alignment) {
-        r4 = align;
+        unit_align = align;
     }
 
-    if (r4 && (cmach_structoffset & (r4 - 1))) {
-        padding_at_start = r4 - (cmach_structoffset & (r4 - 1));
+    if (unit_align && (cmach_structoffset & (unit_align - 1))) {
+        padding_at_start = unit_align - (cmach_structoffset & (unit_align - 1));
     }
 
     old_style = copts.old_style_bitfields;
@@ -1610,7 +1616,7 @@ SInt32 CMach_StructLayoutBitfield(TypeBitfield* tbitfield, UInt32 qual) {
     if (!inunit) {
         cmach_structoffset += padding_at_start;
         if (!tbitfield->bitlength) {
-            cmach_curbfintegral = TYPE_INTEGRAL(tbitfield->bitfieldtype)->integral;
+            cmach_curbfintegral = TYPE_INTEGRAL_UNCHECKED(tbitfield->bitfieldtype);
             return cmach_structoffset;
         }
         cmach_curbfsize = tbitfield->bitlength;
@@ -1618,7 +1624,7 @@ SInt32 CMach_StructLayoutBitfield(TypeBitfield* tbitfield, UInt32 qual) {
         cmach_curbfoffset = cmach_structoffset;
         cmach_structoffset += basesize;
         tbitfield->offset = 0;
-        cmach_curbfintegral = TYPE_INTEGRAL(tbitfield->bitfieldtype)->integral;
+        cmach_curbfintegral = TYPE_INTEGRAL_UNCHECKED(tbitfield->bitfieldtype);
         return cmach_curbfoffset;
     }
 
@@ -1632,12 +1638,9 @@ SInt32 CMach_StructLayoutBitfield(TypeBitfield* tbitfield, UInt32 qual) {
 
     if (newunit) {
         if (!old_style &&
-            cmach_curbfbasesize >
-            basesize &&
+            cmach_curbfbasesize > basesize &&
             tbitfield->bitlength &&
-            cmach_curbfbasesize *
-            8 -
-            cmach_curbfsize >= tbitfield->bitlength) {
+            cmach_curbfbasesize * 8 - cmach_curbfsize >= tbitfield->bitlength) {
             byte = cmach_curbfsize / 8;
             room = basesize - (byte + cmach_curbfoffset) % basesize;
             end = cmach_curbfsize - byte * 8 + tbitfield->bitlength;
@@ -1666,7 +1669,7 @@ SInt32 CMach_StructLayoutBitfield(TypeBitfield* tbitfield, UInt32 qual) {
         cmach_curbfsize = 0;
         cmach_curbfbasesize = basesize;
         if (!tbitfield->bitlength) {
-            cmach_curbfintegral = TYPE_INTEGRAL(tbitfield->bitfieldtype)->integral;
+            cmach_curbfintegral = TYPE_INTEGRAL_UNCHECKED(tbitfield->bitfieldtype);
             return cmach_structoffset;
         }
         cmach_curbfoffset = cmach_structoffset;
@@ -1694,7 +1697,7 @@ SInt32 CMach_StructLayoutBitfield(TypeBitfield* tbitfield, UInt32 qual) {
             }
             cmach_curbfbasesize = basesize;
             if (!tbitfield->bitlength) {
-                cmach_curbfintegral = TYPE_INTEGRAL(tbitfield->bitfieldtype)->integral;
+                cmach_curbfintegral = TYPE_INTEGRAL_UNCHECKED(tbitfield->bitfieldtype);
                 return cmach_structoffset;
             }
             cmach_curbfoffset = cmach_structoffset;
@@ -1703,14 +1706,13 @@ SInt32 CMach_StructLayoutBitfield(TypeBitfield* tbitfield, UInt32 qual) {
     }
     tbitfield->offset = cmach_curbfsize;
     cmach_curbfsize += tbitfield->bitlength;
-    cmach_curbfintegral = TYPE_INTEGRAL(tbitfield->bitfieldtype)->integral;
+    cmach_curbfintegral = TYPE_INTEGRAL_UNCHECKED(tbitfield->bitfieldtype);
     return cmach_curbfoffset;
 }
 #else
 #if VERSION < VERSION_GC_2_5
-// 2.0's file has 105 lines fewer above here
 #undef CError_LINE_SHIFT
-#define CError_LINE_SHIFT -105
+#define CError_LINE_SHIFT (-105 + CError_LINE_DELTA)
 #endif
 SInt32 CMach_StructLayoutBitfield(TypeBitfield* tbitfield, UInt32 qual) {
     SInt16 align;
@@ -1718,7 +1720,7 @@ SInt32 CMach_StructLayoutBitfield(TypeBitfield* tbitfield, UInt32 qual) {
     SInt16 basesize_bits;
     SInt16 required_alignment;
     SInt16 basesize;
-    SInt16 r4;
+    SInt16 unit_align;
 
     padding_at_start = 0;
     required_alignment = 0;
@@ -1743,8 +1745,7 @@ SInt32 CMach_StructLayoutBitfield(TypeBitfield* tbitfield, UInt32 qual) {
             required_alignment = 2;
             break;
         case 4:
-            if (copts.structalignment !=
-                AlignMode0_Mac68k &&
+            if (copts.structalignment != AlignMode0_Mac68k &&
                 copts.structalignment != AlignMode4_2Byte) {
                 required_alignment = 4;
             } else {
@@ -1769,24 +1770,22 @@ SInt32 CMach_StructLayoutBitfield(TypeBitfield* tbitfield, UInt32 qual) {
             break;
     }
 
-    r4 = required_alignment;
+    unit_align = required_alignment;
     if (align > required_alignment) {
-        r4 = align;
+        unit_align = align;
     }
 
-#if VERSION >= VERSION_GC_2_5
+#if VERSION >= VERSION_GC_2_6
     if (!copts.old_style_bitfields) {
-        return CMach_StructLayoutPackedBitfield(basesize, tbitfield, r4, align);
+        return CMach_StructLayoutPackedBitfield(basesize, tbitfield, unit_align, align);
     }
 #endif
 
-    if (r4 && (cmach_structoffset & (r4 - 1))) {
-        padding_at_start = r4 - (cmach_structoffset & (r4 - 1));
+    if (unit_align && (cmach_structoffset & (unit_align - 1))) {
+        padding_at_start = unit_align - (cmach_structoffset & (unit_align - 1));
     }
 
 #if VERSION < VERSION_GC_2_5
-    // 2.0 (which has no other layout): a bitfield after other members at an offset its type's alignment would
-    // pad shares the unit those members end, if it fits in the unit's remaining bits
     if (!cmach_curbfsize && cmach_structoffset && !align && padding_at_start) {
         cmach_curbfbasesize = basesize - padding_at_start;
         if ((SInt16)(basesize_bits - cmach_curbfbasesize * 8 - tbitfield->bitlength) >= 0) {
@@ -1809,14 +1808,11 @@ SInt32 CMach_StructLayoutBitfield(TypeBitfield* tbitfield, UInt32 qual) {
     } else {
 #if VERSION >= VERSION_GC_2_5
         if (!tbitfield->bitlength ||
-            (cmach_curbfsize + tbitfield->bitlength) >
-            basesize_bits ||
+            (cmach_curbfsize + tbitfield->bitlength) > basesize_bits ||
             cmach_curbfbasesize != basesize) {
 #else
-        // 2.0: a unit of a smaller type grows into one of the bitfield's type, from where it starts
         if (!tbitfield->bitlength ||
-            (cmach_curbfsize + tbitfield->bitlength) >
-            basesize_bits ||
+            (cmach_curbfsize + tbitfield->bitlength) > basesize_bits ||
             cmach_curbfbasesize > basesize) {
 #endif
             cmach_structoffset += padding_at_start;
@@ -1849,10 +1845,8 @@ SInt32 CMach_StructLayoutBitfield(TypeBitfield* tbitfield, UInt32 qual) {
 UInt8 CMach_GetFunctionResultClass(TypeFunc* functype) {
     switch (functype->functype->type) {
         case TYPESTRUCT:
-            if (functype->functype->type ==
-                TYPESTRUCT &&
-                TYPE_STRUCT(functype->functype)->stype >=
-                STRUCT_VECTOR_UCHAR &&
+            if (functype->functype->type == TYPESTRUCT &&
+                TYPE_STRUCT(functype->functype)->stype >= STRUCT_VECTOR_UCHAR &&
                 TYPE_STRUCT(functype->functype)->stype <= STRUCT_VECTOR_PIXEL) {
                 return FALSE;
             }
@@ -1867,8 +1861,6 @@ UInt8 CMach_GetFunctionResultClass(TypeFunc* functype) {
     }
 }
 
-// 2.6: whether a function's result is returned through memory: small structs and trivial classes
-// come back in r3/r4 (unless copts.incompatible_sfpe_double_params)
 Boolean Type_RequiresMemoryReturn(Type* type) {
     SInt32 stype;
     switch (type->type) {
@@ -1883,9 +1875,7 @@ Boolean Type_RequiresMemoryReturn(Type* type) {
             return TRUE;
         }
         case TYPECLASS:
-            // (Pro7's CMach_IsTrivialClass, inlined)
-            if (type->size <=
-                8 &&
+            if (type->size <= 8 &&
                 (Boolean)(CClass_Constructor(TYPE_CLASS(type)) == NULL) &&
                 !copts.incompatible_sfpe_double_params) {
                 return FALSE;
@@ -1907,7 +1897,6 @@ Boolean CMach_PassResultInHiddenArg(Type* type) {
             if (IS_TYPE_VECTOR(type)) {
                 return FALSE;
             }
-            // fall through
         case TYPECLASS:
             return TRUE;
         case TYPEMEMBERPOINTER:
@@ -1972,7 +1961,6 @@ const char* CMach_GetCPU(void) {
             return "__PPC8260__";
         case CPU_PPCGEKKO:
             return "__PPCGEKKO__";
-        // (2.6: the e500 in Pro7's PPCELF slot)
         case CPU_PPCELF:
             return "__PPCe500__";
         default:
@@ -2021,10 +2009,10 @@ Type* CMach_GetCustomType(short token, short size, short signedness) {
     Type* type;
 
     switch (token) {
-        case TK_UNK_113:
+        case TK_CUSTOM_TYPE_113:
             type = (Type*)&stcustomtype113;
             break;
-        case TK_UNK_114:
+        case TK_CUSTOM_TYPE_114:
             type = (Type*)&stcustomtype114;
             break;
         case TK_UU_VEC2X32FLOAT_UU:
@@ -2043,11 +2031,9 @@ Type* CMach_GetCustomType(short token, short size, short signedness) {
 
 #if VERSION < VERSION_GC_2_6
 #if VERSION < VERSION_GC_2_5
-// 2.0's file has 110 lines fewer above here
 #undef CError_LINE_SHIFT
-#define CError_LINE_SHIFT -110
+#define CError_LINE_SHIFT (-110 + CError_LINE_DELTA)
 #endif
-// 2.0 and 2.5 convert constants between the paired-single types and the others
 CInt64 CMach_CustomIntConvert(Type* type, Type* oldtype, CInt64 value) {
     CInt64 result;
     union {
@@ -2056,28 +2042,20 @@ CInt64 CMach_CustomIntConvert(Type* type, Type* oldtype, CInt64 value) {
     } u;
 
     if (type == TYPE(&stcustomtype113)) {
-        if (oldtype ==
-            TYPE(&stvec2x32float) ||
-            oldtype ==
-            TYPE(&stfloat) ||
-            oldtype ==
-            TYPE(&stdouble) ||
-            oldtype ==
-            TYPE(&stlongdouble) ||
+        if (oldtype == TYPE(&stvec2x32float) ||
+            oldtype == TYPE(&stfloat) ||
+            oldtype == TYPE(&stdouble) ||
+            oldtype == TYPE(&stlongdouble) ||
             oldtype == TYPE(&stshortdouble)) {
             CInt64_ConvertFromLongDouble(&result, (float)CInt64_ConvertToLongDouble(&value));
         } else {
             result = value;
         }
     } else if (type == TYPE(&stcustomtype114)) {
-        if (oldtype ==
-            TYPE(&stvec2x32float) ||
-            oldtype ==
-            TYPE(&stfloat) ||
-            oldtype ==
-            TYPE(&stdouble) ||
-            oldtype ==
-            TYPE(&stlongdouble) ||
+        if (oldtype == TYPE(&stvec2x32float) ||
+            oldtype == TYPE(&stfloat) ||
+            oldtype == TYPE(&stdouble) ||
+            oldtype == TYPE(&stlongdouble) ||
             oldtype == TYPE(&stshortdouble)) {
             CInt64_ConvertFromLongDouble(&result, (float)CInt64_ConvertToLongDouble(&value));
             result.hi = result.lo;
@@ -2091,12 +2069,9 @@ CInt64 CMach_CustomIntConvert(Type* type, Type* oldtype, CInt64 value) {
             CInt64_SetLong(&result, u.l);
         } else if (oldtype == TYPE(&stcustomtype114)) {
             result = value;
-        } else if (oldtype ==
-                   TYPE(&stfloat) ||
-                   oldtype ==
-                   TYPE(&stdouble) ||
-                   oldtype ==
-                   TYPE(&stlongdouble) ||
+        } else if (oldtype == TYPE(&stfloat) ||
+                   oldtype == TYPE(&stdouble) ||
+                   oldtype == TYPE(&stlongdouble) ||
                    oldtype == TYPE(&stshortdouble)) {
             result.lo = value.lo;
             result.hi = result.lo;
@@ -2108,14 +2083,10 @@ CInt64 CMach_CustomIntConvert(Type* type, Type* oldtype, CInt64 value) {
     } else if (oldtype == TYPE(&stcustomtype113)) {
         if (type == TYPE(&stcustomtype113) || type == TYPE(&stcustomtype114)) {
             result = value;
-        } else if (type ==
-                   TYPE(&stvec2x32float) ||
-                   type ==
-                   TYPE(&stfloat) ||
-                   type ==
-                   TYPE(&stdouble) ||
-                   type ==
-                   TYPE(&stlongdouble) ||
+        } else if (type == TYPE(&stvec2x32float) ||
+                   type == TYPE(&stfloat) ||
+                   type == TYPE(&stdouble) ||
+                   type == TYPE(&stlongdouble) ||
                    type == TYPE(&stshortdouble)) {
             CInt64_ConvertFromLongDouble(&result, (float)CInt64_ConvertToLongDouble(&value));
         } else {
@@ -2129,12 +2100,9 @@ CInt64 CMach_CustomIntConvert(Type* type, Type* oldtype, CInt64 value) {
             u.f = value.lo;
             CInt64_SetLong(&result, u.l);
             result.hi = result.lo;
-        } else if (type ==
-                   TYPE(&stfloat) ||
-                   type ==
-                   TYPE(&stdouble) ||
-                   type ==
-                   TYPE(&stlongdouble) ||
+        } else if (type == TYPE(&stfloat) ||
+                   type == TYPE(&stdouble) ||
+                   type == TYPE(&stlongdouble) ||
                    type == TYPE(&stshortdouble)) {
             u.f = CInt64_ConvertToLongDouble(&value);
             CInt64_SetLong(&result, u.l);
@@ -2142,10 +2110,8 @@ CInt64 CMach_CustomIntConvert(Type* type, Type* oldtype, CInt64 value) {
             CInt64_SetLong(&result, value.lo);
         }
     } else if (oldtype == TYPE(&stvec2x32float)) {
-        if (type ==
-            TYPE(&stcustomtype113) ||
-            type ==
-            TYPE(&stcustomtype114) ||
+        if (type == TYPE(&stcustomtype113) ||
+            type == TYPE(&stcustomtype114) ||
             type == TYPE(&stvec2x32float)) {
             return value;
         }
@@ -2165,7 +2131,11 @@ CInt64 CMach_CustomIntConvert(Type* type, Type* oldtype, CInt64 value) {
 #endif
 
 Float CMach_FloatReciprocal(Float flt) {
-    CMACH_RECIPROCAL(flt.data.value);
+#ifdef __wasm__
+    flt.data.value = __x87_double('/', 1.0, flt.data.value);
+#else
+    flt.data.value = 1.0 / flt.data.value;
+#endif
     return flt;
 }
 
@@ -2281,9 +2251,6 @@ void CMach_ReInitRuntimeObjects(void) {
     stVF_float3.name = e3;
 }
 
-// 2.6: skips the rest of the register argument, to its ')', and returns: every error leaves through
-// a return of its own (2.6 has an epilogue per exit, which an inline function's return does not give)
-// TODO: invented name; a macro in the original's shape
 #define CMACH_SKIP_REGISTER_ARGUMENT() \
     do { \
         if ((tk = lex()) != ')') { \
@@ -2294,19 +2261,14 @@ void CMach_ReInitRuntimeObjects(void) {
         return; \
     } while (0)
 
-// 2.6: a global register variable's register, `__asm("r13")` after its declarator: checks the
-// variable and the register and records the binding in reg_info_list
-// TODO: `#pragma sym off` for this function alone (registers: the whole unit loses with -sym off)
 #pragma sym off
 #if VERSION < VERSION_GC_2_5
-// 2.0's file has 68 lines fewer above here
 #undef CError_LINE_SHIFT
-#define CError_LINE_SHIFT -68
+#define CError_LINE_SHIFT (-68 + CError_LINE_DELTA)
 #endif
 #if VERSION == VERSION_GC_2_5
-// 2.5's file has 42 lines more above here
 #undef CError_LINE_SHIFT
-#define CError_LINE_SHIFT 42
+#define CError_LINE_SHIFT (42 + CError_LINE_DELTA)
 #endif
 void CMach_ParseGlobalRegisterVariable(DeclInfo* declinfo) {
     ObjRegInfo reginfo;
@@ -2332,17 +2294,17 @@ void CMach_ParseGlobalRegisterVariable(DeclInfo* declinfo) {
     tk = lex();
     if (tk != TK_EOL) {
         if (!ok_for_global_registers) {
-            PPCError_Error(PPCErrorStr206);
+            PPCError_Error(PPCERR_GLOBAL_REGISTER_AFTER_CODE);
             CMACH_SKIP_REGISTER_ARGUMENT();
         }
         if (cscope_currentfunc) {
-            PPCError_Warning(PPCErrorStr193);
+            PPCError_Warning(PPCERR_GLOBAL_REGISTER_IN_FUNCTION);
             CMACH_SKIP_REGISTER_ARGUMENT();
         }
 
         if (TYPE_FITS_IN_REGISTER(type) || TYPE_IS_SOFT_FLOAT(type)) {
             if (TYPE_IS_GPR_PAIR(type)) {
-                PPCError_Error(PPCErrorStr201);
+                PPCError_Error(PPCERR_GLOBAL_REGISTER_NOT_SINGLE);
                 CMACH_SKIP_REGISTER_ARGUMENT();
             }
             typeclass = RegClass_GPR;
@@ -2351,15 +2313,14 @@ void CMach_ParseGlobalRegisterVariable(DeclInfo* declinfo) {
         } else if (IS_TYPE_VECTOR(type)) {
             typeclass = RegClass_VR;
         } else {
-            PPCError_Error(PPCErrorStr205);
+            PPCError_Error(PPCERR_GLOBAL_REGISTER_BAD_TYPE);
             CMACH_SKIP_REGISTER_ARGUMENT();
         }
 
         if (declinfo->storageclass &&
-            ((int)declinfo->storageclass <
-             TK_REGISTER ||
+            ((int)declinfo->storageclass < TK_REGISTER ||
              (int)declinfo->storageclass > TK_EXTERN)) {
-            PPCError_Error(PPCErrorStr194);
+            PPCError_Error(PPCERR_GLOBAL_REGISTER_STORAGE_CLASS);
             CMACH_SKIP_REGISTER_ARGUMENT();
         }
 
@@ -2376,7 +2337,7 @@ void CMach_ParseGlobalRegisterVariable(DeclInfo* declinfo) {
                     regclass = RegClass_VR;
                     break;
                 default:
-                    PPCError_Error(PPCErrorStr195);
+                    PPCError_Error(PPCERR_GLOBAL_REGISTER_SYNTAX);
                     CMACH_SKIP_REGISTER_ARGUMENT();
             }
 
@@ -2385,7 +2346,7 @@ void CMach_ParseGlobalRegisterVariable(DeclInfo* declinfo) {
                 name1[1] = 0;
                 name2[0] = GetRegisterClassName(regclass);
                 name2[1] = 0;
-                PPCError_Error(PPCErrorStr200, name2, name1);
+                PPCError_Error(PPCERR_GLOBAL_REGISTER_WRONG_CLASS, name2, name1);
                 CMACH_SKIP_REGISTER_ARGUMENT();
             }
 
@@ -2393,7 +2354,7 @@ void CMach_ParseGlobalRegisterVariable(DeclInfo* declinfo) {
                 count = sscanf(regname + 1, "%i", &reg);
             }
             if (count == -1 || count == 0) {
-                PPCError_Error(PPCErrorStr195);
+                PPCError_Error(PPCERR_GLOBAL_REGISTER_SYNTAX);
                 CMACH_SKIP_REGISTER_ARGUMENT();
             }
 
@@ -2401,15 +2362,17 @@ void CMach_ParseGlobalRegisterVariable(DeclInfo* declinfo) {
             if (reg < first || reg >= first + num_register_variables[regclass]) {
                 name2[0] = GetRegisterClassName(regclass);
                 name2[1] = 0;
-                PPCError_Error(PPCErrorStr196, num_register_variables[regclass], name2, first);
+                PPCError_Error(
+                    PPCERR_GLOBAL_REGISTER_RANGE, num_register_variables[regclass], name2, first
+                );
                 CMACH_SKIP_REGISTER_ARGUMENT();
             }
         } else {
-            PPCError_Error(PPCErrorStr195);
+            PPCError_Error(PPCERR_GLOBAL_REGISTER_SYNTAX);
             CMACH_SKIP_REGISTER_ARGUMENT();
         }
     } else {
-        PPCError_Error(PPCErrorStr195);
+        PPCError_Error(PPCERR_GLOBAL_REGISTER_SYNTAX);
         CMACH_SKIP_REGISTER_ARGUMENT();
     }
 
@@ -2423,22 +2386,30 @@ void CMach_ParseGlobalRegisterVariable(DeclInfo* declinfo) {
         name1[1] = 0;
         name2[0] = GetRegisterClassName(reginfo.rclass);
         name2[1] = 0;
-        PPCError_Error(PPCErrorStr197, name1, declinfo->reginfo.reg, name2, reginfo.reg);
+        PPCError_Error(
+            PPCERR_GLOBAL_REGISTER_REASSIGNED, name1, declinfo->reginfo.reg, name2, reginfo.reg
+        );
         CMACH_SKIP_REGISTER_ARGUMENT();
     }
 
     for (scan = reg_info_list; scan; scan = scan->next) {
         if (reginfo.rclass == scan->reginfo.rclass) {
-            CError_ASSERT(2491, declinfo->name && declinfo->name->name);
+            CError_ASSERT(2491, declinfo->name && &declinfo->name->name[0]);
             if (declinfo->name == scan->name && declinfo->nspace == scan->nspace) {
                 if (is_static != scan->is_static) {
-                    PPCError_Error(PPCErrorStr203, declinfo->name->name);
+                    PPCError_Error(PPCERR_GLOBAL_REGISTER_NAME_CLASH, declinfo->name->name);
                 } else if (reginfo.reg != scan->reginfo.reg) {
                     name1[0] = GetRegisterClassName(scan->reginfo.rclass);
                     name1[1] = 0;
                     name2[0] = GetRegisterClassName(reginfo.rclass);
                     name2[1] = 0;
-                    PPCError_Error(PPCErrorStr197, name1, scan->reginfo.reg, name2, reginfo.reg);
+                    PPCError_Error(
+                        PPCERR_GLOBAL_REGISTER_REASSIGNED,
+                        name1,
+                        scan->reginfo.reg,
+                        name2,
+                        reginfo.reg
+                    );
                 } else {
                     declinfo->reginfo = reginfo;
                 }
@@ -2447,7 +2418,12 @@ void CMach_ParseGlobalRegisterVariable(DeclInfo* declinfo) {
             if (scan->name && reginfo.reg == scan->reginfo.reg) {
                 name1[0] = GetRegisterClassName(scan->reginfo.rclass);
                 name1[1] = 0;
-                PPCError_Error(PPCErrorStr198, scan->name->name, name1, scan->reginfo.reg);
+                PPCError_Error(
+                    PPCERR_GLOBAL_REGISTER_ALREADY_ASSIGNED,
+                    scan->name->name,
+                    name1,
+                    scan->reginfo.reg
+                );
                 CMACH_SKIP_REGISTER_ARGUMENT();
             }
         }
@@ -2503,7 +2479,9 @@ void CMach_GetBackEndOptions(struct CInlineBackendOptions* options) {
     options->gen_isel = copts.gen_isel;
     options->gen_fsel = copts.gen_fsel;
     options->gecko_float_typecons = copts.gecko_float_typecons;
+#if VERSION >= VERSION_GC_2_0
     options->disable_vector_frame = copts.disable_vector_frame;
+#endif
     options->opt_bcc_lr_ctr = copts.opt_bcc_lr_ctr;
     options->optimizationlevel = copts.optimizationlevel;
     options->optimizesize = copts.optimizesize;
@@ -2560,7 +2538,9 @@ void CMach_SetBackEndOptions(struct CInlineBackendOptions* options) {
     copts.gen_isel = options->gen_isel;
     copts.gen_fsel = options->gen_fsel;
     copts.gecko_float_typecons = options->gecko_float_typecons;
+#if VERSION >= VERSION_GC_2_0
     copts.disable_vector_frame = options->disable_vector_frame;
+#endif
     copts.opt_bcc_lr_ctr = options->opt_bcc_lr_ctr;
     copts.optimizationlevel = options->optimizationlevel;
     copts.optimizesize = options->optimizesize;
@@ -2582,5 +2562,4 @@ void CMach_SetBackEndOptions(struct CInlineBackendOptions* options) {
     copts.unrollinstrfactor = options->unrollinstrfactor;
 }
 
-// (the statics' layout is 2.6's .bss: 2-byte packed)
 #pragma pack(2)

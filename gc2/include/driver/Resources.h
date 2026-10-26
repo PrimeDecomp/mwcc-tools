@@ -8,9 +8,6 @@
 extern "C" {
 #endif
 
-// The Mac Resource Manager the command line emulates (Pro7's MacEmul/Resources.c): resource forks
-// read into memory maps, kept in a RESOURCE.FRK directory beside a file. 2.6 calls the Toolbox
-// entry points __stdcall and the rest cdecl. A Handle is Memory.c's (MacEmul).
 extern Boolean OS_UsingMacResourceForkInfo(void);
 extern OSErr SystemInitResources(OSSpec* spec);
 extern void OS_RemoveMacResourceForkRef(int ref);

@@ -2,7 +2,7 @@
 #include "compiler/IroLinearForm.h"
 #include "compiler/IroPropagate.h"
 #include "compiler/IroUtil.h"
-#include "compiler/Registers.h"
+#include "compiler/enode.h"
 #include "compiler/objects.h"
 #include "compiler/types.h"
 
@@ -106,8 +106,7 @@ Boolean IRO_IsSubableExpression(IROLinear* nd) {
             if (nd->nodetype == EADD || nd->nodetype == ESUB) {
                 if (IRO_IsConstant(nd->u.diadic.right) &&
                     (varobj = IRO_IsVariable(nd->u.diadic.left)) &&
-                    varobj->datatype ==
-                    DLOCAL &&
+                    varobj->datatype == DLOCAL &&
                     varobj->u.var.info &&
                     !varobj->u.var.info->noregister) {
                     return FALSE;
@@ -123,12 +122,9 @@ Boolean IRO_IsSubableExpression(IROLinear* nd) {
             if (nd->nodetype == EINDIRECT && !(nd->flags & IROLF_Assigned)) {
                 if (nd->flags & IROLF_Ind) {
                     nd = nd->u.monadic;
-                    if (nd->type ==
-                        IROLinearOperand &&
-                        nd->u.node->type ==
-                        EOBJREF &&
-                        nd->u.node->data.objref->datatype ==
-                        DLOCAL &&
+                    if (nd->type == IROLinearOperand &&
+                        nd->u.node->type == EOBJREF &&
+                        nd->u.node->data.objref->datatype == DLOCAL &&
                         nd->u.node->data.objref->u.var.info &&
                         !nd->u.node->data.objref->u.var.info->noregister) {
                         return FALSE;
@@ -140,8 +136,7 @@ Boolean IRO_IsSubableExpression(IROLinear* nd) {
                     return FALSE;
                 }
                 return TRUE;
-            } else if (nd->nodetype ==
-                       ETYPCON &&
+            } else if (nd->nodetype == ETYPCON &&
                        IS_TYPE_INT(nd->rtype) &&
                        nd->rtype->size >= nd->u.monadic->rtype->size) {
                 return TRUE;
@@ -154,16 +149,11 @@ Boolean IRO_IsSubableExpression(IROLinear* nd) {
     }
 }
 
-// Pro7's; nothing calls it in 2.6 (the linker drops it, and it has no data of its own).
 Boolean IRO_IsVectorTempCandidate(IROLinear* nd) {
-    return (nd->type ==
-            IROLinearOp1Arg ||
-            nd->type ==
-            IROLinearOp2Arg ||
-            nd->type ==
-            IROLinearOp3Arg ||
-            nd->type ==
-            IROLinearOperand ||
+    return (nd->type == IROLinearOp1Arg ||
+            nd->type == IROLinearOp2Arg ||
+            nd->type == IROLinearOp3Arg ||
+            nd->type == IROLinearOperand ||
             nd->type == IROLinearFunccall) &&
         ((nd->flags & IROLF_LoopInvariant) && !(nd->flags & IROLF_Ind));
 }

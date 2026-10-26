@@ -1,10 +1,7 @@
-// Pro7's PluginLib/Src/Internal/CWSecretPluginCallbacks.cpp: the callbacks only Metrowerks' own
-// plugins call, through the shell's cbInternal entries. 2.6 has no CWSecretPeekHandle (nothing
-// calls it; Wii's module lacks it too).
 #include "driver/CWSecretPluginCallbacks.h"
+#include "driver/CWPlugins.h"
 #include "driver/CWPluginsPrivate.h"
 
-// (function names are global rows; CWPluginsPrivate.cpp has a ValidateContext too)
 #define ValidateContext CWSecretPluginCallbacks_ValidateContext
 
 extern "C" {

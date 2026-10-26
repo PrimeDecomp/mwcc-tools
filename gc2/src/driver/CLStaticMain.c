@@ -1,14 +1,13 @@
+#include "driver/cc-eabi-ppc-mw.h"
 #include "driver/ClientGlue.h"
 #include "driver/CmdLineBuildDate.h"
+#include "driver/oslib.h"
 #include "driver/ParserGlue-eabi-ppc-cc.h"
 #include "driver/StaticParserGlue.h"
-#include "driver/cc-eabi-ppc-mw.h"
 #include <stdio.h>
 #include <stdlib.h>
 
 int main(int argc, char** argv) {
-    // (2.6 has four variables, Pro7's lang taking the parser style too, declared in this order:
-    // Pro7's five, or its order, give other stack slots)
     OSType lang;
     OSType type;
     OSType cpu;

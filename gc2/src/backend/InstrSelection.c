@@ -1,18 +1,15 @@
 #include "compiler/InstrSelection.h"
-#include "compiler/IroLoop.h"
 #include "compiler/BE_symbol.h"
 #include "compiler/CError.h"
-#include "compiler/CExpr.h"
-#include "compiler/CFunc.h"
 #include "compiler/CInt64.h"
 #include "compiler/CMachine.h"
 #include "compiler/CodeGen.h"
+#include "compiler/CompilerTools.h"
 #include "compiler/CParser.h"
-#include "compiler/CPrep.h"
+#include "compiler/enode.h"
 #include "compiler/FunctionCalls.h"
 #include "compiler/Intrinsics.h"
 #include "compiler/objects.h"
-#include "compiler/ObjGen_PPC_EABI.h"
 #include "compiler/Operands.h"
 #include "compiler/PCode.h"
 #include "compiler/PCodeInfo.h"
@@ -21,12 +18,12 @@
 #include "compiler/SFPE_PPC_EABI.h"
 #include "compiler/StructMoves.h"
 #include "compiler/TOC.h"
+#include "compiler/types.h"
 #include <stdlib.h>
 
 PrecomputedOperand* precomputedoperands;
 void (*cgdispatch[MAXEXPR + 1])(ENode*, short, short, Operand*);
 
-// forward decls
 static int ispowerof2(SInt32 val);
 static void binary_immediate(
     short opcode, ENode* left, SInt32 value, short outputReg, Operand* output
@@ -51,7 +48,7 @@ static void fp_binary_operator(
 );
 static void logical_expression_nobranch(ENode* cond, Boolean invert, Operand* output);
 static void shift_and_mask(
-    ENode* expr, short a, short b, short c, short outputReg, Operand* output
+    ENode* expr, short sh, short mb, short me, short outputReg, Operand* output
 );
 static ENodeType invert_relop(ENodeType nt);
 
@@ -59,7 +56,6 @@ static ENodeType invert_relop(ENodeType nt);
     (ENODE_IS((node), EINTCONST) && IS_TYPE_INT((node)->rtype) && (node)->rtype->size <= 4)
 #define IS_INT_CONST_ZERO(node) (IS_INT_CONST(node) && (node)->data.intval.lo == 0)
 
-// The mask of an rlwinm with mask begin MB and mask end ME.
 #define RLWINM_MASK(mb, me) \
     (((mb) <= (me)) ? ((((mb) > 31) ? 0 : (0xFFFFFFFF >> (mb))) & \
                        ~((((me) + 1) > 31) ? 0 : (0xFFFFFFFF >> ((me) + 1)))) \
@@ -131,19 +127,27 @@ void gen_DEFINE(ENode* expr, short outputReg, short outputRegHi, Operand* output
     *output = *op;
 }
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -6
+#endif
 void gen_REUSE(ENode* expr, short outputReg, short outputRegHi, Operand* output) {
     ENode* inner = expr->data.monadic;
     CError_ASSERT(258, ENODE_IS(inner, EDEFINE));
     gen_DEFINE(inner, outputReg, outputRegHi, output);
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
 void gen_POSTINCDEC(ENode* expr, short outputReg, short outputRegHi, Operand* output) {
     TypeBitfield* tbitfield;
     ENode* inner;
     Type* type;
-    Operand a;
-    Operand b;
-    Operand c;
+    Operand addr;
+    Operand value;
+    Operand word;
     Float fval;
     int objReg;
     int constReg;
@@ -154,9 +158,9 @@ void gen_POSTINCDEC(ENode* expr, short outputReg, short outputRegHi, Operand* ou
     type = expr->rtype;
     tbitfield = NULL;
 
-    memclrw(&a, sizeof(Operand));
-    memclrw(&b, sizeof(Operand));
-    memclrw(&c, sizeof(Operand));
+    memclrw(&addr, sizeof(Operand));
+    memclrw(&value, sizeof(Operand));
+    memclrw(&word, sizeof(Operand));
 
     if (TYPE_IS_SOFT_FLOAT(type)) {
         SFPE_gen_POSTINCDEC(expr, outputReg, outputRegHi, output);
@@ -182,26 +186,26 @@ void gen_POSTINCDEC(ENode* expr, short outputReg, short outputRegHi, Operand* ou
                 emitpcode((type->size == 4) ? PC_FSUBS : PC_FSUB, objReg, objReg, constReg);
             }
         } else {
-            GEN_NODE(inner, &a);
-            indirect(&a, inner);
-            b = a;
-            ENSURE_FPR(&b, type, 0);
+            GEN_NODE(inner, &addr);
+            indirect(&addr, inner);
+            value = addr;
+            ENSURE_FPR(&value, type, 0);
 
             output->optype = OpndType_FPR;
             output->reg = ALLOC_FPR();
-            emitpcode(PC_FMR, output->reg, b.reg);
+            emitpcode(PC_FMR, output->reg, value.reg);
 
             fval = one_point_zero;
             load_floating_constant(constReg = ALLOC_FPR(), type, &fval);
 
             finalReg = ALLOC_FPR();
             if (ENODE_IS(expr, EPOSTINC)) {
-                emitpcode((type->size == 4) ? PC_FADDS : PC_FADD, finalReg, b.reg, constReg);
+                emitpcode((type->size == 4) ? PC_FADDS : PC_FADD, finalReg, value.reg, constReg);
             } else {
-                emitpcode((type->size == 4) ? PC_FSUBS : PC_FSUB, finalReg, b.reg, constReg);
+                emitpcode((type->size == 4) ? PC_FSUBS : PC_FSUB, finalReg, value.reg, constReg);
             }
 
-            store_fp(finalReg, &a, type);
+            store_fp(finalReg, &addr, type);
         }
     } else {
         if (IS_TYPE_POINTER(type)) {
@@ -228,33 +232,37 @@ void gen_POSTINCDEC(ENode* expr, short outputReg, short outputRegHi, Operand* ou
                 tbitfield = TYPE_BITFIELD(TPTR_TARGET(inner));
                 inner = inner->data.monadic;
             }
-            GEN_NODE(inner, &a);
-            indirect(&a, inner);
-            b = a;
-            ENSURE_GPR(&b, type, 0);
+            GEN_NODE(inner, &addr);
+            indirect(&addr, inner);
+            value = addr;
+            ENSURE_GPR(&value, type, 0);
 
             if (tbitfield) {
-                c = b;
-                extract_bitfield(&c, tbitfield, 0, &b);
+                word = value;
+                extract_bitfield(&word, tbitfield, 0, &value);
             }
             output->optype = OpndType_GPR;
 
             output->reg = ALLOC_GPR();
-            emitpcode(PC_MR, output->reg, b.reg);
+            emitpcode(PC_MR, output->reg, value.reg);
 
             finalReg = ALLOC_GPR();
-            add_register_immediate(finalReg, b.reg, incval);
+            add_register_immediate(finalReg, value.reg, incval);
 
             if (tbitfield) {
-                insert_bitfield(finalReg, &c, tbitfield);
-                finalReg = c.reg;
+                insert_bitfield(finalReg, &word, tbitfield);
+                finalReg = word.reg;
             }
 
-            store(finalReg, &a, type);
+            store(finalReg, &addr, type);
         }
     }
 }
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -6
+#endif
 void gen_INDIRECT(ENode* expr, short outputReg, short outputRegHi, Operand* output) {
     Type* type;
     ENode* inner;
@@ -332,6 +340,10 @@ void gen_INDIRECT(ENode* expr, short outputReg, short outputRegHi, Operand* outp
         indirect(output, expr);
     }
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
 void gen_MONMIN(ENode* expr, short outputReg, short outputRegHi, Operand* output) {
     ENode* inner;
@@ -347,7 +359,7 @@ void gen_MONMIN(ENode* expr, short outputReg, short outputRegHi, Operand* output
     }
 
     if (TYPE_IS_8BYTES(type)) {
-        ORACLE_INLINED(I8_gen_MONMIN(expr, outputReg, outputRegHi, output));
+        I8_gen_MONMIN(expr, outputReg, outputRegHi, output);
         return;
     }
 
@@ -384,7 +396,7 @@ void gen_MONMIN(ENode* expr, short outputReg, short outputRegHi, Operand* output
                 output
             );
         } else {
-            ORACLE_INLINED(fp_unary_operator(PC_FNEG, inner, outputReg, output));
+            fp_unary_operator(PC_FNEG, inner, outputReg, output);
         }
     } else {
         scan = inner;
@@ -404,11 +416,17 @@ void gen_MONMIN(ENode* expr, short outputReg, short outputRegHi, Operand* output
                     gen_negated_condition_gpr(scan, output, outputReg);
                     return;
                 }
+            default:
+                break;
         }
-        ORACLE_INLINED(unary_operator(PC_NEG, inner, outputReg, output));
+        unary_operator(PC_NEG, inner, outputReg, output);
     }
 }
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -6
+#endif
 void gen_BINNOT(ENode* expr, short outputReg, short outputRegHi, Operand* output) {
     ENode* inner;
 
@@ -420,7 +438,7 @@ void gen_BINNOT(ENode* expr, short outputReg, short outputRegHi, Operand* output
     }
 
     if (TYPE_IS_8BYTES(expr->rtype)) {
-        ORACLE_INLINED(I8_gen_BINNOT(expr, outputReg, outputRegHi, output));
+        I8_gen_BINNOT(expr, outputReg, outputRegHi, output);
         return;
     }
 
@@ -437,10 +455,18 @@ void gen_BINNOT(ENode* expr, short outputReg, short outputRegHi, Operand* output
             PC_EQV, inner->data.diadic.left, inner->data.diadic.right, outputReg, output
         );
     } else {
-        ORACLE_INLINED(unary_operator(PC_NOT, inner, outputReg, output));
+        unary_operator(PC_NOT, inner, outputReg, output);
     }
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -6
+#endif
 void gen_FORCELOAD(ENode* expr, short outputReg, short outputRegHi, Operand* output) {
     ENode* inner;
 
@@ -470,12 +496,16 @@ void gen_FORCELOAD(ENode* expr, short outputReg, short outputRegHi, Operand* out
         }
     }
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
 void gen_MUL(ENode* expr, short outputReg, short outputRegHi, Operand* output) {
     ENode* left;
     ENode* right;
     Type* type;
-    int tmp;
+    int shift;
 
     left = expr->data.diadic.left;
     right = expr->data.diadic.right;
@@ -495,14 +525,14 @@ void gen_MUL(ENode* expr, short outputReg, short outputRegHi, Operand* output) {
         fp_binary_operator((type->size == 4) ? PC_FMULS : PC_FMUL, left, right, outputReg, output);
     } else if (IS_TYPE_VEC2X32FLOAT(type)) {
         fp_binary_operator(PC_PS_MUL, left, right, outputReg, output);
-    } else if (ENODE_IS(right, EINTCONST) && (tmp = ispowerof2(right->data.intval.lo))) {
-        shift_left_immediate(left, tmp, 0, outputReg, output);
-    } else if (ENODE_IS(right, EINTCONST) && (tmp = ispowerof2(-right->data.intval.lo))) {
-        shift_left_immediate(left, tmp, 1, outputReg, output);
-    } else if (ENODE_IS(left, EINTCONST) && (tmp = ispowerof2(left->data.intval.lo))) {
-        shift_left_immediate(right, tmp, 0, outputReg, output);
-    } else if (ENODE_IS(left, EINTCONST) && (tmp = ispowerof2(-left->data.intval.lo))) {
-        shift_left_immediate(right, tmp, 1, outputReg, output);
+    } else if (ENODE_IS(right, EINTCONST) && (shift = ispowerof2(right->data.intval.lo))) {
+        shift_left_immediate(left, shift, 0, outputReg, output);
+    } else if (ENODE_IS(right, EINTCONST) && (shift = ispowerof2(-right->data.intval.lo))) {
+        shift_left_immediate(left, shift, 1, outputReg, output);
+    } else if (ENODE_IS(left, EINTCONST) && (shift = ispowerof2(left->data.intval.lo))) {
+        shift_left_immediate(right, shift, 0, outputReg, output);
+    } else if (ENODE_IS(left, EINTCONST) && (shift = ispowerof2(-left->data.intval.lo))) {
+        shift_left_immediate(right, shift, 1, outputReg, output);
     } else if (ENODE_IS(right, EINTCONST) && FITS_IN_SHORT(right->data.intval.lo)) {
         binary_immediate(PC_MULLI, left, right->data.intval.lo, outputReg, output);
     } else if (ENODE_IS(left, EINTCONST) && FITS_IN_SHORT(left->data.intval.lo)) {
@@ -517,7 +547,6 @@ struct ms {
     int s;
 };
 static void create_signed_magic(SInt32 val, struct ms* output) {
-    // PowerPC CWG page 57-58
     int p;
     UInt32 ad, anc, delta, q1, r1, q2, r2, t;
 
@@ -551,7 +580,6 @@ static void create_signed_magic(SInt32 val, struct ms* output) {
         delta = ad - r2;
     } while (q1 < delta || (q1 == delta && r1 == 0));
 
-    // after loop
     output->m = q2 + 1;
     if (val < 0) {
         output->m = -output->m;
@@ -565,7 +593,6 @@ struct mu {
     int s;
 };
 static void create_unsigned_magic(UInt32 val, struct mu* output) {
-    // PowerPC CWG page 58-59
     int p;
     UInt32 nc, delta, q1, r1, q2, r2;
 
@@ -613,7 +640,7 @@ void gen_DIV(ENode* expr, short outputReg, short outputRegHi, Operand* output) {
     ENode* left;
     Type* type;
     ENode* right;
-    int tmp;
+    int shift;
 
     left = expr->data.diadic.left;
     right = expr->data.diadic.right;
@@ -634,66 +661,69 @@ void gen_DIV(ENode* expr, short outputReg, short outputRegHi, Operand* output) {
     } else if (IS_TYPE_VEC2X32FLOAT(type)) {
         fp_binary_operator(PC_PS_DIV, left, right, outputReg, output);
     } else if (is_unsigned(type)) {
-        if (ENODE_IS(right, EINTCONST) && (tmp = ispowerof2(right->data.intval.lo))) {
-            ORACLE_INLINED(shift_right_immediate(left, type, tmp, outputReg, output));
+        if (ENODE_IS(right, EINTCONST) && (shift = ispowerof2(right->data.intval.lo))) {
+            shift_right_immediate(left, type, shift, outputReg, output);
+#if VERSION < VERSION_GC_2_0
+        } else if (!copts.optimizesize && ENODE_IS(right, EINTCONST) && right->data.intval.lo != 1) {
+#else
         } else if (!copts.optimizesize &&
                    ENODE_IS(right, EINTCONST) &&
-                   right->data.intval.lo !=
-                   1 &&
+                   right->data.intval.lo != 1 &&
                    right->data.intval.lo != 0) {
+#endif
             SInt32 value;
-            int tmpreg1;
-            int tmpreg2;
-            int tmpreg3;
-            int tmpreg4;
-            int tmpreg5;
-            int tmpreg6;
+            int quotientReg;
+            int magicReg;
+            int dividendReg;
+            int diffReg;
+            int halfDiffReg;
+            int sumReg;
             int finalReg;
             Operand op1;
             struct mu u_magicoutput;
             value = right->data.intval.lo;
-            tmpreg1 = ALLOC_GPR();
-            tmpreg2 = ALLOC_GPR();
+            quotientReg = ALLOC_GPR();
+            magicReg = ALLOC_GPR();
             finalReg = outputReg ? outputReg : ALLOC_GPR();
 
             memclrw(&op1, sizeof(Operand));
             GEN_NODE(left, &op1);
             ENSURE_GPR(&op1, left->rtype, 0);
 
-            tmpreg3 = op1.reg;
+            dividendReg = op1.reg;
             create_unsigned_magic(value, &u_magicoutput);
-            load_immediate(tmpreg2, u_magicoutput.m);
-            emitpcode(PC_MULHWU, tmpreg1, tmpreg2, tmpreg3);
+            load_immediate(magicReg, u_magicoutput.m);
+            emitpcode(PC_MULHWU, quotientReg, magicReg, dividendReg);
             if (u_magicoutput.a == 0) {
                 if (u_magicoutput.s) {
                     emitpcode(
                         PC_RLWINM,
                         finalReg,
-                        tmpreg1,
+                        quotientReg,
                         (32 - u_magicoutput.s) & 31,
                         u_magicoutput.s,
                         31
                     );
                 } else {
-                    emitpcode(PC_MR, finalReg, tmpreg1);
+                    emitpcode(PC_MR, finalReg, quotientReg);
                 }
             } else if (u_magicoutput.a == 1) {
-                tmpreg4 = ALLOC_GPR();
+                diffReg = ALLOC_GPR();
                 if (copts.optimizationlevel > 1) {
-                    tmpreg5 = ALLOC_GPR();
-                    tmpreg6 = ALLOC_GPR();
+                    halfDiffReg = ALLOC_GPR();
+                    sumReg = ALLOC_GPR();
                 } else {
-                    tmpreg5 = tmpreg4;
-                    tmpreg6 = tmpreg4;
+                    halfDiffReg = diffReg;
+                    sumReg = diffReg;
                 }
 
-                emitpcode(PC_SUBF, tmpreg4, tmpreg1, tmpreg3);
-                emitpcode(PC_RLWINM, tmpreg5, tmpreg4, 31, 1, 31);
-                emitpcode(PC_ADD, tmpreg6, tmpreg5, tmpreg1);
+                emitpcode(PC_SUBF, diffReg, quotientReg, dividendReg);
+                emitpcode(PC_RLWINM, halfDiffReg, diffReg, 31, 1, 31);
+                emitpcode(PC_ADD, sumReg, halfDiffReg, quotientReg);
                 emitpcode(
                     PC_RLWINM,
                     finalReg,
-                    tmpreg6,
+                    sumReg,
                     (32 - (u_magicoutput.s - 1)) & 31,
                     u_magicoutput.s - 1,
                     31
@@ -707,55 +737,60 @@ void gen_DIV(ENode* expr, short outputReg, short outputRegHi, Operand* output) {
         }
     } else {
         SInt32 value;
-        if (ENODE_IS(right, EINTCONST) && (tmp = ispowerof2(right->data.intval.lo))) {
-            signed_divide_by_power_of_2(left, tmp, 0, outputReg, output);
-        } else if (ENODE_IS(right, EINTCONST) && (tmp = ispowerof2(-right->data.intval.lo))) {
-            signed_divide_by_power_of_2(left, tmp, 1, outputReg, output);
+        if (ENODE_IS(right, EINTCONST) && (shift = ispowerof2(right->data.intval.lo))) {
+            signed_divide_by_power_of_2(left, shift, 0, outputReg, output);
+        } else if (ENODE_IS(right, EINTCONST) && (shift = ispowerof2(-right->data.intval.lo))) {
+            signed_divide_by_power_of_2(left, shift, 1, outputReg, output);
+#if VERSION < VERSION_GC_2_0
         } else if (!copts.optimizesize &&
                    ENODE_IS(right, EINTCONST) &&
-                   (value = right->data.intval.lo) !=
-                   1 &&
-                   value !=
-                   0 &&
+                   (value = right->data.intval.lo) != 1 &&
                    value != -1) {
-            int tmpreg4;
-            int tmpreg3;
-            int tmpreg2;
-            int tmpreg1;
+#else
+        } else if (!copts.optimizesize &&
+                   ENODE_IS(right, EINTCONST) &&
+                   (value = right->data.intval.lo) != 1 &&
+                   value != 0 &&
+                   value != -1) {
+#endif
+            int dividendReg;
+            int signReg;
+            int magicReg;
+            int estimateReg;
             int finalReg;
             Operand op2;
             struct ms s_magicoutput;
-            tmpreg1 = ALLOC_GPR();
-            tmpreg2 = ALLOC_GPR();
-            tmpreg3 = ALLOC_GPR();
+            estimateReg = ALLOC_GPR();
+            magicReg = ALLOC_GPR();
+            signReg = ALLOC_GPR();
             finalReg = outputReg ? outputReg : ALLOC_GPR();
 
             memclrw(&op2, sizeof(Operand));
             GEN_NODE(left, &op2);
             ENSURE_GPR(&op2, left->rtype, 0);
 
-            tmpreg4 = op2.reg;
+            dividendReg = op2.reg;
             create_signed_magic(value, &s_magicoutput);
-            load_immediate(tmpreg2, s_magicoutput.m);
-            emitpcode(PC_MULHW, tmpreg1, tmpreg2, tmpreg4);
+            load_immediate(magicReg, s_magicoutput.m);
+            emitpcode(PC_MULHW, estimateReg, magicReg, dividendReg);
             if (value > 0 && s_magicoutput.m < 0) {
-                int t = ALLOC_GPR();
-                emitpcode(PC_ADD, t, tmpreg1, tmpreg4);
-                tmpreg1 = t;
+                int nextReg = ALLOC_GPR();
+                emitpcode(PC_ADD, nextReg, estimateReg, dividendReg);
+                estimateReg = nextReg;
             } else if (value < 0 && s_magicoutput.m > 0) {
-                int t = ALLOC_GPR();
-                emitpcode(PC_SUBF, t, tmpreg4, tmpreg1);
-                tmpreg1 = t;
+                int nextReg = ALLOC_GPR();
+                emitpcode(PC_SUBF, nextReg, dividendReg, estimateReg);
+                estimateReg = nextReg;
             }
 
             if (s_magicoutput.s) {
-                int t = ALLOC_GPR();
-                emitpcode(PC_SRAWI, t, tmpreg1, s_magicoutput.s);
-                tmpreg1 = t;
+                int nextReg = ALLOC_GPR();
+                emitpcode(PC_SRAWI, nextReg, estimateReg, s_magicoutput.s);
+                estimateReg = nextReg;
             }
 
-            emitpcode(PC_RLWINM, tmpreg3, tmpreg1, 1, 31, 31);
-            emitpcode(PC_ADD, finalReg, tmpreg1, tmpreg3);
+            emitpcode(PC_RLWINM, signReg, estimateReg, 1, 31, 31);
+            emitpcode(PC_ADD, finalReg, estimateReg, signReg);
 
             output->optype = OpndType_GPR;
             output->reg = finalReg;
@@ -770,7 +805,7 @@ void gen_MODULO(ENode* expr, short outputReg, short outputRegHi, Operand* output
     Operand op2;
     ENode* left;
     ENode* right;
-    SInt32 tmp;
+    SInt32 shift;
     struct mu u_magicoutput;
     struct ms s_magicoutput;
     SInt32 value;
@@ -790,142 +825,146 @@ void gen_MODULO(ENode* expr, short outputReg, short outputRegHi, Operand* output
         return;
     }
 
-    if (ENODE_IS(right, EINTCONST) && (tmp = ispowerof2(right->data.intval.lo))) {
+    if (ENODE_IS(right, EINTCONST) && (shift = ispowerof2(right->data.intval.lo))) {
         if (is_unsigned(expr->rtype)) {
-            ORACLE_INLINED(shift_and_mask(left, 0, 32 - tmp, 31, outputReg, output));
+            shift_and_mask(left, 0, 32 - shift, 31, outputReg, output);
         } else {
-            signed_mod_by_power_of_2(left, tmp, 0, outputReg, output);
+            signed_mod_by_power_of_2(left, shift, 0, outputReg, output);
         }
         return;
     }
 
     if (!copts.optimizesize &&
         ENODE_IS(right, EINTCONST) &&
-        (value = right->data.intval.lo) !=
-        1u &&
+        (value = right->data.intval.lo) != 1u &&
         value != -1) {
         GEN_NODE(left, &op1);
         ENSURE_GPR(&op1, left->rtype, 0);
 
         if (is_unsigned(expr->rtype)) {
-            SInt32 tmpreg1;
-            SInt32 tmpreg2;
-            SInt32 tmpreg3;
-            SInt32 tmpreg4;
-            SInt32 tmpreg5;
-            SInt32 tmpreg6;
-            SInt32 tmpreg7;
-            SInt32 tmpreg8;
+            SInt32 dividendReg;
+            SInt32 quotientReg;
+            SInt32 magicReg;
+            SInt32 productReg;
+            SInt32 diffReg;
+            SInt32 halfDiffReg;
+            SInt32 sumReg;
+            SInt32 shiftedReg;
             SInt32 finalReg;
 
-            tmpreg1 = op1.reg;
-            tmpreg2 = ALLOC_GPR();
-            tmpreg3 = ALLOC_GPR();
-            tmpreg4 = ALLOC_GPR();
+            dividendReg = op1.reg;
+            quotientReg = ALLOC_GPR();
+            magicReg = ALLOC_GPR();
+            productReg = ALLOC_GPR();
             finalReg = outputReg ? outputReg : ALLOC_GPR();
 
             create_unsigned_magic(right->data.intval.lo, &u_magicoutput);
-            load_immediate(tmpreg3, u_magicoutput.m);
-            emitpcode(PC_MULHWU, tmpreg2, tmpreg3, tmpreg1);
+            load_immediate(magicReg, u_magicoutput.m);
+            emitpcode(PC_MULHWU, quotientReg, magicReg, dividendReg);
 
             if (u_magicoutput.a == 0 && u_magicoutput.s != 0) {
                 emitpcode(
-                    PC_RLWINM, tmpreg2, tmpreg2, (32 - u_magicoutput.s) & 31, u_magicoutput.s, 31
+                    PC_RLWINM,
+                    quotientReg,
+                    quotientReg,
+                    (32 - u_magicoutput.s) & 31,
+                    u_magicoutput.s,
+                    31
                 );
             }
 
             if (u_magicoutput.a == 1) {
-                tmpreg5 = ALLOC_GPR();
+                diffReg = ALLOC_GPR();
                 if (copts.optimizationlevel > 1) {
-                    tmpreg6 = ALLOC_GPR();
-                    tmpreg7 = ALLOC_GPR();
-                    tmpreg8 = ALLOC_GPR();
+                    halfDiffReg = ALLOC_GPR();
+                    sumReg = ALLOC_GPR();
+                    shiftedReg = ALLOC_GPR();
                 } else {
-                    tmpreg6 = tmpreg5;
-                    tmpreg7 = tmpreg5;
-                    tmpreg8 = tmpreg5;
+                    halfDiffReg = diffReg;
+                    sumReg = diffReg;
+                    shiftedReg = diffReg;
                 }
-                emitpcode(PC_SUBF, tmpreg5, tmpreg2, tmpreg1);
-                emitpcode(PC_RLWINM, tmpreg6, tmpreg5, 31, 1, 31);
-                emitpcode(PC_ADD, tmpreg7, tmpreg6, tmpreg2);
+                emitpcode(PC_SUBF, diffReg, quotientReg, dividendReg);
+                emitpcode(PC_RLWINM, halfDiffReg, diffReg, 31, 1, 31);
+                emitpcode(PC_ADD, sumReg, halfDiffReg, quotientReg);
                 emitpcode(
                     PC_RLWINM,
-                    tmpreg8,
-                    tmpreg7,
+                    shiftedReg,
+                    sumReg,
                     (32 - (u_magicoutput.s - 1)) & 31,
                     u_magicoutput.s - 1,
                     31
                 );
-                tmpreg2 = tmpreg8;
+                quotientReg = shiftedReg;
             }
 
             if (value > 0 && value < 0x7FFF) {
-                emitpcode(PC_MULLI, tmpreg4, tmpreg2, value);
+                emitpcode(PC_MULLI, productReg, quotientReg, value);
             } else {
                 GEN_NODE(right, &op2);
                 ENSURE_GPR(&op2, right->rtype, 0);
-                emitpcode(PC_MULLW, tmpreg4, tmpreg2, op2.reg);
+                emitpcode(PC_MULLW, productReg, quotientReg, op2.reg);
             }
 
-            emitpcode(PC_SUBF, finalReg, tmpreg4, tmpreg1);
+            emitpcode(PC_SUBF, finalReg, productReg, dividendReg);
             output->optype = OpndType_GPR;
             output->reg = finalReg;
         } else {
-            SInt32 tmpreg1;
-            SInt32 tmpreg2;
-            SInt32 tmpreg3;
-            SInt32 tmpreg4;
-            SInt32 tmpreg5;
-            SInt32 tmpreg6;
+            SInt32 dividendReg;
+            SInt32 estimateReg;
+            SInt32 magicReg;
+            SInt32 signReg;
+            SInt32 quotientReg;
+            SInt32 productReg;
             SInt32 finalReg;
 
-            tmpreg1 = op1.reg;
-            tmpreg2 = ALLOC_GPR();
-            tmpreg3 = ALLOC_GPR();
-            tmpreg4 = ALLOC_GPR();
-            tmpreg5 = ALLOC_GPR();
-            tmpreg6 = ALLOC_GPR();
+            dividendReg = op1.reg;
+            estimateReg = ALLOC_GPR();
+            magicReg = ALLOC_GPR();
+            signReg = ALLOC_GPR();
+            quotientReg = ALLOC_GPR();
+            productReg = ALLOC_GPR();
             finalReg = outputReg ? outputReg : ALLOC_GPR();
 
             create_signed_magic(right->data.intval.lo, &s_magicoutput);
-            load_immediate(tmpreg3, s_magicoutput.m);
-            emitpcode(PC_MULHW, tmpreg2, tmpreg3, tmpreg1);
+            load_immediate(magicReg, s_magicoutput.m);
+            emitpcode(PC_MULHW, estimateReg, magicReg, dividendReg);
 
             if (value > 0 && s_magicoutput.m < 0) {
-                SInt32 tmp = ALLOC_GPR();
-                emitpcode(PC_ADD, tmp, tmpreg2, tmpreg1);
-                tmpreg2 = tmp;
+                SInt32 nextReg = ALLOC_GPR();
+                emitpcode(PC_ADD, nextReg, estimateReg, dividendReg);
+                estimateReg = nextReg;
             } else if (value < 0 && s_magicoutput.m > 0) {
-                SInt32 tmp = ALLOC_GPR();
-                emitpcode(PC_SUBF, tmp, tmpreg1, tmpreg2);
-                tmpreg2 = tmp;
+                SInt32 nextReg = ALLOC_GPR();
+                emitpcode(PC_SUBF, nextReg, dividendReg, estimateReg);
+                estimateReg = nextReg;
             }
 
             if (s_magicoutput.s != 0) {
-                SInt32 tmp = ALLOC_GPR();
-                emitpcode(PC_SRAWI, tmp, tmpreg2, s_magicoutput.s);
-                tmpreg2 = tmp;
+                SInt32 nextReg = ALLOC_GPR();
+                emitpcode(PC_SRAWI, nextReg, estimateReg, s_magicoutput.s);
+                estimateReg = nextReg;
             }
 
-            emitpcode(PC_RLWINM, tmpreg4, tmpreg2, 1, 31, 31);
-            emitpcode(PC_ADD, tmpreg5, tmpreg2, tmpreg4);
+            emitpcode(PC_RLWINM, signReg, estimateReg, 1, 31, 31);
+            emitpcode(PC_ADD, quotientReg, estimateReg, signReg);
 
             if (value < 0x7FFF && value > -0x4000) {
-                emitpcode(PC_MULLI, tmpreg6, tmpreg5, value);
+                emitpcode(PC_MULLI, productReg, quotientReg, value);
             } else {
                 GEN_NODE(right, &op2);
                 ENSURE_GPR(&op2, right->rtype, 0);
 
-                emitpcode(PC_MULLW, tmpreg6, tmpreg5, op2.reg);
+                emitpcode(PC_MULLW, productReg, quotientReg, op2.reg);
             }
 
-            emitpcode(PC_SUBF, finalReg, tmpreg6, tmpreg1);
+            emitpcode(PC_SUBF, finalReg, productReg, dividendReg);
             output->optype = OpndType_GPR;
             output->reg = finalReg;
         }
     } else {
-        SInt32 tmpreg1;
-        SInt32 tmpreg2;
+        SInt32 quotientReg;
+        SInt32 productReg;
         SInt32 finalReg;
 
         if (right->hascall) {
@@ -940,13 +979,13 @@ void gen_MODULO(ENode* expr, short outputReg, short outputRegHi, Operand* output
             ENSURE_GPR(&op2, right->rtype, 0);
         }
 
-        tmpreg1 = ALLOC_GPR();
-        tmpreg2 = ALLOC_GPR();
+        quotientReg = ALLOC_GPR();
+        productReg = ALLOC_GPR();
         finalReg = outputReg ? outputReg : ALLOC_GPR();
 
-        emitpcode(is_unsigned(expr->rtype) ? PC_DIVWU : PC_DIVW, tmpreg1, op1.reg, op2.reg);
-        emitpcode(PC_MULLW, tmpreg2, tmpreg1, op2.reg);
-        emitpcode(PC_SUBF, finalReg, tmpreg2, op1.reg);
+        emitpcode(is_unsigned(expr->rtype) ? PC_DIVWU : PC_DIVW, quotientReg, op1.reg, op2.reg);
+        emitpcode(PC_MULLW, productReg, quotientReg, op2.reg);
+        emitpcode(PC_SUBF, finalReg, productReg, op1.reg);
 
         output->optype = OpndType_GPR;
         output->reg = finalReg;
@@ -1133,6 +1172,10 @@ void gen_SUB(ENode* expr, short outputReg, short outputRegHi, Operand* output) {
     }
 }
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -8
+#endif
 void gen_SHL(ENode* expr, short outputReg, short outputRegHi, Operand* output) {
     Type* type;
     ENode* left;
@@ -1177,7 +1220,7 @@ void gen_SHR(ENode* expr, short outputReg, short outputRegHi, Operand* output) {
     }
 
     if (ENODE_IS(right, EINTCONST)) {
-        ORACLE_INLINED(shift_right_immediate(left, type, right->data.intval.lo, outputReg, output));
+        shift_right_immediate(left, type, right->data.intval.lo, outputReg, output);
     } else {
         binary_operator(is_unsigned(type) ? PC_SRW : PC_SRAW, left, right, outputReg, output);
     }
@@ -1210,35 +1253,32 @@ void gen_AND(ENode* expr, short outputReg, short outputRegHi, Operand* output) {
         if (ENODE_IS(left, ESHL) &&
             ENODE_IS(left->data.diadic.right, EINTCONST) &&
             (int)(left->data.diadic.right->data.intval.lo + last) < 32) {
-            ORACLE_INLINED(shift_and_mask(
+            shift_and_mask(
                 left->data.diadic.left,
                 left->data.diadic.right->data.intval.lo,
                 first,
                 last,
                 outputReg,
                 output
-            ));
+            );
         } else if (ENODE_IS(left, ESHR) &&
                    ENODE_IS(left->data.diadic.right, EINTCONST) &&
-                   (int)left->data.diadic.right->data.intval.lo <=
-                   first &&
+                   (int)left->data.diadic.right->data.intval.lo <= first &&
                    last >= first) {
             if (left->data.diadic.right->data.intval.lo == 0) {
-                ORACLE_INLINED(
-                    shift_and_mask(left->data.diadic.left, 0, first, last, outputReg, output)
-                );
+                shift_and_mask(left->data.diadic.left, 0, first, last, outputReg, output);
             } else {
-                ORACLE_INLINED(shift_and_mask(
+                shift_and_mask(
                     left->data.diadic.left,
                     32 - left->data.diadic.right->data.intval.lo,
                     first,
                     last,
                     outputReg,
                     output
-                ));
+                );
             }
         } else {
-            ORACLE_INLINED(shift_and_mask(left, 0, first, last, outputReg, output));
+            shift_and_mask(left, 0, first, last, outputReg, output);
         }
     } else if (ENODE_IS(right, EINTCONST) &&
                (right->data.intval.lo & 0xFFFF) == right->data.intval.lo) {
@@ -1249,33 +1289,31 @@ void gen_AND(ENode* expr, short outputReg, short outputRegHi, Operand* output) {
         if (ENODE_IS(right, ESHL) &&
             ENODE_IS(right->data.diadic.right, EINTCONST) &&
             (int)(right->data.diadic.right->data.intval.lo + last) < 32) {
-            ORACLE_INLINED(shift_and_mask(
+            shift_and_mask(
                 right->data.diadic.left,
                 right->data.diadic.right->data.intval.lo,
                 first,
                 last,
                 outputReg,
                 output
-            ));
+            );
         } else if (ENODE_IS(right, ESHR) &&
                    ENODE_IS(right->data.diadic.right, EINTCONST) &&
                    (int)right->data.diadic.right->data.intval.lo <= first) {
             if (right->data.diadic.right->data.intval.lo == 0) {
-                ORACLE_INLINED(
-                    shift_and_mask(right->data.diadic.left, 0, first, last, outputReg, output)
-                );
+                shift_and_mask(right->data.diadic.left, 0, first, last, outputReg, output);
             } else {
-                ORACLE_INLINED(shift_and_mask(
+                shift_and_mask(
                     right->data.diadic.left,
                     32 - right->data.diadic.right->data.intval.lo,
                     first,
                     last,
                     outputReg,
                     output
-                ));
+                );
             }
         } else {
-            ORACLE_INLINED(shift_and_mask(right, 0, first, last, outputReg, output));
+            shift_and_mask(right, 0, first, last, outputReg, output);
         }
     } else if (ENODE_IS(left, EINTCONST) &&
                (left->data.intval.lo & 0xFFFF) == left->data.intval.lo) {
@@ -1353,19 +1391,21 @@ void gen_OR(ENode* expr, short outputReg, short outputRegHi, Operand* output) {
     }
 }
 
-// TODO: invented name. 2.6 computes this test of gen_ASS's gprfloatcopy path as a value (1/0 then
-// a test) after jumping straight to the FPR path on the first two conditions: an inlined helper.
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
+
 static inline int is_gpr_float_copy(Operand* op, ENode* left) {
-    if (op->optype >=
-        OpndType_IndirectGPR_ImmOffset &&
+    if (op->optype >= OpndType_IndirectGPR_ImmOffset &&
         ((ENODE_IS(left, EINDIRECT) && ENODE_IS(left->data.monadic, EOBJREF)) ||
          (ENODE_IS(left, EADD) &&
           ENODE_IS(left->data.diadic.right, EINTCONST) &&
           ENODE_IS(left->data.diadic.left, EINDIRECT) &&
           ENODE_IS(left->data.diadic.left->data.monadic, EOBJREF)))) {
-        return 1;
+        return TRUE;
     }
-    return 0;
+    return FALSE;
 }
 
 void gen_ASS(ENode* expr, short outputReg, short outputRegHi, Operand* output) {
@@ -1374,7 +1414,7 @@ void gen_ASS(ENode* expr, short outputReg, short outputRegHi, Operand* output) {
     ENode* right;
     Operand opleft;
     Operand opright;
-    Operand op2;
+    Operand word;
     VarInfo* vi;
     SInt32 incval;
     short align;
@@ -1396,7 +1436,7 @@ void gen_ASS(ENode* expr, short outputReg, short outputRegHi, Operand* output) {
 
     memclrw(&opleft, sizeof(Operand));
     memclrw(&opright, sizeof(Operand));
-    memclrw(&op2, sizeof(Operand));
+    memclrw(&word, sizeof(Operand));
 
     if (TYPE_IS_SOFT_FLOAT(type)) {
         SFPE_gen_ASS(expr, outputReg, outputRegHi, output);
@@ -1428,29 +1468,29 @@ void gen_ASS(ENode* expr, short outputReg, short outputRegHi, Operand* output) {
                 CError_FATAL(1817);
         }
         if (opright.reg != vi->reg) {
-            PCodeArg a, b;
+            PCodeArg dst, src;
             if ((type->type == TYPEINT && TYPE_INTEGRAL(type)->integral == IT_17) ||
                 (type->type == TYPEINT && TYPE_INTEGRAL(type)->integral == IT_18) ||
                 IS_TYPE_VEC2X32FLOAT(type)) {
-                a.kind = PCOp_REGISTER;
-                a.arg = vi->rclass;
-                a.data.reg.reg = vi->reg;
-                a.data.reg.effect = EffectPS0 | EffectPS1 | EffectWrite;
-                b.kind = PCOp_REGISTER;
-                b.arg = vi->rclass;
-                b.data.reg.reg = opright.reg;
-                b.data.reg.effect = EffectPS0 | EffectPS1 | EffectRead;
+                dst.kind = PCOp_REGISTER;
+                dst.arg = vi->rclass;
+                dst.data.reg.reg = vi->reg;
+                dst.data.reg.effect = EffectPS0 | EffectPS1 | EffectWrite;
+                src.kind = PCOp_REGISTER;
+                src.arg = vi->rclass;
+                src.data.reg.reg = opright.reg;
+                src.data.reg.effect = EffectPS0 | EffectPS1 | EffectRead;
             } else {
-                a.kind = PCOp_REGISTER;
-                a.arg = vi->rclass;
-                a.data.reg.reg = vi->reg;
-                a.data.reg.effect = EffectWrite;
-                b.kind = PCOp_REGISTER;
-                b.arg = vi->rclass;
-                b.data.reg.reg = opright.reg;
-                b.data.reg.effect = EffectRead;
+                dst.kind = PCOp_REGISTER;
+                dst.arg = vi->rclass;
+                dst.data.reg.reg = vi->reg;
+                dst.data.reg.effect = EffectWrite;
+                src.kind = PCOp_REGISTER;
+                src.arg = vi->rclass;
+                src.data.reg.reg = opright.reg;
+                src.data.reg.effect = EffectRead;
             }
-            appendpcode(pclastblock, makecopyinstruction(&b, &a));
+            appendpcode(pclastblock, makecopyinstruction(&src, &dst));
         }
         output->reg = vi->reg;
     } else if (IS_TYPE_FLOAT_NOT_VEC2X32FLOAT(type)) {
@@ -1528,13 +1568,13 @@ void gen_ASS(ENode* expr, short outputReg, short outputRegHi, Operand* output) {
             GEN_NODE(left->data.monadic, &opleft);
             indirect(&opleft, expr);
 
-            op2 = opleft;
-            ENSURE_GPR(&op2, type, 0);
-            insert_bitfield(opright.reg, &op2, TYPE_BITFIELD(left->rtype));
-            store(op2.reg, &opleft, type);
+            word = opleft;
+            ENSURE_GPR(&word, type, 0);
+            insert_bitfield(opright.reg, &word, TYPE_BITFIELD(left->rtype));
+            store(word.reg, &opleft, type);
 
             if (!expr->ignored) {
-                extract_bitfield(&op2, TYPE_BITFIELD(left->rtype), opright.reg, &opleft);
+                extract_bitfield(&word, TYPE_BITFIELD(left->rtype), opright.reg, &opleft);
             }
         } else if (ispostincrementopportunity(left, &opleft, &incval)) {
             indirect(&opleft, expr);
@@ -1554,9 +1594,8 @@ void gen_ASS(ENode* expr, short outputReg, short outputRegHi, Operand* output) {
 
         indirect(output, expr);
         if (output->object) {
-            if (output->object->datatype ==
-                DLOCAL &&
-                (output->object->u.var.info->flags & VarInfoFlag1)) {
+            if (output->object->datatype == DLOCAL &&
+                (output->object->u.var.info->flags & VarInfoFlag_ParamArea)) {
                 align = CMach_ArgumentAlignment(type);
             } else {
                 align = CMach_AllocationAlignment(type, output->object->qual);
@@ -1565,9 +1604,8 @@ void gen_ASS(ENode* expr, short outputReg, short outputRegHi, Operand* output) {
             align = CMach_AllocationAlignment(type, 0);
         }
         if (opright.object) {
-            if (opright.object->datatype ==
-                DLOCAL &&
-                (opright.object->u.var.info->flags & VarInfoFlag1)) {
+            if (opright.object->datatype == DLOCAL &&
+                (opright.object->u.var.info->flags & VarInfoFlag_ParamArea)) {
                 align2 = CMach_ArgumentAlignment(type);
             } else {
                 align2 = CMach_AllocationAlignment(type, opright.object->qual);
@@ -1636,6 +1674,10 @@ void gen_COMMA(ENode* expr, short outputReg, short outputRegHi, Operand* output)
     GEN_NODE_TO_REG(right, outputReg, 0, output);
 }
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -8
+#endif
 void gen_TYPCON(ENode* expr, short outputReg, short outputRegHi, Operand* output) {
     ENode* inner;
     Type* srctype;
@@ -1644,10 +1686,10 @@ void gen_TYPCON(ENode* expr, short outputReg, short outputRegHi, Operand* output
     int fprTemp;
     short gqr;
     int gqr2;
-    Operand tempOp;
-    Operand tempOp2;
+    Operand srcTemp;
+    Operand dstTemp;
     int reg;
-    int tmp;
+    int resultReg;
 
     inner = expr->data.monadic;
     srctype = inner->rtype;
@@ -1666,10 +1708,8 @@ void gen_TYPCON(ENode* expr, short outputReg, short outputRegHi, Operand* output
     if (dsttype->type == TYPEVOID) {
         GEN_NODE(inner, output);
         if (ENODE_IS(inner, EINDIRECT) && (output->flags & OpndFlags_Volatile)) {
-            if (srctype->type ==
-                TYPEINT ||
-                srctype->type ==
-                TYPEENUM ||
+            if (srctype->type == TYPEINT ||
+                srctype->type == TYPEENUM ||
                 IS_TYPE_POINTER(srctype) ||
                 (srctype->type == TYPEMEMBERPOINTER && srctype->size == 4) ||
                 (copts.soft_float &&
@@ -1682,8 +1722,7 @@ void gen_TYPCON(ENode* expr, short outputReg, short outputRegHi, Operand* output
         }
     } else if (srctype->type == TYPEINT || srctype->type == TYPEENUM) {
         if (IS_TYPE_FLOAT_NOT_VEC2X32FLOAT(dsttype) || IS_TYPE_VEC2X32FLOAT(dsttype)) {
-            if (srctype->size <
-                4 &&
+            if (srctype->size < 4 &&
                 copts.gecko_float_typecons &&
                 copts.processor == CPU_PPCGEKKO) {
                 fprTemp = ALLOC_FPR();
@@ -1698,17 +1737,17 @@ void gen_TYPCON(ENode* expr, short outputReg, short outputRegHi, Operand* output
                 emitpcode(PC_MTSPR, SPR_GQR1, gprTemp);
                 GEN_NODE(inner, output);
                 if (output->optype == OpndType_GPR) {
-                    symbol_operand(&tempOp, maketemporary(srctype));
-                    coerce_to_addressable(&tempOp);
+                    symbol_operand(&srcTemp, maketemporary(srctype));
+                    coerce_to_addressable(&srcTemp);
                     load_store_register(
                         (srctype->size == 1) ? PC_STB : PC_STH,
                         output->reg,
-                        tempOp.reg,
-                        tempOp.object,
+                        srcTemp.reg,
+                        srcTemp.object,
                         0
                     );
                     gecko_load_store_register(
-                        fprTemp, tempOp.reg, tempOp.object, 0, 1, SPR_GQR1, 1
+                        fprTemp, srcTemp.reg, srcTemp.object, 0, 1, SPR_GQR1, 1
                     );
                 } else {
                     coerce_to_addressable(output);
@@ -1756,8 +1795,7 @@ void gen_TYPCON(ENode* expr, short outputReg, short outputRegHi, Operand* output
         } else if (IS_TYPE_VECTOR(dsttype)) {
             GEN_NODE_TO_REG(inner, outputReg, 0, output);
             ENSURE_VR(output, dsttype, outputReg);
-        } else if (srctype->size <
-                   dsttype->size &&
+        } else if (srctype->size < dsttype->size &&
                    !(ENODE_IS(inner, EINDIRECT) && ENODE_IS(inner->data.monadic, EBITFIELD)) &&
                    !((inner->type >= EASS && inner->type <= EORASS) &&
                      ENODE_IS(inner->data.monadic->data.monadic, EBITFIELD)) &&
@@ -1782,27 +1820,25 @@ void gen_TYPCON(ENode* expr, short outputReg, short outputRegHi, Operand* output
             GEN_NODE_TO_REG(inner, outputReg, 0, output);
             ENSURE_FPR(output, srctype, outputReg);
             if (dsttype->size == 4 && srctype->size != 4) {
-                tmp = outputReg ? outputReg : ALLOC_FPR();
-                emitpcode(PC_FRSP, tmp, output->reg);
+                resultReg = outputReg ? outputReg : ALLOC_FPR();
+                emitpcode(PC_FRSP, resultReg, output->reg);
                 output->optype = OpndType_FPR;
-                output->reg = tmp;
+                output->reg = resultReg;
             }
         } else if (IS_TYPE_VEC2X32FLOAT(dsttype)) {
             GEN_NODE_TO_REG(inner, outputReg, 0, output);
             ENSURE_FPR(output, srctype, outputReg);
-            tmp = outputReg ? outputReg : ALLOC_FPR();
+            resultReg = outputReg ? outputReg : ALLOC_FPR();
             if (srctype->size != 4) {
-                emitpcode(PC_FRSP, tmp, output->reg);
-                emitpcode(PC_PS_MERGE00, tmp, tmp, tmp);
+                emitpcode(PC_FRSP, resultReg, output->reg);
+                emitpcode(PC_PS_MERGE00, resultReg, resultReg, resultReg);
             } else {
-                emitpcode(PC_PS_MERGE00, tmp, output->reg, output->reg);
+                emitpcode(PC_PS_MERGE00, resultReg, output->reg, output->reg);
             }
             output->optype = OpndType_FPR;
-            output->reg = tmp;
-        } else if (dsttype->size <
-                   4 &&
-                   srctype->size ==
-                   4 &&
+            output->reg = resultReg;
+        } else if (dsttype->size < 4 &&
+                   srctype->size == 4 &&
                    copts.gecko_float_typecons &&
                    copts.processor == CPU_PPCGEKKO) {
             fprTemp = ALLOC_FPR();
@@ -1817,18 +1853,18 @@ void gen_TYPCON(ENode* expr, short outputReg, short outputRegHi, Operand* output
             emitpcode(PC_LI, reg, gqr2);
             emitpcode(PC_ORIS, reg, reg, gqr2);
             emitpcode(PC_MTSPR, SPR_GQR1, reg);
-            symbol_operand(&tempOp2, maketemporary(dsttype));
-            coerce_to_addressable(&tempOp2);
+            symbol_operand(&dstTemp, maketemporary(dsttype));
+            coerce_to_addressable(&dstTemp);
             if (output->optype != OpndType_FPR) {
                 ENSURE_FPR(output, srctype, fprTemp);
-                gecko_load_store_register(fprTemp, tempOp2.reg, tempOp2.object, 0, 1, SPR_GQR1, 0);
+                gecko_load_store_register(fprTemp, dstTemp.reg, dstTemp.object, 0, 1, SPR_GQR1, 0);
             } else {
                 gecko_load_store_register(
-                    output->reg, tempOp2.reg, tempOp2.object, 0, 1, SPR_GQR1, 0
+                    output->reg, dstTemp.reg, dstTemp.object, 0, 1, SPR_GQR1, 0
                 );
             }
             load_store_register(
-                (dsttype->size == 1) ? PC_LBZ : PC_LHZ, gprTemp, tempOp2.reg, tempOp2.object, 0
+                (dsttype->size == 1) ? PC_LBZ : PC_LHZ, gprTemp, dstTemp.reg, dstTemp.object, 0
             );
             output->optype = OpndType_GPR;
             output->reg = gprTemp;
@@ -1850,14 +1886,26 @@ void gen_TYPCON(ENode* expr, short outputReg, short outputRegHi, Operand* output
         CError_FATAL(2469);
     }
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -8
+#endif
 void gen_BITFIELD(ENode* expr, short outputReg, short outputRegHi, Operand* output) {
     CError_FATAL(2483);
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
 void gen_INTCONST(ENode* expr, short outputReg, short outputRegHi, Operand* output) {
     if (TYPE_IS_8BYTES(expr->rtype)) {
-        ORACLE_INLINED(I8_gen_INTCONST(expr, outputReg, outputRegHi, output));
+        I8_gen_INTCONST(expr, outputReg, outputRegHi, output);
         return;
     }
 
@@ -1865,6 +1913,10 @@ void gen_INTCONST(ENode* expr, short outputReg, short outputRegHi, Operand* outp
     output->immediate = CInt64_GetULong(&expr->data.intval);
 }
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -8
+#endif
 void gen_FLOATCONST(ENode* expr, short outputReg, short outputRegHi, Operand* output) {
     if (copts.soft_float) {
         SFPE_gen_FLOATCONST(expr, outputReg, outputRegHi, output);
@@ -1872,46 +1924,57 @@ void gen_FLOATCONST(ENode* expr, short outputReg, short outputRegHi, Operand* ou
         CError_FATAL(2539);
     }
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -8
+#endif
 void gen_STRINGCONST(ENode* expr, short outputReg, short outputRegHi, Operand* output) {
     CError_FATAL(2553);
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
 static Boolean COND_is_ABS_MatchNodes(ENode* cond, ENode* expr1, ENode* expr2) {
     if (cond->type != expr1->type || cond->type != expr2->type) {
-        return 0;
+        return FALSE;
     }
 
     if (!(TYPE_FITS_IN_REGISTER(cond->rtype) &&
           TYPE_FITS_IN_REGISTER(expr1->rtype) &&
           TYPE_FITS_IN_REGISTER(expr2->rtype))) {
-        return 0;
+        return FALSE;
     }
 
     if (cond->rtype->size != expr1->rtype->size || cond->rtype->size != expr2->rtype->size) {
-        return 0;
+        return FALSE;
     }
 
     switch (cond->type) {
         case EOBJREF:
-            if (cond->data.objref !=
-                expr1->data.objref ||
+            if (cond->data.objref != expr1->data.objref ||
                 cond->data.objref != expr2->data.objref) {
-                return 0;
+                return FALSE;
             }
-            return 1;
+            return TRUE;
         case EINDIRECT:
         case ETYPCON:
             return COND_is_ABS_MatchNodes(
                 cond->data.monadic, expr1->data.monadic, expr2->data.monadic
             );
         default:
-            return 0;
+            return FALSE;
     }
 }
 
 static ENode* COND_is_ABS(ENode* cond, ENode* expr1, ENode* expr2) {
-    ENode* tmp;
+    ENode* swapNode;
     ENode* inner;
 
     int parity = 0;
@@ -1921,17 +1984,17 @@ static ENode* COND_is_ABS(ENode* cond, ENode* expr1, ENode* expr2) {
     }
 
     if (parity) {
-        tmp = expr1;
+        swapNode = expr1;
         expr1 = expr2;
-        expr2 = tmp;
+        expr2 = swapNode;
     }
 
     switch (cond->type) {
         case ELESS:
         case ELESSEQU:
-            tmp = expr1;
+            swapNode = expr1;
             expr1 = expr2;
-            expr2 = tmp;
+            expr2 = swapNode;
             break;
         case EGREATER:
         case EGREATEREQU:
@@ -1944,9 +2007,9 @@ static ENode* COND_is_ABS(ENode* cond, ENode* expr1, ENode* expr2) {
         inner = cond->data.diadic.left;
     } else if (IS_INT_CONST_ZERO(cond->data.diadic.left)) {
         inner = cond->data.diadic.left;
-        tmp = expr1;
+        swapNode = expr1;
         expr1 = expr2;
-        expr2 = tmp;
+        expr2 = swapNode;
     } else {
         return NULL;
     }
@@ -2022,40 +2085,40 @@ static Boolean COND_is_COMPARE(
     if (!(ENODE_IS(expr1, EINTCONST) &&
           TYPE_FITS_IN_REGISTER(expr1->rtype) &&
           CInt64_IsInRange(expr1->data.intval, 4))) {
-        return 0;
+        return FALSE;
     }
     if (!(ENODE_IS(expr2, EINTCONST) &&
           TYPE_FITS_IN_REGISTER(expr2->rtype) &&
           CInt64_IsInRange(expr2->data.intval, 4))) {
-        return 0;
+        return FALSE;
     }
 
     left = CInt64_GetULong(&expr1->data.intval);
     right = CInt64_GetULong(&expr2->data.intval);
-    parity = 0;
-    negate = 0;
+    parity = FALSE;
+    negate = FALSE;
     switch (left) {
         case 1:
             if (right != 0) {
-                return 0;
+                return FALSE;
             }
             break;
         case 0:
-            parity = 1;
+            parity = TRUE;
             if (right == -1) {
-                negate = 1;
+                negate = TRUE;
             } else if (right != 1) {
-                return 0;
+                return FALSE;
             }
             break;
         case -1:
             if (right != 0) {
-                return 0;
+                return FALSE;
             }
-            negate = 1;
+            negate = TRUE;
             break;
         default:
-            return 0;
+            return FALSE;
     }
 
     while (ENODE_IS(cond, ELOGNOT)) {
@@ -2066,7 +2129,7 @@ static Boolean COND_is_COMPARE(
     if (parity) {
         nt = invert_relop(cond->type);
         if (nt == cond->type) {
-            return 0;
+            return FALSE;
         }
         cond->type = nt;
     }
@@ -2077,7 +2140,7 @@ static Boolean COND_is_COMPARE(
         gen_condition_gpr(cond, output, outputReg);
     }
 
-    return 1;
+    return TRUE;
 }
 
 void gen_COND(ENode* expr, short outputReg, short outputRegHi, Operand* output) {
@@ -2113,9 +2176,9 @@ void gen_COND(ENode* expr, short outputReg, short outputRegHi, Operand* output) 
     if (TOC_use_fsel(expr)) {
         ENode* left;
         ENode* right;
-        ENode* tmp;
+        ENode* swapNode;
         ENodeType nt;
-        Boolean flag;
+        Boolean leftIsZero;
         Operand op;
         int fneg_reg;
         int fneg_reg2;
@@ -2126,7 +2189,7 @@ void gen_COND(ENode* expr, short outputReg, short outputRegHi, Operand* output) 
         left = cond->data.diadic.left;
         right = cond->data.diadic.right;
         nt = cond->type;
-        flag = 0;
+        leftIsZero = FALSE;
         memclrw(&op, sizeof(Operand));
 
         switch (nt) {
@@ -2134,19 +2197,19 @@ void gen_COND(ENode* expr, short outputReg, short outputRegHi, Operand* output) 
             case EEQU:
                 break;
             case EGREATER:
-                tmp = left;
+                swapNode = left;
                 left = right;
-                right = tmp;
+                right = swapNode;
             case ELESS:
             case ENOTEQU:
-                tmp = expr1;
+                swapNode = expr1;
                 expr1 = expr2;
-                expr2 = tmp;
+                expr2 = swapNode;
                 break;
             case ELESSEQU:
-                tmp = left;
+                swapNode = left;
                 left = right;
-                right = tmp;
+                right = swapNode;
                 break;
             default:
                 CError_FATAL(3025);
@@ -2155,7 +2218,7 @@ void gen_COND(ENode* expr, short outputReg, short outputRegHi, Operand* output) 
         if (ENODE_IS(left, EFLOATCONST) && CMach_FloatIsZero(left->data.floatval)) {
             GEN_NODE(right, &op);
             ENSURE_FPR(&op, right->rtype, 0);
-            flag = 1;
+            leftIsZero = TRUE;
         } else if (ENODE_IS(right, EFLOATCONST) && CMach_FloatIsZero(right->data.floatval)) {
             GEN_NODE(left, &op);
             ENSURE_FPR(&op, left->rtype, 0);
@@ -2166,7 +2229,7 @@ void gen_COND(ENode* expr, short outputReg, short outputRegHi, Operand* output) 
         switch (cond->type) {
             case EEQU:
             case ENOTEQU:
-                if (flag) {
+                if (leftIsZero) {
                     GEN_NODE(expr1, &op1);
                     ENSURE_FPR(&op1, expr1->rtype, 0);
                     GEN_NODE(expr2, &op2);
@@ -2202,7 +2265,7 @@ void gen_COND(ENode* expr, short outputReg, short outputRegHi, Operand* output) 
                 ENSURE_FPR(&op2, expr2->rtype, 0);
 
                 fneg_reg3 = op.reg;
-                if (flag) {
+                if (leftIsZero) {
                     fneg_reg3 = ALLOC_FPR();
                     emitpcode(PC_FNEG, fneg_reg3, op.reg);
                 }
@@ -2219,9 +2282,9 @@ void gen_COND(ENode* expr, short outputReg, short outputRegHi, Operand* output) 
         return;
     }
 
-    if (TOC_use_isel(expr, 0)) {
+    if (TOC_use_isel(expr, FALSE)) {
         Operand condOp;
-        Operand tmpop;
+        Operand swapOp;
         int bit;
         int swap;
 
@@ -2234,28 +2297,28 @@ void gen_COND(ENode* expr, short outputReg, short outputRegHi, Operand* output) 
 
         reg1 = outputReg ? outputReg : ALLOC_GPR();
         bit = 0;
-        swap = 0;
+        swap = FALSE;
         switch (condOp.regOffset) {
             case ENOTEQU:
-                swap = 1;
+                swap = TRUE;
             case EEQU:
                 bit = 2;
                 break;
             case EGREATEREQU:
-                swap = 1;
+                swap = TRUE;
             case ELESS:
                 bit = 0;
                 break;
             case ELESSEQU:
-                swap = 1;
+                swap = TRUE;
             case EGREATER:
                 bit = 1;
                 break;
         }
         if (swap) {
-            tmpop = op1;
+            swapOp = op1;
             op1 = op2;
-            op2 = tmpop;
+            op2 = swapOp;
         }
         switch (bit) {
             case 0:
@@ -2275,7 +2338,7 @@ void gen_COND(ENode* expr, short outputReg, short outputRegHi, Operand* output) 
         return;
     }
 
-    if (TOC_use_isel(expr, 1)) {
+    if (TOC_use_isel(expr, TRUE)) {
         Operand isel_op1;
         Operand isel_op2;
         ENode* x;
@@ -2388,7 +2451,7 @@ void gen_COND(ENode* expr, short outputReg, short outputRegHi, Operand* output) 
                 case 1:
                     reg2 = ALLOC_GPR();
                     reg1 = reg2;
-                    logical_expression_nobranch(cond, 0, &isel_op2);
+                    logical_expression_nobranch(cond, FALSE, &isel_op2);
 
                     GEN_NODE_TO_REG(expr1, reg1, 0, &op1);
                     ENSURE_GPR(&op1, expr1->rtype, reg1);
@@ -2422,7 +2485,7 @@ void gen_COND(ENode* expr, short outputReg, short outputRegHi, Operand* output) 
         }
 
         reg1 = ALLOC_GPR();
-        logical_expression_nobranch(cond, 0, &isel_op2);
+        logical_expression_nobranch(cond, FALSE, &isel_op2);
 
         GEN_NODE_TO_REG(expr2, reg1, 0, &op2);
         ENSURE_GPR(&op2, expr2->rtype, reg1);
@@ -2562,7 +2625,8 @@ void gen_COND(ENode* expr, short outputReg, short outputRegHi, Operand* output) 
         GEN_NODE(expr1, &op1);
 
         if (op1.object) {
-            if (op1.object->datatype == DLOCAL && (op1.object->u.var.info->flags & 1)) {
+            if (op1.object->datatype == DLOCAL &&
+                (op1.object->u.var.info->flags & VarInfoFlag_ParamArea)) {
                 align = CMach_ArgumentAlignment(type);
             } else {
                 align = CMach_AllocationAlignment(type, op1.object->qual);
@@ -2595,7 +2659,8 @@ void gen_COND(ENode* expr, short outputReg, short outputRegHi, Operand* output) 
         GEN_NODE(expr2, &op2);
 
         if (op2.object) {
-            if (op2.object->datatype == DLOCAL && (op2.object->u.var.info->flags & 1)) {
+            if (op2.object->datatype == DLOCAL &&
+                (op2.object->u.var.info->flags & VarInfoFlag_ParamArea)) {
                 align = CMach_ArgumentAlignment(type);
             } else {
                 align = CMach_AllocationAlignment(type, op2.object->qual);
@@ -2640,39 +2705,39 @@ static Boolean CONDASS_is_ABS(ENode* cond, ENode* expr1, ENode* expr2) {
         inner = cond->data.diadic.left;
         parity = (parity + 1) & 1;
     } else {
-        return 0;
+        return FALSE;
     }
 
     switch (cond->type) {
         case EGREATER:
         case EGREATEREQU:
             if (!parity) {
-                return 0;
+                return FALSE;
             }
             break;
         case ELESS:
         case ELESSEQU:
             if (parity) {
-                return 0;
+                return FALSE;
             }
             break;
         default:
-            return 0;
+            return FALSE;
     }
 
     if (!ENODE_IS(expr2, EMONMIN)) {
-        return 0;
+        return FALSE;
     }
 
     expr2 = expr2->data.monadic;
     if (ENODE_IS(inner, EASS)) {
         inner = inner->data.diadic.left;
         if (!ENODE_IS(expr2, EINDIRECT)) {
-            return 0;
+            return FALSE;
         }
         expr2 = expr2->data.monadic;
         if (!ENODE_IS(expr1, EINDIRECT)) {
-            return 0;
+            return FALSE;
         }
         expr1 = expr1->data.monadic;
     }
@@ -2680,55 +2745,59 @@ static Boolean CONDASS_is_ABS(ENode* cond, ENode* expr1, ENode* expr2) {
     return COND_is_ABS_MatchNodes(inner, expr1, expr2);
 }
 
-static int CONDASS_is_OPASS_One(ENode* a, ENode* b, SInt32* value, ENodeType* nodetype) {
+static int CONDASS_is_OPASS_One(ENode* target, ENode* source, SInt32* value, ENodeType* nodetype) {
     Type* type;
 
-    type = a->rtype;
-    if (!ENODE_IS(a, EINDIRECT)) {
-        return 0;
+    type = target->rtype;
+    if (!ENODE_IS(target, EINDIRECT)) {
+        return FALSE;
     }
-    a = a->data.monadic;
-    if (!ENODE_IS(a, EOBJREF)) {
-        return 0;
-    }
-
-    if (ENODE_IS(b, ETYPCON) && b->rtype == type) {
-        b = b->data.monadic;
+    target = target->data.monadic;
+    if (!ENODE_IS(target, EOBJREF)) {
+        return FALSE;
     }
 
-    if (!ENODE_IS(b, EOR) && !ENODE_IS(b, EADD) && !ENODE_IS(b, ESUB)) {
-        return 0;
+    if (ENODE_IS(source, ETYPCON) && source->rtype == type) {
+        source = source->data.monadic;
     }
 
-    *nodetype = b->type;
-    if (!IS_INT_CONST(b->data.diadic.right)) {
-        return 0;
+    if (!ENODE_IS(source, EOR) && !ENODE_IS(source, EADD) && !ENODE_IS(source, ESUB)) {
+        return FALSE;
     }
-    *value = b->data.diadic.right->data.intval.lo;
+
+    *nodetype = source->type;
+    if (!IS_INT_CONST(source->data.diadic.right)) {
+        return FALSE;
+    }
+    *value = source->data.diadic.right->data.intval.lo;
 
     if (*value != 1 && *value != -1) {
-        return 0;
+        return FALSE;
     }
 
-    b = b->data.diadic.left;
-    if (ENODE_IS(b, ETYPCON) && TYPE_FITS_IN_REGISTER(b->rtype)) {
-        b = b->data.monadic;
+    source = source->data.diadic.left;
+    if (ENODE_IS(source, ETYPCON) && TYPE_FITS_IN_REGISTER(source->rtype)) {
+        source = source->data.monadic;
     }
 
-    if (!ENODE_IS(b, EINDIRECT)) {
-        return 0;
+    if (!ENODE_IS(source, EINDIRECT)) {
+        return FALSE;
     }
-    b = b->data.monadic;
-    if (!ENODE_IS(b, EOBJREF)) {
-        return 0;
+    source = source->data.monadic;
+    if (!ENODE_IS(source, EOBJREF)) {
+        return FALSE;
     }
 
-    if (a->data.objref == b->data.objref) {
-        return 1;
+    if (target->data.objref == source->data.objref) {
+        return TRUE;
     }
-    return 0;
+    return FALSE;
 }
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -7
+#endif
 void gen_CONDASS(ENode* expr, short outputReg, short outputRegHi, Operand* output) {
     ENode* cond;
     ENode* expr1;
@@ -2738,7 +2807,7 @@ void gen_CONDASS(ENode* expr, short outputReg, short outputRegHi, Operand* outpu
     PCodeLabel* label2;
     Operand op1;
     Operand op2;
-    Operand op3;
+    Operand dest;
     int reg1;
     int reg2;
 
@@ -2751,17 +2820,17 @@ void gen_CONDASS(ENode* expr, short outputReg, short outputRegHi, Operand* outpu
 
     memclrw(&op1, sizeof(Operand));
     memclrw(&op2, sizeof(Operand));
-    memclrw(&op3, sizeof(Operand));
+    memclrw(&dest, sizeof(Operand));
 
     cond = evaluate_and_skip_comma(expr->data.cond.cond);
 
     if (TOC_use_fsel(expr)) {
         ENode* left;
         ENode* right;
-        ENode* tmp;
+        ENode* swapNode;
         ENodeType nt;
-        Boolean flag;
-        Boolean flag2;
+        Boolean leftIsZero;
+        Boolean armsSwapped;
         Operand op;
         int fsel_reg;
         int fneg_reg;
@@ -2770,7 +2839,7 @@ void gen_CONDASS(ENode* expr, short outputReg, short outputRegHi, Operand* outpu
         left = cond->data.diadic.left;
         right = cond->data.diadic.right;
         nt = cond->type;
-        flag = 0;
+        leftIsZero = FALSE;
         memclrw(&op, sizeof(Operand));
 
         CError_ASSERT(3948, ENODE_IS(expr1, EINDIRECT));
@@ -2781,25 +2850,25 @@ void gen_CONDASS(ENode* expr, short outputReg, short outputRegHi, Operand* outpu
 
         switch (nt) {
             case EGREATER:
-                tmp = left;
+                swapNode = left;
                 left = right;
-                right = tmp;
+                right = swapNode;
             case ELESS:
             case ENOTEQU:
-                tmp = expr1;
+                swapNode = expr1;
                 expr1 = expr2;
-                expr2 = tmp;
-                flag2 = 1;
+                expr2 = swapNode;
+                armsSwapped = TRUE;
                 break;
             case ELESSEQU:
-                tmp = left;
+                swapNode = left;
                 left = right;
-                right = tmp;
-                flag2 = 0;
+                right = swapNode;
+                armsSwapped = FALSE;
                 break;
             case EGREATEREQU:
             case EEQU:
-                flag2 = 0;
+                armsSwapped = FALSE;
                 break;
             default:
                 CError_FATAL(3988);
@@ -2808,7 +2877,7 @@ void gen_CONDASS(ENode* expr, short outputReg, short outputRegHi, Operand* outpu
         if (ENODE_IS(left, EFLOATCONST) && CMach_FloatIsZero(left->data.floatval)) {
             GEN_NODE(right, &op);
             ENSURE_FPR(&op, right->rtype, 0);
-            flag = 1;
+            leftIsZero = TRUE;
         } else if (ENODE_IS(right, EFLOATCONST) && CMach_FloatIsZero(right->data.floatval)) {
             GEN_NODE(left, &op);
             ENSURE_FPR(&op, left->rtype, 0);
@@ -2819,9 +2888,9 @@ void gen_CONDASS(ENode* expr, short outputReg, short outputRegHi, Operand* outpu
         switch (cond->type) {
             case EEQU:
             case ENOTEQU:
-                if (flag) {
+                if (leftIsZero) {
                     GEN_NODE(expr1, &op1);
-                    op3 = op1;
+                    dest = op1;
                     ENSURE_FPR(&op1, expr1->rtype, 0);
                     GEN_NODE(expr2, &op2);
                     ENSURE_FPR(&op2, expr2->rtype, 0);
@@ -2833,7 +2902,7 @@ void gen_CONDASS(ENode* expr, short outputReg, short outputRegHi, Operand* outpu
                     emitpcode(PC_FSEL, final_reg, fneg_reg, fsel_reg, op1.reg);
                 } else {
                     GEN_NODE(expr1, &op1);
-                    op3 = op1;
+                    dest = op1;
                     ENSURE_FPR(&op1, expr1->rtype, 0);
                     GEN_NODE(expr2, &op2);
                     ENSURE_FPR(&op2, expr2->rtype, 0);
@@ -2851,13 +2920,13 @@ void gen_CONDASS(ENode* expr, short outputReg, short outputRegHi, Operand* outpu
             case EGREATEREQU:
                 GEN_NODE(expr1, &op1);
                 GEN_NODE(expr2, &op2);
-                op3 = flag2 ? op2 : op1;
+                dest = armsSwapped ? op2 : op1;
 
                 ENSURE_FPR(&op1, expr1->rtype, 0);
                 ENSURE_FPR(&op2, expr2->rtype, 0);
 
                 fneg_reg = op.reg;
-                if (flag) {
+                if (leftIsZero) {
                     fneg_reg = ALLOC_FPR();
                     emitpcode(PC_FNEG, fneg_reg, op.reg);
                 }
@@ -2868,8 +2937,8 @@ void gen_CONDASS(ENode* expr, short outputReg, short outputRegHi, Operand* outpu
                 CError_FATAL(4083);
         }
 
-        if (op3.optype != OpndType_FPR) {
-            store_fp(final_reg, &op3, type);
+        if (dest.optype != OpndType_FPR) {
+            store_fp(final_reg, &dest, type);
         }
 
         output->optype = OpndType_FPR;
@@ -2877,9 +2946,9 @@ void gen_CONDASS(ENode* expr, short outputReg, short outputRegHi, Operand* outpu
         return;
     }
 
-    if (TOC_use_isel(expr, 0)) {
+    if (TOC_use_isel(expr, FALSE)) {
         Operand condOp;
-        Operand tmpop;
+        Operand swapOp;
         int bit;
         int swap;
         short objreg;
@@ -2893,35 +2962,35 @@ void gen_CONDASS(ENode* expr, short outputReg, short outputRegHi, Operand* outpu
         objreg = OBJECT_REG(expr1->data.monadic->data.objref);
 
         GEN_NODE(expr1, &op1);
-        op3 = op1;
+        dest = op1;
         ENSURE_GPR(&op1, expr1->rtype, 0);
         GEN_NODE(expr2, &op2);
         ENSURE_GPR(&op2, expr2->rtype, 0);
 
         reg1 = objreg ? objreg : ALLOC_GPR();
         bit = 0;
-        swap = 0;
+        swap = FALSE;
         switch (condOp.regOffset) {
             case ENOTEQU:
-                swap = 1;
+                swap = TRUE;
             case EEQU:
                 bit = 2;
                 break;
             case EGREATEREQU:
-                swap = 1;
+                swap = TRUE;
             case ELESS:
                 bit = 0;
                 break;
             case ELESSEQU:
-                swap = 1;
+                swap = TRUE;
             case EGREATER:
                 bit = 1;
                 break;
         }
         if (swap) {
-            tmpop = op1;
+            swapOp = op1;
             op1 = op2;
-            op2 = tmpop;
+            op2 = swapOp;
         }
         switch (bit) {
             case 0:
@@ -2936,15 +3005,15 @@ void gen_CONDASS(ENode* expr, short outputReg, short outputRegHi, Operand* outpu
             default:
                 CError_FATAL(4171);
         }
-        if (op3.optype != OpndType_GPR) {
-            store(reg1, &op3, type);
+        if (dest.optype != OpndType_GPR) {
+            store(reg1, &dest, type);
         }
         output->optype = OpndType_GPR;
         output->reg = reg1;
         return;
     }
 
-    if (TOC_use_isel(expr, 1)) {
+    if (TOC_use_isel(expr, TRUE)) {
         Operand isel_op;
 
         memclrw(&isel_op, sizeof(Operand));
@@ -2962,13 +3031,13 @@ void gen_CONDASS(ENode* expr, short outputReg, short outputRegHi, Operand* outpu
             CError_ASSERT(4223, outputReg);
 
             GEN_NODE(expr1, &op1);
-            op3 = op1;
+            dest = op1;
 
-            CError_ASSERT(4230, op3.optype == OpndType_GPR && op3.reg == outputReg);
+            CError_ASSERT(4230, dest.optype == OpndType_GPR && dest.reg == outputReg);
 
             ENSURE_GPR(&op1, expr1->rtype, 0);
             if (expr1->rtype->size < 4) {
-                extend32(output, expr1->rtype, op3.reg);
+                extend32(output, expr1->rtype, dest.reg);
             }
 
             reg1 = ALLOC_GPR();
@@ -2977,10 +3046,10 @@ void gen_CONDASS(ENode* expr, short outputReg, short outputRegHi, Operand* outpu
             emitpcode(PC_XOR, reg2, reg1, op1.reg);
             emitpcode(PC_SUBF, outputReg, reg1, reg2);
             output->optype = OpndType_GPR;
-            output->reg = op3.reg;
+            output->reg = dest.reg;
 
             if ((type = expr1->rtype)->size < 4) {
-                extend32(output, type, op3.reg);
+                extend32(output, type, dest.reg);
             }
 
             return;
@@ -2992,6 +3061,10 @@ void gen_CONDASS(ENode* expr, short outputReg, short outputRegHi, Operand* outpu
     gen_ASS(expr, outputReg, outputRegHi, output);
     branch_label(label2);
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
 void gen_FUNCCALL(ENode* expr, short outputReg, short outputRegHi, Operand* output) {
     if (is_intrinsic_function_call(expr)) {
@@ -3015,16 +3088,24 @@ void gen_OBJREF(ENode* expr, short outputReg, short outputRegHi, Operand* output
     }
 }
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -7
+#endif
 void gen_UNEXPECTED(ENode* expr, short outputReg, short outputRegHi, Operand* output) {
     CError_FATAL(4404);
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
 static int small(ENode* expr) {
     Type* type;
 
     type = expr->rtype;
     if (!ENODE_IS(expr, ETYPCON)) {
-        return 0;
+        return FALSE;
     }
 
     do {
@@ -3100,10 +3181,6 @@ void unary_operator(Opcode opcode, ENode* expr, short outputReg, Operand* output
     output->reg = reg;
 }
 
-#ifdef ORACLE_PROBES
-#define unary_operator(...) ORACLE_INLINED(unary_operator(__VA_ARGS__))
-#endif
-
 static void or_xor_immediate(
     short opcode, ENode* expr, SInt32 value, short outputReg, Operand* output
 ) {
@@ -3116,11 +3193,19 @@ static void or_xor_immediate(
     reg = outputReg ? outputReg : ALLOC_GPR();
 
     if (expr->rtype->size > 2 && value != (UInt16)value) {
+#if VERSION < VERSION_GC_2_0
+        if (value & 0xFFFF) {
+            emitpcode((opcode == PC_ORI) ? PC_ORIS : PC_XORIS, reg, op.reg, value >> 16);
+            emitpcode(opcode, reg, reg, value & 0xFFFF);
+        } else {
+            emitpcode((opcode == PC_ORI) ? PC_ORIS : PC_XORIS, reg, op.reg, value >> 16);
+        }
+#else
         if (value & 0xFFFF) {
             if ((value & 0xFFFF8000) == 0xFFFF8000) {
-                int tmpreg = ALLOC_GPR();
-                emitpcode(PC_LI, tmpreg, value);
-                emitpcode((opcode == PC_ORI) ? PC_OR : PC_XOR, reg, op.reg, tmpreg);
+                int valueReg = ALLOC_GPR();
+                emitpcode(PC_LI, valueReg, value);
+                emitpcode((opcode == PC_ORI) ? PC_OR : PC_XOR, reg, op.reg, valueReg);
             } else {
                 emitpcode(
                     (opcode == PC_ORI) ? PC_ORIS : PC_XORIS, reg, op.reg, (value >> 16) & 0xFFFF
@@ -3130,6 +3215,7 @@ static void or_xor_immediate(
         } else {
             emitpcode((opcode == PC_ORI) ? PC_ORIS : PC_XORIS, reg, op.reg, (value >> 16) & 0xFFFF);
         }
+#endif
     } else {
         emitpcode(opcode, reg, op.reg, value & 0xFFFF);
     }
@@ -3157,9 +3243,9 @@ static void shift_left_immediate(
     emitpcode(PC_RLWINM, reg, op.reg, shift, 0, 31 - shift);
 
     if (negate) {
-        int tmp = outputReg ? outputReg : ALLOC_GPR();
-        emitpcode(PC_NEG, tmp, reg);
-        reg = tmp;
+        int negReg = outputReg ? outputReg : ALLOC_GPR();
+        emitpcode(PC_NEG, negReg, reg);
+        reg = negReg;
     }
 
     output->optype = OpndType_GPR;
@@ -3187,10 +3273,6 @@ static void shift_right_immediate(
     output->optype = OpndType_GPR;
     output->reg = reg;
 }
-
-#ifdef ORACLE_PROBES
-#define shift_right_immediate(...) ORACLE_INLINED(shift_right_immediate(__VA_ARGS__))
-#endif
 
 static void signed_divide_by_power_of_2(
     ENode* expr, int shift, int negate, short outputReg, Operand* output
@@ -3302,10 +3384,6 @@ void fp_unary_operator(Opcode opcode, ENode* expr, short outputReg, Operand* out
     output->reg = reg;
 }
 
-#ifdef ORACLE_PROBES
-#define fp_unary_operator(...) ORACLE_INLINED(fp_unary_operator(__VA_ARGS__))
-#endif
-
 void fp_multiply_add(
     Opcode opcode, ENode* a, ENode* b, ENode* c, short outputReg, Operand* output
 ) {
@@ -3355,12 +3433,16 @@ void gen_COMPARE(ENode* expr, short outputReg, short outputRegHi, Operand* outpu
     }
     if (TYPE_IS_8BYTES(expr->data.diadic.right->rtype) ||
         TYPE_IS_8BYTES(expr->data.diadic.left->rtype)) {
-        I8_gen_condition(expr, output, 1);
+        I8_gen_condition(expr, output, TRUE);
         return;
     }
     gen_condition_gpr(expr, output, outputReg);
 }
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -16
+#endif
 void gen_LOGICAL(ENode* expr, short outputReg, short outputRegHi, Operand* output) {
     ENode* inner;
     ENodeType op;
@@ -3388,6 +3470,8 @@ void gen_LOGICAL(ENode* expr, short outputReg, short outputRegHi, Operand* outpu
                     }
                     ENSURE_GPR(output, expr->data.monadic->rtype, 0);
                     return;
+                default:
+                    break;
             }
         }
 
@@ -3395,25 +3479,25 @@ void gen_LOGICAL(ENode* expr, short outputReg, short outputRegHi, Operand* outpu
             !TYPE_IS_8BYTES(inner->data.diadic.left->rtype) &&
             ENODE_IS(inner->data.diadic.right, EINTCONST) &&
             inner->data.diadic.right->data.intval.lo == 0) {
-            int tmpreg1;
-            int tmpreg2;
+            int resultReg;
+            int leadingZerosReg;
             GEN_NODE(inner->data.diadic.left, output);
             if (inner->data.diadic.left->rtype->size < 4) {
                 extend32(output, inner->data.diadic.left->rtype, 0);
             }
             ENSURE_GPR(output, inner->data.diadic.left->rtype, 0);
 
-            tmpreg1 = ALLOC_GPR();
-            tmpreg2 = ALLOC_GPR();
+            resultReg = ALLOC_GPR();
+            leadingZerosReg = ALLOC_GPR();
             CError_ASSERT(5106, output->optype == OpndType_GPR);
 
-            emitpcode(PC_CNTLZW, tmpreg2, output->reg);
-            emitpcode(PC_RLWINM, tmpreg1, tmpreg2, 27, 5, 31);
+            emitpcode(PC_CNTLZW, leadingZerosReg, output->reg);
+            emitpcode(PC_RLWINM, resultReg, leadingZerosReg, 27, 5, 31);
             output->optype = OpndType_GPR;
-            output->reg = tmpreg1;
+            output->reg = resultReg;
         } else {
-            int tmpreg1;
-            int tmpreg2;
+            int resultReg;
+            int leadingZerosReg;
             ENodeType inverted;
 
             inverted = invert_relop(op);
@@ -3430,33 +3514,37 @@ void gen_LOGICAL(ENode* expr, short outputReg, short outputRegHi, Operand* outpu
             }
             ENSURE_GPR(output, inner->rtype, 0);
 
-            tmpreg1 = ALLOC_GPR();
-            tmpreg2 = ALLOC_GPR();
+            resultReg = ALLOC_GPR();
+            leadingZerosReg = ALLOC_GPR();
             CError_ASSERT(5136, output->optype == OpndType_GPR);
 
-            emitpcode(PC_CNTLZW, tmpreg2, output->reg);
-            emitpcode(PC_RLWINM, tmpreg1, tmpreg2, 27, 5, 31);
+            emitpcode(PC_CNTLZW, leadingZerosReg, output->reg);
+            emitpcode(PC_RLWINM, resultReg, leadingZerosReg, 27, 5, 31);
             output->optype = OpndType_GPR;
-            output->reg = tmpreg1;
+            output->reg = resultReg;
         }
     } else {
         PCodeLabel* label1;
         PCodeLabel* label2;
-        int tmpreg;
+        int resultReg;
 
         label1 = makepclabel();
         label2 = makepclabel();
 
-        tmpreg = ALLOC_GPR();
-        emitpcode(PC_LI, tmpreg, 0);
+        resultReg = ALLOC_GPR();
+        emitpcode(PC_LI, resultReg, 0);
         logical_expression(expr, label1, label2, label1);
         branch_label(label1);
-        emitpcode(PC_LI, tmpreg, 1);
+        emitpcode(PC_LI, resultReg, 1);
         branch_label(label2);
         output->optype = OpndType_GPR;
-        output->reg = tmpreg;
+        output->reg = resultReg;
     }
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
 void gen_NULLCHECK(ENode* expr, short outputReg, short outputRegHi, Operand* output) {
     ENode* left;
@@ -3464,7 +3552,7 @@ void gen_NULLCHECK(ENode* expr, short outputReg, short outputRegHi, Operand* out
     Operand opleft;
     Operand opright;
     PrecomputedOperand* precomp;
-    int flag;
+    int hasValue;
     int reg;
     PCodeLabel* label;
 
@@ -3472,7 +3560,7 @@ void gen_NULLCHECK(ENode* expr, short outputReg, short outputRegHi, Operand* out
     right = expr->data.nullcheck.condexpr;
     memclrw(&opleft, sizeof(Operand));
     memclrw(&opright, sizeof(Operand));
-    flag = !IS_TYPE_VOID(expr->rtype) && !expr->ignored;
+    hasValue = !IS_TYPE_VOID(expr->rtype) && !expr->ignored;
 
     GEN_NODE(left, &opleft);
     if (left->rtype->size < 4) {
@@ -3487,7 +3575,7 @@ void gen_NULLCHECK(ENode* expr, short outputReg, short outputRegHi, Operand* out
     precomputedoperands = precomp;
 
     emitpcode(PC_CMPI, 0, opleft.reg, 0);
-    if (flag) {
+    if (hasValue) {
         emitpcode(PC_MR, reg = ALLOC_GPR(), opleft.reg);
     }
 
@@ -3496,7 +3584,7 @@ void gen_NULLCHECK(ENode* expr, short outputReg, short outputRegHi, Operand* out
     GEN_NODE(right, &opright);
     precomputedoperands = precomputedoperands->next;
 
-    if (flag) {
+    if (hasValue) {
         ENSURE_GPR(&opright, right->rtype, reg);
         if (opright.reg != reg) {
             emitpcode(PC_MR, reg, opright.reg);
@@ -3520,6 +3608,10 @@ void gen_PRECOMP(ENode* expr, short outputReg, short outputRegHi, Operand* outpu
     *output = precomp->operand;
 }
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -16
+#endif
 void logical_expression(ENode* cond, PCodeLabel* if_true, PCodeLabel* if_false, PCodeLabel* end) {
     PCodeLabel* label;
     Operand op;
@@ -3553,7 +3645,7 @@ void logical_expression(ENode* cond, PCodeLabel* if_true, PCodeLabel* if_false, 
                 SFPE_gen_condition(cond, &op, 0);
             } else if (TYPE_IS_8BYTES(cond->data.diadic.right->rtype) ||
                        TYPE_IS_8BYTES(cond->data.diadic.left->rtype)) {
-                I8_gen_condition(cond, &op, 0);
+                I8_gen_condition(cond, &op, FALSE);
             } else {
                 gen_condition(cond, &op);
             }
@@ -3568,12 +3660,20 @@ void logical_expression(ENode* cond, PCodeLabel* if_true, PCodeLabel* if_false, 
             CError_FATAL(5413);
     }
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -16
+#endif
 static void logical_expression_nobranch(ENode* cond, Boolean invert, Operand* output) {
     cond = evaluate_and_skip_comma(cond);
     switch (cond->type) {
         case ELOGNOT:
-            logical_expression_nobranch(cond->data.monadic, 1, output);
+            logical_expression_nobranch(cond->data.monadic, TRUE, output);
             break;
         case ELESS:
         case EGREATER:
@@ -3592,7 +3692,7 @@ static void logical_expression_nobranch(ENode* cond, Boolean invert, Operand* ou
                 SFPE_gen_condition(cond, output, 0);
             } else if (TYPE_IS_8BYTES(cond->data.diadic.right->rtype) ||
                        TYPE_IS_8BYTES(cond->data.diadic.left->rtype)) {
-                I8_gen_condition(cond, output, 0);
+                I8_gen_condition(cond, output, FALSE);
             } else {
                 gen_condition(cond, output);
             }
@@ -3602,6 +3702,10 @@ static void logical_expression_nobranch(ENode* cond, Boolean invert, Operand* ou
             CError_FATAL(5459);
     }
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
 static ENodeType invert_relop(ENodeType nt) {
     switch (nt) {
@@ -3637,6 +3741,10 @@ static int reverse_relop(int nt) {
     }
 }
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -16
+#endif
 void gen_condition(ENode* cond, Operand* output) {
     ENode* left;
     ENode* right;
@@ -3698,36 +3806,32 @@ void gen_condition(ENode* cond, Operand* output) {
         compare_integer(cond->type, left, right, output);
     }
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION < VERSION_GC_2_0
 void gen_condition_gpr(ENode* cond, Operand* output, short outputReg) {
     ENode* left;
     ENode* right;
     Operand condOp;
-    PCode* pc;
-    SInt32 finalReg;
-    int tmpReg;
-    int tmpReg2;
-    int tmpReg3;
-    int tmpReg4;
-    int a;
-    int b;
 
     left = cond->data.diadic.left;
     right = cond->data.diadic.right;
-    pc = NULL;
     memclrw(&condOp, sizeof(Operand));
 
     if (TYPE_IS_SOFT_FLOAT(left->rtype)) {
-        CError_FATAL(5614);
+        CError_FATAL(5597);
     }
 
     if (!IS_TYPE_FLOAT_NOT_VEC2X32FLOAT(left->rtype)) {
         Operand op1;
         Operand op2;
-        Operand opTmp;
+        Operand swapOp;
         memclrw(&op1, sizeof(Operand));
         memclrw(&op2, sizeof(Operand));
-        memclrw(&opTmp, sizeof(Operand));
+        memclrw(&swapOp, sizeof(Operand));
 
         if (right->hascall) {
             GEN_NODE(right, &op2);
@@ -3743,10 +3847,431 @@ void gen_condition_gpr(ENode* cond, Operand* output, short outputReg) {
                 extend32(&op1, left->rtype, 0);
             }
             ENSURE_GPR(&op1, left->rtype, 0);
-            if (pclastblock->pcodeCount >
-                0 &&
-                pclastblock->lastPCode->op ==
-                PC_RLWINM &&
+        } else {
+            GEN_NODE(left, &op1);
+            ENSURE_GPR(&op1, left->rtype, 0);
+            if (left->rtype->size < 4) {
+                extend32(&op1, left->rtype, 0);
+            }
+
+            GEN_NODE(right, &op2);
+            if (!IS_INT_CONST_ZERO(right)) {
+                if (right->rtype->size < 4) {
+                    extend32(&op2, right->rtype, 0);
+                }
+                ENSURE_GPR(&op2, right->rtype, 0);
+            }
+        }
+
+        switch (cond->type) {
+            case EEQU: {
+                SInt32 finalReg;
+                int tmpReg4;
+                int tmpReg3;
+                int tmpReg2;
+                int tmpReg;
+                if (copts.peephole && IS_INT_CONST(right) && pclastblock->pcodeCount > 0 &&
+                    pclastblock->lastPCode->op == PC_RLWINM &&
+                    pclastblock->lastPCode->args[0].data.reg.reg == op1.reg) {
+                    PCode* pc = pclastblock->lastPCode;
+                    SInt32 sh = pc->args[2].data.imm.value;
+                    SInt32 mb = pc->args[3].data.imm.value;
+                    SInt32 me = pc->args[4].data.imm.value;
+                    UInt32 value = right->data.intval.lo;
+                    if (mb == me) {
+                        finalReg = outputReg ? outputReg : ALLOC_GPR();
+
+                        if (value != (value & 1)) {
+                            emitpcode(PC_LI, finalReg, 0);
+                        } else if (value == 0) {
+                            tmpReg = ALLOC_GPR();
+                            emitpcode(
+                                PC_RLWINM,
+                                tmpReg,
+                                pc->args[1].data.reg.reg,
+                                (sh + mb + 1) & 31,
+                                31,
+                                31
+                            );
+                            emitpcode(PC_XORI, finalReg, tmpReg, 1);
+                        } else if (value == 1) {
+                            emitpcode(
+                                PC_RLWINM,
+                                finalReg,
+                                pc->args[1].data.reg.reg,
+                                (sh + mb + 1) & 31,
+                                31,
+                                31
+                            );
+                        } else {
+                            CError_FATAL(5671);
+                        }
+                        output->optype = OpndType_GPR;
+                        output->reg = finalReg;
+                        return;
+                    }
+                }
+
+                if (IS_INT_CONST_ZERO(right)) {
+                    tmpReg = ALLOC_GPR();
+                    emitpcode(PC_CNTLZW, tmpReg, op1.reg, 0);
+                    finalReg = outputReg ? outputReg : ALLOC_GPR();
+                    emitpcode(PC_RLWINM, finalReg, tmpReg, 27, 5, 31);
+                    output->optype = OpndType_GPR;
+                    output->reg = finalReg;
+                    return;
+                } else {
+                    tmpReg = ALLOC_GPR();
+                    emitpcode(PC_SUBF, tmpReg, op1.reg, op2.reg);
+                    tmpReg2 = ALLOC_GPR();
+                    emitpcode(PC_CNTLZW, tmpReg2, tmpReg);
+                    finalReg = outputReg ? outputReg : ALLOC_GPR();
+                    emitpcode(PC_RLWINM, finalReg, tmpReg2, 27, 5, 31);
+                    output->optype = OpndType_GPR;
+                    output->reg = finalReg;
+                    return;
+                }
+
+            }
+            case ENOTEQU: {
+                SInt32 finalReg;
+                int tmpReg4;
+                int tmpReg3;
+                int tmpReg2;
+                int tmpReg;
+                if (copts.peephole && IS_INT_CONST(right) && pclastblock->pcodeCount > 0 &&
+                    pclastblock->lastPCode->op == PC_RLWINM &&
+                    pclastblock->lastPCode->args[0].data.reg.reg == op1.reg) {
+                    PCode* pc = pclastblock->lastPCode;
+                    SInt32 sh = pc->args[2].data.imm.value;
+                    SInt32 mb = pc->args[3].data.imm.value;
+                    SInt32 me = pc->args[4].data.imm.value;
+                    UInt32 value = right->data.intval.lo;
+                    if (mb == me) {
+                        finalReg = outputReg ? outputReg : ALLOC_GPR();
+
+                        if (value != (value & 1)) {
+                            emitpcode(PC_LI, finalReg, 1);
+                        } else if (value == 0) {
+                            emitpcode(
+                                PC_RLWINM,
+                                finalReg,
+                                pc->args[1].data.reg.reg,
+                                (sh + mb + 1) & 31,
+                                31,
+                                31
+                            );
+                        } else if (value == 1) {
+                            tmpReg = ALLOC_GPR();
+                            emitpcode(
+                                PC_RLWINM,
+                                tmpReg,
+                                pc->args[1].data.reg.reg,
+                                (sh + mb + 1) & 31,
+                                31,
+                                31
+                            );
+                            emitpcode(PC_XORI, finalReg, tmpReg, 1);
+                        } else {
+                            CError_FATAL(5740);
+                        }
+                        output->optype = OpndType_GPR;
+                        output->reg = finalReg;
+                        return;
+                    }
+                }
+
+                if (IS_INT_CONST_ZERO(right)) {
+                    if (copts.optimizesize) {
+                        tmpReg = ALLOC_GPR();
+                        emitpcode(PC_ADDIC, tmpReg, op1.reg, -1);
+                        finalReg = outputReg ? outputReg : ALLOC_GPR();
+                        emitpcode(PC_SUBFE, finalReg, tmpReg, op1.reg);
+                    } else {
+                        tmpReg = ALLOC_GPR();
+                        emitpcode(PC_NEG, tmpReg, op1.reg);
+                        tmpReg2 = ALLOC_GPR();
+                        emitpcode(PC_OR, tmpReg2, tmpReg, op1.reg);
+                        finalReg = outputReg ? outputReg : ALLOC_GPR();
+                        emitpcode(PC_RLWINM, finalReg, tmpReg2, 1, 31, 31);
+                    }
+                    output->optype = OpndType_GPR;
+                    output->reg = finalReg;
+                    return;
+                }
+
+                if (copts.optimizesize) {
+                    tmpReg = ALLOC_GPR();
+                    emitpcode(PC_SUBF, tmpReg, op1.reg, op2.reg);
+                    tmpReg2 = ALLOC_GPR();
+                    emitpcode(PC_ADDIC, tmpReg2, tmpReg, -1);
+                    finalReg = outputReg ? outputReg : ALLOC_GPR();
+                    emitpcode(PC_SUBFE, finalReg, tmpReg2, tmpReg);
+                } else {
+                    tmpReg = ALLOC_GPR();
+                    emitpcode(PC_SUBF, tmpReg, op1.reg, op2.reg);
+                    tmpReg2 = ALLOC_GPR();
+                    emitpcode(PC_SUBF, tmpReg2, op2.reg, op1.reg);
+                    tmpReg3 = ALLOC_GPR();
+                    emitpcode(PC_OR, tmpReg3, tmpReg, tmpReg2);
+                    finalReg = outputReg ? outputReg : ALLOC_GPR();
+                    emitpcode(PC_RLWINM, finalReg, tmpReg3, 1, 31, 31);
+                }
+                output->optype = OpndType_GPR;
+                output->reg = finalReg;
+                return;
+
+            }
+            case EGREATEREQU: {
+                SInt32 finalReg;
+                int tmpReg4;
+                int tmpReg3;
+                int tmpReg2;
+                int tmpReg;
+                if (!is_unsigned(left->rtype) && IS_INT_CONST_ZERO(right)) {
+                    tmpReg = ALLOC_GPR();
+                    emitpcode(PC_RLWINM, tmpReg, op1.reg, 1, 31, 31);
+                    finalReg = outputReg ? outputReg : ALLOC_GPR();
+                    emitpcode(PC_XORI, finalReg, tmpReg, 1);
+                    output->optype = OpndType_GPR;
+                    output->reg = finalReg;
+                    return;
+                }
+                swapOp = op2;
+                op2 = op1;
+                op1 = swapOp;
+
+            }
+            case ELESSEQU: {
+                SInt32 finalReg;
+                int tmpReg4;
+                int tmpReg3;
+                int tmpReg2;
+                int tmpReg;
+                if (is_unsigned(left->rtype)) {
+                    if (copts.optimizesize) {
+                        tmpReg = ALLOC_GPR();
+                        emitpcode(PC_LI, tmpReg, -1);
+                        tmpReg2 = ALLOC_GPR();
+                        emitpcode(PC_SUBFC, tmpReg2, op1.reg, op2.reg);
+                        finalReg = outputReg ? outputReg : ALLOC_GPR();
+                        emitpcode(PC_SUBFZE, finalReg, tmpReg);
+                    } else {
+                        tmpReg = ALLOC_GPR();
+                        emitpcode(PC_SUBF, tmpReg, op1.reg, op2.reg);
+                        tmpReg2 = ALLOC_GPR();
+                        emitpcode(PC_ORC, tmpReg2, op2.reg, op1.reg);
+                        tmpReg3 = ALLOC_GPR();
+                        emitpcode(PC_RLWINM, tmpReg3, tmpReg, 31, 1, 31);
+                        tmpReg4 = ALLOC_GPR();
+                        emitpcode(PC_SUBF, tmpReg4, tmpReg3, tmpReg2);
+                        finalReg = outputReg ? outputReg : ALLOC_GPR();
+                        emitpcode(PC_RLWINM, finalReg, tmpReg4, 1, 31, 31);
+                    }
+                    output->optype = OpndType_GPR;
+                    output->reg = finalReg;
+                    return;
+                }
+
+                if (IS_INT_CONST_ZERO(right)) {
+                    tmpReg = ALLOC_GPR();
+                    emitpcode(PC_LI, tmpReg, 1);
+                    tmpReg2 = ALLOC_GPR();
+                    emitpcode(PC_CNTLZW, tmpReg2, op1.reg);
+                    finalReg = outputReg ? outputReg : ALLOC_GPR();
+                    emitpcode(PC_RLWNM, finalReg, tmpReg, tmpReg2, 31, 31);
+                    output->optype = OpndType_GPR;
+                    output->reg = finalReg;
+                    return;
+                }
+
+                tmpReg2 = ALLOC_GPR();
+                emitpcode(PC_SRAWI, tmpReg2, op2.reg, 31);
+                tmpReg = ALLOC_GPR();
+                emitpcode(PC_RLWINM, tmpReg, op1.reg, 1, 31, 31);
+                tmpReg3 = ALLOC_GPR();
+                emitpcode(PC_SUBFC, tmpReg3, op1.reg, op2.reg);
+                finalReg = outputReg ? outputReg : ALLOC_GPR();
+                emitpcode(PC_ADDE, finalReg, tmpReg2, tmpReg);
+                output->optype = OpndType_GPR;
+                output->reg = finalReg;
+                return;
+
+            }
+            case EGREATER: {
+                SInt32 finalReg;
+                int tmpReg4;
+                int tmpReg3;
+                int tmpReg2;
+                int tmpReg;
+                if (!is_unsigned(left->rtype) && IS_INT_CONST_ZERO(right)) {
+                    tmpReg = ALLOC_GPR();
+                    emitpcode(PC_NEG, tmpReg, op1.reg);
+                    tmpReg2 = ALLOC_GPR();
+                    emitpcode(PC_ANDC, tmpReg2, tmpReg, op1.reg);
+                    finalReg = outputReg ? outputReg : ALLOC_GPR();
+                    emitpcode(PC_RLWINM, finalReg, tmpReg2, 1, 31, 31);
+                    output->optype = OpndType_GPR;
+                    output->reg = finalReg;
+                    return;
+                }
+
+                swapOp = op2;
+                op2 = op1;
+                op1 = swapOp;
+
+            }
+            case ELESS: {
+                SInt32 finalReg;
+                int tmpReg4;
+                int tmpReg3;
+                int tmpReg2;
+                int tmpReg;
+                if (is_unsigned(left->rtype)) {
+                    if (left->rtype->size <= 2) {
+                        tmpReg = ALLOC_GPR();
+                        emitpcode(PC_SUBF, tmpReg, op2.reg, op1.reg);
+                        finalReg = outputReg ? outputReg : ALLOC_GPR();
+                        emitpcode(PC_RLWINM, finalReg, tmpReg, 1, 31, 31);
+                        output->optype = OpndType_GPR;
+                        output->reg = finalReg;
+                    } else if (copts.optimizesize) {
+                        tmpReg = ALLOC_GPR();
+                        emitpcode(PC_SUBFC, tmpReg, op2.reg, op1.reg);
+                        tmpReg2 = ALLOC_GPR();
+                        emitpcode(PC_SUBFE, tmpReg2, tmpReg, tmpReg);
+                        finalReg = outputReg ? outputReg : ALLOC_GPR();
+                        emitpcode(PC_NEG, finalReg, tmpReg2);
+                    } else {
+                        tmpReg = ALLOC_GPR();
+                        emitpcode(PC_XOR, tmpReg, op2.reg, op1.reg);
+                        tmpReg2 = ALLOC_GPR();
+                        emitpcode(PC_CNTLZW, tmpReg2, tmpReg);
+                        tmpReg3 = ALLOC_GPR();
+                        emitpcode(PC_SLW, tmpReg3, op2.reg, tmpReg2);
+                        finalReg = outputReg ? outputReg : ALLOC_GPR();
+                        emitpcode(PC_RLWINM, finalReg, tmpReg3, 1, 31, 31);
+                    }
+                    output->optype = OpndType_GPR;
+                    output->reg = finalReg;
+                    return;
+                }
+
+                if (IS_INT_CONST_ZERO(right)) {
+                    finalReg = outputReg ? outputReg : ALLOC_GPR();
+                    emitpcode(PC_RLWINM, finalReg, op1.reg, 1, 31, 31);
+                    output->optype = OpndType_GPR;
+                    output->reg = finalReg;
+                    return;
+                }
+
+                tmpReg = ALLOC_GPR();
+                emitpcode(PC_XOR, tmpReg, op2.reg, op1.reg);
+                tmpReg2 = ALLOC_GPR();
+                emitpcode(PC_SRAWI, tmpReg2, tmpReg, 1);
+                tmpReg3 = ALLOC_GPR();
+                emitpcode(PC_AND, tmpReg3, tmpReg, op2.reg);
+                tmpReg4 = ALLOC_GPR();
+                emitpcode(PC_SUBF, tmpReg4, tmpReg3, tmpReg2);
+
+                finalReg = outputReg ? outputReg : ALLOC_GPR();
+                emitpcode(PC_RLWINM, finalReg, tmpReg4, 1, 31, 31);
+                output->optype = OpndType_GPR;
+                output->reg = finalReg;
+                return;
+
+            }
+            default:
+                CError_FATAL(6014);
+        }
+    }
+
+    {
+    SInt32 finalReg;
+    int tmpReg;
+    int invert;
+    int bit;
+    gen_condition(cond, &condOp);
+    emitpcode(PC_MFCR, tmpReg = ALLOC_GPR());
+    invert = 0;
+    bit = condOp.reg * 4;
+    switch (condOp.regOffset) {
+        case ENOTEQU:
+            invert = 1;
+        case EEQU:
+            bit += 2;
+            break;
+        case EGREATEREQU:
+            invert = 1;
+            break;
+        case ELESSEQU:
+            invert = 1;
+        case EGREATER:
+            bit += 1;
+            break;
+        case ELESS:
+            break;
+    }
+
+    finalReg = outputReg ? outputReg : ALLOC_GPR();
+    if (invert) {
+        emitpcode(PC_RLWINM, tmpReg, tmpReg, bit + 1, 31, 31);
+        emitpcode(PC_XORI, finalReg, tmpReg, 1);
+    } else {
+        emitpcode(PC_RLWINM, finalReg, tmpReg, bit + 1, 31, 31);
+    }
+    output->optype = OpndType_GPR;
+    output->reg = finalReg;
+    }
+}
+
+#else
+void gen_condition_gpr(ENode* cond, Operand* output, short outputReg) {
+    ENode* left;
+    ENode* right;
+    Operand condOp;
+    PCode* pc;
+    SInt32 finalReg;
+    int tmpReg;
+    int tmpReg2;
+    int tmpReg3;
+    int tmpReg4;
+    int invert;
+    int bit;
+
+    left = cond->data.diadic.left;
+    right = cond->data.diadic.right;
+    pc = NULL;
+    memclrw(&condOp, sizeof(Operand));
+
+    if (TYPE_IS_SOFT_FLOAT(left->rtype)) {
+        CError_FATAL(5614);
+    }
+
+    if (!IS_TYPE_FLOAT_NOT_VEC2X32FLOAT(left->rtype)) {
+        Operand op1;
+        Operand op2;
+        Operand swapOp;
+        memclrw(&op1, sizeof(Operand));
+        memclrw(&op2, sizeof(Operand));
+        memclrw(&swapOp, sizeof(Operand));
+
+        if (right->hascall) {
+            GEN_NODE(right, &op2);
+            if (!IS_INT_CONST_ZERO(right)) {
+                if (right->rtype->size < 4) {
+                    extend32(&op2, right->rtype, 0);
+                }
+                ENSURE_GPR(&op2, right->rtype, 0);
+            }
+
+            GEN_NODE(left, &op1);
+            if (left->rtype->size < 4) {
+                extend32(&op1, left->rtype, 0);
+            }
+            ENSURE_GPR(&op1, left->rtype, 0);
+            if (pclastblock->pcodeCount > 0 &&
+                pclastblock->lastPCode->op == PC_RLWINM &&
                 pclastblock->lastPCode->args[0].data.reg.reg == op1.reg) {
                 pc = pclastblock->lastPCode;
             }
@@ -3756,10 +4281,8 @@ void gen_condition_gpr(ENode* cond, Operand* output, short outputReg) {
             if (left->rtype->size < 4) {
                 extend32(&op1, left->rtype, 0);
             }
-            if (pclastblock->pcodeCount >
-                0 &&
-                pclastblock->lastPCode->op ==
-                PC_RLWINM &&
+            if (pclastblock->pcodeCount > 0 &&
+                pclastblock->lastPCode->op == PC_RLWINM &&
                 pclastblock->lastPCode->args[0].data.reg.reg == op1.reg) {
                 pc = pclastblock->lastPCode;
             }
@@ -3776,32 +4299,32 @@ void gen_condition_gpr(ENode* cond, Operand* output, short outputReg) {
         switch (cond->type) {
             case EEQU:
                 if (copts.peephole && IS_INT_CONST(right) && pc) {
-                    SInt32 a = pc->args[2].data.imm.value;
-                    SInt32 b = pc->args[3].data.imm.value;
-                    SInt32 c = pc->args[4].data.imm.value;
+                    SInt32 sh = pc->args[2].data.imm.value;
+                    SInt32 mb = pc->args[3].data.imm.value;
+                    SInt32 me = pc->args[4].data.imm.value;
                     UInt32 value = right->data.intval.lo;
-                    if (b == c) {
+                    if (mb == me) {
                         finalReg = outputReg ? outputReg : ALLOC_GPR();
 
-                        if (value != (value & RLWINM_MASK(b, c))) {
+                        if (value != (value & RLWINM_MASK(mb, me))) {
                             emitpcode(PC_LI, finalReg, 0);
-                        } else if (value != RLWINM_MASK(b, c)) {
+                        } else if (value != RLWINM_MASK(mb, me)) {
                             tmpReg = ALLOC_GPR();
                             emitpcode(
                                 PC_RLWINM,
                                 tmpReg,
                                 pc->args[1].data.reg.reg,
-                                (a + b + 1) & 31,
+                                (sh + mb + 1) & 31,
                                 31,
                                 31
                             );
                             emitpcode(PC_XORI, finalReg, tmpReg, 1);
-                        } else if (value == RLWINM_MASK(b, c)) {
+                        } else if (value == RLWINM_MASK(mb, me)) {
                             emitpcode(
                                 PC_RLWINM,
                                 finalReg,
                                 pc->args[1].data.reg.reg,
-                                (a + b + 1) & 31,
+                                (sh + mb + 1) & 31,
                                 31,
                                 31
                             );
@@ -3836,31 +4359,31 @@ void gen_condition_gpr(ENode* cond, Operand* output, short outputReg) {
 
             case ENOTEQU:
                 if (copts.peephole && IS_INT_CONST(right) && pc) {
-                    SInt32 a = pc->args[2].data.imm.value;
-                    SInt32 b = pc->args[3].data.imm.value;
-                    SInt32 c = pc->args[4].data.imm.value;
+                    SInt32 sh = pc->args[2].data.imm.value;
+                    SInt32 mb = pc->args[3].data.imm.value;
+                    SInt32 me = pc->args[4].data.imm.value;
                     UInt32 value = right->data.intval.lo;
-                    if (b == c) {
+                    if (mb == me) {
                         finalReg = outputReg ? outputReg : ALLOC_GPR();
 
-                        if (value != (value & RLWINM_MASK(b, c))) {
+                        if (value != (value & RLWINM_MASK(mb, me))) {
                             emitpcode(PC_LI, finalReg, 1);
-                        } else if (value != RLWINM_MASK(b, c)) {
+                        } else if (value != RLWINM_MASK(mb, me)) {
                             emitpcode(
                                 PC_RLWINM,
                                 finalReg,
                                 pc->args[1].data.reg.reg,
-                                (a + b + 1) & 31,
+                                (sh + mb + 1) & 31,
                                 31,
                                 31
                             );
-                        } else if (value == RLWINM_MASK(b, c)) {
+                        } else if (value == RLWINM_MASK(mb, me)) {
                             tmpReg = ALLOC_GPR();
                             emitpcode(
                                 PC_RLWINM,
                                 tmpReg,
                                 pc->args[1].data.reg.reg,
-                                (a + b + 1) & 31,
+                                (sh + mb + 1) & 31,
                                 31,
                                 31
                             );
@@ -3928,9 +4451,9 @@ void gen_condition_gpr(ENode* cond, Operand* output, short outputReg) {
                     output->reg = finalReg;
                     return;
                 }
-                opTmp = op2;
+                swapOp = op2;
                 op2 = op1;
-                op1 = opTmp;
+                op1 = swapOp;
 
             case ELESSEQU:
                 if (is_unsigned(left->rtype)) {
@@ -4012,9 +4535,9 @@ void gen_condition_gpr(ENode* cond, Operand* output, short outputReg) {
                     return;
                 }
 
-                opTmp = op2;
+                swapOp = op2;
                 op2 = op1;
-                op1 = opTmp;
+                op1 = swapOp;
 
             case ELESS:
                 if (is_unsigned(left->rtype)) {
@@ -4077,57 +4600,54 @@ void gen_condition_gpr(ENode* cond, Operand* output, short outputReg) {
 
     gen_condition(cond, &condOp);
     emitpcode(PC_MFCR, tmpReg = ALLOC_GPR());
-    a = 0;
-    b = condOp.reg * 4;
+    invert = 0;
+    bit = condOp.reg * 4;
     switch (condOp.regOffset) {
         case ENOTEQU:
-            a = 1;
+            invert = 1;
         case EEQU:
-            b += 2;
+            bit += 2;
             break;
         case EGREATEREQU:
-            a = 1;
+            invert = 1;
             break;
         case ELESSEQU:
-            a = 1;
+            invert = 1;
         case EGREATER:
-            b += 1;
+            bit += 1;
             break;
         case ELESS:
             break;
     }
 
     finalReg = outputReg ? outputReg : ALLOC_GPR();
-    if (a) {
-        emitpcode(PC_RLWINM, tmpReg, tmpReg, b + 1, 31, 31);
+    if (invert) {
+        emitpcode(PC_RLWINM, tmpReg, tmpReg, bit + 1, 31, 31);
         emitpcode(PC_XORI, finalReg, tmpReg, 1);
     } else {
-        emitpcode(PC_RLWINM, finalReg, tmpReg, b + 1, 31, 31);
+        emitpcode(PC_RLWINM, finalReg, tmpReg, bit + 1, 31, 31);
     }
     output->optype = OpndType_GPR;
     output->reg = finalReg;
 }
 
+#endif
+
+#if VERSION < VERSION_GC_2_0
 void gen_negated_condition_gpr(ENode* cond, Operand* output, short outputReg) {
     ENode* left;
     ENode* right;
     Operand op1;
     Operand op2;
-    Operand opTmp;
-    PCode* pc;
-    SInt32 finalReg;
-    int tmpReg;
-    int tmpReg2;
-    int tmpReg3;
+    Operand swapOp;
 
     left = cond->data.diadic.left;
     right = cond->data.diadic.right;
-    pc = NULL;
-    CError_ASSERT(6144, TYPE_FITS_IN_REGISTER(left->rtype) && TYPE_FITS_IN_REGISTER(right->rtype));
+    CError_ASSERT(6080, TYPE_FITS_IN_REGISTER(left->rtype) && TYPE_FITS_IN_REGISTER(right->rtype));
 
     memclrw(&op1, sizeof(Operand));
     memclrw(&op2, sizeof(Operand));
-    memclrw(&opTmp, sizeof(Operand));
+    memclrw(&swapOp, sizeof(Operand));
 
     if (right->hascall) {
         GEN_NODE(right, &op2);
@@ -4143,10 +4663,365 @@ void gen_negated_condition_gpr(ENode* cond, Operand* output, short outputReg) {
             extend32(&op1, left->rtype, 0);
         }
         ENSURE_GPR(&op1, left->rtype, 0);
-        if (pclastblock->pcodeCount >
-            0 &&
-            pclastblock->lastPCode->op ==
-            PC_RLWINM &&
+    } else {
+        GEN_NODE(left, &op1);
+        ENSURE_GPR(&op1, left->rtype, 0);
+        if (left->rtype->size < 4) {
+            extend32(&op1, left->rtype, 0);
+        }
+
+        GEN_NODE(right, &op2);
+        if (!IS_INT_CONST_ZERO(right)) {
+            if (right->rtype->size < 4) {
+                extend32(&op2, right->rtype, 0);
+            }
+            ENSURE_GPR(&op2, right->rtype, 0);
+        }
+    }
+
+    switch (cond->type) {
+        case EEQU: {
+            SInt32 finalReg;
+            int tmpReg;
+            int tmpReg2;
+            int tmpReg3;
+            if (copts.peephole && IS_INT_CONST(right) && pclastblock->pcodeCount > 0 &&
+                pclastblock->lastPCode->op == PC_RLWINM &&
+                pclastblock->lastPCode->args[0].data.reg.reg == op1.reg) {
+                PCode* pc = pclastblock->lastPCode;
+                SInt32 sh = pc->args[2].data.imm.value;
+                SInt32 mb = pc->args[3].data.imm.value;
+                SInt32 me = pc->args[4].data.imm.value;
+                UInt32 value = right->data.intval.lo;
+                if (mb == me) {
+                    finalReg = outputReg ? outputReg : ALLOC_GPR();
+
+                    if (value != (value & 1)) {
+                        emitpcode(PC_LI, finalReg, 0);
+                        output->optype = OpndType_GPR;
+                        output->reg = finalReg;
+                        return;
+                    }
+
+                    if (value == 0) {
+                        tmpReg = ALLOC_GPR();
+                        emitpcode(
+                            PC_RLWINM, tmpReg, pc->args[1].data.reg.reg, (sh + mb + 1) & 31, 31, 31
+                        );
+                        emitpcode(PC_ADDI, finalReg, tmpReg, 0, -1);
+                        output->optype = OpndType_GPR;
+                        output->reg = finalReg;
+                        return;
+                    }
+
+                    if (value == 1) {
+                        tmpReg = ALLOC_GPR();
+                        emitpcode(
+                            PC_RLWINM, tmpReg, pc->args[1].data.reg.reg, (sh + mb + 1) & 31, 31, 31
+                        );
+                        emitpcode(PC_NEG, finalReg, tmpReg);
+                        output->optype = OpndType_GPR;
+                        output->reg = tmpReg;
+                        return;
+                    }
+
+                    CError_FATAL(6160);
+                }
+            }
+
+            if (IS_INT_CONST_ZERO(right)) {
+                if (copts.optimizesize) {
+                    tmpReg = ALLOC_GPR();
+                    emitpcode(PC_ADDIC, tmpReg, op1.reg, -1);
+                    finalReg = outputReg ? outputReg : ALLOC_GPR();
+                    emitpcode(PC_SUBFE, finalReg, tmpReg, tmpReg);
+                } else {
+                    tmpReg = ALLOC_GPR();
+                    emitpcode(PC_CNTLZW, tmpReg, op1.reg);
+                    tmpReg2 = ALLOC_GPR();
+                    emitpcode(PC_RLWINM, tmpReg2, tmpReg, 27, 31, 31);
+                    finalReg = outputReg ? outputReg : ALLOC_GPR();
+                    emitpcode(PC_NEG, finalReg, tmpReg2);
+                }
+                output->optype = OpndType_GPR;
+                output->reg = finalReg;
+                return;
+            }
+
+            if (copts.optimizesize) {
+                tmpReg = ALLOC_GPR();
+                emitpcode(PC_SUBF, tmpReg, op2.reg, op1.reg);
+                tmpReg2 = ALLOC_GPR();
+                emitpcode(PC_ADDIC, tmpReg2, tmpReg, -1);
+                finalReg = outputReg ? outputReg : ALLOC_GPR();
+                emitpcode(PC_SUBFE, finalReg, tmpReg2, tmpReg2);
+            } else {
+                tmpReg = ALLOC_GPR();
+                emitpcode(PC_SUBF, tmpReg, op2.reg, op1.reg);
+                tmpReg2 = ALLOC_GPR();
+                emitpcode(PC_SUBF, tmpReg2, op1.reg, op2.reg);
+                tmpReg3 = ALLOC_GPR();
+                emitpcode(PC_NOR, tmpReg3, tmpReg, tmpReg2);
+                finalReg = outputReg ? outputReg : ALLOC_GPR();
+                emitpcode(PC_SRAWI, finalReg, tmpReg3, 31);
+            }
+            output->optype = OpndType_GPR;
+            output->reg = finalReg;
+            return;
+
+        }
+        case ENOTEQU: {
+            SInt32 finalReg;
+            int tmpReg;
+            int tmpReg2;
+            int tmpReg3;
+            if (copts.peephole && IS_INT_CONST(right) && pclastblock->pcodeCount > 0 &&
+                pclastblock->lastPCode->op == PC_RLWINM &&
+                pclastblock->lastPCode->args[0].data.reg.reg == op1.reg) {
+                PCode* pc = pclastblock->lastPCode;
+                SInt32 sh = pc->args[2].data.imm.value;
+                SInt32 mb = pc->args[3].data.imm.value;
+                SInt32 me = pc->args[4].data.imm.value;
+                UInt32 value = right->data.intval.lo;
+                if (mb == me) {
+                    finalReg = outputReg ? outputReg : ALLOC_GPR();
+
+                    if (value != (value & 1)) {
+                        emitpcode(PC_LI, finalReg, -1);
+                        output->optype = OpndType_GPR;
+                        output->reg = finalReg;
+                        return;
+                    }
+
+                    if (value == 0) {
+                        tmpReg = ALLOC_GPR();
+                        emitpcode(
+                            PC_RLWINM, tmpReg, pc->args[1].data.reg.reg, (sh + mb + 1) & 31, 31, 31
+                        );
+                        emitpcode(PC_NEG, finalReg, tmpReg);
+                        output->optype = OpndType_GPR;
+                        output->reg = finalReg;
+                        return;
+                    }
+
+                    if (value == 1) {
+                        tmpReg = ALLOC_GPR();
+                        emitpcode(
+                            PC_RLWINM, tmpReg, pc->args[1].data.reg.reg, (sh + mb + 1) & 31, 31, 31
+                        );
+                        emitpcode(PC_ADDI, finalReg, tmpReg, 0, -1);
+                        output->optype = OpndType_GPR;
+                        output->reg = finalReg;
+                        return;
+                    }
+
+                    CError_FATAL(6268);
+                }
+            }
+
+            if (IS_INT_CONST_ZERO(right)) {
+                if (copts.optimizesize) {
+                    tmpReg = ALLOC_GPR();
+                    emitpcode(PC_SUBFIC, tmpReg, op1.reg, 0);
+                    finalReg = outputReg ? outputReg : ALLOC_GPR();
+                    emitpcode(PC_SUBFE, finalReg, tmpReg, tmpReg);
+                } else {
+                    tmpReg = ALLOC_GPR();
+                    emitpcode(PC_NEG, tmpReg, op1.reg);
+                    tmpReg2 = ALLOC_GPR();
+                    emitpcode(PC_OR, tmpReg2, tmpReg, op1.reg);
+                    finalReg = outputReg ? outputReg : ALLOC_GPR();
+                    emitpcode(PC_SRAWI, finalReg, tmpReg2, 31);
+                }
+                output->optype = OpndType_GPR;
+                output->reg = finalReg;
+                return;
+                output->reg = finalReg;
+                return;
+            }
+
+            if (copts.optimizesize) {
+                tmpReg = ALLOC_GPR();
+                emitpcode(PC_SUBF, tmpReg, op2.reg, op1.reg);
+                tmpReg2 = ALLOC_GPR();
+                emitpcode(PC_SUBFIC, tmpReg2, tmpReg, 0);
+                finalReg = outputReg ? outputReg : ALLOC_GPR();
+                emitpcode(PC_SUBFE, finalReg, tmpReg2, tmpReg2);
+            } else {
+                tmpReg = ALLOC_GPR();
+                emitpcode(PC_SUBF, tmpReg, op2.reg, op1.reg);
+                tmpReg2 = ALLOC_GPR();
+                emitpcode(PC_SUBF, tmpReg2, op1.reg, op2.reg);
+                tmpReg3 = ALLOC_GPR();
+                emitpcode(PC_OR, tmpReg3, tmpReg, tmpReg2);
+                finalReg = outputReg ? outputReg : ALLOC_GPR();
+                emitpcode(PC_SRAWI, finalReg, tmpReg3, 31);
+            }
+            output->optype = OpndType_GPR;
+            output->reg = finalReg;
+            return;
+
+        }
+        case EGREATEREQU: {
+            SInt32 finalReg;
+            int tmpReg;
+            int tmpReg2;
+            int tmpReg3;
+            if (!is_unsigned(left->rtype) && IS_INT_CONST_ZERO(right)) {
+                tmpReg = ALLOC_GPR();
+                emitpcode(PC_RLWINM, tmpReg, op1.reg, 1, 31, 31);
+                finalReg = outputReg ? outputReg : ALLOC_GPR();
+                emitpcode(PC_ADDI, finalReg, tmpReg, 0, -1);
+                output->optype = OpndType_GPR;
+                output->reg = finalReg;
+                return;
+            }
+            swapOp = op2;
+            op2 = op1;
+            op1 = swapOp;
+
+        }
+        case ELESSEQU: {
+            SInt32 finalReg;
+            int tmpReg;
+            int tmpReg2;
+            int tmpReg3;
+            if (is_unsigned(left->rtype)) {
+                tmpReg = ALLOC_GPR();
+                emitpcode(PC_SUBFC, tmpReg, op1.reg, op2.reg);
+                tmpReg2 = ALLOC_GPR();
+                emitpcode(PC_ADDZE, tmpReg2, op1.reg);
+                finalReg = outputReg ? outputReg : ALLOC_GPR();
+                emitpcode(PC_SUBF, finalReg, tmpReg2, op1.reg);
+                output->optype = OpndType_GPR;
+                output->reg = finalReg;
+                return;
+            }
+
+            if (IS_INT_CONST_ZERO(right)) {
+                tmpReg = ALLOC_GPR();
+                emitpcode(PC_NEG, tmpReg, op1.reg);
+                tmpReg2 = ALLOC_GPR();
+                emitpcode(PC_ORC, tmpReg2, op1.reg, tmpReg);
+                finalReg = outputReg ? outputReg : ALLOC_GPR();
+                emitpcode(PC_SRAWI, finalReg, tmpReg2, 31);
+                output->optype = OpndType_GPR;
+                output->reg = finalReg;
+                return;
+            }
+
+            tmpReg = ALLOC_GPR();
+            emitpcode(PC_XORIS, tmpReg, op1.reg, 0x8000);
+            tmpReg2 = ALLOC_GPR();
+            emitpcode(PC_SUBF, tmpReg2, op1.reg, op2.reg);
+            tmpReg3 = ALLOC_GPR();
+            emitpcode(PC_ADDC, tmpReg3, tmpReg2, tmpReg);
+            finalReg = outputReg ? outputReg : ALLOC_GPR();
+            emitpcode(PC_SUBFE, finalReg, tmpReg3, tmpReg3);
+            output->optype = OpndType_GPR;
+            output->reg = finalReg;
+            return;
+
+        }
+        case EGREATER: {
+            SInt32 finalReg;
+            int tmpReg;
+            int tmpReg2;
+            int tmpReg3;
+            if (!is_unsigned(left->rtype) && IS_INT_CONST_ZERO(right)) {
+                tmpReg = ALLOC_GPR();
+                emitpcode(PC_NEG, tmpReg, op1.reg);
+                tmpReg2 = ALLOC_GPR();
+                emitpcode(PC_ANDC, tmpReg2, tmpReg, op1.reg);
+                finalReg = outputReg ? outputReg : ALLOC_GPR();
+                emitpcode(PC_SRAWI, finalReg, tmpReg2, 31);
+                output->optype = OpndType_GPR;
+                output->reg = finalReg;
+                return;
+            }
+            swapOp = op2;
+            op2 = op1;
+            op1 = swapOp;
+
+        }
+        case ELESS: {
+            SInt32 finalReg;
+            int tmpReg;
+            int tmpReg2;
+            int tmpReg3;
+            if (is_unsigned(left->rtype)) {
+                tmpReg = ALLOC_GPR();
+                emitpcode(PC_SUBFC, tmpReg, op2.reg, op1.reg);
+                finalReg = outputReg ? outputReg : ALLOC_GPR();
+                emitpcode(PC_SUBFE, finalReg, tmpReg, tmpReg);
+                output->optype = OpndType_GPR;
+                output->reg = finalReg;
+                return;
+            }
+
+            if (IS_INT_CONST_ZERO(right)) {
+                finalReg = outputReg ? outputReg : ALLOC_GPR();
+                emitpcode(PC_SRAWI, finalReg, op1.reg, 31);
+                output->optype = OpndType_GPR;
+                output->reg = finalReg;
+                return;
+            }
+
+            tmpReg = ALLOC_GPR();
+            emitpcode(PC_SUBFC, tmpReg, op2.reg, op1.reg);
+            tmpReg2 = ALLOC_GPR();
+            emitpcode(PC_RLWINM, tmpReg2, op2.reg, 1, 31, 31);
+            tmpReg3 = ALLOC_GPR();
+            emitpcode(PC_RLWINM, tmpReg3, op1.reg, 1, 31, 31);
+            finalReg = outputReg ? outputReg : ALLOC_GPR();
+            emitpcode(PC_SUBFE, finalReg, tmpReg3, tmpReg2);
+            output->optype = OpndType_GPR;
+            output->reg = finalReg;
+            return;
+
+        }
+        default:
+            CError_FATAL(6477);
+    }
+}
+#else
+void gen_negated_condition_gpr(ENode* cond, Operand* output, short outputReg) {
+    ENode* left;
+    ENode* right;
+    Operand op1;
+    Operand op2;
+    Operand swapOp;
+    PCode* pc;
+    SInt32 finalReg;
+    int tmpReg;
+    int tmpReg2;
+    int tmpReg3;
+
+    left = cond->data.diadic.left;
+    right = cond->data.diadic.right;
+    pc = NULL;
+    CError_ASSERT(6144, TYPE_FITS_IN_REGISTER(left->rtype) && TYPE_FITS_IN_REGISTER(right->rtype));
+
+    memclrw(&op1, sizeof(Operand));
+    memclrw(&op2, sizeof(Operand));
+    memclrw(&swapOp, sizeof(Operand));
+
+    if (right->hascall) {
+        GEN_NODE(right, &op2);
+        if (!IS_INT_CONST_ZERO(right)) {
+            if (right->rtype->size < 4) {
+                extend32(&op2, right->rtype, 0);
+            }
+            ENSURE_GPR(&op2, right->rtype, 0);
+        }
+
+        GEN_NODE(left, &op1);
+        if (left->rtype->size < 4) {
+            extend32(&op1, left->rtype, 0);
+        }
+        ENSURE_GPR(&op1, left->rtype, 0);
+        if (pclastblock->pcodeCount > 0 &&
+            pclastblock->lastPCode->op == PC_RLWINM &&
             pclastblock->lastPCode->args[0].data.reg.reg == op1.reg) {
             pc = pclastblock->lastPCode;
         }
@@ -4156,10 +5031,8 @@ void gen_negated_condition_gpr(ENode* cond, Operand* output, short outputReg) {
         if (left->rtype->size < 4) {
             extend32(&op1, left->rtype, 0);
         }
-        if (pclastblock->pcodeCount >
-            0 &&
-            pclastblock->lastPCode->op ==
-            PC_RLWINM &&
+        if (pclastblock->pcodeCount > 0 &&
+            pclastblock->lastPCode->op == PC_RLWINM &&
             pclastblock->lastPCode->args[0].data.reg.reg == op1.reg) {
             pc = pclastblock->lastPCode;
         }
@@ -4176,24 +5049,24 @@ void gen_negated_condition_gpr(ENode* cond, Operand* output, short outputReg) {
     switch (cond->type) {
         case EEQU:
             if (copts.peephole && IS_INT_CONST(right) && pc) {
-                SInt32 a = pc->args[2].data.imm.value;
-                SInt32 b = pc->args[3].data.imm.value;
-                SInt32 c = pc->args[4].data.imm.value;
+                SInt32 sh = pc->args[2].data.imm.value;
+                SInt32 mb = pc->args[3].data.imm.value;
+                SInt32 me = pc->args[4].data.imm.value;
                 UInt32 value = right->data.intval.lo;
-                if (b == c) {
+                if (mb == me) {
                     finalReg = outputReg ? outputReg : ALLOC_GPR();
 
-                    if (value != (value & RLWINM_MASK(b, c))) {
+                    if (value != (value & RLWINM_MASK(mb, me))) {
                         emitpcode(PC_LI, finalReg, 0);
                         output->optype = OpndType_GPR;
                         output->reg = finalReg;
                         return;
                     }
 
-                    if (value != RLWINM_MASK(b, c)) {
+                    if (value != RLWINM_MASK(mb, me)) {
                         tmpReg = ALLOC_GPR();
                         emitpcode(
-                            PC_RLWINM, tmpReg, pc->args[1].data.reg.reg, (a + b + 1) & 31, 31, 31
+                            PC_RLWINM, tmpReg, pc->args[1].data.reg.reg, (sh + mb + 1) & 31, 31, 31
                         );
                         emitpcode(PC_ADDI, finalReg, tmpReg, 0, -1);
                         output->optype = OpndType_GPR;
@@ -4201,15 +5074,14 @@ void gen_negated_condition_gpr(ENode* cond, Operand* output, short outputReg) {
                         return;
                     }
 
-                    if (value == RLWINM_MASK(b, c)) {
+                    if (value == RLWINM_MASK(mb, me)) {
                         tmpReg = ALLOC_GPR();
                         emitpcode(
-                            PC_RLWINM, tmpReg, pc->args[1].data.reg.reg, (a + b + 1) & 31, 31, 31
+                            PC_RLWINM, tmpReg, pc->args[1].data.reg.reg, (sh + mb + 1) & 31, 31, 31
                         );
                         emitpcode(PC_NEG, finalReg, tmpReg);
                         output->optype = OpndType_GPR;
 #if VERSION < VERSION_GC_2_5
-                        // 2.0's bug: the result is the RLWINM's register, before the negation
                         output->reg = tmpReg;
 #else
                         output->reg = finalReg;
@@ -4263,24 +5135,24 @@ void gen_negated_condition_gpr(ENode* cond, Operand* output, short outputReg) {
 
         case ENOTEQU:
             if (copts.peephole && IS_INT_CONST(right) && pc) {
-                SInt32 a = pc->args[2].data.imm.value;
-                SInt32 b = pc->args[3].data.imm.value;
-                SInt32 c = pc->args[4].data.imm.value;
+                SInt32 sh = pc->args[2].data.imm.value;
+                SInt32 mb = pc->args[3].data.imm.value;
+                SInt32 me = pc->args[4].data.imm.value;
                 UInt32 value = right->data.intval.lo;
-                if (b == c) {
+                if (mb == me) {
                     finalReg = outputReg ? outputReg : ALLOC_GPR();
 
-                    if (value != (value & RLWINM_MASK(b, c))) {
+                    if (value != (value & RLWINM_MASK(mb, me))) {
                         emitpcode(PC_LI, finalReg, -1);
                         output->optype = OpndType_GPR;
                         output->reg = finalReg;
                         return;
                     }
 
-                    if (value != RLWINM_MASK(b, c)) {
+                    if (value != RLWINM_MASK(mb, me)) {
                         tmpReg = ALLOC_GPR();
                         emitpcode(
-                            PC_RLWINM, tmpReg, pc->args[1].data.reg.reg, (a + b + 1) & 31, 31, 31
+                            PC_RLWINM, tmpReg, pc->args[1].data.reg.reg, (sh + mb + 1) & 31, 31, 31
                         );
                         emitpcode(PC_NEG, finalReg, tmpReg);
                         output->optype = OpndType_GPR;
@@ -4288,10 +5160,10 @@ void gen_negated_condition_gpr(ENode* cond, Operand* output, short outputReg) {
                         return;
                     }
 
-                    if (value == RLWINM_MASK(b, c)) {
+                    if (value == RLWINM_MASK(mb, me)) {
                         tmpReg = ALLOC_GPR();
                         emitpcode(
-                            PC_RLWINM, tmpReg, pc->args[1].data.reg.reg, (a + b + 1) & 31, 31, 31
+                            PC_RLWINM, tmpReg, pc->args[1].data.reg.reg, (sh + mb + 1) & 31, 31, 31
                         );
                         emitpcode(PC_ADDI, finalReg, tmpReg, 0, -1);
                         output->optype = OpndType_GPR;
@@ -4356,9 +5228,9 @@ void gen_negated_condition_gpr(ENode* cond, Operand* output, short outputReg) {
                 output->reg = finalReg;
                 return;
             }
-            opTmp = op2;
+            swapOp = op2;
             op2 = op1;
-            op1 = opTmp;
+            op1 = swapOp;
 
         case ELESSEQU:
             if (is_unsigned(left->rtype)) {
@@ -4437,9 +5309,9 @@ void gen_negated_condition_gpr(ENode* cond, Operand* output, short outputReg) {
                 output->reg = finalReg;
                 return;
             }
-            opTmp = op2;
+            swapOp = op2;
             op2 = op1;
-            op1 = opTmp;
+            op1 = swapOp;
 
         case ELESS:
             if (is_unsigned(left->rtype)) {
@@ -4480,6 +5352,7 @@ void gen_negated_condition_gpr(ENode* cond, Operand* output, short outputReg) {
             CError_FATAL(6600);
     }
 }
+#endif
 
 void compare_floating(short nt, ENode* left, ENode* right, Operand* output) {
     Operand opleft;
@@ -4616,17 +5489,13 @@ void compare_immediate(short nt, ENode* left, SInt32 value, Operand* output) {
     }
 
     if (copts.peephole &&
-        value ==
-        0 &&
-        pclastblock->pcodeCount >
-        0 &&
-        pclastblock->lastPCode->op !=
-        PC_RLWINM &&
+        value == 0 &&
+        pclastblock->pcodeCount > 0 &&
+        pclastblock->lastPCode->op != PC_RLWINM &&
         (PCODE_FLAG_SET_F(pclastblock->lastPCode) &
          (fIsMove | fSideEffects | fCanSetRecordBit | fOpTypeGPR)) ==
-        (fCanSetRecordBit | fOpTypeGPR) &&
-        pclastblock->lastPCode->args[0].data.reg.reg ==
-        op.reg &&
+            (fCanSetRecordBit | fOpTypeGPR) &&
+        pclastblock->lastPCode->args[0].data.reg.reg == op.reg &&
         (!is_unsigned(left->rtype) || nt == EEQU || nt == ENOTEQU)) {
         pcsetrecordbit(pclastblock->lastPCode);
     } else {
@@ -4683,7 +5552,7 @@ static int ismask(SInt32 value, short* first, short* last) {
     do {
         if (value & 1) {
             if (start != -1) {
-                return 0;
+                return FALSE;
             }
             if (end == -1) {
                 end = bit;
@@ -4698,34 +5567,34 @@ static int ismask(SInt32 value, short* first, short* last) {
     } while (bit >= 0);
 
     if (end == -1) {
-        return 0;
+        return FALSE;
     }
     if (start == -1) {
         start = 0;
     }
     *first = start;
     *last = end;
-    return 1;
+    return TRUE;
 }
 
 int ismaskconstant(SInt32 value, short* first, short* last) {
     short my_first;
     short my_last;
     if (ismask(value, first, last)) {
-        return 1;
+        return TRUE;
     }
 
     if (value && ismask(~value, &my_first, &my_last)) {
         *first = my_last + 1;
         *last = my_first - 1;
-        return 1;
+        return TRUE;
     } else {
-        return 0;
+        return FALSE;
     }
 }
 
 static void shift_and_mask(
-    ENode* expr, short a, short b, short c, short outputReg, Operand* output
+    ENode* expr, short sh, short mb, short me, short outputReg, Operand* output
 ) {
     Operand op;
     SInt32 reg;
@@ -4735,15 +5604,11 @@ static void shift_and_mask(
     ENSURE_GPR(&op, expr->rtype, 0);
 
     reg = outputReg ? outputReg : ALLOC_GPR();
-    emitpcode(PC_RLWINM, reg, op.reg, a, b, c);
+    emitpcode(PC_RLWINM, reg, op.reg, sh, mb, me);
 
     output->optype = OpndType_GPR;
     output->reg = reg;
 }
-
-#ifdef ORACLE_PROBES
-#define shift_and_mask(...) ORACLE_INLINED(shift_and_mask(__VA_ARGS__))
-#endif
 
 int ispostincrementopportunity(ENode* expr, Operand* op, SInt32* value) {
     Type* type;
@@ -4751,17 +5616,17 @@ int ispostincrementopportunity(ENode* expr, Operand* op, SInt32* value) {
 
     type = expr->rtype;
     if (!ENODE_IS2(expr, EPOSTINC, EPOSTDEC)) {
-        return 0;
+        return FALSE;
     }
     if (!ENODE_IS(expr->data.monadic, EINDIRECT)) {
-        return 0;
+        return FALSE;
     }
     if (!ENODE_IS(expr->data.monadic->data.monadic, EOBJREF)) {
-        return 0;
+        return FALSE;
     }
 
     if (!(reg = OBJECT_REG(expr->data.monadic->data.monadic->data.objref))) {
-        return 0;
+        return FALSE;
     }
 
     if (IS_TYPE_POINTER(type)) {
@@ -4780,7 +5645,7 @@ int ispostincrementopportunity(ENode* expr, Operand* op, SInt32* value) {
 
     op->optype = OpndType_GPR;
     op->reg = reg;
-    return 1;
+    return TRUE;
 }
 
 void add_register_immediate(short regA, short regB, SInt32 value) {
@@ -4799,6 +5664,10 @@ static int ispowerof2(SInt32 val) {
     return (bit > 0 && bit < 31) ? bit : 0;
 }
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -124
+#endif
 void I8_gen_ADD(ENode* expr, short outputReg, short outputRegHi, Operand* output) {
     int is_signed_left;
     int is_signed_right;
@@ -4812,8 +5681,8 @@ void I8_gen_ADD(ENode* expr, short outputReg, short outputRegHi, Operand* output
     SInt32 skipright;
     Operand opleft;
     Operand opright;
-    Operand tmpop;
-    SInt32 tmp;
+    Operand swapOp;
+    SInt32 swapSkip;
 
     left = expr->data.diadic.left;
     right = expr->data.diadic.right;
@@ -4861,13 +5730,13 @@ void I8_gen_ADD(ENode* expr, short outputReg, short outputRegHi, Operand* output
         left = expr->data.diadic.left;
         right = expr->data.diadic.right;
 
-        tmpop = opright;
+        swapOp = opright;
         opright = opleft;
-        opleft = tmpop;
+        opleft = swapOp;
 
-        tmp = skipleft;
+        swapSkip = skipleft;
         skipleft = skipright;
-        skipright = tmp;
+        skipright = swapSkip;
     }
 
     switch (skipleft + skipright) {
@@ -4956,6 +5825,10 @@ void I8_gen_ADD(ENode* expr, short outputReg, short outputRegHi, Operand* output
     output->reg = reg;
     output->regHi = regHi;
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
 void I8_gen_INTCONST(ENode* expr, short outputReg, short outputRegHi, Operand* output) {
     short reg;
@@ -4972,10 +5845,10 @@ void I8_gen_INTCONST(ENode* expr, short outputReg, short outputRegHi, Operand* o
     output->regHi = regHi;
 }
 
-#ifdef ORACLE_PROBES
-#define I8_gen_INTCONST(...) ORACLE_INLINED(I8_gen_INTCONST(__VA_ARGS__))
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -128
 #endif
-
 void I8_gen_SUB(ENode* expr, short outputReg, short outputRegHi, Operand* output) {
     ENode* left;
     ENode* right;
@@ -4983,7 +5856,7 @@ void I8_gen_SUB(ENode* expr, short outputReg, short outputRegHi, Operand* output
     short regHi;
     short tmpreg1;
     short tmpreg2;
-    short tmpreg3; // (unused, as in Pro7)
+    short tmpreg3;
     SInt32 skipleft;
     SInt32 skipright;
     Operand opleft;
@@ -5107,7 +5980,15 @@ void I8_gen_SUB(ENode* expr, short outputReg, short outputRegHi, Operand* output
     output->reg = reg;
     output->regHi = regHi;
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -128
+#endif
 void I8_gen_XOR(ENode* expr, short outputReg, short outputRegHi, Operand* output) {
     ENode* left;
     ENode* right;
@@ -5147,7 +6028,15 @@ void I8_gen_XOR(ENode* expr, short outputReg, short outputRegHi, Operand* output
     output->reg = reg;
     output->regHi = regHi;
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -128
+#endif
 void I8_gen_OR(ENode* expr, short outputReg, short outputRegHi, Operand* output) {
     ENode* left;
     ENode* right;
@@ -5187,7 +6076,15 @@ void I8_gen_OR(ENode* expr, short outputReg, short outputRegHi, Operand* output)
     output->reg = reg;
     output->regHi = regHi;
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -128
+#endif
 void I8_gen_AND(ENode* expr, short outputReg, short outputRegHi, Operand* output) {
     ENode* left;
     ENode* right;
@@ -5227,8 +6124,11 @@ void I8_gen_AND(ENode* expr, short outputReg, short outputRegHi, Operand* output
     output->reg = reg;
     output->regHi = regHi;
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
-// the bit index of a 64-bit power of two, -1 for 0, else -2
 int I8_getbit(long long value) {
     switch (value) {
         case 0:
@@ -5371,6 +6271,10 @@ int I8_log2n(long long val) {
     return (bit > 0 && bit < 63) ? bit : 0;
 }
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -128
+#endif
 void I8_ShiftLeftImmediate(
     Operand opnd, SInt32 value, int is_unsigned, SInt32 size, short reg, short regHi
 ) {
@@ -5392,9 +6296,6 @@ void I8_ShiftLeftImmediate(
         } else if (is_unsigned) {
             emitpcode(PC_RLWINM, regHi, opnd.reg, shift, 32 - shift, 31);
         } else {
-            // srawi takes three operands (the extra two are ignored): 2.6 shifts by `shift`, where
-            // the high word of a sign-extended low word shifted left wants 32 - shift (a bug of
-            // the original, kept)
             emitpcode(PC_SRAWI, regHi, opnd.reg, shift, 32 - shift, 31);
         }
     } else if (shift <= 63) {
@@ -5408,10 +6309,16 @@ void I8_ShiftLeftImmediate(
         CError_FATAL(8143);
     }
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
-// TODO: 2.6's frame (shift at [esp+4]) and registers here are -sym off's; the unit is built -sym on.
-// Not exact yet (89%): the allocation of the shift temporaries still differs.
 #pragma sym off
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -128
+#endif
 void I8_ShiftRightImmediate(
     Operand opnd, SInt32 value, int is_unsigned, short reg, short regHi, int for_division
 ) {
@@ -5486,8 +6393,16 @@ void I8_ShiftRightImmediate(
         CError_FATAL(8285);
     }
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
 #pragma sym reset
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -128
+#endif
 void I8_gen_MUL(ENode* expr, short outputReg, short outputRegHi, Operand* output) {
     int is_signed_left;
     int is_signed_right;
@@ -5503,12 +6418,12 @@ void I8_gen_MUL(ENode* expr, short outputReg, short outputRegHi, Operand* output
     SInt32 skipright;
     Operand opleft;
     Operand opright;
-    Operand tmpop;
+    Operand swapOp;
     long long leftval;
     long long rightval;
-    long long tmp64;
+    long long swapValue;
     int shift;
-    SInt32 tmp;
+    SInt32 swapSkip;
 
     left = expr->data.diadic.left;
     right = expr->data.diadic.right;
@@ -5575,17 +6490,17 @@ void I8_gen_MUL(ENode* expr, short outputReg, short outputRegHi, Operand* output
         left = expr->data.diadic.left;
         right = expr->data.diadic.right;
 
-        tmpop = opright;
+        swapOp = opright;
         opright = opleft;
-        opleft = tmpop;
+        opleft = swapOp;
 
-        tmp64 = leftval;
+        swapValue = leftval;
         leftval = rightval;
-        rightval = tmp64;
+        rightval = swapValue;
 
-        tmp = skipleft;
+        swapSkip = skipleft;
         skipleft = skipright;
-        skipright = tmp;
+        skipright = swapSkip;
 
         shift = is_signed_left;
         is_signed_left = is_signed_right;
@@ -5729,6 +6644,10 @@ void I8_gen_MUL(ENode* expr, short outputReg, short outputRegHi, Operand* output
     output->reg = reg;
     output->regHi = regHi;
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
 void I8_gen_BINNOT(ENode* expr, short outputReg, short outputRegHi, Operand* output) {
     ENode* inner;
@@ -5751,10 +6670,6 @@ void I8_gen_BINNOT(ENode* expr, short outputReg, short outputRegHi, Operand* out
     output->regHi = regHi;
 }
 
-#ifdef ORACLE_PROBES
-#define I8_gen_BINNOT(...) ORACLE_INLINED(I8_gen_BINNOT(__VA_ARGS__))
-#endif
-
 void I8_gen_MONMIN(ENode* expr, short outputReg, short outputRegHi, Operand* output) {
     ENode* inner;
     Operand op;
@@ -5776,10 +6691,10 @@ void I8_gen_MONMIN(ENode* expr, short outputReg, short outputRegHi, Operand* out
     output->regHi = regHi;
 }
 
-#ifdef ORACLE_PROBES
-#define I8_gen_MONMIN(...) ORACLE_INLINED(I8_gen_MONMIN(__VA_ARGS__))
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -128
 #endif
-
 void I8_gen_ASS(ENode* expr, short outputReg, short outputRegHi, Operand* output) {
     Type* type;
     ENode* left;
@@ -5843,6 +6758,10 @@ void I8_gen_ASS(ENode* expr, short outputReg, short outputRegHi, Operand* output
         output->regHi = opright.regHi;
     }
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
 void I8_gen_POSTINCDEC(ENode* expr, short outputReg, short outputRegHi, Operand* output) {
     ENode* inner;
@@ -5852,12 +6771,12 @@ void I8_gen_POSTINCDEC(ENode* expr, short outputReg, short outputRegHi, Operand*
     int regHi;
     Operand op1;
     Operand op2;
-    Operand op3;
+    Operand word;
 
     inner = expr->data.monadic->data.monadic;
     type = expr->rtype;
     tbitfield = NULL;
-    memclrw(&op3, sizeof(Operand));
+    memclrw(&word, sizeof(Operand));
     memclrw(&op1, sizeof(Operand));
     memclrw(&op2, sizeof(Operand));
 
@@ -5888,8 +6807,8 @@ void I8_gen_POSTINCDEC(ENode* expr, short outputReg, short outputRegHi, Operand*
         op2 = op1;
         coerce_to_register_pair(&op2, type, 0, 0);
         if (tbitfield) {
-            op3 = op2;
-            I8_extract_bitfield(&op3, tbitfield, 0, 0, &op2);
+            word = op2;
+            I8_extract_bitfield(&word, tbitfield, 0, 0, &op2);
         }
 
         output->optype = OpndType_GPRPair;
@@ -5911,14 +6830,18 @@ void I8_gen_POSTINCDEC(ENode* expr, short outputReg, short outputRegHi, Operand*
         }
 
         if (tbitfield) {
-            I8_insert_bitfield(reg, regHi, &op3, tbitfield);
-            reg = op3.reg;
-            regHi = op3.regHi;
+            I8_insert_bitfield(reg, regHi, &word, tbitfield);
+            reg = word.reg;
+            regHi = word.regHi;
         }
         store_pair(reg, regHi, &op1, type);
     }
 }
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -128
+#endif
 void I8_gen_INDIRECT(ENode* expr, short outputReg, short outputRegHi, Operand* output) {
     Type* type;
     ENode* inner;
@@ -5954,13 +6877,21 @@ void I8_gen_INDIRECT(ENode* expr, short outputReg, short outputRegHi, Operand* o
         indirect(output, inner);
     }
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -128
+#endif
 void I8_gen_condition(ENode* cond, Operand* output, int write_to_gpr) {
     ENode* left;
     ENode* right;
     Operand opleft;
     Operand opright;
-    Operand tmpop;
+    Operand swapOp;
     int reg1;
     int reg2;
     int reg3;
@@ -5971,7 +6902,7 @@ void I8_gen_condition(ENode* cond, Operand* output, int write_to_gpr) {
     right = cond->data.diadic.right;
     memclrw(&opleft, sizeof(Operand));
     memclrw(&opright, sizeof(Operand));
-    memclrw(&tmpop, sizeof(Operand));
+    memclrw(&swapOp, sizeof(Operand));
 
     if (right->hascall) {
         GEN_NODE(right, &opright);
@@ -5981,14 +6912,14 @@ void I8_gen_condition(ENode* cond, Operand* output, int write_to_gpr) {
         ENSURE_GPR(&opright, right->rtype, 0);
 
         if (right->rtype->size < 8) {
-            short tmp = ALLOC_GPR();
+            short hiReg = ALLOC_GPR();
             if (is_unsigned(right->rtype)) {
-                load_immediate(tmp, 0);
+                load_immediate(hiReg, 0);
             } else {
-                emitpcode(PC_SRAWI, tmp, opright.reg, 31);
+                emitpcode(PC_SRAWI, hiReg, opright.reg, 31);
             }
             opright.optype = OpndType_GPRPair;
-            opright.regHi = tmp;
+            opright.regHi = hiReg;
         }
 
         GEN_NODE(left, &opleft);
@@ -5998,15 +6929,14 @@ void I8_gen_condition(ENode* cond, Operand* output, int write_to_gpr) {
         ENSURE_GPR(&opleft, left->rtype, 0);
 
         if (left->rtype->size < 8) {
-            short tmp = ALLOC_GPR();
-            // this looks like a bug??? surely this should check left->rtype
+            short hiReg = ALLOC_GPR();
             if (is_unsigned(right->rtype)) {
-                load_immediate(tmp, 0);
+                load_immediate(hiReg, 0);
             } else {
-                emitpcode(PC_SRAWI, tmp, opleft.reg, 31);
+                emitpcode(PC_SRAWI, hiReg, opleft.reg, 31);
             }
             opleft.optype = OpndType_GPRPair;
-            opleft.regHi = tmp;
+            opleft.regHi = hiReg;
         }
     } else {
         GEN_NODE(left, &opleft);
@@ -6016,14 +6946,14 @@ void I8_gen_condition(ENode* cond, Operand* output, int write_to_gpr) {
         }
 
         if (left->rtype->size < 8) {
-            short tmp = ALLOC_GPR();
+            short hiReg = ALLOC_GPR();
             if (is_unsigned(right->rtype)) {
-                load_immediate(tmp, 0);
+                load_immediate(hiReg, 0);
             } else {
-                emitpcode(PC_SRAWI, tmp, opleft.reg, 31);
+                emitpcode(PC_SRAWI, hiReg, opleft.reg, 31);
             }
             opleft.optype = OpndType_GPRPair;
-            opleft.regHi = tmp;
+            opleft.regHi = hiReg;
         }
 
         GEN_NODE(right, &opright);
@@ -6033,14 +6963,14 @@ void I8_gen_condition(ENode* cond, Operand* output, int write_to_gpr) {
         ENSURE_GPR(&opright, right->rtype, 0);
 
         if (right->rtype->size < 8) {
-            short tmp = ALLOC_GPR();
+            short hiReg = ALLOC_GPR();
             if (is_unsigned(right->rtype)) {
-                load_immediate(tmp, 0);
+                load_immediate(hiReg, 0);
             } else {
-                emitpcode(PC_SRAWI, tmp, opright.reg, 31);
+                emitpcode(PC_SRAWI, hiReg, opright.reg, 31);
             }
             opright.optype = OpndType_GPRPair;
-            opright.regHi = tmp;
+            opright.regHi = hiReg;
         }
     }
 
@@ -6073,15 +7003,14 @@ void I8_gen_condition(ENode* cond, Operand* output, int write_to_gpr) {
             }
             break;
         case EGREATER:
-            tmpop = opleft;
+            swapOp = opleft;
             opleft = opright;
-            opright = tmpop;
+            opright = swapOp;
         case ELESS:
             reg1 = ALLOC_GPR();
             reg2 = ALLOC_GPR();
             reg3 = ALLOC_GPR();
-            if (left->rtype !=
-                TYPE(&stunsignedlonglong) &&
+            if (left->rtype != TYPE(&stunsignedlonglong) &&
                 right->rtype != TYPE(&stunsignedlonglong)) {
                 emitpcode(PC_XORIS, reg1, opleft.regHi, 0x8000);
                 emitpcode(PC_XORIS, reg2, opright.regHi, 0x8000);
@@ -6107,15 +7036,14 @@ void I8_gen_condition(ENode* cond, Operand* output, int write_to_gpr) {
             }
             break;
         case ELESSEQU:
-            tmpop = opleft;
+            swapOp = opleft;
             opleft = opright;
-            opright = tmpop;
+            opright = swapOp;
         case EGREATEREQU:
             reg1 = ALLOC_GPR();
             reg2 = ALLOC_GPR();
             reg3 = ALLOC_GPR();
-            if (left->rtype !=
-                TYPE(&stunsignedlonglong) &&
+            if (left->rtype != TYPE(&stunsignedlonglong) &&
                 right->rtype != TYPE(&stunsignedlonglong)) {
                 emitpcode(PC_XORIS, reg1, opleft.regHi, 0x8000);
                 emitpcode(PC_XORIS, reg2, opright.regHi, 0x8000);
@@ -6145,7 +7073,15 @@ void I8_gen_condition(ENode* cond, Operand* output, int write_to_gpr) {
             CError_FATAL(9238);
     }
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -128
+#endif
 void I8_gen_SHL_SHR(ENode* expr, short outputReg, short outputRegHi, Operand* output) {
     static UInt32 used_regs[RegClassMax] = {0, 0, 0, 0, (1 << 3) | (1 << 4) | (1 << 5)};
 
@@ -6183,7 +7119,7 @@ void I8_gen_SHL_SHR(ENode* expr, short outputReg, short outputRegHi, Operand* ou
             );
         } else {
             I8_ShiftRightImmediate(
-                opleft, right->data.intval.lo, !is_signed, output->reg, output->regHi, 0
+                opleft, right->data.intval.lo, !is_signed, output->reg, output->regHi, FALSE
             );
         }
     } else {
@@ -6222,7 +7158,15 @@ void I8_gen_SHL_SHR(ENode* expr, short outputReg, short outputRegHi, Operand* ou
         emitpcode(PC_MR, output->regHi, high_reg);
     }
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -128
+#endif
 void I8_gen_DIV_MOD(ENode* expr, short outputReg, short outputRegHi, Operand* output) {
     static UInt32 used_regs[RegClassMax] = {0, 0, 0, 0, (1 << 3) | (1 << 4) | (1 << 5) | (1 << 6)};
 
@@ -6256,7 +7200,7 @@ void I8_gen_DIV_MOD(ENode* expr, short outputReg, short outputRegHi, Operand* ou
     if (ENODE_IS(right, EINTCONST) && ((shift = I8_log2n(constval)) > 0)) {
         CError_ASSERT(9400, opleft.optype == OpndType_GPRPair);
         if (ENODE_IS(expr, EDIV)) {
-            I8_ShiftRightImmediate(opleft, shift, !is_signed, output->reg, output->regHi, 1);
+            I8_ShiftRightImmediate(opleft, shift, !is_signed, output->reg, output->regHi, TRUE);
             if (is_signed) {
                 emitpcode(PC_ADDZE, output->reg, output->reg);
                 emitpcode(PC_ADDZE, output->regHi, output->regHi);
@@ -6278,7 +7222,7 @@ void I8_gen_DIV_MOD(ENode* expr, short outputReg, short outputRegHi, Operand* ou
             } else {
                 short tmpreg1 = ALLOC_GPR();
                 short tmpreg2 = ALLOC_GPR();
-                I8_ShiftRightImmediate(opleft, shift, !is_signed, output->reg, output->regHi, 1);
+                I8_ShiftRightImmediate(opleft, shift, !is_signed, output->reg, output->regHi, TRUE);
                 emitpcode(PC_ADDZE, output->reg, output->reg);
                 emitpcode(PC_ADDZE, output->regHi, output->regHi);
                 I8_ShiftLeftImmediate(
@@ -6329,10 +7273,18 @@ void I8_gen_DIV_MOD(ENode* expr, short outputReg, short outputRegHi, Operand* ou
         emitpcode(PC_MR, output->regHi, high_reg);
     }
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -128
+#endif
 void I8_gen_TYPCON(ENode* expr, short outputReg, short outputRegHi, Operand* output) {
-    static UInt32 used_regs[5] = {0, 0, 0, 0, (1 << 3) | (1 << 4)};
-    static UInt32 used_regs_f1[5] = {0, 0, 0, (1 << 1), 0};
+    static UInt32 used_regs[RegClassMax] = {0, 0, 0, 0, (1 << 3) | (1 << 4)};
+    static UInt32 used_regs_f1[RegClassMax] = {0, 0, 0, (1 << 1), 0};
 
     Type* dsttype;
     Type* type;
@@ -6382,8 +7334,7 @@ void I8_gen_TYPCON(ENode* expr, short outputReg, short outputRegHi, Operand* out
             );
 
             GEN_NODE(inner, output);
-            if (srctype->size <
-                4 &&
+            if (srctype->size < 4 &&
                 !(ENODE_IS(inner, EINDIRECT) && ENODE_IS(inner->data.monadic, EBITFIELD)) &&
                 !(((inner->type >= EASS && inner->type <= EORASS) ||
                    (inner->type >= EPOSTINC && inner->type <= EPREDEC)) &&
@@ -6443,8 +7394,7 @@ void I8_gen_TYPCON(ENode* expr, short outputReg, short outputRegHi, Operand* out
         GEN_NODE_TO_REG(inner, outputReg, 0, output);
 
         if ((expr->rtype->type == TYPEINT || expr->rtype->type == TYPEENUM) &&
-            expr->rtype->size ==
-            8 &&
+            expr->rtype->size == 8 &&
             dsttype->size == srctype->size) {
             coerce_to_register_pair(output, srctype, outputReg, outputRegHi);
         } else {
@@ -6454,7 +7404,15 @@ void I8_gen_TYPCON(ENode* expr, short outputReg, short outputRegHi, Operand* out
         CError_FATAL(9685);
     }
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -128
+#endif
 void gen_VECTOR128CONST(ENode* expr, short outputReg, short outputRegHi, Operand* output) {
     int gpr;
     int vr;
@@ -6483,3 +7441,7 @@ void gen_VECTOR128CONST(ENode* expr, short outputReg, short outputRegHi, Operand
 
     CError_FATAL(9722);
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif

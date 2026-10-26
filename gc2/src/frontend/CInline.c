@@ -23,31 +23,27 @@
 #include "compiler/InlineAsm.h"
 #include "compiler/objects.h"
 #include "compiler/ObjGen_PPC_EABI.h"
-#include "compiler/OracleProbes.h"
 #include "compiler/scopes.h"
 #include "compiler/Switch.h"
 #include "compiler/templates.h"
+#include "compiler/tokens.h"
 #include "compiler/types.h"
+#include "driver/CWPlugins.h"
 #include "driver/DropInCompilerLinker.h"
 
 enum {
     CI_SFLAGS_NoClass = 0,
     CI_SFLAGS_Register = 1,
     CI_SFLAGS_Auto = 2,
-    CI_SFLAGS_HasObjectFlag2 = 0x80
+    CI_SFLAGS_Referenced = 0x80
 };
 
 typedef enum CI_CanInline {
-    CI_CanInline0,
-    CI_CanInline1,
-    CI_CanInline2,
-    CI_CanInline3,
-    CI_CanInline4,
-    CI_CanInline5,
-    CI_CanInline6
+    CI_CanInlineNone = 0,
+    CI_CanInlineStatement = 3,
+    CI_CanInlineExpression = 6
 } CI_CanInline;
 
-// (Pro7's mac68k alignment)
 #pragma pack(push, 2)
 typedef struct IDTrans {
     struct IDTrans* next;
@@ -71,13 +67,13 @@ typedef struct CI_Export {
     struct CI_Export* next;
     Object* object;
     CI_FuncData* funcdata;
-    Boolean mysteryFlag; // TODO: invented name (Pro7: xC), after CodeGen_Generator's parameter
+    Boolean oldStyleParameters;
 } CI_Export;
 
 typedef struct AObject {
     Object* object;
-    ENode* expr1;
-    ENode* expr2;
+    ENode* useExpr;
+    ENode* evalExpr;
 } AObject;
 
 typedef struct CI_StmtLink {
@@ -117,7 +113,6 @@ static Boolean recursive_inline;
 static Object* expanding_function;
 static Boolean cinline_funccallfound;
 
-// forward decls
 static ENode* CInline_FoldConst(ENode* expr);
 static ENode* CInline_CopyNodes(ENode* node);
 static SInt32 CInline_EstimateSizeOfFunc(CI_FuncData* funcdata, SInt32 size, SInt32 level);
@@ -193,6 +188,8 @@ static ENode* CInline_FoldConst(ENode* expr) {
                     }
                     inner->rtype = expr->rtype;
                     return inner;
+                default:
+                    break;
             }
 
             return expr;
@@ -217,6 +214,8 @@ static ENode* CInline_FoldConst(ENode* expr) {
                                 expr->data.monadic->data.intval
                             );
                             break;
+                        default:
+                            break;
                     }
                     break;
 
@@ -235,7 +234,11 @@ static ENode* CInline_FoldConst(ENode* expr) {
                                 expr->rtype, expr->data.monadic->data.floatval
                             );
                             return expr;
+                        default:
+                            break;
                     }
+                    break;
+                default:
                     break;
             }
 
@@ -249,6 +252,8 @@ static ENode* CInline_FoldConst(ENode* expr) {
                 case EFLOATCONST:
                     expr->data.monadic->rtype = expr->rtype;
                     return expr->data.monadic;
+                default:
+                    break;
             }
 
             return expr;
@@ -295,6 +300,8 @@ static ENode* CInline_FoldConst(ENode* expr) {
                         );
                         left->rtype = expr->rtype;
                         return left;
+                    default:
+                        break;
                 }
             }
 
@@ -334,6 +341,8 @@ static ENode* CInline_FoldConst(ENode* expr) {
                         left->type = EINTCONST;
                         left->rtype = expr->rtype;
                         return left;
+                    default:
+                        break;
                 }
             }
 
@@ -433,7 +442,6 @@ static ENode* CInline_FoldConst(ENode* expr) {
     }
 }
 
-// TODO: invented name (Ninji's, Pro7's text; 2.6 inlines it at every call)
 inline SInt32 CInline_GetLocalID2(Object* object) {
     ObjectList* list;
     SInt32 counter;
@@ -452,7 +460,6 @@ inline SInt32 CInline_GetLocalID2(Object* object) {
 
 SInt32 CInline_GetLocalID(Object* object) {
     ObjectList* list;
-    // (Pro7: SInt32; with it this function and CInline_PackActions, which inlines it, differ)
     int counter;
 
     if (object) {
@@ -496,11 +503,10 @@ static Boolean CInline_IsTrivialExpression(ENode* expr) {
 
             case EINDIRECT:
                 if (ENODE_IS(expr->data.monadic, EOBJREF)) {
-                    // (2.6 joins Pro7's three returns at one value: a result variable)
                     Object* object = expr->data.monadic->data.objref;
                     Boolean result;
 
-                    if (object->datatype == DLOCAL && !(object->flags & OBJECT_FLAGS_2)) {
+                    if (object->datatype == DLOCAL && !(object->flags & OBJECT_REFERENCED)) {
                         result = FALSE;
                     } else if (is_const_object(object)) {
                         result = FALSE;
@@ -707,7 +713,7 @@ static ENode* CInline_CopyExpressionSave(ENode* expr) {
     enode_globalcopy = TRUE;
 
     save_copymode = enode_copymode;
-    enode_copymode = CopyMode4;
+    enode_copymode = CopyModeExpand;
 
     save_idtrans = enode_idtrans;
     enode_idtrans = NULL;
@@ -843,19 +849,19 @@ static ENode* CInline_CopyNodes(ENode* node) {
                 break;
 
             case ETEMP:
-                if (enode_copymode == CopyMode3 && copy->data.temp.uniqueid != 0) {
+                if (enode_copymode == CopyModeUnpack && copy->data.temp.uniqueid != 0) {
                     copy->data.temp.uniqueid = CInline_TranslateID(copy->data.temp.uniqueid);
                 }
                 break;
 
             case ELABEL:
                 switch (enode_copymode) {
-                    case CopyMode2:
+                    case CopyModePack:
                         copy->data.precompid =
                             CInline_GetLabelStatementNumber(copy->data.label->uniquename);
                         return copy;
-                    case CopyMode3:
-                    case CopyMode4: {
+                    case CopyModeUnpack:
+                    case CopyModeExpand: {
                         LabelTrans* trans = lalloc(sizeof(LabelTrans));
                         trans->next = cinline_label_trans;
                         cinline_label_trans = trans;
@@ -863,6 +869,8 @@ static ENode* CInline_CopyNodes(ENode* node) {
                         trans->labelptr = &copy->data.label;
                         return copy;
                     }
+                    default:
+                        break;
                 }
                 break;
 
@@ -961,13 +969,12 @@ static ENode* CInline_CopyNodes(ENode* node) {
                 break;
 
             case EINDIRECT:
-                if (enode_copymode ==
-                    CopyMode4 &&
+                if (enode_copymode == CopyModeExpand &&
                     ENODE_IS(copy->data.monadic, EARGOBJ) &&
                     local_aobjects[copy->data.monadic->data.longval].object == NULL) {
-                    CError_ASSERT(910, local_aobjects[copy->data.monadic->data.longval].expr1);
+                    CError_ASSERT(910, local_aobjects[copy->data.monadic->data.longval].useExpr);
                     copy = CInline_CopyExpressionSave(
-                        local_aobjects[copy->data.monadic->data.longval].expr1
+                        local_aobjects[copy->data.monadic->data.longval].useExpr
                     );
                     if (copy->rtype != node->rtype) {
                         if (IS_TYPE_INT(copy->rtype) && IS_TYPE_INT(node->rtype)) {
@@ -982,7 +989,7 @@ static ENode* CInline_CopyNodes(ENode* node) {
                 break;
 
             case EOBJREF:
-                if (enode_copymode == CopyMode2) {
+                if (enode_copymode == CopyModePack) {
                     if (node->data.objref->datatype == DALIAS) {
                         CExpr_AliasTransform(node);
                         continue;
@@ -1015,13 +1022,13 @@ static ENode* CInline_CopyNodes(ENode* node) {
 
             case EARGOBJ:
                 switch (enode_copymode) {
-                    case CopyMode4:
+                    case CopyModeExpand:
                         CError_ASSERT(957, local_aobjects[copy->data.longval].object);
                         copy->type = EOBJREF;
                         copy->data.objref = local_aobjects[copy->data.longval].object;
                         return copy;
 
-                    case CopyMode3:
+                    case CopyModeUnpack:
                         for (list = arguments, i = 0; list; list = list->next, i++) {
                             if (i == copy->data.longval) {
                                 copy->type = EOBJREF;
@@ -1037,12 +1044,12 @@ static ENode* CInline_CopyNodes(ENode* node) {
 
             case ELOCOBJ:
                 switch (enode_copymode) {
-                    case CopyMode4:
+                    case CopyModeExpand:
                         copy->type = EOBJREF;
                         copy->data.objref = local_dobjects[copy->data.longval];
                         return copy;
 
-                    case CopyMode3:
+                    case CopyModeUnpack:
                         for (list = locals, i = 0; list; list = list->next, i++) {
                             if (i == copy->data.longval) {
                                 copy->type = EOBJREF;
@@ -1084,7 +1091,7 @@ static ENode* CInline_CopyNodes(ENode* node) {
     }
 }
 
-static void CInline_CheckUsage(ENode* expr, Boolean flag) {
+static void CInline_CheckUsage(ENode* expr, Boolean isModified) {
     ENodeList* list;
 
     while (1) {
@@ -1102,12 +1109,12 @@ static void CInline_CheckUsage(ENode* expr, Boolean flag) {
                 expr = expr->data.monadic;
                 if (ENODE_IS(expr, EARGOBJ)) {
                     loc_args[expr->data.longval].used = TRUE;
-                    if (flag) {
+                    if (isModified) {
                         loc_args[expr->data.longval].unmodified = FALSE;
                     }
                     return;
                 }
-                flag = FALSE;
+                isModified = FALSE;
                 continue;
 
             case EMONMIN:
@@ -1117,7 +1124,7 @@ static void CInline_CheckUsage(ENode* expr, Boolean flag) {
             case ETYPCON:
             case EBITFIELD:
                 expr = expr->data.monadic;
-                flag = FALSE;
+                isModified = FALSE;
                 continue;
 
             case EPOSTINC:
@@ -1125,7 +1132,7 @@ static void CInline_CheckUsage(ENode* expr, Boolean flag) {
             case EPREINC:
             case EPREDEC:
                 expr = expr->data.monadic;
-                flag = TRUE;
+                isModified = TRUE;
                 continue;
 
             case EASS:
@@ -1141,7 +1148,7 @@ static void CInline_CheckUsage(ENode* expr, Boolean flag) {
             case EORASS:
                 CInline_CheckUsage(expr->data.diadic.left, TRUE);
                 expr = expr->data.diadic.right;
-                flag = FALSE;
+                isModified = FALSE;
                 continue;
 
             case EMUL:
@@ -1167,7 +1174,7 @@ static void CInline_CheckUsage(ENode* expr, Boolean flag) {
             case EROTR:
                 CInline_CheckUsage(expr->data.diadic.left, FALSE);
                 expr = expr->data.diadic.right;
-                flag = FALSE;
+                isModified = FALSE;
                 continue;
 
             case EINTCONST:
@@ -1198,20 +1205,20 @@ static void CInline_CheckUsage(ENode* expr, Boolean flag) {
             case ENULLCHECK:
                 CInline_CheckUsage(expr->data.nullcheck.nullcheckexpr, FALSE);
                 expr = expr->data.nullcheck.condexpr;
-                flag = FALSE;
+                isModified = FALSE;
                 continue;
 
             case EMFPOINTER:
                 CInline_CheckUsage(expr->data.mfpointer.accessnode, FALSE);
                 expr = expr->data.mfpointer.mfpointer;
-                flag = FALSE;
+                isModified = FALSE;
                 continue;
 
             case ECOND:
                 CInline_CheckUsage(expr->data.cond.cond, FALSE);
                 CInline_CheckUsage(expr->data.cond.expr1, FALSE);
                 expr = expr->data.cond.expr2;
-                flag = FALSE;
+                isModified = FALSE;
                 continue;
 
             case EINSTRUCTION:
@@ -1227,22 +1234,22 @@ ENode* CInline_CopyExpression(ENode* expr, CInlineCopyMode mode) {
     enode_copymode = mode;
 
     switch (mode) {
-        case CopyMode0:
-        case CopyMode4:
+        case CopyModeLocal:
+        case CopyModeExpand:
             enode_idtrans = NULL;
             enode_globalcopy = FALSE;
             expr = CInline_CopyNodes(expr);
             break;
-        case CopyMode3:
+        case CopyModeUnpack:
             enode_globalcopy = FALSE;
             expr = CInline_CopyNodes(expr);
             break;
-        case CopyMode1:
+        case CopyModeGlobal:
             enode_idtrans = NULL;
             enode_globalcopy = TRUE;
             expr = CInline_CopyNodes(expr);
             break;
-        case CopyMode2:
+        case CopyModePack:
             enode_idtrans = NULL;
             enode_globalcopy = TRUE;
             expr = CInline_CopyNodes(expr);
@@ -1270,17 +1277,17 @@ static UInt8 CInline_GetObjectSFlags(Object* object) {
             CError_FATAL(1204);
     }
 
-    if (object->flags & OBJECT_FLAGS_2) {
-        flags |= CI_SFLAGS_HasObjectFlag2;
+    if (object->flags & OBJECT_REFERENCED) {
+        flags |= CI_SFLAGS_Referenced;
     }
 
     return flags;
 }
 
 static void CInline_SetObjectSFlags(Object* object, UInt8 sflags) {
-    if (sflags & CI_SFLAGS_HasObjectFlag2) {
-        object->flags |= OBJECT_FLAGS_2;
-        sflags &= ~CI_SFLAGS_HasObjectFlag2;
+    if (sflags & CI_SFLAGS_Referenced) {
+        object->flags |= OBJECT_REFERENCED;
+        sflags &= ~CI_SFLAGS_Referenced;
     }
 
     switch (sflags) {
@@ -1298,7 +1305,6 @@ static void CInline_SetObjectSFlags(Object* object, UInt8 sflags) {
     }
 }
 
-// (`unused`: Pro7 has the parameter, nothing reads it; TODO: invented name, Pro7: unk)
 static Object* CInline_NewLocalObject(Type* type, short qual, UInt8 sflags, int unused) {
     Object* object = CParser_NewLocalDataObject(NULL, TRUE);
     object->name = CParser_GetUniqueName();
@@ -1319,12 +1325,14 @@ static ENode* CInline_FuncArgConvert(ENode* expr) {
             return copy;
         case ETEMP:
             CError_FATAL(1272);
+        default:
+            break;
     }
 
     return NULL;
 }
 
-static ENode* CInline_RefArgTransform(ENode* expr, Boolean flag) {
+static ENode* CInline_RefArgTransform(ENode* expr, Boolean convertArg) {
     ENodeList* arg;
 
     while (ENODE_IS(expr, ECOMMA)) {
@@ -1334,7 +1342,7 @@ static ENode* CInline_RefArgTransform(ENode* expr, Boolean flag) {
     switch (expr->type) {
         case EOBJREF:
         case ETEMP:
-            if (flag) {
+            if (convertArg) {
                 return CInline_FuncArgConvert(expr);
             }
             break;
@@ -1347,10 +1355,8 @@ static ENode* CInline_RefArgTransform(ENode* expr, Boolean flag) {
                     return CInline_FuncArgConvert(arg->node);
                 }
 
-                if (TPTR_TARGET(expr->rtype) ==
-                    expr->data.funccall.functype->functype &&
-                    CMach_GetFunctionResultClass(expr->data.funccall.functype) ==
-                    1 &&
+                if (TPTR_TARGET(expr->rtype) == expr->data.funccall.functype->functype &&
+                    CMach_GetFunctionResultClass(expr->data.funccall.functype) == 1 &&
                     (arg = expr->data.funccall.args)) {
                     switch (CABI_GetStructResultArgumentIndex(expr->data.funccall.functype)) {
                         case 0:
@@ -1367,6 +1373,8 @@ static ENode* CInline_RefArgTransform(ENode* expr, Boolean flag) {
                     return CInline_FuncArgConvert(arg->node);
                 }
             }
+            break;
+        default:
             break;
     }
 
@@ -1394,7 +1402,7 @@ static ENode* CInline_SetupArgsExpression(Object* object, CI_FuncData* data, ENo
         if (var->used) {
             local_dobjects[i] = obj = CInline_NewLocalObject(var->type, var->qual, var->sflags, 0);
             if (!var->unmodified) {
-                obj->flags |= OBJECT_FLAGS_2;
+                obj->flags |= OBJECT_REFERENCED;
             }
         } else {
             local_dobjects[i] = NULL;
@@ -1402,27 +1410,27 @@ static ENode* CInline_SetupArgsExpression(Object* object, CI_FuncData* data, ENo
     }
 
     for (i = 0, var = data->arguments, scan = list; i < data->numarguments; i++, var++) {
-        local_aobjects[i].expr2 = NULL;
+        local_aobjects[i].evalExpr = NULL;
 
         if (!var->used) {
             local_aobjects[i].object = NULL;
-            local_aobjects[i].expr1 = NULL;
+            local_aobjects[i].useExpr = NULL;
         } else if (scan &&
                    var->unmodified &&
                    !CInline_IsTrivialExpression(scan->node) &&
                    (!is_oldstyle || scan->node->rtype->size == var->type->size)) {
             local_aobjects[i].object = NULL;
-            local_aobjects[i].expr1 = scan->node;
+            local_aobjects[i].useExpr = scan->node;
         } else if (scan &&
                    var->unmodified &&
                    IS_TYPE_REFERENCE(var->type) &&
                    (expr = CInline_RefArgTransform(scan->node, TRUE))) {
             local_aobjects[i].object = NULL;
-            local_aobjects[i].expr1 = expr;
-            local_aobjects[i].expr2 = scan->node;
+            local_aobjects[i].useExpr = expr;
+            local_aobjects[i].evalExpr = scan->node;
         } else {
             local_aobjects[i].object = CInline_NewLocalObject(var->type, var->qual, var->sflags, 0);
-            local_aobjects[i].expr1 = NULL;
+            local_aobjects[i].useExpr = NULL;
         }
 
         if (scan) {
@@ -1439,14 +1447,14 @@ static ENode* CInline_SetupArgsExpression(Object* object, CI_FuncData* data, ENo
             } else {
                 commaNodes = makecommaexpression(scan->node, commaNodes);
             }
-        } else if (!local_aobjects[i].object || local_aobjects[i].expr2) {
-            if (local_aobjects[i].expr2) {
+        } else if (!local_aobjects[i].object || local_aobjects[i].evalExpr) {
+            if (local_aobjects[i].evalExpr) {
                 if (!commaNodes) {
-                    commaNodes = local_aobjects[i].expr2;
+                    commaNodes = local_aobjects[i].evalExpr;
                 } else {
-                    commaNodes = makecommaexpression(local_aobjects[i].expr2, commaNodes);
+                    commaNodes = makecommaexpression(local_aobjects[i].evalExpr, commaNodes);
                 }
-            } else if (!local_aobjects[i].expr1 && CInline_IsTrivialExpression(scan->node)) {
+            } else if (!local_aobjects[i].useExpr && CInline_IsTrivialExpression(scan->node)) {
                 if (!commaNodes) {
                     commaNodes = scan->node;
                 } else {
@@ -1501,7 +1509,7 @@ static ENode* CInline_ReturnCheck(ENode* expr) {
 static ENode* CInline_ReturnMemResult(Object* object) {
     int index = CABI_GetStructResultArgumentIndex(TYPE_FUNC(object->type));
     if (local_aobjects[index].object == NULL) {
-        return CInline_CopyExpressionSave(local_aobjects[index].expr1);
+        return CInline_CopyExpressionSave(local_aobjects[index].useExpr);
     } else {
         return create_objectnode(local_aobjects[index].object);
     }
@@ -1511,7 +1519,7 @@ static ENode* CInline_InlineFunctionExpression(ENode* expr) {
     Object* object;
     CI_FuncData* funcdata;
     short i;
-    Boolean flag26;
+    Boolean resultInMemory;
     ENode* argsExpr;
 
     object = expr->data.funccall.funcref->data.objref;
@@ -1524,8 +1532,8 @@ static ENode* CInline_InlineFunctionExpression(ENode* expr) {
         return expr;
     }
 
-    if (funcdata->can_inline < CI_CanInline6) {
-        if (funcdata->can_inline == CI_CanInline3) {
+    if (funcdata->can_inline < CI_CanInlineExpression) {
+        if (funcdata->can_inline == CI_CanInlineStatement) {
             if (cinline_unconditionalpart && cinline_stmtlevelexprs < 16) {
                 cinline_stmtlevelexpr[cinline_stmtlevelexprs++] = expr;
             }
@@ -1534,15 +1542,16 @@ static ENode* CInline_InlineFunctionExpression(ENode* expr) {
         return expr;
     }
 
-    flag26 = CMach_GetFunctionResultClass(TYPE_FUNC(object->type)) == 1;
+    resultInMemory = CMach_GetFunctionResultClass(TYPE_FUNC(object->type)) == 1;
     argsExpr = CInline_SetupArgsExpression(object, funcdata, expr->data.funccall.args);
 
     for (i = 0; i < funcdata->numstatements; i++) {
         switch (funcdata->statements[i].type) {
             case ST_RETURN:
                 if (funcdata->statements[i].u.expr) {
-                    ENode* copy = CInline_CopyExpression(funcdata->statements[i].u.expr, CopyMode4);
-                    if (flag26) {
+                    ENode* copy =
+                        CInline_CopyExpression(funcdata->statements[i].u.expr, CopyModeExpand);
+                    if (resultInMemory) {
                         if (argsExpr) {
                             argsExpr = makecommaexpression(argsExpr, copy);
                         } else {
@@ -1562,10 +1571,12 @@ static ENode* CInline_InlineFunctionExpression(ENode* expr) {
             case ST_EXPRESSION:
                 if (argsExpr) {
                     argsExpr = makecommaexpression(
-                        argsExpr, CInline_CopyExpression(funcdata->statements[i].u.expr, CopyMode4)
+                        argsExpr,
+                        CInline_CopyExpression(funcdata->statements[i].u.expr, CopyModeExpand)
                     );
                 } else {
-                    argsExpr = CInline_CopyExpression(funcdata->statements[i].u.expr, CopyMode4);
+                    argsExpr =
+                        CInline_CopyExpression(funcdata->statements[i].u.expr, CopyModeExpand);
                 }
                 break;
 
@@ -1593,10 +1604,9 @@ static Boolean CInline_CanExpand(ENode* expr) {
     tfunc = TYPE_FUNC(object->type);
 
     if (IS_TYPE_FUNC(tfunc) &&
-        ((object->qual & Q_INLINE) || (tfunc->flags & FUNC_FLAGS_800)) &&
-        (object->datatype ==
-         DFUNC ||
-         (object->datatype == DVFUNC && (expr->flags & ENODE_FLAG_80)))) {
+        ((object->qual & Q_INLINE) || (tfunc->flags & FUNC_AUTO_INLINE)) &&
+        (object->datatype == DFUNC ||
+         (object->datatype == DVFUNC && (expr->flags & ENODE_FLAG_NONVIRTUAL)))) {
         return TRUE;
     }
 
@@ -1961,10 +1971,9 @@ static Boolean CInline_InlineFunctionCheck(ENode* expr) {
     }
 
     if (IS_TYPE_FUNC(object->type) &&
-        ((object->qual & Q_INLINE) || (TYPE_FUNC(object->type)->flags & FUNC_FLAGS_800)) &&
-        (object->datatype ==
-         DFUNC ||
-         (object->datatype == DVFUNC && (expr->flags & ENODE_FLAG_80)))) {
+        ((object->qual & Q_INLINE) || (TYPE_FUNC(object->type)->flags & FUNC_AUTO_INLINE)) &&
+        (object->datatype == DFUNC ||
+         (object->datatype == DVFUNC && (expr->flags & ENODE_FLAG_NONVIRTUAL)))) {
         if (copts.alwaysinline) {
             return TRUE;
         }
@@ -2453,8 +2462,6 @@ static ENode* CInline_SerializeExpr(ENode* expr) {
             return expr;
 
         case EMFPOINTER:
-            // (the original's bug, as in Pro7: the access node is overwritten with the serialized
-            // member pointer)
             expr->data.mfpointer.accessnode =
                 CInline_SerializeExpr(expr->data.mfpointer.accessnode);
             expr->data.mfpointer.accessnode = CInline_SerializeExpr(expr->data.mfpointer.mfpointer);
@@ -2516,17 +2523,20 @@ static void CInline_UnpackSwitch(Statement* stmt, CI_Statement* packstmt, CLabel
 
         swcase->next = NULL;
         swcase->min = packstmt->u.switchdata->cases[i].min;
+#if VERSION < VERSION_GC_2_0
+        swcase->max = packstmt->u.switchdata->cases[i].max;
+#endif
         CError_ASSERT(2740, swcase->label = labels[packstmt->u.switchdata->cases[i].labelID]);
     }
 }
 
-Object* CInline_GetLocalObj(SInt32 id, Boolean flag) {
+Object* CInline_GetLocalObj(SInt32 id, Boolean inlineCopy) {
     ObjectList* list;
 
     if (id) {
         if (id & 0x80000000) {
             id = (id & ~0x80000000) - 1;
-            if (flag) {
+            if (inlineCopy) {
                 CError_ASSERT(2761, local_aobjects[id].object);
                 return local_aobjects[id].object;
             }
@@ -2540,7 +2550,7 @@ Object* CInline_GetLocalObj(SInt32 id, Boolean flag) {
             CError_FATAL(2765);
         } else {
             id--;
-            if (flag) {
+            if (inlineCopy) {
                 CError_ASSERT(2772, local_dobjects[id]);
                 return local_dobjects[id];
             }
@@ -2558,7 +2568,7 @@ Object* CInline_GetLocalObj(SInt32 id, Boolean flag) {
     return NULL;
 }
 
-static ExceptionAction* CInline_UnpackActions(CI_Statement* packstmt, Boolean flag) {
+static ExceptionAction* CInline_UnpackActions(CI_Statement* packstmt, Boolean inlineCopy) {
     ExceptionAction* packexc;
     ExceptionAction* last;
     ExceptionAction* exc;
@@ -2576,30 +2586,33 @@ static ExceptionAction* CInline_UnpackActions(CI_Statement* packstmt, Boolean fl
         switch (packexc->type) {
             case EAT_DESTROYLOCAL:
                 exc->data.destroy_local.local =
-                    CInline_GetLocalObj((SInt32)packexc->data.destroy_local.local, flag);
+                    CInline_GetLocalObj((SInt32)packexc->data.destroy_local.local, inlineCopy);
                 exc->data.destroy_local.dtor = packexc->data.destroy_local.dtor;
                 break;
             case EAT_DESTROYLOCALCOND:
                 exc->data.destroy_local_cond.local =
-                    CInline_GetLocalObj((SInt32)packexc->data.destroy_local_cond.local, flag);
+                    CInline_GetLocalObj((SInt32)packexc->data.destroy_local_cond.local, inlineCopy);
                 exc->data.destroy_local_cond.dtor = packexc->data.destroy_local_cond.dtor;
                 exc->data.destroy_local_cond.cond =
-                    CInline_GetLocalObj((SInt32)packexc->data.destroy_local_cond.cond, flag);
+                    CInline_GetLocalObj((SInt32)packexc->data.destroy_local_cond.cond, inlineCopy);
                 break;
             case EAT_DESTROYLOCALOFFSET:
-                exc->data.destroy_local_offset.local =
-                    CInline_GetLocalObj((SInt32)packexc->data.destroy_local_offset.local, flag);
+                exc->data.destroy_local_offset.local = CInline_GetLocalObj(
+                    (SInt32)packexc->data.destroy_local_offset.local, inlineCopy
+                );
                 exc->data.destroy_local_offset.dtor = packexc->data.destroy_local_offset.dtor;
                 exc->data.destroy_local_offset.offset = packexc->data.destroy_local_offset.offset;
                 break;
             case EAT_DESTROYLOCALPOINTER:
-                exc->data.destroy_local_pointer.pointer =
-                    CInline_GetLocalObj((SInt32)packexc->data.destroy_local_pointer.pointer, flag);
+                exc->data.destroy_local_pointer.pointer = CInline_GetLocalObj(
+                    (SInt32)packexc->data.destroy_local_pointer.pointer, inlineCopy
+                );
                 exc->data.destroy_local_pointer.dtor = packexc->data.destroy_local_pointer.dtor;
                 break;
             case EAT_DESTROYLOCALARRAY:
-                exc->data.destroy_local_array.localarray =
-                    CInline_GetLocalObj((SInt32)packexc->data.destroy_local_array.localarray, flag);
+                exc->data.destroy_local_array.localarray = CInline_GetLocalObj(
+                    (SInt32)packexc->data.destroy_local_array.localarray, inlineCopy
+                );
                 exc->data.destroy_local_array.dtor = packexc->data.destroy_local_array.dtor;
                 exc->data.destroy_local_array.elements = packexc->data.destroy_local_array.elements;
                 exc->data.destroy_local_array.element_size =
@@ -2607,35 +2620,38 @@ static ExceptionAction* CInline_UnpackActions(CI_Statement* packstmt, Boolean fl
                 break;
             case EAT_DESTROYPARTIALARRAY:
                 exc->data.destroy_partial_array.arraypointer = CInline_GetLocalObj(
-                    (SInt32)packexc->data.destroy_partial_array.arraypointer, flag
+                    (SInt32)packexc->data.destroy_partial_array.arraypointer, inlineCopy
                 );
                 exc->data.destroy_partial_array.arraycounter = CInline_GetLocalObj(
-                    (SInt32)packexc->data.destroy_partial_array.arraycounter, flag
+                    (SInt32)packexc->data.destroy_partial_array.arraycounter, inlineCopy
                 );
-                exc->data.destroy_partial_array.dtor =
-                    CInline_GetLocalObj((SInt32)packexc->data.destroy_partial_array.dtor, flag);
+                exc->data.destroy_partial_array.dtor = CInline_GetLocalObj(
+                    (SInt32)packexc->data.destroy_partial_array.dtor, inlineCopy
+                );
                 exc->data.destroy_partial_array.element_size = CInline_GetLocalObj(
-                    (SInt32)packexc->data.destroy_partial_array.element_size, flag
+                    (SInt32)packexc->data.destroy_partial_array.element_size, inlineCopy
                 );
                 break;
             case EAT_DESTROYMEMBER:
             case EAT_DESTROYBASE:
                 exc->data.destroy_member.objectptr =
-                    CInline_GetLocalObj((SInt32)packexc->data.destroy_member.objectptr, flag);
+                    CInline_GetLocalObj((SInt32)packexc->data.destroy_member.objectptr, inlineCopy);
                 exc->data.destroy_member.dtor = packexc->data.destroy_member.dtor;
                 exc->data.destroy_member.offset = packexc->data.destroy_member.offset;
                 break;
             case EAT_DESTROYMEMBERCOND:
-                exc->data.destroy_member_cond.objectptr =
-                    CInline_GetLocalObj((SInt32)packexc->data.destroy_member_cond.objectptr, flag);
+                exc->data.destroy_member_cond.objectptr = CInline_GetLocalObj(
+                    (SInt32)packexc->data.destroy_member_cond.objectptr, inlineCopy
+                );
                 exc->data.destroy_member_cond.cond =
-                    CInline_GetLocalObj((SInt32)packexc->data.destroy_member_cond.cond, flag);
+                    CInline_GetLocalObj((SInt32)packexc->data.destroy_member_cond.cond, inlineCopy);
                 exc->data.destroy_member_cond.dtor = packexc->data.destroy_member_cond.dtor;
                 exc->data.destroy_member_cond.offset = packexc->data.destroy_member_cond.offset;
                 break;
             case EAT_DESTROYMEMBERARRAY:
-                exc->data.destroy_member_array.objectptr =
-                    CInline_GetLocalObj((SInt32)packexc->data.destroy_member_array.objectptr, flag);
+                exc->data.destroy_member_array.objectptr = CInline_GetLocalObj(
+                    (SInt32)packexc->data.destroy_member_array.objectptr, inlineCopy
+                );
                 exc->data.destroy_member_array.dtor = packexc->data.destroy_member_array.dtor;
                 exc->data.destroy_member_array.offset = packexc->data.destroy_member_array.offset;
                 exc->data.destroy_member_array.elements =
@@ -2645,25 +2661,27 @@ static ExceptionAction* CInline_UnpackActions(CI_Statement* packstmt, Boolean fl
                 break;
             case EAT_DELETEPOINTER:
             case EAT_DELETELOCALPOINTER:
-                exc->data.delete_pointer.pointerobject =
-                    CInline_GetLocalObj((SInt32)packexc->data.delete_pointer.pointerobject, flag);
+                exc->data.delete_pointer.pointerobject = CInline_GetLocalObj(
+                    (SInt32)packexc->data.delete_pointer.pointerobject, inlineCopy
+                );
                 exc->data.delete_pointer.deletefunc = packexc->data.delete_pointer.deletefunc;
                 break;
             case EAT_DELETEPOINTERCOND:
                 exc->data.delete_pointer_cond.pointerobject = CInline_GetLocalObj(
-                    (SInt32)packexc->data.delete_pointer_cond.pointerobject, flag
+                    (SInt32)packexc->data.delete_pointer_cond.pointerobject, inlineCopy
                 );
                 exc->data.delete_pointer_cond.deletefunc =
                     packexc->data.delete_pointer_cond.deletefunc;
                 exc->data.delete_pointer_cond.cond =
-                    CInline_GetLocalObj((SInt32)packexc->data.delete_pointer_cond.cond, flag);
+                    CInline_GetLocalObj((SInt32)packexc->data.delete_pointer_cond.cond, inlineCopy);
                 break;
             case EAT_CATCHBLOCK: {
                 LabelTrans* trans;
                 exc->data.catch_block.catch_object =
-                    CInline_GetLocalObj((SInt32)packexc->data.catch_block.catch_object, flag);
-                exc->data.catch_block.catch_info_object =
-                    CInline_GetLocalObj((SInt32)packexc->data.catch_block.catch_info_object, flag);
+                    CInline_GetLocalObj((SInt32)packexc->data.catch_block.catch_object, inlineCopy);
+                exc->data.catch_block.catch_info_object = CInline_GetLocalObj(
+                    (SInt32)packexc->data.catch_block.catch_info_object, inlineCopy
+                );
 
                 trans = lalloc(sizeof(LabelTrans));
                 trans->next = cinline_label_trans;
@@ -2679,7 +2697,7 @@ static ExceptionAction* CInline_UnpackActions(CI_Statement* packstmt, Boolean fl
             }
             case EAT_ACTIVECATCHBLOCK:
                 exc->data.active_catch_block.catch_info_object = CInline_GetLocalObj(
-                    (SInt32)packexc->data.active_catch_block.catch_info_object, flag
+                    (SInt32)packexc->data.active_catch_block.catch_info_object, inlineCopy
                 );
                 break;
             case EAT_SPECIFICATION: {
@@ -2695,7 +2713,7 @@ static ExceptionAction* CInline_UnpackActions(CI_Statement* packstmt, Boolean fl
                 trans->labelptr = &exc->data.specification.unexp_label;
 
                 exc->data.specification.unexp_info_object = CInline_GetLocalObj(
-                    (SInt32)packexc->data.specification.unexp_info_object, flag
+                    (SInt32)packexc->data.specification.unexp_info_object, inlineCopy
                 );
                 break;
             }
@@ -2718,7 +2736,7 @@ static Statement* CInline_ExpandStatements(
     ENode* funccall,
     CLabel* label,
     Object* resultobj,
-    Boolean flag
+    Boolean appendOriginal
 ) {
     CLabel** labels;
     CI_Statement* packstmt;
@@ -2726,11 +2744,11 @@ static Statement* CInline_ExpandStatements(
     CI_StmtLink* stmtLinks;
     CI_StmtLink* link;
     ENode* setupArgs;
-    Boolean is_result_class_1;
+    Boolean resultInMemory;
     Statement origStmt;
 
     origStmt = *stmt;
-    is_result_class_1 = CMach_GetFunctionResultClass(TYPE_FUNC(funcobj->type)) == 1;
+    resultInMemory = CMach_GetFunctionResultClass(TYPE_FUNC(funcobj->type)) == 1;
 
     if ((setupArgs =
              CInline_SetupArgsExpression(funcobj, funcdata, funccall->data.funccall.args))) {
@@ -2776,14 +2794,15 @@ static Statement* CInline_ExpandStatements(
             case ST_ENDCATCH:
             case ST_ENDCATCHDTOR:
             case ST_GOTOEXPR:
-                stmt->expr = CInline_FoldConst(CInline_CopyExpression(packstmt->u.expr, CopyMode4));
+                stmt->expr =
+                    CInline_FoldConst(CInline_CopyExpression(packstmt->u.expr, CopyModeExpand));
                 break;
 
             case ST_RETURN:
                 if (packstmt->u.expr) {
                     stmt->expr =
-                        CInline_FoldConst(CInline_CopyExpression(packstmt->u.expr, CopyMode4));
-                    if (is_result_class_1) {
+                        CInline_FoldConst(CInline_CopyExpression(packstmt->u.expr, CopyModeExpand));
+                    if (resultInMemory) {
                         stmt->expr =
                             makecommaexpression(stmt->expr, CInline_ReturnMemResult(funcobj));
                     }
@@ -2794,8 +2813,7 @@ static Statement* CInline_ExpandStatements(
                             makediadicnode(create_objectnode2(resultobj), stmt->expr, EASS);
                     } else {
                         stmt->type = origStmt.type;
-                        if (stmt->type ==
-                            ST_EXPRESSION &&
+                        if (stmt->type == ST_EXPRESSION &&
                             !CInline_ExpressionHasSideEffect(stmt->expr)) {
                             stmt->type = ST_NOP;
                         }
@@ -2825,8 +2843,9 @@ static Statement* CInline_ExpandStatements(
 
             case ST_IFGOTO:
             case ST_IFNGOTO:
-                stmt->expr =
-                    CInline_FoldConst(CInline_CopyExpression(packstmt->u.ifgoto.expr, CopyMode4));
+                stmt->expr = CInline_FoldConst(
+                    CInline_CopyExpression(packstmt->u.ifgoto.expr, CopyModeExpand)
+                );
             case ST_GOTO:
                 link = lalloc(sizeof(CI_StmtLink));
                 link->next = stmtLinks;
@@ -2838,7 +2857,7 @@ static Statement* CInline_ExpandStatements(
 
             case ST_SWITCH:
                 stmt->expr = CInline_FoldConst(
-                    CInline_CopyExpression(packstmt->u.switchdata->expr, CopyMode4)
+                    CInline_CopyExpression(packstmt->u.switchdata->expr, CopyModeExpand)
                 );
             case ST_ASM:
                 link = lalloc(sizeof(CI_StmtLink));
@@ -2863,7 +2882,7 @@ static Statement* CInline_ExpandStatements(
         stmt->label = label;
         label->stmt = stmt;
 
-        if (flag) {
+        if (appendOriginal) {
             stmt->next = lalloc(sizeof(Statement));
             stmt = stmt->next;
             *stmt = origStmt;
@@ -2918,7 +2937,7 @@ static Statement* CInline_InlineFunctionStatement(Statement* stmt, Boolean* chan
     }
 
     funcdata = object->u.func.u.ifuncdata;
-    if (!funcdata || funcdata->can_inline < CI_CanInline3) {
+    if (!funcdata || funcdata->can_inline < CI_CanInlineStatement) {
         return stmt;
     }
 
@@ -2996,8 +3015,7 @@ static Statement* CInline_ExpandStatement(Statement* stmt) {
     do {
         changed = FALSE;
 
-        if (stmt->type ==
-            ST_EXPRESSION &&
+        if (stmt->type == ST_EXPRESSION &&
             ENODE_IS(stmt->expr, EINDIRECT) &&
             !CParser_IsVolatile(stmt->expr->rtype, ENODE_QUALS(stmt->expr))) {
             stmt->expr = stmt->expr->data.monadic;
@@ -3057,12 +3075,10 @@ static Statement* CInline_ExpandStatement(Statement* stmt) {
     return stmt;
 }
 
-// (unused, as in Pro7)
 static void CInline_ForceReverseSearch(ENode* expr) {
     cinline_funccallfound = TRUE;
 }
 
-// (unused, as in Pro7)
 static ENode* CInline_ForceReverseEvaluation(ENode* expr) {
     ENode* commanodes;
     ENodeList* list;
@@ -3191,7 +3207,7 @@ static void CInline_ExportCheck(ENode* expr) {
 
             case ELABEL:
                 if (expr->data.label->stmt) {
-                    expr->data.label->stmt->flags |= StmtFlag_1;
+                    expr->data.label->stmt->flags |= StmtFlag_KeepLabel;
                 }
                 return;
 
@@ -3210,8 +3226,7 @@ static void CInline_ExportCheck(ENode* expr) {
                     !copts.dontinline &&
                     ENODE_IS(expr, EOBJREF) &&
                     (expr->data.objref->qual & Q_INLINE) &&
-                    expr->data.objref->datatype !=
-                    DINLINEFUNC &&
+                    expr->data.objref->datatype != DINLINEFUNC &&
                     !CParser_IsVirtualFunction(expr->data.objref, &tclass, &index)) {
                     CError_Warning(ERR_INLINE_FUNCTION_CALL_NOT_INLINED, expr->data.objref);
                 }
@@ -3252,12 +3267,10 @@ static void CInline_ExportCheck(ENode* expr) {
 static void CInline_Expand(Statement* stmt) {
     Statement* scan;
 
-    ORACLE_PROBE(OracleProbe_Expand(expanding_function));
     if (!copts.dontinline && copts.inlinelevel >= 0) {
         if (copts.inline_bottom_up) {
             inline_max_size = copts.inlinemaxsize;
-            while (inline_max_size >
-                   1 &&
+            while (inline_max_size > 1 &&
                    EstimateExpandedSizeOfFunction(stmt) > copts.inlinemaxtotalsize) {
                 inline_max_size >>= 1;
             }
@@ -3383,9 +3396,8 @@ static CI_Switch* CInline_PackSwitch(Statement* start, Statement* stmt) {
         swcase = swcase->next;
     }
 
-    // (2.6: exactly the cases, where Pro7 allocates one more)
     packed = galloc(sizeof(CI_Switch) - sizeof(CI_SwitchCase) + numcases * sizeof(CI_SwitchCase));
-    packed->expr = CInline_CopyExpression(stmt->expr, CopyMode2);
+    packed->expr = CInline_CopyExpression(stmt->expr, CopyModePack);
     packed->defaultlabelID = CInline_GetStatementNumber(start, info->defaultlabel->stmt);
     packed->exprtype = info->exprtype;
     packed->numcases = numcases;
@@ -3393,6 +3405,9 @@ static CI_Switch* CInline_PackSwitch(Statement* start, Statement* stmt) {
     for (swcase = info->cases, numcases = 0; swcase; swcase = swcase->next, numcases++) {
         packed->cases[numcases].labelID = CInline_GetStatementNumber(start, swcase->label->stmt);
         packed->cases[numcases].min = swcase->min;
+#if VERSION < VERSION_GC_2_0
+        packed->cases[numcases].max = swcase->max;
+#endif
     }
 
     return packed;
@@ -3405,31 +3420,30 @@ static UInt8 CInline_CanInline(Object* object, Statement* stmt) {
 
     resultClass = CMach_GetFunctionResultClass(TYPE_FUNC(object->type));
     if (resultClass &&
-        (resultClass !=
-         1 ||
+        (resultClass != 1 ||
          (IS_TYPE_CLASS(TYPE_FUNC(object->type)->functype) &&
           CClass_Destructor(TYPE_CLASS(TYPE_FUNC(object->type)->functype))))) {
-        return CI_CanInline0;
+        return CI_CanInlineNone;
     }
 
     for (arg = TYPE_FUNC(object->type)->args; arg; arg = arg->next) {
         if (arg == &elipsis) {
-            return CI_CanInline0;
+            return CI_CanInlineNone;
         }
         if (arg == &oldstyle) {
             break;
         }
 
         if (IS_TYPE_CLASS(arg->type) && CClass_Destructor(TYPE_CLASS(arg->type))) {
-            return CI_CanInline0;
+            return CI_CanInlineNone;
         }
     }
 
-    result = CI_CanInline6;
+    result = CI_CanInlineExpression;
 
     while (stmt) {
         if (stmt->dobjstack) {
-            return CI_CanInline3;
+            return CI_CanInlineStatement;
         }
 
         switch (stmt->type) {
@@ -3438,11 +3452,11 @@ static UInt8 CInline_CanInline(Object* object, Statement* stmt) {
             case ST_RETURN:
                 if (stmt->next ||
                     (stmt->expr == NULL && TYPE_FUNC(object->type)->functype != &stvoid)) {
-                    result = CI_CanInline3;
+                    result = CI_CanInlineStatement;
                 }
                 break;
             default:
-                result = CI_CanInline3;
+                result = CI_CanInlineStatement;
         }
 
         stmt = stmt->next;
@@ -3552,7 +3566,7 @@ static ExceptionAction* CInline_PackActions(Statement* start, Statement* stmt) {
                     (void*)CInline_GetLocalID(exc->data.catch_block.catch_object);
                 packexc->data.catch_block.catch_info_object =
                     (void*)CInline_GetLocalID(exc->data.catch_block.catch_info_object);
-                packexc->data.catch_block.catch_label = (void*)CInline_GetStatementNumber(
+                packexc->data.catch_block.catch_label = (void*)(SInt32)CInline_GetStatementNumber(
                     start->next, exc->data.catch_block.catch_label->stmt
                 );
                 packexc->data.catch_block.catch_typeid = exc->data.catch_block.catch_typeid;
@@ -3567,7 +3581,7 @@ static ExceptionAction* CInline_PackActions(Statement* start, Statement* stmt) {
             case EAT_SPECIFICATION:
                 packexc->data.specification.unexp_ids = exc->data.specification.unexp_ids;
                 packexc->data.specification.unexp_id = exc->data.specification.unexp_id;
-                packexc->data.specification.unexp_label = (void*)CInline_GetStatementNumber(
+                packexc->data.specification.unexp_label = (void*)(SInt32)CInline_GetStatementNumber(
                     start->next, exc->data.specification.unexp_label->stmt
                 );
                 packexc->data.specification.unexp_info_object =
@@ -3681,11 +3695,11 @@ void CInline_PackIFunctionData(CI_FuncData* funcdata, Statement* stmt, Object* o
             case ST_ENDCATCH:
             case ST_ENDCATCHDTOR:
             case ST_GOTOEXPR:
-                packstmt->u.expr = CInline_CopyExpression(scan->expr, CopyMode2);
+                packstmt->u.expr = CInline_CopyExpression(scan->expr, CopyModePack);
                 break;
             case ST_RETURN:
                 if (scan->expr) {
-                    packstmt->u.expr = CInline_CopyExpression(scan->expr, CopyMode2);
+                    packstmt->u.expr = CInline_CopyExpression(scan->expr, CopyModePack);
                 } else {
                     packstmt->u.expr = NULL;
                 }
@@ -3696,7 +3710,7 @@ void CInline_PackIFunctionData(CI_FuncData* funcdata, Statement* stmt, Object* o
                 break;
             case ST_IFGOTO:
             case ST_IFNGOTO:
-                packstmt->u.ifgoto.expr = CInline_CopyExpression(scan->expr, CopyMode2);
+                packstmt->u.ifgoto.expr = CInline_CopyExpression(scan->expr, CopyModePack);
                 packstmt->u.ifgoto.statementnum =
                     CInline_GetStatementNumber(stmt->next, scan->label->stmt);
                 break;
@@ -3714,12 +3728,6 @@ void CInline_PackIFunctionData(CI_FuncData* funcdata, Statement* stmt, Object* o
     }
 }
 
-// TODO: 92.2%, the only inexact function: the same code with ecx and edx exchanged in places (the
-// inlined CInline_SetObjectSFlags' byte, the deftoken stores). 2.6 has a variable of its own for the
-// new Object (Pro7 reuses `object`: 73%) and stores `value` before `flags`. Tried without effect:
-// declaration orders (decl-order --swaps), the counter as SInt32/short or one per loop, sflags as
-// another integer type in CI_Var and in CInline_SetObjectSFlags, that function `inline`, `#pragma
-// sym off` for it (90.5), gc1's separate walker for the first statement loop (`cursor`).
 void CInline_UnpackIFunctionData(Object* object, CI_FuncData* funcdata, Statement* firstStmt) {
     Object* obj;
     CLabel** labels;
@@ -3821,11 +3829,11 @@ void CInline_UnpackIFunctionData(Object* object, CI_FuncData* funcdata, Statemen
             case ST_ENDCATCH:
             case ST_ENDCATCHDTOR:
             case ST_GOTOEXPR:
-                stmt->expr = CInline_CopyExpression(packstmt->u.expr, CopyMode3);
+                stmt->expr = CInline_CopyExpression(packstmt->u.expr, CopyModeUnpack);
                 break;
             case ST_RETURN:
                 if (packstmt->u.expr) {
-                    stmt->expr = CInline_CopyExpression(packstmt->u.expr, CopyMode3);
+                    stmt->expr = CInline_CopyExpression(packstmt->u.expr, CopyModeUnpack);
                 } else {
                     stmt->expr = NULL;
                 }
@@ -3836,10 +3844,10 @@ void CInline_UnpackIFunctionData(Object* object, CI_FuncData* funcdata, Statemen
                 break;
             case ST_IFGOTO:
             case ST_IFNGOTO:
-                stmt->expr = CInline_CopyExpression(packstmt->u.ifgoto.expr, CopyMode3);
+                stmt->expr = CInline_CopyExpression(packstmt->u.ifgoto.expr, CopyModeUnpack);
                 break;
             case ST_SWITCH:
-                stmt->expr = CInline_CopyExpression(packstmt->u.switchdata->expr, CopyMode3);
+                stmt->expr = CInline_CopyExpression(packstmt->u.switchdata->expr, CopyModeUnpack);
                 break;
             default:
                 CError_FATAL(4017);
@@ -3864,6 +3872,8 @@ void CInline_UnpackIFunctionData(Object* object, CI_FuncData* funcdata, Statemen
                     stmt, labels, FALSE, packstmt->u.asmdata.data, packstmt->u.asmdata.size
                 );
                 break;
+            default:
+                break;
         }
     }
 
@@ -3875,7 +3885,7 @@ void CInline_UnpackIFunctionData(Object* object, CI_FuncData* funcdata, Statemen
     }
 }
 
-static void CInline_GenIFunctionCode(Object* object, CI_FuncData* func, UInt8 mysteryFlag) {
+static void CInline_GenIFunctionCode(Object* object, CI_FuncData* func, UInt8 oldStyleParameters) {
     Boolean saveDebugInfo;
     Statement firstStmt;
     CScopeSave saveScope;
@@ -3897,7 +3907,6 @@ static void CInline_GenIFunctionCode(Object* object, CI_FuncData* func, UInt8 my
         copts.filesyminfo = FALSE;
     }
 
-    ORACLE_SCOPE(1);
     expanding_function = object;
     recursive_inline = FALSE;
     CInline_Expand(&firstStmt);
@@ -3906,9 +3915,8 @@ static void CInline_GenIFunctionCode(Object* object, CI_FuncData* func, UInt8 my
         if (copts.filesyminfo) {
             CPrep_SetSourceFile(&cparser_fileoffset);
         }
-        CodeGen_Generator(&firstStmt, object, mysteryFlag, FALSE);
+        CodeGen_Generator(&firstStmt, object, oldStyleParameters, FALSE);
     }
-    ORACLE_SCOPE(0);
 
     CScope_RestoreScope(&saveScope);
     copts.filesyminfo = saveDebugInfo;
@@ -3934,11 +3942,16 @@ void CInline_AddDefaultFunctionAction(Object* object) {
 }
 
 void CInline_AddInlineFunctionAction(
-    Object* object, TypeClass* tclass, FileOffsetInfo* fileoffset, TokenStream* stream, Boolean flag
+    Object* object,
+    TypeClass* tclass,
+    FileOffsetInfo* fileoffset,
+    TokenStream* stream,
+    Boolean isTemplate
 ) {
     CI_Action* action;
 
-    for (action = flag ? cinline_tactionlist : cinline_actionlist; action; action = action->next) {
+    for (action = isTemplate ? cinline_tactionlist : cinline_actionlist; action;
+         action = action->next) {
         if (action->obj == object) {
             return;
         }
@@ -3957,17 +3970,16 @@ void CInline_AddInlineFunctionAction(
     action->u.inlinefunc.fileoffset = *fileoffset;
     action->u.inlinefunc.stream = *stream;
 
-    if (flag) {
+    if (isTemplate) {
         action->next = cinline_tactionlist;
         cinline_tactionlist = action;
-        TYPE_FUNC(object->type)->flags |= FUNC_FLAGS_200000;
+        TYPE_FUNC(object->type)->flags |= FUNC_TEMPLATE_ACTION;
     } else {
         action->next = cinline_actionlist;
         cinline_actionlist = action;
     }
 }
 
-// (unused, as in Pro7, where CInline.h declares it)
 void CInline_AddMemberFunctionAction(
     Object* object, TemplClass* templ, TemplClassInst* inst, TemplateMember* tmemb
 ) {
@@ -3991,10 +4003,9 @@ void CInline_AddMemberFunctionAction(
     action->next = cinline_tactionlist;
     cinline_tactionlist = action;
 
-    TYPE_FUNC(object->type)->flags |= FUNC_FLAGS_200000;
+    TYPE_FUNC(object->type)->flags |= FUNC_TEMPLATE_ACTION;
 }
 
-// (void* parameters: see CInline.h)
 void CInline_AddTemplateFunctionAction(Object* object, void* func, void* inst) {
     CI_Action* action;
 
@@ -4015,7 +4026,7 @@ void CInline_AddTemplateFunctionAction(Object* object, void* func, void* inst) {
     action->next = cinline_tactionlist;
     cinline_tactionlist = action;
 
-    TYPE_FUNC(object->type)->flags |= FUNC_FLAGS_200000;
+    TYPE_FUNC(object->type)->flags |= FUNC_TEMPLATE_ACTION;
 }
 
 static void CInline_AddFRefList_Object(Object* object) {
@@ -4228,7 +4239,7 @@ static void CInline_GenerateTemplateInline(Object* object) {
             action->next = cinline_actionlist;
             cinline_actionlist = action;
 
-            TYPE_FUNC(object->type)->flags &= ~FUNC_FLAGS_200000;
+            TYPE_FUNC(object->type)->flags &= ~FUNC_TEMPLATE_ACTION;
             return;
         }
 
@@ -4241,7 +4252,7 @@ static void CInline_GenerateTemplateInline(Object* object) {
 void CInline_ObjectAddrRef(Object* object) {
     CI_FuncData* funcdata;
 
-    object->flags |= OBJECT_FLAGS_2;
+    object->flags |= OBJECT_REFERENCED;
 
     switch (object->datatype) {
         case DFUNC:
@@ -4254,7 +4265,7 @@ void CInline_ObjectAddrRef(Object* object) {
 
                 export->object = object;
                 export->funcdata = funcdata;
-                export->mysteryFlag = FALSE;
+                export->oldStyleParameters = FALSE;
 
                 export->next = cinline_exportlist;
                 cinline_exportlist = export;
@@ -4265,7 +4276,7 @@ void CInline_ObjectAddrRef(Object* object) {
                        !(TYPE_FUNC(object->type)->flags & FUNC_DEFINED)) {
                 CInline_AddDefaultFunctionAction(object);
                 return;
-            } else if (TYPE_FUNC(object->type)->flags & FUNC_FLAGS_200000) {
+            } else if (TYPE_FUNC(object->type)->flags & FUNC_TEMPLATE_ACTION) {
                 CInline_GenerateTemplateInline(object);
                 return;
             }
@@ -4312,7 +4323,7 @@ static Boolean CInline_CheckDependencies(ObjectList* list) {
                 }
             }
 
-            if (TYPE_FUNC(object->type)->flags & FUNC_FLAGS_200000) {
+            if (TYPE_FUNC(object->type)->flags & FUNC_TEMPLATE_ACTION) {
                 CInline_GenerateTemplateInline(object);
                 result = TRUE;
             }
@@ -4351,7 +4362,6 @@ static Boolean CInline_IsSmallFunction(Object* object, Statement* stmt) {
     return TRUE;
 }
 
-// (unused, as in Pro7)
 static Boolean CInline_NoFPLocals(void) {
     ObjectList* list;
 
@@ -4364,28 +4374,28 @@ static Boolean CInline_NoFPLocals(void) {
     return TRUE;
 }
 
-void CInline_GenFunc(Statement* stmt, Object* object, UInt8 mysteryFlag) {
+void CInline_GenFunc(Statement* stmt, Object* object, UInt8 oldStyleParameters) {
     CI_FuncData* funcdata;
     CI_Export* export;
-    Boolean flag24;
-    Boolean flag30;
+    Boolean isAutoInline;
+    Boolean isInline;
 
     TYPE_FUNC(object->type)->flags |= FUNC_DEFINED;
 
-    flag30 = flag24 = FALSE;
+    isInline = isAutoInline = FALSE;
     if (!(object->qual & Q_INLINE)) {
         if (copts.auto_inline &&
             !copts.dontinline &&
             CInline_CanInline(object, stmt->next) &&
             CInline_IsSmallFunction(object, stmt->next)) {
-            flag30 = flag24 = TRUE;
-            TYPE_FUNC(object->type)->flags |= FUNC_FLAGS_800;
+            isInline = isAutoInline = TRUE;
+            TYPE_FUNC(object->type)->flags |= FUNC_AUTO_INLINE;
         }
     } else {
-        flag30 = TRUE;
+        isInline = TRUE;
     }
 
-    if (flag30) {
+    if (isInline) {
         COpt_SimpleOptimizer(object, stmt);
 
         funcdata = galloc(sizeof(CI_FuncData));
@@ -4393,7 +4403,7 @@ void CInline_GenFunc(Statement* stmt, Object* object, UInt8 mysteryFlag) {
 
         object->u.func.u.ifuncdata = funcdata;
 
-        if (!flag24 && !(object->flags & OBJECT_FLAGS_2)) {
+        if (!isAutoInline && !(object->flags & OBJECT_REFERENCED)) {
             if (cinline_gendeps) {
                 cinline_freflist = NULL;
                 CInline_AddFRefList_Statement(stmt);
@@ -4409,7 +4419,7 @@ void CInline_GenFunc(Statement* stmt, Object* object, UInt8 mysteryFlag) {
     CInline_AddFRefList_Statement(stmt);
 
     if (CInline_CheckDependencies(cinline_freflist) || copts.defer_codegen) {
-        if (!flag30) {
+        if (!isInline) {
             funcdata = galloc(sizeof(CI_FuncData));
             CInline_PackIFunctionData(funcdata, stmt, object);
         } else {
@@ -4419,12 +4429,11 @@ void CInline_GenFunc(Statement* stmt, Object* object, UInt8 mysteryFlag) {
         export = galloc(sizeof(CI_Export));
         export->object = object;
         export->funcdata = funcdata;
-        export->mysteryFlag = mysteryFlag;
+        export->oldStyleParameters = oldStyleParameters;
 
         export->next = cinline_exportlist;
         cinline_exportlist = export;
     } else {
-        ORACLE_SCOPE(1);
         expanding_function = object;
         recursive_inline = FALSE;
         CInline_Expand(stmt);
@@ -4434,9 +4443,8 @@ void CInline_GenFunc(Statement* stmt, Object* object, UInt8 mysteryFlag) {
         }
 
         if (!anyerrors) {
-            CodeGen_Generator(stmt, object, mysteryFlag, FALSE);
+            CodeGen_Generator(stmt, object, oldStyleParameters, FALSE);
         }
-        ORACLE_SCOPE(0);
     }
 }
 
@@ -4530,10 +4538,10 @@ static void CInline_GenerateInlineFunc(CI_Action* action) {
             if ((inst = CInline_FindNestedTemplInst(action->u.inlinefunc.tclass))) {
                 CTempl_ParseInstanceScopeFunction(object, inst, action->u.inlinefunc.tclass);
             } else {
-                CFunc_ParseFuncDef(object, &di, action->u.inlinefunc.tclass, 0, 0, NULL);
+                CFunc_ParseFuncDef(object, &di, action->u.inlinefunc.tclass, FALSE, FALSE, NULL);
             }
         } else {
-            CFunc_ParseFuncDef(object, &di, NULL, 0, 0, NULL);
+            CFunc_ParseFuncDef(object, &di, NULL, FALSE, FALSE, NULL);
         }
     }
 
@@ -4580,7 +4588,7 @@ Boolean CInline_GenerateDeferredFuncs(void) {
                             action->u.memberfunc.inst,
                             action->u.memberfunc.tmemb,
                             action->obj,
-                            0
+                            FALSE
                         );
                     }
                     break;
@@ -4588,7 +4596,7 @@ Boolean CInline_GenerateDeferredFuncs(void) {
                     if (!(TYPE_FUNC(action->obj->type)->flags & FUNC_DEFINED) &&
                         !action->u.templatefunc.inst->is_specialized) {
                         CTempl_GenFuncInstance(
-                            action->u.templatefunc.func, action->u.templatefunc.inst, 0
+                            action->u.templatefunc.func, action->u.templatefunc.inst, FALSE
                         );
                     }
                     break;
@@ -4604,7 +4612,9 @@ Boolean CInline_GenerateDeferredFuncs(void) {
                 cinline_exportlist = export->next;
                 CMach_GetBackEndOptions(&saveOptions);
                 CMach_SetBackEndOptions(&export->funcdata->options);
-                CInline_GenIFunctionCode(export->object, export->funcdata, export->mysteryFlag);
+                CInline_GenIFunctionCode(
+                    export->object, export->funcdata, export->oldStyleParameters
+                );
                 CMach_SetBackEndOptions(&saveOptions);
                 copts.defer_codegen = FALSE;
                 return TRUE;
@@ -4636,7 +4646,7 @@ static InitExpr* CInline_InitTemplateData(InitExpr* init) {
 
     do {
         stmt = CFunc_AppendStatement(ST_EXPRESSION);
-        stmt->expr = CInline_CopyExpression(init->expr, CopyMode0);
+        stmt->expr = CInline_CopyExpression(init->expr, CopyModeLocal);
         init = init->next;
     } while (init && init->object == object);
 
@@ -4686,14 +4696,13 @@ void CInline_Finish(void) {
             init = CInline_InitTemplateData(init);
         } else {
             stmt = CFunc_AppendStatement(ST_EXPRESSION);
-            stmt->expr = CInline_CopyExpression(init->expr, CopyMode0);
+            stmt->expr = CInline_CopyExpression(init->expr, CopyModeLocal);
             init = init->next;
         }
     }
 
     CFunc_CodeCleanup(&firstStmt);
 
-    ORACLE_SCOPE(1);
     expanding_function = NULL;
     recursive_inline = FALSE;
     CInline_Expand(&firstStmt);
@@ -4704,13 +4713,9 @@ void CInline_Finish(void) {
         }
         CodeGen_Generator(&firstStmt, NULL, 0, TRUE);
     }
-    ORACLE_SCOPE(0);
 
     cscope_current = nspace->parent;
     copts.filesyminfo = saveDebugInfo;
 }
 
-// TODO: the original's statics are 2-byte aligned (cinline_serial_stmt at +0x16). MWCC lays out .bss
-// with the packing in effect at the end of the file, so Pro7's `options align=mac68k` was evidently
-// left on; this stands in for it.
 #pragma pack(2)

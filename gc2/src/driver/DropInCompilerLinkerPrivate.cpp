@@ -1,20 +1,16 @@
-// The plugin library's compiler and linker callbacks (Pro7's PluginLib
-// Library/DropInCompilerLinkerPrivate.cpp; Wii's module of the name). 2.6 has the functions below;
-// the rest of Pro7's file (CWGetBuildSequenceNumber, CWSetTargetInfo, CWLoadObjectData, ...) is
-// not in the binary: nothing calls them, so the linker dropped them. Built -inline off: its implicit
-// copy-assignments (??4CWBrowseOptions, ??4CWTargetInfo_V8) are out of line.
+#include "driver/CWPlugins.h"
 #include "driver/CWPluginsPrivate.h"
+#include "driver/DropInCompilerLinker.h"
+#include "driver/Files.h"
 #include <string.h>
 
-// (function names are global in functions.json: CWPluginsPrivate.cpp has a GetContext too)
 #define GetContext DropInCompilerLinkerPrivate_GetContext
 
 extern "C" {
 
 static CWCompilerLinkerContext* GetContext(CWPluginContext context) {
     if (context &&
-        (context->pluginType ==
-         CWDROPINCOMPILERTYPE ||
+        (context->pluginType == CWDROPINCOMPILERTYPE ||
          context->pluginType == CWDROPINLINKERTYPE)) {
         return static_cast<CWCompilerLinkerContext*>(context);
     } else {
@@ -105,7 +101,6 @@ CW_CALLBACK CWGetTargetInfo(CWPluginContext context, CWTargetInfo* targetInfo) {
     if (cl->apiVersion >= 10) {
         *targetInfo = *cl->targetinfo;
     } else if (cl->apiVersion >= 8) {
-        // (2.6: one copy of the version 8 layout, where Pro7 copies field by field)
         *(CWTargetInfo_V8*)targetInfo = *(CWTargetInfo_V8*)cl->targetinfo;
     } else {
         memset(targetInfo, 0, sizeof(CWTargetInfo));

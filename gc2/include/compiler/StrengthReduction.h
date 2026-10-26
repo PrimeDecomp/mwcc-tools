@@ -1,8 +1,6 @@
 #ifndef COMPILER_STRENGTHREDUCTION_H
 #define COMPILER_STRENGTHREDUCTION_H
 
-#include "compiler/common.h"
-
 #ifdef __cplusplus
 extern "C" {
 #endif

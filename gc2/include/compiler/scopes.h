@@ -7,7 +7,6 @@
 extern "C" {
 #endif
 
-// (Pro7: mac68k alignment; these records lay out the same without it)
 struct NameSpace {
     NameSpace* parent;
     HashNameNode* name;
@@ -29,7 +28,6 @@ struct NameSpaceList {
     NameSpace* nspace;
 };
 struct NameSpaceObjectList {
-    // the next object of the same name (CScope_AddObject)
     NameSpaceObjectList* next;
     ObjBase* object;
 };

@@ -1,23 +1,16 @@
-// RegisterInfo.c (2.6: 0x4cfde0..0x4d1040), Ninji's Pro7 file of that name.
-//
-// Built -inline auto,deferred, so the original holds the functions in reverse of this order: Pro7's
-// order, with 2.6's global register variable functions (Registers_GetRegInfo,
-// is_global_registers_variable, setup_global_registers, finish_global_registers: Wii publics of its
-// RegisterInfo module) where the binary has them, and Pro7's static first_nonvolatile_reg grown
-// into their per-class worker. The .data (spr_to_sysreg, init_target_registers' tables, then the
-// literals in reverse function order) follows from that order.
 #include "compiler/RegisterInfo.h"
 #include "compiler/CError.h"
 #include "compiler/CodeGen.h"
 #include "compiler/CompilerTools.h"
 #include "compiler/CParser.h"
 #include "compiler/objects.h"
-#include "compiler/OracleProbes.h"
 #include "compiler/PCode.h"
+#include "compiler/PCodeInfo.h"
 #include "compiler/PPCError.h"
+#include "compiler/Registers.h"
+#include "compiler/tokens.h"
 #include "compiler/types.h"
 #include <string.h>
-#include "compiler/CPrep.h"
 
 short last_exception_register[RegClassMax];
 short first_fe_temporary_register[RegClassMax];
@@ -33,24 +26,25 @@ static UInt8 save_state[RegisterMax];
 
 short spr_to_sysreg[4] = {1, 8, 9, 0x100};
 
-// Pro7's asm_used_register
+void assign_GPR_pair(Object* obj);
+
 void asm_used_register(RegClass rclass, short reg) {
     long i;
 
     if (reg >= n_real_registers[rclass]) {
         return;
     }
-    if (reg_state[rclass][reg] == RegState0) {
+    if (reg_state[rclass][reg] == RegState_Free) {
         if (reg == nonvolatile_registers[rclass][used_nonvolatile_registers[rclass]]) {
             if (assignable_registers[rclass] > 0) {
                 assignable_registers[rclass]--;
             }
-            reg_state[rclass][reg] = RegState1;
+            reg_state[rclass][reg] = RegState_Retained;
             used_nonvolatile_registers[rclass]++;
         } else {
             for (i = used_nonvolatile_registers[rclass]; i < n_nonvolatile_registers[rclass]; i++) {
                 if (reg == nonvolatile_registers[rclass][i]) {
-                    reg_state[rclass][reg] = RegState1;
+                    reg_state[rclass][reg] = RegState_Retained;
                     if (assignable_registers[rclass] > 0) {
                         assignable_registers[rclass]--;
                     }
@@ -63,13 +57,11 @@ void asm_used_register(RegClass rclass, short reg) {
 void retain_register(Object* obj, RegClass rclass, short reg) {
     VarInfo* vi;
 
-    // the literal: 2.6 compares the short (`cmp bp, 0x20`); Pro7's `(short) reg < RegisterMax`
-    // compares an int
     CError_ASSERT(95, reg < 32);
 
-    if (reg_state[rclass][reg] == RegState0) {
+    if (reg_state[rclass][reg] == RegState_Free) {
         assignable_registers[rclass]--;
-        reg_state[rclass][reg] = RegState1;
+        reg_state[rclass][reg] = RegState_Retained;
         if (reg == nonvolatile_registers[rclass][used_nonvolatile_registers[rclass]]) {
             used_nonvolatile_registers[rclass]++;
         }
@@ -78,7 +70,7 @@ void retain_register(Object* obj, RegClass rclass, short reg) {
     if (obj) {
         vi = Registers_GetVarInfo(obj);
         vi->rclass = rclass;
-        vi->flags |= VarInfoFlag2;
+        vi->flags |= VarInfoFlag_InReg;
         vi->reg = reg;
     }
 }
@@ -92,18 +84,16 @@ void retain_GPR_pair(Object* obj, short reg, short regHi) {
     if (obj) {
         vi = Registers_GetVarInfo(obj);
         vi->rclass = RegClass_GPR;
-        vi->flags |= VarInfoFlag2 | VarInfoFlag4;
+        vi->flags |= VarInfoFlag_InReg | VarInfoFlag_RegPair;
         vi->reg = reg;
         vi->regHi = regHi;
     }
 }
 
-// Pro7's is_register_object; 2.6 also takes a global register variable
 int is_register_object(Object* obj) {
     return obj->sclass == TK_REGISTER || is_global_registers_variable(obj);
 }
 
-// 2.6 (Wii's name): a data object's global register binding
 ObjRegInfo* Registers_GetRegInfo(Object* obj) {
     if (obj == NULL) {
         return NULL;
@@ -116,7 +106,6 @@ ObjRegInfo* Registers_GetRegInfo(Object* obj) {
     }
 }
 
-// 2.6 (Wii's name)
 int is_global_registers_variable(Object* obj) {
     ObjRegInfo* info;
 
@@ -130,7 +119,6 @@ int is_global_registers_variable(Object* obj) {
     return FALSE;
 }
 
-// Pro7's GetABIFirstNonVolatile
 int GetABIFirstNonVolatile(RegClass rclass) {
     switch (rclass) {
         case RegClass_SPR:
@@ -162,7 +150,6 @@ char GetRegisterClassName(RegClass rclass) {
     }
 }
 
-// Pro7's first_nonvolatile_reg: 2.6 also binds the class's global register variables here
 static int first_nonvolatile_reg(RegClass rclass) {
     RegInfo* binding;
     Object* obj;
@@ -181,8 +168,6 @@ static int first_nonvolatile_reg(RegClass rclass) {
         return result;
     }
     base = result;
-    // 2.6 clears with `count` as the index and indexes `used` by a copy of `first` (`i` here, or
-    // `first`, moves registers)
     for (count = 0; count < 32; count++) {
         used[count] = 0;
     }
@@ -196,10 +181,10 @@ static int first_nonvolatile_reg(RegClass rclass) {
             obj = binding->object;
             if (obj && obj->otype == OT_OBJECT) {
                 CError_ASSERT(279, Registers_GetVarInfo(obj)->reg == 0);
-                if (reg_state[binding->reginfo.rclass][binding->reginfo.reg] == RegState0) {
-                    reg_state[binding->reginfo.rclass][binding->reginfo.reg] = RegState1;
+                if (reg_state[binding->reginfo.rclass][binding->reginfo.reg] == RegState_Free) {
+                    reg_state[binding->reginfo.rclass][binding->reginfo.reg] = RegState_Retained;
                     vi = Registers_GetVarInfo(obj);
-                    vi->flags |= VarInfoFlag2;
+                    vi->flags |= VarInfoFlag_InReg;
                     vi->reg = binding->reginfo.reg;
                     vi->regHi = 0;
                     vi->rclass = binding->reginfo.rclass;
@@ -207,10 +192,10 @@ static int first_nonvolatile_reg(RegClass rclass) {
                     char name1[2];
                     name1[0] = GetRegisterClassName(binding->reginfo.rclass);
                     name1[1] = 0;
-                    PPCError_Error(PPCErrorStr202, obj, name1, binding->reginfo.reg);
+                    PPCError_Error(PPCERR_GLOBAL_REGISTER_TAKEN, obj, name1, binding->reginfo.reg);
                 }
             } else {
-                PPCError_Error(PPCErrorStr204, binding->name->name);
+                PPCError_Error(PPCERR_GLOBAL_REGISTER_NOT_VARIABLE, binding->name->name);
             }
         }
     }
@@ -222,7 +207,7 @@ static int first_nonvolatile_reg(RegClass rclass) {
                 if (used[i]) {
                     name[0] = GetRegisterClassName(rclass);
                     name[1] = 0;
-                    PPCError_Error(PPCErrorStr199, name, used[i] - 1);
+                    PPCError_Error(PPCERR_GLOBAL_REGISTER_GAP, name, used[i] - 1);
                     count++;
                     break;
                 }
@@ -236,7 +221,6 @@ static int first_nonvolatile_reg(RegClass rclass) {
     return result;
 }
 
-// setup_global_registers (Wii)
 void setup_global_registers(void) {
     RegClass rclass;
 
@@ -247,7 +231,6 @@ void setup_global_registers(void) {
     }
 }
 
-// finish_global_registers (Wii)
 void finish_global_registers(void) {
     RegClass rclass;
 
@@ -259,7 +242,6 @@ void finish_global_registers(void) {
     }
 }
 
-// Pro7's setup_diagnostic_reg_strings
 void setup_diagnostic_reg_strings(void) {
     register_class_name[RegClass_SPR] = "SPR";
     register_class_format[RegClass_SPR] = "spr%ld";
@@ -300,17 +282,17 @@ void init_target_registers(void) {
     n_real_registers[RegClass_VR] = 32;
     n_real_registers[RegClass_FPR] = 32;
     n_real_registers[RegClass_GPR] = 32;
-    reg_state[RegClass_GPR][1] = RegState2;
-    reg_state[RegClass_GPR][2] = RegState2;
-    reg_state[RegClass_GPR][13] = RegState2;
-    reg_state[RegClass_CRFIELD][5] = RegState2;
+    reg_state[RegClass_GPR][1] = RegState_Reserved;
+    reg_state[RegClass_GPR][2] = RegState_Reserved;
+    reg_state[RegClass_GPR][13] = RegState_Reserved;
+    reg_state[RegClass_CRFIELD][5] = RegState_Reserved;
 
     for (rclass = 0; rclass < RegClassMax; rclass++) {
         n_nonvolatile_registers[rclass] = 0;
         if (last_nonvolatile_reg[rclass] >= 0) {
             end = first_nonvolatile_reg(rclass);
             for (reg = last_nonvolatile_reg[rclass]; reg >= end; reg--) {
-                if (reg_state[rclass][reg] == RegState0) {
+                if (reg_state[rclass][reg] == RegState_Free) {
                     nonvolatile_registers[rclass][n_nonvolatile_registers[rclass]++] = reg;
                 }
             }
@@ -324,7 +306,7 @@ void init_target_registers(void) {
         n_scratch_registers[rclass] = 0;
         for (reg = 0; reg < n_real_registers[rclass]; reg++) {
             if (reg < GetABIFirstNonVolatile(rclass) || reg > last_nonvolatile_reg[rclass]) {
-                if (reg_state[rclass][reg] == RegState0) {
+                if (reg_state[rclass][reg] == RegState_Free) {
                     scratch_registers[rclass][n_scratch_registers[rclass]++] = reg;
                 }
             }
@@ -336,16 +318,14 @@ void init_target_registers(void) {
     optimizing = (copts.optimizationlevel > 0) && !disable_optimizer;
 }
 
-// Pro7's; 2.6 puts a soft-float value in a GPR (a double in a GPR pair) and a paired single in an
-// FPR
 void assign_register_by_type(Object* obj) {
     VarInfo* vi;
     Type* ty;
-    Boolean flag;
+    Boolean needsPair;
 
     ty = obj->type;
     vi = Registers_GetVarInfo(obj);
-    flag = FALSE;
+    needsPair = FALSE;
     vi->rclass = RegClassMax;
     vi->reg = 0;
     vi->regHi = 0;
@@ -357,7 +337,7 @@ void assign_register_by_type(Object* obj) {
         (copts.soft_float && IS_TYPE_FLOAT_NOT_VEC2X32FLOAT(ty))) {
         if ((((ty->type == TYPEINT) || (ty->type == TYPEENUM)) && (ty->size == 8)) ||
             (copts.soft_float && IS_TYPE_FLOAT_NOT_VEC2X32FLOAT(ty) && ty->size != 4)) {
-            flag = TRUE;
+            needsPair = TRUE;
         }
         vi->rclass = RegClass_GPR;
     } else if (IS_TYPE_FLOAT_NOT_VEC2X32FLOAT(ty) || IS_TYPE_VEC2X32FLOAT(ty)) {
@@ -371,7 +351,7 @@ void assign_register_by_type(Object* obj) {
     }
 
     if (vi->rclass < RegClassMax) {
-        if (flag) {
+        if (needsPair) {
             CError_ASSERT(520, vi->rclass == RegClass_GPR);
             if (assignable_registers[vi->rclass] > 1) {
                 assign_GPR_pair(obj);
@@ -391,7 +371,6 @@ void assign_GPR_pair(Object* obj) {
 
     vi = Registers_GetVarInfo(obj);
     if (optimizing) {
-        ORACLE_PROBE(OracleProbe_Binding(obj, vi, NULL));
         reg = ALLOC_GPR();
         regHi = ALLOC_GPR();
     } else {
@@ -403,7 +382,7 @@ void assign_GPR_pair(Object* obj) {
 
     vi->rclass = RegClass_GPR;
     if (reg > 0 && regHi > 0) {
-        vi->flags |= VarInfoFlag2 | VarInfoFlag4;
+        vi->flags |= VarInfoFlag_InReg | VarInfoFlag_RegPair;
         vi->reg = reg;
         vi->regHi = regHi;
     } else {
@@ -411,7 +390,6 @@ void assign_GPR_pair(Object* obj) {
     }
 }
 
-// Pro7's open_fe_temp_registers
 void open_fe_temp_registers(void) {
     int r;
 
@@ -421,15 +399,12 @@ void open_fe_temp_registers(void) {
     first_fe_temporary_register[RegClass_FPR] = last_temporary_register[RegClass_FPR] = r;
     r = used_virtual_registers[RegClass_VR];
     first_fe_temporary_register[RegClass_VR] = last_temporary_register[RegClass_VR] = r;
-    ORACLE_PROBE(OracleProbe_Counter(9, 0, NULL));
 }
 
-// Pro7's set_last_exception_registers
 void set_last_exception_registers(void) {
     last_exception_register[RegClass_GPR] = used_virtual_registers[RegClass_GPR] - 1;
     last_exception_register[RegClass_FPR] = used_virtual_registers[RegClass_FPR] - 1;
     last_exception_register[RegClass_VR] = used_virtual_registers[RegClass_VR] - 1;
-    ORACLE_PROBE(OracleProbe_Counter(8, 0, NULL));
 }
 
 static VarInfo* Registers_GetNewVarInfo(void) {
@@ -540,7 +515,7 @@ void update_asm_nonvolatile_registers(void) {
     for (rclass = 0; rclass < RegClassMax; rclass++) {
         reg = n_nonvolatile_registers[rclass];
         for (i = n_nonvolatile_registers[rclass] - 1; i >= 0; i--) {
-            if (reg_state[rclass][nonvolatile_registers[rclass][i]] == RegState1) {
+            if (reg_state[rclass][nonvolatile_registers[rclass][i]] == RegState_Retained) {
                 break;
             }
             reg--;

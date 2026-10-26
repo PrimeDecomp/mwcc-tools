@@ -1,20 +1,4 @@
 #!/usr/bin/env python3
-"""python tools/equivalence.py CORPUS.json OUTDIR [--version V | ORIGINAL CANDIDATE]: compile a corpus with the
-original compiler and a candidate, and compare the objects byte for byte. By default the candidate is the equivalent
-compiler of V (default GC_2_6: build/V/mwcceppc.exe, brought up to date with ninja first) and the original V's.
-
-CORPUS.json: {"root": DIR, "jobs": [{"source": PATH, "cflags": [...], "sjis": bool}, ...]}: each source compiled in
-ROOT with its flags, through sjiswrap (ROOT/build/tools/sjiswrap.exe) when "sjis". Each job's outputs are
-OUTDIR/{original,candidate}/<job number>.o; OUTDIR/results.json has every job's result. A difference is a behaviour
-of the original the candidate does not have. Exits 1 unless every job's objects are identical: a job the original
-fails tests nothing, and that is a failure of the corpus.
-
-The compilers run under $WIBO (default build/tools/wibo). sjiswrap needs a wibo that can load it: a decomp-toolkit
-project's own (WIBO=PROJECT/build/tools/wibo).
-
-python tools/equivalence.py corpus PROJECT MW_VERSION OUT.json: a corpus of the sources a decomp-toolkit project
-builds with MW_VERSION (as its build.ninja names it, e.g. GC/2.6): one job per source.
-"""
 
 import argparse
 import concurrent.futures
@@ -26,13 +10,22 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from mw import build, config, project
-import equivalent
+from mw import build, clang, config, extab, project
 
 
-def compile_one(root, compiler, job, output):
-    command = build.windows_prefix()
-    if job.get("sjis"):
+def windows_program(path) -> bool:
+    with open(path, "rb") as f:
+        return f.read(2) == b"MZ"
+
+
+def compile_one(root, compiler, job, output, native_sjis=False):
+    windows = windows_program(compiler)
+    command = build.windows_prefix() if windows else []
+    environment = dict(os.environ, MWCIncludes=".")
+    environment.pop("MWCC_SJIS", None)
+    if job.get("sjis") and (native_sjis or not windows):
+        environment["MWCC_SJIS"] = "1"
+    elif job.get("sjis"):
         command.append(str(Path(root) / "build/tools/sjiswrap.exe"))
     command += [str(compiler), *job["cflags"], "-c", job["source"], "-o", str(output)]
     output.unlink(missing_ok=True)
@@ -44,7 +37,7 @@ def compile_one(root, compiler, job, output):
             text=True,
             errors="replace",
             timeout=900,
-            env=dict(os.environ, MWCIncludes="."),
+            env=environment,
         )
     except subprocess.TimeoutExpired:
         return "timeout"
@@ -53,8 +46,24 @@ def compile_one(root, compiler, job, output):
     return None
 
 
-def run(corpus_path, out, original, candidate):
-    corpus = json.loads(Path(corpus_path).read_text())
+def same(a: bytes, b: bytes, padding: bytes | None) -> tuple[bool, int]:
+    if a == b or padding is None:
+        return a == b, 0
+    (a, changed_a), (b, changed_b) = extab.normalize(a, padding), extab.normalize(b, padding)
+    return a == b, changed_a + changed_b
+
+
+def run(corpus_path, out, original, candidate, padding=b"\0\0", native_sjis=False):
+    try:
+        corpus = json.loads(Path(corpus_path).read_text())
+    except (OSError, ValueError) as e:
+        raise project.Error(f"{corpus_path}: {e}") from None
+    if (
+        not isinstance(corpus, dict)
+        or not isinstance(corpus.get("root"), str)
+        or not isinstance(corpus.get("jobs"), list)
+    ):
+        raise project.Error(f'{corpus_path} is not {{"root": DIR, "jobs": [...]}}')
     for side in ("original", "candidate"):
         (out / side).mkdir(parents=True, exist_ok=True)
         for old in (out / side).glob("*.o"):
@@ -67,10 +76,19 @@ def run(corpus_path, out, original, candidate):
         failure = compile_one(corpus["root"], original, job, a)
         if failure:
             return dict(result, result="original fails", log=failure)
-        failure = compile_one(corpus["root"], candidate, job, b)
+        failure = compile_one(corpus["root"], candidate, job, b, native_sjis)
         if failure:
             return dict(result, result="candidate fails", log=failure)
-        return dict(result, result="identical" if a.read_bytes() == b.read_bytes() else "different")
+        job_padding = (
+            padding if padding is None or "extab_padding" not in job else extab.parse_padding(job["extab_padding"])
+        )
+        try:
+            identical, normalized = same(a.read_bytes(), b.read_bytes(), job_padding)
+        except extab.ExtabError as e:
+            return dict(result, result="different", log=f"extab: {e}")
+        if not identical:
+            return dict(result, result="different")
+        return dict(result, result="identical", **({"extab padding": normalized} if normalized else {}))
 
     with concurrent.futures.ThreadPoolExecutor(int(os.environ.get("JOBS", 0)) or os.cpu_count() or 4) as pool:
         results = list(pool.map(one, enumerate(corpus["jobs"])))
@@ -96,21 +114,29 @@ def run(corpus_path, out, original, candidate):
                 f"{r['result']}: job {r['job']}, {r['source']}"
                 + (f": {' '.join(r['log'].split())[-300:]}" if r.get("log") else "")
             )
-    print(", ".join(f"{n} {what}" for what, n in sorted(counts.items())), f"(of {len(results)}; {out}/results.json)")
+    normalized = sum(1 for r in results if r.get("extab padding"))
+    print(
+        ", ".join(f"{n} {what}" for what, n in sorted(counts.items())),
+        f"(of {len(results)}{f'; {normalized} identical only with the extab padding set' if normalized else ''};",
+        f"{out}/results.json)",
+    )
     return all(r["result"] == "identical" for r in results) and results
 
 
 def dtk_corpus(root, mw_version, output):
-    """The jobs of a decomp-toolkit project's build.ninja: every mwcc edge built with MW_VERSION."""
     root = Path(root).resolve()
-    text = (root / "build.ninja").read_text().replace("$\n", "")
+    try:
+        text = (root / "build.ninja").read_text().replace("$\n", "")
+    except OSError as e:
+        raise project.Error(f"{root}/build.ninja: {e.strerror} (configure the project first)") from None
     jobs, edge = [], None
 
     def flush():
-        if edge and edge["vars"].get("mw_version") == mw_version:
-            jobs.append(
-                dict(source=edge["source"], cflags=shlex.split(edge["vars"]["cflags"]), sjis="sjis" in edge["rule"])
-            )
+        if edge and mw_version in ("all", edge["vars"].get("mw_version")):
+            job = dict(source=edge["source"], cflags=shlex.split(edge["vars"]["cflags"]), sjis="sjis" in edge["rule"])
+            if edge["vars"].get("extab_padding"):
+                job["extab_padding"] = extab.parse_padding(edge["vars"]["extab_padding"]).hex()
+            jobs.append(job)
 
     for line in text.splitlines():
         if line.startswith("build "):
@@ -127,7 +153,6 @@ def dtk_corpus(root, mw_version, output):
             flush()
             edge = None
     flush()
-    # (a source built twice under one version is one test)
     unique = list({job["source"]: job for job in jobs}.values())
     if not unique:
         raise project.Error(f"{root}/build.ninja has no mwcc edge with mw_version = {mw_version}")
@@ -140,33 +165,58 @@ def main():
     try:
         if args[:1] == ["corpus"]:
             if len(args) != 4:
-                sys.exit(__doc__)
+                sys.exit("usage: python tools/equivalence.py corpus PROJECT MW_VERSION OUT.json")
             dtk_corpus(*args[1:])
             return
-        parser = argparse.ArgumentParser(usage=__doc__.split("\n")[0][len("python tools/equivalence.py ") :])
-        parser.add_argument("corpus")
-        parser.add_argument("out")
-        parser.add_argument("compilers", nargs="*", metavar="ORIGINAL CANDIDATE")
-        parser.add_argument("--version", default=project.PRIMARY)
+        parser = argparse.ArgumentParser(
+            prog="tools/equivalence.py",
+            usage="%(prog)s CORPUS.json OUTDIR [--version V | ORIGINAL CANDIDATE]\n"
+            "       %(prog)s corpus PROJECT MW_VERSION|all OUT.json",
+            description="Compile a corpus with the original compiler and a candidate, and compare the objects byte for byte.",
+            formatter_class=argparse.RawDescriptionHelpFormatter,
+        )
+        parser.add_argument("corpus", metavar="CORPUS.json")
+        parser.add_argument("out", metavar="OUTDIR")
+        parser.add_argument("compilers", nargs="*", metavar="ORIGINAL CANDIDATE", help="two compilers to compare")
+        parser.add_argument("--version", default=project.PRIMARY, help=f"default {project.PRIMARY}")
+        parser.add_argument(
+            "--extab-padding",
+            default="0000",
+            metavar="HEX|raw",
+            help="the two bytes both sides' exception-action padding is set to before comparing (default 0000), or "
+            "raw to compare the objects as written",
+        )
+        parser.add_argument(
+            "--native-sjis",
+            action="store_true",
+            help="run the candidate's sjis jobs with MWCC_SJIS=1 instead of through sjiswrap (a clang build's own "
+            "conversion; a Linux build always does)",
+        )
         options = parser.parse_args(args)
+        try:
+            padding = None if options.extab_padding == "raw" else extab.parse_padding(options.extab_padding)
+        except extab.ExtabError as e:
+            parser.error(f"--extab-padding: {e}")
         if options.compilers:
             if len(options.compilers) != 2:
                 parser.error("give both ORIGINAL and CANDIDATE, or neither")
             original, candidate = (Path(c).resolve() for c in options.compilers)
         else:
-            v = project.version(options.version)
-            original, candidate = config.version_config(v).original, equivalent.output_path(v)
+            v = project.version(options.version, original=True)
+            original, candidate = config.version_config(v).original, clang.output_path(v)
             result = subprocess.run(
                 ["ninja", project.relative(candidate)], cwd=project.ROOT, capture_output=True, text=True
             )
             if result.returncode:
                 raise project.Error(f"ninja {project.relative(candidate)} failed:\n{result.stdout[-3000:]}")
+        for compiler in (original, candidate):
+            if not Path(compiler).is_file():
+                raise project.Error(f"{compiler} does not exist")
         if project.digest(Path(original).read_bytes()) == project.digest(Path(candidate).read_bytes()):
-            # (the original against itself tests nothing)
             raise project.Error(f"{candidate} is the original compiler itself")
-        if not run(options.corpus, Path(options.out), original, candidate):
+        if not run(options.corpus, Path(options.out).resolve(), original, candidate, padding, options.native_sjis):
             sys.exit(1)
-    except project.Error as e:
+    except (project.Error, extab.ExtabError) as e:
         sys.exit(f"error: {e}")
 
 

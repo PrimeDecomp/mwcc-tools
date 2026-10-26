@@ -1,6 +1,3 @@
-; The KERNEL32.dll functions the compiler and its MSL runtime call, in the order the original imports them.
-; Each "@N" is the hint the original's import library gave (the linker writes it into the import table).
-; 2.0 does not call GetSystemDefaultLangID.
 LIBRARY KERNEL32.dll
 EXPORTS
     GetStdHandle@4 @360
@@ -63,3 +60,5 @@ EXPORTS
     GetSystemDefaultLangID@0 @366
     GetLocalTime@4 @303
     GetTimeZoneInformation@4 @393
+    SetLastError@4
+    VirtualAlloc@16

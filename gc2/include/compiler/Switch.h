@@ -7,18 +7,18 @@
 extern "C" {
 #endif
 
-// 2.6's case node is Pro7's without `max` (16 bytes: CInline_UnpackSwitch allocates that much)
 struct SwitchCase {
     struct SwitchCase* next;
     struct CLabel* label;
     CInt64 min;
+#if VERSION < VERSION_GC_2_0
+    CInt64 max; // (a GNU case range's last value)
+#endif
 };
 
 struct SwitchInfo {
     struct SwitchCase* cases;
     struct CLabel* defaultlabel;
-    // TODO: invented name (Pro7: x8): the switch expression's type, which the case values are
-    // converted to
     Type* exprtype;
 };
 

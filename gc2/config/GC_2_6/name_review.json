@@ -2928,6 +2928,11 @@
       "note": "exact; the asserts/strings named are a callback's or helper's inlined into it",
       "was": "PointerAnalysis_TermAction1"
     },
+    "0x00481d40": {
+      "name": "ObjectSet_Add",
+      "note": "Pro7 ObjectSet_sub_4867D0 (find, then simple add: LocationSetSet_Add's twin); Wii has a public ObjectSet_Add in IroPointerAnalysis (the pairing's PARegionSet_SimpleAdd is a weak order match)",
+      "was": "ObjectSet_Add"
+    },
     "0x00484f90": {
       "name": "AssignEachInPointsToFunctionAction",
       "was": "AssignEachInPointsToFunctionAction",
@@ -4800,14 +4805,14 @@
       "was": "CParser_IsConst"
     },
     "0x004e7630": {
-      "name": "fn_004e7630",
-      "note": "OPEN: a 2.6 addition between CParser_IsConst and CParser_GetCVTypeQualifiers",
-      "was": "fn_004e7630"
+      "name": "CParser_IsReadOnly",
+      "note": "Wii 1.0RC1's public _CParser_IsReadOnly (0x454490, 107 bytes) calls an unnamed recursive static between CParser_IsConst and CParser_GetCVTypeQualifiers; 2.6's 0x4e7630 calls 0x4e76a0 the same way and Alias.c calls it, so it is the public",
+      "was": "CParser_IsReadOnly"
     },
     "0x004e76a0": {
-      "name": "fn_004e76a0",
-      "note": "OPEN: a 2.6 addition between CParser_IsConst and CParser_GetCVTypeQualifiers",
-      "was": "fn_004e76a0"
+      "name": "CParser_ClassHasMutableMember",
+      "note": "the recursive static IsReadOnly calls (Wii 1.0RC1 0x454500, unnamed); invented name (NOTE)",
+      "was": "CParser_ClassHasMutableMember"
     },
     "0x004e7730": {
       "name": "CParser_GetCVTypeQualifiers",
@@ -6574,14 +6579,13 @@
     },
     "0x005131c0": {
       "name": "add_aliased_locals_to_worst_case",
-      "note": "OPEN: 2.6 addition between initialize_aliases and is_safe_const (recursive; make_alias, add_alias_member, is_safe_const; assert 259); Wii has it unnamed",
-      "was": "fn_00511780"
+      "note": "Wii's CodeView names it (module Alias; the Alias.c review, round 2)",
+      "was": "add_aliased_locals_to_worst_case"
     },
     "0x00513290": {
       "name": "make_distinct_virtual_alias",
-      "note": "OPEN: 2.6 addition (CParser_GetUniqueName, lalloc, make_alias: a virtual object's alias); Wii has it unnamed (make_distinct_virtual_alias is a candidate); no source",
-      "was": "fn_005118f0",
-      "unit": "src/optimizer/Alias.c"
+      "note": "Wii's CodeView names it (module Alias; the Alias.c review, round 2)",
+      "was": "make_distinct_virtual_alias"
     },
     "0x00513350": {
       "name": "is_safe_const",
@@ -10337,45 +10341,38 @@
     },
     "0x0056e460": {
       "name": "updateusedefset",
-      "note": "OPEN: UseDefChains static (Pro7 computelocalusedefinfo .. addobjectusedef, Wii unnamed)",
-      "unit": "src/optimizer/UseDefChains.c",
-      "was": "fn_0056e460"
+      "note": "Pro7's UseDefChains.c statics, in its file's order reversed (the UseDefChains.c review)",
+      "was": "updateusedefset"
     },
     "0x0056e560": {
       "name": "computelocalusedefinfo",
-      "note": "OPEN: UseDefChains static",
-      "unit": "src/optimizer/UseDefChains.c",
-      "was": "fn_0056e560"
+      "note": "Pro7's UseDefChains.c statics, in its file's order reversed (the UseDefChains.c review)",
+      "was": "computelocalusedefinfo"
     },
     "0x0056eb10": {
       "name": "computeusedeflists",
-      "note": "OPEN: UseDefChains static",
-      "unit": "src/optimizer/UseDefChains.c",
-      "was": "fn_0056eb10"
+      "note": "Pro7's UseDefChains.c statics, in its file's order reversed (the UseDefChains.c review)",
+      "was": "computeusedeflists"
     },
     "0x0056f000": {
       "name": "precomputeusedefcounts",
-      "note": "OPEN: UseDefChains static",
-      "unit": "src/optimizer/UseDefChains.c",
-      "was": "fn_0056f000"
+      "note": "Pro7's UseDefChains.c statics, in its file's order reversed (the UseDefChains.c review)",
+      "was": "precomputeusedefcounts"
     },
     "0x0056f220": {
       "name": "precomputememoryusedefs",
-      "note": "OPEN: UseDefChains static",
-      "unit": "src/optimizer/UseDefChains.c",
-      "was": "fn_0056f220"
+      "note": "Pro7's UseDefChains.c statics, in its file's order reversed (the UseDefChains.c review)",
+      "was": "precomputememoryusedefs"
     },
     "0x0056f2f0": {
       "name": "addaliasusedef",
-      "note": "OPEN: UseDefChains static",
-      "unit": "src/optimizer/UseDefChains.c",
-      "was": "fn_0056f2f0"
+      "note": "Pro7's UseDefChains.c statics, in its file's order reversed (the UseDefChains.c review)",
+      "was": "addaliasusedef"
     },
     "0x0056f470": {
       "name": "addobjectusedef",
-      "note": "OPEN: UseDefChains static",
-      "unit": "src/optimizer/UseDefChains.c",
-      "was": "fn_0056f470"
+      "note": "Pro7's UseDefChains.c statics, in its file's order reversed (the UseDefChains.c review)",
+      "was": "addobjectusedef"
     },
     "0x0056f4e0": {
       "name": "findobjectusedef",
@@ -10643,217 +10640,217 @@
     },
     "0x005787e0": {
       "name": "uses_vpermute_unit_7400",
-      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names (AGENTS.md)",
+      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names",
       "was": "uses_vpermute_unit_7400"
     },
     "0x00578800": {
       "name": "m7400_serializes",
-      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names (AGENTS.md)",
+      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names",
       "was": "m7400_serializes"
     },
     "0x00578820": {
       "name": "m7400_advance_clock",
-      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names (AGENTS.md)",
+      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names",
       "was": "m7400_advance_clock"
     },
     "0x00578e10": {
       "name": "m7400_issue",
-      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names (AGENTS.md)",
+      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names",
       "was": "m7400_issue"
     },
     "0x00578e90": {
       "name": "m7400_can_issue",
-      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names (AGENTS.md)",
+      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names",
       "was": "m7400_can_issue"
     },
     "0x005790a0": {
       "name": "m7400_initialize",
-      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names (AGENTS.md)",
+      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names",
       "was": "m7400_initialize"
     },
     "0x00579180": {
       "name": "m7400_latency",
-      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names (AGENTS.md)",
+      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names",
       "was": "m7400_latency"
     },
     "0x005791d0": {
       "name": "m603_serializes",
-      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names (AGENTS.md)",
+      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names",
       "was": "m603_serializes"
     },
     "0x005791f0": {
       "name": "m603_advance_clock",
-      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names (AGENTS.md)",
+      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names",
       "was": "m603_advance_clock"
     },
     "0x00579510": {
       "name": "m603_issue",
-      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names (AGENTS.md)",
+      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names",
       "was": "m603_issue"
     },
     "0x00579590": {
       "name": "m603_can_issue",
-      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names (AGENTS.md)",
+      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names",
       "was": "m603_can_issue"
     },
     "0x005795f0": {
       "name": "m603_initialize",
-      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names (AGENTS.md)",
+      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names",
       "was": "m603_initialize"
     },
     "0x005796a0": {
       "name": "m603_latency",
-      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names (AGENTS.md)",
+      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names",
       "was": "m603_latency"
     },
     "0x005796f0": {
       "name": "m603e_serializes",
-      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names (AGENTS.md)",
+      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names",
       "was": "m603e_serializes"
     },
     "0x00579710": {
       "name": "m603e_advance_clock",
-      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names (AGENTS.md)",
+      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names",
       "was": "m603e_advance_clock"
     },
     "0x00579a30": {
       "name": "m603e_issue",
-      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names (AGENTS.md)",
+      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names",
       "was": "m603e_issue"
     },
     "0x00579ac0": {
       "name": "m603e_can_issue",
-      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names (AGENTS.md)",
+      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names",
       "was": "m603e_can_issue"
     },
     "0x00579b60": {
       "name": "m603e_initialize",
-      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names (AGENTS.md)",
+      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names",
       "was": "m603e_initialize"
     },
     "0x00579c10": {
       "name": "m603e_latency",
-      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names (AGENTS.md)",
+      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names",
       "was": "m603e_latency"
     },
     "0x00579c60": {
       "name": "m604_serializes",
-      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names (AGENTS.md)",
+      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names",
       "was": "m604_serializes"
     },
     "0x00579c80": {
       "name": "m604_advance_clock",
-      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names (AGENTS.md)",
+      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names",
       "was": "m604_advance_clock"
     },
     "0x00579fc0": {
       "name": "m604_issue",
-      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names (AGENTS.md)",
+      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names",
       "was": "m604_issue"
     },
     "0x0057a040": {
       "name": "m604_can_issue",
-      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names (AGENTS.md)",
+      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names",
       "was": "m604_can_issue"
     },
     "0x0057a120": {
       "name": "m604_initialize",
-      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names (AGENTS.md)",
+      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names",
       "was": "m604_initialize"
     },
     "0x0057a1f0": {
       "name": "m604_latency",
-      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names (AGENTS.md)",
+      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names",
       "was": "m604_latency"
     },
     "0x0057a240": {
       "name": "m750_serializes",
-      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names (AGENTS.md)",
+      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names",
       "was": "m750_serializes"
     },
     "0x0057a260": {
       "name": "m750_advance_clock",
-      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names (AGENTS.md)",
+      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names",
       "was": "m750_advance_clock"
     },
     "0x0057a5f0": {
       "name": "m750_issue",
-      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names (AGENTS.md)",
+      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names",
       "was": "m750_issue"
     },
     "0x0057a680": {
       "name": "m750_can_issue",
-      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names (AGENTS.md)",
+      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names",
       "was": "m750_can_issue"
     },
     "0x0057a780": {
       "name": "m750_initialize",
-      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names (AGENTS.md)",
+      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names",
       "was": "m750_initialize"
     },
     "0x0057a830": {
       "name": "m750_latency",
-      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names (AGENTS.md)",
+      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names",
       "was": "m750_latency"
     },
     "0x0057a880": {
       "name": "m601_serializes",
-      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names (AGENTS.md)",
+      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names",
       "was": "m601_serializes"
     },
     "0x0057a8a0": {
       "name": "m601_advance_clock",
-      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names (AGENTS.md)",
+      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names",
       "was": "m601_advance_clock"
     },
     "0x0057a9f0": {
       "name": "m601_issue",
-      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names (AGENTS.md)",
+      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names",
       "was": "m601_issue"
     },
     "0x0057aa30": {
       "name": "m601_can_issue",
-      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names (AGENTS.md)",
+      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names",
       "was": "m601_can_issue"
     },
     "0x0057aa60": {
       "name": "m601_initialize",
-      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names (AGENTS.md)",
+      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names",
       "was": "m601_initialize"
     },
     "0x0057aaa0": {
       "name": "m601_latency",
-      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names (AGENTS.md)",
+      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names",
       "was": "m601_latency"
     },
     "0x0057aaf0": {
       "name": "m821_serializes",
-      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names (AGENTS.md)",
+      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names",
       "was": "m821_serializes"
     },
     "0x0057ab10": {
       "name": "m821_advance_clock",
-      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names (AGENTS.md)",
+      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names",
       "was": "m821_advance_clock"
     },
     "0x0057ace0": {
       "name": "m821_issue",
-      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names (AGENTS.md)",
+      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names",
       "was": "m821_issue"
     },
     "0x0057ad60": {
       "name": "m821_can_issue",
-      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names (AGENTS.md)",
+      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names",
       "was": "m821_can_issue"
     },
     "0x0057adc0": {
       "name": "m821_initialize",
-      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names (AGENTS.md)",
+      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names",
       "was": "m821_initialize"
     },
     "0x0057ae70": {
       "name": "m821_latency",
-      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names (AGENTS.md)",
+      "note": "Pro7's machine-model statics (serializes, advance_clock, issue, can_issue, initialize, latency) with the repo's unit prefix for global row names",
       "was": "m821_latency"
     },
     "0x0057aec0": {
@@ -11044,11 +11041,6 @@
       "name": "gcc_parse_name",
       "note": "Pro7 static (s_expression, create_temp_object, InlineAsm_ResolveOperandNameDefault); first defined, last in .text",
       "was": "fn_0057c6d0"
-    },
-    "0x00481d40": {
-      "name": "ObjectSet_Add",
-      "note": "Pro7 ObjectSet_sub_4867D0 (find, then simple add: LocationSetSet_Add's twin); Wii has a public ObjectSet_Add in IroPointerAnalysis (the pairing's PARegionSet_SimpleAdd is a weak order match)",
-      "was": "ObjectSet_Add"
     }
   },
   "units": {

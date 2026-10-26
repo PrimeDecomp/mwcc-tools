@@ -1,12 +1,3 @@
-"""Linking with the linker the original was linked with: the relink, and the import libraries.
-
-The relink is the original's translation units linked back together. Each unit is its split object (tools/split.py,
-build/VERSION/obj) or, where its source's compiled object links into the original, that object; the linker's runtime
-objects as they ship; then the import libraries (tools/implib.py) and the original's resources. inputs() is that list
-(configure.py's relink edge and tools/relink.py's trial links both take it), mwld() the one command line (the
-equivalent compiler, tools/equivalent.py, is linked with it too).
-"""
-
 from __future__ import annotations
 
 import struct
@@ -22,16 +13,12 @@ from .project import ROOT, Error, Version, relative
 from .project import version as get_version
 
 MWLD = "build/compilers/pro53/mwld.exe"
-# (objects of the linker's runtime library the original links, as they ship)
 LIBRARY_OBJECTS = {"cexc.obj": "lib/runtime/cexc.obj", "ccinit.obj": "lib/runtime/ccinit.obj"}
-# (the runtime objects the equivalent compiler links: the ones the original links, with thread-local storage's)
 RUNTIME_OBJECTS = ("lib/runtime/cexc.obj", "lib/runtime/ccinit.obj", "lib/runtime/ctls.obj")
-# (the DLLs the original imports from: one import library each)
 IMPORT_LIBRARIES = ("kernel32", "lmgr326b", "version")
 
 
 def import_definition(name: str) -> str:
-    """The checked-in definition of import library NAME (the source-only build's, made by llvm-dlltool)."""
     return f"src/imports/{name}.def"
 
 
@@ -40,7 +27,6 @@ def source_import_library(name: str) -> str:
 
 
 def defined_imports() -> set[str]:
-    """The linker names of the functions src/imports' definitions import ("_GetStdHandle@4")."""
     out = set()
     for name in IMPORT_LIBRARIES:
         lines = (line.split(";")[0].split() for line in (ROOT / import_definition(name)).read_text().splitlines())
@@ -58,8 +44,6 @@ def import_libraries(version: Version | str) -> list[str]:
 
 
 def inputs(version: Version | str, units: list[str], compiled: set[str]) -> list[str]:
-    """The linker's inputs, in order, for UNITS (splits.txt's, in link order), taking the compiled objects of the units
-    in COMPILED and the split objects of the rest."""
     v = get_version(version)
     out = [f"build/{v}/obj/sections.obj"]
     for unit in units:
@@ -73,7 +57,6 @@ def inputs(version: Version | str, units: list[str], compiled: set[str]) -> list
 
 
 def mwld(inputs: list[str], output: Path | str, *options: str) -> subprocess.CompletedProcess:
-    """Link INPUTS into OUTPUT as the original was linked (with OPTIONS added)."""
     return build.run(
         [
             *build.windows_prefix(),
@@ -92,33 +75,26 @@ def mwld(inputs: list[str], output: Path | str, *options: str) -> subprocess.Com
 
 
 def errors(result: subprocess.CompletedProcess) -> list[str]:
-    """The linker's messages (it reports each on a line starting '#   ')."""
     return [line.strip("# ").strip() for line in result.stdout.splitlines() if line.startswith("#   ")]
 
 
 def with_original_stamp(linked: bytes, original: PEFile) -> bytes:
-    """LINKED with ORIGINAL's time stamp (the linker writes the time it runs)."""
     at = struct.unpack_from("<I", original.data, 0x3C)[0] + 8
     out = bytearray(linked)
     out[at : at + 4] = original.data[at : at + 4]
     return bytes(out)
 
 
-# ---------------------------------------------------------------------------------------------- import libraries
-
-
 @dataclass
 class Import:
     dll: str
-    symbol: str  # the linker name of its slot, less "__imp_" ("_GetStdHandle@4")
-    number: int  # the hint, or the ordinal of one imported by ordinal
+    symbol: str
+    number: int
     by_name: bool
-    slot: int  # its address in the original's import address table
+    slot: int
 
 
 def imports(version: Version | str) -> list[Import]:
-    """The original's imports, in its import directory's order, named as config/VERSION/symbols.txt names their slots
-    (the decorations of __stdcall functions)."""
     v = get_version(version)
     named = {s.address: s.name for s in formats.read_symbols(v.config / "symbols.txt") if s.section == ".idata"}
     out = []
@@ -132,9 +108,6 @@ def imports(version: Version | str) -> list[Import]:
 
 
 def import_library(dll: str, entries: list[Import], code: bool = False) -> bytes:
-    """An import library for DLL in the format Microsoft's LIB writes: a descriptor, the null descriptor and null thunk
-    objects, then one short import per entry, with its hint (the linker writes the hint the library gives) or ordinal.
-    Each import is data (an __imp_ pointer and no thunk), or with CODE a function with its thunk as well."""
     base = dll.rsplit(".", 1)[0]
     descriptor, null_descriptor, null_thunk = (
         f"__IMPORT_DESCRIPTOR_{base}",
@@ -188,13 +161,10 @@ def import_library(dll: str, entries: list[Import], code: bool = False) -> bytes
     ]
     for entry in entries:
         strings = entry.symbol.encode() + b"\0" + dll.encode() + b"\0"
-        # (IMPORT_OBJECT_HEADER: code or data; imported by ordinal, or by its name undecorated, the number its hint)
         kind = (0 if code else 1) | (3 if entry.by_name else 0) << 2
         header = struct.pack("<HHHHIIHH", 0, 0xFFFF, 0, 0x14C, 0, len(strings), entry.number, kind)
         members.append((header + strings, [f"__imp_{entry.symbol}"] + ([entry.symbol] if code else [])))
 
-    # The archive: the first linker member (big-endian offsets, symbol order), the second (member indices, sorted
-    # names), then the members, each named after the DLL.
     symbol_members = [(symbol, i) for i, (_, names) in enumerate(members) for symbol in names]
     first_size = 4 + 4 * len(symbol_members) + sum(len(s) + 1 for s, _ in symbol_members)
     second_size = 4 + 4 * len(members) + 4 + 2 * len(symbol_members) + sum(len(s) + 1 for s, _ in symbol_members)
@@ -223,7 +193,6 @@ def import_library(dll: str, entries: list[Import], code: bool = False) -> bytes
 
 
 def import_libraries_of(version: Version | str, code: bool = False) -> dict[str, bytes]:
-    """{file name: import library} for each DLL the original imports from (see import_library)."""
     by_dll: dict[str, list[Import]] = {}
     for item in imports(version):
         by_dll.setdefault(item.dll, []).append(item)

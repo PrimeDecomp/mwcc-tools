@@ -10,20 +10,18 @@
 #include "compiler/BitVector.h"
 #include "compiler/CClass.h"
 #include "compiler/CError.h"
-#include "compiler/CException.h"
 #include "compiler/CExpr.h"
 #include "compiler/CFunc.h"
 #include "compiler/CompilerTools.h"
 #include "compiler/CParser.h"
-#include "compiler/CPrep.h"
 #include "compiler/enode.h"
 #include "compiler/Exceptions.h"
+#include "compiler/InlineAsm.h"
 #include "compiler/InlineAsmPPC.h"
 #include "compiler/objects.h"
-#include "compiler/OracleProbes.h"
-#include "compiler/Registers.h"
+#include "compiler/types.h"
 
-#pragma pack(push, 2) // Pro7: options align=mac68k
+#pragma pack(push, 2)
 typedef struct IndirectRecordMatch {
     IROLinear* nd;
     struct IndirectRecordMatch* otherMatches;
@@ -35,14 +33,19 @@ typedef struct IndirectRecord {
     VarRecord* var;
     SInt32 addend;
     SInt32 size;
-    int startbit;
-    int endbit;
+    UInt32 startbit;
+    UInt32 endbit;
     Type* type;
     struct IndirectRecord* next;
     IndirectRecordMatch* matches;
-    IROLinear* x26;
+    IROLinear* replacement;
 } IndirectRecord;
 #pragma pack(pop)
+
+enum IndirectRecordFlags {
+    IRF_Disabled = 1,
+    IRF_Bitfield = 2
+};
 
 static IndirectRecord* IRO_FirstIndirectRecord;
 static IndirectRecord* IRO_LastIndirectRecord;
@@ -56,7 +59,6 @@ SInt32 IRO_VarTerms;
 Boolean IRO_IsModifyOp[MAXEXPR];
 Boolean IRO_IsAssignOp[MAXEXPR];
 
-// (2.6 returns int where Pro7 has Boolean: the callers' `xor eax, eax`)
 static int CheckAddress(IROLinear* nd, Boolean* resultFlag);
 static int CheckAddressConsistency(IROLinear* nd, VarRecord* var, SInt32 addend, Type* type);
 static void DisableEntries(IndirectRecord* irec);
@@ -232,12 +234,12 @@ void IRO_InitializeIRO_IsAssignOpArray(void) {
     IRO_IsAssignOp[ECONDASS] = TRUE;
 }
 
-VarRecord* IRO_FindVar(Object* object, Boolean flag1, Boolean flag2) {
+VarRecord* IRO_FindVar(Object* object, Boolean create, Boolean allowRegister) {
     VarRecord* var;
     VarInfo* vi;
 
     var = object->varptr;
-    if (!var && flag1) {
+    if (!var && create) {
         vi = NULL;
         if (object->datatype == DLOCAL) {
             vi = object->u.var.info;
@@ -249,7 +251,7 @@ VarRecord* IRO_FindVar(Object* object, Boolean flag1, Boolean flag2) {
         var->object = object;
         var->index = ++IRO_NumVars;
         var->unused = 0;
-        var->inductionState = 0;
+        var->inductionState = FALSE;
         var->next = NULL;
         var->defs = NULL;
         var->uses = NULL;
@@ -265,10 +267,9 @@ VarRecord* IRO_FindVar(Object* object, Boolean flag1, Boolean flag2) {
         object->varptr = var;
     }
 
-    if (var && !flag2) {
+    if (var && !allowRegister) {
         var->noregister = TRUE;
-        if (object->datatype ==
-            DLOCAL &&
+        if (object->datatype == DLOCAL &&
             object->u.var.info &&
             object->u.var.info->noregister == 0) {
             object->u.var.info->noregister = 2;
@@ -278,7 +279,6 @@ VarRecord* IRO_FindVar(Object* object, Boolean flag1, Boolean flag2) {
     return var;
 }
 
-// (2.6: external, IRO_Optimizer calls it after delinearizing; Pro7's is static)
 void ResetVars(void) {
     VarRecord* var;
 
@@ -286,7 +286,7 @@ void ResetVars(void) {
         var->noregister = FALSE;
         if (var->object && var->object->datatype == DLOCAL && var->object->u.var.info) {
             if (var->object->u.var.info->noregister == 2) {
-                var->object->u.var.info->noregister = 0;
+                var->object->u.var.info->noregister = FALSE;
             }
         }
     }
@@ -328,6 +328,8 @@ static void IRO_HandleExceptionActions(IROLinear* linear) {
             case EAT_ACTIVECATCHBLOCK:
                 IRO_FindVar(action->data.active_catch_block.catch_info_object, TRUE, FALSE);
                 break;
+            default:
+                break;
         }
     }
 }
@@ -335,7 +337,7 @@ static void IRO_HandleExceptionActions(IROLinear* linear) {
 void IRO_FindAllVars(void) {
     IROLinear* linear;
     VarRecord* var;
-    Object* obj; // (2.6, as 1.x: the object in a local; Pro7 rereads linear->u.node->data.objref)
+    Object* obj;
 
     linear = IRO_FirstLinear;
     IRO_NumVars = 0;
@@ -390,7 +392,7 @@ void IRO_ZapVarPtrs(void) {
 void IRO_UpdateVars(void) {
     IROLinear* linear;
     VarRecord* var;
-    Object* obj; // (as in IRO_FindAllVars)
+    Object* obj;
 
     ResetVars();
 
@@ -540,8 +542,6 @@ VarRecord* IRO_FindAssigned(IROLinear* linear) {
     }
 }
 
-// (2.6 walks the result list twice with scan, where Pro7 keeps a second walker `list`; Pro7's
-// declaration order gives other registers)
 static void GetKillsByIndirectAssignment(IROLinear* linear) {
     IROListNode* resultList;
     IROListNode* scan;
@@ -559,10 +559,8 @@ static void GetKillsByIndirectAssignment(IROLinear* linear) {
     }
 
     if (linear &&
-        linear->type ==
-        IROLinearOp1Arg &&
-        linear->nodetype ==
-        EINDIRECT &&
+        linear->type == IROLinearOp1Arg &&
+        linear->nodetype == EINDIRECT &&
         (inner = linear->u.monadic) &&
         copts.opt_pointer_analysis &&
         inner->pointsToFunction &&
@@ -631,7 +629,7 @@ static void GetKillsByIndirectAssignment(IROLinear* linear) {
 
 static void GetKillsByFunctionCall(IROLinear* linear) {
     IROListNode* resultList;
-    IROListNode* list; // (2.6 frees the result list through it; Pro7 declares it unused)
+    IROListNode* list;
     IROListNode* scan;
     IROLinear* nd;
     IROLinear* inner;
@@ -748,7 +746,6 @@ void IRO_GetKills(IROLinear* linear) {
         case IROLinearOp1Arg:
         case IROLinearOp2Arg:
             if (IRO_IsAssignOp[linear->nodetype]) {
-                IROLinear* assigned;
                 int index;
 
                 var = IRO_FindAssigned(linear);
@@ -780,6 +777,8 @@ void IRO_GetKills(IROLinear* linear) {
                             Bv_SetBit(var->index, IRO_VarKills);
                         }
                         break;
+                    default:
+                        break;
                 }
             }
 
@@ -788,6 +787,8 @@ void IRO_GetKills(IROLinear* linear) {
             }
             break;
         }
+        default:
+            break;
     }
 }
 
@@ -796,9 +797,9 @@ void IRO_CheckInit(void) {
     IROLinear* nd;
     VarRecord* var;
     ObjectList* olist;
-    int flag;
+    int changed;
     int i;
-    int j; // (2.6: the propagation loop has a counter of its own; Pro7 reuses i)
+    int j;
     BitVector* bv;
 
     IRO_MakeReachable(IRO_FirstNode);
@@ -840,6 +841,8 @@ void IRO_CheckInit(void) {
                         case IAEffect_ReadWrite:
                             Bv_SetBit(var->index, fnode->gen);
                             break;
+                        default:
+                            break;
                     }
                 }
             }
@@ -855,7 +858,7 @@ void IRO_CheckInit(void) {
     Bv_AllocVector(&bv, IRO_NumVars + 1);
 
     do {
-        flag = FALSE;
+        changed = FALSE;
         for (fnode = IRO_FirstNode; fnode; fnode = fnode->nextnode) {
             Bv_Copy(fnode->gen, bv);
             for (j = 0; j < fnode->numpred; j++) {
@@ -863,10 +866,10 @@ void IRO_CheckInit(void) {
             }
             if (!Bv_Compare(bv, fnode->gen)) {
                 Bv_Copy(bv, fnode->gen);
-                flag = TRUE;
+                changed = TRUE;
             }
         }
-    } while (flag);
+    } while (changed);
 
     Bv_Clear(IRO_VarKills);
 
@@ -881,7 +884,6 @@ void IRO_CheckInit(void) {
     }
 
     for (olist = locals; olist; olist = olist->next) {
-        // (2.6 nests the two tests Pro7 joins with &&)
         if ((var = IRO_FindVar(olist->object, FALSE, TRUE))) {
             if (Bv_IsBitSet(var->index, IRO_VarKills)) {
                 VarInfo* vi = olist->object->u.var.info;
@@ -903,7 +905,6 @@ void IRO_CheckInit(void) {
 }
 
 static void RewriteIndDec(void) {
-    // (2.6's declaration order: Pro7's, add/indirect/Int/nd, gives other registers)
     IROLinear* nd;
     IROLinear* add;
     IROLinear* Int;
@@ -912,17 +913,13 @@ static void RewriteIndDec(void) {
     IROList list;
 
     for (nd = IRO_FirstLinear; nd; nd = nd->next) {
-        if (nd->type ==
-            IROLinearOp1Arg &&
+        if (nd->type == IROLinearOp1Arg &&
             (nd->nodetype == EPOSTINC || nd->nodetype == EPOSTDEC) &&
             !(nd->flags & IROLF_Reffed)) {
             indirect = nd->u.monadic;
-            if (indirect->type ==
-                IROLinearOp1Arg &&
-                indirect->nodetype ==
-                EINDIRECT &&
-                indirect->u.monadic->type ==
-                IROLinearOp1Arg &&
+            if (indirect->type == IROLinearOp1Arg &&
+                indirect->nodetype == EINDIRECT &&
+                indirect->u.monadic->type == IROLinearOp1Arg &&
                 indirect->u.monadic->nodetype == EBITFIELD) {
                 value = IRO_GetSelfAssignmentVal(nd);
                 IRO_InitList(&list);
@@ -957,7 +954,7 @@ static void RewriteIndDec(void) {
 
 void IRO_RewriteBitFieldTemps(void) {
     IROLinear* nd;
-    IROLinear* expr2;
+    IROLinear* replacement;
     Object* obj;
     VarRecord* var;
     IROList list;
@@ -967,11 +964,11 @@ void IRO_RewriteBitFieldTemps(void) {
             var = IRO_FindVar(obj, FALSE, TRUE);
             CError_ASSERT(1525, var != NULL);
 
-            expr2 = var->bitFieldReplacement;
-            CError_ASSERT(1531, expr2 != NULL);
+            replacement = var->bitFieldReplacement;
+            CError_ASSERT(1531, replacement != NULL);
 
             IRO_InitList(&list);
-            IRO_DuplicateExpr(expr2, &list);
+            IRO_DuplicateExpr(replacement, &list);
             IRO_NopOut(nd->u.monadic);
             nd->u.monadic = list.tail;
             IRO_Paste(list.head, list.tail, nd);
@@ -979,8 +976,6 @@ void IRO_RewriteBitFieldTemps(void) {
     }
 }
 
-// (2.6: an early break where Pro7 has `if (!result) { dependencies }`, and the list walkers' next
-// pointers at function scope; Pro7's block-local ones give other registers)
 static Boolean FunctionCallMightUseOrKillAnyAddressedVar(IROLinear* funccall) {
     IROListNode* nextList;
     IROLinear* funcnd;
@@ -1097,7 +1092,6 @@ static Boolean FunctionCallMightUseOrKillAnyAddressedVar(IROLinear* funccall) {
     return result;
 }
 
-// (2.6 reuses the parameter for Pro7's `inner` and declares next at function scope, in this order)
 static Boolean IndirectMightUseOrKillAnyAddressedVar(IROLinear* indirect) {
     IROListNode* next;
     IROLinear* nd;
@@ -1111,10 +1105,8 @@ static Boolean IndirectMightUseOrKillAnyAddressedVar(IROLinear* indirect) {
     result = FALSE;
 
     if (indirect &&
-        indirect->type ==
-        IROLinearOp1Arg &&
-        indirect->nodetype ==
-        EINDIRECT &&
+        indirect->type == IROLinearOp1Arg &&
+        indirect->nodetype == EINDIRECT &&
         (indirect = indirect->u.monadic) &&
         copts.opt_pointer_analysis &&
         indirect->pointsToFunction &&
@@ -1171,27 +1163,23 @@ void IRO_ScalarizeClassDataMembers(void) {
     Object* obj;
     IndirectRecord* irec;
     IndirectRecordMatch* match;
-    IROLinear* tmp;
-    // (2.6 declares the lists at function scope, in this order; Pro7's block-local ones change the
-    // frame)
+    IROLinear* father;
     IROList list1;
     VarRecord* var;
     IROList list2;
-    Boolean flag;
-    // (2.6 copies the object before the inlined ObjectIsArg; passing irec->var->object, as Pro7
-    // does, gives other registers)
+    Boolean unsafe;
     Object* argobj;
 
     nd = IRO_FirstLinear;
     IRO_FirstIndirectRecord = NULL;
     IRO_LastIndirectRecord = NULL;
     RewriteIndDec();
-    IRO_DumpAfterPhase("RewriteIndDec", 0);
-    flag = FALSE;
+    IRO_DumpAfterPhase("RewriteIndDec", FALSE);
+    unsafe = FALSE;
 
     while (nd) {
         if (nd->type == IROLinearOp1Arg && nd->nodetype == EINDIRECT) {
-            CheckAddress(nd, &flag);
+            CheckAddress(nd, &unsafe);
         }
         if (nd->type == IROLinearAsm) {
             IAEffects effects;
@@ -1205,26 +1193,23 @@ void IRO_ScalarizeClassDataMembers(void) {
                 }
             }
         }
-        if (nd->type == IROLinearFunccall && !flag) {
-            flag = FunctionCallMightUseOrKillAnyAddressedVar(nd);
+        if (nd->type == IROLinearFunccall && !unsafe) {
+            unsafe = FunctionCallMightUseOrKillAnyAddressedVar(nd);
         }
 
         nd = nd->next;
     }
 
-    if (flag) {
-        // (2.6 writes Pro7's DisableAddressedEntries out here, walking with irec; the call,
-        // inlined, gives other registers)
+    if (unsafe) {
         for (irec = IRO_FirstIndirectRecord; irec; irec = irec->next) {
             if (irec->var->noregister) {
-                irec->flags |= 1;
+                irec->flags |= IRF_Disabled;
             }
         }
     }
 
     for (irec = IRO_FirstIndirectRecord; irec; irec = irec->next) {
-        if (!(irec->flags & 1)) {
-            ORACLE_PROBE(OracleProbe_ScalarTemporary(irec));
+        if (!(irec->flags & IRF_Disabled)) {
             obj = create_temp_object(irec->type);
             var = IRO_FindVar(obj, TRUE, TRUE);
             for (match = irec->matches; match; match = match->otherMatches) {
@@ -1233,77 +1218,77 @@ void IRO_ScalarizeClassDataMembers(void) {
                 IRO_DuplicateExpr(match->nd, &list1);
                 IRO_DuplicateExpr(match->nd, &list2);
                 if (match->nd->type == IROLinearOperand && match->nd->u.node->type == EOBJREF) {
-                    tmp = IRO_LocateFather(match->nd);
-                    if (irec->flags & 2) {
-                        tmp->flags |= IROLF_BitfieldIndirect;
+                    father = IRO_LocateFather(match->nd);
+                    if (irec->flags & IRF_Bitfield) {
+                        father->flags |= IROLF_BitfieldIndirect;
                         var->bitfieldType = TYPE_BITFIELD(match->nd->rtype);
                         var->bitFieldReplacement = list2.tail;
                     }
                     match->nd->u.node = create_objectrefnode(obj);
-                    irec->x26 = list2.tail;
+                    irec->replacement = list2.tail;
                 } else {
-                    tmp = IRO_LocateFather(match->nd);
-                    if (irec->flags & 2) {
-                        tmp->flags |= IROLF_BitfieldIndirect;
+                    father = IRO_LocateFather(match->nd);
+                    if (irec->flags & IRF_Bitfield) {
+                        father->flags |= IROLF_BitfieldIndirect;
                         var->bitfieldType = TYPE_BITFIELD(match->nd->rtype);
                         var->bitFieldReplacement = list2.tail;
                     }
-                    irec->x26 = list2.tail;
+                    irec->replacement = list2.tail;
 
-                    IRO_NopOut(tmp->u.monadic);
-                    tmp->u.monadic = IRO_NewLinear(IROLinearOperand);
-                    tmp->u.monadic->u.node = create_objectrefnode(obj);
-                    tmp->u.monadic->rtype = match->nd->rtype;
-                    tmp->u.monadic->index = ++IRO_NumLinear;
-                    tmp->u.monadic->flags |= IROLF_Ind | IROLF_Reffed;
+                    IRO_NopOut(father->u.monadic);
+                    father->u.monadic = IRO_NewLinear(IROLinearOperand);
+                    father->u.monadic->u.node = create_objectrefnode(obj);
+                    father->u.monadic->rtype = match->nd->rtype;
+                    father->u.monadic->index = ++IRO_NumLinear;
+                    father->u.monadic->flags |= IROLF_Ind | IROLF_Reffed;
                     IRO_NopOut(match->nd);
-                    IRO_PasteAfter(tmp->u.monadic, tmp->u.monadic, match->nd);
+                    IRO_PasteAfter(father->u.monadic, father->u.monadic, match->nd);
                 }
             }
 
             argobj = irec->var->object;
             if (ObjectIsArg(argobj)) {
-                IROLinear* op1;
-                IROLinear* op2;
-                IROLinear* op3;
-                IROLinear* op4;
-                IROLinear* op5;
+                IROLinear* tempRef;
+                IROLinear* addr;
+                IROLinear* tempInd;
+                IROLinear* valueInd;
+                IROLinear* assign;
 
-                op1 = IRO_NewLinear(IROLinearOperand);
-                op1->u.node = create_objectrefnode(obj);
-                op1->rtype = op1->u.node->data.objref->type;
-                op1->index = ++IRO_NumLinear;
-                op1->flags |= IROLF_Ind | IROLF_Assigned;
+                tempRef = IRO_NewLinear(IROLinearOperand);
+                tempRef->u.node = create_objectrefnode(obj);
+                tempRef->rtype = tempRef->u.node->data.objref->type;
+                tempRef->index = ++IRO_NumLinear;
+                tempRef->flags |= IROLF_Ind | IROLF_Assigned;
 
-                op2 = list1.tail;
+                addr = list1.tail;
 
-                op3 = IRO_NewLinear(IROLinearOp1Arg);
-                op3->nodetype = EINDIRECT;
-                op3->rtype = irec->type;
-                op3->u.monadic = op1;
-                op3->index = ++IRO_NumLinear;
-                op3->flags |= IROLF_Assigned;
+                tempInd = IRO_NewLinear(IROLinearOp1Arg);
+                tempInd->nodetype = EINDIRECT;
+                tempInd->rtype = irec->type;
+                tempInd->u.monadic = tempRef;
+                tempInd->index = ++IRO_NumLinear;
+                tempInd->flags |= IROLF_Assigned;
 
-                op4 = IRO_NewLinear(IROLinearOp1Arg);
-                op4->nodetype = EINDIRECT;
-                op4->rtype = irec->type;
-                op4->u.monadic = op2;
-                op4->index = ++IRO_NumLinear;
-                op4->flags |= IROLF_Reffed;
+                valueInd = IRO_NewLinear(IROLinearOp1Arg);
+                valueInd->nodetype = EINDIRECT;
+                valueInd->rtype = irec->type;
+                valueInd->u.monadic = addr;
+                valueInd->index = ++IRO_NumLinear;
+                valueInd->flags |= IROLF_Reffed;
 
-                op5 = IRO_NewLinear(IROLinearOp2Arg);
-                op5->nodetype = EASS;
-                op5->u.diadic.left = op3;
-                op5->u.diadic.right = op4;
-                op5->rtype = irec->type;
-                op5->index = ++IRO_NumLinear;
+                assign = IRO_NewLinear(IROLinearOp2Arg);
+                assign->nodetype = EASS;
+                assign->u.diadic.left = tempInd;
+                assign->u.diadic.right = valueInd;
+                assign->rtype = irec->type;
+                assign->index = ++IRO_NumLinear;
 
-                op2->next = op4;
-                op4->next = op1;
-                op1->next = op3;
-                op3->next = op5;
+                addr->next = valueInd;
+                valueInd->next = tempRef;
+                tempRef->next = tempInd;
+                tempInd->next = assign;
 
-                IRO_PasteAfter(list1.head, op5, IRO_FirstLinear);
+                IRO_PasteAfter(list1.head, assign, IRO_FirstLinear);
             }
         }
     }
@@ -1313,14 +1298,9 @@ void IRO_ScalarizeClassDataMembers(void) {
 
 static int CheckAddress(IROLinear* nd, Boolean* resultFlag) {
     IROLinear* inner;
-    Object* obj; // (2.6, as 1.x's: the object in a local)
+    Object* obj;
     VarRecord* var;
     Boolean result;
-    // TODO: 2.6 loads intval.hi into a register before the test (Pro7 compares it in memory); a
-    // local assigned in the condition gives that, nothing reads it. Tried: Pro7's `.hi == 0`,
-    // `!...hi`, int/long/unsigned casts, `0 == ...`, CTool_EndianReadWord32, a CInt64 or ENode*
-    // local. An inline `SInt32 f(CInt64* n) { return n->hi; }` also matches (a UInt32 return
-    // does not): 2.6 may test through such a helper, which neither Pro7 nor Wii names.
     SInt32 hi;
 
     inner = nd->u.monadic;
@@ -1340,17 +1320,12 @@ static int CheckAddress(IROLinear* nd, Boolean* resultFlag) {
                 result = TRUE;
             }
         }
-    } else if (inner->type ==
-               IROLinearOp2Arg &&
-               inner->nodetype ==
-               EADD &&
-               inner->u.diadic.left->type ==
-               IROLinearOperand &&
+    } else if (inner->type == IROLinearOp2Arg &&
+               inner->nodetype == EADD &&
+               inner->u.diadic.left->type == IROLinearOperand &&
                inner->u.diadic.left->u.node->type == EOBJREF) {
-        if (inner->u.diadic.right->type ==
-            IROLinearOperand &&
-            inner->u.diadic.right->u.node->type ==
-            EINTCONST &&
+        if (inner->u.diadic.right->type == IROLinearOperand &&
+            inner->u.diadic.right->u.node->type == EINTCONST &&
             (hi = inner->u.diadic.right->u.node->data.intval.hi) == 0) {
             obj = inner->u.diadic.left->u.node->data.objref;
             if (IS_TYPE_CLASS(obj->type) || IS_TYPE_STRUCT(obj->type) || IS_TYPE_ARRAY(obj->type)) {
@@ -1379,23 +1354,21 @@ static int CheckAddress(IROLinear* nd, Boolean* resultFlag) {
         *resultFlag = IndirectMightUseOrKillAnyAddressedVar(nd);
     }
 
-    return 0;
+    return FALSE;
 }
 
 static int CheckAddressConsistency(IROLinear* nd, VarRecord* var, SInt32 addend, Type* type) {
     IndirectRecord* rp;
     IndirectRecordMatch* match;
-    UInt32 flag;
+    UInt32 conflict;
     IROLinear* inner;
     UInt32 start_bit;
     UInt32 end_bit;
     TypeBitfield* tbitfield;
 
-    flag = FALSE;
+    conflict = FALSE;
     inner = nd->u.monadic;
     if (inner->type == IROLinearOp1Arg && inner->nodetype == EBITFIELD) {
-        // (2.6 reads the bit-field type once; Pro7's TYPE_BITFIELD(inner->rtype) twice loads it
-        // late)
         tbitfield = TYPE_BITFIELD(inner->rtype);
         start_bit = tbitfield->offset + 8 * addend;
         end_bit = start_bit + tbitfield->bitlength - 1;
@@ -1417,18 +1390,17 @@ static int CheckAddressConsistency(IROLinear* nd, VarRecord* var, SInt32 addend,
 
     for (rp = IRO_FirstIndirectRecord; rp; rp = rp->next) {
         if (rp->var->index == var->index) {
-            if (rp->flags & 1) {
+            if (rp->flags & IRF_Disabled) {
                 return FALSE;
             }
 
             if (addend == -1) {
-                flag = TRUE;
+                conflict = TRUE;
                 break;
             }
 
             if (IRO_TypesEqual(rp->type, type) &&
-                rp->startbit ==
-                start_bit &&
+                rp->startbit == start_bit &&
                 rp->endbit == end_bit) {
                 match = oalloc(sizeof(IndirectRecordMatch));
                 match->nd = inner;
@@ -1453,10 +1425,8 @@ static int CheckAddressConsistency(IROLinear* nd, VarRecord* var, SInt32 addend,
                 return TRUE;
             }
 
-            if (rp->startbit ==
-                start_bit &&
-                rp->endbit ==
-                end_bit &&
+            if (rp->startbit == start_bit &&
+                rp->endbit == end_bit &&
                 !IRO_TypesEqual(rp->type, type)) {
                 IRO_Dump(
                     "match on bits but mismatch on type %d and %d\n", rp->linear->index, nd->index
@@ -1468,7 +1438,7 @@ static int CheckAddressConsistency(IROLinear* nd, VarRecord* var, SInt32 addend,
                     start_bit,
                     end_bit
                 );
-                flag = TRUE;
+                conflict = TRUE;
                 break;
             }
 
@@ -1481,7 +1451,7 @@ static int CheckAddressConsistency(IROLinear* nd, VarRecord* var, SInt32 addend,
                     start_bit,
                     end_bit
                 );
-                flag = TRUE;
+                conflict = TRUE;
                 break;
             }
 
@@ -1494,13 +1464,13 @@ static int CheckAddressConsistency(IROLinear* nd, VarRecord* var, SInt32 addend,
                     start_bit,
                     end_bit
                 );
-                flag = TRUE;
+                conflict = TRUE;
                 break;
             }
         }
     }
 
-    if (flag) {
+    if (conflict) {
         DisableEntries(rp);
         if (addend >= 0) {
             return FALSE;
@@ -1524,21 +1494,17 @@ static int CheckAddressConsistency(IROLinear* nd, VarRecord* var, SInt32 addend,
     rp->startbit = start_bit;
     rp->endbit = end_bit;
 
-    if (nd->type ==
-        IROLinearOp1Arg &&
-        nd->nodetype ==
-        EINDIRECT &&
-        nd->u.monadic->type ==
-        IROLinearOp1Arg &&
+    if (nd->type == IROLinearOp1Arg &&
+        nd->nodetype == EINDIRECT &&
+        nd->u.monadic->type == IROLinearOp1Arg &&
         nd->u.monadic->nodetype == EBITFIELD) {
-        rp->flags |= 2;
+        rp->flags |= IRF_Bitfield;
     }
 
     if (!(IS_TYPE_FLOAT(type) || IS_TYPE_INT(type) || IS_TYPE_POINTER_ONLY(type)) ||
-        addend ==
-        -1 ||
-        ((inner->flags & IROLF_4000) && ObjectIsArg(var->object))) {
-        rp->flags |= 1;
+        addend == -1 ||
+        ((inner->flags & IROLF_InCallArg) && ObjectIsArg(var->object))) {
+        rp->flags |= IRF_Disabled;
     }
 
     if (IRO_FirstIndirectRecord) {
@@ -1555,7 +1521,7 @@ static void DisableEntries(IndirectRecord* irec) {
 
     for (scan = IRO_FirstIndirectRecord; scan; scan = scan->next) {
         if (irec->var->index == scan->var->index) {
-            scan->flags |= 1;
+            scan->flags |= IRF_Disabled;
         }
     }
 }

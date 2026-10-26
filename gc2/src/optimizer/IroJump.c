@@ -3,7 +3,6 @@
 #include "compiler/IroFlowgraph.h"
 #include "compiler/IroLinearForm.h"
 #include "compiler/IroUtil.h"
-#include "compiler/CException.h"
 #include "compiler/CFunc.h"
 #include "compiler/Exceptions.h"
 #include "compiler/Switch.h"
@@ -13,8 +12,7 @@ static Boolean CheckChain(CLabel** labelptr) {
 
     for (node = IRO_FirstNode; node; node = node->nextnode) {
         if (node->first &&
-            node->first->type ==
-            IROLinearLabel &&
+            node->first->type == IROLinearLabel &&
             node->first->u.label.label == *labelptr) {
             IROLinear* linear;
             CLabel* lab;
@@ -45,75 +43,77 @@ static Boolean CheckChain(CLabel** labelptr) {
 Boolean IRO_DoJumpChaining(void) {
     IRONode* node;
     IROLinear* linear;
-    Boolean flag;
+    Boolean changed;
     SwitchInfo* info;
     SwitchCase* curcase;
     Boolean result;
 
     result = FALSE;
     do {
-        flag = FALSE;
+        changed = FALSE;
         for (node = IRO_FirstNode; node; node = node->nextnode) {
             if (node->first) {
                 linear = node->last;
                 switch (linear->type) {
                     case IROLinearGoto:
                         if (CheckChain(&linear->u.label.label)) {
-                            flag = TRUE;
+                            changed = TRUE;
                         }
                         break;
                     case IROLinearIf:
                     case IROLinearIfNot:
                         if (CheckChain(&linear->u.label.label)) {
-                            flag = TRUE;
+                            changed = TRUE;
                         }
                         break;
                     case IROLinearSwitch:
                         info = linear->u.swtch.info;
                         for (curcase = info->cases; curcase; curcase = curcase->next) {
                             if (CheckChain(&curcase->label)) {
-                                flag = TRUE;
+                                changed = TRUE;
                             }
                         }
                         if (CheckChain(&info->defaultlabel)) {
-                            flag = TRUE;
+                            changed = TRUE;
                         }
+                        break;
+                    default:
                         break;
                 }
             }
         }
-        result |= flag;
+        result |= changed;
         IRO_CheckForUserBreak();
-    } while (flag);
+    } while (changed);
 
     return result;
 }
 
 void IRO_MakeReachable(IRONode* node) {
     UInt16 i;
-    Boolean flag;
-    IRONode* scan; // Pro7 walks with `node` itself; 2.6 keeps the parameter apart (in eax)
+    Boolean changed;
+    IRONode* scan;
 
     node->reachable = TRUE;
     do {
-        flag = FALSE;
+        changed = FALSE;
         for (scan = IRO_FirstNode; scan; scan = scan->nextnode) {
             if (scan->reachable && !scan->visited) {
                 for (i = 0; i < scan->numsucc; i++) {
                     if (!IRO_NodeTable[scan->succ[i]]->reachable) {
-                        flag = TRUE;
+                        changed = TRUE;
                         IRO_NodeTable[scan->succ[i]]->reachable = TRUE;
                     }
                 }
                 scan->visited = TRUE;
             }
         }
-    } while (flag);
+    } while (changed);
 }
 
 Boolean IRO_RemoveUnreachable(void) {
-    IRONode* node2;
-    IRONode* node1;
+    IRONode* node;
+    IRONode* prevNode;
     IROLinear* scan;
     IROLinear* linear;
     Boolean result;
@@ -123,15 +123,15 @@ Boolean IRO_RemoveUnreachable(void) {
     result = FALSE;
     IRO_ComputeSuccPred();
     IRO_MakeReachable(IRO_FirstNode);
-    node1 = IRO_FirstNode;
-    for (node2 = IRO_FirstNode->nextnode; node2; node2 = node2->nextnode) {
-        if (node2->first && !node2->reachable) {
-            IRO_Dump("Removing unreachable code at: %d\n", node2->index);
-            node1->nextnode = node2->nextnode;
-            node1->last->next = node2->last->next;
+    prevNode = IRO_FirstNode;
+    for (node = IRO_FirstNode->nextnode; node; node = node->nextnode) {
+        if (node->first && !node->reachable) {
+            IRO_Dump("Removing unreachable code at: %d\n", node->index);
+            prevNode->nextnode = node->nextnode;
+            prevNode->last->next = node->last->next;
             result = TRUE;
-            for (linear = node2->first;
-                 linear && linear->type == IROLinearLabel && linear != node2->last->next;
+            for (linear = node->first;
+                 linear && linear->type == IROLinearLabel && linear != node->last->next;
                  linear = linear->next) {
                 for (scan = IRO_FirstLinear; scan; scan = scan->next) {
                     if (scan->stmt) {
@@ -144,11 +144,9 @@ Boolean IRO_RemoveUnreachable(void) {
                         scan->stmt->marked = TRUE;
                         for (actptr = &scan->stmt->dobjstack; (act = *actptr);
                              actptr = &act->prev) {
-                            if ((act->type ==
-                                 EAT_CATCHBLOCK &&
+                            if ((act->type == EAT_CATCHBLOCK &&
                                  act->data.catch_block.catch_label == linear->u.label.label) ||
-                                (act->type ==
-                                 EAT_SPECIFICATION &&
+                                (act->type == EAT_SPECIFICATION &&
                                  act->data.specification.unexp_label == linear->u.label.label)) {
                                 *actptr = act->prev;
                             }
@@ -156,11 +154,11 @@ Boolean IRO_RemoveUnreachable(void) {
                     }
                 }
             }
-            if (node2 == IRO_LastNode) {
-                IRO_LastNode = node1;
+            if (node == IRO_LastNode) {
+                IRO_LastNode = prevNode;
             }
         } else {
-            node1 = node2;
+            prevNode = node;
         }
     }
 
@@ -191,8 +189,7 @@ Boolean IRO_RemoveRedundantJumps(void) {
                     scan = linear->next;
                     while (scan &&
                            ((scan->type == IROLinearNop) ||
-                            (scan->type ==
-                             IROLinearLabel &&
+                            (scan->type == IROLinearLabel &&
                              scan->u.label.label != linear->u.label.label))) {
                         scan = scan->next;
                     }
@@ -223,15 +220,13 @@ Boolean IRO_RemoveRedundantJumps(void) {
                         scan2 = scan->next;
                         while (scan2 &&
                                ((scan2->type == IROLinearNop) ||
-                                (scan2->type ==
-                                 IROLinearLabel &&
+                                (scan2->type == IROLinearLabel &&
                                  scan2->u.label.label != linear->u.label.label))) {
                             scan2 = scan2->next;
                         }
 
                         if (scan2 &&
-                            scan2->type ==
-                            IROLinearLabel &&
+                            scan2->type == IROLinearLabel &&
                             scan2->u.label.label == linear->u.label.label) {
                             if (linear->type == IROLinearIf) {
                                 linear->type = IROLinearIfNot;
@@ -249,8 +244,7 @@ Boolean IRO_RemoveRedundantJumps(void) {
                     scan2 = linear->next;
                     while (scan2 &&
                            ((scan2->type == IROLinearNop) ||
-                            (scan2->type ==
-                             IROLinearLabel &&
+                            (scan2->type == IROLinearLabel &&
                              scan2->u.label.label != linear->u.label.label))) {
                         scan2 = scan2->next;
                     }
@@ -286,6 +280,8 @@ Boolean IRO_RemoveRedundantJumps(void) {
                         result = TRUE;
                     }
                     break;
+                default:
+                    break;
             }
         }
     }
@@ -308,7 +304,7 @@ Boolean IRO_RemoveLabels(void) {
     for (node = IRO_FirstNode; node; node = node->nextnode) {
         if (node->first && node->first->type == IROLinearLabel && !node->referenced) {
             node->first->type = IROLinearNop;
-            node->first->flags &= ~IROLF_1;
+            node->first->flags &= ~IROLF_StartsNode;
             result = TRUE;
         }
     }

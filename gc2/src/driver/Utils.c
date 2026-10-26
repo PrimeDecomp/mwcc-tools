@@ -1,5 +1,6 @@
 #include "driver/Utils.h"
 #include "driver/Arguments.h"
+#include "driver/option_system.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -23,17 +24,10 @@ int my_isalnum(char c) {
     return my_isdigit(c) || my_isalpha(c);
 }
 
-// (2.6 groups the two ranges; Pro7's flat `||` chain is 2 bytes longer)
 int my_isxdigit(char c) {
     return my_isdigit(c) || ((c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'));
 }
 
-// TODO: invented names. 2.6's Utils_SpellList has locals Pro7's lacks, set and never read (two ints
-// to 1 and two chars to 0 at its start, then `x = z = 0` after each prefix copy: real stores in the
-// original, 0x420ca2..0x420cb8); x/y/z/c/d stand in for whatever they were (gc1 has the same stores,
-// as an invented inline). Their registers say x is one variable throughout and y and z are two
-// others. Pro7's text without them is 80%. The two loops are 2.6's too: Pro7's `for (cnt = npflen;
-// cnt > 0; cnt--)` and `for (cnt = undo; cnt; cnt--)` each cost the match.
 char* Utils_SpellList(char* list, char* buffer, char opts) {
     char* sptr;
     char* eptr;
@@ -58,7 +52,7 @@ char* Utils_SpellList(char* list, char* buffer, char opts) {
     d = c = 0;
     pflen = 0;
     while (sptr) {
-        if ((opts & 1) && !pflen) {
+        if ((opts & SLFLAGS_OPTCHAR) && !pflen) {
             *(bptr++) = *MAINOPTCHAR;
         }
 
@@ -73,13 +67,13 @@ char* Utils_SpellList(char* list, char* buffer, char opts) {
         }
 
         if (undo == 0 && !pflen) {
-            if (opts & 8) {
+            if (opts & SLFLAGS_NO_PREFIX) {
                 *(bptr++) = '[';
                 *(bptr++) = 'n';
                 *(bptr++) = 'o';
                 *(bptr++) = ']';
             }
-            if (opts & 0x20) {
+            if (opts & SLFLAGS_NO_DASH_PREFIX) {
                 *(bptr++) = '[';
                 *(bptr++) = 'n';
                 *(bptr++) = 'o';
@@ -99,12 +93,11 @@ char* Utils_SpellList(char* list, char* buffer, char opts) {
                 if (!neptr) {
                     neptr = nptr + strlen(nptr);
                 }
-                if ((neptr - nptr) <
-                    (eptr - sptr) ||
+                if ((neptr - nptr) < (eptr - sptr) ||
                     ((sptr[1] && sptr[1] != '|') ? (sptr[1] != nptr[1]) : 0)) {
                     npflen = 0;
                 }
-                if (opts & 0x40) {
+                if (opts & SLFLAGS_STICKY) {
                     npflen = 0;
                 }
             }
@@ -136,12 +129,12 @@ char* Utils_SpellList(char* list, char* buffer, char opts) {
             *(bptr++) = *(sptr++);
         }
 
-        if (opts & 0x10) {
+        if (opts & SLFLAGS_MINUS_PREFIX) {
             *(bptr++) = '[';
             *(bptr++) = '-';
             *(bptr++) = ']';
         }
-        if (opts & 0x40) {
+        if (opts & SLFLAGS_STICKY) {
             *(bptr++) = '+';
         }
 
@@ -156,7 +149,7 @@ char* Utils_SpellList(char* list, char* buffer, char opts) {
             }
         }
 
-        opts &= ~0x40;
+        opts &= ~SLFLAGS_STICKY;
         pflen = npflen;
         x = z = 0;
     }

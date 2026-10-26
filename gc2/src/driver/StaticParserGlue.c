@@ -1,5 +1,6 @@
 #include "driver/StaticParserGlue.h"
 #include "driver/ClientGlue.h"
+#include "driver/CWPlugins.h"
 #include "driver/ParserFace.h"
 
 // clang-format off

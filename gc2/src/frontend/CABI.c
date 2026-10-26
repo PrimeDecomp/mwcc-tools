@@ -11,12 +11,12 @@
 #include "compiler/CMangler.h"
 #include "compiler/CompilerTools.h"
 #include "compiler/CParser.h"
-#include "compiler/CPrep.h"
 #include "compiler/CScope.h"
 #include "compiler/CSOM.h"
 #include "compiler/enode.h"
 #include "compiler/objects.h"
 #include "compiler/scopes.h"
+#include "compiler/tokens.h"
 #include "compiler/types.h"
 
 typedef struct OffsetList {
@@ -53,8 +53,8 @@ SInt16 CABI_StructSizeAlignValue(Type* type, SInt32 size) {
 
 void CABI_ReverseBitField(TypeBitfield* tbitfield) {
     int bits;
-    UInt8 a;
-    UInt8 b;
+    UInt8 offset;
+    UInt8 length;
 
     switch (tbitfield->bitfieldtype->size) {
         case 1:
@@ -73,12 +73,12 @@ void CABI_ReverseBitField(TypeBitfield* tbitfield) {
             CError_FATAL(172);
     }
 
-    b = tbitfield->bitlength;
-    a = tbitfield->offset;
-    tbitfield->offset = (bits - a) - b;
+    length = tbitfield->bitlength;
+    offset = tbitfield->offset;
+    tbitfield->offset = (bits - offset) - length;
 }
 
-static void CABI_AllocateZeroVTablePointer(void* unk, TypeClass* tclass) {
+static void CABI_AllocateZeroVTablePointer(void* unused, TypeClass* tclass) {
     ClassList* base;
 
     for (base = tclass->bases; base; base = base->next) {
@@ -101,13 +101,13 @@ static SInt32 CABI_GetBaseSize(TypeClass* tclass) {
 }
 
 static void CABI_AllocateBases(ClassLayout* layout, TypeClass* tclass) {
-    Boolean flag;
+    Boolean prevEmpty;
     TypeClass* baseclass;
     ClassList* base;
     VClassList* vbase;
     SInt32 size;
 
-    flag = FALSE;
+    prevEmpty = FALSE;
     size = tclass->size;
 
     for (base = tclass->bases; base; base = base->next) {
@@ -123,14 +123,14 @@ static void CABI_AllocateBases(ClassLayout* layout, TypeClass* tclass) {
                         size -= vbase->base->size;
                     }
                 }
-                flag = FALSE;
+                prevEmpty = FALSE;
             } else {
-                if (flag) {
+                if (prevEmpty) {
                     base->offset = ++size;
                 } else {
                     base->offset = size;
                 }
-                flag = TRUE;
+                prevEmpty = TRUE;
             }
         }
     }
@@ -202,9 +202,9 @@ static void CABI_AllocateMembers(ClassLayout* layout, TypeClass* tclass) {
                 }
 
                 if (tclass->mode == CLASS_MODE_UNION) {
-                    SInt32 tmp = CMach_StructLayoutGetCurSize();
-                    if (tmp > maxSize) {
-                        maxSize = tmp;
+                    SInt32 curSize = CMach_StructLayoutGetCurSize();
+                    if (curSize > maxSize) {
+                        maxSize = curSize;
                     }
                 }
 
@@ -233,9 +233,9 @@ static void CABI_AllocateMembers(ClassLayout* layout, TypeClass* tclass) {
             inAnonUnion = TRUE;
 
             if (tclass->mode == CLASS_MODE_UNION) {
-                SInt32 tmp = CMach_StructLayoutGetCurSize();
-                if (tmp > maxSize) {
-                    maxSize = tmp;
+                SInt32 curSize = CMach_StructLayoutGetCurSize();
+                if (curSize > maxSize) {
+                    maxSize = curSize;
                 }
             }
 
@@ -313,12 +313,10 @@ static Object* CABI_FindZeroVirtualBaseMember(TypeClass* tclass, Object* obj) {
         if (!base->is_virtual && !base->offset && !base->voffset && base->base->vtable) {
             for (nsol = CScope_FindName(base->base->nspace, obj->name); nsol; nsol = nsol->next) {
                 chk = OBJECT(nsol->object);
-                if (chk->otype ==
-                    OT_OBJECT &&
-                    chk->datatype ==
-                    DVFUNC &&
+                if (chk->otype == OT_OBJECT &&
+                    chk->datatype == DVFUNC &&
                     CClass_GetOverrideKind(TYPE_FUNC(chk->type), TYPE_FUNC(obj->type), FALSE) ==
-                    1) {
+                        1) {
                     return chk;
                 }
             }
@@ -470,7 +468,7 @@ static void CABI_AllocateVTable(ClassLayout* layout, TypeClass* tclass) {
     obj->qual = Q_CONST;
     obj->nspace = tclass->nspace;
     switch (tclass->action) {
-        case CLASS_ACTION_0:
+        case CLASS_ACTION_NONE:
             obj->sclass = TK_STATIC;
             obj->qual |= Q_IMPLICIT_WEAK;
             break;
@@ -522,7 +520,6 @@ void CABI_LayoutClass(ClassLayout* layout, TypeClass* tclass) {
 void CABI_MakeDefaultArgConstructor(TypeClass* tclass, Object* func) {
     DefArgCtorInfo* info;
     Boolean saveDebugInfo;
-    ENodeList* copied;
     ENodeList* argexprs;
     FuncArg* args;
     CScopeSave savedScope;
@@ -562,7 +559,7 @@ void CABI_MakeDefaultArgConstructor(TypeClass* tclass, Object* func) {
     returnStmt.expr->flags = 0;
     returnStmt.expr->rtype = TYPE(&void_ptr);
 
-    returnStmt.expr->data.funccall.funcref = CExpr_MakeObjRefNode(info->default_func, 0);
+    returnStmt.expr->data.funccall.funcref = CExpr_MakeObjRefNode(info->default_func, FALSE);
     returnStmt.expr->data.funccall.functype = TYPE_FUNC(info->default_func->type);
     args = TYPE_FUNC(info->default_func->type)->args;
     returnStmt.expr->data.funccall.args = lalloc(sizeof(ENodeList));
@@ -580,12 +577,12 @@ void CABI_MakeDefaultArgConstructor(TypeClass* tclass, Object* func) {
     args = args->next;
     argexprs->next = lalloc(sizeof(ENodeList));
     argexprs = argexprs->next;
-    argexprs->node = CInline_CopyExpression(info->default_arg, CopyMode0);
+    argexprs->node = CInline_CopyExpression(info->default_arg, CopyModeLocal);
 
     while ((args = args->next) && args->dexpr) {
         argexprs->next = lalloc(sizeof(ENodeList));
         argexprs = argexprs->next;
-        argexprs->node = CInline_CopyExpression(args->dexpr, CopyMode0);
+        argexprs->node = CInline_CopyExpression(args->dexpr, CopyModeLocal);
     }
 
     argexprs->next = NULL;
@@ -637,12 +634,12 @@ static ENode* CABI_MakeVArgExpr(void) {
     return create_objectnode(CABI_VArg());
 }
 
-static ENode* CABI_MakeCopyConArgExpr(TypeClass* tclass, Boolean flag) {
+static ENode* CABI_MakeCopyConArgExpr(TypeClass* tclass, Boolean isCopyCtor) {
     ObjectList* args;
 
     CError_ASSERT(1000, args = arguments);
     CError_ASSERT(1001, args = args->next);
-    if (flag && (tclass->flags & CLASS_HAS_VBASES)) {
+    if (isCopyCtor && (tclass->flags & CLASS_HAS_VBASES)) {
         CError_ASSERT(1002, args = args->next);
     }
     CError_ASSERT(1003, IS_TYPE_POINTER_ONLY(args->object->type));
@@ -772,7 +769,7 @@ static ENode* CABI_GetVBasePtr(TypeClass* tclass, TypeClass* baseclass) {
 
 static SInt32 CABI_FindNVBase(TypeClass* tclass, TypeClass* baseclass, SInt32 offset) {
     ClassList* base;
-    SInt32 tmp;
+    SInt32 baseOffset;
 
     if (tclass == baseclass) {
         return offset;
@@ -780,8 +777,8 @@ static SInt32 CABI_FindNVBase(TypeClass* tclass, TypeClass* baseclass, SInt32 of
 
     for (base = tclass->bases; base; base = base->next) {
         if (!base->is_virtual &&
-            (tmp = CABI_FindNVBase(base->base, baseclass, offset + base->offset)) >= 0) {
-            return tmp;
+            (baseOffset = CABI_FindNVBase(base->base, baseclass, offset + base->offset)) >= 0) {
+            return baseOffset;
         }
     }
 
@@ -801,8 +798,8 @@ SInt32 CABI_GetCtorOffsetOffset(TypeClass* tclass, TypeClass* baseclass) {
     }
 
     saveAlignMode = copts.structalignment;
-    if (tclass->eflags & CLASS_EFLAGS_F0) {
-        copts.structalignment = ((tclass->eflags & CLASS_EFLAGS_F0) >> 4) - 1;
+    if (tclass->eflags & CLASS_EFLAGS_STRUCT_ALIGN) {
+        copts.structalignment = ((tclass->eflags & CLASS_EFLAGS_STRUCT_ALIGN) >> 4) - 1;
     }
     size += CMach_MemberAlignValue(TYPE(&stunsignedlong), size);
     copts.structalignment = saveAlignMode;
@@ -896,7 +893,7 @@ static Statement* CABI_InitVTablePtrs(
                 );
             }
 
-            pathExpr = CClass_AccessPathCast(&cabi_pathroot, CABI_MakeThisExpr(tclass, 0), 0);
+            pathExpr = CClass_AccessPathCast(&cabi_pathroot, CABI_MakeThisExpr(tclass, 0), FALSE);
             if (baseclass->vtable->offset != 0 && !canadd(pathExpr, baseclass->vtable->offset)) {
                 pathExpr = makediadicnode(
                     pathExpr, intconstnode(TYPE(&stunsignedlong), baseclass->vtable->offset), EADD
@@ -936,12 +933,10 @@ static Statement* CABI_InitVTablePtrs(
 }
 
 static Boolean CABI_IsOperatorNew(Object* obj) {
-    return obj->otype ==
-        OT_OBJECT &&
+    return obj->otype == OT_OBJECT &&
         IS_TYPE_FUNC(obj->type) &&
         TYPE_FUNC(obj->type)->args &&
-        TYPE_FUNC(obj->type)->args->type ==
-        CABI_GetSizeTType() &&
+        TYPE_FUNC(obj->type)->args->type == CABI_GetSizeTType() &&
         TYPE_FUNC(obj->type)->args->next == NULL;
 }
 
@@ -978,8 +973,8 @@ void CABI_TransConstructor(
     Boolean has_try
 ) {
     Statement* stmt;
-    Object* tmpfunc;
-    Object* tmpfunc2;
+    Object* funcobj;
+    Object* dtorfunc;
     CLabel* label;
     ENode* expr;
     ClassList* base;
@@ -991,7 +986,7 @@ void CABI_TransConstructor(
 
     stmt = firstStmt;
 
-    if ((tmpfunc = CABI_ConstructorCallsNew(tclass))) {
+    if ((funcobj = CABI_ConstructorCallsNew(tclass))) {
         label = newlabel();
 
         stmt = CFunc_InsertStatement(ST_IFGOTO, firstStmt);
@@ -999,7 +994,7 @@ void CABI_TransConstructor(
         stmt->label = label;
 
         expr = funccallexpr(
-            tmpfunc, intconstnode(CABI_GetSizeTType(), tclass->size), NULL, NULL, NULL
+            funcobj, intconstnode(CABI_GetSizeTType(), tclass->size), NULL, NULL, NULL
         );
         expr = makediadicnode(CABI_MakeThisExpr(NULL, 0), expr, EASS);
         stmt = CFunc_InsertStatement(ST_IFGOTO, stmt);
@@ -1051,8 +1046,8 @@ void CABI_TransConstructor(
                             tclass,
                             CABI_MakeThisExpr(NULL, vbase->offset),
                             0,
-                            1,
-                            1,
+                            TRUE,
+                            TRUE,
                             &errorflag
                         );
                         if (expr) {
@@ -1065,12 +1060,12 @@ void CABI_TransConstructor(
                         }
                     }
                 } else {
-                    stmt = callback(stmt, tclass, vbase->base, vbase->offset, 1);
+                    stmt = callback(stmt, tclass, vbase->base, vbase->offset, TRUE);
                 }
 
-                if ((tmpfunc = CClass_Destructor(vbase->base))) {
+                if ((funcobj = CClass_Destructor(vbase->base))) {
                     CExcept_RegisterMember(
-                        stmt, CABI_ThisArg(), vbase->offset, tmpfunc, CABI_VArg(), 0
+                        stmt, CABI_ThisArg(), vbase->offset, funcobj, CABI_VArg(), FALSE
                     );
                 }
             }
@@ -1101,8 +1096,8 @@ void CABI_TransConstructor(
                         tclass,
                         CABI_MakeThisExpr(NULL, base->offset),
                         0,
-                        1,
-                        0,
+                        TRUE,
+                        FALSE,
                         &errorflag
                     );
                     if (expr) {
@@ -1113,11 +1108,11 @@ void CABI_TransConstructor(
                     }
                 }
             } else {
-                stmt = callback(stmt, tclass, base->base, base->offset, 1);
+                stmt = callback(stmt, tclass, base->base, base->offset, TRUE);
             }
 
-            if ((tmpfunc = CClass_Destructor(base->base))) {
-                CExcept_RegisterMember(stmt, CABI_ThisArg(), base->offset, tmpfunc, NULL, 0);
+            if ((funcobj = CClass_Destructor(base->base))) {
+                CExcept_RegisterMember(stmt, CABI_ThisArg(), base->offset, funcobj, NULL, FALSE);
             }
         }
 
@@ -1131,7 +1126,7 @@ void CABI_TransConstructor(
         }
     }
 
-    if (!tclass->sominfo && (tclass->flags & CLASS_SOM_INIT)) {
+    if (!tclass->sominfo && (tclass->flags & CLASS_VBASE_CTOR_OFFSET)) {
         stmt = CABI_InitVBaseCtorOffsets(stmt, tclass);
     }
 
@@ -1156,13 +1151,13 @@ void CABI_TransConstructor(
                             type = TPTR_TARGET(type);
                         } while (IS_TYPE_ARRAY(type));
                         if (IS_TYPE_CLASS(type)) {
-                            if ((tmpfunc = CClass_Destructor(TYPE_CLASS(type)))) {
+                            if ((funcobj = CClass_Destructor(TYPE_CLASS(type)))) {
                                 CError_ASSERT(1560, type->size);
                                 CExcept_RegisterMemberArray(
                                     stmt,
                                     CABI_ThisArg(),
                                     ivar->offset,
-                                    tmpfunc,
+                                    funcobj,
                                     ivar->type->size / type->size,
                                     type->size
                                 );
@@ -1170,11 +1165,13 @@ void CABI_TransConstructor(
                         }
                         break;
                     case TYPECLASS:
-                        if ((tmpfunc = CClass_Destructor(TYPE_CLASS(type)))) {
+                        if ((funcobj = CClass_Destructor(TYPE_CLASS(type)))) {
                             CExcept_RegisterMember(
-                                stmt, CABI_ThisArg(), ivar->offset, tmpfunc, NULL, 1
+                                stmt, CABI_ThisArg(), ivar->offset, funcobj, NULL, TRUE
                             );
                         }
+                        break;
+                    default:
                         break;
                 }
             } else {
@@ -1185,28 +1182,29 @@ void CABI_TransConstructor(
                             type = TPTR_TARGET(type);
                         } while (IS_TYPE_ARRAY(type));
                         if (IS_TYPE_CLASS(type) && CClass_Constructor(TYPE_CLASS(type))) {
-                            if ((tmpfunc = CClass_DefaultConstructor(TYPE_CLASS(type))) ||
-                                (tmpfunc = CClass_DummyDefaultConstructor(TYPE_CLASS(type)))) {
-                                tmpfunc2 = CClass_Destructor(TYPE_CLASS(type));
-                                if (tmpfunc2) {
-                                    tmpfunc2 = CABI_GetDestructorObject(tmpfunc2, CABIDestroy1);
+                            if ((funcobj = CClass_DefaultConstructor(TYPE_CLASS(type))) ||
+                                (funcobj = CClass_DummyDefaultConstructor(TYPE_CLASS(type)))) {
+                                dtorfunc = CClass_Destructor(TYPE_CLASS(type));
+                                if (dtorfunc) {
+                                    dtorfunc =
+                                        CABI_GetDestructorObject(dtorfunc, CABIDestroyComplete);
                                 }
 
                                 stmt = CInit_ConstructClassArray(
                                     stmt,
                                     TYPE_CLASS(type),
-                                    tmpfunc,
-                                    tmpfunc2,
+                                    funcobj,
+                                    dtorfunc,
                                     CABI_MakeThisExpr(tclass, ivar->offset),
                                     ivar->type->size / type->size
                                 );
 
-                                if (tmpfunc2) {
+                                if (dtorfunc) {
                                     CExcept_RegisterMemberArray(
                                         stmt,
                                         CABI_ThisArg(),
                                         ivar->offset,
-                                        tmpfunc2,
+                                        dtorfunc,
                                         ivar->type->size / type->size,
                                         type->size
                                     );
@@ -1224,8 +1222,8 @@ void CABI_TransConstructor(
                             NULL,
                             CABI_MakeThisExpr(tclass, ivar->offset),
                             1,
-                            1,
-                            0,
+                            TRUE,
+                            FALSE,
                             &errorflag
                         );
                         if (expr) {
@@ -1237,21 +1235,23 @@ void CABI_TransConstructor(
                             );
                         }
 
-                        if ((tmpfunc = CClass_Destructor(TYPE_CLASS(type)))) {
+                        if ((funcobj = CClass_Destructor(TYPE_CLASS(type)))) {
                             if (!expr) {
                                 stmt = CFunc_InsertStatement(ST_EXPRESSION, stmt);
                                 stmt->expr = nullnode();
                             }
                             CExcept_RegisterMember(
-                                stmt, CABI_ThisArg(), ivar->offset, tmpfunc, NULL, 1
+                                stmt, CABI_ThisArg(), ivar->offset, funcobj, NULL, TRUE
                             );
                         }
+                        break;
+                    default:
                         break;
                 }
             }
         }
     } else {
-        stmt = callback(stmt, tclass, NULL, 0, 1);
+        stmt = callback(stmt, tclass, NULL, 0, TRUE);
     }
 
     if (!tclass->sominfo) {
@@ -1322,7 +1322,7 @@ static ENode* CABI_AssignObject(TypeClass* tclass, ENode* expr1, ENode* expr2) {
             (arg = arg->next)
     );
 
-    expr2 = argumentpromotion(expr2, arg->type, arg->qual, 1);
+    expr2 = argumentpromotion(expr2, arg->type, arg->qual, TRUE);
     return funccallexpr(assignfunc, expr1, expr2, NULL, NULL);
 }
 
@@ -1347,10 +1347,6 @@ static Type* CABI_FindIntegralSizeType(SInt32 size) {
     return NULL;
 }
 
-// TODO: no reset (Pro7: mac68k alignment, reset after the struct): 2.6 lays out this
-// unit's statics at 2-byte packing, and MWCC lays out .bss with the packing in force at the
-// end of the file. Perhaps one of the original's headers left 2-byte packing on (CError, CInit
-// and CTemplateFunc need the same); a reset and a #pragma pack(2) at the end compile the same.
 #pragma pack(2)
 typedef struct CopyRegion {
     struct CopyRegion* next;
@@ -1361,7 +1357,7 @@ typedef struct CopyRegion {
 } CopyRegion;
 
 static CopyRegion* CABI_AppendCopyRegion(
-    CopyRegion* regions, Type* type, SInt32 start, Boolean flag
+    CopyRegion* regions, Type* type, SInt32 start, Boolean isBitwise
 ) {
     CopyRegion* region;
     SInt32 end;
@@ -1372,7 +1368,7 @@ static CopyRegion* CABI_AppendCopyRegion(
 
     end = start + type->size;
 
-    if (flag) {
+    if (isBitwise) {
         for (region = regions; region; region = region->next) {
             if (region->flag) {
                 if (region->start <= start && region->end >= end) {
@@ -1409,29 +1405,29 @@ static CopyRegion* CABI_AppendCopyRegion(
     region->type = type;
     region->start = start;
     region->end = end;
-    region->flag = flag;
+    region->flag = isBitwise;
 
     return regions;
 }
 
-static ENode* CABI_ClassInitLoopCallBack(ENode* var1, ENode* var2) {
+static ENode* CABI_ClassInitLoopCallBack(ENode* dest, ENode* src) {
     ENodeList* list;
 
-    var2 = makemonadicnode(var2, EINDIRECT);
-    var2->rtype = TYPE(cabi_loop_class);
+    src = makemonadicnode(src, EINDIRECT);
+    src->rtype = TYPE(cabi_loop_class);
 
     if (cabi_loop_construct) {
         list = lalloc(sizeof(ENodeList));
         memclrw(list, sizeof(ENodeList));
-        list->node = var2;
-        return CExpr_ConstructObject(cabi_loop_class, var1, list, 1, 1, 0, 1, 1);
+        list->node = src;
+        return CExpr_ConstructObject(cabi_loop_class, dest, list, TRUE, TRUE, FALSE, TRUE, TRUE);
     } else {
-        return CABI_AssignObject(cabi_loop_class, var1, var2);
+        return CABI_AssignObject(cabi_loop_class, dest, src);
     }
 }
 
 static Statement* CABI_CopyConAssignCB(
-    Statement* stmt, TypeClass* tclass, TypeClass* baseclass, SInt32 offset, Boolean flag
+    Statement* stmt, TypeClass* tclass, TypeClass* baseclass, SInt32 offset, Boolean isCopyCtor
 ) {
     ENode* expr2;
     ENode* startExpr;
@@ -1444,29 +1440,29 @@ static Statement* CABI_CopyConAssignCB(
     SInt32 i;
     SInt32 count;
     SInt32 off;
-    Boolean isFlagNotSet;
-    Object* tmpfunc;
+    Boolean checkConstRef;
+    Object* dtor;
 
     if (baseclass) {
         if (baseclass->flags & CLASS_EMPTY) {
-            if ((flag && !CClass_CopyConstructor(baseclass)) ||
-                (!flag && !CClass_AssignmentOperator(baseclass))) {
+            if ((isCopyCtor && !CClass_CopyConstructor(baseclass)) ||
+                (!isCopyCtor && !CClass_AssignmentOperator(baseclass))) {
                 return stmt;
             }
         }
 
-        expr = CABI_MakeCopyConArgExpr(tclass, flag);
+        expr = CABI_MakeCopyConArgExpr(tclass, isCopyCtor);
         expr->rtype = TYPE(baseclass);
         expr->data.monadic = CClass_DirectBasePointerCast(expr->data.monadic, tclass, baseclass);
 
         stmt = CFunc_InsertStatement(ST_EXPRESSION, stmt);
-        if (flag) {
+        if (isCopyCtor) {
             list = lalloc(sizeof(ENodeList));
             list->next = NULL;
             list->node = expr;
 
             stmt->expr = CExpr_ConstructObject(
-                baseclass, CABI_MakeThisExpr(NULL, offset), list, 1, 0, 0, 0, 1
+                baseclass, CABI_MakeThisExpr(NULL, offset), list, TRUE, FALSE, FALSE, FALSE, TRUE
             );
         } else {
             stmt->expr = CABI_AssignObject(
@@ -1476,17 +1472,17 @@ static Statement* CABI_CopyConAssignCB(
             );
         }
     } else {
-        isFlagNotSet = !flag;
+        checkConstRef = !isCopyCtor;
         for (ivar = tclass->ivars, regions = NULL; ivar; ivar = ivar->next) {
             if (ivar->name == vptr_name_node) {
                 continue;
             }
 
             type = ivar->type;
-            if (isFlagNotSet) {
+            if (checkConstRef) {
                 if (CParser_IsConst(type, ivar->qual) || IS_TYPE_REFERENCE(type) != 0) {
                     CError_Error(ERR_IMPLICIT_COPY_ASSIGNMENT_CONST_REF_MEMBER, tclass, 0);
-                    isFlagNotSet = FALSE;
+                    checkConstRef = FALSE;
                 }
             }
 
@@ -1500,7 +1496,7 @@ static Statement* CABI_CopyConAssignCB(
                         break;
                     }
                 case TYPECLASS:
-                    if (flag) {
+                    if (isCopyCtor) {
                         if (CClass_CopyConstructor(TYPE_CLASS(type)) ||
                             CClass_CopyConstructor(TYPE_CLASS(type))) {
                             regions =
@@ -1525,7 +1521,7 @@ static Statement* CABI_CopyConAssignCB(
             }
 
             type = regions->type;
-            expr = CABI_MakeCopyConArgExpr(tclass, flag);
+            expr = CABI_MakeCopyConArgExpr(tclass, isCopyCtor);
             expr->rtype = type;
 
             if (!canadd(expr->data.monadic, regions->start)) {
@@ -1549,7 +1545,7 @@ static Statement* CABI_CopyConAssignCB(
                             startExpr = CABI_MakeThisExpr(tclass, regions->start);
                             endExpr =
                                 CABI_MakeThisExpr(tclass, regions->start + regions->type->size);
-                            expr = CABI_MakeCopyConArgExpr(tclass, flag)->data.monadic;
+                            expr = CABI_MakeCopyConArgExpr(tclass, isCopyCtor)->data.monadic;
                             if (!canadd(expr, regions->start)) {
                                 expr = makediadicnode(
                                     expr, intconstnode(TYPE(&stunsignedlong), regions->start), EADD
@@ -1558,7 +1554,7 @@ static Statement* CABI_CopyConAssignCB(
                             }
 
                             cabi_loop_class = TYPE_CLASS(type);
-                            cabi_loop_construct = flag;
+                            cabi_loop_construct = isCopyCtor;
                             stmt = CFunc_GenerateLoop(
                                 stmt,
                                 CDecl_NewPointerType(type),
@@ -1570,7 +1566,7 @@ static Statement* CABI_CopyConAssignCB(
                             );
                         } else {
                             for (i = 0, off = regions->start; i < count; i++, off += type->size) {
-                                expr = CABI_MakeCopyConArgExpr(tclass, flag);
+                                expr = CABI_MakeCopyConArgExpr(tclass, isCopyCtor);
                                 expr->rtype = type;
 
                                 if (!canadd(expr->data.monadic, off)) {
@@ -1583,7 +1579,7 @@ static Statement* CABI_CopyConAssignCB(
                                 }
 
                                 stmt = CFunc_InsertStatement(ST_EXPRESSION, stmt);
-                                if (flag) {
+                                if (isCopyCtor) {
                                     list = lalloc(sizeof(ENodeList));
                                     memclrw(list, sizeof(ENodeList));
                                     list->node = expr;
@@ -1591,11 +1587,11 @@ static Statement* CABI_CopyConAssignCB(
                                         TYPE_CLASS(type),
                                         CABI_MakeThisExpr(tclass, off),
                                         list,
-                                        1,
-                                        1,
-                                        0,
-                                        1,
-                                        1
+                                        TRUE,
+                                        TRUE,
+                                        FALSE,
+                                        TRUE,
+                                        TRUE
                                     );
                                 } else {
                                     stmt->expr = CABI_AssignObject(
@@ -1605,9 +1601,9 @@ static Statement* CABI_CopyConAssignCB(
                             }
                         }
 
-                        if (flag && (tmpfunc = CClass_Destructor(TYPE_CLASS(type)))) {
+                        if (isCopyCtor && (dtor = CClass_Destructor(TYPE_CLASS(type)))) {
                             CExcept_RegisterMemberArray(
-                                stmt, CABI_ThisArg(), regions->start, tmpfunc, count, type->size
+                                stmt, CABI_ThisArg(), regions->start, dtor, count, type->size
                             );
                         }
                     }
@@ -1616,7 +1612,7 @@ static Statement* CABI_CopyConAssignCB(
 
                     stmt = CFunc_InsertStatement(ST_EXPRESSION, stmt);
 
-                    if (flag) {
+                    if (isCopyCtor) {
                         list = lalloc(sizeof(ENodeList));
                         memclrw(list, sizeof(ENodeList));
                         list->node = expr;
@@ -1624,16 +1620,16 @@ static Statement* CABI_CopyConAssignCB(
                             TYPE_CLASS(type),
                             CABI_MakeThisExpr(tclass, regions->start),
                             list,
-                            1,
-                            1,
-                            0,
-                            1,
-                            1
+                            TRUE,
+                            TRUE,
+                            FALSE,
+                            TRUE,
+                            TRUE
                         );
 
-                        if ((tmpfunc = CClass_Destructor(TYPE_CLASS(type)))) {
+                        if ((dtor = CClass_Destructor(TYPE_CLASS(type)))) {
                             CExcept_RegisterMember(
-                                stmt, CABI_ThisArg(), regions->start, tmpfunc, NULL, 1
+                                stmt, CABI_ThisArg(), regions->start, dtor, NULL, TRUE
                             );
                         }
                     } else {
@@ -1649,7 +1645,7 @@ static Statement* CABI_CopyConAssignCB(
                         stmt->expr = funccallexpr(
                             copy_func,
                             CABI_MakeThisExpr(tclass, regions->start),
-                            getnodeaddress(expr, 0),
+                            getnodeaddress(expr, FALSE),
                             intconstnode(CABI_GetSizeTType(), type->size),
                             NULL
                         );
@@ -1738,8 +1734,7 @@ void CABI_MakeDefaultAssignmentOperator(TypeClass* tclass, Object* func) {
 
     stmt = curstmt;
 
-    if (tclass->mode ==
-        CLASS_MODE_UNION ||
+    if (tclass->mode == CLASS_MODE_UNION ||
         (copts.block_assign && CClass_IsTrivialCopyAssignClass(tclass))) {
         expr1 = makemonadicnode(CABI_MakeThisExpr(tclass, 0), EINDIRECT);
         expr1->rtype = TYPE(tclass);
@@ -1787,10 +1782,10 @@ static Statement* CABI_DestroyMembers(Statement* stmt, ObjMemberVar* ivars, Type
             }
 
             if (IS_TYPE_CLASS(type) && (dtor = CClass_Destructor(TYPE_CLASS(type)))) {
-                dtor = CABI_GetDestructorObject(dtor, CABIDestroy1);
+                dtor = CABI_GetDestructorObject(dtor, CABIDestroyComplete);
                 stmt = CABI_DestroyMembers(stmt, ivars->next, tclass);
                 expr = create_objectrefnode(dtor);
-                expr->flags |= ENODE_FLAG_80;
+                expr->flags |= ENODE_FLAG_NONVIRTUAL;
 
                 stmt = CFunc_InsertStatement(ST_EXPRESSION, stmt);
                 stmt->expr = funccallexpr(
@@ -1808,7 +1803,7 @@ static Statement* CABI_DestroyMembers(Statement* stmt, ObjMemberVar* ivars, Type
 
                 stmt = CFunc_InsertStatement(ST_EXPRESSION, stmt);
                 stmt->expr = CABI_DestroyObject(
-                    dtor, CABI_MakeThisExpr(tclass, ivars->offset), CABIDestroy1, TRUE, FALSE
+                    dtor, CABI_MakeThisExpr(tclass, ivars->offset), CABIDestroyComplete, TRUE, FALSE
                 );
                 return stmt;
             }
@@ -1842,7 +1837,7 @@ static Statement* CABI_DestroyBases(Statement* stmt, ClassList* bases) {
         if (!base->is_virtual && (dtor = CClass_Destructor(base->base))) {
             stmt = CFunc_InsertStatement(ST_EXPRESSION, stmt);
             stmt->expr = CABI_DestroyObject(
-                dtor, CABI_MakeThisExpr(NULL, base->offset), CABIDestroy0, TRUE, FALSE
+                dtor, CABI_MakeThisExpr(NULL, base->offset), CABIDestroyBase, TRUE, FALSE
             );
         }
 
@@ -1860,7 +1855,7 @@ static Statement* CABI_DestroyVBases(Statement* stmt, VClassList* vbases) {
             stmt = CABI_DestroyVBases(stmt, vbases->next);
             stmt = CFunc_InsertStatement(ST_EXPRESSION, stmt);
             stmt->expr = CABI_DestroyObject(
-                dtor, CABI_MakeThisExpr(NULL, vbases->offset), CABIDestroy0, TRUE, FALSE
+                dtor, CABI_MakeThisExpr(NULL, vbases->offset), CABIDestroyBase, TRUE, FALSE
             );
             break;
         }
@@ -1870,25 +1865,25 @@ static Statement* CABI_DestroyVBases(Statement* stmt, VClassList* vbases) {
 }
 
 void CABI_TransDestructor(
-    Object* obj1, Object* obj2, Statement* stmt, TypeClass* tclass, CABIDestroyMode mode
+    Object* dtor, Object* func, Statement* stmt, TypeClass* tclass, CABIDestroyMode mode
 ) {
     CLabel* label2;
-    Boolean flag29;
+    Boolean doDelete;
     CLabel* label;
     Statement* scan;
     Statement* next;
-    Boolean flag25;
-    Boolean flag24;
-    Boolean flag23;
+    Boolean doBases;
+    Boolean doVBases;
+    Boolean doMembers;
     CLabel* label3;
     Object* dealloc;
-    Boolean deallocFlag;
+    Boolean includeSize;
 
     if (tclass->sominfo) {
-        flag29 = flag25 = flag24 = FALSE;
-        flag23 = TRUE;
+        doDelete = doBases = doVBases = FALSE;
+        doMembers = TRUE;
     } else {
-        flag29 = flag25 = flag23 = flag24 = TRUE;
+        doDelete = doBases = doMembers = doVBases = TRUE;
     }
 
     label = newlabel();
@@ -1909,14 +1904,14 @@ void CABI_TransDestructor(
 
     scan = stmt;
 
-    if (flag29) {
+    if (doDelete) {
         label2 = newlabel();
         scan = CFunc_InsertStatement(ST_IFNGOTO, scan);
         scan->expr = CABI_MakeThisExpr(NULL, 0);
         scan->label = label2;
     }
 
-    if (flag25 && tclass->vtable && tclass->vtable->object && tclass->vtable->owner == tclass) {
+    if (doBases && tclass->vtable && tclass->vtable->object && tclass->vtable->owner == tclass) {
         cabi_pathroot.next = NULL;
         cabi_pathroot.type = TYPE(tclass);
         cabi_pathcur = &cabi_pathroot;
@@ -1924,7 +1919,7 @@ void CABI_TransDestructor(
         scan = CABI_InitVTablePtrs(scan, tclass->vtable->object, tclass, tclass, 0, 0);
     }
 
-    if (!tclass->sominfo && (tclass->flags & CLASS_SOM_INIT)) {
+    if (!tclass->sominfo && (tclass->flags & CLASS_VBASE_CTOR_OFFSET)) {
         CABI_InitVBaseCtorOffsets(scan, tclass);
     }
 
@@ -1938,15 +1933,15 @@ void CABI_TransDestructor(
     scan->dobjstack = NULL;
     label->stmt = scan;
 
-    if (flag23 && !(tclass->flags & CLASS_HANDLEOBJECT)) {
+    if (doMembers && !(tclass->flags & CLASS_HANDLEOBJECT)) {
         scan = CABI_DestroyMembers(scan, tclass->ivars, tclass);
     }
 
-    if (flag25 && tclass->bases) {
+    if (doBases && tclass->bases) {
         scan = CABI_DestroyBases(scan, tclass->bases);
     }
 
-    if (flag24 && (tclass->flags & CLASS_HAS_VBASES)) {
+    if (doVBases && (tclass->flags & CLASS_HAS_VBASES)) {
         label3 = newlabel();
         scan = CFunc_InsertStatement(ST_IFNGOTO, scan);
         scan->expr = CABI_MakeVArgExpr();
@@ -1959,15 +1954,15 @@ void CABI_TransDestructor(
         label3->stmt = scan;
     }
 
-    if (flag29) {
+    if (doDelete) {
         scan = CFunc_InsertStatement(ST_IFGOTO, scan);
         scan->expr =
             CExpr_New_ELESSEQU_Node(CABI_MakeVArgExpr(), intconstnode(TYPE(&stsignedshort), 0));
         scan->label = label2;
 
         scan = CFunc_InsertStatement(ST_EXPRESSION, scan);
-        dealloc = CParser_FindDeallocationObject(TYPE(tclass), NULL, FALSE, FALSE, &deallocFlag);
-        if (deallocFlag) {
+        dealloc = CParser_FindDeallocationObject(TYPE(tclass), NULL, FALSE, FALSE, &includeSize);
+        if (includeSize) {
             scan->expr = funccallexpr(
                 dealloc,
                 CABI_MakeThisExpr(NULL, 0),
@@ -2020,7 +2015,7 @@ void CABI_MakeDefaultDestructor(TypeClass* tclass, Object* func) {
 
     CFunc_CodeCleanup(&firstStmt);
 
-    CABI_TransDestructor(func, func, &firstStmt, tclass, CABIDestroy0);
+    CABI_TransDestructor(func, func, &firstStmt, tclass, CABIDestroyBase);
 
     CFunc_Gen(&firstStmt, func, 0);
 
@@ -2029,7 +2024,7 @@ void CABI_MakeDefaultDestructor(TypeClass* tclass, Object* func) {
 }
 
 static void CABI_CreateLayeredDestructor(
-    TypeClass* tclass, Object* obj1, Object* func, CABIDestroyMode mode
+    TypeClass* tclass, Object* dtor, Object* func, CABIDestroyMode mode
 ) {
     Boolean saveDebugInfo;
     CScopeSave savedScope;
@@ -2054,7 +2049,7 @@ static void CABI_CreateLayeredDestructor(
 
     CFunc_CodeCleanup(&firstStmt);
 
-    CABI_TransDestructor(obj1, func, &firstStmt, tclass, mode);
+    CABI_TransDestructor(dtor, func, &firstStmt, tclass, mode);
 
     CFunc_Gen(&firstStmt, func, 0);
 
@@ -2073,14 +2068,14 @@ void CABI_MakeLayeredDestructor(TypeClass* tclass, Object* func) {
     }
 
     if ((dtor = CClass_Destructor(tclass))) {
-        if (CABI_GetDestructorObject(dtor, CABIDestroy0) == func) {
-            mode = CABIDestroy0;
-        } else if (CABI_GetDestructorObject(dtor, CABIDestroy2) == func) {
-            mode = CABIDestroy2;
-        } else if (CABI_GetDestructorObject(dtor, CABIDestroy3) == func) {
-            mode = CABIDestroy3;
-        } else if (CABI_GetDestructorObject(dtor, CABIDestroy1) == func) {
-            mode = CABIDestroy1;
+        if (CABI_GetDestructorObject(dtor, CABIDestroyBase) == func) {
+            mode = CABIDestroyBase;
+        } else if (CABI_GetDestructorObject(dtor, CABIDestroyDelete) == func) {
+            mode = CABIDestroyDelete;
+        } else if (CABI_GetDestructorObject(dtor, CABIDestroySDelete) == func) {
+            mode = CABIDestroySDelete;
+        } else if (CABI_GetDestructorObject(dtor, CABIDestroyComplete) == func) {
+            mode = CABIDestroyComplete;
         } else {
             CError_FATAL(2567);
         }
@@ -2126,35 +2121,35 @@ void CABI_AddLayeredDestructors(TypeClass* tclass) {
     CError_FATAL(2707);
 
     if ((dtor = CClass_Destructor(tclass))) {
-        CABI_AddLayeredDestructor(tclass, dtor, CMangler_DeleteDtorName(), 1);
-        CABI_AddLayeredDestructor(tclass, dtor, CMangler_SDeleteDtorName(), 1);
+        CABI_AddLayeredDestructor(tclass, dtor, CMangler_DeleteDtorName(), TRUE);
+        CABI_AddLayeredDestructor(tclass, dtor, CMangler_SDeleteDtorName(), TRUE);
         if (tclass->vbases) {
-            CABI_AddLayeredDestructor(tclass, dtor, CMangler_VBaseDtorName(), 0);
+            CABI_AddLayeredDestructor(tclass, dtor, CMangler_VBaseDtorName(), FALSE);
         }
     }
 }
 
 ENode* CABI_DestroyObject(
-    Object* dtor, ENode* objexpr, CABIDestroyMode mode, Boolean flag1, Boolean flag2
+    Object* dtor, ENode* objexpr, CABIDestroyMode mode, Boolean nonvirtual, Boolean dealloc
 ) {
     ENode* expr;
-    short arg;
+    short varg;
     ENodeList* list;
 
     switch (mode) {
-        case CABIDestroy2:
-        case CABIDestroy3:
-            if (flag2) {
-                arg = 1;
+        case CABIDestroyDelete:
+        case CABIDestroySDelete:
+            if (dealloc) {
+                varg = 1;
             } else {
-                arg = -1;
+                varg = -1;
             }
             break;
-        case CABIDestroy1:
-            arg = -1;
+        case CABIDestroyComplete:
+            varg = -1;
             break;
-        case CABIDestroy0:
-            arg = 0;
+        case CABIDestroyBase:
+            varg = 0;
             break;
         default:
             CError_FATAL(2791);
@@ -2166,8 +2161,8 @@ ENode* CABI_DestroyObject(
     expr->flags = 0;
     expr->rtype = &stvoid;
     expr->data.funccall.funcref = create_objectrefnode(dtor);
-    if (flag1) {
-        expr->data.funccall.funcref->flags |= ENODE_FLAG_80;
+    if (nonvirtual) {
+        expr->data.funccall.funcref->flags |= ENODE_FLAG_NONVIRTUAL;
     }
     expr->data.funccall.functype = TYPE_FUNC(dtor->type);
     dtor->flags |= OBJECT_USED;
@@ -2178,6 +2173,6 @@ ENode* CABI_DestroyObject(
     list->next = lalloc(sizeof(ENodeList));
     list = list->next;
     list->next = NULL;
-    list->node = intconstnode(TYPE(&stsignedshort), arg);
+    list->node = intconstnode(TYPE(&stsignedshort), varg);
     return expr;
 }

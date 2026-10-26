@@ -1,6 +1,3 @@
-// The x86 runtime's setupargs.c: __argc and __argv for main, from the command line. 2.x links a revision later
-// than lib/runtime's (September 1999): two quotes inside quotes are one quote, and a run of backslashes before a
-// quote keeps half of them (Microsoft's rules); other backslashes are kept.
 #include <ansi_parms.h>
 #include <windef.h>
 #include <winbase.h>

@@ -1,10 +1,14 @@
 #include "driver/Projects.h"
 #include "driver/CWParserPluginsPrivate.h"
+#include "driver/CWPlugins.h"
 #include "driver/CWPluginsPrivate.h"
 #include "driver/CWSecretPluginCallbacks.h"
+#include "driver/Files.h"
 #include "driver/Generic.h"
 #include "driver/MacSpecs.h"
+#include "driver/Memory.h"
 #include "driver/MsDos.h"
+#include "driver/oslib.h"
 #include "driver/ParserErrors.h"
 #include "driver/ParserFace.h"
 #include <setjmp.h>
@@ -39,7 +43,7 @@ int AddFileToProject(
     err = OS_OSSpec_To_FSSpec(oss, &cws);
     if (err) {
         CLPOSAlert(CLPStr44, err, OS_SpecToStringRelative(oss, 0, STSbuf, sizeof(STSbuf)));
-        return 0;
+        return FALSE;
     }
 
     if (position == -2) {
@@ -64,16 +68,14 @@ int AddFileToProject(
         failedCallback = "CWAddProjectEntry";
         longjmp(exit_plugin, result);
     }
-    // (2.6: one chained assignment, Pro7 three; each store reloads the one before)
     parseopts.mergeIntoOutput = parseopts.weakImport = parseopts.initBefore = FALSE;
     SetFileOutputName(position, which, outfilename);
-    return 1;
+    return TRUE;
 }
 
-// (no caller: the linker dropped it)
 Boolean GetFileInfo(SInt32 position, OSSpec* spec, char* plugin) {
     CWProjectFileInfo pfi;
-    if (CWGetFileInfo(parseopts.context, position, 1, &pfi)) {
+    if (CWGetFileInfo(parseopts.context, position, TRUE, &pfi)) {
         return FALSE;
     }
 
@@ -90,10 +92,10 @@ int AddAccessPath(OSPathSpec* oss, SInt16 type, SInt32 position, Boolean recursi
     int err;
     CWAccessPathListInfo apli;
 
-    if ((err = OS_MakeSpecWithPath(oss, NULL, 0, &spec)) ||
+    if ((err = OS_MakeSpecWithPath(oss, NULL, FALSE, &spec)) ||
         (err = OS_OSSpec_To_FSSpec(&spec, &api.pathSpec))) {
         CLPOSAlert(CLPStr45, err, OS_PathSpecToString(&spec.path, STSbuf, sizeof(STSbuf)));
-        return 0;
+        return FALSE;
     }
 
     if (position == -2) {
@@ -116,7 +118,7 @@ int AddAccessPath(OSPathSpec* oss, SInt16 type, SInt32 position, Boolean recursi
     }
 
     api.type = ((type & 1) == 0) ? cwUserPath : cwSystemPath;
-    api.type |= (type & 2) ? cwAccessPathTypeFlag2 : 0;
+    api.type |= (type & 2) ? cwAccessPathFlagKeepSystem : 0;
     api.recursive = recursive;
 
     result = CWParserAddAccessPath(parseopts.context, &api);
@@ -125,7 +127,7 @@ int AddAccessPath(OSPathSpec* oss, SInt16 type, SInt32 position, Boolean recursi
         longjmp(exit_plugin, result);
     }
 
-    return 1;
+    return TRUE;
 }
 
 int MoveSystemPathsIntoUserList(void) {
@@ -149,8 +151,6 @@ void AddVirtualFile(const char* filename, Handle* text) {
     }
 }
 
-// (no callers from here on but SetOutputFileDirectory: the linker dropped the others and the parser
-// callbacks they call, but their names stay in the unit's .data)
 void GetOutputFileDirectory(OSPathSpec* dir) {
     CWResult result;
     CWFileSpec idefss;
@@ -171,7 +171,7 @@ void SetOutputFileDirectory(OSPathSpec* dir) {
     CWFileSpec idefss;
     OSSpec spec;
 
-    OS_MakeSpecWithPath(dir, NULL, 0, &spec);
+    OS_MakeSpecWithPath(dir, NULL, FALSE, &spec);
     OS_OSSpec_To_FSSpec(&spec, &idefss);
 
     result = CWParserSetOutputFileDirectory(parseopts.context, &idefss);

@@ -1,13 +1,16 @@
 #include "compiler/CPrepTokenizer.h"
-#include "compiler/CDecl.h"
 #include "compiler/CError.h"
 #include "compiler/CInt64.h"
 #include "compiler/CMachine.h"
-#include "compiler/InlineAsmPPC.h"
-#include "compiler/ObjGen_PPC_EABI.h"
-#include "driver/COSToolsCLT.h"
-#include <string.h>
+#include "compiler/CompilerTools.h"
+#include "compiler/CParser.h"
 #include "compiler/CPrep.h"
+#include "compiler/InlineAsmPPC.h"
+#include "compiler/tokens.h"
+#include "compiler/types.h"
+#include "driver/COSToolsCLT.h"
+#include "driver/oslib.h"
+#include <string.h>
 
 // cprep_tokenize calls each handler with the character, the ones that ignore it too. A call through a pointer of
 // another type traps in WebAssembly, so there they take it.
@@ -16,9 +19,10 @@
 #else
 #define TOKENIZE_NONE void
 #endif
-#include "compiler/CParser.h"
 
 static Boolean prepnextstringchar_foundnl;
+
+StringPtr CPrep_SkipNewComment(StringPtr str);
 
 short prepskipnextchar(void) {
     short c;
@@ -39,8 +43,8 @@ loop:
                 nextcharpos = (char*)p;
                 return c;
             }
-        case 4:
-        case 5:
+        case TK_MACRO_NOEXPAND:
+        case TK_MACRO_BOUNDARY:
             p++;
             goto loop;
         case ' ':
@@ -353,7 +357,7 @@ backslash:
     }
 }
 
-short prepnextstringchar(StringPtr str, Boolean flag) {
+short prepnextstringchar(StringPtr str, Boolean countNewlines) {
     StringPtr p;
     short c;
 
@@ -367,7 +371,7 @@ loop:
         case '\\':
 backslash:
             if (p[0] == CR && (!copts.multibyteaware || !COS_IsMultiByte(str, p - 1))) {
-                if (flag) {
+                if (countNewlines) {
                     foundnl();
                 } else {
                     prepnextstringchar_foundnl = TRUE;
@@ -422,7 +426,7 @@ backslash:
     }
 }
 
-void CPrep_MatchChar(char ch, Boolean flag) {
+void CPrep_MatchChar(char ch, Boolean countNewlines) {
     char* p;
     char* start;
     char c;
@@ -447,7 +451,7 @@ loop:
 
     if (c == CR) {
         if (!copts.multibyteaware || !COS_IsMultiByte(start, p - 1)) {
-            if (flag) {
+            if (countNewlines) {
                 foundnl();
             }
             if (*p == LF) {
@@ -483,7 +487,7 @@ loop:
     if (c == '\\' && !haveBackslash && (!copts.multibyteaware || !COS_IsMultiByte(start, p - 1))) {
 backslash:
         if (*p == CR) {
-            if (flag) {
+            if (countNewlines) {
                 foundnl();
             }
             if (*(++p) == LF) {
@@ -504,7 +508,7 @@ backslash:
     goto loop;
 }
 
-char* CPrep_MatchChar2(char* start, char ch, Boolean flag) {
+char* CPrep_MatchChar2(char* start, char ch, Boolean countNewlines) {
     char* p;
     char c;
     Boolean haveBackslash;
@@ -527,7 +531,7 @@ loop:
 
     if (c == CR) {
         if (!copts.multibyteaware || !COS_IsMultiByte(start, p - 1)) {
-            if (flag) {
+            if (countNewlines) {
                 foundnl();
             }
             if (*p == LF) {
@@ -562,7 +566,7 @@ loop:
     if (c == '\\' && !haveBackslash && (!copts.multibyteaware || !COS_IsMultiByte(start, p - 1))) {
 backslash:
         if (*p == CR) {
-            if (flag) {
+            if (countNewlines) {
                 foundnl();
             }
             if (*(++p) == LF) {
@@ -601,7 +605,7 @@ static short prepcurstringchar(StringPtr str) {
 
     save_pos = pos;
     prepnextstringchar_foundnl = FALSE;
-    t = prepnextstringchar(str, 0);
+    t = prepnextstringchar(str, FALSE);
     nextcharpos = pos;
     pos = save_pos;
 
@@ -618,13 +622,11 @@ static void prepcurstringchar_skip(void) {
 char* ReadIdentifier(const char* p) {
     unsigned char buf[256];
     const char* start;
-    unsigned int ch;
     int len;
 
     start = p;
     len = 0;
     for (;;) {
-        ch = *p;
         if (cprep_idarray[(unsigned char)*p]) {
             if (len < 255) {
                 buf[len++] = *p;
@@ -662,7 +664,7 @@ char* ReadIdentifier(const char* p) {
     return (char*)p;
 }
 
-static short intsuffix(short t, Boolean flag) {
+static short intsuffix(short t, Boolean allowUnsigned) {
     Boolean is_unsigned;
     Boolean is_long;
     Boolean is_longlong;
@@ -743,7 +745,7 @@ static short intsuffix(short t, Boolean flag) {
         if (!is_unsigned && CInt64_IsInRange(tkintconst, stsignedint.size)) {
             return IT_INT;
         }
-        if ((flag || is_unsigned) && CInt64_IsInURange(tkintconst, stunsignedint.size)) {
+        if ((allowUnsigned || is_unsigned) && CInt64_IsInURange(tkintconst, stunsignedint.size)) {
             return IT_UINT;
         }
     }
@@ -850,11 +852,11 @@ static SInt32 nextchar(StringPtr str) {
     }
 
     was_escchar = FALSE;
-    t = prepnextstringchar(str, 1);
+    t = prepnextstringchar(str, TRUE);
 
     if (t == '\\' && (!copts.multibyteaware || !COS_IsMultiByte(str, pos - 1))) {
         was_escchar = TRUE;
-        switch ((t = prepnextstringchar(str, 1))) {
+        switch ((t = prepnextstringchar(str, TRUE))) {
             case 'a':
                 return 7;
             case 'b':
@@ -880,7 +882,7 @@ static SInt32 nextchar(StringPtr str) {
             case 'e':
                 return 27;
             case 'x':
-                chr = tohex(prepnextstringchar(str, 1));
+                chr = tohex(prepnextstringchar(str, TRUE));
                 if (chr == -1) {
                     CPrep_Error(ERR_ILLEGAL_CHARACTER_CONSTANT);
                     return ' ';
@@ -982,19 +984,19 @@ Boolean skipendoflinematch(StringPtr str, short token) {
             case 0:
             case CR:
                 pos = (char*)str - 1;
-                return 0;
+                return FALSE;
 
             case '"':
                 if (token == '"') {
                     pos = (char*)str;
-                    return 1;
+                    return TRUE;
                 }
                 break;
 
             case '\'':
                 if (token == '\'') {
                     pos = (char*)str;
-                    return 1;
+                    return TRUE;
                 }
                 break;
 
@@ -1006,7 +1008,7 @@ Boolean skipendoflinematch(StringPtr str, short token) {
                 switch (*(str++)) {
                     case 0:
                         pos = (char*)str - 1;
-                        return 0;
+                        return FALSE;
 
                     case CR:
                         foundnl();
@@ -1078,7 +1080,6 @@ void skipendofline(void) {
                 }
 
                 if (*p == '/' && (!copts.ANSIstrict || copts.cplusplus)) {
-                    // EOL comment
                     pos = (char*)CPrep_SkipNewComment(p + 1);
                     if (CPrep_SkipNewCommentChar == CR) {
                         pos--;
@@ -1087,7 +1088,6 @@ void skipendofline(void) {
                 }
 
                 if (*p == '*') {
-                    // Block comment
                     pos = (char*)p - 1;
                     spaceskip = TRUE;
                     p++;
@@ -1160,7 +1160,6 @@ void skipendofline(void) {
     }
 }
 
-// (dead in 2.6, as in Pro7: nothing calls it)
 void CPrep_SkipAsmComment(void) {
     Boolean save_macrocheck = macrocheck;
     skipendofline();
@@ -1304,7 +1303,7 @@ static short tquot(short t) {
     }
 
     string_ptr = *stringmem;
-    ispascalstring = 0;
+    ispascalstring = FALSE;
     size = 0;
     if (widestring) {
         type = TYPE(&stwchar);
@@ -1317,7 +1316,7 @@ static short tquot(short t) {
         prepcurstringchar_skip();
         if (prepcurstringchar(start_pos) == 'p') {
             prepcurstringchar_skip();
-            ispascalstring = 1;
+            ispascalstring = TRUE;
             string_ptr += type->size;
         } else {
             pos = (char*)save_pos;
@@ -1443,7 +1442,7 @@ static short tless(short t) {
     return '<';
 }
 
-static short tequa(short) {
+static short tequa(short t) {
     at_linestart = FALSE;
     if (prepcurchar() == '=') {
         pos = nextcharpos;
@@ -1470,7 +1469,7 @@ static short tgrea(short t) {
     return '>';
 }
 
-static short tatsg(short) {
+static short tatsg(short t) {
     char save_idarray;
     char* start_pos = pos;
 
@@ -1528,7 +1527,7 @@ static short tatsg(short) {
     return '@';
 }
 
-static short tperc(short) {
+static short tperc(short t) {
     char t2;
     at_linestart = FALSE;
     t2 = prepcurchar();
@@ -1630,7 +1629,6 @@ static short tdivi(short t) {
     return '/';
 }
 
-// forward decl
 static short tnumb(short t);
 
 static short tzero(short t) {
@@ -1683,7 +1681,7 @@ static short tzero(short t) {
         tkintconst = cint64_zero;
     }
 
-    tksize = intsuffix(prepcurchar(), 1);
+    tksize = intsuffix(prepcurchar(), TRUE);
     return TK_INTCONST;
 }
 
@@ -1743,7 +1741,7 @@ static short tnumb(short t) {
         tkintconst = cint64_zero;
     }
 
-    tksize = intsuffix(prepcurchar(), 0);
+    tksize = intsuffix(prepcurchar(), FALSE);
     return TK_INTCONST;
 }
 
@@ -2358,7 +2356,6 @@ static short tchr_(TOKENIZE_NONE) {
             return TK_U_IMAGINARY;
         }
     }
-    // (2.6: Gekko's paired-single vector type)
     if (!strcmp("__vec2x32float__", tkidentifier->name)) {
         return TK_UU_VEC2X32FLOAT_UU;
     }
@@ -2474,7 +2471,7 @@ typedef struct StringChunk {
     SInt32 size;
 } StringChunk;
 
-static void CPrep_StringConCat(Boolean flag) {
+static void CPrep_StringConCat(Boolean isWide) {
     StringChunk* chunks;
     StringChunk* chunk;
     char* buffer;
@@ -2513,7 +2510,7 @@ static void CPrep_StringConCat(Boolean flag) {
                         offset = 256;
                     }
                     buffer[0] = offset - 1;
-                } else if (flag) {
+                } else if (isWide) {
                     CMach_InitIntMem(TYPE(&stwchar), cint64_zero, buffer + offset - stwchar.size);
                 } else {
                     CMach_InitIntMem(TYPE(&stchar), cint64_zero, buffer + offset - stchar.size);
@@ -2555,7 +2552,7 @@ static void CPrep_StringConCat(Boolean flag) {
         if (ch == TK_STRING_WIDE) {
             chunk->size--;
         }
-        if (flag) {
+        if (isWide) {
             chunk->offset--;
         }
 
@@ -2654,7 +2651,6 @@ short lex(void) {
                         }
                         break;
                     case TK_ILLEGAL:
-                        // (2.6: the illegal token is reported and dropped, not returned)
                         ts_current++;
                         CError_Error(ERR_ILLEGAL_TOKEN);
                         ts_current--;

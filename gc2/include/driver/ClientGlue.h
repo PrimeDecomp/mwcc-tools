@@ -9,8 +9,6 @@
 extern "C" {
 #endif
 
-// The clients' interface to the driver (Pro7's ClientGlue.c; __stdcall in 2.x, as Wii's publics
-// are decorated)
 extern int __stdcall RegisterResource(const char* name, SInt16 rsrcid, const char** list);
 extern int __stdcall RegisterStaticPlugin(const BasePluginCallbacks* callbacks);
 extern int __stdcall RegisterStaticCompilerLinkerPlugin(

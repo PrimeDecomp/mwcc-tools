@@ -2,6 +2,7 @@
 #define DRIVER_STRINGUTILS_H
 
 #include "compiler/common.h"
+#include "compiler/win32.h"
 #include "driver/oslib.h"
 #include <stdarg.h>
 

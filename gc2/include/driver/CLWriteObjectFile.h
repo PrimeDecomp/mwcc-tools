@@ -1,7 +1,6 @@
 #ifndef DRIVER_CLWRITEOBJECTFILE_H
 #define DRIVER_CLWRITEOBJECTFILE_H
 
-#include "compiler/common.h"
 #include "driver/cmdline.h"
 #include "driver/oslib.h"
 

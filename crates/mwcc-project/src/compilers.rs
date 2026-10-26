@@ -17,7 +17,7 @@ use std::{
 };
 
 /// The versions gc2's sources build.
-pub const VERSIONS: [&str; 2] = ["GC_2_6", "GC_2_7"];
+pub const VERSIONS: [&str; 3] = ["GC_1_3_2", "GC_2_6", "GC_2_7"];
 
 /// VERSION's compiler module, in a checkout of mwcc.
 pub fn module_output(version: &str) -> String {

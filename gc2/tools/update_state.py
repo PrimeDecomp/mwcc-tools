@@ -1,14 +1,6 @@
 #!/usr/bin/env python3
-"""python tools/update_state.py [VERSION...]: bring each version's generated state up to date with its last comparison
-(build/VERSION/compare.json; default: every version).
 
-- config/VERSION/state.json "matching": the sources every function of which is exact (a source with no functions, a
-  data-only unit, counts: tools/relink.py then decides whether its object links). The comparison fails when a
-  function of a Matching source stops being exact.
-
-A source that is no longer Matching loses its relink exclusion; run tools/relink.py for new Matching sources.
-"""
-
+import argparse
 import sys
 from pathlib import Path
 
@@ -34,11 +26,13 @@ def update(version, tx):
 
 
 def main():
-    if sys.argv[1:2] in (["-h"], ["--help"]):
-        print(__doc__)
-        return
+    parser = argparse.ArgumentParser(
+        description="Bring each version's generated state up to date with its last comparison (default: every version)."
+    )
+    parser.add_argument("versions", nargs="*", metavar="VERSION")
+    args = parser.parse_args()
     try:
-        versions = [project.version(v) for v in sys.argv[1:]] or list(project.VERSIONS)
+        versions = [project.version(v, original=True) for v in args.versions] or list(project.VERSIONS)
         with project.Transaction() as tx:
             for v in versions:
                 update(v, tx)

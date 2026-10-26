@@ -7,8 +7,6 @@
 extern "C" {
 #endif
 
-extern Boolean copt_isleaffunction;
-
 extern void SetVarUsage(Object* obj, Boolean noregister);
 extern void COpt_SimpleOptimizer(Object* obj, Statement* stmt);
 extern Statement* COpt_Optimizer(Object* obj, Statement* stmt);

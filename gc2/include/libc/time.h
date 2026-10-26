@@ -7,8 +7,6 @@
 extern "C" {
 #endif
 
-// The MSL time functions the compiler links
-// (lib/msl/MSL_Common/Include/ctime, Win32 configuration).
 typedef long time_t;
 
 struct tm {

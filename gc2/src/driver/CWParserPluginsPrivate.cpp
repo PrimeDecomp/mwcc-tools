@@ -1,8 +1,8 @@
-// The CW plugin library's parser-plugin glue (Pro7's PluginLib CWParserPluginsPrivate.cpp; Wii names
-// the module so, with ??4CWCommandLineArgs, which only a C++ unit emits). Every function calls
-// GetContext out of line: -inline off.
 #include "driver/CWParserPluginsPrivate.h"
+#include "driver/cmdline.h"
+#include "driver/CWPlugins.h"
 #include "driver/CWPluginsPrivate.h"
+#include "driver/Files.h"
 
 extern "C" {
 
@@ -10,7 +10,7 @@ static CWParserContext* GetContext(CWPluginContext context) {
     if (context && (context->pluginType == CWDROPINPARSERTYPE)) {
         return static_cast<CWParserContext*>(context);
     } else {
-        return 0;
+        return NULL;
     }
 }
 
@@ -262,7 +262,7 @@ CW_CALLBACK CWParserCreateVirtualFile(CWPluginContext context, const char* name,
     CWNewTextDocumentInfo info;
     info.documentname = name;
     info.text = text;
-    info.markDirty = 1;
+    info.markDirty = TRUE;
     return CWCreateNewTextDocument(context, &info);
 }
 
@@ -270,7 +270,7 @@ CW_CALLBACK CWParserDisplayTextHandle(CWPluginContext context, const char* name,
     CWNewTextDocumentInfo info;
     info.documentname = name;
     info.text = text;
-    info.markDirty = 0;
+    info.markDirty = FALSE;
     return CWCreateNewTextDocument(context, &info);
 }
 }

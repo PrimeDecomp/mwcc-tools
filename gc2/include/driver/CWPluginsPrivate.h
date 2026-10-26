@@ -3,17 +3,15 @@
 
 #include "compiler/common.h"
 #include "driver/cmdline.h"
-#include "driver/Files.h"
+#include "driver/CWPlugins.h"
 #include "driver/DropInCompilerLinker.h"
+#include "driver/Files.h"
+#include "driver/oslib.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-// The CodeWarrior plugin API's context (Pro7's plugin_internal.h), mac68k-aligned like the SDK's
-// other structures. C++ code reaches the compiler/linker and parser contexts below through it. The
-// constructors are the driver's (CLDropinCallbacks_V10.cpp, CLParserCallbacks_v1.cpp and
-// CLCompilerLinkerDropin_V10.cpp); 2.6 has no destructors.
 #pragma pack(push, 2)
 struct CWPluginPrivateContext {
 #ifdef __cplusplus
@@ -96,7 +94,6 @@ struct CWParserContext : CWPluginPrivateContext {
 #endif
 #pragma pack(pop)
 
-// The shell's callbacks every plugin calls (Pro7's plugin.h), 43 entries
 typedef struct CW_BasePluginCallbacks {
     CW_CALLBACK_PTR (*cbGetFileInfo)(CWPluginContext, SInt32, Boolean, CWProjectFileInfo*);
     CW_CALLBACK_PTR (*cbFindAndLoadFile)(CWPluginContext, const char*, CWFileInfo*);
@@ -132,7 +129,6 @@ typedef struct CW_BasePluginCallbacks {
     CW_CALLBACK_PTR (*cbResizeMemHandle)(CWPluginContext, CWMemHandle, SInt32);
     CW_CALLBACK_PTR (*cbLockMemHandle)(CWPluginContext, CWMemHandle, Boolean, void**);
     CW_CALLBACK_PTR (*cbUnlockMemHandle)(CWPluginContext, CWMemHandle);
-    // (CWSecretPluginCallbacks.cpp's: attach, detach, peek, then five unused)
     void* cbInternal[8];
     CW_CALLBACK_PTR (*cbGetTargetName)(CWPluginContext, char*, short);
     CW_CALLBACK_PTR (*cbCacheAccessPathList)(CWPluginContext);
@@ -140,7 +136,6 @@ typedef struct CW_BasePluginCallbacks {
     CW_CALLBACK_PTR (*cbPostDialog)(CWPluginContext);
     CW_CALLBACK_PTR (*cbPreFileAction)(CWPluginContext, const CWFileSpec*);
     CW_CALLBACK_PTR (*cbPostFileAction)(CWPluginContext, const CWFileSpec*);
-    // (2.6's flags are unsigned: UCBCheckoutLicense tests them in other registers as SInt32)
     CW_CALLBACK_PTR (*cbCheckoutLicense)(
         CWPluginContext, const char*, const char*, UInt32, void*, SInt32*
     );
@@ -153,12 +148,9 @@ typedef struct CW_BasePluginCallbacks {
 extern CW_CALLBACK CWGetPluginRequest(CWPluginContext context, SInt32* request);
 extern CW_CALLBACK CWGetAPIVersion(CWPluginContext context, SInt32* version);
 extern CW_CALLBACK CWGetProjectFile(CWPluginContext context, CWFileSpec* projectSpec);
-// (not in 2.6: only a dead function of Projects.c calls it)
 extern CW_CALLBACK CWGetOutputFileDirectory(
     CWPluginContext context, CWFileSpec* outputFileDirectory
 );
-// (Pro7's CWPluginsPrivate.cpp; 2.6 has no copy of it: only the dead UCBMacOSErrToCWResult calls
-// it)
 extern CWResult OSErrtoCWResult(OSErr err);
 extern CW_CALLBACK CWGetTargetName(CWPluginContext context, char* name, short maxLength);
 extern CW_CALLBACK CWGetProjectFileCount(CWPluginContext context, SInt32* count);

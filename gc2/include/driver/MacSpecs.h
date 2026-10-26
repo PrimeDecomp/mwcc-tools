@@ -9,7 +9,6 @@
 extern "C" {
 #endif
 
-/* Mac volume and directory IDs for OS paths (Pro7's MacSpecs.c): the FSSpecs plugins see */
 extern int __stdcall OS_OSSpec_To_FSSpec(const OSSpec* spec, FSSpec* fss);
 extern int __stdcall OS_FSSpec_To_OSSpec(const FSSpec* fss, OSSpec* spec);
 extern int __stdcall OS_GetRsrcOSSpec(const OSSpec* spec, OSSpec* rspec, Boolean create);

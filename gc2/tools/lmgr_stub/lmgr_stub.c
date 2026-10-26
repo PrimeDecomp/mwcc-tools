@@ -1,5 +1,3 @@
-// Stand-in for LMGR326B.dll (FlexLM), which the Pro 5 compilers import by ordinal and which checks a license on
-// Windows: lp_checkout always succeeds. It does what wibo's built-in stub does.
 int __cdecl lp_checkout(
     int a, int b, const char* c, const char* d, int e, const char* f, int* out
 ) {

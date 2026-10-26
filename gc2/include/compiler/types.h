@@ -28,15 +28,9 @@ typedef enum TypeType {
 
 #pragma pack(push, 2)
 
-// Common fields across all kinds of types
 struct Type {
     TypeType type;
     SInt32 size;
-    // TODO: a stand-in only CExpr_BuiltInComputeType reads (TYPE_INTEGRAL(e)->integral there
-    // inlines its recursion one level less than 2.6); not Pro7's
-    struct {
-        UInt8 integral;
-    } array[0];
 };
 
 typedef enum IntegralType {
@@ -59,7 +53,6 @@ typedef enum IntegralType {
     IT_LONGDOUBLE = 16,
     IT_17 = 17,
     IT_18 = 18,
-    // 2.6: Gekko's paired single, __vec2x32float__ (Pro7: IT_19) TODO: invented name
     IT_VEC2X32FLOAT = 19,
     IT_20 = 20,
     IT_21 = 21,
@@ -130,9 +123,7 @@ struct ClassList {
 struct VClassList {
     VClassList* next;
     TypeClass* base;
-    // offset within the class instance
     SInt32 offset;
-    // offset within the vtable
     SInt32 voffset;
     Boolean has_override;
 };
@@ -177,52 +168,39 @@ struct TypeClass {
     UInt8 eflags;
 };
 
-// TypeClass::mode
 enum {
     CLASS_MODE_STRUCT = 0,
     CLASS_MODE_UNION = 1,
     CLASS_MODE_CLASS = 2
 };
 
-// TypeClass::flags
 enum {
-    // class is a HandleObject
     CLASS_HANDLEOBJECT = 1,
     CLASS_COMPLETED = 2,
     CLASS_ABSTRACT = 8,
-    // inherits from SingleObject/SingleInheritance
     CLASS_SINGLE_OBJECT = 0x10,
     CLASS_HAS_VBASES = 0x20,
-    // defines at least one conversion function
     CLASS_IS_CONVERTIBLE = 0x40,
-    // is a TemplClass
     CLASS_IS_TEMPL = 0x100,
-    // is a TemplClassInst
     CLASS_IS_TEMPL_INST = 0x800,
     CLASS_IS_TEMPL_ANY = CLASS_IS_TEMPL | CLASS_IS_TEMPL_INST,
-    // is 0 bytes (forced to 1 byte for ABI reasons)
     CLASS_EMPTY = 0x1000,
-    // inherits from __comobject
     CLASS_COM_OBJECT = 0x2000,
-    // the SOM class's initialisation is pending (Pro7: CLASS_FLAGS_8000) TODO: invented name
-    CLASS_SOM_INIT = 0x8000
+    CLASS_VBASE_CTOR_OFFSET = 0x8000
 };
 
-// TypeClass::eflags
 enum {
     CLASS_EFLAGS_INTERNAL = 1,
     CLASS_EFLAGS_IMPORT = 2,
     CLASS_EFLAGS_EXPORT = 4,
-    CLASS_EFLAGS_F0 = 0xF0
+    CLASS_EFLAGS_STRUCT_ALIGN = 0xF0
 };
 
-// TypeClass::action
 enum {
-    CLASS_ACTION_0 = 0,
-    CLASS_ACTION_1 = 1,
-    CLASS_ACTION_2 = 2,
-    // __javaobject
-    CLASS_ACTION_3 = 3
+    CLASS_ACTION_NONE = 0,
+    CLASS_ACTION_KEY_FUNCTION = 1,
+    CLASS_ACTION_UNUSED = 2,
+    CLASS_ACTION_JAVA = 3
 };
 
 struct ExceptSpecList {
@@ -251,36 +229,28 @@ struct TypeFunc {
     UInt32 flags;
 };
 
-// TypeFunc::flags
 enum {
     FUNC_PASCAL = 1,
-    // does the function have a body?
     FUNC_DEFINED = 2,
-    FUNC_FLAGS_4 = 4,
-    // abstract
+    FUNC_KEY_FUNCTION = 4,
     FUNC_PURE = 8,
     FUNC_METHOD = 0x10,
-    FUNC_FLAGS_20 = 0x20,
-    // func that's like "operator SomeOtherType()"
+    FUNC_OVERRIDE = 0x20,
     FUNC_CONVERSION = 0x40,
-    FUNC_FLAGS_80 = 0x80,
-    // an auto-generated ctor, dtor or assignment operator
+    FUNC_PTM = 0x80,
     FUNC_AUTO_GENERATED = 0x100,
     FUNC_INTRINSIC = 0x200,
     FUNC_NOTHROW = 0x400,
-    FUNC_FLAGS_800 = 0x800,
+    FUNC_AUTO_INLINE = 0x800,
     FUNC_IS_CTOR = 0x1000,
     FUNC_IS_DTOR = 0x2000,
     FUNC_OBJC_METHOD = 0x4000,
     FUNC_CONST = 0x8000,
     FUNC_VOLATILE = 0x10000,
     FUNC_FLAGS_CV = FUNC_CONST | FUNC_VOLATILE,
-    // the definition of a template
     FUNC_IS_TEMPL = 0x100000,
-    FUNC_FLAGS_200000 = 0x200000,
-    // covariant?
-    FUNC_FLAGS_400000 = 0x400000,
-    // a concrete instance of a template
+    FUNC_TEMPLATE_ACTION = 0x200000,
+    FUNC_COVARIANT = 0x400000,
     FUNC_IS_TEMPL_INSTANCE = 0x800000,
     FUNC_IS_TEMPL_ANY = FUNC_IS_TEMPL | FUNC_IS_TEMPL_INSTANCE,
     FUNC_FLAGS_4000000 = 0x4000000,
@@ -297,9 +267,7 @@ struct TypeMemberFunc {
     UInt32 qual;
     UInt32 flags;
     TypeClass* theclass;
-    // index of this method within the vtable
     SInt32 vtbl_index;
-    // ID used for tracking this method within browse data
     SInt32 funcid;
     Boolean is_static;
 };
@@ -308,18 +276,11 @@ struct TypeBitfield {
     TypeType type;
     SInt32 size;
     Type* bitfieldtype;
-    // offset in bits
     char offset;
-    // size in bits
     char bitlength;
-    // 2.6: set for an unnamed bitfield (not in Pro7) TODO: invented name
     char suppressAlignment;
 #if VERSION == VERSION_GC_2_5
-    // 2.5: the declared type's size, kept when the layout widens the bitfield's type to its unit's
-    // TODO: invented name
     char declsize;
-    // 2.5: set to -1 by the layout; nothing else known reads it
-    // TODO: invented name
     char x0e;
 #endif
 };
@@ -370,7 +331,6 @@ struct TypeMemberPointer {
     UInt32 qual;
 };
 
-// Used for TYPEPOINTER and TYPEARRAY
 struct TypePointer {
     TypeType type;
     SInt32 size;
@@ -378,11 +338,9 @@ struct TypePointer {
     UInt32 qual;
 };
 
-// Always has Q_IS_OBJC_ID set
 struct TypeObjCID {
     TypePointer pointer;
     ObjCProtocolList* protocols;
-    // TODO: Pro7's placeholder name; never read or written
     short x12;
 };
 
@@ -453,13 +411,10 @@ struct TypeList {
      ((ty)->type == TYPEENUM) || \
      IS_TYPE_POINTER(ty) || \
      IS_TYPE_4BYTES_MEMBERPOINTER(ty))
-// 2.6: Gekko's paired single (__vec2x32float__) TODO: invented names
 #define IS_TYPE_VEC2X32FLOAT(ty) \
     (IS_TYPE_FLOAT(ty) && TYPE_INTEGRAL(ty)->integral == IT_VEC2X32FLOAT)
 #define IS_TYPE_FLOAT_NOT_VEC2X32FLOAT(ty) ((ty)->type == TYPEFLOAT && !IS_TYPE_VEC2X32FLOAT(ty))
-// 2.6: a float that -fp soft keeps in GPRs (never the paired single) TODO: invented name
 #define TYPE_IS_SOFT_FLOAT(ty) (copts.soft_float && IS_TYPE_FLOAT_NOT_VEC2X32FLOAT(ty))
-// 2.6: a value held in a GPR pair: a long long, or a soft-float double TODO: invented name
 #define TYPE_IS_GPR_PAIR(ty) (TYPE_IS_8BYTES(ty) || (TYPE_IS_SOFT_FLOAT(ty) && (ty)->size != 4))
 
 #define OBJ_GET_TARGET_VOLATILE(obj) \

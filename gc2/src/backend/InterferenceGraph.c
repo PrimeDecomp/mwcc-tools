@@ -4,12 +4,13 @@
 #include "compiler/Coloring.h"
 #include "compiler/CompilerTools.h"
 #include "compiler/CParser.h"
-#include "compiler/CPrep.h"
 #include "compiler/LiveVariables.h"
 #include "compiler/PCode.h"
+#include "compiler/PCodeInfo.h"
 #include "compiler/PCodeListing.h"
 #include "compiler/PCodeUtilities.h"
 #include "compiler/RegisterInfo.h"
+#include "compiler/Registers.h"
 
 IGNode** interferencegraph;
 static UInt32* interferencematrix;
@@ -60,7 +61,12 @@ static void buildinterferencematrix(void) {
         for (instr = block->lastPCode; instr; instr = instr->prevPCode) {
             for (op = instr->args, i = instr->argCount; i--; op++) {
                 if (PC_OP_IS_WRITE_ANY_REGISTER(op, coloring_class)) {
+#ifdef __MWERKS__
                     bitvectorclearbit(reg = op->data.reg.reg, vec);
+#else
+                    reg = op->data.reg.reg;
+                    bitvectorclearbit(reg, vec);
+#endif
                     for (j = 0; j < regs; j++) {
                         if (bitvectorgetbit(j, vec)) {
                             if ((instr->flags & fIsMove) &&
@@ -76,7 +82,12 @@ static void buildinterferencematrix(void) {
 
             for (op = instr->args, i = instr->argCount; i--; op++) {
                 if (PC_OP_IS_READ_ANY_REGISTER(op, coloring_class)) {
+#ifdef __MWERKS__
                     if (bitvectorgetbit(reg = op->data.reg.reg, vec) == 0) {
+#else
+                    reg = op->data.reg.reg;
+                    if (bitvectorgetbit(reg, vec) == 0) {
+#endif
                         op->data.reg.effect |= EffectLastUse;
                     }
                     bitvectorsetbit(reg, vec);
@@ -109,7 +120,7 @@ static void buildinterferencematrix(void) {
                         case PC_DSTT:
                         case PC_DSTST:
                         case PC_DSTSTT:
-                        case PC_DCBZ_L: // (2.6: Gekko)
+                        case PC_DCBZ_L:
                             if (instr->args[0].data.reg.reg >= n_real_registers[coloring_class]) {
                                 makeinterfere(0, instr->args[0].data.reg.reg);
                             }
@@ -190,17 +201,11 @@ static void coalescenodes(void) {
                     }
 
                     if (!interferes(path1, path2)) {
-                        // 2.6: one negated range test where Pro7 has four `continue`s
-                        if (path1 >=
-                            n_real_registers[coloring_class] &&
-                            path2 >=
-                            n_real_registers[coloring_class] &&
-                            !(path1 >=
-                              first_fe_temporary_register[coloring_class] &&
-                              path1 <=
-                              last_temporary_register[coloring_class] &&
-                              path2 >=
-                              first_fe_temporary_register[coloring_class] &&
+                        if (path1 >= n_real_registers[coloring_class] &&
+                            path2 >= n_real_registers[coloring_class] &&
+                            !(path1 >= first_fe_temporary_register[coloring_class] &&
+                              path1 <= last_temporary_register[coloring_class] &&
+                              path2 >= first_fe_temporary_register[coloring_class] &&
                               path2 <= last_temporary_register[coloring_class])) {
                             continue;
                         }
@@ -269,7 +274,7 @@ static void buildadjacencyvectors(void) {
         node->reg = i;
         node->color = -1;
         node->arraySize = counter;
-        node->degree = node->arraySize; // (2.6 reads the field; Pro7's `counter` 98.8%)
+        node->degree = node->arraySize;
 
         dest = node->array;
         src = array;
@@ -310,9 +315,12 @@ static void eliminatedeadcode(void) {
             i = instr->argCount;
             while (i--) {
                 if (PC_OP_IS_WRITE_ANY_REGISTER(op, coloring_class)) {
-                    // (the loop as buildinterferencematrix's, `reg` set though unread: 2.6 keeps the
-                    // 16-bit register in a variable; Pro7's plain field is 85.6%)
+#ifdef __MWERKS__
                     bitvectorclearbit(reg = op->data.reg.reg, vec);
+#else
+                    reg = op->data.reg.reg;
+                    bitvectorclearbit(reg, vec);
+#endif
                 }
                 op++;
             }
@@ -321,7 +329,12 @@ static void eliminatedeadcode(void) {
             i = instr->argCount;
             while (i--) {
                 if (PC_OP_IS_READ_ANY_REGISTER(op, coloring_class)) {
+#ifdef __MWERKS__
                     if (!bitvectorgetbit(reg = op->data.reg.reg, vec)) {
+#else
+                    reg = op->data.reg.reg;
+                    if (!bitvectorgetbit(reg, vec)) {
+#endif
                         op->data.reg.effect |= EffectLastUse;
                     }
                     bitvectorsetbit(reg, vec);
@@ -348,8 +361,7 @@ static void findrematerializations(void) {
             i = instr->argCount;
             while (i--) {
                 if (PC_OP_IS_WRITE_ANY_REGISTER(op, coloring_class) &&
-                    op->data.reg.reg >=
-                    n_real_registers[coloring_class] &&
+                    op->data.reg.reg >= n_real_registers[coloring_class] &&
                     !(interferencegraph[op->data.reg.reg]->flags & (fPairLow | fPairHigh)) &&
                     !(interferencegraph[op->data.reg.reg]->flags & fMultipleDefs)) {
                     node = interferencegraph[op->data.reg.reg];

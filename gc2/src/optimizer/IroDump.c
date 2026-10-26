@@ -9,11 +9,11 @@
 #include "compiler/BitVector.h"
 #include "compiler/CFunc.h"
 #include "compiler/CInt64.h"
-#include "compiler/CompilerTools.h"
 #include "compiler/CParser.h"
 #include "compiler/CPrep.h"
+#include "compiler/enode.h"
 #include "compiler/objects.h"
-#include "compiler/OracleProbes.h"
+#include "compiler/types.h"
 #include "driver/CCompiler.h"
 #include "driver/COSToolsCLT.h"
 #include <stdarg.h>
@@ -136,6 +136,8 @@ static void DumpENode(ENode* enode) {
                     enode->data.vector128val.ul[3]
                 );
                 break;
+            default:
+                break;
         }
     }
 }
@@ -227,6 +229,8 @@ static void DumpLinearNode(IROLinear* linear) {
             break;
         case IROLinearEnd:
             fprintf(DumpFile, "End");
+            break;
+        default:
             break;
     }
 
@@ -333,18 +337,22 @@ void IRO_DumpBits(char* name, BitVector* bv) {
         return;
     }
 
+#ifdef __MWERKS__
     fprintf(DumpFile, name);
+#else
+    fprintf(DumpFile, "%s", name);
+#endif
     if (!bv) {
         fprintf(DumpFile, "NULL");
     } else {
-        for (i = 0; i < (bv->size * 32); i++) {
+        for (i = 0; (UInt32)i < (bv->size * 32); i++) {
             if (Bv_IsBitSet(i, bv)) {
                 if (!inRange) {
                     if (!isFirst) {
                         fputc(',', DumpFile);
                     }
                     isFirst = FALSE;
-                    fprintf(DumpFile, "%d", i);
+                    fprintf(DumpFile, "%d", (int)i);
                     inRange = TRUE;
                     rangeStart = i;
                 }
@@ -352,23 +360,22 @@ void IRO_DumpBits(char* name, BitVector* bv) {
                 if (inRange) {
                     inRange = FALSE;
                     if (i != (rangeStart + 1)) {
-                        fprintf(DumpFile, "-%d", i - 1);
+                        fprintf(DumpFile, "-%d", (int)(i - 1));
                     }
                 }
             }
         }
 
         if (inRange && i != (rangeStart + 1)) {
-            fprintf(DumpFile, "-%d", i - 1);
+            fprintf(DumpFile, "-%d", (int)(i - 1));
         }
     }
 
     fprintf(DumpFile, "\n");
 }
 
-void IRO_DumpAfterPhase(char* str, Boolean flag) {
-    ORACLE_PROBE(flag = OracleProbe_DumpPhase(str, flag));
-    if (flag) {
+void IRO_DumpAfterPhase(char* str, Boolean dumpGraph) {
+    if (dumpGraph) {
         IRO_Dump(
             "Dumping function %s after %s \n",
             FunctionName ? FunctionName->name->name : "Init-code",
@@ -567,7 +574,6 @@ void IRO_DumpExprs(void) {
     fprintf(DumpFile, "\n");
 }
 
-// 2.6 names the log after the source file (Pro7: "OPT.LOG")
 void IRO_SetupDump(void) {
     char name[256];
     int i;
@@ -797,6 +803,8 @@ void IRO_SpellType(Type* type, char* buf) {
             strcat(buf, ",");
             strcat(buf, mybuf2);
             strcat(buf, ")");
+            break;
+        default:
             break;
     }
 }

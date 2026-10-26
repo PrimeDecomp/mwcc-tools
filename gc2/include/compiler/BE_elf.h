@@ -2,48 +2,31 @@
 #define COMPILER_BE_ELF_H
 
 #include "compiler/common.h"
-#include "compiler/CompilerTools.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-// What a section is declared with (Initialize_Input; ObjGen's `#pragma section` and
-// __declspec(section) records): 16 bytes (galloc(0x10) in Wii's elf_define_section)
 struct SectionRec {
-    // `#pragma section`'s options as given (parse_section_pragma)
     UInt8 flags;
-    // which of the default object sections (copts.textSection ...) it becomes: 1 code, 2 data,
-    // 4 const, 8 sdata, 0x10 sconst (InitElfSection)
     UInt8 typebits;
-    // its data_mode and code_mode (AddressingMode)
     UInt8 dataMode;
     UInt8 codeMode;
-    // the R/W/X attributes parse_section_pragma accumulates (2.6 ORs and reads all four bytes)
     UInt32 mode;
     char* sectionName;
-    // the uninitialized section paired with it (.bss for .data), or NULL
     char* linkedSectionName;
 };
-// The object file being written: its sections by kind and its counters, cleared by InitElfFile
-// (Wii's COMMON `ELFfile`). TODO: invented type and member names, except those of the globals the
-// members were split into before (section_list, dwarf_info_section ...)
-// (2-byte packing: file_symbol at offset 2, after the Boolean)
 #pragma pack(push, 2)
 typedef struct ElfFile {
-    // set once ObjGen has set up the DWARF sections (Wii: the global `debug_sections_inited`)
     Boolean debug_sections_inited;
-    // the file's STT_FILE symbol (InitElfFile)
     BE_SymNode* file_symbol;
     SInt16 sectionHeaderCount;
     ObjGenSection* section_list;
-    // the sections InitElfSection files by kind
     ObjGenSection* null_section;
     ObjGenSection* ctors_section;
     ObjGenSection* dtors_section;
     ObjGenSection* extab_section;
     ObjGenSection* extabindex_section;
-    // .data's linked .bss (InitElfSections)
     ObjGenSection* data_section_linked_symbol;
     ObjGenSection* dwarf_info_section;
     ObjGenSection* dwarf_line_section;
@@ -52,11 +35,9 @@ typedef struct ElfFile {
     ObjGenSection* symbol_string_table_section;
     ObjGenSection* shstrtab_section;
     ObjGenSection* comment_section;
-    // SHN_COMMON and SHN_ABS stand-ins (kinds 16 and 17)
     ObjGenSection* common_section;
     ObjGenSection* abs_section;
-    // TODO: placeholder name: nothing in 2.6 reads or writes this word
-    UInt32 unused48;
+    UInt32 unused;
     SectionSymbolAttributes* section_symbol_attributes;
     UInt16 section_symbol_attribute_count;
 } ElfFile;
@@ -68,12 +49,19 @@ extern ObjGenRelocation* allrelocations;
 extern SInt32 previous_ps_ID;
 extern InterruptGenerationRecord* interrupt_generation_records;
 
+#if VERSION < VERSION_GC_2_0
+extern void BackPatchRelocationAddend(ObjGenRelocation* reloc, unsigned int value);
+extern ObjGenRelocation* WriteDebugRelocation(
+    ObjGenSection* context, int offset, Object* object, void* source, int value, int adjustment
+);
+#else
 extern void BackPatchRelocationAddend(
     ObjGenRelocation* reloc, unsigned int value, BE_SymNode* symbol
 );
 extern ObjGenRelocation* WriteDebugRelocation(
     ObjGenSection* context, int offset, BE_SymNode* symbol, void* source, int value, int adjustment
 );
+#endif
 extern void BackEnd_WriteElf(void);
 extern void TransferSectionData(GList* dst, GList* src);
 extern void CleanupElfSections(void);

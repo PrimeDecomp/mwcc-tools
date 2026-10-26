@@ -1,11 +1,18 @@
 #include "driver/CLIO.h"
+#include "compiler/win32.h"
 #include "driver/CLErrors.h"
 #include "driver/CLMain.h"
 #include "driver/CLPlugins.h"
+#include "driver/cmdline.h"
+#include "msl/crtl.h"
+#include "driver/CWPlugins.h"
 #include "driver/FileHandles.h"
 #include "driver/Generic.h"
+#include "driver/MacFileTypes.h"
+#include "driver/Memory.h"
 #include "driver/MemUtils.h"
-#include "msl/crtl.h"
+#include "driver/MsDos.h"
+#include "driver/oslib.h"
 #include "driver/StringUtils.h"
 #include <ctype.h>
 #include <errno.h>
@@ -29,7 +36,6 @@ static char arrowBuf[256];
 static Boolean printedAnything;
 static int ioLineNum;
 
-// (used before their definitions; nothing outside calls them)
 Boolean IO_HelpTerminate(void);
 void InitWorking(void);
 void TermWorking(void);
@@ -61,14 +67,13 @@ static void SetupConsoleInfo(void) {
             optsEnvir.cols = 256;
         }
     }
-    // 2.6 writes its own "\r\n" line ends: no text translation on the standard handles
     _HandleTable[0]->translate = 0;
     _HandleTable[1]->translate = 0;
     _HandleTable[2]->translate = 0;
 }
 
 static void Crash(void) {
-    *((unsigned char*)NULL) = 0;
+    *((volatile unsigned char*)NULL) = 0;
 }
 
 void SetupDebuggingTraps(void) {
@@ -139,7 +144,7 @@ static Boolean SendHandleToFile(FILE* file, Handle text, SInt32 size) {
 
             if (lineEnd - ptr) {
                 if (fwrite(ptr, lineEnd - ptr, 1, file) != 1) {
-                    CLReportCError(10, errno);
+                    CLReportCError(CLStr10, errno);
                     ret = FALSE;
                     goto fail;
                 }
@@ -151,7 +156,7 @@ static Boolean SendHandleToFile(FILE* file, Handle text, SInt32 size) {
             }
 
             if (fwrite("\r\n", strlen("\r\n"), 1, file) != 1) {
-                CLReportCError(10, errno);
+                CLReportCError(CLStr10, errno);
                 ret = FALSE;
                 goto fail;
             }
@@ -188,7 +193,7 @@ void FixHandleForIDE(Handle text, UInt32 size) {
 }
 
 Boolean ShowHandle(Handle text, UInt32 size, Boolean decorate) {
-    static const char* border = "===============\n";
+    static const char* const border = "===============\n";
 
     if (decorate) {
         fprintf(stdout, border);
@@ -208,11 +213,10 @@ Boolean WriteHandleToFile(OSSpec* spec, Handle text, UInt32 size, OSType creator
     FILE* file;
     char path[256];
 
-    // (the original passes a full path's size, 260, for this 256-byte buffer)
     OS_SpecToString(spec, path, sizeof(OSPathSpec));
     file = fopen(path, "w+b");
     if (!file) {
-        CLReportCError(8, errno, path);
+        CLReportCError(CLStr8, errno, path);
         return FALSE;
     }
 
@@ -227,10 +231,10 @@ Boolean WriteBinaryHandleToFile(OSSpec* spec, OSType maccreator, OSType mactype,
     int err;
     OSFileHandle file;
 
-    if ((err = OS_NewFileHandle(spec, text, 1, &file)) ||
+    if ((err = OS_NewFileHandle(spec, text, TRUE, &file)) ||
         (err = OS_FreeFileHandle(&file)) ||
         (err = OS_SetMacFileCreatorAndType(spec, maccreator, mactype))) {
-        CLReportOSError(8, err, OS_SpecToString(spec, STSbuf, sizeof(STSbuf)));
+        CLReportOSError(CLStr8, err, OS_SpecToString(spec, STSbuf, sizeof(STSbuf)));
         return FALSE;
     }
 
@@ -243,11 +247,10 @@ Boolean AppendHandleToFile(
     FILE* file;
     char path[256];
 
-    // (the original passes a full path's size, 260, for this 256-byte buffer)
     OS_SpecToString(spec, path, sizeof(OSPathSpec));
     file = fopen(path, "a+b");
     if (!file) {
-        CLReportCError(8, errno, path);
+        CLReportCError(CLStr8, errno, path);
         return FALSE;
     }
 
@@ -275,7 +278,6 @@ Boolean CheckForUserBreak(void) {
     return clState.userBreak;
 }
 
-// NOTE: invented name
 typedef struct {
     char* buffer;
     int pos;
@@ -285,7 +287,6 @@ typedef struct {
     char* newline;
 } TextBuffer;
 
-// NOTE: invented names (nothing in the binary names these helpers)
 inline void appendText(TextBuffer* f, const char* str) {
     int len = strlen(str);
 
@@ -346,11 +347,13 @@ static void WrapText(TextBuffer* f) {
     char c;
 
     wrapped = 0;
-    if (optsCmdLine.noWrapOutput || !f->newline || strlen(f->newline) > optsEnvir.cols / 2) {
+    if (optsCmdLine.noWrapOutput ||
+        !f->newline ||
+        strlen(f->newline) > (size_t)(optsEnvir.cols / 2)) {
         return;
     }
 
-    while (wrapped < (optsEnvir.cols - 1) && f->col > strlen(f->newline)) {
+    while (wrapped < (optsEnvir.cols - 1) && (size_t)f->col > strlen(f->newline)) {
         c = f->buffer[f->pos - 1];
         if (c == ' ') {
             break;
@@ -367,7 +370,7 @@ static void WrapText(TextBuffer* f) {
         f->col--;
     }
 
-    if (f->col <= strlen(f->newline)) {
+    if ((size_t)f->col <= strlen(f->newline)) {
         while (f->col < (optsEnvir.cols - 1) && wrapped > 0) {
             appendChar(f, wrapbuf[--wrapped]);
         }
@@ -427,7 +430,7 @@ static char* IO_VFormatText(
     }
 
     if (f.newline) {
-        if (f.col == strlen(f.newline)) {
+        if ((size_t)(int)f.col == strlen(f.newline)) {
             f.pos -= f.col;
             f.col = 0;
         }
@@ -449,8 +452,6 @@ char* IO_FormatText(char* buffer, SInt32 size, char* newline, const char* format
     return ret;
 }
 
-// 2.6's paging prompt for the help output: its pointer is in .data, but nothing in the binary reads it
-// NOTE: invented name
 static const char* pagePrompt = "\n[Press enter for next page, 'q'+enter to quit]\r";
 
 void CLPrintDispatch(int unused, SInt16 msgtype, const char* message) {
@@ -458,12 +459,9 @@ void CLPrintDispatch(int unused, SInt16 msgtype, const char* message) {
     const char* ptr;
     const char* nptr;
 
-    if (optsCmdLine.stderr2stdout ==
-        1 ||
-        optsCmdLine.stderr2stdout ==
-        2 ||
-        msgtype ==
-        Msg_Note ||
+    if (optsCmdLine.stderr2stdout == 1 ||
+        optsCmdLine.stderr2stdout == 2 ||
+        msgtype == Msg_Note ||
         msgtype == Msg_Status) {
         out = stdout;
     } else if (msgtype == Msg_Warning || msgtype == Msg_Error || msgtype == Msg_Alert) {
@@ -512,7 +510,6 @@ void CLPrintDispatch(int unused, SInt16 msgtype, const char* message) {
     }
 }
 
-// (a static; Projects.c defines a global GetFileInfo)
 #define GetFileInfo CLIO_GetFileInfo
 
 static void GetFileInfo(MessageRef* ref) {
@@ -543,9 +540,9 @@ static char* Arrows(MessageRef* ref) {
     arrowBuf[0] = 0;
     start = ref->tokenoffset;
     start %= optsEnvir.cols;
-    if (start >= 0 && start < sizeof(arrowBuf)) {
+    if (start >= 0 && (size_t)start < sizeof(arrowBuf)) {
         len = ref->tokenlength;
-        if (len + start > sizeof(arrowBuf)) {
+        if ((size_t)(len + start) > sizeof(arrowBuf)) {
             len = sizeof(arrowBuf) - start;
         }
         if (len == 0) {

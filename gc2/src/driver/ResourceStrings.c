@@ -1,6 +1,3 @@
-// Pro7's MacEmul/ResourceStrings.c: the string-list resources (STR#) the driver and its plugins
-// register and look up by id. 2.6 has no Res_Initialize or Res_Cleanup (nothing calls them; Wii's
-// module lacks them too).
 #include "driver/ResourceStrings.h"
 #include <stdio.h>
 
@@ -37,8 +34,6 @@ const char* Res_GetResource(SInt16 rsrcid, SInt16 index) {
     int find;
     static char err[256];
 
-    // 2.6 counts from 0 in the parameter itself (Pro7: `(SInt16) (index - 1)` at each use) and
-    // walks the whole table with a plain `for`
     index--;
     for (scan = 0; scan < 16; scan++) {
         if (rsrcid == rlist[scan].rsrcid) {

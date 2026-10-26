@@ -7,8 +7,6 @@
 extern "C" {
 #endif
 
-extern int deletedloads;
-
 extern void deletedeadloads(Object* proc);
 
 #ifdef __cplusplus

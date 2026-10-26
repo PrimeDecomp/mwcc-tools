@@ -29,10 +29,10 @@ extern TemplateMember* CTemplClass_DefineMember(
     TemplClass* tmclass, Object* object, FileOffsetInfo* foi, TokenStream* stream
 );
 extern void CTemplClass_ParsePartialSpecialization(
-    TemplateScopeState* what_is_this, TemplParam* params, short mode, SInt32* offset
+    TemplateScopeState* templateScope, TemplParam* params, short mode, SInt32* offset
 );
 extern void CTemplClass_ParseClass(
-    TemplateScopeState* what_is_this, TemplParam* params, short mode, SInt32* offset
+    TemplateScopeState* templateScope, TemplParam* params, short mode, SInt32* offset
 );
 extern Boolean CTemplClass_FindPartialTemplate(
     TemplArg* args, TemplClass** resultTempl, TemplArg** resultArgs

@@ -1,15 +1,3 @@
-"""Compiling variants of a source without touching the build.
-
-A Workspace is a private directory under build/tmp/ (removed when the workspace closes, Ctrl-C included). Each variant
-is written there under the source's own file name, so __FILE__ and the compiler's literals are the real build's, and
-compiled with the source's real command line (build.compilation) plus -I of the source's directory, so its
-"local" includes still resolve. Nothing in src/ or build/VERSION/compiled is written, so any number of tools can try
-variants at once, beside ninja.
-
-reproduces() checks the method for one source: the unchanged text compiled so must give ninja's object (every section
-but the uninitialized ones, whose file bytes the compiler leaves as junk, and the debug and directive sections).
-"""
-
 from __future__ import annotations
 
 import concurrent.futures
@@ -25,12 +13,13 @@ from .coff import Object
 from .project import ROOT, relative
 
 TMP = ROOT / "build" / "tmp"
+FORK = "fork" in multiprocessing.get_all_start_methods()
 
 
 @dataclass
 class Result:
     ok: bool
-    object: Path | None  # the compiled object (inside the workspace: read it before the workspace closes)
+    object: Path | None
     log: str
 
 
@@ -44,15 +33,13 @@ class Workspace:
         if not self.keep:
             shutil.rmtree(self.path, ignore_errors=True)
 
-    def __enter__(self) -> "Workspace":
+    def __enter__(self) -> Workspace:
         return self
 
     def __exit__(self, *_) -> None:
         self.close()
 
     def compile(self, compilation: build.Compilation, text: str | bytes | None = None, timeout: float = 600) -> Result:
-        """Compile TEXT (default: the source as it is) as COMPILATION's source."""
-        # (a directory of its own: compiles may run in forked processes, which share no counter)
         directory = Path(tempfile.mkdtemp(dir=self.path))
         source = directory / Path(compilation.source).name
         if text is None:
@@ -62,21 +49,18 @@ class Workspace:
         output = directory / "out.obj"
         args = compilation.argv(relative(output), relative(source))
         include = f"-I{Path(compilation.source).parent.as_posix()}"
-        # (before the source and output, which the pro4 form needs last)
         args = (
             [*args[:-3], include, *args[-3:]] if not compilation.pro4 else [*args[:-2], "/" + include[1:], *args[-2:]]
         )
         try:
             result = build.run([*build.windows_prefix(), compilation.executable, *args], timeout=timeout)
-        except Exception as e:  # (a timeout: report it like a failed compile)
+        except Exception as e:
             return Result(False, None, f"{type(e).__name__}: {e}")
         log = result.stdout + result.stderr
         ok = result.returncode == 0 and output.exists()
         return Result(ok, output if ok else None, log)
 
 
-# (the running parallel() calls' functions and items: forked workers inherit them, so only an index crosses to a
-# worker and FUNCTION may be a lambda or closure)
 _tasks: dict[int, tuple] = {}
 _in_worker = False
 
@@ -92,14 +76,9 @@ def _call(token: int, index: int):
 
 
 def parallel(function, items, jobs: int | None = None):
-    """FUNCTION of each of ITEMS, in order: JOBS or $JOBS at once, else one per core. Each runs in a forked process,
-    since judging a compiled object is Python work that threads would serialise on the GIL (fn.py's trials ran 4-5
-    times slower in threads); FUNCTION's results must be picklable, and anything it changes in memory is lost (files
-    it writes are not). A parallel() inside a worker, or of one item, runs in threads. Ctrl-C drops what has not
-    started."""
     items = list(items)
-    jobs = jobs or int(os.environ.get("JOBS", 0)) or os.cpu_count() or 4
-    if _in_worker or len(items) < 2:
+    jobs = jobs or int(os.environ.get("JOBS") or 0) or os.cpu_count() or 4
+    if _in_worker or len(items) < 2 or not FORK:
         pool = concurrent.futures.ThreadPoolExecutor(jobs)
         futures = [pool.submit(function, item) for item in items]
     else:
@@ -118,8 +97,6 @@ def parallel(function, items, jobs: int | None = None):
 
 
 def comparable(obj: Object) -> list:
-    """An object's contents as far as code generation goes: each section but .bss, .drectve and the debug sections, with
-    its relocations by symbol name."""
     out = []
     for s in obj.sections:
         if s.bss or s.name == ".drectve" or s.name.startswith(".debug"):
@@ -137,7 +114,6 @@ def same_object(a: Path | Object, b: Path | Object) -> bool:
 
 
 def reproduces(compilation: build.Compilation, workspace: Workspace) -> tuple[bool, str]:
-    """Whether compiling the source in WORKSPACE gives the build's object (which must be current)."""
     built = build.object_path(compilation.version, compilation.source)
     if not built.exists():
         return False, f"{relative(built)} does not exist: build first"

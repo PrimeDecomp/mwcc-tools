@@ -7,10 +7,9 @@
 #include "compiler/CExpr.h"
 #include "compiler/CFunc.h"
 #include "compiler/CInt64.h"
-#include "compiler/CodeGen.h"
 #include "compiler/CompilerTools.h"
 #include "compiler/CParser.h"
-#include "compiler/CPrep.h"
+#include "compiler/enode.h"
 #include "compiler/InlineAsmPPC.h"
 #include "compiler/types.h"
 #include <string.h>
@@ -54,7 +53,7 @@ IROLinear* IRO_NewLinear(IROLinearType type) {
     return linear;
 }
 
-static void MarkAssigned(IROLinear* linear, Boolean flag) {
+static void MarkAssigned(IROLinear* linear, Boolean isModify) {
     IROLinear* inner;
     IROAddrRecord* rec;
 
@@ -63,7 +62,7 @@ static void MarkAssigned(IROLinear* linear, Boolean flag) {
         inner = linear->u.monadic->u.monadic;
         if (inner->type == IROLinearOperand) {
             inner->flags |= IROLF_Assigned;
-            if (flag) {
+            if (isModify) {
                 linear->flags |= IROLF_Used;
                 inner->flags |= IROLF_Used;
             }
@@ -74,7 +73,7 @@ static void MarkAssigned(IROLinear* linear, Boolean flag) {
                 if (IS_LINEAR_ENODE(inner->u.diadic.right, EINTCONST)) {
                     inner->u.diadic.left->flags |= IROLF_Assigned;
                 }
-                if (flag) {
+                if (isModify) {
                     linear->flags |= IROLF_Used;
                     inner->u.diadic.left->flags |= IROLF_Used;
                 }
@@ -84,7 +83,7 @@ static void MarkAssigned(IROLinear* linear, Boolean flag) {
             IRO_DecomposeAddressExpression(inner, rec);
             if (rec->numObjRefs == 1 && IS_LINEAR_ENODE(inner->u.diadic.left, EOBJREF)) {
                 ((IROLinear*)rec->objRefs->element)->flags |= IROLF_Assigned;
-                if (flag) {
+                if (isModify) {
                     linear->flags |= IROLF_Used;
                     ((IROLinear*)rec->objRefs->element)->flags |= IROLF_Used;
                 }
@@ -96,7 +95,7 @@ static void MarkAssigned(IROLinear* linear, Boolean flag) {
         linear->flags |= IROLF_Assigned;
         if (linear->u.monadic->type == IROLinearOperand) {
             linear->u.monadic->flags |= IROLF_Assigned;
-            if (flag) {
+            if (isModify) {
                 linear->flags |= IROLF_Used;
                 linear->u.monadic->flags |= IROLF_Used;
             }
@@ -112,7 +111,7 @@ static void MarkAssigned(IROLinear* linear, Boolean flag) {
                 if (IS_LINEAR_ENODE(inner->u.diadic.right, EINTCONST)) {
                     inner->u.diadic.left->flags |= IROLF_Assigned;
                 }
-                if (flag) {
+                if (isModify) {
                     linear->flags |= IROLF_Used;
                     inner->u.diadic.left->flags |= IROLF_Used;
                 }
@@ -122,7 +121,7 @@ static void MarkAssigned(IROLinear* linear, Boolean flag) {
             IRO_DecomposeAddressExpression(inner, rec);
             if (rec->numObjRefs == 1 && IS_LINEAR_ENODE(inner->u.diadic.left, EOBJREF)) {
                 ((IROLinear*)rec->objRefs->element)->flags |= IROLF_Assigned;
-                if (flag) {
+                if (isModify) {
                     linear->flags |= IROLF_Used;
                     ((IROLinear*)rec->objRefs->element)->flags |= IROLF_Used;
                 }
@@ -154,7 +153,7 @@ static void MarkSubscript(IROLinear* linear) {
 
 static void MarkArgs(IROLinear* linear) {
     int i;
-    linear->flags |= IROLF_4000;
+    linear->flags |= IROLF_InCallArg;
 
     switch (linear->type) {
         case IROLinearNop:
@@ -193,10 +192,11 @@ static void MarkArgs(IROLinear* linear) {
                 MarkArgs(linear->u.funccall.args[i]);
             }
             break;
+        default:
+            break;
     }
 }
 
-// TODO: invented name (Pro7: "assumed name, position"); inlined everywhere
 static inline void MarkSubExpr(IROLinear* linear) {
     int i;
 
@@ -292,10 +292,10 @@ static void MakeLeftChildAsAssignment(ENode* enode) {
     PrevStmt = stmt;
 }
 
-static void AssignCommaRToTemp(ENode* enode, Boolean flag) {
+static void AssignCommaRToTemp(ENode* enode, Boolean discardResult) {
     Statement* stmt;
 
-    if (!IS_TYPE_VOID(enode->rtype) && !flag) {
+    if (!IS_TYPE_VOID(enode->rtype) && !discardResult) {
         Object* obj = create_temp_object(enode->rtype);
         ENode* indnode = IRO_NewENode(EINDIRECT);
         indnode->data.monadic = create_objectrefnode(obj);
@@ -1026,8 +1026,8 @@ static void TransformLogicalOrRHS(ENode* enode, Object** objptr, CLabel** labelp
     CError_ASSERT(1408, !IS_TYPE_VOID(enode->rtype));
 }
 
-static void LinearizeExpr1(ENode* a, ENode* b, Boolean flag, Boolean flag2) {
-    switch (a->type) {
+static void LinearizeExpr1(ENode* expr, ENode* parent, Boolean discardResult, Boolean unused) {
+    switch (expr->type) {
         case EPOSTINC:
         case EPOSTDEC:
         case EPREINC:
@@ -1039,13 +1039,13 @@ static void LinearizeExpr1(ENode* a, ENode* b, Boolean flag, Boolean flag2) {
         case EFORCELOAD:
         case ETYPCON:
         case EBITFIELD:
-            LinearizeExpr1(a->data.monadic, a, FALSE, FALSE);
-            if (a->type == EFORCELOAD) {
+            LinearizeExpr1(expr->data.monadic, expr, FALSE, FALSE);
+            if (expr->type == EFORCELOAD) {
                 Object* obj;
-                GenerateForceLoadTempAssignment(a, &obj);
-                a->type = EINDIRECT;
-                a->data.monadic = create_objectrefnode(obj);
-                CError_ASSERT(1431, !IS_TYPE_VOID(a->rtype));
+                GenerateForceLoadTempAssignment(expr, &obj);
+                expr->type = EINDIRECT;
+                expr->data.monadic = create_objectrefnode(obj);
+                CError_ASSERT(1431, !IS_TYPE_VOID(expr->rtype));
             }
             break;
         case EMUL:
@@ -1072,17 +1072,17 @@ static void LinearizeExpr1(ENode* a, ENode* b, Boolean flag, Boolean flag2) {
         case EROTL:
         case EROTR:
         case EBTST:
-            if (a->type == ECOMMA) {
-                LinearizeExpr1(a->data.diadic.left, a, TRUE, FALSE);
-                MakeLeftChildAsAssignment(a);
-                LinearizeExpr1(a->data.diadic.right, a, FALSE, FALSE);
-                AssignCommaRToTemp(a, flag);
-            } else if (a->data.diadic.right->cost >= a->data.diadic.left->cost) {
-                LinearizeExpr1(a->data.diadic.right, a, FALSE, FALSE);
-                LinearizeExpr1(a->data.diadic.left, a, FALSE, FALSE);
+            if (expr->type == ECOMMA) {
+                LinearizeExpr1(expr->data.diadic.left, expr, TRUE, FALSE);
+                MakeLeftChildAsAssignment(expr);
+                LinearizeExpr1(expr->data.diadic.right, expr, FALSE, FALSE);
+                AssignCommaRToTemp(expr, discardResult);
+            } else if (expr->data.diadic.right->cost >= expr->data.diadic.left->cost) {
+                LinearizeExpr1(expr->data.diadic.right, expr, FALSE, FALSE);
+                LinearizeExpr1(expr->data.diadic.left, expr, FALSE, FALSE);
             } else {
-                LinearizeExpr1(a->data.diadic.left, a, FALSE, FALSE);
-                LinearizeExpr1(a->data.diadic.right, a, FALSE, FALSE);
+                LinearizeExpr1(expr->data.diadic.left, expr, FALSE, FALSE);
+                LinearizeExpr1(expr->data.diadic.right, expr, FALSE, FALSE);
             }
             break;
         case EASS:
@@ -1098,74 +1098,74 @@ static void LinearizeExpr1(ENode* a, ENode* b, Boolean flag, Boolean flag2) {
         case EORASS:
         case EBCLR:
         case EBSET:
-            LinearizeExpr1(a->data.diadic.right, a, FALSE, FALSE);
-            LinearizeExpr1(a->data.diadic.left, a, FALSE, FALSE);
+            LinearizeExpr1(expr->data.diadic.right, expr, FALSE, FALSE);
+            LinearizeExpr1(expr->data.diadic.left, expr, FALSE, FALSE);
             break;
         case ELAND:
         case ELOR:
-            if (a->type == ELAND) {
+            if (expr->type == ELAND) {
                 CLabel* label;
                 Object* obj;
-                CreateTempAssignmentToZero(a, &obj);
-                LinearizeExpr1(a->data.diadic.left, a, FALSE, FALSE);
-                TransformLogicalAndLHS(a, &obj, &label);
-                LinearizeExpr1(a->data.diadic.right, a, FALSE, FALSE);
-                TransformLogicalAndRHS(a, &obj, &label);
-            } else if (a->type == ELOR) {
+                CreateTempAssignmentToZero(expr, &obj);
+                LinearizeExpr1(expr->data.diadic.left, expr, FALSE, FALSE);
+                TransformLogicalAndLHS(expr, &obj, &label);
+                LinearizeExpr1(expr->data.diadic.right, expr, FALSE, FALSE);
+                TransformLogicalAndRHS(expr, &obj, &label);
+            } else if (expr->type == ELOR) {
                 CLabel* label;
                 Object* obj;
-                CreateTempAssignmentToOne(a, &obj);
-                LinearizeExpr1(a->data.diadic.left, a, FALSE, FALSE);
-                TransformLogicalOrLHS(a, &obj, &label);
-                LinearizeExpr1(a->data.diadic.right, a, FALSE, FALSE);
-                TransformLogicalOrRHS(a, &obj, &label);
+                CreateTempAssignmentToOne(expr, &obj);
+                LinearizeExpr1(expr->data.diadic.left, expr, FALSE, FALSE);
+                TransformLogicalOrLHS(expr, &obj, &label);
+                LinearizeExpr1(expr->data.diadic.right, expr, FALSE, FALSE);
+                TransformLogicalOrRHS(expr, &obj, &label);
             }
             break;
         case ECOND: {
             CLabel *label1, *label2;
             Object* obj = NULL;
-            LinearizeExpr1(a->data.cond.cond, a, FALSE, FALSE);
-            GenerateCondExpression(a, &label1);
-            LinearizeExpr1(a->data.cond.expr1, a, FALSE, FALSE);
-            GenerateExpr1TempAssignment(a, &obj);
-            GenerateGoToStmt(a, &label2);
+            LinearizeExpr1(expr->data.cond.cond, expr, FALSE, FALSE);
+            GenerateCondExpression(expr, &label1);
+            LinearizeExpr1(expr->data.cond.expr1, expr, FALSE, FALSE);
+            GenerateExpr1TempAssignment(expr, &obj);
+            GenerateGoToStmt(expr, &label2);
             GenerateLabel(&label1);
-            LinearizeExpr1(a->data.cond.expr2, a, FALSE, FALSE);
-            GenerateExpr2TempAssignment(a, &obj);
+            LinearizeExpr1(expr->data.cond.expr2, expr, FALSE, FALSE);
+            GenerateExpr2TempAssignment(expr, &obj);
             GenerateLabel(&label2);
-            if (!IS_TYPE_VOID(a->rtype)) {
-                a->type = EINDIRECT;
-                a->data.monadic = create_objectrefnode(obj);
-                CError_ASSERT(1599, !IS_TYPE_VOID(a->rtype));
+            if (!IS_TYPE_VOID(expr->rtype)) {
+                expr->type = EINDIRECT;
+                expr->data.monadic = create_objectrefnode(obj);
+                CError_ASSERT(1599, !IS_TYPE_VOID(expr->rtype));
             } else {
-                a->type = EINTCONST;
-                a->data.intval = cint64_zero;
+                expr->type = EINTCONST;
+                expr->data.intval = cint64_zero;
             }
             break;
         }
         case EPRECOMP: {
-            Object* temp = GetTempFromtheList(a);
-            a->type = EINDIRECT;
-            a->data.monadic = create_objectrefnode(temp);
-            CError_ASSERT(1617, !IS_TYPE_VOID(a->rtype));
+            Object* temp = GetTempFromtheList(expr);
+            expr->type = EINDIRECT;
+            expr->data.monadic = create_objectrefnode(temp);
+            CError_ASSERT(1617, !IS_TYPE_VOID(expr->rtype));
             break;
         }
         case ENULLCHECK: {
             CLabel* label;
             Object* obj;
-            LinearizeExpr1(a->data.nullcheck.nullcheckexpr, a, FALSE, FALSE);
-            GenerateNullcheckExprTempAssignment(a, &obj);
-            GenerateIfNotTemp(a, &obj, &label);
-            LinearizeExpr1(a->data.nullcheck.condexpr, a, FALSE, FALSE);
-            GenerateNullcheckCondExpr(a, &obj);
+            LinearizeExpr1(expr->data.nullcheck.nullcheckexpr, expr, FALSE, FALSE);
+            GenerateNullcheckExprTempAssignment(expr, &obj);
+            GenerateIfNotTemp(expr, &obj, &label);
+            LinearizeExpr1(expr->data.nullcheck.condexpr, expr, FALSE, FALSE);
+            GenerateNullcheckCondExpr(expr, &obj);
             GenerateLabel(&label);
-            if (!IS_TYPE_VOID(a->rtype)) {
-                a->type = EINDIRECT;
-                a->data.monadic = create_objectrefnode(obj);
-                CError_ASSERT(1642, !IS_TYPE_VOID(a->rtype));
+            if (!IS_TYPE_VOID(expr->rtype)) {
+                expr->type = EINDIRECT;
+                expr->data.monadic = create_objectrefnode(obj);
+                CError_ASSERT(1642, !IS_TYPE_VOID(expr->rtype));
             } else {
-                a->type = EINTCONST;
-                a->data.intval = cint64_zero;
+                expr->type = EINTCONST;
+                expr->data.intval = cint64_zero;
             }
             break;
         }
@@ -1179,7 +1179,7 @@ static void LinearizeExpr1(ENode* a, ENode* b, Boolean flag, Boolean flag2) {
 
             IRO_IsLeafFunction = FALSE;
 
-            list = a->data.funccall.args;
+            list = expr->data.funccall.args;
             count = 0;
             while (list) {
                 count++;
@@ -1188,7 +1188,7 @@ static void LinearizeExpr1(ENode* a, ENode* b, Boolean flag, Boolean flag2) {
 
             if (count) {
                 arr = oalloc(sizeof(ENode*) * count);
-                list = a->data.funccall.args;
+                list = expr->data.funccall.args;
                 count = 0;
                 while (list) {
                     arr[count] = list->node;
@@ -1202,11 +1202,11 @@ static void LinearizeExpr1(ENode* a, ENode* b, Boolean flag, Boolean flag2) {
                 }
 
                 for (i = 0; i < count; i++) {
-                    LinearizeExpr1(arr[arr2[i]], a, FALSE, FALSE);
+                    LinearizeExpr1(arr[arr2[i]], expr, FALSE, FALSE);
                 }
             }
 
-            LinearizeExpr1(a->data.funccall.funcref, a, FALSE, FALSE);
+            LinearizeExpr1(expr->data.funccall.funcref, expr, FALSE, FALSE);
             break;
         }
 
@@ -1284,7 +1284,7 @@ static IROLinear* LinearizeExpr(ENode* enode) {
                 enode->data.diadic.right->cost >= enode->data.diadic.left->cost) {
                 linear->u.diadic.right = LinearizeExpr(enode->data.diadic.right);
                 linear->u.diadic.left = LinearizeExpr(enode->data.diadic.left);
-                linear->flags |= IROLF_8000;
+                linear->flags |= IROLF_RightFirst;
             } else {
                 linear->u.diadic.left = LinearizeExpr(enode->data.diadic.left);
                 linear->u.diadic.right = LinearizeExpr(enode->data.diadic.right);
@@ -1312,7 +1312,7 @@ static IROLinear* LinearizeExpr(ENode* enode) {
             linear->nodeflags = enode->flags;
             linear->u.diadic.right = LinearizeExpr(enode->data.diadic.right);
             linear->u.diadic.left = LinearizeExpr(enode->data.diadic.left);
-            linear->flags |= IROLF_8000;
+            linear->flags |= IROLF_RightFirst;
             linear->nodetype = enode->type;
             linear->rtype = enode->rtype;
             MarkAssigned(linear->u.diadic.left, IRO_IsModifyOp[linear->nodetype]);
@@ -1447,7 +1447,6 @@ void IRO_PreLinearize(Statement* stmt) {
 
 static void MarkAllSubExprs(IROLinear* linear) {
     IROLinear* scan;
-    int i;
 
     for (scan = linear; scan; scan = scan->next) {
         scan->flags &= ~IROLF_Reffed;
@@ -1475,7 +1474,7 @@ void IRO_Linearize(Statement* stmt) {
             case ST_LABEL:
                 linear = IRO_NewLinear(IROLinearLabel);
                 linear->u.label.label = stmt->label;
-                linear->flags |= IROLF_1;
+                linear->flags |= IROLF_StartsNode;
                 break;
             case ST_GOTO:
                 linear = IRO_NewLinear(IROLinearGoto);
@@ -1518,7 +1517,7 @@ void IRO_Linearize(Statement* stmt) {
             case ST_ENTRY:
                 linear = IRO_NewLinear(IROLinearEntry);
                 linear->u.label.label = stmt->label;
-                linear->flags |= IROLF_1;
+                linear->flags |= IROLF_StartsNode;
                 break;
             case ST_BEGINCATCH:
                 linear = IRO_NewLinear(IROLinearBeginCatch);
@@ -1558,7 +1557,7 @@ void IRO_Linearize(Statement* stmt) {
     }
 
     linear = IRO_NewLinear(IROLinearEnd);
-    linear->flags |= IROLF_1;
+    linear->flags |= IROLF_StartsNode;
     LinkLinear(linear);
 
     MarkAllSubExprs(IRO_FirstLinear);
@@ -1692,7 +1691,6 @@ Statement* IRO_Delinearize(IRONode* node, IROLinear* linear) {
 
     firstStmt = lastStmt = NULL;
 
-    // 2.6 renumbers the nodes first
     IRO_RenumberInts();
     if (node) {
         scan = node;
@@ -1823,15 +1821,8 @@ static void TravExprToUpdateFlags(IROLinear* linear) {
     int i;
 
     linear->flags &=
-        ~(IROLF_Assigned |
-          IROLF_8 |
-          IROLF_Used |
-          IROLF_Ind |
-          IROLF_Subs |
-          IROLF_LoopInvariant |
-          IROLF_Ris |
-          IROLF_Immind |
-          IROLF_CouldError);
+        ~(IROLF_Assigned | IROLF_ReplaceCSE | IROLF_Used | IROLF_Ind | IROLF_Subs |
+          IROLF_LoopInvariant | IROLF_Ris | IROLF_Immind | IROLF_CouldError);
     switch (linear->type) {
         case IROLinearNop:
         case IROLinearOperand:

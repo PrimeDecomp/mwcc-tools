@@ -11,16 +11,15 @@ extern void CClass_Init(void);
 extern void CClass_GenThunks(void);
 extern UInt8 CClass_GetOverrideKind(TypeFunc* a, TypeFunc* b, Boolean errorflag);
 extern Boolean CClass_IsEmpty(TypeClass* tclass);
-extern Boolean CClass_IsNonStaticMemberFunc(TypeFunc* tfunc);
 extern Object* CClass_DefaultConstructor(TypeClass* tclass);
 extern Object* CClass_DummyDefaultConstructor(TypeClass* tclass);
 extern ENode* CClass_DefaultConstructorCall(
     TypeClass* tclass,
-    TypeClass* b,
+    TypeClass* derived,
     ENode* objexpr,
     SInt32 varg,
-    Boolean flag1,
-    Boolean flag2,
+    Boolean checkAccess,
+    Boolean isVirtualBase,
     Boolean* errorflag
 );
 extern Object* CClass_AssignmentOperator(TypeClass* tclass);
@@ -58,9 +57,6 @@ extern SInt32 CClass_GetPathOffset(BClassList* path);
 extern Boolean CClass_ClassDominates(TypeClass* tclass, TypeClass* baseclass);
 extern SInt32 CClass_VirtualBaseOffset(TypeClass* tclass, TypeClass* baseclass);
 extern SInt32 CClass_VirtualBaseVTableOffset(TypeClass* tclass, TypeClass* baseclass);
-extern SInt32 CClass_GetMemberOffset(
-    TypeClass* tclass, HashNameNode* name, ObjMemberVar** resultIvar
-);
 extern Boolean CClass_OverridesBaseMember(TypeClass* tclass, HashNameNode* name, Object* obj);
 extern void CClass_DefineCovariantFuncs(Object* method, CI_FuncData* ifuncdata);
 extern void CClass_CheckOverrides(TypeClass* tclass);

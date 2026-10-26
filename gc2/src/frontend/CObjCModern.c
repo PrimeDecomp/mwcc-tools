@@ -3,9 +3,10 @@
 #include "compiler/CExpr.h"
 #include "compiler/CObjC.h"
 #include "compiler/CompilerTools.h"
-#include "compiler/CParser.h"
 #include "compiler/CPrep.h"
 #include "compiler/CPrepTokenizer.h"
+#include "compiler/enode.h"
+#include "compiler/tokens.h"
 #include <string.h>
 
 static ObjCNamedArg* CObjC_GetKeywordArgList(HashNameNode* name, Boolean* isSingleArg) {

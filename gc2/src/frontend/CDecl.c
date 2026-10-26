@@ -22,6 +22,7 @@
 #include "compiler/CTemplateFunc.h"
 #include "compiler/CTemplateNew.h"
 #include "compiler/CTemplateTools.h"
+#include "compiler/enode.h"
 #include "compiler/objects.h"
 #include "compiler/scopes.h"
 #include "compiler/templates.h"
@@ -82,7 +83,6 @@ Type* CDecl_NewRefPointerType(Type* type) {
     return (Type*)tptr;
 }
 
-// 2.6 returns the TypeTemplDep (Pro7: Type*); its inlined copies allocate registers by the type
 TypeTemplDep* CDecl_NewTemplDepType(TypeTemplDepType tdt) {
     TypeTemplDep* t = galloc(sizeof(TypeTemplDep));
     memclrw(t, sizeof(TypeTemplDep));
@@ -328,7 +328,7 @@ void CDecl_MakePTMFuncType(TypeFunc* tfunc) {
     arg1->next = tfunc->args;
     arg2->next = arg1;
     tfunc->args = arg2;
-    tfunc->flags |= FUNC_FLAGS_80;
+    tfunc->flags |= FUNC_PTM;
 }
 
 void CDecl_AddArgument(TypeFunc* tfunc, Type* argtype) {
@@ -423,16 +423,16 @@ void CDecl_ParseDirectFuncDecl(DeclInfo* declinfo) {
 }
 
 static void scandirectdecl1(DeclInfo* declinfo) {
-    Boolean flag;
+    Boolean unsized;
     CInt64 len;
     ENode* expr;
 
-    flag = FALSE;
+    unsized = FALSE;
     if (tk == '[') {
         if ((tk = lex()) == ']') {
             len = cint64_zero;
             tk = lex();
-            flag = TRUE;
+            unsized = TRUE;
         } else {
             if (!declinfo->isNewExpression || declinfo->hasArrayDimension) {
                 expr = CExpr_IntegralConstOrDepExpr();
@@ -450,7 +450,7 @@ static void scandirectdecl1(DeclInfo* declinfo) {
                     }
                     ttempl = CDecl_NewTemplDepType(TEMPLDEP_ARRAY);
                     ttempl->u.array.type = declinfo->thetype;
-                    ttempl->u.array.index = CInline_CopyExpression(expr, CopyMode1);
+                    ttempl->u.array.index = CInline_CopyExpression(expr, CopyModeGlobal);
                     declinfo->thetype = (Type*)ttempl;
                     return;
                 }
@@ -460,7 +460,7 @@ static void scandirectdecl1(DeclInfo* declinfo) {
                     len = cint64_one;
                 } else if (CInt64_IsZero(&len)) {
                     if (!copts.ANSIstrict && declinfo->allowZeroLengthArray) {
-                        flag = TRUE;
+                        unsized = TRUE;
                     } else {
                         CError_Error(ERR_ILLEGAL_CONSTANT_EXPRESSION);
                         len = cint64_one;
@@ -490,7 +490,7 @@ static void scandirectdecl1(DeclInfo* declinfo) {
         declinfo->hasArrayDimension = TRUE;
         scandirectdecl1(declinfo);
 
-        if (!flag && !CDecl_CheckArrayIntegr(declinfo->thetype)) {
+        if (!unsized && !CDecl_CheckArrayIntegr(declinfo->thetype)) {
             declinfo->thetype = (Type*)&stsignedchar;
         }
 
@@ -499,7 +499,7 @@ static void scandirectdecl1(DeclInfo* declinfo) {
             TypeTemplDep* ttempl = CDecl_NewTemplDepType(TEMPLDEP_ARRAY);
             ttempl->u.array.type = declinfo->thetype;
             ttempl->u.array.index = CInline_CopyExpression(
-                intconstnode((Type*)&stsignedint, CInt64_GetULong(&len)), CopyMode1
+                intconstnode((Type*)&stsignedint, CInt64_GetULong(&len)), CopyModeGlobal
             );
             declinfo->thetype = (Type*)ttempl;
             return;
@@ -651,21 +651,15 @@ static Boolean CDecl_IsEnumClassTypeOrRef(Type* type) {
     return IS_TYPE_CLASS(type) || IS_TYPE_ENUM(type);
 }
 
-// TODO: invented name; Pro7 writes the test in place (`((secondarg != &elipsis && !secondarg->next)
-// != 0) ? 2 : 3`), but 2.6 computes it to a value before branching, as an inlined int function's
-// result is: neither the ternary nor any spelling of the condition in place reproduces that.
 static int IsSingleArg(FuncArg* arg) {
     return arg != &elipsis && arg->next == NULL;
 }
 
-static Boolean CDecl_CheckOperatorType(DeclInfo* declinfo, Boolean flag) {
+static Boolean CDecl_CheckOperatorType(DeclInfo* declinfo, Boolean isMember) {
     FuncArg* args;
     FuncArg* secondarg;
     Type* functype;
     short argCount;
-    // TODO: Pro7's Boolean, tested as (Boolean) below: the code is Boolean's (dword stores, byte
-    // tests), but only an int tested through casts gets 2.6's register allocation (a Boolean
-    // spills argCount instead of isMethod)
     int isMethod;
 
     if (!IS_TYPE_FUNC(declinfo->thetype)) {
@@ -718,7 +712,7 @@ static Boolean CDecl_CheckOperatorType(DeclInfo* declinfo, Boolean flag) {
         return FALSE;
     }
 
-    isMethod = flag &&
+    isMethod = isMember &&
         IS_TYPEFUNC_METHOD(TYPE_FUNC(declinfo->thetype)) &&
         !TYPE_METHOD(declinfo->thetype)->is_static;
 
@@ -727,8 +721,7 @@ static Boolean CDecl_CheckOperatorType(DeclInfo* declinfo, Boolean flag) {
         case TK_NEW_ARRAY:
             if ((Boolean)isMethod ||
                 !is_typesame(functype, TYPE(&void_ptr)) ||
-                argCount <
-                1 ||
+                argCount < 1 ||
                 args->type != CABI_GetSizeTType()) {
                 CError_Error(ERR_ILLEGAL_OPERATOR_DECLARATION);
                 return FALSE;
@@ -738,8 +731,7 @@ static Boolean CDecl_CheckOperatorType(DeclInfo* declinfo, Boolean flag) {
         case TK_DELETE_ARRAY:
             if ((Boolean)isMethod ||
                 !IS_TYPE_VOID(functype) ||
-                argCount <
-                1 ||
+                argCount < 1 ||
                 !is_typesame(args->type, TYPE(&void_ptr))) {
                 CError_Error(ERR_ILLEGAL_OPERATOR_DECLARATION);
                 return FALSE;
@@ -778,7 +770,7 @@ static Boolean CDecl_CheckOperatorType(DeclInfo* declinfo, Boolean flag) {
             break;
     }
 
-    if (flag && !(Boolean)isMethod) {
+    if (isMember && !(Boolean)isMethod) {
         CError_Error(ERR_ILLEGAL_OPERATOR_DECLARATION);
         return FALSE;
     }
@@ -796,7 +788,7 @@ static Boolean CDecl_CheckOperatorType(DeclInfo* declinfo, Boolean flag) {
         case '!':
         case '~':
             if (argCount == 1) {
-                if (flag || CDecl_IsEnumClassTypeOrRef(args->type)) {
+                if (isMember || CDecl_IsEnumClassTypeOrRef(args->type)) {
                     return TRUE;
                 }
             }
@@ -831,10 +823,9 @@ static Boolean CDecl_CheckOperatorType(DeclInfo* declinfo, Boolean flag) {
         case TK_ARROW:
         case TK_DOT_STAR:
         case TK_ARROW_STAR:
-// TODO: invented label name (Pro7: whatever)
 binary_operator:
             if (argCount == 2) {
-                if (flag ||
+                if (isMember ||
                     CDecl_IsEnumClassTypeOrRef(args->type) ||
                     CDecl_IsEnumClassTypeOrRef(secondarg->type)) {
                     return TRUE;
@@ -850,7 +841,7 @@ binary_operator:
 static void scandirectdeclarator(DeclInfo* declinfo, NameSpace* nspace) {
     HashNameNode* saveident;
     CScopeSave scopesave;
-    Boolean flag;
+    Boolean isOperator;
 
     if (nspace) {
         CScope_SetNameSpaceScope(nspace, &scopesave);
@@ -936,13 +927,13 @@ static void scandirectdeclarator(DeclInfo* declinfo, NameSpace* nspace) {
                 return;
             }
 
-            flag = TRUE;
+            isOperator = TRUE;
         } else if (tk != TK_IDENTIFIER) {
             CError_Error(ERR_IDENTIFIER_EXPECTED);
             CScope_RestoreScope(&scopesave);
             return;
         } else {
-            flag = FALSE;
+            isOperator = FALSE;
         }
 
         if (declinfo->name) {
@@ -953,7 +944,7 @@ static void scandirectdeclarator(DeclInfo* declinfo, NameSpace* nspace) {
 
         declinfo->nspace = nspace;
         declinfo->name = tkidentifier;
-        if (!flag) {
+        if (!isOperator) {
             tk = lex();
         }
     } else if (tk == TK_IDENTIFIER) {
@@ -1017,7 +1008,7 @@ void makememberpointertype(DeclInfo* declinfo, TypeClass* tclass, UInt32 qual) {
     declinfo->thetype = (Type*)tmemp;
 }
 
-void CDecl_ScanPointer(DeclInfo* declinfo, NameSpace* nspace, Boolean flag) {
+void CDecl_ScanPointer(DeclInfo* declinfo, NameSpace* nspace, Boolean scanDeclarator) {
     NameResult pr;
     UInt32 qual;
 
@@ -1068,7 +1059,7 @@ void CDecl_ScanPointer(DeclInfo* declinfo, NameSpace* nspace, Boolean flag) {
                 continue;
             case '&':
                 if (!copts.cplusplus) {
-                    if (flag) {
+                    if (scanDeclarator) {
                         scandirectdeclarator(declinfo, NULL);
                     }
                     return;
@@ -1080,8 +1071,7 @@ void CDecl_ScanPointer(DeclInfo* declinfo, NameSpace* nspace, Boolean flag) {
                 }
                 if (copts.cpp_extensions &&
                     cscope_current->theclass &&
-                    cscope_current->theclass->classname ==
-                    tkidentifier &&
+                    cscope_current->theclass->classname == tkidentifier &&
                     lookahead() == TK_COLON_COLON) {
                     tk = lex();
                     tk = lex();
@@ -1110,7 +1100,7 @@ void CDecl_ScanPointer(DeclInfo* declinfo, NameSpace* nspace, Boolean flag) {
         break;
     }
 
-    if (flag) {
+    if (scanDeclarator) {
         scandirectdeclarator(declinfo, nspace);
     }
 }
@@ -1227,19 +1217,19 @@ void conversion_type_name(DeclInfo* declinfo) {
 
 static void scaninlinefunc(Object* obj) {
     short array[256];
-    short r29;
+    short count;
     CInt64 val;
 
     if (tk == '{') {
         tk = lex();
-        r29 = 0;
+        count = 0;
         while (1) {
-            if (r29 >= 256) {
+            if (count >= 256) {
                 CError_Error(ERR_ILLEGAL_FUNCTION_DEFINITION);
-                r29 = 255;
+                count = 255;
             }
             val = CExpr_IntegralConstExpr();
-            array[r29++] = CInt64_GetULong(&val);
+            array[count++] = CInt64_GetULong(&val);
             if (tk != '}') {
                 if (tk != ',') {
                     CError_Error(ERR_COMMA_EXPECTED);
@@ -1253,11 +1243,11 @@ static void scaninlinefunc(Object* obj) {
     } else {
         val = CExpr_IntegralConstExpr();
         array[0] = CInt64_GetULong(&val);
-        r29 = 1;
+        count = 1;
     }
 
     obj->datatype = DINLINEFUNC;
-    obj->u.ifunc.size = r29 * 2;
+    obj->u.ifunc.size = count * 2;
     obj->u.ifunc.data = galloc(obj->u.ifunc.size);
     obj->u.ifunc.xrefs = NULL;
     memcpy(obj->u.ifunc.data, array, obj->u.ifunc.size);
@@ -1267,26 +1257,19 @@ static void scaninlinefunc(Object* obj) {
     }
 }
 
-// TODO: invented names (Pro7: OverloadMode0..3), from what CDecl_OverloadFunctionObject does with a
-// method found under the name
 typedef enum {
-    // a non-member declaration: any method is an error
     OverloadMode_NonMember,
-    // a static member declaration: only static methods are candidates
     OverloadMode_StaticMember,
-    // a non-static member declaration (with its this argument): only non-static methods
     OverloadMode_Member,
-    // a member's out-of-class declaration without its this argument: a non-static method is compared
-    // past its own, and skipped when that is cv-qualified
     OverloadMode_MemberWithoutThis
 } OverloadMode;
 
 static Object* CDecl_OverloadFunctionObject(
     NameSpaceObjectList* list,
     DeclInfo* declinfo,
-    Boolean* outflag,
+    Boolean* isNew,
     OverloadMode mode,
-    Boolean flag2
+    Boolean matchTemplate
 ) {
     NameSpaceObjectList* scan;
     TypeFunc* scanfunc;
@@ -1294,16 +1277,16 @@ static Object* CDecl_OverloadFunctionObject(
     FuncArg* args;
     FuncArg* scanargs;
     Object* obj;
-    Boolean r24;
+    Boolean hasTemplate;
     short compareresult;
 
-    if (outflag) {
-        *outflag = FALSE;
+    if (isNew) {
+        *isNew = FALSE;
     }
 
     tfunc = (TypeFunc*)declinfo->thetype;
     args = tfunc->args;
-    r24 = FALSE;
+    hasTemplate = FALSE;
     for (scan = list; scan; scan = scan->next) {
         obj = OBJECT(scan->object);
         if (obj->otype != OT_OBJECT) {
@@ -1317,7 +1300,7 @@ static Object* CDecl_OverloadFunctionObject(
 
         scanargs = scanfunc->args;
         if (scanfunc->flags & FUNC_IS_TEMPL) {
-            r24 = TRUE;
+            hasTemplate = TRUE;
         }
 
         if (IS_TYPEFUNC_METHOD(scanfunc)) {
@@ -1388,12 +1371,9 @@ static Object* CDecl_OverloadFunctionObject(
             }
 
             if (tfunc->exspecs || scanfunc->exspecs) {
-                if (obj->name !=
-                    newp_fobj->name &&
-                    obj->name !=
-                    newa_fobj->name &&
-                    obj->name !=
-                    delp_fobj->name &&
+                if (obj->name != newp_fobj->name &&
+                    obj->name != newa_fobj->name &&
+                    obj->name != delp_fobj->name &&
                     obj->name != dela_fobj->name) {
                     CExcept_CompareSpecifications(tfunc->exspecs, scanfunc->exspecs);
                 }
@@ -1406,13 +1386,13 @@ static Object* CDecl_OverloadFunctionObject(
         }
     }
 
-    if (r24 && (flag2 || declinfo->requireTemplateClassMember)) {
+    if (hasTemplate && (matchTemplate || declinfo->requireTemplateClassMember)) {
         if ((obj = CTempl_TemplateFunctionCheck(declinfo, list))) {
             return obj;
         }
     }
 
-    if (!outflag) {
+    if (!isNew) {
         CError_Error(ERR_ILLEGAL_FUNCTION_OVERLOADING);
         return NULL;
     }
@@ -1421,7 +1401,7 @@ static Object* CDecl_OverloadFunctionObject(
         CError_Error(ERR_NAME_NOT_BEEN_DECLARED_NAMESPACE_CLASS);
     }
 
-    *outflag = TRUE;
+    *isNew = TRUE;
     obj = CParser_NewFunctionObject(declinfo);
     CheckDefaultArgs(TYPE_FUNC(obj->type)->args);
 
@@ -1454,8 +1434,6 @@ static Object* CDecl_OverloadFunctionObject(
     return obj;
 }
 
-// TODO: Pro7's body has the same control flow (its do/while is this loop's exit tests), but only
-// these walkers, one per loop, and the cached dexpr give 2.6's registers.
 void MergeDefaultArgs(FuncArg* a, FuncArg* b) {
     FuncArg* other;
     ENode* defaultExpr;
@@ -1551,8 +1529,6 @@ void CheckDefaultArgs(FuncArg* args) {
     }
 }
 
-// TODO: invented name (a 2.6 addition Pro7 lacks): a redeclaration's parameter written as an array
-// where the earlier one was a pointer, or the reverse, takes the earlier one's is_array
 static void CDecl_MergeArrayArgFlags(FuncArg* a, FuncArg* b) {
     if (!b) {
         return;
@@ -1568,7 +1544,7 @@ static void CDecl_MergeArrayArgFlags(FuncArg* a, FuncArg* b) {
     }
 }
 
-static void CDecl_FuncRedeclCheck(Object* obj, DeclInfo* declinfo, Boolean flag) {
+static void CDecl_FuncRedeclCheck(Object* obj, DeclInfo* declinfo, Boolean isNew) {
     if (declinfo->storageclass == TK_STATIC && obj->sclass != TK_STATIC) {
         if (copts.cplusplus) {
             CError_Error(ERR_INCONSISTENT_LINKAGE_EXTERN_OBJECT_REDECLARED_AS);
@@ -1578,7 +1554,7 @@ static void CDecl_FuncRedeclCheck(Object* obj, DeclInfo* declinfo, Boolean flag)
     }
 
     obj->qual |= declinfo->qual;
-    if (flag) {
+    if (isNew) {
         CheckDefaultArgs(TYPE_FUNC(obj->type)->args);
     } else {
         MergeDefaultArgs(TYPE_FUNC(obj->type)->args, TYPE_FUNC(declinfo->thetype)->args);
@@ -1591,25 +1567,22 @@ static void CDecl_FuncRedeclCheck(Object* obj, DeclInfo* declinfo, Boolean flag)
 }
 
 Object* CDecl_GetFunctionObject(
-    DeclInfo* declinfo, NameSpace* nspace, Boolean* pflag, Boolean someotherflag
+    DeclInfo* declinfo, NameSpace* nspace, Boolean* firstDecl, Boolean matchTemplate
 ) {
     NameSpace* nspace2;
     Type* type;
     Object* obj;
     NameSpaceObjectList* list;
-    // TODO: Pro7's TypeMemberFunc tmp, its TypeFunc part written through a cast pointer
-    // (*TYPE_FUNC(&tmp) = ...), which MWCC computes into a register first; 2.6 stores straight
-    // into the local, as into a member: this union stands in for however the original named it
     union {
         TypeMemberFunc method;
         TypeFunc func;
-    } tmp;
-    Boolean r27;
-    Boolean outflag;
+    } newtype;
+    Boolean mismatch;
+    Boolean isNew;
 
-    r27 = FALSE;
-    if (pflag) {
-        *pflag = FALSE;
+    mismatch = FALSE;
+    if (firstDecl) {
+        *firstDecl = FALSE;
     }
 
     nspace2 = declinfo->nspace;
@@ -1619,21 +1592,16 @@ Object* CDecl_GetFunctionObject(
 
     CError_QualifierCheck(
         declinfo->qual &
-        ~(Q_ALIGNED_MASK |
-          Q_WEAK |
-          Q_IMPLICIT_WEAK |
-          Q_INLINE |
-          Q_PASCAL |
-          Q_ASM |
-          Q_VOLATILE |
-          Q_CONST |
-          Q_INTERRUPT)
+        ~(Q_ALIGNED_MASK | Q_WEAK | Q_IMPLICIT_WEAK | Q_INLINE | Q_PASCAL | Q_ASM | Q_VOLATILE |
+          Q_CONST | Q_INTERRUPT)
     );
     switch (TYPE_FUNC(declinfo->thetype)->functype->type) {
         case TYPEFUNC:
         case TYPEARRAY:
             CError_Error(ERR_ILLEGAL_FUNCTION_RETURN_TYPE);
             TYPE_FUNC(declinfo->thetype)->functype = TYPE(&stsignedint);
+            break;
+        default:
             break;
     }
 
@@ -1668,8 +1636,15 @@ Object* CDecl_GetFunctionObject(
         if (declinfo->requireTemplateClassMember ||
             (list->next && list->next->object->otype == OT_OBJECT)) {
             if (TYPE_FUNC(declinfo->thetype)->flags & (FUNC_CONST | FUNC_VOLATILE)) {
-                // 2.6: a method type of the declaration's own gets the this argument (Pro7 adds it
-                // to the declaration's function type)
+#if VERSION < VERSION_GC_2_0
+                CDecl_AddThisPointerArgument(TYPE_FUNC(declinfo->thetype), nspace2->theclass);
+                obj = CDecl_OverloadFunctionObject(
+                    list, declinfo, NULL, OverloadMode_Member, matchTemplate
+                );
+                if (!obj) {
+                    return NULL;
+                }
+#else
                 TypeMemberFunc* tmeth = galloc(sizeof(TypeMemberFunc));
                 memclrw(tmeth, sizeof(TypeMemberFunc));
                 *TYPE_FUNC(tmeth) = *TYPE_FUNC(declinfo->thetype);
@@ -1678,14 +1653,15 @@ Object* CDecl_GetFunctionObject(
                 CDecl_AddThisPointerArgument(TYPE_FUNC(tmeth), nspace2->theclass);
                 declinfo->thetype = TYPE(tmeth);
                 obj = CDecl_OverloadFunctionObject(
-                    list, declinfo, NULL, OverloadMode_Member, someotherflag
+                    list, declinfo, NULL, OverloadMode_Member, matchTemplate
                 );
                 if (!obj) {
                     return NULL;
                 }
+#endif
             } else {
                 obj = CDecl_OverloadFunctionObject(
-                    list, declinfo, NULL, OverloadMode_MemberWithoutThis, someotherflag
+                    list, declinfo, NULL, OverloadMode_MemberWithoutThis, matchTemplate
                 );
                 if (!obj) {
                     return NULL;
@@ -1713,15 +1689,15 @@ Object* CDecl_GetFunctionObject(
 
             if (!is_typesame(declinfo->thetype, obj->type) ||
                 (declinfo->qual & (Q_PASCAL | Q_CONST)) != (obj->qual & (Q_PASCAL | Q_CONST))) {
-                tmp.method = *TYPE_METHOD(obj->type);
-                tmp.func = *TYPE_FUNC(declinfo->thetype);
-                tmp.method.flags |= FUNC_METHOD;
+                newtype.method = *TYPE_METHOD(obj->type);
+                newtype.func = *TYPE_FUNC(declinfo->thetype);
+                newtype.method.flags |= FUNC_METHOD;
                 CError_Error(
                     ERR_IDENTIFIER_REDECLARED_WAS_DECLARED_AS_NOW,
                     CError_GetObjectName(obj),
                     obj->type,
                     obj->qual,
-                    &tmp.method,
+                    &newtype.method,
                     declinfo->qual
                 );
             }
@@ -1757,13 +1733,13 @@ Object* CDecl_GetFunctionObject(
         if (list) {
             if (copts.cplusplus) {
                 obj = CDecl_OverloadFunctionObject(
-                    list, declinfo, &outflag, OverloadMode_NonMember, someotherflag
+                    list, declinfo, &isNew, OverloadMode_NonMember, matchTemplate
                 );
                 if (!obj) {
                     return NULL;
                 }
-                if (pflag) {
-                    *pflag = outflag;
+                if (firstDecl) {
+                    *firstDecl = isNew;
                 }
                 if (nspace) {
                     obj->nspace = nspace;
@@ -1780,15 +1756,15 @@ Object* CDecl_GetFunctionObject(
                         declinfo->thetype,
                         declinfo->qual
                     );
-                    r27 = TRUE;
+                    mismatch = TRUE;
                     if (!IS_TYPE_FUNC(obj->type)) {
                         return NULL;
                     }
                 }
             }
 
-            if (!r27 && pflag) {
-                CDecl_FuncRedeclCheck(obj, declinfo, *pflag);
+            if (!mismatch && firstDecl) {
+                CDecl_FuncRedeclCheck(obj, declinfo, *firstDecl);
             }
         } else {
             if (declinfo->nspace) {
@@ -1807,8 +1783,8 @@ Object* CDecl_GetFunctionObject(
             if (nspace) {
                 obj->nspace = nspace;
             }
-            if (pflag) {
-                *pflag = TRUE;
+            if (firstDecl) {
+                *firstDecl = TRUE;
             } else {
                 CError_Error(ERR_ILLEGAL_FUNCTION_DEFINITION);
             }
@@ -1821,6 +1797,10 @@ Object* CDecl_GetFunctionObject(
     return obj;
 }
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -7
+#endif
 void CDecl_TypedefDeclarator(DeclInfo* declinfo) {
     NameSpaceObjectList* list;
     ObjType* objt;
@@ -1920,12 +1900,20 @@ void CDecl_TypedefDeclarator(DeclInfo* declinfo) {
         }
     }
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
-static void CDecl_DataDeclarator(DeclInfo* declinfo, AccessType access, Boolean flag) {
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -7
+#endif
+static void CDecl_DataDeclarator(DeclInfo* declinfo, AccessType access, Boolean isMember) {
     NameSpaceObjectList* list;
     Object* obj;
     NameSpace* nspace;
-    Boolean tmpflag;
+    Boolean sametype;
     ENode* expr;
 
     nspace = declinfo->nspace;
@@ -1950,7 +1938,7 @@ static void CDecl_DataDeclarator(DeclInfo* declinfo, AccessType access, Boolean 
         switch (list->object->otype) {
             case OT_OBJECT:
                 obj = OBJECT(list->object);
-                if (flag) {
+                if (isMember) {
                     CError_Error(ERR_IDENTIFIER_REDECLARED, declinfo->name->name);
                 }
                 break;
@@ -1972,7 +1960,7 @@ static void CDecl_DataDeclarator(DeclInfo* declinfo, AccessType access, Boolean 
     }
 
     if (copts.cplusplus) {
-        if (!flag) {
+        if (!isMember) {
             CDecl_CompleteType(declinfo->thetype);
         }
         switch (declinfo->storageclass) {
@@ -2007,16 +1995,16 @@ static void CDecl_DataDeclarator(DeclInfo* declinfo, AccessType access, Boolean 
         if ((!obj->type->size || !declinfo->thetype->size) &&
             IS_TYPE_ARRAY(declinfo->thetype) &&
             IS_TYPE_ARRAY(obj->type)) {
-            tmpflag = is_typesame(
+            sametype = is_typesame(
                 TYPE_POINTER(declinfo->thetype)->target, TYPE_POINTER(obj->type)->target
             );
         } else {
-            tmpflag = is_typesame(declinfo->thetype, obj->type);
+            sametype = is_typesame(declinfo->thetype, obj->type);
         }
 
-        if (!tmpflag ||
+        if (!sametype ||
             (obj->qual & (Q_PASCAL | Q_VOLATILE | Q_CONST)) !=
-            (declinfo->qual & (Q_PASCAL | Q_VOLATILE | Q_CONST))) {
+                (declinfo->qual & (Q_PASCAL | Q_VOLATILE | Q_CONST))) {
             CError_Error(
                 ERR_IDENTIFIER_REDECLARED_WAS_DECLARED_AS_NOW,
                 CError_GetObjectName(obj),
@@ -2035,14 +2023,13 @@ static void CDecl_DataDeclarator(DeclInfo* declinfo, AccessType access, Boolean 
         }
 
         if (declinfo->storageclass != TK_EXTERN) {
-            if (obj->sclass !=
-                TK_EXTERN &&
+            if (obj->sclass != TK_EXTERN &&
                 declinfo->storageclass &&
                 obj->sclass != declinfo->storageclass) {
                 CError_Error(ERR_OBJECT_REDEFINED, obj);
             }
 
-            if (tmpflag) {
+            if (sametype) {
                 obj->sclass = declinfo->storageclass;
                 obj->qual |= declinfo->qual;
                 if (declinfo->thetype->size) {
@@ -2052,7 +2039,7 @@ static void CDecl_DataDeclarator(DeclInfo* declinfo, AccessType access, Boolean 
 
             CParser_UpdateObject(obj, declinfo);
         } else {
-            flag = TRUE;
+            isMember = TRUE;
         }
     } else {
         if (declinfo->nspace) {
@@ -2075,14 +2062,14 @@ static void CDecl_DataDeclarator(DeclInfo* declinfo, AccessType access, Boolean 
             CTemplClass_RegisterObjectDef(TEMPL_CLASS(nspace->theclass), OBJ_BASE(obj));
         }
 
-        if (flag && nspace->theclass && cparamblkptr->browseoptions.recordClasses) {
+        if (isMember && nspace->theclass && cparamblkptr->browseoptions.recordClasses) {
             CBrowse_AddClassMemberData(
                 obj, CPrep_BrowserTokenOffset(&member_fileoffset) + 1, CPrep_BrowserFileOffset()
             );
         }
     }
 
-    if (!flag) {
+    if (!isMember) {
         if (declinfo->nspace) {
             CScopeSave save;
             CScope_SetNameSpaceScope(declinfo->nspace, &save);
@@ -2121,23 +2108,25 @@ static void CDecl_DataDeclarator(DeclInfo* declinfo, AccessType access, Boolean 
         }
     }
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
 Boolean CDecl_FunctionDeclarator(
-    DeclInfo* declinfo, NameSpace* nspace, Boolean flag, Boolean flag2
+    DeclInfo* declinfo, NameSpace* nspace, Boolean allowDefinition, Boolean unused
 ) {
     Object* obj;
-    Boolean pflag;
+    Boolean firstDecl;
 
-    obj = CDecl_GetFunctionObject(declinfo, nspace, &pflag, FALSE);
+    obj = CDecl_GetFunctionObject(declinfo, nspace, &firstDecl, FALSE);
     if (obj) {
         if (declinfo->hasParameterNames ||
-            tk ==
-            '{' ||
-            tk ==
-            TK_TRY ||
+            tk == '{' ||
+            tk == TK_TRY ||
             (declinfo->isConstructor && tk == ':') ||
             (!copts.cplusplus && isdeclaration(0, 0, 0, 0))) {
-            if (!flag || cscope_currentfunc) {
+            if (!allowDefinition || cscope_currentfunc) {
                 CError_Error(ERR_ILLEGAL_FUNCTION_DEFINITION);
                 if (cscope_currentfunc) {
                     return FALSE;
@@ -2145,21 +2134,19 @@ Boolean CDecl_FunctionDeclarator(
             }
 
             if (obj->nspace == cscope_root && !strcmp(obj->name->name, "main")) {
-                if (obj->sclass ==
-                    TK_STATIC ||
+                if (obj->sclass == TK_STATIC ||
                     (copts.ANSIstrict && TYPE_FUNC(obj->type)->functype != (Type*)&stsignedint)) {
                     CError_Error(ERR_MAIN_NOT_DEFINED_AS_EXTERNAL_INT);
                 }
-            } else if (copts.checkprotos && (pflag || declinfo->firstDeclaration)) {
-                if (obj->sclass !=
-                    TK_STATIC &&
+            } else if (copts.checkprotos && (firstDecl || declinfo->firstDeclaration)) {
+                if (obj->sclass != TK_STATIC &&
                     !(obj->qual & Q_INLINE) &&
                     !obj->nspace->is_unnamed) {
                     CError_Warning(ERR_FUNCTION_NO_PROTOTYPE);
                 }
             }
 
-            CFunc_ParseFuncDef(obj, declinfo, NULL, FALSE, 0, NULL);
+            CFunc_ParseFuncDef(obj, declinfo, NULL, FALSE, FALSE, NULL);
             if (declinfo->file->recordbrowseinfo) {
                 CBrowse_NewFunction(
                     obj,
@@ -2180,54 +2167,58 @@ Boolean CDecl_FunctionDeclarator(
     return TRUE;
 }
 
-static void CDecl_ParseSpecialMember(DeclInfo* declinfo, Boolean flag) {
-    Object* r28;
-    NameSpace* r25;
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -7
+#endif
+static void CDecl_ParseSpecialMember(DeclInfo* declinfo, Boolean parseDeclarator) {
+    Object* obj;
+    NameSpace* savedNSpace;
 
-    if (!(r28 = declinfo->resolvedObject)) {
+    if (!(obj = declinfo->resolvedObject)) {
         CError_ASSERT(2609, declinfo->resolvedObjects);
-        r28 = OBJECT(declinfo->resolvedObjects->object);
-        CError_ASSERT(2611, r28->otype == OT_OBJECT);
+        obj = OBJECT(declinfo->resolvedObjects->object);
+        CError_ASSERT(2611, obj->otype == OT_OBJECT);
     }
 
-    if (!r28->nspace->theclass) {
+    if (!obj->nspace->theclass) {
         CError_Error(ERR_DECLARATION_SYNTAX_ERROR);
         return;
     }
 
-    if (IS_TYPE_FUNC(r28->type)) {
-        if (TYPE_FUNC(r28->type)->flags & (FUNC_IS_CTOR | FUNC_IS_DTOR)) {
-            if (r28->nspace->theclass->sominfo) {
+    if (IS_TYPE_FUNC(obj->type)) {
+        if (TYPE_FUNC(obj->type)->flags & (FUNC_IS_CTOR | FUNC_IS_DTOR)) {
+            if (obj->nspace->theclass->sominfo) {
                 declinfo->thetype = TYPE(&stvoid);
             } else {
                 declinfo->thetype = TYPE(&void_ptr);
             }
-            declinfo->nspace = r28->nspace;
-            declinfo->name = r28->name;
-            if (TYPE_FUNC(r28->type)->flags & FUNC_IS_CTOR) {
+            declinfo->nspace = obj->nspace;
+            declinfo->name = obj->name;
+            if (TYPE_FUNC(obj->type)->flags & FUNC_IS_CTOR) {
                 declinfo->isConstructor = TRUE;
             }
 
             if ((tk = lex()) == '(') {
                 tk = lex();
 
-                r25 = cscope_current;
-                cscope_current = r28->nspace;
+                savedNSpace = cscope_current;
+                cscope_current = obj->nspace;
                 CDecl_ParseDirectFuncDecl(declinfo);
-                cscope_current = r25;
+                cscope_current = savedNSpace;
 
                 if (IS_TYPE_FUNC(declinfo->thetype)) {
-                    if (TYPE_FUNC(r28->type)->flags & FUNC_IS_CTOR) {
-                        if ((r28->nspace->theclass->flags & CLASS_HAS_VBASES) &&
-                            !r28->nspace->theclass->sominfo) {
+                    if (TYPE_FUNC(obj->type)->flags & FUNC_IS_CTOR) {
+                        if ((obj->nspace->theclass->flags & CLASS_HAS_VBASES) &&
+                            !obj->nspace->theclass->sominfo) {
                             CDecl_AddArgument(TYPE_FUNC(declinfo->thetype), TYPE(&stsignedshort));
                         }
                     } else {
-                        if (!r28->nspace->theclass->sominfo) {
+                        if (!obj->nspace->theclass->sominfo) {
                             CDecl_AddArgument(TYPE_FUNC(declinfo->thetype), TYPE(&stsignedshort));
                         }
                     }
-                    if (flag) {
+                    if (parseDeclarator) {
                         CDecl_FunctionDeclarator(declinfo, NULL, TRUE, TRUE);
                     }
                 } else {
@@ -2237,20 +2228,20 @@ static void CDecl_ParseSpecialMember(DeclInfo* declinfo, Boolean flag) {
                 CError_Error(ERR_LPAREN_EXPECTED);
             }
             return;
-        } else if (TYPE_FUNC(r28->type)->flags & FUNC_CONVERSION) {
+        } else if (TYPE_FUNC(obj->type)->flags & FUNC_CONVERSION) {
             CError_FATAL(2668);
 
-            declinfo->thetype = TYPE_FUNC(r28->type)->functype;
-            declinfo->qual |= TYPE_FUNC(r28->type)->qual;
-            declinfo->nspace = r28->nspace;
-            declinfo->name = r28->name;
+            declinfo->thetype = TYPE_FUNC(obj->type)->functype;
+            declinfo->qual |= TYPE_FUNC(obj->type)->qual;
+            declinfo->nspace = obj->nspace;
+            declinfo->name = obj->name;
 
             if ((tk = lex()) == '(') {
                 tk = lex();
                 CDecl_ParseDirectFuncDecl(declinfo);
                 if (IS_TYPE_FUNC(declinfo->thetype)) {
                     TYPE_FUNC(declinfo->thetype)->flags |= FUNC_CONVERSION;
-                    if (flag) {
+                    if (parseDeclarator) {
                         CDecl_FunctionDeclarator(declinfo, NULL, TRUE, TRUE);
                     }
                 } else {
@@ -2262,19 +2253,19 @@ static void CDecl_ParseSpecialMember(DeclInfo* declinfo, Boolean flag) {
             return;
         } else {
             declinfo->thetype = TYPE(&stsignedint);
-            declinfo->nspace = r28->nspace;
-            declinfo->name = r28->name;
+            declinfo->nspace = obj->nspace;
+            declinfo->name = obj->name;
 
             if ((tk = lex()) == '(') {
                 tk = lex();
 
-                r25 = cscope_current;
-                cscope_current = r28->nspace;
+                savedNSpace = cscope_current;
+                cscope_current = obj->nspace;
                 CDecl_ParseDirectFuncDecl(declinfo);
-                cscope_current = r25;
+                cscope_current = savedNSpace;
 
                 if (IS_TYPE_FUNC(declinfo->thetype)) {
-                    if (flag) {
+                    if (parseDeclarator) {
                         CDecl_FunctionDeclarator(declinfo, NULL, TRUE, TRUE);
                     }
                     return;
@@ -2287,6 +2278,10 @@ static void CDecl_ParseSpecialMember(DeclInfo* declinfo, Boolean flag) {
 
     CError_Error(ERR_DECLARATION_SYNTAX_ERROR);
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
 void CDecl_ScanDeclarator(DeclInfo* declinfo) {
     if (declinfo->resolvedObjects || declinfo->resolvedObject) {
@@ -2325,18 +2320,21 @@ void CDecl_ScanDeclarator(DeclInfo* declinfo) {
 
     if ((declinfo->qual &
          ~(Q_ALIGNED_MASK | Q_WEAK | Q_IMPLICIT_WEAK | Q_PASCAL | Q_VOLATILE | Q_CONST)) ||
-        (declinfo->storageclass ==
-         TK_TYPEDEF &&
+        (declinfo->storageclass == TK_TYPEDEF &&
          (declinfo->qual & ~(Q_ALIGNED_MASK | Q_REFERENCE | Q_PASCAL | Q_VOLATILE | Q_CONST)))) {
         CError_Error(ERR_ILLEGAL_TYPE_QUALIFIERS);
     }
 }
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -7
+#endif
 void scandeclaratorlist(DeclInfo* declinfo) {
     CScopeSave savescope;
-    Type* r30;
-    UInt32 r29;
-    Boolean r28;
+    Type* type;
+    UInt32 qual;
+    Boolean isFirst;
 
     if (declinfo->resolvedObjects || declinfo->resolvedObject) {
         CDecl_ParseSpecialMember(declinfo, TRUE);
@@ -2346,15 +2344,15 @@ void scandeclaratorlist(DeclInfo* declinfo) {
     CScope_GetScope(&savescope);
     CError_ASSERT(2772, declinfo->thetype);
 
-    r28 = TRUE;
+    isFirst = TRUE;
     while (1) {
-        r30 = declinfo->thetype;
-        r29 = declinfo->qual;
+        type = declinfo->thetype;
+        qual = declinfo->qual;
         declinfo->nspace = NULL;
         declinfo->operator_token = 0;
-        if (IS_TYPE_FUNC(r30)) {
+        if (IS_TYPE_FUNC(type)) {
             declinfo->thetype = galloc(sizeof(TypeFunc));
-            *TYPE_FUNC(declinfo->thetype) = *TYPE_FUNC(r30);
+            *TYPE_FUNC(declinfo->thetype) = *TYPE_FUNC(type);
         }
         declinfo->name = NULL;
         scandeclarator(declinfo);
@@ -2365,7 +2363,7 @@ void scandeclaratorlist(DeclInfo* declinfo) {
 
         if (declinfo->storageclass != TK_TYPEDEF) {
             if (IS_TYPE_FUNC(declinfo->thetype)) {
-                if (!CDecl_FunctionDeclarator(declinfo, NULL, r28, TRUE)) {
+                if (!CDecl_FunctionDeclarator(declinfo, NULL, isFirst, TRUE)) {
                     return;
                 }
             } else {
@@ -2376,20 +2374,24 @@ void scandeclaratorlist(DeclInfo* declinfo) {
         }
 
         CScope_RestoreScope(&savescope);
-        declinfo->thetype = r30;
-        declinfo->qual = r29;
+        declinfo->thetype = type;
+        declinfo->qual = qual;
 
         if (tk != ',') {
             break;
         }
         tk = lex();
-        r28 = FALSE;
+        isFirst = FALSE;
     }
 
     if (tk != ';') {
         CError_Error(ERR_SEMICOLON_EXPECTED);
     }
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
 static TypeIntegral* CDecl_FindSignedType(short size) {
     if (stsignedchar.size == size) {
@@ -2429,30 +2431,29 @@ static TypeIntegral* CDecl_FindUnsignedType(short size) {
     return &stunsignedlong;
 }
 
-static TypeIntegral* CDecl_IterateIntegralEnumType(int* t) {
-    switch (*t) {
+static TypeIntegral* CDecl_IterateIntegralEnumType(int* iter) {
+    switch (*iter) {
         case 0:
-            *t = 1;
+            *iter = 1;
             return &stsignedchar;
         case 1:
             if (stsignedshort.size > stsignedchar.size) {
-                *t = 2;
+                *iter = 2;
                 return &stsignedshort;
             }
         case 2:
             if (stsignedint.size > stsignedshort.size) {
-                *t = 3;
+                *iter = 3;
                 return &stsignedint;
             }
         case 3:
             if (stsignedlong.size > stsignedint.size) {
-                *t = 4;
+                *iter = 4;
                 return &stsignedlong;
             }
         case 4:
-            *t = 5;
-            if (stsignedlonglong.size >
-                stsignedlong.size &&
+            *iter = 5;
+            if (stsignedlonglong.size > stsignedlong.size &&
                 copts.longlong &&
                 copts.longlong_enums) {
                 return &stsignedlonglong;
@@ -2462,30 +2463,29 @@ static TypeIntegral* CDecl_IterateIntegralEnumType(int* t) {
     }
 }
 
-static TypeIntegral* CDecl_IterateUIntegralEnumType(int* t) {
-    switch (*t) {
+static TypeIntegral* CDecl_IterateUIntegralEnumType(int* iter) {
+    switch (*iter) {
         case 0:
-            *t = 1;
+            *iter = 1;
             return &stunsignedchar;
         case 1:
             if (stunsignedshort.size > stunsignedchar.size) {
-                *t = 2;
+                *iter = 2;
                 return &stunsignedshort;
             }
         case 2:
             if (stunsignedint.size > stunsignedshort.size) {
-                *t = 3;
+                *iter = 3;
                 return &stunsignedint;
             }
         case 3:
             if (stunsignedlong.size > stunsignedint.size) {
-                *t = 4;
+                *iter = 4;
                 return &stunsignedlong;
             }
         case 4:
-            *t = 5;
-            if (stunsignedlonglong.size >
-                stunsignedlong.size &&
+            *iter = 5;
+            if (stunsignedlonglong.size > stunsignedlong.size &&
                 copts.longlong &&
                 copts.longlong_enums) {
                 return &stunsignedlonglong;
@@ -2497,23 +2497,19 @@ static TypeIntegral* CDecl_IterateUIntegralEnumType(int* t) {
 
 static TypeEnum* CDecl_OldParseEnumList(TypeEnum* tenum, HashNameNode* name) {
     AccessType access;
-    Boolean has_template_value;
-    Boolean r24;
-    Boolean r23;
+    Boolean is_signed;
+    Boolean next_overflows;
     ObjEnumConst* oec;
     ObjEnumConst* last;
     Boolean overflowed;
     CInt64 val;
     CInt64 minimum;
     CInt64 maximum;
-    CInt64 var_74;
-    CInt64 unused;
+    CInt64 next;
     Type* basetype;
     Type* basetype2;
     CPrepFileInfo* fileinfo;
     SInt32 offset;
-    ENode* expr;
-    Type* tmp;
 
     if (!tenum) {
         tenum = galloc(sizeof(TypeEnum));
@@ -2542,17 +2538,16 @@ static TypeEnum* CDecl_OldParseEnumList(TypeEnum* tenum, HashNameNode* name) {
 
     access = cscope_current->theclass ? global_access : ACCESSPUBLIC;
     last = NULL;
-    unused = cint64_zero;
     val = cint64_zero;
     minimum = cint64_zero;
     maximum = cint64_zero;
-    r23 = FALSE;
+    next_overflows = FALSE;
     if (copts.enumsalwaysint) {
         basetype = TYPE(&stsignedint);
-        r24 = TRUE;
+        is_signed = TRUE;
     } else {
         basetype = TYPE(&stunsignedchar);
-        r24 = FALSE;
+        is_signed = FALSE;
     }
 
     tk = lex();
@@ -2592,18 +2587,18 @@ static TypeEnum* CDecl_OldParseEnumList(TypeEnum* tenum, HashNameNode* name) {
                         maximum = val;
                         overflowed = TRUE;
                     }
-                    if (!r24) {
+                    if (!is_signed) {
                         basetype = TYPE(&stsignedchar);
-                        r24 = TRUE;
+                        is_signed = TRUE;
                     }
                 }
-                r23 = FALSE;
+                next_overflows = FALSE;
             } else {
-                if (r23) {
+                if (next_overflows) {
                     CError_Error(ERR_NUMBER_OUT_RANGE);
                 }
 
-                if (!r24 || !CInt64_IsNegative(&val)) {
+                if (!is_signed || !CInt64_IsNegative(&val)) {
                     if (CInt64_GreaterU(val, minimum)) {
                         minimum = val;
                         overflowed = TRUE;
@@ -2627,7 +2622,7 @@ static TypeEnum* CDecl_OldParseEnumList(TypeEnum* tenum, HashNameNode* name) {
                         CError_Error(ERR_NUMBER_OUT_RANGE);
                     }
                 }
-            } else if (r24) {
+            } else if (is_signed) {
                 switch (basetype->size) {
                     case 1:
                         if (CInt64_IsInRange(minimum, 1) && CInt64_IsInRange(maximum, 1)) {
@@ -2715,17 +2710,17 @@ static TypeEnum* CDecl_OldParseEnumList(TypeEnum* tenum, HashNameNode* name) {
                 }
             }
 
-            var_74 = CInt64_Add(val, cint64_one);
-            if (r24) {
-                if (CInt64_IsNegative(&var_74) && !CInt64_IsNegative(&val)) {
-                    r23 = TRUE;
+            next = CInt64_Add(val, cint64_one);
+            if (is_signed) {
+                if (CInt64_IsNegative(&next) && !CInt64_IsNegative(&val)) {
+                    next_overflows = TRUE;
                 }
             } else {
-                if (CInt64_IsZero(&var_74)) {
-                    r23 = TRUE;
+                if (CInt64_IsZero(&next)) {
+                    next_overflows = TRUE;
                 }
             }
-            val = var_74;
+            val = next;
 
             if (tk != ',') {
                 break;
@@ -2767,10 +2762,10 @@ static Type* CDecl_MaxType(Type* a, Type* b) {
 void CDecl_ComputeUnderlyingEnumType(TypeEnum* tenum) {
     ObjEnumConst* oec;
     ObjEnumConst* oec2;
-    Type* r26;
+    Type* basetype;
     CInt64 minimum;
     CInt64 maximum;
-    int t;
+    int iter;
     CInt64 val;
 
     if (!copts.enumsalwaysint) {
@@ -2799,23 +2794,23 @@ void CDecl_ComputeUnderlyingEnumType(TypeEnum* tenum) {
                 CError_Error(ERR_NUMBER_OUT_RANGE);
             }
 
-            t = 0;
+            iter = 0;
             do {
-                r26 = TYPE(CDecl_IterateIntegralEnumType(&t));
-                if (!r26) {
-                    r26 = TYPE(&stsignedlong);
+                basetype = TYPE(CDecl_IterateIntegralEnumType(&iter));
+                if (!basetype) {
+                    basetype = TYPE(&stsignedlong);
                     CError_Error(ERR_NUMBER_OUT_RANGE);
                     break;
                 }
 
-                if (CInt64_IsInRange(maximum, r26->size) && CInt64_IsInRange(minimum, r26->size)) {
+                if (CInt64_IsInRange(maximum, basetype->size) &&
+                    CInt64_IsInRange(minimum, basetype->size)) {
                     break;
                 }
-                if (r26->size ==
-                    stsignedlong.size &&
+                if (basetype->size == stsignedlong.size &&
                     !copts.ANSIstrict &&
-                    CInt64_IsInRange(minimum, r26->size) &&
-                    CInt64_IsInURange(maximum, r26->size)) {
+                    CInt64_IsInRange(minimum, basetype->size) &&
+                    CInt64_IsInURange(maximum, basetype->size)) {
                     break;
                 }
             } while (1);
@@ -2828,89 +2823,82 @@ void CDecl_ComputeUnderlyingEnumType(TypeEnum* tenum) {
                 }
             }
 
-            t = 0;
+            iter = 0;
             do {
-                r26 = TYPE(CDecl_IterateUIntegralEnumType(&t));
-                if (!r26) {
-                    r26 = TYPE(&stunsignedlong);
+                basetype = TYPE(CDecl_IterateUIntegralEnumType(&iter));
+                if (!basetype) {
+                    basetype = TYPE(&stunsignedlong);
                     CError_Error(ERR_NUMBER_OUT_RANGE);
                     break;
                 }
-                if (CInt64_IsInURange(val, r26->size)) {
+                if (CInt64_IsInURange(val, basetype->size)) {
                     break;
                 }
             } while (1);
         }
     } else {
-        r26 = TYPE(&stsignedint);
+        basetype = TYPE(&stsignedint);
     }
 
-    tenum->size = r26->size;
-    tenum->enumtype = r26;
+    tenum->size = basetype->size;
+    tenum->enumtype = basetype;
     for (oec = tenum->enumlist; oec; oec = oec->next) {
         oec->type = TYPE(tenum);
     }
 }
 
-static Type* CDecl_FindUnderlyingType(short size, CInt64* a, CInt64* b) {
-    if (CInt64_IsZero(a)) {
-        if (size <= stsignedchar.size && CInt64_IsInURange(*b, stunsignedchar.size)) {
+static Type* CDecl_FindUnderlyingType(short size, CInt64* minimum, CInt64* maximum) {
+    if (CInt64_IsZero(minimum)) {
+        if (size <= stsignedchar.size && CInt64_IsInURange(*maximum, stunsignedchar.size)) {
             return TYPE(&stunsignedchar);
         }
-        if (size <= stsignedshort.size && CInt64_IsInURange(*b, stunsignedshort.size)) {
+        if (size <= stsignedshort.size && CInt64_IsInURange(*maximum, stunsignedshort.size)) {
             return TYPE(&stunsignedshort);
         }
-        if (size <= stsignedint.size && CInt64_IsInURange(*b, stunsignedint.size)) {
+        if (size <= stsignedint.size && CInt64_IsInURange(*maximum, stunsignedint.size)) {
             return TYPE(&stunsignedint);
         }
-        if (size <= stsignedlong.size && CInt64_IsInURange(*b, stunsignedlong.size)) {
+        if (size <= stsignedlong.size && CInt64_IsInURange(*maximum, stunsignedlong.size)) {
             return TYPE(&stunsignedlong);
         }
-        if (size <=
-            stsignedlonglong.size &&
+        if (size <= stsignedlonglong.size &&
             copts.longlong &&
             copts.longlong_enums &&
-            CInt64_IsInURange(*b, stunsignedlonglong.size)) {
+            CInt64_IsInURange(*maximum, stunsignedlonglong.size)) {
             return TYPE(&stunsignedlonglong);
         }
     } else {
-        if (size <=
-            stsignedchar.size &&
-            CInt64_IsInRange(*a, stsignedchar.size) &&
-            CInt64_IsInRange(*b, stsignedchar.size)) {
+        if (size <= stsignedchar.size &&
+            CInt64_IsInRange(*minimum, stsignedchar.size) &&
+            CInt64_IsInRange(*maximum, stsignedchar.size)) {
             return TYPE(&stsignedchar);
         }
-        if (size <=
-            stsignedshort.size &&
-            CInt64_IsInRange(*a, stsignedshort.size) &&
-            CInt64_IsInRange(*b, stsignedshort.size)) {
+        if (size <= stsignedshort.size &&
+            CInt64_IsInRange(*minimum, stsignedshort.size) &&
+            CInt64_IsInRange(*maximum, stsignedshort.size)) {
             return TYPE(&stsignedshort);
         }
-        if (size <=
-            stsignedint.size &&
-            CInt64_IsInRange(*a, stsignedint.size) &&
-            CInt64_IsInRange(*b, stsignedint.size)) {
+        if (size <= stsignedint.size &&
+            CInt64_IsInRange(*minimum, stsignedint.size) &&
+            CInt64_IsInRange(*maximum, stsignedint.size)) {
             return TYPE(&stsignedint);
         }
-        if (size <=
-            stsignedlong.size &&
-            CInt64_IsInRange(*a, stsignedlong.size) &&
-            CInt64_IsInRange(*b, stsignedlong.size)) {
+        if (size <= stsignedlong.size &&
+            CInt64_IsInRange(*minimum, stsignedlong.size) &&
+            CInt64_IsInRange(*maximum, stsignedlong.size)) {
             return TYPE(&stsignedlong);
         }
-        if (size <=
-            stsignedlonglong.size &&
+        if (size <= stsignedlonglong.size &&
             copts.longlong &&
             copts.longlong_enums &&
-            CInt64_IsInRange(*a, stsignedlonglong.size) &&
-            CInt64_IsInRange(*b, stsignedlonglong.size)) {
+            CInt64_IsInRange(*minimum, stsignedlonglong.size) &&
+            CInt64_IsInRange(*maximum, stsignedlonglong.size)) {
             return TYPE(&stsignedlonglong);
         }
         if (!copts.ANSIstrict &&
-            size <=
-            stsignedlong.size &&
-            CInt64_IsInRange(*a, stsignedlong.size) &&
-            CInt64_IsInURange(*b, stunsignedlong.size)) {
+            size <= stsignedlong.size &&
+            CInt64_IsInRange(*minimum, stsignedlong.size) &&
+            CInt64_IsInURange(*maximum, stunsignedlong.size)) {
             return TYPE(&stsignedlong);
         }
     }
@@ -2929,11 +2917,10 @@ static TypeEnum* CDecl_ParseEnumList(TypeEnum* tenum, HashNameNode* name) {
     CInt64 val;
     CInt64 minimum;
     CInt64 maximum;
-    CInt64 unused;
     CPrepFileInfo* fileinfo;
     SInt32 offset;
     ENode* expr;
-    Type* tmp;
+    Type* underlying;
     ObjEnumConst* last;
 
     if (!tenum) {
@@ -2966,7 +2953,6 @@ static TypeEnum* CDecl_ParseEnumList(TypeEnum* tenum, HashNameNode* name) {
     last = NULL;
     is_first = TRUE;
     has_template_value = FALSE;
-    unused = cint64_zero;
     val = cint64_zero;
     minimum = cint64_zero;
     maximum = cint64_zero;
@@ -3052,9 +3038,9 @@ static TypeEnum* CDecl_ParseEnumList(TypeEnum* tenum, HashNameNode* name) {
             } else if (CInt64_IsNegative(&val) && !is_unsigned(basetype)) {
                 if (CInt64_Less(val, minimum)) {
                     minimum = val;
-                    if ((tmp = CDecl_FindUnderlyingType(tenum->size, &minimum, &maximum))) {
-                        tenum->size = tmp->size;
-                        tenum->enumtype = tmp;
+                    if ((underlying = CDecl_FindUnderlyingType(tenum->size, &minimum, &maximum))) {
+                        tenum->size = underlying->size;
+                        tenum->enumtype = underlying;
                     } else {
                         overflowed = TRUE;
                     }
@@ -3062,9 +3048,9 @@ static TypeEnum* CDecl_ParseEnumList(TypeEnum* tenum, HashNameNode* name) {
             } else {
                 if (CInt64_GreaterU(val, maximum)) {
                     maximum = val;
-                    if ((tmp = CDecl_FindUnderlyingType(tenum->size, &minimum, &maximum))) {
-                        tenum->size = tmp->size;
-                        tenum->enumtype = tmp;
+                    if ((underlying = CDecl_FindUnderlyingType(tenum->size, &minimum, &maximum))) {
+                        tenum->size = underlying->size;
+                        tenum->enumtype = underlying;
                     } else {
                         overflowed = TRUE;
                     }
@@ -3112,10 +3098,18 @@ static TypeEnum* CDecl_ParseEnumList(TypeEnum* tenum, HashNameNode* name) {
     return tenum;
 }
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -7
+#endif
 void scanenum(DeclInfo* declinfo) {
     HashNameNode* name;
     Type* type;
     NameResult pr;
+
+#ifndef __MWERKS__
+    name = (HashNameNode*)declinfo;
+#endif
 
     if (tk == '{') {
         declinfo->thetype = TYPE(CDecl_ParseEnumList(NULL, NULL));
@@ -3129,7 +3123,6 @@ void scanenum(DeclInfo* declinfo) {
             type = CScope_GetLocalTagType(cscope_current, name);
             if (type) {
                 lex();
-// TODO: invented label name (Pro7: do_shit)
 define_enum:
                 if (type->size || !IS_TYPE_ENUM(type)) {
                     CError_Error(ERR_IDENTIFIER_REDECLARED, name->name);
@@ -3184,6 +3177,10 @@ define_enum:
 
     declinfo->thetype = TYPE(&stsignedint);
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
 void CDecl_ScanStructDeclarator(BigDeclInfo* bde) {
     ENode* expr;
@@ -3214,8 +3211,7 @@ void CDecl_ScanStructDeclarator(BigDeclInfo* bde) {
         if ((!copts.ANSIstrict || copts.c9x) &&
             !bde->declinfo2.thetype->size &&
             IS_TYPE_ARRAY(bde->declinfo2.thetype)) {
-            if ((int)bde->declinfo2.storageclass !=
-                TK_STATIC &&
+            if ((int)bde->declinfo2.storageclass != TK_STATIC &&
                 (int)bde->declinfo2.storageclass != TK_TYPEDEF) {
                 type = TYPE_POINTER(bde->declinfo2.thetype)->target;
                 while (IS_TYPE_ARRAY(type)) {
@@ -3230,8 +3226,7 @@ void CDecl_ScanStructDeclarator(BigDeclInfo* bde) {
                 }
             }
         } else {
-            if ((int)bde->declinfo2.storageclass !=
-                TK_STATIC &&
+            if ((int)bde->declinfo2.storageclass != TK_STATIC &&
                 (int)bde->declinfo2.storageclass != TK_TYPEDEF) {
                 if (!IS_TYPE_FUNC(bde->declinfo2.thetype) &&
                     !IsCompleteType(bde->declinfo2.thetype)) {
@@ -3257,8 +3252,7 @@ void CDecl_ScanStructDeclarator(BigDeclInfo* bde) {
         CError_Error(ERR_ILLEGAL_BITFIELD_DECLARATION);
         bde->declinfo2.thetype = TYPE(&stunsignedint);
     } else if (copts.ANSIstrict && !copts.cplusplus) {
-        if (bde->declinfo2.thetype !=
-            TYPE(&stsignedint) &&
+        if (bde->declinfo2.thetype != TYPE(&stsignedint) &&
             bde->declinfo2.thetype != TYPE(&stunsignedint)) {
             CError_Error(ERR_ILLEGAL_BITFIELD_DECLARATION);
             bde->declinfo2.thetype = TYPE(&stunsignedint);
@@ -3276,7 +3270,6 @@ void CDecl_ScanStructDeclarator(BigDeclInfo* bde) {
             bits = 32;
             break;
         case 8:
-            // 2.6: long long bitfields
             if (copts.has8bytebitfields) {
                 bits = 64;
                 break;
@@ -3285,14 +3278,13 @@ void CDecl_ScanStructDeclarator(BigDeclInfo* bde) {
             CError_Error(ERR_ILLEGAL_BITFIELD_DECLARATION);
             return;
     }
-// TODO: invented label name (Pro7: fuckup)
 parse_width:
     tk = lex();
     expr = CExpr_IntegralConstOrDepExpr();
     if (!ENODE_IS(expr, EINTCONST)) {
         ttempl = CDecl_NewTemplDepType(TEMPLDEP_BITFIELD);
         ttempl->u.bitfield.type = bde->declinfo2.thetype;
-        ttempl->u.bitfield.size = CInline_CopyExpression(expr, CopyMode1);
+        ttempl->u.bitfield.size = CInline_CopyExpression(expr, CopyModeGlobal);
         bde->declinfo2.thetype = TYPE(ttempl);
         bde->valid = TRUE;
         return;
@@ -3327,20 +3319,24 @@ not_a_bitfield:
     bde->valid = TRUE;
 }
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -7
+#endif
 static void CDecl_LayoutStruct(TypeStruct* tstruct) {
     StructMember* member;
-    SInt32 r28;
+    SInt32 unionSize;
     StructMember* innermember;
     SInt32 innerbase;
     StructMember* newmember;
     StructMember** memberp;
     TypeBitfield* bf;
-    SInt32 r24;
-    Boolean r23;
-    SInt32 tmp;
+    SInt32 size;
+    Boolean removeNoNames;
+    SInt32 curSize;
 
-    r28 = 0;
-    r23 = FALSE;
+    unionSize = 0;
+    removeNoNames = FALSE;
     CMach_StructLayoutInitOffset(0);
     for (member = tstruct->members; member; member = member->next) {
         if (tstruct->stype == STRUCT_TYPE_UNION) {
@@ -3354,26 +3350,26 @@ static void CDecl_LayoutStruct(TypeStruct* tstruct) {
         }
 
         if (tstruct->stype == STRUCT_TYPE_UNION) {
-            tmp = CMach_StructLayoutGetCurSize();
-            if (tmp > r28) {
-                r28 = tmp;
+            curSize = CMach_StructLayoutGetCurSize();
+            if (curSize > unionSize) {
+                unionSize = curSize;
             }
         }
 
         if (member->name == no_name_node) {
-            r23 = TRUE;
+            removeNoNames = TRUE;
         }
 
         if (!member->name) {
             CError_ASSERT(4129, IS_TYPE_STRUCT(member->type));
             innerbase = member->offset;
             innermember = TYPE_STRUCT(member->type)->members;
-            r23 = TRUE;
+            removeNoNames = TRUE;
             while (innermember) {
                 if (ismember(tstruct, innermember->name)) {
                     CError_Error(ERR_STRUCT_UNION_CLASS_MEMBER_REDEFINED, innermember->name->name);
                 }
-                if (r23) {
+                if (removeNoNames) {
                     member->type = innermember->type;
                     member->name = innermember->name;
                     member->qual = innermember->qual;
@@ -3395,14 +3391,14 @@ static void CDecl_LayoutStruct(TypeStruct* tstruct) {
                     CABI_ReverseBitField(bf);
                     member->type = TYPE(bf);
                 }
-                r23 = FALSE;
+                removeNoNames = FALSE;
                 innermember = innermember->next;
             }
-            r23 = TRUE;
+            removeNoNames = TRUE;
         }
     }
 
-    if (r23) {
+    if (removeNoNames) {
         memberp = &tstruct->members;
         while (*memberp) {
             if ((*memberp)->name == no_name_node || !(*memberp)->name) {
@@ -3414,13 +3410,13 @@ static void CDecl_LayoutStruct(TypeStruct* tstruct) {
     }
 
     if (tstruct->stype == STRUCT_TYPE_UNION) {
-        r24 = r28;
+        size = unionSize;
     } else {
-        r24 = CMach_StructLayoutGetCurSize();
+        size = CMach_StructLayoutGetCurSize();
     }
-    tstruct->size = r24;
+    tstruct->size = size;
     tstruct->align = CMach_GetStructAlign(tstruct);
-    tstruct->size = r24 + CABI_StructSizeAlignValue(TYPE(tstruct), r24);
+    tstruct->size = size + CABI_StructSizeAlignValue(TYPE(tstruct), size);
 
     if (copts.reverse_bitfields) {
         for (member = tstruct->members; member; member = member->next) {
@@ -3456,8 +3452,12 @@ static void CDecl_LayoutStruct(TypeStruct* tstruct) {
         }
     }
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
-static SInt32 scanstructdeclarationlist(TypeStruct* tstruct, Boolean flag) {
+static SInt32 scanstructdeclarationlist(TypeStruct* tstruct, Boolean addToBrowse) {
     SInt32 offset;
     StructMember* member;
     BigDeclInfo bde;
@@ -3496,8 +3496,7 @@ static SInt32 scanstructdeclarationlist(TypeStruct* tstruct, Boolean flag) {
                     }
 
                     if (bde.valid) {
-                        if (bde.declinfo2.name ==
-                            no_name_node ||
+                        if (bde.declinfo2.name == no_name_node ||
                             !ismember(tstruct, bde.declinfo2.name)) {
                             member = galloc(sizeof(StructMember));
                             memclrw(member, sizeof(StructMember));
@@ -3506,7 +3505,7 @@ static SInt32 scanstructdeclarationlist(TypeStruct* tstruct, Boolean flag) {
                             member->qual = bde.declinfo2.qual;
                             appendmember(tstruct, member);
 
-                            if (flag) {
+                            if (addToBrowse) {
                                 CBrowse_AddStructMember(
                                     member,
                                     CPrep_BrowserTokenOffset(&member_fileoffset) + 1,
@@ -3545,7 +3544,7 @@ static SInt32 scanstructdeclarationlist(TypeStruct* tstruct, Boolean flag) {
         CDecl_LayoutStruct(tstruct);
     }
 
-    if (flag) {
+    if (addToBrowse) {
         offset = CPrep_BrowserFileOffset();
         if (tk == ';') {
             offset++;
@@ -3700,20 +3699,20 @@ void CDecl_ExtractClassExportFlags(DeclInfo* declinfo, UInt8 flags) {
     }
 }
 
-TypeMemberFunc* CDecl_MakeTypeMemberFunc(TypeFunc* tfunc, TypeClass* tclass, Boolean flag) {
+TypeMemberFunc* CDecl_MakeTypeMemberFunc(TypeFunc* tfunc, TypeClass* tclass, Boolean isStatic) {
     TypeFunc* method;
 
     method = galloc(sizeof(TypeMemberFunc));
     memclrw(method, sizeof(TypeMemberFunc));
     *method = *tfunc;
     TYPE_METHOD(method)->theclass = tclass;
-    TYPE_METHOD(method)->is_static = flag;
+    TYPE_METHOD(method)->is_static = isStatic;
     method->flags |= FUNC_METHOD;
-    if (!flag) {
+    if (!isStatic) {
         CDecl_AddThisPointerArgument(method, tclass);
     }
 
-    if ((flag || (tfunc->flags & (FUNC_IS_CTOR | FUNC_IS_DTOR))) &&
+    if ((isStatic || (tfunc->flags & (FUNC_IS_CTOR | FUNC_IS_DTOR))) &&
         (tfunc->flags & (FUNC_CONST | FUNC_VOLATILE))) {
         CError_Error(ERR_ILLEGAL_CV_FUNCTION_QUALIFIER_SEQUENCE);
     }
@@ -3731,21 +3730,25 @@ static void CDecl_MakeFunctionVirtual(TypeClass* tclass, Object* func) {
     func->datatype = DVFUNC;
 }
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -7
+#endif
 static void CDecl_AddFunctionMember(
     ClassLayout* decle,
     TypeClass* tclass,
     DeclInfo* declinfo,
     AccessType access,
-    Boolean flag1,
-    Boolean flag2,
-    Boolean flag3,
-    Boolean flag4
+    Boolean allowPure,
+    Boolean isConversion,
+    Boolean allowDefinition,
+    Boolean isStatic
 ) {
     NameSpaceObjectList* list;
     Object* obj;
     TypeMemberFunc* tfunc;
-    Boolean r31;
-    Boolean outflag;
+    Boolean isVirtual;
+    Boolean isNew;
 
     if (IS_TYPE_ARRAY(TYPE_FUNC(declinfo->thetype)->functype) ||
         IS_TYPE_FUNC(TYPE_FUNC(declinfo->thetype)->functype)) {
@@ -3757,11 +3760,11 @@ static void CDecl_AddFunctionMember(
         CSOM_CheckFuncType(TYPE_FUNC(declinfo->thetype));
     }
 
-    r31 = FALSE;
+    isVirtual = FALSE;
     if (declinfo->qual & Q_VIRTUAL) {
         declinfo->qual &= ~Q_VIRTUAL;
-        r31 = TRUE;
-        flag1 = TRUE;
+        isVirtual = TRUE;
+        allowPure = TRUE;
     }
 
     if ((list = CScope_FindName(tclass->nspace, declinfo->name))) {
@@ -3775,7 +3778,7 @@ static void CDecl_AddFunctionMember(
     }
 
     if (!IS_TYPEFUNC_METHOD(TYPE_FUNC(declinfo->thetype))) {
-        tfunc = CDecl_MakeTypeMemberFunc(TYPE_FUNC(declinfo->thetype), tclass, flag4);
+        tfunc = CDecl_MakeTypeMemberFunc(TYPE_FUNC(declinfo->thetype), tclass, isStatic);
         declinfo->thetype = (Type*)tfunc;
     } else {
         tfunc = TYPE_METHOD(declinfo->thetype);
@@ -3788,12 +3791,16 @@ static void CDecl_AddFunctionMember(
 
     if (list) {
         obj = CDecl_OverloadFunctionObject(
-            list, declinfo, &outflag, flag4 ? OverloadMode_StaticMember : OverloadMode_Member, FALSE
+            list,
+            declinfo,
+            &isNew,
+            isStatic ? OverloadMode_StaticMember : OverloadMode_Member,
+            FALSE
         );
         if (!obj) {
             return;
         }
-        if (outflag) {
+        if (isNew) {
             tfunc->vtbl_index = ++decle->lex_order_count;
         } else {
             CError_Error(ERR_STRUCT_UNION_CLASS_MEMBER_REDEFINED, CError_GetObjectName(obj));
@@ -3811,17 +3818,17 @@ static void CDecl_AddFunctionMember(
     obj->access = access;
     CheckDefaultArgs(TYPE_FUNC(obj->type)->args);
 
-    if (flag2) {
+    if (isConversion) {
         tfunc->flags |= FUNC_CONVERSION;
         tclass->flags |= CLASS_IS_CONVERTIBLE;
     }
 
-    if (r31) {
+    if (isVirtual) {
         CDecl_MakeFunctionVirtual(tclass, obj);
         decle->has_vtable = TRUE;
     }
 
-    if ((flag1 || r31) && flag3 && (tk == '=')) {
+    if ((allowPure || isVirtual) && allowDefinition && (tk == '=')) {
         if ((tk = lex()) == TK_INTCONST) {
             if (!CInt64_IsZero(&tkintconst)) {
                 CError_Error(ERR_DECLARATION_SYNTAX_ERROR);
@@ -3834,7 +3841,8 @@ static void CDecl_AddFunctionMember(
         }
     }
 
-    if (flag3 && ((tk == '{') || (tk == TK_TRY) || ((tk == ':') && CClass_IsConstructor(obj)))) {
+    if (allowDefinition &&
+        ((tk == '{') || (tk == TK_TRY) || ((tk == ':') && CClass_IsConstructor(obj)))) {
         if (declinfo->isType) {
             CError_Error(ERR_ILLEGAL_FUNCTION_DEFINITION);
         }
@@ -3847,13 +3855,17 @@ static void CDecl_AddFunctionMember(
         );
     }
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
 static Boolean CDecl_IsAccessDeclaration(TypeClass* tclass, AccessType access) {
     SInt32 state;
-    Boolean flag;
+    Boolean qualified;
 
     CPrep_TokenStreamGetState(&state);
-    flag = FALSE;
+    qualified = FALSE;
 
 restart:
     switch (tk) {
@@ -3863,7 +3875,7 @@ restart:
             }
         case TK_OPERATOR:
             CPrep_TokenStreamSetCurState(&state);
-            if (flag) {
+            if (qualified) {
                 CScope_ParseUsingDeclaration(tclass->nspace, access, TRUE);
                 return TRUE;
             }
@@ -3875,7 +3887,7 @@ restart:
 
     switch (tk) {
         case TK_COLON_COLON:
-            flag = TRUE;
+            qualified = TRUE;
             tk = lex();
             goto restart;
         case '<':
@@ -3890,7 +3902,7 @@ restart:
                         return FALSE;
                     case '>':
                         if ((tk = lex()) == TK_COLON_COLON) {
-                            flag = TRUE;
+                            qualified = TRUE;
                             tk = lex();
                             goto restart;
                         }
@@ -3970,14 +3982,14 @@ static void CDecl_ParseFriendDecl(TypeClass* tclass) {
     DeclInfo declinfo;
     DeclInfo declinfo_copy;
     Boolean is_templ;
-    Boolean r27;
-    Boolean pflag;
+    Boolean is_class_key;
+    Boolean firstDecl;
     CScopeSave save;
     Object* obj;
     NameSpace* nspace;
 
     is_templ = (tclass->flags & CLASS_IS_TEMPL) != 0;
-    r27 = ((int)tk == TK_CLASS || (int)tk == TK_STRUCT || (int)tk == TK_UNION);
+    is_class_key = ((int)tk == TK_CLASS || (int)tk == TK_STRUCT || (int)tk == TK_UNION);
     memclrw(&declinfo, sizeof(DeclInfo));
 
     declinfo.in_friend_decl = TRUE;
@@ -3989,7 +4001,7 @@ static void CDecl_ParseFriendDecl(TypeClass* tclass) {
     declinfo.in_friend_decl = FALSE;
 
     if (tk == ';') {
-        if (!r27) {
+        if (!is_class_key) {
             CError_Error(ERR_ILLEGAL_FRIEND_DECLARATION);
         }
 
@@ -4015,7 +4027,7 @@ static void CDecl_ParseFriendDecl(TypeClass* tclass) {
             if (!declinfo.name) {
                 return;
             }
-            obj = CDecl_GetFunctionObject(&declinfo, NULL, &pflag, FALSE);
+            obj = CDecl_GetFunctionObject(&declinfo, NULL, &firstDecl, FALSE);
             if (obj) {
                 CDecl_AddFriend(tclass, obj, NULL);
             }
@@ -4037,7 +4049,7 @@ static void CDecl_ParseFriendDecl(TypeClass* tclass) {
                 if (IS_TYPE_FUNC(declinfo.thetype)) {
                     if (!is_templ) {
                         CScope_SetNameSpaceScope(nspace, &save);
-                        obj = CDecl_GetFunctionObject(&declinfo, NULL, &pflag, FALSE);
+                        obj = CDecl_GetFunctionObject(&declinfo, NULL, &firstDecl, FALSE);
                         CScope_RestoreScope(&save);
 
                         if (obj) {
@@ -4072,6 +4084,10 @@ static void CDecl_ParseFriendDecl(TypeClass* tclass) {
     }
 }
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -7
+#endif
 static ObjMemberVar* CDecl_InstanceDataDeclarator(
     ClassLayout* decle,
     TypeClass* tclass,
@@ -4138,9 +4154,11 @@ static ObjMemberVar* CDecl_InstanceDataDeclarator(
 
     return ivar;
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
-// 2.6 reports the error in the callers (Pro7 here): it returns FALSE for a copy constructor that
-// takes its class by value
 Boolean CDecl_CheckCtorIntegrity(FuncArg* args, TypeClass* tclass) {
     if (args && args->type == TYPE(tclass)) {
         if (!args->next || args->next->dexpr) {
@@ -4153,20 +4171,20 @@ Boolean CDecl_CheckCtorIntegrity(FuncArg* args, TypeClass* tclass) {
 
 static void CDecl_ParseClassMembers(ClassLayout* decle, TypeClass* tclass, short mode) {
     AccessType access;
-    Boolean r17;
+    Boolean resolveSelfRefs;
     BigDeclInfo bde;
     DeclInfo declinfo;
     ObjMemberVar* ivar;
     ObjMemberVar* scanivar;
-    Type* tmptype;
-    UInt32 r21;
-    UInt8 r20;
-    SInt16 r18;
-    Boolean r19;
+    Type* memberType;
+    UInt32 declspecQual;
+    UInt8 exportflags;
+    SInt16 section;
+    Boolean isCtorName;
     short t;
-    UInt32 r22;
+    UInt32 qual;
 
-    r17 = (tclass->flags & CLASS_IS_TEMPL) && TEMPL_CLASS(tclass)->pspec_owner;
+    resolveSelfRefs = (tclass->flags & CLASS_IS_TEMPL) && TEMPL_CLASS(tclass)->pspec_owner;
     memclrw(&bde, sizeof(BigDeclInfo));
 
     access = (mode == CLASS_MODE_CLASS) ? ACCESSPRIVATE : ACCESSPUBLIC;
@@ -4175,10 +4193,10 @@ static void CDecl_ParseClassMembers(ClassLayout* decle, TypeClass* tclass, short
 restart:
     while (tk != '}') {
         CPrep_NewFileOffsetInfo(&member_fileoffset, NULL);
-        r21 = 0;
-        r22 = 0;
-        r20 = 0;
-        r18 = 0;
+        declspecQual = 0;
+        qual = 0;
+        exportflags = 0;
+        section = 0;
 
         if (tk == TK_TEMPLATE) {
             NameSpace* nspace = cscope_current;
@@ -4198,7 +4216,7 @@ restart:
         }
 
 restart2:
-        r19 = FALSE;
+        isCtorName = FALSE;
         switch (tk) {
             case TK_UU_DECLSPEC:
                 if ((tk = lex()) != '(') {
@@ -4206,9 +4224,9 @@ restart2:
                 }
                 memclrw(&declinfo, sizeof(DeclInfo));
                 CParser_ParseDeclSpec(&declinfo, TRUE);
-                r21 |= declinfo.qual;
-                r20 |= declinfo.exportflags;
-                r18 = declinfo.section;
+                declspecQual |= declinfo.qual;
+                exportflags |= declinfo.exportflags;
+                section = declinfo.section;
                 if ((tk = lex()) != ')') {
                     CError_Error(ERR_RPAREN_EXPECTED);
                 }
@@ -4223,7 +4241,7 @@ restart2:
             case TK_PUBLIC:
                 global_access = access = ACCESSPUBLIC;
 check_access:
-                if (r22 || r20) {
+                if (qual || exportflags) {
                     CError_Error(ERR_DECLARATION_SYNTAX_ERROR);
                 }
                 if ((tk = lex()) != ':') {
@@ -4233,23 +4251,23 @@ check_access:
                 }
                 goto restart;
             case TK_EXPLICIT:
-                CError_QualifierCheck(r22 & Q_EXPLICIT);
-                r22 |= Q_EXPLICIT;
+                CError_QualifierCheck(qual & Q_EXPLICIT);
+                qual |= Q_EXPLICIT;
                 tk = lex();
                 goto restart2;
             case TK_INLINE:
-                CError_QualifierCheck(r22 & Q_INLINE);
-                r22 |= Q_INLINE;
+                CError_QualifierCheck(qual & Q_INLINE);
+                qual |= Q_INLINE;
                 tk = lex();
                 goto restart2;
             case TK_ASM:
-                CError_QualifierCheck(r22 & Q_ASM);
-                r22 |= Q_ASM;
+                CError_QualifierCheck(qual & Q_ASM);
+                qual |= Q_ASM;
                 tk = lex();
                 goto restart2;
             case TK_VIRTUAL:
-                CError_QualifierCheck(r22 & Q_VIRTUAL);
-                r22 |= Q_VIRTUAL;
+                CError_QualifierCheck(qual & Q_VIRTUAL);
+                qual |= Q_VIRTUAL;
                 tk = lex();
                 goto restart2;
             case TK_IDENTIFIER:
@@ -4257,7 +4275,7 @@ check_access:
                     if (tkidentifier == tclass->classname) {
                         t = lookahead();
                         tkidentifier = tclass->classname;
-                        r19 = TRUE;
+                        isCtorName = TRUE;
                         if (copts.cpp_extensions && t == TK_COLON_COLON) {
                             lex();
                             tk = lex();
@@ -4272,7 +4290,7 @@ check_access:
 
                         if (t == '(') {
 redo_thing:
-                            CError_QualifierCheck(r22 & ~(Q_EXPLICIT | Q_INLINE | Q_ASM));
+                            CError_QualifierCheck(qual & ~(Q_EXPLICIT | Q_INLINE | Q_ASM));
                             memclrw(&bde.declinfo2, sizeof(DeclInfo));
                             if (tclass->sominfo) {
                                 bde.declinfo2.thetype = &stvoid;
@@ -4280,13 +4298,13 @@ redo_thing:
                                 bde.declinfo2.thetype = TYPE(&void_ptr);
                             }
 
-                            bde.declinfo2.qual = r22;
-                            bde.declinfo2.exportflags = r20;
-                            bde.declinfo2.section = r18;
+                            bde.declinfo2.qual = qual;
+                            bde.declinfo2.exportflags = exportflags;
+                            bde.declinfo2.section = section;
                             bde.declinfo2.isConstructor = TRUE;
                             scandeclarator(&bde.declinfo2);
                             if (IS_TYPE_FUNC(bde.declinfo2.thetype)) {
-                                if (r17) {
+                                if (resolveSelfRefs) {
                                     bde.declinfo2.thetype = CTemplTool_ResolveMemberSelfRefs(
                                         TEMPL_CLASS(tclass),
                                         bde.declinfo2.thetype,
@@ -4315,7 +4333,7 @@ redo_thing:
                                 }
                                 TYPE_FUNC(bde.declinfo2.thetype)->flags |= FUNC_IS_CTOR;
                                 bde.declinfo2.name = constructor_name_node;
-                                bde.declinfo2.qual |= r21;
+                                bde.declinfo2.qual |= declspecQual;
                                 CDecl_AddFunctionMember(
                                     decle, tclass, &bde.declinfo2, access, FALSE, FALSE, TRUE, FALSE
                                 );
@@ -4330,7 +4348,7 @@ redo_thing:
                             goto restart;
                         }
                     }
-                    if (!r22 && CDecl_IsAccessDeclaration(tclass, access)) {
+                    if (!qual && CDecl_IsAccessDeclaration(tclass, access)) {
                         tk = lex();
                         goto restart;
                     }
@@ -4338,7 +4356,7 @@ redo_thing:
                 }
                 break;
             case TK_USING:
-                CError_QualifierCheck(r22);
+                CError_QualifierCheck(qual);
                 tk = lex();
                 CScope_ParseUsingDeclaration(tclass->nspace, access, FALSE);
                 tk = lex();
@@ -4348,17 +4366,15 @@ redo_thing:
                     CError_Error(ERR_ILLEGAL_CONSTRUCTOR_DESTRUCTOR_DECLARATION);
                     goto restart;
                 }
-                CError_QualifierCheck(r22 & ~(Q_VIRTUAL | Q_INLINE | Q_ASM));
+                CError_QualifierCheck(qual & ~(Q_VIRTUAL | Q_INLINE | Q_ASM));
                 if (tclass->flags & CLASS_IS_TEMPL_ANY) {
                     t = lookahead();
                     tkidentifier = tclass->classname;
                     if (t == '<') {
                         memclrw(&bde.declinfo, sizeof(DeclInfo));
                         CParser_GetDeclSpecs(&bde.declinfo, FALSE);
-                        if (tk !=
-                            '(' ||
-                            bde.declinfo.thetype !=
-                            TYPE(tclass) ||
+                        if (tk != '(' ||
+                            bde.declinfo.thetype != TYPE(tclass) ||
                             bde.declinfo.nspace) {
                             CError_Error(ERR_ILLEGAL_CONSTRUCTOR_DESTRUCTOR_DECLARATION);
                             goto restart;
@@ -4369,9 +4385,9 @@ redo_thing:
                     }
                 }
                 memclrw(&bde.declinfo2, sizeof(DeclInfo));
-                bde.declinfo2.qual = r22;
-                bde.declinfo2.exportflags = r20;
-                bde.declinfo2.section = r18;
+                bde.declinfo2.qual = qual;
+                bde.declinfo2.exportflags = exportflags;
+                bde.declinfo2.section = section;
                 if (tclass->sominfo) {
                     bde.declinfo2.thetype = &stvoid;
                 } else {
@@ -4390,7 +4406,7 @@ redo_thing:
                         }
                         bde.declinfo2.name = destructor_name_node;
                         TYPE_FUNC(bde.declinfo2.thetype)->flags |= FUNC_IS_DTOR;
-                        bde.declinfo2.qual |= r21;
+                        bde.declinfo2.qual |= declspecQual;
                         CDecl_AddFunctionMember(
                             decle, tclass, &bde.declinfo2, access, TRUE, FALSE, TRUE, FALSE
                         );
@@ -4416,17 +4432,17 @@ redo_thing:
                     goto after_various_things;
                 } else {
                     tk = lex();
-                    CError_QualifierCheck(r22 & ~(Q_VIRTUAL | Q_INLINE | Q_ASM));
+                    CError_QualifierCheck(qual & ~(Q_VIRTUAL | Q_INLINE | Q_ASM));
                     memclrw(&bde.declinfo2, sizeof(DeclInfo));
-                    bde.declinfo2.qual = r22;
-                    bde.declinfo2.exportflags = r20;
-                    bde.declinfo2.section = r18;
+                    bde.declinfo2.qual = qual;
+                    bde.declinfo2.exportflags = exportflags;
+                    bde.declinfo2.section = section;
                     conversion_type_name(&bde.declinfo2);
-                    bde.declinfo2.qual |= r21;
-                    tmptype = bde.declinfo2.thetype;
+                    bde.declinfo2.qual |= declspecQual;
+                    memberType = bde.declinfo2.thetype;
                     CDecl_NewConvFuncType(&bde.declinfo2);
                     if ((tclass->flags & CLASS_IS_TEMPL) &&
-                        CTemplTool_IsTemplateArgumentDependentType(tmptype)) {
+                        CTemplTool_IsTemplateArgumentDependentType(memberType)) {
                         bde.declinfo2.name = CParser_GetUniqueName();
                     }
                     CDecl_AddFunctionMember(
@@ -4445,25 +4461,23 @@ redo_thing:
                 goto restart;
         }
 
-        CError_QualifierCheck(r22 & Q_EXPLICIT);
+        CError_QualifierCheck(qual & Q_EXPLICIT);
         global_access = access;
         memclrw(&bde.declinfo, sizeof(DeclInfo));
-        bde.declinfo.qual = r22;
-        bde.declinfo.exportflags = r20;
-        bde.declinfo.section = r18;
+        bde.declinfo.qual = qual;
+        bde.declinfo.exportflags = exportflags;
+        bde.declinfo.section = section;
         CParser_GetDeclSpecs(&bde.declinfo, FALSE);
 
-        if (r19 &&
-            tk ==
-            '(' &&
+        if (isCtorName &&
+            tk == '(' &&
             (tclass->flags & CLASS_IS_TEMPL_ANY) &&
-            bde.declinfo.thetype ==
-            TYPE(tclass) &&
+            bde.declinfo.thetype == TYPE(tclass) &&
             !bde.declinfo.nspace) {
             CPrep_UnLex();
             tk = TK_IDENTIFIER;
             tkidentifier = tclass->classname;
-            r22 = bde.declinfo.qual;
+            qual = bde.declinfo.qual;
             goto redo_thing;
         }
 
@@ -4482,7 +4496,7 @@ after_various_things:
         if (tk != ';') {
             while (1) {
                 CDecl_ScanStructDeclarator(&bde);
-                if (r17) {
+                if (resolveSelfRefs) {
                     bde.declinfo2.thetype = CTemplTool_ResolveMemberSelfRefs(
                         TEMPL_CLASS(tclass), bde.declinfo2.thetype, &bde.declinfo2.qual
                     );
@@ -4494,17 +4508,17 @@ after_various_things:
                     if (bde.declinfo.storageclass == TK_MUTABLE) {
                         CError_QualifierCheck(Q_MUTABLE);
                     }
-                    r19 = FALSE;
+                    isCtorName = FALSE;
                     switch (bde.declinfo2.operator_token) {
                         case TK_NEW:
                         case TK_NEW_ARRAY:
                             CError_QualifierCheck(bde.declinfo2.qual & Q_VIRTUAL);
-                            r19 = TRUE;
+                            isCtorName = TRUE;
                             break;
                         case TK_DELETE:
                         case TK_DELETE_ARRAY:
                             CError_QualifierCheck(bde.declinfo2.qual & Q_VIRTUAL);
-                            r19 = TRUE;
+                            isCtorName = TRUE;
                             break;
                         default:
                             if (bde.declinfo2.storageclass == TK_STATIC) {
@@ -4517,9 +4531,16 @@ after_various_things:
 
                     bde.declinfo2.storageclass = 0;
                     if (IS_TYPE_FUNC(bde.declinfo2.thetype)) {
-                        bde.declinfo2.qual |= r21;
+                        bde.declinfo2.qual |= declspecQual;
                         CDecl_AddFunctionMember(
-                            decle, tclass, &bde.declinfo2, access, !r19, FALSE, TRUE, r19
+                            decle,
+                            tclass,
+                            &bde.declinfo2,
+                            access,
+                            !isCtorName,
+                            FALSE,
+                            TRUE,
+                            isCtorName
                         );
                         CDecl_CheckOperatorType(&bde.declinfo2, TRUE);
                         if (tclass->sominfo) {
@@ -4529,8 +4550,7 @@ after_various_things:
                         CError_Error(ERR_DECLARATION_SYNTAX_ERROR);
                     }
                 } else if (bde.valid) {
-                    if (bde.declinfo2.name ==
-                        constructor_name_node ||
+                    if (bde.declinfo2.name == constructor_name_node ||
                         bde.declinfo2.name == destructor_name_node) {
                         CError_Error(ERR_ILLEGAL_CONSTRUCTOR_DESTRUCTOR_DECLARATION);
                     }
@@ -4545,7 +4565,7 @@ after_various_things:
                                 CError_Error(ERR_NO_STATIC_MEMBERS_ALLOWED_SOM_CLASSES);
                             }
                             if (IS_TYPE_FUNC(bde.declinfo2.thetype)) {
-                                bde.declinfo2.qual |= r21;
+                                bde.declinfo2.qual |= declspecQual;
                                 bde.declinfo2.storageclass = 0;
                                 if (bde.declinfo2.name == tclass->classname) {
                                     CError_Error(ERR_ILLEGAL_CONSTRUCTOR_DESTRUCTOR_DECLARATION);
@@ -4568,7 +4588,7 @@ after_various_things:
                                 if (bde.declinfo.storageclass == TK_MUTABLE) {
                                     CError_QualifierCheck(Q_MUTABLE);
                                 }
-                                bde.declinfo2.qual |= r21;
+                                bde.declinfo2.qual |= declspecQual;
                                 CDecl_AddFunctionMember(
                                     decle, tclass, &bde.declinfo2, access, TRUE, FALSE, TRUE, FALSE
                                 );
@@ -4607,15 +4627,15 @@ after_various_things:
             }
             for (scanivar = TYPE_CLASS(bde.declinfo.thetype)->ivars; scanivar;
                  scanivar = scanivar->next) {
-                tmptype = scanivar->type;
-                if (IS_TYPE_BITFIELD(tmptype) && copts.reverse_bitfields) {
+                memberType = scanivar->type;
+                if (IS_TYPE_BITFIELD(memberType) && copts.reverse_bitfields) {
                     TypeBitfield* newtype = galloc(sizeof(TypeBitfield));
-                    *newtype = *TYPE_BITFIELD(tmptype);
+                    *newtype = *TYPE_BITFIELD(memberType);
                     CABI_ReverseBitField(newtype);
-                    tmptype = TYPE(newtype);
+                    memberType = TYPE(newtype);
                 }
                 if ((ivar = CDecl_InstanceDataDeclarator(
-                         decle, tclass, tmptype, scanivar->qual, scanivar->name, access
+                         decle, tclass, memberType, scanivar->qual, scanivar->name, access
                      ))) {
                     ivar->offset = scanivar->offset | 0x80000000;
                 }
@@ -4664,7 +4684,7 @@ void CDecl_MakeVBaseList(TypeClass* tclass) {
     SInt32 offset;
 
     if (copts.vbase_ctor_offset) {
-        tclass->flags |= CLASS_SOM_INIT;
+        tclass->flags |= CLASS_VBASE_CTOR_OFFSET;
     }
 
     for (base = tclass->bases, offset = tclass->size; base; base = base->next) {
@@ -4834,7 +4854,6 @@ static void CDecl_ParseBaseClassList(TypeClass* tclass, short mode, Boolean is_t
             baseclass = TYPE_CLASS(pr.type);
         } else {
 special_parsing:
-            // 2.6 drops Pro7's HandleObject, SingleObject, SingleInheritance and __comobject
             if (!strcmp(tkidentifier->name, "__somobject")) {
                 if (!is_virtual) {
                     CError_Error(ERR_SOM_CLASSES_INHERTIANCE_MUST_VIRTUAL);
@@ -4845,7 +4864,7 @@ special_parsing:
             }
             if (!strcmp(tkidentifier->name, "__javaobject")) {
                 tk = lex();
-                tclass->action = CLASS_ACTION_3;
+                tclass->action = CLASS_ACTION_JAVA;
                 break;
             }
 
@@ -4915,8 +4934,6 @@ static TypeMemberFunc* CDecl_MakeDefaultCtorType(TypeClass* tclass) {
     return tmeth;
 }
 
-// TODO: 2.6 calls this empty function rather than inlining it, as if its body were a disabled one
-// too long to inline (Pro7's is empty too); dont_inline stands in for that body
 #pragma dont_inline on
 static void CDecl_AddDefArgConstructor(TypeClass* tclass) {}
 #pragma dont_inline reset
@@ -4937,7 +4954,6 @@ static void CDecl_AddMemberFunctionObject(
 static void CDecl_AddDefaultConstructor(ClassLayout* decle, TypeClass* tclass) {
     ClassList* base;
     ObjMemberVar* ivar;
-    Object* obj;
     Boolean has_ctor;
 
     if (CClass_Constructor(tclass)) {
@@ -5210,6 +5226,10 @@ static void CDecl_AddDefaultDestructor(ClassLayout* decle, TypeClass* tclass) {
     }
 }
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -7
+#endif
 static void CDecl_SetupClassLayout(ClassLayout* decle, TypeClass* tclass, ObjBase** objbuf) {
     SInt32 index;
     SInt32 i;
@@ -5250,8 +5270,7 @@ static void CDecl_SetupClassLayout(ClassLayout* decle, TypeClass* tclass, ObjBas
             CError_ASSERT(6432, i < decle->lex_order_count && !objbuf[i]);
             objbuf[i] = OBJ_BASE(obj);
             index++;
-            if (obj->datatype !=
-                DVFUNC &&
+            if (obj->datatype != DVFUNC &&
                 !TYPE_METHOD(obj->type)->is_static &&
                 CClass_OverridesBaseMember(tclass, obj->name, obj)) {
                 CDecl_MakeFunctionVirtual(tclass, obj);
@@ -5282,14 +5301,13 @@ static void CDecl_SetupClassLayout(ClassLayout* decle, TypeClass* tclass, ObjBas
 
     if (!tclass->action) {
         for (i = 0; i < decle->lex_order_count; i++) {
-            Object* obj2 = OBJECT(objbuf[i]);
-            if (obj2 &&
-                obj2->datatype ==
-                DVFUNC &&
-                !(obj2->qual & Q_INLINE) &&
-                !(TYPE_FUNC(obj2->type)->flags & FUNC_PURE)) {
-                tclass->action = CLASS_ACTION_1;
-                TYPE_FUNC(obj2->type)->flags |= FUNC_FLAGS_4;
+            Object* method = OBJECT(objbuf[i]);
+            if (method &&
+                method->datatype == DVFUNC &&
+                !(method->qual & Q_INLINE) &&
+                !(TYPE_FUNC(method->type)->flags & FUNC_PURE)) {
+                tclass->action = CLASS_ACTION_KEY_FUNCTION;
+                TYPE_FUNC(method->type)->flags |= FUNC_KEY_FUNCTION;
                 break;
             }
         }
@@ -5309,11 +5327,13 @@ static void CDecl_SetupClassLayout(ClassLayout* decle, TypeClass* tclass, ObjBas
 
     CError_ASSERT(6527, index == decle->lex_order_count);
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
 void CDecl_CompleteClass(ClassLayout* decle, TypeClass* tclass) {
     ClassList* base;
-    // TODO: assigned in the loop's test and never read; a block-local copy or Pro7's
-    // base->base->vtable give other registers
     TypeClass* baseclass;
     ObjBase* buf[32];
 
@@ -5340,7 +5360,7 @@ void CDecl_CompleteClass(ClassLayout* decle, TypeClass* tclass) {
     }
 
     if ((tclass->flags & CLASS_IS_TEMPL_INST) && !TEMPL_CLASS_INST(tclass)->is_specialized) {
-        tclass->action = CLASS_ACTION_0;
+        tclass->action = CLASS_ACTION_NONE;
     }
 
     if (!tclass->action) {
@@ -5349,19 +5369,23 @@ void CDecl_CompleteClass(ClassLayout* decle, TypeClass* tclass) {
     CClass_ClassDefaultFuncAction(tclass);
 }
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -7
+#endif
 TypeClass* CDecl_DefineClass(
     NameSpace* nspace,
     HashNameNode* name,
     TypeClass* tclass,
     short mode,
-    Boolean flag2,
-    Boolean flag3
+    Boolean asTypeName,
+    Boolean addName
 ) {
     NameSpace* mynspace;
     ObjType* objtype;
 
     if (!tclass && nspace->theclass && (nspace->theclass->flags & CLASS_IS_TEMPL)) {
-        CError_ASSERT(6625, !flag2);
+        CError_ASSERT(6625, !asTypeName);
         return TYPE_CLASS(CTemplClass_DefineNestedClass(TEMPL_CLASS(nspace->theclass), name, mode));
     }
 
@@ -5374,11 +5398,11 @@ TypeClass* CDecl_DefineClass(
     tclass->type = TYPECLASS;
     tclass->align = 1;
     tclass->mode = mode;
-    tclass->action = CLASS_ACTION_0;
+    tclass->action = CLASS_ACTION_NONE;
     if (name) {
         tclass->classname = name;
-        if (flag3) {
-            if (flag2) {
+        if (addName) {
+            if (asTypeName) {
                 objtype = galloc(sizeof(ObjType));
                 memclrw(objtype, sizeof(ObjType));
                 objtype->otype = OT_TYPE;
@@ -5412,6 +5436,10 @@ TypeClass* CDecl_DefineClass(
 
     return tclass;
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
 void CDecl_ParseClassDeclSpec(UInt8* declspec) {
     DeclInfo declinfo;
@@ -5453,11 +5481,15 @@ static TemplClass* CDecl_SpecializeTemplateClass(TemplClass* tmclass) {
     tmclass->actions = NULL;
     tmclass->lex_order_count = 0;
     tmclass->align = 0;
-    tmclass->flags = TEMPLCLASS_FLAGS_2;
+    tmclass->flags = TEMPLCLASS_IS_SPECIALIZATION;
     return tmclass;
 }
 
-void CDecl_ParseClass(DeclInfo* declinfo, short mode, Boolean flag1, UInt8 class_declspec) {
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -7
+#endif
+void CDecl_ParseClass(DeclInfo* declinfo, short mode, Boolean lexAfterBody, UInt8 class_declspec) {
     TypeClass* tclass;
     HashNameNode* classname;
     Type* search;
@@ -5471,6 +5503,11 @@ void CDecl_ParseClass(DeclInfo* declinfo, short mode, Boolean flag1, UInt8 class
     SInt32 offset;
     Boolean is_templ;
     Boolean add_to_browse;
+#ifndef __MWERKS__
+    static HashNameNode unset_classname;
+
+    classname = &unset_classname;
+#endif
 
     memclrw(&decle, sizeof(ClassLayout));
     if (declinfo->pendingClass) {
@@ -5497,8 +5534,7 @@ void CDecl_ParseClass(DeclInfo* declinfo, short mode, Boolean flag1, UInt8 class
 tagtype_search:
                         if (!IS_TYPE_CLASS(search)) {
                             if ((IS_TYPE_TEMPLATE(search) || IS_TYPE_STRUCT(search)) &&
-                                tk !=
-                                '{' &&
+                                tk != '{' &&
                                 tk != ':') {
                                 declinfo->thetype = search;
                                 return;
@@ -5575,7 +5611,7 @@ tagtype_search:
     if (tclass->flags & CLASS_COMPLETED) {
         if ((tclass->flags & CLASS_IS_TEMPL) &&
             !TEMPL_CLASS(tclass)->instances &&
-            !(TEMPL_CLASS(tclass)->flags & TEMPLCLASS_FLAGS_2)) {
+            !(TEMPL_CLASS(tclass)->flags & TEMPLCLASS_IS_SPECIALIZATION)) {
             tclass = TYPE_CLASS(CDecl_SpecializeTemplateClass(TEMPL_CLASS(tclass)));
         } else {
             CError_Error(ERR_STRUCT_UNION_ENUM_CLASS_TAG_REDEFINED, tclass->classname->name);
@@ -5601,7 +5637,7 @@ tagtype_search:
 
     CError_ASSERT(6939, copts.structalignment >= 0 && copts.structalignment <= 14);
 
-    tclass->eflags |= ((copts.structalignment + 1) << 4) & 0xF0;
+    tclass->eflags |= ((copts.structalignment + 1) << 4) & CLASS_EFLAGS_STRUCT_ALIGN;
     if (tk == ':') {
         CDecl_ParseBaseClassList(tclass, mode, is_templ);
     }
@@ -5616,12 +5652,12 @@ tagtype_search:
         }
         CDecl_ParseClassMembers(&decle, tclass, mode);
         offset = CPrep_BrowserFileOffset();
-        if (flag1) {
+        if (lexAfterBody) {
             tk = lex();
         }
         if (add_to_browse) {
             member_fileoffset = offsetsave;
-            if (flag1 && tk == ';') {
+            if (lexAfterBody && tk == ';') {
                 CPrep_BrowserFileOffset();
             }
             CBrowse_EndClass(offset, &gl);
@@ -5637,3 +5673,7 @@ tagtype_search:
     }
     CScope_RestoreScope(&scopesave);
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif

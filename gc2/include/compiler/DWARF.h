@@ -19,8 +19,8 @@ extern void endDWARF_function(void);
 extern int newDWARF_function(
     Object* object, SInt32 codeSize, SInt32 codeOffset, ObjGenSection* section
 );
-extern void correctDWARF_line(unsigned int firstValue, unsigned int secondValue);
-extern void newDWARF_line(unsigned int firstValue, unsigned int secondValue);
+extern void correctDWARF_line(unsigned int line, unsigned int offset);
+extern void newDWARF_line(unsigned int line, unsigned int offset);
 extern void newDWARF_file(void* osection);
 
 #ifdef __cplusplus

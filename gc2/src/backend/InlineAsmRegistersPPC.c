@@ -1,26 +1,24 @@
-// InlineAsmRegistersPPC.c: Pro7's file, deferred; its tables are 2.6's, generated from the
-// original's bytes (2.6 adds the DCR table and inserts its registers at initialization).
 #include "compiler/InlineAsmRegistersPPC.h"
 #include "compiler/CFunc.h"
 #include "compiler/CompilerTools.h"
 #include "compiler/CParser.h"
-#include "compiler/CPrep.h"
+#include "compiler/InlineAsm.h"
 #include "compiler/InlineAsmPPC.h"
 #include "compiler/InlineAsmRegisters.h"
 #include "compiler/objects.h"
 #include "compiler/PPCError.h"
 #include "compiler/RegisterInfo.h"
+#include "compiler/Registers.h"
+#include "compiler/types.h"
 #include <stdio.h>
 #include <string.h>
 
 #pragma pool_strings on
 
 #pragma pack(push, 2)
-// TODO: invented name: Pro7's RegInfo, which RegisterInfo.h's 2.6 RegInfo (the global register
-// variables) already names
 typedef struct IARegInfo {
     struct IARegInfo* next;
-    UInt32 cpus; // (Pro7: b) the CPUs the register exists on
+    UInt32 cpus;
     IARegister reg;
 } IARegInfo;
 
@@ -36,7 +34,6 @@ typedef struct AsmSpr {
     UInt32 mask;
 } AsmSpr;
 
-// 2.6's DCR table (Pro7 inserts no DCRs). TODO: invented name, in the style of AsmSpr
 typedef struct AsmDcr {
     SInt32 num;
     char* name;
@@ -46,10 +43,6 @@ typedef struct AsmDcr {
 
 static IARegInfo* hashedsprs[64];
 static IARegInfo* hasheddcrs[64];
-// TODO: invented name. 28 bytes of 2.6's .bss that no code references, between the hash tables
-// and the two functions' `thespr` statics: two more 14-byte IARegisters, probably the `thespr`s of
-// dead functions (Wii's module has five such statics: its .bss is 3 hash tables + 70 bytes, with
-// InlineAsm_LookupPMRRegister and the _GCC lookups 2.6 lacks).
 static IARegister unusedregisters[2];
 
 // clang-format off
@@ -268,16 +261,16 @@ static AsmRegister asm_registers[] = {
     "crf5", RegClass_CRFIELD, 5,
     "crf6", RegClass_CRFIELD, 6,
     "crf7", RegClass_CRFIELD, 7,
-    "lt", RegClass_6, 0,
-    "gt", RegClass_6, 1,
-    "eq", RegClass_6, 2,
-    "so", RegClass_6, 3,
-    "un", RegClass_6, 3,
-    "LT", RegClass_6, 0,
-    "GT", RegClass_6, 1,
-    "EQ", RegClass_6, 2,
-    "SO", RegClass_6, 3,
-    "UN", RegClass_6, 3,
+    "lt", RegClass_CRBIT, 0,
+    "gt", RegClass_CRBIT, 1,
+    "eq", RegClass_CRBIT, 2,
+    "so", RegClass_CRBIT, 3,
+    "un", RegClass_CRBIT, 3,
+    "LT", RegClass_CRBIT, 0,
+    "GT", RegClass_CRBIT, 1,
+    "EQ", RegClass_CRBIT, 2,
+    "SO", RegClass_CRBIT, 3,
+    "UN", RegClass_CRBIT, 3,
     NULL, 0, 0
 };
 // clang-format on
@@ -785,7 +778,7 @@ IARegister* InlineAsm_LookupRegisterPPC(char* name) {
 
     if (reg) {
         if (copts.warn_possunwant) {
-            PPCError_Warning(PPCErrorStr117, name);
+            PPCError_Warning(PPCERR_REGISTER_NOT_ON_PROCESSOR, name);
         }
         return reg;
     }
@@ -796,7 +789,7 @@ IARegister* InlineAsm_LookupRegisterPPC(char* name) {
         UInt32 result;
         ScanDec(buf + 3, &result, &overflow);
         if (overflow || result > 1024) {
-            PPCError_Error(PPCErrorStr117, name);
+            PPCError_Error(PPCERR_REGISTER_NOT_ON_PROCESSOR, name);
             return NULL;
         }
 
@@ -808,11 +801,11 @@ IARegister* InlineAsm_LookupRegisterPPC(char* name) {
         if (copts.warn_possunwant) {
             if (cpu == CPUMask_Generic) {
                 if ((cpu & CPUFLAG_LOW_MASK) != ((cpu & CPUFLAG_LOW_MASK) & spr_cpus[result])) {
-                    PPCError_Warning(PPCErrorStr117, name);
+                    PPCError_Warning(PPCERR_REGISTER_NOT_ON_PROCESSOR, name);
                 }
             } else {
                 if (!(cpu & spr_cpus[result])) {
-                    PPCError_Warning(PPCErrorStr117, name);
+                    PPCError_Warning(PPCERR_REGISTER_NOT_ON_PROCESSOR, name);
                 }
             }
         }
@@ -854,7 +847,7 @@ IARegister* InlineAsm_LookupDCRRegister(char* name) {
 
     if (reg) {
         if (copts.warn_possunwant) {
-            PPCError_Warning(PPCErrorStr117, name);
+            PPCError_Warning(PPCERR_REGISTER_NOT_ON_PROCESSOR, name);
         }
         return reg;
     }
@@ -865,7 +858,7 @@ IARegister* InlineAsm_LookupDCRRegister(char* name) {
         UInt32 result;
         ScanDec(buf + 3, &result, &overflow);
         if (overflow || result > 1024) {
-            PPCError_Error(PPCErrorStr117, name);
+            PPCError_Error(PPCERR_REGISTER_NOT_ON_PROCESSOR, name);
             return NULL;
         }
 
@@ -911,7 +904,7 @@ void InlineAsm_InitializeRegistersPPC(void) {
                     case RegClass_GPR:
                         sprintf(buf, register_class_format[asmreg->rclass], asmreg->num);
                         break;
-                    case RegClass_6:
+                    case RegClass_CRBIT:
                         sprintf(buf, "crbit_%ld", asmreg->num);
                         break;
                     case RegClass_DCR:
@@ -921,7 +914,7 @@ void InlineAsm_InitializeRegistersPPC(void) {
                         sprintf(buf, "{?}%ld", asmreg->num);
                         break;
                 }
-                PPCError_Warning(PPCErrorStr100, obj->name->name, buf);
+                PPCError_Warning(PPCERR_LOCAL_NAMED_LIKE_REGISTER, obj->name->name, buf);
             }
         }
         for (list = locals; list; list = list->next) {
@@ -935,7 +928,7 @@ void InlineAsm_InitializeRegistersPPC(void) {
                     case RegClass_GPR:
                         sprintf(buf, register_class_format[asmreg->rclass], asmreg->num);
                         break;
-                    case RegClass_6:
+                    case RegClass_CRBIT:
                         sprintf(buf, "crbit_%ld", asmreg->num);
                         break;
                     case RegClass_DCR:
@@ -945,7 +938,7 @@ void InlineAsm_InitializeRegistersPPC(void) {
                         sprintf(buf, "{?}%ld", asmreg->num);
                         break;
                 }
-                PPCError_Warning(PPCErrorStr100, obj->name->name, buf);
+                PPCError_Warning(PPCERR_LOCAL_NAMED_LIKE_REGISTER, obj->name->name, buf);
             }
         }
 
@@ -956,12 +949,6 @@ void InlineAsm_InitializeRegistersPPC(void) {
         InlineAsm_InsertSPR(asmspr->name, asmspr->num, asmspr->mask);
     }
 
-    // (a bug in the original, kept: 2.6 stores each entry's DCR number as the CPU mask and its CPU
-    // mask as the number. The table's columns are not in doubt: the first is the 403's DCR map
-    // (EXISR 0x40, BR0-7 0x80-0x87, DMASR 0xE0), the third 401/403 CPU masks (`br0` 0x80, its 401
-    // twin `brcr0` 0x40; 0x7C0 is no 10-bit DCR). The original compiler, `-proc 403`, assembles
-    // `mfdcr r3,exisr` as `mfdcr r3,0x80` with "'exisr' register not applicable to this processor".
-    // The helper's parameters in InsertSPR's order, called in that order, is 99.5%.)
     for (asmdcr = asm_dcrs; asmdcr->name; asmdcr++) {
         InlineAsm_InsertRegisterDCR(asmdcr->name, asmdcr->num, asmdcr->mask);
     }

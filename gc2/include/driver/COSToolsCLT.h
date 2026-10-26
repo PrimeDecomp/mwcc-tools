@@ -9,7 +9,6 @@
 extern "C" {
 #endif
 
-// The compiler's OS services (Pro7's cos.h: the functions 2.6 has)
 extern Handle COS_NewHandle(SInt32 byteCount);
 extern Handle COS_NewOSHandle(SInt32 logicalSize);
 extern void COS_FreeHandle(Handle handle);
@@ -19,7 +18,7 @@ extern void COS_LockHandleHi(Handle handle);
 extern void COS_UnlockHandle(Handle handle);
 extern SInt32 COS_GetTicks(void);
 extern void COS_GetString(char* buffer, SInt16 strListID, SInt16 index);
-extern Boolean COS_IsMultiByte(const void* str1, const void* str2);
+extern Boolean COS_IsMultiByte(const void* str, const void* pos);
 extern OSErr COS_FileNew(const FSSpec* spec, SInt16* refNum, OSType creator, OSType fileType);
 extern OSErr COS_FileOpen(const FSSpec* spec, SInt16* refNum);
 extern OSErr COS_FileGetType(const FSSpec* spec, OSType* fileType);

@@ -7,7 +7,6 @@
 extern "C" {
 #endif
 
-// OSLib's StringExtras.c: 2.6 calls these __stdcall (Wii's publics: strcatn@12, ustrcmp@8 ...)
 extern char* __stdcall strcatn(char* d, const char* s, SInt32 max);
 extern char* __stdcall strcpyn(char* d, const char* s, SInt32 len, SInt32 max);
 extern int __stdcall ustrcmp(const char* src, const char* dst);

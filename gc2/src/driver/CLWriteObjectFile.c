@@ -1,17 +1,22 @@
 #include "driver/CLWriteObjectFile.h"
 #include "driver/CLBrowser.h"
 #include "driver/CLErrors.h"
-#include "driver/CLFileOps.h"
 #include "driver/CLIO.h"
 #include "driver/CLMain.h"
 #include "driver/CLPlugins.h"
+#include "driver/cmdline.h"
+#include "driver/CWPlugins.h"
+#include "driver/Files.h"
 #include "driver/Generic.h"
 #include "driver/MacSpecs.h"
+#include "driver/oslib.h"
+#include "driver/pref_structs.h"
 #include <setjmp.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
+#ifdef __MWERKS__
 int WriteObjectFile(File* file, OSType maccreator, OSType mactype) {
     FSSpec srcfss;
     FSSpec outfss;
@@ -32,11 +37,42 @@ int WriteObjectFile(File* file, OSType maccreator, OSType mactype) {
     if (!Plugin_CL_WriteObjectFile(
             file->compiler, &srcfss, &outfss, maccreator, mactype, file->objectdata
         )) {
-        return 0;
+        return FALSE;
     } else {
-        return 1;
+        return TRUE;
     }
 }
+#else
+int WriteObjectFile(File* file, OSType maccreator, OSType mactype) {
+    struct {
+        FSSpec srcfss;
+        UInt8 gap[2];
+        FSSpec outfss;
+        UInt8 tail[192];
+    } frame;
+
+    OS_ASSERT(22, file->objectdata && file->compiler);
+
+    OS_OSSpec_To_FSSpec(&file->outfss, &frame.outfss);
+    OS_OSSpec_To_FSSpec(&file->srcfss, &frame.srcfss);
+
+    if (optsCmdLine.verbose) {
+        CLReport(
+            CLStr16,
+            (file->tempOnDisk & CmdLineStageMask_Cg) ? "temporary " : "",
+            OS_SpecToStringRelative(&file->outfss, NULL, STSbuf, sizeof(STSbuf))
+        );
+    }
+
+    if (!Plugin_CL_WriteObjectFile(
+            file->compiler, &frame.srcfss, &frame.outfss, maccreator, mactype, file->objectdata
+        )) {
+        return FALSE;
+    } else {
+        return TRUE;
+    }
+}
+#endif
 
 int WriteBrowseData(File* file, OSType maccreator, OSType mactype) {
     OSHandle browsehandle;
@@ -54,11 +90,11 @@ int WriteBrowseData(File* file, OSType maccreator, OSType mactype) {
     }
 
     if (!Browser_PackBrowseFile(file->browsedata, &clState.browseTableHandle, &browsehandle)) {
-        return 0;
+        return FALSE;
     }
 
     if (!WriteBinaryHandleToFile(&outfss, maccreator, mactype, &browsehandle)) {
-        return 0;
+        return FALSE;
     }
-    return 1;
+    return TRUE;
 }

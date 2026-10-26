@@ -1,4 +1,7 @@
 #include "driver/ParserHelpers-cc.h"
+#include "driver/CWPlugins.h"
+#include "driver/oslib.h"
+#include "driver/parser.h"
 #include "driver/ParserErrors.h"
 #include "driver/ParserFace.h"
 #include "driver/ParserHelpers.h"
@@ -13,46 +16,45 @@ int Opt_AddStringToDefines(const char* opt, void* str, const char* param, int fl
     if (param) {
         AddStringToHandle(&definesHandle, param);
     }
-    return 1;
+    return TRUE;
 }
 
-int Opt_DefineSymbol(const char* var, const char* value) {
-    char tmp[1024];
+int Opt_DefineSymbol(const char* name, const char* value) {
+    char line[1024];
 
     if (pTool->LANG == Lang_C_CPP || pTool->LANG == 'Asm ' || pTool->LANG == Lang_Rez) {
-        sprintf(tmp, "#define %s %s\n", var, value ? value : "1");
+        sprintf(line, "#define %s %s\n", name, value ? value : "1");
     } else if (pTool->LANG == Lang_Pascal) {
-        sprintf(tmp, "{$definec %s %s}\n", var, value ? value : "1");
+        sprintf(line, "{$definec %s %s}\n", name, value ? value : "1");
     } else {
-        sprintf(tmp, "Option '-D|d' is not supported with this plugin");
-        CLPReportError(CLPStr28_WarningText, tmp);
-        return 0;
+        sprintf(line, "Option '-D|d' is not supported with this plugin");
+        CLPReportError(CLPStr28_WarningText, line);
+        return FALSE;
     }
 
-    AddStringToHandle(&definesHandle, tmp);
-    return 1;
+    AddStringToHandle(&definesHandle, line);
+    return TRUE;
 }
 
 int Opt_UndefineSymbol(const char* opt, void* var, const char* arg, int flags) {
-    char tmp[300];
+    char line[300];
 
     if (pTool->LANG == Lang_C_CPP || pTool->LANG == 'Asm ') {
-        sprintf(tmp, "#undef %s\n", arg);
+        sprintf(line, "#undef %s\n", arg);
     } else if (pTool->LANG == Lang_Pascal) {
-        sprintf(tmp, "{$undefc %s}\n", arg);
+        sprintf(line, "{$undefc %s}\n", arg);
     } else {
-        sprintf(tmp, "Option -%s is not supported with this plugin", opt);
-        CLPReportError(CLPStr28_WarningText, tmp);
-        return 0;
+        sprintf(line, "Option -%s is not supported with this plugin", opt);
+        CLPReportError(CLPStr28_WarningText, line);
+        return FALSE;
     }
 
-    AddStringToHandle(&definesHandle, tmp);
-    return 1;
+    AddStringToHandle(&definesHandle, line);
+    return TRUE;
 }
 
 int Opt_AddPrefixFile(const char* opt, void* handle, const char* filename, int flags) {
-    char tmp[300];
-    // (2.6 picks the handle into a local of its own, where Pro7 reassigns the parameter)
+    char line[300];
     Handle* storage;
 
     if (!handle) {
@@ -62,25 +64,25 @@ int Opt_AddPrefixFile(const char* opt, void* handle, const char* filename, int f
     }
 
     if (!filename[0]) {
-        return 1;
+        return TRUE;
     }
 
     if (pTool->LANG == Lang_C_CPP || pTool->LANG == 'Asm ') {
         if (filename[0] == '<' && filename[strlen(filename) - 1] == '>') {
-            snprintf(tmp, sizeof(tmp), "#include %s\n", filename);
+            snprintf(line, sizeof(line), "#include %s\n", filename);
         } else {
-            snprintf(tmp, sizeof(tmp), "#include \"%s\"\n", filename);
+            snprintf(line, sizeof(line), "#include \"%s\"\n", filename);
         }
     } else if (pTool->LANG == Lang_Pascal) {
-        snprintf(tmp, sizeof(tmp), "{$I+}\n{$I %s}\n{$I-}\n", filename);
+        snprintf(line, sizeof(line), "{$I+}\n{$I %s}\n{$I-}\n", filename);
     } else {
-        sprintf(tmp, "Option -%s is not supported with this plugin", opt);
-        CLPReportError(CLPStr28_WarningText, tmp);
-        return 0;
+        sprintf(line, "Option -%s is not supported with this plugin", opt);
+        CLPReportError(CLPStr28_WarningText, line);
+        return FALSE;
     }
 
-    AddStringToHandle(storage, tmp);
-    return 1;
+    AddStringToHandle(storage, line);
+    return TRUE;
 }
 
 int SetupPragmas(const Pragma* pragmas) {
@@ -88,13 +90,12 @@ int SetupPragmas(const Pragma* pragmas) {
     char on;
     char off;
     Boolean reverse;
-    char tmp[300];
+    char line[300];
 
     while (pragmas->pragma) {
-        if (pragmas->flags == PRAGMA_FLAGS_0 || pragmas->flags == PRAGMA_FLAGS_1) {
-            set = 0;
-            // (2.6 tests the flag once into a Boolean, where Pro7 compares it in each line)
-            reverse = pragmas->flags == PRAGMA_FLAGS_1;
+        if (pragmas->flags == PRAGMA_FLAGS_ONOFF || pragmas->flags == PRAGMA_FLAGS_REVERSED) {
+            set = NULL;
+            reverse = pragmas->flags == PRAGMA_FLAGS_REVERSED;
             on = !reverse ? PR_ON : PR_OFF;
             off = !reverse ? PR_OFF : PR_ON;
             if (*((char*)pragmas->value) == on) {
@@ -110,8 +111,8 @@ int SetupPragmas(const Pragma* pragmas) {
             }
 
             if (set) {
-                snprintf(tmp, sizeof(tmp), "#pragma %s %s\n", pragmas->pragma, set);
-                AddStringToHandle(&definesHandle, tmp);
+                snprintf(line, sizeof(line), "#pragma %s %s\n", pragmas->pragma, set);
+                AddStringToHandle(&definesHandle, line);
             }
         } else {
             OS_ASSERT(195, !"Can't handle pragma");
@@ -119,5 +120,5 @@ int SetupPragmas(const Pragma* pragmas) {
         pragmas++;
     }
 
-    return 1;
+    return TRUE;
 }

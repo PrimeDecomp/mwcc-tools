@@ -51,7 +51,7 @@ char* __stdcall GetSysErrText(SInt16 msgNbr, char* errMsg) {
 
     txt = getsyserr(msgNbr);
     if (!txt) {
-        sprintf(errMsg, "Operating system error %ld", msgNbr & 0x7FFF);
+        sprintf(errMsg, "Operating system error %ld", (long)(msgNbr & 0x7FFF));
     } else {
         strcpy(errMsg, txt);
     }

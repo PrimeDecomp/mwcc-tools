@@ -4,10 +4,12 @@
 #include "compiler/Coloring.h"
 #include "compiler/CompilerTools.h"
 #include "compiler/CParser.h"
-#include "compiler/CPrep.h"
 #include "compiler/objects.h"
 #include "compiler/PCode.h"
+#include "compiler/PCodeInfo.h"
 #include "compiler/RegisterInfo.h"
+#include "compiler/Registers.h"
+#include "compiler/types.h"
 
 LiveInfo* liveinfo;
 
@@ -75,16 +77,16 @@ static void computeglobalinout(void) {
     UInt32* out;
     int bitvecsize;
     SInt32 blockIndex;
-    int flag;
+    int changed;
     PCodeBlock* block;
     UInt32 val;
     SInt32 i;
 
     regs = used_virtual_registers[coloring_class];
     bitvecsize = (regs + 31) >> 5;
-    flag = TRUE;
-    while (flag) {
-        flag = FALSE;
+    changed = TRUE;
+    while (changed) {
+        changed = FALSE;
         blockIndex = pcblockcount;
         while (blockIndex) {
             if ((block = depthfirstordering[--blockIndex])) {
@@ -105,7 +107,7 @@ static void computeglobalinout(void) {
                     val = *use | (*out & ~*def);
                     if (val != *in) {
                         *in = val;
-                        flag = TRUE;
+                        changed = TRUE;
                     }
                     in++;
                     out++;
@@ -128,7 +130,6 @@ void computelivevariables(Object* proc) {
     allocateliveinfo();
     computelocalusedef();
 
-    // (2.6: the global register variables are live at the end of the last block)
     i = pcblockcount;
     do {
         block = depthfirstordering[--i];
@@ -144,20 +145,16 @@ void computelivevariables(Object* proc) {
         if (TYPE_IS_8BYTES(returnType)) {
             bitvectorsetbit(4, liveinfo[pclastblock->blockIndex].use);
         }
-    } else if (coloring_class ==
-               RegClass_GPR &&
+    } else if (coloring_class == RegClass_GPR &&
                (IS_TYPE_STRUCT(returnType) || IS_TYPE_CLASS(returnType)) &&
                !Type_RequiresMemoryReturn(returnType)) {
-        // (2.6: a small struct comes back in r3/r4)
         bitvectorsetbit(3, liveinfo[epilogue->blockIndex].use);
         if (returnType->size > 4) {
             bitvectorsetbit(4, liveinfo[pclastblock->blockIndex].use);
         }
-    } else if (coloring_class ==
-               RegClass_GPR &&
+    } else if (coloring_class == RegClass_GPR &&
                copts.soft_float &&
                IS_TYPE_FLOAT_NOT_VEC2X32FLOAT(returnType)) {
-        // (2.6: without an FPU a float comes back in r3, a double in r3/r4)
         bitvectorsetbit(3, liveinfo[epilogue->blockIndex].use);
         if (returnType->size == 8) {
             bitvectorsetbit(4, liveinfo[pclastblock->blockIndex].use);
@@ -187,8 +184,7 @@ int dead(PCode* instr, RegClass rclass, UInt32* vec) {
     op = instr->args;
     i = instr->argCount;
     while (i--) {
-        if (op->kind ==
-            PCOp_REGISTER &&
+        if (op->kind == PCOp_REGISTER &&
             (op->data.reg.effect & EffectWrite) &&
             (rclass != op->arg || bitvectorgetbit(op->data.reg.reg, vec))) {
             return FALSE;
@@ -196,7 +192,6 @@ int dead(PCode* instr, RegClass rclass, UInt32* vec) {
         op++;
     }
 
-    // 2.6: Pro7's `return copts.optimizationlevel > 0;` as a test (92%)
     if (copts.optimizationlevel <= 0) {
         return FALSE;
     }

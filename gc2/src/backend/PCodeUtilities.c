@@ -1,17 +1,16 @@
 #include "compiler/PCodeUtilities.h"
 #include "compiler/CError.h"
 #include "compiler/CFunc.h"
-#include "compiler/CParser.h"
 #include "compiler/CodeGen.h"
+#include "compiler/CParser.h"
+#include "compiler/enode.h"
 #include "compiler/Exceptions.h"
+#include "compiler/objects.h"
 #include "compiler/ObjGen_PPC_EABI.h"
 #include "compiler/PCode.h"
 #include "compiler/PCodeInfo.h"
 #include "compiler/Registers.h"
 #include "compiler/StackFrame.h"
-#include "compiler/enode.h"
-#include "compiler/objects.h"
-#include "compiler/CPrep.h"
 
 void pcsetrecordbit(PCode* pc) {
     int reg;
@@ -57,10 +56,8 @@ void pcsetrecordbit(PCode* pc) {
     arg = pc->args;
     argIdx = argCount = pc->argCount;
     while (arg->kind != PCOp_PLACEHOLDEROPERAND && argIdx) {
-        if (arg->kind ==
-            PCOp_REGISTER &&
-            arg->arg ==
-            RegClass_CRFIELD &&
+        if (arg->kind == PCOp_REGISTER &&
+            arg->arg == RegClass_CRFIELD &&
             arg->data.reg.reg == reg) {
             arg->data.reg.effect |= EffectWrite;
             pc->flags |= fRecordBit;
@@ -139,37 +136,35 @@ void branch_label(PCodeLabel* label) {
     pclabel(pclastblock, label);
 }
 
-void branch_conditional(short a, short compareop, short c, PCodeLabel* label) {
-    PCodeBlock* tmpblock;
-    PCodeLabel* tmplabel;
-    int r28;
+void branch_conditional(short crfield, short compareop, short sense, PCodeLabel* label) {
+    PCodeLabel* fallthrough;
+    int crbit;
 
-    tmpblock = pclastblock;
-    tmplabel = makepclabel();
+    fallthrough = makepclabel();
 
     switch (compareop) {
         case ENOTEQU:
-            c = !c;
+            sense = !sense;
         case EEQU:
-            r28 = 2;
+            crbit = 2;
             break;
         case EGREATEREQU:
-            c = !c;
+            sense = !sense;
         case ELESS:
-            r28 = 0;
+            crbit = 0;
             break;
         case ELESSEQU:
-            c = !c;
+            sense = !sense;
         case EGREATER:
-            r28 = 1;
+            crbit = 1;
             break;
     }
 
-    emitpcode(c ? PC_BT : PC_BF, a, r28, label);
+    emitpcode(sense ? PC_BT : PC_BF, crfield, crbit, label);
     pcbranch(pclastblock, label);
-    pcbranch(pclastblock, tmplabel);
+    pcbranch(pclastblock, fallthrough);
     makepcblock();
-    pclabel(pclastblock, tmplabel);
+    pclabel(pclastblock, fallthrough);
 }
 
 void branch_always(PCodeLabel* label) {
@@ -179,12 +174,12 @@ void branch_always(PCodeLabel* label) {
 }
 
 void branch_decrement_always(Opcode opcode, PCodeLabel* label) {
-    PCodeLabel* tmplabel = makepclabel();
+    PCodeLabel* fallthrough = makepclabel();
     emitpcode(opcode, label);
     pcbranch(pclastblock, label);
-    pcbranch(pclastblock, tmplabel);
+    pcbranch(pclastblock, fallthrough);
     makepcblock();
-    pclabel(pclastblock, tmplabel);
+    pclabel(pclastblock, fallthrough);
 }
 
 void branch_indirect(Object* obj) {
@@ -198,7 +193,6 @@ int branch_count_volatiles(void) {
     RegClass rclass;
 
     for (rclass = 0; rclass < RegClassMax; rclass++) {
-        // (2.6 tests `limit > i` where Pro7 has `i < limit`; Pro7's spelling changes the loop's code)
         for (i = 0; n_scratch_registers[rclass] > i; i++) {
             count++;
         }
@@ -220,7 +214,6 @@ PCodeArg* branch_record_volatiles(PCodeArg* arglist, UInt32* masks) {
             if (masks[rclass] & (1 << scratch_registers[rclass][i])) {
                 arglist->data.reg.effect |= EffectRead;
             }
-            // 2.6: cr1 is also read by every call
             if (rclass == RegClass_CRFIELD && arglist->data.reg.reg == 1) {
                 arglist->data.reg.effect |= EffectRead;
             }
@@ -242,8 +235,6 @@ void branch_subroutine(Object* obj, short add_nop, UInt32* masks) {
         count += countexceptionactionregisters(current_statement->dobjstack);
     }
 
-    // 2.6: a call to an absolute address (addressing 11) sets fAbsolute; 2.6 tests 10 first though
-    // its arm is the default's
     addressing = ObjGen_GetAddressing(obj);
     if (addressing == 10) {
         pc = makepcode(PC_BL, count, obj, 0);
@@ -293,24 +284,22 @@ void branch_subroutine_ctr(UInt32* masks) {
 }
 
 void add_immediate(short dest_reg, short base_reg, Object* obj, SInt16 offset) {
-    short tmp_reg = base_reg;
+    short addr_reg = base_reg;
     PCode* pc;
 
-    // 2.6: a small-data object is addressed from r2/r13 as an absolute 16-bit address
-    // ((int) casts: 2.6 compares the registers as ints, movsx then cmp)
     if (obj && ((int)base_reg == 2 || (int)base_reg == 13)) {
         CError_ASSERT(534, obj->datatype != DLOCAL);
-        tmp_reg = 0;
+        addr_reg = 0;
     }
 
     if (!obj && !offset) {
-        emitpcode(PC_MR, dest_reg, tmp_reg);
+        emitpcode(PC_MR, dest_reg, addr_reg);
         return;
     }
 
-    emitpcode(PC_ADDI, dest_reg, tmp_reg, obj, offset);
+    emitpcode(PC_ADDI, dest_reg, addr_reg, obj, offset);
     if (obj) {
-        if ((int)tmp_reg == 0) {
+        if ((int)addr_reg == 0) {
             pc = pclastblock->lastPCode;
             pc->flags = (pc->flags & ~opcodeinfo[pc->op].flags) | opcodeinfo[PC_LI].flags;
             pc->op = PC_LI;
@@ -340,14 +329,14 @@ PCode* op_absolute_ha(
     short dest_reg, short base_reg, Object* obj, short offset, char add_to_block
 ) {
     PCode* pc;
-    int tmp_reg;
+    int addr_reg;
 
     if (obj->datatype == DLOCAL) {
         pc = makepcode(PC_ADDIS, dest_reg, base_reg, obj, offset);
     } else if (copts.codegen_pic) {
-        tmp_reg = base_reg;
-        CError_ASSERT(601, tmp_reg);
-        pc = makepcode(PC_ADDIS, dest_reg, tmp_reg, obj, offset);
+        addr_reg = base_reg;
+        CError_ASSERT(601, addr_reg);
+        pc = makepcode(PC_ADDIS, dest_reg, addr_reg, obj, offset);
     } else {
         CError_ASSERT(606, base_reg == 0);
         pc = makepcode(PC_LIS, dest_reg, obj, offset);
@@ -366,11 +355,8 @@ void load_store_register(
     short offset_reg2;
 
     offset_reg1 = base_reg;
-    // 2.6: a small-data object is addressed from r2/r13 as an absolute 16-bit address (Pro7 adds
-    // the object's address to the base first)
     if (obj &&
-        obj->datatype !=
-        DLOCAL &&
+        obj->datatype != DLOCAL &&
         is_16bitdata(obj) &&
         ((int)base_reg == 2 || (int)base_reg == 13)) {
         offset_reg1 = 0;
@@ -416,8 +402,6 @@ void load_store_register(
     }
 }
 
-// 2.6 (Gekko paired singles): psq_l/psq_st when a local's offset fits their 12-bit displacement,
-// else psq_lx/psq_stx
 Opcode Select_Gecko_Load_Store(Object* obj, int offset, int load) {
     Opcode op;
 
@@ -433,7 +417,6 @@ Opcode Select_Gecko_Load_Store(Object* obj, int offset, int load) {
     return op;
 }
 
-// 2.6 (Gekko paired singles): load_store_register for psq_l/psq_st and their indexed forms
 void gecko_load_store_register(
     short dest_reg, short base_reg, Object* obj, SInt32 offset, SInt32 w, SInt32 i, int load
 ) {
@@ -444,13 +427,11 @@ void gecko_load_store_register(
     short opcode;
 
     offset_reg1 = base_reg;
-    // (the opcode and a short copy of it: one variable of either type compiles differently)
     op = Select_Gecko_Load_Store(obj, offset, load);
     opcode = op;
 
     if (obj &&
-        obj->datatype !=
-        DLOCAL &&
+        obj->datatype != DLOCAL &&
         is_16bitdata(obj) &&
         ((int)base_reg == 2 || (int)base_reg == 13)) {
         offset_reg1 = 0;

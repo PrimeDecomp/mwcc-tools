@@ -1,14 +1,15 @@
 #include "driver/ParserHelpers.h"
+#include "compiler/win32.h"
+#include "driver/CWPlugins.h"
 #include "driver/CWPluginsPrivate.h"
 #include "driver/Generic.h"
 #include "driver/IO.h"
 #include "driver/MacSpecs.h"
+#include "driver/Memory.h"
 #include "driver/MsDos.h"
+#include "driver/oslib.h"
 #include "driver/ParserErrors.h"
 #include "driver/ParserFace.h"
-#include "driver/ParserGlue-eabi-ppc-cc.h"
-#include "driver/ParserHelpers-cc.h"
-#include "driver/pref_structs.h"
 #include "driver/Projects.h"
 #include "driver/Utils.h"
 #include <setjmp.h>
@@ -17,15 +18,12 @@
 #include <stdlib.h>
 #include <string.h>
 
-// Pro7's static STSbuf, renamed: Generic.h declares the driver's COMMON STSbuf, which a static of
-// that name would redeclare
 #define STSbuf ParserHelpers_STSbuf
 
 SInt16 lastStage;
 Boolean dashIMinusMovesPaths;
 Boolean usedDashIMinus;
 Boolean namingSysPaths;
-// (2.6: MAX_PATH, where Pro7 has 256)
 static char STSbuf[260];
 
 int FindFileInPath(const char* filename, OSSpec* fss) {
@@ -40,9 +38,9 @@ int FindFileInPath(const char* filename, OSSpec* fss) {
     result = CWFindAndLoadFile(parseopts.context, filename, &fi);
     if (!result) {
         OS_FSSpec_To_OSSpec(&fi.filespec, fss);
-        return 1;
+        return TRUE;
     } else {
-        return 0;
+        return FALSE;
     }
 }
 
@@ -69,7 +67,7 @@ char* GetEnvVar(const char* name, Boolean warn, const char** match) {
         CLPReportWarning(CLPStr52, last);
     }
     *match = 0;
-    return 0;
+    return NULL;
 }
 
 static Boolean MatchesExtension(const char* list, const char* filename) {
@@ -116,34 +114,36 @@ int Opt_AddAccessPath(const char* opt, void* var, const char* arg, int flags) {
 
     path = arg ? arg : opt;
     if (!path) {
-        return 0;
+        return FALSE;
     }
     if (!path[0]) {
-        return 1;
+        return TRUE;
     }
 
     if (strlen(path) >= 260) {
         CLPReportError(CLPStr13, path + strlen(path) - 32, 260);
-        return 0;
+        return FALSE;
     }
 
     err = OS_MakePathSpec(0, path, &spec);
     if (err == ERROR_FILE_NOT_FOUND || err == ERROR_PATH_NOT_FOUND) {
         CLPReportWarning(CLPStr45, path);
-        return 1;
+        return TRUE;
     } else if (err != 0) {
         CLPOSAlert(CLPStr45, err, path);
-        return 1;
+        return TRUE;
     }
 
-    if (!AddAccessPath(&spec, namingSysPaths, 0, var ? 1 : 0)) {
-        return 0;
+    if (!AddAccessPath(&spec, namingSysPaths, 0, var ? TRUE : FALSE)) {
+        return FALSE;
     } else {
-        return 1;
+        return TRUE;
     }
 }
 
-void ListParseMessage(void (*errprint)(const char*, va_list), const char* envvar, SInt16 id, ...) {
+void ListParseMessage(
+    void (*errprint)(const char*, va_list), const char* envvar, VarArgShort id, ...
+) {
     char buf[1024];
     va_list ap;
 
@@ -153,36 +153,28 @@ void ListParseMessage(void (*errprint)(const char*, va_list), const char* envvar
         buf[0] = 0;
     }
 
-    // (2.6 starts the list before getting the message, Pro7 after)
     va_start(ap, id);
     CLPGetErrorString(id, buf + strlen(buf));
     errprint(buf, ap);
     va_end(ap);
 }
 
-// TODO: `volatile source` and the copy through `t` are matching workarounds (fakematch), not the
-// original's source: 2.6 keeps `source` in its stack slot (`text` gets edi, `position` ebp) and
-// loads `type` into a register for the loop's call. Tried without effect: `SInt32 source`,
-// `short type`, `(SInt16) type`, an `else if` after the drive-letter shortcut; Pro7's text has
-// neither, and 1.x's version (without `type`) keeps `source` in a register, so whatever 2.x
-// changed around `type` is the real cause.
 int AddAccessPathList(
     const char* list,
     char sep1,
     char sep2,
-    volatile int source,
+    int source,
     char* text,
     Boolean system,
     SInt32 position,
     Boolean recursive
 ) {
-    char tmp[260];
+    char path[260];
     OSPathSpec spec;
     int err;
     int type;
     Boolean recurse;
     char* ptr;
-    int t;
 
     type = ((system == 1) ? (Boolean)1 : (Boolean)0) | ((source == 0) ? 0 : 2);
     recurse = (list[0] == '+');
@@ -190,11 +182,9 @@ int AddAccessPathList(
         ++list;
     }
 
-    // (2.6: a list separated by ':' may be a single path with a drive letter)
     if ((sep1 == ':' || sep2 == ':') &&
         my_isalpha(*list) &&
-        list[1] ==
-        ':' &&
+        list[1] == ':' &&
         !OS_MakePathSpec(0, list, &spec)) {
         return AddAccessPath(&spec, type, position, recurse ^ recursive);
     }
@@ -204,29 +194,29 @@ int AddAccessPathList(
     }
 
     while (*list) {
-        ptr = tmp;
-        while (*list && *list != sep1 && (ptr + 1) < &tmp[260]) {
+        ptr = path;
+        while (*list && *list != sep1 && (ptr + 1) < &path[260]) {
             *(ptr++) = *(list++);
         }
         *ptr = 0;
 
-        if ((ptr + 1) >= &tmp[260]) {
+        if ((ptr + 1) >= &path[260]) {
             ListParseMessage(
                 CLPReportError_V,
                 (source == 1) ? text : NULL,
                 CLPStr9,
-                tmp,
-                tmp + strlen(tmp) - 16,
+                path,
+                path + strlen(path) - 16,
                 260
             );
-            return 0;
+            return FALSE;
         }
 
-        err = OS_MakePathSpec(0, tmp, &spec);
+        err = OS_MakePathSpec(0, path, &spec);
         if (err) {
-            ListParseMessage(CLPReportWarning_V, (source == 1) ? text : NULL, CLPStr45, tmp);
+            ListParseMessage(CLPReportWarning_V, (source == 1) ? text : NULL, CLPStr45, path);
         } else {
-            AddAccessPath(&spec, (t = type), position, recurse ^ recursive);
+            AddAccessPath(&spec, type, position, recurse ^ recursive);
         }
 
         if (*list) {
@@ -238,7 +228,7 @@ int AddAccessPathList(
         }
     }
 
-    return 1;
+    return TRUE;
 }
 
 int Opt_FindAndAddFile(const char* opt, void* var, const char* arg, int flags) {
@@ -250,10 +240,10 @@ int Opt_FindAndAddFile(const char* opt, void* var, const char* arg, int flags) {
 
     path = arg ? arg : opt;
     if (!path) {
-        return 0;
+        return FALSE;
     }
     if (!*path) {
-        return 1;
+        return TRUE;
     }
 
     parseopts.userSpecifiedFiles++;
@@ -265,13 +255,12 @@ int Opt_FindAndAddFile(const char* opt, void* var, const char* arg, int flags) {
     if (!err && !isfile) {
         CLPReportError(CLPStr47, path);
         parseopts.unusedFiles++;
-        return 0;
+        return FALSE;
     } else if (err && err != ERROR_FILE_NOT_FOUND && !strpbrk(path, "*?")) {
         CLPOSAlert(CLPStr44, err, path);
         parseopts.unusedFiles++;
-        return 0;
+        return FALSE;
     } else if (err && (match = OS_MatchPath(path))) {
-        // (2.6: a wildcard adds every file it matches)
         do {
             if (var &&
                 !MatchesExtension(
@@ -281,13 +270,13 @@ int Opt_FindAndAddFile(const char* opt, void* var, const char* arg, int flags) {
                     CLPStr76, OS_SpecToStringRelative(match, 0, STSbuf, sizeof(STSbuf)), var
                 );
             }
-            if (!AddFileToProject(match, lastStage, parseopts.lastoutputname, 1, -1)) {
+            if (!AddFileToProject(match, lastStage, parseopts.lastoutputname, TRUE, -1)) {
                 parseopts.unusedFiles++;
-                return 0;
+                return FALSE;
             }
             parseopts.lastoutputname[0] = 0;
         } while ((match = OS_MatchPath(0)));
-        return 1;
+        return TRUE;
     } else if (err && parseopts.alwaysUsePaths) {
         err = FindFileInPath(path, &spec) ? 0 : ERROR_FILE_NOT_FOUND;
     }
@@ -295,33 +284,32 @@ int Opt_FindAndAddFile(const char* opt, void* var, const char* arg, int flags) {
     if (err) {
         CLPReportError(CLPStr44, path);
         parseopts.unusedFiles++;
-        return 0;
+        return FALSE;
     }
 
     if (var && !MatchesExtension((const char*)var, path)) {
         CLPReportWarning(CLPStr76, path, var);
     }
 
-    if (!AddFileToProject(&spec, lastStage, parseopts.lastoutputname, 1, -1)) {
+    if (!AddFileToProject(&spec, lastStage, parseopts.lastoutputname, TRUE, -1)) {
         parseopts.unusedFiles++;
-        return 0;
+        return FALSE;
     } else {
         parseopts.lastoutputname[0] = 0;
-        return 1;
+        return TRUE;
     }
 }
 
-// (no caller: the linker dropped it, but its strings stay in the unit's .data)
 int Opt_AddUnixLibraryFile(const char* opt, void* var, const char* name) {
     OSSpec spec;
     Boolean failed;
     const char* eptr;
     const char* eend;
-    char tmpname[64];
+    char libname[64];
 
     if (strlen(name) >= 56) {
         CLPReportError(CLPStr13, name + strlen(name) - 32, 64);
-        return 0;
+        return FALSE;
     }
 
     failed = TRUE;
@@ -336,8 +324,8 @@ int Opt_AddUnixLibraryFile(const char* opt, void* var, const char* name) {
             ++eend;
         }
 
-        sprintf(tmpname, "lib%s%*.*s", name, eend - eptr, eend - eptr, eptr);
-        if (FindFileInPath(tmpname, &spec)) {
+        sprintf(libname, "lib%s%*.*s", name, eend - eptr, eend - eptr, eptr);
+        if (FindFileInPath(libname, &spec)) {
             failed = FALSE;
             break;
         }
@@ -357,7 +345,7 @@ int Opt_AddUnixLibraryFile(const char* opt, void* var, const char* name) {
     }
 
     if (!failed) {
-        if (!AddFileToProject(&spec, 0, 0, 1, -1)) {
+        if (!AddFileToProject(&spec, 0, 0, TRUE, -1)) {
             parseopts.unusedFiles++;
             failed = TRUE;
         }
@@ -397,11 +385,10 @@ void AddStringToHandle(Handle* h, const char* str) {
 }
 
 int Opt_PrintVersion(const char* opt, void* var, const char* arg, int flags) {
-    ShowVersion(0);
-    return 1;
+    ShowVersion(FALSE);
+    return TRUE;
 }
 
-// (no caller: the linker dropped it, but its "Lib" stays in the unit's .data)
 void GetFirstSourceFilenameBase(char* buffer, char* defaul) {
     int cnt;
     OSSpec spec;
@@ -431,10 +418,9 @@ void GetFirstSourceFilenameBase(char* buffer, char* defaul) {
 
 int Opt_SavePrefs(const char* opt, void* var, const char* arg, int flags) {
     Parser_StorePanels(parseopts.context);
-    return 1;
+    return TRUE;
 }
 
-// (no caller: the linker dropped it, but its "" stays in the unit's .data)
 int ParseNumber(const char* arg, Boolean emit_error, SInt32* ret, const char** endptr) {
     char* end;
 
@@ -452,15 +438,15 @@ int ParseNumber(const char* arg, Boolean emit_error, SInt32* ret, const char** e
 
     if (*end && emit_error) {
         CLPReportError(CLPStr5, "", arg);
-        return 0;
+        return FALSE;
     }
 
-    return 1;
+    return TRUE;
 }
 
 int Opt_MaybeMoveAccessPaths(const char* opt, void* var, const char* arg, int flags) {
     if (dashIMinusMovesPaths && !usedDashIMinus) {
         MoveSystemPathsIntoUserList();
     }
-    return 1;
+    return TRUE;
 }

@@ -1,12 +1,16 @@
 #include "driver/CLDependencies.h"
 #include "compiler/CPrep.h"
+#include "driver/CLAccessPaths.h"
 #include "driver/CLErrors.h"
-#include "driver/CLFileOps.h"
-#include "driver/CLIO.h"
+#include "driver/CLFiles.h"
 #include "driver/CLMain.h"
+#include "driver/cmdline.h"
 #include "driver/Generic.h"
 #include "driver/MacSpecs.h"
 #include "driver/MemUtils.h"
+#include "driver/MsDos.h"
+#include "driver/oslib.h"
+#include "driver/pref_structs.h"
 #include <setjmp.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -82,8 +86,7 @@ static Boolean SameIncl(Incls* incls, SInt32 a, SInt32 b) {
     }
     ia = &incls->files[a];
     ib = &incls->files[b];
-    return ia->globalpath ==
-        ib->globalpath &&
+    return ia->globalpath == ib->globalpath &&
         OS_EqualPath(&incls->buffer[ia->filenameoffs], &incls->buffer[ib->filenameoffs]);
 }
 
@@ -249,8 +252,6 @@ Boolean Deps_Initialize(Deps* deps, Incls* incls) {
     return TRUE;
 }
 
-// (dead in 2.6: nothing calls it and the linker dropped it; Pro7's file and Wii's CLDependencies
-// have it)
 void Deps_Terminate(Deps* deps) {
     if (deps->list) {
         xfree(deps->list);
@@ -291,11 +292,8 @@ int Deps_ChangeSpecialAccessPath(OSSpec* srcfss, Boolean initialize) {
             }
             break;
         default:
-            CLInternalError(
-                __FILE__,
-                468,
-                "Unhandled include file search type (%d)\n",
-                optsCompiler.includeSearch
+            DO_INTERNAL_ERROR(
+                468, "Unhandled include file search type (%d)\n", optsCompiler.includeSearch
             );
     }
 
@@ -363,8 +361,6 @@ static void AddDepFile(Deps* deps, SInt32 incl, SInt16 dependencyType) {
     deps->list[deps->numDeps++] = incl;
 }
 
-// `syspath` is unused (the missing-file callback passes `!(fullsearch || noSysPath)`, the other 0).
-// TODO: invented name (Pro7's decompilation calls it `unk`)
 void Deps_AddDependency(
     Deps* deps,
     SInt32 incl,

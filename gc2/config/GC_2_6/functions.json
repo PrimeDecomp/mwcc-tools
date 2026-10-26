@@ -21543,13 +21543,13 @@
     "source": "src/backend/DWARF.c"
   },
   {
-    "name": "emit_class_dwarf",
+    "name": "emit_class_type",
     "address": "0x0054bac0",
     "size": 2220,
     "source": "src/backend/DWARF.c"
   },
   {
-    "name": "emit_struct_dwarf",
+    "name": "emit_struct_type",
     "address": "0x0054c370",
     "size": 1333,
     "source": "src/backend/DWARF.c"

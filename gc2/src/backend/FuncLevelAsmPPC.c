@@ -1,30 +1,33 @@
-// FuncLevelAsmPPC.c: Pro7's file, deferred, with 2.6's EABI additions.
-#include "compiler/CPrep.h"
 #include "compiler/FuncLevelAsmPPC.h"
 #include "compiler/CError.h"
 #include "compiler/CFunc.h"
 #include "compiler/CMangler.h"
 #include "compiler/CodeGen.h"
 #include "compiler/Coloring.h"
+#include "compiler/CompilerTools.h"
 #include "compiler/CParser.h"
+#include "compiler/CPrep.h"
 #include "compiler/CPrepTokenizer.h"
 #include "compiler/DumpIR.h"
-#include "compiler/InlineAsmRegisters.h"
+#include "compiler/InlineAsm.h"
 #include "compiler/InlineAsmPPC.h"
-#include "compiler/InstrSelection.h"
+#include "compiler/InlineAsmRegisters.h"
 #include "compiler/objects.h"
 #include "compiler/ObjGen_PPC_EABI.h"
 #include "compiler/PCode.h"
 #include "compiler/PCodeAssembly.h"
+#include "compiler/PCodeInfo.h"
 #include "compiler/PCodeListing.h"
 #include "compiler/PCodeUtilities.h"
 #include "compiler/PPCError.h"
 #include "compiler/RegisterInfo.h"
+#include "compiler/Registers.h"
 #include "compiler/StackFrame.h"
 #include "compiler/Switch.h"
 #include "compiler/TOC.h"
+#include "compiler/tokens.h"
+#include "compiler/types.h"
 #include "driver/CCompiler.h"
-#include "compiler/OracleProbes.h"
 
 static EntryPoint* entrypoints_head;
 static EntryPoint** entrypoints_tail;
@@ -44,7 +47,6 @@ void setup_assembly_argument(Object* obj, short reg) {
             }
 
             if (TYPE_IS_SOFT_FLOAT(type)) {
-                // 2.6: -fp soft keeps a float in a GPR, a double in a pair
                 if (type->size == 4) {
                     retain_register(obj, RegClass_GPR, reg);
                 } else {
@@ -90,7 +92,7 @@ void setup_assembly_argument(Object* obj, short reg) {
             vi = Registers_GetVarInfo(obj);
             if (!vi->reg) {
                 assign_register_by_type(obj);
-                if (!(vi->flags & VarInfoFlag2)) {
+                if (!(vi->flags & VarInfoFlag_InReg)) {
                     CError_Error(ERR_COULD_NOT_ASSIGNED_REGISTER, obj->name->name);
                 } else {
                     InlineAsm_InsertRegister(obj->name->name, vi->rclass, vi->reg, obj);
@@ -118,7 +120,7 @@ void assign_local_addresses(void) {
             vi = Registers_GetVarInfo(object);
             if (!vi->reg) {
                 assign_register_by_type(object);
-                if (!(vi->flags & VarInfoFlag2)) {
+                if (!(vi->flags & VarInfoFlag_InReg)) {
                     CError_Error(ERR_COULD_NOT_ASSIGNED_REGISTER, object->name->name);
                 } else {
                     InlineAsm_InsertRegister(object->name->name, vi->rclass, vi->reg, object);
@@ -190,16 +192,16 @@ void Assembler(Object* func) {
     PCodeBlock* block;
     Statement* stmt;
     Statement* scan;
-    Boolean flag17;
-    Boolean flag16;
+    Boolean frame_generated;
+    Boolean seen_frfree;
     char* name;
     InlineAsm* ia;
     Boolean save_unusedvar;
     Boolean save_unusedarg;
     Boolean save_peephole;
 
-    flag17 = FALSE;
-    flag16 = FALSE;
+    frame_generated = FALSE;
+    seen_frfree = FALSE;
     InlineAsm_setjmp_valid = FALSE;
 
     init_endian();
@@ -222,7 +224,7 @@ void Assembler(Object* func) {
     CodeGen_InitialSanityCheck();
 
     if (func->qual & Q_INLINE) {
-        PPCError_Warning(PPCErrorStr173);
+        PPCError_Warning(PPCERR_ASM_FUNCTION_NOT_INLINABLE);
     }
 
     CheckCLabels();
@@ -283,7 +285,7 @@ void Assembler(Object* func) {
         update_out_param_size(fralloc_parameter_area_size);
     }
     if (!user_responsible_for_frame) {
-        process_arguments(move_assigned_argument, 0);
+        process_arguments(move_assigned_argument, FALSE);
     }
 
     branch_label(makepclabel());
@@ -297,19 +299,19 @@ void Assembler(Object* func) {
         switch (scan->type) {
             case ST_ASM:
                 if ((ia = (InlineAsm*)scan->expr)) {
-                    if (ia->flags & IAFlag1) {
+                    if (ia->flags & IAFlag_Directive) {
                         if (ia->opcode == IADirective_Entry) {
                             branch_label(makepclabel());
                             FuncAsm_AddEntryPoint(scan, pclastblock);
                         } else if (ia->opcode == IADirective_FrFree) {
-                            if (flag16) {
-                                PPCError_Error(PPCErrorStr188);
+                            if (seen_frfree) {
+                                PPCError_Error(PPCERR_FRFREE_NOT_AT_END);
                             } else {
-                                flag16 = TRUE;
+                                seen_frfree = TRUE;
                             }
 
-                            asm_alloc_flags[3] = 1;
-                            asm_alloc_flags[4] = 1;
+                            asm_alloc_flags[3] = TRUE;
+                            asm_alloc_flags[4] = TRUE;
                             branch_label(makepclabel());
 
                             (epilogue = pclastblock)->flags |= fIsEpilogue;
@@ -320,31 +322,31 @@ void Assembler(Object* func) {
                             }
 
                             pccomputepredecessors();
-                            if (ORACLE_LISTING(copts.debuglisting)) {
+                            if (copts.debuglisting) {
                                 pclistblocks(name, "[FUNCTION-LEVEL ASM] INITIAL CODE");
                             }
                             StackFrame_has_vectors = set_vr_reg_flags();
                             colorinstructions(func);
-                            if (ORACLE_LISTING(copts.debuglisting)) {
+                            if (copts.debuglisting) {
                                 pclistblocks(name, "[FUNCTION-LEVEL ASM] AFTER REGISTER COLORING");
                             }
                             compute_frame_sizes();
                             generate_prologue(prologue, FALSE);
                             generate_epilogue(epilogue = pclastblock, FALSE);
-                            if (ORACLE_LISTING(copts.debuglisting)) {
+                            if (copts.debuglisting) {
                                 pclistblocks(
                                     name, "[FUNCTION-LEVEL ASM] AFTER PROLOGUE/EPILOGUE CREATION"
                                 );
                             }
 
-                            flag17 = TRUE;
+                            frame_generated = TRUE;
                         }
                     } else {
                         branch_label(makepclabel());
-                        asm_alloc_flags[6] = 0;
-                        asm_alloc_flags[7] = 0;
+                        asm_alloc_flags[6] = FALSE;
+                        asm_alloc_flags[7] = FALSE;
                         InlineAsm_TranslateIRtoPCode(scan);
-                        asm_alloc_flags[4] = 0;
+                        asm_alloc_flags[4] = FALSE;
                     }
                 }
                 break;
@@ -368,14 +370,14 @@ void Assembler(Object* func) {
         return;
     }
 
-    if (!flag17) {
+    if (!frame_generated) {
         branch_label(makepclabel());
 
         (epilogue = pclastblock)->flags |= fIsEpilogue;
 
         pccomputepredecessors();
         StackFrame_has_vectors = set_vr_reg_flags();
-        if (ORACLE_LISTING(copts.debuglisting)) {
+        if (copts.debuglisting) {
             pclistblocks(name, "[FUNCTION-LEVEL ASM] INITIAL CODE");
         }
 
@@ -385,7 +387,7 @@ void Assembler(Object* func) {
                 return;
             }
 
-            if (ORACLE_LISTING(copts.debuglisting)) {
+            if (copts.debuglisting) {
                 pclistblocks(name, "[FUNCTION-LEVEL ASM] AFTER REGISTER COLORING");
             }
         }
@@ -404,7 +406,7 @@ void Assembler(Object* func) {
             generate_epilogue(epilogue, !(asm_alloc_flags[6] || asm_alloc_flags[7]));
         }
 
-        if (ORACLE_LISTING(copts.debuglisting)) {
+        if (copts.debuglisting) {
             pclistblocks(name, "[FUNCTION-LEVEL ASM] AFTER PROLOGUE/EPILOGUE CREATION");
         }
     }
@@ -416,8 +418,6 @@ void Assembler(Object* func) {
     if (!asm_alloc_flags[1] && needs_frame()) {
         if (asm_alloc_flags[3]) {
             if (interrupt_routine_flags) {
-                // 2.6: an interrupt function returns with rfi; one the user did not write
-                // goes into the epilogue
                 if (!asm_alloc_flags[7]) {
                     PCodeBlock* save = pclastblock;
                     pclastblock = epilogue;
@@ -425,19 +425,19 @@ void Assembler(Object* func) {
                     setpcodeflags(fIsVolatile);
                     pclastblock = save;
                     if (asm_alloc_flags[5]) {
-                        PPCError_Warning(PPCErrorStr187, "rfi");
+                        PPCError_Warning(PPCERR_EXIT_AFTER_FRFREE, "rfi");
                     }
                 } else if (!asm_alloc_flags[5]) {
-                    PPCError_Warning(PPCErrorStr187, "rfi");
+                    PPCError_Warning(PPCERR_EXIT_AFTER_FRFREE, "rfi");
                 }
             } else if (!asm_alloc_flags[5] || !asm_alloc_flags[6]) {
-                PPCError_Warning(PPCErrorStr187, "blr");
+                PPCError_Warning(PPCERR_EXIT_AFTER_FRFREE, "blr");
             }
             if (asm_alloc_flags[8]) {
-                PPCError_Warning(PPCErrorStr186);
+                PPCError_Warning(PPCERR_FRFREE_ONE_EXIT);
             }
         } else {
-            PPCError_Warning(PPCErrorStr185, interrupt_routine_flags ? "rfi" : "blr");
+            PPCError_Warning(PPCERR_FRFREE_BEFORE_EXIT, interrupt_routine_flags ? "rfi" : "blr");
         }
     }
 
@@ -452,7 +452,7 @@ void Assembler(Object* func) {
     assemblefunction(func, entrypoints_head);
     copts.peephole = save_peephole;
 
-    if (ORACLE_LISTING(copts.debuglisting)) {
+    if (copts.debuglisting) {
         pclistblocks(CMangler_GetLinkName(func)->name, "[FUNCTION-LEVEL ASM] FINAL CODE");
     }
 
@@ -461,7 +461,7 @@ void Assembler(Object* func) {
 }
 
 void SetupAssembler(void) {
-    InlineAsm_setjmp_valid = FALSE; // 2.6 (Pro7's is empty)
+    InlineAsm_setjmp_valid = FALSE;
 }
 
 void CleanupAssembler(void) {}

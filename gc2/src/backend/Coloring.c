@@ -3,13 +3,12 @@
 #include "compiler/CFunc.h"
 #include "compiler/CompilerTools.h"
 #include "compiler/CParser.h"
-#include "compiler/CPrep.h"
 #include "compiler/InterferenceGraph.h"
 #include "compiler/objects.h"
-#include "compiler/OracleProbes.h"
 #include "compiler/PCode.h"
 #include "compiler/PPCError.h"
 #include "compiler/RegisterInfo.h"
+#include "compiler/Registers.h"
 #include "compiler/SpillCode.h"
 #include "compiler/StackFrame.h"
 #include <float.h>
@@ -28,16 +27,16 @@ static void markspecialregisters(RegClass rclass) {
         CError_FATAL(58);
     }
 
-    for (i = 0; i < n_real_registers[rclass]; i++) {
+    for (i = 0; i < (UInt32)n_real_registers[rclass]; i++) {
         interferencegraph[i]->color = i;
     }
 
     for (list = arguments; list; list = list->next) {
         object = list->object;
         vi = Registers_GetVarInfo(object);
-        if ((vi->flags & VarInfoFlag2) && vi->rclass == rclass) {
+        if ((vi->flags & VarInfoFlag_InReg) && vi->rclass == rclass) {
             interferencegraph[vi->reg]->spillTemporary = object;
-            if (vi->flags & VarInfoFlag4) {
+            if (vi->flags & VarInfoFlag_RegPair) {
                 interferencegraph[vi->reg]->flags |= fPairLow;
                 interferencegraph[vi->regHi]->flags |= fPairHigh;
                 interferencegraph[vi->regHi]->spillTemporary = object;
@@ -48,9 +47,9 @@ static void markspecialregisters(RegClass rclass) {
     for (list = locals; list; list = list->next) {
         object = list->object;
         vi = Registers_GetVarInfo(object);
-        if ((vi->flags & VarInfoFlag2) && vi->rclass == rclass) {
+        if ((vi->flags & VarInfoFlag_InReg) && vi->rclass == rclass) {
             interferencegraph[vi->reg]->spillTemporary = object;
-            if (vi->flags & VarInfoFlag4) {
+            if (vi->flags & VarInfoFlag_RegPair) {
                 interferencegraph[vi->reg]->flags |= fPairLow;
                 interferencegraph[vi->regHi]->flags |= fPairHigh;
                 interferencegraph[vi->regHi]->spillTemporary = object;
@@ -61,12 +60,18 @@ static void markspecialregisters(RegClass rclass) {
     for (binding = reg_info_list; binding; binding = binding->next) {
         if (rclass == binding->reginfo.rclass) {
             vi = Registers_GetVarInfo(binding->object);
-            if (vi->flags & VarInfoFlag2) {
+            if (vi->flags & VarInfoFlag_InReg) {
                 interferencegraph[vi->reg]->spillTemporary = binding->object;
             }
         }
     }
 }
+
+#ifdef __MWERKS__
+typedef float SpillScore;
+#else
+typedef double SpillScore;
+#endif
 
 static IGNode* simplifygraph(void) {
     int availableRegs;
@@ -75,36 +80,37 @@ static IGNode* simplifygraph(void) {
     IGNode* best;
     IGNode* node;
     UInt32 j;
-    float bestScore;
-    float score;
+    SpillScore bestScore;
+    SpillScore score;
     UInt32 i;
-    int flag;
+    int changed;
 
     availableRegs = available_registers(coloring_class);
     pushedNodes = NULL;
 
     do {
         spilledNodes = NULL;
-        flag = FALSE;
-        for (i = n_real_registers[coloring_class]; i < used_virtual_registers[coloring_class];
+        changed = FALSE;
+        for (i = n_real_registers[coloring_class];
+             i < (UInt32)used_virtual_registers[coloring_class];
              i++) {
             node = interferencegraph[i];
             if (!(node->flags & (fPushed | fCoalesced))) {
                 if (node->degree < availableRegs) {
-                    for (j = 0; j < node->arraySize; j++) {
+                    for (j = 0; j < (UInt32)node->arraySize; j++) {
                         interferencegraph[node->array[j]]->degree--;
                     }
                     node->flags |= fPushed;
                     node->next = pushedNodes;
                     pushedNodes = node;
-                    flag = TRUE;
+                    changed = TRUE;
                 } else {
                     node->next = spilledNodes;
                     spilledNodes = node;
                 }
             }
         }
-    } while (flag);
+    } while (changed);
 
     if (spilledNodes) {
         estimatespillcosts();
@@ -114,19 +120,19 @@ static IGNode* simplifygraph(void) {
         best = spilledNodes;
         bestScore = (spilledNodes->reg >= used_regs_before_coloring)
             ? FLT_MAX
-            : ((float)spilledNodes->spillCost / (float)spilledNodes->degree);
+            : ((SpillScore)spilledNodes->spillCost / (SpillScore)spilledNodes->degree);
 
         for (node = spilledNodes->next; node; node = node->next) {
             score = (node->reg >= used_regs_before_coloring)
                 ? FLT_MAX
-                : ((float)node->spillCost / (float)node->degree);
+                : ((SpillScore)node->spillCost / (SpillScore)node->degree);
             if (score < bestScore) {
                 best = node;
                 bestScore = score;
             }
         }
 
-        for (i = 0; i < best->arraySize; i++) {
+        for (i = 0; i < (UInt32)best->arraySize; i++) {
             interferencegraph[best->array[i]]->degree--;
         }
 
@@ -136,26 +142,27 @@ static IGNode* simplifygraph(void) {
 
         do {
             spilledNodes = NULL;
-            flag = FALSE;
-            for (i = n_real_registers[coloring_class]; i < used_virtual_registers[coloring_class];
+            changed = FALSE;
+            for (i = n_real_registers[coloring_class];
+                 i < (UInt32)used_virtual_registers[coloring_class];
                  i++) {
                 node = interferencegraph[i];
                 if (!(node->flags & (fPushed | fCoalesced))) {
                     if (node->degree < availableRegs) {
-                        for (j = 0; j < node->arraySize; j++) {
+                        for (j = 0; j < (UInt32)node->arraySize; j++) {
                             interferencegraph[node->array[j]]->degree--;
                         }
                         node->flags |= fPushed;
                         node->next = pushedNodes;
                         pushedNodes = node;
-                        flag = TRUE;
+                        changed = TRUE;
                     } else {
                         node->next = spilledNodes;
                         spilledNodes = node;
                     }
                 }
             }
-        } while (flag);
+        } while (changed);
     }
 
     return pushedNodes;
@@ -237,7 +244,8 @@ static void rewritepcode(void) {
         }
     }
 
-    for (i = n_real_registers[coloring_class]; i < used_virtual_registers[coloring_class]; i++) {
+    for (i = n_real_registers[coloring_class]; i < (UInt32)used_virtual_registers[coloring_class];
+         i++) {
         node = interferencegraph[i];
         if (node->spillTemporary && !(node->flags & fSpilled)) {
             if (node->flags & fCoalesced) {
@@ -261,7 +269,7 @@ static void rewritepcode(void) {
 }
 
 void colorinstructions(Object* proc) {
-    int flag;
+    int spilled;
     RegClass rclass;
 
     for (rclass = 0; rclass < RegClassMax; rclass++) {
@@ -269,8 +277,7 @@ void colorinstructions(Object* proc) {
 
         if (rclass == RegClass_GPR) {
             check_dynamic_aligned_frame();
-        } else if (rclass ==
-                   RegClass_FPR &&
+        } else if (rclass == RegClass_FPR &&
                    copts.soft_float &&
                    used_virtual_registers[RegClass_FPR] > 32) {
             CError_FATAL(375);
@@ -280,17 +287,17 @@ void colorinstructions(Object* proc) {
             save_before_coloring_nonvolatile_registers(rclass);
             used_regs_before_coloring = used_virtual_registers[rclass];
             if (!available_registers(rclass)) {
-                PPCError_Error(PPCErrorStr102, register_class_name[rclass]);
+                PPCError_Error(PPCERR_ALL_REGISTERS_USED, register_class_name[rclass]);
                 return;
             }
 
-            flag = TRUE;
-            while (flag && used_virtual_registers[rclass] > n_real_registers[rclass]) {
+            spilled = TRUE;
+            while (spilled && used_virtual_registers[rclass] > n_real_registers[rclass]) {
                 buildinterferencegraph(proc);
                 markspecialregisters(rclass);
-                flag = !colorgraph(simplifygraph());
+                spilled = !colorgraph(simplifygraph());
 
-                if (flag) {
+                if (spilled) {
                     insertspillcode();
                 } else {
                     rewritepcode();
@@ -300,7 +307,6 @@ void colorinstructions(Object* proc) {
         }
 
         used_virtual_registers[rclass] = n_real_registers[rclass];
-        ORACLE_PROBE(OracleProbe_Counter(5, rclass, NULL));
     }
 
     coloring = FALSE;

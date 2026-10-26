@@ -1,23 +1,18 @@
 #ifndef COMPILER_USEDEFCHAINS_H
 #define COMPILER_USEDEFCHAINS_H
 
-// UseDefChains.c: the use-def chains of registers and memory over the PCode (Pro7's UseDefChains.c,
-// deferred). 2.6 counts each object's direct and indirect uses and definitions, and keeps a block's
-// local sets as a range (gen) and a compressed vector (kill).
-
 #include "compiler/common.h"
 #include "compiler/BitVectors.h"
-#include "compiler/PCode.h"
+#include "compiler/PCodeInfo.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 #pragma pack(push, 2)
-// Pro7's TinyValue and UseOrDef (mac68k alignment: 10 bytes)
 typedef struct TinyValue {
     PCOpKind kind;
-    RegClass arg; // a register's class; for memory 0 (the object itself) or 1 (may alias it)
+    RegClass arg;
     union {
         short reg;
         Object* object;
@@ -43,7 +38,6 @@ struct ObjectUseDef {
     RegUseOrDef* uses;
     RegUseOrDef* defs;
 #if VERSION >= VERSION_GC_2_5
-    // 2.6
     short directdefs;
     short directuses;
     short indirectdefs;
@@ -53,17 +47,14 @@ struct ObjectUseDef {
 
 typedef struct UseDefInfo {
 #if VERSION >= VERSION_GC_2_5
-    // 2.6: the block's uses and definitions are [usestart, usestart + usecount) and likewise
     SInt32 usestart;
     SInt32 usecount;
     SInt32 defstart;
     SInt32 defcount;
 #endif
-    // TODO: invented names (Pro7's defvec0, defvec4, defvec8, defvecC, usevec10, usevec14, usevec18,
-    // usevec1C: their Pro7 offsets): the reaching definitions and the live uses of the block
 #if VERSION >= VERSION_GC_2_5
-    BitVectorRange* defgen; // 2.6: a range over the block's definitions (2.0: a full vector)
-    CompressedBitVector* defkill; // 2.6: compressed (2.0: a full vector)
+    BitVectorRange* defgen;
+    CompressedBitVector* defkill;
 #else
     UInt32* defgen;
     UInt32* defkill;
@@ -71,8 +62,8 @@ typedef struct UseDefInfo {
     UInt32* defin;
     UInt32* defout;
 #if VERSION >= VERSION_GC_2_5
-    BitVectorRange* usegen; // 2.6: a range over the block's uses
-    CompressedBitVector* usekill; // 2.6: compressed
+    BitVectorRange* usegen;
+    CompressedBitVector* usekill;
 #else
     UInt32* usegen;
     UInt32* usekill;
@@ -90,12 +81,13 @@ extern RegUseOrDef** reg_Uses[RegClassMax];
 extern UseDefInfo* usedefinfo;
 
 extern ObjectUseDef* findobjectusedef(Object* object);
-extern void computeusedefchains(int flag);
-// 2.6
+extern void computeusedefchains(int includeMemory);
+#if VERSION >= VERSION_GC_2_5
 extern int precedes(PCode* a, PCode* b);
 extern int canidate_reaches_use(
     PCode* candidate, int defID, int reg, PCode* use, UInt32* defvec, RegClass rclass
 );
+#endif
 
 #ifdef __cplusplus
 }

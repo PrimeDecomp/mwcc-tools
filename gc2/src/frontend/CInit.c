@@ -9,7 +9,6 @@
 #include "compiler/CInline.h"
 #include "compiler/CInt64.h"
 #include "compiler/CMachine.h"
-#include "compiler/CObjC.h"
 #include "compiler/CodeGen.h"
 #include "compiler/CompilerTools.h"
 #include "compiler/CParser.h"
@@ -20,23 +19,23 @@
 #include "compiler/enode.h"
 #include "compiler/objects.h"
 #include "compiler/ObjGen_PPC_EABI.h"
+#include "compiler/tokens.h"
 #include "compiler/types.h"
 #include <string.h>
 
 typedef void (*ExprCB)(Type* type, ENode* expr, Boolean flag);
 
-// TODO: invented member names where Pro7's are placeholders (x8, x15, x16, obj1C).
 typedef struct InitInfo {
     Object* obj;
     OLinkList* list;
-    void* unused8; // x8: never used
+    void* unused;
     SInt32 expr_offset;
     ExprCB expr_cb;
     Boolean expr_cb_called;
-    Boolean has_runtime_init; // x15: set by CInit_GlobalStaticInit
-    Boolean use_register_cb; // x16: pass init expressions to init_expr_register_cb
+    Boolean has_runtime_init;
+    Boolean use_register_cb;
     InitExprRegisterCB init_expr_register_cb;
-    Object* auto_obj; // x1C (Pro7: obj1C): the object an automatic initializer assigns to
+    Object* auto_obj;
     InsertExprCB insert_expr_cb;
     RegisterObjectCB register_object_cb;
     char* buffer;
@@ -56,8 +55,6 @@ static ENodeList* cinit_fdtnode;
 static Boolean cinit_fdtambig;
 
 #pragma pack(push, 2)
-// An initializer value that is not a constant, assigned at run time (Pro7: CInit_1C).
-// TODO: invented name.
 typedef struct CInit_NonConst {
     struct CInit_NonConst* next;
     Type* type;
@@ -65,45 +62,41 @@ typedef struct CInit_NonConst {
     SInt32 offset;
 } CInit_NonConst;
 
-// A buffer an initializer list is built in; one that grows (an array of unknown size) is a chain of
-// chunks. TODO: invented member names where Pro7's are placeholders (x0, x4, xC, x18, x1C, flag).
-typedef struct CInit_Stuff {
-    struct CInit_Stuff* next; // x0: the next chunk
-    struct CInit_Stuff* root; // x4: the first chunk, which holds the lists
+typedef struct CInit_DataBuffer {
+    struct CInit_DataBuffer* next;
+    struct CInit_DataBuffer* root;
     char* buffer;
-    SInt32 offset; // xC: this chunk's offset in the data
+    SInt32 offset;
     SInt32 size;
     SInt32 bufferSize;
-    SInt32 flexsize; // x18: the size a trailing array of unknown size was given
-    CInit_NonConst* nonconst; // x1C
+    SInt32 flexsize;
+    CInit_NonConst* nonconst;
     OLinkList* list;
-    Boolean allow_nonconst; // flag: values need not be constants
-} CInit_Stuff;
+    Boolean allow_nonconst;
+} CInit_DataBuffer;
 
 typedef enum {
-    Stage0,
-    Stage1,
-    Stage2,
-    Stage3,
-    Stage4
+    StageStart,
+    StageOpen,
+    StageExpr,
+    StageClose,
+    StageEnd
 } Stage;
 
-// The initializer parser's state. TODO: invented member names where Pro7's are placeholders (x23,
-// x24).
-typedef struct CInit_Stuff2 {
+typedef struct CInit_ParseState {
     ENode* expr;
     ENode myexpr;
     Stage stage;
-    Boolean is_vector; // x23: an AltiVec `(vector type)(...)` initializer
-    SInt32 parens; // x24: the open parentheses of a vector initializer
+    Boolean is_vector;
+    SInt32 parens;
     Type* type;
-} CInit_Stuff2;
+} CInit_ParseState;
 #pragma pack(pop)
 
 static void CInit_InitType(
-    CInit_Stuff* s, CInit_Stuff2* s2, Type* type, UInt32 qual, Boolean errorflag
+    CInit_DataBuffer* db, CInit_ParseState* ps, Type* type, UInt32 qual, Boolean errorflag
 );
-static void CInit_Type(Type* type, UInt32 qual, Boolean flag);
+static void CInit_Type(Type* type, UInt32 qual, Boolean isTopLevel);
 
 void CInit_Init(void) {
     cinit_tempnodefunc = NULL;
@@ -180,11 +173,10 @@ typedef struct CInit_Initializer {
     TStreamElement element;
 } CInit_Initializer;
 
-// (Pro7's; dead in 2.6 as in Pro7)
 static CInit_Initializer* CInit_ParseInitializerList(void) {
     CInit_Initializer* head;
     CInit_Initializer* tail;
-    CInit_Initializer* tmp;
+    CInit_Initializer* item;
 
     if ((tk = lex()) == '}') {
         return NULL;
@@ -193,9 +185,9 @@ static CInit_Initializer* CInit_ParseInitializerList(void) {
     head = NULL;
     do {
         if (head) {
-            tmp = lalloc(sizeof(CInit_Initializer));
-            tail->next = tmp;
-            tail = tmp;
+            item = lalloc(sizeof(CInit_Initializer));
+            tail->next = item;
+            tail = item;
         }
         if (!head) {
             head = tail = lalloc(sizeof(CInit_Initializer));
@@ -226,7 +218,6 @@ static CInit_Initializer* CInit_ParseInitializerList(void) {
     return head;
 }
 
-// (Pro7's; dead in 2.6 as in Pro7)
 static CInit_Initializer* CInit_ParseInitializerClause(void) {
     CInit_Initializer* init;
 
@@ -291,22 +282,22 @@ static ENode* CInit_ParseInitializer(ENode* expr) {
     return expr;
 }
 
-static Stage CInit_ParseNextInit(CInit_Stuff2* s) {
+static Stage CInit_ParseNextInit(CInit_ParseState* ps) {
     DeclInfo di;
     short t;
 
-    s->expr = NULL;
+    ps->expr = NULL;
     if (tk == ';') {
-        s->stage = Stage4;
-        return s->stage;
+        ps->stage = StageEnd;
+        return ps->stage;
     }
-    switch (s->stage) {
-        case Stage0:
-            if (s->is_vector) {
+    switch (ps->stage) {
+        case StageStart:
+            if (ps->is_vector) {
                 if (tk == '(') {
                     tk = lex();
                     CParser_GetDeclSpecs(&di, TRUE);
-                    s->type = di.thetype;
+                    ps->type = di.thetype;
                     if (tk == ')') {
                         tk = lex();
                     } else {
@@ -318,51 +309,50 @@ static Stage CInit_ParseNextInit(CInit_Stuff2* s) {
                     } else {
                         CError_Error(ERR_LPAREN_EXPECTED);
                     }
-                    s->parens++;
+                    ps->parens++;
                     t = lookahead();
-                    if (t ==
-                        TK_UU_VECTOR ||
+                    if (t == TK_UU_VECTOR ||
                         (t == TK_IDENTIFIER && !strcmp("vector", tkidentifier->name))) {
-                        CInit_ParseNextInit(s);
+                        CInit_ParseNextInit(ps);
                     }
-                    s->stage = Stage1;
-                    return s->stage;
+                    ps->stage = StageOpen;
+                    return ps->stage;
                 }
             } else {
                 if (tk == '{') {
                     tk = lex();
-                    s->parens = 0;
-                    s->stage = Stage1;
-                    return s->stage;
+                    ps->parens = 0;
+                    ps->stage = StageOpen;
+                    return ps->stage;
                 }
             }
-            s->expr = CInit_ParseInitializer(&s->myexpr);
-            s->stage = Stage2;
-            return s->stage;
-        case Stage1:
+            ps->expr = CInit_ParseInitializer(&ps->myexpr);
+            ps->stage = StageExpr;
+            return ps->stage;
+        case StageOpen:
             break;
-        case Stage2:
-        case Stage3:
+        case StageExpr:
+        case StageClose:
             if (tk == ',') {
                 tk = lex();
                 break;
             }
-            if (s->parens) {
+            if (ps->parens) {
                 if (tk != ')') {
                     CError_Error(ERR_ILLEGAL_INITIALIZATION);
                 }
-                if (s->parens > 1) {
-                    s->parens--;
+                if (ps->parens > 1) {
+                    ps->parens--;
                     tk = lex();
-                    CInit_ParseNextInit(s);
+                    CInit_ParseNextInit(ps);
                 }
             } else {
                 if (tk != '}') {
                     CError_Error(ERR_ILLEGAL_INITIALIZATION);
                 }
             }
-            s->stage = Stage3;
-            return s->stage;
+            ps->stage = StageClose;
+            return ps->stage;
         default:
             CError_FATAL(389);
     }
@@ -370,31 +360,31 @@ static Stage CInit_ParseNextInit(CInit_Stuff2* s) {
     switch (tk) {
         case '{':
             tk = lex();
-            s->stage = Stage1;
-            return s->stage;
+            ps->stage = StageOpen;
+            return ps->stage;
         case '}':
-            s->stage = Stage3;
-            return s->stage;
+            ps->stage = StageClose;
+            return ps->stage;
         case '(':
-            if (s->is_vector) {
+            if (ps->is_vector) {
                 tk = lex();
-                s->stage = Stage1;
-                return s->stage;
+                ps->stage = StageOpen;
+                return ps->stage;
             }
         case ')':
-            if (s->is_vector && s->parens) {
-                if (s->parens > 1) {
-                    s->parens--;
+            if (ps->is_vector && ps->parens) {
+                if (ps->parens > 1) {
+                    ps->parens--;
                     tk = lex();
-                    CInit_ParseNextInit(s);
+                    CInit_ParseNextInit(ps);
                 }
-                s->stage = Stage3;
-                return s->stage;
+                ps->stage = StageClose;
+                return ps->stage;
             }
         default:
-            s->expr = CInit_ParseInitializer(&s->myexpr);
-            s->stage = Stage2;
-            return s->stage;
+            ps->expr = CInit_ParseInitializer(&ps->myexpr);
+            ps->stage = StageExpr;
+            return ps->stage;
     }
 }
 
@@ -448,7 +438,6 @@ static Boolean CInit_IsSimpleStructArrayInit(Type* type) {
     }
 }
 
-// (Pro7's; dead in 2.6 as in Pro7)
 static Boolean CInit_IsSimpleInit(Type* type) {
     switch (type->type) {
         case TYPEPOINTER:
@@ -497,20 +486,19 @@ static Type* CInit_GetRegMemType(void) {
 
 static Object* CInit_CreateStaticData(Type* type) {
     Object* obj = CInit_CreateStaticDataObject(type, 0, NULL);
-    // 2.6 adds it
     CodeGen_UpdateObject(obj);
     CInit_DeclareData(obj, NULL, NULL, obj->type->size);
     return obj;
 }
 
-static void CInit_InitNonConst(CInit_Stuff* s, Type* type, ENode* expr) {
+static void CInit_InitNonConst(CInit_DataBuffer* db, Type* type, ENode* expr) {
     CInit_NonConst* entry;
     CInit_NonConst* scan;
     MWVector128* vec;
 
-    if (s->root->allow_nonconst || IS_TYPE_VECTOR(type)) {
+    if (db->root->allow_nonconst || IS_TYPE_VECTOR(type)) {
         if (IS_TYPE_VECTOR(type) && ENODE_IS(expr, EVECTOR128CONST)) {
-            vec = (MWVector128*)(s->buffer + s->size);
+            vec = (MWVector128*)(db->buffer + db->size);
             *vec = expr->data.vector128val;
             CMach_InitVectorMem(type, *vec, vec, TRUE);
         }
@@ -520,35 +508,35 @@ static void CInit_InitNonConst(CInit_Stuff* s, Type* type, ENode* expr) {
         entry->next = NULL;
         entry->type = type;
         entry->expr = expr;
-        entry->offset = s->offset + s->size;
-        if ((scan = s->root->nonconst)) {
+        entry->offset = db->offset + db->size;
+        if ((scan = db->root->nonconst)) {
             while (scan->next) {
                 scan = scan->next;
             }
             scan->next = entry;
         } else {
-            s->root->nonconst = entry;
+            db->root->nonconst = entry;
         }
     } else {
         CError_Error(ERR_ILLEGAL_CONSTANT_EXPRESSION);
     }
 }
 
-static CInit_Stuff* CInit_GrowBuffer(CInit_Stuff* s, SInt32 size) {
-    CInit_Stuff* newbuf;
+static CInit_DataBuffer* CInit_GrowBuffer(CInit_DataBuffer* db, SInt32 size) {
+    CInit_DataBuffer* newbuf;
 
-    newbuf = lalloc(sizeof(CInit_Stuff));
-    memclrw(newbuf, sizeof(CInit_Stuff));
-    newbuf->root = s->root;
+    newbuf = lalloc(sizeof(CInit_DataBuffer));
+    memclrw(newbuf, sizeof(CInit_DataBuffer));
+    newbuf->root = db->root;
     newbuf->buffer = lalloc(size);
-    newbuf->offset = s->offset + s->size;
+    newbuf->offset = db->offset + db->size;
     newbuf->bufferSize = size;
-    s->next = newbuf;
+    db->next = newbuf;
     memset(newbuf->buffer, 0, newbuf->bufferSize);
     return newbuf;
 }
 
-Boolean CInit_RelocInitCheck(ENode* expr, Object** objptr, CInt64* valptr, Boolean flag) {
+Boolean CInit_RelocInitCheck(ENode* expr, Object** objptr, CInt64* valptr, Boolean allowLocal) {
     Object* objcheck1;
     Object* objcheck2;
     CInt64 valcheck1;
@@ -565,7 +553,7 @@ Boolean CInit_RelocInitCheck(ENode* expr, Object** objptr, CInt64* valptr, Boole
                 return TRUE;
             case EOBJREF:
                 objcheck1 = CInit_GetInitObject(expr->data.objref);
-                if (objcheck1->datatype == DLOCAL && !flag) {
+                if (objcheck1->datatype == DLOCAL && !allowLocal) {
                     return FALSE;
                 }
                 *objptr = objcheck1;
@@ -585,10 +573,14 @@ Boolean CInit_RelocInitCheck(ENode* expr, Object** objptr, CInt64* valptr, Boole
                 } while (ENODE_IS(expr, ETYPCON));
                 continue;
             case EADD:
-                if (!CInit_RelocInitCheck(expr->data.diadic.left, &objcheck1, &valcheck1, flag)) {
+                if (!CInit_RelocInitCheck(
+                        expr->data.diadic.left, &objcheck1, &valcheck1, allowLocal
+                    )) {
                     return FALSE;
                 }
-                if (!CInit_RelocInitCheck(expr->data.diadic.right, &objcheck2, &valcheck2, flag)) {
+                if (!CInit_RelocInitCheck(
+                        expr->data.diadic.right, &objcheck2, &valcheck2, allowLocal
+                    )) {
                     return FALSE;
                 }
 
@@ -604,10 +596,14 @@ Boolean CInit_RelocInitCheck(ENode* expr, Object** objptr, CInt64* valptr, Boole
                 *valptr = CMach_CalcIntDiadic(TYPE(&stunsignedlong), valcheck1, '+', valcheck2);
                 return TRUE;
             case ESUB:
-                if (!CInit_RelocInitCheck(expr->data.diadic.left, &objcheck1, &valcheck1, flag)) {
+                if (!CInit_RelocInitCheck(
+                        expr->data.diadic.left, &objcheck1, &valcheck1, allowLocal
+                    )) {
                     return FALSE;
                 }
-                if (!CInit_RelocInitCheck(expr->data.diadic.right, &objcheck2, &valcheck2, flag)) {
+                if (!CInit_RelocInitCheck(
+                        expr->data.diadic.right, &objcheck2, &valcheck2, allowLocal
+                    )) {
                     return FALSE;
                 }
 
@@ -624,7 +620,9 @@ Boolean CInit_RelocInitCheck(ENode* expr, Object** objptr, CInt64* valptr, Boole
     }
 }
 
-static void CInit_InitTypePointer(CInit_Stuff* s, ENode* expr, TypePointer* tptr, UInt32 qual) {
+static void CInit_InitTypePointer(
+    CInit_DataBuffer* db, ENode* expr, TypePointer* tptr, UInt32 qual
+) {
     Object* obj;
     CInt64 val;
     OLinkList* list;
@@ -634,44 +632,43 @@ static void CInit_InitTypePointer(CInit_Stuff* s, ENode* expr, TypePointer* tptr
         if (CInit_RelocInitCheck(expr, &obj, &val, FALSE)) {
             if (obj) {
                 list = lalloc(sizeof(OLinkList));
-                list->next = s->root->list;
+                list->next = db->root->list;
                 list->obj = obj;
                 list->addend = CInt64_GetULong(&val);
-                list->offset = s->offset + s->size;
-                s->root->list = list;
+                list->offset = db->offset + db->size;
+                db->root->list = list;
             } else {
-                CMach_InitIntMem(TYPE(&stunsignedlong), val, s->buffer + s->size);
+                CMach_InitIntMem(TYPE(&stunsignedlong), val, db->buffer + db->size);
             }
         } else {
-            CInit_InitNonConst(s, TYPE(tptr), expr);
+            CInit_InitNonConst(db, TYPE(tptr), expr);
         }
     } else {
         CError_Error(ERR_ILLEGAL_INITIALIZATION);
     }
 }
 
-static void CInit_InitTypeInt(CInit_Stuff* s, ENode* expr, TypeIntegral* tint, UInt32 qual) {
+static void CInit_InitTypeInt(CInit_DataBuffer* db, ENode* expr, TypeIntegral* tint, UInt32 qual) {
     expr = CExpr_AssignmentPromotion(expr, TYPE(tint), qual & (Q_CONST | Q_VOLATILE), TRUE);
     if (IS_TYPE_INT(expr->rtype)) {
         if (ENODE_IS(expr, EINTCONST)) {
-            CMach_InitIntMem(TYPE(tint), expr->data.intval, s->buffer + s->size);
+            CMach_InitIntMem(TYPE(tint), expr->data.intval, db->buffer + db->size);
         } else if (ENODE_IS(expr, ETYPCON) &&
                    IS_TYPE_POINTER_ONLY(expr->data.monadic->rtype) &&
-                   expr->rtype->size ==
-                   4 &&
+                   expr->rtype->size == 4 &&
                    (copts.cplusplus || !copts.ANSIstrict)) {
             CInit_InitTypePointer(
-                s, expr->data.monadic, TYPE_POINTER(expr->data.monadic->rtype), qual
+                db, expr->data.monadic, TYPE_POINTER(expr->data.monadic->rtype), qual
             );
         } else {
-            CInit_InitNonConst(s, TYPE(tint), expr);
+            CInit_InitNonConst(db, TYPE(tint), expr);
         }
     } else {
         CError_Error(ERR_ILLEGAL_INITIALIZATION);
     }
 }
 
-static void CInit_InitTypeFloat(CInit_Stuff* s, ENode* expr, TypeIntegral* tint, UInt32 qual) {
+static void CInit_InitTypeFloat(CInit_DataBuffer* s, ENode* expr, TypeIntegral* tint, UInt32 qual) {
     expr = CExpr_AssignmentPromotion(expr, TYPE(tint), qual & (Q_CONST | Q_VOLATILE), TRUE);
     if (IS_TYPE_FLOAT(expr->rtype)) {
         if (ENODE_IS(expr, EFLOATCONST)) {
@@ -684,13 +681,13 @@ static void CInit_InitTypeFloat(CInit_Stuff* s, ENode* expr, TypeIntegral* tint,
     }
 }
 
-static void CInit_InitTypeEnum(CInit_Stuff* s, ENode* expr, TypeEnum* tenum, UInt32 qual) {
+static void CInit_InitTypeEnum(CInit_DataBuffer* db, ENode* expr, TypeEnum* tenum, UInt32 qual) {
     expr = CExpr_AssignmentPromotion(expr, TYPE(tenum), qual & (Q_CONST | Q_VOLATILE), TRUE);
     if (IS_TYPE_ENUM(expr->rtype)) {
         if (ENODE_IS(expr, EINTCONST)) {
-            CMach_InitIntMem(tenum->enumtype, expr->data.intval, s->buffer + s->size);
+            CMach_InitIntMem(tenum->enumtype, expr->data.intval, db->buffer + db->size);
         } else {
-            CInit_InitNonConst(s, TYPE(tenum), expr);
+            CInit_InitNonConst(db, TYPE(tenum), expr);
         }
     } else {
         CError_Error(ERR_ILLEGAL_INITIALIZATION);
@@ -698,13 +695,13 @@ static void CInit_InitTypeEnum(CInit_Stuff* s, ENode* expr, TypeEnum* tenum, UIn
 }
 
 static void CInit_InitTypeMemberPointer(
-    CInit_Stuff* s, ENode* expr, TypeMemberPointer* tmptr, UInt32 qual
+    CInit_DataBuffer* db, ENode* expr, TypeMemberPointer* tmptr, UInt32 qual
 ) {
     expr = CExpr_AssignmentPromotion(expr, TYPE(tmptr), qual & (Q_CONST | Q_VOLATILE), TRUE);
     if (ENODE_IS(expr, EINTCONST)) {
-        CMach_InitIntMem(TYPE(&stsignedlong), expr->data.intval, s->buffer + s->size);
+        CMach_InitIntMem(TYPE(&stsignedlong), expr->data.intval, db->buffer + db->size);
     } else {
-        CInit_InitNonConst(s, TYPE(tmptr), expr);
+        CInit_InitNonConst(db, TYPE(tmptr), expr);
     }
 }
 
@@ -733,7 +730,7 @@ static void CInit_SetBitfield(TypeBitfield* tbitfield, UInt8* buffer, CInt64 val
 }
 
 static void CInit_InitTypeBitfield(
-    CInit_Stuff* s, ENode* expr, TypeBitfield* tbitfield, UInt32 qual
+    CInit_DataBuffer* db, ENode* expr, TypeBitfield* tbitfield, UInt32 qual
 ) {
     Type* inner;
 
@@ -745,9 +742,9 @@ static void CInit_InitTypeBitfield(
 
     if (IS_TYPE_INT(expr->rtype)) {
         if (ENODE_IS(expr, EINTCONST)) {
-            CInit_SetBitfield(tbitfield, (UInt8*)s->buffer + s->size, expr->data.intval);
+            CInit_SetBitfield(tbitfield, (UInt8*)db->buffer + db->size, expr->data.intval);
         } else {
-            CInit_InitNonConst(s, TYPE(tbitfield), expr);
+            CInit_InitNonConst(db, TYPE(tbitfield), expr);
         }
     } else {
         CError_Error(ERR_ILLEGAL_INITIALIZATION);
@@ -755,12 +752,12 @@ static void CInit_InitTypeBitfield(
 }
 
 static void CInit_InitTypeArray(
-    CInit_Stuff* s, CInit_Stuff2* s2, TypePointer* tptr, UInt32 qual, Boolean errorflag
+    CInit_DataBuffer* db, CInit_ParseState* ps, TypePointer* tptr, UInt32 qual, Boolean errorflag
 ) {
     SInt32 targetsize;
     SInt32 start;
     SInt32 i;
-    Boolean flag;
+    Boolean braced;
     Boolean is_zero_size;
     SInt32 size;
     Boolean is_char_ptr;
@@ -774,10 +771,10 @@ static void CInit_InitTypeArray(
 
     is_char_ptr = IS_TYPE_INT(tptr->target) && (tptr->target->size == 1);
     is_wchar_ptr = IS_TYPE_INT(tptr->target) && (tptr->target->size == stwchar.size);
-    switch (s2->stage) {
-        case Stage1:
-            flag = TRUE;
-            if (CInit_ParseNextInit(s2) == Stage3) {
+    switch (ps->stage) {
+        case StageOpen:
+            braced = TRUE;
+            if (CInit_ParseNextInit(ps) == StageClose) {
                 if (is_zero_size) {
                     CError_Error(ERR_ILLEGAL_INITIALIZATION);
                 }
@@ -785,82 +782,86 @@ static void CInit_InitTypeArray(
                 return;
             }
             break;
-        case Stage2:
-            flag = FALSE;
+        case StageExpr:
+            braced = FALSE;
+            break;
+        default:
             break;
     }
-    switch (s2->stage) {
-        case Stage1:
-        case Stage2:
+    switch (ps->stage) {
+        case StageOpen:
+        case StageExpr:
             break;
         default:
             CError_Error(ERR_ILLEGAL_INITIALIZATION);
             return;
     }
 
-    if (s2->stage == Stage2) {
-        s2->expr = pointer_generation(s2->expr);
+    if (ps->stage == StageExpr) {
+        ps->expr = pointer_generation(ps->expr);
     }
 
-    if (s2->stage == Stage2 && ENODE_IS(s2->expr, ESTRINGCONST) && (is_char_ptr || is_wchar_ptr)) {
-        if (IS_TYPE_POINTER_ONLY(s2->expr->rtype) &&
-            tptr->target->size != TYPE_POINTER(s2->expr->rtype)->target->size) {
+    if (ps->stage == StageExpr &&
+        ENODE_IS(ps->expr, ESTRINGCONST) &&
+        (is_char_ptr || is_wchar_ptr)) {
+        if (IS_TYPE_POINTER_ONLY(ps->expr->rtype) &&
+            tptr->target->size != TYPE_POINTER(ps->expr->rtype)->target->size) {
             CError_Warning(ERR_ILLEGAL_INITIALIZATION);
         }
-        size = s2->expr->data.string.size;
+        size = ps->expr->data.string.size;
         if (is_zero_size) {
-            tptr->size = s2->expr->data.string.size;
-            if (s->bufferSize < size) {
-                s = CInit_GrowBuffer(s, size);
+            tptr->size = ps->expr->data.string.size;
+            if (db->bufferSize < size) {
+                db = CInit_GrowBuffer(db, size);
             }
-            memcpy(s->buffer, s2->expr->data.string.data, size);
-            s->size = size;
+            memcpy(db->buffer, ps->expr->data.string.data, size);
+            db->size = size;
         } else {
-            if (s2->expr->data.string.size > tptr->size) {
-                if (copts.cplusplus || (s2->expr->data.string.size - 1) > tptr->size) {
+            if (ps->expr->data.string.size > tptr->size) {
+                if (copts.cplusplus || (ps->expr->data.string.size - 1) > tptr->size) {
                     CError_Error(ERR_TOO_MANY_INITIALIZERS);
                 }
-                s2->expr->data.string.size = tptr->size;
+                ps->expr->data.string.size = tptr->size;
                 size = tptr->size;
             }
-            memcpy(s->buffer + s->size, s2->expr->data.string.data, size);
+            memcpy(db->buffer + db->size, ps->expr->data.string.data, size);
         }
     } else {
-        if (!flag && errorflag) {
+        if (!braced && errorflag) {
             CError_Error(ERR_ILLEGAL_INITIALIZATION);
             return;
         }
 
-        start = s->size;
+        start = db->size;
         i = 0;
         while (1) {
             if (is_zero_size) {
                 size = (i + 1) * targetsize;
-                s->size = start + size - targetsize - s->offset;
-                if (s->size + targetsize > s->bufferSize) {
-                    s = CInit_GrowBuffer(s, targetsize * 16);
+                db->size = start + size - targetsize - db->offset;
+                if (db->size + targetsize > db->bufferSize) {
+                    db = CInit_GrowBuffer(db, targetsize * 16);
                 }
-                CInit_InitType(s, s2, tptr->target, qual, FALSE);
+                CInit_InitType(db, ps, tptr->target, qual, FALSE);
                 tptr->size = size;
-                s->size = start + size - s->offset;
+                db->size = start + size - db->offset;
             } else {
                 if (tptr->size <= i * targetsize) {
                     i--;
                     CError_Error(ERR_TOO_MANY_INITIALIZERS);
                 }
-                s->size = start + i * targetsize;
-                CInit_InitType(s, s2, tptr->target, qual, FALSE);
-                if (!flag && tptr->size <= (i + 1) * targetsize) {
+                db->size = start + i * targetsize;
+                CInit_InitType(db, ps, tptr->target, qual, FALSE);
+                if (!braced && tptr->size <= (i + 1) * targetsize) {
                     break;
                 }
             }
 
-            switch (CInit_ParseNextInit(s2)) {
-                case Stage1:
-                case Stage2:
+            switch (CInit_ParseNextInit(ps)) {
+                case StageOpen:
+                case StageExpr:
                     break;
-                case Stage3:
-                    if (flag) {
+                case StageClose:
+                    if (braced) {
                         tk = lex();
                     }
                     return;
@@ -873,12 +874,12 @@ static void CInit_InitTypeArray(
         }
     }
 
-    if (flag) {
-        switch (CInit_ParseNextInit(s2)) {
-            case Stage3:
+    if (braced) {
+        switch (CInit_ParseNextInit(ps)) {
+            case StageClose:
                 tk = lex();
                 return;
-            case Stage2:
+            case StageExpr:
                 CError_Error(ERR_TOO_MANY_INITIALIZERS);
                 return;
             default:
@@ -889,18 +890,22 @@ static void CInit_InitTypeArray(
 }
 
 static void CInit_InitTypeStruct(
-    CInit_Stuff* s, CInit_Stuff2* s2, const TypeStruct* tstruct, UInt32 qual, Boolean errorflag
+    CInit_DataBuffer* db,
+    CInit_ParseState* ps,
+    const TypeStruct* tstruct,
+    UInt32 qual,
+    Boolean errorflag
 ) {
     StructMember* member;
     SInt32 start;
-    Boolean flag;
+    Boolean braced;
     SInt32 count;
     TypePointer arraytype;
     int i;
 
     count = 0;
-    if (s2->type) {
-        tstruct = TYPE_STRUCT(s2->type);
+    if (ps->type) {
+        tstruct = TYPE_STRUCT(ps->type);
     }
 
     if (!(member = tstruct->members)) {
@@ -908,39 +913,41 @@ static void CInit_InitTypeStruct(
         return;
     }
 
-    switch (s2->stage) {
-        case Stage1:
-            flag = TRUE;
-            if (CInit_ParseNextInit(s2) == Stage3) {
+    switch (ps->stage) {
+        case StageOpen:
+            braced = TRUE;
+            if (CInit_ParseNextInit(ps) == StageClose) {
                 tk = lex();
                 return;
             }
             break;
-        case Stage2:
-            flag = FALSE;
+        case StageExpr:
+            braced = FALSE;
+            break;
+        default:
             break;
     }
 
-    switch (s2->stage) {
-        case Stage1:
-        case Stage2:
+    switch (ps->stage) {
+        case StageOpen:
+        case StageExpr:
             break;
         default:
             CError_Error(ERR_ILLEGAL_INITIALIZATION);
             return;
     }
 
-    if (!flag && s2->stage == Stage2 && (errorflag || s2->expr->rtype == TYPE(tstruct))) {
-        s2->expr = CExpr_AssignmentPromotion(s2->expr, TYPE(tstruct), qual, TRUE);
-        if (IS_TYPE_STRUCT(s2->expr->rtype)) {
-            CInit_InitNonConst(s, TYPE(tstruct), s2->expr);
+    if (!braced && ps->stage == StageExpr && (errorflag || ps->expr->rtype == TYPE(tstruct))) {
+        ps->expr = CExpr_AssignmentPromotion(ps->expr, TYPE(tstruct), qual, TRUE);
+        if (IS_TYPE_STRUCT(ps->expr->rtype)) {
+            CInit_InitNonConst(db, TYPE(tstruct), ps->expr);
         }
         return;
     }
 
-    start = s->size;
+    start = db->size;
     while (1) {
-        s->size = start + member->offset;
+        db->size = start + member->offset;
         if (!member->type->size) {
             if (!errorflag || !IS_TYPE_ARRAY(member->type)) {
                 CError_Error(ERR_TOO_MANY_INITIALIZERS);
@@ -950,15 +957,15 @@ static void CInit_InitTypeStruct(
             }
 
             arraytype = *TYPE_POINTER(member->type);
-            CInit_InitTypeArray(s, s2, &arraytype, member->qual, TRUE);
-            s->flexsize = arraytype.size;
+            CInit_InitTypeArray(db, ps, &arraytype, member->qual, TRUE);
+            db->flexsize = arraytype.size;
         } else {
-            CInit_InitType(s, s2, member->type, member->qual, FALSE);
+            CInit_InitType(db, ps, member->type, member->qual, FALSE);
         }
 
         count++;
-        if (IS_TYPESTRUCT_VECTOR(tstruct) && s2->expr) {
-            CError_ASSERT(1218, !ENODE_IS(s2->expr, EVECTOR128CONST));
+        if (IS_TYPESTRUCT_VECTOR(tstruct) && ps->expr) {
+            CError_ASSERT(1218, !ENODE_IS(ps->expr, EVECTOR128CONST));
         }
 
         do {
@@ -966,20 +973,20 @@ static void CInit_InitTypeStruct(
         } while (member && (member->qual & Q_WEAK));
 
         if (!member || tstruct->stype == STRUCT_TYPE_UNION) {
-            if (flag) {
-                switch (CInit_ParseNextInit(s2)) {
-                    case Stage3:
+            if (braced) {
+                switch (CInit_ParseNextInit(ps)) {
+                    case StageClose:
                         if (IS_TYPESTRUCT_VECTOR(tstruct)) {
                             CMach_InitVectorMem(
                                 TYPE(tstruct),
-                                *(MWVector128*)(s->buffer + start),
-                                (MWVector128*)(s->buffer + start),
+                                *(MWVector128*)(db->buffer + start),
+                                (MWVector128*)(db->buffer + start),
                                 FALSE
                             );
                         }
                         tk = lex();
                         return;
-                    case Stage2:
+                    case StageExpr:
                         CError_Error(ERR_TOO_MANY_INITIALIZERS);
                         return;
                     default:
@@ -989,12 +996,12 @@ static void CInit_InitTypeStruct(
             }
             return;
         } else {
-            switch (CInit_ParseNextInit(s2)) {
-                case Stage1:
-                case Stage2:
+            switch (CInit_ParseNextInit(ps)) {
+                case StageOpen:
+                case StageExpr:
                     continue;
-                case Stage3:
-                    if (flag) {
+                case StageClose:
+                    if (braced) {
                         tk = lex();
                     }
                     if (IS_TYPESTRUCT_VECTOR(tstruct)) {
@@ -1005,7 +1012,7 @@ static void CInit_InitTypeStruct(
                                 if (count != 16) {
                                     if (count == 1) {
                                         UInt8 *p, val;
-                                        p = (UInt8*)s->buffer;
+                                        p = (UInt8*)db->buffer;
                                         val = p[0];
                                         for (i = 1; i < 16; i++) {
                                             p[i] = val;
@@ -1022,7 +1029,7 @@ static void CInit_InitTypeStruct(
                                 if (count != 8) {
                                     if (count == 1) {
                                         SInt16 *p, val;
-                                        p = (SInt16*)s->buffer;
+                                        p = (SInt16*)db->buffer;
                                         val = p[0];
                                         for (i = 1; i < 8; i++) {
                                             p[i] = val;
@@ -1039,7 +1046,7 @@ static void CInit_InitTypeStruct(
                                 if (count != 4) {
                                     if (count == 1) {
                                         UInt32 *p, val;
-                                        p = (UInt32*)s->buffer;
+                                        p = (UInt32*)db->buffer;
                                         val = p[0];
                                         for (i = 1; i < 4; i++) {
                                             p[i] = val;
@@ -1082,12 +1089,12 @@ static ObjMemberVar* CInit_FindNextMember(ObjMemberVar* ivar) {
 }
 
 static void CInit_InitTypeClass(
-    CInit_Stuff* s, CInit_Stuff2* s2, TypeClass* tclass, UInt32 qual, Boolean errorflag
+    CInit_DataBuffer* db, CInit_ParseState* ps, TypeClass* tclass, UInt32 qual, Boolean errorflag
 ) {
     ObjMemberVar* ivar;
     SInt32 start;
-    Boolean flag;
-    SInt32 last_offset;
+    Boolean braced;
+    UInt32 last_offset;
     TypePointer arraytype;
 
     if (tclass->bases || tclass->vtable) {
@@ -1095,38 +1102,38 @@ static void CInit_InitTypeClass(
         return;
     }
 
-    switch (s2->stage) {
-        case Stage1:
-            flag = TRUE;
-            if (CInit_ParseNextInit(s2) == Stage3) {
+    switch (ps->stage) {
+        case StageOpen:
+            braced = TRUE;
+            if (CInit_ParseNextInit(ps) == StageClose) {
                 tk = lex();
                 return;
             }
             break;
-        case Stage2:
-            flag = FALSE;
+        case StageExpr:
+            braced = FALSE;
+            break;
+        default:
             break;
     }
 
-    switch (s2->stage) {
-        case Stage1:
-        case Stage2:
+    switch (ps->stage) {
+        case StageOpen:
+        case StageExpr:
             break;
         default:
             CError_Error(ERR_ILLEGAL_INITIALIZATION);
             return;
     }
 
-    if (!flag &&
-        s2->stage ==
-        Stage2 &&
+    if (!braced &&
+        ps->stage == StageExpr &&
         (errorflag ||
-         s2->expr->rtype ==
-         TYPE(tclass) ||
-         CExpr_CanImplicitlyConvert(s2->expr, TYPE(tclass), 0))) {
-        s2->expr = CExpr_AssignmentPromotion(s2->expr, TYPE(tclass), qual, TRUE);
-        if (IS_TYPE_CLASS(s2->expr->rtype)) {
-            CInit_InitNonConst(s, TYPE(tclass), s2->expr);
+         ps->expr->rtype == TYPE(tclass) ||
+         CExpr_CanImplicitlyConvert(ps->expr, TYPE(tclass), 0))) {
+        ps->expr = CExpr_AssignmentPromotion(ps->expr, TYPE(tclass), qual, TRUE);
+        if (IS_TYPE_CLASS(ps->expr->rtype)) {
+            CInit_InitNonConst(db, TYPE(tclass), ps->expr);
         }
         return;
     }
@@ -1142,9 +1149,9 @@ static void CInit_InitTypeClass(
         CError_Error(ERR_TOO_MANY_INITIALIZERS);
         return;
     }
-    start = s->size;
+    start = db->size;
     while (1) {
-        s->size = start + ivar->offset;
+        db->size = start + ivar->offset;
         if (!ivar->type->size) {
             if (!errorflag || !IS_TYPE_ARRAY(ivar->type)) {
                 CError_Error(ERR_TOO_MANY_INITIALIZERS);
@@ -1154,21 +1161,21 @@ static void CInit_InitTypeClass(
             }
 
             arraytype = *TYPE_POINTER(ivar->type);
-            CInit_InitTypeArray(s, s2, &arraytype, ivar->qual, TRUE);
-            s->flexsize = arraytype.size;
+            CInit_InitTypeArray(db, ps, &arraytype, ivar->qual, TRUE);
+            db->flexsize = arraytype.size;
         } else {
-            CInit_InitType(s, s2, ivar->type, ivar->qual, FALSE);
+            CInit_InitType(db, ps, ivar->type, ivar->qual, FALSE);
         }
 
         last_offset = ivar->offset;
         if (!(ivar = CInit_FindNextMember(ivar)) ||
             (tclass->mode == CLASS_MODE_UNION && ivar->offset == last_offset)) {
-            if (flag) {
-                switch (CInit_ParseNextInit(s2)) {
-                    case Stage3:
+            if (braced) {
+                switch (CInit_ParseNextInit(ps)) {
+                    case StageClose:
                         tk = lex();
                         return;
-                    case Stage2:
+                    case StageExpr:
                         CError_Error(ERR_TOO_MANY_INITIALIZERS);
                         return;
                     default:
@@ -1178,12 +1185,12 @@ static void CInit_InitTypeClass(
             }
             return;
         } else {
-            switch (CInit_ParseNextInit(s2)) {
-                case Stage1:
-                case Stage2:
+            switch (CInit_ParseNextInit(ps)) {
+                case StageOpen:
+                case StageExpr:
                     continue;
-                case Stage3:
-                    if (flag) {
+                case StageClose:
+                    if (braced) {
                         tk = lex();
                     }
                     return;
@@ -1196,9 +1203,9 @@ static void CInit_InitTypeClass(
 }
 
 static void CInit_InitType(
-    CInit_Stuff* s, CInit_Stuff2* s2, Type* type, UInt32 qual, Boolean errorflag
+    CInit_DataBuffer* db, CInit_ParseState* ps, Type* type, UInt32 qual, Boolean errorflag
 ) {
-    Boolean flag;
+    Boolean braced;
 
     switch (type->type) {
         case TYPEVOID:
@@ -1210,49 +1217,51 @@ static void CInit_InitType(
         case TYPEBITFIELD:
         case TYPEMEMBERPOINTER:
         case TYPEPOINTER:
-            switch (s2->stage) {
-                case Stage1:
-                    flag = TRUE;
-                    CInit_ParseNextInit(s2);
+            switch (ps->stage) {
+                case StageOpen:
+                    braced = TRUE;
+                    CInit_ParseNextInit(ps);
                     break;
-                case Stage2:
-                    flag = FALSE;
+                case StageExpr:
+                    braced = FALSE;
+                    break;
+                default:
                     break;
             }
-            if (s2->stage != Stage2) {
+            if (ps->stage != StageExpr) {
                 CError_Error(ERR_ILLEGAL_INITIALIZATION);
                 return;
             }
 
             switch (type->type) {
                 case TYPEINT:
-                    CInit_InitTypeInt(s, s2->expr, TYPE_INTEGRAL(type), qual);
+                    CInit_InitTypeInt(db, ps->expr, TYPE_INTEGRAL(type), qual);
                     break;
                 case TYPEFLOAT:
-                    CInit_InitTypeFloat(s, s2->expr, TYPE_INTEGRAL(type), qual);
+                    CInit_InitTypeFloat(db, ps->expr, TYPE_INTEGRAL(type), qual);
                     break;
                 case TYPEENUM:
-                    CInit_InitTypeEnum(s, s2->expr, TYPE_ENUM(type), qual);
+                    CInit_InitTypeEnum(db, ps->expr, TYPE_ENUM(type), qual);
                     break;
                 case TYPEPOINTER:
-                    CInit_InitTypePointer(s, s2->expr, TYPE_POINTER(type), qual);
+                    CInit_InitTypePointer(db, ps->expr, TYPE_POINTER(type), qual);
                     break;
                 case TYPEMEMBERPOINTER:
-                    CInit_InitTypeMemberPointer(s, s2->expr, TYPE_MEMBER_POINTER(type), qual);
+                    CInit_InitTypeMemberPointer(db, ps->expr, TYPE_MEMBER_POINTER(type), qual);
                     break;
                 case TYPEBITFIELD:
-                    CInit_InitTypeBitfield(s, s2->expr, TYPE_BITFIELD(type), qual);
+                    CInit_InitTypeBitfield(db, ps->expr, TYPE_BITFIELD(type), qual);
                     break;
                 default:
                     CError_FATAL(1542);
             }
 
-            if (flag) {
-                switch (CInit_ParseNextInit(s2)) {
-                    case Stage3:
+            if (braced) {
+                switch (CInit_ParseNextInit(ps)) {
+                    case StageClose:
                         tk = lex();
                         break;
-                    case Stage2:
+                    case StageExpr:
                         CError_Error(ERR_TOO_MANY_INITIALIZERS);
                         break;
                     default:
@@ -1261,79 +1270,79 @@ static void CInit_InitType(
             }
             break;
         case TYPESTRUCT:
-            CInit_InitTypeStruct(s, s2, TYPE_STRUCT(type), qual, errorflag);
+            CInit_InitTypeStruct(db, ps, TYPE_STRUCT(type), qual, errorflag);
             break;
         case TYPEARRAY:
-            CInit_InitTypeArray(s, s2, TYPE_POINTER(type), qual, errorflag);
+            CInit_InitTypeArray(db, ps, TYPE_POINTER(type), qual, errorflag);
             break;
         case TYPECLASS:
-            CInit_InitTypeClass(s, s2, TYPE_CLASS(type), qual, errorflag);
+            CInit_InitTypeClass(db, ps, TYPE_CLASS(type), qual, errorflag);
             break;
         default:
             CError_FATAL(1573);
     }
 }
 
-static void CInit_InitData(CInit_Stuff* s, Type* type, UInt32 qual, Boolean flag) {
-    CInit_Stuff2 s2;
+static void CInit_InitData(CInit_DataBuffer* db, Type* type, UInt32 qual, Boolean allowNonConst) {
+    CInit_ParseState ps;
     SInt32 size;
-    CInit_Stuff* tmp;
-    char* buffer;
+    CInit_DataBuffer* chunk;
+    char* joined;
 
     locklheap();
-    memclrw(s, sizeof(CInit_Stuff));
-    s->root = s;
+    memclrw(db, sizeof(CInit_DataBuffer));
+    db->root = db;
     if (type->size == 0) {
         if (IS_TYPE_ARRAY(type)) {
-            s->bufferSize = 16 * TYPE_POINTER(type)->target->size;
+            db->bufferSize = 16 * TYPE_POINTER(type)->target->size;
         } else {
             CError_Error(ERR_DATA_TYPE_INCOMPLETE);
         }
     } else {
-        s->bufferSize = type->size;
+        db->bufferSize = type->size;
     }
 
-    s->buffer = lalloc(s->bufferSize);
-    memset(s->buffer, 0, s->bufferSize);
-    s->allow_nonconst = flag;
+    db->buffer = lalloc(db->bufferSize);
+    memset(db->buffer, 0, db->bufferSize);
+    db->allow_nonconst = allowNonConst;
 
-    s2.stage = Stage0;
-    s2.is_vector = FALSE;
+    ps.stage = StageStart;
+    ps.is_vector = FALSE;
     if (IS_TYPE_VECTOR(type)) {
-        s2.is_vector = TRUE;
-        s->allow_nonconst = TRUE;
+        ps.is_vector = TRUE;
+        db->allow_nonconst = TRUE;
     }
     if (IS_TYPE_ARRAY(type) && IS_TYPE_VECTOR(TYPE_POINTER(type)->target)) {
-        s->allow_nonconst = TRUE;
+        db->allow_nonconst = TRUE;
     }
 
-    s2.type = NULL;
-    s2.parens = 0;
-    CInit_ParseNextInit(&s2);
-    CInit_InitType(s, &s2, type, qual, TRUE);
+    ps.type = NULL;
+    ps.parens = 0;
+    CInit_ParseNextInit(&ps);
+    CInit_InitType(db, &ps, type, qual, TRUE);
 
-    if ((size = type->size + s->flexsize)) {
-        if (s->next) {
-            buffer = lalloc(size);
-            for (tmp = s; tmp; tmp = tmp->next) {
-                CError_ASSERT(1647, (tmp->offset + tmp->size) <= size);
-                memcpy(buffer + tmp->offset, tmp->buffer, tmp->size);
+    if ((size = type->size + db->flexsize)) {
+        if (db->next) {
+            joined = lalloc(size);
+            for (chunk = db; chunk; chunk = chunk->next) {
+                CError_ASSERT(1647, (chunk->offset + chunk->size) <= size);
+                memcpy(joined + chunk->offset, chunk->buffer, chunk->size);
             }
-            s->buffer = buffer;
+            db->buffer = joined;
         }
     } else {
         CError_Error(ERR_ILLEGAL_INITIALIZATION);
     }
 
-    s->size = size;
-    s->next = NULL;
+    db->size = size;
+    db->next = NULL;
     unlocklheap();
 }
 
 static ENode* CInit_InitConcat(ENode* prev, ENode* base, SInt32 offset, Type* type, ENode* value) {
     ENode* assign;
     ENode* addr;
-    ENode* tmp;
+    ENode* lvalue;
 
     addr = lalloc(sizeof(ENode));
     *addr = *base;
@@ -1342,16 +1351,16 @@ static ENode* CInit_InitConcat(ENode* prev, ENode* base, SInt32 offset, Type* ty
     }
 
     if (IS_TYPE_BITFIELD(type)) {
-        tmp = makemonadicnode(addr, EBITFIELD);
-        tmp->rtype = type;
-        tmp = makemonadicnode(tmp, EINDIRECT);
-        tmp->rtype = TYPE_BITFIELD(type)->bitfieldtype;
+        lvalue = makemonadicnode(addr, EBITFIELD);
+        lvalue->rtype = type;
+        lvalue = makemonadicnode(lvalue, EINDIRECT);
+        lvalue->rtype = TYPE_BITFIELD(type)->bitfieldtype;
     } else {
-        tmp = makemonadicnode(addr, EINDIRECT);
-        tmp->rtype = type;
+        lvalue = makemonadicnode(addr, EINDIRECT);
+        lvalue->rtype = type;
     }
 
-    assign = makediadicnode(tmp, value, EASS);
+    assign = makediadicnode(lvalue, value, EASS);
     if (!prev) {
         return assign;
     } else {
@@ -1379,7 +1388,7 @@ static ENode* CInit_RegisterDtorObject(Type* type, Object* dtor, ENode* objexpr)
     expr->data.funccall.args->node = objexpr;
     expr->data.funccall.args->next = lalloc(sizeof(ENodeList));
     expr->data.funccall.args->next->node =
-        create_objectrefnode(CABI_GetDestructorObject(dtor, CABIDestroy1));
+        create_objectrefnode(CABI_GetDestructorObject(dtor, CABIDestroyComplete));
     expr->data.funccall.args->next->next = lalloc(sizeof(ENodeList));
     expr->data.funccall.args->next->next->node =
         create_objectrefnode(CInit_CreateStaticData(CInit_GetRegMemType()));
@@ -1389,7 +1398,7 @@ static ENode* CInit_RegisterDtorObject(Type* type, Object* dtor, ENode* objexpr)
 }
 
 static Boolean CInit_ConstructGlobalObject(
-    Object* obj, TypeClass* tclass, ENode* valueexpr, SInt32 offset, Boolean flag
+    Object* obj, TypeClass* tclass, ENode* valueexpr, SInt32 offset, Boolean parseInit
 ) {
     NameSpaceObjectList* ctor;
     Object* dtor;
@@ -1403,11 +1412,11 @@ static Boolean CInit_ConstructGlobalObject(
         return FALSE;
     }
 
-    if (flag && !ctor && tk == '=' && lookahead() == '{') {
+    if (parseInit && !ctor && tk == '=' && lookahead() == '{') {
         return FALSE;
     }
 
-    if (flag && tk == '(') {
+    if (parseInit && tk == '(') {
         tk = lex();
         list = CExpr_ScanExpressionList(TRUE);
         if (tk == ')') {
@@ -1467,7 +1476,7 @@ static Boolean CInit_ConstructGlobalObject(
 }
 
 static Boolean CInit_ConstructAutoObject(
-    TypeClass* tclass, ENode* expr, SInt32 offset, Boolean flag
+    TypeClass* tclass, ENode* expr, SInt32 offset, Boolean parseInit
 ) {
     ENodeList* list;
     ENode* objexpr;
@@ -1485,11 +1494,11 @@ static Boolean CInit_ConstructAutoObject(
         CClass_CheckStaticAccess(NULL, tclass, dtor->access);
     }
 
-    if (flag && !ctor && tk == '=' && lookahead() == '{') {
+    if (parseInit && !ctor && tk == '=' && lookahead() == '{') {
         return FALSE;
     }
 
-    if (flag && tk == '(') {
+    if (parseInit && tk == '(') {
         tk = lex();
         list = CExpr_ScanExpressionList(TRUE);
         if (tk == ')') {
@@ -1526,7 +1535,7 @@ static Boolean CInit_ConstructAutoObject(
             }
         } else {
             objexpr = cinit_initinfo->register_object_cb(
-                TYPE(tclass), cinit_initinfo->auto_obj, offset, 0
+                TYPE(tclass), cinit_initinfo->auto_obj, offset, FALSE
             );
         }
 
@@ -1544,7 +1553,7 @@ static Boolean CInit_ConstructAutoObject(
         }
         if (dtor) {
             objexpr = cinit_initinfo->register_object_cb(
-                TYPE(tclass), cinit_initinfo->auto_obj, offset, 0
+                TYPE(tclass), cinit_initinfo->auto_obj, offset, FALSE
             );
         }
         cinit_initinfo->insert_expr_cb(objexpr);
@@ -1588,8 +1597,7 @@ static void CInit_ExprInt(TypeIntegral* tint, ENode* expr) {
         );
     } else if (ENODE_IS(expr, ETYPCON) &&
                IS_TYPE_POINTER_ONLY(expr->data.monadic->rtype) &&
-               expr->rtype->size ==
-               4 &&
+               expr->rtype->size == 4 &&
                (copts.cplusplus || !copts.ANSIstrict)) {
         CInit_ExprPointer(TYPE_POINTER(expr->data.monadic->rtype), expr->data.monadic);
     } else if (cinit_initinfo->expr_cb) {
@@ -1716,7 +1724,7 @@ static void CInit_Bitfield(TypeBitfield* tbitfield) {
     }
 }
 
-static void CInit_Array(TypePointer* tptr, UInt32 qual, Boolean flag) {
+static void CInit_Array(TypePointer* tptr, UInt32 qual, Boolean isTopLevel) {
     SInt32 start;
     SInt32 i;
     SInt32 targetsize1;
@@ -1744,7 +1752,9 @@ static void CInit_Array(TypePointer* tptr, UInt32 qual, Boolean flag) {
     is_wchar_ptr = IS_TYPE_INT(tptr->target) && (tptr->target->size == stwchar.size);
 
     in_block = TRUE;
-    if (flag && !(tk == TK_STRING && is_char_ptr) && !(tk == TK_STRING_WIDE && is_wchar_ptr)) {
+    if (isTopLevel &&
+        !(tk == TK_STRING && is_char_ptr) &&
+        !(tk == TK_STRING_WIDE && is_wchar_ptr)) {
         if (tk != '{') {
             CError_ErrorSkip(ERR_LBRACE_EXPECTED);
             return;
@@ -1864,7 +1874,7 @@ innerloop:
     }
 }
 
-static void CInit_Struct(TypeStruct* tstruct, Boolean flag) {
+static void CInit_Struct(TypeStruct* tstruct, Boolean isTopLevel) {
     StructMember* member;
     SInt32 start;
     Boolean in_block;
@@ -1896,7 +1906,7 @@ static void CInit_Struct(TypeStruct* tstruct, Boolean flag) {
     }
 
     if (tk != '{') {
-        if (flag) {
+        if (isTopLevel) {
             CError_ErrorSkip(ERR_LBRACE_EXPECTED);
         }
         in_block = FALSE;
@@ -1950,7 +1960,7 @@ static void CInit_Struct(TypeStruct* tstruct, Boolean flag) {
     }
 }
 
-static void CInit_Class(TypeClass* tclass, Boolean flag) {
+static void CInit_Class(TypeClass* tclass, Boolean isTopLevel) {
     ObjMemberVar* ivar;
     SInt32 start;
     Boolean in_block;
@@ -2035,7 +2045,7 @@ static void CInit_Class(TypeClass* tclass, Boolean flag) {
     }
 }
 
-static void CInit_Type(Type* type, UInt32 qual, Boolean flag) {
+static void CInit_Type(Type* type, UInt32 qual, Boolean isTopLevel) {
     ENode* expr;
     ENode myexpr;
 
@@ -2063,25 +2073,25 @@ static void CInit_Type(Type* type, UInt32 qual, Boolean flag) {
             CInit_Bitfield(TYPE_BITFIELD(type));
             return;
         case TYPEARRAY:
-            CInit_Array(TYPE_POINTER(type), qual, flag);
+            CInit_Array(TYPE_POINTER(type), qual, isTopLevel);
             return;
         case TYPESTRUCT:
-            CInit_Struct(TYPE_STRUCT(type), flag);
+            CInit_Struct(TYPE_STRUCT(type), isTopLevel);
             return;
         case TYPECLASS:
-            CInit_Class(TYPE_CLASS(type), flag);
+            CInit_Class(TYPE_CLASS(type), isTopLevel);
             return;
         default:
             CError_FATAL(2482);
     }
 }
 
-static void CInit_GlobalStaticInit(Type* type, ENode* valueexpr, Boolean flag) {
+static void CInit_GlobalStaticInit(Type* type, ENode* valueexpr, Boolean isClass) {
     ENode* expr;
-    ENode* tmp;
+    ENode* lvalue;
 
     cinit_initinfo->has_runtime_init = TRUE;
-    if (flag) {
+    if (isClass) {
         CInit_ConstructGlobalObject(
             cinit_initinfo->obj, TYPE_CLASS(type), valueexpr, cinit_initinfo->expr_offset, FALSE
         );
@@ -2099,9 +2109,9 @@ static void CInit_GlobalStaticInit(Type* type, ENode* valueexpr, Boolean flag) {
             );
         }
 
-        tmp = makemonadicnode(expr, EINDIRECT);
-        tmp->rtype = type;
-        expr = makediadicnode(tmp, valueexpr, EASS);
+        lvalue = makemonadicnode(expr, EINDIRECT);
+        lvalue->rtype = type;
+        expr = makediadicnode(lvalue, valueexpr, EASS);
         if (cinit_initinfo->use_register_cb) {
             cinit_initinfo->init_expr_register_cb(expr);
         } else {
@@ -2110,12 +2120,12 @@ static void CInit_GlobalStaticInit(Type* type, ENode* valueexpr, Boolean flag) {
     }
 }
 
-static void CInit_AutoInit(Type* type, ENode* valueexpr, Boolean flag) {
+static void CInit_AutoInit(Type* type, ENode* valueexpr, Boolean isClass) {
     ENode* expr;
-    ENode* tmp;
+    ENode* lvalue;
     TypePointer* copy;
 
-    if (flag) {
+    if (isClass) {
         CInit_ConstructAutoObject(TYPE_CLASS(type), valueexpr, cinit_initinfo->expr_offset, FALSE);
     } else {
         if (IS_TYPE_ARRAY(type) && (type->size & 1)) {
@@ -2137,9 +2147,9 @@ static void CInit_AutoInit(Type* type, ENode* valueexpr, Boolean flag) {
             );
         }
 
-        tmp = makemonadicnode(expr, EINDIRECT);
-        tmp->rtype = type;
-        expr = makediadicnode(tmp, valueexpr, EASS);
+        lvalue = makemonadicnode(expr, EINDIRECT);
+        lvalue->rtype = type;
+        expr = makediadicnode(lvalue, valueexpr, EASS);
         if (!copts.cplusplus) {
             CError_Error(ERR_ILLEGAL_CONSTANT_EXPRESSION);
         }
@@ -2159,11 +2169,11 @@ static SInt32 CInit_AdjustObjectDataSize(Object* obj) {
 }
 
 static ENode* CInit_GenericData(
-    Object* obj, Type* type, UInt32 qual, ExprCB expr_cb, Boolean flag
+    Object* obj, Type* type, UInt32 qual, ExprCB expr_cb, Boolean isGlobal
 ) {
     ENode* expr;
     Object* target;
-    ENode* tmpexpr;
+    ENode* stripped;
     Type* inner;
     TypePointer* copy;
     SInt32 size;
@@ -2228,10 +2238,6 @@ static ENode* CInit_GenericData(
             if (obj->type->size != (size = cinit_initinfo->size)) {
                 CError_FATAL(2639);
             }
-            // TODO: workaround. Pro7 calls CInit_AdjustObjectDataSize(obj) (a no-op here) and passes
-            // obj->type->size; 2.6 loads the size before the push of FALSE, as for a variable. Only an
-            // assignment in the argument gives that: the plain argument, a statement before the call,
-            // the Adjust call (kept or as the argument) and IsAllZero's `size` do not.
             if (cinit_initinfo->list || !CInit_IsAllZero(cinit_initinfo->buffer, size)) {
                 CInit_DeclareData(
                     obj, cinit_initinfo->buffer, cinit_initinfo->list, size = obj->type->size
@@ -2285,30 +2291,31 @@ jump_ahead:
                         }
                         break;
                     case TYPEPOINTER:
-                        tmpexpr = expr;
-                        while (ENODE_IS(tmpexpr, ETYPCON)) {
-                            tmpexpr = tmpexpr->data.monadic;
+                        stripped = expr;
+                        while (ENODE_IS(stripped, ETYPCON)) {
+                            stripped = stripped->data.monadic;
                         }
-                        if (!ENODE_IS(tmpexpr, EINTCONST)) {
+                        if (!ENODE_IS(stripped, EINTCONST)) {
                             break;
                         }
-                        target->u.data.u.intconst = tmpexpr->data.intval;
+                        target->u.data.u.intconst = stripped->data.intval;
 inline_data:
                         target->qual |= Q_INLINE_DATA;
                         if (!obj) {
                             target->sclass = TK_STATIC;
                             target->datatype = DDATA;
                             target->u.data.linkname = CParser_AppendUniqueName(target->name->name);
-                        } else if (target->sclass !=
-                                   TK_STATIC ||
-                                   (target->flags & OBJECT_FLAGS_2)) {
+                        } else if (target->sclass != TK_STATIC ||
+                                   (target->flags & OBJECT_REFERENCED)) {
                             CInit_ExportConst(target);
                         }
                         return NULL;
+                    default:
+                        break;
                 }
             }
 
-            if (!obj || (flag && copts.cplusplus)) {
+            if (!obj || (isGlobal && copts.cplusplus)) {
                 if (obj) {
                     IsCompleteType(obj->type);
                     CError_ASSERT(2750, obj->type->size == type->size);
@@ -2381,7 +2388,6 @@ void CInit_ExportConst(Object* obj) {
     }
 }
 
-// (Pro7's; dead in 2.6 as in Pro7)
 static ENode* CInit_ClassInitLoopCallBack(ENode* expr) {
     return CExpr_ConstructObject(cinit_loop_class, expr, NULL, FALSE, TRUE, FALSE, TRUE, TRUE);
 }
@@ -2398,7 +2404,7 @@ Statement* CInit_ConstructClassArray(
     }
 
     if (dtor) {
-        dtor_expr = create_objectrefnode(CABI_GetDestructorObject(dtor, CABIDestroy1));
+        dtor_expr = create_objectrefnode(CABI_GetDestructorObject(dtor, CABIDestroyComplete));
     } else {
         dtor_expr = nullnode();
     }
@@ -2416,7 +2422,7 @@ Statement* CInit_ConstructClassArray(
     return stmt;
 }
 
-static void CInit_InitializeClassArray(Object* obj, TypeClass* tclass, Boolean flag) {
+static void CInit_InitializeClassArray(Object* obj, TypeClass* tclass, Boolean isGlobal) {
     Object* ctor;
     Object* dtor;
     SInt32 count;
@@ -2443,8 +2449,8 @@ static void CInit_InitializeClassArray(Object* obj, TypeClass* tclass, Boolean f
         ctor = NULL;
     }
 
-    if (count <= 1 || (!flag && count <= 8)) {
-        if (flag) {
+    if (count <= 1 || (!isGlobal && count <= 8)) {
+        if (isGlobal) {
             for (i = 0; i < count; i++) {
                 CInit_ConstructGlobalObject(obj, tclass, NULL, i * tclass->size, FALSE);
             }
@@ -2461,7 +2467,7 @@ static void CInit_InitializeClassArray(Object* obj, TypeClass* tclass, Boolean f
                 }
                 cinit_initinfo->insert_expr_cb(expr);
                 if (dtor) {
-                    CExcept_RegisterDestructorObject(obj, offset, dtor, 1);
+                    CExcept_RegisterDestructorObject(obj, offset, dtor, TRUE);
                 }
             }
             if (dtor) {
@@ -2471,14 +2477,15 @@ static void CInit_InitializeClassArray(Object* obj, TypeClass* tclass, Boolean f
         }
     } else {
         if (ctor) {
-            if (!flag && !dtor) {
+            if (!isGlobal && !dtor) {
                 CInit_ConstructClassArray(
                     NULL, tclass, ctor, dtor, create_objectrefnode(obj), count
                 );
                 expr = nullnode();
             } else {
                 if (dtor) {
-                    dtor_expr = create_objectrefnode(CABI_GetDestructorObject(dtor, CABIDestroy1));
+                    dtor_expr =
+                        create_objectrefnode(CABI_GetDestructorObject(dtor, CABIDestroyComplete));
                 } else {
                     dtor_expr = nullnode();
                 }
@@ -2496,7 +2503,7 @@ static void CInit_InitializeClassArray(Object* obj, TypeClass* tclass, Boolean f
             expr = nullnode();
         }
 
-        if (flag) {
+        if (isGlobal) {
             if (dtor && !copts.no_static_dtors) {
                 tfunc = galloc(sizeof(TypeFunc));
                 memclrw(tfunc, sizeof(TypeFunc));
@@ -2515,7 +2522,7 @@ static void CInit_InitializeClassArray(Object* obj, TypeClass* tclass, Boolean f
                     funccallexpr(
                         darr_func,
                         create_objectrefnode(obj),
-                        create_objectrefnode(CABI_GetDestructorObject(dtor, CABIDestroy1)),
+                        create_objectrefnode(CABI_GetDestructorObject(dtor, CABIDestroyComplete)),
                         intconstnode(TYPE(&stsignedlong), tclass->size),
                         intconstnode(TYPE(&stsignedlong), count)
                     )
@@ -2549,7 +2556,7 @@ static void CInit_InitializeClassArray(Object* obj, TypeClass* tclass, Boolean f
     }
 }
 
-static ENode* CInit_AutoTempNode(Type* type, Boolean flag) {
+static ENode* CInit_AutoTempNode(Type* type, Boolean assignID) {
     ENode* node;
     node = CExpr_NewETEMPNode(type, FALSE);
     if (IS_TYPE_CLASS(type) && CClass_Destructor(TYPE_CLASS(type))) {
@@ -2558,7 +2565,7 @@ static ENode* CInit_AutoTempNode(Type* type, Boolean flag) {
     return node;
 }
 
-static ENode* CInit_GlobalTempNode(Type* type, Boolean flag) {
+static ENode* CInit_GlobalTempNode(Type* type, Boolean assignID) {
     Object* dtor;
     ENode* funcnode;
     ENode* node;
@@ -2567,7 +2574,7 @@ static ENode* CInit_GlobalTempNode(Type* type, Boolean flag) {
     if (IS_TYPE_CLASS(type) &&
         (dtor = CClass_Destructor(TYPE_CLASS(type))) &&
         !copts.no_static_dtors) {
-        if (flag) {
+        if (assignID) {
             CError_Error(ERR_UNIMPLEMENTED_C_FEATURE);
         }
 
@@ -2582,7 +2589,7 @@ static ENode* CInit_GlobalTempNode(Type* type, Boolean flag) {
         funcnode->data.funccall.args->node = node;
         funcnode->data.funccall.args->next = lalloc(sizeof(ENodeList));
         funcnode->data.funccall.args->next->node =
-            create_objectrefnode(CABI_GetDestructorObject(dtor, CABIDestroy1));
+            create_objectrefnode(CABI_GetDestructorObject(dtor, CABIDestroyComplete));
         funcnode->data.funccall.args->next->next = lalloc(sizeof(ENodeList));
         funcnode->data.funccall.args->next->next->node =
             create_objectrefnode(CInit_CreateStaticData(CInit_GetRegMemType()));
@@ -2592,7 +2599,7 @@ static ENode* CInit_GlobalTempNode(Type* type, Boolean flag) {
     return node;
 }
 
-static void CInit_RefInit(Type* type, ENode* expr, Boolean flag) {
+static void CInit_RefInit(Type* type, ENode* expr, Boolean unused) {
     ENode* objexpr;
 
     objexpr = create_objectrefnode(cinit_initinfo->obj);
@@ -2653,6 +2660,8 @@ static void CInit_FindDtorTemp(ENode* expr) {
                     }
                 }
                 return;
+            default:
+                break;
         }
     }
 }
@@ -2669,18 +2678,18 @@ static void CInit_RefTempTransform(Type* type, ENode* expr) {
         if (cinit_fdtnode) {
             CError_ASSERT(3175, !cinit_fdtambig);
             obj = create_temp_object(cinit_fdtnode->node->data.temp.type);
-            cinit_initinfo->register_object_cb(cinit_fdtnode->node->data.temp.type, obj, 0, 0);
+            cinit_initinfo->register_object_cb(cinit_fdtnode->node->data.temp.type, obj, 0, FALSE);
             cinit_fdtnode->node = create_objectrefnode(obj);
         }
     }
 }
 
-static Boolean CInit_InitReference(Object* obj, Boolean flag) {
+static Boolean CInit_InitReference(Object* obj, Boolean isLocal) {
     ENode* expr;
     SInt32 size;
 
     if (tk == '=') {
-        if (flag) {
+        if (isLocal) {
             cinit_tempnodefunc = CInit_AutoTempNode;
         } else {
             cinit_tempnodefunc = CInit_GlobalTempNode;
@@ -2690,7 +2699,7 @@ static Boolean CInit_InitReference(Object* obj, Boolean flag) {
         expr = CExpr_AssignmentPromotion(expr, obj->type, obj->qual & (Q_CONST | Q_VOLATILE), TRUE);
         cinit_tempnodefunc = NULL;
 
-        if (flag) {
+        if (isLocal) {
             CInit_RefTempTransform(obj->type, expr);
             expr = makediadicnode(create_objectnode2(obj), expr, EASS);
             cinit_initinfo->insert_expr_cb(expr);
@@ -2700,7 +2709,6 @@ static Boolean CInit_InitReference(Object* obj, Boolean flag) {
             CInit_ExprPointer(TYPE_POINTER(obj->type), expr);
             CError_ASSERT(3216, obj->type->size == cinit_initinfo->size);
 
-            // TODO: workaround: `size = ` as in CInit_GenericData (see there)
             if (cinit_initinfo->list || !CInit_IsAllZero(cinit_initinfo->buffer, obj->type->size)) {
                 IsCompleteType(obj->type);
                 CInit_DeclareData(
@@ -2719,7 +2727,7 @@ static Boolean CInit_InitReference(Object* obj, Boolean flag) {
 }
 
 ENode* CInit_AutoObject(Object* obj, Type* type, UInt32 qual) {
-    CInit_Stuff s;
+    CInit_DataBuffer db;
     CInit_NonConst* entry;
     ENode* expr;
     ENode* indirect_expr;
@@ -2729,7 +2737,7 @@ ENode* CInit_AutoObject(Object* obj, Type* type, UInt32 qual) {
     Object* newobj;
 
     CInit_InitData(
-        &s, type, qual, copts.cplusplus || copts.gcc_extensions || copts.c9x || obj == NULL
+        &db, type, qual, copts.cplusplus || copts.gcc_extensions || copts.c9x || obj == NULL
     );
     if (!obj && !cscope_currentfunc) {
         obj = CParser_NewCompilerDefDataObject();
@@ -2740,7 +2748,7 @@ ENode* CInit_AutoObject(Object* obj, Type* type, UInt32 qual) {
         CScope_AddGlobalObject(obj);
     }
 
-    if (IS_TYPE_VECTOR(type) && !s.nonconst) {
+    if (IS_TYPE_VECTOR(type) && !db.nonconst) {
         if (obj) {
             obj_expr = create_objectrefnode(obj);
         } else {
@@ -2749,25 +2757,25 @@ ENode* CInit_AutoObject(Object* obj, Type* type, UInt32 qual) {
 
         const_expr = CExpr_NewENode(EVECTOR128CONST);
         const_expr->rtype = type;
-        const_expr->data.vector128val = *((MWVector128*)s.buffer);
+        const_expr->data.vector128val = *((MWVector128*)db.buffer);
 
         indirect_expr = makemonadicnode(obj_expr, EINDIRECT);
         indirect_expr->rtype = type;
 
         expr = makediadicnode(indirect_expr, const_expr, EASS);
         if (!obj) {
-            ENode* tmp = lalloc(sizeof(ENode));
-            *tmp = *obj_expr;
-            tmp = makemonadicnode(tmp, EINDIRECT);
-            tmp->rtype = type;
-            tmp->flags = qual & ENODE_FLAG_QUALS;
-            expr = makecommaexpression(expr, tmp);
+            ENode* objval = lalloc(sizeof(ENode));
+            *objval = *obj_expr;
+            objval = makemonadicnode(objval, EINDIRECT);
+            objval->rtype = type;
+            objval->flags = qual & ENODE_FLAG_QUALS;
+            expr = makecommaexpression(expr, objval);
         }
         return expr;
     }
 
-    if (s.flexsize) {
-        type = CDecl_NewStructType(type->size + s.flexsize, CMach_GetTypeAlign(type));
+    if (db.flexsize) {
+        type = CDecl_NewStructType(type->size + db.flexsize, CMach_GetTypeAlign(type));
         if (obj) {
             obj->type = type;
         }
@@ -2783,27 +2791,27 @@ ENode* CInit_AutoObject(Object* obj, Type* type, UInt32 qual) {
         newtype = CDecl_NewStructType(type->size, CMach_GetTypeAlign(type));
     }
     newobj = CInit_CreateStaticDataObject(newtype, 0, NULL);
-    if (s.list || !CInit_IsAllZero(s.buffer, s.size)) {
-        CInit_DeclareReadOnlyData(newobj, s.buffer, s.list, s.size);
+    if (db.list || !CInit_IsAllZero(db.buffer, db.size)) {
+        CInit_DeclareReadOnlyData(newobj, db.buffer, db.list, db.size);
     } else {
-        CInit_DeclareReadOnlyData(newobj, NULL, NULL, s.size);
+        CInit_DeclareReadOnlyData(newobj, NULL, NULL, db.size);
     }
 
     indirect_expr = makemonadicnode(obj_expr, EINDIRECT);
     indirect_expr->rtype = newtype;
     expr = makediadicnode(indirect_expr, create_objectnode(newobj), EASS);
 
-    for (entry = s.nonconst; entry; entry = entry->next) {
+    for (entry = db.nonconst; entry; entry = entry->next) {
         expr = CInit_InitConcat(expr, obj_expr, entry->offset, entry->type, entry->expr);
     }
 
     if (!obj) {
-        ENode* tmp = lalloc(sizeof(ENode));
-        *tmp = *obj_expr;
-        tmp = makemonadicnode(tmp, EINDIRECT);
-        tmp->rtype = type;
-        tmp->flags = qual & ENODE_FLAG_QUALS;
-        expr = makecommaexpression(expr, tmp);
+        ENode* objval = lalloc(sizeof(ENode));
+        *objval = *obj_expr;
+        objval = makemonadicnode(objval, EINDIRECT);
+        objval->rtype = type;
+        objval->flags = qual & ENODE_FLAG_QUALS;
+        expr = makecommaexpression(expr, objval);
     } else if (IS_TYPE_ARRAY(type)) {
         expr = makecommaexpression(expr, create_objectnode(obj));
     }
@@ -2812,24 +2820,24 @@ ENode* CInit_AutoObject(Object* obj, Type* type, UInt32 qual) {
 }
 
 static void CInit_GlobalObject(Object* obj) {
-    CInit_Stuff s;
+    CInit_DataBuffer db;
     CInit_NonConst* entry;
     ENode* obj_expr;
     ENode* expr;
 
-    CInit_InitData(&s, obj->type, obj->qual, copts.cplusplus);
+    CInit_InitData(&db, obj->type, obj->qual, copts.cplusplus);
     obj_expr = create_objectrefnode(obj);
 
     IsCompleteType(obj->type);
 
-    if (!s.nonconst && is_const_object(obj)) {
-        CInit_DeclareReadOnlyData(obj, s.buffer, s.list, s.size);
+    if (!db.nonconst && is_const_object(obj)) {
+        CInit_DeclareReadOnlyData(obj, db.buffer, db.list, db.size);
     } else {
-        CInit_DeclareData(obj, s.buffer, s.list, s.size);
+        CInit_DeclareData(obj, db.buffer, db.list, db.size);
     }
 
-    if (s.nonconst) {
-        entry = s.nonconst;
+    if (db.nonconst) {
+        entry = db.nonconst;
         expr = NULL;
         while (entry) {
             if (!ENODE_IS(entry->expr, EVECTOR128CONST)) {
@@ -2851,8 +2859,6 @@ void CInit_InitializeAutoData(Object* obj, InsertExprCB insert_cb, RegisterObjec
     InitInfo initinfo;
     ENode* expr;
 
-    // (Pro7 calls CInit_IsSimpleStructArrayInit; 2.6's code is this switch written in place: the
-    // inlined call compiles to other registers)
     switch (type->type) {
         case TYPESTRUCT:
             is_simple = TRUE;
@@ -2949,7 +2955,7 @@ void CInit_InitializeAutoData(Object* obj, InsertExprCB insert_cb, RegisterObjec
     }
 
     if (IS_TYPE_CLASS(obj->type) && CClass_Destructor(TYPE_CLASS(obj->type))) {
-        register_cb(obj->type, obj, 0, 0);
+        register_cb(obj->type, obj, 0, FALSE);
     }
 
     CInit_CleanupInitInfo(&initinfo);
@@ -2959,7 +2965,7 @@ void CInit_InitializeStaticData(Object* obj, InitExprRegisterCB cb) {
     ENode* expr;
     Type* type;
     InitInfo initinfo;
-    CInit_Stuff s;
+    CInit_DataBuffer db;
     CInit_NonConst* entry;
     ENode* obj_expr;
 
@@ -2968,19 +2974,19 @@ void CInit_InitializeStaticData(Object* obj, InitExprRegisterCB cb) {
             if (tk == '=') {
                 tk = lex();
             }
-            CInit_InitData(&s, obj->type, obj->qual, copts.cplusplus);
+            CInit_InitData(&db, obj->type, obj->qual, copts.cplusplus);
 
             IsCompleteType(obj->type);
 
-            if (!s.nonconst && is_const_object(obj)) {
-                CInit_DeclareReadOnlyData(obj, s.buffer, s.list, s.size);
+            if (!db.nonconst && is_const_object(obj)) {
+                CInit_DeclareReadOnlyData(obj, db.buffer, db.list, db.size);
             } else {
-                CInit_DeclareData(obj, s.buffer, s.list, s.size);
+                CInit_DeclareData(obj, db.buffer, db.list, db.size);
             }
 
-            if (s.nonconst) {
+            if (db.nonconst) {
                 obj_expr = create_objectrefnode(obj);
-                entry = s.nonconst;
+                entry = db.nonconst;
                 expr = NULL;
                 while (entry) {
                     expr =
@@ -3200,12 +3206,9 @@ Object* CInit_DeclareString(char* data, SInt32 size, Boolean ispascal, Boolean i
 
     if (!copts.dont_reuse_strings) {
         for (scan = cinit_stringlist; scan; scan = scan->next) {
-            if (scan->size ==
-                size &&
-                scan->ispascal ==
-                ispascal &&
-                scan->iswide ==
-                iswide &&
+            if (scan->size == size &&
+                scan->ispascal == ispascal &&
+                scan->iswide == iswide &&
                 !memcmp(scan->data, data, size)) {
                 return scan->obj;
             }
@@ -3221,8 +3224,6 @@ Object* CInit_DeclareString(char* data, SInt32 size, Boolean ispascal, Boolean i
     }
     obj->sclass = TK_STATIC;
     CScope_AddGlobalObject(obj);
-
-    // (Pro7 then picks the Mach-O section: SECT_TEXT_CSTRING for a C string, else SECT_CONST)
 
     if (copts.readonly_strings) {
         CInit_DeclareReadOnlyData(obj, data, NULL, obj->type->size);
@@ -3266,8 +3267,11 @@ PooledString* CInit_DeclarePooledString(char* data, SInt32 size, Boolean ispasca
             0,
             GetHashNameNodeExport("@stringBase0")
         );
-        // 2.6: the EABI section (Pro7: SECT_CONST)
+#if VERSION < VERSION_GC_2_0
+        PPC_EABI_SetSection(obj, 0, copts.readonly_strings);
+#else
         PPC_EABI_SetSection(obj, 0, copts.readonly_strings, TRUE);
+#endif
         offset = 0;
     }
 
@@ -3305,7 +3309,6 @@ PooledString* CInit_DeclarePooledWString(char* data, SInt32 size) {
             0,
             GetHashNameNodeExport("@wstringBase0")
         );
-        // (Pro7 sets SECT_CONST; 2.6 leaves the section alone)
         offset = 0;
     }
 
@@ -3321,7 +3324,11 @@ PooledString* CInit_DeclarePooledWString(char* data, SInt32 size) {
     return str;
 }
 
-void CInit_RewriteString(ENode* expr, Boolean flag) {
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -6
+#endif
+void CInit_RewriteString(ENode* expr, Boolean unused) {
     PooledString* str;
     Boolean is_wide;
 
@@ -3357,6 +3364,10 @@ void CInit_RewriteString(ENode* expr, Boolean flag) {
         );
     }
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
 void CInit_DeclarePooledStrings(void) {
     SInt32 size;
@@ -3452,7 +3463,4 @@ void CInit_DefineTentativeData(void) {
     cinit_tentative = NULL;
 }
 
-// TODO: the original's statics are 2-byte aligned (cinit_fdtnode at 0x5e2022, after the 1-byte
-// cinit_fdtambig), as under Pro7's mac68k alignment. MWCC lays out .bss with the packing in effect at
-// the end of the file, so a 2.6 header evidently left pack(2) in effect.
 #pragma pack(2)

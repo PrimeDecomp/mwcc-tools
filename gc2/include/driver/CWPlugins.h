@@ -3,34 +3,26 @@
 
 #include "compiler/common.h"
 #include "driver/Files.h"
-#include "driver/Memory.h"
+#include "driver/oslib.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-// (opaque to plugins: CWPluginsPrivate.h defines it)
 typedef struct CWPluginPrivateContext CWPluginPrivateContext;
 typedef struct CWPluginPrivateContext* CWPluginContext;
-
-// What a static plugin describes itself with, and the driver asks it through (the plugin
-// SDK's CWPlugins.h and DropInCompilerLinker.h, and Pro7's plugin.h, as Pro7's driver and
-// plugin glue use them).
 
 typedef UInt32 CWDataType;
 #define CWFOURCHAR(a, b, c, d) \
     (((CWDataType)(a) << 24) | ((CWDataType)(b) << 16) | ((CWDataType)(c) << 8) | (CWDataType)(d))
 typedef struct CWMemHandlePrivateStruct* CWMemHandle;
-// (the SDK's, for a Mac FSSpec)
 #define CWFileSpecNotEmpty(specPtr) ((specPtr)->name[0] != 0)
 typedef SInt32 CWResult;
 
-// A plugin entry point and a callback (the SDK's, for Win32)
 #define CWPLUGIN_ENTRY(function_name) short(__stdcall function_name)
 #define CW_CALLBACK CWResult __stdcall
 #define CW_CALLBACK_PTR(function_name) CWResult(__stdcall function_name)
 
-// The request every plugin gets (a compiler's and a linker's others are DropInCompilerLinker.h's)
 enum {
     reqInitialize = -2,
     reqTerminate = -1,
@@ -43,8 +35,6 @@ enum {
     CWDROPINPARSERTYPE = 'Pars'
 };
 #define CWDROPINVCSTYPE 'VCS '
-// (not an enumerator in 2.x: a comparison with it does not reuse a value loaded for one with the
-// others, as 2.6's SupportedPlugin and Plugins_GetParserForPlugin show)
 #define CWDROPINDRIVERTYPE 'cldr'
 
 enum {
@@ -57,17 +47,13 @@ enum {
     Lang_Any = '****'
 };
 
-// (CompilerMapping.h: C's spelling, plain constants)
 #define Lang_C_CPP 'c++ '
 #define Lang_Pascal 'pasc'
 #define Lang_Rez 'rez '
 #define Lang_Java 'java'
-#define Lang_MISC '????'
+#define Lang_MISC '\?\?\?\?'
 
-// (CWPluginErrors.h; cwErrLastCommonError makes the enumerators 16-bit constants: Parse's
-// `? cwNoErr : cwErrRequestFailed` is a `movzx eax, ax`)
 enum {
-    // common errors for all plugins
     cwNoErr,
     cwErrUserCanceled,
     cwErrRequestFailed,
@@ -84,7 +70,6 @@ enum {
     cwErrDirectoryNotFound,
     cwErrLastCommonError = 512,
 
-    // compiler/linker errors
     cwErrUnknownSegment,
     cwErrSBMNotFound,
     cwErrObjectFileNotStored,
@@ -94,20 +79,16 @@ enum {
     cwErrLastCompilerLinkerError = 1024
 };
 
-// message types, the errorlevel of the message callbacks
 enum {
     messagetypeInfo,
     messagetypeWarning,
     messagetypeError
 };
 
-// DropInFlags.dropinflags (Pro7: dropInExecutableTool, with a TODO to rename it; 2.6's own
-// assert in CLToolExec_ExecuteLinker spells "dropinflags & isExecutableTool", at 0x5a1ba4)
 enum {
     isExecutableTool = 1
 };
 
-// a compiler's DropInFlags.dropinflags
 enum {
     kGeneratescode = 1L << 31,
     kGeneratesrsrcs = 1L << 30,
@@ -127,7 +108,6 @@ enum {
     kCompRequiresFileListBuildStartedMsg = 1L << 14
 };
 
-// a linker's DropInFlags.dropinflags
 enum {
     cantDisassemble = 1L << 31,
     isPostLinker = 1L << 30,
@@ -154,7 +134,6 @@ enum {
 #define kCurrentCWHelpInfoVersion 1
 
 #pragma pack(push, 2)
-// (the version 1 resource: DropInFlags without newestAPIVersion)
 typedef struct DropInFlagsV1 {
     SInt16 rsrcversion;
     CWDataType dropintype;
@@ -168,12 +147,10 @@ typedef struct DropInFlags {
     CWDataType dropintype;
     UInt16 earliestCompatibleAPIVersion;
     UInt32 dropinflags;
-    // (2.x: signed; a CWDataType compares from memory twice in Plugin_MatchesType)
     SInt32 edit_language;
     UInt16 newestAPIVersion;
 } DropInFlags;
 
-// CWExtensionMapping.flags (the SDK's CompilerMapping.h)
 enum {
     kPrecompile = 1L << 31,
     kLaunchable = 1L << 30,
@@ -247,28 +224,23 @@ typedef struct CWNewProjectEntryInfo {
     Boolean initbefore;
 } CWNewProjectEntryInfo;
 
-// CWFileInfo.dependencyType
 typedef enum CWDependencyType {
     cwNoDependency,
     cwNormalDependency,
     cwInterfaceDependency
 } CWDependencyType;
 
-// CWFileInfo.isdependentoffile
 #define kCurrentCompiledFile -1L
 
-// CWFileInfo.filedatatype
 enum {
     cwFileTypeUnknown,
     cwFileTypeText,
     cwFileTypePrecompiledHeader
 };
 
-// (the SDK's Mac OS types: 2.x's CWFileSpec is an FSSpec)
 typedef char CWFileName[32];
 typedef UInt32 CWFileTime;
 
-// What CWFindAndLoadFile returns
 typedef struct CWFileInfo {
     Boolean fullsearch;
     char dependencyType;
@@ -309,7 +281,6 @@ typedef struct CWOverlay1FileInfo {
     SInt32 whichfile;
 } CWOverlay1FileInfo;
 
-// Where a message points in a source file
 typedef struct CWMessageRef {
     CWFileSpec sourcefile;
     SInt32 linenumber;
@@ -319,8 +290,6 @@ typedef struct CWMessageRef {
     SInt32 selectionlength;
 } CWMessageRef;
 
-// What CWGetFileInfo returns (with the Mac OS host's filetype and filecreator)
-// What CWResolveRelativePath resolves
 typedef struct CWRelativePath {
     short version;
     unsigned char pathType;
@@ -352,10 +321,9 @@ typedef struct CWProjectFileInfo {
 } CWProjectFileInfo;
 
 enum {
-    cwAccessPathTypeFlag1 = 1,
-    cwAccessPathTypeFlag2 = 2
+    cwAccessPathFlagUser = 1,
+    cwAccessPathFlagKeepSystem = 2
 };
-// (the SDK's enum CWAccessPathType; 2.6 reads the type as a byte at 0x4b)
 enum {
     cwSystemPath,
     cwUserPath
@@ -381,7 +349,6 @@ typedef struct OSFileTypeMappingList {
     const struct OSFileTypeMapping* mappings;
 } OSFileTypeMappingList;
 
-// A plugin's version (GetVersionInfo)
 typedef struct VersionInfo {
     UInt16 major;
     UInt16 minor;
@@ -389,16 +356,14 @@ typedef struct VersionInfo {
     UInt16 build;
 } VersionInfo;
 
-// A plugin's supported CPUs and operating systems (GetTargetList)
 typedef struct CWTargetList {
     SInt16 version;
     SInt16 cpuCount;
-    SInt32* cpus; // (2.x: signed; Plugin_CL_MatchesTarget keeps an element in a register)
+    SInt32* cpus;
     SInt16 osCount;
     SInt32* oss;
 } CWTargetList;
 
-// What the driver tells the parser about each plugin (Plugins_GetPluginList)
 typedef struct CLPluginInfo {
     CWDataType plugintype;
     CWDataType language;
@@ -407,6 +372,10 @@ typedef struct CLPluginInfo {
     Boolean storeCommandLine;
 } CLPluginInfo;
 #pragma pack(pop)
+
+struct CWFamilyList;
+struct CWUnmangleInfo;
+struct CWCompilerBrSymbolInfo;
 
 typedef struct BasePluginCallbacks {
     CWPLUGIN_ENTRY (*main)(struct CWPluginPrivateContext* context);
@@ -435,8 +404,6 @@ typedef struct CompilerLinkerPluginCallbacks {
     );
 } CompilerLinkerPluginCallbacks;
 
-// The shell's callbacks a parser plugin calls (Pro7's plugin.h; 2.6's has a tenth entry it leaves
-// unset)
 struct CWParserCallbacks {
     CW_CALLBACK_PTR (*cbParserAddAccessPath)(CWPluginContext, const CWNewAccessPathInfo*);
     CW_CALLBACK_PTR (*cbParserSwapAccessPaths)(CWPluginContext);

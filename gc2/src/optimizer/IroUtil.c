@@ -34,12 +34,9 @@ Boolean DisableDueToAsm;
 Boolean LoopOptimizerRun;
 
 Object* IRO_IsVariable(IROLinear* linear) {
-    if (linear->type ==
-        IROLinearOp1Arg &&
-        linear->nodetype ==
-        EINDIRECT &&
-        linear->u.monadic->type ==
-        IROLinearOperand &&
+    if (linear->type == IROLinearOp1Arg &&
+        linear->nodetype == EINDIRECT &&
+        linear->u.monadic->type == IROLinearOperand &&
         linear->u.monadic->u.node->type == EOBJREF) {
         return linear->u.monadic->u.node->data.objref;
     }
@@ -48,8 +45,7 @@ Object* IRO_IsVariable(IROLinear* linear) {
 }
 
 Boolean IRO_IsConstant(IROLinear* linear) {
-    if (linear->type ==
-        IROLinearOperand &&
+    if (linear->type == IROLinearOperand &&
         ENODE_IS3(linear->u.node, EINTCONST, EVECTOR128CONST, EFLOATCONST)) {
         return TRUE;
     }
@@ -59,17 +55,15 @@ Boolean IRO_IsConstant(IROLinear* linear) {
 Boolean IRO_IsPow2(IROLinear* linear, int* powvalue) {
     UInt32 desired;
     UInt32 value;
-    UInt32 i; // (2.6: unsigned, `jb`; Pro7: SInt32)
+    UInt32 i;
 
     *powvalue = -1;
     if (linear->type == IROLinearOperand && linear->u.node->type == EINTCONST) {
-        // (2.6 reads the high word directly; Pro7's CTool_EndianReadWord32 leaves a `lea`)
         if (linear->u.node->data.intval.hi) {
             return FALSE;
         }
 
         desired = CInt64_GetULong(&linear->u.node->data.intval);
-        // (2.6 starts at 2: 1 is no longer a power of 2; Pro7 starts at value 1, i 0)
         value = 2;
         for (i = 1; i < 31; i++) {
             if (value == desired) {
@@ -129,13 +123,14 @@ static Boolean IRO_OperandsSame(ENode* a, ENode* b) {
                     (a->data.vector128val.ul[3] == b->data.vector128val.ul[3]);
             case EOBJREF:
                 return a->data.objref == b->data.objref;
+            default:
+                break;
         }
     }
 
     return FALSE;
 }
 
-// (2.6 copies the bit-field types into locals; Pro7's TYPE_BITFIELD() at each use gives other code)
 Boolean IRO_TypesEqual(Type* a, Type* b) {
     TypeBitfield* ba;
     TypeBitfield* bb;
@@ -144,10 +139,8 @@ Boolean IRO_TypesEqual(Type* a, Type* b) {
         if (IS_TYPE_BITFIELD(b)) {
             ba = TYPE_BITFIELD(a);
             bb = TYPE_BITFIELD(b);
-            if (ba->bitfieldtype ==
-                bb->bitfieldtype &&
-                ba->offset ==
-                bb->offset &&
+            if (ba->bitfieldtype == bb->bitfieldtype &&
+                ba->offset == bb->offset &&
                 ba->bitlength == bb->bitlength) {
                 return TRUE;
             }
@@ -159,14 +152,10 @@ Boolean IRO_TypesEqual(Type* a, Type* b) {
         return TRUE;
     }
 
-    // (2.6 materialises the negation twice; Pro7's `is_typeequal(a, b) != 0` and an if/return
-    // do not)
     return !!is_typeequal(a, b);
 }
 
 Type* IRO_UnsignedType(Type* type) {
-    // (2.6 tests a TypeIntegral copy of the parameter and returns the parameter itself; with
-    // Pro7's `type` throughout, or a `Type*` copy, MWCC coalesces the two: 58.6%)
     TypeIntegral* t = TYPE_INTEGRAL(type);
     if (IS_TYPE_ENUM(t) || IS_TYPE_POINTER_ONLY(t)) {
         if (t->size == stunsignedchar.size) {
@@ -276,7 +265,7 @@ Boolean IRO_is_CPtypeequal(Type* a, Type* b) {
         return TRUE;
     }
 
-    return !!is_typeequal(a, b); // (as in IRO_TypesEqual)
+    return !!is_typeequal(a, b);
 }
 
 Boolean IRO_ExprsSame(IROLinear* a, IROLinear* b) {
@@ -321,7 +310,7 @@ CLabel* IRO_NewLabel(void) {
 
 Boolean IRO_ExprsSameSemantically(IROLinear* a, IROLinear* b) {
     if (a->type == b->type && IRO_TypesEqual(a->rtype, b->rtype)) {
-        Boolean flag = FALSE;
+        Boolean swappedSame = FALSE;
 
         switch (a->type) {
             case IROLinearOperand:
@@ -342,14 +331,17 @@ Boolean IRO_ExprsSameSemantically(IROLinear* a, IROLinear* b) {
                         case ELAND:
                         case ELOR:
                             if (!IRO_HasSideEffect(a)) {
-                                flag = IRO_ExprsSameSemantically(
-                                           a->u.diadic.left, b->u.diadic.right
-                                       ) &&
+                                swappedSame = IRO_ExprsSameSemantically(
+                                                  a->u.diadic.left, b->u.diadic.right
+                                              ) &&
                                     IRO_ExprsSameSemantically(a->u.diadic.right, b->u.diadic.left);
                             }
+                            break;
+                        default:
+                            break;
                     }
 
-                    return flag ||
+                    return swappedSame ||
                         (IRO_ExprsSameSemantically(a->u.diadic.left, b->u.diadic.left) &&
                          IRO_ExprsSameSemantically(a->u.diadic.right, b->u.diadic.right));
                 }
@@ -400,8 +392,6 @@ IROLinear* IRO_FindPreced(IROLinear* a) {
     return iter;
 }
 
-// TODO: invented name: 2.6 splits Pro7's IRO_FindFirst into this static and the renumbering
-// wrapper below; Wii's module has the static unnamed
 static IROLinear* FindFirst(IROLinear* linear) {
     short i;
 
@@ -439,17 +429,16 @@ static IROLinear* FindFirst(IROLinear* linear) {
     }
 }
 
-// (2.6: renumbers first, so the operands' indices are their evaluation order)
 IROLinear* IRO_FindFirst(IROLinear* linear) {
     IRO_RenumberInts();
     return FindFirst(linear);
 }
 
-void IRO_CutAndPasteAfter(IROLinear* a, IROLinear* b, IROLinear* c) {
-    IROLinear* preced = IRO_FindPreced(a);
-    preced->next = b->next;
-    b->next = c->next;
-    c->next = a;
+void IRO_CutAndPasteAfter(IROLinear* first, IROLinear* last, IROLinear* after) {
+    IROLinear* preced = IRO_FindPreced(first);
+    preced->next = last->next;
+    last->next = after->next;
+    after->next = first;
 }
 
 Boolean IRO_IsConstantZero(IROLinear* linear) {
@@ -515,7 +504,7 @@ void IRO_NopNonSideEffects(IROLinear* linear, SInt32 level) {
 void IRO_WalkTree(IROLinear* linear, IROWalkTreeFunc func) {
     int i;
 
-    func(linear, 1);
+    func(linear, TRUE);
     switch (linear->type) {
         case IROLinearOperand:
             break;
@@ -537,8 +526,10 @@ void IRO_WalkTree(IROLinear* linear, IROWalkTreeFunc func) {
                 IRO_WalkTree(linear->u.funccall.args[i], func);
             }
             break;
+        default:
+            break;
     }
-    func(linear, 0);
+    func(linear, FALSE);
 }
 
 void IRO_WalkTreeToPropagateFlags(IROLinear* linear, IROWalkTreeFunc func) {
@@ -565,14 +556,16 @@ void IRO_WalkTreeToPropagateFlags(IROLinear* linear, IROWalkTreeFunc func) {
                 IRO_WalkTreeToPropagateFlags(linear->u.funccall.args[i], func);
             }
             break;
+        default:
+            break;
     }
-    func(linear, 0);
+    func(linear, FALSE);
 }
 
-void IRO_WalkInts(IROLinear* a, IROLinear* b, IROWalkTreeFunc func) {
+void IRO_WalkInts(IROLinear* first, IROLinear* last, IROWalkTreeFunc func) {
     IROLinear* scan;
 
-    for (scan = a; scan; scan = scan->next) {
+    for (scan = first; scan; scan = scan->next) {
         switch (scan->type) {
             case IROLinearBeginCatch:
             case IROLinearEndCatch:
@@ -599,115 +592,119 @@ void IRO_WalkInts(IROLinear* a, IROLinear* b, IROWalkTreeFunc func) {
                 IRO_WalkTree(scan->u.swtch.cond, func);
                 break;
             case IROLinearAsm:
-                func(scan, 1);
-                func(scan, 0);
+                func(scan, TRUE);
+                func(scan, FALSE);
                 break;
-            // (2.6 lists the kinds that do nothing, which starts the jump table at 0)
             case IROLinearNop:
             case IROLinear18:
             case IROLinear19:
             case IROLinearEnd:
                 break;
+            default:
+                break;
         }
 
-        if (scan == b) {
+        if (scan == last) {
             return;
         }
     }
 }
 
-void IRO_Cut(IROLinear* a, IROLinear* b) {
+void IRO_Cut(IROLinear* first, IROLinear* last) {
     IROLinear* scan;
     IROLinear* prev;
     IRONode* node;
 
-    scan = a;
+    scan = first;
     while (1) {
         scan->stmt = NULL;
-        if (scan == b) {
+        if (scan == last) {
             break;
         }
         scan = scan->next;
     }
 
     prev = NULL;
-    for (scan = IRO_FirstLinear; scan && scan != a; scan = scan->next) {
+    for (scan = IRO_FirstLinear; scan && scan != first; scan = scan->next) {
         prev = scan;
     }
 
     CError_ASSERT(960, scan);
 
     for (node = IRO_FirstNode; node; node = node->nextnode) {
-        if (node->first == a) {
-            if (node->last == b) {
+        if (node->first == first) {
+            if (node->last == last) {
                 node->first = node->last = NULL;
                 break;
             } else {
-                node->first = b->next;
+                node->first = last->next;
                 break;
             }
-        } else if (node->last == b) {
+        } else if (node->last == last) {
             node->last = prev;
             break;
         }
     }
 
     if (prev) {
-        prev->next = b->next;
+        prev->next = last->next;
     } else {
-        IRO_FirstLinear = b->next;
+        IRO_FirstLinear = last->next;
     }
 }
 
-void IRO_Paste(IROLinear* a, IROLinear* b, IROLinear* c) {
+void IRO_Paste(IROLinear* first, IROLinear* last, IROLinear* before) {
     IROLinear* scan;
     IROLinear* prev;
     IRONode* node;
 
-    CError_ASSERT(1011, c && c->type != IROLinearLabel);
+    CError_ASSERT(1011, before && before->type != IROLinearLabel);
 
     prev = NULL;
-    for (scan = IRO_FirstLinear; scan && scan != c; scan = scan->next) {
+    for (scan = IRO_FirstLinear; scan && scan != before; scan = scan->next) {
         prev = scan;
     }
 
     CError_ASSERT(1025, scan);
 
     for (node = IRO_FirstNode; node; node = node->nextnode) {
-        if (node->first == c) {
-            node->first = a;
+        if (node->first == before) {
+            node->first = first;
             break;
         }
     }
 
-    b->next = c;
+    last->next = before;
     if (prev) {
-        prev->next = a;
+        prev->next = first;
     } else {
-        IRO_FirstLinear = a;
+        IRO_FirstLinear = first;
     }
 }
 
-void IRO_PasteAfter(IROLinear* a, IROLinear* b, IROLinear* c) {
+void IRO_PasteAfter(IROLinear* first, IROLinear* last, IROLinear* after) {
     IRONode* node;
 
-    switch (c->type) {
+    switch (after->type) {
         case IROLinearGoto:
         case IROLinearIf:
         case IROLinearIfNot:
         case IROLinearSwitch:
             CError_FATAL(1069);
+            break;
+        default:
+            break;
     }
 
     for (node = IRO_FirstNode; node; node = node->nextnode) {
-        if (node->last == c) {
-            node->last = b;
+        if (node->last == after) {
+            node->last = last;
             break;
         }
     }
 
-    b->next = c->next;
-    c->next = a;
+    last->next = after->next;
+    after->next = first;
 }
 
 static void FindStart(IROLinear* linear, Boolean isEntry) {
@@ -751,7 +748,6 @@ void IRO_MoveExpression(IROExpr* expr, IROLinear* linear) {
     ExprStart = ExprEnd = expr->linear;
     IRO_WalkTree(expr->linear, FindStart);
 
-    // (2.6 returns early where Pro7 nests the move in `if (ExprStart != linear)`)
     if (ExprStart == linear) {
         return;
     }
@@ -830,7 +826,7 @@ IROLinear* IRO_DuplicateExpr(IROLinear* linear, IROList* list) {
     copy->expr = NULL;
 
     switch (copy->type) {
-        case IROLinearNop: // (2.6; it starts the jump table at 0)
+        case IROLinearNop:
             break;
         case IROLinearOperand:
             copynode = lalloc(sizeof(ENode));
@@ -841,7 +837,7 @@ IROLinear* IRO_DuplicateExpr(IROLinear* linear, IROList* list) {
             copy->u.monadic = IRO_DuplicateExpr(copy->u.monadic, list);
             break;
         case IROLinearOp2Arg:
-            if (linear->flags & IROLF_8000) {
+            if (linear->flags & IROLF_RightFirst) {
                 copy->u.diadic.right = IRO_DuplicateExpr(copy->u.diadic.right, list);
                 copy->u.diadic.left = IRO_DuplicateExpr(copy->u.diadic.left, list);
             } else {
@@ -863,6 +859,8 @@ IROLinear* IRO_DuplicateExpr(IROLinear* linear, IROList* list) {
             break;
         case IROLinearAsm:
             copy->u.asm_stmt = CodeGen_CopyAsmStat(linear->u.asm_stmt);
+            break;
+        default:
             break;
     }
 
@@ -892,92 +890,92 @@ IROLinear* IRO_TempReference(Object* obj, IROList* list) {
     return ind;
 }
 
-inline IROLinear* LocateFatherHelper(IROLinear* linear, Boolean a, IROLinear*** b) {
+inline IROLinear* LocateFatherHelper(IROLinear* linear, Boolean wrapAround, IROLinear*** refPtr) {
     IROLinear* scan;
     SInt32 index;
     int i;
 
-    for (scan = linear->next, index = 0; index < (a ? 2 : 1); index++) {
+    for (scan = linear->next, index = 0; index < (wrapAround ? 2 : 1); index++) {
         while (scan) {
             switch (scan->type) {
                 case IROLinearIf:
                 case IROLinearIfNot:
                     if (scan->u.label.cond == linear) {
-                        if (b) {
-                            *b = &scan->u.label.cond;
+                        if (refPtr) {
+                            *refPtr = &scan->u.label.cond;
                         }
                         return scan;
                     }
                     break;
                 case IROLinearReturn:
                     if (scan->u.monadic == linear) {
-                        if (b) {
-                            *b = &scan->u.monadic;
+                        if (refPtr) {
+                            *refPtr = &scan->u.monadic;
                         }
                         return scan;
                     }
                     break;
                 case IROLinearOp1Arg:
                     if (scan->u.monadic == linear) {
-                        if (b) {
-                            *b = &scan->u.monadic;
+                        if (refPtr) {
+                            *refPtr = &scan->u.monadic;
                         }
                         return scan;
                     }
                     break;
                 case IROLinearSwitch:
                     if (scan->u.swtch.cond == linear) {
-                        if (b) {
-                            *b = &scan->u.swtch.cond;
+                        if (refPtr) {
+                            *refPtr = &scan->u.swtch.cond;
                         }
                         return scan;
                     }
                     break;
                 case IROLinearOp2Arg:
                     if (scan->u.diadic.left == linear) {
-                        if (b) {
-                            *b = &scan->u.diadic.left;
+                        if (refPtr) {
+                            *refPtr = &scan->u.diadic.left;
                         }
                         return scan;
                     }
                     if (scan->u.diadic.right == linear) {
-                        if (b) {
-                            *b = &scan->u.diadic.right;
+                        if (refPtr) {
+                            *refPtr = &scan->u.diadic.right;
                         }
                         return scan;
                     }
                     break;
                 case IROLinearOp3Arg:
                     if (scan->u.args3.a == linear) {
-                        if (b) {
-                            *b = &scan->u.args3.a;
+                        if (refPtr) {
+                            *refPtr = &scan->u.args3.a;
                         }
                         return scan;
                     }
                     if (scan->u.args3.b == linear) {
-                        if (b) {
-                            *b = &scan->u.args3.b;
+                        if (refPtr) {
+                            *refPtr = &scan->u.args3.b;
                         }
                         return scan;
                     }
                     if (scan->u.args3.c == linear) {
-                        if (b) {
-                            *b = &scan->u.args3.c;
+                        if (refPtr) {
+                            *refPtr = &scan->u.args3.c;
                         }
                         return scan;
                     }
                     break;
                 case IROLinearFunccall:
                     if (scan->u.funccall.callee == linear) {
-                        if (b) {
-                            *b = &scan->u.funccall.callee;
+                        if (refPtr) {
+                            *refPtr = &scan->u.funccall.callee;
                         }
                         return scan;
                     }
                     for (i = 0; i < scan->u.funccall.argCount; i++) {
                         if (scan->u.funccall.args[i] == linear) {
-                            if (b) {
-                                *b = &scan->u.funccall.args[i];
+                            if (refPtr) {
+                                *refPtr = &scan->u.funccall.args[i];
                             }
                             return scan;
                         }
@@ -1004,8 +1002,8 @@ inline IROLinear* LocateFatherHelper(IROLinear* linear, Boolean a, IROLinear*** 
         scan = IRO_FirstLinear;
     }
 
-    if (b) {
-        *b = NULL;
+    if (refPtr) {
+        *refPtr = NULL;
     }
     return NULL;
 }
@@ -1014,37 +1012,37 @@ IROLinear* IRO_LocateFather(IROLinear* linear) {
     return LocateFatherHelper(linear, FALSE, NULL);
 }
 
-IROLinear* IRO_LocateFather_Cut_And_Paste(IROLinear* a, IROLinear* b) {
-    IROLinear** p;
-    IROLinear* l = LocateFatherHelper(a, FALSE, &p);
-    if (l) {
-        CError_ASSERT(1577, p && *p);
-        IRO_NopOut(a);
-        *p = b;
+IROLinear* IRO_LocateFather_Cut_And_Paste(IROLinear* nd, IROLinear* replacement) {
+    IROLinear** link;
+    IROLinear* father = LocateFatherHelper(nd, FALSE, &link);
+    if (father) {
+        CError_ASSERT(1577, link && *link);
+        IRO_NopOut(nd);
+        *link = replacement;
     }
-    return l;
+    return father;
 }
 
-IROLinear* IRO_LocateFather_Cut_And_Paste_Without_Nopping(IROLinear* a, IROLinear* b) {
-    IROLinear** p;
-    IROLinear* l = LocateFatherHelper(a, FALSE, &p);
-    if (l) {
-        CError_ASSERT(1594, p && *p);
-        *p = b;
+IROLinear* IRO_LocateFather_Cut_And_Paste_Without_Nopping(IROLinear* nd, IROLinear* replacement) {
+    IROLinear** link;
+    IROLinear* father = LocateFatherHelper(nd, FALSE, &link);
+    if (father) {
+        CError_ASSERT(1594, link && *link);
+        *link = replacement;
     }
-    return l;
+    return father;
 }
 
-void IRO_ReplaceReference(IROLinear* a, Object* obj, IROLinear* b) {
+void IRO_ReplaceReference(IROLinear* nd, Object* obj, IROLinear* after) {
     IROLinear** ptr;
     IROList list;
 
-    if (LocateFatherHelper(a, TRUE, &ptr)) {
+    if (LocateFatherHelper(nd, TRUE, &ptr)) {
         CError_ASSERT(1614, ptr && *ptr);
         IRO_InitList(&list);
         *ptr = IRO_TempReference(obj, &list);
-        IRO_PasteAfter(list.head, list.tail, b);
-        if (a->flags & IROLF_LoopInvariant) {
+        IRO_PasteAfter(list.head, list.tail, after);
+        if (nd->flags & IROLF_LoopInvariant) {
             list.tail->flags |= IROLF_LoopInvariant;
         }
     } else {
@@ -1052,14 +1050,13 @@ void IRO_ReplaceReference(IROLinear* a, Object* obj, IROLinear* b) {
     }
 }
 
-void IRO_ReplaceReferenceWithNode(IROLinear* a, IROLinear* b) {
+void IRO_ReplaceReferenceWithNode(IROLinear* nd, IROLinear* replacement) {
     IROLinear** ptr;
-    IROList list;
 
-    if (LocateFatherHelper(a, TRUE, &ptr)) {
+    if (LocateFatherHelper(nd, TRUE, &ptr)) {
         CError_ASSERT(1673, ptr && *ptr);
-        *ptr = b;
-        b->flags |= IROLF_Reffed;
+        *ptr = replacement;
+        replacement->flags |= IROLF_Reffed;
     } else {
         IRO_Dump("Oh, oh, did not find reference to replace\n");
     }
@@ -1156,7 +1153,7 @@ IROAddrRecord* IRO_InitAddrRecordPointer(IROLinear* linear) {
 }
 
 IROLinear* IRO_HasSideEffect(IROLinear* linear) {
-    IROLinear* tmp;
+    IROLinear* effect;
 
     if (!linear) {
         return linear;
@@ -1185,17 +1182,16 @@ IROLinear* IRO_HasSideEffect(IROLinear* linear) {
             if (IRO_IsAssignOp[linear->nodetype]) {
                 return linear;
             }
-            // (2.6; Pro7's `else if ((tmp = left)) return tmp; else return right;` does not match)
-            tmp = IRO_HasSideEffect(linear->u.diadic.left);
-            if (!tmp) {
-                tmp = IRO_HasSideEffect(linear->u.diadic.right);
+            effect = IRO_HasSideEffect(linear->u.diadic.left);
+            if (!effect) {
+                effect = IRO_HasSideEffect(linear->u.diadic.right);
             }
-            return tmp;
+            return effect;
         case IROLinearOp3Arg:
-            if ((tmp = IRO_HasSideEffect(linear->u.args3.a))) {
-                return tmp;
-            } else if ((tmp = IRO_HasSideEffect(linear->u.args3.b))) {
-                return tmp;
+            if ((effect = IRO_HasSideEffect(linear->u.args3.a))) {
+                return effect;
+            } else if ((effect = IRO_HasSideEffect(linear->u.args3.b))) {
+                return effect;
             } else {
                 return IRO_HasSideEffect(linear->u.args3.c);
             }
@@ -1208,9 +1204,9 @@ IROLinear* IRO_HasSideEffect(IROLinear* linear) {
 
 IROLinear* IRO_CheckSideEffect(IROLinear* linear) {
     IROLinear* result;
-    IROLinear* tmp;
-    IROLinear* tmp2;
-    IROLinear* tmp3;
+    IROLinear* effect1;
+    IROLinear* effect2;
+    IROLinear* effect3;
 
     if (!linear) {
         return linear;
@@ -1250,19 +1246,19 @@ IROLinear* IRO_CheckSideEffect(IROLinear* linear) {
                 linear->flags &= ~IROLF_Reffed;
                 return linear;
             }
-            tmp = IRO_CheckSideEffect(linear->u.diadic.left);
-            tmp2 = IRO_CheckSideEffect(linear->u.diadic.right);
-            if (tmp) {
-                result = tmp;
+            effect1 = IRO_CheckSideEffect(linear->u.diadic.left);
+            effect2 = IRO_CheckSideEffect(linear->u.diadic.right);
+            if (effect1) {
+                result = effect1;
             } else {
-                result = tmp2;
+                result = effect2;
             }
             break;
         case IROLinearOp3Arg:
-            tmp = IRO_CheckSideEffect(linear->u.args3.a);
-            tmp2 = IRO_CheckSideEffect(linear->u.args3.b);
-            tmp3 = IRO_CheckSideEffect(linear->u.args3.c);
-            result = tmp ? tmp : tmp2 ? tmp2 : tmp3;
+            effect1 = IRO_CheckSideEffect(linear->u.args3.a);
+            effect2 = IRO_CheckSideEffect(linear->u.args3.b);
+            effect3 = IRO_CheckSideEffect(linear->u.args3.c);
+            result = effect1 ? effect1 : effect2 ? effect2 : effect3;
             break;
         case IROLinearFunccall:
             linear->flags &= ~IROLF_Reffed;
@@ -1320,6 +1316,8 @@ void IRO_WalkExcActions(ExceptionAction* action, WalkObjFunc func) {
                 func(action->data.delete_pointer_cond.pointerobject);
                 func(action->data.delete_pointer_cond.cond);
                 break;
+            default:
+                break;
         }
         action = action->prev;
     }
@@ -1329,16 +1327,13 @@ Boolean IRO_FunctionCallMightThrowException(IROLinear* linear) {
     Object* obj;
     if (linear->type == IROLinearFunccall) {
         obj = NULL;
-        if (linear->u.funccall.callee->type ==
-            IROLinearOperand &&
+        if (linear->u.funccall.callee->type == IROLinearOperand &&
             ENODE_IS(linear->u.funccall.callee->u.node, EOBJREF)) {
             obj = linear->u.funccall.callee->u.node->data.objref;
         }
         if (!obj ||
             CExcept_CanThrowException(
-                // (2.6 spells Pro7's `!(nodeflags & ENODE_FLAG_80)` as a comparison)
-                obj,
-                obj->datatype == DVFUNC && (linear->nodeflags & ENODE_FLAG_80) == 0
+                obj, obj->datatype == DVFUNC && (linear->nodeflags & ENODE_FLAG_NONVIRTUAL) == 0
             )) {
             return TRUE;
         }
@@ -1385,7 +1380,7 @@ void IRO_SetupForUserBreakChecking(void) {
 }
 
 void IRO_CheckForUserBreak(void) {
-    if (IRO_LastUserBreakTick + 8 < COS_GetTicks()) {
+    if (IRO_LastUserBreakTick + 8 < (UInt32)COS_GetTicks()) {
         if (CWUserBreak(cparams.context)) {
             CError_UserBreak();
         }

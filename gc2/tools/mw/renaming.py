@@ -1,15 +1,3 @@
-"""Renaming what the repository names: functions and variables (rows, bindings, symbols.txt and the code) and units.
-
-Every rename is one transaction (project.Transaction) over every version's configuration and every source: it is made
-everywhere or nowhere. A set of renames is applied at once, so chains and swaps (A -> B, B -> A) need no temporaries.
-
-In the code a name is renamed as an identifier: not inside string or character literals, not where it is a struct
-member (after `.` or `->`, or declared inside a struct or union body: a member may share a function's name, as
-`expression` does; a member's type there is renamed), but in comments. Before anything is written, each new name is checked against what it already
-means: another row, a binding at another address, or an identifier in the code (refused unless forced: a local, a
-field or another unit's static of that name would silently change meaning).
-"""
-
 from __future__ import annotations
 
 import json
@@ -34,27 +22,24 @@ _TOKEN = re.compile(
   | (?P<space>\s+)
   | (?P<other>.)
 """,
-    re.S | re.X,
+    re.DOTALL | re.VERBOSE,
 )
-_GAP = re.compile(r"(?:\s+|//[^\n]*|/\*.*?(?:\*/|\Z))*", re.DOTALL)  # what may separate two tokens
+_GAP = re.compile(r"(?:\s+|//[^\n]*|/\*.*?(?:\*/|\Z))*", re.DOTALL)
 
 
 @dataclass
 class Site:
-    """An identifier in a source."""
-
     path: Path
     line: int
-    start: int  # offset in the text
+    start: int
     end: int
-    kind: str  # "code", "comment", "member" (after . or ->) or "record" (inside a struct/union body)
+    kind: str
 
 
 def identifiers(path: Path, text: str, names: set[str]):
-    """The Sites of NAMES in TEXT. Comments are scanned word by word (a name in a comment is renamed too)."""
     line = 1
-    previous = ""  # the last significant token
-    stack: list[str] = []  # "record" or "block" per open brace
+    previous = ""
+    stack: list[str] = []
     record_pending = False
     for m in _TOKEN.finditer(text):
         kind, token = m.lastgroup, m[0]
@@ -71,7 +56,6 @@ def identifiers(path: Path, text: str, names: set[str]):
         elif kind == "ident":
             if token in names:
                 where = "member" if previous in (".", "->") else "record" if stack and stack[-1] == "record" else "code"
-                # (in a record body, a name followed by a declarator is the member's type, not the member)
                 if where == "record" and re.match(r"[A-Za-z_*]", text[_GAP.match(text, m.end()).end() :]):
                     where = "code"
                 yield Site(path, line, m.start(), m.end(), where)
@@ -102,12 +86,7 @@ def read_code(tx: Transaction, path: Path) -> str:
     return tx.read_bytes(path).decode("latin-1")
 
 
-# ------------------------------------------------------------------------------------------------------ the names
-
-
 def respell(linker_name: str, mapping: dict[str, str]) -> str | None:
-    """LINKER_NAME with its C name renamed by MAPPING (its decoration kept), or None when MAPPING does not rename it.
-    Import slots keep the DLL's names."""
     if is_import(linker_name):
         return None
     if is_mangled(linker_name):
@@ -121,19 +100,15 @@ def respell(linker_name: str, mapping: dict[str, str]) -> str | None:
 
 @dataclass
 class Plan:
-    """What a rename changes, staged in a transaction (committed by the caller)."""
-
     tx: Transaction = field(default_factory=Transaction)
-    changes: list[str] = field(default_factory=list)  # one line per change, for the report
-    problems: list[str] = field(default_factory=list)  # refusals: nothing is written while there are any
-    left: list[Site] = field(default_factory=list)  # occurrences deliberately not renamed (members)
+    changes: list[str] = field(default_factory=list)
+    problems: list[str] = field(default_factory=list)
+    left: list[Site] = field(default_factory=list)
 
 
 def rename(
     mapping: dict[str, str], code: bool = True, force: set[str] = frozenset(), source: str | None = None
 ) -> Plan:
-    """Stage renaming each OLD to NEW of MAPPING everywhere (see the module). FORCE: new names to apply although the
-    code already uses them. SOURCE: also assign the renamed rows to it."""
     plan = Plan()
     tx = plan.tx
     for old, new in mapping.items():
@@ -166,8 +141,6 @@ def rename(
         if done:
             tx.write(fpath, config.dump_functions(rows))
             plan.changes.append(f"{relative(fpath)}: {', '.join(done)}")
-            # (a review decision that gave the row its old name gives it the new one: a rename by hand overrides the
-            # decision, which tools/evidence.py apply would otherwise replay)
             rpath = v.config / "name_review.json"
             if tx.read_bytes(rpath) is not None:
                 text = tx.read(rpath)
@@ -238,7 +211,6 @@ def rename(
         if not count:
             continue
         new_text = "".join(out) + text[cursor:]
-        # (an alias `#define NEW OLD` has become `#define NEW NEW`: delete it)
         new_text = re.sub(r"(?m)^[ \t]*#[ \t]*define[ \t]+(\w+)[ \t]+\1[ \t]*(?://[^\n]*)?\n", "", new_text)
         tx.write(path, new_text.encode("latin-1"))
         plan.changes.append(f"{relative(path)}: {count} uses")
@@ -246,7 +218,6 @@ def rename(
 
 
 def scan(tx: Transaction, names: set[str]) -> dict[Path, tuple[str, list[Site]]]:
-    """{path: (text, the Sites of NAMES in it)} of the code files that mention any of NAMES."""
     out = {}
     for path in code_files():
         text = read_code(tx, path)
@@ -258,9 +229,6 @@ def scan(tx: Transaction, names: set[str]) -> dict[Path, tuple[str, list[Site]]]
 
 
 def taken_names(mapping: dict[str, str], texts: dict[Path, tuple[str, list[Site]]]) -> dict[str, list[Site]]:
-    """{new: its uses in the code} of MAPPING's new names that already mean something there (an identifier outside
-    comments and member positions), not counting a new name that is itself renamed away, or an alias `#define NEW
-    OLD` (which the rename deletes)."""
     news = {new: old for old, new in mapping.items() if new not in mapping}
     out: dict[str, list[Site]] = defaultdict(list)
     for path, (text, sites) in texts.items():
@@ -277,12 +245,7 @@ def taken_names(mapping: dict[str, str], texts: dict[Path, tuple[str, list[Site]
     return dict(out)
 
 
-# ------------------------------------------------------------------------------------------------------- units
-
-
 def rename_unit(old: str, new: str) -> Plan:
-    """Stage renaming the source OLD to NEW (both repository-relative): the file, config/sources.json, every version's
-    rows, config.json, state.json, splits.txt and name review, and `#include "OLD"` in the code."""
     plan = Plan()
     tx = plan.tx
     if not (ROOT / old).is_file():
@@ -349,7 +312,6 @@ def rename_unit(old: str, new: str) -> Plan:
 
 
 def rename_in_json(value, old: str, new: str):
-    """VALUE with every string (key or value) equal to OLD made NEW; lists of strings stay sorted when they were."""
     if isinstance(value, dict):
         return {(new if k == old else k): rename_in_json(v, old, new) for k, v in value.items()}
     if isinstance(value, list):

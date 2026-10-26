@@ -1,8 +1,6 @@
 #ifndef DRIVER_TOOLHELPERS_CC_H
 #define DRIVER_TOOLHELPERS_CC_H
 
-#include "compiler/common.h"
-
 #ifdef __cplusplus
 extern "C" {
 #endif

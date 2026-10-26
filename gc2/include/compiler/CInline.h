@@ -9,15 +9,8 @@
 extern "C" {
 #endif
 
-// (Pro7's mac68k alignment)
 #pragma pack(push, 2)
 
-// TODO: invented name. 2.6 keeps the back-end options an inline function was defined with in its
-// CI_FuncData (CMach_GetBackEndOptions) and restores them to generate it later
-// (CInline_GenerateDeferredFuncs); Pro7 has neither. Its layout is CompilerLinkerOptions' from
-// `processor` to `old_style_bitfields`, then the optimizer's members: the members marked "(not
-// copied)" are the CompilerLinkerOptions members at those offsets, which CMach_GetBackEndOptions
-// and CMach_SetBackEndOptions skip.
 struct CInlineBackendOptions {
     SInt16 processor;
     UInt8 scheduling;
@@ -40,13 +33,12 @@ struct CInlineBackendOptions {
     SInt32 sdata2_threshold;
     UInt8 pool_data;
     UInt8 common;
-    UInt8 use_fp; // (not copied)
-    UInt8 soft_float; // (not copied)
+    UInt8 use_fp;
+    UInt8 soft_float;
     UInt8 codegen_pic;
-    UInt8 full_dwarf; // (not copied)
+    UInt8 full_dwarf;
     UInt8 no_comment_records;
     UInt8 rel109_offset;
-    // (not copied: these seven)
     struct ObjGenSection* textSection;
     struct ObjGenSection* dataSection;
     struct ObjGenSection* constSection;
@@ -63,10 +55,11 @@ struct CInlineBackendOptions {
     UInt8 gen_isel;
     UInt8 gen_fsel;
     UInt8 gecko_float_typecons;
+#if VERSION >= VERSION_GC_2_0
     UInt8 disable_vector_frame;
+#endif
     UInt8 opt_bcc_lr_ctr;
     UInt8 use_lmw_stmw;
-    // (not copied: these ten)
     UInt8 report_heap_info;
     UInt8 misaligned_mem_access;
     UInt8 switch_tables;
@@ -104,22 +97,21 @@ struct CI_Var {
     Type* type;
     UInt32 qual;
     UInt8 sflags;
-    // TODO: invented name (Pro7: xD): the variable is referenced
     SInt8 used;
-    // TODO: invented name (Pro7: xE): the argument is never assigned or has its address taken, so
-    // its argument expression can stand in for it (locals: always 0)
     SInt8 unmodified;
 };
 
-// (2.6's switch cases have no `max`: SwitchCase likewise)
 struct CI_SwitchCase {
     short labelID;
     CInt64 min;
+#if VERSION < VERSION_GC_2_0
+    CInt64 max;
+#endif
 };
 
 struct CI_Switch {
     ENode* expr;
-    Type* exprtype; // TODO: invented name, as SwitchInfo's (Pro7: unkSwitch8)
+    Type* exprtype;
     short defaultlabelID;
     short numcases;
     CI_SwitchCase cases[1];
@@ -154,7 +146,7 @@ struct CI_FuncData {
     CI_Var* locals;
     short numstatements;
     CI_Statement* statements;
-    struct CInlineBackendOptions options; // (2.6)
+    struct CInlineBackendOptions options;
     FileOffsetInfo fileoffset;
     SInt32 symdecloffset;
     SInt32 functionbodyoffset;
@@ -192,13 +184,12 @@ struct CI_Action {
     CI_ActionType actiontype;
 };
 
-// TODO: Pro7's placeholder names
 typedef enum CInlineCopyMode {
-    CopyMode0,
-    CopyMode1,
-    CopyMode2,
-    CopyMode3,
-    CopyMode4
+    CopyModeLocal,
+    CopyModeGlobal,
+    CopyModePack,
+    CopyModeUnpack,
+    CopyModeExpand
 } CInlineCopyMode;
 
 #pragma pack(pop)
@@ -210,21 +201,22 @@ extern SInt32 CInline_GetLocalID(Object* object);
 extern Boolean CInline_ExpressionHasSideEffect(ENode* expr);
 extern ENode* CInline_CopyExpression(ENode* expr, CInlineCopyMode mode);
 extern void CInline_SerializeStatement(Statement* stmt);
-extern Object* CInline_GetLocalObj(SInt32 id, Boolean flag);
+extern Object* CInline_GetLocalObj(SInt32 id, Boolean inlineCopy);
 extern SInt16 CInline_GetStatementNumber(Statement* first, Statement* stmt);
 extern void CInline_PackIFunctionData(CI_FuncData* funcdata, Statement* stmt, Object* object);
 extern void CInline_UnpackIFunctionData(
     Object* object, CI_FuncData* funcdata, Statement* firstStmt
 );
 extern void CInline_AddInlineFunctionAction(
-    Object* object, TypeClass* tclass, FileOffsetInfo* fileoffset, TokenStream* stream, Boolean flag
+    Object* object,
+    TypeClass* tclass,
+    FileOffsetInfo* fileoffset,
+    TokenStream* stream,
+    Boolean isTemplate
 );
-// TODO: Pro7's parameters are TemplateFunction* and TemplFuncInstance*; with them declared so,
-// CTemplateFunc's CTempl_GetCreateFuncInstance (the caller) compiles one register move elsewhere
-// and loses its match: a sign that function's source is not yet the original's
 extern void CInline_AddTemplateFunctionAction(Object* object, void* func, void* inst);
 extern void CInline_ObjectAddrRef(Object* object);
-extern void CInline_GenFunc(Statement* stmt, Object* object, UInt8 mysteryFlag);
+extern void CInline_GenFunc(Statement* stmt, Object* object, UInt8 oldStyleParameters);
 extern Boolean CInline_CanFreeLHeap(void);
 extern Boolean CInline_GenerateDeferredFuncs(void);
 extern void CInline_Finish(void);

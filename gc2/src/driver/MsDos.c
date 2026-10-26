@@ -1,19 +1,22 @@
 #include "driver/MsDos.h"
 #include "compiler/win32.h"
-#include "driver/CLIO.h"
+#include "driver/oslib.h"
 #include "driver/StringExtras.h"
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-// The Win32 platform layer: Pro7's Posix.c API on the Win32 API. Errors are Win32 error codes
-// (GetLastError's, and ERROR_BUFFER_OVERFLOW for a path too long), where Pro7 has errno values.
+#if !defined(__MWERKS__) && !defined(__wasm__)
+#include "host/ShiftJIS.h"
+#define CreateFileA ShiftJIS_CreateFileA
+#define ReadFile ShiftJIS_ReadFile
+#define GetFileSize ShiftJIS_GetFileSize
+#define SetFilePointer ShiftJIS_SetFilePointer
+#define CloseHandle ShiftJIS_CloseHandle
+#define IsDBCSLeadByte ShiftJIS_IsDBCSLeadByte
+#endif
 
-// TODO: invented name, and a stand-in. 2.6 has 32 KB of zeros that nothing refers to at 0x599418,
-// between MSL's wctype.c (which links on its own) and MsDos' literals; no Pro7, Wii or MSL source
-// has such an array, so whether it is MsDos' own (an unused initialized static, emitted first) or a
-// data-only object linked between the two is unknown. Defined here, the unit's .data is the original's.
 static char unused_zeroes[0x8000] = {0};
 
 int __stdcall OS_EqualNameSpec(const OSNameSpec* a, const OSNameSpec* b);
@@ -25,7 +28,7 @@ static char intbuf[260];
 const char* __stdcall OS_GetErrText(int err) {
     char* eol;
 
-    if (err != 0xfafafafa) {
+    if (err != (int)0xfafafafa) {
         FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM, NULL, err, 0, errtext, sizeof(errtext), NULL);
     } else {
         strcpy(errtext, "Unknown process spawning error");
@@ -42,7 +45,6 @@ int __stdcall OS_InitProgram(int* pArgc, char*** pArgv) {
     return 0;
 }
 
-// (Pro7 gives a text file its permissions here; 2.6's is an uninitialized COMMON)
 uOSTypePair OS_TEXTTYPE;
 
 int __stdcall OS_Create(const OSSpec* spec, const uOSTypePair* type) {
@@ -145,10 +147,10 @@ int __stdcall OS_SetFileTime(const OSSpec* spec, const OSTime* crtm, const OSTim
 int __stdcall OS_Open(const OSSpec* spec, OSOpenMode mode, int* ref) {
     // clang-format off
     static DWORD modetrans[4] = {
-        GENERIC_READ,                 // OSReadOnly
-        GENERIC_WRITE,                // OSWrite
-        GENERIC_READ | GENERIC_WRITE, // OSReadWrite
-        GENERIC_WRITE                 // OSAppend
+        GENERIC_READ,
+        GENERIC_WRITE,
+        GENERIC_READ | GENERIC_WRITE,
+        GENERIC_WRITE
     };
     // clang-format on
     if (OS_SpecToString(spec, intbuf, sizeof(intbuf)) == NULL) {
@@ -168,8 +170,6 @@ int __stdcall OS_Open(const OSSpec* spec, OSOpenMode mode, int* ref) {
     return 0;
 }
 
-// (pos and chunk are signed: the zero-fill loop's test converts pos, an invariant MWCC hoists into a
-// preheader that ends up empty, which is the original's dead `jmp` after the last `ret`)
 int __stdcall OS_Write(int ref, const void* buffer, UInt32* length) {
     static char zeroes[32] = {0};
     HANDLE h;
@@ -180,19 +180,19 @@ int __stdcall OS_Write(int ref, const void* buffer, UInt32* length) {
 
     h = (HANDLE)ref;
     pos = SetFilePointer(h, 0, NULL, FILE_CURRENT);
-    if (pos == -1 || (end = GetFileSize(h, NULL)) == -1) {
+    if (pos == -1 || (end = GetFileSize(h, NULL)) == 0xffffffff) {
         return GetLastError();
     }
-    if (pos > end) {
-        if (SetFilePointer(h, end, NULL, FILE_BEGIN) == -1) {
+    if ((DWORD)pos > end) {
+        if (SetFilePointer(h, end, NULL, FILE_BEGIN) == 0xffffffff) {
             return GetLastError();
         }
-        while (pos > end) {
+        while ((DWORD)pos > end) {
             chunk = pos - end > sizeof(zeroes) ? sizeof(zeroes) : pos - end;
             if (!WriteFile(h, zeroes, chunk, &written, NULL)) {
                 return GetLastError();
             }
-            if (written < chunk) {
+            if (written < (DWORD)chunk) {
                 *length = 0;
                 return 0;
             }
@@ -215,9 +215,9 @@ int __stdcall OS_Read(int ref, void* buffer, UInt32* length) {
 int __stdcall OS_Seek(int ref, OSSeekMode how, SInt32 offset) {
     // clang-format off
     static DWORD howtrans[3] = {
-        FILE_CURRENT, // OSSeekRel
-        FILE_BEGIN,   // OSSeekAbs
-        FILE_END      // OSSeekEnd
+        FILE_CURRENT,
+        FILE_BEGIN,
+        FILE_END
     };
     // clang-format on
     if (SetFilePointer((HANDLE)ref, offset, NULL, howtrans[how]) == 0xffffffff) {
@@ -243,7 +243,7 @@ int __stdcall OS_Close(int ref) {
 
 int __stdcall OS_GetSize(int ref, UInt32* length) {
     *length = GetFileSize((HANDLE)ref, NULL);
-    if (*length == -1) {
+    if (*length == 0xffffffff) {
         return GetLastError();
     }
     return 0;
@@ -253,10 +253,8 @@ int __stdcall OS_SetSize(int ref, UInt32 size) {
     DWORD pos;
 
     pos = SetFilePointer((HANDLE)ref, 0, NULL, FILE_CURRENT);
-    if (pos ==
-        0xffffffff ||
-        SetFilePointer((HANDLE)ref, size, NULL, FILE_BEGIN) ==
-        0xffffffff ||
+    if (pos == 0xffffffff ||
+        SetFilePointer((HANDLE)ref, size, NULL, FILE_BEGIN) == 0xffffffff ||
         !SetEndOfFile((HANDLE)ref) ||
         SetFilePointer((HANDLE)ref, pos, NULL, FILE_BEGIN) == 0xffffffff) {
         return GetLastError();
@@ -294,8 +292,6 @@ int __stdcall OS_Rmdir(const OSPathSpec* spec) {
     return 0;
 }
 
-// TODO: invented name (Wii's MsDos has this static unnamed, between OS_Rmdir and OS_GetCWD; Pro7's
-// OS_GetCWD appends the separator itself)
 static void ensure_trailing_backslash(char* path) {
     path += strlen(path);
     if (path[-1] != OS_PATHSEP) {
@@ -312,7 +308,6 @@ int __stdcall OS_GetCWD(OSPathSpec* spec) {
     return 0;
 }
 
-// TODO: invented name (Wii's MsDos has this static unnamed, between OS_GetCWD and OS_Execute)
 static DWORD redirect_standard_handle_to_file(HANDLE* saved, int which, const char* filename) {
     HANDLE old;
     HANDLE h;
@@ -442,15 +437,12 @@ char* __stdcall OS_GetDirPtr(char* path) {
     if (isalpha(*path) && path[1] == ':') {
         return path + 2;
     }
-    // (a rooted path returns itself like any other: 2.6's; without the test the code differs)
     if (*path == OS_PATHSEP) {
         return path;
     }
     return path;
 }
 
-// Converts a path to native form: `//x/`, `/cygdrive/x/` and the MW_CYGDRIVE_PREFIX
-// form give drive letters.
 int OS_CanonPath(const char* src, char* dst) {
     const char* read;
     char* write;
@@ -461,7 +453,7 @@ int OS_CanonPath(const char* src, char* dst) {
         return ERROR_BUFFER_OVERFLOW;
     }
     if (dst == NULL) {
-        dst = (char*)src; // (canonicalised in place)
+        dst = (char*)src;
     }
 
     read = src;
@@ -515,8 +507,6 @@ int OS_CanonPath(const char* src, char* dst) {
     return 0;
 }
 
-// (2.6's flags read like expanded macros; one `||` expression, an if chain returning TRUE, and
-// inline helpers for the four forms compile otherwise)
 int __stdcall OS_IsFullPath(const char* path) {
     int cyg;
     int prefixed;
@@ -547,7 +537,6 @@ int __stdcall OS_IsFullPath(const char* path) {
     }
     if (!dos) {
         matched = FALSE;
-        // (2.6 passes strlen(...) == 0 as the length: a misplaced parenthesis)
         if (cygdrive_prefix && ustrncmp(path, cygdrive_prefix, strlen(cygdrive_prefix) == 0)) {
             matched = TRUE;
         }
@@ -676,7 +665,7 @@ int __stdcall OS_MakeFileSpec(const char* path, OSSpec* spec) {
 }
 
 int __stdcall OS_MakePathSpec(const char* vol, const char* dir, OSPathSpec* spec) {
-    OSSpec tmp;
+    OSSpec fullspec;
     Boolean isfile;
     char path[324];
     UInt32 vlen, dlen;
@@ -706,11 +695,11 @@ int __stdcall OS_MakePathSpec(const char* vol, const char* dir, OSPathSpec* spec
             strcpy(path, ".");
         }
     }
-    err = OS_MakeSpec(path, &tmp, &isfile);
-    strcpy(spec->s, tmp.path.s);
-    if (err == 0 && OS_Status(&tmp) != 0) {
+    err = OS_MakeSpec(path, &fullspec, &isfile);
+    strcpy(spec->s, fullspec.path.s);
+    if (err == 0 && OS_Status(&fullspec) != 0) {
         err = ERROR_PATH_NOT_FOUND;
-        isfile = FALSE; // (dead, as err is set: 2.6's; without it the code differs)
+        isfile = FALSE;
     }
     if (err != 0) {
         return err;
@@ -835,7 +824,7 @@ int __stdcall OS_IsDir(const OSSpec* spec) {
     }
     attr = GetFileAttributesA(intbuf);
     if (attr == 0xffffffff) {
-        return 0;
+        return FALSE;
     }
     return (attr & FILE_ATTRIBUTE_DIRECTORY) != 0;
 }
@@ -852,13 +841,13 @@ int __stdcall OS_IsFile(const OSSpec* spec) {
     }
     attr = GetFileAttributesA(intbuf);
     if (attr == 0xffffffff) {
-        return 0;
+        return FALSE;
     }
     return (attr & FILE_ATTRIBUTE_DIRECTORY) == 0;
 }
 
 int __stdcall OS_IsLink(const OSSpec* spec) {
-    return 0;
+    return FALSE;
 }
 
 int __stdcall OS_ResolveLink(const OSSpec* link, OSSpec* target) {
@@ -966,10 +955,6 @@ void __stdcall OS_GetTime(OSTime* p) {
 }
 
 int __stdcall OS_NewHandle(UInt32 size, OSHandle* hand) {
-    // TODO: 2.6 keeps the size in a copy of its own, of a type other than UInt32 (a chained store
-    // into it: `int` and `unsigned int` match too); a plain `size` throughout, `(size_t)size` at the
-    // memset, `memset(..., hand->used)`, a separate `len = size;` after the store or before the
-    // GlobalAlloc, and a local copy of the address do not (the memset's count is copied early)
     size_t len;
 
     hand->addr = GlobalAlloc(GMEM_FIXED, size);
@@ -1093,7 +1078,6 @@ int __stdcall OS_OSErrorToMacError(int err) {
     return err | 0xffff8000;
 }
 
-// (OS_TimeToMac sets February's length for the year it converts)
 static SInt32 monthdays[12] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
 
 void __stdcall OS_TimeToMac(OSTime sectm, UInt32* secs) {
@@ -1176,7 +1160,6 @@ int OS_MacToRef(SInt16 refnum) {
     return -1;
 }
 
-// (Win32: the resource fork of the program itself is its "MACRSRC" resource 101)
 int __stdcall OS_LoadMacResourceFork(const OSSpec* spec, void** file_data, SInt32* file_len) {
     HMODULE mod;
     HRSRC rsrc;
@@ -1207,15 +1190,15 @@ int __stdcall OS_LoadMacResourceFork(const OSSpec* spec, void** file_data, SInt3
     return 0;
 }
 
-Boolean __stdcall OS_IsMultiByte(const char* str1, const char* str2) {
-    const char* p = str1;
-    while (p <= str2) {
+Boolean __stdcall OS_IsMultiByte(const char* str, const char* pos) {
+    const char* p = str;
+    while (p <= pos) {
         Boolean lead = IsDBCSLeadByte(*p);
         if (!lead && GetLastError() == ERROR_INVALID_PARAMETER) {
             return FALSE;
         }
         if (lead) {
-            if (p == str2 || p + 1 == str2) {
+            if (p == pos || p + 1 == pos) {
                 return TRUE;
             }
             p += 2;

@@ -1,16 +1,16 @@
 #include "compiler/FunctionCalls.h"
 #include "compiler/CError.h"
-#include "compiler/CExpr.h"
 #include "compiler/CFunc.h"
 #include "compiler/CMachine.h"
 #include "compiler/CodeGen.h"
 #include "compiler/CompilerTools.h"
 #include "compiler/CParser.h"
-#include "compiler/CPrep.h"
+#include "compiler/enode.h"
 #include "compiler/InstrSelection.h"
 #include "compiler/ObjGen_PPC_EABI.h"
 #include "compiler/Operands.h"
 #include "compiler/PCode.h"
+#include "compiler/PCodeInfo.h"
 #include "compiler/PCodeUtilities.h"
 #include "compiler/Registers.h"
 #include "compiler/StackFrame.h"
@@ -42,7 +42,6 @@ typedef struct ArgInfo {
 } ArgInfo;
 #pragma pack(pop)
 
-// forward decls
 static void branch_subroutine_indirect_ctr(Operand* addrOpnd, UInt32* used_regs);
 
 static ArgInfo* make_arginfo(ENode* expr) {
@@ -109,11 +108,9 @@ static ArgInfo* analyze_arguments(
 
         arg_size = 0;
 
-        // 2.6 (EABI): a pair of registers starts at an odd one
         if ((TYPE_IS_8BYTES(type) ||
              (TYPE_IS_SOFT_FLOAT(type) &&
-              type->size !=
-              4 &&
+              type->size != 4 &&
               !copts.incompatible_sfpe_double_params)) &&
             (gpr_counter % 2) == 0) {
             gpr_counter++;
@@ -140,7 +137,6 @@ static ArgInfo* analyze_arguments(
             }
             vr_counter++;
         } else if (TYPE_IS_SOFT_FLOAT(type)) {
-            // 2.6: soft floating point in GPRs
             if (type->size == 4) {
                 if (gpr_counter <= 10) {
                     info->flags |= AIF_PassInGPR;
@@ -233,7 +229,6 @@ static ArgInfo* analyze_arguments(
             gpr_counter++;
             arg_size = 4;
         } else if (IS_TYPE_VEC2X32FLOAT(type) && copts.processor == CPU_PPCGEKKO) {
-            // 2.6: Gekko's paired singles in FPRs
             if (fpr_counter <= 8) {
                 info->flags |= AIF_PassInFPR;
                 info->fpr = fpr_counter;
@@ -247,7 +242,6 @@ static ArgInfo* analyze_arguments(
                    IS_TYPE_NONVECTOR_STRUCT(type) ||
                    IS_TYPE_CLASS(type) ||
                    IS_TYPE_12BYTES_MEMBERPOINTER(type)) {
-            // 2.6: aggregates are passed by address (Pro7's code for them follows, unreachable)
             SInt32 gprs_needed;
 
             CError_FATAL(398);
@@ -353,14 +347,13 @@ static void pass_in_memory(ArgInfo* info) {
             PC_STVX, info->opnd.reg, 1, NULL, out_param_displ_to_offset(info->offset)
         );
     } else if (IS_TYPE_VEC2X32FLOAT(type) && copts.processor == CPU_PPCGEKKO) {
-        // 2.6
         if (!info->evaluated) {
             GEN_NODE(info->expr, &info->opnd);
         }
         ENSURE_FPR(&info->opnd, type, 0);
 
         gecko_load_store_register(
-            info->opnd.reg, 1, NULL, out_param_displ_to_offset(info->offset), 0, 912, 0
+            info->opnd.reg, 1, NULL, out_param_displ_to_offset(info->offset), 0, SPR_GQR0, 0
         );
     } else {
         opnd.optype = OpndType_IndirectGPR_ImmOffset;
@@ -398,7 +391,6 @@ static void pass_in_register(ArgInfo* info) {
             emitpcode(PC_VMR, info->vr, info->opnd.reg);
         }
     } else if (IS_TYPE_VEC2X32FLOAT(type) && copts.processor == CPU_PPCGEKKO) {
-        // 2.6
         if (!info->evaluated) {
             GEN_NODE_TO_REG(info->expr, info->fpr, 0, &info->opnd);
         }
@@ -623,12 +615,12 @@ static void evaluate_nested_function_calls(ArgInfo* info) {
 }
 
 void call_function(ENode* expr, Operand* output) {
-    ArgInfo* infos; // r31
-    ENode* funcref = expr->data.funccall.funcref; // r27
-    Type* resultType = expr->data.funccall.functype->functype; // r26
-    ENode* node = NULL; // r25
-    char has_varargs; // r24 (2.6: for the varargs condition bit)
-    ArgInfo* info; // r22
+    ArgInfo* infos;
+    ENode* funcref = expr->data.funccall.funcref;
+    Type* resultType = expr->data.funccall.functype->functype;
+    ENode* node = NULL;
+    char has_varargs;
+    ArgInfo* info;
     Operand opnd;
     TypeClass* tclass;
     SInt32 vfOffset;
@@ -646,7 +638,7 @@ void call_function(ENode* expr, Operand* output) {
         }
     }
 
-    if (expr->data.funccall.functype->flags & FUNC_FLAGS_80) {
+    if (expr->data.funccall.functype->flags & FUNC_PTM) {
         if (Type_RequiresMemoryReturn(resultType)) {
             node = expr->data.funccall.args->next->node;
         } else {
@@ -684,14 +676,12 @@ void call_function(ENode* expr, Operand* output) {
         }
     }
     for (info = infos; info; info = info->next) {
-        int flag = info->flags & AIF_PassMask;
-        if (flag == AIF_PassInGPR || flag == AIF_PassInFPR || flag == AIF_PassInVR) {
+        int passKind = info->flags & AIF_PassMask;
+        if (passKind == AIF_PassInGPR || passKind == AIF_PassInFPR || passKind == AIF_PassInVR) {
             pass_in_register(info);
         }
     }
 
-    // 2.6 (EABI): condition register bit 6 tells a varargs callee whether floating point arguments
-    // are in FPRs
     if (has_varargs) {
         if (has_floats && !copts.soft_float) {
             emitpcode(PC_CREQV, 1, 2, 1, 2, 1, 2);
@@ -715,8 +705,7 @@ void call_function(ENode* expr, Operand* output) {
                 ENSURE_GPR(&opnd, TYPE(&void_ptr), 12);
             }
             branch_subroutine_indirect(funcref->data.objref, &opnd, used_regs);
-        } else if (ObjGen_GetAddressing(funcref->data.objref) == 12) {
-            // 2.6
+        } else if (ObjGen_GetAddressing(funcref->data.objref) == AM_CODE_FAR_ABS) {
             if (!funcref->hascall) {
                 GEN_NODE_TO_REG(funcref, 12, 0, &opnd);
             }
@@ -735,7 +724,6 @@ void call_function(ENode* expr, Operand* output) {
         branch_subroutine_indirect_ctr(&opnd, used_regs);
     }
 
-    ORACLE_PROBE(OracleProbe_Binding(expr, output, resultType));
     if (IS_TYPE_FLOAT_NOT_VEC2X32FLOAT(resultType) && !TYPE_IS_SOFT_FLOAT(resultType)) {
         output->optype = OpndType_FPR;
         output->reg = ALLOC_FPR();
@@ -745,7 +733,6 @@ void call_function(ENode* expr, Operand* output) {
         output->reg = ALLOC_VR();
         emitpcode(PC_VMR, output->reg, 2);
     } else if (IS_TYPE_VEC2X32FLOAT(resultType) && copts.processor == CPU_PPCGEKKO) {
-        // 2.6
         output->optype = OpndType_FPR;
         output->reg = ALLOC_FPR();
         emitpcode(PC_PS_MR, output->reg, 1);
@@ -753,7 +740,6 @@ void call_function(ENode* expr, Operand* output) {
                 !Type_RequiresMemoryReturn(resultType)) ||
                TYPE_FITS_IN_REGISTER(resultType) ||
                TYPE_IS_SOFT_FLOAT(resultType)) {
-        // (2.6: small structs come back in r3 and r4, soft floating point in GPRs)
         if (resultType->size > 4) {
             output->optype = OpndType_GPRPair;
             output->reg = ALLOC_GPR();

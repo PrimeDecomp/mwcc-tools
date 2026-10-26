@@ -1,11 +1,9 @@
 #include "driver/Memory.h"
 #include "driver/Generic.h"
 #include "driver/MsDos.h"
+#include "driver/oslib.h"
 #include <stdio.h>
 #include <stdlib.h>
-
-// The Mac Memory Manager's handles over the OS layer's (Pro7's MacEmul/Memory.c). A Handle points
-// at a HandleStructure: the master pointer, then the OSHandle behind it.
 
 static OSErr memError;
 
@@ -118,8 +116,6 @@ SInt32 __stdcall GetHandleSize(Handle h) {
     return sz;
 }
 
-// (2.6 takes the OSHandle's address once, assigned inside the call, where Pro7 writes &HS(h)->hand
-// three times; that spelling and an initialized local both compile otherwise)
 void __stdcall SetHandleSize(Handle h, SInt32 newSize) {
     OSHandle* oh;
 
@@ -128,7 +124,6 @@ void __stdcall SetHandleSize(Handle h, SInt32 newSize) {
     OS_UnlockHandle(oh);
 }
 
-// (the OSHandle's address taken once, as in SetHandleSize)
 OSErr __stdcall PtrAndHand(const void* srcPtr, Handle destHandle, SInt32 size) {
     OSErr err;
     OSHandle* oh;
@@ -151,7 +146,6 @@ OSErr __stdcall HandAndHand(Handle src, Handle dst) {
     return err;
 }
 
-// (dead in 2.6: the linker dropped it, but its "%*.*s" is in the unit's .data)
 void DebugStr(ConstStringPtr str) {
     fprintf(stderr, "%*.*s", str[0], str[0], &str[1]);
 }

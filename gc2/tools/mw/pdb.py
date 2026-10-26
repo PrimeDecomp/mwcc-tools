@@ -1,21 +1,9 @@
-"""A PDB 7.0 writer (MSF 7.00): what IDA, Ghidra, Binary Ninja and debuggers read for a Windows executable.
-
-The streams are laid out as LLVM's PDB writer (lld-link) lays them out, with its hash functions, so that
-llvm-pdbutil can check them: the PDB info stream (the named stream map, /names), TPI and IPI (type records and the
-TPI hash stream), DBI (modules, section contributions, the section map, source files, the section headers stream),
-each module's symbol stream (symbols, C13 line and file checksum subsections), the global and public symbol hash
-streams and the symbol record stream.
-
-Records are given already encoded (CodeView 8: tools/mw/codeview.py converts the compiler's CodeView 5); this module
-only lays them out."""
-
 import struct
 import zlib
 
 BLOCK = 4096
 MSF_MAGIC = b"Microsoft C/C++ MSF 7.00\r\n\x1aDS\0\0\0"
 
-# symbol kinds the layout looks at
 S_END, S_GPROC32, S_LPROC32, S_PUB32, S_PROCREF, S_LPROCREF = 0x0006, 0x1110, 0x110F, 0x110E, 0x1125, 0x1127
 S_GDATA32, S_LDATA32, S_UDT, S_CONSTANT = 0x110D, 0x110C, 0x1108, 0x1107
 DEBUG_S_LINES, DEBUG_S_FILECHKSMS = 0xF2, 0xF4
@@ -23,7 +11,6 @@ IPHR_HASH = 4096
 
 
 def hash_string_v1(data):
-    """LLVM's hashStringV1 (the PDB's string hash)."""
     result = 0
     whole = len(data) // 4 * 4
     for i in range(0, whole, 4):
@@ -40,18 +27,15 @@ def hash_string_v1(data):
 
 
 def hash_buffer_v8(data):
-    """LLVM's hashBufferV8: JamCRC from 0, no final inversion."""
     return zlib.crc32(data, 0xFFFFFFFF) ^ 0xFFFFFFFF
 
 
 def symbol(kind, body):
-    """A symbol record: its length, KIND, BODY, zero-padded to 4 bytes."""
     body = bytes(body) + bytes(-(len(body) + 4) % 4)
     return struct.pack("<HH", len(body) + 2, kind) + body
 
 
 def type_record(leaf, body):
-    """A type record: its length, LEAF, BODY, padded to 4 bytes with LF_PAD bytes."""
     padding = -(len(body) + 4) % 4
     body = bytes(body) + bytes(0xF0 | n for n in range(padding, 0, -1))
     return struct.pack("<HH", len(body) + 2, leaf) + body
@@ -62,7 +46,6 @@ def cstr(name):
 
 
 def numeric(value):
-    """A CodeView numeric leaf."""
     if 0 <= value < 0x8000:
         return struct.pack("<H", value)
     if -0x80000000 <= value < 0x80000000:
@@ -71,8 +54,6 @@ def numeric(value):
 
 
 class Types:
-    """A type stream (TPI or IPI): records from index 0x1000."""
-
     def __init__(self):
         self.records = []
 
@@ -81,7 +62,6 @@ class Types:
         return 0x1000 + len(self.records) - 1
 
     def streams(self, hash_stream_index):
-        """(the type stream, its hash stream) with the hash stream at HASH_STREAM_INDEX (None: no hash stream)."""
         buckets = 0x3FFFF
         data = b"".join(self.records)
         values, offsets, at, last = [], [], 0, None
@@ -115,8 +95,6 @@ class Types:
 
 
 def record_hash(record):
-    """LLVM's hashTypeRecord: a named, defined class, structure, union or enum by its name, anything else by the
-    CRC of its bytes."""
     leaf = struct.unpack_from("<H", record, 2)[0]
     if leaf in (0x1504, 0x1505, 0x1506, 0x1507):
         body = record[4:]
@@ -146,8 +124,6 @@ def skip_numeric(data, at):
 
 
 class Strings:
-    """The /names string table: offsets of the strings in it."""
-
     def __init__(self):
         self.data, self.offsets = bytearray(b"\0"), {"": 0}
 
@@ -175,18 +151,14 @@ class Strings:
 
 
 class Module:
-    """A module (translation unit): its symbols (the records, encoded, whose offsets the procedures' parent and end
-    fields name), its files and its line subsections."""
-
     def __init__(self, name, object_name):
         self.name, self.object_name = name, object_name
         self.symbols = bytearray()
-        self.files = []  # [file name]
-        self.lines = []  # [(segment, offset, code size, file name, [(offset, line)])]
-        self.contributions = []  # [(segment, offset, size, characteristics)]
+        self.files = []
+        self.lines = []
+        self.contributions = []
 
     def offset(self):
-        """The offset the next record will have in the module's stream (after its 4-byte signature)."""
         return 4 + len(self.symbols)
 
     def add(self, record):
@@ -195,11 +167,9 @@ class Module:
         return at
 
     def patch(self, at, field, value):
-        """Set the u32 FIELD (byte offset after the record's kind) of the record at AT."""
         struct.pack_into("<I", self.symbols, at - 4 + 4 + field, value)
 
     def stream(self, strings):
-        """(the module's stream, its symbol byte size, its C13 byte size)."""
         checksums, positions = bytearray(), {}
         for name in self.files:
             positions[name] = len(checksums)
@@ -217,7 +187,6 @@ class Module:
 
 
 def gsi_hash(entries):
-    """The GSI hash table of ENTRIES [(name, offset in the symbol record stream)]."""
     buckets = [[] for _ in range(IPHR_HASH + 1)]
     for name, offset in entries:
         buckets[hash_string_v1(name.encode("latin-1")) % IPHR_HASH].append((name, offset))
@@ -236,20 +205,17 @@ def gsi_hash(entries):
 
 
 def gsi_key(name):
-    """LLVM's gsiRecordCmp order: by length, then case-insensitively."""
     return len(name), name.lower()
 
 
 class PDB:
-    """The PDB of an executable: modules, publics and globals, types, its section headers."""
-
     def __init__(self, guid, age, signature, section_headers):
         self.guid, self.age, self.signature = guid, age, signature
-        self.section_headers = section_headers  # [(name, virtual size, virtual address, characteristics, raw 40 bytes)]
+        self.section_headers = section_headers
         self.types, self.ids = Types(), Types()
         self.modules = []
-        self.publics = []  # [(name, segment, offset, function)]
-        self.globals = []  # [(name, record bytes, module index or None, offset in module)]
+        self.publics = []
+        self.globals = []
 
     def module(self, name, object_name):
         module = Module(name, object_name)
@@ -261,25 +227,22 @@ class PDB:
         for module in self.modules:
             for name in module.files:
                 strings.add(name)
-        streams = [b"", None, None, None, None]  # 0 old directory, 1 info, 2 TPI, 3 DBI, 4 IPI
+        streams = [b"", None, None, None, None]
 
         def add(data):
             streams.append(data)
             return len(streams) - 1
 
-        # (types and their hash streams)
         tpi_hash = len(streams)
         streams.append(None)
         streams[2], streams[tpi_hash] = self.types.streams(tpi_hash)
         ipi_hash = len(streams)
         streams.append(None)
         streams[4], streams[ipi_hash] = self.ids.streams(ipi_hash)
-        # (module streams)
         module_streams = []
         for module in self.modules:
             data, symbol_size, c13_size = module.stream(strings)
             module_streams.append((add(data), symbol_size, c13_size))
-        # (the symbol record stream: globals, then publics)
         records, global_entries, public_entries = bytearray(), [], []
         for name, record, module_index, module_offset in self.globals:
             global_entries.append((name, len(records)))
@@ -322,7 +285,6 @@ class PDB:
         )
 
     def dbi_stream(self, module_streams, globals_stream, publics_stream, symbol_records, section_header_stream):
-        # (module info)
         modules = bytearray()
         for index, (module, (stream, symbol_size, c13_size)) in enumerate(zip(self.modules, module_streams)):
             first = module.contributions[0] if module.contributions else (0xFFFF, 0, 0xFFFFFFFF, 0)
@@ -334,16 +296,14 @@ class PDB:
             )
             entry += cstr(module.name) + cstr(module.object_name)
             modules += entry + bytes(-len(entry) % 4)
-        # (section contributions, by section and offset)
         contributions = struct.pack("<I", 0xEFFE0000 + 19970605)
         for segment, offset, size, characteristics, index in sorted(
             (c + (i,) for i, m in enumerate(self.modules) for c in m.contributions)
         ):
             contributions += struct.pack("<HHiiIHHII", segment, 0, offset, size, characteristics, index, 0, 0, 0)
-        # (the section map: each section, then the absolute one)
         section_map = bytearray(struct.pack("<HH", len(self.section_headers) + 1, len(self.section_headers) + 1))
         for number, (_, size, _, characteristics, _) in enumerate(self.section_headers, 1):
-            flags = 0x8 | 0x100  # 32-bit addresses, a selector
+            flags = 0x8 | 0x100
             flags |= 0x1 if characteristics & 0x40000000 else 0
             flags |= 0x2 if characteristics & 0x80000000 else 0
             flags |= 0x4 if characteristics & 0x20000000 else 0
@@ -351,7 +311,6 @@ class PDB:
         section_map += struct.pack(
             "<HHHHHHII", 0x8 | 0x200, 0, 0, len(self.section_headers) + 1, 0xFFFF, 0xFFFF, 0, 0xFFFFFFFF
         )
-        # (source files: each module's)
         names, name_offsets, offsets = bytearray(), {}, []
         for module in self.modules:
             for name in module.files:
@@ -378,7 +337,6 @@ class PDB:
             0xFFFF,
             0xFFFF,
         )
-        # (the edit-and-continue names: a string table with only "", which the modules' name indices (0) name)
         ec_names = Strings().stream()
         header = struct.pack(
             "<iIIHHHHHHiiiiiIiiHHI",
@@ -407,7 +365,6 @@ class PDB:
 
 
 def write_msf(path, streams):
-    """Write STREAMS as an MSF 7.00 file: 4096-byte blocks, the free block maps at blocks 1 and 2 of each 4096."""
     blocks = {}
     next_block = [3]
 
@@ -436,7 +393,6 @@ def write_msf(path, streams):
     block_map = allocate()
     blocks[block_map] = struct.pack(f"<{len(directory_blocks)}I", *directory_blocks)
     count = next_block[0]
-    # (the free block map: a bit per block, set when free; every block of the file is in use)
     bits = bytearray(b"\xff" * BLOCK)
     for block in range(min(count, BLOCK * 8)):
         bits[block // 8] &= ~(1 << (block % 8)) & 0xFF

@@ -22,7 +22,7 @@ void initpcode(void) {
     initialize_aliases();
 }
 
-PCode* makepcode(short op, ...) {
+PCode* makepcode(VarArgShort op, ...) {
     PCode* pcode;
     va_list list;
 
@@ -32,7 +32,7 @@ PCode* makepcode(short op, ...) {
     return pcode;
 }
 
-void emitpcode(short op, ...) {
+void emitpcode(VarArgShort op, ...) {
     PCode* pcode;
     va_list list;
 
@@ -51,7 +51,6 @@ PCode* copypcode(PCode* pcode) {
     if ((PCODE_FLAG_SET_F(pcode) & fCanSetRecordBit) && !(PCODE_FLAG_SET_F(pcode) & fRecordBit)) {
         extra_arg = 1;
     }
-    // 2.6 (not Pro7) gives every copy at least 5 operands, the extra ones placeholders.
     if (pcode->argCount + extra_arg < 5) {
         extra_arg += 5 - (pcode->argCount + extra_arg);
     }
@@ -92,9 +91,6 @@ PCodeBlock* makepcblock(void) {
     block->loopWeight = pcloopweight;
     block->blockIndex = pcblockcount++;
     if (pclastblock) {
-        // TODO: one comma expression where Pro7 has two statements: as two statements MWCC loads
-        // the first pclastblock into eax, where 2.6 has ecx (the if/else's arms inverted, != NULL,
-        // and (a = b)->c tried); 2.6 probably linked the blocks through a macro.
         pclastblock->nextBlock = block, block->prevBlock = pclastblock;
     } else {
         pcbasicblocks = block;

@@ -1,5 +1,3 @@
-; The version-information functions the driver reads its own version resource with.
-; Each "@N" is the hint the original's import library gave.
 LIBRARY VERSION.dll
 EXPORTS
     GetFileVersionInfoSizeA@8 @1

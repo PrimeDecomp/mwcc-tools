@@ -7,6 +7,48 @@
 extern "C" {
 #endif
 
+/* (what include/compiler/win32.h declared before mweppc trimmed it to the compiler's own uses) */
+#define ERROR_NO_MORE_FILES 18L
+typedef unsigned short WCHAR;
+typedef void* PVOID;
+typedef CHAR* LPCH;
+
+typedef struct _LIST_ENTRY {
+    struct _LIST_ENTRY* Flink;
+    struct _LIST_ENTRY* Blink;
+} LIST_ENTRY;
+
+typedef struct _RTL_CRITICAL_SECTION_DEBUG {
+    WORD Type;
+    WORD CreatorBackTraceIndex;
+    struct _RTL_CRITICAL_SECTION* CriticalSection;
+    LIST_ENTRY ProcessLocksList;
+    DWORD EntryCount;
+    DWORD ContentionCount;
+    DWORD Spare[2];
+} RTL_CRITICAL_SECTION_DEBUG, *PRTL_CRITICAL_SECTION_DEBUG;
+
+typedef struct _RTL_CRITICAL_SECTION {
+    PRTL_CRITICAL_SECTION_DEBUG DebugInfo;
+    LONG LockCount;
+    LONG RecursionCount;
+    HANDLE OwningThread;
+    HANDLE LockSemaphore;
+    DWORD SpinCount;
+} RTL_CRITICAL_SECTION, *PRTL_CRITICAL_SECTION;
+
+typedef RTL_CRITICAL_SECTION CRITICAL_SECTION;
+typedef PRTL_CRITICAL_SECTION LPCRITICAL_SECTION;
+
+__declspec(dllimport) void __stdcall DeleteCriticalSection(LPCRITICAL_SECTION lpCriticalSection);
+__declspec(dllimport) void __stdcall EnterCriticalSection(LPCRITICAL_SECTION lpCriticalSection);
+__declspec(dllimport) void __stdcall ExitProcess(UINT uExitCode);
+__declspec(dllimport) BOOL __stdcall FreeEnvironmentStringsA(LPSTR);
+__declspec(dllimport) LPSTR __stdcall GetEnvironmentStrings(void);
+__declspec(dllimport) void __stdcall GetLocalTime(LPSYSTEMTIME lpSystemTime);
+__declspec(dllimport) void __stdcall InitializeCriticalSection(LPCRITICAL_SECTION lpCriticalSection);
+__declspec(dllimport) void __stdcall LeaveCriticalSection(LPCRITICAL_SECTION lpCriticalSection);
+
 typedef char TCHAR;
 typedef char* LPTSTR;
 typedef const char* LPCTSTR;

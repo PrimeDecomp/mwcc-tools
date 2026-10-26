@@ -13,8 +13,11 @@
 #include "compiler/CPrep.h"
 #include "compiler/CPrepTokenizer.h"
 #include "compiler/CScope.h"
+#include "compiler/enode.h"
 #include "compiler/objects.h"
 #include "compiler/scopes.h"
+#include "compiler/tokens.h"
+#include "compiler/types.h"
 #include "driver/COSToolsCLT.h"
 #include <stdio.h>
 #include <string.h>
@@ -48,8 +51,7 @@ Boolean cobjc_encodemethod;
 static ObjCCategoryEntry* cobjc_categories;
 static ObjCString* cobjc_strings;
 
-// forward decls
-static void CObjC_EncodeType(Type* type, UInt32 qual, Boolean flag);
+static void CObjC_EncodeType(Type* type, UInt32 qual, Boolean expandMembers);
 static Object* CObjC_GetProtocolObject(ObjCProtocol* protocol);
 
 void CObjC_Setup(void) {
@@ -225,8 +227,7 @@ static Boolean CObjC_IsSameMethod(ObjCMethod* a, ObjCMethod* b) {
     ObjCMethodArg* argB;
 
     if (CObjC_IsSameType(a->return_type, b->return_type) &&
-        a->return_qual ==
-        b->return_qual &&
+        a->return_qual == b->return_qual &&
         a->has_valist == b->has_valist) {
         argA = a->selector_args;
         argB = b->selector_args;
@@ -244,7 +245,6 @@ static Boolean CObjC_IsSameMethod(ObjCMethod* a, ObjCMethod* b) {
             }
 
             if (argA->type) {
-                // a bug in the original (Pro7's too): argB's type is compared with itself
                 if (!argB->type || !CObjC_IsSameType(argB->type, argB->type)) {
                     return FALSE;
                 }
@@ -348,8 +348,6 @@ static Object* CObjC_GetSelectorObject(ObjCSelector* sel) {
     return sel->selobject;
 }
 
-// dead in 2.6, which sends a class message to the class object itself (CObjC_ParseMessageExpression):
-// its literal is in the unit's .data
 static Object* CObjC_GetClassRefObject(TypeClass* tclass) {
     Object* nameobj;
     Object* dataobj;
@@ -387,9 +385,9 @@ static Object* CObjC_GetClassRefObject(TypeClass* tclass) {
     return tclass->objcinfo->classrefobj;
 }
 
-static Object* CObjC_MakeObject(char* name1, char* name2, SInt32 size) {
+static Object* CObjC_MakeObject(char* prefix, char* suffix, SInt32 size) {
     Object* object = CParser_NewCompilerDefDataObject();
-    object->name = CParser_NameConcat(name1, name2);
+    object->name = CParser_NameConcat(prefix, suffix);
     object->type = CDecl_NewStructType(size, 4);
     CScope_AddObject(object->nspace, object->name, OBJ_BASE(object));
     return object;
@@ -431,16 +429,15 @@ static Object* CObjC_FindRTFunc(char* namestr, char* namestr2) {
     return object;
 }
 
-static Object* CObjC_FindSendMessageRTFunc(Boolean flag1, Boolean flag2) {
-    // 2.6: the second names lack Pro7's (Mach-O's) leading underscore
-    if (flag1) {
-        if (flag2) {
+static Object* CObjC_FindSendMessageRTFunc(Boolean isSuper, Boolean isStret) {
+    if (isSuper) {
+        if (isStret) {
             return CObjC_FindRTFunc("objc_msgSendSuper_stret", "objc_msgSendSuper_stret");
         } else {
             return CObjC_FindRTFunc("objc_msgSendSuper", "objc_msgSendSuper");
         }
     } else {
-        if (flag2) {
+        if (isStret) {
             return CObjC_FindRTFunc("objc_msgSend_stret", "objc_msgSend_stret");
         } else {
             return CObjC_FindRTFunc("objc_msgSend", "objc_msgSend");
@@ -448,7 +445,6 @@ static Object* CObjC_FindSendMessageRTFunc(Boolean flag1, Boolean flag2) {
     }
 }
 
-// the runtime's struct objc_symtab (Pro7's x0, x4, x8, xA)
 typedef struct RawSymbols {
     UInt32 sel_ref_cnt;
     UInt32 refs;
@@ -484,7 +480,6 @@ void CObjC_GenerateModule(void) {
 
         symdata->sel_ref_cnt = CTool_EndianConvertWord32(0);
         symdata->refs = CTool_EndianConvertWord32(0);
-        // (sic: sel_ref_cnt again, where cls_def_cnt and cat_def_cnt follow)
         symdata->sel_ref_cnt = CTool_EndianConvertWord16(0);
         symdata->cls_def_cnt = CTool_EndianConvertWord16(classCount);
         symdata->cat_def_cnt = CTool_EndianConvertWord16(categoryCount);
@@ -544,16 +539,15 @@ void CObjC_GenerateModule(void) {
     }
 }
 
-static TypeClass* CObjC_FindObjCClass(HashNameNode* name, Boolean flag) {
+static TypeClass* CObjC_FindObjCClass(HashNameNode* name, Boolean reportMissing) {
     NameSpaceObjectList* list;
 
     list = CScope_FindName(cscope_root, name);
     if (!list ||
-        list->object->otype !=
-        OT_TYPE ||
+        list->object->otype != OT_TYPE ||
         !IS_TYPE_CLASS(OBJ_TYPE(list->object)->type) ||
         !TYPE_CLASS(OBJ_TYPE(list->object)->type)->objcinfo) {
-        if (list || flag) {
+        if (list || reportMissing) {
             CError_Error(ERR_NOT_OBJECTIVE_C_CLASS, name->name);
         }
         return NULL;
@@ -562,7 +556,7 @@ static TypeClass* CObjC_FindObjCClass(HashNameNode* name, Boolean flag) {
     }
 }
 
-static Type* CObjC_FindObjCType(char* namestr, Boolean flag) {
+static Type* CObjC_FindObjCType(char* namestr, Boolean reportMissing) {
     NameSpaceObjectList* list;
 
     list = CScope_FindName(cscope_root, GetHashNameNodeExport(namestr));
@@ -572,7 +566,7 @@ static Type* CObjC_FindObjCType(char* namestr, Boolean flag) {
         }
         CError_Error(ERR_OBJECTIVE_C_TYPE_UNEXPECTED_TYPE, namestr);
     } else {
-        if (flag) {
+        if (reportMissing) {
             CError_Error(ERR_OBJECTIVE_C_TYPE_UNDEFINED_SHOULD_DEFINED, namestr);
         }
     }
@@ -580,31 +574,28 @@ static Type* CObjC_FindObjCType(char* namestr, Boolean flag) {
     return NULL;
 }
 
-static Type* CObjC_GetObjCType_Class(Boolean flag) {
+static Type* CObjC_GetObjCType_Class(Boolean reportMissing) {
     Type* type;
 
     if (cobjc_type_class) {
         return cobjc_type_class;
     }
 
-    // the assignment in the test and the chained one below are 2.6's (Pro7: type = ...; if (!type),
-    // then cobjc_type_class = type; return type;), here and in the id and SEL lookups
-    if (!(type = CObjC_FindObjCType("Class", flag))) {
+    if (!(type = CObjC_FindObjCType("Class", reportMissing))) {
         return TYPE(&void_ptr);
     }
 
     return cobjc_type_class = type;
 }
 
-Type* CObjC_GetObjCType_id(Boolean flag) {
+Type* CObjC_GetObjCType_id(Boolean reportMissing) {
     Type* type;
 
-    // a bug in the original (Pro7's too): it tests cobjc_type_class, not cobjc_type_id
     if (cobjc_type_class) {
         return cobjc_type_id;
     }
 
-    if (!(type = CObjC_FindObjCType("id", flag))) {
+    if (!(type = CObjC_FindObjCType("id", reportMissing))) {
         return TYPE(&void_ptr);
     }
 
@@ -668,7 +659,6 @@ static Type* CObjC_FindObjCType_SEL(void) {
 }
 
 static Boolean CObjC_IsType_SEL(Type* type) {
-    // a TypePointer (Pro7: Type), which keeps the lookup's result in a register of its own
     TypePointer* sel;
 
     if (!IS_TYPE_POINTER_ONLY(type)) {
@@ -689,8 +679,7 @@ static TypeClass* CObjC_NewObjCClass(HashNameNode* name) {
     TypeClass* tclass;
 
     if ((list = CScope_FindName(cscope_root, name))) {
-        if (list->object->otype !=
-            OT_TYPE ||
+        if (list->object->otype != OT_TYPE ||
             !IS_TYPE_CLASS(tclass = TYPE_CLASS(OBJ_TYPE(list->object)->type)) ||
             !tclass->objcinfo) {
             CError_Error(ERR_IDENTIFIER_REDECLARED, name->name);
@@ -707,7 +696,6 @@ static TypeClass* CObjC_NewObjCClass(HashNameNode* name) {
     tclass->flags |= CLASS_SINGLE_OBJECT;
     tclass->objcinfo = info;
 
-    // 2.6 leaves the class objects' storage class alone (Pro7 makes them TK_STATIC)
     info->classobject = CObjC_MakeObject("L_OBJC_CLASS_", name->name, 40);
     info->classobject->section = SECT_OBJC_CLASS;
 
@@ -885,7 +873,7 @@ static ObjCMethod* CObjC_ParseMethod(Boolean is_global) {
 }
 
 static ObjCMethod* CObjC_FindMethod(
-    ObjCMethod* methods, ObjCMethod* wanted, Boolean flag1, Boolean flag2
+    ObjCMethod* methods, ObjCMethod* wanted, Boolean checkSignature, Boolean quiet
 ) {
     ObjCMethod* meth;
     ObjCMethodArg* wanted_arg;
@@ -904,7 +892,7 @@ static ObjCMethod* CObjC_FindMethod(
                         break;
                     }
 
-                    if (flag1) {
+                    if (checkSignature) {
                         wanted_arg = wanted->selector_args;
                         meth_arg = meth->selector_args;
                         while (1) {
@@ -934,10 +922,8 @@ static ObjCMethod* CObjC_FindMethod(
                         }
 
                         if (wanted_arg ||
-                            wanted->has_valist !=
-                            meth->has_valist ||
-                            wanted->return_qual !=
-                            meth->return_qual ||
+                            wanted->has_valist != meth->has_valist ||
+                            wanted->return_qual != meth->return_qual ||
                             !CObjC_IsSameType(wanted->return_type, meth->return_type)) {
                             CError_Error(ERR_METHOD_REDECLARED, meth);
                         }
@@ -962,7 +948,7 @@ static ObjCMethod* CObjC_FindMethod(
         }
     }
 
-    if (!flag2) {
+    if (!quiet) {
         CError_Error(ERR_UNDEFINED_METHOD, wanted);
     }
     return NULL;
@@ -1009,7 +995,6 @@ static void CObjC_AddProtocolMethods(
 static void CObjC_AppendArgument(TypeFunc* tfunc, HashNameNode* name, Type* type, UInt32 qual) {
     FuncArg* arg;
 
-    // tfunc->args reloaded after it is set (2.6; Pro7 assigns arg first)
     if ((arg = tfunc->args)) {
         while (arg->next) {
             arg = arg->next;
@@ -1034,7 +1019,6 @@ static HashNameNode* CObjC_MangleMethodName(
 
     name_mangle_list.size = 0;
 
-    // 2.6 appends an empty string first (Pro7 does not)
     AppendGListName(&name_mangle_list, "");
 
     if (meth->is_class_method) {
@@ -1086,15 +1070,7 @@ static TypeFunc* CObjC_GetMethodFuncType(ObjCMethod* meth) {
         CDecl_SetFuncFlags(functype, 1);
 
         CObjC_AppendArgument(
-            // TODO: the double cast stands in for whatever made 2.6 give the inlined id lookup's
-            // result and self's name the other registers (Pro7's plain call, a local for either,
-            // self_name_node directly, a self-argument helper and other casts were tried; a cast
-            // through SInt32, gc1's, works too, as does a TypePointer* local declared first and
-            // cast back; CObjC_IsType_SEL's TypePointer* local is probably the same unknown cause)
-            functype,
-            CObjC_GetSelfName(),
-            TYPE(TYPE_POINTER(CObjC_GetObjCType_id(TRUE))),
-            0
+            functype, CObjC_GetSelfName(), TYPE(TYPE_POINTER(CObjC_GetObjCType_id(TRUE))), 0
         );
         CObjC_AppendArgument(functype, GetHashNameNodeExport("_cmd"), CObjC_FindObjCType_SEL(), 0);
 
@@ -1404,8 +1380,6 @@ static void CObjC_DefineMethod(TypeClass* tclass, ObjCCategory* category, ObjCMe
     if ((funcarg = TYPE_FUNC(object->type)->args)) {
         funcarg->type = CDecl_NewPointerType(TYPE(tclass));
 
-        // funcarg walked forward in the test (Pro7: funcarg->next && funcarg->next->next, then
-        // funcarg = funcarg->next->next)
         if ((funcarg = funcarg->next) && (funcarg = funcarg->next)) {
             selarg = parsed->selector_args;
             while (selarg && funcarg) {
@@ -1432,7 +1406,7 @@ static void CObjC_DefineMethod(TypeClass* tclass, ObjCCategory* category, ObjCMe
     tk = lex();
 }
 
-static void CObjC_EncodeTypeStruct(TypeStruct* tstruct, Boolean flag) {
+static void CObjC_EncodeTypeStruct(TypeStruct* tstruct, Boolean expandMembers) {
     StructMember* member;
 
     AppendGListByte(&name_mangle_list, (tstruct->stype == STRUCT_TYPE_UNION) ? '(' : '{');
@@ -1443,7 +1417,7 @@ static void CObjC_EncodeTypeStruct(TypeStruct* tstruct, Boolean flag) {
         AppendGListName(&name_mangle_list, tstruct->name->name);
     }
 
-    if (flag) {
+    if (expandMembers) {
         AppendGListByte(&name_mangle_list, '=');
         for (member = tstruct->members; member; member = member->next) {
             CObjC_EncodeType(member->type, member->qual, TRUE);
@@ -1453,7 +1427,7 @@ static void CObjC_EncodeTypeStruct(TypeStruct* tstruct, Boolean flag) {
     AppendGListByte(&name_mangle_list, (tstruct->stype == STRUCT_TYPE_UNION) ? ')' : '}');
 }
 
-static void CObjC_EncodeTypeClass(TypeClass* tclass, Boolean flag) {
+static void CObjC_EncodeTypeClass(TypeClass* tclass, Boolean expandMembers) {
     ObjMemberVar* ivar;
 
     if (CClass_IsPODClass(tclass)) {
@@ -1465,7 +1439,7 @@ static void CObjC_EncodeTypeClass(TypeClass* tclass, Boolean flag) {
             AppendGListName(&name_mangle_list, tclass->classname->name);
         }
 
-        if (flag) {
+        if (expandMembers) {
             AppendGListByte(&name_mangle_list, '=');
             for (ivar = tclass->ivars; ivar; ivar = ivar->next) {
                 CObjC_EncodeType(ivar->type, ivar->qual, TRUE);
@@ -1478,7 +1452,7 @@ static void CObjC_EncodeTypeClass(TypeClass* tclass, Boolean flag) {
     }
 }
 
-static void CObjC_EncodeTypeMethod(ObjCMethod* meth, Boolean flag) {
+static void CObjC_EncodeTypeMethod(ObjCMethod* meth, Boolean expandMembers) {
     ObjCMethodArg* arg;
 
     char buf[16];
@@ -1500,7 +1474,7 @@ static void CObjC_EncodeTypeMethod(ObjCMethod* meth, Boolean flag) {
     }
 
     if (meth->return_type) {
-        CObjC_EncodeType(meth->return_type, 0, flag);
+        CObjC_EncodeType(meth->return_type, 0, expandMembers);
     } else {
         AppendGListByte(&name_mangle_list, '@');
     }
@@ -1524,7 +1498,7 @@ static void CObjC_EncodeTypeMethod(ObjCMethod* meth, Boolean flag) {
                 AppendGListByte(&name_mangle_list, 'r');
             }
 
-            CObjC_EncodeType(arg->type, 0, flag);
+            CObjC_EncodeType(arg->type, 0, expandMembers);
 
             sprintf(buf, "%ld", CodeGen_objc_method_arg_offset(meth, arg));
             AppendGListName(&name_mangle_list, buf);
@@ -1532,7 +1506,7 @@ static void CObjC_EncodeTypeMethod(ObjCMethod* meth, Boolean flag) {
     }
 }
 
-static void CObjC_EncodeType(Type* type, UInt32 qual, Boolean flag) {
+static void CObjC_EncodeType(Type* type, UInt32 qual, Boolean expandMembers) {
     char buf[16];
 
     while (1) {
@@ -1557,7 +1531,6 @@ static void CObjC_EncodeType(Type* type, UInt32 qual, Boolean flag) {
                         AppendGListByte(&name_mangle_list, 'c');
                         return;
                     case IT_WCHAR_T:
-                        // 2.6: an unsigned short (Pro7: 'i')
                         AppendGListByte(&name_mangle_list, 'S');
                         return;
                     case IT_SHORT:
@@ -1623,7 +1596,7 @@ static void CObjC_EncodeType(Type* type, UInt32 qual, Boolean flag) {
                     return;
                 }
                 AppendGListByte(&name_mangle_list, '^');
-                flag = cobjc_encodemethod;
+                expandMembers = cobjc_encodemethod;
                 continue;
 
             case TYPEARRAY:
@@ -1640,16 +1613,16 @@ static void CObjC_EncodeType(Type* type, UInt32 qual, Boolean flag) {
 
             case TYPEBITFIELD:
                 AppendGListByte(&name_mangle_list, 'b');
-                sprintf(buf, "%ld", TYPE_BITFIELD(type)->bitlength);
+                sprintf(buf, "%ld", (SInt32)TYPE_BITFIELD(type)->bitlength);
                 AppendGListName(&name_mangle_list, buf);
                 return;
 
             case TYPESTRUCT:
-                CObjC_EncodeTypeStruct(TYPE_STRUCT(type), flag);
+                CObjC_EncodeTypeStruct(TYPE_STRUCT(type), expandMembers);
                 return;
 
             case TYPECLASS:
-                CObjC_EncodeTypeClass(TYPE_CLASS(type), flag);
+                CObjC_EncodeTypeClass(TYPE_CLASS(type), expandMembers);
                 return;
 
             case TYPEFUNC:
@@ -1765,7 +1738,6 @@ typedef struct RawMethod {
     UInt32 typestring;
     UInt32 offset;
 } RawMethod;
-// the runtime's struct objc_method_list (Pro7's x0)
 typedef struct RawMethodList {
     UInt32 obsolete;
     UInt32 count;
@@ -1776,8 +1748,8 @@ static Object* CObjC_DefineMethodListObject(
     TypeClass* tclass,
     ObjCCategory* cat,
     ObjCMethod* methods,
-    char* name1,
-    char* name2,
+    char* prefix,
+    char* suffix,
     Section sectionID,
     Boolean doing_class_methods
 ) {
@@ -1801,7 +1773,7 @@ static Object* CObjC_DefineMethodListObject(
         data = lalloc(size);
         memclrw(data, size);
 
-        object = CObjC_MakeObject(name1, name2, size);
+        object = CObjC_MakeObject(prefix, suffix, size);
         object->sclass = TK_STATIC;
         object->section = sectionID;
 
@@ -1849,7 +1821,6 @@ static Object* CObjC_DefineMethodListObject(
 typedef struct RawProtocolList {
     UInt32 offset;
 } RawProtocolList;
-// the runtime's struct objc_protocol_list (Pro7's x0)
 typedef struct RawProtocolListList {
     UInt32 next;
     UInt32 count;
@@ -1863,7 +1834,6 @@ static Object* CObjC_DefineProtocolListObject(ObjCProtocolList* list, char* str)
     OLinkList* ref;
     OLinkList* refs;
     int i;
-    // a second index for the second loop (Pro7 reuses i), which 2.6 strength-reduces away
     int j;
     SInt32 size;
 
@@ -1970,8 +1940,6 @@ static Object* CObjC_DefineProtocolMethodListObject(
     return object;
 }
 
-// a Protocol object: the runtime's isa, protocol_name, protocol_list, instance_methods and
-// class_methods (Pro7's x0 to x10)
 typedef struct RawProtocol {
     UInt32 isa;
     UInt32 protocol_name;
@@ -1994,7 +1962,6 @@ static Object* CObjC_GetProtocolObject(ObjCProtocol* protocol) {
         if ((protocolType = CObjC_FindObjCClass(GetHashNameNodeExport("Protocol"), TRUE))) {
             data.isa = CTool_EndianConvertWord32(0);
 
-            // 2.6: the isa is the Protocol class object (Pro7: the class's name)
             ref = lalloc(sizeof(OLinkList));
             ref->next = refs;
             refs = ref;
@@ -2093,8 +2060,6 @@ static void CObjC_DefineClassObjects(TypeClass* tclass) {
     protocollistobj =
         CObjC_DefineProtocolListObject(tclass->objcinfo->protocols, tclass->classname->name);
 
-    // part 1: the metaclass. 2.6 points its isa at itself and its super class at the base's
-    // metaclass (Pro7: the root class's and the base's names)
     refs = NULL;
 
     data[0] = CTool_EndianConvertWord32(0);
@@ -2164,7 +2129,6 @@ static void CObjC_DefineClassObjects(TypeClass* tclass) {
     CError_ASSERT(2367, metaobject->type->size == sizeof(data));
     CInit_DeclareData(metaobject, data, refs, metaobject->type->size);
 
-    // part 2: the class. 2.6's super class is the base's class object (Pro7: its name)
     refs = NULL;
 
     data[0] = CTool_EndianConvertWord32(0);
@@ -2409,12 +2373,9 @@ static Boolean CObjC_IsSameMemberList(ObjMemberVar* a, ObjMemberVar* b) {
         }
 
         if (!b ||
-            a->name !=
-            b->name ||
-            a->qual !=
-            b->qual ||
-            a->access !=
-            b->access ||
+            a->name != b->name ||
+            a->qual != b->qual ||
+            a->access != b->access ||
             !is_typesame(a->type, b->type)) {
             return FALSE;
         }
@@ -2477,7 +2438,6 @@ static void CObjC_ParseInstanceVariables(TypeClass* tclass, Boolean checkOnly) {
                 }
 
                 if (bdi.valid) {
-                    // the duplicate search walks with scan (Pro7: ivar)
                     for (scan = first; scan; scan = scan->next) {
                         if (scan->name == bdi.declinfo2.name) {
                             break;
@@ -2539,7 +2499,7 @@ static void CObjC_ParseInstanceVariables(TypeClass* tclass, Boolean checkOnly) {
 static void CObjC_ParseInterfaceImplementation(void) {
     TypeClass* tclass;
     Boolean isInterface;
-    Boolean flag2;
+    Boolean hasInterface;
     ClassList* base;
     TypeClass* tclassbase;
     ObjCProtocolList* protlist;
@@ -2566,8 +2526,8 @@ static void CObjC_ParseInterfaceImplementation(void) {
         return;
     }
 
-    flag2 = (tclass->flags & CLASS_COMPLETED) != 0;
-    if (flag2 && isInterface) {
+    hasInterface = (tclass->flags & CLASS_COMPLETED) != 0;
+    if (hasInterface && isInterface) {
         CError_Error(ERR_STRUCT_UNION_ENUM_CLASS_TAG_REDEFINED, tclass->classname->name);
         return;
     }
@@ -2580,7 +2540,7 @@ static void CObjC_ParseInterfaceImplementation(void) {
 
         if ((tclassbase = CObjC_FindObjCClass(tkidentifier, TRUE))) {
             if (tclassbase->flags & CLASS_COMPLETED) {
-                if (!flag2) {
+                if (!hasInterface) {
                     base = galloc(sizeof(ClassList));
                     memclrw(base, sizeof(ClassList));
 
@@ -2602,7 +2562,7 @@ static void CObjC_ParseInterfaceImplementation(void) {
 
     if (tk == '<') {
         protlist = CObjC_ParserProtocolList();
-        if (flag2) {
+        if (hasInterface) {
             if (!CObjC_IsSameProtocolList(protlist, tclass->objcinfo->protocols)) {
                 CError_Error(ERR_PROTOCOL_LIST_DOES_NOT_MATCH_INTERFACE);
             }
@@ -2615,10 +2575,10 @@ static void CObjC_ParseInterfaceImplementation(void) {
     }
 
     if (tk == '{') {
-        CObjC_ParseInstanceVariables(tclass, flag2);
+        CObjC_ParseInstanceVariables(tclass, hasInterface);
     }
 
-    if (!flag2) {
+    if (!hasInterface) {
         ClassLayout layout;
         memclrw(&layout, sizeof(layout));
         CABI_LayoutClass(&layout, tclass);
@@ -2749,8 +2709,6 @@ void CObjC_ParseClassDeclaration(void) {
     }
 }
 
-// inline: 2.6 inlines it at its four calls, which -inline auto does not (it is over the
-// statement limit)
 static inline void CObjC_CoerceMethodArgs(
     ObjCMethod* meth, ObjCNamedArg* namedArgs, ENodeList* unnamedArgs
 ) {
@@ -2779,7 +2737,6 @@ static inline void CObjC_CoerceMethodArgs(
 
 static Boolean CObjC_SelectorCompare(ObjCMethod* method, ObjCNamedArg* args, Boolean has_varargs) {
     ObjCMethodArg* metharg;
-    // a walker of its own (Pro7 walks the args parameter)
     ObjCNamedArg* arg;
 
     if (has_varargs && !method->has_valist) {
@@ -2801,7 +2758,6 @@ static Boolean CObjC_SelectorCompare(ObjCMethod* method, ObjCNamedArg* args, Boo
 
         arg = arg->next;
         if (!arg) {
-            // the test inverted (Pro7: !metharg->next first)
             if (metharg->next) {
                 return FALSE;
             } else {
@@ -2981,8 +2937,6 @@ ENode* CObjC_MakeSendMsgExpr(
             indirect = makemonadicnode(indirect, EINDIRECT);
             indirect->rtype = TYPE(&void_ptr);
 
-            // 2.6: the super class's metaclass object itself (Pro7 reads the class object's
-            // super class field); CObjC_ParseMessageExpression passes the super class
             ass =
                 makediadicnode(indirect, create_objectrefnode(tclass->objcinfo->metaobject), EASS);
 
@@ -3049,12 +3003,10 @@ ENode* CObjC_ParseMessageExpression(void) {
                         CError_Error(ERR_ILLEGAL_USE_SUPER);
                         objexpr = nullnode();
                     } else {
-                        // 2.6: the search starts at the super class (Pro7: the class itself)
                         tclass = cscope_currentclass->bases->base;
                         isSuper = TRUE;
                     }
 
-                    // byte constants (Pro7: an if/else of 0 and 1, which 2.6 does not compile to)
                     calltype = !cscope_is_member_func ? (UInt8)1 : (UInt8)0;
                     tk = lex();
                     break;
@@ -3064,8 +3016,6 @@ ENode* CObjC_ParseMessageExpression(void) {
                 list->object->otype == OT_TYPE) {
                 tclass = TYPE_CLASS(OBJ_TYPE(list->object)->type);
                 if (IS_TYPE_CLASS(tclass) && tclass->objcinfo) {
-                    // 2.6: the class object itself (Pro7: a class reference object, typed as a
-                    // pointer to the class)
                     calltype = 1;
                     objexpr = create_objectrefnode(tclass->objcinfo->classobject);
                     tk = lex();
@@ -3090,8 +3040,7 @@ ENode* CObjC_ParseMessageExpression(void) {
                 break;
             }
 
-            if (cscope_currentclass ==
-                TYPE_CLASS(TPTR_TARGET(objexpr->rtype)) &&
+            if (cscope_currentclass == TYPE_CLASS(TPTR_TARGET(objexpr->rtype)) &&
                 !cscope_is_member_func &&
                 ENODE_IS_INDIRECT_TO(objexpr, EOBJREF) &&
                 objexpr->data.monadic->data.objref->name == self_name_node) {
@@ -3168,7 +3117,7 @@ ENode* CObjC_ParseEncodeExpression(void) {
     expr->rtype = CDecl_NewArrayType(TYPE(&stchar), strlen(str) + 1);
     expr->data.string.size = expr->rtype->size;
     expr->data.string.data = str;
-    expr->data.string.ispascal = 0;
+    expr->data.string.ispascal = FALSE;
 
     expr = makemonadicnode(expr, EINDIRECT);
     expr->data.monadic->rtype = CDecl_NewPointerType(expr->rtype);
@@ -3189,8 +3138,6 @@ ENode* CObjC_ParseAtExpression(void) {
         if ((strclass = CObjC_FindObjCClass(GetHashNameNodeExport("NSConstantString"), TRUE))) {
             refs = NULL;
 
-            // 2.6: the isa is the NSConstantString class object (Pro7 looks up
-            // _NSConstantStringClassReference)
             data[0] = CTool_EndianConvertWord32(0);
             ref = lalloc(sizeof(OLinkList));
             ref->next = refs;
@@ -3204,7 +3151,7 @@ ENode* CObjC_ParseAtExpression(void) {
             ref = lalloc(sizeof(OLinkList));
             ref->next = refs;
             refs = ref;
-            ref->obj = CInit_DeclareString(tkstring, tksize, 0, 0);
+            ref->obj = CInit_DeclareString(tkstring, tksize, FALSE, FALSE);
             ref->offset = 4;
             ref->addend = 0;
 

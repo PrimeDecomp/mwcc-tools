@@ -2,9 +2,6 @@
 #include "compiler/CompilerTools.h"
 #include <string.h>
 
-// 2.6's allocator is MSL's alloc.c of its time (1.16, 1999: _MSL_MALLOC_DESIGN_2 with fixed-size
-// pools, 8-byte alignment), where Pro7's is the Mac's 16-byte variant. The member names are MSL's.
-
 #define FLAGMASK 7
 
 typedef struct Block {
@@ -56,7 +53,6 @@ typedef struct FixSubBlock {
     struct FixSubBlock* next_;
 } FixSubBlock;
 
-// Binding names are global: MSL's own alloc.c (alloc_g) has a `fix_pool_sizes` too
 #define fix_pool_sizes IRO_fix_pool_sizes
 
 static const size_t fix_pool_sizes[] = {0xC, 0x14, 0x24, 0x44};
@@ -66,15 +62,13 @@ static int initialized;
 
 static void Block_link(Block* block, SubBlock* subblock);
 static void Block_unlink(Block* block, SubBlock* subblock);
-static void SubBlock_construct(SubBlock* subblock, size_t size, Block* block, int flag1, int flag2);
+static void SubBlock_construct(
+    SubBlock* subblock, size_t size, Block* block, int prevAllocated, int isAllocated
+);
 static SubBlock* SubBlock_split(SubBlock* subblock, size_t pos);
 static SubBlock* SubBlock_merge_prev(SubBlock* subblock, SubBlock** sbptr);
 static void SubBlock_merge_next(SubBlock* subblock, SubBlock** sbptr);
 
-// TODO: SubBlockBase, SubBlockTail, BlockTail, FixSubBlockBase and these macros are Pro7's
-// (Ninji's) stand-ins for MSL alloc.c's own helpers (Block_start, SubBlock_size, classify,
-// SubBlock_from_pointer, the *_overhead and *_header_size constants, SubBlock_min_size 0x50,
-// max_fix_pool_size 0x44); the original's text is probably MSL's, not yet rewritten.
 #define BLOCK_START(block) \
     (*(SubBlock**)((char*)(block) + ((block)->size_ & ~FLAGMASK) - sizeof(SubBlock*)))
 
@@ -194,14 +188,14 @@ static void Block_unlink(Block* block, SubBlock* subblock) {
 }
 
 static void SubBlock_construct(
-    SubBlock* subblock, size_t size, Block* block, int flag1, int flag2
+    SubBlock* subblock, size_t size, Block* block, int prevAllocated, int isAllocated
 ) {
     subblock->bp_ = (Block*)((long)block | 1);
     subblock->size_ = size;
-    if (flag1) {
+    if (prevAllocated) {
         subblock->size_ |= 4;
     }
-    if (flag2) {
+    if (isAllocated) {
         subblock->size_ |= 2;
         ((SubBlock*)(((long)subblock) + size))->size_ |= 4;
     } else {
@@ -211,17 +205,17 @@ static void SubBlock_construct(
 
 static SubBlock* SubBlock_split(SubBlock* subblock, size_t pos) {
     size_t oldsize;
-    int flag;
+    int isfree;
     SubBlock* splitright;
     Block* block;
 
     oldsize = subblock->size_ & ~FLAGMASK;
-    flag = !(subblock->size_ & 2);
+    isfree = !(subblock->size_ & 2);
     splitright = (SubBlock*)((long)subblock + pos);
     block = (Block*)((long)subblock->bp_ & ~1);
-    SubBlock_construct(subblock, pos, block, subblock->size_ & 4, !flag);
-    SubBlock_construct(splitright, oldsize - pos, block, !flag, !flag);
-    if (flag) {
+    SubBlock_construct(subblock, pos, block, subblock->size_ & 4, !isfree);
+    SubBlock_construct(splitright, oldsize - pos, block, !isfree, !isfree);
+    if (isfree) {
         splitright->next_ = subblock->next_;
         splitright->next_->prev_ = splitright;
         splitright->prev_ = subblock;
@@ -245,8 +239,7 @@ static SubBlock* SubBlock_merge_prev(SubBlock* subblock, SubBlock** sbptr) {
         prevblock->size_ &= FLAGMASK;
         prevblock->size_ |= (prevsize + (subblock->size_ & ~FLAGMASK)) & ~FLAGMASK;
         if (!(prevblock->size_ & 2)) {
-            ((SubBlockTail*)((char*)prevblock +
-                             (prevsize + (subblock->size_ & ~FLAGMASK)) -
+            ((SubBlockTail*)((char*)prevblock + (prevsize + (subblock->size_ & ~FLAGMASK)) -
                              sizeof(SubBlockTail)))
                 ->size_ = prevsize + (subblock->size_ & ~FLAGMASK);
         }
@@ -381,14 +374,11 @@ allocated:
     return (SubBlockBase*)subblock + 1;
 }
 
-// MSL's Block_empty (a comma expression through the caller's `_sb`)
 #define Block_empty(block) \
     (_sb = (SubBlock*)((char*)(block) + sizeof(Block))), \
         !(_sb->size_ & 2) && \
         (_sb->size_ & ~FLAGMASK) == \
-        ((block)->size_ & ~FLAGMASK) - \
-        sizeof(Block) - \
-        sizeof(BlockTail)
+            ((block)->size_ & ~FLAGMASK) - sizeof(Block) - sizeof(BlockTail)
 
 static void deallocate_from_var_pools(void* buf) {
     SubBlock* subblock = VARBUF_SB(buf);
@@ -583,9 +573,9 @@ void* IRO_realloc(void* buf, size_t newsize) {
     return buf;
 }
 
-void* IRO_calloc(size_t a, size_t b) {
+void* IRO_calloc(size_t nmemb, size_t size) {
     void* buf;
-    size_t len = b * a;
+    size_t len = size * nmemb;
     buf = IRO_malloc(len);
     if (buf) {
         memset(buf, 0, len);

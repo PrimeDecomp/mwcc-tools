@@ -8,7 +8,6 @@
 extern "C" {
 #endif
 
-// The Mac Text Utilities the command line emulates (Pro7's MacEmul/TextUtils.c)
 extern StringPtr c2pstr(char* s);
 extern char* __stdcall p2cstr(StringPtr s);
 extern void __stdcall GetIndString(StringPtr theString, SInt16 strListID, SInt16 index);

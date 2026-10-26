@@ -1,52 +1,51 @@
-name: Build
+name: Check
 
 on:
   push:
   pull_request:
 
 jobs:
-  verify:
+  check:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y ninja-build unshield
 
       - uses: astral-sh/setup-uv@v6
 
       - name: Install Python packages
         run: uv sync --locked
 
-      # (the sources' layout is .clang-format's; .clang-format-ignore keeps the library's own text)
       - name: Check formatting
         run: git ls-files -z '*.c' '*.cpp' '*.h' | xargs -0 .venv/bin/clang-format --dry-run -Werror
 
       - name: Check Python formatting
         run: .venv/bin/ruff format --check
 
-      # (every download is pinned by its SHA-256 in tools/download_tool.py)
-      - uses: actions/cache@v4
+      - name: Lint Python
+        run: .venv/bin/ruff check
+
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+
+      - name: Install Python packages
+        run: uv sync --locked
+
+      - name: Install ninja and LLVM
+        run: sudo apt-get update && sudo apt-get install -y ninja-build clang lld llvm
+
+      - name: Restore the downloads
+        uses: actions/cache@v4
         with:
           path: |
-            build/compilers
-            build/downloads
-            build/tools
             lib
+            build/downloads
           key: downloads-${{ hashFiles('tools/download_tool.py') }}
 
-      # (every version: the configuration's invariants, every source compiled and compared, the layout up to date, the
-      # original relinked to its SHA-1 and the equivalent compiler linked; fails when a Matching source's function
-      # differs or a source that links stops linking)
-      - name: Verify
+      - name: Build every version's compiler with clang
         run: |
           .venv/bin/python configure.py
-          ninja verify
-
-      - name: Progress reports
-        run: ninja build/GC_2_0/report.json build/GC_2_0p1/report.json build/GC_2_5/report.json build/GC_2_6/report.json build/GC_2_7/report.json
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: reports
-          path: build/GC_*/report.json
+          ninja

@@ -16,12 +16,10 @@ struct VFile {
     Handle data;
     struct VFile* next;
 };
-// Pro7's File (cmdline.h), in 2.6's natural alignment: 0x6a0 bytes (File_New).
 struct File {
     struct File* next;
     SInt32 filenum;
     UInt16 segnum;
-    // 2.6's times are OSTimes (a FILETIME) where Pro7 has time_t.
     OSTime srcmoddate;
     OSTime outmoddate;
     char srcfilename[256];

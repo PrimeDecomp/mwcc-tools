@@ -2,6 +2,7 @@
 #include "driver/CWPlugins.h"
 #include "driver/Option.h"
 #include "driver/oslib.h"
+#include "driver/parser.h"
 #include "driver/ParserErrors.h"
 #include "driver/ParserFace.h"
 #include "driver/StringExtras.h"
@@ -13,7 +14,7 @@ int SetParserToolInfo(ParserTool* tool) {
 
     OPTION_ASSERT(16, pTool->toolInfo && (parseopts.toolVersion || pTool->copyright));
 
-    return 1;
+    return TRUE;
 }
 
 Boolean ParserToolMatchesPlugin(OSType type, OSType lang, OSType cpu, OSType os) {

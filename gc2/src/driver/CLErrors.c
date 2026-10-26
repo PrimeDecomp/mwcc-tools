@@ -1,13 +1,14 @@
 #include "driver/CLErrors.h"
+#include "compiler/win32.h"
 #include "driver/CLIO.h"
 #include "driver/CWPlugins.h"
+#include "driver/MsDos.h"
 #include "driver/StringUtils.h"
 #include "driver/TextUtils.h"
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "driver/MsDos.h"
 
 static char* CLGetErrorString(SInt16 errid, char* buffer) {
     getindstring(buffer, 12000, errid);
@@ -39,21 +40,21 @@ static void CLMessageReporter(int flags, SInt16 errid, va_list va) {
     }
 }
 
-void CLReportError(SInt16 errid, ...) {
+void CLReportError(VarArgShort errid, ...) {
     va_list va;
     va_start(va, errid);
     CLMessageReporter(messagetypeError, errid, va);
     va_end(va);
 }
 
-void CLReportWarning(SInt16 errid, ...) {
+void CLReportWarning(VarArgShort errid, ...) {
     va_list va;
     va_start(va, errid);
     CLMessageReporter(messagetypeWarning, errid, va);
     va_end(va);
 }
 
-void CLReport(SInt16 errid, ...) {
+void CLReport(VarArgShort errid, ...) {
     va_list va;
     va_start(va, errid);
     CLMessageReporter(messagetypeInfo, errid, va);

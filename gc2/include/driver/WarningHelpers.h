@@ -1,8 +1,6 @@
 #ifndef DRIVER_WARNINGHELPERS_H
 #define DRIVER_WARNINGHELPERS_H
 
-#include "compiler/common.h"
-
 #ifdef __cplusplus
 extern "C" {
 #endif

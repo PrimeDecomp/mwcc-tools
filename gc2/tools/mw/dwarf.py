@@ -1,19 +1,5 @@
-"""DWARF 4 for a 32-bit x86 executable, from the CodeView 8 types tools/mw/codeview.py makes and a neutral description of
-the functions and variables (tools/link_debug.py): .debug_abbrev, .debug_info, .debug_line and .debug_str, for the
-executable's own sections (as MinGW's executables have them), which Ghidra, IDA and Binary Ninja read.
-
-- one compile unit holds the types, one per translation unit the rest; a type is referred to by its offset in
-  .debug_info (DW_FORM_ref_addr) from any of them. A forward reference is its name's definition: DWARF refers to a
-  type by its place, so a structure can refer to itself.
-- a function's frame base is the call frame address (DW_OP_call_frame_cfa: the stack pointer before the call pushed
-  the return address); an argument at the compiler's virtual frame offset OFFSET (the first at 8) is at CFA +
-  OFFSET - 8.
-- a variable in a register is DW_OP_reg; one relative to the stack pointer after the prologue is placed from the
-  prologue's pushes and stack adjustment."""
-
 import struct
 
-# DWARF constants
 DW_TAG = dict(
     array_type=0x01,
     enumeration_type=0x04,
@@ -80,7 +66,6 @@ DW_ATE_boolean, DW_ATE_float, DW_ATE_signed, DW_ATE_signed_char, DW_ATE_unsigned
     0x08,
 )
 
-# CodeView primitive types (the low byte of a primitive type index): (name, encoding, size)
 PRIMITIVES = {
     0x10: ("signed char", DW_ATE_signed_char, 1),
     0x70: ("char", DW_ATE_signed_char, 1),
@@ -107,7 +92,6 @@ PRIMITIVES = {
     0x31: ("bool16", DW_ATE_boolean, 2),
     0x32: ("bool32", DW_ATE_boolean, 4),
 }
-# CodeView x86 registers to DWARF's (a part of a register is the register)
 REGISTERS = {
     1: 0,
     2: 1,
@@ -158,7 +142,6 @@ def sleb(value):
 
 
 def numeric(body, at):
-    """(the value of the CodeView numeric leaf at AT, the offset after it)."""
     value = struct.unpack_from("<H", body, at)[0]
     if value < 0x8000:
         return value, at + 2
@@ -172,11 +155,8 @@ def cstring(body, at):
 
 
 class Types:
-    """The CodeView 8 type records RECORDS (each with its length and leaf), read."""
-
     def __init__(self, records):
         self.records = {0x1000 + i: (struct.unpack_from("<H", r, 2)[0], r[4:]) for i, r in enumerate(records)}
-        # (a forward reference: its name's definition)
         definitions = {}
         for index, (leaf, body) in self.records.items():
             if leaf in (0x1504, 0x1505, 0x1506, 0x1507) and not self.forward(index):
@@ -200,7 +180,6 @@ class Types:
         return self.definition.get(index, index)
 
     def size(self, index):
-        """The size in bytes of the type INDEX (0 if unknown)."""
         if index < 0x1000:
             if (index >> 8) & 7:
                 return 4
@@ -220,7 +199,6 @@ class Types:
         return 0
 
     def fields(self, index):
-        """[(leaf, name, type, offset or value)] of the field list INDEX."""
         if index not in self.records or self.records[index][0] != 0x1203:
             return []
         body, at, out = self.records[index][1], 0, []
@@ -229,16 +207,16 @@ class Types:
                 at += body[at] & 0x0F
                 continue
             leaf = struct.unpack_from("<H", body, at)[0]
-            if leaf == 0x150D:  # LF_MEMBER
+            if leaf == 0x150D:
                 kind = struct.unpack_from("<I", body, at + 4)[0]
                 offset, at = numeric(body, at + 8)
                 name, at = cstring(body, at)
                 out.append((leaf, name, kind, offset))
-            elif leaf == 0x1502:  # LF_ENUMERATE
+            elif leaf == 0x1502:
                 value, at = numeric(body, at + 4)
                 name, at = cstring(body, at)
                 out.append((leaf, name, None, value))
-            elif leaf == 0x1400:  # LF_BCLASS
+            elif leaf == 0x1400:
                 kind = struct.unpack_from("<I", body, at + 4)[0]
                 offset, at = numeric(body, at + 8)
                 out.append((leaf, "", kind, offset))
@@ -247,7 +225,6 @@ class Types:
         return out
 
     def arguments(self, index):
-        """(the return type, [argument types], variadic) of the procedure type INDEX, or None."""
         if index not in self.records or self.records[index][0] != 0x1008:
             return None
         body = self.records[index][1]
@@ -276,14 +253,12 @@ class Abbreviations:
 
 
 class Writer:
-    """DWARF sections being written: .debug_info as compile units of DIEs."""
-
     def __init__(self):
         self.abbreviations = Abbreviations()
         self.info = bytearray()
         self.strings, self.string_offsets = bytearray(), {}
         self.lines = bytearray()
-        self.fixups = []  # (offset in .debug_info, type index)
+        self.fixups = []
 
     def string(self, text):
         if text not in self.string_offsets:
@@ -292,8 +267,6 @@ class Writer:
         return self.string_offsets[text]
 
     def die(self, tag, children, attributes):
-        """Write a DIE: ATTRIBUTES [(attribute, form, value)] (a ref_addr's value: the type index it refers to); its
-        offset."""
         at = len(self.info)
         self.info += uleb(self.abbreviations.code(tag, children, [(a, f) for a, f, _ in attributes]))
         for attribute, form, value in attributes:
@@ -323,7 +296,6 @@ class Writer:
 
     def unit_start(self):
         at = len(self.info)
-        # (unit length, version 4, abbreviations at 0, address size 4)
         self.info += struct.pack("<IHIB", 0, 4, 0, 4)
         return at
 
@@ -332,10 +304,6 @@ class Writer:
 
 
 def write(types_records, units, producer):
-    """{section name: bytes} of DWARF for the CodeView 8 TYPES_RECORDS and UNITS: [{name, language (C: 0x1, C++: 0x4),
-    files [name], functions [{name, address, size, type, external, variables [{name, type, location (("frame",
-    offset), ("register", CodeView register), ("cfa", offset)), argument}], lines [(offset, line)], file,
-    first_line}], data [{name, type, address, external}]}]."""
     types = Types(types_records)
     w = Writer()
     offsets = {}
@@ -343,7 +311,6 @@ def write(types_records, units, producer):
     def ref(index):
         return ("type", "ref_addr", index)
 
-    # (the types' unit)
     unit = w.unit_start()
     w.die(
         "compile_unit", True, [("name", "strp", "<types>"), ("producer", "strp", producer), ("language", "data2", 0x1)]
@@ -355,7 +322,6 @@ def write(types_records, units, producer):
             return
         mode, base = (index >> 8) & 7, index & 0xFF
         if mode:
-            # (a pointer to a primitive type: to void when the base is void)
             attributes = [("byte_size", "data1", 4)]
             if base != 0x03 and base in PRIMITIVES:
                 primitive(base)
@@ -370,7 +336,6 @@ def write(types_records, units, producer):
             )
 
     def type_attribute(index):
-        """The DW_AT_type of a reference to INDEX, or [] for void and no type."""
         if index < 0x1000:
             if index & 0xFF == 0x03 and not (index >> 8) & 7 or index == 0:
                 return []
@@ -380,13 +345,13 @@ def write(types_records, units, producer):
 
     for index in sorted(types.records):
         leaf, body = types.records[index]
-        if leaf == 0x1002:  # LF_POINTER
+        if leaf == 0x1002:
             offsets[index] = w.die(
                 "pointer_type",
                 False,
                 [("byte_size", "data1", 4)] + type_attribute(struct.unpack_from("<I", body, 0)[0]),
             )
-        elif leaf == 0x1503:  # LF_ARRAY
+        elif leaf == 0x1503:
             element, index_type = struct.unpack_from("<II", body, 0)
             size = numeric(body, 8)[0]
             offsets[index] = w.die("array_type", True, type_attribute(element))
@@ -394,7 +359,7 @@ def write(types_records, units, producer):
             count = [("count", "udata", size // element_size)] if element_size else []
             w.die("subrange_type", False, type_attribute(index_type) + count)
             w.end_children()
-        elif leaf in (0x1504, 0x1505, 0x1506):  # LF_CLASS, LF_STRUCTURE, LF_UNION
+        elif leaf in (0x1504, 0x1505, 0x1506):
             if types.forward(index) and types.resolve(index) != index:
                 continue
             tag = "union_type" if leaf == 0x1506 else "structure_type"
@@ -412,7 +377,7 @@ def write(types_records, units, producer):
                     w.die("inheritance", False, type_attribute(kind) + [("data_member_location", "udata", offset)])
                     continue
                 record = types.records.get(kind)
-                if record and record[0] == 0x1205:  # LF_BITFIELD: the member's type, length, position
+                if record and record[0] == 0x1205:
                     underlying, length, position = struct.unpack_from("<IBB", record[1], 0)
                     w.die(
                         "member",
@@ -428,7 +393,7 @@ def write(types_records, units, producer):
                         [("name", "strp", member)] + type_attribute(kind) + [("data_member_location", "udata", offset)],
                     )
             w.end_children()
-        elif leaf == 0x1507:  # LF_ENUM
+        elif leaf == 0x1507:
             if types.forward(index) and types.resolve(index) != index:
                 continue
             underlying, fields = struct.unpack_from("<II", body, 4)
@@ -442,7 +407,7 @@ def write(types_records, units, producer):
             for field, member, _, value in types.fields(fields):
                 w.die("enumerator", False, [("name", "strp", member), ("const_value", "sdata", value)])
             w.end_children()
-        elif leaf == 0x1008:  # LF_PROCEDURE
+        elif leaf == 0x1008:
             result, arguments, variadic = types.arguments(index)
             offsets[index] = w.die(
                 "subroutine_type",
@@ -459,7 +424,6 @@ def write(types_records, units, producer):
     w.end_children()
     w.unit_end(unit)
 
-    # (each translation unit: its functions and variables, and its lines)
     def frame(offset):
         return bytes([DW_OP_fbreg]) + sleb(offset)
 
@@ -510,7 +474,6 @@ def write(types_records, units, producer):
                 ]
             arguments = [v for v in f["variables"] if v["argument"]]
             if not arguments and signature:
-                # (no record of the arguments: where the calling convention puts them, unnamed)
                 at = 8
                 for kind in signature[1]:
                     arguments.append(dict(name=None, type=kind, location=("frame", at), argument=True))
@@ -542,7 +505,6 @@ def write(types_records, units, producer):
         w.end_children()
         w.unit_end(unit)
 
-    # (the references, now that every type has its place)
     for at, index in w.fixups:
         key = index if index >= 0x1000 else ("primitive", index)
         struct.pack_into("<I", w.info, at, offsets.get(key, 0))
@@ -555,25 +517,24 @@ def write(types_records, units, producer):
 
 
 def write_lines(w, unit):
-    """The unit's line number program (DWARF 4): a sequence per function."""
     program = bytearray()
     for f in unit["functions"]:
         if not f["lines"] or f["file"] not in unit["files"]:
             continue
-        program += b"\0\x05\x02" + struct.pack("<I", f["address"])  # DW_LNE_set_address
-        program += b"\x04" + uleb(unit["files"].index(f["file"]) + 1)  # DW_LNS_set_file
+        program += b"\0\x05\x02" + struct.pack("<I", f["address"])
+        program += b"\x04" + uleb(unit["files"].index(f["file"]) + 1)
         offset, line = 0, 1
         for at, number in f["lines"]:
             if at > offset:
-                program += b"\x02" + uleb(at - offset)  # DW_LNS_advance_pc
+                program += b"\x02" + uleb(at - offset)
                 offset = at
             if number != line:
-                program += b"\x03" + sleb(number - line)  # DW_LNS_advance_line
+                program += b"\x03" + sleb(number - line)
                 line = number
-            program += b"\x01"  # DW_LNS_copy
+            program += b"\x01"
         if f["size"] > offset:
             program += b"\x02" + uleb(f["size"] - offset)
-        program += b"\0\x01\x01"  # DW_LNE_end_sequence
+        program += b"\0\x01\x01"
     files = b"".join(name.encode("latin-1") + b"\0" + b"\0\0\0" for name in unit["files"]) + b"\0"
     header = bytes([1, 1, 1, (-5) & 0xFF, 14, 13]) + bytes([0, 1, 1, 1, 1, 0, 0, 0, 1, 0, 0, 1]) + b"\0" + files
     body = struct.pack("<HI", 4, len(header)) + header + program

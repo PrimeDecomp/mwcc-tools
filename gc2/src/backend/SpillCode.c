@@ -5,23 +5,20 @@
 #include "compiler/Coloring.h"
 #include "compiler/CompilerTools.h"
 #include "compiler/CParser.h"
-#include "compiler/CPrep.h"
-#include "compiler/InstrSelection.h"
 #include "compiler/InterferenceGraph.h"
 #include "compiler/objects.h"
 #include "compiler/Operands.h"
 #include "compiler/PCode.h"
+#include "compiler/PCodeInfo.h"
 #include "compiler/PCodeUtilities.h"
 #include "compiler/PPCError.h"
 #include "compiler/RegisterInfo.h"
 #include "compiler/Registers.h"
 #include "compiler/StackFrame.h"
+#include "compiler/types.h"
 
-// (the original's statics; global while a lifted function of this unit still uses them)
 int last_unused_vreg_before_spilling;
 short rTEMP_for_VR_spill;
-// TODO: the name is made up: 2.6's second spill temporary, the address of a
-// paired-single spill slot
 short rTEMP_for_PS_spill;
 
 void estimatespillcosts(void) {
@@ -150,7 +147,6 @@ static void insert_load_spilled_register(PCode* instr, short reg, IGNode* node) 
         case RegClass_FPR:
             CError_ASSERT(257, node->spillTemporary->datatype == DLOCAL);
 
-            // (2.6: a paired single is loaded with psq_l, or psq_lx past a 12-bit offset)
             if ((node->flags & fPairedSingle1) &&
                 IS_TYPE_VEC2X32FLOAT(node->spillTemporary->type)) {
                 Opcode psop = Select_Gecko_Load_Store(node->spillTemporary, 0, TRUE);
@@ -222,7 +218,7 @@ static void insert_load_spilled_register(PCode* instr, short reg, IGNode* node) 
     }
 }
 
-static void insert_store_spilled_register(PCode* instr, Boolean flag, short reg, IGNode* node) {
+static void insert_store_spilled_register(PCode* instr, Boolean before, short reg, IGNode* node) {
     Object* object;
     int opcode;
     SInt32 offset;
@@ -262,7 +258,7 @@ static void insert_store_spilled_register(PCode* instr, Boolean flag, short reg,
             }
 
             newInstr = makepcode(opcode, reg, local_base_register(object), object, offset);
-            if (flag) {
+            if (before) {
                 insertpcodebefore(instr, newInstr);
             } else {
                 insertpcodeafter(instr, newInstr);
@@ -270,7 +266,6 @@ static void insert_store_spilled_register(PCode* instr, Boolean flag, short reg,
             break;
 
         case RegClass_FPR:
-            // (2.6: a paired single is stored with psq_st, or psq_stx past a 12-bit offset)
             if ((node->flags & fPairedSingle1) && IS_TYPE_VEC2X32FLOAT(object->type)) {
                 Opcode psop = Select_Gecko_Load_Store(object, 0, FALSE);
                 if (psop == PC_PSQ_ST) {
@@ -283,7 +278,7 @@ static void insert_store_spilled_register(PCode* instr, Boolean flag, short reg,
                         0,
                         SPR_GQR0
                     );
-                    if (flag) {
+                    if (before) {
                         insertpcodebefore(instr, newInstr);
                     } else {
                         insertpcodeafter(instr, newInstr);
@@ -297,13 +292,11 @@ static void insert_store_spilled_register(PCode* instr, Boolean flag, short reg,
                         0
                     );
                     newInstr2 = makepcode(psop, reg, 0, rTEMP_for_PS_spill, 0, SPR_GQR0);
-                    if (flag) {
+                    if (before) {
                         insertpcodebefore(instr, newInstr);
                     } else {
                         insertpcodeafter(instr, newInstr);
                     }
-                    // (2.6 inserts the addi a second time, after the flag branch: a bug of the original, kept;
-                    // the load path's two inserts pasted here)
                     insertpcodebefore(instr, newInstr);
                     insertpcodeafter(newInstr, newInstr2);
                 }
@@ -315,7 +308,7 @@ static void insert_store_spilled_register(PCode* instr, Boolean flag, short reg,
                     object,
                     0
                 );
-                if (flag) {
+                if (before) {
                     insertpcodebefore(instr, newInstr);
                 } else {
                     insertpcodeafter(instr, newInstr);
@@ -327,7 +320,7 @@ static void insert_store_spilled_register(PCode* instr, Boolean flag, short reg,
             newInstr =
                 makepcode(PC_ADDI, rTEMP_for_VR_spill, local_base_register(object), object, 0);
             newInstr2 = makepcode(PC_STVX, reg, 0, rTEMP_for_VR_spill);
-            if (flag) {
+            if (before) {
                 insertpcodebefore(instr, newInstr);
             } else {
                 insertpcodeafter(instr, newInstr);
@@ -342,101 +335,99 @@ static void insert_store_spilled_register(PCode* instr, Boolean flag, short reg,
 
 static void spillinstruction(PCodeBlock* block, PCode* instr) {
     int reg;
-    int reg2;
+    int newReg;
     int regs;
     IGNode* node;
     PCodeArg* op;
     int i;
-    PCodeArg* op2;
+    PCodeArg* other;
     int j;
     int readCounter;
     int writeCounter;
-    Boolean flag;
+    Boolean deleteInstr;
 
     regs = used_virtual_registers[coloring_class];
-    flag = FALSE;
+    deleteInstr = FALSE;
     for (i = 0, op = instr->args; i < instr->argCount; i++, op++) {
         CError_ASSERT(528, instr->block != NULL);
 
         if (PC_OP_IS_ANY_REGISTER(op, coloring_class) &&
-            op->data.reg.reg <
-            regs &&
+            op->data.reg.reg < regs &&
             ((node = interferencegraph[reg = op->data.reg.reg])->flags & fSpilled)) {
-            reg2 = ALLOC_REG(coloring_class);
-            // (2.6: too many virtual registers)
-            if (reg2 > 0x7FFF) {
-                PPCError_ErrorTerm(PPCErrorStr219);
+            newReg = ALLOC_REG(coloring_class);
+            if (newReg > 0x7FFF) {
+                PPCError_ErrorTerm(PPCERR_TOO_MANY_REGISTERS);
             }
             readCounter = 0;
             writeCounter = 0;
 
-            for (j = i, op2 = op; j < instr->argCount; j++, op2++) {
-                if (PC_OP_IS_REGISTER(op2, coloring_class, reg)) {
-                    if (op2->data.reg.effect & EffectRead) {
+            for (j = i, other = op; j < instr->argCount; j++, other++) {
+                if (PC_OP_IS_REGISTER(other, coloring_class, reg)) {
+                    if (other->data.reg.effect & EffectRead) {
                         readCounter++;
                     }
-                    if (op2->data.reg.effect & EffectWrite) {
+                    if (other->data.reg.effect & EffectWrite) {
                         writeCounter++;
                     }
-                    op2->data.reg.reg = reg2;
-                    op2->data.reg.effect |= EffectSpilled;
+                    other->data.reg.reg = newReg;
+                    other->data.reg.effect |= EffectSpilled;
                 }
             }
 
             if (readCounter) {
                 if (node->instr) {
-                    insertpcodebefore(instr, rematerialize_spilled_register(reg2, node));
+                    insertpcodebefore(instr, rematerialize_spilled_register(newReg, node));
                 } else {
-                    insert_load_spilled_register(instr, reg2, node);
+                    insert_load_spilled_register(instr, newReg, node);
                 }
             }
 
             if (writeCounter) {
                 if (node->instr || (instr->flags & fIsArgInit)) {
-                    flag = TRUE;
+                    deleteInstr = TRUE;
                 } else {
-                    insert_store_spilled_register(instr, FALSE, reg2, node);
+                    insert_store_spilled_register(instr, FALSE, newReg, node);
                 }
             }
         }
     }
 
-    if (flag) {
+    if (deleteInstr) {
         deletepcode(instr);
     }
 }
 
 static void spillcopy(PCodeBlock* block, PCode* instr) {
-    IGNode* node1;
-    IGNode* node2;
+    IGNode* srcNode;
+    IGNode* destNode;
     int reg;
 
-    node1 = interferencegraph[instr->args[1].data.reg.reg];
-    node2 = interferencegraph[instr->args[0].data.reg.reg];
+    srcNode = interferencegraph[instr->args[1].data.reg.reg];
+    destNode = interferencegraph[instr->args[0].data.reg.reg];
 
-    if (node1->flags & fSpilled) {
-        if (node2->flags & fSpilled) {
+    if (srcNode->flags & fSpilled) {
+        if (destNode->flags & fSpilled) {
             reg = ALLOC_REG(coloring_class);
             if (reg > 0x7FFF) {
-                PPCError_ErrorTerm(PPCErrorStr219);
+                PPCError_ErrorTerm(PPCERR_TOO_MANY_REGISTERS);
             }
-            if (node1->instr) {
-                insertpcodebefore(instr, rematerialize_spilled_register(reg, node1));
+            if (srcNode->instr) {
+                insertpcodebefore(instr, rematerialize_spilled_register(reg, srcNode));
             } else {
-                insert_load_spilled_register(instr, reg, node1);
+                insert_load_spilled_register(instr, reg, srcNode);
             }
-            insert_store_spilled_register(instr, TRUE, reg, node2);
+            insert_store_spilled_register(instr, TRUE, reg, destNode);
         } else {
-            if (node1->instr) {
+            if (srcNode->instr) {
                 insertpcodebefore(
-                    instr, rematerialize_spilled_register(instr->args[0].data.reg.reg, node1)
+                    instr, rematerialize_spilled_register(instr->args[0].data.reg.reg, srcNode)
                 );
             } else {
-                insert_load_spilled_register(instr, instr->args[0].data.reg.reg, node1);
+                insert_load_spilled_register(instr, instr->args[0].data.reg.reg, srcNode);
             }
         }
     } else {
-        insert_store_spilled_register(instr, TRUE, instr->args[1].data.reg.reg, node2);
+        insert_store_spilled_register(instr, TRUE, instr->args[1].data.reg.reg, destNode);
     }
 
     deletepcode(instr);
@@ -455,8 +446,7 @@ static void spillcall(PCodeBlock* block, PCode* instr) {
     opDst = instr->args + i;
     for (; i < opCount; i++, opSrc++) {
         if (PC_OP_IS_ANY_REGISTER(opSrc, coloring_class) &&
-            opSrc->data.reg.reg >=
-            n_real_registers[coloring_class] &&
+            opSrc->data.reg.reg >= n_real_registers[coloring_class] &&
             (interferencegraph[opSrc->data.reg.reg]->flags & fSpilled)) {
             instr->argCount--;
         } else {
@@ -474,7 +464,7 @@ static void assign_spill_locations(void) {
     Type* type;
 
     last_unused_vreg_before_spilling = used_virtual_registers[coloring_class];
-    for (i = n_real_registers[coloring_class]; i < last_unused_vreg_before_spilling; i++) {
+    for (i = n_real_registers[coloring_class]; i < (UInt32)last_unused_vreg_before_spilling; i++) {
         node = interferencegraph[i];
         if (node->flags & fCoalesced) {
             continue;
@@ -492,7 +482,6 @@ static void assign_spill_locations(void) {
                     type = TYPE(&stunsignedlong);
                     break;
                 case RegClass_FPR:
-                    // (2.6: a paired single's slot holds both halves)
                     if (node->flags & fPairedSingle1) {
                         type = TYPE(&stvec2x32float);
                     } else {
@@ -509,9 +498,8 @@ static void assign_spill_locations(void) {
             node->spillTemporary = makespilltemporary(type);
         }
 
-        if (node->spillTemporary->datatype ==
-            DLOCAL &&
-            !(node->spillTemporary->u.var.info->flags & VarInfoFlag1)) {
+        if (node->spillTemporary->datatype == DLOCAL &&
+            !(node->spillTemporary->u.var.info->flags & VarInfoFlag_ParamArea)) {
             assign_local_memory(node->spillTemporary);
         }
 
@@ -529,16 +517,15 @@ void insertspillcode(void) {
     PCode* nextInstr;
     PCodeArg* arg;
     UInt32 i;
-    int flag;
+    int usesSpilled;
     PCodeArg* op;
 
     rTEMP_for_VR_spill = 0;
     rTEMP_for_PS_spill = 0;
 
-    // (2.6: the paired-single operands' nodes are marked first)
     for (block = pcbasicblocks; block; block = block->nextBlock) {
         for (instr = block->firstPCode; instr; instr = instr->nextPCode) {
-            for (i = 0; i < instr->argCount; i++) {
+            for (i = 0; i < (UInt32)instr->argCount; i++) {
                 arg = &instr->args[i];
                 if (PC_OP_IS_ANY_REGISTER(arg, coloring_class) && is_paired_single_operand(*arg)) {
                     interferencegraph[instr->args[i].data.reg.reg]->flags |=
@@ -554,21 +541,20 @@ void insertspillcode(void) {
     for (block = pcbasicblocks; block; block = block->nextBlock) {
         for (instr = block->firstPCode; instr; instr = nextInstr) {
             nextInstr = instr->nextPCode;
-            flag = FALSE;
+            usesSpilled = FALSE;
             op = instr->args;
             i = instr->argCount;
             while (i--) {
                 if (PC_OP_IS_ANY_REGISTER(op, coloring_class) &&
-                    op->data.reg.reg <
-                    last_unused_vreg_before_spilling &&
+                    op->data.reg.reg < last_unused_vreg_before_spilling &&
                     (interferencegraph[op->data.reg.reg]->flags & fSpilled)) {
-                    flag = TRUE;
+                    usesSpilled = TRUE;
                     break;
                 }
                 op++;
             }
 
-            if (flag) {
+            if (usesSpilled) {
                 if (coloring_class == RegClass_FPR && rTEMP_for_PS_spill == 0) {
                     rTEMP_for_PS_spill = ALLOC_GPR();
                 }

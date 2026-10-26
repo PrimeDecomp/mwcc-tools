@@ -7,10 +7,6 @@
 extern "C" {
 #endif
 
-// The intrinsic functions, by the index Intrinsics_SetupRuntimeObjects gives each (Pro7's 311; 2.6
-// adds __rtos_change_stack, __rtos_pop_stack, __va_setup and __builtin_va_info). TODO: invented
-// names (Pro7's Intrinsic_000 to Intrinsic_310), each the runtime object's name less its leading
-// underscores.
 typedef enum Intrinsics {
     Intrinsic_eieio,
     Intrinsic_sync,
@@ -336,7 +332,7 @@ extern int is_intrinsic_function_call(ENode* funccall);
 extern ENode* Intrinsics_HandleIntrinsicCall(Object* func, ENodeList* args);
 extern void call_intrinsic_function(ENode* funccall, short outputReg, Operand* output);
 extern void Intrinsics_SetupRuntimeObjects(void);
-extern Boolean Intrinsics_ReInitRuntimeObjects(Boolean flag);
+extern Boolean Intrinsics_ReInitRuntimeObjects(Boolean isPrecompiler);
 extern Boolean Intrinsics_IsPublicRuntimeObject(Object* object);
 
 #ifdef __cplusplus

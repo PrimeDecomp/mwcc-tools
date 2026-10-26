@@ -31,30 +31,25 @@ void CodeGen_InitBackEndOptions(void) {
     pl = *((PLinker*)*handle);
 
     cparamblkptr = &cparams;
-    // (misaligned_mem_access and unsafe_global_reg_vars are set again below: the first stores are
-    // dropped, but removing either changes the code)
     copts.function_align = 16;
-    copts.misaligned_mem_access = 1;
-    copts.switch_tables = 1;
-    copts.prepare_compress = 0;
+    copts.misaligned_mem_access = TRUE;
+    copts.switch_tables = TRUE;
+    copts.prepare_compress = FALSE;
     copts.min_struct_alignment = 4;
 #if VERSION >= VERSION_GC_2_5
-    copts.old_style_bitfields = 0;
+    copts.old_style_bitfields = FALSE;
 #endif
-    copts.unsafe_global_reg_vars = 0;
-    copts.ignore_global_reg_vars = 0;
+    copts.unsafe_global_reg_vars = FALSE;
+    copts.ignore_global_reg_vars = FALSE;
     copts.altivec_model = 0;
-    copts.altivec_vrsave = 1;
-    copts.cats = 1;
+    copts.altivec_vrsave = TRUE;
+    copts.cats = TRUE;
     copts.littleendian = !pp.endian;
     copts.readonly_strings = pb.readonlystrings;
-    copts.misaligned_mem_access = 0;
-    copts.unsafe_global_reg_vars = 1;
+    copts.misaligned_mem_access = FALSE;
+    copts.unsafe_global_reg_vars = TRUE;
     copts.schedule_factor = 2;
 
-    // Each older panel version numbers the processors its own way. The cases fall through, but each
-    // switch reads pb.processor again, so the oldest mapping that knows the value wins (the
-    // original's bug: a version 6 panel's 555, 4, comes out as a 601).
     switch (pb.version) {
         case 6:
         case 7:
@@ -123,7 +118,6 @@ void CodeGen_InitBackEndOptions(void) {
                     copts.processor = CPU_Generic;
                     break;
             }
-            // fall through
         case 5:
             switch (pb.processor) {
                 case 0:
@@ -182,7 +176,6 @@ void CodeGen_InitBackEndOptions(void) {
                     copts.processor = CPU_Generic;
                     break;
             }
-            // fall through
         case 4:
             switch (pb.processor) {
                 case 0:
@@ -238,7 +231,6 @@ void CodeGen_InitBackEndOptions(void) {
                     copts.processor = CPU_PPC850;
                     break;
             }
-            // fall through
         case 3:
             switch (pb.processor) {
                 case 0:
@@ -288,7 +280,6 @@ void CodeGen_InitBackEndOptions(void) {
                     copts.processor = CPU_Generic;
                     break;
             }
-            // fall through
         case 1:
         case 2:
             switch (pb.processor) {
@@ -369,7 +360,6 @@ void CodeGen_InitBackEndOptions(void) {
         case CPU_PPC7450:
             copts.scheduling = 10;
             break;
-        // (an explicit case, as default's: without it the code differs)
         case CPU_PPC602:
             copts.scheduling = 8;
             break;
@@ -384,8 +374,8 @@ void CodeGen_InitBackEndOptions(void) {
         copts.schedule_factor = 0;
     }
 
-    copts.gen_isel = 0;
-    copts.gen_fsel = 0;
+    copts.gen_isel = FALSE;
+    copts.gen_fsel = FALSE;
     copts.peephole = pb.peephole;
     copts.structalignment = pb.structalignment;
     copts.function_align = 4 << pb.funcalign;
@@ -393,45 +383,47 @@ void CodeGen_InitBackEndOptions(void) {
     copts.sdata2_threshold = pp.sdata2threshold;
     copts.sdata_threshold = pp.sdatathreshold;
     copts.no_comment_records = pp.no_comment_records;
-    copts.dwarf_relocations = 1;
-    copts.dwarf_siblings = 1;
+    copts.dwarf_relocations = TRUE;
+    copts.dwarf_siblings = TRUE;
     copts.common = pb.common;
     copts.absolutepath = pl.symfullpath;
     copts.use_lmw_stmw = pb.use_lmw_stmw;
     copts.rel109_offset = 0;
-    copts.use_fp = 0;
-    copts.soft_float = 0;
-    copts.fp_contract = 0;
+    copts.use_fp = FALSE;
+    copts.soft_float = FALSE;
+    copts.fp_contract = FALSE;
     if (pb.floatingpoint) {
-        copts.use_fp = 1;
+        copts.use_fp = TRUE;
         if (pb.floatingpoint == 1) {
-            copts.soft_float = 1;
+            copts.soft_float = TRUE;
         } else {
             copts.fp_contract = pb.fp_contract;
         }
     }
     if (copts.processor == CPU_PPCGEKKO) {
-        copts.ibm_stackframe = 1;
-        copts.gecko_float_typecons = 0;
-        copts.disable_vector_frame = 0;
+        copts.ibm_stackframe = TRUE;
+        copts.gecko_float_typecons = FALSE;
+#if VERSION >= VERSION_GC_2_0
+        copts.disable_vector_frame = FALSE;
+#endif
     } else {
-        copts.ibm_stackframe = 0;
+        copts.ibm_stackframe = FALSE;
     }
     copts.altivec_model = pb.altivec;
     if (pb.vrsave) {
-        copts.altivec_vrsave = 1;
+        copts.altivec_vrsave = TRUE;
     } else {
-        copts.altivec_vrsave = 0;
+        copts.altivec_vrsave = FALSE;
     }
-    copts.debuglisting = 0;
-    copts.unroll_speculative = 1;
+    copts.debuglisting = FALSE;
+    copts.unroll_speculative = TRUE;
     copts.unroll_instr_limit = 70;
     copts.unroll_factor_limit = 10;
-    copts.opt_bcc_lr_ctr = 1;
-    copts.optimizewithasm = 1;
-    copts.strengthreductionstrict = 1;
+    copts.opt_bcc_lr_ctr = TRUE;
+    copts.optimizewithasm = TRUE;
+    copts.strengthreductionstrict = TRUE;
     copts.bc_range = 0x10000;
-    copts.gprfloatcopy = 0;
+    copts.gprfloatcopy = FALSE;
 }
 
 void Test_Version_Numbers(void) {}

@@ -5,7 +5,6 @@
 extern "C" {
 #endif
 
-/* (MSL's cfloat: the float limits) */
 #define FLT_RADIX 2
 #define FLT_MANT_DIG 24
 #define FLT_DIG 6

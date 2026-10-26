@@ -1,13 +1,13 @@
-// The compiler's OS services on the command line (Pro7's PluginLib Internal/COSToolsCLT.c; Wii's
-// "COSToolsWin32"): thin wrappers over the Mac emulation.
 #include "driver/COSToolsCLT.h"
 #include "driver/CCompiler.h"
+#include "driver/Files.h"
 #include "driver/LowMem.h"
 #include "driver/MacSpecs.h"
+#include "driver/Memory.h"
 #include "driver/MsDos.h"
+#include "driver/oslib.h"
 #include "driver/TextUtils.h"
 
-// (2.6 returns nothing: no copy of dst into eax)
 static void COS_pstrcpy(StringPtr dst, ConstStringPtr src) {
     short cnt;
     for (cnt = src[0]; cnt >= 0; cnt--) {
@@ -63,8 +63,8 @@ void COS_GetString(char* buffer, SInt16 strListID, SInt16 index) {
     p2cstr((StringPtr)buffer);
 }
 
-Boolean COS_IsMultiByte(const void* str1, const void* str2) {
-    return OS_IsMultiByte(str1, str2);
+Boolean COS_IsMultiByte(const void* str, const void* pos) {
+    return OS_IsMultiByte(str, pos);
 }
 
 OSErr COS_FileNew(const FSSpec* spec, SInt16* refNum, OSType creator, OSType fileType) {
@@ -127,6 +127,7 @@ void COS_FileGetFSSpecInfo(const FSSpec* spec, SInt16* vRefNum, SInt32* dirID, S
     }
 }
 
+#ifdef __MWERKS__
 static void COS_MakePath(SInt16 vRefNum, SInt32 dirID, StringPtr path) {
     FSSpec fss;
     OSSpec oss;
@@ -134,11 +135,26 @@ static void COS_MakePath(SInt16 vRefNum, SInt32 dirID, StringPtr path) {
     fss.parID = dirID;
     COS_pstrcpy(fss.name, path);
     if (!OS_FSSpec_To_OSSpec(&fss, &oss)) {
-        // (2.6: a Win32 path's size, where Pro7 has 256)
         OS_SpecToString(&oss, (char*)path, 260);
         c2pstr((char*)path);
     }
 }
+#else
+static void COS_MakePath(SInt16 vRefNum, SInt32 dirID, StringPtr path) {
+    struct {
+        FSSpec fss;
+        UInt8 gap[2];
+        OSSpec oss;
+    } frame;
+    frame.fss.vRefNum = vRefNum;
+    frame.fss.parID = dirID;
+    COS_pstrcpy(frame.fss.name, path);
+    if (!OS_FSSpec_To_OSSpec(&frame.fss, &frame.oss)) {
+        OS_SpecToString(&frame.oss, (char*)path, 260);
+        c2pstr((char*)path);
+    }
+}
+#endif
 
 void COS_FileGetPathName(char* buffer, const FSSpec* spec, SInt32* mdDat) {
     HParamBlockRec rec;

@@ -7,7 +7,6 @@
 extern "C" {
 #endif
 
-/* The MSL string functions the compiler links (lib/msl/MSL_Common/Include/cstring). */
 void* memset(void* dst, int val, size_t len);
 void* memchr(const void* src, int val, size_t len);
 int memcmp(const void* src1, const void* src2, size_t len);

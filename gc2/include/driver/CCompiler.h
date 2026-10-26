@@ -10,7 +10,6 @@ extern "C" {
 
 extern Boolean systemHandles;
 extern Boolean crippled;
-extern SInt32 license_cookie;
 extern CompilerLinkerParamBlk cparams;
 
 extern CWPLUGIN_ENTRY(MWC_main)(CWPluginContext context);

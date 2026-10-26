@@ -1,7 +1,11 @@
 #include "driver/ParserFace.h"
+#include "driver/Arguments.h"
+#include "driver/cmdline.h"
 #include "driver/CWParserPluginsPrivate.h"
+#include "driver/CWPlugins.h"
 #include "driver/CWPluginsPrivate.h"
 #include "driver/CWSecretPluginCallbacks.h"
+#include "driver/Memory.h"
 #include "driver/Option.h"
 #include "driver/ParserErrors.h"
 #include "driver/pref_structs.h"
@@ -186,8 +190,7 @@ static CWResult StoreResults(CWPluginContext context) {
     }
 
     for (idx = 0; idx < parseopts.numPlugins; idx++) {
-        if (parseopts.plugins[idx].plugintype ==
-            CWDROPINLINKERTYPE &&
+        if (parseopts.plugins[idx].plugintype == CWDROPINLINKERTYPE &&
             parseopts.plugins[idx].storeCommandLine) {
             if (parseopts.plugins[idx].dropinflags & isPreLinker) {
                 Arg_ToolArgsForPlugin(&prelinkargs, &args);
@@ -206,14 +209,14 @@ static CWResult StoreResults(CWPluginContext context) {
             fprintf(
                 stderr,
                 "*** No support for %c%c%c%c/%c%c%c%c tool\n",
-                (id & 0xFF000000) >> 24,
-                (id & 0x00FF0000) >> 16,
-                (id & 0x0000FF00) >> 8,
-                (id & 0x000000FF),
-                (lg & 0xFF000000) >> 24,
-                (lg & 0x00FF0000) >> 16,
-                (lg & 0x0000FF00) >> 8,
-                (lg & 0x000000FF)
+                (int)((id & 0xFF000000) >> 24),
+                (int)((id & 0x00FF0000) >> 16),
+                (int)((id & 0x0000FF00) >> 8),
+                (int)(id & 0x000000FF),
+                (int)((lg & 0xFF000000) >> 24),
+                (int)((lg & 0x00FF0000) >> 16),
+                (int)((lg & 0x0000FF00) >> 8),
+                (int)(lg & 0x000000FF)
             );
         }
     }
@@ -248,9 +251,7 @@ CWPLUGIN_ENTRY(CWParser_GetPanelList)(const CWPanelList** panelList) {
     return 0;
 }
 
-// (no caller: the linker dropped it, but its data stays in the unit's .data)
 CWPLUGIN_ENTRY(CWParser_GetTargetList)(const CWTargetList** targetList) {
-    // (SInt32: 2.x's CWTargetList holds signed CPU and OS types)
     static SInt32 sCPU = '****';
     static SInt32 sOS = '****';
     static CWTargetList sTargetList = {kCurrentCWTargetListVersion, 1, &sCPU, 1, &sOS};
@@ -279,8 +280,6 @@ CWPLUGIN_ENTRY(Parser_SupportsPanels)(
 }
 
 CWPLUGIN_ENTRY(parser_main)(CWPluginContext context) {
-    // (2.6 initializes it, though setjmp's result replaces it: the `xor`/`mov` before the request;
-    // without it the function is 4 bytes short)
     CWResult result = cwNoErr;
     SInt32 request;
 
@@ -291,7 +290,6 @@ CWPLUGIN_ENTRY(parser_main)(CWPluginContext context) {
             case reqInitialize:
                 result = 0;
                 break;
-            // (2.6: reqTerminate, where Pro7 has `case 0`; the compare chain tests -1)
             case reqTerminate:
                 break;
             case 1:
@@ -315,7 +313,7 @@ CWPLUGIN_ENTRY(parser_main)(CWPluginContext context) {
         }
     } else {
         if (failedCallback && result != 1) {
-            fprintf(stderr, "Unexpected error in %s [%d]\n", failedCallback, result);
+            fprintf(stderr, "Unexpected error in %s [%d]\n", failedCallback, (int)result);
         }
     }
     CWDonePluginRequest(context, result);

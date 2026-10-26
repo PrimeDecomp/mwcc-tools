@@ -1,13 +1,6 @@
 #!/usr/bin/env python3
-"""python tools/clang_check.py [save] [FILTER]: compile every source (whose path contains FILTER) with clang
--fsyntax-only (tools/mw/clang.py: the primary version's command), in parallel, and print its errors -- the ones MWCC
-lets through matter: a call to an undeclared function is an implicit int declaration to MWCC too, and changes the code
-around it.
 
-  save  keep the errors as the baseline (build/clang_errors.txt); without it, print only errors the baseline lacks
-        (line numbers ignored), so a change can be checked for what it newly breaks. Exits 1 when there are such.
-"""
-
+import argparse
 import re
 import sys
 from collections import Counter
@@ -20,14 +13,17 @@ BASELINE = project.ROOT / "build/clang_errors.txt"
 
 
 def main():
-    if sys.argv[1:2] in (["-h"], ["--help"]):
-        print(__doc__)
-        return
-    args = sys.argv[1:]
-    save = args[:1] == ["save"]
-    args = args[1:] if save else args
+    parser = argparse.ArgumentParser(
+        prog="tools/clang_check.py",
+        usage="%(prog)s [save | FILTER]",
+        description="Compile every source (whose path contains FILTER) with clang -fsyntax-only and print its errors.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument("filter", nargs="?", default="", metavar="save | FILTER")
+    args = parser.parse_args()
+    save = args.filter == "save"
     try:
-        compilations = [c for c in build.compilations() if not args or args[0] in c.source]
+        compilations = [c for c in build.compilations() if save or args.filter in c.source]
         found = [line for lines in isolated.parallel(clang.errors, compilations) for line in lines]
     except project.Error as e:
         sys.exit(f"error: {e}")
@@ -38,7 +34,7 @@ def main():
     if not BASELINE.exists():
         print("\n".join(found))
         print(f"{len(found)} errors (no baseline: python tools/clang_check.py save)")
-        return
+        sys.exit(1 if found else 0)
 
     def strip(line):
         return re.sub(r":\d+:\d+:", ":", line)
@@ -50,7 +46,8 @@ def main():
             base[strip(line)] -= 1
         else:
             new.append(line)
-    print("\n".join(new))
+    if new:
+        print("\n".join(new))
     print(f"{len(found)} errors, {len(new)} not in the baseline")
     sys.exit(1 if new else 0)
 

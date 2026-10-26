@@ -7,8 +7,6 @@
 extern "C" {
 #endif
 
-// 2-byte packing (Pro7: mac68k alignment): a BasicInductionVar is 26 bytes (addbasicinductionvariable's
-// oalloc)
 #pragma pack(push, 2)
 struct BlockList {
     BlockList* next;
@@ -20,7 +18,6 @@ struct InstrList {
     PCode* instr;
 };
 
-// Pro7's LoopBound: how a counting loop's lower or upper bound is known (Loop.lowerType, .upperType)
 typedef enum LoopBound {
     LOOP_BOUND_INDETERMINATE,
     LOOP_BOUND_CONSTANT,
@@ -31,43 +28,41 @@ struct Loop {
     Loop* parent;
     Loop* nextSibling;
     Loop* children;
-    PCodeBlock* body; // repeated block
-    PCodeBlock* preheader; // block at the start of the loop
-    PCodeBlock* footer; // block at the end of the loop
-    PCode* inductionUpdate; // TODO: invented name (Pro7's pc18): the addi stepping a counting loop
+    PCodeBlock* body;
+    PCodeBlock* preheader;
+    PCodeBlock* footer;
+    PCode* inductionUpdate;
     BlockList* blocks;
     UInt32* memberblocks;
-    // TODO: invented names (Pro7's vec24, vec28, vec2C)
-    UInt32* exitblocks; // the blocks with a successor outside the loop
-    UInt32* exit_dominators; // the blocks that dominate every exit block
-    UInt32* backedge_dominators; // the blocks that dominate every back edge
+    UInt32* exitblocks;
+    UInt32* exit_dominators;
+    UInt32* backedge_dominators;
     BasicInductionVar* basicInductionVars;
     int loopWeight;
-    SInt32 bodySize; // the instructions in the body (Pro7: int; 2.6's unrollunknownBDNZ: SInt32)
+    SInt32 bodySize;
     SInt32 iterationCount;
     SInt32 lower;
     SInt32 upper;
-    SInt32 step; // the value added in each iteration
+    SInt32 step;
     UInt8 unknownCondition;
-    // TODO: invented names (Pro7's x4D, x4E, x4F, x52, x53, x54, x57)
-    UInt8 has_call;
-    UInt8 uses_count_register;
-    UInt8 is_straight_line; // every block but the body has one predecessor and one successor
-    UInt8 isUnknownCountingLoop; // is a counting loop with non-constant iteration count
-    UInt8 isKnownCountingLoop;
-    UInt8 has_unrolled_code; // a block has fUnrolled (code the front end unrolled)
-    UInt8 has_indexed_load;
-    UInt8 has_indexed_store;
+    Boolean has_call;
+    Boolean uses_count_register;
+    Boolean is_straight_line;
+    Boolean isUnknownCountingLoop;
+    Boolean isKnownCountingLoop;
+    Boolean has_unrolled_code;
+    Boolean has_indexed_load;
+    Boolean has_indexed_store;
     LoopBound lowerType;
     LoopBound upperType;
-    UInt8 has_memory_barrier;
+    Boolean has_memory_barrier;
 };
 
 struct BasicInductionVar {
     BasicInductionVar* next;
     Loop* loop;
     InductionVar* inductionVars;
-    InstrList* instrs; // TODO: invented name (Pro7's instrsC): the instructions that step it
+    InstrList* instrs;
     PCode* initializer;
     SInt32 step;
     short reg;
@@ -77,14 +72,13 @@ struct InductionVar {
     InductionVar* next;
     BasicInductionVar* basicVar;
     PCode* instr;
-    // TODO: invented names (Pro7's instrC, x18, x1A, x1C, x1E)
-    PCode* replacement_instruction; // the instruction initializeinductionvariable generates
-    Loop* someloop;
+    PCode* replacement_instruction;
+    Loop* outer_loop;
     SInt32 step;
-    short base_operand; // the index in instr of the base register operand
-    short source_operand; // the index in instr of the source operand
-    short source_register; // the register initializeinductionvariable sets up
-    short destination_register; // the register the reduced value is kept in
+    short base_operand;
+    short source_operand;
+    short source_register;
+    short destination_register;
 };
 #pragma pack(pop)
 

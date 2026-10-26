@@ -1,31 +1,26 @@
-// SFPE_PPC_EABI.c: soft-float (-fp soft) code generation through calls to the runtime's rt_sfpe_* routines
-// (2.6's own unit: no Pro7 file; gc1's shape and helpers). Built -inline auto,deferred: the binary
-// holds the functions in reverse.
 #include "compiler/SFPE_PPC_EABI.h"
 #include "compiler/CError.h"
-#include "compiler/CExpr.h"
-#include "compiler/CFunc.h"
 #include "compiler/CodeGen.h"
+#include "compiler/CompilerTools.h"
 #include "compiler/CParser.h"
-#include "compiler/CPrep.h"
+#include "compiler/enode.h"
 #include "compiler/InstrSelection.h"
 #include "compiler/objects.h"
-#include "compiler/ObjGen_PPC_EABI.h"
 #include "compiler/Operands.h"
 #include "compiler/PCode.h"
+#include "compiler/PCodeInfo.h"
 #include "compiler/PCodeUtilities.h"
 #include "compiler/PPCError.h"
 #include "compiler/RegisterInfo.h"
+#include "compiler/Registers.h"
+#include "compiler/types.h"
 
-// TODO: invented names: the used registers (SPR, CR field, VR, FPR, GPR) of the soft-float library calls,
-// passed to branch_subroutine: r3/r4, r3-r6 and r3
 static UInt32 used_regs_r3_r4[RegClassMax] = {0, 0, 0, 0, (1 << 3) | (1 << 4)};
 static UInt32 used_regs_r3_r6[RegClassMax] = {
     0, 0, 0, 0, (1 << 3) | (1 << 4) | (1 << 5) | (1 << 6)
 };
 static UInt32 used_regs_r3[RegClassMax] = {0, 0, 0, 0, (1 << 3)};
 
-// TODO: invented names (gc1's) for the helpers below; 2.6 inlines every call to them
 static inline void lift_result(Operand* op, int kind) {
     op->optype = kind;
     op->reg = ALLOC_GPR();
@@ -38,10 +33,6 @@ static inline void lift_result(Operand* op, int kind) {
     }
 }
 
-#ifdef ORACLE_PROBES
-#define lift_result(...) ORACLE_INLINED(lift_result(__VA_ARGS__))
-#endif
-
 static inline void LoadFloatArg(int reg) {
     union {
         float f;
@@ -52,8 +43,6 @@ static inline void LoadFloatArg(int reg) {
     insert_load_immediate_after(reg, u.l);
 }
 
-// (2.6's calls through this second inline level are what its register choices need: calling
-// LoadFloatArg directly changes SFPE_gen_POSTINCDEC and SFPE_gen_ASS)
 static inline void LoadFloatArgGPR(int reg) {
     LoadFloatArg(reg);
 }
@@ -75,19 +64,19 @@ static inline void LoadDoubleArg(int reg1, int reg2) {
     }
 }
 
-void SFPE_gen_OP(ENode* node, SInt16 requestedReg, SInt16 requestedRegHi, Operand* result) {
+void SFPE_gen_OP(ENode* expr, short outputReg, short outputRegHi, Operand* output) {
     ENode* left;
     Operand leftOperand;
     Operand rightOperand;
     ENode* right;
 
-    left = node->data.diadic.left;
-    right = node->data.diadic.right;
+    left = expr->data.diadic.left;
+    right = expr->data.diadic.right;
 
     memclrw(&leftOperand, sizeof(leftOperand));
     memclrw(&rightOperand, sizeof(rightOperand));
 
-    if (node->rtype->size == 4) {
+    if (expr->rtype->size == 4) {
         GEN_NODE(right, &rightOperand);
         if (rightOperand.optype) {
             Coerce_to_register(&rightOperand, right->rtype, 0);
@@ -113,21 +102,21 @@ void SFPE_gen_OP(ENode* node, SInt16 requestedReg, SInt16 requestedRegHi, Operan
             }
         }
 
-        if (node->type == EADD) {
+        if (expr->type == EADD) {
             branch_subroutine(rt_sfpe_f_add, 0, used_regs_r3_r4);
-        } else if (node->type == ESUB) {
+        } else if (expr->type == ESUB) {
             branch_subroutine(rt_sfpe_f_sub, 0, used_regs_r3_r4);
-        } else if (node->type == EMUL) {
+        } else if (expr->type == EMUL) {
             branch_subroutine(rt_sfpe_f_mul, 0, used_regs_r3_r4);
-        } else if (node->type == EDIV) {
+        } else if (expr->type == EDIV) {
             branch_subroutine(rt_sfpe_f_div, 0, used_regs_r3_r4);
         } else {
             CError_FATAL(218);
         }
 
-        result->optype = OpndType_GPR;
-        result->reg = ALLOC_GPR();
-        emitpcode(PC_MR, result->reg, 3);
+        output->optype = OpndType_GPR;
+        output->reg = ALLOC_GPR();
+        emitpcode(PC_MR, output->reg, 3);
     } else {
         GEN_NODE(right, &rightOperand);
         coerce_to_register_pair(&rightOperand, right->rtype, 0, 0);
@@ -150,22 +139,20 @@ void SFPE_gen_OP(ENode* node, SInt16 requestedReg, SInt16 requestedRegHi, Operan
             emitpcode(PC_MR, low_reg2, rightOperand.reg);
         }
 
-        if (node->type == EADD) {
+        if (expr->type == EADD) {
             branch_subroutine(rt_sfpe_d_add, 0, used_regs_r3_r6);
-        } else if (node->type == ESUB) {
+        } else if (expr->type == ESUB) {
             branch_subroutine(rt_sfpe_d_sub, 0, used_regs_r3_r6);
-        } else if (node->type == EMUL) {
+        } else if (expr->type == EMUL) {
             branch_subroutine(rt_sfpe_d_mul, 0, used_regs_r3_r6);
-        } else if (node->type == EDIV) {
+        } else if (expr->type == EDIV) {
             if (((left->rtype->type == TYPEINT || left->rtype->type == TYPEENUM) &&
-                 left->rtype->size ==
-                 8 &&
+                 left->rtype->size == 8 &&
                  is_unsigned(left->rtype)) ||
                 ((right->rtype->type == TYPEINT || right->rtype->type == TYPEENUM) &&
-                 right->rtype->size ==
-                 8 &&
+                 right->rtype->size == 8 &&
                  is_unsigned(right->rtype))) {
-                PPCError_Error(PPCErrorStr130, __FILE__, 269);
+                PPCError_Error(PPCERR_FLOAT_CHECKED_AT, __FILE__, 269);
                 branch_subroutine(rt_sfpe_d_div, 0, used_regs_r3_r6);
             } else {
                 branch_subroutine(rt_sfpe_d_div, 0, used_regs_r3_r6);
@@ -174,42 +161,42 @@ void SFPE_gen_OP(ENode* node, SInt16 requestedReg, SInt16 requestedRegHi, Operan
             CError_FATAL(276);
         }
 
-        result->optype = OpndType_GPRPair;
-        result->reg = ALLOC_GPR();
-        result->regHi = ALLOC_GPR();
-        emitpcode(PC_MR, result->reg, low_reg);
-        emitpcode(PC_MR, result->regHi, high_reg);
+        output->optype = OpndType_GPRPair;
+        output->reg = ALLOC_GPR();
+        output->regHi = ALLOC_GPR();
+        emitpcode(PC_MR, output->reg, low_reg);
+        emitpcode(PC_MR, output->regHi, high_reg);
     }
 }
 
-void SFPE_gen_FLOATCONST(ENode* node, SInt16 regA, SInt16 regB, Operand* out) {
-    if (node->rtype->size == 4) {
+void SFPE_gen_FLOATCONST(ENode* expr, short outputReg, short outputRegHi, Operand* output) {
+    if (expr->rtype->size == 4) {
         union {
             float f;
             SInt32 l;
         } u;
         int reg;
-        reg = regA ? regA : ALLOC_GPR();
-        u.f = node->data.floatval.data.value;
+        reg = outputReg ? outputReg : ALLOC_GPR();
+        u.f = expr->data.floatval.data.value;
         insert_load_immediate_after(reg, u.l);
-        out->optype = OpndType_GPR;
-        out->reg = reg;
+        output->optype = OpndType_GPR;
+        output->reg = reg;
     } else {
         int regHi;
         int reg;
         CInt64 v;
-        reg = regA ? regA : ALLOC_GPR();
-        regHi = regB ? regB : ALLOC_GPR();
-        v = node->data.intval;
+        reg = outputReg ? outputReg : ALLOC_GPR();
+        regHi = outputRegHi ? outputRegHi : ALLOC_GPR();
+        v = expr->data.intval;
         insert_load_immediate_after(regHi, v.lo);
         insert_load_immediate_after(reg, v.hi);
-        out->optype = OpndType_GPRPair;
-        out->reg = reg;
-        out->regHi = regHi;
+        output->optype = OpndType_GPRPair;
+        output->reg = reg;
+        output->regHi = regHi;
     }
 }
 
-void SFPE_gen_MONMIN(ENode* expr, SInt16 lowReg, SInt16 highReg, Operand* result) {
+void SFPE_gen_MONMIN(ENode* expr, short outputReg, short outputRegHi, Operand* output) {
     Operand operand;
     ENode* subexpr;
 
@@ -221,23 +208,23 @@ void SFPE_gen_MONMIN(ENode* expr, SInt16 lowReg, SInt16 highReg, Operand* result
         if (operand.optype) {
             Coerce_to_register(&operand, subexpr->rtype, 0);
         }
-        resultReg = lowReg ? lowReg : ALLOC_GPR();
+        resultReg = outputReg ? outputReg : ALLOC_GPR();
         emitpcode(PC_XORIS, resultReg, operand.reg, 0x8000);
-        result->optype = OpndType_GPR;
-        result->reg = resultReg;
+        output->optype = OpndType_GPR;
+        output->reg = resultReg;
     } else {
         SInt32 resultLowReg, resultHighReg;
         GEN_NODE(subexpr, &operand);
         coerce_to_register_pair(&operand, subexpr->rtype, 0, 0);
-        resultHighReg = highReg ? highReg : ALLOC_GPR();
+        resultHighReg = outputRegHi ? outputRegHi : ALLOC_GPR();
         emitpcode(PC_XORIS, resultHighReg, operand.regHi, 0x8000);
-        resultLowReg = lowReg ? lowReg : ALLOC_GPR();
+        resultLowReg = outputReg ? outputReg : ALLOC_GPR();
         if (resultLowReg != operand.reg) {
             emitpcode(PC_MR, resultLowReg, operand.reg);
         }
-        result->optype = OpndType_GPRPair;
-        result->reg = resultLowReg;
-        result->regHi = resultHighReg;
+        output->optype = OpndType_GPRPair;
+        output->reg = resultLowReg;
+        output->regHi = resultHighReg;
     }
 }
 
@@ -329,7 +316,7 @@ void SFPE_gen_ASS(ENode* expr, short outputReg, short outputRegHi, Operand* outp
     }
 }
 
-void SFPE_gen_POSTINCDEC(ENode* expr, SInt16 outputReg, SInt16 outputReg2, Operand* result) {
+void SFPE_gen_POSTINCDEC(ENode* expr, short outputReg, short outputRegHi, Operand* output) {
     ENode* inner;
     Type* type;
     int sourceReg;
@@ -346,13 +333,13 @@ void SFPE_gen_POSTINCDEC(ENode* expr, SInt16 outputReg, SInt16 outputReg2, Opera
 
     if (type->size == 4) {
         if (inner->type == EOBJREF && (sourceReg = OBJECT_REG(inner->data.objref)) != 0) {
-            // the double case below reads regHi from this call's result; here 2.6 only makes the
-            // call (`sourceReg2 = ...->regHi;` matches this function but not SFPE_gen_ASS)
             Registers_GetVarInfo(inner->data.objref);
-            result->optype = OpndType_GPR;
-            result->reg = (outputReg != 0 && outputReg != sourceReg) ? outputReg : ALLOC_GPR();
-            CError_ASSERT(546, sourceReg != result->reg);
-            emitpcode(PC_MR, result->reg, sourceReg);
+            output->optype = OpndType_GPR;
+            output->reg = (outputReg != 0 && outputReg != sourceReg)
+                ? outputReg
+                : ALLOC_GPR();
+            CError_ASSERT(546, sourceReg != output->reg);
+            emitpcode(PC_MR, output->reg, sourceReg);
             argumentReg = ALLOC_GPR();
             LoadFloatArg(argumentReg);
             if (sourceReg != 3) {
@@ -377,13 +364,11 @@ void SFPE_gen_POSTINCDEC(ENode* expr, SInt16 outputReg, SInt16 outputReg2, Opera
             if (value.optype != OpndType_GPR) {
                 Coerce_to_register(&value, type, 0);
             }
-            result->optype = OpndType_GPR;
-            result->reg = ALLOC_GPR();
+            output->optype = OpndType_GPR;
+            output->reg = ALLOC_GPR();
             argumentReg = ALLOC_GPR();
             LoadFloatArgGPR(argumentReg);
-            emitpcode(PC_MR, result->reg, value.reg);
-            // a block-local SInt32 copy, as CodeGen.c compares `opnd.reg` (gc1 compares value.reg
-            // directly: 99.6; `(SInt32) value.reg != 3` matches here but not SFPE_gen_ASS)
+            emitpcode(PC_MR, output->reg, value.reg);
             {
                 SInt32 reg = value.reg;
                 if (reg != 3) {
@@ -403,18 +388,18 @@ void SFPE_gen_POSTINCDEC(ENode* expr, SInt16 outputReg, SInt16 outputReg2, Opera
     } else {
         if (inner->type == EOBJREF && (sourceReg = OBJECT_REG(inner->data.objref)) != 0) {
             sourceReg2 = Registers_GetVarInfo(inner->data.objref)->regHi;
-            result->optype = OpndType_GPRPair;
-            result->regHi =
-                (outputReg2 != 0 && (outputReg2 != sourceReg2 && outputReg2 != sourceReg))
-                ? outputReg2
+            output->optype = OpndType_GPRPair;
+            output->regHi =
+                (outputRegHi != 0 && (outputRegHi != sourceReg2 && outputRegHi != sourceReg))
+                ? outputRegHi
                 : ALLOC_GPR();
-            result->reg = (outputReg != 0 && (outputReg != sourceReg && outputReg != sourceReg2))
+            output->reg = (outputReg != 0 && (outputReg != sourceReg && outputReg != sourceReg2))
                 ? outputReg
                 : ALLOC_GPR();
-            CError_ASSERT(654, sourceReg != result->reg && sourceReg2 != result->reg);
-            CError_ASSERT(655, sourceReg != result->regHi && sourceReg2 != result->regHi);
-            emitpcode(PC_MR, result->regHi, sourceReg2);
-            emitpcode(PC_MR, result->reg, sourceReg);
+            CError_ASSERT(654, sourceReg != output->reg && sourceReg2 != output->reg);
+            CError_ASSERT(655, sourceReg != output->regHi && sourceReg2 != output->regHi);
+            emitpcode(PC_MR, output->regHi, sourceReg2);
+            emitpcode(PC_MR, output->reg, sourceReg);
             if (sourceReg2 != high_reg) {
                 emitpcode(PC_MR, high_reg, sourceReg2);
             }
@@ -439,11 +424,11 @@ void SFPE_gen_POSTINCDEC(ENode* expr, SInt16 outputReg, SInt16 outputReg2, Opera
             indirect(&operand, inner);
             value = operand;
             coerce_to_register_pair(&value, type, 0, 0);
-            result->optype = OpndType_GPRPair;
-            result->reg = ALLOC_GPR();
-            result->regHi = ALLOC_GPR();
-            emitpcode(PC_MR, result->reg, value.reg);
-            emitpcode(PC_MR, result->regHi, value.regHi);
+            output->optype = OpndType_GPRPair;
+            output->reg = ALLOC_GPR();
+            output->regHi = ALLOC_GPR();
+            emitpcode(PC_MR, output->reg, value.reg);
+            emitpcode(PC_MR, output->regHi, value.regHi);
             if (value.regHi != high_reg) {
                 emitpcode(PC_MR, high_reg, value.regHi);
             }
@@ -505,16 +490,15 @@ void SFPE_gen_INDIRECT(ENode* expr, short outputReg, short outputRegHi, Operand*
     }
 }
 
-// 2.6's floating-point comparison through the soft-float library
-void SFPE_gen_condition(ENode* node, Operand* result, int branch) {
+void SFPE_gen_condition(ENode* expr, Operand* output, int branch) {
     ENode* left;
     ENode* right;
     Operand leftOperand, rightOperand, tempOperand;
     SInt32 size;
     UInt32* masks;
 
-    left = node->data.diadic.left;
-    right = node->data.diadic.right;
+    left = expr->data.diadic.left;
+    right = expr->data.diadic.right;
 
     memclrw(&leftOperand, sizeof(leftOperand));
     memclrw(&rightOperand, sizeof(rightOperand));
@@ -589,7 +573,7 @@ void SFPE_gen_condition(ENode* node, Operand* result, int branch) {
         }
     }
 
-    switch (node->type) {
+    switch (expr->type) {
         case ENOTEQU:
             branch_subroutine(size == 8 ? rt_sfpe_d_fne : rt_sfpe_f_fne, 0, masks);
             break;
@@ -613,14 +597,14 @@ void SFPE_gen_condition(ENode* node, Operand* result, int branch) {
     }
 
     if (branch) {
-        result->optype = OpndType_GPR;
-        result->reg = ALLOC_GPR();
-        emitpcode(PC_MR, result->reg, 3);
+        output->optype = OpndType_GPR;
+        output->reg = ALLOC_GPR();
+        emitpcode(PC_MR, output->reg, 3);
     } else {
         emitpcode(PC_CMPI, 0, 3, 1);
-        result->optype = OpndType_CRField;
-        result->reg = 0;
-        result->regOffset = EEQU;
+        output->optype = OpndType_CRField;
+        output->reg = 0;
+        output->regOffset = EEQU;
     }
 }
 
@@ -634,7 +618,7 @@ void SFPE_gen_TYPCON(ENode* expr, short outputReg, short outputRegHi, Operand* o
     dsttype = expr->rtype;
 
     if (IS_TYPE_VOID(dsttype)) {
-        PPCError_Error(PPCErrorStr130, __FILE__, 1001);
+        PPCError_Error(PPCERR_FLOAT_CHECKED_AT, __FILE__, 1001);
         GEN_NODE(inner, output);
         output->optype = OpndType_Absolute;
         output->immediate = 0;

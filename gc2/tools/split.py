@@ -1,14 +1,6 @@
 #!/usr/bin/env python3
-"""python tools/split.py VERSION: the original executable as one COFF object per unit (build/VERSION/obj), like
-decomp-toolkit's `dol split`, from config/VERSION/symbols.txt and config/VERSION/splits.txt (its formats).
 
-Absolute references are the original's base relocations; relative ones are the rel32 calls and jumps out of a function.
-A reference's target is the symbol containing it; one in a section no unit holds (.idata) is an external by name. Code is
-a section per function, as the compiler writes it. sections.obj, which the link starts with, gives the linker the
-original's order of sections and imports; resources.res the original's resources. build/VERSION/obj/ok records the
-inputs the objects were made from (tools/relink.py refuses objects older than the configuration).
-"""
-
+import argparse
 import json
 import struct
 import sys
@@ -25,14 +17,11 @@ WEAK_EXTERNAL = 105
 
 
 def inputs(version):
-    """{path: SHA-1} of what the split objects are made from."""
     v = project.version(version)
     paths = [v.config / "symbols.txt", v.config / "splits.txt"]
     return {project.relative(p): project.digest(p.read_bytes()) for p in paths}
 
 
-# Instruction lengths of 32-bit x86 code. One-byte map: opcode -> (has ModRM, immediate), the immediate a size in
-# bytes, "z" (operand-sized), "a" (address-sized), "p" (far pointer) or "grp3" (test's immediate in group 3).
 ONE_BYTE = {}
 for base in range(0x00, 0x40, 8):
     ONE_BYTE.update(
@@ -183,7 +172,6 @@ PREFIXES = {0x26, 0x2E, 0x36, 0x3E, 0x64, 0x65, 0x66, 0x67, 0xF0, 0xF2, 0xF3}
 
 
 def branches(code, base):
-    """(offset of the displacement, target) of each call, jmp and jcc with a 32-bit displacement in CODE at BASE."""
     out, offset = [], 0
     while offset < len(code):
         start, operand16, address16 = offset, False, False
@@ -226,7 +214,6 @@ def branches(code, base):
 
 
 def mwld_hash(name):
-    """The hash the linker orders COMMON symbols of one size by (of the C name)."""
     x = 0
     for c in name.removeprefix("_").encode("latin-1"):
         x = (x << 1) ^ c
@@ -235,8 +222,6 @@ def mwld_hash(name):
 
 
 def common_layout(entries, start):
-    """The addresses the linker gives COMMON symbols [(name, size)] from START: by the alignment their sizes give them
-    (the largest power of two dividing the size, at most 8), the largest first, then by hash."""
     layout, cursor = {}, start
     alignment = lambda size: min(size & -size, 8)
     for name, size in sorted(entries, key=lambda entry: (-alignment(entry[1]), mwld_hash(entry[0]))):
@@ -248,7 +233,6 @@ def common_layout(entries, start):
 
 
 def common_names(count):
-    """COUNT names for one-byte COMMON symbols the linker places in their order (increasing hashes)."""
     names, last = [], -1
     for i in range(count):
         suffix = 0
@@ -260,8 +244,6 @@ def common_names(count):
 
 
 def resource_file(pe, section):
-    """The .res file (the resource compiler's output) whose resources are those of SECTION: its directory's leaves, in
-    the order the linker lays out their data (string tables, then the rest by type)."""
     data = pe.read(section.virtual_address, section.virtual_size)
 
     def entries(offset):
@@ -287,7 +269,6 @@ def resource_file(pe, section):
     for _, kind, name, language, body in sorted(leaves):
         header = field(kind) + field(name)
         header += b"\0" * (-len(header) % 4)
-        # (memory flags, which the image does not keep: moveable, pure, discardable)
         header += struct.pack("<IHHII", 0, 0x1030, language, 0, 0)
         out += struct.pack("<II", len(body), 8 + len(header)) + header + body
         out += b"\0" * (-len(out) % 4)
@@ -295,7 +276,7 @@ def resource_file(pe, section):
 
 
 def split(version):
-    v = project.version(version)
+    v = project.version(version, original=True)
     pe = original(v)
     symbols = [(s.name, s.section, s.address, dict(s.options)) for s in formats.read_symbols(v.config / "symbols.txt")]
     splits = formats.read_splits(v.config / "splits.txt")
@@ -304,7 +285,6 @@ def split(version):
     fixups = pe.base_relocations
     out = v.build / "obj"
 
-    # (the unit whose range holds each symbol)
     ranges_by_section = {}
     for unit, ranges in units:
         for section, start, end, _ in ranges:
@@ -335,8 +315,6 @@ def split(version):
             return None
 
     def resolve(value, unit):
-        """The symbol a reference from UNIT to VALUE is written against: one of UNIT's or a global one containing it,
-        else (a constant offset out of an object, such as a[-1]) the nearest of UNIT's symbols in that section."""
         hi = bisect_right(starts, value)
         containing = [t for t in targets[max(0, hi - 64) : hi] if t[0] == value or t[0] <= value < t[0] + t[1]]
         usable = [t for t in containing if t[5] == unit or t[4].get("scope") != "local"]
@@ -353,7 +331,6 @@ def split(version):
         best = min(own, key=lambda t: abs(t[0] - value))
         return best[2], best[3], best[0], best[4]
 
-    # (where each function's code ends: its size, or up to the next function when what is between is not padding)
     code = sorted(
         {
             (address, int(options["size"], 16))
@@ -370,15 +347,13 @@ def split(version):
         code_ends[following] = stop
     for unit, ranges in units:
         coff = Object()
-        names = {}  # (the externals by name, weak ones included)
-        pending = []  # (each section's relocations, by target: resolved to indices once every symbol is added)
+        names = {}
+        pending = []
         local = {}
         defined = []
-        # (the compiler writes a reference to a static in .bss against the section, as it names none of them)
         bss_start = next((start for section, start, _, _ in ranges if section == ".bss"), None)
         for section, start, end, options in ranges:
             if options.get("common"):
-                # (left to the linker's COMMON allocation, as the original's last variables were)
                 tail = [
                     (name, address, int(symbol_options["size"], 16))
                     for name, sec, address, symbol_options in symbols
@@ -388,8 +363,6 @@ def split(version):
                     for name, address, size in tail:
                         local[(name, address)] = coff.add_symbol(name, size, 0, 0, EXTERNAL)
                 else:
-                    # (names that the linker would order otherwise than the original's were: a one-byte COMMON per byte,
-                    # named to keep their order, and each name a weak external aliasing its byte)
                     slots = [coff.add_symbol(name, 1, 0, 0, EXTERNAL) for name in common_names(end - start)]
                     for name, address, _ in tail:
                         local[(name, address)] = names[name] = coff.add_symbol(
@@ -406,10 +379,7 @@ def split(version):
                 and (start <= address < end or start == address == end)
                 and unit_at(section, address) == unit
             ]
-            # (code is a section per function, as the compiler writes it; the zeros up to the next function are the
-            # linker's alignment, any other bytes between functions the first's)
             pieces = [(start, end)]
-            # (one piece per function address: an alias, another name of a function, adds none)
             functions = sorted(
                 {
                     (address, int(options["size"], 16))
@@ -427,8 +397,6 @@ def split(version):
                     pieces.append((address, stop))
             for piece_start, piece_end in pieces:
                 if kind == "code":
-                    # (the linker starts a function where the previous one's code ends, at the section's alignment:
-                    # the largest that puts it at its address)
                     before = code_ends.get(piece_start, piece_start)
                     align = max(
                         (a for a in (16, 8, 4, 2, 1) if piece_start % a == 0 and before <= piece_start < before + a),
@@ -445,8 +413,6 @@ def split(version):
                         target = resolve(value, unit)
                         holder = [m for m in members if m[1] <= at and piece_start <= m[1] < piece_end]
                         if target is None and pe_section(value) is None and holder:
-                            # (a fixup the executable keeps over bytes patched by hand, not an address: written against
-                            # the symbol holding it, the addend making up the value)
                             name, address, symbol_options = max(holder, key=lambda m: m[1])
                             target = name, section, address, symbol_options
                         if target is None:
@@ -479,7 +445,6 @@ def split(version):
                                 raise project.Error(
                                     f"{unit}: branch at 0x{address + field:08x} to 0x{value:08x} is not to a symbol"
                                 )
-                            # (a branch into a function, which hand patches make, keeps its offset as the addend)
                             struct.pack_into(
                                 "<I", content, address + field - piece_start, (value - target[2]) & 0xFFFFFFFF
                             )
@@ -506,7 +471,6 @@ def split(version):
                     )
                     local[(name, address)] = index
                     defined.append(name)
-        # (relocations name their targets: a symbol of this unit by index, any other by name)
         for section, relocations in zip(coff.sections, pending):
             section.relocations = []
             for offset, (target, _, address, options), kind in relocations:
@@ -519,15 +483,12 @@ def split(version):
                     index = names[target]
                 section.relocations.append(Relocation(offset, index, kind))
         coff.write(out / f"{unit}.obj")
-    # (the linker orders the image's sections as they first appear and gives imports their slots in the order objects
-    # first name them, dead code included: this object, linked first, lists both in the original's order)
     order = Object()
     for section, options in sections.items():
         order.add_section(section, SECTION_FLAGS[options["type"]] | (int(options.get("align", "4")).bit_length() << 20))
     for _, name in sorted((address, name) for name, section, address, _ in symbols if section == ".idata"):
         order.external(name)
     order.write(out / "sections.obj")
-    # (the resources: the original's .rsrc as the .res file the linker builds it from)
     resources = next((s for s in pe.sections if s.name == ".rsrc"), None)
     if resources:
         project.write_atomic(out / "resources.res", resource_file(pe, resources))
@@ -535,13 +496,11 @@ def split(version):
 
 
 def main():
-    if sys.argv[1:2] in (["-h"], ["--help"]):
-        print(__doc__)
-        return
-    if len(sys.argv) != 2 or sys.argv[1].startswith("-"):
-        sys.exit(__doc__.strip())
+    parser = argparse.ArgumentParser(description="The original executable as one COFF object per unit.")
+    parser.add_argument("version", metavar="VERSION")
+    args = parser.parse_args()
     try:
-        split(sys.argv[1])
+        split(args.version)
     except project.Error as e:
         sys.exit(f"error: {e}")
 

@@ -1,6 +1,3 @@
-/* MSL Win32's ThreadLocalData.c, as 2.x has it: the updater's (lib/msl/MSL_Win32/Src), but _GetThreadLocalData writes
- * its message to the standard error handle and exits with 7 where the updater's shows a message box and exits with 0.
- * (_DisposeThreadData, not linked, is left out.) */
 #include "ansi_prefix.Win32.h"
 #include "ThreadLocalData.h"
 #include <stdlib.h>
@@ -52,8 +49,6 @@ int _InitializeThreadData(HANDLE threadHandle)
 
 	theThreadLocalData->errno = 0;
 	theThreadLocalData->random_next = 1;
-	/* TODO: "\0\0\0" is "" with the 4 bytes the original's literal takes (this compiler packs a 1-byte "" and
-	   the next literal together); the original's source surely said "". Same string to every reader. */
 	theThreadLocalData->strtok_n = (unsigned char *) "\0\0\0";
 	theThreadLocalData->strtok_s = (unsigned char *) "\0\0\0";
 	theThreadLocalData->thread_handle = threadHandle;

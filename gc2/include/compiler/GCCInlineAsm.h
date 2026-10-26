@@ -9,7 +9,6 @@ extern "C" {
 
 extern Statement* first_ST_ASM;
 
-extern void InlineAsm_SkipComment(void);
 extern void InlineAsm_gcc_parse(void);
 
 #ifdef __cplusplus

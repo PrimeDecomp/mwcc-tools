@@ -1,32 +1,27 @@
 #include "driver/Resources.h"
-#include "driver/CLIO.h"
+#include "compiler/win32.h"
+#include "driver/Files.h"
 #include "driver/MacSpecs.h"
 #include "driver/Memory.h"
 #include "driver/MsDos.h"
+#include "driver/oslib.h"
 #include "driver/StringUtils.h"
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-// The Mac Resource Manager over in-memory maps (Pro7's MacEmul/Resources.c). The Win32 build swaps
-// the big-endian fork's fields where Pro7's Mac build reads them as they are.
-
 #define SWAP16(x) ((((x) & 0xff00) >> 8) | (((x) & 0xff) << 8))
 #define SWAP32(x) \
-    (((((UInt32)(x)) & 0xff000000u) >> 24) | \
-     ((((UInt32)(x)) & 0x00ff0000u) >> 8) | \
-     ((((UInt32)(x)) & 0x0000ff00u) << 8) | \
-     ((((UInt32)(x)) & 0x000000ffu) << 24))
+    (((((UInt32)(x)) & 0xff000000u) >> 24) | ((((UInt32)(x)) & 0x00ff0000u) >> 8) | \
+     ((((UInt32)(x)) & 0x0000ff00u) << 8) | ((((UInt32)(x)) & 0x000000ffu) << 24))
 
-// Fork Attributes
 enum {
     mapReadOnly = 0x80,
     mapCompact = 0x40,
     mapChanged = 0x20
 };
 
-// Resources
 enum {
     resSysHeap = 0x40,
     resPurgeable = 0x20,
@@ -36,7 +31,6 @@ enum {
     resChanged = 2
 };
 
-// (Pro7's align=mac68k)
 #pragma pack(push, 2)
 typedef struct {
     char sysdata[66];
@@ -44,41 +38,41 @@ typedef struct {
     char creator[4];
     char sysdata2[38];
     char appdata[128];
-} MemRsrcSysData; // (Pro7's assumed name)
+} MemRsrcSysData;
 
-typedef struct { // Resource Header
+typedef struct {
     UInt32 data_offs;
     UInt32 map_offs;
     UInt32 data_len;
     UInt32 map_len;
-} Ty70;
-typedef struct { // Resource Map
-    Ty70 mem_hdr;
+} ResourceHeader;
+typedef struct {
+    ResourceHeader mem_hdr;
     Handle mem_next_map_handle;
     SInt16 mem_refnum;
     UInt16 fork_attr;
     UInt16 typelist_offs;
     UInt16 namelist_offs;
     UInt16 types_idx;
-} Ty73;
-typedef struct { // Resource Type List Item
+} ResourceMapHeader;
+typedef struct {
     OSType type;
     UInt16 rsrc_idx;
     UInt16 ref_list_offs;
-} Ty75;
-typedef struct { // Reference List Item
+} ResourceTypeItem;
+typedef struct {
     UInt16 id;
     UInt16 name_offs;
     unsigned char attr;
     unsigned char data_offs[3];
     Handle mem_rsrc_handle;
-} Ty77;
-typedef struct { // Name List Item
+} ResourceRefItem;
+typedef struct {
     unsigned char len;
-} Ty80;
-typedef struct { // Resource
+} ResourceNameItem;
+typedef struct {
     UInt32 len;
-} Ty82;
+} ResourceDataItem;
 #pragma pack(pop)
 
 typedef struct MemRefList {
@@ -118,7 +112,6 @@ static ResRef* resForkList;
 static ResRef* resForkLast;
 static Boolean UseResourceForkInfo;
 
-// Forward declarations
 static void ReadResourceFork(SInt16 ref, SInt8 permission, void* file_data, SInt32 file_size);
 static void WriteEmptyResourceFork(SInt16 ref);
 SInt16 __stdcall FSpOpenResFile(const FSSpec* spec, SInt8 permission);
@@ -128,8 +121,6 @@ Boolean OS_UsingMacResourceForkInfo(void) {
     return UseResourceForkInfo;
 }
 
-// (dead in 2.6: the linker dropped it; kept as Pro7 has it before WriteResourceFork's asserts,
-// whose line numbers are Pro7's)
 void OS_UseMacResourceForkInfo(Boolean which) {
     UseResourceForkInfo = which;
 }
@@ -158,7 +149,7 @@ OSErr SystemInitResources(OSSpec* spec) {
     }
 }
 
-static MemRsrcMap* NewResourceMap(SInt16 ref, UInt16 attr, MemRsrcTypeList* list, void* unk) {
+static MemRsrcMap* NewResourceMap(SInt16 ref, UInt16 attr, MemRsrcTypeList* list, void* unused) {
     MemRsrcMap** scan;
     MemRsrcMap* nw;
 
@@ -325,21 +316,21 @@ static void DeleteResources(SInt16 refNum) {
 
 static void ReadResourceFork(SInt16 ref, SInt8 permission, void* file_data, SInt32 file_size) {
     MemRsrcMap* rm;
-    Ty70 thdr;
-    Ty70* dhdr;
+    ResourceHeader thdr;
+    ResourceHeader* dhdr;
     MemRsrcSysData tsys;
     MemRsrcSysData* dsys;
-    Ty73* dmap;
-    Ty75* dtyp;
-    Ty77* drle;
-    Ty80* dnam;
+    ResourceMapHeader* dmap;
+    ResourceTypeItem* dtyp;
+    ResourceRefItem* drle;
+    ResourceNameItem* dnam;
     void* buffer;
     SInt32 msize;
     SInt32 cnt;
     SInt32 ref_offs;
     int rcnt;
     MemRsrcTypeList* mtyp;
-    Ty82 tent;
+    ResourceDataItem tent;
     SInt32 esize;
     SInt32 offs;
     Handle hand;
@@ -357,7 +348,7 @@ static void ReadResourceFork(SInt16 ref, SInt8 permission, void* file_data, SInt
     }
 
     ref_offs = 0;
-    cnt = sizeof(Ty70);
+    cnt = sizeof(ResourceHeader);
     RF_READ(&thdr, ref_offs, cnt, mapFail);
     ref_offs += cnt;
 
@@ -366,8 +357,9 @@ static void ReadResourceFork(SInt16 ref, SInt8 permission, void* file_data, SInt
     thdr.data_offs = SWAP32(thdr.data_offs);
     thdr.data_len = SWAP32(thdr.data_len);
 
-    cnt = ((thdr.map_offs < thdr.data_offs) ? thdr.map_offs : thdr.data_offs) - sizeof(Ty70);
-    if (cnt > sizeof(MemRsrcSysData)) {
+    cnt = ((thdr.map_offs < thdr.data_offs) ? thdr.map_offs : thdr.data_offs) -
+        sizeof(ResourceHeader);
+    if ((size_t)cnt > sizeof(MemRsrcSysData)) {
         cnt = sizeof(MemRsrcSysData);
     }
     RF_READ(&tsys, ref_offs, cnt, mapFail);
@@ -382,10 +374,10 @@ static void ReadResourceFork(SInt16 ref, SInt8 permission, void* file_data, SInt
     RF_READ(buffer, ref_offs, msize, mapFail);
 
     dhdr = &thdr;
-    if ((dhdr->map_offs > file_size) ||
-        ((dhdr->map_offs + dhdr->map_len) > file_size) ||
-        (dhdr->data_offs > file_size) ||
-        ((dhdr->data_offs + dhdr->data_len) > file_size) ||
+    if ((dhdr->map_offs > (UInt32)file_size) ||
+        ((dhdr->map_offs + dhdr->map_len) > (UInt32)file_size) ||
+        (dhdr->data_offs > (UInt32)file_size) ||
+        ((dhdr->data_offs + dhdr->data_len) > (UInt32)file_size) ||
         ((dhdr->map_offs < dhdr->data_offs)
              ? ((dhdr->map_offs + dhdr->map_len) > dhdr->data_offs)
              : ((dhdr->data_offs + dhdr->data_len) > dhdr->map_offs))) {
@@ -393,7 +385,7 @@ static void ReadResourceFork(SInt16 ref, SInt8 permission, void* file_data, SInt
     }
 
     dsys = &tsys;
-    dmap = (Ty73*)buffer;
+    dmap = (ResourceMapHeader*)buffer;
     rm = NewResourceMap(ref, ((permission == fsRdPerm) ? mapReadOnly : 0) | mapCompact, NULL, NULL);
     if (!rm) {
         goto memFail;
@@ -406,14 +398,14 @@ static void ReadResourceFork(SInt16 ref, SInt8 permission, void* file_data, SInt
     dmap->namelist_offs = SWAP16(dmap->namelist_offs);
     dmap->types_idx = SWAP16(dmap->types_idx);
 
-    if ((dmap->typelist_offs + dhdr->map_offs) > file_size) {
+    if ((dmap->typelist_offs + dhdr->map_offs) > (UInt32)file_size) {
         goto freeAndMapFail;
     }
-    dtyp = (Ty75*)(((unsigned char*)dmap) + dmap->typelist_offs + 2);
-    if ((dmap->namelist_offs + dhdr->map_offs) > file_size) {
+    dtyp = (ResourceTypeItem*)(((unsigned char*)dmap) + dmap->typelist_offs + 2);
+    if ((dmap->namelist_offs + dhdr->map_offs) > (UInt32)file_size) {
         goto freeAndMapFail;
     }
-    dnam = (Ty80*)(((unsigned char*)dmap) + dmap->namelist_offs);
+    dnam = (ResourceNameItem*)(((unsigned char*)dmap) + dmap->namelist_offs);
     if (dmap->types_idx != 0xFFFF) {
         for (cnt = 0; cnt <= dmap->types_idx; cnt++) {
             dtyp[cnt].type = SWAP32(dtyp[cnt].type);
@@ -424,19 +416,19 @@ static void ReadResourceFork(SInt16 ref, SInt8 permission, void* file_data, SInt
                 goto freeAndReturn;
             }
 
-            if ((dmap->typelist_offs + dtyp[cnt].ref_list_offs + dhdr->map_offs) > file_size) {
+            if ((dmap->typelist_offs + dtyp[cnt].ref_list_offs + dhdr->map_offs) >
+                (UInt32)file_size) {
                 goto freeAndMapFail;
             }
 
-            drle = (Ty77*)(((unsigned char*)dtyp) + dtyp[cnt].ref_list_offs - 2);
+            drle = (ResourceRefItem*)(((unsigned char*)dtyp) + dtyp[cnt].ref_list_offs - 2);
             if (dtyp[cnt].rsrc_idx != 0xFFFF) {
                 for (rcnt = 0; rcnt <= dtyp[cnt].rsrc_idx; rcnt++) {
                     drle[rcnt].id = SWAP16(drle[rcnt].id);
                     drle[rcnt].name_offs = SWAP16(drle[rcnt].name_offs);
-                    ref_offs = (drle[rcnt].data_offs[0] << 16) |
-                        (drle[rcnt].data_offs[1] << 8) |
+                    ref_offs = (drle[rcnt].data_offs[0] << 16) | (drle[rcnt].data_offs[1] << 8) |
                         drle[rcnt].data_offs[2];
-                    if ((ref_offs + dhdr->data_offs) > file_size) {
+                    if ((ref_offs + dhdr->data_offs) > (UInt32)file_size) {
                         goto freeAndMapFail;
                     }
                     esize = 4;
@@ -445,7 +437,7 @@ static void ReadResourceFork(SInt16 ref, SInt8 permission, void* file_data, SInt
 
                     offs += esize;
                     tent.len = SWAP32(tent.len);
-                    if ((tent.len + ref_offs + dhdr->data_offs) > file_size) {
+                    if ((tent.len + ref_offs + dhdr->data_offs) > (UInt32)file_size) {
                         goto freeAndMapFail;
                     }
 
@@ -455,9 +447,6 @@ static void ReadResourceFork(SInt16 ref, SInt8 permission, void* file_data, SInt
                     }
 
                     HLock(hand);
-                    // TODO: 2.6 reads the length back as a signed count (compared signed and
-                    // reloaded): Pro7's `tent.len`, a signed Ty82.len, and a cast in RF_READ's test
-                    // were tried; only the pun matches
                     RF_READ(*hand, offs, *(SInt32*)&tent.len, freeAndMapFail);
                     HUnlock(hand);
 
@@ -529,31 +518,31 @@ static void GetResourceSizes(
 }
 
 static SInt32 GetResourceTypesCount(MemRsrcMap* dm) {
-    SInt32 tmp;
+    SInt32 count;
     MemRsrcTypeList* mtyp;
 
-    tmp = 0;
+    count = 0;
     mtyp = dm->type_list;
     while (mtyp) {
-        ++tmp;
+        ++count;
         mtyp = mtyp->next;
     }
 
-    return tmp;
+    return count;
 }
 
 static SInt32 GetResourceEntriesCount(MemRsrcTypeList* mtyp) {
-    SInt32 tmp;
+    SInt32 count;
     MemRefList* mrle;
 
-    tmp = 0;
+    count = 0;
     mrle = mtyp->ref_list;
     while (mrle) {
-        ++tmp;
+        ++count;
         mrle = mrle->next;
     }
 
-    return tmp;
+    return count;
 }
 
 #define RF_HANDLE_INSERT(hand, what, offset, size) \
@@ -570,24 +559,24 @@ static SInt32 GetResourceEntriesCount(MemRsrcTypeList* mtyp) {
 
 static void WriteResourceFork(SInt16 ref) {
     MemRsrcMap* rm;
-    Ty70 dhdr;
-    Ty70 thdr;
+    ResourceHeader dhdr;
+    ResourceHeader thdr;
     MemRsrcSysData tsys;
-    Ty73 dmap;
-    Ty73 tmap;
+    ResourceMapHeader dmap;
+    ResourceMapHeader tmap;
     Handle hand_ref;
     SInt32 reflist_size, typelist_size;
     SInt32 name_size, data_size;
     SInt32 reflist_offs, typelist_offs;
     SInt32 name_offs, data_offs;
     MemRsrcTypeList* mtyp;
-    Ty75 dtyp;
-    Ty75 ttyp;
+    ResourceTypeItem dtyp;
+    ResourceTypeItem ttyp;
     MemRefList* mrle;
-    Ty77 drle;
-    Ty77 trle;
-    Ty82 dent;
-    Ty82 tent;
+    ResourceRefItem drle;
+    ResourceRefItem trle;
+    ResourceDataItem dent;
+    ResourceDataItem tent;
     SInt32 sz;
 
     rm = FindResourceMap(ref);
@@ -637,7 +626,7 @@ static void WriteResourceFork(SInt16 ref) {
     dmap.mem_hdr = thdr;
     dmap.mem_next_map_handle = NULL;
     dmap.mem_refnum = 0;
-    dmap.fork_attr = rm->fork_attr & ~resChanged; // (Pro7's bug: should be mapChanged)
+    dmap.fork_attr = rm->fork_attr & ~resChanged;
     dmap.typelist_offs = sizeof(dmap) - 2;
     dmap.namelist_offs = typelist_size + reflist_size + sizeof(dmap);
     dmap.types_idx = GetResourceTypesCount(rm) - 1;
@@ -737,9 +726,9 @@ static void WriteResourceFork(SInt16 ref) {
 }
 
 static void WriteEmptyResourceFork(SInt16 ref) {
-    Ty70 dhdr;
+    ResourceHeader dhdr;
     MemRsrcSysData dsys;
-    Ty73 dmap;
+    ResourceMapHeader dmap;
     Handle hand_ref;
     SInt32 sz;
 
@@ -921,7 +910,6 @@ int OS_SetMacResourceForkCreatorAndType(int ref, OSType creator, OSType type) {
         return err;
     }
 
-    // (Win32 error codes where Pro7 has errno's ENOENT and EACCES)
     rm = FindResourceMap(OS_RefToMac(ref));
     if (!rm) {
         return ERROR_FILE_NOT_FOUND;
@@ -967,14 +955,10 @@ int OS_GetMacResourceForkCreatorAndType(int ref, OSType* creator, OSType* type) 
     if (!rm) {
         return ERROR_FILE_NOT_FOUND;
     }
-    *creator = (rm->sys_data.creator[0] << 24) |
-        (rm->sys_data.creator[1] << 16) |
-        (rm->sys_data.creator[2] << 8) |
-        rm->sys_data.creator[3];
-    *type = (rm->sys_data.type[0] << 24) |
-        (rm->sys_data.type[1] << 16) |
-        (rm->sys_data.type[2] << 8) |
-        rm->sys_data.type[3];
+    *creator = (rm->sys_data.creator[0] << 24) | (rm->sys_data.creator[1] << 16) |
+        (rm->sys_data.creator[2] << 8) | rm->sys_data.creator[3];
+    *type = (rm->sys_data.type[0] << 24) | (rm->sys_data.type[1] << 16) |
+        (rm->sys_data.type[2] << 8) | rm->sys_data.type[3];
     return 0;
 }
 
@@ -982,7 +966,6 @@ void OS_CleanupMacResourceForkDir(const OSPathSpec* dir) {
     OS_Rmdir(dir);
 }
 
-// (dead in 2.6: the linker dropped it, but its literals are in the unit's .data)
 OSErr OS_MacDumpResourceFork(SInt16 ref, Boolean dumpContents) {
     MemRsrcMap* rm;
     MemRsrcTypeList* tl;
@@ -1007,19 +990,19 @@ OSErr OS_MacDumpResourceFork(SInt16 ref, Boolean dumpContents) {
     for (tl = rm->type_list; tl; tl = tl->next) {
         printf(
             "'%c%c%c%c':\n",
-            (tl->type & 0xFF000000) >> 24,
-            (tl->type & 0x00FF0000) >> 16,
-            (tl->type & 0x0000FF00) >> 8,
-            (tl->type & 0x000000FF)
+            (int)((tl->type & 0xFF000000) >> 24),
+            (int)((tl->type & 0x00FF0000) >> 16),
+            (int)((tl->type & 0x0000FF00) >> 8),
+            (int)(tl->type & 0x000000FF)
         );
         for (rl = tl->ref_list; rl; rl = rl->next) {
             if (rl->type != tl->type) {
                 printf(
                     "!!! RefList type '%c%c%c%c' does not match TypeList type !!!\n",
-                    (rl->type & 0xFF000000) >> 24,
-                    (rl->type & 0x00FF0000) >> 16,
-                    (rl->type & 0x0000FF00) >> 8,
-                    (rl->type & 0x000000FF)
+                    (int)((rl->type & 0xFF000000) >> 24),
+                    (int)((rl->type & 0x00FF0000) >> 16),
+                    (int)((rl->type & 0x0000FF00) >> 8),
+                    (int)(rl->type & 0x000000FF)
                 );
             }
 
@@ -1060,7 +1043,7 @@ OSErr OS_MacDumpResourceFork(SInt16 ref, Boolean dumpContents) {
 
                 while (idx < size) {
                     if ((idx % 16) == 0) {
-                        printf("\n%08X: ", idx);
+                        printf("\n%08X: ", (unsigned int)idx);
                         memset(safe, ' ', 16);
                     }
                     printf("%02X ", ptr[idx]);
@@ -1134,7 +1117,6 @@ SInt16 __stdcall FSpOpenResFile(const FSSpec* spec, SInt8 permission) {
         FSpCreate(spec, 'CWIE', 'TEXT', -1);
     }
 
-    // (the cast: 2.6 passes the byte; without it the arm is widened)
     resError = FSpOpenRF(spec, (permission == fsWrPerm) ? (SInt8)fsRdWrPerm : permission, &ref);
     if (!resError) {
         GetEOF(ref, &size);

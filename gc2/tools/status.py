@@ -1,23 +1,4 @@
 #!/usr/bin/env python3
-"""python tools/status.py [VERSION] [--unit SUBSTRING | --range START END] [--todo [N]] [--json FILE]: each
-translation unit of the version, in link order (config/VERSION/splits.txt), with where it stands. From the last
-comparison (build/VERSION/compare.json, refused when out of date: run ninja).
-
-  range     the unit's .text in the original
-  fns       functions in that range: exact / with the unit's source / all
-  bytes     exact bytes / the range's bytes: an exact function with the padding after it, all of a unit that links
-  for, awy  functions in the range whose source is another unit's, and the unit's functions outside its range (a
-            misassignment, or a boundary to move)
-  link      "src" when the relink takes the compiled object, else why not (state.json's relink_exclude); "-" when the
-            source is not Matching
-
---unit (or --range) lists the functions instead: address, size, state (EXACT, the similarity of an inexact one, "none"
-without a source, "-> SOURCE" of another unit's) and name, with the comparison's reason for each inexact one.
-
---todo lists the units that do not link from source yet, nearest first: what linking each would add, and what stands in
-the way (its inexact functions with their similarity, those without a source, functions of other sources in its range,
-the relink's reason). Link progress is the measure; this is its worklist.
-"""
 
 import argparse
 import bisect
@@ -33,7 +14,6 @@ from mw import build, config, formats, project, verdict
 
 
 def text_ranges(version):
-    """[(unit, start, end)] of the units with code, by address."""
     splits = formats.read_splits(project.version(version).config / "splits.txt")
     return sorted(
         ((u.name, r.start, r.end) for u in splits.units for r in u.ranges if r.section == ".text"), key=lambda u: u[1]
@@ -41,7 +21,6 @@ def text_ranges(version):
 
 
 def survey(version):
-    """(the units' rows [{unit, start, end, ...}], {unit: [function rows in its range]}, {address: verdict})."""
     v = project.version(version)
     cfg = config.version_config(v)
     sources = config.sources()
@@ -74,8 +53,6 @@ def survey(version):
                 if unit in cfg.matching
                 else "-"
             )
-        # (an exact function's bytes run to the next function: the alignment padding after it is its own; a unit the
-        # relink takes from source is its whole range)
         extent = {
             f.address: (inside[i + 1].address if i + 1 < len(inside) else end) - f.address for i, f in enumerate(inside)
         }
@@ -134,8 +111,6 @@ def show_functions(table, by_unit, results, start=None, end=None):
 
 
 def todo(table, by_unit, results, cfg, limit):
-    """The units with a source that the relink does not take from source, by what is left before they link: the bytes
-    of their functions that are not exact or have no source, then those functions' count."""
     sources = config.sources()
     entries = []
     for t in table:
@@ -169,15 +144,27 @@ def todo(table, by_unit, results, cfg, limit):
     )
 
 
+def hexadecimal(text):
+    return int(text, 16)
+
+
 def main():
-    signal.signal(signal.SIGPIPE, signal.SIG_DFL)  # (piped into head: stop quietly)
+    if hasattr(signal, "SIGPIPE"):
+        signal.signal(signal.SIGPIPE, signal.SIG_DFL)
     parser = argparse.ArgumentParser(
-        description=__doc__.split("\n\n")[0], formatter_class=argparse.RawDescriptionHelpFormatter
+        description="Each translation unit of the version, in link order, with where it stands.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("version", nargs="?", default=project.PRIMARY)
     where = parser.add_mutually_exclusive_group()
     where.add_argument("--unit", metavar="SUBSTRING", help="list the functions of the units whose name has SUBSTRING")
-    where.add_argument("--range", nargs=2, metavar=("START", "END"), help="list the functions in [START, END)")
+    where.add_argument(
+        "--range",
+        nargs=2,
+        type=hexadecimal,
+        metavar=("START", "END"),
+        help="list the functions in [START, END) (hexadecimal)",
+    )
     where.add_argument(
         "--todo",
         nargs="?",
@@ -189,7 +176,7 @@ def main():
     parser.add_argument("--json", metavar="FILE", help="also write the units' table as JSON")
     args = parser.parse_args()
     try:
-        v = project.version(args.version)
+        v = project.version(args.version, original=True)
         table, by_unit, results = survey(v)
         if args.json:
             project.write_atomic(args.json, json.dumps(table, indent=1) + "\n")
@@ -201,7 +188,7 @@ def main():
                 raise project.Error(f"no unit's name has {args.unit!r}")
             show_functions(chosen, by_unit, results)
         elif args.range:
-            start, end = (int(a, 16) for a in args.range)
+            start, end = args.range
             show_functions([t for t in table if t["start"] < end and t["end"] > start], by_unit, results, start, end)
         else:
             show_table(table)

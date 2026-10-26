@@ -1,8 +1,3 @@
-// PCodeListing.c: Pro7's file. 2.6 built it with the listing compiled out (its public functions are
-// empty), but its helpers stayed in the object, dead: the linker dropped them, and their literals
-// are the unit's .data. The helpers' bodies are Pro7's where 2.6's literals agree; where 2.6's
-// literals differ, the bodies are written to use them in their order. TODO: those bodies (marked)
-// are reconstructed from the literals only.
 #include "compiler/PCodeListing.h"
 #include "compiler/Alias.h"
 #include "compiler/BitVectors.h"
@@ -14,20 +9,13 @@
 #include "compiler/objects.h"
 #include "compiler/PCode.h"
 #include "compiler/PCodeInfo.h"
-#include "compiler/OracleProbes.h"
-#ifdef ORACLE_PROBES
-#include "compiler/CodeGen.h"
-#endif
 #include <stdio.h>
 #include <string.h>
 
-// TODO: Pro7's statics (pcfile, ptime, sourcetext, sourcetext_is_main, sourcelength) are not 2.6's:
-// its object has no .bss. Only pcfile is used (by the dead functions), so it stays a declaration
-// the linker never needs.
 extern FILE* pcfile;
 int pclist_bad_operand;
 
-int dumpalias(Alias* alias, int len, Boolean flag1, Boolean flag2);
+int dumpalias(Alias* alias, int len, Boolean newline, Boolean expand);
 int GetLineOffset(char* str, int lineNum, int len);
 
 #if VERSION < VERSION_GC_2_5
@@ -42,7 +30,11 @@ static void formatdataflowset(char* name, UInt32* vec, UInt32 size, char* format
     for (i = 0, counter = 0; i < size; i++) {
         if (bitvectorgetbit(i, vec)) {
             if (i) {
+#ifdef __MWERKS__
                 fprintf(pcfile, separator);
+#else
+                fprintf(pcfile, "%s", separator);
+#endif
             }
             if (counter++ == 10) {
                 fprintf(pcfile, "\n\t\t");
@@ -56,7 +48,6 @@ static void formatdataflowset(char* name, UInt32* vec, UInt32 size, char* format
     fprintf(pcfile, "}\n");
 }
 #else
-// TODO: 2.6's (reconstructed from its literals: it prints runs of bits as ranges and counts them)
 static void formatdataflowset(char* name, UInt32* vec, UInt32 size, char* format) {
     UInt32 i;
     UInt32 start;
@@ -74,7 +65,11 @@ static void formatdataflowset(char* name, UInt32* vec, UInt32 size, char* format
             while (i + 1 < size && bitvectorgetbit(i + 1, vec)) {
                 i++;
             }
+#ifdef __MWERKS__
             fprintf(pcfile, separator);
+#else
+            fprintf(pcfile, "%s", separator);
+#endif
             fprintf(pcfile, format, start);
             if (i != start) {
                 fprintf(pcfile, "-");
@@ -91,7 +86,7 @@ static void formatdataflowset(char* name, UInt32* vec, UInt32 size, char* format
     }
 
     if (runs) {
-        fprintf(pcfile, "} words=%d runs = %d\n", (size + 31) >> 5, runs);
+        fprintf(pcfile, "} words=%d runs = %d\n", (int)((size + 31) >> 5), runs);
     } else {
         fprintf(pcfile, "}\n");
     }
@@ -112,14 +107,14 @@ static void pclistblock(PCodeBlock* block, char* format, UInt32 vecSize) {
         pcfile,
         ":{%4.4x}::::::::::::::::::::::::::::::::::::::::LOOPWEIGHT=%ld\n",
         block->flags,
-        block->loopWeight
+        (long)block->loopWeight
     );
-    fprintf(pcfile, "B%ld: ", block->blockIndex);
+    fprintf(pcfile, "B%ld: ", (long)block->blockIndex);
 
     fprintf(pcfile, "Successors = { ");
     for (link = block->successors; link; link = link->nextLink) {
         if (link->block) {
-            fprintf(pcfile, "B%ld ", link->block->blockIndex);
+            fprintf(pcfile, "B%ld ", (long)link->block->blockIndex);
         }
     }
     fprintf(pcfile, "}  ");
@@ -127,14 +122,14 @@ static void pclistblock(PCodeBlock* block, char* format, UInt32 vecSize) {
     fprintf(pcfile, "Predecessors = { ");
     for (link = block->predecessors; link; link = link->nextLink) {
         if (link->block) {
-            fprintf(pcfile, "B%ld ", link->block->blockIndex);
+            fprintf(pcfile, "B%ld ", (long)link->block->blockIndex);
         }
     }
 
     if (block->labels) {
         fprintf(pcfile, "}  Labels = { ");
         for (label = block->labels; label; label = label->nextLabel) {
-            fprintf(pcfile, "L%ld ", label->index);
+            fprintf(pcfile, "L%ld ", (long)label->index);
         }
     }
 
@@ -158,7 +153,6 @@ static void pclistblock(PCodeBlock* block, char* format, UInt32 vecSize) {
         formatdataflowset("out", liveinfo[block->blockIndex].out, vecSize, format);
     }
 
-    // TODO: 2.6's literal; where it printed it is not known
     if (pclist_bad_operand) {
         fprintf(pcfile, " %-7s %s", "", "");
     }
@@ -170,8 +164,8 @@ static void pclistblock(PCodeBlock* block, char* format, UInt32 vecSize) {
     }
 }
 
-static void pclistonoff(int flag) {
-    if (flag) {
+static void pclistonoff(int on) {
+    if (on) {
         fprintf(pcfile, "On\n");
     } else {
         fprintf(pcfile, "Off\n");
@@ -182,9 +176,7 @@ void pcinitlisting(void) {}
 
 void pccleanuplisting(void) {}
 
-void pclistblocks(char* name1, char* name2) {
-    ORACLE_PROBE(OracleProbe_ListBlocks(gFunction, name2));
-}
+void pclistblocks(char* name1, char* name2) {}
 
 void pclistdataflow(void) {}
 
@@ -283,15 +275,22 @@ void pclistblock_scheduler(void) {}
 void pclistblocks_start_scheduler(char* str1, char* str2) {}
 
 #if VERSION < VERSION_GC_2_5
-// 2.0's file has 141 lines fewer above here
 #undef CError_LINE_SHIFT
-#define CError_LINE_SHIFT -141
+#define CError_LINE_SHIFT (-141 + CError_LINE_DELTA)
+#endif
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -3
 #endif
 void pclistblocks_end_scheduler(void) {
     if (pclist_bad_operand) {
         CError_FATAL(1525);
     }
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
 static void printheapsize(void) {}
 
@@ -301,7 +300,6 @@ void pctotalmemory(void) {}
 
 void pcmessage(char* probably_a_string, ...) {}
 
-// TODO: 2.6's literals ("!*0:%d" for a set's members) on Pro7's body
 int formatalias(Alias* alias, char* buf, int bufSize) {
     char* name;
     char* typestr;
@@ -320,7 +318,7 @@ int formatalias(Alias* alias, char* buf, int bufSize) {
                 CError_FATAL(1458);
             }
 
-            if (strlen(name) + 16 > bufSize) {
+            if (strlen(name) + 16 > (UInt32)bufSize) {
                 return sprintf(buf, "...");
             }
 
@@ -335,18 +333,22 @@ int formatalias(Alias* alias, char* buf, int bufSize) {
                     typestr = "";
             }
 
+#ifdef __MWERKS__
             len = sprintf(buf, "%0.*s%s", bufSize - 20, name, typestr, alias->size);
+#else
+            len = sprintf(buf, "%.*s%s", bufSize - 20, name, typestr);
+#endif
             buf += len;
             if (alias->type == AliasType_Object) {
                 return len;
             }
 
             if (alias->offset == 0) {
-                len2 = sprintf(buf, ":%d", alias->size);
+                len2 = sprintf(buf, ":%d", (int)alias->size);
             } else if (alias->offset > 0) {
-                len2 = sprintf(buf, "+%d:%d", alias->offset, alias->size);
+                len2 = sprintf(buf, "+%d:%d", (int)alias->offset, (int)alias->size);
             } else {
-                len2 = sprintf(buf, "-%d:%d", -alias->offset, alias->size);
+                len2 = sprintf(buf, "-%d:%d", (int)-alias->offset, (int)alias->size);
             }
 
             return len + len2;
@@ -359,7 +361,7 @@ int formatalias(Alias* alias, char* buf, int bufSize) {
             len += len2;
 
             if (alias->size) {
-                len2 = sprintf(buf, "!*0:%d", alias->size);
+                len2 = sprintf(buf, "!*0:%d", (int)alias->size);
             } else {
                 len2 = sprintf(buf, "*");
             }
@@ -377,25 +379,22 @@ int formatalias(Alias* alias, char* buf, int bufSize) {
     }
 }
 
-// TODO: 2.6's (two worst cases, and names cut at 60 characters), written from its
-// literals on Pro7's body
-int dumpalias(Alias* alias, int len, Boolean flag1, Boolean flag2) {
+int dumpalias(Alias* alias, int len, Boolean newline, Boolean expand) {
     char* name;
     char* typestr;
     AliasMember* member;
     Boolean notFirst;
 
 #if VERSION < VERSION_GC_2_5
-    // 2.0: one worst case
-    if (!flag2 && alias == worst_case_ptr) {
+    if (!expand && alias == worst_case_ptr) {
         fprintf(pcfile, "    ALIAS = {worst_case}");
-        if (flag1) {
+        if (newline) {
             fprintf(pcfile, "\n");
         }
         return 0;
     }
 
-    if (flag1) {
+    if (newline) {
         if (alias == worst_case_ptr) {
             fprintf(pcfile, "ALIAS worst_case = ");
         } else {
@@ -403,23 +402,23 @@ int dumpalias(Alias* alias, int len, Boolean flag1, Boolean flag2) {
         }
     }
 #else
-    if (!flag2 && alias == worst_case_ptr) {
+    if (!expand && alias == worst_case_ptr) {
         fprintf(pcfile, "    ALIAS = {worst_case_ptr}");
-        if (flag1) {
+        if (newline) {
             fprintf(pcfile, "\n");
         }
         return 0;
     }
 
-    if (!flag2 && alias == worst_case_func) {
+    if (!expand && alias == worst_case_func) {
         fprintf(pcfile, "    ALIAS = {worst_case_func}");
-        if (flag1) {
+        if (newline) {
             fprintf(pcfile, "\n");
         }
         return 0;
     }
 
-    if (flag1) {
+    if (newline) {
         if (alias == worst_case_ptr || alias == worst_case_func) {
             fprintf(pcfile, "ALIAS ");
         } else {
@@ -454,31 +453,39 @@ int dumpalias(Alias* alias, int len, Boolean flag1, Boolean flag2) {
             }
 
 #if VERSION < VERSION_GC_2_5
+#ifdef __MWERKS__
             len += fprintf(pcfile, "%0.80s%s", name, typestr);
 #else
+            len += fprintf(pcfile, "%.80s%s", name, typestr);
+#endif
+#else
             if (strlen(name) > 60) {
+#ifdef __MWERKS__
                 len += fprintf(pcfile, "%0.60s...%s", name, typestr);
+#else
+                len += fprintf(pcfile, "%.60s...%s", name, typestr);
+#endif
             } else {
                 len += fprintf(pcfile, "%s%s", name, typestr);
             }
 #endif
 
             if (alias->type == AliasType_Object) {
-                if (flag1) {
+                if (newline) {
                     fprintf(pcfile, "\n");
                 }
                 return len;
             }
 
             if (alias->offset == 0) {
-                len += fprintf(pcfile, ":%d", alias->size);
+                len += fprintf(pcfile, ":%d", (int)alias->size);
             } else if (alias->offset > 0) {
-                len += fprintf(pcfile, "+%d:%d", alias->offset, alias->size);
+                len += fprintf(pcfile, "+%d:%d", (int)alias->offset, (int)alias->size);
             } else {
-                len += fprintf(pcfile, "-%d:%d", -alias->offset, alias->size);
+                len += fprintf(pcfile, "-%d:%d", (int)-alias->offset, (int)alias->size);
             }
 
-            if (flag1) {
+            if (newline) {
                 fprintf(pcfile, "\n");
             }
 
@@ -515,7 +522,7 @@ int dumpalias(Alias* alias, int len, Boolean flag1, Boolean flag2) {
             }
 
             len += fprintf(pcfile, "}");
-            if (flag1) {
+            if (newline) {
                 fprintf(pcfile, "\n");
             }
             return len;

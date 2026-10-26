@@ -28,27 +28,21 @@ typedef enum StatementType {
     ST_ENDLOOP,
     ST_ILLEGAL
 } StatementType;
-// Statement.flags
 enum {
-    StmtFlag_1 = 1,
-    StmtFlag_2 = 2,
-    StmtFlag_4 = 4,
-    StmtFlag_8 = 8,
-    StmtFlag_10 = 0x10
+    StmtFlag_KeepLabel = 1,
+    StmtFlag_EndsConstruction = 2,
+    StmtFlag_LoopBranch = 4,
+    StmtFlag_AfterNoReturn = 8,
+    StmtFlag_Unrolled = 0x10
 };
-// (2-byte packing, Pro7's mac68k alignment: Statement.expr is at offset 10, DeclBlock is 14 bytes)
 #pragma pack(push, 2)
-// a block scope's saved state (CFunc_NewDeclBlock, CFunc_RestoreBlock)
 typedef struct DeclBlock {
     struct DeclBlock* next;
     struct ExceptionAction* dobjstack;
     NameSpace* parent_nspace;
     UInt16 index;
 } DeclBlock;
-// What a ST_BEGINLOOP statement's expression points at (COptimizer reads only `stmt`, and nothing in
-// 2.6 makes such a statement)
 typedef struct LoopInfo {
-    // TODO: invented names (Pro7: x0, x4, x8); nothing reads or writes them
     int unused0;
     int unused4;
     short unused8;
@@ -60,15 +54,13 @@ struct Statement {
     UInt8 marked;
     UInt8 flags;
     UInt16 value;
-    ENode* expr; // (ST_ASM: the InlineAsm instruction)
-    CLabel* label; // (ST_SWITCH: the SwitchInfo)
+    ENode* expr;
+    CLabel* label;
     struct ExceptionAction* dobjstack;
     SInt32 sourceoffset;
     HashNameNode* sourcefilepath;
 };
 #pragma pack(pop)
-// A static initializer expression queued for the translation unit's init code (InitExpr_Register;
-// emitted by CInline_Finish, written to precompiled headers by CPrec)
 struct InitExpr {
     struct InitExpr* next;
     ENode* expr;
@@ -76,34 +68,28 @@ struct InitExpr {
 };
 struct CLabel {
     struct CLabel* next;
-    // The labelled statement; from IRO_BuildFlowgraph on, the IRONode the label starts (cast).
     struct Statement* stmt;
     struct HashNameNode* uniquename;
     struct HashNameNode* name;
     struct PCodeLabel* pclabel;
 };
-// What a constructor's initializer list initializes (CtorChain.what): a base, a virtual base or a
-// member.
 typedef enum CtorChainType {
     CtorChain_Base = 0,
     CtorChain_VBase = 1,
     CtorChain_MemberVar = 2
 } CtorChainType;
-// (2-byte packing: `what` is a byte, `objexpr` at offset 6)
 #pragma pack(push, 2)
 struct CtorChain {
     struct CtorChain* next;
     CtorChainType what;
     ENode* objexpr;
     union {
-        ClassList* base; // (CtorChain_Base)
-        VClassList* vbase; // (CtorChain_VBase)
-        ObjMemberVar* membervar; // (CtorChain_MemberVar)
+        ClassList* base;
+        VClassList* vbase;
+        ObjMemberVar* membervar;
     } u;
 };
 #pragma pack(pop)
-// The enclosing statement's context, passed down while parsing statements: the function's return
-// type and qualifiers, the switch and the loop's labels.
 struct DeclThing {
     Type* thetype;
     UInt32 qual;
@@ -130,15 +116,13 @@ extern InitExpr* init_expressions;
 extern CLabel* Labels;
 extern CtorChain* ctor_chain;
 extern Statement* curstmt;
-// TODO: Pro7's ObjGenMachO.h; 2.6 defines them with CFunc's COMMONs (no ObjGen_PPC_EABI.c code
-// uses them)
 extern SInt32 symdecloffset;
 extern SInt32 symdeclend;
 
 extern DeclBlock* CFunc_NewDeclBlock(void);
 extern void CFunc_RestoreBlock(DeclBlock* block);
 extern void CFunc_SetupLocalVarInfo(Object* obj);
-extern Boolean CFunc_ParseFakeArgList(Boolean flag);
+extern Boolean CFunc_ParseFakeArgList(Boolean stopAtComma);
 extern FuncArg* parameter_type_list(DeclInfo* declinfo);
 extern CLabel* findlabel(void);
 extern CLabel* newlabel(void);
@@ -163,7 +147,7 @@ extern Statement* CFunc_GenerateLoop(
 extern void CFunc_CompoundStatement(DeclThing* thing);
 extern void CFunc_SetupNewFuncArgs(Object* func, FuncArg* args);
 extern NameSpace* CFunc_FuncGenSetup(Statement* stmt, Object* func);
-extern void CFunc_Gen(Statement* stmt, Object* func, UInt8 unk);
+extern void CFunc_Gen(Statement* stmt, Object* func, UInt8 oldStyleParameters);
 extern void CFunc_CheckClassCtors(TypeClass* tclass);
 extern void CFunc_ParseFuncDef(
     Object* func,

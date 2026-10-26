@@ -1,22 +1,20 @@
 #include "driver/ToolHelpers-cc.h"
 #include "driver/ParserErrors.h"
 #include "driver/ParserFace.h"
-#include "driver/ParserGlue-eabi-ppc-cc.h"
 #include "driver/ParserHelpers.h"
+#include "driver/pref_structs.h"
 #include "driver/Projects.h"
 #include "driver/ToolHelpers.h"
-#include "driver/pref_structs.h"
 #include <string.h>
 
 int Opt_DummyLinkerRoutine(const char* opt, void* var, const char* arg, int flags) {
     CLPFatalError("Calling linker option '%s'\n", opt);
-    return 0;
+    return FALSE;
 }
 
-// (no caller: the linker dropped it, but its string stays in the unit's .data)
-int Opt_DummyLinkerSettingRoutine(const char* var, const char* val) {
-    CLPFatalError("Calling linker settings option '%s'='%s'\n", var, val ? val : "");
-    return 0;
+int Opt_DummyLinkerSettingRoutine(const char* name, const char* val) {
+    CLPFatalError("Calling linker settings option '%s'='%s'\n", name, val ? val : "");
+    return FALSE;
 }
 
 void FinishCompilerTool(void) {
@@ -41,6 +39,6 @@ void FinishCompilerTool(void) {
     }
 
     if (setOutputDirectory) {
-        pCmdLineCompiler.relPathInOutputDir = 0;
+        pCmdLineCompiler.relPathInOutputDir = FALSE;
     }
 }

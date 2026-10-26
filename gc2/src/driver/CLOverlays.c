@@ -1,7 +1,7 @@
 #include "driver/CLOverlays.h"
 #include "driver/CLErrors.h"
-#include "driver/CLIO.h"
 #include "driver/MemUtils.h"
+#include "driver/oslib.h"
 #include <string.h>
 
 void OvlGroup_Delete(OvlGroup* grp);
@@ -19,7 +19,6 @@ Boolean Overlays_Initialize(Overlays* this) {
     this->groups = NULL;
     this->lastgrp = NULL;
     this->grpcnt = 0;
-    // (2.6's chained assignment: Pro7's two statements, in either order, do not match)
     addr.lo = addr.hi = 0;
 
     grp = OvlGroup_New("main_application", addr);
@@ -103,7 +102,6 @@ SInt32 Overlays_CountGroups(Overlays* this) {
 
     scan = this->groups;
     while (scan) {
-        // (2.6 counts before advancing; Pro7 after)
         num++;
         scan = scan->next;
     }
@@ -111,8 +109,6 @@ SInt32 Overlays_CountGroups(Overlays* this) {
     return num;
 }
 
-// Dead in 2.6 (the linker dropped it, Pro7 has no caller either); kept: the asserts after it have
-// Pro7's line numbers.
 Boolean Overlays_AddFileToOverlay(Overlays* this, SInt32 grpnum, SInt32 ovlnum, SInt32 filenum) {
     Overlay* oly;
 
@@ -162,12 +158,11 @@ OvlGroup* OvlGroup_New(const char* name, OvlAddr addr) {
         strncpy(grp->name, name, sizeof(grp->name));
         grp->name[sizeof(grp->name) - 1] = 0;
         grp->addr = addr;
-        // (2.6's chained assignment: Pro7's two statements, in either order, do not match)
         grp->olys = grp->lastoly = NULL;
         grp->olycnt = 0;
         grp->next = NULL;
     } else {
-        CLInternalError(__FILE__, 188, "Could not allocate %s", "overlay group");
+        DO_INTERNAL_ERROR(188, "Could not allocate %s", "overlay group");
     }
     return grp;
 }
@@ -233,7 +228,6 @@ SInt32 OvlGroup_CountOverlays(OvlGroup* this) {
 
     scan = this->olys;
     while (scan) {
-        // (2.6 counts before advancing; Pro7 after)
         num++;
         scan = scan->next;
     }
@@ -249,11 +243,10 @@ Overlay* Overlay_New(const char* name) {
         strncpy(oly->name, name, sizeof(oly->name));
         oly->name[sizeof(oly->name) - 1] = 0;
         oly->list = NULL;
-        // (2.6's chained assignment: Pro7's two statements, in either order, do not match)
         oly->cnt = oly->max = 0;
         oly->next = NULL;
     } else {
-        CLInternalError(__FILE__, 281, "Could not allocate %s", "overlay");
+        DO_INTERNAL_ERROR(281, "Could not allocate %s", "overlay");
     }
     return oly;
 }

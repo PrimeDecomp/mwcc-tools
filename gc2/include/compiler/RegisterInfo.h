@@ -8,18 +8,12 @@
 extern "C" {
 #endif
 
-// 2.6's global register variables: a variable the source binds to a register, and its
-// name for diagnostics.
-// TODO: the type's name is made up (the list's is Wii's COMMON reg_info_list)
 #pragma pack(push, 2)
 typedef struct RegInfo {
     struct RegInfo* next;
     Object* object;
     HashNameNode* name;
-    // (CMach_ParseGlobalRegisterVariable copies the pair from the declaration's)
     ObjRegInfo reginfo;
-    // the variable's namespace and whether it is static (CMach_ParseGlobalRegisterVariable)
-    // TODO: made-up names
     struct NameSpace* nspace;
     char is_static;
 } RegInfo;
@@ -49,7 +43,6 @@ extern void finish_global_registers(void);
 extern void setup_diagnostic_reg_strings(void);
 extern void init_target_registers(void);
 extern void assign_register_by_type(Object* obj);
-extern void assign_GPR_pair(Object* obj);
 extern void open_fe_temp_registers(void);
 extern void set_last_exception_registers(void);
 extern VarInfo* Registers_GetVarInfo(Object* obj);

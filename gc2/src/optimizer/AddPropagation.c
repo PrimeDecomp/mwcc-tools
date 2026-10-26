@@ -4,33 +4,34 @@
 #include "compiler/CError.h"
 #include "compiler/CopyPropagation.h"
 #include "compiler/CParser.h"
-#include "compiler/CPrep.h"
 #include "compiler/objects.h"
+#include "compiler/PCode.h"
+#include "compiler/PCodeInfo.h"
 #include "compiler/Registers.h"
 #include "compiler/StackFrame.h"
 #include "compiler/UseDefChains.h"
 
 int propagatedadds;
 
-// 2.6 tests `!(reg < n_real_registers[...])` (Pro7: `>=`, which compiles without the materialised
-// comparison value)
 static int is_add(PCode* instr) {
-    return (instr->op ==
-            PC_ADD ||
-            (instr->op ==
-             PC_ADDI &&
-             (instr->args[2].kind ==
-              PCOp_IMMEDIATE ||
-              (instr->args[2].kind == PCOp_MEMORY && (RefType)instr->args[2].arg == RefType_1)))) &&
+    return (instr->op == PC_ADD ||
+            (instr->op == PC_ADDI &&
+             (instr->args[2].kind == PCOp_IMMEDIATE ||
+              (instr->args[2].kind == PCOp_MEMORY &&
+               (RefType)instr->args[2].arg == RefType_Local16)))) &&
         !(instr->args[0].data.reg.reg < n_real_registers[instr->args[0].arg]);
 }
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -1
+#endif
 static int addpropagatestouse(int candidateID, int useID) {
     PCode* candidateInstr;
     PCode* useInstr;
-    int reg2;
-    int reg1;
-    int reg27;
+    int srcReg;
+    int destReg;
+    int otherSrcReg;
     Object* object;
     SInt32 offset;
     int i;
@@ -39,10 +40,9 @@ static int addpropagatestouse(int candidateID, int useID) {
 
     candidateInstr = Candidates[candidateID].pcode;
     useInstr = Uses[useID].pcode;
-    reg1 = candidateInstr->args[0].data.reg.reg;
-    reg2 = candidateInstr->args[1].data.reg.reg;
-    // (2.6 reads the operand again; Pro7's `reg27 = reg2` takes other registers)
-    reg27 = candidateInstr->args[1].data.reg.reg;
+    destReg = candidateInstr->args[0].data.reg.reg;
+    srcReg = candidateInstr->args[1].data.reg.reg;
+    otherSrcReg = candidateInstr->args[1].data.reg.reg;
 
     if (!useInstr->block) {
         recursive_propagation = TRUE;
@@ -71,10 +71,8 @@ static int addpropagatestouse(int candidateID, int useID) {
                 return FALSE;
             }
         } else if (useInstr->args[2].kind == PCOp_REGISTER) {
-            if (useInstr->args[1].kind !=
-                PCOp_REGISTER ||
-                useInstr->args[2].data.reg.reg !=
-                reg1 ||
+            if (useInstr->args[1].kind != PCOp_REGISTER ||
+                useInstr->args[2].data.reg.reg != destReg ||
                 useInstr->args[1].data.reg.reg != 0) {
                 return FALSE;
             }
@@ -88,7 +86,7 @@ static int addpropagatestouse(int candidateID, int useID) {
             object = candidateInstr->alias->object;
             offset = candidateInstr->alias->offset;
         }
-        reg27 = candidateInstr->args[2].data.reg.reg;
+        otherSrcReg = candidateInstr->args[2].data.reg.reg;
     } else if (candidateInstr->op == PC_ADDI) {
         if (candidateInstr->alias && candidateInstr->alias->type == AliasType_Object) {
             object = candidateInstr->alias->object;
@@ -118,7 +116,6 @@ static int addpropagatestouse(int candidateID, int useID) {
                     return FALSE;
                 }
             } else {
-                // 2.6: the paired-single loads and stores take a 12-bit displacement
                 switch (useInstr->op) {
                     case PC_PSQ_L:
                     case PC_PSQ_LU:
@@ -141,15 +138,13 @@ static int addpropagatestouse(int candidateID, int useID) {
     }
 
     if ((useInstr->flags & fIsWrite) &&
-        useInstr->args[0].kind ==
-        PCOp_REGISTER &&
-        useInstr->args[0].arg ==
-        RegClass_GPR &&
-        useInstr->args[0].data.reg.reg == reg1) {
+        useInstr->args[0].kind == PCOp_REGISTER &&
+        useInstr->args[0].arg == RegClass_GPR &&
+        useInstr->args[0].data.reg.reg == destReg) {
         return FALSE;
     }
 
-    if (useInstr->args[1].data.reg.reg != reg1) {
+    if (useInstr->args[1].data.reg.reg != destReg) {
         return FALSE;
     }
 
@@ -160,7 +155,7 @@ static int addpropagatestouse(int candidateID, int useID) {
             i = instr->argCount;
             while (i--) {
                 if (PC_OP_IS_WRITE_ANY_REGISTER(op, RegClass_GPR) &&
-                    (op->data.reg.reg == reg2 || op->data.reg.reg == reg27)) {
+                    (op->data.reg.reg == srcReg || op->data.reg.reg == otherSrcReg)) {
                     return FALSE;
                 }
                 op++;
@@ -180,7 +175,7 @@ static int addpropagatestouse(int candidateID, int useID) {
             i = instr->argCount;
             while (i--) {
                 if (PC_OP_IS_WRITE_ANY_REGISTER(op, RegClass_GPR) &&
-                    (op->data.reg.reg == reg2 || op->data.reg.reg == reg27)) {
+                    (op->data.reg.reg == srcReg || op->data.reg.reg == otherSrcReg)) {
                     return FALSE;
                 }
                 op++;
@@ -194,7 +189,15 @@ static int addpropagatestouse(int candidateID, int useID) {
 
     return TRUE;
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -1
+#endif
 static void propagateandremoveadd(int id) {
     PCode* instr;
     RegUseOrDef* list;
@@ -205,7 +208,7 @@ static void propagateandremoveadd(int id) {
     Candidate* candidate;
 
     candidate = Candidates + id;
-    instr = Candidates[id].pcode; // (Pro7: candidate->pcode, which takes other registers)
+    instr = Candidates[id].pcode;
     reg = instr->args[1].data.reg.reg;
 
     if (instr->op == PC_ADDI && instr->args[2].kind == PCOp_MEMORY) {
@@ -215,7 +218,6 @@ static void propagateandremoveadd(int id) {
     for (list = candidate->list; list; list = list->next) {
         useInstr = Uses[list->id].pcode;
 
-        // 2.6: a use that is an add candidate itself no longer reaches any block
         if (is_add(useInstr) && useInstr->args[0].data.reg.reg != reg) {
             for (i = 0; i < number_of_candidates; i++) {
                 if (Candidates[i].pcode == useInstr) {
@@ -287,6 +289,10 @@ static void propagateandremoveadd(int id) {
     deletepcode(instr);
     propagatedadds = TRUE;
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
 // clang-format off
 static Propagation add_prop = {
@@ -296,12 +302,12 @@ static Propagation add_prop = {
     "ADD",
     "ADDS",
     "a%ld",
-    fSideEffects | fRecordBit, // 2.6: Pro7 tests these flags of every candidate in canidatepropagatestoalluses
-    0
+    fSideEffects | fRecordBit,
+    FALSE
 };
 // clang-format on
 
 void propagateaddinstructions(Object* proc) {
-    propagateinstructions(proc, &add_prop, (copts.optimizationlevel >= 4) ? 4 : 1, 1);
+    propagateinstructions(proc, &add_prop, (copts.optimizationlevel >= 4) ? 4 : 1, TRUE);
     propagatedadds = propagated_instructions;
 }

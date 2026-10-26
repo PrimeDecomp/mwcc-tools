@@ -1,6 +1,5 @@
 #include "compiler/CPrec.h"
 #include "compiler/CError.h"
-#include "compiler/CExpr.h"
 #include "compiler/CFunc.h"
 #include "compiler/CInit.h"
 #include "compiler/CInline.h"
@@ -15,13 +14,20 @@
 #include "compiler/enode.h"
 #include "compiler/Exceptions.h"
 #include "compiler/InlineAsm.h"
+#include "compiler/objc.h"
 #include "compiler/objects.h"
 #include "compiler/scopes.h"
+#include "compiler/som.h"
 #include "compiler/templates.h"
+#include "compiler/tokens.h"
 #include "compiler/types.h"
 #include "driver/CCompiler.h"
 #include "driver/COSToolsCLT.h"
+#include "driver/CWPlugins.h"
 #include "driver/CWPluginsPrivate.h"
+#include "driver/DropInCompilerLinker.h"
+#include "driver/Files.h"
+#include "driver/oslib.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -34,8 +40,6 @@ typedef struct StaticData {
     SInt32 size;
 } StaticData;
 
-// The precompiled header's file header: 2.6's is Pro7's, with the Objective-C counters and lists
-// under the repository's names.
 typedef struct Header {
     UInt32 magic;
     UInt16 version;
@@ -50,8 +54,6 @@ typedef struct Header {
     UInt32 x1C;
     UInt32 x20;
     UInt32 x24;
-    // TODO: invented names (Pro7: x28, x2C, x30): the raw (symbol table) buffer's size, the size
-    // of its stored (compressed) form and that form's file offset
     UInt32 rawsize;
     UInt32 rawdatasize;
     UInt32 rawdataoffset;
@@ -134,8 +136,6 @@ typedef struct PointerHash {
     TypePointer* prec_tptr;
 } PointerHash;
 
-// 2.6's statics, declared in reverse (MWCC allocates them in reverse declaration order: flushmax,
-// Pro7's CPrec_FlushBufferCheck high-water mark kept at file scope, is lowest)
 static short cprec_refnum;
 static GList cprec_glist;
 static Header* cprec_header;
@@ -158,10 +158,8 @@ static SInt32 flushmax;
 char* precomp_target_str;
 #pragma pack(pop)
 
-// (other units' globals the original defines here)
 struct Macro** macrohashtable;
 
-// Assorted forward declarations
 static NameSpace* CPrec_GetNameSpacePatch(NameSpace* nspace);
 static ObjEnumConst* CPrec_GetObjEnumConstPatch(ObjEnumConst* obj);
 static Object* CPrec_GetObjectPatch(Object* obj);
@@ -276,19 +274,19 @@ static AddrPatch* CPrec_NewAddrPatch(void* addr, void* value) {
 }
 
 static void CPrec_SetupBuiltInArray(void) {
-    int count2;
-    int count1;
-    Boolean flag;
+    int filled;
+    int total;
+    Boolean counting;
     void** array;
 
 #define REG_BUILTIN(a) \
-    if (!flag) { \
-        array[count2++] = (a); \
+    if (!counting) { \
+        array[filled++] = (a); \
     } else { \
-        count1++; \
+        total++; \
     }
 
-    for (count2 = count1 = 0, flag = TRUE;;) {
+    for (filled = total = 0, counting = TRUE;;) {
         REG_BUILTIN(cscope_root);
         REG_BUILTIN(&stvoid);
         REG_BUILTIN(&stbool);
@@ -357,14 +355,13 @@ static void CPrec_SetupBuiltInArray(void) {
         REG_BUILTIN(&stvectorboollong);
         REG_BUILTIN(&stvectorfloat);
         REG_BUILTIN(&stvectorpixel);
-        // 2.6: Gekko's paired single
         REG_BUILTIN(&stvec2x32float);
 
-        if (flag) {
-            array = lalloc(sizeof(void*) * count1);
+        if (counting) {
+            array = lalloc(sizeof(void*) * total);
             cprec_builtin_array = array;
-            cprec_builtins = count1;
-            flag = FALSE;
+            cprec_builtins = total;
+            counting = FALSE;
         } else {
             return;
         }
@@ -385,6 +382,10 @@ static void CPrec_SetupBuiltIn(void) {
     }
 }
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -7
+#endif
 static void CPrec_NewPointerPatch(void* src, void* ptr) {
     if (cprec_dowrite) {
         Patch* patch = lalloc(sizeof(Patch));
@@ -408,7 +409,15 @@ static void CPrec_NewPointerPatch(void* src, void* ptr) {
         *((void**)(*cprec_glist.data + (SInt32)src)) = ptr;
     }
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -7
+#endif
 static void CPrec_ExistingPointerPatch(void* src, void* ptr) {
     SInt32 key = (SInt32)ptr;
     if (cprec_dowrite) {
@@ -429,6 +438,10 @@ static void CPrec_ExistingPointerPatch(void* src, void* ptr) {
         *((void**)(*cprec_glist.data + (SInt32)src)) = addrPatch->value;
     }
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
 static void CPrec_NamePatch(void* src, HashNameNode* name) {
     name->id = 1;
@@ -483,6 +496,10 @@ static UInt32 CPrec_AppendPointer(void* v) {
     return offset;
 }
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -7
+#endif
 static UInt32 CPrec_AppendPointerPatch(void* v) {
     AddrPatch* addrPatch;
 
@@ -502,6 +519,10 @@ static UInt32 CPrec_AppendPointerPatch(void* v) {
         return CPrec_AppendPointer(NULL);
     }
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
 static void CPrec_AppendNamePatch(HashNameNode* name) {
     if (name) {
@@ -723,6 +744,8 @@ restart:
                 }
             }
             break;
+        default:
+            break;
     }
 
     work += target->type + target->size;
@@ -750,10 +773,8 @@ static TypePointer* CPrec_GetTypePointerPatch(TypePointer* tptr) {
                 TypePointer* scan1 = tptr;
                 TypePointer* scan2 = phash->tptr;
                 do {
-                    if (scan1->type !=
-                        scan2->type ||
-                        scan1->size !=
-                        scan2->size ||
+                    if (scan1->type != scan2->type ||
+                        scan1->size != scan2->size ||
                         scan1->qual != scan2->qual) {
                         break;
                     }
@@ -832,7 +853,6 @@ static TypeStruct* CPrec_GetTypeStructPatch(TypeStruct* tstruct) {
     SInt32 next;
     StructMember* current;
 
-    // (`current` first holds the struct's own address: 2.6's register choice)
     CPrec_NewAddrPatch(tstruct, current = (void*)(p = (void*)CPrec_AppendAlign()));
     CPrec_AppendData(tstruct, sizeof(TypeStruct));
 
@@ -890,6 +910,10 @@ static ExceptSpecList* CPrec_GetExceptSpecPatch(ExceptSpecList* exspec) {
     return first;
 }
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -7
+#endif
 static FuncArg* CPrec_GetArgListPatch(FuncArg* lst, Boolean includeNames) {
     SInt32 first;
     SInt32 current;
@@ -941,6 +965,10 @@ static FuncArg* CPrec_GetArgListPatch(FuncArg* lst, Boolean includeNames) {
 
     return (FuncArg*)first;
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
 static TypeFunc* CPrec_GetTypeFuncPatch(TypeFunc* type) {
     SInt32 p;
@@ -988,6 +1016,10 @@ static TypeMemberPointer* CPrec_GetTypeMemberPointerPatch(TypeMemberPointer* typ
     return (TypeMemberPointer*)p;
 }
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -7
+#endif
 static TypeTemplDep* CPrec_GetTypeTemplDepPatch(TypeTemplDep* type) {
     SInt32 p;
 
@@ -1050,6 +1082,10 @@ static TypeTemplDep* CPrec_GetTypeTemplDepPatch(TypeTemplDep* type) {
 
     return (TypeTemplDep*)p;
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
 static ClassList* CPrec_GetClassListPatch(ClassList* cl) {
     AddrPatch* addrPatch;
@@ -1217,7 +1253,6 @@ static ObjCMethodArg* CPrec_GetObjCMethodArgPatch(ObjCMethodArg* arg) {
     first = current = (void*)CPrec_AppendAlign();
 
     do {
-        // (Pro7 appends sizeof(ObjCMethod) here too)
         CPrec_AppendData(arg, sizeof(ObjCMethod));
         if (arg->selector) {
             CPrec_NamePatch(&current->selector, arg->selector);
@@ -1556,6 +1591,10 @@ static ObjCInfo* CPrec_GetObjCInfoPatch(ObjCInfo* info) {
     return p;
 }
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -7
+#endif
 static TemplArg* CPrec_GetTemplateArgPatch(TemplArg* arg) {
     TemplArg* first;
     TemplArg* current;
@@ -1603,7 +1642,15 @@ static TemplArg* CPrec_GetTemplateArgPatch(TemplArg* arg) {
 
     return first;
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -7
+#endif
 static TemplParam* CPrec_GetTemplateParamPatch(TemplParam* param) {
     SInt32 first;
     SInt32 current;
@@ -1662,7 +1709,15 @@ static TemplParam* CPrec_GetTemplateParamPatch(TemplParam* param) {
 
     return (TemplParam*)first;
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -7
+#endif
 static TStreamElement* CPrec_GetTStreamPatch(TStreamElement* tokens, SInt32 count) {
     TStreamElement elem;
     SInt32 first;
@@ -1744,6 +1799,10 @@ static TStreamElement* CPrec_GetTStreamPatch(TStreamElement* tokens, SInt32 coun
 
     return (TStreamElement*)first;
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
 static TemplFuncInstance* CPrec_GetTemplFuncInstancePatch(TemplFuncInstance* inst) {
     AddrPatch* addrPatch;
@@ -1885,6 +1944,10 @@ static TemplateFriend* CPrec_GetTemplateFriendPatch(TemplateFriend* frnd) {
     return p;
 }
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -7
+#endif
 static TemplateAction* CPrec_GetTemplateActionPatch(TemplateAction* act) {
     SInt32 first;
     SInt32 current;
@@ -1974,6 +2037,10 @@ static TemplateAction* CPrec_GetTemplateActionPatch(TemplateAction* act) {
     }
     return (TemplateAction*)first;
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
 static TemplateFunction* CPrec_GetTemplateFunctionPatch(TemplateFunction* tf) {
     AddrPatch* addrPatch;
@@ -2057,14 +2124,13 @@ static TypeClass* CPrec_GetTypeClassPatch(TypeClass* tclass) {
     first = current = CPrec_AppendAlign();
 
     for (;;) {
-        hasNextTempl = hasNextTemplInst = 0;
+        hasNextTempl = hasNextTemplInst = FALSE;
         CPrec_NewAddrPatch(tclass, (void*)current);
 
         if (tclass->flags & CLASS_IS_TEMPL) {
-            // template class
             CPrec_AppendData(tclass, sizeof(TemplClass));
             if (TEMPL_CLASS(tclass)->next) {
-                hasNextTempl = 1;
+                hasNextTempl = TRUE;
             }
             if (TEMPL_CLASS(tclass)->templ_parent) {
                 CPrec_NewPointerPatch(
@@ -2115,10 +2181,9 @@ static TypeClass* CPrec_GetTypeClassPatch(TypeClass* tclass) {
                 );
             }
         } else if (tclass->flags & CLASS_IS_TEMPL_INST) {
-            // template class instance
             CPrec_AppendData(tclass, sizeof(TemplClassInst));
             if (TEMPL_CLASS_INST(tclass)->next) {
-                hasNextTemplInst = 1;
+                hasNextTemplInst = TRUE;
             }
             if (TEMPL_CLASS_INST(tclass)->parent) {
                 CPrec_NewPointerPatch(
@@ -2145,7 +2210,6 @@ static TypeClass* CPrec_GetTypeClassPatch(TypeClass* tclass) {
                 );
             }
         } else {
-            // base
             CPrec_AppendData(tclass, sizeof(TypeClass));
         }
 
@@ -2234,6 +2298,10 @@ static TypeClass* CPrec_GetTypeClassPatch(TypeClass* tclass) {
     return (TypeClass*)first;
 }
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -7
+#endif
 static Type* CPrec_GetTypePatch(Type* type) {
     AddrPatch* addrPatch;
 
@@ -2270,7 +2338,15 @@ static Type* CPrec_GetTypePatch(Type* type) {
             return NULL;
     }
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -7
+#endif
 static ExceptionAction* CPrec_GetExceptionPatch(ExceptionAction* exc) {
     SInt32 first;
     SInt32 current;
@@ -2398,6 +2474,10 @@ static ExceptionAction* CPrec_GetExceptionPatch(ExceptionAction* exc) {
     }
     return (ExceptionAction*)first;
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
 static ENodeList* CPrec_GetExpressionListPatch(ENodeList* lst) {
     SInt32 first;
@@ -2424,6 +2504,10 @@ static ENodeList* CPrec_GetExpressionListPatch(ENodeList* lst) {
     return (ENodeList*)first;
 }
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -7
+#endif
 static EMemberInfo* CPrec_GetEMemberInfoPatch(EMemberInfo* emember) {
     EMemberInfo* p;
 
@@ -2443,7 +2527,15 @@ static EMemberInfo* CPrec_GetEMemberInfoPatch(EMemberInfo* emember) {
 
     return p;
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -7
+#endif
 static ENode* CPrec_GetExpressionPatch(ENode* expr) {
     SInt32 p;
 
@@ -2678,6 +2770,10 @@ static ENode* CPrec_GetExpressionPatch(ENode* expr) {
 
     return (ENode*)p;
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
 static CI_Switch* CPrec_GetSwitchInfoPatch(CI_Switch* si) {
     SInt32 p = CPrec_AppendAlign();
@@ -2713,10 +2809,13 @@ static InlineAsm* CPrec_GetInlineAsmPatch(InlineAsm* ia, SInt32 size) {
     return (InlineAsm*)p;
 }
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -7
+#endif
 #if VERSION < VERSION_GC_2_5
-// 2.0's file has 51 lines fewer above here
 #undef CError_LINE_SHIFT
-#define CError_LINE_SHIFT -51
+#define CError_LINE_SHIFT (-51 + CError_LINE_DELTA)
 #endif
 static CI_Statement* CPrec_GetStatementPatch(CI_Statement* stmt, short count) {
     short i;
@@ -2733,7 +2832,6 @@ static CI_Statement* CPrec_GetStatementPatch(CI_Statement* stmt, short count) {
 
     for (i = 0; i < count; i++) {
 #if VERSION >= VERSION_GC_2_5
-        // 2.6 (cleared above)
         if (stmt->sourcefilepath) {
             CPrec_NamePatch(
                 (void*)(current + offsetof(CI_Statement, sourcefilepath)), stmt->sourcefilepath
@@ -2843,6 +2941,10 @@ static CI_FuncData* CPrec_GetInlineFuncPatch(CI_FuncData* ifunc) {
     return p;
 }
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -7
+#endif
 static ObjEnumConst* CPrec_GetObjEnumConstPatch(ObjEnumConst* obj) {
     AddrPatch* addrPatch;
     SInt32 first;
@@ -2886,6 +2988,10 @@ static ObjEnumConst* CPrec_GetObjEnumConstPatch(ObjEnumConst* obj) {
 
     return (ObjEnumConst*)first;
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
 static ObjType* CPrec_GetObjTypePatch(ObjType* obj) {
     AddrPatch* addrPatch;
@@ -3002,6 +3108,10 @@ static InlineXRef* CPrec_GetInlineXRefPatch(InlineXRef* ix) {
     return (InlineXRef*)first;
 }
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -7
+#endif
 static Object* CPrec_GetObjectPatch(Object* obj) {
     AddrPatch* addrPatch;
     SInt32 p;
@@ -3140,7 +3250,15 @@ static Object* CPrec_GetObjectPatch(Object* obj) {
 
     return (Object*)p;
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -7
+#endif
 static ObjBase* CPrec_GetObjBasePatch(ObjBase* obj) {
     switch (obj->otype) {
         default:
@@ -3152,9 +3270,6 @@ static ObjBase* CPrec_GetObjBasePatch(ObjBase* obj) {
         case OT_TYPETAG:
             return (ObjBase*)CPrec_GetObjTypeTagPatch((ObjTypeTag*)obj);
         case OT_NAMESPACE: {
-            // TODO: Pro7's CPrec_GetObjNameSpacePatch, which 2.6 inlines here (as a function of its
-            // own it stays a call); written out with one result variable for its two returns, and
-            // `q` standing in for the copy the inlined CPrec_NewAddrPatch makes of its argument.
             AddrPatch* addrPatch;
             ObjNameSpace* p;
             ObjNameSpace* q;
@@ -3177,6 +3292,10 @@ static ObjBase* CPrec_GetObjBasePatch(ObjBase* obj) {
             return (ObjBase*)CPrec_GetObjectPatch((Object*)obj);
     }
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
 static NameSpaceObjectList* CPrec_GetNameSpaceObjectListPatch(NameSpaceObjectList* nsol) {
     AddrPatch* addrPatch;
@@ -3220,7 +3339,7 @@ static NameSpaceObjectList* CPrec_GetNameSpaceObjectListPatch(NameSpaceObjectLis
     return (NameSpaceObjectList*)first;
 }
 
-static NameSpaceName* CPrec_GetNameSpaceNamePatch(NameSpaceName* nsn, Boolean flag) {
+static NameSpaceName* CPrec_GetNameSpaceNamePatch(NameSpaceName* nsn, Boolean flushBuffer) {
     AddrPatch* addrPatch;
     SInt32 first;
     SInt32 current;
@@ -3262,7 +3381,7 @@ static NameSpaceName* CPrec_GetNameSpaceNamePatch(NameSpaceName* nsn, Boolean fl
             nsn = nsn->next;
             CPrec_NewAddrPatch(nsn, (void*)current);
         }
-    } while (!flag || !cprec_dowrite || CPrec_FlushBufferCheck() == noErr);
+    } while (!flushBuffer || !cprec_dowrite || CPrec_FlushBufferCheck() == noErr);
 
     return (NameSpaceName*)first;
 }
@@ -3332,20 +3451,24 @@ static NameSpace* CPrec_GetNameSpacePatch(NameSpace* nspace) {
             if (nspace->data.hash[i]) {
                 CPrec_NewPointerPatch(
                     (void*)(hash + i * sizeof(NameSpaceName*)),
-                    CPrec_GetNameSpaceNamePatch(nspace->data.hash[i], 0)
+                    CPrec_GetNameSpaceNamePatch(nspace->data.hash[i], FALSE)
                 );
             }
         }
     } else if (nspace->data.list) {
         CPrec_NewPointerPatch(
             (void*)(p + offsetof(NameSpace, data.list)),
-            CPrec_GetNameSpaceNamePatch(nspace->data.list, 0)
+            CPrec_GetNameSpaceNamePatch(nspace->data.list, FALSE)
         );
     }
 
     return (NameSpace*)p;
 }
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -7
+#endif
 static void CPrec_DumpRootNameSpace(void) {
     NameSpaceList* nslist;
     NameSpaceName* nsname;
@@ -3366,7 +3489,7 @@ static void CPrec_DumpRootNameSpace(void) {
 
     for (i = 0; i < 0x400; i++) {
         if (cscope_root->data.hash[i]) {
-            nsname = CPrec_GetNameSpaceNamePatch(cscope_root->data.hash[i], 1);
+            nsname = CPrec_GetNameSpaceNamePatch(cscope_root->data.hash[i], TRUE);
             if (cprec_dowrite) {
                 if (cprec_ioerror != noErr) {
                     return;
@@ -3376,6 +3499,10 @@ static void CPrec_DumpRootNameSpace(void) {
         }
     }
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
 static CSOMStub* CPrec_GetSOMPatch(CSOMStub* stub) {
     CSOMStub* first;
@@ -3503,7 +3630,7 @@ static ObjCSelector** CPrec_GetSelHashTablePatch(ObjCSelector** table) {
     first = current = cprec_offset;
     CPrec_AppendData(table, sizeof(ObjCSelector*) * 0x400);
 
-    for (i = 0; i < 0x400U; i++, current += 4) {
+    for (i = 0; (unsigned int)i < 0x400U; i++, current += 4) {
         if ((sel = table[i])) {
             CPrec_NewPointerPatch((void*)current, CPrec_GetObjCSelectorPatch(sel));
         }
@@ -3512,7 +3639,6 @@ static ObjCSelector** CPrec_GetSelHashTablePatch(ObjCSelector** table) {
     return (ObjCSelector**)first;
 }
 
-// Pro7's InitExpr {next, expr, object} is the repository's InitExpr.
 static InitExpr* CPrec_GetIExpressionPatch(InitExpr* initexpr) {
     InitExpr* first;
     SInt32 next;
@@ -3539,6 +3665,10 @@ static InitExpr* CPrec_GetIExpressionPatch(InitExpr* initexpr) {
     return first;
 }
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -7
+#endif
 static CI_Action* CPrec_GetInlineActionPatch(CI_Action* act) {
     CI_Action* first;
     SInt32 next;
@@ -3616,6 +3746,10 @@ static CI_Action* CPrec_GetInlineActionPatch(CI_Action* act) {
 
     return first;
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
 static void CPrec_GenerateBuiltinPatches(void) {
     Patch* scan;
@@ -3732,8 +3866,6 @@ static OSErr CPrec_FlushBufferCheck(void) {
     return noErr;
 }
 
-// 2.6: the compressed patch offsets are written big-endian (CPrec_RelocateRawBuffer reads them so)
-// TODO: invented name
 static void CPrec_AppendBigEndianWord32(SInt32 v) {
     union {
         SInt32 l;
@@ -3746,6 +3878,10 @@ static void CPrec_AppendBigEndianWord32(SInt32 v) {
     CPrec_AppendByte(u.b[0]);
 }
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -7
+#endif
 static int CPrec_CompressPatches(void) {
     Patch* scan;
     int count;
@@ -3775,6 +3911,10 @@ static int CPrec_CompressPatches(void) {
 
     return count;
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
 static OSErr CPrec_DumpColorSymbolTable(Boolean doWrite) {
     OSErr err;
@@ -3986,7 +4126,7 @@ static OSErr CPrec_WriteFile(void) {
         }
     } while (++i < 0x800);
 
-    if ((err = CPrec_DumpColorSymbolTable(0)) != noErr) {
+    if ((err = CPrec_DumpColorSymbolTable(FALSE)) != noErr) {
         return err;
     }
 
@@ -3997,7 +4137,11 @@ static OSErr CPrec_WriteFile(void) {
     memclrw(cprec_header, sizeof(Header));
 
     cprec_header->magic = 0xBEEFFACE;
+    #if VERSION < VERSION_GC_2_0
+    cprec_header->version = 1047;
+#else
     cprec_header->version = 5145;
+#endif
     cprec_header->target = 2;
     cprec_header->check_header_flags = copts.checkprecompflags;
     cprec_header->cplusplus = copts.cplusplus;
@@ -4012,7 +4156,7 @@ static OSErr CPrec_WriteFile(void) {
 
     offset = sizeof(Header);
 
-    if ((err = CPrec_DumpColorSymbolTable(1)) != noErr) {
+    if ((err = CPrec_DumpColorSymbolTable(TRUE)) != noErr) {
         return err;
     }
 
@@ -4095,16 +4239,15 @@ void PrecompilerWrite(void) {
     if (err != noErr) {
         CompilerGetCString(strindex, str);
         sprintf(string, str, err);
-        CWReportMessage(cparamblkptr->context, NULL, string, NULL, 2, 0);
+        CWReportMessage(cparamblkptr->context, NULL, string, NULL, messagetypeError, 0);
     } else {
         CWFileTime time = 0;
-        CWSetModDate(cparamblkptr->context, &spec, &time, 1);
+        CWSetModDate(cparamblkptr->context, &spec, &time, TRUE);
     }
 }
 
 static void CPrec_ReadData(SInt32 offset, void* buffer, SInt32 size) {
-    if (COS_FileSetPos(cprec_refnum, offset) !=
-        noErr ||
+    if (COS_FileSetPos(cprec_refnum, offset) != noErr ||
         COS_FileRead(cprec_refnum, buffer, size) != noErr) {
         CError_ErrorTerm(ERR_ILLEGAL_DATA_PRECOMPILED_HEADER);
     }
@@ -4307,12 +4450,10 @@ static void CPrec_RelocateMacroTable(void) {
     } while (++i < 0x800);
 }
 
-// TODO: Pro7's PrecompilerRead calls its statics CPrec_ReadData, CPrec_RelocateTable,
-// CPrec_FixNameIds, CPrec_RelocateRootNameSpace, CPrec_DefineStaticData and CleanupPrecompiler, and
-// resolves the header's offsets with RESOLVE_SAFE; 2.6 has all of them inlined (no out-of-line
-// copies). Pro7's text with the helpers `static` or `static inline` compiles to 61.1% (registers and
-// the ternaries), with if/else for RESOLVE_SAFE 66.7%, so the body is written out in 2.6's shape (the
-// comma expression in the root namespace block included: as two statements 90.0/90.5).
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -7
+#endif
 void PrecompilerRead(short refnum, void* buffer) {
     Header* header;
     SInt32 offset;
@@ -4334,8 +4475,7 @@ void PrecompilerRead(short refnum, void* buffer) {
     if (cprec_buffer == NULL) {
         cprec_header = galloc(sizeof(Header));
         header = cprec_header;
-        if (COS_FileSetPos(cprec_refnum, 0) !=
-            0 ||
+        if (COS_FileSetPos(cprec_refnum, 0) != 0 ||
             COS_FileRead(cprec_refnum, header, sizeof(*header)) != 0) {
             CError_ErrorTerm(ERR_ILLEGAL_DATA_PRECOMPILED_HEADER);
         }
@@ -4347,7 +4487,11 @@ void PrecompilerRead(short refnum, void* buffer) {
     if (cprec_header->magic != 0xBEEFFACE) {
         CError_ErrorTerm(ERR_ILLEGAL_DATA_PRECOMPILED_HEADER);
     }
+    #if VERSION < VERSION_GC_2_0
+    if (cprec_header->version != 1047) {
+#else
     if (cprec_header->version != 5145) {
+#endif
         CError_ErrorTerm(ERR_ILLEGAL_PRECOMPILED_HEADER_VERSION);
     }
     if (cprec_header->target != 2) {
@@ -4517,7 +4661,7 @@ void PrecompilerRead(short refnum, void* buffer) {
         FreeGList(&cprec_glist);
     }
     cscope_current = cscope_root;
-    if (!CParser_ReInitRuntimeObjects(1)) {
+    if (!CParser_ReInitRuntimeObjects(TRUE)) {
         CError_ErrorTerm(ERR_ILLEGAL_DATA_PRECOMPILED_HEADER);
     }
     CPrep_InsertSpecialMacros();
@@ -4530,5 +4674,9 @@ void PrecompilerRead(short refnum, void* buffer) {
         }
     }
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif
 
 #pragma pack(2)

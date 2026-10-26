@@ -1,6 +1,8 @@
 #include "driver/FileHandles.h"
+#include "compiler/win32.h"
 #include "driver/Generic.h"
 #include "driver/MsDos.h"
+#include "driver/oslib.h"
 
 static int OS_LoadFileHandle(OSFileHandle* hand) {
     int err;
@@ -104,7 +106,6 @@ int __stdcall OS_LockFileHandle(OSFileHandle* hand, Ptr* ptr, UInt32* size) {
     return 0;
 }
 
-// (dead in 2.6: the linker dropped it)
 int __stdcall OS_UnlockFileHandle(OSFileHandle* hand) {
     if (!OS_ValidHandle(&hand->hand)) {
         return ERROR_NOT_ENOUGH_MEMORY;
@@ -137,7 +138,6 @@ int __stdcall OS_FreeFileHandle(OSFileHandle* hand) {
     return 0;
 }
 
-// (dead in 2.6: the linker dropped it)
 void __stdcall OS_GetFileHandleSpec(const OSFileHandle* hand, OSSpec* spec) {
     *spec = hand->spec;
 }

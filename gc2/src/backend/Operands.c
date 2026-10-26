@@ -3,65 +3,56 @@
 #include "compiler/CABI.h"
 #include "compiler/CError.h"
 #include "compiler/CMachine.h"
-#include "compiler/CParser.h"
-#include "compiler/CPrep.h"
 #include "compiler/CodeGen.h"
 #include "compiler/CompilerTools.h"
-#include "compiler/InstrSelection.h"
+#include "compiler/CParser.h"
+#include "compiler/enode.h"
+#include "compiler/objects.h"
 #include "compiler/ObjGen_PPC_EABI.h"
 #include "compiler/PCode.h"
+#include "compiler/PCodeInfo.h"
 #include "compiler/PCodeUtilities.h"
 #include "compiler/PPCError.h"
 #include "compiler/RegisterInfo.h"
 #include "compiler/Registers.h"
 #include "compiler/StackFrame.h"
 #include "compiler/TOC.h"
-#include "compiler/enode.h"
-#include "compiler/objects.h"
 #include "compiler/types.h"
 
-// 2.6 stores these doubles as big-endian word pairs (ObjGen_Setup stores them again in the host's
-// order at startup), and defines them in the reverse of Pro7's order.
 Float one_point_zero = {0x3FF00000, 0};
-// TODO: invented name; 8 bytes nothing in the original reads (ObjGen_Setup leaves them alone): a
-// single-precision 1.0 in the first word, presumably one_point_zero for float.
 Float one_point_zero_single = {0x3F800000, 0};
 Float int_to_float_cc = {0x43300000, 0x80000000};
 Float uns_to_float_cc = {0x43300000, 0};
 
 void load_immediate(short reg, SInt32 value) {
-    short tmpreg = reg;
+    short hiReg = reg;
 
     if (!FITS_IN_SHORT(value)) {
         if (copts.optimizationlevel > 1 && LOW_PART(value)) {
-            // the SInt32 copy is 2.6's: without it Coerce_to_register's inlined copy differs (Pro7's
-            // `tmpreg2` does not match)
-            SInt32 tmp = ALLOC_GPR();
-            tmpreg = tmp;
+            SInt32 newReg = ALLOC_GPR();
+            hiReg = newReg;
         }
-        emitpcode(PC_LIS, tmpreg, 0, (short)HIGH_PART(value));
+        emitpcode(PC_LIS, hiReg, 0, (short)HIGH_PART(value));
         if (LOW_PART(value)) {
-            emitpcode(PC_ADDI, reg, tmpreg, 0, LOW_PART(value));
+            emitpcode(PC_ADDI, reg, hiReg, 0, LOW_PART(value));
         }
     } else {
         emitpcode(PC_LI, reg, value);
     }
 }
 
-// 2.6: load_immediate for code inserted after the current instruction: lis and ori, so the high
-// half takes no carry from the low one
 void insert_load_immediate_after(short reg, SInt32 value) {
-    short tmpreg = reg;
+    short hiReg = reg;
     short hi;
 
     if (!FITS_IN_SHORT(value)) {
         if (copts.optimizationlevel > 1 && LOW_PART(value)) {
-            tmpreg = ALLOC_GPR();
+            hiReg = ALLOC_GPR();
         }
         hi = value >> 16;
-        emitpcode(PC_LIS, tmpreg, 0, hi);
+        emitpcode(PC_LIS, hiReg, 0, hi);
         if (LOW_PART(value)) {
-            emitpcode(PC_ORI, reg, tmpreg, LOW_PART(value));
+            emitpcode(PC_ORI, reg, hiReg, LOW_PART(value));
         }
     } else {
         emitpcode(PC_LI, reg, value);
@@ -122,7 +113,12 @@ void indirect(Operand* op, ENode* expr) {
                 op->reg = 0;
                 op->immOffset = op->immediate;
             } else {
-                emitpcode(PC_LIS, op->reg = ALLOC_GPR(), 0, (short)HIGH_PART(op->immediate));
+                emitpcode(
+                    PC_LIS,
+                    op->reg = ALLOC_GPR(),
+                    0,
+                    (short)HIGH_PART(op->immediate)
+                );
                 op->immOffset = LOW_PART(op->immediate);
             }
             op->object = NULL;
@@ -141,8 +137,8 @@ void indirect(Operand* op, ENode* expr) {
 #define COMBO_OP(a, b) (b + (a * 11))
 
 void combine(Operand* opA, Operand* opB, short output_reg, Operand* opOut) {
-    Operand* tmp_op;
-    int tmp;
+    Operand* swapOp;
+    int sumReg;
 
     if (opA->optype == OpndType_Symbol || opA->optype == OpndType_IndirectSymbol) {
         coerce_to_addressable(opA);
@@ -164,28 +160,36 @@ void combine(Operand* opA, Operand* opB, short output_reg, Operand* opOut) {
                     opB->object = opA->object;
                 }
             } else {
-                tmp = (output_reg && (output_reg != opB->reg)) ? output_reg : ALLOC_GPR();
-                add_immediate(tmp, opA->reg, opA->object, opA->immOffset);
-                opA->reg = tmp;
+                sumReg = (output_reg && (output_reg != opB->reg))
+                    ? output_reg
+                    : ALLOC_GPR();
+                add_immediate(sumReg, opA->reg, opA->object, opA->immOffset);
+                opA->reg = sumReg;
             }
         case COMBO_OP(OpndType_GPR, OpndType_GPR_ImmOffset):
-            tmp_op = opA;
+            swapOp = opA;
             opA = opB;
-            opB = tmp_op;
+            opB = swapOp;
         case COMBO_OP(OpndType_GPR_ImmOffset, OpndType_GPR):
             if (opA->reg == _FP_ || opA->reg == _CALLER_SP_) {
                 opOut->optype = OpndType_GPR_Indexed;
-                opOut->reg = (output_reg && (output_reg != opB->reg)) ? output_reg : ALLOC_GPR();
+                opOut->reg = (output_reg && (output_reg != opB->reg))
+                    ? output_reg
+                    : ALLOC_GPR();
                 opOut->regOffset = opB->reg;
                 add_immediate(opOut->reg, opA->reg, opA->object, LOW_PART(opA->immOffset));
             } else if (opB->reg == _FP_ || opB->reg == _CALLER_SP_) {
                 opOut->optype = OpndType_GPR_Indexed;
-                opOut->reg = (output_reg && (output_reg != opA->reg)) ? output_reg : ALLOC_GPR();
+                opOut->reg = (output_reg && (output_reg != opA->reg))
+                    ? output_reg
+                    : ALLOC_GPR();
                 opOut->regOffset = opA->reg;
                 add_immediate(opOut->reg, opB->reg, opA->object, LOW_PART(opA->immOffset));
             } else if (opA->object) {
                 opOut->optype = OpndType_GPR_Indexed;
-                opOut->reg = (output_reg && (output_reg != opB->reg)) ? output_reg : ALLOC_GPR();
+                opOut->reg = (output_reg && (output_reg != opB->reg))
+                    ? output_reg
+                    : ALLOC_GPR();
                 opOut->regOffset = opB->reg;
                 add_immediate(opOut->reg, opA->reg, opA->object, LOW_PART(opA->immOffset));
             } else {
@@ -197,23 +201,27 @@ void combine(Operand* opA, Operand* opB, short output_reg, Operand* opOut) {
             }
             break;
         case COMBO_OP(OpndType_GPR, OpndType_GPR_Indexed):
-            tmp_op = opA;
+            swapOp = opA;
             opA = opB;
-            opB = tmp_op;
+            opB = swapOp;
         case COMBO_OP(OpndType_GPR_Indexed, OpndType_GPR):
             opOut->optype = OpndType_GPR_Indexed;
             opOut->reg = opA->reg;
-            opOut->regOffset = (output_reg && (output_reg != opA->reg)) ? output_reg : ALLOC_GPR();
+            opOut->regOffset = (output_reg && (output_reg != opA->reg))
+                ? output_reg
+                : ALLOC_GPR();
             emitpcode(PC_ADD, opOut->regOffset, opA->regOffset, opB->reg);
             break;
         case COMBO_OP(OpndType_GPR_ImmOffset, OpndType_GPR_Indexed):
-            tmp_op = opA;
+            swapOp = opA;
             opA = opB;
-            opB = tmp_op;
+            opB = swapOp;
         case COMBO_OP(OpndType_GPR_Indexed, OpndType_GPR_ImmOffset):
             if (opB->object) {
                 opOut->optype = OpndType_GPR_Indexed;
-                opOut->reg = (output_reg && (output_reg != opB->reg)) ? output_reg : ALLOC_GPR();
+                opOut->reg = (output_reg && (output_reg != opB->reg))
+                    ? output_reg
+                    : ALLOC_GPR();
                 opOut->regOffset = ALLOC_GPR();
                 emitpcode(PC_ADD, opOut->reg, opA->reg, opA->regOffset);
                 add_immediate(opOut->regOffset, opB->reg, opB->object, opB->immOffset);
@@ -221,7 +229,9 @@ void combine(Operand* opA, Operand* opB, short output_reg, Operand* opOut) {
                 opOut->optype = OpndType_GPR_ImmOffset;
                 opOut->immOffset = opB->immOffset;
                 opOut->object = opB->object;
-                opOut->reg = (output_reg && (output_reg != opB->reg)) ? output_reg : ALLOC_GPR();
+                opOut->reg = (output_reg && (output_reg != opB->reg))
+                    ? output_reg
+                    : ALLOC_GPR();
                 emitpcode(PC_ADD, opOut->reg, opA->reg, opA->regOffset);
                 emitpcode(PC_ADD, opOut->reg, opOut->reg, opB->reg);
             }
@@ -229,15 +239,16 @@ void combine(Operand* opA, Operand* opB, short output_reg, Operand* opOut) {
         case COMBO_OP(OpndType_GPR_Indexed, OpndType_GPR_Indexed):
             opOut->optype = OpndType_GPR_Indexed;
             opOut->reg = opA->reg;
-            opOut->regOffset =
-                (output_reg && (output_reg != opA->regOffset)) ? output_reg : ALLOC_GPR();
+            opOut->regOffset = (output_reg && (output_reg != opA->regOffset))
+                ? output_reg
+                : ALLOC_GPR();
             emitpcode(PC_ADD, opOut->regOffset, opB->reg, opB->regOffset);
             emitpcode(PC_ADD, opOut->regOffset, opOut->regOffset, opA->regOffset);
             break;
         case COMBO_OP(OpndType_GPR_ImmOffset, OpndType_Absolute):
-            tmp_op = opA;
+            swapOp = opA;
             opA = opB;
-            opB = tmp_op;
+            opB = swapOp;
         case COMBO_OP(OpndType_Absolute, OpndType_GPR_ImmOffset):
             if (!opB->object) {
                 opOut->optype = OpndType_GPR_ImmOffset;
@@ -262,8 +273,7 @@ void combine(Operand* opA, Operand* opB, short output_reg, Operand* opOut) {
                     }
                 }
                 break;
-            } else if (opB->object->datatype ==
-                       DLOCAL &&
+            } else if (opB->object->datatype == DLOCAL &&
                        can_add_displ_to_local(opB->object, opB->immOffset + opA->immediate)) {
                 opOut->optype = OpndType_GPR_ImmOffset;
                 opOut->object = opB->object;
@@ -275,14 +285,14 @@ void combine(Operand* opA, Operand* opB, short output_reg, Operand* opOut) {
                 add_immediate(opOut->reg, opB->reg, opB->object, opB->immOffset);
                 opB->optype = OpndType_GPR;
                 opB->reg = opOut->reg;
-                tmp_op = opA;
+                swapOp = opA;
                 opA = opB;
-                opB = tmp_op;
+                opB = swapOp;
             }
         case COMBO_OP(OpndType_GPR, OpndType_Absolute):
-            tmp_op = opA;
+            swapOp = opA;
             opA = opB;
-            opB = tmp_op;
+            opB = swapOp;
         case COMBO_OP(OpndType_Absolute, OpndType_GPR):
             opOut->optype = (LOW_PART(opA->immediate) != 0) ? OpndType_GPR_ImmOffset : OpndType_GPR;
             opOut->immOffset = LOW_PART(opA->immediate);
@@ -295,13 +305,15 @@ void combine(Operand* opA, Operand* opB, short output_reg, Operand* opOut) {
             }
             break;
         case COMBO_OP(OpndType_GPR_Indexed, OpndType_Absolute):
-            tmp_op = opA;
+            swapOp = opA;
             opA = opB;
-            opB = tmp_op;
+            opB = swapOp;
         case COMBO_OP(OpndType_Absolute, OpndType_GPR_Indexed):
             opOut->optype = OpndType_GPR_Indexed;
             opOut->reg = opB->reg;
-            opOut->regOffset = (output_reg && (output_reg != opB->reg)) ? output_reg : ALLOC_GPR();
+            opOut->regOffset = (output_reg && (output_reg != opB->reg))
+                ? output_reg
+                : ALLOC_GPR();
             if (!HIGH_PART(opA->immediate)) {
                 emitpcode(PC_ADDI, opOut->regOffset, opB->regOffset, 0, LOW_PART(opA->immediate));
             } else {
@@ -327,13 +339,13 @@ void combine(Operand* opA, Operand* opB, short output_reg, Operand* opOut) {
 void coerce_to_addressable(Operand* op) {
     UInt32 offset;
     short reg;
-    short flag;
-    short tmp;
+    short isIndirect;
+    short hiReg;
     Object* obj;
 
-    flag = FALSE;
+    isIndirect = FALSE;
     obj = op->object;
-    tmp = 0;
+    hiReg = 0;
 
     switch (op->optype) {
         case OpndType_GPR:
@@ -347,7 +359,7 @@ void coerce_to_addressable(Operand* op) {
         case OpndType_IndirectGPR_Indexed:
             break;
         case OpndType_IndirectSymbol:
-            flag = TRUE;
+            isIndirect = TRUE;
         case OpndType_Symbol:
             if (obj->datatype == DLOCAL) {
                 if (!local_is_16bit_offset(obj)) {
@@ -367,25 +379,26 @@ void coerce_to_addressable(Operand* op) {
                     op->reg = 0;
                     op->immOffset = obj->u.address;
                 } else {
-                    emitpcode(PC_LIS, op->reg = ALLOC_GPR(), 0, (short)HIGH_PART(offset));
+                    emitpcode(
+                        PC_LIS,
+                        op->reg = ALLOC_GPR(),
+                        0,
+                        (short)HIGH_PART(offset)
+                    );
                     op->immOffset = LOW_PART(obj->u.address);
                 }
                 op->object = obj;
                 op->optype = OpndType_GPR_ImmOffset;
             } else {
                 if (is_pooled_object(obj)) {
-                    // 2.6: a pooled constant is reached through its pool's anchor register
                     reg = GetPooledObjectRegister(obj);
                 } else {
-                    // 2.6: small data is reached through its section's base register (r2 or
-                    // r13), other data through its address
                     reg = base_register(obj);
                     if (!is_16bitdata(obj)) {
-                        ORACLE_PROBE(OracleProbe_Binding(op, obj, NULL));
-                        tmp = ALLOC_GPR();
+                        hiReg = ALLOC_GPR();
                         reg = ALLOC_GPR();
-                        op_absolute_ha(tmp, 0, obj, 0, 1);
-                        add_immediate_lo(reg, tmp, obj, 0, 1);
+                        op_absolute_ha(hiReg, 0, obj, 0, 1);
+                        add_immediate_lo(reg, hiReg, obj, 0, 1);
                         op->object = NULL;
                     } else if (!reg) {
                         reg = ALLOC_GPR();
@@ -396,7 +409,7 @@ void coerce_to_addressable(Operand* op) {
                 op->optype = OpndType_GPR_ImmOffset;
                 op->reg = reg;
             }
-            if (flag) {
+            if (isIndirect) {
                 if (op->optype == OpndType_GPR_ImmOffset) {
                     op->optype = OpndType_IndirectGPR_ImmOffset;
                 } else {
@@ -411,7 +424,7 @@ void coerce_to_addressable(Operand* op) {
 
 void Coerce_to_register(Operand* op, Type* type, short output_reg) {
     short opcode;
-    short tmp;
+    short hiReg;
     short cond_neg;
     short reg;
     short cond;
@@ -444,20 +457,18 @@ void Coerce_to_register(Operand* op, Type* type, short output_reg) {
             if (FITS_IN_SHORT(offset)) {
                 emitpcode(PC_LI, reg, offset);
             } else {
-                tmp = reg;
+                hiReg = reg;
                 if (copts.optimizationlevel > 1 && LOW_PART(offset)) {
-                    tmp = ALLOC_GPR();
+                    hiReg = ALLOC_GPR();
                 }
-                emitpcode(PC_LIS, tmp, 0, (short)HIGH_PART(offset));
+                emitpcode(PC_LIS, hiReg, 0, (short)HIGH_PART(offset));
                 if (LOW_PART(offset)) {
-                    emitpcode(PC_ADDI, reg, tmp, 0, LOW_PART(offset));
+                    emitpcode(PC_ADDI, reg, hiReg, 0, LOW_PART(offset));
                 }
             }
             break;
         case OpndType_IndirectGPR_ImmOffset:
             reg = output_reg ? output_reg : ALLOC_GPR();
-            // TODO: 2.6's register allocation puts this case's opcode in the variable the CRField
-            // case computes its bit offset in (Pro7 has `opcode`); `bit_offset` stands in for it.
             bit_offset = PC_LWZ;
             if (IS_TYPE_INT(type) || IS_TYPE_ENUM(type)) {
                 switch (type->size) {
@@ -534,7 +545,6 @@ void Coerce_to_register(Operand* op, Type* type, short output_reg) {
                 default:
                     CError_FATAL(713);
             }
-            // 2.6 computes the bit offset in 16 bits (Pro7: `cond + (op->reg << 2)`)
             bit_offset = op->reg;
             bit_offset <<= 2;
             bit_offset += cond;
@@ -684,7 +694,7 @@ void Coerce_to_fp_register(Operand* op, Type* type, short output_reg) {
     short reg;
 
     if (TYPE_IS_SOFT_FLOAT(type)) {
-        PPCError_ErrorTerm(PPCErrorStr132);
+        PPCError_ErrorTerm(PPCERR_NO_HARDWARE_FLOAT);
     }
 
     coerce_to_addressable(op);
@@ -696,7 +706,6 @@ void Coerce_to_fp_register(Operand* op, Type* type, short output_reg) {
         case OpndType_IndirectGPR_ImmOffset:
             reg = output_reg ? output_reg : ALLOC_FPR();
             if (IS_TYPE_VEC2X32FLOAT(type)) {
-                // 2.6: a paired single (psq_l with GQR0)
                 gecko_load_store_register(reg, op->reg, op->object, op->immOffset, 0, SPR_GQR0, 1);
             } else {
                 load_store_register(
@@ -778,7 +787,6 @@ void Coerce_to_v_register(Operand* op, Type* type, short output_reg) {
     op->reg = reg;
 }
 
-// 2.6: stores a Gekko paired single (psq_st / psq_stx with the quantization register GQR0)
 void vectorstore(short reg, Operand* op, Type* type) {
     coerce_to_addressable(op);
     if (IS_TYPE_VEC2X32FLOAT(type)) {
@@ -854,7 +862,7 @@ void store(short reg, Operand* op, Type* type) {
 }
 
 void store_pair(short reg, short regHi, Operand* op, Type* type) {
-    short tmp;
+    short addrReg;
 
     CError_ASSERT(1156, TYPE_IS_GPR_PAIR(type));
 
@@ -867,11 +875,11 @@ void store_pair(short reg, short regHi, Operand* op, Type* type) {
             setpcodeflags(op->flags);
             break;
         case OpndType_IndirectGPR_Indexed:
-            tmp = ALLOC_GPR();
-            emitpcode(PC_ADD, tmp, op->reg, op->regOffset);
-            load_store_register(PC_STW, reg, tmp, NULL, low_offset);
+            addrReg = ALLOC_GPR();
+            emitpcode(PC_ADD, addrReg, op->reg, op->regOffset);
+            load_store_register(PC_STW, reg, addrReg, NULL, low_offset);
             setpcodeflags(op->flags);
-            load_store_register(PC_STW, regHi, tmp, NULL, high_offset);
+            load_store_register(PC_STW, regHi, addrReg, NULL, high_offset);
             setpcodeflags(op->flags);
             break;
         default:
@@ -881,7 +889,7 @@ void store_pair(short reg, short regHi, Operand* op, Type* type) {
 
 void store_fp(short reg, Operand* op, Type* type) {
     if (TYPE_IS_SOFT_FLOAT(type)) {
-        PPCError_ErrorTerm(PPCErrorStr132);
+        PPCError_ErrorTerm(PPCERR_NO_HARDWARE_FLOAT);
     }
 
     coerce_to_addressable(op);
@@ -901,7 +909,7 @@ void store_fp(short reg, Operand* op, Type* type) {
     }
 }
 
-void store_v(short reg, Operand* op, Type* tstruct) {
+void store_v(short reg, Operand* op, Type* type) {
     coerce_to_addressable(op);
     switch (op->optype) {
         case OpndType_IndirectGPR_ImmOffset:
@@ -917,7 +925,7 @@ void store_v(short reg, Operand* op, Type* tstruct) {
     }
 }
 
-static Boolean last_matches_rlwinm_or_exts(Operand* op, short opcode, short b, short c) {
+static Boolean last_matches_rlwinm_or_exts(Operand* op, short opcode, short mb, short me) {
     PCode* pc;
 
     if (pclastblock->pcodeCount <= 0) {
@@ -925,10 +933,8 @@ static Boolean last_matches_rlwinm_or_exts(Operand* op, short opcode, short b, s
     }
 
     pc = pclastblock->lastPCode;
-    if (pc->args[0].kind !=
-        PCOp_REGISTER ||
-        pc->args[0].arg !=
-        RegClass_GPR ||
+    if (pc->args[0].kind != PCOp_REGISTER ||
+        pc->args[0].arg != RegClass_GPR ||
         pc->args[0].data.reg.reg != op->reg) {
         return FALSE;
     }
@@ -938,11 +944,9 @@ static Boolean last_matches_rlwinm_or_exts(Operand* op, short opcode, short b, s
     }
 
     if (opcode == PC_RLWINM) {
-        if (pc->args[2].data.imm.value !=
-            0 ||
-            pc->args[3].data.imm.value !=
-            b ||
-            pc->args[4].data.imm.value != c) {
+        if (pc->args[2].data.imm.value != 0 ||
+            pc->args[3].data.imm.value != mb ||
+            pc->args[4].data.imm.value != me) {
             return FALSE;
         }
     }
@@ -953,8 +957,6 @@ static Boolean last_matches_rlwinm_or_exts(Operand* op, short opcode, short b, s
 void extend32(Operand* op, Type* type, short output_reg) {
     int loaded;
     int reg;
-    // 2.6 computes each result register into this SInt32 and copies it (Pro7 assigns `reg`
-    // directly, which does not match)
     SInt32 tmp;
 
     loaded = op->optype >= OpndType_IndirectGPR_ImmOffset;
@@ -1013,7 +1015,7 @@ void extend32(Operand* op, Type* type, short output_reg) {
 
 void extend64(Operand* op, Type* type, short output_reg, short output_regHi) {
     short regHi;
-    short tmp;
+    short loReg;
 
     if (op->optype != OpndType_GPR) {
         Coerce_to_register(op, type, output_reg);
@@ -1021,9 +1023,9 @@ void extend64(Operand* op, Type* type, short output_reg, short output_regHi) {
 
     regHi = output_regHi ? output_regHi : ALLOC_GPR();
     if (regHi == op->reg) {
-        tmp = output_reg ? output_reg : ALLOC_GPR();
-        emitpcode(PC_MR, tmp, op->reg);
-        op->reg = tmp;
+        loReg = output_reg ? output_reg : ALLOC_GPR();
+        emitpcode(PC_MR, loReg, op->reg);
+        op->reg = loReg;
     }
 
     if (is_unsigned(type)) {
@@ -1039,8 +1041,8 @@ void extend64(Operand* op, Type* type, short output_reg, short output_regHi) {
 void load_floating_constant(short reg, Type* type, Float* data) {
     Object* object;
     Operand op1;
-    Operand op2;
-    Operand op3;
+    Operand baseOp;
+    Operand offsetOp;
     SInt32 offset = 0;
 
     memclrw(&op1, sizeof(Operand));
@@ -1048,14 +1050,14 @@ void load_floating_constant(short reg, Type* type, Float* data) {
     symbol_operand(&op1, object);
 
     if (offset) {
-        op2 = op1;
-        memclrw(&op3, sizeof(Operand));
-        op3.optype = OpndType_Absolute;
-        op3.immediate = offset;
-        if (op2.optype != OpndType_GPR) {
-            Coerce_to_register(&op2, TYPE(&void_ptr), 0);
+        baseOp = op1;
+        memclrw(&offsetOp, sizeof(Operand));
+        offsetOp.optype = OpndType_Absolute;
+        offsetOp.immediate = offset;
+        if (baseOp.optype != OpndType_GPR) {
+            Coerce_to_register(&baseOp, TYPE(&void_ptr), 0);
         }
-        combine(&op2, &op3, 0, &op1);
+        combine(&baseOp, &offsetOp, 0, &op1);
     }
 
     indirect(&op1, NULL);
@@ -1068,7 +1070,7 @@ void convert_integer_to_floating(Operand* op, Boolean is_single, short output_re
     Float d;
     Operand temp_op;
     int const_reg;
-    int tmp_reg;
+    int word_reg;
     int work_reg;
     int result_reg;
     short opcode;
@@ -1079,14 +1081,16 @@ void convert_integer_to_floating(Operand* op, Boolean is_single, short output_re
 
     load_floating_constant(const_reg = ALLOC_FPR(), TYPE(&stdouble), &d);
 
-    tmp_reg = ALLOC_GPR();
-    emitpcode(PC_XORIS, tmp_reg, op->reg, 0x8000);
-    load_store_register(PC_STW, tmp_reg, temp_op.reg, temp_op.object, low_offset);
+    word_reg = ALLOC_GPR();
+    emitpcode(PC_XORIS, word_reg, op->reg, 0x8000);
+    load_store_register(PC_STW, word_reg, temp_op.reg, temp_op.object, low_offset);
 
-    emitpcode(PC_LIS, tmp_reg = ALLOC_GPR(), 0, 0x4330);
-    load_store_register(PC_STW, tmp_reg, temp_op.reg, temp_op.object, high_offset);
+    emitpcode(PC_LIS, word_reg = ALLOC_GPR(), 0, 0x4330);
+    load_store_register(PC_STW, word_reg, temp_op.reg, temp_op.object, high_offset);
 
-    load_store_register(PC_LFD, work_reg = ALLOC_FPR(), temp_op.reg, temp_op.object, 0);
+    load_store_register(
+        PC_LFD, work_reg = ALLOC_FPR(), temp_op.reg, temp_op.object, 0
+    );
 
     result_reg = output_reg ? output_reg : ALLOC_FPR();
     if (is_single != 0) {
@@ -1104,7 +1108,7 @@ void convert_unsigned_to_floating(Operand* op, Boolean is_single, short output_r
     Float d;
     Operand temp_op;
     int const_reg;
-    int tmp_reg;
+    int word_reg;
     int work_reg;
     int result_reg;
     short opcode;
@@ -1117,10 +1121,12 @@ void convert_unsigned_to_floating(Operand* op, Boolean is_single, short output_r
 
     load_store_register(PC_STW, op->reg, temp_op.reg, temp_op.object, low_offset);
 
-    emitpcode(PC_LIS, tmp_reg = ALLOC_GPR(), 0, 0x4330);
-    load_store_register(PC_STW, tmp_reg, temp_op.reg, temp_op.object, high_offset);
+    emitpcode(PC_LIS, word_reg = ALLOC_GPR(), 0, 0x4330);
+    load_store_register(PC_STW, word_reg, temp_op.reg, temp_op.object, high_offset);
 
-    load_store_register(PC_LFD, work_reg = ALLOC_FPR(), temp_op.reg, temp_op.object, 0);
+    load_store_register(
+        PC_LFD, work_reg = ALLOC_FPR(), temp_op.reg, temp_op.object, 0
+    );
 
     result_reg = output_reg ? output_reg : ALLOC_FPR();
     if (is_single != 0) {
@@ -1136,15 +1142,15 @@ void convert_unsigned_to_floating(Operand* op, Boolean is_single, short output_r
 
 void convert_floating_to_integer(Operand* op, short output_reg) {
     Operand temp_op;
-    int tmp_reg;
+    int converted_reg;
     int result_reg;
 
     symbol_operand(&temp_op, maketemporary(TYPE(&stdouble)));
     coerce_to_addressable(&temp_op);
 
-    tmp_reg = ALLOC_FPR();
-    emitpcode(PC_FCTIWZ, tmp_reg, op->reg);
-    load_store_register(PC_STFD, tmp_reg, temp_op.reg, temp_op.object, 0);
+    converted_reg = ALLOC_FPR();
+    emitpcode(PC_FCTIWZ, converted_reg, op->reg);
+    load_store_register(PC_STFD, converted_reg, temp_op.reg, temp_op.object, 0);
 
     result_reg = output_reg ? output_reg : ALLOC_GPR();
     load_store_register(PC_LWZ, result_reg, temp_op.reg, temp_op.object, low_offset);
@@ -1156,7 +1162,6 @@ void convert_floating_to_integer(Operand* op, short output_reg) {
 void convert_floating_to_unsigned(Operand* op, short output_reg) {
     static UInt32 used_regs[RegClassMax] = {0, 0, 0, 2, 0};
 
-    // the cast is 2.6's: it compares the register as an int (Pro7's plain test does not match)
     if ((int)op->reg != 1) {
         emitpcode(PC_FMR, 1, op->reg);
     }
@@ -1173,16 +1178,16 @@ void extract_bitfield(
 ) {
     int start;
     int offset;
-    int tmp_reg;
+    int rotated_reg;
     int output;
-    TypeBitfield tmp;
+    TypeBitfield reversed;
 
     offset = tbitfield->bitlength;
     output = output_reg ? output_reg : ALLOC_GPR();
     if (copts.littleendian) {
-        tmp = *tbitfield;
-        tbitfield = &tmp;
-        CABI_ReverseBitField(&tmp);
+        reversed = *tbitfield;
+        tbitfield = &reversed;
+        CABI_ReverseBitField(&reversed);
     }
     start = tbitfield->offset + (32 - (tbitfield->bitfieldtype->size * 8));
     if (is_unsigned(tbitfield->bitfieldtype)) {
@@ -1190,9 +1195,9 @@ void extract_bitfield(
     } else if (start == 0) {
         emitpcode(PC_SRAWI, output, input_op->reg, 32 - offset);
     } else {
-        tmp_reg = ALLOC_GPR();
-        emitpcode(PC_RLWINM, tmp_reg, input_op->reg, start & 31, 0, offset);
-        emitpcode(PC_SRAWI, output, tmp_reg, 32 - offset);
+        rotated_reg = ALLOC_GPR();
+        emitpcode(PC_RLWINM, rotated_reg, input_op->reg, start & 31, 0, offset);
+        emitpcode(PC_SRAWI, output, rotated_reg, 32 - offset);
     }
 
     output_op->optype = OpndType_GPR;
@@ -1200,14 +1205,14 @@ void extract_bitfield(
 }
 
 void insert_bitfield(short reg, Operand* op, TypeBitfield* tbitfield) {
-    TypeBitfield tmp;
+    TypeBitfield reversed;
     int start = (32 - (tbitfield->bitfieldtype->size * 8)) + tbitfield->offset;
     int offset = tbitfield->bitlength;
 
     if (copts.littleendian) {
-        tmp = *tbitfield;
-        CABI_ReverseBitField(&tmp);
-        start = (32 - (tmp.bitfieldtype->size * 8)) + tmp.offset;
+        reversed = *tbitfield;
+        CABI_ReverseBitField(&reversed);
+        start = (32 - (reversed.bitfieldtype->size * 8)) + reversed.offset;
     }
     emitpcode(PC_RLWIMI, op->reg, reg, 32 - (start + offset), start, start + offset - 1);
 }
@@ -1229,9 +1234,6 @@ void load_address(short dest_reg, Operand* op) {
     }
 }
 
-// 2.6: extract_bitfield for a 64-bit bitfield (input is a GPR pair)
-// TODO: not exact (84%): register choice, and 2.6 updates `offset`/`bitlength` in their stack
-// slots and tail-merges the signed paths' srawi differently; tried: short reg/regHi
 void I8_extract_bitfield(
     Operand* input, TypeBitfield* tbitfield, short output_reg, short output_regHi, Operand* output
 ) {
@@ -1325,14 +1327,12 @@ void I8_extract_bitfield(
             emitpcode(PC_RLWINM, reg, input->reg, (tmp + bitlength) & 31, 32 - bitlength, 31);
             goto done;
         }
-        // the original's test (`cmp` of `offset`'s slot with 0): `offset` is 32 or more here, so the
-        // srawi-only path is dead; `tmp == 0` was probably meant
         if (offset == 0) {
             emitpcode(PC_SRAWI, reg, input->reg, 32 - bitlength);
         } else {
-            int tmp2 = ALLOC_GPR();
-            emitpcode(PC_RLWINM, tmp2, input->reg, tmp & 31, 0, bitlength);
-            emitpcode(PC_SRAWI, reg, tmp2, 32 - bitlength);
+            int rotatedReg = ALLOC_GPR();
+            emitpcode(PC_RLWINM, rotatedReg, input->reg, tmp & 31, 0, bitlength);
+            emitpcode(PC_SRAWI, reg, rotatedReg, 32 - bitlength);
         }
     }
     emitpcode(PC_SRAWI, regHi, reg, 31);
@@ -1342,7 +1342,6 @@ done:
     output->regHi = regHi;
 }
 
-// 2.6: insert_bitfield for a 64-bit bitfield (op is a GPR pair)
 void I8_insert_bitfield(short reg, short regHi, Operand* op, TypeBitfield* tbitfield) {
     int bitlength;
     int offset;

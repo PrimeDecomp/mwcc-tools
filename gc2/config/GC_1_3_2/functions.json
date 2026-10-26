@@ -180,6 +180,12 @@
     "source": "src/runtime/ExceptionX86.cpp"
   },
   {
+    "name": "__get_MSL_init_count",
+    "address": "0x00401dd0",
+    "size": 6,
+    "source": "src/msl/startup_win32.c"
+  },
+  {
     "name": "_CRTStartup",
     "address": "0x00401de0",
     "size": 455,
@@ -726,10 +732,22 @@
     "source": "src/driver/ClientGlue.c"
   },
   {
+    "name": "CmdLine_Driver",
+    "address": "0x00405310",
+    "size": 6,
+    "source": "src/driver/ClientGlue.c"
+  },
+  {
     "name": "CmdLine_Terminate",
     "address": "0x00405320",
     "size": 14,
     "source": "src/driver/ClientGlue.c"
+  },
+  {
+    "name": "RegisterStaticParserPlugins",
+    "address": "0x0040532e",
+    "size": 16,
+    "source": "src/driver/StaticParserGlue.c"
   },
   {
     "name": "RegisterStaticParserResources",
@@ -1458,6 +1476,12 @@
     "source": "src/driver/CLPlugins.c"
   },
   {
+    "name": "CLT_dummymain",
+    "address": "0x0040a950",
+    "size": 5,
+    "source": "src/driver/CLMain.c"
+  },
+  {
     "name": "CLT_GetDropInFlags",
     "address": "0x0040a960",
     "size": 25,
@@ -1491,6 +1515,12 @@
     "name": "CLT_GetFileTypeMappings",
     "address": "0x0040aa40",
     "size": 15,
+    "source": "src/driver/CLMain.c"
+  },
+  {
+    "name": "RegisterStaticCmdLinePlugin",
+    "address": "0x0040aa50",
+    "size": 11,
     "source": "src/driver/CLMain.c"
   },
   {
@@ -1854,6 +1884,18 @@
     "source": "src/driver/libimp-eabi-ppc.c"
   },
   {
+    "name": "RegisterStaticLibImporterPlugin",
+    "address": "0x0040c230",
+    "size": 16,
+    "source": "src/driver/libimp-eabi-ppc.c"
+  },
+  {
+    "name": "RegisterLibImporterResources",
+    "address": "0x0040c240",
+    "size": 6,
+    "source": "src/driver/libimp-eabi-ppc.c"
+  },
+  {
     "name": "find_temp_info",
     "address": "0x0040c250",
     "size": 35,
@@ -1896,6 +1938,18 @@
     "source": "src/msl/file_io_win32_g.c"
   },
   {
+    "name": "__convert_from_newlines",
+    "address": "0x0040c440",
+    "size": 1,
+    "source": "src/msl/buffer_io_g.c"
+  },
+  {
+    "name": "__convert_to_newlines",
+    "address": "0x0040c450",
+    "size": 1,
+    "source": "src/msl/buffer_io_g.c"
+  },
+  {
     "name": "__prep_buffer",
     "address": "0x0040c460",
     "size": 32,
@@ -1918,6 +1972,24 @@
     "address": "0x0040c590",
     "size": 276,
     "source": "src/msl/buffer_io_g.c"
+  },
+  {
+    "name": "__read_string",
+    "address": "0x0040c6b0",
+    "size": 6,
+    "source": "src/msl/string_io.c"
+  },
+  {
+    "name": "__write_string",
+    "address": "0x0040c6c0",
+    "size": 3,
+    "source": "src/msl/string_io.c"
+  },
+  {
+    "name": "__close_string",
+    "address": "0x0040c6d0",
+    "size": 3,
+    "source": "src/msl/string_io.c"
   },
   {
     "name": "fclose",
@@ -2001,18 +2073,6 @@
     "name": "AddStringToHandle",
     "address": "0x0040d1b9",
     "size": 37,
-    "source": "src/driver/ParserHelpers.c"
-  },
-  {
-    "name": "Opt_PrintVersion",
-    "address": "0x0040d1de",
-    "size": 12,
-    "source": "src/driver/ParserHelpers.c"
-  },
-  {
-    "name": "Opt_SavePrefs",
-    "address": "0x0040d1ea",
-    "size": 16,
     "source": "src/driver/ParserHelpers.c"
   },
   {
@@ -2376,6 +2436,12 @@
     "source": "src/driver/Arguments.c"
   },
   {
+    "name": "Arg_Reset",
+    "address": "0x0040fc4b",
+    "size": 9,
+    "source": "src/driver/Arguments.c"
+  },
+  {
     "name": "Arg_PeekToken",
     "address": "0x0040fc54",
     "size": 32,
@@ -2484,6 +2550,12 @@
     "source": "src/msl/misc_io.c"
   },
   {
+    "name": "__stdio_atexit",
+    "address": "0x00410120",
+    "size": 11,
+    "source": "src/msl/misc_io.c"
+  },
+  {
     "name": "_ftell",
     "address": "0x00410130",
     "size": 147,
@@ -2541,6 +2613,12 @@
     "name": "time_g_clear_tm",
     "address": "0x004106b0",
     "size": 67,
+    "source": "src/msl/time_g.c"
+  },
+  {
+    "name": "clock",
+    "address": "0x00410700",
+    "size": 6,
     "source": "src/msl/time_g.c"
   },
   {
@@ -2649,6 +2727,12 @@
     "name": "OS_Status",
     "address": "0x00411a00",
     "size": 69,
+    "source": "src/driver/MsDos.c"
+  },
+  {
+    "name": "OS_SetFileType",
+    "address": "0x00411a50",
+    "size": 5,
     "source": "src/driver/MsDos.c"
   },
   {
@@ -2850,6 +2934,12 @@
     "source": "src/driver/MsDos.c"
   },
   {
+    "name": "OS_IsLink",
+    "address": "0x00412e90",
+    "size": 5,
+    "source": "src/driver/MsDos.c"
+  },
+  {
     "name": "OS_ResolveLink",
     "address": "0x00412ea0",
     "size": 28,
@@ -2901,6 +2991,12 @@
     "name": "OS_LockHandle",
     "address": "0x004132b0",
     "size": 38,
+    "source": "src/driver/MsDos.c"
+  },
+  {
+    "name": "OS_UnlockHandle",
+    "address": "0x004132e0",
+    "size": 3,
     "source": "src/driver/MsDos.c"
   },
   {
@@ -3384,6 +3480,24 @@
     "source": "src/driver/CLIO.c"
   },
   {
+    "name": "InitWorking",
+    "address": "0x00415d30",
+    "size": 1,
+    "source": "src/driver/CLIO.c"
+  },
+  {
+    "name": "ShowWorking",
+    "address": "0x00415d40",
+    "size": 1,
+    "source": "src/driver/CLIO.c"
+  },
+  {
+    "name": "TermWorking",
+    "address": "0x00415d50",
+    "size": 1,
+    "source": "src/driver/CLIO.c"
+  },
+  {
     "name": "CheckForUserBreak",
     "address": "0x00415d60",
     "size": 14,
@@ -3528,6 +3642,11 @@
     "source": "src/driver/CLIO.c"
   },
   {
+    "name": "GetFileVersionInfoSizeA",
+    "address": "0x0041720e",
+    "size": 6
+  },
+  {
     "name": "_chkstk",
     "address": "0x00417220",
     "size": 55,
@@ -3538,6 +3657,16 @@
     "address": "0x00417260",
     "size": 15,
     "source": "src/runtime/stackall.c"
+  },
+  {
+    "name": "GetFileVersionInfoA",
+    "address": "0x00417270",
+    "size": 6
+  },
+  {
+    "name": "VerQueryValueA",
+    "address": "0x00417276",
+    "size": 6
   },
   {
     "name": "xmalloc",
@@ -3711,6 +3840,12 @@
     "name": "delete_license",
     "address": "0x00418460",
     "size": 106,
+    "source": "src/driver/CLLicenses.c"
+  },
+  {
+    "name": "get_license_slot_count",
+    "address": "0x004184d0",
+    "size": 6,
     "source": "src/driver/CLLicenses.c"
   },
   {
@@ -4266,6 +4401,12 @@
     "source": "src/driver/Option.c"
   },
   {
+    "name": "Options_GetOptions",
+    "address": "0x0041cd8f",
+    "size": 6,
+    "source": "src/driver/Option.c"
+  },
+  {
     "name": "Options_SortOptions",
     "address": "0x0041cd95",
     "size": 213,
@@ -4377,18 +4518,6 @@
     "name": "Option_ParamWarning",
     "address": "0x0041e499",
     "size": 162,
-    "source": "src/driver/Option.c"
-  },
-  {
-    "name": "Option_OptionError",
-    "address": "0x0041e53b",
-    "size": 172,
-    "source": "src/driver/Option.c"
-  },
-  {
-    "name": "Option_OptionWarning",
-    "address": "0x0041e5e7",
-    "size": 172,
     "source": "src/driver/Option.c"
   },
   {
@@ -4599,6 +4728,18 @@
     "name": "PrintProgressFunction",
     "address": "0x0041f1d0",
     "size": 51,
+    "source": "src/driver/CCompiler.c"
+  },
+  {
+    "name": "MWC_main",
+    "address": "0x0041f210",
+    "size": 444,
+    "source": "src/driver/CCompiler.c"
+  },
+  {
+    "name": "initialize_compiler_options",
+    "address": "0x0041f3d0",
+    "size": 1016,
     "source": "src/driver/CCompiler.c"
   },
   {
@@ -4815,6 +4956,12 @@
     "name": "TargetDisplayOptimizationOptions",
     "address": "0x00421710",
     "size": 502,
+    "source": "src/driver/TargetOptimizerHelpers-eabi-ppc.c"
+  },
+  {
+    "name": "TargetSetPragmaOptimizationsToUnspecified",
+    "address": "0x00421910",
+    "size": 1,
     "source": "src/driver/TargetOptimizerHelpers-eabi-ppc.c"
   },
   {
@@ -5484,12 +5631,6 @@
     "source": "src/runtime/newop.cpp"
   },
   {
-    "name": "??1bad_alloc@std@@UAE@XZ",
-    "address": "0x00426f20",
-    "size": 15,
-    "source": "src/runtime/newop.cpp"
-  },
-  {
     "name": "??_Ebad_alloc@std@@UAE@I@Z",
     "address": "0x00426f30",
     "size": 74,
@@ -5632,6 +5773,24 @@
     "address": "0x004282d0",
     "size": 444,
     "source": "src/driver/CLCompilerLinkerDropin_V10.cpp"
+  },
+  {
+    "name": "lp_checkout",
+    "address": "0x0042848c",
+    "size": 6,
+    "source": "src/driver/LicenseImports.c"
+  },
+  {
+    "name": "lp_checkin",
+    "address": "0x00428492",
+    "size": 6,
+    "source": "src/driver/LicenseImports.c"
+  },
+  {
+    "name": "lp_errstring",
+    "address": "0x00428498",
+    "size": 6,
+    "source": "src/driver/LicenseImports.c"
   },
   {
     "name": "Path_Init",
@@ -6024,12 +6183,6 @@
     "source": "src/driver/CLIncludeFileCache.c"
   },
   {
-    "name": "Param_None",
-    "address": "0x0042a4bd",
-    "size": 4,
-    "source": "src/driver/Parameter.c"
-  },
-  {
     "name": "DescHelpParam_None",
     "address": "0x0042a4c1",
     "size": 31,
@@ -6090,21 +6243,9 @@
     "source": "src/driver/Parameter.c"
   },
   {
-    "name": "Param_OnOff",
-    "address": "0x0042ad1f",
-    "size": 111,
-    "source": "src/driver/Parameter.c"
-  },
-  {
     "name": "DescHelpParam_OffOn",
     "address": "0x0042ad8e",
     "size": 92,
-    "source": "src/driver/Parameter.c"
-  },
-  {
-    "name": "Param_OffOn",
-    "address": "0x0042aded",
-    "size": 111,
     "source": "src/driver/Parameter.c"
   },
   {
@@ -6120,12 +6261,6 @@
     "source": "src/driver/Parameter.c"
   },
   {
-    "name": "DescHelpParam_Mask",
-    "address": "0x0042af6b",
-    "size": 31,
-    "source": "src/driver/Parameter.c"
-  },
-  {
     "name": "CompareParam_Mask",
     "address": "0x0042af8a",
     "size": 224,
@@ -6135,12 +6270,6 @@
     "name": "Param_Mask",
     "address": "0x0042b06a",
     "size": 442,
-    "source": "src/driver/Parameter.c"
-  },
-  {
-    "name": "DescHelpParam_Toggle",
-    "address": "0x0042b224",
-    "size": 31,
     "source": "src/driver/Parameter.c"
   },
   {
@@ -6156,12 +6285,6 @@
     "source": "src/driver/Parameter.c"
   },
   {
-    "name": "DescHelpParam_Set",
-    "address": "0x0042b3d8",
-    "size": 31,
-    "source": "src/driver/Parameter.c"
-  },
-  {
     "name": "CompareParam_Set",
     "address": "0x0042b3f7",
     "size": 157,
@@ -6171,12 +6294,6 @@
     "name": "Param_Set",
     "address": "0x0042b494",
     "size": 343,
-    "source": "src/driver/Parameter.c"
-  },
-  {
-    "name": "DescHelpParam_SetString",
-    "address": "0x0042b5eb",
-    "size": 31,
     "source": "src/driver/Parameter.c"
   },
   {
@@ -6396,6 +6513,30 @@
     "source": "src/driver/Help.c"
   },
   {
+    "name": "Test_Version_Numbers",
+    "address": "0x0042d550",
+    "size": 1,
+    "source": "src/driver/CodeGenOptPPC.c"
+  },
+  {
+    "name": "CodeGen_InitBackEndOptions",
+    "address": "0x0042d560",
+    "size": 1881,
+    "source": "src/driver/CodeGenOptPPC.c"
+  },
+  {
+    "name": "CodeGen_TermCompiler",
+    "address": "0x0042dcc0",
+    "size": 1,
+    "source": "src/driver/CodeGenOptPPC.c"
+  },
+  {
+    "name": "CodeGen_InitCompiler",
+    "address": "0x0042dcd0",
+    "size": 6,
+    "source": "src/driver/CodeGenOptPPC.c"
+  },
+  {
     "name": "CodeGen_UpdateOptimizerOptions",
     "address": "0x0042dce0",
     "size": 139,
@@ -6447,6 +6588,18 @@
     "name": "CodeGen_CheckExpr",
     "address": "0x0042ea10",
     "size": 391,
+    "source": "src/backend/CodeGen.c"
+  },
+  {
+    "name": "CodeGen_ExpandSpecialMacro",
+    "address": "0x0042eba0",
+    "size": 236,
+    "source": "src/backend/CodeGen.c"
+  },
+  {
+    "name": "CodeGen_InsertSpecialMacros",
+    "address": "0x0042ec90",
+    "size": 226,
     "source": "src/backend/CodeGen.c"
   },
   {
@@ -6510,6 +6663,18 @@
     "source": "src/backend/CodeGen.c"
   },
   {
+    "name": "CodeGen_UpdateObject",
+    "address": "0x0042f8d0",
+    "size": 371,
+    "source": "src/backend/CodeGen.c"
+  },
+  {
+    "name": "CodeGen_ParsePragma",
+    "address": "0x0042fa50",
+    "size": 6445,
+    "source": "src/backend/CodeGen.c"
+  },
+  {
     "name": "pragma_scheduling",
     "address": "0x00431380",
     "size": 1352,
@@ -6525,6 +6690,12 @@
     "name": "CodeGen_ParseDeclSpec",
     "address": "0x004323b0",
     "size": 626,
+    "source": "src/backend/CodeGen.c"
+  },
+  {
+    "name": "CodeGen_SOMStub",
+    "address": "0x00432630",
+    "size": 352,
     "source": "src/backend/CodeGen.c"
   },
   {
@@ -6546,9 +6717,33 @@
     "source": "src/backend/CodeGen.c"
   },
   {
+    "name": "CodeGen_GenVDispatchThunk",
+    "address": "0x00433180",
+    "size": 389,
+    "source": "src/backend/CodeGen.c"
+  },
+  {
+    "name": "CodeGen_Generator",
+    "address": "0x00433310",
+    "size": 3519,
+    "source": "src/backend/CodeGen.c"
+  },
+  {
+    "name": "set_vr_reg_flags",
+    "address": "0x004340d0",
+    "size": 753,
+    "source": "src/backend/CodeGen.c"
+  },
+  {
     "name": "is_paired_single_operand",
     "address": "0x004343d0",
     "size": 43,
+    "source": "src/backend/CodeGen.c"
+  },
+  {
+    "name": "callprofiler",
+    "address": "0x00434400",
+    "size": 377,
     "source": "src/backend/CodeGen.c"
   },
   {
@@ -6576,9 +6771,51 @@
     "source": "src/backend/CodeGen.c"
   },
   {
+    "name": "load_TOC_pointers",
+    "address": "0x00434b80",
+    "size": 450,
+    "source": "src/backend/CodeGen.c"
+  },
+  {
+    "name": "move_assigned_argument",
+    "address": "0x00434d50",
+    "size": 2106,
+    "source": "src/backend/CodeGen.c"
+  },
+  {
+    "name": "allocate_local_VRs",
+    "address": "0x00435590",
+    "size": 436,
+    "source": "src/backend/CodeGen.c"
+  },
+  {
+    "name": "allocate_local_FPRs",
+    "address": "0x00435750",
+    "size": 510,
+    "source": "src/backend/CodeGen.c"
+  },
+  {
+    "name": "allocate_local_GPRs",
+    "address": "0x00435950",
+    "size": 769,
+    "source": "src/backend/CodeGen.c"
+  },
+  {
     "name": "allocate_local_vregs",
     "address": "0x00435c60",
     "size": 478,
+    "source": "src/backend/CodeGen.c"
+  },
+  {
+    "name": "retain_argument_register",
+    "address": "0x00435e40",
+    "size": 339,
+    "source": "src/backend/CodeGen.c"
+  },
+  {
+    "name": "process_arguments",
+    "address": "0x00435fa0",
+    "size": 565,
     "source": "src/backend/CodeGen.c"
   },
   {
@@ -6633,6 +6870,18 @@
     "name": "prependif",
     "address": "0x00436c80",
     "size": 271,
+    "source": "src/frontend/CPrep.c"
+  },
+  {
+    "name": "prepelse",
+    "address": "0x00436d90",
+    "size": 227,
+    "source": "src/frontend/CPrep.c"
+  },
+  {
+    "name": "prepelif",
+    "address": "0x00436e80",
+    "size": 195,
     "source": "src/frontend/CPrep.c"
   },
   {
@@ -6696,15 +6945,51 @@
     "source": "src/frontend/CPrep.c"
   },
   {
+    "name": "preppragma",
+    "address": "0x004388f0",
+    "size": 1969,
+    "source": "src/frontend/CPrep.c"
+  },
+  {
     "name": "pragma_message",
     "address": "0x004390b0",
     "size": 455,
     "source": "src/frontend/CPrep.c"
   },
   {
+    "name": "pragma_pack",
+    "address": "0x00439280",
+    "size": 870,
+    "source": "src/frontend/CPrep.c"
+  },
+  {
+    "name": "pragma_opt_unroll_instr_count",
+    "address": "0x004395f0",
+    "size": 330,
+    "source": "src/frontend/CPrep.c"
+  },
+  {
+    "name": "pragma_opt_unroll_count",
+    "address": "0x00439740",
+    "size": 330,
+    "source": "src/frontend/CPrep.c"
+  },
+  {
+    "name": "pragma_optimization_level",
+    "address": "0x00439890",
+    "size": 391,
+    "source": "src/frontend/CPrep.c"
+  },
+  {
     "name": "pragma_overload",
     "address": "0x00439a20",
     "size": 244,
+    "source": "src/frontend/CPrep.c"
+  },
+  {
+    "name": "pragma_options",
+    "address": "0x00439b20",
+    "size": 629,
     "source": "src/frontend/CPrep.c"
   },
   {
@@ -6741,6 +7026,12 @@
     "name": "CPrep_PragmaOnce",
     "address": "0x0043a370",
     "size": 427,
+    "source": "src/frontend/CPrep.c"
+  },
+  {
+    "name": "pragma_on_off_reset",
+    "address": "0x0043a520",
+    "size": 534,
     "source": "src/frontend/CPrep.c"
   },
   {
@@ -6807,6 +7098,12 @@
     "name": "CPrep_XpandDefinedCheck",
     "address": "0x0043bba0",
     "size": 88,
+    "source": "src/frontend/CPrep.c"
+  },
+  {
+    "name": "CPrep_CheckOption",
+    "address": "0x0043bc00",
+    "size": 502,
     "source": "src/frontend/CPrep.c"
   },
   {
@@ -6897,6 +7194,12 @@
     "name": "poptokenseq",
     "address": "0x0043d590",
     "size": 121,
+    "source": "src/frontend/CPrep.c"
+  },
+  {
+    "name": "C_Compiler",
+    "address": "0x0043d610",
+    "size": 846,
     "source": "src/frontend/CPrep.c"
   },
   {
@@ -7476,6 +7779,12 @@
     "source": "src/frontend/CompilerTools.c"
   },
   {
+    "name": "format_string",
+    "address": "0x00441cb0",
+    "size": 326,
+    "source": "src/driver/LinkErrorsPPC_EABI.c"
+  },
+  {
     "name": "linkwarning",
     "address": "0x00441e00",
     "size": 157,
@@ -7518,9 +7827,39 @@
     "source": "src/driver/COSToolsCLT.c"
   },
   {
+    "name": "COS_FreeHandle",
+    "address": "0x004420e0",
+    "size": 11,
+    "source": "src/driver/COSToolsCLT.c"
+  },
+  {
     "name": "COS_ResizeHandle",
     "address": "0x004420f0",
     "size": 30,
+    "source": "src/driver/COSToolsCLT.c"
+  },
+  {
+    "name": "COS_LockHandle",
+    "address": "0x00442110",
+    "size": 11,
+    "source": "src/driver/COSToolsCLT.c"
+  },
+  {
+    "name": "COS_LockHandleHi",
+    "address": "0x00442120",
+    "size": 11,
+    "source": "src/driver/COSToolsCLT.c"
+  },
+  {
+    "name": "COS_UnlockHandle",
+    "address": "0x00442130",
+    "size": 11,
+    "source": "src/driver/COSToolsCLT.c"
+  },
+  {
+    "name": "COS_GetTicks",
+    "address": "0x00442140",
+    "size": 6,
     "source": "src/driver/COSToolsCLT.c"
   },
   {
@@ -7581,6 +7920,12 @@
     "name": "COS_FileSetPos",
     "address": "0x00442280",
     "size": 18,
+    "source": "src/driver/COSToolsCLT.c"
+  },
+  {
+    "name": "COS_FileClose",
+    "address": "0x004422a0",
+    "size": 11,
     "source": "src/driver/COSToolsCLT.c"
   },
   {
@@ -7740,9 +8085,69 @@
     "source": "src/driver/ErrMgr.c"
   },
   {
+    "name": "gen_VECTOR128CONST",
+    "address": "0x004442d0",
+    "size": 223,
+    "source": "src/backend/InstrSelection.c"
+  },
+  {
+    "name": "I8_gen_TYPCON",
+    "address": "0x004443b0",
+    "size": 1232,
+    "source": "src/backend/InstrSelection.c"
+  },
+  {
+    "name": "I8_gen_DIV_MOD",
+    "address": "0x00444880",
+    "size": 1364,
+    "source": "src/backend/InstrSelection.c"
+  },
+  {
+    "name": "I8_gen_SHL_SHR",
+    "address": "0x00444de0",
+    "size": 688,
+    "source": "src/backend/InstrSelection.c"
+  },
+  {
+    "name": "I8_gen_condition",
+    "address": "0x00445090",
+    "size": 1738,
+    "source": "src/backend/InstrSelection.c"
+  },
+  {
+    "name": "I8_gen_INDIRECT",
+    "address": "0x00445760",
+    "size": 308,
+    "source": "src/backend/InstrSelection.c"
+  },
+  {
     "name": "I8_gen_POSTINCDEC",
     "address": "0x004458a0",
     "size": 764,
+    "source": "src/backend/InstrSelection.c"
+  },
+  {
+    "name": "I8_gen_ASS",
+    "address": "0x00445ba0",
+    "size": 690,
+    "source": "src/backend/InstrSelection.c"
+  },
+  {
+    "name": "I8_gen_MUL",
+    "address": "0x00445e60",
+    "size": 3176,
+    "source": "src/backend/InstrSelection.c"
+  },
+  {
+    "name": "I8_ShiftRightImmediate",
+    "address": "0x00446ad0",
+    "size": 1022,
+    "source": "src/backend/InstrSelection.c"
+  },
+  {
+    "name": "I8_ShiftLeftImmediate",
+    "address": "0x00446ed0",
+    "size": 417,
     "source": "src/backend/InstrSelection.c"
   },
   {
@@ -7755,6 +8160,36 @@
     "name": "I8_getbit",
     "address": "0x004470b0",
     "size": 1510,
+    "source": "src/backend/InstrSelection.c"
+  },
+  {
+    "name": "I8_gen_AND",
+    "address": "0x004476a0",
+    "size": 389,
+    "source": "src/backend/InstrSelection.c"
+  },
+  {
+    "name": "I8_gen_OR",
+    "address": "0x00447830",
+    "size": 389,
+    "source": "src/backend/InstrSelection.c"
+  },
+  {
+    "name": "I8_gen_XOR",
+    "address": "0x004479c0",
+    "size": 389,
+    "source": "src/backend/InstrSelection.c"
+  },
+  {
+    "name": "I8_gen_SUB",
+    "address": "0x00447b50",
+    "size": 1272,
+    "source": "src/backend/InstrSelection.c"
+  },
+  {
+    "name": "I8_gen_ADD",
+    "address": "0x00448050",
+    "size": 1611,
     "source": "src/backend/InstrSelection.c"
   },
   {
@@ -7806,6 +8241,36 @@
     "source": "src/backend/InstrSelection.c"
   },
   {
+    "name": "gen_negated_condition_gpr",
+    "address": "0x00449080",
+    "size": 3689,
+    "source": "src/backend/InstrSelection.c"
+  },
+  {
+    "name": "gen_condition_gpr",
+    "address": "0x00449ef0",
+    "size": 4154,
+    "source": "src/backend/InstrSelection.c"
+  },
+  {
+    "name": "gen_condition",
+    "address": "0x0044af30",
+    "size": 612,
+    "source": "src/backend/InstrSelection.c"
+  },
+  {
+    "name": "logical_expression_nobranch",
+    "address": "0x0044b1a0",
+    "size": 325,
+    "source": "src/backend/InstrSelection.c"
+  },
+  {
+    "name": "logical_expression",
+    "address": "0x0044b2f0",
+    "size": 432,
+    "source": "src/backend/InstrSelection.c"
+  },
+  {
     "name": "gen_PRECOMP",
     "address": "0x0044b4a0",
     "size": 52,
@@ -7815,6 +8280,12 @@
     "name": "gen_NULLCHECK",
     "address": "0x0044b4e0",
     "size": 420,
+    "source": "src/backend/InstrSelection.c"
+  },
+  {
+    "name": "gen_LOGICAL",
+    "address": "0x0044b690",
+    "size": 780,
     "source": "src/backend/InstrSelection.c"
   },
   {
@@ -7860,6 +8331,12 @@
     "source": "src/backend/InstrSelection.c"
   },
   {
+    "name": "or_xor_immediate",
+    "address": "0x0044c2d0",
+    "size": 257,
+    "source": "src/backend/InstrSelection.c"
+  },
+  {
     "name": "unary_operator",
     "address": "0x0044c3e0",
     "size": 143,
@@ -7878,6 +8355,12 @@
     "source": "src/backend/InstrSelection.c"
   },
   {
+    "name": "gen_UNEXPECTED",
+    "address": "0x0044c750",
+    "size": 18,
+    "source": "src/backend/InstrSelection.c"
+  },
+  {
     "name": "gen_OBJREF",
     "address": "0x0044c770",
     "size": 77,
@@ -7890,9 +8373,21 @@
     "source": "src/backend/InstrSelection.c"
   },
   {
+    "name": "gen_CONDASS",
+    "address": "0x0044c800",
+    "size": 2635,
+    "source": "src/backend/InstrSelection.c"
+  },
+  {
     "name": "CONDASS_is_ABS",
     "address": "0x0044d250",
     "size": 259,
+    "source": "src/backend/InstrSelection.c"
+  },
+  {
+    "name": "gen_COND",
+    "address": "0x0044d360",
+    "size": 5889,
     "source": "src/backend/InstrSelection.c"
   },
   {
@@ -7920,9 +8415,33 @@
     "source": "src/backend/InstrSelection.c"
   },
   {
+    "name": "gen_STRINGCONST",
+    "address": "0x0044efa0",
+    "size": 18,
+    "source": "src/backend/InstrSelection.c"
+  },
+  {
+    "name": "gen_FLOATCONST",
+    "address": "0x0044efc0",
+    "size": 57,
+    "source": "src/backend/InstrSelection.c"
+  },
+  {
     "name": "gen_INTCONST",
     "address": "0x0044f000",
     "size": 142,
+    "source": "src/backend/InstrSelection.c"
+  },
+  {
+    "name": "gen_BITFIELD",
+    "address": "0x0044f090",
+    "size": 18,
+    "source": "src/backend/InstrSelection.c"
+  },
+  {
+    "name": "gen_TYPCON",
+    "address": "0x0044f0b0",
+    "size": 2585,
     "source": "src/backend/InstrSelection.c"
   },
   {
@@ -7935,6 +8454,42 @@
     "name": "evaluate_and_skip_comma",
     "address": "0x0044fba0",
     "size": 222,
+    "source": "src/backend/InstrSelection.c"
+  },
+  {
+    "name": "gen_ASS",
+    "address": "0x0044fc80",
+    "size": 3146,
+    "source": "src/backend/InstrSelection.c"
+  },
+  {
+    "name": "gen_OR",
+    "address": "0x004508d0",
+    "size": 251,
+    "source": "src/backend/InstrSelection.c"
+  },
+  {
+    "name": "gen_XOR",
+    "address": "0x004509d0",
+    "size": 251,
+    "source": "src/backend/InstrSelection.c"
+  },
+  {
+    "name": "gen_AND",
+    "address": "0x00450ad0",
+    "size": 2247,
+    "source": "src/backend/InstrSelection.c"
+  },
+  {
+    "name": "gen_SHR",
+    "address": "0x004513a0",
+    "size": 385,
+    "source": "src/backend/InstrSelection.c"
+  },
+  {
+    "name": "gen_SHL",
+    "address": "0x00451530",
+    "size": 165,
     "source": "src/backend/InstrSelection.c"
   },
   {
@@ -7956,6 +8511,12 @@
     "source": "src/backend/InstrSelection.c"
   },
   {
+    "name": "gen_DIV",
+    "address": "0x00452310",
+    "size": 1622,
+    "source": "src/backend/InstrSelection.c"
+  },
+  {
     "name": "create_unsigned_magic",
     "address": "0x00452970",
     "size": 247,
@@ -7974,15 +8535,39 @@
     "source": "src/backend/InstrSelection.c"
   },
   {
+    "name": "gen_FORCELOAD",
+    "address": "0x00452d70",
+    "size": 365,
+    "source": "src/backend/InstrSelection.c"
+  },
+  {
+    "name": "gen_BINNOT",
+    "address": "0x00452ee0",
+    "size": 500,
+    "source": "src/backend/InstrSelection.c"
+  },
+  {
     "name": "gen_MONMIN",
     "address": "0x004530e0",
     "size": 925,
     "source": "src/backend/InstrSelection.c"
   },
   {
+    "name": "gen_INDIRECT",
+    "address": "0x00453480",
+    "size": 916,
+    "source": "src/backend/InstrSelection.c"
+  },
+  {
     "name": "gen_POSTINCDEC",
     "address": "0x00453820",
     "size": 1551,
+    "source": "src/backend/InstrSelection.c"
+  },
+  {
+    "name": "gen_REUSE",
+    "address": "0x00453e30",
+    "size": 104,
     "source": "src/backend/InstrSelection.c"
   },
   {
@@ -8097,6 +8682,12 @@
     "name": "leftLeaveOf",
     "address": "0x004559d0",
     "size": 675,
+    "source": "src/optimizer/IroEval.c"
+  },
+  {
+    "name": "IRO_EvaluateConditionals",
+    "address": "0x00455c80",
+    "size": 333,
     "source": "src/optimizer/IroEval.c"
   },
   {
@@ -8328,6 +8919,12 @@
     "source": "src/optimizer/IROUseDef.c"
   },
   {
+    "name": "SplitOffRange",
+    "address": "0x0045d500",
+    "size": 374,
+    "source": "src/optimizer/IROUseDef.c"
+  },
+  {
     "name": "AddDefToRange",
     "address": "0x0045d680",
     "size": 344,
@@ -8337,6 +8934,12 @@
     "name": "Bv_SetBit",
     "address": "0x0045d7e0",
     "size": 48,
+    "source": "src/optimizer/IROUseDef.c"
+  },
+  {
+    "name": "GetAssigned",
+    "address": "0x0045d810",
+    "size": 134,
     "source": "src/optimizer/IROUseDef.c"
   },
   {
@@ -8376,6 +8979,36 @@
     "source": "src/optimizer/IROUseDef.c"
   },
   {
+    "name": "MarkUsesByFunctionCall",
+    "address": "0x0045e4c0",
+    "size": 864,
+    "source": "src/optimizer/IROUseDef.c"
+  },
+  {
+    "name": "MarkUsesByIndirect",
+    "address": "0x0045e820",
+    "size": 594,
+    "source": "src/optimizer/IROUseDef.c"
+  },
+  {
+    "name": "PropagateOtherSelfAssignments",
+    "address": "0x0045ea80",
+    "size": 742,
+    "source": "src/optimizer/IROUseDef.c"
+  },
+  {
+    "name": "PropagateIncsAndDecs",
+    "address": "0x0045ed70",
+    "size": 838,
+    "source": "src/optimizer/IROUseDef.c"
+  },
+  {
+    "name": "UpdateUseForOtherSelfAssignment",
+    "address": "0x0045f0c0",
+    "size": 1759,
+    "source": "src/optimizer/IROUseDef.c"
+  },
+  {
     "name": "IRO_InitializeAssignmentFoldingFunctionArray",
     "address": "0x0045f7a0",
     "size": 914,
@@ -8385,6 +9018,12 @@
     "name": "IRO_InitializeNonAssignmentOpArray",
     "address": "0x0045fb40",
     "size": 667,
+    "source": "src/optimizer/IROUseDef.c"
+  },
+  {
+    "name": "UpdateUse",
+    "address": "0x0045fde0",
+    "size": 348,
     "source": "src/optimizer/IROUseDef.c"
   },
   {
@@ -8793,6 +9432,12 @@
     "name": "IRO_CheckForUserBreak",
     "address": "0x00467510",
     "size": 49,
+    "source": "src/optimizer/IroUtil.c"
+  },
+  {
+    "name": "IRO_SetupForUserBreakChecking",
+    "address": "0x00467550",
+    "size": 11,
     "source": "src/optimizer/IroUtil.c"
   },
   {
@@ -9516,6 +10161,12 @@
     "source": "src/optimizer/IroFlowgraph.c"
   },
   {
+    "name": "PointerAnalysis_ParseFunctionModifiesSpecifier",
+    "address": "0x00471270",
+    "size": 1321,
+    "source": "src/optimizer/IroPointerAnalysis.c"
+  },
+  {
     "name": "LocationSetSet_RemoveAll",
     "address": "0x004717a0",
     "size": 294,
@@ -9660,6 +10311,12 @@
     "source": "src/optimizer/IroPointerAnalysis.c"
   },
   {
+    "name": "PointerAnalysis_ParseExitPointsToSpecifier",
+    "address": "0x00474db0",
+    "size": 2318,
+    "source": "src/optimizer/IroPointerAnalysis.c"
+  },
+  {
     "name": "PointsToFunction_SimpleAdd",
     "address": "0x004756c0",
     "size": 301,
@@ -9786,9 +10443,39 @@
     "source": "src/optimizer/IroPointerAnalysis.c"
   },
   {
+    "name": "PointerAnalysis_ParseEntryPointsToSpecifier",
+    "address": "0x00478870",
+    "size": 2145,
+    "source": "src/optimizer/IroPointerAnalysis.c"
+  },
+  {
+    "name": "ParseLocationSetSet",
+    "address": "0x004790e0",
+    "size": 1198,
+    "source": "src/optimizer/IroPointerAnalysis.c"
+  },
+  {
+    "name": "ParseLocationSet",
+    "address": "0x00479590",
+    "size": 4351,
+    "source": "src/optimizer/IroPointerAnalysis.c"
+  },
+  {
     "name": "PointerAnalysis_PragmaMode",
     "address": "0x0047a690",
     "size": 236,
+    "source": "src/optimizer/IroPointerAnalysis.c"
+  },
+  {
+    "name": "PointerAnalysis_GetFunctionDependencies",
+    "address": "0x0047a780",
+    "size": 580,
+    "source": "src/optimizer/IroPointerAnalysis.c"
+  },
+  {
+    "name": "PointerAnalysis_GetFunctionKills",
+    "address": "0x0047a9d0",
+    "size": 513,
     "source": "src/optimizer/IroPointerAnalysis.c"
   },
   {
@@ -9858,6 +10545,42 @@
     "source": "src/optimizer/IroPointerAnalysis.c"
   },
   {
+    "name": "GetFunctionDepsOrKillsAction2",
+    "address": "0x0047bd70",
+    "size": 836,
+    "source": "src/optimizer/IroPointerAnalysis.c"
+  },
+  {
+    "name": "GetFunctionDepsOrKillsAction",
+    "address": "0x0047c0c0",
+    "size": 1141,
+    "source": "src/optimizer/IroPointerAnalysis.c"
+  },
+  {
+    "name": "PointerAnalysis_LookupLinearNodePointerExpr",
+    "address": "0x0047c540",
+    "size": 842,
+    "source": "src/optimizer/IroPointerAnalysis.c"
+  },
+  {
+    "name": "LookupLinearExprAction",
+    "address": "0x0047c890",
+    "size": 284,
+    "source": "src/optimizer/IroPointerAnalysis.c"
+  },
+  {
+    "name": "CreateExpressionForLocationSet",
+    "address": "0x0047c9b0",
+    "size": 1162,
+    "source": "src/optimizer/IroPointerAnalysis.c"
+  },
+  {
+    "name": "GetDefiniteObjectOfExtendedParamLoc",
+    "address": "0x0047ce40",
+    "size": 2050,
+    "source": "src/optimizer/IroPointerAnalysis.c"
+  },
+  {
     "name": "FindGlobalObjectAction",
     "address": "0x0047d650",
     "size": 106,
@@ -9873,6 +10596,12 @@
     "name": "LocationSetSet_RemoveSetAction",
     "address": "0x0047d880",
     "size": 296,
+    "source": "src/optimizer/IroPointerAnalysis.c"
+  },
+  {
+    "name": "IRO_AnalyzePointers",
+    "address": "0x0047d9b0",
+    "size": 344,
     "source": "src/optimizer/IroPointerAnalysis.c"
   },
   {
@@ -9894,6 +10623,12 @@
     "source": "src/optimizer/IroPointerAnalysis.c"
   },
   {
+    "name": "InvalidatePointsToFunctions",
+    "address": "0x0047db90",
+    "size": 497,
+    "source": "src/optimizer/IroPointerAnalysis.c"
+  },
+  {
     "name": "ObjectSet_RemoveAll",
     "address": "0x0047dd90",
     "size": 246,
@@ -9909,6 +10644,12 @@
     "name": "ObjectSet_Term",
     "address": "0x0047df00",
     "size": 290,
+    "source": "src/optimizer/IroPointerAnalysis.c"
+  },
+  {
+    "name": "PointerAnalysis_Term",
+    "address": "0x0047e030",
+    "size": 1466,
     "source": "src/optimizer/IroPointerAnalysis.c"
   },
   {
@@ -10008,6 +10749,24 @@
     "source": "src/optimizer/IroPointerAnalysis.c"
   },
   {
+    "name": "PointerAnalysis_TermAction4",
+    "address": "0x0047fa50",
+    "size": 320,
+    "source": "src/optimizer/IroPointerAnalysis.c"
+  },
+  {
+    "name": "CleansePointsToEntry",
+    "address": "0x0047fb90",
+    "size": 788,
+    "source": "src/optimizer/IroPointerAnalysis.c"
+  },
+  {
+    "name": "CleanseLocationSet",
+    "address": "0x0047feb0",
+    "size": 330,
+    "source": "src/optimizer/IroPointerAnalysis.c"
+  },
+  {
     "name": "PointerAnalysis_Init",
     "address": "0x00480000",
     "size": 497,
@@ -10032,6 +10791,12 @@
     "source": "src/optimizer/IroPointerAnalysis.c"
   },
   {
+    "name": "EvalProc",
+    "address": "0x00480640",
+    "size": 2530,
+    "source": "src/optimizer/IroPointerAnalysis.c"
+  },
+  {
     "name": "ObjectSet_SimpleAddSetAction",
     "address": "0x00481030",
     "size": 233,
@@ -10047,6 +10812,24 @@
     "name": "ObjectSet_AddSetAction",
     "address": "0x00481270",
     "size": 372,
+    "source": "src/optimizer/IroPointerAnalysis.c"
+  },
+  {
+    "name": "EvalProcAction",
+    "address": "0x004813f0",
+    "size": 1814,
+    "source": "src/optimizer/IroPointerAnalysis.c"
+  },
+  {
+    "name": "AddLocalVarsAddressedByExceptionUses",
+    "address": "0x00481b10",
+    "size": 425,
+    "source": "src/optimizer/IroPointerAnalysis.c"
+  },
+  {
+    "name": "AssignEachInPointsToFunction",
+    "address": "0x00481cc0",
+    "size": 1995,
     "source": "src/optimizer/IroPointerAnalysis.c"
   },
   {
@@ -10110,9 +10893,63 @@
     "source": "src/optimizer/IroPointerAnalysis.c"
   },
   {
+    "name": "AssignEachInPointsToFunctionAction",
+    "address": "0x00484370",
+    "size": 1047,
+    "source": "src/optimizer/IroPointerAnalysis.c"
+  },
+  {
+    "name": "EvalProcAction2",
+    "address": "0x00484790",
+    "size": 2148,
+    "source": "src/optimizer/IroPointerAnalysis.c"
+  },
+  {
+    "name": "GetPTF",
+    "address": "0x00485000",
+    "size": 1460,
+    "source": "src/optimizer/IroPointerAnalysis.c"
+  },
+  {
     "name": "PointsToFunction_Copy",
     "address": "0x004855c0",
     "size": 528,
+    "source": "src/optimizer/IroPointerAnalysis.c"
+  },
+  {
+    "name": "GetPTFAction",
+    "address": "0x004857d0",
+    "size": 606,
+    "source": "src/optimizer/IroPointerAnalysis.c"
+  },
+  {
+    "name": "GetPTFAction2",
+    "address": "0x00485a30",
+    "size": 101,
+    "source": "src/optimizer/IroPointerAnalysis.c"
+  },
+  {
+    "name": "ApplySummary",
+    "address": "0x00485aa0",
+    "size": 1468,
+    "source": "src/optimizer/IroPointerAnalysis.c"
+  },
+  {
+    "name": "ApplySummaryAction",
+    "address": "0x00486060",
+    "size": 667,
+    "source": "src/optimizer/IroPointerAnalysis.c"
+  },
+  {
+    "name": "ApplySummaryAction2",
+    "address": "0x00486300",
+    "size": 1910,
+    "source": "src/optimizer/IroPointerAnalysis.c"
+  },
+  {
+    "name": "EvalReturn",
+    "address": "0x00486a80",
+    "size": 734,
     "source": "src/optimizer/IroPointerAnalysis.c"
   },
   {
@@ -10134,15 +10971,135 @@
     "source": "src/optimizer/IroPointerAnalysis.c"
   },
   {
+    "name": "EvalAssign",
+    "address": "0x00486ee0",
+    "size": 5475,
+    "source": "src/optimizer/IroPointerAnalysis.c"
+  },
+  {
     "name": "LocationSet_InitUnknown",
     "address": "0x00488450",
     "size": 593,
     "source": "src/optimizer/IroPointerAnalysis.c"
   },
   {
+    "name": "EvalAssignAction",
+    "address": "0x004886b0",
+    "size": 1508,
+    "source": "src/optimizer/IroPointerAnalysis.c"
+  },
+  {
+    "name": "EvalAssignAction2",
+    "address": "0x00488ca0",
+    "size": 3410,
+    "source": "src/optimizer/IroPointerAnalysis.c"
+  },
+  {
+    "name": "AdjustTypesForVolatilityAction",
+    "address": "0x00489a00",
+    "size": 302,
+    "source": "src/optimizer/IroPointerAnalysis.c"
+  },
+  {
+    "name": "EvalCall",
+    "address": "0x00489b30",
+    "size": 683,
+    "source": "src/optimizer/IroPointerAnalysis.c"
+  },
+  {
+    "name": "EvalCallAction",
+    "address": "0x00489de0",
+    "size": 2200,
+    "source": "src/optimizer/IroPointerAnalysis.c"
+  },
+  {
+    "name": "FunctionArguments",
+    "address": "0x0048a680",
+    "size": 649,
+    "source": "src/optimizer/IroPointerAnalysis.c"
+  },
+  {
+    "name": "AllocatePTF",
+    "address": "0x0048a910",
+    "size": 760,
+    "source": "src/optimizer/IroPointerAnalysis.c"
+  },
+  {
+    "name": "EvalMeet",
+    "address": "0x0048ac10",
+    "size": 1517,
+    "source": "src/optimizer/IroPointerAnalysis.c"
+  },
+  {
+    "name": "EvalMeetAction",
+    "address": "0x0048b200",
+    "size": 1222,
+    "source": "src/optimizer/IroPointerAnalysis.c"
+  },
+  {
+    "name": "Assign",
+    "address": "0x0048b6d0",
+    "size": 3544,
+    "source": "src/optimizer/IroPointerAnalysis.c"
+  },
+  {
+    "name": "KillAllAliasingExtParamLocs",
+    "address": "0x0048c4b0",
+    "size": 1013,
+    "source": "src/optimizer/IroPointerAnalysis.c"
+  },
+  {
+    "name": "KillAllAddressableLocations",
+    "address": "0x0048c8b0",
+    "size": 1757,
+    "source": "src/optimizer/IroPointerAnalysis.c"
+  },
+  {
+    "name": "KillLocationsAction",
+    "address": "0x0048cf90",
+    "size": 816,
+    "source": "src/optimizer/IroPointerAnalysis.c"
+  },
+  {
+    "name": "KillAllAliasingExtParamLocsAction",
+    "address": "0x0048d2c0",
+    "size": 2762,
+    "source": "src/optimizer/IroPointerAnalysis.c"
+  },
+  {
+    "name": "KillAllAddressableLocationsAction",
+    "address": "0x0048dd90",
+    "size": 589,
+    "source": "src/optimizer/IroPointerAnalysis.c"
+  },
+  {
+    "name": "FindAliasingAction",
+    "address": "0x0048dfe0",
+    "size": 218,
+    "source": "src/optimizer/IroPointerAnalysis.c"
+  },
+  {
     "name": "FindAliasingAction2",
     "address": "0x0048e0c0",
     "size": 37,
+    "source": "src/optimizer/IroPointerAnalysis.c"
+  },
+  {
+    "name": "LocationSetsAlias",
+    "address": "0x0048e0f0",
+    "size": 1231,
+    "source": "src/optimizer/IroPointerAnalysis.c"
+  },
+  {
+    "name": "IsAddressableLocation",
+    "address": "0x0048e5c0",
+    "size": 889,
+    "source": "src/optimizer/IroPointerAnalysis.c"
+  },
+  {
+    "name": "RecordActuals",
+    "address": "0x0048e940",
+    "size": 726,
     "source": "src/optimizer/IroPointerAnalysis.c"
   },
   {
@@ -10203,6 +11160,12 @@
     "name": "CreateExtendedParamAction",
     "address": "0x0048fa90",
     "size": 471,
+    "source": "src/optimizer/IroPointerAnalysis.c"
+  },
+  {
+    "name": "Lookup",
+    "address": "0x0048fc70",
+    "size": 5808,
     "source": "src/optimizer/IroPointerAnalysis.c"
   },
   {
@@ -10296,9 +11259,21 @@
     "source": "src/optimizer/IroPointerAnalysis.c"
   },
   {
+    "name": "MatchPTFHelper",
+    "address": "0x004966b0",
+    "size": 2773,
+    "source": "src/optimizer/IroPointerAnalysis.c"
+  },
+  {
     "name": "FillInAppropriateMappingsWithExtParam",
     "address": "0x00497190",
     "size": 576,
+    "source": "src/optimizer/IroPointerAnalysis.c"
+  },
+  {
+    "name": "FillInAppropriateMappingsWithExtParamAction",
+    "address": "0x004973d0",
+    "size": 1142,
     "source": "src/optimizer/IroPointerAnalysis.c"
   },
   {
@@ -10311,6 +11286,12 @@
     "name": "StoreReturnedLocationsAction",
     "address": "0x00497aa0",
     "size": 1059,
+    "source": "src/optimizer/IroPointerAnalysis.c"
+  },
+  {
+    "name": "EvalExpr",
+    "address": "0x00497ed0",
+    "size": 11059,
     "source": "src/optimizer/IroPointerAnalysis.c"
   },
   {
@@ -10602,6 +11583,12 @@
     "source": "src/optimizer/IroLoop.c"
   },
   {
+    "name": "ReorderOperandsForReductionPattern",
+    "address": "0x004a3b30",
+    "size": 165,
+    "source": "src/optimizer/IroLoop.c"
+  },
+  {
     "name": "FindAddendForReductionPattern",
     "address": "0x004a3be0",
     "size": 298,
@@ -10662,6 +11649,18 @@
     "source": "src/optimizer/IroLoop.c"
   },
   {
+    "name": "MyHandleLoop_Motion",
+    "address": "0x004a4ed0",
+    "size": 1527,
+    "source": "src/optimizer/IroLoop.c"
+  },
+  {
+    "name": "MyHandleLoop_Vector",
+    "address": "0x004a54d0",
+    "size": 1522,
+    "source": "src/optimizer/IroLoop.c"
+  },
+  {
     "name": "IRO_ActUnmarkLoopInvariance",
     "address": "0x004a5ad0",
     "size": 19,
@@ -10710,6 +11709,24 @@
     "source": "src/optimizer/IroLoop.c"
   },
   {
+    "name": "CreateNewLoopExitSuccessor",
+    "address": "0x004a6860",
+    "size": 634,
+    "source": "src/optimizer/IroLoop.c"
+  },
+  {
+    "name": "CreatePreHeader",
+    "address": "0x004a6ae0",
+    "size": 478,
+    "source": "src/optimizer/IroLoop.c"
+  },
+  {
+    "name": "CreateRIS",
+    "address": "0x004a6cc0",
+    "size": 1320,
+    "source": "src/optimizer/IroLoop.c"
+  },
+  {
     "name": "IRO_ActUnmarkRISCandidate",
     "address": "0x004a71f0",
     "size": 25,
@@ -10719,6 +11736,12 @@
     "name": "IRO_RemoveExpr_Action",
     "address": "0x004a7210",
     "size": 26,
+    "source": "src/optimizer/IroLoop.c"
+  },
+  {
+    "name": "Reducable",
+    "address": "0x004a7230",
+    "size": 2541,
     "source": "src/optimizer/IroLoop.c"
   },
   {
@@ -10884,6 +11907,30 @@
     "source": "src/backend/InlineAsmPPC.c"
   },
   {
+    "name": "CodeGen_GetAsmEffects",
+    "address": "0x004abd80",
+    "size": 1508,
+    "source": "src/backend/InlineAsmPPC.c"
+  },
+  {
+    "name": "InlineAsm_OpcodeSize",
+    "address": "0x004ac370",
+    "size": 569,
+    "source": "src/backend/InlineAsmPPC.c"
+  },
+  {
+    "name": "InlineAsm_TranslateIRtoPCode",
+    "address": "0x004ac5b0",
+    "size": 779,
+    "source": "src/backend/InlineAsmPPC.c"
+  },
+  {
+    "name": "InlineAsm_TranslateIRtoPCodePPC",
+    "address": "0x004ac8c0",
+    "size": 1907,
+    "source": "src/backend/InlineAsmPPC.c"
+  },
+  {
     "name": "InlineAsm_ScanAssemblyInstruction",
     "address": "0x004ad040",
     "size": 1082,
@@ -10917,6 +11964,18 @@
     "name": "InlineAsm_Initialize",
     "address": "0x004ae0e0",
     "size": 100,
+    "source": "src/backend/InlineAsmPPC.c"
+  },
+  {
+    "name": "InlineAsm_InitializePPC",
+    "address": "0x004ae150",
+    "size": 492,
+    "source": "src/backend/InlineAsmPPC.c"
+  },
+  {
+    "name": "InlineAsm_ScanAssemblyOperands",
+    "address": "0x004ae340",
+    "size": 4658,
     "source": "src/backend/InlineAsmPPC.c"
   },
   {
@@ -10980,6 +12039,12 @@
     "source": "src/backend/InlineAsmPPC.c"
   },
   {
+    "name": "PrimaryExpressionPPC",
+    "address": "0x004b0b80",
+    "size": 3063,
+    "source": "src/backend/InlineAsmPPC.c"
+  },
+  {
     "name": "IllegalObjectOperator",
     "address": "0x004b1780",
     "size": 394,
@@ -10992,9 +12057,33 @@
     "source": "src/backend/ObjGen_PPC_EABI.c"
   },
   {
+    "name": "MWCATS_AddExit",
+    "address": "0x004b1ab0",
+    "size": 118,
+    "source": "src/backend/ObjGen_PPC_EABI.c"
+  },
+  {
     "name": "MWCATS_AddProc",
     "address": "0x004b1b30",
     "size": 271,
+    "source": "src/backend/ObjGen_PPC_EABI.c"
+  },
+  {
+    "name": "create_main_file_object",
+    "address": "0x004b1c40",
+    "size": 351,
+    "source": "src/backend/ObjGen_PPC_EABI.c"
+  },
+  {
+    "name": "GetInterruptRoutineFlags",
+    "address": "0x004b1da0",
+    "size": 40,
+    "source": "src/backend/ObjGen_PPC_EABI.c"
+  },
+  {
+    "name": "resolve_object_pseudo_section",
+    "address": "0x004b1dd0",
+    "size": 479,
     "source": "src/backend/ObjGen_PPC_EABI.c"
   },
   {
@@ -11004,15 +12093,129 @@
     "source": "src/backend/ObjGen_PPC_EABI.c"
   },
   {
+    "name": "pseudo_section_index",
+    "address": "0x004b20c0",
+    "size": 69,
+    "source": "src/backend/ObjGen_PPC_EABI.c"
+  },
+  {
+    "name": "declareinit",
+    "address": "0x004b2110",
+    "size": 176,
+    "source": "src/backend/ObjGen_PPC_EABI.c"
+  },
+  {
+    "name": "ObjGen_RelocateObj",
+    "address": "0x004b21c0",
+    "size": 61,
+    "source": "src/backend/ObjGen_PPC_EABI.c"
+  },
+  {
     "name": "ObjGen_GetSectionGList",
     "address": "0x004b2200",
     "size": 8,
     "source": "src/backend/ObjGen_PPC_EABI.c"
   },
   {
+    "name": "ObjGen_DeclareExceptionTables",
+    "address": "0x004b2210",
+    "size": 1157,
+    "source": "src/backend/ObjGen_PPC_EABI.c"
+  },
+  {
+    "name": "ObjGen_DeclareSymInfo",
+    "address": "0x004b26a0",
+    "size": 37,
+    "source": "src/backend/ObjGen_PPC_EABI.c"
+  },
+  {
+    "name": "update_section",
+    "address": "0x004b26d0",
+    "size": 105,
+    "source": "src/backend/ObjGen_PPC_EABI.c"
+  },
+  {
+    "name": "ObjGen_SourceRef",
+    "address": "0x004b2740",
+    "size": 136,
+    "source": "src/backend/ObjGen_PPC_EABI.c"
+  },
+  {
+    "name": "emit_relocation",
+    "address": "0x004b27d0",
+    "size": 691,
+    "source": "src/backend/ObjGen_PPC_EABI.c"
+  },
+  {
+    "name": "ObjGen_DeclareEntry",
+    "address": "0x004b2a90",
+    "size": 59,
+    "source": "src/backend/ObjGen_PPC_EABI.c"
+  },
+  {
+    "name": "ObjGen_DeclareCode",
+    "address": "0x004b2ad0",
+    "size": 254,
+    "source": "src/backend/ObjGen_PPC_EABI.c"
+  },
+  {
+    "name": "ObjGen_DeclareCodeLabel",
+    "address": "0x004b2bd0",
+    "size": 18,
+    "source": "src/backend/ObjGen_PPC_EABI.c"
+  },
+  {
+    "name": "ObjGen_DeclareSwitchTable",
+    "address": "0x004b2bf0",
+    "size": 499,
+    "source": "src/backend/ObjGen_PPC_EABI.c"
+  },
+  {
+    "name": "ObjGen_DeclareFloatConst",
+    "address": "0x004b2df0",
+    "size": 244,
+    "source": "src/backend/ObjGen_PPC_EABI.c"
+  },
+  {
+    "name": "emit_object_data_and_relocations",
+    "address": "0x004b2ef0",
+    "size": 520,
+    "source": "src/backend/ObjGen_PPC_EABI.c"
+  },
+  {
+    "name": "allocate_object_storage",
+    "address": "0x004b3100",
+    "size": 429,
+    "source": "src/backend/ObjGen_PPC_EABI.c"
+  },
+  {
     "name": "report_section_permission_conflict",
     "address": "0x004b32b0",
     "size": 147,
+    "source": "src/backend/ObjGen_PPC_EABI.c"
+  },
+  {
+    "name": "select_object_section",
+    "address": "0x004b3350",
+    "size": 519,
+    "source": "src/backend/ObjGen_PPC_EABI.c"
+  },
+  {
+    "name": "base_register",
+    "address": "0x004b3560",
+    "size": 86,
+    "source": "src/backend/ObjGen_PPC_EABI.c"
+  },
+  {
+    "name": "PPC_EABI_SetSection",
+    "address": "0x004b35c0",
+    "size": 538,
+    "source": "src/backend/ObjGen_PPC_EABI.c"
+  },
+  {
+    "name": "GetCurrentSection",
+    "address": "0x004b37e0",
+    "size": 117,
     "source": "src/backend/ObjGen_PPC_EABI.c"
   },
   {
@@ -11025,6 +12228,12 @@
     "name": "Finish_Pragma_Section",
     "address": "0x004b3c80",
     "size": 1020,
+    "source": "src/backend/ObjGen_PPC_EABI.c"
+  },
+  {
+    "name": "CodeGen_PragmaPop",
+    "address": "0x004b4080",
+    "size": 101,
     "source": "src/backend/ObjGen_PPC_EABI.c"
   },
   {
@@ -11052,6 +12261,18 @@
     "source": "src/backend/ObjGen_PPC_EABI.c"
   },
   {
+    "name": "ObjGen_GetAddressing",
+    "address": "0x004b43e0",
+    "size": 352,
+    "source": "src/backend/ObjGen_PPC_EABI.c"
+  },
+  {
+    "name": "GetSourceFileName",
+    "address": "0x004b4540",
+    "size": 58,
+    "source": "src/backend/ObjGen_PPC_EABI.c"
+  },
+  {
     "name": "ObjGen_DeclareReadOnlyData",
     "address": "0x004b4580",
     "size": 144,
@@ -11076,9 +12297,45 @@
     "source": "src/backend/ObjGen_PPC_EABI.c"
   },
   {
+    "name": "ObjGen_SegmentName",
+    "address": "0x004b4750",
+    "size": 1,
+    "source": "src/backend/ObjGen_PPC_EABI.c"
+  },
+  {
+    "name": "ObjGen_SymFunc",
+    "address": "0x004b4760",
+    "size": 103,
+    "source": "src/backend/ObjGen_PPC_EABI.c"
+  },
+  {
+    "name": "ObjGen_BestSection",
+    "address": "0x004b47d0",
+    "size": 252,
+    "source": "src/backend/ObjGen_PPC_EABI.c"
+  },
+  {
+    "name": "ObjGen_SetupSym",
+    "address": "0x004b48d0",
+    "size": 1,
+    "source": "src/backend/ObjGen_PPC_EABI.c"
+  },
+  {
+    "name": "ObjGen_CodeCleanup",
+    "address": "0x004b48e0",
+    "size": 1,
+    "source": "src/backend/ObjGen_PPC_EABI.c"
+  },
+  {
     "name": "ObjGen_Cleanup",
     "address": "0x004b48f0",
     "size": 41,
+    "source": "src/backend/ObjGen_PPC_EABI.c"
+  },
+  {
+    "name": "ObjGen_Finish",
+    "address": "0x004b4920",
+    "size": 214,
     "source": "src/backend/ObjGen_PPC_EABI.c"
   },
   {
@@ -11103,6 +12360,12 @@
     "name": "PPCError_ErrorTerm",
     "address": "0x004b4d00",
     "size": 198,
+    "source": "src/backend/PPCError.c"
+  },
+  {
+    "name": "PPCError_Message",
+    "address": "0x004b4dd0",
+    "size": 71,
     "source": "src/backend/PPCError.c"
   },
   {
@@ -11598,6 +12861,18 @@
     "source": "src/frontend/CExpr2.c"
   },
   {
+    "name": "CExpr_BinaryFloatExpression",
+    "address": "0x004bddd0",
+    "size": 5,
+    "source": "src/frontend/CExpr2.c"
+  },
+  {
+    "name": "CExpr_UnaryFloatExpression",
+    "address": "0x004bdde0",
+    "size": 5,
+    "source": "src/frontend/CExpr2.c"
+  },
+  {
     "name": "CExpr_AliasTransform",
     "address": "0x004bddf0",
     "size": 188,
@@ -11616,6 +12891,24 @@
     "source": "src/frontend/CExpr2.c"
   },
   {
+    "name": "CMach_SetBackEndOptions",
+    "address": "0x004be0d0",
+    "size": 487,
+    "source": "src/backend/CMachine.c"
+  },
+  {
+    "name": "CMach_GetBackEndOptions",
+    "address": "0x004be2c0",
+    "size": 487,
+    "source": "src/backend/CMachine.c"
+  },
+  {
+    "name": "CMach_ParseGlobalRegisterVariable",
+    "address": "0x004be4b0",
+    "size": 2035,
+    "source": "src/backend/CMachine.c"
+  },
+  {
     "name": "CMach_ReInitRuntimeObjects",
     "address": "0x004becb0",
     "size": 964,
@@ -11631,6 +12924,12 @@
     "name": "CMach_FloatReciprocal",
     "address": "0x004bf0b0",
     "size": 23,
+    "source": "src/backend/CMachine.c"
+  },
+  {
+    "name": "CMach_CustomIntConvert",
+    "address": "0x004bf0d0",
+    "size": 949,
     "source": "src/backend/CMachine.c"
   },
   {
@@ -11673,6 +12972,30 @@
     "name": "CMach_GetFunctionResultClass",
     "address": "0x004bf810",
     "size": 70,
+    "source": "src/backend/CMachine.c"
+  },
+  {
+    "name": "CMach_StructLayoutBitfield",
+    "address": "0x004bf860",
+    "size": 602,
+    "source": "src/backend/CMachine.c"
+  },
+  {
+    "name": "CMach_StructLayoutGetOffset",
+    "address": "0x004bfac0",
+    "size": 142,
+    "source": "src/backend/CMachine.c"
+  },
+  {
+    "name": "CMach_StructLayoutGetCurSize",
+    "address": "0x004bfb50",
+    "size": 99,
+    "source": "src/backend/CMachine.c"
+  },
+  {
+    "name": "CMach_StructLayoutInitOffset",
+    "address": "0x004bfbc0",
+    "size": 45,
     "source": "src/backend/CMachine.c"
   },
   {
@@ -11841,6 +13164,12 @@
     "name": "CMach_GetQUALalign",
     "address": "0x004c1ab0",
     "size": 277,
+    "source": "src/backend/CMachine.c"
+  },
+  {
+    "name": "CMach_Configure",
+    "address": "0x004c1bd0",
+    "size": 1,
     "source": "src/backend/CMachine.c"
   },
   {
@@ -12114,6 +13443,12 @@
     "source": "src/frontend/CInt64.c"
   },
   {
+    "name": "CInt64_Init",
+    "address": "0x004c3860",
+    "size": 1,
+    "source": "src/frontend/CInt64.c"
+  },
+  {
     "name": "va_info_intrinsic",
     "address": "0x004c3870",
     "size": 370,
@@ -12306,6 +13641,12 @@
     "source": "src/backend/RegisterInfo.c"
   },
   {
+    "name": "is_nonvolatile_register",
+    "address": "0x004cf190",
+    "size": 58,
+    "source": "src/backend/RegisterInfo.c"
+  },
+  {
     "name": "reset_nonvolatile_registers",
     "address": "0x004cf1d0",
     "size": 46,
@@ -12396,6 +13737,24 @@
     "source": "src/backend/RegisterInfo.c"
   },
   {
+    "name": "is_global_registers_variable",
+    "address": "0x004cff40",
+    "size": 67,
+    "source": "src/backend/RegisterInfo.c"
+  },
+  {
+    "name": "Registers_GetRegInfo",
+    "address": "0x004cff90",
+    "size": 38,
+    "source": "src/backend/RegisterInfo.c"
+  },
+  {
+    "name": "is_register_object",
+    "address": "0x004cffc0",
+    "size": 101,
+    "source": "src/backend/RegisterInfo.c"
+  },
+  {
     "name": "retain_GPR_pair",
     "address": "0x004d0030",
     "size": 314,
@@ -12414,15 +13773,99 @@
     "source": "src/backend/RegisterInfo.c"
   },
   {
+    "name": "NeedsXREF",
+    "address": "0x004d0340",
+    "size": 255,
+    "source": "src/backend/BE_symbol.c"
+  },
+  {
+    "name": "GetDataPoolRoot",
+    "address": "0x004d0440",
+    "size": 382,
+    "source": "src/backend/BE_symbol.c"
+  },
+  {
+    "name": "GetPooledObjectRegister",
+    "address": "0x004d05c0",
+    "size": 306,
+    "source": "src/backend/BE_symbol.c"
+  },
+  {
+    "name": "GetPooledObjectOffset",
+    "address": "0x004d0700",
+    "size": 299,
+    "source": "src/backend/BE_symbol.c"
+  },
+  {
+    "name": "GetObjectExtension",
+    "address": "0x004d0830",
+    "size": 273,
+    "source": "src/backend/BE_symbol.c"
+  },
+  {
     "name": "FindOrAddObjectExtension",
     "address": "0x004d0950",
     "size": 136,
     "source": "src/backend/BE_symbol.c"
   },
   {
+    "name": "CreateDataPoolAnchorSymbol",
+    "address": "0x004d09e0",
+    "size": 328,
+    "source": "src/backend/BE_symbol.c"
+  },
+  {
+    "name": "elf_declare_symbol",
+    "address": "0x004d0b30",
+    "size": 107,
+    "source": "src/backend/BE_symbol.c"
+  },
+  {
+    "name": "MakeSymbolTableEntry",
+    "address": "0x004d0ba0",
+    "size": 201,
+    "source": "src/backend/BE_symbol.c"
+  },
+  {
     "name": "InorderFirst",
     "address": "0x004d0c70",
     "size": 6,
+    "source": "src/backend/BE_symbol.c"
+  },
+  {
+    "name": "InitELFSymbols",
+    "address": "0x004d0c80",
+    "size": 23,
+    "source": "src/backend/BE_symbol.c"
+  },
+  {
+    "name": "AddSymbolTableEntry",
+    "address": "0x004d0ca0",
+    "size": 65,
+    "source": "src/backend/BE_symbol.c"
+  },
+  {
+    "name": "AddEntry",
+    "address": "0x004d0cf0",
+    "size": 315,
+    "source": "src/backend/BE_symbol.c"
+  },
+  {
+    "name": "AddFunction",
+    "address": "0x004d0e30",
+    "size": 361,
+    "source": "src/backend/BE_symbol.c"
+  },
+  {
+    "name": "AddObject",
+    "address": "0x004d0fa0",
+    "size": 412,
+    "source": "src/backend/BE_symbol.c"
+  },
+  {
+    "name": "Next",
+    "address": "0x004d1140",
+    "size": 38,
     "source": "src/backend/BE_symbol.c"
   },
   {
@@ -13242,10 +14685,40 @@
     "source": "src/frontend/CScope.c"
   },
   {
+    "name": "CScope_Cleanup",
+    "address": "0x004da990",
+    "size": 1,
+    "source": "src/frontend/CScope.c"
+  },
+  {
     "name": "CScope_Setup",
     "address": "0x004da9a0",
     "size": 109,
     "source": "src/frontend/CScope.c"
+  },
+  {
+    "name": "BackPatchRelocationAddend",
+    "address": "0x004daa10",
+    "size": 35,
+    "source": "src/backend/BE_elf.c"
+  },
+  {
+    "name": "WriteDebugRelocation",
+    "address": "0x004daa40",
+    "size": 192,
+    "source": "src/backend/BE_elf.c"
+  },
+  {
+    "name": "BackEnd_WriteElf",
+    "address": "0x004dab00",
+    "size": 1306,
+    "source": "src/backend/BE_elf.c"
+  },
+  {
+    "name": "write_codewarrior_version_record",
+    "address": "0x004db020",
+    "size": 320,
+    "source": "src/backend/BE_elf.c"
   },
   {
     "name": "TransferSectionData",
@@ -13254,9 +14727,33 @@
     "source": "src/backend/BE_elf.c"
   },
   {
+    "name": "WriteSstrtab",
+    "address": "0x004db1c0",
+    "size": 126,
+    "source": "src/backend/BE_elf.c"
+  },
+  {
+    "name": "WriteSsymtab",
+    "address": "0x004db240",
+    "size": 215,
+    "source": "src/backend/BE_elf.c"
+  },
+  {
+    "name": "build_ordered_section_index",
+    "address": "0x004db320",
+    "size": 476,
+    "source": "src/backend/BE_elf.c"
+  },
+  {
     "name": "CleanupElfSections",
     "address": "0x004db500",
     "size": 40,
+    "source": "src/backend/BE_elf.c"
+  },
+  {
+    "name": "InitElfFile",
+    "address": "0x004db530",
+    "size": 150,
     "source": "src/backend/BE_elf.c"
   },
   {
@@ -13311,6 +14808,12 @@
     "name": "find_section_symbol_attributes",
     "address": "0x004dbef0",
     "size": 67,
+    "source": "src/backend/BE_elf.c"
+  },
+  {
+    "name": "assign_symbol_order",
+    "address": "0x004dbf40",
+    "size": 150,
     "source": "src/backend/BE_elf.c"
   },
   {
@@ -13422,9 +14925,27 @@
     "source": "src/backend/PCode.c"
   },
   {
+    "name": "createstaticinitobject",
+    "address": "0x004dc670",
+    "size": 223,
+    "source": "src/backend/TOC.c"
+  },
+  {
+    "name": "expandTOCreferences",
+    "address": "0x004dc750",
+    "size": 731,
+    "source": "src/backend/TOC.c"
+  },
+  {
     "name": "checkexceptionreferences",
     "address": "0x004dca30",
     "size": 200,
+    "source": "src/backend/TOC.c"
+  },
+  {
+    "name": "expandTOCexpression",
+    "address": "0x004dcb00",
+    "size": 4560,
     "source": "src/backend/TOC.c"
   },
   {
@@ -13542,9 +15063,21 @@
     "source": "src/backend/TOC.c"
   },
   {
+    "name": "createfloatconstant",
+    "address": "0x004df8b0",
+    "size": 346,
+    "source": "src/backend/TOC.c"
+  },
+  {
     "name": "createIndirect",
     "address": "0x004dfa10",
     "size": 86,
+    "source": "src/backend/TOC.c"
+  },
+  {
+    "name": "is_pooled_object",
+    "address": "0x004dfa70",
+    "size": 234,
     "source": "src/backend/TOC.c"
   },
   {
@@ -13782,6 +15315,12 @@
     "source": "src/frontend/CParser.c"
   },
   {
+    "name": "CParser_CallBackAction",
+    "address": "0x004e3880",
+    "size": 75,
+    "source": "src/frontend/CParser.c"
+  },
+  {
     "name": "CParser_NewClassAction",
     "address": "0x004e38d0",
     "size": 29,
@@ -13836,6 +15375,12 @@
     "source": "src/frontend/CParser.c"
   },
   {
+    "name": "CParser_GetDeclSpecs",
+    "address": "0x004e3d90",
+    "size": 3861,
+    "source": "src/frontend/CParser.c"
+  },
+  {
     "name": "CParser_CheckTemplateClassUsage",
     "address": "0x004e4cb0",
     "size": 67,
@@ -13857,6 +15402,12 @@
     "name": "CParser_ParseTypeOf",
     "address": "0x004e5b30",
     "size": 208,
+    "source": "src/frontend/CParser.c"
+  },
+  {
+    "name": "CParser_ParseAttribute",
+    "address": "0x004e5c00",
+    "size": 1468,
     "source": "src/frontend/CParser.c"
   },
   {
@@ -14112,9 +15663,21 @@
     "source": "src/frontend/CParser.c"
   },
   {
+    "name": "CParser_NewFunctionObject",
+    "address": "0x004e8050",
+    "size": 193,
+    "source": "src/frontend/CParser.c"
+  },
+  {
     "name": "CParser_NewCompilerDefDataObject",
     "address": "0x004e8120",
     "size": 50,
+    "source": "src/frontend/CParser.c"
+  },
+  {
+    "name": "CParser_NewGlobalDataObject",
+    "address": "0x004e8160",
+    "size": 193,
     "source": "src/frontend/CParser.c"
   },
   {
@@ -14127,6 +15690,12 @@
     "name": "CParser_NewObject",
     "address": "0x004e82a0",
     "size": 51,
+    "source": "src/frontend/CParser.c"
+  },
+  {
+    "name": "CParser_UpdateObject",
+    "address": "0x004e82e0",
+    "size": 97,
     "source": "src/frontend/CParser.c"
   },
   {
@@ -14340,6 +15909,12 @@
     "source": "src/backend/PCodeUtilities.c"
   },
   {
+    "name": "assemblefunction",
+    "address": "0x004ea1d0",
+    "size": 689,
+    "source": "src/backend/PCodeAssembly.c"
+  },
+  {
     "name": "insert_align_nops",
     "address": "0x004ea490",
     "size": 243,
@@ -14424,9 +15999,33 @@
     "source": "src/backend/SFPE_PPC_EABI.c"
   },
   {
+    "name": "CFunc_GenerateDummyCtorFunc",
+    "address": "0x004ee4f0",
+    "size": 681,
+    "source": "src/frontend/CFunc.c"
+  },
+  {
+    "name": "CFunc_GenerateSingleExprFunc",
+    "address": "0x004ee7a0",
+    "size": 252,
+    "source": "src/frontend/CFunc.c"
+  },
+  {
+    "name": "CFunc_GenerateDummyFunction",
+    "address": "0x004ee8a0",
+    "size": 220,
+    "source": "src/frontend/CFunc.c"
+  },
+  {
     "name": "InitExpr_Register",
     "address": "0x004ee980",
     "size": 137,
+    "source": "src/frontend/CFunc.c"
+  },
+  {
+    "name": "CFunc_ParseFuncDef",
+    "address": "0x004eea10",
+    "size": 2738,
     "source": "src/frontend/CFunc.c"
   },
   {
@@ -14445,6 +16044,12 @@
     "name": "CFunc_CheckCtorInitializer",
     "address": "0x004ef950",
     "size": 180,
+    "source": "src/frontend/CFunc.c"
+  },
+  {
+    "name": "CFunc_Gen",
+    "address": "0x004efa10",
+    "size": 111,
     "source": "src/frontend/CFunc.c"
   },
   {
@@ -14553,6 +16158,12 @@
     "name": "sinit_insert_expr",
     "address": "0x004f3f50",
     "size": 448,
+    "source": "src/frontend/CFunc.c"
+  },
+  {
+    "name": "scancase",
+    "address": "0x004f4110",
+    "size": 656,
     "source": "src/frontend/CFunc.c"
   },
   {
@@ -14934,6 +16545,12 @@
     "source": "src/backend/StackFrame.c"
   },
   {
+    "name": "init_stack_globals",
+    "address": "0x004f92e0",
+    "size": 628,
+    "source": "src/backend/StackFrame.c"
+  },
+  {
     "name": "dumpswitchtables",
     "address": "0x004f9560",
     "size": 114,
@@ -14949,6 +16566,12 @@
     "name": "generate_table",
     "address": "0x004f96e0",
     "size": 895,
+    "source": "src/backend/Switch.c"
+  },
+  {
+    "name": "create_switch_table",
+    "address": "0x004f9a60",
+    "size": 367,
     "source": "src/backend/Switch.c"
   },
   {
@@ -15030,6 +16653,18 @@
     "source": "src/backend/Exceptions.c"
   },
   {
+    "name": "DumpIR",
+    "address": "0x004fca20",
+    "size": 1,
+    "source": "src/backend/DumpIR.c"
+  },
+  {
+    "name": "CleanupDumpIR",
+    "address": "0x004fca30",
+    "size": 1,
+    "source": "src/backend/DumpIR.c"
+  },
+  {
     "name": "COpt_Optimizer",
     "address": "0x004fca40",
     "size": 149,
@@ -15090,6 +16725,12 @@
     "source": "src/optimizer/COptimizer.c"
   },
   {
+    "name": "optimizeswitch",
+    "address": "0x004fd150",
+    "size": 266,
+    "source": "src/optimizer/COptimizer.c"
+  },
+  {
     "name": "optimizeif",
     "address": "0x004fd260",
     "size": 581,
@@ -15144,9 +16785,27 @@
     "source": "src/backend/Registers.c"
   },
   {
+    "name": "CMangler_GetLinkName",
+    "address": "0x004fd840",
+    "size": 117,
+    "source": "src/frontend/CMangler.c"
+  },
+  {
     "name": "CMangler_DataLinkName",
     "address": "0x004fd8c0",
     "size": 216,
+    "source": "src/frontend/CMangler.c"
+  },
+  {
+    "name": "CMangler_GetCovariantFunctionName",
+    "address": "0x004fd9a0",
+    "size": 231,
+    "source": "src/frontend/CMangler.c"
+  },
+  {
+    "name": "CMangler_FunctionLinkName",
+    "address": "0x004fda90",
+    "size": 416,
     "source": "src/frontend/CMangler.c"
   },
   {
@@ -15183,6 +16842,24 @@
     "name": "CMangler_MangleNameSpaceName",
     "address": "0x004fe670",
     "size": 176,
+    "source": "src/frontend/CMangler.c"
+  },
+  {
+    "name": "CMangler_TemplateInstanceName",
+    "address": "0x004fe720",
+    "size": 303,
+    "source": "src/frontend/CMangler.c"
+  },
+  {
+    "name": "CMangler_AppendTemplateArgumentList",
+    "address": "0x004fe850",
+    "size": 410,
+    "source": "src/frontend/CMangler.c"
+  },
+  {
+    "name": "CMangler_ThunkName",
+    "address": "0x004fe9f0",
+    "size": 316,
     "source": "src/frontend/CMangler.c"
   },
   {
@@ -15232,6 +16909,36 @@
     "address": "0x004ffaf0",
     "size": 634,
     "source": "src/optimizer/GlobalOptimizer.c"
+  },
+  {
+    "name": "pclistblocks_end_scheduler",
+    "address": "0x004ffd70",
+    "size": 27,
+    "source": "src/backend/PCodeListing.c"
+  },
+  {
+    "name": "pclistblocks_start_scheduler",
+    "address": "0x004ffd90",
+    "size": 1,
+    "source": "src/backend/PCodeListing.c"
+  },
+  {
+    "name": "pclistinterferences",
+    "address": "0x004ffda0",
+    "size": 1,
+    "source": "src/backend/PCodeListing.c"
+  },
+  {
+    "name": "pclistblocks",
+    "address": "0x004ffdb0",
+    "size": 1,
+    "source": "src/backend/PCodeListing.c"
+  },
+  {
+    "name": "pccleanuplisting",
+    "address": "0x004ffdc0",
+    "size": 1,
+    "source": "src/backend/PCodeListing.c"
   },
   {
     "name": "peepholeoptimizepcode",
@@ -15528,6 +17235,12 @@
     "source": "src/backend/Peephole.c"
   },
   {
+    "name": "default_uses_vpermute_unit",
+    "address": "0x00506d40",
+    "size": 3,
+    "source": "src/backend/Scheduler.c"
+  },
+  {
     "name": "uses_vpermute_unit",
     "address": "0x00506d50",
     "size": 58,
@@ -15732,9 +17445,21 @@
     "source": "src/frontend/CInit.c"
   },
   {
+    "name": "CInit_RewriteString",
+    "address": "0x00509810",
+    "size": 214,
+    "source": "src/frontend/CInit.c"
+  },
+  {
     "name": "CInit_DeclarePooledWString",
     "address": "0x005098f0",
     "size": 318,
+    "source": "src/frontend/CInit.c"
+  },
+  {
+    "name": "CInit_DeclarePooledString",
+    "address": "0x00509a30",
+    "size": 385,
     "source": "src/frontend/CInit.c"
   },
   {
@@ -15819,6 +17544,12 @@
     "name": "CInit_ExportConst",
     "address": "0x0050b7a0",
     "size": 206,
+    "source": "src/frontend/CInit.c"
+  },
+  {
+    "name": "CInit_GenericData",
+    "address": "0x0050b870",
+    "size": 1651,
     "source": "src/frontend/CInit.c"
   },
   {
@@ -16062,15 +17793,111 @@
     "source": "src/optimizer/Alias.c"
   },
   {
+    "name": "update_alias_value",
+    "address": "0x00510b60",
+    "size": 580,
+    "source": "src/optimizer/Alias.c"
+  },
+  {
     "name": "initialize_alias_values",
     "address": "0x00510db0",
     "size": 44,
     "source": "src/optimizer/Alias.c"
   },
   {
+    "name": "may_alias_object",
+    "address": "0x00510de0",
+    "size": 351,
+    "source": "src/optimizer/Alias.c"
+  },
+  {
+    "name": "uniquely_aliases",
+    "address": "0x00510f40",
+    "size": 426,
+    "source": "src/optimizer/Alias.c"
+  },
+  {
+    "name": "may_alias",
+    "address": "0x005110f0",
+    "size": 341,
+    "source": "src/optimizer/Alias.c"
+  },
+  {
+    "name": "gather_alias_info",
+    "address": "0x00511250",
+    "size": 644,
+    "source": "src/optimizer/Alias.c"
+  },
+  {
+    "name": "gather_instruction_alias",
+    "address": "0x005114e0",
+    "size": 752,
+    "source": "src/optimizer/Alias.c"
+  },
+  {
     "name": "finishpropagatealiases",
     "address": "0x005117d0",
     "size": 11,
+    "source": "src/optimizer/Alias.c"
+  },
+  {
+    "name": "addresspropagatestouse",
+    "address": "0x005117e0",
+    "size": 142,
+    "source": "src/optimizer/Alias.c"
+  },
+  {
+    "name": "propagate_alias_to_use",
+    "address": "0x00511870",
+    "size": 1035,
+    "source": "src/optimizer/Alias.c"
+  },
+  {
+    "name": "add_escaping_locals",
+    "address": "0x00511c80",
+    "size": 94,
+    "source": "src/optimizer/Alias.c"
+  },
+  {
+    "name": "address_def_alias",
+    "address": "0x00511ce0",
+    "size": 232,
+    "source": "src/optimizer/Alias.c"
+  },
+  {
+    "name": "is_address_load",
+    "address": "0x00511dd0",
+    "size": 219,
+    "source": "src/optimizer/Alias.c"
+  },
+  {
+    "name": "add_alias_member",
+    "address": "0x00511eb0",
+    "size": 153,
+    "source": "src/optimizer/Alias.c"
+  },
+  {
+    "name": "make_alias",
+    "address": "0x00511f50",
+    "size": 545,
+    "source": "src/optimizer/Alias.c"
+  },
+  {
+    "name": "initialize_aliases",
+    "address": "0x00512180",
+    "size": 361,
+    "source": "src/optimizer/Alias.c"
+  },
+  {
+    "name": "add_aliased_locals_to_worst_case",
+    "address": "0x005122f0",
+    "size": 357,
+    "source": "src/optimizer/Alias.c"
+  },
+  {
+    "name": "make_distinct_virtual_alias",
+    "address": "0x00512460",
+    "size": 163,
     "source": "src/optimizer/Alias.c"
   },
   {
@@ -16206,6 +18033,12 @@
     "source": "src/frontend/CBrowse.c"
   },
   {
+    "name": "CPrep_Preprocess",
+    "address": "0x00513e10",
+    "size": 4128,
+    "source": "src/frontend/CPreprocess.c"
+  },
+  {
     "name": "CPrep_DumpString",
     "address": "0x00514e30",
     "size": 202,
@@ -16218,10 +18051,22 @@
     "source": "src/frontend/CPreprocess.c"
   },
   {
+    "name": "CPrep_PreprocessDumpFileInfo",
+    "address": "0x00515060",
+    "size": 572,
+    "source": "src/frontend/CPreprocess.c"
+  },
+  {
     "name": "CPrep_PreprocessDumpNewLine",
     "address": "0x005152a0",
     "size": 49,
     "source": "src/frontend/CPreprocess.c"
+  },
+  {
+    "name": "PrecompilerRead",
+    "address": "0x005152e0",
+    "size": 1206,
+    "source": "src/frontend/CPrec.c"
   },
   {
     "name": "CPrec_RelocateMacroTable",
@@ -16260,9 +18105,21 @@
     "source": "src/frontend/CPrec.c"
   },
   {
+    "name": "CPrec_WriteFile",
+    "address": "0x00515d70",
+    "size": 1083,
+    "source": "src/frontend/CPrec.c"
+  },
+  {
     "name": "CPrec_DumpColorSymbolTable",
     "address": "0x005161b0",
     "size": 3602,
+    "source": "src/frontend/CPrec.c"
+  },
+  {
+    "name": "CPrec_CompressPatches",
+    "address": "0x00516fd0",
+    "size": 268,
     "source": "src/frontend/CPrec.c"
   },
   {
@@ -16275,6 +18132,12 @@
     "name": "CPrec_GenerateBuiltinPatches",
     "address": "0x005171b0",
     "size": 204,
+    "source": "src/frontend/CPrec.c"
+  },
+  {
+    "name": "CPrec_GetInlineActionPatch",
+    "address": "0x00517280",
+    "size": 439,
     "source": "src/frontend/CPrec.c"
   },
   {
@@ -16296,6 +18159,12 @@
     "source": "src/frontend/CPrec.c"
   },
   {
+    "name": "CPrec_DumpRootNameSpace",
+    "address": "0x00517810",
+    "size": 365,
+    "source": "src/frontend/CPrec.c"
+  },
+  {
     "name": "CPrec_GetNameSpacePatch",
     "address": "0x00517980",
     "size": 782,
@@ -16311,6 +18180,18 @@
     "name": "CPrec_GetNameSpaceObjectListPatch",
     "address": "0x00517fc0",
     "size": 546,
+    "source": "src/frontend/CPrec.c"
+  },
+  {
+    "name": "CPrec_GetObjBasePatch",
+    "address": "0x005181f0",
+    "size": 397,
+    "source": "src/frontend/CPrec.c"
+  },
+  {
+    "name": "CPrec_GetObjectPatch",
+    "address": "0x00518380",
+    "size": 1407,
     "source": "src/frontend/CPrec.c"
   },
   {
@@ -16332,9 +18213,57 @@
     "source": "src/frontend/CPrec.c"
   },
   {
+    "name": "CPrec_GetObjEnumConstPatch",
+    "address": "0x00518df0",
+    "size": 620,
+    "source": "src/frontend/CPrec.c"
+  },
+  {
+    "name": "CPrec_GetInlineFuncPatch",
+    "address": "0x00519060",
+    "size": 257,
+    "source": "src/frontend/CPrec.c"
+  },
+  {
     "name": "CPrec_GetLocObjectPatch",
     "address": "0x00519170",
     "size": 185,
+    "source": "src/frontend/CPrec.c"
+  },
+  {
+    "name": "CPrec_GetStatementPatch",
+    "address": "0x00519230",
+    "size": 824,
+    "source": "src/frontend/CPrec.c"
+  },
+  {
+    "name": "CPrec_GetSwitchInfoPatch",
+    "address": "0x00519570",
+    "size": 145,
+    "source": "src/frontend/CPrec.c"
+  },
+  {
+    "name": "CPrec_GetExpressionPatch",
+    "address": "0x00519610",
+    "size": 1470,
+    "source": "src/frontend/CPrec.c"
+  },
+  {
+    "name": "CPrec_GetEMemberInfoPatch",
+    "address": "0x00519bd0",
+    "size": 200,
+    "source": "src/frontend/CPrec.c"
+  },
+  {
+    "name": "CPrec_GetExceptionPatch",
+    "address": "0x00519ca0",
+    "size": 716,
+    "source": "src/frontend/CPrec.c"
+  },
+  {
+    "name": "CPrec_GetTypePatch",
+    "address": "0x00519f70",
+    "size": 829,
     "source": "src/frontend/CPrec.c"
   },
   {
@@ -16347,6 +18276,12 @@
     "name": "CPrec_GetTemplateFunctionPatch",
     "address": "0x0051a770",
     "size": 721,
+    "source": "src/frontend/CPrec.c"
+  },
+  {
+    "name": "CPrec_GetTemplateActionPatch",
+    "address": "0x0051aa50",
+    "size": 519,
     "source": "src/frontend/CPrec.c"
   },
   {
@@ -16371,6 +18306,24 @@
     "name": "CPrec_GetTemplFuncInstancePatch",
     "address": "0x0051af70",
     "size": 577,
+    "source": "src/frontend/CPrec.c"
+  },
+  {
+    "name": "CPrec_GetTStreamPatch",
+    "address": "0x0051b1c0",
+    "size": 543,
+    "source": "src/frontend/CPrec.c"
+  },
+  {
+    "name": "CPrec_GetTemplateParamPatch",
+    "address": "0x0051b3e0",
+    "size": 375,
+    "source": "src/frontend/CPrec.c"
+  },
+  {
+    "name": "CPrec_GetTemplateArgPatch",
+    "address": "0x0051b560",
+    "size": 295,
     "source": "src/frontend/CPrec.c"
   },
   {
@@ -16458,6 +18411,12 @@
     "source": "src/frontend/CPrec.c"
   },
   {
+    "name": "CPrec_GetTypeTemplDepPatch",
+    "address": "0x0051cc90",
+    "size": 459,
+    "source": "src/frontend/CPrec.c"
+  },
+  {
     "name": "CPrec_GetTypeMemberPointerPatch",
     "address": "0x0051ce60",
     "size": 219,
@@ -16467,6 +18426,12 @@
     "name": "CPrec_GetTypeFuncPatch",
     "address": "0x0051cf40",
     "size": 313,
+    "source": "src/frontend/CPrec.c"
+  },
+  {
+    "name": "CPrec_GetArgListPatch",
+    "address": "0x0051d080",
+    "size": 563,
     "source": "src/frontend/CPrec.c"
   },
   {
@@ -16488,6 +18453,12 @@
     "source": "src/frontend/CPrec.c"
   },
   {
+    "name": "CPrec_GetTypeEnumPatch",
+    "address": "0x0051d620",
+    "size": 396,
+    "source": "src/frontend/CPrec.c"
+  },
+  {
     "name": "CPrec_GetTypePointerPatch",
     "address": "0x0051d7b0",
     "size": 726,
@@ -16503,6 +18474,12 @@
     "name": "CPrec_GetClassAccessPatch",
     "address": "0x0051db40",
     "size": 372,
+    "source": "src/frontend/CPrec.c"
+  },
+  {
+    "name": "CPrec_DumpMacroTable",
+    "address": "0x0051dcc0",
+    "size": 1274,
     "source": "src/frontend/CPrec.c"
   },
   {
@@ -16527,6 +18504,18 @@
     "name": "CPrec_NamePatch",
     "address": "0x0051e590",
     "size": 25,
+    "source": "src/frontend/CPrec.c"
+  },
+  {
+    "name": "CPrec_ExistingPointerPatch",
+    "address": "0x0051e5b0",
+    "size": 223,
+    "source": "src/frontend/CPrec.c"
+  },
+  {
+    "name": "CPrec_NewPointerPatch",
+    "address": "0x0051e690",
+    "size": 194,
     "source": "src/frontend/CPrec.c"
   },
   {
@@ -17034,6 +19023,12 @@
     "source": "src/frontend/CSOM.c"
   },
   {
+    "name": "CleanupAssembler",
+    "address": "0x00524f40",
+    "size": 1,
+    "source": "src/backend/FuncLevelAsmPPC.c"
+  },
+  {
     "name": "SetupAssembler",
     "address": "0x00524f50",
     "size": 8,
@@ -17178,9 +19173,45 @@
     "source": "src/backend/PCodeInfo.c"
   },
   {
+    "name": "change_num_operands",
+    "address": "0x00528bf0",
+    "size": 100,
+    "source": "src/backend/PCodeInfo.c"
+  },
+  {
+    "name": "nbytes_loaded_or_stored_by",
+    "address": "0x00528c60",
+    "size": 509,
+    "source": "src/backend/PCodeInfo.c"
+  },
+  {
+    "name": "makecopyforload",
+    "address": "0x00528e60",
+    "size": 373,
+    "source": "src/backend/PCodeInfo.c"
+  },
+  {
+    "name": "can_reuse_stored_value",
+    "address": "0x00528fe0",
+    "size": 355,
+    "source": "src/backend/PCodeInfo.c"
+  },
+  {
     "name": "is_location_independent",
     "address": "0x00529150",
     "size": 131,
+    "source": "src/backend/PCodeInfo.c"
+  },
+  {
+    "name": "makecopyinstruction",
+    "address": "0x005291e0",
+    "size": 213,
+    "source": "src/backend/PCodeInfo.c"
+  },
+  {
+    "name": "vformatpcode",
+    "address": "0x005292c0",
+    "size": 3540,
     "source": "src/backend/PCodeInfo.c"
   },
   {
@@ -17277,6 +19308,18 @@
     "name": "CIRTrans_TransformOpAss",
     "address": "0x0052aae0",
     "size": 552,
+    "source": "src/optimizer/CIRTransform.c"
+  },
+  {
+    "name": "CIRTrans_Cleanup",
+    "address": "0x0052ad10",
+    "size": 1,
+    "source": "src/optimizer/CIRTransform.c"
+  },
+  {
+    "name": "CIRTrans_Setup",
+    "address": "0x0052ad20",
+    "size": 1,
     "source": "src/optimizer/CIRTransform.c"
   },
   {
@@ -17445,6 +19488,12 @@
     "name": "CClass_ClassAction",
     "address": "0x0052bcd0",
     "size": 244,
+    "source": "src/frontend/CClass.c"
+  },
+  {
+    "name": "CClass_ClassDefaultFuncAction",
+    "address": "0x0052bdd0",
+    "size": 1,
     "source": "src/frontend/CClass.c"
   },
   {
@@ -18024,10 +20073,22 @@
     "source": "src/frontend/CTemplateNew.c"
   },
   {
+    "name": "CTempl_Cleanup",
+    "address": "0x005329d0",
+    "size": 1,
+    "source": "src/frontend/CTemplateNew.c"
+  },
+  {
     "name": "CTempl_Setup",
     "address": "0x005329e0",
     "size": 47,
     "source": "src/frontend/CTemplateNew.c"
+  },
+  {
+    "name": "CDecl_ParseClass",
+    "address": "0x00532a10",
+    "size": 1248,
+    "source": "src/frontend/CDecl.c"
   },
   {
     "name": "CDecl_SpecializeTemplateClass",
@@ -18042,9 +20103,21 @@
     "source": "src/frontend/CDecl.c"
   },
   {
+    "name": "CDecl_DefineClass",
+    "address": "0x00533000",
+    "size": 392,
+    "source": "src/frontend/CDecl.c"
+  },
+  {
     "name": "CDecl_CompleteClass",
     "address": "0x00533190",
     "size": 189,
+    "source": "src/frontend/CDecl.c"
+  },
+  {
+    "name": "CDecl_SetupClassLayout",
+    "address": "0x00533250",
+    "size": 596,
     "source": "src/frontend/CDecl.c"
   },
   {
@@ -18090,6 +20163,12 @@
     "source": "src/frontend/CDecl.c"
   },
   {
+    "name": "CDecl_AddDefArgConstructor",
+    "address": "0x00533cc0",
+    "size": 1,
+    "source": "src/frontend/CDecl.c"
+  },
+  {
     "name": "CDecl_MakeDefaultCtorType",
     "address": "0x00533cd0",
     "size": 209,
@@ -18132,6 +20211,12 @@
     "source": "src/frontend/CDecl.c"
   },
   {
+    "name": "CDecl_InstanceDataDeclarator",
+    "address": "0x00535290",
+    "size": 321,
+    "source": "src/frontend/CDecl.c"
+  },
+  {
     "name": "CDecl_ParseFriendDecl",
     "address": "0x005353e0",
     "size": 755,
@@ -18162,6 +20247,12 @@
     "source": "src/frontend/CDecl.c"
   },
   {
+    "name": "CDecl_AddFunctionMember",
+    "address": "0x00535980",
+    "size": 1075,
+    "source": "src/frontend/CDecl.c"
+  },
+  {
     "name": "CDecl_MakeTypeMemberFunc",
     "address": "0x00535dc0",
     "size": 225,
@@ -18186,9 +20277,21 @@
     "source": "src/frontend/CDecl.c"
   },
   {
+    "name": "CDecl_LayoutStruct",
+    "address": "0x005365a0",
+    "size": 747,
+    "source": "src/frontend/CDecl.c"
+  },
+  {
     "name": "CDecl_ScanStructDeclarator",
     "address": "0x00536890",
     "size": 797,
+    "source": "src/frontend/CDecl.c"
+  },
+  {
+    "name": "scanenum",
+    "address": "0x00536bb0",
+    "size": 485,
     "source": "src/frontend/CDecl.c"
   },
   {
@@ -18222,9 +20325,39 @@
     "source": "src/frontend/CDecl.c"
   },
   {
+    "name": "scandeclaratorlist",
+    "address": "0x00537a10",
+    "size": 314,
+    "source": "src/frontend/CDecl.c"
+  },
+  {
+    "name": "CDecl_ParseSpecialMember",
+    "address": "0x00537b50",
+    "size": 693,
+    "source": "src/frontend/CDecl.c"
+  },
+  {
     "name": "CDecl_FunctionDeclarator",
     "address": "0x00537e10",
     "size": 426,
+    "source": "src/frontend/CDecl.c"
+  },
+  {
+    "name": "CDecl_DataDeclarator",
+    "address": "0x00537fc0",
+    "size": 1282,
+    "source": "src/frontend/CDecl.c"
+  },
+  {
+    "name": "CDecl_TypedefDeclarator",
+    "address": "0x005384d0",
+    "size": 568,
+    "source": "src/frontend/CDecl.c"
+  },
+  {
+    "name": "CDecl_GetFunctionObject",
+    "address": "0x00538710",
+    "size": 1749,
     "source": "src/frontend/CDecl.c"
   },
   {
@@ -18378,6 +20511,18 @@
     "source": "src/frontend/CDecl.c"
   },
   {
+    "name": "CDecl_SetFuncFlags",
+    "address": "0x0053b1d0",
+    "size": 1,
+    "source": "src/frontend/CDecl.c"
+  },
+  {
+    "name": "CDecl_SetResultReg",
+    "address": "0x0053b1e0",
+    "size": 1,
+    "source": "src/frontend/CDecl.c"
+  },
+  {
     "name": "CDecl_NewTemplDepType",
     "address": "0x0053b1f0",
     "size": 42,
@@ -18474,9 +20619,33 @@
     "source": "src/frontend/CExpr.c"
   },
   {
+    "name": "CExpr_IntegralConstOrDepExpr",
+    "address": "0x0053bcd0",
+    "size": 118,
+    "source": "src/frontend/CExpr.c"
+  },
+  {
     "name": "CExpr_IntegralConstExprType",
     "address": "0x0053bd50",
     "size": 107,
+    "source": "src/frontend/CExpr.c"
+  },
+  {
+    "name": "expression",
+    "address": "0x0053bdc0",
+    "size": 202,
+    "source": "src/frontend/CExpr.c"
+  },
+  {
+    "name": "s_expression",
+    "address": "0x0053be90",
+    "size": 190,
+    "source": "src/frontend/CExpr.c"
+  },
+  {
+    "name": "CExpr_CheckUnusedExpression",
+    "address": "0x0053bf50",
+    "size": 401,
     "source": "src/frontend/CExpr.c"
   },
   {
@@ -18492,9 +20661,45 @@
     "source": "src/frontend/CExpr.c"
   },
   {
+    "name": "makemulassignmentnode",
+    "address": "0x0053c6f0",
+    "size": 422,
+    "source": "src/frontend/CExpr.c"
+  },
+  {
+    "name": "makepassignmentnode",
+    "address": "0x0053c8a0",
+    "size": 470,
+    "source": "src/frontend/CExpr.c"
+  },
+  {
+    "name": "makeassignmentnode",
+    "address": "0x0053ca80",
+    "size": 840,
+    "source": "src/frontend/CExpr.c"
+  },
+  {
     "name": "CExpr_MakeOpAssNode",
     "address": "0x0053cdd0",
     "size": 200,
+    "source": "src/frontend/CExpr.c"
+  },
+  {
+    "name": "conditional_expression",
+    "address": "0x0053cea0",
+    "size": 484,
+    "source": "src/frontend/CExpr.c"
+  },
+  {
+    "name": "CExpr_New_ECOND_Node",
+    "address": "0x0053d090",
+    "size": 2543,
+    "source": "src/frontend/CExpr.c"
+  },
+  {
+    "name": "CExpr_ParseDyadicExpression",
+    "address": "0x0053da80",
+    "size": 649,
     "source": "src/frontend/CExpr.c"
   },
   {
@@ -18504,15 +20709,123 @@
     "source": "src/frontend/CExpr.c"
   },
   {
+    "name": "CExpr_NewDyadicNode",
+    "address": "0x0053def0",
+    "size": 999,
+    "source": "src/frontend/CExpr.c"
+  },
+  {
+    "name": "CExpr_New_ELOR_Node",
+    "address": "0x0053e2e0",
+    "size": 597,
+    "source": "src/frontend/CExpr.c"
+  },
+  {
+    "name": "CExpr_New_ELAND_Node",
+    "address": "0x0053e540",
+    "size": 612,
+    "source": "src/frontend/CExpr.c"
+  },
+  {
+    "name": "CExpr_New_EOR_Node",
+    "address": "0x0053e7b0",
+    "size": 450,
+    "source": "src/frontend/CExpr.c"
+  },
+  {
+    "name": "CExpr_New_EXOR_Node",
+    "address": "0x0053e980",
+    "size": 424,
+    "source": "src/frontend/CExpr.c"
+  },
+  {
+    "name": "CExpr_New_EAND_Node",
+    "address": "0x0053eb30",
+    "size": 450,
+    "source": "src/frontend/CExpr.c"
+  },
+  {
+    "name": "CExpr_New_ENOTEQU_Node",
+    "address": "0x0053ed00",
+    "size": 587,
+    "source": "src/frontend/CExpr.c"
+  },
+  {
+    "name": "CExpr_New_EEQU_Node",
+    "address": "0x0053ef50",
+    "size": 603,
+    "source": "src/frontend/CExpr.c"
+  },
+  {
     "name": "memberpointercompare",
     "address": "0x0053f1b0",
     "size": 490,
     "source": "src/frontend/CExpr.c"
   },
   {
+    "name": "CExpr_New_EGREATEREQU_Node",
+    "address": "0x0053f3a0",
+    "size": 520,
+    "source": "src/frontend/CExpr.c"
+  },
+  {
+    "name": "CExpr_New_EGREATER_Node",
+    "address": "0x0053f5b0",
+    "size": 520,
+    "source": "src/frontend/CExpr.c"
+  },
+  {
+    "name": "CExpr_New_ELESSEQU_Node",
+    "address": "0x0053f7c0",
+    "size": 520,
+    "source": "src/frontend/CExpr.c"
+  },
+  {
+    "name": "CExpr_New_ELESS_Node",
+    "address": "0x0053f9d0",
+    "size": 520,
+    "source": "src/frontend/CExpr.c"
+  },
+  {
     "name": "unsigncheck",
     "address": "0x0053fbe0",
     "size": 476,
+    "source": "src/frontend/CExpr.c"
+  },
+  {
+    "name": "pointercompare",
+    "address": "0x0053fdc0",
+    "size": 991,
+    "source": "src/frontend/CExpr.c"
+  },
+  {
+    "name": "CExpr_New_ESHR_Node",
+    "address": "0x005401a0",
+    "size": 320,
+    "source": "src/frontend/CExpr.c"
+  },
+  {
+    "name": "CExpr_New_ESHL_Node",
+    "address": "0x005402e0",
+    "size": 320,
+    "source": "src/frontend/CExpr.c"
+  },
+  {
+    "name": "CExpr_New_EMODULO_Node",
+    "address": "0x00540420",
+    "size": 488,
+    "source": "src/frontend/CExpr.c"
+  },
+  {
+    "name": "pm_expression",
+    "address": "0x00540610",
+    "size": 842,
+    "source": "src/frontend/CExpr.c"
+  },
+  {
+    "name": "cast_expression",
+    "address": "0x00540960",
+    "size": 783,
     "source": "src/frontend/CExpr.c"
   },
   {
@@ -18528,6 +20841,12 @@
     "source": "src/frontend/CExpr.c"
   },
   {
+    "name": "PointerToMemberCast",
+    "address": "0x00541340",
+    "size": 620,
+    "source": "src/frontend/CExpr.c"
+  },
+  {
     "name": "CExpr_SafeClassPointerCast",
     "address": "0x005415b0",
     "size": 171,
@@ -18537,6 +20856,36 @@
     "name": "do_castnullcheck",
     "address": "0x00541660",
     "size": 122,
+    "source": "src/frontend/CExpr.c"
+  },
+  {
+    "name": "unary_expression",
+    "address": "0x005416e0",
+    "size": 1758,
+    "source": "src/frontend/CExpr.c"
+  },
+  {
+    "name": "CExpr_New_EBINNOT_Node",
+    "address": "0x00541dc0",
+    "size": 190,
+    "source": "src/frontend/CExpr.c"
+  },
+  {
+    "name": "CExpr_New_EMONMIN_Node",
+    "address": "0x00541e80",
+    "size": 306,
+    "source": "src/frontend/CExpr.c"
+  },
+  {
+    "name": "CExpr_New_ELOGNOT_Node",
+    "address": "0x00541fc0",
+    "size": 321,
+    "source": "src/frontend/CExpr.c"
+  },
+  {
+    "name": "getpointertomemberfunc",
+    "address": "0x00542110",
+    "size": 530,
     "source": "src/frontend/CExpr.c"
   },
   {
@@ -18570,9 +20919,33 @@
     "source": "src/frontend/CExpr.c"
   },
   {
+    "name": "postfix_expression",
+    "address": "0x00542700",
+    "size": 2751,
+    "source": "src/frontend/CExpr.c"
+  },
+  {
     "name": "CExpr_DummyDestr",
     "address": "0x005431c0",
     "size": 836,
+    "source": "src/frontend/CExpr.c"
+  },
+  {
+    "name": "call_ptmf",
+    "address": "0x00543510",
+    "size": 223,
+    "source": "src/frontend/CExpr.c"
+  },
+  {
+    "name": "primary_expression",
+    "address": "0x005435f0",
+    "size": 1926,
+    "source": "src/frontend/CExpr.c"
+  },
+  {
+    "name": "CExpr_ParseTypeExpression",
+    "address": "0x00543d80",
+    "size": 247,
     "source": "src/frontend/CExpr.c"
   },
   {
@@ -18792,6 +21165,126 @@
     "source": "src/backend/DWARF.c"
   },
   {
+    "name": "InitDwarf",
+    "address": "0x00546d60",
+    "size": 65,
+    "source": "src/backend/DWARF.c"
+  },
+  {
+    "name": "init_dwarf_state",
+    "address": "0x00546db0",
+    "size": 277,
+    "source": "src/backend/DWARF.c"
+  },
+  {
+    "name": "insert_type_nodes_recursive",
+    "address": "0x00546ed0",
+    "size": 739,
+    "source": "src/backend/DWARF.c"
+  },
+  {
+    "name": "create_type_node",
+    "address": "0x005471c0",
+    "size": 290,
+    "source": "src/backend/DWARF.c"
+  },
+  {
+    "name": "insert_type_node_before",
+    "address": "0x005472f0",
+    "size": 210,
+    "source": "src/backend/DWARF.c"
+  },
+  {
+    "name": "DWARF_DeclareData",
+    "address": "0x005473d0",
+    "size": 213,
+    "source": "src/backend/DWARF.c"
+  },
+  {
+    "name": "emit_variable_entry",
+    "address": "0x005474b0",
+    "size": 852,
+    "source": "src/backend/DWARF.c"
+  },
+  {
+    "name": "newDWARF_param",
+    "address": "0x00547810",
+    "size": 368,
+    "source": "src/backend/DWARF.c"
+  },
+  {
+    "name": "emit_parameter_entry",
+    "address": "0x00547980",
+    "size": 617,
+    "source": "src/backend/DWARF.c"
+  },
+  {
+    "name": "newDWARF_local",
+    "address": "0x00547bf0",
+    "size": 258,
+    "source": "src/backend/DWARF.c"
+  },
+  {
+    "name": "emit_local_entry",
+    "address": "0x00547d00",
+    "size": 617,
+    "source": "src/backend/DWARF.c"
+  },
+  {
+    "name": "emit_dwarf_ref",
+    "address": "0x00547f70",
+    "size": 747,
+    "source": "src/backend/DWARF.c"
+  },
+  {
+    "name": "endDWARF_file",
+    "address": "0x00548260",
+    "size": 1,
+    "source": "src/backend/DWARF.c"
+  },
+  {
+    "name": "tweakDWARF_file",
+    "address": "0x00548270",
+    "size": 1638,
+    "source": "src/backend/DWARF.c"
+  },
+  {
+    "name": "endDWARF_function",
+    "address": "0x005488e0",
+    "size": 214,
+    "source": "src/backend/DWARF.c"
+  },
+  {
+    "name": "newDWARF_function",
+    "address": "0x005489c0",
+    "size": 349,
+    "source": "src/backend/DWARF.c"
+  },
+  {
+    "name": "DWARF_EstablishContext",
+    "address": "0x00548b20",
+    "size": 394,
+    "source": "src/backend/DWARF.c"
+  },
+  {
+    "name": "emit_function_entry",
+    "address": "0x00548cb0",
+    "size": 1288,
+    "source": "src/backend/DWARF.c"
+  },
+  {
+    "name": "emit_member_pointer_type",
+    "address": "0x005491c0",
+    "size": 267,
+    "source": "src/backend/DWARF.c"
+  },
+  {
+    "name": "emit_function_type",
+    "address": "0x005492d0",
+    "size": 692,
+    "source": "src/backend/DWARF.c"
+  },
+  {
     "name": "correctDWARF_line",
     "address": "0x00549590",
     "size": 111,
@@ -18804,9 +21297,81 @@
     "source": "src/backend/DWARF.c"
   },
   {
+    "name": "emit_compile_unit",
+    "address": "0x00549650",
+    "size": 719,
+    "source": "src/backend/DWARF.c"
+  },
+  {
+    "name": "newDWARF_file",
+    "address": "0x00549920",
+    "size": 316,
+    "source": "src/backend/DWARF.c"
+  },
+  {
+    "name": "emit_entry_header",
+    "address": "0x00549a60",
+    "size": 349,
+    "source": "src/backend/DWARF.c"
+  },
+  {
+    "name": "emit_location_attribute",
+    "address": "0x00549bc0",
+    "size": 1058,
+    "source": "src/backend/DWARF.c"
+  },
+  {
+    "name": "get_type_dwarf_ref",
+    "address": "0x00549ff0",
+    "size": 184,
+    "source": "src/backend/DWARF.c"
+  },
+  {
+    "name": "find_or_create_dwinfo",
+    "address": "0x0054a0b0",
+    "size": 132,
+    "source": "src/backend/DWARF.c"
+  },
+  {
+    "name": "set_type_dwarf_ref",
+    "address": "0x0054a140",
+    "size": 391,
+    "source": "src/backend/DWARF.c"
+  },
+  {
+    "name": "create_type_dwarf_ref",
+    "address": "0x0054a2d0",
+    "size": 618,
+    "source": "src/backend/DWARF.c"
+  },
+  {
     "name": "get_integral_type_code",
     "address": "0x0054a540",
     "size": 131,
+    "source": "src/backend/DWARF.c"
+  },
+  {
+    "name": "emit_array_type",
+    "address": "0x0054a5d0",
+    "size": 388,
+    "source": "src/backend/DWARF.c"
+  },
+  {
+    "name": "emit_class_type",
+    "address": "0x0054a760",
+    "size": 2101,
+    "source": "src/backend/DWARF.c"
+  },
+  {
+    "name": "emit_struct_type",
+    "address": "0x0054afa0",
+    "size": 1269,
+    "source": "src/backend/DWARF.c"
+  },
+  {
+    "name": "emit_enum_type",
+    "address": "0x0054b4a0",
+    "size": 458,
     "source": "src/backend/DWARF.c"
   },
   {
@@ -19023,6 +21588,18 @@
     "name": "CObjC_ParseProtocol",
     "address": "0x00551590",
     "size": 424,
+    "source": "src/frontend/CObjC.c"
+  },
+  {
+    "name": "CObjC_ParseImplementation",
+    "address": "0x00551740",
+    "size": 6,
+    "source": "src/frontend/CObjC.c"
+  },
+  {
+    "name": "CObjC_ParseInterface",
+    "address": "0x00551750",
+    "size": 6,
     "source": "src/frontend/CObjC.c"
   },
   {
@@ -19248,6 +21825,12 @@
     "source": "src/frontend/CObjC.c"
   },
   {
+    "name": "CObjC_Cleanup",
+    "address": "0x00555850",
+    "size": 1,
+    "source": "src/frontend/CObjC.c"
+  },
+  {
     "name": "CObjC_Setup",
     "address": "0x00555860",
     "size": 128,
@@ -19446,6 +22029,12 @@
     "source": "src/frontend/CABI.c"
   },
   {
+    "name": "CABI_GetVTableOffset",
+    "address": "0x0055a110",
+    "size": 3,
+    "source": "src/frontend/CABI.c"
+  },
+  {
     "name": "CABI_AddVTable",
     "address": "0x0055a120",
     "size": 31,
@@ -19482,6 +22071,24 @@
     "source": "src/frontend/CABI.c"
   },
   {
+    "name": "CABI_GetPtrDiffTType",
+    "address": "0x0055a590",
+    "size": 6,
+    "source": "src/frontend/CABI.c"
+  },
+  {
+    "name": "CABI_GetSizeTType",
+    "address": "0x0055a5a0",
+    "size": 6,
+    "source": "src/frontend/CABI.c"
+  },
+  {
+    "name": "CABI_GetStructResultArgumentIndex",
+    "address": "0x0055a5b0",
+    "size": 3,
+    "source": "src/frontend/CABI.c"
+  },
+  {
     "name": "CInline_Finish",
     "address": "0x0055a5c0",
     "size": 317,
@@ -19515,6 +22122,12 @@
     "name": "CInline_GenerateDefaultFunc",
     "address": "0x0055ab00",
     "size": 203,
+    "source": "src/frontend/CInline.c"
+  },
+  {
+    "name": "CInline_GenFunc",
+    "address": "0x0055abd0",
+    "size": 578,
     "source": "src/frontend/CInline.c"
   },
   {
@@ -19578,6 +22191,18 @@
     "source": "src/frontend/CInline.c"
   },
   {
+    "name": "CInline_UnpackIFunctionData",
+    "address": "0x0055b600",
+    "size": 1174,
+    "source": "src/frontend/CInline.c"
+  },
+  {
+    "name": "CInline_PackIFunctionData",
+    "address": "0x0055baa0",
+    "size": 1078,
+    "source": "src/frontend/CInline.c"
+  },
+  {
     "name": "CInline_PackActions",
     "address": "0x0055bee0",
     "size": 3694,
@@ -19587,6 +22212,12 @@
     "name": "CInline_CanInline",
     "address": "0x0055cd50",
     "size": 214,
+    "source": "src/frontend/CInline.c"
+  },
+  {
+    "name": "CInline_PackSwitch",
+    "address": "0x0055ce30",
+    "size": 230,
     "source": "src/frontend/CInline.c"
   },
   {
@@ -19620,6 +22251,12 @@
     "source": "src/frontend/CInline.c"
   },
   {
+    "name": "CInline_InlineFunctionStatement",
+    "address": "0x0055d540",
+    "size": 203,
+    "source": "src/frontend/CInline.c"
+  },
+  {
     "name": "CInline_ExpandStatements",
     "address": "0x0055d610",
     "size": 1228,
@@ -19635,6 +22272,12 @@
     "name": "CInline_GetLocalObj",
     "address": "0x0055ddd0",
     "size": 252,
+    "source": "src/frontend/CInline.c"
+  },
+  {
+    "name": "CInline_UnpackSwitch",
+    "address": "0x0055ded0",
+    "size": 244,
     "source": "src/frontend/CInline.c"
   },
   {
@@ -19707,6 +22350,12 @@
     "name": "CInline_EstimateSizeOfExpr",
     "address": "0x0055f160",
     "size": 495,
+    "source": "src/frontend/CInline.c"
+  },
+  {
+    "name": "CInline_InlineFunctionExpression",
+    "address": "0x0055f350",
+    "size": 839,
     "source": "src/frontend/CInline.c"
   },
   {
@@ -20190,9 +22839,69 @@
     "source": "src/backend/ScanFloatX86.c"
   },
   {
+    "name": "CTempl_InstantiateTemplateClass",
+    "address": "0x00566a80",
+    "size": 1594,
+    "source": "src/frontend/CTemplateClass.c"
+  },
+  {
+    "name": "CTemplClass_CopyFriend",
+    "address": "0x005670c0",
+    "size": 388,
+    "source": "src/frontend/CTemplateClass.c"
+  },
+  {
+    "name": "CTemplClass_CopyNameSpace",
+    "address": "0x00567250",
+    "size": 331,
+    "source": "src/frontend/CTemplateClass.c"
+  },
+  {
+    "name": "CTemplClass_CompleteObject",
+    "address": "0x005673a0",
+    "size": 558,
+    "source": "src/frontend/CTemplateClass.c"
+  },
+  {
+    "name": "CTemplClass_CopyObject",
+    "address": "0x005675d0",
+    "size": 777,
+    "source": "src/frontend/CTemplateClass.c"
+  },
+  {
+    "name": "CTemplClass_CopyMemberTemplate",
+    "address": "0x005678e0",
+    "size": 450,
+    "source": "src/frontend/CTemplateClass.c"
+  },
+  {
+    "name": "CTemplClass_CopyObjType",
+    "address": "0x00567ab0",
+    "size": 267,
+    "source": "src/frontend/CTemplateClass.c"
+  },
+  {
+    "name": "CTemplClass_CopyIVars",
+    "address": "0x00567bc0",
+    "size": 259,
+    "source": "src/frontend/CTemplateClass.c"
+  },
+  {
+    "name": "CTemplClass_CompleteEnumType",
+    "address": "0x00567cd0",
+    "size": 307,
+    "source": "src/frontend/CTemplateClass.c"
+  },
+  {
     "name": "CTemplClass_CopyEnum",
     "address": "0x00567e10",
     "size": 305,
+    "source": "src/frontend/CTemplateClass.c"
+  },
+  {
+    "name": "CTemplClass_CopyBaseClasses",
+    "address": "0x00567f50",
+    "size": 438,
     "source": "src/frontend/CTemplateClass.c"
   },
   {
@@ -20220,15 +22929,39 @@
     "source": "src/frontend/CTemplateClass.c"
   },
   {
+    "name": "CTemplClass_PartialClassIsAtLeastAsSpecialized",
+    "address": "0x00568500",
+    "size": 578,
+    "source": "src/frontend/CTemplateClass.c"
+  },
+  {
+    "name": "CTemplClass_PartialTemplateArgMatch",
+    "address": "0x00568750",
+    "size": 652,
+    "source": "src/frontend/CTemplateClass.c"
+  },
+  {
     "name": "CTemplClass_ParseClass",
     "address": "0x005689e0",
     "size": 728,
     "source": "src/frontend/CTemplateClass.c"
   },
   {
+    "name": "CTemplClass_ParsePartialSpecialization",
+    "address": "0x00568cc0",
+    "size": 945,
+    "source": "src/frontend/CTemplateClass.c"
+  },
+  {
     "name": "CTemplClass_DefineMember",
     "address": "0x00569080",
     "size": 125,
+    "source": "src/frontend/CTemplateClass.c"
+  },
+  {
+    "name": "CTemplClass_GetInstance",
+    "address": "0x00569100",
+    "size": 103,
     "source": "src/frontend/CTemplateClass.c"
   },
   {
@@ -20310,6 +23043,12 @@
     "source": "src/optimizer/CopyPropagation.c"
   },
   {
+    "name": "copypropagatestouse",
+    "address": "0x005698a0",
+    "size": 420,
+    "source": "src/optimizer/CopyPropagation.c"
+  },
+  {
     "name": "is_copy",
     "address": "0x00569a50",
     "size": 52,
@@ -20319,6 +23058,12 @@
     "name": "propagateinstructions",
     "address": "0x00569a90",
     "size": 554,
+    "source": "src/optimizer/CopyPropagation.c"
+  },
+  {
+    "name": "precedes",
+    "address": "0x00569cc0",
+    "size": 41,
     "source": "src/optimizer/CopyPropagation.c"
   },
   {
@@ -20334,6 +23079,12 @@
     "source": "src/optimizer/CopyPropagation.c"
   },
   {
+    "name": "computecandidatelist",
+    "address": "0x0056a260",
+    "size": 662,
+    "source": "src/optimizer/CopyPropagation.c"
+  },
+  {
     "name": "precomputecanidatecounts",
     "address": "0x0056a500",
     "size": 143,
@@ -20343,6 +23094,18 @@
     "name": "propagateaddinstructions",
     "address": "0x0056a590",
     "size": 53,
+    "source": "src/optimizer/AddPropagation.c"
+  },
+  {
+    "name": "propagateandremoveadd",
+    "address": "0x0056a5d0",
+    "size": 780,
+    "source": "src/optimizer/AddPropagation.c"
+  },
+  {
+    "name": "addpropagatestouse",
+    "address": "0x0056a8e0",
+    "size": 1063,
     "source": "src/optimizer/AddPropagation.c"
   },
   {
@@ -20373,6 +23136,12 @@
     "name": "analyzeForCountableLoops",
     "address": "0x0056b0d0",
     "size": 398,
+    "source": "src/optimizer/LoopDetection.c"
+  },
+  {
+    "name": "checkcountingloop",
+    "address": "0x0056b260",
+    "size": 1921,
     "source": "src/optimizer/LoopDetection.c"
   },
   {
@@ -20448,6 +23217,60 @@
     "source": "src/optimizer/LoopDetection.c"
   },
   {
+    "name": "computeusedefchains",
+    "address": "0x0056cc20",
+    "size": 332,
+    "source": "src/optimizer/UseDefChains.c"
+  },
+  {
+    "name": "computeglobaldefuseinfo",
+    "address": "0x0056cd70",
+    "size": 272,
+    "source": "src/optimizer/UseDefChains.c"
+  },
+  {
+    "name": "computeglobalusedefinfo",
+    "address": "0x0056ce80",
+    "size": 266,
+    "source": "src/optimizer/UseDefChains.c"
+  },
+  {
+    "name": "computelocalusedefinfo",
+    "address": "0x0056cf90",
+    "size": 1189,
+    "source": "src/optimizer/UseDefChains.c"
+  },
+  {
+    "name": "computeusedeflists",
+    "address": "0x0056d440",
+    "size": 1307,
+    "source": "src/optimizer/UseDefChains.c"
+  },
+  {
+    "name": "precomputeusedefcounts",
+    "address": "0x0056d960",
+    "size": 397,
+    "source": "src/optimizer/UseDefChains.c"
+  },
+  {
+    "name": "precomputememoryusedefs",
+    "address": "0x0056daf0",
+    "size": 126,
+    "source": "src/optimizer/UseDefChains.c"
+  },
+  {
+    "name": "addaliasusedef",
+    "address": "0x0056db70",
+    "size": 338,
+    "source": "src/optimizer/UseDefChains.c"
+  },
+  {
+    "name": "addobjectusedef",
+    "address": "0x0056dcd0",
+    "size": 112,
+    "source": "src/optimizer/UseDefChains.c"
+  },
+  {
     "name": "findobjectusedef",
     "address": "0x0056dd40",
     "size": 56,
@@ -20466,9 +23289,21 @@
     "source": "src/optimizer/CodeMotion.c"
   },
   {
+    "name": "moveinvariantsfromloop",
+    "address": "0x0056df40",
+    "size": 526,
+    "source": "src/optimizer/CodeMotion.c"
+  },
+  {
     "name": "simpleunswitchloops",
     "address": "0x0056e150",
     "size": 380,
+    "source": "src/optimizer/CodeMotion.c"
+  },
+  {
+    "name": "simpleunswitchloop",
+    "address": "0x0056e2d0",
+    "size": 2187,
     "source": "src/optimizer/CodeMotion.c"
   },
   {
@@ -20514,9 +23349,45 @@
     "source": "src/optimizer/CodeMotion.c"
   },
   {
+    "name": "moveinvariantcomputation",
+    "address": "0x0056f2c0",
+    "size": 427,
+    "source": "src/optimizer/CodeMotion.c"
+  },
+  {
     "name": "maymove",
     "address": "0x0056f470",
     "size": 249,
+    "source": "src/optimizer/CodeMotion.c"
+  },
+  {
+    "name": "isliveonexit",
+    "address": "0x0056f570",
+    "size": 253,
+    "source": "src/optimizer/CodeMotion.c"
+  },
+  {
+    "name": "uniquelyreachesalluses",
+    "address": "0x0056f670",
+    "size": 430,
+    "source": "src/optimizer/CodeMotion.c"
+  },
+  {
+    "name": "uniquelyreachesuse",
+    "address": "0x0056f820",
+    "size": 302,
+    "source": "src/optimizer/CodeMotion.c"
+  },
+  {
+    "name": "isuniquedefinition",
+    "address": "0x0056f950",
+    "size": 374,
+    "source": "src/optimizer/CodeMotion.c"
+  },
+  {
+    "name": "isloopinvariant",
+    "address": "0x0056fad0",
+    "size": 1186,
     "source": "src/optimizer/CodeMotion.c"
   },
   {
@@ -20622,6 +23493,12 @@
     "source": "src/optimizer/StrengthReduction.c"
   },
   {
+    "name": "findinitializer",
+    "address": "0x00571720",
+    "size": 202,
+    "source": "src/optimizer/StrengthReduction.c"
+  },
+  {
     "name": "optimizeloops",
     "address": "0x005717f0",
     "size": 130,
@@ -20712,6 +23589,12 @@
     "source": "src/optimizer/LoopOptimization.c"
   },
   {
+    "name": "computeliveonexit",
+    "address": "0x00574250",
+    "size": 517,
+    "source": "src/optimizer/LoopOptimization.c"
+  },
+  {
     "name": "propagateconstants",
     "address": "0x00574460",
     "size": 168,
@@ -20736,6 +23619,12 @@
     "source": "src/optimizer/ConstantPropagation.c"
   },
   {
+    "name": "computedefininginstructions",
+    "address": "0x00575790",
+    "size": 395,
+    "source": "src/optimizer/ConstantPropagation.c"
+  },
+  {
     "name": "deletedeadloads",
     "address": "0x00575920",
     "size": 53,
@@ -20745,6 +23634,12 @@
     "name": "deleteload",
     "address": "0x00575960",
     "size": 72,
+    "source": "src/optimizer/LoadDeletion.c"
+  },
+  {
+    "name": "loadpropagatestouse",
+    "address": "0x005759b0",
+    "size": 3,
     "source": "src/optimizer/LoadDeletion.c"
   },
   {
@@ -20787,6 +23682,12 @@
     "name": "computelocalvectorpropinfo",
     "address": "0x005760b0",
     "size": 470,
+    "source": "src/optimizer/VectorArraysToRegs.c"
+  },
+  {
+    "name": "computeaddilist",
+    "address": "0x00576290",
+    "size": 614,
     "source": "src/optimizer/VectorArraysToRegs.c"
   },
   {

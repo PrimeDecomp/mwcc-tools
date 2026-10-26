@@ -21,7 +21,6 @@ typedef struct PoolEntry {
     void* buffer;
 } PoolEntry;
 
-// 2.6: a pooled-data anchor: an object other objects are addressed from (TODO: invented name)
 typedef struct AnchorEntry {
     struct AnchorEntry* next;
     Object* object;
@@ -38,14 +37,7 @@ typedef struct COVCResult {
 
 extern ObjectList* toclist;
 extern ObjectList* exceptionlist;
-extern void* descriptorlist;
-extern PoolEntry* floatconstpool;
-extern PoolEntry* doubleconstpool;
-extern ObjectList* floatconstlist;
-extern PoolEntry* vectorconstpool;
-extern ObjectList* vectorconstlist;
 extern Object toc0;
-extern Boolean no_descriptors;
 extern CodeLabelList* codelabellist;
 extern AnchorEntry* anchorlist;
 
@@ -53,19 +45,15 @@ extern void setupaddressing(void);
 extern void reset_anchor_varinfo(void);
 extern Boolean used_anchor(Object* obj);
 extern Boolean is_pooled_object(Object* obj);
-// TODO: invented parameter names (Pro7: flag1, flag2): Pro7 gives the indirect a new VarInfo and
-// references it; 2.6 reads neither
 extern Object* createIndirect(Object* obj, Boolean newVarInfo, Boolean reference);
 extern Object* createfloatconstant(Type* type, Float* data);
 extern void DeclarePooledConstants(void);
 extern void dumpcodelabels(Object* func);
 extern Boolean canoptimizevectorconst(MWVector128* vecp, Type* type, COVCResult* result);
 extern Boolean TOC_use_fsel(ENode* expr);
-extern Boolean TOC_use_isel(ENode* expr, Boolean flag);
+extern Boolean TOC_use_isel(ENode* expr, Boolean force);
 extern SInt32 GetSizeSkip(ENode* expr);
-extern void Optimize64bitMath(ENode* expr);
 extern void expandTOCreferences(Statement** stmts);
-extern Boolean needdescriptor(void);
 extern Object* createstaticinitobject(void);
 
 #ifdef __cplusplus

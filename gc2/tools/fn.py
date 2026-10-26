@@ -1,38 +1,8 @@
 #!/usr/bin/env python3
-"""python tools/fn.py COMMAND ...: one function: the original's code, the compiled code against it, and trials of
-other source for it.
-
-  show VERSION NAME | show VERSION --address ADDRESS [--size N]
-      the original's code, with the addresses it calls or reads named (functions.json, then symbols.txt)
-  diff NAME [--version V] [--built] [--from-13 EXE]
-      compile NAME's source outside the build (--built: take the build's object) and show the code against the
-      original's, instruction by instruction ('=' the same, '~' the same instruction with other operands, '-' only the
-      compiled, '+' only the original), with the verdict and its reason. Addresses print as names; a line is '='
-      only when it refers to the same globals and callees ('?' is a reference the comparison cannot resolve). With --from-13 (GC 1.3's mwcceppc.exe) and
-      build/V/port.json (tools/port_version.py --write), also 1.3's original against V's: what changed between the
-      versions. Exits 1 when the function is not exact.
-  variants NAME FILE [--version V] [--write VARIANT]
-      compile alternative definitions of NAME (FILE: whole definitions, each headed by a line `//// VARIANT`; text
-      before the first header is ignored) in parallel, each in place of the definition, and judge each; a variant may
-      add declarations before the function. Other functions of the unit whose verdict a variant changes are listed
-      (inlining). --write VARIANT puts that one in the source.
-  decl-order NAME [--version V] [--swaps] [--dry-run]
-      search the order of NAME's leading local declarations for the one closest to the original, and write it (unless
-      --dry-run). Greedy: each pass tries every declaration at every place (with --swaps, every pair exchanged too)
-      and keeps the best, until nothing helps or the function is exact. MWCC allocates registers in declaration order,
-      so this settles "the same code in other registers". Declarations that are static or initialized by a call keep
-      their places.
-
-NAME is a row of config/VERSION/functions.json; its source is the row's. Everything compiles outside the build
-(tools/mw/isolated.py: the source's own command line, its own file name), in parallel, judged by the comparison's rule
-(tools/mw/verdict.py); nothing in build/ is written, so it runs beside ninja and other tools. A write fails when the
-source changed while the command ran.
-"""
 
 import argparse
 import bisect
 import difflib
-import json
 import re
 import sys
 from pathlib import Path
@@ -41,7 +11,7 @@ import capstone
 
 sys.path.insert(0, str(Path(__file__).parent))
 from mw import build, csrc, formats, isolated, project, verdict
-from mw.pe import PEFile, original
+from mw.pe import original
 
 MD = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_32)
 _ADDRESS = re.compile(r"0x[0-9a-f]{6,}")
@@ -65,11 +35,7 @@ def disassemble(code: bytes, address: int) -> list[tuple[int, str, str]]:
     return [(i.address - address, i.mnemonic, i.op_str) for i in MD.disasm(code, address)]
 
 
-# ----------------------------------------------------------------------------------------------------------- show
-
-
 def namer(version, rows=None):
-    """A function naming an address: a row's or symbols.txt's name, `name+0xN` inside a symbol, or the address."""
     rows = verdict.rows(version) if rows is None else rows
     names, sizes = {}, {}
     for s in formats.read_symbols(version.config / "symbols.txt"):
@@ -97,7 +63,10 @@ def show(args):
     rows = verdict.rows(v)
     name = namer(v, rows)
     if args.address is not None:
-        address = int(args.address, 16)
+        try:
+            address = int(args.address, 16)
+        except ValueError:
+            raise project.Error(f"--address takes a hexadecimal address, not {args.address}") from None
         row = next((r for r in rows if r.address == address), None)
         size = args.size or (row.size if row else None)
         if size is None:
@@ -110,14 +79,7 @@ def show(args):
         print(f"{i.address:x}: {i.mnemonic} {operands}")
 
 
-# ----------------------------------------------------------------------------------------------------------- diff
-
-
 def side_by_side(left, right, left_name, right_name, address=0, size=0, name=None, same_size=False):
-    """Instruction diff. Absolute addresses print by NAME (a branch inside the function [ADDRESS, +SIZE) as `.+0xN`);
-    a line is '=' only when its operands, references included, are the same (an unresolved reference, '?', matches
-    anything: the verdict's reason says why it is unresolved). A branch inside the function matches any other unless
-    SAME_SIZE (both codes one size: then it must go to the same offset)."""
     lo, hi = address, address + size
 
     def label(m):
@@ -137,7 +99,7 @@ def side_by_side(left, right, left_name, right_name, address=0, size=0, name=Non
             for i, j in zip(range(i1, i2), range(j1, j2)):
                 same = shape_a[i] == shape_b[j] and verdict.references_agree(left[i][2], right[j][2], lo, hi)
                 if same and same_size and a[i] != b[j]:
-                    same = False  # (code of one size: a branch inside the function elsewhere is a difference)
+                    same = False
                 mark = "=" if same else "~"
                 print(f"{mark} {left[i][0]:5x} {a[i][:44]:<44} {right[j][0]:5x} {b[j]}")
         else:
@@ -163,7 +125,9 @@ def diff(args) -> bool:
                 print(result.log[-3000:])
                 raise project.Error(f"{row.source} does not compile")
             obj = result.object
-        found = next(x for x in verdict.compare_file(v, row.source, obj) if x.address == row.address)
+        found = next((x for x in verdict.compare_file(v, row.source, obj) if x.address == row.address), None)
+        if found is None:
+            raise project.Error(f"{row.source}'s object does not define {row.name}")
     state = "EXACT" if found.exact else f"{100 * found.similarity:.1f}% similar: {found.reason}"
     print(f"{row.name} ({row.source}, {row.address:#x}, {row.size} bytes): {state}")
     if found.body is not None:
@@ -177,42 +141,16 @@ def diff(args) -> bool:
             namer(v),
             same_size=len(found.body) == row.size,
         )
-    if args.from_13:
-        port = v.build / "port.json"
-        if not port.exists():
-            raise project.Error(
-                f"{project.relative(port)} does not exist: python tools/port_version.py GC_1_3 {v} --write"
-            )
-        entry = next((e for e in json.loads(port.read_text()) if e["name"] == row.name), None)
-        if not entry or not entry.get("from"):
-            print(f"\n{row.name} has no 1.3 counterpart in {project.relative(port)}")
-        else:
-            old, start = PEFile(Path(args.from_13)), int(entry["from"], 16)
-            mine = disassemble(target, row.address)
-            print(f"\n1.3's original ({entry['from']}) against {v}'s ({entry['how']} mapping):")
-            side_by_side(
-                disassemble(old.read(start, row.size + 64), start)[: len(mine) + 8],
-                mine,
-                "1.3 original",
-                f"{v} original",
-            )
     return found.exact
 
 
-# ------------------------------------------------------------------------------------------------ trials of source
-
-
 class Trial:
-    """Compiles texts of ROW's source outside the build and judges them."""
-
     def __init__(self, version, row: verdict.Row, workspace: isolated.Workspace):
         self.version, self.row, self.workspace = version, row, workspace
         self.compilation = build.compilation(version, row.source)
         self.target = original(version).read(row.address, row.size)
 
     def run(self, text: str):
-        """(score: 2 exact, else the similarity, -1 when it does not compile; {address: exact} of the unit's
-        functions; the row's verdict or the compiler's log)."""
         result = self.workspace.compile(self.compilation, text)
         if not result.ok:
             return -1.0, {}, " ".join(result.log.split())[-400:]
@@ -289,7 +227,6 @@ def decl_order(args):
     first, last = d.locals[0].start, d.locals[-1].end
     if any(first <= x.start < last for x in source.directives):
         raise project.Error(f"{row.name}: a preprocessor line among its declarations")
-    # (each declaration with what follows it on its line: a comment)
     spans = []
     for local in d.locals:
         end = source.line_end(local.end)
@@ -303,7 +240,6 @@ def decl_order(args):
         raise project.Error(f"{row.name}: fewer than two declarations can move (pinned: {'; '.join(pinned)})")
 
     def render(order):
-        """The source with the movable declarations in ORDER (indices into pieces) in their places."""
         slots = iter(order)
         chosen = [next(slots) if i in movable else i for i in range(len(pieces))]
         middle = "".join(pieces[k] + (gaps[i] if i < len(gaps) else "") for i, k in enumerate(chosen))
@@ -367,15 +303,15 @@ def main():
     import signal
 
     if hasattr(signal, "SIGPIPE"):
-        signal.signal(signal.SIGPIPE, signal.SIG_DFL)  # (piped into head: stop quietly)
+        signal.signal(signal.SIGPIPE, signal.SIG_DFL)
     parser = argparse.ArgumentParser(
-        description=__doc__.split("\n\n")[0],
+        prog="tools/fn.py",
+        description="One function: the original's code, the compiled code against it, and trials of other source for it.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=__doc__[__doc__.index("\n\n") + 2 :],
     )
     common = argparse.ArgumentParser(add_help=False)
-    common.add_argument("--version")
-    commands = parser.add_subparsers(dest="command", required=True)
+    common.add_argument("--version", help=f"default {project.PRIMARY}")
+    commands = parser.add_subparsers(dest="command", required=True, metavar="COMMAND")
     p = commands.add_parser("show")
     p.add_argument("version")
     p.add_argument("name", nargs="?")
@@ -383,8 +319,7 @@ def main():
     p.add_argument("--size", type=int)
     p = commands.add_parser("diff", parents=[common])
     p.add_argument("name")
-    p.add_argument("--built", action="store_true")
-    p.add_argument("--from-13")
+    p.add_argument("--built", action="store_true", help="the build's object, not a fresh compile")
     p = commands.add_parser("variants", parents=[common])
     p.add_argument("name")
     p.add_argument("file")

@@ -1,7 +1,6 @@
 #ifndef COMPILER_IROMALLOC_H
 #define COMPILER_IROMALLOC_H
 
-#include "compiler/common.h"
 #include <stddef.h>
 
 #ifdef __cplusplus

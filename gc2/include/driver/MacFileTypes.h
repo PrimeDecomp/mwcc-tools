@@ -9,7 +9,6 @@
 extern "C" {
 #endif
 
-// A list of the plugins' file type mapping lists (Pro7's oslib.h)
 typedef struct OSFileTypeMappings {
     const OSFileTypeMappingList* mappingList;
     struct OSFileTypeMappings* next;

@@ -1,30 +1,24 @@
-// The driver's FLEXlm license cookies (Pro7's CLLicenses.c is a Mac stub; 2.6's is its own). A
-// cookie is a slot's id: positive when the plugin checks it in itself, negative when the driver is
-// to (License_AutoCheckin, after each terminate request). The original's License_Checkin ignores
-// every cookie that is not positive, so License_AutoCheckin checks nothing in.
 #include "driver/CLLicenses.h"
 #include "driver/CLErrors.h"
 #include "driver/CLMain.h"
 #include "driver/LicenseImports.h"
 #include "driver/MemUtils.h"
+#include "driver/MsDos.h"
+#include "driver/oslib.h"
 #include <stdlib.h>
 #include <string.h>
 
-// TODO: invented name. A checked-out license: its FLEXlm handle and cookie (0: the slot is free)
 typedef struct LicenseSlot {
     LP_HANDLE* handle;
     SInt32 cookie;
 } LicenseSlot;
 
-// (declared in reverse of their .bss addresses: statics are allocated in reverse declaration order)
-// TODO: invented name (Wii's CLLicenses has the statics but names none of them)
 static VENDORCODE* vendorcode;
 static LicenseSlot license_slots[32];
 static int license_slot_count;
 static int license_id_counter;
 char* licenseFile;
 
-// TODO: invented names for the five statics below (Wii's module has them, unnamed)
 static int allocate_license_slot(LP_HANDLE* handle, int autoCheckin) {
     int slot;
 
@@ -46,7 +40,7 @@ static int allocate_license_slot(LP_HANDLE* handle, int autoCheckin) {
         }
         return license_id_counter;
     }
-    CLInternalError(__FILE__, 97, "Out of license space");
+    DO_INTERNAL_ERROR(97, "Out of license space");
     return 0;
 }
 
@@ -59,7 +53,7 @@ static int find_license(SInt32 cookie, LP_HANDLE** handle) {
             return index;
         }
     }
-    CLInternalError(__FILE__, 117, "Searched license not found");
+    DO_INTERNAL_ERROR(117, "Searched license not found");
     return -1;
 }
 
@@ -75,7 +69,7 @@ static int get_license_slot_values(int index, LP_HANDLE** handle, SInt32* cookie
 static int delete_license(int index) {
     if (index >= 0 && index < license_slot_count) {
         license_slots[index].cookie = 0;
-        license_slots[index].handle = 0;
+        license_slots[index].handle = NULL;
         if (index + 1 == license_slot_count) {
             for (; index >= 0 && license_slots[index].cookie == 0; --index) {
                 --license_slot_count;
@@ -83,7 +77,7 @@ static int delete_license(int index) {
         }
         return TRUE;
     }
-    CLInternalError(__FILE__, 154, "Deleted license not valid");
+    DO_INTERNAL_ERROR(154, "Deleted license not valid");
     return FALSE;
 }
 
@@ -107,7 +101,6 @@ void License_Terminate(void) {
             License_Checkin(cookie);
         }
     }
-    // (cleared, not freed)
     if (vendorcode != NULL) {
         memset(vendorcode, 0, sizeof(VENDORCODE));
         vendorcode = NULL;
@@ -136,8 +129,7 @@ SInt32 License_Checkout(
         environmentPath = getenv("LM_LICENSE_FILE");
         if (environmentPath != NULL) {
             strcpy(licensePath, environmentPath);
-            if (OS_MakeFileSpec(licensePath, &alternatePath) !=
-                0 ||
+            if (OS_MakeFileSpec(licensePath, &alternatePath) != 0 ||
                 OS_Status(&alternatePath) != 0) {
                 if (OS_ResolveLink(&clState.programSpec, &alternatePath) == 0) {
                     OS_PathSpecToString(
@@ -168,7 +160,6 @@ SInt32 License_Checkout(
         strcpy(licensePath, "license.dat");
     }
     if (vendorcode == NULL) {
-        // TODO: what FLEXlm's LM_CODE macro initializes, built at run time
         vendorcode = xmalloc(NULL, sizeof(VENDORCODE));
         vendorcode->type = 4;
         vendorcode->data[0] = 0x4cf2d709;

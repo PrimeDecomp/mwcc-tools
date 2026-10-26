@@ -9,67 +9,55 @@
 extern "C" {
 #endif
 
-// How an object is addressed (ObjGen_GetAddressing): a section's `#pragma section` data_mode and
-// code_mode (SectionRec.dataMode, .codeMode; SectionSymbolAttributes.dataMode, .codeMode) by the
-// pragma's words. AM_SDA_REL becomes the small-data area of its section (Finish_Pragma_Section);
-// base_register gives each mode's base register (3 and 4 use r2 too). TODO: invented names
 typedef enum AddressingMode {
     AM_NONE = 0,
     AM_FAR_ABS = 1,
     AM_NEAR_ABS = 2,
+    AM_UNUSED_3 = 3,
+    AM_UNUSED_4 = 4,
     AM_SDA_REL = 5,
-    AM_SDATA = 6, // .sdata/.sbss, from r13
-    AM_SDATA2 = 7, // .sdata2/.sbss2, from r2
-    AM_SDATA0 = 8, // .PPC.EMB.sdata0/.sbss0, from r0
-    AM_LOCAL = 9, // a local, from the frame's base register
+    AM_SDATA = 6,
+    AM_SDATA2 = 7,
+    AM_SDATA0 = 8,
+    AM_LOCAL = 9,
     AM_CODE_PC_REL = 10,
     AM_CODE_NEAR_ABS = 11,
     AM_CODE_FAR_ABS = 12
 } AddressingMode;
-// A .mwcats section's procedure list (MWCATS_AddProc)
 struct CGList {
     struct SectionAttributeNode* head;
     struct SectionAttributeNode* tail;
-    struct ObjGenSection* sourceSection; // (the code section it describes)
+    struct ObjGenSection* sourceSection;
 };
 #pragma pack(push, 2)
 struct InterruptGenerationRecord {
     struct InterruptGenerationRecord* next;
-    UInt8 kind; // InterruptRecord_*
-    UInt16 sectionIndex; // (kinds 1 and 2)
+    UInt8 kind;
+    UInt16 sectionIndex;
     UInt16 id;
-    // (kind 3) the section header indexes PPC_EABI_SetSection picks from, one per `#pragma section`
-    // object type: code_type, data_type, const_type, sconst_type, sdata_type (TODO: invented names)
     UInt16 textSection;
     UInt16 dataSection;
     UInt16 constSection;
     UInt16 sconstSection;
     UInt16 sdataSection;
-    UInt8 flags; // #pragma interrupt's options (Interrupt_*)
+    UInt8 flags;
 };
-// InterruptGenerationRecord.kind (TODO: invented names)
 enum {
-    InterruptRecord_Interrupt =
-        1, // an interrupt function (#pragma interrupt, __declspec(interrupt))
-    InterruptRecord_DeclSpec = 2, // __declspec(section) (DoParseDeclSpec)
-    InterruptRecord_SectionSet =
-        3 // the `#pragma section` settings (get_current_pseudo_section_info)
+    InterruptRecord_Interrupt = 1,
+    InterruptRecord_DeclSpec = 2,
+    InterruptRecord_SectionSet = 3
 };
-// InterruptGenerationRecord.flags: what `#pragma interrupt` asked for (TODO: the names are made up,
-// after the pragma's words)
 enum {
     Interrupt_On = 1,
-    Interrupt_Enable = 2, // enable: run with external interrupts enabled
-    Interrupt_SRR = 4, // SRR: save SRR0 and SRR1
+    Interrupt_Enable = 2,
+    Interrupt_SRR = 4,
     Interrupt_DAR = 8,
     Interrupt_DSISR = 0x10,
-    Interrupt_FPRs = 0x20, // fprs: save the scratch FPRs
-    Interrupt_VRs = 0x40, // vrs: save the scratch vector registers
+    Interrupt_FPRs = 0x20,
+    Interrupt_VRs = 0x40,
     Interrupt_NoWarn = 0x80
 };
 #pragma pack(pop)
-// The PowerPC ELF relocation types ObjGen writes (ObjGenRelocation.kind, Elf32_Rela.r_info's low
-// byte)
 enum {
     R_PPC_ADDR32 = 1,
     R_PPC_ADDR24 = 2,
@@ -85,21 +73,20 @@ enum {
 
 struct ObjGenRelocation {
     struct ObjGenRelocation* next;
-    SInt32 kind; // R_PPC_*
+    SInt32 kind;
     struct ObjGenSection* section;
-    SInt32 source;
+    struct ObjGenSection* source;
     SInt32 index;
     struct BE_SymNode* symbol;
 };
-// ObjGenSection.kind: what InitElfSection files a section as (TODO: invented names)
 enum {
-    SectionKind_Null = 0, // the null section header (ELFfile.null_section)
-    SectionKind_Content = 1, // code or initialized data
+    SectionKind_Null = 0,
+    SectionKind_Content = 1,
     SectionKind_Ctors = 2,
     SectionKind_Dtors = 3,
     SectionKind_Extab = 4,
     SectionKind_ExtabIndex = 5,
-    SectionKind_BSS = 6, // uninitialized data (SHT_NOBITS)
+    SectionKind_BSS = 6,
     SectionKind_Debug = 7,
     SectionKind_Line = 8,
     SectionKind_MWCATS = 9,
@@ -119,55 +106,41 @@ struct ObjGenSection {
     struct ObjGenSection* nextInGroup;
     UInt8 kind;
     UInt8 flags;
-    UInt32 permissions; // (ELF's SHF_*: 1 W, 2 A (shown as R), 4 X; 0x40000000 compressed)
-    SInt16 index; // (the ELF section header index: build_ordered_section_index)
+    UInt32 permissions;
+    SInt16 index;
     SInt32 relocationCount;
     struct ObjGenSymbolLink* symbolLink;
     struct SectionSymbolAttributes* header;
     char* name;
     SInt32 initialSize;
     GList buffer;
-    // the section's header, which BackEnd_WriteElf writes (sh_flags: `permissions` keeps the access
-    // the section was declared with, which report_section_permission_conflict compares;
-    // sh_addralign: the largest alignment of what the section holds)
     Elf32_Shdr shdr;
-    struct ObjGenSection* relocations; // (the section's .rela section)
+    struct ObjGenSection* relocations;
     struct DwarfFunctionState* debugState;
-    // the uid of the source file (ObjGen's CurFile) a clone's code comes from: CloneSection,
-    // GetSectionByName, GetSourceFileName; 0 for the main file
     SInt32 context;
     struct BE_SymNode* sym;
     struct ObjGenSection* output;
     union {
-        struct CGList* attributes; // (a .mwcats section, SectionKind_MWCATS: MWCATS_AddProc)
+        struct CGList* attributes;
     } sectionData;
 };
 #pragma pack(pop)
 #pragma pack(push, 2)
-// 2.6: a 64K window of a pooled section that objects are addressed through from one base register
-// (TODO: the name is made up)
 typedef struct BE_SymGroup {
     struct BE_SymGroup* next;
-    SInt32 base; // the window covers base - 0x8000 .. base + 0x7fff
+    SInt32 base;
     SInt32 reg;
     ObjectList* objects;
     SInt32 limit;
     SInt32 count;
     Boolean full;
 } BE_SymGroup;
-// 2.6: what a pooled section's anchor keeps (TODO: the name is made up)
 struct ObjGenSymbolLink {
-    // the section's anchor object; GetDataPoolRoot returns it
     struct Object* object;
-    // the first object select_object_section placed in the section (CreateDataPoolAnchorSymbol's
-    // argument)
     struct Object* firstObject;
-    // the anchor's symbol, which pooled relocations use (CreateDataPoolAnchorSymbol returns it)
     struct BE_SymNode* symbol;
     BE_SymGroup* groups;
-    // where the next group is linked (the list's last `next`)
     BE_SymGroup** tail;
-    // init_xref_anchors clears it
     UInt8 used;
 };
 #pragma pack(pop)
@@ -192,7 +165,7 @@ extern void ObjGen_CodeCleanup(void);
 extern void ObjGen_SetupSym(void);
 extern void ObjGen_SymFunc(Object* func);
 extern void ObjGen_SegmentName(HashNameNode* name);
-extern void ObjGen_SrcBreakName(HashNameNode* name, SInt32 fileModDate, Boolean flag);
+extern void ObjGen_SrcBreakName(HashNameNode* name, SInt32 fileModDate, Boolean unused);
 extern void ObjGen_DeclareData(
     Object* object, const void* data, OLinkList* list, unsigned int size
 );
@@ -214,12 +187,15 @@ extern GList* ObjGen_GetSectionGList(ObjGenSection* section);
 extern void ObjGen_DeclareFloatConst(Object* object);
 extern void ObjGen_DeclareCodeLabel(Object* labelobj, SInt32 offset, Object* funcobj);
 
-/* 2.6 (EABI) */
 extern int ObjGen_GetAddressing(Object* obj);
 extern int base_register(Object* obj);
 extern Boolean is_16bitdata(Object* obj);
 extern void ObjGen_BestSection(Object* func);
+#if VERSION < VERSION_GC_2_0
+extern void PPC_EABI_SetSection(Object* object, SInt32 size, Boolean isConst);
+#else
 extern void PPC_EABI_SetSection(Object* object, SInt32 size, Boolean isConst, Boolean allowSmall);
+#endif
 extern short GetCurrentSection(short kind);
 extern short pseudo_section_index(short key);
 extern SInt16 update_section(Object* func);

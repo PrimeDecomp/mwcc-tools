@@ -11,9 +11,6 @@ extern "C" {
 extern CW_CALLBACK CWSecretAttachHandle(
     CWPluginContext context, Handle handle, CWMemHandle* memHandle
 );
-extern CW_CALLBACK CWSecretDetachHandle(
-    CWPluginContext context, CWMemHandle memHandle, Handle* handle
-);
 extern CW_CALLBACK CWSecretGetNamedPreferences(
     CWPluginContext context, const char* prefsname, Handle* prefsdata
 );

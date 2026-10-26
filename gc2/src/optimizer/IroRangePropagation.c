@@ -6,17 +6,19 @@
 #include "compiler/IroPointerAnalysis.h"
 #include "compiler/IroUtil.h"
 #include "compiler/IroVars.h"
+#include "compiler/CError.h"
 #include "compiler/CInt64.h"
+#include "compiler/CompilerTools.h"
 #include "compiler/CParser.h"
-#include "compiler/CPrep.h"
+#include "compiler/enode.h"
 #include "compiler/objects.h"
 #include "compiler/types.h"
 
 typedef enum ERangeType {
-    ERangeType0,
-    ERangeType1,
-    ERangeType2,
-    ERangeType3
+    ERangeConstant,
+    ERangeBounded,
+    ERangeComputed,
+    ERangeUnknown
 } ERangeType;
 
 #pragma pack(push, 2)
@@ -71,7 +73,7 @@ static ERecord* ERecordFound(Object* obj) {
 
 static Boolean EREandHasNoUse(ERange* range, CInt64 val) {
     UInt16 i;
-    CInt64 v11;
+    CInt64 mask;
     CInt64 work;
 
     i = 0;
@@ -85,8 +87,8 @@ static Boolean EREandHasNoUse(ERange* range, CInt64 val) {
     }
 
     CInt64_SetULong(&work, i);
-    v11 = CInt64_Sub(CInt64_Shl(cint64_one, work), cint64_one);
-    if (CInt64_NotEqual(cint64_zero, CInt64_And(CInt64_Inv(val), v11))) {
+    mask = CInt64_Sub(CInt64_Shl(cint64_one, work), cint64_one);
+    if (CInt64_NotEqual(cint64_zero, CInt64_And(CInt64_Inv(val), mask))) {
         return FALSE;
     } else {
         return TRUE;
@@ -97,41 +99,41 @@ static void ERcheckOverflow(ERange* range, Type* type) {
     CInt64 typeSize;
     CInt64 work;
     CInt64 work2;
-    CInt64 value3;
+    CInt64 three;
 
     if (!range) {
         return;
     }
 
     if (!IS_TYPE_INT(type)) {
-        range->type = ERangeType3;
+        range->type = ERangeUnknown;
         return;
     }
 
     CInt64_SetLong(&typeSize, type->size);
-    CInt64_SetLong(&value3, 3);
+    CInt64_SetLong(&three, 3);
 
     if (is_unsigned(type)) {
         if (type->size < 8) {
-            work = CInt64_Sub(CInt64_Shl(cint64_one, CInt64_Shl(typeSize, value3)), cint64_one);
+            work = CInt64_Sub(CInt64_Shl(cint64_one, CInt64_Shl(typeSize, three)), cint64_one);
             if (CInt64_GreaterU(range->upper, work)) {
-                range->type = ERangeType3;
+                range->type = ERangeUnknown;
             }
         } else {
-            range->type = ERangeType3;
+            range->type = ERangeUnknown;
         }
     } else {
         if (type->size < 8) {
             work = CInt64_Sub(
-                CInt64_Shl(cint64_one, CInt64_Sub(CInt64_Shl(typeSize, value3), cint64_one)),
+                CInt64_Shl(cint64_one, CInt64_Sub(CInt64_Shl(typeSize, three), cint64_one)),
                 cint64_one
             );
-            work2 = CInt64_Shl(cint64_negone, CInt64_Sub(CInt64_Shl(typeSize, value3), cint64_one));
+            work2 = CInt64_Shl(cint64_negone, CInt64_Sub(CInt64_Shl(typeSize, three), cint64_one));
             if (CInt64_Greater(range->upper, work) || CInt64_Less(range->lower, work2)) {
-                range->type = ERangeType3;
+                range->type = ERangeUnknown;
             }
         } else {
-            range->type = ERangeType3;
+            range->type = ERangeUnknown;
         }
     }
 }
@@ -140,7 +142,7 @@ static void ERinvalidAll(void) {
     ERecord* record;
 
     for (record = ERangeFirst; record; record = record->next) {
-        record->range->type = ERangeType3;
+        record->range->type = ERangeUnknown;
     }
 }
 
@@ -167,10 +169,8 @@ static void SetRangesForKillsByIndirectAssignment(IROLinear* nd) {
 
     inner = analysend;
     if (inner &&
-        inner->type ==
-        IROLinearOp1Arg &&
-        inner->nodetype ==
-        EINDIRECT &&
+        inner->type == IROLinearOp1Arg &&
+        inner->nodetype == EINDIRECT &&
         (analysend = inner->u.monadic) &&
         copts.opt_pointer_analysis &&
         analysend->pointsToFunction &&
@@ -237,7 +237,7 @@ static void SetRangesForKillsByIndirectAssignment(IROLinear* nd) {
 
     if (failed) {
         ERinvalidAll();
-        nd->range = ERnewERange(ERangeType3);
+        nd->range = ERnewERange(ERangeUnknown);
     }
 }
 
@@ -321,7 +321,7 @@ static void InvalidateRangesForKillsByFunctionCall(IROLinear* nd) {
                             for (olist = killList; olist; olist = olist->next) {
                                 record = ERecordFound(olist->object);
                                 if (record) {
-                                    record->range->type = ERangeType3;
+                                    record->range->type = ERangeUnknown;
                                 }
                             }
 
@@ -358,12 +358,14 @@ static void ERfoldOperand(IROLinear* nd) {
             nd->range = NULL;
             break;
         case EINTCONST:
-            nd->range = ERnewERange(ERangeType0);
+            nd->range = ERnewERange(ERangeConstant);
             nd->range->upper = nd->range->lower = nd->u.node->data.intval;
             break;
         case EFLOATCONST:
         case ESTRINGCONST:
-            nd->range = ERnewERange(ERangeType0);
+            nd->range = ERnewERange(ERangeConstant);
+            break;
+        default:
             break;
     }
 }
@@ -371,7 +373,7 @@ static void ERfoldOperand(IROLinear* nd) {
 static Boolean ERfoldExpr(IROLinear* nd) {
     ERecord* record;
     ERange* range;
-    IROLinear* tmp;
+    IROLinear* operand;
     IROLinear* inner;
     Object* obj;
 
@@ -382,10 +384,10 @@ static Boolean ERfoldExpr(IROLinear* nd) {
                 if (inner->type == IROLinearOperand && inner->u.node->type == EOBJREF) {
                     if (!inner->range && (obj = inner->u.node->data.objref)) {
                         if ((record = ERecordFound(obj))) {
-                            inner->range = ERnewERange(ERangeType3);
+                            inner->range = ERnewERange(ERangeUnknown);
                             *inner->range = *record->range;
                         } else {
-                            inner->range = ERnewERange(ERangeType3);
+                            inner->range = ERnewERange(ERangeUnknown);
                             inner->range->upper = cint64_max;
                             inner->range->lower = cint64_min;
                             ERnewRecord(obj, inner->range);
@@ -393,31 +395,28 @@ static Boolean ERfoldExpr(IROLinear* nd) {
                     }
                     nd->range = inner->range;
                 } else {
-                    nd->range = ERnewERange(ERangeType3);
+                    nd->range = ERnewERange(ERangeUnknown);
                     nd->range->upper = cint64_max;
                     nd->range->lower = cint64_min;
                 }
             } else {
-                if (inner->type ==
-                    IROLinearOperand &&
-                    inner->u.node->type ==
-                    EOBJREF &&
+                if (inner->type == IROLinearOperand &&
+                    inner->u.node->type == EOBJREF &&
                     !inner->range) {
-                    inner->range = ERnewERange(ERangeType3);
+                    inner->range = ERnewERange(ERangeUnknown);
                 }
-                nd->range = ERnewERange(ERangeType3);
+                nd->range = ERnewERange(ERangeUnknown);
             }
             break;
         case EAND:
         case EANDASS:
             if (IRO_IsIntConstant(nd->u.diadic.right)) {
                 CInt64 val = nd->u.diadic.right->u.node->data.intval;
-                nd->range = ERnewERange(ERangeType1);
+                nd->range = ERnewERange(ERangeBounded);
                 nd->range->upper = val;
                 nd->range->lower = cint64_zero;
                 if ((range = nd->u.diadic.left->range) &&
-                    range->type !=
-                    ERangeType3 &&
+                    range->type != ERangeUnknown &&
                     CInt64_LessEqualU(range->upper, val) &&
                     CInt64_LessEqualU(range->lower, val) &&
                     EREandHasNoUse(range, val) &&
@@ -432,18 +431,18 @@ static Boolean ERfoldExpr(IROLinear* nd) {
                     IRO_NopOut(nd->u.diadic.right);
                     nd->type = IROLinearNop;
                     nd->expr = NULL;
-                    tmp = nd->u.diadic.left;
+                    operand = nd->u.diadic.left;
                     nd->u.diadic.left = nd->u.diadic.right;
-                    if (!IRO_LocateFather_Cut_And_Paste(nd, tmp)) {
-                        tmp->flags &= ~IROLF_Reffed;
-                        if (IRO_IsVariable(tmp)) {
-                            IRO_NopOut(tmp);
+                    if (!IRO_LocateFather_Cut_And_Paste(nd, operand)) {
+                        operand->flags &= ~IROLF_Reffed;
+                        if (IRO_IsVariable(operand)) {
+                            IRO_NopOut(operand);
                         }
                     }
                 }
             } else {
                 if (nd->u.diadic.right->range) {
-                    nd->range = ERnewERange(ERangeType3);
+                    nd->range = ERnewERange(ERangeUnknown);
                     *nd->range = *nd->u.diadic.right->range;
                 }
             }
@@ -458,7 +457,7 @@ static Boolean ERfoldExpr(IROLinear* nd) {
         case ENOTEQU:
         case ELAND:
         case ELOR:
-            nd->range = ERnewERange(ERangeType1);
+            nd->range = ERnewERange(ERangeBounded);
             nd->range->upper = cint64_one;
             nd->range->lower = cint64_zero;
             ERcheckOverflow(nd->range, nd->rtype);
@@ -474,7 +473,7 @@ static Boolean ERfoldExpr(IROLinear* nd) {
         case EBITFIELD:
         case ECOND:
         case ENULLCHECK:
-            nd->range = ERnewERange(ERangeType3);
+            nd->range = ERnewERange(ERangeUnknown);
             nd->range->upper = cint64_max;
             nd->range->lower = cint64_min;
             break;
@@ -488,11 +487,10 @@ static Boolean ERfoldExpr(IROLinear* nd) {
         case EMULASS:
             if (IS_TYPE_INT(nd->rtype)) {
                 if (nd->u.diadic.left->range &&
-                    nd->u.diadic.left->range->type !=
-                    ERangeType3 &&
+                    nd->u.diadic.left->range->type != ERangeUnknown &&
                     nd->u.diadic.right->range &&
-                    nd->u.diadic.right->range->type != ERangeType3) {
-                    nd->range = ERnewERange(ERangeType2);
+                    nd->u.diadic.right->range->type != ERangeUnknown) {
+                    nd->range = ERnewERange(ERangeComputed);
                     if (is_unsigned(nd->rtype)) {
                         nd->range->upper = CInt64_MulU(
                             nd->u.diadic.left->range->upper, nd->u.diadic.right->range->upper
@@ -509,7 +507,7 @@ static Boolean ERfoldExpr(IROLinear* nd) {
                         );
                     }
                 } else {
-                    nd->range = ERnewERange(ERangeType3);
+                    nd->range = ERnewERange(ERangeUnknown);
                     nd->range->upper = cint64_max;
                     nd->range->lower = cint64_min;
                 }
@@ -520,11 +518,10 @@ static Boolean ERfoldExpr(IROLinear* nd) {
         case EDIVASS:
             if (IS_TYPE_INT(nd->rtype)) {
                 if (nd->u.diadic.left->range &&
-                    nd->u.diadic.left->range->type !=
-                    ERangeType3 &&
+                    nd->u.diadic.left->range->type != ERangeUnknown &&
                     nd->u.diadic.right->range &&
-                    nd->u.diadic.right->range->type != ERangeType3) {
-                    nd->range = ERnewERange(ERangeType2);
+                    nd->u.diadic.right->range->type != ERangeUnknown) {
+                    nd->range = ERnewERange(ERangeComputed);
                     if (!CInt64_IsZero(&nd->u.diadic.right->range->lower) &&
                         !CInt64_IsZero(&nd->u.diadic.right->range->upper)) {
                         if (is_unsigned(nd->rtype)) {
@@ -543,12 +540,12 @@ static Boolean ERfoldExpr(IROLinear* nd) {
                             );
                         }
                     } else {
-                        nd->range = ERnewERange(ERangeType3);
+                        nd->range = ERnewERange(ERangeUnknown);
                         nd->range->upper = cint64_max;
                         nd->range->lower = cint64_min;
                     }
                 } else {
-                    nd->range = ERnewERange(ERangeType3);
+                    nd->range = ERnewERange(ERangeUnknown);
                     nd->range->upper = cint64_max;
                     nd->range->lower = cint64_min;
                 }
@@ -559,11 +556,10 @@ static Boolean ERfoldExpr(IROLinear* nd) {
         case EMODASS:
             if (IS_TYPE_INT(nd->rtype)) {
                 if (nd->u.diadic.left->range &&
-                    nd->u.diadic.left->range->type !=
-                    ERangeType3 &&
+                    nd->u.diadic.left->range->type != ERangeUnknown &&
                     nd->u.diadic.right->range &&
-                    nd->u.diadic.right->range->type != ERangeType3) {
-                    nd->range = ERnewERange(ERangeType2);
+                    nd->u.diadic.right->range->type != ERangeUnknown) {
+                    nd->range = ERnewERange(ERangeComputed);
                     if (!CInt64_IsZero(&nd->u.diadic.right->range->lower) &&
                         !CInt64_IsZero(&nd->u.diadic.right->range->upper)) {
                         if (is_unsigned(nd->rtype)) {
@@ -582,12 +578,12 @@ static Boolean ERfoldExpr(IROLinear* nd) {
                             );
                         }
                     } else {
-                        nd->range = ERnewERange(ERangeType3);
+                        nd->range = ERnewERange(ERangeUnknown);
                         nd->range->upper = cint64_max;
                         nd->range->lower = cint64_min;
                     }
                 } else {
-                    nd->range = ERnewERange(ERangeType3);
+                    nd->range = ERnewERange(ERangeUnknown);
                     nd->range->upper = cint64_max;
                     nd->range->lower = cint64_min;
                 }
@@ -599,11 +595,10 @@ static Boolean ERfoldExpr(IROLinear* nd) {
         case EADDASS:
             if (IS_TYPE_INT(nd->rtype)) {
                 if (nd->u.diadic.left->range &&
-                    nd->u.diadic.left->range->type !=
-                    ERangeType3 &&
+                    nd->u.diadic.left->range->type != ERangeUnknown &&
                     nd->u.diadic.right->range &&
-                    nd->u.diadic.right->range->type != ERangeType3) {
-                    nd->range = ERnewERange(ERangeType2);
+                    nd->u.diadic.right->range->type != ERangeUnknown) {
+                    nd->range = ERnewERange(ERangeComputed);
                     nd->range->upper = CInt64_Add(
                         nd->u.diadic.left->range->upper, nd->u.diadic.right->range->upper
                     );
@@ -611,7 +606,7 @@ static Boolean ERfoldExpr(IROLinear* nd) {
                         nd->u.diadic.left->range->lower, nd->u.diadic.right->range->lower
                     );
                 } else {
-                    nd->range = ERnewERange(ERangeType3);
+                    nd->range = ERnewERange(ERangeUnknown);
                     nd->range->upper = cint64_max;
                     nd->range->lower = cint64_min;
                 }
@@ -623,11 +618,10 @@ static Boolean ERfoldExpr(IROLinear* nd) {
         case ESUBASS:
             if (IS_TYPE_INT(nd->rtype)) {
                 if (nd->u.diadic.left->range &&
-                    nd->u.diadic.left->range->type !=
-                    ERangeType3 &&
+                    nd->u.diadic.left->range->type != ERangeUnknown &&
                     nd->u.diadic.right->range &&
-                    nd->u.diadic.right->range->type != ERangeType3) {
-                    nd->range = ERnewERange(ERangeType2);
+                    nd->u.diadic.right->range->type != ERangeUnknown) {
+                    nd->range = ERnewERange(ERangeComputed);
                     nd->range->upper = CInt64_Sub(
                         nd->u.diadic.left->range->upper, nd->u.diadic.right->range->lower
                     );
@@ -635,7 +629,7 @@ static Boolean ERfoldExpr(IROLinear* nd) {
                         nd->u.diadic.left->range->lower, nd->u.diadic.right->range->upper
                     );
                 } else {
-                    nd->range = ERnewERange(ERangeType3);
+                    nd->range = ERnewERange(ERangeUnknown);
                     nd->range->upper = cint64_max;
                     nd->range->lower = cint64_min;
                 }
@@ -646,11 +640,10 @@ static Boolean ERfoldExpr(IROLinear* nd) {
         case ESHLASS:
             if (IS_TYPE_INT(nd->rtype)) {
                 if (nd->u.diadic.left->range &&
-                    nd->u.diadic.left->range->type !=
-                    ERangeType3 &&
+                    nd->u.diadic.left->range->type != ERangeUnknown &&
                     nd->u.diadic.right->range &&
-                    nd->u.diadic.right->range->type != ERangeType3) {
-                    nd->range = ERnewERange(ERangeType2);
+                    nd->u.diadic.right->range->type != ERangeUnknown) {
+                    nd->range = ERnewERange(ERangeComputed);
                     nd->range->upper = CInt64_Shl(
                         nd->u.diadic.left->range->upper, nd->u.diadic.right->range->upper
                     );
@@ -658,7 +651,7 @@ static Boolean ERfoldExpr(IROLinear* nd) {
                         nd->u.diadic.left->range->lower, nd->u.diadic.right->range->lower
                     );
                 } else {
-                    nd->range = ERnewERange(ERangeType3);
+                    nd->range = ERnewERange(ERangeUnknown);
                     nd->range->upper = cint64_max;
                     nd->range->lower = cint64_min;
                 }
@@ -669,11 +662,10 @@ static Boolean ERfoldExpr(IROLinear* nd) {
         case ESHRASS:
             if (IS_TYPE_INT(nd->rtype)) {
                 if (nd->u.diadic.left->range &&
-                    nd->u.diadic.left->range->type !=
-                    ERangeType3 &&
+                    nd->u.diadic.left->range->type != ERangeUnknown &&
                     nd->u.diadic.right->range &&
-                    nd->u.diadic.right->range->type != ERangeType3) {
-                    nd->range = ERnewERange(ERangeType2);
+                    nd->u.diadic.right->range->type != ERangeUnknown) {
+                    nd->range = ERnewERange(ERangeComputed);
                     if (is_unsigned(nd->rtype)) {
                         nd->range->upper = CInt64_ShrU(
                             nd->u.diadic.left->range->upper, nd->u.diadic.right->range->lower
@@ -690,7 +682,7 @@ static Boolean ERfoldExpr(IROLinear* nd) {
                         );
                     }
                 } else {
-                    nd->range = ERnewERange(ERangeType3);
+                    nd->range = ERnewERange(ERangeUnknown);
                     nd->range->upper = cint64_max;
                     nd->range->lower = cint64_min;
                 }
@@ -699,14 +691,14 @@ static Boolean ERfoldExpr(IROLinear* nd) {
             break;
         case EPOSTINC:
             if (IS_TYPE_INT(nd->rtype)) {
-                if (nd->u.monadic->range && nd->u.monadic->range->type != ERangeType3) {
-                    nd->range = ERnewERange(ERangeType2);
+                if (nd->u.monadic->range && nd->u.monadic->range->type != ERangeUnknown) {
+                    nd->range = ERnewERange(ERangeComputed);
                     range = nd->u.monadic->range;
                     *nd->range = *range;
                     range->upper = CInt64_Add(range->upper, cint64_one);
                     range->lower = CInt64_Add(range->lower, cint64_one);
                 } else {
-                    nd->range = ERnewERange(ERangeType3);
+                    nd->range = ERnewERange(ERangeUnknown);
                     nd->range->upper = cint64_max;
                     nd->range->lower = cint64_min;
                 }
@@ -715,14 +707,14 @@ static Boolean ERfoldExpr(IROLinear* nd) {
             break;
         case EPOSTDEC:
             if (IS_TYPE_INT(nd->rtype)) {
-                if (nd->u.monadic->range && nd->u.monadic->range->type != ERangeType3) {
-                    nd->range = ERnewERange(ERangeType2);
+                if (nd->u.monadic->range && nd->u.monadic->range->type != ERangeUnknown) {
+                    nd->range = ERnewERange(ERangeComputed);
                     range = nd->u.monadic->range;
                     *nd->range = *range;
                     range->upper = CInt64_Sub(range->upper, cint64_one);
                     range->lower = CInt64_Sub(range->lower, cint64_one);
                 } else {
-                    nd->range = ERnewERange(ERangeType3);
+                    nd->range = ERnewERange(ERangeUnknown);
                     nd->range->upper = cint64_max;
                     nd->range->lower = cint64_min;
                 }
@@ -731,13 +723,13 @@ static Boolean ERfoldExpr(IROLinear* nd) {
             break;
         case EPREINC:
             if (IS_TYPE_INT(nd->rtype)) {
-                if (nd->u.monadic->range && nd->u.monadic->range->type != ERangeType3) {
-                    nd->range = ERnewERange(ERangeType2);
+                if (nd->u.monadic->range && nd->u.monadic->range->type != ERangeUnknown) {
+                    nd->range = ERnewERange(ERangeComputed);
                     range = nd->u.monadic->range;
                     nd->range->upper = CInt64_Add(range->upper, cint64_one);
                     nd->range->lower = CInt64_Add(range->lower, cint64_one);
                 } else {
-                    nd->range = ERnewERange(ERangeType3);
+                    nd->range = ERnewERange(ERangeUnknown);
                     nd->range->upper = cint64_max;
                     nd->range->lower = cint64_min;
                 }
@@ -746,13 +738,13 @@ static Boolean ERfoldExpr(IROLinear* nd) {
             break;
         case EPREDEC:
             if (IS_TYPE_INT(nd->rtype)) {
-                if (nd->u.monadic->range && nd->u.monadic->range->type != ERangeType3) {
-                    nd->range = ERnewERange(ERangeType2);
+                if (nd->u.monadic->range && nd->u.monadic->range->type != ERangeUnknown) {
+                    nd->range = ERnewERange(ERangeComputed);
                     range = nd->u.monadic->range;
                     nd->range->upper = CInt64_Sub(range->upper, cint64_one);
                     nd->range->lower = CInt64_Sub(range->lower, cint64_one);
                 } else {
-                    nd->range = ERnewERange(ERangeType3);
+                    nd->range = ERnewERange(ERangeUnknown);
                     nd->range->upper = cint64_max;
                     nd->range->lower = cint64_min;
                 }
@@ -760,7 +752,7 @@ static Boolean ERfoldExpr(IROLinear* nd) {
             ERcheckOverflow(nd->range, nd->rtype);
             break;
         case EMONMIN:
-            nd->range = ERnewERange(ERangeType3);
+            nd->range = ERnewERange(ERangeUnknown);
             nd->range->upper = cint64_max;
             nd->range->lower = cint64_min;
             break;
@@ -770,7 +762,7 @@ static Boolean ERfoldExpr(IROLinear* nd) {
         case EBCLR:
         case EBTST:
         case EBSET:
-            nd->range = ERnewERange(ERangeType3);
+            nd->range = ERnewERange(ERangeUnknown);
             nd->range->upper = cint64_max;
             nd->range->lower = cint64_min;
             break;
@@ -790,10 +782,8 @@ static Boolean ERfoldExpr(IROLinear* nd) {
             x = nd->u.monadic;
         }
 
-        if (x->type ==
-            IROLinearOp1Arg &&
-            x->nodetype ==
-            EINDIRECT &&
+        if (x->type == IROLinearOp1Arg &&
+            x->nodetype == EINDIRECT &&
             (x->u.monadic->nodetype == EINDIRECT || x->u.monadic->nodetype == EADD)) {
             SetRangesForKillsByIndirectAssignment(nd);
         } else {
@@ -840,6 +830,8 @@ static Boolean ERfoldLinear(IROLinear* nd) {
             break;
         case IROLinearAsm:
             ERinvalidAll();
+            break;
+        default:
             break;
     }
 

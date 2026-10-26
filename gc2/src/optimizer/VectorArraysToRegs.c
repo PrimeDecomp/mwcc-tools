@@ -32,7 +32,6 @@ typedef struct ADDI {
     RegUseOrDef* list;
 } ADDI;
 
-// (the original's statics; global while a lifted function of this unit still uses them)
 int number_of_ADDIs;
 ADDI* ADDIs;
 VectorPropInfo* vectorpropinfo;
@@ -115,7 +114,7 @@ static void scaninstructions(LocalVectorArray* arrays) {
                 op = instr->args;
                 i = instr->argCount;
                 while (i--) {
-                    if (op->kind == PCOp_MEMORY && (RefType)op->arg == RefType_1) {
+                    if (op->kind == PCOp_MEMORY && (RefType)op->arg == RefType_Local16) {
                         array = lookup_vector_array_object(arrays, op->data.mem.obj);
                         if (array && !array->invalid) {
                             if (instr->op != PC_ADDI) {
@@ -176,11 +175,9 @@ static void computeaddilist(LocalVectorArray* arrays) {
                     if (instr->op == PC_ADDI) {
                         op = &instr->args[2];
                         reg = instr->args[0].data.reg.reg;
-                        if (reg >=
-                            n_real_registers[RegClass_GPR] &&
-                            op->kind ==
-                            PCOp_MEMORY &&
-                            (RefType)op->arg == RefType_1) {
+                        if (reg >= n_real_registers[RegClass_GPR] &&
+                            op->kind == PCOp_MEMORY &&
+                            (RefType)op->arg == RefType_Local16) {
                             array = lookup_vector_array_object(arrays, op->data.mem.obj);
                             if (array && !array->invalid) {
                                 addi->instr = instr;
@@ -241,8 +238,8 @@ static void computelocalvectorpropinfo(LocalVectorArray* arrays) {
     PCodeArg* addiop;
     LocalVectorArray* array;
     VectorPropInfo* info;
-    UInt32* vec0;
-    UInt32* vec4;
+    UInt32* usevec;
+    UInt32* defvec;
     PCodeBlock* block;
     int i;
     PCode* instr;
@@ -250,10 +247,10 @@ static void computelocalvectorpropinfo(LocalVectorArray* arrays) {
 
     for (block = pcbasicblocks; block; block = block->nextBlock) {
         info = &vectorpropinfo[block->blockIndex];
-        vec0 = info->use;
-        vec4 = info->def;
-        bitvectorinitialize(vec0, number_of_ADDIs, 0);
-        bitvectorinitialize(vec4, number_of_ADDIs, 0);
+        usevec = info->use;
+        defvec = info->def;
+        bitvectorinitialize(usevec, number_of_ADDIs, 0);
+        bitvectorinitialize(defvec, number_of_ADDIs, 0);
         index = firstaddinblock[block->blockIndex];
 
         for (instr = block->firstPCode; instr; instr = instr->nextPCode) {
@@ -261,20 +258,17 @@ static void computelocalvectorpropinfo(LocalVectorArray* arrays) {
                 op = instr->args;
                 i = instr->argCount;
                 while (i--) {
-                    if (op->kind ==
-                        PCOp_REGISTER &&
-                        op->arg ==
-                        RegClass_GPR &&
+                    if (op->kind == PCOp_REGISTER &&
+                        op->arg == RegClass_GPR &&
                         (op->data.reg.effect & EffectWrite)) {
                         for (addi_i = 0, addi = ADDIs; addi_i < number_of_ADDIs; addi_i++, addi++) {
                             if (addi->instr &&
-                                addi->instr->args[0].arg ==
-                                op->arg &&
+                                addi->instr->args[0].arg == op->arg &&
                                 addi->instr->args[0].data.reg.reg == op->data.reg.reg) {
                                 if (addi->instr->block == block) {
-                                    bitvectorclearbit(addi_i, vec0);
+                                    bitvectorclearbit(addi_i, usevec);
                                 } else {
-                                    bitvectorsetbit(addi_i, vec4);
+                                    bitvectorsetbit(addi_i, defvec);
                                 }
                             }
                         }
@@ -284,10 +278,10 @@ static void computelocalvectorpropinfo(LocalVectorArray* arrays) {
 
                 if (instr->op == PC_ADDI) {
                     addiop = &instr->args[2];
-                    if (addiop->kind == PCOp_MEMORY && (RefType)addiop->arg == RefType_1) {
+                    if (addiop->kind == PCOp_MEMORY && (RefType)addiop->arg == RefType_Local16) {
                         array = lookup_vector_array_object(arrays, addiop->data.mem.obj);
                         if (array && !array->invalid) {
-                            bitvectorsetbit(index, vec0);
+                            bitvectorsetbit(index, usevec);
                             index++;
                         }
                     }
@@ -301,71 +295,68 @@ static void computeglobalvectorpropinfo(void) {
     PCLink* preds;
     VectorPropInfo* info;
     PCodeBlock* block;
-    UInt32* vec0;
-    UInt32* vec4;
-    UInt32* vec8;
-    UInt32* vecC;
+    UInt32* usevec;
+    UInt32* defvec;
+    UInt32* invec;
+    UInt32* outvec;
     int bitvecsize;
     int blockIndex;
     int i;
-    int flag;
+    int changed;
     UInt32 val;
     int j;
 
     bitvecsize = (number_of_ADDIs + 31) >> 5;
-    flag = TRUE;
+    changed = TRUE;
     info = &vectorpropinfo[pcbasicblocks->blockIndex];
     bitvectorinitialize(info->in, number_of_ADDIs, 0);
     bitvectorcopy(info->out, info->use, number_of_ADDIs);
 
     for (block = pcbasicblocks->nextBlock; block; block = block->nextBlock) {
         info = &vectorpropinfo[block->blockIndex];
-        vecC = info->out;
-        vec4 = info->def;
-        for (i = 0; i < bitvecsize; vecC++, vec4++, i++) {
-            *vecC = ~*vec4;
+        outvec = info->out;
+        defvec = info->def;
+        for (i = 0; i < bitvecsize; outvec++, defvec++, i++) {
+            *outvec = ~*defvec;
         }
     }
 
-    while (flag) {
-        flag = FALSE;
+    while (changed) {
+        changed = FALSE;
         for (blockIndex = 0; blockIndex < pcblockcount; blockIndex++) {
             if (depthfirstordering[blockIndex]) {
                 info = &vectorpropinfo[depthfirstordering[blockIndex]->blockIndex];
                 if ((preds = depthfirstordering[blockIndex]->predecessors)) {
-                    vec8 = info->in;
+                    invec = info->in;
                     bitvectorcopy(
-                        vec8, vectorpropinfo[preds->block->blockIndex].out, number_of_ADDIs
+                        invec, vectorpropinfo[preds->block->blockIndex].out, number_of_ADDIs
                     );
                     for (preds = preds->nextLink; preds; preds = preds->nextLink) {
                         bitvectorintersect(
-                            vec8, vectorpropinfo[preds->block->blockIndex].out, number_of_ADDIs
+                            invec, vectorpropinfo[preds->block->blockIndex].out, number_of_ADDIs
                         );
                     }
                 }
 
-                vecC = info->out;
-                vec8 = info->in;
-                vec0 = info->use;
-                vec4 = info->def;
+                outvec = info->out;
+                invec = info->in;
+                usevec = info->use;
+                defvec = info->def;
                 for (j = 0; j < bitvecsize; j++) {
-                    val = *vec0 | (*vec8 & ~*vec4);
-                    if (val != *vecC) {
-                        *vecC = val;
-                        flag = TRUE;
+                    val = *usevec | (*invec & ~*defvec);
+                    if (val != *outvec) {
+                        *outvec = val;
+                        changed = TRUE;
                     }
-                    vec8++;
-                    vecC++;
-                    vec4++;
-                    vec0++;
+                    invec++;
+                    outvec++;
+                    defvec++;
+                    usevec++;
                 }
             }
         }
     }
 }
-
-// (Pro7's unused static precedes() here clashes with UseDefChains.h's precedes(),
-// which 2.6 names alike)
 
 static int checkvectorstoreorload(int addiID, int useID) {
     PCode* addiInstr;
@@ -386,10 +377,8 @@ static int checkvectorstoreorload(int addiID, int useID) {
         return FALSE;
     }
 
-    if (use->pcode->args[1].kind !=
-        PCOp_REGISTER ||
-        use->pcode->args[1].arg !=
-        RegClass_GPR ||
+    if (use->pcode->args[1].kind != PCOp_REGISTER ||
+        use->pcode->args[1].arg != RegClass_GPR ||
         use->pcode->args[1].data.reg.reg != 0) {
         return FALSE;
     }

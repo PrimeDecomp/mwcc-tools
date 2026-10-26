@@ -1,10 +1,6 @@
 #ifndef DRIVER_CMDLINE_H
 #define DRIVER_CMDLINE_H
 
-#include "compiler/common.h"
-
-// The command-line shell's types (Pro7's cmdline.h), for use through pointers: each is defined in
-// its unit's header.
 typedef struct IDEAccessPathList IDEAccessPathList;
 typedef struct Path Path;
 typedef struct Paths Paths;

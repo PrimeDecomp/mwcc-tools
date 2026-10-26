@@ -1,6 +1,8 @@
 #include "driver/MacFileTypes.h"
+#include "driver/CWPlugins.h"
 #include "driver/MacSpecs.h"
 #include "driver/MsDos.h"
+#include "driver/oslib.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -28,8 +30,6 @@ void __stdcall OS_AddFileTypeMappingList(
     (*scan)->next = 0;
 }
 
-// (Win32 has no permissions to give an executable: 2.6 clears the type, an inline `rep stosd`,
-// where Pro7 sets 0777 or 0666)
 void __stdcall OS_MacType_To_OSType(OSType mactype, uOSTypePair* type) {
     OSFileTypeMappings* list;
     const OSFileTypeMappingList* scan;
@@ -64,8 +64,7 @@ Boolean __stdcall OS_GetMacFileTypeMagic(const char* buffer, int count, OSType* 
     for (list = *fmList; list; list = list->next) {
         scan = list->mappingList;
         for (idx = 0; idx < scan->numMappings; idx++) {
-            if (scan->mappings[idx].length <=
-                count &&
+            if (scan->mappings[idx].length <= count &&
                 scan->mappings[idx].magic &&
                 !memcmp(buffer, scan->mappings[idx].magic, scan->mappings[idx].length)) {
                 *mactype = scan->mappings[idx].mactype;
@@ -104,7 +103,7 @@ int __stdcall OS_GetMacFileType(const OSSpec* spec, OSType* mactype) {
 
     if (!__OS_ExtendedGetMacFileTypeHook || !__OS_ExtendedGetMacFileTypeHook(spec, mactype)) {
         if (flen == 0) {
-            if (!OS_GetRsrcOSSpec(spec, &rsrc, 0)) {
+            if (!OS_GetRsrcOSSpec(spec, &rsrc, FALSE)) {
                 int ref;
                 if (!OS_Open(&rsrc, OSReadOnly, &ref)) {
                     OS_GetSize(ref, &rsize);

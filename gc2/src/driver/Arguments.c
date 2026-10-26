@@ -1,10 +1,10 @@
 #include "driver/Arguments.h"
 #include "driver/CWParserPluginsPrivate.h"
-#include "driver/CWPlugins.h"
 #include "driver/FileHandles.h"
 #include "driver/Generic.h"
 #include "driver/MemUtils.h"
 #include "driver/MsDos.h"
+#include "driver/option_system.h"
 #include "driver/oslib.h"
 #include "driver/ParserErrors.h"
 #include "driver/StringExtras.h"
@@ -80,8 +80,7 @@ static void Arg_AddToken(short val, char* text) {
         }
 
         if (pprev) {
-            if ((int)val ==
-                ATK_ARG_END &&
+            if ((int)val == ATK_ARG_END &&
                 (pprev->val == ATK_COMMA || pprev->val == ATK_EQUALS) &&
                 (ppprev->val != ATK_ARG || pppprev->val != ATK_OPTION)) {
                 if (parserDebug) {
@@ -89,8 +88,7 @@ static void Arg_AddToken(short val, char* text) {
                 }
                 val = pprev->val;
                 numargtoks -= 2;
-            } else if (pprev->val ==
-                       ATK_ARG_END &&
+            } else if (pprev->val == ATK_ARG_END &&
                        ((int)val == ATK_COMMA || (int)val == ATK_EQUALS)) {
                 if (parserDebug) {
                     printf("Coalescing args, removing '%s'\n", Arg_GetTokenName(pprev));
@@ -130,7 +128,6 @@ restart:
         ++respfile;
     }
 
-    // (2.6: a ^Z ends the file, as DOS text files may)
     if (respfile[0] == 0x1A) {
         respfile = respfilestart + respfilesize - 1;
     }
@@ -160,7 +157,7 @@ static unsigned char Arg_OpenRespFile(const char* name) {
     int err;
 
     if ((err = OS_MakeFileSpec(name, &spec)) ||
-        (err = OS_NewFileHandle(&spec, 0, 0, &respfilehandle)) ||
+        (err = OS_NewFileHandle(&spec, 0, FALSE, &respfilehandle)) ||
         (err = OS_AppendHandle(&respfilehandle.hand, "", 1)) ||
         (err = OS_LockFileHandle(&respfilehandle, &respfile, &respfilesize))) {
         CLPOSAlert(CLPStr74, (short)err, "response ", name);
@@ -183,7 +180,7 @@ static char* Arg_GetRespFileToken(void) {
     char* ptr;
     int quoting;
 
-    quoting = 0;
+    quoting = FALSE;
     if (respfile[0] == 0) {
         return NULL;
     }
@@ -222,17 +219,15 @@ restart:
         rfclen = 1;
         rfcequ = 0;
         ret = margv[margind++];
-        // (2.6 drops a carriage return that ends the argument)
         if ((rfcequ = strrchr(ret, '\r')) && rfcequ[1] == 0) {
             *rfcequ = 0;
         }
         if (ret[0] == '\\' && ret[1] == RESPFILECHAR) {
             ret++;
         } else if (allow_resp) {
-            if (ret[0] ==
-                RESPFILECHAR ||
-                (RESPFILESTR[0] && !ustrncmp(ret, RESPFILESTR, rfclen = strlen(RESPFILESTR))) &&
-                ret[rfclen]) {
+            if (ret[0] == RESPFILECHAR ||
+                ((RESPFILESTR[0] && !ustrncmp(ret, RESPFILESTR, rfclen = strlen(RESPFILESTR))) &&
+                 ret[rfclen])) {
                 rfcequ = strchr(ret + rfclen, '=');
                 if (rfcequ) {
                     rfclen = (rfcequ + 1) - ret;
@@ -280,7 +275,7 @@ static void Arg_Parse(void) {
     isOpt = FALSE;
     isList = FALSE;
     while (Arg_GotMore()) {
-        argstart = arg = Arg_GetNext(1);
+        argstart = arg = Arg_GetNext(TRUE);
         if (!arg) {
             break;
         }
@@ -307,7 +302,7 @@ static void Arg_Parse(void) {
             ch = arg[0];
             if (ch == '\\' && (arg[1] == SEP1 || arg[1] == SEP2 || arg[1] == SEP3)) {
                 ch = 0x80 | *(++arg);
-            } else if (compat == 1 && ch == ':' && arg[1] == '\\') {
+            } else if (compat == COMPAT_DOS && ch == ':' && arg[1] == '\\') {
                 ch |= 0x80;
             }
 
@@ -364,13 +359,6 @@ static void Arg_Parse(void) {
     Arg_AddToken(ATK_END, 0);
 }
 
-// (parser compatibility modes: Pro7's placeholder names; 1 is the colon-separated one)
-enum {
-    COMPAT_0,
-    COMPAT_1,
-    COMPAT_2
-};
-
 void Arg_Init(int theargc, char** theargv) {
     int p;
     int x;
@@ -384,7 +372,7 @@ void Arg_Init(int theargc, char** theargv) {
         theargc--;
     }
 
-    if ((int)compat == COMPAT_0) {
+    if ((int)compat == COMPAT_DEFAULT) {
         MAINOPTCHAR = "-";
         FIRSTARGCHAR = "=";
         SEPOPTSTR = " ";
@@ -393,7 +381,7 @@ void Arg_Init(int theargc, char** theargv) {
         SEP3 = '=';
         RESPFILECHAR = '@';
         RESPFILESTR = "";
-    } else if ((int)compat == COMPAT_1) {
+    } else if ((int)compat == COMPAT_DOS) {
         MAINOPTCHAR = "/-";
         FIRSTARGCHAR = ":";
         SEPOPTSTR = ":";
@@ -402,7 +390,7 @@ void Arg_Init(int theargc, char** theargv) {
         SEP3 = ':';
         RESPFILECHAR = '@';
         RESPFILESTR = "";
-    } else if ((int)compat == COMPAT_2) {
+    } else if ((int)compat == COMPAT_CUSTOM) {
         if (!MAINOPTCHAR) {
             MAINOPTCHAR = "-";
         }
@@ -470,7 +458,6 @@ void Arg_Reset(void) {
     scantok = 0;
 }
 
-// (Pro7's; no caller in 2.6, which the linker dropped)
 void Arg_Stop(ArgToken* where) {
     ArgToken* cur;
 
@@ -534,13 +521,13 @@ const char* Arg_GetTokenName(ArgToken* tok) {
         return tok->text;
     }
 
-    return ((int)tok->val == ATK_OPTION)                             ? "option"
-        : ((int)tok->val == ATK_COMMA)                               ? "comma"
-        : (((int)compat == COMPAT_1 && (int)tok->val == ATK_EQUALS)) ? "colon or equals"
-        : (((int)compat != COMPAT_1 && (int)tok->val == ATK_EQUALS)) ? "equals"
-        : ((int)tok->val == ATK_ARG_END)                             ? "end of argument"
-        : ((int)tok->val == ATK_END)                                 ? "end of command line"
-                                                                     : "<error>";
+    return ((int)tok->val == ATK_OPTION)                               ? "option"
+        : ((int)tok->val == ATK_COMMA)                                 ? "comma"
+        : (((int)compat == COMPAT_DOS && (int)tok->val == ATK_EQUALS)) ? "colon or equals"
+        : (((int)compat != COMPAT_DOS && (int)tok->val == ATK_EQUALS)) ? "equals"
+        : ((int)tok->val == ATK_ARG_END)                               ? "end of argument"
+        : ((int)tok->val == ATK_END)                                   ? "end of command line"
+                                                                       : "<error>";
 }
 
 const char* Arg_GetTokenText(ArgToken* tok, char* buffer, int maxlen, unsigned char warn) {
@@ -655,7 +642,6 @@ void Arg_ToolArgsForPlugin(PtrList* ta, struct CWCommandLineArgs* args) {
     args->envp = 0;
 }
 
-// (Pro7's; no caller in 2.6, which the linker dropped; Wii's has one)
 void Arg_FreeToolArgs(PtrList* ta) {
     int x;
 

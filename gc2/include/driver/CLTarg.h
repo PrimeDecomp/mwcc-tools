@@ -16,13 +16,11 @@ extern "C" {
 #endif
 
 enum {
-    LinkModel0 = 0,
-    LinkModel1 = 1,
-    LinkModel2 = 2
+    LinkModel_Flat = 0,
+    LinkModel_Segmented = 1,
+    LinkModel_Overlay1 = 2
 };
 
-// Pro7's Target (cmdline.h): the target the command line builds (Target_New makes it; gTarg is the
-// current one).
 struct Target {
     struct BuildInfo {
         UInt32 linesCompiled;

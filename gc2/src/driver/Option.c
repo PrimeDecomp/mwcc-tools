@@ -1,9 +1,11 @@
 #include "driver/Option.h"
+#include "compiler/win32.h"
 #include "driver/Arguments.h"
 #include "driver/CWPlugins.h"
 #include "driver/Help.h"
 #include "driver/IO.h"
 #include "driver/MemUtils.h"
+#include "driver/option_system.h"
 #include "driver/oslib.h"
 #include "driver/Parameter.h"
 #include "driver/ParserErrors.h"
@@ -17,7 +19,29 @@
 
 #define MAXSTACK 8
 
-void Option_Error(SInt16 id, ...);
+typedef struct OptionStackPair {
+    void* first;
+    void* second;
+} OptionStackPair;
+typedef struct OptionStackOption {
+    Option* opt;
+    char* curopt;
+} OptionStackOption;
+struct OptionStackEntry {
+    union {
+        OptionStackPair v;
+        OptionList* lst;
+        OptionStackOption o;
+        char* param;
+    } e;
+    SInt16 flags;
+};
+
+enum {
+    SPELLSTACK_TOOLARGS = 0x20
+};
+
+void Option_Error(VarArgShort id, ...);
 
 static OptionList* optionlists[32];
 int numoptionlists;
@@ -27,53 +51,19 @@ int numinternalset;
 int numlegalset;
 int maxlegalset;
 char curopt[1024];
-Opt48 oStack[MAXSTACK];
+OptionStackEntry oStack[MAXSTACK];
 int oStackPtr;
 
-// (the option stack's flags and Args_SpellStack's and Option_SpellList's: Pro7's placeholder names)
-enum {
-    ARGFLAG_1 = 1,
-    ARGFLAG_2 = 2,
-    ARGFLAG_4 = 4,
-    ARGFLAG_8 = 8,
-    ARGFLAG_10 = 0x10,
-    ARGFLAG_20 = 0x20,
-    ARGFLAG_40 = 0x40,
-    ARGFLAG_80 = 0x80
-};
-
-enum {
-    ARGSPELLFLAG_1 = 1,
-    ARGSPELLFLAG_2 = 2,
-    ARGSPELLFLAG_4 = 4,
-    ARGSPELLFLAG_8 = 8,
-    ARGSPELLFLAG_10 = 0x10,
-    ARGSPELLFLAG_20 = 0x20,
-    ARGSPELLFLAG_40 = 0x40,
-    ARGSPELLFLAG_80 = 0x80
-};
-
-enum {
-    OPTSPELLFLAG_1 = 1,
-    OPTSPELLFLAG_2 = 2,
-    OPTSPELLFLAG_4 = 4,
-    OPTSPELLFLAG_8 = 8,
-    OPTSPELLFLAG_10 = 0x10,
-    OPTSPELLFLAG_20 = 0x20,
-    OPTSPELLFLAG_40 = 0x40,
-    OPTSPELLFLAG_80 = 0x80
-};
-
 static void Option_PushList(OptionList* lst) {
-    Args_Push(1, lst, 0);
+    Args_Push(OSTACK_LIST, lst, 0);
 }
 
 static void Option_PushOpt(Option* opt, const char* optname) {
     char* cpy;
-    short flags = ARGFLAG_2;
+    short flags = OSTACK_OPTION;
     if (opt && (opt->avail & OTF_STICKY)) {
         if (Utils_CompareOptionString(opt->names, optname, opt->avail & OTF_CASED, OTF_STICKY)) {
-            flags |= ARGFLAG_80;
+            flags |= OSTACK_STICKY;
         }
     }
     cpy = xstrdup(optname);
@@ -81,7 +71,7 @@ static void Option_PushOpt(Option* opt, const char* optname) {
 }
 
 static void Option_PopOpt(char* optname) {
-    Opt48* os = Args_Pop(ARGFLAG_2);
+    OptionStackEntry* os = Args_Pop(OSTACK_OPTION);
     if (optname) {
         strcpy(optname, os->e.o.curopt);
     }
@@ -89,7 +79,7 @@ static void Option_PopOpt(char* optname) {
 }
 
 static void Option_PopList(void) {
-    Args_Pop(ARGFLAG_1);
+    Args_Pop(OSTACK_LIST);
 }
 
 void Args_InitStack(void) {
@@ -102,10 +92,10 @@ int Args_StackSize(void) {
 void Args_Push(short flags, void* first, void* second) {
     OPTION_ASSERT(104, oStackPtr<MAXSTACK);
     if (oStackPtr > 0) {
-        short prev = (flags & ARGFLAG_1) ? ARGFLAG_2
-            : (flags & ARGFLAG_2)        ? ARGFLAG_1
-            : (flags & ARGFLAG_4)        ? ARGFLAG_2
-                                         : -1;
+        short prev = (flags & OSTACK_LIST) ? OSTACK_OPTION
+            : (flags & OSTACK_OPTION)      ? OSTACK_LIST
+            : (flags & OSTACK_PARAM)       ? OSTACK_OPTION
+                                           : -1;
         OPTION_ASSERT(111, (oStack[oStackPtr-1].flags & prev));
     }
 
@@ -115,7 +105,7 @@ void Args_Push(short flags, void* first, void* second) {
     oStackPtr++;
 }
 
-Opt48* Args_Pop(short flags) {
+OptionStackEntry* Args_Pop(short flags) {
     OPTION_ASSERT(122, oStackPtr>0);
     --oStackPtr;
     OPTION_ASSERT(124, (oStack[oStackPtr].flags & flags));
@@ -124,7 +114,7 @@ Opt48* Args_Pop(short flags) {
 
 void Args_SpellStack(char* buffer, short flags) {
     char* bptr;
-    Opt48* os;
+    OptionStackEntry* os;
     int sp;
     int level;
 
@@ -134,14 +124,14 @@ void Args_SpellStack(char* buffer, short flags) {
     os = &oStack[sp];
 
     while (sp < oStackPtr) {
-        if (!flags || !(os->flags & ARGFLAG_20)) {
-            if (os->flags & ARGFLAG_4) {
-                Opt48* po = os - 1;
-                if (!(os[-1].flags & ARGFLAG_40)) {
-                    if ((level == 1 || level == 2) && !(po->flags & ARGFLAG_80)) {
-                        *(bptr++) = (flags & ARGSPELLFLAG_20) ? '\n' : ' ';
+        if (!flags || !(os->flags & OSTACK_SPELLED)) {
+            if (os->flags & OSTACK_PARAM) {
+                OptionStackEntry* po = os - 1;
+                if (!(os[-1].flags & OSTACK_FOLLOWED)) {
+                    if ((level == 1 || level == 2) && !(po->flags & OSTACK_STICKY)) {
+                        *(bptr++) = (flags & SPELLSTACK_TOOLARGS) ? '\n' : ' ';
                     }
-                    os[-1].flags |= ARGFLAG_40;
+                    os[-1].flags |= OSTACK_FOLLOWED;
                 } else if (level == 2) {
                     *(bptr++) = ',';
                 } else if (level == 3) {
@@ -149,19 +139,19 @@ void Args_SpellStack(char* buffer, short flags) {
                 }
                 strcpy(bptr, os->e.param);
                 bptr += strlen(bptr);
-            } else if (os->flags & ARGFLAG_2) {
+            } else if (os->flags & OSTACK_OPTION) {
                 if (level == 1) {
                     *(bptr++) = MAINOPTCHAR[0];
                 } else if (level == 2) {
-                    Opt48* po = os - 2;
-                    if (!(os[-1].flags & ARGFLAG_40) && !(po->flags & ARGFLAG_80)) {
-                        *(bptr++) = (flags & ARGSPELLFLAG_20) ? '\n' : ' ';
+                    OptionStackEntry* po = os - 2;
+                    if (!(os[-1].flags & OSTACK_FOLLOWED) && !(po->flags & OSTACK_STICKY)) {
+                        *(bptr++) = (flags & SPELLSTACK_TOOLARGS) ? '\n' : ' ';
                     }
                 }
 
-                if (os[-1].flags & ARGFLAG_40) {
+                if (os[-1].flags & OSTACK_FOLLOWED) {
                     if (level == 2) {
-                        if (flags & ARGSPELLFLAG_20) {
+                        if (flags & SPELLSTACK_TOOLARGS) {
                             *(bptr++) = ',';
                         } else {
                             *(bptr++) = ' ';
@@ -173,17 +163,17 @@ void Args_SpellStack(char* buffer, short flags) {
                     }
                 }
 
-                os[-1].flags |= ARGFLAG_40;
+                os[-1].flags |= OSTACK_FOLLOWED;
                 strcpy(bptr, os->e.o.curopt);
                 bptr += strlen(bptr);
             }
 
-            if (flags & ARGSPELLFLAG_20) {
-                os->flags |= ARGFLAG_20;
+            if (flags & SPELLSTACK_TOOLARGS) {
+                os->flags |= OSTACK_SPELLED;
             }
         }
 
-        if (os->flags & ARGFLAG_1) {
+        if (os->flags & OSTACK_LIST) {
             level++;
         }
 
@@ -196,7 +186,7 @@ void Args_AddToToolArgs(PtrList* ta) {
     char buffer[4096];
     char* nptr;
 
-    Args_SpellStack(buffer, ARGSPELLFLAG_20);
+    Args_SpellStack(buffer, SPELLSTACK_TOOLARGS);
     nptr = strchr(buffer, '\n');
     if (nptr) {
         *(nptr++) = 0;
@@ -289,7 +279,6 @@ int Options_AddList(OptionList* optlst) {
     return TRUE;
 }
 
-// (Pro7's; no caller in 2.6, which the linker dropped)
 int Options_AddLists(OptionList** optlst) {
     int ret = TRUE;
     OptionList** ptr;
@@ -319,7 +308,7 @@ static void Option_SpellList(char* buffer, OptionList* conflicts, int flags) {
     Option** scan;
     Boolean first;
     int total;
-    char tmp[256];
+    char spelling[256];
     Option** next;
     int slflags;
 
@@ -354,22 +343,22 @@ static void Option_SpellList(char* buffer, OptionList* conflicts, int flags) {
                 }
             }
 
-            slflags = (flags & OPTSPELLFLAG_2) ? SLFLAGS_2 : SLFLAGS_1;
-            switch ((*scan)->avail & OTF_SLFLAGS_MASK) {
-                case OTF_SLFLAGS_8:
-                    slflags |= SLFLAGS_8;
+            slflags = (flags & OFLAGS_SUBOPTION) ? SLFLAGS_SUBOPTION : SLFLAGS_OPTCHAR;
+            switch ((*scan)->avail & OTF_PREFIX_MASK) {
+                case OTF_NO_PREFIX:
+                    slflags |= SLFLAGS_NO_PREFIX;
                     break;
-                case OTF_SLFLAGS_20:
-                    slflags |= SLFLAGS_20;
+                case OTF_NO_DASH_PREFIX:
+                    slflags |= SLFLAGS_NO_DASH_PREFIX;
                     break;
-                case OTF_SLFLAGS_10:
-                    slflags |= SLFLAGS_10;
+                case OTF_MINUS_PREFIX:
+                    slflags |= SLFLAGS_MINUS_PREFIX;
                     break;
             }
 
-            Utils_SpellList((*scan)->names, tmp, slflags);
+            Utils_SpellList((*scan)->names, spelling, slflags);
             total++;
-            buffer += sprintf(buffer, "%s", tmp);
+            buffer += sprintf(buffer, "%s", spelling);
 
             if ((*scan)->avail & OTF_HAS_SUB_OPTIONS) {
                 buffer += sprintf(buffer, " ...");
@@ -391,7 +380,6 @@ int Option_ForThisTool(Option* opt) {
     return !Option_ForTool(opt, OTF_TOOL_MASK) || Option_ForTool(opt, Option_ThisTool());
 }
 
-// (Pro7's; no caller in 2.6, which the linker dropped)
 int Option_AlsoPassedToTool(Option* opt, int which) {
     return Option_ForThisTool(opt) && Option_ForTool(opt, which);
 }
@@ -401,15 +389,15 @@ int Option_AlsoPassedFromThisTool(Option* opt) {
 }
 
 static Boolean Option_ContinuesThisLevel(int level, ArgToken* tok) {
-    ArgToken* tmp;
+    ArgToken* next;
     int ret;
 
     if (level == 1) {
         return (tok->val == ATK_ARG_END) || (tok->val == ATK_OPTION) || (tok->val == ATK_ARG);
     } else if (level == 2) {
-        tmp = Arg_UsedToken();
-        ret = (tok->val == ATK_COMMA && tmp->val != ATK_OPTION) ||
-            (tok->val == ATK_ARG && tmp->val != ATK_ARG_END);
+        next = Arg_UsedToken();
+        ret = (tok->val == ATK_COMMA && next->val != ATK_OPTION) ||
+            (tok->val == ATK_ARG && next->val != ATK_ARG_END);
         Arg_UndoToken();
         return ret;
     } else if (level == 3) {
@@ -430,7 +418,7 @@ static short endingStack[5][3] = {
 // clang-format on
 
 static Boolean Option_IsEndingThisLevel(int level, ArgToken* tok) {
-    ArgToken* tmp;
+    ArgToken* next;
 
     if (!tok) {
         return TRUE;
@@ -440,8 +428,8 @@ static Boolean Option_IsEndingThisLevel(int level, ArgToken* tok) {
     }
 
     if (endingStack[level][1] && tok->val == endingStack[level][1]) {
-        tmp = Arg_UsedToken();
-        if (tmp && tmp->val == endingStack[level][2]) {
+        next = Arg_UsedToken();
+        if (next && next->val == endingStack[level][2]) {
             tok = Arg_UndoToken();
             return TRUE;
         }
@@ -480,17 +468,17 @@ int Option_Parse(Option* opt, int oflags) {
 
     ret = TRUE;
     pushed = FALSE;
-    samelevel = (opt->avail & OTF_GLOBAL) == (oflags & OFLAGS_1);
-    subparse = (oflags & OFLAGS_2) != 0;
+    samelevel = (opt->avail & OTF_GLOBAL) == (oflags & OFLAGS_GLOBAL);
+    subparse = (oflags & OFLAGS_SUBOPTION) != 0;
     flags = 0;
     if (subparse) {
-        flags |= PFLAGS_4;
+        flags |= PFLAGS_SUBOPTION;
     }
-    if (oflags & OFLAGS_8) {
-        flags |= PFLAGS_8;
+    if (oflags & OFLAGS_NEGATED) {
+        flags |= PFLAGS_NEGATED;
     }
-    if (oflags & OFLAGS_40) {
-        flags |= PFLAGS_1;
+    if (oflags & OFLAGS_NO_EXECUTE) {
+        flags |= PFLAGS_NO_EXECUTE;
     }
 
     if (curopt[0]) {
@@ -499,7 +487,7 @@ int Option_Parse(Option* opt, int oflags) {
     }
 
     if (samelevel) {
-        if (!(flags & PFLAGS_1)) {
+        if (!(flags & PFLAGS_NO_EXECUTE)) {
             if ((opt->avail & OTF_INTERNAL_ALREADY_SEEN) && (opt->avail & OTF_ONLY_ONCE)) {
                 Option_Warning(CLPStr30_OptionShouldNotBeSpecifiedMultipleTimes);
             } else if (opt->avail & OTF_HAS_CONFLICTS) {
@@ -526,12 +514,11 @@ int Option_Parse(Option* opt, int oflags) {
             }
         }
 
-        if (Option_ThisTool() ==
-            OTF_TOOL_COMPILER &&
+        if (Option_ThisTool() == OTF_TOOL_COMPILER &&
             Option_ForTool(opt, OTF_TOOL_LINKER | OTF_TOOL_DISASSEMBLER)) {
-            flags |= PFLAGS_2;
+            flags |= PFLAGS_TO_LINKER;
             if (!Option_ForThisTool(opt)) {
-                flags |= PFLAGS_1;
+                flags |= PFLAGS_NO_EXECUTE;
             }
             if (!subparse) {
                 Arg_AddToToolArgs(&linkargs, ATK_ARG_END, NULL);
@@ -539,14 +526,14 @@ int Option_Parse(Option* opt, int oflags) {
             Args_AddToToolArgs(&linkargs);
         }
 
-        if (!(flags & PFLAGS_1)) {
+        if (!(flags & PFLAGS_NO_EXECUTE)) {
             if (opt->avail & OTF_OBSOLETE) {
                 if (opt->help) {
                     Option_Error(CLPStr22_OptionObsoleteWithHelp, opt->help);
                 } else {
                     Option_Error(CLPStr21_OptionObsolete);
                 }
-                flags |= PFLAGS_1;
+                flags |= PFLAGS_NO_EXECUTE;
             }
 
             if (opt->avail & OTF_IGNORED) {
@@ -557,7 +544,7 @@ int Option_Parse(Option* opt, int oflags) {
                         Option_Warning(CLPStr26_OptionIgnored);
                     }
                 }
-                flags |= PFLAGS_1;
+                flags |= PFLAGS_NO_EXECUTE;
             } else if (opt->avail & OTF_SUBSTITUTED) {
                 Option_Warning(CLPStr23_OptionXSubstitutedWithX, curopt, opt->help);
             } else if (opt->avail & OTF_DEPRECATED) {
@@ -586,14 +573,13 @@ int Option_Parse(Option* opt, int oflags) {
             }
         }
     } else {
-        flags |= PFLAGS_1;
+        flags |= PFLAGS_NO_EXECUTE;
     }
 
-    // (2.6 tests ret first, which is always 1 here)
     if (ret) {
         goingtosubparse = opt->avail & OTF_HAS_SUB_OPTIONS;
         if (opt->param) {
-            ret = Params_Parse(opt->param, flags | (goingtosubparse ? PFLAGS_20 : 0));
+            ret = Params_Parse(opt->param, flags | (goingtosubparse ? PFLAGS_HAS_SUBARGS : 0));
         } else {
             tok = Arg_PeekToken();
             if (tok && tok->val == ATK_EQUALS) {
@@ -605,11 +591,10 @@ int Option_Parse(Option* opt, int oflags) {
             ret = ret &&
                 Options_Parse(
                       opt->sub,
-                      (oflags & ~OFLAGS_4) |
-                          OFLAGS_2 |
-                          ((flags & PFLAGS_1) ? OFLAGS_40 : 0) |
-                          (subparse ? OFLAGS_10 : 0) |
-                          ((opt->avail & OTF_SUB_OPTIONS_OPTIONAL) ? OFLAGS_4 : 0)
+                      (oflags & ~OFLAGS_OPTIONAL) | OFLAGS_SUBOPTION |
+                          ((flags & PFLAGS_NO_EXECUTE) ? OFLAGS_NO_EXECUTE : 0) |
+                          (subparse ? OFLAGS_NESTED : 0) |
+                          ((opt->avail & OTF_SUB_OPTIONS_OPTIONAL) ? OFLAGS_OPTIONAL : 0)
                 );
         }
     }
@@ -642,41 +627,36 @@ static int Option_MatchString(char* list, char* str, int flags, int* result) {
             return TRUE;
         }
 
-        switch (flags & OTF_SLFLAGS_MASK) {
-            case OTF_SLFLAGS_8:
-                if (my_tolower(str[0]) ==
-                    'n' &&
-                    my_tolower(str[1]) ==
-                    'o' &&
+        switch (flags & OTF_PREFIX_MASK) {
+            case OTF_NO_PREFIX:
+                if (my_tolower(str[0]) == 'n' &&
+                    my_tolower(str[1]) == 'o' &&
                     Utils_CompareOptionString(list, str + 2, flags & OTF_CASED, 0)) {
                     if (result) {
-                        *result |= OTF_SLFLAGS_8;
+                        *result |= OTF_NO_PREFIX;
                     }
                     return TRUE;
                 }
                 break;
-            case OTF_SLFLAGS_20:
-                if (my_tolower(str[0]) ==
-                    'n' &&
-                    my_tolower(str[1]) ==
-                    'o' &&
-                    str[2] ==
-                    '-' &&
+            case OTF_NO_DASH_PREFIX:
+                if (my_tolower(str[0]) == 'n' &&
+                    my_tolower(str[1]) == 'o' &&
+                    str[2] == '-' &&
                     Utils_CompareOptionString(list, str + 3, flags & OTF_CASED, 0)) {
                     if (result) {
-                        *result |= OTF_SLFLAGS_20;
+                        *result |= OTF_NO_DASH_PREFIX;
                     }
                     return TRUE;
                 }
                 break;
-            case OTF_SLFLAGS_10:
+            case OTF_MINUS_PREFIX:
                 str_len = strlen(str);
                 if (str[str_len - 1] == '-') {
                     strcpy(cpy, str);
                     cpy[str_len - 1] = 0;
                     if (Utils_CompareOptionString(list, cpy, flags & OTF_CASED, 0)) {
                         if (result) {
-                            *result |= OTF_SLFLAGS_10;
+                            *result |= OTF_MINUS_PREFIX;
                         }
                         return TRUE;
                     }
@@ -699,7 +679,7 @@ static int Option_MatchString(char* list, char* str, int flags, int* result) {
     return FALSE;
 }
 
-static Option* Option_Lookup(OptionList* search, int unk, int* flags) {
+static Option* Option_Lookup(OptionList* search, int mask, int* flags) {
     Option** os;
     Option* stickyopt;
     int stickyflags;
@@ -712,8 +692,6 @@ static Option* Option_Lookup(OptionList* search, int unk, int* flags) {
 
     if (os) {
         while (*os) {
-            // TODO: invented name. 2.6 clears two Booleans at the top of each pass (0x41d870):
-            // `matched` and one it never reads; `matched = 0` alone is 99.1%.
             Boolean unused = FALSE;
             matched = FALSE;
             names = (*os)->names;
@@ -730,7 +708,7 @@ static Option* Option_Lookup(OptionList* search, int unk, int* flags) {
             }
 
             matched = Option_MatchString(
-                          names, curopt, (*os)->avail & (OTF_SLFLAGS_MASK | OTF_CASED), flags
+                          names, curopt, (*os)->avail & (OTF_PREFIX_MASK | OTF_CASED), flags
                       ) &&
                 (*names || names == (*os)->names);
             if (matched) {
@@ -765,7 +743,6 @@ static int Options_DoParse(OptionList* search, int flags) {
     char* optname;
     Option* opt;
     Option* dopt;
-    // TODO: invented name. 2.6 takes this level's row of endingStack and never uses it (0x41da16).
     short* ending;
     Boolean isOpt;
     char* lptr;
@@ -775,8 +752,6 @@ static int Options_DoParse(OptionList* search, int flags) {
     int failed;
     int matchflags;
     int subparse;
-    // TODO: invented names: nested and level are one variable in Pro7 (its `mystery_r31`), two in
-    // 2.6 (the first lives in a scratch register only)
     int nested;
     ArgToken* starttok;
     ArgToken* tok;
@@ -790,8 +765,8 @@ static int Options_DoParse(OptionList* search, int flags) {
     parsedany = 0;
     failed = 0;
     matchflags = 0;
-    subparse = (flags & OFLAGS_2) != 0;
-    nested = subparse && (flags & OFLAGS_10);
+    subparse = (flags & OFLAGS_SUBOPTION) != 0;
+    nested = subparse && (flags & OFLAGS_NESTED);
     opttok = 0;
     level = (subparse == 0) ? 1 : (nested == 0) ? 2 : 3;
     ending = endingStack[level];
@@ -803,19 +778,19 @@ static int Options_DoParse(OptionList* search, int flags) {
         parsedany = 0;
         isOpt = ((level == 1) && (tok->val == ATK_OPTION)) ||
             ((level == 2) &&
-             ((tok->val == ATK_ARG) && (tok->text[0] || search->flags & LISTFLAGS_4))) ||
+             ((tok->val == ATK_ARG) && (tok->text[0] || search->flags & LISTFLAGS_UNNAMED))) ||
             ((level == 3) && (tok->val == ATK_EQUALS));
         if ((level == 3) && isOpt) {
             tok = Arg_UsedToken();
             isOpt = tok && (tok->val == ATK_ARG);
-            flags &= ~OFLAGS_4;
+            flags &= ~OFLAGS_OPTIONAL;
         }
 
         if (isOpt) {
             opt = 0;
             Arg_GetTokenText(tok, curopt, sizeof(curopt), FALSE);
             if (curopt[0]) {
-                opt = Option_Lookup(search, OTF_SLFLAGS_MASK, &matchflags);
+                opt = Option_Lookup(search, OTF_PREFIX_MASK, &matchflags);
                 if (opt) {
                     opttok = tok;
                     if (!(matchflags & OTF_STICKY)) {
@@ -848,7 +823,7 @@ static int Options_DoParse(OptionList* search, int flags) {
             }
 
             if (!opt) {
-                if (search->flags & LISTFLAGS_4) {
+                if (search->flags & LISTFLAGS_UNNAMED) {
                     strcpy(saveopt, curopt);
                     curopt[0] = 0;
                     opt = Option_Lookup(search, 0, &matchflags);
@@ -875,11 +850,11 @@ static int Options_DoParse(OptionList* search, int flags) {
                 } else if (!opt) {
                     curopt[0] = 0;
                     if (level > 1) {
-                        if ((flags & OFLAGS_4) && tok == starttok) {
+                        if ((flags & OFLAGS_OPTIONAL) && tok == starttok) {
                             return haderrors == 0;
                         }
                         if (search->flags & LISTFLAGS_ALLOW_UNKNOWNS) {
-                            if (!(flags & OFLAGS_1)) {
+                            if (!(flags & OFLAGS_GLOBAL)) {
                                 Option_SpellList(curparam, search, flags);
                                 Option_Warning(
                                     CLPStr20_UnknownOptionX_ExpectedOneOfX, tok->text, curparam
@@ -897,7 +872,7 @@ static int Options_DoParse(OptionList* search, int flags) {
                         }
                     } else {
                         if ((search->flags & LISTFLAGS_ALLOW_UNKNOWNS) || parseopts.ignoreUnknown) {
-                            if (!(flags & OFLAGS_1)) {
+                            if (!(flags & OFLAGS_GLOBAL)) {
                                 Option_Warning(CLPStr19_UnknownOptionX, tok->text);
                             }
                             tok = Arg_UsedToken();
@@ -913,9 +888,9 @@ static int Options_DoParse(OptionList* search, int flags) {
             }
 
             if (!haderrors && !failed && opt) {
-                flags &= ~OFLAGS_8;
-                if (matchflags & OTF_SLFLAGS_MASK) {
-                    flags |= OFLAGS_8;
+                flags &= ~OFLAGS_NEGATED;
+                if (matchflags & OTF_PREFIX_MASK) {
+                    flags |= OFLAGS_NEGATED;
                 }
                 haderrors = Option_Parse(opt, flags) == 0;
                 if (haderrors) {
@@ -932,7 +907,7 @@ static int Options_DoParse(OptionList* search, int flags) {
                 Option_Warning(CLPStr33_NoDefaultHandlerSetUpForX_Ignoring, curopt);
                 failed = 1;
             } else {
-                if (!(flags & OFLAGS_1)) {
+                if (!(flags & OFLAGS_GLOBAL)) {
                     haderrors = Option_Parse(opt, flags) == 0;
                 } else {
                     parseopts.possibleFiles++;
@@ -947,7 +922,7 @@ static int Options_DoParse(OptionList* search, int flags) {
             }
         } else if ((level > 1) && Option_IsEndingLevel(level, tok)) {
             strcpy(savecuropt, curopt);
-            if (!(search->flags & LISTFLAGS_4)) {
+            if (!(search->flags & LISTFLAGS_UNNAMED)) {
                 curopt[0] = 0;
                 dopt = Option_Lookup(search, 0, &matchflags);
             } else {
@@ -955,7 +930,7 @@ static int Options_DoParse(OptionList* search, int flags) {
             }
 
             if (!dopt) {
-                if (!(flags & OFLAGS_4)) {
+                if (!(flags & OFLAGS_OPTIONAL)) {
                     Option_Error(CLPStr34_ArgumentsExpected, savecuropt);
                     haderrors++;
                     failed = 1;
@@ -995,7 +970,7 @@ static int Options_DoParse(OptionList* search, int flags) {
                     if (!tok->text[0]) {
                         tok = Arg_UsedToken();
                     }
-                    if (flags & OFLAGS_1) {
+                    if (flags & OFLAGS_GLOBAL) {
                         parseopts.possibleFiles++;
                     }
                 }
@@ -1082,7 +1057,7 @@ int Options_Parse(OptionList* options, int flags) {
     Options_Reset(options);
     Option_PushList(options);
 
-    if (!(flags & OFLAGS_2)) {
+    if (!(flags & OFLAGS_SUBOPTION)) {
         ret = Options_DoParse(options, flags);
         if (Option_ThisTool() == OTF_TOOL_COMPILER) {
             Arg_AddToToolArgs(&linkargs, ATK_ARG_END, NULL);
@@ -1097,7 +1072,6 @@ int Options_Parse(OptionList* options, int flags) {
     return ret;
 }
 
-// (no caller in 2.6, which the linker dropped; its literals stay in the unit's .data)
 int Option_ParseDefaultOption(OptionList* options) {
     int ret;
     Option* dopt;
@@ -1163,14 +1137,14 @@ void Option_OptionWarning(short id, va_list ap) {
     CLPReportWarning_V(buf, ap);
 }
 
-void Option_Error(short id, ...) {
+void Option_Error(VarArgShort id, ...) {
     va_list va;
     va_start(va, id);
     Option_OptionError(id, va);
     va_end(va);
 }
 
-void Option_Warning(short id, ...) {
+void Option_Warning(VarArgShort id, ...) {
     va_list va;
     va_start(va, id);
     Option_OptionWarning(id, va);
@@ -1191,7 +1165,7 @@ int Options_Help(const char* keyword) {
         ShowVersion(TRUE);
         for (scan = 0; scan < numoptionlists; scan++) {
             if ((lst = optionlists[scan])) {
-                if (parseopts.helpFlags & HELPFLAGS_8000) {
+                if (parseopts.helpFlags & HELPFLAGS_SEARCH_HELP) {
                     if (keyword && keyword[0] && lst->help && strstr(lst->help, keyword)) {
                         Help_Options(lst, 0, "");
                     }
@@ -1212,7 +1186,7 @@ int Option_Help(const char* opt) {
     int ret;
 
     find = NULL;
-    ret = FALSE; // (2.6 sets it here as well, 0x41e798; Pro7 does not)
+    ret = FALSE;
     Option_PushList(Options_GetOptions());
     Option_PushOpt(0, "help");
     if (opt[0] == MAINOPTCHAR[0]) {
@@ -1222,10 +1196,10 @@ int Option_Help(const char* opt) {
     }
 
     if (!curopt[1]) {
-        find = Option_Lookup(Options_GetOptions(), OTF_SLFLAGS_MASK | OTF_STICKY, &matchflags);
+        find = Option_Lookup(Options_GetOptions(), OTF_PREFIX_MASK | OTF_STICKY, &matchflags);
     }
     if (!find) {
-        find = Option_Lookup(Options_GetOptions(), OTF_SLFLAGS_MASK, &matchflags);
+        find = Option_Lookup(Options_GetOptions(), OTF_PREFIX_MASK, &matchflags);
     }
 
     if (find) {
@@ -1246,7 +1220,7 @@ int Option_Help(const char* opt) {
 }
 
 int Options_DisplayHelp(void) {
-    if (parseopts.helpFlags & HELPFLAGS_1) {
+    if (parseopts.helpFlags & HELPFLAGS_ONE_OPTION) {
         return Option_Help(parseopts.helpKey);
     } else {
         return Options_Help(parseopts.helpKey);

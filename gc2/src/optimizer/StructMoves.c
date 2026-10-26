@@ -1,16 +1,12 @@
-// StructMoves.c: block moves and small structs in GPRs (Ninji's StructMoves.c of 2.4.5, with 2.6's
-// -fp soft and misaligned-move changes). Built -inline auto,deferred: the binary holds the functions in
-// reverse.
 #include "compiler/StructMoves.h"
 #include "compiler/CError.h"
-#include "compiler/CParser.h"
 #include "compiler/CodeGen.h"
-#include "compiler/InstrSelection.h"
+#include "compiler/CParser.h"
 #include "compiler/Operands.h"
 #include "compiler/PCode.h"
+#include "compiler/PCodeInfo.h"
 #include "compiler/PCodeUtilities.h"
 #include "compiler/Registers.h"
-#include "compiler/CPrep.h"
 #include "compiler/types.h"
 
 void make_addressable(Operand* operand, SInt32 offset, int n) {
@@ -20,8 +16,7 @@ void make_addressable(Operand* operand, SInt32 offset, int n) {
         coerce_to_addressable(operand);
     }
 
-    if (operand->optype !=
-        OpndType_IndirectGPR_ImmOffset ||
+    if (operand->optype != OpndType_IndirectGPR_ImmOffset ||
         (operand->immOffset + offset) > 0x7FFF) {
         reg = ALLOC_GPR();
         load_address(reg, operand);
@@ -31,10 +26,6 @@ void make_addressable(Operand* operand, SInt32 offset, int n) {
         operand->immOffset = 0;
     }
 }
-
-#ifdef ORACLE_PROBES
-#define make_addressable(...) ORACLE_INLINED(make_addressable(__VA_ARGS__))
-#endif
 
 static void load_displaced_address(Operand* opnd, SInt32 offset) {
     int reg;
@@ -65,12 +56,10 @@ static void load_displaced_address(Operand* opnd, SInt32 offset) {
     opnd->immOffset = 0;
 }
 
-// 2.6: the width a move of LEN bytes aligned to ALIGN takes at a time (TODO: invented name: 2.6's
-// code copies both arguments as an inline function's would; Pro7 writes the computation out each time)
 static inline SInt32 GetStep(SInt32 len, SInt32 align) {
     SInt32 size = len;
     SInt32 step;
-    if (copts.misaligned_mem_access == 0 && align < 4) {
+    if (!copts.misaligned_mem_access && align < 4) {
         if (align <= 0) {
             align = 1;
         }
@@ -88,10 +77,6 @@ static inline SInt32 GetStep(SInt32 len, SInt32 align) {
     return step;
 }
 
-// 2.6: the width a move takes at a time for SIZE bytes (TODO: invented name; 2.6's
-// move_block_via_load_store and move_block_via_inline_loop's tail loop work out the size in place,
-// testing ALIGN itself, and inline this; the `int` parameter and `SInt32` result are what the
-// original's registers need)
 static inline SInt32 GetStepForSize(int size) {
     SInt32 step;
     if (size >= 4) {
@@ -119,7 +104,7 @@ static void move_block_via_load_store(Operand* dst, Operand* src, SInt32 len, SI
         coerce_to_addressable(dst);
     }
 
-    if (copts.use_fp != 0 && copts.soft_float == 0 && len == 8) {
+    if (copts.use_fp && !copts.soft_float && len == 8) {
         floatReg = ALLOC_FPR();
         if (src->optype == OpndType_IndirectGPR_ImmOffset) {
             load_store_register(PC_LFD, floatReg, src->reg, src->object, src->immOffset);
@@ -143,7 +128,7 @@ static void move_block_via_load_store(Operand* dst, Operand* src, SInt32 len, SI
     } else {
         a = align;
         size = len;
-        if (copts.misaligned_mem_access == 0 && align < 4) {
+        if (!copts.misaligned_mem_access && align < 4) {
             if (align <= 0) {
                 a = 1;
             }
@@ -221,7 +206,7 @@ static void move_block_via_load_store_sequence(
     Operand* dst, Operand* src, SInt32 len, SInt32 align
 ) {
     SInt32 pos;
-    SInt32 i; // Pro7: int (an int counter drops 2.6's jump to the loop test)
+    SInt32 i;
     SInt32 step;
 
     pos = 0;
@@ -349,12 +334,8 @@ static void move_block_via_load_store_sequence(
     }
 }
 
-// 2.6: one load and store of WIDTH bytes at POS (TODO: invented name and shape: 2.6's loop copies
-// its width and position as an inline function's parameters would)
 static inline void copy_chunk(Operand* dst, Operand* src, int width, int pos) {
     int reg;
-    // TODO: the copy of WIDTH is what 2.6's code needs (it stores the width's copy before
-    // allocating the register); the original's helper evidently held it in a local of its own
     int w = width;
 
     reg = ALLOC_GPR();
@@ -363,10 +344,6 @@ static inline void copy_chunk(Operand* dst, Operand* src, int width, int pos) {
     load_store_register((w == 1) ? PC_STB : (w == 2) ? PC_STH : PC_STW, reg, dst->reg, NULL, pos);
     setpcodeflags(dst->flags);
 }
-
-#ifdef ORACLE_PROBES
-#define copy_chunk(...) ORACLE_INLINED(copy_chunk(__VA_ARGS__))
-#endif
 
 static void move_block_via_inline_loop(Operand* dst, Operand* src, SInt32 len, SInt32 align) {
     PCodeLabel* label;
@@ -444,7 +421,7 @@ static void move_block_via_inline_loop(Operand* dst, Operand* src, SInt32 len, S
          remainder -= width, pos += width) {
         a = align;
         size = remainder;
-        if (copts.misaligned_mem_access == 0 && align < 4) {
+        if (!copts.misaligned_mem_access && align < 4) {
             if (align <= 0) {
                 a = 1;
             }
@@ -467,9 +444,9 @@ void move_block(Operand* dst, Operand* src, SInt32 len, SInt32 align) {
 
     if (len == 1 || len == 2 || len == 4) {
         move_block_via_load_store(&myDst, src, len, align);
-    } else if (copts.use_fp != 0 && copts.soft_float == 0 && len == 8 && align == 8) {
+    } else if (copts.use_fp && !copts.soft_float && len == 8 && align == 8) {
         move_block_via_load_store(&myDst, src, len, align);
-    } else if (len <= 16 || (copts.optimizesize == 0 && len <= 64)) {
+    } else if (len <= 16 || (!copts.optimizesize && len <= 64)) {
         move_block_via_load_store_sequence(&myDst, src, len, align);
     } else {
         move_block_via_inline_loop(&myDst, src, len, align);
@@ -479,44 +456,44 @@ void move_block(Operand* dst, Operand* src, SInt32 len, SInt32 align) {
 static void load_word_of_small_struct(
     short dstReg, short srcReg, Operand* opnd, SInt32 offset, SInt32 len, SInt32 align
 ) {
-    short tmpReg;
+    short pieceReg;
     short resultReg;
     short extra = 0;
 
     switch (len) {
         case 1:
-            tmpReg = ALLOC_GPR();
-            load_store_register(PC_LBZ, tmpReg, srcReg, opnd->object, offset);
+            pieceReg = ALLOC_GPR();
+            load_store_register(PC_LBZ, pieceReg, srcReg, opnd->object, offset);
             setpcodeflags(opnd->flags);
-            emitpcode(PC_RLWINM, dstReg, tmpReg, 24, 0, 7);
+            emitpcode(PC_RLWINM, dstReg, pieceReg, 24, 0, 7);
             setpcodeflags(opnd->flags);
             break;
         case 2:
         case 3:
-            tmpReg = ALLOC_GPR();
+            pieceReg = ALLOC_GPR();
             resultReg = (dstReg != srcReg) ? dstReg : ALLOC_GPR();
             if (align > 1) {
-                load_store_register(PC_LHZ, tmpReg, srcReg, opnd->object, offset);
+                load_store_register(PC_LHZ, pieceReg, srcReg, opnd->object, offset);
                 extra += 2;
                 setpcodeflags(opnd->flags);
-                emitpcode(PC_RLWINM, resultReg, tmpReg, 16, 0, 15);
+                emitpcode(PC_RLWINM, resultReg, pieceReg, 16, 0, 15);
                 setpcodeflags(opnd->flags);
             } else {
-                load_store_register(PC_LBZ, tmpReg, srcReg, opnd->object, offset);
+                load_store_register(PC_LBZ, pieceReg, srcReg, opnd->object, offset);
                 setpcodeflags(opnd->flags);
-                emitpcode(PC_RLWINM, resultReg, tmpReg, 24, 0, 7);
+                emitpcode(PC_RLWINM, resultReg, pieceReg, 24, 0, 7);
                 setpcodeflags(opnd->flags);
 
-                load_store_register(PC_LBZ, tmpReg, srcReg, opnd->object, offset + 1);
+                load_store_register(PC_LBZ, pieceReg, srcReg, opnd->object, offset + 1);
                 extra += 2;
                 setpcodeflags(opnd->flags);
-                emitpcode(PC_RLWIMI, resultReg, tmpReg, 16, 8, 15);
+                emitpcode(PC_RLWIMI, resultReg, pieceReg, 16, 8, 15);
                 setpcodeflags(opnd->flags);
             }
             if (len == 3) {
-                load_store_register(PC_LBZ, tmpReg, srcReg, opnd->object, offset + extra);
+                load_store_register(PC_LBZ, pieceReg, srcReg, opnd->object, offset + extra);
                 setpcodeflags(opnd->flags);
-                emitpcode(PC_RLWIMI, resultReg, tmpReg, 8, 16, 23);
+                emitpcode(PC_RLWIMI, resultReg, pieceReg, 8, 16, 23);
                 setpcodeflags(opnd->flags);
             }
             if (resultReg != dstReg) {
@@ -528,41 +505,41 @@ static void load_word_of_small_struct(
                 load_store_register(PC_LWZ, dstReg, srcReg, opnd->object, offset);
                 setpcodeflags(opnd->flags);
             } else if (align > 1) {
-                tmpReg = ALLOC_GPR();
+                pieceReg = ALLOC_GPR();
                 resultReg = (dstReg != srcReg) ? dstReg : ALLOC_GPR();
-                load_store_register(PC_LHZ, tmpReg, srcReg, opnd->object, offset);
+                load_store_register(PC_LHZ, pieceReg, srcReg, opnd->object, offset);
                 setpcodeflags(opnd->flags);
-                emitpcode(PC_RLWINM, resultReg, tmpReg, 16, 0, 15);
+                emitpcode(PC_RLWINM, resultReg, pieceReg, 16, 0, 15);
                 setpcodeflags(opnd->flags);
 
-                load_store_register(PC_LHZ, tmpReg, srcReg, opnd->object, offset + 2);
+                load_store_register(PC_LHZ, pieceReg, srcReg, opnd->object, offset + 2);
                 setpcodeflags(opnd->flags);
-                emitpcode(PC_RLWIMI, resultReg, tmpReg, 0, 16, 31);
+                emitpcode(PC_RLWIMI, resultReg, pieceReg, 0, 16, 31);
                 setpcodeflags(opnd->flags);
                 if (resultReg != dstReg) {
                     emitpcode(PC_MR, dstReg, resultReg);
                 }
             } else {
-                tmpReg = ALLOC_GPR();
+                pieceReg = ALLOC_GPR();
                 resultReg = (dstReg != srcReg) ? dstReg : ALLOC_GPR();
-                load_store_register(PC_LBZ, tmpReg, srcReg, opnd->object, offset);
+                load_store_register(PC_LBZ, pieceReg, srcReg, opnd->object, offset);
                 setpcodeflags(opnd->flags);
-                emitpcode(PC_RLWINM, resultReg, tmpReg, 24, 0, 7);
-                setpcodeflags(opnd->flags);
-
-                load_store_register(PC_LBZ, tmpReg, srcReg, opnd->object, offset + 1);
-                setpcodeflags(opnd->flags);
-                emitpcode(PC_RLWIMI, resultReg, tmpReg, 16, 8, 15);
+                emitpcode(PC_RLWINM, resultReg, pieceReg, 24, 0, 7);
                 setpcodeflags(opnd->flags);
 
-                load_store_register(PC_LBZ, tmpReg, srcReg, opnd->object, offset + 2);
+                load_store_register(PC_LBZ, pieceReg, srcReg, opnd->object, offset + 1);
                 setpcodeflags(opnd->flags);
-                emitpcode(PC_RLWIMI, resultReg, tmpReg, 8, 16, 23);
+                emitpcode(PC_RLWIMI, resultReg, pieceReg, 16, 8, 15);
                 setpcodeflags(opnd->flags);
 
-                load_store_register(PC_LBZ, tmpReg, srcReg, opnd->object, offset + 3);
+                load_store_register(PC_LBZ, pieceReg, srcReg, opnd->object, offset + 2);
                 setpcodeflags(opnd->flags);
-                emitpcode(PC_RLWIMI, resultReg, tmpReg, 0, 24, 31);
+                emitpcode(PC_RLWIMI, resultReg, pieceReg, 8, 16, 23);
+                setpcodeflags(opnd->flags);
+
+                load_store_register(PC_LBZ, pieceReg, srcReg, opnd->object, offset + 3);
+                setpcodeflags(opnd->flags);
+                emitpcode(PC_RLWIMI, resultReg, pieceReg, 0, 24, 31);
                 setpcodeflags(opnd->flags);
                 if (resultReg != dstReg) {
                     emitpcode(PC_MR, dstReg, resultReg);
@@ -575,7 +552,7 @@ static void load_word_of_small_struct(
 void load_small_block_into_reg(short dstReg, Operand* srcOpnd, Type* type, SInt32 align) {
     int reg;
     short finalReg;
-    short tmpReg;
+    short hiReg;
     SInt32 absAddress;
 
     coerce_to_addressable(srcOpnd);
@@ -612,13 +589,13 @@ void load_small_block_into_reg(short dstReg, Operand* srcOpnd, Type* type, SInt3
             if (FITS_IN_SHORT(absAddress)) {
                 emitpcode(PC_LI, finalReg, absAddress);
             } else {
-                tmpReg = finalReg;
+                hiReg = finalReg;
                 if (copts.optimizationlevel > 1 && LOW_PART(absAddress)) {
-                    tmpReg = ALLOC_GPR();
+                    hiReg = ALLOC_GPR();
                 }
-                emitpcode(PC_LIS, tmpReg, 0, HIGH_PART(absAddress));
+                emitpcode(PC_LIS, hiReg, 0, HIGH_PART(absAddress));
                 if (LOW_PART(absAddress)) {
-                    emitpcode(PC_ADDI, finalReg, tmpReg, 0, LOW_PART(absAddress));
+                    emitpcode(PC_ADDI, finalReg, hiReg, 0, LOW_PART(absAddress));
                 }
             }
             break;
@@ -644,7 +621,7 @@ void load_small_block_into_reg_pair(
     short finalRegHi;
     short tmpRegLo;
     short tmpRegHi;
-    short tmpReg;
+    short hiReg;
     SInt32 absAddress;
 
     finalRegHi = -1;
@@ -719,13 +696,13 @@ void load_small_block_into_reg_pair(
             if (FITS_IN_SHORT(absAddress)) {
                 emitpcode(PC_LI, finalRegLo, absAddress);
             } else {
-                tmpReg = finalRegLo;
+                hiReg = finalRegLo;
                 if (copts.optimizationlevel > 1 && LOW_PART(absAddress)) {
-                    tmpReg = ALLOC_GPR();
+                    hiReg = ALLOC_GPR();
                 }
-                emitpcode(PC_LIS, tmpReg, 0, HIGH_PART(absAddress));
+                emitpcode(PC_LIS, hiReg, 0, HIGH_PART(absAddress));
                 if (LOW_PART(absAddress)) {
-                    emitpcode(PC_ADDI, finalRegLo, tmpReg, 0, LOW_PART(absAddress));
+                    emitpcode(PC_ADDI, finalRegLo, hiReg, 0, LOW_PART(absAddress));
                 }
             }
 
@@ -790,43 +767,43 @@ void load_small_block_into_reg_pair(
 static void store_word_of_small_struct(
     short srcReg, short dstReg, Operand* opnd, SInt32 offset, SInt32 len, SInt32 align
 ) {
-    short tmpReg;
+    short pieceReg;
     short extra = 0;
 
     switch (len) {
         case 1:
-            tmpReg = ALLOC_GPR();
-            emitpcode(PC_RLWINM, tmpReg, srcReg, 8, 24, 31);
+            pieceReg = ALLOC_GPR();
+            emitpcode(PC_RLWINM, pieceReg, srcReg, 8, 24, 31);
             setpcodeflags(opnd->flags);
-            load_store_register(PC_STB, tmpReg, dstReg, opnd->object, offset);
+            load_store_register(PC_STB, pieceReg, dstReg, opnd->object, offset);
             setpcodeflags(opnd->flags);
             break;
         case 2:
         case 3:
             if (align > 1) {
-                tmpReg = ALLOC_GPR();
-                emitpcode(PC_RLWINM, tmpReg, srcReg, 16, 16, 31);
+                pieceReg = ALLOC_GPR();
+                emitpcode(PC_RLWINM, pieceReg, srcReg, 16, 16, 31);
                 setpcodeflags(opnd->flags);
-                load_store_register(PC_STH, tmpReg, dstReg, opnd->object, offset);
+                load_store_register(PC_STH, pieceReg, dstReg, opnd->object, offset);
                 extra += 2;
                 setpcodeflags(opnd->flags);
             } else {
-                tmpReg = ALLOC_GPR();
-                emitpcode(PC_RLWINM, tmpReg, srcReg, 8, 24, 31);
+                pieceReg = ALLOC_GPR();
+                emitpcode(PC_RLWINM, pieceReg, srcReg, 8, 24, 31);
                 setpcodeflags(opnd->flags);
-                load_store_register(PC_STB, tmpReg, dstReg, opnd->object, offset);
+                load_store_register(PC_STB, pieceReg, dstReg, opnd->object, offset);
                 setpcodeflags(opnd->flags);
 
-                emitpcode(PC_RLWINM, tmpReg, srcReg, 16, 24, 31);
+                emitpcode(PC_RLWINM, pieceReg, srcReg, 16, 24, 31);
                 setpcodeflags(opnd->flags);
-                load_store_register(PC_STB, tmpReg, dstReg, opnd->object, offset + 1);
+                load_store_register(PC_STB, pieceReg, dstReg, opnd->object, offset + 1);
                 extra += 2;
                 setpcodeflags(opnd->flags);
             }
             if (len == 3) {
-                emitpcode(PC_RLWINM, tmpReg, srcReg, 24, 24, 31);
+                emitpcode(PC_RLWINM, pieceReg, srcReg, 24, 24, 31);
                 setpcodeflags(opnd->flags);
-                load_store_register(PC_STB, tmpReg, dstReg, opnd->object, offset + extra);
+                load_store_register(PC_STB, pieceReg, dstReg, opnd->object, offset + extra);
                 setpcodeflags(opnd->flags);
             }
             break;
@@ -835,29 +812,29 @@ static void store_word_of_small_struct(
                 load_store_register(PC_STW, srcReg, dstReg, opnd->object, offset);
                 setpcodeflags(opnd->flags);
             } else if (align > 1) {
-                tmpReg = ALLOC_GPR();
-                emitpcode(PC_RLWINM, tmpReg, srcReg, 16, 16, 31);
+                pieceReg = ALLOC_GPR();
+                emitpcode(PC_RLWINM, pieceReg, srcReg, 16, 16, 31);
                 setpcodeflags(opnd->flags);
-                load_store_register(PC_STH, tmpReg, dstReg, opnd->object, offset);
+                load_store_register(PC_STH, pieceReg, dstReg, opnd->object, offset);
                 setpcodeflags(opnd->flags);
 
                 load_store_register(PC_STH, srcReg, dstReg, opnd->object, offset + 2);
                 setpcodeflags(opnd->flags);
             } else {
-                tmpReg = ALLOC_GPR();
-                emitpcode(PC_RLWINM, tmpReg, srcReg, 8, 24, 31);
+                pieceReg = ALLOC_GPR();
+                emitpcode(PC_RLWINM, pieceReg, srcReg, 8, 24, 31);
                 setpcodeflags(opnd->flags);
-                load_store_register(PC_STB, tmpReg, dstReg, opnd->object, offset);
-                setpcodeflags(opnd->flags);
-
-                emitpcode(PC_RLWINM, tmpReg, srcReg, 16, 24, 31);
-                setpcodeflags(opnd->flags);
-                load_store_register(PC_STB, tmpReg, dstReg, opnd->object, offset + 1);
+                load_store_register(PC_STB, pieceReg, dstReg, opnd->object, offset);
                 setpcodeflags(opnd->flags);
 
-                emitpcode(PC_RLWINM, tmpReg, srcReg, 24, 24, 31);
+                emitpcode(PC_RLWINM, pieceReg, srcReg, 16, 24, 31);
                 setpcodeflags(opnd->flags);
-                load_store_register(PC_STB, tmpReg, dstReg, opnd->object, offset + 2);
+                load_store_register(PC_STB, pieceReg, dstReg, opnd->object, offset + 1);
+                setpcodeflags(opnd->flags);
+
+                emitpcode(PC_RLWINM, pieceReg, srcReg, 24, 24, 31);
+                setpcodeflags(opnd->flags);
+                load_store_register(PC_STB, pieceReg, dstReg, opnd->object, offset + 2);
                 setpcodeflags(opnd->flags);
 
                 load_store_register(PC_STB, srcReg, dstReg, opnd->object, offset + 3);
@@ -868,15 +845,15 @@ static void store_word_of_small_struct(
 }
 
 void store_small_block_from_reg(short srcReg, Operand* dstOpnd, Type* type, SInt32 align) {
-    short tmpReg;
+    short addrReg;
 
     coerce_to_addressable(dstOpnd);
 
     if (dstOpnd->optype == OpndType_IndirectGPR_Indexed) {
-        tmpReg = ALLOC_GPR();
-        load_address(tmpReg, dstOpnd);
+        addrReg = ALLOC_GPR();
+        load_address(addrReg, dstOpnd);
         dstOpnd->optype = OpndType_IndirectGPR_ImmOffset;
-        dstOpnd->reg = tmpReg;
+        dstOpnd->reg = addrReg;
         dstOpnd->object = NULL;
         dstOpnd->immOffset = 0;
     }
@@ -893,15 +870,15 @@ void store_small_block_from_reg(short srcReg, Operand* dstOpnd, Type* type, SInt
 void store_small_block_from_reg_pair(
     short srcRegLo, short srcRegHi, Operand* dstOpnd, Type* type, SInt32 align
 ) {
-    short tmpReg;
+    short addrReg;
 
     coerce_to_addressable(dstOpnd);
 
     if (dstOpnd->optype == OpndType_IndirectGPR_Indexed) {
-        tmpReg = ALLOC_GPR();
-        load_address(tmpReg, dstOpnd);
+        addrReg = ALLOC_GPR();
+        load_address(addrReg, dstOpnd);
         dstOpnd->optype = OpndType_IndirectGPR_ImmOffset;
-        dstOpnd->reg = tmpReg;
+        dstOpnd->reg = addrReg;
         dstOpnd->object = NULL;
         dstOpnd->immOffset = 0;
     }

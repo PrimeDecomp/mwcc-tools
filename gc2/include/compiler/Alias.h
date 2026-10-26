@@ -7,14 +7,9 @@
 extern "C" {
 #endif
 
-// 2-byte packing (Pro7: mac68k alignment): an Alias is 0x2e bytes (the lalloc in make_alias), its
-// byte-sized AliasType last
 #pragma pack(push, 2)
 typedef struct AliasMember AliasMember;
 
-// TODO: invented names (Pro7 has Ninji's placeholders AliasType0..2 and vec24): an Alias is a whole
-// object, a part of one (offset, size) or a set of aliases (Wii's create_alias_set); `membervec` is
-// a set's members as a bit vector over alias indices
 typedef enum AliasType {
     AliasType_Object,
     AliasType_ObjectPart,
@@ -60,7 +55,9 @@ extern Alias* make_distinct_virtual_alias(Object* obj);
 extern void gather_alias_info(void);
 extern Boolean may_alias(PCode* a, PCode* b);
 #if VERSION == VERSION_GC_2_0P2
+extern Boolean is_direct_small_data_access(PCode* pcode);
 extern Boolean may_alias_scheduling(PCode* a, PCode* b);
+extern void update_small_data_values(PCode* pcode);
 #endif
 #if VERSION < VERSION_GC_2_5
 extern Boolean uniquely_aliases(PCode* a, PCode* b);

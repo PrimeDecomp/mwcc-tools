@@ -1,26 +1,4 @@
 #!/usr/bin/env python3
-"""python tools/compilers.py COMMAND ...: how each unit was built, from trial compiles.
-
-  host [--compilers pro5,pro53,pro6,pro7] [--sources GLOB] [--replace OLD=NEW]... [--version V]
-      compile each source with each candidate host compiler (its flags otherwise the build's; a candidate is a name
-      under build/compilers/ or the path of another mwcc.exe) and judge it against the original, by two independent
-      signs:
-        code  how many of the unit's functions are exact, and how similar the rest are;
-        data  where the compiler puts the unit's data symbols whose original addresses are known (bindings, and the
-              exact functions' references): .data or .bss/COMMON, against the original's own placement. Pro 5.3
-              puts explicitly zero-initialized data in .data, Pro 5, 6 and 7 do not, which the code cannot tell.
-      Prints per source the configured compiler and each candidate's "exact/total similarity% data agree/disagree",
-      the best starred, then for each candidate that makes functions exact that the configured compiler does not,
-      those (and the ones it loses). --replace changes the flags first (e.g. '-sym off=-sym on').
-  deferred [--sources GLOB] [--version V]
-      each source built -inline auto,deferred with its functions in descending address order (tools/unit.py order
-      --deferred on a copy; when that does not compile, with prototypes of its static functions before the first,
-      marked "+prototypes"), against how it builds now: exact functions, and the share of the unit's adjacent
-      functions (in the original's order) the object has in that order. A unit built deferred holds its functions in
-      reverse source order: an object linked from source must have the original's order.
-
-Everything compiles outside the build (tools/mw/isolated.py), in parallel; nothing is written.
-"""
 
 import argparse
 import collections
@@ -38,8 +16,6 @@ from mw.pe import original
 
 @dataclass(frozen=True)
 class Candidate(build.Compilation):
-    """A compilation by an mwcc.exe given by its path."""
-
     path: str = ""
 
     @property
@@ -72,12 +48,7 @@ def selected(version, pattern: str) -> list[str]:
     return sources
 
 
-# ----------------------------------------------------------------------------------------------------------- host
-
-
 def data_agreement(obj: Object, addresses: dict[str, int], pe) -> tuple[int, int]:
-    """(agree, disagree): OBJ's external data symbols whose original address is known, placed in .data or
-    .bss/COMMON as the original places them."""
     data = next(s for s in pe.sections if s.name == ".data")
     bss = next(s for s in pe.sections if s.name == ".bss")
     agree = disagree = 0
@@ -169,9 +140,6 @@ def host(args):
         )
 
 
-# ------------------------------------------------------------------------------------------------------- deferred
-
-
 def deferred_compilation(compilation: build.Compilation) -> build.Compilation:
     args = list(compilation.args)
     if "-inline" in args:
@@ -182,7 +150,6 @@ def deferred_compilation(compilation: build.Compilation) -> build.Compilation:
 
 
 def kept_order(obj: Object, rows: list[verdict.Row]) -> float:
-    """The share of ROWS' adjacent pairs (in address order) that OBJ's .text holds in the same order."""
     position = {}
     for s in sorted(
         (s for s in obj.symbols if s.defined and s.function and s.section > 0), key=lambda s: (s.section, s.value)
@@ -194,7 +161,6 @@ def kept_order(obj: Object, rows: list[verdict.Row]) -> float:
 
 
 def first_error(log: str) -> str:
-    """MWCC's first error message in LOG (the line after its "Error:" marker)."""
     lines = log.splitlines()
     for i, line in enumerate(lines[:-1]):
         if "Error:" in line:
@@ -221,7 +187,6 @@ def deferred(args):
                 except project.Error as e:
                     out.append(str(e).split("\n")[0])
                     continue
-                # (a static now used before its definition needs a prototype: the second try has them)
                 at = min((code.extent(d)[0] for _, d in functions), default=0)
                 prototypes = "".join(
                     f"{' '.join(code.text[d.start : d.body].split())};\n"
@@ -259,18 +224,18 @@ def deferred(args):
 
 def main():
     if hasattr(signal, "SIGPIPE"):
-        signal.signal(signal.SIGPIPE, signal.SIG_DFL)  # (piped into head: stop quietly)
+        if hasattr(signal, "SIGPIPE"):
+        signal.signal(signal.SIGPIPE, signal.SIG_DFL)
     parser = argparse.ArgumentParser(
-        description=__doc__.split("\n\n")[0],
+        description="How each unit was built, from trial compiles.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=__doc__[__doc__.index("\n\n") + 2 :],
     )
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument("--version")
     common.add_argument("--sources", default="*", help="a glob of config/sources.json's paths")
     commands = parser.add_subparsers(dest="command", required=True)
     p = commands.add_parser("host", parents=[common])
-    p.add_argument("--compilers", default="pro5,pro53,pro6,pro7")
+    p.add_argument("--compilers", default="pro5,pro53,pro6", help="the candidates, comma-separated")
     p.add_argument("--replace", action="append", default=[], metavar="OLD=NEW")
     commands.add_parser("deferred", parents=[common])
     args = parser.parse_args()

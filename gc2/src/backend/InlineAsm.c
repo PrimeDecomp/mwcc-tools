@@ -1,6 +1,3 @@
-// InlineAsm.c: Pro7's file, deferred, built -sym off (on loses three functions). 2.6 adds
-// InlineAsm_setjmp_valid and the base-class member search (isbaseclassmember).
-#include "compiler/CPrep.h"
 #include "compiler/InlineAsm.h"
 #include "compiler/CError.h"
 #include "compiler/CExpr.h"
@@ -12,6 +9,7 @@
 #include "compiler/CompilerTools.h"
 #include "compiler/COptimizer.h"
 #include "compiler/CParser.h"
+#include "compiler/CPrep.h"
 #include "compiler/CPrepTokenizer.h"
 #include "compiler/CScope.h"
 #include "compiler/GCCInlineAsm.h"
@@ -20,23 +18,23 @@
 #include "compiler/PCode.h"
 #include "compiler/Registers.h"
 #include "compiler/scopes.h"
+#include "compiler/tokens.h"
+#include "compiler/types.h"
 #include <setjmp.h>
 #include <stdio.h>
 #include <string.h>
 
-int allow_array_expressions = 1;
+int allow_array_expressions = TRUE;
 
 int backtracking;
 jmp_buf backtrack;
 jmp_buf InlineAsm_assemblererror;
-// InlineAsm_DumpStatement's buffer: Pro7's function-local static, at file scope because 2.6's
-// .bss has ASMstmtnb below it (statics are allocated in reverse declaration order); the
-// function-local static moves it (tried: the relink fails).
 static char buffer[1024];
 static int ASMstmtnb;
 
-// 2.6: set while InlineAsm_assemblererror holds a valid context (Wii's name)
 Boolean InlineAsm_setjmp_valid;
+
+SInt32 InlineAsm_ConstantExpression(void);
 
 void AssemblerError(void) {
     if (InlineAsm_setjmp_valid) {
@@ -150,9 +148,6 @@ Boolean InlineAsm_LookupSymbol(HashNameNode* name, IALookupResult* result) {
     return InlineAsm_LookupSymbolOrTag(name, result, FALSE);
 }
 
-// 2.6: a member of a base class, found through the bases depth first; a copy whose offset counts
-// the base class's offset in its derived class (only the innermost one).
-// TODO: invented name
 static ObjMemberVar* isbaseclassmember(ClassList* bases, HashNameNode* name) {
     ObjMemberVar* ivar = NULL;
     NameSpaceObjectList* list;
@@ -419,7 +414,7 @@ SInt32 InlineAsm_ConstantExpression(void) {
 
 HashNameNode* MakeLocalLabel(CInt64 num) {
     char buf[80];
-    sprintf(buf, "@%i_%i", ASMstmtnb, CInt64_GetULong(&num));
+    sprintf(buf, "@%i_%i", ASMstmtnb, (int)CInt64_GetULong(&num));
     return GetHashNameNodeExport(buf);
 }
 
@@ -478,7 +473,7 @@ static void ScanStatements(volatile short endToken, AssemblerType mode) {
     InlineAsm_setjmp_valid = TRUE;
 
     while (tk && tk != endToken) {
-        backtracking = 0;
+        backtracking = FALSE;
         sourceoffset = CPrep_GetFileOffsetInfo(&cparser_fileoffset);
         if (tk == '"') {
             if (InlineAsm_gccmode) {
@@ -486,8 +481,8 @@ static void ScanStatements(volatile short endToken, AssemblerType mode) {
                 InlineAsm_gcc_parse();
             } else {
                 InlineAsm_gccmode = TRUE;
-                copts.cplusplus = 0;
-                copts.asmpoundcomment = 1;
+                copts.cplusplus = FALSE;
+                copts.asmpoundcomment = TRUE;
                 tk = lex();
             }
         }
@@ -537,19 +532,19 @@ void InlineAsm_Assemble(void) {
     char save_pc = copts.asmpoundcomment;
     char save_cpp = copts.cplusplus;
 
-    cprep_nostring = 1;
+    cprep_nostring = TRUE;
     CFunc_AppendStatement(ST_NOP);
     first_ST_ASM = curstmt;
     ASMstmtnb++;
 
-    cprep_eoltokens = 1;
+    cprep_eoltokens = TRUE;
     InlineAsm_setjmp_valid = FALSE;
-    in_assembler = 1;
+    in_assembler = TRUE;
     tk = lex();
     InlineAsm_ScanStatements(token);
-    in_assembler = 0;
-    cprep_eoltokens = 0;
-    cprep_nostring = 0;
+    in_assembler = FALSE;
+    cprep_eoltokens = FALSE;
+    cprep_nostring = FALSE;
 
     copts.asmpoundcomment = save_pc;
     copts.cplusplus = save_cpp;
@@ -561,7 +556,7 @@ void InlineAsm_PackAsmStatement(Statement* stmt, Statement* first, void** output
     InlineAsm* dest;
     IAOperand* op;
     SInt32 i;
-    int size; // (Pro7: SInt32, which 2.6's code is not)
+    int size;
 
     src = (InlineAsm*)stmt->expr;
     size = sizeof(InlineAsm) + sizeof(IAOperand) * src->argcount;
@@ -569,7 +564,6 @@ void InlineAsm_PackAsmStatement(Statement* stmt, Statement* first, void** output
     memcpy(dest, src, size);
 
     for (i = 0, op = dest->args; i < dest->argcount; i++, op++) {
-        // (Pro7: `case IAOpnd_Placeholder`; 2.6's jump table starts at IAOpnd_Imm)
         switch (op->type) {
             case IAOpnd_Imm:
                 break;
@@ -578,13 +572,16 @@ void InlineAsm_PackAsmStatement(Statement* stmt, Statement* first, void** output
                 op->u.reg.object = (Object*)CInline_GetLocalID(op->u.reg.object);
                 break;
             case IAOpnd_Lab:
-                op->u.lab.label = (CLabel*)CInline_GetStatementNumber(first, op->u.lab.label->stmt);
+                op->u.lab.label =
+                    (CLabel*)(SInt32)CInline_GetStatementNumber(first, op->u.lab.label->stmt);
                 break;
             case IAOpnd_LabDiff:
                 op->u.labdiff.label1 =
-                    (CLabel*)CInline_GetStatementNumber(first, op->u.labdiff.label1->stmt);
+                    (CLabel*)(SInt32)CInline_GetStatementNumber(first, op->u.labdiff.label1->stmt);
                 op->u.labdiff.label2 =
-                    (CLabel*)CInline_GetStatementNumber(first, op->u.labdiff.label2->stmt);
+                    (CLabel*)(SInt32)CInline_GetStatementNumber(first, op->u.labdiff.label2->stmt);
+                break;
+            default:
                 break;
         }
     }
@@ -594,7 +591,7 @@ void InlineAsm_PackAsmStatement(Statement* stmt, Statement* first, void** output
 }
 
 void InlineAsm_UnpackAsmStatement(
-    Statement* stmt, CLabel** labelArray, Boolean flag, void* data, SInt32 size
+    Statement* stmt, CLabel** labelArray, Boolean inlineCopy, void* data, SInt32 size
 ) {
     InlineAsm* ia;
     IAOperand* op;
@@ -609,14 +606,16 @@ void InlineAsm_UnpackAsmStatement(
                 break;
             case IAOpnd_Reg:
             case IAOpnd_LocalObj:
-                op->u.reg.object = CInline_GetLocalObj((SInt32)op->u.reg.object, flag);
+                op->u.reg.object = CInline_GetLocalObj((SInt32)op->u.reg.object, inlineCopy);
                 break;
             case IAOpnd_Lab:
-                op->u.lab.label = labelArray[(SInt16)op->u.lab.label];
+                op->u.lab.label = labelArray[(SInt16)(SInt32)op->u.lab.label];
                 break;
             case IAOpnd_LabDiff:
-                op->u.labdiff.label1 = labelArray[(SInt16)op->u.labdiff.label1];
-                op->u.labdiff.label2 = labelArray[(SInt16)op->u.labdiff.label2];
+                op->u.labdiff.label1 = labelArray[(SInt16)(SInt32)op->u.labdiff.label1];
+                op->u.labdiff.label2 = labelArray[(SInt16)(SInt32)op->u.labdiff.label2];
+                break;
+            default:
                 break;
         }
     }
@@ -633,11 +632,13 @@ void InlineAsm_CheckLocalUsage(Statement* stmt) {
         switch (op->type) {
             case IAOpnd_Reg:
                 if (op->u.reg.object) {
-                    SetVarUsage(op->u.reg.object, 0);
+                    SetVarUsage(op->u.reg.object, FALSE);
                 }
                 break;
             case IAOpnd_LocalObj:
-                SetVarUsage(op->u.obj.obj, 1);
+                SetVarUsage(op->u.obj.obj, TRUE);
+                break;
+            default:
                 break;
         }
     }
@@ -674,11 +675,6 @@ CLabel* InlineAsm_GetReferencedLabel2(Statement* stmt) {
     return NULL;
 }
 
-// TODO (fakematch): 2.6 loads `index` before `ia` in the prologue (the only difference from Pro7's
-// body), which only a `void*` parameter copied into a typed local gives (as with DWARF's
-// newDWARF_file). Tried with Pro7's `InlineAsm* ia` parameter: `index == counter++`, the locals in
-// reverse, `counter = 0` before the loop, integer casts for the offset, Pro7's DumpStatement after it
-// (the function generated before it) and none at all.
 Object* InlineAsm_GetObjectOffset(void* p, SInt32 index, SInt32* offset) {
     InlineAsm* ia = p;
     IAOperand* op;
@@ -697,7 +693,6 @@ Object* InlineAsm_GetObjectOffset(void* p, SInt32 index, SInt32* offset) {
     return NULL;
 }
 
-// Dead in 2.6: its literals are the unit's first .data
 char* InlineAsm_DumpStatement(Statement* stmt) {
     InlineAsm* ia;
     IAOperand* arg;
@@ -740,7 +735,7 @@ char* InlineAsm_DumpStatement(Statement* stmt) {
                         "%creg(%s%d)",
                         ch,
                         register_class_name[arg->u.reg.rclass],
-                        arg->u.reg.num
+                        (int)arg->u.reg.num
                     );
                 }
                 break;
@@ -768,8 +763,10 @@ char* InlineAsm_DumpStatement(Statement* stmt) {
                     arg->u.labdiff.label1->uniquename->name,
                     arg->u.labdiff.label2->uniquename->name,
                     (arg->negated == 1) ? '-' : '+',
-                    offset
+                    (int)offset
                 );
+                break;
+            default:
                 break;
         }
 

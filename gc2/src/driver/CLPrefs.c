@@ -4,6 +4,7 @@
 #include "driver/CLMain.h"
 #include "driver/Memory.h"
 #include "driver/MemUtils.h"
+#include "driver/oslib.h"
 #include "driver/StringExtras.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -91,7 +92,6 @@ int PrefPanel_PutHandle(PrefPanel* panel, Handle data) {
     return TRUE;
 }
 
-// Dead in 2.6 (the linker dropped both; Pro7 has no caller), Pro7's and Wii's (whose CLPrefs keeps them).
 void Prefs_Initialize(void) {
     panellist = NULL;
 }

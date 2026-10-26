@@ -1,19 +1,6 @@
 #!/usr/bin/env python3
-"""python tools/compare.py {extract,compare [--objdiff],report} VERSION: the comparison ninja runs.
 
-extract  the original's functions and the ranges between them as one-section objects (build/VERSION/target), for
-         objdiff's per-function view
-compare  each function of the sources against the original (tools/mw/verdict.py: the one definition of exact); writes
-         build/VERSION/compare.json (every verdict with its reason, stamped with what it was computed from) whatever the
-         outcome, the per-function objects (and with --objdiff objdiff.json, a unit per function), and
-         build/VERSION/ok when no function of a Matching source differs (else it fails, listing them)
-report   objdiff's progress report (build/VERSION/report.json)
-
-python tools/compare.py base OBJECT DEBUG OUTPUT: objdiff's base object of a source in the relink's objdiff.json: the
-object compiled with symbols on (DEBUG, whose line numbers objdiff shows) when its code is OBJECT's, else OBJECT
-(symbols on changes some sources' code).
-"""
-
+import argparse
 import json
 import re
 import subprocess
@@ -26,7 +13,6 @@ from mw.pe import original
 
 
 def segments(version):
-    """[(name, address, size, code, row or None)] over the original's code and data: each row, and the ranges between."""
     pe = original(version)
     rows = verdict.rows(version)
     out = []
@@ -48,14 +34,12 @@ def segments(version):
 
 
 def object_path(version, kind, name):
-    # (Windows file names cannot hold these)
     if sys.platform == "win32":
         name = re.sub(r'[<>:"|?*]', lambda m: f"%{ord(m[0]):02x}", name)
     return version.build / kind / f"{name}.obj"
 
 
 def write_one(path, data, symbol, code, bss_size=0):
-    """A one-section object (an unknown range gets no symbol: it is not a function)."""
     obj = coff.Object()
     if code:
         flags = coff.CODE | coff.EXECUTE | coff.READ
@@ -88,18 +72,11 @@ def extract(version):
     (version.build / "target/ok").touch()
 
 
-def linked(cfg, source):
-    """Whether the --relink build links SOURCE's object: Matching and not excluded by tools/relink.py."""
-    return source in cfg.matching and source not in cfg.relink_exclude
-
-
 def link_progress(version, results):
-    """The headline: how much of the original the --relink build takes from source (a function counts once it is
-    exact and its source links)."""
     cfg = config.version_config(version)
     rows = verdict.rows(version)
     done = [
-        r for r in rows if r.source and linked(cfg, r.source) and results.get(r.address) and results[r.address].exact
+        r for r in rows if r.source and cfg.linked(r.source) and results.get(r.address) and results[r.address].exact
     ]
     size, done_size = sum(r.size for r in rows), sum(r.size for r in done)
     return (
@@ -110,9 +87,8 @@ def link_progress(version, results):
 
 def compare(version, objdiff=False):
     cfg = config.version_config(version)
-    placements = {}
-    results = verdict.compare(version, placements=placements)
-    verdict.save(version, results, placements)
+    results = verdict.compare(version)
+    verdict.save(version, results)
     units, failed, nonmatching = [], [], []
     for name, address, size, code, row in segments(version):
         meta = {"complete": False, "progress_categories": ["code" if code else "data"]}
@@ -127,13 +103,14 @@ def compare(version, objdiff=False):
             write_one(base, v.body, linker_symbol(row), True)
             unit["base_path"] = project.relative(base)
         if v.exact:
-            meta["complete"] = linked(cfg, row.source)
+            meta["complete"] = cfg.linked(row.source)
         elif row.source in cfg.matching:
             failed.append(v)
         else:
             nonmatching.append(v)
+    write_objdiff(version.build / "objdiff.json", units)
     if objdiff:
-        write_objdiff(units)
+        write_objdiff(project.ROOT / "objdiff.json", units)
     exact = sum(v.exact for v in results.values())
     summary = [f"{version}: {link_progress(version, results)}; {exact}/{len(results)} functions exact"]
     if nonmatching:
@@ -150,17 +127,15 @@ def compare(version, objdiff=False):
     project.write_atomic(ok, "\n".join(summary) + "\n")
 
 
-def write_objdiff(units):
+def write_objdiff(path, units):
     project.write_atomic(
-        project.ROOT / "objdiff.json",
+        path,
         json.dumps(
             {
                 "$schema": "https://raw.githubusercontent.com/encounter/objdiff/main/config.schema.json",
                 "min_version": "3.8.0",
                 "custom_make": "ninja",
                 "build_target": False,
-                # (the per-function base objects are this comparison's output, not ninja targets: objdiff cannot build one.
-                # For objdiff itself use the --relink build's objdiff.json, a unit per translation unit, built by ninja.)
                 "build_base": False,
                 "watch_patterns": ["src/**/*.c", "src/**/*.cpp", "include/**/*.h", "config/**/*.json"],
                 "units": units,
@@ -173,10 +148,26 @@ def write_objdiff(units):
 
 
 def report(version):
+    source = version.build / "objdiff.json"
+    if not source.exists():
+        raise project.Error(f"{project.relative(source)} does not exist: run ninja build/{version}/ok")
+    data = json.loads(source.read_text())
+    for unit in data["units"]:
+        for key in ("target_path", "base_path"):
+            if key in unit:
+                unit[key] = str(project.ROOT / unit[key])
+    directory = version.build / "report"
+    project.write_atomic(directory / "objdiff.json", json.dumps(data, indent=2) + "\n")
     out = version.build / "report.json"
-    subprocess.run(["build/tools/objdiff-cli", "report", "generate", "-o", str(out)], check=True, cwd=project.ROOT)
+    objdiff = str(project.ROOT / "build/tools/objdiff-cli")
+    command = [objdiff, "report", "generate", "-p", str(directory), "-o", str(out)]
+    try:
+        failed = subprocess.run(command, cwd=project.ROOT).returncode
+    except FileNotFoundError:
+        raise project.Error("build/tools/objdiff-cli does not exist: ninja build/tools/objdiff-cli") from None
+    if failed:
+        raise project.Error(f"objdiff-cli failed on {project.relative(directory / 'objdiff.json')}")
     data = json.loads(out.read_text())
-    # (an unknown code range carries a symbol only so objdiff keeps its bytes: it is not a function)
     removed = 0
     for unit in data["units"]:
         if unit["name"].startswith("unknown/"):
@@ -197,23 +188,29 @@ def base(obj, debug, output):
 
 
 def main():
-    if sys.argv[1:2] in (["-h"], ["--help"]):
-        print(__doc__)
+    parser = argparse.ArgumentParser(description="The comparison ninja runs.")
+    commands = parser.add_subparsers(dest="command", required=True, metavar="COMMAND")
+    command = commands.add_parser("extract", help="the original's functions as objects, for objdiff")
+    command.add_argument("version", metavar="VERSION")
+    command = commands.add_parser("compare", help="compare each function of the sources against the original")
+    command.add_argument("version", metavar="VERSION")
+    command.add_argument("--objdiff", action="store_true", help="also write the repository's objdiff.json")
+    command = commands.add_parser("report", help="objdiff's progress report")
+    command.add_argument("version", metavar="VERSION")
+    command = commands.add_parser("base", help="objdiff's base object of a source")
+    command.add_argument("object", metavar="OBJECT")
+    command.add_argument("debug", metavar="DEBUG")
+    command.add_argument("output", metavar="OUTPUT")
+    args = parser.parse_args()
+    if args.command == "base":
+        base(args.object, args.debug, args.output)
         return
-    args = sys.argv[1:]
-    if args[:1] == ["base"] and len(args) == 4:
-        base(*args[1:])
-        return
-    objdiff = "--objdiff" in args
-    args = [a for a in args if a != "--objdiff"]
-    if len(args) != 2 or args[0] not in ("extract", "compare", "report"):
-        sys.exit(__doc__)
     try:
-        version = project.version(args[1])
-        if args[0] == "compare":
-            compare(version, objdiff)
+        version = project.version(args.version, original=True)
+        if args.command == "compare":
+            compare(version, args.objdiff)
         else:
-            {"extract": extract, "report": report}[args[0]](version)
+            {"extract": extract, "report": report}[args.command](version)
     except project.Error as e:
         sys.exit(f"error: {e}")
 

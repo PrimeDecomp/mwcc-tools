@@ -3,6 +3,8 @@
 #include "compiler/CError.h"
 #include "compiler/CompilerTools.h"
 #include "compiler/LoopDetection.h"
+#include "compiler/PCode.h"
+#include "compiler/PCodeInfo.h"
 #include "compiler/Registers.h"
 #include "compiler/UseDefChains.h"
 
@@ -126,10 +128,10 @@ static void findallbasicinductionvariables(Loop* loop) {
 static int isinductionvariable(
     BasicInductionVar* biv,
     int useID,
-    SInt32* result1,
-    short* result2,
-    short* result3,
-    Loop** result4
+    SInt32* step,
+    short* baseOperand,
+    short* sourceOperand,
+    Loop** outerLoop
 ) {
     PCode* instr;
     RegUseOrDef* list;
@@ -138,13 +140,13 @@ static int isinductionvariable(
     Loop* scanloop;
 
     instr = Uses[useID].pcode;
-    *result2 = 0;
-    *result3 = 0;
-    *result4 = NULL;
+    *baseOperand = 0;
+    *sourceOperand = 0;
+    *outerLoop = NULL;
 
     switch (instr->op) {
         case PC_MULLI:
-            *result1 = instr->args[2].data.imm.value;
+            *step = instr->args[2].data.imm.value;
             break;
 
         case PC_RLWINM:
@@ -160,7 +162,7 @@ static int isinductionvariable(
             if (PCODE_FLAG_SET_F(instr) & fRecordBit) {
                 return FALSE;
             }
-            *result1 = 1 << instr->args[2].data.imm.value;
+            *step = 1 << instr->args[2].data.imm.value;
             break;
 
         case PC_LBZX:
@@ -174,18 +176,18 @@ static int isinductionvariable(
         case PC_LFDX:
         case PC_STFSX:
         case PC_STFDX:
-            *result2 = 0;
-            *result3 = 0;
+            *baseOperand = 0;
+            *sourceOperand = 0;
             if (instr->args[1].data.reg.reg == biv->reg) {
-                *result2 = 1;
-                *result3 = 2;
+                *baseOperand = 1;
+                *sourceOperand = 2;
             } else if (instr->args[2].data.reg.reg == biv->reg) {
-                *result2 = 2;
-                *result3 = 1;
+                *baseOperand = 2;
+                *sourceOperand = 1;
             }
 
             counter = 0;
-            for (list = reg_Defs[RegClass_GPR][instr->args[*result3].data.reg.reg]; list;
+            for (list = reg_Defs[RegClass_GPR][instr->args[*sourceOperand].data.reg.reg]; list;
                  list = list->next) {
                 if (bitvectorgetbit(
                         Defs[list->id].pcode->block->blockIndex, biv->loop->memberblocks
@@ -200,7 +202,7 @@ static int isinductionvariable(
             loop = biv->loop;
             for (scanloop = loop->parent; scanloop; scanloop = scanloop->parent) {
                 counter = 0;
-                for (list = reg_Defs[RegClass_GPR][instr->args[*result3].data.reg.reg]; list;
+                for (list = reg_Defs[RegClass_GPR][instr->args[*sourceOperand].data.reg.reg]; list;
                      list = list->next) {
                     if (bitvectorgetbit(
                             Defs[list->id].pcode->block->blockIndex, scanloop->memberblocks
@@ -218,8 +220,8 @@ static int isinductionvariable(
                 loop = scanloop;
             }
 
-            *result4 = loop;
-            *result1 = 1;
+            *outerLoop = loop;
+            *step = 1;
             return TRUE;
 
         default:
@@ -240,26 +242,25 @@ static int isinductionvariable(
 }
 
 static void addinductionvariable(
-    BasicInductionVar* biv, PCode* instr, SInt32 val1, short val2, short val3, Loop* val4
+    BasicInductionVar* biv,
+    PCode* instr,
+    SInt32 step,
+    short baseOperand,
+    short sourceOperand,
+    Loop* outerLoop
 ) {
     InductionVar* iv;
 
     iv = oalloc(sizeof(InductionVar));
-    // 2.6 auto-inlines this into findnonbasicinductionvariables, which -inline auto does only for
-    // a body of at most 15 statements (CInline_IsSmallFunction): 2.6's body is one statement
-    // shorter than Pro7's. Which two statements it joined the code cannot say (a comma anywhere,
-    // or `(iv = oalloc(...))->next = ...`, matches); a comma on the list push is the house idiom
-    // seen elsewhere in 2.6. Pro7's separate statements keep it out of line; `static inline`
-    // matches but moves the out-of-line copy after its first user (the unit stops linking).
     iv->next = biv->inductionVars, biv->inductionVars = iv;
 
     iv->basicVar = biv;
     iv->instr = instr;
     iv->replacement_instruction = NULL;
-    iv->step = val1;
-    iv->base_operand = val2;
-    iv->source_operand = val3;
-    iv->someloop = val4;
+    iv->step = step;
+    iv->base_operand = baseOperand;
+    iv->source_operand = sourceOperand;
+    iv->outer_loop = outerLoop;
     if (instr->flags & (fIsRead | fIsWrite)) {
         iv->source_register = -1;
     } else {
@@ -271,17 +272,19 @@ static void addinductionvariable(
 static void findnonbasicinductionvariables(Loop* loop) {
     BasicInductionVar* biv;
     RegUseOrDef* list;
-    SInt32 result1;
-    short result2;
-    short result3;
-    Loop* result4;
+    SInt32 step;
+    short baseOperand;
+    short sourceOperand;
+    Loop* outerLoop;
 
     for (biv = loop->basicInductionVars; biv; biv = biv->next) {
         for (list = reg_Uses[RegClass_GPR][biv->reg]; list; list = list->next) {
             if (bitvectorgetbit(Uses[list->id].pcode->block->blockIndex, loop->memberblocks)) {
-                if (isinductionvariable(biv, list->id, &result1, &result2, &result3, &result4)) {
+                if (isinductionvariable(
+                        biv, list->id, &step, &baseOperand, &sourceOperand, &outerLoop
+                    )) {
                     addinductionvariable(
-                        biv, Uses[list->id].pcode, result1, result2, result3, result4
+                        biv, Uses[list->id].pcode, step, baseOperand, sourceOperand, outerLoop
                     );
                 }
             }
@@ -304,45 +307,44 @@ static void findallnonbasicinductionvariables(Loop* loop) {
 static void initializeinductionvariable(InductionVar* iv) {
     BasicInductionVar* biv;
     PCodeBlock* preheader;
-    SInt32 value30;
+    SInt32 value;
     PCode* instr;
-    short reg29;
-    short reg26;
+    short sourceReg;
+    short baseReg;
 
     biv = iv->basicVar;
     preheader = biv->loop->preheader;
 
     if (iv->source_operand) {
-        reg29 = iv->instr->args[iv->source_operand].data.reg.reg;
-        reg26 = iv->instr->args[iv->base_operand].data.reg.reg;
+        sourceReg = iv->instr->args[iv->source_operand].data.reg.reg;
+        baseReg = iv->instr->args[iv->base_operand].data.reg.reg;
         instr = NULL;
 
         if (biv->initializer &&
-            biv->initializer->op ==
-            PC_LI &&
+            biv->initializer->op == PC_LI &&
             biv->initializer->block == preheader) {
-            value30 = biv->initializer->args[1].data.imm.value;
-            if (value30 == 0) {
-                instr = makepcode(PC_MR, iv->destination_register, reg29);
-            } else if (FITS_IN_SHORT(value30)) {
-                instr = makepcode(PC_ADDI, iv->destination_register, reg29, 0, value30);
+            value = biv->initializer->args[1].data.imm.value;
+            if (value == 0) {
+                instr = makepcode(PC_MR, iv->destination_register, sourceReg);
+            } else if (FITS_IN_SHORT(value)) {
+                instr = makepcode(PC_ADDI, iv->destination_register, sourceReg, 0, value);
             }
         }
 
         if (!instr) {
-            instr = makepcode(PC_ADD, iv->destination_register, reg29, reg26);
+            instr = makepcode(PC_ADD, iv->destination_register, sourceReg, baseReg);
         }
 
         if (biv->initializer && instr->op != PC_ADD) {
             insertpcodeafter(biv->initializer, instr);
-        } else if (iv->someloop && iv->someloop->preheader->lastPCode) {
-            insertpcodebefore(iv->someloop->preheader->lastPCode, instr);
+        } else if (iv->outer_loop && iv->outer_loop->preheader->lastPCode) {
+            insertpcodebefore(iv->outer_loop->preheader->lastPCode, instr);
         } else {
             insertpcodebefore(preheader->lastPCode, instr);
         }
 
         iv->replacement_instruction = instr;
-        iv->source_register = reg29;
+        iv->source_register = sourceReg;
         return;
     }
 
@@ -351,11 +353,11 @@ static void initializeinductionvariable(InductionVar* iv) {
         instr->args[0].data.reg.reg = iv->destination_register;
         insertpcodebefore(preheader->lastPCode, instr);
     } else {
-        value30 = biv->initializer->args[1].data.imm.value * iv->step;
-        if (!FITS_IN_SHORT(value30)) {
-            instr = makepcode(PC_LIS, iv->destination_register, 0, HIGH_PART(value30));
+        value = biv->initializer->args[1].data.imm.value * iv->step;
+        if (!FITS_IN_SHORT(value)) {
+            instr = makepcode(PC_LIS, iv->destination_register, 0, HIGH_PART(value));
             insertpcodeafter(biv->initializer, instr);
-            if (LOW_PART(value30) != 0) {
+            if (LOW_PART(value) != 0) {
                 insertpcodeafter(
                     instr,
                     makepcode(
@@ -363,12 +365,12 @@ static void initializeinductionvariable(InductionVar* iv) {
                         iv->destination_register,
                         iv->destination_register,
                         0,
-                        LOW_PART(value30)
+                        LOW_PART(value)
                     )
                 );
             }
         } else {
-            instr = makepcode(PC_LI, iv->destination_register, value30);
+            instr = makepcode(PC_LI, iv->destination_register, value);
             insertpcodeafter(biv->initializer, instr);
         }
     }
@@ -443,10 +445,8 @@ static int testnestediv(
                     op = instr->args;
                     i = instr->argCount;
                     while (i--) {
-                        if (op->kind ==
-                            PCOp_REGISTER &&
-                            op->arg ==
-                            RegClass_GPR &&
+                        if (op->kind == PCOp_REGISTER &&
+                            op->arg == RegClass_GPR &&
                             op->data.reg.reg == reg) {
                             return FALSE;
                         }
@@ -484,10 +484,8 @@ static void strengthreducenestediv(short reg, SInt32 step, PCode* initializer, L
                                 op = instr->args;
                                 i = instr->argCount;
                                 while (i--) {
-                                    if (op->kind ==
-                                        PCOp_REGISTER &&
-                                        op->arg ==
-                                        RegClass_GPR &&
+                                    if (op->kind == PCOp_REGISTER &&
+                                        op->arg == RegClass_GPR &&
                                         (op->data.reg.effect & EffectWrite) &&
                                         op->data.reg.reg == reg) {
                                         break;
@@ -551,8 +549,7 @@ static void strengthreduceinductionvariable(BasicInductionVar* biv) {
                 if (iv->step == 1) {
                     reg = iv->instr->args[iv->source_operand].data.reg.reg;
                     for (otherIv = iv->next; otherIv; otherIv = otherIv->next) {
-                        if (otherIv->source_operand !=
-                            0 &&
+                        if (otherIv->source_operand != 0 &&
                             otherIv->instr->args[otherIv->source_operand].data.reg.reg == reg) {
                             otherIv->destination_register = iv->destination_register;
                         }
@@ -567,21 +564,18 @@ static void strengthreduceinductionvariable(BasicInductionVar* biv) {
             }
 
             copyinductionvariable(iv);
-            strengthreducedloops = 1;
+            strengthreducedloops = TRUE;
         }
     }
 }
 
-// mac68k alignment in Pro7: 14 bytes
 #pragma pack(push, 2)
-// TODO: invented member names (Pro7's x0, x4, x6, x8, xA): what a basic induction variable's
-// initializer adds up
 typedef struct BivInit {
-    SInt32 addend; // the initializer's immediate, when it adds to the variable itself
-    short basereg; // the register added to, or -1
-    short indexreg; // a register added, or -1
-    short offset; // an immediate added
-    Object* object; // a memory operand's object
+    SInt32 addend;
+    short basereg;
+    short indexreg;
+    short offset;
+    Object* object;
 } BivInit;
 #pragma pack(pop)
 
@@ -609,12 +603,9 @@ static void calc_biv_init(BasicInductionVar* biv, BivInit* init) {
                 op = scan->args;
                 i = scan->argCount;
                 while (i--) {
-                    if (op->kind ==
-                        PCOp_REGISTER &&
-                        op->arg ==
-                        RegClass_GPR &&
-                        op->data.reg.reg ==
-                        biv->reg &&
+                    if (op->kind == PCOp_REGISTER &&
+                        op->arg == RegClass_GPR &&
+                        op->data.reg.reg == biv->reg &&
                         (op->data.reg.effect & EffectWrite)) {
                         if (scan->op == PC_ADD) {
                             init->basereg = scan->args[1].data.reg.reg;
@@ -651,12 +642,9 @@ static void calc_biv_init(BasicInductionVar* biv, BivInit* init) {
                 op = scan->args;
                 i = scan->argCount;
                 while (i--) {
-                    if (op->kind ==
-                        PCOp_REGISTER &&
-                        op->arg ==
-                        RegClass_GPR &&
-                        op->data.reg.reg ==
-                        biv->reg &&
+                    if (op->kind == PCOp_REGISTER &&
+                        op->arg == RegClass_GPR &&
+                        op->data.reg.reg == biv->reg &&
                         (op->data.reg.effect & EffectWrite) &&
                         scan->op == PC_ADDI) {
                         if (scan->args[2].kind == PCOp_IMMEDIATE) {
@@ -712,10 +700,8 @@ static void combineinductionvariables(
                 op = instr->args;
                 i = instr->argCount;
                 while (i--) {
-                    if (op->kind ==
-                        PCOp_REGISTER &&
-                        op->arg ==
-                        RegClass_GPR &&
+                    if (op->kind == PCOp_REGISTER &&
+                        op->arg == RegClass_GPR &&
                         op->data.reg.reg == reg1) {
                         return;
                     }
@@ -768,7 +754,7 @@ static void combineinductionvariables(
     }
 
     biv1->reg = -1;
-    strengthreducedloops = 1;
+    strengthreducedloops = TRUE;
 }
 
 static void strengthreduceinductionvariables(Loop* loop) {
@@ -791,16 +777,11 @@ static void strengthreduceinductionvariables(Loop* loop) {
                 for (biv2 = loop->basicInductionVars; biv2; biv2 = biv2->next) {
                     if (biv2->reg != -1 && biv2 != biv1) {
                         calc_biv_init(biv2, &init2);
-                        if (init2.basereg !=
-                            -1 &&
-                            init1.basereg ==
-                            init2.basereg &&
-                            init1.indexreg ==
-                            init2.indexreg &&
-                            init1.offset ==
-                            init2.offset &&
-                            init1.object ==
-                            init2.object &&
+                        if (init2.basereg != -1 &&
+                            init1.basereg == init2.basereg &&
+                            init1.indexreg == init2.indexreg &&
+                            init1.offset == init2.offset &&
+                            init1.object == init2.object &&
                             biv1->step == biv2->step) {
                             if (init1.addend < init2.addend) {
                                 combineinductionvariables(
@@ -833,9 +814,9 @@ static void strengthreduceallinductionvariables(Loop* loop) {
 }
 
 void strengthreduceloops(void) {
-    strengthreducedloops = 0;
+    strengthreducedloops = FALSE;
     if (loopsinflowgraph) {
-        computeusedefchains(0);
+        computeusedefchains(FALSE);
         findallbasicinductionvariables(loopsinflowgraph);
         findallnonbasicinductionvariables(loopsinflowgraph);
         strengthreduceallinductionvariables(loopsinflowgraph);

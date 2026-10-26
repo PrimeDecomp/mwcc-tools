@@ -6,6 +6,7 @@
 #include "driver/CWPlugins.h"
 #include "driver/DropInCompilerLinker.h"
 #include "driver/MacFileTypes.h"
+#include "driver/oslib.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -32,7 +33,6 @@ extern Boolean SendTargetInfoRequest(Target* targ, Plugin* linker, SInt32 dropin
 extern Boolean SendLinkerRequest(Plugin* plugin, SInt32 dropinflags, CWTargetInfo* targetInfo);
 extern Boolean SendDisassemblerRequest(Plugin* linker, File* file);
 extern Boolean SendInitOrTermRequest(Plugin* plugin, Boolean reqIsInitialize);
-// (Pro7's CLFileTypes.c has it; 2.6 has it here, after SendInitOrTermRequest)
 extern void AddFileTypeMappingList(OSFileTypeMappings** list, const OSFileTypeMappingList* entry);
 
 #ifdef __cplusplus

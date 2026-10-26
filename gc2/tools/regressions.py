@@ -1,14 +1,6 @@
 #!/usr/bin/env python3
-"""python tools/regressions.py [save] [VERSION...]: what got worse since a saved baseline (default: every version).
 
-save   keep each version's comparison (build/VERSION/compare.json) and state (config/VERSION/state.json) as the
-       baseline, in build/regressions/VERSION/
-check  (the default) the functions that were exact and are not any more, by address (a rename neither hides nor fakes
-       one), with why; and the sources that linked into the original and do not now. Exits 1 when anything was lost.
-
-Both refuse a comparison that is not current (run ninja, or ninja verify for every version, first).
-"""
-
+import argparse
 import json
 import sys
 from pathlib import Path
@@ -20,7 +12,7 @@ BASELINE = project.ROOT / "build/regressions"
 
 
 def save(version):
-    verdict.load(version)  # (refuses a stale comparison)
+    verdict.load(version)
     out = BASELINE / version.name
     project.write_atomic(out / "compare.json", verdict.result_path(version).read_bytes())
     project.write_atomic(out / "state.json", (version.config / "state.json").read_bytes())
@@ -51,13 +43,15 @@ def check(version) -> bool:
 
 
 def main():
-    if sys.argv[1:2] in (["-h"], ["--help"]):
-        print(__doc__)
-        return
-    args = sys.argv[1:]
+    parser = argparse.ArgumentParser(
+        description="What got worse since a saved baseline (default: every version).",
+        usage="%(prog)s [save | check] [VERSION...]",
+    )
+    parser.add_argument("args", nargs="*", help=argparse.SUPPRESS)
+    args = parser.parse_args().args
     command = args.pop(0) if args and args[0] in ("save", "check") else "check"
     try:
-        versions = [project.version(v) for v in args] or list(project.VERSIONS)
+        versions = [project.version(v, original=True) for v in args] or list(project.VERSIONS)
         if command == "save":
             for v in versions:
                 save(v)

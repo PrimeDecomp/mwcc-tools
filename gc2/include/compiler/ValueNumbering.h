@@ -11,7 +11,7 @@ extern int removedcommonsubexpressions;
 extern int nextvaluenumber;
 
 extern void killmemory(Alias* alias, PCode* newValue);
-extern void removecommonsubexpressions(Object* proc, int flag);
+extern void removecommonsubexpressions(Object* proc, int moreAggressive);
 
 #ifdef __cplusplus
 }

@@ -9,7 +9,6 @@ extern "C" {
 #endif
 
 #pragma pack(push, 2)
-// What a PCode operand is (PCodeArg.kind)
 typedef enum PCOpKind {
     PCOp_REGISTER,
     PCOp_SYSREG,
@@ -20,42 +19,34 @@ typedef enum PCOpKind {
     PCOp_PLACEHOLDEROPERAND
 } PCOpKind;
 
-// A memory operand's relocation (PCodeArg.arg of a PCOp_MEMORY): Pro7's RefType, whose names are
-// placeholders (TODO: the relocation each one means; RefType_E is 2.6's, invented like the rest)
 typedef enum RefType {
-    RefType_0,
-    RefType_1, // (a local with a 16-bit offset)
-    RefType_2, // (2.6: small data)
-    RefType_3,
-    RefType_4, // (a branch or call target)
-    RefType_5,
-    RefType_6, // (LO)
-    RefType_7, // (HI)
-    RefType_8, // (HA)
-    RefType_9,
-    RefType_A, // (LO)
-    RefType_B, // (HA)
-    RefType_C, // (HA, a local)
-    RefType_D, // (LO, a local beyond a 16-bit offset)
-    RefType_E // (2.6: pooled data)
+    RefType_None,
+    RefType_Local16,
+    RefType_Addr16,
+    RefType_Lo16,
+    RefType_Branch,
+    RefType_Value,
+    RefType_Lo,
+    RefType_Hi,
+    RefType_Ha,
+    RefType_AbsBranch,
+    RefType_LoAlt,
+    RefType_HaAlt,
+    RefType_LocalHa,
+    RefType_LocalLo,
+    RefType_Pooled
 } RefType;
 
-// An opcode's entry in the opcode table (18 bytes: 2-byte packing)
 typedef struct OpcodeInfo {
     const char* name;
     const char* format;
-    // TODO: invented name (Pro7: x8); the operand count vformatpcode and the inline assembler use
     unsigned char operand_count;
-    // TODO: invented name (Pro7: x9); the scheduler's selectinstruction compares opcodes' ranks
     unsigned char rank;
     UInt32 flags;
     SInt32 insn;
 } OpcodeInfo;
 #pragma pack(pop)
 
-// The PCode opcodes, as the opcode table (opcodeinfo) names them (Pro7's Opcode). PC_INVALID makes
-// it a signed 2-byte enum, as 2.6's code needs: without it the enum is unsigned and 56 exact
-// functions change.
 typedef enum Opcode {
     PC_INVALID = -1,
     PC_B = 0,
@@ -527,9 +518,7 @@ typedef enum Opcode {
     PC_DOZI = 466,
     PC_RLMI = 467,
     PC_RRIB = 468,
-    // the machine models' tables have an entry per opcode up to here
     OPCODE_MAX = 469,
-    // 2.6 (not in Pro7): pseudo-opcodes nothing emits
     PC_PENTRY = 469,
     PC_PEXIT = 470
 } Opcode;
@@ -541,11 +530,11 @@ extern int pcode_check_imm_bits(SInt32 value, int bits, char typechar);
 extern int pcode_const_from_format(const char* format, SInt32* pResult);
 extern PCode* vformatpcode(short opcode, va_list argList);
 extern void formatoperands(PCode* pcode, char* buf, int showBasicBlocks);
-extern PCode* makecopyinstruction(PCodeArg* a, PCodeArg* b);
+extern PCode* makecopyinstruction(PCodeArg* src, PCodeArg* dst);
 extern int is_location_independent(PCode* pcode);
-extern int can_reuse_stored_value(PCode* a, PCode* b);
+extern int can_reuse_stored_value(PCode* store, PCode* load);
 extern int nbytes_loaded_or_stored_by(PCode* pcode);
-extern PCode* makecopyforload(int kind, PCodeArg* a, PCodeArg* b);
+extern PCode* makecopyforload(int kind, PCodeArg* src, PCodeArg* dst);
 extern void change_num_operands(PCode* pcode, int newNum);
 extern void change_opcode(PCode* pcode, short opcode);
 

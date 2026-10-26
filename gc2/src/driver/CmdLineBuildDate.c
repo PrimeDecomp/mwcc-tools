@@ -1,7 +1,6 @@
 #include "driver/CmdLineBuildDate.h"
 #include "version.h"
 
-// When each release's driver was built (its __TIME__ and __DATE__), which -version prints
 #if VERSION <= VERSION_GC_2_0P2
 const char* CMDLINE_BUILD_TIME = "15:14:48";
 const char* CMDLINE_BUILD_DATE = "Sep 16 2002";

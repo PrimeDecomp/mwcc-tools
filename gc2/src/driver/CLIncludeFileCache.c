@@ -2,6 +2,7 @@
 #include "driver/Memory.h"
 #include "driver/MemUtils.h"
 #include "driver/MsDos.h"
+#include "driver/oslib.h"
 
 typedef struct CacheEntry {
     struct CacheEntry* next;
@@ -104,7 +105,7 @@ void CacheIncludeFile(OSSpec* spec, Handle text, Boolean precompiled) {
         if ((SInt32)size > (SInt32)CACHE_SIZE) {
             return;
         } else {
-            while (size > availablecache) {
+            while ((UInt32)size > availablecache) {
                 lru = NULL;
                 for (c = cachelist; c; c = c->next) {
                     if (!c->locked && !c->precompiled && (lru == NULL || c->when < lru->when)) {

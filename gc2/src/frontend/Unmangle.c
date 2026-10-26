@@ -7,7 +7,6 @@ typedef struct UnmangleBuffer {
     size_t remaining;
 } UnmangleBuffer;
 
-// forward decls
 static const char* Unmangle_Type(jmp_buf errorbuf, UnmangleBuffer* ub, const char* p);
 
 static void Unmangle_Error(jmp_buf errorbuf) {
@@ -126,7 +125,7 @@ static const char* Unmangle_TemplateParams(jmp_buf errorbuf, UnmangleBuffer* ub,
 
 static const char* Unmangle_SpecialName(jmp_buf errorbuf, UnmangleBuffer* ub, const char* p) {
     const char* what;
-    Boolean flag = FALSE;
+    Boolean isConversion = FALSE;
 
     switch (*(p++)) {
         case 'a':
@@ -350,7 +349,7 @@ static const char* Unmangle_SpecialName(jmp_buf errorbuf, UnmangleBuffer* ub, co
                 case 'p':
                     Unmangle_BufferAppendString(ub, "operator ");
                     p = Unmangle_Type(errorbuf, ub, p);
-                    flag = TRUE;
+                    isConversion = TRUE;
                     break;
                 default:
                     return NULL;
@@ -396,7 +395,7 @@ static const char* Unmangle_SpecialName(jmp_buf errorbuf, UnmangleBuffer* ub, co
             return NULL;
     }
 
-    if (!flag) {
+    if (!isConversion) {
         if (*p) {
             Unmangle_BufferAppendString(ub, what);
             if (*p == '<') {
@@ -417,7 +416,7 @@ static const char* Unmangle_SpecialName(jmp_buf errorbuf, UnmangleBuffer* ub, co
 }
 
 static const char* Unmangle_ClassName(
-    jmp_buf errorbuf, UnmangleBuffer* ub, const char* p, size_t len, Boolean flag
+    jmp_buf errorbuf, UnmangleBuffer* ub, const char* p, size_t len, Boolean withTemplateArgs
 ) {
     char ch;
     const char* p2;
@@ -427,7 +426,7 @@ static const char* Unmangle_ClassName(
             Unmangle_Error(errorbuf);
         }
         if (ch == '<') {
-            p2 = Unmangle_TemplateParams(errorbuf, flag ? ub : NULL, p);
+            p2 = Unmangle_TemplateParams(errorbuf, withTemplateArgs ? ub : NULL, p);
             len -= (p2 - p);
             if (len == 0) {
                 return p2;
@@ -442,7 +441,7 @@ static const char* Unmangle_ClassName(
 }
 
 static const char* Unmangle_QClassName(
-    jmp_buf errorbuf, UnmangleBuffer* ub, const char* p, Boolean flag1, Boolean flag2
+    jmp_buf errorbuf, UnmangleBuffer* ub, const char* p, Boolean isStructor, Boolean isDestructor
 ) {
     const char* lastPiece;
     size_t len;
@@ -485,8 +484,8 @@ static const char* Unmangle_QClassName(
         p = Unmangle_ClassName(errorbuf, ub, p, len, TRUE);
     }
 
-    if (flag1 && ub) {
-        if (flag2) {
+    if (isStructor && ub) {
+        if (isDestructor) {
             Unmangle_BufferAppendString(ub, "::~");
         } else {
             Unmangle_BufferAppendString(ub, "::");
@@ -689,21 +688,21 @@ static const char* Unmangle_Pointer(
     jmp_buf errorbuf, UnmangleBuffer* ub, const char* p, const char* modifiers, char c
 ) {
     const char* pointer;
-    const char* tmp;
+    const char* rest;
 
     pointer = p;
-    tmp = Unmangle_PointerType(errorbuf, NULL, p);
-    switch (*tmp) {
+    rest = Unmangle_PointerType(errorbuf, NULL, p);
+    switch (*rest) {
         case 'A':
             if (modifiers) {
                 pointer = modifiers;
             }
-            return Unmangle_ArrayType(errorbuf, ub, tmp, pointer);
+            return Unmangle_ArrayType(errorbuf, ub, rest, pointer);
         case 'F':
             if (modifiers) {
                 pointer = modifiers;
             }
-            return Unmangle_FunctionType(errorbuf, ub, tmp, pointer);
+            return Unmangle_FunctionType(errorbuf, ub, rest, pointer);
         default:
             if (c == 'M') {
                 p = Unmangle_QClassName(errorbuf, NULL, p + 1, FALSE, FALSE);
@@ -766,7 +765,6 @@ static const char* Unmangle_Vector(
             Unmangle_BufferAppendString(ub, "vector signed int");
             break;
         case 'I':
-            // (2.6's literal has a trailing space)
             Unmangle_BufferAppendString(ub, "vector bool int ");
             break;
         case 'f':
@@ -936,7 +934,7 @@ void MWUnmangleClassName(const char* input, char* output, size_t maxLen) {
     UnmangleBuffer ub;
     jmp_buf errorbuf;
     const char* p;
-    Boolean flag;
+    Boolean hasTemplateArgs;
 
     if (input[0] == 'Q' && (input[1] >= '1' && input[1] <= '9')) {
         if (setjmp(errorbuf) == 0) {
@@ -948,13 +946,13 @@ void MWUnmangleClassName(const char* input, char* output, size_t maxLen) {
     }
 
     p = input;
-    flag = FALSE;
+    hasTemplateArgs = FALSE;
     while (1) {
         switch (*p) {
             case 0:
                 break;
             case '<':
-                flag = TRUE;
+                hasTemplateArgs = TRUE;
             default:
                 p++;
                 continue;
@@ -962,10 +960,10 @@ void MWUnmangleClassName(const char* input, char* output, size_t maxLen) {
         break;
     }
 
-    if (flag) {
+    if (hasTemplateArgs) {
         if (setjmp(errorbuf) == 0) {
             Unmangle_BufferInit(&ub, output, maxLen);
-            Unmangle_ClassName(errorbuf, &ub, input, p - input, 1);
+            Unmangle_ClassName(errorbuf, &ub, input, p - input, TRUE);
             Unmangle_BufferTerminate(&ub);
             return;
         }
@@ -981,7 +979,7 @@ void MWUnmangle(const char* input, char* output, size_t maxLen) {
     UnmangleBuffer ub;
     char mybuf[256];
     const char* p;
-    Boolean flag;
+    Boolean hasSeparator;
     char ch;
 
     switch (*input) {
@@ -1008,12 +1006,10 @@ void MWUnmangle(const char* input, char* output, size_t maxLen) {
         Unmangle_BufferInit(&ub_internal, mybuf, sizeof(mybuf));
         Unmangle_BufferInit(&ub, output, maxLen);
 
-        if (!(input[0] ==
-              '_' &&
-              input[1] ==
-              '_' &&
+        if (!(input[0] == '_' &&
+              input[1] == '_' &&
               (p = Unmangle_SpecialName(errorbuf, &ub_internal, input + 2)))) {
-            flag = FALSE;
+            hasSeparator = FALSE;
             Unmangle_BufferInit(&ub_internal, mybuf, sizeof(mybuf));
             for (p = input; *p == '_'; p++) {
                 Unmangle_BufferAppendChar(&ub_internal, '_');
@@ -1024,7 +1020,7 @@ void MWUnmangle(const char* input, char* output, size_t maxLen) {
                     while (*(++p) == '_') {
                         Unmangle_BufferAppendChar(&ub_internal, '_');
                     }
-                    flag = TRUE;
+                    hasSeparator = TRUE;
                     break;
                 }
                 Unmangle_BufferAppendChar(&ub_internal, ch);
@@ -1032,7 +1028,7 @@ void MWUnmangle(const char* input, char* output, size_t maxLen) {
 
             Unmangle_BufferTerminate(&ub_internal);
 
-            if (!flag) {
+            if (!hasSeparator) {
                 Unmangle_BufferAppendString(&ub, mybuf);
                 Unmangle_BufferTerminate(&ub);
                 return;

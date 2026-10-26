@@ -3,16 +3,11 @@
 
 #include "compiler/common.h"
 #include "driver/oslib.h"
-#include "compiler/win32.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-// The Win32 platform layer (Pro7's Posix.c is its counterpart): Pro7's oslib.h API, `__stdcall` in
-// 2.6 (Wii's decorations; OS_CanonPath and OS_MacToRef are cdecl, their `ret` says so, and
-// OS_GetMilliseconds, which takes nothing, cannot tell); times are OSTimes (a FILETIME) where Pro7
-// has time_t.
 extern uOSTypePair OS_TEXTTYPE;
 extern const char* __stdcall OS_GetErrText(int err);
 extern int __stdcall OS_InitProgram(int* pArgc, char*** pArgv);
@@ -77,7 +72,7 @@ extern void __stdcall OS_MacToTime(UInt32 secs, OSTime* sectm);
 extern SInt16 __stdcall OS_RefToMac(int ref);
 extern int OS_MacToRef(SInt16 refnum);
 extern int __stdcall OS_LoadMacResourceFork(const OSSpec* spec, void** file_data, SInt32* file_len);
-extern Boolean __stdcall OS_IsMultiByte(const char* str1, const char* str2);
+extern Boolean __stdcall OS_IsMultiByte(const char* str, const char* pos);
 
 #ifdef __cplusplus
 }

@@ -1,7 +1,6 @@
 #ifndef DRIVER_OPTIMIZERHELPERS_H
 #define DRIVER_OPTIMIZERHELPERS_H
 
-#include "compiler/common.h"
 #include "driver/parser.h"
 
 #ifdef __cplusplus

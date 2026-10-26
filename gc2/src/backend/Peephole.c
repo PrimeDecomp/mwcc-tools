@@ -3,18 +3,14 @@
 #include "compiler/CMachine.h"
 #include "compiler/CompilerTools.h"
 #include "compiler/CParser.h"
-#include "compiler/CPrep.h"
 #include "compiler/InstrSelection.h"
 #include "compiler/objects.h"
-#include "compiler/OracleProbes.h"
 #include "compiler/PCode.h"
 #include "compiler/PCodeInfo.h"
 #include "compiler/PCodeUtilities.h"
 #include "compiler/RegisterInfo.h"
-#include "compiler/Registers.h"
 #include "compiler/Scheduler.h"
 #include "compiler/types.h"
-#include "compiler/UseDefChains.h"
 
 typedef int (*PeepholeFunc)(PCode* instr, UInt32* masks);
 
@@ -23,19 +19,32 @@ typedef struct Pattern {
     PeepholeFunc func;
 } Pattern;
 
-// A block's registers of one class, as masks (TODO: invented member names, after LiveVariables'
-// LiveInfo; Pro7: x0, x4, x8, xC)
 typedef struct LiveRegs {
-    UInt32 use; // (read before written in the block)
-    UInt32 def; // (written in the block)
-    UInt32 in; // (live on entry)
-    UInt32 out; // (live on exit)
+    UInt32 use;
+    UInt32 def;
+    UInt32 in;
+    UInt32 out;
 } LiveRegs;
 
-/* (the original's statics; global while a lifted function of this unit still uses them) */
 LiveRegs* liveregs[RegClassMax];
 Pattern* peepholepatterns[OPCODE_MAX];
 PCode** defininginstruction;
+
+#ifndef __MWERKS__
+static struct {
+    SInt32 defInstrOffset;
+    SInt32 scanOffset;
+} ls_frame;
+
+#define LS_FRAME(first, second) \
+    ((void)(ls_frame.defInstrOffset = (SInt32)(first), ls_frame.scanOffset = (SInt32)(second)))
+#define LS_FRAME_FIRST(first) ((void)(ls_frame.defInstrOffset = (SInt32)(first)))
+#define LS_FRAME_SECOND(second) ((void)(ls_frame.scanOffset = (SInt32)(second)))
+
+static PCodeArg* ls_scanned_args(PCode* instr) {
+    return instr->nextPCode->args + instr->nextPCode->argCount;
+}
+#endif
 
 static void computeregisterusedefs(void) {
     PCodeBlock* block;
@@ -55,8 +64,7 @@ static void computeregisterusedefs(void) {
 
         for (instr = block->firstPCode; instr; instr = instr->nextPCode) {
             for (op = instr->args, i = instr->argCount; i--; op++) {
-                if (op->kind ==
-                    PCOp_REGISTER &&
+                if (op->kind == PCOp_REGISTER &&
                     (op->data.reg.effect & EffectRead) &&
                     !((1 << op->data.reg.reg) & array2[op->arg])) {
                     array1[op->arg] |= 1 << op->data.reg.reg;
@@ -64,8 +72,7 @@ static void computeregisterusedefs(void) {
             }
 
             for (op = instr->args, i = instr->argCount; i--; op++) {
-                if (op->kind ==
-                    PCOp_REGISTER &&
+                if (op->kind == PCOp_REGISTER &&
                     (op->data.reg.effect & EffectWrite) &&
                     !((1 << op->data.reg.reg) & array1[op->arg])) {
                     array2[op->arg] |= 1 << op->data.reg.reg;
@@ -88,32 +95,32 @@ static void computeregisterusedefs(void) {
     }
 }
 
-static void computeliveness(LiveRegs* lrarray, UInt32 x) {
+static void computeliveness(LiveRegs* lrarray, UInt32 alwaysLive) {
     PCLink* link;
     LiveRegs* lr;
     PCodeBlock* block;
-    UInt32 newC;
-    UInt32 new8;
+    UInt32 newOut;
+    UInt32 newIn;
     SInt32 i;
-    SInt32 flag;
+    SInt32 changed;
 
-    flag = 1;
-    while (flag) {
-        flag = 0;
+    changed = TRUE;
+    while (changed) {
+        changed = FALSE;
         i = pcblockcount;
         while (i) {
             if ((block = depthfirstordering[--i])) {
                 lr = lrarray + block->blockIndex;
-                newC = x;
+                newOut = alwaysLive;
                 for (link = block->successors; link; link = link->nextLink) {
-                    newC |= lrarray[link->block->blockIndex].in;
+                    newOut |= lrarray[link->block->blockIndex].in;
                 }
-                lr->out = newC;
+                lr->out = newOut;
 
-                new8 = lr->use | (lr->out & ~lr->def);
-                if (new8 != lr->in) {
-                    lr->in = new8;
-                    flag = 1;
+                newIn = lr->use | (lr->out & ~lr->def);
+                if (newIn != lr->in) {
+                    lr->in = newIn;
+                    changed = TRUE;
                 }
             }
         }
@@ -136,7 +143,6 @@ static void computeliveregisters(Object* func) {
     computedepthfirstordering();
     computeregisterusedefs();
 
-    // (2.6: the global register variables are live at the end of the last block)
     i = pcblockcount;
     do {
         block = depthfirstordering[--i];
@@ -155,7 +161,6 @@ static void computeliveregisters(Object* func) {
     } else if (IS_TYPE_VEC2X32FLOAT(returntype)) {
         liveregs[RegClass_FPR][epilogue->blockIndex].use |= 1 << 1;
     } else if (IS_TYPE_FLOAT_NOT_VEC2X32FLOAT(returntype)) {
-        // (2.6: without an FPU a float comes back in r3, a double in r3/r4)
         if (TYPE_IS_SOFT_FLOAT(returntype)) {
             liveregs[RegClass_GPR][epilogue->blockIndex].use |= 1 << 3;
             if (returntype->size == 8) {
@@ -168,7 +173,6 @@ static void computeliveregisters(Object* func) {
         liveregs[RegClass_VR][epilogue->blockIndex].use |= 1 << 2;
     } else if ((IS_TYPE_STRUCT(returntype) || IS_TYPE_CLASS(returntype)) &&
                !Type_RequiresMemoryReturn(returntype)) {
-        // (2.6: a small struct comes back in r3/r4)
         liveregs[RegClass_GPR][epilogue->blockIndex].use |= 1 << 3;
         if (returntype->size > 4) {
             liveregs[RegClass_GPR][epilogue->blockIndex].use |= 1 << 4;
@@ -231,6 +235,11 @@ static void computeinstructionpredecessors(PCodeBlock* block) {
             defID += instr->argCount;
         }
     }
+
+#ifndef __MWERKS__
+    ls_frame.defInstrOffset = (SInt32)array[RegClass_GPR][13];
+    ls_frame.scanOffset = (SInt32)array[RegClass_GPR][14];
+#endif
 }
 
 static int dead(PCode* instr, UInt32* masks) {
@@ -238,25 +247,24 @@ static int dead(PCode* instr, UInt32* masks) {
     PCodeArg* op;
 
     if (instr->block->flags & (fIsProlog | fIsEpilogue)) {
-        return 0;
+        return FALSE;
     }
     if (instr->flags & (fIsBranch | fIsWrite | fIsCall | fIsVolatile | fSideEffects)) {
-        return 0;
+        return FALSE;
     }
     if (!instr->block->predecessors) {
-        return 1;
+        return TRUE;
     }
 
     for (op = instr->args, i = instr->argCount; i--; op++) {
-        if (op->kind ==
-            PCOp_REGISTER &&
+        if (op->kind == PCOp_REGISTER &&
             (op->data.reg.effect & EffectWrite) &&
             ((1 << op->data.reg.reg) & masks[op->arg])) {
-            return 0;
+            return FALSE;
         }
     }
 
-    return 1;
+    return TRUE;
 }
 
 static int definedbetween(PCode* start, PCode* end, PCodeArg* checkOp) {
@@ -267,12 +275,12 @@ static int definedbetween(PCode* start, PCode* end, PCodeArg* checkOp) {
     for (instr = start->prevPCode; instr != end; instr = instr->prevPCode) {
         for (op = instr->args, i = instr->argCount; i--; op++) {
             if (PC_OP_IS_WRITE_REGISTER(op, checkOp->arg, checkOp->data.reg.reg)) {
-                return 1;
+                return TRUE;
             }
         }
     }
 
-    return 0;
+    return FALSE;
 }
 
 static int usedbetween(PCode* start, PCode* end, PCodeArg* checkOp) {
@@ -283,12 +291,12 @@ static int usedbetween(PCode* start, PCode* end, PCodeArg* checkOp) {
     for (instr = start->prevPCode; instr != end; instr = instr->prevPCode) {
         for (op = instr->args, i = instr->argCount; i--; op++) {
             if (PC_OP_IS_READ_REGISTER(op, checkOp->arg, checkOp->data.reg.reg)) {
-                return 1;
+                return TRUE;
             }
         }
     }
 
-    return 0;
+    return FALSE;
 }
 
 static int isSPRlive(PCode* instr, int reg) {
@@ -299,69 +307,81 @@ static int isSPRlive(PCode* instr, int reg) {
     for (scan = instr->nextPCode; scan; scan = scan->nextPCode) {
         for (op = scan->args, i = scan->argCount; i--; op++) {
             if (PC_OP_IS_READ_REGISTER(op, RegClass_SPR, reg)) {
-                return 1;
+                return TRUE;
             }
 
             if (PC_OP_IS_WRITE_REGISTER(op, RegClass_SPR, reg)) {
-                return 0;
+                return FALSE;
             }
         }
     }
 
-    return 0;
+    return FALSE;
 }
 
 static SInt32 extractedbits(PCode* instr) {
-    SInt32 a = instr->args[2].data.imm.value;
-    SInt32 b = instr->args[3].data.imm.value;
-    SInt32 c = instr->args[4].data.imm.value;
+    SInt32 sh = instr->args[2].data.imm.value;
+    SInt32 mb = instr->args[3].data.imm.value;
+    SInt32 me = instr->args[4].data.imm.value;
     SInt32 val;
 
-    if (b <= c) {
-        val =
-            ((b > 31) ? 0 : (0xFFFFFFFFu >> b)) & ~(((c + 1) > 31) ? 0 : (0xFFFFFFFFu >> (c + 1)));
+    if (mb <= me) {
+        val = ((mb > 31) ? 0 : (0xFFFFFFFFu >> mb)) &
+            ~(((me + 1) > 31) ? 0 : (0xFFFFFFFFu >> (me + 1)));
     } else {
-        val =
-            ((b > 31) ? 0 : (0xFFFFFFFFu >> b)) | ~(((c + 1) > 31) ? 0 : (0xFFFFFFFFu >> (c + 1)));
+        val = ((mb > 31) ? 0 : (0xFFFFFFFFu >> mb)) |
+            ~(((me + 1) > 31) ? 0 : (0xFFFFFFFFu >> (me + 1)));
     }
 
-    return ((UInt32)val >> a) | (val << (32 - a));
+    return ((UInt32)val >> sh) | (val << (32 - sh));
 }
 
 static int canmergemasks(
-    int b1, int c1, SInt32 a, SInt32 b2, SInt32 c2, short* first, short* last
+    int mb1, int me1, SInt32 a, SInt32 mb2, SInt32 me2, short* first, short* last
 ) {
-    SInt32 val1;
-    SInt32 val2;
+    SInt32 mask1;
+    SInt32 mask2;
 
-    if (b1 <= c1) {
-        val1 = ((b1 > 31) ? 0 : (0xFFFFFFFFu >> b1)) &
-            ~(((c1 + 1) > 31) ? 0 : (0xFFFFFFFFu >> (c1 + 1)));
+    if (mb1 <= me1) {
+        mask1 = ((mb1 > 31) ? 0 : (0xFFFFFFFFu >> mb1)) &
+            ~(((me1 + 1) > 31) ? 0 : (0xFFFFFFFFu >> (me1 + 1)));
     } else {
-        val1 = ((b1 > 31) ? 0 : (0xFFFFFFFFu >> b1)) |
-            ~(((c1 + 1) > 31) ? 0 : (0xFFFFFFFFu >> (c1 + 1)));
+        mask1 = ((mb1 > 31) ? 0 : (0xFFFFFFFFu >> mb1)) |
+            ~(((me1 + 1) > 31) ? 0 : (0xFFFFFFFFu >> (me1 + 1)));
     }
 
-    if (b2 <= c2) {
-        val2 = ((b2 > 31) ? 0 : (0xFFFFFFFFu >> b2)) &
-            ~(((c2 + 1) > 31) ? 0 : (0xFFFFFFFFu >> (c2 + 1)));
+    if (mb2 <= me2) {
+        mask2 = ((mb2 > 31) ? 0 : (0xFFFFFFFFu >> mb2)) &
+            ~(((me2 + 1) > 31) ? 0 : (0xFFFFFFFFu >> (me2 + 1)));
     } else {
-        val2 = ((b2 > 31) ? 0 : (0xFFFFFFFFu >> b2)) |
-            ~(((c2 + 1) > 31) ? 0 : (0xFFFFFFFFu >> (c2 + 1)));
+        mask2 = ((mb2 > 31) ? 0 : (0xFFFFFFFFu >> mb2)) |
+            ~(((me2 + 1) > 31) ? 0 : (0xFFFFFFFFu >> (me2 + 1)));
     }
 
-    return ismaskconstant(val2 & ((val1 << a) | ((UInt32)val1 >> (32 - a))), first, last);
+#ifdef __MWERKS__
+    return ismaskconstant(mask2 & ((mask1 << a) | ((UInt32)mask1 >> (32 - a))), first, last);
+#else
+    mask2 &= (mask1 << a) | ((UInt32)mask1 >> (32 - a));
+    LS_FRAME(mask2, first);
+    return ismaskconstant(mask2, first, last);
+#endif
 }
 
 static int canuseupdatetest(
-    PCodeBlock* block, PCode* instr, int count1, int count2, int count3, int count4, int count5
+    PCodeBlock* block,
+    PCode* instr,
+    int instrCount,
+    int branchCount,
+    int crBranchCount,
+    int memoryCount,
+    int crOpCount
 ) {
     int i;
     PCLink* link;
 
     while (instr) {
-        if (++count1 > 17) {
-            return 1;
+        if (++instrCount > 17) {
+            return TRUE;
         }
 
         switch (instr->op) {
@@ -371,10 +391,10 @@ static int canuseupdatetest(
             case PC_MULHWU:
             case PC_MULLI:
             case PC_MULLW:
-                if (count3 == 0) {
-                    return 1;
+                if (crBranchCount == 0) {
+                    return TRUE;
                 }
-                return 0;
+                return FALSE;
             case PC_MTXER:
             case PC_MTCTR:
             case PC_MTLR:
@@ -413,7 +433,7 @@ static int canuseupdatetest(
             case PC_MFROM:
             case PC_DSA:
             case PC_ESA:
-                return 1;
+                return TRUE;
             case PC_CRAND:
             case PC_CRANDC:
             case PC_CREQV:
@@ -423,23 +443,23 @@ static int canuseupdatetest(
             case PC_CRORC:
             case PC_CRXOR:
             case PC_MCRF:
-                if (++count5 > 1) {
-                    return 1;
+                if (++crOpCount > 1) {
+                    return TRUE;
                 }
         }
 
         if (instr->flags & (fIsRead | fIsWrite)) {
-            if (++count4 > 1) {
-                return 1;
+            if (++memoryCount > 1) {
+                return TRUE;
             }
         } else if (instr->flags & fIsBranch) {
-            if (++count2 > 2) {
-                return 1;
+            if (++branchCount > 2) {
+                return TRUE;
             }
 
             for (i = 0; i < instr->argCount; i++) {
                 if (PC_OP_IS_ANY_REGISTER(&instr->args[i], RegClass_CRFIELD)) {
-                    ++count3;
+                    ++crBranchCount;
                     break;
                 }
             }
@@ -452,14 +472,20 @@ static int canuseupdatetest(
         for (link = block->successors; link; link = link->nextLink) {
             if (link->block &&
                 !canuseupdatetest(
-                    link->block, link->block->firstPCode, count1, count2, count3, count4, count5
+                    link->block,
+                    link->block->firstPCode,
+                    instrCount,
+                    branchCount,
+                    crBranchCount,
+                    memoryCount,
+                    crOpCount
                 )) {
-                return 0;
+                return FALSE;
             }
         }
     }
 
-    return 1;
+    return TRUE;
 }
 
 static int canuseupdate(PCode* instr) {
@@ -467,100 +493,106 @@ static int canuseupdate(PCode* instr) {
 }
 
 static int MR_Rx_Rx(PCode* instr, UInt32* masks) {
-    if (instr->args[0].data.reg.reg ==
-        instr->args[1].data.reg.reg &&
+    if (instr->args[0].data.reg.reg == instr->args[1].data.reg.reg &&
         !(PCODE_FLAG_SET_F(instr) & fRecordBit)) {
         deletepcode(instr);
-        return 1;
+        return TRUE;
     }
 
-    return 0;
+    return FALSE;
 }
 
 static int FMR_Fx_Fx(PCode* instr, UInt32* masks) {
-    if (instr->args[0].data.reg.reg ==
-        instr->args[1].data.reg.reg &&
+    if (instr->args[0].data.reg.reg == instr->args[1].data.reg.reg &&
         !(PCODE_FLAG_SET_F(instr) & fRecordBit)) {
         deletepcode(instr);
-        return 1;
+        return TRUE;
     }
 
-    return 0;
+    return FALSE;
 }
 
 static int VMR_Vx_Vx(PCode* instr, UInt32* masks) {
-    if (instr->args[0].data.reg.reg ==
-        instr->args[1].data.reg.reg &&
+    if (instr->args[0].data.reg.reg == instr->args[1].data.reg.reg &&
         !(PCODE_FLAG_SET_F(instr) & fRecordBit)) {
         deletepcode(instr);
-        return 1;
+        return TRUE;
     }
 
-    return 0;
+    return FALSE;
 }
 
 static int MR_MR(PCode* instr, UInt32* masks) {
     PCode* defInstr = defininginstruction[instr->defID + 1];
 
-    if (defInstr->op ==
-        PC_MR &&
-        instr->args[0].data.reg.reg ==
-        defInstr->args[1].data.reg.reg &&
+    if (defInstr->op == PC_MR &&
+        instr->args[0].data.reg.reg == defInstr->args[1].data.reg.reg &&
         !definedbetween(instr, defInstr, &instr->args[0]) &&
         !(PCODE_FLAG_SET_F(instr) & fRecordBit)) {
         deletepcode(instr);
-        return 1;
+        return TRUE;
     }
 
-    return 0;
+    return FALSE;
 }
 
 static int FMR_FMR(PCode* instr, UInt32* masks) {
     PCode* defInstr = defininginstruction[instr->defID + 1];
 
-    if (defInstr->op ==
-        PC_FMR &&
-        instr->args[0].data.reg.reg ==
-        defInstr->args[1].data.reg.reg &&
+    if (defInstr->op == PC_FMR &&
+        instr->args[0].data.reg.reg == defInstr->args[1].data.reg.reg &&
         !(PCODE_FLAG_SET_F(instr) & fRecordBit) &&
         !definedbetween(instr, defInstr, &instr->args[0])) {
         deletepcode(instr);
-        return 1;
+        return TRUE;
     }
 
-    return 0;
+    return FALSE;
 }
 
 static int VMR_VMR(PCode* instr, UInt32* masks) {
     PCode* defInstr = defininginstruction[instr->defID + 1];
 
-    if (defInstr->op ==
-        PC_VMR &&
-        instr->args[0].data.reg.reg ==
-        defInstr->args[1].data.reg.reg &&
+    if (defInstr->op == PC_VMR &&
+        instr->args[0].data.reg.reg == defInstr->args[1].data.reg.reg &&
         !(PCODE_FLAG_SET_F(instr) & fRecordBit) &&
         !definedbetween(instr, defInstr, &instr->args[0])) {
         deletepcode(instr);
-        return 1;
+        return TRUE;
     }
 
-    return 0;
+    return FALSE;
 }
+
+#ifndef __MWERKS__
+static void ls_vpermute_frame(PCode* instr, SInt32 returnAddress) {
+    LS_FRAME_SECOND(returnAddress);
+    if (copts.scheduling == 10 || copts.altivec_model != 0 || copts.scheduling == 7) {
+        LS_FRAME_FIRST(instr);
+    }
+}
+#endif
 
 static int VMR_VMRP(PCode* instr, UInt32* masks) {
     PCode* prev = instr->prevPCode;
     PCode* next = instr->nextPCode;
-    int prevFlag = 0;
-    int prevPermute = 0;
-    int nextFlag = 0;
-    int nextPermute = 0;
+    int prevFlag = FALSE;
+    int prevPermute = FALSE;
+    int nextFlag = FALSE;
+    int nextPermute = FALSE;
 
     if (prev) {
         prevFlag = (prev->flags & fOpTypeMask) == fOpTypeVR;
+#ifndef __MWERKS__
+        ls_vpermute_frame(prev, 0x00507016);
+#endif
         prevPermute = uses_vpermute_unit(prev);
     }
     if (next) {
         nextFlag = (next->flags & fOpTypeMask) == fOpTypeVR;
+#ifndef __MWERKS__
+        ls_vpermute_frame(next, 0x0050703A);
+#endif
         nextPermute = uses_vpermute_unit(next);
     }
 
@@ -569,40 +601,50 @@ static int VMR_VMRP(PCode* instr, UInt32* masks) {
             if (prevFlag && !prevPermute) {
                 if (nextFlag) {
                     if (!nextPermute) {
+#ifndef __MWERKS__
+                        LS_FRAME(0x0050707A, instr);
+#endif
                         change_opcode(instr, PC_VMRP);
-                        return 1;
+                        return TRUE;
                     }
                 } else {
+#ifndef __MWERKS__
+                    LS_FRAME(0x0050709B, instr);
+#endif
                     change_opcode(instr, PC_VMRP);
-                    return 1;
+                    return TRUE;
                 }
             }
         } else {
             if (prevFlag && !prevPermute) {
+#ifndef __MWERKS__
+                LS_FRAME(0x005070C6, instr);
+#endif
                 change_opcode(instr, PC_VMRP);
-                return 1;
+                return TRUE;
             }
         }
     } else {
         if (next && nextFlag && !nextPermute) {
+#ifndef __MWERKS__
+            LS_FRAME(0x005070F1, instr);
+#endif
             change_opcode(instr, PC_VMRP);
-            return 1;
+            return TRUE;
         }
     }
 
-    return 0;
+    return FALSE;
 }
 
 static int MR_CMPI(PCode* instr, UInt32* masks) {
     PCode* defInstr = defininginstruction[instr->defID + 1];
     PCodeArg op;
 
-    if (instr->args[0].data.reg.reg ==
-        0 &&
-        instr->args[2].data.imm.value ==
-        0 &&
+    if (instr->args[0].data.reg.reg == 0 &&
+        instr->args[2].data.imm.value == 0 &&
         (PCODE_FLAG_SET_F(defInstr) & (fSideEffects | fCanSetRecordBit | fOpTypeGPR)) ==
-        (fCanSetRecordBit | fOpTypeGPR) &&
+            (fCanSetRecordBit | fOpTypeGPR) &&
         !usedbetween(instr, defInstr, &instr->args[0]) &&
         !definedbetween(instr, defInstr, &instr->args[0])) {
         if (defInstr->op == PC_ADDI) {
@@ -610,26 +652,31 @@ static int MR_CMPI(PCode* instr, UInt32* masks) {
             op.arg = RegClass_SPR;
             op.data.reg.reg = 0;
             op.data.reg.effect = EffectRead | EffectWrite;
+#ifndef __MWERKS__
+            if (instr->prevPCode != defInstr) {
+                LS_FRAME(
+                    (ls_frame.defInstrOffset & ~0xFF) | (UInt8)op.arg, (UInt16)op.data.reg.reg
+                );
+            }
+#endif
             if (usedbetween(instr, defInstr, &op)) {
-                return 0;
+                return FALSE;
             }
         }
 
         pcsetrecordbit(defInstr);
         deletepcode(instr);
-        return 1;
+        return TRUE;
     }
 
-    return 0;
+    return FALSE;
 }
 
 static int EXTSB_RLWINM(PCode* instr, UInt32* masks) {
     PCode* defInstr = defininginstruction[instr->defID + 1];
 
-    if (defInstr->op ==
-        PC_EXTSB &&
-        (defInstr->args[0].data.reg.reg ==
-         instr->args[0].data.reg.reg ||
+    if (defInstr->op == PC_EXTSB &&
+        (defInstr->args[0].data.reg.reg == instr->args[0].data.reg.reg ||
          !(masks[RegClass_GPR] & (1 << defInstr->args[0].data.reg.reg))) &&
         !(PCODE_FLAG_SET_F(defInstr) & fRecordBit) &&
         !definedbetween(instr, defInstr, &defInstr->args[1]) &&
@@ -638,19 +685,17 @@ static int EXTSB_RLWINM(PCode* instr, UInt32* masks) {
         instr->args[1].data.reg.reg = defInstr->args[1].data.reg.reg;
         defininginstruction[instr->defID + 1] = defininginstruction[defInstr->defID + 1];
         deletepcode(defInstr);
-        return 1;
+        return TRUE;
     }
 
-    return 0;
+    return FALSE;
 }
 
 static int EXTSH_RLWINM(PCode* instr, UInt32* masks) {
     PCode* defInstr = defininginstruction[instr->defID + 1];
 
-    if (defInstr->op ==
-        PC_EXTSH &&
-        (defInstr->args[0].data.reg.reg ==
-         instr->args[0].data.reg.reg ||
+    if (defInstr->op == PC_EXTSH &&
+        (defInstr->args[0].data.reg.reg == instr->args[0].data.reg.reg ||
          !(masks[RegClass_GPR] & (1 << defInstr->args[0].data.reg.reg))) &&
         !(PCODE_FLAG_SET_F(defInstr) & fRecordBit) &&
         !definedbetween(instr, defInstr, &defInstr->args[1]) &&
@@ -659,77 +704,76 @@ static int EXTSH_RLWINM(PCode* instr, UInt32* masks) {
         instr->args[1].data.reg.reg = defInstr->args[1].data.reg.reg;
         defininginstruction[instr->defID + 1] = defininginstruction[defInstr->defID + 1];
         deletepcode(defInstr);
-        return 1;
+        return TRUE;
     }
 
-    return 0;
+    return FALSE;
 }
 
 static int LBZ_RLWINM(PCode* instr, UInt32* masks) {
     PCode* defInstr = defininginstruction[instr->defID + 1];
 
     if ((defInstr->op == PC_LBZ || defInstr->op == PC_LBZX) &&
-        instr->args[2].data.imm.value ==
-        0 &&
-        instr->args[3].data.imm.value <=
-        24 &&
-        instr->args[4].data.imm.value ==
-        31 &&
+        instr->args[2].data.imm.value == 0 &&
+        instr->args[3].data.imm.value <= 24 &&
+        instr->args[4].data.imm.value == 31 &&
         !(PCODE_FLAG_SET_F(instr) & fRecordBit) &&
-        (defInstr->args[0].data.reg.reg ==
-         instr->args[0].data.reg.reg ||
+        (defInstr->args[0].data.reg.reg == instr->args[0].data.reg.reg ||
          !(masks[RegClass_GPR] & (1 << defInstr->args[0].data.reg.reg))) &&
         !usedbetween(instr, defInstr, &defInstr->args[0]) &&
         !definedbetween(instr, defInstr, &instr->args[0]) &&
         !usedbetween(instr, defInstr, &instr->args[0])) {
         defInstr->args[0].data.reg.reg = instr->args[0].data.reg.reg;
+#ifndef __MWERKS__
+        LS_FRAME_FIRST(instr);
+#endif
         deletepcode(instr);
-        return 1;
+        return TRUE;
     }
 
-    return 0;
+    return FALSE;
 }
 
 static int LHZ_RLWINM(PCode* instr, UInt32* masks) {
     PCode* defInstr = defininginstruction[instr->defID + 1];
 
     if ((defInstr->op == PC_LHZ || defInstr->op == PC_LHZX) &&
-        instr->args[2].data.imm.value ==
-        0 &&
-        instr->args[3].data.imm.value <=
-        16 &&
-        instr->args[4].data.imm.value ==
-        31 &&
+        instr->args[2].data.imm.value == 0 &&
+        instr->args[3].data.imm.value <= 16 &&
+        instr->args[4].data.imm.value == 31 &&
         !(PCODE_FLAG_SET_F(instr) & fRecordBit) &&
-        (defInstr->args[0].data.reg.reg ==
-         instr->args[0].data.reg.reg ||
+        (defInstr->args[0].data.reg.reg == instr->args[0].data.reg.reg ||
          !(masks[RegClass_GPR] & (1 << defInstr->args[0].data.reg.reg))) &&
         !usedbetween(instr, defInstr, &defInstr->args[0]) &&
         !definedbetween(instr, defInstr, &instr->args[0]) &&
         !usedbetween(instr, defInstr, &instr->args[0])) {
         defInstr->args[0].data.reg.reg = instr->args[0].data.reg.reg;
+#ifndef __MWERKS__
+        LS_FRAME_FIRST(instr);
+#endif
         deletepcode(instr);
-        return 1;
+        return TRUE;
     }
 
-    return 0;
+    return FALSE;
 }
 
 static int LHA_EXTSH(PCode* instr, UInt32* masks) {
     PCode* defInstr = defininginstruction[instr->defID + 1];
 
-    if (defInstr->op ==
-        PC_LHA &&
+    if (defInstr->op == PC_LHA &&
         !(PCODE_FLAG_SET_F(instr) & fRecordBit) &&
-        (defInstr->args[0].data.reg.reg ==
-         instr->args[0].data.reg.reg ||
+        (defInstr->args[0].data.reg.reg == instr->args[0].data.reg.reg ||
          !(masks[RegClass_GPR] & (1 << defInstr->args[0].data.reg.reg))) &&
         !usedbetween(instr, defInstr, &defInstr->args[0]) &&
         !definedbetween(instr, defInstr, &instr->args[0]) &&
         !usedbetween(instr, defInstr, &instr->args[0])) {
         defInstr->args[0].data.reg.reg = instr->args[0].data.reg.reg;
+#ifndef __MWERKS__
+        LS_FRAME(instr->prevPCode == defInstr ? (SInt32)defInstr : -1, 0x005064C7);
+#endif
         deletepcode(instr);
-        return 1;
+        return TRUE;
     }
 
     if (defInstr->op == PC_EXTSB && !(PCODE_FLAG_SET_F(instr) & fRecordBit)) {
@@ -737,45 +781,49 @@ static int LHA_EXTSH(PCode* instr, UInt32* masks) {
             if (!(masks[RegClass_GPR] & (1 << defInstr->args[0].data.reg.reg)) &&
                 !usedbetween(instr, defInstr, &defInstr->args[0])) {
                 change_opcode(instr, PC_EXTSB);
+#ifndef __MWERKS__
+                LS_FRAME(
+                    instr->prevPCode == defInstr ? (SInt32)(instr->flags & 9)
+                                                 : (SInt32)ls_scanned_args(defInstr),
+                    0x00506591
+                );
+#endif
                 deletepcode(defInstr);
-                return 1;
+                return TRUE;
             }
         } else {
             if (!definedbetween(instr, defInstr, &defInstr->args[1])) {
+#ifndef __MWERKS__
+                LS_FRAME(0x00506605, instr);
+#endif
                 change_opcode(instr, PC_EXTSB);
                 instr->args[1] = defInstr->args[1];
             } else {
+#ifndef __MWERKS__
+                LS_FRAME(0x00506624, instr);
+#endif
                 change_opcode(instr, PC_MR);
             }
-            return 1;
+            return TRUE;
         }
     }
 
-    return 0;
+    return FALSE;
 }
 
-// TODO: the name is made up: LI_L_S clears the operand through a helper that -inline auto inlines
-// (written in the caller, the original's reloads of the caller's parameter are missing).
 static void clear_base_register(PCodeArg* op) {
     op->data.reg.reg = 0;
     op->data.reg.effect &= ~(EffectRead | EffectWrite);
 }
 
-// TODO: the name is made up: a 2.6 addition (li rX, sym; load/store 0(rX) -> load/store sym(r0)),
-// named like its neighbours.
 static int LI_L_S(PCode* instr, UInt32* masks) {
     PCode* defInstr = defininginstruction[instr->defID + 1];
 
-    if (defInstr->op ==
-        PC_LI &&
-        defInstr->args[1].kind ==
-        PCOp_MEMORY &&
-        instr->args[2].kind ==
-        PCOp_IMMEDIATE &&
-        instr->args[2].data.imm.value ==
-        0 &&
-        defInstr->args[0].data.reg.reg ==
-        instr->args[1].data.reg.reg &&
+    if (defInstr->op == PC_LI &&
+        defInstr->args[1].kind == PCOp_MEMORY &&
+        instr->args[2].kind == PCOp_IMMEDIATE &&
+        instr->args[2].data.imm.value == 0 &&
+        defInstr->args[0].data.reg.reg == instr->args[1].data.reg.reg &&
         !definedbetween(instr, defInstr, &defInstr->args[0])) {
         clear_base_register(&instr->args[1]);
         instr->args[2] = defInstr->args[1];
@@ -784,39 +832,45 @@ static int LI_L_S(PCode* instr, UInt32* masks) {
             !(masks[RegClass_GPR] & (1 << defInstr->args[0].data.reg.reg))) {
             deletepcode(defInstr);
         }
-        return 1;
+        return TRUE;
     }
 
-    return 0;
+    return FALSE;
 }
 
 static int ADDI_L_S(PCode* instr, UInt32* masks) {
     PCode* defInstr = defininginstruction[instr->defID + 1];
     SInt32 addleft;
     SInt32 addright;
+    short reg;
 
     if (defInstr->op == PC_ADDI && instr->args[2].kind == PCOp_IMMEDIATE) {
         if (!PC_OP_IS_REGISTER(&instr->args[0], RegClass_GPR, instr->args[1].data.reg.reg)) {
-            if (instr->args[2].data.imm.value ==
-                0 &&
-                defInstr->args[0].data.reg.reg ==
-                defInstr->args[1].data.reg.reg &&
+            if (instr->args[2].data.imm.value == 0 &&
+                defInstr->args[0].data.reg.reg == defInstr->args[1].data.reg.reg &&
                 !usedbetween(instr, defInstr, &defInstr->args[0]) &&
+#ifdef __MWERKS__
                 (!(masks[RegClass_GPR] & (1 << defInstr->args[0].data.reg.reg)) ||
                  canuseupdate(instr))) {
+#else
+                (!(masks[RegClass_GPR] & (1 << defInstr->args[0].data.reg.reg)) ||
+                 ((void)(ls_frame.defInstrOffset = ls_frame.scanOffset = 0),
+                  canuseupdate(instr)))) {
+#endif
                 if (!(masks[RegClass_GPR] & (1 << defInstr->args[0].data.reg.reg))) {
                     instr->args[2] = defInstr->args[2];
                 } else {
-                    // TODO: 2.6 keeps `instr` loaded across these stores (no reload after each); a
-                    // block-local copy here and below gives that, Pro7's direct uses do not
                     PCode* t = instr;
                     t->op++;
                     t->args[1].data.reg.effect |= EffectWrite;
                     t->args[2] = defInstr->args[2];
                 }
                 defininginstruction[instr->defID + 1] = defininginstruction[defInstr->defID + 1];
+#ifndef __MWERKS__
+                LS_FRAME(defInstr, 0x00505DE6);
+#endif
                 deletepcode(defInstr);
-                return 1;
+                return TRUE;
             }
 
             addleft = 0x1FFFF;
@@ -830,51 +884,19 @@ static int ADDI_L_S(PCode* instr, UInt32* masks) {
                 } else if (addright == 0) {
                     addleft = 0;
                 } else {
-                    return 0;
+                    return FALSE;
                 }
             }
 
             if (!FITS_IN_SHORT(addleft + addright)) {
-                return 0;
+                return FALSE;
             }
 
             if (!(masks[RegClass_GPR] & (1 << defInstr->args[0].data.reg.reg)) &&
                 !usedbetween(instr, defInstr, &defInstr->args[0]) &&
                 !definedbetween(instr, defInstr, &defInstr->args[1])) {
-                {
-                    PCode* t = instr;
-                    t->args[1].data.reg.reg = defInstr->args[1].data.reg.reg;
-                    defininginstruction[t->defID + 1] = defininginstruction[defInstr->defID + 1];
-                }
-
-                if (defInstr->args[2].kind == PCOp_MEMORY) {
-                    instr->args[2] = defInstr->args[2];
-                    instr->args[2].data.mem.offset += addright;
-                    if (instr->flags & (fIsRead | fIsWrite | fOpFromMemory | fOpToMemory)) {
-                        instr->alias = make_alias(
-                            instr->args[2].data.mem.obj,
-                            instr->args[2].data.mem.offset,
-                            nbytes_loaded_or_stored_by(instr)
-                        );
-                    }
-                } else {
-                    instr->args[2].data.imm.value = addleft + addright;
-                }
-
-                deletepcode(defInstr);
-                return 1;
-            }
-
-            if (instr->args[1].data.reg.reg !=
-                defInstr->args[1].data.reg.reg &&
-                !definedbetween(instr, defInstr, &defInstr->args[1])) {
-                if (defInstr->args[2].kind ==
-                    PCOp_MEMORY &&
-                    defInstr->args[2].data.mem.obj->datatype != DLOCAL) {
-                    return 0;
-                }
-
-                instr->args[1].data.reg.reg = defInstr->args[1].data.reg.reg;
+                reg = defInstr->args[1].data.reg.reg;
+                instr->args[1].data.reg.reg = reg;
                 defininginstruction[instr->defID + 1] = defininginstruction[defInstr->defID + 1];
 
                 if (defInstr->args[2].kind == PCOp_MEMORY) {
@@ -891,37 +913,64 @@ static int ADDI_L_S(PCode* instr, UInt32* masks) {
                     instr->args[2].data.imm.value = addleft + addright;
                 }
 
-                return 1;
+#ifndef __MWERKS__
+                LS_FRAME(defInstr, 0x00505FE0);
+#endif
+                deletepcode(defInstr);
+                return TRUE;
+            }
+
+            if (instr->args[1].data.reg.reg != defInstr->args[1].data.reg.reg &&
+                !definedbetween(instr, defInstr, &defInstr->args[1])) {
+                if (defInstr->args[2].kind == PCOp_MEMORY &&
+                    defInstr->args[2].data.mem.obj->datatype != DLOCAL) {
+                    return FALSE;
+                }
+
+                instr->args[1].data.reg.reg = defInstr->args[1].data.reg.reg;
+                defininginstruction[instr->defID + 1] = defininginstruction[defInstr->defID + 1];
+
+                if (defInstr->args[2].kind == PCOp_MEMORY) {
+                    instr->args[2] = defInstr->args[2];
+                    instr->args[2].data.mem.offset += addright;
+                    if (instr->flags & (fIsRead | fIsWrite | fOpFromMemory | fOpToMemory)) {
+#ifndef __MWERKS__
+                        LS_FRAME(instr->args[2].data.mem.obj, instr->args[2].data.mem.offset);
+#endif
+                        instr->alias = make_alias(
+                            instr->args[2].data.mem.obj,
+                            instr->args[2].data.mem.offset,
+                            nbytes_loaded_or_stored_by(instr)
+                        );
+                    }
+                } else {
+                    instr->args[2].data.imm.value = addleft + addright;
+                }
+
+                return TRUE;
             }
         }
     } else {
-        if (defInstr->op ==
-            PC_MR &&
+        if (defInstr->op == PC_MR &&
             PC_OP_IS_ANY_REGISTER(&defInstr->args[1], RegClass_GPR) &&
-            defInstr->args[1].data.reg.reg !=
-            0 &&
+            defInstr->args[1].data.reg.reg != 0 &&
             !definedbetween(instr, defInstr, &defInstr->args[1])) {
             instr->args[1].data.reg.reg = defInstr->args[1].data.reg.reg;
             defininginstruction[instr->defID + 1] = defininginstruction[defInstr->defID + 1];
         }
     }
 
-    return 0;
+    return FALSE;
 }
 
 static int ADDI_LU_SU(PCode* instr, UInt32* masks) {
     PCode* defInstr = defininginstruction[instr->defID + 1];
 
-    if (instr->args[2].kind ==
-        PCOp_IMMEDIATE &&
-        defInstr->args[2].kind ==
-        PCOp_IMMEDIATE &&
-        defInstr->op ==
-        PC_ADDI &&
-        defInstr->args[0].data.reg.reg ==
-        defInstr->args[1].data.reg.reg &&
-        !(instr->args[0].arg ==
-          instr->args[1].arg &&
+    if (instr->args[2].kind == PCOp_IMMEDIATE &&
+        defInstr->args[2].kind == PCOp_IMMEDIATE &&
+        defInstr->op == PC_ADDI &&
+        defInstr->args[0].data.reg.reg == defInstr->args[1].data.reg.reg &&
+        !(instr->args[0].arg == instr->args[1].arg &&
           instr->args[0].data.reg.reg == instr->args[1].data.reg.reg) &&
         !usedbetween(instr, defInstr, &defInstr->args[0]) &&
         FITS_IN_SHORT(defInstr->args[2].data.imm.value + instr->args[2].data.imm.value)) {
@@ -936,10 +985,10 @@ static int ADDI_LU_SU(PCode* instr, UInt32* masks) {
 
         defininginstruction[instr->defID + 1] = defininginstruction[defInstr->defID + 1];
         deletepcode(defInstr);
-        return 1;
+        return TRUE;
     }
 
-    return 0;
+    return FALSE;
 }
 
 static int L_S_ADDI(PCode* instr, UInt32* masks) {
@@ -949,34 +998,35 @@ static int L_S_ADDI(PCode* instr, UInt32* masks) {
     int reg;
 
     if (instr->args[2].kind != PCOp_IMMEDIATE) {
-        return 0;
+        return FALSE;
     }
 
     reg = instr->args[1].data.reg.reg;
+#ifndef __MWERKS__
+    ls_frame.defInstrOffset = (SInt32)instr->block;
+    ls_frame.scanOffset = (SInt32)instr->nextPCode;
+#endif
     if (!canuseupdate(instr)) {
-        return 0;
+        return FALSE;
     }
 
     for (scan = instr->nextPCode; scan; scan = scan->nextPCode) {
         for (op = scan->args, i = scan->argCount; i--; op++) {
             if (PC_OP_IS_READ_REGISTER(op, RegClass_GPR, reg)) {
-                return 0;
+                return FALSE;
             }
 
             if (PC_OP_IS_WRITE_REGISTER(op, RegClass_GPR, reg)) {
                 if (scan->op != PC_ADDI) {
-                    return 0;
+                    return FALSE;
                 }
                 if (scan->args[2].kind != PCOp_IMMEDIATE) {
-                    return 0;
+                    return FALSE;
                 }
 
-                if (instr->args[2].data.imm.value ==
-                    scan->args[2].data.imm.value &&
-                    scan->args[0].data.reg.reg ==
-                    scan->args[1].data.reg.reg &&
-                    !(instr->args[0].arg ==
-                      instr->args[1].arg &&
+                if (instr->args[2].data.imm.value == scan->args[2].data.imm.value &&
+                    scan->args[0].data.reg.reg == scan->args[1].data.reg.reg &&
+                    !(instr->args[0].arg == instr->args[1].arg &&
                       instr->args[0].data.reg.reg == instr->args[1].data.reg.reg)) {
                     if (!(masks[RegClass_GPR] & (1 << scan->args[0].data.reg.reg))) {
                         instr->args[2] = scan->args[2];
@@ -989,15 +1039,15 @@ static int L_S_ADDI(PCode* instr, UInt32* masks) {
                     change_opcode(scan, PC_NOP);
                     change_num_operands(scan, 0);
                     deletepcode(scan);
-                    return 1;
+                    return TRUE;
                 }
 
-                return 0;
+                return FALSE;
             }
         }
     }
 
-    return 0;
+    return FALSE;
 }
 
 static int LI_CMP_BC(PCode* instr, UInt32* masks) {
@@ -1011,12 +1061,10 @@ static int LI_CMP_BC(PCode* instr, UInt32* masks) {
         if ((defInstr->op == PC_CMPLI || defInstr->op == PC_CMPI) &&
             defInstr->args[0].data.reg.reg == 0) {
             defInstr2 = defininginstruction[defInstr->defID + 1];
-            if (defInstr2->op ==
-                PC_LI &&
-                defInstr2->args[1].kind ==
-                PCOp_IMMEDIATE &&
+            if (defInstr2->op == PC_LI &&
+                defInstr2->args[1].kind == PCOp_IMMEDIATE &&
                 (instr->op == PC_BT) ==
-                (defInstr2->args[1].data.imm.value == defInstr->args[2].data.imm.value)) {
+                    (defInstr2->args[1].data.imm.value == defInstr->args[2].data.imm.value)) {
                 change_opcode(instr, PC_B);
                 instr->args[0] = instr->args[2];
                 change_num_operands(instr, 1);
@@ -1041,7 +1089,7 @@ static int LI_CMP_BC(PCode* instr, UInt32* masks) {
         }
     }
 
-    return 0;
+    return FALSE;
 }
 
 static int RLWINM_CMPLI_BC(PCode* instr, UInt32* masks) {
@@ -1050,69 +1098,67 @@ static int RLWINM_CMPLI_BC(PCode* instr, UInt32* masks) {
 
     if (instr->args[1].data.imm.value == 2) {
         defInstr = defininginstruction[instr->defID];
-        if (defInstr->op ==
-            PC_CMPLI &&
-            defInstr->args[0].data.reg.reg ==
-            0 &&
+        if (defInstr->op == PC_CMPLI &&
+            defInstr->args[0].data.reg.reg == 0 &&
             defInstr->args[2].data.imm.value == 0) {
             defInstr2 = defininginstruction[defInstr->defID + 1];
             if ((PCODE_FLAG_SET_F(defInstr2) & (fSideEffects | fCanSetRecordBit | fOpTypeGPR)) ==
-                (fCanSetRecordBit | fOpTypeGPR) &&
+                    (fCanSetRecordBit | fOpTypeGPR) &&
                 !usedbetween(defInstr, defInstr2, &defInstr->args[0]) &&
                 !definedbetween(defInstr, defInstr2, &defInstr->args[0])) {
+#ifndef __MWERKS__
+                LS_FRAME(
+                    (SInt32)instr->block & ~0xFFFF,
+                    defInstr->prevPCode == defInstr2 ? (SInt32)defininginstruction : -1
+                );
+#endif
                 pcsetrecordbit(defInstr2);
                 defininginstruction[instr->defID] = defininginstruction[defInstr->defID + 1];
                 deletepcode(defInstr);
-                return 1;
+                return TRUE;
             }
         }
     }
 
-    return 0;
+    return FALSE;
 }
 
 static int LBZ_EXTSB_CMPI_BC(PCode* instr, UInt32* masks) {
     PCode* defInstr;
     PCode* defInstr2;
+    short reg;
 
     if (instr->args[1].data.imm.value == 2) {
         defInstr = defininginstruction[instr->defID];
         if (((defInstr->op == PC_CMPI || defInstr->op == PC_CMPLI) &&
-             defInstr->args[2].data.imm.value >=
-             0 &&
+             defInstr->args[2].data.imm.value >= 0 &&
              defInstr->args[2].data.imm.value <= 127) ||
             ((defInstr->op == PC_EXTSB || defInstr->op == PC_EXTSH) &&
              (PCODE_FLAG_SET_F(defInstr) & fRecordBit))) {
             defInstr2 = defininginstruction[defInstr->defID + 1];
-            if (defInstr2->op ==
-                PC_EXTSB &&
-                defininginstruction[defInstr2->defID + 1]->op ==
-                PC_LBZ &&
+            if (defInstr2->op == PC_EXTSB &&
+                defininginstruction[defInstr2->defID + 1]->op == PC_LBZ &&
                 !(masks[RegClass_GPR] & (1 << defInstr2->args[0].data.reg.reg)) &&
                 !usedbetween(instr, defInstr, &defInstr2->args[0]) &&
                 !usedbetween(defInstr, defInstr2, &defInstr2->args[0]) &&
                 !definedbetween(defInstr, defInstr2, &defInstr2->args[1])) {
-                {
-                    // TODO: 2.6 keeps `defInstr` loaded across the store (no reload); a block-local
-                    // copy gives that (as in ADDI_L_S), Pro7's direct uses do not
-                    PCode* t = defInstr;
-                    t->args[1].data.reg.reg = defInstr2->args[1].data.reg.reg;
-                    defininginstruction[t->defID + 1] = defininginstruction[defInstr2->defID + 1];
-                }
+                reg = defInstr2->args[1].data.reg.reg;
+                defInstr->args[1].data.reg.reg = reg;
+                defininginstruction[defInstr->defID + 1] =
+                    defininginstruction[defInstr2->defID + 1];
                 deletepcode(defInstr2);
-                return 1;
+                return TRUE;
             }
         }
     }
 
-    return 0;
+    return FALSE;
 }
 
 static int FRSP_STFS(PCode* instr, UInt32* masks) {
     PCode* defInstr = defininginstruction[instr->defID];
 
-    if (defInstr->op ==
-        PC_FRSP &&
+    if (defInstr->op == PC_FRSP &&
         !(masks[RegClass_FPR] & (1 << defInstr->args[0].data.reg.reg)) &&
         !(PCODE_FLAG_SET_F(defInstr) & fRecordBit) &&
         !definedbetween(instr, defInstr, &defInstr->args[1]) &&
@@ -1120,40 +1166,39 @@ static int FRSP_STFS(PCode* instr, UInt32* masks) {
         instr->args[0].data.reg.reg = defInstr->args[1].data.reg.reg;
         defininginstruction[instr->defID] = defininginstruction[defInstr->defID + 1];
         deletepcode(defInstr);
-        return 1;
+        return TRUE;
     }
 
-    return 0;
+    return FALSE;
 }
 
 static int NOT_AND(PCode* instr, UInt32* masks) {
     PCode* defInstr = defininginstruction[instr->defID + 2];
 
-    if (defInstr->op ==
-        PC_NOT &&
-        (defInstr->args[0].data.reg.reg ==
-         instr->args[0].data.reg.reg ||
+    if (defInstr->op == PC_NOT &&
+        (defInstr->args[0].data.reg.reg == instr->args[0].data.reg.reg ||
          !(masks[RegClass_GPR] & (1 << defInstr->args[0].data.reg.reg))) &&
         !(PCODE_FLAG_SET_F(defInstr) & fRecordBit) &&
         !definedbetween(instr, defInstr, &defInstr->args[1]) &&
         !usedbetween(instr, defInstr, &defInstr->args[0])) {
         instr->args[2].data.reg.reg = defInstr->args[1].data.reg.reg;
         defininginstruction[instr->defID + 2] = defininginstruction[defInstr->defID + 1];
+#ifndef __MWERKS__
+        LS_FRAME(defininginstruction, defInstr);
+#endif
         change_opcode(instr, PC_ANDC);
         deletepcode(defInstr);
-        return 1;
+        return TRUE;
     }
 
-    return 0;
+    return FALSE;
 }
 
 static int LI_MR(PCode* instr, UInt32* masks) {
     PCode* defInstr = defininginstruction[instr->defID + 1];
 
-    if (defInstr->op ==
-        PC_LI &&
-        (defInstr->args[0].data.reg.reg ==
-         instr->args[0].data.reg.reg ||
+    if (defInstr->op == PC_LI &&
+        (defInstr->args[0].data.reg.reg == instr->args[0].data.reg.reg ||
          !(masks[RegClass_GPR] & (1 << defInstr->args[0].data.reg.reg))) &&
         !(PCODE_FLAG_SET_F(instr) & fRecordBit) &&
         !usedbetween(instr, defInstr, &defInstr->args[0])) {
@@ -1161,10 +1206,10 @@ static int LI_MR(PCode* instr, UInt32* masks) {
         instr->args[1] = defInstr->args[1];
         defininginstruction[instr->defID + 1] = defininginstruction[defInstr->defID + 1];
         deletepcode(defInstr);
-        return 1;
+        return TRUE;
     }
 
-    return 0;
+    return FALSE;
 }
 
 static int VSPLTIS_VMR(PCode* instr, UInt32* masks) {
@@ -1172,19 +1217,24 @@ static int VSPLTIS_VMR(PCode* instr, UInt32* masks) {
     short opcode = defInstr->op;
 
     if ((opcode == PC_VSPLTISB || opcode == PC_VSPLTISH || opcode == PC_VSPLTISW) &&
-        (defInstr->args[0].data.reg.reg ==
-         instr->args[0].data.reg.reg ||
+        (defInstr->args[0].data.reg.reg == instr->args[0].data.reg.reg ||
          !(masks[RegClass_VR] & (1 << defInstr->args[0].data.reg.reg))) &&
         !(PCODE_FLAG_SET_F(instr) & fRecordBit) &&
         !usedbetween(instr, defInstr, &defInstr->args[0])) {
+#ifndef __MWERKS__
+        LS_FRAME(
+            instr->prevPCode == defInstr ? (SInt32)masks : (SInt32)ls_scanned_args(defInstr),
+            defInstr
+        );
+#endif
         change_opcode(instr, opcode);
         instr->args[1] = defInstr->args[1];
         defininginstruction[instr->defID + 1] = defininginstruction[defInstr->defID + 1];
         deletepcode(defInstr);
-        return 1;
+        return TRUE;
     }
 
-    return 0;
+    return FALSE;
 }
 
 static int L_MR(PCode* instr, UInt32* masks) {
@@ -1198,10 +1248,10 @@ static int L_MR(PCode* instr, UInt32* masks) {
         !definedbetween(instr, defInstr, &instr->args[0])) {
         defInstr->args[0].data.reg.reg = instr->args[0].data.reg.reg;
         deletepcode(instr);
-        return 1;
+        return TRUE;
     }
 
-    return 0;
+    return FALSE;
 }
 
 static int L_FMR(PCode* instr, UInt32* masks) {
@@ -1215,10 +1265,10 @@ static int L_FMR(PCode* instr, UInt32* masks) {
         !definedbetween(instr, defInstr, &instr->args[0])) {
         defInstr->args[0].data.reg.reg = instr->args[0].data.reg.reg;
         deletepcode(instr);
-        return 1;
+        return TRUE;
     }
 
-    return 0;
+    return FALSE;
 }
 
 static int L_S(PCode* instr, UInt32* masks) {
@@ -1228,198 +1278,204 @@ static int L_S(PCode* instr, UInt32* masks) {
     SInt32 isVector;
     PCode* scan;
     SInt32 loadSize;
+#ifdef __MWERKS__
     SInt32 defInstrOffset;
     SInt32 scanOffset;
+#else
+    SInt32 defInstrOffset = ls_frame.defInstrOffset;
+    SInt32 scanOffset = ls_frame.scanOffset;
+#endif
     SInt32 storeSize;
 
-#ifdef __wasm__
-    /* A store between to another object leaves both offsets unset, and the original compares its stack slots as
-       earlier calls left them. The scan offset's slot holds a pointer, as computeinstructionpredecessors leaves it
-       (its nop), so the offsets never overlap. (This assumes no L_S call since then has set them.) */
-    defInstrOffset = 0;
-    scanOffset = 0x7FFFFFFF;
-#endif
-
     if (PCODE_FLAG_SET_F(instr) & (fIsVolatile | fSideEffects | fUpdatesPtr)) {
-        return 0;
+        return FALSE;
     }
     if (PCODE_FLAG_SET_F(defInstr) & (fIsVolatile | fSideEffects | fUpdatesPtr)) {
-        return 0;
+        return FALSE;
     }
 
     if ((defInstr->flags & fIsRead) &&
         PC_OP_IS_REGISTER(&defInstr->args[1], RegClass_GPR, instr->args[1].data.reg.reg) &&
-        defInstr->args[2].kind ==
-        instr->args[2].kind &&
+        defInstr->args[2].kind == instr->args[2].kind &&
         !definedbetween(instr, defInstr, &instr->args[1])) {
         if (instr->args[2].kind == PCOp_IMMEDIATE) {
             if (instr->args[2].data.imm.value != defInstr->args[2].data.imm.value) {
-                return 0;
+                return FALSE;
             }
         } else if (instr->args[2].kind == PCOp_MEMORY) {
-            if (instr->args[2].data.mem.offset !=
-                defInstr->args[2].data.mem.offset ||
+            if (instr->args[2].data.mem.offset != defInstr->args[2].data.mem.offset ||
                 instr->args[2].data.mem.obj != defInstr->args[2].data.mem.obj) {
-                return 0;
+                return FALSE;
             }
         } else if (instr->args[2].kind == PCOp_REGISTER && instr->args[2].arg == RegClass_GPR) {
-            if (instr->args[2].data.reg.reg !=
-                defInstr->args[2].data.reg.reg ||
+            if (instr->args[2].data.reg.reg != defInstr->args[2].data.reg.reg ||
                 definedbetween(instr, defInstr, &instr->args[2])) {
-                return 0;
+                return FALSE;
             }
         } else {
-            return 0;
+            return FALSE;
         }
 
-        isIndexed = 0;
-        isFloat = 0;
-        isVector = 0;
+        isIndexed = FALSE;
+        isFloat = FALSE;
+        isVector = FALSE;
         switch (defInstr->op) {
             case PC_LBZX:
-                isIndexed = 1;
+                isIndexed = TRUE;
             case PC_LBZ:
                 loadSize = 1;
                 break;
             case PC_LHZX:
             case PC_LHAX:
-                isIndexed = 1;
+                isIndexed = TRUE;
             case PC_LHZ:
             case PC_LHA:
                 loadSize = 2;
                 break;
             case PC_LWZX:
-                isIndexed = 1;
+                isIndexed = TRUE;
             case PC_LWZ:
                 loadSize = 4;
                 break;
             case PC_LFSX:
-                isIndexed = 1;
+                isIndexed = TRUE;
             case PC_LFS:
-                isFloat = 1;
+                isFloat = TRUE;
                 loadSize = 4;
                 break;
             case PC_LFDX:
-                isIndexed = 1;
+                isIndexed = TRUE;
             case PC_LFD:
-                isFloat = 1;
+                isFloat = TRUE;
                 loadSize = 8;
                 break;
             case PC_LVX:
             case PC_LVXL:
-                isIndexed = 1;
-                isVector = 1;
+                isIndexed = TRUE;
+                isVector = TRUE;
                 loadSize = 16;
                 break;
             default:
-                return 0;
+                return FALSE;
         }
 
         switch (instr->op) {
             case PC_STBX:
                 if (!isIndexed) {
-                    return 0;
+                    return FALSE;
                 }
             case PC_STB:
                 if (isFloat) {
-                    return 0;
+                    return FALSE;
                 }
                 if (loadSize != 1) {
-                    return 0;
+                    return FALSE;
                 }
                 break;
             case PC_STHX:
                 if (!isIndexed) {
-                    return 0;
+                    return FALSE;
                 }
             case PC_STH:
                 if (isFloat) {
-                    return 0;
+                    return FALSE;
                 }
                 if (loadSize != 2) {
-                    return 0;
+                    return FALSE;
                 }
                 break;
             case PC_STWX:
                 if (!isIndexed) {
-                    return 0;
+                    return FALSE;
                 }
             case PC_STW:
                 if (isFloat) {
-                    return 0;
+                    return FALSE;
                 }
                 if (loadSize != 4) {
-                    return 0;
+                    return FALSE;
                 }
                 break;
             case PC_STFSX:
                 if (!isIndexed) {
-                    return 0;
+                    return FALSE;
                 }
             case PC_STFS:
                 if (!isFloat) {
-                    return 0;
+                    return FALSE;
                 }
                 if (loadSize != 4) {
-                    return 0;
+                    return FALSE;
                 }
                 break;
             case PC_STFDX:
                 if (!isIndexed) {
-                    return 0;
+                    return FALSE;
                 }
             case PC_STFD:
                 if (!isFloat) {
-                    return 0;
+                    return FALSE;
                 }
                 if (loadSize != 8) {
-                    return 0;
+                    return FALSE;
                 }
                 break;
             case PC_STVX:
             case PC_STVXL:
                 if (!isIndexed) {
-                    return 0;
+                    return FALSE;
                 }
                 if (!isVector) {
-                    return 0;
+                    return FALSE;
                 }
                 if (loadSize != 16) {
-                    return 0;
+                    return FALSE;
                 }
                 break;
             default:
-                return 0;
+                return FALSE;
         }
 
         for (scan = instr->prevPCode; scan && scan != defInstr; scan = scan->prevPCode) {
             if (scan->flags & fIsWrite) {
                 if (scan->args[1].data.reg.reg != instr->args[1].data.reg.reg) {
-                    return 0;
+                    return FALSE;
                 }
                 if (scan->args[2].kind != defInstr->args[2].kind) {
-                    return 0;
+                    return FALSE;
                 }
 
                 if (scan->args[2].kind == PCOp_MEMORY) {
                     if (instr->args[2].data.mem.obj == scan->args[2].data.mem.obj) {
+#ifndef __MWERKS__
+                        ls_frame.defInstrOffset = defInstr->args[2].data.mem.offset;
+#endif
                         if (instr->args[2].data.mem.offset == defInstr->args[2].data.mem.offset) {
-                            return 0;
+                            return FALSE;
                         }
                         defInstrOffset = defInstr->args[2].data.mem.offset;
                         scanOffset = scan->args[2].data.mem.offset;
+#ifndef __MWERKS__
+                        ls_frame.scanOffset = scanOffset;
+#endif
                     }
                 } else if (scan->args[2].kind == PCOp_IMMEDIATE) {
                     if (instr->args[1].data.reg.reg != scan->args[1].data.reg.reg) {
-                        return 0;
+                        return FALSE;
                     }
+#ifndef __MWERKS__
+                    ls_frame.scanOffset = scan->args[2].data.imm.value;
+#endif
                     if (instr->args[2].data.imm.value == scan->args[2].data.imm.value) {
-                        return 0;
+                        return FALSE;
                     }
                     defInstrOffset = defInstr->args[2].data.imm.value;
                     scanOffset = scan->args[2].data.imm.value;
+#ifndef __MWERKS__
+                    ls_frame.defInstrOffset = defInstrOffset;
+#endif
                 } else {
-                    return 0;
+                    return FALSE;
                 }
 
                 switch (scan->op) {
@@ -1446,26 +1502,26 @@ static int L_S(PCode* instr, UInt32* masks) {
                         storeSize = 16;
                         break;
                     default:
-                        return 0;
+                        return FALSE;
                 }
 
                 if (defInstrOffset > scanOffset) {
                     if ((scanOffset + storeSize) > defInstrOffset) {
-                        return 0;
+                        return FALSE;
                     }
                 } else {
                     if ((defInstrOffset + loadSize) > scanOffset) {
-                        return 0;
+                        return FALSE;
                     }
                 }
             }
         }
 
         deletepcode(instr);
-        return 1;
+        return TRUE;
     }
 
-    return 0;
+    return FALSE;
 }
 
 static int RLWINM_RLWINM(PCode* instr, UInt32* masks) {
@@ -1473,14 +1529,11 @@ static int RLWINM_RLWINM(PCode* instr, UInt32* masks) {
     short start;
     short end;
 
-    if (defInstr->op ==
-        PC_RLWINM &&
+    if (defInstr->op == PC_RLWINM &&
         !(PCODE_FLAG_SET_F(defInstr) & fRecordBit) &&
         !definedbetween(instr, defInstr, &defInstr->args[1]) &&
-        !(defInstr->args[0].data.reg.reg ==
-          defInstr->args[1].data.reg.reg &&
-          ((defInstr->args[0].data.reg.reg !=
-            instr->args[0].data.reg.reg &&
+        !(defInstr->args[0].data.reg.reg == defInstr->args[1].data.reg.reg &&
+          ((defInstr->args[0].data.reg.reg != instr->args[0].data.reg.reg &&
             (masks[RegClass_GPR] & (1 << defInstr->args[0].data.reg.reg))) ||
            usedbetween(instr, defInstr, &defInstr->args[0]))) &&
         canmergemasks(
@@ -1494,10 +1547,10 @@ static int RLWINM_RLWINM(PCode* instr, UInt32* masks) {
         )) {
         if (instr->op == PC_RLWIMI) {
             if (instr->args[0].data.reg.reg == defInstr->args[0].data.reg.reg) {
-                return 0;
+                return FALSE;
             }
             if (start != instr->args[3].data.imm.value || end != instr->args[4].data.imm.value) {
-                return 0;
+                return FALSE;
             }
         }
 
@@ -1509,45 +1562,45 @@ static int RLWINM_RLWINM(PCode* instr, UInt32* masks) {
         instr->args[3].data.imm.value = start;
         instr->args[4].data.imm.value = end;
 
-        if ((defInstr->args[0].data.reg.reg ==
-             instr->args[0].data.reg.reg ||
+        if ((defInstr->args[0].data.reg.reg == instr->args[0].data.reg.reg ||
              !(masks[RegClass_GPR] & (1 << defInstr->args[0].data.reg.reg))) &&
             !usedbetween(instr, defInstr, &defInstr->args[0])) {
+#ifndef __MWERKS__
+            LS_FRAME(defInstr, 0x0050471B);
+#endif
             deletepcode(defInstr);
         }
 
-        return 1;
+        return TRUE;
     }
 
-    if (defInstr->op ==
-        PC_MR &&
-        instr->op ==
-        PC_RLWINM &&
+    if (defInstr->op == PC_MR &&
+        instr->op == PC_RLWINM &&
         !definedbetween(instr, defInstr, &defInstr->args[1])) {
         instr->args[1].data.reg.reg = defInstr->args[1].data.reg.reg;
         defininginstruction[instr->defID + 1] = defininginstruction[defInstr->defID + 1];
 
-        if ((defInstr->args[0].data.reg.reg ==
-             instr->args[0].data.reg.reg ||
+        if ((defInstr->args[0].data.reg.reg == instr->args[0].data.reg.reg ||
              !(masks[RegClass_GPR] & (1 << defInstr->args[0].data.reg.reg))) &&
             !(PCODE_FLAG_SET_F(defInstr) & fRecordBit) &&
             !usedbetween(instr, defInstr, &defInstr->args[0])) {
+#ifndef __MWERKS__
+            LS_FRAME(defInstr, 0x00504860);
+#endif
             deletepcode(defInstr);
         }
 
-        return 1;
+        return TRUE;
     }
 
-    return 0;
+    return FALSE;
 }
 
 static int MULLI_MULLI(PCode* instr, UInt32* masks) {
     PCode* defInstr = defininginstruction[instr->defID + 1];
 
-    if (defInstr->op ==
-        PC_MULLI &&
-        (defInstr->args[0].data.reg.reg ==
-         instr->args[0].data.reg.reg ||
+    if (defInstr->op == PC_MULLI &&
+        (defInstr->args[0].data.reg.reg == instr->args[0].data.reg.reg ||
          !(masks[RegClass_GPR] & (1 << defInstr->args[0].data.reg.reg))) &&
         !(PCODE_FLAG_SET_F(defInstr) & fRecordBit) &&
         !definedbetween(instr, defInstr, &defInstr->args[1]) &&
@@ -1558,73 +1611,64 @@ static int MULLI_MULLI(PCode* instr, UInt32* masks) {
 
         instr->args[2].data.imm.value *= defInstr->args[2].data.imm.value;
         deletepcode(defInstr);
-        return 1;
+        return TRUE;
     }
 
-    return 0;
+    return FALSE;
 }
 
 static int ADDI_ADDI(PCode* instr, UInt32* masks) {
     PCode* defInstr = defininginstruction[instr->defID + 1];
 
-    if (defInstr->op ==
-        PC_ADDI &&
-        (defInstr->args[0].data.reg.reg ==
-         instr->args[0].data.reg.reg ||
+    if (defInstr->op == PC_ADDI &&
+        (defInstr->args[0].data.reg.reg == instr->args[0].data.reg.reg ||
          !(masks[RegClass_GPR] & (1 << defInstr->args[0].data.reg.reg))) &&
         !(PCODE_FLAG_SET_F(defInstr) & fRecordBit) &&
         !definedbetween(instr, defInstr, &defInstr->args[1]) &&
         !usedbetween(instr, defInstr, &defInstr->args[0]) &&
-        instr->args[2].kind ==
-        PCOp_IMMEDIATE &&
-        defInstr->args[2].kind ==
-        PCOp_IMMEDIATE &&
+        instr->args[2].kind == PCOp_IMMEDIATE &&
+        defInstr->args[2].kind == PCOp_IMMEDIATE &&
         FITS_IN_SHORT(instr->args[2].data.imm.value + defInstr->args[2].data.imm.value)) {
         instr->args[1].data.reg.reg = defInstr->args[1].data.reg.reg;
         defininginstruction[instr->defID + 1] = defininginstruction[defInstr->defID + 1];
 
         instr->args[2].data.imm.value += defInstr->args[2].data.imm.value;
         deletepcode(defInstr);
-        return 1;
+        return TRUE;
     }
 
-    return 0;
+    return FALSE;
 }
 
 static int SRAWI_SRAWI(PCode* instr, UInt32* masks) {
     PCode* defInstr = defininginstruction[instr->defID + 1];
 
-    if (defInstr->op ==
-        PC_SRAWI &&
-        (defInstr->args[0].data.reg.reg ==
-         instr->args[0].data.reg.reg ||
+    if (defInstr->op == PC_SRAWI &&
+        (defInstr->args[0].data.reg.reg == instr->args[0].data.reg.reg ||
          !(masks[RegClass_GPR] & (1 << defInstr->args[0].data.reg.reg))) &&
         !(PCODE_FLAG_SET_F(defInstr) & fRecordBit) &&
         !definedbetween(instr, defInstr, &defInstr->args[1]) &&
         !usedbetween(instr, defInstr, &defInstr->args[0]) &&
-        instr->args[2].kind ==
-        PCOp_IMMEDIATE &&
-        defInstr->args[2].kind ==
-        PCOp_IMMEDIATE &&
-        (instr->args[2].data.imm.value + defInstr->args[2].data.imm.value) <
-        32 &&
+        instr->args[2].kind == PCOp_IMMEDIATE &&
+        defInstr->args[2].kind == PCOp_IMMEDIATE &&
+        (instr->args[2].data.imm.value + defInstr->args[2].data.imm.value) < 32 &&
         (instr->args[2].data.imm.value + defInstr->args[2].data.imm.value) > 0) {
         instr->args[1].data.reg.reg = defInstr->args[1].data.reg.reg;
         defininginstruction[instr->defID + 1] = defininginstruction[defInstr->defID + 1];
 
         instr->args[2].data.imm.value += defInstr->args[2].data.imm.value;
         deletepcode(defInstr);
-        return 1;
+        return TRUE;
     }
 
-    return 0;
+    return FALSE;
 }
 
 static int MR_ADDI(PCode* instr, UInt32* masks) {
     PCode* prev = instr->prevPCode;
     PCode* next = instr->nextPCode;
-    int prevFlag = 0;
-    int nextFlag = 0;
+    int prevFlag = FALSE;
+    int nextFlag = FALSE;
 
     if (copts.processor == CPU_PPC603e) {
         if (prev) {
@@ -1635,10 +1679,8 @@ static int MR_ADDI(PCode* instr, UInt32* masks) {
         }
 
         if (!(PCODE_FLAG_SET_F(instr) & fRecordBit) &&
-            instr->argCount >=
-            2 &&
-            instr->args[1].data.reg.reg !=
-            0 &&
+            instr->argCount >= 2 &&
+            instr->args[1].data.reg.reg != 0 &&
             (prevFlag || nextFlag)) {
             change_opcode(instr, PC_ADDI);
             instr->args[2].kind = PCOp_IMMEDIATE;
@@ -1648,22 +1690,20 @@ static int MR_ADDI(PCode* instr, UInt32* masks) {
         }
     }
 
-    return 0;
+    return FALSE;
 }
 
 static int rotatedefinedusedtest(UInt32* masks, PCode* instr, PCode* a, PCode* b, PCode* subfic) {
     PCode* scan;
     PCodeArg* op;
     int i;
-    // (Pro7: int; 2.6 keeps the two register numbers as shorts)
     SInt16 reg1;
     SInt16 reg2;
 
     if ((masks[RegClass_GPR] & (1 << subfic->args[0].data.reg.reg)) &&
-        subfic->args[0].data.reg.reg !=
-        instr->args[0].data.reg.reg &&
+        subfic->args[0].data.reg.reg != instr->args[0].data.reg.reg &&
         subfic->args[0].data.reg.reg != a->args[2].data.reg.reg) {
-        return 1;
+        return TRUE;
     }
 
     for (scan = instr->block->firstPCode; scan != instr->block->lastPCode; scan = scan->nextPCode) {
@@ -1682,28 +1722,23 @@ static int rotatedefinedusedtest(UInt32* masks, PCode* instr, PCode* a, PCode* b
     reg2 = subfic->args[1].data.reg.reg;
     while (scan != instr) {
         for (op = instr->args, i = instr->argCount; i--; op++) {
-            if (op->kind ==
-                PCOp_REGISTER &&
-                op->arg ==
-                RegClass_GPR &&
+            if (op->kind == PCOp_REGISTER &&
+                op->arg == RegClass_GPR &&
                 (((op->data.reg.reg == reg1 || op->data.reg.reg == reg2) &&
                   (op->data.reg.effect & EffectWrite)) ||
-                 (op->data.reg.reg ==
-                  subfic->args[0].data.reg.reg &&
+                 (op->data.reg.reg == subfic->args[0].data.reg.reg &&
                   (op->data.reg.effect & EffectRead))) &&
-                scan !=
-                a &&
-                scan !=
-                b &&
+                scan != a &&
+                scan != b &&
                 scan != subfic) {
-                return 1;
+                return TRUE;
             }
         }
 
         scan = scan->nextPCode;
     }
 
-    return 0;
+    return FALSE;
 }
 
 static int SRW_SUBFIC_RLW_OR(PCode* instr, UInt32* masks) {
@@ -1712,46 +1747,45 @@ static int SRW_SUBFIC_RLW_OR(PCode* instr, UInt32* masks) {
     PCode* defInstr2 = defininginstruction[instr->defID + 2];
 
     if (PCODE_FLAG_SET_F(instr) & fRecordBit) {
-        return 0;
+        return FALSE;
     }
 
     if ((masks[RegClass_GPR] & (1 << instr->args[1].data.reg.reg)) &&
         instr->args[1].data.reg.reg != instr->args[0].data.reg.reg) {
-        return 0;
+        return FALSE;
     }
 
     if ((masks[RegClass_GPR] & (1 << instr->args[2].data.reg.reg)) &&
         instr->args[1].data.reg.reg != instr->args[0].data.reg.reg) {
-        return 0;
+        return FALSE;
     }
 
     if (defInstr1->op != PC_SRW && defInstr1->op != PC_SLW) {
-        return 0;
+        return FALSE;
     }
     if (defInstr2->op != PC_SRW && defInstr2->op != PC_SLW) {
-        return 0;
+        return FALSE;
     }
 
     if (usedbetween(instr, defInstr1, &defInstr1->args[0])) {
-        return 0;
+        return FALSE;
     }
     if (usedbetween(instr, defInstr2, &defInstr2->args[0])) {
-        return 0;
+        return FALSE;
     }
 
-    if (defInstr1->op ==
-        PC_SRW &&
-        defInstr2->op ==
-        PC_SLW &&
+    if (defInstr1->op == PC_SRW &&
+        defInstr2->op == PC_SLW &&
         defInstr1->args[1].data.reg.reg == defInstr2->args[1].data.reg.reg) {
         subfic = defininginstruction[defInstr1->defID + 2];
-        if (subfic->op ==
-            PC_SUBFIC &&
-            subfic->args[1].data.reg.reg ==
-            defInstr2->args[2].data.reg.reg &&
+        if (subfic->op == PC_SUBFIC &&
+            subfic->args[1].data.reg.reg == defInstr2->args[2].data.reg.reg &&
             subfic->args[2].data.imm.value == 32) {
+#ifndef __MWERKS__
+            LS_FRAME_FIRST(subfic);
+#endif
             if (rotatedefinedusedtest(masks, instr, defInstr2, defInstr1, subfic)) {
-                return 0;
+                return FALSE;
             }
 
             change_opcode(instr, PC_RLWNM);
@@ -1773,17 +1807,18 @@ static int SRW_SUBFIC_RLW_OR(PCode* instr, UInt32* masks) {
             deletepcode(defInstr1);
             deletepcode(defInstr2);
             deletepcode(subfic);
-            return 1;
+            return TRUE;
         }
 
         subfic = defininginstruction[defInstr2->defID + 2];
-        if (subfic->op ==
-            PC_SUBFIC &&
-            subfic->args[1].data.reg.reg ==
-            defInstr1->args[2].data.reg.reg &&
+        if (subfic->op == PC_SUBFIC &&
+            subfic->args[1].data.reg.reg == defInstr1->args[2].data.reg.reg &&
             subfic->args[2].data.imm.value == 32) {
+#ifndef __MWERKS__
+            LS_FRAME_FIRST(subfic);
+#endif
             if (rotatedefinedusedtest(masks, instr, defInstr2, defInstr1, subfic)) {
-                return 0;
+                return FALSE;
             }
 
             change_opcode(instr, PC_RLWNM);
@@ -1802,23 +1837,25 @@ static int SRW_SUBFIC_RLW_OR(PCode* instr, UInt32* masks) {
             instr->args[4].data.imm.value = 31;
             instr->args[4].data.imm.obj = NULL;
 
+#ifndef __MWERKS__
+            LS_FRAME_FIRST(defInstr2);
+#endif
             deletepcode(defInstr1);
             deletepcode(defInstr2);
-            return 1;
+            return TRUE;
         }
-    } else if (defInstr1->op ==
-               PC_SLW &&
-               defInstr2->op ==
-               PC_SRW &&
+    } else if (defInstr1->op == PC_SLW &&
+               defInstr2->op == PC_SRW &&
                defInstr1->args[1].data.reg.reg == defInstr2->args[1].data.reg.reg) {
         subfic = defininginstruction[defInstr1->defID + 2];
-        if (subfic->op ==
-            PC_SUBFIC &&
-            subfic->args[1].data.reg.reg ==
-            defInstr2->args[2].data.reg.reg &&
+        if (subfic->op == PC_SUBFIC &&
+            subfic->args[1].data.reg.reg == defInstr2->args[2].data.reg.reg &&
             subfic->args[2].data.imm.value == 32) {
+#ifndef __MWERKS__
+            LS_FRAME_FIRST(subfic);
+#endif
             if (rotatedefinedusedtest(masks, instr, defInstr1, defInstr2, subfic)) {
-                return 0;
+                return FALSE;
             }
 
             change_opcode(instr, PC_RLWNM);
@@ -1837,19 +1874,23 @@ static int SRW_SUBFIC_RLW_OR(PCode* instr, UInt32* masks) {
             instr->args[4].data.imm.value = 31;
             instr->args[4].data.imm.obj = NULL;
 
+#ifndef __MWERKS__
+            LS_FRAME_FIRST(defInstr2);
+#endif
             deletepcode(defInstr1);
             deletepcode(defInstr2);
-            return 1;
+            return TRUE;
         }
 
         subfic = defininginstruction[defInstr2->defID + 2];
-        if (subfic->op ==
-            PC_SUBFIC &&
-            subfic->args[1].data.reg.reg ==
-            defInstr1->args[2].data.reg.reg &&
+        if (subfic->op == PC_SUBFIC &&
+            subfic->args[1].data.reg.reg == defInstr1->args[2].data.reg.reg &&
             subfic->args[2].data.imm.value == 32) {
+#ifndef __MWERKS__
+            LS_FRAME_FIRST(subfic);
+#endif
             if (rotatedefinedusedtest(masks, instr, defInstr1, defInstr2, subfic)) {
-                return 0;
+                return FALSE;
             }
 
             change_opcode(instr, PC_RLWNM);
@@ -1871,11 +1912,11 @@ static int SRW_SUBFIC_RLW_OR(PCode* instr, UInt32* masks) {
             deletepcode(defInstr1);
             deletepcode(defInstr2);
             deletepcode(subfic);
-            return 1;
+            return TRUE;
         }
     }
 
-    return 0;
+    return FALSE;
 }
 
 static int RLWINM_RLWIMI_STW(PCode* instr, UInt32* masks) {
@@ -1887,14 +1928,15 @@ static int RLWINM_RLWIMI_STW(PCode* instr, UInt32* masks) {
     PCode* array[4];
     PCode* p;
 
+#ifndef __MWERKS__
+    ls_frame.defInstrOffset = (ls_frame.defInstrOffset & ~0xFFFF) | (UInt16)instr->op;
+#endif
     flags = 0;
-    isZeroOffset = 0;
-    if (instr->op ==
-        PC_STW &&
-        instr->args[2].kind ==
-        PCOp_IMMEDIATE &&
+    isZeroOffset = FALSE;
+    if (instr->op == PC_STW &&
+        instr->args[2].kind == PCOp_IMMEDIATE &&
         instr->args[2].data.imm.value == 0) {
-        isZeroOffset = 1;
+        isZeroOffset = TRUE;
     }
 
     scan = instr;
@@ -1908,80 +1950,83 @@ static int RLWINM_RLWIMI_STW(PCode* instr, UInt32* masks) {
         p = array[i];
         scan = p;
         if (array[0]->args[1].data.reg.reg != p->args[1].data.reg.reg) {
-            return 0;
+            return FALSE;
         }
 
         if (i < 3) {
             if (scan->op != PC_RLWIMI) {
-                return 0;
+                return FALSE;
             }
         } else {
             if (scan->op != PC_RLWINM) {
-                return 0;
+                return FALSE;
             }
         }
 
         if (scan->args[2].data.imm.value == 8) {
             if (scan->args[3].data.imm.value == 24 && scan->args[4].data.imm.value == 31) {
                 if (flags & 1) {
-                    return 0;
+                    return FALSE;
                 }
                 flags |= 1;
             } else if (scan->args[3].data.imm.value == 8 && scan->args[4].data.imm.value == 15) {
                 if (flags & 4) {
-                    return 0;
+                    return FALSE;
                 }
                 flags |= 4;
             } else {
-                return 0;
+                return FALSE;
             }
         } else if (scan->args[2].data.imm.value == 24) {
             if (scan->args[3].data.imm.value == 0 && scan->args[4].data.imm.value == 7) {
                 if (flags & 8) {
-                    return 0;
+                    return FALSE;
                 }
                 flags |= 8;
             } else if (scan->args[3].data.imm.value == 16 && scan->args[4].data.imm.value == 23) {
                 if (flags & 2) {
-                    return 0;
+                    return FALSE;
                 }
                 flags |= 2;
             } else {
-                return 0;
+                return FALSE;
             }
         } else {
-            return 0;
+            return FALSE;
         }
     }
 
+#ifndef __MWERKS__
+    LS_FRAME_SECOND(array[3]);
+#endif
     if (definedbetween(instr, array[3], &array[0]->args[1])) {
-        return 0;
+        return FALSE;
     }
 
     if (instr->op == PC_STWX) {
         change_opcode(instr, PC_STWBRX);
         instr->args[0] = array[0]->args[1];
         defininginstruction[instr->defID] = defininginstruction[array[3]->defID + 1];
-        return 1;
+        return TRUE;
     }
 
     if (instr->op == PC_STW) {
         if (!isZeroOffset) {
             if (masks[RegClass_GPR] & (1 << array[0]->args[0].data.reg.reg)) {
-                return 0;
+                return FALSE;
             }
 
             if (usedbetween(array[2], array[3], &array[0]->args[0])) {
-                return 0;
+                return FALSE;
             }
             if (usedbetween(array[1], array[2], &array[0]->args[0])) {
-                return 0;
+                return FALSE;
             }
             if (usedbetween(array[0], array[1], &array[0]->args[0])) {
-                return 0;
+                return FALSE;
             }
             if (usedbetween(instr, array[0], &array[0]->args[0])) {
-                return 0;
+                return FALSE;
             }
         }
 
@@ -2012,8 +2057,6 @@ static int RLWINM_RLWIMI_STW(PCode* instr, UInt32* masks) {
             defininginstruction[instr->defID + 2] = defininginstruction[instr->defID + 1];
 
             {
-                // TODO: a copy of `instr` (2.6 does not reload it after each store; Pro7's direct
-                // uses do)
                 PCode* t = instr;
                 t->args[1].kind = PCOp_REGISTER;
                 t->args[1].arg = RegClass_GPR;
@@ -2022,10 +2065,10 @@ static int RLWINM_RLWIMI_STW(PCode* instr, UInt32* masks) {
             }
         }
 
-        return 1;
+        return TRUE;
     }
 
-    return 0;
+    return FALSE;
 }
 
 static int RLWINM_RLWIMI_STH(PCode* instr, UInt32* masks) {
@@ -2038,13 +2081,11 @@ static int RLWINM_RLWIMI_STH(PCode* instr, UInt32* masks) {
     PCode* p;
 
     flags = 0;
-    isZeroOffset = 0;
-    if (instr->op ==
-        PC_STH &&
-        instr->args[2].kind ==
-        PCOp_IMMEDIATE &&
+    isZeroOffset = FALSE;
+    if (instr->op == PC_STH &&
+        instr->args[2].kind == PCOp_IMMEDIATE &&
         instr->args[2].data.imm.value == 0) {
-        isZeroOffset = 1;
+        isZeroOffset = TRUE;
     }
 
     scan = instr;
@@ -2058,64 +2099,70 @@ static int RLWINM_RLWIMI_STH(PCode* instr, UInt32* masks) {
         p = array[i];
         scan = p;
         if (array[0]->args[1].data.reg.reg != p->args[1].data.reg.reg) {
-            return 0;
+            return FALSE;
         }
 
         if (i < 1) {
             if (scan->op != PC_RLWIMI) {
-                return 0;
+                return FALSE;
             }
         } else {
             if (scan->op != PC_RLWINM) {
-                return 0;
+                return FALSE;
             }
         }
 
         if (scan->args[2].data.imm.value == 8) {
             if (scan->args[3].data.imm.value == 16 && scan->args[4].data.imm.value == 23) {
                 if (flags & 2) {
-                    return 0;
+                    return FALSE;
                 }
                 flags |= 2;
             } else {
-                return 0;
+                return FALSE;
             }
         } else if (scan->args[2].data.imm.value == 24) {
             if (scan->args[3].data.imm.value == 24 && scan->args[4].data.imm.value == 31) {
                 if (flags & 1) {
-                    return 0;
+                    return FALSE;
                 }
                 flags |= 1;
             } else {
-                return 0;
+                return FALSE;
             }
         } else {
-            return 0;
+            return FALSE;
         }
     }
 
+#ifndef __MWERKS__
+    LS_FRAME_SECOND(array[1]);
+#endif
     if (definedbetween(instr, array[1], &array[0]->args[1])) {
-        return 0;
+        return FALSE;
     }
 
     if (instr->op == PC_STHX) {
+#ifndef __MWERKS__
+        LS_FRAME_FIRST(PC_STHBRX);
+#endif
         change_opcode(instr, PC_STHBRX);
         instr->args[0] = array[0]->args[1];
         defininginstruction[instr->defID] = defininginstruction[array[1]->defID + 1];
-        return 1;
+        return TRUE;
     }
 
     if (instr->op == PC_STH) {
         if (!isZeroOffset) {
             if (masks[RegClass_GPR] & (1 << array[0]->args[0].data.reg.reg)) {
-                return 0;
+                return FALSE;
             }
 
             if (usedbetween(array[0], array[1], &array[0]->args[0])) {
-                return 0;
+                return FALSE;
             }
             if (usedbetween(instr, array[0], &array[0]->args[0])) {
-                return 0;
+                return FALSE;
             }
         }
 
@@ -2137,9 +2184,15 @@ static int RLWINM_RLWIMI_STH(PCode* instr, UInt32* masks) {
             masks[RegClass_GPR] |= 1 << newInstr->args[0].data.reg.reg;
             masks[RegClass_GPR] |= 1 << newInstr->args[2].data.reg.reg;
 
+#ifndef __MWERKS__
+            LS_FRAME_FIRST(array[1]);
+#endif
             deletepcode(array[0]);
             deletepcode(array[1]);
         } else {
+#ifndef __MWERKS__
+            LS_FRAME_FIRST(PC_STHBRX);
+#endif
             change_opcode(instr, PC_STHBRX);
             instr->args[0] = array[0]->args[1];
             instr->args[2] = instr->args[1];
@@ -2151,10 +2204,10 @@ static int RLWINM_RLWIMI_STH(PCode* instr, UInt32* masks) {
             instr->args[1].data.reg.effect = 0;
         }
 
-        return 1;
+        return TRUE;
     }
 
-    return 0;
+    return FALSE;
 }
 
 static void peepholeoptimizeblock(PCodeBlock* block) {
@@ -2171,15 +2224,12 @@ static void peepholeoptimizeblock(PCodeBlock* block) {
 
     for (instr = block->lastPCode; instr; instr = instr->prevPCode) {
         if (dead(instr, masks)) {
-            ORACLE_PROBE(OracleProbe_PeepholeDead(instr));
             deletepcode(instr);
         } else {
             pattern = peepholepatterns[instr->op];
 
             while (pattern) {
-                ORACLE_PROBE(OracleProbe_PeepholeTry(instr, (void*)pattern->func));
                 if (pattern->func(instr, masks)) {
-                    ORACLE_PROBE(OracleProbe_PeepholeHit(instr));
                     if (!instr->block) {
                         break;
                     }
@@ -2265,9 +2315,6 @@ static SInt32 computepossiblemask(PCode* instr, short reg) {
                         break;
 
                     case PC_RLWIMI: {
-                        // TODO: 2.6 spells this case unlike Pro7's (whose text, the same as the
-                        // RLWINM case's, gives other registers for the rotation); this spelling
-                        // matches, the original's is not known
                         UInt32 value =
                             computepossiblemask(instr->prevPCode, instr->args[1].data.reg.reg);
                         UInt32 afterEnd, fromStart, m;
@@ -2401,41 +2448,37 @@ static void adjustforward(PCodeBlock* block) {
     PCodeArg* a;
     int i;
     short opcode;
-    short reg0;
-    int reg1;
+    short destReg;
+    int srcReg;
     SInt32 valA;
     SInt32 valB;
 
     instr = block->firstPCode;
     while (instr) {
         if (instr->op == PC_RLWINM) {
-            SInt32 val2;
-            SInt32 val3;
-            SInt32 val4;
+            SInt32 sh;
+            SInt32 mb;
+            SInt32 me;
             short start;
             short end;
 
-            short flag1 = 0;
-            short flag2 = 0;
-            reg0 = instr->args[0].data.reg.reg;
-            reg1 = instr->args[1].data.reg.reg;
-            val2 = instr->args[2].data.imm.value;
-            val3 = instr->args[3].data.imm.value;
-            val4 = instr->args[4].data.imm.value;
+            short cr0Touched = FALSE;
+            short sourceChanged = FALSE;
+            destReg = instr->args[0].data.reg.reg;
+            srcReg = instr->args[1].data.reg.reg;
+            sh = instr->args[2].data.imm.value;
+            mb = instr->args[3].data.imm.value;
+            me = instr->args[4].data.imm.value;
 
             for (scan = instr->nextPCode; scan; scan = scan->nextPCode) {
-                // 2.6 reads the operands its tests look at through one pointer computed at the top
-                // of each step (`lea esi, [scan + 0x24]`); the stores go through `scan`
                 a = scan->args;
                 opcode = scan->op;
-                if (opcode == PC_RLWINM && a[1].data.reg.reg == reg0) {
-                    if (a[3].data.imm.value ==
-                        val3 &&
-                        a[4].data.imm.value ==
-                        val4 &&
+                if (opcode == PC_RLWINM && a[1].data.reg.reg == destReg) {
+                    if (a[3].data.imm.value == mb &&
+                        a[4].data.imm.value == me &&
                         a[2].data.imm.value == 0) {
                         if (PCODE_FLAG_SET_F(scan) & fRecordBit) {
-                            if (!flag1) {
+                            if (!cr0Touched) {
                                 pcsetrecordbit(instr);
                                 change_opcode(scan, PC_MR);
                                 scan->flags &= ~fRecordBit;
@@ -2450,37 +2493,32 @@ static void adjustforward(PCodeBlock* block) {
                             change_opcode(scan, PC_MR);
                             change_num_operands(scan, 2);
                         }
-                    } else if (reg0 !=
-                               reg1 &&
-                               !flag2 &&
+                    } else if (destReg != srcReg &&
+                               !sourceChanged &&
                                canmergemasks(
-                                   val3,
-                                   val4,
+                                   mb,
+                                   me,
                                    a[2].data.imm.value,
                                    a[3].data.imm.value,
                                    a[4].data.imm.value,
                                    &start,
                                    &end
                                )) {
-                        scan->args[1].data.reg.reg = reg1;
+                        scan->args[1].data.reg.reg = srcReg;
                         scan->args[2].data.imm.value =
                             (scan->args[2].data.imm.value + instr->args[2].data.imm.value) & 31;
                         scan->args[3].data.imm.value = start;
                         scan->args[4].data.imm.value = end;
                     }
-                } else if (opcode ==
-                           PC_SRAWI &&
-                           a[1].data.reg.reg ==
-                           reg0 &&
-                           reg0 !=
-                           reg1 &&
-                           instr->args[2].data.imm.value ==
-                           0 &&
-                           !(computepossiblemask(instr, reg0) & 0x80000000) &&
-                           !flag2 &&
+                } else if (opcode == PC_SRAWI &&
+                           a[1].data.reg.reg == destReg &&
+                           destReg != srcReg &&
+                           instr->args[2].data.imm.value == 0 &&
+                           !(computepossiblemask(instr, destReg) & 0x80000000) &&
+                           !sourceChanged &&
                            canmergemasks(
-                               val3,
-                               val4,
+                               mb,
+                               me,
                                32 - a[2].data.imm.value,
                                a[2].data.imm.value,
                                31,
@@ -2491,22 +2529,26 @@ static void adjustforward(PCodeBlock* block) {
                     insertpcodeafter(
                         scan,
                         makepcode(
-                            PC_RLWINM, a[0].data.reg.reg, reg1, 32 - a[2].data.imm.value, start, end
+                            PC_RLWINM,
+                            a[0].data.reg.reg,
+                            srcReg,
+                            32 - a[2].data.imm.value,
+                            start,
+                            end
                         )
                     );
                     if (PCODE_FLAG_SET_F(scan) & fRecordBit) {
                         pcsetrecordbit(scan->nextPCode);
                     }
                     deletepcode(scan);
-                } else if (opcode ==
-                           PC_OR &&
-                           !flag2 &&
-                           reg0 !=
-                           reg1 &&
+                } else if (opcode == PC_OR &&
+                           !sourceChanged &&
+                           destReg != srcReg &&
                            !(PCODE_FLAG_SET_F(scan) & fRecordBit) &&
                            !(PCODE_FLAG_SET_F(instr) & fRecordBit) &&
                            scan->args[0].data.reg.reg != instr->args[1].data.reg.reg) {
-                    if (a[1].data.reg.reg == reg0 && canuseinsert(instr, scan, a[2].data.reg.reg)) {
+                    if (a[1].data.reg.reg == destReg &&
+                        canuseinsert(instr, scan, a[2].data.reg.reg)) {
                         op = &scan->args[2];
                         tmp = find_def_backwords(scan->prevPCode, op->data.reg.reg);
                         if (tmp->op == PC_RLWINM && tmp->args[2].data.imm.value == 0) {
@@ -2571,7 +2613,8 @@ static void adjustforward(PCodeBlock* block) {
                         break;
                     }
 
-                    if (a[2].data.reg.reg == reg0 && canuseinsert(instr, scan, a[1].data.reg.reg)) {
+                    if (a[2].data.reg.reg == destReg &&
+                        canuseinsert(instr, scan, a[1].data.reg.reg)) {
                         op = &scan->args[1];
                         tmp = find_def_backwords(scan->prevPCode, op->data.reg.reg);
                         if (tmp->op == PC_RLWINM && tmp->args[2].data.imm.value == 0) {
@@ -2635,44 +2678,33 @@ static void adjustforward(PCodeBlock* block) {
                         insertpcodeafter(scan, tmp);
                         break;
                     }
-                } else if (!flag2 &&
-                           reg0 !=
-                           reg1 &&
-                           val4 ==
-                           31 &&
-                           instr->args[2].data.imm.value ==
-                           0 &&
-                           (((opcode == PC_STB || opcode == PC_STBX) && val3 <= 24) ||
-                            ((opcode == PC_STH || opcode == PC_STHX) && val3 <= 16)) &&
-                           scan->args[0].data.reg.reg == reg0) {
-                    scan->args[0].data.reg.reg = reg1;
-                } else if (opcode ==
-                           PC_EXTSH &&
-                           a[1].data.reg.reg ==
-                           reg0 &&
-                           val2 ==
-                           0 &&
-                           val3 >
-                           16 &&
-                           val3 < val4) {
+                } else if (!sourceChanged &&
+                           destReg != srcReg &&
+                           me == 31 &&
+                           instr->args[2].data.imm.value == 0 &&
+                           (((opcode == PC_STB || opcode == PC_STBX) && mb <= 24) ||
+                            ((opcode == PC_STH || opcode == PC_STHX) && mb <= 16)) &&
+                           scan->args[0].data.reg.reg == destReg) {
+                    scan->args[0].data.reg.reg = srcReg;
+                } else if (opcode == PC_EXTSH &&
+                           a[1].data.reg.reg == destReg &&
+                           sh == 0 &&
+                           mb > 16 &&
+                           mb < me) {
                     change_opcode(scan, PC_MR);
-                    if ((PCODE_FLAG_SET_F(scan) & fRecordBit) && !flag1) {
+                    if ((PCODE_FLAG_SET_F(scan) & fRecordBit) && !cr0Touched) {
                         pcsetrecordbit(instr);
                         scan->flags &= ~fRecordBit;
                         scan->flags |= fIsMove;
                         change_num_operands(scan, 2);
                     }
-                } else if (opcode ==
-                           PC_EXTSB &&
-                           a[1].data.reg.reg ==
-                           reg0 &&
-                           val2 ==
-                           0 &&
-                           val3 >
-                           24 &&
-                           val3 < val4) {
+                } else if (opcode == PC_EXTSB &&
+                           a[1].data.reg.reg == destReg &&
+                           sh == 0 &&
+                           mb > 24 &&
+                           mb < me) {
                     change_opcode(scan, PC_MR);
-                    if ((PCODE_FLAG_SET_F(scan) & fRecordBit) && !flag1) {
+                    if ((PCODE_FLAG_SET_F(scan) & fRecordBit) && !cr0Touched) {
                         pcsetrecordbit(instr);
                         scan->flags &= ~fRecordBit;
                         scan->flags |= fIsMove;
@@ -2681,35 +2713,34 @@ static void adjustforward(PCodeBlock* block) {
                 }
 
                 for (op = scan->args, i = scan->argCount; i--; op++) {
-                    if (PC_OP_IS_WRITE_REGISTER(op, RegClass_GPR, reg0)) {
+                    if (PC_OP_IS_WRITE_REGISTER(op, RegClass_GPR, destReg)) {
                         scan = block->lastPCode;
                         break;
                     }
 
-                    if (PC_OP_IS_WRITE_REGISTER(op, RegClass_GPR, reg1)) {
-                        flag2 = 1;
+                    if (PC_OP_IS_WRITE_REGISTER(op, RegClass_GPR, srcReg)) {
+                        sourceChanged = TRUE;
                     }
 
                     if (PC_OP_IS_REGISTER(op, RegClass_CRFIELD, 0)) {
-                        flag1 = 1;
+                        cr0Touched = TRUE;
                     }
                 }
             }
 
-        } else if (instr->op ==
-                   PC_EXTSB &&
+        } else if (instr->op == PC_EXTSB &&
                    instr->args[0].data.reg.reg != instr->args[1].data.reg.reg) {
-            short flag = 0;
-            reg0 = instr->args[0].data.reg.reg;
-            reg1 = instr->args[1].data.reg.reg;
+            short cr0Touched = FALSE;
+            destReg = instr->args[0].data.reg.reg;
+            srcReg = instr->args[1].data.reg.reg;
             for (scan = instr->nextPCode; scan; scan = scan->nextPCode) {
                 if ((scan->op >= PC_STB && scan->op <= PC_STBUX) &&
-                    scan->args[0].data.reg.reg == reg0) {
-                    scan->args[0].data.reg.reg = reg1;
+                    scan->args[0].data.reg.reg == destReg) {
+                    scan->args[0].data.reg.reg = srcReg;
                 } else if ((scan->op == PC_EXTSH || scan->op == PC_EXTSB) &&
-                           scan->args[1].data.reg.reg == reg0) {
+                           scan->args[1].data.reg.reg == destReg) {
                     change_opcode(scan, PC_MR);
-                    if ((PCODE_FLAG_SET_F(scan) & fRecordBit) && !flag) {
+                    if ((PCODE_FLAG_SET_F(scan) & fRecordBit) && !cr0Touched) {
                         pcsetrecordbit(instr);
                         scan->flags &= ~fRecordBit;
                         scan->flags |= fIsMove;
@@ -2719,30 +2750,29 @@ static void adjustforward(PCodeBlock* block) {
 
                 for (op = scan->args, i = scan->argCount; i--; op++) {
                     if (PC_OP_IS_WRITE_ANY_REGISTER(op, RegClass_GPR) &&
-                        (op->data.reg.reg == reg0 || op->data.reg.reg == reg1)) {
+                        (op->data.reg.reg == destReg || op->data.reg.reg == srcReg)) {
                         scan = block->lastPCode;
                         break;
                     }
 
                     if (PC_OP_IS_REGISTER(op, RegClass_CRFIELD, 0)) {
-                        flag = 1;
+                        cr0Touched = TRUE;
                     }
                 }
             }
-        } else if (instr->op ==
-                   PC_EXTSH &&
+        } else if (instr->op == PC_EXTSH &&
                    instr->args[0].data.reg.reg != instr->args[1].data.reg.reg) {
-            short flag = 0;
-            reg0 = instr->args[0].data.reg.reg;
-            reg1 = instr->args[1].data.reg.reg;
+            short cr0Touched = FALSE;
+            destReg = instr->args[0].data.reg.reg;
+            srcReg = instr->args[1].data.reg.reg;
             for (scan = instr->nextPCode; scan; scan = scan->nextPCode) {
                 if (((scan->op >= PC_STB && scan->op <= PC_STBUX) ||
                      (scan->op >= PC_STH && scan->op <= PC_STHUX)) &&
-                    scan->args[0].data.reg.reg == reg0) {
-                    scan->args[0].data.reg.reg = reg1;
-                } else if (scan->op == PC_EXTSH && scan->args[1].data.reg.reg == reg0) {
+                    scan->args[0].data.reg.reg == destReg) {
+                    scan->args[0].data.reg.reg = srcReg;
+                } else if (scan->op == PC_EXTSH && scan->args[1].data.reg.reg == destReg) {
                     change_opcode(scan, PC_MR);
-                    if ((PCODE_FLAG_SET_F(scan) & fRecordBit) && !flag) {
+                    if ((PCODE_FLAG_SET_F(scan) & fRecordBit) && !cr0Touched) {
                         pcsetrecordbit(instr);
                         scan->flags &= ~fRecordBit;
                         scan->flags |= fIsMove;
@@ -2752,43 +2782,37 @@ static void adjustforward(PCodeBlock* block) {
 
                 for (op = scan->args, i = scan->argCount; i--; op++) {
                     if (PC_OP_IS_WRITE_ANY_REGISTER(op, RegClass_GPR) &&
-                        (op->data.reg.reg == reg0 || op->data.reg.reg == reg1)) {
+                        (op->data.reg.reg == destReg || op->data.reg.reg == srcReg)) {
                         scan = block->lastPCode;
                         break;
                     }
 
                     if (PC_OP_IS_REGISTER(op, RegClass_CRFIELD, 0)) {
-                        flag = 1;
+                        cr0Touched = TRUE;
                     }
                 }
             }
-        } else if (instr->op ==
-                   PC_ADDI &&
-                   (reg0 = instr->args[0].data.reg.reg) ==
-                   instr->args[1].data.reg.reg &&
+        } else if (instr->op == PC_ADDI &&
+                   (destReg = instr->args[0].data.reg.reg) == instr->args[1].data.reg.reg &&
                    instr->args[2].kind == PCOp_IMMEDIATE) {
-            Boolean flag1 = 0;
-            Boolean flag2 = 0;
-            SInt32 val2 = instr->args[2].data.imm.value;
+            Boolean pastOther = FALSE;
+            Boolean reg0Used = FALSE;
+            SInt32 delta = instr->args[2].data.imm.value;
 
             for (scan = instr->nextPCode; scan; scan = scan->nextPCode) {
-                if ((scan->flags & fIsWrite) && scan->args[0].data.reg.reg == reg0) {
+                if ((scan->flags & fIsWrite) && scan->args[0].data.reg.reg == destReg) {
                     break;
                 }
 
                 if ((scan->flags & (fIsRead | fIsWrite)) &&
-                    scan->args[1].data.reg.reg ==
-                    reg0 &&
-                    scan->args[2].kind ==
-                    PCOp_IMMEDIATE &&
-                    FITS_IN_SHORT(val2 + scan->args[2].data.imm.value)) {
-                    scan->args[2].data.imm.value += val2;
+                    scan->args[1].data.reg.reg == destReg &&
+                    scan->args[2].kind == PCOp_IMMEDIATE &&
+                    FITS_IN_SHORT(delta + scan->args[2].data.imm.value)) {
+                    scan->args[2].data.imm.value += delta;
                     tmp = instr->prevPCode;
                     if ((scan->flags & fIsRead) &&
-                        scan->args[0].data.reg.reg ==
-                        reg0 &&
-                        scan->args[0].kind ==
-                        PCOp_REGISTER &&
+                        scan->args[0].data.reg.reg == destReg &&
+                        scan->args[0].kind == PCOp_REGISTER &&
                         scan->args[0].arg == RegClass_GPR) {
                         deletepcode(instr);
                     } else {
@@ -2799,16 +2823,13 @@ static void adjustforward(PCodeBlock* block) {
                     break;
                 }
 
-                if (scan->op ==
-                    PC_ADDI &&
-                    scan->args[1].data.reg.reg ==
-                    reg0 &&
-                    scan->args[2].kind ==
-                    PCOp_IMMEDIATE &&
-                    FITS_IN_SHORT(val2 + scan->args[2].data.imm.value)) {
-                    scan->args[2].data.imm.value += val2;
+                if (scan->op == PC_ADDI &&
+                    scan->args[1].data.reg.reg == destReg &&
+                    scan->args[2].kind == PCOp_IMMEDIATE &&
+                    FITS_IN_SHORT(delta + scan->args[2].data.imm.value)) {
+                    scan->args[2].data.imm.value += delta;
                     tmp = instr->prevPCode;
-                    if (scan->args[0].data.reg.reg == reg0) {
+                    if (scan->args[0].data.reg.reg == destReg) {
                         deletepcode(instr);
                     } else {
                         deletepcode(instr);
@@ -2819,7 +2840,7 @@ static void adjustforward(PCodeBlock* block) {
                 }
 
                 if (scan->flags & (fIsBranch | fIsCall)) {
-                    if (flag1 && scan->prevPCode != instr) {
+                    if (pastOther && scan->prevPCode != instr) {
                         tmp = instr->prevPCode;
                         deletepcode(instr);
                         insertpcodebefore(scan, instr);
@@ -2829,27 +2850,27 @@ static void adjustforward(PCodeBlock* block) {
                 }
 
                 for (op = scan->args, i = scan->argCount; i--; op++) {
-                    if (PC_OP_IS_R_OR_W_REGISTER(op, RegClass_GPR, reg0)) {
-                        if (flag1 && scan->prevPCode != instr) {
+                    if (PC_OP_IS_R_OR_W_REGISTER(op, RegClass_GPR, destReg)) {
+                        if (pastOther && scan->prevPCode != instr) {
                             tmp = instr->prevPCode;
                             deletepcode(instr);
                             insertpcodebefore(scan, instr);
                             instr = tmp;
                         }
-                        flag2 = 1;
+                        reg0Used = TRUE;
                         break;
                     }
                 }
 
-                if (flag2) {
+                if (reg0Used) {
                     break;
                 }
 
                 if (scan->op != PC_ADDI) {
-                    flag1 = 1;
+                    pastOther = TRUE;
                 }
 
-                if (flag1 && !scan->nextPCode) {
+                if (pastOther && !scan->nextPCode) {
                     tmp = instr->prevPCode;
                     deletepcode(instr);
                     appendpcode(block, instr);
@@ -2873,11 +2894,6 @@ static void installpattern(short opcode, PeepholeFunc func) {
     pattern->next = peepholepatterns[opcode];
     peepholepatterns[opcode] = pattern;
 }
-
-#ifdef ORACLE_PROBES
-// (the oracle names the patterns it reports)
-#define installpattern(opcode, func) (OracleProbe_PeepholePattern((void*)func, #func), installpattern(opcode, func))
-#endif
 
 static void installpeepholepatterns(void) {
     int i;
@@ -2988,21 +3004,21 @@ void peepholeoptimizeforward(Object* func) {
     }
 }
 
-void peepholemergeblocks(Object* func, Boolean flag) {
+void peepholemergeblocks(Object* func, Boolean mergePrologEpilog) {
     PCodeBlock* block;
     PCodeBlock* next;
-    Boolean flag2;
+    Boolean nextIsEpilogue;
     PCode* instr;
     PCode* nextinstr;
     PCLink* link;
     PCLink* link2;
 
     for (block = pcbasicblocks; block; block = block->nextBlock) {
-        flag2 = 0;
+        nextIsEpilogue = FALSE;
         next = block->nextBlock;
 
-        if (!flag) {
-            flag2 = next && (next->flags & fIsEpilogue);
+        if (!mergePrologEpilog) {
+            nextIsEpilogue = next && (next->flags & fIsEpilogue);
             if (block->flags & fIsProlog) {
                 continue;
             }
@@ -3020,8 +3036,7 @@ void peepholemergeblocks(Object* func, Boolean flag) {
             }
 
             if (block->lastPCode && block->lastPCode->op == PC_B) {
-                if (block->lastPCode->args[0].kind ==
-                    PCOp_LABEL &&
+                if (block->lastPCode->args[0].kind == PCOp_LABEL &&
                     block->lastPCode->args[0].data.label.label->block == next) {
                     deletepcode(block->lastPCode);
                 } else {
@@ -3034,15 +3049,11 @@ void peepholemergeblocks(Object* func, Boolean flag) {
                 continue;
             }
 
-            while (block->successors->block ==
-                   next &&
-                   block->successors->nextLink ==
-                   NULL &&
-                   next->predecessors->block ==
-                   block &&
-                   next->predecessors->nextLink ==
-                   NULL &&
-                   !flag2 &&
+            while (block->successors->block == next &&
+                   block->successors->nextLink == NULL &&
+                   next->predecessors->block == block &&
+                   next->predecessors->nextLink == NULL &&
+                   !nextIsEpilogue &&
                    !(next->flags & fEntryPoint) &&
                    (block->pcodeCount + next->pcodeCount) <= 100) {
                 if (next->pcodeCount > 0) {
@@ -3091,8 +3102,8 @@ void peepholemergeblocks(Object* func, Boolean flag) {
                 next->flags |= fDeleted;
                 next = block->nextBlock;
 
-                if (!flag) {
-                    flag2 = next && (next->flags & fIsEpilogue);
+                if (!mergePrologEpilog) {
+                    nextIsEpilogue = next && (next->flags & fIsEpilogue);
                 }
             }
         }

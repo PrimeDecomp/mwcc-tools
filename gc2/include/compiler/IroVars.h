@@ -8,24 +8,19 @@
 extern "C" {
 #endif
 
-#pragma pack(push, 2) // Pro7: options align=mac68k
+#pragma pack(push, 2)
 struct VarRecord {
     UInt16 index;
     Object* object;
-    int unused; // TODO: invented name (Pro7: x6); IRO_FindVar clears it, nothing reads it
-    // TODO: invented name (Pro7: xA); IroLoop's induction states 0, 1 and 2
+    int unused;
     Boolean inductionState;
-    // TODO: invented name (Pro7: xB); IRO_FindVar sets it from VarInfo noregister
     Boolean noregister;
-    Boolean usedAtCall; // TODO: invented name (Pro7: xC); IROUseDef's MarkUses sets it at calls
+    Boolean usedAtCall;
     VarRecord* next;
     IRODef* defs;
     IROUse* uses;
-    // TODO: invented name (Pro7: x1A); the bit-field type IRO_RewriteBitFieldTemps' temporary
-    // stands for
     TypeBitfield* bitfieldType;
-    // IRO_RewriteBitFieldTemps clones this expression to replace the bit-field temporary
-    IROLinear* bitFieldReplacement; // TODO: invented name (Pro7: x1E)
+    IROLinear* bitFieldReplacement;
 };
 #pragma pack(pop)
 
@@ -39,7 +34,7 @@ extern Boolean IRO_IsAssignOp[MAXEXPR];
 
 extern void IRO_InitializeIRO_IsModifyOpArray(void);
 extern void IRO_InitializeIRO_IsAssignOpArray(void);
-extern VarRecord* IRO_FindVar(Object* object, Boolean create, Boolean mode);
+extern VarRecord* IRO_FindVar(Object* object, Boolean create, Boolean allowRegister);
 extern void ResetVars(void);
 extern void IRO_FindAllVars(void);
 extern void IRO_ZapVarPtrs(void);

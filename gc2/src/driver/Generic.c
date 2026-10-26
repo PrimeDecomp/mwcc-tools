@@ -1,22 +1,19 @@
 #include "driver/Generic.h"
+#include "compiler/win32.h"
 #include "driver/MsDos.h"
+#include "driver/oslib.h"
 #include "driver/StringExtras.h"
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-// (Pro7's statics in reverse order: statics are allocated in reverse declaration order, and 2.6
-// has wildname lowest)
 static OSSpec wildmatch;
 static OSOpenedDir wilddirref;
 static char wilddir[259];
 static char wildname[255];
 char STSbuf[260];
 
-// (static in 2.6: Wii's Generic has it without a public name)
-// (`next = *++wild` and the `== 0` return are 2.6's: Pro7's `wild++; next = *wild;` and
-// `return !name[0] || ...` compile otherwise)
 static int WildCardMatch(char* wild, char* name) {
     char next;
     char* prev;
@@ -109,7 +106,6 @@ char* __stdcall OS_GetFileNamePtr(char* path) {
     return ptr;
 }
 
-// (dead in 2.6: the linker dropped it)
 char* __stdcall OS_GetDirName(const OSPathSpec* spec, char* buf, int size) {
     char* path;
     char* pptr;
@@ -199,17 +195,17 @@ int __stdcall OS_MakeSpecWithPath(
 }
 
 int __stdcall OS_NameSpecChangeExtension(OSNameSpec* spec, const char* ext, Boolean append) {
-    char tmp[256];
+    char name[256];
     char* per;
 
-    OS_NameSpecToString(spec, tmp, 260);
+    OS_NameSpecToString(spec, name, 260);
     if (!append) {
-        per = strrchr(tmp, '.');
+        per = strrchr(name, '.');
         if (!per) {
-            per = tmp + strlen(tmp);
+            per = name + strlen(name);
         }
     } else {
-        per = tmp + strlen(tmp);
+        per = name + strlen(name);
         if (ext[0] != '.') {
             *per = '.';
             per++;
@@ -217,27 +213,27 @@ int __stdcall OS_NameSpecChangeExtension(OSNameSpec* spec, const char* ext, Bool
         }
     }
 
-    if (strlen(tmp) + strlen(ext) > 256) {
-        per = tmp + 255 - strlen(ext);
+    if (strlen(name) + strlen(ext) > 256) {
+        per = name + 255 - strlen(ext);
     }
 
     strcpy(per, ext);
-    return OS_MakeNameSpec(tmp, spec);
+    return OS_MakeNameSpec(name, spec);
 }
 
 int __stdcall OS_NameSpecSetExtension(OSNameSpec* spec, const char* ext) {
-    char tmp[256];
+    char name[256];
     char* per;
 
-    OS_NameSpecToString(spec, tmp, 260);
+    OS_NameSpecToString(spec, name, 260);
     if (ext[0] != '.') {
-        per = strrchr(tmp, '.');
+        per = strrchr(name, '.');
         if (!per) {
-            per = tmp + strlen(tmp);
+            per = name + strlen(name);
         }
 
         if (ext[0]) {
-            if (strlen(tmp) + 1 >= 256) {
+            if (strlen(name) + 1 >= 256) {
                 per[-1] = '.';
             } else {
                 per[0] = '.';
@@ -245,43 +241,42 @@ int __stdcall OS_NameSpecSetExtension(OSNameSpec* spec, const char* ext) {
             }
         }
     } else {
-        per = tmp + strlen(tmp);
+        per = name + strlen(name);
     }
 
-    if (strlen(tmp) + strlen(ext) > 256) {
-        per = tmp + 255 - strlen(ext);
+    if (strlen(name) + strlen(ext) > 256) {
+        per = name + 255 - strlen(ext);
     }
 
     strcpy(per, ext);
-    return OS_MakeNameSpec(tmp, spec);
+    return OS_MakeNameSpec(name, spec);
 }
 
-// (dead in 2.6: the linker dropped it, but its "%s%s" is in the unit's .data)
-char* __stdcall OS_CompactPaths(char* buf, const char* p, const char* n, int size) {
+char* __stdcall OS_CompactPaths(char* buf, const char* path, const char* name, int size) {
     int plen;
     int nlen;
     char* ptr;
     int bidx;
-    int wat;
+    int excess;
 
-    plen = p ? strlen(p) : 0;
-    nlen = n ? strlen(n) : 0;
+    plen = path ? strlen(path) : 0;
+    nlen = name ? strlen(name) : 0;
 
     if (plen + nlen + 1 <= size) {
-        sprintf(buf, "%s%s", p ? p : "", n ? n : "");
+        sprintf(buf, "%s%s", path ? path : "", name ? name : "");
         return buf;
     }
 
     ptr = buf;
     bidx = 0;
-    wat = plen + nlen - size;
+    excess = plen + nlen - size;
 
     while (plen > 0 && nlen > 0) {
         if (plen > 0) {
-            *(ptr++) = *(p++);
+            *(ptr++) = *(path++);
             plen--;
         } else if (nlen > 0) {
-            *(ptr++) = *(n++);
+            *(ptr++) = *(name++);
             nlen--;
         }
 
@@ -292,15 +287,15 @@ char* __stdcall OS_CompactPaths(char* buf, const char* p, const char* n, int siz
             ptr += 3;
             bidx += 3;
             if (plen > 0) {
-                plen -= wat / 2;
+                plen -= excess / 2;
                 if (plen < 0) {
-                    n -= plen;
+                    name -= plen;
                     nlen += plen;
                     plen = 0;
                 }
             } else {
-                n += wat / 2;
-                nlen -= wat / 2;
+                name += excess / 2;
+                nlen -= excess / 2;
             }
         }
     }
@@ -350,7 +345,7 @@ char* __stdcall OS_SpecToStringRelative(
         cwd++;
     }
 
-    if ((cwd - cwdbuf) < (strlen(fullbuf) / 2) && (strlen(cwd) > (strlen(fullbuf) / 2))) {
+    if ((size_t)(cwd - cwdbuf) < (strlen(fullbuf) / 2) && (strlen(cwd) > (strlen(fullbuf) / 2))) {
         memcpy(path, fullbuf, size - 1);
         path[size - 1] = 0;
         return path;
@@ -421,41 +416,40 @@ int __stdcall OS_FindFileInPath(const char* filename, const char* plist, OSSpec*
     return err;
 }
 
-// (Win32: the program is an .exe, looked for in the system and Windows directories before PATH)
 int __stdcall OS_FindProgram(const char* filename, OSSpec* spec) {
-    char temp[260];
+    char exename[260];
     char dir[260];
     int err;
     char* plist;
 
-    strncpy(temp, filename, 260);
-    temp[259] = 0;
-    if (strlen(temp) < 4 || ustrcmp(temp + strlen(temp) - 4, ".exe")) {
-        strcatn(temp, ".exe", 260);
+    strncpy(exename, filename, 260);
+    exename[259] = 0;
+    if (strlen(exename) < 4 || ustrcmp(exename + strlen(exename) - 4, ".exe")) {
+        strcatn(exename, ".exe", 260);
     }
 
-    if (!strchr(temp, OS_PATHSEP)) {
+    if (!strchr(exename, OS_PATHSEP)) {
         if (GetSystemDirectoryA(dir, 260)) {
-            if (!OS_MakeSpec2(dir, temp, spec)) {
+            if (!OS_MakeSpec2(dir, exename, spec)) {
                 if (!(err = OS_Status(spec))) {
                     return err;
                 }
             }
         }
         if (GetWindowsDirectoryA(dir, 260)) {
-            if (!OS_MakeSpec2(dir, temp, spec)) {
+            if (!OS_MakeSpec2(dir, exename, spec)) {
                 if (!(err = OS_Status(spec))) {
                     return err;
                 }
             }
         }
         plist = getenv("PATH");
-        if (!OS_FindFileInPath(temp, plist, spec)) {
+        if (!OS_FindFileInPath(exename, plist, spec)) {
             return 0;
         }
     }
 
-    err = OS_MakeFileSpec(temp, spec);
+    err = OS_MakeFileSpec(exename, spec);
     if (!err) {
         err = OS_Status(spec);
     }
@@ -465,16 +459,16 @@ int __stdcall OS_FindProgram(const char* filename, OSSpec* spec) {
 int __stdcall OS_CopyHandle(OSHandle* hand, OSHandle* copy) {
     int err;
     UInt32 sz;
-    void* f;
-    void* t;
+    void* from;
+    void* to;
 
     err = OS_GetHandleSize(hand, &sz);
     if (!err) {
         err = OS_NewHandle(sz, copy);
         if (!err) {
-            f = OS_LockHandle(hand);
-            t = OS_LockHandle(copy);
-            memcpy(t, f, sz);
+            from = OS_LockHandle(hand);
+            to = OS_LockHandle(copy);
+            memcpy(to, from, sz);
             OS_UnlockHandle(hand);
             OS_UnlockHandle(copy);
             return 0;

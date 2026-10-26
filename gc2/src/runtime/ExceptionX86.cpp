@@ -1,6 +1,4 @@
-/* The x86 runtime's C++ exception handling, as 2.6 links it: the CodeWarrior Pro 5.3 updater's ExceptionX86.cpp
- * without what 2.6's later revision moved to exchand (src/runtime/exchand.cpp) or no longer has. The static
- * functions are named for their unit, as symbols.txt has them. */
+#ifdef __MWERKS__
 #define ExX86_CurrentAction ExceptionX86_ExX86_CurrentAction
 #define ExX86_DeletePointer ExceptionX86_ExX86_DeletePointer
 #define ExX86_DeletePointerCond ExceptionX86_ExX86_DeletePointerCond
@@ -22,16 +20,9 @@
 #define ExX86_UnwindStack ExceptionX86_ExX86_UnwindStack
 #include "ansi_prefix.Win32.h"
 
-/************************************************************************/
-/*	Project...:	Standard C++ Library									*/
-/*	Name......:	ExcpetionX86.c											*/
-/*	Purpose...:	C++ specific runtime functions							*/
-/*  Copyright.: ©Copyright 1993-95 by metrowerks inc					*/
-/************************************************************************/
-
 #pragma exceptions on
 
-#define __NOSTRING__	//	do not include <string>
+#define __NOSTRING__
 
 #include <stdlib.h>
 #include "CPlusLib.h"
@@ -39,69 +30,48 @@
 #include "exceptionx86.h"
 #include "NMWException.h"
 
-#define EXPORTALLPCOFFSETS		0			//	1: export each pc-offset
-
-// Define the three regs that might be saved in the frame
+#define EXPORTALLPCOFFSETS		0
 
 #define REG_EBX 	3
 #define REG_ESI		6
 #define REG_EDI		7
 
 #if 1
-#define INLINE			static				//	static for debugging
+#define INLINE			static
 #else
-#define INLINE			inline				//	inline for shipping code
+#define INLINE			inline
 #endif
 
-//	typedefs
-
 typedef struct ThrowContext {
-	long		EBX, ESI, EDI;				//  space for EBX, ESI and EDI
-	char 		*EBP;						
-	char		*returnaddr;				//	return address
-	char		*throwtype;					//	throw type argument (0L: rethrow: throw; )
-	void		*location;					//	location argument (0L: rethrow: throw; )
-	void		*dtor;						//	dtor argument
-	CatchInfo	*catchinfo;					//	pointer to rethrow CatchInfo (or 0L)
+	long		EBX, ESI, EDI;
+	char 		*EBP;
+	char		*returnaddr;
+	char		*throwtype;
+	void		*location;
+	void		*dtor;
+	CatchInfo	*catchinfo;
 }	ThrowContext;
 
 typedef struct ExceptionInfo {
-	ExceptionRecord	*exception_record;		//	pointer to exception record
-	char			*current_function;		//	pointer to current function
-	char			*action_pointer;		//	pointer to action
+	ExceptionRecord	*exception_record;
+	char			*current_function;
+	char			*action_pointer;
 }	ExceptionInfo;
 
 typedef struct ActionIterator {
-	ExceptionInfo	info;					//	pointer to exception record
-	char			*current_bp;			//	current A6 frame
+	ExceptionInfo	info;
+	char			*current_bp;
 }	ActionIterator;
 
-
-// (2.6: the table registry, _RegisterExceptionTables, and the lookup of a return address's
-// exception record are exchand's; _UnRegisterExceptionTables and __end__catch are gone. ExX86_LongJump
-// stays, unused, as the linker strips it: the destructors ___unexpected needs come after it)
-// Head of list of exception table headers (static here in lib/runtime's revision; exchand's code uses it)
 extern "C" ExceptionTableHeader *FirstExceptionTable = 0;
 extern "C" void ExX86_FindExceptionRecord(char *returnaddr, ExceptionInfo *info);
 
-
-
-/************************************************************************/
-/* Purpose..: Return current exception action type						*/
-/* Input....: pointer to ActionIterator									*/
-/* Return...: action type												*/
-/************************************************************************/
 static exaction_type ExX86_CurrentAction(const ActionIterator *iter)
 {
 	if(iter->info.action_pointer==0) return EXACTION_ENDOFLIST;
 	return ((ex_destroylocal *)iter->info.action_pointer)->action&EXACTION_MASK;
 }
 
-/************************************************************************/
-/* Purpose..: Move to next												*/
-/* Input....: pointer to ActionIterator									*/
-/* Return...: next action type											*/
-/************************************************************************/
 static exaction_type ExX86_NextAction(ActionIterator *iter)
 {
 	exaction_type	action;
@@ -110,14 +80,14 @@ static exaction_type ExX86_NextAction(ActionIterator *iter)
 	{
 		if(	iter->info.action_pointer==0
 		||	((action=((ex_destroylocal *)iter->info.action_pointer)->action)&EXACTION_ENDBIT)!=0 )
-		{	//	end of action list: find next exception record
+		{
 			char *return_addr;
-	
+
 			return_addr=*(char **)(iter->current_bp+4);
 			ExX86_FindExceptionRecord(return_addr,&iter->info);
-			if(iter->info.exception_record==0) terminate();	//	cannot find matching exception record
+			if(iter->info.exception_record==0) terminate();
 			iter->current_bp=*(char **)iter->current_bp;
-			if(iter->info.action_pointer==0) continue;		//	no actions
+			if(iter->info.action_pointer==0) continue;
 		}
 		else
 		{
@@ -153,38 +123,27 @@ static exaction_type ExX86_NextAction(ActionIterator *iter)
 					sizeof(ex_specification)
 				+	((ex_specification *)iter->info.action_pointer)->specs*sizeof(void *);
 				break;
-			    
+
 			default:
-				terminate();	//	error
+				terminate();
 			}
 		}
 		return ((ex_destroylocal *)iter->info.action_pointer)->action&EXACTION_MASK;
 	}
 }
 
-
-/************************************************************************/
-/* Purpose..: Restore registers											*/
-/* Input....: pointer to throw context									*/
-/* Input....: pointer to topmost exception record						*/
-/* Return...: pointer to return PC										*/
-/************************************************************************/
 static char *ExX86_PopStackFrame(ThrowContext *context,ExceptionInfo *info)
 {
     long *frame;
     char mask;
     char *returnaddr;
-    
-    // pop bp
+
     frame = (long *)context->EBP;
 
-	// get new return address	
     returnaddr = (char *)frame[1];
-    
-    // get new frame pointer
+
     context->EBP = (char *)*frame;
-    
-    // pop pushed registers
+
     mask = info->exception_record->register_mask;
 	if (mask & (1<<REG_EBX))
 	{
@@ -198,23 +157,16 @@ static char *ExX86_PopStackFrame(ThrowContext *context,ExceptionInfo *info)
 	{
 	    context->EDI = *(--frame);
 	}
-	
+
 	return returnaddr;
 }
 
-/************************************************************************/
-/* Purpose..: Get a register/memory value								*/
-/* Input....: pointer to throw context									*/
-/* Input....: reference value											*/
-/* Input....: size of value (one of: 1,2,4)								*/
-/* Return...: the value (extended to long)								*/
-/************************************************************************/
 static long ExX86_GetValue(ThrowContext *context,long cond,short size)
 {
 	char	*ptr;
 
 	if((cond&EXLREFREGMASK)==EXLREFREGBITS)
-	{	//	register reference
+	{
 		cond&=~EXLREFREGMASK;
 		switch(cond)
 		{
@@ -238,7 +190,7 @@ static long ExX86_GetValue(ThrowContext *context,long cond,short size)
 		}
 	}
 	else
-	{	//	local memory reference
+	{
 		ptr=context->EBP+cond;
 		switch(size)
 		{
@@ -249,12 +201,6 @@ static long ExX86_GetValue(ThrowContext *context,long cond,short size)
 	}
 }
 
-/************************************************************************/
-/* Purpose..: Unwind ex_destroylocal struct								*/
-/* Input....: pointer to throw context									*/
-/* Input....: pointer to ex_destroylocal struct							*/
-/* Return...: ---														*/
-/************************************************************************/
 INLINE void ExX86_DestroyLocal(ThrowContext *context,const ex_destroylocal *ex)
 {
     asm
@@ -265,15 +211,8 @@ INLINE void ExX86_DestroyLocal(ThrowContext *context,const ex_destroylocal *ex)
       		add		ecx, ex_destroylocal.local[eax]
       		call	ex_destroylocal.dtor[eax]
     }
-	//((ConstructorDestructor)ex->dtor)(context->EBP+ex->local,-1);
 }
 
-/************************************************************************/
-/* Purpose..: Unwind ex_destroylocalcond struct							*/
-/* Input....: pointer to throw context									*/
-/* Input....: pointer to ex_destroylocalcond struct						*/
-/* Return...: ---														*/
-/************************************************************************/
 INLINE void ExX86_DestroyLocalCond(ThrowContext *context,const ex_destroylocalcond *ex)
 {
 	if(ExX86_GetValue(context,ex->cond,sizeof(local_cond_type)))
@@ -286,20 +225,13 @@ INLINE void ExX86_DestroyLocalCond(ThrowContext *context,const ex_destroylocalco
 	      		add		ecx, ex_destroylocalcond.local[eax]
 	      		call	ex_destroylocalcond.dtor[eax]
 	    }
-		//((ConstructorDestructor)ex->dtor)(context->EBP+ex->local,-1);
 	}
 }
 
-/************************************************************************/
-/* Purpose..: Unwind ex_destroylocalpointer struct						*/
-/* Input....: pointer to throw context									*/
-/* Input....: pointer to ex_destroylocalpointer struct					*/
-/* Return...: ---														*/
-/************************************************************************/
 INLINE void ExX86_DestroyLocalPointer(ThrowContext *context,const ex_destroylocalpointer *ex)
 {
     void *location;
-    
+
     location = (void *)ExX86_GetValue(context, ex->pointer, sizeof(void *));
     asm
     {
@@ -307,15 +239,8 @@ INLINE void ExX86_DestroyLocalPointer(ThrowContext *context,const ex_destroyloca
 	      		mov		eax, ex
 	      		call	ex_destroylocalpointer.dtor[eax]
     }
-	//((ConstructorDestructor)ex->dtor)((void *)ExX86_GetValue(context,ex->pointer,sizeof(void *)),-1);
 }
 
-/************************************************************************/
-/* Purpose..: Unwind ex_destroylocalarray struct						*/
-/* Input....: pointer to throw context									*/
-/* Input....: pointer to ex_destroylocalarray struct					*/
-/* Return...: ---														*/
-/************************************************************************/
 INLINE void ExX86_DestroyLocalArray(ThrowContext *context,const ex_destroylocalarray *ex)
 {
 	char					*pt;
@@ -336,15 +261,8 @@ INLINE void ExX86_DestroyLocalArray(ThrowContext *context,const ex_destroylocala
 		    	call		dtor
 		}
 	}
-//	    dtor(ptr,-1);
 }
 
-/************************************************************************/
-/* Purpose..: Unwind ex_destroypartialarray struct						*/
-/* Input....: pointer to throw context									*/
-/* Input....: pointer to ex_destroypartialarray struct					*/
-/* Return...: ---														*/
-/************************************************************************/
 INLINE void ExX86_DestroyPartialArray(ThrowContext *context,const ex_destroypartialarray *ex)
 {
 	char					*pt;
@@ -356,7 +274,7 @@ INLINE void ExX86_DestroyPartialArray(ThrowContext *context,const ex_destroypart
 	dtor	= (ConstructorDestructor)ExX86_GetValue(context,ex->dtor,sizeof(void *));
 	size	= ExX86_GetValue(context,ex->element_size,sizeof(long));
 
-	for(pt=pt+size*n; n>0; n--) 
+	for(pt=pt+size*n; n>0; n--)
 	{
 	    pt -= size;
 		asm
@@ -365,19 +283,12 @@ INLINE void ExX86_DestroyPartialArray(ThrowContext *context,const ex_destroypart
 		    	call		dtor
 		}
 	}
-	//dtor(ptr,-1);
 }
 
-/************************************************************************/
-/* Purpose..: Unwind ex_destroymember struct							*/
-/* Input....: pointer to throw context									*/
-/* Input....: pointer to ex_destroymember struct						*/
-/* Return...: ---														*/
-/************************************************************************/
 INLINE void ExX86_DestroyMember(ThrowContext *context,const ex_destroymember *ex, int dtor_arg)
 {
     void *location;
-    
+
     location =(char *)ExX86_GetValue(context,ex->objectptr,sizeof(void *))+ex->offset;
     asm
     {
@@ -385,15 +296,8 @@ INLINE void ExX86_DestroyMember(ThrowContext *context,const ex_destroymember *ex
 	      		mov		eax, ex
 	      		call	ex_destroymember.dtor[eax]
     }
-	//((ConstructorDestructor)ex->dtor)((char *)ExX86_GetValue(context,ex->objectptr,sizeof(void *))+ex->offset,-1);
 }
 
-/************************************************************************/
-/* Purpose..: Unwind ex_destroymembercond struct						*/
-/* Input....: pointer to throw context									*/
-/* Input....: pointer to ex_destroymembercond struct					*/
-/* Return...: ---														*/
-/************************************************************************/
 INLINE void ExX86_DestroyMemberCond(ThrowContext *context,const ex_destroymembercond *ex)
 {
     void *location;
@@ -406,16 +310,9 @@ INLINE void ExX86_DestroyMemberCond(ThrowContext *context,const ex_destroymember
 		      		mov		eax, ex
 		      		call	ex_destroymembercond.dtor[eax]
 	    }
-		//((ConstructorDestructor)ex->dtor)((char *)ExX86_GetValue(context,ex->objectptr,sizeof(void *))+ex->offset,-1);
 	}
 }
 
-/************************************************************************/
-/* Purpose..: Unwind ex_destroymemberarray struct						*/
-/* Input....: pointer to throw context									*/
-/* Input....: pointer to ex_destroymemberarray struct					*/
-/* Return...: ---														*/
-/************************************************************************/
 INLINE void ExX86_DestroyMemberArray(ThrowContext *context,const ex_destroymemberarray *ex)
 {
 	char					*pt;
@@ -436,26 +333,13 @@ INLINE void ExX86_DestroyMemberArray(ThrowContext *context,const ex_destroymembe
 		    	call		dtor
 		}
 	}
-	//dtor(ptr,-1);
 }
 
-/************************************************************************/
-/* Purpose..: Unwind ex_deletepointer struct							*/
-/* Input....: pointer to throw context									*/
-/* Input....: pointer to ex_deletepointer struct						*/
-/* Return...: ---														*/
-/************************************************************************/
 INLINE void ExX86_DeletePointer(ThrowContext *context,const ex_deletepointer *ex)
 {
 	((void (*)(void *))ex->deletefunc)((void *)ExX86_GetValue(context,ex->pointerobject,sizeof(void *)));
 }
 
-/************************************************************************/
-/* Purpose..: Unwind ex_deletepointercond struct						*/
-/* Input....: pointer to throw context									*/
-/* Input....: pointer to ex_deletepointercond struct					*/
-/* Return...: ---														*/
-/************************************************************************/
 INLINE void ExX86_DeletePointerCond(ThrowContext *context,const ex_deletepointercond *ex)
 {
 	if(ExX86_GetValue(context,ex->cond,sizeof(local_cond_type)))
@@ -464,29 +348,21 @@ INLINE void ExX86_DeletePointerCond(ThrowContext *context,const ex_deletepointer
 	}
 }
 
-/************************************************************************/
-/* Purpose..: Unwind stack												*/
-/* Input....: pointer to throw context									*/
-/* Input....: pointer to topmost ExceptionInfo struct					*/
-/* Input....: pointer to topmost action									*/
-/* Input....: pointer to catcher										*/
-/* Return...: ---														*/
-/************************************************************************/
 static void ExX86_UnwindStack(ThrowContext *context,ExceptionInfo *info, void *catcher)
 {
 	exaction_type	action;
 
-#pragma exception_terminate		//	this will prevent exception exits during unwindind
+#pragma exception_terminate
 
 	for(;;)
 	{
 		if(info->action_pointer==0)
 		{
 			char *return_addr;
-	
+
 			return_addr=ExX86_PopStackFrame(context,info);
 			ExX86_FindExceptionRecord(return_addr,info);
-			if(info->exception_record==0) terminate();		//	cannot find matching exception record
+			if(info->exception_record==0) terminate();
 			continue;
 		}
 
@@ -538,7 +414,7 @@ static void ExX86_UnwindStack(ThrowContext *context,ExceptionInfo *info, void *c
 			info->action_pointer+=sizeof(ex_deletepointercond); break;
 
 		case EXACTION_CATCHBLOCK:
-			if(catcher==(ex_catchblock *)info->action_pointer) return;	//	finished unwinding
+			if(catcher==(ex_catchblock *)info->action_pointer) return;
 			info->action_pointer+=sizeof(ex_catchblock); break;
 
 		case EXACTION_ACTIVECATCHBLOCK:
@@ -548,10 +424,8 @@ static void ExX86_UnwindStack(ThrowContext *context,ExceptionInfo *info, void *c
 				catchinfo=(CatchInfo *)(context->EBP+((ex_activecatchblock *)info->action_pointer)->cinfo_ref);
 				if(catchinfo->dtor)
 				{
-					// re-throwing exception from this block
 					if(context->location == catchinfo->location)
 					{
-					    // pass destruction responsibility to re-thrown exception
 					    context->dtor = catchinfo->dtor;
 					}
 					else
@@ -562,35 +436,27 @@ static void ExX86_UnwindStack(ThrowContext *context,ExceptionInfo *info, void *c
 							mov		ecx, CatchInfo.location[eax]
 							call	CatchInfo.dtor[eax]
 						}
-						//DTORCALL_COMPLETE(catchinfo->dtor,catchinfo->location);
 					}
 				}
-				
+
 				info->action_pointer+=sizeof(ex_activecatchblock);
 			}
 			break;
 
 		case EXACTION_SPECIFICATION:
-			if(catcher==(void *)info->action_pointer) return;	//	finished unwinding
+			if(catcher==(void *)info->action_pointer) return;
 			info->action_pointer+=
 				sizeof(ex_specification)
 			+	((ex_specification *)info->action_pointer)->specs*sizeof(void *);
 			break;
 
 		default:
-			terminate();			//	error
+			terminate();
 		}
 		if(action&EXACTION_ENDBIT) info->action_pointer=0;
 	}
 }
 
-
-/************************************************************************/
-/* Purpose..: Check if an exception is in a specification list			*/
-/* Input....: pointer to exception type string							*/
-/* Input....: pointer to specification list								*/
-/* Return...: ---														*/
-/************************************************************************/
 static int ExX86_IsInSpecification(char *extype,ex_specification *spec)
 {
 	long	i,offset;
@@ -602,13 +468,8 @@ static int ExX86_IsInSpecification(char *extype,ex_specification *spec)
 	return 0;
 }
 
-/************************************************************************/
-/* Purpose..: Unexpected handler										*/
-/* Input....: pointer to throw context									*/
-/* Return...: --- (this function will never return)						*/
-/************************************************************************/
 extern "C" void __unexpected(CatchInfo* catchinfo)
-{	
+{
 	ex_specification *unexp=(ex_specification *)catchinfo->stacktop;
 
 #pragma exception_magic
@@ -617,72 +478,43 @@ extern "C" void __unexpected(CatchInfo* catchinfo)
 		unexpected();
 	}
 	catch(...)
-	{	//	unexpected throws an exception => check if the exception matches the specification
+	{
 		if(ExX86_IsInSpecification((char *)((CatchInfo *)&__exception_magic)->typeinfo,unexp))
-		{	//	new exception is in specification list => rethrow
+		{
 			throw;
 		}
 #ifndef _MSL_NO_CPP_NAMESPACE
-		if(ExX86_IsInSpecification("!std::bad_exception!!",unexp))   // hh 980124 added extra '!' to !bad_exception! per Andreas' instructions
-		{	//	"bad_exception" is in specification list => throw bad_exception()
+		if(ExX86_IsInSpecification("!std::bad_exception!!",unexp))
+		{
 			throw bad_exception();
 		}
 #else
-		if(ExX86_IsInSpecification("!bad_exception!!",unexp))   // hh 980124 added extra '!' to !bad_exception! per Andreas' instructions
-		{	//	"bad_exception" is in specification list => throw bad_exception()
+		if(ExX86_IsInSpecification("!bad_exception!!",unexp))
+		{
 			throw bad_exception();
 		}
 #endif
-		//	cannot handle exception => terminate();
 	}
 	terminate();
 }
 
-
-/************************************************************************/
-/* Purpose..: Restore registers and branch to catcher					*/
-/* Input....: pointer to throw context									*/
-/* Input....: destination PC											*/
-/* Return...: ---														*/
-/************************************************************************/
 static asm void ExX86_LongJump(ThrowContext *context,void *pc)
 {
-/*
-	move.l	4(sp),a0		//	context
-	move.l	8(sp),a1		//	pc
-	movem.l	struct(ThrowContext.data_regs)+3*sizeof(long)(a0),d3-d7
-	movem.l	struct(ThrowContext.addr_regs)+2*sizeof(long)(a0),a2-a6
-//
-//	Note:	we do not restore A7 because this would destroy the catch temporary.
-//			A7 is restored when __end__catch() is called.
-//
-	jmp		(a1)			//	longjmp to catcher
-*/
 }
 
-/************************************************************************/
-/* Purpose..: Handle unexpected exception								*/
-/* Input....: pointer to throw context									*/
-/* Input....: pointer to topmost ExceptionInfo struct					*/
-/* Input....: pointer to specification record							*/
-/* Return...: ---														*/
-/************************************************************************/
 static void ExX86_HandleUnexpected(ThrowContext *context,ExceptionInfo *info,ex_specification *unexp)
 {
 	CatchInfo	*catchinfo;
 
-#pragma exception_terminate		//	this will prevent exception exits during unwinding
+#pragma exception_terminate
 
-	ExX86_UnwindStack(context,info,unexp);	//	unwind stack to failing specification
+	ExX86_UnwindStack(context,info,unexp);
 
-	//	initialize catch info struct
 	catchinfo=(CatchInfo *)(context->EBP+unexp->cinfo_ref);
 	catchinfo->location		= context->location;
 	catchinfo->typeinfo		= context->throwtype;
 	catchinfo->dtor			= context->dtor;
-	catchinfo->stacktop		= unexp;		//	the __unexpected will never call __end_catch
-											//	so we can resue this field
-
+	catchinfo->stacktop		= unexp;
 
 	asm
 	{
@@ -693,24 +525,14 @@ static void ExX86_HandleUnexpected(ThrowContext *context,ExceptionInfo *info,ex_
 			mov		esi, ThrowContext.ESI[eax]
 			mov		edi, ThrowContext.EDI[eax]
 			mov		ebp, ThrowContext.EBP[eax]
-			
-			// reinit the floating point processor
-			
+
 			finit
 			fwait
-			
+
 			jmp		ecx
 	}
-	//	jump to exception handler
-	//ExX86_LongJump(context,unexp->pcoffset);
 }
 
-
-/************************************************************************/
-/* Purpose..: Throw (rethrow) current exception							*/
-/* Input....: pointer to throw context									*/
-/* Return...: ---														*/
-/************************************************************************/
 static void ExX86_ThrowHandler(ThrowContext *context)
 {
 	ActionIterator	iter;
@@ -720,13 +542,11 @@ static void ExX86_ThrowHandler(ThrowContext *context)
 	CatchInfo		*catchinfo;
 	long			offset;
 
-	//	find first ExceptionRecord
-
 	ExX86_FindExceptionRecord(context->returnaddr,&info);
-	if(info.exception_record==0) terminate();	//	cannot find matching exception record
+	if(info.exception_record==0) terminate();
 
 	if(context->throwtype==0)
-	{	//	rethrow, find most recent excpetion
+	{
 		iter.info		= info;
 		iter.current_bp	= context->EBP;
 		for(action=ExX86_CurrentAction(&iter);; action=ExX86_NextAction(&iter))
@@ -735,7 +555,7 @@ static void ExX86_ThrowHandler(ThrowContext *context)
 			{
 			case EXACTION_ACTIVECATCHBLOCK:
 				break;
-	
+
 			case EXACTION_ENDOFLIST:
 			case EXACTION_DESTROYLOCAL:
 			case EXACTION_DESTROYLOCALCOND:
@@ -754,7 +574,7 @@ static void ExX86_ThrowHandler(ThrowContext *context)
 
 			case EXACTION_TERMINATE:
 			default:
-				terminate();			//	cannot find find most recent excpetion
+				terminate();
 			}
 			break;
 		}
@@ -762,12 +582,9 @@ static void ExX86_ThrowHandler(ThrowContext *context)
 		context->throwtype	= (char *)catchinfo->typeinfo;
 		context->location	= catchinfo->location;
 		context->dtor		= 0;
-		// original active catch block is still responsible for destruction
 		context->catchinfo	= catchinfo;
 	}
 	else context->catchinfo=0L;
-
-	//	find matching exception handler
 
 	iter.info		= info;
 	iter.current_bp	= context->EBP;
@@ -784,9 +601,8 @@ static void ExX86_ThrowHandler(ThrowContext *context)
 
 		case EXACTION_SPECIFICATION:
 			if(!ExX86_IsInSpecification(context->throwtype,(ex_specification *)iter.info.action_pointer))
-			{	//	unexpected specification
+			{
 				ExX86_HandleUnexpected(context,&info,(ex_specification *)iter.info.action_pointer);
-				//	we will never return from this function call
 			}
 			continue;
 
@@ -807,32 +623,28 @@ static void ExX86_ThrowHandler(ThrowContext *context)
 
 		case EXACTION_TERMINATE:
 		default:
-			terminate();			//	cannot find matching catch block
+			terminate();
 		}
 		break;
 	}
 
-	//	we have found a matching catch block
 	catchblock=(ex_catchblock *)iter.info.action_pointer;
 	ExX86_UnwindStack(context,&info,catchblock);
 
-	//	initialize catch info struct
 	catchinfo=(CatchInfo *)(context->EBP+catchblock->cinfo_ref);
 	catchinfo->location		= context->location;
 	catchinfo->typeinfo		= context->throwtype;
 	catchinfo->dtor			= context->dtor;
 	if(*context->throwtype=='*')
-	{	//	pointer match (create a pointer copy with adjusted offset)
+	{
 		catchinfo->sublocation	= &catchinfo->pointercopy;
 		catchinfo->pointercopy	= *(long *)context->location+offset;
 	}
 	else
-	{	//	traditional or class match (directly adjust offset)
+	{
 		catchinfo->sublocation	= (char *)context->location+offset;
 	}
 
-	//	jump to exception handler
-	//ExX86_LongJump(context,info.current_function+catchblock->catch_pcoffset);
 	asm
 	{
 			mov		eax, catchblock
@@ -842,55 +654,41 @@ static void ExX86_ThrowHandler(ThrowContext *context)
 			mov		esi, ThrowContext.ESI[eax]
 			mov		edi, ThrowContext.EDI[eax]
 			mov		ebp, ThrowContext.EBP[eax]
-			
-			// reinit the floating point processor
-			
+
 			finit
 			fwait
-			
+
 			jmp		ecx
 	}
 }
 
-
-/************************************************************************/
-/* Purpose..: Throw (rethrow) current exception							*/
-/* Input....: pointer to throw type (0L: rethrow)						*/
-/* Input....: pointer to complete throw object (0L: rethrow)			*/
-/* Input....: pointer to throw object destructor (0L: no destructor		*/
-/* Return...: ---														*/
-/************************************************************************/
 extern asm void __throw(char *throwtype,void *location,void *dtor)
 {
-	
-	//	allocate and initialize ThrowContext buffer
 	asm
 	{
 			push	ebp
 			mov		ebp, esp
-			
-			sub		esp, ThrowContext			// allocate space for the throw context on stack
-			mov		0[esp], ebx					// store the volatile registers in it
+
+			sub		esp, ThrowContext
+			mov		0[esp], ebx
 			mov		4[esp], esi
 			mov		8[esp], edi
-			mov		eax, 0[ebp]					// get the caller's ebp
-			mov		12[esp], eax				// save in context
-			mov		eax, 4[ebp]					// get the return address
-			mov		16[esp], eax				// save in context
-			mov		eax, throwtype				// get and save the params
+			mov		eax, 0[ebp]
+			mov		12[esp], eax
+			mov		eax, 4[ebp]
+			mov		16[esp], eax
+			mov		eax, throwtype
 			mov		20[esp], eax
 			mov		eax, location
 			mov		24[esp], eax
 			mov		eax, dtor
 			mov		28[esp], eax
-			
-			push	esp							// push address of throw context
-			call 	ExX86_ThrowHandler			// and call never to return
+
+			push	esp
+			call 	ExX86_ThrowHandler
 			ret
 	}
 
 }
 
-
-// hh  980124 added extra '!' to !bad_exception! per Andreas' instructions
-// blc 980914 added fixes from blargg@flash.net for destructor call during rethrow
+#endif

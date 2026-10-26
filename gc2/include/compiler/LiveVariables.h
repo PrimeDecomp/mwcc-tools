@@ -7,7 +7,6 @@
 extern "C" {
 #endif
 
-// A block's registers of the class being colored (Pro7's LiveInfo.h)
 typedef struct LiveInfo {
     UInt32* use;
     UInt32* def;

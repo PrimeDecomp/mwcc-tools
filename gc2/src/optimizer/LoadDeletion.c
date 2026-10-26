@@ -1,21 +1,16 @@
 #include "compiler/LoadDeletion.h"
 #include "compiler/CopyPropagation.h"
 #include "compiler/CParser.h"
-#include "compiler/CPrep.h"
 #include "compiler/PCode.h"
+#include "compiler/PCodeInfo.h"
 #include "compiler/Registers.h"
 
 int deletedloads;
 
 static int is_load(PCode* instr) {
-    // 2.6 computes the register test to a value (xor; cmp; jl; mov 1) before testing it: the
-    // negated `<` does that, Pro7's `>=` (tried) compiles to a plain branch
-    return (instr->op ==
-            PC_LI ||
-            instr->op ==
-            PC_VSPLTISB ||
-            instr->op ==
-            PC_VSPLTISH ||
+    return (instr->op == PC_LI ||
+            instr->op == PC_VSPLTISB ||
+            instr->op == PC_VSPLTISH ||
             instr->op == PC_VSPLTISW) &&
         !(instr->args[0].data.reg.reg < n_real_registers[instr->args[0].arg]);
 }
@@ -36,7 +31,7 @@ static void deleteload(int id) {
     }
 
     deletepcode(candidate->pcode);
-    deletedloads = 1;
+    deletedloads = TRUE;
 }
 
 // clang-format off
@@ -47,7 +42,7 @@ static Propagation load_immediate_prop = {
     "LOAD IMMEDIATE",
     "LOAD_IMMEDIATES",
     "l%ld",
-    fSideEffects | fRecordBit, // 2.6: a candidate with one of these flags is not propagated
+    fSideEffects | fRecordBit,
     FALSE
 };
 // clang-format on

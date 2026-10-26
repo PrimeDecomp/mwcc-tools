@@ -1,21 +1,10 @@
 #include "msl/ansifp_x86.h"
-/*
- * MSL x86 decimal conversion: __scalenum, __dec2num and __num2dec from ansifp_x86.obj
- * (lib/msl/MSL_X86). The library ships this object without its source; this is a
- * reconstruction, byte-identical to the object apart from relocations. The library
- * was built by an older compiler than the rest of MSL: CodeWarrior Pro 4 with
- * `/O1` (optimize for size), which keeps every local an asm block names in memory.
- */
 
-/* MSL ansi_fp.h, x86 (SIGDIGLEN 32) */
-
-/* an x87 extended-precision value: its mantissa's 16-bit words, low first, then the sign and exponent */
 typedef struct Extended80 {
     unsigned short mantissa[4];
     unsigned short exponent;
 } Extended80;
 
-/* 10^0 .. 10^31 */
 static const Extended80 powers_of_ten[32] = {
     {{0x0000, 0x0000, 0x0000, 0x8000}, 0x3FFF},
     {{0x0000, 0x0000, 0x0000, 0xA000}, 0x4002},
@@ -51,7 +40,6 @@ static const Extended80 powers_of_ten[32] = {
     {{0x2296, 0x4581, 0x7C40, 0xFC6F}, 0x4065},
 };
 
-/* 10^32, 10^64, 10^128, ... 10^(32 * 2^10) */
 static const Extended80 big_powers_of_ten[11] = {
     {{0xB59E, 0x2B70, 0xADA8, 0x9DC5}, 0x4069},
     {{0xA6D5, 0xFFCF, 0x1F49, 0xC278}, 0x40D3},
@@ -66,15 +54,11 @@ static const Extended80 big_powers_of_ten[11] = {
     {{0x0AD3, 0xDB90, 0x2700, 0x9FA4}, 0x4490},
 };
 
-/* MSL fenv.h's FE_DFL_ENV (its fenv_t is a long, the x87 control word, on x86) */
 long _FE_DFL_ENV = 0x037F;
-
+#ifdef __MWERKS__
 static long double *small_pow = (long double *)powers_of_ten;
 static long double *big_pow = (long double *)big_powers_of_ten;
-/* set: __scalenum divides by the power of ten */
 static long scale_divide;
-
-/* st(0) *= 10^eax; a negative exponent flips scale_divide */
 
 static __declspec(naked) void __scalenum(void)
 {
@@ -126,7 +110,6 @@ double __dec2num(const decimal *d)
     unsigned char *p = bcd;
     unsigned char b;
 
-    /* the packed BCD operand of fbld: 18 digits, least significant pair first */
     for (i = 0; i < 9; i++) {
         b = d->sig.text[2 * i] << 4;
         bcd[9 - (i + 1)] = b | (d->sig.text[2 * i + 1] & 0xf);
@@ -228,3 +211,118 @@ done:
  default: d->sig.length = 18;
  }
 }
+#else
+#include "x87.h"
+
+static X87Extended extended(const Extended80 *x)
+{
+    unsigned long long significand = (unsigned long long)x->mantissa[3] << 48 |
+        (unsigned long long)x->mantissa[2] << 32 | (unsigned long long)x->mantissa[1] << 16 | x->mantissa[0];
+    return X87_Make(x->exponent >> 15, (x->exponent & 0x7FFF) - 16383, significand);
+}
+
+static const char past_big_powers[] =
+    "ttUtUUUUUUUUUUtUUUUUtUUUUUUUUUUtUUUUUUUUtUUUUUUUUUUUUUUUUUUUtUUUUUtUUUUUUUUUtUUUUUUUtUUUUU"
+    "UUUtUUUtUUUUUUUUUUUUtUUUUUtUtUUUzUUtttUttzzzUUUUUUUttUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUtUUU"
+    "UUUUUUtUUUUUtUUUUUUUUUUUUtUUUUUUUtUUUtUUUUtUtUtUUUUUUUtUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUt"
+    "UUUUtUUUUUUUUUUUUUUUtUUUUUUUtUUUUUUtUUtttUUUtUtUUUUUUUUUUUtUUUUUUUUUUUUUtUUUUUUUUUUUUUUUUU"
+    "UUUUUUUUUUUUUUtUUUUUUUUUUUUUUUUUUUUUUUUUUtUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU"
+    "UUUUUUUUUUUUUUUUUUtUUUUUUUUUUUUUtUtUtUUUtUUUtUUUUUUUUUUUUUUUUUtUUUUUUUUUUUUtUUUUUUUUUUUUUU"
+    "UUUUUUUtUUtUUUUUUUtUUUUUUUUUUUUUUUUUUUUUUUUUtUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUtUUUUUUUUUUU"
+    "UUUUtUUUUUUUUtUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUtUUUUUUUUUUUUUUUUUUUUUUUU"
+    "UUUUUUUUUUUUUUUUUUtUtUtUtUtUtUtUtUtUtUtUtUtUtUtUtUtUtUtUtUtUtUUUUUtttUtUtUUUUUUUUUUUUUUUUU"
+    "UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUtUUUUUUUUUUUUUUtUUttUUtUUUUUUtUtUzzzUtzzUtzzUtzzUtzzUzz"
+    "zUtzzUtzzUtzzUtzzUUUUUUUUUtUUUUtUttUtUtUHtUUUUUUtUtUtUtUUUtUUUttzzUtzzUzzzttzzUUttttzUUUUU"
+    "UUtUUUUUtUUUUUUUUUtUUUU";
+
+static X87Extended scalenum(X87Extended x, int n, int divide)
+{
+    X87Extended power;
+    int count = (int)(sizeof(big_powers_of_ten) / sizeof(big_powers_of_ten[0]));
+    char kind;
+
+    if (n < 0) {
+        divide ^= 1;
+        n = -n;
+    }
+    power = extended(&powers_of_ten[n & 31]);
+    if (n >= 32) {
+        if (n / 32 - 1 >= count) {
+            kind = n / 32 - 1 - count < (int)sizeof(past_big_powers) - 1
+                ? past_big_powers[n / 32 - 1 - count] : 'U';
+            if (kind == 'U' || (kind == 'z' && divide && x.kind == X87_ZERO)) {
+                x.kind = X87_NAN;
+                x.significand = X87_INDEFINITE;
+                return x;
+            }
+            if (kind == 'H') {
+                x.sign ^= 1;
+            }
+            if (x.kind != X87_ZERO) {
+                x.kind = divide == (kind != 'H') ? X87_INFINITY : X87_ZERO;
+            }
+            return x;
+        }
+        power = X87_Mul(extended(&big_powers_of_ten[n / 32 - 1]), power);
+    }
+    return divide ? X87_Div(x, power) : X87_Mul(x, power);
+}
+
+double __dec2num(const decimal *d)
+{
+    unsigned long long digits = 0;
+    int i;
+
+    for (i = 0; i < 18; i++) {
+        digits = digits * 10 + (d->sig.text[i] & 0xf);
+    }
+    {
+        X87Extended x = X87_FromUInt64(digits);
+        x.sign = (d->sgn & 0x80) != 0;
+        return X87_ToDouble(scalenum(x, d->exp - (18 - d->sig.length), 0));
+    }
+}
+
+void __num2dec(const decform *f, double x, decimal *d)
+{
+    static const Extended80 lg2 = {{0xF799, 0xFBCF, 0x9A84, 0x9A20}, 0x3FFD};
+    X87Extended v, estimate;
+    unsigned long long n;
+    int exponent, i;
+
+    (void)f;
+    v = X87_FromDouble(x);
+    d->sgn = v.sign ? -1 : 0;
+    switch (v.kind) {
+    case X87_NAN: d->sig.text[0] = 'N'; d->sig.length = 1; return;
+    case X87_INFINITY: d->sig.text[0] = 'I'; d->sig.length = 1; return;
+    case X87_ZERO: d->sig.text[0] = '0'; d->sig.length = 1; return;
+    default:
+        v.sign = 0;
+        estimate = X87_Mul(X87_FromInt64(v.exponent), extended(&lg2));
+        estimate = X87_Add(estimate, X87_FromInt64(-17));
+        exponent = (int)X87_RoundToInteger(estimate);
+        v = scalenum(v, exponent, 1);
+        if (X87_Less(v, X87_FromDouble(1.0e17))) {
+            v = X87_Mul(v, X87_FromInt64(10));
+            exponent--;
+        }
+        d->exp = (short)exponent;
+        n = (unsigned long long)X87_RoundToInteger(v);
+        if (n >= 1000000000000000000ULL) {
+            for (i = 0; i < 18; i++) {
+                d->sig.text[i] = '0';
+            }
+            d->sig.text[0] = d->sig.text[1] = '0' + 0xF;
+            d->sig.text[2] = '0' + 0xC;
+            d->sig.length = 18;
+            return;
+        }
+        for (i = 17; i >= 0; i--) {
+            d->sig.text[i] = (unsigned char)('0' + n % 10);
+            n /= 10;
+        }
+        d->sig.length = 18;
+    }
+}
+#endif

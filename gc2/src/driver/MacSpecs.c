@@ -1,7 +1,9 @@
 #include "driver/MacSpecs.h"
-#include "driver/CLIO.h"
+#include "compiler/win32.h"
+#include "driver/Files.h"
 #include "driver/Generic.h"
 #include "driver/MsDos.h"
+#include "driver/oslib.h"
 #include "driver/StringUtils.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -26,8 +28,6 @@ typedef struct VolNode {
 
 static unsigned int lastDirID = 3;
 static unsigned int lastVolRef = 2;
-// (Pro7's statics in reverse order: statics are allocated in reverse declaration order, and
-// 2.6 has stname first)
 static VolNode* vols;
 static DirNode** dirIDMap[256];
 static unsigned int dirMapRows;
@@ -195,8 +195,6 @@ static int FindOrAdd(const OSPathSpec* path, unsigned int* vRefNum, unsigned int
             ++ptr;
         }
 
-        // (2.6 keeps whether this is the last name in a Boolean: Pro7's `if (!ch)` and casts of
-        // `ch == 0` compile otherwise)
         last = ch == 0;
         *ptr = 0;
 
@@ -307,8 +305,6 @@ int __stdcall OS_OSPathSpec_To_VolDir(const OSPathSpec* spec, SInt16* vRefNum, S
     }
 }
 
-// (2.x: a name too long for an FSSpec is passed as the file's short 8.3 name)
-// TODO: invented name (2.6 addition: neither Pro7's MacSpecs.c nor Wii's MacSpecs has it)
 static int OS_ShortenSpec(OSSpec* spec) {
     char path[260];
     char shortpath[260];
@@ -332,7 +328,7 @@ int __stdcall OS_OSSpec_To_FSSpec(const OSSpec* spec, FSSpec* fss) {
     int err;
     SInt16 vRefNum;
     SInt32 dirID;
-    char* s;
+    char* name;
 
     err = OS_OSPathSpec_To_VolDir(&spec->path, &vRefNum, &dirID);
     fss->vRefNum = vRefNum;
@@ -341,18 +337,17 @@ int __stdcall OS_OSSpec_To_FSSpec(const OSSpec* spec, FSSpec* fss) {
         return err;
     }
 
-    s = OS_NameSpecToString(&spec->name, STSbuf, sizeof(STSbuf));
-    if (!s || strlen(s) >= 64) {
-        OSSpec tmp = *spec;
-        OS_ShortenSpec(&tmp);
-        s = OS_NameSpecToString(&tmp.name, STSbuf, sizeof(STSbuf));
+    name = OS_NameSpecToString(&spec->name, STSbuf, sizeof(STSbuf));
+    if (!name || strlen(name) >= 64) {
+        OSSpec shortened = *spec;
+        OS_ShortenSpec(&shortened);
+        name = OS_NameSpecToString(&shortened.name, STSbuf, sizeof(STSbuf));
     }
 
-    c2pstrcpy(fss->name, s);
+    c2pstrcpy(fss->name, name);
     return 0;
 }
 
-// (dead in 2.6: the linker dropped it)
 int __stdcall OS_VolDir_To_OSNameSpec(
     SInt16 vRefNum, SInt32 dirID, OSNameSpec* spec, SInt32* parID
 ) {
@@ -397,8 +392,6 @@ int __stdcall OS_VolDir_To_OSPathSpec(SInt16 vRefNum, SInt32 dirID, OSPathSpec* 
     return 0;
 }
 
-// (2.x: the name in the case the file system stores it, which an FSSpec from a plugin may not have)
-// TODO: invented name (2.6 addition: neither Pro7's MacSpecs.c nor Wii's MacSpecs has it)
 static int OS_CanonNameCase(OSSpec* spec) {
     char path[260];
     WIN32_FIND_DATAA data;

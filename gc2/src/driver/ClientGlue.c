@@ -2,6 +2,8 @@
 #include "driver/CLErrors.h"
 #include "driver/CLMain.h"
 #include "driver/CLPlugins.h"
+#include "driver/CWPlugins.h"
+#include "driver/oslib.h"
 #include "driver/Resources.h"
 #include "driver/ResourceStrings.h"
 #include <string.h>

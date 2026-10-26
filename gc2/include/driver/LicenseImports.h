@@ -7,9 +7,6 @@
 extern "C" {
 #endif
 
-// The FLEXlm 6 client API the driver calls in LMGR326B.dll (lmclient.h's and lmpolicy.h's)
-
-// A vendor's encryption seeds and keys (lmclient.h's VENDORCODE5, 40 bytes)
 typedef struct VENDORCODE {
     short type;
     UInt32 data[2];
@@ -20,13 +17,11 @@ typedef struct VENDORCODE {
     char behavior_ver[5];
 } VENDORCODE;
 
-// TODO: invented name (lmpolicy.h's code handle: the vendor code and the vendor daemon's name)
 typedef struct LPCODE_HANDLE {
     VENDORCODE* code;
     const char* vendor;
 } LPCODE_HANDLE;
 
-// (opaque: lmpolicy.h's checked-out license)
 typedef struct LP_HANDLE LP_HANDLE;
 
 extern int lp_checkout(

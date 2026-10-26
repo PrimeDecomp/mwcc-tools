@@ -1,36 +1,21 @@
 #include "compiler/IroTransform.h"
-#include "compiler/IroCSE.h"
 #include "compiler/IroDump.h"
 #include "compiler/IroLinearForm.h"
-#include "compiler/IroLoop.h"
 #include "compiler/IroMalloc.h"
 #include "compiler/IroPointerAnalysis.h"
 #include "compiler/IrOptimizer.h"
 #include "compiler/IROUseDef.h"
 #include "compiler/IroUtil.h"
 #include "compiler/IroVars.h"
-#include "compiler/BitVector.h"
 #include "compiler/CError.h"
-#include "compiler/CException.h"
-#include "compiler/CExpr.h"
 #include "compiler/CFunc.h"
-#include "compiler/CInline.h"
 #include "compiler/CInt64.h"
 #include "compiler/CIRTransform.h"
 #include "compiler/CMachine.h"
 #include "compiler/CompilerTools.h"
 #include "compiler/CParser.h"
-#include "compiler/CPrec.h"
 #include "compiler/CPrep.h"
-#include "compiler/CTemplateFunc.h"
-#include "compiler/CTemplateNew.h"
-#include "compiler/CTemplateTools.h"
 #include "compiler/enode.h"
-#include "compiler/objects.h"
-#include "compiler/ObjGen_PPC_EABI.h"
-#include "compiler/PCode.h"
-#include "compiler/scopes.h"
-#include "compiler/Switch.h"
 #include "compiler/types.h"
 #include <string.h>
 
@@ -41,13 +26,10 @@ CInt64 OperandConst;
 Object* OperandObject;
 ENodeList* FirstAddend;
 ENodeList* LastAddend;
-// Pro7 declares AssignmentOp, ComplementaryOpLogical, ComplementaryOp; the original's .bss has
-// AssignmentOp lowest and ComplementaryOp highest (statics are allocated in reverse declaration order)
 static ENodeType ComplementaryOp[MAXEXPR];
 static ENodeType ComplementaryOpLogical[MAXEXPR];
 static ENodeType AssignmentOp[MAXEXPR];
 
-// forward decls
 static void DoDiadic(IROLinear* nd);
 
 void IRO_InitializeAssignmentOpArray(void) {
@@ -318,10 +300,8 @@ static void DoTransformations(IROLinear* nd) {
         switch (nd->nodetype) {
             case EASS:
                 right = nd->u.diadic.right;
-                if (right->type ==
-                    IROLinearOp2Arg &&
-                    AssignmentOp[right->nodetype] <
-                    MAXEXPR &&
+                if (right->type == IROLinearOp2Arg &&
+                    AssignmentOp[right->nodetype] < MAXEXPR &&
                     IRO_TypesEqual(nd->rtype, right->rtype) &&
                     IRO_IsVariable(nd3 = nd->u.diadic.left) &&
                     !(nd3->flags & IROLF_BitfieldIndirect) &&
@@ -349,14 +329,12 @@ static void DoTransformations(IROLinear* nd) {
                         nd->nodetype = ESHR;
                         CInt64_SetLong(&nd->u.diadic.right->u.node->data.intval, value);
                     } else if (!is_unsigned(nd->rtype) &&
-                               TYPE_INTEGRAL(nd->rtype)->integral !=
-                               IT_BOOL &&
-                               nd->u.diadic.left->nodetype ==
-                               ETYPCON &&
+                               TYPE_INTEGRAL(nd->rtype)->integral != IT_BOOL &&
+                               nd->u.diadic.left->nodetype == ETYPCON &&
                                IS_TYPE_INT(nd->u.diadic.left->u.monadic->rtype) &&
                                is_unsigned(nd->u.diadic.left->u.monadic->rtype) &&
                                nd->u.diadic.left->u.monadic->rtype->size <
-                               nd->u.diadic.left->rtype->size) {
+                                   nd->u.diadic.left->rtype->size) {
                         nd->nodetype = ESHR;
                         CInt64_SetLong(&nd->u.diadic.right->u.node->data.intval, value);
                         if (nd->flags & IROLF_Reffed) {
@@ -391,15 +369,12 @@ static void DoTransformations(IROLinear* nd) {
 
             case EEQU:
                 if ((nd2 = IRO_LocateFather(nd)) &&
-                    nd2->nodetype ==
-                    ETYPCON &&
+                    nd2->nodetype == ETYPCON &&
                     IS_TYPE_INT(nd2->rtype) &&
                     (nd3 = IRO_LocateFather(nd2)) &&
-                    nd3->nodetype ==
-                    ELOGNOT &&
+                    nd3->nodetype == ELOGNOT &&
                     (nd4 = IRO_LocateFather(nd3)) &&
-                    nd4->nodetype ==
-                    ETYPCON &&
+                    nd4->nodetype == ETYPCON &&
                     IS_TYPE_INT(nd4->rtype) &&
                     (nd5 = IRO_LocateFather(nd4)) &&
                     (nd5->type == IROLinearIf || nd5->type == IROLinearIfNot)) {
@@ -410,14 +385,16 @@ static void DoTransformations(IROLinear* nd) {
                     nd4->type = IROLinearNop;
                 }
                 break;
+            default:
+                break;
         }
     }
 }
 
 static void IRO_SwitchChildren(IROLinear* node) {
-    IROLinear* t = node->u.diadic.left;
+    IROLinear* swap = node->u.diadic.left;
     node->u.diadic.left = node->u.diadic.right;
-    node->u.diadic.right = t;
+    node->u.diadic.right = swap;
 }
 
 static void ReplaceExprWithConst(IROLinear* node, CInt64 value) {
@@ -526,27 +503,27 @@ static inline void switchFatherLeftMonadic(IROLinear* nd) {
 }
 
 static void switchFatherLeft(IROLinear* nd, int isRight) {
-    IROLinear* a;
-    IROLinear* b;
+    IROLinear* child;
+    IROLinear* grandchild;
 
-    a = nd->u.diadic.left;
-    IRO_LocateFather_Cut_And_Paste_Without_Nopping(nd, a);
+    child = nd->u.diadic.left;
+    IRO_LocateFather_Cut_And_Paste_Without_Nopping(nd, child);
 
     if (isRight) {
-        nd->u.diadic.left = a->u.diadic.left;
-        a->u.diadic.left = nd;
-        b = a->u.diadic.right;
+        nd->u.diadic.left = child->u.diadic.left;
+        child->u.diadic.left = nd;
+        grandchild = child->u.diadic.right;
     } else {
-        nd->u.diadic.left = a->u.diadic.right;
-        a->u.diadic.right = nd;
-        b = a->u.diadic.left;
+        nd->u.diadic.left = child->u.diadic.right;
+        child->u.diadic.right = nd;
+        grandchild = child->u.diadic.left;
     }
 
-    a->rtype = nd->rtype;
-    a->flags = nd->flags;
-    a->nodeflags = nd->nodeflags;
-    IRO_CutAndPasteAfter(a, a, nd);
-    IRO_CutAndPasteAfter(IRO_FindFirst(b), b, nd);
+    child->rtype = nd->rtype;
+    child->flags = nd->flags;
+    child->nodeflags = nd->nodeflags;
+    IRO_CutAndPasteAfter(child, child, nd);
+    IRO_CutAndPasteAfter(IRO_FindFirst(grandchild), grandchild, nd);
 }
 
 static void PickCommonsubAtLeftLeft(IROLinear* expr) {
@@ -575,8 +552,8 @@ static void DoTransformations11(IROLinear* nd) {
     int changed;
     int compare;
     Type* type;
-    SInt32 tmp1;
-    SInt32 tmp2;
+    SInt32 resultBits;
+    SInt32 operandBits;
     CInt64 val;
 
     if (nd->type == IROLinearOp2Arg) {
@@ -586,7 +563,7 @@ static void DoTransformations11(IROLinear* nd) {
             return;
         }
 
-        changed = 0;
+        changed = FALSE;
         if (!IRO_HasSideEffect(left) && !IRO_HasSideEffect(right)) {
             if (IRO_IsIntConstant(right) || IRO_IsFloatConstant(right)) {
                 if (IRO_IsConstantZero(right)) {
@@ -607,20 +584,20 @@ static void DoTransformations11(IROLinear* nd) {
                         case EXORASS:
                         case EORASS:
                             ReplaceExprWithLeftChild(nd);
-                            changed = 1;
+                            changed = TRUE;
                             break;
                         case EMUL:
                         case EAND:
                         case ELAND:
                             ReplaceExprWithConst(nd, cint64_zero);
-                            changed = 1;
+                            changed = TRUE;
                             break;
                         case EMULASS:
                         case EANDASS:
                             nd->nodetype = EASS;
                             nd->u.diadic.right->rtype = nd->rtype;
                             nd->u.diadic.right->u.node->rtype = nd->rtype;
-                            changed = 1;
+                            changed = TRUE;
                             break;
                         case EDIV:
                         case EMODULO:
@@ -633,55 +610,47 @@ static void DoTransformations11(IROLinear* nd) {
                             }
                             CError_Warning(ERR_DIVISION_BY_0);
                             break;
+                        default:
+                            break;
                     }
                 } else if (nd->nodetype == ELAND) {
                     ReplaceExprWithLeftChild(nd);
-                    changed = 1;
+                    changed = TRUE;
                 } else if (nd->nodetype == ELOR) {
                     ReplaceExprWithConst(nd, cint64_one);
-                    changed = 1;
-                } else if (nd->nodetype ==
-                           ESHL ||
-                           nd->nodetype ==
-                           ESHR ||
-                           nd->nodetype ==
-                           ESHLASS ||
+                    changed = TRUE;
+                } else if (nd->nodetype == ESHL ||
+                           nd->nodetype == ESHR ||
+                           nd->nodetype == ESHLASS ||
                            nd->nodetype == ESHRASS) {
                     type = nd->rtype;
-                    tmp1 = type->size * 8;
+                    resultBits = type->size * 8;
                     if (left->type == IROLinearOp1Arg && left->nodetype == ETYPCON) {
                         type = left->u.monadic->rtype;
-                        if (left->u.monadic->type ==
-                            IROLinearOp1Arg &&
-                            left->u.monadic->nodetype ==
-                            EINDIRECT &&
-                            left->u.monadic->u.monadic->type ==
-                            IROLinearOp1Arg &&
-                            left->u.monadic->u.monadic->nodetype ==
-                            EBITFIELD &&
+                        if (left->u.monadic->type == IROLinearOp1Arg &&
+                            left->u.monadic->nodetype == EINDIRECT &&
+                            left->u.monadic->u.monadic->type == IROLinearOp1Arg &&
+                            left->u.monadic->u.monadic->nodetype == EBITFIELD &&
                             IS_TYPE_BITFIELD(left->u.monadic->u.monadic->rtype)) {
-                            tmp2 = TYPE_BITFIELD(left->u.monadic->u.monadic->rtype)->bitlength;
+                            operandBits =
+                                TYPE_BITFIELD(left->u.monadic->u.monadic->rtype)->bitlength;
                         } else {
-                            tmp2 = type->size * 8;
+                            operandBits = type->size * 8;
                         }
-                    } else if (left->type ==
-                               IROLinearOp1Arg &&
-                               left->nodetype ==
-                               EINDIRECT &&
-                               left->u.monadic->type ==
-                               IROLinearOp1Arg &&
-                               left->u.monadic->nodetype ==
-                               EBITFIELD &&
+                    } else if (left->type == IROLinearOp1Arg &&
+                               left->nodetype == EINDIRECT &&
+                               left->u.monadic->type == IROLinearOp1Arg &&
+                               left->u.monadic->nodetype == EBITFIELD &&
                                IS_TYPE_BITFIELD(left->u.monadic->rtype)) {
-                        tmp2 = TYPE_BITFIELD(left->u.monadic->rtype)->bitlength;
+                        operandBits = TYPE_BITFIELD(left->u.monadic->rtype)->bitlength;
                     } else {
-                        tmp2 = tmp1;
+                        operandBits = resultBits;
                     }
 
                     switch (nd->nodetype) {
                         case ESHL:
                         case ESHLASS:
-                            CInt64_SetLong(&val, tmp1);
+                            CInt64_SetLong(&val, resultBits);
                             if (is_unsigned(type)) {
                                 compare = CInt64_GreaterEqualU(right->u.node->data.intval, val);
                             } else {
@@ -690,9 +659,11 @@ static void DoTransformations11(IROLinear* nd) {
                             break;
                         case ESHR:
                         case ESHRASS:
-                            CInt64_SetLong(&val, tmp2);
+                            CInt64_SetLong(&val, operandBits);
                             compare = is_unsigned(type) &&
                                 CInt64_GreaterEqualU(right->u.node->data.intval, val);
+                            break;
+                        default:
                             break;
                     }
 
@@ -707,8 +678,10 @@ static void DoTransformations11(IROLinear* nd) {
                                 nd->nodetype = EASS;
                                 ReplaceExprWithConst(right, cint64_zero);
                                 break;
+                            default:
+                                break;
                         }
-                        changed = 1;
+                        changed = TRUE;
                     }
                 } else if (IRO_IsConstantOne(right)) {
                     switch (nd->nodetype) {
@@ -718,18 +691,20 @@ static void DoTransformations11(IROLinear* nd) {
                         case EMULASS:
                         case EDIVASS:
                             ReplaceExprWithLeftChild(nd);
-                            changed = 1;
+                            changed = TRUE;
                             break;
                         case EMODULO:
                             ReplaceExprWithConst(nd, cint64_zero);
-                            changed = 1;
+                            changed = TRUE;
                             break;
                         case EMODASS:
                             nd->nodetype = EASS;
                             ReplaceExprWithConst(right, cint64_zero);
                             nd->u.diadic.right->rtype = nd->rtype;
                             nd->u.diadic.right->u.node->rtype = nd->rtype;
-                            changed = 1;
+                            changed = TRUE;
+                            break;
+                        default:
                             break;
                     }
                 } else if (IRO_IsConstantNegativeOne(right)) {
@@ -738,18 +713,20 @@ static void DoTransformations11(IROLinear* nd) {
                         case EMULV:
                         case EDIV:
                             ReplaceExprWithMonaminLeft(nd);
-                            changed = 1;
+                            changed = TRUE;
                             break;
                         case EMODULO:
                             ReplaceExprWithConst(nd, cint64_zero);
-                            changed = 1;
+                            changed = TRUE;
                             break;
                         case EMODASS:
                             nd->nodetype = EASS;
                             ReplaceExprWithConst(right, cint64_zero);
                             nd->u.diadic.right->rtype = nd->rtype;
                             nd->u.diadic.right->u.node->rtype = nd->rtype;
-                            changed = 1;
+                            changed = TRUE;
+                            break;
+                        default:
                             break;
                     }
                 }
@@ -776,6 +753,8 @@ static void DoTransformations11(IROLinear* nd) {
                         case ESUB:
                             ReplaceExprWithMonaminRight(nd);
                             break;
+                        default:
+                            break;
                     }
                 } else if (nd->nodetype == ELAND) {
                     ReplaceExprWithRightChild(nd);
@@ -787,12 +766,16 @@ static void DoTransformations11(IROLinear* nd) {
                         case EMULV:
                             ReplaceExprWithRightChild(nd);
                             break;
+                        default:
+                            break;
                     }
                 } else if (IRO_IsConstantNegativeOne(left)) {
                     switch (nd->nodetype) {
                         case EMUL:
                         case EMULV:
                             ReplaceExprWithMonaminRight(nd);
+                            break;
+                        default:
                             break;
                     }
                 }
@@ -841,19 +824,19 @@ static void DoTransformations12(IROLinear* nd) {
                     nd->nodetype = EASS;
                     ReplaceExprWithConst(right, cint64_zero);
                     break;
+                default:
+                    break;
             }
         }
     }
 }
 
-// the reference's DoTransformations13: an equality of two pointers pointer analysis
-// resolves to one place each
 static void DoTransformations13(IROLinear* nd) {
     IROLinear* left;
     IROLinear* right;
     IROLinear* left2;
     IROLinear* right2;
-    IROListNode* tmp;
+    IROListNode* next;
     IROListNode* leftlist;
     IROListNode* rightlist;
 
@@ -880,8 +863,7 @@ static void DoTransformations13(IROLinear* nd) {
                                 ReplaceExprWithConst(
                                     nd, (nd->nodetype == EEQU) ? cint64_one : cint64_zero
                                 );
-                            } else if (left2->type ==
-                                       right2->type &&
+                            } else if (left2->type == right2->type &&
                                        IRO_TypesEqual(left2->rtype, right2->rtype)) {
                                 ReplaceExprWithConst(
                                     nd, (nd->nodetype == EEQU) ? cint64_zero : cint64_one
@@ -890,24 +872,22 @@ static void DoTransformations13(IROLinear* nd) {
                         }
 
                         while (rightlist) {
-                            tmp = rightlist->nextList;
+                            next = rightlist->nextList;
                             IRO_free(rightlist);
-                            rightlist = tmp;
+                            rightlist = next;
                         }
                     }
                 }
 
                 while (leftlist) {
-                    tmp = leftlist->nextList;
+                    next = leftlist->nextList;
                     IRO_free(leftlist);
-                    leftlist = tmp;
+                    leftlist = next;
                 }
             }
         }
     }
 }
-
-void DoTransformations13(IROLinear* nd);
 
 static void DoTransformations21(IROLinear* nd) {
     IROLinear* left;
@@ -918,16 +898,14 @@ static void DoTransformations21(IROLinear* nd) {
         left = nd->u.diadic.left;
         right = nd->u.diadic.right;
 
-        if (left->type ==
-            IROLinearOp1Arg &&
-            right->type ==
-            IROLinearOp1Arg &&
+        if (left->type == IROLinearOp1Arg &&
+            right->type == IROLinearOp1Arg &&
             left->nodetype == right->nodetype) {
             switch (left->nodetype) {
                 case EMONMIN:
                 case EBINNOT:
                 case ELOGNOT:
-                    changed = 0;
+                    changed = FALSE;
                     switch (nd->nodetype) {
                         case EXOR:
                             if (left->nodetype == EBINNOT) {
@@ -956,7 +934,7 @@ collapse:
                                 nd->u.diadic.left = left->u.monadic;
                                 nd->u.diadic.right = right->u.monadic;
                                 left->type = right->type = IROLinearNop;
-                                changed = 1;
+                                changed = TRUE;
                             }
                             break;
                         case ELAND:
@@ -986,8 +964,10 @@ switchfather:
                                 switchFatherLeftMonadic(nd);
                                 nd->u.diadic.right = right->u.monadic;
                                 right->type = IROLinearNop;
-                                changed = 1;
+                                changed = TRUE;
                             }
+                            break;
+                        default:
                             break;
                     }
 
@@ -997,6 +977,8 @@ switchfather:
                         DoTransformations12(nd);
                         DoTransformations13(nd);
                     }
+                    break;
+                default:
                     break;
             }
         }
@@ -1040,15 +1022,15 @@ static void DoTransformations22(IROLinear* nd) {
                             ReplaceExprWithConst(nd, cint64_negone);
                         }
                         break;
+                    default:
+                        break;
                 }
             } else {
                 ndtmp = NULL;
-                if (left->type ==
-                    IROLinearOp1Arg &&
+                if (left->type == IROLinearOp1Arg &&
                     IRO_ExprsSameSemantically(left->u.monadic, right)) {
                     ndtmp = left;
-                } else if (right->type ==
-                           IROLinearOp1Arg &&
+                } else if (right->type == IROLinearOp1Arg &&
                            IRO_ExprsSameSemantically(left, right->u.monadic)) {
                     ndtmp = right;
                 }
@@ -1115,6 +1097,8 @@ static void DoTransformations22(IROLinear* nd) {
                                 nd->u.diadic.right->u.node->rtype = nd->rtype;
                             }
                             break;
+                        default:
+                            break;
                     }
                 }
             }
@@ -1122,9 +1106,6 @@ static void DoTransformations22(IROLinear* nd) {
     }
 }
 
-// A 2.6 addition (Pro7 has no function here): convert `node` to `type` by a conversion node pasted
-// after it, a bool by two logical nots. IROUseDef's IRO_AddTypeConversion without the list.
-// TODO: invented name
 static IROLinear* InsertTypeConversion(IROLinear* node, Type* type) {
     IROLinear* first;
     IROLinear* last;
@@ -1174,7 +1155,7 @@ static void DoTransformations23(IROLinear* nd) {
             return;
         }
 
-        changed = isCompare = 0;
+        changed = isCompare = FALSE;
         which = 0;
 
         switch (nd->nodetype) {
@@ -1182,7 +1163,7 @@ static void DoTransformations23(IROLinear* nd) {
             case EGREATER:
             case ELESSEQU:
             case EGREATEREQU:
-                isCompare = 1;
+                isCompare = TRUE;
             case EADDV:
             case EADD:
             case EEQU:
@@ -1233,14 +1214,12 @@ static void DoTransformations23(IROLinear* nd) {
                         IRO_SwitchChildren(right);
                     }
 
-                    if (nd->nodetype ==
-                        right->nodetype ||
+                    if (nd->nodetype == right->nodetype ||
                         (nd->nodetype == EANDASS && right->nodetype == EAND) ||
                         (nd->nodetype == EORASS && right->nodetype == EOR)) {
                         ReplaceExprWithRightChild(right);
-                        changed = 1;
-                    } else if (nd->nodetype ==
-                               ComplementaryOp[right->nodetype] ||
+                        changed = TRUE;
+                    } else if (nd->nodetype == ComplementaryOp[right->nodetype] ||
                                (nd->nodetype == EANDASS && right->nodetype == EOR) ||
                                (nd->nodetype == EORASS && right->nodetype == EAND)) {
                         ReplaceExprWithLeftChild(nd);
@@ -1261,19 +1240,21 @@ static void DoTransformations23(IROLinear* nd) {
                             if (isCompare) {
                                 nd->nodetype = ComplementaryOp[nd->nodetype];
                             }
-                            changed = 1;
+                            changed = TRUE;
                             break;
 
                         case ESUB:
                         case ESUBV:
                             ReplaceExprWithRightChild(right);
                             ReplaceExprWithMonaminRight(nd);
-                            changed = 1;
+                            changed = TRUE;
                             break;
 
                         case ESUBASS:
                             ReplaceExprWithRightChild(right);
-                            changed = 1;
+                            changed = TRUE;
+                            break;
+                        default:
                             break;
                     }
                     break;
@@ -1306,17 +1287,21 @@ static void DoTransformations23(IROLinear* nd) {
                             if (which == 2) {
                                 nd->nodetype = EASS;
                                 ReplaceExprWithLeftChild(right);
-                                changed = 1;
+                                changed = TRUE;
                             }
                             break;
                         case ESUBASS:
                             if (which == 1) {
                                 nd->nodetype = EASS;
                                 ReplaceExprWithRightChild(right);
-                                changed = 1;
+                                changed = TRUE;
                             }
                             break;
+                        default:
+                            break;
                     }
+                    break;
+                default:
                     break;
             }
         }
@@ -1350,6 +1335,8 @@ done:
                         }
                     }
                     break;
+                default:
+                    break;
             }
 
             switch (nd->nodetype) {
@@ -1359,8 +1346,7 @@ done:
                 case ESHRASS:
                     which = 0;
                     if (left->type == IROLinearOp2Arg) {
-                        if (left->nodetype ==
-                            ComplementaryOp[nd->nodetype] ||
+                        if (left->nodetype == ComplementaryOp[nd->nodetype] ||
                             left->nodetype == AssignmentOp[ComplementaryOp[nd->nodetype]]) {
                             if (IRO_IsIntConstant(right) &&
                                 IRO_ExprsSameSemantically(right, left->u.diadic.right)) {
@@ -1378,7 +1364,7 @@ done:
                             if (nd->rtype != right->rtype) {
                                 nd->u.diadic.right = InsertTypeConversion(right, nd->rtype);
                             }
-                            changed = 1;
+                            changed = TRUE;
                         } else if (is_unsigned(nd->rtype)) {
                             ReplaceExprWithLeftChild(left);
                             nd->nodetype = (nd->nodetype == ESHR) ? EAND : EANDASS;
@@ -1390,9 +1376,11 @@ done:
                             if (nd->rtype != right->rtype) {
                                 nd->u.diadic.right = InsertTypeConversion(right, nd->rtype);
                             }
-                            changed = 1;
+                            changed = TRUE;
                         }
                     }
+                    break;
+                default:
                     break;
             }
         }
@@ -1409,7 +1397,6 @@ done:
     }
 }
 
-// TODO: 2.6 evidently works on a copy of its parameter; the copy's real name and use are not known.
 static void DoTransformations24(IROLinear* expr) {
     IROLinear* nd = expr;
     IROLinear* left;
@@ -1423,10 +1410,8 @@ static void DoTransformations24(IROLinear* expr) {
             return;
         }
 
-        if (left->type ==
-            IROLinearOp2Arg &&
-            right->type ==
-            IROLinearOp2Arg &&
+        if (left->type == IROLinearOp2Arg &&
+            right->type == IROLinearOp2Arg &&
             !IRO_HasSideEffect(nd)) {
             changed = 0;
 
@@ -1455,6 +1440,8 @@ static void DoTransformations24(IROLinear* expr) {
                                     PickCommonsubAtLeftLeft(nd);
                                     changed = 3;
                                     break;
+                                default:
+                                    break;
                             }
                             break;
                         case EAND:
@@ -1471,6 +1458,8 @@ static void DoTransformations24(IROLinear* expr) {
                                 PickCommonsubAtLeftLeft(nd);
                                 changed = 3;
                             }
+                            break;
+                        default:
                             break;
                     }
                 } else if (left->nodetype == ComplementaryOp[right->nodetype]) {
@@ -1489,6 +1478,8 @@ static void DoTransformations24(IROLinear* expr) {
                                     ReplaceExprWithRightChild(right);
                                     changed = 1;
                                     break;
+                                default:
+                                    break;
                             }
                             break;
 
@@ -1499,6 +1490,8 @@ static void DoTransformations24(IROLinear* expr) {
                             } else if (right->nodetype == nd->nodetype) {
                                 ReplaceExprWithRightChild(nd);
                             }
+                            break;
+                        default:
                             break;
                     }
                 }
@@ -1519,6 +1512,8 @@ static void DoTransformations24(IROLinear* expr) {
                                     PickCommonsubAtRightLeft(nd);
                                     changed = 3;
                                     break;
+                                default:
+                                    break;
                             }
                             break;
                         case EAND:
@@ -1535,6 +1530,8 @@ static void DoTransformations24(IROLinear* expr) {
                                 PickCommonsubAtRightLeft(nd);
                                 changed = 3;
                             }
+                            break;
+                        default:
                             break;
                     }
                 } else if (left->nodetype == ComplementaryOp[right->nodetype]) {
@@ -1566,6 +1563,8 @@ static void DoTransformations24(IROLinear* expr) {
                                 ReplaceExprWithRightChild(nd);
                             }
                             break;
+                        default:
+                            break;
                     }
                 }
             } else if (IRO_ExprsSameSemantically(left->u.diadic.left, right->u.diadic.right)) {
@@ -1588,6 +1587,8 @@ static void DoTransformations24(IROLinear* expr) {
                                     IRO_SwitchChildren(nd);
                                     changed = 1;
                                     break;
+                                default:
+                                    break;
                             }
                             break;
                         case EMUL:
@@ -1596,6 +1597,8 @@ static void DoTransformations24(IROLinear* expr) {
                                 case ESUB:
                                     PickCommonsubAtLeftRight(nd);
                                     changed = 2;
+                                    break;
+                                default:
                                     break;
                             }
                             break;
@@ -1613,6 +1616,8 @@ static void DoTransformations24(IROLinear* expr) {
                                 PickCommonsubAtLeftRight(nd);
                                 changed = 2;
                             }
+                            break;
+                        default:
                             break;
                     }
                 } else if (left->nodetype == ComplementaryOp[right->nodetype]) {
@@ -1643,6 +1648,8 @@ static void DoTransformations24(IROLinear* expr) {
                                 ReplaceExprWithRightChild(nd);
                             }
                             break;
+                        default:
+                            break;
                     }
                 }
             } else if (IRO_ExprsSameSemantically(left->u.diadic.right, right->u.diadic.right)) {
@@ -1655,6 +1662,8 @@ static void DoTransformations24(IROLinear* expr) {
                                     ReplaceExprWithLeftChild(left);
                                     ReplaceExprWithLeftChild(right);
                                     changed = 1;
+                                default:
+                                    break;
                             }
                         case EADD:
                             switch (left->nodetype) {
@@ -1662,6 +1671,8 @@ static void DoTransformations24(IROLinear* expr) {
                                 case ESHL:
                                     PickCommonsubAtRightRight(nd);
                                     changed = 2;
+                                    break;
+                                default:
                                     break;
                             }
                             break;
@@ -1673,6 +1684,8 @@ static void DoTransformations24(IROLinear* expr) {
                                     PickCommonsubAtRightRight(nd);
                                     changed = 2;
                                     break;
+                                default:
+                                    break;
                             }
                             break;
                         case EAND:
@@ -1680,14 +1693,14 @@ static void DoTransformations24(IROLinear* expr) {
                             if (left->nodetype == nd->nodetype) {
                                 ReplaceExprWithLeftChild(right);
                                 changed = 1;
-                            } else if (left->nodetype ==
-                                       ComplementaryOp[nd->nodetype] ||
-                                       left->nodetype ==
-                                       ESHR ||
+                            } else if (left->nodetype == ComplementaryOp[nd->nodetype] ||
+                                       left->nodetype == ESHR ||
                                        left->nodetype == ESHL) {
                                 PickCommonsubAtRightRight(nd);
                                 changed = 2;
                             }
+                            break;
+                        default:
                             break;
                     }
                 } else if (left->nodetype == ComplementaryOp[right->nodetype]) {
@@ -1701,6 +1714,8 @@ static void DoTransformations24(IROLinear* expr) {
                                     ReplaceExprWithLeftChild(right);
                                     changed = 1;
                                     break;
+                                default:
+                                    break;
                             }
                             break;
 
@@ -1711,6 +1726,8 @@ static void DoTransformations24(IROLinear* expr) {
                             } else if (right->nodetype == nd->nodetype) {
                                 ReplaceExprWithRightChild(nd);
                             }
+                            break;
+                        default:
                             break;
                     }
                 }
@@ -1730,7 +1747,7 @@ static void DoTransformations24(IROLinear* expr) {
 }
 
 static void DoTransformations25(IROLinear* nd) {
-    int changed = 0;
+    int changed = FALSE;
     IROLinear* left;
     IROLinear* right;
 
@@ -1738,12 +1755,10 @@ static void DoTransformations25(IROLinear* nd) {
         left = nd->u.diadic.left;
         right = nd->u.diadic.right;
 
-        if ((left->type ==
-             IROLinearOp2Arg &&
+        if ((left->type == IROLinearOp2Arg &&
              (IS_TYPE_FLOAT(left->u.diadic.left->rtype) ||
               IS_TYPE_FLOAT(left->u.diadic.right->rtype))) ||
-            (right->type ==
-             IROLinearOp2Arg &&
+            (right->type == IROLinearOp2Arg &&
              (IS_TYPE_FLOAT(right->u.diadic.left->rtype) ||
               IS_TYPE_FLOAT(right->u.diadic.right->rtype)))) {
             return;
@@ -1760,22 +1775,24 @@ static void DoTransformations25(IROLinear* nd) {
                     case EEQU:
                         if (IRO_IsConstantOne(right)) {
                             ReplaceExprWithLeftChild(nd);
-                            changed = 1;
+                            changed = TRUE;
                         } else if (IRO_IsConstantZero(right)) {
                             left->nodetype = ComplementaryOpLogical[left->nodetype];
                             ReplaceExprWithLeftChild(nd);
-                            changed = 1;
+                            changed = TRUE;
                         }
                         break;
                     case ENOTEQU:
                         if (IRO_IsConstantOne(right)) {
                             left->nodetype = ComplementaryOpLogical[left->nodetype];
                             ReplaceExprWithLeftChild(nd);
-                            changed = 1;
+                            changed = TRUE;
                         } else if (IRO_IsConstantZero(right)) {
                             ReplaceExprWithLeftChild(nd);
-                            changed = 1;
+                            changed = TRUE;
                         }
+                        break;
+                    default:
                         break;
                 }
                 break;
@@ -1785,16 +1802,20 @@ static void DoTransformations25(IROLinear* nd) {
                     case EEQU:
                         if (IRO_IsConstantOne(right)) {
                             ReplaceExprWithLeftChild(nd);
-                            changed = 1;
+                            changed = TRUE;
                         }
                         break;
                     case ENOTEQU:
                         if (IRO_IsConstantZero(right)) {
                             ReplaceExprWithLeftChild(nd);
-                            changed = 1;
+                            changed = TRUE;
                         }
                         break;
+                    default:
+                        break;
                 }
+                break;
+            default:
                 break;
         }
 
@@ -1823,6 +1844,8 @@ static void DoTransformations25(IROLinear* nd) {
                                 ReplaceExprWithRightChild(nd);
                             }
                             break;
+                        default:
+                            break;
                     }
                     break;
                 case ELAND:
@@ -1838,7 +1861,11 @@ static void DoTransformations25(IROLinear* nd) {
                                 ReplaceExprWithRightChild(nd);
                             }
                             break;
+                        default:
+                            break;
                     }
+                    break;
+                default:
                     break;
             }
         }
@@ -1852,9 +1879,9 @@ static inline Boolean isOrderingOperator(ENodeType op) {
         case ECOMMA:
         case ECOND:
         case ECONDASS:
-            return 1;
+            return TRUE;
         default:
-            return 0;
+            return FALSE;
     }
 }
 
@@ -1872,49 +1899,50 @@ static inline void RemoveUnreffed(IROLinear* nd) {
                     IRO_NopNonSideEffects(nd, 0);
                 }
                 break;
+            default:
+                break;
         }
     }
 }
 
 static void RemoveRedundantMonadicOp(IROLinear* nd) {
-    IROLinear* nd2;
-    IROLinear* nd3;
+    IROLinear* father;
+    IROLinear* grandfather;
 
-    if (nd->type ==
-        IROLinearOp1Arg &&
-        (nd2 = IRO_LocateFather(nd)) &&
-        nd2->nodetype == nd->nodetype) {
+    if (nd->type == IROLinearOp1Arg &&
+        (father = IRO_LocateFather(nd)) &&
+        father->nodetype == nd->nodetype) {
         switch (nd->nodetype) {
             case ELOGNOT:
-                if ((nd3 = IRO_LocateFather(nd2))) {
-                    if (nd3->rtype &&
-                        TYPE_INTEGRAL(nd3->rtype)->integral ==
-                        IT_BOOL &&
+                if ((grandfather = IRO_LocateFather(father))) {
+                    if (grandfather->rtype &&
+                        TYPE_INTEGRAL_UNCHECKED(grandfather->rtype) == IT_BOOL &&
                         nd->u.monadic->rtype &&
-                        TYPE_INTEGRAL(nd->u.monadic->rtype)->integral == IT_BOOL) {
+                        TYPE_INTEGRAL_UNCHECKED(nd->u.monadic->rtype) == IT_BOOL) {
                         goto remove;
                     }
 
-                    if (nd3->type == IROLinearIf) {
+                    if (grandfather->type == IROLinearIf) {
                         goto remove;
                     }
-                    if (nd3->type == IROLinearIfNot) {
+                    if (grandfather->type == IROLinearIfNot) {
                         goto remove;
                     }
-                    if (nd3->type == IROLinearOp3Arg && nd == nd3->u.args3.a) {
+                    if (grandfather->type == IROLinearOp3Arg && nd == grandfather->u.args3.a) {
                         goto remove;
                     }
 
-                    switch (nd3->nodetype) {
+                    switch (grandfather->nodetype) {
                         case ELOGNOT:
                         case ELAND:
                         case ELOR:
                             goto remove;
+                        default:
+                            break;
                     }
                 }
 
-                if (nd->u.monadic->type ==
-                    IROLinearOp1Arg ||
+                if (nd->u.monadic->type == IROLinearOp1Arg ||
                     nd->u.monadic->type == IROLinearOp2Arg) {
                     switch (nd->u.monadic->nodetype) {
                         case ELOGNOT:
@@ -1927,6 +1955,8 @@ static void RemoveRedundantMonadicOp(IROLinear* nd) {
                         case ELAND:
                         case ELOR:
                             goto remove;
+                        default:
+                            break;
                     }
                 }
                 break;
@@ -1934,16 +1964,16 @@ static void RemoveRedundantMonadicOp(IROLinear* nd) {
             case EMONMIN:
             case EBINNOT:
 remove:
-                IRO_LocateFather_Cut_And_Paste_Without_Nopping(nd2, nd->u.monadic);
-                nd->type = nd2->type = IROLinearNop;
+                IRO_LocateFather_Cut_And_Paste_Without_Nopping(father, nd->u.monadic);
+                nd->type = father->type = IROLinearNop;
                 break;
 
             case ETYPCON:
-                if (TYPE_INTEGRAL(nd->rtype)->integral == IT_FLOAT) {
-                    switch (TYPE_INTEGRAL(nd2->rtype)->integral) {
+                if (TYPE_INTEGRAL_UNCHECKED(nd->rtype) == IT_FLOAT) {
+                    switch (TYPE_INTEGRAL_UNCHECKED(father->rtype)) {
                         case IT_DOUBLE:
                         case IT_LONGDOUBLE:
-                            switch (TYPE_INTEGRAL(nd->u.monadic->rtype)->integral) {
+                            switch (TYPE_INTEGRAL_UNCHECKED(nd->u.monadic->rtype)) {
                                 case IT_BOOL:
                                 case IT_CHAR:
                                 case IT_SCHAR:
@@ -1952,12 +1982,14 @@ remove:
                                 case IT_SHORT:
                                 case IT_USHORT:
                                     nd->type = IROLinearNop;
-                                    nd2->u.monadic = nd->u.monadic;
+                                    father->u.monadic = nd->u.monadic;
                                     break;
                             }
                             break;
                     }
                 }
+                break;
+            default:
                 break;
         }
     }
@@ -1966,13 +1998,10 @@ remove:
 static void ReverseOpForMonmin(IROLinear* nd) {
     IROLinear* father;
 
-    if (nd->type ==
-        IROLinearOp1Arg &&
-        nd->nodetype ==
-        EMONMIN &&
+    if (nd->type == IROLinearOp1Arg &&
+        nd->nodetype == EMONMIN &&
         (father = IRO_LocateFather(nd)) &&
-        father->type ==
-        IROLinearOp2Arg &&
+        father->type == IROLinearOp2Arg &&
         father->u.diadic.right == nd) {
         switch (father->nodetype) {
             case EADDV:
@@ -1984,6 +2013,8 @@ static void ReverseOpForMonmin(IROLinear* nd) {
                 father->nodetype = ComplementaryOp[father->nodetype];
                 nd->type = IROLinearNop;
                 father->u.diadic.right = nd->u.monadic;
+                break;
+            default:
                 break;
         }
     }
@@ -2018,6 +2049,8 @@ void IRO_DoTransformations(void) {
             case IROLinearOperand:
                 RemoveUnreffed(nd);
                 break;
+            default:
+                break;
         }
     }
 
@@ -2026,15 +2059,15 @@ void IRO_DoTransformations(void) {
 
 static Boolean ReconcileAssignments(IROLinear* nd1, IROLinear* nd2, IROList* list) {
     IROLinear* copy;
-    Boolean result = 0;
+    Boolean result = FALSE;
     int argCount;
     int i;
-    IROLinear* tmp;
+    IROLinear* savedTail;
 
     if ((nd2->type == IROLinearOp1Arg && nd2->nodetype == ETYPCON) &&
         !(nd1->type == IROLinearOp1Arg && nd1->nodetype == ETYPCON) &&
         ReconcileAssignments(nd1, nd2->u.monadic, list)) {
-        result = 1;
+        result = TRUE;
     }
 
     if ((nd1->type == IROLinearOp1Arg && nd1->nodetype == ETYPCON) &&
@@ -2049,7 +2082,7 @@ static Boolean ReconcileAssignments(IROLinear* nd1, IROLinear* nd2, IROList* lis
         copy->next = NULL;
         copy->u.monadic = list->tail;
         IRO_AddToList(copy, list);
-        result = 1;
+        result = TRUE;
     }
 
     if (nd1->type == nd2->type && nd1->nodetype == nd2->nodetype) {
@@ -2061,10 +2094,9 @@ static Boolean ReconcileAssignments(IROLinear* nd1, IROLinear* nd2, IROList* lis
         switch (nd1->type) {
             case IROLinearOperand:
                 if (nd1->u.node->type == nd2->u.node->type) {
-                    if (!(nd1->u.node->type ==
-                          EOBJREF &&
+                    if (!(nd1->u.node->type == EOBJREF &&
                           nd1->u.node->data.objref != nd2->u.node->data.objref)) {
-                        result = 1;
+                        result = TRUE;
                     }
                 }
                 break;
@@ -2072,38 +2104,34 @@ static Boolean ReconcileAssignments(IROLinear* nd1, IROLinear* nd2, IROList* lis
             case IROLinearOp1Arg:
                 if (ReconcileAssignments(nd1->u.monadic, nd2->u.monadic, list)) {
                     copy->u.monadic = list->tail;
-                    result = 1;
+                    result = TRUE;
                 }
                 break;
 
             case IROLinearOp2Arg:
-                tmp = list->tail;
+                savedTail = list->tail;
                 if (ReconcileAssignments(nd1->u.diadic.left, nd2->u.diadic.left, list)) {
                     copy->u.diadic.left = list->tail;
                     if (ReconcileAssignments(nd1->u.diadic.right, nd2->u.diadic.right, list)) {
                         copy->u.diadic.right = list->tail;
-                        result = 1;
+                        result = TRUE;
                     }
                 }
 
                 if (!result && !IRO_HasSideEffect(nd1) && !IRO_HasSideEffect(nd2)) {
-                    if (nd1->nodetype ==
-                        EMUL ||
-                        nd1->nodetype ==
-                        EADD ||
-                        nd1->nodetype ==
-                        EAND ||
-                        nd1->nodetype ==
-                        EXOR ||
+                    if (nd1->nodetype == EMUL ||
+                        nd1->nodetype == EADD ||
+                        nd1->nodetype == EAND ||
+                        nd1->nodetype == EXOR ||
                         nd1->nodetype == EOR) {
-                        list->tail = tmp;
+                        list->tail = savedTail;
                         if (ReconcileAssignments(nd1->u.diadic.left, nd2->u.diadic.right, list)) {
                             copy->u.diadic.right = list->tail;
                             if (ReconcileAssignments(
                                     nd1->u.diadic.right, nd2->u.diadic.left, list
                                 )) {
                                 copy->u.diadic.left = list->tail;
-                                result = 1;
+                                result = TRUE;
                             }
                         }
                     }
@@ -2117,7 +2145,7 @@ static Boolean ReconcileAssignments(IROLinear* nd1, IROLinear* nd2, IROList* lis
                         copy->u.args3.b = list->tail;
                         if (ReconcileAssignments(nd1->u.args3.a, nd2->u.args3.a, list)) {
                             copy->u.args3.a = list->tail;
-                            result = 1;
+                            result = TRUE;
                         }
                     }
                 }
@@ -2126,13 +2154,13 @@ static Boolean ReconcileAssignments(IROLinear* nd1, IROLinear* nd2, IROList* lis
             case IROLinearFunccall:
                 argCount = nd1->u.funccall.argCount;
                 if (argCount == nd2->u.funccall.argCount) {
-                    result = 1;
+                    result = TRUE;
                     copy->u.funccall.args = oalloc(sizeof(IROLinear*) * argCount);
                     for (i = argCount - 1; i >= 0; i--) {
                         if (!ReconcileAssignments(
                                 nd1->u.funccall.args[i], nd2->u.funccall.args[i], list
                             )) {
-                            result = 0;
+                            result = FALSE;
                             break;
                         }
                         copy->u.funccall.args[i] = list->tail;
@@ -2142,12 +2170,14 @@ static Boolean ReconcileAssignments(IROLinear* nd1, IROLinear* nd2, IROList* lis
                         if (!ReconcileAssignments(
                                 nd1->u.funccall.callee, nd2->u.funccall.callee, list
                             )) {
-                            result = 0;
+                            result = FALSE;
                             break;
                         }
                         copy->u.funccall.callee = list->tail;
                     }
                 }
+                break;
+            default:
                 break;
         }
 
@@ -2226,8 +2256,7 @@ static Boolean TransformMonadicSelfAssignmentToDiadicSelfAssignment(IROLinear* n
         varExpr = incExpr = NULL;
         newtype = MAXEXPR;
 
-        if (nd->type ==
-            IROLinearOp1Arg &&
+        if (nd->type == IROLinearOp1Arg &&
             (t == EPOSTINC || t == EPOSTDEC || t == EPREINC || t == EPREDEC) &&
             (!(nd->flags & IROLF_Reffed) || t == EPREINC || t == EPREDEC)) {
             Type* type = nd->rtype;
@@ -2235,10 +2264,8 @@ static Boolean TransformMonadicSelfAssignmentToDiadicSelfAssignment(IROLinear* n
             varExpr = nd->u.monadic;
             if (typetype == TYPEINT || typetype == TYPEENUM) {
                 incExpr = IRO_NewIntConst(cint64_one, PromotedIntegralType(type));
-            } else if (typetype ==
-                       TYPEPOINTER ||
-                       typetype ==
-                       TYPEARRAY ||
+            } else if (typetype == TYPEPOINTER ||
+                       typetype == TYPEARRAY ||
                        typetype == TYPEMEMBERPOINTER) {
                 Type* inner = NULL;
                 CInt64 val = cint64_zero;
@@ -2256,14 +2283,14 @@ static Boolean TransformMonadicSelfAssignmentToDiadicSelfAssignment(IROLinear* n
                 if (!CInt64_IsZero(&val)) {
                     incExpr = IRO_NewIntConst(val, TYPE(&stsignedlong));
                 } else {
-                    return 0;
+                    return FALSE;
                 }
             } else if (typetype == TYPEFLOAT) {
                 Float fval;
                 fval = CMach_CalcFloatConvertFromInt(type, cint64_one);
                 incExpr = IRO_NewFloatConst(fval, nd->rtype);
             } else {
-                return 0;
+                return FALSE;
             }
 
             if (t == EPOSTINC || t == EPREINC) {
@@ -2275,25 +2302,22 @@ static Boolean TransformMonadicSelfAssignmentToDiadicSelfAssignment(IROLinear* n
 
         if (varExpr &&
             incExpr &&
-            newtype !=
-            MAXEXPR &&
+            newtype != MAXEXPR &&
             varExpr->u.diadic.left &&
-            varExpr->u.diadic.left->type ==
-            IROLinearOperand &&
+            varExpr->u.diadic.left->type == IROLinearOperand &&
             varExpr->u.diadic.left->u.node &&
-            varExpr->u.diadic.left->u.node->type ==
-            EOBJREF &&
+            varExpr->u.diadic.left->u.node->type == EOBJREF &&
             !IRO_HasSideEffect(varExpr)) {
             incExpr->flags |= IROLF_Reffed;
             nd->nodetype = newtype;
             nd->u.diadic.right = incExpr;
             nd->type = IROLinearOp2Arg;
             IRO_Paste(incExpr, incExpr, nd);
-            return 1;
+            return TRUE;
         }
     }
 
-    return 0;
+    return FALSE;
 }
 
 Boolean IRO_TransformSelfAssignmentToAssignment(IROLinear* nd) {
@@ -2310,43 +2334,38 @@ Boolean IRO_TransformSelfAssignmentToAssignment(IROLinear* nd) {
     nodetype = nd->nodetype;
     if (IRO_IsAssignment(nd) &&
         IRO_IsModifyOp[nodetype] &&
-        nd->type ==
-        IROLinearOp1Arg &&
+        nd->type == IROLinearOp1Arg &&
         TransformMonadicSelfAssignmentToDiadicSelfAssignment(nd)) {
         nodetype = nd->nodetype;
     }
 
     if (IRO_IsAssignment(nd) &&
         IRO_IsModifyOp[nodetype] &&
-        nd->type ==
-        IROLinearOp2Arg &&
+        nd->type == IROLinearOp2Arg &&
         IRO_NonAssignmentOp[nodetype] != MAXEXPR) {
         left = nd->u.diadic.left;
         right = nd->u.diadic.right;
         nonAssOp = IRO_NonAssignmentOp[nodetype];
         if (left &&
             right &&
-            nonAssOp !=
-            MAXEXPR &&
+            nonAssOp != MAXEXPR &&
             left->u.monadic &&
-            left->u.monadic->type ==
-            IROLinearOperand &&
+            left->u.monadic->type == IROLinearOperand &&
             left->u.monadic->u.node &&
-            left->u.monadic->u.node->type ==
-            EOBJREF &&
+            left->u.monadic->u.node->type == EOBJREF &&
             !IRO_HasSideEffect(left)) {
             IRO_InitList(&list1);
             dupLeft = IRO_DuplicateExpr(left, &list1);
 
             if (left->rtype != right->rtype) {
-                IROLinear* tmp = IRO_NewLinear(IROLinearOp1Arg);
-                tmp->nodetype = ETYPCON;
-                tmp->flags |= IROLF_Reffed;
-                tmp->rtype = right->rtype;
-                tmp->index = ++IRO_NumLinear;
-                tmp->u.monadic = dupLeft;
-                IRO_AddToList(tmp, &list1);
-                dupLeft = tmp;
+                IROLinear* cast = IRO_NewLinear(IROLinearOp1Arg);
+                cast->nodetype = ETYPCON;
+                cast->flags |= IROLF_Reffed;
+                cast->rtype = right->rtype;
+                cast->index = ++IRO_NumLinear;
+                cast->u.monadic = dupLeft;
+                IRO_AddToList(cast, &list1);
+                dupLeft = cast;
             }
 
             nonAss = IRO_NewLinear(IROLinearOp2Arg);
@@ -2359,33 +2378,32 @@ Boolean IRO_TransformSelfAssignmentToAssignment(IROLinear* nd) {
             IRO_AddToList(nonAss, &list1);
 
             if (left->rtype != right->rtype) {
-                IROLinear* tmp = IRO_NewLinear(IROLinearOp1Arg);
-                tmp->nodetype = ETYPCON;
-                tmp->flags |= IROLF_Reffed;
-                tmp->rtype = left->rtype;
-                tmp->index = ++IRO_NumLinear;
-                tmp->u.monadic = nonAss;
-                IRO_AddToList(tmp, &list1);
-                nonAss = tmp;
+                IROLinear* cast = IRO_NewLinear(IROLinearOp1Arg);
+                cast->nodetype = ETYPCON;
+                cast->flags |= IROLF_Reffed;
+                cast->rtype = left->rtype;
+                cast->index = ++IRO_NumLinear;
+                cast->u.monadic = nonAss;
+                IRO_AddToList(cast, &list1);
+                nonAss = cast;
             }
 
             IRO_InitList(&list2);
             last = FrontendTransformSelfAssignmentToAssignment(nd);
             if (last &&
-                last->type ==
-                IROLinearOp2Arg &&
+                last->type == IROLinearOp2Arg &&
                 ReconcileAssignments(last->u.diadic.right, nonAss, &list2)) {
                 IRO_NopOut(nd->u.diadic.right);
                 nd->nodetype = EASS;
                 nd->u.diadic.right = list2.tail;
                 nd->type = IROLinearOp2Arg;
                 IRO_Paste(list2.head, list2.tail, nd);
-                return 1;
+                return TRUE;
             }
         }
     }
 
-    return 0;
+    return FALSE;
 }
 
 static void AddAddend(ENode* expr) {
@@ -2420,7 +2438,6 @@ static ENode* CombineConstants(ENode* expr) {
     AddAddend(expr->data.diadic.left);
     AddAddend(expr->data.diadic.right);
 
-    // these variable names are courtesy of the resource fork in abort_exit.c
     el = FirstAddend;
     prev = NULL;
     var = NULL;
@@ -2474,10 +2491,8 @@ static ENode* CombineConstants(ENode* expr) {
             } else {
                 FirstAddend = el->next;
             }
-        } else if (addend->type ==
-                   EMUL &&
-                   addend->data.diadic.right->type ==
-                   EINTCONST &&
+        } else if (addend->type == EMUL &&
+                   addend->data.diadic.right->type == EINTCONST &&
                    addend->rtype) {
             if (!type || type->size < addend->rtype->size) {
                 type = addend->rtype;
@@ -2585,6 +2600,8 @@ static ENode* TransformExprNode(ENode* expr) {
             }
 
             break;
+        default:
+            break;
     }
 
     return expr;
@@ -2621,6 +2638,8 @@ ENODE_CASE_DIADIC_ALL:
             TransformExprTree(expr->data.nullcheck.nullcheckexpr);
             TransformExprTree(expr->data.nullcheck.condexpr);
             break;
+        default:
+            break;
     }
 
     return TransformExprNode(expr);
@@ -2634,29 +2653,22 @@ static void FoldConstantsinAssociativeExprs(ENode* expr) {
     short op;
     CInt64 val1;
     CInt64 val2;
-    CInt64 tmpval;
+    CInt64 typeBits;
     CInt64 sum;
 
-    if ((expr->type ==
-         EADD ||
-         expr->type ==
-         EMUL ||
-         expr->type ==
-         EAND ||
-         expr->type ==
-         EXOR ||
-         expr->type ==
-         EOR ||
-         expr->type ==
-         ESHL ||
+    if ((expr->type == EADD ||
+         expr->type == EMUL ||
+         expr->type == EAND ||
+         expr->type == EXOR ||
+         expr->type == EOR ||
+         expr->type == ESHL ||
          expr->type == ESHR) &&
         IS_TYPE_INT(expr->rtype) &&
         expr->data.diadic.right->type == EINTCONST) {
         do {
-            changed = 0;
+            changed = FALSE;
 
-            if (expr->data.diadic.left->type ==
-                expr->type &&
+            if (expr->data.diadic.left->type == expr->type &&
                 expr->data.diadic.left->data.diadic.right->type == EINTCONST) {
                 val1 = expr->data.diadic.right->data.intval;
                 val2 = expr->data.diadic.left->data.diadic.right->data.intval;
@@ -2668,15 +2680,15 @@ static void FoldConstantsinAssociativeExprs(ENode* expr) {
                     case ESHR:
                         op = '+';
                         if (!is_unsigned(expr->rtype)) {
-                            CInt64_SetLong(&tmpval, expr->rtype->size * 8);
-                            if (CInt64_GreaterEqualU(val1, tmpval) ||
-                                CInt64_GreaterEqualU(val2, tmpval)) {
+                            CInt64_SetLong(&typeBits, expr->rtype->size * 8);
+                            if (CInt64_GreaterEqualU(val1, typeBits) ||
+                                CInt64_GreaterEqualU(val2, typeBits)) {
                                 return;
                             }
 
                             sum = CMach_CalcIntDiadic(expr->rtype, val1, '+', val2);
-                            if (CInt64_GreaterEqualU(sum, tmpval)) {
-                                val1 = CInt64_Sub(tmpval, cint64_one);
+                            if (CInt64_GreaterEqualU(sum, typeBits)) {
+                                val1 = CInt64_Sub(typeBits, cint64_one);
                                 val2 = cint64_zero;
                             }
                         }
@@ -2700,14 +2712,13 @@ static void FoldConstantsinAssociativeExprs(ENode* expr) {
                 expr->data.diadic.right->data.intval =
                     CMach_CalcIntDiadic(expr->rtype, val1, op, val2);
                 expr->data.diadic.left = expr->data.diadic.left->data.diadic.left;
-                changed = 1;
+                changed = TRUE;
             } else if (((nodetype1 = expr->type) == EAND || nodetype1 == EOR) &&
                        ((nodetype2 = expr->data.diadic.left->type) == EAND || nodetype2 == EOR) &&
-                       ((nodetype3 = expr->data.diadic.left->data.diadic.left->type) ==
-                        EAND ||
+                       ((nodetype3 = expr->data.diadic.left->data.diadic.left->type) == EAND ||
                         nodetype3 == EOR) &&
                        expr->data.diadic.left->data.diadic.left->data.diadic.right->type ==
-                       EINTCONST) {
+                           EINTCONST) {
                 val1 = expr->data.diadic.right->data.intval;
                 if (CInt64_Equal(
                         val1,
@@ -2716,12 +2727,12 @@ static void FoldConstantsinAssociativeExprs(ENode* expr) {
                     if (nodetype1 == nodetype3) {
                         expr->data.diadic.left->data.diadic.left =
                             expr->data.diadic.left->data.diadic.left->data.diadic.left;
-                        changed = 1;
+                        changed = TRUE;
                     } else if (nodetype2 == nodetype3) {
                         *expr = *expr->data.diadic.right;
                     } else {
                         expr->data.diadic.left = expr->data.diadic.left->data.diadic.right;
-                        changed = 1;
+                        changed = TRUE;
                     }
                 }
             }
@@ -2760,6 +2771,8 @@ ENODE_CASE_DIADIC_ALL:
             TransformExprTree1(expr->data.nullcheck.nullcheckexpr);
             TransformExprTree1(expr->data.nullcheck.condexpr);
             break;
+        default:
+            break;
     }
 
     FoldConstantsinAssociativeExprs(expr);
@@ -2780,21 +2793,21 @@ static int RemoveRedundantBitOperations(ENode* expr) {
             if (!OperandObject) {
                 OperandObject = expr->data.monadic->data.objref;
                 IndirectRef = expr;
-                return 1;
+                return TRUE;
             }
             if (expr->data.monadic->data.objref != OperandObject) {
-                return 0;
+                return FALSE;
             }
-            return 1;
+            return TRUE;
         } else {
-            return 0;
+            return FALSE;
         }
     }
 
     if (expr->type == EINTCONST) {
         if (FirstTime) {
             OperandConst = expr->data.intval;
-            FirstTime = 0;
+            FirstTime = FALSE;
         } else if (ExprType == EAND) {
             OperandConst = CInt64_And(expr->data.intval, OperandConst);
         } else if (ExprType == EOR) {
@@ -2802,10 +2815,10 @@ static int RemoveRedundantBitOperations(ENode* expr) {
         } else if (ExprType == EXOR) {
             OperandConst = CInt64_Xor(expr->data.intval, OperandConst);
         }
-        return 1;
+        return TRUE;
     }
 
-    return 0;
+    return FALSE;
 }
 
 static void TransformExprTree2(ENode* expr) {
@@ -2839,15 +2852,16 @@ ENODE_CASE_DIADIC_ALL:
             TransformExprTree2(expr->data.nullcheck.nullcheckexpr);
             TransformExprTree2(expr->data.nullcheck.condexpr);
             break;
+        default:
+            break;
     }
 
     if (ENODE_IS3(expr, EAND, EOR, EXOR) &&
-        (expr->type ==
-         expr->data.diadic.left->type ||
+        (expr->type == expr->data.diadic.left->type ||
          expr->type == expr->data.diadic.right->type)) {
         OperandObject = NULL;
         ExprType = expr->type;
-        FirstTime = 1;
+        FirstTime = TRUE;
         IndirectRef = NULL;
 
         if (RemoveRedundantBitOperations(expr)) {
@@ -2875,6 +2889,8 @@ void IRO_TransformTree(Statement* statements) {
                     TransformExprTree2(stmt->expr);
                     TransformExprTree1(stmt->expr);
                 }
+                break;
+            default:
                 break;
         }
     }

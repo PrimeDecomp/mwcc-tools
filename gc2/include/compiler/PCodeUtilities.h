@@ -12,7 +12,7 @@ extern void pcsetrecordbit(PCode* pc);
 extern void pcsetsideeffects(PCode* pc);
 extern void pcsetlinkbit(PCode* pc);
 extern void branch_label(PCodeLabel* label);
-extern void branch_conditional(short a, short compareop, short c, PCodeLabel* label);
+extern void branch_conditional(short crfield, short compareop, short sense, PCodeLabel* label);
 extern void branch_always(PCodeLabel* label);
 extern void branch_decrement_always(Opcode opcode, PCodeLabel* label);
 extern void branch_indirect(Object* obj);
@@ -30,7 +30,6 @@ extern PCode* op_absolute_ha(
 extern void load_store_register(
     Opcode opcode, short dest_reg, short base_reg, Object* obj, SInt32 offset
 );
-/* 2.6 (Gekko paired singles) */
 extern Opcode Select_Gecko_Load_Store(Object* obj, int offset, int load);
 extern void gecko_load_store_register(
     short dest_reg, short base_reg, Object* obj, SInt32 offset, SInt32 w, SInt32 i, int load

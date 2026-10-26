@@ -1,7 +1,7 @@
 #include "driver/CLProj.h"
-#include "driver/CLIO.h"
 #include "driver/CLTarg.h"
 #include "driver/MsDos.h"
+#include "driver/oslib.h"
 
 Boolean Proj_Initialize(Project* this) {
     this->targets = NULL;

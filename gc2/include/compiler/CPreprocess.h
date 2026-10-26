@@ -8,8 +8,8 @@ extern "C" {
 #endif
 
 extern void CPrep_PreprocessDumpNewLine(void);
-extern void CPrep_PreprocessDumpFileInfo(Boolean flag);
-extern void CPrep_PreprocessDumpDirective(char* str1, char* str2);
+extern void CPrep_PreprocessDumpFileInfo(Boolean newLine);
+extern void CPrep_PreprocessDumpDirective(char* directive, char* name);
 extern void CPrep_PreprocessDumpDirectiveEnd(void);
 extern void CPrep_Preprocess(void);
 

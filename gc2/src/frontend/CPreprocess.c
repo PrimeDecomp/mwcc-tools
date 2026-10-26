@@ -5,14 +5,15 @@
 #include "compiler/CParser.h"
 #include "compiler/CPrep.h"
 #include "compiler/CPrepTokenizer.h"
+#include "compiler/tokens.h"
 #include "driver/COSToolsCLT.h"
 #include <stdio.h>
 #include <string.h>
 
-// 2.6: where the directive being dumped started, and at which token stack depth (TODO: invented
-// names)
+#if VERSION >= VERSION_GC_2_0
 static SInt32 pp_text_depth;
 static char* pp_text_start;
+#endif
 
 void CPrep_PreprocessDumpNewLine(void) {
     if (copts.line_prepdump && pplist.data && filesp >= 0) {
@@ -20,7 +21,7 @@ void CPrep_PreprocessDumpNewLine(void) {
     }
 }
 
-void CPrep_PreprocessDumpFileInfo(Boolean flag) {
+void CPrep_PreprocessDumpFileInfo(Boolean newLine) {
     char linebuf[512];
     int size;
     SInt32 tmp32;
@@ -28,16 +29,22 @@ void CPrep_PreprocessDumpFileInfo(Boolean flag) {
     SInt16 tmp16;
 
     if (pplist.data && filesp >= 0) {
-        if (pplist.size >
-            0 &&
-            ((nlflag && flag) || (*pplist.data)[pplist.size - 1] != "\r\n"[strlen("\r\n") - 1])) {
+#if VERSION < VERSION_GC_2_0
+        if (nlflag && newLine && pplist.size > 0) {
             AppendGListName(&pplist, "\r\n");
         }
+#else
+        if (pplist.size > 0 &&
+            ((nlflag && newLine) ||
+             (*pplist.data)[pplist.size - 1] != "\r\n"[strlen("\r\n") - 1])) {
+            AppendGListName(&pplist, "\r\n");
+        }
+#endif
 
         if (copts.line_prepdump) {
-            size = sprintf(linebuf, "#line %ld\t\"", linenumber);
+            size = sprintf(linebuf, "#line %ld\t\"", (long)linenumber);
         } else {
-            size = sprintf(linebuf, "/* #line %ld\t\"", linenumber);
+            size = sprintf(linebuf, "/* #line %ld\t\"", (long)linenumber);
         }
         AppendGListData(&pplist, linebuf, size);
 
@@ -64,10 +71,10 @@ void CPrep_PreprocessDumpFileInfo(Boolean flag) {
             }
         }
 
-        size = sprintf(linebuf, "\"\t/* stack depth %ld */", filesp);
+        size = sprintf(linebuf, "\"\t/* stack depth %ld */", (long)filesp);
         AppendGListData(&pplist, linebuf, size);
 
-        if (copts.line_prepdump && flag) {
+        if (copts.line_prepdump && newLine) {
             CPrep_PreprocessDumpNewLine();
         }
 
@@ -180,37 +187,39 @@ static void CPrep_DumpString(UInt8* str, short len) {
     }
 }
 
-// TODO: invented name (2.6): starts a directive's text in the output (#pragma's "#pragma " and its
-// name) and marks where the directive's own source text begins
-void CPrep_PreprocessDumpDirective(char* str1, char* str2) {
+#if VERSION >= VERSION_GC_2_0
+void CPrep_PreprocessDumpDirective(char* directive, char* name) {
     if (!copts.line_prepdump && nlflag && pplist.size > 0) {
         AppendGListName(&pplist, "\r\n");
     }
-    AppendGListData(&pplist, str1, strlen(str1));
-    if (str2) {
-        AppendGListData(&pplist, str2, strlen(str2));
+    AppendGListData(&pplist, directive, strlen(directive));
+    if (name) {
+        AppendGListData(&pplist, name, strlen(name));
     }
     pp_text_start = pos;
     pp_text_depth = tokenstacklevel;
 }
 
-// TODO: invented name (2.6): copies the rest of the directive's source text (since
-// the mark) to the output
 void CPrep_PreprocessDumpDirectiveEnd(void) {
     CError_ASSERT(239, pp_text_start);
     if (pp_text_depth == tokenstacklevel) {
         AppendGListData(&pplist, pp_text_start, pos - pp_text_start);
     }
 }
+#endif
 
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -43
+#endif
 void CPrep_Preprocess(void) {
     int innertoken;
     short token;
     char startToken;
     char endToken;
     int depth;
-    Boolean save_asmpoundcomment; // r16
-    Boolean save_cplusplus; // r15
+    Boolean save_asmpoundcomment;
+    Boolean save_cplusplus;
     char* p;
 
     startToken = 0;
@@ -362,10 +371,8 @@ void CPrep_Preprocess(void) {
                         startToken = endToken = 0;
                         AppendGListByte(&pplist, ' ');
                         token = lex();
-                        if (token ==
-                            TK_VOLATILE ||
-                            (token ==
-                             TK_IDENTIFIER &&
+                        if (token == TK_VOLATILE ||
+                            (token == TK_IDENTIFIER &&
                              !strcmp(tkidentifier->name, "__volatile__"))) {
                             AppendGListData(&pplist, "volatile", 8);
                             token = lex();
@@ -395,8 +402,8 @@ void CPrep_Preprocess(void) {
                             token = lex();
                             if (token == '"') {
                                 AppendGListByte(&pplist, token);
-                                copts.cplusplus = 0;
-                                copts.asmpoundcomment = 1;
+                                copts.cplusplus = FALSE;
+                                copts.asmpoundcomment = TRUE;
                                 break;
                             }
                             if (token) {
@@ -729,3 +736,7 @@ void CPrep_Preprocess(void) {
     AppendGListByte(&pplist, 0);
     COS_ResizeHandle(pplist.data, pplist.size);
 }
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA 0
+#endif

@@ -1,75 +1,44 @@
-"""Whether a compiled function is the original's: the one definition of "exact".
-
-A function is exact when, linked the way the original was, it would be the original's bytes. Concretely, for each
-source's object:
-
-1. Every function of the object that has a row is found by name (its C name, whatever the decoration).
-2. Each datum of the object that no binding places (a string literal, a jump table, a static, a static function)
-   gets ONE address, solved from all the object's functions together: wherever a function that is the original's
-   but for its relocated fields refers to it, the original's instruction at that place says where the original has it. A datum is a named symbol,
-   or, for a reference through a section symbol, the offset it reaches. A datum the functions disagree about is
-   placed where most of them say, and the others are not exact (their code needs it in two places at once); two data
-   placed at one address make every function referring to either not exact (the original has one where the object
-   has two).
-3. With every reference resolved (bindings and rows for named symbols, the placements for the object's own data),
-   the function is exact when:
-     - its bytes are the original's;
-     - its absolute references are exactly where the original's base relocations are;
-     - every initialized datum it references (a literal, a jump table, a static's initial value), resolved the same
-       way, has the original's bytes at its address;
-     - every .bss static it references lands in the original's uninitialized data.
-   A reference nothing resolves (an external symbol without a binding) makes it not exact.
-
-Whether the object's data are laid out as in the original (so the unit can link in its place) is a question about
-the unit, not its functions: the relink answers it.
-
-Each inexact function gets a reason. similarity() scores how close an inexact function is, for the status tools.
-"""
-
 from __future__ import annotations
 
 import bisect
 import collections
+import concurrent.futures
 import difflib
+import json
 import multiprocessing
 import os
 import re
 import struct
-import sys
 from dataclasses import dataclass
 
 from . import build, config
 from .coff import DIR32, DIR32NB, REL32, CoffError, Object, Section, Symbol, function_extent
+from .isolated import FORK
 from .names import c_name, is_mangled
 from .pe import PEFile, original
-from .project import Version, version as get_version
+from .project import ROOT, Error, Version, digest, relative, write_atomic
+from .project import version as get_version
 
-
-# (what an unresolved reference becomes in a body: an address-sized value, which similarity() masks like any address)
 UNRESOLVED = 0x00A0A0A0
 
 
 @dataclass
 class Row:
-    """A function row as the comparison sees it."""
-
     name: str
     address: int
     size: int
     source: str | None
-    symbol: str  # the name it is looked up by in the object (its C name, or the mangled name)
+    symbol: str
 
 
 @dataclass
 class Reference:
-    """A function's reference to a named symbol, against the original's (references())."""
-
     row: Row
-    symbol: str  # the linker name referenced
-    defined: bool  # whether the function's object defines it
-    bound: int | None  # the address bindings or rows give it (None: nothing does)
-    original: int  # the address the original's instruction at the same place refers to
-    plausible: bool  # the function is the original's but for its relocated fields (else only aligned there)
+    symbol: str
+    defined: bool
+    bound: int | None
+    original: int
+    plausible: bool
 
 
 @dataclass
@@ -78,14 +47,12 @@ class Verdict:
     name: str
     source: str
     exact: bool
-    reason: str = ""  # why not exact ("" when exact)
-    body: bytes | None = None  # the function's bytes with every resolvable reference resolved (None: not found)
-    similarity: float = 0.0  # 1.0 when exact
+    reason: str = ""
+    body: bytes | None = None
+    similarity: float = 0.0
 
 
 def rows(version: Version | str | None = None) -> list[Row]:
-    """The version's function rows. Two rows of one name (a validation error) are told apart by address: the one with
-    a source keeps the name for lookups."""
     v = get_version(version)
     out = [Row(f.name, f.address, f.size, f.source, f.name) for f in config.functions(v)]
     by_name = collections.defaultdict(list)
@@ -100,25 +67,18 @@ def rows(version: Version | str | None = None) -> list[Row]:
     return out
 
 
-# --------------------------------------------------------------------------------------------- the per-object pass
-
-
 class _Unit:
-    """One object being compared against the original."""
-
     def __init__(self, pe: PEFile, obj: Object, addresses: dict[str, int], fixups: tuple[int, ...]):
         self.pe, self.obj, self.addresses, self.fixups = pe, obj, addresses, fixups
-        self.code_bases: dict[int, int] = {}  # code section number -> address (from its rows)
-        self.places: dict[tuple[int, int], int] = {}  # datum -> address
-        self.conflicts: dict[tuple[int, int], set[int]] = {}  # datum -> the other addresses some functions need
-        self.shared: dict[tuple[int, int], tuple[int, int]] = {}  # datum -> another datum placed at its address
+        self.fixup_set = frozenset(fixups)
+        self.code_bases: dict[int, int] = {}
+        self.places: dict[tuple[int, int], int] = {}
+        self.conflicts: dict[tuple[int, int], set[int]] = {}
+        self.shared: dict[tuple[int, int], tuple[int, int]] = {}
         self.checked: dict[tuple[int, int], str] = {}
-        self.used: dict[tuple[int, int], set[int]] = collections.defaultdict(set)  # datum -> rows reaching it
-
-    # ---- lookups
+        self.used: dict[tuple[int, int], set[int]] = collections.defaultdict(set)
 
     def named_address(self, symbol: Symbol) -> int | None:
-        """The address bindings or rows give a symbol's name."""
         if symbol.name in self.addresses:
             return self.addresses[symbol.name]
         c = c_name(symbol.name)
@@ -139,16 +99,11 @@ class _Unit:
         return found[0]
 
     def datum(self, symbol: Symbol, addend: int) -> tuple[tuple[int, int], int]:
-        """(the datum SYMBOL + ADDEND reaches, as (section, offset); the offset into it). A reference through a section
-        symbol reaches the datum at its addend; one through a named symbol, that symbol's datum (the addend a field)."""
         if symbol.aux and symbol.name == self.obj.section(symbol.section).name:
             return (symbol.section, (symbol.value + addend) & 0xFFFFFFFF), 0
         return (symbol.section, symbol.value), addend
 
-    # ---- placement
-
     def target_of(self, row: Row, start: int, offset: int, kind: int) -> int | None:
-        """The address the original's instruction field at OFFSET of ROW's code refers to."""
         site = row.address + offset - start
         word = self.pe.word(site)
         if kind == DIR32:
@@ -160,7 +115,6 @@ class _Unit:
         return None
 
     def plausible(self, row: Row, section: Section, start: int, end: int) -> bool:
-        """Whether a function is the original's but for its relocated fields (only such functions place data)."""
         if end - start != row.size:
             return False
         mine, theirs = bytearray(section.data[start:end]), bytearray(self.pe.read(row.address, row.size))
@@ -170,7 +124,6 @@ class _Unit:
         return mine == theirs
 
     def own_data(self, section: Section, start: int, end: int):
-        """(relocation, symbol, addend) of each reference in [START, END) to a datum of the object no name places."""
         for r in section.relocations:
             if not start <= r.offset < end:
                 continue
@@ -178,13 +131,12 @@ class _Unit:
             if not target.defined or self.named_address(target) is not None:
                 continue
             if section.code and target.section == section.number:
-                continue  # (the function's own labels)
+                continue
             if self.obj.section(target.section).code and target.section in self.code_bases:
                 continue
             yield r, target, struct.unpack_from("<I", section.data, r.offset)[0]
 
     def solve(self, functions: list[tuple[Row, Symbol, Section, int, int]]) -> None:
-        """Place the object's data from every candidate function's references (the module's step 2)."""
         for row, _, section, start, _ in functions:
             self.code_bases.setdefault(section.number, row.address - start)
         votes: dict[tuple[int, int], collections.Counter] = collections.defaultdict(collections.Counter)
@@ -205,8 +157,6 @@ class _Unit:
             self.places[key] = place
             if others:
                 self.conflicts[key] = {p for p, _ in others}
-        # (data the functions reach only through other data, such as the strings of a table of pointers: where the
-        # original's word in the placed datum points)
         pending = list(self.places)
         while pending:
             key = pending.pop()
@@ -231,11 +181,7 @@ class _Unit:
                 self.shared.setdefault(at[place], key)
             at.setdefault(place, key)
 
-    # ---- resolution
-
     def resolve(self, symbol: Symbol, addend: int, own: tuple[Section, int, int] | None = None) -> int | None:
-        """The address SYMBOL + ADDEND refers to (None: nothing resolves it). OWN: (section, start, address) of the
-        function being resolved, whose labels resolve within it."""
         address = self.named_address(symbol)
         if address is not None:
             return (address + addend) & 0xFFFFFFFF
@@ -252,7 +198,6 @@ class _Unit:
         return None if place is None else (place + delta) & 0xFFFFFFFF
 
     def datum_end(self, section: Section, offset: int) -> int:
-        """Where the datum at OFFSET of a data section ends: at the next named symbol of the section, or its end."""
         ends = [
             s.value
             for s in self.obj.symbols
@@ -261,8 +206,6 @@ class _Unit:
         return min(ends, default=section.size)
 
     def check_datum(self, key: tuple[int, int], name: str) -> str:
-        """ "" when datum KEY (placed) is the original's: initialized data with the original's bytes there (its own
-        references resolved), uninitialized data in the original's .bss."""
         if key in self.checked:
             return self.checked[key]
         self.checked[key] = ""
@@ -379,10 +322,6 @@ class _Unit:
         )
 
     def references(self, row: Row, section: Section, start: int, end: int, aligned: bool) -> list[Reference]:
-        """Each reference of the function to a named symbol (bound, external, or a named datum or function of the
-        object), with where the original's instruction at that place refers. Only a function that is the original's but for its relocated
-        fields says so, unless ALIGNED: then also each reference inside a stretch of code the function and the
-        original's have in common (evidence, not exactness)."""
         plausible = self.plausible(row, section, start, end)
         if plausible:
             where = {r.offset - start: r.offset - start for r in section.relocations if start <= r.offset < end}
@@ -396,7 +335,7 @@ class _Unit:
             )
         else:
             return []
-        fixups = set(self.fixups)
+        fixups = self.fixup_set
         out = []
         for r in section.relocations:
             if not start <= r.offset < end or r.offset - start not in where:
@@ -413,7 +352,7 @@ class _Unit:
                     and target.name == self.obj.section(target.section).name
                 )
             ):
-                continue  # (the object's literals, sections and the function's own labels: unnamed)
+                continue
             there = where[r.offset - start]
             site = row.address + there
             if there + 4 > row.size or (r.kind == DIR32 and site not in fixups):
@@ -431,26 +370,6 @@ class _Unit:
             out.append(Reference(row, target.name, target.defined, bound, (value - addend) & 0xFFFFFFFF, plausible))
         return out
 
-    def placements(self, exact: set[int]) -> list[tuple[int, int, int, int]]:
-        """[(section, offset, size, address)]: the object's data no name places that an exact function reaches, where
-        its exact functions put it (the equivalent compiler's lifted code reaches it there)."""
-        bounds = collections.defaultdict(set)
-        for section, offset in self.places:
-            bounds[section].add(offset)
-        for s in self.obj.symbols:
-            if s.defined and not s.name.startswith("."):
-                bounds[s.section].add(s.value)
-        out = []
-        for key, rows_reaching in sorted(self.used.items()):
-            if not rows_reaching & exact or key in self.conflicts or key in self.shared or key not in self.places:
-                continue
-            section = self.obj.section(key[0])
-            if section.code:
-                continue
-            end = min((b for b in bounds[key[0]] if b > key[1]), default=section.size)
-            out.append((key[0], key[1], max(min(end, section.size) - key[1], 1), self.places[key]))
-        return out
-
 
 def compare_object(
     pe: PEFile,
@@ -459,10 +378,7 @@ def compare_object(
     addresses: dict[str, int],
     fixups: tuple[int, ...],
     score: bool = True,
-    data: list | None = None,
 ) -> list[Verdict]:
-    """The verdicts of UNIT_ROWS' functions in OBJ; with DATA, the placements of its data are added to it
-    (_Unit.placements)."""
     unit = _Unit(pe, obj, addresses, fixups)
     found, out = [], []
     for row in unit_rows:
@@ -479,20 +395,13 @@ def compare_object(
         if not v.exact and score:
             v.similarity = similarity(v.body, pe.read(row.address, row.size), row.address)
         out.append(v)
-    if data is not None:
-        data.extend(unit.placements({v.address for v in out if v.exact}))
     return out
 
-
-# ------------------------------------------------------------------------------------------------------- similarity
 
 _ADDRESS = re.compile(r"0x[0-9a-f]{6,}")
 
 
 def references_agree(left: str, right: str, lo: int, hi: int) -> bool:
-    """Whether two aligned instructions' operands refer to the same addresses. A branch inside the function
-    ([lo, hi)) agrees with any other (code of another length moves them), and so does an unresolved reference
-    (UNRESOLVED: a datum not placed or a name not bound, which the verdict reports on its own)."""
     xs, ys = [int(m, 16) for m in _ADDRESS.findall(left)], [int(m, 16) for m in _ADDRESS.findall(right)]
     if len(xs) != len(ys):
         return False
@@ -500,8 +409,6 @@ def references_agree(left: str, right: str, lo: int, hi: int) -> bool:
 
 
 def similarity(body: bytes, target: bytes, address: int = 0) -> float:
-    """How alike two functions' code is, 0..1: their instructions matched by difflib with absolute addresses masked,
-    then a matched pair whose resolved references differ (another global, another callee) not counted."""
     import capstone
 
     md = getattr(similarity, "md", None)
@@ -524,11 +431,7 @@ def similarity(body: bytes, target: bytes, address: int = 0) -> float:
     return 2 * same / (len(a) + len(b))
 
 
-# ------------------------------------------------------------------------------------------------------ whole version
-
-
 def addresses(version: Version | str | None, table_rows: list[Row]) -> dict[str, int]:
-    """{linker name: address}: bindings, then each row's own name (which wins)."""
     out = dict(config.bindings(version))
     for row in table_rows:
         out[row.symbol if is_mangled(row.symbol) else "_" + row.symbol] = row.address
@@ -545,48 +448,44 @@ def _compare_source(job):
     try:
         obj = Object.read(path)
     except (FileNotFoundError, CoffError) as e:
-        return source, [Verdict(r.address, r.name, source, False, f"no object: {e}") for r in source_rows], []
-    data = []
-    return source, compare_object(pe, obj, source_rows, addrs, pe.base_relocations, data=data), data
+        return source, [Verdict(r.address, r.name, source, False, f"no object: {e}") for r in source_rows]
+    return source, compare_object(pe, obj, source_rows, addrs, pe.base_relocations)
+
+
+def _by_source(version: Version, sources: list[str] | None) -> dict[str, list[Row]]:
+    global _context
+    table = rows(version)
+    _context = addresses(version, table)
+    original(version)
+    by_source = collections.defaultdict(list)
+    for row in table:
+        if row.source and (sources is None or row.source in sources):
+            by_source[row.source].append(row)
+    return by_source
+
+
+def _map(function, work: list, jobs: int | None = None) -> list:
+    jobs = jobs or int(os.environ.get("JOBS") or 0) or os.cpu_count() or 1
+    if jobs > 1 and len(work) > 1 and FORK:
+        with concurrent.futures.ProcessPoolExecutor(jobs, mp_context=multiprocessing.get_context("fork")) as pool:
+            return list(pool.map(function, work, chunksize=2))
+    return [function(job) for job in work]
 
 
 def compare(
     version: Version | str | None = None,
     sources: list[str] | None = None,
     jobs: int | None = None,
-    placements: dict | None = None,
 ) -> dict[int, Verdict]:
-    """{row address: verdict} for every row with a source (or only SOURCES' rows), from the build's objects. With
-    PLACEMENTS, {source: [(section, offset, size, address)]} of their data are added to it (_Unit.placements)."""
-    global _context
     v = get_version(version)
-    table = rows(v)
-    _context = addresses(v, table)
-    original(v)  # (checked and loaded once, before the workers fork)
-    by_source = collections.defaultdict(list)
-    for row in table:
-        if row.source and (sources is None or row.source in sources):
-            by_source[row.source].append(row)
-    work = [(v.name, s, r) for s, r in by_source.items()]
-    jobs = jobs or int(os.environ.get("JOBS", 0)) or os.cpu_count() or 1
+    work = [(v.name, s, r) for s, r in _by_source(v, sources).items()]
     results: dict[int, Verdict] = {}
-    if jobs > 1 and len(work) > 1 and sys.platform != "win32":
-        import concurrent.futures
-
-        with concurrent.futures.ProcessPoolExecutor(jobs, mp_context=multiprocessing.get_context("fork")) as pool:
-            parts = list(pool.map(_compare_source, work, chunksize=2))
-    else:
-        parts = [_compare_source(job) for job in work]
-    for source, part, data in parts:
+    for _, part in _map(_compare_source, work, jobs):
         results.update((x.address, x) for x in part)
-        if placements is not None and data:
-            placements[source] = data
     return results
 
 
 def _aligned_sites(section: Section, start: int, end: int, original_code: bytes, fixups: list[int]) -> dict[int, int]:
-    """{offset in the compiled function: offset in the original} of each relocated field of the function that lies,
-    whole, inside a stretch of bytes the two have in common, with relocated fields and call/jmp operands masked."""
     a = bytearray(section.data[start:end])
     sites = [r.offset - start for r in section.relocations if start <= r.offset < end]
     for offset in sites:
@@ -603,7 +502,6 @@ def _aligned_sites(section: Section, start: int, end: int, original_code: bytes,
             i += 1
     out = {}
     if len(a) * len(b) > 4_000_000:
-        # (too long for difflib: a field with the same masked bytes around it at the same offset)
         if len(a) == len(b):
             out = {o: o for o in sites if a[max(o - 2, 0) : o + 4] == b[max(o - 2, 0) : o + 4]}
         return out
@@ -636,37 +534,13 @@ def _references_of_source(job):
 def references(
     version: Version | str | None = None, sources: list[str] | None = None, aligned: bool = False
 ) -> list[Reference]:
-    """Every reference to a named symbol of the rows' functions (only SOURCES' with it), from the build's objects:
-    _Unit.references()."""
-    global _context
     v = get_version(version)
-    table = rows(v)
-    _context = addresses(v, table)
-    original(v)
-    by_source = collections.defaultdict(list)
-    for row in table:
-        if row.source and (sources is None or row.source in sources):
-            by_source[row.source].append(row)
-    work = [(v.name, s, r, aligned) for s, r in by_source.items()]
-    jobs = int(os.environ.get("JOBS", 0)) or os.cpu_count() or 1
-    if jobs > 1 and len(work) > 1 and sys.platform != "win32":
-        import concurrent.futures
-
-        with concurrent.futures.ProcessPoolExecutor(jobs, mp_context=multiprocessing.get_context("fork")) as pool:
-            parts = list(pool.map(_references_of_source, work, chunksize=2))
-    else:
-        parts = [_references_of_source(job) for job in work]
-    return [ref for part in parts for ref in part]
-
-
-# ------------------------------------------------------------------------------------------ build/VERSION/compare.json
+    work = [(v.name, s, r, aligned) for s, r in _by_source(v, sources).items()]
+    return [ref for part in _map(_references_of_source, work) for ref in part]
 
 
 def inputs(version: Version | str | None = None) -> dict[str, str]:
-    """What a comparison depends on, by digest: the configuration it reads and every source's object."""
     v = get_version(version)
-    from .project import ROOT, digest, relative
-
     paths = [
         ROOT / "config/sources.json",
         v.config / "config.json",
@@ -684,30 +558,17 @@ def result_path(version: Version | str | None = None):
     return get_version(version).build / "compare.json"
 
 
-def save(version: Version | str | None, results: dict[int, Verdict], placements: dict | None = None) -> None:
-    import json
-    from .project import write_atomic
-
+def save(version: Version | str | None, results: dict[int, Verdict]) -> None:
     functions = {
         f"0x{a:08x}": dict(
             name=v.name, source=v.source, exact=v.exact, reason=v.reason, similarity=round(v.similarity, 4)
         )
         for a, v in sorted(results.items())
     }
-    data = {
-        source: [[section, offset, size, f"0x{address:08x}"] for section, offset, size, address in places]
-        for source, places in sorted((placements or {}).items())
-    }
-    write_atomic(
-        result_path(version), json.dumps(dict(inputs=inputs(version), functions=functions, data=data), indent=1) + "\n"
-    )
+    write_atomic(result_path(version), json.dumps(dict(inputs=inputs(version), functions=functions), indent=1) + "\n")
 
 
 def _current(version: Version | str | None) -> dict:
-    """compare.json, refused when anything it depends on has changed since it was written."""
-    import json
-    from .project import Error, relative
-
     path = result_path(version)
     if not path.exists():
         raise Error(f"{relative(path)} does not exist: run ninja (configure.py --version {get_version(version)})")
@@ -723,24 +584,13 @@ def _current(version: Version | str | None) -> dict:
 
 
 def load(version: Version | str | None = None) -> dict[int, Verdict]:
-    """The last comparison's verdicts, refused when anything it depends on has changed since."""
     return {
         int(a, 16): Verdict(int(a, 16), f["name"], f["source"], f["exact"], f["reason"], None, f["similarity"])
         for a, f in _current(version)["functions"].items()
     }
 
 
-def load_placements(version: Version | str | None = None) -> dict[str, list[tuple[int, int, int, int]]]:
-    """The last comparison's placements of the sources' data (compare()), refused like load()'s verdicts."""
-    return {
-        source: [(section, offset, size, int(address, 16)) for section, offset, size, address in places]
-        for source, places in _current(version).get("data", {}).items()
-    }
-
-
 def compare_file(version: Version | str | None, source: str, path, score: bool = True) -> list[Verdict]:
-    """The verdicts of SOURCE's functions, compiled into the object at PATH (one built outside the build); without
-    SCORE, the inexact ones' similarity is left 0."""
     v = get_version(version)
     table = rows(v)
     pe = original(v)
@@ -750,9 +600,6 @@ def compare_file(version: Version | str | None, source: str, path, score: bool =
 
 
 def last(version: Version | str | None = None) -> dict[int, dict]:
-    """The last comparison's verdicts as they were written ({} if there is none), current or not."""
-    import json
-
     path = result_path(version)
     if not path.exists():
         return {}

@@ -1,15 +1,4 @@
 #!/usr/bin/env python3
-"""python tools/gen_options.py VERSION ROOT [--report] [-o OUT]: the command line parser's option tables of a glue unit
-(ParserGlue-eabi-ppc-cc.c, cc-eabi-ppc-mw.c), read from the original's .data and written as C (Pro7's .opt form).
-
-ROOT is the address of the unit's ParserTool (the struct its RegisterStaticParserToolInfo passes on). From it the
-walk types every object the tables reach: the option lists (OptionList), their NULL-terminated Option* arrays, the
-options (Option), their parameters (PARAM_T and the kinds Pro7's option_system.h has, told apart by `which`) and the
-strings. The structures are packed to 1 byte in 2.x. --report prints the objects in address order and the bytes the
-walk does not explain (the panels' storage, statics, the glue functions' literals); without it the C is written:
-each object as a definition in address order (MWCC lays a unit's .data out in definition order, each literal before
-the first definition that uses it), the pointers into the panels as offsets into them (`&pX.field` once the panels
-are typed)."""
 
 import argparse
 import re
@@ -18,6 +7,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
+from mw import formats, project
 from mw.pe import original
 
 WHICH = {
@@ -65,11 +55,10 @@ class Image:
         self.fixups = set(self.pe.base_relocations)
         self.names = {}
         self.sizes = {}
-        for line in open(f"config/{version}/symbols.txt"):
-            m = re.match(r"(\S+) = (\.\w+):0x([0-9A-Fa-f]+);.*?size:0x([0-9A-Fa-f]+)", line)
-            if m:
-                self.names.setdefault(int(m.group(3), 16), m.group(1))
-                self.sizes.setdefault(int(m.group(3), 16), int(m.group(4), 16))
+        for symbol in formats.read_symbols(project.version(version).config / "symbols.txt"):
+            if symbol.size is not None:
+                self.names.setdefault(symbol.address, symbol.name)
+                self.sizes.setdefault(symbol.address, symbol.size)
 
     def u8(self, a):
         return self.pe.read(a, 1)[0]
@@ -81,7 +70,6 @@ class Image:
         return struct.unpack("<I", self.pe.read(a, 4))[0]
 
     def ptr(self, a):
-        """the pointer at A, or None when A holds no relocated pointer (a NULL or a number)"""
         return self.u32(a) if a in self.fixups else None
 
     def cstr(self, a):
@@ -92,8 +80,8 @@ class Image:
 class Walk:
     def __init__(self, image):
         self.image = image
-        self.objects = {}  # address: (kind, size, fields)
-        self.data = None  # (the unit's .data: a parameter's pointer into it outside the panels is a string)
+        self.objects = {}
+        self.data = None
 
     def add(self, address, kind, size, fields):
         if address in self.objects:
@@ -174,7 +162,6 @@ class Walk:
         self.pending_strings()
 
     def pending_strings(self):
-        """a parameter's pointer into this unit's .data that nothing else explains is a string (a Generic's arg)"""
         im = self.image
         for address, (kind, size, _) in list(self.objects.items()):
             if kind != "param":
@@ -208,9 +195,6 @@ def report(walk, lo, hi):
         print(f"  {position:08x} {hi - position:5} unexplained")
 
 
-# ---- C
-
-# (panel name: its variable and type in include/driver/pref_structs.h)
 PANELS = {
     "CmdLine Panel": ("pCmdLine", "PCmdLine"),
     "CmdLine Compiler Panel": ("pCmdLineCompiler", "PCmdLineCompiler"),
@@ -224,7 +208,6 @@ PANELS = {
     "C/C++ Warnings": ("pWarningC", "PWarningC"),
     "EPPC Global Optimizer": ("pGlobalOptimizer", "PGlobalOptimizer"),
 }
-# (a root option list's help text: its name, Pro7's where it has one)
 LISTS = [
     ("General Command-Line Options", "CmdLine"),
     ("Preprocessing, Precompiling", "CmdLineCompiler"),
@@ -250,17 +233,16 @@ SCALARS = {
     "UInt32": 4,
     "SInt32": 4,
     "int": 4,
+    "OSType": 4,
 }
-# (other structs the tables point into: a global's name and its type, in --struct-header)
 GLOBALS = {"_parseopts": ("parseopts", "ParseOptsType")}
 
 
 def struct_layouts(header):
-    """{type: [(offset, size, field, element size or None)]} of the packed(2) typedefs in HEADER"""
     layouts = {}
-    for m in re.finditer(r"typedef struct (\w+) \{(.*?)\} \1;", Path(header).read_text(), re.S):
+    for m in re.finditer(r"typedef struct (\w+) \{(.*?)\} \1;", (project.ROOT / header).read_text(), re.DOTALL):
         offset, fields = 0, []
-        for line in re.sub(r"/\*.*?\*/", "", m.group(2), flags=re.S).split(";"):
+        for line in re.sub(r"/\*.*?\*/|//[^\n]*", "", m.group(2), flags=re.DOTALL).split(";"):
             f = re.match(r"\s*(.*?)\s*(\w+)(?:\[(\d+)\])?\s*$", line)
             if not f or not f.group(2):
                 continue
@@ -298,7 +280,6 @@ class Writer:
         self.names = {}
 
     def name_objects(self, roots):
-        """Pro7's naming: each root list's objects (those after the previous root's, up to it) optlstNAME_NNN"""
         im = self.im
         named = []
         for root in roots:
@@ -355,8 +336,7 @@ class Writer:
         ]
         if kind == "None":
             return f"PARAM_T {self.names[address]} = {{" + ", ".join(values) + "};"
-        base = "{" + ", ".join(values) + "}"
-        fields, offset = [base], 10
+        fields, offset = values, 10
         for field, t in layout:
             if t == "b":
                 fields.append(str(im.u8(address + offset)))
@@ -365,7 +345,7 @@ class Writer:
             elif t == "i":
                 fields.append(f"0x{im.u32(address + offset):X}")
             elif t in "psfP" and im.ptr(address + offset) is None and im.u32(address + offset):
-                fields.append(f"(void *){im.u32(address + offset)}")  # (a number where the kind has a pointer)
+                fields.append(f"(void *){im.u32(address + offset)}")
             elif t in "psfP":
                 fields.append(
                     self.ref(im.ptr(address + offset), "(PARAM_T *)" if t == "P" else "(void *)" if t in "pf" else "")
@@ -418,9 +398,12 @@ def c_name(symbol):
 
 
 def main():
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(
+        description="The command line parser's option tables of a glue unit, read from the original's .data as C.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     parser.add_argument("version")
-    parser.add_argument("root", nargs="?")
+    parser.add_argument("root", nargs="?", help="the address of the unit's ParserTool (hexadecimal)")
     parser.add_argument(
         "--string-table",
         action="append",
@@ -428,10 +411,10 @@ def main():
         metavar="ADDRESS=NAME",
         help="instead: write the NULL-terminated string table at ADDRESS (a resource's STRnnnn) to OUT",
     )
-    parser.add_argument("--range", nargs=2)
-    parser.add_argument("--report", action="store_true")
-    parser.add_argument("--header", default="include/driver/pref_structs.h")
-    parser.add_argument("--struct-header", default="include/driver/ParserFace.h")
+    parser.add_argument("--range", nargs=2, metavar=("START", "END"), help="with --report: only these addresses")
+    parser.add_argument("--report", action="store_true", help="list the objects the walk finds instead of writing C")
+    parser.add_argument("--header", default="include/driver/pref_structs.h", help="the preference panels' types")
+    parser.add_argument("--struct-header", default="include/driver/ParserFace.h", help="the other structs' types")
     parser.add_argument("-o", "--out", help="directory for the .opt files")
     parser.add_argument(
         "--name",
@@ -441,13 +424,22 @@ def main():
         help="the C name of a variable at ADDRESS (a static of the unit, which symbols.txt may lack)",
     )
     args = parser.parse_args()
+    try:
+        generate(parser, args)
+    except project.Error as e:
+        sys.exit(f"error: {e}")
+
+
+def generate(parser, args):
     if not args.out and not args.report:
         parser.error("-o OUT is needed (or --report)")
     if not args.root and not args.string_table:
         parser.error("ROOT is needed (or --string-table)")
     if args.string_table:
+        if not args.out:
+            parser.error("--string-table writes to -o OUT")
         im = Image(args.version)
-        lines = ["/* (generated by tools/gen_options.py from the original's .data) */"]
+        lines = []
         for item in args.string_table:
             address, name = item.split("=")
             a, strings = int(address, 16), []
@@ -473,7 +465,7 @@ def main():
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     for name, members in files:
-        lines = [f"/* {name[6:]} (generated by tools/gen_options.py from the original's .data) */"]
+        lines = []
         forward = sorted({r for m in members for r in referenced(writer, m) if r in writer.names and r > m})
         lines += [writer.declaration(a) for a in forward]
         lines += [writer.definition(a) for a in members]
@@ -482,7 +474,6 @@ def main():
 
 
 def referenced(writer, address):
-    """the objects ADDRESS's definition points at"""
     im = writer.im
     kind, size, _ = writer.walk.objects[address]
     return {im.u32(a) for a in range(address, address + size) if a in im.fixups}

@@ -13,6 +13,7 @@
 #include "compiler/CompilerTools.h"
 #include "compiler/CParser.h"
 #include "compiler/enode.h"
+#include "compiler/InlineAsm.h"
 #include "compiler/InlineAsmPPC.h"
 #include "compiler/objects.h"
 #include "compiler/types.h"
@@ -27,8 +28,7 @@ static Boolean VarIsUsedInOtherFNodes(VarRecord* var, IRONode* node) {
         IRODef* def = NULL;
         for (use = var->uses; use; use = use->varnext) {
             if (!def &&
-                use->node ==
-                node &&
+                use->node == node &&
                 use->linear &&
                 !(use->linear->flags & IROLF_Assigned)) {
                 for (def = var->defs; def; def = def->varnext) {
@@ -99,79 +99,81 @@ static void GetExprKills(IROLinear* linear, Boolean isFirst) {
 }
 
 static void CheckUnorderedRegionForDefs(
-    IROLinear* linear, BitVector* a, BitVector* b, Boolean* flag
+    IROLinear* linear, BitVector* kills, BitVector* uses, Boolean* found
 ) {
-    Bv_Clear(a);
+    Bv_Clear(kills);
     Bv_Clear(IRO_VarKills);
     IRO_WalkTree(linear, GetExprKills);
-    Bv_Or(IRO_VarKills, a);
-    if (Bv_BitsInCommon(a, b)) {
-        *flag = TRUE;
+    Bv_Or(IRO_VarKills, kills);
+    if (Bv_BitsInCommon(kills, uses)) {
+        *found = TRUE;
     }
 }
 
 static void CheckUnorderedRegionsForDefs(
-    IROLinear* linear1, IROLinear* linear2, BitVector* a, BitVector* b, Boolean* flag
+    IROLinear* nd, IROLinear* excluded, BitVector* kills, BitVector* uses, Boolean* found
 ) {
     int i;
 
-    switch (linear1->type) {
+    switch (nd->type) {
         case IROLinearOp2Arg:
-            if (linear1->nodetype == ELAND) {
+            if (nd->nodetype == ELAND) {
                 break;
             }
-            if (linear1->nodetype == ELOR) {
+            if (nd->nodetype == ELOR) {
                 break;
             }
-            if (linear1->nodetype == ECOMMA) {
+            if (nd->nodetype == ECOMMA) {
                 break;
             }
-            if (linear1->u.diadic.left != linear2) {
-                CheckUnorderedRegionForDefs(linear1->u.diadic.left, a, b, flag);
+            if (nd->u.diadic.left != excluded) {
+                CheckUnorderedRegionForDefs(nd->u.diadic.left, kills, uses, found);
             }
-            if (linear1->u.diadic.right != linear2) {
-                CheckUnorderedRegionForDefs(linear1->u.diadic.right, a, b, flag);
+            if (nd->u.diadic.right != excluded) {
+                CheckUnorderedRegionForDefs(nd->u.diadic.right, kills, uses, found);
             }
             break;
         case IROLinearFunccall:
-            if (linear1->u.funccall.callee != linear2) {
-                CheckUnorderedRegionForDefs(linear1->u.funccall.callee, a, b, flag);
+            if (nd->u.funccall.callee != excluded) {
+                CheckUnorderedRegionForDefs(nd->u.funccall.callee, kills, uses, found);
             }
-            for (i = 0; !*flag && i < linear1->u.funccall.argCount; i++) {
-                if (linear1->u.funccall.args[i] != linear2) {
-                    CheckUnorderedRegionForDefs(linear1->u.funccall.args[i], a, b, flag);
+            for (i = 0; !*found && i < nd->u.funccall.argCount; i++) {
+                if (nd->u.funccall.args[i] != excluded) {
+                    CheckUnorderedRegionForDefs(nd->u.funccall.args[i], kills, uses, found);
                 }
             }
+            break;
+        default:
             break;
     }
 }
 
-static Boolean PropagationHasDefsInUnorderedRegions(IROLinear* a, IROLinear* b) {
+static Boolean PropagationHasDefsInUnorderedRegions(IROLinear* use, IROLinear* value) {
     IROLinear* father;
-    BitVector* bv1;
-    BitVector* bv2;
-    Boolean flag;
+    BitVector* kills;
+    BitVector* uses;
+    Boolean found;
     VarRecord* var;
     IROLinear* linear;
 
-    flag = FALSE;
-    linear = a;
-    if ((father = IRO_LocateFather(a))) {
-        Bv_AllocVector(&bv1, IRO_NumVars + 1);
-        Bv_AllocVector(&bv2, IRO_NumVars + 1);
+    found = FALSE;
+    linear = use;
+    if ((father = IRO_LocateFather(use))) {
+        Bv_AllocVector(&kills, IRO_NumVars + 1);
+        Bv_AllocVector(&uses, IRO_NumVars + 1);
         Bv_AllocVector(&IRO_VarKills, IRO_NumVars + 1);
-        IRO_WalkTree(b, GetExprUses);
-        Bv_Or(IRO_VarKills, bv2);
-        var = IRO_FindVar(a->u.diadic.left->u.node->data.objref, FALSE, TRUE);
-        Bv_SetBit(var->index, bv2);
-        while (father && !flag) {
-            CheckUnorderedRegionsForDefs(father, linear, bv1, bv2, &flag);
+        IRO_WalkTree(value, GetExprUses);
+        Bv_Or(IRO_VarKills, uses);
+        var = IRO_FindVar(use->u.diadic.left->u.node->data.objref, FALSE, TRUE);
+        Bv_SetBit(var->index, uses);
+        while (father && !found) {
+            CheckUnorderedRegionsForDefs(father, linear, kills, uses, &found);
             linear = father;
             father = IRO_LocateFather(father);
         }
     }
 
-    return flag;
+    return found;
 }
 
 int IRO_IsRegable(Object* obj) {
@@ -183,12 +185,11 @@ int IRO_IsRegable(Object* obj) {
 
 static Boolean IsPropagatable(IROLinear* linear) {
     Object* obj;
-    Object* obj2;
+    Object* srcObj;
 
     if (IS_LINEAR_DIADIC(linear, EASS) &&
         (obj = IRO_IsVariable(linear->u.diadic.left)) &&
-        obj->type ==
-        linear->rtype &&
+        obj->type == linear->rtype &&
         !is_volatile_object(obj)) {
         if (linear->u.diadic.left->flags & IROLF_BitfieldIndirect) {
             if (!IRO_IsConstant(linear->u.diadic.right)) {
@@ -202,11 +203,16 @@ static Boolean IsPropagatable(IROLinear* linear) {
             return TRUE;
         }
 
-        if ((obj2 = IRO_IsVariable(linear->u.diadic.right)) &&
-            !is_volatile_object(obj2) &&
+        if ((srcObj = IRO_IsVariable(linear->u.diadic.right)) &&
+            !is_volatile_object(srcObj) &&
             IRO_TypesEqual(obj->type, linear->rtype)) {
             if (!Inline_IsObjectData(linear->u.diadic.right->u.monadic->u.node->data.objref)) {
-                if (IRO_IsRegable(obj) && !IRO_IsRegable(obj2)) {
+#if VERSION == VERSION_GC_2_0P2
+                if (obj->datatype == DLOCAL && obj->u.var.info && obj->u.var.info->noregister) {
+                    return FALSE;
+                }
+#endif
+                if (IRO_IsRegable(obj) && !IRO_IsRegable(srcObj)) {
                     return FALSE;
                 }
                 return TRUE;
@@ -265,17 +271,13 @@ static void ClearAvailibilityOnNode(IRONode* node, UInt32 bit) {
     }
 }
 
-// TODO: not exact (99.7): after `linear->type = IROLinearOperand` 2.6 reloads the spilled `linear`
-// for `linear->u.node = enode`, where ours reuses the register. Tried: the stores in other orders,
-// a byte-typed store, `enode` at function scope or declared apart, every declaration order (Pro7's
-// reads 90.6; `newass` at function scope is needed for the rest).
 Boolean IRO_CopyAndConstantPropagation(void) {
     IRONode* node;
     IROAssign* ass2;
     IROAssign* ass;
     IROLinear* linear;
     BitVector* bv;
-    Boolean flag;
+    Boolean changed;
     Boolean result;
     IROAssign* newass;
     VarRecord* var;
@@ -378,7 +380,7 @@ Boolean IRO_CopyAndConstantPropagation(void) {
 
     Bv_AllocVector(&bv, IRO_NumAssign);
     do {
-        flag = FALSE;
+        changed = FALSE;
         for (node = IRO_FirstNode; node; node = node->nextnode) {
             if (node == IRO_FirstNode) {
                 Bv_Clear(bv);
@@ -391,7 +393,7 @@ Boolean IRO_CopyAndConstantPropagation(void) {
             }
 
             if (!Bv_Compare(bv, node->in)) {
-                flag = TRUE;
+                changed = TRUE;
                 Bv_Copy(bv, node->in);
             }
 
@@ -399,7 +401,7 @@ Boolean IRO_CopyAndConstantPropagation(void) {
             Bv_Minus(node->kill, node->copyOut);
             Bv_Or(node->gen, node->copyOut);
         }
-    } while (flag);
+    } while (changed);
 
     IRO_CheckForUserBreak();
 
@@ -416,14 +418,12 @@ Boolean IRO_CopyAndConstantPropagation(void) {
             if (IRO_IsVariable(linear) && !(linear->flags & IROLF_Assigned)) {
                 if ((var = IRO_FindVar(linear->u.diadic.left->u.node->data.objref, FALSE, TRUE))) {
                     for (ass2 = IRO_FirstAssign; ass2; ass2 = ass2->next) {
-                        if (ass2->varIndex ==
-                            var->index &&
+                        if (ass2->varIndex == var->index &&
                             Bv_IsBitSet(ass2->index, IRO_Avail) &&
                             (IRO_IsConstant(ass2->linear2) ||
                              node->loopdepth <= ass2->node->loopdepth) &&
                             !PropagationHasDefsInUnorderedRegions(linear, ass2->linear2)) {
-                            if (ass2->linear2->type ==
-                                IROLinearOperand &&
+                            if (ass2->linear2->type == IROLinearOperand &&
                                 IRO_is_CPtypeequal(
                                     linear->rtype, ass2->linear->u.diadic.left->rtype
                                 )) {
@@ -466,15 +466,12 @@ Boolean IRO_CopyAndConstantPropagation(void) {
                 CodeGen_GetAsmEffects(linear->u.asm_stmt, &effects);
 
                 for (i = 0; i < effects.numoperands; i++) {
-                    if (effects.operands[i].type ==
-                        IAEffect_Read &&
-                        effects.operands[i].offset ==
-                        0 &&
+                    if (effects.operands[i].type == IAEffect_Read &&
+                        effects.operands[i].offset == 0 &&
                         effects.operands[i].object->type->size == effects.operands[i].size) {
                         if ((var = IRO_FindVar(effects.operands[i].object, FALSE, TRUE))) {
                             for (ass2 = IRO_FirstAssign; ass2; ass2 = ass2->next) {
-                                if (ass2->varIndex ==
-                                    var->index &&
+                                if (ass2->varIndex == var->index &&
                                     Bv_IsBitSet(ass2->index, IRO_Avail) &&
                                     ass2->linear->rtype->size == effects.operands[i].size) {
                                     ENode* enode;
@@ -599,12 +596,10 @@ void IRO_ExpressionPropagation(void) {
             if (IRO_IsVariable(linear) && !(linear->flags & IROLF_Assigned)) {
                 if ((var = IRO_FindVar(linear->u.monadic->u.node->data.objref, FALSE, TRUE))) {
                     for (ass = IRO_FirstAssign; ass; ass = ass->next) {
-                        if (ass->varIndex ==
-                            var->index &&
+                        if (ass->varIndex == var->index &&
                             Bv_IsBitSet(ass->index, IRO_Avail) &&
                             !PropagationHasDefsInUnorderedRegions(linear, ass->linear2)) {
-                            if (ass->linear2->type ==
-                                IROLinearOperand &&
+                            if (ass->linear2->type == IROLinearOperand &&
                                 IRO_is_CPtypeequal(
                                     linear->rtype, ass->linear->u.diadic.left->rtype
                                 )) {
@@ -614,8 +609,8 @@ void IRO_ExpressionPropagation(void) {
                                     IRO_TruncateValueToType(&enode->data.intval, linear->rtype);
                                     enode->rtype = linear->rtype;
                                 } else if (enode->type == EOBJREF) {
-                                    IROLinear* tmp = IRO_LocateFather(linear);
-                                    if (tmp && (tmp->flags & IROLF_Assigned)) {
+                                    IROLinear* father = IRO_LocateFather(linear);
+                                    if (father && (father->flags & IROLF_Assigned)) {
                                         linear->flags |= IROLF_Assigned;
                                     }
                                 }
@@ -631,20 +626,19 @@ void IRO_ExpressionPropagation(void) {
                                     linear->flags |= IROLF_BitfieldIndirect;
                                 }
                             } else if (IRO_is_CPtypeequal(linear->rtype, ass->linear->rtype) &&
-                                       ass->useCount ==
-                                       1 &&
+                                       ass->useCount == 1 &&
                                        !VarIsUsedInOtherFNodes(var, node)) {
                                 IROList list;
                                 IRO_InitList(&list);
                                 IRO_DuplicateExpr(ass->linear->u.diadic.right, &list);
                                 if (IS_TYPE_FLOAT(ass->linear->rtype)) {
-                                    IROLinear* tmp = IRO_NewLinear(IROLinearOp1Arg);
-                                    tmp->index = ++IRO_NumLinear;
-                                    tmp->rtype = ass->linear->rtype;
-                                    tmp->nodetype = ETYPCON;
-                                    tmp->nodeflags = ENODE_FLAG_80;
-                                    tmp->u.monadic = list.tail;
-                                    IRO_AddToList(tmp, &list);
+                                    IROLinear* cast = IRO_NewLinear(IROLinearOp1Arg);
+                                    cast->index = ++IRO_NumLinear;
+                                    cast->rtype = ass->linear->rtype;
+                                    cast->nodetype = ETYPCON;
+                                    cast->nodeflags = ENODE_FLAG_SAME_TYPE_CAST;
+                                    cast->u.monadic = list.tail;
+                                    IRO_AddToList(cast, &list);
                                 }
                                 IRO_PasteAfter(list.head, list.tail, linear);
                                 IRO_LocateFather_Cut_And_Paste(linear, list.tail);

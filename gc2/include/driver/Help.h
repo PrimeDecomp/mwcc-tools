@@ -1,7 +1,6 @@
 #ifndef DRIVER_HELP_H
 #define DRIVER_HELP_H
 
-#include "compiler/common.h"
 #include "driver/option_system.h"
 
 #ifdef __cplusplus

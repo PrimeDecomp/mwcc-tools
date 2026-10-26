@@ -19,12 +19,9 @@
 #include "compiler/enode.h"
 #include "compiler/objects.h"
 #include "compiler/scopes.h"
+#include "compiler/tokens.h"
 #include "compiler/types.h"
 
-// TODO: no reset (Pro7: mac68k alignment, reset after these structs): 2.6 lays out this
-// unit's statics at 2-byte packing, and MWCC lays out .bss with the packing in force at the
-// end of the file. Perhaps one of the original's headers left 2-byte packing on (CError, CInit
-// and CTemplateFunc need the same); a reset and a #pragma pack(2) at the end compile the same.
 #pragma pack(2)
 typedef struct OVClassBase {
     struct OVClassBase* next;
@@ -35,8 +32,6 @@ typedef struct OVClassBase {
 typedef struct OVFunc {
     struct OVFunc* next;
     Object* obj;
-    // TODO: invented names (Pro7: ovc8, ovfC, ovf10): the class of the final overrider found so
-    // far, its function, and a second final overrider when two are found (an error)
     struct OVClass* overriderclass;
     struct OVFunc* overrider;
     struct OVFunc* overrider2;
@@ -104,12 +99,9 @@ static Object* CClass_ThunkObject(
 
     CInline_ObjectAddrRef(obj);
     for (list = cclass_thunklist; list; list = list->next) {
-        if (obj ==
-            list->obj &&
-            this_delta ==
-            list->this_delta &&
-            return_delta ==
-            list->return_delta &&
+        if (obj == list->obj &&
+            this_delta == list->this_delta &&
+            return_delta == list->return_delta &&
             ctoroffset == list->ctoroffset) {
             return list->thunkobj;
         }
@@ -156,15 +148,13 @@ static UInt8 CClass_IsCovariantResult(
 
     if (IS_TYPE_POINTER_ONLY(a) &&
         IS_TYPE_POINTER_ONLY(b) &&
-        TPTR_QUAL(a) ==
-        TPTR_QUAL(b) &&
+        TPTR_QUAL(a) == TPTR_QUAL(b) &&
         !CParser_IsMoreCVQualified(qualB, qualA) &&
         IS_TYPE_CLASS(TPTR_TARGET(a)) &&
         IS_TYPE_CLASS(TPTR_TARGET(b))) {
         tclassA = TYPE_CLASS(TPTR_TARGET(a));
         tclassB = TYPE_CLASS(TPTR_TARGET(b));
-        if (tclassA ==
-            tclassB ||
+        if (tclassA == tclassB ||
             CClass_IsBaseClass(tclassB, tclassA, NULL, errorflag, errorflag)) {
             if (!CClass_IsZeroOffsetClass(tclassB, tclassA)) {
                 return 2;
@@ -182,8 +172,7 @@ UInt8 CClass_GetOverrideKind(TypeFunc* a, TypeFunc* b, Boolean errorflag) {
         return 0;
     }
 
-    if ((a->flags & FUNC_CALL_CONV_MASK) !=
-        (b->flags & FUNC_CALL_CONV_MASK) ||
+    if ((a->flags & FUNC_CALL_CONV_MASK) != (b->flags & FUNC_CALL_CONV_MASK) ||
         !is_arglistsame(a->args->next, b->args->next) ||
         a->args->qual != b->args->qual) {
         return 0;
@@ -216,7 +205,6 @@ Boolean CClass_IsEmpty(TypeClass* tclass) {
     }
 
     for (base = tclass->bases; base; base = base->next) {
-        // 2.6's shape: Pro7's `!CClass_IsEmpty(...)` gives 76.8
         if (CClass_IsEmpty(base->base) == FALSE) {
             return FALSE;
         }
@@ -226,7 +214,7 @@ Boolean CClass_IsEmpty(TypeClass* tclass) {
 }
 
 Boolean CClass_IsNonStaticMemberFunc(TypeFunc* tfunc) {
-    return IS_TYPEFUNC_NONSTATIC_METHOD(tfunc) || (tfunc->flags & FUNC_FLAGS_80);
+    return IS_TYPEFUNC_NONSTATIC_METHOD(tfunc) || (tfunc->flags & FUNC_PTM);
 }
 
 Object* CClass_DefaultConstructor(TypeClass* tclass) {
@@ -327,11 +315,11 @@ Object* CClass_DummyDefaultConstructor(TypeClass* tclass) {
 
 ENode* CClass_DefaultConstructorCall(
     TypeClass* tclass,
-    TypeClass* b,
+    TypeClass* derived,
     ENode* objexpr,
     SInt32 varg,
-    Boolean flag1,
-    Boolean flag2,
+    Boolean checkAccess,
+    Boolean isVirtualBase,
     Boolean* errorflag
 ) {
     NameSpaceObjectList* nsol;
@@ -383,17 +371,17 @@ ENode* CClass_DefaultConstructorCall(
         return NULL;
     }
 
-    if (flag1) {
-        if (b) {
-            if (flag2) {
-                if ((path = CClass_GetBasePath(b, tclass, &founddepth, &isambigbase))) {
+    if (checkAccess) {
+        if (derived) {
+            if (isVirtualBase) {
+                if ((path = CClass_GetBasePath(derived, tclass, &founddepth, &isambigbase))) {
                     list1 = *path;
                 } else {
                     goto skipCheck;
                 }
             } else {
                 list1.next = &list2;
-                list1.type = TYPE(b);
+                list1.type = TYPE(derived);
                 list2.next = NULL;
                 list2.type = TYPE(tclass);
             }
@@ -421,7 +409,9 @@ skipCheck:
     list1.next = NULL;
     list1.type = TYPE(tclass);
 
-    expr = CExpr_GenericFuncCall(&list1, objexpr, 0, ctor, NULL, NULL, argexprs, 0, 0, 0);
+    expr = CExpr_GenericFuncCall(
+        &list1, objexpr, FALSE, ctor, NULL, NULL, argexprs, FALSE, FALSE, FALSE
+    );
 
     if (ENODE_IS2(expr, EFUNCCALL, EFUNCCALLP)) {
         expr->rtype = CDecl_NewPointerType(TYPE(tclass));
@@ -437,8 +427,7 @@ Object* CClass_AssignmentOperator(TypeClass* tclass) {
 
     for (nsol = CScope_FindName(tclass->nspace, asop_name_node); nsol; nsol = nsol->next) {
         object = OBJECT(nsol->object);
-        if (object->otype ==
-            OT_OBJECT &&
+        if (object->otype == OT_OBJECT &&
             IS_TYPE_FUNC(object->type) &&
             (args = TYPE_FUNC(object->type)->args) &&
             args->next &&
@@ -479,8 +468,7 @@ Object* CClass_CopyConstructor(TypeClass* tclass) {
             }
 
             if (args &&
-                args !=
-                &elipsis &&
+                args != &elipsis &&
                 (!args->next || args->next->dexpr) &&
                 IS_TYPE_REFERENCE(args->type) &&
                 TPTR_TARGET(args->type) == TYPE(tclass)) {
@@ -506,8 +494,7 @@ NameSpaceObjectList* CClass_Constructor(TypeClass* tclass) {
     NameSpaceObjectList* nsol;
 
     if ((nsol = CScope_FindName(tclass->nspace, constructor_name_node)) &&
-        nsol->object->otype ==
-        OT_OBJECT &&
+        nsol->object->otype == OT_OBJECT &&
         IS_TYPE_FUNC(OBJECT(nsol->object)->type)) {
         return nsol;
     }
@@ -546,8 +533,7 @@ Boolean CClass_IsPODClass(TypeClass* tclass) {
     }
 
     for (nsol = CClass_Constructor(tclass); nsol; nsol = nsol->next) {
-        if (nsol->object->otype ==
-            OT_OBJECT &&
+        if (nsol->object->otype == OT_OBJECT &&
             IS_TYPE_FUNC(OBJECT(nsol->object)->type) &&
             !(TYPE_FUNC(OBJECT(nsol->object)->type)->flags & FUNC_AUTO_GENERATED)) {
             return FALSE;
@@ -581,6 +567,8 @@ Boolean CClass_IsPODClass(TypeClass* tclass) {
                 if (TPTR_QUAL(type) & Q_REFERENCE) {
                     return FALSE;
                 }
+                break;
+            default:
                 break;
         }
     }
@@ -896,7 +884,7 @@ TypeClass* CClass_GetQualifiedClass(void) {
     DeclInfo di;
 
     memclrw(&di, sizeof(di));
-    CParser_GetDeclSpecs(&di, 0);
+    CParser_GetDeclSpecs(&di, FALSE);
 
     if (IS_TYPE_CLASS(di.thetype)) {
         return TYPE_CLASS(di.thetype);
@@ -1012,14 +1000,14 @@ ENode* CClass_DirectBasePointerCast(ENode* expr, TypeClass* a, TypeClass* b) {
             list1.type = TYPE(a);
             list2.next = NULL;
             list2.type = TYPE(b);
-            return CClass_AccessPathCast(&list1, expr, 0);
+            return CClass_AccessPathCast(&list1, expr, FALSE);
         }
     }
 
     for (vbase = a->vbases; vbase; vbase = vbase->next) {
         if (vbase->base == b) {
             CError_ASSERT(1273, path = CClass_GetBasePath(a, b, &depth, &isambigbase));
-            return CClass_AccessPathCast(path, expr, 0);
+            return CClass_AccessPathCast(path, expr, FALSE);
         }
     }
 
@@ -1100,7 +1088,7 @@ SInt32 CClass_GetMemberOffset(TypeClass* tclass, HashNameNode* name, ObjMemberVa
     ObjMemberVar* ivar;
     ClassList* base;
     SInt32 offset;
-    SInt32 tmp;
+    SInt32 baseOffset;
     Boolean foundflag;
 
     for (ivar = tclass->ivars; ivar; ivar = ivar->next) {
@@ -1113,10 +1101,10 @@ SInt32 CClass_GetMemberOffset(TypeClass* tclass, HashNameNode* name, ObjMemberVa
     }
 
     for (base = tclass->bases, foundflag = FALSE; base; base = base->next) {
-        switch ((tmp = CClass_GetMemberOffset(base->base, name, resultIvar))) {
+        switch ((baseOffset = CClass_GetMemberOffset(base->base, name, resultIvar))) {
             case -3:
             case -2:
-                return tmp;
+                return baseOffset;
             case -1:
                 break;
             default:
@@ -1127,7 +1115,7 @@ SInt32 CClass_GetMemberOffset(TypeClass* tclass, HashNameNode* name, ObjMemberVa
                     return -2;
                 }
                 foundflag = TRUE;
-                offset = base->offset + tmp;
+                offset = base->offset + baseOffset;
         }
     }
 
@@ -1145,10 +1133,8 @@ Boolean CClass_OverridesBaseMember(TypeClass* tclass, HashNameNode* name, Object
         if (base->base->vtable) {
             for (nsol = CScope_FindName(base->base->nspace, name); nsol; nsol = nsol->next) {
                 object = OBJECT(nsol->object);
-                if (object->otype ==
-                    OT_OBJECT &&
-                    object->datatype ==
-                    DVFUNC &&
+                if (object->otype == OT_OBJECT &&
+                    object->datatype == DVFUNC &&
                     CClass_GetOverrideKind(TYPE_FUNC(object->type), TYPE_FUNC(obj->type), TRUE)) {
                     result = TRUE;
                 }
@@ -1273,8 +1259,7 @@ static void CClass_FindOVFunc(OVClass* a, OVClass* b, OVFunc* func) {
                      TYPE_FUNC(func->obj->type), TYPE_FUNC(scan->obj->type), FALSE
                  ))) {
                 if (func->overriderclass) {
-                    if (func->overriderclass->tclass ==
-                        a->tclass ||
+                    if (func->overriderclass->tclass == a->tclass ||
                         CClass_ClassDominates(func->overriderclass->tclass, a->tclass)) {
                         return;
                     }
@@ -1285,9 +1270,9 @@ static void CClass_FindOVFunc(OVClass* a, OVClass* b, OVFunc* func) {
                 }
 
                 if (a == cclass_root) {
-                    TYPE_FUNC(scan->obj->type)->flags |= FUNC_FLAGS_20;
+                    TYPE_FUNC(scan->obj->type)->flags |= FUNC_OVERRIDE;
                     if (overrideKind == 2) {
-                        TYPE_FUNC(scan->obj->type)->flags |= FUNC_FLAGS_400000;
+                        TYPE_FUNC(scan->obj->type)->flags |= FUNC_COVARIANT;
                     }
                 }
 
@@ -1305,7 +1290,7 @@ static void CClass_FindOVFunc(OVClass* a, OVClass* b, OVFunc* func) {
 }
 
 static TypeList* CClass_GetCoVariantClassList(
-    TypeList* list, TypeClass* tclass, Object* func, Boolean flag
+    TypeList* list, TypeClass* tclass, Object* func, Boolean isTopLevel
 ) {
     Object* object;
     TypeList* scan;
@@ -1313,19 +1298,17 @@ static TypeList* CClass_GetCoVariantClassList(
     ClassList* base;
     CScopeObjectIterator iter;
 
-    if (!flag) {
+    if (!isTopLevel) {
         CScope_InitObjectIterator(&iter, tclass->nspace);
         while (1) {
             if (!(object = OBJECT(CScope_NextObjectIteratorObject(&iter)))) {
                 break;
             }
 
-            if (object->name ==
-                func->name &&
-                object->datatype ==
-                DVFUNC &&
+            if (object->name == func->name &&
+                object->datatype == DVFUNC &&
                 CClass_GetOverrideKind(TYPE_FUNC(object->type), TYPE_FUNC(func->type), FALSE) ==
-                2) {
+                    2) {
                 CError_ASSERT(
                     1686,
                     IS_TYPE_POINTER_ONLY(TYPE_FUNC(object->type)->functype) &&
@@ -1370,7 +1353,7 @@ static TypeMemberFunc* CClass_GetCovariantType(TypeMemberFunc* tmethod, Type* ty
 
     result = galloc(sizeof(TypeMemberFunc));
     *result = *tmethod;
-    result->flags &= ~(FUNC_FLAGS_20 | FUNC_FLAGS_400000);
+    result->flags &= ~(FUNC_OVERRIDE | FUNC_COVARIANT);
     result->functype = TYPE(tptr);
     return result;
 }
@@ -1441,7 +1424,7 @@ void CClass_DefineCovariantFuncs(Object* method, CI_FuncData* ifuncdata) {
         for (stmt = &firstStmt; stmt; stmt = stmt->next) {
             if (stmt->type == ST_RETURN && stmt->expr) {
                 stmt->expr =
-                    CExpr_AssignmentPromotion(stmt->expr, tptr, ENODE_QUALS(stmt->expr), 0);
+                    CExpr_AssignmentPromotion(stmt->expr, tptr, ENODE_QUALS(stmt->expr), FALSE);
             }
         }
 
@@ -1468,9 +1451,9 @@ static void CClass_OverrideOVClassTree(OVClass* ovclass) {
 static void CClass_AllocVTableRec(OVClass* ovclass) {
     OVFunc* ovfunc;
     Object* object;
-    SInt32 offset27;
-    SInt32 offset26;
-    SInt32 offset23;
+    SInt32 vtbl_offset;
+    SInt32 this_delta;
+    SInt32 ctoroffset;
     OVClassBase* ovbase;
     OLinkList* link;
 
@@ -1479,15 +1462,14 @@ static void CClass_AllocVTableRec(OVClass* ovclass) {
     }
 
     for (ovfunc = ovclass->vfuncs; ovfunc; ovfunc = ovfunc->next) {
-        offset27 = ovclass->voffset +
-            TYPE_METHOD(ovfunc->obj->type)->vtbl_index +
+        vtbl_offset = ovclass->voffset + TYPE_METHOD(ovfunc->obj->type)->vtbl_index +
             CABI_GetVTableOffset(ovclass->tclass);
-        CError_ASSERT(1867, offset27 < vtable_data_size);
+        CError_ASSERT(1867, vtbl_offset < vtable_data_size);
 
-        if (!(vtable_object_data[offset27])) {
+        if (!(vtable_object_data[vtbl_offset])) {
             if (ovfunc->overrider) {
                 object = ovfunc->overrider->obj;
-                if ((TYPE_FUNC(object->type)->flags & FUNC_FLAGS_400000) &&
+                if ((TYPE_FUNC(object->type)->flags & FUNC_COVARIANT) &&
                     CClass_GetOverrideKind(
                         TYPE_FUNC(ovfunc->obj->type), TYPE_FUNC(object->type), FALSE
                     ) == 2) {
@@ -1501,19 +1483,19 @@ static void CClass_AllocVTableRec(OVClass* ovclass) {
                     );
                 }
 
-                if ((offset26 = ovfunc->overriderclass->offset - ovclass->offset)) {
+                if ((this_delta = ovfunc->overriderclass->offset - ovclass->offset)) {
                     if (!(TYPE_FUNC(object->type)->flags & FUNC_PURE)) {
                         cclass_ovbase = NULL;
                         CError_ASSERT(1899, CClass_IsBaseOf(ovclass, ovfunc->overriderclass));
 
-                        if (cclass_ovbase && (main_class->flags & CLASS_SOM_INIT)) {
-                            offset23 = ovclass->offset - cclass_ovbase->offset;
-                            offset23 =
-                                CABI_GetCtorOffsetOffset(cclass_ovbase->tclass, NULL) - offset23;
-                            CError_ASSERT(1906, offset23 > 0);
-                            object = CClass_ThunkObject(object, offset26, 0, offset23);
+                        if (cclass_ovbase && (main_class->flags & CLASS_VBASE_CTOR_OFFSET)) {
+                            ctoroffset = ovclass->offset - cclass_ovbase->offset;
+                            ctoroffset =
+                                CABI_GetCtorOffsetOffset(cclass_ovbase->tclass, NULL) - ctoroffset;
+                            CError_ASSERT(1906, ctoroffset > 0);
+                            object = CClass_ThunkObject(object, this_delta, 0, ctoroffset);
                         } else {
-                            object = CClass_ThunkObject(object, offset26, 0, -1);
+                            object = CClass_ThunkObject(object, this_delta, 0, -1);
                         }
                     }
                 }
@@ -1525,10 +1507,10 @@ static void CClass_AllocVTableRec(OVClass* ovclass) {
                 link = lalloc(sizeof(OLinkList));
                 link->next = vtable_object_links;
                 link->obj = object;
-                link->offset = offset27;
+                link->offset = vtbl_offset;
                 link->addend = 0;
                 vtable_object_links = link;
-                vtable_object_data[offset27] = 1;
+                vtable_object_data[vtbl_offset] = 1;
             }
         }
     }
@@ -1600,12 +1582,12 @@ static Object* CClass_CheckVirtuals(TypeClass* tclass) {
     return CClass_CheckClass(ovclass, FALSE);
 }
 
-static void CClass_CheckVirtualBaseOverrides(OVClass* a, OVClass* b, Boolean flag) {
+static void CClass_CheckVirtualBaseOverrides(OVClass* a, OVClass* b, Boolean isVirtualBase) {
     OVFunc* ovfunc;
     VClassList* vbase;
     OVClassBase* ovbase;
 
-    if (flag) {
+    if (isVirtualBase) {
         for (ovfunc = b->vfuncs; ovfunc; ovfunc = ovfunc->next) {
             if (ovfunc->overrider) {
                 cclass_ovbase = NULL;
@@ -1626,7 +1608,7 @@ static void CClass_CheckVirtualBaseOverrides(OVClass* a, OVClass* b, Boolean fla
     }
 
     for (ovbase = b->bases; ovbase; ovbase = ovbase->next) {
-        CClass_CheckVirtualBaseOverrides(a, ovbase->ovclass, flag || ovbase->is_virtual);
+        CClass_CheckVirtualBaseOverrides(a, ovbase->ovclass, isVirtualBase || ovbase->is_virtual);
     }
 }
 
@@ -1652,13 +1634,11 @@ static void CClass_CheckHideVirtual(OVClass* a, OVClass* b) {
 
                     if (object->name == ovfunc->obj->name && IS_TYPE_FUNC(object->type)) {
                         if (object->datatype != DALIAS) {
-                            if (!(TYPE_FUNC(object->type)->flags & FUNC_FLAGS_20)) {
+                            if (!(TYPE_FUNC(object->type)->flags & FUNC_OVERRIDE)) {
                                 foundObject = object;
                             }
                         } else {
                             if (object->u.alias.object == ovfunc->obj) {
-                                // don't show a warning if this is just an alias
-                                // to the base function
                                 isAlias = TRUE;
                                 break;
                             }
@@ -1712,7 +1692,7 @@ void CClass_CheckOverrides(TypeClass* tclass) {
         CClass_CheckHideVirtual(tree, tree);
     }
 
-    if (tclass->flags & CLASS_SOM_INIT) {
+    if (tclass->flags & CLASS_VBASE_CTOR_OFFSET) {
         CClass_CheckVirtualBaseOverrides(tree, tree, FALSE);
     }
 
@@ -1725,7 +1705,7 @@ void CClass_CheckOverrides(TypeClass* tclass) {
 
         if (object->datatype == DVFUNC) {
             CError_ASSERT(2175, IS_TYPE_FUNC(object->type));
-            if (TYPE_FUNC(object->type)->flags & FUNC_FLAGS_400000) {
+            if (TYPE_FUNC(object->type)->flags & FUNC_COVARIANT) {
                 objlist = CClass_DeclareCovariantFuncs(objlist, object, tclass);
             }
         }
@@ -1764,10 +1744,8 @@ static void CClass_FindDominator(
             break;
         }
 
-        if (object->name ==
-            cclass_dominator_vobject->name &&
-            object->datatype ==
-            DVFUNC &&
+        if (object->name == cclass_dominator_vobject->name &&
+            object->datatype == DVFUNC &&
             CClass_GetOverrideKind(
                 TYPE_FUNC(cclass_dominator_vobject->type), TYPE_FUNC(object->type), FALSE
             )) {
@@ -1868,7 +1846,7 @@ static void CClass_ConstructVTable(
                     if (!check_pures) {
                         thunkobject = cclass_dominator_oobject;
                         if ((thunkoffset = cclass_dominator_ooffset - offset)) {
-                            if (cclass_vbase && (main_class->flags & CLASS_SOM_INIT)) {
+                            if (cclass_vbase && (main_class->flags & CLASS_VBASE_CTOR_OFFSET)) {
                                 thunkobject = CClass_ThunkObject(
                                     cclass_dominator_oobject,
                                     thunkoffset,
@@ -1948,7 +1926,7 @@ void CClass_MakeStaticActionClass(TypeClass* tclass) {
     if (tclass->vtable) {
         tclass->vtable->object->sclass = TK_STATIC;
         tclass->vtable->object->qual |= Q_IMPLICIT_WEAK;
-        if (!(tclass->vtable->object->flags & OBJECT_FLAGS_2)) {
+        if (!(tclass->vtable->object->flags & OBJECT_REFERENCED)) {
             CParser_NewCallBackAction(tclass->vtable->object, tclass);
         } else if (cparamblkptr->precompile != 1) {
             CParser_NewClassAction(tclass);
@@ -1962,16 +1940,16 @@ Object* CClass_CheckPures(TypeClass* tclass) {
 
 void CClass_MemberDef(Object* obj, TypeClass* tclass) {
     switch (tclass->action) {
-        case CLASS_ACTION_0:
-        case CLASS_ACTION_3:
+        case CLASS_ACTION_NONE:
+        case CLASS_ACTION_JAVA:
             return;
-        case CLASS_ACTION_1:
-            if (IS_TYPE_FUNC(obj->type) && (TYPE_FUNC(obj->type)->flags & FUNC_FLAGS_4)) {
+        case CLASS_ACTION_KEY_FUNCTION:
+            if (IS_TYPE_FUNC(obj->type) && (TYPE_FUNC(obj->type)->flags & FUNC_KEY_FUNCTION)) {
                 if (obj->qual & Q_INLINE) {
                     if (tclass->sominfo) {
                         CError_Error(ERR_SOM_CLASS_MUST_ONE_NON_INLINE);
                     }
-                    tclass->action = CLASS_ACTION_0;
+                    tclass->action = CLASS_ACTION_NONE;
                     CClass_MakeStaticActionClass(tclass);
                     return;
                 }
@@ -1980,7 +1958,7 @@ void CClass_MemberDef(Object* obj, TypeClass* tclass) {
                 }
             }
             return;
-        case CLASS_ACTION_2:
+        case CLASS_ACTION_UNUSED:
             CError_FATAL(2682);
             return;
         default:
@@ -2041,6 +2019,8 @@ static AccessType CClass_BaseMemberAccess(BClassList* path, AccessType access) {
             case ACCESSPRIVATE:
             case ACCESSNONE:
                 return ACCESSNONE;
+            default:
+                break;
         }
 
         for (base = TYPE_CLASS(path->type)->bases;; base = base->next) {
@@ -2278,8 +2258,7 @@ void CClass_CheckEnumAccess(BClassList* path, ObjEnumConst* objec) {
         }
     }
 
-    if (objec->access !=
-        ACCESSPUBLIC &&
+    if (objec->access != ACCESSPUBLIC &&
         IS_TYPE_ENUM(objec->type) &&
         TYPE_ENUM(objec->type)->nspace &&
         TYPE_ENUM(objec->type)->nspace->theclass) {

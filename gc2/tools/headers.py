@@ -1,20 +1,4 @@
 #!/usr/bin/env python3
-"""python tools/headers.py COMMAND ...: headers as the units' APIs.
-
-own HEADER... [--version V] [--dry-run]
-    make each HEADER the one place its functions and extern variables are declared: their `extern` declarations
-    elsewhere (in src/ and include/, as clang reads every source) are removed, and printed. A unit's prototypes
-    without `extern` (forward declarations of its own functions) stay: declarations in scope can change MWCC's code. One inside an #if, or declared in a
-    statement with other names (`extern int a, b;`), is listed and left. Build after: a file that relied on a removed
-    copy now needs the header (tools/includes.py add or fix).
-bisect SOURCE [--rev REV] [--version V]
-    which changed files change SOURCE's compiled code: SOURCE (as it is) is compiled against REV's include/ and src/
-    (default HEAD), then once per file changed since (in the working tree, untracked ones included) with that one
-    file as it is now; each whose swap changes the object (every section but .bss and the debug ones, relocations
-    by name) is printed. For a function that stops matching after a header edit that should not concern it: MWCC's
-    code can follow the declarations in scope. Each compile is the build's own command line, run in a copy of the
-    tree, so even the include paths' lengths are the build's.
-"""
 
 import argparse
 import os
@@ -31,11 +15,7 @@ from mw.coff import Object
 ROOT = project.ROOT
 
 
-# ------------------------------------------------------------------------------------------------------------- own
-
-
 def owned(d: csrc.Declaration) -> bool:
-    """Whether D is a declaration a header owns: a function's (not static, no body) or an extern variable's."""
     if d.defined or d.storage == "static":
         return False
     return d.kind == "FunctionDecl" or (d.kind == "VarDecl" and d.storage == "extern")
@@ -97,11 +77,11 @@ def own(args):
         print("(nothing written)")
 
 
-# ---------------------------------------------------------------------------------------------------------- bisect
-
-
 def git(*args) -> str:
-    result = subprocess.run(["git", *args], cwd=ROOT, capture_output=True, text=True)
+    try:
+        result = subprocess.run(["git", *args], cwd=ROOT, capture_output=True, text=True)
+    except FileNotFoundError:
+        raise project.Error("bisect needs git") from None
     if result.returncode:
         raise project.Error(f"git {' '.join(args)}: {result.stderr.strip()}")
     return result.stdout
@@ -111,6 +91,7 @@ def bisect(args):
     v = project.version(args.version)
     source = project.relative(Path(args.source).resolve())
     compilation = build.compilation(v, source)
+    git("rev-parse", "--verify", f"{args.rev}^{{commit}}")
     changed = git("diff", "--name-only", args.rev, "--", "include", "src").split()
     changed += git("ls-files", "--others", "--exclude-standard", "--", "include", "src").split()
     changed = sorted(set(changed) - {source})
@@ -132,7 +113,6 @@ def bisect(args):
         shutil.copyfile(ROOT / source, base / source)
 
         def tree(name: str, swapped: str | None) -> Path:
-            """A copy of the base (hard links) with SWAPPED as it is now; lib/ and build/ (the compilers) linked."""
             path = workspace.path / f"trial-{name}"
             shutil.copytree(base, path, copy_function=os.link)
             for shared in ("lib", "build"):
@@ -170,19 +150,19 @@ def bisect(args):
 
 def main():
     parser = argparse.ArgumentParser(
-        description=__doc__.split("\n\n")[0],
+        prog="tools/headers.py",
+        description="Headers as the units' APIs.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=__doc__[__doc__.index("\n\n") + 2 :],
     )
     common = argparse.ArgumentParser(add_help=False)
-    common.add_argument("--version")
-    commands = parser.add_subparsers(dest="command", required=True)
-    p = commands.add_parser("own", parents=[common])
-    p.add_argument("headers", nargs="+")
-    p.add_argument("--dry-run", action="store_true")
-    p = commands.add_parser("bisect", parents=[common])
-    p.add_argument("source")
-    p.add_argument("--rev", default="HEAD")
+    common.add_argument("--version", help=f"default {project.PRIMARY}")
+    commands = parser.add_subparsers(dest="command", required=True, metavar="COMMAND")
+    p = commands.add_parser("own", parents=[common], help="make each HEADER the one place of its declarations")
+    p.add_argument("headers", nargs="+", metavar="HEADER")
+    p.add_argument("--dry-run", action="store_true", help="print the removals, write nothing")
+    p = commands.add_parser("bisect", parents=[common], help="which changed files change SOURCE's code")
+    p.add_argument("source", metavar="SOURCE")
+    p.add_argument("--rev", default="HEAD", help="the revision to start from (default HEAD)")
     args = parser.parse_args()
     try:
         own(args) if args.command == "own" else bisect(args)

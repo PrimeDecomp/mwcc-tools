@@ -22,7 +22,7 @@ extern SInt32 cobjc_stringcount;
 extern void CObjC_Setup(void);
 extern void CObjC_Cleanup(void);
 extern void CObjC_GenerateModule(void);
-extern Type* CObjC_GetObjCType_id(Boolean flag);
+extern Type* CObjC_GetObjCType_id(Boolean reportMissing);
 extern Boolean CObjC_IsType_id(Type* type);
 extern Boolean CObjC_IsCompatibleType(Type* a, Type* b);
 extern void CObjC_TranslateSelectorToken(void);

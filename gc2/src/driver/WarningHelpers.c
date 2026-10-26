@@ -1,5 +1,6 @@
 #include "driver/WarningHelpers.h"
 #include "driver/IO.h"
+#include "driver/Memory.h"
 #include "driver/option_system.h"
 #include "driver/ParserErrors.h"
 #include "driver/ParserFace.h"
@@ -17,14 +18,11 @@ int SetWarningFlags(const char* opt, void* str, const char* param, int flags) {
     int bar;
 
     ptr = (unsigned char*)str;
-    if (flags & PARAMPARSEFLAGS_8) {
+    if (flags & PARAMPARSEFLAGS_NEGATED) {
         no = TRUE;
     } else {
         no = FALSE;
     }
-    // TODO: 2.6 keeps `no` and `no ^ 1` in two int stack slots that the '-' and '|' cases read;
-    // only these int copies give it (tried: Pro7's `(Boolean)((flags & 8) >> 3)`, `!= 0`, `? 1 : 0`,
-    // `!!`, `set = no; set ^= 1;`, no casts). OptimizerHelpers' SetOptFlags has the same shape.
     set = bar = (minus = no) ^ 1;
 
     while (*ptr) {

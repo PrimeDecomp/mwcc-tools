@@ -7,7 +7,6 @@
 extern "C" {
 #endif
 
-// Pro7's som.h (mac68k alignment there, 2-byte packing here)
 #pragma pack(push, 2)
 
 typedef enum SOMMethodState {

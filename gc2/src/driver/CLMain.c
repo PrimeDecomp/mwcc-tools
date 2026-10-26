@@ -8,12 +8,19 @@
 #include "driver/CLPluginRequests.h"
 #include "driver/CLPlugins.h"
 #include "driver/CLPrefs.h"
+#include "driver/CLProj.h"
+#include "driver/CLTarg.h"
 #include "driver/CLToolExec.h"
+#include "driver/cmdline.h"
+#include "driver/CWPlugins.h"
 #include "driver/Generic.h"
 #include "driver/LowMem.h"
 #include "driver/MemUtils.h"
+#include "driver/MsDos.h"
+#include "driver/pref_structs.h"
 #include "driver/Resources.h"
 #include "driver/StringExtras.h"
+#include <setjmp.h>
 #include <string.h>
 
 jmp_buf exit_program;
@@ -35,7 +42,7 @@ char cmdline_build_time[32];
 Project* gProj = &mainProj;
 
 static CWPLUGIN_ENTRY(CLT_dummymain)(CWPluginContext context) {
-    return 0;
+    return cwNoErr;
 }
 
 static CWPLUGIN_ENTRY(CLT_GetDropInFlags)(const DropInFlags** flags, SInt32* flagsSize) {
@@ -51,19 +58,19 @@ static CWPLUGIN_ENTRY(CLT_GetDropInFlags)(const DropInFlags** flags, SInt32* fla
     // clang-format on
     *flags = &sFlags;
     *flagsSize = sizeof(sFlags);
-    return 0;
+    return cwNoErr;
 }
 
 static CWPLUGIN_ENTRY(CLT_GetDropInName)(const char** dropinName) {
     static const char* sDropInName = "Command-Line Driver";
     *dropinName = sDropInName;
-    return 0;
+    return cwNoErr;
 }
 
 static CWPLUGIN_ENTRY(CLT_GetDisplayName)(const char** displayName) {
     static const char* sDisplayName = "Command-Line Driver";
     *displayName = sDisplayName;
-    return 0;
+    return cwNoErr;
 }
 
 static CWPLUGIN_ENTRY(CLT_GetPanelList)(const CWPanelList** panelList) {
@@ -87,10 +94,9 @@ static CWPLUGIN_ENTRY(CLT_GetPanelList)(const CWPanelList** panelList) {
         sPanelList.count = 2;
     }
     *panelList = &sPanelList;
-    return 0;
+    return cwNoErr;
 }
 
-// (dead: the linker dropped it, its data stays)
 static CWPLUGIN_ENTRY(CLT_GetTargetList)(const CWTargetList** targetList) {
     static SInt32 sCPU = targetCPUAny;
     static SInt32 sOS = targetOSAny;
@@ -104,7 +110,7 @@ static CWPLUGIN_ENTRY(CLT_GetTargetList)(const CWTargetList** targetList) {
     };
     // clang-format on
     *targetList = &sTargetList;
-    return 0;
+    return cwNoErr;
 }
 
 static CWPLUGIN_ENTRY(CLT_GetVersionInfo)(const VersionInfo** versioninfo) {
@@ -114,7 +120,7 @@ static CWPLUGIN_ENTRY(CLT_GetVersionInfo)(const VersionInfo** versioninfo) {
     };
     // clang-format on
     *versioninfo = &vi;
-    return 0;
+    return cwNoErr;
 }
 
 static CWPLUGIN_ENTRY(CLT_GetFileTypeMappings)(const OSFileTypeMappingList** mappinglist) {
@@ -129,7 +135,7 @@ static CWPLUGIN_ENTRY(CLT_GetFileTypeMappings)(const OSFileTypeMappingList** map
     };
     // clang-format on
     *mappinglist = &ftml;
-    return 0;
+    return cwNoErr;
 }
 
 // clang-format off
@@ -260,9 +266,6 @@ void Main_PassSpecialArgs(int* argc, char*** argv) {
     } while (idx < 4);
 }
 
-// Pro7 has these as function-local statics (secret in Main_Initialize, `warned` in each
-// Update*FromVersion); 2.6's .bss holds them in the reverse of this order, which function-local
-// statics do not give, so 2.6 declared them at file scope.
 static char secret[8];
 static Boolean warnedLinker;
 static Boolean warnedCompiler;
@@ -337,7 +340,7 @@ static int Main_ParseCommandLine(void) {
     Plugin* parser;
     CWCommandLineArgs myargs;
     int x, y;
-    SInt32 vislang; // (Pro7: FourCharCode; 2.6's is signed)
+    SInt32 vislang;
 
     if (!Plugins_GetPluginList(0, &numPlugins, &pluginInfo) ||
         !Plugins_GetPrefPanelUnion(0, &numPanels, &panelNames) ||
@@ -409,28 +412,28 @@ static int Main_ParseCommandLine(void) {
 }
 
 static int Main_SetupParamBlock(void) {
-    PrefPanelsChangedCallback(0);
+    PrefPanelsChangedCallback(NULL);
 
     if (optsCompiler.outMakefile[0]) {
         int err = OS_MakeFileSpec(optsCompiler.outMakefile, &clState.makefileSpec);
         if (err) {
-            CLReportOSError(8, err, optsCompiler.outMakefile);
-            return 1;
+            CLReportOSError(CLStr8, err, optsCompiler.outMakefile);
+            return Result_Failed;
         }
         OS_Delete(&clState.makefileSpec);
     }
 
     if (optsCompiler.sbmPath[0]) {
-        int err = OS_MakePathSpec(0, optsCompiler.sbmPath, &clState.sbmPathSpec);
+        int err = OS_MakePathSpec(NULL, optsCompiler.sbmPath, &clState.sbmPathSpec);
         if (err) {
-            CLReportOSError(23, err, optsCompiler.sbmPath);
-            return 1;
+            CLReportOSError(CLStr23, err, optsCompiler.sbmPath);
+            return Result_Failed;
         }
     } else {
         OS_GetCWD(&clState.sbmPathSpec);
     }
 
-    return 0;
+    return Result_Success;
 }
 
 static int Main_ResolveProject(void) {
@@ -438,10 +441,9 @@ static int Main_ResolveProject(void) {
     SInt32 endTime;
     int err;
 
-    if (optsCmdLine.state ==
-        OptsCmdLineState_Unset ||
+    if (optsCmdLine.state == OptsCmdLineState_Unset ||
         optsCmdLine.state == OptsCmdLineState_NoAction) {
-        return 0;
+        return Result_Success;
     }
 
     startTime = LMGetTicks();
@@ -458,7 +460,7 @@ static int Main_ResolveProject(void) {
     }
 
     if (!DeleteTemporaries()) {
-        return 1;
+        return Result_Failed;
     }
 
     endTime = LMGetTicks();
@@ -467,7 +469,7 @@ static int Main_ResolveProject(void) {
         CLReport(CLStr24, (endTime - startTime) / 60.0, "resolve", "", "project", "");
     }
 
-    return 0;
+    return Result_Success;
 }
 
 static int UpdatePCmdLineFromVersion(PCmdLine* given, PCmdLine* target) {
@@ -647,9 +649,9 @@ static int SetupCmdLinePrefPanels(void) {
     PrefPanelsChangedCallback = UpdatePrefPanels;
     ret = Prefs_AddPanel(PrefPanel_New("CmdLine Environment", &optsEnvir, sizeof(PCmdLineEnvir)));
     ret |=
-        (Prefs_AddPanel(PrefPanel_New("CmdLine Panel", 0, sizeof(PCmdLine))) &&
-         Prefs_AddPanel(PrefPanel_New("CmdLine Compiler Panel", 0, sizeof(PCmdLineCompiler))) &&
-         Prefs_AddPanel(PrefPanel_New("CmdLine Linker Panel", 0, sizeof(PCmdLineLinker))));
+        (Prefs_AddPanel(PrefPanel_New("CmdLine Panel", NULL, sizeof(PCmdLine))) &&
+         Prefs_AddPanel(PrefPanel_New("CmdLine Compiler Panel", NULL, sizeof(PCmdLineCompiler))) &&
+         Prefs_AddPanel(PrefPanel_New("CmdLine Linker Panel", NULL, sizeof(PCmdLineLinker))));
 
     return ret;
 }
@@ -696,7 +698,7 @@ static int Main_SetupContext(void) {
         }
     }
 
-    gTarg->linkmodel = LinkModel0;
+    gTarg->linkmodel = LinkModel_Flat;
     return TRUE;
 }
 
@@ -713,15 +715,12 @@ int Main_Driver(void) {
         if (!(result = Main_ParseCommandLine())) {
             if (!(result = Main_SetupParamBlock())) {
                 if (!(result = Main_ResolveProject())) {
-                    // TODO: 2.6 keeps this test (`test eax, eax; jne`) for a body that
-                    // generates nothing: probably a debug macro compiled to `(void) 0`; Pro7's
-                    // plain `result = Main_ResolveProject();`, an empty block or `;` drop the test
                     (void)0;
                 }
             }
         }
     } else {
-        result = 1;
+        result = Result_Failed;
     }
 
     return result;

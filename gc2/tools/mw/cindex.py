@@ -1,12 +1,3 @@
-"""A tolerant index of the function definitions in a C or C++ tree (a reference decompilation such as Ninji's Pro7, the
-gc1 decompilation, MSL, this repository's src/), for the naming evidence: each definition's name, file, line, whether
-static, the string literals and callees in its body, the lines its asserts pass, and its body's tokens (for comparing
-two trees' bodies).
-
-Not a parser, and not for editing sources: a definition is a top-level `name(...) {` at brace depth 0, with comments
-and preprocessor lines blanked. Trees that do not compile with this repository's headers are its point.
-"""
-
 from __future__ import annotations
 
 import re
@@ -31,7 +22,6 @@ def _unescape(s: str) -> str:
 
 
 def _skip_literal(text: str, i: int) -> int:
-    """The index after the string or character literal starting at I (or at the end of its line)."""
     quote, j, n = text[i], i + 1, len(text)
     while j < n and text[j] != quote and text[j] != "\n":
         j += 2 if text[j] == "\\" else 1
@@ -39,7 +29,6 @@ def _skip_literal(text: str, i: int) -> int:
 
 
 def _strip_comments(text: str) -> str:
-    """TEXT with its comments removed (their lines kept); literals kept."""
     out, i, n = [], 0, len(text)
     while i < n:
         if text.startswith("/*", i):
@@ -61,7 +50,6 @@ def _strip_comments(text: str) -> str:
 
 
 def _definition_name(head: str) -> str | None:
-    """The name a top-level `HEAD {` defines, if it is a function definition."""
     h = head.rstrip()
     if (
         not h.endswith(")")
@@ -87,12 +75,11 @@ def _definition_name(head: str) -> str | None:
 
 
 def functions(path: Path) -> list[dict]:
-    """The function definitions in the file at PATH."""
     text = _strip_comments(Path(path).read_text(encoding="latin-1"))
-    text = re.sub(r"^[ \t]*#.*?(?<!\\)$", lambda m: " " * len(m[0]), text, flags=re.M)
+    text = re.sub(r"^[ \t]*#.*?(?<!\\)$", lambda m: " " * len(m[0]), text, flags=re.MULTILINE)
     out = []
     i, n = 0, len(text)
-    last_top = 0  # (after the last top-level ; or })
+    last_top = 0
     while i < n:
         c = text[i]
         if c in "\"'":
@@ -100,7 +87,6 @@ def functions(path: Path) -> list[dict]:
             continue
         if c == "{":
             if re.search(r'(\bextern\s+"C"|\bnamespace(\s+\w+)?)\s*$', text[last_top:i]):
-                # (a linkage block or a namespace: its definitions are top level)
                 i += 1
                 last_top = i
                 continue
@@ -143,8 +129,6 @@ def functions(path: Path) -> list[dict]:
 
 
 def index(root: Path | str, suffixes=SUFFIXES) -> list[dict]:
-    """Every definition under ROOT, each with its "file" (relative to ROOT). A missing tree is an error: an empty
-    index would silently weaken the evidence."""
     root = Path(root)
     if not root.is_dir():
         raise Error(f"{relative(root)} does not exist")

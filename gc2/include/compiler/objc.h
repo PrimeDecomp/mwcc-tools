@@ -7,8 +7,6 @@
 extern "C" {
 #endif
 
-// Pro7's objc.h: the Objective-C records (Pro7: mac68k alignment, which only ObjCInfo needs)
-
 struct ObjCMethodArg {
     ObjCMethodArg* next;
     HashNameNode* selector;
@@ -62,7 +60,6 @@ struct ObjCCategory {
     ObjCMethod* methods;
 };
 
-// (2-byte packing: is_implemented at 0x18 makes it 0x1a bytes)
 #pragma pack(push, 2)
 struct ObjCInfo {
     Object* classobject;

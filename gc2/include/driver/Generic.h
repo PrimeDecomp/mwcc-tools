@@ -8,7 +8,6 @@
 extern "C" {
 #endif
 
-/* The OS layer's platform-independent part (Pro7's Generic.c) */
 extern char STSbuf[260];
 extern OSSpec* __stdcall OS_MatchPath(const char* path);
 extern char* __stdcall OS_GetFileNamePtr(char* path);

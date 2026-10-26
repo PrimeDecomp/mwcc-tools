@@ -2,13 +2,11 @@
 #define DRIVER_CLPREFS_H
 
 #include "compiler/common.h"
-#include "driver/Memory.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-// Pro7's PrefPanel: a named preference panel (defined in CLPrefs.c)
 typedef struct PrefPanel PrefPanel;
 
 extern PrefPanel* PrefPanel_New(const char* name, void* initdata, SInt32 initdatasize);

@@ -1,13 +1,24 @@
-#pragma bool off
-
 #include "driver/CLParserCallbacks_v1.h"
+#include "driver/CLAccessPaths.h"
 #include "driver/CLDropinCallbacks_V10.h"
 #include "driver/CLErrors.h"
+#include "driver/CLFiles.h"
 #include "driver/CLIO.h"
 #include "driver/CLMain.h"
+#include "driver/CLOverlays.h"
 #include "driver/CLPrefs.h"
+#include "driver/CLSegs.h"
+#include "driver/CLTarg.h"
+#include "driver/cmdline.h"
+#include "driver/CWPlugins.h"
+#include "driver/CWPluginsPrivate.h"
+#include "driver/Files.h"
 #include "driver/Generic.h"
 #include "driver/MacSpecs.h"
+#include "driver/Memory.h"
+#include "driver/MsDos.h"
+#include "driver/oslib.h"
+#include "driver/pref_structs.h"
 #include <string.h>
 
 extern "C" {
@@ -28,14 +39,14 @@ CW_CALLBACK UCBParserAddAccessPath(CWPluginContext context, const CWNewAccessPat
         CLReport(CLStr77, " search path", OS_PathSpecToString(&oss.path, STSbuf, sizeof(STSbuf)));
     }
 
-    if ((api->type & cwAccessPathTypeFlag1) == 0) {
+    if ((api->type & cwAccessPathFlagUser) == 0) {
         paths = &gTarg->sysPaths;
     } else {
         paths = &gTarg->userPaths;
     }
     path = Path_New(&oss.path);
 
-    path->flags = api->type & cwAccessPathTypeFlag2;
+    path->flags = api->type & cwAccessPathFlagKeepSystem;
     if (api->position >= 0) {
         failed = !Paths_InsertPath(paths, api->position, path);
     } else {
@@ -52,7 +63,7 @@ CW_CALLBACK UCBParserAddAccessPath(CWPluginContext context, const CWNewAccessPat
         }
     }
 
-    if (!(api->type & cwAccessPathTypeFlag1)) {
+    if (!(api->type & cwAccessPathFlagUser)) {
         static_cast<shellContextType*>(context->shellContext)->systemAccessPathsChanged = TRUE;
     } else {
         static_cast<shellContextType*>(context->shellContext)->userAccessPathsChanged = TRUE;
@@ -67,7 +78,7 @@ CW_CALLBACK UCBParserSwapAccessPaths(CWPluginContext context) {
 
     for (idx = 0; idx < Paths_Count(&gTarg->sysPaths); idx++) {
         tmp = Paths_GetPath(&gTarg->sysPaths, idx);
-        if (!(tmp->flags & cwAccessPathTypeFlag2)) {
+        if (!(tmp->flags & cwAccessPathFlagKeepSystem)) {
             Paths_AddPath(&gTarg->userPaths, tmp);
             Paths_RemovePath(&gTarg->sysPaths, idx);
             idx--;
@@ -120,8 +131,6 @@ CW_CALLBACK UCBParserSetFileOutputName(
     }
 
     strcpy(file->outfilename, outfilename);
-    // (`(int) which`: 2.6 widens it once and compares 32 bits; a plain `which == 1` is a 16-bit
-    // compare)
     if ((int)which == 1) {
         file->outfileowner = CmdLineStageMask_Cg;
     } else if ((int)which == 2) {
@@ -153,7 +162,7 @@ CW_CALLBACK UCBParserSetOutputFileDirectory(CWPluginContext context, const CWFil
 CW_CALLBACK UCBParserAddOverlay1Group(
     CWPluginContext context, const char* name, const CWAddr64* addr, SInt32* newGroupNumber
 ) {
-    if (gTarg->linkmodel != LinkModel2) {
+    if (gTarg->linkmodel != LinkModel_Overlay1) {
         return cwErrInvalidCallback;
     }
 
@@ -181,7 +190,7 @@ CW_CALLBACK UCBParserAddOverlay1Group(
 CW_CALLBACK UCBParserAddOverlay1(
     CWPluginContext context, const char* name, SInt32 groupNumber, SInt32* newOverlayNumber
 ) {
-    if (gTarg->linkmodel != LinkModel2) {
+    if (gTarg->linkmodel != LinkModel_Overlay1) {
         return cwErrInvalidCallback;
     }
 
@@ -210,7 +219,7 @@ CW_CALLBACK UCBParserAddOverlay1(
 CW_CALLBACK UCBParserAddSegment(
     CWPluginContext context, const char* name, short attrs, SInt32* newSegmentNumber
 ) {
-    if (gTarg->linkmodel != LinkModel1) {
+    if (gTarg->linkmodel != LinkModel_Segmented) {
         return cwErrInvalidCallback;
     }
 
@@ -229,7 +238,7 @@ CW_CALLBACK UCBParserAddSegment(
 CW_CALLBACK UCBParserSetSegment(
     CWPluginContext context, SInt32 segmentNumber, const char* name, short attrs
 ) {
-    if (gTarg->linkmodel != LinkModel1) {
+    if (gTarg->linkmodel != LinkModel_Segmented) {
         return cwErrInvalidCallback;
     }
 
@@ -255,14 +264,14 @@ static CWParserCallbacks parser_cb = {
     UCBParserAddOverlay1Group,
     UCBParserAddOverlay1,
     UCBParserAddSegment,
-    UCBParserSetSegment
+    UCBParserSetSegment,
+    NULL
 };
 // clang-format on
 }
 
 CWParserContext::CWParserContext() : CWPluginPrivateContext(CWDROPINPARSERTYPE, -1) {
     args = NULL;
-    // (2.6: chained, where Pro7 has two statements)
     cpu = os = 0;
     numPlugins = 0;
     plugins = NULL;

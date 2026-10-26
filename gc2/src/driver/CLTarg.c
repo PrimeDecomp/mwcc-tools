@@ -1,7 +1,14 @@
 #include "driver/CLTarg.h"
-#include "driver/CLIO.h"
+#include "driver/CLAccessPaths.h"
+#include "driver/CLDependencies.h"
+#include "driver/CLFiles.h"
+#include "driver/CLOverlays.h"
+#include "driver/CLSegs.h"
+#include "driver/cmdline.h"
+#include "driver/DropInCompilerLinker.h"
 #include "driver/MemUtils.h"
 #include "driver/MsDos.h"
+#include "driver/oslib.h"
 #include <string.h>
 
 Target* Target_New(const char* name, OSType cpu, OSType os, OSType lang) {

@@ -7,12 +7,6 @@
 extern "C" {
 #endif
 
-// The preference panels the command line parser fills in (Pro7's pref_structs.h). The front end's panels are Pro7's;
-// the EABI ones are 2.x's own, their fields named after the options that set them (unknownXX: no
-// option or code names it).
-// TODO: the unknownXX fields are real (not alignment holes) but no option sets them and no code reads
-// them; only the EABI plugin SDK's panel headers could name them.
-
 #pragma pack(push, 2)
 typedef struct PCmdLine {
     SInt16 version;
@@ -35,9 +29,6 @@ typedef struct PCmdLine {
     Boolean noCmdLineWarnings;
 } PCmdLine;
 
-// PCmdLine.state: what the run does with its files. 0 nothing chosen yet, 1 nothing (only output
-// such as -version), 2 compile without linking (-c), 3 compile and link.
-// TODO: invented names (Pro7 has placeholders: OptsCmdLineState_0 .. _3)
 enum {
     OptsCmdLineState_Unset = 0,
     OptsCmdLineState_NoAction = 1,
@@ -45,8 +36,6 @@ enum {
     OptsCmdLineState_CompileAndLink = 3
 };
 
-// PCmdLine.stages, and the stages a file's usage masks (sourceUsage, objectUsage, writeToDisk ...)
-// name (Pro7's cmdline.h)
 enum {
     CmdLineStageMask_Pp = 1,
     CmdLineStageMask_Cg = 2,
@@ -54,19 +43,17 @@ enum {
     CmdLineStageMask_Dp = 8
 };
 
-// The stage a file is added for (ParserHelpers' lastStage, set by -stages; Pro7's cmdline.h)
 enum {
     CmdLineStage_Cg = 1,
     CmdLineStage_Pp = 2,
     CmdLineStage_Ds = 3
 };
 
-// PCmdLineCompiler.sbmState
 enum {
-    OptsCompilerSbmState_0 = 0,
-    OptsCompilerSbmState_1 = 1, // sbmRebuild?
-    OptsCompilerSbmState_2 = 2,
-    OptsCompilerSbmState_3 = 3 // sbmClean?
+    OptsCompilerSbmState_Normal = 0,
+    OptsCompilerSbmState_Rebuild = 1,
+    OptsCompilerSbmState_LookUpOnly = 2,
+    OptsCompilerSbmState_Clean = 3
 };
 
 typedef struct PCmdLineCompiler {
@@ -93,7 +80,7 @@ typedef struct PCmdLineCompiler {
     UInt32 depFileType;
     Boolean compileIgnored;
     Boolean relPathInOutputDir;
-    char browserEnabled; // (2.x: a plain char, `cmp byte` where a Boolean is `movzx`)
+    char browserEnabled;
     Boolean depsOnlyUserFiles;
     char outMakefile[256];
     SInt8 forcePrecompile;
@@ -105,7 +92,6 @@ typedef struct PCmdLineCompiler {
     Boolean keepObjects;
 } PCmdLineCompiler;
 
-// PCmdLineCompiler.includeSearch (Pro7's cmdline.h)
 enum {
     IncludeSearch_Proj = 0,
     IncludeSearch_Source = 1,
@@ -183,7 +169,6 @@ typedef struct PGlobalOptimizer {
     UInt8 reserved[8];
 } PGlobalOptimizer;
 
-// "PPC EABI CodeGen"
 typedef struct PBackEnd {
     SInt16 version;
     UInt8 structalignment;
@@ -204,18 +189,18 @@ typedef struct PBackEnd {
     Boolean fp_contract;
     UInt8 altivec;
     Boolean vrsave;
+#if VERSION < VERSION_GC_2_0
+    UInt8 unknown16[6];
+#else
     UInt8 unknown16[22];
+#endif
 } PBackEnd;
 
-// "PPC EABI Linker"
 typedef struct PLinker {
     SInt16 version;
     Boolean debugInfo;
-    // (Pro7's PMachOLinker's name; set by `-sym fullpath`, read into copts.absolutepath)
     UInt8 symfullpath;
     Boolean map;
-    // (the panel's "suppress warnings": ELF_Lib_Import copies it to linkinfo.nowarnings)
-    // TODO: Pro7's PMachOLinker name, not the EABI panel's (no source names it)
     Boolean suppresswarn;
     Boolean srec;
     Boolean mapunused;
@@ -241,7 +226,6 @@ typedef struct PLinker {
     UInt32 heapaddr;
 } PLinker;
 
-// "PPC EABI Disassembler"
 typedef struct PDisassembler {
     SInt16 version;
     Boolean detail;
@@ -257,7 +241,6 @@ typedef struct PDisassembler {
     Boolean tables;
 } PDisassembler;
 
-// "PPC EABI Project"
 typedef struct PProject {
     SInt16 version;
     UInt8 unknown02[34];
@@ -268,15 +251,12 @@ typedef struct PProject {
     SInt16 sdata2threshold;
     SInt16 codemodel;
     UInt8 unknown34[3];
-    // TODO: invented name, after the CompilerLinkerOptions member CodeGen_InitBackEndOptions copies
-    // it to (no option sets it)
     Boolean no_comment_records;
     Boolean strip;
     UInt8 partial;
     UInt8 resolved;
 } PProject;
 
-// "CmdLine Extras EPPC" (Wii names the variable pCLTExtras; Pro7 calls its own extras panel PCLTExtras)
 typedef struct PCLTExtras {
     SInt16 version;
     char mapfile[256];
@@ -286,7 +266,6 @@ typedef struct PCLTExtras {
 
 extern PCmdLine pCmdLine;
 extern PCmdLineCompiler pCmdLineCompiler;
-extern PCmdLineLinker pCmdLineLinker;
 extern PBackEnd pBackEnd;
 extern PLinker pLinker;
 extern PDisassembler pDisassembler;

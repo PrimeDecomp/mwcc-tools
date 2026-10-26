@@ -1,20 +1,16 @@
-// The library importer's linker-style diagnostics (Wii's LinkErrorsPPC_EABI module; no Pro7
-// counterpart).
 #include "driver/LinkErrorsPPC_EABI.h"
 #include "compiler/Unmangle.h"
+#include "compiler/win32.h"
 #include "driver/COSToolsCLT.h"
 #include "driver/ELF_Lib_Import.h"
 #include <setjmp.h>
 #include <stdarg.h>
 #include <stdio.h>
 
-// (Wii's publics; nothing outside this file uses them)
 SInt16 maxerrors = 100;
 SInt16 maxwarnings = 2000;
-// TODO: invented name (Wii has this static unnamed): linkfailed's message, which linkalert shows
 static char message_buffer[0x800];
 
-// TODO: invented name (gc1's; Wii has this static unnamed)
 static void format_string(char* buf, int size, char* fmt, va_list ap) {
     char c;
     char* s;
@@ -23,9 +19,9 @@ static void format_string(char* buf, int size, char* fmt, va_list ap) {
     int n;
     char ch;
 #if VERSION < VERSION_GC_2_5
-    char tmp[256];
+    char unmangled[256];
 #else
-    char tmp[2048];
+    char unmangled[2048];
 #endif
     while ((c = *fmt++) != 0) {
         if (c == '%') {
@@ -49,8 +45,8 @@ static void format_string(char* buf, int size, char* fmt, va_list ap) {
                     }
                     break;
                 case 's':
-                    MWUnmangle(va_arg(ap, char*), tmp, sizeof(tmp));
-                    s = tmp;
+                    MWUnmangle(va_arg(ap, char*), unmangled, sizeof(unmangled));
+                    s = unmangled;
                     while ((ch = *s) != 0 && size > 1) {
                         *buf = ch;
                         s++;
@@ -61,7 +57,7 @@ static void format_string(char* buf, int size, char* fmt, va_list ap) {
                 case 'n':
                     n = va_arg(ap, int);
                     if (size > 10) {
-                        n = sprintf(buf, "%ld", n);
+                        n = sprintf(buf, "%ld", (long)n);
                         buf += n;
                         size -= n;
                     }
@@ -94,7 +90,7 @@ void linkwarning(SInt32 code, ...) {
     char format[0x100];
     va_list args;
 
-    if (linkinfo.nowarnings == 0 && linkerwarnings < maxwarnings) {
+    if (linkinfo.nolinkwarnings == 0 && linkerwarnings < maxwarnings) {
         COS_GetString(format, 11001, code);
         va_start(args, code);
         format_string(message, sizeof(message), format, args);
@@ -143,8 +139,6 @@ void linkalert(int mode) {
     }
 }
 
-// (the linker dropped the function that used this literal; it stays in the unit's .data)
-// TODO: invented name and body (only the literal is the original's)
 static const char* LinkErrors_MemoryErrorMessage(void) {
     return "Internal Memory Error";
 }

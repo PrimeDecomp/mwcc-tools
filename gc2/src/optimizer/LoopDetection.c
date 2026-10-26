@@ -1,6 +1,3 @@
-// LoopDetection.c: finds the natural loops of the flow graph and their preheaders, and the
-// counting loops among them (Pro7's LoopDetection.c, deferred).
-
 #include "compiler/LoopDetection.h"
 #include "compiler/BitVectors.h"
 #include "compiler/CError.h"
@@ -8,6 +5,8 @@
 #include "compiler/CompilerTools.h"
 #include "compiler/enode.h"
 #include "compiler/objects.h"
+#include "compiler/PCode.h"
+#include "compiler/PCodeInfo.h"
 #include "compiler/TOC.h"
 #include "compiler/UseDefChains.h"
 
@@ -17,7 +16,6 @@ static UInt32** dominators;
 static BlockList* loopheaders;
 static int nloopheaders;
 static PCodeBlock** loopstack;
-// (the front end's loop unroller's, IroUnrollLoop.c; Pro7 defines them here)
 BitVector* LoopTemp;
 struct LoopList* LoopList_First;
 
@@ -27,10 +25,10 @@ static void computedominators(void) {
     UInt32* myvec;
     PCodeBlock* block;
     SInt32 i;
-    int flag;
+    int changed;
 
     blockCount = pcblockcount;
-    flag = TRUE;
+    changed = TRUE;
 
     dominators = oalloc(sizeof(UInt32*) * pcblockcount);
     for (i = 0; i < pcblockcount; i++) {
@@ -48,8 +46,8 @@ static void computedominators(void) {
 
     computedepthfirstordering();
 
-    while (flag) {
-        flag = FALSE;
+    while (changed) {
+        changed = FALSE;
         for (i = 0; i < pcblockcount; i++) {
             block = depthfirstordering[i];
             if (block && block->blockIndex != pcbasicblocks->blockIndex) {
@@ -62,7 +60,7 @@ static void computedominators(void) {
                 bitvectorsetbit(block->blockIndex, myvec);
 
                 if (bitvectorchanged(dominators[block->blockIndex], myvec, blockCount)) {
-                    flag = TRUE;
+                    changed = TRUE;
                 }
             }
         }
@@ -134,11 +132,6 @@ static void findnaturalloop(Loop* loop) {
     }
 
     for (list = loop->blocks; list; list = list->next) {
-        // 2.6 walks the successors with the variable that walks the blocks below (a PCLink and a
-        // BlockList have one layout), as 1.x did (gc1's compute_loop_block_sets: one link type,
-        // one walker for both). Pro7's `block` local + `link`, a PCLink of its own and every
-        // declaration order take other registers (77-83%); a PCLink walker cast for the blocks
-        // matches as well.
         for (list2 = (BlockList*)list->block->successors; list2; list2 = list2->next) {
             if (!bitvectorgetbit(list2->block->blockIndex, loop->memberblocks)) {
                 bitvectorsetbit(list->block->blockIndex, loop->exitblocks);
@@ -202,7 +195,6 @@ static void addlooptolist(Loop* loop, Loop** list) {
 
 static void findnaturalloops(void) {
     Loop* loop;
-    int size;
 
     loopdetection_nblocks = pcblockcount + 5 * nloopheaders;
     loopstack = oalloc(sizeof(PCodeBlock*) * pcblockcount);
@@ -272,9 +264,9 @@ static void insertpreheaderbefore(PCodeBlock* a, PCodeBlock* b) {
 
 void insertpreheaderblock(Loop* loop) {
     PCodeBlock* preheader;
-    PCodeBlock* block29;
-    PCodeBlock* block28;
-    PCode* pcode27;
+    PCodeBlock* backedgeBlock;
+    PCodeBlock* header;
+    PCode* branch;
     PCLink* link;
     PCLink** linkptr;
     PCodeLabel* newlabel;
@@ -284,58 +276,58 @@ void insertpreheaderblock(Loop* loop) {
     int i;
 
     preheader = loop->preheader = makepreheaderblock();
-    block29 = NULL;
-    block28 = loop->body;
+    backedgeBlock = NULL;
+    header = loop->body;
 
-    if (!block28->labels) {
-        pclabel(block28, makepclabel());
+    if (!header->labels) {
+        pclabel(header, makepclabel());
     }
 
-    appendpcode(preheader, makepcode(PC_B, block28->labels));
+    appendpcode(preheader, makepcode(PC_B, header->labels));
     preheader->loopWeight = loop->parent ? loop->parent->loopWeight : 1;
 
-    linkptr = &block28->predecessors;
+    linkptr = &header->predecessors;
     while ((link = *linkptr)) {
         if (bitvectorgetbit(link->block->blockIndex, loop->memberblocks)) {
             linkptr = &link->nextLink;
         } else {
             if (link->block->pcodeCount) {
-                pcode27 = link->block->lastPCode;
-                if (pcode27->op == PC_B) {
-                    CError_ASSERT(462, pcode27->args[0].kind == PCOp_LABEL);
-                    if (pcode27->args[0].data.label.label->block == block28) {
-                        pcode27->args[0].data.label.label = preheader->labels;
+                branch = link->block->lastPCode;
+                if (branch->op == PC_B) {
+                    CError_ASSERT(462, branch->args[0].kind == PCOp_LABEL);
+                    if (branch->args[0].data.label.label->block == header) {
+                        branch->args[0].data.label.label = preheader->labels;
                     }
-                } else if (pcode27->op == PC_BT || pcode27->op == PC_BF) {
-                    CError_ASSERT(474, pcode27->args[2].kind == PCOp_LABEL);
-                    if (pcode27->args[2].data.label.label->block == block28) {
-                        pcode27->args[2].data.label.label = preheader->labels;
+                } else if (branch->op == PC_BT || branch->op == PC_BF) {
+                    CError_ASSERT(474, branch->args[2].kind == PCOp_LABEL);
+                    if (branch->args[2].data.label.label->block == header) {
+                        branch->args[2].data.label.label = preheader->labels;
                     }
-                } else if (pcode27->op == PC_BCTR) {
-                    if (pcode27->argCount > 1 && pcode27->args[1].kind == PCOp_MEMORY) {
-                        Object* obj = pcode27->args[1].data.mem.obj;
+                } else if (branch->op == PC_BCTR) {
+                    if (branch->argCount > 1 && branch->args[1].kind == PCOp_MEMORY) {
+                        Object* obj = branch->args[1].data.mem.obj;
                         PCodeLabel** array = (PCodeLabel**)obj->u.data.u.switchtable.data;
                         int i;
                         for (i = 0; i < obj->u.data.u.switchtable.size; i++) {
-                            if (array[i]->block == block28) {
+                            if (array[i]->block == header) {
                                 array[i] = preheader->labels;
                             }
                         }
                     } else {
                         CodeLabelList* cll;
                         for (cll = codelabellist; cll; cll = cll->next) {
-                            if (cll->label->pclabel->block == block28) {
+                            if (cll->label->pclabel->block == header) {
                                 cll->label->pclabel = preheader->labels;
                             }
                         }
                     }
                 } else {
-                    CError_ASSERT(505, link->block->nextBlock == block28);
+                    CError_ASSERT(505, link->block->nextBlock == header);
                 }
             }
 
             for (innerlink = link->block->successors; innerlink; innerlink = innerlink->nextLink) {
-                if (innerlink->block == block28) {
+                if (innerlink->block == header) {
                     innerlink->block = preheader;
                 }
             }
@@ -346,51 +338,51 @@ void insertpreheaderblock(Loop* loop) {
         }
     }
 
-    if (!bitvectorgetbit(block28->prevBlock->blockIndex, loop->memberblocks)) {
-        insertpreheaderbefore(preheader, block28);
+    if (!bitvectorgetbit(header->prevBlock->blockIndex, loop->memberblocks)) {
+        insertpreheaderbefore(preheader, header);
 
-        if ((!block28->nextBlock ||
-             !bitvectorgetbit(block28->nextBlock->blockIndex, loop->memberblocks)) &&
-            block28->lastPCode &&
-            (block28->lastPCode->flags & fIsBranch) &&
-            block28->lastPCode->op != PC_BDNZ) {
-            i = block28->lastPCode->argCount;
-            arg = block28->lastPCode->args;
+        if ((!header->nextBlock ||
+             !bitvectorgetbit(header->nextBlock->blockIndex, loop->memberblocks)) &&
+            header->lastPCode &&
+            (header->lastPCode->flags & fIsBranch) &&
+            header->lastPCode->op != PC_BDNZ) {
+            i = header->lastPCode->argCount;
+            arg = header->lastPCode->args;
             while (i && arg->kind != PCOp_LABEL) {
                 arg++;
                 i--;
             }
 
-            if (i && arg->kind == PCOp_LABEL && arg->data.label.label->block == block28) {
-                block29 = makepreheaderblock();
-                insertpreheaderbefore(block29, block28);
+            if (i && arg->kind == PCOp_LABEL && arg->data.label.label->block == header) {
+                backedgeBlock = makepreheaderblock();
+                insertpreheaderbefore(backedgeBlock, header);
                 newlabel = makepclabel();
-                pclabel(block29, newlabel);
+                pclabel(backedgeBlock, newlabel);
                 arg->data.label.label = newlabel;
 
                 link = lalloc(sizeof(PCLink));
-                link->block = block28;
-                link->nextLink = block29->predecessors;
-                block29->predecessors = link;
+                link->block = header;
+                link->nextLink = backedgeBlock->predecessors;
+                backedgeBlock->predecessors = link;
 
                 link = lalloc(sizeof(PCLink));
-                link->block = block28;
-                link->nextLink = block29->successors;
-                block29->successors = link;
+                link->block = header;
+                link->nextLink = backedgeBlock->successors;
+                backedgeBlock->successors = link;
 
-                for (link = block28->successors; link; link = link->nextLink) {
-                    if (link->block == block28) {
-                        link->block = block29;
+                for (link = header->successors; link; link = link->nextLink) {
+                    if (link->block == header) {
+                        link->block = backedgeBlock;
                     }
                 }
-                for (link = block28->predecessors; link; link = link->nextLink) {
-                    if (link->block == block28) {
-                        link->block = block29;
+                for (link = header->predecessors; link; link = link->nextLink) {
+                    if (link->block == header) {
+                        link->block = backedgeBlock;
                     }
                 }
 
-                bitvectorsetbit(block29->blockIndex, loop->backedge_dominators);
-                addblocktoloop(loop, block29);
+                bitvectorsetbit(backedgeBlock->blockIndex, loop->backedge_dominators);
+                addblocktoloop(loop, backedgeBlock);
             }
         }
     } else {
@@ -404,26 +396,26 @@ void insertpreheaderblock(Loop* loop) {
 
     link = lalloc(sizeof(PCLink));
     link->block = preheader;
-    link->nextLink = block28->predecessors;
-    block28->predecessors = link;
+    link->nextLink = header->predecessors;
+    header->predecessors = link;
 
     link = lalloc(sizeof(PCLink));
-    link->block = block28;
+    link->block = header;
     link->nextLink = preheader->successors;
     preheader->successors = link;
 
     for (loop = loop->parent; loop; loop = loop->parent) {
         addblocktoloop(loop, preheader);
-        if (bitvectorgetbit(block28->blockIndex, loop->exit_dominators)) {
+        if (bitvectorgetbit(header->blockIndex, loop->exit_dominators)) {
             bitvectorsetbit(preheader->blockIndex, loop->exit_dominators);
-            if (block29) {
-                bitvectorsetbit(block29->blockIndex, loop->exit_dominators);
+            if (backedgeBlock) {
+                bitvectorsetbit(backedgeBlock->blockIndex, loop->exit_dominators);
             }
         }
-        if (bitvectorgetbit(block28->blockIndex, loop->backedge_dominators)) {
+        if (bitvectorgetbit(header->blockIndex, loop->backedge_dominators)) {
             bitvectorsetbit(preheader->blockIndex, loop->backedge_dominators);
-            if (block29) {
-                bitvectorsetbit(block29->blockIndex, loop->backedge_dominators);
+            if (backedgeBlock) {
+                bitvectorsetbit(backedgeBlock->blockIndex, loop->backedge_dominators);
             }
         }
     }
@@ -450,15 +442,15 @@ void findloopsinflowgraph(void) {
 }
 
 static int checklooplimits(
-    SInt32 opcode, SInt32 condition, SInt32 c, SInt32 d, SInt32 addend, SInt32* result
+    SInt32 opcode, SInt32 condition, SInt32 lower, SInt32 upper, SInt32 addend, SInt32* result
 ) {
     if (opcode == PC_BT) {
         if (condition == 0) {
             if (addend <= 0) {
                 return FALSE;
             }
-            if (c < d) {
-                *result = (d - c + addend - 1) / addend;
+            if (lower < upper) {
+                *result = (upper - lower + addend - 1) / addend;
             } else {
                 *result = 0;
             }
@@ -466,8 +458,8 @@ static int checklooplimits(
             if (addend >= 0) {
                 return FALSE;
             }
-            if (c > d) {
-                *result = (c - d - addend - 1) / -addend;
+            if (lower > upper) {
+                *result = (lower - upper - addend - 1) / -addend;
             } else {
                 *result = 0;
             }
@@ -479,8 +471,8 @@ static int checklooplimits(
             if (addend >= 0) {
                 return FALSE;
             }
-            if (c >= d) {
-                *result = (c - d - addend) / -addend;
+            if (lower >= upper) {
+                *result = (lower - upper - addend) / -addend;
             } else {
                 *result = 0;
             }
@@ -488,27 +480,27 @@ static int checklooplimits(
             if (addend <= 0) {
                 return FALSE;
             }
-            if (c <= d) {
-                *result = (d - c + addend) / addend;
+            if (lower <= upper) {
+                *result = (upper - lower + addend) / addend;
             } else {
                 *result = 0;
             }
-        } else if (c < d) {
+        } else if (lower < upper) {
             if (addend <= 0) {
                 return FALSE;
             }
-            if ((d - c) % addend) {
+            if ((upper - lower) % addend) {
                 return FALSE;
             }
-            *result = (d - c) / addend;
-        } else if (c > d) {
+            *result = (upper - lower) / addend;
+        } else if (lower > upper) {
             if (addend >= 0) {
                 return FALSE;
             }
-            if ((c - d) % -addend) {
+            if ((lower - upper) % -addend) {
                 return FALSE;
             }
-            *result = (c - d) / -addend;
+            *result = (lower - upper) / -addend;
         } else {
             *result = 0;
         }
@@ -518,15 +510,15 @@ static int checklooplimits(
 }
 
 static int checkunsignedlooplimits(
-    SInt32 opcode, SInt32 condition, UInt32 c, UInt32 d, SInt32 addend, UInt32* result
+    SInt32 opcode, SInt32 condition, UInt32 lower, UInt32 upper, SInt32 addend, UInt32* result
 ) {
     if (opcode == PC_BT) {
         if (condition == 0) {
             if (addend <= 0) {
                 return FALSE;
             }
-            if (c < d) {
-                *result = (d - c + addend - 1) / addend;
+            if (lower < upper) {
+                *result = (upper - lower + addend - 1) / addend;
             } else {
                 *result = 0;
             }
@@ -534,8 +526,8 @@ static int checkunsignedlooplimits(
             if (addend >= 0) {
                 return FALSE;
             }
-            if (c > d) {
-                *result = (c - d - addend - 1) / -addend;
+            if (lower > upper) {
+                *result = (lower - upper - addend - 1) / -addend;
             } else {
                 *result = 0;
             }
@@ -547,8 +539,8 @@ static int checkunsignedlooplimits(
             if (addend >= 0) {
                 return FALSE;
             }
-            if (c >= d) {
-                *result = (c - d - addend) / -addend;
+            if (lower >= upper) {
+                *result = (lower - upper - addend) / -addend;
             } else {
                 *result = 0;
             }
@@ -556,27 +548,27 @@ static int checkunsignedlooplimits(
             if (addend <= 0) {
                 return FALSE;
             }
-            if (c <= d) {
-                *result = (d - c + addend) / addend;
+            if (lower <= upper) {
+                *result = (upper - lower + addend) / addend;
             } else {
                 *result = 0;
             }
-        } else if (c < d) {
+        } else if (lower < upper) {
             if (addend <= 0) {
                 return FALSE;
             }
-            if ((d - c) % addend) {
+            if ((upper - lower) % addend) {
                 return FALSE;
             }
-            *result = (d - c) / addend;
-        } else if (c > d) {
+            *result = (upper - lower) / addend;
+        } else if (lower > upper) {
             if (addend >= 0) {
                 return FALSE;
             }
-            if ((c - d) % -addend) {
+            if ((lower - upper) % -addend) {
                 return FALSE;
             }
-            *result = (c - d) / -addend;
+            *result = (lower - upper) / -addend;
         } else {
             *result = 0;
         }
@@ -588,15 +580,15 @@ static int checkunsignedlooplimits(
     return TRUE;
 }
 
-static int checkunknownloop(int a, int b, int c, unsigned char* op) {
-    if (a == PC_BT) {
-        if (b == 0) {
-            if (c <= 0) {
+static int checkunknownloop(int opcode, int condition, int step, unsigned char* op) {
+    if (opcode == PC_BT) {
+        if (condition == 0) {
+            if (step <= 0) {
                 return FALSE;
             }
             *op = ELESS;
-        } else if (b == 1) {
-            if (c >= 0) {
+        } else if (condition == 1) {
+            if (step >= 0) {
                 return FALSE;
             }
             *op = EGREATER;
@@ -604,19 +596,19 @@ static int checkunknownloop(int a, int b, int c, unsigned char* op) {
             return FALSE;
         }
     } else {
-        if (b == 0) {
-            if (c >= 0) {
+        if (condition == 0) {
+            if (step >= 0) {
                 return FALSE;
             }
             *op = EGREATEREQU;
-        } else if (b == 1) {
-            if (c <= 0) {
+        } else if (condition == 1) {
+            if (step <= 0) {
                 return FALSE;
             }
             *op = ELESSEQU;
-        } else if (c == 1) {
+        } else if (step == 1) {
             *op = ENOTEQU;
-        } else if (c == -1) {
+        } else if (step == -1) {
             *op = ENOTEQU;
         } else {
             return FALSE;
@@ -630,11 +622,11 @@ static void checkcountingloop(Loop* loop) {
     RegUseOrDef* list;
     PCode* lastpcode;
     PCode* prevpcode;
-    PCode* pc8;
-    short op12;
-    short reg11;
-    SInt16 reg4;
-    short reg11b;
+    PCode* instr;
+    short cmpOp;
+    short crField;
+    SInt16 condition;
+    short ivReg;
     Loop* child;
 
     if (!(lastpcode = loop->body->lastPCode)) {
@@ -656,46 +648,46 @@ static void checkcountingloop(Loop* loop) {
         return;
     }
 
-    reg11 = lastpcode->args[0].data.reg.reg;
-    reg4 = lastpcode->args[1].data.imm.value;
+    crField = lastpcode->args[0].data.reg.reg;
+    condition = lastpcode->args[1].data.imm.value;
     prevpcode = lastpcode->prevPCode;
     if (!prevpcode) {
         return;
     }
 
-    op12 = prevpcode->op;
-    if (op12 == PC_ADDI && prevpcode->args[2].kind == PCOp_IMMEDIATE) {
-        pc8 = prevpcode;
+    cmpOp = prevpcode->op;
+    if (cmpOp == PC_ADDI && prevpcode->args[2].kind == PCOp_IMMEDIATE) {
+        instr = prevpcode;
         prevpcode = prevpcode->prevPCode;
         if (!prevpcode) {
             return;
         }
 
-        op12 = prevpcode->op;
-        if (pc8->args[0].data.reg.reg != pc8->args[1].data.reg.reg) {
+        cmpOp = prevpcode->op;
+        if (instr->args[0].data.reg.reg != instr->args[1].data.reg.reg) {
             return;
         }
-        if (op12 != PC_CMP && op12 != PC_CMPL && op12 != PC_CMPI && op12 != PC_CMPLI) {
+        if (cmpOp != PC_CMP && cmpOp != PC_CMPL && cmpOp != PC_CMPI && cmpOp != PC_CMPLI) {
             return;
         }
-        if (prevpcode->args[1].data.reg.reg != pc8->args[0].data.reg.reg) {
+        if (prevpcode->args[1].data.reg.reg != instr->args[0].data.reg.reg) {
             return;
         }
-        if ((loop->step = pc8->args[2].data.imm.value) == 0) {
+        if ((loop->step = instr->args[2].data.imm.value) == 0) {
             return;
         }
     }
 
-    if (op12 != PC_CMP && op12 != PC_CMPL && op12 != PC_CMPI && op12 != PC_CMPLI) {
+    if (cmpOp != PC_CMP && cmpOp != PC_CMPL && cmpOp != PC_CMPI && cmpOp != PC_CMPLI) {
         return;
     }
 
-    if (prevpcode->args[0].data.reg.reg != reg11) {
+    if (prevpcode->args[0].data.reg.reg != crField) {
         return;
     }
 
-    reg11b = prevpcode->args[1].data.reg.reg;
-    if (reg11b < 32) {
+    ivReg = prevpcode->args[1].data.reg.reg;
+    if (ivReg < 32) {
         return;
     }
 
@@ -703,53 +695,44 @@ static void checkcountingloop(Loop* loop) {
         return;
     }
 
-    if (op12 == PC_CMPI) {
+    if (cmpOp == PC_CMPI) {
         if (prevpcode->prevPCode) {
             return;
         }
         loop->upper = prevpcode->args[2].data.imm.value;
         loop->upperType = LOOP_BOUND_CONSTANT;
-    } else if (op12 == PC_CMPLI) {
+    } else if (cmpOp == PC_CMPLI) {
         if (prevpcode->prevPCode) {
             return;
         }
         loop->upper = (UInt16)prevpcode->args[2].data.imm.value;
         loop->upperType = LOOP_BOUND_CONSTANT;
-    } else if (op12 == PC_CMP || op12 == PC_CMPL) {
+    } else if (cmpOp == PC_CMP || cmpOp == PC_CMPL) {
         if (prevpcode->prevPCode) {
-            if (prevpcode->prevPCode->op ==
-                PC_LI &&
-                prevpcode->prevPCode->args[1].kind ==
-                PCOp_IMMEDIATE &&
-                prevpcode->prevPCode->args[0].data.reg.reg ==
-                prevpcode->args[2].data.reg.reg &&
+            if (prevpcode->prevPCode->op == PC_LI &&
+                prevpcode->prevPCode->args[1].kind == PCOp_IMMEDIATE &&
+                prevpcode->prevPCode->args[0].data.reg.reg == prevpcode->args[2].data.reg.reg &&
                 !prevpcode->prevPCode->prevPCode) {
                 loop->upper = prevpcode->prevPCode->args[1].data.imm.value;
                 loop->upperType = LOOP_BOUND_CONSTANT;
-            } else if (prevpcode->prevPCode->op ==
-                       PC_LIS &&
-                       prevpcode->prevPCode->args[1].kind ==
-                       PCOp_IMMEDIATE &&
+            } else if (prevpcode->prevPCode->op == PC_LIS &&
+                       prevpcode->prevPCode->args[1].kind == PCOp_IMMEDIATE &&
                        prevpcode->prevPCode->args[0].data.reg.reg ==
-                       prevpcode->args[2].data.reg.reg &&
+                           prevpcode->args[2].data.reg.reg &&
                        !prevpcode->prevPCode->prevPCode) {
                 loop->upper = prevpcode->prevPCode->args[1].data.imm.value << 16;
                 loop->upperType = LOOP_BOUND_CONSTANT;
-            } else if (prevpcode->prevPCode->op ==
-                       PC_ADDI &&
-                       prevpcode->prevPCode->args[2].kind ==
-                       PCOp_IMMEDIATE &&
+            } else if (prevpcode->prevPCode->op == PC_ADDI &&
+                       prevpcode->prevPCode->args[2].kind == PCOp_IMMEDIATE &&
                        prevpcode->prevPCode->args[0].data.reg.reg ==
-                       prevpcode->args[2].data.reg.reg &&
+                           prevpcode->args[2].data.reg.reg &&
                        prevpcode->prevPCode->args[1].data.reg.reg ==
-                       prevpcode->args[2].data.reg.reg &&
+                           prevpcode->args[2].data.reg.reg &&
                        prevpcode->prevPCode->prevPCode &&
-                       prevpcode->prevPCode->prevPCode->op ==
-                       PC_LIS &&
-                       prevpcode->prevPCode->prevPCode->args[1].kind ==
-                       PCOp_IMMEDIATE &&
+                       prevpcode->prevPCode->prevPCode->op == PC_LIS &&
+                       prevpcode->prevPCode->prevPCode->args[1].kind == PCOp_IMMEDIATE &&
                        prevpcode->prevPCode->prevPCode->args[0].data.reg.reg ==
-                       prevpcode->args[2].data.reg.reg &&
+                           prevpcode->args[2].data.reg.reg &&
                        !prevpcode->prevPCode->prevPCode->prevPCode) {
                 loop->upper = prevpcode->prevPCode->args[2].data.imm.value +
                     (prevpcode->prevPCode->prevPCode->args[1].data.imm.value << 16);
@@ -758,7 +741,7 @@ static void checkcountingloop(Loop* loop) {
                 return;
             }
         } else {
-            pc8 = NULL;
+            instr = NULL;
             for (list = reg_Defs[RegClass_GPR][prevpcode->args[2].data.reg.reg]; list;
                  list = list->next) {
                 if (bitvectorgetbit(Defs[list->id].pcode->block->blockIndex, loop->memberblocks)) {
@@ -768,29 +751,24 @@ static void checkcountingloop(Loop* loop) {
             for (list = reg_Defs[RegClass_GPR][prevpcode->args[2].data.reg.reg]; list;
                  list = list->next) {
                 if (bitvectorgetbit(list->id, usedefinfo[loop->preheader->blockIndex].defin)) {
-                    if (!pc8) {
-                        pc8 = Defs[list->id].pcode;
-                        if (pc8->op == PC_LI && pc8->args[1].kind == PCOp_IMMEDIATE) {
-                            loop->upper = pc8->args[1].data.imm.value;
+                    if (!instr) {
+                        instr = Defs[list->id].pcode;
+                        if (instr->op == PC_LI && instr->args[1].kind == PCOp_IMMEDIATE) {
+                            loop->upper = instr->args[1].data.imm.value;
                             loop->upperType = LOOP_BOUND_CONSTANT;
-                        } else if (pc8->op == PC_LIS && pc8->args[1].kind == PCOp_IMMEDIATE) {
-                            loop->upper = pc8->args[1].data.imm.value << 16;
+                        } else if (instr->op == PC_LIS && instr->args[1].kind == PCOp_IMMEDIATE) {
+                            loop->upper = instr->args[1].data.imm.value << 16;
                             loop->upperType = LOOP_BOUND_CONSTANT;
-                        } else if (pc8->op ==
-                                   PC_ADDI &&
-                                   pc8->args[2].kind ==
-                                   PCOp_IMMEDIATE &&
-                                   pc8->args[1].data.reg.reg ==
-                                   prevpcode->args[2].data.reg.reg &&
-                                   pc8->prevPCode &&
-                                   pc8->prevPCode->op ==
-                                   PC_LIS &&
-                                   pc8->prevPCode->args[1].kind ==
-                                   PCOp_IMMEDIATE &&
-                                   pc8->prevPCode->args[0].data.reg.reg ==
-                                   prevpcode->args[2].data.reg.reg) {
-                            loop->upper = pc8->args[2].data.imm.value +
-                                (pc8->prevPCode->args[1].data.imm.value << 16);
+                        } else if (instr->op == PC_ADDI &&
+                                   instr->args[2].kind == PCOp_IMMEDIATE &&
+                                   instr->args[1].data.reg.reg == prevpcode->args[2].data.reg.reg &&
+                                   instr->prevPCode &&
+                                   instr->prevPCode->op == PC_LIS &&
+                                   instr->prevPCode->args[1].kind == PCOp_IMMEDIATE &&
+                                   instr->prevPCode->args[0].data.reg.reg ==
+                                       prevpcode->args[2].data.reg.reg) {
+                            loop->upper = instr->args[2].data.imm.value +
+                                (instr->prevPCode->args[1].data.imm.value << 16);
                             loop->upperType = LOOP_BOUND_CONSTANT;
                         } else {
                             loop->upperType = LOOP_BOUND_VARIABLE;
@@ -809,23 +787,22 @@ static void checkcountingloop(Loop* loop) {
         }
     }
 
-    pc8 = NULL;
+    instr = NULL;
 
-    for (list = reg_Defs[RegClass_GPR][reg11b]; list; list = list->next) {
+    for (list = reg_Defs[RegClass_GPR][ivReg]; list; list = list->next) {
         if (bitvectorgetbit(Defs[list->id].pcode->block->blockIndex, loop->memberblocks)) {
-            if (!pc8) {
-                pc8 = Defs[list->id].pcode;
-                if (pc8->op != PC_ADDI) {
+            if (!instr) {
+                instr = Defs[list->id].pcode;
+                if (instr->op != PC_ADDI) {
                     return;
                 }
-                if (pc8->args[1].data.reg.reg != reg11b) {
+                if (instr->args[1].data.reg.reg != ivReg) {
                     return;
                 }
-                if (pc8->args[2].kind != PCOp_IMMEDIATE) {
+                if (instr->args[2].kind != PCOp_IMMEDIATE) {
                     return;
                 }
-                // (Pro7's `== 0` here, with the one above, changes insertpreheaderblock's registers)
-                if (!(loop->step = pc8->args[2].data.imm.value)) {
+                if (!(loop->step = instr->args[2].data.imm.value)) {
                     return;
                 }
             } else {
@@ -834,52 +811,46 @@ static void checkcountingloop(Loop* loop) {
         }
     }
 
-    if (!pc8) {
+    if (!instr) {
         return;
     }
 
-    if (pc8->block !=
-        prevpcode->block &&
-        !bitvectorgetbit(pc8->block->blockIndex, loop->backedge_dominators)) {
+    if (instr->block != prevpcode->block &&
+        !bitvectorgetbit(instr->block->blockIndex, loop->backedge_dominators)) {
         return;
     }
 
     if (loop->children) {
         for (child = loop->children; child; child = child->nextSibling) {
-            if (bitvectorgetbit(pc8->block->blockIndex, child->memberblocks)) {
+            if (bitvectorgetbit(instr->block->blockIndex, child->memberblocks)) {
                 return;
             }
         }
     }
 
-    loop->inductionUpdate = pc8;
+    loop->inductionUpdate = instr;
 
-    pc8 = NULL;
+    instr = NULL;
 
-    for (list = reg_Defs[RegClass_GPR][reg11b]; list; list = list->next) {
+    for (list = reg_Defs[RegClass_GPR][ivReg]; list; list = list->next) {
         if (bitvectorgetbit(list->id, usedefinfo[loop->preheader->blockIndex].defin)) {
-            if (!pc8) {
-                pc8 = Defs[list->id].pcode;
-                if (pc8->op == PC_LI && pc8->args[1].kind == PCOp_IMMEDIATE) {
-                    loop->lower = pc8->args[1].data.imm.value;
+            if (!instr) {
+                instr = Defs[list->id].pcode;
+                if (instr->op == PC_LI && instr->args[1].kind == PCOp_IMMEDIATE) {
+                    loop->lower = instr->args[1].data.imm.value;
                     loop->lowerType = LOOP_BOUND_CONSTANT;
-                } else if (pc8->op == PC_LIS && pc8->args[1].kind == PCOp_IMMEDIATE) {
-                    loop->lower = pc8->args[1].data.imm.value << 16;
+                } else if (instr->op == PC_LIS && instr->args[1].kind == PCOp_IMMEDIATE) {
+                    loop->lower = instr->args[1].data.imm.value << 16;
                     loop->lowerType = LOOP_BOUND_CONSTANT;
-                } else if (pc8->op ==
-                           PC_ADDI &&
-                           pc8->args[2].kind ==
-                           PCOp_IMMEDIATE &&
-                           pc8->args[1].data.reg.reg ==
-                           reg11b &&
-                           pc8->prevPCode &&
-                           pc8->prevPCode->op ==
-                           PC_LIS &&
-                           pc8->prevPCode->args[1].kind ==
-                           PCOp_IMMEDIATE &&
-                           pc8->prevPCode->args[0].data.reg.reg == reg11b) {
-                    loop->lower = pc8->args[2].data.imm.value +
-                        (pc8->prevPCode->args[1].data.imm.value << 16);
+                } else if (instr->op == PC_ADDI &&
+                           instr->args[2].kind == PCOp_IMMEDIATE &&
+                           instr->args[1].data.reg.reg == ivReg &&
+                           instr->prevPCode &&
+                           instr->prevPCode->op == PC_LIS &&
+                           instr->prevPCode->args[1].kind == PCOp_IMMEDIATE &&
+                           instr->prevPCode->args[0].data.reg.reg == ivReg) {
+                    loop->lower = instr->args[2].data.imm.value +
+                        (instr->prevPCode->args[1].data.imm.value << 16);
                     loop->lowerType = LOOP_BOUND_CONSTANT;
                 } else {
                     loop->lowerType = LOOP_BOUND_VARIABLE;
@@ -897,16 +868,21 @@ static void checkcountingloop(Loop* loop) {
     }
 
     if (loop->lowerType == LOOP_BOUND_CONSTANT && loop->upperType == LOOP_BOUND_CONSTANT) {
-        if (op12 == PC_CMP || op12 == PC_CMPI) {
+        if (cmpOp == PC_CMP || cmpOp == PC_CMPI) {
             if (!checklooplimits(
-                    lastpcode->op, reg4, loop->lower, loop->upper, loop->step, &loop->iterationCount
+                    lastpcode->op,
+                    condition,
+                    loop->lower,
+                    loop->upper,
+                    loop->step,
+                    &loop->iterationCount
                 )) {
                 return;
             }
         } else {
             if (!checkunsignedlooplimits(
                     lastpcode->op,
-                    reg4,
+                    condition,
                     loop->lower,
                     loop->upper,
                     loop->step,
@@ -916,10 +892,9 @@ static void checkcountingloop(Loop* loop) {
             }
         }
         loop->isKnownCountingLoop = TRUE;
-    } else if (loop->lowerType !=
-               LOOP_BOUND_INDETERMINATE ||
+    } else if (loop->lowerType != LOOP_BOUND_INDETERMINATE ||
                loop->upperType != LOOP_BOUND_INDETERMINATE) {
-        if (!checkunknownloop(lastpcode->op, reg4, loop->step, &loop->unknownCondition)) {
+        if (!checkunknownloop(lastpcode->op, condition, loop->step, &loop->unknownCondition)) {
             return;
         }
         loop->isUnknownCountingLoop = TRUE;
@@ -982,39 +957,26 @@ void analyzeloop(Loop* loop) {
                 loop->has_call = TRUE;
             }
 
-            if (pcode->op ==
-                PC_BCTRL ||
-                pcode->op ==
-                PC_BCTR ||
-                pcode->op ==
-                PC_BCCTR ||
-                pcode->op ==
-                PC_MTCTR ||
+            if (pcode->op == PC_BCTRL ||
+                pcode->op == PC_BCTR ||
+                pcode->op == PC_BCCTR ||
+                pcode->op == PC_MTCTR ||
                 pcode->op == PC_MFCTR) {
                 loop->uses_count_register = TRUE;
             } else if (pcode->flags & fIsRead) {
-                if (pcode->op ==
-                    PC_LBZX ||
-                    pcode->op ==
-                    PC_LHZX ||
-                    pcode->op ==
-                    PC_LHAX ||
-                    pcode->op ==
-                    PC_LWZX ||
-                    pcode->op ==
-                    PC_LFSX ||
+                if (pcode->op == PC_LBZX ||
+                    pcode->op == PC_LHZX ||
+                    pcode->op == PC_LHAX ||
+                    pcode->op == PC_LWZX ||
+                    pcode->op == PC_LFSX ||
                     pcode->op == PC_LFDX) {
                     loop->has_indexed_load = TRUE;
                 }
             } else if (pcode->flags & fIsWrite) {
-                if (pcode->op ==
-                    PC_STBX ||
-                    pcode->op ==
-                    PC_STHX ||
-                    pcode->op ==
-                    PC_STWX ||
-                    pcode->op ==
-                    PC_STFSX ||
+                if (pcode->op == PC_STBX ||
+                    pcode->op == PC_STHX ||
+                    pcode->op == PC_STWX ||
+                    pcode->op == PC_STFSX ||
                     pcode->op == PC_STFDX) {
                     loop->has_indexed_store = TRUE;
                 }

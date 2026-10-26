@@ -8,7 +8,9 @@
 #include "compiler/CompilerTools.h"
 #include "compiler/CParser.h"
 #include "compiler/CScope.h"
+#include "compiler/enode.h"
 #include "compiler/objects.h"
+#include "compiler/tokens.h"
 #include "compiler/types.h"
 #include <string.h>
 
@@ -16,7 +18,7 @@
 typedef struct CIRTransTemp {
     struct CIRTransTemp* next;
     Object* object;
-    Boolean flag;
+    Boolean inUse;
 } CIRTransTemp;
 
 typedef struct MultiAccessOperand {
@@ -27,16 +29,13 @@ typedef struct MultiAccessOperand {
     Type* bitfieldType;
 } MultiAccessOperand;
 
-// TODO: invented names (Pro7's decompilation: "no idea what this is for..."); only the dead
-// CIRTrans_TransExpr's helpers take one, and nothing reads `unk`
-typedef struct StrangeRuntimeFunction {
+typedef struct RuntimeFunction {
     Object* object;
-    short unk;
+    short unused;
     char name[1];
-} StrangeRuntimeFunction;
+} RuntimeFunction;
 #pragma pack(pop)
 
-// 2.6's .data has them in this order (definition order); Pro7 declares rtfunc8 first
 // clang-format off
 static TypeFunc cirtrans_rtfunc2 = {
     TYPEFUNC, 0, NULL, NULL, TYPE(&stsignedshort), 0, 0
@@ -50,19 +49,15 @@ static TypeFunc cirtrans_rtfunc8 = {
 // clang-format on
 
 static CIRTransTemp* cirtrans_temps;
-// Pro7 defines modulo_generated, bigswitch_generated and alloca_called here. 2.6 has none of these
-// COMMONs (defining them moves the COMMON tail), but its dead CIRTrans_TransExpr still sets
-// alloca_called (its "__alloca" literal is in the unit's .data), so it was declared, not defined.
 extern Boolean alloca_called;
 
-// forward decls
-static ENode* CIRTrans_TransExpr(ENode* expr, Boolean flag);
+static ENode* CIRTrans_TransExpr(ENode* expr, Boolean isUsed);
 
 void CIRTrans_Setup(void) {}
 
 void CIRTrans_Cleanup(void) {}
 
-static Object* CIRTrans_GetRuntimeFunction(StrangeRuntimeFunction* rtfunc, Type* type) {
+static Object* CIRTrans_GetRuntimeFunction(RuntimeFunction* rtfunc, Type* type) {
     Object* object;
 
     object = rtfunc->object;
@@ -100,8 +95,8 @@ static Object* CIRTrans_GetTemporary(Type* type) {
     CIRTransTemp* temp;
 
     for (temp = cirtrans_temps; temp; temp = temp->next) {
-        if (temp->object->type->size == type->size && !temp->flag) {
-            temp->flag = TRUE;
+        if (temp->object->type->size == type->size && !temp->inUse) {
+            temp->inUse = TRUE;
             return temp->object;
         }
     }
@@ -111,7 +106,7 @@ static Object* CIRTrans_GetTemporary(Type* type) {
     cirtrans_temps = temp;
 
     temp->object = create_temp_object(type);
-    temp->flag = TRUE;
+    temp->inUse = TRUE;
     return temp->object;
 }
 
@@ -121,12 +116,12 @@ static ENode* CIRTrans_CheckRuntimeAssign(ENode* expr) {
     if (ENODE_IS(expr->data.diadic.right, EINDIRECT)) {
         inner = expr->data.diadic.right->data.monadic;
         if (ENODE_IS(inner, EFUNCCALL) &&
-            (inner->flags & ENODE_FLAG_80) &&
+            (inner->flags & ENODE_FLAG_RESULT_VIA_TEMP) &&
             inner->data.funccall.args &&
             ENODE_IS(inner->data.funccall.args->node, EOBJREF)) {
             CError_ASSERT(502, ENODE_IS(expr->data.diadic.left, EINDIRECT));
             inner->data.funccall.args->node = expr->data.diadic.left->data.monadic;
-            inner->flags &= ~ENODE_FLAG_80;
+            inner->flags &= ~ENODE_FLAG_RESULT_VIA_TEMP;
             return expr->data.diadic.right;
         }
     }
@@ -183,7 +178,7 @@ static ENode* CIRTrans_InitMultiAccessExpression(MultiAccessOperand* mop, ENode*
 
 ENode* CIRTrans_TransformOpAss(ENode* expr) {
     ENodeType nt;
-    ENode* expr2;
+    ENode* result;
     MultiAccessOperand mop;
 
     if (!ENODE_IS(expr->data.diadic.left, EINDIRECT)) {
@@ -228,29 +223,27 @@ ENode* CIRTrans_TransformOpAss(ENode* expr) {
             CError_FATAL(627);
     }
 
-    expr2 = CIRTrans_GetMultiAccessOperand(&mop);
+    result = CIRTrans_GetMultiAccessOperand(&mop);
 
-    if (!IS_TYPE_POINTER_ONLY(expr2->rtype)) {
-        expr2 = CExpr_NewDyadicNode(expr2, nt, expr->data.diadic.right);
-        if (expr2->rtype != expr->data.diadic.left->rtype) {
-            expr2 = makemonadicnode(expr2, ETYPCON);
-            expr2->rtype = expr->data.diadic.left->rtype;
+    if (!IS_TYPE_POINTER_ONLY(result->rtype)) {
+        result = CExpr_NewDyadicNode(result, nt, expr->data.diadic.right);
+        if (result->rtype != expr->data.diadic.left->rtype) {
+            result = makemonadicnode(result, ETYPCON);
+            result->rtype = expr->data.diadic.left->rtype;
         }
     } else {
-        expr2 = makediadicnode(expr2, expr->data.diadic.right, nt);
+        result = makediadicnode(result, expr->data.diadic.right, nt);
     }
 
-    if (IS_TYPE_FLOAT(expr2->rtype)) {
-        expr2 = CExpr_BinaryFloatExpression(expr2);
+    if (IS_TYPE_FLOAT(result->rtype)) {
+        result = CExpr_BinaryFloatExpression(result);
     }
 
-    expr2 = makediadicnode(CIRTrans_GetMultiAccessOperand(&mop), expr2, EASS);
-    return CIRTrans_InitMultiAccessExpression(&mop, expr2);
+    result = makediadicnode(CIRTrans_GetMultiAccessOperand(&mop), result, EASS);
+    return CIRTrans_InitMultiAccessExpression(&mop, result);
 }
 
-static void CIRTrans_TransIncDec() {
-    // empty, never called
-}
+static void CIRTrans_TransIncDec(void) {}
 
 static ENode* CIRTrans_TransIntConst(ENode* expr) {
     Object* obj;
@@ -284,7 +277,7 @@ static ENode* CIRTrans_TransFloatConst(ENode* expr) {
     return create_objectnode(obj);
 }
 
-static ENode* CIRTrans_TransUnary(ENode* expr, Type* type, StrangeRuntimeFunction* rtfunc) {
+static ENode* CIRTrans_TransUnary(ENode* expr, Type* type, RuntimeFunction* rtfunc) {
     if (type->size > 4) {
         expr = funccallexpr(
             CIRTrans_GetRuntimeFunction(rtfunc, type),
@@ -293,7 +286,7 @@ static ENode* CIRTrans_TransUnary(ENode* expr, Type* type, StrangeRuntimeFunctio
             NULL,
             NULL
         );
-        expr->flags |= ENODE_FLAG_80;
+        expr->flags |= ENODE_FLAG_RESULT_VIA_TEMP;
         expr = makemonadicnode(expr, EINDIRECT);
         expr->rtype = type;
         return expr;
@@ -304,31 +297,31 @@ static ENode* CIRTrans_TransUnary(ENode* expr, Type* type, StrangeRuntimeFunctio
     }
 }
 
-static ENode* CIRTrans_TransBinary(ENode* expr, StrangeRuntimeFunction* rtfunc) {
-    ENode* expr2;
+static ENode* CIRTrans_TransBinary(ENode* expr, RuntimeFunction* rtfunc) {
+    ENode* call;
 
     if (expr->rtype->size > 4) {
-        expr2 = funccallexpr(
+        call = funccallexpr(
             CIRTrans_GetRuntimeFunction(rtfunc, expr->rtype),
             create_objectrefnode(CIRTrans_GetTemporary(expr->rtype)),
             expr->data.diadic.left,
             expr->data.diadic.right,
             NULL
         );
-        expr2->flags |= ENODE_FLAG_80;
-        expr2 = makemonadicnode(expr2, EINDIRECT);
-        expr2->rtype = expr->rtype;
-        return expr2;
+        call->flags |= ENODE_FLAG_RESULT_VIA_TEMP;
+        call = makemonadicnode(call, EINDIRECT);
+        call->rtype = expr->rtype;
+        return call;
     } else {
-        expr2 = funccallexpr(
+        call = funccallexpr(
             CIRTrans_GetRuntimeFunction(rtfunc, expr->rtype),
             expr->data.diadic.left,
             expr->data.diadic.right,
             NULL,
             NULL
         );
-        expr2->rtype = expr->rtype;
-        return expr2;
+        call->rtype = expr->rtype;
+        return call;
     }
 }
 
@@ -342,12 +335,12 @@ static ENodeList* CIRTrans_TransExprList(ENodeList* list) {
     return list;
 }
 
-static ENode* CIRTrans_TransExpr(ENode* expr, Boolean flag) {
+static ENode* CIRTrans_TransExpr(ENode* expr, Boolean isUsed) {
     switch (expr->type) {
         case EINDIRECT:
         case EFORCELOAD:
         case EBITFIELD:
-            expr->data.monadic = CIRTrans_TransExpr(expr->data.monadic, flag);
+            expr->data.monadic = CIRTrans_TransExpr(expr->data.monadic, isUsed);
             break;
         case EPOSTINC:
             expr->data.monadic = CIRTrans_TransExpr(expr->data.monadic, TRUE);
@@ -362,66 +355,66 @@ static ENode* CIRTrans_TransExpr(ENode* expr, Boolean flag) {
             expr->data.monadic = CIRTrans_TransExpr(expr->data.monadic, TRUE);
             break;
         case ETYPCON:
-            expr->data.monadic = CIRTrans_TransExpr(expr->data.monadic, flag);
-            if (!flag) {
+            expr->data.monadic = CIRTrans_TransExpr(expr->data.monadic, isUsed);
+            if (!isUsed) {
                 return expr->data.monadic;
             }
             break;
         case EBINNOT:
-            expr->data.monadic = CIRTrans_TransExpr(expr->data.monadic, flag);
+            expr->data.monadic = CIRTrans_TransExpr(expr->data.monadic, isUsed);
             break;
         case ELOGNOT:
-            expr->data.monadic = CIRTrans_TransExpr(expr->data.monadic, flag);
+            expr->data.monadic = CIRTrans_TransExpr(expr->data.monadic, isUsed);
             break;
         case EMONMIN:
-            expr->data.monadic = CIRTrans_TransExpr(expr->data.monadic, flag);
+            expr->data.monadic = CIRTrans_TransExpr(expr->data.monadic, isUsed);
             break;
         case EADD:
-            expr->data.diadic.left = CIRTrans_TransExpr(expr->data.diadic.left, flag);
-            expr->data.diadic.right = CIRTrans_TransExpr(expr->data.diadic.right, flag);
+            expr->data.diadic.left = CIRTrans_TransExpr(expr->data.diadic.left, isUsed);
+            expr->data.diadic.right = CIRTrans_TransExpr(expr->data.diadic.right, isUsed);
             break;
         case ESUB:
-            expr->data.diadic.left = CIRTrans_TransExpr(expr->data.diadic.left, flag);
-            expr->data.diadic.right = CIRTrans_TransExpr(expr->data.diadic.right, flag);
+            expr->data.diadic.left = CIRTrans_TransExpr(expr->data.diadic.left, isUsed);
+            expr->data.diadic.right = CIRTrans_TransExpr(expr->data.diadic.right, isUsed);
             break;
         case EMUL:
-            expr->data.diadic.left = CIRTrans_TransExpr(expr->data.diadic.left, flag);
-            expr->data.diadic.right = CIRTrans_TransExpr(expr->data.diadic.right, flag);
+            expr->data.diadic.left = CIRTrans_TransExpr(expr->data.diadic.left, isUsed);
+            expr->data.diadic.right = CIRTrans_TransExpr(expr->data.diadic.right, isUsed);
         case EDIV:
-            expr->data.diadic.left = CIRTrans_TransExpr(expr->data.diadic.left, flag);
-            expr->data.diadic.right = CIRTrans_TransExpr(expr->data.diadic.right, flag);
+            expr->data.diadic.left = CIRTrans_TransExpr(expr->data.diadic.left, isUsed);
+            expr->data.diadic.right = CIRTrans_TransExpr(expr->data.diadic.right, isUsed);
             break;
         case EMODULO:
-            expr->data.diadic.left = CIRTrans_TransExpr(expr->data.diadic.left, flag);
-            expr->data.diadic.right = CIRTrans_TransExpr(expr->data.diadic.right, flag);
+            expr->data.diadic.left = CIRTrans_TransExpr(expr->data.diadic.left, isUsed);
+            expr->data.diadic.right = CIRTrans_TransExpr(expr->data.diadic.right, isUsed);
             break;
         case ESHL:
-            expr->data.diadic.left = CIRTrans_TransExpr(expr->data.diadic.left, flag);
-            expr->data.diadic.right = CIRTrans_TransExpr(expr->data.diadic.right, flag);
+            expr->data.diadic.left = CIRTrans_TransExpr(expr->data.diadic.left, isUsed);
+            expr->data.diadic.right = CIRTrans_TransExpr(expr->data.diadic.right, isUsed);
             break;
         case ESHR:
-            expr->data.diadic.left = CIRTrans_TransExpr(expr->data.diadic.left, flag);
-            expr->data.diadic.right = CIRTrans_TransExpr(expr->data.diadic.right, flag);
+            expr->data.diadic.left = CIRTrans_TransExpr(expr->data.diadic.left, isUsed);
+            expr->data.diadic.right = CIRTrans_TransExpr(expr->data.diadic.right, isUsed);
             break;
         case EROTL:
-            expr->data.diadic.left = CIRTrans_TransExpr(expr->data.diadic.left, flag);
-            expr->data.diadic.right = CIRTrans_TransExpr(expr->data.diadic.right, flag);
+            expr->data.diadic.left = CIRTrans_TransExpr(expr->data.diadic.left, isUsed);
+            expr->data.diadic.right = CIRTrans_TransExpr(expr->data.diadic.right, isUsed);
             break;
         case EROTR:
-            expr->data.diadic.left = CIRTrans_TransExpr(expr->data.diadic.left, flag);
-            expr->data.diadic.right = CIRTrans_TransExpr(expr->data.diadic.right, flag);
+            expr->data.diadic.left = CIRTrans_TransExpr(expr->data.diadic.left, isUsed);
+            expr->data.diadic.right = CIRTrans_TransExpr(expr->data.diadic.right, isUsed);
             break;
         case EAND:
-            expr->data.diadic.left = CIRTrans_TransExpr(expr->data.diadic.left, flag);
-            expr->data.diadic.right = CIRTrans_TransExpr(expr->data.diadic.right, flag);
+            expr->data.diadic.left = CIRTrans_TransExpr(expr->data.diadic.left, isUsed);
+            expr->data.diadic.right = CIRTrans_TransExpr(expr->data.diadic.right, isUsed);
             break;
         case EXOR:
-            expr->data.diadic.left = CIRTrans_TransExpr(expr->data.diadic.left, flag);
-            expr->data.diadic.right = CIRTrans_TransExpr(expr->data.diadic.right, flag);
+            expr->data.diadic.left = CIRTrans_TransExpr(expr->data.diadic.left, isUsed);
+            expr->data.diadic.right = CIRTrans_TransExpr(expr->data.diadic.right, isUsed);
             break;
         case EOR:
-            expr->data.diadic.left = CIRTrans_TransExpr(expr->data.diadic.left, flag);
-            expr->data.diadic.right = CIRTrans_TransExpr(expr->data.diadic.right, flag);
+            expr->data.diadic.left = CIRTrans_TransExpr(expr->data.diadic.left, isUsed);
+            expr->data.diadic.right = CIRTrans_TransExpr(expr->data.diadic.right, isUsed);
             break;
         case ELESS:
         case EGREATER:
@@ -429,9 +422,9 @@ static ENode* CIRTrans_TransExpr(ENode* expr, Boolean flag) {
         case EGREATEREQU:
         case EEQU:
         case ENOTEQU:
-            expr->data.diadic.left = CIRTrans_TransExpr(expr->data.diadic.left, flag);
-            expr->data.diadic.right = CIRTrans_TransExpr(expr->data.diadic.right, flag);
-            if (!flag) {
+            expr->data.diadic.left = CIRTrans_TransExpr(expr->data.diadic.left, isUsed);
+            expr->data.diadic.right = CIRTrans_TransExpr(expr->data.diadic.right, isUsed);
+            if (!isUsed) {
                 expr->type = ECOMMA;
                 expr->rtype = expr->data.diadic.right->rtype;
                 return expr;
@@ -440,7 +433,7 @@ static ENode* CIRTrans_TransExpr(ENode* expr, Boolean flag) {
         case ELAND:
         case ELOR:
             expr->data.diadic.left = CIRTrans_TransExpr(expr->data.diadic.left, TRUE);
-            expr->data.diadic.right = CIRTrans_TransExpr(expr->data.diadic.right, flag);
+            expr->data.diadic.right = CIRTrans_TransExpr(expr->data.diadic.right, isUsed);
             break;
         case EMULV:
         case EADDV:
@@ -449,8 +442,8 @@ static ENode* CIRTrans_TransExpr(ENode* expr, Boolean flag) {
         case EBCLR:
         case EBTST:
         case EBSET:
-            expr->data.diadic.left = CIRTrans_TransExpr(expr->data.diadic.left, flag);
-            expr->data.diadic.right = CIRTrans_TransExpr(expr->data.diadic.right, flag);
+            expr->data.diadic.left = CIRTrans_TransExpr(expr->data.diadic.left, isUsed);
+            expr->data.diadic.right = CIRTrans_TransExpr(expr->data.diadic.right, isUsed);
             break;
         case EASS:
             expr->data.diadic.left = CIRTrans_TransExpr(expr->data.diadic.left, TRUE);
@@ -474,7 +467,7 @@ static ENode* CIRTrans_TransExpr(ENode* expr, Boolean flag) {
             break;
         case ECOMMA:
             expr->data.diadic.left = CIRTrans_TransExpr(expr->data.diadic.left, FALSE);
-            expr->data.diadic.right = CIRTrans_TransExpr(expr->data.diadic.right, flag);
+            expr->data.diadic.right = CIRTrans_TransExpr(expr->data.diadic.right, isUsed);
             break;
         case ECOND:
             expr->data.cond.cond = CIRTrans_TransExpr(expr->data.cond.cond, TRUE);
@@ -483,9 +476,9 @@ static ENode* CIRTrans_TransExpr(ENode* expr, Boolean flag) {
             break;
         case EMFPOINTER:
             expr->data.mfpointer.accessnode =
-                CIRTrans_TransExpr(expr->data.mfpointer.accessnode, flag);
+                CIRTrans_TransExpr(expr->data.mfpointer.accessnode, isUsed);
             expr->data.mfpointer.mfpointer =
-                CIRTrans_TransExpr(expr->data.mfpointer.mfpointer, flag);
+                CIRTrans_TransExpr(expr->data.mfpointer.mfpointer, isUsed);
             break;
         case EFUNCCALL:
         case EFUNCCALLP:

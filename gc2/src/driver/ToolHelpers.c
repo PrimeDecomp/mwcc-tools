@@ -1,10 +1,14 @@
 #include "driver/ToolHelpers.h"
 #include "driver/CWParserPluginsPrivate.h"
+#include "driver/CWPlugins.h"
 #include "driver/CWPluginsPrivate.h"
+#include "driver/Files.h"
 #include "driver/Generic.h"
 #include "driver/IO.h"
 #include "driver/MacSpecs.h"
 #include "driver/MsDos.h"
+#include "driver/option_system.h"
+#include "driver/oslib.h"
 #include "driver/ParserErrors.h"
 #include "driver/ParserFace.h"
 #include "driver/ParserHelpers.h"
@@ -17,8 +21,6 @@
 #include <string.h>
 
 static Boolean setStage;
-// (2.6: 264 bytes, where Pro7 has 256; the COMMON's size, which the 8-byte group it is laid out in
-// shows)
 char linkerOutputFilename[264];
 Boolean setLinkerOutputFilename;
 Boolean setOutputDirectory;
@@ -34,13 +36,12 @@ int Opt_HandleOutputName(const char* opt, void* var, const char* filename, int f
         filename = opt;
     }
 
-    if ((pCmdLine.state ==
-         OptsCmdLineState_CompileAndLink ||
+    if ((pCmdLine.state == OptsCmdLineState_CompileAndLink ||
          (pCmdLine.state == OptsCmdLineState_Unset && pTool->TYPE == CWDROPINLINKERTYPE)) &&
         pCmdLine.toDisk != 4) {
         if (setLinkerOutputFilename) {
             CLPReportError(CLPStr41, filename);
-            return 0;
+            return FALSE;
         }
         setLinkerOutputFilename = TRUE;
         if (pTool->TYPE == CWDROPINCOMPILERTYPE) {
@@ -52,26 +53,26 @@ int Opt_HandleOutputName(const char* opt, void* var, const char* filename, int f
             err = OS_MakeSpec(filename, &spec, &isfile);
             if (err) {
                 CLPOSAlert(CLPStr64, err, filename);
-                return 0;
+                return FALSE;
             }
             if (isfile) {
                 OS_NameSpecToString(&spec.name, linkerOutputFilename, 260);
             }
             SetOutputFileDirectory(&spec.path);
         }
-        return 1;
+        return TRUE;
     } else {
         err = OS_MakeSpec(filename, &spec, &isfile);
         if (err) {
             CLPOSAlert(CLPStr64, err, filename);
-            return 0;
+            return FALSE;
         }
 
         if (!err && !isfile) {
             FSSpec ofd;
             if (setOutputDirectory) {
                 CLPReportError(CLPStr59, filename);
-                return 0;
+                return FALSE;
             }
             setOutputDirectory = TRUE;
 
@@ -81,23 +82,23 @@ int Opt_HandleOutputName(const char* opt, void* var, const char* filename, int f
                 failedCallback = "CWParserSetOutputFileDirectory";
                 longjmp(exit_plugin, result);
             }
-            return 1;
+            return TRUE;
         } else {
             SInt32 index;
             CWProjectFileInfo pfi;
             if (parseopts.lastoutputname[0]) {
                 CLPReportError(CLPStr41, filename);
-                return 0;
+                return FALSE;
             }
             strncpy(parseopts.lastoutputname, filename, 256);
             if (pCmdLine.stages == CmdLineStageMask_Dp) {
-                return 1;
+                return TRUE;
             }
 
             if (outputOrdering == OutputOrdering_None || outputOrdering == OutputOrdering_After) {
                 CWGetProjectFileCount(parseopts.context, &index);
                 while (index-- > 0) {
-                    if (!CWGetFileInfo(parseopts.context, index, 0, &pfi) &&
+                    if (!CWGetFileInfo(parseopts.context, index, FALSE, &pfi) &&
                         pfi.filetype == 'TEXT') {
                         outputOrdering = OutputOrdering_After;
                         break;
@@ -114,14 +115,14 @@ int Opt_HandleOutputName(const char* opt, void* var, const char* filename, int f
 
                 if (outputOrdering == OutputOrdering_None) {
                     outputOrdering = OutputOrdering_Before;
-                    return 1;
+                    return TRUE;
                 }
 
                 SetFileOutputName(index, lastStage, parseopts.lastoutputname);
                 parseopts.lastoutputname[0] = 0;
             }
 
-            return 1;
+            return TRUE;
         }
     }
 }
@@ -129,8 +130,8 @@ int Opt_HandleOutputName(const char* opt, void* var, const char* filename, int f
 int ValidateToolState(Boolean mustHaveFiles) {
     if (parseopts.noOptions) {
         pCmdLine.state = OptsCmdLineState_NoAction;
-        ShowVersion(1);
-        return 1;
+        ShowVersion(TRUE);
+        return TRUE;
     }
 
     if (parseopts.success) {
@@ -138,22 +139,21 @@ int ValidateToolState(Boolean mustHaveFiles) {
             if (!parseopts.hadAnyOutput) {
                 if (mustHaveFiles) {
                     CLPReportError(CLPStr70);
-                    return 0;
+                    return FALSE;
                 }
             } else {
                 if (mustHaveFiles) {
                     pCmdLine.state = OptsCmdLineState_NoAction;
                 }
-                return 1;
+                return TRUE;
             }
         } else if (parseopts.unusedFiles > 0) {
             CLPReportError(CLPStr69);
-            return 0;
+            return FALSE;
         }
     }
 
-    if (pCmdLine.state ==
-        OptsCmdLineState_Unset ||
+    if (pCmdLine.state == OptsCmdLineState_Unset ||
         (parseopts.userSpecifiedFiles > 0 && pCmdLine.state == OptsCmdLineState_NoAction)) {
         pCmdLine.state = OptsCmdLineState_CompileAndLink;
     }
@@ -165,13 +165,12 @@ int ValidateToolState(Boolean mustHaveFiles) {
         }
     }
 
-    if (pCmdLine.state ==
-        OptsCmdLineState_CompileAndLink &&
+    if (pCmdLine.state == OptsCmdLineState_CompileAndLink &&
         !(pCmdLine.stages & CmdLineStageMask_Cg)) {
         pCmdLine.state = OptsCmdLineState_Compile;
     }
 
-    return 1;
+    return TRUE;
 }
 
 int Opt_IncreaseVerbosity(const char* opt, void* var, const char* arg, int flags) {
@@ -182,7 +181,7 @@ int Opt_IncreaseVerbosity(const char* opt, void* var, const char* arg, int flags
     }
 
     Parser_StorePanels(parseopts.context);
-    return 1;
+    return TRUE;
 }
 
 int Opt_SetStage(const char* opt, void* str, const char* arg, int flags) {
@@ -192,8 +191,7 @@ int Opt_SetStage(const char* opt, void* str, const char* arg, int flags) {
     UInt16 flag;
 
     ptr = (unsigned char*)str;
-    // (flag 8: the option was given with its "no" prefix; 2.6 tests it, where Pro7 shifts it down)
-    if (flags & 8) {
+    if (flags & PARAMPARSEFLAGS_NEGATED) {
         no = TRUE;
     } else {
         no = FALSE;
@@ -253,10 +251,9 @@ int Opt_SetStage(const char* opt, void* str, const char* arg, int flags) {
         ++ptr;
     }
 
-    return 1;
+    return TRUE;
 }
 
-// (no caller: the linker dropped it, but its "wt" stays in the unit's .data)
 int Opt_RedirectStream(const char* opt, void* file, const char* filename) {
     OSSpec spec;
     int err;
@@ -265,14 +262,14 @@ int Opt_RedirectStream(const char* opt, void* file, const char* filename) {
     err = OS_MakeFileSpec(filename, &spec);
     if (err) {
         CLPReportError(CLPStr78, filename, OS_GetErrText(err));
-        return 0;
+        return FALSE;
     }
 
     nw = freopen(OS_SpecToString(&spec, STSbuf, sizeof(STSbuf)), "wt", (FILE*)file);
     if (!nw) {
         CLPReportError(CLPStr78, filename, strerror(errno));
-        return 0;
+        return FALSE;
     }
 
-    return 1;
+    return TRUE;
 }

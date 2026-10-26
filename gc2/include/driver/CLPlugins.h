@@ -3,17 +3,16 @@
 
 #include "compiler/common.h"
 #include "driver/cmdline.h"
-#include "driver/CWPlugins.h"
 #include "driver/CWParserPluginsPrivate.h"
+#include "driver/CWPlugins.h"
 #include "driver/Files.h"
 #include "driver/MacFileTypes.h"
+#include "driver/oslib.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-// A plugin the driver knows (Pro7's plugin.h): its callback tables, its context while it runs, the
-// version string Plugins_Add caches
 struct Plugin {
     BasePluginCallbacks* cb;
     CompilerLinkerPluginCallbacks* cl_cb;
@@ -29,7 +28,6 @@ extern DropInFlags* Plugin_GetDropInFlags(Plugin* pl);
 extern OSType Plugin_GetPluginType(Plugin* pl);
 extern const CWObjectFlags* Plugin_CL_GetObjectFlags(Plugin* pl);
 extern Boolean Plugin_CL_MatchesTarget(Plugin* pl, OSType cpu, OSType os, Boolean exact);
-extern Boolean Plugin_MatchesType(Plugin* pl, OSType type, OSType lang, Boolean exact);
 extern Boolean Plugin_CL_WriteObjectFile(
     Plugin* pl, FSSpec* srcfss, FSSpec* outfss, OSType creator, OSType type, Handle data
 );

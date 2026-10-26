@@ -13,9 +13,10 @@
 #include "compiler/objects.h"
 #include "compiler/scopes.h"
 #include "compiler/templates.h"
+#include "compiler/tokens.h"
+#include "compiler/types.h"
 #include <string.h>
 
-// TODO: invented enumerator names (Pro7's Lookup_0..2): what CScope_RecFindClassMember looks for.
 typedef enum ELookupType {
     Lookup_Object,
     Lookup_Tag,
@@ -34,9 +35,6 @@ struct CScopeNSIterator {
     NameResult* result;
 };
 
-// Pro7's statics in reverse order: 2.6 has cscope_isambig lowest and cscope_mostderived highest
-// (statics are allocated in reverse declaration order), 2-byte packed (the packing in effect at the
-// end of the file).
 static TypeClass* cscope_mostderived;
 static HashNameNode* cscope_name;
 static TypeClass* cscope_foundclass;
@@ -152,8 +150,7 @@ Boolean CScope_IsEmptySymTable(void) {
     for (i = 0; i < 1024; i++) {
         for (nsname = cscope_root->data.hash[i]; nsname; nsname = nsname->next) {
             for (scan = &nsname->first; scan; scan = scan->next) {
-                if (scan->object->otype !=
-                    OT_OBJECT ||
+                if (scan->object->otype != OT_OBJECT ||
                     !CParser_IsPublicRuntimeObject(OBJECT(scan->object))) {
                     return FALSE;
                 }
@@ -399,7 +396,7 @@ static Boolean CScope_IsSameObject(Object* a, Object* b) {
 }
 
 NameSpaceObjectList* CScope_ArgumentDependentNameLookup(
-    NameSpaceObjectList* list, HashNameNode* name, ENodeList* argNodes, Boolean flag
+    NameSpaceObjectList* list, HashNameNode* name, ENodeList* argNodes, Boolean skipMethods
 ) {
     NameSpaceList* scan;
     NameSpaceObjectList* iscan;
@@ -414,13 +411,12 @@ NameSpaceObjectList* CScope_ArgumentDependentNameLookup(
             if (!IS_TYPE_FUNC(OBJECT(iscan->object)->type)) {
                 continue;
             }
-            if (flag && (TYPE_FUNC(OBJECT(iscan->object)->type)->flags & FUNC_METHOD)) {
+            if (skipMethods && (TYPE_FUNC(OBJECT(iscan->object)->type)->flags & FUNC_METHOD)) {
                 continue;
             }
 
             for (iiscan = list; iiscan; iiscan = iiscan->next) {
-                if (iiscan->object->otype ==
-                    OT_OBJECT &&
+                if (iiscan->object->otype == OT_OBJECT &&
                     CScope_IsSameObject(OBJECT(iiscan->object), OBJECT(iscan->object))) {
                     break;
                 }
@@ -488,8 +484,6 @@ NameSpace* CScope_FindGlobalNS(NameSpace* nspace) {
     return cscope_root;
 }
 
-// Dead in 2.6 (nothing calls it), like CScope_FindObject: Pro7's, kept because removing the two
-// changes the code of the functions near them and the relink fails.
 Boolean CScope_IsStdNameSpace(NameSpace* nspace) {
     return nspace &&
         !nspace->theclass &&
@@ -518,12 +512,6 @@ void CScope_MergeNameSpace(NameSpace* dst, NameSpace* src) {
     }
 }
 
-// Pro7's function with 2.6's shape: obj->otype read once into a local, a walker beside the found
-// list, a ternary allocation, and CScope_InsertName inlined (its ternary allocation keeps it under
-// the 15-statement auto-inline limit).
-// TODO: the two Boolean locals and the `goto done` stand in for something not recovered. Pro7's
-// CScope_ObjectIsFunction calls (inlined) and `return` after the 739 block were tried (95.6 and
-// 98.6); so was the condition without the `isFunction =` that nothing reads (94.3).
 void CScope_AddObject(NameSpace* nspace, HashNameNode* name, ObjBase* obj) {
     UInt8 otype;
     NameSpaceObjectList* scan;
@@ -547,8 +535,7 @@ void CScope_AddObject(NameSpace* nspace, HashNameNode* name, ObjBase* obj) {
                     return;
                 }
                 if (copts.cplusplus &&
-                    scan->object->otype ==
-                    OT_TYPE &&
+                    scan->object->otype == OT_TYPE &&
                     !is_typesame(OBJ_TYPE_TAG(obj)->type, OBJ_TYPE(scan->object)->type)) {
                     CError_Error(ERR_TYPENAME_REDEFINED);
                     return;
@@ -564,8 +551,7 @@ void CScope_AddObject(NameSpace* nspace, HashNameNode* name, ObjBase* obj) {
         }
         if (objlist->object->otype == OT_TYPETAG) {
             if (copts.cplusplus &&
-                otype ==
-                OT_TYPE &&
+                otype == OT_TYPE &&
                 !is_typesame(OBJ_TYPE(obj)->type, OBJ_TYPE_TAG(objlist->object)->type)) {
                 CError_Error(ERR_TYPENAME_REDEFINED);
                 return;
@@ -592,8 +578,7 @@ void CScope_AddObject(NameSpace* nspace, HashNameNode* name, ObjBase* obj) {
                 return;
             }
 
-            isExistingFunction = OBJECT(scan->object)->otype ==
-                OT_OBJECT &&
+            isExistingFunction = OBJECT(scan->object)->otype == OT_OBJECT &&
                 IS_TYPE_FUNC(OBJECT(scan->object)->type);
             if (!isExistingFunction) {
                 CError_Error(ERR_ILLEGAL_NAME_OVERLOADING);
@@ -869,10 +854,8 @@ static BClassList* CScope_RecFindClassMember(NameResult* result, TypeClass* tcla
                 break;
             case Lookup_Object:
                 if (cscope_foundclass) {
-                    if (list->object->otype ==
-                        OT_TYPETAG &&
-                        result->objects->object->otype ==
-                        OT_TYPETAG &&
+                    if (list->object->otype == OT_TYPETAG &&
+                        result->objects->object->otype == OT_TYPETAG &&
                         IS_TYPE_CLASS(OBJ_TYPE_TAG(list->object)->type) &&
                         IS_TYPE_CLASS(OBJ_TYPE_TAG(result->objects->object)->type) &&
                         (TYPE_CLASS(OBJ_TYPE_TAG(list->object)->type)->flags &
@@ -880,7 +863,7 @@ static BClassList* CScope_RecFindClassMember(NameResult* result, TypeClass* tcla
                         (TYPE_CLASS(OBJ_TYPE_TAG(result->objects->object)->type)->flags &
                          CLASS_IS_TEMPL_INST) &&
                         TEMPL_CLASS_INST(OBJ_TYPE_TAG(list->object)->type)->templ ==
-                        TEMPL_CLASS_INST(OBJ_TYPE_TAG(result->objects->object)->type)->templ) {
+                            TEMPL_CLASS_INST(OBJ_TYPE_TAG(result->objects->object)->type)->templ) {
                         cscope_foundtemplate =
                             TEMPL_CLASS_INST(OBJ_TYPE_TAG(result->objects->object)->type)->templ;
                     } else {
@@ -1088,12 +1071,11 @@ static NameSpace* CScope_FindLookupNameSpace(
     return retnspace;
 }
 
-// TODO: invented local names (Pro7 names them after PowerPC registers).
 static NameSpaceObjectList* CScope_FindLookupName(
     NameSpaceLookupList* list, HashNameNode* name, NameSpace** foundnspace
 ) {
     NameSpaceName* scanname;
-    NameSpaceObjectList* tmpOL;
+    NameSpaceObjectList* found;
     NameSpaceObjectList* result;
     NameSpaceList* scan;
     NameSpace* resultnspace;
@@ -1110,8 +1092,8 @@ static NameSpaceObjectList* CScope_FindLookupName(
             }
         }
 
-        if ((tmpOL = CScope_FindName(list->nspace, name))) {
-            result = tmpOL;
+        if ((found = CScope_FindName(list->nspace, name))) {
+            result = found;
             resultnspace = list->nspace;
         } else {
             result = NULL;
@@ -1124,9 +1106,9 @@ static NameSpaceObjectList* CScope_FindLookupName(
 
     copied = FALSE;
     for (scan = list->namespaces; scan; scan = scan->next) {
-        if ((tmpOL = CScope_FindName(scan->nspace, name))) {
+        if ((found = CScope_FindName(scan->nspace, name))) {
             if (result) {
-                for (cand = tmpOL; cand; cand = cand->next) {
+                for (cand = found; cand; cand = cand->next) {
                     for (check = result; check; check = check->next) {
                         if (check->object == cand->object) {
                             break;
@@ -1169,7 +1151,7 @@ static NameSpaceObjectList* CScope_FindLookupName(
                                     } else {
                                         if ((OBJECT(cand->object)->datatype == DALIAS) &&
                                             OBJECT(check->object) ==
-                                            OBJECT(cand->object)->u.alias.object) {
+                                                OBJECT(cand->object)->u.alias.object) {
                                             goto break1;
                                         }
                                     }
@@ -1217,7 +1199,7 @@ break1:
                     }
                 }
             } else {
-                result = tmpOL;
+                result = found;
                 resultnspace = scan->nspace;
             }
         }
@@ -1530,7 +1512,6 @@ static Boolean CScope_FindQualifiedTag(NameResult* result, NameSpace* nspace, Ha
     return FALSE;
 }
 
-// TODO: invented name (Pro7's, which has it as an assumed name; 2.6 inlines it at every call).
 static void CScope_NSIteratorInit(
     CScopeNSIterator* iterator, NameSpace* nspace, NameResult* result
 ) {
@@ -1544,7 +1525,6 @@ static void CScope_NSIteratorInit(
     iterator->result = result;
 }
 
-// TODO: invented name (Pro7's, which has it as an assumed name; 2.6 inlines it at every call).
 static Boolean CScope_NSIteratorNext(CScopeNSIterator* iterator) {
     if (iterator->lookup) {
         return (iterator->lookup = iterator->lookup->next) != NULL;
@@ -1568,7 +1548,6 @@ Type* CScope_GetType(NameSpace* nspace, HashNameNode* name, UInt32* qual) {
     CScopeNSIterator iterator;
     NameResult result;
     NameSpaceObjectList* list;
-    Boolean ok;
 
     memclrw(&result, sizeof(result));
     CScope_NSIteratorInit(&iterator, nspace, &result);
@@ -1597,7 +1576,6 @@ Type* CScope_GetTagType(NameSpace* nspace, HashNameNode* name) {
     CScopeNSIterator iterator;
     NameResult result;
     NameSpaceObjectList* list;
-    Boolean ok;
 
     memclrw(&result, sizeof(result));
     CScope_NSIteratorInit(&iterator, nspace, &result);
@@ -1614,7 +1592,7 @@ Type* CScope_GetTagType(NameSpace* nspace, HashNameNode* name) {
 }
 
 static Boolean CScope_DependentTemplateMember(
-    NameResult* result, TypeTemplDep* ttempldep, Boolean flag1, Boolean flag2
+    NameResult* result, TypeTemplDep* ttempldep, Boolean allowOperator, Boolean noTemplateArgs
 ) {
     SInt32 streamstate;
     short token;
@@ -1627,8 +1605,7 @@ static Boolean CScope_DependentTemplateMember(
 
     while (1) {
         token = lex();
-        // 2.6 compares the first two tests as ints (movsx), the rest as shorts.
-        if ((int)token == TK_OPERATOR && flag1) {
+        if ((int)token == TK_OPERATOR && allowOperator) {
             if (!CParser_ParseOperatorName(NULL, TRUE, TRUE)) {
                 return FALSE;
             }
@@ -1686,7 +1663,7 @@ static Boolean CScope_DependentTemplateMember(
                 continue;
             }
 
-            if ((token == '<') && !flag2) {
+            if ((token == '<') && !noTemplateArgs) {
                 tk = token;
                 newtype2 = newtype;
                 newtype = TYPE_TEMPLATE(CDecl_NewTemplDepType(TEMPLDEP_QUALTEMPL));
@@ -1711,18 +1688,18 @@ static Boolean CScope_DependentTemplateMember(
     }
 }
 
-static Boolean CScope_CheckDtorName(TypeClass* tclass, Boolean* flag) {
+static Boolean CScope_CheckDtorName(TypeClass* tclass, Boolean* noDtor) {
     if ((tk = lex()) != TK_IDENTIFIER) {
         CError_Error(ERR_IDENTIFIER_EXPECTED);
     }
 
     if (tclass) {
-        *flag = FALSE;
+        *noDtor = FALSE;
         if ((tclass->classname == tkidentifier) ||
             (CScope_GetType(tclass->nspace, tkidentifier, NULL) == TYPE(tclass)) ||
             (CScope_GetType(cscope_current, tkidentifier, NULL) == TYPE(tclass))) {
             if (!CClass_Destructor(tclass)) {
-                *flag = TRUE;
+                *noDtor = TRUE;
             }
             if ((tclass->flags & CLASS_IS_TEMPL_INST) && (lookahead() == '<')) {
                 tk = lex();
@@ -1745,7 +1722,7 @@ static Boolean CScope_ParseQualifiedName(NameResult* result, NameSpace* nspace) 
     NameSpaceObjectList* list;
     HashNameNode* saveidentifier;
     TypeClass* tclass;
-    Boolean flag = FALSE;
+    Boolean isDtor = FALSE;
 
     do {
         switch (tk) {
@@ -1775,11 +1752,11 @@ static Boolean CScope_ParseQualifiedName(NameResult* result, NameSpace* nspace) 
                 saveidentifier = tkidentifier;
                 break;
             case '~':
-                if (!CScope_CheckDtorName(nspace->theclass, &flag)) {
+                if (!CScope_CheckDtorName(nspace->theclass, &isDtor)) {
                     return FALSE;
                 }
                 saveidentifier = destructor_name_node;
-                flag = TRUE;
+                isDtor = TRUE;
                 break;
             default:
                 CError_Error(ERR_IDENTIFIER_EXPECTED);
@@ -1788,7 +1765,7 @@ static Boolean CScope_ParseQualifiedName(NameResult* result, NameSpace* nspace) 
 
         if (!(list = CScope_FindQualifiedName(result, nspace, saveidentifier, &result->nspace)) ||
             !CScope_SetupParseNameResult(result, list, saveidentifier)) {
-            if (flag) {
+            if (isDtor) {
                 result->is_destructor = TRUE;
                 return TRUE;
             }
@@ -1829,7 +1806,7 @@ Boolean CScope_ParseExprName(NameResult* result) {
     CScopeNSIterator iterator;
     HashNameNode* name;
     NameSpaceObjectList* list;
-    Boolean flag;
+    Boolean noDtor;
 
     if (!copts.cplusplus) {
         memclrw(result, sizeof(NameResult));
@@ -1884,10 +1861,10 @@ Boolean CScope_ParseExprName(NameResult* result) {
                 CPrep_UnLex();
                 break;
             case '~':
-                if (!CScope_CheckDtorName(result->nspace->theclass, &flag)) {
+                if (!CScope_CheckDtorName(result->nspace->theclass, &noDtor)) {
                     return FALSE;
                 }
-                if (flag) {
+                if (noDtor) {
                     result->is_destructor = TRUE;
                     return TRUE;
                 }
@@ -1931,7 +1908,6 @@ Boolean CScope_ParseDeclName(NameResult* result) {
     HashNameNode* name;
     NameSpaceObjectList* list;
     NameSpace* nspace;
-    Boolean flag;
     CScopeSave save;
     short op;
 
@@ -2034,7 +2010,9 @@ non_cpp_mode:
     }
 }
 
-Boolean CScope_ParseQualifiedNameSpace(NameResult* result, Boolean flag1, Boolean flag2) {
+Boolean CScope_ParseQualifiedNameSpace(
+    NameResult* result, Boolean allowOperator, Boolean noTemplateArgs
+) {
     HashNameNode* name;
     NameSpace* nspace;
     short t;
@@ -2118,7 +2096,7 @@ parse_thing:
                             return TRUE;
                         }
                         return CScope_DependentTemplateMember(
-                            result, TYPE_TEMPLATE(type2), flag1, flag2
+                            result, TYPE_TEMPLATE(type2), allowOperator, noTemplateArgs
                         );
                     } else if (type2->type != TYPECLASS) {
                         return FALSE;
@@ -2148,8 +2126,7 @@ parse_thing:
                 type2 = OBJ_TYPE(list->object)->type;
                 if (!IS_TYPE_CLASS(type2)) {
                     if (IS_TYPE_TEMPLATE(type2)) {
-                        if (TYPE_TEMPLATE(type2)->dtype ==
-                            TEMPLDEP_ARGUMENT &&
+                        if (TYPE_TEMPLATE(type2)->dtype == TEMPLDEP_ARGUMENT &&
                             TYPE_TEMPLATE(type2)->u.pid.type == TPT_TEMPLATE) {
                             type2 = CTempl_ParseTemplTemplParam(TYPE_TEMPLATE(type2));
                             if ((type2->type != TYPETEMPLATE) ||
@@ -2160,7 +2137,7 @@ parse_thing:
                         }
                         if (t == TK_COLON_COLON) {
                             return CScope_DependentTemplateMember(
-                                result, TYPE_TEMPLATE(type2), flag1, flag2
+                                result, TYPE_TEMPLATE(type2), allowOperator, noTemplateArgs
                             );
                         }
                     }
@@ -2204,7 +2181,6 @@ Boolean CScope_ParseElaborateName(NameResult* result) {
     CScopeNSIterator iterator;
     HashNameNode* name;
     NameSpaceObjectList* list;
-    Boolean flag;
 
     if (!copts.cplusplus) {
         memclrw(result, sizeof(NameResult));
@@ -2278,7 +2254,6 @@ Boolean CScope_ParseElaborateName(NameResult* result) {
     }
 }
 
-// Dead in 2.6 (nothing calls it).
 Boolean CScope_FindObject(NameSpace* nspace, NameResult* result, HashNameNode* name) {
     CScopeNSIterator iterator;
     NameSpaceObjectList* list;
@@ -2488,8 +2463,7 @@ static NameSpaceObjectList* CScope_GetLocalObjects(NameSpaceObjectList* objs) {
             list = CScope_CopyNameSpaceObjectList(objs);
             ptr = &list;
             while (*ptr) {
-                if ((*ptr)->object->otype ==
-                    OT_OBJECT &&
+                if ((*ptr)->object->otype == OT_OBJECT &&
                     OBJECT((*ptr)->object)->datatype == DALIAS) {
                     *ptr = (*ptr)->next;
                 } else {
@@ -2547,7 +2521,7 @@ static BClassList* CScope_GetBaseAccessPathEnd(BClassList* list) {
 
 BClassList* CScope_GetClassAccessPath(BClassList* list, TypeClass* tclass) {
     BClassList* scan;
-    BClassList* list2;
+    BClassList* path;
 
     if (!list) {
         return NULL;
@@ -2560,11 +2534,11 @@ BClassList* CScope_GetClassAccessPath(BClassList* list, TypeClass* tclass) {
         }
     }
 
-    if ((list2 = CScope_GetAccessPath(tclass, TYPE_CLASS(list->type)))) {
-        for (scan = list2; scan; scan = scan->next) {
+    if ((path = CScope_GetAccessPath(tclass, TYPE_CLASS(list->type)))) {
+        for (scan = path; scan; scan = scan->next) {
             if (scan->type == list->type) {
                 scan->next = list->next;
-                return list2;
+                return path;
             }
         }
         CError_FATAL(3217);
@@ -2586,11 +2560,11 @@ static Boolean CScope_FixMemberResult(TypeClass* tclass, NameResult* result) {
     }
 }
 
-Boolean CScope_ParseMemberName(TypeClass* tclass, NameResult* result, Boolean flag) {
+Boolean CScope_ParseMemberName(TypeClass* tclass, NameResult* result, Boolean isTemplate) {
     HashNameNode* name;
     NameSpaceObjectList* list;
     short t;
-    Boolean dtorflag;
+    Boolean noDtor;
 
     if (tk == TK_COLON_COLON) {
 restart:
@@ -2601,7 +2575,7 @@ restart:
         if (result->type &&
             IS_TYPE_TEMPLATE(result->type) &&
             TYPE_TEMPLATE(result->type)->dtype == TEMPLDEP_QUALNAME) {
-            if (flag) {
+            if (isTemplate) {
                 return TRUE;
             }
             CError_Error(
@@ -2631,15 +2605,15 @@ restart:
                 }
                 break;
             case '<':
-                if (flag) {
+                if (isTemplate) {
                     goto restart;
                 }
                 break;
         }
     } else if (tk == '~') {
         memclrw(result, sizeof(NameResult));
-        if (CScope_CheckDtorName(tclass, &dtorflag)) {
-            if (dtorflag) {
+        if (CScope_CheckDtorName(tclass, &noDtor)) {
+            if (noDtor) {
                 result->is_destructor = TRUE;
                 return TRUE;
             }
@@ -2814,7 +2788,7 @@ void CScope_AddClassUsingDeclaration(
     }
 }
 
-void CScope_ParseUsingDeclaration(NameSpace* nspace, AccessType access, Boolean flag) {
+void CScope_ParseUsingDeclaration(NameSpace* nspace, AccessType access, Boolean unused) {
     NameSpace* saveNSpace;
     Boolean isTemplate;
     Boolean isTypename;
@@ -2823,12 +2797,12 @@ void CScope_ParseUsingDeclaration(NameSpace* nspace, AccessType access, Boolean 
 
     if (nspace->theclass) {
         isTemplate = (TYPE_CLASS(nspace->theclass)->flags & CLASS_IS_TEMPL) != 0;
-        isTypename = 0;
+        isTypename = FALSE;
         if (tk == TK_TYPENAME) {
             if (!isTemplate) {
                 CError_Error(ERR_ILLEGAL_ACCESS_USING_DECLARATION);
             }
-            isTypename = 1;
+            isTypename = TRUE;
             tk = lex();
         }
 
@@ -2921,11 +2895,11 @@ static NameSpace* CScope_ParseQualifiedNamespaceSpecifier(NameSpace* nspace) {
             if ((list = CScope_NSIteratorFind(&iterator, tkidentifier)) &&
                 list->object->otype == OT_NAMESPACE) {
                 nspace = OBJ_NAMESPACE(list->object)->nspace;
-                goto some_goto;
+                goto found;
             }
         } while (CScope_NSIteratorNext(&iterator));
         CError_Error(ERR_UNDEFINED_IDENTIFIER, tkidentifier->name);
-some_goto:
+found:
         if ((tk = lex()) != TK_COLON_COLON) {
             break;
         }
@@ -2990,6 +2964,4 @@ void CScope_ParseUsingDirective(NameSpace* nspace) {
     }
 }
 
-// MWCC lays out .bss with the packing in force at the end of the file: 2.6's statics
-// above are 2-byte packed.
 #pragma pack(2)

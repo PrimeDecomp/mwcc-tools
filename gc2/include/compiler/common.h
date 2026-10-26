@@ -6,34 +6,10 @@
 extern "C" {
 #endif
 
-/* Every record of the program, for use through pointers; each is defined in its owner's header. */
-struct Candidate;
-struct Alias;
-struct CI_FuncData;
 struct CInlineBackendOptions;
 struct MachineInfo;
 struct DwarfSym;
-struct PCodeBlock;
-struct PCLink;
-struct PCodeArg;
-struct PCodeLabel;
-struct CI_Switch;
-struct CI_Statement;
-struct IRONode;
 typedef struct TemplStack TemplStack;
-struct PendingObjectClass;
-struct PCodeBlock;
-struct ObjGenSection;
-struct PCodeBlock;
-struct HashNameNode;
-struct SerializedFormat;
-struct SerializedFormatLink;
-struct SerializedLocation;
-struct SerializedShortHeader;
-struct SerializedValueList;
-struct SerializedValueList;
-struct SerializedWideHeader;
-struct TemplArg;
 typedef struct Alias Alias;
 typedef struct ArgMatch ArgMatch;
 typedef struct IAEffect IAEffect;
@@ -215,6 +191,12 @@ typedef union MWVector128 MWVector128;
 #ifndef NULL
 #define NULL 0
 #endif
+
+#ifdef __MWERKS__
+#define HEADER_INLINE inline
+#else
+#define HEADER_INLINE static inline
+#endif
 typedef unsigned char UInt8;
 typedef signed char SInt8;
 typedef unsigned short UInt16;
@@ -223,8 +205,12 @@ typedef unsigned long UInt32;
 typedef long SInt32;
 typedef unsigned char Boolean;
 
-// (Pro7's common.h: the Mac Memory Manager's pointer and handle, shared by the compiler and the
-// driver's MacEmul layer)
+#ifdef __MWERKS__
+typedef short VarArgShort;
+#else
+typedef int VarArgShort;
+#endif
+
 typedef char* Ptr;
 typedef Ptr* Handle;
 
@@ -246,10 +232,6 @@ typedef enum AccessType {
     ACCESSPROTECTED,
     ACCESSNONE
 } AccessType;
-// Object and type qualifiers (Object, DeclInfo and the types' qual). Q_IMPLICIT_WEAK marks what
-// every unit may define (thunks, an inline function's local statics, a static const member
-// initialized in its class): the backend gives it a weak symbol, as it does Q_WEAK. Q_TENTATIVE
-// marks a C tentative definition. Q_ALIGNED_ values are a field, under Q_ALIGNED_MASK.
 enum {
     Q_CONST = 1,
     Q_VOLATILE = 2,
@@ -293,7 +275,6 @@ enum {
     Q_ALIGNED_MASK = 0x1E000000
 };
 
-// DeclInfo.exportflags: __declspec(internal), dllimport, dllexport
 enum {
     EXPORT_FLAGS_INTERNAL = 0x10,
     EXPORT_FLAGS_IMPORT = 0x20,
@@ -306,8 +287,6 @@ enum {
 #define HIGH_PART(value) ((short)(((value) >> 16) + (((value) >> 15) & 1)))
 #define LOW_PART(value) ((short)(value))
 
-// An interrupt function: CodeGen sets it under the interrupt options, and StackFrameEABI then adds
-// its interrupt record.
 #define Q_INTERRUPT 0x80000000
 #pragma pack(push, 2)
 struct HashNameNode {
@@ -316,15 +295,11 @@ struct HashNameNode {
     SInt16 hashval;
     char name[2];
 };
-// 2.6: the register a global register variable lives in (`register int x
-// __asm("r13")`): reg is 0 when none
-// TODO: made-up name
 typedef struct ObjRegInfo {
     char rclass;
     char reg;
 } ObjRegInfo;
 
-// Pro7's RegClass (common.h), a signed char-sized enum (a loop over it keeps its entry test)
 typedef enum RegClass {
     RegClass_Invalid = -1,
     RegClass_SPR = 0,
@@ -333,7 +308,7 @@ typedef enum RegClass {
     RegClass_FPR = 3,
     RegClass_GPR = 4,
     RegClassMax = 5,
-    RegClass_6 = 6, // (an inline assembler condition register bit)
+    RegClass_CRBIT = 6,
     RegClass_DCR = 7
 } RegClass;
 
@@ -341,8 +316,6 @@ struct CInt64 {
     SInt32 hi;
     UInt32 lo;
 };
-// The words come first so that an initializer gives them: 2.6's initialized doubles (Operands.c's
-// one_point_zero, int_to_float_cc, uns_to_float_cc) are big-endian word pairs in its data.
 union FloatStorage {
     int words[2];
     double value;

@@ -1,9 +1,11 @@
 #include "driver/Parameter.h"
+#include "compiler/win32.h"
 #include "driver/Arguments.h"
 #include "driver/CWPlugins.h"
 #include "driver/MacFileTypes.h"
 #include "driver/MsDos.h"
 #include "driver/Option.h"
+#include "driver/option_system.h"
 #include "driver/oslib.h"
 #include "driver/ParserErrors.h"
 #include "driver/ParserFace.h"
@@ -21,9 +23,6 @@ char* descparam = &curparam[0];
 char* helpparam = &curparam[1024];
 char* defaultparam = &curparam[2048];
 
-// Pro7's byte-wise access macros (a variable may be unaligned). 2.6's differ in two ways, each
-// needed by its code: inline_write_* copies the destination into _val first (a dead read Pro7's
-// lacks), and inline_xor_* uses `^=` (`xor word ptr [...]` for 16 bits).
 #define copy_8(dst, src) \
     do { \
         ((unsigned char*)(dst))[0] = ((unsigned char*)(src))[0]; \
@@ -132,7 +131,7 @@ char* defaultparam = &curparam[2048];
 
 static int Param_GetArgument(PARAM_T* param, const char** cparam, int exec);
 static int Param_Parse(PARAM_T* param, const char* cparam, int flags);
-void Param_Warning(short id, ...);
+void Param_Warning(VarArgShort id, ...);
 
 static int Param_None(PARAM_T* p, const char* pstr, int flags) {
     return TRUE;
@@ -190,21 +189,21 @@ static void DescHelpParam_Number(
 
     if (p->size == 4) {
         if (p->lo != p->hi) {
-            sprintf(helpparam, "range 0x%x - 0x%x", p->lo, p->hi);
+            sprintf(helpparam, "range 0x%x - 0x%x", (unsigned int)p->lo, (unsigned int)p->hi);
         }
         *help = helpparam;
         if (value <= 0x10000) {
-            sprintf(defaultparam, "%u", value);
+            sprintf(defaultparam, "%u", (unsigned int)value);
         } else {
-            sprintf(defaultparam, "0x%x", value);
+            sprintf(defaultparam, "0x%x", (unsigned int)value);
         }
         *defaul = defaultparam;
     } else {
         if (p->lo != p->hi) {
-            sprintf(helpparam, "range %u - %u", p->lo, p->hi);
+            sprintf(helpparam, "range %u - %u", (unsigned int)p->lo, (unsigned int)p->hi);
         }
         *help = helpparam;
-        sprintf(defaultparam, "%u", value);
+        sprintf(defaultparam, "%u", (unsigned int)value);
         *defaul = defaultparam;
     }
 
@@ -349,19 +348,17 @@ static void DescHelpParam_FTypeCreator(
     if (!p->fc) {
         *defaul = 0;
     } else {
-        // (2.6 spells the four characters from the high byte, the x86 order of a 'TEXT' constant;
-        // Pro7's Mac build writes them low byte first)
-        unsigned long tmp;
+        unsigned long code;
         unsigned char* ptr;
         int cnt;
 
         ptr = (unsigned char*)defaultparam;
-        tmp = *p->fc;
+        code = *p->fc;
         cnt = 0;
         *(ptr++) = '\'';
         for (; cnt < 4; cnt++) {
-            *(ptr++) = tmp >> 24;
-            tmp <<= 8;
+            *(ptr++) = code >> 24;
+            code <<= 8;
         }
         *(ptr++) = '\'';
         *ptr = 0;
@@ -374,14 +371,14 @@ static int CompareParam_FTypeCreator(FTYPE_T* p) {
 }
 
 static int Param_FTypeCreator(FTYPE_T* p, const char* pstr, int flags) {
-    char x[4] = "    ";
+    char code[4] = {' ', ' ', ' ', ' '};
     int cnt;
     const char* opstr;
 
     cnt = 0;
     opstr = pstr;
     while (*pstr && cnt < 4) {
-        x[4 - ++cnt] = *(pstr++);
+        code[4 - ++cnt] = *(pstr++);
     }
 
     if (*pstr) {
@@ -389,7 +386,7 @@ static int Param_FTypeCreator(FTYPE_T* p, const char* pstr, int flags) {
         return FALSE;
     }
 
-    inline_write_32(p->fc, &x);
+    inline_write_32(p->fc, &code);
     return TRUE;
 }
 
@@ -472,13 +469,13 @@ static int CompareParam_ID_or_SYM(STRING_T* p) {
 
 static int Param_ID_or_SYM(STRING_T* p, const char* pstr, int flags) {
     const char* ptr;
-    const char* x;
+    const char* allowed;
 
     if (Param_String(p, pstr, flags)) {
         if (p->which == PARAMWHICH_Id) {
-            x = "$_";
+            allowed = "$_";
         } else if (p->which == PARAMWHICH_Sym) {
-            x = "_.$@?#";
+            allowed = "_.$@?#";
         }
 
         for (ptr = pstr; *ptr; ++ptr) {
@@ -486,7 +483,7 @@ static int Param_ID_or_SYM(STRING_T* p, const char* pstr, int flags) {
                 Param_Warning(CLPStr10, pstr);
             }
 
-            if (!my_isalnum(*ptr) && !strchr(x, *ptr)) {
+            if (!my_isalnum(*ptr) && !strchr(allowed, *ptr)) {
                 Param_Warning(CLPStr11, pstr, *ptr);
             }
         }
@@ -528,7 +525,7 @@ static int CompareParam_OnOff(ONOFF_T* p) {
 }
 
 static int Param_OnOff(ONOFF_T* p, const char* pstr, int flags) {
-    Boolean mytrue = (flags & PARAMPARSEFLAGS_8) == 0;
+    Boolean mytrue = (flags & PARAMPARSEFLAGS_NEGATED) == 0;
 
     if (!ustrcmp(pstr, "on")) {
         *(p->var) = mytrue;
@@ -573,7 +570,7 @@ static int CompareParam_OffOn(OFFON_T* p) {
 }
 
 static int Param_OffOn(OFFON_T* p, const char* pstr, int flags) {
-    Boolean mytrue = (flags & PARAMPARSEFLAGS_8) == 0;
+    Boolean mytrue = (flags & PARAMPARSEFLAGS_NEGATED) == 0;
 
     if (!ustrcmp(pstr, "off")) {
         *(p->var) = mytrue;
@@ -590,9 +587,6 @@ static int Param_OffOn(OFFON_T* p, const char* pstr, int flags) {
 static void DescHelpParam_FilePath(
     FILEPATH_T* p, const char** desc, const char** help, const char** defaul
 ) {
-    // TODO: invented name. 2.6 loads helpparam here and never uses it (0x42ae9a), a local Pro7
-    // lacks: the leftover of a help text the function no longer writes, like the `dptr`s of the
-    // other DescHelpParam_ functions.
     char* hptr = helpparam;
 
     if (p->myname) {
@@ -612,7 +606,7 @@ static int CompareParam_FilePath(FILEPATH_T* p) {
 static int Param_FilePath(FILEPATH_T* p, const char* pstr, int flags) {
     int err;
     OSSpec spec;
-    char canon[260]; // (2.6: MAX_PATH; Pro7 256)
+    char canon[260];
     int clen;
 
     if (!pstr[0]) {
@@ -674,7 +668,7 @@ static int CompareParam_Mask(MASK_T* p) {
 static int Param_Mask(MASK_T* p, const char* pstr, int flags) {
     if (p->size == 1) {
         unsigned char or8 = p->ormask, and8 = p->andmask, tmp8;
-        if (flags & PARAMPARSEFLAGS_8) {
+        if (flags & PARAMPARSEFLAGS_NEGATED) {
             tmp8 = and8;
             and8 |= or8;
             or8 = tmp8;
@@ -682,7 +676,7 @@ static int Param_Mask(MASK_T* p, const char* pstr, int flags) {
         inline_andor_8(p->num, &and8, &or8);
     } else if (p->size == 2) {
         unsigned short or16 = p->ormask, and16 = p->andmask, tmp16;
-        if (flags & PARAMPARSEFLAGS_8) {
+        if (flags & PARAMPARSEFLAGS_NEGATED) {
             tmp16 = and16;
             and16 |= or16;
             or16 = tmp16;
@@ -690,7 +684,7 @@ static int Param_Mask(MASK_T* p, const char* pstr, int flags) {
         inline_andor_16(p->num, &and16, &or16);
     } else {
         unsigned long or32 = p->ormask, and32 = p->andmask, tmp32;
-        if (flags & PARAMPARSEFLAGS_8) {
+        if (flags & PARAMPARSEFLAGS_NEGATED) {
             tmp32 = and32;
             and32 |= or32;
             or32 = tmp32;
@@ -727,7 +721,6 @@ static int CompareParam_Toggle(TOGGLE_T* p) {
         unsigned long mask32, val32;
         mask32 = p->mask;
         if (p->num) {
-            // (the original's bug, 2.6 too: two bytes of the 32-bit value; copy_32 does not match)
             copy_16(&val32, p->num);
         }
         return (val32 ^ mask32) == val32;
@@ -784,21 +777,21 @@ static int Param_Set(SET_T* p, const char* pstr, int flags) {
     if (p->size == 1) {
         unsigned char val8;
         val8 = (unsigned char)p->value;
-        if ((flags & PARAMPARSEFLAGS_8) && val8 <= 1) {
+        if ((flags & PARAMPARSEFLAGS_NEGATED) && val8 <= 1) {
             val8 = !val8;
         }
         inline_write_8(p->num, &val8);
     } else if (p->size == 2) {
         unsigned short val16;
         val16 = (unsigned short)p->value;
-        if ((flags & PARAMPARSEFLAGS_8) && val16 <= 1) {
+        if ((flags & PARAMPARSEFLAGS_NEGATED) && val16 <= 1) {
             val16 = !val16;
         }
         inline_write_16(p->num, &val16);
     } else {
         unsigned long val32;
         val32 = p->value;
-        if ((flags & PARAMPARSEFLAGS_8) && val32 <= 1) {
+        if ((flags & PARAMPARSEFLAGS_NEGATED) && val32 <= 1) {
             val32 = !val32;
         }
         inline_write_32(p->num, &val32);
@@ -841,7 +834,7 @@ static void DescHelpParam_Generic(
 ) {
     if (p->myname) {
         *desc = p->myname;
-    } else if ((p->flags & PARAMFLAGS_3) != 1) {
+    } else if ((p->flags & PARAMFLAGS_ARG_MASK) != 1) {
         *desc = "xxx";
     } else {
         *desc = 0;
@@ -864,13 +857,13 @@ static void DescHelpParam_Setting(
     char* dptr = descparam;
 
     dptr += sprintf(dptr, "%s", p->myname ? p->myname : "var");
-    if ((p->flags & PARAMFLAGS_3) != 1) {
+    if ((p->flags & PARAMFLAGS_ARG_MASK) != 1) {
         dptr += sprintf(
             dptr,
             "%s=%s%s",
-            (p->flags & PARAMFLAGS_2) ? "[" : "",
+            (p->flags & PARAMFLAGS_OPTIONAL_ARG) ? "[" : "",
             p->valuename ? p->valuename : "...",
-            (p->flags & PARAMFLAGS_2) ? "]" : ""
+            (p->flags & PARAMFLAGS_OPTIONAL_ARG) ? "]" : ""
         );
     }
     *desc = descparam;
@@ -915,12 +908,12 @@ static int Param_Setting(SETTING_T* p, const char* pstr, int flags) {
 static void DescHelpParam_IfArg(
     IFARG_T* p, const char** desc, const char** help, const char** defaul
 ) {
-    const char* d1 = 0;
-    const char* d2 = 0;
-    const char* h1 = 0;
-    const char* h2 = 0;
-    const char* df1 = 0;
-    const char* df2 = 0;
+    const char* argdesc = 0;
+    const char* nonedesc = 0;
+    const char* arghelp = 0;
+    const char* nonehelp = 0;
+    const char* argdefault = 0;
+    const char* nonedefault = 0;
     char desclocal[1024];
     char* dptr = desclocal;
     char helplocal[1024];
@@ -931,66 +924,69 @@ static void DescHelpParam_IfArg(
     *hptr = 0;
 
     if (p->parg) {
-        Param_DescHelp(p->parg, &d1, &h1, &df1);
+        Param_DescHelp(p->parg, &argdesc, &arghelp, &argdefault);
     }
     if (p->pnone) {
-        Param_DescHelp(p->pnone, &d2, &h2, &df2);
+        Param_DescHelp(p->pnone, &nonedesc, &nonehelp, &nonedefault);
     }
 
     if (p->helpa && p->helpn) {
-        if (df1) {
-            hptr += sprintf(hptr, "%s (default is %s), else %s", p->helpa, df1, p->helpn);
+        if (argdefault) {
+            hptr += sprintf(hptr, "%s (default is %s), else %s", p->helpa, argdefault, p->helpn);
         } else {
             hptr += sprintf(hptr, "%s, else %s", p->helpa, p->helpn);
         }
     } else if (p->helpa) {
         hptr += sprintf(hptr, "%s", p->helpa);
-        if (df1) {
-            hptr += sprintf(hptr, "; default is %s", df1);
+        if (argdefault) {
+            hptr += sprintf(hptr, "; default is %s", argdefault);
         }
     } else if (p->helpn) {
         hptr += sprintf(hptr, "nothing, else %s", p->helpn);
     }
 
-    if (d1) {
+    if (argdesc) {
         if (p->myname) {
             dptr += sprintf(dptr, "[%s]", p->myname ? p->myname : "param");
-        } else if (h1) {
-            ind = strchr(d1, '\n');
+        } else if (arghelp) {
+            ind = strchr(argdesc, '\n');
             if (!ind) {
-                ind = d1 + strlen(d1);
+                ind = argdesc + strlen(argdesc);
             }
-            dptr += sprintf(dptr, "[%.*s]", ind - d1, d1);
+            dptr += sprintf(dptr, "[%.*s]", ind - argdesc, argdesc);
         } else {
-            dptr += sprintf(dptr, "[%s]", d1);
-            d1 = 0;
+            dptr += sprintf(dptr, "[%s]", argdesc);
+            argdesc = 0;
         }
     }
 
-    if (h1 || h2) {
+    if (arghelp || nonehelp) {
         dptr += sprintf(dptr, "\n\t");
         hptr += sprintf(hptr, "\n\t");
-        if (h1) {
-            if (d1) {
-                dptr += sprintf(dptr, "%s", d1);
+        if (arghelp) {
+            if (argdesc) {
+                dptr += sprintf(dptr, "%s", argdesc);
             }
-            if (h1) {
-                hptr += sprintf(hptr, "%s", h1);
+            if (arghelp) {
+                hptr += sprintf(hptr, "%s", arghelp);
             }
-            if (h2) {
+            if (nonehelp) {
                 dptr += sprintf(dptr, "\b\t");
                 hptr += sprintf(hptr, "\b\t");
             }
         }
-        if (h2) {
-            if (d2) {
-                dptr += sprintf(dptr, "%s", d2);
+        if (nonehelp) {
+            if (nonedesc) {
+                dptr += sprintf(dptr, "%s", nonedesc);
             } else {
-                // (2.6 passes d2 here too: a push at 0x42bab4 that the format does not use)
-                dptr += sprintf(dptr, "(if blank)", d2);
+#ifdef __MWERKS__
+                dptr += sprintf(dptr, "(if blank)", nonedesc);
+#else
+                dptr += sprintf(dptr, "(if blank)");
+#endif
             }
-            if (h2) {
-                hptr += sprintf(hptr, "%s", h2);
+            if (nonehelp) {
+                hptr += sprintf(hptr, "%s", nonehelp);
             }
             dptr += sprintf(dptr, "\n");
             hptr += sprintf(hptr, "\n");
@@ -1051,17 +1047,17 @@ PARSE_FUNC ParamParsers[16] = {
 };
 
 static int Param_Parse(PARAM_T* param, const char* cparam, int flags) {
-    int ret = 0;
+    int ret = FALSE;
 
     if (!param) {
         CLPFatalError("PARAM_T is NULL");
     }
 
     if (param->which >= PARAMWHICH_None && param->which < PARAMWHICH_MAX) {
-        return ParamParsers[param->which](param, cparam, flags);
+        return ParamParsers[(int)param->which](param, cparam, flags);
     } else {
         CLPFatalError("Unhandled PARAM_T (%d)", param->which);
-        ret = 0;
+        ret = FALSE;
     }
     return ret;
 }
@@ -1096,7 +1092,7 @@ void Param_DescHelp(PARAM_T* param, const char** desc, const char** help, const 
     }
 
     if (param->which >= PARAMWHICH_None && param->which < PARAMWHICH_MAX) {
-        DescHelpParams[param->which](param, desc, help, defaul);
+        DescHelpParams[(int)param->which](param, desc, help, defaul);
     } else {
         CLPFatalError("Unhandled PARAM_T (%d)", param->which);
     }
@@ -1127,7 +1123,7 @@ int Param_Compare(PARAM_T* param) {
     }
 
     if (param->which >= PARAMWHICH_None && param->which < PARAMWHICH_MAX) {
-        return CompareParams[param->which](param);
+        return CompareParams[(int)param->which](param);
     } else {
         CLPFatalError("Unhandled PARAM_T (%d)", param->which);
         return FALSE;
@@ -1135,22 +1131,22 @@ int Param_Compare(PARAM_T* param) {
 }
 
 static void Param_PushParam(const char* param) {
-    Args_Push(4, (void*)param, 0);
+    Args_Push(OSTACK_PARAM, (void*)param, 0);
 }
 
 static void Param_PopParam(void) {
-    Args_Pop(4);
+    Args_Pop(OSTACK_PARAM);
 }
 
 static Boolean Param_IsNonTextFile(const char* fname, Boolean warn) {
-    OSSpec tmp;
+    OSSpec spec;
     CWDataType mactype;
     Boolean isfile;
 
-    if (!OS_MakeSpec(fname, &tmp, &isfile)) {
+    if (!OS_MakeSpec(fname, &spec, &isfile)) {
         if (isfile) {
-            if (!OS_Status(&tmp)) {
-                if (!OS_GetMacFileType(&tmp, &mactype)) {
+            if (!OS_Status(&spec)) {
+                if (!OS_GetMacFileType(&spec, &mactype)) {
                     if (mactype != 'TEXT') {
                         if (warn) {
                             Param_Warning(CLPStr77, fname);
@@ -1172,7 +1168,7 @@ static int Param_GetArgument(PARAM_T* param, const char** cparam, int exec) {
     short lastOpt;
     ArgToken* tok;
 
-    subparse = (exec & PARAMPARSEFLAGS_4) != 0;
+    subparse = (exec & PARAMPARSEFLAGS_SUBOPTION) != 0;
     nextOpt = !subparse ? ATK_ARG_END : ATK_COMMA;
     nextParam = !subparse ? ATK_COMMA : ATK_EQUALS;
     lastOpt = !subparse ? ATK_END : ATK_ARG_END;
@@ -1180,7 +1176,7 @@ static int Param_GetArgument(PARAM_T* param, const char** cparam, int exec) {
     tok = Arg_PeekToken();
     OPTION_ASSERT(1467, tok);
 
-    if ((param->flags & PARAMFLAGS_3) == 0) {
+    if ((param->flags & PARAMFLAGS_ARG_MASK) == 0) {
         if (tok->val == nextParam || tok->val == ATK_EQUALS) {
             tok = Arg_UsedToken();
         }
@@ -1196,30 +1192,30 @@ static int Param_GetArgument(PARAM_T* param, const char** cparam, int exec) {
         Arg_UsedToken();
         *cparam = curparam;
 
-        if (param->flags & PARAMFLAGS_8) {
+        if (param->flags & PARAMFLAGS_EQUALS_AFTER) {
             tok = Arg_PeekToken();
             if (tok->val == ATK_EQUALS) {
                 tok = Arg_UsedToken();
             }
         }
-    } else if (param->flags & PARAMFLAGS_1) {
+    } else if (param->flags & PARAMFLAGS_NO_ARG) {
         *cparam = 0;
         if (tok->val == ATK_EQUALS && !subparse) {
-            if (!(exec & PARAMPARSEFLAGS_40)) {
+            if (!(exec & PARAMPARSEFLAGS_EQUALS_OK)) {
                 Param_Error(CLPStr37);
                 return FALSE;
             }
             tok = Arg_UsedToken();
         }
-    } else if (param->flags & PARAMFLAGS_2) {
+    } else if (param->flags & PARAMFLAGS_OPTIONAL_ARG) {
         if (tok->val == nextOpt || tok->val == lastOpt) {
             *cparam = 0;
         } else if (tok->val == nextParam) {
             tok = Arg_UsedToken();
             if (tok->val == ATK_ARG) {
                 Arg_GetTokenText(tok, curparam, sizeof(curparam), TRUE);
-                if ((param->flags & PARAMFLAGS_12) &&
-                    Param_IsNonTextFile(curparam, !(exec & PARAMPARSEFLAGS_1))) {
+                if ((param->flags & PARAMFLAGS_OPTIONAL_NOT_FILE) &&
+                    Param_IsNonTextFile(curparam, !(exec & PARAMPARSEFLAGS_NO_EXECUTE))) {
                     *cparam = 0;
                 } else {
                     Arg_UsedToken();
@@ -1234,7 +1230,7 @@ static int Param_GetArgument(PARAM_T* param, const char** cparam, int exec) {
                 tok = Arg_UsedToken();
             }
             *cparam = 0;
-        } else if ((exec & PARAMPARSEFLAGS_4) && tok->val != ATK_EQUALS) {
+        } else if ((exec & PARAMPARSEFLAGS_SUBOPTION) && tok->val != ATK_EQUALS) {
             *cparam = 0;
         } else {
             if (tok->val == ATK_EQUALS) {
@@ -1242,8 +1238,8 @@ static int Param_GetArgument(PARAM_T* param, const char** cparam, int exec) {
             }
             if (tok->val == ATK_ARG) {
                 Arg_GetTokenText(tok, curparam, sizeof(curparam), TRUE);
-                if ((param->flags & PARAMFLAGS_12) &&
-                    Param_IsNonTextFile(curparam, !(exec & PARAMPARSEFLAGS_1))) {
+                if ((param->flags & PARAMFLAGS_OPTIONAL_NOT_FILE) &&
+                    Param_IsNonTextFile(curparam, !(exec & PARAMPARSEFLAGS_NO_EXECUTE))) {
                     *cparam = 0;
                 } else {
                     Arg_UsedToken();
@@ -1257,8 +1253,8 @@ static int Param_GetArgument(PARAM_T* param, const char** cparam, int exec) {
         CLPFatalError("Unknown parameter type");
     }
 
-    if (pTool->TYPE == CWDROPINCOMPILERTYPE && (exec & PARAMPARSEFLAGS_2) && *cparam) {
-        if (!(exec & PARAMPARSEFLAGS_10)) {
+    if (pTool->TYPE == CWDROPINCOMPILERTYPE && (exec & PARAMPARSEFLAGS_TO_LINKER) && *cparam) {
+        if (!(exec & PARAMPARSEFLAGS_FIRST)) {
             if (subparse) {
                 Arg_AddToToolArgs(&linkargs, ATK_EQUALS, 0);
             } else {
@@ -1275,41 +1271,42 @@ static int Param_GetArgument(PARAM_T* param, const char** cparam, int exec) {
 
 int Params_Parse(PARAM_T* param, int flags) {
     const char* cparam;
-    // TODO: invented name (Param_GetArgument's for the same test). 2.6 computes it and never uses it
-    // (0x42c09f), a local Pro7 lacks.
     int subparse;
 
-    subparse = (flags & PARAMPARSEFLAGS_4) != 0;
-    flags |= PARAMPARSEFLAGS_10;
+    subparse = (flags & PARAMPARSEFLAGS_SUBOPTION) != 0;
+    flags |= PARAMPARSEFLAGS_FIRST;
 
     if (param) {
         while (param) {
-            if (flags & PARAMPARSEFLAGS_20) {
-                flags |= PARAMPARSEFLAGS_40;
+            if (flags & PARAMPARSEFLAGS_HAS_SUBARGS) {
+                flags |= PARAMPARSEFLAGS_EQUALS_OK;
             }
 
             if (!Param_GetArgument(param, &cparam, flags)) {
                 return FALSE;
             }
 
-            if (!(flags & PARAMPARSEFLAGS_1)) {
+            if (!(flags & PARAMPARSEFLAGS_NO_EXECUTE)) {
                 if (!Param_Parse(
                         param,
                         cparam,
-                        flags | (short)((param->flags & PARAMFLAGS_4) ? PARAMPARSEFLAGS_20 : 0)
+                        flags |
+                            (short)((param->flags & PARAMFLAGS_SUBARGS)
+                                        ? PARAMPARSEFLAGS_HAS_SUBARGS
+                                        : 0)
                     )) {
                     return FALSE;
                 }
-            } else if (param->flags & PARAMFLAGS_4) {
-                if (!Param_GetArgument(param, &cparam, flags | PARAMPARSEFLAGS_4)) {
+            } else if (param->flags & PARAMFLAGS_SUBARGS) {
+                if (!Param_GetArgument(param, &cparam, flags | PARAMPARSEFLAGS_SUBOPTION)) {
                     return FALSE;
                 }
             }
 
             if (cparam) {
-                flags &= ~PARAMPARSEFLAGS_10;
+                flags &= ~PARAMPARSEFLAGS_FIRST;
             }
-            flags &= ~PARAMPARSEFLAGS_40;
+            flags &= ~PARAMPARSEFLAGS_EQUALS_OK;
             param = param->next;
         }
     }
@@ -1317,14 +1314,14 @@ int Params_Parse(PARAM_T* param, int flags) {
     return TRUE;
 }
 
-void Param_Error(short id, ...) {
+void Param_Error(VarArgShort id, ...) {
     va_list va;
     va_start(va, id);
     Option_ParamError(id, va);
     va_end(va);
 }
 
-void Param_Warning(short id, ...) {
+void Param_Warning(VarArgShort id, ...) {
     va_list va;
     va_start(va, id);
     Option_ParamWarning(id, va);

@@ -1,8 +1,6 @@
 #ifndef DRIVER_UTILS_H
 #define DRIVER_UTILS_H
 
-#include "compiler/common.h"
-
 #ifdef __cplusplus
 extern "C" {
 #endif

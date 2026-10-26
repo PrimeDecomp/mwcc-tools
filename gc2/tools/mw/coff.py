@@ -1,15 +1,3 @@
-"""Relocatable i386 COFF objects: read the compiler's, write the tools' own.
-
-An Object holds sections (data and relocations) and the symbol table with its indices as the file numbers them
-(auxiliary records take indices of their own, so a symbol's index is stable between reading and writing). Names are
-latin-1, as the CodeWarrior compilers write them.
-
-Writing lays an object out the way every tool here always has: the file header, the section headers, then each
-section's data followed by its relocations, then the symbol table and the string table. Reading an object written so
-and writing it again gives the same bytes; the compiler's own objects (whose raw-data and line-number pointers differ)
-come out equivalent, not identical.
-"""
-
 from __future__ import annotations
 
 import struct
@@ -20,7 +8,6 @@ from .project import write_atomic
 
 I386 = 0x14C
 
-# section characteristics
 CODE = 0x20
 INITIALIZED = 0x40
 UNINITIALIZED = 0x80
@@ -28,12 +15,10 @@ EXECUTE = 0x20000000
 READ = 0x40000000
 WRITE = 0x80000000
 
-# symbol storage classes
 EXTERNAL = 2
 STATIC = 3
 FUNCTION_TYPE = 0x20
 
-# relocation kinds (IMAGE_REL_I386_*)
 DIR32 = 6
 DIR32NB = 7
 REL32 = 20
@@ -45,8 +30,8 @@ class CoffError(ValueError):
 
 @dataclass
 class Relocation:
-    offset: int  # in the section
-    symbol: int  # symbol index
+    offset: int
+    symbol: int
     kind: int
 
 
@@ -54,10 +39,10 @@ class Relocation:
 class Section:
     name: str
     flags: int
-    data: bytes  # b"" for an uninitialized section (its size is in .size)
+    data: bytes
     size: int
     relocations: list[Relocation] = field(default_factory=list)
-    number: int = 0  # 1-based, as symbols refer to it
+    number: int = 0
 
     @property
     def code(self) -> bool:
@@ -69,7 +54,6 @@ class Section:
 
     @property
     def alignment(self) -> int:
-        """The section's alignment (IMAGE_SCN_ALIGN_*), 1 if unset."""
         code = (self.flags >> 20) & 0xF
         return 1 << (code - 1) if code else 1
 
@@ -79,10 +63,10 @@ class Symbol:
     index: int
     name: str
     value: int
-    section: int  # 1-based section number; 0 undefined (or COMMON with a value), -1 absolute, -2 debug
+    section: int
     type: int
     storage: int
-    aux: bytes = b""  # the auxiliary records, raw (18 bytes each)
+    aux: bytes = b""
 
     @property
     def defined(self) -> bool:
@@ -112,16 +96,14 @@ class Symbol:
 class Object:
     def __init__(self):
         self.sections: list[Section] = []
-        self.symbols: list[Symbol] = []  # in table order
+        self.symbols: list[Symbol] = []
         self.by_index: dict[int, Symbol] = {}
         self.timestamp = 0
         self._next_index = 0
         self._externals: dict[str, int] = {}
 
-    # ---------------------------------------------------------------- reading
-
     @classmethod
-    def read(cls, source: Path | str | bytes) -> "Object":
+    def read(cls, source: Path | str | bytes) -> Object:
         data = source if isinstance(source, bytes) else Path(source).read_bytes()
         where = "object" if isinstance(source, bytes) else str(source)
         if len(data) < 20:
@@ -171,10 +153,7 @@ class Object:
         obj._next_index = i
         return obj
 
-    # ---------------------------------------------------------------- queries
-
     def symbol(self, index: int) -> Symbol:
-        """The symbol at INDEX (as a relocation names it)."""
         try:
             return self.by_index[index]
         except KeyError:
@@ -188,8 +167,6 @@ class Object:
             raise CoffError(f"no section {number}")
         return self.sections[number - 1]
 
-    # ---------------------------------------------------------------- building
-
     def add_section(
         self,
         name: str,
@@ -199,7 +176,6 @@ class Object:
         relocations: list[Relocation] | None = None,
         section_symbol: bool = True,
     ) -> Section:
-        """A new section (with its section symbol and auxiliary record, as compilers write them)."""
         section = Section(
             name, flags, data, len(data) if size is None else size, relocations or [], len(self.sections) + 1
         )
@@ -226,13 +202,10 @@ class Object:
         return index
 
     def external(self, name: str) -> int:
-        """The index of the undefined external NAME, added on first use."""
         if name not in self._externals:
             found = next((s.index for s in self.symbols if s.name == name and s.storage == EXTERNAL), None)
             self._externals[name] = found if found is not None else self.add_symbol(name, 0, 0, 0, EXTERNAL)
         return self._externals[name]
-
-    # ---------------------------------------------------------------- writing
 
     def to_bytes(self) -> bytes:
         strings = bytearray(4)
@@ -278,8 +251,6 @@ class Object:
 
 
 def function_extent(obj: Object, symbol: Symbol) -> tuple[Section, int, int]:
-    """(section, start, end) of the function SYMBOL defines: to the next function or external symbol in its section
-    (debug and section labels do not end a function), else to the section's end."""
     if not symbol.defined:
         raise CoffError(f"{symbol.name} is not defined in this object")
     section = obj.section(symbol.section)

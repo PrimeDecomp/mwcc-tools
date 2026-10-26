@@ -5,30 +5,28 @@
 #include "driver/CLMain.h"
 #include "driver/CLPluginRequests.h"
 #include "driver/CLPrefs.h"
+#include "driver/cmdline.h"
+#include "driver/CWPlugins.h"
+#include "driver/Files.h"
+#include "driver/MacFileTypes.h"
 #include "driver/MacSpecs.h"
+#include "driver/Memory.h"
 #include "driver/MemUtils.h"
+#include "driver/MsDos.h"
+#include "driver/oslib.h"
 #include "driver/StringExtras.h"
 #include <stdio.h>
 #include <string.h>
 
-// (MWCC's built-in, a call to the runtime's _stack_alloc; no MSL header declares it)
 extern void* alloca(unsigned int size);
 
-// (GetToolVersionInfo, first in the file, calls it)
 char* Plugin_GetVersionInfoASCII(Plugin* pl);
 
-// TODO: Pro7 declares pluginlist, toolVersionInfo, toolVersion and useToolVersion in that order at
-// the top. 2.6's .bss has pluginlist lowest (0x5dc9a8), then Plugin_GetDropInFlags' retdf, then
-// toolVersionInfo, toolVersion and useToolVersion, each only 2-aligned: with statics allocated in
-// reverse declaration order that is these three declared in reverse of Pro7's, pluginlist after
-// retdf, and 2-byte packing in force (as a header's `#pragma options align=mac68k` left on would).
 #pragma pack(2)
 static Boolean useToolVersion;
 static VersionInfo toolVersion;
 static ToolVersionInfo toolVersionInfo;
 
-// read the compiler's own version resource: its version numbers and company, product,
-// description and copyright
 static void GetToolVersionInfo(void) {
     DWORD handle;
     char path[260];
@@ -198,7 +196,7 @@ DropInFlags* Plugin_GetDropInFlags(Plugin* pl) {
     }
 }
 
-UInt32 Plugin_GetPluginType(Plugin* pl) {
+OSType Plugin_GetPluginType(Plugin* pl) {
     DropInFlags* df;
 
     OS_ASSERT(345, pl);
@@ -285,7 +283,7 @@ Boolean Plugin_MatchesName(Plugin* pl, const char* name) {
     return strcmp(pname, name) == 0;
 }
 
-Boolean Plugin_CL_MatchesTarget(Plugin* pl, UInt32 cpu, UInt32 os, Boolean exact) {
+Boolean Plugin_CL_MatchesTarget(Plugin* pl, OSType cpu, OSType os, Boolean exact) {
     const CWTargetList* tl;
     int idx;
     int ix;
@@ -293,16 +291,12 @@ Boolean Plugin_CL_MatchesTarget(Plugin* pl, UInt32 cpu, UInt32 os, Boolean exact
     tl = Plugin_CL_GetTargetList(pl);
 
     for (idx = 0; idx < tl->cpuCount; idx++) {
-        if (cpu ==
-            targetCPUAny ||
-            cpu ==
-            tl->cpus[idx] ||
+        if (cpu == targetCPUAny ||
+            cpu == (OSType)tl->cpus[idx] ||
             (tl->cpus[idx] == targetCPUAny && !exact)) {
             for (ix = 0; ix < tl->osCount; ix++) {
-                if (os ==
-                    targetOSAny ||
-                    os ==
-                    tl->oss[ix] ||
+                if (os == targetOSAny ||
+                    os == (OSType)tl->oss[ix] ||
                     (tl->oss[ix] == targetOSAny && !exact)) {
                     return TRUE;
                 }
@@ -314,7 +308,7 @@ Boolean Plugin_CL_MatchesTarget(Plugin* pl, UInt32 cpu, UInt32 os, Boolean exact
 }
 
 static Boolean CL_MatchesExtMapping(
-    CWExtensionMapping* map, UInt32 type, const char* ext, Boolean exact
+    CWExtensionMapping* map, OSType type, const char* ext, Boolean exact
 ) {
     if (exact && type && map->type && type == map->type) {
         return TRUE;
@@ -329,7 +323,7 @@ static Boolean CL_MatchesExtMapping(
     return FALSE;
 }
 
-Boolean Plugin_CL_MatchesFileType(Plugin* pl, UInt32 type, const char* extension, Boolean exact) {
+Boolean Plugin_CL_MatchesFileType(Plugin* pl, OSType type, const char* extension, Boolean exact) {
     const CWExtMapList* el;
     int idx;
 
@@ -344,15 +338,13 @@ Boolean Plugin_CL_MatchesFileType(Plugin* pl, UInt32 type, const char* extension
     return FALSE;
 }
 
-Boolean Plugin_MatchesType(Plugin* pl, UInt32 type, UInt32 lang, Boolean exact) {
+Boolean Plugin_MatchesType(Plugin* pl, OSType type, OSType lang, Boolean exact) {
     const DropInFlags* df;
 
     df = Plugin_GetDropInFlags(pl);
     if (df->dropintype == type || type == CWDROPINANYTYPE) {
-        if (df->edit_language ==
-            lang ||
-            lang ==
-            Lang_Any ||
+        if ((OSType)df->edit_language == lang ||
+            lang == Lang_Any ||
             (df->edit_language == Lang_Any && !exact)) {
             return TRUE;
         }
@@ -361,7 +353,7 @@ Boolean Plugin_MatchesType(Plugin* pl, UInt32 type, UInt32 lang, Boolean exact) 
     return FALSE;
 }
 
-Boolean Plugin_Pr_MatchesPlugin(Plugin* pl, CLPluginInfo* pluginfo, UInt32 cpu, UInt32 os) {
+Boolean Plugin_Pr_MatchesPlugin(Plugin* pl, CLPluginInfo* pluginfo, OSType cpu, OSType os) {
     Boolean isSupported;
 
     OS_ASSERT(566, pl->pr_cb != NULL);
@@ -388,7 +380,7 @@ Boolean Plugin_Pr_MatchesPanels(Plugin* pl, int numPanels, const char** panelNam
 }
 
 Boolean Plugin_CL_WriteObjectFile(
-    Plugin* pl, CWFileSpec* srcfss, CWFileSpec* outfss, UInt32 creator, UInt32 type, Handle data
+    Plugin* pl, FSSpec* srcfss, FSSpec* outfss, OSType creator, OSType type, Handle data
 ) {
     OSSpec outoss;
 
@@ -403,7 +395,7 @@ Boolean Plugin_CL_WriteObjectFile(
     return WriteBinaryHandleToFile(&outoss, creator, type, OS_PeekMacHandle(data));
 }
 
-Boolean Plugin_CL_GetCompilerMapping(Plugin* pl, UInt32 type, const char* ext, UInt32* flags) {
+Boolean Plugin_CL_GetCompilerMapping(Plugin* pl, OSType type, const char* ext, UInt32* flags) {
     const CWExtMapList* el;
     int idx;
     int pick;
@@ -443,12 +435,9 @@ static Boolean SupportedPlugin(Plugin* pl, const char** reason) {
         *reason = "GetDropInFlags callback failed";
         return FALSE;
     }
-    if (df->dropintype !=
-        CWDROPINCOMPILERTYPE &&
-        df->dropintype !=
-        CWDROPINLINKERTYPE &&
-        df->dropintype !=
-        CWDROPINPARSERTYPE &&
+    if (df->dropintype != CWDROPINCOMPILERTYPE &&
+        df->dropintype != CWDROPINLINKERTYPE &&
+        df->dropintype != CWDROPINPARSERTYPE &&
         df->dropintype != CWDROPINDRIVERTYPE) {
         *reason = "The plugin type is not supported by this driver";
         return FALSE;
@@ -836,7 +825,7 @@ int Plugins_Add(Plugin* pl) {
     return TRUE;
 }
 
-Plugin* Plugins_CL_MatchTarget(Plugin* list, UInt32 cpu, UInt32 os, UInt32 type, UInt32 lang) {
+Plugin* Plugins_CL_MatchTarget(Plugin* list, OSType cpu, OSType os, OSType type, OSType lang) {
     Plugin* scan;
     Plugin* pick;
 
@@ -861,12 +850,12 @@ Plugin* Plugins_CL_MatchTarget(Plugin* list, UInt32 cpu, UInt32 os, UInt32 type,
 
 Plugin* Plugins_GetPluginForFile(
     Plugin* list,
-    UInt32 plugintype,
-    UInt32 cpu,
-    UInt32 os,
-    UInt32 type,
+    OSType plugintype,
+    OSType cpu,
+    OSType os,
+    OSType type,
     const char* ext,
-    UInt32 lang
+    OSType lang
 ) {
     Plugin* scan;
     Plugin* pick;
@@ -890,7 +879,7 @@ Plugin* Plugins_GetPluginForFile(
     return pick;
 }
 
-Plugin* Plugins_GetLinker(Plugin* list, UInt32 cpu, UInt32 os) {
+Plugin* Plugins_GetLinker(Plugin* list, OSType cpu, OSType os) {
     Plugin* scan;
     Plugin* pick;
 
@@ -913,7 +902,7 @@ Plugin* Plugins_GetLinker(Plugin* list, UInt32 cpu, UInt32 os) {
     return pick;
 }
 
-Plugin* Plugins_GetPreLinker(Plugin* list, UInt32 cpu, UInt32 os) {
+Plugin* Plugins_GetPreLinker(Plugin* list, OSType cpu, OSType os) {
     Plugin* scan;
     Plugin* pick;
 
@@ -936,7 +925,7 @@ Plugin* Plugins_GetPreLinker(Plugin* list, UInt32 cpu, UInt32 os) {
     return pick;
 }
 
-Plugin* Plugins_GetPostLinker(Plugin* list, UInt32 cpu, UInt32 os) {
+Plugin* Plugins_GetPostLinker(Plugin* list, OSType cpu, OSType os) {
     Plugin* scan;
     Plugin* pick;
 
@@ -961,11 +950,11 @@ Plugin* Plugins_GetPostLinker(Plugin* list, UInt32 cpu, UInt32 os) {
 
 Plugin* Plugins_GetParserForPlugin(
     Plugin* list,
-    UInt32 style,
+    OSType style,
     int numPlugins,
     CLPluginInfo* plugins,
-    UInt32 cpu,
-    UInt32 os,
+    OSType cpu,
+    OSType os,
     int numPanels,
     const char** panelNames
 ) {
@@ -985,10 +974,8 @@ Plugin* Plugins_GetParserForPlugin(
             int pnl;
             hasplugintype = FALSE;
             for (idx = 0; idx < numPlugins; idx++) {
-                if (plugins[idx].plugintype !=
-                    CWDROPINPARSERTYPE &&
-                    plugins[idx].plugintype !=
-                    CWDROPINDRIVERTYPE &&
+                if (plugins[idx].plugintype != CWDROPINPARSERTYPE &&
+                    plugins[idx].plugintype != CWDROPINDRIVERTYPE &&
                     !plugins[idx].storeCommandLine) {
                     if (Plugin_Pr_MatchesPlugin(scan, &plugins[idx], cpu, os)) {
                         hasplugintype = TRUE;
@@ -1128,7 +1115,7 @@ int Plugin_AddFileTypeMappings(Plugin* pl, OSFileTypeMappings** mlist) {
 }
 
 int Plugins_AddFileTypeMappingsForTarget(
-    Plugin* list, OSFileTypeMappings** mlist, UInt32 cpu, UInt32 os
+    Plugin* list, OSFileTypeMappings** mlist, OSType cpu, OSType os
 ) {
     if (!list) {
         list = pluginlist;

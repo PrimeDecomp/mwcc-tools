@@ -2,7 +2,6 @@
 #include "compiler/BE_symbol.h"
 #include "compiler/CDecl.h"
 #include "compiler/CError.h"
-#include "compiler/CException.h"
 #include "compiler/CExpr.h"
 #include "compiler/CFunc.h"
 #include "compiler/CInit.h"
@@ -17,6 +16,7 @@
 #include "compiler/DWARF.h"
 #include "compiler/enode.h"
 #include "compiler/Exceptions.h"
+#include "compiler/InlineAsm.h"
 #include "compiler/InlineAsmPPC.h"
 #include "compiler/InstrSelection.h"
 #include "compiler/Intrinsics.h"
@@ -24,12 +24,14 @@
 #include "compiler/ObjGen_PPC_EABI.h"
 #include "compiler/Operands.h"
 #include "compiler/PCode.h"
+#include "compiler/PCodeInfo.h"
 #include "compiler/PPCError.h"
 #include "compiler/RegisterInfo.h"
-#include "compiler/Registers.h"
 #include "compiler/StackFrame.h"
+#include "compiler/tokens.h"
 #include "compiler/types.h"
 #include "driver/COSToolsCLT.h"
+#include "driver/oslib.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -44,10 +46,8 @@ ObjectList* vectorconstlist;
 Object toc0;
 Boolean no_descriptors;
 CodeLabelList* codelabellist;
-// 2.6: the pooled-data anchors this function references
 AnchorEntry* anchorlist;
 
-// forward decls
 static inline void estimate_func_param_size(ENode* node);
 
 static inline int disables_optimizer(ENode* node) {
@@ -73,13 +73,10 @@ void setupaddressing(void) {
 
     no_descriptors = TRUE;
     memclrw(&toc0, sizeof(toc0));
-    // 2.6: the anchors replace Pro7's pic_base
     toc0.name = GetHashNameNodeExport("TOC");
     anchorlist = NULL;
 }
 
-// 2.6: Pro7's referenceIndirectPointer for an anchor: the anchor is used as often as the objects
-// addressed from it, and kept in toclist (TODO: invented name)
 static inline void reference_anchor(Object* anchor) {
     VarInfo* vi;
     ObjectList* list;
@@ -102,8 +99,6 @@ static inline void reference_anchor(Object* anchor) {
     toclist = list;
 }
 
-// Pro7's resetTOCvarinfo, which 2.6 moved here (Pro7's place after expandTOCreferences is empty)
-// and extended; the name is Wii's, whose body is this one plus a small-data list
 void reset_anchor_varinfo(void) {
     ObjectList* list;
     AnchorEntry* anchor;
@@ -115,7 +110,6 @@ void reset_anchor_varinfo(void) {
         list->object->u.data.info = CodeGen_GetNewVarInfo();
     }
 
-    // 2.6: each anchor's section keeps only its first group, emptied
     for (anchor = anchorlist; anchor != NULL; anchor = anchor->next) {
         link = anchor->symbolLink;
         for (group = link->groups; group != NULL; group = group->next) {
@@ -136,7 +130,6 @@ void reset_anchor_varinfo(void) {
     }
 }
 
-// 2.6: records that obj is addressed from the pooled-data anchor (TODO: invented name)
 static void add_anchor_reference(Object* anchor, Object* obj) {
     BE_SymGroup* other;
     AnchorEntry* entry;
@@ -266,17 +259,14 @@ Object* createfloatconstant(Type* type, Float* data) {
     } pair;
 
     if (!copts.use_fp) {
-        PPCError_ErrorTerm(PPCErrorStr169);
+        PPCError_ErrorTerm(PPCERR_FLOAT_CONSTANT_WITHOUT_FLOAT);
     }
-    // 2.6: a paired-single constant holds the value in both halves
     if (IS_TYPE_VEC2X32FLOAT(type)) {
         pair.f[0] = data->data.value;
         pair.f[1] = data->data.value;
         data->data.value = pair.d;
     }
 
-    // Pro7 casts `data` at each use; 2.6 keeps a UInt32* copy (another pointer type, so `data` itself
-    // stays in its stack slot, as 2.6's reloads show)
     value = (UInt32*)data;
     for (list = floatconstlist; list; list = list->next) {
         objtype = list->object->type;
@@ -295,18 +285,20 @@ Object* createfloatconstant(Type* type, Float* data) {
     obj->u.data.info = NULL;
     obj->u.data.linkname = obj->name;
     obj->sclass = TK_STATIC;
-#if VERSION == VERSION_GC_2_0P1 || VERSION == VERSION_GC_2_0P2
-    // 2.0p1 (2.0 patched for BFBB) and GC_2_0p2 (BFBB's compiler): floating-point literals are not const
+#if VERSION == VERSION_GC_2_0P2
     obj->qual = Q_INLINE_DATA;
 #else
     obj->qual = Q_CONST | Q_INLINE_DATA;
 #endif
     obj->datatype = DDATA;
-    // 2.6: the EABI picks the literal's section by size (.sdata2 when it fits)
-    PPC_EABI_SetSection(obj, type->size, 1, 1);
+#if VERSION < VERSION_GC_2_0
+    PPC_EABI_SetSection(obj, type->size, TRUE);
+#else
+    PPC_EABI_SetSection(obj, type->size, TRUE, TRUE);
+#endif
     MakeSymbolTableEntry(obj);
 
-    obj->flags |= OBJECT_FLAGS_2;
+    obj->flags |= OBJECT_REFERENCED;
 
     obj->u.data.u.floatconst = galloc(sizeof(Float));
     copy = obj->u.data.u.floatconst;
@@ -318,7 +310,6 @@ Object* createfloatconstant(Type* type, Float* data) {
     list->next = floatconstlist;
     floatconstlist = list;
 
-    // 2.6: -fp soft keeps floating-point constants out of the literal pools
     if (!copts.soft_float) {
         ObjGen_DeclareFloatConst(obj);
     }
@@ -382,7 +373,7 @@ static void RewriteVectorConst(ENode* expr) {
     ENode* inner;
     UInt8 data[16];
 
-    CMach_InitVectorMem(expr->rtype, expr->data.vector128val, data, 1);
+    CMach_InitVectorMem(expr->rtype, expr->data.vector128val, data, TRUE);
 
     if (cparamblkptr->precompile == 1) {
         CError_Error(ERR_ILLEGAL_USE_PRECOMPILED_HEADER);
@@ -407,7 +398,6 @@ static void RewriteVectorConst(ENode* expr) {
             di.qual = Q_CONST;
             di.storageclass = TK_STATIC;
             di.is_extern_c = TRUE;
-            // 2.6: the pool goes to .sdata2 when vectors fit its threshold
             if (copts.sdata2_threshold > 16) {
                 di.section = GetCurrentSection(SECT_SCONST_TYPE);
             } else {
@@ -463,8 +453,7 @@ static Object* createcodelabel(CLabel* label) {
     obj->sclass = TK_STATIC;
     obj->qual = Q_CONST;
     obj->datatype = DDATA;
-    obj->flags |= OBJECT_FLAGS_2 | OBJECT_DEFINED;
-    // 2.6: code labels live in the function's text section
+    obj->flags |= OBJECT_REFERENCED | OBJECT_DEFINED;
     obj->section = GetCurrentSection(SECT_SDATA_TYPE);
 
     list = galloc(sizeof(CodeLabelList));
@@ -542,14 +531,12 @@ static ENode* COND_to_COMPARE(ENode* cond, ENode* expr1, ENode* expr2) {
         expr2 = expr2->data.monadic;
     }
 
-    if (expr1->type !=
-        EINTCONST ||
+    if (expr1->type != EINTCONST ||
         !TYPE_FITS_IN_REGISTER(expr1->rtype) ||
         !CInt64_IsInRange(expr1->data.intval, 4)) {
         return NULL;
     }
-    if (expr2->type !=
-        EINTCONST ||
+    if (expr2->type != EINTCONST ||
         !TYPE_FITS_IN_REGISTER(expr2->rtype) ||
         !CInt64_IsInRange(expr2->data.intval, 4)) {
         return NULL;
@@ -591,29 +578,26 @@ static ENode* COND_to_COMPARE(ENode* cond, ENode* expr1, ENode* expr2) {
 }
 
 static ENode* comparewithzero(ENode* expr) {
-    ENode* expr1;
-    ENode* expr2;
-    ENode* tmp;
+    ENode* compare;
+    ENode* zero;
+    ENode* inner;
 
-    expr1 = lalloc(sizeof(ENode));
-    memclrw(expr1, sizeof(ENode));
-    expr2 = lalloc(sizeof(ENode));
-    memclrw(expr2, sizeof(ENode));
+    compare = lalloc(sizeof(ENode));
+    memclrw(compare, sizeof(ENode));
+    zero = lalloc(sizeof(ENode));
+    memclrw(zero, sizeof(ENode));
 
-    // 2.6: a comparison under casts to a register type is used as it is
-    for (tmp = expr; tmp->type == EFORCELOAD || tmp->type == ETYPCON; tmp = tmp->data.monadic) {
+    for (inner = expr; inner->type == EFORCELOAD || inner->type == ETYPCON;
+         inner = inner->data.monadic) {
         if (!TYPE_FITS_IN_REGISTER(expr->rtype)) {
             break;
         }
     }
-    if (tmp->type ==
-        ELOGNOT ||
-        tmp->type ==
-        ELAND ||
-        tmp->type ==
-        ELOR ||
-        (tmp->type >= ELESS && tmp->type <= ENOTEQU)) {
-        expr = tmp;
+    if (inner->type == ELOGNOT ||
+        inner->type == ELAND ||
+        inner->type == ELOR ||
+        (inner->type >= ELESS && inner->type <= ENOTEQU)) {
+        expr = inner;
     }
 
     while (expr->type == EFORCELOAD || expr->type == ECOMMA) {
@@ -628,9 +612,9 @@ static ENode* comparewithzero(ENode* expr) {
     }
 
     if (expr->type == ECOND && TYPE_FITS_IN_REGISTER(expr->rtype)) {
-        tmp = COND_to_COMPARE(expr->data.cond.cond, expr->data.cond.expr1, expr->data.cond.expr2);
-        if (tmp) {
-            expr = tmp;
+        inner = COND_to_COMPARE(expr->data.cond.cond, expr->data.cond.expr1, expr->data.cond.expr2);
+        if (inner) {
+            expr = inner;
         }
     }
 
@@ -641,28 +625,28 @@ static ENode* comparewithzero(ENode* expr) {
     if (IS_TYPE_FLOAT_NOT_VEC2X32FLOAT(expr->rtype)) {
         static Float float0 = {0.0};
 
-        expr2->type = EFLOATCONST;
-        expr2->cost = 0;
-        expr2->rtype = (expr->rtype->size == 4) ? (Type*)&stfloat : (Type*)&stdouble;
-        expr2->data.floatval = float0;
+        zero->type = EFLOATCONST;
+        zero->cost = 0;
+        zero->rtype = (expr->rtype->size == 4) ? (Type*)&stfloat : (Type*)&stdouble;
+        zero->data.floatval = float0;
     } else {
-        expr2->type = EINTCONST;
-        expr2->cost = 0;
+        zero->type = EINTCONST;
+        zero->cost = 0;
         if (TYPE_IS_8BYTES(expr->rtype)) {
-            expr2->rtype = (Type*)&stsignedlonglong;
+            zero->rtype = (Type*)&stsignedlonglong;
         } else {
-            expr2->rtype = (Type*)&stsignedint;
+            zero->rtype = (Type*)&stsignedint;
         }
-        expr2->data.intval.lo = 0;
-        expr2->data.intval.hi = 0;
+        zero->data.intval.lo = 0;
+        zero->data.intval.hi = 0;
     }
 
-    expr1->type = ENOTEQU;
-    expr1->cost = expr->cost;
-    expr1->rtype = (Type*)&stsignedint;
-    expr1->data.diadic.left = expr;
-    expr1->data.diadic.right = expr2;
-    return expr1;
+    compare->type = ENOTEQU;
+    compare->cost = expr->cost;
+    compare->rtype = (Type*)&stsignedint;
+    compare->data.diadic.left = expr;
+    compare->data.diadic.right = zero;
+    return compare;
 }
 
 static inline void rewritefunctioncallreturningstruct(ENode* expr) {
@@ -691,8 +675,6 @@ static void rewritestrcpy(ENode* expr) {
     int_expr->cost = 0;
     int_expr->flags = 0;
     int_expr->rtype = (Type*)&stunsignedlong;
-    // CInt64_SetLong written out: Pro7's call matches here but makes expandTOCexpression's
-    // inlining of this function differ (one statement more or less for -inline auto)
     size = expr->data.funccall.args->next->node->data.string.size;
     int_expr->data.intval.lo = size;
     int_expr->data.intval.hi = size < 0 ? 0xffffffffU : 0U;
@@ -727,7 +709,7 @@ static inline Type* promote_type(Type* type) {
 }
 
 static Type* common_type(Type* type1, Type* type2) {
-    Type* tmp;
+    Type* swap;
 
     if (IS_TYPE_FLOAT_NOT_VEC2X32FLOAT(type1) || IS_TYPE_FLOAT_NOT_VEC2X32FLOAT(type2)) {
         return TYPE_INTEGRAL(type1)->integral > TYPE_INTEGRAL(type2)->integral ? type1 : type2;
@@ -737,9 +719,9 @@ static Type* common_type(Type* type1, Type* type2) {
     type2 = promote_type(type2);
     if (type1 != type2) {
         if (TYPE_INTEGRAL(type1)->integral < TYPE_INTEGRAL(type2)->integral) {
-            tmp = type1;
+            swap = type1;
             type1 = type2;
-            type2 = tmp;
+            type2 = swap;
         }
 
         if (type1->size == type2->size && !is_unsigned(type1) && is_unsigned(type2)) {
@@ -755,15 +737,12 @@ static Type* common_type(Type* type1, Type* type2) {
     return type1;
 }
 
-// TODO: not exact (66%): 2.6 reloads `expr` (and `define`) from the stack after every store, as
-// if their addresses were taken (a `(void)&expr` reproduces expr's reloads), and swaps esi/edi;
-// tried: Pro7's declaration order and block scopes, declaration-order search
 static void rewrite_opassign(ENode* expr, ENodeType exprtype) {
     ENode* left_sub;
     ENode* right;
     Type* left_type;
     Type* right_type;
-    ENode* tmp;
+    ENode* cast;
     ENode* new_expr;
     Type* commontype;
     Type* promo_left;
@@ -822,8 +801,7 @@ static void rewrite_opassign(ENode* expr, ENodeType exprtype) {
             if (IS_TYPE_POINTER(left_type)) {
                 break;
             }
-            if (right->type ==
-                EINTCONST &&
+            if (right->type == EINTCONST &&
                 TYPE_FITS_IN_REGISTER(left_type) &&
                 !TYPE_IS_8BYTES(right_type)) {
                 break;
@@ -839,27 +817,27 @@ static void rewrite_opassign(ENode* expr, ENodeType exprtype) {
         case EMODULO:
             commontype = common_type(left_type, right_type);
             if (left_type != commontype) {
-                tmp = lalloc(sizeof(ENode));
-                memclrw(tmp, sizeof(ENode));
-                tmp->type = ETYPCON;
-                tmp->rtype = left_type;
-                tmp->data.monadic = expr->data.diadic.right;
-                expr->data.diadic.right = tmp;
+                cast = lalloc(sizeof(ENode));
+                memclrw(cast, sizeof(ENode));
+                cast->type = ETYPCON;
+                cast->rtype = left_type;
+                cast->data.monadic = expr->data.diadic.right;
+                expr->data.diadic.right = cast;
 
-                tmp = lalloc(sizeof(ENode));
-                memclrw(tmp, sizeof(ENode));
-                tmp->type = ETYPCON;
-                tmp->rtype = commontype;
-                tmp->data.monadic = new_expr->data.diadic.left;
-                new_expr->data.diadic.left = tmp;
+                cast = lalloc(sizeof(ENode));
+                memclrw(cast, sizeof(ENode));
+                cast->type = ETYPCON;
+                cast->rtype = commontype;
+                cast->data.monadic = new_expr->data.diadic.left;
+                new_expr->data.diadic.left = cast;
             }
             if (right_type != commontype) {
-                tmp = lalloc(sizeof(ENode));
-                memclrw(tmp, sizeof(ENode));
-                tmp->type = ETYPCON;
-                tmp->rtype = commontype;
-                tmp->data.monadic = new_expr->data.diadic.right;
-                new_expr->data.diadic.right = tmp;
+                cast = lalloc(sizeof(ENode));
+                memclrw(cast, sizeof(ENode));
+                cast->type = ETYPCON;
+                cast->rtype = commontype;
+                cast->data.monadic = new_expr->data.diadic.right;
+                new_expr->data.diadic.right = cast;
             }
             new_expr->rtype = commontype;
             break;
@@ -869,35 +847,36 @@ static void rewrite_opassign(ENode* expr, ENodeType exprtype) {
             promo_left = promote_type(left_type);
             promo_right = promote_type(right_type);
             if (left_type != promo_left) {
-                tmp = lalloc(sizeof(ENode));
-                memclrw(tmp, sizeof(ENode));
-                tmp->type = ETYPCON;
-                tmp->rtype = left_type;
-                tmp->data.monadic = expr->data.diadic.right;
-                expr->data.diadic.right = tmp;
+                cast = lalloc(sizeof(ENode));
+                memclrw(cast, sizeof(ENode));
+                cast->type = ETYPCON;
+                cast->rtype = left_type;
+                cast->data.monadic = expr->data.diadic.right;
+                expr->data.diadic.right = cast;
 
-                tmp = lalloc(sizeof(ENode));
-                memclrw(tmp, sizeof(ENode));
-                tmp->type = ETYPCON;
-                tmp->rtype = promo_left;
-                tmp->data.monadic = new_expr->data.diadic.left;
-                new_expr->data.diadic.left = tmp;
+                cast = lalloc(sizeof(ENode));
+                memclrw(cast, sizeof(ENode));
+                cast->type = ETYPCON;
+                cast->rtype = promo_left;
+                cast->data.monadic = new_expr->data.diadic.left;
+                new_expr->data.diadic.left = cast;
             }
             if (right_type != promo_right) {
-                if (new_expr->data.diadic.right->type ==
-                    EINTCONST &&
+                if (new_expr->data.diadic.right->type == EINTCONST &&
                     promo_right == (Type*)&stsignedint) {
                     new_expr->data.diadic.right->rtype = (Type*)&stsignedint;
                 } else {
-                    tmp = lalloc(sizeof(ENode));
-                    memclrw(tmp, sizeof(ENode));
-                    tmp->type = ETYPCON;
-                    tmp->rtype = promo_right;
-                    tmp->data.monadic = new_expr->data.diadic.right;
-                    new_expr->data.diadic.right = tmp;
+                    cast = lalloc(sizeof(ENode));
+                    memclrw(cast, sizeof(ENode));
+                    cast->type = ETYPCON;
+                    cast->rtype = promo_right;
+                    cast->data.monadic = new_expr->data.diadic.right;
+                    new_expr->data.diadic.right = cast;
                 }
             }
             new_expr->rtype = promo_left;
+            break;
+        default:
             break;
     }
 }
@@ -909,7 +888,6 @@ static void rewrite_preincdec(ENode* expr) {
 
     subexpr = expr->data.monadic;
     type = expr->rtype;
-    // 2.6: the operand is an lvalue
     CError_ASSERT(2092, subexpr->type == EINDIRECT);
 
     new_expr = lalloc(sizeof(ENode));
@@ -939,7 +917,6 @@ static void rewrite_preincdec(ENode* expr) {
     expr->data.diadic.right = new_expr;
 }
 
-// 2.6 defines these here: comparewithzero's float0 comes before them in .data
 // clang-format off
 UInt8 lvslBytes[16][16] = {
     0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
@@ -980,14 +957,12 @@ UInt8 lvsrBytes[16][16] = {
 };
 // clang-format on
 
-// TODO: invented name (Pro7's): a vector constant's elements as signed values
 typedef union signed_vec {
     SInt8 sc[16];
     SInt16 ss[8];
     SInt32 sl[4];
 } signed_vec;
 
-// 2.6: a vector constant's elements in the target's byte order (TODO: invented name)
 static void swap_vector_elements(signed_vec* vec, Type* type) {
     union {
         SInt32 lg;
@@ -1054,7 +1029,7 @@ Boolean canoptimizevectorconst(MWVector128* vecp, Type* type, COVCResult* result
     SInt8 first8;
     SInt16* p16;
     SInt32* p32;
-    char flag;
+    char allSame;
     SInt32 first32;
     char ci;
     UInt32 l0, l1, l2, l3;
@@ -1066,12 +1041,12 @@ Boolean canoptimizevectorconst(MWVector128* vecp, Type* type, COVCResult* result
 
         p8 = (SInt8*)&vec;
         first8 = p8[0];
-        flag = TRUE;
-        for (i = 1; flag && i < 16; i++) {
-            flag = first8 == p8[i];
+        allSame = TRUE;
+        for (i = 1; allSame && i < 16; i++) {
+            allSame = first8 == p8[i];
         }
 
-        if (flag && first8 < 16 && first8 > -17) {
+        if (allSame && first8 < 16 && first8 > -17) {
             if (result) {
                 result->op1 = PC_VSPLTISB;
                 result->op2 = -1;
@@ -1082,13 +1057,13 @@ Boolean canoptimizevectorconst(MWVector128* vecp, Type* type, COVCResult* result
 
         p16 = (SInt16*)v;
         first16 = p16[0];
-        flag = TRUE;
-        for (i = 1; flag && i < 8; i++) {
-            flag = first16 == p16[i];
+        allSame = TRUE;
+        for (i = 1; allSame && i < 8; i++) {
+            allSame = first16 == p16[i];
         }
 
         conv16.sh = first16;
-        if (flag && conv16.ch[0] == 0 && conv16.ch[1] < 16 && conv16.ch[1] >= 0) {
+        if (allSame && conv16.ch[0] == 0 && conv16.ch[1] < 16 && conv16.ch[1] >= 0) {
             if (result) {
                 result->op1 = PC_VSPLTISH;
                 result->op2 = -1;
@@ -1097,7 +1072,7 @@ Boolean canoptimizevectorconst(MWVector128* vecp, Type* type, COVCResult* result
             return TRUE;
         }
 
-        if (flag && conv16.ch[0] == -1 && (conv16.ch[1] & 0xF0) == 0xF0) {
+        if (allSame && conv16.ch[0] == -1 && (conv16.ch[1] & 0xF0) == 0xF0) {
             if (result) {
                 result->op1 = PC_VSPLTISH;
                 result->op2 = -1;
@@ -1108,21 +1083,17 @@ Boolean canoptimizevectorconst(MWVector128* vecp, Type* type, COVCResult* result
 
         p32 = (SInt32*)v;
         first32 = p32[0];
-        flag = TRUE;
-        for (i = 1; flag && i < 4; i++) {
-            flag = first32 == p32[i];
+        allSame = TRUE;
+        for (i = 1; allSame && i < 4; i++) {
+            allSame = first32 == p32[i];
         }
 
         conv32.lg = first32;
-        if (flag &&
-            conv32.ch[0] ==
-            0 &&
-            conv32.ch[1] ==
-            0 &&
-            conv32.ch[2] ==
-            0 &&
-            conv32.ch[3] <
-            16 &&
+        if (allSame &&
+            conv32.ch[0] == 0 &&
+            conv32.ch[1] == 0 &&
+            conv32.ch[2] == 0 &&
+            conv32.ch[3] < 16 &&
             conv32.ch[3] >= 0) {
             if (result) {
                 result->op1 = PC_VSPLTISW;
@@ -1132,13 +1103,10 @@ Boolean canoptimizevectorconst(MWVector128* vecp, Type* type, COVCResult* result
             return TRUE;
         }
 
-        if (flag &&
-            conv32.ch[0] ==
-            -1 &&
-            conv32.ch[1] ==
-            -1 &&
-            conv32.ch[2] ==
-            -1 &&
+        if (allSame &&
+            conv32.ch[0] == -1 &&
+            conv32.ch[1] == -1 &&
+            conv32.ch[2] == -1 &&
             (conv32.ch[3] & 0xF0) == 0xF0) {
             if (result) {
                 result->op1 = PC_VSPLTISW;
@@ -1395,7 +1363,6 @@ Boolean TOC_use_fsel(ENode* expr) {
     right = expr->data.cond.expr2;
     rtype = expr->rtype;
 
-    // 2.6: -fp soft has no fsel
     if (copts.soft_float && IS_TYPE_FLOAT_NOT_VEC2X32FLOAT(rtype)) {
         return FALSE;
     }
@@ -1427,10 +1394,8 @@ Boolean TOC_use_fsel(ENode* expr) {
     if (!IS_TYPE_FLOAT_NOT_VEC2X32FLOAT(expr->data.cond.cond->data.diadic.right->rtype)) {
         return FALSE;
     }
-    if (expr->data.cond.cond->type ==
-        ELOGNOT ||
-        expr->data.cond.cond->type ==
-        ELAND ||
+    if (expr->data.cond.cond->type == ELOGNOT ||
+        expr->data.cond.cond->type == ELAND ||
         expr->data.cond.cond->type == ELOR) {
         return FALSE;
     }
@@ -1467,7 +1432,7 @@ Boolean TOC_use_fsel(ENode* expr) {
     }
 }
 
-Boolean TOC_use_isel(ENode* expr, Boolean flag) {
+Boolean TOC_use_isel(ENode* expr, Boolean force) {
     int opt;
     ENode* left;
     ENode* right;
@@ -1479,7 +1444,7 @@ Boolean TOC_use_isel(ENode* expr, Boolean flag) {
     left = expr->data.cond.expr1;
     right = expr->data.cond.expr2;
     rtype = expr->rtype;
-    if (flag) {
+    if (force) {
         opt = 10;
     } else {
         opt = copts.gen_isel;
@@ -1514,7 +1479,7 @@ Boolean TOC_use_isel(ENode* expr, Boolean flag) {
         return FALSE;
     }
 
-    if (flag) {
+    if (force) {
         Type* t = expr->data.cond.cond->data.diadic.right->rtype;
         if (!TYPE_FITS_IN_REGISTER(t)) {
             return FALSE;
@@ -1531,7 +1496,7 @@ Boolean TOC_use_isel(ENode* expr, Boolean flag) {
         if (left->data.monadic->type != EOBJREF) {
             return FALSE;
         }
-        if (flag) {
+        if (force) {
             obj = left->data.monadic->data.objref;
             if (obj->datatype != DLOCAL) {
                 return FALSE;
@@ -1574,11 +1539,8 @@ SInt32 GetSizeSkip(ENode* expr) {
     if (expr->type == EASS) {
         expr = expr->data.diadic.right;
     }
-    // 2.6: not a cast from a real or of another signedness
-    if (expr->type ==
-        ETYPCON &&
-        expr->data.monadic->rtype->size <
-        expr->rtype->size &&
+    if (expr->type == ETYPCON &&
+        expr->data.monadic->rtype->size < expr->rtype->size &&
         !IS_TYPE_FLOAT_NOT_VEC2X32FLOAT(expr->data.monadic->rtype) &&
         is_unsigned(expr->data.monadic->rtype) == is_unsigned(expr->rtype)) {
         size = expr->data.monadic->rtype->size;
@@ -1595,43 +1557,37 @@ void Optimize64bitMath(ENode* expr) {
     SInt32 rightsize;
     SInt32 totalsize;
     int unsignedflag;
-    ENode* tmp;
+    ENode* operand;
 
     CError_ASSERT(2953, TYPE_IS_8BYTES(expr->rtype));
 
     left = expr->data.diadic.left;
     right = expr->data.diadic.right;
-    // TODO: GetSizeSkip written out for each operand, as if a macro: Pro7's two calls, and inline
-    // helpers with GetSizeSkip's body (with or without a walker copy), compile 84-85% similar
     if (left->type == EASS) {
-        tmp = left->data.diadic.right;
+        operand = left->data.diadic.right;
     } else {
-        tmp = left;
+        operand = left;
     }
-    if (tmp->type ==
-        ETYPCON &&
-        tmp->data.monadic->rtype->size <
-        tmp->rtype->size &&
-        !IS_TYPE_FLOAT_NOT_VEC2X32FLOAT(tmp->data.monadic->rtype) &&
-        is_unsigned(tmp->data.monadic->rtype) == is_unsigned(tmp->rtype)) {
-        leftsize = tmp->data.monadic->rtype->size;
+    if (operand->type == ETYPCON &&
+        operand->data.monadic->rtype->size < operand->rtype->size &&
+        !IS_TYPE_FLOAT_NOT_VEC2X32FLOAT(operand->data.monadic->rtype) &&
+        is_unsigned(operand->data.monadic->rtype) == is_unsigned(operand->rtype)) {
+        leftsize = operand->data.monadic->rtype->size;
     } else {
-        leftsize = tmp->rtype->size;
+        leftsize = operand->rtype->size;
     }
     if (right->type == EASS) {
-        tmp = right->data.diadic.right;
+        operand = right->data.diadic.right;
     } else {
-        tmp = right;
+        operand = right;
     }
-    if (tmp->type ==
-        ETYPCON &&
-        tmp->data.monadic->rtype->size <
-        tmp->rtype->size &&
-        !IS_TYPE_FLOAT_NOT_VEC2X32FLOAT(tmp->data.monadic->rtype) &&
-        is_unsigned(tmp->data.monadic->rtype) == is_unsigned(tmp->rtype)) {
-        rightsize = tmp->data.monadic->rtype->size;
+    if (operand->type == ETYPCON &&
+        operand->data.monadic->rtype->size < operand->rtype->size &&
+        !IS_TYPE_FLOAT_NOT_VEC2X32FLOAT(operand->data.monadic->rtype) &&
+        is_unsigned(operand->data.monadic->rtype) == is_unsigned(operand->rtype)) {
+        rightsize = operand->data.monadic->rtype->size;
     } else {
-        rightsize = tmp->rtype->size;
+        rightsize = operand->rtype->size;
     }
     totalsize = leftsize + rightsize;
     unsignedflag = (is_unsigned(left->rtype) && is_unsigned(right->rtype)) ? 1 : 0;
@@ -1662,9 +1618,10 @@ void Optimize64bitMath(ENode* expr) {
                         left->rtype = (Type*)&stsignedint;
                     }
                 } else if (left->type == ETYPCON) {
-                    int u1 = is_unsigned(expr->data.diadic.left->rtype);
-                    int u2 = is_unsigned(left->data.monadic->rtype);
-                    if (!IS_TYPE_FLOAT_NOT_VEC2X32FLOAT(left->data.monadic->rtype) && u2 == u1) {
+                    int outerUnsigned = is_unsigned(expr->data.diadic.left->rtype);
+                    int innerUnsigned = is_unsigned(left->data.monadic->rtype);
+                    if (!IS_TYPE_FLOAT_NOT_VEC2X32FLOAT(left->data.monadic->rtype) &&
+                        innerUnsigned == outerUnsigned) {
                         expr->data.diadic.left = left->data.monadic;
                     }
                 }
@@ -1675,9 +1632,10 @@ void Optimize64bitMath(ENode* expr) {
                         right->rtype = (Type*)&stsignedint;
                     }
                 } else if (right->type == ETYPCON) {
-                    int u1 = is_unsigned(expr->data.diadic.right->rtype);
-                    int u2 = is_unsigned(right->data.monadic->rtype);
-                    if (!IS_TYPE_FLOAT_NOT_VEC2X32FLOAT(right->data.monadic->rtype) && u2 == u1) {
+                    int outerUnsigned = is_unsigned(expr->data.diadic.right->rtype);
+                    int innerUnsigned = is_unsigned(right->data.monadic->rtype);
+                    if (!IS_TYPE_FLOAT_NOT_VEC2X32FLOAT(right->data.monadic->rtype) &&
+                        innerUnsigned == outerUnsigned) {
                         expr->data.diadic.right = right->data.monadic;
                     }
                 }
@@ -1690,11 +1648,8 @@ void Optimize64bitMath(ENode* expr) {
     }
 }
 
-// (Pro7's countindirects and OptimizeNestedAssginments are not in 2.6's file: their jump tables
-// are missing from its .data)
-
 static void expandTOCexpression(ENode* expr, Type* type, int ignored) {
-    Object* tmpobj;
+    Object* funcCopy;
     ENode* cond;
     ENode* tmpexpr;
     Object* obj;
@@ -1746,7 +1701,7 @@ static void expandTOCexpression(ENode* expr, Type* type, int ignored) {
             break;
         case ESTRINGCONST:
             uses_globals = TRUE;
-            CInit_RewriteString(expr, 1);
+            CInit_RewriteString(expr, TRUE);
             expandTOCexpression(expr, NULL, FALSE);
             break;
         case EOBJREF:
@@ -1784,8 +1739,7 @@ static void expandTOCexpression(ENode* expr, Type* type, int ignored) {
             } else {
                 expandTOCexpression(expr->data.cond.cond, NULL, FALSE);
             }
-            expr->hascall = expr->data.cond.cond->hascall |
-                expr->data.cond.expr1->hascall |
+            expr->hascall = expr->data.cond.cond->hascall | expr->data.cond.expr1->hascall |
                 expr->data.cond.expr2->hascall;
             break;
         case EFUNCCALL:
@@ -1800,11 +1754,10 @@ static void expandTOCexpression(ENode* expr, Type* type, int ignored) {
                     dynamic_stack = TRUE;
                     requires_frame = TRUE;
                 }
-                // 2.6: __rtos_change_stack, __rtos_pop_stack
                 if ((Intrinsics)expr->data.funccall.funcref->data.objref->u.func.u.intrinsicid ==
-                    Intrinsic_rtos_change_stack ||
+                        Intrinsic_rtos_change_stack ||
                     (Intrinsics)expr->data.funccall.funcref->data.objref->u.func.u.intrinsicid ==
-                    Intrinsic_rtos_pop_stack) {
+                        Intrinsic_rtos_pop_stack) {
                     dynamic_stack = TRUE;
                     requires_frame = TRUE;
                 } else if ((Intrinsics)expr->data.funccall.funcref->data.objref->u.func.u
@@ -1841,22 +1794,22 @@ static void expandTOCexpression(ENode* expr, Type* type, int ignored) {
             if (ENODE_IS(tmpexpr, EINDIRECT) && IS_TYPE_FUNC(tmpexpr->rtype)) {
                 *tmpexpr = *tmpexpr->data.monadic;
             }
-            // 2.6: a function cast to another function type is called directly
+#if VERSION >= VERSION_GC_2_0
             if (ENODE_IS(tmpexpr, ETYPCON) &&
                 ENODE_IS(tmpexpr->data.monadic, EOBJREF) &&
                 tmpexpr->data.monadic->data.objref->datatype == DFUNC) {
                 *tmpexpr = *tmpexpr->data.monadic;
             }
+#endif
 
             if (ENODE_IS(expr->data.funccall.funcref, EOBJREF)) {
                 expr->data.funccall.funcref->hascall = FALSE;
-                if (expr->data.funccall.funcref->data.objref->datatype ==
-                    DVFUNC &&
-                    (expr->data.funccall.funcref->flags & ENODE_FLAG_80)) {
-                    tmpobj = galloc(sizeof(Object));
-                    *tmpobj = *expr->data.funccall.funcref->data.objref;
-                    tmpobj->datatype = DFUNC;
-                    expr->data.funccall.funcref->data.objref = tmpobj;
+                if (expr->data.funccall.funcref->data.objref->datatype == DVFUNC &&
+                    (expr->data.funccall.funcref->flags & ENODE_FLAG_NONVIRTUAL)) {
+                    funcCopy = galloc(sizeof(Object));
+                    *funcCopy = *expr->data.funccall.funcref->data.objref;
+                    funcCopy->datatype = DFUNC;
+                    expr->data.funccall.funcref->data.objref = funcCopy;
                 }
             } else {
                 expandTOCexpression(expr->data.funccall.funcref, NULL, FALSE);
@@ -1964,8 +1917,7 @@ opassign_common:
         case EEQU:
         case ENOTEQU:
             if (ENODE_IS(expr->data.diadic.right, EINTCONST) &&
-                expr->data.diadic.right->data.intval.lo ==
-                0 &&
+                expr->data.diadic.right->data.intval.lo == 0 &&
                 expr->data.diadic.right->data.intval.hi == 0) {
                 for (tmpexpr = expr->data.diadic.left; ENODE_IS2(tmpexpr, EFORCELOAD, ETYPCON);
                      tmpexpr = tmpexpr->data.monadic) {
@@ -2011,11 +1963,11 @@ opassign_common:
                     }
                 }
             }
+#if VERSION >= VERSION_GC_2_0
         case ELESS:
         case EGREATER:
         case ELESSEQU:
         case EGREATEREQU:
-            // 2.6: an integer constant compared with a non-constant goes on the right
             if (IS_TYPE_INT_OR_ENUM(expr->data.diadic.right->rtype) &&
                 IS_TYPE_INT_OR_ENUM(expr->data.diadic.left->rtype) &&
                 ENODE_IS(expr->data.diadic.left, EINTCONST) &&
@@ -2036,8 +1988,11 @@ opassign_common:
                     case EGREATEREQU:
                         expr->type = ELESSEQU;
                         break;
+                    default:
+                        break;
                 }
             }
+#endif
         case EDIV:
             if (ENODE_IS(expr, EDIV) &&
                 ENODE_IS(expr->data.diadic.right, EFLOATCONST) &&
@@ -2049,6 +2004,12 @@ opassign_common:
         case EMODULO:
         case ESHL:
         case ESHR:
+#if VERSION < VERSION_GC_2_0
+        case ELESS:
+        case EGREATER:
+        case ELESSEQU:
+        case EGREATEREQU:
+#endif
             expandTOCexpression(expr->data.diadic.left, NULL, FALSE);
             expandTOCexpression(expr->data.diadic.right, NULL, FALSE);
             expr->hascall = expr->data.diadic.left->hascall | expr->data.diadic.right->hascall;
@@ -2078,7 +2039,6 @@ opassign_common:
             if (copts.soft_float &&
                 IS_TYPE_FLOAT_NOT_VEC2X32FLOAT(expr->rtype) &&
                 ENODE_IS2(expr, EDIV, EMUL)) {
-                // 2.6: a -fp soft operation is a call to the SFPE helpers
                 expr->hascall = TRUE;
                 requires_frame = TRUE;
                 makes_call = TRUE;
@@ -2093,7 +2053,6 @@ opassign_common:
                     ENODE_IS(expr, EGREATEREQU) ||
                     ENODE_IS(expr, EEQU) ||
                     ENODE_IS(expr, ENOTEQU)) {
-                    // 2.6: a -fp soft operation is a call to the SFPE helpers
                     expr->hascall = TRUE;
                     requires_frame = TRUE;
                     makes_call = TRUE;
@@ -2122,8 +2081,7 @@ opassign_common:
                 if (ENODE_IS(tmpexpr, ETYPCON) &&
                     IS_TYPE_INT_OR_ENUM(tmpexpr->rtype) &&
                     IS_TYPE_INT_OR_ENUM(tmpexpr->data.monadic->rtype) &&
-                    tmpexpr->data.monadic->rtype->size >=
-                    type->size &&
+                    tmpexpr->data.monadic->rtype->size >= type->size &&
                     !TYPE_IS_8BYTES(tmpexpr->data.monadic->rtype)) {
                     expr->data.diadic.left = tmpexpr->data.monadic;
                 }
@@ -2132,8 +2090,7 @@ opassign_common:
                 if (ENODE_IS(tmpexpr, ETYPCON) &&
                     IS_TYPE_INT_OR_ENUM(tmpexpr->rtype) &&
                     IS_TYPE_INT_OR_ENUM(tmpexpr->data.monadic->rtype) &&
-                    tmpexpr->data.monadic->rtype->size >=
-                    type->size &&
+                    tmpexpr->data.monadic->rtype->size >= type->size &&
                     !TYPE_IS_8BYTES(tmpexpr->data.monadic->rtype)) {
                     expr->data.diadic.right = tmpexpr->data.monadic;
                 }
@@ -2143,7 +2100,6 @@ opassign_common:
             if (copts.soft_float &&
                 IS_TYPE_FLOAT_NOT_VEC2X32FLOAT(expr->rtype) &&
                 ENODE_IS3(expr, EMUL, EADD, ESUB)) {
-                // 2.6: a -fp soft operation is a call to the SFPE helpers
                 expr->hascall = TRUE;
                 requires_frame = TRUE;
                 makes_call = TRUE;
@@ -2160,7 +2116,6 @@ opassign_common:
                 expandTOCexpression(tmpexpr, NULL, expr->rtype->type == TYPEVOID);
             }
 
-            // 2.6: a cast of an integer constant is folded
             if (ENODE_IS(tmpexpr, EINTCONST) && IS_TYPE_INT_OR_ENUM(expr->rtype)) {
                 if (is_unsigned(expr->rtype)) {
                     switch (expr->rtype->size) {
@@ -2176,6 +2131,10 @@ opassign_common:
                         case 8:
                             break;
                         default:
+#if VERSION == VERSION_GC_1_3_2
+#undef CError_LINE_DELTA
+#define CError_LINE_DELTA -36
+#endif
                             CError_FATAL(3816);
                     }
                 } else {
@@ -2225,14 +2184,13 @@ opassign_common:
 
             if ((copts.soft_float && IS_TYPE_FLOAT_NOT_VEC2X32FLOAT(tmpexpr->rtype)) ||
                 (copts.soft_float && IS_TYPE_FLOAT_NOT_VEC2X32FLOAT(expr->rtype))) {
-                // 2.6: a -fp soft operation is a call to the SFPE helpers
                 expr->hascall = TRUE;
                 requires_frame = TRUE;
                 makes_call = TRUE;
             }
 
             if (IS_TYPE_VECTOR(expr->rtype) && !IS_TYPE_VECTOR(tmpexpr->rtype)) {
-                PPCError_Error(PPCErrorStr114);
+                PPCError_Error(PPCERR_ILLEGAL_VECTOR_INIT_OR_CAST);
             }
             break;
 
@@ -2245,7 +2203,6 @@ opassign_common:
                 expandTOCexpression(expr->data.monadic, NULL, FALSE);
                 expr->hascall = expr->data.monadic->hascall;
                 if (copts.soft_float && IS_TYPE_FLOAT_NOT_VEC2X32FLOAT(expr->rtype)) {
-                    // 2.6: a -fp soft operation is a call to the SFPE helpers
                     expr->hascall = TRUE;
                     requires_frame = TRUE;
                     makes_call = TRUE;
@@ -2255,7 +2212,6 @@ opassign_common:
             expr->type = EPREINC;
         case EPREINC:
             if (copts.soft_float && IS_TYPE_FLOAT_NOT_VEC2X32FLOAT(expr->rtype)) {
-                // 2.6: a -fp soft operation is a call to the SFPE helpers
                 expr->hascall = TRUE;
                 requires_frame = TRUE;
                 makes_call = TRUE;
@@ -2273,7 +2229,6 @@ opassign_common:
                 expandTOCexpression(expr->data.monadic, NULL, FALSE);
                 expr->hascall = expr->data.monadic->hascall;
                 if (copts.soft_float && IS_TYPE_FLOAT_NOT_VEC2X32FLOAT(expr->rtype)) {
-                    // 2.6: a -fp soft operation is a call to the SFPE helpers
                     expr->hascall = TRUE;
                     requires_frame = TRUE;
                     makes_call = TRUE;
@@ -2283,7 +2238,6 @@ opassign_common:
             expr->type = EPREDEC;
         case EPREDEC:
             if (copts.soft_float && IS_TYPE_FLOAT_NOT_VEC2X32FLOAT(expr->rtype)) {
-                // 2.6: a -fp soft operation is a call to the SFPE helpers
                 expr->hascall = TRUE;
                 requires_frame = TRUE;
                 makes_call = TRUE;
@@ -2298,8 +2252,9 @@ opassign_common:
                 !ENODE_IS_RANGE(expr->data.monadic, ELESS, ENOTEQU)) {
                 expr->data.monadic = comparewithzero(expr->data.monadic);
             }
-            // 2.6: the negated operand is not narrowed to the cast's type
+#if VERSION >= VERSION_GC_2_0
             type = NULL;
+#endif
         case EMONMIN:
         case EBINNOT:
             expandTOCexpression(tmpexpr = expr->data.monadic, type, FALSE);
@@ -2354,6 +2309,8 @@ opassign_common:
             expr->cost = 1;
             expr->data.monadic = newexpr;
             expr->hascall = FALSE;
+            break;
+        default:
             break;
     }
 }
@@ -2410,6 +2367,8 @@ static void checkexceptionreferences(ExceptionAction* action) {
             case EAT_ACTIVECATCHBLOCK:
                 referenceexception(action->data.active_catch_block.catch_info_object);
                 break;
+            default:
+                break;
         }
     }
 }
@@ -2426,7 +2385,7 @@ void expandTOCreferences(Statement** stmts) {
 
     for (stmt = *stmts; stmt; stmt = stmt->next) {
         curstmtvalue = stmt->value;
-        if (stmt->flags & StmtFlag_1) {
+        if (stmt->flags & StmtFlag_KeepLabel) {
             has_catch_blocks = TRUE;
             dynamic_stack = TRUE;
             requires_frame = TRUE;
@@ -2453,7 +2412,6 @@ void expandTOCreferences(Statement** stmts) {
                 if (!stmt->expr) {
                     continue;
                 }
-                // 2.6: a struct returned in registers is not a hidden argument
                 expandTOCexpression(
                     stmt->expr,
                     NULL,
@@ -2475,7 +2433,7 @@ void expandTOCreferences(Statement** stmts) {
                 break;
             case ST_ASM:
                 if ((ia = (InlineAsm*)stmt->expr)) {
-                    if (ia->flags & IAFlag1) {
+                    if (ia->flags & IAFlag_Directive) {
                         if (ia->opcode == IADirective_FrFree) {
                             requires_frame = TRUE;
                         }
@@ -2485,22 +2443,23 @@ void expandTOCreferences(Statement** stmts) {
                                 if (!op->u.reg.object) {
                                     if (op->u.reg.effect & EffectWrite) {
                                         asm_used_register(op->u.reg.rclass, op->u.reg.num);
-                                        // 2.6: writing r1 moves the stack (compared as a byte:
-                                        // without the cast 99.6)
-                                        if ((RegClass)op->u.reg.rclass ==
-                                            RegClass_GPR &&
+                                        if ((RegClass)op->u.reg.rclass == RegClass_GPR &&
                                             op->u.reg.num == 1) {
                                             dynamic_stack = TRUE;
                                             requires_frame = TRUE;
                                         }
                                     }
                                 } else if ((vi = Registers_GetVarInfo(op->u.reg.object))) {
-                                    vi->flags |= VarInfoFlag40;
+                                    vi->flags |= VarInfoFlag_AsmNamed;
                                     vi->used = TRUE;
                                     vi->usage++;
                                 }
-                            } else if (op->type ==
-                                       IAOpnd_GlobalObj ||
+#if VERSION < VERSION_GC_2_0
+                            } else if (op->type == IAOpnd_GlobalObj) {
+                                uses_globals = TRUE;
+                            }
+#else
+                            } else if (op->type == IAOpnd_GlobalObj ||
                                        op->type == IAOpnd_LocalObj) {
                                 switch (op->u.obj.obj->datatype) {
                                     case DDATA:
@@ -2513,13 +2472,16 @@ void expandTOCreferences(Statement** stmts) {
                                         break;
                                 }
                             }
+#endif
                         }
 
-                        if (ia->flags & IAFlag2) {
+                        if (ia->flags & IAFlag_Call) {
                             makes_call = TRUE;
                         }
                     }
                 }
+                break;
+            default:
                 break;
         }
 
@@ -2528,7 +2490,6 @@ void expandTOCreferences(Statement** stmts) {
 }
 
 Boolean needdescriptor(void) {
-    // Pro7's; nothing calls it, so its parameters are unknown
     return FALSE;
 }
 
@@ -2559,8 +2520,11 @@ Object* createstaticinitobject(void) {
     obj->name = GetHashNameNodeExport(buf);
     obj->sclass = TK_STATIC;
     obj->datatype = DFUNC;
-    // 2.6: the EABI's text section and the function's symbol
-    PPC_EABI_SetSection(obj, 4, 1, 1);
+#if VERSION < VERSION_GC_2_0
+    PPC_EABI_SetSection(obj, 4, TRUE);
+#else
+    PPC_EABI_SetSection(obj, 4, TRUE, TRUE);
+#endif
     MakeSymbolTableEntry(obj);
     return obj;
 }

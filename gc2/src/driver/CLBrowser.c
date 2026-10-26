@@ -1,26 +1,24 @@
 #include "driver/CLBrowser.h"
 #include "driver/CLErrors.h"
-#include "driver/CLIO.h"
+#include "driver/Memory.h"
 #include "driver/MemUtils.h"
+#include "driver/MsDos.h"
+#include "driver/oslib.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "driver/MsDos.h"
-#include "driver/Memory.h"
 
-// The browse table in memory (S43), its records on disk (S49) and the file's header (T53).
-// TODO: invented names (Pro7's decompilation's; the originals are unknown)
 typedef struct {
     UInt16 fileID;
     char* filepath;
-} S43;
+} BrowseTableEntry;
 
 typedef struct {
     UInt16 fileID;
     char unused[12];
     UInt16 filename_length;
     char filepath[1];
-} S49;
+} BrowseFileRecord;
 
 typedef struct {
     char magic_word[4];
@@ -32,10 +30,10 @@ typedef struct {
     UInt32 browse_data_length;
     UInt32 file_data_offset;
     UInt32 file_data_length;
-} T53;
+} BrowseFileHeader;
 
 static void GetBrowseTableInfoAndLock(
-    OSHandle* browsetable, S43** scan, SInt32* num, SInt32* size
+    OSHandle* browsetable, BrowseTableEntry** scan, SInt32* num, SInt32* size
 ) {
     UInt32 tsize;
 
@@ -44,7 +42,7 @@ static void GetBrowseTableInfoAndLock(
         *scan = OS_LockHandle(browsetable);
     }
     if (num) {
-        *num = tsize / sizeof(S43);
+        *num = tsize / sizeof(BrowseTableEntry);
     }
     if (size) {
         *size = tsize;
@@ -62,7 +60,7 @@ int Browser_Initialize(OSHandle* browsetableptr) {
 }
 
 static int Destroy(OSHandle* browsetable) {
-    S43* scan;
+    BrowseTableEntry* scan;
     SInt32 num;
 
     GetBrowseTableInfoAndLock(browsetable, &scan, &num, NULL);
@@ -84,7 +82,7 @@ int Browser_Terminate(OSHandle* browsetableptr) {
 }
 
 int Browser_SearchFile(OSHandle* browsetable, const char* fullpath, SInt16* ID) {
-    S43* scan;
+    BrowseTableEntry* scan;
     SInt32 cnt;
     SInt32 idx;
     SInt32 size;
@@ -112,7 +110,7 @@ int Browser_SearchFile(OSHandle* browsetable, const char* fullpath, SInt16* ID) 
 }
 
 int Browser_SearchAndAddFile(OSHandle* browsetable, const char* fullpath, SInt16* ID) {
-    S43* scan;
+    BrowseTableEntry* scan;
     SInt32 cnt;
     SInt32 size;
     char* pathptr;
@@ -121,12 +119,12 @@ int Browser_SearchAndAddFile(OSHandle* browsetable, const char* fullpath, SInt16
         pathptr = xstrdup(fullpath);
         GetBrowseTableInfoAndLock(browsetable, &scan, &cnt, &size);
         OS_UnlockHandle(browsetable);
-        if (OS_ResizeHandle(browsetable, sizeof(S43) * (cnt + 1))) {
+        if (OS_ResizeHandle(browsetable, sizeof(BrowseTableEntry) * (cnt + 1))) {
             fprintf(stderr, "\n*** Out of memory\n");
             exit(-23);
         }
 
-        scan = (S43*)(((char*)OS_LockHandle(browsetable)) + size);
+        scan = (BrowseTableEntry*)(((char*)OS_LockHandle(browsetable)) + size);
         scan->filepath = pathptr;
         scan->fileID = cnt + 1;
         OS_UnlockHandle(browsetable);
@@ -138,7 +136,7 @@ int Browser_SearchAndAddFile(OSHandle* browsetable, const char* fullpath, SInt16
     }
 }
 
-static SInt32 CalcDiskSpaceRequirements(S43* mem, int num) {
+static SInt32 CalcDiskSpaceRequirements(BrowseTableEntry* mem, int num) {
     SInt32 space = 0;
     while (num--) {
         space += 0x10;
@@ -148,7 +146,7 @@ static SInt32 CalcDiskSpaceRequirements(S43* mem, int num) {
     return space;
 }
 
-static int ConvertMemToDisk(S43* mem, S49* disk, int num) {
+static int ConvertMemToDisk(BrowseTableEntry* mem, BrowseFileRecord* disk, int num) {
     int slen;
     int blen;
 
@@ -161,7 +159,7 @@ static int ConvertMemToDisk(S43* mem, S49* disk, int num) {
         memset(disk->filepath, 0, blen);
         strncpy(disk->filepath, mem->filepath, slen);
         mem++;
-        disk = (S49*)(((unsigned char*)disk) + 0x10 + blen);
+        disk = (BrowseFileRecord*)(((unsigned char*)disk) + 0x10 + blen);
     }
 
     return TRUE;
@@ -170,8 +168,8 @@ static int ConvertMemToDisk(S43* mem, S49* disk, int num) {
 int Browser_PackBrowseFile(Handle browsedata, OSHandle* browsetable, OSHandle* browsefileptr) {
     OSHandle h;
     char* ptr;
-    T53 header;
-    S43* scan;
+    BrowseFileHeader header;
+    BrowseTableEntry* scan;
     SInt32 entries;
     UInt32 datasize;
     UInt32 tableoffs;
@@ -204,9 +202,6 @@ int Browser_PackBrowseFile(Handle browsedata, OSHandle* browsetable, OSHandle* b
     header.file_data_length = tablesize;
     header.file_data_count = entries;
 
-    // 2.6 copies the handle out inside the condition (the struct copy reloads browsefileptr for each
-    // word); Pro7's three statements, `if (*browsefileptr = h, err)` after the call and a field-wise
-    // copy do not reload it
     if ((err = OS_NewHandle(totalsize, &h)), *browsefileptr = h, err) {
         fprintf(stderr, "\n*** Out of memory\n");
         exit(-23);
@@ -217,8 +212,6 @@ int Browser_PackBrowseFile(Handle browsedata, OSHandle* browsetable, OSHandle* b
 
     HLock(browsedata);
     memcpy(&ptr[sizeof(header)], *browsedata, datasize);
-    // (integer arithmetic on the pointer: Pro7's `&ptr[sizeof(header) + datasize]` adds in the other
-    // order)
     memset((char*)((int)ptr + sizeof(header) + datasize), 0, tableoffs - sizeof(header) - datasize);
     HUnlock(browsedata);
 

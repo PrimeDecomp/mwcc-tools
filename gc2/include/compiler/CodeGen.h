@@ -7,16 +7,13 @@
 extern "C" {
 #endif
 
-// 2.6: the stack of #pragma interrupt settings (copts.interruptList; TODO: invented name)
 struct InterruptList {
     struct InterruptList* next;
     struct InterruptGenerationRecord* info;
 };
 
 extern Macro vecM;
-extern Macro altivecM;
 extern Object* gFunction;
-extern CLabel* returnlabel;
 extern CLabel* cleanreturnlabel;
 extern Boolean needs_cleanup;
 extern Statement* current_statement;
@@ -31,8 +28,6 @@ extern short low_offset;
 extern short low_reg2;
 extern short high_reg2;
 extern Object* rt_cvt_fp2unsigned;
-extern Object* rt_profile_entry;
-extern Object* rt_profile_exit;
 extern Object* rt_div2i;
 extern Object* rt_div2u;
 extern Object* rt_mod2i;
@@ -45,7 +40,6 @@ extern Object* rt_cvt_sll_dbl;
 extern Object* rt_cvt_ull_flt;
 extern Object* rt_cvt_sll_flt;
 extern Object* rt_cvt_dbl_usll;
-// 2.6: the soft-float (SFPE) helpers
 extern Object* rt_sfpe_d_add;
 extern Object* rt_sfpe_d_sub;
 extern Object* rt_sfpe_d_mul;
@@ -88,19 +82,21 @@ extern Object* rt_sfpe_f_ulltof;
 extern VarInfo* CodeGen_GetNewVarInfo(void);
 extern Object* maketemporary(Type* type);
 typedef void (*ArgumentProcessor)(Object* obj, short reg);
-extern void process_arguments(ArgumentProcessor func, Boolean flag);
+extern void process_arguments(ArgumentProcessor func, Boolean hasVarargs);
 extern void move_assigned_argument(Object* obj, short reg);
 extern void assign_labels(Statement* stmt);
 extern int is_paired_single_operand(PCodeArg op);
 extern Boolean set_vr_reg_flags(void);
 extern void CodeGen_Generator(
-    Statement* statements, Object* func, UInt8 mysteryFlag, Boolean callOnModuleBind
+    Statement* statements, Object* func, UInt8 oldStyleParameters, Boolean callOnModuleBind
 );
-extern void CodeGen_GenVDispatchThunk(Object* thunkobj, Object* obj, SInt32 a, SInt32 b, SInt32 c);
+extern void CodeGen_GenVDispatchThunk(
+    Object* thunkobj, Object* func, SInt32 this_delta, SInt32 returnDelta, SInt32 ctoroffset
+);
 extern void CodeGen_SetupRuntimeObjects(void);
 extern Boolean CodeGen_ReInitRuntimeObjects(Boolean is_precompiler);
 extern Boolean CodeGen_IsPublicRuntimeObject(Object* obj);
-extern void CodeGen_SOMStub(Object* a, Object* b, Object* c, SInt32 offset);
+extern void CodeGen_SOMStub(Object* stub, Object* glue, Object* classdata, SInt32 offset);
 extern void CodeGen_ParseDeclSpec(HashNameNode* identifier, DeclInfo* declinfo);
 extern void CodeGen_ParsePragma(HashNameNode* name);
 extern void CodeGen_UpdateObject(Object* object);
@@ -109,7 +105,7 @@ extern SInt32 CodeGen_objc_method_self_offset(ObjCMethod* meth);
 extern SInt32 CodeGen_objc_method_sel_offset(ObjCMethod* meth);
 extern SInt32 CodeGen_objc_method_arg_offset(ObjCMethod* meth, ObjCMethodArg* arg);
 extern SInt32 CodeGen_objc_method_args_size(ObjCMethod* meth);
-extern InterruptGenerationRecord* CodeGen_FindInterruptGenerationRecord(SInt16 id);
+extern InterruptGenerationRecord* CodeGen_FindInterruptGenerationRecord(SInt16 key);
 extern ENode* CodeGen_HandleIntrinsicCall(Object* func, ENodeList* arg_exprs);
 extern ENode* CodeGen_HandleTypeCast(ENode* expr, Type* type, UInt32 qual);
 extern short CodeGen_AssignCheck(
@@ -119,7 +115,6 @@ extern Boolean CodeGen_CollapseVectorExpression(ENode* expr, MWVector128* vec, T
 extern void CodeGen_InsertSpecialMacros(void);
 extern char* CodeGen_ExpandSpecialMacro(Macro* macro);
 extern ENode* CodeGen_CheckExpr(ENode* expr);
-extern void CodeGen_reportheapinfo(Boolean release_flag, char* name, char* text);
 extern void CodeGen_InitialSanityCheck(void);
 
 #ifdef __cplusplus

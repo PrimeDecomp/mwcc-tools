@@ -1,4 +1,3 @@
-# Imported third-party source keeps its own form (MSL and the runtime, CC0 provenance).
 lib/**
 src/msl/**
 src/runtime/**

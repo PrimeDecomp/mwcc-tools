@@ -1,25 +1,21 @@
 #include "compiler/PPCError.h"
 #include "compiler/CError.h"
-#include "compiler/CompilerTools.h"
 #include "compiler/CParser.h"
-#include "compiler/CPrep.h"
 #include "compiler/InlineAsm.h"
 #include "driver/COSToolsCLT.h"
 #include <stdarg.h>
 
 static void PPCError_GetErrorString(char* str, short code) {
-    // ((int) casts: 2.6 compares the id as an int, movsx then cmp; Pro7 tests a short copy, which
-    // compiles otherwise in ErrorTerm)
-    CError_ASSERT(40, (int)code >= 100 && (int)code < PPCErrorStrMAX);
+    CError_ASSERT(40, (int)code >= 100 && (int)code < PPCERR_MAX);
 
     COS_GetString(str, 10001, code - 99);
 }
 
-static void PPCError_VAErrorMessage(int code, va_list list, Boolean flag1, Boolean flag2) {
+static void PPCError_VAErrorMessage(int code, va_list list, Boolean isTerminal, Boolean isWarning) {
     char format[256];
 
     PPCError_GetErrorString(format, code);
-    CError_ErrorMessageVA(code + 10001, format, list, flag1, flag2);
+    CError_ErrorMessageVA(code + 10001, format, list, isTerminal, isWarning);
 }
 
 void PPCError_Error(int code, ...) {
@@ -53,7 +49,11 @@ void PPCError_Warning(int code, ...) {
 void PPCError_Message(char* format, ...) {
     va_list list;
 
+#if VERSION < VERSION_GC_2_0
+    if (trychain) {
+#else
     if (trychain || copts.supress_warnings) {
+#endif
         return;
     }
 
@@ -62,7 +62,7 @@ void PPCError_Message(char* format, ...) {
     va_end(list);
 }
 
-void PPCError_ErrorTerm(short code, ...) {
+void PPCError_ErrorTerm(VarArgShort code, ...) {
     va_list list;
 
     if (trychain) {

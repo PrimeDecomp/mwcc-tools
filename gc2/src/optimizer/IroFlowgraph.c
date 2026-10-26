@@ -5,9 +5,10 @@
 #include "compiler/IROUseDef.h"
 #include "compiler/IroUtil.h"
 #include "compiler/BitVector.h"
-#include "compiler/CException.h"
+#include "compiler/CError.h"
 #include "compiler/CFunc.h"
 #include "compiler/CompilerTools.h"
+#include "compiler/enode.h"
 #include "compiler/Exceptions.h"
 #include "compiler/InlineAsmPPC.h"
 #include "compiler/Switch.h"
@@ -80,7 +81,7 @@ static void AddSwitchSucc(IRONode* node) {
     SInt32 i = 1;
 
     while (curcase) {
-        i++; // Pro7 advances first (2.6's code increments first)
+        i++;
         curcase = curcase->next;
     }
 
@@ -91,7 +92,6 @@ static void AddSwitchSucc(IRONode* node) {
     AddLabelSucc(node, info->defaultlabel);
 }
 
-// Pro7 takes `UInt16 b` (2.6's callers pass it untruncated)
 static void AddPred(UInt32 a, UInt32 b) {
     IRONode* node = IRO_NodeTable[a];
     node->pred[node->numpred++] = b;
@@ -101,7 +101,6 @@ void IRO_ComputeSuccPred(void) {
     CLabel* label;
     IRONode* node;
     SInt32 count;
-    // Pro7 declares `linear` after `count` (in 2.6 that gives other code)
     ExceptionAction* action;
     IAEffects effects;
     UInt16 i;
@@ -152,8 +151,7 @@ next_linear:
                     count = 1;
                     if (linear->stmt && IRO_FunctionCallMightThrowException(linear)) {
                         for (action = linear->stmt->dobjstack; action; action = action->prev) {
-                            if (action->type ==
-                                EAT_CATCHBLOCK ||
+                            if (action->type == EAT_CATCHBLOCK ||
                                 action->type == EAT_SPECIFICATION) {
                                 count++;
                             }
@@ -215,10 +213,8 @@ next_linear:
         if (node->first && node->first->type == IROLinearLabel) {
             IROLinear* linear = node->first;
             do {
-                if (linear->type ==
-                    IROLinearBeginCatch ||
-                    linear->type ==
-                    IROLinearEndCatch ||
+                if (linear->type == IROLinearBeginCatch ||
+                    linear->type == IROLinearEndCatch ||
                     linear->type == IROLinearEndCatchDtor) {
                     node->referenced = TRUE;
                     break;
@@ -229,7 +225,6 @@ next_linear:
 }
 
 void IRO_ComputeDom(void) {
-    // Pro7's order is node, bv, i, repeat (in 2.6 that gives other registers)
     BitVector* bv;
     IRONode* node;
     int repeat;
@@ -273,7 +268,7 @@ void IRO_BuildFlowgraph(IROLinear* linear) {
     IAEffects effects;
     IRONode* node;
     SInt32 i;
-    int flag;
+    int endsNode;
 
     for (label = Labels; label; label = label->next) {
         label->stmt = NULL;
@@ -288,20 +283,20 @@ void IRO_BuildFlowgraph(IROLinear* linear) {
             scan->u.label.label->stmt = (Statement*)IRO_LastNode;
         }
 
-        flag = FALSE;
-        while (!flag && scan->next && !(scan->next->flags & IROLF_1)) {
+        endsNode = FALSE;
+        while (!endsNode && scan->next && !(scan->next->flags & IROLF_StartsNode)) {
             switch (scan->type) {
                 case IROLinearGoto:
                 case IROLinearReturn:
                 case IROLinearEntry:
                 case IROLinearExit:
                 case IROLinearEnd:
-                    flag = TRUE;
+                    endsNode = TRUE;
                     break;
                 case IROLinearIf:
                 case IROLinearIfNot:
                 case IROLinearSwitch:
-                    flag = TRUE;
+                    endsNode = TRUE;
 skip:
                     if (scan->next->type == IROLinearLabel) {
                         IROLinear* nw = IRO_NewLinear(IROLinearNop);
@@ -313,10 +308,9 @@ skip:
                 case IROLinearFunccall:
                     if (scan->stmt && IRO_FunctionCallMightThrowException(scan)) {
                         for (action = scan->stmt->dobjstack; action; action = action->prev) {
-                            if (action->type ==
-                                EAT_CATCHBLOCK ||
+                            if (action->type == EAT_CATCHBLOCK ||
                                 action->type == EAT_SPECIFICATION) {
-                                flag = TRUE;
+                                endsNode = TRUE;
                                 goto skip;
                             }
                         }
@@ -325,11 +319,13 @@ skip:
                 case IROLinearAsm:
                     CodeGen_GetAsmEffects(scan->u.asm_stmt, &effects);
                     if (effects.numlabels) {
-                        flag = TRUE;
+                        endsNode = TRUE;
                     }
                     break;
+                default:
+                    break;
             }
-            if (!flag) {
+            if (!endsNode) {
                 scan = scan->next;
             }
         }
@@ -399,7 +395,7 @@ IRONode* IRO_MergeFlowGraphNodes(IRONode* a, IRONode* b) {
             }
 
             if (j == a->numsucc) {
-                AddSucc(a, succ); // Pro7 indexes IRO_NodeTable again (other code in 2.6)
+                AddSucc(a, succ);
                 succ->numpred--;
             }
 

@@ -5,15 +5,14 @@
 #include "compiler/IroPointerAnalysis.h"
 #include "compiler/IroUtil.h"
 #include "compiler/IroVars.h"
-#include "compiler/CFunc.h"
 #include "compiler/CInt64.h"
 #include "compiler/CMachine.h"
 #include "compiler/CompilerTools.h"
 #include "compiler/CParser.h"
-#include "compiler/CPrep.h"
 #include "compiler/enode.h"
 #include "compiler/objects.h"
 #include "compiler/Switch.h"
+#include "compiler/tokens.h"
 #include "compiler/types.h"
 
 static Boolean IsAssociativeENodeType[MAXEXPR];
@@ -131,14 +130,14 @@ void IRO_TruncateValueToType(CInt64* val, Type* type) {
     }
 }
 
-void IRO_TruncateBitfieldValueToType(CInt64* val, Type* type, TypeBitfield* type2) {
+void IRO_TruncateBitfieldValueToType(CInt64* val, Type* type, TypeBitfield* bitfieldType) {
     UInt32 limit;
     UInt32 i;
     UInt32 j;
     CInt64 work;
 
     work = cint64_zero;
-    limit = type2->bitlength;
+    limit = bitfieldType->bitlength;
     for (i = 0; i < limit; i++) {
         work = CInt64_Or(work, CInt64_Shl(cint64_one, IRO_MakeULong(i)));
     }
@@ -165,7 +164,7 @@ void IRO_ConstantFolding(void) {
     IROLinear* nd;
     ENode* expr;
     int isCompare;
-    int flag;
+    int folded;
     CInt64 val;
 
     for (nd = IRO_FirstLinear; nd; nd = nd->next) {
@@ -173,7 +172,7 @@ void IRO_ConstantFolding(void) {
             case IROLinearOp1Arg:
                 if (IRO_IsIntConstant(nd->u.monadic)) {
                     expr = NULL;
-                    flag = FALSE;
+                    folded = FALSE;
                     val = nd->u.monadic->u.node->data.intval;
                     if (nd->nodetype == ETYPCON && IS_TYPE_FLOAT(nd->rtype)) {
                         expr = IRO_NewENode(EFLOATCONST);
@@ -186,23 +185,25 @@ void IRO_ConstantFolding(void) {
                     } else {
                         switch (nd->nodetype) {
                             case ETYPCON:
-                                flag = TRUE;
+                                folded = TRUE;
                                 break;
                             case ELOGNOT:
                                 val = CInt64_Not(val);
-                                flag = TRUE;
+                                folded = TRUE;
                                 break;
                             case EBINNOT:
                                 val = CInt64_Inv(val);
-                                flag = TRUE;
+                                folded = TRUE;
                                 break;
                             case EMONMIN:
                                 val = CInt64_Neg(val);
-                                flag = TRUE;
+                                folded = TRUE;
+                                break;
+                            default:
                                 break;
                         }
 
-                        if (flag) {
+                        if (folded) {
                             IRO_TruncateValueToType(&val, nd->rtype);
                             expr = IRO_NewENode(EINTCONST);
                             expr->rtype = nd->rtype;
@@ -222,9 +223,9 @@ void IRO_ConstantFolding(void) {
                 if (IRO_IsIntConstant(nd->u.diadic.left) &&
                     !IRO_IsIntConstant(nd->u.diadic.right) &&
                     IsAssociativeENodeType[nd->nodetype]) {
-                    IROLinear* tmp = nd->u.diadic.right;
+                    IROLinear* swap = nd->u.diadic.right;
                     nd->u.diadic.right = nd->u.diadic.left;
-                    nd->u.diadic.left = tmp;
+                    nd->u.diadic.left = swap;
                 }
 
                 if (IRO_IsIntConstant(nd->u.diadic.right) && nd->nodetype == ESUB) {
@@ -246,35 +247,32 @@ void IRO_ConstantFolding(void) {
 
                 if (IRO_IsIntConstant(nd->u.diadic.right) &&
                     IsAssociativeENodeType[nd->nodetype] &&
-                    nd->u.diadic.left->type ==
-                    IROLinearOp2Arg &&
-                    nd->u.diadic.left->nodetype ==
-                    nd->nodetype &&
-                    nd->u.diadic.left->rtype ==
-                    nd->rtype &&
+                    nd->u.diadic.left->type == IROLinearOp2Arg &&
+                    nd->u.diadic.left->nodetype == nd->nodetype &&
+                    nd->u.diadic.left->rtype == nd->rtype &&
                     IRO_IsIntConstant(nd->u.diadic.left->u.diadic.right) &&
                     nd->u.diadic.left->u.diadic.right->rtype == nd->u.diadic.right->rtype) {
-                    IROLinear* tmp = nd->u.diadic.left;
-                    nd->u.diadic.left = tmp->u.diadic.left;
-                    tmp->u.diadic.left = tmp->u.diadic.right;
-                    tmp->u.diadic.right = nd->u.diadic.right;
-                    tmp->rtype = tmp->u.diadic.left->rtype;
-                    nd->u.diadic.right = tmp;
-                    nd = tmp;
+                    IROLinear* inner = nd->u.diadic.left;
+                    nd->u.diadic.left = inner->u.diadic.left;
+                    inner->u.diadic.left = inner->u.diadic.right;
+                    inner->u.diadic.right = nd->u.diadic.right;
+                    inner->rtype = inner->u.diadic.left->rtype;
+                    nd->u.diadic.right = inner;
+                    nd = inner;
                 }
 
                 if (IRO_IsIntConstant(nd->u.diadic.left) && IRO_IsIntConstant(nd->u.diadic.right)) {
                     CInt64 val1 = nd->u.diadic.left->u.node->data.intval;
                     CInt64 val2 = nd->u.diadic.right->u.node->data.intval;
-                    flag = FALSE;
+                    folded = FALSE;
                     switch (nd->nodetype) {
                         case EADD:
                             val = CInt64_Add(val1, val2);
-                            flag = TRUE;
+                            folded = TRUE;
                             break;
                         case ESUB:
                             val = CInt64_Sub(val1, val2);
-                            flag = TRUE;
+                            folded = TRUE;
                             break;
                         case EMUL:
                             if (is_unsigned(nd->rtype)) {
@@ -282,7 +280,7 @@ void IRO_ConstantFolding(void) {
                             } else {
                                 val = CInt64_Mul(val1, val2);
                             }
-                            flag = TRUE;
+                            folded = TRUE;
                             break;
                         case EDIV:
                             if (!CInt64_IsZero(&val2)) {
@@ -291,7 +289,7 @@ void IRO_ConstantFolding(void) {
                                 } else {
                                     val = CInt64_Div(val1, val2);
                                 }
-                                flag = TRUE;
+                                folded = TRUE;
                             }
                             break;
                         case EMODULO:
@@ -301,12 +299,12 @@ void IRO_ConstantFolding(void) {
                                 } else {
                                     val = CInt64_Mod(val1, val2);
                                 }
-                                flag = TRUE;
+                                folded = TRUE;
                             }
                             break;
                         case ESHL:
                             val = CInt64_Shl(val1, val2);
-                            flag = TRUE;
+                            folded = TRUE;
                             break;
                         case ESHR:
                             if (is_unsigned(nd->rtype)) {
@@ -314,19 +312,19 @@ void IRO_ConstantFolding(void) {
                             } else {
                                 val = CInt64_Shr(val1, val2);
                             }
-                            flag = TRUE;
+                            folded = TRUE;
                             break;
                         case EAND:
                             val = CInt64_And(val1, val2);
-                            flag = TRUE;
+                            folded = TRUE;
                             break;
                         case EOR:
                             val = CInt64_Or(val1, val2);
-                            flag = TRUE;
+                            folded = TRUE;
                             break;
                         case EXOR:
                             val = CInt64_Xor(val1, val2);
-                            flag = TRUE;
+                            folded = TRUE;
                             break;
                         case ELESS:
                             if (is_unsigned(nd->u.diadic.left->rtype)) {
@@ -334,7 +332,7 @@ void IRO_ConstantFolding(void) {
                             } else {
                                 CInt64_SetULong(&val, CInt64_Less(val1, val2));
                             }
-                            flag = TRUE;
+                            folded = TRUE;
                             break;
                         case EGREATER:
                             if (is_unsigned(nd->u.diadic.left->rtype)) {
@@ -342,7 +340,7 @@ void IRO_ConstantFolding(void) {
                             } else {
                                 CInt64_SetULong(&val, CInt64_Greater(val1, val2));
                             }
-                            flag = TRUE;
+                            folded = TRUE;
                             break;
                         case ELESSEQU:
                             if (is_unsigned(nd->u.diadic.left->rtype)) {
@@ -350,7 +348,7 @@ void IRO_ConstantFolding(void) {
                             } else {
                                 CInt64_SetULong(&val, CInt64_LessEqual(val1, val2));
                             }
-                            flag = TRUE;
+                            folded = TRUE;
                             break;
                         case EGREATEREQU:
                             if (is_unsigned(nd->u.diadic.left->rtype)) {
@@ -358,19 +356,21 @@ void IRO_ConstantFolding(void) {
                             } else {
                                 CInt64_SetULong(&val, CInt64_GreaterEqual(val1, val2));
                             }
-                            flag = TRUE;
+                            folded = TRUE;
                             break;
                         case EEQU:
                             CInt64_SetULong(&val, CInt64_Equal(val1, val2));
-                            flag = TRUE;
+                            folded = TRUE;
                             break;
                         case ENOTEQU:
                             CInt64_SetULong(&val, CInt64_NotEqual(val1, val2));
-                            flag = TRUE;
+                            folded = TRUE;
+                            break;
+                        default:
                             break;
                     }
 
-                    if (flag) {
+                    if (folded) {
                         IRO_TruncateValueToType(&val, nd->rtype);
                         expr = IRO_NewENode(EINTCONST);
                         expr->rtype = nd->rtype;
@@ -387,37 +387,37 @@ void IRO_ConstantFolding(void) {
                     Float fval1 = nd->u.diadic.left->u.node->data.floatval;
                     Float fval2 = nd->u.diadic.right->u.node->data.floatval;
                     Float fval;
-                    flag = FALSE;
+                    folded = FALSE;
                     isCompare = FALSE;
                     switch (nd->nodetype) {
                         case EADD:
                             fval = CMach_CalcFloatDiadic(nd->rtype, fval1, '+', fval2);
-                            flag = TRUE;
+                            folded = TRUE;
                             break;
                         case ESUB:
                             fval = CMach_CalcFloatDiadic(nd->rtype, fval1, '-', fval2);
-                            flag = TRUE;
+                            folded = TRUE;
                             break;
                         case EMUL:
                             fval = CMach_CalcFloatDiadic(nd->rtype, fval1, '*', fval2);
-                            flag = TRUE;
+                            folded = TRUE;
                             break;
                         case EDIV:
                             fval = CMach_CalcFloatDiadic(nd->rtype, fval1, '/', fval2);
-                            flag = TRUE;
+                            folded = TRUE;
                             break;
                         case ELESS:
                             CInt64_SetULong(
                                 &val, CMach_CalcFloatDiadicBool(nd->rtype, fval1, '<', fval2)
                             );
-                            flag = TRUE;
+                            folded = TRUE;
                             isCompare = TRUE;
                             break;
                         case EGREATER:
                             CInt64_SetULong(
                                 &val, CMach_CalcFloatDiadicBool(nd->rtype, fval1, '>', fval2)
                             );
-                            flag = TRUE;
+                            folded = TRUE;
                             isCompare = TRUE;
                             break;
                         case ELESSEQU:
@@ -425,7 +425,7 @@ void IRO_ConstantFolding(void) {
                                 &val,
                                 CMach_CalcFloatDiadicBool(nd->rtype, fval1, TK_LESS_EQUAL, fval2)
                             );
-                            flag = TRUE;
+                            folded = TRUE;
                             isCompare = TRUE;
                             break;
                         case EGREATEREQU:
@@ -433,7 +433,7 @@ void IRO_ConstantFolding(void) {
                                 &val,
                                 CMach_CalcFloatDiadicBool(nd->rtype, fval1, TK_GREATER_EQUAL, fval2)
                             );
-                            flag = TRUE;
+                            folded = TRUE;
                             isCompare = TRUE;
                             break;
                         case EEQU:
@@ -441,7 +441,7 @@ void IRO_ConstantFolding(void) {
                                 &val,
                                 CMach_CalcFloatDiadicBool(nd->rtype, fval1, TK_LOGICAL_EQ, fval2)
                             );
-                            flag = TRUE;
+                            folded = TRUE;
                             isCompare = TRUE;
                             break;
                         case ENOTEQU:
@@ -449,12 +449,14 @@ void IRO_ConstantFolding(void) {
                                 &val,
                                 CMach_CalcFloatDiadicBool(nd->rtype, fval1, TK_LOGICAL_NE, fval2)
                             );
-                            flag = TRUE;
+                            folded = TRUE;
                             isCompare = TRUE;
+                            break;
+                        default:
                             break;
                     }
 
-                    if (flag) {
+                    if (folded) {
                         if (isCompare) {
                             IRO_TruncateValueToType(&val, nd->rtype);
                             expr = IRO_NewENode(EINTCONST);
@@ -476,6 +478,8 @@ void IRO_ConstantFolding(void) {
                     }
                 }
 
+                break;
+            default:
                 break;
         }
     }
@@ -500,10 +504,7 @@ Boolean IRO_EvaluateConditionals(void) {
                 if (IRO_IsIntConstant(nd->u.label.cond)) {
                     Boolean isZero = CInt64_IsZero(&nd->u.label.cond->u.node->data.intval);
                     IRO_NopOut(nd->u.label.cond);
-                    // (2.6 materialises !isZero and tests it again: a redundant `!= 0`; Pro7's
-                    // `(isZero == 0)`, `!isZero`, `!!`, casts, swapped operands, an int isZero, a
-                    // `!CInt64_IsZero` local and ternaries do not match, `!= FALSE` does)
-                    if ((!isZero != 0) == (nd->type == IROLinearIf)) {
+                    if (((!isZero) != 0) == (nd->type == IROLinearIf)) {
                         nd->type = IROLinearGoto;
                     } else {
                         nd->type = IROLinearNop;
@@ -523,8 +524,11 @@ Boolean IRO_EvaluateConditionals(void) {
 
                     found = FALSE;
                     while (swcase) {
-                        // (2.6's cases are single values: Pro7 tests min <= val <= max)
+#if VERSION < VERSION_GC_2_0
+                        if (CInt64_GreaterEqual(val, swcase->min) && CInt64_LessEqual(val, swcase->max)) {
+#else
                         if (CInt64_Equal(swcase->min, val)) {
+#endif
                             found = TRUE;
                             nd->u.label.label = swcase->label;
                             break;
@@ -537,6 +541,8 @@ Boolean IRO_EvaluateConditionals(void) {
                     }
                     changed = TRUE;
                 }
+                break;
+            default:
                 break;
         }
     }
@@ -622,16 +628,18 @@ static int checkLabel(CLabel* label, IRONode* fnode) {
                 return TRUE;
             }
             break;
+        default:
+            break;
     }
 
     return FALSE;
 }
 
-static Object* checkExpr(Object* a, IROLinear* nd) {
-    Object* b = VEquConst(nd);
+static Object* checkExpr(Object* expected, IROLinear* nd) {
+    Object* var = VEquConst(nd);
 
-    if ((!a || a == b) && !IRO_HasSideEffect(nd)) {
-        return b;
+    if ((!expected || expected == var) && !IRO_HasSideEffect(nd)) {
+        return var;
     }
 
     return NULL;
@@ -653,12 +661,9 @@ static int checkStruct(IRONode* fnode1, IRONode* fnode2) {
 }
 
 typedef struct ReduceInfo {
-    // TODO: invented name (Pro7: x0); 0 unvisited, 2 in the chain being reduced, -1 done or
-    // rejected
     int mark;
-    // TODO: invented name (Pro7: x4); 1 for a candidate, -1 for the head of a chain, 0 otherwise
     int state;
-    Object* var; // TODO: invented name (Pro7: x8); the variable VEquConst compares
+    Object* var;
     IRONode* fnode;
     struct ReduceInfo* next;
     CInt64 val;
@@ -702,7 +707,6 @@ static int MarkPattern1(ReduceInfo* info1, ReduceInfo* info2, CInt64* val) {
     return MarkPattern1(info1, info2->next, val);
 }
 
-// (2.6's declaration order; Pro7's, right/left/typconRight/typconLeft/cond, gives other registers)
 static int DoReducible1(ReduceInfo* info, CInt64 val) {
     ReduceInfo* last;
     ReduceInfo* scan;
@@ -793,8 +797,6 @@ static int ReducePattern1(IRONode* startnode, IRONode* endnode) {
         return FALSE;
     }
 
-    // (2.6 sets fnode before count and advances info through info->next; Pro7's for-loop init and
-    // `info = &infos[i]` give other code)
     fnode = startnode;
     count = 0;
     for (; fnode != endnode; fnode = fnode->nextnode) {
@@ -852,8 +854,8 @@ static int ReducePattern1(IRONode* startnode, IRONode* endnode) {
 }
 
 static int ReduceConsecutiveIf(IRONode* startnode, IRONode* endnode) {
-    IRONode* node31;
-    IRONode* node30;
+    IRONode* runEnd;
+    IRONode* lastMatch;
     int changed = FALSE;
 
     while (startnode != endnode) {
@@ -863,34 +865,34 @@ static int ReduceConsecutiveIf(IRONode* startnode, IRONode* endnode) {
         startnode = startnode->nextnode;
     }
 
-    node31 = startnode;
+    runEnd = startnode;
     if (startnode != endnode) {
-        node30 = startnode;
-        node31 = startnode->nextnode;
-        while (node31 != endnode) {
-            if (checkStruct(startnode, node31)) {
-                node30 = node31;
-                node31 = node31->nextnode;
+        lastMatch = startnode;
+        runEnd = startnode->nextnode;
+        while (runEnd != endnode) {
+            if (checkStruct(startnode, runEnd)) {
+                lastMatch = runEnd;
+                runEnd = runEnd->nextnode;
             } else {
-                node31 = node30;
+                runEnd = lastMatch;
                 break;
             }
         }
 
-        if (node31 == endnode && !checkStruct(startnode, node31)) {
-            node31 = node30;
+        if (runEnd == endnode && !checkStruct(startnode, runEnd)) {
+            runEnd = lastMatch;
         }
 
-        if (startnode != node31 && ReducePattern1(startnode, node31)) {
+        if (startnode != runEnd && ReducePattern1(startnode, runEnd)) {
             changed = TRUE;
         }
 
-        if (node31 != endnode) {
-            node31 = node31->nextnode;
+        if (runEnd != endnode) {
+            runEnd = runEnd->nextnode;
         }
     }
 
-    if (node31 != endnode && ReduceConsecutiveIf(node31, endnode)) {
+    if (runEnd != endnode && ReduceConsecutiveIf(runEnd, endnode)) {
         changed = TRUE;
     }
 
@@ -925,11 +927,11 @@ int IRO_SimplifyConditionals(void) {
 
 Boolean IRO_EvaluateDefinitePointers(Object* func) {
     IROLinear* nd;
-    Boolean result; // r29
-    Boolean changed; // r28
-    Boolean changed2; // r26
-    IROLinear* nd2; // r25
-    IROListNode* scan; // r25
+    Boolean result;
+    Boolean changed;
+    Boolean changed2;
+    IROLinear* nd2;
+    IROListNode* scan;
     IROListNode* list;
 
     if (!copts.opt_pointer_analysis) {
@@ -942,10 +944,8 @@ Boolean IRO_EvaluateDefinitePointers(Object* func) {
         changed = FALSE;
 
         for (nd = IRO_FirstLinear; nd; nd = nd->next) {
-            if (nd->type ==
-                IROLinearOp1Arg &&
-                nd->nodetype ==
-                EINDIRECT &&
+            if (nd->type == IROLinearOp1Arg &&
+                nd->nodetype == EINDIRECT &&
                 !(nd->flags & IROLF_Assigned) &&
                 nd->pointsToFunction &&
                 !IRO_HasSideEffect(nd) &&
@@ -960,7 +960,6 @@ Boolean IRO_EvaluateDefinitePointers(Object* func) {
                             for (nd2 = list->list.head; nd2 != list->list.tail->next;
                                  nd2 = nd2->next) {
                                 if (nd2->type == IROLinearOperand && nd2->u.node->type == EOBJREF) {
-                                    // (2.6, as 1.x: the object in a local)
                                     Object* obj = nd2->u.node->data.objref;
                                     if (Inline_IsObjectData(obj) || obj->datatype == DLOCAL) {
                                         IRO_FindVar(obj, TRUE, TRUE);

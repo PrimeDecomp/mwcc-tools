@@ -1,19 +1,31 @@
-// The shell's callbacks for every plugin (Pro7's CmdLine Callbacks/CLDropinCallbacks_V10.cpp),
-// built -bool off.
 #include "driver/CLDropinCallbacks_V10.h"
+#include "driver/CLAccessPaths.h"
 #include "driver/CLBrowser.h"
+#include "driver/CLDependencies.h"
 #include "driver/CLErrors.h"
-#include "driver/CLFileOps.h"
+#include "driver/CLFiles.h"
 #include "driver/CLIncludeFileCache.h"
 #include "driver/CLIO.h"
 #include "driver/CLLicenses.h"
 #include "driver/CLLoadAndCache.h"
 #include "driver/CLMain.h"
+#include "driver/CLOverlays.h"
 #include "driver/CLPlugins.h"
 #include "driver/CLPrefs.h"
+#include "driver/CLSegs.h"
+#include "driver/CLTarg.h"
+#include "driver/cmdline.h"
+#include "driver/CWPlugins.h"
+#include "driver/CWPluginsPrivate.h"
+#include "driver/Files.h"
 #include "driver/Generic.h"
+#include "driver/MacFileTypes.h"
 #include "driver/MacSpecs.h"
+#include "driver/Memory.h"
 #include "driver/MemUtils.h"
+#include "driver/MsDos.h"
+#include "driver/oslib.h"
+#include "driver/pref_structs.h"
 #include "driver/StringUtils.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -32,9 +44,7 @@ static void ANSI_To_Mac_GMT_Time(time_t sectm, UInt32* secs) {
 
     ydays = (years * 365) + ((years + 3) / 4) - ((years + 4) / 100) + ((years - 296) / 400);
 
-    *secs = ((ydays + tmrec->tm_yday) * 86400) +
-        (tmrec->tm_hour * 3600) +
-        (tmrec->tm_min * 60) +
+    *secs = ((ydays + tmrec->tm_yday) * 86400) + (tmrec->tm_hour * 3600) + (tmrec->tm_min * 60) +
         (tmrec->tm_sec);
 }
 
@@ -44,14 +54,13 @@ static void Mac_To_ANSI_Time(UInt32 secs, time_t* sectm) {
     int month;
 
     memset(&tmrec, 0, sizeof(tmrec));
-    tmrec.tm_sec = secs % 60; // line 1523
-    tmrec.tm_min = (secs / 60) % 60; // line 1524
-    tmrec.tm_hour = (secs / 3600) % 24; // line 1525
+    tmrec.tm_sec = secs % 60;
+    tmrec.tm_min = (secs / 60) % 60;
+    tmrec.tm_hour = (secs / 3600) % 24;
     tmrec.tm_yday = (secs / 86400) % 365;
-    tmrec.tm_year = (secs / 31536000) + 4; // line 1533
+    tmrec.tm_year = (secs / 31536000) + 4;
     tmrec.tm_yday -=
-        ((((secs / 31536000) + 3) / 4) -
-         (((secs / 31536000) + 4) / 100) +
+        ((((secs / 31536000) + 3) / 4) - (((secs / 31536000) + 4) / 100) +
          ((SInt32)((secs / 31536000) - 296) / 400));
 
     if ((tmrec.tm_year % 4) && ((tmrec.tm_year % 100) || !(tmrec.tm_year % 400))) {
@@ -106,7 +115,7 @@ CW_CALLBACK UCBGetFileInfo(
     fileinfo->weakimport = file->weakimport;
     fileinfo->initbefore = file->initbefore;
     fileinfo->mergeintooutput = file->mergeintooutput;
-    fileinfo->reserved = 0;
+    fileinfo->reserved = FALSE;
     fileinfo->gendebug = file->gendebug;
     OS_TimeToMac(file->outmoddate, &fileinfo->objmoddate);
 
@@ -129,18 +138,18 @@ CW_CALLBACK UCBGetFileInfo(
             &id
         );
         if (ret) {
-            fileinfo->recordbrowseinfo = 1;
+            fileinfo->recordbrowseinfo = TRUE;
             fileinfo->fileID = id;
         } else {
-            fileinfo->recordbrowseinfo = 0;
+            fileinfo->recordbrowseinfo = FALSE;
             fileinfo->fileID = id;
         }
     } else {
-        fileinfo->recordbrowseinfo = 0;
+        fileinfo->recordbrowseinfo = FALSE;
         fileinfo->fileID = 0;
     }
     fileinfo->unitdatadependencytag = 0;
-    fileinfo->hasunitdata = 0;
+    fileinfo->hasunitdata = FALSE;
     return cwNoErr;
 }
 
@@ -165,18 +174,18 @@ static Boolean FindAndLoad_VirtualFile(
         }
         fileinfo->filedatatype = cwFileTypeText;
         fileinfo->fileID = 0;
-        fileinfo->alreadyincluded = 0;
-        fileinfo->recordbrowseinfo = 0;
+        fileinfo->alreadyincluded = FALSE;
+        fileinfo->recordbrowseinfo = FALSE;
         fileinfo->filespec.vRefNum = fileinfo->filespec.parID = 0;
         c2pstrcpy(fileinfo->filespec.name, fnameptr);
         OS_MakeFileSpec(fnameptr, spec);
         if (optsCompiler.printHeaderNames) {
             CLPrint("%s\n", fnameptr);
         }
-        return 1;
+        return TRUE;
     }
 
-    return 0;
+    return FALSE;
 }
 
 static Boolean FindAndLoad_AccessPathFile(
@@ -212,7 +221,7 @@ static Boolean FindAndLoad_AccessPathFile(
                     &depfile->deps,
                     incl,
                     NULL,
-                    0,
+                    FALSE,
                     fileinfo->dependencyType,
                     &fileinfo->alreadyincluded
                 );
@@ -227,23 +236,23 @@ static Boolean FindAndLoad_AccessPathFile(
                 if (ret == 0) {
                     return 2;
                 } else if (ret < 0) {
-                    fileinfo->recordbrowseinfo = 1;
+                    fileinfo->recordbrowseinfo = TRUE;
                     fileinfo->fileID = id;
                 } else {
-                    fileinfo->recordbrowseinfo = 0;
+                    fileinfo->recordbrowseinfo = FALSE;
                     fileinfo->fileID = id;
                 }
             } else {
-                fileinfo->recordbrowseinfo = 0;
+                fileinfo->recordbrowseinfo = FALSE;
                 fileinfo->fileID = 0;
             }
         }
 
         OS_OSSpec_To_FSSpec(spec, &fileinfo->filespec);
-        return 1;
+        return TRUE;
     }
 
-    return 0;
+    return FALSE;
 }
 
 static Boolean FindAndLoad_MissingFile(
@@ -257,18 +266,17 @@ static Boolean FindAndLoad_MissingFile(
     CWCompilerLinkerContext* c;
 
     if (optsCompiler.ignoreMissingFiles) {
-        if (context->pluginType ==
-            CWDROPINCOMPILERTYPE ||
+        if (context->pluginType == CWDROPINCOMPILERTYPE ||
             context->pluginType == CWDROPINLINKERTYPE) {
             c = static_cast<CWCompilerLinkerContext*>(context);
         } else {
-            return 0;
+            return FALSE;
         }
 
         file = Files_GetFile(&gTarg->files, c->whichfile);
         OS_ASSERT(486, file != NULL);
 
-        OS_MakeSpecWithPath(&file->srcfss.path, filename, 1, spec);
+        OS_MakeSpecWithPath(&file->srcfss.path, filename, TRUE, spec);
         Deps_AddDependency(
             &file->deps,
             -1,
@@ -279,7 +287,7 @@ static Boolean FindAndLoad_MissingFile(
         );
 
         fileinfo->fileID = 0;
-        fileinfo->recordbrowseinfo = 0;
+        fileinfo->recordbrowseinfo = FALSE;
         if (!fileinfo->suppressload) {
             fileinfo->filedata = xstrdup("");
             fileinfo->filedatalength = 0;
@@ -292,10 +300,10 @@ static Boolean FindAndLoad_MissingFile(
         }
 
         OS_OSSpec_To_FSSpec(spec, &fileinfo->filespec);
-        return 1;
+        return TRUE;
     }
 
-    return 0;
+    return FALSE;
 }
 
 CW_CALLBACK UCBFindAndLoadFile(
@@ -321,7 +329,7 @@ CW_CALLBACK UCBFindAndLoadFile(
         return cwErrInvalidParameter;
     }
 
-    loaded = 0;
+    loaded = FALSE;
     if (!FindAndLoad_VirtualFile(context, filename, fileinfo, &spec, &loaded) &&
         !FindAndLoad_AccessPathFile(context, filename, fileinfo, &spec, &loaded) &&
         !FindAndLoad_MissingFile(context, filename, fileinfo, &spec, &loaded)) {
@@ -346,8 +354,8 @@ CW_CALLBACK UCBFindAndLoadFile(
         }
     } else {
         fileinfo->fileID = 0;
-        fileinfo->recordbrowseinfo = 0;
-        fileinfo->alreadyincluded = 0;
+        fileinfo->recordbrowseinfo = FALSE;
+        fileinfo->alreadyincluded = FALSE;
     }
 
     if (!loaded) {
@@ -382,7 +390,7 @@ CW_CALLBACK UCBGetFileText(
     Boolean precomp;
     OSSpec spec;
     VFile* vf;
-    char filename[256]; // (2.6: Pro7 64)
+    char filename[256];
 
     if (optsCmdLine.verbose > 3) {
         CLPrint("Callback: %s\n", "UCBGetFileText");
@@ -453,7 +461,7 @@ CW_CALLBACK UCBGetSegmentInfo(
         CLPrint("Callback: %s\n", "UCBGetSegmentInfo");
     }
 
-    if (gTarg->linkmodel != LinkModel1) {
+    if (gTarg->linkmodel != LinkModel_Segmented) {
         return cwErrInvalidCallback;
     }
 
@@ -475,7 +483,7 @@ CW_CALLBACK UCBGetOverlay1GroupInfo(
     }
 
     OvlGroup* grp = Overlays_GetOvlGroup(&gTarg->linkage.overlays, whichgroup);
-    if (gTarg->linkmodel != LinkModel2) {
+    if (gTarg->linkmodel != LinkModel_Overlay1) {
         return cwErrInvalidCallback;
     }
 
@@ -501,7 +509,7 @@ CW_CALLBACK UCBGetOverlay1FileInfo(
         CLPrint("Callback: %s\n", "UCBGetOverlay1FileInfo");
     }
 
-    if (gTarg->linkmodel != LinkModel2) {
+    if (gTarg->linkmodel != LinkModel_Overlay1) {
         return cwErrInvalidCallback;
     }
 
@@ -523,7 +531,7 @@ CW_CALLBACK UCBGetOverlay1Info(
         CLPrint("Callback: %s\n", "UCBGetOverlay1Info");
     }
 
-    if (gTarg->linkmodel != LinkModel2) {
+    if (gTarg->linkmodel != LinkModel_Overlay1) {
         return cwErrInvalidCallback;
     }
 
@@ -840,7 +848,7 @@ CW_CALLBACK UCBAddProjectEntry(
     OSSpec fss;
     UInt32 filetype;
     Plugin* plugin;
-    char* extptr;
+    const char* extptr;
     char ext[16];
     UInt32 flags;
     char filename[260];
@@ -892,7 +900,7 @@ CW_CALLBACK UCBAddProjectEntry(
     plugin = Plugins_GetPluginForFile(
         NULL, CWDROPINANYTYPE, targetCPUAny, targetOSAny, filetype, ext, Lang_Any
     );
-    if (plugin && gTarg->linker && !Plugin_CL_MatchesTarget(plugin, gTarg->cpu, gTarg->os, 0)) {
+    if (plugin && gTarg->linker && !Plugin_CL_MatchesTarget(plugin, gTarg->cpu, gTarg->os, FALSE)) {
         CLReportError(CLStr76, filename);
     }
 
@@ -1035,7 +1043,7 @@ CW_CALLBACK UCBAddProjectEntry(
     *whichfile = file->filenum;
     context->numFiles++;
 
-    if (gTarg->linkmodel == LinkModel2) {
+    if (gTarg->linkmodel == LinkModel_Overlay1) {
         index = entry->overlayGroup;
         if (index == -1) {
             index = Overlays_CountGroups(&gTarg->linkage.overlays) - 1;
@@ -1079,7 +1087,7 @@ CW_CALLBACK UCBCreateNewTextDocument(
 
             if (file->textdata) {
                 UInt32 size = GetHandleSize(file->textdata);
-                if (!ShowHandle(file->textdata, size, 1)) {
+                if (!ShowHandle(file->textdata, size, TRUE)) {
                     return cwErrRequestFailed;
                 }
                 DisposeHandle(file->textdata);
@@ -1100,7 +1108,7 @@ CW_CALLBACK UCBCreateNewTextDocument(
                     } else {
                         stdfile = fopen(clState.stdout_base, "at");
                     }
-                    clState.stdout_written = 1;
+                    clState.stdout_written = TRUE;
                 } else {
                     stdfile = fopen(docinfo->documentname, "wt");
                 }
@@ -1114,7 +1122,7 @@ CW_CALLBACK UCBCreateNewTextDocument(
                 }
             }
 
-            if (!ShowHandle(texth, size, 0)) {
+            if (!ShowHandle(texth, size, FALSE)) {
                 return cwErrRequestFailed;
             } else {
                 return cwNoErr;
@@ -1145,10 +1153,10 @@ CW_CALLBACK UCBCreateNewTextDocument(
 
             entry.position = entry.segment = entry.overlayGroup = entry.overlay = -1;
             entry.groupPath = NULL;
-            entry.mergeintooutput = entry.weakimport = entry.initbefore = 0;
+            entry.mergeintooutput = entry.weakimport = entry.initbefore = FALSE;
             c2pstrcpy(filename, docinfo->documentname);
             FSMakeFSSpec(0, 0, filename, &fss);
-            return UCBAddProjectEntry(context, &fss, 1, &entry, &pos);
+            return UCBAddProjectEntry(context, &fss, TRUE, &entry, &pos);
         } else {
             UInt32 size = GetHandleSize(texth);
             if (!ShowHandle(texth, size, docinfo->documentname != NULL)) {
@@ -1331,7 +1339,7 @@ CW_CALLBACK UCBCacheAccessPathList(CWPluginContext context) {
             path = Paths_GetPath(&gTarg->userPaths, x);
             OS_ASSERT(2010, path);
 
-            OS_MakeSpecWithPath(path->spec, NULL, 0, &spec);
+            OS_MakeSpecWithPath(path->spec, NULL, FALSE, &spec);
             OS_OSSpec_To_FSSpec(&spec, &ap->pathSpec);
             ap->recursive = path->recursive != 0;
             if (path->recursive) {
@@ -1348,7 +1356,7 @@ CW_CALLBACK UCBCacheAccessPathList(CWPluginContext context) {
             }
         }
 
-        sc->userAccessPathsChanged = 0;
+        sc->userAccessPathsChanged = FALSE;
     }
 
     if (sc->systemAccessPathsChanged || !apl->systemPaths) {
@@ -1366,7 +1374,7 @@ CW_CALLBACK UCBCacheAccessPathList(CWPluginContext context) {
             path = Paths_GetPath(&gTarg->sysPaths, x);
             OS_ASSERT(2044, path);
 
-            OS_MakeSpecWithPath(path->spec, NULL, 0, &spec);
+            OS_MakeSpecWithPath(path->spec, NULL, FALSE, &spec);
             OS_OSSpec_To_FSSpec(&spec, &ap->pathSpec);
             ap->recursive = path->recursive != 0;
             if (path->recursive) {
@@ -1383,7 +1391,7 @@ CW_CALLBACK UCBCacheAccessPathList(CWPluginContext context) {
             }
         }
 
-        sc->systemAccessPathsChanged = 0;
+        sc->systemAccessPathsChanged = FALSE;
     }
 
     return cwNoErr;
@@ -1394,9 +1402,6 @@ CW_CALLBACK UCBSecretAttachHandle(CWPluginContext context, Handle handle, CWMemH
         CLPrint("Callback: %s\n", "UCBSecretAttachHandle");
     }
 
-    // TODO: Pro7 stores `reinterpret_cast<CWMemHandle>(handle)` through `memHandle` (69%: it keeps
-    // the parameter in ebx); 2.6 loads both parameters at the store, which only a cast of the
-    // parameter to another pointer type reproduces
     *reinterpret_cast<Handle*>(memHandle) = handle;
     return cwNoErr;
 }
@@ -1429,13 +1434,11 @@ CW_CALLBACK UCBSecretPeekHandle(CWPluginContext context, CWMemHandle memHandle, 
     }
 }
 
-// (2.6 checks the license out, where Pro7's stub fails: flag 1 has the shell check it in at exit,
-// so the caller needs no cookie; flag 2 keeps a failure quiet)
 CW_CALLBACK UCBCheckoutLicense(
     CWPluginContext context,
     const char* featureName,
     const char* licenseVersion,
-    UInt32 flags, // (the SDK's SInt32; 2.6 tests them as unsigned)
+    UInt32 flags,
     void* reserved,
     SInt32* cookie
 ) {
@@ -1470,7 +1473,6 @@ CW_CALLBACK UCBCheckoutLicense(
     return cwNoErr;
 }
 
-// (2.6 checks the license in, where Pro7's stub fails)
 CW_CALLBACK UCBCheckinLicense(CWPluginContext context, SInt32 cookie) {
     if (optsCmdLine.verbose > 3) {
         CLPrint("Callback: %s\n", "UCBCheckinLicense");
@@ -1492,8 +1494,6 @@ CW_CALLBACK UCBResolveRelativePath(
     return cwErrRequestFailed;
 }
 
-// (dead in 2.6, as the table has no slot for it: the linker dropped it, its literal stays
-// in the unit's .data)
 CW_CALLBACK UCBMacOSErrToCWResult(CWPluginContext context, OSErr err) {
     if (optsCmdLine.verbose > 4) {
         CLPrint("Callback: %s\n", "UCBMacOSErrToCWResult");
@@ -1503,7 +1503,6 @@ CW_CALLBACK UCBMacOSErrToCWResult(CWPluginContext context, OSErr err) {
 }
 }
 
-// (Pro7's CW_BasePluginCallbacks)
 // clang-format off
 CW_BasePluginCallbacks sBasePluginCallbacks = {
     UCBGetFileInfo,
@@ -1551,7 +1550,7 @@ CWPluginPrivateContext::CWPluginPrivateContext(SInt32 thePluginType, SInt32 tota
     if (totalSize <= 0) {
         totalSize = sizeof(CWPluginPrivateContext);
     }
-    memset(this, 0, totalSize);
+    memset((void*)this, 0, totalSize);
     shellSignature = 'CWIE';
     pluginType = thePluginType;
     shellInfo = &sIDEInfo;

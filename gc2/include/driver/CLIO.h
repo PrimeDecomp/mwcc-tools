@@ -9,8 +9,6 @@
 extern "C" {
 #endif
 
-// The message types CLStyledMessageDispatch and CLPrintDispatch take (Pro7's CLIO.c names; its
-// cmdline.h repeats them as CLStyledMessageDispatch_Type0..5)
 enum {
     Msg_Note = 1,
     Msg_Warning = 2,

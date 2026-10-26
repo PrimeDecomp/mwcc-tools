@@ -8,9 +8,6 @@
 extern "C" {
 #endif
 
-// The MSL stdio functions the compiler links
-// (lib/msl/MSL_Common/Include/cstdio, Win32 configuration).
-#pragma pack(push, 2)
 typedef struct {
     unsigned int open_mode : 2;
     unsigned int io_mode : 3;
@@ -35,7 +32,6 @@ typedef int (*__io_proc)(
 );
 typedef int (*__close_proc)(__file_handle file);
 
-// 0x54 bytes: __files[1] (stdout) is 0x537664, __files[2] (stderr) 0x5376b8.
 struct _FILE {
     __file_handle handle;
     __file_modes mode;
@@ -59,9 +55,7 @@ struct _FILE {
     __close_proc close_proc;
     __idle_proc idle_proc;
     struct _FILE* next_file_struct;
-    unsigned long f50;
 };
-#pragma pack(pop)
 
 extern FILE __files[];
 #define stdin (&__files[0])
@@ -87,7 +81,6 @@ int vsnprintf(char* s, size_t n, const char* format, char* arg);
 int sscanf(const char* s, const char* format, ...);
 FILE* fopen(const char* filename, const char* mode);
 int fclose(FILE* file);
-// MSL's buffering modes (its setvbuf flushes and drops the buffer for 0)
 #define _IONBF 0
 #define _IOLBF 1
 #define _IOFBF 2

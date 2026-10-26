@@ -1,14 +1,3 @@
-"""The Wii compilers' debug information: later builds of the same sources (front end 4.2+), linked with CodeView
-(NB11) that names every function's object and every public symbol. The one reader of it.
-
-    image = wii.read()                  # build/compilers/Wii/1.0RC1/mwcceppc.exe, from decomp.dev's archive
-    image.contributions                 # [Contribution]: each .text/.data/.bss piece of each module (object)
-    image.publics                       # [Public]: each public symbol, with the module whose contribution holds it
-
-A COMMON is in no module's contribution: its module is "". Names are as the linker wrote them (`_f`, `_f@8`,
-`___argc`, `?f@@...`); names.c_name() gives the C name (strip one underscore, never all).
-"""
-
 from __future__ import annotations
 
 import bisect
@@ -30,7 +19,7 @@ _S_PUB32, _S_LPROC32, _S_GPROC32 = 0x1009, 0x100A, 0x100B
 
 @dataclass(frozen=True)
 class Contribution:
-    module: str  # the object's name, less ".obj"
+    module: str
     section: str
     address: int
     size: int
@@ -38,10 +27,10 @@ class Contribution:
 
 @dataclass(frozen=True)
 class Public:
-    name: str  # the linker name
+    name: str
     address: int
     section: str
-    module: str  # "" when no contribution holds it (a COMMON)
+    module: str
 
     @property
     def code(self) -> bool:
@@ -53,7 +42,7 @@ class Image:
         self.pe = PEFile(path)
         self.contributions: list[Contribution] = []
         self.publics: list[Public] = []
-        self.procedures: dict[int, str] = {}  # address -> name of each S_LPROC32/S_GPROC32 (modules with symbols)
+        self.procedures: dict[int, str] = {}
         self._read()
 
     def _read(self) -> None:
@@ -113,15 +102,12 @@ class Image:
         self.publics.sort(key=lambda p: p.address)
 
     def module_at(self, address: int) -> str:
-        """The module whose contribution holds ADDRESS ("" when none does)."""
         i = bisect.bisect_right(self._starts, address) - 1
         if i >= 0 and address < self.contributions[i].address + self.contributions[i].size:
             return self.contributions[i].module
         return ""
 
     def names(self) -> dict[int, str]:
-        """{address: C name} of the functions: the procedures' names (modules built with symbols), then the
-        publics'."""
         out = {address: c_name(name) for address, name in self.procedures.items()}
         for p in self.publics:
             if p.code:
@@ -129,7 +115,6 @@ class Image:
         return out
 
     def functions(self) -> list[Contribution]:
-        """Every function (one .text contribution each, statics included), in address order."""
         return [c for c in self.contributions if c.section == ".text"]
 
 

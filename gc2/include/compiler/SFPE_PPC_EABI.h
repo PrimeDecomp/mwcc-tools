@@ -1,16 +1,12 @@
 #ifndef COMPILER_SFPE_PPC_EABI_H
 #define COMPILER_SFPE_PPC_EABI_H
 
-// SFPE_PPC_EABI.c: the code generators InstrSelection calls for soft-float (-fp soft) operands
-
 #include "compiler/common.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-// The soft-float generators: InstrSelection's generator shape (Pro7's gen_*), the result in a GPR
-// (pair) for doubles.
 extern void SFPE_gen_OP(ENode* expr, short outputReg, short outputRegHi, Operand* output);
 extern void SFPE_gen_FLOATCONST(ENode* expr, short outputReg, short outputRegHi, Operand* output);
 extern void SFPE_gen_MONMIN(ENode* expr, short outputReg, short outputRegHi, Operand* output);

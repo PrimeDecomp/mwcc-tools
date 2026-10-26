@@ -2,19 +2,19 @@
 #define DRIVER_CLMAIN_H
 
 #include "compiler/common.h"
-#include <setjmp.h>
 #include "driver/CLProj.h"
 #include "driver/CLTarg.h"
+#include "driver/cmdline.h"
+#include "driver/CWPlugins.h"
 #include "driver/Memory.h"
 #include "driver/MsDos.h"
+#include "driver/oslib.h"
 #include "driver/pref_structs.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-// The driver's state (Pro7's cmdline.h)
-// TODO: invented name (Ninji's; Wii names only the variable, clState)
 typedef struct CLState {
     int argc;
     char** argv;

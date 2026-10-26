@@ -8,16 +8,12 @@
 extern "C" {
 #endif
 
-// The Mac File Manager's types the command line emulates (Pro7's common.h, mac68k-aligned)
 #pragma pack(push, 2)
 
-// Mac OS's FSSpec (Pro7's common.h, with Str63 names): the SDK's CWFileSpec is one off the Mac too
-// (CWPlugins.h: typedef FSSpec CWFileSpec). The tag matters to the C++ units: they copy it with
-// the implicit FSSpec::operator= (??4FSSpec, 0x417e90 in 2.6, called by ??4CWTargetInfo).
 typedef struct FSSpec {
     SInt16 vRefNum;
     SInt32 parID;
-    UInt8 name[64]; // Str63
+    UInt8 name[64];
 } FSSpec;
 typedef struct FSSpec CWFileSpec;
 

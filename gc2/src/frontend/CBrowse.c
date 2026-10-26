@@ -1,15 +1,17 @@
 #include "compiler/CBrowse.h"
 #include "compiler/CDecl.h"
 #include "compiler/CError.h"
-#include "compiler/CExpr.h"
 #include "compiler/CMangler.h"
 #include "compiler/CompilerTools.h"
 #include "compiler/CParser.h"
 #include "compiler/CPrep.h"
 #include "compiler/objects.h"
 #include "compiler/templates.h"
+#include "compiler/tokens.h"
+#include "compiler/types.h"
 #include "compiler/Unmangle.h"
 #include "driver/COSToolsCLT.h"
+#include "driver/CWPlugins.h"
 #include "driver/CWSecretPluginCallbacks.h"
 #include <string.h>
 
@@ -99,7 +101,6 @@ typedef struct BrowseHeader {
     SInt32 reserved[15];
 } BrowseHeader;
 
-// forward decls
 static void RecordUndefinedMemberFunctions(void);
 
 void CBrowse_Setup(CompilerLinkerParamBlk* params) {
@@ -113,8 +114,8 @@ void CBrowse_Setup(CompilerLinkerParamBlk* params) {
     InitGList(&gMemberFuncList, 1024);
 
     gNextMemberFuncID = 1;
-    gForceSourceLoc = 0;
-    gUseNameTable = 0;
+    gForceSourceLoc = FALSE;
+    gUseNameTable = FALSE;
 
     memclrw(&hdr, sizeof(hdr));
     hdr.browse_header = 0xBEABBAEB;
@@ -187,8 +188,7 @@ void CBrowse_BeginClass(DeclInfo* di, GList* gl) {
     ClassList* base;
     SInt32 i;
     TypeClass* tclass;
-    // (2.6, as 1.3: a buffer of its own for each base's name, where Pro7 reuses buf)
-    char* buf2;
+    char* baseName;
     char* buf;
 
     CError_ASSERT(227, di && di->thetype && gl);
@@ -261,20 +261,20 @@ void CBrowse_BeginClass(DeclInfo* di, GList* gl) {
         CMangler_MangleType(TYPE(tclass), 0);
         AppendGListByte(&name_mangle_list, 0);
 
-        buf2 = lalloc(name_mangle_list.size + 1);
-        strcpy(buf2, *name_mangle_list.data);
+        baseName = lalloc(name_mangle_list.size + 1);
+        strcpy(baseName, *name_mangle_list.data);
 
-        while (*buf2 && *buf2 >= '0' && *buf2 <= '9') {
-            buf2++;
+        while (*baseName && *baseName >= '0' && *baseName <= '9') {
+            baseName++;
         }
 
         i = base->base->classname->id;
-        while (*buf2 && *buf2 >= '0' && *buf2 <= '9') {
-            buf2++;
+        while (*baseName && *baseName >= '0' && *baseName <= '9') {
+            baseName++;
             i = -1;
         }
 
-        RecordName(&gClassData, buf2, i);
+        RecordName(&gClassData, baseName, i);
     }
 }
 
@@ -339,7 +339,6 @@ void CBrowse_AddClassMemberFunction(Object* object, SInt32 startOffset, SInt32 e
 
             id = tfunc->funcid;
             if (id <= 0) {
-                // TODO: this is not 64-bit safe
                 if (!(tfunc->flags & FUNC_DEFINED) || id == -1) {
                     AppendGListLong(&gMemberFuncList, (SInt32)object);
                 }
@@ -360,10 +359,8 @@ void CBrowse_AddClassMemberData(Object* object, SInt32 startOffset, SInt32 endOf
     CError_ASSERT(435, object);
 
     if (gClassData.data &&
-        startOffset >
-        0 &&
-        endOffset >=
-        startOffset &&
+        startOffset > 0 &&
+        endOffset >= startOffset &&
         object->datatype == DDATA) {
         if (tk == ';') {
             endOffset++;
@@ -391,7 +388,7 @@ void CBrowse_EndClass(SInt32 offset, GList* gl) {
             }
             memcpy(*gClassData.data + 9, &offset, 4);
             AppendGList(&gBrowseData, &gClassData);
-            AppendGListByte(&gBrowseData, memberEnd);
+            AppendGListByte(&gBrowseData, (SInt8)memberEnd);
         }
         FreeGList(&gClassData);
     }
@@ -463,7 +460,7 @@ void CBrowse_EndStruct(SInt32 offset, GList* gl) {
         if (offset > 0 && gClassData.size > 0) {
             memcpy(*gClassData.data + 9, &offset, 4);
             AppendGList(&gBrowseData, &gClassData);
-            AppendGListByte(&gBrowseData, memberEnd);
+            AppendGListByte(&gBrowseData, (SInt8)memberEnd);
         }
         FreeGList(&gClassData);
     }
@@ -471,8 +468,6 @@ void CBrowse_EndStruct(SInt32 offset, GList* gl) {
     gClassData = *gl;
 }
 
-// (2.6 types item as the enum; with Pro7's int, CBrowse_NewData, which inlines this, compiles
-// otherwise)
 static void EmitStandardData(
     enum EBrowserItem item,
     int fileID1,
@@ -590,13 +585,13 @@ static void RecordFunction(
     SInt32 flags;
     SInt32 funcid;
     char* namestr;
-    char* tmp;
+    char* ptr;
     char* namestr2;
-    Boolean flag;
+    Boolean unmangle;
     TypeMemberFunc* tfunc;
     SInt32 nameid2;
     char buf[2048];
-    char buf2[256];
+    char dtorname[256];
     HashNameNode* linkname;
     SInt32 nameid;
 
@@ -631,29 +626,29 @@ static void RecordFunction(
                 break;
         }
     } else {
-        flag = TRUE;
+        unmangle = TRUE;
         if (tfunc->flags & (FUNC_IS_CTOR | FUNC_IS_DTOR)) {
-            tmp = tfunc->theclass->classname->name;
-            while (*tmp >= '0' && *tmp <= '9') {
-                tmp++;
+            ptr = tfunc->theclass->classname->name;
+            while (*ptr >= '0' && *ptr <= '9') {
+                ptr++;
             }
-            MWUnmangleClassName(tmp, buf, sizeof(buf));
+            MWUnmangleClassName(ptr, buf, sizeof(buf));
 
             namestr = buf;
-            if ((tmp = strrchr(buf, ':'))) {
-                namestr = tmp + 1;
+            if ((ptr = strrchr(buf, ':'))) {
+                namestr = ptr + 1;
             }
 
             if (tfunc->flags & FUNC_IS_DTOR) {
-                buf2[0] = '~';
-                strncpy(&buf2[1], namestr, sizeof(buf2) - 1);
-                namestr = buf2;
+                dtorname[0] = '~';
+                strncpy(&dtorname[1], namestr, sizeof(dtorname) - 1);
+                namestr = dtorname;
             }
 
-            flag = FALSE;
+            unmangle = FALSE;
         }
 
-        if (flag) {
+        if (unmangle) {
             MWUnmangle(object->name->name, buf, sizeof(buf));
             namestr = buf;
         }
@@ -811,8 +806,7 @@ void CBrowse_NewTemplateFunc(TemplateFunction* tmfunc) {
 
     if (tmfunc->srcfile &&
         tmfunc->srcfile->fileID &&
-        tmfunc->startoffset >
-        0 &&
+        tmfunc->startoffset > 0 &&
         tmfunc->endoffset >= tmfunc->startoffset) {
         EmitStandardData(
             browseTemplate,

@@ -1,9 +1,12 @@
 #include "driver/CLAccessPaths.h"
 #include "driver/CLIO.h"
+#include "driver/cmdline.h"
+#include "driver/Files.h"
 #include "driver/Generic.h"
 #include "driver/MacSpecs.h"
 #include "driver/MemUtils.h"
 #include "driver/MsDos.h"
+#include "driver/oslib.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -143,8 +146,6 @@ UInt16 Paths_Count(const Paths* paths) {
     return paths->pathsCount;
 }
 
-// Dead in 2.6 (the linker dropped it, Pro7 has no caller either); kept: the asserts after it have
-// Pro7's line numbers.
 Boolean Paths_FindPath(const Paths* paths, const Path* path) {
     UInt16 idx;
 
@@ -180,7 +181,7 @@ static Boolean GatherRecurse(Paths* list, Path* path) {
     OSOpenedDir rf;
     OSSpec ent;
     int count;
-    char filename[256]; // Pro7: 64
+    char filename[256];
     Boolean isfile;
     char* nptr;
     char* eptr;
@@ -257,7 +258,7 @@ static void CopyRecurseFSS(FSSpec** list, Paths* paths, UInt16* count) {
     for (idx = 0; idx < Paths_Count(paths); idx++) {
         path = Paths_GetPath(paths, idx);
         OS_ASSERT(353, path && *count > 0);
-        OS_MakeSpecWithPath(path->spec, NULL, 0, &spec);
+        OS_MakeSpecWithPath(path->spec, NULL, FALSE, &spec);
         OS_ASSERT(355, OS_OSSpec_To_FSSpec(&spec, *list));
         (*list)++;
         (*count)--;

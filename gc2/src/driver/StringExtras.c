@@ -27,12 +27,12 @@ char* __stdcall strcpyn(char* d, const char* s, SInt32 len, SInt32 max) {
 }
 
 int __stdcall ustrcmp(const char* src, const char* dst) {
-    int x;
+    int diff;
 
     do {
-        x = tolower(*src) - tolower(*(dst++));
-        if (x) {
-            return x;
+        diff = tolower(*src) - tolower(*(dst++));
+        if (diff) {
+            return diff;
         }
     } while (*(src++));
 
@@ -40,13 +40,12 @@ int __stdcall ustrcmp(const char* src, const char* dst) {
 }
 
 int __stdcall ustrncmp(const char* src, const char* dst, UInt32 len) {
-    int x;
+    int diff;
 
-    // (Pro7's `while (len--)` compiles to `sub 1; jb`; 2.6 copies and tests the count)
     while (len-- != 0) {
-        x = tolower(*src) - tolower(*(dst++));
-        if (x) {
-            return x;
+        diff = tolower(*src) - tolower(*(dst++));
+        if (diff) {
+            return diff;
         }
         if (!*(src++)) {
             return 0;

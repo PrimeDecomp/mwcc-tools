@@ -12,9 +12,7 @@ extern HashNameNode* destructor_name_node;
 extern HashNameNode* asop_name_node;
 
 extern void CMangler_Setup(void);
-extern HashNameNode* CMangler_BasicDtorName(void);
 extern HashNameNode* CMangler_VBaseDtorName(void);
-extern HashNameNode* CMangler_ArrayDtorName(void);
 extern HashNameNode* CMangler_SDeleteDtorName(void);
 extern HashNameNode* CMangler_DeleteDtorName(void);
 extern char* CMangler_GetOperator(HashNameNode* name);

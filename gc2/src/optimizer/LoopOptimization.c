@@ -4,11 +4,11 @@
 #include "compiler/CFunc.h"
 #include "compiler/CompilerTools.h"
 #include "compiler/CParser.h"
-#include "compiler/CPrep.h"
+#include "compiler/enode.h"
 #include "compiler/LoopDetection.h"
 #include "compiler/objects.h"
 #include "compiler/PCode.h"
-#include "compiler/PCodeUtilities.h"
+#include "compiler/PCodeInfo.h"
 #include "compiler/Registers.h"
 #include "compiler/types.h"
 #include "compiler/UseDefChains.h"
@@ -26,9 +26,7 @@ static int ispowerof2(SInt32 value) {
     return (bit > 0 && bit < 31) ? bit : 0;
 }
 
-static void insertupdateinstructions(Loop* loop) {
-    // nothing
-}
+static void insertupdateinstructions(Loop* loop) {}
 
 static void computeliveonexit(Loop* loop) {
     UInt32* usevec;
@@ -86,22 +84,16 @@ static void eliminateinductionvariables(Loop* loop) {
 
     for (blocklist = loop->blocks; blocklist; blocklist = blocklist->next) {
         for (instr = blocklist->block->firstPCode; instr; instr = instr->nextPCode) {
-            if (instr->op !=
-                PC_ADDI ||
-                (reg = instr->args[0].data.reg.reg) <
-                32 ||
-                reg >=
-                last_virtual_GPR ||
+            if (instr->op != PC_ADDI ||
+                (reg = instr->args[0].data.reg.reg) < 32 ||
+                reg >= last_virtual_GPR ||
                 instr->args[1].data.reg.reg != reg) {
                 op = instr->args;
                 i = instr->argCount;
                 while (i--) {
-                    if (op->kind ==
-                        PCOp_REGISTER &&
-                        op->arg ==
-                        RegClass_GPR &&
-                        op->data.reg.reg >=
-                        n_real_registers[RegClass_GPR] &&
+                    if (op->kind == PCOp_REGISTER &&
+                        op->arg == RegClass_GPR &&
+                        op->data.reg.reg >= n_real_registers[RegClass_GPR] &&
                         op->data.reg.reg < last_virtual_GPR) {
                         bitvectorclearbit(op->data.reg.reg, inductionvariables);
                     }
@@ -117,12 +109,9 @@ static void eliminateinductionvariables(Loop* loop) {
             op = instr->args;
             i = instr->argCount;
             while (i--) {
-                if (op->kind ==
-                    PCOp_REGISTER &&
-                    op->arg ==
-                    RegClass_GPR &&
-                    op->data.reg.reg >=
-                    n_real_registers[RegClass_GPR] &&
+                if (op->kind == PCOp_REGISTER &&
+                    op->arg == RegClass_GPR &&
+                    op->data.reg.reg >= n_real_registers[RegClass_GPR] &&
                     op->data.reg.reg < last_virtual_GPR) {
                     bitvectorsetbit(op->data.reg.reg, liveonexit);
                 }
@@ -134,14 +123,10 @@ static void eliminateinductionvariables(Loop* loop) {
     for (blocklist = loop->blocks; blocklist; blocklist = blocklist->next) {
         for (instr = blocklist->block->firstPCode; instr; instr = nextInstr) {
             nextInstr = instr->nextPCode;
-            if (instr->op ==
-                PC_ADDI &&
-                (reg = instr->args[0].data.reg.reg) >=
-                32 &&
-                reg <
-                last_virtual_GPR &&
-                instr->args[1].data.reg.reg ==
-                reg &&
+            if (instr->op == PC_ADDI &&
+                (reg = instr->args[0].data.reg.reg) >= 32 &&
+                reg < last_virtual_GPR &&
+                instr->args[1].data.reg.reg == reg &&
                 bitvectorgetbit(reg, inductionvariables) &&
                 !bitvectorgetbit(reg, liveonexit)) {
                 deletepcode(instr);
@@ -183,12 +168,9 @@ static void skiplooptest(Loop* loop) {
         instr = loop->body->firstPCode;
         CError_ASSERT(369, instr);
 
-        if (instr->op ==
-            PC_CMP ||
-            instr->op ==
-            PC_CMPI ||
-            instr->op ==
-            PC_CMPLI ||
+        if (instr->op == PC_CMP ||
+            instr->op == PC_CMPI ||
+            instr->op == PC_CMPLI ||
             instr->op == PC_CMPL) {
             break;
         }
@@ -215,10 +197,8 @@ static void unrollloop(Loop* loop) {
     PCode* bodyInstr;
 
     for (factor = copts.unroll_factor_limit; factor > 1; factor--) {
-        if ((loop->iterationCount % factor) ==
-            0 &&
-            (loop->bodySize - 2) *
-            factor <= copts.unroll_instr_limit) {
+        if ((loop->iterationCount % factor) == 0 &&
+            (loop->bodySize - 2) * factor <= copts.unroll_instr_limit) {
             break;
         }
     }
@@ -235,12 +215,9 @@ static void unrollloop(Loop* loop) {
     for (i = 0; i < factor - 1; i++) {
         firstInstr = loop->body->firstPCode;
         CError_ASSERT(448, firstInstr);
-        if (firstInstr->op !=
-            PC_CMP &&
-            firstInstr->op !=
-            PC_CMPL &&
-            firstInstr->op !=
-            PC_CMPI &&
+        if (firstInstr->op != PC_CMP &&
+            firstInstr->op != PC_CMPL &&
+            firstInstr->op != PC_CMPI &&
             firstInstr->op != PC_CMPLI) {
             CError_FATAL(450);
         }
@@ -363,7 +340,7 @@ static PCodeBlock* insertnewpcblock(PCodeBlock* block, int loopWeight) {
 
 static void unrollloopconditional(Loop* loop) {
     PCodeBlock* lastBlock;
-    PCodeLabel* label24;
+    PCodeLabel* bodyLabel;
     PCode* instr;
     PCode* instrCopy;
     int outputBlockCount;
@@ -381,15 +358,13 @@ static void unrollloopconditional(Loop* loop) {
     int k;
     int instructionCount;
 
-    label24 = NULL;
+    bodyLabel = NULL;
     outputBlockCount = 0;
     instructionCount = 0;
 
     for (factor = copts.unroll_factor_limit; factor > 1; factor--) {
-        if ((loop->iterationCount % factor) ==
-            0 &&
-            (loop->bodySize - 2) *
-            factor <= copts.unroll_instr_limit) {
+        if ((loop->iterationCount % factor) == 0 &&
+            (loop->bodySize - 2) * factor <= copts.unroll_instr_limit) {
             break;
         }
     }
@@ -431,9 +406,9 @@ static void unrollloopconditional(Loop* loop) {
             blocks3[outputBlockCount++] = blocks2[j];
             lastBlock = blocks2[j];
         }
-        if (label24) {
-            pclabel(blocks2[0], label24);
-            label24 = NULL;
+        if (bodyLabel) {
+            pclabel(blocks2[0], bodyLabel);
+            bodyLabel = NULL;
         }
 
         for (j = 0; j < inputBlockCount; j++) {
@@ -452,10 +427,10 @@ static void unrollloopconditional(Loop* loop) {
 
                     if (op) {
                         if (op->data.label.label->block == loop->body) {
-                            if (!label24) {
-                                label24 = makepclabel();
+                            if (!bodyLabel) {
+                                bodyLabel = makepclabel();
                             }
-                            instrCopy->args[opID].data.label.label = label24;
+                            instrCopy->args[opID].data.label.label = bodyLabel;
                         } else {
                             for (k = 0; k < inputBlockCount; k++) {
                                 if (op->data.label.label->block == blocks[k]) {
@@ -478,12 +453,9 @@ static void unrollloopconditional(Loop* loop) {
 
         firstInstr = loop->body->firstPCode;
         CError_ASSERT(762, firstInstr != NULL);
-        if (firstInstr->op !=
-            PC_CMP &&
-            firstInstr->op !=
-            PC_CMPL &&
-            firstInstr->op !=
-            PC_CMPI &&
+        if (firstInstr->op != PC_CMP &&
+            firstInstr->op != PC_CMPL &&
+            firstInstr->op != PC_CMPI &&
             firstInstr->op != PC_CMPLI) {
             CError_FATAL(764);
         }
@@ -529,8 +501,8 @@ static void unrollloopconditional(Loop* loop) {
         }
     }
 
-    if (label24) {
-        pclabel(loop->body, label24);
+    if (bodyLabel) {
+        pclabel(loop->body, bodyLabel);
     }
 
     for (i = 0; i < inputBlockCount; i++) {
@@ -598,7 +570,7 @@ static void unrollloopconditional(Loop* loop) {
 static void unrollunknownBDNZ(Loop* loop) {
     int factor;
     PCodeBlock* preheader;
-    PCodeBlock* blockA;
+    PCodeBlock* exitBlock;
     PCodeBlock* postheader;
     PCodeBlock* newblock1;
     PCodeBlock* newblock2;
@@ -607,15 +579,15 @@ static void unrollunknownBDNZ(Loop* loop) {
     PCodeBlock* newblock5;
     PCode* mtctr;
     short mtctr_reg;
-    PCode* instr28;
-    PCode* instr6;
+    PCode* updateCopy;
+    PCode* ivUse;
     PCodeBlock* block;
     PCode* instr;
     PCodeArg* op;
     int i;
     int val;
     short mtctr_shifted_reg;
-    short reg25;
+    short incrementReg;
     PCLink* link;
 
     if (loop->bodySize < 4) {
@@ -635,7 +607,7 @@ static void unrollunknownBDNZ(Loop* loop) {
     }
 
     preheader = loop->preheader;
-    blockA = loop->body->nextBlock;
+    exitBlock = loop->body->nextBlock;
     postheader = loop->preheader->nextBlock;
 
     newblock1 = insertnewpcblock(preheader, loop->loopWeight);
@@ -660,57 +632,54 @@ static void unrollunknownBDNZ(Loop* loop) {
         return;
     }
 
-    instr28 = NULL;
+    updateCopy = NULL;
     for (block = postheader; block != loop->body; block = block->successors->block) {
         for (instr = block->firstPCode; instr; instr = instr->nextPCode) {
             if (instr->op != PC_B) {
                 appendpcode(newblock2, copypcode(instr));
                 if (instr == loop->inductionUpdate) {
-                    instr28 = newblock2->lastPCode;
+                    updateCopy = newblock2->lastPCode;
                 }
             }
         }
     }
 
-    if (!instr28) {
+    if (!updateCopy) {
         appendpcode(newblock2, copypcode(loop->inductionUpdate));
-        instr28 = newblock2->lastPCode;
+        updateCopy = newblock2->lastPCode;
     }
 
-    instr6 = NULL;
+    ivUse = NULL;
     for (instr = newblock2->firstPCode; instr; instr = instr->nextPCode) {
-        if (instr != instr28) {
+        if (instr != updateCopy) {
             op = instr->args;
             i = instr->argCount;
             while (i--) {
-                if (op->kind ==
-                    PCOp_REGISTER &&
-                    op->arg ==
-                    RegClass_GPR &&
-                    op->data.reg.reg ==
-                    loop->inductionUpdate->args[0].data.reg.reg &&
+                if (op->kind == PCOp_REGISTER &&
+                    op->arg == RegClass_GPR &&
+                    op->data.reg.reg == loop->inductionUpdate->args[0].data.reg.reg &&
                     (op->data.reg.effect & (EffectRead | EffectWrite))) {
-                    instr6 = instr;
+                    ivUse = instr;
                     break;
                 }
                 op++;
             }
         }
-        if (instr6) {
+        if (ivUse) {
             break;
         }
     }
 
-    if (!instr6) {
-        deletepcode(instr28);
+    if (!ivUse) {
+        deletepcode(updateCopy);
         deletepcode(loop->inductionUpdate);
         if (loop->footer) {
-            blockA = loop->footer;
+            exitBlock = loop->footer;
         } else {
-            blockA = insertnewpcblock(loop->body, loop->loopWeight);
+            exitBlock = insertnewpcblock(loop->body, loop->loopWeight);
         }
     } else {
-        instr28 = NULL;
+        updateCopy = NULL;
     }
 
     for (i = 1; i < factor; i++) {
@@ -733,22 +702,22 @@ static void unrollunknownBDNZ(Loop* loop) {
 
     appendpcode(newblock1, makepcode(PC_CMPLI, 0, mtctr_shifted_reg, 0));
 
-    if (instr28) {
-        reg25 = ALLOC_GPR();
+    if (updateCopy) {
+        incrementReg = ALLOC_GPR();
         if (loop->step == 1) {
-            instr = makepcode(PC_MR, reg25, mtctr_reg);
+            instr = makepcode(PC_MR, incrementReg, mtctr_reg);
         } else if (loop->step == -1) {
-            instr = makepcode(PC_NEG, reg25, mtctr_reg);
+            instr = makepcode(PC_NEG, incrementReg, mtctr_reg);
         } else {
             val = ispowerof2(abs(loop->step));
             if (val > 0) {
-                instr = makepcode(PC_RLWINM, reg25, mtctr_reg, val, 0, 31 - val);
+                instr = makepcode(PC_RLWINM, incrementReg, mtctr_reg, val, 0, 31 - val);
                 if (loop->step < 0) {
                     appendpcode(newblock1, instr);
-                    instr = makepcode(PC_NEG, reg25, reg25);
+                    instr = makepcode(PC_NEG, incrementReg, incrementReg);
                 }
             } else {
-                instr = makepcode(PC_MULLI, reg25, mtctr_reg, loop->step);
+                instr = makepcode(PC_MULLI, incrementReg, mtctr_reg, loop->step);
             }
         }
         appendpcode(newblock1, instr);
@@ -772,29 +741,29 @@ static void unrollunknownBDNZ(Loop* loop) {
     newblock2->predecessors = link;
 
     appendpcode(newblock4, makepcode(PC_ANDI, mtctr_reg, mtctr_reg, factor - 1));
-    appendpcode(newblock4, makepcode(PC_BT, 0, 2, blockA->labels));
-    pcbranch(newblock4, blockA->labels);
+    appendpcode(newblock4, makepcode(PC_BT, 0, 2, exitBlock->labels));
+    pcbranch(newblock4, exitBlock->labels);
 
     link = lalloc(sizeof(PCLink));
     link->block = newblock4;
-    link->nextLink = blockA->predecessors;
-    blockA->predecessors = link;
+    link->nextLink = exitBlock->predecessors;
+    exitBlock->predecessors = link;
 
     deletepcode(mtctr);
     appendpcode(newblock5, mtctr);
 
-    if (instr28 && bitvectorgetbit(instr28->args[0].data.reg.reg, liveonexit)) {
-        instr =
-            makepcode(PC_ADD, instr28->args[0].data.reg.reg, instr28->args[0].data.reg.reg, reg25);
-        if (blockA->firstPCode) {
-            insertpcodebefore(blockA->firstPCode, instr);
+    if (updateCopy && bitvectorgetbit(updateCopy->args[0].data.reg.reg, liveonexit)) {
+        instr = makepcode(
+            PC_ADD, updateCopy->args[0].data.reg.reg, updateCopy->args[0].data.reg.reg, incrementReg
+        );
+        if (exitBlock->firstPCode) {
+            insertpcodebefore(exitBlock->firstPCode, instr);
         } else {
-            appendpcode(blockA, instr);
+            appendpcode(exitBlock, instr);
         }
     }
 }
 
-// (dead in 2.6 as in Pro7: no row; the asserts after it carry Pro7's line numbers)
 static void deleteloop(Loop* loop) {
     PCodeBlock* body;
     PCodeBlock* preheader;
@@ -814,12 +783,9 @@ static void deleteloop(Loop* loop) {
         instr = body->firstPCode;
         CError_ASSERT(1294, instr != NULL);
 
-        if (instr->op ==
-            PC_CMP ||
-            instr->op ==
-            PC_CMPI ||
-            instr->op ==
-            PC_CMPLI ||
+        if (instr->op == PC_CMP ||
+            instr->op == PC_CMPI ||
+            instr->op == PC_CMPLI ||
             instr->op == PC_CMPL) {
             break;
         }
@@ -883,7 +849,9 @@ static void rewriteloopwithBDNZ(Loop* loop) {
     PCode* instr;
 
     if (!FITS_IN_SHORT(loop->iterationCount)) {
-        instr = makepcode(PC_LIS, ALLOC_GPR(), 0, HIGH_PART(loop->iterationCount));
+        instr = makepcode(
+            PC_LIS, ALLOC_GPR(), 0, HIGH_PART(loop->iterationCount)
+        );
         insertpcodebefore(loop->preheader->lastPCode, instr);
 
         if (LOW_PART(loop->iterationCount) != 0) {
@@ -1085,12 +1053,9 @@ static void rewriteunknownloopwithBDNZ(Loop* loop) {
         instr = loop->body->firstPCode;
         CError_ASSERT(1857, instr);
 
-        if (instr->op ==
-            PC_CMP ||
-            instr->op ==
-            PC_CMPI ||
-            instr->op ==
-            PC_CMPLI ||
+        if (instr->op == PC_CMP ||
+            instr->op == PC_CMPI ||
+            instr->op == PC_CMPLI ||
             instr->op == PC_CMPL) {
             break;
         }
@@ -1218,10 +1183,9 @@ static void rewriteunknownloopwithBDNZ(Loop* loop) {
             if (FITS_IN_USHORT(value1)) {
                 insertpcodebefore(loop->preheader->lastPCode, makepcode(PC_CMPLI, 0, reg1, value1));
             } else {
-                high = makepcode(PC_LIS, ALLOC_GPR(), 0, HIGH_PART(value1));
+                high =
+                    makepcode(PC_LIS, ALLOC_GPR(), 0, HIGH_PART(value1));
                 insertpcodebefore(loop->preheader->lastPCode, high);
-                // (a bug of the original, kept: this tests the iteration count's low half, not the
-                // bound's (`cmp word ptr [loop + 0x3c], 0`); copied from rewriteloopwithBDNZ)
                 if (LOW_PART(loop->iterationCount) != 0) {
                     insertpcodeafter(
                         high,
@@ -1244,9 +1208,9 @@ static void rewriteunknownloopwithBDNZ(Loop* loop) {
             if (value1 == lo) {
                 insertpcodebefore(loop->preheader->lastPCode, makepcode(PC_CMPI, 0, reg1, value1));
             } else {
-                lis = makepcode(PC_LIS, ALLOC_GPR(), 0, HIGH_PART(value1));
+                lis =
+                    makepcode(PC_LIS, ALLOC_GPR(), 0, HIGH_PART(value1));
                 insertpcodebefore(loop->preheader->lastPCode, lis);
-                // (the same bug as above)
                 if (LOW_PART(loop->iterationCount) != 0) {
                     insertpcodeafter(
                         lis,
@@ -1455,13 +1419,11 @@ void changearraytoregisters(void) {
                     op = instr->args;
                     i = instr->argCount;
                     while (i--) {
-                        if (op->kind == PCOp_MEMORY && (RefType)op->arg == RefType_1) {
+                        if (op->kind == PCOp_MEMORY && (RefType)op->arg == RefType_Local16) {
                             array = lookup_array_object(arrays, op->data.mem.obj);
                             if (array && !array->invalid) {
                                 if ((instr->flags & (fIsRead | fIsWrite)) &&
-                                    op->data.mem.offset %
-                                    array->elementSize ==
-                                    0 &&
+                                    op->data.mem.offset % array->elementSize == 0 &&
                                     op->data.mem.offset < array->arraySize) {
                                     switch (instr->op) {
                                         case PC_LBZ:
@@ -1598,7 +1560,6 @@ void changearraytoregisters(void) {
             optimizedloop_trans_regs = TRUE;
             for (; array; array = array->next) {
                 for (i = 0; i < array->elementCount; i++) {
-                    ORACLE_PROBE(OracleProbe_Binding(array, (void*)(long)i, NULL));
                     if (array->isFloat) {
                         array->elements[i] = ALLOC_FPR();
                     } else {
@@ -1611,9 +1572,8 @@ void changearraytoregisters(void) {
                     if (!(instr->flags & fIsBranch) &&
                         instr->argCount &&
                         (instr->flags & (fIsRead | fIsWrite)) &&
-                        instr->args[2].kind ==
-                        PCOp_MEMORY &&
-                        (RefType)instr->args[2].arg == RefType_1) {
+                        instr->args[2].kind == PCOp_MEMORY &&
+                        (RefType)instr->args[2].arg == RefType_Local16) {
                         array = lookup_array_object(arrays, instr->args[2].data.mem.obj);
                         if (array && !array->invalid) {
                             reg2 = instr->args[0].data.reg.reg;

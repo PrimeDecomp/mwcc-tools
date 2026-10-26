@@ -1,19 +1,18 @@
 #ifndef COMPILER_CPARSER_H
 #define COMPILER_CPARSER_H
 
-#include <setjmp.h>
 #include "compiler/common.h"
 #include "compiler/enode.h"
 #include "compiler/tokens.h"
 #include "driver/CWPlugins.h"
+#include "driver/oslib.h"
+#include <setjmp.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-// (2-byte packing: CompilerLinkerOptions.bc_range is at 0x5e, inlinemaxsize at 0x6e)
 #pragma pack(push, 2)
-// CompilerLinkerOptions.structalignment
 enum {
     AlignMode0_Mac68k,
     AlignMode1_Mac68k4byte,
@@ -25,7 +24,6 @@ enum {
     AlignMode7_16Byte,
     AlignMode8_Packed
 };
-// CompilerLinkerOptions.processor
 enum {
     CPU_PPC401,
     CPU_PPC403,
@@ -56,8 +54,6 @@ enum {
     CPU_PPC565
 };
 
-// Pro7's CompilerLinkerOptions at 2.6's offsets: the names are Pro7's, else those of the 2.6
-// pragmas that set the fields (CPrep's compileroptions table gives every pragma's offset).
 struct CompilerLinkerOptions {
     UInt8 littleendian;
     SInt16 processor;
@@ -77,38 +73,21 @@ struct CompilerLinkerOptions {
     UInt8 function_align;
     char cats;
     char force_cats;
-    // TODO: made-up name (the EABI panel's sdata threshold)
     SInt32 sdata_threshold;
-    // TODO: made-up name (the EABI panel's sdata2 threshold)
     int sdata2_threshold;
     UInt8 pool_data;
-    // TODO: made-up name (the EABI panel's common setting)
     UInt8 common;
-    // TODO: made-up name (any floating point: the panel's -fp other than none)
     char use_fp;
-    // TODO: made-up name (-fp soft: floating point in GPRs, through the SFPE helpers)
     Boolean soft_float;
-    // Pro7's name (op_absolute_ha reads it where Pro7 reads codegen_pic). No pragma of 2.6's
-    // compileroptions table has this offset, and only CMachine's inline-options restore writes it:
-    // 2.6 has no `#pragma pic`, so it stays 0.
     UInt8 codegen_pic;
-    // TODO: invented name: set by InitDwarf (DWARF.c: the entries' sibling patches go into the
-    // .debug section rather than a function's own list)
     UInt8 full_dwarf;
-    // TODO: invented name: from the "PPC EABI Project" panel's byte 0x37; when set, the object file
-    // gets no .comment records of the symbols' alignment and no CodeWarrior version record
     char no_comment_records;
-    // (2.6: #pragma rel109_offset, 0..3; signed: emit_relocation adds it with movsx)
     SInt8 rel109_offset;
-    // the sections `#pragma section` selects: code, then data, const, sdata and sconst (the section
-    // record's typebits 2, 4, 8 and 0x10)
     struct ObjGenSection* textSection;
     struct ObjGenSection* dataSection;
     struct ObjGenSection* constSection;
     struct ObjGenSection* sdataSection;
     struct ObjGenSection* sconstSection;
-    // each section's attributes, by section header index (CodeGen_PragmaPush, CodeGen_PragmaPop).
-    // TODO: invented names
     SInt32 sectionHeaderTableSize;
     struct SectionSymbolAttributes** sectionHeaderTable;
     struct InterruptList* interruptList;
@@ -120,7 +99,9 @@ struct CompilerLinkerOptions {
     UInt8 gen_isel;
     UInt8 gen_fsel;
     UInt8 gecko_float_typecons;
+#if VERSION >= VERSION_GC_2_0
     UInt8 disable_vector_frame;
+#endif
     UInt8 opt_bcc_lr_ctr;
     UInt8 use_lmw_stmw;
     char report_heap_info;
@@ -130,7 +111,6 @@ struct CompilerLinkerOptions {
     char min_struct_alignment;
     UInt8 unsafe_global_reg_vars;
     UInt8 ignore_global_reg_vars;
-    // (2.6: #pragma bc_range)
     UInt32 bc_range;
     UInt8 gprfloatcopy;
 #if VERSION >= VERSION_GC_2_5
@@ -139,8 +119,6 @@ struct CompilerLinkerOptions {
     Boolean asmsemicolcomment;
     Boolean asmpoundcomment;
 #if VERSION >= VERSION_GC_2_5
-    // TODO: nothing in 2.6 reads or writes offsets 0x66 and 0x67, and no pragma names them (2.0 has
-    // neither these bytes nor old_style_bitfields: every later member is 2 bytes lower)
     UInt8 unknown66[2];
 #endif
     StringPtr oldprefixname;
@@ -196,7 +174,7 @@ struct CompilerLinkerOptions {
     UInt8 dollar_identifiers;
     Boolean def_inline_tfuncs;
     UInt8 arg_dep_lookup;
-    volatile char simple_prepdump;
+    char simple_prepdump;
     char line_prepdump;
     UInt8 fullpath_prepdump;
     Boolean old_mtemplparser;
@@ -217,10 +195,8 @@ struct CompilerLinkerOptions {
     char optEH;
     Boolean optEH2;
     Boolean new_mangler;
-    // (2.6)
     Boolean fullpath_file;
     Boolean microsoft_EH;
-    // (2.6: pragmas no-ansi-lib-builtin and, inverted, stdc_libfuncname_redefined)
     Boolean no_ansi_lib_builtin;
     char warningerrors;
     char pedantic;
@@ -262,12 +238,10 @@ struct CompilerLinkerOptions {
     char nosyminline;
     char force_active;
     unsigned char block_assign;
-    // (2.6)
     Boolean has8bytebitfields;
     SInt8 optimizationlevel;
     UInt8 optimizesize;
     UInt8 optimizewithasm;
-    // (CCompiler.c copies the driver's flag)
     UInt8 crippled;
     UInt8 commonsubs;
     UInt8 loopinvariants;
@@ -286,13 +260,9 @@ struct CompilerLinkerOptions {
     signed char unrollfactor;
     SInt8 unrollinstrfactor;
     UInt8 filesyminfo;
-    // TODO: nothing in 2.6 reads or writes offset 0xfd
     UInt8 unknownfd;
-    // TODO: invented name: DWARF entries get sibling attributes (the driver sets it)
     char dwarf_siblings;
-    // TODO: invented name: DWARF references are written as relocations (the driver sets it)
     UInt8 dwarf_relocations;
-    // (Pro7: the path written to debug info is the full one)
     Boolean absolutepath;
     CWDataType appltype;
     CWDataType headtype;
@@ -301,8 +271,6 @@ struct CompilerLinkerOptions {
 };
 #pragma pack(pop)
 
-// a tentative parse; an error raised while trychain points at it longjmps back with the state
-// restored
 struct ParserTryBlock {
     struct ParserTryBlock* next;
     jmp_buf jmpbuf;
@@ -381,7 +349,16 @@ extern Type stvoid;
 extern TypePointer void_ptr;
 extern TypeFunc rt_func;
 
-// the basic types of the lexer's atoms (atomtype: tksize names one)
+#ifdef __MWERKS__
+#define ORIGINAL_ADDRESS(ptr) ((UInt32)(ptr))
+#define TYPE_INTEGRAL_UNCHECKED(ty) (TYPE_INTEGRAL(ty)->integral)
+#else
+#define ORIGINAL_ADDRESS(ptr) CParser_OriginalAddress(ptr)
+#define TYPE_INTEGRAL_UNCHECKED(ty) CParser_UncheckedIntegral(TYPE(ty))
+extern UInt32 CParser_OriginalAddress(const void* ptr);
+extern UInt8 CParser_UncheckedIntegral(Type* type);
+#endif
+
 enum {
     ATOM_VOID = 1,
     ATOM_CHAR,
@@ -401,15 +378,15 @@ enum {
     ATOM_LONGDOUBLE
 };
 
-extern Object* CParser_NewRTFunc(
-    Type* rettype, HashNameNode* name, Boolean flag, int argcount, ...
-);
+extern Object* CParser_NewRTFunc(Type* rettype, HashNameNode* name, UInt8 kind, int argcount, ...);
 extern Boolean CParser_IsPublicRuntimeObject(Object* obj);
 extern Boolean CParser_ReInitRuntimeObjects(Boolean is_precompiler);
 extern void CParser_Setup(void);
 extern void CParser_Cleanup(void);
 extern short GetPrec(short token);
-extern Boolean CParser_ParseOperatorName(short* token, Boolean flag1, Boolean flag2);
+extern Boolean CParser_ParseOperatorName(
+    short* token, Boolean allowConversion, Boolean parseConversionType
+);
 extern SInt32 CParser_GetUniqueID(void);
 extern void CParser_PrintUniqueID(char* buf);
 extern void CParser_SetUniqueID(SInt32 id);
@@ -429,7 +406,7 @@ extern Object* CParser_NewAliasObject(Object* object, SInt32 offset);
 extern FuncArg* CParser_NewFuncArg(void);
 extern Type* atomtype(void);
 extern Object* CParser_FindDeallocationObject(
-    Type* type, FuncArg* args, Boolean flag1, Boolean flag2, Boolean* outflag
+    Type* type, FuncArg* args, Boolean isArray, Boolean isGlobal, Boolean* includeSize
 );
 extern short is_memberpointerequal(Type* a, Type* b);
 extern short is_typeequal(Type* a, Type* b);
@@ -445,14 +422,18 @@ extern Boolean CParser_IsSameOrMoreCVQualified(UInt32 a, UInt32 b);
 extern Boolean is_unsigned(Type* type);
 extern StructMember* ismember(TypeStruct* tstruct, HashNameNode* name);
 extern void appendmember(TypeStruct* tstruct, StructMember* member);
-extern Boolean isdeclaration(UInt8 flag1, UInt8 flag2, UInt8 flag3, short token);
+extern Boolean isdeclaration(
+    UInt8 scanDeclarator, UInt8 requireName, UInt8 isNewExpression, short token
+);
 extern Boolean islookaheaddeclaration(void);
-extern Type* CParser_ParseTypeID(UInt32* qual, Boolean* flag);
-extern Boolean CParser_TryParamList(Boolean flag);
+extern Type* CParser_ParseTypeID(UInt32* qual, Boolean* isTemplateName);
+extern Boolean CParser_TryParamList(Boolean stopAtComma);
 extern Type* CParser_RemoveTopMostQualifiers(Type* type, UInt32* qual);
 extern UInt32 CParser_GetTypeQualifiers(Type* type, UInt32 qual);
 extern UInt32 CParser_GetCVTypeQualifiers(Type* type, UInt32 qual);
+#if VERSION >= VERSION_GC_2_5
 extern Boolean CParser_IsReadOnly(Type* type, UInt32 qual);
+#endif
 extern Boolean CParser_IsConst(Type* type, UInt32 qual);
 extern Boolean CParser_IsVolatile(Type* type, UInt32 qual);
 extern Boolean is_const_object(Object* obj);
@@ -464,14 +445,14 @@ extern Boolean CParser_HasInternalLinkage2(const Object* obj);
 extern Boolean CParser_IsVirtualFunction(Object* obj, TypeClass** tclass, SInt32* index);
 extern Boolean is_pascal_object(Object* obj);
 extern void CParser_ParseAttribute(Type* type, DeclInfo* declinfo);
-extern void CParser_ParseDeclSpec(DeclInfo* declinfo, Boolean flag);
-extern Boolean CParser_CheckTemplateClassUsage(TemplClass* tmclass, Boolean flag);
-extern void CParser_GetDeclSpecs(DeclInfo* di, Boolean flag);
+extern void CParser_ParseDeclSpec(DeclInfo* declinfo, Boolean unused);
+extern Boolean CParser_CheckTemplateClassUsage(TemplClass* tmclass, Boolean reportError);
+extern void CParser_GetDeclSpecs(DeclInfo* di, Boolean resolveMembers);
 extern void CParser_RegisterNonGlobalClass(TypeClass* tclass);
 extern void CParser_RegisterSingleExprFunction(Object* func, ENode* expr);
 extern void CParser_RegisterDummyCtorFunction(Object* func, Object* obj);
-extern Boolean CParser_IsAnonymousUnion(DeclInfo* di, Boolean flag);
-extern void CParser_CheckAnonymousUnion(DeclInfo* di, Boolean flag);
+extern Boolean CParser_IsAnonymousUnion(DeclInfo* di, Boolean allowStruct);
+extern void CParser_CheckAnonymousUnion(DeclInfo* di, Boolean isLocal);
 extern void CParser_NewCallBackAction(Object* obj, TypeClass* tclass);
 extern void CParser_NewClassAction(TypeClass* tclass);
 extern void CParser_CallBackAction(Object* obj);

@@ -1,5 +1,3 @@
-// The compiler plugin's entry point (Pro7's unsorted/CCompiler.c, with 2.6's licensing and EABI
-// panels).
 #include "driver/CCompiler.h"
 #include "compiler/IrOptimizer.h"
 #include "compiler/CodeGen.h"
@@ -7,8 +5,11 @@
 #include "compiler/CParser.h"
 #include "compiler/CPrep.h"
 #include "driver/CodeGenOptPPC.h"
+#include "driver/CWPlugins.h"
 #include "driver/CWPluginsPrivate.h"
 #include "driver/CWSecretPluginCallbacks.h"
+#include "driver/DropInCompilerLinker.h"
+#include "driver/oslib.h"
 #include "driver/pref_structs.h"
 #include <ctype.h>
 #include <stdio.h>
@@ -16,8 +17,6 @@
 
 Boolean systemHandles = TRUE;
 
-// (Pro7's function-local target_name and pFrontEnd: 2.6's .bss has them at file scope, in this
-// order, before using_license_manager)
 static char target_name[128];
 static PFrontEndC pFrontEnd;
 static Boolean using_license_manager;
@@ -29,11 +28,10 @@ CompilerLinkerParamBlk cparams;
 __declspec(dllimport) int __stdcall GetSystemDefaultLangID(void);
 #endif
 
-// (no caller: the linker dropped it, but its data stays in the unit's .data)
 CWPLUGIN_ENTRY(CWPlugin_GetHelpInfo)(const CWHelpInfo** helpInfo) {
     static const CWHelpInfo sHelpInfo = {kCurrentCWHelpInfoVersion, "CCompiler.hlp"};
     *helpInfo = &sHelpInfo;
-    return 0;
+    return cwNoErr;
 }
 
 static void get_extension(ConstStringPtr src, char* dst) {
@@ -96,7 +94,6 @@ static Boolean setup_param_block(CWPluginContext context) {
     if (CWGetBrowseOptions(context, &cparams.browseoptions) != cwNoErr) {
         return FALSE;
     }
-    // (2.6: Pro7's "== 0" compiles to a sete)
     cparams.recordbrowseinfo = !cparams.preprocess;
     if (CWGetMainFileID(context, &cparams.browserfileID) != cwNoErr) {
         return FALSE;
@@ -108,7 +105,6 @@ static Boolean setup_param_block(CWPluginContext context) {
     cparams.targetOS = tinfo.targetOS;
     cparams.targetCPU = tinfo.targetCPU;
     cparams.idetargetname = target_name;
-    // (2.6 returns a Boolean: Pro7's "return f() == cwNoErr" does not match)
     if (CWGetTargetName(context, cparams.idetargetname, sizeof(target_name)) != cwNoErr) {
         return FALSE;
     }
@@ -192,7 +188,6 @@ static void initialize_compiler_options(CompilerLinkerParamBlk* params) {
     copts.ecplusplus = pFrontEnd.ecplusplus;
     copts.defer_codegen = pFrontEnd.defer_codegen;
     copts.inlinemaxsize = 512;
-    // (2.6: Pro7 has 100000)
     copts.inlinemaxtotalsize = 7000;
 
     CWSecretGetNamedPreferences(cparams.context, "C/C++ Warnings", &prefsdata);
@@ -226,8 +221,6 @@ static void initialize_compiler_options(CompilerLinkerParamBlk* params) {
     copts.texttype = 'TEXT';
 }
 
-// (2.6: a Nintendo license, its version "2" on a Japanese system: language id 0x411, compared as a
-// Boolean like optfor below; the plain comparison does not match. 2.0 always asks for "1")
 static void GetLicense(void) {
     if (!license_cookie) {
         crippled = FALSE;
@@ -286,7 +279,7 @@ CWPLUGIN_ENTRY(MWC_main)(CWPluginContext context) {
                 CodeGen_UpdateOptimizerOptions();
                 CodeGen_UpdateBackEndOptions();
                 result = C_Compiler(&cparams);
-                if (result != noErr) {
+                if (result != FALSE) {
                     result = store_compile_results();
                 } else {
                     result = cwErrRequestFailed;

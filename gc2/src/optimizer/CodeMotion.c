@@ -1,8 +1,3 @@
-// CodeMotion.c: loop-invariant code motion and simple loop unswitching (Pro7's CodeMotion.c,
-// deferred). 2.6 asks the use-def chains about memory through may_alias_object/must_alias_object
-// (Pro7: may_alias/uniquely_aliases on two PCodes), and keeps r13 (the small-data base) loop
-// invariant like r2.
-
 #include "compiler/CodeMotion.h"
 #include "compiler/Alias.h"
 #include "compiler/BitVectors.h"
@@ -11,22 +6,22 @@
 #include "compiler/LoopDetection.h"
 #include "compiler/LoopOptimization.h"
 #include "compiler/PCode.h"
-#include "compiler/PCodeUtilities.h"
+#include "compiler/PCodeInfo.h"
 #include "compiler/RegisterInfo.h"
+#include "compiler/Registers.h"
 #include "compiler/UseDefChains.h"
 
 int movedloopinvariantcode;
 int unswitchedinvariantcode;
 
-static int isloopinvariant(PCode* pcode, Loop* loop, UInt32* vec, int flag1, int flag2) {
+static int isloopinvariant(PCode* pcode, Loop* loop, UInt32* vec, int allowSPR, int allowCRWrite) {
     PCodeArg* op;
     RegUseOrDef* list;
     int i;
 
     if (pcode->flags & (fIsRead | fIsWrite | fOpFromMemory | fOpToMemory)) {
         if (pcode->alias) {
-            if (pcode->alias->type ==
-                AliasType_Set ||
+            if (pcode->alias->type == AliasType_Set ||
                 (pcode->flags & (fIsVolatile | fSideEffects))) {
                 return FALSE;
             }
@@ -76,9 +71,7 @@ static int isloopinvariant(PCode* pcode, Loop* loop, UInt32* vec, int flag1, int
     while (i--) {
         switch (op->kind) {
             case PCOp_MEMORY:
-                // (the original's precedence bug, as Pro7's: `!flags & fIsConst` is always 0, so this
-                // loop never runs; 2.6 still computes it. Pro7's `(flags == 0) & 0x40` spelling: 96.6%)
-                if ((pcode->flags & fIsRead) && (!pcode->flags & fIsConst)) {
+                if ((pcode->flags & fIsRead) && ((!pcode->flags) & fIsConst)) {
                     for (list = findobjectusedef(op->data.mem.obj)->defs; list; list = list->next) {
 #if VERSION < VERSION_GC_2_5
                         if (may_alias(pcode, Defs[list->id].pcode) &&
@@ -126,18 +119,18 @@ static int isloopinvariant(PCode* pcode, Loop* loop, UInt32* vec, int flag1, int
                     }
                     if (op->data.reg.reg < n_real_registers[op->arg]) {
                         if (op->arg == RegClass_CRFIELD) {
-                            if (!flag2 || (op->data.reg.effect & EffectRead)) {
+                            if (!allowCRWrite || (op->data.reg.effect & EffectRead)) {
                                 return FALSE;
                             }
                         } else if (op->arg == RegClass_SPR) {
-                            if (!flag1) {
+                            if (!allowSPR) {
                                 return FALSE;
                             }
                         } else {
                             return FALSE;
                         }
                     } else if (op->data.reg.effect & EffectRead) {
-                        if (flag1 && op->kind == PCOp_REGISTER && op->arg == RegClass_SPR) {
+                        if (allowSPR && op->kind == PCOp_REGISTER && op->arg == RegClass_SPR) {
                             break;
                         }
                         if (op->kind == PCOp_REGISTER && op->arg == RegClass_GPR) {
@@ -165,6 +158,8 @@ static int isloopinvariant(PCode* pcode, Loop* loop, UInt32* vec, int flag1, int
                         }
                     }
                 }
+                break;
+            default:
                 break;
         }
         op++;
@@ -230,8 +225,7 @@ static int uniquelyreachesuse(int defID, int useID) {
     v = &def->v;
     if (def->v.kind == PCOp_REGISTER) {
         for (list = reg_Defs[v->arg][v->u.reg]; list; list = list->next) {
-            if (list->id !=
-                defID &&
+            if (list->id != defID &&
                 bitvectorgetbit(list->id, usedefinfo[use->pcode->block->blockIndex].defin)) {
                 break;
             }
@@ -243,8 +237,7 @@ static int uniquelyreachesuse(int defID, int useID) {
 #else
             if (may_alias_object(def->pcode, Defs[list->id].v.u.object) &&
 #endif
-                list->id !=
-                defID &&
+                list->id != defID &&
                 bitvectorgetbit(list->id, usedefinfo[use->pcode->block->blockIndex].defin)) {
                 break;
             }
@@ -349,32 +342,17 @@ static int maymove(PCode* pcode, Loop* loop) {
         switch (pcode->op) {
             case PC_LI:
                 if (pcode->nextPCode &&
-                    pcode->nextPCode->op ==
-                    PC_LVX &&
+                    pcode->nextPCode->op == PC_LVX &&
                     (pcode->nextPCode->flags & fIsConst)) {
                     reg = pcode->args[0].data.reg.reg;
-                    if (pcode->nextPCode->args[1].data.reg.reg ==
-                        reg ||
+                    if (pcode->nextPCode->args[1].data.reg.reg == reg ||
                         pcode->nextPCode->args[2].data.reg.reg == reg) {
                         return TRUE;
                     }
                 }
-#if VERSION == VERSION_GC_2_0P1
-            // 2.0p1 (2.0 patched for BFBB): floating-point loads stay in a large loop, and the AltiVec
-            // splats move like any other instruction (2.0p2 keeps 2.0's choice, as BFBB's code does)
-            case PC_LFS:
-            case PC_LFSU:
-            case PC_LFSX:
-            case PC_LFSUX:
-            case PC_LFD:
-            case PC_LFDU:
-            case PC_LFDX:
-            case PC_LFDUX:
-#else
             case PC_VSPLTISB:
             case PC_VSPLTISH:
             case PC_VSPLTISW:
-#endif
                 return FALSE;
             default:
                 if (!bitvectorgetbit(pcode->block->blockIndex, loop->backedge_dominators)) {
@@ -453,8 +431,7 @@ static int srawi_addze_maymove(PCode* pcode, Loop* loop) {
     if (def->v.kind == PCOp_REGISTER && def->v.arg == RegClass_GPR) {
         for (list = reg_Defs[RegClass_GPR][v->u.reg]; list; list = list->next) {
             if (bitvectorgetbit(Defs[list->id].pcode->block->blockIndex, loop->memberblocks) &&
-                list->id !=
-                defID &&
+                list->id != defID &&
                 list->id != nextDefID) {
                 return FALSE;
             }
@@ -485,15 +462,11 @@ static int srawi_addze_isloopinvariant(PCode* pcode, Loop* loop, UInt32* vec) {
     if (pcode->op == PC_ADDZE && oldNextInstr == pcode) {
         oldNextInstr = NULL;
         return TRUE;
-    } else if (pcode->op ==
-               PC_SRAWI &&
+    } else if (pcode->op == PC_SRAWI &&
                nextInstr &&
-               nextInstr->op ==
-               PC_ADDZE &&
-               pcode->args[0].data.reg.reg ==
-               nextInstr->args[0].data.reg.reg &&
-               nextInstr->args[0].data.reg.reg ==
-               nextInstr->args[1].data.reg.reg &&
+               nextInstr->op == PC_ADDZE &&
+               pcode->args[0].data.reg.reg == nextInstr->args[0].data.reg.reg &&
+               nextInstr->args[0].data.reg.reg == nextInstr->args[1].data.reg.reg &&
                !(pcode->flags & (fIsCall | fIsPtrOp | fIsVolatile | fSideEffects)) &&
                !(nextInstr->flags & (fIsCall | fIsPtrOp | fIsVolatile | fSideEffects)) &&
                isloopinvariant(pcode, loop, vec, TRUE, FALSE) &&
@@ -571,17 +544,17 @@ static void movesuccessor(PCodeBlock* to, PCodeBlock* from, PCodeBlock* block) {
 }
 
 static void movecmptopreheader(
-    Loop* loop, PCodeBlock* block, PCode* pc1, PCode* pc2, PCodeArg* op
+    Loop* loop, PCodeBlock* block, PCode* compare, PCode* branch, PCodeArg* op
 ) {
     PCodeBlock* preheader;
-    PCode* pc3;
+    PCode* jump;
 
     preheader = loop->preheader;
-    if (PCODE_FLAG_SET_F(pc1) & fRecordBit) {
-        moveinvariantcomputation(pc1, loop);
+    if (PCODE_FLAG_SET_F(compare) & fRecordBit) {
+        moveinvariantcomputation(compare, loop);
     } else {
-        deletepcode(pc1);
-        insertpcodebefore(loop->preheader->lastPCode, pc1);
+        deletepcode(compare);
+        insertpcodebefore(loop->preheader->lastPCode, compare);
         loop->bodySize--;
         movedloopinvariantcode = TRUE;
     }
@@ -589,105 +562,105 @@ static void movecmptopreheader(
 
     insertpreheaderblock(loop);
 
-    pc3 = preheader->lastPCode;
-    CError_ASSERT(775, pc3->op == PC_B);
-    deletepcode(pc3);
-    deletepcode(pc2);
-    appendpcode(preheader, pc2);
+    jump = preheader->lastPCode;
+    CError_ASSERT(775, jump->op == PC_B);
+    deletepcode(jump);
+    deletepcode(branch);
+    appendpcode(preheader, branch);
     movesuccessor(preheader, block, op->data.label.label->block);
 }
 
 static PCodeBlock* appendheadercopy(
-    Loop* loop, PCodeBlock* block1, PCodeBlock* block2, PCodeBlock* block3
+    Loop* loop, PCodeBlock* predBlock, PCodeBlock* headerBlock, PCodeBlock* targetBlock
 ) {
-    PCodeBlock* newblock1;
-    PCodeBlock* newblock2;
+    PCodeBlock* headerCopy;
+    PCodeBlock* jumpBlock;
     PCLink* link;
     PCode* scan;
 
-    newblock1 = lalloc(sizeof(PCodeBlock));
-    newblock2 = lalloc(sizeof(PCodeBlock));
+    headerCopy = lalloc(sizeof(PCodeBlock));
+    jumpBlock = lalloc(sizeof(PCodeBlock));
 
-    newblock1->labels = NULL;
-    newblock1->predecessors = newblock1->successors = NULL;
-    newblock1->firstPCode = newblock1->lastPCode = NULL;
-    newblock1->pcodeCount = 0;
-    newblock1->loopWeight = loop->body->loopWeight;
-    newblock1->flags = 0;
-    newblock1->blockIndex = pcblockcount++;
+    headerCopy->labels = NULL;
+    headerCopy->predecessors = headerCopy->successors = NULL;
+    headerCopy->firstPCode = headerCopy->lastPCode = NULL;
+    headerCopy->pcodeCount = 0;
+    headerCopy->loopWeight = loop->body->loopWeight;
+    headerCopy->flags = 0;
+    headerCopy->blockIndex = pcblockcount++;
 
-    newblock2->labels = NULL;
-    newblock2->predecessors = newblock2->successors = NULL;
-    newblock2->firstPCode = newblock2->lastPCode = NULL;
-    newblock2->pcodeCount = 0;
-    newblock2->loopWeight = loop->body->loopWeight;
-    newblock2->flags = 0;
-    newblock2->blockIndex = pcblockcount++;
+    jumpBlock->labels = NULL;
+    jumpBlock->predecessors = jumpBlock->successors = NULL;
+    jumpBlock->firstPCode = jumpBlock->lastPCode = NULL;
+    jumpBlock->pcodeCount = 0;
+    jumpBlock->loopWeight = loop->body->loopWeight;
+    jumpBlock->flags = 0;
+    jumpBlock->blockIndex = pcblockcount++;
 
-    newblock1->nextBlock = newblock2;
-    newblock2->prevBlock = newblock1;
-    newblock1->prevBlock = block1;
-    newblock2->nextBlock = block1->nextBlock;
-    block1->nextBlock = newblock1;
-    newblock2->nextBlock->prevBlock = newblock2;
+    headerCopy->nextBlock = jumpBlock;
+    jumpBlock->prevBlock = headerCopy;
+    headerCopy->prevBlock = predBlock;
+    jumpBlock->nextBlock = predBlock->nextBlock;
+    predBlock->nextBlock = headerCopy;
+    jumpBlock->nextBlock->prevBlock = jumpBlock;
 
-    pclabel(newblock1, makepclabel());
-    pclabel(newblock2, makepclabel());
+    pclabel(headerCopy, makepclabel());
+    pclabel(jumpBlock, makepclabel());
 
-    changesuccessor(block1, block1->successors->block, newblock1);
-
-    link = lalloc(sizeof(PCLink));
-    link->block = newblock2;
-    link->nextLink = newblock1->successors;
-    newblock1->successors = link;
+    changesuccessor(predBlock, predBlock->successors->block, headerCopy);
 
     link = lalloc(sizeof(PCLink));
-    link->block = newblock1;
-    link->nextLink = newblock2->predecessors;
-    newblock2->predecessors = link;
+    link->block = jumpBlock;
+    link->nextLink = headerCopy->successors;
+    headerCopy->successors = link;
 
-    appendpcode(newblock2, makepcode(PC_B, block2->nextBlock->labels));
-    pcbranch(newblock2, block2->nextBlock->labels);
-    pccomputepredecessors1(newblock2);
+    link = lalloc(sizeof(PCLink));
+    link->block = headerCopy;
+    link->nextLink = jumpBlock->predecessors;
+    jumpBlock->predecessors = link;
 
-    for (scan = block2->firstPCode; scan; scan = scan->nextPCode) {
-        appendpcode(newblock1, copypcode(scan));
+    appendpcode(jumpBlock, makepcode(PC_B, headerBlock->nextBlock->labels));
+    pcbranch(jumpBlock, headerBlock->nextBlock->labels);
+    pccomputepredecessors1(jumpBlock);
+
+    for (scan = headerBlock->firstPCode; scan; scan = scan->nextPCode) {
+        appendpcode(headerCopy, copypcode(scan));
     }
 
-    pcbranch(newblock1, block3->labels);
+    pcbranch(headerCopy, targetBlock->labels);
 
     link = lalloc(sizeof(PCLink));
-    link->block = newblock1;
-    link->nextLink = block3->predecessors;
-    block3->predecessors = link;
+    link->block = headerCopy;
+    link->nextLink = targetBlock->predecessors;
+    targetBlock->predecessors = link;
 
-    addblocktoloop(loop, newblock1);
-    if (bitvectorgetbit(block2->blockIndex, loop->exit_dominators)) {
-        bitvectorsetbit(newblock1->blockIndex, loop->exit_dominators);
+    addblocktoloop(loop, headerCopy);
+    if (bitvectorgetbit(headerBlock->blockIndex, loop->exit_dominators)) {
+        bitvectorsetbit(headerCopy->blockIndex, loop->exit_dominators);
     }
-    if (bitvectorgetbit(block2->blockIndex, loop->backedge_dominators)) {
-        bitvectorsetbit(newblock1->blockIndex, loop->backedge_dominators);
+    if (bitvectorgetbit(headerBlock->blockIndex, loop->backedge_dominators)) {
+        bitvectorsetbit(headerCopy->blockIndex, loop->backedge_dominators);
     }
 
     for (loop = loop->parent; loop; loop = loop->parent) {
-        addblocktoloop(loop, newblock1);
-        if (bitvectorgetbit(block2->blockIndex, loop->exit_dominators)) {
-            bitvectorsetbit(newblock1->blockIndex, loop->exit_dominators);
+        addblocktoloop(loop, headerCopy);
+        if (bitvectorgetbit(headerBlock->blockIndex, loop->exit_dominators)) {
+            bitvectorsetbit(headerCopy->blockIndex, loop->exit_dominators);
         }
-        if (bitvectorgetbit(block2->blockIndex, loop->backedge_dominators)) {
-            bitvectorsetbit(newblock1->blockIndex, loop->backedge_dominators);
+        if (bitvectorgetbit(headerBlock->blockIndex, loop->backedge_dominators)) {
+            bitvectorsetbit(headerCopy->blockIndex, loop->backedge_dominators);
         }
 
-        addblocktoloop(loop, newblock2);
-        if (bitvectorgetbit(block2->blockIndex, loop->exit_dominators)) {
-            bitvectorsetbit(newblock2->blockIndex, loop->exit_dominators);
+        addblocktoloop(loop, jumpBlock);
+        if (bitvectorgetbit(headerBlock->blockIndex, loop->exit_dominators)) {
+            bitvectorsetbit(jumpBlock->blockIndex, loop->exit_dominators);
         }
-        if (bitvectorgetbit(block2->blockIndex, loop->backedge_dominators)) {
-            bitvectorsetbit(newblock2->blockIndex, loop->backedge_dominators);
+        if (bitvectorgetbit(headerBlock->blockIndex, loop->backedge_dominators)) {
+            bitvectorsetbit(jumpBlock->blockIndex, loop->backedge_dominators);
         }
     }
 
-    return newblock1;
+    return headerCopy;
 }
 
 static BlockList* findswitchpath(Loop* loop, PCodeBlock* block) {
@@ -793,10 +766,8 @@ static void simpleunswitchloop(Loop* loop) {
         return;
     }
 
-    if (candidate->argCount <
-        1 ||
-        candidate->args[0].kind !=
-        PCOp_REGISTER ||
+    if (candidate->argCount < 1 ||
+        candidate->args[0].kind != PCOp_REGISTER ||
         candidate->args[0].arg != RegClass_CRFIELD) {
         return;
     }
@@ -804,8 +775,7 @@ static void simpleunswitchloop(Loop* loop) {
     terminator = candidate->block->lastPCode;
     if (!terminator ||
         !(terminator->flags & fIsBranch) ||
-        terminator->args[0].kind !=
-        PCOp_REGISTER ||
+        terminator->args[0].kind != PCOp_REGISTER ||
         terminator->args[0].arg != RegClass_CRFIELD) {
         return;
     }
@@ -1001,13 +971,13 @@ static void moveinvariantsfromloop(Loop* loop) {
     PCode* nextInstr;
     UInt32* myvec;
     int defID;
-    int flag;
+    int changed;
     PCodeBlock* block;
     UseOrDef* def;
 
     myvec = oalloc(4 * ((number_of_Defs + 31) >> 5));
     do {
-        flag = FALSE;
+        changed = FALSE;
         for (blocklist = loop->blocks; blocklist; blocklist = blocklist->next) {
             block = blocklist->block;
             bitvectorcopy(myvec, usedefinfo[block->blockIndex].defin, number_of_Defs);
@@ -1015,13 +985,16 @@ static void moveinvariantsfromloop(Loop* loop) {
                 nextInstr = instr->nextPCode;
                 if (!(instr->flags & fIsBranch) && instr->argCount) {
                     if (!(instr->flags & (fIsCall | fIsPtrOp | fIsVolatile | fSideEffects)) &&
+#if VERSION == VERSION_GC_2_0P2
+                        !((instr->flags & fIsRead) && is_direct_small_data_access(instr)) &&
+#endif
                         isloopinvariant(instr, loop, myvec, FALSE, FALSE) &&
                         maymove(instr, loop)) {
                         moveinvariantcomputation(instr, loop);
-                        flag = TRUE;
+                        changed = TRUE;
                     } else if (srawi_addze_isloopinvariant(instr, loop, myvec)) {
                         moveinvariantcomputation(instr, loop);
-                        flag = TRUE;
+                        changed = TRUE;
                     }
 
                     for (def = &Defs[defID = instr->defID];
@@ -1033,7 +1006,7 @@ static void moveinvariantsfromloop(Loop* loop) {
                                 bitvectorclearbit(list->id, myvec);
                             }
                         } else if (def->v.kind == PCOp_MEMORY) {
-                            if (def->v.arg == RefType_0) {
+                            if (def->v.arg == 0) {
                                 for (list = findobjectusedef(def->v.u.object)->defs; list;
                                      list = list->next) {
 #if VERSION < VERSION_GC_2_5
@@ -1054,7 +1027,7 @@ static void moveinvariantsfromloop(Loop* loop) {
                 }
             }
         }
-    } while (flag);
+    } while (changed);
 }
 
 static void moveinvariantsfromloops(Loop* loop) {

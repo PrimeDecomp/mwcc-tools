@@ -1,8 +1,5 @@
-// The file name is Wii's module "TargetOptimizerHelpers-eppc" in 2.x's spelling (2.6 has no assert or
-// literal naming it); Pro7's Mac twin is TargetOptimizer-ppc-mach.c.
 #include "driver/TargetOptimizerHelpers-eabi-ppc.h"
 #include "compiler/CParser.h"
-#include "compiler/CPrep.h"
 #include "driver/pref_structs.h"
 #include "driver/StringUtils.h"
 
@@ -25,8 +22,6 @@ int TargetSetOptFlags(short val, Boolean set) {
 }
 
 void TargetDisplayOptimizationOptions(Handle txt) {
-    // (Pro7: a PrefCPU; 2.6 numbers the panel's processors as CompilerLinkerOptions.processor,
-    // CPU_PPCELF printing "e500")
     int p;
 
     HPrintF(txt, "\t- peephole optimizations %s\n", pBackEnd.peephole ? "on" : "off");

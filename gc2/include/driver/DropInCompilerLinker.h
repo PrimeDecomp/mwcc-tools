@@ -4,19 +4,15 @@
 #include "compiler/common.h"
 #include "driver/CWPlugins.h"
 #include "driver/Files.h"
+#include "driver/oslib.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-// The plugin SDK's DropInCompilerLinker.h: what a compiler or linker plugin exchanges with the
-// shell, and the callbacks it calls there (DropInCompilerLinkerPrivate.cpp).
-
-// the plugin API versions (DropInFlags.earliestCompatibleAPIVersion, newestAPIVersion)
 #define DROPINCOMPILERLINKERAPIVERSION_8 8
 #define DROPINCOMPILERLINKERAPIVERSION_12 12
 
-// a compiler's requests
 enum {
     reqCompile = 0,
     reqMakeParse,
@@ -25,7 +21,6 @@ enum {
     reqPreprocessForDebugger
 };
 
-// a linker's requests
 enum {
     reqLink = 0,
     reqDisassemble,
@@ -33,24 +28,18 @@ enum {
     reqPreRun
 };
 
-// CWTargetInfo.linkType
 enum {
     exelinkageFlat,
     exelinkageSegmented,
     exelinkageOverlay1
 };
 
-// CWTargetInfo.outputType
 enum {
     linkOutputNone,
     linkOutputFile,
     linkOutputDirectory
 };
 
-//
-// The SDK's CWBrowseOptions (DropInCompilerLinker.h): seven Booleans, then two longs at 8 and 12
-// (default alignment). CWGetBrowseOptions copies one with its implicit operator=
-// (??4CWBrowseOptions, 0x4401a0 in 2.6).
 typedef struct CWBrowseOptions {
     UInt8 recordClasses;
     UInt8 recordEnums;
@@ -63,7 +52,6 @@ typedef struct CWBrowseOptions {
     SInt32 reserved2;
 } CWBrowseOptions;
 #pragma pack(push, 2)
-// The SDK's CWObjectData: what CWStoreObjectData gives the shell (2-byte packed, 0x30 bytes).
 typedef UInt32 CWDependencyTag;
 
 typedef struct CWObjectData {
@@ -81,10 +69,6 @@ typedef struct CWObjectData {
     short dependencyCount;
     CWFileSpec* objectfile;
 } CWObjectData;
-// CWTargetInfo as plugin API versions 8 and 9 have it (no linkAgainstFile). The plugin library
-// copies one with its own implicit operator= (0x4402e0 in 2.6: 0xf0 bytes, no ??4FSSpec for a last
-// field), so 2.6's SDK has it as a type of its own. TODO: its SDK name (this one is made up); it is
-// the type of DropInCompilerLinkerPrivate's ??4 at 0x4402e0.
 typedef struct CWTargetInfo_V8 {
     short outputType;
     CWFileSpec outfile;
@@ -100,27 +84,23 @@ typedef struct CWTargetInfo_V8 {
     UInt32 debuggerCreator;
     UInt32 runHelperCreator;
 } CWTargetInfo_V8;
-// The SDK's CWTargetInfo (DropInCompilerLinker.h), as 2.6's SDK has it: Ninji's fields and then
-// linkAgainstFile. C++ units copy it with the implicit ??4CWTargetInfo (0x417dd0 in 2.6: 0xf0
-// bytes, then ??4FSSpec for the last field). It was TgtHead + TgtRec here.
 
 typedef struct CWTargetInfo {
-    short outputType; // 0x00
-    CWFileSpec outfile; // 0x02
-    CWFileSpec symfile; // 0x48
-    CWFileSpec runfile; // 0x8e
-    SInt16 linkType; // 0xd4
-    UInt8 canRun; // 0xd6
-    UInt8 canDebug; // 0xd7
-    UInt32 targetCPU; // 0xd8
-    UInt32 targetOS; // 0xdc
-    UInt32 outfileCreator; // 0xe0
-    UInt32 outfileType; // 0xe4
-    UInt32 debuggerCreator; // 0xe8
-    UInt32 runHelperCreator; // 0xec
-    CWFileSpec linkAgainstFile; // 0xf0
+    short outputType;
+    CWFileSpec outfile;
+    CWFileSpec symfile;
+    CWFileSpec runfile;
+    SInt16 linkType;
+    UInt8 canRun;
+    UInt8 canDebug;
+    UInt32 targetCPU;
+    UInt32 targetOS;
+    UInt32 outfileCreator;
+    UInt32 outfileType;
+    UInt32 debuggerCreator;
+    UInt32 runHelperCreator;
+    CWFileSpec linkAgainstFile;
 } CWTargetInfo;
-// The target info of plugin API versions before 8 (a compiler/linker context keeps one)
 typedef struct CWTargetInfoV7 {
     CWFileSpec outfile;
     CWFileSpec symfile;
@@ -139,8 +119,6 @@ typedef struct CWEnvVarInfo {
 } CWEnvVarInfo;
 #pragma pack(pop)
 
-// The shell's callbacks a compiler or linker plugin calls (Pro7's plugin.h; 2.6's has 21 entries,
-// without Pro7's framework callbacks)
 typedef struct CWCompilerLinkerCallbacks {
     CW_CALLBACK_PTR (*cbCachePrecompiledHeader)(CWPluginContext, const CWFileSpec*, CWMemHandle);
     CW_CALLBACK_PTR (*cbLoadObjectData)(CWPluginContext, SInt32, CWMemHandle*);

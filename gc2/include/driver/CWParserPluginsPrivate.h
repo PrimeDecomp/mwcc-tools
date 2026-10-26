@@ -10,14 +10,12 @@
 extern "C" {
 #endif
 
-// A tool's command line (the plugin SDK's)
 struct CWCommandLineArgs {
     int argc;
     char** argv;
     char** envp;
 };
 #pragma pack(push, 2)
-// Pro7's ToolVersionInfo: what CWParserGetToolInfo stores in parseopts.toolVersion
 struct ToolVersionInfo {
     char* company;
     char* product;
@@ -44,7 +42,7 @@ extern CW_CALLBACK CWParserStoreCommandLineForPlugin(
     CWPluginContext context, int index, const CWCommandLineArgs* args
 );
 extern CW_CALLBACK CWParserSetNamedPreferences(
-    CWPluginContext context, const char* name, Handle value
+    CWPluginContext context, const char* panelName, Handle paneldata
 );
 extern CW_CALLBACK CWParserAddAccessPath(CWPluginContext context, const CWNewAccessPathInfo* api);
 extern CW_CALLBACK CWParserSetOutputFileDirectory(
@@ -60,7 +58,6 @@ extern CW_CALLBACK CWParserCreateVirtualFile(
 extern CW_CALLBACK CWParserDisplayTextHandle(
     CWPluginContext context, const char* name, CWMemHandle text
 );
-// (2.6 has no caller: only Projects.c's dead functions call them)
 extern CW_CALLBACK CWParserAddOverlay1Group(
     CWPluginContext context, const char* name, const CWAddr64* addr, SInt32* newGroupNumber
 );

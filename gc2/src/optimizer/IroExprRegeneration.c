@@ -10,28 +10,23 @@
 #include "compiler/IroVars.h"
 #include "compiler/BitVector.h"
 #include "compiler/CDecl.h"
-#include "compiler/CError.h"
 #include "compiler/CExpr.h"
 #include "compiler/CFunc.h"
 #include "compiler/CInt64.h"
 #include "compiler/CMachine.h"
-#include "compiler/CodeGen.h"
-#include "compiler/CompilerTools.h"
 #include "compiler/CParser.h"
-#include "compiler/CPrep.h"
 #include "compiler/enode.h"
 #include "compiler/objects.h"
-#include "compiler/Registers.h"
+#include "compiler/types.h"
 #include <setjmp.h>
 #include <string.h>
 
-// forward decls
 static void Regen_GetExprUses(IROLinear* linear, Boolean isEntry);
 static void RebuildPossibleCondExpression(IRONode* fnode);
 static void AddNodeAndSuccessorsRecursively(IRONodes* nodes, IRONode* fnode1, IRONode* fnode2);
 
 static Boolean FindFlowgraphNodeThatStartsWithLabel(
-    CLabel* label, IRONode** result1, IRONode** result2
+    CLabel* label, IRONode** node, IRONode** prevNode
 ) {
     IRONode* prev;
     IRONode* iter;
@@ -43,16 +38,16 @@ static Boolean FindFlowgraphNodeThatStartsWithLabel(
 
     while (iter) {
         if (iter->first->type == IROLinearLabel && iter->first->u.label.label == label) {
-            *result1 = iter;
-            *result2 = prev;
-            return 1;
+            *node = iter;
+            *prevNode = prev;
+            return TRUE;
         }
 
         prev = iter;
         iter = iter->nextnode;
     }
 
-    return 0;
+    return FALSE;
 }
 
 static IROLinear* FindLastDiadicTopLevelAssignmentInFlowgraphNode(IRONode* fnode) {
@@ -62,10 +57,8 @@ static IROLinear* FindLastDiadicTopLevelAssignmentInFlowgraphNode(IRONode* fnode
     result = NULL;
 
     for (scan = fnode->first; scan != fnode->last->next; scan = scan->next) {
-        if (scan->type ==
-            IROLinearOp2Arg &&
-            scan->nodetype ==
-            EASS &&
+        if (scan->type == IROLinearOp2Arg &&
+            scan->nodetype == EASS &&
             !(scan->flags & IROLF_Reffed)) {
             result = scan;
         }
@@ -74,69 +67,63 @@ static IROLinear* FindLastDiadicTopLevelAssignmentInFlowgraphNode(IRONode* fnode
     return result;
 }
 
-static Boolean RewriteUse(IROUse* use, ENode* enode, IROLinear* nd, Boolean flag) {
+static Boolean RewriteUse(IROUse* use, ENode* enode, IROLinear* nd, Boolean replaceNode) {
     IROLinear* father;
     IROLinear* father2;
 
     if (use &&
         use->reachingDefCount &&
         use->linear &&
-        use->linear->type ==
-        IROLinearOperand &&
-        use->linear->u.node->type ==
-        EOBJREF &&
-        use->linear->u.node->data.objref ==
-        enode->data.objref &&
+        use->linear->type == IROLinearOperand &&
+        use->linear->u.node->type == EOBJREF &&
+        use->linear->u.node->data.objref == enode->data.objref &&
         (father = IRO_LocateFather(use->linear)) &&
-        father->type ==
-        IROLinearOp1Arg &&
-        father->nodetype ==
-        EINDIRECT &&
-        father->rtype ==
-        nd->rtype &&
+        father->type == IROLinearOp1Arg &&
+        father->nodetype == EINDIRECT &&
+        father->rtype == nd->rtype &&
         (father2 = IRO_LocateFather(father)) &&
         ((father2->type != IROLinearOp1Arg && father2->type != IROLinearOp2Arg) ||
          !IRO_IsModifyOp[father2->nodetype])) {
-        if (flag) {
+        if (replaceNode) {
             IRO_LocateFather_Cut_And_Paste(father, nd);
         }
-        return 1;
+        return TRUE;
     }
 
-    return 0;
+    return FALSE;
 }
 
 #pragma pack(push, 2)
 static struct {
     jmp_buf buf;
     UInt16 index;
-    Boolean flag;
+    Boolean found;
 } scuai;
 #pragma pack(pop)
 
 static void StatementContainsUseAction(IROLinear* linear, Boolean isFirst) {
     if (isFirst && linear->index == scuai.index) {
-        scuai.flag = 1;
+        scuai.found = TRUE;
         longjmp(scuai.buf, 1);
     }
 }
 
-static Boolean StatementContainsUse(IROLinear* a, IROLinear* b) {
+static Boolean StatementContainsUse(IROLinear* stmt, IROLinear* use) {
     memset(&scuai, 0, sizeof(scuai));
-    scuai.index = b->index;
-    scuai.flag = 0;
+    scuai.index = use->index;
+    scuai.found = FALSE;
 
     if (!setjmp(scuai.buf)) {
-        IRO_WalkInts(a, a, StatementContainsUseAction);
+        IRO_WalkInts(stmt, stmt, StatementContainsUseAction);
     }
 
-    return scuai.flag;
+    return scuai.found;
 }
 
 #pragma pack(push, 2)
 static struct {
     jmp_buf buf;
-    Boolean flag;
+    Boolean found;
 } scseai;
 #pragma pack(pop)
 
@@ -150,9 +137,11 @@ static void StatementContainsSideEffectAction(IROLinear* linear, Boolean isFirst
             case IROLinearFunccall:
             case IROLinearAsm:
                 if (IRO_HasSideEffect(linear)) {
-                    scseai.flag = 1;
+                    scseai.found = TRUE;
                     longjmp(scseai.buf, 1);
                 }
+                break;
+            default:
                 break;
         }
     }
@@ -160,58 +149,59 @@ static void StatementContainsSideEffectAction(IROLinear* linear, Boolean isFirst
 
 static Boolean StatementContainsSideEffect(IROLinear* linear) {
     memset(&scseai, 0, sizeof(scseai));
-    scseai.flag = 0;
+    scseai.found = FALSE;
 
     if (!setjmp(scseai.buf)) {
         IRO_WalkInts(linear, linear, StatementContainsSideEffectAction);
     }
 
-    return scseai.flag;
+    return scseai.found;
 }
 
-// 2.x: whether an operand of nd evaluated unordered with skip has a side effect
 static void CheckUnorderedRegionsForSideEffects(IROLinear* nd, IROLinear* skip, Boolean* result) {
     int i;
 
     switch (nd->type) {
         case IROLinearOp2Arg:
             if (nd->u.diadic.left != skip && IRO_HasSideEffect(nd->u.diadic.left)) {
-                *result = 1;
+                *result = TRUE;
             }
             if (nd->nodetype != ELAND && nd->nodetype != ELOR && nd->nodetype != ECOMMA) {
                 if (nd->u.diadic.right != skip && IRO_HasSideEffect(nd->u.diadic.right)) {
-                    *result = 1;
+                    *result = TRUE;
                 }
             }
             break;
         case IROLinearOp3Arg:
             if (nd->u.args3.a != skip && IRO_HasSideEffect(nd->u.args3.a)) {
-                *result = 1;
+                *result = TRUE;
             }
             if (nd->nodetype != ECOND && nd->nodetype != ECONDASS) {
                 if (nd->u.args3.b != skip && IRO_HasSideEffect(nd->u.args3.b)) {
-                    *result = 1;
+                    *result = TRUE;
                 }
                 if (nd->u.args3.c != skip && IRO_HasSideEffect(nd->u.args3.c)) {
-                    *result = 1;
+                    *result = TRUE;
                 }
             }
             break;
         case IROLinearFunccall:
             if (nd->u.funccall.callee != skip && IRO_HasSideEffect(nd->u.funccall.callee)) {
-                *result = 1;
+                *result = TRUE;
             }
             for (i = 0; !*result && i < nd->u.funccall.argCount; i++) {
                 if (nd->u.funccall.args[i] != skip && IRO_HasSideEffect(nd->u.funccall.args[i])) {
-                    *result = 1;
+                    *result = TRUE;
                 }
             }
+            break;
+        default:
             break;
     }
 }
 
 static Boolean HasSideEffectsBeforeUse(
-    IRONode* fnode1, IRONode* fnode2, IRONode* fnode3, IROLinear* nd, Boolean flag
+    IRONode* fnode1, IRONode* fnode2, IRONode* fnode3, IROLinear* nd, Boolean clearMarks
 ) {
     IRONode* fnode;
     IROLinear* scannd;
@@ -220,20 +210,20 @@ static Boolean HasSideEffectsBeforeUse(
     Boolean result;
 
     if (fnode1 != fnode3) {
-        if (flag) {
+        if (clearMarks) {
             for (fnode = IRO_FirstNode; fnode; fnode = fnode->nextnode) {
-                fnode->marked = 0;
+                fnode->marked = FALSE;
             }
         } else if (fnode1->marked) {
-            return 0;
+            return FALSE;
         }
-        fnode1->marked = 1;
+        fnode1->marked = TRUE;
     }
 
     for (scannd = fnode1->first; scannd && scannd != fnode1->last->next; scannd = scannd->next) {
         if (!(scannd->flags & IROLF_Reffed)) {
             if (StatementContainsUse(scannd, nd)) {
-                result = 0;
+                result = FALSE;
                 if (scannd != nd) {
                     iter = nd;
                     nd = IRO_LocateFather(nd);
@@ -246,31 +236,32 @@ static Boolean HasSideEffectsBeforeUse(
                 return result;
             }
             if (StatementContainsSideEffect(scannd)) {
-                return 1;
+                return TRUE;
             }
         }
     }
 
     if (fnode1 != fnode3) {
         for (i = 0; i < fnode1->numsucc; i++) {
-            if (HasSideEffectsBeforeUse(IRO_NodeTable[fnode1->succ[i]], fnode2, fnode3, nd, 0)) {
-                return 1;
+            if (HasSideEffectsBeforeUse(
+                    IRO_NodeTable[fnode1->succ[i]], fnode2, fnode3, nd, FALSE
+                )) {
+                return TRUE;
             }
         }
     }
 
-    return 0;
+    return FALSE;
 }
 
 static void CheckUnorderedRegionForUses(IROLinear* nd, BitVector* bv, Boolean* result) {
     Bv_Clear(IRO_VarKills);
     IRO_WalkInts(nd, nd, Regen_GetExprUses);
     if (Bv_BitsInCommon(bv, IRO_VarKills)) {
-        *result = 1;
+        *result = TRUE;
     }
 }
 
-// 2.x: whether an operand of nd evaluated unordered with skip uses a variable of bv
 static void CheckUnorderedRegionsForUses(
     IROLinear* nd, IROLinear* skip, BitVector* bv, Boolean* result
 ) {
@@ -310,11 +301,18 @@ static void CheckUnorderedRegionsForUses(
                 }
             }
             break;
+        default:
+            break;
     }
 }
 
 static Boolean UsesAKilledVarBeforeUse(
-    IRONode* fnode1, IRONode* fnode2, IRONode* fnode3, IROLinear* nd, BitVector* bv, Boolean flag
+    IRONode* fnode1,
+    IRONode* fnode2,
+    IRONode* fnode3,
+    IROLinear* nd,
+    BitVector* bv,
+    Boolean clearMarks
 ) {
     IRONode* fnode;
     UInt16 i;
@@ -323,20 +321,20 @@ static Boolean UsesAKilledVarBeforeUse(
     Boolean result;
 
     if (fnode1 != fnode3) {
-        if (flag) {
+        if (clearMarks) {
             for (fnode = IRO_FirstNode; fnode; fnode = fnode->nextnode) {
-                fnode->marked = 0;
+                fnode->marked = FALSE;
             }
         } else if (fnode1->marked) {
-            return 0;
+            return FALSE;
         }
-        fnode1->marked = 1;
+        fnode1->marked = TRUE;
     }
 
     for (scannd = fnode1->first; scannd && scannd != fnode1->last->next; scannd = scannd->next) {
         if (!(scannd->flags & IROLF_Reffed)) {
             if (StatementContainsUse(scannd, nd)) {
-                result = 0;
+                result = FALSE;
                 if (scannd != nd) {
                     iter = nd;
                     nd = IRO_LocateFather(nd);
@@ -351,7 +349,7 @@ static Boolean UsesAKilledVarBeforeUse(
             Bv_Clear(IRO_VarKills);
             IRO_WalkInts(scannd, scannd, Regen_GetExprUses);
             if (Bv_BitsInCommon(bv, IRO_VarKills)) {
-                return 1;
+                return TRUE;
             }
         }
     }
@@ -359,14 +357,14 @@ static Boolean UsesAKilledVarBeforeUse(
     if (fnode1 != fnode3) {
         for (i = 0; i < fnode1->numsucc; i++) {
             if (UsesAKilledVarBeforeUse(
-                    IRO_NodeTable[fnode1->succ[i]], fnode2, fnode3, nd, bv, 0
+                    IRO_NodeTable[fnode1->succ[i]], fnode2, fnode3, nd, bv, FALSE
                 )) {
-                return 1;
+                return TRUE;
             }
         }
     }
 
-    return 0;
+    return FALSE;
 }
 
 static void Regen_GetExprUses(IROLinear* linear, Boolean isEntry) {
@@ -378,7 +376,7 @@ static void Regen_GetExprUses(IROLinear* linear, Boolean isEntry) {
             obj = linear->u.node->data.objref;
             if ((linear->flags & IROLF_Ind) &&
                 (!(linear->flags & IROLF_Assigned) || (linear->flags & IROLF_Used))) {
-                if ((var = IRO_FindVar(obj, 0, 1))) {
+                if ((var = IRO_FindVar(obj, FALSE, TRUE))) {
                     Bv_SetBit(var->index, IRO_VarKills);
                 }
             }
@@ -396,7 +394,7 @@ static void CheckUnorderedRegionForSideEffectsAndUses(
     IROLinear* nd, BitVector* bv1, BitVector* bv2, Boolean* result
 ) {
     if (IRO_HasSideEffect(nd)) {
-        *result = 1;
+        *result = TRUE;
     } else {
         Bv_Clear(bv2);
         Bv_Clear(IRO_VarKills);
@@ -404,46 +402,46 @@ static void CheckUnorderedRegionForSideEffectsAndUses(
         Bv_Or(IRO_VarKills, bv2);
 
         if (Bv_BitsInCommon(bv1, bv2)) {
-            *result = 1;
+            *result = TRUE;
         }
     }
 }
 
 static void CheckUnorderedRegionsForSideEffectsAndUses(
-    IROLinear* nd1, IROLinear* nd2, BitVector* bv1, BitVector* bv2, Boolean* result
+    IROLinear* nd, IROLinear* excluded, BitVector* bv1, BitVector* bv2, Boolean* result
 ) {
     int i;
 
-    switch (nd1->type) {
+    switch (nd->type) {
         case IROLinearOp2Arg:
-            if (nd1->nodetype != ELAND && nd1->nodetype != ELOR && nd1->nodetype != ECOMMA) {
-                if (nd1->u.diadic.left != nd2) {
-                    CheckUnorderedRegionForSideEffectsAndUses(nd1->u.diadic.left, bv1, bv2, result);
+            if (nd->nodetype != ELAND && nd->nodetype != ELOR && nd->nodetype != ECOMMA) {
+                if (nd->u.diadic.left != excluded) {
+                    CheckUnorderedRegionForSideEffectsAndUses(nd->u.diadic.left, bv1, bv2, result);
                 }
-                if (nd1->u.diadic.right != nd2) {
-                    CheckUnorderedRegionForSideEffectsAndUses(
-                        nd1->u.diadic.right, bv1, bv2, result
-                    );
+                if (nd->u.diadic.right != excluded) {
+                    CheckUnorderedRegionForSideEffectsAndUses(nd->u.diadic.right, bv1, bv2, result);
                 }
             }
             break;
         case IROLinearFunccall:
-            if (nd1->u.funccall.callee != nd2) {
-                CheckUnorderedRegionForSideEffectsAndUses(nd1->u.funccall.callee, bv1, bv2, result);
+            if (nd->u.funccall.callee != excluded) {
+                CheckUnorderedRegionForSideEffectsAndUses(nd->u.funccall.callee, bv1, bv2, result);
             }
-            for (i = 0; !*result && i < nd1->u.funccall.argCount; i++) {
-                if (nd1->u.funccall.args[i] != nd2) {
+            for (i = 0; !*result && i < nd->u.funccall.argCount; i++) {
+                if (nd->u.funccall.args[i] != excluded) {
                     CheckUnorderedRegionForSideEffectsAndUses(
-                        nd1->u.funccall.args[i], bv1, bv2, result
+                        nd->u.funccall.args[i], bv1, bv2, result
                     );
                 }
             }
+            break;
+        default:
             break;
     }
 }
 
 static Boolean CheckThenOrElseBranch(
-    IRONode* fnode1, IRONode* fnode2, IROLinear* nd, Boolean flag
+    IRONode* fnode1, IRONode* fnode2, IROLinear* nd, Boolean stopAtReturn
 ) {
     IRONode* fnode;
     IROLinear* scannd;
@@ -453,7 +451,7 @@ static Boolean CheckThenOrElseBranch(
     IRO_FNodeWorkStack_Init(&nodes);
 
     for (fnode = IRO_FirstNode; fnode; fnode = fnode->nextnode) {
-        fnode->marked = 0;
+        fnode->marked = FALSE;
     }
     AddNodeAndSuccessorsRecursively(&nodes, fnode1, fnode2);
 
@@ -461,26 +459,23 @@ static Boolean CheckThenOrElseBranch(
         fnode = IRO_NodeTable[IRO_FNodeWorkStack_Remove(&nodes)];
         if (fnode) {
             if (!Bv_IsBitSet(fnode1->index, fnode->dom)) {
-                result = 0;
+                result = FALSE;
                 goto done;
             }
 
             for (scannd = fnode->first; scannd && scannd != fnode->last->next;
                  scannd = scannd->next) {
                 if (!nd || scannd != nd) {
-                    if (!flag || (scannd->type != IROLinearReturn)) {
+                    if (!stopAtReturn || (scannd->type != IROLinearReturn)) {
                         if (fnode->numpred == 2 && scannd->type == IROLinearLabel) {
                             RebuildPossibleCondExpression(fnode);
                         }
 
-                        if (scannd->type !=
-                            IROLinearNop &&
-                            scannd->type !=
-                            IROLinearLabel &&
-                            scannd->type !=
-                            IROLinearGoto &&
+                        if (scannd->type != IROLinearNop &&
+                            scannd->type != IROLinearLabel &&
+                            scannd->type != IROLinearGoto &&
                             !(scannd->flags & IROLF_Reffed)) {
-                            result = 0;
+                            result = FALSE;
                             goto done;
                         }
                     }
@@ -489,7 +484,7 @@ static Boolean CheckThenOrElseBranch(
         }
     }
 
-    result = 1;
+    result = TRUE;
 done:
     IRO_FNodeWorkStack_Free(&nodes);
     return result;
@@ -500,29 +495,29 @@ static void RebuildPossibleCondExpression(IRONode* fnode) {
     IRONode* pred2;
     IROLinear* leftAss;
     IROLinear* rightAss;
-    IROLinear* r27;
-    IROLinear* r13;
-    IROLinear* var_58;
+    IROLinear* cond;
+    IROLinear* leftVal;
+    IROLinear* rightVal;
     IRONode* left;
     IRONode* right;
-    IRONode* r24;
-    ENode* r23;
-    IRODef* r22;
-    IRODef* r21;
+    IRONode* ifnode;
+    ENode* objnode;
+    IRODef* def1;
+    IRODef* def2;
     IRODef* def;
-    UInt32 r20;
-    UInt32 r19;
-    Boolean r18;
-    Boolean r17;
+    UInt32 useCount;
+    UInt32 rewrittenUseCount;
+    Boolean killedFlag;
+    Boolean sideEffectFlag;
     UInt32 i;
     Boolean compareType;
-    Type* var_60;
+    Type* type;
     IROLinear copy1;
     IROLinear copy2;
     IROLinear* tmp;
     IROUse* use;
     Object* obj;
-    IRONode* r30;
+    IRONode* target;
 
     if (!fnode || fnode->numpred != 2 || !fnode->first || fnode->first->type != IROLinearLabel) {
         return;
@@ -534,25 +529,25 @@ static void RebuildPossibleCondExpression(IRONode* fnode) {
         return;
     }
 
-    r24 = NULL;
+    ifnode = NULL;
     for (i = 0; i < IRO_NumNodes; i++) {
         if (Bv_IsBitSet(i, fnode->dom) &&
-            (r24 = IRO_NodeTable[i]) &&
-            r24->last &&
-            (r24->last->type == IROLinearIf || r24->last->type == IROLinearIfNot) &&
-            r24->last->u.label.label &&
-            r24->numsucc == 2) {
-            if (Bv_IsBitSet(r24->succ[0], pred1->dom) &&
-                !Bv_IsBitSet(r24->succ[0], pred2->dom) &&
-                Bv_IsBitSet(r24->succ[1], pred2->dom) &&
-                !Bv_IsBitSet(r24->succ[1], pred1->dom)) {
+            (ifnode = IRO_NodeTable[i]) &&
+            ifnode->last &&
+            (ifnode->last->type == IROLinearIf || ifnode->last->type == IROLinearIfNot) &&
+            ifnode->last->u.label.label &&
+            ifnode->numsucc == 2) {
+            if (Bv_IsBitSet(ifnode->succ[0], pred1->dom) &&
+                !Bv_IsBitSet(ifnode->succ[0], pred2->dom) &&
+                Bv_IsBitSet(ifnode->succ[1], pred2->dom) &&
+                !Bv_IsBitSet(ifnode->succ[1], pred1->dom)) {
                 break;
             }
 
-            if (Bv_IsBitSet(r24->succ[0], pred2->dom) &&
-                !Bv_IsBitSet(r24->succ[0], pred1->dom) &&
-                Bv_IsBitSet(r24->succ[1], pred1->dom) &&
-                !Bv_IsBitSet(r24->succ[1], pred2->dom)) {
+            if (Bv_IsBitSet(ifnode->succ[0], pred2->dom) &&
+                !Bv_IsBitSet(ifnode->succ[0], pred1->dom) &&
+                Bv_IsBitSet(ifnode->succ[1], pred1->dom) &&
+                !Bv_IsBitSet(ifnode->succ[1], pred2->dom)) {
                 break;
             }
         }
@@ -562,30 +557,26 @@ static void RebuildPossibleCondExpression(IRONode* fnode) {
         return;
     }
 
-    r30 = IRO_NodeTable[r24->succ[0]];
-    if (r30 &&
-        r30->numpred ==
-        1 &&
-        r30->first &&
-        r30->first->type ==
-        IROLinearLabel &&
-        r30->first->u.label.label == r24->last->u.label.label) {
+    target = IRO_NodeTable[ifnode->succ[0]];
+    if (target &&
+        target->numpred == 1 &&
+        target->first &&
+        target->first->type == IROLinearLabel &&
+        target->first->u.label.label == ifnode->last->u.label.label) {
         (void)0;
     } else {
-        r30 = IRO_NodeTable[r24->succ[1]];
-        if (r30 &&
-            r30->numpred ==
-            1 &&
-            r30->first &&
-            r30->first->type ==
-            IROLinearLabel &&
-            r30->first->u.label.label == r24->last->u.label.label) {
+        target = IRO_NodeTable[ifnode->succ[1]];
+        if (target &&
+            target->numpred == 1 &&
+            target->first &&
+            target->first->type == IROLinearLabel &&
+            target->first->u.label.label == ifnode->last->u.label.label) {
         } else {
             return;
         }
     }
 
-    if (Bv_IsBitSet(r30->index, pred1->dom)) {
+    if (Bv_IsBitSet(target->index, pred1->dom)) {
         left = pred2;
         right = pred1;
     } else {
@@ -595,118 +586,107 @@ static void RebuildPossibleCondExpression(IRONode* fnode) {
 
     leftAss = FindLastDiadicTopLevelAssignmentInFlowgraphNode(left);
     if (!leftAss ||
-        leftAss->type !=
-        IROLinearOp2Arg ||
+        leftAss->type != IROLinearOp2Arg ||
         !leftAss->u.diadic.left ||
-        leftAss->u.diadic.left->type !=
-        IROLinearOp1Arg ||
-        leftAss->u.diadic.left->nodetype !=
-        EINDIRECT ||
+        leftAss->u.diadic.left->type != IROLinearOp1Arg ||
+        leftAss->u.diadic.left->nodetype != EINDIRECT ||
         !leftAss->u.diadic.left->u.monadic ||
-        leftAss->u.diadic.left->u.monadic->type !=
-        IROLinearOperand ||
-        !(r23 = leftAss->u.diadic.left->u.monadic->u.node) ||
-        !r23->rtype ||
-        !IS_TYPE_POINTER_ONLY(r23->rtype) ||
-        !r23->data.objref ||
-        is_volatile_object(r23->data.objref) ||
-        r23->data.objref->datatype != DLOCAL) {
-        r23 = NULL;
+        leftAss->u.diadic.left->u.monadic->type != IROLinearOperand ||
+        !(objnode = leftAss->u.diadic.left->u.monadic->u.node) ||
+        !objnode->rtype ||
+        !IS_TYPE_POINTER_ONLY(objnode->rtype) ||
+        !objnode->data.objref ||
+        is_volatile_object(objnode->data.objref) ||
+        objnode->data.objref->datatype != DLOCAL) {
+        objnode = NULL;
     }
 
-    if (r23) {
+    if (objnode) {
         rightAss = FindLastDiadicTopLevelAssignmentInFlowgraphNode(right);
         if (!rightAss ||
-            rightAss->type !=
-            IROLinearOp2Arg ||
+            rightAss->type != IROLinearOp2Arg ||
             !rightAss->u.diadic.left ||
-            rightAss->u.diadic.left->type !=
-            IROLinearOp1Arg ||
-            rightAss->u.diadic.left->nodetype !=
-            EINDIRECT ||
+            rightAss->u.diadic.left->type != IROLinearOp1Arg ||
+            rightAss->u.diadic.left->nodetype != EINDIRECT ||
             !rightAss->u.diadic.left->u.monadic ||
-            rightAss->u.diadic.left->u.monadic->type !=
-            IROLinearOperand ||
+            rightAss->u.diadic.left->u.monadic->type != IROLinearOperand ||
             !rightAss->u.diadic.left->u.monadic->u.node ||
             !rightAss->u.diadic.left->u.monadic->u.node->rtype ||
             !IS_TYPE_POINTER_ONLY(rightAss->u.diadic.left->u.monadic->u.node->rtype) ||
-            rightAss->u.diadic.left->u.monadic->u.node->type !=
-            EOBJREF ||
-            rightAss->u.diadic.left->u.monadic->u.node->data.objref !=
-            r23->data.objref ||
+            rightAss->u.diadic.left->u.monadic->u.node->type != EOBJREF ||
+            rightAss->u.diadic.left->u.monadic->u.node->data.objref != objnode->data.objref ||
             rightAss->rtype != leftAss->rtype) {
-            r23 = NULL;
+            objnode = NULL;
         }
     }
 
-    if (r23) {
-        if (!CheckThenOrElseBranch(r24->nextnode, left, leftAss, 0) ||
-            !CheckThenOrElseBranch(r30, right, rightAss, 0)) {
+    if (objnode) {
+        if (!CheckThenOrElseBranch(ifnode->nextnode, left, leftAss, FALSE) ||
+            !CheckThenOrElseBranch(target, right, rightAss, FALSE)) {
             return;
         }
 
-        r20 = r19 = 0;
-        r17 = r18 = 0;
-        if (!r23->data.objref->varptr ||
-            !r23->data.objref->varptr->uses ||
-            !r23->data.objref->varptr->defs) {
-            r23 = NULL;
+        useCount = rewrittenUseCount = 0;
+        sideEffectFlag = killedFlag = FALSE;
+        if (!objnode->data.objref->varptr ||
+            !objnode->data.objref->varptr->uses ||
+            !objnode->data.objref->varptr->defs) {
+            objnode = NULL;
         } else {
-            r22 = r21 = NULL;
-            for (def = r23->data.objref->varptr->defs; def && (!r22 || !r21); def = def->varnext) {
+            def1 = def2 = NULL;
+            for (def = objnode->data.objref->varptr->defs; def && (!def1 || !def2);
+                 def = def->varnext) {
                 if (def->useCount && def->linear == leftAss) {
-                    r22 = def;
+                    def1 = def;
                 } else if (def->useCount && def->linear == rightAss) {
-                    r21 = def;
+                    def2 = def;
                 }
             }
 
-            if (!r22 || !r21) {
-                r23 = NULL;
+            if (!def1 || !def2) {
+                objnode = NULL;
             } else {
-                for (use = r23->data.objref->varptr->uses; r23 && use; use = use->varnext) {
+                for (use = objnode->data.objref->varptr->uses; objnode && use; use = use->varnext) {
                     if (use->reachingDefCount) {
-                        r20++;
-                        if (Bv_IsBitSet(r22->index, use->reachingDefs) &&
-                            Bv_IsBitSet(r21->index, use->reachingDefs)) {
-                            for (i = 0; r23 && i < use->reachingDefs->size; i++) {
-                                if (i !=
-                                    r22->index &&
-                                    i !=
-                                    r21->index &&
+                        useCount++;
+                        if (Bv_IsBitSet(def1->index, use->reachingDefs) &&
+                            Bv_IsBitSet(def2->index, use->reachingDefs)) {
+                            for (i = 0; objnode && i < use->reachingDefs->size; i++) {
+                                if (i != (UInt32)def1->index &&
+                                    i != (UInt32)def2->index &&
                                     Bv_IsBitSet(i, use->reachingDefs)) {
-                                    r23 = NULL;
+                                    objnode = NULL;
                                 }
                             }
 
-                            if (r23 && !Bv_IsBitSet(fnode->index, use->node->dom)) {
-                                r23 = NULL;
+                            if (objnode && !Bv_IsBitSet(fnode->index, use->node->dom)) {
+                                objnode = NULL;
                             }
 
-                            if (r23) {
-                                if (RewriteUse(use, r23, rightAss, 0)) {
-                                    r19++;
+                            if (objnode) {
+                                if (RewriteUse(use, objnode, rightAss, FALSE)) {
+                                    rewrittenUseCount++;
                                 } else {
-                                    r23 = NULL;
+                                    objnode = NULL;
                                 }
                             }
 
-                            if (r23 && !r17) {
-                                r17 = HasSideEffectsBeforeUse(
-                                    fnode, fnode, use->node, use->linear, 1
+                            if (objnode && !sideEffectFlag) {
+                                sideEffectFlag = HasSideEffectsBeforeUse(
+                                    fnode, fnode, use->node, use->linear, TRUE
                                 );
                             }
 
-                            if (r23 &&
-                                !r18 &&
-                                (IRO_HasSideEffect(r24->last->u.label.cond) ||
+                            if (objnode &&
+                                !killedFlag &&
+                                (IRO_HasSideEffect(ifnode->last->u.label.cond) ||
                                  IRO_HasSideEffect(leftAss->u.diadic.right) ||
                                  IRO_HasSideEffect(rightAss->u.diadic.right))) {
-                                r18 = 1;
+                                killedFlag = TRUE;
                             }
-                        } else if (Bv_IsBitSet(r22->index, use->reachingDefs) ||
-                                   Bv_IsBitSet(r21->index, use->reachingDefs)) {
-                            r23 = NULL;
+                        } else if (Bv_IsBitSet(def1->index, use->reachingDefs) ||
+                                   Bv_IsBitSet(def2->index, use->reachingDefs)) {
+                            objnode = NULL;
                         }
                     }
                 }
@@ -714,28 +694,28 @@ static void RebuildPossibleCondExpression(IRONode* fnode) {
         }
     }
 
-    if (!r23) {
+    if (!objnode) {
         return;
     }
 
-    compareType = r24->last->type == IROLinearIf;
-    r27 = r24->last->u.label.cond;
-    r13 = leftAss->u.diadic.right;
-    var_58 = rightAss->u.diadic.right;
-    var_60 = rightAss->rtype;
-    memcpy(&copy1, r13, sizeof(IROLinear));
+    compareType = ifnode->last->type == IROLinearIf;
+    cond = ifnode->last->u.label.cond;
+    leftVal = leftAss->u.diadic.right;
+    rightVal = rightAss->u.diadic.right;
+    type = rightAss->rtype;
+    memcpy(&copy1, leftVal, sizeof(IROLinear));
     memcpy(&copy2, rightAss, sizeof(IROLinear));
 
-    r24->last->type = IROLinearNop;
-    r24->last->expr = NULL;
-    r30->first->type = IROLinearNop;
-    r30->first->expr = NULL;
+    ifnode->last->type = IROLinearNop;
+    ifnode->last->expr = NULL;
+    target->first->type = IROLinearNop;
+    target->first->expr = NULL;
     if (right->last->type == IROLinearGoto) {
         right->last->type = IROLinearNop;
         right->last->expr = NULL;
     }
 
-    if (r23) {
+    if (objnode) {
         IRO_NopOut(leftAss->u.diadic.left);
         leftAss->type = IROLinearNop;
         leftAss->expr = NULL;
@@ -745,89 +725,93 @@ static void RebuildPossibleCondExpression(IRONode* fnode) {
     rightAss->type = IROLinearOp3Arg;
     rightAss->nodetype = ECOND;
     rightAss->index = copy2.index;
-    rightAss->u.args3.a = r27;
-    rightAss->rtype = var_60;
+    rightAss->u.args3.a = cond;
+    rightAss->rtype = type;
     rightAss->next = copy2.next;
     if (compareType) {
-        rightAss->u.args3.b = var_58;
-        rightAss->u.args3.c = r13;
+        rightAss->u.args3.b = rightVal;
+        rightAss->u.args3.c = leftVal;
     } else {
-        rightAss->u.args3.b = r13;
-        rightAss->u.args3.c = var_58;
+        rightAss->u.args3.b = leftVal;
+        rightAss->u.args3.c = rightVal;
     }
     rightAss->flags |= IROLF_Reffed;
 
-    if (r19 == 1 && !r17 && !r18 && !r23->data.objref->varptr->noregister) {
-        for (use = r23->data.objref->varptr->uses; use; use = use->varnext) {
+    if (rewrittenUseCount == 1 &&
+        !sideEffectFlag &&
+        !killedFlag &&
+        !objnode->data.objref->varptr->noregister) {
+        for (use = objnode->data.objref->varptr->uses; use; use = use->varnext) {
             if (use->reachingDefCount &&
-                Bv_IsBitSet(r22->index, use->reachingDefs) &&
-                Bv_IsBitSet(r21->index, use->reachingDefs)) {
-                RewriteUse(use, r23, rightAss, 1);
-                if ((r18 = (use->linear->flags & IROLF_4000) && IRO_HasSideEffect(r27))) {
+                Bv_IsBitSet(def1->index, use->reachingDefs) &&
+                Bv_IsBitSet(def2->index, use->reachingDefs)) {
+                RewriteUse(use, objnode, rightAss, TRUE);
+                if ((killedFlag =
+                         (use->linear->flags & IROLF_InCallArg) && IRO_HasSideEffect(cond))) {
                     tmp = IRO_NewLinear(IROLinearOperand);
                     memcpy(tmp, copy2.u.diadic.left->u.monadic, sizeof(IROLinear));
                     tmp->index = IRO_NumLinear++;
-                    tmp->rtype = r27->rtype;
-                    if (r20 == 1) {
-                        tmp->u.node->data.objref->type = r27->rtype;
-                        tmp->u.node->rtype = CDecl_NewPointerType(r27->rtype);
+                    tmp->rtype = cond->rtype;
+                    if (useCount == 1) {
+                        tmp->u.node->data.objref->type = cond->rtype;
+                        tmp->u.node->rtype = CDecl_NewPointerType(cond->rtype);
                     } else {
                         obj = create_temp_object(tmp->rtype);
-                        IRO_FindVar(obj, 1, 1);
+                        IRO_FindVar(obj, TRUE, TRUE);
                         tmp->u.node = create_objectrefnode(obj);
                     }
-                    IRO_PasteAfter(tmp, tmp, r27);
+                    IRO_PasteAfter(tmp, tmp, cond);
 
                     tmp = IRO_NewLinear(IROLinearOp1Arg);
                     memcpy(tmp, copy2.u.diadic.left, sizeof(IROLinear));
                     tmp->index = IRO_NumLinear++;
-                    tmp->u.monadic = r27->next;
-                    tmp->rtype = r27->rtype;
-                    IRO_PasteAfter(tmp, tmp, r27->next);
+                    tmp->u.monadic = cond->next;
+                    tmp->rtype = cond->rtype;
+                    IRO_PasteAfter(tmp, tmp, cond->next);
 
                     tmp = IRO_NewLinear(IROLinearOp2Arg);
                     memcpy(tmp, &copy2, sizeof(IROLinear));
                     tmp->index = IRO_NumLinear++;
-                    tmp->u.diadic.right = r27;
-                    tmp->u.diadic.left = r27->next->next;
-                    tmp->rtype = r27->rtype;
-                    IRO_PasteAfter(tmp, tmp, r27->next->next);
+                    tmp->u.diadic.right = cond;
+                    tmp->u.diadic.left = cond->next->next;
+                    tmp->rtype = cond->rtype;
+                    IRO_PasteAfter(tmp, tmp, cond->next->next);
 
-                    if (r20 != 1) {
+                    if (useCount != 1) {
                         tmp = copy2.u.diadic.left->u.monadic;
                         tmp->u.node = create_objectrefnode(obj);
                     }
 
                     rightAss->u.args3.a = copy2.u.diadic.left;
-                    rightAss->u.args3.a->rtype = r27->rtype;
+                    rightAss->u.args3.a->rtype = cond->rtype;
 
-                    if (r20 == 1) {
-                        r21->linear = r27->next->next;
-                        if (Bv_IsBitSet(r21->index, right->out)) {
-                            Bv_ClearBit(r21->index, right->out);
-                            Bv_SetBit(r21->index, r24->out);
+                    if (useCount == 1) {
+                        def2->linear = cond->next->next;
+                        if (Bv_IsBitSet(def2->index, right->out)) {
+                            Bv_ClearBit(def2->index, right->out);
+                            Bv_SetBit(def2->index, ifnode->out);
                         }
-                        if (Bv_IsBitSet(r21->index, right->gen)) {
-                            Bv_ClearBit(r21->index, right->gen);
-                            Bv_SetBit(r21->index, r24->gen);
+                        if (Bv_IsBitSet(def2->index, right->gen)) {
+                            Bv_ClearBit(def2->index, right->gen);
+                            Bv_SetBit(def2->index, ifnode->gen);
                         }
-                        if (Bv_IsBitSet(r21->index, right->kill)) {
-                            Bv_ClearBit(r21->index, right->kill);
-                            Bv_SetBit(r21->index, r24->kill);
+                        if (Bv_IsBitSet(def2->index, right->kill)) {
+                            Bv_ClearBit(def2->index, right->kill);
+                            Bv_SetBit(def2->index, ifnode->kill);
                         }
                     }
                 }
             }
         }
 
-        if (!r18) {
-            if (r20 == 1 && r23->data.objref->u.var.info) {
-                r23->data.objref->u.var.info->usage = 0;
-                r23->data.objref->u.var.info->used = 0;
+        if (!killedFlag) {
+            if (useCount == 1 && objnode->data.objref->u.var.info) {
+                objnode->data.objref->u.var.info->usage = 0;
+                objnode->data.objref->u.var.info->used = FALSE;
             }
-            r22->useCount = 0;
+            def1->useCount = 0;
             IRO_NopOut(copy2.u.diadic.left);
-            r21->useCount = 0;
+            def2->useCount = 0;
         }
     } else {
         tmp = IRO_NewLinear(IROLinearOp2Arg);
@@ -835,41 +819,40 @@ static void RebuildPossibleCondExpression(IRONode* fnode) {
         tmp->index = IRO_NumLinear++;
         tmp->u.diadic.right = rightAss;
         IRO_PasteAfter(tmp, tmp, fnode->first);
-        r22->useCount = 0;
-        r21->linear = fnode->first;
-        if (Bv_IsBitSet(r21->index, right->out)) {
-            Bv_ClearBit(r21->index, right->out);
-            Bv_SetBit(r21->index, fnode->out);
+        def1->useCount = 0;
+        def2->linear = fnode->first;
+        if (Bv_IsBitSet(def2->index, right->out)) {
+            Bv_ClearBit(def2->index, right->out);
+            Bv_SetBit(def2->index, fnode->out);
         }
-        if (Bv_IsBitSet(r21->index, right->gen)) {
-            Bv_ClearBit(r21->index, right->gen);
-            Bv_SetBit(r21->index, fnode->gen);
+        if (Bv_IsBitSet(def2->index, right->gen)) {
+            Bv_ClearBit(def2->index, right->gen);
+            Bv_SetBit(def2->index, fnode->gen);
         }
-        if (Bv_IsBitSet(r21->index, right->kill)) {
-            Bv_ClearBit(r21->index, right->kill);
-            Bv_SetBit(r21->index, fnode->kill);
+        if (Bv_IsBitSet(def2->index, right->kill)) {
+            Bv_ClearBit(def2->index, right->kill);
+            Bv_SetBit(def2->index, fnode->kill);
         }
     }
 }
 
 static void RebuildPossibleReturnCondExpression(IRONode* fnode) {
     IRONode* succ2;
-    IROLinear* node1;
-    IROLinear* node2;
+    IROLinear* condition;
+    IROLinear* thenValue;
     IROLinear* tmp1;
     IRONode* succ1;
-    IROLinear* node3;
-    IRONode* r27;
+    IROLinear* elseValue;
+    IRONode* target;
     Boolean isIf;
     Type* type;
     IROList list;
     IROLinear* last;
     IROLinear* tmp2;
-    IROLinear* tmp;
+    IROLinear* notNode;
 
     if (!fnode ||
-        fnode->numsucc !=
-        2 ||
+        fnode->numsucc != 2 ||
         !(last = fnode->last) ||
         (last->type != IROLinearIf && last->type != IROLinearIfNot)) {
         return;
@@ -879,136 +862,127 @@ static void RebuildPossibleReturnCondExpression(IRONode* fnode) {
     succ2 = IRO_NodeTable[fnode->succ[1]];
     if (!succ1 ||
         !succ2 ||
-        succ1->numsucc !=
-        0 ||
-        succ1->numpred !=
-        1 ||
-        succ2->numsucc !=
-        0 ||
+        succ1->numsucc != 0 ||
+        succ1->numpred != 1 ||
+        succ2->numsucc != 0 ||
         succ2->numpred != 1) {
         return;
     }
 
     if (succ1->first &&
-        succ1->first->type ==
-        IROLinearLabel &&
+        succ1->first->type == IROLinearLabel &&
         succ1->first->u.label.label == fnode->last->u.label.label) {
-        r27 = succ1;
+        target = succ1;
     } else if (succ2->first &&
-               succ2->first->type ==
-               IROLinearLabel &&
+               succ2->first->type == IROLinearLabel &&
                succ2->first->u.label.label == fnode->last->u.label.label) {
-        r27 = succ2;
+        target = succ2;
     } else {
         return;
     }
 
-    if (r27->numpred != 1) {
+    if (target->numpred != 1) {
         return;
     }
 
-    if (!CheckThenOrElseBranch(fnode->nextnode, fnode->nextnode, NULL, 1) ||
-        !CheckThenOrElseBranch(r27, r27, NULL, 1)) {
+    if (!CheckThenOrElseBranch(fnode->nextnode, fnode->nextnode, NULL, TRUE) ||
+        !CheckThenOrElseBranch(target, target, NULL, TRUE)) {
         return;
     }
 
     if (!fnode->nextnode->last ||
-        fnode->nextnode->last->type !=
-        IROLinearReturn ||
+        fnode->nextnode->last->type != IROLinearReturn ||
         !fnode->nextnode->last->u.monadic ||
-        !r27->last ||
-        r27->last->type !=
-        IROLinearReturn ||
-        !r27->last->u.monadic ||
-        !IRO_TypesEqual(fnode->nextnode->last->u.monadic->rtype, r27->last->u.monadic->rtype)) {
+        !target->last ||
+        target->last->type != IROLinearReturn ||
+        !target->last->u.monadic ||
+        !IRO_TypesEqual(fnode->nextnode->last->u.monadic->rtype, target->last->u.monadic->rtype)) {
         return;
     }
 
     isIf = fnode->last->type == IROLinearIf;
-    node1 = fnode->last->u.label.cond;
-    node2 = fnode->nextnode->last->u.monadic;
-    node3 = r27->last->u.monadic;
-    type = node2->rtype;
+    condition = fnode->last->u.label.cond;
+    thenValue = fnode->nextnode->last->u.monadic;
+    elseValue = target->last->u.monadic;
+    type = thenValue->rtype;
 
     fnode->last->type = IROLinearNop;
     fnode->last->expr = NULL;
-    r27->last->type = IROLinearNop;
-    r27->last->expr = NULL;
-    r27->first->type = IROLinearNop;
-    r27->first->expr = NULL;
+    target->last->type = IROLinearNop;
+    target->last->expr = NULL;
+    target->first->type = IROLinearNop;
+    target->first->expr = NULL;
 
-    if (IRO_IsIntConstant(node2) &&
-        IRO_IsIntConstant(node3) &&
-        ((IRO_IsConstantOne(node2) && IRO_IsConstantZero(node3)) ||
-         (IRO_IsConstantZero(node2) && IRO_IsConstantOne(node3)))) {
-        if (!(
-                node1->type == IROLinearOp1Arg && node1->nodetype == ELOGNOT && node1->rtype == type
-            )) {
+    if (IRO_IsIntConstant(thenValue) &&
+        IRO_IsIntConstant(elseValue) &&
+        ((IRO_IsConstantOne(thenValue) && IRO_IsConstantZero(elseValue)) ||
+         (IRO_IsConstantZero(thenValue) && IRO_IsConstantOne(elseValue)))) {
+        if (!(condition->type == IROLinearOp1Arg &&
+              condition->nodetype == ELOGNOT &&
+              condition->rtype == type)) {
             tmp1 = IRO_NewLinear(IROLinearOp1Arg);
-            memcpy(tmp1, node2, sizeof(IROLinear));
+            memcpy(tmp1, thenValue, sizeof(IROLinear));
             tmp1->type = IROLinearOp1Arg;
             tmp1->nodetype = ELOGNOT;
             tmp1->index = IRO_NumLinear++;
-            tmp1->u.monadic = node1;
+            tmp1->u.monadic = condition;
 
             tmp1->next = tmp2 = IRO_NewLinear(IROLinearOp1Arg);
-            memcpy(tmp2, node2, sizeof(IROLinear));
+            memcpy(tmp2, thenValue, sizeof(IROLinear));
             tmp2->type = IROLinearOp1Arg;
             tmp2->nodetype = ELOGNOT;
             tmp2->index = IRO_NumLinear++;
             tmp2->u.monadic = tmp1;
 
-            IRO_PasteAfter(tmp1, tmp2, node1);
-            node1 = tmp2;
+            IRO_PasteAfter(tmp1, tmp2, condition);
+            condition = tmp2;
         }
 
-        if ((IRO_IsConstantZero(node2) && !isIf) || (IRO_IsConstantOne(node2) && isIf)) {
-            if (node1->type ==
-                IROLinearOp1Arg &&
-                node1->nodetype ==
-                ELOGNOT &&
-                node1->rtype == node1->u.monadic->rtype) {
-                tmp = node1;
-                node1 = node1->u.monadic;
-                tmp->type = IROLinearNop;
-                tmp->expr = NULL;
+        if ((IRO_IsConstantZero(thenValue) && !isIf) || (IRO_IsConstantOne(thenValue) && isIf)) {
+            if (condition->type == IROLinearOp1Arg &&
+                condition->nodetype == ELOGNOT &&
+                condition->rtype == condition->u.monadic->rtype) {
+                notNode = condition;
+                condition = condition->u.monadic;
+                notNode->type = IROLinearNop;
+                notNode->expr = NULL;
             } else {
-                tmp = IRO_NewLinear(IROLinearOp1Arg);
-                memcpy(tmp, node2, sizeof(IROLinear));
-                tmp->type = IROLinearOp1Arg;
-                tmp->nodetype = ELOGNOT;
-                tmp->index = IRO_NumLinear++;
-                tmp->u.monadic = node1;
-                IRO_PasteAfter(tmp, tmp, node1);
-                node1 = tmp;
+                notNode = IRO_NewLinear(IROLinearOp1Arg);
+                memcpy(notNode, thenValue, sizeof(IROLinear));
+                notNode->type = IROLinearOp1Arg;
+                notNode->nodetype = ELOGNOT;
+                notNode->index = IRO_NumLinear++;
+                notNode->u.monadic = condition;
+                IRO_PasteAfter(notNode, notNode, condition);
+                condition = notNode;
             }
         }
 
-        node2->type = IROLinearNop;
-        node2->expr = NULL;
-        node3->type = IROLinearNop;
-        node3->expr = NULL;
-        fnode->nextnode->last->u.monadic = node1;
+        thenValue->type = IROLinearNop;
+        thenValue->expr = NULL;
+        elseValue->type = IROLinearNop;
+        elseValue->expr = NULL;
+        fnode->nextnode->last->u.monadic = condition;
     } else {
         IRO_InitList(&list);
-        tmp1 = IRO_DuplicateExpr(node3, &list);
-        IRO_NopOut(node3);
+        tmp1 = IRO_DuplicateExpr(elseValue, &list);
+        IRO_NopOut(elseValue);
         IRO_Paste(list.head, list.tail, fnode->nextnode->last);
 
         tmp2 = IRO_NewLinear(IROLinearOp3Arg);
-        memcpy(tmp2, node2, sizeof(IROLinear));
+        memcpy(tmp2, thenValue, sizeof(IROLinear));
         tmp2->type = IROLinearOp3Arg;
         tmp2->nodetype = ECOND;
         tmp2->index = IRO_NumLinear++;
-        tmp2->u.args3.a = node1;
+        tmp2->u.args3.a = condition;
         tmp2->rtype = type;
         IRO_Paste(tmp2, tmp2, fnode->nextnode->last);
 
         if (isIf) {
             tmp2->u.args3.b = tmp1;
-            tmp2->u.args3.c = node2;
+            tmp2->u.args3.c = thenValue;
         } else {
-            tmp2->u.args3.b = node2;
+            tmp2->u.args3.b = thenValue;
             tmp2->u.args3.c = tmp1;
         }
 
@@ -1040,30 +1014,22 @@ static Boolean IsLogicalExpressionAssign(IROLinear* nd) {
     IROLinear* left;
 
     return (
-        nd->type ==
-        IROLinearOp2Arg &&
-        nd->nodetype ==
-        EASS &&
+        nd->type == IROLinearOp2Arg &&
+        nd->nodetype == EASS &&
         (left = nd->u.diadic.left) &&
         (right = nd->u.diadic.right) &&
-        right->type ==
-        IROLinearOperand &&
+        right->type == IROLinearOperand &&
         right->u.node &&
-        right->u.node->type ==
-        EINTCONST &&
+        right->u.node->type == EINTCONST &&
         (CInt64_Equal(right->u.node->data.intval, cint64_one) ||
          CInt64_Equal(right->u.node->data.intval, cint64_zero)) &&
-        left->type ==
-        IROLinearOp1Arg &&
-        left->nodetype ==
-        EINDIRECT &&
+        left->type == IROLinearOp1Arg &&
+        left->nodetype == EINDIRECT &&
         left->u.monadic &&
         IS_TYPE_POINTER_ONLY(left->u.monadic->rtype) &&
-        left->u.monadic->type ==
-        IROLinearOperand &&
+        left->u.monadic->type == IROLinearOperand &&
         left->u.monadic->u.node &&
-        left->u.monadic->u.node->type ==
-        EOBJREF &&
+        left->u.monadic->u.node->type == EOBJREF &&
         left->u.monadic->u.node->data.objref &&
         left->u.monadic->u.node->data.objref->datatype == DLOCAL
     );
@@ -1072,15 +1038,19 @@ static Boolean IsLogicalExpressionAssign(IROLinear* nd) {
 static Boolean IsPossibleLogicalExpressionStart(IRONode* fnode, IROLinear* nd) {
     IROLinear* last;
 
-    return fnode->numsucc ==
-        2 &&
+    return fnode->numsucc == 2 &&
         (last = fnode->last) &&
         (last->type == IROLinearIf || last->type == IROLinearIfNot) &&
         IsLogicalExpressionAssign(nd);
 }
 
 static Boolean CheckForTopLevelExpressions(
-    IRONode* fnode1, IRONode* fnode2, IRONode* fnode3, IROLinear* nd1, IROLinear* nd2, Boolean flag
+    IRONode* fnode1,
+    IRONode* fnode2,
+    IRONode* fnode3,
+    IROLinear* start,
+    IROLinear* stop,
+    Boolean clearMarks
 ) {
     IRONode* fnode;
     IROLinear* nd;
@@ -1088,17 +1058,17 @@ static Boolean CheckForTopLevelExpressions(
 
     if (fnode1 != fnode3) {
         if (!Bv_IsBitSet(fnode2->index, fnode1->dom)) {
-            return 0;
+            return FALSE;
         }
 
-        if (flag) {
+        if (clearMarks) {
             for (fnode = IRO_FirstNode; fnode; fnode = fnode->nextnode) {
-                fnode->marked = 0;
+                fnode->marked = FALSE;
             }
         } else if (fnode1->marked) {
-            return 1;
+            return TRUE;
         }
-        fnode1->marked = 1;
+        fnode1->marked = TRUE;
 
         for (i = 0; i < fnode1->numsucc; i++) {
             if (!CheckForTopLevelExpressions(
@@ -1106,32 +1076,32 @@ static Boolean CheckForTopLevelExpressions(
                     fnode2,
                     fnode3,
                     IRO_NodeTable[fnode1->succ[i]]->first,
-                    nd2,
-                    0
+                    stop,
+                    FALSE
                 )) {
-                return 0;
+                return FALSE;
             }
         }
     }
 
-    for (nd = nd1; nd && nd != fnode1->last->next; nd = nd->next) {
-        if (nd == nd2) {
-            return 1;
+    for (nd = start; nd && nd != fnode1->last->next; nd = nd->next) {
+        if (nd == stop) {
+            return TRUE;
         }
 
         if (nd->type != IROLinearNop && nd->type != IROLinearLabel && !(nd->flags & IROLF_Reffed)) {
-            return 0;
+            return FALSE;
         }
     }
 
-    return 1;
+    return TRUE;
 }
 
 static void AddNodeAndSuccessorsRecursively(IRONodes* nodes, IRONode* fnode1, IRONode* fnode2) {
     UInt16 i;
 
     if (fnode1 && !fnode1->marked) {
-        fnode1->marked = 1;
+        fnode1->marked = TRUE;
         IRO_FNodeWorkStack_Add(nodes, fnode1->index);
         if (fnode1 != fnode2) {
             for (i = 0; i < fnode1->numsucc; i++) {
@@ -1141,17 +1111,16 @@ static void AddNodeAndSuccessorsRecursively(IRONodes* nodes, IRONode* fnode1, IR
     }
 }
 
-// TODO: an unproven copy of the parameter, kept for AddNodeAndSuccessorsRecursively (compiled next).
 static Boolean RebuildPossibleLogicalExpression(IRONode* start, IROLinear* nd) {
     IRONode* fnode = start;
-    IRONode* var_6C;
+    IRONode* prevnode;
     IROLinear* newlin;
     IROUse* use;
-    IROLinear* nd2;
+    IROLinear* prevAssign;
     IROLinear* left;
     IROLinear* right;
-    IRONode* r25;
-    IRONode* r24;
+    IRONode* test1node;
+    IRONode* test2node;
     UInt8 compareType;
     ENode* objnode;
     IRODef* def1;
@@ -1160,7 +1129,7 @@ static Boolean RebuildPossibleLogicalExpression(IRONode* start, IROLinear* nd) {
     UInt32 rewrittenUseCount;
     Boolean sideEffectFlag;
     CLabel* somelab;
-    IRONode* var_68;
+    IRONode* labelnode;
     CInt64 compareVal;
     Boolean killedFlag;
     BitVector* bv1;
@@ -1172,7 +1141,7 @@ static Boolean RebuildPossibleLogicalExpression(IRONode* start, IROLinear* nd) {
 
     objnode = nd->u.diadic.left->u.monadic->u.node;
     if (!objnode->data.objref->varptr) {
-        return 0;
+        return FALSE;
     }
 
     if (CInt64_Equal(nd->u.diadic.right->u.node->data.intval, cint64_zero)) {
@@ -1183,7 +1152,7 @@ static Boolean RebuildPossibleLogicalExpression(IRONode* start, IROLinear* nd) {
         compareVal = cint64_zero;
     }
 
-    var_68 = NULL;
+    labelnode = NULL;
     def1 = NULL;
     for (def = objnode->data.objref->varptr->defs; def && !def1; def = def->varnext) {
         if (def->useCount && def->linear == nd) {
@@ -1194,89 +1163,90 @@ static Boolean RebuildPossibleLogicalExpression(IRONode* start, IROLinear* nd) {
     if (def1) {
         for (use = objnode->data.objref->varptr->uses; use; use = use->varnext) {
             if (use->reachingDefCount == 2 && Bv_IsBitSet(def1->index, use->reachingDefs)) {
-                if (!var_68) {
-                    var_68 = use->node;
-                } else if (Bv_IsBitSet(use->node->index, var_68->dom)) {
-                    var_68 = use->node;
+                if (!labelnode) {
+                    labelnode = use->node;
+                } else if (Bv_IsBitSet(use->node->index, labelnode->dom)) {
+                    labelnode = use->node;
                 }
             }
         }
 
-        if (var_68) {
+        if (labelnode) {
             for (use = objnode->data.objref->varptr->uses; use; use = use->varnext) {
-                if (use->node !=
-                    var_68 &&
-                    use->reachingDefCount ==
-                    2 &&
+                if (use->node != labelnode &&
+                    use->reachingDefCount == 2 &&
                     Bv_IsBitSet(def1->index, use->reachingDefs) &&
-                    !Bv_IsBitSet(var_68->index, use->node->dom)) {
-                    var_68 = NULL;
+                    !Bv_IsBitSet(labelnode->index, use->node->dom)) {
+                    labelnode = NULL;
                     break;
                 }
             }
         }
     }
 
-    if (!var_68 ||
-        !var_68->first ||
-        var_68->first->type !=
-        IROLinearLabel ||
-        !(somelab = var_68->first->u.label.label) ||
-        var_68->numpred != 3) {
-        return 0;
+    if (!labelnode ||
+        !labelnode->first ||
+        labelnode->first->type != IROLinearLabel ||
+        !(somelab = labelnode->first->u.label.label) ||
+        labelnode->numpred != 3) {
+        return FALSE;
     }
 
-    r25 = IRO_NodeTable[var_68->pred[0]];
-    if (Bv_IsBitSet(IRO_NodeTable[var_68->pred[1]]->index, r25->dom)) {
-        r25 = IRO_NodeTable[var_68->pred[1]];
-    } else if (!Bv_IsBitSet(r25->index, IRO_NodeTable[var_68->pred[1]]->dom)) {
-        return 0;
+    test1node = IRO_NodeTable[labelnode->pred[0]];
+    if (Bv_IsBitSet(IRO_NodeTable[labelnode->pred[1]]->index, test1node->dom)) {
+        test1node = IRO_NodeTable[labelnode->pred[1]];
+    } else if (!Bv_IsBitSet(test1node->index, IRO_NodeTable[labelnode->pred[1]]->dom)) {
+        return FALSE;
     }
 
-    if (Bv_IsBitSet(IRO_NodeTable[var_68->pred[2]]->index, r25->dom)) {
-        r25 = IRO_NodeTable[var_68->pred[2]];
-    } else if (!Bv_IsBitSet(r25->index, IRO_NodeTable[var_68->pred[2]]->dom)) {
-        return 0;
+    if (Bv_IsBitSet(IRO_NodeTable[labelnode->pred[2]]->index, test1node->dom)) {
+        test1node = IRO_NodeTable[labelnode->pred[2]];
+    } else if (!Bv_IsBitSet(test1node->index, IRO_NodeTable[labelnode->pred[2]]->dom)) {
+        return FALSE;
     }
 
-    if (!r25 ||
-        !(left = r25->last) ||
-        left->type !=
-        compareType ||
+    if (!test1node ||
+        !(left = test1node->last) ||
+        left->type != compareType ||
         left->u.label.label != somelab) {
-        return 0;
+        return FALSE;
     }
 
-    if (!FindFlowgraphNodeThatStartsWithLabel(left->u.label.label, &var_68, &var_6C) ||
-        !var_6C ||
-        var_6C->numpred !=
-        1 ||
-        !(r24 = IRO_NodeTable[var_6C->pred[0]]) ||
-        !(right = r24->last) ||
-        right->type !=
-        compareType ||
-        right->u.label.label !=
-        left->u.label.label ||
-        !(nd2 = FindLastDiadicTopLevelAssignmentInFlowgraphNode(var_6C)) ||
-        !IsLogicalExpressionAssign(nd2) ||
-        nd2->u.diadic.left->u.monadic->u.node->data.objref !=
-        objnode->data.objref ||
-        !CInt64_Equal(compareVal, nd2->u.diadic.right->u.node->data.intval) ||
-        nd2->rtype != nd->rtype) {
-        return 0;
+    if (!FindFlowgraphNodeThatStartsWithLabel(left->u.label.label, &labelnode, &prevnode) ||
+        !prevnode ||
+        prevnode->numpred != 1 ||
+        !(test2node = IRO_NodeTable[prevnode->pred[0]]) ||
+        !(right = test2node->last) ||
+        right->type != compareType ||
+        right->u.label.label != left->u.label.label ||
+        !(prevAssign = FindLastDiadicTopLevelAssignmentInFlowgraphNode(prevnode)) ||
+        !IsLogicalExpressionAssign(prevAssign) ||
+        prevAssign->u.diadic.left->u.monadic->u.node->data.objref != objnode->data.objref ||
+        !CInt64_Equal(compareVal, prevAssign->u.diadic.right->u.node->data.intval) ||
+        prevAssign->rtype != nd->rtype) {
+        return FALSE;
     }
 
-    if (!CheckForTopLevelExpressions(fnode, fnode, r25, nd->next, left, 1) ||
+    if (!CheckForTopLevelExpressions(fnode, fnode, test1node, nd->next, left, TRUE) ||
         !CheckForTopLevelExpressions(
-            r25->nextnode, r25->nextnode, r24, r25->nextnode->first, right, 1
+            test1node->nextnode,
+            test1node->nextnode,
+            test2node,
+            test1node->nextnode->first,
+            right,
+            TRUE
         ) ||
-        !CheckForTopLevelExpressions(r24->nextnode, r24->nextnode, var_6C, right->next, nd2, 1) ||
-        !CheckForTopLevelExpressions(var_6C, var_6C, var_6C, nd2->next, var_68->first, 1)) {
-        return 0;
+        !CheckForTopLevelExpressions(
+            test2node->nextnode, test2node->nextnode, prevnode, right->next, prevAssign, TRUE
+        ) ||
+        !CheckForTopLevelExpressions(
+            prevnode, prevnode, prevnode, prevAssign->next, labelnode->first, TRUE
+        )) {
+        return FALSE;
     }
 
     useCount = rewrittenUseCount = 0;
-    sideEffectFlag = killedFlag = 0;
+    sideEffectFlag = killedFlag = FALSE;
     if (!objnode->data.objref->varptr ||
         !(objnode->data.objref->varptr->uses) ||
         !(objnode->data.objref->varptr->defs)) {
@@ -1287,7 +1257,7 @@ static Boolean RebuildPossibleLogicalExpression(IRONode* start, IROLinear* nd) {
              def = def->varnext) {
             if (def->useCount && def->linear == nd) {
                 def1 = def;
-            } else if (def->useCount && def->linear == nd2) {
+            } else if (def->useCount && def->linear == prevAssign) {
                 def2 = def;
             }
         }
@@ -1301,21 +1271,19 @@ static Boolean RebuildPossibleLogicalExpression(IRONode* start, IROLinear* nd) {
                     if (Bv_IsBitSet(def1->index, use->reachingDefs) &&
                         Bv_IsBitSet(def2->index, use->reachingDefs)) {
                         for (i = 0; objnode && i < use->reachingDefs->size; i++) {
-                            if (i !=
-                                def1->index &&
-                                i !=
-                                def2->index &&
+                            if (i != (UInt32)def1->index &&
+                                i != (UInt32)def2->index &&
                                 Bv_IsBitSet(i, use->reachingDefs)) {
                                 objnode = NULL;
                             }
                         }
 
-                        if (objnode && !Bv_IsBitSet(var_68->index, use->node->dom)) {
+                        if (objnode && !Bv_IsBitSet(labelnode->index, use->node->dom)) {
                             objnode = NULL;
                         }
 
                         if (objnode) {
-                            if (RewriteUse(use, objnode, nd2, 0)) {
+                            if (RewriteUse(use, objnode, prevAssign, FALSE)) {
                                 rewrittenUseCount++;
                             } else {
                                 objnode = NULL;
@@ -1325,7 +1293,7 @@ static Boolean RebuildPossibleLogicalExpression(IRONode* start, IROLinear* nd) {
                         if (objnode) {
                             if (!sideEffectFlag) {
                                 sideEffectFlag = HasSideEffectsBeforeUse(
-                                    var_68, var_68, use->node, use->linear, 1
+                                    labelnode, labelnode, use->node, use->linear, TRUE
                                 );
                             }
 
@@ -1351,7 +1319,7 @@ static Boolean RebuildPossibleLogicalExpression(IRONode* start, IROLinear* nd) {
 
                                 if (!killedFlag) {
                                     killedFlag = UsesAKilledVarBeforeUse(
-                                        var_68, var_68, use->node, use->linear, bv1, 1
+                                        labelnode, labelnode, use->node, use->linear, bv1, TRUE
                                     );
                                 }
                             }
@@ -1366,7 +1334,7 @@ static Boolean RebuildPossibleLogicalExpression(IRONode* start, IROLinear* nd) {
     }
 
     if (!objnode) {
-        return 0;
+        return FALSE;
     }
 
     left->type = right->type = IROLinearNop;
@@ -1375,16 +1343,15 @@ static Boolean RebuildPossibleLogicalExpression(IRONode* start, IROLinear* nd) {
     IRO_NopOut(nd);
 
     newlin = IRO_NewLinear(IROLinearOp2Arg);
-    memcpy(newlin, nd2, sizeof(IROLinear));
+    memcpy(newlin, prevAssign, sizeof(IROLinear));
     newlin->nodetype = (compareType == IROLinearIf) ? ELOR : ELAND;
     newlin->index = IRO_NumLinear++;
     newlin->u.diadic.left = left->u.label.cond;
     newlin->u.diadic.right = right->u.label.cond;
     newlin->flags |= IROLF_Reffed;
-    IRO_Paste(newlin, newlin, nd2);
+    IRO_Paste(newlin, newlin, prevAssign);
 
-    if (rewrittenUseCount ==
-        1 &&
+    if (rewrittenUseCount == 1 &&
         !sideEffectFlag &&
         !killedFlag &&
         !objnode->data.objref->varptr->noregister) {
@@ -1392,59 +1359,55 @@ static Boolean RebuildPossibleLogicalExpression(IRONode* start, IROLinear* nd) {
             if (use->reachingDefCount &&
                 Bv_IsBitSet(def1->index, use->reachingDefs) &&
                 Bv_IsBitSet(def2->index, use->reachingDefs)) {
-                RewriteUse(use, objnode, newlin, 1);
+                RewriteUse(use, objnode, newlin, TRUE);
             }
         }
 
         if (useCount == 1 && objnode->data.objref->u.var.info) {
             objnode->data.objref->u.var.info->usage = 0;
-            objnode->data.objref->u.var.info->used = 0;
+            objnode->data.objref->u.var.info->used = FALSE;
         }
-        IRO_NopOut(nd2);
+        IRO_NopOut(prevAssign);
         def1->useCount = 0;
         def2->useCount = 0;
     } else {
-        IRO_NopOut(nd2->u.diadic.right);
-        nd2->u.diadic.right = newlin;
+        IRO_NopOut(prevAssign->u.diadic.right);
+        prevAssign->u.diadic.right = newlin;
         def1->useCount = 0;
     }
 
-    if (r24->numpred ==
-        1 &&
-        IRO_NodeTable[r24->pred[0]] ==
-        r25 &&
-        IRO_MergeFlowGraphNodes(r25, r24)) {
-        r24 = r25;
+    if (test2node->numpred == 1 &&
+        IRO_NodeTable[test2node->pred[0]] == test1node &&
+        IRO_MergeFlowGraphNodes(test1node, test2node)) {
+        test2node = test1node;
     }
-    if (var_6C->numpred ==
-        1 &&
-        IRO_NodeTable[var_6C->pred[0]] ==
-        r24 &&
-        IRO_MergeFlowGraphNodes(r24, var_6C)) {
-        var_6C = r24;
+    if (prevnode->numpred == 1 &&
+        IRO_NodeTable[prevnode->pred[0]] == test2node &&
+        IRO_MergeFlowGraphNodes(test2node, prevnode)) {
+        prevnode = test2node;
     }
-    if (var_68->numpred == 1 && r24 == r25 && var_6C == r24) {
-        IRO_MergeFlowGraphNodes(var_6C, var_68);
+    if (labelnode->numpred == 1 && test2node == test1node && prevnode == test2node) {
+        IRO_MergeFlowGraphNodes(prevnode, labelnode);
     }
-    return 1;
+    return TRUE;
 }
 
 static void RebuildLogicalExpressions(void) {
     IRONode* fnode;
     IROLinear* nd;
-    Boolean flag;
+    Boolean changed;
 
     do {
-        flag = 0;
+        changed = FALSE;
         for (fnode = IRO_FirstNode; fnode && fnode->last; fnode = fnode->nextnode) {
             for (nd = fnode->first; nd && nd != fnode->last->next; nd = nd->next) {
                 if (IsPossibleLogicalExpressionStart(fnode, nd) &&
                     RebuildPossibleLogicalExpression(fnode, nd)) {
-                    flag = 1;
+                    changed = TRUE;
                 }
             }
         }
-    } while (flag);
+    } while (changed);
 
     IRO_CheckForUserBreak();
 }
@@ -1466,331 +1429,311 @@ static Type* logicalType(void) {
 }
 
 static Boolean GeneratePossibleCondAss(IRONode* fnode) {
-    IROLinear* r24;
-    IROLinear* r16;
+    IROLinear* ass1;
+    IROLinear* dest;
     IRONode* node1;
     IROLinear* ass;
     IRONode* node2;
     Object* obj;
-    IROLinear* r19;
+    IROLinear* scan;
     IROLinear* right2;
-    IROLinear* r20;
-    Boolean r19flag;
-    IROLinear* r18nd;
-    IRONode* r29;
-    IROLinear* r31;
+    IROLinear* condnd;
+    Boolean useTemp;
+    IROLinear* notnd;
+    IRONode* joinnode;
+    IROLinear* ass2;
     IROLinear* left2;
     IROLinear* cond;
-    Boolean r28;
+    Boolean hasElse;
     BitVector* saveVarKills;
     IROList list;
-    Boolean r23;
-    IROLinear* r14;
+    Boolean isIf;
+    IROLinear* test;
     IROLinear* last;
     IRONode* succ;
     IROLinear* node2last;
     UInt16 succ0;
     IRONode* succnode;
-    Boolean r18;
-    IROLinear* r15;
+    Boolean sameDest;
+    IROLinear* value1;
     IROLinear* left;
 
     if (!fnode ||
-        fnode->numsucc !=
-        2 ||
+        fnode->numsucc != 2 ||
         !(last = fnode->last) ||
         (last->type != IROLinearIf && last->type != IROLinearIfNot)) {
-        return 0;
+        return FALSE;
     }
 
     node1 = node2 = IRO_NodeTable[fnode->succ[0]];
     if (node1 &&
         node1->first &&
-        node1->first->type ==
-        IROLinearLabel &&
+        node1->first->type == IROLinearLabel &&
         node1->first->u.label.label == fnode->last->u.label.label) {
         node2 = IRO_NodeTable[fnode->succ[1]];
     } else {
         succ = node1 = IRO_NodeTable[fnode->succ[1]];
         if (!succ ||
             !succ->first ||
-            succ->first->type !=
-            IROLinearLabel ||
+            succ->first->type != IROLinearLabel ||
             succ->first->u.label.label != fnode->last->u.label.label) {
-            return 0;
+            return FALSE;
         }
     }
 
     if (!node2 ||
-        node2->numpred !=
-        1 ||
-        node2->numsucc !=
-        1 ||
+        node2->numpred != 1 ||
+        node2->numsucc != 1 ||
         (node2last = node2->last)->next != node1->first) {
-        return 0;
+        return FALSE;
     }
 
     succ0 = node2->succ[0];
     if ((succnode = IRO_NodeTable[succ0]) == node1 && Bv_IsBitSet(fnode->index, node1->dom)) {
-        r28 = 0;
-    } else if (node1->numpred ==
-               1 &&
-               node1->numsucc ==
-               1 &&
-               succ0 ==
-               node1->succ[0] &&
-               (r29 = IRO_NodeTable[succ0]) &&
-               Bv_IsBitSet(fnode->index, r29->dom) &&
-               node1->last->next == r29->first) {
-        r28 = 1;
+        hasElse = FALSE;
+    } else if (node1->numpred == 1 &&
+               node1->numsucc == 1 &&
+               succ0 == node1->succ[0] &&
+               (joinnode = IRO_NodeTable[succ0]) &&
+               Bv_IsBitSet(fnode->index, joinnode->dom) &&
+               node1->last->next == joinnode->first) {
+        hasElse = TRUE;
     } else {
-        return 0;
+        return FALSE;
     }
 
-    r24 = NULL;
+    ass1 = NULL;
     if (node2last) {
-        for (r19 = node2->first; r19 && r19 != node2->last->next; r19 = r19->next) {
-            if (IRO_IsAssignment(r19) && !(r19->flags & IROLF_Reffed) && !r24) {
-                r24 = r19;
-            } else if (r19->type !=
-                       IROLinearNop &&
-                       r19->type !=
-                       IROLinearLabel &&
-                       r19->type !=
-                       IROLinearGoto &&
-                       !(r19->flags & IROLF_Reffed)) {
-                return 0;
+        for (scan = node2->first; scan && scan != node2->last->next; scan = scan->next) {
+            if (IRO_IsAssignment(scan) && !(scan->flags & IROLF_Reffed) && !ass1) {
+                ass1 = scan;
+            } else if (scan->type != IROLinearNop &&
+                       scan->type != IROLinearLabel &&
+                       scan->type != IROLinearGoto &&
+                       !(scan->flags & IROLF_Reffed)) {
+                return FALSE;
             }
         }
     }
 
-    if (!r24 ||
-        (r24->nodetype != EASS && !IRO_TransformSelfAssignmentToAssignment(r24)) ||
-        !r24->u.diadic.left ||
-        r24->u.diadic.left->type !=
-        IROLinearOp1Arg ||
-        r24->u.diadic.left->nodetype !=
-        EINDIRECT ||
-        !r24->u.diadic.left->u.monadic ||
-        r24->u.diadic.left->u.monadic->type !=
-        IROLinearOperand ||
-        !r24->u.diadic.left->u.monadic->u.node ||
-        !r24->u.diadic.left->u.monadic->u.node->rtype ||
-        !IS_TYPE_POINTER_ONLY(r24->u.diadic.left->u.monadic->u.node->rtype) ||
-        !r24->u.diadic.left->u.monadic->u.node->data.objref) {
-        return 0;
+    if (!ass1 ||
+        (ass1->nodetype != EASS && !IRO_TransformSelfAssignmentToAssignment(ass1)) ||
+        !ass1->u.diadic.left ||
+        ass1->u.diadic.left->type != IROLinearOp1Arg ||
+        ass1->u.diadic.left->nodetype != EINDIRECT ||
+        !ass1->u.diadic.left->u.monadic ||
+        ass1->u.diadic.left->u.monadic->type != IROLinearOperand ||
+        !ass1->u.diadic.left->u.monadic->u.node ||
+        !ass1->u.diadic.left->u.monadic->u.node->rtype ||
+        !IS_TYPE_POINTER_ONLY(ass1->u.diadic.left->u.monadic->u.node->rtype) ||
+        !ass1->u.diadic.left->u.monadic->u.node->data.objref) {
+        return FALSE;
     }
 
-    if (r28) {
-        r31 = NULL;
+    if (hasElse) {
+        ass2 = NULL;
         if (node1->last) {
-            for (r19 = node1->first; r19 && r19 != node1->last->next; r19 = r19->next) {
-                if (IRO_IsAssignment(r19) && !(r19->flags & IROLF_Reffed) && !r31) {
-                    r31 = r19;
-                } else if (r19->type !=
-                           IROLinearNop &&
-                           r19->type !=
-                           IROLinearLabel &&
-                           r19->type !=
-                           IROLinearGoto &&
-                           !(r19->flags & IROLF_Reffed)) {
-                    return 0;
+            for (scan = node1->first; scan && scan != node1->last->next; scan = scan->next) {
+                if (IRO_IsAssignment(scan) && !(scan->flags & IROLF_Reffed) && !ass2) {
+                    ass2 = scan;
+                } else if (scan->type != IROLinearNop &&
+                           scan->type != IROLinearLabel &&
+                           scan->type != IROLinearGoto &&
+                           !(scan->flags & IROLF_Reffed)) {
+                    return FALSE;
                 }
             }
         }
 
-        if (!r31 ||
-            (r31->nodetype != EASS && !IRO_TransformSelfAssignmentToAssignment(r31)) ||
-            !(left = r31->u.diadic.left) ||
-            left->type !=
-            IROLinearOp1Arg ||
-            left->nodetype !=
-            EINDIRECT ||
+        if (!ass2 ||
+            (ass2->nodetype != EASS && !IRO_TransformSelfAssignmentToAssignment(ass2)) ||
+            !(left = ass2->u.diadic.left) ||
+            left->type != IROLinearOp1Arg ||
+            left->nodetype != EINDIRECT ||
             !left->u.monadic ||
-            left->u.monadic->type !=
-            IROLinearOperand ||
+            left->u.monadic->type != IROLinearOperand ||
             !left->u.monadic->u.node ||
             !left->u.monadic->u.node->rtype ||
             !IS_TYPE_POINTER_ONLY(left->u.monadic->u.node->rtype) ||
             !left->u.monadic->u.node->data.objref) {
-            return 0;
+            return FALSE;
         }
 
-        r18 = IRO_ExprsSame(r24->u.diadic.left, r31->u.diadic.left);
+        sameDest = IRO_ExprsSame(ass1->u.diadic.left, ass2->u.diadic.left);
     }
 
-    r23 = fnode->last->type == IROLinearIf;
-    r20 = fnode->last->u.label.cond;
-    r19flag = r28 && copts.commonsubs && IRO_IsSubableExpression(r20);
+    isIf = fnode->last->type == IROLinearIf;
+    condnd = fnode->last->u.label.cond;
+    useTemp = hasElse && copts.commonsubs && IRO_IsSubableExpression(condnd);
 
-    if (r19flag) {
-        IRO_FindDepends(r20);
-        r19flag = !IRO_NotSubable;
+    if (useTemp) {
+        IRO_FindDepends(condnd);
+        useTemp = !IRO_NotSubable;
     }
 
-    if (r28) {
-        if (r18) {
-            r19flag = 0;
-        } else if (IRO_HasSideEffect(r20)) {
-            r19flag = 1;
+    if (hasElse) {
+        if (sameDest) {
+            useTemp = FALSE;
+        } else if (IRO_HasSideEffect(condnd)) {
+            useTemp = TRUE;
         } else {
             Bv_AllocVector(&IRO_VarKills, IRO_NumVars + 1);
-            IRO_WalkTree(r20, Regen_GetExprUses);
+            IRO_WalkTree(condnd, Regen_GetExprUses);
             saveVarKills = IRO_VarKills;
             Bv_AllocVector(&IRO_VarKills, IRO_NumVars + 1);
-            IRO_WalkTree(r24, Regen_GetExprKills);
+            IRO_WalkTree(ass1, Regen_GetExprKills);
             if (Bv_BitsInCommon(IRO_VarKills, saveVarKills)) {
-                r19flag = 1;
+                useTemp = TRUE;
             }
         }
 
-        if (r19flag && !copts.commonsubs) {
-            return 0;
+        if (useTemp && !copts.commonsubs) {
+            return FALSE;
         }
     }
 
-    if (r19flag) {
+    if (useTemp) {
         IRO_InitList(&list);
-        obj = create_temp_object(r20->rtype);
-        IRO_FindVar(obj, 1, 1);
+        obj = create_temp_object(condnd->rtype);
+        IRO_FindVar(obj, TRUE, TRUE);
         ass = IRO_NewLinear(IROLinearOp2Arg);
         ass->u.diadic.left = IRO_TempReference(obj, &list);
-        ass->rtype = r20->rtype;
+        ass->rtype = condnd->rtype;
         ass->nodetype = EASS;
         ass->index = ++IRO_NumLinear;
         ass->u.diadic.left->flags |= IROLF_Ind | IROLF_Assigned;
         ass->u.diadic.left->u.monadic->flags |= IROLF_Ind | IROLF_Assigned;
-        ass->u.diadic.right = r20;
+        ass->u.diadic.right = condnd;
         IRO_AddToList(ass, &list);
-        IRO_PasteAfter(list.head, list.tail, r20);
+        IRO_PasteAfter(list.head, list.tail, condnd);
     }
 
-    r16 = r24->u.diadic.left;
+    dest = ass1->u.diadic.left;
     fnode->last->type = IROLinearNop;
-    r15 = r24->u.diadic.right;
+    value1 = ass1->u.diadic.right;
     fnode->last->expr = NULL;
     if (node2->last->type == IROLinearGoto) {
         node2->last->type = IROLinearNop;
         node2->last->expr = NULL;
     }
-    if (r28 || node1->numpred == 2) {
+    if (hasElse || node1->numpred == 2) {
         node1->first->type = IROLinearNop;
         node1->first->expr = NULL;
     }
 
-    if (r28 && r18) {
+    if (hasElse && sameDest) {
         if (node1->last->type == IROLinearGoto) {
             node1->last->type = IROLinearNop;
             node1->last->expr = NULL;
         }
-        if (r29->numpred == 2) {
-            r29->first->type = IROLinearNop;
-            r29->first->expr = NULL;
+        if (joinnode->numpred == 2) {
+            joinnode->first->type = IROLinearNop;
+            joinnode->first->expr = NULL;
         }
 
         cond = IRO_NewLinear(IROLinearOp3Arg);
-        memcpy(cond, r24, sizeof(IROLinear));
+        memcpy(cond, ass1, sizeof(IROLinear));
         cond->type = IROLinearOp3Arg;
         cond->nodetype = ECOND;
         cond->index = IRO_NumLinear++;
-        cond->rtype = r16->rtype;
+        cond->rtype = dest->rtype;
         cond->flags |= IROLF_Reffed;
-        if (r19flag) {
+        if (useTemp) {
             IRO_InitList(&list);
-            r20 = IRO_TempReference(obj, &list);
-            IRO_Paste(list.head, list.tail, r31);
+            condnd = IRO_TempReference(obj, &list);
+            IRO_Paste(list.head, list.tail, ass2);
         }
-        cond->u.args3.a = r20;
+        cond->u.args3.a = condnd;
 
-        if (r23) {
-            cond->u.args3.b = r31->u.diadic.right;
-            cond->u.args3.c = r15;
+        if (isIf) {
+            cond->u.args3.b = ass2->u.diadic.right;
+            cond->u.args3.c = value1;
         } else {
-            cond->u.args3.b = r15;
-            cond->u.args3.c = r31->u.diadic.right;
+            cond->u.args3.b = value1;
+            cond->u.args3.c = ass2->u.diadic.right;
         }
 
-        r24->type = IROLinearNop;
-        r24->expr = NULL;
-        IRO_NopOut(r24->u.diadic.left);
-        IRO_Paste(cond, cond, r31);
-        r31->u.diadic.right = cond;
+        ass1->type = IROLinearNop;
+        ass1->expr = NULL;
+        IRO_NopOut(ass1->u.diadic.left);
+        IRO_Paste(cond, cond, ass2);
+        ass2->u.diadic.right = cond;
     } else {
-        r24->type = IROLinearOp3Arg;
-        r24->nodetype = ECONDASS;
-        if (r19flag) {
+        ass1->type = IROLinearOp3Arg;
+        ass1->nodetype = ECONDASS;
+        if (useTemp) {
             IRO_InitList(&list);
-            r14 = IRO_TempReference(obj, &list);
-            IRO_Paste(list.head, list.tail, r24);
+            test = IRO_TempReference(obj, &list);
+            IRO_Paste(list.head, list.tail, ass1);
         } else {
-            r14 = r20;
+            test = condnd;
         }
-        cond = r14;
-        if (r23) {
-            r18nd = IRO_NewLinear(IROLinearOp1Arg);
-            memcpy(r18nd, r14, sizeof(IROLinear));
-            r18nd->type = IROLinearOp1Arg;
-            r18nd->nodetype = ELOGNOT;
-            r18nd->index = IRO_NumLinear++;
-            r18nd->rtype = logicalType();
-            r18nd->u.monadic = r14;
-            r18nd->flags |= IROLF_Reffed;
-            IRO_Paste(r18nd, r18nd, r24);
-            r14 = r18nd;
+        cond = test;
+        if (isIf) {
+            notnd = IRO_NewLinear(IROLinearOp1Arg);
+            memcpy(notnd, test, sizeof(IROLinear));
+            notnd->type = IROLinearOp1Arg;
+            notnd->nodetype = ELOGNOT;
+            notnd->index = IRO_NumLinear++;
+            notnd->rtype = logicalType();
+            notnd->u.monadic = test;
+            notnd->flags |= IROLF_Reffed;
+            IRO_Paste(notnd, notnd, ass1);
+            test = notnd;
         }
-        r24->u.args3.a = r14;
-        r24->u.args3.b = r16;
-        r24->u.args3.c = r15;
-        if (r28) {
-            left2 = r31->u.diadic.left;
-            right2 = r31->u.diadic.right;
+        ass1->u.args3.a = test;
+        ass1->u.args3.b = dest;
+        ass1->u.args3.c = value1;
+        if (hasElse) {
+            left2 = ass2->u.diadic.left;
+            right2 = ass2->u.diadic.right;
             if (node1->last->type == IROLinearGoto) {
                 node1->last->type = IROLinearNop;
                 node1->last->expr = NULL;
             }
-            if (r29->numpred == 2) {
-                r29->first->type = IROLinearNop;
-                r29->first->expr = NULL;
+            if (joinnode->numpred == 2) {
+                joinnode->first->type = IROLinearNop;
+                joinnode->first->expr = NULL;
             }
-            r31->type = IROLinearOp3Arg;
-            r31->nodetype = ECONDASS;
-            if (r19flag) {
+            ass2->type = IROLinearOp3Arg;
+            ass2->nodetype = ECONDASS;
+            if (useTemp) {
                 IRO_InitList(&list);
                 cond = IRO_TempReference(obj, &list);
-                IRO_Paste(list.head, list.tail, r31);
+                IRO_Paste(list.head, list.tail, ass2);
             } else {
                 IRO_InitList(&list);
                 cond = IRO_DuplicateExpr(cond, &list);
-                IRO_Paste(list.head, list.tail, r31);
+                IRO_Paste(list.head, list.tail, ass2);
             }
-            if (!r23) {
-                r14 = IRO_NewLinear(IROLinearOp1Arg);
-                memcpy(r14, cond, sizeof(IROLinear));
-                r14->type = IROLinearOp1Arg;
-                r14->nodetype = ELOGNOT;
-                r14->index = IRO_NumLinear++;
-                r14->rtype = logicalType();
-                r14->u.monadic = cond;
-                r14->flags |= IROLF_Reffed;
-                IRO_Paste(r14, r14, r31);
-                cond = r14;
+            if (!isIf) {
+                test = IRO_NewLinear(IROLinearOp1Arg);
+                memcpy(test, cond, sizeof(IROLinear));
+                test->type = IROLinearOp1Arg;
+                test->nodetype = ELOGNOT;
+                test->index = IRO_NumLinear++;
+                test->rtype = logicalType();
+                test->u.monadic = cond;
+                test->flags |= IROLF_Reffed;
+                IRO_Paste(test, test, ass2);
+                cond = test;
             }
-            r31->u.args3.a = cond;
-            r31->u.args3.b = left2;
-            r31->u.args3.c = right2;
+            ass2->u.args3.a = cond;
+            ass2->u.args3.b = left2;
+            ass2->u.args3.c = right2;
         }
     }
 
     if (IRO_MergeFlowGraphNodes(fnode, node2)) {
         node2 = fnode;
     }
-    if ((r28 || node1->numpred == 1) && IRO_MergeFlowGraphNodes(node2, node1)) {
+    if ((hasElse || node1->numpred == 1) && IRO_MergeFlowGraphNodes(node2, node1)) {
         node1 = node2;
     }
-    if (r28 && r29->numpred == 1) {
-        IRO_MergeFlowGraphNodes(node1, r29);
+    if (hasElse && joinnode->numpred == 1) {
+        IRO_MergeFlowGraphNodes(node1, joinnode);
     }
-    return 1;
+    return TRUE;
 }
 
 static void GenerateCondAssignments(void) {
@@ -1814,23 +1757,23 @@ void IRO_RegenerateExpressions(void) {
     IRO_UpdateFlagsOnInts();
     IRO_ComputeSuccPred();
     IRO_ComputeDom();
-    IRO_UseDef(0, 0);
+    IRO_UseDef(FALSE, FALSE);
 
     if (copts.optimizationlevel > 0) {
         IRO_Dump("Rebuilding ELORs and ELANDs\n");
         RebuildLogicalExpressions();
-        IRO_DumpAfterPhase("RebuildLogicalExpressions", 0);
+        IRO_DumpAfterPhase("RebuildLogicalExpressions", FALSE);
     }
 
     if (copts.optimizationlevel > 0) {
         IRO_Dump("Rebuilding ECONDs\n");
         RebuildCondExpressions();
-        IRO_DumpAfterPhase("RebuildCondExpressions", 0);
+        IRO_DumpAfterPhase("RebuildCondExpressions", FALSE);
     }
 
     if (copts.optimizationlevel > 0) {
         IRO_Dump("Generating ECONDASSes\n");
         GenerateCondAssignments();
-        IRO_DumpAfterPhase("GenerateCondAssignments", 0);
+        IRO_DumpAfterPhase("GenerateCondAssignments", FALSE);
     }
 }

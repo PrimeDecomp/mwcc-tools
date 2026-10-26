@@ -1,12 +1,3 @@
-"""The original's assert calls: the file name and line each pushes, which name a function's unit and, against a
-reference tree that keeps the lines (Pro7's), the function itself.
-
-An assert compiles to pushes of the line and the file name (__FILE__: the bare name, "IroLoop.c"), then a call of the
-assert function: the compiler's CError_Internal, or MSL's __assertion_failed (the driver's and the optimizer's
-IRO_ASSERT), which pushes the condition's text as well. An inlined function's asserts carry its own file's name (a
-header's, for an inline in one) and lines.
-"""
-
 from __future__ import annotations
 
 import re
@@ -25,22 +16,18 @@ _NUMBER = re.compile(r"0x[0-9a-f]+|\d+")
 
 @dataclass(frozen=True)
 class Site:
-    index: int  # the call's instruction, in the function's instructions
+    index: int
     line: int
     file: str
 
 
 def targets(rows) -> set[int]:
-    """The addresses of the assert functions among ROWS (config.Function or verdict.Row)."""
     return {r.address for r in rows if r.name in FUNCTIONS}
 
 
 def sites(
     pe: PEFile, code: bytes, address: int, assert_functions: set[int], strings: dict[int, str] | None = None
 ) -> tuple[list, list[Site]]:
-    """(CODE's instructions (it is at ADDRESS), the assert calls among them). STRINGS: {address of an instruction's
-    field: the string it refers to} for code whose literals are not at their addresses in PE (a compiled function's,
-    read from its object); other pushed addresses are read from PE."""
     instructions = list(_MD.disasm(code, address))
     found = []
     for i, ins in enumerate(instructions):

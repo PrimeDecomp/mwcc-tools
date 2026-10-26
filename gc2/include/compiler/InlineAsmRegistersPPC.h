@@ -2,7 +2,6 @@
 #define COMPILER_INLINEASMREGISTERSPPC_H
 
 #include "compiler/common.h"
-#include "compiler/InlineAsm.h"
 
 #ifdef __cplusplus
 extern "C" {
