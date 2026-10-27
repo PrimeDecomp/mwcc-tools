@@ -158,6 +158,8 @@ pub(crate) fn clang_arguments(source: &str, prefix: &str, arguments: &[String]) 
         // (MWCC's enums are as small as their values allow, enumsalwaysint off: the layout the hooks read)
         "-fshort-enums",
         "-D__MWERKS__=0x2407",
+        // (not the original's build: the sources' fixes for other builds, under NONMATCHING, apply)
+        "-DNONMATCHING",
         // (MSL's long double is double)
         "-Xclang",
         "-mlong-double-64",

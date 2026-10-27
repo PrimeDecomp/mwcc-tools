@@ -7,7 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#if !defined(__MWERKS__) && !defined(__wasm__)
+#ifndef __MWERKS__
 #include "host/ShiftJIS.h"
 #define CreateFileA ShiftJIS_CreateFileA
 #define ReadFile ShiftJIS_ReadFile

@@ -1288,11 +1288,10 @@ static int L_S(PCode* instr, UInt32* masks) {
 #endif
     SInt32 storeSize;
 
-#if defined(__MWERKS__) && defined(__wasm__)
-    /* A store between to another object leaves both offsets unset, and the original compares its stack slots as
-       earlier calls left them. The scan offset's slot holds a pointer, as computeinstructionpredecessors leaves it
-       (its nop), so the offsets never overlap. (This assumes no L_S call since then has set them.) The clang-x86
-       build's ls_frame emulation (#ifndef __MWERKS__) is not compiled here. */
+#if defined(__MWERKS__) && defined(NONMATCHING)
+    /* For a store to another object, the original compares both offsets uninitialized: the stack slots as earlier
+       calls left them. The scan offset's slot then holds a pointer (computeinstructionpredecessors leaves it), so
+       the offsets never overlap. Without the clang build's ls_frame emulation, give them those values. */
     defInstrOffset = 0;
     scanOffset = 0x7FFFFFFF;
 #endif

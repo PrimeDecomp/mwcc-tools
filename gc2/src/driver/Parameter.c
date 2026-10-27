@@ -807,12 +807,7 @@ static void DescHelpParam_SetString(
     *defaul = 0;
 }
 
-// (CompareParams's are called with the parameter alone: a call with another signature traps in WebAssembly)
-#ifdef __wasm__
 static int CompareParam_SetString(SETSTRING_T* p) {
-#else
-static int CompareParam_SetString(SETSTRING_T* p, int flags) {
-#endif
     if (p->pstring) {
         return !pstrcmp((const unsigned char*)p->var, (const unsigned char*)p->value);
     } else {

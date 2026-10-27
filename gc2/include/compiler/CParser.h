@@ -349,9 +349,9 @@ extern Type stvoid;
 extern TypePointer void_ptr;
 extern TypeFunc rt_func;
 
-/* The WebAssembly build defines __MWERKS__, but its objects are not where the original's are: it emulates them
-   as the clang build does. */
-#if defined(__MWERKS__) && !defined(__wasm__)
+/* NONMATCHING: a build of these sources that is not the original's (it may still define __MWERKS__, like the
+   WebAssembly build): its objects are not at the original's addresses, so it emulates them as the clang build does. */
+#if defined(__MWERKS__) && !defined(NONMATCHING)
 #define ORIGINAL_ADDRESS(ptr) ((UInt32)(ptr))
 #define TYPE_INTEGRAL_UNCHECKED(ty) (TYPE_INTEGRAL(ty)->integral)
 #else

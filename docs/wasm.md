@@ -6,11 +6,11 @@ no Metrowerks or Windows binary. GC 1.3.2's and 2.7's linkers (`mwldeppc.exe`) a
 built the same way from this repository's own sources ([The linkers](#the-linkers), [GC 1.2.5n](#gc-125n)).
 
 `gc2/` is [mweppc](https://github.com/doldecomp/mweppc)'s decompilation (henriquegemignani/mweppc's `gc-1.3.2`
-branch, eacdfaa, which adds 1.3.2 to the same sources), with the probes and the WebAssembly changes below. The
-WebAssembly build defines `__MWERKS__`, so it compiles mweppc's sources as the Metrowerks build does, not mweppc's own
-clang paths (`#ifndef __MWERKS__`). One exception: reads that depend on where the original's objects are
-(`TYPE_INTEGRAL_UNCHECKED`, `ORIGINAL_ADDRESS` in `include/compiler/CParser.h`) take the clang build's emulation under
-`__wasm__`. For example, the transformation that drops `!!` reads the "integral kind" of a call's `void` return type,
+branch, 9c23a57, which adds 1.3.2 to the same sources and the fixes other builds need), with the probes and the
+WebAssembly changes below. The WebAssembly build defines `__MWERKS__`, so it compiles mweppc's sources as the
+Metrowerks build does, not mweppc's own clang paths (`#ifndef __MWERKS__`). It also defines `NONMATCHING`, so reads
+that depend on where the original's objects are (`TYPE_INTEGRAL_UNCHECKED`, `ORIGINAL_ADDRESS` in
+`include/compiler/CParser.h`) take the clang build's emulation. For example, the transformation that drops `!!` reads the "integral kind" of a call's `void` return type,
 which the original finds as 0 (`IT_BOOL`) past `stvoid`. Without the emulation, the module kept `!!b` and
 `static_cast<bool>(b)` of a `bool` at `-O1` and above.
 
@@ -99,11 +99,14 @@ the 7 of `wasm/libc`.
   spellings the sources use (`windef.h`, `Windows.h`, ...), for case-sensitive file systems.
 * `long double` is a double (`-mlong-double-64`). gnu89 `extern inline` functions are defined in each unit, so the
   link takes any one copy (`--allow-multiple-definition`).
-* What WebAssembly needs of gc2's sources is in gc2 itself, under `#ifdef __wasm__`; MWCC builds of them are
-  unchanged.
+* What WebAssembly needs of gc2's sources is in mweppc's sources (9c23a57): in the plain source where the original's
+  build is unchanged, else under `#ifdef NONMATCHING`, which every module build defines (it defines `__MWERKS__`
+  too). Only constant folding's x87 arithmetic is gc2's own, under `#ifdef __wasm__`.
   * A function called through a pointer of another type traps in wasm, where x86 ignores the extra argument:
-    `CPrepTokenizer.c`'s character handlers and `Parameter.c`'s `CompareParam_SetString` get the pointer's
+    `CPrepTokenizer.c`'s character handlers and `Parameter.c`'s `CompareParam_SetString` take the pointer's
     parameters. clang's `-Wcast-function-type-mismatch` finds no others.
+  * `ORIGINAL_ADDRESS` and `TYPE_INTEGRAL_UNCHECKED` (`CParser.h`) use the clang build's emulation, and
+    `Peephole.c`'s redundant-store check gets the offsets the original's stack slots hold.
   * Constant folding goes through `CMACH_FOLD` and `CMACH_RECIPROCAL` (`include/compiler/CMachine.h`).
 
 The module's imports are 56 Win32 functions of kernel32 and version.dll, called by the C library and the driver.

@@ -12,14 +12,6 @@
 #include "driver/oslib.h"
 #include <string.h>
 
-// cprep_tokenize calls each handler with the character, the ones that ignore it too. A call through a pointer of
-// another type traps in WebAssembly, so there they take it.
-#ifdef __wasm__
-#define TOKENIZE_NONE short unused
-#else
-#define TOKENIZE_NONE void
-#endif
-
 static Boolean prepnextstringchar_foundnl;
 
 StringPtr CPrep_SkipNewComment(StringPtr str);
@@ -1166,11 +1158,11 @@ void CPrep_SkipAsmComment(void) {
     macrocheck = save_macrocheck;
 }
 
-static short tille(TOKENIZE_NONE) {
+static short tille(short c) {
     return TK_ILLEGAL;
 }
 
-static short tcret(TOKENIZE_NONE) {
+static short tcret(short c) {
     newline();
     if (cprep_eoltokens) {
         return TK_EOL;
@@ -1382,7 +1374,7 @@ static short tquot(short t) {
     return (short)c;
 }
 
-static short thash(TOKENIZE_NONE) {
+static short thash(short c) {
     if (at_linestart) {
         preprocessor();
         return 0;
@@ -1390,7 +1382,7 @@ static short thash(TOKENIZE_NONE) {
     return '#';
 }
 
-static short tmult(TOKENIZE_NONE) {
+static short tmult(short c) {
     at_linestart = FALSE;
     if (prepcurchar() == '=') {
         pos = nextcharpos;
@@ -1399,7 +1391,7 @@ static short tmult(TOKENIZE_NONE) {
     return '*';
 }
 
-static short tcolo(TOKENIZE_NONE) {
+static short tcolo(short c) {
     char t2;
     at_linestart = FALSE;
     if (copts.cplusplus) {
@@ -1542,7 +1534,7 @@ static short tperc(short t) {
     return '%';
 }
 
-static short texcl(TOKENIZE_NONE) {
+static short texcl(short c) {
     at_linestart = FALSE;
     if (prepcurchar() == '=') {
         pos = nextcharpos;
@@ -1745,7 +1737,7 @@ static short tnumb(short t) {
     return TK_INTCONST;
 }
 
-static short tiden(TOKENIZE_NONE) {
+static short tiden(short c) {
     at_linestart = FALSE;
     pos = ReadIdentifier(pos - 1);
     if (macrocheck && macrotest()) {
@@ -1784,7 +1776,7 @@ static short tchrL(short t) {
     return TK_IDENTIFIER;
 }
 
-static short tchra(TOKENIZE_NONE) {
+static short tchra(short c) {
     at_linestart = FALSE;
     pos = ReadIdentifier(pos - 1);
     if (macrocheck && macrotest()) {
@@ -1807,7 +1799,7 @@ static short tchra(TOKENIZE_NONE) {
     return TK_IDENTIFIER;
 }
 
-static short tchrb(TOKENIZE_NONE) {
+static short tchrb(short c) {
     at_linestart = FALSE;
     pos = ReadIdentifier(pos - 1);
     if (macrocheck && macrotest()) {
@@ -1840,7 +1832,7 @@ static short tchrb(TOKENIZE_NONE) {
     return TK_IDENTIFIER;
 }
 
-static short tchrc(TOKENIZE_NONE) {
+static short tchrc(short c) {
     at_linestart = FALSE;
     pos = ReadIdentifier(pos - 1);
     if (macrocheck && macrotest()) {
@@ -1883,7 +1875,7 @@ static short tchrc(TOKENIZE_NONE) {
     return TK_IDENTIFIER;
 }
 
-static short tchrd(TOKENIZE_NONE) {
+static short tchrd(short c) {
     at_linestart = FALSE;
     pos = ReadIdentifier(pos - 1);
     if (macrocheck && macrotest()) {
@@ -1912,7 +1904,7 @@ static short tchrd(TOKENIZE_NONE) {
     return TK_IDENTIFIER;
 }
 
-static short tchre(TOKENIZE_NONE) {
+static short tchre(short c) {
     at_linestart = FALSE;
     pos = ReadIdentifier(pos - 1);
     if (macrocheck && macrotest()) {
@@ -1938,7 +1930,7 @@ static short tchre(TOKENIZE_NONE) {
     return TK_IDENTIFIER;
 }
 
-static short tchrf(TOKENIZE_NONE) {
+static short tchrf(short c) {
     at_linestart = FALSE;
     pos = ReadIdentifier(pos - 1);
     if (macrocheck && macrotest()) {
@@ -1961,7 +1953,7 @@ static short tchrf(TOKENIZE_NONE) {
     return TK_IDENTIFIER;
 }
 
-static short tchrg(TOKENIZE_NONE) {
+static short tchrg(short c) {
     at_linestart = FALSE;
     pos = ReadIdentifier(pos - 1);
     if (macrocheck && macrotest()) {
@@ -1973,7 +1965,7 @@ static short tchrg(TOKENIZE_NONE) {
     return TK_IDENTIFIER;
 }
 
-static short tchri(TOKENIZE_NONE) {
+static short tchri(short c) {
     at_linestart = FALSE;
     pos = ReadIdentifier(pos - 1);
     if (macrocheck && macrotest()) {
@@ -2005,7 +1997,7 @@ static short tchri(TOKENIZE_NONE) {
     return TK_IDENTIFIER;
 }
 
-static short tchrl(TOKENIZE_NONE) {
+static short tchrl(short c) {
     at_linestart = FALSE;
     pos = ReadIdentifier(pos - 1);
     if (macrocheck && macrotest()) {
@@ -2017,7 +2009,7 @@ static short tchrl(TOKENIZE_NONE) {
     return TK_IDENTIFIER;
 }
 
-static short tchrm(TOKENIZE_NONE) {
+static short tchrm(short c) {
     at_linestart = FALSE;
     pos = ReadIdentifier(pos - 1);
     if (macrocheck && macrotest()) {
@@ -2060,7 +2052,7 @@ static short tchrn(short t) {
     return TK_IDENTIFIER;
 }
 
-static short tchro(TOKENIZE_NONE) {
+static short tchro(short c) {
     at_linestart = FALSE;
     pos = ReadIdentifier(pos - 1);
     if (macrocheck && macrotest()) {
@@ -2113,7 +2105,7 @@ static short tchrp(short t) {
     return TK_IDENTIFIER;
 }
 
-static short tchrr(TOKENIZE_NONE) {
+static short tchrr(short c) {
     at_linestart = FALSE;
     pos = ReadIdentifier(pos - 1);
     if (macrocheck && macrotest()) {
@@ -2137,7 +2129,7 @@ static short tchrr(TOKENIZE_NONE) {
     return TK_IDENTIFIER;
 }
 
-static short tchrs(TOKENIZE_NONE) {
+static short tchrs(short c) {
     at_linestart = FALSE;
     pos = ReadIdentifier(pos - 1);
     if (macrocheck && macrotest()) {
@@ -2170,7 +2162,7 @@ static short tchrs(TOKENIZE_NONE) {
     return TK_IDENTIFIER;
 }
 
-static short tchrt(TOKENIZE_NONE) {
+static short tchrt(short c) {
     at_linestart = FALSE;
     pos = ReadIdentifier(pos - 1);
     if (macrocheck && macrotest()) {
@@ -2223,7 +2215,7 @@ static short tchrt(TOKENIZE_NONE) {
     return TK_IDENTIFIER;
 }
 
-static short tchru(TOKENIZE_NONE) {
+static short tchru(short c) {
     at_linestart = FALSE;
     pos = ReadIdentifier(pos - 1);
     if (macrocheck && macrotest()) {
@@ -2244,7 +2236,7 @@ static short tchru(TOKENIZE_NONE) {
     return TK_IDENTIFIER;
 }
 
-static short tchrv(TOKENIZE_NONE) {
+static short tchrv(short c) {
     at_linestart = FALSE;
     pos = ReadIdentifier(pos - 1);
     if (macrocheck && macrotest()) {
@@ -2262,7 +2254,7 @@ static short tchrv(TOKENIZE_NONE) {
     return TK_IDENTIFIER;
 }
 
-static short tchrw(TOKENIZE_NONE) {
+static short tchrw(short c) {
     at_linestart = FALSE;
     pos = ReadIdentifier(pos - 1);
     if (macrocheck && macrotest()) {
@@ -2296,7 +2288,7 @@ static short tchrx(short t) {
     return TK_IDENTIFIER;
 }
 
-static short tchr_(TOKENIZE_NONE) {
+static short tchr_(short c) {
     at_linestart = FALSE;
     pos = ReadIdentifier(pos - 1);
     if (macrocheck && macrotest()) {
@@ -2375,7 +2367,7 @@ static short tdoll(short t) {
     return t;
 }
 
-static short tisid(TOKENIZE_NONE) {
+static short tisid(short c) {
     if (!tokenstacklevel) {
         CError_Error(ERR_ILLEGAL_TOKEN);
     }
@@ -2392,7 +2384,7 @@ static short tnull(short t) {
     }
 }
 
-static short t0x1a(TOKENIZE_NONE) {
+static short t0x1a(short c) {
     if (*pos == 0) {
         return 0;
     } else {
