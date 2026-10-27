@@ -316,8 +316,14 @@ hangs above were found.
 Status:
 
 * Canaries (2313): identical objects, messages and exit codes to the original's.
-* The units of Metroid Prime's build that use 1.2.5n (`corpus --version GC_1_2_5n --prime`): 26/26 identical; Metroid
-  Prime 2: Echoes': 81/81.
+* The units that use 1.2.5n (`corpus --version GC_1_2_5n --prime`, which compiles each without sjiswrap on both
+  sides): Metroid Prime (USA 1.00), 94/94 identical; Metroid Prime Trilogy's (R3ME01), 26/26; Metroid Prime 2:
+  Echoes (USA), 81/81.
+* Full builds through `mwcc-tools run` ([below](#a-projects-build-mwcc-tools-run)), with 1.2.5n, 1.3.2 and 2.7 and the
+  1.3.2 linker in process: Metroid Prime (USA 1.00: 94 units on 1.2.5n, 627 on 1.3.2; GC 1.3's 64 run as a process)
+  gives the same objects as the native build, and `main.dol` and `NESemuP.rel` pass their hash checks. Metroid Prime
+  2: Echoes (USA: 81 units on 1.2.5n, 31 on 1.3.2, 725 on 2.7; its GC 3.0a5 linker runs as a process) passes its
+  hash checks (87 files).
 * Floating-point folding: 7600 functions of random `+ - * /` chains of literals (doubles, floats, integers, casts),
   identical.
 
@@ -398,7 +404,7 @@ python configure.py --wrapper <mwcc>\target\release\mwcc-run.exe
 Copy it again after each `cargo build`: a hard link made before a rebuild keeps running the old executable, because
 cargo replaces `mwcc-tools.exe` with a new file.
 
-* An EXE that is the original 1.3.2, 2.6 or 2.7 compiler, or the 1.3.2 or 2.7 linker, wherever it is, runs in
+* An EXE that is the original 1.2.5n, 1.3.2, 2.6 or 2.7 compiler, or the 1.3.2 or 2.7 linker, wherever it is, runs in
   process when its module is built. It is recognised by the size and SHA-1 in `config/<version>/config.json`, so the checkout needs no copy of the
   compilers; an executable of another size is never read. It gets the wrapper's arguments, directory and environment,
   and writes the object and the `-MMD` `.d` file itself. The wrapper prints its stdout and stderr and exits with its
@@ -406,8 +412,9 @@ cargo replaces `mwcc-tools.exe` with a new file.
 * Anything else (the other compilers and linkers) runs as a process: natively on Windows, elsewhere through wibo,
   taken from the first of `MWCC_WIBO`, the project's own `build/tools/wibo` (relative to the build's directory), the
   checkout's `build/tools/wibo` and `wibo` on the path.
-* `sjiswrap.exe` is skipped for a compiler that runs in process. The sources are read as they are, so this is only
-  right for sources that are all ASCII.
+* `sjiswrap.exe` does not run for a compiler that runs in process: the host gives the sources and headers the
+  compiler opens for reading as sjiswrap gives them (UTF-8 converted to Shift JIS, and `IsDBCSLeadByte` true of a
+  byte with its high bit set).
 * A process loads the module from `mwcceppc.cache/` in about 7 ms. With no artifact, each process compiles the
   module (3 to 3.5 s with 24 at once); they all succeed and leave one artifact.
 
