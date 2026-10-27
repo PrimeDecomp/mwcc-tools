@@ -5,6 +5,9 @@
 #include "driver/CLErrors.h"
 #include "driver/CLIO.h"
 #include "driver/CLMain.h"
+#if VERSION >= VERSION_GC_2_7
+#include "driver/MemUtils.h"
+#endif
 #include <string.h>
 
 /* Source and destination handles for a preference data copy. */
@@ -13,6 +16,40 @@
 static NameTableEntry *name_table_entries;
 
 #pragma auto_inline reset
+
+#if VERSION >= VERSION_GC_2_7
+/* (2.x: here, not in CLIO.c) */
+NameTableEntry *create_data_block(char *name, const void *source, unsigned int size)
+{
+    NameTableEntry *block;
+    char *end;
+    block = xmalloc(NULL, 16U);
+    if (!block)
+        return block;
+    block->name = xstrdup(name);
+    block->handles.storage.destination = (StorageHandle *)Memory_NewHandle(size);
+    if (!block->handles.storage.destination) {
+#if VERSION >= VERSION_GC_1_3
+        CLIO_OutOfMemory();
+#else
+        CLIO_FormatAndDispatchText("\nOut of memory\n");
+        longjmp(driver_jmp_buf, 1U);
+#endif
+    }
+    block->handles.storage.temporary = NULL;
+    fn_00413a00(block->handles.storage.destination);
+    if (source) {
+        memcpy(block->handles.storage.destination->data, source, size);
+    } else {
+        end = block->handles.storage.destination->data;
+        memset(end, 0, size);
+        end += size;
+    }
+    fn_00413a50(block->handles.preference.source);
+    block->next = NULL;
+    return block;
+}
+#endif
 
 StorageHandle *CLPrefs_CopyDestinationToTemporary(NameTableEntry *preferences)
 {
@@ -97,6 +134,7 @@ NameTableEntry *CLPrefs_FindNameTableEntry(char *name)
     return entry;
 }
 
+#if VERSION < VERSION_GC_2_7
 unsigned int CLPrefs_ConvertLoneLFToCR(StorageHandle *buffer)
 {
     char *cursor;
@@ -121,6 +159,7 @@ unsigned int CLPrefs_ConvertLoneLFToCR(StorageHandle *buffer)
     fn_00413a50(buffer);
     return 0;
 }
+#endif
 
 #pragma auto_inline off
 

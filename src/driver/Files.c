@@ -6,13 +6,18 @@
 #include "driver/AssertionFailure.h"
 #include "driver/MacFileTypes.h"
 #include "driver/MacSpecs.h"
+#if VERSION >= VERSION_GC_2_7
+#include "driver/Generic.h"
+#endif
 #include "driver/Resources.h"
 #include "driver/StringUtils.h"
 #include <string.h>
 
 #include <stdio.h>
-/* Data of the original file that none of its linked code uses. */
+#if VERSION < VERSION_GC_2_7
+/* Data of the original file that none of its linked code uses (2.x: Memory.c's). */
 static char lbl_0054B8F8[] = "%*.*s";
+#endif
 
 int get_file_query_info_and_identifiers(OSSpec *path, FileQueryInfo *info, FileIdentifierInfo *identifiers)
 {
@@ -290,6 +295,14 @@ void __stdcall set_record_identifier(CWFileSpec *input, RecordData *data)
     }
 }
 
+#if defined(LINKER) && VERSION >= VERSION_GC_2_7
+/* (the 2.x linker's: flushing a volume, which the ELF writer asks for, does nothing) */
+int __stdcall fn_00412de0(long x, short vRefNum)
+{
+    return 0;
+}
+#endif
+
 SInt16 __stdcall Files_Read(SInt16 file, SInt32 *byteCount, void *buffer)
 {
     if (file == 0) {
@@ -561,6 +574,18 @@ int __stdcall Files_MakeFileSpecFromPath(short volume, int directory, unsigned c
         OS_OSSpec_To_FSSpec(&location, result);
         return OS_OSErrorToMacError(OS_Status(&location));
     }
+#if VERSION >= VERSION_GC_2_7
+    /* (2.x: the name is kept, cut to 63 characters) */
+    {
+        char *name = OS_GetFileNamePtr(fullPath);
+        int length = strlen(name);
+        if ((size_t)length >= sizeof(result->name))
+            length = 63;
+        result->name[0] = length;
+        memcpy(&result->name[1], name, length);
+    }
+#else
     result->name[0] = 0;
+#endif
     return OS_OSErrorToMacError(error);
 }

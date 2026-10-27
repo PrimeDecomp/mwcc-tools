@@ -57,6 +57,10 @@ struct ReadValue {
 };
 /* The parameters the plugin interface gives the importer and the object data it gives back: CPrepCU's fields,
    naturally aligned. */
+#if VERSION >= VERSION_GC_2_7
+/* (the 2.x CU is laid out natively, its browse options 4-aligned, and ends with the target's name) */
+#pragma options align = native
+#endif
 struct LibImportCU {
     struct CWPluginPrivateContext *context;
     SInt32 objectData;
@@ -82,14 +86,24 @@ struct LibImportCU {
     UInt8 preprocessOnly;
     UInt8 filesyminfo;
     UInt8 useMappedPrecompiledHeaders;
+#if VERSION >= VERSION_GC_2_7
+    UInt8 pad_e9[3];
+#else
     UInt8 pad_e9;
+#endif
     struct BrowseOptions browseOptions;
     UInt8 compiling;
     UInt8 pad_fb;
     UInt16 mainFileAttributes;
     SInt32 platformCode1;
     SInt32 platformCode0;
+#if VERSION >= VERSION_GC_2_7
+    char *targetName;
+#endif
 };
+#if VERSION >= VERSION_GC_2_7
+#pragma options align = reset
+#endif
 extern jmp_buf file_input_jmpbuf;
 extern void format_message_and_longjmp();
 extern void check_ticks_and_longjmp(void);
@@ -107,7 +121,11 @@ extern char data_0058770c[];
 extern void fn_0041ede0(char *value);
 extern void fn_0041ee00(void *argument, short request);
 extern unsigned char classify_file_header(CWFileSpec *input);
+#if VERSION >= VERSION_GC_2_7
+extern char **read_file_into_buffer(CWFileSpec *file, short *error, SInt32 extraBytes);
+#else
 extern char **read_file_into_buffer(CWFileSpec *file, short *error, int extraBytes);
+#endif
 extern FileInputNode *read_file_into_input_nodes(CWFileSpec *name, SInt16 *err);
 extern void clear_file_input_data_handles(FileInputNode *args);
 extern unsigned char fn_0041f430(Elf32Header *record, char *location, char *name);

@@ -37,7 +37,7 @@ PLinker pLinker = {5, 0, 0,       0,      0, 0, 0,        0,         0,         
 
 PDisassembler pDisassembler = {3, 0, 0, 0, 0, 1, 1, 0, 1, 0, 1, 1};
 
-PProject pProject = {7, {0}, 0x400, 0x40, 1, 0, 8, 8, 1};
+PProject pProject = {7, 0, {0}, 0x400, 0x40, 1, 0, 8, 8, 1};
 
 PCLTExtras pCLTExtras = {1};
 
@@ -3189,7 +3189,7 @@ int fn_004056a0(void)
         pCmdLine.state = 3;
     }
     if ((0 < data_00587e10) && (useDefaultIncludes != '\0')) {
-        includes = ParserHelpers_GetFirstEnvironmentVariable("MWCEABIPPCIncludes\0MWCIncludes", 1, &includesEnd);
+        includes = ParserHelpers_GetFirstEnvironmentVariable("MWCEABIPPCIncludes\0MWCIncludes" ENVIRONMENT_LIST_END, 1, &includesEnd);
         if ((includes != NULL) && (ParserHelpers_ParsePathList(includes, ';', ':', 1, includesEnd, 1, -1, 0) == 0)) {
             return 0;
         }

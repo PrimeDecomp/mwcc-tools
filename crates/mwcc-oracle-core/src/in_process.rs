@@ -18,7 +18,8 @@ use anyhow::{Context, Result, anyhow};
 use std::{fs, path::Path, sync::Arc};
 
 // (which compiler a module runs in place of: mwcc-project)
-pub use mwcc_project::compilers::{module, module_of_copy, traces};
+pub use mwcc_project::compilers::{linker_module_of_copy, module, module_of_copy, traces};
+pub use mwcc_wasm::Trapped;
 
 fn load(module: &Path) -> Result<Arc<mwcc_wasm::Loaded>> {
     mwcc_wasm::load(module).map_err(|e| anyhow!("{e:?}"))
@@ -56,6 +57,7 @@ pub fn execute(
             trace: traces(invocation.root, invocation.executable),
             overlay: None,
             transcode_sjis: false,
+            command_line: None,
         },
         cancel,
     )?;
@@ -91,6 +93,8 @@ pub struct Run<'a> {
     /// ([`mwcc_wasm::Request`]).
     pub overlay: Option<&'a mwcc_wasm::Overlay>,
     pub transcode_sjis: bool,
+    /// The command line as the process gets it, verbatim ([`mwcc_wasm::Request::command_line`]).
+    pub command_line: Option<&'a str>,
 }
 
 /// Where a traced run's TRACE goes: appended to `MWCC_ORACLE_TRACE_FILE` of its environment (relative to its
@@ -165,6 +169,7 @@ fn run_kept(run: &Run<'_>, cancel: &dyn Fn() -> bool) -> Result<mwcc_wasm::Outco
                 overlay: run.overlay,
                 transcode_sjis: run.transcode_sjis,
                 record_reads: false,
+                command_line: run.command_line,
             },
             cancel,
         )
@@ -275,6 +280,7 @@ mod tests {
                 trace: false,
                 overlay: None,
                 transcode_sjis: false,
+                command_line: None,
             },
             &|| false,
         )

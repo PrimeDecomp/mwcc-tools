@@ -13,6 +13,9 @@ extern void *COS_NewHandle(SInt32 size);
 extern void *COS_NewOSHandle(SIZE_T size);
 extern void COS_FreeHandle(void *handle);
 extern Boolean COS_ResizeHandle(struct StorageHandle *handle, UInt32 size);
+#if defined(LINKER) && VERSION >= VERSION_GC_2_7
+extern SInt32 COS_GetHandleSize(void *handle);
+#endif
 extern void COS_LockHandle(void *handle);
 extern void COS_LockHandleHi(void *handle);
 extern void COS_UnlockHandle(void *entry);

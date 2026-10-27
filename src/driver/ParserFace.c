@@ -47,6 +47,10 @@ PtrList data_00588044;
 #define B1(x) (((x) & 0xff00) >> 8)
 #define B0(x) ((x) & 0xff)
 
+#if defined(LINKER) && VERSION >= VERSION_GC_2_7
+/* (the 2.x linker's parser: these are ToolHelpers.c's) */
+const char *data_00543380;
+#else
 const char *data_00543380 = NULL;
 
 static void *xmalloc(const char *what, int size)
@@ -79,6 +83,7 @@ void *ToolHelpers_ResizeBuffer(const char *what, void *buffer, int size)
     }
     return resizedBuffer;
 }
+#endif
 
 int initialize_cmdline_environment(struct CWPluginPrivateContext *context)
 {
@@ -220,7 +225,11 @@ int set_enabled_link_parser_entries(struct CWPluginPrivateContext *context)
     return 0;
 }
 
+#if defined(LINKER) && VERSION >= VERSION_GC_2_7
+static PluginDesc data_00543430 = {2, 'Pars', 7, 0, 'Seep', 12};
+#else
 static PluginDesc data_00543430 = {2, 'Pars', 7, 0, 'Seep', 11};
+#endif
 static const char *data_00543458 = "Command-Line Parser";
 static const char *data_0054345c = "Command-Line Parser";
 static PluginDirectoryList data_00543460 = {1, 0, NULL};
@@ -235,7 +244,12 @@ static struct {
     UInt32 *oss;
 } lbl_00543470 = {1, 1, &lbl_00543468, 1, &lbl_0054346c};
 #pragma options align = reset
+#if defined(LINKER) && VERSION >= VERSION_GC_2_7
+/* (and a word of zeros after it, which nothing refers to) */
+static UInt8 data_00543480[8] = {1, 0, 1, 0, 0, 0, 0, 0};
+#else
 static UInt8 data_00543480[4] = {1, 1, 0, 0};
+#endif
 
 int __stdcall get_data_pointer_and_constant(unsigned char **dataPointer, int *constant)
 {

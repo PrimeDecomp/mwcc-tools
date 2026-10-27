@@ -817,14 +817,22 @@ char *unmangle_indirect_type(int *context, MOutBuf *output, char *input, char *s
             if (suffix != NULL) {
                 argument = suffix;
             }
+#ifdef __wasm__ /* (x86 returns the EAX the call leaves: the input's position after the type, which the callers use) */
+            return unmangle_array(context, output, kind, argument);
+#else
             unmangle_array(context, output, kind, argument);
             return;
+#endif
         case 'F':
             if (suffix != NULL) {
                 argument = suffix;
             }
+#ifdef __wasm__
+            return unmangle_function_type(context, output, kind, argument);
+#else
             unmangle_function_type(context, output, kind, argument);
             return;
+#endif
         default:
             if (marker == 'M') {
                 input = unmangle_qualified_name(context, NULL, (input + 1), 0, 0);
@@ -962,23 +970,47 @@ char *unmangle_type(int *context, MOutBuf *output, char *type)
         case 'r':
             name = "long double";
             break;
+#if defined(LINKER) && VERSION >= VERSION_GC_2_7
+            /* 2.x: no vector types (an X is not a type) */
+#else
         case 'X':
             return unmangle_vector_type(context, output, type, qualifiers);
+#endif
         case 'P':
+#ifdef __wasm__
+            return unmangle_indirect_type(context, output, type, qualifiers, '*');
+#else
             unmangle_indirect_type(context, output, type, qualifiers, '*');
             return;
+#endif
         case 'R':
+#ifdef __wasm__
+            return unmangle_indirect_type(context, output, type, qualifiers, '&');
+#else
             unmangle_indirect_type(context, output, type, qualifiers, '&');
             return;
+#endif
         case 'M':
+#ifdef __wasm__
+            return unmangle_indirect_type(context, output, type, qualifiers, 'M');
+#else
             unmangle_indirect_type(context, output, type, qualifiers, 'M');
             return;
+#endif
         case 'A':
+#ifdef __wasm__
+            return unmangle_array(context, output, type, NULL);
+#else
             unmangle_array(context, output, type, NULL);
             return;
+#endif
         case 'F':
+#ifdef __wasm__
+            return unmangle_function_type(context, output, type, NULL);
+#else
             unmangle_function_type(context, output, type, NULL);
             return;
+#endif
         case '0':
         case '1':
         case '2':
@@ -1061,10 +1093,29 @@ void unmangle_function_parameters(int *context, MOutBuf *output, char *encoding)
                 }
                 break;
             }
+#if defined(LINKER) && VERSION >= VERSION_GC_2_7
+            /* 2.x: a _ ends the parameters, the return type after it skipped (the last thing in the name) */
+            if (*encoding == '_') {
+                encoding = unmangle_type(context, NULL, encoding + 1);
+                if (*encoding != '\0') {
+                    longjmp(context, 1);
+                }
+                break;
+            }
             encoding = unmangle_type(context, output, encoding);
             if (*encoding == '\0') {
                 break;
             }
+            /* and no comma before it */
+            if (*encoding == '_') {
+                continue;
+            }
+#else
+            encoding = unmangle_type(context, output, encoding);
+            if (*encoding == '\0') {
+                break;
+            }
+#endif
             if (output != NULL && output->left != 0) {
                 *output->ptr++ = ',';
                 output->left--;
@@ -1161,6 +1212,10 @@ void Unmangle_UnmangleSymbolName(char *name, char *output, int outputSize)
                 ++name;
             break;
         case '_':
+#if defined(LINKER) && VERSION >= VERSION_GC_2_7
+            if (data_005649b8 == '_')
+                ++name;
+#endif
             switch (name[1]) {
                 case '#':
                 case '%':

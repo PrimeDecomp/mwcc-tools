@@ -1,0 +1,30 @@
+/* The 2.7 linker's version information, which the driver's banner reads (ResourceStrings.c). The original also has
+   an icon and its messages as string tables, left out here (the messages are the sources' own); the file is in
+   Windows-1252. */
+
+1 VERSIONINFO
+FILEVERSION 3, 0, 4, 0
+PRODUCTVERSION 3, 0, 4, 0
+FILEFLAGSMASK 0x3f
+FILEFLAGS 0x0
+FILEOS 0x40004
+FILETYPE 0x2
+FILESUBTYPE 0x0
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904b0"
+        BEGIN
+            VALUE "CompanyName", "Metrowerks Corporation"
+            VALUE "FileDescription", "CodeWarrior PPC EABI Linker"
+            VALUE "FileVersion", "3.0.4"
+            VALUE "LegalCopyright", "Copyright © 2003"
+            VALUE "ProductName", "Metrowerks CodeWarrior"
+            VALUE "ProductVersion", "3.0.4"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END

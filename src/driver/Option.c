@@ -24,7 +24,9 @@ int option_list_count;
 char *data_00587eec;
 int option_count;
 int option_capacity;
-#if VERSION >= VERSION_GC_1_3
+#if VERSION >= VERSION_GC_2_7
+int option_pending_count;
+#elif VERSION >= VERSION_GC_1_3
 struct Option **data_005da85c;
 int option_pending_count;
 int data_005da858;
@@ -36,6 +38,12 @@ int data_005da858;
 #endif
 
 static struct OptionList *option_lists[32];
+#if VERSION >= VERSION_GC_2_7
+/* (2.x: the options as they are added, a static list) */
+static OptionList internalOptionList;
+#define data_005da85c internalOptionList.list
+#define data_005da858 internalOptionList.flags
+#endif
 static OptionList optionList;
 
 #define oStack data_00586d20
@@ -211,6 +219,7 @@ OptionList *Option_GetOptionList(void)
 }
 
 #if VERSION >= VERSION_GC_1_3
+#if VERSION < VERSION_GC_2_7
 void add_option(Option *option)
 {
     if (option_pending_count >= option_capacity) {
@@ -221,6 +230,7 @@ void add_option(Option *option)
     option_pending_count++;
     data_005da85c[option_pending_count] = NULL;
 }
+#endif
 
 void Option_FinalizeOptionLists(void)
 {
@@ -247,6 +257,19 @@ void Option_FinalizeOptionLists(void)
         option_pending_count = 0;
     }
 }
+#if VERSION >= VERSION_GC_2_7
+/* (2.x: after the sort) */
+void add_option(Option *option)
+{
+    if (option_pending_count >= option_capacity) {
+        option_capacity += 32;
+        data_005da85c = (Option **)xrealloc("options", data_005da85c, (option_capacity + 1) * 4);
+    }
+    data_005da85c[option_pending_count] = option;
+    option_pending_count++;
+    data_005da85c[option_pending_count] = NULL;
+}
+#endif
 #else
 void add_option(Option *option)
 {
@@ -562,7 +585,7 @@ int parse_option(Option *option, int flags)
 
 static inline int lowercase(char character)
 {
-    return ((int (*)(char))to_lowercase)(character);
+    return TO_LOWERCASE_CHAR(character);
 }
 
 int match_option_names(char *names, char *arg, int flags, int *result)
@@ -688,13 +711,18 @@ int parse_option_list(OptionList *options, UInt32 flags)
     UInt32 errors = 0;
     int handled = 0;
     UInt32 hadError = 0;
+#if VERSION >= VERSION_GC_2_7
+    int definitionFlags = 0;
+#endif
     int commandLine = (flags & 2) != 0;
     int grouped = commandLine && (flags & 0x10);
     TokenText *firstNode;
     TokenText *node;
     TokenText *optionNode = NULL;
     int mode;
+#if VERSION < VERSION_GC_2_7
     int definitionFlags;
+#endif
     char savedName[1024];
     char savedToken[64];
     char diagnosticName[64];
@@ -756,6 +784,10 @@ int parse_option_list(OptionList *options, UInt32 flags)
                     definition = find_matching_option(options, 0, &definitionFlags);
                     strcpy(option_name, node->text);
                     if (definition != NULL) {
+#if VERSION >= VERSION_GC_2_7
+                        /* (2.x: a nameless default takes the token itself) */
+                        if (definition->names[0] != 0)
+#endif
                         node = Targets_AdvanceArgument();
                         if (node->kind == 4)
                             node = Targets_AdvanceArgument();
@@ -771,6 +803,36 @@ int parse_option_list(OptionList *options, UInt32 flags)
                     strcpy(option_name, savedName);
                 } else if (definition == NULL) {
                     option_name[0] = 0;
+#if VERSION >= VERSION_GC_2_7
+                    /* (2.x: each error counts itself) */
+                    if (mode > 1) {
+                        if ((flags & 4) != 0 && node == firstNode)
+                            return errors == 0;
+                        if ((options->flags & 2) != 0) {
+                            if ((flags & 1) == 0) {
+                                format_option_list(option_parameter_text, options, flags);
+                                Option_ForwardVarArgs(0x14, node->text, &option_parameter_text);
+                            }
+                            node = Targets_AdvanceArgument();
+                            handled++;
+                        } else {
+                            format_option_list(option_parameter_text, options, flags);
+                            forward_varargs(0x14, node->text, &option_parameter_text);
+                            errors++;
+                            hadError = 1;
+                        }
+                    } else if ((options->flags & 2) != 0 || data_00587e2a != 0) {
+                        if ((flags & 1) == 0)
+                            Option_ForwardVarArgs(0x13, node->text);
+                        node = Targets_AdvanceArgument();
+                        node = (TokenText *)Targets_IncrementGlobalOnNonzeroResult();
+                        handled++;
+                    } else {
+                        forward_varargs(0x13, node->text);
+                        errors++;
+                        hadError = 1;
+                    }
+#else
                     do {
                         if (mode > 1) {
                             if ((flags & 4) != 0 && node == firstNode)
@@ -800,6 +862,7 @@ int parse_option_list(OptionList *options, UInt32 flags)
                         errors++;
                         hadError = 1;
                     } while (0);
+#endif
                 }
             }
             if (errors == 0 && hadError == 0 && definition != NULL) {
@@ -840,6 +903,23 @@ int parse_option_list(OptionList *options, UInt32 flags)
             } else {
                 fallbackDefinition = NULL;
             }
+#if VERSION >= VERSION_GC_2_7
+            if (fallbackDefinition == NULL) {
+                if ((flags & 4) == 0) {
+                    forward_varargs(0x22, savedToken);
+                    errors++;
+                    hadError = 1;
+                } else {
+                    strcpy(option_name, savedToken);
+                    return errors == 0;
+                }
+            } else {
+                errors = parse_option(fallbackDefinition, flags) == 0;
+                handled++;
+                if (errors != 0)
+                    hadError = 1;
+            }
+#else
             do {
                 if (fallbackDefinition == NULL) {
                     if ((flags & 4) == 0) {
@@ -857,6 +937,7 @@ int parse_option_list(OptionList *options, UInt32 flags)
                 }
                 hadError = 1;
             } while (0);
+#endif
             strcpy(option_name, savedToken);
         }
         node = (TokenText *)fn_0040f969();
@@ -884,6 +965,43 @@ int parse_option_list(OptionList *options, UInt32 flags)
             } else {
                 if (match_option_kind(mode - 1, node) != 0)
                     break;
+#if VERSION >= VERSION_GC_2_7
+                if (match_option_kind(mode + 1, node) != 0) {
+                    previousNode = node;
+                    node = Targets_AdvanceArgument();
+                    if (mode != 1 || node->kind != 3) {
+                        if (optionNode != NULL) {
+                            push_option_arg(NULL, optionNode->text);
+                            if (node->kind == 2)
+                                Parameter_ForwardVarArgs(0x24, Targets_GetTokenTextDescription(node));
+                            else
+                                Parameter_ForwardVarArgs(0x23, Targets_GetTokenTextDescription(previousNode));
+                            fn_0041c1ae(optionNode->text);
+                        } else if (node->kind == 2) {
+                            fn_0040ecb1(0x24, Targets_GetTokenTextDescription(node));
+                        } else {
+                            fn_0040ecb1(0x23, Targets_GetTokenTextDescription(previousNode));
+                        }
+                        errors++;
+                        hadError++;
+                    }
+                } else if (mode < 2 && match_option_kind(mode + 2, node) != 0) {
+                    if (optionNode != NULL) {
+                        push_option_arg(NULL, optionNode->text);
+                        if (node->kind == 2)
+                            Parameter_ForwardVarArgs(0x24, Targets_GetTokenTextDescription(node));
+                        else
+                            Parameter_ForwardVarArgs(0x23, Targets_GetTokenTextDescription(node));
+                        fn_0041c1ae(optionNode->text);
+                    } else if (node->kind == 2) {
+                        fn_0040ecb1(0x24, Targets_GetTokenTextDescription(node));
+                    } else {
+                        fn_0040ecb1(0x23, Targets_GetTokenTextDescription(node));
+                    }
+                    errors++;
+                    hadError++;
+                }
+#else
                 do {
                     if (match_option_kind(mode + 1, node) != 0) {
                         previousNode = node;
@@ -900,6 +1018,7 @@ int parse_option_list(OptionList *options, UInt32 flags)
                     }
                     hadError++;
                 } while (0);
+#endif
             }
         }
         if (errors != 0 || hadError != 0) {
@@ -1014,12 +1133,17 @@ unsigned int forward_varargs(unsigned int messageId, ...)
     int offset;
     va_list args;
 
+/* (wasm: the variadic arguments are not after the named ones) */
+#ifdef __wasm__
+    va_start(args, messageId);
+#else
     base = (int)&messageId;
     offset = (int)((char *)&messageId + sizeof(short)) - base;
     offset = (offset + 3) / 4 * 4;
     base = (int)&messageId;
     offset += base;
     args = (char *)offset;
+#endif
     format_and_dispatch_option_message(messageId, args);
 }
 
@@ -1029,11 +1153,15 @@ unsigned int Option_ForwardVarArgs(unsigned int messageId, ...)
     char *end = (char *)&messageId;
     int size;
     va_list arguments;
+#ifdef __wasm__
+    va_start(arguments, messageId);
+#else
     end += sizeof(short);
     size = end - start;
     size = (size + 3) / 4 * 4;
     size += (unsigned int)&messageId;
     arguments = (char *)size;
+#endif
     report_option_message(messageId, arguments);
 }
 
@@ -1094,9 +1222,17 @@ int show_option_help(char *name)
 
 unsigned char Option_ShowHelp(void)
 {
+/* (x86 returns the EAX the help leaves, which the caller and-s into tool_checks_passed) */
+#ifdef __wasm__
+    if (data_00587ce0 & 1U) {
+        return show_option_help(data_00587ca0);
+    }
+    return print_option_help(data_00587ca0);
+#else
     if (data_00587ce0 & 1U) {
         show_option_help(data_00587ca0);
         return;
     }
     print_option_help(data_00587ca0);
+#endif
 }

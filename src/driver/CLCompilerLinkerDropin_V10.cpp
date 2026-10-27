@@ -31,6 +31,13 @@ extern "C" {
 
 typedef OSSpec DropinPath;
 
+#if defined(LINKER) && VERSION >= VERSION_GC_2_7
+/* (the 2.x linker's source lines, which its internal errors print) */
+#define LINE_BY_VERSION(v125, v13, ld) ld
+#else
+#define LINE_BY_VERSION(v125, v13, ld) BY_VERSION(v125, v13)
+#endif
+
 int __stdcall UCBCachePrecompiledHeader(unsigned int context, short *callback, int argument)
 {
     StorageHandle *callbackBuffer;
@@ -86,7 +93,7 @@ int __stdcall UCBStoreObjectData(int compiler, int dropinId, DropinConfiguration
         UCBSecretAttachHandle(compiler, reinterpret_cast<UInt32>(secondaryValue), &configuration->secondaryReference);
     } else {
         if (dropin->kind != 0 && dropin->kind != 2)
-            CLErrors_ReportInternalError("CLCompilerLinkerDropin_V10.cpp", 0xeb,
+            CLErrors_ReportInternalError("CLCompilerLinkerDropin_V10.cpp", LINE_BY_VERSION(0xeb, 0xeb, 240),
                                          "Cannot store object file spec for '%s'\n", dropin->inputName);
         MacSpecs_MakeOSSpec(configuration->outputFileSpec, &dropin->outputPath);
         dropin->validatedOutputMask |= 2;
@@ -130,8 +137,8 @@ int __stdcall UCBStoreObjectData(int compiler, int dropinId, DropinConfiguration
     return 0;
 }
 
-#if VERSION >= VERSION_GC_1_3
-/* (1.3: frees the object data once, noting it in verbose mode) */
+#if VERSION >= VERSION_GC_1_3 && !(defined(LINKER) && VERSION >= VERSION_GC_2_7)
+/* (1.3: frees the object data once, noting it in verbose mode; the 2.x linker frees it as 1.x does) */
 extern "C" void fn_0041a680(DropinFileRecord *record);
 #endif
 unsigned int __stdcall UCBFreeObjectData(unsigned int unused0, unsigned int recordKey, unsigned int unused2)
@@ -144,7 +151,7 @@ unsigned int __stdcall UCBFreeObjectData(unsigned int unused0, unsigned int reco
     if (record == 0)
         return 9U;
     if ((unsigned int)record->objectData != 0U) {
-#if VERSION >= VERSION_GC_1_3
+#if VERSION >= VERSION_GC_1_3 && !(defined(LINKER) && VERSION >= VERSION_GC_2_7)
         fn_0041a680(record);
 #else
         Memory_FreeHandle((StorageHandle *)record->objectData);
@@ -169,7 +176,7 @@ unsigned int __stdcall UCBBeginSubCompile(unsigned int argument0, unsigned int a
 {
     if (optsCmdLine.verbose > 3)
         CLIO_FormatAndDispatchText("Callback: %s\n", (unsigned char *)"UCBBeginSubCompile");
-    CLErrors_ReportInternalError("CLCompilerLinkerDropin_V10.cpp", BY_VERSION(367, 407), "UCBBeginSubCompile not implemented");
+    CLErrors_ReportInternalError("CLCompilerLinkerDropin_V10.cpp", LINE_BY_VERSION(367, 407, 372), "UCBBeginSubCompile not implemented");
     return 2U;
 }
 
@@ -177,7 +184,7 @@ unsigned int __stdcall UCBEndSubCompile(unsigned int unused)
 {
     if (optsCmdLine.verbose > 3)
         CLIO_FormatAndDispatchText("Callback: %s\n", (unsigned char *)"UCBEndSubCompile");
-    CLErrors_ReportInternalError("CLCompilerLinkerDropin_V10.cpp", BY_VERSION(379, 419), "UCBEndSubCompile not implemented");
+    CLErrors_ReportInternalError("CLCompilerLinkerDropin_V10.cpp", LINE_BY_VERSION(379, 419, 384), "UCBEndSubCompile not implemented");
     return 2U;
 }
 
@@ -203,7 +210,7 @@ int __stdcall UCBGetPrecompiledHeaderSpec(DropinRequest *request, int output, co
     }
     file = CLFiles_FindFileByIndex(&default_target->files, fileRequest->fileKey);
     if (file == 0) {
-        CLIO_ReportAssertionFailure("file != NULL", "CLCompilerLinkerDropin_V10.cpp", BY_VERSION(415, 455));
+        CLIO_ReportAssertionFailure("file != NULL", "CLCompilerLinkerDropin_V10.cpp", LINE_BY_VERSION(415, 455, 420));
     }
     objectFlags = CLPlugins_GetObjectFlags(file->selectedPlugin);
     if (file->outputName[0] == 0) {
@@ -263,7 +270,7 @@ unsigned int __stdcall UCBGetResourceFile(unsigned int unused1, unsigned int unu
 {
     if (optsCmdLine.verbose > 3)
         CLIO_FormatAndDispatchText("Callback: %s\n", (unsigned char *)"UCBGetResourceFile");
-    CLErrors_ReportInternalError("CLCompilerLinkerDropin_V10.cpp", BY_VERSION(509, 549), "UCBGetResourceFile not implemented");
+    CLErrors_ReportInternalError("CLCompilerLinkerDropin_V10.cpp", LINE_BY_VERSION(509, 549, 514), "UCBGetResourceFile not implemented");
     return 2U;
 }
 
@@ -271,7 +278,7 @@ unsigned int __stdcall UCBPutResourceFile(unsigned int, unsigned int, unsigned i
 {
     if (optsCmdLine.verbose > 3)
         CLIO_FormatAndDispatchText("Callback: %s\n", (unsigned char *)"UCBPutResourceFile");
-    CLErrors_ReportInternalError("CLCompilerLinkerDropin_V10.cpp", BY_VERSION(524, 564), "UCBPutResourceFile not implemented");
+    CLErrors_ReportInternalError("CLCompilerLinkerDropin_V10.cpp", LINE_BY_VERSION(524, 564, 529), "UCBPutResourceFile not implemented");
     return 2U;
 }
 
@@ -318,7 +325,7 @@ int __stdcall UCBLookUpUnit(struct DropinRequest *request, char *inputName, char
     }
     settings = CLFiles_FindFileByIndex(&default_target->files, validatedRequest->fileKey);
     if (settings == 0) {
-        CLIO_ReportAssertionFailure("srcfile != NULL", "CLCompilerLinkerDropin_V10.cpp", BY_VERSION(586, 626));
+        CLIO_ReportAssertionFailure("srcfile != NULL", "CLCompilerLinkerDropin_V10.cpp", LINE_BY_VERSION(586, 626, 591));
     }
     *outputObject = 0;
     outputValue->value = 0;
@@ -461,7 +468,7 @@ int __stdcall UCBStoreUnit(void *compilerObject, char *filename, int storageHand
 
         sourceFile = CLFiles_FindFileByIndex(&default_target->files, sourceObject->requestData.fileIndex);
         if (sourceFile == 0)
-            CLIO_ReportAssertionFailure("srcfile != NULL", "CLCompilerLinkerDropin_V10.cpp", BY_VERSION(0x312, 0x33a));
+            CLIO_ReportAssertionFailure("srcfile != NULL", "CLCompilerLinkerDropin_V10.cpp", LINE_BY_VERSION(0x312, 0x33a, 791));
 
         if (optsCompiler.sbmPath[0] != 0) {
             error = OS_MakeSpecWithPath(&clState.sbmPathSpec, name, 1, &path);
@@ -578,7 +585,7 @@ unsigned int __stdcall UCBGetModifiedFiles(unsigned int unused, NameSpaceName *n
     if (optsCmdLine.verbose > 3)
         CLIO_FormatAndDispatchText("Callback: %s\n", (unsigned char *)"UCBGetModifiedFiles");
     name->next = 0;
-    CLErrors_ReportInternalError("CLCompilerLinkerDropin_V10.cpp", BY_VERSION(945, 984), "CWGetModifiedFiles not implemented!\n");
+    CLErrors_ReportInternalError("CLCompilerLinkerDropin_V10.cpp", LINE_BY_VERSION(945, 984, 949), "CWGetModifiedFiles not implemented!\n");
     return 0;
 }
 
@@ -610,7 +617,7 @@ unsigned int __stdcall UCBGetStoredObjectFileSpec(unsigned int unused, unsigned 
     if (!record)
         return 9U;
     if ((unsigned short)record->kind != 2U) {
-        CLErrors_ReportInternalError("CLCompilerLinkerDropin_V10.cpp", BY_VERSION(989, 1028), "Lost stored object file spec for '%s'\n",
+        CLErrors_ReportInternalError("CLCompilerLinkerDropin_V10.cpp", LINE_BY_VERSION(989, 1028, 993), "Lost stored object file spec for '%s'\n",
                                      record->inputName);
         return 2U;
     }

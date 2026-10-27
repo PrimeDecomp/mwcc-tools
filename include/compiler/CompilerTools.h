@@ -97,6 +97,9 @@ extern void CompilerGetCString(short value, char *destination);
 extern void (*data_00587708)(void);
 extern int next_name_id;
 extern struct HashNameNode **data_00587f88;
+#ifdef __wasm__ /* (LibImportMessages.c's, else implicitly int (int, int): a call through another type traps in wasm) */
+extern void CompilerTools_FormatMessageAndLongjmp(int message, int status, ...);
+#endif
 
 #ifdef __cplusplus
 }

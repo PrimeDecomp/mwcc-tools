@@ -725,4 +725,10 @@ extern HashNameNode *fn_00441850(CPrepFileInfo *file, SInt32 *position);
 }
 #endif
 
+/* (line 42's mac68k is not popped: the reset after CompilerLinkerOptions pops its packed; the 2.x sources leave the
+   alignment native after this header) */
+#if VERSION >= VERSION_GC_2_7
+#pragma options align = reset
+#endif
+
 #endif

@@ -65,6 +65,76 @@ static inline char *initZero(void)
     return z;
 }
 
+#if defined(LINKER) && VERSION >= VERSION_GC_2_7
+#include "driver/ResourceStrings.h"
+#include <stdlib.h>
+extern UInt32 parser_panel_extra;
+
+/* (2.x: the banner from the shell's version resource when it gives one; a panel's version is its text) */
+void ToolHelpers_cc_PrintVersion(char includeValue)
+{
+    char *compilerVersion;
+    struct StorageHandle *output;
+    int index;
+    char *matchingVersion;
+    char *alternateVersion;
+    unsigned int parserValue1, parserValue2;
+    CompilerVersionInfo13 *info;
+
+    compilerVersion = NULL;
+    matchingVersion = NULL;
+    alternateVersion = NULL;
+    if (data_00587e22 == 0) {
+        output = (struct StorageHandle *)Memory_NewHandle(0);
+        if (output == NULL) {
+            fprintf(stderr, "\n*** Out of memory\n");
+            exit(-23);
+        }
+        for (index = 0; index < num_panels; index++) {
+            if (data_00587cf0[index].type == 1668047986) {
+                compilerVersion = (char *)data_00587cf0[index].version;
+            } else if (data_00587cf0[index].type == 1348563571) {
+                compilerVersion = (char *)data_00587cf0[index].version;
+            } else if (pTool->tool == data_00587cf0[index].type) {
+                if (matchingVersion == NULL && pTool->lang == data_00587cf0[index].creator) {
+                    matchingVersion = (char *)data_00587cf0[index].version;
+                } else {
+                    alternateVersion = (char *)data_00587cf0[index].version;
+                }
+            }
+        }
+        CWParserPluginsPrivate_GetParserValues(pluginPrivateContext, &parserValue1, &parserValue2);
+        HPrintF(output, "\n");
+        info = (CompilerVersionInfo13 *)parser_panel_extra;
+        if (info != NULL) {
+            HPrintF(output, "%s.\n%s, %s\nAll rights reserved.\n%s\n", pTool->toolInfo, info->copyright,
+                    info->company, info->version);
+        } else {
+            if (matchingVersion == NULL) {
+                if (alternateVersion == NULL)
+                    alternateVersion = "";
+                matchingVersion = alternateVersion;
+            }
+            HPrintF(output, "%s.\nCopyright (c)%s Metrowerks, Inc.\nAll rights reserved.\n%s\n", pTool->toolInfo,
+                    pTool->copyright, matchingVersion);
+        }
+        HPrintF(output, "Runtime Built: %s %s\n", parserValue1, parserValue2);
+        HPrintF(output, "\n");
+        if (includeValue != 0) {
+#if LINKER >= 27
+            /* (2.7 shows the usage first) */
+            HPrintF(output, "Usage: %s [%coptions]... [files]... [%cresponse]...\n\n",
+                    OS_GetFileNamePtr(*cmdline_environment->argv), *data_00587eec, '@');
+#endif
+            HPrintF(output, "Please enter '%s %chelp' for information about options.\n\n",
+                    OS_GetFileNamePtr(*cmdline_environment->argv), *data_00587eec);
+        }
+        ToolHelpers_cc_CallValuePairCallback(NULL, output);
+        Memory_FreeHandle(output);
+        data_00587e22 = 1;
+    }
+}
+#else
 void ToolHelpers_cc_PrintVersion(char includeValue)
 {
     char *compilerVersion;
@@ -118,6 +188,7 @@ void ToolHelpers_cc_PrintVersion(char includeValue)
         data_00587e22 = 1;
     }
 }
+#endif
 
 int ToolHelpers_cc_GetNumFiles(void)
 {
@@ -195,8 +266,15 @@ int ToolHelpers_cc_AddAccessPath(OSPathSpec *path, BY_VERSION( char, int) use_fi
     FileOperationInfo info;
     OSSpec spec;
     struct QueryValues values;
+#if defined(LINKER) && VERSION >= VERSION_GC_2_7
+    /* (2.x: a path that cannot be made is reported too) */
+    status = OS_MakeSpecWithPath(path, NULL, 0, &spec);
+    if (status == 0)
+        status = OS_OSSpec_To_FSSpec(&spec, &info.file.fileReference);
+#else
     OS_MakeSpecWithPath(path, NULL, 0, &spec);
     status = OS_OSSpec_To_FSSpec(&spec, &info.file.fileReference);
+#endif
     if (status != 0) {
         Targets_ReportOperatingSystemError(45, status, OS_PathSpecToString(&spec.path, data_005880e0, 260));
         result = 0;
@@ -214,7 +292,11 @@ int ToolHelpers_cc_AddAccessPath(OSPathSpec *path, BY_VERSION( char, int) use_fi
                 data_00543380 = "CWGetAccessPathListInfo";
                 longjmp(plugin_request_jmp_buf, query_status);
             }
+#if defined(LINKER) && VERSION >= VERSION_GC_2_7
+            if ((short)use_first & 1) {
+#else
             if (use_first != 0) {
+#endif
                 selected_value = values.firstValue;
             } else {
                 selected_value = values.secondValue;
@@ -223,11 +305,17 @@ int ToolHelpers_cc_AddAccessPath(OSPathSpec *path, BY_VERSION( char, int) use_fi
         } else {
             info.file.selection.value = value;
         }
+#if defined(LINKER) && VERSION >= VERSION_GC_2_7
+        /* (2.x: bit 0 of USE_FIRST a user path, bit 1 a path kept as a system one) */
+        option_b = ((short)use_first & 1) ? 0 : 1;
+        option_b |= ((short)use_first & 2) ? 2 : 0;
+#else
         if (use_first != 0) {
             option_b = 0;
         } else {
             option_b = 1;
         }
+#endif
         info.useSecondValue = option_b;
         info.option_a = option;
         update_status = CWParserPluginsPrivate_CallFileOperationCallback(pluginPrivateContext, &info);

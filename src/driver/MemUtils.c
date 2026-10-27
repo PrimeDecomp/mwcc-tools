@@ -97,11 +97,14 @@ void __stdcall xfree(void *block)
 }
 #endif
 
+/* (2.x has it in CLPluginRequests.cpp) */
+#if VERSION < VERSION_GC_2_7
 int __stdcall MemUtils_CallPluginEntry(Plugin *entry)
 {
     short result;
     result = CLPlugins_CallEntry(entry, entry->object);
     return result;
 }
+#endif
 
 #pragma auto_inline reset

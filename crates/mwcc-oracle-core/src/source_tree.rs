@@ -57,8 +57,13 @@ impl SourceTree {
     }
 
     /// The tree's `config/sources.json`.
+    /// The compiler's: `src/linker/`'s are the linker's (crate::wasm_linker), no compiler's unit.
     pub fn sources(&self, root: &Path) -> Result<Value> {
-        read_json(&root.join(format!("{}config/sources.json", self.prefix)))
+        let mut sources = read_json(&root.join(format!("{}config/sources.json", self.prefix)))?;
+        if let Some(map) = sources.as_object_mut() {
+            map.retain(|name, _| !name.starts_with("src/linker/"));
+        }
+        Ok(sources)
     }
 
     /// `config/<version>/config.json`, with a vendored tree's compilers, overrides, flags and Matching list

@@ -16,7 +16,12 @@
 
 struct DropinFileRecord *CLFiles_AllocDropinFileRecord(void)
 {
+#if defined(LINKER) && VERSION >= VERSION_GC_2_7
+    /* (2.x: 0x6a0 bytes) */
+    const unsigned int bufferSize = 0x6a0;
+#else
     const unsigned int bufferSize = BY_VERSION(0x520, 0x6a4);
+#endif
     struct DropinFileRecord *buffer;
 
     buffer = xmalloc(NULL, bufferSize);

@@ -464,11 +464,20 @@ Boolean validate_plugin(Plugin *plug, const char **errmsg)
         *errmsg = "The plugin type is not supported by this driver";
         return 0;
     }
+#if defined(LINKER) && VERSION >= VERSION_GC_2_7
+    /* the 2.x driver knows API version 11 */
+    if (flags->api1 > 11) {
+        *errmsg = "The plugin's earliest compatible API version is too new for this driver";
+        return 0;
+    }
+    if (flags->api1 > 1 && flags->api2 < 11 && clState.pluginDebug) {
+#else
     if (flags->api1 > 10) {
         *errmsg = "The plugin's earliest compatible API version is too new for this driver";
         return 0;
     }
     if (flags->api1 > 1 && flags->api2 < 10 && clState.pluginDebug) {
+#endif
         CLIO_WriteFormattedText("%s's newest compatible API version is probably too old for this driver\n",
                                 CLPlugins_GetName(plug));
     }
@@ -668,7 +677,12 @@ int CLPlugins_AddPlugin(void *pluginHandle)
     if (desc->type == 0x436f6d70 && (desc->flags & 0x17c000)) {
         CLErrors_EmitDiagnostic(4, "compiler", name);
     }
+#if defined(LINKER) && VERSION >= VERSION_GC_2_7
+    /* 2.x: the linker flags not supported include 0x4000 */
+    if (desc->type == 0x4c696e6b && (desc->flags & 0x5fe4000)) {
+#else
     if (desc->type == 0x4c696e6b && (desc->flags & 0x5fe0000)) {
+#endif
         CLErrors_EmitDiagnostic(4, "linker", name);
     }
 
@@ -676,7 +690,12 @@ int CLPlugins_AddPlugin(void *pluginHandle)
         lang = desc->lang;
         if (lang == 0)
             lang = 0x2d2d2d2d;
+#if defined(LINKER) && VERSION >= VERSION_GC_2_7
+        /* 2.x: the version text kept in the plugin */
+        CLIO_FormatAndDispatchText("Added plugin '%s', version '%s'\n", name, PLUGIN_VERSION_TEXT(plugin));
+#else
         CLIO_FormatAndDispatchText("Added plugin '%s', version '%s'\n", name, FORMAT_PLUGIN_VERSION(plugin));
+#endif
         CLIO_FormatAndDispatchText("Type: '%c%c%c%c';  Lang: '%c%c%c%c';  API range: %d-%d\n",
                                    (desc->type & 0xff000000) >> 24, (desc->type & 0xff0000) >> 16,
                                    (desc->type & 0xff00) >> 8, desc->type & 0xff, (lang & 0xff000000) >> 24,
@@ -700,6 +719,13 @@ int CLPlugins_AddPlugin(void *pluginHandle)
             fm = get_file_map(plugin);
             CLIO_FormatAndDispatchText("File mappings:\n");
             for (i = 0; i < fm->count; i++) {
+#if defined(LINKER) && VERSION >= VERSION_GC_2_7
+                /* 2.x: a mapping by extension alone has no file type */
+                if (fm->maps[i].type == 0) {
+                    CLIO_FormatAndDispatchText("\tFile type: <none>  Extension: '%s'\n", fm->maps[i].ext);
+                    continue;
+                }
+#endif
                 CLIO_FormatAndDispatchText("\tFile type: '%c%c%c%c'  Extension: '%s'\n",
                                            (fm->maps[i].type & 0xff000000) >> 24, (fm->maps[i].type & 0xff0000) >> 16,
                                            (fm->maps[i].type & 0xff00) >> 8, fm->maps[i].type & 0xff, fm->maps[i].ext);
@@ -987,7 +1013,12 @@ int CLPlugins_BuildPluginRequests(Plugin *list, SInt32 *count, PluginRequest **o
         (*out)[index].tag.signed_kind = info->type;
         (*out)[index].secondCode = info->lang;
         (*out)[index].flags = info->flags;
+#if defined(LINKER) && VERSION >= VERSION_GC_2_7
+        /* 2.x: the plugin's version text */
+        (*out)[index].name = (unsigned int)node->f10;
+#else
         (*out)[index].name = (name[0] << 24) | (name[1] << 16) | (name[2] << 8) | name[3];
+#endif
         (*out)[index].flag_10 = (info->flags & 1) != 0;
         index++;
         node = node->next;
@@ -1078,7 +1109,10 @@ int CLPlugins_DispatchArgumentToPlugins(Plugin *node, SInt32 argument, SInt32 fi
         node = data_0057d91c;
     }
     while (node != NULL) {
-#        if VERSION >= VERSION_GC_1_3
+#        if defined(LINKER) && VERSION >= VERSION_GC_2_7
+        /* 2.x: a plugin without command-line callbacks gets it too */
+        if ((node->cl_cb == NULL) || (CLPlugins_MatchTarget(node, firstIdentifier, secondIdentifier, 0) != 0))
+#        elif VERSION >= VERSION_GC_1_3
         if (node->cl_cb != NULL && CLPlugins_MatchTarget(node, firstIdentifier, secondIdentifier, 0) != 0)
 #else
         if ((node->cl_cb == NULL) || (CLPlugins_MatchTarget(node, firstIdentifier, secondIdentifier, 0) != 0))

@@ -12,6 +12,9 @@
 #include "driver/Utils.h"
 #include <stdio.h>
 #include <string.h>
+#ifdef __wasm__
+#include <stdlib.h> /* (exit: implicitly int, and a call through another type traps in wasm) */
+#endif
 
 struct HelpColumn helpTextColumn;
 struct HelpColumn firstHelpColumn;
@@ -29,7 +32,11 @@ void append_formatted_text(HelpColumn *buf, char *format, ...)
     char text[1024];
     char *cursor;
     char ch;
+#ifdef __wasm__ /* (the variadic arguments are not after the named ones) */
+    vsprintf(text, format, __va_start(format));
+#else
     vsprintf(text, format, (va_list)&format + (((va_list)(&format + 1) - (va_list)&format + 3) / 4) * 4);
+#endif
 
     cursor = text;
     while (*cursor != 0) {
@@ -194,7 +201,12 @@ void append_columns_newline(void)
 
 unsigned int Help_FormatOption(OptionList *scope, Option *pragma, unsigned int formatMode, char *nameFilter)
 {
+#if defined(LINKER) && VERSION >= VERSION_GC_2_7
+    /* (the 2.x linker's is not initialized: in .bss) */
+    static struct FlagTextBuffer data_0054dd04;
+#else
     static struct FlagTextBuffer data_0054dd04 = {""};
+#endif
     char formatFlags;
     const char normalFormat = 1;
     const char alternateFormat = 2;

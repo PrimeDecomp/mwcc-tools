@@ -1,7 +1,18 @@
-# GC 2.6 and 2.7 as WebAssembly
+# GC 1.3.2, 2.6 and 2.7 as WebAssembly
 
-For GC 2.6 and 2.7, the compiler is built from the vendored `gc2/` sources for wasm32 and runs inside `mwcc-tools`.
-This is the default for both versions. A compile starts no process and runs no Metrowerks or Windows binary.
+For GC 1.3.2, 2.6 and 2.7, the compiler is built from the vendored `gc2/` sources for wasm32 and runs inside
+`mwcc-tools`. This is the default for those versions once the module is built. A compile starts no process and runs
+no Metrowerks or Windows binary. GC 1.3.2's and 2.7's linkers (`mwldeppc.exe`) are built the same way from this
+repository's own sources ([The linkers](#the-linkers)).
+
+`gc2/` is [mweppc](https://github.com/doldecomp/mweppc)'s decompilation (henriquegemignani/mweppc's `gc-1.3.2`
+branch, eacdfaa, which adds 1.3.2 to the same sources), with the probes and the WebAssembly changes below. The
+WebAssembly build defines `__MWERKS__`, so it compiles mweppc's sources as the Metrowerks build does, not mweppc's own
+clang paths (`#ifndef __MWERKS__`). One exception: reads that depend on where the original's objects are
+(`TYPE_INTEGRAL_UNCHECKED`, `ORIGINAL_ADDRESS` in `include/compiler/CParser.h`) take the clang build's emulation under
+`__wasm__`. For example, the transformation that drops `!!` reads the "integral kind" of a call's `void` return type,
+which the original finds as 0 (`IT_BOOL`) past `stvoid`. Without the emulation, the module kept `!!b` and
+`static_cast<bool>(b)` of a `bool` at `-O1` and above.
 
 `configure` adds the compiler module to the default targets when the version's gc2 configuration is there:
 `build/<version>/wasm/mwcc.wasm`, the compiler with the oracle's Rust hooks linked in, which trace only when a
@@ -27,19 +38,34 @@ path, or `CLANG` and `WASM_LD` at `configure` time. It also needs Rust's `wasm32
 downloaded: the C library is `wasm/libc`'s, not MSL's. The 203 units compile in about 4 seconds. Cranelift compiles a
 module once per process (1.5 to 2 seconds); a compile then takes 5 to 8 ms.
 
-CI builds GC 2.7's modules on Linux and publishes them with each release (`mwcc-wasm-GC_2_7-VERSION.zip`). The
+CI builds GC 2.7's and 1.3.2's modules, with their linkers, on Linux and publishes them with each release
+(`mwcc-wasm-GC_2_7-VERSION.zip`, `mwcc-wasm-GC_1_3_2-VERSION.zip`). The
 comparison with the original compiler (the `corpus` commands above, on `tests/fixtures/oracle/sources`) is run
 locally.
 
 ## Status
 
-* Canaries (2313): both stock modules give identical objects, messages and exit codes to the original compilers, and
-  the oracle modules' traces (`--all-traces`) match the x86 oracles'. A block's `loopWeight` (`st.block`'s `weight`)
-  is read before anything sets it; `wasm/libc`'s allocator places blocks as MSL's does, so it shows the same stale
-  value.
-* Floating-point folding matches the original on 40,000 random `+ - * /` of doubles, 20,000 of floats and 20,000 of
-  converted integers ([below](#floating-point-the-x87)).
-* Metroid Prime 2: Echoes (`corpus --prime`, 2.7): 949/950 identical. The one that differs depends on the host:
+* Canaries (2313), GC 2.7 and 1.3.2: the stock modules give identical objects, messages and exit codes to the
+  original compilers, and so do the modules with every trace on (`corpus --all-traces`).
+* Their traces against the x86 oracles' (`corpus --all-traces --trace-reference build/<version>/oracle/mwcceppc.exe`):
+  * 2.7: identical on 2308 with `--ignore st. --ignore pv.expression.` (the module's `st.presched` snapshots have no
+    x86 hook; `pv.expression.*` has no probe yet, [Probes](#probes)).
+  * 1.3.2: identical on 2308 with `--ignore st. --ignore pv.`. The register counters' provenance (`pv.function.*`,
+    `pv.counter.*`, `pv.value.*`, and the function numbers of `pv.scalar.*`) needs the original's sites, and
+    `counter_sites.rs` has 2.7's and 2.6's only: the 1.3.2 module reports no increments.
+  * In both, the other 5 differ in a block's weight (`ra.block`'s `weight`, its `loopWeight`), which is read before
+    anything sets it: the x86 oracles show a stale pointer, the module a small number. That predates the re-vendor.
+* Floating-point folding matches the original (2.7 and 1.3.2) on 40,000 random `+ - * /` of doubles and floats and
+  10,000 of converted integers before any literal is read ([below](#floating-point-the-x87)).
+* Metroid Prime (`corpus --project`, 1.3.2): 698/698 identical. A full build of Prime (USA 1.00) through `mwcc-tools
+  run`, where the 1.3.2 units compile in the module and the other compilers run as processes, gives the same 1718
+  objects and binaries as the native build, and `main.dol` passes its hash check.
+* The linkers, on decomp/mwcc's `tools/linker_equivalence.py` (324 cases against the original executables):
+  * 2.7: 320 identical. Of the other 4, the original crashes on 2 (`dump-rom`, `link-includedwarf`), 1 gives a
+    message the host's locale writes (an OS error text), and 1 names a long file by its 8.3 name in a message
+    ([The linkers](#the-linkers)).
+  * 1.3.2: 322 identical. The original itself fails one of the other 2.
+* Metroid Prime 2: Echoes (`corpus --project`, 2.7): 953/954 identical. The one that differs depends on the host:
   `src\Runtime\Gecko_ExceptionPPC.cp`'s `extab`. `Exceptions.c` builds its action records in structures with padding
   on the stack, and the original writes the padding as the stack had it: the high half of a stack address
   (`1a 00` on Windows, `ff 7f` under wibo, other bytes from one run to the next). The module writes its own stack's
@@ -202,6 +228,46 @@ To observe something no stream records, change gc2's sources in a checkout of yo
    main checkout (when it has none), configures GC 2.7 (`--version` for another) and builds `mwcc.wasm`.
 3. Run that checkout's `mwcc-tools` with the checkout as its root: its compiles use the new module.
 
+## The linkers
+
+`crates/mwcc-oracle-core/src/wasm_linker.rs` builds GC 1.3.2's and 2.7's linkers, `build/LD_1_3_2/wasm/mwldeppc.wasm`
+and `build/LD_2_7/wasm/mwldeppc.wasm`, each with its `.version` (the VS_VERSIONINFO of `src/linker/mwldeppc13.rc` and
+`mwldeppc27.rc`). `configure --version GC_1_3_2` (or `GC_2_7`) adds the version's linker to the default targets.
+
+Their sources are this repository's own (`src/`, decomp/mwcc's linker decompilation, 4f18e81): a linker is the 2.7
+compiler's driver and C library with the linker plugin (`src/linker`) in place of the compiler. Its units are
+`config/LD_2_6/splits.txt`'s with the sources `config/LD_2_7/config.json`'s `replace` gives, compiled with the 2.7
+compiler's flags, `-DVERSION` of GC_2_7 and `-DLINKER=13` or `-DLINKER=27`. As in the compiler, `wasm/libc` and
+`wasm/src` replace MSL, the runtime and the license imports (compiled as the GC 2.7 compiler module's are).
+
+* The sources say `#pragma options align=mac68k` (and `packed`, `native`, `reset`), which clang reads only for
+  Darwin targets. The build compiles a mirror of `src/` and `include/` (`build/wasm-ld/tree`, `mwcc-tools
+  wasm-mirror`) with each written as the `#pragma pack` that gives the same layout: `mac68k` as `pack(push, 2)`,
+  `packed` as `pack(push, 1)`, `native` as `pack(push, 8)`, `reset` as `pack(pop)`. Any other form stops the build.
+  The matching build's sources stay as they are.
+* The original's uninitialized data is one COMMON block (`src/linker/common.s`, x86 assembly, each name at the
+  original's offset), and its code relies on that layout: `initialize_cmdline_environment` clears 0x198 bytes from
+  `pluginPrivateContext` on, and some names are inside others (`clState`). `mwcc-tools wasm-common` writes the block
+  as WebAssembly assembly (`build/<linker>/wasm/obj/common.s`) with the same names, offsets and sizes, linked first:
+  with `--allow-multiple-definition` the first definition is kept, so the units' C definitions of those names are
+  left unused, as MWCC's COMMON symbols merge into the block.
+* The module is linked with `--allow-undefined-file=wasm/linker-imports.txt`, the Win32 functions the host
+  (`crates/mwcc-wasm`) provides, in place of `--allow-undefined`: any other undefined symbol (a missing data
+  definition, say) fails the link.
+* What WebAssembly needs of the sources themselves (the varargs the driver takes from the stack by hand, prototypes
+  that differ from their definitions, `to_lowercase` called through an `int (*)(char)` cast, `TO_LOWERCASE_CHAR`
+  in `include/driver/Utils.h`; the ELF writer's callbacks without an argument, called with one; the lists of
+  environment variable names, which the original ends with a literal's padding, `ENVIRONMENT_LIST_END`; a command
+  file's last token, which the original reads past the file's end) is under `#ifdef __wasm__`. The Metrowerks build
+  preprocesses to the same tokens as before, for every version and both linkers.
+* The 2.7 drivers give a file name of 64 characters or more as its 8.3 name (`GetShortPathNameA`, and
+  `cAlternateFileName` of a directory listing). The host gives Windows' 8.3 name where it has one (on Windows,
+  where 8.3 names are on), so such a file is found as the original finds it; elsewhere it is not found. A message
+  that names such a file gives Windows' 8.3 name, which can differ from the one the original prints.
+
+`mwcc-tools run` runs the module in place of the original linker (`build/compilers/GC/<dir>/mwldeppc.exe`, or a copy
+of it anywhere, known by the size and SHA-1 of `config/LD_*/config.json`) once it is built, as it does the compilers.
+
 ## Floating point: the x87
 
 The original compiler runs on the x87, and two of its behaviors reach its output:
@@ -245,7 +311,10 @@ changes), and runs each compile on a thread of its own.
     call, including the `-MMD` `.d` file.
   * The standard handles are captured. `console` keeps both streams in the order they were written, as the oracle's
     log does.
-  * The command line and environment are the caller's. `GetFullPathNameA` normalizes paths the Windows way and leaves
+  * The command line and environment are the caller's. Under `mwcc-tools run` on Windows, the compiler gets the
+    wrapper's own command line from the executable on, with the caller's quoting (`GetCommandLineA` gives what the
+    original's process would get); elsewhere, and in `corpus`, it is joined from the arguments.
+    `GetFullPathNameA` normalizes paths the Windows way and leaves
     verbatim (`\\?\`) paths as they are. The run's directory is given without the verbatim prefix.
   * There is one thread: thread-local slots and no-op critical sections.
   * `GlobalAlloc` has its own heap above the module's memory. As Windows's heap, it reuses freed memory (the smallest
@@ -276,12 +345,12 @@ python configure.py --wrapper <mwcc>\target\release\mwcc-run.exe
 Copy it again after each `cargo build`: a hard link made before a rebuild keeps running the old executable, because
 cargo replaces `mwcc-tools.exe` with a new file.
 
-* An EXE that is the original 2.6 or 2.7 compiler, wherever it is, runs in process when that version's module is
-  built. It is recognised by the size and SHA-1 in `config/<version>/config.json`, so the checkout needs no copy of the
+* An EXE that is the original 1.3.2, 2.6 or 2.7 compiler, or the 1.3.2 or 2.7 linker, wherever it is, runs in
+  process when its module is built. It is recognised by the size and SHA-1 in `config/<version>/config.json`, so the checkout needs no copy of the
   compilers; an executable of another size is never read. It gets the wrapper's arguments, directory and environment,
   and writes the object and the `-MMD` `.d` file itself. The wrapper prints its stdout and stderr and exits with its
   status. The modules and configs are `MWCC_ORACLE_ROOT`'s, or else those of the checkout the executable was built in.
-* Anything else (the linker, the other compilers) runs as a process: natively on Windows, elsewhere through wibo,
+* Anything else (the other compilers and linkers) runs as a process: natively on Windows, elsewhere through wibo,
   taken from the first of `MWCC_WIBO`, the project's own `build/tools/wibo` (relative to the build's directory), the
   checkout's `build/tools/wibo` and `wibo` on the path.
 * `sjiswrap.exe` is skipped for a compiler that runs in process. The sources are read as they are, so this is only

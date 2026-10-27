@@ -202,6 +202,7 @@ impl Compiler {
                     overlay: owned.overlay.as_ref(),
                     transcode_sjis: owned.transcode_sjis,
                     record_reads: false,
+                    command_line: None,
                 };
                 let mut state = State::new(&request);
                 state.persist = Some(Link {

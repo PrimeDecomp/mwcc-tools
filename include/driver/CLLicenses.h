@@ -26,10 +26,16 @@ struct MWInfo {
     struct License *license;
     char *vendor;
 };
-/* The FLEXlm client library's (LMGR326B.dll, through its import library). */
-extern int lp_checkout(struct MWInfo *info, int version, int request, int options, int flag, char *path, int *handle);
-extern void lp_checkin(int handle);
-extern char *lp_errstring(int handle);
+/* The FLEXlm client library's (LMGR326B.dll): called through its import library's stubs, or through its import
+   pointers in the 2.x linker built from source. */
+#if defined(LINKER) && VERSION >= VERSION_GC_2_7
+#define LMGR_IMPORT __declspec(dllimport)
+#else
+#define LMGR_IMPORT
+#endif
+LMGR_IMPORT extern int lp_checkout(struct MWInfo *info, int version, int request, int options, int flag, char *path, int *handle);
+LMGR_IMPORT extern void lp_checkin(int handle);
+LMGR_IMPORT extern char *lp_errstring(int handle);
 extern int get_license_slot_values(int index, unsigned int *firstValue, int *secondValue);
 extern int delete_license(int licenseIndex);
 extern int find_license(unsigned int identifier, unsigned int *license);

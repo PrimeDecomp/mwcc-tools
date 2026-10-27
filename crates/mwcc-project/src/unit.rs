@@ -488,6 +488,7 @@ pub fn compile_unit(
                         overlay: (!overlay.is_empty()).then_some(overlay),
                         transcode_sjis,
                         record_reads: cache.is_some(),
+                        command_line: None,
                     },
                     options.cancel,
                 )

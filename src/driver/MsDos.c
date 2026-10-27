@@ -497,7 +497,11 @@ char *__stdcall OS_GetDirPtr(char *path)
 }
 
 #if VERSION >= VERSION_GC_1_3
+#if defined(LINKER) && VERSION >= VERSION_GC_2_7
+char *data_005d9494;  /* (the 2.x linker has it in this unit's data) */
+#else
 extern char *data_005d9494;
+#endif
 extern int __stdcall fn_004050e0(char *left, char *right, int count);
 
 /* convert a path to native form; `//x/`, `/cygdrive/x/` and the MW_CYGDRIVE_PREFIX form give drive letters */
@@ -607,6 +611,51 @@ unsigned int OS_CanonPath(const char *src, char *dst)
 
 #endif
 
+#if defined(LINKER) && VERSION >= VERSION_GC_2_7
+/* 2.x: a DOS path, a MW_CYGDRIVE_PREFIX path or a `//x/` path is full */
+unsigned int __stdcall OS_IsFullPath(char *path)
+{
+    int cyg;
+    int prefixed;
+    int dos;
+    int matched;
+    int rooted;
+    int drive;
+
+    cyg = 1;
+    prefixed = 1;
+    dos = 1;
+    if (!(path[0] == '\\' && path[1] == '\\')) {
+        rooted = 0;
+        drive = 0;
+        if (fn_00405830(path[0]) != 0 && path[1] == ':')
+            drive = 1;
+        if (drive && path[2] == '\\')
+            rooted = 1;
+        if (!rooted)
+            dos = 0;
+    }
+    if (!dos) {
+        matched = 0;
+        /* (as the original: the count is `strlen(prefix) == 0`, and a difference counts as a match) */
+        if (data_005d9494 != NULL && fn_004050e0(path, data_005d9494, strlen(data_005d9494) == 0) != 0)
+            matched = 1;
+        if (!matched)
+            prefixed = 0;
+    }
+    if (!prefixed) {
+        rooted = 0;
+        drive = 0;
+        if (path[0] == '/' && path[1] == '/' && fn_00405830(path[2]) != 0)
+            drive = 1;
+        if (drive && path[3] == '/')
+            rooted = 1;
+        if (!rooted)
+            cyg = 0;
+    }
+    return cyg != 0;
+}
+#else
 unsigned int __stdcall OS_IsFullPath(char *path)
 {
     unsigned int isAbsolute;
@@ -637,6 +686,7 @@ unsigned int __stdcall OS_IsFullPath(char *path)
     }
     return isAbsolute;
 }
+#endif
 
 #if VERSION < VERSION_GC_1_3
 int __stdcall OS_EqualPath(const char *left, const char *right)
@@ -657,6 +707,95 @@ int __stdcall OS_EqualPath(const char *left, const char *right)
 }
 #endif
 
+#if VERSION >= VERSION_GC_2_7
+/* (1.3 has it in ClientGlue.c) */
+#include "driver/CLIO.h"
+int __stdcall fn_00412660(const char *left, const char *right)
+{
+    return CLIO_CompareStringsIgnoreCase((char *)left, (char *)right) == 0;
+}
+#endif
+
+#if defined(LINKER) && VERSION >= VERSION_GC_2_7
+/* 2.x: the spec is cleared first, a missing directory (3) is returned after the spec is made, names of 255 */
+int __stdcall OS_MakeSpec(const char *path, OSSpec *output, Boolean *is_file)
+{
+    const char *basename;
+    char canon[260];
+    char full[260];
+    char *name;
+    char *end;
+    int attributes;
+    int error;
+    int length;
+
+    output->name.s[0] = output->path.s[0] = 0;
+    if ((error = OS_CanonPath(path, canon)) != 0)
+        return error;
+    if (GetFullPathNameA(canon, 260, full, &name) == 0)
+        return GetLastError();
+
+    end = full + strlen(full) - 1;
+    basename = strrchr(path, '\\');
+    if (basename != NULL)
+        basename++;
+    else
+        basename = path;
+    if (memcmp(basename, "..", 3) != 0 && memcmp(basename, ".", 2) != 0 &&
+        basename[strlen(basename) - 1] == '.' && *end != '.') {
+        *++end = '.';
+        end[1] = 0;
+    }
+
+    attributes = GetFileAttributesA(full);
+    if (attributes != -1) {
+        if ((attributes & 16) != 0) {
+            if (is_file != NULL)
+                *is_file = 0;
+            name = NULL;
+        } else {
+            if (is_file != NULL)
+                *is_file = 1;
+        }
+        error = 0;
+    } else {
+        error = GetLastError();
+        if (error != 0 && error != 2 && error != 3)
+            return error;
+        if (error != 3)
+            error = 0;
+        if (is_file != NULL)
+            *is_file = 1;
+    }
+
+    if (name == NULL) {
+        name = end + 1;
+        if (name[-1] == '.')
+            name--;
+        if (name[-1] != '\\') {
+            *name = '\\';
+            name++;
+            *name = 0;
+        }
+    }
+
+    length = name - full;
+    if (length >= (int)sizeof(output->path.s)) {
+        output->path.s[0] = 0;
+        return 111;
+    }
+    memcpy(output->path.s, full, length);
+    output->path.s[length] = 0;
+
+    length = strlen(name);
+    if (length >= (int)sizeof(output->name.s)) {
+        output->name.s[0] = 0;
+        return 111;
+    }
+    memcpy(output->name.s, name, length + 1);
+    return error;
+}
+#else
 int __stdcall OS_MakeSpec(const char *path, OSSpec *output, Boolean *is_file)
 {
     unsigned int error;
@@ -733,6 +872,7 @@ int __stdcall OS_MakeSpec(const char *path, OSSpec *output, Boolean *is_file)
     memcpy(output->name.s, filename, name_length + 1);
     return 0;
 }
+#endif
 
 SInt32 __stdcall OS_MakeFileSpec(const char *input, OSSpec *output)
 {
@@ -797,9 +937,17 @@ int __stdcall OS_MakeNameSpec(const char *name, OSNameSpec *spec)
     int length;
 
     length = strlen(name);
+#if defined(LINKER) && VERSION >= VERSION_GC_2_7
+    /* 2.x: the spec is cleared first; names of 255 */
+    spec->s[0] = 0;
+    if (length > 255) {
+        return 0x6f;
+    }
+#else
     if (length > 63) {
         return 0x6f;
     }
+#endif
     if (strchr(name, '\\') != NULL) {
         return 5;
     }
@@ -983,6 +1131,57 @@ DWORD __stdcall OS_OpenDir(OSPathSpec *spec, struct DirectorySearch *directory)
     return 0;
 }
 
+#if defined(LINKER) && VERSION >= VERSION_GC_2_7
+/* 2.x: names of 255, the spec built from the directory's path (no OS_MakeSpec), the whole name given back */
+UInt32 __stdcall OS_ReadDir(DirectorySearch *state, OSSpec *spec, char *filename, Boolean *isdir)
+{
+    char name[0x104];
+    LPWIN32_FIND_DATAA fd = state->findData;
+    DWORD attributes;
+    int len;
+    int pathLength;
+
+    for (;;) {
+        if (state->handle == (HANDLE)-1)
+            return 2;
+        len = strlen(fd->cFileName);
+        if (len + 1 < 0x100) {
+            memcpy(name, fd->cFileName, len);
+        } else {
+            len = strlen(fd->cAlternateFileName);
+            if (len > 0x100)
+                len = 0xff;
+            memcpy(name, fd->cAlternateFileName, len);
+        }
+        name[len] = 0;
+        attributes = fd->dwFileAttributes;
+        if (!FindNextFileA(state->handle, fd))
+            OS_CloseDir(state);
+        if (memcmp(name, ".", 2) == 0)
+            continue;
+        if (memcmp(name, "..", 3) == 0)
+            continue;
+        attributes &= 0x10;
+        if (strlen(state->path.s) + len + (attributes != 0) >= 0x104)
+            continue;
+        if (attributes != 0) {
+            pathLength = strlen(state->path.s);
+            memcpy(spec->path.s, state->path.s, pathLength);
+            memcpy(spec->path.s + pathLength, name, len);
+            spec->path.s[pathLength + len] = '\\';
+            spec->path.s[pathLength + len + 1] = 0;
+            spec->name.s[0] = 0;
+            *isdir = 0;
+        } else {
+            strcpy(spec->path.s, state->path.s);
+            memcpy(spec->name.s, name, len + 1);
+            *isdir = 1;
+        }
+        memcpy(filename, name, len + 1);
+        return 0;
+    }
+}
+#else
 UInt32 __stdcall OS_ReadDir(DirectorySearch *state, OSSpec *spec, char *filename, Boolean *isdir)
 {
     char name[0x104];
@@ -1019,6 +1218,7 @@ UInt32 __stdcall OS_ReadDir(DirectorySearch *state, OSSpec *spec, char *filename
         return OS_MakeSpec(path, spec, isdir);
     }
 }
+#endif
 
 DWORD __stdcall OS_CloseDir(DirectorySearch *resource)
 {
@@ -1185,6 +1385,10 @@ int __stdcall OS_OSErrorToMacError(int errorCode)
             return -34;
         case 0xb7:
             return -48;
+#if defined(LINKER) && VERSION >= VERSION_GC_2_7
+        case 0x7b: /* (2.x: an invalid name, bdNamErr) */
+            return -37;
+#endif
     }
     return errorCode | 0xffff8000;
 }

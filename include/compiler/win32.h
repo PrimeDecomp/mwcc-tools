@@ -174,7 +174,10 @@ typedef struct _SYSTEMTIME *LPSYSTEMTIME;
 typedef CHAR *LPCSTR;
 typedef LONG *PLONG;
 typedef CHAR *LPCH;
+#ifndef __va_list__
+#define __va_list__
 typedef char *va_list;
+#endif
 typedef ULONG_PTR SIZE_T;
 typedef enum SectionFlags {
     IMAGE_SCN_TYPE_NO_PAD = 8,
@@ -244,10 +247,17 @@ __declspec(dllimport) BOOL __stdcall FindClose(HANDLE hFindFile);
 __declspec(dllimport) HANDLE __stdcall FindFirstFileA(LPCSTR lpFileName, LPWIN32_FIND_DATAA lpFindFileData);
 __declspec(dllimport) BOOL __stdcall FindNextFileA(HANDLE hFindFile, LPWIN32_FIND_DATAA lpFindFileData);
 #if VERSION >= VERSION_GC_1_3
-DWORD __stdcall GetFileVersionInfoSizeA(LPCSTR lptstrFilename, LPDWORD lpdwHandle);
-BOOL __stdcall GetFileVersionInfoA(LPCSTR lptstrFilename, DWORD dwHandle, DWORD dwLen,
+/* (the compilers call version.dll through their import library's stubs; the 2.x linker built from source calls it
+   through its import pointers, as it does KERNEL32) */
+#if defined(LINKER) && VERSION >= VERSION_GC_2_7
+#define VERSION_IMPORT __declspec(dllimport)
+#else
+#define VERSION_IMPORT
+#endif
+VERSION_IMPORT DWORD __stdcall GetFileVersionInfoSizeA(LPCSTR lptstrFilename, LPDWORD lpdwHandle);
+VERSION_IMPORT BOOL __stdcall GetFileVersionInfoA(LPCSTR lptstrFilename, DWORD dwHandle, DWORD dwLen,
                                                          LPVOID lpData);
-BOOL __stdcall VerQueryValueA(const void *pBlock, LPCSTR lpSubBlock, LPVOID *lplpBuffer,
+VERSION_IMPORT BOOL __stdcall VerQueryValueA(const void *pBlock, LPCSTR lpSubBlock, LPVOID *lplpBuffer,
                                                     UINT *puLen);
 #endif
 __declspec(dllimport) HRSRC __stdcall FindResourceA(HMODULE hModule, LPCSTR lpName, LPCSTR lpType);

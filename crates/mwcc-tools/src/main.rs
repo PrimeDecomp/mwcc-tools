@@ -43,6 +43,7 @@ fn corpus_command(args: &[String]) -> Result<()> {
     let mut source_arenas = false;
     let mut source_nodes = false;
     let mut trace_reference = None;
+    let mut ignore = vec![];
     let mut wasm: Option<PathBuf> = None;
     let mut json_output = false;
     let mut timeout = Duration::from_secs(600);
@@ -74,6 +75,7 @@ fn corpus_command(args: &[String]) -> Result<()> {
             "--keep" => keep = Some(PathBuf::from(value)),
             "--exe" => exe = Some(PathBuf::from(value)),
             "--trace-reference" => trace_reference = Some(PathBuf::from(value)),
+            "--ignore" => ignore.push(value.clone()),
             "--wasm" => wasm = Some(PathBuf::from(value)),
             "--limit" => limit = Some(value.parse::<usize>()?),
             "--list" => list = Some(PathBuf::from(value)),
@@ -113,6 +115,7 @@ fn corpus_command(args: &[String]) -> Result<()> {
         source_arenas,
         source_nodes,
         trace_reference,
+        ignore,
         in_process,
     })?;
     if json_output {
@@ -148,7 +151,7 @@ fn help() {
       a build's compiler wrapper (as wibo): a compiler with a built module runs in process, anything else as itself;
       a copy or link of this executable named mwcc-run runs as `mwcc-tools run`
   corpus --canaries DIR | --project DIR [--oracle-root ROOT] [--version V] [--jobs N] [--all-traces]
-         [--source-arenas | --source-nodes] [--exe ORACLE] [--trace-reference OTHER_ORACLE] [--wasm MODULE]
+         [--source-arenas | --source-nodes] [--exe ORACLE] [--trace-reference OTHER_ORACLE [--ignore PREFIX]...] [--wasm MODULE]
       --wasm runs MODULE (build/VERSION/wasm/*.wasm) in process in the oracle's place
       --source-arenas, --source-nodes trace those streams too, and compare them with the reference's
   object compare ORACLE.o ORIGINAL.o
@@ -217,7 +220,7 @@ fn run() -> Result<()> {
         Some("package-release") => release_cli::run(&args[1..])?,
         Some(
             "configure" | "probe-build" | "transform-dep" | "download" | "verify" | "gates"
-            | "build-hooks",
+            | "build-hooks" | "wasm-mirror" | "wasm-linker-version" | "wasm-common",
         ) => build_cli::run(&args[0], &args[1..])?,
         Some("--help" | "-h") | None => help(),
         Some("corpus") => corpus_command(&args[1..])?,

@@ -116,7 +116,25 @@ int __stdcall CWParserPluginsPrivate_GetLookupValues(void *context, int *firstVa
     return 0;
 }
 
-#if VERSION < VERSION_GC_1_3
+#if defined(LINKER) && VERSION >= VERSION_GC_2_7
+/* (the 2.x linker has CWParserPluginsPrivate13.cpp's functions here) */
+int __stdcall CWParserPluginsPrivate_GetPanelExtra(void *context, UInt32 *value)
+{
+    CWPluginPrivateContext *record;
+
+    record = validate_parser_context(context);
+    if (record == NULL) {
+        return 4;
+    }
+    if (value == NULL) {
+        return 3;
+    }
+    *value = record->contextData.parser.f_panelExtra;
+    return 0;
+}
+#endif
+
+#if VERSION < VERSION_GC_1_3 || (defined(LINKER) && VERSION >= VERSION_GC_2_7)
 int __stdcall CWParserPluginsPrivate_SetParserEntry(void *ctx, int index, IntegerSequenceResult *value)
 {
     CWPluginPrivateContext *collection;
@@ -182,6 +200,22 @@ int __stdcall CWParserPluginsPrivate_CallFileInfo(CWPluginPrivateContext *ctx, C
     return ((FileInfoMethod)object->contextData.parser.parserCallbacks[BY_VERSION(3, 4)])(object, info);
 }
 
+#if defined(LINKER) && VERSION >= VERSION_GC_2_7
+int __stdcall CWParserPluginsPrivate_CallParserCallback3(void *context, int argument2, int argument3, char *text)
+{
+    CWPluginPrivateContext *object;
+
+    object = validate_parser_context(context);
+    if (object == NULL) {
+        return 4;
+    }
+    if (text == NULL) {
+        return 3;
+    }
+    return ((ParserTextCallback)object->contextData.parser.parserCallbacks[3])(object, argument2, argument3, text);
+}
+#endif
+
 #if VERSION < VERSION_GC_1_3
 int __stdcall CWParserPluginsPrivate_CallParserTextCallback(CWPluginPrivateContext *request, int argument2,
                                                             int argument3, char *text)
@@ -207,7 +241,11 @@ int __stdcall CWParserPluginsPrivate_PassValuePair(CWPluginPrivateContext *targe
     arguments.firstValue = firstValue;
     arguments.secondValue = secondValue;
     arguments.flag = 1;
+#ifdef __wasm__ /* (x86 returns the EAX the callback leaves, which the caller tests) */
+    return CWPluginsPrivate_CallValuePairCallback(target, &arguments);
+#else
     CWPluginsPrivate_CallValuePairCallback(target, &arguments);
+#endif
 }
 
 void __stdcall CWParserPluginsPrivate_CallValuePairCallback(CWPluginPrivateContext *target, char *firstValue,

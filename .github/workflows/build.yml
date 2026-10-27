@@ -99,11 +99,20 @@ jobs:
           path: build/releases/
           if-no-files-found: error
 
-  # GC 2.7's compiler built from gc2/ as WebAssembly (docs/wasm.md): mwcc.wasm (with its .version), which mwcc-tools
-  # runs in process, and mwcceppc.wasm, oracle.wasm and persist.wasm, which mwdec loads. The archive keeps their
-  # paths, so it unpacks into a checkout (or MWCC_ORACLE_ROOT).
+  # GC 2.7's and 1.3.2's compilers built from gc2/ as WebAssembly (docs/wasm.md): mwcc.wasm (with its .version),
+  # which mwcc-tools runs in process, and mwcceppc.wasm, oracle.wasm and persist.wasm, which mwdec loads; and the
+  # version's linker built from src/linker (mwldeppc.wasm and its .version). The archive keeps their paths, so it
+  # unpacks into a checkout (or MWCC_ORACLE_ROOT).
   wasm:
     runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - version: GC_2_7
+            linker: LD_2_7
+          - version: GC_1_3_2
+            linker: LD_1_3_2
     env:
       # (the hooks' IR is LLVM 22's, as Rust's: clang reads it)
       CLANG: clang-22
@@ -133,22 +142,25 @@ jobs:
       - name: Build
         run: |
           cargo build --locked -p mwcc-tools
-          target/debug/mwcc-tools configure --version GC_2_7
-          ninja build/GC_2_7/wasm/mwcc.wasm build/GC_2_7/wasm/mwcceppc.wasm build/GC_2_7/wasm/oracle.wasm \
-            build/GC_2_7/wasm/persist.wasm
+          v=${{ matrix.version }} l=${{ matrix.linker }}
+          target/debug/mwcc-tools configure --version $v
+          ninja build/$v/wasm/mwcc.wasm build/$v/wasm/mwcceppc.wasm build/$v/wasm/oracle.wasm \
+            build/$v/wasm/persist.wasm build/$l/wasm/mwldeppc.wasm build/$l/wasm/mwldeppc.version
 
       - name: Package
         run: |
           version=$(python3 -c "import tomllib; print(tomllib.load(open('Cargo.toml', 'rb'))['workspace']['package']['version'])")
           mkdir -p build/releases
-          archive="build/releases/mwcc-wasm-GC_2_7-$version.zip"
-          zip -X "$archive" LICENSE build/GC_2_7/wasm/mwcc.wasm build/GC_2_7/wasm/mwcc.version \
-            build/GC_2_7/wasm/mwcceppc.wasm build/GC_2_7/wasm/oracle.wasm build/GC_2_7/wasm/persist.wasm
+          v=${{ matrix.version }} l=${{ matrix.linker }}
+          archive="build/releases/mwcc-wasm-$v-$version.zip"
+          zip -X "$archive" LICENSE build/$v/wasm/mwcc.wasm build/$v/wasm/mwcc.version \
+            build/$v/wasm/mwcceppc.wasm build/$v/wasm/oracle.wasm build/$v/wasm/persist.wasm \
+            build/$l/wasm/mwldeppc.wasm build/$l/wasm/mwldeppc.version
           (cd build/releases && sha256sum "$(basename "$archive")" > "$(basename "$archive").sha256")
 
       - uses: actions/upload-artifact@v7
         with:
-          name: mwcc-wasm-GC_2_7
+          name: mwcc-wasm-${{ matrix.version }}
           path: build/releases/
           if-no-files-found: error
 
@@ -178,7 +190,7 @@ jobs:
           version=$(python3 -c "import tomllib; print(tomllib.load(open('Cargo.toml', 'rb'))['workspace']['package']['version'])")
           test "$TAG" = "v$version" || { echo "the tag must be v$version"; exit 1; }
           files=(release-input/*/*.zip release-input/*/*.zip.sha256)
-          test "${#files[@]}" -eq 8 || { echo "expected 4 archives and their checksums: ${files[*]}"; exit 1; }
+          test "${#files[@]}" -eq 10 || { echo "expected 5 archives and their checksums: ${files[*]}"; exit 1; }
           options=(--verify-tag --generate-notes --title "mwcc-tools $version")
           if [[ "${version%%+*}" == *-* ]]; then
             options+=(--prerelease --latest=false)

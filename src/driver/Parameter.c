@@ -54,6 +54,64 @@ unsigned int return_unsigned_zero(void)
     return 0U;
 }
 
+#if VERSION >= VERSION_GC_2_7
+/* (2.x: the value read as mweppc's DescHelpParam_Number reads it) */
+void format_num_parm(NUM_T *parm, char **name, char **help, char **value)
+{
+    unsigned long v;
+    unsigned char c;
+    unsigned short w;
+
+    v = 0;
+    *name = NULL;
+    if (parm->myname)
+        *name = parm->myname;
+    if (parm->size == 1) {
+        if (!*name)
+            *name = "byte";
+        if (parm->num)
+            ((unsigned char *)&c)[0] = ((unsigned char *)parm->num)[0];
+        v = c;
+    } else if (parm->size == 2) {
+        if (!*name)
+            *name = "short";
+        if (parm->num) {
+            ((unsigned char *)&w)[0] = ((unsigned char *)parm->num)[0];
+            ((unsigned char *)&w)[1] = ((unsigned char *)parm->num)[1];
+        }
+        v = w;
+    } else if (parm->size == 4) {
+        if (!*name)
+            *name = "long";
+        if (parm->num) {
+            ((unsigned char *)&v)[0] = ((unsigned char *)parm->num)[0];
+            ((unsigned char *)&v)[1] = ((unsigned char *)parm->num)[1];
+            ((unsigned char *)&v)[2] = ((unsigned char *)parm->num)[2];
+            ((unsigned char *)&v)[3] = ((unsigned char *)parm->num)[3];
+        }
+    }
+    if (parm->size == 4) {
+        if (parm->lo != parm->hi)
+            sprintf(parm_help_buffer, "range 0x%x - 0x%x", parm->lo, parm->hi);
+        *help = parm_help_buffer;
+        if (v <= 0x10000)
+            sprintf(parm_format_buffer, "%u", v);
+        else
+            sprintf(parm_format_buffer, "0x%x", v);
+        *value = parm_format_buffer;
+    } else {
+        if (parm->lo != parm->hi)
+            sprintf(parm_help_buffer, "range %u - %u", parm->lo, parm->hi);
+        *help = parm_help_buffer;
+        sprintf(parm_format_buffer, "%u", v);
+        *value = parm_format_buffer;
+    }
+    if (!parm->num)
+        *value = NULL;
+    if (parm->lo == parm->hi)
+        *help = NULL;
+}
+#else
 void format_num_parm(NUM_T *parm, char **name, char **help, char **value)
 {
     unsigned long v;
@@ -103,6 +161,7 @@ void format_num_parm(NUM_T *parm, char **name, char **help, char **value)
     if (parm->lo == parm->hi)
         *help = NULL;
 }
+#endif
 
 unsigned int fn_0042910d(void)
 {
@@ -122,7 +181,7 @@ int fn_00429110(NUM_T *record, char *cursor)
         return 0;
     }
 
-    if ((*cursor == '0' && ((int (*)(char))to_lowercase)(cursor[1]) == 'x') || *cursor == '$') {
+    if ((*cursor == '0' && TO_LOWERCASE_CHAR(cursor[1]) == 'x') || *cursor == '$') {
         if (*cursor == '$')
             cursor++;
         else
@@ -137,7 +196,7 @@ int fn_00429110(NUM_T *record, char *cursor)
                 return 0;
             }
             value = (value << 4) |
-                    (Utils_IsDigit(*cursor) ? (*cursor - '0') : (((int (*)(char))to_lowercase)(*cursor) - 0x57));
+                    (Utils_IsDigit(*cursor) ? (*cursor - '0') : (TO_LOWERCASE_CHAR(*cursor) - 0x57));
             cursor++;
         }
     } else if (*cursor == '0') {
@@ -1022,21 +1081,79 @@ int evaluate_conditional_branch(IFARG_T *expr, char *a, int b)
     return 1;
 }
 
+#ifdef __wasm__
+/* (wasm: a call through another type traps, so the tables' functions that take fewer parameters, or return nothing,
+   are called through these, of the table's type, which pass them the first ones as x86 did, and return what x86
+   left in EAX) */
+static int wasm_return_true(PARAM_T *p, int a, int b) { return return_true(); }
+static int wasm_set_file_code(PARAM_T *p, int a, int b) { return set_file_code((FTYPE_T *)p, (char *)a); }
+static int wasm_set_filepath(PARAM_T *p, int a, int b) { return set_filepath((FILEPATH_T *)p, (char *)a); }
+static int wasm_fn_00429110(PARAM_T *p, int a, int b) { return fn_00429110((NUM_T *)p, (char *)a); }
+static int wasm_xor_const_dest(PARAM_T *p, int a, int b) { return xor_const_dest((TOGGLE_T *)p); }
+static int wasm_set_string(PARAM_T *p, int a, int b) { return set_string((struct SETSTRING_T *)p); }
+static int wasm_invoke_float_parameter_callback(PARAM_T *p, int a, int b)
+{
+    GENERIC_T *rec = (GENERIC_T *)p;
+    return rec->parse(option_name, rec->var, (char *)a, b);
+}
+#define WASM_COMPARE(fn)     static int wasm_##fn(PARAM_T *p) { return fn(); }
+WASM_COMPARE(return_unsigned_zero)
+WASM_COMPARE(fn_00429462)
+WASM_COMPARE(fn_0042994d)
+WASM_COMPARE(fn_0042910d)
+WASM_COMPARE(fn_004295ca)
+WASM_COMPARE(fn_004296d1)
+WASM_COMPARE(fn_004297bf)
+WASM_COMPARE(fn_00429896)
+WASM_COMPARE(fn_0042a192)
+WASM_COMPARE(get_unsigned_zero)
+WASM_COMPARE(fn_0042a263)
+#undef WASM_COMPARE
+#endif
+
 static int (*data_0054dbdc[16])(PARAM_T *, int, int) = {
+#ifdef __wasm__
+    wasm_return_true,
+#else
     (int (*)(PARAM_T *, int, int))return_true,
+#endif
+#ifdef __wasm__
+    wasm_set_file_code,
+#else
     (int (*)(PARAM_T *, int, int))set_file_code,
+#endif
+#ifdef __wasm__
+    wasm_set_filepath,
+#else
     (int (*)(PARAM_T *, int, int))set_filepath,
+#endif
+#ifdef __wasm__
+    wasm_fn_00429110,
+#else
     (int (*)(PARAM_T *, int, int))fn_00429110,
+#endif
     (int (*)(PARAM_T *, int, int))copy_idparm_arg,
     (int (*)(PARAM_T *, int, int))validate_id_arg,
     (int (*)(PARAM_T *, int, int))validate_id_arg,
     (int (*)(PARAM_T *, int, int))parse_on_off,
     (int (*)(PARAM_T *, int, int))set_on_off,
     (int (*)(PARAM_T *, int, int))apply_mask_entry,
+#ifdef __wasm__
+    wasm_xor_const_dest,
+#else
     (int (*)(PARAM_T *, int, int))xor_const_dest,
+#endif
     (int (*)(PARAM_T *, int, int))store_constrec_val,
+#ifdef __wasm__
+    wasm_set_string,
+#else
     (int (*)(PARAM_T *, int, int))set_string,
+#endif
+#ifdef __wasm__
+    wasm_invoke_float_parameter_callback,
+#else
     (int (*)(PARAM_T *, int, int))invoke_float_parameter_callback,
+#endif
     (int (*)(PARAM_T *, int, int))evaluate_conditional_branch,
     (int (*)(PARAM_T *, int, int))fn_0042a266,
 };
@@ -1088,22 +1205,70 @@ void Parameter_DispatchByWhich(PARAM_T *param, int *a, int *b, int *c)
 }
 
 static int (*data_0054dc84[16])(PARAM_T *) = {
+#ifdef __wasm__
+    wasm_return_unsigned_zero,
+#else
     (int (*)(PARAM_T *))return_unsigned_zero,
+#endif
+#ifdef __wasm__
+    wasm_fn_00429462,
+#else
     (int (*)(PARAM_T *))fn_00429462,
+#endif
+#ifdef __wasm__
+    wasm_fn_0042994d,
+#else
     (int (*)(PARAM_T *))fn_0042994d,
+#endif
+#ifdef __wasm__
+    wasm_fn_0042910d,
+#else
     (int (*)(PARAM_T *))fn_0042910d,
+#endif
+#ifdef __wasm__
+    wasm_fn_004295ca,
+#else
     (int (*)(PARAM_T *))fn_004295ca,
+#endif
+#ifdef __wasm__
+    wasm_fn_004296d1,
+#else
     (int (*)(PARAM_T *))fn_004296d1,
+#endif
+#ifdef __wasm__
+    wasm_fn_004296d1,
+#else
     (int (*)(PARAM_T *))fn_004296d1,
+#endif
+#ifdef __wasm__
+    wasm_fn_004297bf,
+#else
     (int (*)(PARAM_T *))fn_004297bf,
+#endif
+#ifdef __wasm__
+    wasm_fn_00429896,
+#else
     (int (*)(PARAM_T *))fn_00429896,
+#endif
     (int (*)(PARAM_T *))is_mask_entry_unchanged,
     (int (*)(PARAM_T *))is_dest_unchanged_by_val_xor,
     (int (*)(PARAM_T *))const_matches_dest,
     (int (*)(PARAM_T *))compare_setstring_value,
+#ifdef __wasm__
+    wasm_fn_0042a192,
+#else
     (int (*)(PARAM_T *))fn_0042a192,
+#endif
+#ifdef __wasm__
+    wasm_get_unsigned_zero,
+#else
     (int (*)(PARAM_T *))get_unsigned_zero,
+#endif
+#ifdef __wasm__
+    wasm_fn_0042a263,
+#else
     (int (*)(PARAM_T *))fn_0042a263,
+#endif
 };
 
 unsigned char Parameter_DispatchParam(PARAM_T *param)
@@ -1302,10 +1467,15 @@ void Parameter_ForwardVarArgs(int messageId, ...)
     int argumentSize;
     va_list base = (va_list)&messageId;
     va_list nextArgument = (va_list)&messageId;
+/* (wasm: the variadic arguments are not after the named ones) */
+#ifdef __wasm__
+    va_start(arguments, messageId);
+#else
     nextArgument += sizeof(short);
     argumentSize = nextArgument - base;
     argumentSize += 3;
     arguments = (va_list)&messageId + argumentSize / 4 * 4;
+#endif
     Option_FormatMessageWithOptionContext(messageId, arguments);
 }
 
@@ -1314,12 +1484,16 @@ void forward_stack_varargs(SInt32 errorId, ...)
     char *lastArgument = (char *)&errorId;
     char *arguments = (char *)&errorId;
     int argumentSize;
+#ifdef __wasm__
+    arguments = (char *)__va_start(errorId);
+#else
     arguments += 2;
     argumentSize = arguments - lastArgument;
     argumentSize += 3;
     argumentSize = argumentSize / 4 * 4;
     argumentSize += (unsigned int)&errorId;
     arguments = (char *)argumentSize;
+#endif
     Option_ReportError(errorId, arguments);
 }
 

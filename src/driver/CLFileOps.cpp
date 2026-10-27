@@ -67,7 +67,12 @@ int __stdcall add_access_path(NamespaceOperationContext *context, NamespaceOpera
     if (optsCmdLine.verbose > 2) {
         CLErrors_ForwardMessage(0x4d, " search path", OS_PathSpecToString(&buffer.path, data_005880e0, 0x104));
     }
+#if defined(LINKER) && VERSION >= VERSION_GC_2_7
+    /* (2.x: bit 0 a system path, bit 1 one kept as such) */
+    if (!(state->flag4b & 1)) {
+#else
     if (state->flag4b == 0) {
+#endif
         paths = default_target;
         paths_list = &paths->userPaths;
     } else {
@@ -75,6 +80,9 @@ int __stdcall add_access_path(NamespaceOperationContext *context, NamespaceOpera
         paths_list = &paths->systemPaths;
     }
     entry = CLAccessPaths_CreateAccessPathEntry(&buffer.path);
+#if defined(LINKER) && VERSION >= VERSION_GC_2_7
+    entry->auxiliary3 = state->flag4b & 2;
+#endif
     if (state->index >= 0)
         failed = !CLAccessPaths_InsertItem(paths_list, state->index, entry);
     else
@@ -86,12 +94,35 @@ int __stdcall add_access_path(NamespaceOperationContext *context, NamespaceOpera
         if (fn_004151f0())
             return 1;
     }
+#if defined(LINKER) && VERSION >= VERSION_GC_2_7
+    if (!(state->flag4b & 1))
+#else
     if (state->flag4b == 0)
+#endif
         context->status[5] = 1;
     else
         context->status[4] = 1;
     return 0;
 }
+
+#if defined(LINKER) && VERSION >= VERSION_GC_2_7
+/* The system paths not kept as such made user paths (the 2.x parser's second callback). */
+int __stdcall swap_access_paths(NamespaceOperationContext *context)
+{
+    AccessPathEntry *entry;
+    UInt16 index;
+
+    for (index = 0; index < CLAccessPaths_GetCount(&default_target->userPaths); index++) {
+        entry = CLAccessPaths_GetEntry(&default_target->userPaths, index);
+        if (!(entry->auxiliary3 & 2)) {
+            CLAccessPaths_StoreItem(&default_target->systemPaths, entry);
+            remove_access_path(&default_target->userPaths, index);
+            index--;
+        }
+    }
+    return 0;
+}
+#endif
 
 unsigned int (*data_0054bf48)(char *) = NULL;
 
@@ -250,7 +281,11 @@ unsigned int __stdcall set_lookup_paths_name_and_value(unsigned int context, uns
         return 4;
     }
     state = default_target;
+#ifdef __wasm__ /* (the parameter after CONTEXT, read from its stack slot by x86; wasm has no such slot) */
+    record = (struct PayloadWithValue *)CLSegs_GetValue(&state->lookupPaths, recordId);
+#else
     record = (struct PayloadWithValue *)CLSegs_GetValue(&state->lookupPaths, (&context)[1]);
+#endif
     if (record == 0) {
         return 0x201;
     }
@@ -262,13 +297,21 @@ unsigned int __stdcall set_lookup_paths_name_and_value(unsigned int context, uns
 }
 
 /* The parser's callbacks. */
+#if defined(LINKER) && VERSION >= VERSION_GC_2_7
+#define PARSER_CALLBACKS 10
+#else
+#define PARSER_CALLBACKS 9
+#endif
 #if VERSION >= VERSION_GC_1_3
 /* (external: the 1.3 bindings place it) */
-void *data_0054bf4c[9] = {
+void *data_0054bf4c[PARSER_CALLBACKS] = {
 #else
-static void *data_0054bf4c[9] = {
+static void *data_0054bf4c[PARSER_CALLBACKS] = {
 #endif
     (void *)add_access_path,
+#if defined(LINKER) && VERSION >= VERSION_GC_2_7
+    (void *)swap_access_paths,
+#endif
     (void *)add_or_copy_pref_panel_storage,
     (void *)set_file_output_name_and_kind,
     (void *)set_output_directory,
@@ -356,6 +399,142 @@ SInt32 dispatch_output_storage_by_mask(DropinFileRecord *state, SInt16 mask, SIn
 #endif
 }
 
+#if defined(LINKER) && VERSION >= VERSION_GC_2_7
+/* (2.x: names up to 260 characters, the suffix up to 256, through snprintf; an object kept for -dis -c) */
+int CLFileOps_SetupOutputPath(DropinFileRecord *obj, SInt16 mask)
+{
+    char fallbackName[260];
+    char pathName[260];
+    char suffix[256];
+    OSPathSpec directoryPath;
+    const char *outputSuffix;
+    char *extension;
+    UInt32 result;
+    char *directory;
+    const CWObjectFlags *objectFlags;
+    char *name;
+    char *fileName;
+    char *outputName;
+    Boolean hasOutputName;
+    struct CLTarget *context;
+
+    if (optsCmdLine.toDisk & mask)
+        obj->outputMask |= mask;
+
+    if (obj->kind == mask) {
+        outputName = obj->outputName;
+        hasOutputName = (obj->outputName[0] != 0) && ((obj->temporaryOutputMask & mask) == 0);
+        if (hasOutputName) {
+            obj->outputMask |= mask;
+            obj->temporaryOutputMask &= ~mask;
+        }
+    } else {
+        outputName = fallbackName;
+        hasOutputName = 0;
+    }
+
+    if (((optsCmdLine.toDisk | obj->outputMask | obj->temporaryOutputMask) & mask) == 0) {
+        /* The object of a file compiled and disassembled is kept when asked to. */
+        if (mask == 2 && (optsCmdLine.stages & 4) && optsCmdLine.state == 2 && optsCompiler.keepObjects)
+            obj->outputMask |= mask;
+        else
+            obj->temporaryOutputMask |= mask;
+    }
+
+    if (!hasOutputName && (((optsCmdLine.toDisk | obj->outputMask | obj->temporaryOutputMask) & mask) != 0)) {
+        objectFlags = CLPlugins_GetObjectFlags(obj->selectedPlugin);
+        int outputKind = mask;
+        if (outputKind == 1) {
+            if (optsCompiler.ppFileExt[0] != 0)
+                outputSuffix = optsCompiler.ppFileExt;
+            else
+                outputSuffix = objectFlags->ppFileExt;
+        } else if (outputKind == 4) {
+            if (optsCompiler.disFileExt[0] != 0)
+                outputSuffix = optsCompiler.disFileExt;
+            else
+                outputSuffix = objectFlags->disFileExt;
+        } else if (outputKind == 8) {
+            if (optsCompiler.depFileExt[0] != 0)
+                outputSuffix = optsCompiler.depFileExt;
+            else
+                outputSuffix = objectFlags->depFileExt;
+        } else if (outputKind == 2) {
+            if (optsCompiler.objFileExt[0] != 0)
+                outputSuffix = optsCompiler.objFileExt;
+            else
+                outputSuffix = objectFlags->objFileExt;
+            if ((obj->compilerFlags & 0x80000000) == 0 && !hasOutputName)
+                outputSuffix = NULL;
+        } else {
+            outputSuffix = NULL;
+        }
+
+        if (outputSuffix != NULL && *outputSuffix != 0) {
+            if (*outputSuffix != '.') {
+                snprintf(suffix, sizeof(suffix), ".%s", outputSuffix);
+            } else {
+                strncpy(suffix, outputSuffix, sizeof(suffix) - 1);
+                suffix[sizeof(suffix) - 1] = 0;
+            }
+
+            if ((obj->temporaryOutputMask & mask) != 0 && (optsCmdLine.stages & 8) == 0) {
+                directory = getenv("TEMP");
+                if (directory == NULL || *directory == 0 || OS_MakePathSpec(0, directory, &directoryPath) != 0)
+                    directory = getenv("TMP");
+                if (directory == NULL || *directory == 0 || OS_MakePathSpec(0, directory, &directoryPath) != 0)
+                    directory = getenv("TMPDIR");
+                if (directory == NULL || *directory == 0 || OS_MakePathSpec(0, directory, &directoryPath) != 0)
+                    directory = ".";
+                snprintf(pathName, sizeof(pathName), "%s%c%s", directory, '\\', OS_GetFileNamePtr(obj->inputName));
+                name = pathName;
+            } else {
+                if (optsCompiler.relPathInOutputDir == 0)
+                    name = OS_GetFileNamePtr(obj->inputName);
+                else
+                    name = obj->inputName;
+            }
+
+            /* (the length limit is on the file name, not the path) */
+            fileName = OS_GetFileNamePtr(name);
+            extension = strrchr(fileName, '.');
+            if (extension == NULL || *outputSuffix == '.')
+                extension = fileName + strlen(fileName);
+            if ((extension - fileName) + strlen(suffix) >= sizeof(suffix))
+                extension = fileName + (sizeof(suffix) - 1) - strlen(suffix);
+            snprintf(outputName, 260, "%.*s%s", extension - name, name, suffix);
+        } else {
+            *outputName = 0;
+            obj->outputMask &= ~mask;
+            obj->temporaryOutputMask &= ~mask;
+        }
+    }
+
+    if (((obj->outputMask | obj->temporaryOutputMask) & mask) != 0) {
+        context = default_target;
+        result = OS_MakeSpecWithPath(&context->outputDirectory, outputName, !optsCompiler.relPathInOutputDir,
+                                     &obj->outputPath);
+        if (result == 0) {
+            if (OS_EqualSpec(&obj->inputPath, &obj->outputPath) != 0) {
+                if (hasOutputName) {
+                    CLErrors_EmitDiagnostic(0x66, outputName);
+                    obj->outputMask &= ~mask;
+                    obj->temporaryOutputMask &= ~mask;
+                    return 0;
+                }
+                obj->outputMask &= ~mask;
+                obj->temporaryOutputMask &= ~mask;
+            }
+        } else {
+            context = default_target;
+            CLErrors_ReportOSError(9, result, outputName,
+                                   OS_PathSpecToString(&context->outputDirectory, data_005880e0, 0x104));
+        }
+        return (result == 0);
+    }
+    return 1;
+}
+#else
 int CLFileOps_SetupOutputPath(DropinFileRecord *obj, SInt16 mask)
 {
     char fallbackName[BY_VERSION(64, 256)];
@@ -479,6 +658,7 @@ int CLFileOps_SetupOutputPath(DropinFileRecord *obj, SInt16 mask)
     }
     return 1;
 }
+#endif
 
 unsigned int setup_file_request(DropinFileRecord *context)
 {
@@ -571,7 +751,11 @@ unsigned int write_object_file(DropinFileRecord *record)
     SInt32 type;
     SInt32 creator;
     objectFlags = CLPlugins_GetObjectFlags(record->selectedPlugin);
-#if VERSION >= VERSION_GC_1_3
+#if defined(LINKER) && VERSION >= VERSION_GC_2_7
+    /* (2.x: no check for flushed object data) */
+    if (record->objectData == 0U)
+        return 1;
+#elif VERSION >= VERSION_GC_1_3
     if (record->objectDataFlushed)
         CLErrors_ReportInternalError("CLFileOps.c", 640, "Object data is flushed");
     if (record->objectData == 0U && !record->objectDataFlushed)
@@ -739,7 +923,11 @@ int compile_file(DropinFileRecord *file, char *processed)
         return 1;
     }
     if (file->selectedPlugin == 0)
+#if defined(LINKER) && VERSION >= VERSION_GC_2_7
+        CLIO_ReportAssertionFailure("file->compiler", "CLFileOps.c", 0x343);
+#else
         CLIO_ReportAssertionFailure("file->compiler", "CLFileOps.c", BY_VERSION(0x342, 1010));
+#endif
     *processed = 1;
     startTime = OS_GetMilliseconds();
     CLBrowser_InitMemBuffer(&clState.browseTableHandle);
@@ -784,6 +972,84 @@ void set_bytes(unsigned int byteCount, int *value, char **unitName)
     *unitName = "bytes";
 }
 
+#if defined(LINKER) && VERSION >= VERSION_GC_2_7
+/* The 2.x listing of the access paths and files (-v -v): "(none)" for an empty list, [d] for a path kept as a
+   system path, the subdirectories only at -v -v -v, the files relative to the current directory. */
+static const char *dump_path_suffix(struct AccessPathEntry *path)
+{
+    if ((path->auxiliary3 & 2) && path->children != 0)
+        return " [d] [r]";
+    if (path->auxiliary3 & 2)
+        return " [d]";
+    if (path->children != 0)
+        return " [r]";
+    return "";
+}
+
+static void dump_file_and_path_info(void)
+{
+    int index;
+    UInt16 subIndex;
+    struct AccessPathEntry *path;
+    struct AccessPathEntry *subPath;
+
+    if (clState.plugintype == 0x436f6d70)
+        CLErrors_ForwardMessage(0x54, "User include search paths ([d] = default, [r] = recursive)");
+    else
+        CLErrors_ForwardMessage(0x54, "Library search paths ([d] = default, [r] = recursive)");
+    if (CLAccessPaths_GetCount(&default_target->systemPaths) == 0 && clState.plugintype == 0x436f6d70) {
+        CLErrors_ForwardMessage(0x55, "(none)", "");
+    } else {
+        for (index = 0; index < CLAccessPaths_GetCount(&default_target->systemPaths); index++) {
+            path = CLAccessPaths_GetEntry(&default_target->systemPaths, index);
+            if (path == 0)
+                CLIO_ReportAssertionFailure("path != NULL", "CLFileOps.c", 0x400);
+            CLErrors_ForwardMessage(0x55, OS_PathSpecToString(path->path, data_005880e0, 0x104),
+                                    dump_path_suffix(path));
+            if (path->children != 0 && optsCmdLine.verbose > 2) {
+                for (subIndex = 0; subIndex < CLAccessPaths_GetCount(path->children); subIndex++) {
+                    subPath = CLAccessPaths_GetEntry(path->children, subIndex);
+                    if (subPath == 0)
+                        CLIO_ReportAssertionFailure("sub", "CLFileOps.c", 0x40f);
+                    CLErrors_ForwardMessage(0x55, "\t", OS_PathSpecToString(subPath->path, data_005880e0, 0x104));
+                }
+            }
+        }
+    }
+
+    if (clState.plugintype == 0x436f6d70)
+        CLErrors_ForwardMessage(0x54, "System include search paths ([d] = default, [r] = recursive)");
+    if (CLAccessPaths_GetCount(&default_target->userPaths) == 0)
+        CLErrors_ForwardMessage(0x55, "(none)", "");
+    for (index = 0; index < CLAccessPaths_GetCount(&default_target->userPaths); index++) {
+        path = CLAccessPaths_GetEntry(&default_target->userPaths, index);
+        if (path == 0)
+            CLIO_ReportAssertionFailure("path != NULL", "CLFileOps.c", 0x41e);
+        CLErrors_ForwardMessage(0x55, OS_PathSpecToString(path->path, data_005880e0, 0x104), dump_path_suffix(path));
+        if (path->children != 0 && optsCmdLine.verbose > 2) {
+            for (subIndex = 0; subIndex < CLAccessPaths_GetCount(path->children); subIndex++) {
+                subPath = CLAccessPaths_GetEntry(path->children, subIndex);
+                if (subPath == 0)
+                    CLIO_ReportAssertionFailure("sub", "CLFileOps.c", 0x42d);
+                CLErrors_ForwardMessage(0x55, "\t", OS_PathSpecToString(subPath->path, data_005880e0, 0x104));
+            }
+        }
+    }
+
+    if (clState.plugintype == 0x436f6d70)
+        CLErrors_ForwardMessage(0x54, "Files in project (relative to CWD)");
+    else
+        CLErrors_ForwardMessage(0x54, "Link order for project (relative to CWD)");
+    for (index = 0; index < CLFiles_GetIndex(&default_target->files); index++) {
+        DropinFileRecord *entry = CLFiles_FindFileByIndex(&default_target->files, index);
+        if (CLFiles_FindChainRecord(default_target->fileLookup, entry->inputName) == 0)
+            CLErrors_ForwardMessage(0x55, OS_SpecToStringRelative(&entry->inputPath, NULL, data_005880e0, 0x104), "");
+        else
+            CLErrors_ForwardMessage(0x55, entry->inputName, "\t(virtual file)");
+    }
+}
+#endif
+
 int CLFileOps_CompileProject(void)
 {
     Boolean changed = 0;
@@ -805,6 +1071,10 @@ int CLFileOps_CompileProject(void)
     startTime = OS_GetMilliseconds();
     CLBrowser_InitCache();
 
+#if defined(LINKER) && VERSION >= VERSION_GC_2_7
+    if (optsCmdLine.verbose > 1)
+        dump_file_and_path_info();
+#else
     if (optsCmdLine.verbose > 1) {
         if (clState.plugintype == 0x436f6d70)
             CLErrors_ForwardMessage(0x54, "User include search paths");
@@ -850,6 +1120,7 @@ int CLFileOps_CompileProject(void)
             CLErrors_ForwardMessage(0x55, entry->inputName, "");
         }
     }
+#endif
 
     ops = default_target;
     if (!CLPluginRequests_InitializeTargetSettings(ops, ops->linker, ops->linkerFlags))
@@ -920,8 +1191,15 @@ int CLFileOps_CompileProject(void)
     if (failed > 0 && succeeded == 0) {
         struct CLTarget *finalOps = default_target;
         if (finalOps->preLinker != 0 || (finalOps = default_target)->linker != 0) {
+            /* (2.x: without failing; the 2.7 linker's a warning) */
+#if defined(LINKER) && LINKER >= 27
+            CLErrors_ForwardMessageArguments(0x1d);
+#else
             CLErrors_EmitDiagnostic(0x1d);
+#if !(defined(LINKER) && VERSION >= VERSION_GC_2_7)
             changed = 1;
+#endif
+#endif
         }
     }
 

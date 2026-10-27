@@ -29,7 +29,9 @@ char data_0058851b;
 
 short data_0054a0b8 = 0;
 
+#ifndef __wasm__ /* (wasm: the variadic arguments are not after the named ones; the target's, from <stdarg.h>) */
 #define va_start(ap, parm) ap = (char *)&parm + ((((long)((char *)&parm + 2) - (long)&parm) + 3) / 4 * 4)
+#endif
 int get_spec_from_signature_callback(const char *path, OSSpec *spec)
 {
     DropinFileCallback l;
@@ -64,6 +66,76 @@ char *ParserHelpers_GetFirstEnvironmentVariable(char *list, char verbose, char *
     return NULL;
 }
 
+#if LINKER >= 27
+#include "driver/MemUtils.h"
+#include "driver/CWParserPluginsPrivate.h"
+
+/* (2.7) The options of an environment variable (%MWLinkEABIPPCOptions%, the parser glue's) put into the command line
+   after the tool's name and any leading '--' arguments: split at white space, with "..." quoting and \" for a
+   quote, and '#' standing for '='. */
+void ParserHelpers_AddEnvironmentOptions(char *options)
+{
+    static const char spaces[] = " \t\r\n\v";
+    char **list;
+    int count;
+    int capacity;
+    char *text;
+    Boolean quoted;
+    int at;
+    char **argv;
+
+    count = 0;
+    capacity = 1;
+    list = xmalloc(NULL, 4);
+    text = xmalloc(NULL, strlen(options) + 1);
+    while (*options && strchr(spaces, *options))
+        options++;
+    while (*options) {
+        if (count + 1 >= capacity) {
+            capacity += 16;
+            list = xrealloc("environment options", list, capacity * 4);
+        }
+        list[count++] = text;
+        quoted = 0;
+        while (*options) {
+            if (!quoted && strchr(spaces, *options)) {
+                while (strchr(spaces, *options)) {
+                    options++;
+                    if (!*options)
+                        break;
+                }
+                break;
+            }
+            if (*options == '"') {
+                options++;
+                quoted = !quoted;
+            } else if (*options == '\\' && options[1] == '"') {
+                *text++ = '"';
+                options += 2;
+            } else if (*options == '#') {
+                *text++ = '=';
+                options++;
+            } else {
+                *text++ = *options++;
+            }
+        }
+        *text++ = 0;
+    }
+    *text = 0;
+    list[count] = NULL;
+    at = 0;
+    do {
+        at++;
+    } while (at < cmdline_environment->argc && strncmp(cmdline_environment->argv[at], "--", 2) == 0);
+    argv = xmalloc("environment options", (cmdline_environment->argc + count + 1) * 4);
+    memcpy(argv, cmdline_environment->argv, at * 4);
+    memmove(argv + at + count, cmdline_environment->argv + at, (cmdline_environment->argc - at + 1) * 4);
+    memcpy(argv + at, list, count * 4);
+    cmdline_environment->argv = argv;
+    cmdline_environment->argc += count;
+}
+#endif
+
 Boolean match_extension_pattern(char *pattern, char *name)
 {
     char *base = OS_GetFileNamePtr(name);
@@ -77,7 +149,7 @@ Boolean match_extension_pattern(char *pattern, char *name)
     while (*pattern) {
         if (*pattern == '|' && *p == 0)
             return 1;
-        if (((int (*)(char))to_lowercase)(*pattern) == ((int (*)(char))to_lowercase)(*p)) {
+        if (TO_LOWERCASE_CHAR(*pattern) == TO_LOWERCASE_CHAR(*p)) {
             pattern++;
             p++;
         } else {
@@ -139,13 +211,20 @@ int ParserHelpers_ParsePathList(char *path, char separator, char alternateSepara
     unsigned char plus;
     char component[260];
     OSPathSpec resolved;
+#if defined(LINKER) && VERSION >= VERSION_GC_2_7
+    /* (the 2.x linker passes a kind of path for the option: 1 for option 1, and 2 more when mode is not 0) */
+    int kind = (option == 1 ? 1 : 0) | (mode != 0 ? 2 : 0);
+#define PATH_KIND kind
+#else
+#define PATH_KIND option
+#endif
     plus = *path == '+';
     if (plus) {
         ++path;
     }
     if ((separator == ':' || alternateSeparator == ':') && Utils_IsAlpha(*path) != 0 && path[1] == ':' &&
         OS_MakePathSpec(NULL, path, &resolved) == 0) {
-        result = ToolHelpers_cc_AddAccessPath(&resolved, option, flags, plus ^ toggle);
+        result = ToolHelpers_cc_AddAccessPath(&resolved, PATH_KIND, flags, plus ^ toggle);
     } else {
         if (strchr(path, separator) == NULL) {
             separator = alternateSeparator;
@@ -163,10 +242,14 @@ int ParserHelpers_ParsePathList(char *path, char separator, char alternateSepara
                 return 0;
             }
             if (OS_MakePathSpec(NULL, component, &resolved) != 0) {
+#if defined(LINKER) && LINKER >= 27
+                /* (the 2.7 linker: an environment variable's missing directory is not reported) */
+                if (mode != 1)
+#endif
                 report_environment_variable_message(Targets_ReportFormattedMessage, mode == 1 ? name : NULL, 45,
                                                     component);
             } else {
-                ToolHelpers_cc_AddAccessPath(&resolved, option, flags, plus ^ toggle);
+                ToolHelpers_cc_AddAccessPath(&resolved, PATH_KIND, flags, plus ^ toggle);
             }
             if (*path != 0) {
                 ++path;
@@ -180,6 +263,7 @@ int ParserHelpers_ParsePathList(char *path, char separator, char alternateSepara
     }
     return result;
 }
+#undef PATH_KIND
 
 static char match_path_buffer[0x104];
 
@@ -243,6 +327,99 @@ int fn_0040cd55(char *name, char *filter, char *override)
 
 static char lbl_0054a0e0[] = ".lib|.a";
 static char lbl_0054a0e8[] = "lib%s%*.*s";
+
+#if defined(LINKER) && VERSION >= VERSION_GC_2_7
+/* (the linker's -l and its file lists: the compilers have them too, but nothing calls them there, so their links drop
+   them) */
+
+/* -lNAME: the first of libNAME followed by one of EXTENSIONS ('|' between them, ".lib|.a" by default) found in the
+   access paths, or else NAME itself, added to the project. */
+int ParserHelpers_AddUnixLibraryFile(char *option, char *extensions, char *name)
+{
+    OSSpec spec;
+    Boolean failed;
+    char *start;
+    char *end;
+    char filename[256];
+
+    if (strlen(name) >= 248) {
+        fn_0040ecb1(13, name + strlen(name) - 32, 256);
+        return 0;
+    }
+    failed = 1;
+    if (!extensions)
+        extensions = lbl_0054a0e0;
+    start = extensions;
+    while (start && *start) {
+        end = start;
+        while (*end && *end != '|')
+            ++end;
+        sprintf(filename, lbl_0054a0e8, name, end - start, end - start, start);
+        if (get_spec_from_signature_callback(filename, &spec)) {
+            failed = 0;
+            break;
+        }
+        if (*end)
+            ++end;
+        start = end;
+    }
+    if (failed) {
+        failed = !get_spec_from_signature_callback(name, &spec);
+        if (failed)
+            fn_0040ecb1(0x31, name, extensions, name);
+    }
+    if (!failed && !ToolHelpers_cc_AddProjectEntry(&spec, 0, NULL, 1, -1)) {
+        data_00587e18++;
+        failed = 1;
+    }
+    return !failed;
+}
+
+/* Each file of LIST (SEPARATOR between them, or ALTERNATESEPARATOR if LIST has no SEPARATOR) found in the access
+   paths added to the project at POSITION; NAME is the environment variable LIST came from when MODE is 1. */
+int ParserHelpers_AddFileList(char *list, char separator, char alternateSeparator, int mode, char *name,
+                              SInt32 position)
+{
+    char *end;
+    char component[260];
+    OSSpec spec;
+
+    if (strchr(list, separator) == NULL)
+        separator = alternateSeparator;
+    while (*list != 0) {
+        end = component;
+        for (; *list != 0 && *list != separator && end + 1 < component + 260; ++end) {
+            *end = *list;
+            ++list;
+        }
+        *end = 0;
+        if (end + 1 >= component + 260) {
+            report_environment_variable_message(Targets_FormatAndDispatchMessage, mode == 1 ? name : NULL, 9,
+                                                component, component + strlen(component) - 16, 260);
+            return 0;
+        }
+        if (!get_spec_from_signature_callback(component, &spec)) {
+#ifdef __wasm__
+            /* (the original asks OS_IsDir about the spec the failed lookup left, what its stack held, which is no
+               directory: a file not found, even a directory, is reported as not found) */
+            if (0)
+#else
+            if (OS_IsDir(&spec))
+#endif
+                report_environment_variable_message(Targets_FormatAndDispatchMessage, mode == 1 ? name : NULL, 16,
+                                                    component);
+            else
+                report_environment_variable_message(Targets_ReportFormattedMessage, mode == 1 ? name : NULL, 44,
+                                                    component);
+        } else {
+            ToolHelpers_cc_AddProjectEntry(&spec, 0, NULL, 1, position);
+        }
+        if (*list != 0)
+            ++list;
+    }
+    return 1;
+}
+#endif
 
 void ParserHelpers_AppendText(struct StorageHandle **hp, char *text)
 {

@@ -990,6 +990,21 @@ short __stdcall open_resource_fork(void *fileSpec, char mode, short *refNum)
 
 #pragma options align = reset
 
+#if defined(LINKER) && VERSION >= VERSION_GC_2_7
+/* HOpenRF: the resource fork of the file NAME in VOLUME and DIRECTORY (one not there yet is fine). */
+short __stdcall fn_004085a0(short volume, long directory, unsigned char *name, char mode, short *refNum)
+{
+    CWFileSpec spec;
+    short error;
+
+    error = Files_MakeFileSpecFromPath(volume, directory, name, &spec);
+    if (error != 0 && error != -43) {
+        return error;
+    }
+    return open_resource_fork(&spec, mode, refNum);
+}
+#endif
+
 SInt16 __stdcall open_resource_file(void *param1, SInt8 param2)
 {
     SInt32 kind;

@@ -11,7 +11,14 @@
 static OSSpec data_0057f018;
 static DirectorySearch directory_search;
 static char matching_entry_directory[0x103];
+#if VERSION >= VERSION_GC_2_7
+/* (2.x: names of 255 characters) */
+static char data_0057f36b[0xff];
+#define WILD_NAME_SIZE 0x100
+#else
 static char data_0057f36b[0x3f];
+#define WILD_NAME_SIZE 0x43
+#endif
 
 int WildCardMatch(char *pattern, char *str)
 {
@@ -53,7 +60,7 @@ int WildCardMatch(char *pattern, char *str)
 
 OSSpec *__stdcall OS_MatchPath(char *name)
 {
-    char entryName[0x43];
+    char entryName[WILD_NAME_SIZE];
     Boolean flag;
     OSSpec path;
     char *fileName;
@@ -70,7 +77,11 @@ OSSpec *__stdcall OS_MatchPath(char *name)
         }
         if (OS_MakePathSpec(NULL, matching_entry_directory, &path.path) != 0)
             return NULL;
+#if VERSION >= VERSION_GC_2_7
+        CLProj_CopyStringBounded(data_0057f36b, fileName, -1, 0x100);
+#else
         CLProj_CopyStringBounded(data_0057f36b, fileName, -1, 0x40);
+#endif
         if (OS_MakeNameSpec(data_0057f36b, &path.name) != 0)
             return NULL;
         if (OS_OpenDir(&path.path, &directory_search) != 0)

@@ -3914,5 +3914,287 @@
     "include_dirs": [
       "src/optimizer"
     ]
+  },
+  "src/linker/LinkerCmdFile.c": {
+    "compiler": "pro53",
+    "flags": [
+      "-O4,p",
+      "-inline",
+      "auto,deferred",
+      "-sym",
+      "off",
+      "-Cpp_exceptions",
+      "off"
+    ]
+  },
+  "src/linker/SRecord.c": {
+    "compiler": "pro53",
+    "flags": [
+      "-O4,p",
+      "-inline",
+      "auto,deferred",
+      "-sym",
+      "off",
+      "-Cpp_exceptions",
+      "off"
+    ]
+  },
+  "src/linker/ELF_Endian.c": {
+    "compiler": "pro53",
+    "flags": [
+      "-O4,p",
+      "-inline",
+      "auto,deferred",
+      "-sym",
+      "off",
+      "-Cpp_exceptions",
+      "off"
+    ]
+  },
+  "src/linker/Archive.c": {
+    "compiler": "pro53",
+    "flags": [
+      "-O4,p",
+      "-inline",
+      "auto,deferred",
+      "-sym",
+      "off",
+      "-Cpp_exceptions",
+      "off"
+    ]
+  },
+  "src/linker/DumpDWARF.c": {
+    "compiler": "pro53",
+    "flags": [
+      "-O4,p",
+      "-inline",
+      "auto,deferred",
+      "-sym",
+      "off",
+      "-Cpp_exceptions",
+      "off"
+    ]
+  },
+  "src/linker/DumpELFCodePPC.c": {
+    "compiler": "pro53",
+    "flags": [
+      "-O4,p",
+      "-inline",
+      "auto,deferred",
+      "-sym",
+      "off",
+      "-Cpp_exceptions",
+      "off"
+    ]
+  },
+  "src/linker/PrepDumpELF.c": {
+    "compiler": "pro53",
+    "flags": [
+      "-O4,p",
+      "-inline",
+      "auto,deferred",
+      "-sym",
+      "off",
+      "-Cpp_exceptions",
+      "off"
+    ]
+  },
+  "src/linker/DWARF_line.c": {
+    "compiler": "pro53",
+    "flags": [
+      "-O4,p",
+      "-inline",
+      "auto,deferred",
+      "-sym",
+      "off",
+      "-Cpp_exceptions",
+      "off"
+    ]
+  },
+  "src/linker/DumpELF.c": {
+    "compiler": "pro53",
+    "flags": [
+      "-O4,p",
+      "-inline",
+      "auto,deferred",
+      "-sym",
+      "off",
+      "-Cpp_exceptions",
+      "off"
+    ]
+  },
+  "src/linker/LinkSym.c": {
+    "compiler": "pro53",
+    "flags": [
+      "-O4,p",
+      "-inline",
+      "auto,deferred",
+      "-sym",
+      "off",
+      "-Cpp_exceptions",
+      "off"
+    ]
+  },
+  "src/linker/ELF_linker.c": {
+    "compiler": "pro53",
+    "flags": [
+      "-O4,p",
+      "-inline",
+      "auto,deferred",
+      "-sym",
+      "off",
+      "-Cpp_exceptions",
+      "off"
+    ]
+  },
+  "src/linker/LK_symbol.c": {
+    "compiler": "pro53",
+    "flags": [
+      "-O4,p",
+      "-inline",
+      "auto,deferred",
+      "-sym",
+      "off",
+      "-Cpp_exceptions",
+      "off"
+    ]
+  },
+  "src/linker/ELF_gen.c": {
+    "compiler": "pro53",
+    "flags": [
+      "-O4,p",
+      "-inline",
+      "auto,deferred",
+      "-sym",
+      "off",
+      "-Cpp_exceptions",
+      "off"
+    ]
+  },
+  "src/linker/ELF_PPC_EABI.c": {
+    "compiler": "pro53",
+    "flags": [
+      "-O4,p",
+      "-inline",
+      "auto,deferred",
+      "-sym",
+      "off",
+      "-Cpp_exceptions",
+      "off"
+    ]
+  },
+  "src/linker/PPCDisassembler.c": {
+    "compiler": "pro53",
+    "flags": [
+      "-O4,p",
+      "-inline",
+      "auto,deferred",
+      "-sym",
+      "off",
+      "-Cpp_exceptions",
+      "off"
+    ]
+  },
+  "src/linker/PPCDisassembler27.c": {
+    "compiler": "pro53",
+    "flags": [
+      "-O4,p",
+      "-inline",
+      "auto,deferred",
+      "-sym",
+      "off",
+      "-Cpp_exceptions",
+      "off"
+    ]
+  },
+  "src/linker/TargetWarningHelpers-ppc-ld.c": {
+    "compiler": "pro53",
+    "flags": [
+      "-O2,p",
+      "-opt",
+      "intrinsics",
+      "-sym",
+      "on",
+      "-Cpp_exceptions",
+      "off"
+    ],
+    "include_dirs": [
+      "src/driver"
+    ]
+  },
+  "src/linker/ld-eabi-ppc-mw.c": {
+    "compiler": "pro53",
+    "flags": [
+      "-O4,p",
+      "-inline",
+      "auto",
+      "-sym",
+      "on",
+      "-Cpp_exceptions",
+      "off"
+    ],
+    "include_dirs": [
+      "src/driver"
+    ]
+  },
+  "src/linker/ld-eabi-ppc.c": {
+    "compiler": "pro53",
+    "flags": [
+      "-O4,p",
+      "-inline",
+      "auto,deferred",
+      "-sym",
+      "off",
+      "-Cpp_exceptions",
+      "off"
+    ]
+  },
+  "src/linker/ld-eabi-ppc27.c": {
+    "compiler": "pro53",
+    "flags": [
+      "-O4,p",
+      "-inline",
+      "auto,deferred",
+      "-sym",
+      "off",
+      "-Cpp_exceptions",
+      "off"
+    ]
+  },
+  "src/linker/ParserGlue-eabi-ppc-ld.c": {
+    "compiler": "pro53",
+    "flags": [
+      "-O4,p",
+      "-inline",
+      "auto,deferred",
+      "-sym",
+      "off",
+      "-Cpp_exceptions",
+      "off"
+    ]
+  },
+  "src/linker/GetTicks.c": {
+    "compiler": "pro53",
+    "flags": [
+      "-O4,p",
+      "-inline",
+      "auto,deferred",
+      "-sym",
+      "off",
+      "-Cpp_exceptions",
+      "off"
+    ]
+  },
+  "src/linker/ParserGlue-eabi-ppc-ld27.c": {
+    "compiler": "pro53",
+    "flags": [
+      "-O4,p",
+      "-inline",
+      "auto,deferred",
+      "-sym",
+      "off",
+      "-Cpp_exceptions",
+      "off"
+    ]
   }
 }

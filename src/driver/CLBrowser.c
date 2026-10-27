@@ -386,6 +386,54 @@ void CLBrowser_CacheFileText(struct OSSpec *path, struct StorageHandle *buffer, 
     int size;
     struct BrowserCacheEntry *entry;
     size = Memory_GetHandleSize(buffer);
+#if defined(LINKER) && VERSION >= VERSION_GC_2_7
+    /* (2.x: a precompiled text replaces the one cached before it, outside the cache's size; only texts that are
+       neither in use nor precompiled are dropped to make room) */
+    if (flag) {
+        for (entry = browser_cache_entries; entry != NULL; entry = entry->next) {
+            if (entry->flag != 0)
+                break;
+        }
+        if (entry != NULL) {
+            Memory_FreeHandle(entry->buffer);
+            entry->buffer = NULL;
+            unlink_browser_cache_entry(entry);
+            entry->next = browser_cache_free_list;
+            browser_cache_free_list = entry;
+        }
+    } else {
+        if (size > 8388608) {
+            return;
+        }
+        while ((unsigned int)size > cache_free_size) {
+            struct BrowserCacheEntry *cursor;
+            entry = NULL;
+            for (cursor = browser_cache_entries; cursor != NULL; cursor = cursor->next) {
+                if (cursor->inUse == 0 && cursor->flag == 0 &&
+                    (entry == NULL || (unsigned int)cursor->lastUsed < (unsigned int)entry->lastUsed))
+                    entry = cursor;
+            }
+            if (entry == NULL)
+                return;
+            Memory_FreeHandle(entry->buffer);
+            entry->buffer = NULL;
+            cache_free_size += entry->size;
+            unlink_browser_cache_entry(entry);
+            entry->next = browser_cache_free_list;
+            browser_cache_free_list = entry;
+        }
+    }
+    entry = allocate_browser_cache_entry();
+    entry->inUse = 1;
+    entry->flag = flag;
+    entry->path = *path;
+    entry->buffer = buffer;
+    entry->size = size;
+    entry->lastUsed = OS_GetMilliseconds();
+    prepend_browser_cache_entry(entry);
+    if (!flag)
+        cache_free_size -= size;
+#else
     if (size > 8388608) {
         return;
     }
@@ -398,6 +446,7 @@ void CLBrowser_CacheFileText(struct OSSpec *path, struct StorageHandle *buffer, 
         }
     }
     fn_00428e00_inline3(path, buffer, flag, size);
+#endif
 }
 
 StorageHandle *CLBrowser_FindCacheEntryBuffer(OSSpec *key, unsigned char *value)

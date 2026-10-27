@@ -25,6 +25,19 @@ fn usage(command: &str) -> &'static str {
         "verify" | "gates" => "verify|gates [--root DIR] [--ninja FILE] [--jobs N] [--timeout SECS]",
         "download" => "download TOOL OUTPUT [OTHER_OUTPUT...] [--root DIR] [--timeout SECS]",
         "transform-dep" => "transform-dep DEP OUT [--root DIR]",
+        "wasm-mirror" => {
+            "wasm-mirror DESTINATION [STAMP] [--root DIR]
+    writes the root's src/ and include/ to DESTINATION with MWCC's alignment pragmas as clang's (the linkers'
+    WebAssembly build), then touches STAMP"
+        }
+        "wasm-linker-version" => {
+            "wasm-linker-version LINKER OUTPUT [--root DIR]
+    writes the linker's version information (its resource script's VS_VERSIONINFO) to OUTPUT"
+        }
+        "wasm-common" => {
+            "wasm-common LINKER OUTPUT [--root DIR]
+    writes the linker's COMMON block (config.json assembly.common) as WebAssembly assembly to OUTPUT"
+        }
         _ => "",
     }
 }
@@ -218,6 +231,28 @@ pub fn run(command: &str, args: &[String]) -> Result<()> {
         "transform-dep" => {
             ensure!(positional.len() == 2, "transform-dep DEP OUT [--root DIR]");
             build_config::depfile::run(&root, &PathBuf::from(&positional[0]), &positional[1])?;
+        }
+        "wasm-mirror" => {
+            ensure!(
+                (1..=2).contains(&positional.len()),
+                "wasm-mirror DESTINATION [STAMP] [--root DIR]"
+            );
+            mwcc_oracle_core::wasm_linker::mirror(
+                &root,
+                &positional[0],
+                positional.get(1).map(String::as_str),
+            )?;
+        }
+        "wasm-linker-version" => {
+            ensure!(
+                positional.len() == 2,
+                "wasm-linker-version LINKER OUTPUT [--root DIR]"
+            );
+            mwcc_oracle_core::wasm_linker::write_version_info(&root, &positional[0], &positional[1])?;
+        }
+        "wasm-common" => {
+            ensure!(positional.len() == 2, "wasm-common LINKER OUTPUT [--root DIR]");
+            mwcc_oracle_core::wasm_linker::write_common(&root, &positional[0], &positional[1])?;
         }
         _ => bail!("unknown build command {command}"),
     }

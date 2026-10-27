@@ -22,7 +22,11 @@ unsigned int fn_004053a0(SInt32 *pluginType, SInt32 *pluginSubtype)
 #else
     *(unsigned int *)pluginType = '****';
 #endif
+#if defined(LINKER) && VERSION >= VERSION_GC_2_7
+    *pluginSubtype = 'Link';
+#else
     *pluginSubtype = 'Comp';
+#endif
     return (unsigned int)pluginSubtype;
 }
 

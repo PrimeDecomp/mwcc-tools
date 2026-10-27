@@ -13,7 +13,10 @@
 #include "driver/TextUtils.h"
 #include <string.h>
 #include <stdlib.h>
-#if VERSION >= VERSION_GC_1_3
+/* (wasm: the variadic arguments are not after the named ones, so the target's va_start, from <stdarg.h>) */
+#ifdef __wasm__
+#define VA_DECL
+#elif VERSION >= VERSION_GC_1_3
 #define VA_DECL char *va_base;
 #define va_start(ap, last) (va_base = (char *)&(last), (ap) = va_base + (((char *)(&(last) + 1) - va_base + 3) / 4 * 4))
 #else
@@ -54,7 +57,9 @@ void format_and_emit_diagnostic(int kind, int messageId, va_list arguments)
 
 unsigned char CLErrors_EmitDiagnostic(int messageId, ...)
 {
-#if VERSION >= VERSION_GC_1_3
+#ifdef __wasm__
+    va_list arguments = __va_start(messageId);
+#elif VERSION >= VERSION_GC_1_3
     char *base = (char *)&messageId;
     va_list arguments = base + ((char *)((short *)&messageId + 1) - base + 3) / 4 * 4;
 #else
@@ -66,7 +71,9 @@ unsigned char CLErrors_EmitDiagnostic(int messageId, ...)
 void CLErrors_ForwardMessageArguments(int messageId, ...)
 {
     char *base = (char *)&messageId;
-#if VERSION >= VERSION_GC_1_3
+#ifdef __wasm__
+    va_list arguments = __va_start(messageId);
+#elif VERSION >= VERSION_GC_1_3
     va_list arguments = base + ((char *)((short *)&messageId + 1) - base + 3) / 4 * 4;
 #else
     va_list arguments = (char *)&messageId + ((char *)((short *)&messageId + 1) - base + 3) / 4 * 4;
@@ -77,8 +84,12 @@ void CLErrors_ForwardMessageArguments(int messageId, ...)
 #if VERSION >= VERSION_GC_1_3
 void CLErrors_ForwardMessage(int messageId, ...)
 {
+#ifdef __wasm__
+    format_and_emit_diagnostic(0, messageId, __va_start(messageId));
+#else
     char *base;
     format_and_emit_diagnostic(0, messageId, (((char *)((short *)&messageId + 1) - (base = (char *)&messageId)) + 3) / 4 * 4 + base);
+#endif
 }
 #else
 void CLErrors_ForwardMessage(short messageId, ...)

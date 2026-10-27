@@ -53,6 +53,7 @@ fn main() {
                     overlay: None,
                     transcode_sjis: false,
                     record_reads: false,
+                    command_line: None,
                 },
                 &|| false,
             )

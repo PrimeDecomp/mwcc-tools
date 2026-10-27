@@ -6,6 +6,12 @@
 #include "driver/Projects.h"
 #include "driver/StringUtils.h"
 #include "driver/TargetWarningHelpers-ppc-cc.h"
+#ifdef __wasm__
+#include <stdlib.h> /* (exit: implicitly int, and a call through another type traps in wasm) */
+#endif
+#if defined(LINKER) && VERSION >= VERSION_GC_2_7
+extern void ToolHelpers_ld_PrintLinkerWarningOptions(void *self);
+#endif
 
 int parse_warning_settings(int option, char *settings, int argument, int flags)
 {
@@ -82,7 +88,12 @@ unsigned int print_command_line_warning_options(void)
     if (pCmdLine.noWarnings != '\0') {
         HPrintF(output, "\t- no warnings at all\n");
     }
+#if defined(LINKER) && VERSION >= VERSION_GC_2_7
+    /* (the linker's warnings are its own) */
+    ToolHelpers_ld_PrintLinkerWarningOptions(output);
+#else
     ToolHelpers_cc_PrintCLanguageWarningOptions(output);
+#endif
     ToolHelpers_cc_CallValuePairCallback(NULL, output);
     Memory_FreeHandle(output);
     return 1;

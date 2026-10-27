@@ -34,9 +34,16 @@ struct ToolArgumentSet *tool_argument_sets;
 
 Project mainProj;
 Project *gProj = &mainProj;
+#if defined(LINKER) && VERSION >= VERSION_GC_2_7
+/* (the 2.x linker leaves them in its COMMON block: their versions are 0) */
+PCmdLine optsCmdLine;
+PCmdLineEnvir optsEnvir;
+PCmdLineCompiler optsCompiler;
+#else
 PCmdLine optsCmdLine = {0x1002};
 PCmdLineEnvir optsEnvir = {0x1000};
 PCmdLineCompiler optsCompiler = {0x1004};
+#endif
 PCmdLineLinker optsLinker = {0x1002};
 CLState clState;
 
@@ -135,11 +142,15 @@ static void *driver_callbacks[9] = {(void *)return_zero,
 
 unsigned int fn_0040a7c0(void)
 {
+#ifdef __wasm__ /* (x86 returns the EAX ClientGlue_AddPlugin leaves, which the caller tests) */
+    return ClientGlue_AddPlugin((PluginRequiredInputRecord *)driver_callbacks);
+#else
     ClientGlue_AddPlugin((PluginRequiredInputRecord *)driver_callbacks);
+#endif
 }
 
 /* The "Command-line strings" (12000) the driver's messages index. */
-static char *command_line_strings[107] = {
+static char *command_line_strings[] = {
     "Could not get current working directory",
     "Cannot find my executable '%s'",
     "Could not initialize plugin '%s'",
@@ -212,7 +223,11 @@ static char *command_line_strings[107] = {
     "Too many errors printed, aborting program",
     "Too many errors printed, suppressing errors for current file",
     "Too many warnings printed, suppressing warnings for current file",
+#if defined(LINKER) && VERSION >= VERSION_GC_2_7
+    "No %s mapping matches '%s' (unrecognized file contents or filename extension); %s",
+#else
     "No %s mapping matches '%s' (unrecognized file contents or filename extension); treating as source text",
+#endif
     "No plugin or target matches the file '%s', ignoring",
     "File '%s' cannot be handled by this tool, ignoring",
     "File '%s' does not match the active target",
@@ -245,6 +260,9 @@ static char *command_line_strings[107] = {
     "More than one output filename specified for '%s'; ignoring '%s'",
     "Pref panel data for '%s' is out-of-date or invalid",
     "Changing primary user access path to '%s'",
+#if defined(LINKER) && VERSION >= VERSION_GC_2_7
+    "The linker does not expect duplicate files; ignoring repeated '%s'",
+#endif
     "",
     NULL};
 
@@ -614,6 +632,34 @@ SInt32 fn_0040aed0(void)
     return 0;
 }
 
+#if defined(LINKER) && VERSION >= VERSION_GC_2_7
+int fn_0040af70(PCmdLine *message, PCmdLine *result)
+{
+    /* 2.x: the old versions are upgraded one step at a time, and warned about once and only with -plugindebug */
+    static Boolean warned;
+    short version = message->version;
+
+    *result = *message;
+    if (clState.pluginDebug && version < 0x1002 && !warned) {
+        CLErrors_ForwardMessageArguments(0x68, "CmdLine Panel");
+        warned = 1;
+    }
+    if (version == 0x1000) {
+        result->stderr2stdout = 1;
+        version++;
+    }
+    if (version == 0x1001) {
+        result->noCmdLineWarnings = 0;
+        version++;
+    }
+    if (version < 0x1000 || version > 0x1002) {
+        CLErrors_EmitDiagnostic(0x68, "CmdLine Panel");
+        return 0;
+    }
+    result->version = 0x1002;
+    return 1;
+}
+#else
 int fn_0040af70(PCmdLine *message, PCmdLine *result)
 {
     if (message->version == 0x1002) {
@@ -635,6 +681,7 @@ int fn_0040af70(PCmdLine *message, PCmdLine *result)
     CLErrors_EmitDiagnostic(0x68, "CmdLine Panel");
     return 0;
 }
+#endif
 
 unsigned int copy_environment_code_record(PCmdLineEnvir *record, PCmdLineEnvir *result)
 {
@@ -659,8 +706,14 @@ unsigned int copy_environment_code_record(PCmdLineEnvir *record, PCmdLineEnvir *
 }
 
 #if VERSION >= VERSION_GC_1_3
+#if defined(LINKER) && VERSION >= VERSION_GC_2_7
+/* (the 2.x linker has them in this unit's data) */
+UInt8 data_005d89e5;
+UInt8 data_005d89e6;
+#else
 extern UInt8 data_005d89e5;
 extern UInt8 data_005d89e6;
+#endif
 
 /* bring the compiler panel settings of an older version up to date, warning once about it */
 int convert_command_line_panel_settings(PCmdLineCompiler *source, PCmdLineCompiler *destination)

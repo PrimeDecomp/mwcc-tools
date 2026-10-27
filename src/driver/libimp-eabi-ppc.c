@@ -24,6 +24,13 @@ char data_00588517;
 
 typedef char **Handle;
 
+/* (the 2.x importer frees its handles with COS_FreeHandle) */
+#if VERSION >= VERSION_GC_2_7
+#define FREE_HANDLE(handle) COS_FreeHandle(handle)
+#else
+#define FREE_HANDLE(handle) Memory_FreeHandle((StorageHandle *)handle)
+#endif
+
 static struct LibImportCU libimp_cu;
 static UInt8 nonNativeByteOrder;
 
@@ -69,6 +76,9 @@ char **load_file_data_and_set_archive_signature(CWFileSpec *name, SInt32 *out1, 
     int length;
     StorageHandle *contents;
     FileInputNode *rec;
+#if VERSION >= VERSION_GC_2_7
+    char **handle;
+#endif
     char buf[256];
 
     nonNativeByteOrder = (!copts.littleendian) != 0;
@@ -91,6 +101,36 @@ char **load_file_data_and_set_archive_signature(CWFileSpec *name, SInt32 *out1, 
     accumulated_section_sizes = 0;
     section_size_total = 0;
     p2cstrcpy(buf, name->name);
+#if VERSION >= VERSION_GC_2_7
+    err = dispatch_file_input_by_kind(rec, buf);
+    if (err != 0) {
+        clear_file_input_data_handles(rec);
+        return NULL;
+    }
+    handle = COS_NewOSHandle(length = 8);
+    if (handle == NULL) {
+        handle = COS_NewHandle(length);
+        if (handle == NULL) {
+            CompilerTools_ReportLimitedDiagnostic(0x1d, name->name);
+            clear_file_input_data_handles(rec);
+            return NULL;
+        }
+    }
+    COS_LockHandle(handle);
+    if (rec->kind == 1) {
+        strncpy(*handle, "!<arch>\n", length);
+    } else {
+        COS_LockHandle(rec->dataHandle);
+        memcpy(*handle, *rec->dataHandle, length);
+        COS_UnlockHandle(rec->dataHandle);
+    }
+    COS_UnlockHandle(handle);
+    clear_file_input_data_handles(rec);
+    *out1 = accumulated_section_size;
+    *out3 = accumulated_section_sizes;
+    *out2 = section_size_total;
+    return handle;
+#else
     if (initheaps(format_message_and_longjmp) != 0) {
         format_message_and_longjmp();
         clear_file_input_data_handles(rec);
@@ -115,13 +155,22 @@ char **load_file_data_and_set_archive_signature(CWFileSpec *name, SInt32 *out1, 
     *out2 = section_size_total;
     clear_file_input_data_handles(rec->next);
     return rec->dataHandle;
+#endif
 }
 #pragma scheduling reset
 #pragma sym reset
 
 #pragma scheduling off
+#if defined(LINKER) && VERSION >= VERSION_GC_2_7
+/* (the linker's: its plugins' shared code reaches the active plugin's context through it) */
+extern struct LibImportCU *active_plugin_cu;
+#endif
+
 char initialize_plugin_context(CWPluginPrivateContext *handle)
 {
+#if defined(LINKER) && VERSION >= VERSION_GC_2_7
+    active_plugin_cu = &libimp_cu;
+#endif
     libimp_cu.context = handle;
     memset(&libimp_cu.objectData, 0, sizeof(unsigned int[12]));
     if (CPrep_GetFileIndex(handle, (unsigned int *)&libimp_cu.mainFileNumber) != 0)
@@ -173,7 +222,11 @@ int __stdcall fn_0041ec70(CWPluginPrivateContext *context)
             result = 0;
             break;
         case 0:
+#if VERSION >= VERSION_GC_2_7
+            memset(&copts, 0, 264);
+#else
             memset(&copts, 0, BY_VERSION(240, 260));
+#endif
             memset(data_0058770c, 0, BY_VERSION(1364, 1432));
             reference60 = NULL;
             DropInCompilerLinkerPrivate_CallArgumentValue(context, "PPC EABI Project", &reference60);
@@ -191,6 +244,14 @@ int __stdcall fn_0041ec70(CWPluginPrivateContext *context)
             initialize_plugin_context(context);
             libimp_cu.browseBuffer = 0;
             libimp_cu.lineCount = 0;
+#if VERSION >= VERSION_GC_2_7
+            libimp_cu.objectBuffer = 0;
+            if (initheaps(format_message_and_longjmp) != 0) {
+                format_message_and_longjmp();
+                result = 2;
+                break;
+            }
+#endif
             status = load_file_data_and_set_archive_signature(&libimp_cu.mainFile, &libimp_cu.codeSize,
                                                               &libimp_cu.udataSize, &libimp_cu.idataSize);
             libimp_cu.objectBuffer = (unsigned int)status;
@@ -199,6 +260,9 @@ int __stdcall fn_0041ec70(CWPluginPrivateContext *context)
             } else {
                 result = 2;
             }
+#if VERSION >= VERSION_GC_2_7
+            releasegheap();
+#endif
             break;
     }
     result = CWPluginsPrivate_ReturnArgument(context, (short)result);
@@ -224,7 +288,11 @@ void fn_0041ee00(void *argument, short request)
 #pragma optimization_level reset
 
 /* The ticks before the importer next lets the IDE break in. */
+#if VERSION >= VERSION_GC_2_7
+static SInt32 data_0054c4d0;
+#else
 static SInt32 data_0054c4d0 = 0;
+#endif
 
 void check_ticks_and_longjmp(void)
 {
@@ -267,9 +335,15 @@ unsigned char classify_file_header(CWFileSpec *input)
 }
 
 #pragma optimization_level reset
+#if VERSION < VERSION_GC_2_7
 #pragma optimization_level 2
+#endif
 #pragma sym on
+#if VERSION >= VERSION_GC_2_7
+char **read_file_into_buffer(CWFileSpec *file, short *error, SInt32 extraBytes)
+#else
 char **read_file_into_buffer(CWFileSpec *file, short *error, int extraBytes)
+#endif
 {
     char **buffer;
     short fileRef;
@@ -295,7 +369,7 @@ char **read_file_into_buffer(CWFileSpec *file, short *error, int extraBytes)
         bytesRead = fileSize;
         *error = Files_Read(fileRef, &bytesRead, *buffer);
         if (*error != 0 || bytesRead != fileSize) {
-            Memory_FreeHandle((StorageHandle *)buffer);
+            FREE_HANDLE(buffer);
             Files_Close(fileRef);
             return NULL;
         }
@@ -308,7 +382,9 @@ char **read_file_into_buffer(CWFileSpec *file, short *error, int extraBytes)
     }
     return NULL;
 }
+#if VERSION < VERSION_GC_2_7
 #pragma optimization_level reset
+#endif
 #pragma sym reset
 
 #pragma optimization_level 2
@@ -359,7 +435,7 @@ FileInputNode *read_file_into_input_nodes(CWFileSpec *name, SInt16 *err)
                 *err = -0x6c;
                 for (member = head; member; member = member->next)
                     if (member->dataHandle)
-                        Memory_FreeHandle((StorageHandle *)member->dataHandle);
+                        FREE_HANDLE(member->dataHandle);
                 return NULL;
             }
             if (head == NULL)
@@ -372,7 +448,7 @@ FileInputNode *read_file_into_input_nodes(CWFileSpec *name, SInt16 *err)
                 Files_Close(handle);
                 for (member = head; member; member = member->next)
                     if (member->dataHandle)
-                        Memory_FreeHandle((StorageHandle *)member->dataHandle);
+                        FREE_HANDLE(member->dataHandle);
                 return NULL;
             }
             *err = Files_Read(handle, &count, member->archiveMemberHeader);
@@ -380,7 +456,7 @@ FileInputNode *read_file_into_input_nodes(CWFileSpec *name, SInt16 *err)
                 Files_Close(handle);
                 for (member = head; member; member = member->next)
                     if (member->dataHandle)
-                        Memory_FreeHandle((StorageHandle *)member->dataHandle);
+                        FREE_HANDLE(member->dataHandle);
                 return NULL;
             }
             header = member->archiveMemberHeader;
@@ -394,7 +470,7 @@ FileInputNode *read_file_into_input_nodes(CWFileSpec *name, SInt16 *err)
                     *err = -0x6c;
                     for (member = head; member; member = member->next)
                         if (member->dataHandle)
-                            Memory_FreeHandle((StorageHandle *)member->dataHandle);
+                            FREE_HANDLE(member->dataHandle);
                     return NULL;
                 }
             }
@@ -406,7 +482,7 @@ FileInputNode *read_file_into_input_nodes(CWFileSpec *name, SInt16 *err)
                 Files_Close(handle);
                 for (member = head; member; member = member->next)
                     if (member->dataHandle)
-                        Memory_FreeHandle((StorageHandle *)member->dataHandle);
+                        FREE_HANDLE(member->dataHandle);
                 return NULL;
             }
             position += length;
@@ -417,7 +493,7 @@ FileInputNode *read_file_into_input_nodes(CWFileSpec *name, SInt16 *err)
                     Files_Close(handle);
                     for (member = head; member; member = member->next)
                         if (member->dataHandle)
-                            Memory_FreeHandle((StorageHandle *)member->dataHandle);
+                            FREE_HANDLE(member->dataHandle);
                     return NULL;
                 }
                 position++;
@@ -439,7 +515,7 @@ void clear_file_input_data_handles(FileInputNode *args)
 {
     while (args != NULL) {
         if (args->dataHandle != NULL)
-            Memory_FreeHandle((StorageHandle *)args->dataHandle);
+            FREE_HANDLE(args->dataHandle);
         args->dataHandle = NULL;
         args = args->next;
     }
@@ -468,7 +544,9 @@ static inline void ReportUnsupportedKind(char *location, char *name)
 }
 
 #pragma optimization_level reset
+#if VERSION < VERSION_GC_2_7
 #pragma scheduling off
+#endif
 unsigned char fn_0041f430(Elf32Header *record, char *location, char *name)
 {
     if (record->dataEncoding == 1U) {
@@ -502,12 +580,19 @@ unsigned char fn_0041f430(Elf32Header *record, char *location, char *name)
     }
 
     if (record->machine != 0x14U && record->machine != 0x11U) {
+#if VERSION >= VERSION_GC_2_7
+        CompilerTools_ReportDiagnostic(54, *name ? name : location, *name ? " of archive '" : "", *name ? location : "",
+                                       *name ? "'" : "", "PowerPC");
+#else
         ReportUnsupportedKind(location, name);
+#endif
         return 0U;
     }
     return 1U;
 }
+#if VERSION < VERSION_GC_2_7
 #pragma scheduling reset
+#endif
 
 #pragma optimization_level 2
 void accumulate_section_sizes(FileInputNode *input, char *option1, char *option2)

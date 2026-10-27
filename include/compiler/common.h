@@ -2,6 +2,12 @@
 #define COMPILER_COMMON_H
 #include "version.h"
 
+#ifdef __wasm__
+/* (MSL's x86 setjmp, which the sources call by name: the wasm build's is setjmp, which clang lowers to wasm
+   exceptions only when it is called by that name) */
+#define _Setjmp setjmp
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif

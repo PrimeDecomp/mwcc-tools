@@ -93,6 +93,7 @@ fn normal(project: &Project, candidate: &str) -> Compiled {
                 overlay: Some(&overlay),
                 transcode_sjis: false,
                 record_reads: false,
+                command_line: None,
             },
             &|| false,
         )

@@ -28,6 +28,30 @@ char *__stdcall CLIO_ConvertPascalToCString(char *string)
     return string;
 }
 
+#if defined(LINKER) && VERSION >= VERSION_GC_2_7
+#include <ctype.h>
+/* EqualString: two Pascal strings. Without case, the 2.x linker compares from the length byte, so not the last
+   character. */
+Boolean __stdcall fn_00413620(const unsigned char *a, const unsigned char *b, Boolean caseSensitive,
+                              Boolean diacriticalSensitive)
+{
+    Boolean equal = 0;
+    int length = a[0];
+    int i;
+
+    if (a != NULL && b != NULL && length == b[0]) {
+        if (caseSensitive) {
+            equal = memcmp(a + 1, b + 1, length) == 0;
+        } else {
+            for (equal = 1, i = 0; equal && i < length; i++) {
+                equal = toupper(b[i]) == toupper(a[i]);
+            }
+        }
+    }
+    return equal;
+}
+#endif
+
 void __stdcall CLIO_GetResourceString(unsigned char *output, short resourceID, short stringIndex)
 {
     unsigned char *cursor;

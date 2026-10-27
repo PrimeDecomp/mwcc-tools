@@ -23,6 +23,16 @@ extern "C" {
 }
 
 extern "C" {
+#if VERSION >= VERSION_GC_2_7
+/* (1.3 has it in MemUtils.c) */
+int __stdcall MemUtils_CallPluginEntry(Plugin *entry)
+{
+    short result;
+    result = CLPlugins_CallEntry(entry, entry->object);
+    return result;
+}
+#endif
+
 void initialize_plugin_request(Plugin *owner, int phase)
 {
     PluginOutputItem *item;
@@ -200,7 +210,20 @@ Boolean CLPluginRequests_SetupFileRequest(Plugin *job, DropinFileRecord *input, 
         ctx->operation = 2;
         ctx->enabled = 2;
     }
+#if defined(LINKER) && VERSION >= VERSION_GC_2_7
+    /* (2.x: the file's text released after the request) */
+    {
+        int callResult = MemUtils_CallPluginEntry(job);
+        if (ctx->callbackValue != NULL) {
+            UCBReleaseFileText((struct DropinRequest *)ctx, ctx->callbackValue);
+            ctx->callbackValue = NULL;
+            ctx->callbackFlags = 0;
+        }
+        return callResult == 0;
+    }
+#else
     return MemUtils_CallPluginEntry(job) == 0;
+#endif
 }
 
 Boolean CLPluginRequests_InitializeTargetSettings(CLTarget *input, Plugin *plugin, UInt32 flags)
@@ -218,8 +241,13 @@ Boolean CLPluginRequests_InitializeTargetSettings(CLTarget *input, Plugin *plugi
             CLErrors_ForwardMessage(0x32, pluginValue);
         }
         if (CLPlugins_GetType(plugin) != 0x4c696e6b) {
+#if defined(LINKER) && VERSION >= VERSION_GC_2_7
+            CLIO_ReportAssertionFailure("Plugin_GetPluginType(linker) == CWDROPINLINKERTYPE", "CLPluginRequests.cpp",
+                                        0x12a);
+#else
             CLIO_ReportAssertionFailure("Plugin_GetPluginType(linker) == CWDROPINLINKERTYPE", "CLPluginRequests.cpp",
                                         0x135);
+#endif
         }
         if (!fn_004098a0(plugin)) {
             return 0;

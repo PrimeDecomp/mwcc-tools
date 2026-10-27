@@ -43,6 +43,10 @@ char *get_status_string(SInt16 status)
             return "Out of available memory or buffer size exceeded";
         case -109:
             return "NULL or invalid address detected";
+#if VERSION >= VERSION_GC_2_7
+        case -113:
+            return "invalid handle detected";
+#endif
         case -120:
             return "Directory not found";
         case -128:

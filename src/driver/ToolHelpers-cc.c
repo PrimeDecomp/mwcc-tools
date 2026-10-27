@@ -121,6 +121,8 @@ int set_output_path(char *name, int unused, char *path)
     }
 }
 
+#if !(defined(LINKER) && VERSION >= VERSION_GC_2_7)
+/* (the compiler's: the 2.x linker has none) */
 int log_linker_option(const char *option)
 {
     Targets_ForwardVarArgsAndLongjmp("Calling linker option '%s'\n", option);
@@ -129,6 +131,7 @@ int log_linker_option(const char *option)
 
 static char lbl_0054a2c4[] = "";
 static char lbl_0054a2c8[] = "Calling linker settings option '%s'='%s'\n";
+#endif
 
 void fn_0040d822(void)
 {

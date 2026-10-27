@@ -182,6 +182,14 @@ struct PLinker {
     UInt8 unk2f;
     char mainname[64];
     UInt32 heapaddr;
+#if LINKER >= 27
+    /* (2.7: '-linkmode', '-[no]listdwarf', '-[no]listclosure', '-sortsrec') */
+    UInt8 linkmode;
+    UInt8 listdwarf;
+    UInt8 listclosure;
+    UInt8 sortsrec;
+    UInt8 unk78[4];
+#endif
 };
 struct PDisassembler {
     short version;
@@ -200,7 +208,8 @@ struct PDisassembler {
 };
 struct PProject {
     short version;
-    UInt8 unk02[34];
+    short type;
+    char outfile[32];
     UInt32 heapsize;
     UInt32 stacksize;
     char bigendian;
@@ -213,12 +222,27 @@ struct PProject {
     UInt8 strip;
     UInt8 optpartial;
     UInt8 resolvedpartial;
+#if LINKER >= 27
+    /* (2.7: the output's name (no longer in outfile), the ABI ('-abi'), the DWARF version ('-sym dwarf-2'),
+       '-tune_relocations' and the ABI's configuration name) */
+    char outname[256];
+    UInt8 abi;
+    UInt8 dwarf;
+    UInt8 tunerelocations;
+    UInt8 unk13e[5];
+    char abiconfig[257];
+#else
     UInt8 unk3b;
+#endif
 };
 struct PCLTExtras {
     short version;
     char mapfilename[256];
     char srecfilename[256];
+#if LINKER >= 27
+    /* (2.7: the binary file's) */
+    char binaryfilename[256];
+#endif
 };
 #pragma options align = reset
 

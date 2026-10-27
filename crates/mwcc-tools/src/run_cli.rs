@@ -75,12 +75,20 @@ pub fn run(args: &[String]) -> Result<i32> {
     };
     #[cfg(feature = "wasm")]
     if let Some((version, module)) = mwcc_oracle_core::in_process::module_of_copy(&root, executable)
+        .or_else(|| mwcc_oracle_core::in_process::linker_module_of_copy(&root, executable))
     {
         let timing = env::var_os("MWCC_RUN_TIMING").is_some_and(|v| v == "1");
         let loading = Instant::now();
         mwcc_oracle_core::in_process::preload(&module)?;
         let loaded = loading.elapsed();
         let environment: Vec<(String, String)> = env::vars().collect();
+        // (the compiler's command line as its process would get it: ours from its executable on, where sjiswrap does
+        // not make it)
+        let verbatim = if compiler == 0 {
+            own_command_line().and_then(|line| command_line_from(&line, executable, compiler_args))
+        } else {
+            None
+        };
         let outcome = mwcc_oracle_core::in_process::run(
             &mwcc_oracle_core::in_process::Run {
                 root: &root,
@@ -94,9 +102,17 @@ pub fn run(args: &[String]) -> Result<i32> {
                 trace: mwcc_oracle_core::in_process::traces(&root, executable),
                 overlay: None,
                 transcode_sjis: false,
+                command_line: verbatim.as_deref(),
             },
             &|| false,
-        )?;
+        )
+        .inspect_err(|e| {
+            // (what the run wrote before a trap, as the process's console would show it)
+            if let Some(trapped) = e.downcast_ref::<mwcc_oracle_core::in_process::Trapped>() {
+                let _ = std::io::stdout().write_all(&trapped.console);
+                let _ = std::io::stdout().flush();
+            }
+        })?;
         std::io::stdout().write_all(&outcome.stdout)?;
         std::io::stdout().flush()?;
         std::io::stderr().write_all(&outcome.stderr)?;
@@ -118,4 +134,100 @@ pub fn run(args: &[String]) -> Result<i32> {
         .status()
         .with_context(|| format!("launch {}", args[0]))?;
     Ok(status.code().unwrap_or(1))
+}
+
+/// This process's command line, as Windows gives it.
+#[cfg(windows)]
+fn own_command_line() -> Option<String> {
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        fn GetCommandLineW() -> *const u16;
+    }
+    // (SAFETY: the process's command line, NUL-terminated, lives as long as the process)
+    unsafe {
+        let line = GetCommandLineW();
+        if line.is_null() {
+            return None;
+        }
+        let length = (0..).take_while(|&i| *line.add(i) != 0).count();
+        String::from_utf16(std::slice::from_raw_parts(line, length)).ok()
+    }
+}
+
+#[cfg(not(windows))]
+fn own_command_line() -> Option<String> {
+    None
+}
+
+/// The arguments of a Windows command line, each with where its text starts (as the C runtime splits them).
+fn split_command_line(line: &str) -> Vec<(usize, String)> {
+    let chars: Vec<(usize, char)> = line.char_indices().collect();
+    let blank = |c: char| c == ' ' || c == '\t';
+    let mut out = vec![];
+    let mut i = 0;
+    while i < chars.len() {
+        while i < chars.len() && blank(chars[i].1) {
+            i += 1;
+        }
+        if i >= chars.len() {
+            break;
+        }
+        let start = chars[i].0;
+        let mut arg = String::new();
+        let mut quoted = false;
+        while i < chars.len() && (quoted || !blank(chars[i].1)) {
+            let mut backslashes = 0;
+            while i < chars.len() && chars[i].1 == '\\' {
+                backslashes += 1;
+                i += 1;
+            }
+            if i < chars.len() && chars[i].1 == '"' {
+                arg.extend(std::iter::repeat_n('\\', backslashes / 2));
+                if backslashes % 2 == 1 {
+                    arg.push('"');
+                } else if quoted && i + 1 < chars.len() && chars[i + 1].1 == '"' {
+                    arg.push('"');
+                    i += 1;
+                } else {
+                    quoted = !quoted;
+                }
+                i += 1;
+            } else {
+                arg.extend(std::iter::repeat_n('\\', backslashes));
+                if i < chars.len() && (quoted || !blank(chars[i].1)) {
+                    arg.push(chars[i].1);
+                    i += 1;
+                }
+            }
+        }
+        out.push((start, arg));
+    }
+    out
+}
+
+/// LINE from the argument EXECUTABLE on, when the arguments after it are ARGS (else None).
+fn command_line_from(line: &str, executable: &Path, args: &[String]) -> Option<String> {
+    let split = split_command_line(line);
+    let executable = executable.to_str()?;
+    let at = split.iter().rposition(|(_, a)| a == executable)?;
+    let rest: Vec<&str> = split[at + 1..].iter().map(|(_, a)| a.as_str()).collect();
+    let args: Vec<&str> = args.iter().map(String::as_str).collect();
+    (rest == args).then(|| line[split[at].0..].trim_end().to_owned())
+}
+
+#[cfg(test)]
+mod command_line_tests {
+    use super::*;
+
+    #[test]
+    fn the_compilers_command_line_is_ours_from_it_on() {
+        let line = r#"C:\x\mwcc-run.exe build\cc\mwcceppc.exe -pragma "inline_max_size(256)" -c "a b.c""#;
+        let args = ["-pragma", "inline_max_size(256)", "-c", "a b.c"].map(String::from);
+        assert_eq!(
+            command_line_from(line, Path::new(r"build\cc\mwcceppc.exe"), &args).as_deref(),
+            Some(r#"build\cc\mwcceppc.exe -pragma "inline_max_size(256)" -c "a b.c""#)
+        );
+        assert_eq!(command_line_from(line, Path::new(r"build\cc\mwcceppc.exe"), &args[..2]), None);
+        assert_eq!(split_command_line(r#"a\\"b c" d"#)[0].1, r"a\b c");
+    }
 }

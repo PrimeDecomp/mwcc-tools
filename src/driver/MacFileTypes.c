@@ -54,12 +54,21 @@ void __stdcall fn_00421a80(int value, unsigned int *result)
     *result = data_0054b770;
 }
 
+/* (its result is OS_SetFileType's, left in EAX, which fn_00421d30 returns: wasm returns it) */
+#ifdef __wasm__
+unsigned int __stdcall fn_00421af0(OSSpec *value, DWORD input)
+#else
 void __stdcall fn_00421af0(OSSpec *value, DWORD input)
+#endif
 {
     unsigned int result;
 
     fn_00421a80(input, &result);
+#ifdef __wasm__
+    return OS_SetFileType(value, &result);
+#else
     OS_SetFileType(value, &result);
+#endif
 }
 
 unsigned char __stdcall MacFileTypes_MatchBytes(void *bytes, int length, UInt32 *mnemonic)
@@ -134,5 +143,9 @@ SInt32 __stdcall MacFileTypes_GetFileType(OSSpec *path, UInt32 *fileType)
 
 unsigned int __stdcall fn_00421d30(OSSpec *file, SInt32 unused, SInt32 fileType)
 {
+#ifdef __wasm__ /* (x86 returns the EAX fn_00421af0 leaves, which the caller tests) */
+    return fn_00421af0(file, fileType);
+#else
     fn_00421af0(file, fileType);
+#endif
 }

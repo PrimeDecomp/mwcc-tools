@@ -39,6 +39,9 @@ struct DiagnosticSourcePosition {
 #pragma pack(pop)
 
 extern char data_005880e0[];
+#ifdef __wasm__
+struct _FILE; /* (else the prototype's own struct, which clang does not take as stdio.h's) */
+#endif
 extern Boolean write_text_buffer(struct _FILE *fp, StorageHandle *bufp, SInt32 len);
 extern unsigned char CLIO_WriteStorageToStdout(StorageHandle *first, SInt32 second, unsigned int reset);
 extern Boolean CLIO_WriteTextFile(OSSpec *fileRef, StorageHandle *text, SInt32 textLength, SInt32 fileType,

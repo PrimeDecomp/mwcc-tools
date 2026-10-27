@@ -295,6 +295,7 @@ fn main() {
                 overlay: None,
                 transcode_sjis: false,
                 record_reads: false,
+                command_line: None,
             })
             .unwrap();
         let time = t.elapsed();
@@ -326,6 +327,7 @@ fn main() {
                 overlay: None,
                 transcode_sjis: false,
                 record_reads: false,
+                command_line: None,
             },
             capacity,
         )
@@ -366,6 +368,7 @@ fn main() {
                     overlay: None,
                     transcode_sjis: false,
                     record_reads: false,
+                    command_line: None,
                 },
                 capacity,
             )

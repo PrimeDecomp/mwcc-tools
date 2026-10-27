@@ -859,6 +859,21 @@ SInt32 __stdcall CPrep_CallCompilerCallback(void *objectId, SInt32 argument)
 }
 #pragma auto_inline reset
 
+#if defined(LINKER) && VERSION >= VERSION_GC_2_7
+/* A project file's data id, by its index (the linker's callback 1). */
+int __stdcall fn_0042f570(CWPluginPrivateContext *context, long index, long *id)
+{
+    CWPluginPrivateContext *record;
+
+    record = validate_context_signature(context);
+    if (record == NULL) {
+        return 4;
+    }
+    return ((int(__stdcall **)(CWPluginPrivateContext *, long, long *))record->compilerCallbacks)[1](record, index,
+                                                                                                   id);
+}
+#endif
+
 unsigned int __stdcall CPrep_CallCompilerCallbackWithValue(CWPluginPrivateContext *object_id, unsigned int argument,
                                                            long *value)
 {
@@ -903,6 +918,54 @@ unsigned int __stdcall CPrep_GetResultValues(CWPluginPrivateContext *handle, UIn
     *(struct Value *)second_value = values->second;
     return 0;
 }
+
+#if defined(LINKER) && VERSION >= VERSION_GC_2_7
+extern unsigned int pstrcmp(UInt8 *left, char *right);
+
+/* Two file specs the same. */
+Boolean fn_0042f280(CWFileSpec *a, CWFileSpec *b)
+{
+    if (a->vRefNum != b->vRefNum) {
+        return 0;
+    }
+    if (a->parID != b->parID) {
+        return 0;
+    }
+    if (pstrcmp(a->name, (char *)b->name)) {
+        return 0;
+    }
+    return 1;
+}
+
+/* CWSetTargetInfo: the linker's output, for the shell, as the API version has it. */
+int __stdcall fn_0042f400(CWPluginPrivateContext *context, TgtRec *info)
+{
+    CWPluginPrivateContext *record;
+
+    if (info == NULL) {
+        return 3;
+    }
+    record = validate_context_signature(context);
+    if (record == NULL) {
+        return 4;
+    }
+    if (record->apiVersion >= 10) {
+        *record->targetSettings = *info;
+    } else if (record->apiVersion >= 8) {
+        record->targetSettings->head = info->head;
+    } else {
+        record->firstFile = info->head.firstFile;
+        record->secondFile = info->head.secondFile;
+        record->linkage = info->head.linkage;
+        record->firstByte = info->head.firstByte;
+        record->secondByte = info->head.secondByte;
+        *(UInt8 *)&record->pad234 = info->head.fourthCode != 0;
+        record->thirdCode = info->head.thirdCode;
+        record->fourthCode = info->head.fourthCode;
+    }
+    return 0;
+}
+#endif
 
 int __stdcall CPrep_GetContextPayload(CWPluginPrivateContext *handle, CWFileSpec *destination)
 {
@@ -4897,8 +4960,13 @@ void fn_0043a0a0(char allowInclude)
                 break;
             }
         }
+#ifdef __wasm__
+        /* (wasm passes the 4-byte structure by address: the values x86 passed, as the function takes them) */
+        fn_004401b0((unsigned char *)pointer.filename, policy.searchLocal, allowInclude);
+#else
         ((unsigned char (*)(IncludeFilenamePointer, IncludeSearchPolicy, unsigned char))fn_004401b0)(pointer, policy,
                                                                                                      allowInclude);
+#endif
     }
 }
 

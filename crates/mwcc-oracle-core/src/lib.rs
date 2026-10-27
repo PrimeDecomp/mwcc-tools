@@ -64,6 +64,7 @@ mod temporary;
 pub mod value_history;
 pub mod views;
 pub mod wasm_build;
+pub mod wasm_linker;
 pub mod wasm_oracle;
 pub mod x86;
 

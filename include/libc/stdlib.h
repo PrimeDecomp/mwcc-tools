@@ -20,5 +20,8 @@ void *calloc(size_t nmemb, size_t size);
 void abort(void);
 char *getenv(const char *name);
 double strtod(const char *str, char **end);
+#ifdef __wasm__ /* (else implicitly int: a call through another type traps in wasm) */
+void exit(int status);
+#endif
 
 #endif

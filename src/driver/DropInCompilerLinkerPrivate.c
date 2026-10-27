@@ -21,6 +21,17 @@ int __stdcall fn_0041bcb0(CWPluginPrivateContext *object, struct StorageHandle *
         object, argument2, argument3);
 }
 
+#if defined(LINKER) && VERSION >= VERSION_GC_2_7
+/* A project file's data, by its id (the shell's callback 28). */
+int __stdcall fn_0041a460(CWPluginPrivateContext *context, long id, char ***data)
+{
+    if (has_valid_shell_signature(context) == 0) {
+        return 3;
+    }
+    return ((int(__stdcall *)(CWPluginPrivateContext *, long, char ***))context->callbacks[28])(context, id, data);
+}
+#endif
+
 /* Object with an opaque prefix and a dispatch table. */
 /* Dispatch table; the earlier entries are not used here. */
 /* Opaque instance storage followed by an indexed dispatch table. */

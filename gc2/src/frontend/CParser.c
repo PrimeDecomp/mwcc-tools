@@ -119,7 +119,7 @@ Type stvoid = {TYPEVOID, 0};
 TypePointer void_ptr = {TYPEPOINTER, 0, &stvoid, 0};
 TypeFunc rt_func = {TYPEFUNC, 0, NULL, NULL, &stvoid, 0, 0};
 
-#ifndef __MWERKS__
+#if !defined(__MWERKS__) || defined(__wasm__)
 extern TypeIntegral stcustomtype113;
 extern TypeIntegral stcustomtype114;
 

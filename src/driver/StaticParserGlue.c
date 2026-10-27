@@ -22,7 +22,9 @@ static void *PTR_fn_0053670c[2] = {
 
 int fn_0040534e(void)
 {
+#ifndef __wasm__ /* (ClientGlue.h's: a call through another type traps in wasm) */
     int __stdcall fn_00405280(void *, void *);
+#endif
     return fn_00405280(&PTR_fn_005366e8, &PTR_fn_0053670c);
 }
 
@@ -75,7 +77,12 @@ static char *data_005374c4[79] = {
     "'%s' is a filename, not a directory; not accepted",
     "'%s' is a directory, not a filename; not accepted",
     "Library search found shared library '%s' instead of export library '%s.LIB'",
+#if defined(LINKER) && VERSION >= VERSION_GC_1_2_5
+    /* (the linkers' messages from 1.2.5 on) */
+    "No library file found matching 'lib%s{%s}' or '%s'",
+#else
     "Library file 'lib%s{%s}' not found",
+#endif
     "Redudant use of '%c%s%s'; linker always searches library paths;\ntypically one finds, e.g., libXXX.a with '%c%sXXX'",
     "Empty filename in library list ignored",
     "Environment variable '%s' not found",
@@ -100,7 +107,11 @@ static char *data_005374c4[79] = {
     "Contents of %s:",
     "Overlays not supported on this target",
     "Segments not supported on this target",
+#if defined(LINKER) && VERSION >= VERSION_GC_1_2_5
+    "Cannot open %s file '%s'",
+#else
     "Cannot open response file '%s'",
+#endif
     "",
     "The file '%s' may be ignored unless it has one of the following\nextensions: \"%s\"",
     "Not using non-text file '%s' as optional argument",

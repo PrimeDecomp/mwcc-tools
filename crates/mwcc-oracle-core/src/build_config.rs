@@ -182,7 +182,7 @@ fn listed(config: &Value, key: &str, source: &str) -> bool {
         .as_array()
         .is_some_and(|a| a.iter().any(|v| v == source))
 }
-fn compiler_arguments(
+pub(crate) fn compiler_arguments(
     config: &Value,
     settings: &Value,
     version: usize,
@@ -854,6 +854,13 @@ pub fn generate(root: &Path, request: &Request) -> Result<Generation> {
         ] {
             defaults.push(' ');
             defaults.push_str(&module);
+        }
+        // (the version's linker, from this repository's sources: crate::wasm_linker)
+        let (edges, outputs) = crate::wasm_linker::edges(root, version)?;
+        out.extend(edges);
+        for output in outputs {
+            defaults.push(' ');
+            defaults.push_str(&output);
         }
     }
     out.extend([format!("build all_source: phony {}",objects.iter().map(|p|ninja_path(p)).collect::<Vec<_>>().join(" ")),format!("build progress: phony build/{version}/report.json"),

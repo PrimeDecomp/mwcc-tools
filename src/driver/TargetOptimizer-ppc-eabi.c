@@ -5,6 +5,8 @@
 #include "driver/ParserGlue-eabi-ppc-cc.h"
 #include "driver/StringUtils.h"
 
+/* (the 2.x linker has no scheduling options: not these) */
+#if !(defined(LINKER) && VERSION >= VERSION_GC_2_7)
 /* Data of the original file that none of its linked code uses. */
 static char lbl_0054C5A0 = 5;
 
@@ -93,6 +95,7 @@ unsigned int TargetOptimizer_ppc_eabi_ReportScheduling(struct StorageHandle *arg
 }
 
 #pragma scheduling reset
+#endif
 
 void fn_00420700(void)
 {

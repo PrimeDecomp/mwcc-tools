@@ -176,7 +176,13 @@ Boolean add_subdirectory_access_paths(AccessPaths *ctx, AccessPathEntry *param2)
         DirectorySearch state;
     } bufA;
     OSSpec bufB;
+#if defined(LINKER) && VERSION >= VERSION_GC_2_7
+    /* (2.x: names up to 255 characters) */
+    char bufC[256];
+    char *last;
+#else
     char bufC[67];
+#endif
     Boolean flag;
     DWORD status;
     int count = 0;
@@ -193,6 +199,20 @@ Boolean add_subdirectory_access_paths(AccessPaths *ctx, AccessPathEntry *param2)
             if (flag == 0) {
                 ptr = CLAccessPaths_CreateAccessPathEntry(&bufB.path);
                 name = OS_GetFileNamePtr(bufC);
+#if defined(LINKER) && VERSION >= VERSION_GC_2_7
+                /* (2.x: a directory named "(...)", its trailing separator aside, is skipped; on failure the entry is
+                   freed as well) */
+                last = name + strlen(name) - 1;
+                if (*last == '\\')
+                    last--;
+                if (!(last > name && *name == '(' && *last == ')')) {
+                    if (!CLAccessPaths_StoreItem(ctx, ptr))
+                        break;
+                    s = CLAccessPaths_GetCount(ctx) + 0xFFFF;
+                    if (!add_subdirectory_access_paths(ctx, ptr))
+                        fn_00428b30(ctx, s);
+                }
+#else
                 if (*name != '(' && name[strlen(name) - 2] != ')') {
                     if (!CLAccessPaths_StoreItem(ctx, ptr))
                         break;
@@ -200,6 +220,7 @@ Boolean add_subdirectory_access_paths(AccessPaths *ctx, AccessPathEntry *param2)
                     if (!add_subdirectory_access_paths(ctx, ptr))
                         remove_access_path(ctx, s);
                 }
+#endif
             } else {
                 count++;
                 if (count % 50 == 0 && fn_004151f0())

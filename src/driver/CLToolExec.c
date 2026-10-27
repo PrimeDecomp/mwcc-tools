@@ -12,6 +12,9 @@
 #include "driver/CLPlugins.h"
 #include "driver/Generic.h"
 #include "driver/MacSpecs.h"
+#if VERSION >= VERSION_GC_2_7
+#include "driver/ParserGlue-eabi-ppc-cc.h"
+#endif
 #include "driver/MemUtils.h"
 #include <stdio.h>
 #include <ctype.h>
@@ -119,6 +122,15 @@ int build_tool_command_line(int flags, DropinFileRecord *tool, struct ToolComman
             CLToolExec_AppendArgument(&arguments->argc, &arguments->argv,
                                       OS_SpecToString((OSSpec *)&tool->outputPath, data_005880e0, 260));
         }
+#if VERSION >= VERSION_GC_2_7
+        /* (2.x: the disassembly's output file, when it is written to disk) */
+        if ((pCmdLine.toDisk & 4) != 0 && (tool->outputArgumentMask & 1) != 0 && tool->outputName[0] != 0 &&
+            CLFileOps_SetupOutputPath(tool, 4) != 0) {
+            CLToolExec_AppendArgument(&arguments->argc, &arguments->argv, "-o");
+            CLToolExec_AppendArgument(&arguments->argc, &arguments->argv,
+                                      OS_SpecToString((OSSpec *)&tool->outputPath, data_005880e0, 260));
+        }
+#endif
     } else {
         if ((flags & 1073741824) != 0) {
             MacSpecs_MakeOSSpec(&default_target->settings->head.firstFile, &path);
@@ -229,7 +241,11 @@ int CLToolExec_ExecuteLinker(Plugin *tool, UInt32 flags, DropinFileRecord *argum
         if ((cursor = strstr(fallbackName, "cc")) != NULL || (cursor = strstr(fallbackName, "pas")) != NULL ||
             (cursor = strstr(fallbackName, "asm")) != NULL) {
             if (*cursor != 'c') {
+#if VERSION >= VERSION_GC_2_7
+                memmove((char *)((long)cursor + 2), (char *)((long)cursor + 3), strlen(cursor) - 3);
+#else
                 memmove(cursor + 2, cursor + 3, strlen(cursor) - 3);
+#endif
                 cursor[strlen(cursor) - 1] = '\0';
             }
             cursor[0] = 'l';
@@ -237,10 +253,15 @@ int CLToolExec_ExecuteLinker(Plugin *tool, UInt32 flags, DropinFileRecord *argum
         } else {
             cursor = strstr(fallbackName, "mwc");
             if (cursor != NULL) {
+#if VERSION >= VERSION_GC_2_7
+                memmove((char *)((long)cursor + 2) + 3, (char *)((long)cursor + 2), strlen(cursor + 2));
+                memcpy(cursor + 2, "Link", 4);
+#else
                 char *suffix = cursor + 2;
                 memmove(suffix + 3, cursor + 2, strlen(cursor + 2));
                 cursor += 2;
                 memcpy(cursor, "Link", 4);
+#endif
             }
         }
 
@@ -267,14 +288,23 @@ int CLToolExec_ExecuteLinker(Plugin *tool, UInt32 flags, DropinFileRecord *argum
     command.argv[command.argc] = NULL;
 
     if (optsCmdLine.verbose != 0 || optsCmdLine.dryRun != 0) {
+#if VERSION >= VERSION_GC_2_7
+        /* (2.x: the command line set off by blank lines) */
+        CLIO_FormatAndDispatchText("\nCommand line:\n");
+#else
         CLIO_FormatAndDispatchText("Command line:\n");
+#endif
         for (index = 0; index < command.argc && command.argv[index] != NULL; index++) {
             if (strchr(command.argv[index], ' ') != NULL)
                 CLIO_FormatAndDispatchText("\"%s\" ", command.argv[index]);
             else
                 CLIO_FormatAndDispatchText("%s ", command.argv[index]);
         }
+#if VERSION >= VERSION_GC_2_7
+        CLIO_FormatAndDispatchText("\n\n");
+#else
         CLIO_FormatAndDispatchText("\n");
+#endif
     }
 
     fflush(stdout);

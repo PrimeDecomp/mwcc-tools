@@ -135,6 +135,8 @@ pub struct Request {
     pub source_nodes: bool,
     /// Another oracle to compare the oracle's trace with (the same streams, on each input).
     pub trace_reference: Option<PathBuf>,
+    /// The records left out of that comparison, by prefix (`--ignore st.`): the streams one side is known to lack.
+    pub ignore: Vec<String>,
     /// A compiler run in this process instead of the oracle (`executable` is then the path it runs as).
     pub in_process: Option<InProcess>,
 }
@@ -320,6 +322,19 @@ fn provenance_records(trace: &str, streams: &[&str]) -> Vec<String> {
 }
 
 /// How trace OURS differs from THEIRS, if it does: comparable_record's, and provenance_records' of the STREAMS.
+/// TRACE without the records that begin with one of PREFIXES.
+fn without(trace: &str, prefixes: &[String]) -> String {
+    if prefixes.is_empty() {
+        return trace.to_owned();
+    }
+    trace
+        .lines()
+        .filter(|line| !prefixes.iter().any(|p| line.starts_with(p.as_str())))
+        .collect::<Vec<_>>()
+        .join("
+")
+}
+
 pub fn trace_difference_with(ours: &str, theirs: &str, streams: &[&str]) -> Option<String> {
     let records = |trace: &str| -> Vec<String> {
         let mut out: Vec<String> = trace.lines().filter_map(comparable_record).collect();
@@ -508,7 +523,11 @@ pub fn run(request: &Request) -> Result<Report> {
             ));
         }
         if let Some((ours, theirs)) = &traces
-            && let Some(difference) = trace_difference_with(ours, theirs, &streams)
+            && let Some(difference) = trace_difference_with(
+                &without(ours, &request.ignore),
+                &without(theirs, &request.ignore),
+                &streams,
+            )
         {
             problems.push(difference);
         }

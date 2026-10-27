@@ -12,6 +12,36 @@
 
 #pragma auto_inline reset
 
+#if VERSION >= VERSION_GC_2_7
+/* (2.x: here, not in CLPrefs.c) */
+unsigned int CLPrefs_ConvertLoneLFToCR(StorageHandle *buffer)
+{
+    char *start;
+    UInt32 length;
+    char *cursor;
+
+    fn_00413a00(buffer);
+    start = buffer->data;
+    length = Memory_GetHandleSize(buffer);
+    cursor = start;
+    while (cursor < start + length) {
+        if (cursor[0] == '\r') {
+            if (cursor[1] == '\n')
+                cursor += 2;
+            else
+                cursor += 1;
+        } else if (cursor[0] == '\n') {
+            cursor[0] = '\r';
+            cursor++;
+        } else {
+            cursor++;
+        }
+    }
+    fn_00413a50(buffer);
+    return 0;
+}
+#endif
+
 int CLLoadAndCache_GetFileText(OSSpec *path, StorageHandle **outHandle, UInt8 *outFlag)
 {
     UInt32 filetype;

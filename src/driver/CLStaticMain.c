@@ -12,6 +12,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+/* (the 2.x driver's is built without instruction scheduling) */
+#if VERSION >= VERSION_GC_2_7
+#pragma scheduling off
+#endif
+
 int main(int argc, char **argv)
 {
     SInt32 primaryToolIdentifier, secondaryToolIdentifier;
@@ -51,6 +56,11 @@ int main(int argc, char **argv)
             fprintf(stderr, "\r\nErrors caused tool to abort.\r\n");
     }
     fn_00405340(result);
+#if VERSION >= VERSION_GC_2_7
+    /* (the 2.x driver returns its status) */
+    return result;
+#else
     exit(result);
     return 0;
+#endif
 }

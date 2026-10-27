@@ -48,7 +48,7 @@ const PLATFORM: &[(&str, &str)] = &[
 ];
 const LIBRARY: &str = "src/driver/CLIO.c";
 /// The tag `longjmp` throws (an assembly source).
-const TAG: &str = "wasm/src/sjlj_tag.s";
+pub(crate) const TAG: &str = "wasm/src/sjlj_tag.s";
 
 pub fn supported(version: &str) -> bool {
     VERSIONS.contains(&version)
@@ -131,7 +131,7 @@ pub struct Unit {
 }
 
 /// clang's arguments for SOURCE (of the tree at PREFIX) from the build's ARGUMENTS for it.
-fn clang_arguments(source: &str, prefix: &str, arguments: &[String]) -> Vec<String> {
+pub(crate) fn clang_arguments(source: &str, prefix: &str, arguments: &[String]) -> Vec<String> {
     let cpp = source.ends_with(".cpp") || source.ends_with(".cp");
     let mut options = vec!["little_endian", "longlong"];
     if cpp {
@@ -251,7 +251,7 @@ pub fn units(root: &Path, version: &str) -> Result<Vec<Unit>> {
 }
 
 /// An argument as the build's shell reads it (the arguments have no quotes or spaces but for `-D__option(x)=...`).
-fn quote(argument: &str) -> String {
+pub(crate) fn quote(argument: &str) -> String {
     let argument = argument.replace('$', "$$");
     if argument.contains(['(', ')', '#', ' ']) {
         format!("\"{argument}\"")

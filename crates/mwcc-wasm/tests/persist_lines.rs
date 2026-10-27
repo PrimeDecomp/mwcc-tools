@@ -91,6 +91,7 @@ fn lines_match(version: &str, context: &str, extra: &[&str]) {
         overlay,
         transcode_sjis: false,
         record_reads: false,
+        command_line: None,
     };
     let mut persistent = loaded
         .compiler

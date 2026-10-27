@@ -8,6 +8,10 @@
 #include "driver/Files.h"
 #include "driver/Generic.h"
 #include "driver/StringUtils.h"
+#if VERSION >= VERSION_GC_2_7
+#include "driver/MsDos.h"
+__declspec(dllimport) DWORD __stdcall GetShortPathNameA(const char *longPath, char *shortPath, DWORD length);
+#endif
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -19,9 +23,38 @@ static struct NameRegistryEntry *spec_name_registry;
 static struct MacSpecEntry **mac_spec_entries[256];
 static unsigned int directory_count;
 static char data_0057e818[64];
+#if VERSION >= VERSION_GC_2_7
+/* (2.x: the directory and a path of its own, of 260 each) */
+static char data_0057e858[260];
+static char data_0057e95c[260];
+#else
 static char data_0057e858[520];
+#endif
 static char file_name_buffer[256];
 
+#if VERSION >= VERSION_GC_2_7
+int store_mac_spec_entry(MacSpecEntry *entry)
+{
+    unsigned int row;
+    unsigned int col;
+
+    row = entry->index >> 8;
+    col = entry->index & 0xff;
+    while (row >= directory_count) {
+        if (row >= 0x100) {
+            fprintf(stderr, "Fatal error:  too many directories referenced, out of memory\n");
+            return 0;
+        }
+        mac_spec_entries[row] = calloc(sizeof(*mac_spec_entries[row]), 0x100);
+        if (mac_spec_entries[row] == NULL) {
+            return 0;
+        }
+        directory_count++;
+    }
+    mac_spec_entries[row][col] = entry;
+    return 1;
+}
+#else
 int store_mac_spec_entry(MacSpecEntry *entry)
 {
     unsigned int index = entry->index;
@@ -45,6 +78,7 @@ int store_mac_spec_entry(MacSpecEntry *entry)
     mac_spec_entries[directory][slot] = entry;
     return 1;
 }
+#endif
 
 struct NameRegistryEntry *find_or_create_name_registry_entry(struct NameRegistryEntry **entries, char *name)
 {
@@ -128,6 +162,52 @@ MacSpecEntry *find_or_create_child_entry(MacSpecEntry *table, char *name)
     return entry;
 }
 
+#if VERSION >= VERSION_GC_2_7
+int find_or_create_spec_entry(OSPathSpec *spec, unsigned int *typePtr, unsigned int *offsetPtr)
+{
+    NameRegistryEntry *node;
+    MacSpecEntry *rec;
+    char str[0x104];
+    char name[0x40];
+    char buf[0x104];
+    char *p;
+    char *tok;
+    char ch;
+    Boolean last;
+
+    if (!OS_PathSpecToString(spec, buf, 0x104))
+        return 0;
+    if (!buf[0])
+        return 0;
+    p = OS_GetDirPtr(buf);
+    strncpy(name, buf, p - buf);
+    name[p - buf] = '\0';
+    strcpy(str, p);
+    node = find_or_create_name_registry_entry(&spec_name_registry, name);
+    if (node == NULL)
+        return 0;
+    *typePtr = node->id;
+    rec = &node->root;
+    p = &str[1];
+    if (str[0] != '\\')
+        CLIO_ReportAssertionFailure("*pb == OS_PATHSEP", "MacSpecs.c", 267);
+    while (*p) {
+        tok = p;
+        while ((ch = *p) && ch != '\\')
+            ++p;
+        last = ch == 0;
+        *p = 0;
+        rec = find_or_create_child_entry(rec, tok);
+        if (last)
+            break;
+        ++p;
+        if (rec == NULL)
+            return 0;
+    }
+    *offsetPtr = rec->index;
+    return 1;
+}
+#else
 int find_or_create_spec_entry(OSPathSpec *spec, unsigned int *typePtr, unsigned int *offsetPtr)
 {
     char str[0x104];
@@ -166,6 +246,7 @@ int find_or_create_spec_entry(OSPathSpec *spec, unsigned int *typePtr, unsigned 
     *offsetPtr = rec->index;
     return 1;
 }
+#endif
 
 void lookup_spec_and_advance_parent(int *id, int *kind, unsigned int **result)
 {
@@ -206,6 +287,48 @@ int find_or_create_spec_entry_negated(OSPathSpec *input, unsigned int *firstResu
     return 0;
 }
 
+#if VERSION >= VERSION_GC_2_7
+int build_name_and_backslash_path(int a, int b, void *buffer1, void *buffer2)
+{
+    unsigned int *arr[256];
+    unsigned int *val;
+    int n;
+    int length;
+    char *p;
+
+    a = -a;
+    n = 0;
+    do {
+        lookup_spec_and_advance_parent(&a, &b, &val);
+        if (val != NULL)
+            arr[n++] = val;
+    } while (val != NULL);
+
+    if (n) {
+        strcpy((char *)buffer1, (char *)*arr[--n]);
+    } else {
+        ((char *)buffer1)[0] = 0;
+        ((char *)buffer2)[0] = 0;
+        return 0;
+    }
+
+    p = buffer2;
+    *(p++) = '\\';
+    while (n--) {
+        length = strlen((char *)*arr[n]);
+        if ((p - (char *)buffer2) + length + 1 > 0x104) {
+            *p = 0;
+            return 0;
+        } else {
+            memcpy(p, (char *)*arr[n], length);
+            p += length;
+            *(p++) = '\\';
+        }
+    }
+    *p = 0;
+    return 1;
+}
+#else
 int build_name_and_backslash_path(int a, int b, void *buffer1, void *buffer2)
 {
     int n;
@@ -254,6 +377,7 @@ int build_name_and_backslash_path(int a, int b, void *buffer1, void *buffer2)
     *p = 0;
     return 1;
 }
+#endif
 
 int __stdcall parse_value_and_offset(OSPathSpec *text, unsigned short *value, unsigned int *offset)
 {
@@ -270,6 +394,48 @@ int __stdcall parse_value_and_offset(OSPathSpec *text, unsigned short *value, un
     return 3;
 }
 
+#if VERSION >= VERSION_GC_2_7
+/* (2.x: a name too long for a Mac spec is its short (8.3) name) */
+static int fn_00413f50(OSSpec *spec)
+{
+    char path[0x104];
+    char shortPath[0x104];
+    int err;
+
+    strcpy(path, OS_PathSpecToString(&spec->path, data_005880e0, 0x104));
+    if (!GetShortPathNameA(path, shortPath, 0x104))
+        return GetLastError();
+    strcpy(path, shortPath);
+    strcat(path, OS_NameSpecToString(&spec->name, data_005880e0, 0x104));
+    if (!GetShortPathNameA(path, shortPath, 0x104))
+        err = OS_MakeSpec(path, spec, NULL);
+    else
+        err = OS_MakeSpec(shortPath, spec, NULL);
+    return err;
+}
+
+int __stdcall OS_OSSpec_To_FSSpec(OSSpec *input, CWFileSpec *output)
+{
+    int status;
+    UInt16 volumeRef;
+    unsigned int directoryId;
+    char *name;
+
+    status = parse_value_and_offset(&input->path, &volumeRef, &directoryId);
+    output->vRefNum = volumeRef;
+    output->parID = directoryId;
+    if (status != 0)
+        return status;
+    name = OS_NameSpecToString(&input->name, data_005880e0, 0x104);
+    if (!name || strlen(name) >= 64) {
+        OSSpec shortened = *input;
+        fn_00413f50(&shortened);
+        name = OS_NameSpecToString(&shortened.name, data_005880e0, 0x104);
+    }
+    c2pstrcpy(output->name, name);
+    return 0;
+}
+#else
 int __stdcall OS_OSSpec_To_FSSpec(OSSpec *input, CWFileSpec *output)
 {
     UInt16 volumeRef;
@@ -288,6 +454,7 @@ int __stdcall OS_OSSpec_To_FSSpec(OSSpec *input, CWFileSpec *output)
     c2pstrcpy(output->name, file_name_buffer);
     return 0;
 }
+#endif
 
 DWORD __stdcall fn_00413670(short kind, int value, OSPathSpec *path)
 {

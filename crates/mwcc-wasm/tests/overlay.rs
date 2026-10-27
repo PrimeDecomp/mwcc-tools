@@ -54,6 +54,7 @@ fn compile(
         overlay,
         transcode_sjis,
         record_reads: true,
+        command_line: None,
     };
     // (a module without version information beside it, as the stock one: compiled once to its cache)
     let outcome = if module.with_extension("version").is_file() {
@@ -235,6 +236,7 @@ fn a_persistent_compile_reads_the_overlay() {
                 overlay: Some(&overlay),
                 transcode_sjis: false,
                 record_reads: false,
+                command_line: None,
             },
             capacity,
         )
@@ -293,6 +295,7 @@ fn a_persistent_candidate_is_read_as_shift_jis() {
                 overlay: None,
                 transcode_sjis: true,
                 record_reads: false,
+                command_line: None,
             },
             capacity,
         )

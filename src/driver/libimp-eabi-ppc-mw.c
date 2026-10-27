@@ -8,7 +8,11 @@
 
 #pragma scheduling off
 
+#if defined(LINKER) && VERSION >= VERSION_GC_2_7
+static PluginDesc data_00549eb0 = {2, 'Comp', 8, 0x80400000, '????', 12};
+#else
 static PluginDesc data_00549eb0 = {2, 'Comp', 8, 0x80400000, '????', 11};
+#endif
 
 int __stdcall get_stored_name_and_length(char **name, int *length)
 {
@@ -65,7 +69,12 @@ unsigned int __stdcall set_next_from_global(struct ListLink *node)
 
 #pragma optimization_level reset
 
+#if defined(LINKER) && VERSION >= VERSION_GC_2_7
+/* (the 2.x linker's plugin versions are four shorts: 2.4.1, build 32) */
+static UInt16 data_00549fd4[4] = {2, 4, 1, 32};
+#else
 static PluginVersion data_00549fd4 = {2, 3, 3, PLUGIN_BUILD};
+#endif
 
 #pragma scheduling off
 

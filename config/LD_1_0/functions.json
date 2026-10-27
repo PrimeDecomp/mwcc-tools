@@ -1,0 +1,8734 @@
+[
+  {
+    "name": "mainCRTStartup",
+    "address": "0x00401000",
+    "size": 104,
+    "source": "src/runtime/maincrt.c"
+  },
+  {
+    "name": "_MWCHandler",
+    "address": "0x00401070",
+    "size": 148,
+    "source": "src/runtime/exchand.cpp"
+  },
+  {
+    "name": "_RegisterExceptionTables",
+    "address": "0x00401110",
+    "size": 60,
+    "source": "src/runtime/ExceptionX86.cpp"
+  },
+  {
+    "name": "?ExX86_FindExceptionRecord@@YAXPADPAUExceptionInfo@@@Z",
+    "address": "0x00401150",
+    "size": 403,
+    "source": "src/runtime/ExceptionX86.cpp"
+  },
+  {
+    "name": "?ExX86_CurrentAction@@YAGPBUActionIterator@@@Z",
+    "address": "0x004012f0",
+    "size": 25,
+    "source": "src/runtime/ExceptionX86.cpp"
+  },
+  {
+    "name": "?ExX86_NextAction@@YAGPAUActionIterator@@@Z",
+    "address": "0x00401310",
+    "size": 237,
+    "source": "src/runtime/ExceptionX86.cpp"
+  },
+  {
+    "name": "?ExX86_PopStackFrame@@YAPADPAUThrowContext@@PAUExceptionInfo@@@Z",
+    "address": "0x00401400",
+    "size": 85,
+    "source": "src/runtime/ExceptionX86.cpp"
+  },
+  {
+    "name": "?ExX86_GetValue@@YAJPAUThrowContext@@JF@Z",
+    "address": "0x00401460",
+    "size": 202,
+    "source": "src/runtime/ExceptionX86.cpp"
+  },
+  {
+    "name": "?ExX86_DestroyLocal@@YAXPAUThrowContext@@PBUex_destroylocal@@@Z",
+    "address": "0x00401530",
+    "size": 22,
+    "source": "src/runtime/ExceptionX86.cpp"
+  },
+  {
+    "name": "?ExX86_DestroyLocalCond@@YAXPAUThrowContext@@PBUex_destroylocalcond@@@Z",
+    "address": "0x00401550",
+    "size": 50,
+    "source": "src/runtime/ExceptionX86.cpp"
+  },
+  {
+    "name": "?ExX86_DestroyLocalPointer@@YAXPAUThrowContext@@PBUex_destroylocalpointer@@@Z",
+    "address": "0x00401590",
+    "size": 38,
+    "source": "src/runtime/ExceptionX86.cpp"
+  },
+  {
+    "name": "?ExX86_DestroyLocalArray@@YAXPAUThrowContext@@PBUex_destroylocalarray@@@Z",
+    "address": "0x004015c0",
+    "size": 68,
+    "source": "src/runtime/ExceptionX86.cpp"
+  },
+  {
+    "name": "?ExX86_DestroyPartialArray@@YAXPAUThrowContext@@PBUex_destroypartialarray@@@Z",
+    "address": "0x00401610",
+    "size": 118,
+    "source": "src/runtime/ExceptionX86.cpp"
+  },
+  {
+    "name": "?ExX86_DestroyMember@@YAXPAUThrowContext@@PBUex_destroymember@@H@Z",
+    "address": "0x00401690",
+    "size": 41,
+    "source": "src/runtime/ExceptionX86.cpp"
+  },
+  {
+    "name": "?ExX86_DestroyMemberCond@@YAXPAUThrowContext@@PBUex_destroymembercond@@@Z",
+    "address": "0x004016c0",
+    "size": 62,
+    "source": "src/runtime/ExceptionX86.cpp"
+  },
+  {
+    "name": "?ExX86_DestroyMemberArray@@YAXPAUThrowContext@@PBUex_destroymemberarray@@@Z",
+    "address": "0x00401700",
+    "size": 84,
+    "source": "src/runtime/ExceptionX86.cpp"
+  },
+  {
+    "name": "?ExX86_DeletePointer@@YAXPAUThrowContext@@PBUex_deletepointer@@@Z",
+    "address": "0x00401760",
+    "size": 36,
+    "source": "src/runtime/ExceptionX86.cpp"
+  },
+  {
+    "name": "?ExX86_DeletePointerCond@@YAXPAUThrowContext@@PBUex_deletepointercond@@@Z",
+    "address": "0x00401790",
+    "size": 57,
+    "source": "src/runtime/ExceptionX86.cpp"
+  },
+  {
+    "name": "?ExX86_UnwindStack@@YAXPAUThrowContext@@PAUExceptionInfo@@PAX@Z",
+    "address": "0x004017d0",
+    "size": 432,
+    "source": "src/runtime/ExceptionX86.cpp"
+  },
+  {
+    "name": "?ExX86_IsInSpecification@@YAHPADPAUex_specification@@@Z",
+    "address": "0x00401980",
+    "size": 73,
+    "source": "src/runtime/ExceptionX86.cpp"
+  },
+  {
+    "name": "__unexpected",
+    "address": "0x004019d0",
+    "size": 137,
+    "source": "src/runtime/ExceptionX86.cpp"
+  },
+  {
+    "name": "??1bad_exception@std@@UAE@XZ",
+    "address": "0x00401a60",
+    "size": 15,
+    "source": "src/runtime/ExceptionX86.cpp"
+  },
+  {
+    "name": "??1exception@std@@UAE@XZ",
+    "address": "0x00401a70",
+    "size": 9,
+    "source": "src/runtime/ExceptionX86.cpp"
+  },
+  {
+    "name": "?ExX86_HandleUnexpected@@YAXPAUThrowContext@@PAUExceptionInfo@@PAUex_specification@@@Z",
+    "address": "0x00401a80",
+    "size": 102,
+    "source": "src/runtime/ExceptionX86.cpp"
+  },
+  {
+    "name": "?ExX86_ThrowHandler@@YAXPAUThrowContext@@@Z",
+    "address": "0x00401af0",
+    "size": 495,
+    "source": "src/runtime/ExceptionX86.cpp"
+  },
+  {
+    "name": "__throw",
+    "address": "0x00401ce0",
+    "size": 59,
+    "source": "src/runtime/ExceptionX86.cpp"
+  },
+  {
+    "name": "??_Ebad_exception@std@@UAE@I@Z",
+    "address": "0x00401d20",
+    "size": 74,
+    "source": "src/runtime/ExceptionX86.cpp"
+  },
+  {
+    "name": "?what@bad_exception@std@@UBEPBDXZ",
+    "address": "0x00401d70",
+    "size": 16,
+    "source": "src/runtime/ExceptionX86.cpp"
+  },
+  {
+    "name": "??_Eexception@std@@UAE@I@Z",
+    "address": "0x00401d80",
+    "size": 68,
+    "source": "src/runtime/ExceptionX86.cpp"
+  },
+  {
+    "name": "?what@exception@std@@UBEPBDXZ",
+    "address": "0x00401dd0",
+    "size": 16,
+    "source": "src/runtime/ExceptionX86.cpp"
+  },
+  {
+    "name": "fn_00401de0",
+    "address": "0x00401de0",
+    "size": 6
+  },
+  {
+    "name": "fn_00401df0",
+    "address": "0x00401df0",
+    "size": 455
+  },
+  {
+    "name": "_InitializeThreadDataIndex",
+    "address": "0x00401fc0",
+    "size": 61,
+    "source": "src/msl/ThreadLocalData.c"
+  },
+  {
+    "name": "_DisposeThreadDataIndex",
+    "address": "0x00402000",
+    "size": 39,
+    "source": "src/msl/ThreadLocalData.c"
+  },
+  {
+    "name": "_InitializeThreadData",
+    "address": "0x00402030",
+    "size": 66,
+    "source": "src/msl/ThreadLocalData.c"
+  },
+  {
+    "name": "_InitializeMainThreadData",
+    "address": "0x00402080",
+    "size": 35,
+    "source": "src/msl/ThreadLocalData.c"
+  },
+  {
+    "name": "_GetThreadLocalData",
+    "address": "0x004020b0",
+    "size": 119,
+    "source": "src/msl/ThreadLocalData.c"
+  },
+  {
+    "name": "abort",
+    "address": "0x00402130",
+    "size": 27,
+    "source": "src/msl/abort_exit.c"
+  },
+  {
+    "name": "__atexit",
+    "address": "0x00402150",
+    "size": 58,
+    "source": "src/msl/abort_exit.c"
+  },
+  {
+    "name": "exit",
+    "address": "0x00402190",
+    "size": 106,
+    "source": "src/msl/abort_exit.c"
+  },
+  {
+    "name": "__exit",
+    "address": "0x00402200",
+    "size": 97,
+    "source": "src/msl/abort_exit.c"
+  },
+  {
+    "name": "_FreeCommandLine",
+    "address": "0x00402270",
+    "size": 58,
+    "source": "src/runtime/setupargs.c"
+  },
+  {
+    "name": "_MemFailure",
+    "address": "0x004022b0",
+    "size": 21,
+    "source": "src/runtime/setupargs.c"
+  },
+  {
+    "name": "_SetupArgs",
+    "address": "0x004022d0",
+    "size": 369,
+    "source": "src/runtime/setupargs.c"
+  },
+  {
+    "name": "_RunInit",
+    "address": "0x00402450",
+    "size": 45,
+    "source": "src/runtime/runinit.c"
+  },
+  {
+    "name": "main",
+    "address": "0x00402480",
+    "size": 309,
+    "source": "src/driver/CLStaticMain.c"
+  },
+  {
+    "name": "?dthandler@std@@YAXXZ",
+    "address": "0x004025c0",
+    "size": 12,
+    "source": "src/runtime/NMWException.cpp"
+  },
+  {
+    "name": "?duhandler@std@@YAXXZ",
+    "address": "0x004025d0",
+    "size": 12,
+    "source": "src/runtime/NMWException.cpp"
+  },
+  {
+    "name": "?terminate@std@@YAXXZ",
+    "address": "0x004025e0",
+    "size": 13,
+    "source": "src/runtime/NMWException.cpp"
+  },
+  {
+    "name": "?unexpected@std@@YAXXZ",
+    "address": "0x004025f0",
+    "size": 13,
+    "source": "src/runtime/NMWException.cpp"
+  },
+  {
+    "name": "__throw_catch_compare",
+    "address": "0x00402600",
+    "size": 287,
+    "source": "src/runtime/NMWException.cpp"
+  },
+  {
+    "name": "parse_format",
+    "address": "0x00402720",
+    "size": 804,
+    "source": "src/msl/printf.c"
+  },
+  {
+    "name": "fn_00402a50",
+    "address": "0x00402a50",
+    "size": 454
+  },
+  {
+    "name": "longlong2str",
+    "address": "0x00402c20",
+    "size": 613,
+    "source": "src/msl/printf.c"
+  },
+  {
+    "name": "round_decimal",
+    "address": "0x00402e90",
+    "size": 213,
+    "source": "src/msl/printf.c"
+  },
+  {
+    "name": "float2str",
+    "address": "0x00402f70",
+    "size": 1147,
+    "source": "src/msl/printf.c"
+  },
+  {
+    "name": "fn_004033f0",
+    "address": "0x004033f0",
+    "size": 1656
+  },
+  {
+    "name": "__FileWrite",
+    "address": "0x00403a70",
+    "size": 40,
+    "source": "src/msl/printf.c"
+  },
+  {
+    "name": "__StringWrite",
+    "address": "0x00403aa0",
+    "size": 60,
+    "source": "src/msl/printf.c"
+  },
+  {
+    "name": "printf",
+    "address": "0x00403ae0",
+    "size": 95,
+    "source": "src/msl/printf.c"
+  },
+  {
+    "name": "fprintf",
+    "address": "0x00403b40",
+    "size": 95,
+    "source": "src/msl/printf.c"
+  },
+  {
+    "name": "vsnprintf",
+    "address": "0x00403ba0",
+    "size": 78,
+    "source": "src/msl/printf.c"
+  },
+  {
+    "name": "vsprintf",
+    "address": "0x00403bf0",
+    "size": 26,
+    "source": "src/msl/printf.c"
+  },
+  {
+    "name": "sprintf",
+    "address": "0x00403c10",
+    "size": 63,
+    "source": "src/msl/printf.c"
+  },
+  {
+    "name": "__destroy_new_array",
+    "address": "0x00403c50",
+    "size": 105,
+    "source": "src/runtime/arrcondes.cpp"
+  },
+  {
+    "name": "??3@YAXPAX@Z",
+    "address": "0x00403cc0",
+    "size": 34,
+    "source": "src/runtime/delop.cpp"
+  },
+  {
+    "name": "__init_critical_regions",
+    "address": "0x00403cf0",
+    "size": 35,
+    "source": "src/msl/critical_regions.win32.c"
+  },
+  {
+    "name": "__kill_critical_regions",
+    "address": "0x00403d20",
+    "size": 35,
+    "source": "src/msl/critical_regions.win32.c"
+  },
+  {
+    "name": "__begin_critical_region",
+    "address": "0x00403d50",
+    "size": 20,
+    "source": "src/msl/critical_regions.win32.c"
+  },
+  {
+    "name": "__end_critical_region",
+    "address": "0x00403d70",
+    "size": 20,
+    "source": "src/msl/critical_regions.win32.c"
+  },
+  {
+    "name": "fn_00403d90",
+    "address": "0x00403d90",
+    "size": 93
+  },
+  {
+    "name": "Block_subBlock",
+    "address": "0x00403df0",
+    "size": 154,
+    "source": "src/msl/alloc.c"
+  },
+  {
+    "name": "fn_00403e90",
+    "address": "0x00403e90",
+    "size": 140
+  },
+  {
+    "name": "Block_unlink",
+    "address": "0x00403f20",
+    "size": 100,
+    "source": "src/msl/alloc.c"
+  },
+  {
+    "name": "SubBlock_construct",
+    "address": "0x00403f90",
+    "size": 75,
+    "source": "src/msl/alloc.c"
+  },
+  {
+    "name": "fn_00403fe0",
+    "address": "0x00403fe0",
+    "size": 177
+  },
+  {
+    "name": "SubBlock_merge_prev",
+    "address": "0x004040a0",
+    "size": 150,
+    "source": "src/msl/alloc.c"
+  },
+  {
+    "name": "SubBlock_merge_next",
+    "address": "0x00404140",
+    "size": 153,
+    "source": "src/msl/alloc.c"
+  },
+  {
+    "name": "fn_004041e0",
+    "address": "0x004041e0",
+    "size": 65
+  },
+  {
+    "name": "unlink",
+    "address": "0x00404230",
+    "size": 57,
+    "source": "src/msl/alloc.c"
+  },
+  {
+    "name": "link_new_block",
+    "address": "0x00404270",
+    "size": 70,
+    "source": "src/msl/alloc.c"
+  },
+  {
+    "name": "allocate_from_var_pools",
+    "address": "0x004042c0",
+    "size": 145,
+    "source": "src/msl/alloc.c"
+  },
+  {
+    "name": "deallocate_from_var_pools",
+    "address": "0x00404360",
+    "size": 103,
+    "source": "src/msl/alloc.c"
+  },
+  {
+    "name": "fn_004043d0",
+    "address": "0x004043d0",
+    "size": 218
+  },
+  {
+    "name": "allocate_from_fixed_pools",
+    "address": "0x004044b0",
+    "size": 174,
+    "source": "src/msl/alloc.c"
+  },
+  {
+    "name": "deallocate_from_fixed_pools",
+    "address": "0x00404560",
+    "size": 119,
+    "source": "src/msl/alloc.c"
+  },
+  {
+    "name": "malloc",
+    "address": "0x004045e0",
+    "size": 58,
+    "source": "src/msl/alloc.c"
+  },
+  {
+    "name": "free",
+    "address": "0x00404620",
+    "size": 113,
+    "source": "src/msl/alloc.c"
+  },
+  {
+    "name": "realloc",
+    "address": "0x004046a0",
+    "size": 435,
+    "source": "src/msl/alloc.c"
+  },
+  {
+    "name": "calloc",
+    "address": "0x00404860",
+    "size": 37,
+    "source": "src/msl/alloc.c"
+  },
+  {
+    "name": "close",
+    "address": "0x00404890",
+    "size": 98,
+    "source": "src/msl/unistd.win32.c"
+  },
+  {
+    "name": "lseek",
+    "address": "0x00404900",
+    "size": 109,
+    "source": "src/msl/unistd.win32.c"
+  },
+  {
+    "name": "read",
+    "address": "0x00404970",
+    "size": 229,
+    "source": "src/msl/unistd.win32.c"
+  },
+  {
+    "name": "write",
+    "address": "0x00404a60",
+    "size": 263,
+    "source": "src/msl/unistd.win32.c"
+  },
+  {
+    "name": "memmove",
+    "address": "0x00404b70",
+    "size": 134,
+    "source": "src/msl/mem.c"
+  },
+  {
+    "name": "memcpy",
+    "address": "0x00404c00",
+    "size": 64,
+    "source": "src/msl/mem.c"
+  },
+  {
+    "name": "__memrchr",
+    "address": "0x00404c40",
+    "size": 32,
+    "source": "src/msl/mem.c"
+  },
+  {
+    "name": "signal",
+    "address": "0x00404c60",
+    "size": 74,
+    "source": "src/msl/signal.c"
+  },
+  {
+    "name": "raise",
+    "address": "0x00404cb0",
+    "size": 107,
+    "source": "src/msl/signal.c"
+  },
+  {
+    "name": "__destroy_global_chain",
+    "address": "0x00404d20",
+    "size": 45,
+    "source": "src/runtime/globdest.c"
+  },
+  {
+    "name": "strcpy",
+    "address": "0x00404d50",
+    "size": 27,
+    "source": "src/msl/string.c"
+  },
+  {
+    "name": "strncpy",
+    "address": "0x00404d70",
+    "size": 41,
+    "source": "src/msl/string.c"
+  },
+  {
+    "name": "strcat",
+    "address": "0x00404da0",
+    "size": 33,
+    "source": "src/msl/string.c"
+  },
+  {
+    "name": "strcmp",
+    "address": "0x00404dd0",
+    "size": 46,
+    "source": "src/msl/string.c"
+  },
+  {
+    "name": "strncmp",
+    "address": "0x00404e00",
+    "size": 54,
+    "source": "src/msl/string.c"
+  },
+  {
+    "name": "strchr",
+    "address": "0x00404e40",
+    "size": 39,
+    "source": "src/msl/string.c"
+  },
+  {
+    "name": "strrchr",
+    "address": "0x00404e70",
+    "size": 53,
+    "source": "src/msl/string.c"
+  },
+  {
+    "name": "strpbrk",
+    "address": "0x00404eb0",
+    "size": 120,
+    "source": "src/msl/string.c"
+  },
+  {
+    "name": "strstr",
+    "address": "0x00404f30",
+    "size": 84,
+    "source": "src/msl/string.c"
+  },
+  {
+    "name": "fn_00404f90",
+    "address": "0x00404f90",
+    "size": 18
+  },
+  {
+    "name": "fn_00404fb0",
+    "address": "0x00404fb0",
+    "size": 149
+  },
+  {
+    "name": "fn_004050e0",
+    "address": "0x00405050",
+    "size": 94,
+    "source": "src/driver/ClientGlue.c"
+  },
+  {
+    "name": "ClientGlue_CompareLowercaseStrings",
+    "address": "0x004050b0",
+    "size": 65,
+    "source": "src/driver/ClientGlue.c"
+  },
+  {
+    "name": "ClientGlue_DuplicateString",
+    "address": "0x00405100",
+    "size": 56,
+    "source": "src/driver/ClientGlue.c"
+  },
+  {
+    "name": "ClientGlue_AddResourceStrings",
+    "address": "0x00405140",
+    "size": 98,
+    "source": "src/driver/ClientGlue.c"
+  },
+  {
+    "name": "ClientGlue_AddPlugin",
+    "address": "0x004051b0",
+    "size": 27,
+    "source": "src/driver/ClientGlue.c"
+  },
+  {
+    "name": "ClientGlue_CreateAndAddPlugin",
+    "address": "0x004051d0",
+    "size": 30,
+    "source": "src/driver/ClientGlue.c"
+  },
+  {
+    "name": "fn_00405280",
+    "address": "0x004051f0",
+    "size": 30,
+    "source": "src/driver/ClientGlue.c"
+  },
+  {
+    "name": "fn_004052d0",
+    "address": "0x00405210",
+    "size": 22,
+    "source": "src/driver/ClientGlue.c"
+  },
+  {
+    "name": "fn_004052c0",
+    "address": "0x00405230",
+    "size": 12,
+    "source": "src/driver/ClientGlue.c"
+  },
+  {
+    "name": "fn_004052a0",
+    "address": "0x00405240",
+    "size": 22,
+    "source": "src/driver/ClientGlue.c"
+  },
+  {
+    "name": "ClientGlue_SetNamesAndRun",
+    "address": "0x00405260",
+    "size": 60,
+    "source": "src/driver/ClientGlue.c"
+  },
+  {
+    "name": "ClientGlue_InitializeAndParseCommandLine",
+    "address": "0x004052a0",
+    "size": 6,
+    "source": "src/driver/ClientGlue.c"
+  },
+  {
+    "name": "fn_00405340",
+    "address": "0x004052b0",
+    "size": 14,
+    "source": "src/driver/ClientGlue.c"
+  },
+  {
+    "name": "fn_0040534e",
+    "address": "0x004052be",
+    "size": 16,
+    "source": "src/driver/StaticParserGlue.c"
+  },
+  {
+    "name": "fn_0040535e",
+    "address": "0x004052ce",
+    "size": 21,
+    "source": "src/driver/StaticParserGlue.c"
+  },
+  {
+    "name": "CLStaticPlugins_SetIdentifiers",
+    "address": "0x004052f0",
+    "size": 21,
+    "source": "src/driver/CLStaticPlugins.c"
+  },
+  {
+    "name": "fn_00405310",
+    "address": "0x00405310",
+    "size": 21
+  },
+  {
+    "name": "fn_004053c0",
+    "address": "0x00405330",
+    "size": 11,
+    "source": "src/driver/CLStaticPlugins.c"
+  },
+  {
+    "name": "fn_004053d0",
+    "address": "0x00405340",
+    "size": 30,
+    "source": "src/driver/CLStaticPlugins.c"
+  },
+  {
+    "name": "fn_004053f0",
+    "address": "0x00405360",
+    "size": 30,
+    "source": "src/driver/CLStaticPlugins.c"
+  },
+  {
+    "name": "__find_unopened_file",
+    "address": "0x00405380",
+    "size": 90,
+    "source": "src/msl/ansi_files.c"
+  },
+  {
+    "name": "fn_004053e0",
+    "address": "0x004053e0",
+    "size": 197
+  },
+  {
+    "name": "__close_all",
+    "address": "0x004054b0",
+    "size": 127,
+    "source": "src/msl/ansi_files.c"
+  },
+  {
+    "name": "__flush_all",
+    "address": "0x00405530",
+    "size": 65,
+    "source": "src/msl/ansi_files.c"
+  },
+  {
+    "name": "__flush_line_buffered_output_files",
+    "address": "0x00405580",
+    "size": 93,
+    "source": "src/msl/ansi_files.c"
+  },
+  {
+    "name": "fn_004055e0",
+    "address": "0x004055e0",
+    "size": 89
+  },
+  {
+    "name": "fn_00405640",
+    "address": "0x00405640",
+    "size": 20
+  },
+  {
+    "name": "fn_00405660",
+    "address": "0x00405660",
+    "size": 90
+  },
+  {
+    "name": "fn_004056c0",
+    "address": "0x004056c0",
+    "size": 271
+  },
+  {
+    "name": "fn_00405840",
+    "address": "0x004057d0",
+    "size": 12,
+    "source": "src/driver/ParserGlue-eabi-ppc-cc.c"
+  },
+  {
+    "name": "tolower",
+    "address": "0x004057e0",
+    "size": 27,
+    "source": "src/msl/ctype.c"
+  },
+  {
+    "name": "toupper",
+    "address": "0x00405800",
+    "size": 27,
+    "source": "src/msl/ctype.c"
+  },
+  {
+    "name": "_rt_mul64",
+    "address": "0x00405820",
+    "size": 44,
+    "source": "src/runtime/LongLongx86.c"
+  },
+  {
+    "name": "_rt_divu64",
+    "address": "0x00405850",
+    "size": 113,
+    "source": "src/runtime/LongLongx86.c"
+  },
+  {
+    "name": "_rt_modu64",
+    "address": "0x004058d0",
+    "size": 125,
+    "source": "src/runtime/LongLongx86.c"
+  },
+  {
+    "name": "_rt_cmpu64",
+    "address": "0x00405950",
+    "size": 21,
+    "source": "src/runtime/LongLongx86.c"
+  },
+  {
+    "name": "_rt_cmps64",
+    "address": "0x00405970",
+    "size": 48,
+    "source": "src/runtime/LongLongx86.c"
+  },
+  {
+    "name": "__scalenum",
+    "address": "0x004059a0",
+    "size": 93,
+    "source": "src/msl/ansifp_x86.c"
+  },
+  {
+    "name": "__dec2num",
+    "address": "0x004059fd",
+    "size": 159,
+    "source": "src/msl/ansifp_x86.c"
+  },
+  {
+    "name": "__num2dec",
+    "address": "0x00405a9c",
+    "size": 442,
+    "source": "src/msl/ansifp_x86.c"
+  },
+  {
+    "name": "wctomb",
+    "address": "0x00405c60",
+    "size": 28,
+    "source": "src/msl/mbstring.c"
+  },
+  {
+    "name": "wcstombs",
+    "address": "0x00405c80",
+    "size": 47,
+    "source": "src/msl/mbstring.c"
+  },
+  {
+    "name": "fn_00405cb0",
+    "address": "0x00405cb0",
+    "size": 707
+  },
+  {
+    "name": "fn_00405f80",
+    "address": "0x00405f80",
+    "size": 742
+  },
+  {
+    "name": "getwc",
+    "address": "0x00406270",
+    "size": 73,
+    "source": "src/msl/wchar_io.c"
+  },
+  {
+    "name": "fgetwc",
+    "address": "0x004062c0",
+    "size": 12,
+    "source": "src/msl/wchar_io.c"
+  },
+  {
+    "name": "ungetwc",
+    "address": "0x004062d0",
+    "size": 159,
+    "source": "src/msl/wchar_io.c"
+  },
+  {
+    "name": "fwide",
+    "address": "0x00406370",
+    "size": 103,
+    "source": "src/msl/wchar_io.c"
+  },
+  {
+    "name": "?_V@@YAXPAX@Z",
+    "address": "0x004063e0",
+    "size": 34,
+    "source": "src/runtime/delarrop.cpp"
+  },
+  {
+    "name": "fn_00406410",
+    "address": "0x00406410",
+    "size": 60
+  },
+  {
+    "name": "__sys_free",
+    "address": "0x00406450",
+    "size": 27,
+    "source": "src/msl/pool_alloc.win32.c"
+  },
+  {
+    "name": "_strnicmp",
+    "address": "0x00406470",
+    "size": 108,
+    "source": "src/msl/extras.c"
+  },
+  {
+    "name": "GetHandle",
+    "address": "0x004064e0",
+    "size": 69,
+    "source": "src/msl/extras.c"
+  },
+  {
+    "name": "getenv",
+    "address": "0x00406530",
+    "size": 86,
+    "source": "src/msl/sysenv.win32.c"
+  },
+  {
+    "name": "fn_00406610",
+    "address": "0x00406590",
+    "size": 6,
+    "source": "src/driver/Resources.c"
+  },
+  {
+    "name": "Resources_OpenResourceFile",
+    "address": "0x004065a0",
+    "size": 163,
+    "source": "src/driver/Resources.c"
+  },
+  {
+    "name": "create_resfile",
+    "address": "0x00406650",
+    "size": 68,
+    "source": "src/driver/Resources.c"
+  },
+  {
+    "name": "append_res_type",
+    "address": "0x004066a0",
+    "size": 72,
+    "source": "src/driver/Resources.c"
+  },
+  {
+    "name": "insert_res_entry",
+    "address": "0x004066f0",
+    "size": 213,
+    "source": "src/driver/Resources.c"
+  },
+  {
+    "name": "find_resfile_by_refnum",
+    "address": "0x004067d0",
+    "size": 35,
+    "source": "src/driver/Resources.c"
+  },
+  {
+    "name": "find_resfile_with_previous",
+    "address": "0x00406800",
+    "size": 47,
+    "source": "src/driver/Resources.c"
+  },
+  {
+    "name": "free_res_file",
+    "address": "0x00406830",
+    "size": 173,
+    "source": "src/driver/Resources.c"
+  },
+  {
+    "name": "read_resource_file",
+    "address": "0x004068e0",
+    "size": 2500,
+    "source": "src/driver/Resources.c"
+  },
+  {
+    "name": "calculate_resource_sizes",
+    "address": "0x004072b0",
+    "size": 169,
+    "source": "src/driver/Resources.c"
+  },
+  {
+    "name": "count_types",
+    "address": "0x00407360",
+    "size": 25,
+    "source": "src/driver/Resources.c"
+  },
+  {
+    "name": "count_entries",
+    "address": "0x00407380",
+    "size": 25,
+    "source": "src/driver/Resources.c"
+  },
+  {
+    "name": "write_resource_file",
+    "address": "0x004073a0",
+    "size": 2538,
+    "source": "src/driver/Resources.c"
+  },
+  {
+    "name": "write_default_binary_record",
+    "address": "0x00407d90",
+    "size": 567,
+    "source": "src/driver/Resources.c"
+  },
+  {
+    "name": "find_res_type",
+    "address": "0x00407fd0",
+    "size": 32,
+    "source": "src/driver/Resources.c"
+  },
+  {
+    "name": "find_res_entry",
+    "address": "0x00407ff0",
+    "size": 58,
+    "source": "src/driver/Resources.c"
+  },
+  {
+    "name": "find_res_entry_in_files",
+    "address": "0x00408030",
+    "size": 69,
+    "source": "src/driver/Resources.c"
+  },
+  {
+    "name": "append_identifier_list_node",
+    "address": "0x00408080",
+    "size": 94,
+    "source": "src/driver/Resources.c"
+  },
+  {
+    "name": "Resources_RemoveIdentifier",
+    "address": "0x004080e0",
+    "size": 113,
+    "source": "src/driver/Resources.c"
+  },
+  {
+    "name": "Resources_FindIdentifierById",
+    "address": "0x00408160",
+    "size": 45,
+    "source": "src/driver/Resources.c"
+  },
+  {
+    "name": "Resources_FindIdentifier",
+    "address": "0x00408190",
+    "size": 64,
+    "source": "src/driver/Resources.c"
+  },
+  {
+    "name": "Resources_SetFileTimes",
+    "address": "0x004081d0",
+    "size": 352,
+    "source": "src/driver/Resources.c"
+  },
+  {
+    "name": "fn_004083b0",
+    "address": "0x00408330",
+    "size": 348,
+    "source": "src/driver/Resources.c"
+  },
+  {
+    "name": "fn_00408510",
+    "address": "0x00408490",
+    "size": 11,
+    "source": "src/driver/Resources.c"
+  },
+  {
+    "name": "open_resource_fork",
+    "address": "0x004084a0",
+    "size": 285,
+    "source": "src/driver/Resources.c"
+  },
+  {
+    "name": "fn_004085c0",
+    "address": "0x004085c0",
+    "size": 73
+  },
+  {
+    "name": "open_resource_file",
+    "address": "0x00408610",
+    "size": 211,
+    "source": "src/driver/Resources.c"
+  },
+  {
+    "name": "Resources_GetHand",
+    "address": "0x004086f0",
+    "size": 61,
+    "source": "src/driver/Resources.c"
+  },
+  {
+    "name": "Resources_ClearError",
+    "address": "0x00408730",
+    "size": 12,
+    "source": "src/driver/Resources.c"
+  },
+  {
+    "name": "close_resource_file",
+    "address": "0x00408740",
+    "size": 93,
+    "source": "src/driver/Resources.c"
+  },
+  {
+    "name": "fn_004087d0",
+    "address": "0x004087a0",
+    "size": 38,
+    "source": "src/driver/CLErrors.c"
+  },
+  {
+    "name": "format_and_emit_diagnostic",
+    "address": "0x004087d0",
+    "size": 124,
+    "source": "src/driver/CLErrors.c"
+  },
+  {
+    "name": "CLErrors_EmitDiagnostic",
+    "address": "0x00408850",
+    "size": 58,
+    "source": "src/driver/CLErrors.c"
+  },
+  {
+    "name": "CLErrors_ForwardMessageArguments",
+    "address": "0x00408890",
+    "size": 58,
+    "source": "src/driver/CLErrors.c"
+  },
+  {
+    "name": "CLErrors_ForwardMessage",
+    "address": "0x004088d0",
+    "size": 58,
+    "source": "src/driver/CLErrors.c"
+  },
+  {
+    "name": "CLErrors_ReportOSError",
+    "address": "0x00408910",
+    "size": 158,
+    "source": "src/driver/CLErrors.c"
+  },
+  {
+    "name": "CLErrors_ReportFormattedOSError",
+    "address": "0x004089b0",
+    "size": 159,
+    "source": "src/driver/CLErrors.c"
+  },
+  {
+    "name": "CLErrors_ReportInternalError",
+    "address": "0x00408a50",
+    "size": 139,
+    "source": "src/driver/CLErrors.c"
+  },
+  {
+    "name": "CLErrors_FatalError",
+    "address": "0x00408ae0",
+    "size": 130,
+    "source": "src/driver/CLErrors.c"
+  },
+  {
+    "name": "ResourceStrings_AddResource",
+    "address": "0x00408b70",
+    "size": 117,
+    "source": "src/driver/ResourceStrings.c"
+  },
+  {
+    "name": "ResourceStrings_GetString",
+    "address": "0x00408bf0",
+    "size": 250,
+    "source": "src/driver/ResourceStrings.c"
+  },
+  {
+    "name": "CLPlugins_GetName",
+    "address": "0x00408cf0",
+    "size": 74,
+    "source": "src/driver/CLPlugins.c"
+  },
+  {
+    "name": "get_plugin_result",
+    "address": "0x00408d40",
+    "size": 74,
+    "source": "src/driver/CLPlugins.c"
+  },
+  {
+    "name": "CLPlugins_GetPluginDesc",
+    "address": "0x00408d90",
+    "size": 109,
+    "source": "src/driver/CLPlugins.c"
+  },
+  {
+    "name": "CLPlugins_GetType",
+    "address": "0x00408e00",
+    "size": 55,
+    "source": "src/driver/CLPlugins.c"
+  },
+  {
+    "name": "get_target_info",
+    "address": "0x00408e40",
+    "size": 98,
+    "source": "src/driver/CLPlugins.c"
+  },
+  {
+    "name": "get_plugin_directory_list",
+    "address": "0x00408eb0",
+    "size": 75,
+    "source": "src/driver/CLPlugins.c"
+  },
+  {
+    "name": "get_file_map",
+    "address": "0x00408f00",
+    "size": 106,
+    "source": "src/driver/CLPlugins.c"
+  },
+  {
+    "name": "get_callback_result",
+    "address": "0x00408f70",
+    "size": 72,
+    "source": "src/driver/CLPlugins.c"
+  },
+  {
+    "name": "CLPlugins_GetObjectFlags",
+    "address": "0x00408fc0",
+    "size": 139,
+    "source": "src/driver/CLPlugins.c"
+  },
+  {
+    "name": "plugin_name_matches",
+    "address": "0x00409050",
+    "size": 35,
+    "source": "src/driver/CLPlugins.c"
+  },
+  {
+    "name": "CLPlugins_MatchTarget",
+    "address": "0x00409080",
+    "size": 142,
+    "source": "src/driver/CLPlugins.c"
+  },
+  {
+    "name": "file_map_matches",
+    "address": "0x00409110",
+    "size": 107,
+    "source": "src/driver/CLPlugins.c"
+  },
+  {
+    "name": "plugin_file_map_matches",
+    "address": "0x00409180",
+    "size": 86,
+    "source": "src/driver/CLPlugins.c"
+  },
+  {
+    "name": "matches_plugin_type_lang",
+    "address": "0x004091e0",
+    "size": 73,
+    "source": "src/driver/CLPlugins.c"
+  },
+  {
+    "name": "call_query_callback",
+    "address": "0x00409230",
+    "size": 89,
+    "source": "src/driver/CLPlugins.c"
+  },
+  {
+    "name": "query_plugin",
+    "address": "0x00409290",
+    "size": 87,
+    "source": "src/driver/CLPlugins.c"
+  },
+  {
+    "name": "format_plugin_version",
+    "address": "0x004092f0",
+    "size": 169,
+    "source": "src/driver/CLPlugins.c"
+  },
+  {
+    "name": "CLPlugins_WriteObjectFile",
+    "address": "0x004093a0",
+    "size": 227,
+    "source": "src/driver/CLPlugins.c"
+  },
+  {
+    "name": "CLPlugins_FindFileMapValue",
+    "address": "0x00409490",
+    "size": 151,
+    "source": "src/driver/CLPlugins.c"
+  },
+  {
+    "name": "validate_plugin",
+    "address": "0x00409530",
+    "size": 409,
+    "source": "src/driver/CLPlugins.c"
+  },
+  {
+    "name": "fn_00409700",
+    "address": "0x004096d0",
+    "size": 105,
+    "source": "src/driver/CLPlugins.c"
+  },
+  {
+    "name": "CLPlugins_CreatePluginDataCopy",
+    "address": "0x00409740",
+    "size": 236,
+    "source": "src/driver/CLPlugins.c"
+  },
+  {
+    "name": "free_plugin",
+    "address": "0x00409830",
+    "size": 59,
+    "source": "src/driver/CLPlugins.c"
+  },
+  {
+    "name": "fn_004098a0",
+    "address": "0x00409870",
+    "size": 41,
+    "source": "src/driver/CLPlugins.c"
+  },
+  {
+    "name": "fn_004098d0",
+    "address": "0x004098a0",
+    "size": 11,
+    "source": "src/driver/CLPlugins.c"
+  },
+  {
+    "name": "CLPlugins_FreePlugins",
+    "address": "0x004098b0",
+    "size": 45,
+    "source": "src/driver/CLPlugins.c"
+  },
+  {
+    "name": "CLPlugins_AddPlugin",
+    "address": "0x004098e0",
+    "size": 1546,
+    "source": "src/driver/CLPlugins.c"
+  },
+  {
+    "name": "CLPlugins_FindMatchingTargetPlugin",
+    "address": "0x00409ef0",
+    "size": 139,
+    "source": "src/driver/CLPlugins.c"
+  },
+  {
+    "name": "CLPlugins_FindTargetPluginBySelectorOptionName",
+    "address": "0x00409f80",
+    "size": 162,
+    "source": "src/driver/CLPlugins.c"
+  },
+  {
+    "name": "CLPlugins_FindLinkerPlugin",
+    "address": "0x0040a030",
+    "size": 129,
+    "source": "src/driver/CLPlugins.c"
+  },
+  {
+    "name": "CLPlugins_FindLinkPluginForTarget",
+    "address": "0x0040a0c0",
+    "size": 129,
+    "source": "src/driver/CLPlugins.c"
+  },
+  {
+    "name": "CLPlugins_FindMatchingLinkPlugin",
+    "address": "0x0040a150",
+    "size": 129,
+    "source": "src/driver/CLPlugins.c"
+  },
+  {
+    "name": "CLPlugins_SelectPluginByRequestsAndValues",
+    "address": "0x0040a1e0",
+    "size": 371,
+    "source": "src/driver/CLPlugins.c"
+  },
+  {
+    "name": "CLPlugins_BuildPluginRequests",
+    "address": "0x0040a360",
+    "size": 333,
+    "source": "src/driver/CLPlugins.c"
+  },
+  {
+    "name": "CLPlugins_GetUniquePluginNames",
+    "address": "0x0040a4b0",
+    "size": 293,
+    "source": "src/driver/CLPlugins.c"
+  },
+  {
+    "name": "fn_0040a610",
+    "address": "0x0040a5e0",
+    "size": 37,
+    "source": "src/driver/CLPlugins.c"
+  },
+  {
+    "name": "CLPlugins_DispatchArgumentToPlugins",
+    "address": "0x0040a610",
+    "size": 81,
+    "source": "src/driver/CLPlugins.c"
+  },
+  {
+    "name": "CLPlugins_CallEntry",
+    "address": "0x0040a670",
+    "size": 29,
+    "source": "src/driver/CLPlugins.c"
+  },
+  {
+    "name": "return_zero",
+    "address": "0x0040a690",
+    "size": 5,
+    "source": "src/driver/CLMain.c"
+  },
+  {
+    "name": "get_data_and_size",
+    "address": "0x0040a6a0",
+    "size": 25,
+    "source": "src/driver/CLMain.c"
+  },
+  {
+    "name": "copy_global_value_to_address",
+    "address": "0x0040a6c0",
+    "size": 17,
+    "source": "src/driver/CLMain.c"
+  },
+  {
+    "name": "copy_global_value",
+    "address": "0x0040a6e0",
+    "size": 17,
+    "source": "src/driver/CLMain.c"
+  },
+  {
+    "name": "fn_0040a730",
+    "address": "0x0040a700",
+    "size": 104,
+    "source": "src/driver/CLMain.c"
+  },
+  {
+    "name": "fn_0040a7a0",
+    "address": "0x0040a770",
+    "size": 15,
+    "source": "src/driver/CLMain.c"
+  },
+  {
+    "name": "set_listlink_next_to_global",
+    "address": "0x0040a780",
+    "size": 15,
+    "source": "src/driver/CLMain.c"
+  },
+  {
+    "name": "fn_0040a7c0",
+    "address": "0x0040a790",
+    "size": 11,
+    "source": "src/driver/CLMain.c"
+  },
+  {
+    "name": "fn_0040a7d0",
+    "address": "0x0040a7a0",
+    "size": 21,
+    "source": "src/driver/CLMain.c"
+  },
+  {
+    "name": "invoke_if_requested",
+    "address": "0x0040a7c0",
+    "size": 19,
+    "source": "src/driver/CLMain.c"
+  },
+  {
+    "name": "latch_flag",
+    "address": "0x0040a7e0",
+    "size": 23,
+    "source": "src/driver/CLMain.c"
+  },
+  {
+    "name": "is_enabled_or_global_nonzero",
+    "address": "0x0040a800",
+    "size": 32,
+    "source": "src/driver/CLMain.c"
+  },
+  {
+    "name": "consume_driver_command_line_options",
+    "address": "0x0040a820",
+    "size": 163,
+    "source": "src/driver/CLMain.c"
+  },
+  {
+    "name": "CLMain_AppendEnabledCommandLineOptions",
+    "address": "0x0040a8d0",
+    "size": 79,
+    "source": "src/driver/CLMain.c"
+  },
+  {
+    "name": "CLMain_Initialize",
+    "address": "0x0040a920",
+    "size": 486,
+    "source": "src/driver/CLMain.c"
+  },
+  {
+    "name": "CLMain_FreePlugins",
+    "address": "0x0040ab10",
+    "size": 51,
+    "source": "src/driver/CLMain.c"
+  },
+  {
+    "name": "parse_command_line",
+    "address": "0x0040ab50",
+    "size": 698,
+    "source": "src/driver/CLMain.c"
+  },
+  {
+    "name": "delete_file_and_make_path_spec",
+    "address": "0x0040ae10",
+    "size": 143,
+    "source": "src/driver/CLMain.c"
+  },
+  {
+    "name": "fn_0040aed0",
+    "address": "0x0040aea0",
+    "size": 151,
+    "source": "src/driver/CLMain.c"
+  },
+  {
+    "name": "fn_0040af70",
+    "address": "0x0040af40",
+    "size": 165,
+    "source": "src/driver/CLMain.c"
+  },
+  {
+    "name": "copy_environment_code_record",
+    "address": "0x0040aff0",
+    "size": 49,
+    "source": "src/driver/CLMain.c"
+  },
+  {
+    "name": "convert_command_line_panel_settings",
+    "address": "0x0040b030",
+    "size": 363,
+    "source": "src/driver/CLMain.c"
+  },
+  {
+    "name": "convert_linker_panel_settings",
+    "address": "0x0040b1a0",
+    "size": 121,
+    "source": "src/driver/CLMain.c"
+  },
+  {
+    "name": "check_cmdline_entries",
+    "address": "0x0040b220",
+    "size": 393,
+    "source": "src/driver/CLMain.c"
+  },
+  {
+    "name": "create_cmdline_data_blocks",
+    "address": "0x0040b3b0",
+    "size": 155,
+    "source": "src/driver/CLMain.c"
+  },
+  {
+    "name": "create_default_target",
+    "address": "0x0040b450",
+    "size": 539,
+    "source": "src/driver/CLMain.c"
+  },
+  {
+    "name": "CLMain_InitializeAndParseCommandLine",
+    "address": "0x0040b670",
+    "size": 75,
+    "source": "src/driver/CLMain.c"
+  },
+  {
+    "name": "ToolHelpers_ResizeBuffer",
+    "address": "0x0040b6bb",
+    "size": 125,
+    "source": "src/driver/ParserFace.c"
+  },
+  {
+    "name": "initialize_cmdline_environment",
+    "address": "0x0040b738",
+    "size": 233,
+    "source": "src/driver/ParserFace.c"
+  },
+  {
+    "name": "register_option_lists",
+    "address": "0x0040b821",
+    "size": 23,
+    "source": "src/driver/ParserFace.c"
+  },
+  {
+    "name": "run_tool_checks",
+    "address": "0x0040b838",
+    "size": 412,
+    "source": "src/driver/ParserFace.c"
+  },
+  {
+    "name": "copy_resource_by_name",
+    "address": "0x0040b9d4",
+    "size": 149,
+    "source": "src/driver/ParserFace.c"
+  },
+  {
+    "name": "fn_0040ba99",
+    "address": "0x0040ba69",
+    "size": 75,
+    "source": "src/driver/ParserFace.c"
+  },
+  {
+    "name": "set_enabled_link_parser_entries",
+    "address": "0x0040bab4",
+    "size": 333,
+    "source": "src/driver/ParserFace.c"
+  },
+  {
+    "name": "get_data_pointer_and_constant",
+    "address": "0x0040bc01",
+    "size": 25,
+    "source": "src/driver/ParserFace.c"
+  },
+  {
+    "name": "set_next_to_head",
+    "address": "0x0040bc1a",
+    "size": 19,
+    "source": "src/driver/ParserFace.c"
+  },
+  {
+    "name": "set_link_next_from_global",
+    "address": "0x0040bc2d",
+    "size": 19,
+    "source": "src/driver/ParserFace.c"
+  },
+  {
+    "name": "fn_0040bc70",
+    "address": "0x0040bc40",
+    "size": 15,
+    "source": "src/driver/ParserFace.c"
+  },
+  {
+    "name": "set_list_link_next_to_global",
+    "address": "0x0040bc4f",
+    "size": 15,
+    "source": "src/driver/ParserFace.c"
+  },
+  {
+    "name": "match_tool",
+    "address": "0x0040bc5e",
+    "size": 38,
+    "source": "src/driver/ParserFace.c"
+  },
+  {
+    "name": "store_boolean_result",
+    "address": "0x0040bc84",
+    "size": 28,
+    "source": "src/driver/ParserFace.c"
+  },
+  {
+    "name": "dispatch_plugin_request",
+    "address": "0x0040bca0",
+    "size": 208,
+    "source": "src/driver/ParserFace.c"
+  },
+  {
+    "name": "get_name_and_length",
+    "address": "0x0040bd70",
+    "size": 25,
+    "source": "src/driver/cc-eabi-ppc-mw.c"
+  },
+  {
+    "name": "set_next_to_global",
+    "address": "0x0040bd90",
+    "size": 15,
+    "source": "src/driver/cc-eabi-ppc-mw.c"
+  },
+  {
+    "name": "copy_global_to_value",
+    "address": "0x0040bda0",
+    "size": 17,
+    "source": "src/driver/cc-eabi-ppc-mw.c"
+  },
+  {
+    "name": "get_stored_value",
+    "address": "0x0040bdc0",
+    "size": 17,
+    "source": "src/driver/cc-eabi-ppc-mw.c"
+  },
+  {
+    "name": "fn_0040be10",
+    "address": "0x0040bde0",
+    "size": 15,
+    "source": "src/driver/cc-eabi-ppc-mw.c"
+  },
+  {
+    "name": "fn_0040be20",
+    "address": "0x0040bdf0",
+    "size": 15,
+    "source": "src/driver/cc-eabi-ppc-mw.c"
+  },
+  {
+    "name": "fn_0040be30",
+    "address": "0x0040be00",
+    "size": 15,
+    "source": "src/driver/cc-eabi-ppc-mw.c"
+  },
+  {
+    "name": "set_listnode_next_to_global",
+    "address": "0x0040be10",
+    "size": 15,
+    "source": "src/driver/cc-eabi-ppc-mw.c"
+  },
+  {
+    "name": "fn_0040be20",
+    "address": "0x0040be20",
+    "size": 16
+  },
+  {
+    "name": "fn_0040be30",
+    "address": "0x0040be30",
+    "size": 21
+  },
+  {
+    "name": "get_global_name_and_length",
+    "address": "0x0040be50",
+    "size": 25,
+    "source": "src/driver/cc-eabi-ppc-mw.c"
+  },
+  {
+    "name": "set_link_next_to_global",
+    "address": "0x0040be70",
+    "size": 15,
+    "source": "src/driver/cc-eabi-ppc-mw.c"
+  },
+  {
+    "name": "fn_0040bff0",
+    "address": "0x0040be80",
+    "size": 17,
+    "source": "src/driver/libimp-eabi-ppc-mw.c"
+  },
+  {
+    "name": "get_global_value",
+    "address": "0x0040bea0",
+    "size": 17,
+    "source": "src/driver/libimp-eabi-ppc-mw.c"
+  },
+  {
+    "name": "fn_0040beb0",
+    "address": "0x0040bec0",
+    "size": 15,
+    "source": "src/driver/cc-eabi-ppc-mw.c"
+  },
+  {
+    "name": "get_data_pointer",
+    "address": "0x0040bed0",
+    "size": 15,
+    "source": "src/driver/cc-eabi-ppc-mw.c"
+  },
+  {
+    "name": "set_shared_data",
+    "address": "0x0040bee0",
+    "size": 15,
+    "source": "src/driver/cc-eabi-ppc-mw.c"
+  },
+  {
+    "name": "fn_0040be50",
+    "address": "0x0040bef0",
+    "size": 15,
+    "source": "src/driver/libimp-eabi-ppc-mw.c"
+  },
+  {
+    "name": "fn_0040bfc0",
+    "address": "0x0040bf00",
+    "size": 15,
+    "source": "src/driver/libimp-eabi-ppc-mw.c"
+  },
+  {
+    "name": "fn_0040c060",
+    "address": "0x0040bf10",
+    "size": 16,
+    "source": "src/driver/libimp-eabi-ppc-mw.c"
+  },
+  {
+    "name": "fn_0040c070",
+    "address": "0x0040bf20",
+    "size": 6,
+    "source": "src/driver/libimp-eabi-ppc-mw.c"
+  },
+  {
+    "name": "find_temp_info",
+    "address": "0x0040bf30",
+    "size": 35,
+    "source": "src/msl/file_io.win32.c"
+  },
+  {
+    "name": "fn_0040bf60",
+    "address": "0x0040bf60",
+    "size": 150
+  },
+  {
+    "name": "__read_file",
+    "address": "0x0040c000",
+    "size": 55,
+    "source": "src/msl/file_io.win32.c"
+  },
+  {
+    "name": "__write_file",
+    "address": "0x0040c040",
+    "size": 45,
+    "source": "src/msl/file_io.win32.c"
+  },
+  {
+    "name": "__position_file",
+    "address": "0x0040c070",
+    "size": 44,
+    "source": "src/msl/file_io.win32.c"
+  },
+  {
+    "name": "__close_file",
+    "address": "0x0040c0a0",
+    "size": 87,
+    "source": "src/msl/file_io.win32.c"
+  },
+  {
+    "name": "__delete_file",
+    "address": "0x0040c100",
+    "size": 25,
+    "source": "src/msl/file_io.win32.c"
+  },
+  {
+    "name": "fn_0040c120",
+    "address": "0x0040c120",
+    "size": 1
+  },
+  {
+    "name": "fn_0040c130",
+    "address": "0x0040c130",
+    "size": 1
+  },
+  {
+    "name": "fn_0040c140",
+    "address": "0x0040c140",
+    "size": 34
+  },
+  {
+    "name": "fn_0040c170",
+    "address": "0x0040c170",
+    "size": 158
+  },
+  {
+    "name": "fn_0040c210",
+    "address": "0x0040c210",
+    "size": 105
+  },
+  {
+    "name": "fn_0040c280",
+    "address": "0x0040c280",
+    "size": 276
+  },
+  {
+    "name": "__read_string",
+    "address": "0x0040c3a0",
+    "size": 6,
+    "source": "src/msl/string_io.c"
+  },
+  {
+    "name": "fn_0040c3b0",
+    "address": "0x0040c3b0",
+    "size": 3
+  },
+  {
+    "name": "fn_0040c3c0",
+    "address": "0x0040c3c0",
+    "size": 3
+  },
+  {
+    "name": "fclose",
+    "address": "0x0040c3d0",
+    "size": 136,
+    "source": "src/msl/file_io.c"
+  },
+  {
+    "name": "fflush",
+    "address": "0x0040c460",
+    "size": 231,
+    "source": "src/msl/file_io.c"
+  },
+  {
+    "name": "__handle_open",
+    "address": "0x0040c550",
+    "size": 47,
+    "source": "src/msl/file_io.c"
+  },
+  {
+    "name": "fn_0040c580",
+    "address": "0x0040c580",
+    "size": 188
+  },
+  {
+    "name": "fn_0040c640",
+    "address": "0x0040c640",
+    "size": 309
+  },
+  {
+    "name": "get_spec_from_signature_callback",
+    "address": "0x0040c775",
+    "size": 81,
+    "source": "src/driver/ParserHelpers.c"
+  },
+  {
+    "name": "ParserHelpers_GetFirstEnvironmentVariable",
+    "address": "0x0040c7c6",
+    "size": 93,
+    "source": "src/driver/ParserHelpers.c"
+  },
+  {
+    "name": "match_extension_pattern",
+    "address": "0x0040c823",
+    "size": 137,
+    "source": "src/driver/ParserHelpers.c"
+  },
+  {
+    "name": "fn_0040c9e7",
+    "address": "0x0040c8ac",
+    "size": 219,
+    "source": "src/driver/ParserHelpers.c"
+  },
+  {
+    "name": "report_environment_variable_message",
+    "address": "0x0040c987",
+    "size": 165,
+    "source": "src/driver/ParserHelpers.c"
+  },
+  {
+    "name": "ParserHelpers_ParsePathList",
+    "address": "0x0040ca2c",
+    "size": 494,
+    "source": "src/driver/ParserHelpers.c"
+  },
+  {
+    "name": "fn_0040cd55",
+    "address": "0x0040cc1a",
+    "size": 461,
+    "source": "src/driver/ParserHelpers.c"
+  },
+  {
+    "name": "fn_0040cde7",
+    "address": "0x0040cde7",
+    "size": 318
+  },
+  {
+    "name": "fn_0040cf25",
+    "address": "0x0040cf25",
+    "size": 365
+  },
+  {
+    "name": "fn_0040cff6",
+    "address": "0x0040d092",
+    "size": 12,
+    "source": "src/driver/ParserHelpers.c"
+  },
+  {
+    "name": "fn_0040d002",
+    "address": "0x0040d09e",
+    "size": 16,
+    "source": "src/driver/ParserHelpers.c"
+  },
+  {
+    "name": "fn_0040d012",
+    "address": "0x0040d0ae",
+    "size": 217,
+    "source": "src/driver/ToolHelpers.c"
+  },
+  {
+    "name": "fn_0040d0eb",
+    "address": "0x0040d187",
+    "size": 44,
+    "source": "src/driver/ToolHelpers.c"
+  },
+  {
+    "name": "parse_stage_settings",
+    "address": "0x0040d1b3",
+    "size": 364,
+    "source": "src/driver/ToolHelpers.c"
+  },
+  {
+    "name": "fn_0040d31f",
+    "address": "0x0040d31f",
+    "size": 109
+  },
+  {
+    "name": "fn_0040d38c",
+    "address": "0x0040d38c",
+    "size": 387
+  },
+  {
+    "name": "fn_0040d510",
+    "address": "0x0040d510",
+    "size": 320
+  },
+  {
+    "name": "print_command_line_warning_options",
+    "address": "0x0040d650",
+    "size": 161,
+    "source": "src/driver/WarningHelpers.c"
+  },
+  {
+    "name": "Targets_FormatAndDispatchMessage",
+    "address": "0x0040d6f1",
+    "size": 53,
+    "source": "src/driver/ParserErrors.c"
+  },
+  {
+    "name": "Targets_ReportFormattedMessage",
+    "address": "0x0040d726",
+    "size": 46,
+    "source": "src/driver/ParserErrors.c"
+  },
+  {
+    "name": "format_and_forward_message",
+    "address": "0x0040d754",
+    "size": 40,
+    "source": "src/driver/ParserErrors.c"
+  },
+  {
+    "name": "format_and_report_message",
+    "address": "0x0040d77c",
+    "size": 51,
+    "source": "src/driver/ParserErrors.c"
+  },
+  {
+    "name": "report_operating_system_error",
+    "address": "0x0040d7af",
+    "size": 55,
+    "source": "src/driver/ParserErrors.c"
+  },
+  {
+    "name": "Targets_GetResourceCString",
+    "address": "0x0040d7e6",
+    "size": 24,
+    "source": "src/driver/ParserErrors.c"
+  },
+  {
+    "name": "fn_0040ecb1",
+    "address": "0x0040d7fe",
+    "size": 94,
+    "source": "src/driver/ParserErrors.c"
+  },
+  {
+    "name": "Targets_ReportMessage",
+    "address": "0x0040d85c",
+    "size": 94,
+    "source": "src/driver/ParserErrors.c"
+  },
+  {
+    "name": "Targets_ReportOperatingSystemError",
+    "address": "0x0040d8ba",
+    "size": 104,
+    "source": "src/driver/ParserErrors.c"
+  },
+  {
+    "name": "Targets_DispatchVariadicMessage",
+    "address": "0x0040d922",
+    "size": 94,
+    "source": "src/driver/ParserErrors.c"
+  },
+  {
+    "name": "Targets_ForwardVarArgsAndLongjmp",
+    "address": "0x0040d980",
+    "size": 68,
+    "source": "src/driver/ParserErrors.c"
+  },
+  {
+    "name": "Targets_SetTool",
+    "address": "0x0040d9c4",
+    "size": 61,
+    "source": "src/driver/Targets.c"
+  },
+  {
+    "name": "Targets_MatchTool",
+    "address": "0x0040da01",
+    "size": 166,
+    "source": "src/driver/Targets.c"
+  },
+  {
+    "name": "Targets_MatchCommandLineOptions",
+    "address": "0x0040daa7",
+    "size": 110,
+    "source": "src/driver/Targets.c"
+  },
+  {
+    "name": "Targets_RegisterOptionLists",
+    "address": "0x0040db15",
+    "size": 45,
+    "source": "src/driver/Targets.c"
+  },
+  {
+    "name": "clearerr",
+    "address": "0x0040db50",
+    "size": 13,
+    "source": "src/msl/misc_io.c"
+  },
+  {
+    "name": "fn_0040db60",
+    "address": "0x0040db60",
+    "size": 11
+  },
+  {
+    "name": "_ftell",
+    "address": "0x0040db70",
+    "size": 147,
+    "source": "src/msl/file_pos.c"
+  },
+  {
+    "name": "ftell",
+    "address": "0x0040dc10",
+    "size": 12,
+    "source": "src/msl/file_pos.c"
+  },
+  {
+    "name": "fn_0040dc20",
+    "address": "0x0040dc20",
+    "size": 228
+  },
+  {
+    "name": "fn_0040dd10",
+    "address": "0x0040dd10",
+    "size": 24
+  },
+  {
+    "name": "__leap_year",
+    "address": "0x0040dd30",
+    "size": 79,
+    "source": "src/msl/time.c"
+  },
+  {
+    "name": "leap_days",
+    "address": "0x0040dd80",
+    "size": 159,
+    "source": "src/msl/time.c"
+  },
+  {
+    "name": "adjust",
+    "address": "0x0040de20",
+    "size": 56,
+    "source": "src/msl/time.c"
+  },
+  {
+    "name": "fn_0040de60",
+    "address": "0x0040de60",
+    "size": 282
+  },
+  {
+    "name": "fn_0040df80",
+    "address": "0x0040df80",
+    "size": 362
+  },
+  {
+    "name": "clear_tm",
+    "address": "0x0040e0f0",
+    "size": 67,
+    "source": "src/msl/time.c"
+  },
+  {
+    "name": "mktime",
+    "address": "0x0040e140",
+    "size": 77,
+    "source": "src/msl/time.c"
+  },
+  {
+    "name": "fn_0040e190",
+    "address": "0x0040e190",
+    "size": 66
+  },
+  {
+    "name": "fn_0040e1e0",
+    "address": "0x0040e1e0",
+    "size": 79
+  },
+  {
+    "name": "week_num",
+    "address": "0x0040e230",
+    "size": 61,
+    "source": "src/msl/time.c"
+  },
+  {
+    "name": "strftime",
+    "address": "0x0040e270",
+    "size": 1228,
+    "source": "src/msl/time.c"
+  },
+  {
+    "name": "__wcstoul",
+    "address": "0x0040e740",
+    "size": 721,
+    "source": "src/msl/wcstoul.c"
+  },
+  {
+    "name": "__wcstoull",
+    "address": "0x0040ea20",
+    "size": 937,
+    "source": "src/msl/wcstoul.c"
+  },
+  {
+    "name": "iswspace",
+    "address": "0x0040edd0",
+    "size": 35,
+    "source": "src/msl/wctype.c"
+  },
+  {
+    "name": "towupper",
+    "address": "0x0040ee00",
+    "size": 22,
+    "source": "src/msl/wctype.c"
+  },
+  {
+    "name": "OS_GetErrText",
+    "address": "0x0040ee20",
+    "size": 130,
+    "source": "src/driver/MsDos.c"
+  },
+  {
+    "name": "OS_InitProgram",
+    "address": "0x0040eeb0",
+    "size": 5,
+    "source": "src/driver/MsDos.c"
+  },
+  {
+    "name": "OS_Create",
+    "address": "0x0040eec0",
+    "size": 102,
+    "source": "src/driver/MsDos.c"
+  },
+  {
+    "name": "OS_Status",
+    "address": "0x0040ef30",
+    "size": 69,
+    "source": "src/driver/MsDos.c"
+  },
+  {
+    "name": "OS_SetFileType",
+    "address": "0x0040ef80",
+    "size": 5,
+    "source": "src/driver/MsDos.c"
+  },
+  {
+    "name": "OS_GetFileTime",
+    "address": "0x0040ef90",
+    "size": 142,
+    "source": "src/driver/MsDos.c"
+  },
+  {
+    "name": "OS_SetFileTime",
+    "address": "0x0040f020",
+    "size": 166,
+    "source": "src/driver/MsDos.c"
+  },
+  {
+    "name": "OS_Open",
+    "address": "0x0040f0d0",
+    "size": 155,
+    "source": "src/driver/MsDos.c"
+  },
+  {
+    "name": "OS_Write",
+    "address": "0x0040f170",
+    "size": 271,
+    "source": "src/driver/MsDos.c"
+  },
+  {
+    "name": "OS_Read",
+    "address": "0x0040f280",
+    "size": 44,
+    "source": "src/driver/MsDos.c"
+  },
+  {
+    "name": "OS_Seek",
+    "address": "0x0040f2b0",
+    "size": 53,
+    "source": "src/driver/MsDos.c"
+  },
+  {
+    "name": "OS_Tell",
+    "address": "0x0040f2f0",
+    "size": 45,
+    "source": "src/driver/MsDos.c"
+  },
+  {
+    "name": "OS_Close",
+    "address": "0x0040f320",
+    "size": 29,
+    "source": "src/driver/MsDos.c"
+  },
+  {
+    "name": "OS_GetSize",
+    "address": "0x0040f340",
+    "size": 41,
+    "source": "src/driver/MsDos.c"
+  },
+  {
+    "name": "OS_SetSize",
+    "address": "0x0040f370",
+    "size": 103,
+    "source": "src/driver/MsDos.c"
+  },
+  {
+    "name": "OS_Delete",
+    "address": "0x0040f3e0",
+    "size": 61,
+    "source": "src/driver/MsDos.c"
+  },
+  {
+    "name": "OS_Mkdir",
+    "address": "0x0040f420",
+    "size": 69,
+    "source": "src/driver/MsDos.c"
+  },
+  {
+    "name": "OS_Rmdir",
+    "address": "0x0040f470",
+    "size": 61,
+    "source": "src/driver/MsDos.c"
+  },
+  {
+    "name": "ensure_trailing_backslash",
+    "address": "0x0040f4b0",
+    "size": 40,
+    "source": "src/driver/MsDos.c"
+  },
+  {
+    "name": "OS_GetCWD",
+    "address": "0x0040f4e0",
+    "size": 45,
+    "source": "src/driver/MsDos.c"
+  },
+  {
+    "name": "redirect_standard_handle_to_file",
+    "address": "0x0040f510",
+    "size": 139,
+    "source": "src/driver/MsDos.c"
+  },
+  {
+    "name": "OS_Execute",
+    "address": "0x0040f5a0",
+    "size": 688,
+    "source": "src/driver/MsDos.c"
+  },
+  {
+    "name": "OS_GetDirPtr",
+    "address": "0x0040f850",
+    "size": 119,
+    "source": "src/driver/MsDos.c"
+  },
+  {
+    "name": "OS_CanonPath",
+    "address": "0x0040f8d0",
+    "size": 215,
+    "source": "src/driver/MsDos.c"
+  },
+  {
+    "name": "OS_IsFullPath",
+    "address": "0x0040f9b0",
+    "size": 92,
+    "source": "src/driver/MsDos.c"
+  },
+  {
+    "name": "OS_EqualPath",
+    "address": "0x0040fa10",
+    "size": 110,
+    "source": "src/driver/MsDos.c"
+  },
+  {
+    "name": "OS_MakeSpec",
+    "address": "0x0040fa80",
+    "size": 616,
+    "source": "src/driver/MsDos.c"
+  },
+  {
+    "name": "OS_MakeFileSpec",
+    "address": "0x0040fcf0",
+    "size": 59,
+    "source": "src/driver/MsDos.c"
+  },
+  {
+    "name": "OS_MakePathSpec",
+    "address": "0x0040fd30",
+    "size": 462,
+    "source": "src/driver/MsDos.c"
+  },
+  {
+    "name": "OS_MakeNameSpec",
+    "address": "0x0040ff00",
+    "size": 119,
+    "source": "src/driver/MsDos.c"
+  },
+  {
+    "name": "OS_SpecToString",
+    "address": "0x0040ff80",
+    "size": 171,
+    "source": "src/driver/MsDos.c"
+  },
+  {
+    "name": "OS_PathSpecToString",
+    "address": "0x00410030",
+    "size": 100,
+    "source": "src/driver/MsDos.c"
+  },
+  {
+    "name": "OS_NameSpecToString",
+    "address": "0x004100a0",
+    "size": 100,
+    "source": "src/driver/MsDos.c"
+  },
+  {
+    "name": "OS_EqualSpec",
+    "address": "0x00410110",
+    "size": 60,
+    "source": "src/driver/MsDos.c"
+  },
+  {
+    "name": "OS_EqualPathSpec",
+    "address": "0x00410150",
+    "size": 18,
+    "source": "src/driver/MsDos.c"
+  },
+  {
+    "name": "OS_EqualNameSpec",
+    "address": "0x00410170",
+    "size": 18,
+    "source": "src/driver/MsDos.c"
+  },
+  {
+    "name": "OS_IsDir",
+    "address": "0x00410190",
+    "size": 113,
+    "source": "src/driver/MsDos.c"
+  },
+  {
+    "name": "OS_IsFile",
+    "address": "0x00410210",
+    "size": 113,
+    "source": "src/driver/MsDos.c"
+  },
+  {
+    "name": "OS_IsLink",
+    "address": "0x00410290",
+    "size": 5,
+    "source": "src/driver/MsDos.c"
+  },
+  {
+    "name": "OS_ResolveLink",
+    "address": "0x004102a0",
+    "size": 28,
+    "source": "src/driver/MsDos.c"
+  },
+  {
+    "name": "OS_OpenDir",
+    "address": "0x004102c0",
+    "size": 163,
+    "source": "src/driver/MsDos.c"
+  },
+  {
+    "name": "OS_ReadDir",
+    "address": "0x00410370",
+    "size": 464,
+    "source": "src/driver/MsDos.c"
+  },
+  {
+    "name": "OS_CloseDir",
+    "address": "0x00410540",
+    "size": 66,
+    "source": "src/driver/MsDos.c"
+  },
+  {
+    "name": "OS_GetMilliseconds",
+    "address": "0x00410590",
+    "size": 7,
+    "source": "src/driver/MsDos.c"
+  },
+  {
+    "name": "OS_GetTime",
+    "address": "0x004105a0",
+    "size": 54,
+    "source": "src/driver/MsDos.c"
+  },
+  {
+    "name": "OS_NewHandle",
+    "address": "0x004105e0",
+    "size": 61,
+    "source": "src/driver/MsDos.c"
+  },
+  {
+    "name": "OS_ResizeHandle",
+    "address": "0x00410620",
+    "size": 85,
+    "source": "src/driver/MsDos.c"
+  },
+  {
+    "name": "OS_LockHandle",
+    "address": "0x00410680",
+    "size": 38,
+    "source": "src/driver/MsDos.c"
+  },
+  {
+    "name": "OS_UnlockHandle",
+    "address": "0x004106b0",
+    "size": 2,
+    "source": "src/driver/MsDos.c"
+  },
+  {
+    "name": "OS_FreeHandle",
+    "address": "0x004106c0",
+    "size": 51,
+    "source": "src/driver/MsDos.c"
+  },
+  {
+    "name": "OS_GetHandleSize",
+    "address": "0x00410700",
+    "size": 54,
+    "source": "src/driver/MsDos.c"
+  },
+  {
+    "name": "OS_InvalidateHandle",
+    "address": "0x00410740",
+    "size": 20,
+    "source": "src/driver/MsDos.c"
+  },
+  {
+    "name": "OS_ValidHandle",
+    "address": "0x00410760",
+    "size": 18,
+    "source": "src/driver/MsDos.c"
+  },
+  {
+    "name": "OS_OSErrorToMacError",
+    "address": "0x00410780",
+    "size": 312,
+    "source": "src/driver/MsDos.c"
+  },
+  {
+    "name": "OS_TimeToMac",
+    "address": "0x004108c0",
+    "size": 341,
+    "source": "src/driver/MsDos.c"
+  },
+  {
+    "name": "OS_MacToTime",
+    "address": "0x00410a20",
+    "size": 338,
+    "source": "src/driver/MsDos.c"
+  },
+  {
+    "name": "OS_RefToMac",
+    "address": "0x00410b80",
+    "size": 58,
+    "source": "src/driver/MsDos.c"
+  },
+  {
+    "name": "OS_MacToRef",
+    "address": "0x00410bc0",
+    "size": 22,
+    "source": "src/driver/MsDos.c"
+  },
+  {
+    "name": "OS_LoadMacResourceFork",
+    "address": "0x00410be0",
+    "size": 189,
+    "source": "src/driver/MsDos.c"
+  },
+  {
+    "name": "store_mac_spec_entry",
+    "address": "0x00410ca0",
+    "size": 134,
+    "source": "src/driver/MacSpecs.c"
+  },
+  {
+    "name": "find_or_create_name_registry_entry",
+    "address": "0x00410d30",
+    "size": 202,
+    "source": "src/driver/MacSpecs.c"
+  },
+  {
+    "name": "lookup_dir_id",
+    "address": "0x00410e00",
+    "size": 77,
+    "source": "src/driver/MacSpecs.c"
+  },
+  {
+    "name": "find_or_create_child_entry",
+    "address": "0x00410e50",
+    "size": 208,
+    "source": "src/driver/MacSpecs.c"
+  },
+  {
+    "name": "find_or_create_spec_entry",
+    "address": "0x00410f20",
+    "size": 298,
+    "source": "src/driver/MacSpecs.c"
+  },
+  {
+    "name": "lookup_spec_and_advance_parent",
+    "address": "0x00411050",
+    "size": 123,
+    "source": "src/driver/MacSpecs.c"
+  },
+  {
+    "name": "find_or_create_spec_entry_negated",
+    "address": "0x004110d0",
+    "size": 65,
+    "source": "src/driver/MacSpecs.c"
+  },
+  {
+    "name": "build_name_and_backslash_path",
+    "address": "0x00411120",
+    "size": 225,
+    "source": "src/driver/MacSpecs.c"
+  },
+  {
+    "name": "parse_value_and_offset",
+    "address": "0x00411210",
+    "size": 88,
+    "source": "src/driver/MacSpecs.c"
+  },
+  {
+    "name": "OS_OSSpec_To_FSSpec",
+    "address": "0x00411270",
+    "size": 120,
+    "source": "src/driver/MacSpecs.c"
+  },
+  {
+    "name": "fn_004112f0",
+    "address": "0x004112f0",
+    "size": 98
+  },
+  {
+    "name": "fn_00413670",
+    "address": "0x00411360",
+    "size": 180,
+    "source": "src/driver/MacSpecs.c"
+  },
+  {
+    "name": "MacSpecs_MakeOSSpec",
+    "address": "0x00411420",
+    "size": 69,
+    "source": "src/driver/MacSpecs.c"
+  },
+  {
+    "name": "MacSpecs_MakeResourceForkSpec",
+    "address": "0x00411470",
+    "size": 287,
+    "source": "src/driver/MacSpecs.c"
+  },
+  {
+    "name": "_pstrcpy",
+    "address": "0x00411590",
+    "size": 28,
+    "source": "src/driver/StringUtils.c"
+  },
+  {
+    "name": "fn_004115b0",
+    "address": "0x004115b0",
+    "size": 22
+  },
+  {
+    "name": "pstrcmp",
+    "address": "0x004115d0",
+    "size": 77,
+    "source": "src/driver/StringUtils.c"
+  },
+  {
+    "name": "pstrchr",
+    "address": "0x00411620",
+    "size": 44,
+    "source": "src/driver/StringUtils.c"
+  },
+  {
+    "name": "c2pstrcpy",
+    "address": "0x00411650",
+    "size": 64,
+    "source": "src/driver/StringUtils.c"
+  },
+  {
+    "name": "p2cstrcpy",
+    "address": "0x00411690",
+    "size": 39,
+    "source": "src/driver/StringUtils.c"
+  },
+  {
+    "name": "mvprintf",
+    "address": "0x004116c0",
+    "size": 214,
+    "source": "src/driver/StringUtils.c"
+  },
+  {
+    "name": "mprintf",
+    "address": "0x004117a0",
+    "size": 66,
+    "source": "src/driver/StringUtils.c"
+  },
+  {
+    "name": "HPrintF",
+    "address": "0x004117f0",
+    "size": 150,
+    "source": "src/driver/StringUtils.c"
+  },
+  {
+    "name": "Memory_GetSizeAddress",
+    "address": "0x00411890",
+    "size": 10,
+    "source": "src/driver/Memory.c"
+  },
+  {
+    "name": "set_storage_handle_data",
+    "address": "0x004118a0",
+    "size": 11,
+    "source": "src/driver/Memory.c"
+  },
+  {
+    "name": "Memory_CreateStorageHandle",
+    "address": "0x004118b0",
+    "size": 76,
+    "source": "src/driver/Memory.c"
+  },
+  {
+    "name": "Memory_ExtractMemBuffer",
+    "address": "0x00411900",
+    "size": 37,
+    "source": "src/driver/Memory.c"
+  },
+  {
+    "name": "Memory_GetError",
+    "address": "0x00411930",
+    "size": 7,
+    "source": "src/driver/Memory.c"
+  },
+  {
+    "name": "Memory_NewHandle",
+    "address": "0x00411940",
+    "size": 53,
+    "source": "src/driver/Memory.c"
+  },
+  {
+    "name": "fn_00413990",
+    "address": "0x00411980",
+    "size": 37,
+    "source": "src/driver/Memory.c"
+  },
+  {
+    "name": "Memory_FreeHandle",
+    "address": "0x004119b0",
+    "size": 61,
+    "source": "src/driver/Memory.c"
+  },
+  {
+    "name": "fn_00413a00",
+    "address": "0x004119f0",
+    "size": 51,
+    "source": "src/driver/Memory.c"
+  },
+  {
+    "name": "fn_00413a40",
+    "address": "0x00411a30",
+    "size": 13,
+    "source": "src/driver/Memory.c"
+  },
+  {
+    "name": "fn_00413a50",
+    "address": "0x00411a40",
+    "size": 44,
+    "source": "src/driver/Memory.c"
+  },
+  {
+    "name": "Memory_GetHandleSize",
+    "address": "0x00411a70",
+    "size": 66,
+    "source": "src/driver/Memory.c"
+  },
+  {
+    "name": "Memory_ResizeStorageHandle",
+    "address": "0x00411ac0",
+    "size": 58,
+    "source": "src/driver/Memory.c"
+  },
+  {
+    "name": "Memory_AppendStorageHandle",
+    "address": "0x00411b00",
+    "size": 63,
+    "source": "src/driver/Memory.c"
+  },
+  {
+    "name": "fn_00413b50",
+    "address": "0x00411b40",
+    "size": 47,
+    "source": "src/driver/Memory.c"
+  },
+  {
+    "name": "get_file_query_info_and_identifiers",
+    "address": "0x00411b70",
+    "size": 581,
+    "source": "src/driver/Files.c"
+  },
+  {
+    "name": "set_file_and_resource_fork_times",
+    "address": "0x00411dc0",
+    "size": 244,
+    "source": "src/driver/Files.c"
+  },
+  {
+    "name": "Files_CallWithFileSpecFromPath",
+    "address": "0x00411ec0",
+    "size": 76,
+    "source": "src/driver/Files.c"
+  },
+  {
+    "name": "Files_OpenFileFromPath",
+    "address": "0x00411f10",
+    "size": 74,
+    "source": "src/driver/Files.c"
+  },
+  {
+    "name": "Files_OpenFileByPath",
+    "address": "0x00411f60",
+    "size": 74,
+    "source": "src/driver/Files.c"
+  },
+  {
+    "name": "Files_DeleteFileFromPath",
+    "address": "0x00411fb0",
+    "size": 63,
+    "source": "src/driver/Files.c"
+  },
+  {
+    "name": "Files_CreateFile",
+    "address": "0x00411ff0",
+    "size": 184,
+    "source": "src/driver/Files.c"
+  },
+  {
+    "name": "Files_OpenFile",
+    "address": "0x004120b0",
+    "size": 172,
+    "source": "src/driver/Files.c"
+  },
+  {
+    "name": "Files_DeleteFile",
+    "address": "0x00412160",
+    "size": 127,
+    "source": "src/driver/Files.c"
+  },
+  {
+    "name": "set_record_identifier",
+    "address": "0x004121e0",
+    "size": 115,
+    "source": "src/driver/Files.c"
+  },
+  {
+    "name": "fn_00412260",
+    "address": "0x00412260",
+    "size": 4
+  },
+  {
+    "name": "Files_Read",
+    "address": "0x00412270",
+    "size": 51,
+    "source": "src/driver/Files.c"
+  },
+  {
+    "name": "Files_Write",
+    "address": "0x004122b0",
+    "size": 51,
+    "source": "src/driver/Files.c"
+  },
+  {
+    "name": "Files_Close",
+    "address": "0x004122f0",
+    "size": 142,
+    "source": "src/driver/Files.c"
+  },
+  {
+    "name": "Files_GetSize",
+    "address": "0x00412380",
+    "size": 46,
+    "source": "src/driver/Files.c"
+  },
+  {
+    "name": "Files_SetSize",
+    "address": "0x004123b0",
+    "size": 46,
+    "source": "src/driver/Files.c"
+  },
+  {
+    "name": "Files_Tell",
+    "address": "0x004123e0",
+    "size": 46,
+    "source": "src/driver/Files.c"
+  },
+  {
+    "name": "Files_SetPosition",
+    "address": "0x00412410",
+    "size": 269,
+    "source": "src/driver/Files.c"
+  },
+  {
+    "name": "fn_00412520",
+    "address": "0x00412520",
+    "size": 108
+  },
+  {
+    "name": "Files_UpdateRecordQuery",
+    "address": "0x00412590",
+    "size": 287,
+    "source": "src/driver/Files.c"
+  },
+  {
+    "name": "fn_00414710",
+    "address": "0x004126b0",
+    "size": 214,
+    "source": "src/driver/Files.c"
+  },
+  {
+    "name": "fn_00412790",
+    "address": "0x00412790",
+    "size": 453
+  },
+  {
+    "name": "Files_MakeFileSpecFromPath",
+    "address": "0x00412960",
+    "size": 670,
+    "source": "src/driver/Files.c"
+  },
+  {
+    "name": "CLIO_ReportAssertionFailure",
+    "address": "0x00412c00",
+    "size": 39,
+    "source": "src/driver/AssertionFailure.c"
+  },
+  {
+    "name": "CLIO_ConvertToPascalString",
+    "address": "0x00412c30",
+    "size": 60,
+    "source": "src/driver/TextUtils.c"
+  },
+  {
+    "name": "CLIO_ConvertPascalToCString",
+    "address": "0x00412c70",
+    "size": 34,
+    "source": "src/driver/TextUtils.c"
+  },
+  {
+    "name": "fn_00412ca0",
+    "address": "0x00412ca0",
+    "size": 150
+  },
+  {
+    "name": "CLIO_GetResourceString",
+    "address": "0x00412d40",
+    "size": 374,
+    "source": "src/driver/TextUtils.c"
+  },
+  {
+    "name": "CLIO_GetResourceCString",
+    "address": "0x00412ec0",
+    "size": 31,
+    "source": "src/driver/TextUtils.c"
+  },
+  {
+    "name": "report_user_break",
+    "address": "0x00412ee0",
+    "size": 35,
+    "source": "src/driver/CLIO.c"
+  },
+  {
+    "name": "initialize_console",
+    "address": "0x00412f10",
+    "size": 114,
+    "source": "src/driver/CLIO.c"
+  },
+  {
+    "name": "clear_global",
+    "address": "0x00412f90",
+    "size": 8,
+    "source": "src/driver/CLIO.c"
+  },
+  {
+    "name": "CLIO_ExchangeClearGlobal",
+    "address": "0x00412fa0",
+    "size": 15,
+    "source": "src/driver/CLIO.c"
+  },
+  {
+    "name": "CLIO_InitializeStreamBuffering",
+    "address": "0x00412fb0",
+    "size": 121,
+    "source": "src/driver/CLIO.c"
+  },
+  {
+    "name": "fn_00414e20",
+    "address": "0x00413030",
+    "size": 22,
+    "source": "src/driver/CLIO.c"
+  },
+  {
+    "name": "clear_global_byte",
+    "address": "0x00413050",
+    "size": 10,
+    "source": "src/driver/CLIO.c"
+  },
+  {
+    "name": "write_text_buffer",
+    "address": "0x00413060",
+    "size": 314,
+    "source": "src/driver/CLIO.c"
+  },
+  {
+    "name": "CLIO_WriteStorageToStdout",
+    "address": "0x004131a0",
+    "size": 94,
+    "source": "src/driver/CLIO.c"
+  },
+  {
+    "name": "CLIO_WriteTextFile",
+    "address": "0x00413200",
+    "size": 150,
+    "source": "src/driver/CLIO.c"
+  },
+  {
+    "name": "fn_00415090",
+    "address": "0x004132a0",
+    "size": 139,
+    "source": "src/driver/CLIO.c"
+  },
+  {
+    "name": "CLIO_AppendStorageToFile",
+    "address": "0x00413330",
+    "size": 150,
+    "source": "src/driver/CLIO.c"
+  },
+  {
+    "name": "fn_004133d0",
+    "address": "0x004133d0",
+    "size": 1
+  },
+  {
+    "name": "fn_004133e0",
+    "address": "0x004133e0",
+    "size": 1
+  },
+  {
+    "name": "fn_004133f0",
+    "address": "0x004133f0",
+    "size": 1
+  },
+  {
+    "name": "fn_004151f0",
+    "address": "0x00413400",
+    "size": 14,
+    "source": "src/driver/CLIO.c"
+  },
+  {
+    "name": "reset_column_and_append_prefix",
+    "address": "0x00413410",
+    "size": 36,
+    "source": "src/driver/CLIO.c"
+  },
+  {
+    "name": "append_text",
+    "address": "0x00413440",
+    "size": 158,
+    "source": "src/driver/CLIO.c"
+  },
+  {
+    "name": "wrap_line",
+    "address": "0x004134e0",
+    "size": 273,
+    "source": "src/driver/CLIO.c"
+  },
+  {
+    "name": "append_prefix_separator",
+    "address": "0x00413600",
+    "size": 35,
+    "source": "src/driver/CLIO.c"
+  },
+  {
+    "name": "append_byte",
+    "address": "0x00413630",
+    "size": 112,
+    "source": "src/driver/CLIO.c"
+  },
+  {
+    "name": "format_prefixed_text",
+    "address": "0x004136a0",
+    "size": 405,
+    "source": "src/driver/CLIO.c"
+  },
+  {
+    "name": "forward_format_arguments",
+    "address": "0x00413840",
+    "size": 71,
+    "source": "src/driver/CLIO.c"
+  },
+  {
+    "name": "write_text_to_stdout_or_stderr",
+    "address": "0x00413890",
+    "size": 245,
+    "source": "src/driver/CLIO.c"
+  },
+  {
+    "name": "update_cached_specs",
+    "address": "0x00413990",
+    "size": 171,
+    "source": "src/driver/CLIO.c"
+  },
+  {
+    "name": "make_source_position_carets",
+    "address": "0x00413a40",
+    "size": 124,
+    "source": "src/driver/CLIO.c"
+  },
+  {
+    "name": "nonmatching_plugin_with_clear_high_bit",
+    "address": "0x00413ac0",
+    "size": 84,
+    "source": "src/driver/CLIO.c"
+  },
+  {
+    "name": "get_plugin_type_name",
+    "address": "0x00413b20",
+    "size": 158,
+    "source": "src/driver/CLIO.c"
+  },
+  {
+    "name": "select_plugin_type_data",
+    "address": "0x00413bc0",
+    "size": 76,
+    "source": "src/driver/CLIO.c"
+  },
+  {
+    "name": "print_diagnostic",
+    "address": "0x00413c10",
+    "size": 350,
+    "source": "src/driver/CLIO.c"
+  },
+  {
+    "name": "emit_formatted_diagnostic",
+    "address": "0x00413d70",
+    "size": 605,
+    "source": "src/driver/CLIO.c"
+  },
+  {
+    "name": "format_and_print_message",
+    "address": "0x00413fd0",
+    "size": 378,
+    "source": "src/driver/CLIO.c"
+  },
+  {
+    "name": "print_diagnostic_with_details",
+    "address": "0x00414150",
+    "size": 241,
+    "source": "src/driver/CLIO.c"
+  },
+  {
+    "name": "print_pipe_delimited_diagnostic",
+    "address": "0x00414250",
+    "size": 255,
+    "source": "src/driver/CLIO.c"
+  },
+  {
+    "name": "emit_formatted_message",
+    "address": "0x00414350",
+    "size": 128,
+    "source": "src/driver/CLIO.c"
+  },
+  {
+    "name": "CLIO_FormatAndDispatchText",
+    "address": "0x004143d0",
+    "size": 122,
+    "source": "src/driver/CLIO.c"
+  },
+  {
+    "name": "CLIO_WriteFormattedText",
+    "address": "0x00414450",
+    "size": 122,
+    "source": "src/driver/CLIO.c"
+  },
+  {
+    "name": "extract_diagnostic_source_line",
+    "address": "0x004144d0",
+    "size": 213,
+    "source": "src/driver/CLIO.c"
+  },
+  {
+    "name": "CLIO_ReportDiagnostic",
+    "address": "0x004145b0",
+    "size": 719,
+    "source": "src/driver/CLIO.c"
+  },
+  {
+    "name": "CLIO_CompareStringsIgnoreCase",
+    "address": "0x00414880",
+    "size": 68,
+    "source": "src/driver/CLIO.c"
+  },
+  {
+    "name": "create_data_block",
+    "address": "0x004148d0",
+    "size": 161,
+    "source": "src/driver/CLIO.c"
+  },
+  {
+    "name": "CLPrefs_CopyDestinationToTemporary",
+    "address": "0x00414980",
+    "size": 136,
+    "source": "src/driver/CLPrefs.c"
+  },
+  {
+    "name": "CLPrefs_CopyStorage",
+    "address": "0x00414a10",
+    "size": 185,
+    "source": "src/driver/CLPrefs.c"
+  },
+  {
+    "name": "CLPrefs_AddPrefPanel",
+    "address": "0x00414ad0",
+    "size": 92,
+    "source": "src/driver/CLPrefs.c"
+  },
+  {
+    "name": "CLPrefs_FindNameTableEntry",
+    "address": "0x00414b30",
+    "size": 43,
+    "source": "src/driver/CLPrefs.c"
+  },
+  {
+    "name": "CLPrefs_ConvertLoneLFToCR",
+    "address": "0x00414b60",
+    "size": 74,
+    "source": "src/driver/CLPrefs.c"
+  },
+  {
+    "name": "xmalloc",
+    "address": "0x00414bb0",
+    "size": 134,
+    "source": "src/driver/MemUtils.c"
+  },
+  {
+    "name": "xcalloc",
+    "address": "0x00414c40",
+    "size": 34,
+    "source": "src/driver/MemUtils.c"
+  },
+  {
+    "name": "xrealloc",
+    "address": "0x00414c70",
+    "size": 134,
+    "source": "src/driver/MemUtils.c"
+  },
+  {
+    "name": "xstrdup",
+    "address": "0x00414d00",
+    "size": 43,
+    "source": "src/driver/MemUtils.c"
+  },
+  {
+    "name": "MemUtils_CallPluginEntry",
+    "address": "0x00414d30",
+    "size": 22,
+    "source": "src/driver/MemUtils.c"
+  },
+  {
+    "name": "initialize_plugin_request",
+    "address": "0x00414d50",
+    "size": 369,
+    "source": "src/driver/CLPluginRequests.cpp"
+  },
+  {
+    "name": "CLPluginRequests_ParseCommandLine",
+    "address": "0x00414ed0",
+    "size": 373,
+    "source": "src/driver/CLPluginRequests.cpp"
+  },
+  {
+    "name": "CLPluginRequests_SetupFileRequest",
+    "address": "0x00415050",
+    "size": 649,
+    "source": "src/driver/CLPluginRequests.cpp"
+  },
+  {
+    "name": "CLPluginRequests_InitializeTargetSettings",
+    "address": "0x004152e0",
+    "size": 488,
+    "source": "src/driver/CLPluginRequests.cpp"
+  },
+  {
+    "name": "CLPluginRequests_UpdateTargetSettings",
+    "address": "0x004154d0",
+    "size": 198,
+    "source": "src/driver/CLPluginRequests.cpp"
+  },
+  {
+    "name": "CLPluginRequests_CallPluginForFile",
+    "address": "0x004155a0",
+    "size": 172,
+    "source": "src/driver/CLPluginRequests.cpp"
+  },
+  {
+    "name": "fn_00417440",
+    "address": "0x00415650",
+    "size": 300,
+    "source": "src/driver/CLPluginRequests.cpp"
+  },
+  {
+    "name": "CLPluginRequests_AppendMacFileTypesTable",
+    "address": "0x00415780",
+    "size": 16,
+    "source": "src/driver/CLPluginRequests.cpp"
+  },
+  {
+    "name": "allocate_license_slot",
+    "address": "0x00415790",
+    "size": 151,
+    "source": "src/driver/CLLicenses.c"
+  },
+  {
+    "name": "find_license",
+    "address": "0x00415830",
+    "size": 84,
+    "source": "src/driver/CLLicenses.c"
+  },
+  {
+    "name": "get_license_slot_values",
+    "address": "0x00415890",
+    "size": 68,
+    "source": "src/driver/CLLicenses.c"
+  },
+  {
+    "name": "delete_license",
+    "address": "0x004158e0",
+    "size": 106,
+    "source": "src/driver/CLLicenses.c"
+  },
+  {
+    "name": "get_license_slot_count",
+    "address": "0x00415950",
+    "size": 6,
+    "source": "src/driver/CLLicenses.c"
+  },
+  {
+    "name": "fn_00417750",
+    "address": "0x00415960",
+    "size": 21,
+    "source": "src/driver/CLLicenses.c"
+  },
+  {
+    "name": "CLLicenses_ReleaseLicenses",
+    "address": "0x00415980",
+    "size": 109,
+    "source": "src/driver/CLLicenses.c"
+  },
+  {
+    "name": "CLLicenses_RequestLicense",
+    "address": "0x004159f0",
+    "size": 562,
+    "source": "src/driver/CLLicenses.c"
+  },
+  {
+    "name": "CLLicenses_DeleteLicense",
+    "address": "0x00415c30",
+    "size": 50,
+    "source": "src/driver/CLLicenses.c"
+  },
+  {
+    "name": "release_negative_license_values",
+    "address": "0x00415c70",
+    "size": 71,
+    "source": "src/driver/CLLicenses.c"
+  },
+  {
+    "name": "CLToolExec_AppendArgument",
+    "address": "0x00415cc0",
+    "size": 60,
+    "source": "src/driver/CLToolExec.c"
+  },
+  {
+    "name": "append_command_line_arguments",
+    "address": "0x00415d00",
+    "size": 135,
+    "source": "src/driver/CLToolExec.c"
+  },
+  {
+    "name": "free_items",
+    "address": "0x00415d90",
+    "size": 46,
+    "source": "src/driver/CLToolExec.c"
+  },
+  {
+    "name": "build_tool_command_line",
+    "address": "0x00415dc0",
+    "size": 663,
+    "source": "src/driver/CLToolExec.c"
+  },
+  {
+    "name": "CLToolExec_SetTemporaryOutputMask",
+    "address": "0x00416060",
+    "size": 107,
+    "source": "src/driver/CLToolExec.c"
+  },
+  {
+    "name": "CLToolExec_DeleteTemporaryOutputs",
+    "address": "0x004160d0",
+    "size": 152,
+    "source": "src/driver/CLToolExec.c"
+  },
+  {
+    "name": "CLToolExec_ExecuteLinker",
+    "address": "0x00416170",
+    "size": 994,
+    "source": "src/driver/CLToolExec.c"
+  },
+  {
+    "name": "CLProj_AppendString",
+    "address": "0x00416560",
+    "size": 67,
+    "source": "src/driver/StringExtras.c"
+  },
+  {
+    "name": "CLProj_CopyStringBounded",
+    "address": "0x004165b0",
+    "size": 60,
+    "source": "src/driver/StringExtras.c"
+  },
+  {
+    "name": "CLProj_InitializeCWD",
+    "address": "0x004165f0",
+    "size": 41,
+    "source": "src/driver/CLProj.c"
+  },
+  {
+    "name": "CLProj_FreeTargets",
+    "address": "0x00416620",
+    "size": 42,
+    "source": "src/driver/CLProj.c"
+  },
+  {
+    "name": "WildCardMatch",
+    "address": "0x00416650",
+    "size": 293,
+    "source": "src/driver/Generic.c"
+  },
+  {
+    "name": "OS_MatchPath",
+    "address": "0x00416780",
+    "size": 291,
+    "source": "src/driver/Generic.c"
+  },
+  {
+    "name": "OS_GetFileNamePtr",
+    "address": "0x004168b0",
+    "size": 28,
+    "source": "src/driver/Generic.c"
+  },
+  {
+    "name": "OS_MakeSpec2",
+    "address": "0x004168d0",
+    "size": 185,
+    "source": "src/driver/Generic.c"
+  },
+  {
+    "name": "OS_MakeSpecWithPath",
+    "address": "0x00416990",
+    "size": 349,
+    "source": "src/driver/Generic.c"
+  },
+  {
+    "name": "OS_NameSpecChangeExtension",
+    "address": "0x00416af0",
+    "size": 218,
+    "source": "src/driver/Generic.c"
+  },
+  {
+    "name": "OS_NameSpecSetExtension",
+    "address": "0x00416bd0",
+    "size": 252,
+    "source": "src/driver/Generic.c"
+  },
+  {
+    "name": "OS_SpecToStringRelative",
+    "address": "0x00416cd0",
+    "size": 558,
+    "source": "src/driver/Generic.c"
+  },
+  {
+    "name": "OS_FindFileInPath",
+    "address": "0x00416f00",
+    "size": 237,
+    "source": "src/driver/Generic.c"
+  },
+  {
+    "name": "OS_FindProgram",
+    "address": "0x00416ff0",
+    "size": 367,
+    "source": "src/driver/Generic.c"
+  },
+  {
+    "name": "OS_CopyHandle",
+    "address": "0x00417160",
+    "size": 117,
+    "source": "src/driver/Generic.c"
+  },
+  {
+    "name": "OS_AppendHandle",
+    "address": "0x004171e0",
+    "size": 107,
+    "source": "src/driver/Generic.c"
+  },
+  {
+    "name": "add_access_path",
+    "address": "0x00417250",
+    "size": 326,
+    "source": "src/driver/CLFileOps.cpp"
+  },
+  {
+    "name": "add_or_copy_pref_panel_storage",
+    "address": "0x004173a0",
+    "size": 112,
+    "source": "src/driver/CLFileOps.cpp"
+  },
+  {
+    "name": "set_file_output_name_and_kind",
+    "address": "0x00417410",
+    "size": 182,
+    "source": "src/driver/CLFileOps.cpp"
+  },
+  {
+    "name": "set_output_directory",
+    "address": "0x004174d0",
+    "size": 121,
+    "source": "src/driver/CLFileOps.cpp"
+  },
+  {
+    "name": "add_overlay_group",
+    "address": "0x00417550",
+    "size": 190,
+    "source": "src/driver/CLFileOps.cpp"
+  },
+  {
+    "name": "append_file_to_overlay",
+    "address": "0x00417610",
+    "size": 157,
+    "source": "src/driver/CLFileOps.cpp"
+  },
+  {
+    "name": "lookup_path_index",
+    "address": "0x004176b0",
+    "size": 112,
+    "source": "src/driver/CLFileOps.cpp"
+  },
+  {
+    "name": "set_lookup_paths_name_and_value",
+    "address": "0x00417720",
+    "size": 98,
+    "source": "src/driver/CLFileOps.cpp"
+  },
+  {
+    "name": "??0PluginB@@QAE@XZ",
+    "address": "0x00417790",
+    "size": 121,
+    "source": "src/driver/CLFileOps.cpp"
+  },
+  {
+    "name": "CLFileOps_GetScaledTicks",
+    "address": "0x00417810",
+    "size": 23,
+    "source": "src/driver/CLFileOps.cpp"
+  },
+  {
+    "name": "fn_00419620",
+    "address": "0x00417830",
+    "size": 7,
+    "source": "src/driver/CLFileOps.cpp"
+  },
+  {
+    "name": "dispatch_output_storage_by_mask",
+    "address": "0x00417840",
+    "size": 263,
+    "source": "src/driver/CLFileOps.cpp"
+  },
+  {
+    "name": "CLFileOps_SetupOutputPath",
+    "address": "0x00417950",
+    "size": 1107,
+    "source": "src/driver/CLFileOps.cpp"
+  },
+  {
+    "name": "setup_file_request",
+    "address": "0x00417db0",
+    "size": 38,
+    "source": "src/driver/CLFileOps.cpp"
+  },
+  {
+    "name": "setup_preprocessing_output",
+    "address": "0x00417de0",
+    "size": 184,
+    "source": "src/driver/CLFileOps.cpp"
+  },
+  {
+    "name": "fn_00419c90",
+    "address": "0x00417ea0",
+    "size": 232,
+    "source": "src/driver/CLFileOps.cpp"
+  },
+  {
+    "name": "fn_00419d80",
+    "address": "0x00417f90",
+    "size": 171,
+    "source": "src/driver/CLFileOps.cpp"
+  },
+  {
+    "name": "write_object_file",
+    "address": "0x00418040",
+    "size": 87,
+    "source": "src/driver/CLFileOps.cpp"
+  },
+  {
+    "name": "fn_00419e90",
+    "address": "0x004180a0",
+    "size": 164,
+    "source": "src/driver/CLFileOps.cpp"
+  },
+  {
+    "name": "setup_compile_file_request",
+    "address": "0x00418150",
+    "size": 419,
+    "source": "src/driver/CLFileOps.cpp"
+  },
+  {
+    "name": "execute_tool_with_output_path",
+    "address": "0x00418300",
+    "size": 153,
+    "source": "src/driver/CLFileOps.cpp"
+  },
+  {
+    "name": "disassemble_file",
+    "address": "0x004183a0",
+    "size": 663,
+    "source": "src/driver/CLFileOps.cpp"
+  },
+  {
+    "name": "compile_file",
+    "address": "0x00418640",
+    "size": 700,
+    "source": "src/driver/CLFileOps.cpp"
+  },
+  {
+    "name": "set_bytes",
+    "address": "0x00418900",
+    "size": 21,
+    "source": "src/driver/CLFileOps.cpp"
+  },
+  {
+    "name": "CLFileOps_CompileProject",
+    "address": "0x00418920",
+    "size": 1389,
+    "source": "src/driver/CLFileOps.cpp"
+  },
+  {
+    "name": "CLFileOps_LinkProject",
+    "address": "0x00418e90",
+    "size": 1213,
+    "source": "src/driver/CLFileOps.cpp"
+  },
+  {
+    "name": "CLTarg_CreateTarget",
+    "address": "0x00419350",
+    "size": 361,
+    "source": "src/driver/CLTarg.c"
+  },
+  {
+    "name": "free_target",
+    "address": "0x004194c0",
+    "size": 97,
+    "source": "src/driver/CLTarg.c"
+  },
+  {
+    "name": "CLTarg_FreeTargets",
+    "address": "0x00419530",
+    "size": 37,
+    "source": "src/driver/CLTarg.c"
+  },
+  {
+    "name": "CLTarg_AppendEntry",
+    "address": "0x00419560",
+    "size": 26,
+    "source": "src/driver/CLTarg.c"
+  },
+  {
+    "name": "_Setjmp",
+    "address": "0x00419580",
+    "size": 24,
+    "source": "src/msl/setjmp.x86.c"
+  },
+  {
+    "name": "longjmp",
+    "address": "0x004195a0",
+    "size": 31,
+    "source": "src/msl/setjmp.x86.c"
+  },
+  {
+    "name": "is_valid_plugin_context",
+    "address": "0x004195c0",
+    "size": 75,
+    "source": "src/driver/CWPluginsPrivate.c"
+  },
+  {
+    "name": "has_entry_signature_and_kind",
+    "address": "0x00419610",
+    "size": 68,
+    "source": "src/driver/CWPluginsPrivate.c"
+  },
+  {
+    "name": "is_valid_context",
+    "address": "0x00419660",
+    "size": 25,
+    "source": "src/driver/CWPluginsPrivate.c"
+  },
+  {
+    "name": "CWPluginsPrivate_GetRequest",
+    "address": "0x00419680",
+    "size": 75,
+    "source": "src/driver/CWPluginsPrivate.c"
+  },
+  {
+    "name": "CWPluginsPrivate_GetSourceFile",
+    "address": "0x004196d0",
+    "size": 86,
+    "source": "src/driver/CWPluginsPrivate.c"
+  },
+  {
+    "name": "CWPluginsPrivate_GetNumFiles",
+    "address": "0x00419730",
+    "size": 79,
+    "source": "src/driver/CWPluginsPrivate.c"
+  },
+  {
+    "name": "CWPluginsPrivate_GetOutputFileDirectory",
+    "address": "0x00419780",
+    "size": 85,
+    "source": "src/driver/CWPluginsPrivate.c"
+  },
+  {
+    "name": "CWPluginsPrivate_InvokeExportedRecordCallback",
+    "address": "0x004197e0",
+    "size": 89,
+    "source": "src/driver/CWPluginsPrivate.c"
+  },
+  {
+    "name": "CWPluginsPrivate_CallSignatureCallback",
+    "address": "0x00419840",
+    "size": 98,
+    "source": "src/driver/CWPluginsPrivate.c"
+  },
+  {
+    "name": "ensure_callback_cache",
+    "address": "0x004198b0",
+    "size": 57,
+    "source": "src/driver/CWPluginsPrivate.c"
+  },
+  {
+    "name": "get_opcode_descriptor",
+    "address": "0x004198f0",
+    "size": 133,
+    "source": "src/driver/CWPluginsPrivate.c"
+  },
+  {
+    "name": "CWPluginsPrivate_InvokeMessageCallback",
+    "address": "0x00419980",
+    "size": 71,
+    "source": "src/driver/CWPluginsPrivate.c"
+  },
+  {
+    "name": "CWPluginsPrivate_CallCallback9",
+    "address": "0x004199d0",
+    "size": 66,
+    "source": "src/driver/CWPluginsPrivate.c"
+  },
+  {
+    "name": "fn_0041b8d0",
+    "address": "0x00419a20",
+    "size": 56,
+    "source": "src/driver/CWPluginsPrivate.c"
+  },
+  {
+    "name": "fn_0041b910",
+    "address": "0x00419a60",
+    "size": 46,
+    "source": "src/driver/CWPluginsPrivate.c"
+  },
+  {
+    "name": "CWPluginsPrivate_CallArgumentValueCallback",
+    "address": "0x00419a90",
+    "size": 85,
+    "source": "src/driver/CWPluginsPrivate.c"
+  },
+  {
+    "name": "CWPluginsPrivate_OpenFile",
+    "address": "0x00419af0",
+    "size": 111,
+    "source": "src/driver/CWPluginsPrivate.c"
+  },
+  {
+    "name": "CWPluginsPrivate_CallValuePairCallback",
+    "address": "0x00419b60",
+    "size": 64,
+    "source": "src/driver/CWPluginsPrivate.c"
+  },
+  {
+    "name": "CWPluginsPrivate_ReturnArgument",
+    "address": "0x00419ba0",
+    "size": 7,
+    "source": "src/driver/CWPluginsPrivate.c"
+  },
+  {
+    "name": "CWPluginsPrivate_InvokeCallback40",
+    "address": "0x00419bb0",
+    "size": 78,
+    "source": "src/driver/CWPluginsPrivate.c"
+  },
+  {
+    "name": "fn_0041bc50",
+    "address": "0x00419c00",
+    "size": 58,
+    "source": "src/driver/CWPluginsPrivate.c"
+  },
+  {
+    "name": "has_valid_shell_signature",
+    "address": "0x00419c40",
+    "size": 25,
+    "source": "src/driver/DropInCompilerLinkerPrivate.c"
+  },
+  {
+    "name": "fn_0041bcb0",
+    "address": "0x00419c60",
+    "size": 56,
+    "source": "src/driver/DropInCompilerLinkerPrivate.c"
+  },
+  {
+    "name": "dispatch_request_callback",
+    "address": "0x00419ca0",
+    "size": 56,
+    "source": "src/driver/DropInCompilerLinkerPrivate.c"
+  },
+  {
+    "name": "fn_00419ce0",
+    "address": "0x00419ce0",
+    "size": 55
+  },
+  {
+    "name": "DropInCompilerLinkerPrivate_CallArgumentValue",
+    "address": "0x00419d20",
+    "size": 72,
+    "source": "src/driver/DropInCompilerLinkerPrivate.c"
+  },
+  {
+    "name": "validate_parser_context",
+    "address": "0x00419d70",
+    "size": 24,
+    "source": "src/driver/CWParserPluginsPrivate.c"
+  },
+  {
+    "name": "CWParserPluginsPrivate_GetParserValues",
+    "address": "0x00419d90",
+    "size": 87,
+    "source": "src/driver/CWParserPluginsPrivate.c"
+  },
+  {
+    "name": "CWParserPluginsPrivate_GetEnvironment",
+    "address": "0x00419df0",
+    "size": 62,
+    "source": "src/driver/CWParserPluginsPrivate.c"
+  },
+  {
+    "name": "CWParserPluginsPrivate_GetOutputValues",
+    "address": "0x00419e30",
+    "size": 87,
+    "source": "src/driver/CWParserPluginsPrivate.c"
+  },
+  {
+    "name": "CWParserPluginsPrivate_GetPanels",
+    "address": "0x00419e90",
+    "size": 87,
+    "source": "src/driver/CWParserPluginsPrivate.c"
+  },
+  {
+    "name": "CWParserPluginsPrivate_GetLookupValues",
+    "address": "0x00419ef0",
+    "size": 87,
+    "source": "src/driver/CWParserPluginsPrivate.c"
+  },
+  {
+    "name": "CWParserPluginsPrivate_SetParserEntry",
+    "address": "0x00419f50",
+    "size": 105,
+    "source": "src/driver/CWParserPluginsPrivate.c"
+  },
+  {
+    "name": "fn_0041bfd0",
+    "address": "0x00419fc0",
+    "size": 68,
+    "source": "src/driver/CWParserPluginsPrivate.c"
+  },
+  {
+    "name": "CWParserPluginsPrivate_CallFileOperationCallback",
+    "address": "0x0041a010",
+    "size": 62,
+    "source": "src/driver/CWParserPluginsPrivate.c"
+  },
+  {
+    "name": "CWParserPluginsPrivate_CallFileInfo",
+    "address": "0x0041a050",
+    "size": 63,
+    "source": "src/driver/CWParserPluginsPrivate.c"
+  },
+  {
+    "name": "CWParserPluginsPrivate_CallParserTextCallback",
+    "address": "0x0041a090",
+    "size": 74,
+    "source": "src/driver/CWParserPluginsPrivate.c"
+  },
+  {
+    "name": "CWParserPluginsPrivate_CallValuePairCallback",
+    "address": "0x0041a0e0",
+    "size": 45,
+    "source": "src/driver/CWParserPluginsPrivate.c"
+  },
+  {
+    "name": "append_coalesced_argument",
+    "address": "0x0041a10d",
+    "size": 394,
+    "source": "src/driver/Arguments.c"
+  },
+  {
+    "name": "initialize_arguments",
+    "address": "0x0041a297",
+    "size": 47,
+    "source": "src/driver/Arguments.c"
+  },
+  {
+    "name": "skip_whitespace_and_comments",
+    "address": "0x0041a2c6",
+    "size": 189,
+    "source": "src/driver/Arguments.c"
+  },
+  {
+    "name": "initialize_file_token_cursor",
+    "address": "0x0041a383",
+    "size": 148,
+    "source": "src/driver/Arguments.c"
+  },
+  {
+    "name": "fn_0040f1df",
+    "address": "0x0041a417",
+    "size": 19,
+    "source": "src/driver/Arguments.c"
+  },
+  {
+    "name": "get_next_token",
+    "address": "0x0041a42a",
+    "size": 172,
+    "source": "src/driver/Arguments.c"
+  },
+  {
+    "name": "get_next_arg",
+    "address": "0x0041a4d6",
+    "size": 271,
+    "source": "src/driver/Arguments.c"
+  },
+  {
+    "name": "has_more_tokens_or_args",
+    "address": "0x0041a5e5",
+    "size": 67,
+    "source": "src/driver/Arguments.c"
+  },
+  {
+    "name": "tokenize_arguments",
+    "address": "0x0041a628",
+    "size": 748,
+    "source": "src/driver/Arguments.c"
+  },
+  {
+    "name": "Targets_ParseArguments",
+    "address": "0x0041a914",
+    "size": 567,
+    "source": "src/driver/Arguments.c"
+  },
+  {
+    "name": "Targets_FreeTokenText",
+    "address": "0x0041ab4b",
+    "size": 77,
+    "source": "src/driver/Arguments.c"
+  },
+  {
+    "name": "fn_0040f960",
+    "address": "0x0041ab98",
+    "size": 9,
+    "source": "src/driver/Arguments.c"
+  },
+  {
+    "name": "fn_0040f969",
+    "address": "0x0041aba1",
+    "size": 32,
+    "source": "src/driver/Arguments.c"
+  },
+  {
+    "name": "Targets_AdvanceArgument",
+    "address": "0x0041abc1",
+    "size": 26,
+    "source": "src/driver/Arguments.c"
+  },
+  {
+    "name": "Targets_IsValueNullOrZero",
+    "address": "0x0041abdb",
+    "size": 23,
+    "source": "src/driver/Arguments.c"
+  },
+  {
+    "name": "Targets_IncrementGlobalOnNonzeroResult",
+    "address": "0x0041abf2",
+    "size": 16,
+    "source": "src/driver/Arguments.c"
+  },
+  {
+    "name": "Targets_DecrementCountAndGetTokenText",
+    "address": "0x0041ac02",
+    "size": 24,
+    "source": "src/driver/Arguments.c"
+  },
+  {
+    "name": "Targets_GetTokenTextDescription",
+    "address": "0x0041ac1a",
+    "size": 134,
+    "source": "src/driver/Arguments.c"
+  },
+  {
+    "name": "Targets_CopyTokenText",
+    "address": "0x0041aca0",
+    "size": 149,
+    "source": "src/driver/Arguments.c"
+  },
+  {
+    "name": "grow_ptr_list",
+    "address": "0x0041ad35",
+    "size": 79,
+    "source": "src/driver/Arguments.c"
+  },
+  {
+    "name": "append_text_to_ptrlist_item",
+    "address": "0x0041ad84",
+    "size": 121,
+    "source": "src/driver/Arguments.c"
+  },
+  {
+    "name": "Targets_InitPtrList",
+    "address": "0x0041adfd",
+    "size": 28,
+    "source": "src/driver/Arguments.c"
+  },
+  {
+    "name": "fn_0040fbe1",
+    "address": "0x0041ae19",
+    "size": 129,
+    "source": "src/driver/Arguments.c"
+  },
+  {
+    "name": "terminate_ptr_list",
+    "address": "0x0041ae9a",
+    "size": 28,
+    "source": "src/driver/Arguments.c"
+  },
+  {
+    "name": "Targets_InitIntegerSequenceResult",
+    "address": "0x0041aeb6",
+    "size": 45,
+    "source": "src/driver/Arguments.c"
+  },
+  {
+    "name": "push_option",
+    "address": "0x0041aee3",
+    "size": 17,
+    "source": "src/driver/Option.c"
+  },
+  {
+    "name": "push_option_arg",
+    "address": "0x0041aef4",
+    "size": 80,
+    "source": "src/driver/Option.c"
+  },
+  {
+    "name": "fn_0041c1ae",
+    "address": "0x0041af44",
+    "size": 43,
+    "source": "src/driver/Option.c"
+  },
+  {
+    "name": "pop_option_stack",
+    "address": "0x0041af6f",
+    "size": 9,
+    "source": "src/driver/Option.c"
+  },
+  {
+    "name": "fn_0041c1e2",
+    "address": "0x0041af78",
+    "size": 9,
+    "source": "src/driver/Option.c"
+  },
+  {
+    "name": "fn_0041c1eb",
+    "address": "0x0041af81",
+    "size": 6,
+    "source": "src/driver/Option.c"
+  },
+  {
+    "name": "Option_Push",
+    "address": "0x0041af87",
+    "size": 208,
+    "source": "src/driver/Option.c"
+  },
+  {
+    "name": "Option_PopStack",
+    "address": "0x0041b057",
+    "size": 97,
+    "source": "src/driver/Option.c"
+  },
+  {
+    "name": "format_ostack",
+    "address": "0x0041b0b8",
+    "size": 409,
+    "source": "src/driver/Option.c"
+  },
+  {
+    "name": "Option_FormatOStackToList",
+    "address": "0x0041b251",
+    "size": 108,
+    "source": "src/driver/Option.c"
+  },
+  {
+    "name": "Option_ResetOptionLists",
+    "address": "0x0041b2bd",
+    "size": 131,
+    "source": "src/driver/Option.c"
+  },
+  {
+    "name": "Option_GetOptionList",
+    "address": "0x0041b340",
+    "size": 6,
+    "source": "src/driver/Option.c"
+  },
+  {
+    "name": "add_option",
+    "address": "0x0041b346",
+    "size": 194,
+    "source": "src/driver/Option.c"
+  },
+  {
+    "name": "Option_RegisterOptionList",
+    "address": "0x0041b408",
+    "size": 70,
+    "source": "src/driver/Option.c"
+  },
+  {
+    "name": "clear_option_avail_high_bits",
+    "address": "0x0041b44e",
+    "size": 33,
+    "source": "src/driver/Option.c"
+  },
+  {
+    "name": "format_option_list",
+    "address": "0x0041b46f",
+    "size": 452,
+    "source": "src/driver/Option.c"
+  },
+  {
+    "name": "Option_IsAvailable",
+    "address": "0x0041b633",
+    "size": 29,
+    "source": "src/driver/Option.c"
+  },
+  {
+    "name": "fn_0041c8ba",
+    "address": "0x0041b650",
+    "size": 27,
+    "source": "src/driver/Option.c"
+  },
+  {
+    "name": "fn_0041c8d5",
+    "address": "0x0041b66b",
+    "size": 62,
+    "source": "src/driver/Option.c"
+  },
+  {
+    "name": "fn_0041c913",
+    "address": "0x0041b6a9",
+    "size": 52,
+    "source": "src/driver/Option.c"
+  },
+  {
+    "name": "token_matches_kind",
+    "address": "0x0041b6dd",
+    "size": 167,
+    "source": "src/driver/Option.c"
+  },
+  {
+    "name": "match_option_kind",
+    "address": "0x0041b784",
+    "size": 111,
+    "source": "src/driver/Option.c"
+  },
+  {
+    "name": "fn_0041ca5d",
+    "address": "0x0041b7f3",
+    "size": 47,
+    "source": "src/driver/Option.c"
+  },
+  {
+    "name": "parse_option",
+    "address": "0x0041b822",
+    "size": 1015,
+    "source": "src/driver/Option.c"
+  },
+  {
+    "name": "match_option_names",
+    "address": "0x0041bc19",
+    "size": 463,
+    "source": "src/driver/Option.c"
+  },
+  {
+    "name": "find_matching_option",
+    "address": "0x0041bde8",
+    "size": 352,
+    "source": "src/driver/Option.c"
+  },
+  {
+    "name": "parse_option_list",
+    "address": "0x0041bf48",
+    "size": 2581,
+    "source": "src/driver/Option.c"
+  },
+  {
+    "name": "Option_ParseOptionList",
+    "address": "0x0041c95d",
+    "size": 135,
+    "source": "src/driver/Option.c"
+  },
+  {
+    "name": "Option_FormatMessageWithOptionContext",
+    "address": "0x0041c9e4",
+    "size": 162,
+    "source": "src/driver/Option.c"
+  },
+  {
+    "name": "Option_ReportError",
+    "address": "0x0041ca86",
+    "size": 162,
+    "source": "src/driver/Option.c"
+  },
+  {
+    "name": "format_and_dispatch_option_message",
+    "address": "0x0041cb28",
+    "size": 174,
+    "source": "src/driver/Option.c"
+  },
+  {
+    "name": "report_option_message",
+    "address": "0x0041cbd6",
+    "size": 174,
+    "source": "src/driver/Option.c"
+  },
+  {
+    "name": "forward_varargs",
+    "address": "0x0041cc84",
+    "size": 54,
+    "source": "src/driver/Option.c"
+  },
+  {
+    "name": "Option_ForwardVarArgs",
+    "address": "0x0041ccba",
+    "size": 54,
+    "source": "src/driver/Option.c"
+  },
+  {
+    "name": "print_option_help",
+    "address": "0x0041ccf0",
+    "size": 161,
+    "source": "src/driver/Option.c"
+  },
+  {
+    "name": "show_option_help",
+    "address": "0x0041cd91",
+    "size": 230,
+    "source": "src/driver/Option.c"
+  },
+  {
+    "name": "Option_ShowHelp",
+    "address": "0x0041ce77",
+    "size": 36,
+    "source": "src/driver/Option.c"
+  },
+  {
+    "name": "fn_0041cea0",
+    "address": "0x0041cea0",
+    "size": 28
+  },
+  {
+    "name": "fn_0041cec0",
+    "address": "0x0041cec0",
+    "size": 64
+  },
+  {
+    "name": "fn_0041cf00",
+    "address": "0x0041cf00",
+    "size": 26
+  },
+  {
+    "name": "fn_0041cf20",
+    "address": "0x0041cf20",
+    "size": 32
+  },
+  {
+    "name": "fn_0041cf40",
+    "address": "0x0041cf40",
+    "size": 31
+  },
+  {
+    "name": "fn_0041cf60",
+    "address": "0x0041cf60",
+    "size": 31
+  },
+  {
+    "name": "fn_0041cf80",
+    "address": "0x0041cf80",
+    "size": 25
+  },
+  {
+    "name": "fn_0041cfa0",
+    "address": "0x0041cfa0",
+    "size": 13
+  },
+  {
+    "name": "fn_0041cfb0",
+    "address": "0x0041cfb0",
+    "size": 184
+  },
+  {
+    "name": "fn_0041d070",
+    "address": "0x0041d070",
+    "size": 362
+  },
+  {
+    "name": "fn_0041d1e0",
+    "address": "0x0041d1e0",
+    "size": 239
+  },
+  {
+    "name": "fn_0041d2d0",
+    "address": "0x0041d2d0",
+    "size": 665
+  },
+  {
+    "name": "fn_0041d570",
+    "address": "0x0041d570",
+    "size": 109
+  },
+  {
+    "name": "fn_0041d5e0",
+    "address": "0x0041d5e0",
+    "size": 2691
+  },
+  {
+    "name": "fn_0041e070",
+    "address": "0x0041e070",
+    "size": 70
+  },
+  {
+    "name": "fn_0041e0c0",
+    "address": "0x0041e0c0",
+    "size": 961
+  },
+  {
+    "name": "fn_0041e490",
+    "address": "0x0041e490",
+    "size": 77
+  },
+  {
+    "name": "fn_0041e4e0",
+    "address": "0x0041e4e0",
+    "size": 1562
+  },
+  {
+    "name": "fn_0041eb00",
+    "address": "0x0041eb00",
+    "size": 74
+  },
+  {
+    "name": "fn_0041eb50",
+    "address": "0x0041eb50",
+    "size": 89
+  },
+  {
+    "name": "fn_0041ebb0",
+    "address": "0x0041ebb0",
+    "size": 12
+  },
+  {
+    "name": "fn_0041ebc0",
+    "address": "0x0041ebc0",
+    "size": 166
+  },
+  {
+    "name": "fn_0041ec70",
+    "address": "0x0041ec70",
+    "size": 289
+  },
+  {
+    "name": "fn_0041eda0",
+    "address": "0x0041eda0",
+    "size": 160
+  },
+  {
+    "name": "fn_0041ee40",
+    "address": "0x0041ee40",
+    "size": 922
+  },
+  {
+    "name": "fn_0041f1e0",
+    "address": "0x0041f1e0",
+    "size": 44
+  },
+  {
+    "name": "fn_0041f210",
+    "address": "0x0041f210",
+    "size": 105
+  },
+  {
+    "name": "format_message_and_longjmp",
+    "address": "0x0041f280",
+    "size": 12,
+    "source": "src/driver/libimp-eabi-ppc.c"
+  },
+  {
+    "name": "fn_0041e9b0",
+    "address": "0x0041f290",
+    "size": 54,
+    "source": "src/driver/libimp-eabi-ppc.c"
+  },
+  {
+    "name": "load_file_data_and_set_archive_signature",
+    "address": "0x0041f2d0",
+    "size": 463,
+    "source": "src/driver/libimp-eabi-ppc.c"
+  },
+  {
+    "name": "fn_0041f4a0",
+    "address": "0x0041f4a0",
+    "size": 105
+  },
+  {
+    "name": "fn_0041ec20",
+    "address": "0x0041f510",
+    "size": 65,
+    "source": "src/driver/libimp-eabi-ppc.c"
+  },
+  {
+    "name": "fn_0041ec70",
+    "address": "0x0041f560",
+    "size": 356,
+    "source": "src/driver/libimp-eabi-ppc.c"
+  },
+  {
+    "name": "check_ticks_and_longjmp",
+    "address": "0x0041f6d0",
+    "size": 61,
+    "source": "src/driver/libimp-eabi-ppc.c"
+  },
+  {
+    "name": "classify_file_header",
+    "address": "0x0041f710",
+    "size": 184,
+    "source": "src/driver/libimp-eabi-ppc.c"
+  },
+  {
+    "name": "read_file_into_buffer",
+    "address": "0x0041f7d0",
+    "size": 289,
+    "source": "src/driver/libimp-eabi-ppc.c"
+  },
+  {
+    "name": "read_file_into_input_nodes",
+    "address": "0x0041f900",
+    "size": 938,
+    "source": "src/driver/libimp-eabi-ppc.c"
+  },
+  {
+    "name": "clear_file_input_data_handles",
+    "address": "0x0041fcb0",
+    "size": 35,
+    "source": "src/driver/libimp-eabi-ppc.c"
+  },
+  {
+    "name": "fn_0041f430",
+    "address": "0x0041fce0",
+    "size": 326,
+    "source": "src/driver/libimp-eabi-ppc.c"
+  },
+  {
+    "name": "accumulate_section_sizes",
+    "address": "0x0041fe30",
+    "size": 205,
+    "source": "src/driver/libimp-eabi-ppc.c"
+  },
+  {
+    "name": "resolve_archive_member_name",
+    "address": "0x0041ff00",
+    "size": 212,
+    "source": "src/driver/libimp-eabi-ppc.c"
+  },
+  {
+    "name": "terminate_slash_newline_sequences",
+    "address": "0x0041ffe0",
+    "size": 43,
+    "source": "src/driver/libimp-eabi-ppc.c"
+  },
+  {
+    "name": "classify_archive_members",
+    "address": "0x00420010",
+    "size": 215,
+    "source": "src/driver/libimp-eabi-ppc.c"
+  },
+  {
+    "name": "dispatch_file_input_by_kind",
+    "address": "0x004200f0",
+    "size": 112,
+    "source": "src/driver/libimp-eabi-ppc.c"
+  },
+  {
+    "name": "fn_00420160",
+    "address": "0x00420160",
+    "size": 506
+  },
+  {
+    "name": "to_lowercase",
+    "address": "0x0042035a",
+    "size": 25,
+    "source": "src/driver/Utils.c"
+  },
+  {
+    "name": "Utils_IsDigit",
+    "address": "0x00420373",
+    "size": 20,
+    "source": "src/driver/Utils.c"
+  },
+  {
+    "name": "Utils_IsAlpha",
+    "address": "0x00420387",
+    "size": 48,
+    "source": "src/driver/Utils.c"
+  },
+  {
+    "name": "Utils_IsAlnum",
+    "address": "0x004203b7",
+    "size": 40,
+    "source": "src/driver/Utils.c"
+  },
+  {
+    "name": "Utils_IsHexDigit",
+    "address": "0x004203df",
+    "size": 80,
+    "source": "src/driver/Utils.c"
+  },
+  {
+    "name": "Utils_FormatOptions",
+    "address": "0x0042042f",
+    "size": 765,
+    "source": "src/driver/Utils.c"
+  },
+  {
+    "name": "Utils_MatchStringSegments",
+    "address": "0x0042072c",
+    "size": 185,
+    "source": "src/driver/Utils.c"
+  },
+  {
+    "name": "ToolHelpers_cc_SetFileOutputName",
+    "address": "0x004207e5",
+    "size": 75,
+    "source": "src/driver/Projects.c"
+  },
+  {
+    "name": "ToolHelpers_cc_AddProjectEntry",
+    "address": "0x00420830",
+    "size": 324,
+    "source": "src/driver/Projects.c"
+  },
+  {
+    "name": "ToolHelpers_cc_AddAccessPath",
+    "address": "0x00420974",
+    "size": 299,
+    "source": "src/driver/Projects.c"
+  },
+  {
+    "name": "ToolHelpers_cc_CallFileInfoForDirectory",
+    "address": "0x00420a9f",
+    "size": 95,
+    "source": "src/driver/Projects.c"
+  },
+  {
+    "name": "ToolHelpers_cc_CallValuePairCallback",
+    "address": "0x00420afe",
+    "size": 70,
+    "source": "src/driver/Projects.c"
+  },
+  {
+    "name": "format_version",
+    "address": "0x00420b44",
+    "size": 116,
+    "source": "src/driver/Projects.c"
+  },
+  {
+    "name": "ToolHelpers_cc_PrintVersion",
+    "address": "0x00420bb8",
+    "size": 495,
+    "source": "src/driver/Projects.c"
+  },
+  {
+    "name": "__strtoul",
+    "address": "0x00420db0",
+    "size": 674,
+    "source": "src/msl/strtoul.c"
+  },
+  {
+    "name": "__strtoull",
+    "address": "0x00421060",
+    "size": 809,
+    "source": "src/msl/strtoul.c"
+  },
+  {
+    "name": "fn_00421390",
+    "address": "0x00421390",
+    "size": 37
+  },
+  {
+    "name": "fn_004213c0",
+    "address": "0x004213c0",
+    "size": 27
+  },
+  {
+    "name": "ldiv",
+    "address": "0x004213e0",
+    "size": 92,
+    "source": "src/msl/arith.c"
+  },
+  {
+    "name": "__add",
+    "address": "0x00421440",
+    "size": 68,
+    "source": "src/msl/arith.c"
+  },
+  {
+    "name": "__ladd",
+    "address": "0x00421490",
+    "size": 68,
+    "source": "src/msl/arith.c"
+  },
+  {
+    "name": "__lmul",
+    "address": "0x004214e0",
+    "size": 102,
+    "source": "src/msl/arith.c"
+  },
+  {
+    "name": "__ldiv",
+    "address": "0x00421550",
+    "size": 117,
+    "source": "src/msl/arith.c"
+  },
+  {
+    "name": "__lmod",
+    "address": "0x004215d0",
+    "size": 100,
+    "source": "src/msl/arith.c"
+  },
+  {
+    "name": "subtract_time_zone_bias",
+    "address": "0x00421640",
+    "size": 61,
+    "source": "src/msl/time.win32.c"
+  },
+  {
+    "name": "parse_format",
+    "address": "0x00421680",
+    "size": 751,
+    "source": "src/msl/wscanf.c"
+  },
+  {
+    "name": "__wsformatter",
+    "address": "0x00421970",
+    "size": 2156,
+    "source": "src/msl/wscanf.c"
+  },
+  {
+    "name": "fn_004221e0",
+    "address": "0x004221e0",
+    "size": 73
+  },
+  {
+    "name": "__wStringRead",
+    "address": "0x00422230",
+    "size": 120,
+    "source": "src/msl/wscanf.c"
+  },
+  {
+    "name": "MacFileTypes_AppendTable",
+    "address": "0x004222b0",
+    "size": 88,
+    "source": "src/driver/MacFileTypes.c"
+  },
+  {
+    "name": "fn_00421a80",
+    "address": "0x00422310",
+    "size": 98,
+    "source": "src/driver/MacFileTypes.c"
+  },
+  {
+    "name": "fn_00421af0",
+    "address": "0x00422380",
+    "size": 39,
+    "source": "src/driver/MacFileTypes.c"
+  },
+  {
+    "name": "MacFileTypes_MatchBytes",
+    "address": "0x004223b0",
+    "size": 208,
+    "source": "src/driver/MacFileTypes.c"
+  },
+  {
+    "name": "MacFileTypes_GetFileType",
+    "address": "0x00422480",
+    "size": 308,
+    "source": "src/driver/MacFileTypes.c"
+  },
+  {
+    "name": "fn_00421d30",
+    "address": "0x004225c0",
+    "size": 18,
+    "source": "src/driver/MacFileTypes.c"
+  },
+  {
+    "name": "parse_format",
+    "address": "0x004225e0",
+    "size": 675,
+    "source": "src/msl/scanf.c"
+  },
+  {
+    "name": "fn_00422890",
+    "address": "0x00422890",
+    "size": 1970
+  },
+  {
+    "name": "fn_00423050",
+    "address": "0x00423050",
+    "size": 73
+  },
+  {
+    "name": "__StringRead",
+    "address": "0x004230a0",
+    "size": 89,
+    "source": "src/msl/scanf.c"
+  },
+  {
+    "name": "__vsscanf",
+    "address": "0x00423100",
+    "size": 50,
+    "source": "src/msl/scanf.c"
+  },
+  {
+    "name": "sscanf",
+    "address": "0x00423140",
+    "size": 61,
+    "source": "src/msl/scanf.c"
+  },
+  {
+    "name": "fn_00420710",
+    "address": "0x00423180",
+    "size": 154,
+    "source": "src/driver/TargetOptimizer-ppc-eabi.c"
+  },
+  {
+    "name": "write_file_buffer",
+    "address": "0x00423220",
+    "size": 169,
+    "source": "src/driver/TargetOptimizer-ppc-eabi.c"
+  },
+  {
+    "name": "TargetOptimizer_ppc_eabi_InitOperationRecord",
+    "address": "0x004232d0",
+    "size": 141,
+    "source": "src/driver/TargetOptimizer-ppc-eabi.c"
+  },
+  {
+    "name": "TargetOptimizer_ppc_eabi_GetMemBufferPtrAndSize",
+    "address": "0x00423360",
+    "size": 83,
+    "source": "src/driver/TargetOptimizer-ppc-eabi.c"
+  },
+  {
+    "name": "TargetOptimizer_ppc_eabi_UnloadOperationRecord",
+    "address": "0x004233c0",
+    "size": 97,
+    "source": "src/driver/TargetOptimizer-ppc-eabi.c"
+  },
+  {
+    "name": "CLFiles_AllocDropinFileRecord",
+    "address": "0x00423430",
+    "size": 47,
+    "source": "src/driver/CLFiles.c"
+  },
+  {
+    "name": "free_allocation_record",
+    "address": "0x00423460",
+    "size": 70,
+    "source": "src/driver/CLFiles.c"
+  },
+  {
+    "name": "CLFiles_AssertNonNullIndexedListLink",
+    "address": "0x004234b0",
+    "size": 30,
+    "source": "src/driver/CLFiles.c"
+  },
+  {
+    "name": "CLFiles_FreeAllocationRecords",
+    "address": "0x004234d0",
+    "size": 56,
+    "source": "src/driver/CLFiles.c"
+  },
+  {
+    "name": "CLFiles_InsertIndexedListLinkAtFirstIndex",
+    "address": "0x00423510",
+    "size": 23,
+    "source": "src/driver/CLFiles.c"
+  },
+  {
+    "name": "CLFiles_InsertIndexedListLink",
+    "address": "0x00423530",
+    "size": 126,
+    "source": "src/driver/CLFiles.c"
+  },
+  {
+    "name": "CLFiles_FindFileByIndex",
+    "address": "0x004235b0",
+    "size": 78,
+    "source": "src/driver/CLFiles.c"
+  },
+  {
+    "name": "CLFiles_FindDropinFileRecord",
+    "address": "0x00423600",
+    "size": 44,
+    "source": "src/driver/CLFiles.c"
+  },
+  {
+    "name": "CLFiles_GetIndex",
+    "address": "0x00423630",
+    "size": 34,
+    "source": "src/driver/CLFiles.c"
+  },
+  {
+    "name": "CLFiles_InitChain",
+    "address": "0x00423660",
+    "size": 13,
+    "source": "src/driver/CLFiles.c"
+  },
+  {
+    "name": "CLFiles_FreeChainNodes",
+    "address": "0x00423670",
+    "size": 64,
+    "source": "src/driver/CLFiles.c"
+  },
+  {
+    "name": "CLFiles_CreateChainRecord",
+    "address": "0x004236b0",
+    "size": 108,
+    "source": "src/driver/CLFiles.c"
+  },
+  {
+    "name": "CLFiles_AppendChainRecord",
+    "address": "0x00423720",
+    "size": 28,
+    "source": "src/driver/CLFiles.c"
+  },
+  {
+    "name": "CLFiles_FindChainRecord",
+    "address": "0x00423740",
+    "size": 41,
+    "source": "src/driver/CLFiles.c"
+  },
+  {
+    "name": "Overlays_Initialize",
+    "address": "0x00423770",
+    "size": 220,
+    "source": "src/driver/CLOverlays.c"
+  },
+  {
+    "name": "CLOverlays_FreeGroups",
+    "address": "0x00423850",
+    "size": 77,
+    "source": "src/driver/CLOverlays.c"
+  },
+  {
+    "name": "CLOverlays_AppendGroup",
+    "address": "0x004238a0",
+    "size": 102,
+    "source": "src/driver/CLOverlays.c"
+  },
+  {
+    "name": "CLOverlays_GetGroupByIndex",
+    "address": "0x00423910",
+    "size": 77,
+    "source": "src/driver/CLOverlays.c"
+  },
+  {
+    "name": "CLOverlays_CountGroups",
+    "address": "0x00423960",
+    "size": 56,
+    "source": "src/driver/CLOverlays.c"
+  },
+  {
+    "name": "CLOverlays_GetAllocationByGroupIndex",
+    "address": "0x004239a0",
+    "size": 68,
+    "source": "src/driver/CLOverlays.c"
+  },
+  {
+    "name": "CLOverlays_GetAllocationValueByGroupIndex",
+    "address": "0x004239f0",
+    "size": 77,
+    "source": "src/driver/CLOverlays.c"
+  },
+  {
+    "name": "CLOverlays_CreateOverlayEntry",
+    "address": "0x00423a40",
+    "size": 177,
+    "source": "src/driver/CLOverlays.c"
+  },
+  {
+    "name": "free_overlay_allocations",
+    "address": "0x00423b00",
+    "size": 88,
+    "source": "src/driver/CLOverlays.c"
+  },
+  {
+    "name": "CLOverlays_AppendOverlay",
+    "address": "0x00423b60",
+    "size": 123,
+    "source": "src/driver/CLOverlays.c"
+  },
+  {
+    "name": "CLOverlays_GetOverlayAtIndex",
+    "address": "0x00423be0",
+    "size": 77,
+    "source": "src/driver/CLOverlays.c"
+  },
+  {
+    "name": "CLOverlays_CountOverlays",
+    "address": "0x00423c30",
+    "size": 64,
+    "source": "src/driver/CLOverlays.c"
+  },
+  {
+    "name": "CLOverlays_CreateOverlayAllocation",
+    "address": "0x00423c70",
+    "size": 128,
+    "source": "src/driver/CLOverlays.c"
+  },
+  {
+    "name": "free_overlay_values",
+    "address": "0x00423cf0",
+    "size": 61,
+    "source": "src/driver/CLOverlays.c"
+  },
+  {
+    "name": "CLOverlays_AppendEntry",
+    "address": "0x00423d30",
+    "size": 138,
+    "source": "src/driver/CLOverlays.c"
+  },
+  {
+    "name": "get_allocation_value",
+    "address": "0x00423dc0",
+    "size": 72,
+    "source": "src/driver/CLOverlays.c"
+  },
+  {
+    "name": "CLOverlays_GetValueCount",
+    "address": "0x00423e10",
+    "size": 40,
+    "source": "src/driver/CLOverlays.c"
+  },
+  {
+    "name": "CLOverlays_ConvertTimestampTo1904EpochSeconds",
+    "address": "0x00423e40",
+    "size": 138,
+    "source": "src/driver/CLOverlays.c"
+  },
+  {
+    "name": "CLOverlays_ConvertSecondsToTimestamp",
+    "address": "0x00423ed0",
+    "size": 419,
+    "source": "src/driver/CLOverlays.c"
+  },
+  {
+    "name": "UCBGetFileInfo",
+    "address": "0x00424080",
+    "size": 473,
+    "source": "src/driver/CLDropinCallbacks_V10.cpp"
+  },
+  {
+    "name": "lookup_file",
+    "address": "0x00424260",
+    "size": 167,
+    "source": "src/driver/CLDropinCallbacks_V10.cpp"
+  },
+  {
+    "name": "lookup_dependency_file",
+    "address": "0x00424310",
+    "size": 322,
+    "source": "src/driver/CLDropinCallbacks_V10.cpp"
+  },
+  {
+    "name": "insert_dependency_from_path",
+    "address": "0x00424460",
+    "size": 300,
+    "source": "src/driver/CLDropinCallbacks_V10.cpp"
+  },
+  {
+    "name": "UCBFindAndLoadFile",
+    "address": "0x00424590",
+    "size": 640,
+    "source": "src/driver/CLDropinCallbacks_V10.cpp"
+  },
+  {
+    "name": "UCBGetFileText",
+    "address": "0x00424810",
+    "size": 363,
+    "source": "src/driver/CLDropinCallbacks_V10.cpp"
+  },
+  {
+    "name": "UCBReleaseFileText",
+    "address": "0x00424980",
+    "size": 61,
+    "source": "src/driver/CLDropinCallbacks_V10.cpp"
+  },
+  {
+    "name": "UCBGetSegmentInfo",
+    "address": "0x004249c0",
+    "size": 120,
+    "source": "src/driver/CLDropinCallbacks_V10.cpp"
+  },
+  {
+    "name": "UCBGetOverlay1GroupInfo",
+    "address": "0x00424a40",
+    "size": 154,
+    "source": "src/driver/CLDropinCallbacks_V10.cpp"
+  },
+  {
+    "name": "UCBGetOverlay1FileInfo",
+    "address": "0x00424ae0",
+    "size": 107,
+    "source": "src/driver/CLDropinCallbacks_V10.cpp"
+  },
+  {
+    "name": "UCBGetOverlay1Info",
+    "address": "0x00424b50",
+    "size": 128,
+    "source": "src/driver/CLDropinCallbacks_V10.cpp"
+  },
+  {
+    "name": "UCBReportMessage",
+    "address": "0x00424bd0",
+    "size": 641,
+    "source": "src/driver/CLDropinCallbacks_V10.cpp"
+  },
+  {
+    "name": "UCBAlert",
+    "address": "0x00424e60",
+    "size": 328,
+    "source": "src/driver/CLDropinCallbacks_V10.cpp"
+  },
+  {
+    "name": "UCBShowStatus",
+    "address": "0x00424fb0",
+    "size": 207,
+    "source": "src/driver/CLDropinCallbacks_V10.cpp"
+  },
+  {
+    "name": "UCBUserBreak",
+    "address": "0x00425080",
+    "size": 57,
+    "source": "src/driver/CLDropinCallbacks_V10.cpp"
+  },
+  {
+    "name": "UCBGetNamedPreferences",
+    "address": "0x004250c0",
+    "size": 159,
+    "source": "src/driver/CLDropinCallbacks_V10.cpp"
+  },
+  {
+    "name": "UCBStorePluginData",
+    "address": "0x00425160",
+    "size": 58,
+    "source": "src/driver/CLDropinCallbacks_V10.cpp"
+  },
+  {
+    "name": "UCBGetPluginData",
+    "address": "0x004251a0",
+    "size": 58,
+    "source": "src/driver/CLDropinCallbacks_V10.cpp"
+  },
+  {
+    "name": "UCBSetModDate",
+    "address": "0x004251e0",
+    "size": 279,
+    "source": "src/driver/CLDropinCallbacks_V10.cpp"
+  },
+  {
+    "name": "UCBAddProjectEntry",
+    "address": "0x00425300",
+    "size": 1873,
+    "source": "src/driver/CLDropinCallbacks_V10.cpp"
+  },
+  {
+    "name": "UCBCreateNewTextDocument",
+    "address": "0x00425a60",
+    "size": 745,
+    "source": "src/driver/CLDropinCallbacks_V10.cpp"
+  },
+  {
+    "name": "UCBAllocateMemory",
+    "address": "0x00425d50",
+    "size": 73,
+    "source": "src/driver/CLDropinCallbacks_V10.cpp"
+  },
+  {
+    "name": "UCBFreeMemory",
+    "address": "0x00425da0",
+    "size": 58,
+    "source": "src/driver/CLDropinCallbacks_V10.cpp"
+  },
+  {
+    "name": "UCBAllocMemHandle",
+    "address": "0x00425de0",
+    "size": 71,
+    "source": "src/driver/CLDropinCallbacks_V10.cpp"
+  },
+  {
+    "name": "UCBFreeMemHandle",
+    "address": "0x00425e30",
+    "size": 68,
+    "source": "src/driver/CLDropinCallbacks_V10.cpp"
+  },
+  {
+    "name": "UCBGetMemHandleSize",
+    "address": "0x00425e80",
+    "size": 76,
+    "source": "src/driver/CLDropinCallbacks_V10.cpp"
+  },
+  {
+    "name": "UCBResizeMemHandle",
+    "address": "0x00425ed0",
+    "size": 94,
+    "source": "src/driver/CLDropinCallbacks_V10.cpp"
+  },
+  {
+    "name": "UCBLockMemHandle",
+    "address": "0x00425f30",
+    "size": 54,
+    "source": "src/driver/CLDropinCallbacks_V10.cpp"
+  },
+  {
+    "name": "UCBUnlockMemHandle",
+    "address": "0x00425f70",
+    "size": 42,
+    "source": "src/driver/CLDropinCallbacks_V10.cpp"
+  },
+  {
+    "name": "UCBGetTargetName",
+    "address": "0x00425fa0",
+    "size": 56,
+    "source": "src/driver/CLDropinCallbacks_V10.cpp"
+  },
+  {
+    "name": "UCBPreDialog",
+    "address": "0x00425fe0",
+    "size": 32,
+    "source": "src/driver/CLDropinCallbacks_V10.cpp"
+  },
+  {
+    "name": "UCBPostDialog",
+    "address": "0x00426000",
+    "size": 32,
+    "source": "src/driver/CLDropinCallbacks_V10.cpp"
+  },
+  {
+    "name": "UCBPreFileAction",
+    "address": "0x00426020",
+    "size": 58,
+    "source": "src/driver/CLDropinCallbacks_V10.cpp"
+  },
+  {
+    "name": "UCBPostFileAction",
+    "address": "0x00426060",
+    "size": 58,
+    "source": "src/driver/CLDropinCallbacks_V10.cpp"
+  },
+  {
+    "name": "UCBCacheAccessPathList",
+    "address": "0x004260a0",
+    "size": 697,
+    "source": "src/driver/CLDropinCallbacks_V10.cpp"
+  },
+  {
+    "name": "UCBSecretAttachHandle",
+    "address": "0x00426360",
+    "size": 42,
+    "source": "src/driver/CLDropinCallbacks_V10.cpp"
+  },
+  {
+    "name": "UCBSecretDetachHandle",
+    "address": "0x00426390",
+    "size": 73,
+    "source": "src/driver/CLDropinCallbacks_V10.cpp"
+  },
+  {
+    "name": "UCBSecretPeekHandle",
+    "address": "0x004263e0",
+    "size": 73,
+    "source": "src/driver/CLDropinCallbacks_V10.cpp"
+  },
+  {
+    "name": "UCBCheckoutLicense",
+    "address": "0x00426430",
+    "size": 207,
+    "source": "src/driver/CLDropinCallbacks_V10.cpp"
+  },
+  {
+    "name": "UCBCheckinLicense",
+    "address": "0x00426500",
+    "size": 49,
+    "source": "src/driver/CLDropinCallbacks_V10.cpp"
+  },
+  {
+    "name": "UCBResolveRelativePath",
+    "address": "0x00426540",
+    "size": 31,
+    "source": "src/driver/CLDropinCallbacks_V10.cpp"
+  },
+  {
+    "name": "??0PluginA@@QAE@KH@Z",
+    "address": "0x00426560",
+    "size": 72,
+    "source": "src/driver/CLDropinCallbacks_V10.cpp"
+  },
+  {
+    "name": "??2@YAPAXI@Z",
+    "address": "0x004265b0",
+    "size": 133,
+    "source": "src/runtime/newop.cpp"
+  },
+  {
+    "name": "??1bad_alloc@std@@UAE@XZ",
+    "address": "0x00426640",
+    "size": 15,
+    "source": "src/runtime/newop.cpp"
+  },
+  {
+    "name": "??_Ebad_alloc@std@@UAE@I@Z",
+    "address": "0x00426650",
+    "size": 74,
+    "source": "src/runtime/newop.cpp"
+  },
+  {
+    "name": "?what@exception@std@@UBEPBDXZ",
+    "address": "0x004266a0",
+    "size": 16,
+    "source": "src/runtime/newop.cpp"
+  },
+  {
+    "name": "UCBCachePrecompiledHeader",
+    "address": "0x004266b0",
+    "size": 106,
+    "source": "src/driver/CLCompilerLinkerDropin_V10.cpp"
+  },
+  {
+    "name": "UCBLoadObjectData",
+    "address": "0x00426720",
+    "size": 104,
+    "source": "src/driver/CLCompilerLinkerDropin_V10.cpp"
+  },
+  {
+    "name": "UCBStoreObjectData",
+    "address": "0x00426790",
+    "size": 552,
+    "source": "src/driver/CLCompilerLinkerDropin_V10.cpp"
+  },
+  {
+    "name": "UCBFreeObjectData",
+    "address": "0x004269c0",
+    "size": 107,
+    "source": "src/driver/CLCompilerLinkerDropin_V10.cpp"
+  },
+  {
+    "name": "UCBDisplayLines",
+    "address": "0x00426a30",
+    "size": 57,
+    "source": "src/driver/CLCompilerLinkerDropin_V10.cpp"
+  },
+  {
+    "name": "UCBBeginSubCompile",
+    "address": "0x00426a70",
+    "size": 58,
+    "source": "src/driver/CLCompilerLinkerDropin_V10.cpp"
+  },
+  {
+    "name": "UCBEndSubCompile",
+    "address": "0x00426ab0",
+    "size": 58,
+    "source": "src/driver/CLCompilerLinkerDropin_V10.cpp"
+  },
+  {
+    "name": "UCBGetPrecompiledHeaderSpec",
+    "address": "0x00426af0",
+    "size": 739,
+    "source": "src/driver/CLCompilerLinkerDropin_V10.cpp"
+  },
+  {
+    "name": "UCBGetResourceFile",
+    "address": "0x00426de0",
+    "size": 58,
+    "source": "src/driver/CLCompilerLinkerDropin_V10.cpp"
+  },
+  {
+    "name": "UCBPutResourceFile",
+    "address": "0x00426e20",
+    "size": 58,
+    "source": "src/driver/CLCompilerLinkerDropin_V10.cpp"
+  },
+  {
+    "name": "fn_00426320",
+    "address": "0x00426e60",
+    "size": 66,
+    "source": "src/driver/CLCompilerLinkerDropin_V10.cpp"
+  },
+  {
+    "name": "UCBLookUpUnit",
+    "address": "0x00426eb0",
+    "size": 1355,
+    "source": "src/driver/CLCompilerLinkerDropin_V10.cpp"
+  },
+  {
+    "name": "UCBSBMfiles",
+    "address": "0x00427400",
+    "size": 32,
+    "source": "src/driver/CLCompilerLinkerDropin_V10.cpp"
+  },
+  {
+    "name": "UCBStoreUnit",
+    "address": "0x00427420",
+    "size": 687,
+    "source": "src/driver/CLCompilerLinkerDropin_V10.cpp"
+  },
+  {
+    "name": "UCBReleaseUnit",
+    "address": "0x004276d0",
+    "size": 61,
+    "source": "src/driver/CLCompilerLinkerDropin_V10.cpp"
+  },
+  {
+    "name": "UCBUnitNameToFileName",
+    "address": "0x00427710",
+    "size": 108,
+    "source": "src/driver/CLCompilerLinkerDropin_V10.cpp"
+  },
+  {
+    "name": "UCBOSAlert",
+    "address": "0x00427780",
+    "size": 154,
+    "source": "src/driver/CLCompilerLinkerDropin_V10.cpp"
+  },
+  {
+    "name": "UCBOSErrorMessage",
+    "address": "0x00427820",
+    "size": 183,
+    "source": "src/driver/CLCompilerLinkerDropin_V10.cpp"
+  },
+  {
+    "name": "UCBGetModifiedFiles",
+    "address": "0x004278e0",
+    "size": 67,
+    "source": "src/driver/CLCompilerLinkerDropin_V10.cpp"
+  },
+  {
+    "name": "UCBGetSuggestedObjectFileSpec",
+    "address": "0x00427930",
+    "size": 119,
+    "source": "src/driver/CLCompilerLinkerDropin_V10.cpp"
+  },
+  {
+    "name": "UCBGetStoredObjectFileSpec",
+    "address": "0x004279b0",
+    "size": 133,
+    "source": "src/driver/CLCompilerLinkerDropin_V10.cpp"
+  },
+  {
+    "name": "??0PluginC@@QAE@XZ",
+    "address": "0x00427a40",
+    "size": 441,
+    "source": "src/driver/CLCompilerLinkerDropin_V10.cpp"
+  },
+  {
+    "name": "fn_00427bfa",
+    "address": "0x00427bfa",
+    "size": 6
+  },
+  {
+    "name": "fn_00427c00",
+    "address": "0x00427c00",
+    "size": 6
+  },
+  {
+    "name": "fn_00427c06",
+    "address": "0x00427c06",
+    "size": 6
+  },
+  {
+    "name": "init_access_path_entry",
+    "address": "0x00427c10",
+    "size": 63,
+    "source": "src/driver/CLAccessPaths.c"
+  },
+  {
+    "name": "CLAccessPaths_CreateAccessPathEntry",
+    "address": "0x00427c50",
+    "size": 25,
+    "source": "src/driver/CLAccessPaths.c"
+  },
+  {
+    "name": "free_access_path_entry",
+    "address": "0x00427c70",
+    "size": 55,
+    "source": "src/driver/CLAccessPaths.c"
+  },
+  {
+    "name": "CLAccessPaths_Init",
+    "address": "0x00427cb0",
+    "size": 47,
+    "source": "src/driver/CLAccessPaths.c"
+  },
+  {
+    "name": "CLAccessPaths_FreeItems",
+    "address": "0x00427ce0",
+    "size": 81,
+    "source": "src/driver/CLAccessPaths.c"
+  },
+  {
+    "name": "allocate_slot",
+    "address": "0x00427d40",
+    "size": 94,
+    "source": "src/driver/CLAccessPaths.c"
+  },
+  {
+    "name": "CLAccessPaths_StoreItem",
+    "address": "0x00427da0",
+    "size": 55,
+    "source": "src/driver/CLAccessPaths.c"
+  },
+  {
+    "name": "CLAccessPaths_InsertItem",
+    "address": "0x00427de0",
+    "size": 120,
+    "source": "src/driver/CLAccessPaths.c"
+  },
+  {
+    "name": "remove_access_path",
+    "address": "0x00427e60",
+    "size": 84,
+    "source": "src/driver/CLAccessPaths.c"
+  },
+  {
+    "name": "CLAccessPaths_GetEntry",
+    "address": "0x00427ec0",
+    "size": 59,
+    "source": "src/driver/CLAccessPaths.c"
+  },
+  {
+    "name": "CLAccessPaths_GetCount",
+    "address": "0x00427f00",
+    "size": 38,
+    "source": "src/driver/CLAccessPaths.c"
+  },
+  {
+    "name": "CLAccessPaths_FindPath",
+    "address": "0x00427f30",
+    "size": 94,
+    "source": "src/driver/CLAccessPaths.c"
+  },
+  {
+    "name": "add_subdirectory_access_paths",
+    "address": "0x00427f90",
+    "size": 364,
+    "source": "src/driver/CLAccessPaths.c"
+  },
+  {
+    "name": "CLAccessPaths_InitializeChildren",
+    "address": "0x00428100",
+    "size": 54,
+    "source": "src/driver/CLAccessPaths.c"
+  },
+  {
+    "name": "count_access_paths_recursive",
+    "address": "0x00428140",
+    "size": 93,
+    "source": "src/driver/CLAccessPaths.c"
+  },
+  {
+    "name": "copy_access_paths_to_file_specs",
+    "address": "0x004281a0",
+    "size": 221,
+    "source": "src/driver/CLAccessPaths.c"
+  },
+  {
+    "name": "copy_access_paths_to_file_specs_checked",
+    "address": "0x00428280",
+    "size": 55,
+    "source": "src/driver/CLAccessPaths.c"
+  },
+  {
+    "name": "CLSegs_CreatePayloadWithValue",
+    "address": "0x004282c0",
+    "size": 46,
+    "source": "src/driver/CLSegs.c"
+  },
+  {
+    "name": "free_if_not_null",
+    "address": "0x004282f0",
+    "size": 16,
+    "source": "src/driver/CLSegs.c"
+  },
+  {
+    "name": "Segments_Initialize",
+    "address": "0x00428300",
+    "size": 170,
+    "source": "src/driver/CLSegs.c"
+  },
+  {
+    "name": "CLSegs_FreeValues",
+    "address": "0x004283b0",
+    "size": 81,
+    "source": "src/driver/CLSegs.c"
+  },
+  {
+    "name": "allocate_access_path_value_index",
+    "address": "0x00428410",
+    "size": 94,
+    "source": "src/driver/CLSegs.c"
+  },
+  {
+    "name": "CLSegs_AddValue",
+    "address": "0x00428470",
+    "size": 72,
+    "source": "src/driver/CLSegs.c"
+  },
+  {
+    "name": "CLSegs_GetValue",
+    "address": "0x004284c0",
+    "size": 59,
+    "source": "src/driver/CLSegs.c"
+  },
+  {
+    "name": "CLSegs_GetCount",
+    "address": "0x00428500",
+    "size": 38,
+    "source": "src/driver/CLSegs.c"
+  },
+  {
+    "name": "CLDependencies_InitDeps",
+    "address": "0x00428530",
+    "size": 89,
+    "source": "src/driver/CLDependencies.c"
+  },
+  {
+    "name": "CLDependencies_FreeDeps",
+    "address": "0x00428590",
+    "size": 45,
+    "source": "src/driver/CLDependencies.c"
+  },
+  {
+    "name": "get_record_flag",
+    "address": "0x004285c0",
+    "size": 19,
+    "source": "src/driver/CLDependencies.c"
+  },
+  {
+    "name": "make_dependency_osspec",
+    "address": "0x004285e0",
+    "size": 46,
+    "source": "src/driver/CLDependencies.c"
+  },
+  {
+    "name": "fn_00427ad0",
+    "address": "0x00428610",
+    "size": 112,
+    "source": "src/driver/CLDependencies.c"
+  },
+  {
+    "name": "dep_records_equal",
+    "address": "0x00428680",
+    "size": 107,
+    "source": "src/driver/CLDependencies.c"
+  },
+  {
+    "name": "find_or_create_access_path_entry",
+    "address": "0x004286f0",
+    "size": 50,
+    "source": "src/driver/CLDependencies.c"
+  },
+  {
+    "name": "find_access_path_entry",
+    "address": "0x00428730",
+    "size": 92,
+    "source": "src/driver/CLDependencies.c"
+  },
+  {
+    "name": "find_dependency_access_path_entry",
+    "address": "0x00428790",
+    "size": 121,
+    "source": "src/driver/CLDependencies.c"
+  },
+  {
+    "name": "append_dep_record",
+    "address": "0x00428810",
+    "size": 343,
+    "source": "src/driver/CLDependencies.c"
+  },
+  {
+    "name": "CLDependencies_FindFile",
+    "address": "0x00428970",
+    "size": 454,
+    "source": "src/driver/CLDependencies.c"
+  },
+  {
+    "name": "initialize_four_words",
+    "address": "0x00428b40",
+    "size": 34,
+    "source": "src/driver/CLDependencies.c"
+  },
+  {
+    "name": "CLDependencies_SetAccessPath",
+    "address": "0x00428b70",
+    "size": 258,
+    "source": "src/driver/CLDependencies.c"
+  },
+  {
+    "name": "get_access_path_entry",
+    "address": "0x00428c80",
+    "size": 6,
+    "source": "src/driver/CLDependencies.c"
+  },
+  {
+    "name": "contains_dependency",
+    "address": "0x00428c90",
+    "size": 64,
+    "source": "src/driver/CLDependencies.c"
+  },
+  {
+    "name": "append_dependency_entry",
+    "address": "0x00428cd0",
+    "size": 61,
+    "source": "src/driver/CLDependencies.c"
+  },
+  {
+    "name": "CLDependencies_InsertDependencyIfAbsent",
+    "address": "0x00428d10",
+    "size": 155,
+    "source": "src/driver/CLDependencies.c"
+  },
+  {
+    "name": "escape_spaces",
+    "address": "0x00428db0",
+    "size": 50,
+    "source": "src/driver/CLDependencies.c"
+  },
+  {
+    "name": "CLDependencies_WriteDependencies",
+    "address": "0x00428df0",
+    "size": 788,
+    "source": "src/driver/CLDependencies.c"
+  },
+  {
+    "name": "CLWriteObjectFile_WriteObjectFile",
+    "address": "0x00429110",
+    "size": 246,
+    "source": "src/driver/CLWriteObjectFile.c"
+  },
+  {
+    "name": "fn_004286d0",
+    "address": "0x00429210",
+    "size": 231,
+    "source": "src/driver/CLBrowser.c"
+  },
+  {
+    "name": "fn_004287c0",
+    "address": "0x00429300",
+    "size": 77,
+    "source": "src/driver/CLBrowser.c"
+  },
+  {
+    "name": "CLBrowser_InitMemBuffer",
+    "address": "0x00429350",
+    "size": 46,
+    "source": "src/driver/CLBrowser.c"
+  },
+  {
+    "name": "free_lookup_entries",
+    "address": "0x00429380",
+    "size": 76,
+    "source": "src/driver/CLBrowser.c"
+  },
+  {
+    "name": "CLBrowser_FreeMemBuffer",
+    "address": "0x004293d0",
+    "size": 33,
+    "source": "src/driver/CLBrowser.c"
+  },
+  {
+    "name": "CLBrowser_LookupValue",
+    "address": "0x00429400",
+    "size": 189,
+    "source": "src/driver/CLBrowser.c"
+  },
+  {
+    "name": "CLBrowser_FindOrAddLookupEntry",
+    "address": "0x004294c0",
+    "size": 189,
+    "source": "src/driver/CLBrowser.c"
+  },
+  {
+    "name": "calculate_lookup_entries_size",
+    "address": "0x00429580",
+    "size": 66,
+    "source": "src/driver/CLBrowser.c"
+  },
+  {
+    "name": "write_lookup_entries",
+    "address": "0x004295d0",
+    "size": 118,
+    "source": "src/driver/CLBrowser.c"
+  },
+  {
+    "name": "build_browser_file_buffer",
+    "address": "0x00429650",
+    "size": 486,
+    "source": "src/driver/CLBrowser.c"
+  },
+  {
+    "name": "allocate_browser_cache_entry",
+    "address": "0x00429840",
+    "size": 44,
+    "source": "src/driver/CLBrowser.c"
+  },
+  {
+    "name": "prepend_browser_cache_entry",
+    "address": "0x00429870",
+    "size": 42,
+    "source": "src/driver/CLBrowser.c"
+  },
+  {
+    "name": "unlink_browser_cache_entry",
+    "address": "0x004298a0",
+    "size": 40,
+    "source": "src/driver/CLBrowser.c"
+  },
+  {
+    "name": "CLBrowser_InitCache",
+    "address": "0x004298d0",
+    "size": 31,
+    "source": "src/driver/CLBrowser.c"
+  },
+  {
+    "name": "CLBrowser_FreeCacheEntries",
+    "address": "0x004298f0",
+    "size": 72,
+    "source": "src/driver/CLBrowser.c"
+  },
+  {
+    "name": "CLBrowser_CacheFileText",
+    "address": "0x00429940",
+    "size": 222,
+    "source": "src/driver/CLBrowser.c"
+  },
+  {
+    "name": "CLBrowser_FindCacheEntryBuffer",
+    "address": "0x00429a20",
+    "size": 76,
+    "source": "src/driver/CLBrowser.c"
+  },
+  {
+    "name": "CLBrowser_ReleaseBuffer",
+    "address": "0x00429a70",
+    "size": 45,
+    "source": "src/driver/CLBrowser.c"
+  },
+  {
+    "name": "_chkstk",
+    "address": "0x00429aa0",
+    "size": 55,
+    "source": "src/runtime/stackall.c"
+  },
+  {
+    "name": "_stack_alloc",
+    "address": "0x00429ae0",
+    "size": 15,
+    "source": "src/runtime/stackall.c"
+  },
+  {
+    "name": "return_true",
+    "address": "0x00429aef",
+    "size": 4,
+    "source": "src/driver/Parameter.c"
+  },
+  {
+    "name": "fn_00428f61",
+    "address": "0x00429af3",
+    "size": 31,
+    "source": "src/driver/Parameter.c"
+  },
+  {
+    "name": "fn_00429b12",
+    "address": "0x00429b12",
+    "size": 3
+  },
+  {
+    "name": "format_num_parm",
+    "address": "0x00429b15",
+    "size": 394,
+    "source": "src/driver/Parameter.c"
+  },
+  {
+    "name": "fn_00429c9f",
+    "address": "0x00429c9f",
+    "size": 3
+  },
+  {
+    "name": "fn_00429110",
+    "address": "0x00429ca2",
+    "size": 733,
+    "source": "src/driver/Parameter.c"
+  },
+  {
+    "name": "format_filecode_option",
+    "address": "0x00429f7f",
+    "size": 117,
+    "source": "src/driver/Parameter.c"
+  },
+  {
+    "name": "fn_00429ff4",
+    "address": "0x00429ff4",
+    "size": 3
+  },
+  {
+    "name": "set_file_code",
+    "address": "0x00429ff7",
+    "size": 218,
+    "source": "src/driver/Parameter.c"
+  },
+  {
+    "name": "format_string_name_help_value",
+    "address": "0x0042a0d1",
+    "size": 139,
+    "source": "src/driver/Parameter.c"
+  },
+  {
+    "name": "fn_0042a15c",
+    "address": "0x0042a15c",
+    "size": 3
+  },
+  {
+    "name": "copy_idparm_arg",
+    "address": "0x0042a15f",
+    "size": 105,
+    "source": "src/driver/Parameter.c"
+  },
+  {
+    "name": "get_string_name_help_value",
+    "address": "0x0042a1c8",
+    "size": 155,
+    "source": "src/driver/Parameter.c"
+  },
+  {
+    "name": "fn_0042a263",
+    "address": "0x0042a263",
+    "size": 3
+  },
+  {
+    "name": "validate_id_arg",
+    "address": "0x0042a266",
+    "size": 143,
+    "source": "src/driver/Parameter.c"
+  },
+  {
+    "name": "get_option_val_count_state",
+    "address": "0x0042a2f5",
+    "size": 92,
+    "source": "src/driver/Parameter.c"
+  },
+  {
+    "name": "fn_0042a351",
+    "address": "0x0042a351",
+    "size": 3
+  },
+  {
+    "name": "parse_on_off",
+    "address": "0x0042a354",
+    "size": 120,
+    "source": "src/driver/Parameter.c"
+  },
+  {
+    "name": "get_on_off_option_info",
+    "address": "0x0042a3cc",
+    "size": 92,
+    "source": "src/driver/Parameter.c"
+  },
+  {
+    "name": "fn_0042a428",
+    "address": "0x0042a428",
+    "size": 3
+  },
+  {
+    "name": "set_on_off",
+    "address": "0x0042a42b",
+    "size": 120,
+    "source": "src/driver/Parameter.c"
+  },
+  {
+    "name": "get_filepath_name_flags_value",
+    "address": "0x0042a4a3",
+    "size": 60,
+    "source": "src/driver/Parameter.c"
+  },
+  {
+    "name": "fn_0042a4df",
+    "address": "0x0042a4df",
+    "size": 3
+  },
+  {
+    "name": "fn_00429990",
+    "address": "0x0042a4e2",
+    "size": 388
+  },
+  {
+    "name": "zero_unsigned_int_outputs",
+    "address": "0x0042a666",
+    "size": 31,
+    "source": "src/driver/Parameter.c"
+  },
+  {
+    "name": "is_mask_entry_unchanged",
+    "address": "0x0042a685",
+    "size": 226,
+    "source": "src/driver/Parameter.c"
+  },
+  {
+    "name": "apply_mask_entry",
+    "address": "0x0042a767",
+    "size": 448,
+    "source": "src/driver/Parameter.c"
+  },
+  {
+    "name": "clear_unsigned_outputs",
+    "address": "0x0042a927",
+    "size": 31,
+    "source": "src/driver/Parameter.c"
+  },
+  {
+    "name": "is_dest_unchanged_by_val_xor",
+    "address": "0x0042a946",
+    "size": 160,
+    "source": "src/driver/Parameter.c"
+  },
+  {
+    "name": "xor_const_dest",
+    "address": "0x0042a9e6",
+    "size": 247,
+    "source": "src/driver/Parameter.c"
+  },
+  {
+    "name": "zero_unsigned_outputs",
+    "address": "0x0042aadd",
+    "size": 31,
+    "source": "src/driver/Parameter.c"
+  },
+  {
+    "name": "const_matches_dest",
+    "address": "0x0042aafc",
+    "size": 159,
+    "source": "src/driver/Parameter.c"
+  },
+  {
+    "name": "store_constrec_val",
+    "address": "0x0042ab9b",
+    "size": 349,
+    "source": "src/driver/Parameter.c"
+  },
+  {
+    "name": "zero_outputs",
+    "address": "0x0042acf8",
+    "size": 31,
+    "source": "src/driver/Parameter.c"
+  },
+  {
+    "name": "compare_setstring_value",
+    "address": "0x0042ad17",
+    "size": 63,
+    "source": "src/driver/Parameter.c"
+  },
+  {
+    "name": "set_string",
+    "address": "0x0042ad56",
+    "size": 52,
+    "source": "src/driver/Parameter.c"
+  },
+  {
+    "name": "get_setting_name_value",
+    "address": "0x0042ad8a",
+    "size": 76,
+    "source": "src/driver/Parameter.c"
+  },
+  {
+    "name": "fn_0042add6",
+    "address": "0x0042add6",
+    "size": 3
+  },
+  {
+    "name": "invoke_float_parameter_callback",
+    "address": "0x0042add9",
+    "size": 29,
+    "source": "src/driver/Parameter.c"
+  },
+  {
+    "name": "format_setting_help",
+    "address": "0x0042adf6",
+    "size": 177,
+    "source": "src/driver/Parameter.c"
+  },
+  {
+    "name": "fn_0042aea7",
+    "address": "0x0042aea7",
+    "size": 3
+  },
+  {
+    "name": "fn_0042a266",
+    "address": "0x0042aeaa",
+    "size": 172,
+    "source": "src/driver/Parameter.c"
+  },
+  {
+    "name": "fn_0042a312",
+    "address": "0x0042af56",
+    "size": 809,
+    "source": "src/driver/Parameter.c"
+  },
+  {
+    "name": "fn_0042b27f",
+    "address": "0x0042b27f",
+    "size": 3
+  },
+  {
+    "name": "evaluate_conditional_branch",
+    "address": "0x0042b282",
+    "size": 50,
+    "source": "src/driver/Parameter.c"
+  },
+  {
+    "name": "dispatch_param_by_which",
+    "address": "0x0042b2b4",
+    "size": 90,
+    "source": "src/driver/Parameter.c"
+  },
+  {
+    "name": "Parameter_DispatchByWhich",
+    "address": "0x0042b30e",
+    "size": 112,
+    "source": "src/driver/Parameter.c"
+  },
+  {
+    "name": "Parameter_DispatchParam",
+    "address": "0x0042b37e",
+    "size": 76,
+    "source": "src/driver/Parameter.c"
+  },
+  {
+    "name": "push_argument_option",
+    "address": "0x0042b3ca",
+    "size": 17,
+    "source": "src/driver/Parameter.c"
+  },
+  {
+    "name": "fn_0042a797",
+    "address": "0x0042b3db",
+    "size": 9,
+    "source": "src/driver/Parameter.c"
+  },
+  {
+    "name": "is_non_text_file",
+    "address": "0x0042b3e4",
+    "size": 131,
+    "source": "src/driver/Parameter.c"
+  },
+  {
+    "name": "fn_0042a915",
+    "address": "0x0042b467",
+    "size": 804,
+    "source": "src/driver/Parameter.c"
+  },
+  {
+    "name": "Parameter_CheckParameters",
+    "address": "0x0042b78b",
+    "size": 218,
+    "source": "src/driver/Parameter.c"
+  },
+  {
+    "name": "Parameter_ForwardVarArgs",
+    "address": "0x0042b865",
+    "size": 54,
+    "source": "src/driver/Parameter.c"
+  },
+  {
+    "name": "forward_stack_varargs",
+    "address": "0x0042b89b",
+    "size": 54,
+    "source": "src/driver/Parameter.c"
+  },
+  {
+    "name": "Parameter_InitHelpColumn",
+    "address": "0x0042b8d1",
+    "size": 35,
+    "source": "src/driver/Parameter.c"
+  },
+  {
+    "name": "append_formatted_text",
+    "address": "0x0042b8f4",
+    "size": 213,
+    "source": "src/driver/Help.c"
+  },
+  {
+    "name": "append_column_newline",
+    "address": "0x0042b9c9",
+    "size": 17,
+    "source": "src/driver/Help.c"
+  },
+  {
+    "name": "advance_column",
+    "address": "0x0042b9da",
+    "size": 116,
+    "source": "src/driver/Help.c"
+  },
+  {
+    "name": "fn_0042ae0a",
+    "address": "0x0042ba4e",
+    "size": 76,
+    "source": "src/driver/Help.c"
+  },
+  {
+    "name": "fn_0042ae56",
+    "address": "0x0042ba9a",
+    "size": 88,
+    "source": "src/driver/Help.c"
+  },
+  {
+    "name": "write_column_line",
+    "address": "0x0042baf2",
+    "size": 675,
+    "source": "src/driver/Help.c"
+  },
+  {
+    "name": "print_string_line",
+    "address": "0x0042bd95",
+    "size": 34,
+    "source": "src/driver/Help.c"
+  },
+  {
+    "name": "format_help_columns",
+    "address": "0x0042bdb7",
+    "size": 153,
+    "source": "src/driver/Help.c"
+  },
+  {
+    "name": "drain_column",
+    "address": "0x0042be50",
+    "size": 78,
+    "source": "src/driver/Help.c"
+  },
+  {
+    "name": "format_first_and_third_help_columns",
+    "address": "0x0042be9e",
+    "size": 18,
+    "source": "src/driver/Help.c"
+  },
+  {
+    "name": "append_columns_newline",
+    "address": "0x0042beb0",
+    "size": 23,
+    "source": "src/driver/Help.c"
+  },
+  {
+    "name": "Help_FormatOption",
+    "address": "0x0042bec7",
+    "size": 2493,
+    "source": "src/driver/Help.c"
+  },
+  {
+    "name": "Help_PrintOptionList",
+    "address": "0x0042c884",
+    "size": 549,
+    "source": "src/driver/Help.c"
+  },
+  {
+    "name": "Help_PrintOptionUsageNotes",
+    "address": "0x0042caa9",
+    "size": 278,
+    "source": "src/driver/Help.c"
+  },
+  {
+    "name": "Help_InitColumns",
+    "address": "0x0042cbbf",
+    "size": 205,
+    "source": "src/driver/Help.c"
+  },
+  {
+    "name": "Help_PrintRepeatedCharLine",
+    "address": "0x0042cc8c",
+    "size": 88,
+    "source": "src/driver/Help.c"
+  },
+  {
+    "name": "fn_0042c0a0",
+    "address": "0x0042cce4",
+    "size": 27,
+    "source": "src/driver/Help.c"
+  },
+  {
+    "name": "fn_0042cd00",
+    "address": "0x0042cd00",
+    "size": 23
+  },
+  {
+    "name": "fn_0042cd20",
+    "address": "0x0042cd20",
+    "size": 340
+  },
+  {
+    "name": "fn_0042ce80",
+    "address": "0x0042ce80",
+    "size": 66
+  },
+  {
+    "name": "fn_0042ced0",
+    "address": "0x0042ced0",
+    "size": 205
+  },
+  {
+    "name": "fn_0042cfa0",
+    "address": "0x0042cfa0",
+    "size": 215
+  },
+  {
+    "name": "fn_0042d080",
+    "address": "0x0042d080",
+    "size": 136
+  },
+  {
+    "name": "fn_0042d110",
+    "address": "0x0042d110",
+    "size": 174
+  },
+  {
+    "name": "fn_0042d1c0",
+    "address": "0x0042d1c0",
+    "size": 269
+  },
+  {
+    "name": "fn_0042d2d0",
+    "address": "0x0042d2d0",
+    "size": 132
+  },
+  {
+    "name": "fn_0042d360",
+    "address": "0x0042d360",
+    "size": 48
+  },
+  {
+    "name": "fn_0042d390",
+    "address": "0x0042d390",
+    "size": 15
+  },
+  {
+    "name": "fn_0042d3a0",
+    "address": "0x0042d3a0",
+    "size": 21
+  },
+  {
+    "name": "fn_0042d3c0",
+    "address": "0x0042d3c0",
+    "size": 12
+  },
+  {
+    "name": "fn_0042d3d0",
+    "address": "0x0042d3d0",
+    "size": 121
+  },
+  {
+    "name": "fn_0042d450",
+    "address": "0x0042d450",
+    "size": 115
+  },
+  {
+    "name": "fn_0042d4d0",
+    "address": "0x0042d4d0",
+    "size": 1
+  },
+  {
+    "name": "fn_0042d4e0",
+    "address": "0x0042d4e0",
+    "size": 54
+  },
+  {
+    "name": "fn_0042d520",
+    "address": "0x0042d520",
+    "size": 846
+  },
+  {
+    "name": "fn_0042d870",
+    "address": "0x0042d870",
+    "size": 5391,
+    "source": "src/linker/ELF_linker.c"
+  },
+  {
+    "name": "fn_0042ed80",
+    "address": "0x0042ed80",
+    "size": 48
+  },
+  {
+    "name": "fn_0042edb0",
+    "address": "0x0042edb0",
+    "size": 60
+  },
+  {
+    "name": "fn_0042edf0",
+    "address": "0x0042edf0",
+    "size": 60
+  },
+  {
+    "name": "fn_0042ee30",
+    "address": "0x0042ee30",
+    "size": 131,
+    "source": "src/linker/ELF_linker.c"
+  },
+  {
+    "name": "fn_0042eec0",
+    "address": "0x0042eec0",
+    "size": 55
+  },
+  {
+    "name": "fn_0042ef00",
+    "address": "0x0042ef00",
+    "size": 1301,
+    "source": "src/linker/ELF_linker.c"
+  },
+  {
+    "name": "fn_0042f420",
+    "address": "0x0042f420",
+    "size": 350,
+    "source": "src/linker/ELF_linker.c"
+  },
+  {
+    "name": "fn_0042f580",
+    "address": "0x0042f580",
+    "size": 1422,
+    "source": "src/linker/ELF_linker.c"
+  },
+  {
+    "name": "fn_0042fb10",
+    "address": "0x0042fb10",
+    "size": 982,
+    "source": "src/linker/ELF_linker.c"
+  },
+  {
+    "name": "fn_0042fef0",
+    "address": "0x0042fef0",
+    "size": 454
+  },
+  {
+    "name": "fn_004300c0",
+    "address": "0x004300c0",
+    "size": 419
+  },
+  {
+    "name": "fn_00430270",
+    "address": "0x00430270",
+    "size": 544
+  },
+  {
+    "name": "fn_00430490",
+    "address": "0x00430490",
+    "size": 240,
+    "source": "src/linker/ELF_linker.c"
+  },
+  {
+    "name": "fn_00430580",
+    "address": "0x00430580",
+    "size": 329,
+    "source": "src/linker/ELF_linker.c"
+  },
+  {
+    "name": "fn_004306d0",
+    "address": "0x004306d0",
+    "size": 1501,
+    "source": "src/linker/ELF_linker.c"
+  },
+  {
+    "name": "fn_00430cb0",
+    "address": "0x00430cb0",
+    "size": 589
+  },
+  {
+    "name": "fn_00430f00",
+    "address": "0x00430f00",
+    "size": 380
+  },
+  {
+    "name": "fn_00431080",
+    "address": "0x00431080",
+    "size": 710
+  },
+  {
+    "name": "fn_00431350",
+    "address": "0x00431350",
+    "size": 410
+  },
+  {
+    "name": "fn_004314f0",
+    "address": "0x004314f0",
+    "size": 169
+  },
+  {
+    "name": "fn_004315a0",
+    "address": "0x004315a0",
+    "size": 210
+  },
+  {
+    "name": "fn_00431680",
+    "address": "0x00431680",
+    "size": 55
+  },
+  {
+    "name": "fn_004316c0",
+    "address": "0x004316c0",
+    "size": 567
+  },
+  {
+    "name": "fn_00431900",
+    "address": "0x00431900",
+    "size": 179
+  },
+  {
+    "name": "fn_004319c0",
+    "address": "0x004319c0",
+    "size": 173
+  },
+  {
+    "name": "fn_00431a70",
+    "address": "0x00431a70",
+    "size": 39
+  },
+  {
+    "name": "fn_00431aa0",
+    "address": "0x00431aa0",
+    "size": 796,
+    "source": "src/linker/ELF_linker.c"
+  },
+  {
+    "name": "fn_00431dc0",
+    "address": "0x00431dc0",
+    "size": 33
+  },
+  {
+    "name": "fn_00431df0",
+    "address": "0x00431df0",
+    "size": 82
+  },
+  {
+    "name": "fn_00431e50",
+    "address": "0x00431e50",
+    "size": 22
+  },
+  {
+    "name": "fn_00431e70",
+    "address": "0x00431e70",
+    "size": 56
+  },
+  {
+    "name": "fn_00431eb0",
+    "address": "0x00431eb0",
+    "size": 109
+  },
+  {
+    "name": "fn_00431f20",
+    "address": "0x00431f20",
+    "size": 227
+  },
+  {
+    "name": "fn_00432010",
+    "address": "0x00432010",
+    "size": 344
+  },
+  {
+    "name": "fn_0042c740",
+    "address": "0x00432170",
+    "size": 16
+  },
+  {
+    "name": "InitGList",
+    "address": "0x00432180",
+    "size": 70,
+    "source": "src/frontend/CompilerTools.c"
+  },
+  {
+    "name": "FreeGList",
+    "address": "0x004321d0",
+    "size": 39,
+    "source": "src/frontend/CompilerTools.c"
+  },
+  {
+    "name": "LockGList",
+    "address": "0x00432200",
+    "size": 14,
+    "source": "src/frontend/CompilerTools.c"
+  },
+  {
+    "name": "LockGList",
+    "address": "0x00432210",
+    "size": 14,
+    "source": "src/frontend/CompilerTools.c"
+  },
+  {
+    "name": "ShrinkGList",
+    "address": "0x00432220",
+    "size": 25,
+    "source": "src/frontend/CompilerTools.c"
+  },
+  {
+    "name": "fn_0042c800",
+    "address": "0x00432240",
+    "size": 79
+  },
+  {
+    "name": "fn_0042c890",
+    "address": "0x00432290",
+    "size": 65
+  },
+  {
+    "name": "fn_0042cda0",
+    "address": "0x004322e0",
+    "size": 40
+  },
+  {
+    "name": "fn_00432310",
+    "address": "0x00432310",
+    "size": 170
+  },
+  {
+    "name": "fn_0042cef0",
+    "address": "0x004323c0",
+    "size": 292
+  },
+  {
+    "name": "fn_0042d020",
+    "address": "0x004324f0",
+    "size": 150
+  },
+  {
+    "name": "fn_0042d0c0",
+    "address": "0x00432590",
+    "size": 45
+  },
+  {
+    "name": "fn_0042d0f0",
+    "address": "0x004325c0",
+    "size": 56
+  },
+  {
+    "name": "fn_0042d130",
+    "address": "0x00432600",
+    "size": 12
+  },
+  {
+    "name": "aalloc",
+    "address": "0x00432610",
+    "size": 54,
+    "source": "src/frontend/CompilerTools.c"
+  },
+  {
+    "name": "oalloc",
+    "address": "0x00432650",
+    "size": 54,
+    "source": "src/frontend/CompilerTools.c"
+  },
+  {
+    "name": "freeoheap",
+    "address": "0x00432690",
+    "size": 57,
+    "source": "src/frontend/CompilerTools.c"
+  },
+  {
+    "name": "memclrw",
+    "address": "0x004326d0",
+    "size": 15,
+    "source": "src/frontend/CompilerTools.c"
+  },
+  {
+    "name": "fn_004326e0",
+    "address": "0x004326e0",
+    "size": 49
+  },
+  {
+    "name": "fn_00432720",
+    "address": "0x00432720",
+    "size": 62
+  },
+  {
+    "name": "CTool_EndianConvertMem",
+    "address": "0x00432760",
+    "size": 50,
+    "source": "src/frontend/CompilerTools.c"
+  },
+  {
+    "name": "fn_0042d780",
+    "address": "0x004327a0",
+    "size": 23
+  },
+  {
+    "name": "fn_0042d7a0",
+    "address": "0x004327c0",
+    "size": 20
+  },
+  {
+    "name": "copy_pstring",
+    "address": "0x004327e0",
+    "size": 33,
+    "source": "src/driver/COSToolsCLT.c"
+  },
+  {
+    "name": "fn_00432810",
+    "address": "0x00432810",
+    "size": 78
+  },
+  {
+    "name": "COS_NewHandle",
+    "address": "0x00432860",
+    "size": 12,
+    "source": "src/driver/COSToolsCLT.c"
+  },
+  {
+    "name": "COS_NewOSHandle",
+    "address": "0x00432870",
+    "size": 54,
+    "source": "src/driver/COSToolsCLT.c"
+  },
+  {
+    "name": "COS_FreeHandle",
+    "address": "0x004328b0",
+    "size": 11,
+    "source": "src/driver/COSToolsCLT.c"
+  },
+  {
+    "name": "COS_ResizeHandle",
+    "address": "0x004328c0",
+    "size": 32,
+    "source": "src/driver/COSToolsCLT.c"
+  },
+  {
+    "name": "fn_004328e0",
+    "address": "0x004328e0",
+    "size": 11
+  },
+  {
+    "name": "COS_LockHandle",
+    "address": "0x004328f0",
+    "size": 11,
+    "source": "src/driver/COSToolsCLT.c"
+  },
+  {
+    "name": "COS_LockHandleHi",
+    "address": "0x00432900",
+    "size": 11,
+    "source": "src/driver/COSToolsCLT.c"
+  },
+  {
+    "name": "COS_UnlockHandle",
+    "address": "0x00432910",
+    "size": 11,
+    "source": "src/driver/COSToolsCLT.c"
+  },
+  {
+    "name": "COS_GetString",
+    "address": "0x00432920",
+    "size": 29,
+    "source": "src/driver/COSToolsCLT.c"
+  },
+  {
+    "name": "COS_FileNew",
+    "address": "0x00432940",
+    "size": 80,
+    "source": "src/driver/COSToolsCLT.c"
+  },
+  {
+    "name": "COS_FileWrite",
+    "address": "0x00432990",
+    "size": 21,
+    "source": "src/driver/COSToolsCLT.c"
+  },
+  {
+    "name": "COS_FileGetPos",
+    "address": "0x004329b0",
+    "size": 16,
+    "source": "src/driver/COSToolsCLT.c"
+  },
+  {
+    "name": "COS_FileSetPos",
+    "address": "0x004329c0",
+    "size": 18,
+    "source": "src/driver/COSToolsCLT.c"
+  },
+  {
+    "name": "COS_FileClose",
+    "address": "0x004329e0",
+    "size": 11,
+    "source": "src/driver/COSToolsCLT.c"
+  },
+  {
+    "name": "fn_004329f0",
+    "address": "0x004329f0",
+    "size": 26
+  },
+  {
+    "name": "resolve_file_name_to_pascal_string",
+    "address": "0x00432a10",
+    "size": 105,
+    "source": "src/driver/COSToolsCLT.c"
+  },
+  {
+    "name": "COS_FileGetPathName",
+    "address": "0x00432a80",
+    "size": 128,
+    "source": "src/driver/COSToolsCLT.c"
+  },
+  {
+    "name": "fn_00432b00",
+    "address": "0x00432b00",
+    "size": 85
+  },
+  {
+    "name": "validate_context_signature",
+    "address": "0x00432b60",
+    "size": 35,
+    "source": "src/frontend/CPrep.c"
+  },
+  {
+    "name": "CPrep_GetSetting",
+    "address": "0x00432b90",
+    "size": 62,
+    "source": "src/frontend/CPrep.c"
+  },
+  {
+    "name": "fn_00432bd0",
+    "address": "0x00432bd0",
+    "size": 225
+  },
+  {
+    "name": "CPrep_GetFileIndex",
+    "address": "0x00432cc0",
+    "size": 62,
+    "source": "src/frontend/CPrep.c"
+  },
+  {
+    "name": "CPrep_GetContextPayload",
+    "address": "0x00432d00",
+    "size": 72,
+    "source": "src/frontend/CPrep.c"
+  },
+  {
+    "name": "fn_00432d50",
+    "address": "0x00432d50",
+    "size": 55
+  },
+  {
+    "name": "CPrep_CallCompilerCallbackWithValue",
+    "address": "0x00432d90",
+    "size": 68,
+    "source": "src/frontend/CPrep.c"
+  },
+  {
+    "name": "fn_00432de0",
+    "address": "0x00432de0",
+    "size": 55
+  },
+  {
+    "name": "fn_00432e20",
+    "address": "0x00432e20",
+    "size": 197
+  },
+  {
+    "name": "fn_00432ef0",
+    "address": "0x00432ef0",
+    "size": 112
+  },
+  {
+    "name": "fn_00432f60",
+    "address": "0x00432f60",
+    "size": 109
+  },
+  {
+    "name": "fn_00432fd0",
+    "address": "0x00432fd0",
+    "size": 6
+  },
+  {
+    "name": "fn_00432fe0",
+    "address": "0x00432fe0",
+    "size": 66
+  },
+  {
+    "name": "fn_00433030",
+    "address": "0x00433030",
+    "size": 56
+  },
+  {
+    "name": "fn_00433070",
+    "address": "0x00433070",
+    "size": 116
+  },
+  {
+    "name": "fn_004330f0",
+    "address": "0x004330f0",
+    "size": 139
+  },
+  {
+    "name": "fn_00433180",
+    "address": "0x00433180",
+    "size": 87
+  },
+  {
+    "name": "fn_004331e0",
+    "address": "0x004331e0",
+    "size": 11
+  },
+  {
+    "name": "fn_004331f0",
+    "address": "0x004331f0",
+    "size": 10
+  },
+  {
+    "name": "fn_00433200",
+    "address": "0x00433200",
+    "size": 50
+  },
+  {
+    "name": "fn_00433240",
+    "address": "0x00433240",
+    "size": 30
+  },
+  {
+    "name": "fn_00433260",
+    "address": "0x00433260",
+    "size": 35
+  },
+  {
+    "name": "fn_00433290",
+    "address": "0x00433290",
+    "size": 32
+  },
+  {
+    "name": "fn_004332b0",
+    "address": "0x004332b0",
+    "size": 48
+  },
+  {
+    "name": "fn_004332e0",
+    "address": "0x004332e0",
+    "size": 248,
+    "source": "src/linker/ELF_gen.c"
+  },
+  {
+    "name": "fn_004333e0",
+    "address": "0x004333e0",
+    "size": 2468,
+    "source": "src/linker/ELF_gen.c"
+  },
+  {
+    "name": "fn_00433d90",
+    "address": "0x00433d90",
+    "size": 525,
+    "source": "src/linker/ELF_gen.c"
+  },
+  {
+    "name": "fn_00433fa0",
+    "address": "0x00433fa0",
+    "size": 661,
+    "source": "src/linker/ELF_gen.c"
+  },
+  {
+    "name": "fn_00434240",
+    "address": "0x00434240",
+    "size": 305,
+    "source": "src/linker/ELF_gen.c"
+  },
+  {
+    "name": "fn_00434380",
+    "address": "0x00434380",
+    "size": 238
+  },
+  {
+    "name": "fn_00434470",
+    "address": "0x00434470",
+    "size": 216
+  },
+  {
+    "name": "fn_00434550",
+    "address": "0x00434550",
+    "size": 176,
+    "source": "src/linker/ELF_gen.c"
+  },
+  {
+    "name": "fn_00434600",
+    "address": "0x00434600",
+    "size": 313,
+    "source": "src/linker/ELF_gen.c"
+  },
+  {
+    "name": "fn_00434740",
+    "address": "0x00434740",
+    "size": 49
+  },
+  {
+    "name": "fn_00434780",
+    "address": "0x00434780",
+    "size": 24
+  },
+  {
+    "name": "fn_004347a0",
+    "address": "0x004347a0",
+    "size": 358
+  },
+  {
+    "name": "fn_00434910",
+    "address": "0x00434910",
+    "size": 28
+  },
+  {
+    "name": "fn_00434930",
+    "address": "0x00434930",
+    "size": 179
+  },
+  {
+    "name": "fn_004349f0",
+    "address": "0x004349f0",
+    "size": 125
+  },
+  {
+    "name": "fn_00434a70",
+    "address": "0x00434a70",
+    "size": 86
+  },
+  {
+    "name": "fn_00434ad0",
+    "address": "0x00434ad0",
+    "size": 845,
+    "source": "src/linker/ELF_gen.c"
+  },
+  {
+    "name": "fn_00434e20",
+    "address": "0x00434e20",
+    "size": 1776,
+    "source": "src/linker/ELF_gen.c"
+  },
+  {
+    "name": "fn_00435510",
+    "address": "0x00435510",
+    "size": 59
+  },
+  {
+    "name": "fn_00435550",
+    "address": "0x00435550",
+    "size": 228
+  },
+  {
+    "name": "fn_00435640",
+    "address": "0x00435640",
+    "size": 100
+  },
+  {
+    "name": "fn_004356b0",
+    "address": "0x004356b0",
+    "size": 3
+  },
+  {
+    "name": "fn_004356c0",
+    "address": "0x004356c0",
+    "size": 3081,
+    "source": "src/linker/ELF_gen.c"
+  },
+  {
+    "name": "fn_004362d0",
+    "address": "0x004362d0",
+    "size": 273,
+    "source": "src/linker/ELF_gen.c"
+  },
+  {
+    "name": "fn_004363f0",
+    "address": "0x004363f0",
+    "size": 378
+  },
+  {
+    "name": "fn_00436570",
+    "address": "0x00436570",
+    "size": 302
+  },
+  {
+    "name": "fn_004366a0",
+    "address": "0x004366a0",
+    "size": 99
+  },
+  {
+    "name": "fn_00436710",
+    "address": "0x00436710",
+    "size": 606
+  },
+  {
+    "name": "fn_00436970",
+    "address": "0x00436970",
+    "size": 455,
+    "source": "src/linker/ELF_gen.c"
+  },
+  {
+    "name": "fn_00436b40",
+    "address": "0x00436b40",
+    "size": 392
+  },
+  {
+    "name": "fn_00436cd0",
+    "address": "0x00436cd0",
+    "size": 604,
+    "source": "src/linker/ELF_gen.c"
+  },
+  {
+    "name": "fn_00436f30",
+    "address": "0x00436f30",
+    "size": 45
+  },
+  {
+    "name": "fn_00436f60",
+    "address": "0x00436f60",
+    "size": 782,
+    "source": "src/linker/ELF_gen.c"
+  },
+  {
+    "name": "fn_00437270",
+    "address": "0x00437270",
+    "size": 82,
+    "source": "src/linker/ELF_gen.c"
+  },
+  {
+    "name": "fn_004372d0",
+    "address": "0x004372d0",
+    "size": 353,
+    "source": "src/linker/ELF_gen.c"
+  },
+  {
+    "name": "fn_00437440",
+    "address": "0x00437440",
+    "size": 467,
+    "source": "src/linker/ELF_gen.c"
+  },
+  {
+    "name": "fn_00437620",
+    "address": "0x00437620",
+    "size": 444,
+    "source": "src/linker/ELF_gen.c"
+  },
+  {
+    "name": "fn_004377e0",
+    "address": "0x004377e0",
+    "size": 45
+  },
+  {
+    "name": "fn_00437810",
+    "address": "0x00437810",
+    "size": 653,
+    "source": "src/linker/ELF_gen.c"
+  },
+  {
+    "name": "fn_00437aa0",
+    "address": "0x00437aa0",
+    "size": 77
+  },
+  {
+    "name": "fn_00437af0",
+    "address": "0x00437af0",
+    "size": 328
+  },
+  {
+    "name": "fn_00437c40",
+    "address": "0x00437c40",
+    "size": 80
+  },
+  {
+    "name": "fn_00437c90",
+    "address": "0x00437c90",
+    "size": 63
+  },
+  {
+    "name": "fn_00437cd0",
+    "address": "0x00437cd0",
+    "size": 15
+  },
+  {
+    "name": "fn_00437ce0",
+    "address": "0x00437ce0",
+    "size": 166
+  },
+  {
+    "name": "fn_00437d90",
+    "address": "0x00437d90",
+    "size": 229
+  },
+  {
+    "name": "fn_00437e80",
+    "address": "0x00437e80",
+    "size": 1
+  },
+  {
+    "name": "fn_00437e90",
+    "address": "0x00437e90",
+    "size": 54
+  },
+  {
+    "name": "fn_00437ed0",
+    "address": "0x00437ed0",
+    "size": 18
+  },
+  {
+    "name": "fn_00437ef0",
+    "address": "0x00437ef0",
+    "size": 47
+  },
+  {
+    "name": "fn_00437f20",
+    "address": "0x00437f20",
+    "size": 74
+  },
+  {
+    "name": "fn_00437f70",
+    "address": "0x00437f70",
+    "size": 99
+  },
+  {
+    "name": "fn_00437fe0",
+    "address": "0x00437fe0",
+    "size": 44
+  },
+  {
+    "name": "fn_00438010",
+    "address": "0x00438010",
+    "size": 60
+  },
+  {
+    "name": "fn_00438050",
+    "address": "0x00438050",
+    "size": 47
+  },
+  {
+    "name": "fn_00438080",
+    "address": "0x00438080",
+    "size": 48
+  },
+  {
+    "name": "fn_004380b0",
+    "address": "0x004380b0",
+    "size": 102
+  },
+  {
+    "name": "fn_00438120",
+    "address": "0x00438120",
+    "size": 101
+  },
+  {
+    "name": "fn_00438190",
+    "address": "0x00438190",
+    "size": 89
+  },
+  {
+    "name": "fn_004381f0",
+    "address": "0x004381f0",
+    "size": 190
+  },
+  {
+    "name": "fn_004382b0",
+    "address": "0x004382b0",
+    "size": 244
+  },
+  {
+    "name": "fn_004383b0",
+    "address": "0x004383b0",
+    "size": 790
+  },
+  {
+    "name": "fn_004386d0",
+    "address": "0x004386d0",
+    "size": 142
+  },
+  {
+    "name": "fn_00438760",
+    "address": "0x00438760",
+    "size": 118
+  },
+  {
+    "name": "fn_004387e0",
+    "address": "0x004387e0",
+    "size": 113
+  },
+  {
+    "name": "fn_00438860",
+    "address": "0x00438860",
+    "size": 44
+  },
+  {
+    "name": "fn_00438890",
+    "address": "0x00438890",
+    "size": 155
+  },
+  {
+    "name": "fn_00438930",
+    "address": "0x00438930",
+    "size": 49
+  },
+  {
+    "name": "fn_00438970",
+    "address": "0x00438970",
+    "size": 160
+  },
+  {
+    "name": "fn_00438a10",
+    "address": "0x00438a10",
+    "size": 49
+  },
+  {
+    "name": "fn_00438a50",
+    "address": "0x00438a50",
+    "size": 347
+  },
+  {
+    "name": "fn_00438bb0",
+    "address": "0x00438bb0",
+    "size": 2725
+  },
+  {
+    "name": "fn_00439660",
+    "address": "0x00439660",
+    "size": 41
+  },
+  {
+    "name": "fn_00439690",
+    "address": "0x00439690",
+    "size": 423
+  },
+  {
+    "name": "fn_00439840",
+    "address": "0x00439840",
+    "size": 841
+  },
+  {
+    "name": "fn_00439b90",
+    "address": "0x00439b90",
+    "size": 3193
+  },
+  {
+    "name": "fn_0043a810",
+    "address": "0x0043a810",
+    "size": 188
+  },
+  {
+    "name": "fn_0043a8d0",
+    "address": "0x0043a8d0",
+    "size": 138
+  },
+  {
+    "name": "fn_0043a960",
+    "address": "0x0043a960",
+    "size": 81
+  },
+  {
+    "name": "fn_0043a9c0",
+    "address": "0x0043a9c0",
+    "size": 1351
+  },
+  {
+    "name": "fn_0043af10",
+    "address": "0x0043af10",
+    "size": 579,
+    "source": "src/linker/DumpELF.c"
+  },
+  {
+    "name": "fn_0043b160",
+    "address": "0x0043b160",
+    "size": 351
+  },
+  {
+    "name": "fn_0043b2c0",
+    "address": "0x0043b2c0",
+    "size": 3455
+  },
+  {
+    "name": "fn_0043c040",
+    "address": "0x0043c040",
+    "size": 131
+  },
+  {
+    "name": "fn_0043c0d0",
+    "address": "0x0043c0d0",
+    "size": 130
+  },
+  {
+    "name": "fn_0043c160",
+    "address": "0x0043c160",
+    "size": 142
+  },
+  {
+    "name": "fn_0043c1f0",
+    "address": "0x0043c1f0",
+    "size": 148
+  },
+  {
+    "name": "fn_0043c290",
+    "address": "0x0043c290",
+    "size": 82,
+    "source": "src/linker/DumpELF.c"
+  },
+  {
+    "name": "fn_0043c2f0",
+    "address": "0x0043c2f0",
+    "size": 101
+  },
+  {
+    "name": "fn_0043c360",
+    "address": "0x0043c360",
+    "size": 570
+  },
+  {
+    "name": "fn_0043c5a0",
+    "address": "0x0043c5a0",
+    "size": 35
+  },
+  {
+    "name": "fn_0043c5d0",
+    "address": "0x0043c5d0",
+    "size": 41
+  },
+  {
+    "name": "fn_0043c600",
+    "address": "0x0043c600",
+    "size": 220
+  },
+  {
+    "name": "fn_0043c6e0",
+    "address": "0x0043c6e0",
+    "size": 153
+  },
+  {
+    "name": "fn_0043c780",
+    "address": "0x0043c780",
+    "size": 138
+  },
+  {
+    "name": "fn_0043c810",
+    "address": "0x0043c810",
+    "size": 137
+  },
+  {
+    "name": "fn_0043c8a0",
+    "address": "0x0043c8a0",
+    "size": 45
+  },
+  {
+    "name": "fn_0043c8d0",
+    "address": "0x0043c8d0",
+    "size": 431
+  },
+  {
+    "name": "fn_0043ca80",
+    "address": "0x0043ca80",
+    "size": 312
+  },
+  {
+    "name": "fn_0043cbc0",
+    "address": "0x0043cbc0",
+    "size": 305
+  },
+  {
+    "name": "fn_0043cd00",
+    "address": "0x0043cd00",
+    "size": 333
+  },
+  {
+    "name": "fn_0043ce50",
+    "address": "0x0043ce50",
+    "size": 12
+  },
+  {
+    "name": "fn_0043ce60",
+    "address": "0x0043ce60",
+    "size": 148
+  },
+  {
+    "name": "fn_0043cf00",
+    "address": "0x0043cf00",
+    "size": 58,
+    "source": "src/linker/PrepDumpELF.c"
+  },
+  {
+    "name": "fn_0043cf40",
+    "address": "0x0043cf40",
+    "size": 573
+  },
+  {
+    "name": "fn_0043d180",
+    "address": "0x0043d180",
+    "size": 337
+  },
+  {
+    "name": "fn_0043d2e0",
+    "address": "0x0043d2e0",
+    "size": 36
+  },
+  {
+    "name": "fn_0043d310",
+    "address": "0x0043d310",
+    "size": 107
+  },
+  {
+    "name": "ELF_Endian_SwapElf32Header",
+    "address": "0x0043d380",
+    "size": 192,
+    "source": "src/backend/ELF_Endian.c"
+  },
+  {
+    "name": "ELF_Endian_SwapElf32Section",
+    "address": "0x0043d440",
+    "size": 135,
+    "source": "src/backend/ELF_Endian.c"
+  },
+  {
+    "name": "ELF_Endian_ConvertSymbolRecord",
+    "address": "0x0043d4d0",
+    "size": 59,
+    "source": "src/backend/ELF_Endian.c"
+  },
+  {
+    "name": "fn_0043d510",
+    "address": "0x0043d510",
+    "size": 31
+  },
+  {
+    "name": "ELF_Endian_ConvertThreeWords",
+    "address": "0x0043d530",
+    "size": 44,
+    "source": "src/backend/ELF_Endian.c"
+  },
+  {
+    "name": "fn_0043d560",
+    "address": "0x0043d560",
+    "size": 109
+  },
+  {
+    "name": "swap_conversion_blocks",
+    "address": "0x0043d5d0",
+    "size": 153,
+    "source": "src/backend/ELF_Endian.c"
+  },
+  {
+    "name": "fn_0043d670",
+    "address": "0x0043d670",
+    "size": 41
+  },
+  {
+    "name": "fn_0043f010",
+    "address": "0x0043d6a0",
+    "size": 47
+  },
+  {
+    "name": "fn_0043f040",
+    "address": "0x0043d6d0",
+    "size": 38
+  },
+  {
+    "name": "read_double",
+    "address": "0x0043d700",
+    "size": 167,
+    "source": "src/backend/ELF_Endian.c"
+  },
+  {
+    "name": "fn_0043f120",
+    "address": "0x0043d7b0",
+    "size": 843
+  },
+  {
+    "name": "fn_0043db00",
+    "address": "0x0043db00",
+    "size": 470,
+    "source": "src/backend/ELF_Endian.c"
+  },
+  {
+    "name": "fn_0043dce0",
+    "address": "0x0043dce0",
+    "size": 59
+  },
+  {
+    "name": "fn_0043dd20",
+    "address": "0x0043dd20",
+    "size": 35
+  },
+  {
+    "name": "fn_0043dd50",
+    "address": "0x0043dd50",
+    "size": 48
+  },
+  {
+    "name": "__wcstold",
+    "address": "0x0043dd80",
+    "size": 1627,
+    "source": "src/msl/wcstold.c"
+  },
+  {
+    "name": "__strtold",
+    "address": "0x0043e3e0",
+    "size": 1595,
+    "source": "src/msl/strtold.c"
+  },
+  {
+    "name": "__get_char",
+    "address": "0x0043ea20",
+    "size": 254,
+    "source": "src/msl/char_io.c"
+  },
+  {
+    "name": "getc",
+    "address": "0x0043eb20",
+    "size": 58,
+    "source": "src/msl/char_io.c"
+  },
+  {
+    "name": "ungetc",
+    "address": "0x0043eb60",
+    "size": 146,
+    "source": "src/msl/char_io.c"
+  },
+  {
+    "name": "CLLoadAndCache_GetFileText",
+    "address": "0x0043ec00",
+    "size": 311,
+    "source": "src/driver/CLLoadAndCache.c"
+  },
+  {
+    "name": "CLLoadAndCache_CopyStorageHandleData",
+    "address": "0x0043ed40",
+    "size": 72,
+    "source": "src/driver/CLLoadAndCache.c"
+  },
+  {
+    "name": "?default_new_handler@std@@YAXXZ",
+    "address": "0x0043ed90",
+    "size": 66,
+    "source": "src/runtime/NewHand.cpp"
+  },
+  {
+    "name": "get_status_string",
+    "address": "0x0043ede0",
+    "size": 617,
+    "source": "src/driver/ErrMgr.c"
+  },
+  {
+    "name": "CError_GetErrorString",
+    "address": "0x0043f050",
+    "size": 64,
+    "source": "src/driver/ErrMgr.c"
+  },
+  {
+    "name": "fn_004c3560",
+    "address": "0x0043f090",
+    "size": 15
+  },
+  {
+    "name": "fn_0043f0a0",
+    "address": "0x0043f0a0",
+    "size": 19
+  },
+  {
+    "name": "fn_004c3590",
+    "address": "0x0043f0c0",
+    "size": 28
+  },
+  {
+    "name": "fn_004c35b0",
+    "address": "0x0043f0e0",
+    "size": 62
+  },
+  {
+    "name": "fn_004c35f0",
+    "address": "0x0043f120",
+    "size": 17
+  },
+  {
+    "name": "fn_004c3610",
+    "address": "0x0043f140",
+    "size": 280
+  },
+  {
+    "name": "fn_004c3730",
+    "address": "0x0043f260",
+    "size": 1505
+  },
+  {
+    "name": "fn_0043f850",
+    "address": "0x0043f850",
+    "size": 130
+  },
+  {
+    "name": "fn_004c3db0",
+    "address": "0x0043f8e0",
+    "size": 281
+  },
+  {
+    "name": "fn_004c3ed0",
+    "address": "0x0043fa00",
+    "size": 108
+  },
+  {
+    "name": "fn_004c3f40",
+    "address": "0x0043fa70",
+    "size": 212
+  },
+  {
+    "name": "fn_004c4020",
+    "address": "0x0043fb50",
+    "size": 235
+  },
+  {
+    "name": "fn_004c4110",
+    "address": "0x0043fc40",
+    "size": 169
+  },
+  {
+    "name": "fn_004c41c0",
+    "address": "0x0043fcf0",
+    "size": 264
+  },
+  {
+    "name": "fn_004c42d0",
+    "address": "0x0043fe00",
+    "size": 247
+  },
+  {
+    "name": "fn_004c43d0",
+    "address": "0x0043ff00",
+    "size": 482
+  },
+  {
+    "name": "fn_004c45c0",
+    "address": "0x004400f0",
+    "size": 206
+  },
+  {
+    "name": "fn_004c4790",
+    "address": "0x004401c0",
+    "size": 687
+  },
+  {
+    "name": "fn_00440470",
+    "address": "0x00440470",
+    "size": 281
+  },
+  {
+    "name": "fn_00440590",
+    "address": "0x00440590",
+    "size": 666
+  },
+  {
+    "name": "fn_00440830",
+    "address": "0x00440830",
+    "size": 207
+  },
+  {
+    "name": "fn_00440900",
+    "address": "0x00440900",
+    "size": 127
+  },
+  {
+    "name": "fn_00440980",
+    "address": "0x00440980",
+    "size": 102
+  },
+  {
+    "name": "fn_004409f0",
+    "address": "0x004409f0",
+    "size": 249
+  },
+  {
+    "name": "fn_00440af0",
+    "address": "0x00440af0",
+    "size": 259
+  },
+  {
+    "name": "fn_00440c00",
+    "address": "0x00440c00",
+    "size": 59
+  },
+  {
+    "name": "ObjGen_PPC_EABI_IsInvalidAbsName",
+    "address": "0x00440c40",
+    "size": 123,
+    "source": "src/backend/ObjGen_PPC_EABI.c"
+  },
+  {
+    "name": "fn_00440cc0",
+    "address": "0x00440cc0",
+    "size": 577
+  },
+  {
+    "name": "fn_00440f10",
+    "address": "0x00440f10",
+    "size": 780
+  },
+  {
+    "name": "fn_00441220",
+    "address": "0x00441220",
+    "size": 59
+  },
+  {
+    "name": "fn_00441260",
+    "address": "0x00441260",
+    "size": 289
+  },
+  {
+    "name": "fn_00441390",
+    "address": "0x00441390",
+    "size": 252
+  },
+  {
+    "name": "fn_00441490",
+    "address": "0x00441490",
+    "size": 233
+  },
+  {
+    "name": "fn_00441580",
+    "address": "0x00441580",
+    "size": 1408
+  },
+  {
+    "name": "fn_00441b00",
+    "address": "0x00441b00",
+    "size": 27
+  },
+  {
+    "name": "fn_00441b20",
+    "address": "0x00441b20",
+    "size": 550
+  },
+  {
+    "name": "fn_00441d50",
+    "address": "0x00441d50",
+    "size": 376
+  },
+  {
+    "name": "fn_00441ed0",
+    "address": "0x00441ed0",
+    "size": 1532
+  },
+  {
+    "name": "fn_004424d0",
+    "address": "0x004424d0",
+    "size": 442
+  },
+  {
+    "name": "fn_00442690",
+    "address": "0x00442690",
+    "size": 39
+  },
+  {
+    "name": "fn_004426c0",
+    "address": "0x004426c0",
+    "size": 1518
+  },
+  {
+    "name": "fn_00442cb0",
+    "address": "0x00442cb0",
+    "size": 1082
+  },
+  {
+    "name": "fn_004430f0",
+    "address": "0x004430f0",
+    "size": 201
+  },
+  {
+    "name": "fn_004431c0",
+    "address": "0x004431c0",
+    "size": 373
+  },
+  {
+    "name": "fn_00443340",
+    "address": "0x00443340",
+    "size": 355
+  },
+  {
+    "name": "fn_004434b0",
+    "address": "0x004434b0",
+    "size": 227
+  },
+  {
+    "name": "fn_004435a0",
+    "address": "0x004435a0",
+    "size": 2456
+  },
+  {
+    "name": "fn_00443f40",
+    "address": "0x00443f40",
+    "size": 168
+  },
+  {
+    "name": "fn_00443ff0",
+    "address": "0x00443ff0",
+    "size": 340
+  },
+  {
+    "name": "fn_00444150",
+    "address": "0x00444150",
+    "size": 150
+  },
+  {
+    "name": "fn_004441f0",
+    "address": "0x004441f0",
+    "size": 427,
+    "source": "src/linker/LinkerCmdFile.c"
+  },
+  {
+    "name": "fn_004443a0",
+    "address": "0x004443a0",
+    "size": 393,
+    "source": "src/linker/LinkerCmdFile.c"
+  },
+  {
+    "name": "fn_00444530",
+    "address": "0x00444530",
+    "size": 51
+  },
+  {
+    "name": "fn_00444570",
+    "address": "0x00444570",
+    "size": 49
+  },
+  {
+    "name": "fn_004445b0",
+    "address": "0x004445b0",
+    "size": 171
+  },
+  {
+    "name": "fn_00444660",
+    "address": "0x00444660",
+    "size": 175
+  },
+  {
+    "name": "fn_00444710",
+    "address": "0x00444710",
+    "size": 43
+  },
+  {
+    "name": "fn_00444740",
+    "address": "0x00444740",
+    "size": 98
+  },
+  {
+    "name": "fn_004447b0",
+    "address": "0x004447b0",
+    "size": 789
+  },
+  {
+    "name": "fn_00444ad0",
+    "address": "0x00444ad0",
+    "size": 49
+  },
+  {
+    "name": "fn_00444b10",
+    "address": "0x00444b10",
+    "size": 276
+  },
+  {
+    "name": "fn_00444c30",
+    "address": "0x00444c30",
+    "size": 308
+  },
+  {
+    "name": "fn_00444d70",
+    "address": "0x00444d70",
+    "size": 75
+  },
+  {
+    "name": "fn_00444dc0",
+    "address": "0x00444dc0",
+    "size": 377
+  },
+  {
+    "name": "fn_00444f40",
+    "address": "0x00444f40",
+    "size": 172
+  },
+  {
+    "name": "fn_00444ff0",
+    "address": "0x00444ff0",
+    "size": 201
+  },
+  {
+    "name": "fn_004450c0",
+    "address": "0x004450c0",
+    "size": 45
+  },
+  {
+    "name": "fn_004450f0",
+    "address": "0x004450f0",
+    "size": 12
+  },
+  {
+    "name": "fn_00445100",
+    "address": "0x00445100",
+    "size": 16
+  },
+  {
+    "name": "fn_00445110",
+    "address": "0x00445110",
+    "size": 6
+  },
+  {
+    "name": "fn_00445120",
+    "address": "0x00445120",
+    "size": 104
+  },
+  {
+    "name": "fn_00445190",
+    "address": "0x00445190",
+    "size": 103
+  },
+  {
+    "name": "fn_00445200",
+    "address": "0x00445200",
+    "size": 103
+  },
+  {
+    "name": "fn_00445270",
+    "address": "0x00445270",
+    "size": 46
+  },
+  {
+    "name": "fn_004452a0",
+    "address": "0x004452a0",
+    "size": 345
+  },
+  {
+    "name": "fn_00445400",
+    "address": "0x00445400",
+    "size": 106
+  },
+  {
+    "name": "fn_00445470",
+    "address": "0x00445470",
+    "size": 69
+  },
+  {
+    "name": "fn_004454c0",
+    "address": "0x004454c0",
+    "size": 58
+  },
+  {
+    "name": "fn_00445500",
+    "address": "0x00445500",
+    "size": 356
+  },
+  {
+    "name": "fn_00445670",
+    "address": "0x00445670",
+    "size": 84
+  },
+  {
+    "name": "fn_004456d0",
+    "address": "0x004456d0",
+    "size": 55
+  },
+  {
+    "name": "fn_00445710",
+    "address": "0x00445710",
+    "size": 144
+  },
+  {
+    "name": "fn_004457a0",
+    "address": "0x004457a0",
+    "size": 1161
+  },
+  {
+    "name": "fn_00445c30",
+    "address": "0x00445c30",
+    "size": 4955
+  },
+  {
+    "name": "fn_00446f90",
+    "address": "0x00446f90",
+    "size": 698
+  },
+  {
+    "name": "fn_00447250",
+    "address": "0x00447250",
+    "size": 417
+  },
+  {
+    "name": "fn_00447400",
+    "address": "0x00447400",
+    "size": 523
+  },
+  {
+    "name": "fn_00447610",
+    "address": "0x00447610",
+    "size": 45
+  },
+  {
+    "name": "fn_00447640",
+    "address": "0x00447640",
+    "size": 31
+  },
+  {
+    "name": "fn_00447660",
+    "address": "0x00447660",
+    "size": 47
+  },
+  {
+    "name": "fn_00447690",
+    "address": "0x00447690",
+    "size": 672
+  },
+  {
+    "name": "fn_00447930",
+    "address": "0x00447930",
+    "size": 62
+  },
+  {
+    "name": "fn_00447970",
+    "address": "0x00447970",
+    "size": 235
+  },
+  {
+    "name": "fn_00447a60",
+    "address": "0x00447a60",
+    "size": 238
+  },
+  {
+    "name": "fn_00447b50",
+    "address": "0x00447b50",
+    "size": 5
+  },
+  {
+    "name": "fn_00447b60",
+    "address": "0x00447b60",
+    "size": 5
+  },
+  {
+    "name": "fn_00447b70",
+    "address": "0x00447b70",
+    "size": 5
+  },
+  {
+    "name": "fn_00447b80",
+    "address": "0x00447b80",
+    "size": 73
+  },
+  {
+    "name": "fn_00447bd0",
+    "address": "0x00447bd0",
+    "size": 115
+  },
+  {
+    "name": "fn_00447c50",
+    "address": "0x00447c50",
+    "size": 63
+  },
+  {
+    "name": "fn_00447c90",
+    "address": "0x00447c90",
+    "size": 64
+  },
+  {
+    "name": "fn_00447cd0",
+    "address": "0x00447cd0",
+    "size": 93
+  },
+  {
+    "name": "fn_00447d30",
+    "address": "0x00447d30",
+    "size": 669
+  },
+  {
+    "name": "fn_00447fd0",
+    "address": "0x00447fd0",
+    "size": 404,
+    "source": "src/linker/ELF_PPC_EABI.c"
+  },
+  {
+    "name": "fn_00448170",
+    "address": "0x00448170",
+    "size": 42
+  },
+  {
+    "name": "fn_004481a0",
+    "address": "0x004481a0",
+    "size": 19
+  },
+  {
+    "name": "fn_004481c0",
+    "address": "0x004481c0",
+    "size": 540
+  },
+  {
+    "name": "fn_004483e0",
+    "address": "0x004483e0",
+    "size": 395
+  },
+  {
+    "name": "fn_00448570",
+    "address": "0x00448570",
+    "size": 1762,
+    "source": "src/linker/ELF_PPC_EABI.c"
+  },
+  {
+    "name": "fn_00448c60",
+    "address": "0x00448c60",
+    "size": 226
+  },
+  {
+    "name": "fn_00448d50",
+    "address": "0x00448d50",
+    "size": 57
+  },
+  {
+    "name": "fn_00448d90",
+    "address": "0x00448d90",
+    "size": 145
+  },
+  {
+    "name": "fn_00448e30",
+    "address": "0x00448e30",
+    "size": 98
+  },
+  {
+    "name": "fn_00448ea0",
+    "address": "0x00448ea0",
+    "size": 118
+  },
+  {
+    "name": "fn_00448f20",
+    "address": "0x00448f20",
+    "size": 1222
+  },
+  {
+    "name": "fn_004493f0",
+    "address": "0x004493f0",
+    "size": 75
+  },
+  {
+    "name": "fn_00449440",
+    "address": "0x00449440",
+    "size": 76
+  },
+  {
+    "name": "fn_00449490",
+    "address": "0x00449490",
+    "size": 740,
+    "source": "src/linker/ELF_PPC_EABI.c"
+  },
+  {
+    "name": "fn_00449780",
+    "address": "0x00449780",
+    "size": 445
+  },
+  {
+    "name": "fn_00449940",
+    "address": "0x00449940",
+    "size": 653,
+    "source": "src/linker/ELF_PPC_EABI.c"
+  },
+  {
+    "name": "fn_00449bd0",
+    "address": "0x00449bd0",
+    "size": 1370,
+    "source": "src/linker/ELF_PPC_EABI.c"
+  },
+  {
+    "name": "fn_0044a130",
+    "address": "0x0044a130",
+    "size": 1070
+  },
+  {
+    "name": "fn_0044a560",
+    "address": "0x0044a560",
+    "size": 61
+  },
+  {
+    "name": "fn_0044a5a0",
+    "address": "0x0044a5a0",
+    "size": 754
+  },
+  {
+    "name": "fn_0044a8a0",
+    "address": "0x0044a8a0",
+    "size": 1496,
+    "source": "src/linker/ELF_PPC_EABI.c"
+  },
+  {
+    "name": "fn_0044ae80",
+    "address": "0x0044ae80",
+    "size": 54
+  },
+  {
+    "name": "fn_0044aec0",
+    "address": "0x0044aec0",
+    "size": 169
+  },
+  {
+    "name": "fn_0044af70",
+    "address": "0x0044af70",
+    "size": 568,
+    "source": "src/linker/ELF_PPC_EABI.c"
+  },
+  {
+    "name": "fn_0044b1b0",
+    "address": "0x0044b1b0",
+    "size": 22
+  },
+  {
+    "name": "fn_0044b1d0",
+    "address": "0x0044b1d0",
+    "size": 788,
+    "source": "src/linker/ELF_PPC_EABI.c"
+  },
+  {
+    "name": "fn_0044b4f0",
+    "address": "0x0044b4f0",
+    "size": 421,
+    "source": "src/linker/ELF_PPC_EABI.c"
+  },
+  {
+    "name": "fn_0044b6a0",
+    "address": "0x0044b6a0",
+    "size": 37
+  },
+  {
+    "name": "fn_0044b6d0",
+    "address": "0x0044b6d0",
+    "size": 929
+  },
+  {
+    "name": "fn_0044ba80",
+    "address": "0x0044ba80",
+    "size": 225
+  },
+  {
+    "name": "fn_0044bb70",
+    "address": "0x0044bb70",
+    "size": 120
+  },
+  {
+    "name": "fn_0044bbf0",
+    "address": "0x0044bbf0",
+    "size": 406,
+    "source": "src/linker/ELF_PPC_EABI.c"
+  },
+  {
+    "name": "fn_0044bd90",
+    "address": "0x0044bd90",
+    "size": 168
+  },
+  {
+    "name": "fn_0044be40",
+    "address": "0x0044be40",
+    "size": 104
+  },
+  {
+    "name": "fn_0044beb0",
+    "address": "0x0044beb0",
+    "size": 34
+  },
+  {
+    "name": "fn_0044bee0",
+    "address": "0x0044bee0",
+    "size": 654
+  },
+  {
+    "name": "fn_0044c170",
+    "address": "0x0044c170",
+    "size": 80
+  },
+  {
+    "name": "fn_0044c1c0",
+    "address": "0x0044c1c0",
+    "size": 109
+  },
+  {
+    "name": "fn_0044c230",
+    "address": "0x0044c230",
+    "size": 396
+  },
+  {
+    "name": "fn_0044c3c0",
+    "address": "0x0044c3c0",
+    "size": 374
+  },
+  {
+    "name": "fn_0044c540",
+    "address": "0x0044c540",
+    "size": 238
+  },
+  {
+    "name": "fn_0044c630",
+    "address": "0x0044c630",
+    "size": 820
+  },
+  {
+    "name": "fn_0044c970",
+    "address": "0x0044c970",
+    "size": 185
+  },
+  {
+    "name": "fn_0044ca30",
+    "address": "0x0044ca30",
+    "size": 204
+  },
+  {
+    "name": "fn_0044cb00",
+    "address": "0x0044cb00",
+    "size": 45
+  },
+  {
+    "name": "fn_0044cb30",
+    "address": "0x0044cb30",
+    "size": 172
+  },
+  {
+    "name": "fn_0044cbe0",
+    "address": "0x0044cbe0",
+    "size": 162
+  },
+  {
+    "name": "fn_0044cc90",
+    "address": "0x0044cc90",
+    "size": 284
+  },
+  {
+    "name": "fn_0044cdb0",
+    "address": "0x0044cdb0",
+    "size": 1276
+  },
+  {
+    "name": "fn_0044d2b0",
+    "address": "0x0044d2b0",
+    "size": 374
+  },
+  {
+    "name": "fn_0044d430",
+    "address": "0x0044d430",
+    "size": 60
+  },
+  {
+    "name": "fn_0044d470",
+    "address": "0x0044d470",
+    "size": 92
+  },
+  {
+    "name": "fn_0044d4d0",
+    "address": "0x0044d4d0",
+    "size": 774
+  },
+  {
+    "name": "fn_0044d7e0",
+    "address": "0x0044d7e0",
+    "size": 108
+  },
+  {
+    "name": "fn_0044d850",
+    "address": "0x0044d850",
+    "size": 92
+  },
+  {
+    "name": "fn_0044d8b0",
+    "address": "0x0044d8b0",
+    "size": 136,
+    "source": "src/linker/DumpDWARF.c"
+  },
+  {
+    "name": "fn_0044d940",
+    "address": "0x0044d940",
+    "size": 133,
+    "source": "src/linker/DumpDWARF.c"
+  },
+  {
+    "name": "fn_0044d9d0",
+    "address": "0x0044d9d0",
+    "size": 254,
+    "source": "src/linker/DumpDWARF.c"
+  },
+  {
+    "name": "fn_0044dad0",
+    "address": "0x0044dad0",
+    "size": 124,
+    "source": "src/linker/DumpDWARF.c"
+  },
+  {
+    "name": "fn_0044db50",
+    "address": "0x0044db50",
+    "size": 124,
+    "source": "src/linker/DumpDWARF.c"
+  },
+  {
+    "name": "fn_0044dbd0",
+    "address": "0x0044dbd0",
+    "size": 131
+  },
+  {
+    "name": "fn_0044dc60",
+    "address": "0x0044dc60",
+    "size": 1263,
+    "source": "src/linker/DumpDWARF.c"
+  },
+  {
+    "name": "fn_0044e150",
+    "address": "0x0044e150",
+    "size": 794,
+    "source": "src/linker/DumpDWARF.c"
+  },
+  {
+    "name": "fn_0044e470",
+    "address": "0x0044e470",
+    "size": 341
+  },
+  {
+    "name": "fn_0044e5d0",
+    "address": "0x0044e5d0",
+    "size": 63
+  },
+  {
+    "name": "fn_0044e610",
+    "address": "0x0044e610",
+    "size": 82
+  },
+  {
+    "name": "fn_0044e670",
+    "address": "0x0044e670",
+    "size": 756,
+    "source": "src/linker/DWARF_line.c"
+  },
+  {
+    "name": "fn_0044e970",
+    "address": "0x0044e970",
+    "size": 32
+  },
+  {
+    "name": "fn_0044e990",
+    "address": "0x0044e990",
+    "size": 58
+  },
+  {
+    "name": "fn_0044e9d0",
+    "address": "0x0044e9d0",
+    "size": 2802,
+    "source": "src/linker/DWARF_line.c"
+  },
+  {
+    "name": "fn_0044f4d0",
+    "address": "0x0044f4d0",
+    "size": 44
+  },
+  {
+    "name": "fn_0044f500",
+    "address": "0x0044f500",
+    "size": 127
+  },
+  {
+    "name": "fn_0044f580",
+    "address": "0x0044f580",
+    "size": 1058
+  },
+  {
+    "name": "fn_0044f9b0",
+    "address": "0x0044f9b0",
+    "size": 21
+  },
+  {
+    "name": "fn_0044f9d0",
+    "address": "0x0044f9d0",
+    "size": 1806
+  },
+  {
+    "name": "fn_004500e0",
+    "address": "0x004500e0",
+    "size": 216
+  },
+  {
+    "name": "fn_004501c0",
+    "address": "0x004501c0",
+    "size": 136
+  },
+  {
+    "name": "fn_00450250",
+    "address": "0x00450250",
+    "size": 2789
+  },
+  {
+    "name": "fn_00450d40",
+    "address": "0x00450d40",
+    "size": 791
+  },
+  {
+    "name": "fn_00451060",
+    "address": "0x00451060",
+    "size": 1336
+  },
+  {
+    "name": "fn_004515a0",
+    "address": "0x004515a0",
+    "size": 11116
+  },
+  {
+    "name": "fn_00454110",
+    "address": "0x00454110",
+    "size": 92
+  },
+  {
+    "name": "fn_00454170",
+    "address": "0x00454170",
+    "size": 138
+  },
+  {
+    "name": "fn_00454200",
+    "address": "0x00454200",
+    "size": 339
+  },
+  {
+    "name": "fn_00454360",
+    "address": "0x00454360",
+    "size": 389
+  },
+  {
+    "name": "fn_004544f0",
+    "address": "0x004544f0",
+    "size": 1559
+  },
+  {
+    "name": "fn_00454b10",
+    "address": "0x00454b10",
+    "size": 214
+  },
+  {
+    "name": "fn_00454bf0",
+    "address": "0x00454bf0",
+    "size": 204
+  },
+  {
+    "name": "fn_00454cc0",
+    "address": "0x00454cc0",
+    "size": 56
+  },
+  {
+    "name": "fn_00454d00",
+    "address": "0x00454d00",
+    "size": 103
+  },
+  {
+    "name": "fn_00454d70",
+    "address": "0x00454d70",
+    "size": 166
+  },
+  {
+    "name": "fn_00454e20",
+    "address": "0x00454e20",
+    "size": 10
+  },
+  {
+    "name": "fn_00454e30",
+    "address": "0x00454e30",
+    "size": 37
+  },
+  {
+    "name": "fn_00454e60",
+    "address": "0x00454e60",
+    "size": 90
+  },
+  {
+    "name": "fn_00454ec0",
+    "address": "0x00454ec0",
+    "size": 180
+  },
+  {
+    "name": "fn_00454f80",
+    "address": "0x00454f80",
+    "size": 38
+  },
+  {
+    "name": "fn_00454fb0",
+    "address": "0x00454fb0",
+    "size": 487
+  },
+  {
+    "name": "fn_004551a0",
+    "address": "0x004551a0",
+    "size": 205
+  },
+  {
+    "name": "fn_00455270",
+    "address": "0x00455270",
+    "size": 133
+  },
+  {
+    "name": "fn_00455300",
+    "address": "0x00455300",
+    "size": 133
+  },
+  {
+    "name": "fn_00455390",
+    "address": "0x00455390",
+    "size": 110
+  },
+  {
+    "name": "fn_00455400",
+    "address": "0x00455400",
+    "size": 29
+  },
+  {
+    "name": "fn_00455420",
+    "address": "0x00455420",
+    "size": 29
+  },
+  {
+    "name": "fn_00455440",
+    "address": "0x00455440",
+    "size": 101
+  },
+  {
+    "name": "fn_004554b0",
+    "address": "0x004554b0",
+    "size": 131
+  },
+  {
+    "name": "fn_00455540",
+    "address": "0x00455540",
+    "size": 134
+  },
+  {
+    "name": "fn_004555d0",
+    "address": "0x004555d0",
+    "size": 117
+  },
+  {
+    "name": "fn_00455650",
+    "address": "0x00455650",
+    "size": 101
+  },
+  {
+    "name": "fn_004556c0",
+    "address": "0x004556c0",
+    "size": 125
+  },
+  {
+    "name": "fn_00455740",
+    "address": "0x00455740",
+    "size": 110
+  }
+]

@@ -56,6 +56,14 @@ Boolean COS_ResizeHandle(struct StorageHandle *handle, UInt32 size)
     return fn_00419620() == 0;
 }
 
+#if defined(LINKER) && VERSION >= VERSION_GC_2_7
+/* (the linker's has the handle's size too) */
+SInt32 COS_GetHandleSize(void *handle)
+{
+    return Memory_GetHandleSize(handle);
+}
+#endif
+
 void COS_LockHandle(void *handle)
 {
     fn_00413a00(handle);
@@ -148,8 +156,15 @@ int COS_FileNew(CWFileSpec *record, short *output, unsigned int argument4, unsig
     Files_DeleteFileFromPath(record->vRefNum, record->parID, record->name);
     result = Files_CallWithFileSpecFromPath(record->vRefNum, record->parID, record->name, argument4, argument5);
     if ((short)result == 0) {
+#ifdef __wasm__ /* (x86 returns the EAX left: the open's result, or the creation's; the caller tests it) */
+        return Files_OpenFileByPath(record->vRefNum, record->parID, record->name, 3, output);
+#else
         Files_OpenFileByPath(record->vRefNum, record->parID, record->name, 3, output);
+#endif
     }
+#ifdef __wasm__
+    return result;
+#endif
 }
 
 short COS_FileOpen(CWFileSpec *fileSpec, short *fileRef)
@@ -196,6 +211,33 @@ void COS_FileClose(short handleIndex)
 {
     Files_Close(handleIndex);
 }
+
+#if defined(LINKER) && VERSION >= VERSION_GC_2_7
+#include "driver/StringUtils.h"
+extern void fn_00412140(UInt8 *destination, const UInt8 *source, int maximum);
+extern unsigned int __stdcall OS_MakeSpecWithPath(OSPathSpec *basePath, char *path, UInt8 useSpecialPath,
+                                                  OSSpec *result);
+extern int __stdcall OS_OSErrorToMacError(int errorCode);
+
+/* FSMakeFSSpec: the file NAME in VOLUME and DIRECTORY (its name only, when it is not there). */
+int fn_0042f0d0(short volume, long directory, const unsigned char *name, CWFileSpec *spec)
+{
+    OSSpec file;
+    OSPathSpec path;
+    char text[256];
+    int error;
+
+    if ((error = fn_00413670(volume, directory, &path)) != 0) {
+        return OS_OSErrorToMacError(error);
+    }
+    p2cstrcpy(text, (UInt8 *)name);
+    if ((error = OS_MakeSpecWithPath(&path, text, 0, &file)) != 0) {
+        fn_00412140(spec->name, name, 0x40);
+        return OS_OSErrorToMacError(error);
+    }
+    return OS_OSErrorToMacError(OS_OSSpec_To_FSSpec(&file, spec));
+}
+#endif
 
 void COS_FileSetFSSpec(void *result, unsigned char *name)
 {
@@ -253,7 +295,10 @@ void COS_FileGetPathName(void *destination, CPrepFileInfo *record, SInt32 *resul
     CLIO_ConvertPascalToCString(destination);
 }
 
+/* (the 2.x linker has it in a unit of its own, src/linker/GetTicks.c) */
+#if !(defined(LINKER) && VERSION >= VERSION_GC_2_7)
 unsigned int CompilerTools_GetTicks(void)
 {
     return OS_GetMilliseconds() * 0x3cu / 1000;
 }
+#endif

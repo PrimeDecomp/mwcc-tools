@@ -1,0 +1,287 @@
+{
+  "original": "build/compilers/GC/2.6/mwldeppc.exe",
+  "sha1": "d419965d331b36f0350975846c8453aa1f5dfad3",
+  "output": "mwldeppc.exe",
+  "compiler_version": "GC_2_7",
+  "matching": [
+    "src/driver/CLProj.c",
+    "src/driver/CLTarg.c",
+    "src/driver/Memory.c",
+    "src/driver/StringExtras.c",
+    "src/linker/ELF_Endian.c",
+    "src/msl/critical_regions.win32.c",
+    "src/msl/mbstring.c",
+    "src/msl/mem.c",
+    "src/msl/setjmp.x86.c",
+    "src/msl/strtold.c",
+    "src/msl/strtoul.c",
+    "src/msl/sysenv.win32.c",
+    "src/runtime/LongLongx86.c",
+    "src/runtime/NMWException.cpp",
+    "src/runtime/delarrop.cpp",
+    "src/runtime/delop.cpp",
+    "src/runtime/exchand.cpp",
+    "src/runtime/globdest.c",
+    "src/runtime/stackall.c",
+    "src/driver/StaticParserGlue.c",
+    "src/driver/Targets.c",
+    "src/driver/ParserFace.c",
+    "src/driver/TargetOptimizer-ppc-eabi.c",
+    "src/msl/misc_io.c",
+    "src/msl/unistd.win32.c",
+    "src/driver/CLErrors.c",
+    "src/msl/ctype.c",
+    "src/msl/ansifp_x86.c",
+    "src/msl/float.c",
+    "src/driver/MacFileTypes.c",
+    "src/msl/wcstold.c",
+    "src/msl/time.win32.c",
+    "src/msl/arith.c",
+    "src/msl/wcstoul.c",
+    "src/driver/Help.c",
+    "src/msl/signal.c",
+    "src/msl/abort_exit.c",
+    "src/msl/string_io.c",
+    "src/msl/char_io.c",
+    "src/driver/libimp-eabi-ppc-mw.c",
+    "src/driver/CLStaticPlugins.c",
+    "src/linker/ld-eabi-ppc-mw.c",
+    "src/driver/libimp-eabi-ppc.c",
+    "src/driver/CLStaticMain.c",
+    "src/runtime/arrcondes.cpp",
+    "src/driver/ErrMgr.c",
+    "src/driver/Utils.c",
+    "src/driver/Arguments.c",
+    "src/runtime/runinit.c",
+    "src/runtime/maincrt.c",
+    "src/driver/BuildDate.c",
+    "src/driver/WarningHelpers.c",
+    "src/driver/ToolHelpers.c",
+    "src/driver/CLSegs.c",
+    "src/msl/extras.c",
+    "src/msl/ThreadLocalData.c",
+    "src/driver/Option.c",
+    "src/driver/Generic.c",
+    "src/driver/CLLoadAndCache.c",
+    "src/driver/Files.c",
+    "src/driver/ToolHelpers-cc.c",
+    "src/driver/Parameter.c",
+    "src/driver/MacSpecs.c",
+    "src/driver/CLToolExec.c",
+    "src/driver/CLPrefs.c",
+    "src/linker/GetTicks.c"
+  ],
+  "imports": [
+    "config/kernel32_27.def",
+    "config/version.def"
+  ],
+  "resources": "src/linker/mwldeppc.rc",
+  "assembly": {
+    "build/LD_2_6/obj/common.obj": "src/linker/common.s",
+    "lib/runtime/cexc.obj": "src/runtime/cexc.s",
+    "lib/runtime/ccinit.obj": "src/runtime/ccinit.s",
+    "build/kernel32_27.lib": "src/runtime/imports/kernel32.s",
+    "build/version.lib": "src/runtime/imports/version.s",
+    "build/lmgr326b.lib": "src/runtime/imports/lmgr326b.s"
+  },
+  "order_sections": false,
+  "equivalent": [
+    "src/msl/startup.win32.c",
+    "src/linker/LinkerCmdFile.c",
+    "src/linker/SRecord.c",
+    "src/linker/Archive.c",
+    "src/linker/DumpDWARF.c",
+    "src/msl/qsort.c",
+    "src/linker/DumpELFCodePPC.c",
+    "src/linker/DWARF_line.c",
+    "src/linker/PrepDumpELF.c",
+    "src/linker/DumpELF.c",
+    "src/linker/LinkSym.c",
+    "src/linker/ELF_linker.c",
+    "src/linker/LK_symbol.c",
+    "src/linker/ELF_gen.c",
+    "src/linker/ELF_PPC_EABI.c",
+    "src/driver/LibImportMessages.c",
+    "src/linker/PPCDisassembler.c",
+    "src/driver/AssertionFailure.c",
+    "src/msl/string.c",
+    "src/linker/TargetWarningHelpers-ppc-ld.c",
+    "src/msl/buffer_io.c",
+    "src/msl/ansi_files.c",
+    "src/msl/file_io.c",
+    "src/msl/file_io.win32.c",
+    "src/msl/fcntl.win32.c",
+    "src/driver/ParserHelpers.c",
+    "src/linker/ld-eabi-ppc.c",
+    "src/msl/printf.c",
+    "src/msl/alloc.c",
+    "src/msl/wchar_io.c",
+    "src/msl/pool_alloc.win32.c",
+    "src/msl/file_pos.c",
+    "src/msl/time.c",
+    "src/msl/wctype.c",
+    "src/msl/wscanf.c",
+    "src/msl/scanf.c",
+    "src/msl/locale.c",
+    "src/msl/direct_io.c",
+    "src/runtime/ExceptionX86.cpp",
+    "src/runtime/newop.cpp",
+    "src/runtime/NewHand.cpp",
+    "src/runtime/setupargs.c",
+    "src/driver/ClientGlue.c",
+    "src/driver/MemUtils.c",
+    "src/driver/CLOverlays.c",
+    "src/driver/Resources.c",
+    "src/driver/ResourceStrings.c",
+    "src/driver/CLPlugins.c",
+    "src/driver/CLMain.c",
+    "src/driver/ParserErrors.c",
+    "src/driver/MsDos.c",
+    "src/driver/StringUtils.c",
+    "src/driver/TextUtils.c",
+    "src/driver/CLIO.c",
+    "src/driver/CLPluginRequests.cpp",
+    "src/driver/CLLicenses.c",
+    "src/driver/CLFileOps.cpp",
+    "src/driver/DropInCompilerLinkerPrivate.c",
+    "src/driver/CWParserPluginsPrivate.c",
+    "src/driver/CWPluginsPrivate.c",
+    "src/driver/Projects.c",
+    "src/driver/CLFiles.c",
+    "src/driver/CLDropinCallbacks_V10.cpp",
+    "src/driver/CLCompilerLinkerDropin_V10.cpp",
+    "src/driver/CLAccessPaths.c",
+    "src/driver/CLDependencies.c",
+    "src/driver/CLWriteObjectFile.c",
+    "src/driver/CLBrowser.c",
+    "src/frontend/CompilerTools.c",
+    "src/driver/COSToolsCLT.c",
+    "src/frontend/CPrep.c",
+    "src/frontend/Unmangle.c",
+    "src/linker/ParserGlue-eabi-ppc-ld.c",
+    "version.dll_stubs_0041523E",
+    "version.dll_stubs_004152A0",
+    "lmgr326b"
+  ],
+  "object_sizes": {
+    "_LinkSym_Table": "0x152",
+    "___files": "0x150"
+  },
+  "data_units": [
+    {
+      "unit": "src/driver/BuildDate.c",
+      "before": "src/runtime/maincrt.c",
+      "ranges": [
+        [
+          ".data",
+          "0x0046e000",
+          "0x0046e020"
+        ]
+      ]
+    },
+    {
+      "unit": "src/msl/locale.c",
+      "before": "src/linker/PPCDisassembler.c",
+      "ranges": [
+        [
+          ".data",
+          "0x0048df20",
+          "0x0048df60"
+        ]
+      ]
+    },
+    {
+      "unit": "src/msl/float.c",
+      "before": "src/linker/PPCDisassembler.c",
+      "ranges": [
+        [
+          ".data",
+          "0x0048df60",
+          "0x0048dfd0"
+        ]
+      ]
+    },
+    {
+      "unit": "src/msl/misc_io.c",
+      "ranges": [
+        [
+          ".data",
+          "0x004793b8",
+          "0x004793c8"
+        ]
+      ]
+    },
+    {
+      "unit": "src/msl/unistd.win32.c",
+      "ranges": [
+        [
+          ".data",
+          "0x0046e688",
+          "0x0046e690"
+        ]
+      ]
+    },
+    {
+      "unit": "src/linker/TargetWarningHelpers-ppc-ld.c",
+      "ranges": [
+        [
+          ".data",
+          "0x004833d0",
+          "0x004833d8"
+        ]
+      ]
+    },
+    {
+      "unit": "src/msl/file_io.win32.c",
+      "ranges": [[".data", "0x004791a8", "0x004791c0"]]
+    },
+    {
+      "unit": "src/msl/string_io.c",
+      "ranges": [[".data", "0x004791c0", "0x004791c8"]]
+    },
+    {
+      "unit": "src/msl/file_io.c",
+      "ranges": [[".data", "0x004791c8", "0x004791d0"]]
+    },
+    {
+      "unit": "src/msl/alloc.c",
+      "ranges": [
+        [
+          ".bss",
+          "0x00497288",
+          "0x0049728c"
+        ]
+      ]
+    },
+    {
+      "unit": "src/runtime/NewHand.cpp",
+      "ranges": [
+        [
+          ".data",
+          "0x00489a68",
+          "0x00489a78"
+        ],
+        [
+          ".data",
+          "0x00489aa0",
+          "0x00489ac8"
+        ]
+      ]
+    },
+    {
+      "unit": "src/msl/extras.c",
+      "ranges": [
+        [
+          ".data",
+          "0x004745d8",
+          "0x00474608"
+        ],
+        [
+          ".data",
+          "0x00474608",
+          "0x00474630"
+        ]
+      ]
+    }
+  ]
+}

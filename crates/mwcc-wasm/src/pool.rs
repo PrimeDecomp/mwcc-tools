@@ -502,6 +502,7 @@ impl PersistPool {
                         overlay: Some(&overlay),
                         transcode_sjis: context.transcode_sjis,
                         record_reads: false,
+                        command_line: None,
                     },
                     capacity,
                 );

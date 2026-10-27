@@ -19,6 +19,54 @@ use std::{
 /// The versions gc2's sources build.
 pub const VERSIONS: [&str; 3] = ["GC_1_3_2", "GC_2_6", "GC_2_7"];
 
+/// The linkers built for WebAssembly (`build/<linker>/wasm/mwldeppc.wasm`), each with its compiler version.
+pub const LINKERS: [(&str, &str); 2] = [("LD_1_3_2", "GC_1_3_2"), ("LD_2_7", "GC_2_7")];
+
+/// LINKER's module, in a checkout of mwcc.
+pub fn linker_module_output(linker: &str) -> String {
+    format!("build/{linker}/wasm/mwldeppc.wasm")
+}
+
+/// The linker module that runs in place of EXECUTABLE: ROOT's copy of a linker's original
+/// (`build/compilers/GC/<dir>/mwldeppc.exe`), or a copy anywhere with the size and SHA-1 of
+/// `config/<linker>/config.json`, when its module is built. The version is the linker's compiler's.
+pub fn linker_module_of_copy(root: &Path, executable: &Path) -> Option<(Version, PathBuf)> {
+    if !enabled() {
+        return None;
+    }
+    let size = fs::metadata(executable).ok()?.len();
+    let mut digest = None;
+    for (linker, compiler) in LINKERS {
+        let module = root.join(linker_module_output(linker));
+        if !module.is_file() {
+            continue;
+        }
+        let Ok(config) = fs::read(root.join(format!("config/{linker}/config.json"))) else {
+            continue;
+        };
+        let Ok(config) = serde_json::from_slice::<serde_json::Value>(&config) else {
+            continue;
+        };
+        let own = config["original"]
+            .as_str()
+            .is_some_and(|original| same(executable, &root.join(original)));
+        if !own {
+            if config["size"].as_u64() != Some(size) {
+                continue;
+            }
+            let digest = match &digest {
+                Some(digest) => digest,
+                None => digest.insert(format!("{:x}", Sha1::digest(fs::read(executable).ok()?))),
+            };
+            if config["sha1"].as_str() != Some(digest.as_str()) {
+                continue;
+            }
+        }
+        return Some((Version::parse(compiler).ok()?, module));
+    }
+    None
+}
+
 /// VERSION's compiler module, in a checkout of mwcc.
 pub fn module_output(version: &str) -> String {
     format!("build/{version}/wasm/mwcc.wasm")

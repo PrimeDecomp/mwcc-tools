@@ -45,6 +45,7 @@ fn main() -> Result<()> {
                 trace,
                 overlay: None,
                 transcode_sjis: false,
+                command_line: None,
             },
             &|| false,
         )?;

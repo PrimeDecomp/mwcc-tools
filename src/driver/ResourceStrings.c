@@ -13,6 +13,9 @@
 
 static ResourceRegistration resourceRegistrations[16];
 static char resource_string_buffer[64];
+#if defined(LINKER) && VERSION >= VERSION_GC_2_7
+CompilerVersionInfo13 data_005d89be;  /* (the 2.x linker has it in this unit's data) */
+#endif
 
 int ResourceStrings_AddResource(char *resourceData, short resourceId, char **resourceValue)
 {
@@ -119,19 +122,19 @@ void fn_00408cc0(void)
     data_005d89be.numbers[1] = fixed[4];
     data_005d89be.numbers[2] = fixed[5] >> 16;
     data_005d89be.numbers[3] = fixed[5];
-    if (VerQueryValueA(info, "\StringFileInfo\040904B0\CompanyName", (LPVOID *)&value, &length))
+    if (VerQueryValueA(info, "\\StringFileInfo\\040904B0\\CompanyName", (LPVOID *)&value, &length))
         data_005d89be.company = xstrdup(value);
     else
         data_005d89be.company = NULL;
-    if (VerQueryValueA(info, "\StringFileInfo\040904B0\ProductName", (LPVOID *)&value, &length))
+    if (VerQueryValueA(info, "\\StringFileInfo\\040904B0\\ProductName", (LPVOID *)&value, &length))
         data_005d89be.product = xstrdup(value);
     else
         data_005d89be.product = NULL;
-    if (VerQueryValueA(info, "\StringFileInfo\040904B0\FileDescription", (LPVOID *)&value, &length))
+    if (VerQueryValueA(info, "\\StringFileInfo\\040904B0\\FileDescription", (LPVOID *)&value, &length))
         data_005d89be.description = xstrdup(value);
     else
         data_005d89be.description = NULL;
-    if (VerQueryValueA(info, "\StringFileInfo\040904B0\LegalCopyright", (LPVOID *)&value, &length)) {
+    if (VerQueryValueA(info, "\\StringFileInfo\\040904B0\\LegalCopyright", (LPVOID *)&value, &length)) {
         copy = (char *)xmalloc(0, strlen(value) + 2);
         data_005d89be.copyright = copy;
         for (i = 0; value[i] != 0; i++) {
@@ -147,7 +150,7 @@ void fn_00408cc0(void)
     } else {
         data_005d89be.copyright = NULL;
     }
-    if (VerQueryValueA(info, "\StringFileInfo\040904B0\ProductVersion", (LPVOID *)&value, &length)) {
+    if (VerQueryValueA(info, "\\StringFileInfo\\040904B0\\ProductVersion", (LPVOID *)&value, &length)) {
         source = value;
         for (;;) {
             char c = *source;

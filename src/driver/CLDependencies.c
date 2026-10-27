@@ -16,6 +16,15 @@
 #include <stdio.h>
 
 static struct AccessPathEntry *data_0054d898 = NULL;
+#if defined(LINKER) && VERSION >= VERSION_GC_2_7
+#include "driver/MacSpecs.h"
+/* The source file whose directory is searched first (2.x: kept for searches from the include stack). */
+static OSSpec *current_source_spec;
+/* The compiler's include stack (its top index and its files); nothing in the linker sets them. */
+static SInt16 *include_stack_top;
+static CWFileSpec **include_stack;
+static void set_access_path_from_include_stack(void);
+#endif
 #if VERSION >= VERSION_GC_1_3
 #include "driver/MemUtils.h"
 #define free xfree
@@ -200,11 +209,22 @@ unsigned char CLDependencies_FindFile(Deps *dependencies, char *file, char searc
     AccessPathEntry *result;
     AccessPathEntry *value;
 
+#if defined(LINKER) && VERSION >= VERSION_GC_2_7
+    /* (2.x: the directory of the including file first, a cached system file reused only for a system search) */
+    found = 0;
+    if (optsCompiler.includeSearch == 3 && searchFirst)
+        set_access_path_from_include_stack();
+    *index = -1;
+    cached = fn_00427ad0(dependencies, searchFirst, file, context->path.s, index, &record);
+    if (cached != 0) {
+        if (record->contextPath == data_0054d898 && record->flag && !searchFirst) {
+#else
     *index = -1;
     found = 0;
     cached = fn_00427ad0(dependencies, searchFirst, file, context->path.s, index, &record);
     if (cached != 0) {
         if (record->contextPath == data_0054d898) {
+#endif
             found = 1;
         } else if (record->searchPath == NULL) {
             cached = 0;
@@ -223,7 +243,11 @@ unsigned char CLDependencies_FindFile(Deps *dependencies, char *file, char searc
                 found = find_access_path_entry(result, file, &result, context->path.s);
                 value = NULL;
             }
+#if defined(LINKER) && VERSION >= VERSION_GC_2_7
+            if (found == 0 && cached != 0 && record->flag && !searchFirst) {
+#else
             if (found == 0 && cached != 0) {
+#endif
                 lookupText = NULL;
                 result = record->resolvedPath;
                 value = record->searchPath;
@@ -260,6 +284,83 @@ Boolean initialize_four_words(DependencyCollection *value, struct Deps *fourth)
     return 1;
 }
 
+#if defined(LINKER) && VERSION >= VERSION_GC_2_7
+/* (2.x: the source file kept for the include searches, which use it when given none; listed at -v -v -v) */
+SInt32 CLDependencies_SetAccessPath(OSSpec *name, Boolean flag)
+{
+    OSPathSpec buffer;
+    OSPathSpec *path;
+
+    if (flag && name != NULL)
+        current_source_spec = name;
+
+    switch (optsCompiler.includeSearch) {
+        case 2:
+            data_0054d898 = NULL;
+            return 1;
+        case 0:
+            if (!flag)
+                return 1;
+            OS_GetCWD(&buffer);
+            path = & buffer;
+            break;
+        case 1:
+            if (!flag)
+                return 1;
+            /* fall through */
+        case 3:
+            if (name != NULL) {
+                path = & name->path;
+            } else if (current_source_spec != NULL) {
+                path = & current_source_spec->path;
+            } else {
+                OS_GetCWD(&buffer);
+                path = & buffer;
+            }
+            break;
+        default:
+            CLErrors_ReportInternalError("CLDependencies.c", 468, "Unhandled include file search type (%d)\n",
+                                         optsCompiler.includeSearch);
+            break;
+    }
+
+    data_0054d898 = find_or_create_access_path_entry(default_target->dependencyTable.scope, path);
+
+    if (optsCmdLine.verbose > 2) {
+        CLErrors_ForwardMessage(0x69, OS_PathSpecToString(path, data_005880e0, 0x104));
+    }
+    return 1;
+}
+
+/* The directory of the innermost included file that is not a virtual file, or the source file's. */
+static void set_access_path_from_include_stack(void)
+{
+    OSSpec spec;
+    SInt16 index;
+    CWFileSpec *file;
+    char *name;
+
+    if (optsCompiler.includeSearch == 3 && include_stack_top != NULL && include_stack != NULL) {
+        if (*include_stack_top >= 0) {
+            index = *include_stack_top;
+            while (index != 0) {
+                file = include_stack[index];
+                if (file == NULL)
+                    break;
+                index--;
+                MacSpecs_MakeOSSpec(file, &spec);
+                name = OS_GetFileNamePtr(OS_NameSpecToString(&spec.name, data_005880e0, 0x104));
+                if (CLFiles_FindChainRecord(default_target->fileLookup, name) == NULL) {
+                    if (data_0054d898 == NULL || !OS_EqualPathSpec(&spec.path, data_0054d898->path))
+                        CLDependencies_SetAccessPath(&spec, 0);
+                    return;
+                }
+            }
+        }
+        CLDependencies_SetAccessPath(NULL, 0);
+    }
+}
+#else
 SInt32 CLDependencies_SetAccessPath(OSSpec *name, Boolean flag)
 {
     OSPathSpec buffer;
@@ -300,6 +401,7 @@ SInt32 CLDependencies_SetAccessPath(OSSpec *name, Boolean flag)
     }
     return 1;
 }
+#endif
 
 AccessPathEntry *get_access_path_entry(void)
 {

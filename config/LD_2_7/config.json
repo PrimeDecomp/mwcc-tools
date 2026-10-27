@@ -1,0 +1,24 @@
+{
+  "original": "build/compilers/GC/2.7/mwldeppc.exe",
+  "sha1": "8225a47ff099a3aecb32cd307a95cb69b30a6a84",
+  "size": 748032,
+  "output": "mwldeppc.exe",
+  "compiler_version": "GC_2_7",
+  "units_from": "LD_2_6",
+  "resources": "src/linker/mwldeppc27.rc",
+  "assembly": {
+    "common": "src/linker/common.s",
+    "cexc.obj": "src/runtime/cexc.s",
+    "ccinit.obj": "src/runtime/ccinit.s"
+  },
+  "imports": [
+    "src/runtime/imports/kernel32.s",
+    "src/runtime/imports/version.s",
+    "src/runtime/imports/lmgr326b.s"
+  ],
+  "replace": {
+    "src/linker/ParserGlue-eabi-ppc-ld.c": "src/linker/ParserGlue-eabi-ppc-ld27.c",
+    "src/linker/ld-eabi-ppc.c": "src/linker/ld-eabi-ppc27.c",
+    "src/linker/PPCDisassembler.c": "src/linker/PPCDisassembler27.c"
+  }
+}

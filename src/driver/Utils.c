@@ -55,6 +55,147 @@ static inline char *putbar(char *out)
     return out + 1;
 }
 
+#if VERSION >= VERSION_GC_2_7
+/* (the 2.x driver's, as mweppc has it: its flags are 1 the option character, 8 a [no] prefix, 0x20 a [no-] prefix,
+   0x10 a [-] suffix and 0x40 sticky) */
+char *Utils_FormatOptions(char *options, char *destination, SInt8 flags)
+{
+    char *sptr;
+    char *eptr;
+    char *nptr;
+    char *bptr;
+    int pflen;
+    int npflen;
+    int undo;
+    char *neptr;
+    int cnt;
+    int x;
+    int y;
+    int z;
+    char c;
+    char d;
+
+    undo = 0;
+    x = 1;
+    y = 1;
+    bptr = destination;
+    sptr = options;
+    d = c = 0;
+    pflen = 0;
+    while (sptr) {
+        if ((flags & 1) && !pflen) {
+            *(bptr++) = *data_00587eec;
+        }
+
+        eptr = strchr(sptr, '|');
+        if (!eptr) {
+            eptr = sptr + strlen(sptr);
+            nptr = 0;
+        } else if (eptr[1] == '|') {
+            nptr = 0;
+        } else {
+            nptr = eptr + 1;
+        }
+
+        if (undo == 0 && !pflen) {
+            if (flags & 8) {
+                *(bptr++) = '[';
+                *(bptr++) = 'n';
+                *(bptr++) = 'o';
+                *(bptr++) = ']';
+            }
+            if (flags & 0x20) {
+                *(bptr++) = '[';
+                *(bptr++) = 'n';
+                *(bptr++) = 'o';
+                *(bptr++) = '-';
+                *(bptr++) = ']';
+            }
+        }
+
+        npflen = 0;
+        if (nptr) {
+            while (sptr < nptr && *nptr && *nptr != '|' && sptr[npflen] == nptr[npflen]) {
+                npflen++;
+            }
+
+            if (npflen) {
+                neptr = strchr(nptr, '|');
+                if (!neptr) {
+                    neptr = nptr + strlen(nptr);
+                }
+                if ((neptr - nptr) < (eptr - sptr) || ((sptr[1] && sptr[1] != '|') ? (sptr[1] != nptr[1]) : 0)) {
+                    npflen = 0;
+                }
+                if (flags & 0x40) {
+                    npflen = 0;
+                }
+            }
+        }
+
+        if (pflen) {
+            x = z = 0;
+            sptr += pflen;
+            while (sptr < eptr) {
+                *(bptr++) = *(sptr++);
+            }
+            if (npflen > pflen) {
+                *(bptr++) = '[';
+                undo++;
+            }
+            if (npflen < pflen) {
+                *(bptr++) = ']';
+                undo--;
+            }
+        } else if (npflen) {
+            for (cnt = 0; cnt++ < npflen;) {
+                *(bptr++) = *(sptr++);
+            }
+            *(bptr++) = '[';
+            undo++;
+        }
+
+        while (sptr < eptr) {
+            *(bptr++) = *(sptr++);
+        }
+
+        if (flags & 0x10) {
+            *(bptr++) = '[';
+            *(bptr++) = '-';
+            *(bptr++) = ']';
+        }
+        if (flags & 0x40) {
+            *(bptr++) = '+';
+        }
+
+        sptr = nptr;
+        if (nptr && bptr[-1] != '[') {
+            if ((flags & 1) || (bptr[-1] == ']') || ((flags & 8) && !undo)) {
+                *(bptr++) = ' ';
+                *(bptr++) = '|';
+                *(bptr++) = ' ';
+            } else {
+                *(bptr++) = '|';
+            }
+        }
+
+        flags &= ~0x40;
+        pflen = npflen;
+        x = z = 0;
+    }
+
+    while (undo--) {
+        *(bptr++) = ']';
+    }
+
+    if (flags & 4) {
+        bptr += sprintf(bptr, "=...");
+    }
+
+    *bptr = 0;
+    return bptr;
+}
+#else
 char *Utils_FormatOptions(char *options, char *destination, SInt8 flags)
 {
     char *option;
@@ -191,6 +332,7 @@ char *Utils_FormatOptions(char *options, char *destination, SInt8 flags)
     *out = '\0';
     return out;
 }
+#endif
 
 int Utils_MatchStringSegments(char *segment, char *candidate, int caseSensitive, int allowAbbreviation)
 {
@@ -211,7 +353,7 @@ int Utils_MatchStringSegments(char *segment, char *candidate, int caseSensitive,
         }
     } else {
         while (segment < segmentEnd && candidate < candidateEnd) {
-            if (((int (*)(char))to_lowercase)(*segment) != ((int (*)(char))to_lowercase)(*candidate))
+            if (TO_LOWERCASE_CHAR(*segment) != TO_LOWERCASE_CHAR(*candidate))
                 break;
             segment++;
             candidate++;

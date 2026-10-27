@@ -92,6 +92,9 @@ pub struct Request<'a> {
     pub transcode_sjis: bool,
     /// Whether the outcome lists the files the compiler consulted ([`Outcome::consulted`]).
     pub record_reads: bool,
+    /// The command line it gets (GetCommandLineA) as the process would, verbatim; else one made of `program` and
+    /// `args`. The compilers copy it to their heap, and the heap's layout reaches their output.
+    pub command_line: Option<&'a str>,
 }
 
 /// A path the compiler consulted outside the overlay: a file it opened to read or asked about (whether it is there
@@ -145,6 +148,8 @@ struct Entry {
     attributes: u32,
     size: u64,
     written: u64,
+    /// The 8.3 name (`cAlternateFileName`), or empty: the drivers take it in place of a name of 64 characters or more.
+    short: String,
 }
 
 struct State {
@@ -257,7 +262,9 @@ impl State {
             guest_directory: guest_path(&plain(request.directory).to_string_lossy()),
             program: guest_path(request.program),
             version_info: request.version_info.to_vec(),
-            command_line: command_line(&guest_path(request.program), request.args),
+            command_line: request
+                .command_line
+                .map_or_else(|| command_line(&guest_path(request.program), request.args), str::to_owned),
             // (the host's own setting: the compiler's environment, and so its heap, is as without it)
             environment: request
                 .environment
@@ -981,6 +988,7 @@ fn entry_of(name: String, metadata: &fs::Metadata) -> Entry {
         attributes,
         size: if metadata.is_dir() { 0 } else { metadata.len() },
         written: metadata.modified().map(filetime).unwrap_or(FILETIME_UNIX),
+        short: String::new(),
     }
 }
 
@@ -2107,19 +2115,30 @@ fn imports(linker: &mut Linker<State>) -> Result<()> {
                                           size: u32|
      -> u32 {
         let name = read_string(c, path)?;
+        let mut short = None;
         let there = match overlaid(c.data(), &name) {
             Some(bytes) => bytes.is_some(),
             None if is_program(c.data(), &name) => true,
             None => {
                 let path = host_path(c.data_mut(), &name);
                 consult(c.data_mut(), Consulted::Path(path.clone()));
+                // (the last component's 8.3 name, where Windows has one: the 2.7 drivers give it in place of a name
+                // of 64 characters or more; the rest of the path as the run spelled it)
+                let last = name.trim_end_matches(['\\', '/']);
+                let start = last.rfind(['\\', '/']).map_or(0, |i| i + 1);
+                if last.len() - start >= 64 {
+                    let shortened = short_name(&path);
+                    if !shortened.is_empty() {
+                        short = Some(format!("{}{shortened}{}", &name[..start], &name[last.len()..]));
+                    }
+                }
                 path.exists()
             }
         };
         if !there {
             return fail(c, ERROR_FILE_NOT_FOUND);
         }
-        give_string(c, &name, buffer, size)
+        give_string(c, short.as_deref().unwrap_or(&name), buffer, size)
     });
     import!(linker, "FindFirstFileA", |c,
                                        pattern: u32,
@@ -2137,6 +2156,7 @@ fn imports(linker: &mut Linker<State>) -> Result<()> {
                 attributes: FILE_ATTRIBUTE_NORMAL,
                 size: 0,
                 written: FILETIME_UNIX,
+                short: String::new(),
             });
         } else if let Some(bytes) = overlaid(c.data(), &pattern) {
             if let Some(bytes) = bytes {
@@ -2150,6 +2170,7 @@ fn imports(linker: &mut Linker<State>) -> Result<()> {
                     attributes: FILE_ATTRIBUTE_NORMAL,
                     size: bytes.len() as u64,
                     written: overlaid_written(&path),
+                    short: String::new(),
                 });
             }
         } else if !wildcard.contains(['*', '?']) {
@@ -2205,13 +2226,20 @@ fn imports(linker: &mut Linker<State>) -> Result<()> {
                         attributes: FILE_ATTRIBUTE_NORMAL,
                         size: bytes.len() as u64,
                         written: shadowed.map_or(overlay::OVERLAY_ONLY_WRITTEN, |e| e.written),
+                        short: String::new(),
                     });
                 }
             }
             entries.extend(
                 found
                     .into_iter()
-                    .filter(|e| matches(wildcard.as_bytes(), e.name.as_bytes())),
+                    .filter(|e| matches(wildcard.as_bytes(), e.name.as_bytes()))
+                    .map(|mut e| {
+                        if e.name.len() >= 64 {
+                            e.short = short_name(&path.join(&e.name));
+                        }
+                        e
+                    }),
             );
             if matches(wildcard.as_bytes(), b".") {
                 entries.insert(
@@ -2221,6 +2249,7 @@ fn imports(linker: &mut Linker<State>) -> Result<()> {
                         attributes: FILE_ATTRIBUTE_DIRECTORY,
                         size: 0,
                         written: FILETIME_UNIX,
+                        short: String::new(),
                     },
                 );
                 entries.insert(
@@ -2230,6 +2259,7 @@ fn imports(linker: &mut Linker<State>) -> Result<()> {
                         attributes: FILE_ATTRIBUTE_DIRECTORY,
                         size: 0,
                         written: FILETIME_UNIX,
+                        short: String::new(),
                     },
                 );
             }
@@ -2276,6 +2306,33 @@ fn imports(linker: &mut Linker<State>) -> Result<()> {
 
 /// WIN32_FIND_DATAA: attributes, three FILETIMEs, the size (high, low), two reserved words, the name and the 8.3
 /// name.
+/// PATH's 8.3 name, as Windows gives it (empty where it has none, or elsewhere).
+#[cfg(windows)]
+fn short_name(path: &Path) -> String {
+    use std::os::windows::ffi::{OsStrExt, OsStringExt};
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        fn GetShortPathNameW(long: *const u16, short: *mut u16, size: u32) -> u32;
+    }
+    let wide: Vec<u16> = path.as_os_str().encode_wide().chain([0]).collect();
+    let mut buffer = vec![0u16; 1024];
+    // (SAFETY: WIDE ends with a NUL, and BUFFER's size is given)
+    let n = unsafe { GetShortPathNameW(wide.as_ptr(), buffer.as_mut_ptr(), buffer.len() as u32) } as usize;
+    if n == 0 || n >= buffer.len() {
+        return String::new();
+    }
+    let short = PathBuf::from(std::ffi::OsString::from_wide(&buffer[..n]));
+    match short.file_name().and_then(|f| f.to_str()) {
+        Some(name) if name.len() <= 12 && Some(name) != path.file_name().and_then(|f| f.to_str()) => name.into(),
+        _ => String::new(),
+    }
+}
+
+#[cfg(not(windows))]
+fn short_name(_path: &Path) -> String {
+    String::new()
+}
+
 fn write_find_data(caller: &mut Caller<'_, State>, at: u32, entry: &Entry) -> Result<()> {
     let mut data = vec![0u8; 320];
     data[0..4].copy_from_slice(&entry.attributes.to_le_bytes());
@@ -2287,6 +2344,9 @@ fn write_find_data(caller: &mut Caller<'_, State>, at: u32, entry: &Entry) -> Re
     let name = latin1(&entry.name);
     let n = name.len().min(259);
     data[44..44 + n].copy_from_slice(&name[..n]);
+    let short = latin1(&entry.short);
+    let n = short.len().min(13);
+    data[304..304 + n].copy_from_slice(&short[..n]);
     write_bytes(caller, at, &data[..318])
 }
 
@@ -2328,6 +2388,7 @@ mod tests {
             overlay: None,
             transcode_sjis: false,
             record_reads: false,
+            command_line: None,
         })
     }
 

@@ -370,7 +370,14 @@ unsigned int __stdcall UCBReleaseFileText(struct DropinRequest *request, void *m
 #endif
     if (optsCmdLine.verbose > 3)
         CLIO_FormatAndDispatchText("Callback: %s\n", (unsigned char *)"UCBReleaseFileText");
-#if VERSION >= VERSION_GC_1_3
+#if defined(LINKER) && VERSION >= VERSION_GC_2_7
+    /* (2.x: the main text is the context's own, at 0x152 unaligned, which the driver's release leaves alone) */
+    if (memory != NULL) {
+        if (memory != ((CWPluginPrivateContext *)request)->callbackValue)
+            free(memory);
+    } else
+        result = 3U;
+#elif VERSION >= VERSION_GC_1_3
     if (memory != NULL) {
         if (memory != req->text)
             free(memory);
@@ -657,8 +664,13 @@ int __stdcall UCBSetModDate(int callbackContext, char *name, SInt32 *modificatio
 
     MacSpecs_MakeOSSpec((CWFileSpec *)name, &fileSpec);
 
+#if defined(LINKER) && VERSION >= VERSION_GC_2_7
+    /* (2.x: no date given is the current time too) */
+    if (modificationDate == NULL || (macTime = *modificationDate) == 0)
+#else
     macTime = *modificationDate;
     if (macTime == 0)
+#endif
         OS_GetTime(&fileTime);
     else
         OS_MacToTime(macTime, &fileTime);
@@ -704,6 +716,18 @@ __stdcall SInt32 UCBAddProjectEntry(DropinRequest *context, CWFileSpec *file, UI
         return 3;
     }
     OS_NameSpecToString(&sourcePath.name, filename, sizeof(filename));
+#if defined(LINKER) && VERSION >= VERSION_GC_2_7
+    /* (2.x: a linker that takes no duplicate files (flags 0x1 and 0x20000000 clear) ignores a file already in the
+       project, saying so when verbose) */
+    target = default_target;
+    if (target->linker != 0 && (target->linkerFlags & 0x20000001) == 0 &&
+        CLFiles_FindDropinFileRecord(&target->files, &sourcePath) != 0) {
+        if (optsCmdLine.verbose > 1) {
+            CLErrors_ForwardMessageArguments(0x6a, filename);
+        }
+        return 0;
+    }
+#endif
     extensionStart = filename + strlen(filename) - 1;
     while (extensionStart > filename && *extensionStart != '.') {
         extensionStart--;
@@ -734,7 +758,14 @@ __stdcall SInt32 UCBAddProjectEntry(DropinRequest *context, CWFileSpec *file, UI
         if (CLPlugins_FindFileMapValue(plugin, fileType, extension, &flags) == 0) {
             flags = 0;
             if (ignored == 0 && optsCompiler.compileIgnored == 0 && optsCompiler.forcePrecompile != 1) {
+#if defined(LINKER) && VERSION >= VERSION_GC_2_7
+                /* (2.x: the message says what is done with the file) */
+                CLErrors_ForwardMessageArguments(0x49, "file", filename,
+                                                 clState.plugintype == 0x436f6d70 ? "treating as source text"
+                                                                                  : "passing unknown file to linker");
+#else
                 CLErrors_ForwardMessageArguments(0x49, "file", filename);
+#endif
             }
             if (ignored != 0) {
                 flags = 0x10000000;
@@ -862,6 +893,12 @@ __stdcall SInt32 UCBAddProjectEntry(DropinRequest *context, CWFileSpec *file, UI
     return 0;
 }
 
+#if defined(LINKER) && VERSION >= VERSION_GC_2_7
+/* (2.x: the --stdout option's file (CLMain.c), and whether a document was already written to it) */
+extern char *data_005e656c;
+static Boolean stdout_file_written;
+#endif
+
 int __stdcall UCBCreateNewTextDocument(DropinRequest *request, DropinCallbackData *document)
 {
     DropinFileRecord *file;
@@ -881,7 +918,14 @@ int __stdcall UCBCreateNewTextDocument(DropinRequest *request, DropinCallbackDat
         CLIO_FormatAndDispatchText("Callback: %s\n", "UCBCreateNewTextDocument");
     }
     if (request->signature == 1131375984 || request->signature == 1281977963) {
+#if defined(LINKER) && VERSION >= VERSION_GC_2_7
+        /* (2.x: only an unnamed document is the file's output; a named one is written to that file, ">stdout" to
+           the --stdout file (created, then appended to) when one is given, and to stdout otherwise or when the file
+           cannot be opened) */
+        if (document->name == 0) {
+#else
         if (document->name == 0 || memcmp(document->name, ">stdout", 8) != 0) {
+#endif
             file = CLFiles_FindFileByIndex(&default_target->files, request->fileKey);
             if (file == 0) {
                 return 9;
@@ -899,6 +943,24 @@ int __stdcall UCBCreateNewTextDocument(DropinRequest *request, DropinCallbackDat
         } else {
             SetCallbackStorageHandle(request, document->storage, &stdoutStorage);
             stdoutSize = Memory_GetHandleSize(stdoutStorage);
+#if defined(LINKER) && VERSION >= VERSION_GC_2_7
+            if (strcmp(document->name, ">stdout") != 0 || data_005e656c != NULL) {
+                FILE *stream;
+                if (strcmp(document->name, ">stdout") == 0) {
+                    stream = fopen(data_005e656c, stdout_file_written ? "at" : "wt");
+                    stdout_file_written = 1;
+                } else {
+                    stream = fopen(document->name, "wt");
+                }
+                if (stream != NULL) {
+                    fn_00413a00(stdoutStorage);
+                    fwrite(stdoutStorage->data, stdoutSize, 1, stream);
+                    fclose(stream);
+                    fn_00413a50(stdoutStorage);
+                    return 0;
+                }
+            }
+#endif
             if (CLIO_WriteStorageToStdout(stdoutStorage, stdoutSize, 0) == 0) {
                 return 2;
             }
@@ -932,7 +994,11 @@ int __stdcall UCBCreateNewTextDocument(DropinRequest *request, DropinCallbackDat
         }
         return 0;
     }
+#if defined(LINKER) && VERSION >= VERSION_GC_2_7
+    CLErrors_ReportInternalError("CLDropinCallbacks_V10.cpp", 1755, "Cannot deal with unexpected document");
+#else
     CLErrors_ReportInternalError("CLDropinCallbacks_V10.cpp", 1699, "Cannot deal with unexpected document");
+#endif
     return 4;
 }
 
@@ -1171,6 +1237,21 @@ unsigned int __stdcall UCBCheckoutLicense(unsigned int unused0, unsigned int req
     cookieKind = flags & 1U;
     if (cookieKind == 0U && licenseResult == 0)
         return 3U;
+#if defined(LINKER) && VERSION >= VERSION_GC_2_7
+    /* (2.x: flag 2 asks for no message on failure; the result is stored whatever it is) */
+    if ((flags & ~3U) != 0U)
+        CLErrors_ReportInternalError("CLDropinCallbacks_V10.cpp", 2160, "Unknown license flags");
+    if (licenseResult != 0)
+        *licenseResult = 0U;
+    license = CLLicenses_RequestLicense(request, options, cookieKind, message);
+    if (licenseResult != 0)
+        *licenseResult = license;
+    if (license != 0)
+        return 0U;
+    if ((flags & 2U) == 0U)
+        CLErrors_EmitDiagnostic(87U, message);
+    return 516U;
+#else
     if (flags != 0U && (flags & 1U) == 0U)
         CLErrors_ReportInternalError("CLDropinCallbacks_V10.cpp", 2104, "Unknown license flags");
     if (licenseResult != 0)
@@ -1183,6 +1264,7 @@ unsigned int __stdcall UCBCheckoutLicense(unsigned int unused0, unsigned int req
     }
     CLErrors_EmitDiagnostic(87U, message);
     return 516U;
+#endif
 }
 
 unsigned int __stdcall UCBCheckinLicense(unsigned int unused, unsigned int value)

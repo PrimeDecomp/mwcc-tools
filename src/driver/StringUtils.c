@@ -10,8 +10,11 @@
 
 static char hprintf_buffer[256];
 
+/* (wasm: the variadic arguments are not after the named ones, so the target's va_start, from <stdarg.h>) */
+#ifndef __wasm__
 #define va_start(ap, last)                                                                                             \
     ((ap) = (char *)&(last) + (((int)((char *)&(last) + sizeof(last)) - (int)(char *)&(last) + 3) / 4) * 4)
+#endif
 typedef char *(*TextFormatFunction)(char *buffer, unsigned int capacity, const char *format, va_list arguments);
 
 UInt8 *_pstrcpy(UInt8 *destination, UInt8 *string)
@@ -19,6 +22,18 @@ UInt8 *_pstrcpy(UInt8 *destination, UInt8 *string)
     memcpy(destination, string, *string + 1);
     return destination;
 }
+
+#if defined(LINKER) && VERSION >= VERSION_GC_2_7
+/* A Pascal string, at most MAXIMUM characters (the length byte as it is). */
+void fn_00412140(UInt8 *destination, const UInt8 *source, int maximum)
+{
+    short count = source[0] > maximum ? maximum : source[0];
+
+    for (; count >= 0; count--) {
+        *destination++ = *source++;
+    }
+}
+#endif
 
 unsigned int pstrcmp(UInt8 *left, char *right)
 {
@@ -101,7 +116,9 @@ char *mvprintf(char *buffer, unsigned int size, const char *format, va_list args
 
 char *mprintf(char *buffer, int size, char *format, ...)
 {
-#if VERSION >= VERSION_GC_1_3
+#ifdef __wasm__
+    va_list args = __va_start(format);
+#elif VERSION >= VERSION_GC_1_3
     va_list base = (va_list)&format;
     va_list args = base + (((va_list)(&format + 1) - base + 3) / 4) * 4;
 #else
@@ -116,7 +133,9 @@ int HPrintF(struct StorageHandle *output, char *format, ...)
     char *text;
     int length;
     va_list arguments;
-#if VERSION >= VERSION_GC_1_3
+#ifdef __wasm__
+    va_start(arguments, format);
+#elif VERSION >= VERSION_GC_1_3
     char *base;
 
     base = (char *)&format;

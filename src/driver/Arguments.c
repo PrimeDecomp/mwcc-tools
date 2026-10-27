@@ -595,6 +595,36 @@ void Targets_InitPtrList(PtrList *state)
     grow_ptr_list(state);
 }
 
+#if VERSION >= VERSION_GC_2_7
+/* (the 2.x driver's: an unknown token is a fatal error) */
+void fn_0040fbe1(PtrList *list, short kind, char *text)
+{
+    switch (kind) {
+        case 0:
+            terminate_ptr_list(list);
+            break;
+        case 1:
+            if (list->items && list->items[list->count])
+                grow_ptr_list(list);
+            break;
+        case 2:
+            append_text_to_ptrlist_item(list, text);
+            break;
+        case 3:
+            append_text_to_ptrlist_item(list, "-");
+            break;
+        case 4:
+            append_text_to_ptrlist_item(list, "=");
+            break;
+        case 5:
+            append_text_to_ptrlist_item(list, ",");
+            break;
+        default:
+            Targets_ForwardVarArgsAndLongjmp(__FILE__, 787, "Unknown token (%d)", kind);
+            break;
+    }
+}
+#else
 void fn_0040fbe1(PtrList *list, short kind, char *text)
 {
     if (kind == 0)
@@ -611,6 +641,7 @@ void fn_0040fbe1(PtrList *list, short kind, char *text)
     else if (kind == 5)
         append_text_to_ptrlist_item(list, ",");
 }
+#endif
 
 void terminate_ptr_list(PtrList *list)
 {
