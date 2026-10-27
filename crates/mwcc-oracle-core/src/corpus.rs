@@ -331,8 +331,7 @@ fn without(trace: &str, prefixes: &[String]) -> String {
         .lines()
         .filter(|line| !prefixes.iter().any(|p| line.starts_with(p.as_str())))
         .collect::<Vec<_>>()
-        .join("
-")
+        .join("\n")
 }
 
 pub fn trace_difference_with(ours: &str, theirs: &str, streams: &[&str]) -> Option<String> {

@@ -221,13 +221,17 @@ mod command_line_tests {
 
     #[test]
     fn the_compilers_command_line_is_ours_from_it_on() {
-        let line = r#"C:\x\mwcc-run.exe build\cc\mwcceppc.exe -pragma "inline_max_size(256)" -c "a b.c""#;
+        let line =
+            r#"C:\x\mwcc-run.exe build\cc\mwcceppc.exe -pragma "inline_max_size(256)" -c "a b.c""#;
         let args = ["-pragma", "inline_max_size(256)", "-c", "a b.c"].map(String::from);
         assert_eq!(
             command_line_from(line, Path::new(r"build\cc\mwcceppc.exe"), &args).as_deref(),
             Some(r#"build\cc\mwcceppc.exe -pragma "inline_max_size(256)" -c "a b.c""#)
         );
-        assert_eq!(command_line_from(line, Path::new(r"build\cc\mwcceppc.exe"), &args[..2]), None);
+        assert_eq!(
+            command_line_from(line, Path::new(r"build\cc\mwcceppc.exe"), &args[..2]),
+            None
+        );
         assert_eq!(split_command_line(r#"a\\"b c" d"#)[0].1, r"a\b c");
     }
 }
