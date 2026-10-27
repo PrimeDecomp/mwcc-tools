@@ -13,6 +13,7 @@ serde_json.workspace = true
 sha2.workspace = true
 sha1.workspace = true
 zip.workspace = true
+ureq.workspace = true
 mwcc-oracle-core = { path = "../mwcc-oracle-core" }
 mwcc-project = { path = "../mwcc-project" }
 mwcc-methods = { path = "../mwcc-methods" }

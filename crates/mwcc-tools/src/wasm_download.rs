@@ -38,7 +38,7 @@ struct Archive {
     members: &'static [Member],
 }
 
-const ARCHIVES: [Archive; 3] = [
+const ARCHIVES: [Archive; 4] = [
     Archive {
         name: "GC_2_7",
         members: &[
@@ -53,6 +53,14 @@ const ARCHIVES: [Archive; 3] = [
                 config: include_str!("../../../config/LD_2_7/config.json"),
             },
         ],
+    },
+    Archive {
+        name: "GC_2_6",
+        members: &[Member {
+            version: "GC_2_6",
+            module: "build/GC_2_6/wasm/mwcc.wasm",
+            config: include_str!("../../../config/GC_2_6/config.json"),
+        }],
     },
     Archive {
         name: "GC_1_3_2",
@@ -178,10 +186,72 @@ pub fn ensure_for(root: &Path, executable: &Path) -> Result<()> {
         return Ok(());
     }
     if let Some(archive) = archive_of(root, executable)? {
-        install(root, archive, &mut fetcher()?, &release())?;
+        let release = release();
+        let url = archive_url(archive, &release);
+        let unavailable = unavailable_path(root, archive);
+        // (a release without the archive, known from an earlier build's look: not asked again)
+        if !fs::read_to_string(&unavailable).is_ok_and(|known| known == url) {
+            match install(root, archive, &mut fetcher()?, &release) {
+                Ok(()) => {}
+                Err(e) if e.downcast_ref::<Unfetched>().is_some() => {
+                    let missing = e.downcast_ref::<Unfetched>().unwrap().missing;
+                    eprintln!(
+                        "mwcc-tools: {e:#}; {} runs as a process (MWCC_WASM_DOWNLOAD=0 does not download)",
+                        executable.display()
+                    );
+                    if missing {
+                        let _ = fs::write(&unavailable, &url);
+                    }
+                }
+                Err(e) => return Err(e),
+            }
+        }
     }
     looked_at.insert(key);
     Ok(())
+}
+
+/// A download that failed: the build runs the executable instead. MISSING: the server has no such file (an HTTP
+/// client error), so the release has no archive of the version.
+#[derive(Debug)]
+struct Unfetched {
+    url: String,
+    missing: bool,
+    /// The fetch's error.
+    detail: String,
+}
+
+impl std::fmt::Display for Unfetched {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.missing {
+            write!(f, "the release has no {}", self.url)
+        } else {
+            write!(f, "could not download {}: {}", self.url, self.detail)
+        }
+    }
+}
+
+impl std::error::Error for Unfetched {}
+
+/// Whether ERROR is a server's client error (such as 404: no such file).
+fn client_error(error: &anyhow::Error) -> bool {
+    error.chain().any(|cause| {
+        matches!(cause.downcast_ref::<ureq::Error>(), Some(ureq::Error::StatusCode(code)) if *code < 500)
+    })
+}
+
+/// ARCHIVE's file in RELEASE.
+fn archive_url(archive: &Archive, release: &str) -> String {
+    format!(
+        "{}/mwcc-wasm-{}-{release}.zip",
+        release_url(release),
+        archive.name
+    )
+}
+
+/// Where ROOT keeps the URL of ARCHIVE's file when its release has none.
+fn unavailable_path(root: &Path, archive: &Archive) -> PathBuf {
+    root.join(format!(".{}.unavailable", archive.name))
 }
 
 /// The archive EXECUTABLE's module is in, when EXECUTABLE is a copy of its version's original and ROOT lacks it.
@@ -231,14 +301,21 @@ fn install(root: &Path, archive: &Archive, fetch: &mut dyn Fetch, release: &str)
         return Ok(());
     }
     let file = format!("mwcc-wasm-{}-{release}.zip", archive.name);
-    let url = format!("{}/{file}", release_url(release));
+    let url = archive_url(archive, release);
     eprintln!("mwcc-tools: downloading {url}");
-    let bytes = fetch.fetch(&url, None).with_context(|| {
-        format!("download {url} (MWCC_WASM_DOWNLOAD=0 runs the executable instead)")
-    })?;
-    let sidecar = fetch
-        .fetch(&format!("{url}.sha256"), None)
-        .with_context(|| format!("download {url}.sha256"))?;
+    let mut fetched = |url: String| {
+        fetch.fetch(&url, None).map_err(|error| {
+            let missing = client_error(&error);
+            let detail = format!("{error:#}");
+            anyhow::Error::new(Unfetched {
+                url,
+                missing,
+                detail,
+            })
+        })
+    };
+    let bytes = fetched(url.clone())?;
+    let sidecar = fetched(format!("{url}.sha256"))?;
     let expected = String::from_utf8_lossy(&sidecar)
         .split_whitespace()
         .next()
@@ -312,6 +389,7 @@ fn install(root: &Path, archive: &Archive, fetch: &mut dyn Fetch, release: &str)
     if staging.path().join("LICENSE").is_file() {
         fs::copy(staging.path().join("LICENSE"), root.join("LICENSE"))?;
     }
+    let _ = fs::remove_file(unavailable_path(root, archive));
     eprintln!(
         "mwcc-tools: {} installed in {}",
         archive.name,
@@ -321,8 +399,8 @@ fn install(root: &Path, archive: &Archive, fetch: &mut dyn Fetch, release: &str)
 }
 
 const USAGE: &str = "download wasm [VERSION...] [--root DIR]
-    downloads the released WebAssembly compilers and linkers (by default all: GC_2_7, GC_1_3_2, GC_1_2_5n; each
-    with its linker, where there is one) from this executable's release into DIR, by default the cache `mwcc-tools \
+    downloads the released WebAssembly compilers and linkers (by default all: GC_2_7, GC_2_6, GC_1_3_2,
+    GC_1_2_5n; each with its linker, where there is one) from this executable's release into DIR, by default the cache `mwcc-tools \
 run` uses without MWCC_ORACLE_ROOT. MWCC_WASM_RELEASE (a version) and MWCC_WASM_RELEASE_URL choose another release";
 
 /// `mwcc-tools download wasm ARGS`.
@@ -360,7 +438,7 @@ pub fn command(args: &[String]) -> Result<()> {
                     .iter()
                     .find(|a| a.members.iter().any(|m| m.version == name))
                     .with_context(|| {
-                        format!("{name} has no released module (GC_2_7, LD_2_7, GC_1_3_2, LD_1_3_2, GC_1_2_5n)")
+                        format!("{name} has no released module (GC_2_7, LD_2_7, GC_2_6, GC_1_3_2, LD_1_3_2, GC_1_2_5n)")
                     })
             })
             .collect::<Result<_>>()?
@@ -473,6 +551,30 @@ mod tests {
             );
         }
         assert!(!root.path().join("build/GC_1_2_5n").exists());
+    }
+
+    /// A server without the files: an HTTP 404.
+    struct Missing;
+
+    impl Fetch for Missing {
+        fn fetch(&mut self, _: &str, _: Option<(u64, u64)>) -> Result<Vec<u8>> {
+            Err(ureq::Error::StatusCode(404).into())
+        }
+    }
+
+    #[test]
+    fn a_release_without_the_archive_is_unfetched() {
+        let root = tempfile::tempdir().unwrap();
+        let error = install(root.path(), gc_1_2_5n(), &mut Missing, "0.0.0").unwrap_err();
+        let unfetched = error
+            .downcast_ref::<Unfetched>()
+            .expect("an Unfetched error");
+        assert!(unfetched.missing);
+        assert!(
+            unfetched.url.ends_with("/mwcc-wasm-GC_1_2_5n-0.0.0.zip"),
+            "{}",
+            unfetched.url
+        );
     }
 
     #[test]

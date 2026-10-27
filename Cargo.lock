@@ -904,6 +904,7 @@ dependencies = [
  "sha1",
  "sha2",
  "tempfile",
+ "ureq",
  "zip",
 ]
 

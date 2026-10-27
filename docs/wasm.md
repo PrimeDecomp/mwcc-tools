@@ -461,12 +461,15 @@ released versions' `config/<version>/config.json` there. A compiler or linker th
 originals, and whose module the cache lacks, gets its version's release archive first
 (`crates/mwcc-tools/src/wasm_download.rs`):
 
-* `mwcc-wasm-GC_2_7`, `-GC_1_3_2` (each with its linker) or `-GC_1_2_5n`, from the GitHub release of the executable's
-  own version, checked against its `.sha256`. Only the archive's modules' directories and `LICENSE` are unpacked.
+* `mwcc-wasm-GC_2_7`, `-GC_1_3_2` (each with its linker), `-GC_2_6` or `-GC_1_2_5n`, from the GitHub release of the
+  executable's own version, checked against its `.sha256`. Only the archive's modules' directories and `LICENSE` are
+  unpacked.
 * Each module is compiled for the host before it is moved into the cache, under a lock (`.<archive>.lock`): a build's
   parallel compiles wait for one download and then load the compiled module. A first compile through a debug build
   takes about 40 s (the compile of the module); every later one takes what it takes from a checkout.
-* GC 2.6 has no release archive; its compiler runs as a process there.
+* A download that fails runs the executable as a process, with a warning. A release without the version's archive
+  (v0.3.0 has none of GC 2.6) is noted in the cache (`.<archive>.unavailable`), so later runs do not ask again;
+  `download wasm` asks regardless.
 * `MWCC_WASM_DOWNLOAD=0` does not download (the executable runs as a process). `MWCC_WASM_RELEASE` (a version, such
   as `0.3.0`) and `MWCC_WASM_RELEASE_URL` (the directory of its assets) take another release's archives; a module of
   another release than the executable's may not load in it.

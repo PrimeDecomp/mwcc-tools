@@ -22,11 +22,12 @@ The WebAssembly builds are published beside them, one archive per compiler versi
 | Archive | Contents |
 |---|---|
 | `mwcc-wasm-GC_2_7-VERSION.zip` | GC 2.7's compiler and linker: `build/GC_2_7/wasm/` and `build/LD_2_7/wasm/` |
+| `mwcc-wasm-GC_2_6-VERSION.zip` | GC 2.6's compiler: `build/GC_2_6/wasm/` |
 | `mwcc-wasm-GC_1_3_2-VERSION.zip` | GC 1.3.2's compiler and linker: `build/GC_1_3_2/wasm/` and `build/LD_1_3_2/wasm/` |
 | `mwcc-wasm-GC_1_2_5n-VERSION.zip` | GC 1.2.5n's compiler: `build/GC_1_2_5n/wasm/` |
 
 Each compiler's `mwcc.wasm` (with its `.version`) and each linker's `mwldeppc.wasm` (with its `.version`) run in
-process in `mwcc-tools`; GC 2.7's and 1.3.2's `mwcceppc.wasm`, `oracle.wasm` and `persist.wasm` are the modules mwdec
+process in `mwcc-tools`; GC 2.7's, 2.6's and 1.3.2's `mwcceppc.wasm`, `oracle.wasm` and `persist.wasm` are the modules mwdec
 loads. Unpack them into the checkout `MWCC_ORACLE_ROOT` names. Without one, `mwcc-tools run` downloads its release's
 archives as a build needs them, and `mwcc-tools download wasm` downloads them ahead of time (`docs/wasm.md`).
 
@@ -70,7 +71,7 @@ repository).
 ### Publish a version
 
 The `Build` workflow (`.github/workflows/build.yml`) runs fmt, clippy and the tests on Linux, and builds the three
-packages and the three WebAssembly archives, on every push and pull request (the builds as artifacts). A pushed `vVERSION` tag also
+packages and the four WebAssembly archives, on every push and pull request (the builds as artifacts). A pushed `vVERSION` tag also
 publishes them; `VERSION` must equal `workspace.package.version` in `Cargo.toml`. Any failed job stops publication;
 only the publish job has `contents: write`.
 
@@ -83,7 +84,7 @@ only the publish job has `contents: write`.
    git push origin v0.3.0
    ```
 
-The tag run creates the release with the six archives and their checksums. A version with a prerelease suffix is
+The tag run creates the release with the seven archives and their checksums. A version with a prerelease suffix is
 marked as a prerelease. Never move a published tag; make a new version.
 
 ### Build a local package
