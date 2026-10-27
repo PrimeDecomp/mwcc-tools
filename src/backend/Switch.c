@@ -37,7 +37,7 @@
 #include "compiler/Registers.h"
 #include "compiler/TOC.h"
 #include "driver/Files.h"
-#include "compiler/ENode.h"
+#include "compiler/enode.h"
 
 #ifdef __wasm__ /* (a call the original makes without a prototype, which WebAssembly's must match) */
 extern void qsort(void *base, unsigned long count, unsigned long size, int (*compare)(const void *, const void *));

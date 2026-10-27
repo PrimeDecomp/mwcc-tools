@@ -39,7 +39,7 @@
 #include "compiler/Registers.h"
 #include "compiler/Switch.h"
 #include "driver/Files.h"
-#include "compiler/Objects.h"
+#include "compiler/objects.h"
 
 SInt32 data_00587148;
 SInt32 data_005871b0;

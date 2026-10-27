@@ -55,7 +55,7 @@
 #include "driver/Files.h"
 #include <setjmp.h>
 #include <string.h>
-#include "compiler/ENode.h"
+#include "compiler/enode.h"
 
 #ifdef __wasm__ /* (a call the original makes without a prototype, which WebAssembly's must match) */
 void CExpr_AliasTransform(ENode *expr);
