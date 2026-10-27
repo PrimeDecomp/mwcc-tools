@@ -4,7 +4,7 @@ This archive holds one `mwcc-tools` executable for one host. Packages are publis
 `mwcc-tools-VERSION-TARGET.zip` with a `.zip.sha256` sidecar:
 
 ```text
-gh release download v0.2.0 --pattern 'mwcc-tools-0.2.0-x86_64-pc-windows-msvc.zip*' --dir downloads
+gh release download v0.3.0 --pattern 'mwcc-tools-0.3.0-x86_64-pc-windows-msvc.zip*' --dir downloads
 ```
 
 Outside a checkout, add `--repo OWNER/REPOSITORY`. Pull requests and branch pushes also produce packages as Actions
@@ -16,9 +16,18 @@ artifacts; these are test builds.
 | Linux x64 | `x86_64-unknown-linux-gnu` |
 | macOS Apple Silicon | `aarch64-apple-darwin` |
 
-GC 2.7's WebAssembly compiler is published beside them as `mwcc-wasm-GC_2_7-VERSION.zip` (with a `.zip.sha256`):
-`build/GC_2_7/wasm/mwcc.wasm` and its `.version`, which `mwcc-tools` runs in process, and `mwcceppc.wasm`,
-`oracle.wasm` and `persist.wasm`, which mwdec loads. Unpack it into the checkout `MWCC_ORACLE_ROOT` names.
+The WebAssembly builds are published beside them, one archive per compiler version as
+`mwcc-wasm-VERSION_NAME-VERSION.zip` (with a `.zip.sha256`), with the paths of a checkout:
+
+| Archive | Contents |
+|---|---|
+| `mwcc-wasm-GC_2_7-VERSION.zip` | GC 2.7's compiler and linker: `build/GC_2_7/wasm/` and `build/LD_2_7/wasm/` |
+| `mwcc-wasm-GC_1_3_2-VERSION.zip` | GC 1.3.2's compiler and linker: `build/GC_1_3_2/wasm/` and `build/LD_1_3_2/wasm/` |
+| `mwcc-wasm-GC_1_2_5n-VERSION.zip` | GC 1.2.5n's compiler: `build/GC_1_2_5n/wasm/` |
+
+Each compiler's `mwcc.wasm` (with its `.version`) and each linker's `mwldeppc.wasm` (with its `.version`) run in
+process in `mwcc-tools`; GC 2.7's and 1.3.2's `mwcceppc.wasm`, `oracle.wasm` and `persist.wasm` are the modules mwdec
+loads. Unpack them into the checkout `MWCC_ORACLE_ROOT` names.
 
 The build host sets the system-library requirements; the target name does not promise older Linux or macOS
 releases.
@@ -60,7 +69,7 @@ repository).
 ### Publish a version
 
 The `Build` workflow (`.github/workflows/build.yml`) runs fmt, clippy and the tests on Linux, and builds the three
-packages and the GC 2.7 WebAssembly bundle, on every push and pull request (the builds as artifacts). A pushed `vVERSION` tag also
+packages and the three WebAssembly archives, on every push and pull request (the builds as artifacts). A pushed `vVERSION` tag also
 publishes them; `VERSION` must equal `workspace.package.version` in `Cargo.toml`. Any failed job stops publication;
 only the publish job has `contents: write`.
 
@@ -69,11 +78,11 @@ only the publish job has `contents: write`.
 3. Tag that commit and push the tag:
 
    ```text
-   git tag -a v0.2.0 -m "mwcc-tools 0.2.0"
-   git push origin v0.2.0
+   git tag -a v0.3.0 -m "mwcc-tools 0.3.0"
+   git push origin v0.3.0
    ```
 
-The tag run creates the release with the four archives and their checksums. A version with a prerelease suffix is
+The tag run creates the release with the six archives and their checksums. A version with a prerelease suffix is
 marked as a prerelease. Never move a published tag; make a new version.
 
 ### Build a local package
@@ -82,7 +91,7 @@ marked as a prerelease. Never move a published tag; make a new version.
 cargo build --locked --release -p mwcc-tools
 cargo fetch --locked --target TARGET
 python tools/migration/capture_notices.py --target TARGET --output build/notices/TARGET
-mwcc-tools package-release build/releases/mwcc-tools-0.2.0-TARGET.zip --binary PATH_TO_BUILT_EXECUTABLE --target TARGET
+mwcc-tools package-release build/releases/mwcc-tools-0.3.0-TARGET.zip --binary PATH_TO_BUILT_EXECUTABLE --target TARGET
 ```
 
 Run from the repository or pass `--root`; `--notices DIR` overrides `build/notices/TARGET`, and
