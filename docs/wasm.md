@@ -34,9 +34,25 @@ options and the trace file. `MWCC_IN_PROCESS=0` runs the executables instead. `c
 compiler (its reference side) and `--trace-reference` as processes.
 
 The build needs LLVM's `clang` and `wasm-ld` 22 or later, because they read the hooks' IR from Rust's LLVM 22: on the
-path, or `CLANG` and `WASM_LD` at `configure` time. It also needs Rust's `wasm32-unknown-unknown` target. Nothing is
-downloaded: the C library is `wasm/libc`'s, not MSL's. The 203 units compile in about 4 seconds. Cranelift compiles a
-module once per process (1.5 to 2 seconds); a compile then takes 5 to 8 ms.
+path, or `CLANG` and `WASM_LD` at `configure` time. It also needs binaryen's `wasm-opt` (CI's is version_133; on the
+path, or `WASM_OPT`) and Rust's `wasm32-unknown-unknown` target. Nothing is downloaded: the C library is
+`wasm/libc`'s, not MSL's. The 203 units compile in about 4 seconds. Cranelift compiles a module once per process (1.5
+to 2 seconds), and keeps what it compiled beside the module (`<module>.cache`); a compile then takes 5 to 8 ms.
+
+wasm-ld links each module in `linked/` beside it (`build/<…>/wasm/linked/<module>.wasm`), and `wasm-opt -O3 -g` makes
+the module of that (`rule wasm_opt`, `wasm_build::OPT_FLAGS`):
+
+* `-O3` leaves Cranelift less to do. GC 2.7's compiler module runs 26 Echoes compiles in 5.1 s instead of 5.5; the
+  linker (with decomp/mwcc's buffered output, 5e85e0c) links Echoes' `main.elf` in 0.97 s instead of 1.19 (0.48 s of
+  CPU instead of 0.72), as fast as a native build of it. The modules are about 15% smaller.
+* `-g` keeps the name section, for the backtraces of traps and `MWCC_WASM_STOP_AFTER` (without it, `<wasm function
+  154>`). Functions wasm-opt inlined are not in them.
+* The features are the module's own: `--all-features` writes compact imports, which wasmtime 49 does not read.
+* The check for trapping stubs reads the link: they are its functions, which wasm-opt may inline or remove.
+* What was checked on GC 2.7's optimized modules against the unoptimized ones: the canaries with `corpus
+  --all-traces` (2313 identical) and `--trace-reference` (the same 2308, and the same five differences); mwcc-wasm's
+  persist tests and `persist_bench` on Echoes units (the same results); the linker's `main.elf` and map for Echoes
+  (identical).
 
 CI builds GC 2.7's and 1.3.2's modules, with their linkers, and GC 1.2.5n's on Linux and publishes them with each
 release (`mwcc-wasm-GC_2_7-VERSION.zip`, `mwcc-wasm-GC_1_3_2-VERSION.zip`, `mwcc-wasm-GC_1_2_5n-VERSION.zip`). The
@@ -297,8 +313,8 @@ both linkers:
   and IR visitors get thunks with the table's type; direct calls replace the casts elsewhere, including the casts
   of the variadic `PCodeUtilities_EmitInstruction`. LLVM puts a trapping stub (`*_bitcast_invalid`) in place of
   such a call without a warning, and wasm-ld its own (`signature_mismatch:*`) with one. `mwcc-tools wasm-stubs`
-  lists them from a module's name section; every module has the check as a default target
-  (`build/<…>/wasm/<module>.wasm.stubs`), which fails the build where there are any.
+  lists them from a module's name section; every module has the check of its link as a default target
+  (`build/<…>/wasm/linked/<module>.wasm.stubs`), which fails the build where there are any.
 * Functions the sources declare `void`, or that end without a `return`, whose x86 leaves a value in EAX that the
   caller uses (`create_objectnode`, `make_funccall_with_dexprs`, `convert_right_and_make_diadic_node`, …):
   `WASM_RETURNS(type)` and `WASM_RETURN` (`include/compiler/common.h`) return it.

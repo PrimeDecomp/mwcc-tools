@@ -801,7 +801,8 @@ fn imports(module: &[u8]) -> Result<BTreeSet<String>> {
 
 /// Link VERSION's oracle module: its stock objects built (`wasm_build`) and the Rust IR (`rust_ir`). COMBINED: the
 /// module every run uses ([`wasm_build::module_output`]), with persist's units compiled with `MWCC_PERSIST` (their
-/// objects built too) and the stack pointer exported.
+/// objects built too) and the stack pointer exported. The link goes to [`wasm_build::linked`]'s path, which the
+/// build's wasm-opt makes the module of; the version information is the module's.
 pub fn run(
     root: &Path,
     version: &str,
@@ -809,13 +810,17 @@ pub fn run(
     wasm_ld: &str,
     combined: bool,
 ) -> Result<Outcome> {
-    let output = if combined {
+    let module = if combined {
         wasm_build::module_output(version)
     } else {
         wasm_build::oracle_output(version)
     };
+    let output = wasm_build::linked(&module);
     let work = work(version, combined);
     fs::create_dir_all(root.join(&work))?;
+    if let Some(parent) = root.join(&output).parent() {
+        fs::create_dir_all(parent)?;
+    }
     let resolver = Resolver::new(root, version)?;
     let rust: Vec<(String, String)> = rust_ir(version)
         .into_iter()
@@ -1146,8 +1151,9 @@ pub fn run(
 {diagnostics}"
         );
     }
-    // (the oracle imports only what the compiler does: nothing of the hooks is left undefined)
-    let stock = root.join(wasm_build::output(version));
+    // (the oracle imports only what the compiler does: nothing of the hooks is left undefined. Both as linked:
+    // wasm-opt removes imports nothing calls.)
+    let stock = root.join(wasm_build::linked(&wasm_build::output(version)));
     if stock.is_file() {
         let extra: Vec<String> = imports(&fs::read(root.join(&output))?)?
             .difference(&imports(&fs::read(&stock)?)?)
@@ -1167,14 +1173,12 @@ pub fn run(
         serde_json::to_vec_pretty(&outcome)?,
     )?;
     if combined {
-        // (beside it: the version information its runs get, and its compiled artifact)
-        let module = root.join(&output);
+        // (beside the module: the version information its runs get. Its compiled artifact is made on its first run,
+        // from what wasm-opt makes of this link.)
         fs::write(
-            module.with_extension("version"),
+            root.join(&module).with_extension("version"),
             wasm_build::version_info(root, version)?,
         )?;
-        #[cfg(feature = "wasm")]
-        mwcc_wasm::precompile(&module).map_err(|e| anyhow::anyhow!("{e:?}"))?;
     }
     Ok(outcome)
 }
@@ -1220,7 +1224,7 @@ pub fn edges(root: &Path, version: &str) -> Result<Vec<String>> {
         "  description = WASM-LD (oracle) $out".into(),
         format!(
             "build {}: wasm_oracle {hooks} {frontend} | {} {ORACLE_C} config/{version}/symbols.txt config/{version}/config.json {gc2}/symbols.txt {gc2}/splits.txt $tools_dep",
-            wasm_build::oracle_output(version),
+            wasm_build::linked(&wasm_build::oracle_output(version)),
             objects.join(" ")
         ),
         "rule wasm_module".into(),
@@ -1230,7 +1234,7 @@ pub fn edges(root: &Path, version: &str) -> Result<Vec<String>> {
         "  description = WASM-LD (module) $out".into(),
         format!(
             "build {} | {}: wasm_module {hooks} {frontend} | {} {} {ORACLE_C} config/{version}/symbols.txt config/{version}/config.json {gc2}/symbols.txt {gc2}/splits.txt $tools_dep",
-            wasm_build::module_output(version),
+            wasm_build::linked(&wasm_build::module_output(version)),
             wasm_build::module_output(version).replace(".wasm", ".version"),
             objects.join(" "),
             persist_objects.join(" ")

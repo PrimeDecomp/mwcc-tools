@@ -106,10 +106,14 @@ Needed for GC 2.6 (only 1.3.2's and 2.7's are published) or to change the compil
 - the `wasm32-unknown-unknown` target (`rustup target add wasm32-unknown-unknown`)
 - [ninja](https://github.com/ninja-build/ninja)
 - LLVM 22 or later (`clang`, `wasm-ld`), on the path or named by `CLANG` and `WASM_LD` when running `configure`
+- [binaryen](https://github.com/WebAssembly/binaryen)'s `wasm-opt` (CI uses version_133), on the path or named by
+  `WASM_OPT` when running `configure`: every module is its `-O3` of what wasm-ld links
 
-macOS: `brew install ninja llvm lld` (Homebrew's LLVM is not on the path: set `CLANG` and `WASM_LD`).
-Linux: `apt install ninja-build`, and clang-22 and wasm-ld-22 from [apt.llvm.org](https://apt.llvm.org).
-Windows: `winget install Ninja-build.Ninja` and `winget install LLVM.LLVM`.
+macOS: `brew install ninja llvm lld binaryen` (Homebrew's LLVM is not on the path: set `CLANG` and `WASM_LD`).
+Linux: `apt install ninja-build`, clang-22 and wasm-ld-22 from [apt.llvm.org](https://apt.llvm.org), and
+binaryen from its [releases](https://github.com/WebAssembly/binaryen/releases).
+Windows: `winget install Ninja-build.Ninja` and `winget install LLVM.LLVM`, and binaryen from its
+[releases](https://github.com/WebAssembly/binaryen/releases).
 
 ```sh
 target/release/mwcc-tools configure --version GC_2_7

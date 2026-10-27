@@ -1,6 +1,7 @@
 //! The compiler of gc2's sources built for WebAssembly, to run in process (crates/mwcc-wasm): the build of GC 2.6 and
 //! 2.7 (`build/<version>/wasm/mwcceppc.wasm`, one of `configure`'s default targets). It needs LLVM's clang and wasm-ld
-//! (`$clang`, `$wasm_ld`), and nothing downloaded.
+//! and binaryen's wasm-opt (`$clang`, `$wasm_ld`, `$wasm_opt`), and nothing downloaded. wasm-ld links each module in
+//! `linked/` ([`linked`]), and wasm-opt optimizes it into place.
 //!
 //! Each source is compiled with clang from the arguments the build gives it (its defines, among them `VERSION`, its
 //! include paths and `-align`); the module is linked from them and from `wasm/`'s sources, which stand in for what
@@ -116,6 +117,16 @@ pub fn version_info(root: &Path, version: &str) -> Result<Vec<u8>> {
 /// checks at each checkpoint.
 pub fn persist_output(version: &str) -> String {
     format!("{}/persist.wasm", directory(version))
+}
+
+/// What wasm-ld links for MODULE (`build/<version>/wasm/<name>.wasm`): `build/<version>/wasm/linked/<name>.wasm`,
+/// which wasm-opt makes MODULE of (`rule wasm_opt`), and which the check for trapping stubs reads (they are its
+/// functions, which wasm-opt may inline or remove).
+pub fn linked(module: &str) -> String {
+    match module.rsplit_once('/') {
+        Some((directory, name)) => format!("{directory}/linked/{name}"),
+        None => format!("linked/{module}"),
+    }
 }
 
 /// The define, and the units it changes: the checkpoint in C_Compiler and preprocessor (CPrep.c), the top-level loop
@@ -262,8 +273,13 @@ pub(crate) fn quote(argument: &str) -> String {
     }
 }
 
-/// The ninja rules of the module's build (once per build.ninja): clang and wasm-ld are `CLANG` and `WASM_LD`'s, or
-/// found on the path.
+/// What wasm-opt does to each module ([`linked`]): binaryen's `-O3`, keeping the name section (`-g`) for the
+/// backtraces of traps and of `MWCC_WASM_STOP_AFTER`. The features are the module's own (`--all-features` would
+/// write compact imports, which wasmtime does not read).
+pub const OPT_FLAGS: [&str; 2] = ["-O3", "-g"];
+
+/// The ninja rules of the module's build (once per build.ninja): clang, wasm-ld and wasm-opt (binaryen's) are
+/// `CLANG`, `WASM_LD` and `WASM_OPT`'s, or found on the path.
 pub fn rules() -> Vec<String> {
     let tool = |variable: &str, default: &str| {
         let value = std::env::var(variable).unwrap_or_else(|_| default.into());
@@ -272,6 +288,7 @@ pub fn rules() -> Vec<String> {
     let mut out = vec![
         format!("clang = {}", tool("CLANG", "clang")),
         format!("wasm_ld = {}", tool("WASM_LD", "wasm-ld")),
+        format!("wasm_opt = {}", tool("WASM_OPT", "wasm-opt")),
     ];
     out.extend(
         [
@@ -301,7 +318,21 @@ pub fn rules() -> Vec<String> {
         ]
         .map(String::from),
     );
+    out.extend([
+        "rule wasm_opt".into(),
+        format!("  command = $wasm_opt {} $in -o $out", OPT_FLAGS.join(" ")),
+        "  description = WASM-OPT $out".into(),
+    ]);
     out
+}
+
+/// The ninja edge that makes MODULE of what wasm-ld linked ([`linked`]).
+pub fn opt_edge(module: &str) -> String {
+    format!(
+        "build {}: wasm_opt {}",
+        escape(module),
+        escape(&linked(module))
+    )
 }
 
 /// The stamp of MODULE's check for trapping stubs ([`check_stubs`]).
@@ -437,7 +468,7 @@ pub fn edges(root: &Path, version: &str) -> Result<Vec<String>> {
     }
     out.push(format!(
         "build {}: wasm_ld {}",
-        escape(&output(version)),
+        escape(&linked(&output(version))),
         stock
             .iter()
             .map(|o| escape(o))
@@ -501,7 +532,7 @@ pub fn edges(root: &Path, version: &str) -> Result<Vec<String>> {
     out.extend([
         format!(
             "build {}: wasm_ld {}",
-            escape(&persist_output(version)),
+            escape(&linked(&persist_output(version))),
             persist
                 .iter()
                 .map(|o| escape(o))
@@ -517,6 +548,23 @@ pub fn edges(root: &Path, version: &str) -> Result<Vec<String>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_module_is_wasm_opts_of_its_link() {
+        assert_eq!(
+            linked("build/GC_2_7/wasm/mwcc.wasm"),
+            "build/GC_2_7/wasm/linked/mwcc.wasm"
+        );
+        assert_eq!(
+            opt_edge("build/LD_2_7/wasm/mwldeppc.wasm"),
+            "build build/LD_2_7/wasm/mwldeppc.wasm: wasm_opt build/LD_2_7/wasm/linked/mwldeppc.wasm"
+        );
+        assert!(
+            rules()
+                .iter()
+                .any(|line| line == "  command = $wasm_opt -O3 -g $in -o $out")
+        );
+    }
 
     #[test]
     fn trapping_stubs_are_found_by_name() {

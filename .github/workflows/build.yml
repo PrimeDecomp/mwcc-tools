@@ -126,6 +126,7 @@ jobs:
       # (the hooks' IR is LLVM 22's, as Rust's: clang reads it)
       CLANG: clang-22
       WASM_LD: wasm-ld-22
+      WASM_OPT: ${{ github.workspace }}/binaryen/bin/wasm-opt
     steps:
       - uses: actions/checkout@v7
         with:
@@ -137,6 +138,15 @@ jobs:
           wget -qO llvm.sh https://apt.llvm.org/llvm.sh
           sudo bash llvm.sh 22
           sudo apt-get install -y lld-22
+
+      # (each module is wasm-opt's -O3 of its link: crates/mwcc-oracle-core/src/wasm_build.rs, OPT_FLAGS)
+      - name: Install binaryen (wasm-opt), pinned
+        run: |
+          archive=binaryen-version_133-x86_64-linux.tar.gz
+          wget -q "https://github.com/WebAssembly/binaryen/releases/download/version_133/$archive"
+          echo "2dc9c7813f5375db93d96ead4b78222fcc3e2677bbb832297af4797782a37489  $archive" | sha256sum -c -
+          mkdir binaryen && tar -xzf "$archive" -C binaryen --strip-components=1
+          binaryen/bin/wasm-opt --version
 
       - name: Install the pinned Rust toolchain
         run: |
@@ -153,8 +163,9 @@ jobs:
           cargo build --locked -p mwcc-tools
           target/debug/mwcc-tools configure --version ${{ matrix.version }}
           files="${{ matrix.files }}"
-          # (with each module's check for calls that trap: crates/mwcc-oracle-core/src/wasm_build.rs, check_stubs)
-          ninja $files $(for f in $files; do case $f in *.wasm) echo $f.stubs;; esac; done)
+          # (with each module's check for calls that trap, on its link: crates/mwcc-oracle-core/src/wasm_build.rs,
+          # check_stubs)
+          ninja $files $(for f in $files; do case $f in *.wasm) echo "$(dirname $f)/linked/$(basename $f).stubs";; esac; done)
 
       - name: Package
         run: |

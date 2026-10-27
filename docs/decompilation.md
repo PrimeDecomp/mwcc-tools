@@ -45,8 +45,8 @@ then runs them in process in place of the executables ([wasm.md](wasm.md)).
 - Rust (the version in `rust-toolchain.toml`) and a C compiler to build `mwcc-tools`
 - [ninja](https://github.com/ninja-build/ninja)
 - [unshield](https://github.com/twogood/unshield), to unpack the CodeWarrior Pro 5.3 updater
-- For 2.6 and 2.7's WebAssembly builds: LLVM 22 or later (`clang`, `wasm-ld`) and Rust's `wasm32-unknown-unknown`
-  target
+- For 2.6 and 2.7's WebAssembly builds: LLVM 22 or later (`clang`, `wasm-ld`), binaryen's `wasm-opt` and Rust's
+  `wasm32-unknown-unknown` target
 
 macOS: `brew install ninja unshield`. Linux: `apt install ninja-build unshield`.
 Windows: `winget install Ninja-build.Ninja`, and unshield through WSL (`wsl sudo apt install unshield`).

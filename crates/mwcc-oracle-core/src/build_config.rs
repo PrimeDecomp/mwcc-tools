@@ -889,10 +889,12 @@ pub fn run(root: &Path, request: &Request) -> Result<Generation> {
     Ok(generated)
 }
 
-/// OUTPUT as a default target, and a module's check for trapping stubs (crate::wasm_build::check_stubs) with it.
+/// OUTPUT as a default target. A module is wasm-opt's of what wasm-ld linked (crate::wasm_build::opt_edge), and its
+/// check for trapping stubs (crate::wasm_build::check_stubs) reads the link, which has them.
 fn wasm_default(out: &mut Vec<String>, defaults: &mut String, output: String) {
     if output.ends_with(".wasm") {
-        let (edge, stamp) = crate::wasm_build::stubs_edge(&output);
+        out.push(crate::wasm_build::opt_edge(&output));
+        let (edge, stamp) = crate::wasm_build::stubs_edge(&crate::wasm_build::linked(&output));
         out.push(edge);
         defaults.push(' ');
         defaults.push_str(&stamp);

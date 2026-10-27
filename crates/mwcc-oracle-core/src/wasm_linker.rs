@@ -591,7 +591,7 @@ pub fn edges(root: &Path, version: &str) -> Result<(Vec<String>, Vec<String>)> {
     ]);
     out.push(format!(
         "build {}: wasm_linker_ld {} | {IMPORTS}",
-        escape(&output(linker)),
+        escape(&wasm_build::linked(&output(linker))),
         objects
             .iter()
             .map(|o| escape(o))

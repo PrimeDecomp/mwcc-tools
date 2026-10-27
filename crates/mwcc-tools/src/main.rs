@@ -164,7 +164,8 @@ fn help() {
       --write records the others as its state.json's relink_exclude
   source-only VERSION [--oracle [--wasm [--clang FILE] [--wasm-ld FILE]]] [--root DIR]
       link the compiler of a source tree's sources alone, build/VERSION/<tree>/source-only/mwcceppc.exe;
-      --wasm: the oracle's WebAssembly module, build/VERSION/wasm/oracle.wasm (ninja builds both)
+      --wasm: link the oracle's WebAssembly module, build/VERSION/wasm/linked/oracle.wasm, which ninja's
+      wasm-opt makes build/VERSION/wasm/oracle.wasm of (ninja builds both)
       (after ninja all_source; compare it with the original: corpus --exe); --oracle links the Rust hooks in,
       build/VERSION/<tree>/source-oracle/mwcceppc.exe
   compare extract|compare|report VERSION [--root DIR]
