@@ -11,6 +11,12 @@ Source: [capstone-rust/capstone-rs, commit 04f196369ee64f4ad1821a9453670e9a9ce9b
 | C decoder | `capstone-sys/capstone/LICENSE.TXT` | [capstone-5.0.9-LICENSE.txt](capstone-5.0.9-LICENSE.txt) |
 | Decoder's LLVM-derived components | `capstone-sys/capstone/LICENSE_LLVM.TXT` | [capstone-5.0.9-LICENSE_LLVM.txt](capstone-5.0.9-LICENSE_LLVM.txt) |
 
+`crates/mwcc-ninja` (the build engine of `mwcc-tools run ninja`) is a fork of n2, a ninja reimplementation:
+[evmar/n2, commit b1fead52ccda0c497d816696f23f4099c3e8ec1f](https://github.com/evmar/n2/tree/b1fead52ccda0c497d816696f23f4099c3e8ec1f),
+under the Apache License 2.0 ([n2-Apache-2.0.txt](n2-Apache-2.0.txt)); the crate keeps that licence. Its changes
+from n2 are listed at the top of `crates/mwcc-ninja/src/lib.rs` and marked `mwcc-ninja` where they are; n2's
+benchmarks, end-to-end tests, `main` and jemalloc allocator are left out.
+
 Each release package also carries its target's dependency notices, collected on the runner that builds it
 (`build/notices/TARGET`, stored in the archive under `licenses/dependencies/TARGET`):
 

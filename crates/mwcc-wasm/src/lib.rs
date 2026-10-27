@@ -28,6 +28,7 @@ mod overlay;
 mod persist;
 pub mod pool;
 mod registry;
+pub use files::SharedFiles;
 pub use overlay::Overlay;
 pub use persist::{Candidate, MARKER, Persistent, persistent_source, slot_text};
 pub use pool::{PersistPool, PoolOptions, PoolStats, split_point};
@@ -97,6 +98,8 @@ pub struct Request<'a> {
     /// The command line it gets (GetCommandLineA) as the process would, verbatim; else one made of `program` and
     /// `args`. The compilers copy it to their heap, and the heap's layout reaches their output.
     pub command_line: Option<&'a str>,
+    /// The files it shares with other runs (a build's), else its own ([`SharedFiles`]).
+    pub shared_files: Option<&'a Arc<SharedFiles>>,
 }
 
 /// A path the compiler consulted outside the overlay: a file it opened to read or asked about (whether it is there
@@ -300,7 +303,7 @@ impl State {
             heap: Heap::default(),
             started: Instant::now(),
             command_line_at: None,
-            files: files::Files::default(),
+            files: files::Files::new(request.shared_files.cloned()),
             persist: None,
             tracing: request.trace,
             trace: vec![],
@@ -2257,6 +2260,7 @@ mod tests {
             transcode_sjis: false,
             record_reads: false,
             command_line: None,
+            shared_files: None,
         })
     }
 

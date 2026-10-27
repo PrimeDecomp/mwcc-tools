@@ -489,6 +489,7 @@ pub fn compile_unit(
                         transcode_sjis,
                         record_reads: cache.is_some(),
                         command_line: None,
+                        shared_files: None,
                     },
                     options.cancel,
                 )

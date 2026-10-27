@@ -46,6 +46,7 @@ fn main() -> Result<()> {
                 overlay: None,
                 transcode_sjis: false,
                 command_line: None,
+                files: None,
             },
             &|| false,
         )?;

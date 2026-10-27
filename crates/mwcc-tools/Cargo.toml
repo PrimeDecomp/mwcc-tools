@@ -14,6 +14,7 @@ sha2.workspace = true
 mwcc-oracle-core = { path = "../mwcc-oracle-core" }
 mwcc-project = { path = "../mwcc-project" }
 mwcc-methods = { path = "../mwcc-methods" }
+mwcc-ninja = { path = "../mwcc-ninja" }
 
 [features]
 default = ["wasm"]

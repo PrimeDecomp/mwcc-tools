@@ -13,7 +13,10 @@ use std::{
     collections::{BTreeSet, HashMap},
     fs,
     path::{Component, Path, PathBuf, Prefix},
-    sync::Arc,
+    sync::{
+        Arc, RwLock, RwLockReadGuard, RwLockWriteGuard,
+        atomic::{AtomicU64, Ordering},
+    },
 };
 
 const ERROR_DIR_NOT_EMPTY: u32 = 145;
@@ -109,6 +112,7 @@ pub(crate) fn not_found(found: &Found) -> u32 {
 }
 
 /// A directory's entries, and each by its name in upper case (Windows compares names case-insensitively).
+#[derive(Clone, Default)]
 pub(crate) struct Listing {
     pub(crate) entries: Vec<Entry>,
     by_name: HashMap<String, usize>,
@@ -133,6 +137,166 @@ fn listing_of(directory: &Path) -> Option<Listing> {
         .map(|(i, e)| (e.name.to_ascii_uppercase(), i))
         .collect();
     Some(Listing { entries, by_name })
+}
+
+impl Listing {
+    /// The entry named NAME (in any case) replaced by ENTRY, or removed.
+    fn set(&mut self, name: &str, entry: Option<Entry>) {
+        let upper = name.to_ascii_uppercase();
+        match (self.by_name.get(&upper), entry) {
+            (Some(&i), Some(entry)) => self.entries[i] = entry,
+            (None, Some(entry)) => {
+                self.by_name.insert(upper, self.entries.len());
+                self.entries.push(entry);
+            }
+            (Some(_), None) => {
+                self.entries.retain(|e| !e.name.eq_ignore_ascii_case(name));
+                self.by_name = self
+                    .entries
+                    .iter()
+                    .enumerate()
+                    .map(|(i, e)| (e.name.to_ascii_uppercase(), i))
+                    .collect();
+            }
+            (None, None) => {}
+        }
+    }
+}
+
+/// A directory's listing as the runs share it: read (`None`: it is not there), or changed since it may have been read
+/// (by a write of that generation).
+enum Listed {
+    Read(Option<Arc<Listing>>),
+    Changed(u64),
+}
+
+/// The files the runs of one build share (`mwcc-tools run ninja`'s): each directory is listed and each file read once
+/// for all of them. A run still writes what it changed when its module ends, and then tells the others: what it
+/// wrote is read from here, and the listings have its files. What else changes the disk is to be told
+/// ([`SharedFiles::changed`]): a process the build runs, a file or directory the build tool makes.
+///
+/// No lock is held while the disk is read: a run that does not find a listing or a file reads it, and adds it after.
+/// A file is not written while another run reads it (the build orders them). A directory may be: a run lists the
+/// directory its object goes to while another writes its own object there. So each change takes a generation, and a
+/// listing read since the last change of its directory is kept only when the change came before the read began
+/// (else it may lack the file: the run uses it, the others read the directory again).
+#[derive(Default)]
+pub struct SharedFiles {
+    listings: RwLock<HashMap<Key, Listed>>,
+    contents: RwLock<HashMap<Key, Arc<[u8]>>>,
+    generation: AtomicU64,
+    /// The directories listed and the files read from the disk, and their bytes.
+    listed: AtomicU64,
+    read: AtomicU64,
+    bytes: AtomicU64,
+}
+
+fn reading<T>(lock: &RwLock<T>) -> RwLockReadGuard<'_, T> {
+    lock.read().unwrap_or_else(|e| e.into_inner())
+}
+
+fn writing<T>(lock: &RwLock<T>) -> RwLockWriteGuard<'_, T> {
+    lock.write().unwrap_or_else(|e| e.into_inner())
+}
+
+impl SharedFiles {
+    /// DIRECTORY's listing (by its KEY).
+    fn listing(&self, key: &Key, directory: &Path) -> Option<Arc<Listing>> {
+        if let Some(Listed::Read(listing)) = reading(&self.listings).get(key) {
+            return listing.clone();
+        }
+        let began = self.generation.load(Ordering::SeqCst);
+        let listing = listing_of(directory).map(Arc::new);
+        self.listed.fetch_add(1, Ordering::Relaxed);
+        self.keep(key, began, listing)
+    }
+
+    /// LISTING, read from the disk since generation BEGAN: kept for the runs unless its directory changed since; the
+    /// listing to use.
+    fn keep(&self, key: &Key, began: u64, listing: Option<Arc<Listing>>) -> Option<Arc<Listing>> {
+        let mut listings = writing(&self.listings);
+        match listings.get(key) {
+            // (another run's, kept meanwhile: it has what was written since)
+            Some(Listed::Read(kept)) => kept.clone(),
+            Some(Listed::Changed(change)) if *change >= began => listing,
+            _ => {
+                listings.insert(key.clone(), Listed::Read(listing.clone()));
+                listing
+            }
+        }
+    }
+
+    /// The bytes of the file at PATH (by its KEY).
+    fn contents(&self, key: &Key, path: &Path) -> std::io::Result<Arc<[u8]>> {
+        if let Some(bytes) = reading(&self.contents).get(key) {
+            return Ok(bytes.clone());
+        }
+        let bytes: Arc<[u8]> = fs::read(path)?.into();
+        self.read.fetch_add(1, Ordering::Relaxed);
+        self.bytes.fetch_add(bytes.len() as u64, Ordering::Relaxed);
+        Ok(writing(&self.contents)
+            .entry(key.clone())
+            .or_insert(bytes)
+            .clone())
+    }
+
+    /// KEY's entry in its directory's listing set to ENTRY (or none), and KEY's own listing to be read again: what a
+    /// change at KEY, now on the disk, does to them.
+    fn set_entry(&self, key: &Key, entry: Option<&Entry>) {
+        let mut listings = writing(&self.listings);
+        let mut to_read = vec![key.clone()];
+        if let Some(parent) = key.parent() {
+            match listings.get_mut(&parent) {
+                Some(Listed::Read(Some(listing))) => {
+                    let name = key.0.rsplit_once('/').map_or("", |(_, n)| n);
+                    let name = entry.map_or(name, |e| e.name.as_str());
+                    Arc::make_mut(listing).set(name, entry.cloned());
+                }
+                _ => to_read.push(parent),
+            }
+        }
+        for key in to_read {
+            let change = self.generation.fetch_add(1, Ordering::SeqCst);
+            listings.insert(key, Listed::Changed(change));
+        }
+    }
+
+    /// What a run has written to the disk at KEY: ENTRY with BYTES (a file), ENTRY alone (a directory), or nothing.
+    fn wrote(&self, key: &Key, entry: Option<&Entry>, bytes: Option<&[u8]>) {
+        self.set_entry(key, entry);
+        let mut contents = writing(&self.contents);
+        match bytes {
+            Some(bytes) => {
+                contents.insert(key.clone(), bytes.into());
+            }
+            None => {
+                contents.remove(key);
+            }
+        }
+    }
+
+    /// PATH, which something other than a run changed (the build tool, or a process the build ran, wrote, deleted
+    /// or made it), as the disk now has it.
+    pub fn changed(&self, path: &Path) {
+        let (path, key) = normal(path);
+        let entry = fs::metadata(&path).ok().map(|m| {
+            let name = path
+                .file_name()
+                .map_or_else(String::new, |n| n.to_string_lossy().into_owned());
+            entry_of(name, &m)
+        });
+        self.set_entry(&key, entry.as_ref());
+        writing(&self.contents).remove(&key);
+    }
+
+    /// The directories listed and the files read from the disk, and how many bytes.
+    pub fn stats(&self) -> (u64, u64, u64) {
+        (
+            self.listed.load(Ordering::Relaxed),
+            self.read.load(Ordering::Relaxed),
+            self.bytes.load(Ordering::Relaxed),
+        )
+    }
 }
 
 /// A file's bytes: not read yet, as the disk has them, or as the run wrote them.
@@ -181,14 +345,28 @@ pub(crate) struct Files {
     changed: BTreeSet<Key>,
     /// Elsewhere than Windows, each path as the file system spells its names ([`Files::resolve`]).
     resolved: HashMap<PathBuf, PathBuf>,
+    /// The files shared with other runs, if any.
+    shared: Option<Arc<SharedFiles>>,
 }
 
 impl Files {
+    /// A run's files, read from SHARED (as other runs read them), or from the disk.
+    pub(crate) fn new(shared: Option<Arc<SharedFiles>>) -> Self {
+        Files {
+            shared,
+            ..Files::default()
+        }
+    }
+
     /// DIRECTORY's listing, read once (`None`: it is not there).
     fn listing(&mut self, key: &Key, directory: &Path) -> Option<Arc<Listing>> {
+        let shared = self.shared.as_deref();
         self.listings
             .entry(key.clone())
-            .or_insert_with(|| listing_of(directory).map(Arc::new))
+            .or_insert_with(|| match shared {
+                Some(shared) => shared.listing(key, directory),
+                None => listing_of(directory).map(Arc::new),
+            })
             .clone()
     }
 
@@ -303,7 +481,11 @@ impl Files {
             return Err(ERROR_INVALID_HANDLE);
         };
         if let Data::Unread = data {
-            *data = Data::Read(fs::read(&*path).map_err(|e| io_error(&e))?.into());
+            let bytes = match &self.shared {
+                Some(shared) => shared.contents(key, path),
+                None => fs::read(&*path).map(Arc::from),
+            };
+            *data = Data::Read(bytes.map_err(|e| io_error(&e))?);
         }
         Ok(data)
     }
@@ -565,6 +747,36 @@ impl Files {
                 errors.push((path.clone(), e));
             }
         }
+        // (what the other runs see: what the disk now has, or, where a change failed, what the disk says)
+        if let Some(shared) = &self.shared {
+            let failed = |path: &PathBuf| errors.iter().any(|(p, _)| p == path);
+            for key in &self.changed {
+                match self.nodes.get(key) {
+                    Some(Node::File {
+                        path,
+                        entry,
+                        data: Data::Written(bytes),
+                        changed: true,
+                        ..
+                    }) if !failed(path) => shared.wrote(key, Some(entry), Some(bytes)),
+                    Some(Node::Directory {
+                        path,
+                        entry,
+                        created: true,
+                    }) if !failed(path) => shared.wrote(key, Some(entry), None),
+                    Some(Node::Deleted {
+                        path,
+                        removed: Some(_),
+                    }) if !failed(path) => shared.wrote(key, None, None),
+                    Some(
+                        Node::File { path, .. }
+                        | Node::Directory { path, .. }
+                        | Node::Deleted { path, .. },
+                    ) => shared.changed(path),
+                    None => {}
+                }
+            }
+        }
         self.changed.clear();
         errors
     }
@@ -801,6 +1013,58 @@ mod tests {
         );
         assert!(files.flush().is_empty());
         assert!(!directory.join("tmp").exists() && !directory.join("gone").exists());
+        fs::remove_dir_all(&directory).unwrap();
+    }
+
+    #[test]
+    fn runs_that_share_files_see_each_others_writes() {
+        let directory = directory("shared");
+        fs::write(directory.join("a.h"), "header").unwrap();
+        let shared = Arc::new(SharedFiles::default());
+        // (one run reads the header and lists the directory; another writes an object there)
+        let mut first = Files::new(Some(shared.clone()));
+        let (header, _) = first.stat(&directory.join("A.H"));
+        assert_eq!(&*first.contents(&header).unwrap(), b"header");
+        let mut second = Files::new(Some(shared.clone()));
+        let path = directory.join("b.o");
+        let found = second.stat(&path).1;
+        let key = second.create(&path, &found);
+        second.write(&key, 0, b"object").unwrap();
+        assert!(second.flush().is_empty());
+        assert_eq!(fs::read(&path).unwrap(), b"object");
+        // (a later run finds it in the listing, and reads it and the header from memory)
+        fs::write(directory.join("a.h"), "changed").unwrap();
+        let mut third = Files::new(Some(shared.clone()));
+        let (key, found) = third.stat(&directory.join("B.O"));
+        assert_eq!(found.entry().map(|e| e.size), Some(6));
+        assert_eq!(&*third.contents(&key).unwrap(), b"object");
+        let (header, _) = third.stat(&directory.join("a.h"));
+        assert_eq!(&*third.contents(&header).unwrap(), b"header");
+        assert_eq!(shared.stats().1, 1);
+        // (until told that something else changed it)
+        shared.changed(&directory.join("a.h"));
+        let mut fourth = Files::new(Some(shared.clone()));
+        let (header, _) = fourth.stat(&directory.join("a.h"));
+        assert_eq!(&*fourth.contents(&header).unwrap(), b"changed");
+        fs::remove_dir_all(&directory).unwrap();
+    }
+
+    #[test]
+    fn a_listing_read_while_its_directory_changes_is_not_kept() {
+        let directory = directory("race");
+        let shared = SharedFiles::default();
+        let (path, key) = normal(&directory);
+        // (a run lists the directory; another writes an object there before the first adds its listing)
+        let began = shared.generation.load(Ordering::SeqCst);
+        let early = listing_of(&path).map(Arc::new);
+        fs::write(directory.join("b.o"), "object").unwrap();
+        shared.changed(&directory.join("b.o"));
+        let used = shared.keep(&key, began, early);
+        assert_eq!(used.unwrap().entries.len(), 0);
+        // (the next run reads it again, and finds the object)
+        let listing = shared.listing(&key, &path).unwrap();
+        assert_eq!(listing.entries.len(), 1);
+        assert_eq!(shared.stats().0, 1);
         fs::remove_dir_all(&directory).unwrap();
     }
 

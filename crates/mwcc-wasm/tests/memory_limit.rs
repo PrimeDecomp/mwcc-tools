@@ -56,6 +56,7 @@ fn a_run_past_the_limit_is_an_error() {
                 transcode_sjis: false,
                 record_reads: false,
                 command_line: None,
+                shared_files: None,
             },
             &|| false,
         )

@@ -503,6 +503,7 @@ impl PersistPool {
                         transcode_sjis: context.transcode_sjis,
                         record_reads: false,
                         command_line: None,
+                        shared_files: None,
                     },
                     capacity,
                 );

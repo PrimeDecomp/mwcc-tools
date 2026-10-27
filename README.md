@@ -50,7 +50,8 @@ mwcc-tools call oracle.regdiff project=../prime unit=main/Foo function=Draw text
 
 For a bare source, pass `version=GC_1_3_2` (the default). The 1.3.2 module does not report the register counters'
 provenance streams yet ([details](docs/wasm.md)). `mwcc-tools run build/compilers/GC/1.3.2/mwldeppc.exe ...` (or a
-build's `--wrapper`) links with the 1.3.2 linker module. The native oracle, the original `mwcceppc.exe` relinked with
+build's `--wrapper`) links with the 1.3.2 linker module. `mwcc-tools run ninja` builds a project configured without
+`--wrapper` in place of ninja, its compiles and links in process ([details](docs/wasm.md#in-place-of-ninja-mwcc-tools-run-ninja)). The native oracle, the original `mwcceppc.exe` relinked with
 trace hooks, still builds with `configure --version GC_1_3_2 --oracle` ([oracle.md](docs/oracle.md#build)); GC 1.3 has
 only that one ([without a module](docs/oracle/experiments.md#without-a-module)). To compile a unit with 1.3.2 from a
 project built with another compiler, see [other versions](docs/versions.md). Differences between 1.3.2 and 2.7 are in

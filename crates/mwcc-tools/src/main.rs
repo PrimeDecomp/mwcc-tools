@@ -8,10 +8,13 @@ use serde_json::json;
 use std::{env, fs, path::PathBuf, process::ExitCode, time::Duration};
 mod binary_cli;
 mod build_cli;
+mod ninja_cli;
 mod provenance_cli;
 mod release_cli;
 mod run_cli;
 mod serve_cli;
+#[cfg(feature = "wasm")]
+mod transform_dep;
 
 /// The value of the option ARGS[I], the argument after it (I moves to it).
 fn option_value<'a>(args: &'a [String], i: &mut usize) -> Result<&'a String> {
@@ -150,6 +153,9 @@ fn help() {
   run [sjiswrap.exe] EXE ARGS...
       a build's compiler wrapper (as wibo): a compiler with a built module runs in process, anything else as itself;
       a copy or link of this executable named mwcc-run runs as `mwcc-tools run`
+  run ninja [-C DIR] [-j N] [-k N] [TARGETS...]
+      a project's build.ninja (configured without --wrapper) built in place of ninja: the compilers and linkers
+      with built modules run in process, any other command as a process (docs/wasm.md)
   corpus --canaries DIR | --project DIR [--oracle-root ROOT] [--version V] [--jobs N] [--all-traces]
          [--source-arenas | --source-nodes] [--exe ORACLE] [--trace-reference OTHER_ORACLE [--ignore PREFIX]...] [--wasm MODULE]
       --wasm runs MODULE (build/VERSION/wasm/*.wasm) in process in the oracle's place

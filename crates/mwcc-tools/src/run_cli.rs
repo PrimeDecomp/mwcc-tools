@@ -11,6 +11,8 @@
 //!
 //! `sjiswrap.exe` converts the UTF-8 sources and headers its compiler reads to Shift JIS. A compiler that runs in
 //! process after it gets them converted as sjiswrap converts them (mwcc-wasm's `Request::transcode_sjis`).
+//!
+//! `mwcc-tools run ninja ...` builds a project's build.ninja in place of ninja ([`crate::ninja_cli`]).
 use anyhow::{Context, Result, bail};
 use mwcc_oracle_core::runner;
 use std::{
@@ -20,10 +22,17 @@ use std::{
     time::Instant,
 };
 
-const USAGE: &str = "mwcc-tools run [sjiswrap.exe] EXE ARGS...\nmwcc-run [sjiswrap.exe] EXE ARGS...\n\n\
-Runs EXE with ARGS. A compiler whose WebAssembly module is built (one with the size and SHA-1 in \
+const USAGE: &str = "mwcc-tools run [sjiswrap.exe] EXE ARGS...\nmwcc-run [sjiswrap.exe] EXE ARGS...\n\
+mwcc-tools run ninja [-C DIR] [-f FILE] [-j N] [-k N] [-v] [-d explain] [TARGETS...]\n\n\
+Runs EXE with ARGS. A compiler or linker whose WebAssembly module is built (one with the size and SHA-1 in \
 MWCC_ORACLE_ROOT's config/<version>/config.json) runs in process; anything else runs as a process (off Windows \
-through MWCC_WIBO, else build/tools/wibo here, else the checkout's, else wibo on the path). MWCC_IN_PROCESS=0 runs every executable. MWCC_RUN_TIMING=1 prints where the time went.";
+through MWCC_WIBO, else build/tools/wibo here, else the checkout's, else wibo on the path). MWCC_IN_PROCESS=0 runs \
+every executable. MWCC_RUN_TIMING=1 prints where the time went.\n\n\
+`run ninja` builds the project's build.ninja in place of ninja, with ninja's options; configure the project \
+without --wrapper. A command whose program is such a compiler or linker (also behind mwcc-run, wibo or sjiswrap, \
+or first in `cmd /c A && B`) runs in process, up to -j at once; any other runs as a process. build.ninja is \
+regenerated (configure.py) and loaded again while it is out of date. The build's record is .n2_db, not ninja's \
+.ninja_log: the first build after one of ninja's runs everything again.";
 
 /// The checkout the modules are in: `MWCC_ORACLE_ROOT`, else the one this executable was built in.
 pub fn root() -> Result<PathBuf> {
@@ -66,6 +75,9 @@ pub fn run(args: &[String]) -> Result<i32> {
         println!("{USAGE}");
         return Ok(0);
     }
+    if args[0] == "ninja" {
+        return crate::ninja_cli::run(&args[1..]);
+    }
     let began = Instant::now();
     let root = root()?;
     let compiler = if is_sjiswrap(&args[0]) { 1 } else { 0 };
@@ -103,6 +115,7 @@ pub fn run(args: &[String]) -> Result<i32> {
                 overlay: None,
                 transcode_sjis: compiler == 1,
                 command_line: verbatim.as_deref(),
+                files: None,
             },
             &|| false,
         )
@@ -160,7 +173,7 @@ fn own_command_line() -> Option<String> {
 }
 
 /// The arguments of a Windows command line, each with where its text starts (as the C runtime splits them).
-fn split_command_line(line: &str) -> Vec<(usize, String)> {
+pub(crate) fn split_command_line(line: &str) -> Vec<(usize, String)> {
     let chars: Vec<(usize, char)> = line.char_indices().collect();
     let blank = |c: char| c == ' ' || c == '\t';
     let mut out = vec![];

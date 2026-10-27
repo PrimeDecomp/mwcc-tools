@@ -94,6 +94,7 @@ fn normal(project: &Project, candidate: &str) -> Compiled {
                 transcode_sjis: false,
                 record_reads: false,
                 command_line: None,
+                shared_files: None,
             },
             &|| false,
         )

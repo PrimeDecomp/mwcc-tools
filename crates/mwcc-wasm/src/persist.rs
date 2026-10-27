@@ -203,6 +203,7 @@ impl Compiler {
                     transcode_sjis: owned.transcode_sjis,
                     record_reads: false,
                     command_line: None,
+                    shared_files: None,
                 };
                 let mut state = State::new(&request);
                 state.persist = Some(Link {

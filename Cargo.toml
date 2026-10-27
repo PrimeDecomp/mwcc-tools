@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/mwcc-oracle-core", "crates/mwcc-tools", "crates/mwcc-oracle-hooks", "crates/mwcc-wasm", "crates/mwcc-trace", "crates/mwcc-project", "crates/mwcc-compare", "crates/mwcc-methods", "crates/mwcc-experiment"]
+members = ["crates/mwcc-oracle-core", "crates/mwcc-tools", "crates/mwcc-ninja", "crates/mwcc-oracle-hooks", "crates/mwcc-wasm", "crates/mwcc-trace", "crates/mwcc-project", "crates/mwcc-compare", "crates/mwcc-methods", "crates/mwcc-experiment"]
 resolver = "2"
 
 [workspace.package]

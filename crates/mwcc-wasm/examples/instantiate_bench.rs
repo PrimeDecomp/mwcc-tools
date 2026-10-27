@@ -54,6 +54,7 @@ fn main() {
                     transcode_sjis: false,
                     record_reads: false,
                     command_line: None,
+                    shared_files: None,
                 },
                 &|| false,
             )

@@ -296,6 +296,7 @@ fn main() {
                 transcode_sjis: false,
                 record_reads: false,
                 command_line: None,
+                shared_files: None,
             })
             .unwrap();
         let time = t.elapsed();
@@ -328,6 +329,7 @@ fn main() {
                 transcode_sjis: false,
                 record_reads: false,
                 command_line: None,
+                shared_files: None,
             },
             capacity,
         )
@@ -369,6 +371,7 @@ fn main() {
                     transcode_sjis: false,
                     record_reads: false,
                     command_line: None,
+                    shared_files: None,
                 },
                 capacity,
             )

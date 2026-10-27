@@ -455,6 +455,91 @@ On Metroid Prime 2: Echoes (USA and PAL, Windows, 24 jobs), every object but `Ge
 ([Status](#status)) and every `.d` file is identical, the linked binaries pass their hash checks, and a full build
 takes 25 to 41 s against 42 to 62 s with the executable (a GC 2.7 compile 0.6 s on average, against 1.2 s).
 
+### In place of ninja: `mwcc-tools run ninja`
+
+`mwcc-tools run ninja [OPTIONS] [TARGETS]` builds a project's `build.ninja` itself, in ninja's place, so the project
+is configured without `--wrapper`:
+
+```text
+python configure.py
+<mwcc>\target\release\mwcc-tools.exe run ninja
+```
+
+* The build engine is `crates/mwcc-ninja`, a fork of [n2](https://github.com/evmar/n2) (commit b1fead5, Apache-2.0,
+  [licenses](../licenses/README.md)). It takes ninja's `-C DIR`, `-f FILE`, `-j N` (the processor count by default),
+  `-k N` (1 by default, 0 for no limit), `-v`, `-d explain` and targets; it has no `-t` tools.
+* A command runs in process when its program is a compiler or linker that `mwcc-tools run` runs in process (the same
+  size and SHA-1), first or behind `mwcc-run` (or `mwcc-tools run`), `wibo` and `sjiswrap`, in that order. On
+  Windows, `cmd /c A && B` (dtk-template's extab rules) runs A in process and then `cmd /c B` as a process; elsewhere
+  `A && B` runs B through the shell. A command with other shell syntax (redirections, pipes, variables) runs as a
+  process. Up to `-j` run at once, each on a thread of its own with its own instance of the module. The
+  compiler gets the build's directory and environment, and the command line from its executable on, as under the
+  wrapper. Every other command runs as a process, as ninja runs it.
+* The runs share their reads (`mwcc_wasm::SharedFiles`): each directory is listed and each file read once in the
+  build, not once per run, so a header is read once for every compile that includes it. A run still writes its outputs
+  when its module ends; then the others see them in the listings and read them from memory (the link's objects). The
+  engine tells the runs what it changes itself: the directories it makes for outputs (dtk-template passes the
+  directory to `-o`), a response file, a `.d` file it reads and removes, and the outputs a command run as a process
+  declares (dtk's, objdiff's), once it ends. No lock is held while the disk is read: a run reads what is not there yet
+  and adds it after. A directory may change while a run lists it (the runs writing their objects in it), so each change
+  takes a generation, and a listing read before its directory's last change is used by its run but not kept. On
+  Echoes (24 jobs, three alternated runs each) the build takes 19.6 to 20.0 s instead of 21.7 to 22.7 s, and the
+  compiles' summed time is 364 to 373 s instead of 407 to 426 s; the build lists about 1,100 directories and reads
+  about 3,500 files (33 MB) in all.
+* dtk-template runs `$python tools/transform_dep.py $basefile.d $basefile.d` after each compile (and after `dtk extab
+  clean`) elsewhere than on Windows, to turn the Windows paths of mwcc's `.d` file into the host's, and everywhere
+  with `--relative` for a portable `build.ninja` (`configure.py --portable-build-ninja`), which makes the paths in
+  the build's directory relative to it. When what follows a command run in process is only commands joined by `&&`
+  (`cmd /c` on Windows), they run in turn, and the script's work is done in the engine, to the byte
+  (`crates/mwcc-tools/src/transform_dep.rs`; each path's real path once in the build). What it does not do is left to
+  the script: a Wine drive other than `Z:`, a file that is not UTF-8 (on Windows, not ASCII), a path whose real path
+  is not there, and on Windows a path from the root of the drive or a network one. On Echoes in WSL the script was a
+  sixth of the commands' time, a Python process per compile. Its 1,066 `.d` files are those the script writes, in
+  WSL with and without `--relative` and on Windows with it.
+* `build.ninja` is brought up to date first. When its generator step (`configure.py`, run as a process with the
+  configured Python) has run, the new `build.ninja` is loaded and checked again, until it is up to date (100 times at
+  most, as in ninja); then the targets are built. A generator step is out of date when an input is newer than its
+  outputs, as in ninja, not when its command line or inputs changed. dtk-template's first `build.ninja` only splits,
+  and its configure step writes the full one: a clean build runs configure once.
+* A project still configured with `--wrapper mwcc-run` (or `mwcc-tools run`) builds the same: the wrapper is dropped
+  and the command runs in process. Regeneration runs `configure.py` with the arguments it recorded, so the wrapper
+  stays until the project is configured again without it.
+* The record of the build is n2's `.n2_db` (in `builddir`, else the build's directory), not `.ninja_log` and
+  `.ninja_deps`: the first build after one of ninja's runs everything again, and ninja after this one does too. A
+  step's record is the hash of its command line and its files' times; `restat` is not needed.
+* `MWCC_RUN_TIMING=1` prints how many commands ran in process, and their time (instantiating the modules, and running
+  them); `MWCC_IN_PROCESS=0` runs every command as a process. `-d trace` writes each task's span to `trace.json`
+  (Chrome's trace format).
+* Where the time goes (Echoes, 12 cores, 24 threads): the compiles keep every job busy and the CPU at 100% for 23 of
+  the 28 s; instantiating a module takes 0.3 s over the 1239 runs. More jobs do not help past the threads: 67, 40, 28
+  and 28 s at `-j` 6, 12, 24 and 32, while the compiles' summed time grows from 358 to 518 s at 24 (SMT). Then the
+  DOL's link (2.7 s alone, 2.0 s with the native linker) runs nearly alone for 3 to 4 s.
+
+n2 as it is fails on these projects. What the fork changes:
+
+* CRLF reads as LF. Python writes `build.ninja` with CRLF on Windows and mwcc writes its `.d` files so; n2 reads CRLF
+  only with its `crlf` feature, which asserts every CR is one.
+* A `.d` file's blanks may be tabs: mwcc starts each continued line with one, which n2 read as part of the path (the
+  build stopped at the first compile: `stat "\tC:\...\mem_funcs.h"`).
+* A `deps = gcc` depfile is removed once read, as ninja does (n2 left Prime's 856 `.d` files).
+* A phony target with inputs (dtk-template's `all_source`) has their newest time, as in ninja; n2 counted it as a
+  missing input, so `REPORT` ran on every build.
+* `build.ninja` is regenerated until up to date (n2 does it once), and generator steps are ninja's (above).
+* `-k` is ninja's, and once failures stop the build the running commands finish (n2 returned at once).
+* Without a terminal, each command's line starts with ninja's `[started/total]`.
+
+n2 already handled the rest of what these projects use: the link's `rspfile`, pools, `include` and `subninja`,
+order-only inputs, `$in_newline`, Windows paths.
+
+On Metroid Prime (GM8E01_00, Windows, 24 jobs, timed from the split on): every object, `.d` file, the ELF, DOL and
+RELs are identical to ninja's with `--wrapper mwcc-run`. The build takes 22 to 25 s against 26 to 27 s (three runs
+each), and 45 s under this engine with every command a process. A second build runs only `PROGRESS`, which is always out of date (in ninja
+too); touching `configure.py` regenerates `build.ninja` and runs `REPORT` and `PROGRESS` again.
+
+On Metroid Prime 2: Echoes (G2ME01, `--map`, GC 2.7 behind sjiswrap, same conditions), every object, `.d` file, map,
+the ELF, DOL and RELs are identical too, the hash check passes, and the build takes 27 s against 31 to 34 s (two runs
+each); the second build and a touched `configure.py` run what they run on Prime.
+
 ## Parse once, compile many: `persist.wasm`
 
 `build/<version>/wasm/persist.wasm` is the stock module with `CPrep.c` and `CParser.c` compiled again with

@@ -19,7 +19,7 @@ use std::{fs, path::Path, sync::Arc};
 
 // (which compiler a module runs in place of: mwcc-project)
 pub use mwcc_project::compilers::{linker_module_of_copy, module, module_of_copy, traces};
-pub use mwcc_wasm::Trapped;
+pub use mwcc_wasm::{SharedFiles, Trapped};
 
 fn load(module: &Path) -> Result<Arc<mwcc_wasm::Loaded>> {
     mwcc_wasm::load(module).map_err(|e| anyhow!("{e:?}"))
@@ -58,6 +58,7 @@ pub fn execute(
             overlay: None,
             transcode_sjis: false,
             command_line: None,
+            files: None,
         },
         cancel,
     )?;
@@ -95,6 +96,8 @@ pub struct Run<'a> {
     pub transcode_sjis: bool,
     /// The command line as the process gets it, verbatim ([`mwcc_wasm::Request::command_line`]).
     pub command_line: Option<&'a str>,
+    /// The files it shares with the build's other runs ([`mwcc_wasm::SharedFiles`]).
+    pub files: Option<&'a std::sync::Arc<mwcc_wasm::SharedFiles>>,
 }
 
 /// Where a traced run's TRACE goes: appended to `MWCC_ORACLE_TRACE_FILE` of its environment (relative to its
@@ -170,6 +173,7 @@ fn run_kept(run: &Run<'_>, cancel: &dyn Fn() -> bool) -> Result<mwcc_wasm::Outco
                 transcode_sjis: run.transcode_sjis,
                 record_reads: false,
                 command_line: run.command_line,
+                shared_files: run.files,
             },
             cancel,
         )
@@ -281,6 +285,7 @@ mod tests {
                 overlay: None,
                 transcode_sjis: false,
                 command_line: None,
+                files: None,
             },
             &|| false,
         )
