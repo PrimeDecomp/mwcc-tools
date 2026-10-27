@@ -10,7 +10,7 @@
 //! (dtk-template writes its arguments back into build.ninja unquoted).
 //!
 //! `sjiswrap.exe` converts the UTF-8 sources and headers its compiler reads to Shift JIS. A compiler that runs in
-//! process reads them as they are: the same, for sources that are all ASCII.
+//! process after it gets them converted as sjiswrap converts them (mwcc-wasm's `Request::transcode_sjis`).
 use anyhow::{Context, Result, bail};
 use mwcc_oracle_core::runner;
 use std::{
@@ -101,7 +101,7 @@ pub fn run(args: &[String]) -> Result<i32> {
                 timeout: None,
                 trace: mwcc_oracle_core::in_process::traces(&root, executable),
                 overlay: None,
-                transcode_sjis: false,
+                transcode_sjis: compiler == 1,
                 command_line: verbatim.as_deref(),
             },
             &|| false,
