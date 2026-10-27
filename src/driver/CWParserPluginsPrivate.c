@@ -241,7 +241,7 @@ int __stdcall CWParserPluginsPrivate_PassValuePair(CWPluginPrivateContext *targe
     arguments.firstValue = firstValue;
     arguments.secondValue = secondValue;
     arguments.flag = 1;
-#ifdef __wasm__ /* (x86 returns the EAX the callback leaves, which the caller tests) */
+#ifdef NONMATCHING /* (x86 returns the EAX the callback leaves, which the caller tests) */
     return CWPluginsPrivate_CallValuePairCallback(target, &arguments);
 #else
     CWPluginsPrivate_CallValuePairCallback(target, &arguments);

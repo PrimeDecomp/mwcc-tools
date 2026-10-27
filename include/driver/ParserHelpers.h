@@ -14,7 +14,7 @@ extern char *ParserHelpers_GetFirstEnvironmentVariable(char *list, char verbose,
 /* The end of a list of names for ParserHelpers_GetFirstEnvironmentVariable, which reads names up to an empty one.
  * The original ends with the literal's padding; in WebAssembly the next literal follows, so there the list ends
  * with one more NUL. */
-#ifdef __wasm__
+#ifdef NONMATCHING
 #define ENVIRONMENT_LIST_END "\0"
 #else
 #define ENVIRONMENT_LIST_END

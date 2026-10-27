@@ -103,14 +103,14 @@ void clear_global(void)
     return;
 }
 
-#ifdef __wasm__
+#ifdef NONMATCHING
 /* (a signal handler takes the signal: a call through another type traps in wasm) */
 static void wasm_clear_global(int signal) { clear_global(); }
 #endif
 
 void CLIO_ExchangeClearGlobal(void)
 {
-#ifdef __wasm__
+#ifdef NONMATCHING
     signal(SIGABRT, wasm_clear_global);
 #else
     signal(SIGABRT, (__signal_func_ptr)clear_global);
@@ -434,7 +434,7 @@ char *format_prefixed_text(char *output, int remaining, char *prefix, char *form
 
     while (*format != '\0' && state.capacity > 0) {
         if (*format == '%') {
-#ifdef __wasm__ /* (the target's walk of the variadic arguments: ARGS is a va_list from va_start) */
+#ifdef NONMATCHING /* (the target's walk of the variadic arguments: ARGS is a va_list from va_start) */
             text = __builtin_va_arg(*(va_list *)&args, char *);
 #else
             args++;
@@ -482,7 +482,7 @@ char *forward_format_arguments(char *output, int size, char *prefix, char *forma
 {
 /* (wasm: the variadic arguments are not after the named ones; format_prefixed_text walks them, all pointers, by
    4 bytes, which is also their layout in wasm's variadic area) */
-#ifdef __wasm__
+#ifdef NONMATCHING
     char **arguments = (char **)__va_start(format);
 #elif VERSION >= VERSION_GC_1_3
     char *base = (char *)&format;
@@ -927,7 +927,7 @@ void emit_formatted_message(short kind, char *format, ...)
 {
     char buffer[256];
     char *message;
-#ifdef __wasm__
+#ifdef NONMATCHING
     message = mvprintf(buffer, sizeof(buffer), format, __va_start(format));
 #elif VERSION >= VERSION_GC_1_3
     char *base;
@@ -955,7 +955,7 @@ void CLIO_FormatAndDispatchText(char *fmt, ...)
     char *base;
 #endif
 
-#ifdef __wasm__
+#ifdef NONMATCHING
     va_start(args, fmt);
 #elif VERSION >= VERSION_GC_1_3
     base = (char *)&fmt;
@@ -978,7 +978,7 @@ void CLIO_WriteFormattedText(const char *format, ...)
 #endif
     char *text;
 
-#ifdef __wasm__
+#ifdef NONMATCHING
     va_start(args, format);
 #elif VERSION >= VERSION_GC_1_3
     base = (char *)&format;
@@ -1059,7 +1059,7 @@ short CLIO_ReportDiagnostic(Plugin *type, DiagnosticSourcePosition *record, int 
         diagnostic.record = *record;
         extract_diagnostic_source_line(&diagnostic.record);
     }
-#ifdef __wasm__
+#ifdef NONMATCHING
     args = (char **)__va_start(argument);
 #else
     args = &argument + (((char *)(&argument + 1) - (char *)&argument + 3) / 4);

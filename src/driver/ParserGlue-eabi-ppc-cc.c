@@ -67,7 +67,7 @@ extern OptionList optlstLinker_sreceol_mac_conflicts;
 extern OptionList optlstLinker_m_conflicts;
 extern OptionList optlstDisassembler_fmt_x_conflicts;
 
-#ifdef __wasm__
+#ifdef NONMATCHING
 /* (wasm: the GENERIC_T parse functions are called with 4 arguments, and a call through another type traps: each is
    called through one of these, which passes it its arguments as x86 did) */
 #define WASM_GENERIC(fn) static int wasm_##fn(const char *opt, void *var, const char *pstr, int flags)

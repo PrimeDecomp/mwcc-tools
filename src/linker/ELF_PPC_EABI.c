@@ -107,7 +107,7 @@ extern void ELF_gen_WriteSegInfo(void);                        /* 0x43cf20 */
 /* The write callbacks of .shstrtab, .strtab, .symtab and the segment information take no argument, and are called
  * with the section (the o54 callbacks' argument). WebAssembly traps on that call: there each one is called through
  * a function that takes the section. */
-#ifdef __wasm__
+#ifdef NONMATCHING
 static void write_section_names(ELOutput *unused) { ELF_gen_WriteSectionNames(); }
 static void write_strings(ELOutput *unused) { ELF_gen_WriteStrings(); }
 static void write_symbols(ELOutput *unused) { ELF_gen_WriteSymbols(); }

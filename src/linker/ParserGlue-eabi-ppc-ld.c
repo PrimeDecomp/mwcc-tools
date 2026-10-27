@@ -441,7 +441,7 @@ extern Option optlstWarning_016;
 extern Option *optlstWarning_017[];
 extern OptionList optlstWarning;
 
-#ifdef __wasm__
+#ifdef NONMATCHING
 /* (wasm: the GENERIC_T parse functions are called with 4 arguments, and a call through another type traps: those
    that take fewer are called through these, which pass them the first ones, as x86 did) */
 #define WASM_GENERIC(fn) static int wasm_##fn(const char *opt, void *var, const char *pstr, int flags)

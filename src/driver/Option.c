@@ -1134,7 +1134,7 @@ unsigned int forward_varargs(unsigned int messageId, ...)
     va_list args;
 
 /* (wasm: the variadic arguments are not after the named ones) */
-#ifdef __wasm__
+#ifdef NONMATCHING
     va_start(args, messageId);
 #else
     base = (int)&messageId;
@@ -1153,7 +1153,7 @@ unsigned int Option_ForwardVarArgs(unsigned int messageId, ...)
     char *end = (char *)&messageId;
     int size;
     va_list arguments;
-#ifdef __wasm__
+#ifdef NONMATCHING
     va_start(arguments, messageId);
 #else
     end += sizeof(short);
@@ -1223,7 +1223,7 @@ int show_option_help(char *name)
 unsigned char Option_ShowHelp(void)
 {
 /* (x86 returns the EAX the help leaves, which the caller and-s into tool_checks_passed) */
-#ifdef __wasm__
+#ifdef NONMATCHING
     if (data_00587ce0 & 1U) {
         return show_option_help(data_00587ca0);
     }

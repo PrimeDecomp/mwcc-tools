@@ -6,7 +6,7 @@
 #include "driver/Projects.h"
 #include "driver/StringUtils.h"
 #include "driver/TargetWarningHelpers-ppc-cc.h"
-#ifdef __wasm__
+#ifdef NONMATCHING
 #include <stdlib.h> /* (exit: implicitly int, and a call through another type traps in wasm) */
 #endif
 #if defined(LINKER) && VERSION >= VERSION_GC_2_7

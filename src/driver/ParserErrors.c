@@ -9,7 +9,7 @@
 #include <stdio.h>
 
 /* (wasm: the variadic arguments are not after the named ones, so the target's va_start and va_arg, from <stdarg.h>) */
-#ifndef __wasm__
+#ifndef NONMATCHING
 #define va_start(ap, parm) ap = (char *)&parm + ((((char *)(&parm + 1) - (char *)&parm) + 3) / 4 * 4)
 #endif
 
@@ -25,7 +25,7 @@ int fn_0040d952(char *name, char *output, unsigned int maxLength, Boolean toPasc
                 char *defaultName, ...)
 {
     char buffer[256];
-#ifdef __wasm__
+#ifdef NONMATCHING
     va_list pairs;
 #else
     char *pairs;
@@ -41,7 +41,7 @@ int fn_0040d952(char *name, char *output, unsigned int maxLength, Boolean toPasc
         strcpy(buffer, name);
     }
     hasDot = strchr(buffer, '.') != NULL;
-#ifdef __wasm__
+#ifdef NONMATCHING
     while ((id = va_arg(pairs, int)) != -1 && (extension = va_arg(pairs, char *)) != NULL) {
 #else
     while ((pairs += 4, id = ((int *)pairs)[-1]) != -1 && (pairs += 4, extension = ((char **)pairs)[-1]) != NULL) {
@@ -137,7 +137,7 @@ void fn_0040ecb1(SInt32 messageId, ...)
     va_list arguments;
 
     Targets_GetResourceCString(messageId, message);
-#ifdef __wasm__
+#ifdef NONMATCHING
     va_start(arguments, messageId);
 #else
     arguments = (char *)&messageId + (((char *)((SInt16 *)&messageId + 1) - (char *)&messageId + 3) / 4 * 4);
@@ -156,7 +156,7 @@ void Targets_ReportMessage(int messageId, ...)
     va_list args;
 
     Targets_GetResourceCString(messageId, buffer);
-#ifdef __wasm__
+#ifdef NONMATCHING
     va_start(args, messageId);
 #else
     args = (char *)&messageId + (((char *)((SInt16 *)&messageId + 1) - (char *)&messageId + 3) / 4 * 4);
@@ -174,7 +174,7 @@ void Targets_DispatchVariadicMessage(int messageId, ...)
     char *argumentEnd;
 
     Targets_GetResourceCString(messageId, buffer);
-#ifdef __wasm__
+#ifdef NONMATCHING
     va_start(arguments, messageId);
 #else
     argumentAddress = (va_list)&messageId;
@@ -186,7 +186,7 @@ void Targets_DispatchVariadicMessage(int messageId, ...)
 
 unsigned char Targets_ReportOperatingSystemError(int resourceId, short errorCode, ...)
 {
-#ifndef __wasm__ /* (ParserErrors.h's, void: a call through another type traps in wasm) */
+#ifndef NONMATCHING /* (ParserErrors.h's, void: a call through another type traps in wasm) */
     unsigned char report_operating_system_error(char *message, int errorCode, va_list arguments);
 #endif
     char message[256];
@@ -194,7 +194,7 @@ unsigned char Targets_ReportOperatingSystemError(int resourceId, short errorCode
 
     Targets_GetResourceCString(resourceId, message);
     va_start(arguments, errorCode);
-#ifdef __wasm__
+#ifdef NONMATCHING
     report_operating_system_error(message, errorCode, (unsigned int *)arguments);
     return 0;
 #else
@@ -210,7 +210,7 @@ void Targets_FormatAndForwardMessage(int messageId, ...)
     va_list arguments;
 
     Targets_GetResourceCString(messageId, buffer);
-#ifdef __wasm__
+#ifdef NONMATCHING
     va_start(arguments, messageId);
 #else
     arguments = (char *)&messageId + ((((char *)((short *)&messageId + 1) - (char *)&messageId) + 3) / 4 * 4);

@@ -39,7 +39,7 @@ struct DiagnosticSourcePosition {
 #pragma pack(pop)
 
 extern char data_005880e0[];
-#ifdef __wasm__
+#ifdef NONMATCHING
 struct _FILE; /* (else the prototype's own struct, which clang does not take as stdio.h's) */
 #endif
 extern Boolean write_text_buffer(struct _FILE *fp, StorageHandle *bufp, SInt32 len);

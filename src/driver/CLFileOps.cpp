@@ -281,7 +281,7 @@ unsigned int __stdcall set_lookup_paths_name_and_value(unsigned int context, uns
         return 4;
     }
     state = default_target;
-#ifdef __wasm__ /* (the parameter after CONTEXT, read from its stack slot by x86; wasm has no such slot) */
+#ifdef NONMATCHING /* (the parameter after CONTEXT, read from its stack slot by x86; wasm has no such slot) */
     record = (struct PayloadWithValue *)CLSegs_GetValue(&state->lookupPaths, recordId);
 #else
     record = (struct PayloadWithValue *)CLSegs_GetValue(&state->lookupPaths, (&context)[1]);

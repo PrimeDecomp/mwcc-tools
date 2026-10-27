@@ -11,7 +11,7 @@
 static char hprintf_buffer[256];
 
 /* (wasm: the variadic arguments are not after the named ones, so the target's va_start, from <stdarg.h>) */
-#ifndef __wasm__
+#ifndef NONMATCHING
 #define va_start(ap, last)                                                                                             \
     ((ap) = (char *)&(last) + (((int)((char *)&(last) + sizeof(last)) - (int)(char *)&(last) + 3) / 4) * 4)
 #endif
@@ -116,7 +116,7 @@ char *mvprintf(char *buffer, unsigned int size, const char *format, va_list args
 
 char *mprintf(char *buffer, int size, char *format, ...)
 {
-#ifdef __wasm__
+#ifdef NONMATCHING
     va_list args = __va_start(format);
 #elif VERSION >= VERSION_GC_1_3
     va_list base = (va_list)&format;
@@ -133,7 +133,7 @@ int HPrintF(struct StorageHandle *output, char *format, ...)
     char *text;
     int length;
     va_list arguments;
-#ifdef __wasm__
+#ifdef NONMATCHING
     va_start(arguments, format);
 #elif VERSION >= VERSION_GC_1_3
     char *base;

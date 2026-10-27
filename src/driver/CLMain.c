@@ -142,7 +142,7 @@ static void *driver_callbacks[9] = {(void *)return_zero,
 
 unsigned int fn_0040a7c0(void)
 {
-#ifdef __wasm__ /* (x86 returns the EAX ClientGlue_AddPlugin leaves, which the caller tests) */
+#ifdef NONMATCHING /* (x86 returns the EAX ClientGlue_AddPlugin leaves, which the caller tests) */
     return ClientGlue_AddPlugin((PluginRequiredInputRecord *)driver_callbacks);
 #else
     ClientGlue_AddPlugin((PluginRequiredInputRecord *)driver_callbacks);

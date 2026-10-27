@@ -22,7 +22,7 @@ static void *PTR_fn_0053670c[2] = {
 
 int fn_0040534e(void)
 {
-#ifndef __wasm__ /* (ClientGlue.h's: a call through another type traps in wasm) */
+#ifndef NONMATCHING /* (ClientGlue.h's: a call through another type traps in wasm) */
     int __stdcall fn_00405280(void *, void *);
 #endif
     return fn_00405280(&PTR_fn_005366e8, &PTR_fn_0053670c);

@@ -14,7 +14,7 @@
 #include <string.h>
 #include <stdlib.h>
 /* (wasm: the variadic arguments are not after the named ones, so the target's va_start, from <stdarg.h>) */
-#ifdef __wasm__
+#ifdef NONMATCHING
 #define VA_DECL
 #elif VERSION >= VERSION_GC_1_3
 #define VA_DECL char *va_base;
@@ -57,7 +57,7 @@ void format_and_emit_diagnostic(int kind, int messageId, va_list arguments)
 
 unsigned char CLErrors_EmitDiagnostic(int messageId, ...)
 {
-#ifdef __wasm__
+#ifdef NONMATCHING
     va_list arguments = __va_start(messageId);
 #elif VERSION >= VERSION_GC_1_3
     char *base = (char *)&messageId;
@@ -71,7 +71,7 @@ unsigned char CLErrors_EmitDiagnostic(int messageId, ...)
 void CLErrors_ForwardMessageArguments(int messageId, ...)
 {
     char *base = (char *)&messageId;
-#ifdef __wasm__
+#ifdef NONMATCHING
     va_list arguments = __va_start(messageId);
 #elif VERSION >= VERSION_GC_1_3
     va_list arguments = base + ((char *)((short *)&messageId + 1) - base + 3) / 4 * 4;
@@ -84,7 +84,7 @@ void CLErrors_ForwardMessageArguments(int messageId, ...)
 #if VERSION >= VERSION_GC_1_3
 void CLErrors_ForwardMessage(int messageId, ...)
 {
-#ifdef __wasm__
+#ifdef NONMATCHING
     format_and_emit_diagnostic(0, messageId, __va_start(messageId));
 #else
     char *base;

@@ -11,7 +11,7 @@ extern "C" {
 extern int to_lowercase(int character);
 /* to_lowercase called as int (*)(char), as the original does. WebAssembly traps on that call (its parameter is
  * a char there), so there it is a plain call. */
-#ifdef __wasm__
+#ifdef NONMATCHING
 #define TO_LOWERCASE_CHAR(c) to_lowercase(c)
 #else
 #define TO_LOWERCASE_CHAR(c) ((int (*)(char))to_lowercase)(c)

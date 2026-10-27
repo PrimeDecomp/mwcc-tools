@@ -20,7 +20,7 @@
 #include "driver/Utils.h"
 #include <string.h>
 
-#ifdef __wasm__ /* (a call the original makes without a prototype, which WebAssembly's must match) */
+#ifdef NONMATCHING /* (a call the original makes without a prototype, which WebAssembly's must match) */
 extern int sprintf(char *s, const char *format, ...);
 #endif
 
@@ -1085,7 +1085,7 @@ int evaluate_conditional_branch(IFARG_T *expr, char *a, int b)
     return 1;
 }
 
-#ifdef __wasm__
+#ifdef NONMATCHING
 /* (wasm: a call through another type traps, so the tables' functions that take fewer parameters, or return nothing,
    are called through these, of the table's type, which pass them the first ones as x86 did, and return what x86
    left in EAX) */
@@ -1116,22 +1116,22 @@ WASM_COMPARE(fn_0042a263)
 #endif
 
 static int (*data_0054dbdc[16])(PARAM_T *, int, int) = {
-#ifdef __wasm__
+#ifdef NONMATCHING
     wasm_return_true,
 #else
     (int (*)(PARAM_T *, int, int))return_true,
 #endif
-#ifdef __wasm__
+#ifdef NONMATCHING
     wasm_set_file_code,
 #else
     (int (*)(PARAM_T *, int, int))set_file_code,
 #endif
-#ifdef __wasm__
+#ifdef NONMATCHING
     wasm_set_filepath,
 #else
     (int (*)(PARAM_T *, int, int))set_filepath,
 #endif
-#ifdef __wasm__
+#ifdef NONMATCHING
     wasm_fn_00429110,
 #else
     (int (*)(PARAM_T *, int, int))fn_00429110,
@@ -1142,18 +1142,18 @@ static int (*data_0054dbdc[16])(PARAM_T *, int, int) = {
     (int (*)(PARAM_T *, int, int))parse_on_off,
     (int (*)(PARAM_T *, int, int))set_on_off,
     (int (*)(PARAM_T *, int, int))apply_mask_entry,
-#ifdef __wasm__
+#ifdef NONMATCHING
     wasm_xor_const_dest,
 #else
     (int (*)(PARAM_T *, int, int))xor_const_dest,
 #endif
     (int (*)(PARAM_T *, int, int))store_constrec_val,
-#ifdef __wasm__
+#ifdef NONMATCHING
     wasm_set_string,
 #else
     (int (*)(PARAM_T *, int, int))set_string,
 #endif
-#ifdef __wasm__
+#ifdef NONMATCHING
     wasm_invoke_float_parameter_callback,
 #else
     (int (*)(PARAM_T *, int, int))invoke_float_parameter_callback,
@@ -1209,47 +1209,47 @@ void Parameter_DispatchByWhich(PARAM_T *param, int *a, int *b, int *c)
 }
 
 static int (*data_0054dc84[16])(PARAM_T *) = {
-#ifdef __wasm__
+#ifdef NONMATCHING
     wasm_return_unsigned_zero,
 #else
     (int (*)(PARAM_T *))return_unsigned_zero,
 #endif
-#ifdef __wasm__
+#ifdef NONMATCHING
     wasm_fn_00429462,
 #else
     (int (*)(PARAM_T *))fn_00429462,
 #endif
-#ifdef __wasm__
+#ifdef NONMATCHING
     wasm_fn_0042994d,
 #else
     (int (*)(PARAM_T *))fn_0042994d,
 #endif
-#ifdef __wasm__
+#ifdef NONMATCHING
     wasm_fn_0042910d,
 #else
     (int (*)(PARAM_T *))fn_0042910d,
 #endif
-#ifdef __wasm__
+#ifdef NONMATCHING
     wasm_fn_004295ca,
 #else
     (int (*)(PARAM_T *))fn_004295ca,
 #endif
-#ifdef __wasm__
+#ifdef NONMATCHING
     wasm_fn_004296d1,
 #else
     (int (*)(PARAM_T *))fn_004296d1,
 #endif
-#ifdef __wasm__
+#ifdef NONMATCHING
     wasm_fn_004296d1,
 #else
     (int (*)(PARAM_T *))fn_004296d1,
 #endif
-#ifdef __wasm__
+#ifdef NONMATCHING
     wasm_fn_004297bf,
 #else
     (int (*)(PARAM_T *))fn_004297bf,
 #endif
-#ifdef __wasm__
+#ifdef NONMATCHING
     wasm_fn_00429896,
 #else
     (int (*)(PARAM_T *))fn_00429896,
@@ -1258,17 +1258,17 @@ static int (*data_0054dc84[16])(PARAM_T *) = {
     (int (*)(PARAM_T *))is_dest_unchanged_by_val_xor,
     (int (*)(PARAM_T *))const_matches_dest,
     (int (*)(PARAM_T *))compare_setstring_value,
-#ifdef __wasm__
+#ifdef NONMATCHING
     wasm_fn_0042a192,
 #else
     (int (*)(PARAM_T *))fn_0042a192,
 #endif
-#ifdef __wasm__
+#ifdef NONMATCHING
     wasm_get_unsigned_zero,
 #else
     (int (*)(PARAM_T *))get_unsigned_zero,
 #endif
-#ifdef __wasm__
+#ifdef NONMATCHING
     wasm_fn_0042a263,
 #else
     (int (*)(PARAM_T *))fn_0042a263,
@@ -1472,7 +1472,7 @@ void Parameter_ForwardVarArgs(int messageId, ...)
     va_list base = (va_list)&messageId;
     va_list nextArgument = (va_list)&messageId;
 /* (wasm: the variadic arguments are not after the named ones) */
-#ifdef __wasm__
+#ifdef NONMATCHING
     va_start(arguments, messageId);
 #else
     nextArgument += sizeof(short);
@@ -1488,7 +1488,7 @@ void forward_stack_varargs(SInt32 errorId, ...)
     char *lastArgument = (char *)&errorId;
     char *arguments = (char *)&errorId;
     int argumentSize;
-#ifdef __wasm__
+#ifdef NONMATCHING
     arguments = (char *)__va_start(errorId);
 #else
     arguments += 2;

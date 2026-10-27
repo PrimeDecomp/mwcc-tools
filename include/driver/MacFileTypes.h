@@ -28,7 +28,7 @@ struct OpcodeDescriptorTable {
 };
 #pragma pack(pop)
 extern void __stdcall MacFileTypes_AppendTable(struct MacFileTypeNode **list, SInt32 value);
-#ifdef __wasm__
+#ifdef NONMATCHING
 extern unsigned int __stdcall fn_00421af0(OSSpec *value, DWORD input);
 #else
 extern void __stdcall fn_00421af0(OSSpec *value, DWORD input);

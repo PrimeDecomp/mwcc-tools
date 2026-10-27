@@ -33,7 +33,7 @@
 #define ToolHelpers_ResizeBuffer xrealloc
 #endif
 
-#ifdef __wasm__ /* (a call the original makes without a prototype, which WebAssembly's must match) */
+#ifdef NONMATCHING /* (a call the original makes without a prototype, which WebAssembly's must match) */
 extern void free(void *p);
 #endif
 

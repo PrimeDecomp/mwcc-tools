@@ -72,8 +72,8 @@ locally.
   (`a5 00`). The object is not linked.
 * An uninitialized read the module reproduces: peephole's `L_S` (drop a store of a value just loaded from the same
   place) compares `defInstrOffset` and `scanOffset` for a store to another object, which only a store to the same
-  object sets. In the original they are stack slots whose values never overlap; under `__wasm__` they start as 0 and
-  `0x7FFFFFFF`, which compare the same way. (In Echoes' `CSandworm::UpdateEyes`, this deletes the first of three
+  object sets. In the original they are stack slots whose values never overlap; under `NONMATCHING` they start as 0
+  and `0x7FFFFFFF`, which compare the same way. (In Echoes' `CSandworm::UpdateEyes`, this deletes the first of three
   `stfs` that store values back to where they were loaded.)
 * A crash the module turns into an error: a precompiled header that declares a function under `#pragma section
   code_type ".init"` (Echoes' `libc/string.h` does so for `memset` and `memcpy`), and a unit that calls it. The
@@ -237,7 +237,7 @@ To observe something no stream records, change gc2's sources in a checkout of yo
 and `build/LD_2_7/wasm/mwldeppc.wasm`, each with its `.version` (the VS_VERSIONINFO of `src/linker/mwldeppc13.rc` and
 `mwldeppc27.rc`). `configure --version GC_1_3_2` (or `GC_2_7`) adds the version's linker to the default targets.
 
-Their sources are this repository's own (`src/`, decomp/mwcc's linker decompilation, 4f18e81): a linker is the 2.7
+Their sources are this repository's own (`src/`, decomp/mwcc's linker decompilation, 7391bd7): a linker is the 2.7
 compiler's driver and C library with the linker plugin (`src/linker`) in place of the compiler. Its units are
 `config/LD_2_6/splits.txt`'s with the sources `config/LD_2_7/config.json`'s `replace` gives, compiled with the 2.7
 compiler's flags, `-DVERSION` of GC_2_7 and `-DLINKER=13` or `-DLINKER=27`. As in the compiler, `wasm/libc` and
@@ -261,8 +261,9 @@ compiler's flags, `-DVERSION` of GC_2_7 and `-DLINKER=13` or `-DLINKER=27`. As i
   that differ from their definitions, `to_lowercase` called through an `int (*)(char)` cast, `TO_LOWERCASE_CHAR`
   in `include/driver/Utils.h`; the ELF writer's callbacks without an argument, called with one; the lists of
   environment variable names, which the original ends with a literal's padding, `ENVIRONMENT_LIST_END`; a command
-  file's last token, which the original reads past the file's end) is under `#ifdef __wasm__`. The Metrowerks build
-  preprocesses to the same tokens as before, for every version and both linkers.
+  file's last token, which the original reads past the file's end) is decomp/mwcc's own (7391bd7), under `#ifdef
+  NONMATCHING`, which the module build defines. The Metrowerks build preprocesses to the same tokens as before, for
+  every version and both linkers.
 * The 2.7 drivers give a file name of 64 characters or more as its 8.3 name (`GetShortPathNameA`, and
   `cAlternateFileName` of a directory listing). The host gives Windows' 8.3 name where it has one (on Windows,
   where 8.3 names are on), so such a file is found as the original finds it; elsewhere it is not found. A message
@@ -285,8 +286,9 @@ The module runs in the place of the stock compiler and of a project's copy of it
 oracle hooks: a traced run of 1.2.5n goes to the native oracle. GC 1.3 cannot be built so: 371 of its functions
 (about 300 KB) have no source, so it runs as a process.
 
-What WebAssembly needs of the sources is under `#ifdef __wasm__`, and the Metrowerks build preprocesses to the same
-tokens for every version and both linkers:
+What WebAssembly needs of the compiler's sources is under `#ifdef __wasm__` (the driver's, shared with the linkers,
+under decomp/mwcc's `NONMATCHING`), and the Metrowerks build preprocesses to the same tokens for every version and
+both linkers:
 
 * Varargs the code takes from the stack by hand (`CError.c`, `PPCError.c`, `PCodeUtilities.c`, `IroDump.c`,
   `CParser.c`, `CExpr2.c`) use `__va_start`.

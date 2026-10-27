@@ -30,13 +30,13 @@ extern int __stdcall CLIO_CompareStringsIgnoreCase(char *left, char *right);
 #endif
 extern char *ClientGlue_DuplicateString(const char *a0);
 extern int __stdcall ClientGlue_AddResourceStrings(char *arg1, SInt16 arg2, char **arg3);
-#ifdef __wasm__
+#ifdef NONMATCHING
 extern int __stdcall ClientGlue_AddPlugin(PluginRequiredInputRecord *a0);
 #else
 extern void __stdcall ClientGlue_AddPlugin(PluginRequiredInputRecord *a0);
 #endif
 extern int __stdcall ClientGlue_CreateAndAddPlugin(void *a0, void *a1);
-#ifdef __wasm__
+#ifdef NONMATCHING
 extern int __stdcall fn_00405280(PluginRequiredInputRecord *a0, PluginQueryTable *a1);
 #else
 extern void __stdcall fn_00405280(PluginRequiredInputRecord *a0, PluginQueryTable *a1);

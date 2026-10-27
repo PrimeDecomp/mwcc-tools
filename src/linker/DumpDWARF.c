@@ -6,7 +6,7 @@
 #include "compiler/common.h"
 #include "compiler/CompilerTools.h"
 
-#ifndef __wasm__ /* (the wasm build has the target's stdarg.h) */
+#ifndef NONMATCHING /* (the wasm build has the target's stdarg.h) */
 typedef char *va_list;
 #define va_start(ap, last) ((ap) = (char *)&(last) + (((char *)(&(last) + 1) - (char *)&(last) + 3) / 4 * 4))
 #define va_end(ap) ((void)0)
