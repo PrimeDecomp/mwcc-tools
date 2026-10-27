@@ -14,7 +14,7 @@ use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
     fs,
     hash::{Hash, Hasher},
-    io::{Read, Seek, SeekFrom, Write},
+    io::Write,
     path::{Path, PathBuf},
     sync::{
         Arc,
@@ -23,6 +23,7 @@ use std::{
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
+mod files;
 mod overlay;
 mod persist;
 pub mod pool;
@@ -41,6 +42,7 @@ const ERROR_PATH_NOT_FOUND: u32 = 3;
 const ERROR_ACCESS_DENIED: u32 = 5;
 const ERROR_INVALID_HANDLE: u32 = 6;
 const ERROR_NO_MORE_FILES: u32 = 18;
+const ERROR_NEGATIVE_SEEK: u32 = 131;
 const ERROR_FILE_EXISTS: u32 = 80;
 const ERROR_ALREADY_EXISTS: u32 = 183;
 const ERROR_RESOURCE_TYPE_NOT_FOUND: u32 = 1813;
@@ -125,10 +127,11 @@ pub struct Outcome {
 }
 
 enum Handle {
-    /// An open file; DIRECTORY, the directory of one open for writing (whose listing a write changes).
+    /// A file open for writing (and READ, reading), in the run's files: where the next read or write is.
     File {
-        file: fs::File,
-        directory: Option<PathBuf>,
+        key: files::Key,
+        position: u64,
+        read: bool,
     },
     /// A file read from memory (an overlaid file, or a transcoded one): WRITTEN, its write time.
     Memory {
@@ -169,7 +172,8 @@ struct State {
     heap: Heap,
     started: Instant,
     command_line_at: Option<u32>,
-    listings: Listings,
+    /// The disk as the run sees it: read once, written when the run ends.
+    files: files::Files,
     /// A persistent run's link to its owner (persist.rs).
     persist: Option<persist::Link>,
     /// Whether the hooks trace, and what they have traced.
@@ -296,7 +300,7 @@ impl State {
             heap: Heap::default(),
             started: Instant::now(),
             command_line_at: None,
-            listings: Listings::default(),
+            files: files::Files::default(),
             persist: None,
             tracing: request.trace,
             trace: vec![],
@@ -585,7 +589,24 @@ impl Compiler {
                 }
             },
         };
-        let state = store.into_data();
+        let mut state = store.into_data();
+        // (what the module wrote reaches the disk now that it has ended: as its process's would, whatever its exit
+        // code. A run stopped or trapped leaves the disk as it was)
+        let mut exit_code = exit_code;
+        if !(timed_out || cancelled) {
+            for (path, error) in state.files.flush() {
+                let message = format!(
+                    "could not write {}: {error}
+",
+                    path.display()
+                );
+                state.stderr.extend(message.as_bytes());
+                state.console.extend(message.as_bytes());
+                if exit_code == 0 {
+                    exit_code = 1;
+                }
+            }
+        }
         Ok(Outcome {
             exit_code,
             stdout: state.stdout,
@@ -882,7 +903,7 @@ fn host_path(state: &mut State, path: &str) -> PathBuf {
     if cfg!(windows) {
         return path;
     }
-    state.listings.resolve(&path)
+    state.files.resolve(&path)
 }
 
 /// What the run's overlay says of the compiler's PATH: not overlaid, absent (`Some(None)`), or its bytes.
@@ -901,13 +922,6 @@ fn consult(state: &mut State, what: Consulted) {
     {
         list.push(what);
     }
-}
-
-/// The write time of an overlaid file at PATH: the disk file's it shadows, or a fixed one.
-fn overlaid_written(path: &Path) -> u64 {
-    fs::metadata(path)
-        .and_then(|m| m.modified())
-        .map_or(overlay::OVERLAY_ONLY_WRITTEN, filetime)
 }
 
 /// BYTES, the file the compiler opened as NAME (at host PATH), as sjiswrap gives them (transcoded once per path).
@@ -1007,130 +1021,6 @@ fn entry_of(name: String, metadata: &fs::Metadata) -> Entry {
         size: if metadata.is_dir() { 0 } else { metadata.len() },
         written: metadata.modified().map(filetime).unwrap_or(FILETIME_UNIX),
         short: String::new(),
-    }
-}
-
-/// The directories a run has listed. On Windows the compiler looks each header up in every include directory, and
-/// there a query of the file system opens the file (`fs::metadata`): a directory is listed once, and its listing
-/// answers whether a file is there and what it is. Elsewhere a query is cheap, and the file system answers each; the
-/// listings give the names a path spells in another case (`resolve`). Anything the run creates, writes or deletes
-/// forgets them all.
-#[derive(Default)]
-struct Listings(HashMap<PathBuf, Option<Arc<Listing>>>);
-
-struct Listing {
-    entries: Vec<Entry>,
-    /// Each entry by its name as Windows compares names (case-insensitively).
-    by_name: HashMap<String, usize>,
-}
-
-/// What the listings say of a path.
-enum Lookup {
-    Found(Entry),
-    /// Not in its directory.
-    NoFile,
-    /// Its directory is not there.
-    NoPath,
-    /// Ask the file system: not Windows, a path a listing does not answer for (a root, `..` at its end), or a name
-    /// that may be a short (8.3) alias.
-    Unknown,
-}
-
-fn listing_of(directory: &Path) -> Option<Listing> {
-    let mut entries = vec![];
-    for e in fs::read_dir(directory).ok()?.flatten() {
-        let name = e.file_name().to_string_lossy().into_owned();
-        // (a link's entry describes the link: follow it)
-        let metadata = match e.file_type() {
-            Ok(t) if t.is_symlink() => fs::metadata(e.path()),
-            _ => e.metadata(),
-        };
-        if let Ok(m) = metadata {
-            entries.push(entry_of(name, &m));
-        }
-    }
-    let by_name = entries
-        .iter()
-        .enumerate()
-        .map(|(i, e)| (e.name.to_ascii_uppercase(), i))
-        .collect();
-    Some(Listing { entries, by_name })
-}
-
-impl Listings {
-    /// DIRECTORY's listing (`None`: it is not there).
-    fn directory(&mut self, directory: &Path) -> Option<Arc<Listing>> {
-        self.0
-            .entry(directory.to_path_buf())
-            .or_insert_with(|| listing_of(directory).map(Arc::new))
-            .clone()
-    }
-
-    /// PATH with each of its names that is not there as spelled replaced by the entry of its directory with that
-    /// name ignoring ASCII case (Windows's names, as wibo resolves them on a case-sensitive file system). From the
-    /// first name that is not there in any case (a file to create), the rest is kept as it is.
-    fn resolve(&mut self, path: &Path) -> PathBuf {
-        if fs::symlink_metadata(path).is_ok() {
-            return path.to_path_buf();
-        }
-        let mut out = PathBuf::new();
-        let mut components = path.components();
-        while let Some(component) = components.next() {
-            let std::path::Component::Normal(name) = component else {
-                out.push(component);
-                continue;
-            };
-            let exact = out.join(name);
-            if out.as_os_str().is_empty() || fs::symlink_metadata(&exact).is_ok() {
-                out = exact;
-                continue;
-            }
-            let key = name.to_string_lossy().to_ascii_uppercase();
-            match self
-                .directory(&out)
-                .and_then(|listing| Some(listing.entries[*listing.by_name.get(&key)?].name.clone()))
-            {
-                Some(found) => out.push(found),
-                None => {
-                    out.push(name);
-                    out.extend(components);
-                    break;
-                }
-            }
-        }
-        out
-    }
-
-    fn lookup(&mut self, path: &Path) -> Lookup {
-        if !cfg!(windows) {
-            return Lookup::Unknown;
-        }
-        let (Some(directory), Some(name)) = (path.parent(), path.file_name()) else {
-            return Lookup::Unknown;
-        };
-        if directory.as_os_str().is_empty() {
-            return Lookup::Unknown;
-        }
-        let name = name.to_string_lossy();
-        match self.directory(directory) {
-            None => Lookup::NoPath,
-            Some(listing) => match listing.by_name.get(&name.to_ascii_uppercase()) {
-                Some(&i) => Lookup::Found(listing.entries[i].clone()),
-                None if name.contains('~') => Lookup::Unknown,
-                None => Lookup::NoFile,
-            },
-        }
-    }
-
-    fn forget(&mut self) {
-        self.0.clear();
-    }
-
-    /// Forget what DIRECTORY's listing says (a file of it was created or written): the others stay.
-    fn forget_directory(&mut self, directory: &Path) {
-        // (under any spelling of its name a lookup cached it by)
-        self.0
-            .retain(|key, _| !key.as_os_str().eq_ignore_ascii_case(directory.as_os_str()));
     }
 }
 
@@ -1694,7 +1584,13 @@ fn imports(linker: &mut Linker<State>) -> Result<()> {
                 return Ok(INVALID_HANDLE_VALUE);
             }
             Some(Some(bytes)) => {
-                let written = overlaid_written(&path);
+                let written = c
+                    .data_mut()
+                    .files
+                    .stat(&path)
+                    .1
+                    .entry()
+                    .map_or(overlay::OVERLAY_ONLY_WRITTEN, |e| e.written);
                 let data = if transcoded {
                     sjis(c.data_mut(), &name, &path, &bytes)?
                 } else {
@@ -1713,96 +1609,65 @@ fn imports(linker: &mut Linker<State>) -> Result<()> {
         if !writing {
             consult(c.data_mut(), Consulted::Path(path.clone()));
         }
-        let (is_directory, exists, parent_exists) = match c.data_mut().listings.lookup(&path) {
-            Lookup::Found(e) => (e.attributes & FILE_ATTRIBUTE_DIRECTORY != 0, true, true),
-            Lookup::NoFile => (false, false, true),
-            Lookup::NoPath => (false, false, false),
-            Lookup::Unknown => (
-                path.is_dir(),
-                path.exists(),
-                path.parent().is_none_or(Path::exists),
-            ),
+        let (key, found) = c.data_mut().files.stat(&path);
+        let refused = match &found {
+            files::Found::Directory(_) => Some(ERROR_ACCESS_DENIED),
+            files::Found::File(e) if writing && e.attributes & FILE_ATTRIBUTE_READONLY != 0 => {
+                Some(ERROR_ACCESS_DENIED)
+            }
+            _ => None,
         };
-        if is_directory {
-            c.data_mut().last_error = ERROR_ACCESS_DENIED;
+        if let Some(error) = refused {
+            c.data_mut().last_error = error;
             return Ok(INVALID_HANDLE_VALUE);
         }
-        let mut options = fs::OpenOptions::new();
-        options.read(access & 0x8000_0000 != 0 || access & 0x4000_0000 == 0);
-        options.write(access & 0x4000_0000 != 0);
-        let directory = path.parent().filter(|_| writing).map(Path::to_path_buf);
-        if let Some(directory) = &directory {
-            c.data_mut().listings.forget_directory(directory);
-        }
-        match creation {
-            1 => {
-                options.create_new(true);
-            }
-            2 => {
-                options.create(true).truncate(true).write(true);
-            }
-            4 => {
-                options.create(true).write(access & 0x4000_0000 != 0);
-            }
-            5 => {
-                options.truncate(true).write(true);
-            }
-            _ => {}
-        }
-        if !exists && matches!(creation, 3 | 5) {
-            c.data_mut().last_error = if parent_exists {
-                ERROR_FILE_NOT_FOUND
-            } else {
-                ERROR_PATH_NOT_FOUND
-            };
-            return Ok(INVALID_HANDLE_VALUE);
-        }
-        match options.open(&path) {
-            Ok(mut file) => {
-                let handle = if transcoded {
-                    let written = file
-                        .metadata()
-                        .and_then(|m| m.modified())
-                        .map_or(FILETIME_UNIX, filetime);
-                    let cached = c.data().encoded.get(&path).cloned();
-                    let data = match cached {
-                        Some(data) => data,
-                        None => {
-                            let mut bytes = vec![];
-                            if let Err(error) = file.read_to_end(&mut bytes) {
-                                c.data_mut().last_error = io_error(&error);
-                                return Ok(INVALID_HANDLE_VALUE);
-                            }
-                            sjis(c.data_mut(), &name, &path, &bytes)?
-                        }
-                    };
-                    Handle::Memory {
-                        data,
-                        position: 0,
-                        written,
-                    }
-                } else {
-                    Handle::File { file, directory }
-                };
-                let handle = c.data_mut().open(handle);
-                // (CREATE_ALWAYS and OPEN_ALWAYS on an existing file succeed and say so)
-                c.data_mut().last_error = if exists && matches!(creation, 2 | 4) {
-                    ERROR_ALREADY_EXISTS
-                } else {
-                    0
-                };
-                Ok(handle)
-            }
+        let empty = match files::disposition(&found, creation) {
+            Ok(empty) => empty,
             Err(error) => {
-                c.data_mut().last_error =
-                    if error.kind() == std::io::ErrorKind::NotFound && !parent_exists {
-                        ERROR_PATH_NOT_FOUND
-                    } else {
-                        io_error(&error)
-                    };
-                Ok(INVALID_HANDLE_VALUE)
+                c.data_mut().last_error = error;
+                return Ok(INVALID_HANDLE_VALUE);
             }
-        }
+        };
+        let handle = if writing {
+            if empty {
+                c.data_mut().files.create(&path, &found);
+            }
+            Handle::File {
+                key,
+                position: 0,
+                read: access & GENERIC_READ != 0 || access & 0x4000_0000 == 0,
+            }
+        } else {
+            let written = found.entry().map_or(FILETIME_UNIX, |e| e.written);
+            let cached = transcoded
+                .then(|| c.data().encoded.get(&path).cloned())
+                .flatten();
+            let data = match cached {
+                Some(data) => data,
+                None => match c.data_mut().files.contents(&key) {
+                    Ok(bytes) if transcoded => sjis(c.data_mut(), &name, &path, &bytes)?,
+                    Ok(bytes) => bytes,
+                    Err(error) => {
+                        c.data_mut().last_error = error;
+                        return Ok(INVALID_HANDLE_VALUE);
+                    }
+                },
+            };
+            Handle::Memory {
+                data,
+                position: 0,
+                written,
+            }
+        };
+        let handle = c.data_mut().open(handle);
+        // (CREATE_ALWAYS and OPEN_ALWAYS on an existing file succeed and say so)
+        c.data_mut().last_error =
+            if matches!(found, files::Found::File(_)) && matches!(creation, 2 | 4) {
+                ERROR_ALREADY_EXISTS
+            } else {
+                0
+            };
+        Ok(handle)
     });
     import!(linker, "CloseHandle", |c, handle: u32| -> u32 {
         if c.data_mut().handles.remove(&handle).is_some()
@@ -1844,22 +1709,22 @@ fn imports(linker: &mut Linker<State>) -> Result<()> {
                 *position += n as u64;
                 Ok(n)
             }
-            Some(Handle::File { file, .. }) => {
+            Some(Handle::File {
+                key,
+                position,
+                read: true,
+            }) => {
                 let data = target?;
-                let mut total = 0;
-                loop {
-                    match file.read(&mut data[total..]) {
-                        Ok(0) => break Ok(total),
-                        Ok(n) => {
-                            total += n;
-                            if total == data.len() {
-                                break Ok(total);
-                            }
-                        }
-                        Err(e) => break Err(io_error(&e)),
-                    }
+                let (key, at) = (key.clone(), *position);
+                let read = state.files.read(&key, at, data);
+                if let (Ok(n), Some(Handle::File { position, .. })) =
+                    (&read, state.handles.get_mut(&handle))
+                {
+                    *position = at + *n as u64;
                 }
+                read
             }
+            Some(Handle::File { .. }) => Err(ERROR_ACCESS_DENIED),
             _ => Err(ERROR_INVALID_HANDLE),
         };
         match result {
@@ -1889,18 +1754,23 @@ fn imports(linker: &mut Linker<State>) -> Result<()> {
                 c.data_mut().console.extend(&data);
                 Ok(())
             }
-            _ => match c.data_mut().handles.get_mut(&handle) {
-                Some(Handle::File { file, directory }) => {
-                    let result = file.write_all(&data).map_err(|e| io_error(&e));
-                    let directory = directory.clone();
-                    if let Some(directory) = directory {
-                        c.data_mut().listings.forget_directory(&directory);
+            _ => {
+                let state = c.data_mut();
+                match state.handles.get_mut(&handle) {
+                    Some(Handle::File { key, position, .. }) => {
+                        let (key, at) = (key.clone(), *position);
+                        state.files.write(&key, at, &data).map(|end| {
+                            if let Some(Handle::File { position, .. }) =
+                                state.handles.get_mut(&handle)
+                            {
+                                *position = end;
+                            }
+                        })
                     }
-                    result
+                    Some(Handle::Memory { .. }) => Err(ERROR_ACCESS_DENIED),
+                    _ => Err(ERROR_INVALID_HANDLE),
                 }
-                Some(Handle::Memory { .. }) => Err(ERROR_ACCESS_DENIED),
-                _ => Err(ERROR_INVALID_HANDLE),
-            },
+            }
         };
         match result {
             Ok(()) => {
@@ -1921,15 +1791,25 @@ fn imports(linker: &mut Linker<State>) -> Result<()> {
         } else {
             i64::from(low)
         };
-        let result = match c.data_mut().handles.get_mut(&handle) {
-            Some(Handle::File { file, .. }) => {
-                let from = match method {
-                    0 => SeekFrom::Start(distance.max(0) as u64),
-                    1 => SeekFrom::Current(distance),
-                    _ => SeekFrom::End(distance),
-                };
-                file.seek(from).map_err(|e| io_error(&e))
-            }
+        let state = c.data_mut();
+        let result = match state.handles.get_mut(&handle) {
+            // (past the end is allowed: a write there fills the gap with zeros)
+            Some(Handle::File { key, position, .. }) => match state.files.entry(key) {
+                Ok(entry) => {
+                    let to = match method {
+                        0 => distance,
+                        1 => *position as i64 + distance,
+                        _ => entry.size as i64 + distance,
+                    };
+                    if to < 0 {
+                        Err(ERROR_NEGATIVE_SEEK)
+                    } else {
+                        *position = to as u64;
+                        Ok(*position)
+                    }
+                }
+                Err(e) => Err(e),
+            },
             // (within the file, as sjiswrap moves in its transcoded ones)
             Some(Handle::Memory { data, position, .. }) => {
                 let end = data.len() as i64;
@@ -1958,8 +1838,9 @@ fn imports(linker: &mut Linker<State>) -> Result<()> {
         }
     });
     import!(linker, "GetFileSize", |c, handle: u32, high: u32| -> u32 {
-        let size = match c.data_mut().handles.get_mut(&handle) {
-            Some(Handle::File { file, .. }) => file.metadata().map(|m| m.len()).ok(),
+        let state = c.data();
+        let size = match state.handles.get(&handle) {
+            Some(Handle::File { key, .. }) => state.files.entry(key).ok().map(|e| e.size),
             Some(Handle::Memory { data, .. }) => Some(data.len() as u64),
             _ => None,
         };
@@ -1975,11 +1856,9 @@ fn imports(linker: &mut Linker<State>) -> Result<()> {
         }
     });
     import!(linker, "SetEndOfFile", |c, handle: u32| -> u32 {
-        let result = match c.data_mut().handles.get_mut(&handle) {
-            Some(Handle::File { file, .. }) => file
-                .stream_position()
-                .and_then(|p| file.set_len(p))
-                .map_err(|e| io_error(&e)),
+        let state = c.data_mut();
+        let result = match state.handles.get(&handle) {
+            Some(Handle::File { key, position, .. }) => state.files.set_len(key, *position),
             Some(Handle::Memory { .. }) => Err(ERROR_ACCESS_DENIED),
             _ => Err(ERROR_INVALID_HANDLE),
         };
@@ -1994,12 +1873,9 @@ fn imports(linker: &mut Linker<State>) -> Result<()> {
                                     accessed: u32,
                                     written: u32|
      -> u32 {
-        let time = match c.data_mut().handles.get_mut(&handle) {
-            Some(Handle::File { file, .. }) => file
-                .metadata()
-                .ok()
-                .and_then(|m| m.modified().ok())
-                .map(filetime),
+        let state = c.data();
+        let time = match state.handles.get(&handle) {
+            Some(Handle::File { key, .. }) => state.files.entry(key).ok().map(|e| e.written),
             Some(Handle::Memory { written, .. }) => Some(*written),
             _ => None,
         };
@@ -2037,24 +1913,11 @@ fn imports(linker: &mut Linker<State>) -> Result<()> {
         }
         let path = host_path(c.data_mut(), &name);
         consult(c.data_mut(), Consulted::Path(path.clone()));
-        let error = match c.data_mut().listings.lookup(&path) {
-            Lookup::Found(e) => return Ok(e.attributes),
-            Lookup::NoFile => Some(ERROR_FILE_NOT_FOUND),
-            Lookup::NoPath => Some(ERROR_PATH_NOT_FOUND),
-            Lookup::Unknown => None,
-        };
-        if let Some(error) = error {
-            c.data_mut().last_error = error;
-            return Ok(INVALID_HANDLE_VALUE);
-        }
-        match fs::metadata(&path) {
-            Ok(m) => Ok(entry_of(String::new(), &m).attributes),
-            Err(e) => {
-                c.data_mut().last_error = if path.parent().is_some_and(|p| !p.exists()) {
-                    ERROR_PATH_NOT_FOUND
-                } else {
-                    io_error(&e)
-                };
+        let (_, found) = c.data_mut().files.stat(&path);
+        match found.entry() {
+            Some(e) => Ok(e.attributes),
+            None => {
+                c.data_mut().last_error = files::not_found(&found);
                 Ok(INVALID_HANDLE_VALUE)
             }
         }
@@ -2072,10 +1935,9 @@ fn imports(linker: &mut Linker<State>) -> Result<()> {
             return fail(c, ERROR_ACCESS_DENIED);
         }
         let path = host_path(c.data_mut(), &name);
-        c.data_mut().listings.forget();
-        match fs::remove_file(path) {
+        match c.data_mut().files.delete(&path) {
             Ok(()) => Ok(1),
-            Err(e) => fail(c, io_error(&e)),
+            Err(e) => fail(c, e),
         }
     });
     import!(linker, "CreateDirectoryA", |c,
@@ -2084,22 +1946,17 @@ fn imports(linker: &mut Linker<State>) -> Result<()> {
      -> u32 {
         let name = read_string(c, path)?;
         let path = host_path(c.data_mut(), &name);
-        c.data_mut().listings.forget();
-        match fs::create_dir(path) {
+        match c.data_mut().files.create_directory(&path) {
             Ok(()) => Ok(1),
-            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
-                fail(c, ERROR_ALREADY_EXISTS)
-            }
-            Err(e) => fail(c, io_error(&e)),
+            Err(e) => fail(c, e),
         }
     });
     import!(linker, "RemoveDirectoryA", |c, path: u32| -> u32 {
         let name = read_string(c, path)?;
         let path = host_path(c.data_mut(), &name);
-        c.data_mut().listings.forget();
-        match fs::remove_dir(path) {
+        match c.data_mut().files.remove_directory(&path) {
             Ok(()) => Ok(1),
-            Err(e) => fail(c, io_error(&e)),
+            Err(e) => fail(c, e),
         }
     });
     import!(linker, "GetCurrentDirectoryA", |c,
@@ -2154,7 +2011,7 @@ fn imports(linker: &mut Linker<State>) -> Result<()> {
                         ));
                     }
                 }
-                path.exists()
+                c.data_mut().files.stat(&path).1.entry().is_some()
             }
         };
         if !there {
@@ -2183,41 +2040,25 @@ fn imports(linker: &mut Linker<State>) -> Result<()> {
         } else if let Some(bytes) = overlaid(c.data(), &pattern) {
             if let Some(bytes) = bytes {
                 let path = host_path(c.data_mut(), &pattern);
-                let name = match c.data_mut().listings.lookup(&path) {
-                    Lookup::Found(e) => e.name,
-                    _ => wildcard.clone(),
+                let found = c.data_mut().files.stat(&path).1;
+                let (name, written) = match found.entry() {
+                    Some(e) => (e.name.clone(), e.written),
+                    None => (wildcard.clone(), overlay::OVERLAY_ONLY_WRITTEN),
                 };
                 entries.push(Entry {
                     name,
                     attributes: FILE_ATTRIBUTE_NORMAL,
                     size: bytes.len() as u64,
-                    written: overlaid_written(&path),
+                    written,
                     short: String::new(),
                 });
             }
         } else if !wildcard.contains(['*', '?']) {
             let path = host_path(c.data_mut(), &pattern);
             consult(c.data_mut(), Consulted::Path(path.clone()));
-            match c.data_mut().listings.lookup(&path) {
-                // (the name as the directory has it)
-                Lookup::Found(e) => entries.push(e),
-                Lookup::NoFile | Lookup::NoPath => {}
-                Lookup::Unknown => {
-                    if let Ok(m) = fs::metadata(&path) {
-                        let name = path
-                            .parent()
-                            .and_then(|p| fs::read_dir(p).ok())
-                            .and_then(|mut d| {
-                                d.find_map(|e| {
-                                    let e = e.ok()?;
-                                    let n = e.file_name().to_string_lossy().into_owned();
-                                    n.eq_ignore_ascii_case(&wildcard).then_some(n)
-                                })
-                            })
-                            .unwrap_or(wildcard.clone());
-                        entries.push(entry_of(name, &m));
-                    }
-                }
+            // (the name as the directory has it)
+            if let Some(e) = c.data_mut().files.stat(&path).1.entry() {
+                entries.push(e.clone());
             }
         } else {
             let directory = if directory.is_empty() {
@@ -2227,7 +2068,7 @@ fn imports(linker: &mut Linker<State>) -> Result<()> {
             };
             let path = host_path(c.data_mut(), directory);
             consult(c.data_mut(), Consulted::Listing(path.clone()));
-            let listing = c.data_mut().listings.directory(&path);
+            let listing = c.data_mut().files.entries(&path);
             let plain = overlay::normal(&c.data().directory, &native_path(c.data(), directory));
             // (the overlay's files of the directory: an absent one is not listed, an overlaid one has its size, and
             // one only the overlay has is added)
@@ -2236,7 +2077,7 @@ fn imports(linker: &mut Linker<State>) -> Result<()> {
                 c.data_mut().last_error = ERROR_FILE_NOT_FOUND;
                 return Ok(INVALID_HANDLE_VALUE);
             }
-            let mut found: Vec<Entry> = listing.map(|l| l.entries.clone()).unwrap_or_default();
+            let mut found: Vec<Entry> = listing.unwrap_or_default();
             for (name, bytes) in files {
                 let shadowed = found
                     .iter()
@@ -2441,62 +2282,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn listings_answer_lookups_until_forgotten() {
-        let directory =
-            std::env::temp_dir().join(format!("mwcc-wasm-listings-{}", std::process::id()));
-        fs::create_dir_all(directory.join("sub")).unwrap();
-        fs::write(directory.join("Header.h"), "x").unwrap();
-        let mut listings = Listings::default();
-        let found = |l: Lookup| match l {
-            Lookup::Found(e) => Some(e.name),
-            _ => None,
-        };
-        if cfg!(windows) {
-            assert_eq!(
-                found(listings.lookup(&directory.join("HEADER.H"))),
-                Some("Header.h".into())
-            );
-            assert!(matches!(
-                listings.lookup(&directory.join("other.h")),
-                Lookup::NoFile
-            ));
-            assert!(matches!(
-                listings.lookup(&directory.join("none/a.h")),
-                Lookup::NoPath
-            ));
-            assert!(matches!(
-                listings.lookup(&directory.join("HEADER~1.H")),
-                Lookup::Unknown
-            ));
-            // (a listing answers until the run changes the file system)
-            fs::write(directory.join("other.h"), "y").unwrap();
-            assert!(matches!(
-                listings.lookup(&directory.join("other.h")),
-                Lookup::NoFile
-            ));
-            listings.forget();
-            assert_eq!(
-                found(listings.lookup(&directory.join("other.h"))),
-                Some("other.h".into())
-            );
-        } else {
-            assert!(matches!(
-                listings.lookup(&directory.join("Header.h")),
-                Lookup::Unknown
-            ));
-        }
-        let names: Vec<String> = listings
-            .directory(&directory)
-            .unwrap()
-            .entries
-            .iter()
-            .map(|e| e.name.clone())
-            .collect();
-        assert!(names.contains(&"Header.h".to_owned()) && names.contains(&"sub".to_owned()));
-        fs::remove_dir_all(&directory).unwrap();
-    }
-
     /// A heap of its own memory (no module): the engine, a store and a memory of one page.
     fn heap() -> (Store<()>, Memory, Heap) {
         let engine = Engine::default();
@@ -2552,45 +2337,6 @@ mod tests {
         assert!(heap.free(b));
         assert!(heap.grow_in_place(&memory, &mut store, a, 128).unwrap());
         assert!(!heap.grow_in_place(&memory, &mut store, a, 129).unwrap());
-    }
-
-    #[test]
-    fn names_resolve_case_insensitively() {
-        let directory = tempfile_dir("mwcc-wasm-resolve");
-        fs::create_dir_all(directory.join("Inc")).unwrap();
-        fs::write(directory.join("Inc/CCrc32.hpp"), "x").unwrap();
-        let mut listings = Listings::default();
-        let resolved = listings.resolve(&directory.join("inc/CCRC32.hpp"));
-        assert_eq!(fs::read_to_string(&resolved).unwrap(), "x");
-        if fs::symlink_metadata(directory.join("inc")).is_err() {
-            // (a case-sensitive file system: the names as they are there)
-            assert_eq!(resolved, directory.join("Inc/CCrc32.hpp"));
-            assert_eq!(
-                listings.resolve(&directory.join("INC/new.o")),
-                directory.join("Inc/new.o")
-            );
-            assert_eq!(
-                listings.resolve(&directory.join("none/A.h")),
-                directory.join("none/A.h")
-            );
-            // (the name as spelled first, when the directory has it)
-            fs::write(directory.join("Inc/ccrc32.HPP"), "y").unwrap();
-            listings.forget();
-            assert_eq!(
-                listings.resolve(&directory.join("Inc/ccrc32.HPP")),
-                directory.join("Inc/ccrc32.HPP")
-            );
-        } else {
-            eprintln!("(a case-insensitive file system: nothing to resolve)");
-        }
-        fs::remove_dir_all(&directory).unwrap();
-    }
-
-    fn tempfile_dir(name: &str) -> PathBuf {
-        let directory = std::env::temp_dir().join(format!("{name}-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&directory);
-        fs::create_dir_all(&directory).unwrap();
-        directory
     }
 
     #[test]

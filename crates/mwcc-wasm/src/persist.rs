@@ -468,6 +468,11 @@ fn restore(caller: &mut Caller<'_, State>, link: &Link) -> Result<usize> {
         peak: 0,
         ..snapshot.heap.clone()
     };
+    // (a candidate reads files again, as a run does; none writes, since the driver's tail never runs)
+    if state.files.changed() {
+        bail!("a candidate changed files, which a persistent run does not write");
+    }
+    state.files.forget_files();
     state.last_error = snapshot.last_error;
     state.tls.clone_from(&snapshot.tls);
     state.command_line_at = snapshot.command_line_at;

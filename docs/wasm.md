@@ -378,9 +378,21 @@ changes), and runs each compile on a thread of its own.
 * The host implements the imports with Win32 semantics, in Rust:
   * Files and directories use `std::fs`, relative to the run's directory. `FindFirstFileA` matches
     case-insensitively and returns its matches in sorted order.
-  * On Windows, a run lists each directory it looks in once, and the listing answers whether a file is there: the
-    compiler looks each header up in every include directory. Anything the run creates, writes or deletes drops the
-    listings. This took an Echoes unit from about 2.7 s to 0.85 s.
+  * A run reads the disk once (`crates/mwcc-wasm/src/files.rs`). It lists each directory it looks in once, and the
+    listing answers whether a file is there and what it is: the compiler looks each header up in every include
+    directory. This took an Echoes unit from about 2.7 s to 0.85 s. It reads each file once, at its first open, and
+    later opens are served from memory. The linker opens each object seven times: the driver identifies it and
+    takes its time, the importer plugin checks its header and reads it for the project's sizes, and the link checks
+    it and reads it again.
+  * What a run creates, writes, deletes or removes stays in memory, and the run sees it from then on: a file it
+    reopens, `GetFileAttributesA` and `FindFirstFileA`. It reaches the disk when the module ends (`ExitProcess` or
+    its return, whatever the exit code): the directories it created, then the files it deleted, the files it wrote,
+    and the directories it removed. A run that traps, times out or is cancelled leaves the disk as it was. A write
+    that fails then (a full disk, a file another process has locked) is reported on the standard error, and a run
+    that succeeded exits with 1.
+  * With both, Echoes' `main.elf` links in 0.68 s instead of 1.03 s; the system's time in it went from 0.52 s to
+    0.21 s, and its other I/O calls from 29,564 to 4,635. A persistent run reads the files again for each candidate,
+    and a candidate does not write any.
   * A handle gets the lowest free value, as on Windows: the compiler keeps file handles in 16-bit reference numbers,
     and values that only grew passed 0x8000 in a large precompile.
   * On a Unix host, the compiler sees the file system as drive `Z:`, as under wibo: `/home/x/a.c` is `Z:\home\x\a.c`.
