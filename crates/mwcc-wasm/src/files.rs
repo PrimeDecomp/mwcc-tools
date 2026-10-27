@@ -392,22 +392,36 @@ impl Files {
             None if in_created => return Found::NoFile,
             None => {}
         }
+        // (the path as the disk spells it, where the listing has the name in another case: on a case-sensitive file
+        // system only that one reads; the parent's, where the run found it already)
+        let mut on_disk = None;
+        let parent_on_disk = match parent.as_ref().and_then(|p| self.nodes.get(p)) {
+            Some(Node::Directory { path, .. }) => Some(path.clone()),
+            _ => None,
+        };
         let found = match (path.parent(), path.file_name(), &parent) {
-            (Some(directory), Some(name), Some(parent)) => match self.listing(parent, directory) {
-                None => Found::NoPath,
-                Some(listing) => {
-                    let name = name.to_string_lossy();
-                    match listing.by_name.get(&name.to_ascii_uppercase()) {
-                        Some(&i) => found_of(listing.entries[i].clone()),
-                        // (perhaps a short (8.3) alias, which a listing does not have)
-                        None if name.contains('~') => metadata_of(path),
-                        None => Found::NoFile,
+            (Some(directory), Some(name), Some(parent)) => {
+                let directory = parent_on_disk.as_deref().unwrap_or(directory);
+                match self.listing(parent, directory) {
+                    None => Found::NoPath,
+                    Some(listing) => {
+                        let name = name.to_string_lossy();
+                        match listing.by_name.get(&name.to_ascii_uppercase()) {
+                            Some(&i) => {
+                                on_disk = Some(directory.join(&listing.entries[i].name));
+                                found_of(listing.entries[i].clone())
+                            }
+                            // (perhaps a short (8.3) alias, which a listing does not have)
+                            None if name.contains('~') => metadata_of(path),
+                            None => Found::NoFile,
+                        }
                     }
                 }
-            },
+            }
             // (a root)
             _ => metadata_of(path),
         };
+        let path = on_disk.as_deref().unwrap_or(path);
         match &found {
             Found::File(entry) => {
                 self.nodes.insert(
