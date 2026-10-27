@@ -48,6 +48,7 @@ impl PosixSpawnAttr {
         &mut self.0
     }
 
+    #[cfg(target_os = "macos")]
     fn setflags(&mut self, flags: libc::c_short) -> anyhow::Result<()> {
         unsafe {
             check_posix_spawn(

@@ -19,7 +19,7 @@ pub fn register_sigint() {
     // Safety: registering a signal handler is libc unsafe code.
     unsafe {
         let mut sa: libc::sigaction = std::mem::zeroed();
-        sa.sa_sigaction = sigint_handler as libc::sighandler_t;
+        sa.sa_sigaction = sigint_handler as *const () as libc::sighandler_t;
         sa.sa_flags = libc::SA_RESETHAND;
         #[cfg(not(miri))]
         libc::sigaction(libc::SIGINT, &sa, std::ptr::null_mut());
