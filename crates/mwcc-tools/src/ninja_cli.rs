@@ -292,9 +292,6 @@ mod in_process {
     pub struct InProcess {
         /// The mwcc checkout (`MWCC_ORACLE_ROOT`, or the one this executable is in), when there is one.
         checkout: Option<PathBuf>,
-        /// The root the modules are in, once a command needs it, and whether it is the download cache (a released
-        /// compiler's module is downloaded before its first run): the checkout, else the cache.
-        root: std::sync::OnceLock<Result<(PathBuf, bool), String>>,
         environment: Vec<(String, String)>,
         /// The modules loaded (each once, before its first run, while the others wait).
         loaded: Mutex<HashSet<PathBuf>>,
@@ -319,7 +316,6 @@ mod in_process {
         pub fn new(checkout: Option<PathBuf>) -> Self {
             Self {
                 checkout,
-                root: std::sync::OnceLock::new(),
                 environment: std::env::vars().collect(),
                 loaded: Mutex::new(HashSet::new()),
                 runs: AtomicUsize::new(0),
@@ -347,23 +343,6 @@ mod in_process {
                 bytes as f64 / 1e6,
                 self.transformed.load(Ordering::Relaxed)
             )
-        }
-
-        /// The root the modules are in, and whether it is the download cache (prepared the first time).
-        fn root(&self) -> Result<(&Path, bool)> {
-            let root = self.root.get_or_init(|| match &self.checkout {
-                Some(checkout) => Ok((checkout.clone(), false)),
-                None => (|| -> Result<(PathBuf, bool)> {
-                    let cache = crate::wasm_download::cache_root()?;
-                    crate::wasm_download::prepare(&cache)?;
-                    Ok((cache, true))
-                })()
-                .map_err(|e| format!("{e:#}")),
-            });
-            match root {
-                Ok((root, downloads)) => Ok((root, *downloads)),
-                Err(e) => Err(anyhow::anyhow!("{e}")),
-            }
         }
 
         fn preload(&self, module: &Path) -> Result<()> {
@@ -530,28 +509,22 @@ mod in_process {
             outputs: &[PathBuf],
             output: &mut dyn FnMut(&[u8]),
         ) -> Option<Result<Termination>> {
-            let (root, downloads) = match self.root() {
-                Ok(root) => root,
-                Err(e) => return Some(Err(e)),
+            // (the checkout's module, else the released one: downloaded before its first run)
+            let found = match plan(cmdline) {
+                Some(plan) => match crate::wasm_download::module_for(
+                    self.checkout.as_deref(),
+                    Path::new(&plan.program),
+                ) {
+                    Ok(found) => found.map(|found| (plan, found)),
+                    Err(e) => return Some(Err(e)),
+                },
+                None => None,
             };
-            let plan = plan(cmdline);
-            if downloads
-                && let Some(plan) = &plan
-                && let Err(e) = crate::wasm_download::ensure_for(root, Path::new(&plan.program))
-            {
-                return Some(Err(e));
-            }
-            let found = plan.and_then(|plan| {
-                let program = Path::new(&plan.program);
-                module::module_of_copy(root, program)
-                    .or_else(|| module::linker_module_of_copy(root, program))
-                    .map(|module| (plan, module))
-            });
-            let Some((plan, (version, module))) = found else {
+            let Some((plan, (root, version, module))) = found else {
                 return Some(self.process(cmdline, outputs, output));
             };
             let began = Instant::now();
-            let termination = self.run(root, &plan, version, &module, outputs, output);
+            let termination = self.run(&root, &plan, version, &module, outputs, output);
             self.runs.fetch_add(1, Ordering::Relaxed);
             self.micros
                 .fetch_add(began.elapsed().as_micros() as u64, Ordering::Relaxed);

@@ -28,7 +28,8 @@ mwcc-tools run ninja [-C DIR] [-f FILE] -t commands [-s] [TARGETS...]\n\
 mwcc-tools run ninja [-C DIR] [-f FILE] -t inputs [-E] [-0] [-d] [TARGETS...]\n\
 mwcc-tools run ninja [-C DIR] [-f FILE] -t targets all\n\n\
 Runs EXE with ARGS. A compiler or linker whose WebAssembly module is built (one with the size and SHA-1 in \
-MWCC_ORACLE_ROOT's config/<version>/config.json) runs in process; anything else runs as a process (off Windows \
+MWCC_ORACLE_ROOT's config/<version>/config.json), or released (its module is then downloaded to the user's cache, \
+or MWCC_WASM_CACHE; not with MWCC_WASM_DOWNLOAD=0), runs in process; anything else runs as a process (off Windows \
 through MWCC_WIBO, else build/tools/wibo here, else the checkout's, else wibo on the path). MWCC_IN_PROCESS=0 runs \
 every executable, MWCC_IN_PROCESS_LINKER=0 the linkers. MWCC_RUN_TIMING=1 prints where the time went.\n\n\
 `run ninja` builds the project's build.ninja in place of ninja, with ninja's options; configure the project \
@@ -49,17 +50,12 @@ pub fn root() -> Result<PathBuf> {
         .context("set MWCC_ORACLE_ROOT to the mwcc checkout")
 }
 
-/// The root a run's modules are in, and whether it is the download cache ([`crate::wasm_download`]): [`root`], else
-/// the cache, where the released modules are downloaded as the build needs them.
-pub fn run_root() -> Result<(PathBuf, bool)> {
+/// The root a run's process looks in (for wibo): [`root`], else the download cache.
+pub fn run_root() -> Result<PathBuf> {
     match root() {
-        Ok(root) => Ok((root, false)),
+        Ok(root) => Ok(root),
         #[cfg(feature = "wasm")]
-        Err(_) => {
-            let root = crate::wasm_download::cache_root()?;
-            crate::wasm_download::prepare(&root)?;
-            Ok((root, true))
-        }
+        Err(_) => Ok(crate::wasm_download::cache()?.to_path_buf()),
         #[cfg(not(feature = "wasm"))]
         Err(e) => Err(e),
     }
@@ -98,21 +94,14 @@ pub fn run(args: &[String]) -> Result<i32> {
         return crate::ninja_cli::run(&args[1..]);
     }
     let began = Instant::now();
-    let (root, downloads) = run_root()?;
     let compiler = if is_sjiswrap(&args[0]) { 1 } else { 0 };
     let (executable, compiler_args) = match args.get(compiler) {
         Some(executable) => (Path::new(executable), &args[compiler + 1..]),
         None => bail!("{} needs the compiler to run", args[0]),
     };
     #[cfg(feature = "wasm")]
-    if downloads {
-        crate::wasm_download::ensure_for(&root, executable)?;
-    }
-    #[cfg(not(feature = "wasm"))]
-    let _ = downloads;
-    #[cfg(feature = "wasm")]
-    if let Some((version, module)) = mwcc_oracle_core::in_process::module_of_copy(&root, executable)
-        .or_else(|| mwcc_oracle_core::in_process::linker_module_of_copy(&root, executable))
+    if let Some((root, version, module)) =
+        crate::wasm_download::module_for(root().ok().as_deref(), executable)?
     {
         let timing = env::var_os("MWCC_RUN_TIMING").is_some_and(|v| v == "1");
         let loading = Instant::now();
@@ -167,6 +156,7 @@ pub fn run(args: &[String]) -> Result<i32> {
     }
     #[cfg(not(feature = "wasm"))]
     let _ = compiler_args;
+    let root = run_root()?;
     let status = runner::project_launcher(&env::current_dir()?, &root, Path::new(&args[0]))?
         .args(&args[1..])
         .status()

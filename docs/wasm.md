@@ -455,7 +455,8 @@ cargo replaces `mwcc-tools.exe` with a new file.
 ### Without a checkout: the released modules
 
 Without `MWCC_ORACLE_ROOT`, and outside a checkout (a released `mwcc-tools`), `run` and `run ninja` take the modules
-from a cache laid out as a checkout: `MWCC_WASM_CACHE`, else `mwcc-tools/v<version>` in the user's cache directory
+from a cache laid out as a checkout; with one, the modules it has not built (a checkout with only GC 2.7's), unless
+`MWCC_WASM_DOWNLOAD=0`. The cache is `MWCC_WASM_CACHE`, else `mwcc-tools/v<version>` in the user's cache directory
 (`%LOCALAPPDATA%`, `$XDG_CACHE_HOME` or `~/.cache`, `~/Library/Caches`). The executable writes its own copies of the
 released versions' `config/<version>/config.json` there. A compiler or linker that is a copy of one of their
 originals, and whose module the cache lacks, gets its version's release archive first

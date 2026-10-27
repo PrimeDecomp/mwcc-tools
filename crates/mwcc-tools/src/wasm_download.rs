@@ -169,6 +169,53 @@ fn identity(config: &str) -> Option<(u64, String)> {
     ))
 }
 
+/// The download cache, prepared the first time.
+pub fn cache() -> Result<&'static Path> {
+    static CACHE: std::sync::OnceLock<Result<PathBuf, String>> = std::sync::OnceLock::new();
+    let cache = CACHE.get_or_init(|| {
+        (|| {
+            let root = cache_root()?;
+            prepare(&root)?;
+            Ok::<_, anyhow::Error>(root)
+        })()
+        .map_err(|e| format!("{e:#}"))
+    });
+    match cache {
+        Ok(root) => Ok(root),
+        Err(e) => Err(anyhow::anyhow!("{e}")),
+    }
+}
+
+/// EXECUTABLE's module (a compiler's or a linker's) and the root it is in: CHECKOUT's when it has it, else the
+/// download cache's, downloaded when EXECUTABLE is a copy of a released version's original. None: EXECUTABLE runs as
+/// a process.
+pub fn module_for(
+    checkout: Option<&Path>,
+    executable: &Path,
+) -> Result<Option<(PathBuf, mwcc_oracle_core::version::Version, PathBuf)>> {
+    use mwcc_oracle_core::in_process::{linker_module_of_copy, module_of_copy};
+    let lookup = |root: &Path| {
+        module_of_copy(root, executable)
+            .or_else(|| linker_module_of_copy(root, executable))
+            .map(|(version, module)| (root.to_path_buf(), version, module))
+    };
+    if let Some(found) = checkout.and_then(lookup) {
+        return Ok(Some(found));
+    }
+    // (a checkout without the module, such as one with only GC 2.7 built: the released one)
+    if checkout.is_some() && !enabled() {
+        return Ok(None);
+    }
+    let cache = match cache() {
+        Ok(cache) => cache,
+        // (no cache directory: the checkout's modules only)
+        Err(_) if checkout.is_some() => return Ok(None),
+        Err(e) => return Err(e),
+    };
+    ensure_for(cache, executable)?;
+    Ok(lookup(cache))
+}
+
 /// The executables this process has looked at already (a build runs each many times). Its lock is held while one is
 /// looked at, so the build's other runs of it wait for its download instead of running the executable.
 static LOOKED_AT: Mutex<Option<HashSet<PathBuf>>> = Mutex::new(None);
