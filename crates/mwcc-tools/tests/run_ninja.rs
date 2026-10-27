@@ -201,3 +201,88 @@ fn the_inputs_and_targets_are_ninjas() {
     );
     assert_eq!(ninja(dir.path(), &["-t", "inputs", "nothing"]).0, 1);
 }
+
+/// The `--json` file of `run ninja ARGS` in DIR (written at DIR/out.json), and its exit code.
+fn json(dir: &Path, args: &[&str]) -> (serde_json::Value, i32) {
+    let mut all = vec!["--json", "out.json"];
+    all.extend(args);
+    let (code, _) = ninja(dir, &all);
+    let text = fs::read_to_string(dir.join("out.json")).unwrap();
+    (serde_json::from_str(&text).unwrap(), code)
+}
+
+#[test]
+fn json_tells_what_the_build_did_and_each_failure_with_its_own_output() {
+    let dir = project();
+    let (report, code) = json(dir.path(), &["-n"]);
+    assert_eq!(code, 0);
+    assert_eq!(
+        (&report["result"], &report["dry_run"], &report["tasks_run"]),
+        (&"succeeded".into(), &true.into(), &2.into())
+    );
+    let (report, code) = json(dir.path(), &[]);
+    assert_eq!(code, 0);
+    assert_eq!(
+        (&report["result"], &report["dry_run"], &report["tasks_run"]),
+        (&"succeeded".into(), &false.into(), &2.into())
+    );
+    assert_eq!(report["failures"], serde_json::json!([]));
+    assert!(report["error"].is_null());
+
+    let (report, code) = json(dir.path(), &["nothing"]);
+    assert_eq!((&report["result"], code), (&"error".into(), 1));
+    assert!(report["error"].as_str().unwrap().contains("unknown target"));
+
+    // (two that fail, one that does not: each failure keeps only its own output)
+    let (fail, copy) = if cfg!(windows) {
+        ("cmd /c echo oops $out& exit 1", "cmd /c type $in > $out")
+    } else {
+        ("echo oops $out; exit 1", "cat $in > $out")
+    };
+    fs::write(
+        dir.path().join("build.ninja"),
+        format!(
+            "rule fail\n  command = {fail}\n  description = FAIL $out\n\
+             rule cc\n  command = {copy}\n\
+             build x.o: fail a.c\nbuild y.o: fail a.c\nbuild z.o: cc a.c\n"
+        ),
+    )
+    .unwrap();
+    let (report, code) = json(dir.path(), &["-k", "0", "-j", "1"]);
+    assert_eq!(code, 1);
+    assert_eq!(
+        (&report["result"], &report["tasks_run"]),
+        (&"failed".into(), &1.into())
+    );
+    let failures = report["failures"].as_array().unwrap();
+    assert_eq!(failures.len(), 2, "{report}");
+    let mut outputs: Vec<&str> = failures
+        .iter()
+        .map(|f| f["outputs"][0].as_str().unwrap())
+        .collect();
+    outputs.sort();
+    assert_eq!(outputs, ["x.o", "y.o"]);
+    for failure in failures {
+        let out = failure["outputs"][0].as_str().unwrap();
+        assert_eq!(failure["description"], format!("FAIL {out}"));
+        assert!(failure["command"].as_str().unwrap().contains("oops"));
+        assert_eq!(
+            failure["output"].as_str().unwrap().trim(),
+            format!("oops {out}")
+        );
+        assert_eq!(failure["interrupted"], false);
+    }
+
+    // (FILE is where the build began, whatever -C says)
+    let parent = tempfile::tempdir().unwrap();
+    let project = parent.path().join("p");
+    fs::create_dir(&project).unwrap();
+    fs::copy(dir.path().join("a.c"), project.join("a.c")).unwrap();
+    fs::write(
+        project.join("build.ninja"),
+        "rule cc\n  command = x\nbuild z.o: phony a.c\n",
+    )
+    .unwrap();
+    let (report, code) = json(parent.path(), &["-C", "p"]);
+    assert_eq!((&report["result"], code), (&"succeeded".into(), 0));
+}

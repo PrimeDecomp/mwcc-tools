@@ -344,6 +344,32 @@ pub struct Options {
     pub dry_run: bool,
 }
 
+/// (mwcc-ninja: `--json`) A build that failed or was interrupted: its outputs, description and command, and its
+/// own console output.
+pub struct Failure {
+    pub outputs: Vec<String>,
+    pub description: Option<String>,
+    pub command: Option<String>,
+    pub interrupted: bool,
+    pub output: Vec<u8>,
+}
+
+impl Failure {
+    fn of(graph: &Graph, build: &Build, interrupted: bool, output: &[u8]) -> Self {
+        Failure {
+            outputs: build
+                .outs()
+                .iter()
+                .map(|&id| graph.file(id).name.clone())
+                .collect(),
+            description: build.desc.clone(),
+            command: build.cmdline.clone(),
+            interrupted,
+            output: output.to_vec(),
+        }
+    }
+}
+
 pub struct Work<'a> {
     graph: Graph,
     db: db::Writer,
@@ -353,6 +379,8 @@ pub struct Work<'a> {
     last_hashes: Hashes,
     build_states: BuildStates,
     pub tasks_run: usize,
+    /// The builds that failed or were interrupted, in the order they ended (mwcc-ninja).
+    pub failures: Vec<Failure>,
     /// In a dry run, the outputs of the builds that would have run (and of the phony builds over them).
     would_run: HashSet<FileId>,
 }
@@ -377,6 +405,7 @@ impl<'a> Work<'a> {
             last_hashes,
             build_states: BuildStates::new(build_count, pools),
             tasks_run: 0,
+            failures: Vec::new(),
             would_run: HashSet::new(),
         }
     }
@@ -908,10 +937,14 @@ impl<'a> Work<'a> {
                         }
                     }
                     tasks_failed += 1;
+                    self.failures
+                        .push(Failure::of(&self.graph, build, false, &task.result.output));
                     self.build_states
                         .set(task.buildid, build, BuildState::Failed);
                 }
                 process::Termination::Interrupted => {
+                    self.failures
+                        .push(Failure::of(&self.graph, build, true, &task.result.output));
                     // If the task was interrupted bail immediately.
                     return Ok(false);
                 }

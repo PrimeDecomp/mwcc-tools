@@ -11,6 +11,8 @@ rust-version.workspace = true
 [dependencies]
 anyhow.workspace = true
 lexopt = "0.3.0"
+# (at its default features, as mwcc-project: `--json`)
+serde_json = "1.0.145"
 libc = "0.2"
 rustc-hash = "2.1.3"
 

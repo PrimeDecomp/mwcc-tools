@@ -845,6 +845,7 @@ dependencies = [
  "lexopt",
  "libc",
  "rustc-hash",
+ "serde_json",
  "tempfile",
  "windows-sys 0.52.0",
 ]

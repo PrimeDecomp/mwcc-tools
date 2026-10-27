@@ -30,10 +30,20 @@ struct BuildArgs {
     build_filename: Option<String>,
     targets: Vec<String>,
     verbose: bool,
+    /// Where `--json` writes what the build did (mwcc-ninja).
+    json: Option<std::path::PathBuf>,
 }
 
-/// Returns the number of completed tasks on a successful build.
-fn build(args: BuildArgs) -> anyhow::Result<Option<usize>> {
+/// (mwcc-ninja: `--json`) What a build did: the tasks that ran (in a dry run, would run), and those that failed.
+#[derive(Default)]
+struct Outcome {
+    tasks_run: usize,
+    failures: Vec<work::Failure>,
+}
+
+/// Returns the number of completed tasks on a successful build. (mwcc-ninja) OUTCOME is what it did, whether it
+/// succeeds or not.
+fn build(args: BuildArgs, outcome: &mut Outcome) -> anyhow::Result<Option<usize>> {
     let (dumb_console, fancy_console);
     // (mwcc-ninja: a dry run's lines are ninja's on a pipe, whatever the console)
     let progress: &dyn Progress = if terminal::use_fancy() && !args.options.dry_run {
@@ -64,7 +74,10 @@ fn build(args: BuildArgs) -> anyhow::Result<Option<usize>> {
     let mut regenerations = 0;
     while let Some(target) = build_file_target {
         work.want_file(target)?;
-        if !trace::scope("work.run", || work.run())? {
+        let succeeded = trace::scope("work.run", || work.run())?;
+        outcome.tasks_run = tasks_run + work.tasks_run;
+        outcome.failures.append(&mut work.failures);
+        if !succeeded {
             return Ok(None);
         }
         if work.tasks_run == 0 {
@@ -127,7 +140,10 @@ fn build(args: BuildArgs) -> anyhow::Result<Option<usize>> {
         work.want_every_file(build_file_target)?;
     }
 
-    if !trace::scope("work.run", || work.run())? {
+    let succeeded = trace::scope("work.run", || work.run())?;
+    outcome.tasks_run = tasks_run + work.tasks_run;
+    outcome.failures.append(&mut work.failures);
+    if !succeeded {
         return Ok(None);
     }
     // Include any tasks from initial build in final count of steps.
@@ -447,6 +463,7 @@ fn debugtool(args: &mut BuildArgs, tool: &str) -> anyhow::Result<Option<i32>> {
 
 fn parse_args(name: &str, argv: Vec<OsString>) -> anyhow::Result<Result<BuildArgs, i32>> {
     let mut args = BuildArgs::default();
+    let start = std::env::current_dir()?;
     // (ninja's default: the first failure stops the build)
     args.options.failures_left = Some(1);
 
@@ -465,6 +482,7 @@ options:
 -j N     parallelism [default: use system thread count]
 -k N     keep going until N failures (0 means infinity) [default: 1]
 -n       dry run (don't run commands but act like they succeeded)
+--json FILE  write what the build did to FILE: tasks run, failed commands and their output
 -v       print executed command lines
 
 -t tool  tools (`-t list` to list)
@@ -513,6 +531,8 @@ options:
                 args.options.failures_left = (failures > 0).then_some(failures);
             }
             Short('n') => args.options.dry_run = true,
+            // (against the directory the build began in, whatever `-C` says)
+            Long("json") => args.json = Some(start.join(parser.value()?)),
             Short('v') | Long("verbose") => args.verbose = true,
 
             Long("version") => {
@@ -533,6 +553,48 @@ options:
     Ok(Ok(args))
 }
 
+/// (mwcc-ninja) `--json FILE`: what the build did, for tools to read rather than its console output. `result` is
+/// `succeeded`, `failed`, `interrupted` or `error` (the build could not run: `error` says why); `tasks_run` the tasks
+/// that ran (in a dry run, would run); `failures` each failed or interrupted build, with its own console output.
+fn write_json(
+    path: &std::path::Path,
+    dry_run: bool,
+    outcome: &Outcome,
+    built: &anyhow::Result<Option<usize>>,
+) -> anyhow::Result<()> {
+    let interrupted =
+        crate::signal::was_interrupted() || outcome.failures.iter().any(|f| f.interrupted);
+    let (result, error) = match built {
+        Err(err) => ("error", Some(format!("{err:#}"))),
+        Ok(None) if interrupted => ("interrupted", None),
+        Ok(None) => ("failed", None),
+        Ok(Some(_)) => ("succeeded", None),
+    };
+    let failures: Vec<serde_json::Value> = outcome
+        .failures
+        .iter()
+        .map(|failure| {
+            serde_json::json!({
+                "outputs": failure.outputs,
+                "description": failure.description,
+                "command": failure.command,
+                "interrupted": failure.interrupted,
+                "output": String::from_utf8_lossy(&failure.output),
+            })
+        })
+        .collect();
+    let report = serde_json::json!({
+        "result": result,
+        "dry_run": dry_run,
+        "tasks_run": outcome.tasks_run,
+        "failures": failures,
+        "error": error,
+    });
+    let mut text = serde_json::to_string_pretty(&report)?;
+    text.push('\n');
+    std::fs::write(path, text).map_err(|err| anyhow!("write {}: {}", path.display(), err))
+}
+
 fn run_impl(
     name: &str,
     argv: Vec<OsString>,
@@ -544,8 +606,14 @@ fn run_impl(
     };
     args.options.executor = executor;
     let dry_run = args.options.dry_run;
+    let json = args.json.take();
+    let mut outcome = Outcome::default();
+    let built = build(args, &mut outcome);
+    if let Some(path) = &json {
+        write_json(path, dry_run, &outcome, &built)?;
+    }
 
-    match build(args)? {
+    match built? {
         None => {
             // (after the failing task's output, ninja's line)
             // (mwcc-ninja: ninja's own line, which tools match)

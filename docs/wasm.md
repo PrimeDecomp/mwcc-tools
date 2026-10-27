@@ -550,8 +550,16 @@ python configure.py
   byte, on Windows (Echoes) and Linux (Echoes and Prime): the inputs of `main.elf`, a REL's `.plf`, an object, `ok`,
   `all_source` and the default targets, with each option; and paths with spaces and quotes. Ninja 1.12's `-t inputs`
   differs: it lists the phony outputs and not the inputs of phony steps, and has no options.
-* No tool, nor `-n`, needs `MWCC_ORACLE_ROOT`: only a command that runs does. Nothing is brought up to date or read
-  for a tool but the manifest.
+* `--json FILE` (not ninja's) writes what the build did to FILE (relative to the directory the build began in, not
+  `-C`'s), once it ends, failed or not: `result` (`succeeded`, `failed`, `interrupted`, or `error` when the build
+  could not run, `error` saying why: an unknown target, a manifest that does not parse), `dry_run`, `tasks_run` (the
+  steps that ran, regenerations included; in a dry run, those that would run), and `failures`: each step that failed
+  or was interrupted, in the order they ended, with its `outputs`, `description`, `command`, `interrupted` and its own
+  console `output` (stdout and stderr together, as ninja shows them; UTF-8, lossily). With `-k 0` every failure is
+  there. The console output is as without it. On Echoes, a unit with a syntax error gives one failure whose `output`
+  is mwcc's diagnostic alone.
+* No tool, nor `-n`, looks for the modules (a checkout, or the download cache, which it would prepare): only a
+  command that runs does. Nothing is brought up to date or read for a tool but the manifest.
 * The record of the build is n2's `.n2_db` (in `builddir`, else the build's directory), not `.ninja_log` and
   `.ninja_deps`: switching from ninja to `mwcc-tools run ninja`, or back, runs every step once (about 20 s on
   Echoes on Windows), then each keeps its own record. There is no safe shortcut: ninja keeps the headers each object
