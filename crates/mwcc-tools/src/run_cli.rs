@@ -23,7 +23,8 @@ use std::{
 };
 
 const USAGE: &str = "mwcc-tools run [sjiswrap.exe] EXE ARGS...\nmwcc-run [sjiswrap.exe] EXE ARGS...\n\
-mwcc-tools run ninja [-C DIR] [-f FILE] [-j N] [-k N] [-v] [-d explain] [TARGETS...]\n\n\
+mwcc-tools run ninja [-C DIR] [-f FILE] [-j N] [-k N] [-n] [-v] [-d explain] [TARGETS...]\n\
+mwcc-tools run ninja [-C DIR] [-f FILE] -t commands [-s] [TARGETS...]\n\n\
 Runs EXE with ARGS. A compiler or linker whose WebAssembly module is built (one with the size and SHA-1 in \
 MWCC_ORACLE_ROOT's config/<version>/config.json) runs in process; anything else runs as a process (off Windows \
 through MWCC_WIBO, else build/tools/wibo here, else the checkout's, else wibo on the path). MWCC_IN_PROCESS=0 runs \

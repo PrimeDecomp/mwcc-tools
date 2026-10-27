@@ -8,10 +8,11 @@
 //! * a `.d` file's blanks may be tabs (mwcc starts each continued line with one);
 //! * build.ninja is regenerated until it is up to date, as ninja does, not once;
 //! * `-k` is ninja's: 1 by default, 0 for no limit; once failures stop the build the running tasks finish;
-//! * [`run::run`] takes its arguments, rather than the process's.
+//! * [`run::run`] takes its arguments, rather than the process's;
+//! * ninja's `-n` (a dry run, its lines as ninja's) and `-t commands`.
 //!
 //! The rest is n2's: `.n2_db` in place of ninja's `.ninja_log` and `.ninja_deps` (a build tree is not shared with
-//! ninja: the first build after ninja's runs everything again), every `deps` discovered from the `depfile`, no
+//! ninja: the first build after ninja's runs everything again, as does ninja's after this one), every `deps` discovered from the `depfile`, no
 //! `restat` or `generator` special cases (a step's record is the hash of its command and its files' times).
 #![allow(clippy::all)]
 

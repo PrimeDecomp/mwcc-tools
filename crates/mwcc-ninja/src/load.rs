@@ -252,8 +252,13 @@ pub struct State {
     pub pools: SmallMap<String, usize>,
 }
 
-/// Load build.ninja/.n2_db and return the loaded build graph and state.
-pub fn read(build_filename: &str) -> anyhow::Result<State> {
+/// The build graph of BUILD_FILENAME and its default targets, without .n2_db (mwcc-ninja: `-t commands`).
+pub fn read_graph(build_filename: &str) -> anyhow::Result<(graph::Graph, Vec<FileId>)> {
+    let loader = parse_file(build_filename)?;
+    Ok((loader.graph, loader.default))
+}
+
+fn parse_file(build_filename: &str) -> anyhow::Result<Loader> {
     let mut loader = Loader::new();
     trace::scope("loader.read_file", || {
         let id = loader
@@ -265,17 +270,22 @@ pub fn read(build_filename: &str) -> anyhow::Result<State> {
 
         loader.parse_with_parser(&mut parser, path, &[])
     })?;
+    Ok(loader)
+}
 
+/// Load build.ninja/.n2_db and return the loaded build graph and state. (mwcc-ninja) A DRY_RUN makes no .n2_db.
+pub fn read(build_filename: &str, dry_run: bool) -> anyhow::Result<State> {
+    let mut loader = parse_file(build_filename)?;
     let mut hashes = graph::Hashes::default();
     let db = trace::scope("db::open", || {
         let mut db_path = PathBuf::from(".n2_db");
         if let Some(builddir) = &loader.builddir {
             db_path = Path::new(&builddir).join(db_path);
-            if let Some(parent) = db_path.parent() {
+            if let Some(parent) = db_path.parent().filter(|_| !dry_run) {
                 std::fs::create_dir_all(parent)?;
             }
         };
-        db::open(&db_path, &mut loader.graph, &mut hashes)
+        db::open(&db_path, &mut loader.graph, &mut hashes, !dry_run)
     })
     .map_err(|err| anyhow!("load .n2_db: {}", err))?;
 

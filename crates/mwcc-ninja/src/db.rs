@@ -302,8 +302,14 @@ impl<'a> Reader<'a> {
     }
 }
 
-/// Opens or creates an on-disk database, loading its state into the provided Graph.
-pub fn open(path: &Path, graph: &mut Graph, hashes: &mut Hashes) -> anyhow::Result<Writer> {
+/// Opens or creates an on-disk database, loading its state into the provided Graph. (mwcc-ninja) Unless CREATE, a
+/// database not on disk is not made: the writer writes nowhere (a dry run's, which writes nothing).
+pub fn open(
+    path: &Path,
+    graph: &mut Graph,
+    hashes: &mut Hashes,
+    create: bool,
+) -> anyhow::Result<Writer> {
     match std::fs::OpenOptions::new()
         .read(true)
         .append(true)
@@ -312,6 +318,10 @@ pub fn open(path: &Path, graph: &mut Graph, hashes: &mut Hashes) -> anyhow::Resu
         Ok(mut f) => {
             let ids = Reader::read(&mut f, graph, hashes)?;
             Ok(Writer::from_opened(ids, f))
+        }
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound && !create => {
+            let null = if cfg!(windows) { "NUL" } else { "/dev/null" };
+            Ok(Writer::from_opened(IdMap::default(), File::create(null)?))
         }
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
             let w = Writer::create(path)?;

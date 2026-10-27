@@ -155,7 +155,7 @@ fn help() {
   run [sjiswrap.exe] EXE ARGS...
       a build's compiler wrapper (as wibo): a compiler with a built module runs in process, anything else as itself;
       a copy or link of this executable named mwcc-run runs as `mwcc-tools run`
-  run ninja [-C DIR] [-j N] [-k N] [TARGETS...]
+  run ninja [-C DIR] [-j N] [-k N] [-n] [TARGETS...] | -t commands [-s] [TARGETS...]
       a project's build.ninja (configured without --wrapper) built in place of ninja: the compilers and linkers
       with built modules run in process, any other command as a process (docs/wasm.md)
   corpus --canaries DIR | --project DIR [--oracle-root ROOT] [--version V] [--jobs N] [--all-traces]

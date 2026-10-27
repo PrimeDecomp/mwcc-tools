@@ -339,6 +339,9 @@ pub struct Options {
     pub explain: bool,
     /// When true, just mark targets up to date without running anything.
     pub adopt: bool,
+    /// (mwcc-ninja: ninja's `-n`) Each build that would run is shown as started, and is done without running: what
+    /// depends on its outputs would run too.
+    pub dry_run: bool,
 }
 
 pub struct Work<'a> {
@@ -350,6 +353,8 @@ pub struct Work<'a> {
     last_hashes: Hashes,
     build_states: BuildStates,
     pub tasks_run: usize,
+    /// In a dry run, the outputs of the builds that would have run (and of the phony builds over them).
+    would_run: HashSet<FileId>,
 }
 
 impl<'a> Work<'a> {
@@ -372,6 +377,7 @@ impl<'a> Work<'a> {
             last_hashes,
             build_states: BuildStates::new(build_count, pools),
             tasks_run: 0,
+            would_run: HashSet::new(),
         }
     }
 
@@ -682,6 +688,24 @@ impl<'a> Work<'a> {
             return Ok(true);
         }
 
+        // (mwcc-ninja) In a dry run, a build over one that would have run would run too: on the disk its input has
+        // not changed.
+        if let Some(&input) = build
+            .dirtying_ins()
+            .iter()
+            .chain(build.discovered_ins())
+            .find(|id| self.would_run.contains(id))
+        {
+            if self.options.explain {
+                self.progress.log(&format!(
+                    "explain: {}: input {} would be built",
+                    build.location,
+                    self.graph.file(input).name
+                ));
+            }
+            return Ok(true);
+        }
+
         // (mwcc-ninja) A generator (build.ninja's configure step) as in ninja: dirty only when an input is newer than
         // an output. A regenerated build.ninja's configure step may list other inputs than the one that ran.
         if build.generator {
@@ -814,6 +838,23 @@ impl<'a> Work<'a> {
             while let Some(id) = (!stopping).then(|| self.build_states.pop_ready()).flatten() {
                 if !self.check_build_dirty(id)? {
                     // Not dirty; go directly to the Done state.
+                    let build = &self.graph.builds[id];
+                    if self.options.dry_run
+                        && build.cmdline.is_none()
+                        && build
+                            .dirtying_ins()
+                            .iter()
+                            .any(|id| self.would_run.contains(id))
+                    {
+                        self.would_run.extend(build.outs().iter().copied());
+                    }
+                    self.ready_dependents(id);
+                } else if self.options.dry_run {
+                    // (mwcc-ninja) Shown as ninja shows it, then done.
+                    let build = &self.graph.builds[id];
+                    self.progress.task_started(id, build);
+                    self.tasks_run += 1;
+                    self.would_run.extend(build.outs().iter().copied());
                     self.ready_dependents(id);
                 } else if self.options.adopt {
                     // Act as if the target already finished.
