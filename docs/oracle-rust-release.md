@@ -27,7 +27,8 @@ The WebAssembly builds are published beside them, one archive per compiler versi
 
 Each compiler's `mwcc.wasm` (with its `.version`) and each linker's `mwldeppc.wasm` (with its `.version`) run in
 process in `mwcc-tools`; GC 2.7's and 1.3.2's `mwcceppc.wasm`, `oracle.wasm` and `persist.wasm` are the modules mwdec
-loads. Unpack them into the checkout `MWCC_ORACLE_ROOT` names.
+loads. Unpack them into the checkout `MWCC_ORACLE_ROOT` names. Without one, `mwcc-tools run` downloads its release's
+archives as a build needs them, and `mwcc-tools download wasm` downloads them ahead of time (`docs/wasm.md`).
 
 The build host sets the system-library requirements; the target name does not promise older Linux or macOS
 releases.

@@ -441,7 +441,8 @@ cargo replaces `mwcc-tools.exe` with a new file.
   process when its module is built. It is recognised by the size and SHA-1 in `config/<version>/config.json`, so the checkout needs no copy of the
   compilers; an executable of another size is never read. It gets the wrapper's arguments, directory and environment,
   and writes the object and the `-MMD` `.d` file itself. The wrapper prints its stdout and stderr and exits with its
-  status. The modules and configs are `MWCC_ORACLE_ROOT`'s, or else those of the checkout the executable was built in.
+  status. The modules and configs are `MWCC_ORACLE_ROOT`'s, or else those of the checkout the executable was built in,
+  or else the released ones ([below](#without-a-checkout-the-released-modules)).
 * Anything else (the other compilers and linkers) runs as a process: natively on Windows, elsewhere through wibo,
   taken from the first of `MWCC_WIBO`, the project's own `build/tools/wibo` (relative to the build's directory), the
   checkout's `build/tools/wibo` and `wibo` on the path.
@@ -450,6 +451,26 @@ cargo replaces `mwcc-tools.exe` with a new file.
   byte with its high bit set).
 * A process loads the module from `mwcceppc.cache/` in about 7 ms. With no artifact, each process compiles the
   module (3 to 3.5 s with 24 at once); they all succeed and leave one artifact.
+
+### Without a checkout: the released modules
+
+Without `MWCC_ORACLE_ROOT`, and outside a checkout (a released `mwcc-tools`), `run` and `run ninja` take the modules
+from a cache laid out as a checkout: `MWCC_WASM_CACHE`, else `mwcc-tools/v<version>` in the user's cache directory
+(`%LOCALAPPDATA%`, `$XDG_CACHE_HOME` or `~/.cache`, `~/Library/Caches`). The executable writes its own copies of the
+released versions' `config/<version>/config.json` there. A compiler or linker that is a copy of one of their
+originals, and whose module the cache lacks, gets its version's release archive first
+(`crates/mwcc-tools/src/wasm_download.rs`):
+
+* `mwcc-wasm-GC_2_7`, `-GC_1_3_2` (each with its linker) or `-GC_1_2_5n`, from the GitHub release of the executable's
+  own version, checked against its `.sha256`. Only the archive's modules' directories and `LICENSE` are unpacked.
+* Each module is compiled for the host before it is moved into the cache, under a lock (`.<archive>.lock`): a build's
+  parallel compiles wait for one download and then load the compiled module. A first compile through a debug build
+  takes about 40 s (the compile of the module); every later one takes what it takes from a checkout.
+* GC 2.6 has no release archive; its compiler runs as a process there.
+* `MWCC_WASM_DOWNLOAD=0` does not download (the executable runs as a process). `MWCC_WASM_RELEASE` (a version, such
+  as `0.3.0`) and `MWCC_WASM_RELEASE_URL` (the directory of its assets) take another release's archives; a module of
+  another release than the executable's may not load in it.
+* `mwcc-tools download wasm [VERSION...] [--root DIR]` downloads them ahead of time, into the cache or into DIR.
 
 On Metroid Prime 2: Echoes (USA and PAL, Windows, 24 jobs), every object but `Gecko_ExceptionPPC.o`
 ([Status](#status)) and every `.d` file is identical, the linked binaries pass their hash checks, and a full build

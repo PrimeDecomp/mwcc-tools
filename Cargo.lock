@@ -898,10 +898,13 @@ dependencies = [
  "mwcc-ninja",
  "mwcc-oracle-core",
  "mwcc-project",
+ "mwcc-wasm",
  "serde",
  "serde_json",
+ "sha1",
  "sha2",
  "tempfile",
+ "zip",
 ]
 
 [[package]]

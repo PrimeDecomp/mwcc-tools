@@ -15,6 +15,8 @@ mod run_cli;
 mod serve_cli;
 #[cfg(feature = "wasm")]
 mod transform_dep;
+#[cfg(feature = "wasm")]
+mod wasm_download;
 
 /// The value of the option ARGS[I], the argument after it (I moves to it).
 fn option_value<'a>(args: &'a [String], i: &mut usize) -> Result<&'a String> {
@@ -192,6 +194,7 @@ fn help() {
   package-release OUTPUT.zip --binary FILE --target TARGET [--root DIR] [--source-revision COMMIT] [--notices DIR]
   transform-dep DEP OUT [--root DIR]
   download TOOL OUTPUT [OTHER_OUTPUT...] [--root DIR] [--timeout SECS]
+  download wasm [VERSION...] [--root DIR]   the released WebAssembly compilers and linkers, into the cache `run` uses
   verify|gates [--root DIR] [--ninja FILE] [--jobs N] [--timeout SECS]
 
 The oracle, colouring, inlining, TU, provenance and source-guided tools are methods: `methods` lists them,
@@ -225,6 +228,10 @@ fn run() -> Result<()> {
         Some("provenance") => provenance_cli::run(&args[1..])?,
         Some("--version") => println!("mwcc-tools {}", env!("CARGO_PKG_VERSION")),
         Some("package-release") => release_cli::run(&args[1..])?,
+        #[cfg(feature = "wasm")]
+        Some("download") if args.get(1).is_some_and(|a| a == "wasm") => {
+            wasm_download::command(&args[2..])?
+        }
         Some(
             "configure"
             | "probe-build"

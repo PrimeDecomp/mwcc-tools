@@ -25,8 +25,11 @@ const NAME: &str = "mwcc-tools run ninja";
 #[cfg(feature = "wasm")]
 pub fn run(args: &[String]) -> Result<i32> {
     // (absolute: `-C` changes the directory before the build)
-    let root = std::path::absolute(run_cli::root()?)?;
-    let executor = Arc::new(in_process::InProcess::new(root));
+    let (root, downloads) = run_cli::run_root()?;
+    let executor = Arc::new(in_process::InProcess::new(
+        std::path::absolute(root)?,
+        downloads,
+    ));
     let code = mwcc_ninja::run(NAME, args, Some(executor.clone() as Arc<dyn Executor>))?;
     if std::env::var_os("MWCC_RUN_TIMING").is_some_and(|v| v == "1") {
         eprintln!("{NAME}: {}", executor.summary());
@@ -290,6 +293,8 @@ mod in_process {
     /// Runs the commands of compilers and linkers with modules in process.
     pub struct InProcess {
         root: PathBuf,
+        /// Whether ROOT is the download cache: a released compiler's module is downloaded before its first run.
+        downloads: bool,
         environment: Vec<(String, String)>,
         /// The modules loaded (each once, before its first run, while the others wait).
         loaded: Mutex<HashSet<PathBuf>>,
@@ -311,9 +316,10 @@ mod in_process {
     }
 
     impl InProcess {
-        pub fn new(root: PathBuf) -> Self {
+        pub fn new(root: PathBuf, downloads: bool) -> Self {
             Self {
                 root,
+                downloads,
                 environment: std::env::vars().collect(),
                 loaded: Mutex::new(HashSet::new()),
                 runs: AtomicUsize::new(0),
@@ -506,7 +512,15 @@ mod in_process {
             outputs: &[PathBuf],
             output: &mut dyn FnMut(&[u8]),
         ) -> Option<Result<Termination>> {
-            let found = plan(cmdline).and_then(|plan| {
+            let plan = plan(cmdline);
+            if self.downloads
+                && let Some(plan) = &plan
+                && let Err(e) =
+                    crate::wasm_download::ensure_for(&self.root, Path::new(&plan.program))
+            {
+                return Some(Err(e));
+            }
+            let found = plan.and_then(|plan| {
                 let program = Path::new(&plan.program);
                 module::module_of_copy(&self.root, program)
                     .or_else(|| module::linker_module_of_copy(&self.root, program))

@@ -46,6 +46,22 @@ pub fn root() -> Result<PathBuf> {
         .context("set MWCC_ORACLE_ROOT to the mwcc checkout")
 }
 
+/// The root a run's modules are in, and whether it is the download cache ([`crate::wasm_download`]): [`root`], else
+/// the cache, where the released modules are downloaded as the build needs them.
+pub fn run_root() -> Result<(PathBuf, bool)> {
+    match root() {
+        Ok(root) => Ok((root, false)),
+        #[cfg(feature = "wasm")]
+        Err(_) => {
+            let root = crate::wasm_download::cache_root()?;
+            crate::wasm_download::prepare(&root)?;
+            Ok((root, true))
+        }
+        #[cfg(not(feature = "wasm"))]
+        Err(e) => Err(e),
+    }
+}
+
 /// The command to run, when this process is `mwcc-tools run COMMAND` or `mwcc-run COMMAND`.
 pub fn wrapped_command() -> Option<Vec<String>> {
     let mut args = env::args();
@@ -79,12 +95,18 @@ pub fn run(args: &[String]) -> Result<i32> {
         return crate::ninja_cli::run(&args[1..]);
     }
     let began = Instant::now();
-    let root = root()?;
+    let (root, downloads) = run_root()?;
     let compiler = if is_sjiswrap(&args[0]) { 1 } else { 0 };
     let (executable, compiler_args) = match args.get(compiler) {
         Some(executable) => (Path::new(executable), &args[compiler + 1..]),
         None => bail!("{} needs the compiler to run", args[0]),
     };
+    #[cfg(feature = "wasm")]
+    if downloads {
+        crate::wasm_download::ensure_for(&root, executable)?;
+    }
+    #[cfg(not(feature = "wasm"))]
+    let _ = downloads;
     #[cfg(feature = "wasm")]
     if let Some((version, module)) = mwcc_oracle_core::in_process::module_of_copy(&root, executable)
         .or_else(|| mwcc_oracle_core::in_process::linker_module_of_copy(&root, executable))
