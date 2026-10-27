@@ -171,6 +171,7 @@ impl Loader {
         build.generator = generator;
         build.rspfile = rspfile;
         build.pool = pool;
+        build.rule = b.rule.to_owned();
         build.hide_success = hide_success;
         build.hide_progress = hide_progress;
 

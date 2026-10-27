@@ -1,4 +1,4 @@
-//! `mwcc-tools run ninja`'s `-n` and `-t commands`, as ninja's, on a small project whose commands are processes.
+//! `mwcc-tools run ninja`'s `-n` and `-t` tools, as ninja's, on a small project whose commands are processes.
 use std::{
     fs,
     path::Path,
@@ -69,10 +69,7 @@ fn a_dry_run_shows_what_would_run_and_runs_nothing() {
         .modified()
         .unwrap();
     let (code, out) = ninja(dir.path(), &["-n"]);
-    assert_eq!(
-        (code, out.trim_end()),
-        (0, "mwcc-tools run ninja: no work to do.")
-    );
+    assert_eq!((code, out.trim_end()), (0, "ninja: no work to do."));
 
     // (a.c changed: a.o would be compiled, so main.elf linked, though a.o on the disk is as it was)
     let later = SystemTime::now() + Duration::from_secs(3600);
@@ -162,7 +159,7 @@ fn a_dry_run_stops_where_build_ninja_would_be_regenerated() {
         fs::write(dir.path().join(name), text).unwrap();
     }
     assert_eq!(ninja(dir.path(), &[]).0, 0);
-    assert!(ninja(dir.path(), &["-n"]).1.contains("no work to do"));
+    assert_eq!(ninja(dir.path(), &["-n"]).1.trim(), "ninja: no work to do.");
 
     // (config.json would be split again, so build.ninja regenerated: the dry run ends there, as ninja's)
     let later = SystemTime::now() + Duration::from_secs(3600);
@@ -179,4 +176,28 @@ fn a_dry_run_stops_where_build_ninja_would_be_regenerated() {
         .map(|line| line.split_once("] ").map_or(line, |(_, step)| step))
         .collect();
     assert_eq!(steps, ["SPLIT config.json", "RUN configure.py"], "{out}");
+}
+
+#[test]
+fn the_inputs_and_targets_are_ninjas() {
+    let dir = project();
+    let end = if cfg!(windows) { "\r\n" } else { "\n" };
+    // (a.o is an input of main.elf; all is phony, and main.elf its input)
+    assert_eq!(
+        ninja(dir.path(), &["-t", "inputs", "main.elf"]),
+        (0, format!("a.c{end}a.o{end}"))
+    );
+    assert_eq!(
+        ninja(dir.path(), &["-t", "inputs"]),
+        (0, format!("a.c{end}a.o{end}main.elf{end}"))
+    );
+    assert_eq!(
+        ninja(dir.path(), &["-t", "inputs", "-0", "main.elf"]),
+        (0, "a.c\0a.o\0".to_owned())
+    );
+    assert_eq!(
+        ninja(dir.path(), &["-t", "targets", "all"]),
+        (0, format!("a.o: cc{end}main.elf: link{end}all: phony{end}"))
+    );
+    assert_eq!(ninja(dir.path(), &["-t", "inputs", "nothing"]).0, 1);
 }

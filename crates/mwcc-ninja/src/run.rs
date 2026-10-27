@@ -17,7 +17,7 @@ use crate::{
     terminal, trace, work,
 };
 use anyhow::anyhow;
-use std::{ffi::OsString, sync::Arc};
+use std::{ffi::OsString, io::Write as _, sync::Arc};
 
 /// How many times build.ninja may be regenerated in one run (ninja's limit).
 pub const MAX_REGENERATIONS: usize = 100;
@@ -193,26 +193,7 @@ options:
         }
     }
     let (graph, default) = load::read_graph(build_filename)?;
-    let targets = if !names.is_empty() {
-        names
-            .iter()
-            .map(|name| lookup(&graph, name))
-            .collect::<anyhow::Result<Vec<_>>>()?
-    } else if !default.is_empty() {
-        default
-    } else {
-        let mut roots = vec![];
-        for build in 0..graph.builds.next_id().index() {
-            let build = &graph.builds[BuildId::from(build)];
-            roots.extend(
-                build
-                    .outs()
-                    .iter()
-                    .filter(|&&id| graph.file(id).dependents.is_empty()),
-            );
-        }
-        roots
-    };
+    let targets = targets_of(&graph, default, &names)?;
 
     fn print(
         graph: &Graph,
@@ -232,9 +213,7 @@ options:
             }
         }
         if let Some(cmdline) = &build.cmdline {
-            // (ninja's lines end as its C runtime ends them: CRLF on Windows)
-            let end = if cfg!(windows) { "\r\n" } else { "\n" };
-            write!(out, "{cmdline}{end}")?;
+            write!(out, "{cmdline}{EOL}")?;
         }
         Ok(())
     }
@@ -253,12 +232,182 @@ options:
     Ok(0)
 }
 
+/// The end of a line a ninja tool prints, as its C runtime ends it: CRLF on Windows.
+const EOL: &str = if cfg!(windows) { "\r\n" } else { "\n" };
+
+/// The files a tool is about, as ninja finds them: those NAMES (ninja's target names), else the DEFAULT targets, else
+/// the outputs nothing depends on.
+fn targets_of(graph: &Graph, default: Vec<FileId>, names: &[&str]) -> anyhow::Result<Vec<FileId>> {
+    if !names.is_empty() {
+        return names.iter().map(|name| lookup(graph, name)).collect();
+    }
+    if !default.is_empty() {
+        return Ok(default);
+    }
+    let mut roots = vec![];
+    for build in 0..graph.builds.next_id().index() {
+        let build = &graph.builds[BuildId::from(build)];
+        roots.extend(
+            build
+                .outs()
+                .iter()
+                .filter(|&&id| graph.file(id).dependents.is_empty()),
+        );
+    }
+    Ok(roots)
+}
+
+/// PATH as ninja's `-t inputs` escapes it for the host's shell: as is when it needs nothing, else quoted (ninja's
+/// `GetWin32EscapedString` on Windows, `GetShellEscapedString` elsewhere).
+fn shell_escaped(path: &str) -> String {
+    if cfg!(windows) {
+        if !path.contains([' ', '"']) {
+            return path.to_owned();
+        }
+        let mut escaped = String::from('"');
+        let mut backslashes = 0;
+        for c in path.chars() {
+            match c {
+                '\\' => backslashes += 1,
+                '"' => {
+                    // (the backslashes before a quote doubled, and the quote escaped)
+                    escaped.extend(std::iter::repeat_n('\\', backslashes + 1));
+                    backslashes = 0;
+                }
+                _ => backslashes = 0,
+            }
+            escaped.push(c);
+        }
+        escaped.extend(std::iter::repeat_n('\\', backslashes));
+        escaped.push('"');
+        escaped
+    } else {
+        let safe = |c: char| c.is_ascii_alphanumeric() || matches!(c, '_' | '+' | '-' | '.' | '/');
+        if path.chars().all(safe) {
+            return path.to_owned();
+        }
+        format!("'{}'", path.replace('\'', "'\\''"))
+    }
+}
+
+/// (mwcc-ninja) `-t inputs [-E] [-0] [-d] [TARGETS]`, as ninja's: every file the builds of TARGETS (else the defaults,
+/// else what nothing depends on) take, through the builds that make them, without the targets themselves (unless
+/// another takes them), the outputs of phony builds and the inputs found in depfiles; sorted (with `-d`, in the order
+/// found: a build's inputs after theirs), shell-escaped (`-E`: not), one per line (`-0`: each ended by a NUL).
+fn inputs(build_filename: &str, rest: &[String]) -> anyhow::Result<i32> {
+    let (mut escape, mut nul, mut dependency_order) = (true, false, false);
+    let mut names = vec![];
+    for arg in rest {
+        match arg.as_str() {
+            "-E" | "--no-shell-escape" => escape = false,
+            "-0" | "--print0" => nul = true,
+            "-d" | "--dependency-order" => dependency_order = true,
+            option if option.starts_with('-') && option.len() > 1 => {
+                println!(
+                    "Usage '-t inputs [options] [targets]
+
+List all inputs used for a set of targets, sorted in dependency order.
+Note that by default, results are shell escaped, and sorted alphabetically,
+and never include validation target paths.
+
+Options:
+  -h, --help          Print this message.
+  -0, --print0            Use \\0, instead of \\n as a line terminator.
+  -E, --no-shell-escape   Do not shell escape the result.
+  -d, --dependency-order  Sort results by dependency order."
+                );
+                return Ok(1);
+            }
+            name => names.push(name),
+        }
+    }
+    let (graph, default) = load::read_graph(build_filename)?;
+    let targets = targets_of(&graph, default, &names)?;
+
+    // (ninja's InputsCollector)
+    fn visit(
+        graph: &Graph,
+        id: FileId,
+        seen: &mut std::collections::HashSet<FileId>,
+        found: &mut Vec<FileId>,
+    ) {
+        let Some(build) = graph.file(id).input else {
+            return;
+        };
+        for &input in graph.builds[build].ordering_ins() {
+            if !seen.insert(input) {
+                continue;
+            }
+            visit(graph, input, seen, found);
+            let phony = graph
+                .file(input)
+                .input
+                .is_some_and(|build| graph.builds[build].cmdline.is_none());
+            if !phony {
+                found.push(input);
+            }
+        }
+    }
+    let mut seen = std::collections::HashSet::new();
+    let mut found = vec![];
+    for target in targets {
+        visit(&graph, target, &mut seen, &mut found);
+    }
+    let mut paths: Vec<String> = found
+        .into_iter()
+        .map(|id| {
+            let name = &graph.file(id).name;
+            if escape {
+                shell_escaped(name)
+            } else {
+                name.clone()
+            }
+        })
+        .collect();
+    if !dependency_order {
+        paths.sort();
+    }
+    let end = if nul { "\0" } else { EOL };
+    let mut out = std::io::BufWriter::new(std::io::stdout().lock());
+    for path in paths {
+        write!(out, "{path}{end}")?;
+    }
+    std::io::Write::flush(&mut out)?;
+    Ok(0)
+}
+
+/// (mwcc-ninja) `-t targets all`, as ninja's: each output of each build, in build.ninja's order, and its rule; the
+/// path as ninja keeps it (with `/` on Windows).
+fn targets(build_filename: &str, rest: &[String]) -> anyhow::Result<i32> {
+    if rest.first().map(String::as_str) != Some("all") {
+        anyhow::bail!("only `-t targets all` is supported");
+    }
+    let (graph, _) = load::read_graph(build_filename)?;
+    let mut out = std::io::BufWriter::new(std::io::stdout().lock());
+    for build in 0..graph.builds.next_id().index() {
+        let build = &graph.builds[BuildId::from(build)];
+        for &id in build.outs() {
+            let name = &graph.file(id).name;
+            let name = if cfg!(windows) {
+                std::borrow::Cow::Owned(name.replace('\\', "/"))
+            } else {
+                std::borrow::Cow::Borrowed(name.as_str())
+            };
+            write!(out, "{name}: {}{EOL}", build.rule)?;
+        }
+    }
+    std::io::Write::flush(&mut out)?;
+    Ok(0)
+}
+
 /// Run a tool as specified by the `-t` flag`.
 fn subtool(args: &mut BuildArgs, tool: &str) -> anyhow::Result<Option<i32>> {
     match tool {
         "list" => {
             println!("subcommands:");
             println!("  commands  list all commands required to rebuild given targets");
+            println!("  inputs    list all inputs required to rebuild given targets");
+            println!("  targets   list targets by their rule (`all` only)");
             return Ok(Some(1));
         }
         "recompact" if args.fake_ninja_compat => {
@@ -334,14 +483,20 @@ options:
             Short('f') => args.build_filename = Some(parser.value()?.to_string_lossy().into()),
             Short('t') => {
                 let tool = parser.value()?.to_string_lossy().into_owned();
-                if tool == "commands" {
+                let run: Option<fn(&str, &[String]) -> anyhow::Result<i32>> = match tool.as_str() {
+                    "commands" => Some(commands),
+                    "inputs" => Some(inputs),
+                    "targets" => Some(targets),
+                    _ => None,
+                };
+                if let Some(run) = run {
                     // (as in ninja, what follows the tool is its own)
                     let rest: Vec<String> = parser
                         .raw_args()?
                         .map(|arg| arg.to_string_lossy().into_owned())
                         .collect();
                     let build_filename = args.build_filename.as_deref().unwrap_or("build.ninja");
-                    return Ok(Err(commands(build_filename, &rest)?));
+                    return Ok(Err(run(build_filename, &rest)?));
                 }
                 if let Some(exit) = subtool(&mut args, &tool)? {
                     return Ok(Err(exit));
@@ -393,12 +548,14 @@ fn run_impl(
     match build(args)? {
         None => {
             // (after the failing task's output, ninja's line)
-            println!("{name}: build stopped: subcommand failed.");
+            // (mwcc-ninja: ninja's own line, which tools match)
+            let _ = name;
+            println!("ninja: build stopped: subcommand failed.");
             return Ok(1);
         }
         Some(0) => {
             // Special case: don't print numbers when no work done.
-            println!("{name}: no work to do.");
+            println!("ninja: no work to do.");
         }
         // (mwcc-ninja: as ninja, a dry run's lines are all)
         Some(_) if dry_run => {}

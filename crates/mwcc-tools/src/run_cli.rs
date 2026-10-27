@@ -24,11 +24,13 @@ use std::{
 
 const USAGE: &str = "mwcc-tools run [sjiswrap.exe] EXE ARGS...\nmwcc-run [sjiswrap.exe] EXE ARGS...\n\
 mwcc-tools run ninja [-C DIR] [-f FILE] [-j N] [-k N] [-n] [-v] [-d explain] [TARGETS...]\n\
-mwcc-tools run ninja [-C DIR] [-f FILE] -t commands [-s] [TARGETS...]\n\n\
+mwcc-tools run ninja [-C DIR] [-f FILE] -t commands [-s] [TARGETS...]\n\
+mwcc-tools run ninja [-C DIR] [-f FILE] -t inputs [-E] [-0] [-d] [TARGETS...]\n\
+mwcc-tools run ninja [-C DIR] [-f FILE] -t targets all\n\n\
 Runs EXE with ARGS. A compiler or linker whose WebAssembly module is built (one with the size and SHA-1 in \
 MWCC_ORACLE_ROOT's config/<version>/config.json) runs in process; anything else runs as a process (off Windows \
 through MWCC_WIBO, else build/tools/wibo here, else the checkout's, else wibo on the path). MWCC_IN_PROCESS=0 runs \
-every executable. MWCC_RUN_TIMING=1 prints where the time went.\n\n\
+every executable, MWCC_IN_PROCESS_LINKER=0 the linkers. MWCC_RUN_TIMING=1 prints where the time went.\n\n\
 `run ninja` builds the project's build.ninja in place of ninja, with ninja's options; configure the project \
 without --wrapper. A command whose program is such a compiler or linker (also behind mwcc-run, wibo or sjiswrap, \
 or first in `cmd /c A && B`) runs in process, up to -j at once; any other runs as a process. build.ninja is \

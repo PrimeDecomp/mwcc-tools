@@ -9,7 +9,8 @@
 //! * build.ninja is regenerated until it is up to date, as ninja does, not once;
 //! * `-k` is ninja's: 1 by default, 0 for no limit; once failures stop the build the running tasks finish;
 //! * [`run::run`] takes its arguments, rather than the process's;
-//! * ninja's `-n` (a dry run, its lines as ninja's) and `-t commands`.
+//! * ninja's `-n` (a dry run, its lines as ninja's), `-t commands`, `-t inputs` and `-t targets all`; ninja's
+//!   `no work to do.` and `build stopped` lines.
 //!
 //! The rest is n2's: `.n2_db` in place of ninja's `.ninja_log` and `.ninja_deps` (a build tree is not shared with
 //! ninja: the first build after ninja's runs everything again, as does ninja's after this one), every `deps` discovered from the `depfile`, no

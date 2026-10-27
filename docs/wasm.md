@@ -491,7 +491,9 @@ python configure.py
 
 * The build engine is `crates/mwcc-ninja`, a fork of [n2](https://github.com/evmar/n2) (commit b1fead5, Apache-2.0,
   [licenses](../licenses/README.md)). It takes ninja's `-C DIR`, `-f FILE`, `-j N` (the processor count by default),
-  `-k N` (1 by default, 0 for no limit), `-n`, `-v`, `-d explain`, `-t commands` and targets.
+  `-k N` (1 by default, 0 for no limit), `-n`, `-v`, `-d explain`, `-t commands`, `-t inputs`, `-t targets all`
+  and targets. Its last line is ninja's when ninja's would be: `ninja: no work to do.` and `ninja: build stopped:
+  subcommand failed.`, which tools match (dtk-migrate's freshness check compares the first to the whole output).
 * A command runs in process when its program is a compiler or linker that `mwcc-tools run` runs in process (the same
   size and SHA-1), first or behind `mwcc-run` (or `mwcc-tools run`), `wibo` and `sjiswrap`, in that order. On
   Windows, `cmd /c A && B` (dtk-template's extab rules) runs A in process and then `cmd /c B` as a process; elsewhere
@@ -530,7 +532,7 @@ python configure.py
   stays until the project is configured again without it.
 * `-n` is ninja's dry run: each step that would run is printed as ninja prints it on a pipe (`[k/N] DESCRIPTION`, the
   command with `-v`), a step over one that would run would run too, and nothing runs or is written (not `.n2_db`
-  either); with nothing to do, `mwcc-tools run ninja: no work to do.`, and no last line otherwise, as in ninja. When
+  either); with nothing to do, `ninja: no work to do.`, and no last line otherwise, as in ninja. When
   `build.ninja` is out of date, the steps up to its generator are printed and the dry run ends there, as in ninja. The
   `N` of `[k/N]` is larger than ninja's: n2 finds what is out of date as it goes, ninja before it starts. On Echoes,
   after a header is touched, the steps are ninja's (the 3 objects that include it, the link, the DOL, the RELs, the
@@ -539,8 +541,17 @@ python configure.py
   nothing depends on), each once, after those of its inputs (explicit, implicit, then order-only), without the phony
   steps; `-s` prints only the targets' own. Nothing is brought up to date or read but the manifest. On Echoes its output
   is ninja's to the byte (CRLF on Windows) for an object, the DOL, `ok`, `NAME^` and the default targets, on
-  Windows and in WSL (Echoes and Prime). Neither `-n` nor `-t commands` needs `MWCC_ORACLE_ROOT`: only a command
-  that runs does.
+  Windows and in WSL (Echoes and Prime).
+* `-t inputs [-E] [-0] [-d] [TARGETS]` is ninja's: every file the targets' builds take, through the builds that make
+  them (not the targets themselves, the outputs of phony steps, or the headers found in depfiles), sorted, escaped for
+  the host's shell (quoted only where needed); `-E` leaves them unescaped, `-0` ends each with a NUL, `-d` keeps the
+  order found. `-t targets all` lists each output of each step, in `build.ninja`'s order, with its rule, its path
+  with `/` on Windows as ninja keeps it (the other `-t targets` modes are not there). Both are ninja 1.13's to the
+  byte, on Windows (Echoes) and Linux (Echoes and Prime): the inputs of `main.elf`, a REL's `.plf`, an object, `ok`,
+  `all_source` and the default targets, with each option; and paths with spaces and quotes. Ninja 1.12's `-t inputs`
+  differs: it lists the phony outputs and not the inputs of phony steps, and has no options.
+* No tool, nor `-n`, needs `MWCC_ORACLE_ROOT`: only a command that runs does. Nothing is brought up to date or read
+  for a tool but the manifest.
 * The record of the build is n2's `.n2_db` (in `builddir`, else the build's directory), not `.ninja_log` and
   `.ninja_deps`: switching from ninja to `mwcc-tools run ninja`, or back, runs every step once (about 20 s on
   Echoes on Windows), then each keeps its own record. There is no safe shortcut: ninja keeps the headers each object
@@ -548,7 +559,8 @@ python configure.py
   up to date without them. A step's record is the hash of its command line and its files' times; `restat` is not
   needed.
 * `MWCC_RUN_TIMING=1` prints how many commands ran in process, and their time (instantiating the modules, and running
-  them); `MWCC_IN_PROCESS=0` runs every command as a process. `-d trace` writes each task's span to `trace.json`
+  them); `MWCC_IN_PROCESS=0` runs every command as a process, and `MWCC_IN_PROCESS_LINKER=0` the linkers only (as
+  under `mwcc-tools run`). `-d trace` writes each task's span to `trace.json`
   (Chrome's trace format).
 * Where the time goes (Echoes, 12 cores, 24 threads): the compiles keep every job busy and the CPU at 100% for 23 of
   the 28 s; instantiating a module takes 0.3 s over the 1239 runs. More jobs do not help past the threads: 67, 40, 28

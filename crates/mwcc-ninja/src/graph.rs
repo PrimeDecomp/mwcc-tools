@@ -174,6 +174,9 @@ pub struct Build {
     /// Pool to execute this build in, if any.
     pub pool: Option<String>,
 
+    /// The name of its rule (`phony` for a phony build; mwcc-ninja: `-t targets all`).
+    pub rule: String,
+
     pub ins: BuildIns,
 
     /// Additional inputs discovered from a previous build.
@@ -199,6 +202,7 @@ impl Build {
             generator: false,
             rspfile: None,
             pool: None,
+            rule: String::new(),
             ins,
             discovered_ins: Vec::new(),
             outs,

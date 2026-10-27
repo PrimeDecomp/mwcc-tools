@@ -38,7 +38,7 @@ pub fn linker_module_output(linker: &str) -> String {
 /// (`build/compilers/GC/<dir>/mwldeppc.exe`), or a copy anywhere with the size and SHA-1 of
 /// `config/<linker>/config.json`, when its module is built. The version is the linker's compiler's.
 pub fn linker_module_of_copy(root: &Path, executable: &Path) -> Option<(Version, PathBuf)> {
-    if !enabled() {
+    if !linker_enabled() {
         return None;
     }
     let size = fs::metadata(executable).ok()?.len();
@@ -82,6 +82,12 @@ pub fn module_output(version: &str) -> String {
 /// Whether compiles run in process where a module is built (`MWCC_IN_PROCESS`, on unless `0`).
 pub fn enabled() -> bool {
     std::env::var("MWCC_IN_PROCESS").map_or(true, |v| v != "0")
+}
+
+/// Whether links run in process where a linker module is built: as compiles, unless `MWCC_IN_PROCESS_LINKER=0`
+/// (then the linker runs as itself, and the compiles still in process).
+pub fn linker_enabled() -> bool {
+    enabled() && std::env::var("MWCC_IN_PROCESS_LINKER").map_or(true, |v| v != "0")
 }
 
 fn same(a: &Path, b: &Path) -> bool {
