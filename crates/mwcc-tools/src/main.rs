@@ -219,8 +219,17 @@ fn run() -> Result<()> {
         Some("--version") => println!("mwcc-tools {}", env!("CARGO_PKG_VERSION")),
         Some("package-release") => release_cli::run(&args[1..])?,
         Some(
-            "configure" | "probe-build" | "transform-dep" | "download" | "verify" | "gates"
-            | "build-hooks" | "wasm-mirror" | "wasm-linker-version" | "wasm-common",
+            "configure"
+            | "probe-build"
+            | "transform-dep"
+            | "download"
+            | "verify"
+            | "gates"
+            | "build-hooks"
+            | "wasm-mirror"
+            | "wasm-linker-version"
+            | "wasm-common"
+            | "wasm-stubs",
         ) => build_cli::run(&args[0], &args[1..])?,
         Some("--help" | "-h") | None => help(),
         Some("corpus") => corpus_command(&args[1..])?,

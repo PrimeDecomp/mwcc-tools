@@ -1290,7 +1290,7 @@ TemplClass *fn_00516b50(TemplateLookupContext *context, TemplClass *record)
     return record;
 }
 
-void fn_00516930(void *context, TemplClass *function, TemplArg *arguments)
+WASM_RETURNS(Type *) fn_00516930(void *context, TemplClass *function, TemplArg *arguments)
 {
     TemplArg *source;
     TemplArg *head;
@@ -1358,13 +1358,28 @@ void fn_00516930(void *context, TemplClass *function, TemplArg *arguments)
             TypeTemplDep *result = CDecl_NewTemplDepType(2);
             result->u.templ.templ = function;
             result->u.templ.args = head;
+#ifdef __wasm__
+            return (Type *)result;
+#endif
             return;
         }
     }
 
+#ifdef __wasm__
+    {
+        void *dependent = (void *)CTemplTool_IsDependentTemplate(function, head);
+        if (dependent != NULL)
+            return (Type *)dependent;
+    }
+#else
     if (CTemplTool_IsDependentTemplate(function, head) != NULL)
         return;
+#endif
+#ifdef __wasm__
+    return (Type *)CTemplateClass_GetInstance(function, head, NULL);
+#else
     CTemplateClass_GetInstance(function, head, NULL);
+#endif
 }
 
 TemplArg *find_template_argument(struct TypeDeduce *context, struct TemplParamID pid)
@@ -1528,7 +1543,7 @@ Type *resolve_templ_dep_type(TypeDeduce *ctx, TypeTemplDep *arg, UInt32 *out)
                 }
                 return (Type *)&stsignedint;
             case 2:
-                fn_00516930(ctx, arg->u.templ.templ, arg->u.templ.args);
+                WASM_RETURN fn_00516930(ctx, arg->u.templ.templ, arg->u.templ.args);
                 return;
             case 3: {
                 ENode *sizeExpression = arg->u.array.index;
@@ -1562,7 +1577,7 @@ Type *resolve_templ_dep_type(TypeDeduce *ctx, TypeTemplDep *arg, UInt32 *out)
                     CError_ReportError(ERR_DECLARATION_SYNTAX_ERROR);
                     return (Type *)&stsignedint;
                 }
-                fn_00516930(ctx, resolvedClass, arg->u.qualtempl.args);
+                WASM_RETURN fn_00516930(ctx, resolvedClass, arg->u.qualtempl.args);
                 return;
             case 5:
                 return make_bitfield_type(ctx, arg->u.bitfield.type, arg->u.bitfield.size, out);

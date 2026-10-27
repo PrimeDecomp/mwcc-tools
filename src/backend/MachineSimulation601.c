@@ -496,12 +496,22 @@ static MachineOpcodeInfo data_00578340[466] = {
 
 /* The instruction in each of the pipeline's six stages and the cycles it has left there: six statics in a row,
    which the code also indexes from the first. */
+#ifdef __wasm__ /* (one array: the code indexes them from the first, as the x86 lays them out) */
+static PipelineStage wasm_pipeline_stages[6];
+#define data_00582fe8 wasm_pipeline_stages[0]
+#define data_00582ff0 wasm_pipeline_stages[1]
+#define data_00582ff8 wasm_pipeline_stages[2]
+#define data_00583000 wasm_pipeline_stages[3]
+#define data_00583008 wasm_pipeline_stages[4]
+#define data_00583010 wasm_pipeline_stages[5]
+#else
 static PipelineStage data_00582fe8;
 static PipelineStage data_00582ff0;
 static PipelineStage data_00582ff8;
 static PipelineStage data_00583000;
 static PipelineStage data_00583008;
 static PipelineStage data_00583010;
+#endif
 
 SInt32 get_latency(PCodeInstruction *p)
 {

@@ -862,8 +862,12 @@ void Operands_ForceFPR(Operand *operand, Type *type, short requestedReg)
             indexedReg = requestedReg ? requestedReg : gUsedVirtualRegistersFPR++;
             resultReg = indexedReg;
             indexedOpcode = type->size == 4 ? 144 : 148;
+#ifdef __wasm__ /* (WebAssembly's call must match the function's type) */
+            PCodeUtilities_EmitInstruction(indexedOpcode, indexedReg, operand->reg, operand->secondary_reg);
+#else
             ((void (*)(short, ...))PCodeUtilities_EmitInstruction)(indexedOpcode, indexedReg, operand->reg,
                                                                    operand->secondary_reg);
+#endif
             Operands_AllocateGPR(operand->flags);
             break;
         default:
@@ -1084,8 +1088,12 @@ void Operands_ExtendGPR(Operand *operand, Type *type, short requestedReg)
                     gUsedVirtualRegistersGPR += 1;
                 }
                 resultReg = byteReg;
+#ifdef __wasm__ /* (WebAssembly's call must match the function's type) */
+                PCodeUtilities_EmitInstruction(103, byteReg, operand->reg, 0, 24, 31);
+#else
                 ((unsigned int (*)(unsigned int, ...))PCodeUtilities_EmitInstruction)(103, byteReg, operand->reg, 0, 24,
                                                                                       31);
+#endif
                 break;
             }
             if (requestedReg != 0)
@@ -1095,7 +1103,11 @@ void Operands_ExtendGPR(Operand *operand, Type *type, short requestedReg)
                 gUsedVirtualRegistersGPR += 1;
             }
             resultReg = signedByteReg;
+#ifdef __wasm__ /* (WebAssembly's call must match the function's type) */
+            PCodeUtilities_EmitInstruction(100, signedByteReg, operand->reg);
+#else
             ((unsigned int (*)(unsigned int, ...))PCodeUtilities_EmitInstruction)(100, signedByteReg, operand->reg);
+#endif
             break;
         case 2:
             if (alreadyExtended)
@@ -1108,11 +1120,19 @@ void Operands_ExtendGPR(Operand *operand, Type *type, short requestedReg)
             }
             resultReg = halfwordReg;
             if (is_unsigned(type) != 0) {
+#ifdef __wasm__ /* (WebAssembly's call must match the function's type) */
+                PCodeUtilities_EmitInstruction(103, resultReg, operand->reg, 0, 16, 31);
+#else
                 ((unsigned int (*)(unsigned int, ...))PCodeUtilities_EmitInstruction)(103, resultReg, operand->reg, 0,
                                                                                       16, 31);
+#endif
                 break;
             }
+#ifdef __wasm__ /* (WebAssembly's call must match the function's type) */
+            PCodeUtilities_EmitInstruction(101, resultReg, operand->reg);
+#else
             ((unsigned int (*)(unsigned int, ...))PCodeUtilities_EmitInstruction)(101, resultReg, operand->reg);
+#endif
             break;
         default:
             CError_FATAL(BY_VERSION(1063, 1383));

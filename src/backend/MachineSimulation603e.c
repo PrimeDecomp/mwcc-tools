@@ -500,6 +500,17 @@ static MachineOpcodeInfo machineOpcodeInfo[466] = {
 
 /* The instruction in each of the eight execution stages and the cycles it has left there: eight statics in a row,
    which the code also indexes from the first. */
+#ifdef __wasm__ /* (one array: the code indexes them from the first, as the x86 lays them out) */
+static PipelineStage wasm_pipeline_stages[8];
+#define instruction_timing_slots wasm_pipeline_stages[0]
+#define data_00582d20 wasm_pipeline_stages[1]
+#define data_00582d28 wasm_pipeline_stages[2]
+#define data_00582d30 wasm_pipeline_stages[3]
+#define data_00582d38 wasm_pipeline_stages[4]
+#define queuedInstruction wasm_pipeline_stages[5]
+#define data_00582d48 wasm_pipeline_stages[6]
+#define data_00582d50 wasm_pipeline_stages[7]
+#else
 static PipelineStage instruction_timing_slots;
 static PipelineStage data_00582d20;
 static PipelineStage data_00582d28;
@@ -508,6 +519,7 @@ static PipelineStage data_00582d38;
 static PipelineStage queuedInstruction;
 static PipelineStage data_00582d48;
 static PipelineStage data_00582d50;
+#endif
 static int data_00582d58;
 static int data_00582d5c;
 static unsigned int data_00582d60;

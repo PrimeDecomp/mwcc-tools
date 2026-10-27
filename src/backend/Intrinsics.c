@@ -3658,8 +3658,12 @@ void emit_instruction_with_vr_result(ENode *expression, ENode *left, ENode *righ
     Intrinsics_00487090_inline1(left, &leftValue.legacy);
     Intrinsics_00487090_inline1(right, &rightValue.legacy);
 #endif
+#ifdef __wasm__ /* (a variadic function, called as a fixed one; WebAssembly's call must match) */
+    PCodeUtilities_EmitInstruction(instruction, value.reg, leftValue.operand.reg, rightValue.operand.reg);
+#else
     ((unsigned int (*)(unsigned int, int, int, int))PCodeUtilities_EmitInstruction)(
         instruction, value.reg, leftValue.operand.reg, rightValue.operand.reg);
+#endif
     result->kind = OpndType_VR;
     result->reg = value.reg;
 }
@@ -3804,8 +3808,12 @@ void emit_record_form_condition(ENode *left, ENode *right, short unused, Operand
         secondRegister = leftRegister;
         firstRegister = rightRegister;
     }
+#ifdef __wasm__ /* (a variadic function, called as a fixed one; WebAssembly's call must match) */
+    PCodeUtilities_EmitInstruction(opcode, conditionRegister, firstRegister, secondRegister);
+#else
     ((unsigned int (*)(unsigned int, int, int, int))PCodeUtilities_EmitInstruction)(opcode, conditionRegister,
                                                                                     firstRegister, secondRegister);
+#endif
     PCodeUtilities_MakeRecordForm(gCurrentBlock->reverse_instructions);
     if (left->rtype == TYPE(&stvectorfloat)) {
         switch (kind) {
@@ -5109,9 +5117,14 @@ void Intrinsics_GenerateIntrinsicCall(ENode *node, short requestedReg, Operand *
         case 0x11c: {
             UInt16 opcode;
             opcode = find_intrinsic_triple_code(intrinsic, node, args->node, args->next->node, args->next->next->node);
+#ifdef __wasm__ /* (WebAssembly's call must match the function's type) */
+            emit_instruction_with_vr_result((ENode *)args->node, (ENode *)args->next->node,
+                                            (ENode *)args->next->next->node, requestedReg, result, (short)opcode);
+#else
             ((void (*)(ENode *, ENode *, ENode *, short, Operand *, short))emit_instruction_with_vr_result)(
                 (ENode *)args->node, (ENode *)args->next->node, (ENode *)args->next->next->node, requestedReg, result,
                 (short)opcode);
+#endif
         } break;
         case 0x83:
         case 0x84:
@@ -5137,8 +5150,13 @@ void Intrinsics_GenerateIntrinsicCall(ENode *node, short requestedReg, Operand *
         case 0x9c: {
             UInt16 opcode;
             opcode = find_binary_intrinsic_code(intrinsic, node, args->node, args->next->node);
+#ifdef __wasm__ /* (WebAssembly's call must match the function's type) */
+            emit_record_form_condition((ENode *)args->node, (ENode *)args->next->node, requestedReg, result,
+                                       (short)opcode, intrinsic);
+#else
             ((void (*)(ENode *, ENode *, short, Operand *, short, unsigned short))emit_record_form_condition)(
                 (ENode *)args->node, (ENode *)args->next->node, requestedReg, result, (short)opcode, intrinsic);
+#endif
         } break;
         case 0x89:
         case 0x8f:

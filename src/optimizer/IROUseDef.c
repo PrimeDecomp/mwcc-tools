@@ -763,8 +763,13 @@ SInt32 IRO_UseDef(UInt8 eliminateUnused, UInt8 simplifyUses)
                     IroBitVect_SetBit(entry->defs->index, block->in);
                 }
             }
+#ifdef __wasm__ /* (void functions, called as SInt32 ones; WebAssembly's calls must match) */
+            IroBitVect_CopyBitVector(block->in, reachingDefs);
+            IroBitVect_Subtract(block->kill, reachingDefs);
+#else
             (void)((SInt32 (*)(BitVector *, BitVector *))IroBitVect_CopyBitVector)(block->in, reachingDefs);
             (void)((SInt32 (*)(BitVector *, BitVector *))IroBitVect_Subtract)(block->kill, reachingDefs);
+#endif
             IroBitVect_Or(block->gen, reachingDefs);
             if (ReverseEqual(block->out, reachingDefs))
                 continue;

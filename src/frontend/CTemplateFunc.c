@@ -607,7 +607,7 @@ Boolean CTemplateFunc_MatchType(Type *pattern, UInt32 patternQual, Type *argumen
                 {
                     TypeFunc *patternFunc = (TypeFunc *)pattern;
                     TypeFunc *argumentFunc = (TypeFunc *)argument;
-                    match_args(patternFunc, argumentFunc, state, flag);
+                    WASM_RETURN match_args(patternFunc, argumentFunc, state, flag);
                 }
                 return;
             default:

@@ -1,5 +1,8 @@
 #define CERROR_FILE "CParser.c"
 #include "compiler/common.h"
+#ifdef __wasm__ /* (the variadic arguments are not after the named ones: the target's stdarg.h) */
+#include <stdarg.h>
+#endif
 #include "compiler/CParser.h"
 #include "compiler/enode.h"
 #include "compiler/objects.h"
@@ -76,8 +79,10 @@ unsigned int _DAT_0058847e;
 unsigned char data_0058848a;
 unsigned short _DAT_0058848c;
 
+#ifndef __wasm__
 #define va_start(ap, last) (ap = (va_list)((char *)&(last) + (((char *)(&(last) + 1) - (char *)&(last)) + 3) / 4 * 4))
 #define va_arg(ap, type) (*(type *)((ap += sizeof(type)) - sizeof(type)))
+#endif
 
 Type data_0055d5c0 = {TYPETEMPLDEPEXPR, 0};
 Type type_placeholder = {0xFF, 1};
@@ -182,7 +187,7 @@ Object *CParser_NewRTFunc(Type *returnType, HashNameNode *name, char mangleName,
 #endif
     arguments = NULL;
     if (argumentCount != 0) {
-#if VERSION >= VERSION_GC_1_3
+#if VERSION >= VERSION_GC_1_3 && !defined(__wasm__)
         base = (char *)&argumentCount;
         ap = base + (((char *)(&argumentCount + 1) - base) + 3) / 4 * 4;
 #else
@@ -456,6 +461,9 @@ Boolean CParser_ReInitRuntimeObjects(Boolean flag)
     vtable_name = GetHashNameNode("__vptr$");
     CSOM_Init(flag);
     fn_00434660(flag);
+#ifdef __wasm__ /* (the original returns what the last call leaves in EAX, never 0: its caller checks it) */
+    return 1;
+#endif
 }
 void initialize_runtime_objects(void)
 {

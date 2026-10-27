@@ -28,8 +28,13 @@
 #include <string.h>
 #if VERSION >= VERSION_GC_1_3
 #include "driver/MemUtils.h"
+
 #define ClientGlue_DuplicateString xstrdup
 #define ToolHelpers_ResizeBuffer xrealloc
+#endif
+
+#ifdef __wasm__ /* (a call the original makes without a prototype, which WebAssembly's must match) */
+extern void free(void *p);
 #endif
 
 int data_005876ac;

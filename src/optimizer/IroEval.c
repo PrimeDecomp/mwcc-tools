@@ -362,23 +362,39 @@ int IRO_ConstantFolding(void)
                     integerResult = 0;
                     switch (node->nodetype) {
                         case EADD:
+#ifdef __wasm__ /* (the original calls it through another type; WebAssembly's call must match) */
+                            floatValue.f = CMach_CalcFloatDiadic(node->rtype, leftValue.f, '+', rightValue.f);
+#else
                             floatValue.ll = ((long long (*)(Type *, long long, int, long long))CMach_CalcFloatDiadic)(
                                 node->rtype, leftValue.ll, '+', rightValue.ll);
+#endif
                             folded = 1;
                             break;
                         case ESUB:
+#ifdef __wasm__ /* (the original calls it through another type; WebAssembly's call must match) */
+                            floatValue.f = CMach_CalcFloatDiadic(node->rtype, leftValue.f, '-', rightValue.f);
+#else
                             floatValue.ll = ((long long (*)(Type *, long long, int, long long))CMach_CalcFloatDiadic)(
                                 node->rtype, leftValue.ll, '-', rightValue.ll);
+#endif
                             folded = 1;
                             break;
                         case EMUL:
+#ifdef __wasm__ /* (the original calls it through another type; WebAssembly's call must match) */
+                            floatValue.f = CMach_CalcFloatDiadic(node->rtype, leftValue.f, '*', rightValue.f);
+#else
                             floatValue.ll = ((long long (*)(Type *, long long, int, long long))CMach_CalcFloatDiadic)(
                                 node->rtype, leftValue.ll, '*', rightValue.ll);
+#endif
                             folded = 1;
                             break;
                         case EDIV:
+#ifdef __wasm__ /* (the original calls it through another type; WebAssembly's call must match) */
+                            floatValue.f = CMach_CalcFloatDiadic(node->rtype, leftValue.f, '/', rightValue.f);
+#else
                             floatValue.ll = ((long long (*)(Type *, long long, int, long long))CMach_CalcFloatDiadic)(
                                 node->rtype, leftValue.ll, '/', rightValue.ll);
+#endif
                             folded = 1;
                             break;
                         case ELESS:
@@ -439,7 +455,12 @@ int IRO_ConstantFolding(void)
                 break;
         }
     }
+#ifdef __wasm__ /* (a void function called as int; the callers do not use the result) */
+    IroVars_CheckTimedLongjmp();
+    return 0;
+#else
     return ((int (*)(void))IroVars_CheckTimedLongjmp)();
+#endif
 }
 
 int IRO_EvaluateConditionals(void)

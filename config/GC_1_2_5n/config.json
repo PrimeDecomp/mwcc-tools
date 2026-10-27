@@ -1,6 +1,7 @@
 {
   "original": "build/compilers/GC/1.2.5n/mwcceppc.exe",
   "sha1": "ef0480e9b4a42398bda3e412794c6628e26e1bf7",
+  "size": 1651200,
   "matching": [
     "src/backend/BE_elf.c",
     "src/backend/BE_symbol.c",

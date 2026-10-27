@@ -57,6 +57,11 @@
 #include <string.h>
 #include "compiler/ENode.h"
 
+#ifdef __wasm__ /* (a call the original makes without a prototype, which WebAssembly's must match) */
+void CExpr_AliasTransform(ENode *expr);
+void CExpr_ArithmeticConversion(ENode **left, ENode **right);
+#endif
+
 /* (1.3 has kinds above the array kind, so its comparisons test for pointer and array themselves) */
 #if VERSION >= VERSION_GC_1_3
 #define CMP_IS_POINTER(ty) ((ty)->type == TYPEPOINTER || (ty)->type == TYPEARRAY)
@@ -1763,7 +1768,11 @@ ENode *assignmentpromotion_wrapper(ENode *e, Type *t, SInt32 sz, char flag)
     char pad[0x18];
 
     if (data_005e7196)
+#ifdef __wasm__ /* (WebAssembly's call must match the function's type) */
+        return oldassignmentpromotion(e, t, sz, flag);
+#else
         return ((ENode * (*)(ENode *, Type *, SInt32, char)) oldassignmentpromotion)(e, t, sz, flag);
+#endif
     if (e->type == EMEMBER)
         e = getpointertomemberfunc(e, t, 1);
     if (!wrapper_convertible(e, t, sz, &kind)) {
@@ -2074,7 +2083,7 @@ ENode *make_scope_parse_result_expr(NameResult *nameResult, ENode *expr, Boolean
                 }
             }
             tk = CPrepTokenizer_GetNextToken();
-            scan_explicit_conversion(nameResult->type, nameResult->qual);
+            WASM_RETURN scan_explicit_conversion(nameResult->type, nameResult->qual);
             return;
         }
         CError_ReportErrorAndUpdateToken(ERR_EXPRESSION_SYNTAX_ERROR);
@@ -3289,7 +3298,7 @@ ENode *getnodeaddress(ENode *node, Boolean flag)
     }
 }
 
-void make_static_method_setconst(ObjectList *objects)
+WASM_RETURNS(ENode *) make_static_method_setconst(ObjectList *objects)
 {
     TypeMemberFunc *functionType;
     ENode *result;
@@ -3312,13 +3321,16 @@ void make_static_method_setconst(ObjectList *objects)
     }
     if (matches == NULL) {
         CError_Warning(ERR_ILLEGAL_IMPLICIT_MEMBER_POINTER_CONVERSION);
-        nullnode();
+        WASM_RETURN nullnode();
         return;
     }
     result = CExpr_NewENode(EOBJLIST);
     result->rtype = matches->object->type;
     /* This node's object-reference slot holds the matching object list. */
     result->data.overloadCandidates = matches;
+#ifdef __wasm__
+    return result;
+#endif
 }
 
 ENode *getpointertomemberfunc(ENode *node, Type *targetType, Boolean initialize)
@@ -3363,7 +3375,7 @@ ENode *getpointertomemberfunc(ENode *node, Type *targetType, Boolean initialize)
                     return nullnode();
                 }
             } else {
-                make_static_method_setconst(methods);
+                WASM_RETURN make_static_method_setconst(methods);
                 return;
             }
         }
@@ -3950,7 +3962,11 @@ ENode *do_typecast(ENode *expr, Type *type, UInt32 qual)
 
     nodeQual = maskedQual = qual & ENODE_FLAG_QUALS;
     if (expr->type == EOBJLIST)
+#ifdef __wasm__ /* (WebAssembly's call must match the function's type) */
+        return oldassignmentpromotion(expr, type, maskedQual, 1);
+#else
         return ((ENode * (*)(ENode *, Type *, int, int)) oldassignmentpromotion)(expr, type, maskedQual, 1);
+#endif
     if (expr->type == EOBJREF) {
         TypeMemberFunc *func;
         if ((func = (TypeMemberFunc *)(object = expr->data.addr.objref)->type)->type == TYPEFUNC &&
@@ -5789,7 +5805,7 @@ ENode *conditional_expression(void)
     return CExpr_New_ECOND_Node(cond, then, els);
 }
 
-void convert_right_and_make_diadic_node(ENode *left, ENode *right, UInt8 type)
+WASM_RETURNS(ENode *) convert_right_and_make_diadic_node(ENode *left, ENode *right, UInt8 type)
 {
     if (left->rtype != right->rtype) {
         switch ((SInt8)right->rtype->type) {
@@ -5816,7 +5832,7 @@ void convert_right_and_make_diadic_node(ENode *left, ENode *right, UInt8 type)
         }
     }
 
-    CHECK_NODE(makediadicnode(left, right, type));
+    WASM_RETURN CHECK_NODE(makediadicnode(left, right, type));
 }
 
 ENode *parse_assignment_operator(ENode *expr, UInt8 assignmentKind, SInt16 overloadToken)
@@ -5873,7 +5889,7 @@ ENode *parse_assignment_operator(ENode *expr, UInt8 assignmentKind, SInt16 overl
                 return expr;
             }
         }
-        convert_right_and_make_diadic_node(expr, right, assignmentKind);
+        WASM_RETURN convert_right_and_make_diadic_node(expr, right, assignmentKind);
         return;
     }
     if (expr->rtype->type == TYPECLASS && TYPE_CLASS(expr->rtype)->sominfo != NULL) {
@@ -5987,7 +6003,7 @@ ENode *parse_arithmetic_compound_assignment(ENode *e, char operatorKind, SInt16 
         CError_ReportError(ERR_ILLEGAL_OPERAND);
         return e;
     }
-    convert_right_and_make_diadic_node(e, right, operatorKind);
+    WASM_RETURN convert_right_and_make_diadic_node(e, right, operatorKind);
 }
 
 ENode *parse_arithmetic_binary_expression(ENode *left, char op, SInt16 token)
@@ -6035,7 +6051,7 @@ ENode *parse_arithmetic_binary_expression(ENode *left, char op, SInt16 token)
         CError_ReportError(ERR_ILLEGAL_OPERAND);
         return nullnode();
     }
-    convert_right_and_make_diadic_node(promotedLeft, right, op);
+    WASM_RETURN convert_right_and_make_diadic_node(promotedLeft, right, op);
 }
 
 ENode *assignment_expression(void)

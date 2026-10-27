@@ -65,7 +65,11 @@ static SInt32 data_00581c2a;
             }                                                                                                          \
         }                                                                                                              \
     } while (0)
+#ifdef __wasm__ /* (clang has no cast as an lvalue) */
+#define written_entry_buckets (*(CPrecWrittenEntry ***)&written_entry_buckets)
+#else
 #define written_entry_buckets ((CPrecWrittenEntry **)written_entry_buckets)
+#endif
 #ifndef DEF_fn_004dbf80
 #endif
 #ifndef DEF_fn_004de740

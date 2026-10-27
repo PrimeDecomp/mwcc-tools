@@ -25,6 +25,13 @@
 #include "compiler/IroUtil.h"
 #include "compiler/IroVars.h"
 
+#ifdef __wasm__ /* (visited as void (*)(IROLinear *, int); WebAssembly's call must match its type) */
+static void wasm_visit_fn_0044e360(IROLinear *linear, int argument) { fn_0044e360(linear, argument); }
+#define VISIT_FN_0044E360 wasm_visit_fn_0044e360
+#else
+#define VISIT_FN_0044E360 (void (*)(IROLinear *, int))fn_0044e360
+#endif
+
 CInt64 data_005834f8;
 unsigned int expression_count;
 BY_VERSION(unsigned int, Boolean) data_005870f8;
@@ -1118,7 +1125,7 @@ void IRO_CommonSubs(void)
                     if (cse->linear != stmt && cse->use == NULL && (cse->index >> 5) < availableExpressions->size &&
                         (availableExpressions->bits[cse->index >> 5] & (1 << cse->index)) != 0 &&
                         IroUtil_LinearConstantTreesSame(stmt, cse->linear) != 0) {
-                        IroUtil_VisitLinearTree(stmt, (void (*)(IROLinear *, int))fn_0044e360);
+                        IroUtil_VisitLinearTree(stmt, VISIT_FN_0044E360);
                         stmt->flags |= 8;
                         stmt->expr->use = cse;
                         break;

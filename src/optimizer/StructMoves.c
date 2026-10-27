@@ -300,7 +300,11 @@ void emit_pair_copy_loop(Operand *destination, Operand *source, int size)
     fn_0051aee0(source, -8);
     wordRegister = allocateGPR();
     PCodeUtilities_LoadImmediate(wordRegister, count = (SInt32)size >> 3);
+#ifdef __wasm__ /* (a variadic function, called as a fixed one; WebAssembly's call must match) */
+    PCodeUtilities_EmitInstruction(0x78, wordRegister);
+#else
     ((void (*)(int, SInt16))PCodeUtilities_EmitInstruction)(0x78, wordRegister);
+#endif
     PCodeUtilities_ResolveLabel(loopLabel);
 
     firstPair(destination, source);

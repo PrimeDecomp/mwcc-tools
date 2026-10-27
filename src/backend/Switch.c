@@ -38,6 +38,11 @@
 #include "compiler/TOC.h"
 #include "driver/Files.h"
 #include "compiler/ENode.h"
+
+#ifdef __wasm__ /* (a call the original makes without a prototype, which WebAssembly's must match) */
+extern void qsort(void *base, unsigned long count, unsigned long size, int (*compare)(const void *, const void *));
+#endif
+
 static CInt64 data_005608f8 = {0, 3};
 
 static struct SwitchCase **data_00581150;

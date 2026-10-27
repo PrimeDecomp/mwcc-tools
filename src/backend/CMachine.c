@@ -16,6 +16,13 @@
 #include <string.h>
 #include <stdio.h>
 
+#ifdef __wasm__
+/* Constant folding's arithmetic (CMach_CalcFloatDiadic, CMach_FloatReciprocal). The original folds on the x87, which
+   __dec2num leaves at 64-bit precision: from the first literal on, each result is rounded twice. wasm/src/x87.c's
+   emulation follows that state. */
+double __x87_double(int op, double a, double b);
+#endif
+
 #if VERSION >= VERSION_GC_1_3
 #include "compiler/CInline.h"
 #endif
@@ -823,16 +830,32 @@ Float CMach_CalcFloatDiadic(Type *type, Float left, short op, Float right)
 {
     switch (op) {
         case '+':
+#ifdef __wasm__
+            left.data.value = __x87_double('+', left.data.value, right.data.value);
+#else
             left.data.value += right.data.value;
+#endif
             break;
         case '-':
+#ifdef __wasm__
+            left.data.value = __x87_double('-', left.data.value, right.data.value);
+#else
             left.data.value -= right.data.value;
+#endif
             break;
         case '*':
+#ifdef __wasm__
+            left.data.value = __x87_double('*', left.data.value, right.data.value);
+#else
             left.data.value *= right.data.value;
+#endif
             break;
         case '/':
+#ifdef __wasm__
+            left.data.value = __x87_double('/', left.data.value, right.data.value);
+#else
             left.data.value /= right.data.value;
+#endif
             break;
         default:
             CError_FATAL(BY_VERSION(592, 679));
@@ -1797,7 +1820,11 @@ Boolean CMach_FloatIsPowerOf2(Float f)
 
 Float CMach_FloatReciprocal(Float value)
 {
+#ifdef __wasm__
+    value.data.value = __x87_double('/', 1.0, value.data.value);
+#else
     value.data.value = 1.0L / value.data.value;
+#endif
     return value;
 }
 

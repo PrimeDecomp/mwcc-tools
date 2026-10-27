@@ -2341,9 +2341,19 @@ void find_dtor_temp_arg(ENode *e)
     }
 }
 
+#ifdef __wasm__
+/* (called through data_0058757c with two arguments, which WebAssembly's indirect calls must match) */
+static ENode *create_scopebegin_node_2(Type *type, Boolean unused)
+{
+    return create_scopebegin_node(type);
+}
+#endif
+
 Boolean initialize_from_assignment(Object *obj, Boolean flag)
 {
+#ifndef __wasm__
     ENode *create_scopebegin_node(Type *, Boolean);
+#endif
 
     Type *type;
     SInt32 bufferSize;
@@ -2352,7 +2362,11 @@ Boolean initialize_from_assignment(Object *obj, Boolean flag)
 
     if (tk == '=') {
         if (flag)
+#ifdef __wasm__
+            data_0058757c = create_scopebegin_node_2;
+#else
             data_0058757c = create_scopebegin_node;
+#endif
         else
             data_0058757c = create_temp_object_expr;
         tk = CPrepTokenizer_GetNextToken();

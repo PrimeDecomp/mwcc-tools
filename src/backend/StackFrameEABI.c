@@ -463,6 +463,11 @@ void StackFrameEABI_MergePrologueEpilogue(PCodeBlock *block, char emitReturn)
         } else {
             PCodeUtilities_EmitInstruction(PC_ADDI, 1, 1, 0, stack_frame_size);
         }
+#if VERSION == VERSION_GC_1_2_5N
+        /* Ninji's patch (2023-07-15), x86 code in the room of a CObjC.c function: the instruction that pops the
+           frame gets flag 0x400 */
+        Operands_AllocateGPR(0x400);
+#endif
     }
     if ((largeFrame || gHasAltivecFrame != 0) && restoreLR) {
         emit_opcode_with_base_offset(PC_LWZ, 0, 1, NULL, 4);

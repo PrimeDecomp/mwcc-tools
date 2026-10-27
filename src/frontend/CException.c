@@ -1347,7 +1347,7 @@ ENode *fn_004e1940(ENode *node)
     return node;
 }
 
-void lower_newexception(ENode *node, Boolean useExpression)
+WASM_RETURNS(ENode *) lower_newexception(ENode *node, Boolean useExpression)
 {
     Statement *initialStatement;
     Statement *statement;
@@ -1421,6 +1421,9 @@ void lower_newexception(ENode *node, Boolean useExpression)
         result = create_objectnode(node->data.newexception.pointertemp);
     }
     result->rtype = node->rtype;
+#ifdef __wasm__
+    return result;
+#endif
 }
 
 ENode *rewrite_funccall_temporaries(ENode *node, Boolean reverse)
@@ -1577,7 +1580,7 @@ ENode *rewrite_expr_temporaries(ENode *expr)
             return fn_004e1940(expr);
         case ENEWEXCEPTION:
         case ENEWEXCEPTIONARRAY:
-            lower_newexception(expr, 1);
+            WASM_RETURN lower_newexception(expr, 1);
             return;
 #if VERSION >= VERSION_GC_1_3
         case ENODE_13_INSERTED:
@@ -1669,7 +1672,7 @@ ENode *fn_004e1050(ENode *expression)
             return fn_004e1940(expression);
         case ENEWEXCEPTION:
         case ENEWEXCEPTIONARRAY:
-            lower_newexception(expression, 0);
+            WASM_RETURN lower_newexception(expression, 0);
             return;
 #if VERSION >= VERSION_GC_1_3
         case ENODE_13_INSERTED:

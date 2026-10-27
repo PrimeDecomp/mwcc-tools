@@ -1,9 +1,9 @@
-# GC 1.3.2, 2.6 and 2.7 as WebAssembly
+# GC 1.2.5n, 1.3.2, 2.6 and 2.7 as WebAssembly
 
 For GC 1.3.2, 2.6 and 2.7, the compiler is built from the vendored `gc2/` sources for wasm32 and runs inside
 `mwcc-tools`. This is the default for those versions once the module is built. A compile starts no process and runs
-no Metrowerks or Windows binary. GC 1.3.2's and 2.7's linkers (`mwldeppc.exe`) are built the same way from this
-repository's own sources ([The linkers](#the-linkers)).
+no Metrowerks or Windows binary. GC 1.3.2's and 2.7's linkers (`mwldeppc.exe`) and the GC 1.2.5n compiler are
+built the same way from this repository's own sources ([The linkers](#the-linkers), [GC 1.2.5n](#gc-125n)).
 
 `gc2/` is [mweppc](https://github.com/doldecomp/mweppc)'s decompilation (henriquegemignani/mweppc's `gc-1.3.2`
 branch, eacdfaa, which adds 1.3.2 to the same sources), with the probes and the WebAssembly changes below. The
@@ -38,8 +38,8 @@ path, or `CLANG` and `WASM_LD` at `configure` time. It also needs Rust's `wasm32
 downloaded: the C library is `wasm/libc`'s, not MSL's. The 203 units compile in about 4 seconds. Cranelift compiles a
 module once per process (1.5 to 2 seconds); a compile then takes 5 to 8 ms.
 
-CI builds GC 2.7's and 1.3.2's modules, with their linkers, on Linux and publishes them with each release
-(`mwcc-wasm-GC_2_7-VERSION.zip`, `mwcc-wasm-GC_1_3_2-VERSION.zip`). The
+CI builds GC 2.7's and 1.3.2's modules, with their linkers, and GC 1.2.5n's on Linux and publishes them with each
+release (`mwcc-wasm-GC_2_7-VERSION.zip`, `mwcc-wasm-GC_1_3_2-VERSION.zip`, `mwcc-wasm-GC_1_2_5n-VERSION.zip`). The
 comparison with the original compiler (the `corpus` commands above, on `tests/fixtures/oracle/sources`) is run
 locally.
 
@@ -267,6 +267,59 @@ compiler's flags, `-DVERSION` of GC_2_7 and `-DLINKER=13` or `-DLINKER=27`. As i
 
 `mwcc-tools run` runs the module in place of the original linker (`build/compilers/GC/<dir>/mwldeppc.exe`, or a copy
 of it anywhere, known by the size and SHA-1 of `config/LD_*/config.json`) once it is built, as it does the compilers.
+
+## GC 1.2.5n
+
+`wasm_linker.rs` also builds GC 1.2.5n's compiler, `build/GC_1_2_5n/wasm/mwcc.wasm`, from the root `src/` (the
+decompilation the matching build compiles): the units of `config/GC_1_2_5n/splits.txt` with their flags and
+`-DVERSION` of GC_1_2_5n. It is built as the linkers are: the mirror's pragmas, `wasm/libc` and `wasm/src`, the
+imports file, and a COMMON block, which `mwcc-tools wasm-common` writes from the split's `common` unit and the
+names of `symbols.txt` in it (a port of decomp/mwcc's `tools/common_source.py`). `configure --version GC_1_2_5n`
+adds it to the default targets. The original has no resources, so its `.version` is empty, and a version query fails
+as it does on Windows.
+
+The module runs in the place of the stock compiler and of a project's copy of it, as the others do. It has no
+oracle hooks: a traced run of 1.2.5n goes to the native oracle. GC 1.3 cannot be built so: 371 of its functions
+(about 300 KB) have no source, so it runs as a process.
+
+What WebAssembly needs of the sources is under `#ifdef __wasm__`, and the Metrowerks build preprocesses to the same
+tokens for every version and both linkers:
+
+* Varargs the code takes from the stack by hand (`CError.c`, `PPCError.c`, `PCodeUtilities.c`, `IroDump.c`,
+  `CParser.c`, `CExpr2.c`) use `__va_start`.
+* Calls whose type is not the callee's (a call through a cast to another type, or a declaration that is not the
+  definition's) trap in WebAssembly. The tables of option handlers, token scanners, peephole rules, code generators
+  and IR visitors get thunks with the table's type; direct calls replace the casts elsewhere, including the casts
+  of the variadic `PCodeUtilities_EmitInstruction`. LLVM puts a trapping stub (`*_bitcast_invalid`) in place of
+  such a call without a warning, and wasm-ld its own (`signature_mismatch:*`) with one. `mwcc-tools wasm-stubs`
+  lists them from a module's name section; every module has the check as a default target
+  (`build/<…>/wasm/<module>.wasm.stubs`), which fails the build where there are any.
+* Functions the sources declare `void`, or that end without a `return`, whose x86 leaves a value in EAX that the
+  caller uses (`create_objectnode`, `make_funccall_with_dexprs`, `convert_right_and_make_diadic_node`, …):
+  `WASM_RETURNS(type)` and `WASM_RETURN` (`include/compiler/common.h`) return it.
+* `IRO_RangePropagateInFNode` never sets `changed`, which is its caller's EBX: the pass number
+  (`IroRangePropagation_Pass`). Branching on an unset value let LLVM drop the loop's exit, and every compile at
+  `-O3` and above hung.
+* The machine simulations index their pipeline stages from the first of several statics in a row: one array.
+* `eliminate_redundant_store` compares two offsets that a store to another object leaves unset (the caller's EDI
+  and a stack slot): they are set so that the objects do not overlap, as gc2's `L_S` has them.
+* Reads past an object (`stvoid`'s padding, `UNCHECKED_INTEGRAL`) and constant folding on the x87
+  ([below](#floating-point-the-x87)) as in gc2.
+
+Ninji's patch of 1.2.5n (2023-07-15, x86 code in the room of a `CObjC.c` function) gives the instruction that pops
+the frame flag 0x400. It is in `StackFrameEABI.c` for VERSION GC_1_2_5n, outside `__wasm__`: the source describes
+the binary. `StackFrameEABI.c` is not in 1.2.5n's `matching` list, so the matching build keeps the original's bytes.
+
+`MWCC_WASM_STOP_AFTER=SECONDS` stops a run that takes longer as a trap does, with the module's backtrace: how the
+hangs above were found.
+
+Status:
+
+* Canaries (2313): identical objects, messages and exit codes to the original's.
+* The units of Metroid Prime's build that use 1.2.5n (`corpus --version GC_1_2_5n --prime`): 26/26 identical; Metroid
+  Prime 2: Echoes': 81/81.
+* Floating-point folding: 7600 functions of random `+ - * /` chains of literals (doubles, floats, integers, casts),
+  identical.
 
 ## Floating point: the x87
 

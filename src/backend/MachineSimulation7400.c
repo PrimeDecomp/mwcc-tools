@@ -498,6 +498,27 @@ static struct OpcodeScheduleInfo data_00577660[466] = {
 
 /* The instruction in each of the eighteen execution stages and the cycles it has left there: eighteen statics in a
    row, which the code also indexes from the first. */
+#ifdef __wasm__ /* (one array: the code indexes them from the first, as the x86 lays them out) */
+static PipelineStage wasm_pipeline_stages[18];
+#define pipeline_slots wasm_pipeline_stages[0]
+#define data_00582f08 wasm_pipeline_stages[1]
+#define data_00582f10 wasm_pipeline_stages[2]
+#define data_00582f18 wasm_pipeline_stages[3]
+#define data_00582f20 wasm_pipeline_stages[4]
+#define data_00582f28 wasm_pipeline_stages[5]
+#define data_00582f30 wasm_pipeline_stages[6]
+#define data_00582f38 wasm_pipeline_stages[7]
+#define data_00582f40 wasm_pipeline_stages[8]
+#define data_00582f48 wasm_pipeline_stages[9]
+#define data_00582f50 wasm_pipeline_stages[10]
+#define data_00582f58 wasm_pipeline_stages[11]
+#define data_00582f60 wasm_pipeline_stages[12]
+#define data_00582f68 wasm_pipeline_stages[13]
+#define data_00582f70 wasm_pipeline_stages[14]
+#define data_00582f78 wasm_pipeline_stages[15]
+#define data_00582f80 wasm_pipeline_stages[16]
+#define data_00582f88 wasm_pipeline_stages[17]
+#else
 static PipelineStage pipeline_slots;
 static PipelineStage data_00582f08;
 static PipelineStage data_00582f10;
@@ -516,6 +537,7 @@ static PipelineStage data_00582f70;
 static PipelineStage data_00582f78;
 static PipelineStage data_00582f80;
 static PipelineStage data_00582f88;
+#endif
 static PCodeInstruction *pipelineCompletedInstruction;
 static PCodeInstruction *pipeline_completed_instruction;
 static int data_00582f98;

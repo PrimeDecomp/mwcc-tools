@@ -8,6 +8,16 @@
 #define _Setjmp setjmp
 #endif
 
+/* Functions the sources declare void (or that end without a return) whose x86 leaves a value in EAX that
+   callers use: under wasm they return it */
+#ifdef __wasm__
+#define WASM_RETURNS(type) type
+#define WASM_RETURN return
+#else
+#define WASM_RETURNS(type) void
+#define WASM_RETURN
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif

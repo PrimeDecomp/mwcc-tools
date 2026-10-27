@@ -14,8 +14,8 @@ Getting started
 ===============
 
 GC 1.3.2, 2.6 and 2.7's compilers and oracles run in process as WebAssembly, built from the compilers' sources in
-`gc2/` (the [mweppc](https://github.com/doldecomp/mweppc) decompilation), and so do GC 1.3.2's and 2.7's linkers,
-built from this repository's `src/`. The expected setup downloads the prebuilt modules instead of building them:
+`gc2/` (the [mweppc](https://github.com/doldecomp/mweppc) decompilation), and so do GC 1.3.2's and 2.7's linkers
+and the GC 1.2.5n compiler, built from this repository's `src/`. The expected setup downloads the prebuilt modules instead of building them:
 
 ```sh
 git clone https://github.com/PrimeDecomp/mwcc-tools
@@ -25,7 +25,8 @@ for archive in mwcc-wasm-*.zip; do unzip -o "$archive"; done
 cargo build --locked --release -p mwcc-tools
 ```
 
-There is one archive per version (`mwcc-wasm-GC_2_7-*.zip`, `mwcc-wasm-GC_1_3_2-*.zip`), each with its linker. An
+There is one archive per version (`mwcc-wasm-GC_2_7-*.zip`, `mwcc-wasm-GC_1_3_2-*.zip`, each with its linker, and
+`mwcc-wasm-GC_1_2_5n-*.zip`). An
 archive keeps the modules' paths (`build/GC_2_7/wasm/`, `build/LD_2_7/wasm/`), so it unpacks into the checkout; the tools read the
 checkout's `config/` beside them. Each release also has a prebuilt `mwcc-tools` for Windows x64, Linux x64 and
 macOS arm64 ([native package](docs/oracle-rust-release.md)) in place of the `cargo build`: set `MWCC_ORACLE_ROOT`
@@ -115,7 +116,9 @@ target/release/mwcc-tools configure --version GC_2_7
 ninja build/GC_2_7/wasm/mwcc.wasm build/LD_2_7/wasm/mwldeppc.wasm
 ```
 
-Use `--version GC_1_3_2` for 1.3.2 (and `build/LD_1_3_2/wasm/mwldeppc.wasm`), `--version GC_2_6` for 2.6. [wasm.md](docs/wasm.md) has the details.
+Use `--version GC_1_3_2` for 1.3.2 (and `build/LD_1_3_2/wasm/mwldeppc.wasm`), `--version GC_2_6` for 2.6, and
+`--version GC_1_2_5n` for 1.2.5n (`build/GC_1_2_5n/wasm/mwcc.wasm`, no oracle and no linker). [wasm.md](docs/wasm.md)
+has the details.
 
 License
 =======

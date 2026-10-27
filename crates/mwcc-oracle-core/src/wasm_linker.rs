@@ -28,6 +28,17 @@ use std::{
 /// The linkers built for WebAssembly, each with the compiler version it goes with.
 pub const LINKERS: [(&str, &str); 2] = [("LD_1_3_2", "GC_1_3_2"), ("LD_2_7", "GC_2_7")];
 
+/// The compilers built for WebAssembly from this repository's own sources (gc2 has none of them): the stock
+/// compiler only, without the oracle's hooks (`build/<version>/wasm/mwcc.wasm`). Each is built as a linker is, from
+/// its own split (`config/<version>/splits.txt`) and flags, with `-DVERSION` of its version; its COMMON block is
+/// written from the split's `common` unit and `symbols.txt`, and its version information is the original's.
+pub const COMPILERS: [&str; 1] = mwcc_project::compilers::ROOT_VERSIONS;
+
+/// Whether PROGRAM (a linker's or a version's name) is one of [`COMPILERS`].
+pub fn is_compiler(program: &str) -> bool {
+    COMPILERS.contains(&program)
+}
+
 /// The compiler version whose driver and flags the linkers' shared sources are built with.
 const COMPILER: &str = "GC_2_7";
 
@@ -55,21 +66,33 @@ pub fn directory(linker: &str) -> String {
     format!("build/{linker}/wasm")
 }
 
-/// The linker module.
-pub fn output(linker: &str) -> String {
-    format!("{}/mwldeppc.wasm", directory(linker))
+fn stem(program: &str) -> &'static str {
+    if is_compiler(program) {
+        "mwcc"
+    } else {
+        "mwldeppc"
+    }
+}
+
+/// The program's module.
+pub fn output(program: &str) -> String {
+    format!("{}/{}.wasm", directory(program), stem(program))
 }
 
 /// The module's version information (mwcc-wasm's `version_info_path`).
-pub fn version_output(linker: &str) -> String {
-    format!("{}/mwldeppc.version", directory(linker))
+pub fn version_output(program: &str) -> String {
+    format!("{}/{}.version", directory(program), stem(program))
 }
 
-/// Whether ROOT has what LINKER's module is built from.
-pub fn available(root: &Path, linker: &str) -> bool {
-    compiler_of(linker).is_some()
-        && root.join(format!("config/{linker}/config.json")).is_file()
-        && root.join("src/linker").is_dir()
+/// Whether ROOT has what PROGRAM's module is built from.
+pub fn available(root: &Path, program: &str) -> bool {
+    let own = if is_compiler(program) {
+        root.join(format!("config/{program}/splits.txt")).is_file()
+            && root.join(format!("config/{program}/symbols.txt")).is_file()
+    } else {
+        compiler_of(program).is_some() && root.join("src/linker").is_dir()
+    };
+    own && root.join(format!("config/{program}/config.json")).is_file()
         && wasm_build::available(root, COMPILER)
 }
 
@@ -91,23 +114,31 @@ const RELAXED: &[&str] = &[
     "-Wno-error=implicit-int",
 ];
 
-/// LINKER's C and C++ units (sources of the mirror), in the split's order.
-pub fn units(root: &Path, linker: &str) -> Result<Vec<wasm_build::Unit>> {
-    let config = read_json(&root.join(format!("config/{linker}/config.json")))?;
-    let from = config["units_from"].as_str().unwrap_or(linker);
+/// PROGRAM's C and C++ units (sources of the mirror), in the split's order.
+pub fn units(root: &Path, program: &str) -> Result<Vec<wasm_build::Unit>> {
+    let config = read_json(&root.join(format!("config/{program}/config.json")))?;
+    let from = config["units_from"].as_str().unwrap_or(program);
     let splits = executable::read_splits(
         &fs::read_to_string(root.join(format!("config/{from}/splits.txt")))
             .with_context(|| format!("read config/{from}/splits.txt"))?,
     )?;
     let replace = config["replace"].as_object();
     let sources = read_json(&root.join("config/sources.json"))?;
-    let compiler = read_json(&root.join(format!("config/{COMPILER}/config.json")))?;
+    let flags_of = if is_compiler(program) {
+        program
+    } else {
+        COMPILER
+    };
+    let compiler = read_json(&root.join(format!("config/{flags_of}/config.json")))?;
     let define = build_config::VERSIONS
         .iter()
-        .position(|v| *v == COMPILER)
-        .context("GC_2_7 is not a build version")?;
-    let number = &linker[3..].replace('_', "");
-    let number = &number[..2];
+        .position(|v| *v == flags_of)
+        .with_context(|| format!("{flags_of} is not a build version"))?;
+    // (a linker's `-DLINKER`: 13 or 27)
+    let linker_define = (!is_compiler(program)).then(|| {
+        let number = program[3..].replace('_', "");
+        number[..2].to_owned()
+    });
     let prefix = format!("{MIRROR}/");
     let mut out = vec![];
     for unit in &splits.units {
@@ -130,7 +161,9 @@ pub fn units(root: &Path, linker: &str) -> Result<Vec<wasm_build::Unit>> {
             false,
             &prefix,
         )?;
-        arguments.push(format!("-DLINKER={number}"));
+        if let Some(number) = &linker_define {
+            arguments.push(format!("-DLINKER={number}"));
+        }
         let mut arguments = wasm_build::clang_arguments(unit, &prefix, &arguments);
         arguments.extend(RELAXED.iter().map(|s| s.to_string()));
         out.push(wasm_build::Unit {
@@ -139,7 +172,7 @@ pub fn units(root: &Path, linker: &str) -> Result<Vec<wasm_build::Unit>> {
             arguments,
         });
     }
-    ensure!(!out.is_empty(), "{linker} has no units");
+    ensure!(!out.is_empty(), "{program} has no units");
     Ok(out)
 }
 
@@ -229,8 +262,7 @@ pub fn mirror(root: &Path, destination: &str, stamp: Option<&str>) -> Result<()>
         let source = fs::read(root.join(&path))?;
         // (the sources are Windows-1252: each byte as a char, and back)
         let text: String = source.iter().map(|&b| b as char).collect();
-        let rewritten =
-            rewrite_pragmas(&text).with_context(|| format!("{}", path.display()))?;
+        let rewritten = rewrite_pragmas(&text).with_context(|| format!("{}", path.display()))?;
         let bytes: Vec<u8> = rewritten.chars().map(|c| c as u8).collect();
         let target = root.join(destination).join(&path);
         if fs::read(&target).is_ok_and(|old| old == bytes) {
@@ -249,6 +281,9 @@ pub fn mirror(root: &Path, destination: &str, stamp: Option<&str>) -> Result<()>
 /// banner reads.
 pub fn version_info(root: &Path, linker: &str) -> Result<Vec<u8>> {
     let config = read_json(&root.join(format!("config/{linker}/config.json")))?;
+    if is_compiler(linker) {
+        return original_version_info(root, &config);
+    }
     let script = config["resources"]
         .as_str()
         .with_context(|| format!("config/{linker}/config.json names no resources"))?;
@@ -261,6 +296,33 @@ pub fn version_info(root: &Path, linker: &str) -> Result<Vec<u8>> {
         .into_iter()
         .find(|r| r.kind == crate::pe::ResourceName::Number(16))
         .context("the linker's resource script has no version information")?
+        .data)
+}
+
+/// The original executable (CONFIG's `original`, checked against its `sha1`): its VS_VERSIONINFO resource.
+fn original_version_info(root: &Path, config: &serde_json::Value) -> Result<Vec<u8>> {
+    let original = config["original"]
+        .as_str()
+        .context("the config names no original executable")?;
+    let data = fs::read(root.join(original)).with_context(|| format!("read {original}"))?;
+    let digest = {
+        use sha1::{Digest, Sha1};
+        format!("{:x}", Sha1::digest(&data))
+    };
+    ensure!(
+        config["sha1"].as_str() == Some(digest.as_str()),
+        "{original} is not the original (SHA-1 {digest})"
+    );
+    let pe = crate::pe::Pe::parse(&data)?;
+    // (none: GC 1.2.5n has no resources, and its version information is empty, which the host fails as Windows
+    // does)
+    let Some(section) = pe.sections.iter().find(|s| s.name == ".rsrc") else {
+        return Ok(vec![]);
+    };
+    Ok(crate::pe::resources(&pe, section)?
+        .into_iter()
+        .find(|r| r.kind == crate::pe::ResourceName::Number(16))
+        .with_context(|| format!("{original} has no version information"))?
         .data)
 }
 
@@ -288,17 +350,25 @@ pub fn common_assembly(text: &str) -> Result<String> {
     let mut pending: Option<String> = None;
     for (number, line) in text.lines().enumerate() {
         let line = line.trim();
-        if line.is_empty() || line.starts_with('#') || line == ".bss" || line.starts_with(".globl") {
+        if line.is_empty() || line.starts_with('#') || line == ".bss" || line.starts_with(".globl")
+        {
             continue;
         }
         if let Some(align) = line.strip_prefix(".p2align") {
             out.push_str(&format!("\t.p2align {}\n", align.trim()));
         } else if let Some(label) = line.strip_suffix(':') {
-            ensure!(pending.is_none(), "line {}: {label} follows a label without a size", number + 1);
+            ensure!(
+                pending.is_none(),
+                "line {}: {label} follows a label without a size",
+                number + 1
+            );
             let name = label.strip_prefix('_').unwrap_or(label);
             pending = Some(name.to_string());
         } else if let Some(size) = line.strip_prefix(".zero") {
-            let size: u32 = size.trim().parse().with_context(|| format!("line {}: {line}", number + 1))?;
+            let size: u32 = size
+                .trim()
+                .parse()
+                .with_context(|| format!("line {}: {line}", number + 1))?;
             let Some(name) = pending.take() else {
                 bail!("line {}: .zero without a label", number + 1);
             };
@@ -309,18 +379,87 @@ pub fn common_assembly(text: &str) -> Result<String> {
             bail!("line {}: unsupported directive {line}", number + 1);
         }
     }
-    ensure!(pending.is_none(), "the COMMON block ends with a label without a size");
+    ensure!(
+        pending.is_none(),
+        "the COMMON block ends with a label without a size"
+    );
     Ok(out)
 }
 
-/// Writes LINKER's COMMON block as WebAssembly assembly ([`common_assembly`]) to OUTPUT.
-pub fn write_common(root: &Path, linker: &str, output: &str) -> Result<()> {
-    let source = common_source(root, linker)?;
-    let text = fs::read_to_string(root.join(&source)).with_context(|| format!("read {source}"))?;
+/// The COMMON block of an executable as decomp/mwcc's `tools/common_source.py` writes it (the x86 assembly
+/// [`common_assembly`] reads), from its split (SPLITS: the `common` unit's `.bss` ranges) and SYMBOLS (the C names in
+/// them): each name at its offset, as large as the room up to the next. Room before the first name has a name of its
+/// own, `_mwcc_common_start`.
+pub fn common_from_split(splits: &str, symbols: &str) -> Result<String> {
+    let splits = executable::read_splits(splits)?;
+    let ranges: Vec<(u32, u32)> = splits
+        .units
+        .iter()
+        .filter(|u| u.name == "common")
+        .flat_map(|u| u.ranges.iter())
+        .filter(|r| r.section == ".bss")
+        .map(|r| (r.start, r.end))
+        .collect();
+    ensure!(!ranges.is_empty(), "the split has no common unit");
+    let start = ranges.iter().map(|r| r.0).min().unwrap();
+    let end = ranges.iter().map(|r| r.1).max().unwrap();
+    let mut names: Vec<(u32, String)> = executable::read_symbols(symbols)?
+        .into_iter()
+        .filter(|s| {
+            s.section == ".bss" && s.name.starts_with('_') && (start..end).contains(&s.address)
+        })
+        .map(|s| (s.address, s.name))
+        .collect();
+    names.sort();
+    if names.first().is_none_or(|(address, _)| *address > start) {
+        names.insert(0, (start, "_mwcc_common_start".into()));
+    }
+    let mut out = String::from("\t.bss\n\t.p2align 4\n");
+    for (i, (address, name)) in names.iter().enumerate() {
+        let following = names.get(i + 1).map_or(end, |n| n.0);
+        out.push_str(&format!(
+            "\t.globl {name}\n{name}:\n\t.zero {}\n",
+            following - address
+        ));
+    }
+    Ok(out)
+}
+
+/// PROGRAM's COMMON block, as x86 assembly ([`common_assembly`] reads it): a linker's source file, a compiler's
+/// written from its split ([`common_from_split`]).
+fn common_text(root: &Path, program: &str) -> Result<String> {
+    if is_compiler(program) {
+        let read = |name: &str| {
+            fs::read_to_string(root.join(format!("config/{program}/{name}")))
+                .with_context(|| format!("read config/{program}/{name}"))
+        };
+        return common_from_split(&read("splits.txt")?, &read("symbols.txt")?);
+    }
+    let source = common_source(root, program)?;
+    fs::read_to_string(root.join(&source)).with_context(|| format!("read {source}"))
+}
+
+/// Writes PROGRAM's COMMON block as WebAssembly assembly ([`common_assembly`]) to OUTPUT.
+pub fn write_common(root: &Path, program: &str, output: &str) -> Result<()> {
+    let text = common_text(root, program)?;
     let output = root.join(output);
     fs::create_dir_all(output.parent().unwrap())?;
-    fs::write(output, common_assembly(&text).with_context(|| source.clone())?)?;
+    fs::write(
+        output,
+        common_assembly(&text).with_context(|| format!("{program}'s COMMON block"))?,
+    )?;
     Ok(())
+}
+
+/// The files PROGRAM's COMMON block is written from.
+fn common_inputs(root: &Path, program: &str) -> Result<Vec<String>> {
+    if is_compiler(program) {
+        return Ok(vec![
+            format!("config/{program}/splits.txt"),
+            format!("config/{program}/symbols.txt"),
+        ]);
+    }
+    Ok(vec![common_source(root, program)?])
 }
 
 fn common_source(root: &Path, linker: &str) -> Result<String> {
@@ -338,7 +477,11 @@ pub const IMPORTS: &str = "wasm/linker-imports.txt";
 /// The edges of the linkers' modules for compiler VERSION's build: the mirror (once), and the linker's objects, its
 /// module and version information. The rules are wasm_build's.
 pub fn edges(root: &Path, version: &str) -> Result<(Vec<String>, Vec<String>)> {
-    let Some(linker) = for_compiler(version) else {
+    let linker = if is_compiler(version) {
+        version
+    } else if let Some(linker) = for_compiler(version) {
+        linker
+    } else {
         return Ok((vec![], vec![]));
     };
     if !available(root, linker) {
@@ -405,7 +548,10 @@ pub fn edges(root: &Path, version: &str) -> Result<(Vec<String>, Vec<String>)> {
         ));
         objects.push(object);
     }
-    let common_source = common_source(root, linker)?;
+    let common_inputs: Vec<String> = common_inputs(root, linker)?
+        .iter()
+        .map(|p| escape(p))
+        .collect();
     let common = format!("{directory}/common.s");
     out.extend([
         "rule wasm_common".into(),
@@ -414,7 +560,7 @@ pub fn edges(root: &Path, version: &str) -> Result<(Vec<String>, Vec<String>)> {
         format!(
             "build {}: wasm_common {} | $tools_dep",
             escape(&common),
-            escape(&common_source)
+            common_inputs.join(" ")
         ),
         format!("  linker = {linker}"),
         format!("build {directory}/common.o: wasm_cc {}", escape(&common)),
@@ -453,7 +599,12 @@ pub fn edges(root: &Path, version: &str) -> Result<(Vec<String>, Vec<String>)> {
             .join(" ")
     ));
     let config = read_json(&root.join(format!("config/{linker}/config.json")))?;
-    let script = config["resources"].as_str().unwrap_or_default();
+    // (a compiler's version information is its original's)
+    let script = if is_compiler(linker) {
+        config["original"].as_str().unwrap_or_default()
+    } else {
+        config["resources"].as_str().unwrap_or_default()
+    };
     out.extend([
         format!(
             "build {}: wasm_linker_version {} | $tools_dep",
@@ -472,12 +623,67 @@ mod tests {
 
     #[test]
     fn the_common_block_keeps_its_offsets() {
-        let text = "# x\n\t.bss\n\t.p2align 4\n\t.globl _a\n_a:\n\t.zero 8\n\t.globl _b\n_b:\n\t.zero 4\n";
+        let text =
+            "# x\n\t.bss\n\t.p2align 4\n\t.globl _a\n_a:\n\t.zero 8\n\t.globl _b\n_b:\n\t.zero 4\n";
         let out = common_assembly(text).unwrap();
         assert!(out.contains(
             "\t.p2align 4\n\t.globl a\n\t.type a,@object\n\t.size a, 8\na:\n\t.skip 8\n\t.globl b\n"
         ));
         assert!(common_assembly("_a:\n\t.long 1\n").is_err());
+    }
+
+    #[test]
+    fn a_compilers_common_block_comes_from_its_split() {
+        let splits = "Sections:
+	.bss        type:bss align:8
+
+common:
+	.bss        start:0x00001000 end:0x00001010 common:1
+";
+        let symbols = concat!(
+            "_a = .bss:0x00001004; // type:object size:0x4
+",
+            "_b = .bss:0x00001008; // type:object size:0x4
+",
+            "local = .bss:0x0000100C; // type:object size:0x4
+",
+            "_c = .bss:0x00002000; // type:object size:0x4
+",
+        );
+        let out = common_from_split(splits, symbols).unwrap();
+        assert_eq!(
+            out,
+            concat!(
+                "	.bss
+	.p2align 4
+	.globl _mwcc_common_start
+_mwcc_common_start:
+	.zero 4
+",
+                "	.globl _a
+_a:
+	.zero 4
+	.globl _b
+_b:
+	.zero 8
+",
+            )
+        );
+        // (what common_assembly reads)
+        assert!(common_assembly(&out).unwrap().contains(
+            "a:
+	.skip 4
+"
+        ));
+        assert!(
+            common_from_split(
+                "Sections:
+	.bss        type:bss align:8
+",
+                symbols
+            )
+            .is_err()
+        );
     }
 
     #[test]

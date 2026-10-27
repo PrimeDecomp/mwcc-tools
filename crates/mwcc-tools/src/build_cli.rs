@@ -38,6 +38,11 @@ fn usage(command: &str) -> &'static str {
             "wasm-common LINKER OUTPUT [--root DIR]
     writes the linker's COMMON block (config.json assembly.common) as WebAssembly assembly to OUTPUT"
         }
+        "wasm-stubs" => {
+            "wasm-stubs MODULE STAMP
+    fails where MODULE has calls that trap because their types are not their callees' (LLVM's and wasm-ld's stubs),
+    else writes STAMP"
+        }
         _ => "",
     }
 }
@@ -248,11 +253,25 @@ pub fn run(command: &str, args: &[String]) -> Result<()> {
                 positional.len() == 2,
                 "wasm-linker-version LINKER OUTPUT [--root DIR]"
             );
-            mwcc_oracle_core::wasm_linker::write_version_info(&root, &positional[0], &positional[1])?;
+            mwcc_oracle_core::wasm_linker::write_version_info(
+                &root,
+                &positional[0],
+                &positional[1],
+            )?;
         }
         "wasm-common" => {
-            ensure!(positional.len() == 2, "wasm-common LINKER OUTPUT [--root DIR]");
+            ensure!(
+                positional.len() == 2,
+                "wasm-common LINKER OUTPUT [--root DIR]"
+            );
             mwcc_oracle_core::wasm_linker::write_common(&root, &positional[0], &positional[1])?;
+        }
+        "wasm-stubs" => {
+            ensure!(positional.len() == 2, "wasm-stubs MODULE STAMP");
+            mwcc_oracle_core::wasm_build::check_stubs(
+                std::path::Path::new(&positional[0]),
+                std::path::Path::new(&positional[1]),
+            )?;
         }
         _ => bail!("unknown build command {command}"),
     }

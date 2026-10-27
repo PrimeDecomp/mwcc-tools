@@ -4892,7 +4892,11 @@ TypeMemberFunc *CDecl_MakeDefaultDtorType(TypeClass *theclass, char is_const)
     func = (TypeMemberFunc *)galloc(sizeof(TypeMemberFunc));
     memclrw(func, sizeof(TypeMemberFunc));
     func->type = TYPEFUNC;
+#ifdef __wasm__ /* (the original's void_ptr follows stvoid; the wasm build's need not) */
+    func->functype = (Type *)&void_ptr;
+#else
     func->functype = (Type *)((char *)&stvoid + 8);
+#endif
     func->flags = FUNC_METHOD | FUNC_AUTO_GENERATED | FUNC_IS_DTOR;
     func->theclass = theclass;
     func->is_static = 0;

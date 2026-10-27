@@ -1,5 +1,8 @@
 #define CERROR_FILE "unknown.c"
 #include "compiler/common.h"
+#ifdef __wasm__ /* (the variadic arguments are not after the named ones: the target's stdarg.h) */
+#include <stdarg.h>
+#endif
 #include "compiler/IroDump.h"
 #include "compiler/enode.h"
 #include "compiler/objects.h"
@@ -658,7 +661,9 @@ void IroDump_Print(const char *message, ...)
     if (INT_005882b8 == 0)
         return;
 
-#if VERSION >= VERSION_GC_1_3
+#if defined(__wasm__)
+    arguments = __va_start(message);
+#elif VERSION >= VERSION_GC_1_3
     base = (char *)&message;
     arguments = base + ((va_list)(&message + 1) - base + 3) / 4 * 4;
 #else

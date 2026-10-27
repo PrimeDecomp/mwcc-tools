@@ -55,6 +55,10 @@
 
 #include "compiler/ENode.h"
 
+#ifdef __wasm__ /* (a call the original makes without a prototype, which WebAssembly's must match) */
+void CExpr_AliasTransform(ENode *expr);
+#endif
+
 struct CPrecNode *pendingInlineWork;
 SInt32 data_00587184;
 UInt32 function_tokenoffset;

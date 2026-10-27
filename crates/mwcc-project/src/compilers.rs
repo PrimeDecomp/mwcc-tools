@@ -19,6 +19,13 @@ use std::{
 /// The versions gc2's sources build.
 pub const VERSIONS: [&str; 3] = ["GC_1_3_2", "GC_2_6", "GC_2_7"];
 
+/// The versions this repository's own sources build for WebAssembly (`wasm_linker`'s compilers): their stock
+/// compiler runs in process, without the oracle's hooks, so a traced compile does not run in them.
+pub const ROOT_VERSIONS: [&str; 1] = ["GC_1_2_5n"];
+
+/// The versions whose compiler has a module: [`VERSIONS`] and [`ROOT_VERSIONS`].
+const MODULE_VERSIONS: [&str; 4] = ["GC_1_3_2", "GC_2_6", "GC_2_7", "GC_1_2_5n"];
+
 /// The linkers built for WebAssembly (`build/<linker>/wasm/mwldeppc.wasm`), each with its compiler version.
 pub const LINKERS: [(&str, &str); 2] = [("LD_1_3_2", "GC_1_3_2"), ("LD_2_7", "GC_2_7")];
 
@@ -103,7 +110,7 @@ pub fn module(root: &Path, executable: &Path) -> Option<(Version, PathBuf)> {
     if !enabled() {
         return None;
     }
-    for name in VERSIONS {
+    for name in MODULE_VERSIONS {
         let version = Version::parse(name).ok()?;
         let stock = stock_executable(root, version);
         if !same(executable, &stock) && !same(executable, &oracle_executable(root, name)) {
@@ -146,7 +153,7 @@ fn module_of_copy_if(enabled: bool, root: &Path, executable: &Path) -> Option<(V
         })
 }
 
-/// Which of [`VERSIONS`] an executable is: by its path, one of ROOT's compilers (the first that is), and by its
+/// Which of [`MODULE_VERSIONS`] an executable is: by its path, one of ROOT's compilers (the first that is), and by its
 /// size and SHA-1, a copy of the original a version's `config.json` gives (the first whose size it has).
 #[derive(Clone, Copy)]
 struct Identity {
@@ -181,7 +188,7 @@ fn identity(root: &Path, executable: &Path) -> Identity {
     {
         return *identity;
     }
-    let own = VERSIONS.into_iter().find(|name| {
+    let own = MODULE_VERSIONS.into_iter().find(|name| {
         let stock = Version::parse(name).map(|version| {
             root.join(format!(
                 "build/compilers/GC/{}/mwcceppc.exe",
@@ -203,10 +210,10 @@ fn identity(root: &Path, executable: &Path) -> Identity {
     identity
 }
 
-/// The first of [`VERSIONS`] whose `config.json` gives EXECUTABLE's SIZE and SHA-1.
+/// The first of [`MODULE_VERSIONS`] whose `config.json` gives EXECUTABLE's SIZE and SHA-1.
 fn copy_of(root: &Path, executable: &Path, size: u64) -> Option<&'static str> {
     let mut digest = None;
-    for name in VERSIONS {
+    for name in MODULE_VERSIONS {
         let Ok(config) = fs::read(root.join(format!("config/{name}/config.json"))) else {
             continue;
         };
@@ -257,7 +264,9 @@ fn trace_route_if(
     version: Option<Version>,
     mw_version: Option<&str>,
 ) -> Result<TraceRoute> {
-    if let Some((version, module)) = module_of_copy_if(in_process, root, compiler) {
+    if let Some((version, module)) = module_of_copy_if(in_process, root, compiler)
+        && VERSIONS.contains(&version.name())
+    {
         return Ok(TraceRoute::Module { version, module });
     }
     let named = mw_version.map_or_else(|| compiler.display().to_string(), str::to_owned);
@@ -421,6 +430,27 @@ mod tests {
     fn file(path: &Path, bytes: &[u8]) {
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         fs::write(path, bytes).unwrap();
+    }
+
+    #[test]
+    fn the_root_compilers_module_runs_in_its_originals_place() {
+        let root = tempfile::tempdir().unwrap();
+        let root = root.path();
+        let stock = root.join("build/compilers/GC/1.2.5n/mwcceppc.exe");
+        file(&stock, b"1.2.5n");
+        // (not built yet)
+        assert_eq!(module(root, &stock), None);
+        let built = root.join(module_output("GC_1_2_5n"));
+        file(&built, b"module");
+        assert_eq!(
+            module(root, &stock),
+            Some((Version::parse("GC_1_2_5n").unwrap(), built))
+        );
+        // (it has no oracle: no run of it traces)
+        assert!(!traces(
+            root,
+            &root.join("build/GC_1_2_5n/oracle/mwcceppc.exe")
+        ));
     }
 
     #[test]

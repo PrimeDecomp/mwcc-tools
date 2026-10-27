@@ -15,6 +15,9 @@
 #include "compiler/PCode.h"
 #if VERSION >= VERSION_GC_1_3
 #include "compiler/Registers.h"
+#ifdef __wasm__ /* (the variadic arguments are not after the named ones: __va_start) */
+#include <stdarg.h>
+#endif
 extern void expand_out_of_range_conditional_branches(void);
 #endif
 
@@ -281,7 +284,9 @@ PCodeInstruction *PCodeUtilities_CreateInstruction(UInt16 op, ...)
 {
     va_list arguments;
     PCodeInstruction *instruction;
-#if VERSION >= VERSION_GC_1_3
+#if defined(__wasm__)
+    arguments = __va_start(op);
+#elif VERSION >= VERSION_GC_1_3
     {
         va_list base = (va_list)&op;
         arguments = base + (((va_list)(&op + 1) - base + 3) / 4) * 4;
@@ -489,8 +494,12 @@ static inline void append_instruction(PCodeBlock *block, PCodeInstruction *instr
 
 PCodeInstruction *PCodeUtilities_EmitInstruction(short opcode, ...)
 {
+#ifdef __wasm__
+    va_list arguments = __va_start(opcode);
+#else
     va_list base = (va_list)&opcode;
     va_list arguments = base + (((va_list)(&opcode + 1) - base + 3) / 4) * 4;
+#endif
     PCodeInstruction *instruction = create_pcode_instruction(opcode, arguments);
     instruction->f18[1] = gCurrentStatement != NULL ? gCurrentStatement->sourceoffset : -1;
     append_instruction(gCurrentBlock, instruction);
@@ -499,7 +508,11 @@ PCodeInstruction *PCodeUtilities_EmitInstruction(short opcode, ...)
 #else
 PCodeInstruction *PCodeUtilities_EmitInstruction(short opcode, ...)
 {
+#ifdef __wasm__
+    va_list arguments = __va_start(opcode);
+#else
     va_list arguments = (va_list)&opcode + (((va_list)(&opcode + 1) - (va_list)&opcode + 3) / 4) * 4;
+#endif
     return PCode_AppendInstruction(gCurrentBlock, create_pcode_instruction(opcode, arguments));
 }
 #endif

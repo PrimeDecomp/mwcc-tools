@@ -21,7 +21,11 @@ struct ClassTypeUpdate *classTypeUpdates;
 
 typedef void (*PCodeGenFn)(ENode *node, SInt32 a, SInt32 b, Operand *dst);
 
+#ifndef __wasm__ /* (the wasm build has the target's stdarg.h) */
 typedef char *va_list;
+#else
+#include <stdarg.h>
+#endif
 
 static inline void PPCError_CheckDiagnosticCode(SInt16 diagnosticId)
 {
@@ -115,8 +119,13 @@ void fn_004b49e0(const char *format, ...)
 
     if (trychain != NULL)
         return;
+#ifdef __wasm__
+    (void)base;
+    CError_FormatAndReportDiagnostic(0x27e9, format, __va_start(format), 0, 1);
+#else
     CError_FormatAndReportDiagnostic(0x27e9, format,
                                      (((char *)(&format + 1) - (base = (char *)&format)) + 3) / 4 * 4 + base, 0, 1);
+#endif
 }
 #endif
 
@@ -146,7 +155,9 @@ void PPCError_ReportError(SInt32 error, ...)
     if (trychain != NULL)
         longjmp(trychain->jmpbuf, 1);
 
-#if VERSION >= VERSION_GC_1_3
+#if defined(__wasm__)
+    args = __va_start(error);
+#elif VERSION >= VERSION_GC_1_3
     base = (char *)&error;
     args = base + (((char *)(&error + 1) - base + 3) / 4 * 4);
 #else
@@ -176,7 +187,9 @@ void PPCError_ReportDiagnostic(SInt32 diagnosticId, ...)
     if (trychain != NULL) {
         return;
     }
-#if VERSION >= VERSION_GC_1_3
+#if defined(__wasm__)
+    va_start(args, diagnosticId);
+#elif VERSION >= VERSION_GC_1_3
     base = (char *)&diagnosticId;
     args = base + (((va_list)(&diagnosticId + 1) - base) + 3) / 4 * 4;
 #else
@@ -202,7 +215,9 @@ void PPCError_FatalError(short diagnostic, ...)
     if (trychain != NULL)
         longjmp(trychain->jmpbuf, 1);
 
-#if VERSION >= VERSION_GC_1_3
+#if defined(__wasm__)
+    va_start(args, diagnostic);
+#elif VERSION >= VERSION_GC_1_3
     base = (char *)&diagnostic;
     args = base + (((va_list)(&diagnostic + 1) - base + 3) / 4 * 4);
 #else

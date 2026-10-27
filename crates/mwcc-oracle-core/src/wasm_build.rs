@@ -291,7 +291,65 @@ pub fn rules() -> Vec<String> {
         "  rspfile_content = $in".into(),
         "  description = WASM-LD $out".into(),
     ]);
+    out.extend(
+        [
+            "rule wasm_stubs",
+            "  command = $tools wasm-stubs $in $out",
+            "  description = WASM-STUBS $in",
+        ]
+        .map(String::from),
+    );
     out
+}
+
+/// The stamp of MODULE's check for trapping stubs ([`check_stubs`]).
+pub fn stubs_output(module: &str) -> String {
+    format!("{module}.stubs")
+}
+
+/// The ninja edge that checks MODULE for trapping stubs, and its stamp.
+pub fn stubs_edge(module: &str) -> (String, String) {
+    let stamp = stubs_output(module);
+    (format!("build {stamp}: wasm_stubs {module}"), stamp)
+}
+
+/// The functions LLVM and wasm-ld put in a module for a call whose type is not its callee's (a call through a cast
+/// to another type, or a declaration that is not the definition's), named in its name section: each traps when
+/// called. Neither tool fails the build for them, and LLVM's give no warning.
+pub fn trapping_stubs(module: &[u8]) -> Vec<String> {
+    let name_byte = |b: u8| b.is_ascii_alphanumeric() || b == b'_' || b == b'.' || b == b':';
+    let mut out = std::collections::BTreeSet::new();
+    for pattern in [&b"signature_mismatch:"[..], b"_bitcast_invalid"] {
+        let mut at = 0;
+        while let Some(found) = module[at..]
+            .windows(pattern.len())
+            .position(|w| w == pattern)
+        {
+            let (mut start, mut end) = (at + found, at + found + pattern.len());
+            while start > 0 && name_byte(module[start - 1]) {
+                start -= 1;
+            }
+            while end < module.len() && name_byte(module[end]) {
+                end += 1;
+            }
+            out.insert(String::from_utf8_lossy(&module[start..end]).into_owned());
+            at = end;
+        }
+    }
+    out.into_iter().collect()
+}
+
+/// Fail where MODULE has trapping stubs ([`trapping_stubs`]), else write STAMP.
+pub fn check_stubs(module: &Path, stamp: &Path) -> Result<()> {
+    let bytes = std::fs::read(module).with_context(|| format!("reading {}", module.display()))?;
+    let stubs = trapping_stubs(&bytes);
+    ensure!(
+        stubs.is_empty(),
+        "{} has calls that trap, whose types are not their callees': {}",
+        module.display(),
+        stubs.join(", ")
+    );
+    std::fs::write(stamp, b"").with_context(|| format!("writing {}", stamp.display()))
 }
 
 /// wasm-ld's arguments for the module (and the oracle's, crate::wasm_oracle). gnu89's extern inline functions are
@@ -457,6 +515,19 @@ pub fn edges(root: &Path, version: &str) -> Result<Vec<String>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn trapping_stubs_are_found_by_name() {
+        let module = b"\x00\x01.LPCodeUtilities_EmitInstruction_bitcast_invalid\x05CError_Error\x12signature_mismatch:IroFlowgraph_ComputeDom\x00";
+        assert_eq!(
+            trapping_stubs(module),
+            [
+                ".LPCodeUtilities_EmitInstruction_bitcast_invalid",
+                "signature_mismatch:IroFlowgraph_ComputeDom"
+            ]
+        );
+        assert!(trapping_stubs(b"\x00CError_Error\x00main").is_empty());
+    }
 
     #[test]
     fn the_builds_arguments_become_clangs() {

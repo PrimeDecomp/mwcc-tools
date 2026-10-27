@@ -1481,10 +1481,17 @@ void append_or_defer_expression_statement(ENode *node)
     }
 }
 
+#ifdef __wasm__ /* (CInit calls it for the object's node, which the original leaves in EAX) */
+ENode *register_destructor_object(Type *type, Object *object, long offset, long flags)
+{
+    return CExcept_RegisterDestructorObject(object, offset, CClass_Destructor((TypeClass *)type), flags);
+}
+#else
 void register_destructor_object(Type *type, Object *object, long offset, long flags)
 {
     CExcept_RegisterDestructorObject(object, offset, CClass_Destructor((TypeClass *)type), flags);
 }
+#endif
 
 void declare_local_object(DeclInfo *declaration, TStreamElement *declarationToken, char isParameter,
                           char forbidInitialization)

@@ -27,6 +27,9 @@
 #include "compiler/IroCSE.h"
 #include "compiler/IroDump.h"
 #include "compiler/IroJump.h"
+#ifdef __wasm__ /* (its functions are void: WebAssembly's call must match) */
+#include "compiler/IroFlowgraph.h"
+#endif
 #include "compiler/IroLoop.h"
 #include "compiler/IroTransform.h"
 #include "compiler/IroUtil.h"
@@ -36,6 +39,10 @@
 #include "compiler/Switch.h"
 
 struct ERangeVar *range_vars;
+#if defined(__wasm__) && VERSION < VERSION_GC_1_3
+/* (IRO_Optimizer's pass: the x86 of IRO_RangePropagateInFNode never sets `changed`, which is the caller's EBX) */
+UInt8 IroRangePropagation_Pass;
+#endif
 struct ERangeVar *first_range_var;
 
 /* The bounds of the integral types. */
@@ -621,6 +628,8 @@ BY_VERSION(SInt32, Boolean) IRO_RangePropagateInFNode(void)
 
 #if VERSION >= VERSION_GC_1_3
     changed = 0;
+#elif defined(__wasm__)
+    changed = IroRangePropagation_Pass;
 #endif
     for (ns = iro_flowgraph_head; ns != NULL; ns = ns->nextnode) {
         range_vars = first_range_var = NULL;

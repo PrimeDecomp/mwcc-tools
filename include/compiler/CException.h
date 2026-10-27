@@ -184,7 +184,7 @@ extern void emit_flagged_class_offsets(TypeClass *type);
 extern void fn_004e2940(TypeClass *exceptionData);
 extern Boolean CExcept_ActionCompare(ExceptionAction *a, ExceptionAction *b);
 extern void update_statement_dobjstacks(Statement *node);
-extern void lower_newexception(ENode *node, Boolean useExpression);
+extern WASM_RETURNS(ENode *) lower_newexception(ENode *node, Boolean useExpression);
 extern void CExcept_CompareSpecifications(ExceptSpecList *a, ExceptSpecList *b);
 extern void CExcept_CheckStackRefs(ExceptionAction *node);
 extern void CExcept_RegisterMemberArray(Statement *stmt, Object *object, SInt32 offset, Object *dtor, SInt32 count,

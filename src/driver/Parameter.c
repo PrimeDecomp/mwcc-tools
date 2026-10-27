@@ -20,6 +20,10 @@
 #include "driver/Utils.h"
 #include <string.h>
 
+#ifdef __wasm__ /* (a call the original makes without a prototype, which WebAssembly's must match) */
+extern int sprintf(char *s, const char *format, ...);
+#endif
+
 char option_parameter_text[4096];
 static char *data_0054da38 = &option_parameter_text[0];
 static char *parm_help_buffer = &option_parameter_text[1024];

@@ -138,7 +138,7 @@ extern ENode *CExpr_ParseCommaExpression(void);
 extern Boolean fn_004f0f40(ENode *node);
 extern ENode *do_castnullcheck(ENode *node, ENode *label);
 extern ENode *CExpr_New_EBINNOT_Node(ENode *node);
-extern void make_static_method_setconst(ObjectList *objects);
+extern WASM_RETURNS(ENode *) make_static_method_setconst(ObjectList *objects);
 extern ENode *scan_member_function_pointer_call(ENode *expr);
 extern Type *scan_type_or_expression_type(void);
 extern ENodeList *CExpr_ScanExpressionList(char parenthesized);
@@ -167,7 +167,7 @@ extern unsigned char get_binary_operator_info(short token, unsigned char *operat
 extern ENode *CExpr_MemberPointerConversion(ENode *enode, Type *type, Boolean flag);
 extern ENode *classargument(ENode *node);
 extern CInt64 CExpr_IntegralConstExprType(Type **ptype);
-extern void convert_right_and_make_diadic_node(ENode *left, ENode *right, UInt8 type);
+extern WASM_RETURNS(ENode *) convert_right_and_make_diadic_node(ENode *left, ENode *right, UInt8 type);
 extern ENode *getnodeaddress(ENode *node, Boolean flag);
 extern SInt32 scansizeof(void);
 extern ENode *checkreference(ENode *e);

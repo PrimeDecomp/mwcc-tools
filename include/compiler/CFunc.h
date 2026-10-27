@@ -104,7 +104,11 @@ extern void CFunc_SetupNewFuncArgs(Object *func, FuncArg *args);
 extern void CFunc_CompoundStatement(struct StatementContext *context);
 extern ENode *initialize_argument_object(ENode *initData, Type *type, UInt32 flags);
 extern ENode *parse_declarations(char mode, int singleDeclaration, char allowEmpty, char stopAfterDeclaration);
+#ifdef __wasm__ /* (CInit calls it for the object's node, which the original leaves in EAX) */
+extern ENode *register_destructor_object(Type *type, Object *object, long offset, long flags);
+#else
 extern void register_destructor_object(Type *type, Object *object, long offset, long flags);
+#endif
 extern void append_localstatic_init_expr(ENode *expr);
 extern void CFunc_CodeCleanup(Statement *stmt);
 extern ENode *sub_47bca0(ENode *node);

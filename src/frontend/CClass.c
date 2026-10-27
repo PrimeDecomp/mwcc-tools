@@ -917,7 +917,9 @@ ENode *CClass_ClassPointerCast(ENode *expr, TypeClass *sourceClass, TypeClass *t
 
 ENode *CClass_DirectBasePointerCast(ENode *expr, TypeClass *theclass, TypeClass *base)
 {
+#ifndef __wasm__ /* (the definition's count is an SInt16) */
     ENode *CClass_AdjustBasePointer(ENode * expr, UInt16 count, Boolean flag);
+#endif
     ClassList *cl;
 
     base_path_depth = 0;

@@ -17,6 +17,26 @@
 #include "compiler/IroLoop.h"
 #include "compiler/IroUtil.h"
 #include "compiler/IroVars.h"
+#ifdef __wasm__
+/* The original reads a type's `integral` whatever its kind. A plain Type (void, a label, a template-dependent
+   expression, the illegal type) has none: the original reads the padding after it, 0, and the wasm build's next
+   object. */
+static UInt8 IroTransform_UncheckedIntegral(Type *type)
+{
+    switch ((UInt8)type->type) {
+        case TYPEVOID:
+        case TYPELABEL:
+        case TYPETEMPLDEPEXPR:
+        case 0xFF:
+            return 0;
+        default:
+            return TYPE_INTEGRAL(type)->integral;
+    }
+}
+#define UNCHECKED_INTEGRAL(ty) IroTransform_UncheckedIntegral(ty)
+#else
+#define UNCHECKED_INTEGRAL(ty) TYPE_INTEGRAL(ty)->integral
+#endif
 
 struct ENodeList *eadd_terms;
 ENodeList *eadd_terms_tail;
@@ -2229,9 +2249,9 @@ void remove_redundant_monadic_ops(IROLinear *expression)
                     value = IroUtil_FindNextUse(previous);
                     do {
                         if (value != NULL) {
-                            if (value->rtype != NULL && TYPE_INTEGRAL(value->rtype)->integral == IT_BOOL &&
+                            if (value->rtype != NULL && UNCHECKED_INTEGRAL(value->rtype) == IT_BOOL &&
                                 expression->u.monadic->rtype != NULL &&
-                                TYPE_INTEGRAL(expression->u.monadic->rtype)->integral == IT_BOOL)
+                                UNCHECKED_INTEGRAL(expression->u.monadic->rtype) == IT_BOOL)
                                 break;
                             if (value->type == IROLinearIf)
                                 break;

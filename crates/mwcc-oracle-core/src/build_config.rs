@@ -852,15 +852,23 @@ pub fn generate(root: &Path, request: &Request) -> Result<Generation> {
             crate::wasm_build::oracle_output(version),
             crate::wasm_build::persist_output(version),
         ] {
-            defaults.push(' ');
-            defaults.push_str(&module);
+            wasm_default(&mut out, &mut defaults, module);
         }
         // (the version's linker, from this repository's sources: crate::wasm_linker)
         let (edges, outputs) = crate::wasm_linker::edges(root, version)?;
         out.extend(edges);
         for output in outputs {
-            defaults.push(' ');
-            defaults.push_str(&output);
+            wasm_default(&mut out, &mut defaults, output);
+        }
+    } else if crate::wasm_linker::is_compiler(version)
+        && crate::wasm_linker::available(root, version)
+    {
+        // (a compiler of this repository's sources for WebAssembly, with no oracle: crate::wasm_linker)
+        out.extend(crate::wasm_build::rules());
+        let (edges, outputs) = crate::wasm_linker::edges(root, version)?;
+        out.extend(edges);
+        for output in outputs {
+            wasm_default(&mut out, &mut defaults, output);
         }
     }
     out.extend([format!("build all_source: phony {}",objects.iter().map(|p|ninja_path(p)).collect::<Vec<_>>().join(" ")),format!("build progress: phony build/{version}/report.json"),
@@ -879,4 +887,16 @@ pub fn run(root: &Path, request: &Request) -> Result<Generation> {
         compare::write_json(root, "objdiff.json", objdiff)?;
     }
     Ok(generated)
+}
+
+/// OUTPUT as a default target, and a module's check for trapping stubs (crate::wasm_build::check_stubs) with it.
+fn wasm_default(out: &mut Vec<String>, defaults: &mut String, output: String) {
+    if output.ends_with(".wasm") {
+        let (edge, stamp) = crate::wasm_build::stubs_edge(&output);
+        out.push(edge);
+        defaults.push(' ');
+        defaults.push_str(&stamp);
+    }
+    defaults.push(' ');
+    defaults.push_str(&output);
 }

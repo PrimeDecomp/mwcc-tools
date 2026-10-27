@@ -198,6 +198,20 @@ pub const TRACE_FUNCTIONS: &str = "MWCC_ORACLE_FUNCTIONS";
 /// The variable that sets how much memory a run may use, in MiB.
 pub const MEMORY_MB: &str = "MWCC_WASM_MEMORY_MB";
 
+/// Seconds after which a run stops as a trap does, with the module's backtrace: for finding where a compile hangs.
+pub const STOP_AFTER: &str = "MWCC_WASM_STOP_AFTER";
+
+fn stop_after() -> Option<Duration> {
+    static AFTER: std::sync::OnceLock<Option<Duration>> = std::sync::OnceLock::new();
+    *AFTER.get_or_init(|| {
+        std::env::var(STOP_AFTER)
+            .ok()
+            .and_then(|v| v.trim().parse::<f64>().ok())
+            .filter(|&s| s > 0.0)
+            .map(Duration::from_secs_f64)
+    })
+}
+
 /// The bytes of memory a run may grow to: `MWCC_WASM_MEMORY_MB` of the host's environment, else 1 GiB.
 /// A run that needs more stops with "out of memory".
 pub fn memory_limit() -> usize {
@@ -262,9 +276,10 @@ impl State {
             guest_directory: guest_path(&plain(request.directory).to_string_lossy()),
             program: guest_path(request.program),
             version_info: request.version_info.to_vec(),
-            command_line: request
-                .command_line
-                .map_or_else(|| command_line(&guest_path(request.program), request.args), str::to_owned),
+            command_line: request.command_line.map_or_else(
+                || command_line(&guest_path(request.program), request.args),
+                str::to_owned,
+            ),
             // (the host's own setting: the compiler's environment, and so its heap, is as without it)
             environment: request
                 .environment
@@ -535,6 +550,9 @@ impl Compiler {
             }
             if timeout.is_some_and(|t| started.elapsed() >= t) {
                 return Err(Stopped::TimedOut.into());
+            }
+            if stop_after().is_some_and(|t| started.elapsed() >= t) {
+                return Err(wasmtime::Error::msg(format!("stopped after {STOP_AFTER}")));
             }
             Ok(UpdateDeadline::Continue(1))
         });
@@ -2129,7 +2147,11 @@ fn imports(linker: &mut Linker<State>) -> Result<()> {
                 if last.len() - start >= 64 {
                     let shortened = short_name(&path);
                     if !shortened.is_empty() {
-                        short = Some(format!("{}{shortened}{}", &name[..start], &name[last.len()..]));
+                        short = Some(format!(
+                            "{}{shortened}{}",
+                            &name[..start],
+                            &name[last.len()..]
+                        ));
                     }
                 }
                 path.exists()
@@ -2317,13 +2339,18 @@ fn short_name(path: &Path) -> String {
     let wide: Vec<u16> = path.as_os_str().encode_wide().chain([0]).collect();
     let mut buffer = vec![0u16; 1024];
     // (SAFETY: WIDE ends with a NUL, and BUFFER's size is given)
-    let n = unsafe { GetShortPathNameW(wide.as_ptr(), buffer.as_mut_ptr(), buffer.len() as u32) } as usize;
+    let n = unsafe { GetShortPathNameW(wide.as_ptr(), buffer.as_mut_ptr(), buffer.len() as u32) }
+        as usize;
     if n == 0 || n >= buffer.len() {
         return String::new();
     }
     let short = PathBuf::from(std::ffi::OsString::from_wide(&buffer[..n]));
     match short.file_name().and_then(|f| f.to_str()) {
-        Some(name) if name.len() <= 12 && Some(name) != path.file_name().and_then(|f| f.to_str()) => name.into(),
+        Some(name)
+            if name.len() <= 12 && Some(name) != path.file_name().and_then(|f| f.to_str()) =>
+        {
+            name.into()
+        }
         _ => String::new(),
     }
 }

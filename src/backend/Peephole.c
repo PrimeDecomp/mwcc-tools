@@ -1745,6 +1745,13 @@ int eliminate_redundant_store(PCodeInstruction *in)
     int isUpdate, isVector, isFloat;
     int loadSize, storeSize, offset;
 
+#ifdef __wasm__
+    /* A store to another object between leaves both offsets unset, and the original compares what was there: the
+       load's is the caller's EDI and the store's a stack slot. Two objects do not overlap: so the offsets here (as gc2's
+       L_S has them) */
+    loadOffset = 0;
+    storeOffset = 0x7FFFFFFF;
+#endif
     def = CodeGen_ReachingDefTable_00581af8[in->useStart];
     if (PEEP_FLM(in->flags))
         return 0;
@@ -3538,102 +3545,161 @@ static int canmergemasks(SInt32 b1, SInt32 e1, SInt32 shift, SInt32 b2, SInt32 e
     return InstrSelection_GetMaskRange(((mask1 << shift) | (mask1 >> (32 - shift))) & mask2, first, last);
 }
 
+#ifdef __wasm__
+/* (the rules are called as PeepholeRuleProc, with the instruction and four values, and a call through another type
+   traps in WebAssembly: each is called through one of these, which passes it the first ones, as x86 did) */
+#define PEEPHOLE_THUNK(fn) static int wasm_peephole_##fn(PCodeInstruction *a0, UInt32 a1, UInt32 a2, UInt32 a3, UInt32 a4)
+PEEPHOLE_THUNK(bypass_cmpli_zero) { return (int)bypass_cmpli_zero((PCodeInstruction *)a0); }
+PEEPHOLE_THUNK(bypass_extsb_for_low_byte_rotated_mask) { return (int)bypass_extsb_for_low_byte_rotated_mask((PCodeInstruction *)a0, (PEEP_LIVE_T)a1); }
+PEEPHOLE_THUNK(combine_addi) { return (int)combine_addi((PCodeInstruction *)a0, (PEEP_LIVE_T)a1); }
+PEEPHOLE_THUNK(combine_mulli) { return (int)combine_mulli((struct PCodeInstruction *)a0, (PEEP_LIVE_T)a1); }
+PEEPHOLE_THUNK(combine_srawi) { return (int)combine_srawi((PCodeInstruction *)a0, (PEEP_LIVE_T)a1); }
+PEEPHOLE_THUNK(eliminate_matching_addi) { return (int)eliminate_matching_addi((PCodeInstruction *)a0, (PEEP_LIVE_T)a1); }
+PEEPHOLE_THUNK(eliminate_redundant_store) { return (int)eliminate_redundant_store((PCodeInstruction *)a0); }
+PEEPHOLE_THUNK(fn_004cba60) { return (int)fn_004cba60((CmpCtx *)a0); }
+PEEPHOLE_THUNK(fold_addi_or_mr_reaching_def) { return (int)fold_addi_or_mr_reaching_def((PCodeInstruction *)a0, (PEEP_LIVE_T)a1); }
+PEEPHOLE_THUNK(fold_lbz_lbzx_mask) { return (int)fold_lbz_lbzx_mask((PCodeInstruction *)a0, (PEEP_LIVE_T)a1); }
+PEEPHOLE_THUNK(fold_lhz_lhzx_mask) { return (int)fold_lhz_lhzx_mask((PCodeInstruction *)a0, (PEEP_LIVE_T)a1); }
+PEEPHOLE_THUNK(fold_li_operand) { return (int)fold_li_operand((PCodeInstruction *)a0, (PEEP_LIVE_T)a1); }
+PEEPHOLE_THUNK(fold_not_into_andc) { return (int)fold_not_into_andc((PCodeInstruction *)a0, (PEEP_LIVE_T)a1); }
+PEEPHOLE_THUNK(fold_reaching_addi) { return (int)fold_reaching_addi((PCodeInstruction *)a0); }
+PEEPHOLE_THUNK(fold_reaching_lha_or_extsb) { return (int)fold_reaching_lha_or_extsb((PCodeInstruction *)a0, (PEEP_LIVE_T)a1); }
+PEEPHOLE_THUNK(fold_rlwimi_rlwinm_to_sthbrx) { return (int)fold_rlwimi_rlwinm_to_sthbrx((PCodeInstruction *)a0, (UInt32 *)a1); }
+PEEPHOLE_THUNK(fold_rlwinm_or_mr_reaching_def) { return (int)fold_rlwinm_or_mr_reaching_def((PCodeInstruction *)a0, (PEEP_LIVE_T)a1); }
+PEEPHOLE_THUNK(fold_to_rlwnm) { return (int)fold_to_rlwnm((unsigned int)a0, (PEEP_LIVE_T)a1); }
+PEEPHOLE_THUNK(make_record_form_and_unlink_instruction) { return (int)make_record_form_and_unlink_instruction((PCodeInstruction *)a0); }
+#if VERSION >= VERSION_GC_1_3
+PEEPHOLE_THUNK(merge_reaching_def_instruction) { return (int)merge_reaching_def_instruction((PCodeInstruction *)a0, (UInt32 *)a1); }
+#else
+PEEPHOLE_THUNK(merge_reaching_def_instruction) { return (int)merge_reaching_def_instruction((PCodeInstruction *)a0, (int)a1, (int)a2, (int)a3, (int)a4); }
+#endif
+PEEPHOLE_THUNK(replace_with_reaching_li) { return (int)replace_with_reaching_li((PCodeInstruction *)a0, (PEEP_LIVE_T)a1); }
+#if VERSION >= VERSION_GC_1_3
+PEEPHOLE_THUNK(retarget_reaching_def_register) { return (int)retarget_reaching_def_register((PCodeInstruction *)a0, (UInt32 *)a1); }
+#else
+PEEPHOLE_THUNK(retarget_reaching_def_register) { return (int)retarget_reaching_def_register((PCodeInstruction *)a0, (UInt32)a1, (SInt32)a2); }
+#endif
+PEEPHOLE_THUNK(rewrite_as_addi) { return (int)rewrite_as_addi((PCodeInstruction *)a0); }
+#if VERSION >= VERSION_GC_1_3
+PEEPHOLE_THUNK(rewrite_reaching_def_reg) { return (int)rewrite_reaching_def_reg((PCodeInstruction *)a0, (UInt32 *)a1); }
+#else
+PEEPHOLE_THUNK(rewrite_reaching_def_reg) { return (int)rewrite_reaching_def_reg((PCodeInstruction *)a0, (SInt32)a1, (UInt32)a2); }
+#endif
+PEEPHOLE_THUNK(unlink_equal_reg_instruction) { return (int)unlink_equal_reg_instruction((PCodeInstruction *)a0); }
+PEEPHOLE_THUNK(unlink_instruction_for_unmatched_fmr) { return (int)unlink_instruction_for_unmatched_fmr((PCodeInstruction *)a0); }
+PEEPHOLE_THUNK(unlink_instruction_matching_vmr_source) { return (int)unlink_instruction_matching_vmr_source((PCodeInstruction *)a0); }
+PEEPHOLE_THUNK(unlink_instruction_with_matching_mr_def) { return (int)unlink_instruction_with_matching_mr_def((PCodeInstruction *)a0); }
+PEEPHOLE_THUNK(unlink_same_reg_instruction) { return (int)unlink_same_reg_instruction((PCodeInstruction *)a0); }
+PEEPHOLE_THUNK(unlink_same_reg_move) { return (int)unlink_same_reg_move((PCodeInstruction *)a0); }
+PEEPHOLE_THUNK(bypass_extsh_for_rotated_mask) { return (int)bypass_extsh_for_rotated_mask((PCodeInstruction *)a0, (PEEP_LIVE_T)a1); }
+PEEPHOLE_THUNK(fold_constant_compare_branch) { return (int)fold_constant_compare_branch((PCodeInstruction *)a0); }
+PEEPHOLE_THUNK(fold_rlwimi_store_to_stwbrx) { return (int)fold_rlwimi_store_to_stwbrx((PCodeInstruction *)a0, (PEEP_LIVE_T)a1); }
+PEEPHOLE_THUNK(remove_redundant_extsb) { return (int)remove_redundant_extsb((PCodeInstruction *)a0, (PEEP_LIVE_T)a1); }
+#undef PEEPHOLE_THUNK
+#define PEEPHOLE_RULE(fn) wasm_peephole_##fn
+/* (rules the sources register uncast) */
+#define PEEPHOLE_RULE_UNCAST(fn) wasm_peephole_##fn
+#else
+#define PEEPHOLE_RULE(fn) (PeepholeRuleProc)fn
+#define PEEPHOLE_RULE_UNCAST(fn) fn
+#endif
+
 void register_peephole_rules(void)
 {
     int opcode;
     for (opcode = 0; opcode < 466; opcode++)
         CodeGen_PeepholeHandlers_005813b0[opcode] = NULL;
 
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[92], (PeepholeRuleProc)fold_not_into_andc);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[139], (PeepholeRuleProc)replace_with_reaching_li);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[139], (PeepholeRuleProc)retarget_reaching_def_register);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[158], (PeepholeRuleProc)rewrite_reaching_def_reg);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[139], (PeepholeRuleProc)unlink_instruction_with_matching_mr_def);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[139], (PeepholeRuleProc)unlink_equal_reg_instruction);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[158], (PeepholeRuleProc)unlink_instruction_for_unmatched_fmr);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[158], (PeepholeRuleProc)unlink_same_reg_instruction);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[398], (PeepholeRuleProc)fn_004cba60);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[398], (PeepholeRuleProc)unlink_instruction_matching_vmr_source);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[398], (PeepholeRuleProc)unlink_same_reg_move);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[398], (PeepholeRuleProc)merge_reaching_def_instruction);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[82], (PeepholeRuleProc)make_record_form_and_unlink_instruction);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[105], (PeepholeRuleProc)fold_rlwinm_or_mr_reaching_def);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[103], (PeepholeRuleProc)fold_rlwinm_or_mr_reaching_def);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[103], (PeepholeRuleProc)bypass_extsb_for_low_byte_rotated_mask);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[103], bypass_extsh_for_rotated_mask);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[103], (PeepholeRuleProc)fold_lbz_lbzx_mask);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[103], (PeepholeRuleProc)fold_lhz_lhzx_mask);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[101], (PeepholeRuleProc)fold_reaching_lha_or_extsb);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[49], fold_rlwimi_store_to_stwbrx);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[51], fold_rlwimi_store_to_stwbrx);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[44], (PeepholeRuleProc)fold_rlwimi_rlwinm_to_sthbrx);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[46], (PeepholeRuleProc)fold_rlwimi_rlwinm_to_sthbrx);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[21], (PeepholeRuleProc)fold_li_operand);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[25], (PeepholeRuleProc)fold_li_operand);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[29], (PeepholeRuleProc)fold_li_operand);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[34], (PeepholeRuleProc)fold_li_operand);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[40], (PeepholeRuleProc)fold_li_operand);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[44], (PeepholeRuleProc)fold_li_operand);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[49], (PeepholeRuleProc)fold_li_operand);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[142], (PeepholeRuleProc)fold_li_operand);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[146], (PeepholeRuleProc)fold_li_operand);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[150], (PeepholeRuleProc)fold_li_operand);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[154], (PeepholeRuleProc)fold_li_operand);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[21], (PeepholeRuleProc)fold_addi_or_mr_reaching_def);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[25], (PeepholeRuleProc)fold_addi_or_mr_reaching_def);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[29], (PeepholeRuleProc)fold_addi_or_mr_reaching_def);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[34], (PeepholeRuleProc)fold_addi_or_mr_reaching_def);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[40], (PeepholeRuleProc)fold_addi_or_mr_reaching_def);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[44], (PeepholeRuleProc)fold_addi_or_mr_reaching_def);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[49], (PeepholeRuleProc)fold_addi_or_mr_reaching_def);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[142], (PeepholeRuleProc)fold_addi_or_mr_reaching_def);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[146], (PeepholeRuleProc)fold_addi_or_mr_reaching_def);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[150], (PeepholeRuleProc)fold_addi_or_mr_reaching_def);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[154], (PeepholeRuleProc)fold_addi_or_mr_reaching_def);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[22], (PeepholeRuleProc)fold_reaching_addi);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[26], (PeepholeRuleProc)fold_reaching_addi);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[30], (PeepholeRuleProc)fold_reaching_addi);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[35], (PeepholeRuleProc)fold_reaching_addi);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[41], (PeepholeRuleProc)fold_reaching_addi);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[45], (PeepholeRuleProc)fold_reaching_addi);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[50], (PeepholeRuleProc)fold_reaching_addi);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[143], (PeepholeRuleProc)fold_reaching_addi);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[147], (PeepholeRuleProc)fold_reaching_addi);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[151], (PeepholeRuleProc)fold_reaching_addi);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[155], (PeepholeRuleProc)fold_reaching_addi);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[21], (PeepholeRuleProc)eliminate_matching_addi);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[25], (PeepholeRuleProc)eliminate_matching_addi);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[29], (PeepholeRuleProc)eliminate_matching_addi);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[34], (PeepholeRuleProc)eliminate_matching_addi);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[40], (PeepholeRuleProc)eliminate_matching_addi);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[44], (PeepholeRuleProc)eliminate_matching_addi);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[49], (PeepholeRuleProc)eliminate_matching_addi);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[142], (PeepholeRuleProc)eliminate_matching_addi);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[146], (PeepholeRuleProc)eliminate_matching_addi);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[150], (PeepholeRuleProc)eliminate_matching_addi);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[154], (PeepholeRuleProc)eliminate_matching_addi);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[40], (PeepholeRuleProc)eliminate_redundant_store);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[44], (PeepholeRuleProc)eliminate_redundant_store);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[49], (PeepholeRuleProc)eliminate_redundant_store);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[150], (PeepholeRuleProc)eliminate_redundant_store);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[154], (PeepholeRuleProc)eliminate_redundant_store);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[42], (PeepholeRuleProc)eliminate_redundant_store);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[46], (PeepholeRuleProc)eliminate_redundant_store);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[51], (PeepholeRuleProc)eliminate_redundant_store);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[152], (PeepholeRuleProc)eliminate_redundant_store);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[156], (PeepholeRuleProc)eliminate_redundant_store);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[5], remove_redundant_extsb);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[8], remove_redundant_extsb);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[5], (PeepholeRuleProc)bypass_cmpli_zero);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[8], (PeepholeRuleProc)bypass_cmpli_zero);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[5], fold_constant_compare_branch);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[8], fold_constant_compare_branch);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[103], (PeepholeRuleProc)fold_rlwinm_or_mr_reaching_def);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[73], (PeepholeRuleProc)combine_mulli);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[63], (PeepholeRuleProc)combine_addi);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[108], (PeepholeRuleProc)combine_srawi);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[139], (PeepholeRuleProc)rewrite_as_addi);
-    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[93], (PeepholeRuleProc)fold_to_rlwnm);
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[92], PEEPHOLE_RULE(fold_not_into_andc));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[139], PEEPHOLE_RULE(replace_with_reaching_li));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[139], PEEPHOLE_RULE(retarget_reaching_def_register));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[158], PEEPHOLE_RULE(rewrite_reaching_def_reg));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[139], PEEPHOLE_RULE(unlink_instruction_with_matching_mr_def));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[139], PEEPHOLE_RULE(unlink_equal_reg_instruction));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[158], PEEPHOLE_RULE(unlink_instruction_for_unmatched_fmr));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[158], PEEPHOLE_RULE(unlink_same_reg_instruction));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[398], PEEPHOLE_RULE(fn_004cba60));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[398], PEEPHOLE_RULE(unlink_instruction_matching_vmr_source));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[398], PEEPHOLE_RULE(unlink_same_reg_move));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[398], PEEPHOLE_RULE(merge_reaching_def_instruction));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[82], PEEPHOLE_RULE(make_record_form_and_unlink_instruction));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[105], PEEPHOLE_RULE(fold_rlwinm_or_mr_reaching_def));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[103], PEEPHOLE_RULE(fold_rlwinm_or_mr_reaching_def));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[103], PEEPHOLE_RULE(bypass_extsb_for_low_byte_rotated_mask));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[103], PEEPHOLE_RULE_UNCAST(bypass_extsh_for_rotated_mask));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[103], PEEPHOLE_RULE(fold_lbz_lbzx_mask));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[103], PEEPHOLE_RULE(fold_lhz_lhzx_mask));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[101], PEEPHOLE_RULE(fold_reaching_lha_or_extsb));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[49], PEEPHOLE_RULE_UNCAST(fold_rlwimi_store_to_stwbrx));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[51], PEEPHOLE_RULE_UNCAST(fold_rlwimi_store_to_stwbrx));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[44], PEEPHOLE_RULE(fold_rlwimi_rlwinm_to_sthbrx));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[46], PEEPHOLE_RULE(fold_rlwimi_rlwinm_to_sthbrx));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[21], PEEPHOLE_RULE(fold_li_operand));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[25], PEEPHOLE_RULE(fold_li_operand));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[29], PEEPHOLE_RULE(fold_li_operand));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[34], PEEPHOLE_RULE(fold_li_operand));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[40], PEEPHOLE_RULE(fold_li_operand));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[44], PEEPHOLE_RULE(fold_li_operand));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[49], PEEPHOLE_RULE(fold_li_operand));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[142], PEEPHOLE_RULE(fold_li_operand));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[146], PEEPHOLE_RULE(fold_li_operand));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[150], PEEPHOLE_RULE(fold_li_operand));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[154], PEEPHOLE_RULE(fold_li_operand));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[21], PEEPHOLE_RULE(fold_addi_or_mr_reaching_def));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[25], PEEPHOLE_RULE(fold_addi_or_mr_reaching_def));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[29], PEEPHOLE_RULE(fold_addi_or_mr_reaching_def));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[34], PEEPHOLE_RULE(fold_addi_or_mr_reaching_def));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[40], PEEPHOLE_RULE(fold_addi_or_mr_reaching_def));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[44], PEEPHOLE_RULE(fold_addi_or_mr_reaching_def));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[49], PEEPHOLE_RULE(fold_addi_or_mr_reaching_def));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[142], PEEPHOLE_RULE(fold_addi_or_mr_reaching_def));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[146], PEEPHOLE_RULE(fold_addi_or_mr_reaching_def));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[150], PEEPHOLE_RULE(fold_addi_or_mr_reaching_def));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[154], PEEPHOLE_RULE(fold_addi_or_mr_reaching_def));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[22], PEEPHOLE_RULE(fold_reaching_addi));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[26], PEEPHOLE_RULE(fold_reaching_addi));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[30], PEEPHOLE_RULE(fold_reaching_addi));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[35], PEEPHOLE_RULE(fold_reaching_addi));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[41], PEEPHOLE_RULE(fold_reaching_addi));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[45], PEEPHOLE_RULE(fold_reaching_addi));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[50], PEEPHOLE_RULE(fold_reaching_addi));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[143], PEEPHOLE_RULE(fold_reaching_addi));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[147], PEEPHOLE_RULE(fold_reaching_addi));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[151], PEEPHOLE_RULE(fold_reaching_addi));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[155], PEEPHOLE_RULE(fold_reaching_addi));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[21], PEEPHOLE_RULE(eliminate_matching_addi));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[25], PEEPHOLE_RULE(eliminate_matching_addi));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[29], PEEPHOLE_RULE(eliminate_matching_addi));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[34], PEEPHOLE_RULE(eliminate_matching_addi));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[40], PEEPHOLE_RULE(eliminate_matching_addi));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[44], PEEPHOLE_RULE(eliminate_matching_addi));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[49], PEEPHOLE_RULE(eliminate_matching_addi));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[142], PEEPHOLE_RULE(eliminate_matching_addi));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[146], PEEPHOLE_RULE(eliminate_matching_addi));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[150], PEEPHOLE_RULE(eliminate_matching_addi));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[154], PEEPHOLE_RULE(eliminate_matching_addi));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[40], PEEPHOLE_RULE(eliminate_redundant_store));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[44], PEEPHOLE_RULE(eliminate_redundant_store));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[49], PEEPHOLE_RULE(eliminate_redundant_store));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[150], PEEPHOLE_RULE(eliminate_redundant_store));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[154], PEEPHOLE_RULE(eliminate_redundant_store));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[42], PEEPHOLE_RULE(eliminate_redundant_store));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[46], PEEPHOLE_RULE(eliminate_redundant_store));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[51], PEEPHOLE_RULE(eliminate_redundant_store));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[152], PEEPHOLE_RULE(eliminate_redundant_store));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[156], PEEPHOLE_RULE(eliminate_redundant_store));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[5], PEEPHOLE_RULE_UNCAST(remove_redundant_extsb));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[8], PEEPHOLE_RULE_UNCAST(remove_redundant_extsb));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[5], PEEPHOLE_RULE(bypass_cmpli_zero));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[8], PEEPHOLE_RULE(bypass_cmpli_zero));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[5], PEEPHOLE_RULE_UNCAST(fold_constant_compare_branch));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[8], PEEPHOLE_RULE_UNCAST(fold_constant_compare_branch));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[103], PEEPHOLE_RULE(fold_rlwinm_or_mr_reaching_def));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[73], PEEPHOLE_RULE(combine_mulli));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[63], PEEPHOLE_RULE(combine_addi));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[108], PEEPHOLE_RULE(combine_srawi));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[139], PEEPHOLE_RULE(rewrite_as_addi));
+    AddPeepholeRule(&CodeGen_PeepholeHandlers_005813b0[93], PEEPHOLE_RULE(fold_to_rlwnm));
 }
 
 void Peephole_VisitBlocksWithMultipleInstructions(void *context)

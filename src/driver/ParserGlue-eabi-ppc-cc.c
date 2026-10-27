@@ -67,6 +67,45 @@ extern OptionList optlstLinker_sreceol_mac_conflicts;
 extern OptionList optlstLinker_m_conflicts;
 extern OptionList optlstDisassembler_fmt_x_conflicts;
 
+#ifdef __wasm__
+/* (wasm: the GENERIC_T parse functions are called with 4 arguments, and a call through another type traps: each is
+   called through one of these, which passes it its arguments as x86 did) */
+#define WASM_GENERIC(fn) static int wasm_##fn(const char *opt, void *var, const char *pstr, int flags)
+WASM_GENERIC(append_include_directive) { return append_include_directive((char *)opt, var, (char *)pstr); }
+WASM_GENERIC(append_undef_directive) { return append_undef_directive((char *)opt, (int)var, (char *)pstr); }
+WASM_GENERIC(fn_0040c9e7) { return fn_0040c9e7((char *)opt, (int)var, (char *)pstr); }
+WASM_GENERIC(fn_0040cd55) { return fn_0040cd55((char *)opt, (char *)var, (char *)pstr); }
+WASM_GENERIC(fn_0040cff6) { return fn_0040cff6(); }
+WASM_GENERIC(fn_0040d002) { return fn_0040d002(); }
+WASM_GENERIC(fn_0040d0eb) { return fn_0040d0eb(); }
+WASM_GENERIC(fn_0040d283) { return fn_0040d283((int)opt, (char *)var, (char *)pstr); }
+WASM_GENERIC(fn_0040d8c0) { return fn_0040d8c0((short)(int)opt, (int)var, (int)pstr, flags); }
+WASM_GENERIC(log_linker_option) { return log_linker_option(opt); }
+WASM_GENERIC(parse_optimizer_settings) { return parse_optimizer_settings((SInt32)opt, (unsigned char *)var, (int)pstr, flags); }
+WASM_GENERIC(parse_stage_settings) { return parse_stage_settings((int)opt, (unsigned char *)var, (int)pstr, flags); }
+WASM_GENERIC(parse_warning_settings) { return parse_warning_settings((int)opt, (char *)var, (int)pstr, flags); }
+WASM_GENERIC(print_command_line_warning_options) { return print_command_line_warning_options(); }
+WASM_GENERIC(report_optimizer_options) { return report_optimizer_options(); }
+WASM_GENERIC(set_output_path) { return set_output_path((char *)opt, (int)var, (char *)pstr); }
+#undef WASM_GENERIC
+#define append_include_directive wasm_append_include_directive
+#define append_undef_directive wasm_append_undef_directive
+#define fn_0040c9e7 wasm_fn_0040c9e7
+#define fn_0040cd55 wasm_fn_0040cd55
+#define fn_0040cff6 wasm_fn_0040cff6
+#define fn_0040d002 wasm_fn_0040d002
+#define fn_0040d0eb wasm_fn_0040d0eb
+#define fn_0040d283 wasm_fn_0040d283
+#define fn_0040d8c0 wasm_fn_0040d8c0
+#define log_linker_option wasm_log_linker_option
+#define parse_optimizer_settings wasm_parse_optimizer_settings
+#define parse_stage_settings wasm_parse_stage_settings
+#define parse_warning_settings wasm_parse_warning_settings
+#define print_command_line_warning_options wasm_print_command_line_warning_options
+#define report_optimizer_options wasm_report_optimizer_options
+#define set_output_path wasm_set_output_path
+#endif
+
 MASK_T optlstCmdLine_help_usage_param0 = {PARAMWHICH_Mask, 1, NULL, NULL, 4, 0x4000, 0x0, &data_00587ce0};
 
 Option optlstCmdLine_help_usage = {"usage", 0x2101, (PARAM_T *)&optlstCmdLine_help_usage_param0,

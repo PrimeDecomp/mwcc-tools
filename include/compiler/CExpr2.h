@@ -79,7 +79,7 @@ extern ENode *CExpr_MakeFunctionCall(ENode *expr, ENodeList *args);
 extern ENode *convert_memberfunc_to_setconst_or_objref(ENode *expr);
 extern ENode *CExpr_GenericPtmfCall(Object *obj, Type *functype, ENodeList *args);
 extern Boolean has_class_objref(ENode *node);
-extern void make_funccall_with_dexprs(ENode *funcref, ENodeList *args, TypeFunc *ftype, FuncArg *arglist);
+extern WASM_RETURNS(ENode *) make_funccall_with_dexprs(ENode *funcref, ENodeList *args, TypeFunc *ftype, FuncArg *arglist);
 extern void CExpr_FuncArgMatch(NameSpaceObjectList *source, void *context, ENodeList *objects, ArgMatch *state,
                                ENode *mode, char exclude);
 extern Boolean CExpr_GetFuncMatchArgs(Object *obj, ENodeList *arguments, ENode *instance, MemberCallArguments *result);
@@ -146,7 +146,7 @@ extern ENode *CExpr_GenericFuncCall(BClassList *scope, ENode *instance, Boolean 
 extern SInt16 user_assign_check(ENode *operand, Type *targetType, UInt32 targetQual, Boolean diagnose,
                                 Boolean allowExplicit, Boolean conversionMode);
 extern ENode *CExpr_LValue(ENode *expr, Boolean checkConst, Boolean reportError);
-extern void build_destructor_aware_call(ENode *expression, Type *type, Boolean skipLookup);
+extern WASM_RETURNS(ENode *) build_destructor_aware_call(ENode *expression, Type *type, Boolean skipLookup);
 extern ENode *make_call_with_optional_size_arg(Object *func, ENode *arg, Type *argtype);
 extern ENode *scannew(char global);
 extern struct Object *array_allocation_runtime_function;

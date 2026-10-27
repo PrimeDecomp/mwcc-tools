@@ -23,6 +23,13 @@
 #include "version.h"
 #include <string.h>
 
+#ifdef __wasm__ /* (visited as void (*)(IROLinear *, int); WebAssembly's call must match its type) */
+static void wasm_visit_fn_0044e340(IROLinear *linear, int argument) { fn_0044e340(linear, argument); }
+#define VISIT_FN_0044E340 wasm_visit_fn_0044e340
+#else
+#define VISIT_FN_0044E340 (void (*)(IROLinear *, int))fn_0044e340
+#endif
+
 struct IROElmList *iro_elm_list_head;
 struct LoopCandidate *loop_candidates;
 int linear_index_counter;
@@ -1562,7 +1569,7 @@ void reduce_strength_and_move_loop_invariants(IRONode *func)
 #if VERSION >= VERSION_GC_1_3
                 IroUtil_VisitLinearTree(previousExpr->linear, (void (*)(IROLinear *, int))fn_004a5b70);
 #else
-                IroUtil_VisitLinearTree(previousExpr->linear, (void (*)(IROLinear *, int))fn_0044e340);
+                IroUtil_VisitLinearTree(previousExpr->linear, VISIT_FN_0044E340);
 #endif
                 previousExpr->linear->flags = previousExpr->linear->flags | 0x100;
             }

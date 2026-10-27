@@ -2953,6 +2953,12 @@ void *IRO_Optimizer(Object *function, void *incomingBody)
                 data_00587148 = 0;
                 IroPropagate_PropagateExpressions();
                 IroDump_DumpFunction("Copy and constant propagation", 0);
+#if defined(__wasm__) && VERSION < VERSION_GC_1_3
+                {
+                    extern UInt8 IroRangePropagation_Pass;
+                    IroRangePropagation_Pass = pass;
+                }
+#endif
                 IRO_RangePropagateInFNode();
                 IroDump_DumpFunction("IRO_RangePropagateInFNode", 0);
                 IRO_ExpressionPropagation();

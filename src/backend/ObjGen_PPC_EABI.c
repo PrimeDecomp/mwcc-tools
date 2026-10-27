@@ -29,6 +29,12 @@
 
 #include <string.h>
 
+#ifdef __wasm__ /* (a void function, called as an int one; WebAssembly's call must match) */
+#define OBJGEN_SET_SECTION ObjGen_PPC_EABI_SetObjectSection
+#else
+#define OBJGEN_SET_SECTION (void)((int (*)(Object *, SInt32, Boolean))ObjGen_PPC_EABI_SetObjectSection)
+#endif
+
 #if VERSION >= VERSION_GC_1_3
 extern void fn_0042e150(void);
 extern void fn_004cf620(void);
@@ -98,7 +104,7 @@ static inline SectionSymbolAttributes *ObjGen_Lookup(Object *obj)
     SInt16 s;
     SInt32 id;
 
-    (void)((int (*)(Object *, SInt32, Boolean))ObjGen_PPC_EABI_SetObjectSection)(obj, obj->type->size, 0);
+    OBJGEN_SET_SECTION(obj, obj->type->size, 0);
     s = obj->section;
     if (s < 0)
         s = CodeGen_FindInterruptGenerationRecord(s)->sectionIndex;
@@ -127,7 +133,7 @@ static inline UInt16 section_code(Object *obj)
         SectionSymbolAttributes *p_s;
         SInt16 s;
         SInt32 id;
-        (void)((int (*)(Object *, SInt32, Boolean))ObjGen_PPC_EABI_SetObjectSection)(obj, obj->type->size, 0);
+        OBJGEN_SET_SECTION(obj, obj->type->size, 0);
         s = obj->section;
         if (s < 0)
             s = CodeGen_FindInterruptGenerationRecord(s)->sectionIndex;
@@ -202,7 +208,7 @@ static inline SectionSymbolAttributes *object_section_lookup(Object *obj)
     SInt16 sectionIndex;
     SInt32 id;
 
-    (void)((int (*)(Object *, SInt32, Boolean))ObjGen_PPC_EABI_SetObjectSection)(obj, obj->type->size, 0);
+    OBJGEN_SET_SECTION(obj, obj->type->size, 0);
     if ((sectionIndex = obj->section) < 0)
         sectionIndex = CodeGen_FindInterruptGenerationRecord(sectionIndex)->sectionIndex;
     id = sectionIndex;
@@ -231,7 +237,7 @@ static inline SInt16 object_section_code(Object *obj)
         SInt16 sectionIndex;
         SInt32 id;
 
-        (void)((int (*)(Object *, SInt32, Boolean))ObjGen_PPC_EABI_SetObjectSection)(obj, obj->type->size, 0);
+        OBJGEN_SET_SECTION(obj, obj->type->size, 0);
         if ((sectionIndex = obj->section) < 0)
             sectionIndex = CodeGen_FindInterruptGenerationRecord(sectionIndex)->sectionIndex;
         id = sectionIndex;

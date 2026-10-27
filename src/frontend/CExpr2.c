@@ -525,7 +525,9 @@ void CExpr_SearchExprTree(ENode *expr, void (*value)(ENode *), SInt32 count, ...
     char *base;
 #endif
     data_00580748 = value;
-#if VERSION >= VERSION_GC_1_3
+#if defined(__wasm__)
+    args = __va_start(count);
+#elif VERSION >= VERSION_GC_1_3
     base = (char *)&count;
     args = base + (((SInt32)((char *)&count + 4) - (SInt32)base) + 3) / 4 * 4;
 #else
@@ -1628,7 +1630,7 @@ ENode *create_objectnode(Object *object)
     ENode *expr;
 
     expr = create_objectnode2(object);
-    checkreference(expr);
+    WASM_RETURN checkreference(expr);
 }
 
 ENode *CExpr_IsTempConstruction(ENode *e, Type *type, ENode **out)
@@ -3442,7 +3444,7 @@ void CExpr_FuncArgMatch(NameSpaceObjectList *source, void *context, ENodeList *o
     }
 }
 
-void make_funccall_with_dexprs(ENode *funcref, ENodeList *args, TypeFunc *ftype, FuncArg *arglist)
+WASM_RETURNS(ENode *) make_funccall_with_dexprs(ENode *funcref, ENodeList *args, TypeFunc *ftype, FuncArg *arglist)
 {
     ENode *n;
     ENodeList *list = args;
@@ -3484,7 +3486,7 @@ void make_funccall_with_dexprs(ENode *funcref, ENodeList *args, TypeFunc *ftype,
     n->data.funccall.args = list;
     n->data.funccall.functype = ftype;
     funcref->data.objref->flags |= OBJECT_USED;
-    CExpr_AdjustFunctionCall(n);
+    WASM_RETURN CExpr_AdjustFunctionCall(n);
 }
 
 Boolean has_class_objref(ENode *node)
@@ -3727,7 +3729,7 @@ ENode *CExpr_GenericFuncCall(BClassList *scope, ENode *instance, Boolean qualifi
             formal = NULL;
         }
     }
-    make_funccall_with_dexprs(result, arguments, (TypeFunc *)type, formal);
+    WASM_RETURN make_funccall_with_dexprs(result, arguments, (TypeFunc *)type, formal);
 }
 
 /* makemonadicnode(inner, EINDIRECT) */
@@ -3840,7 +3842,7 @@ ENode *CExpr_GenericPtmfCall(Object *obj, Type *functype, ENodeList *args)
             obj->flags |= OBJECT_USED;
         }
     }
-    make_funccall_with_dexprs(node, args, (TypeFunc *)functype, arg);
+    WASM_RETURN make_funccall_with_dexprs(node, args, (TypeFunc *)functype, arg);
 }
 
 ENode *convert_memberfunc_to_setconst_or_objref(ENode *expr)
@@ -5220,7 +5222,7 @@ static ENode *make_int_node(Type *type, SInt32 value)
     return n;
 }
 
-void build_destructor_aware_call(ENode *expression, Type *type, Boolean skipLookup)
+WASM_RETURNS(ENode *) build_destructor_aware_call(ENode *expression, Type *type, Boolean skipLookup)
 {
     Object *dtor;
     Object *node;
@@ -5249,15 +5251,15 @@ void build_destructor_aware_call(ENode *expression, Type *type, Boolean skipLook
         if (node != (Object *)operatorName->first.object) {
             expression = funccallexpr(destructor_aware_call_func, expression,
                                       dtor ? create_objectrefnode(dtor) : make_dummy_node(), NULL, NULL);
-            funccallexpr(node, expression, NULL, NULL, NULL);
+            WASM_RETURN funccallexpr(node, expression, NULL, NULL, NULL);
             return;
         } else {
-            funccallexpr(destructor_aware_call_rtfunc, expression,
+            WASM_RETURN funccallexpr(destructor_aware_call_rtfunc, expression,
                          dtor ? create_objectrefnode(dtor) : make_dummy_node(), NULL, NULL);
             return;
         }
     }
-    make_call_with_optional_size_arg(node, expression, type);
+    WASM_RETURN make_call_with_optional_size_arg(node, expression, type);
 }
 
 static ENode *make_dummy_node(void)
@@ -5348,7 +5350,7 @@ struct ENode *scandelete(char mode)
         while (target->type == TYPEARRAY) {
             target = TYPE_POINTER(target)->target;
         }
-        build_destructor_aware_call(expr, target, mode);
+        WASM_RETURN build_destructor_aware_call(expr, target, mode);
         return;
     }
     if (copts.objective_c != 0 && CObjC_IsIdOrSelType(expr->rtype) != 0) {

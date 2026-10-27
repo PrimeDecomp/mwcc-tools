@@ -43,82 +43,125 @@ typedef enum TypeTag { TV = 0, TI = 1, TF = 2, TE = 3, TP = 11 } TypeTag;
 typedef void (*CodeGenDispatch)(void *, short, short, void *);
 
 /* The code generator of each ENode type. */
+#ifdef __wasm__
+/* (each is called as CodeGenDispatch, with four arguments, and a call through another type traps in WebAssembly:
+   each is called through one of these, which passes it the ones it takes, the others 0) */
+#define CODEGEN_THUNK(fn) static void wasm_codegen_##fn(void *a0, short a1, short a2, void *a3)
+CODEGEN_THUNK(emit_add) { emit_add((ENode *)a0, (SInt16)a1, (SInt16)a2, (Operand *)a3); }
+CODEGEN_THUNK(emit_bitwise_and) { emit_bitwise_and((ENode *)a0, (SInt16)a1, (SInt16)a2, (Operand *)a3); }
+CODEGEN_THUNK(emit_bitwise_not) { emit_bitwise_not((ENode *)a0, (SInt16)a1, (SInt16)a2, (Operand *)a3); }
+CODEGEN_THUNK(emit_conditional_funccall) { emit_conditional_funccall((ENode *)a0, (SInt32)a1, (SInt32)a2, (struct Operand *)a3); }
+CODEGEN_THUNK(emit_multiply) { emit_multiply((ENode *)a0, (SInt16)a1, (SInt16)a2, (Operand *)a3); }
+CODEGEN_THUNK(emit_negation) { emit_negation((ENode *)a0, (SInt16)a1, (SInt16)a2, (Operand *)a3); }
+CODEGEN_THUNK(emit_vector128_constant) { emit_vector128_constant((ENode *)a0, (short)a1, (short)a2, (Operand *)a3); }
+CODEGEN_THUNK(fn_004b5ce0) { fn_004b5ce0(); }
+CODEGEN_THUNK(fn_004b6530) { fn_004b6530(); }
+CODEGEN_THUNK(force_monadic_operand_register) { force_monadic_operand_register((ENode *)a0, (short)a1, (short)a2, (Operand *)a3); }
+CODEGEN_THUNK(gen_xor) { gen_xor((ENode *)a0, (short)a1, (short)a2, (Operand *)a3); }
+CODEGEN_THUNK(generate_assignment) { generate_assignment((ENode *)a0, (SInt16)a1, (SInt16)a2, (Operand *)a3); }
+CODEGEN_THUNK(generate_boolean_expression) { generate_boolean_expression((ENode *)a0, (int)a1, (int)a2, (Operand *)a3); }
+CODEGEN_THUNK(generate_comparison) { generate_comparison((ENode *)a0, (SInt32)a1, (SInt32)a2, (Operand *)a3); }
+CODEGEN_THUNK(generate_conditional_expression) { generate_conditional_expression((ENode *)a0, (SInt16)a1, (SInt16)a2, (Operand *)a3); }
+CODEGEN_THUNK(generate_division) { generate_division((ENode *)a0, (short)a1, (short)a2, (Operand *)a3); }
+CODEGEN_THUNK(generate_intrinsic_or_function_call) { generate_intrinsic_or_function_call((ENode *)a0, (unsigned int)a1, (unsigned int)a2, (Operand *)a3); }
+CODEGEN_THUNK(generate_left_shift) { generate_left_shift((ENode *)a0, (short)a1, (short)a2, (Operand *)a3); }
+CODEGEN_THUNK(generate_modulo) { generate_modulo((ENode *)a0, (short)a1, (short)a2, (Operand *)a3); }
+CODEGEN_THUNK(generate_postinc_postdec) { generate_postinc_postdec((ENode *)a0, (SInt32)a1, (SInt32)a2, (Operand *)a3); }
+CODEGEN_THUNK(generate_type_conversion) { generate_type_conversion((ENode *)a0, (short)a1, (short)a2, (Operand *)a3); }
+CODEGEN_THUNK(get_dispatch_result) { get_dispatch_result((struct DeferredDispatch *)a0, (unsigned int)a1, (unsigned int)a2, (struct DispatchResult *)a3); }
+CODEGEN_THUNK(get_function_type_operand) { get_function_type_operand((ENode *)a0, (short)a1, (short)a2, (Operand *)a3); }
+CODEGEN_THUNK(get_objaccess_cached_value) { get_objaccess_cached_value((ENode *)a0, (UInt32)a1, (UInt32)a2, (Operand *)a3, (UInt32)0); }
+CODEGEN_THUNK(load_float_constant) { load_float_constant((ENode *)a0, (unsigned int)a1, (unsigned int)a2, (Operand *)a3); }
+CODEGEN_THUNK(make_intval_operand) { make_intval_operand((ENode *)a0, (SInt16)a1, (SInt16)a2, (Operand *)a3); }
+CODEGEN_THUNK(make_objref_operand) { make_objref_operand((ENode *)a0, (unsigned int)a1, (unsigned int)a2, (Operand *)a3); }
+CODEGEN_THUNK(report_fatal_error) { report_fatal_error(); }
+CODEGEN_THUNK(select_diadic_left_then_right) { select_diadic_left_then_right((ENode *)a0, (SInt32)a1, (SInt32)a2, (Operand *)a3); }
+CODEGEN_THUNK(select_indirect_operand) { select_indirect_operand((ENode *)a0, (int)a1, (int)a2, (Operand *)a3); }
+CODEGEN_THUNK(select_or) { select_or((ENode *)a0, (short)a1, (short)a2, (Operand *)a3); }
+CODEGEN_THUNK(select_right_shift) { select_right_shift((ENode *)a0, (short)a1, (short)a2, (Operand *)a3); }
+CODEGEN_THUNK(select_subtraction) { select_subtraction((ENode *)a0, (int)a1, (int)a2, (Operand *)a3); }
+#undef CODEGEN_THUNK
+#define CODEGEN(fn) wasm_codegen_##fn
+#else
+#define CODEGEN(fn) (CodeGenDispatch)fn
+#endif
+
 CodeGenDispatch data_00560648[75] = {
-    (CodeGenDispatch)generate_postinc_postdec,
-    (CodeGenDispatch)generate_postinc_postdec,
-    (CodeGenDispatch)fn_004b5ce0,
-    (CodeGenDispatch)fn_004b5ce0,
-    (CodeGenDispatch)select_indirect_operand,
-    (CodeGenDispatch)emit_negation,
-    (CodeGenDispatch)emit_bitwise_not,
-    (CodeGenDispatch)generate_boolean_expression,
-    (CodeGenDispatch)force_monadic_operand_register,
-    (CodeGenDispatch)emit_multiply,
-    (CodeGenDispatch)fn_004b5ce0,
-    (CodeGenDispatch)generate_division,
-    (CodeGenDispatch)generate_modulo,
-    (CodeGenDispatch)fn_004b5ce0,
-    (CodeGenDispatch)fn_004b5ce0,
-    (CodeGenDispatch)emit_add,
-    (CodeGenDispatch)select_subtraction,
-    (CodeGenDispatch)generate_left_shift,
-    (CodeGenDispatch)select_right_shift,
-    (CodeGenDispatch)generate_comparison,
-    (CodeGenDispatch)generate_comparison,
-    (CodeGenDispatch)generate_comparison,
-    (CodeGenDispatch)generate_comparison,
-    (CodeGenDispatch)generate_comparison,
-    (CodeGenDispatch)generate_comparison,
-    (CodeGenDispatch)emit_bitwise_and,
-    (CodeGenDispatch)gen_xor,
-    (CodeGenDispatch)select_or,
-    (CodeGenDispatch)generate_boolean_expression,
-    (CodeGenDispatch)generate_boolean_expression,
-    (CodeGenDispatch)generate_assignment,
-    (CodeGenDispatch)fn_004b5ce0,
-    (CodeGenDispatch)fn_004b5ce0,
-    (CodeGenDispatch)fn_004b5ce0,
-    (CodeGenDispatch)fn_004b5ce0,
-    (CodeGenDispatch)fn_004b5ce0,
-    (CodeGenDispatch)fn_004b5ce0,
-    (CodeGenDispatch)fn_004b5ce0,
-    (CodeGenDispatch)fn_004b5ce0,
-    (CodeGenDispatch)fn_004b5ce0,
-    (CodeGenDispatch)fn_004b5ce0,
-    (CodeGenDispatch)select_diadic_left_then_right,
-    (CodeGenDispatch)fn_004b5ce0,
-    (CodeGenDispatch)fn_004b5ce0,
-    (CodeGenDispatch)fn_004b5ce0,
-    (CodeGenDispatch)fn_004b5ce0,
-    (CodeGenDispatch)fn_004b5ce0,
-    (CodeGenDispatch)fn_004b5ce0,
-    (CodeGenDispatch)generate_type_conversion,
-    (CodeGenDispatch)report_fatal_error,
-    (CodeGenDispatch)make_intval_operand,
-    (CodeGenDispatch)load_float_constant,
-    (CodeGenDispatch)fn_004b6530,
-    (CodeGenDispatch)generate_conditional_expression,
-    (CodeGenDispatch)generate_intrinsic_or_function_call,
-    (CodeGenDispatch)generate_intrinsic_or_function_call,
-    (CodeGenDispatch)make_objref_operand,
-    (CodeGenDispatch)fn_004b5ce0,
-    (CodeGenDispatch)emit_conditional_funccall,
-    (CodeGenDispatch)get_function_type_operand,
-    (CodeGenDispatch)fn_004b5ce0,
-    (CodeGenDispatch)fn_004b5ce0,
-    (CodeGenDispatch)fn_004b5ce0,
-    (CodeGenDispatch)fn_004b5ce0,
-    (CodeGenDispatch)fn_004b5ce0,
-    (CodeGenDispatch)fn_004b5ce0,
-    (CodeGenDispatch)fn_004b5ce0,
-    (CodeGenDispatch)fn_004b5ce0,
-    (CodeGenDispatch)fn_004b5ce0,
-    (CodeGenDispatch)fn_004b5ce0,
-    (CodeGenDispatch)fn_004b5ce0,
-    (CodeGenDispatch)get_dispatch_result,
-    (CodeGenDispatch)get_objaccess_cached_value,
-    (CodeGenDispatch)fn_004b5ce0,
-    (CodeGenDispatch)emit_vector128_constant,
+    CODEGEN(generate_postinc_postdec),
+    CODEGEN(generate_postinc_postdec),
+    CODEGEN(fn_004b5ce0),
+    CODEGEN(fn_004b5ce0),
+    CODEGEN(select_indirect_operand),
+    CODEGEN(emit_negation),
+    CODEGEN(emit_bitwise_not),
+    CODEGEN(generate_boolean_expression),
+    CODEGEN(force_monadic_operand_register),
+    CODEGEN(emit_multiply),
+    CODEGEN(fn_004b5ce0),
+    CODEGEN(generate_division),
+    CODEGEN(generate_modulo),
+    CODEGEN(fn_004b5ce0),
+    CODEGEN(fn_004b5ce0),
+    CODEGEN(emit_add),
+    CODEGEN(select_subtraction),
+    CODEGEN(generate_left_shift),
+    CODEGEN(select_right_shift),
+    CODEGEN(generate_comparison),
+    CODEGEN(generate_comparison),
+    CODEGEN(generate_comparison),
+    CODEGEN(generate_comparison),
+    CODEGEN(generate_comparison),
+    CODEGEN(generate_comparison),
+    CODEGEN(emit_bitwise_and),
+    CODEGEN(gen_xor),
+    CODEGEN(select_or),
+    CODEGEN(generate_boolean_expression),
+    CODEGEN(generate_boolean_expression),
+    CODEGEN(generate_assignment),
+    CODEGEN(fn_004b5ce0),
+    CODEGEN(fn_004b5ce0),
+    CODEGEN(fn_004b5ce0),
+    CODEGEN(fn_004b5ce0),
+    CODEGEN(fn_004b5ce0),
+    CODEGEN(fn_004b5ce0),
+    CODEGEN(fn_004b5ce0),
+    CODEGEN(fn_004b5ce0),
+    CODEGEN(fn_004b5ce0),
+    CODEGEN(fn_004b5ce0),
+    CODEGEN(select_diadic_left_then_right),
+    CODEGEN(fn_004b5ce0),
+    CODEGEN(fn_004b5ce0),
+    CODEGEN(fn_004b5ce0),
+    CODEGEN(fn_004b5ce0),
+    CODEGEN(fn_004b5ce0),
+    CODEGEN(fn_004b5ce0),
+    CODEGEN(generate_type_conversion),
+    CODEGEN(report_fatal_error),
+    CODEGEN(make_intval_operand),
+    CODEGEN(load_float_constant),
+    CODEGEN(fn_004b6530),
+    CODEGEN(generate_conditional_expression),
+    CODEGEN(generate_intrinsic_or_function_call),
+    CODEGEN(generate_intrinsic_or_function_call),
+    CODEGEN(make_objref_operand),
+    CODEGEN(fn_004b5ce0),
+    CODEGEN(emit_conditional_funccall),
+    CODEGEN(get_function_type_operand),
+    CODEGEN(fn_004b5ce0),
+    CODEGEN(fn_004b5ce0),
+    CODEGEN(fn_004b5ce0),
+    CODEGEN(fn_004b5ce0),
+    CODEGEN(fn_004b5ce0),
+    CODEGEN(fn_004b5ce0),
+    CODEGEN(fn_004b5ce0),
+    CODEGEN(fn_004b5ce0),
+    CODEGEN(fn_004b5ce0),
+    CODEGEN(fn_004b5ce0),
+    CODEGEN(fn_004b5ce0),
+    CODEGEN(get_dispatch_result),
+    CODEGEN(get_objaccess_cached_value),
+    CODEGEN(fn_004b5ce0),
+    CODEGEN(emit_vector128_constant),
 };
 
 enum ETypeCode {

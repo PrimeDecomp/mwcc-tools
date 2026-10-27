@@ -59,11 +59,23 @@ TStreamElement *cerror_locktoken;
 struct ParserTryBlock *trychain;
 char data_005883ec[2];
 
+#ifndef __wasm__ /* (the wasm build has the target's stdarg.h) */
 typedef char *va_list;
 
 #define va_start(ap, last)                                                                                             \
     ((ap) = (char *)((int)((char *)&(last)) + (((int)((char *)(&(last) + 1)) - (int)((char *)&(last)) + 3) / 4 * 4)))
 #define va_arg(ap, type) (*(type *)(((ap) += 4) - 4))
+#else
+#include <stdarg.h>
+
+/* (the formatter steps through its char * of arguments: 4 bytes each, as in wasm32's buffer for these types) */
+#undef va_arg
+#define va_arg(ap, type) (*(type *)(((ap) += 4) - 4))
+#endif
+#ifdef __wasm__ /* (a call the original makes without a prototype, which WebAssembly's must match) */
+void CPrep_GetTokenLocation(TStreamElement *token, CPrepFileInfo **file, SInt32 *position, short *column, SInt32 *line,
+                            char *text, short *textpos, short *textcol, char *context, short *contextpos);
+#endif
 
 #pragma options align = mac68k
 static TStreamElement *buffered_token;
