@@ -2181,7 +2181,7 @@ static ENode* CInline_LoadToTemp(ENode* expr, Object** objectptr) {
             case TYPECLASS:
             case TYPEMEMBERPOINTER:
             case TYPEPOINTER:
-                object = create_temp_object(expr->rtype);
+                object = ORACLE_TEMP(16, create_temp_object(expr->rtype));
                 *objectptr = object;
                 break;
             default:
@@ -2202,7 +2202,7 @@ static ENode* CInline_SerializeEFORCELOAD(ENode* expr) {
 
     expr->data.monadic = CInline_SerializeExpr(expr->data.monadic);
     stmt = CInline_NewStatement(ST_EXPRESSION);
-    stmt->expr = CInline_LoadToTemp(expr->data.monadic, &temp);
+    stmt->expr = ORACLE_TEMP_INLINED(3, CInline_LoadToTemp(expr->data.monadic, &temp));
     return create_objectnode(temp);
 }
 
@@ -2227,7 +2227,7 @@ static ENode* CInline_SerializeELOR(ENode* expr) {
     n = makemonadicnode(n, ELOGNOT);
     n->rtype = expr->rtype;
     n = makemonadicnode(n, ELOGNOT);
-    n = CInline_LoadToTemp(n, &temp);
+    n = ORACLE_TEMP_INLINED(4, CInline_LoadToTemp(n, &temp));
     stmt = CInline_NewStatement(ST_IFGOTO);
     stmt->expr = n;
     stmt->label = label;
@@ -2236,7 +2236,7 @@ static ENode* CInline_SerializeELOR(ENode* expr) {
     n = makemonadicnode(n, ELOGNOT);
     n->rtype = expr->rtype;
     n = makemonadicnode(n, ELOGNOT);
-    n = CInline_LoadToTemp(n, &temp);
+    n = ORACLE_TEMP_INLINED(5, CInline_LoadToTemp(n, &temp));
     stmt = CInline_NewStatement(ST_EXPRESSION);
     stmt->expr = n;
 
@@ -2259,7 +2259,7 @@ static ENode* CInline_SerializeELAND(ENode* expr) {
     n = makemonadicnode(n, ELOGNOT);
     n->rtype = expr->rtype;
     n = makemonadicnode(n, ELOGNOT);
-    n = CInline_LoadToTemp(n, &temp);
+    n = ORACLE_TEMP_INLINED(6, CInline_LoadToTemp(n, &temp));
     stmt = CInline_NewStatement(ST_IFNGOTO);
     stmt->expr = n;
     stmt->label = label;
@@ -2268,7 +2268,7 @@ static ENode* CInline_SerializeELAND(ENode* expr) {
     n = makemonadicnode(n, ELOGNOT);
     n->rtype = expr->rtype;
     n = makemonadicnode(n, ELOGNOT);
-    n = CInline_LoadToTemp(n, &temp);
+    n = ORACLE_TEMP_INLINED(7, CInline_LoadToTemp(n, &temp));
     stmt = CInline_NewStatement(ST_EXPRESSION);
     stmt->expr = n;
 
@@ -2305,7 +2305,7 @@ static ENode* CInline_SerializeENULLCHECK(ENode* expr) {
 
     n = CInline_SerializeExpr(expr->data.nullcheck.nullcheckexpr);
     stmt = CInline_NewStatement(ST_IFNGOTO);
-    stmt->expr = CInline_LoadToTemp(n, &temp);
+    stmt->expr = ORACLE_TEMP_INLINED(8, CInline_LoadToTemp(n, &temp));
     stmt->label = label;
 
     uidtemp.next = cinline_uid_temps;
@@ -2315,7 +2315,7 @@ static ENode* CInline_SerializeENULLCHECK(ENode* expr) {
 
     n = CInline_SerializeExpr(expr->data.nullcheck.condexpr);
     stmt = CInline_NewStatement(ST_EXPRESSION);
-    stmt->expr = CInline_LoadToTemp(n, &temp);
+    stmt->expr = ORACLE_TEMP_INLINED(9, CInline_LoadToTemp(n, &temp));
 
     cinline_uid_temps = uidtemp.next;
 
@@ -2342,7 +2342,7 @@ static ENode* CInline_SerializeECOND(ENode* expr) {
     stmt->label = label1;
 
     n = CInline_SerializeExpr(expr->data.cond.expr1);
-    n = CInline_LoadToTemp(n, &temp);
+    n = ORACLE_TEMP_INLINED(10, CInline_LoadToTemp(n, &temp));
     stmt = CInline_NewStatement(ST_EXPRESSION);
     stmt->expr = n;
 
@@ -2354,7 +2354,7 @@ static ENode* CInline_SerializeECOND(ENode* expr) {
     label1->stmt = stmt;
 
     n = CInline_SerializeExpr(expr->data.cond.expr2);
-    n = CInline_LoadToTemp(n, &temp);
+    n = ORACLE_TEMP_INLINED(11, CInline_LoadToTemp(n, &temp));
     stmt = CInline_NewStatement(ST_EXPRESSION);
     stmt->expr = n;
 
@@ -3098,7 +3098,7 @@ static ENode* CInline_ForceReverseEvaluation(ENode* expr) {
         CExpr_SearchExprTree(inner, CInline_ForceReverseSearch, 2, EFUNCCALL, EFUNCCALLP);
 
         if (cinline_funccallfound && ++counter > 0) {
-            inner = create_objectrefnode(create_temp_object(inner->rtype));
+            inner = create_objectrefnode(ORACLE_TEMP(17, create_temp_object(inner->rtype)));
             copy = lalloc(sizeof(ENode));
             *copy = *inner;
 

@@ -1063,7 +1063,7 @@ void IRO_ReplaceReferenceWithNode(IROLinear* nd, IROLinear* replacement) {
 }
 
 VarRecord* IRO_GetTemp(IROExpr* expr) {
-    expr->temp = create_temp_object(expr->linear->rtype);
+    expr->temp = ORACLE_TEMP(41, create_temp_object(expr->linear->rtype));
     return IRO_FindVar(expr->temp, TRUE, TRUE);
 }
 

@@ -1632,7 +1632,7 @@ static void SplitOffRange(VarRecord* var) {
     IRO_DumpBits("All defs: ", alldefs);
     IRO_DumpBits("All uses: ", alluses);
 
-    newObj = create_temp_object(var->object->type);
+    newObj = ORACLE_TEMP(40, create_temp_object(var->object->type));
     IRO_FindVar(newObj, TRUE, TRUE);
 
     for (def = var->defs; def; def = def->varnext) {

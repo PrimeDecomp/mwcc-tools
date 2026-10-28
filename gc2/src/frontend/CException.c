@@ -1003,7 +1003,7 @@ ENode* CExcept_ScanThrowExpression(void) {
             break;
         default:
             thrownExpr = pointer_generation(assignment_expression());
-            obj = create_temp_object(thrownExpr->rtype);
+            obj = ORACLE_TEMP(3, create_temp_object(thrownExpr->rtype));
             if (!IS_TYPE_CLASS(thrownExpr->rtype) ||
                 !(resultExpr = CExpr_IsTempConstruction(thrownExpr, thrownExpr->rtype, &expr))) {
                 tempExpr = create_objectrefnode(obj);
@@ -1232,7 +1232,7 @@ void CExcept_ScanTryBlock(DeclThing* dt, Boolean isCtorOrDtor) {
         CError_Error(ERR_EXCEPTION_HANDLING_OPTION_DISABLED);
     }
 
-    catch_info_object = create_temp_object(TYPE(&catchinfostruct));
+    catch_info_object = ORACLE_TEMP(4, create_temp_object(TYPE(&catchinfostruct)));
     if (cexcept_magic) {
         catch_info_object->name = GetHashNameNodeExport("__exception_magic");
         CScope_AddObject(cscope_current, catch_info_object->name, OBJ_BASE(catch_info_object));
@@ -1373,9 +1373,9 @@ static Object* CExcept_GetETEMPObject(ENode* expr) {
         uobj->next = cexcept_uniqueobjs;
         cexcept_uniqueobjs = uobj;
         uobj->uniqueid = id;
-        return (uobj->object = create_temp_object(expr->data.temp.type));
+        return (uobj->object = ORACLE_TEMP(5, create_temp_object(expr->data.temp.type)));
     } else {
-        return create_temp_object(expr->data.temp.type);
+        return ORACLE_TEMP(6, create_temp_object(expr->data.temp.type));
     }
 }
 
@@ -1384,7 +1384,7 @@ static ENode* CExcept_TempTrans_ETEMP(ENode* expr) {
     DtorTemp* dtorTemp;
     ExceptionAction* ea;
 
-    object = CExcept_GetETEMPObject(expr);
+    object = ORACLE_TEMP_INLINED(1, CExcept_GetETEMPObject(expr));
     if (expr->data.temp.needs_dtor) {
         dtorTemp = lalloc(sizeof(DtorTemp));
         dtorTemp->next = cexcept_dtortemps;
@@ -1430,7 +1430,7 @@ static ENode* CExcept_TransNewException(ENode* expr, Boolean isCond) {
             CExcept_TempTransExprCond(expr->data.newexception.initexpr);
         expr->data.newexception.tryexpr =
             CExcept_TempTransExprCond(expr->data.newexception.tryexpr);
-        tempObj = create_temp_object(TYPE(&stchar));
+        tempObj = ORACLE_TEMP(7, create_temp_object(TYPE(&stchar)));
 
         stmt = CExcept_InsertPrevStatement(ST_EXPRESSION);
         stmt->expr =
@@ -1546,7 +1546,7 @@ static ENode* CExcept_TransInitTryCatch(ENode* expr, Boolean isCond) {
     label2 = newlabel();
     label3 = newlabel();
 
-    catch_info_object = create_temp_object(TYPE(&catchinfostruct));
+    catch_info_object = ORACLE_TEMP(8, create_temp_object(TYPE(&catchinfostruct)));
 
     stmt = CExcept_InsertPrevStatement(ST_IFNGOTO);
     stmt->expr = expr->data.itc.initexpr;
@@ -1666,7 +1666,7 @@ static ENode* CExcept_TempTransFuncCall(ENode* expr, Boolean isCond) {
         dtorTemp->next = cexcept_dtortemps;
         cexcept_dtortemps = dtorTemp;
 
-        dtorTemp->object = CExcept_GetETEMPObject(tempNode);
+        dtorTemp->object = ORACLE_TEMP_INLINED(2, CExcept_GetETEMPObject(tempNode));
         dtorTemp->temp = NULL;
 
         if (!IS_TYPE_CLASS(tempNode->data.temp.type) ||
@@ -1679,7 +1679,7 @@ static ENode* CExcept_TempTransFuncCall(ENode* expr, Boolean isCond) {
 
         if (isCond) {
             Type* rtype = expr->rtype;
-            dtorTemp->temp = create_temp_object(TYPE(&stchar));
+            dtorTemp->temp = ORACLE_TEMP(9, create_temp_object(TYPE(&stchar)));
 
             expr = makediadicnode(
                 expr,
@@ -2058,7 +2058,7 @@ static void CExcept_TempTransform(Statement* stmt, Boolean discardValue, Boolean
                     2466, !IS_TYPE_CLASS(expr->rtype) || !CClass_Destructor(TYPE_CLASS(expr->rtype))
                 );
 
-                tempObj = create_temp_object(expr->rtype);
+                tempObj = ORACLE_TEMP(10, create_temp_object(expr->rtype));
                 stmt->expr = makediadicnode(create_objectnode(tempObj), expr, EASS);
             }
 
@@ -2189,7 +2189,7 @@ static void CExcept_InsertSpecificationActions(Statement* stmt, ExceptSpecList* 
     iter->flags = StmtFlag_KeepLabel;
     iter->dobjstack = NULL;
 
-    catch_info_object = create_temp_object(TYPE(&catchinfostruct));
+    catch_info_object = ORACLE_TEMP(11, create_temp_object(TYPE(&catchinfostruct)));
 
     if (!exspecs->type) {
         exspecs = NULL;

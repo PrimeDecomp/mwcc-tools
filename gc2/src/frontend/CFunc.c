@@ -617,7 +617,7 @@ static ENode* CFunc_TempTransDestroy(ENode* expr, DtorTemp* list, Boolean keepVa
         CError_ASSERT(
             738, !(IS_TYPE_CLASS(expr->rtype) && CClass_Destructor(TYPE_CLASS(expr->rtype)))
         );
-        tempobj = create_temp_object(expr->rtype);
+        tempobj = ORACLE_TEMP(13, create_temp_object(expr->rtype));
         expr = makediadicnode(create_objectnode(tempobj), expr, EASS);
     }
 
@@ -742,7 +742,7 @@ static void DestructorReturnTransform(Statement* stmt1, Statement* stmt2) {
 
     if (DestructorNeeded(stmt2->dobjstack, NULL)) {
         if (CMach_GetFunctionResultClass(TYPE_FUNC(cscope_currentfunc->type)) != 1) {
-            tempobj = create_temp_object(stmt2->expr->rtype);
+            tempobj = ORACLE_TEMP(14, create_temp_object(stmt2->expr->rtype));
             stmt = CFunc_InsertStatement(ST_EXPRESSION, stmt1);
             stmt->expr = makediadicnode(create_objectnode(tempobj), stmt2->expr, EASS);
             stmt->sourceoffset = stmt2->sourceoffset;

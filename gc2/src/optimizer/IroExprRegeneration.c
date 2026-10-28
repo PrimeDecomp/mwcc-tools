@@ -756,7 +756,7 @@ static void RebuildPossibleCondExpression(IRONode* fnode) {
                         tmp->u.node->data.objref->type = cond->rtype;
                         tmp->u.node->rtype = CDecl_NewPointerType(cond->rtype);
                     } else {
-                        obj = create_temp_object(tmp->rtype);
+                        obj = ORACLE_TEMP(20, create_temp_object(tmp->rtype));
                         IRO_FindVar(obj, TRUE, TRUE);
                         tmp->u.node = create_objectrefnode(obj);
                     }
@@ -1594,7 +1594,7 @@ static Boolean GeneratePossibleCondAss(IRONode* fnode) {
 
     if (useTemp) {
         IRO_InitList(&list);
-        obj = create_temp_object(condnd->rtype);
+        obj = ORACLE_TEMP(21, create_temp_object(condnd->rtype));
         IRO_FindVar(obj, TRUE, TRUE);
         ass = IRO_NewLinear(IROLinearOp2Arg);
         ass->u.diadic.left = IRO_TempReference(obj, &list);

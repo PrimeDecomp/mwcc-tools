@@ -105,7 +105,7 @@ static Object* CIRTrans_GetTemporary(Type* type) {
     temp->next = cirtrans_temps;
     cirtrans_temps = temp;
 
-    temp->object = create_temp_object(type);
+    temp->object = ORACLE_TEMP(18, create_temp_object(type));
     temp->inUse = TRUE;
     return temp->object;
 }
@@ -145,7 +145,7 @@ static void CIRTrans_SetupMultiAccessOperand(MultiAccessOperand* mop, ENode* exp
             expr = expr->data.monadic;
         }
         expr->rtype = CDecl_NewPointerType(mop->type);
-        mop->tempobj = create_temp_object(expr->rtype);
+        mop->tempobj = ORACLE_TEMP(19, create_temp_object(expr->rtype));
         mop->ass = makediadicnode(create_objectnode(mop->tempobj), expr, EASS);
     }
 }

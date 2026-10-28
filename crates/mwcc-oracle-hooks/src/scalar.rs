@@ -142,11 +142,9 @@ unsafe extern "C" fn create_temp_object(_ty: *const u8) -> *const u8 {
 }
 /// The scalarizer's call that gc2's probe announced (`include/compiler/OracleProbes.h`): its part.
 static mut SOURCE_PART: *const u8 = ptr::null();
-/// The original's return site of that call (IRO_ScalarizeClassDataMembers's): in 2.6 and 2.7, and in 1.3.2.
-#[cfg(target_arch = "wasm32")]
-const SOURCE_SITE: u32 = 0x461748;
-#[cfg(target_arch = "wasm32")]
-const SOURCE_SITE_1_3_2: u32 = 0x460b28;
+/// gc2's call of create_temp_object that makes the next temporary: its site (the low byte) and its function's copy
+/// in the original (the next), as crate::temp_sites numbers them; 0 outside ORACLE_TEMP.
+static mut TEMP_SITE: u32 = 0;
 
 /// gc2's probe: IRO_ScalarizeClassDataMembers is about to make PART's temporary.
 #[unsafe(no_mangle)]
@@ -154,19 +152,46 @@ pub unsafe extern "C" fn OracleProbe_ScalarTemporary(part: *const u8) {
     unsafe { ptr::addr_of_mut!(SOURCE_PART).write(part) }
 }
 
-// (WebAssembly has neither the return address nor EBX: the scalarizer's call is the one gc2's probe announced, and
-// others have neither)
+/// gc2's probe: the call it wraps is the original's at SITE, or in its copy COPY (ORACLE_TEMP, ORACLE_TEMP_INLINED).
+/// Returns what OracleProbe_TempEnd restores when it returns.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn OracleProbe_TempBegin(site: u32, copy: u32) -> u32 {
+    unsafe {
+        let previous = ptr::addr_of!(TEMP_SITE).read();
+        let mut current = previous;
+        if site != 0 {
+            current = (current & !0xff) | (site & 0xff);
+        }
+        if copy != 0 {
+            current = (current & 0xff) | ((copy & 0xff) << 8);
+        }
+        ptr::addr_of_mut!(TEMP_SITE).write(current);
+        previous
+    }
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn OracleProbe_TempEnd(previous: *mut u32) {
+    unsafe { ptr::addr_of_mut!(TEMP_SITE).write(*previous) }
+}
+
+// (WebAssembly has neither the return address nor EBX: the call is the one gc2's probe names, which crate::temp_sites
+// gives the original's return address of, and the scalarizer's part is the one its probe announced)
 #[cfg(target_arch = "wasm32")]
 #[unsafe(no_mangle)]
 unsafe extern "C" fn create_temp_object(ty: *const u8) -> *const u8 {
     unsafe {
         let part = ptr::addr_of!(SOURCE_PART).read();
         ptr::addr_of_mut!(SOURCE_PART).write(ptr::null());
-        let caller = match (part.is_null(), crate::source_arenas::version()) {
-            (true, _) => 0,
-            (false, 2) => SOURCE_SITE_1_3_2,
-            (false, _) => SOURCE_SITE,
-        };
+        let site = ptr::addr_of!(TEMP_SITE).read();
+        let caller = crate::temp_sites::site(
+            site as u8,
+            (site >> 8) as u8,
+            crate::source_arenas::version(),
+        );
+        if caller == crate::temp_sites::INLINED {
+            // (the original's own copy, which its hook does not see)
+            return create_temp_object__retail(ty);
+        }
         create_temp(ty, caller, part)
     }
 }

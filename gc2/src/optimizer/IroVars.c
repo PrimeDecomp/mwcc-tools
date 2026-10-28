@@ -1212,7 +1212,7 @@ void IRO_ScalarizeClassDataMembers(void) {
     for (irec = IRO_FirstIndirectRecord; irec; irec = irec->next) {
         if (!(irec->flags & IRF_Disabled)) {
             ORACLE_PROBE(OracleProbe_ScalarTemporary(irec));
-            obj = create_temp_object(irec->type);
+            obj = ORACLE_TEMP(42, create_temp_object(irec->type));
             var = IRO_FindVar(obj, TRUE, TRUE);
             for (match = irec->matches; match; match = match->otherMatches) {
                 IRO_InitList(&list1);

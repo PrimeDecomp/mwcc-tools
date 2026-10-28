@@ -4234,7 +4234,7 @@ static ENode* CExpr_NewExceptionSafeAlloc(
         return NULL;
     }
 
-    obj = create_temp_object(TYPE(&void_ptr));
+    obj = ORACLE_TEMP(12, create_temp_object(TYPE(&void_ptr)));
     *objptr = obj;
     deletefunc = NULL;
     catchexpr = NULL;

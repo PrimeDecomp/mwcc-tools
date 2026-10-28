@@ -820,7 +820,7 @@ static Statement* CABI_InitVBaseCtorOffsets(Statement* stmt, TypeClass* tclass) 
     for (vbase = tclass->vbases; vbase; vbase = vbase->next) {
         if (vbase->has_override) {
             if (!tempObj) {
-                tempObj = create_temp_object(TYPE(&void_ptr));
+                tempObj = ORACLE_TEMP(2, create_temp_object(TYPE(&void_ptr)));
             }
 
             vboffset = CClass_VirtualBaseOffset(tclass, vbase->base);

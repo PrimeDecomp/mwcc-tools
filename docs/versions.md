@@ -49,7 +49,9 @@ mwcc-tools call provenance.inspect trace_path=draw.trace text=true
 ```
 
 A birth's `site` is where the allocator numbered the register, not where the value's temporary was made. Which
-function made a temporary (`ce.object caller=`, the cse view's "made by") is recorded only for the scalarizer's in
-the WebAssembly oracle (1.3.2's and 2.7's alike): it has no return address, and gc2 probes only that call. `mwcc-tools run build/compilers/GC/1.3.2/mwldeppc.exe ...`
+function made a temporary (`ce.object caller=`, the cse view's "made by") is the creator's call in the original, in
+the WebAssembly oracle as in the x86 one (1.3.2's, 2.6's and 2.7's): each of gc2's calls of `create_temp_object`
+names its site, which `crates/mwcc-oracle-hooks/src/temp_sites.rs` gives the original's return address of. A call
+without one is "an unknown function". `mwcc-tools run build/compilers/GC/1.3.2/mwldeppc.exe ...`
 (or a build's `--wrapper`) links with the 1.3.2 linker module. Differences between 1.3.2 and 2.7 are in
 [gc27-differences.md](gc27-differences.md).

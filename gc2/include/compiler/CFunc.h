@@ -2,6 +2,7 @@
 #define COMPILER_CFUNC_H
 
 #include "compiler/common.h"
+#include "compiler/OracleProbes.h"
 
 #ifdef __cplusplus
 extern "C" {

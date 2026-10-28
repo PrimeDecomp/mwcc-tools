@@ -175,7 +175,7 @@ pub(crate) fn process_environment(invocation: &Invocation<'_>) -> Vec<(String, S
 }
 /// Run the executable itself, as a process (the reference a module is compared with).
 /// The module that runs in EXECUTABLE's place (crate::in_process), if any.
-fn module(root: &Path, executable: &Path) -> Option<PathBuf> {
+pub(crate) fn module(root: &Path, executable: &Path) -> Option<PathBuf> {
     #[cfg(feature = "wasm")]
     return crate::in_process::module(root, executable).map(|(_, module)| module);
     #[cfg(not(feature = "wasm"))]

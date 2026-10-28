@@ -1886,7 +1886,7 @@ IROLinear* BuildOrigIterationCount(IROList* list, IROLoop* loop) {
         }
     }
 
-    tempobj = create_temp_object(type);
+    tempobj = ORACLE_TEMP(34, create_temp_object(type));
     IRO_FindVar(tempobj, TRUE, TRUE);
 
     ass = IRO_NewLinear(IROLinearOp2Arg);
@@ -1934,7 +1934,7 @@ static IROLinear* BuildOrigIterationCount_DoWhile(IROList* list, IROLoop* loop) 
     finalCount->u.diadic.right = count;
     IRO_AddToList(finalCount, list);
 
-    tempobj = create_temp_object(type);
+    tempobj = ORACLE_TEMP(35, create_temp_object(type));
     IRO_FindVar(tempobj, TRUE, TRUE);
 
     ass = IRO_NewLinear(IROLinearOp2Arg);
@@ -1986,7 +1986,7 @@ IROLinear* BuildNewFinalvalue(
     sub->rtype = type;
     IRO_AddToList(sub, list);
 
-    tempobj = create_temp_object(type);
+    tempobj = ORACLE_TEMP(36, create_temp_object(type));
     IRO_FindVar(tempobj, TRUE, TRUE);
 
     ass = IRO_NewLinear(IROLinearOp2Arg);
@@ -2075,7 +2075,7 @@ static IROLinear* BuildPreAlignTemp(IROLoopInd* ind, UInt32 unrollFactor, IROLis
     IRO_AddToList(mul, list);
     mul->flags |= IROLF_Reffed;
 
-    tempobj = create_temp_object(type);
+    tempobj = ORACLE_TEMP(37, create_temp_object(type));
     IRO_FindVar(tempobj, TRUE, TRUE);
 
     ass = IRO_NewLinear(IROLinearOp2Arg);
@@ -2143,7 +2143,7 @@ static IROLinear* BuildNewFinalvalue_DoWhile(
     IRO_AddToList(add, list);
     add->flags |= IROLF_Reffed;
 
-    tempobj = create_temp_object(type);
+    tempobj = ORACLE_TEMP(38, create_temp_object(type));
     IRO_FindVar(tempobj, TRUE, TRUE);
 
     ass = IRO_NewLinear(IROLinearOp2Arg);
@@ -2232,7 +2232,7 @@ static IROLinear* BuildUnrolledFinalvalue_DoWhile(
     IRO_AddToList(add, list);
     add->flags |= IROLF_Reffed;
 
-    tempobj = create_temp_object(type);
+    tempobj = ORACLE_TEMP(39, create_temp_object(type));
     IRO_FindVar(tempobj, TRUE, TRUE);
 
     ass = IRO_NewLinear(IROLinearOp2Arg);

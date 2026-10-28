@@ -2677,7 +2677,7 @@ static void CInit_RefTempTransform(Type* type, ENode* expr) {
         CInit_FindDtorTemp(expr);
         if (cinit_fdtnode) {
             CError_ASSERT(3175, !cinit_fdtambig);
-            obj = create_temp_object(cinit_fdtnode->node->data.temp.type);
+            obj = ORACLE_TEMP(15, create_temp_object(cinit_fdtnode->node->data.temp.type));
             cinit_initinfo->register_object_cb(cinit_fdtnode->node->data.temp.type, obj, 0, FALSE);
             cinit_fdtnode->node = create_objectrefnode(obj);
         }

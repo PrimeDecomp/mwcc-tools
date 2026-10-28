@@ -296,7 +296,7 @@ static void AssignCommaRToTemp(ENode* enode, Boolean discardResult) {
     Statement* stmt;
 
     if (!IS_TYPE_VOID(enode->rtype) && !discardResult) {
-        Object* obj = create_temp_object(enode->rtype);
+        Object* obj = ORACLE_TEMP(22, create_temp_object(enode->rtype));
         ENode* indnode = IRO_NewENode(EINDIRECT);
         indnode->data.monadic = create_objectrefnode(obj);
 
@@ -360,7 +360,7 @@ static void AssignDangerousArgumentToTemp(ENode* enode) {
     ENode* indnode;
     ENode* rightnode;
 
-    obj = create_temp_object(enode->rtype);
+    obj = ORACLE_TEMP(23, create_temp_object(enode->rtype));
     indnode = IRO_NewENode(EINDIRECT);
     indnode->data.monadic = create_objectrefnode(obj);
 
@@ -403,7 +403,7 @@ static void CreateTempAssignmentToZero(ENode* enode, Object** objptr) {
     ENode* indnode;
     ENode* rightnode;
 
-    *objptr = create_temp_object(enode->rtype);
+    *objptr = ORACLE_TEMP(24, create_temp_object(enode->rtype));
     indnode = IRO_NewENode(EINDIRECT);
     indnode->data.monadic = create_objectrefnode(*objptr);
     if (!IS_TYPE_VOID(enode->rtype)) {
@@ -443,7 +443,7 @@ static void CreateTempAssignmentToOne(ENode* enode, Object** objptr) {
     ENode* indnode;
     ENode* rightnode;
 
-    *objptr = create_temp_object(enode->rtype);
+    *objptr = ORACLE_TEMP(25, create_temp_object(enode->rtype));
     indnode = IRO_NewENode(EINDIRECT);
     indnode->data.monadic = create_objectrefnode(*objptr);
     if (!IS_TYPE_VOID(enode->rtype)) {
@@ -558,9 +558,9 @@ static void GenerateNullcheckExprTempAssignment(ENode* enode, Object** objptr) {
     ENode* indnode;
 
     if (!IS_TYPE_VOID(enode->rtype)) {
-        *objptr = create_temp_object(enode->rtype);
+        *objptr = ORACLE_TEMP(26, create_temp_object(enode->rtype));
     } else {
-        *objptr = create_temp_object(enode->data.nullcheck.nullcheckexpr->rtype);
+        *objptr = ORACLE_TEMP(27, create_temp_object(enode->data.nullcheck.nullcheckexpr->rtype));
     }
 
     PutTempOnNullCheckList(enode, *objptr);
@@ -605,7 +605,7 @@ static void GenerateExpr1TempAssignment(ENode* enode, Object** objptr) {
     ENode* indnode;
 
     if (!IS_TYPE_VOID(enode->rtype) && !IS_TYPE_VOID(enode->data.cond.expr1->rtype)) {
-        *objptr = create_temp_object(enode->rtype);
+        *objptr = ORACLE_TEMP(28, create_temp_object(enode->rtype));
         indnode = IRO_NewENode(EINDIRECT);
         indnode->data.monadic = create_objectrefnode(*objptr);
         indnode->rtype = enode->rtype;
@@ -645,7 +645,7 @@ static void GenerateExpr2TempAssignment(ENode* enode, Object** objptr) {
 
     if (!IS_TYPE_VOID(enode->rtype) && !IS_TYPE_VOID(enode->data.cond.expr2->rtype)) {
         if (!*objptr) {
-            *objptr = create_temp_object(enode->rtype);
+            *objptr = ORACLE_TEMP(29, create_temp_object(enode->rtype));
         }
         indnode = IRO_NewENode(EINDIRECT);
         indnode->data.monadic = create_objectrefnode(*objptr);
@@ -685,7 +685,7 @@ static void GenerateForceLoadTempAssignment(ENode* enode, Object** objptr) {
     ENode* indnode;
 
     if (!IS_TYPE_VOID(enode->rtype)) {
-        *objptr = create_temp_object(enode->rtype);
+        *objptr = ORACLE_TEMP(30, create_temp_object(enode->rtype));
         indnode = IRO_NewENode(EINDIRECT);
         indnode->data.monadic = create_objectrefnode(*objptr);
         indnode->rtype = enode->rtype;

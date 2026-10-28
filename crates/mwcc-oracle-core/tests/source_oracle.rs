@@ -110,6 +110,13 @@ fn traces_compare_without_addresses_or_provenance() {
     assert_eq!(corpus::trace_difference(ours, theirs), None);
     let changed = theirs.replace("index=7", "index=8");
     assert!(corpus::trace_difference(ours, &changed).is_some());
+    // (the temporaries' creators, compared when asked: the WebAssembly oracle's are the original's)
+    assert!(corpus::trace_difference_with(ours, theirs, &[corpus::CREATORS]).is_some());
+    let same = theirs.replace("caller=4fe0a1", "caller=52ce78");
+    assert_eq!(
+        corpus::trace_difference_with(ours, &same, &[corpus::CREATORS]),
+        None
+    );
     let constant = "ra.i ops=000400000000050000000000";
     assert_eq!(
         corpus::comparable_record(constant).as_deref(),

@@ -96,6 +96,12 @@ mod source_arenas;
     not(any(feature = "trace-output", feature = "frontend"))
 ))]
 mod source_nodes;
+#[cfg(all(
+    target_pointer_width = "32",
+    not(any(feature = "trace-output", feature = "frontend"))
+))]
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+mod temp_sites;
 #[cfg(all(target_pointer_width = "32", feature = "trace-output"))]
 mod trace_output;
 

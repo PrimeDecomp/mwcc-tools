@@ -137,6 +137,22 @@ extern int OracleTrace_On;
 
 #define ORACLE_LISTING(listing) ((listing) || (ORACLE_TRACING && OracleProbe_Listing()))
 
+// The temporaries' creators (`ce.object caller=`, its return address in the original): CALL, a call of
+// create_temp_object, is the original's call at SITE; or CALL, a call of a function the original inlines at
+// several calls (CInline_LoadToTemp, CExcept_GetETEMPObject), is the original's copy CONTEXT, which the
+// sites in it name. The sites and copies are crates/mwcc-oracle-hooks/src/temp_sites.rs's; each holds for
+// the call it wraps.
+UInt32 OracleProbe_TempBegin(UInt32 site, UInt32 context);
+void OracleProbe_TempEnd(UInt32* previous);
+#define ORACLE_TEMP_AT(site, context, call) \
+    (ORACLE_TRACING ? ({ \
+        UInt32 oracle_temp __attribute__((cleanup(OracleProbe_TempEnd))) = \
+            OracleProbe_TempBegin(site, context); \
+        call; \
+    }) : (call))
+#define ORACLE_TEMP(site, call) ORACLE_TEMP_AT(site, 0, call)
+#define ORACLE_TEMP_INLINED(context, call) ORACLE_TEMP_AT(0, context, call)
+
 #ifdef __wasm__
 // A function's scope in the trace (wasm/src/oracle.c): its inline expansion and code generation, between
 // ORACLE_SCOPE(1) and ORACLE_SCOPE(0). The host keeps a scope's records only for the functions a run asks for
@@ -152,6 +168,8 @@ void OracleTrace_Scope(int entering);
 #define ORACLE_PROBE(call)
 #define ORACLE_LISTING(listing) (listing)
 #define ORACLE_INLINED(call) call
+#define ORACLE_TEMP(site, call) (call)
+#define ORACLE_TEMP_INLINED(context, call) (call)
 #define ORACLE_SCOPE(entering)
 
 #endif

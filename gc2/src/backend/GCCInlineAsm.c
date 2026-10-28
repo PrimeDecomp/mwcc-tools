@@ -95,7 +95,7 @@ static void gcc_parse_name(Boolean isOutput, char attribute) {
             nameentry->value = CInt64_GetULong(&expr->data.intval);
             nameentry->has_value = TRUE;
         } else {
-            tempobj = create_temp_object(expr->rtype);
+            tempobj = ORACLE_TEMP(1, create_temp_object(expr->rtype));
             tempexpr = create_objectnode(tempobj);
             if (tempobj->u.var.info) {
                 tempobj->u.var.info->used = TRUE;

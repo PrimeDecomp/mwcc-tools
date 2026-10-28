@@ -589,7 +589,7 @@ static IROExpr* CreateRIS(
 
     stepTemp = FALSE;
     type = expr->linear->rtype;
-    tempObj = create_temp_object(type);
+    tempObj = ORACLE_TEMP(31, create_temp_object(type));
     IRO_FindVar(tempObj, TRUE, TRUE);
     IRO_InitList(&list1);
 
@@ -656,7 +656,7 @@ static IROExpr* CreateRIS(
         }
         IRO_AddToList(thirdnode, &list1);
 
-        stepTempObj = create_temp_object(factorNd->rtype);
+        stepTempObj = ORACLE_TEMP(32, create_temp_object(factorNd->rtype));
 
         fourthnode = IRO_NewLinear(IROLinearOp2Arg);
         fourthnode->index = ++IRO_NumLinear;
@@ -1717,7 +1717,7 @@ static void MyHandleLoop_Motion(IRONode* fnode) {
                 IRO_Dump("\n");
 
                 if (!(memref->flags & LoopMemRef_Invalid)) {
-                    tempobj = create_temp_object(memref->nd->rtype);
+                    tempobj = ORACLE_TEMP(33, create_temp_object(memref->nd->rtype));
                     IRO_FindVar(tempobj, TRUE, TRUE);
                     if (IRO_FindVar(
                             ((IROLinear*)memref->rec->objRefs->element)->u.node->data.objref,

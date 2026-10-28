@@ -143,9 +143,10 @@ pub fn tree(text: &str, types: &BTreeMap<i64, String>, indices: bool) -> String 
     parse(&tokens, &mut at, types, indices, 0).unwrap_or_else(|| text.into())
 }
 pub fn temp_creator(version: crate::version::Version, caller: u32) -> String {
-    // (the WebAssembly oracle has no return address: only the scalarizer's temporaries, which gc2 probes, name one)
+    // (the WebAssembly oracle has no return address: a call of gc2's names the original's, but for one without a site,
+    // crates/mwcc-oracle-hooks/src/temp_sites.rs)
     if caller == 0 {
-        return "an unknown function (the WebAssembly oracle records only the scalarizer's)".into();
+        return "an unknown function (a call the WebAssembly oracle has no site for)".into();
     }
     let Some(name) = crate::version::function_at(version, caller) else {
         return format!("0x{caller:x}");

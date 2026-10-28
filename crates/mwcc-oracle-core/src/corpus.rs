@@ -181,6 +181,12 @@ fn is_address(value: u32) -> bool {
 /// 8-digit hex words, its 7- to 9-digit decimal values, `caller=` (a return address, unpadded) and, after the two
 /// kind bytes, each 12-byte operand of `ops=` that holds one (as a little-endian word at an even offset), made `*`.
 pub fn comparable_record(line: &str) -> Option<String> {
+    comparable_record_with(line, false)
+}
+
+/// comparable_record's, but (CREATORS) a temporary's creator (`ce.object caller=`) kept: the WebAssembly oracle gives
+/// the original's return address, as the x86 oracle linked from the original's split does.
+fn comparable_record_with(line: &str, creators: bool) -> Option<String> {
     static WORD: std::sync::LazyLock<Regex> =
         std::sync::LazyLock::new(|| Regex::new(r"\b[0-9a-f]{8}\b").unwrap());
     static OPERAND: std::sync::LazyLock<Regex> =
@@ -193,7 +199,11 @@ pub fn comparable_record(line: &str) -> Option<String> {
     if line.starts_with("pv.") {
         return None;
     }
-    let line = CALLER.replace_all(line, "caller=*");
+    let line = if creators && line.starts_with("ce.object ") {
+        std::borrow::Cow::Borrowed(line)
+    } else {
+        CALLER.replace_all(line, "caller=*")
+    };
     let line = OPERAND.replace_all(&line, |c: &regex::Captures| {
         let bytes: Vec<u8> = (0..12)
             .map(|i| u8::from_str_radix(&c[0][2 * i..2 * i + 2], 16).unwrap_or(0))
@@ -225,6 +235,9 @@ pub fn comparable_record(line: &str) -> Option<String> {
         .into_owned(),
     )
 }
+
+/// The stream of trace_difference_with that keeps the temporaries' creators.
+pub const CREATORS: &str = "ce.object";
 
 /// How trace OURS differs from THEIRS (comparable_record), if it does.
 pub fn trace_difference(ours: &str, theirs: &str) -> Option<String> {
@@ -321,7 +334,6 @@ fn provenance_records(trace: &str, streams: &[&str]) -> Vec<String> {
     out
 }
 
-/// How trace OURS differs from THEIRS, if it does: comparable_record's, and provenance_records' of the STREAMS.
 /// TRACE without the records that begin with one of PREFIXES.
 fn without(trace: &str, prefixes: &[String]) -> String {
     if prefixes.is_empty() {
@@ -334,9 +346,15 @@ fn without(trace: &str, prefixes: &[String]) -> String {
         .join("\n")
 }
 
+/// How trace OURS differs from THEIRS, if it does: comparable_record's, and provenance_records' of the STREAMS. A
+/// stream `ce.object` keeps the temporaries' creators (comparable_record_with).
 pub fn trace_difference_with(ours: &str, theirs: &str, streams: &[&str]) -> Option<String> {
+    let creators = streams.contains(&CREATORS);
     let records = |trace: &str| -> Vec<String> {
-        let mut out: Vec<String> = trace.lines().filter_map(comparable_record).collect();
+        let mut out: Vec<String> = trace
+            .lines()
+            .filter_map(|line| comparable_record_with(line, creators))
+            .collect();
         out.extend(provenance_records(trace, streams));
         out
     };
@@ -418,6 +436,11 @@ pub fn run(request: &Request) -> Result<Report> {
     if request.all_traces {
         // (the register counters' records with the births' bindings, and the scalarization bindings; not yet the
         // functions' ends, which count the other streams' records)
+        // (and the temporaries' creators, which a module run in place of the oracle gives as the original's
+        // addresses)
+        if request.in_process.is_some() || runner::module(&request.root, &oracle).is_some() {
+            streams.push(CREATORS);
+        }
         streams.extend([
             "pv.function.begin",
             "pv.value.",

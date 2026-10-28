@@ -69,6 +69,7 @@ locally.
   * 1.3.2: identical on 2308 with the same `--ignore st. --ignore pv.expression.`: the register counters'
     provenance (`pv.function.*`, `pv.counter.*`, `pv.value.*`, `pv.scalar.*`) included, at 1.3.2's sites
     (`counter_sites.rs`'s 1.3.2 column, and `lifecycle.rs`'s and `scalar.rs`'s 1.3.2 addresses).
+  * In both, the temporaries' creators (`ce.object caller=`, unmasked when the module runs) are the x86 oracles'.
   * In both, the other 5 differ in a block's weight (`ra.block`'s `weight`, its `loopWeight`), which is read before
     anything sets it: the x86 oracles show a stale pointer, the module a small number. That predates the re-vendor.
 * Floating-point folding matches the original (2.7 and 1.3.2) on 40,000 random `+ - * /` of doubles and floats and
@@ -218,6 +219,15 @@ probe reads, and the hooks give the records the original's site.
   frame.
 * Scalarization bindings (`pv.scalar.*`): `IRO_ScalarizeClassDataMembers` names the part whose temporary
   `create_temp_object` makes next.
+* The temporaries' creators (`ce.object caller=`, the call's return address in the original): each call of
+  `create_temp_object` is `ORACLE_TEMP(SITE, ...)`, and the hook looks the original's call up in
+  `crates/mwcc-oracle-hooks/src/temp_sites.rs` (a column per version). The original inlines `CInline_LoadToTemp`
+  and `CExcept_GetETEMPObject` at each of their calls, which go through `ORACLE_TEMP_INLINED(COPY, ...)`: a site in
+  them has the copy's call. Four of gc2's sites have no call in the original (their functions have no caller), and
+  `DestructorReturnTransform`'s is `create_temp_object` inlined, which the x86 hook does not see: the module records
+  none there either. A test (`crates/mwcc-oracle-core/tests/temp_sites.rs`) checks the table against gc2's calls and
+  the original executables' calls of `create_temp_object`. With the module in process, `corpus --trace-reference`
+  compares `ce.object`'s callers (the others' are masked).
 
 The other streams' probes (expressions, dispatch, coalescing and call arguments' contexts) are not in gc2's sources
 yet, so those streams are absent from the module's traces, or partial; a birth's `expression` and the counts a
