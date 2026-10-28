@@ -5,7 +5,7 @@
 //! `ALLOC_FPR()`, `ALLOC_VR()` and `ALLOC_REG(c)` (`include/compiler/RegisterInfo.h`), which report their file and
 //! line under ORACLE_PROBES. Each of the original's increments is matched with one of them by the line numbers of
 //! gc2's objects, which the original's compiler builds from the same sources into the same code (`ninja all_source`
-//! for GC 2.7):
+//! for each version):
 //!
 //! * A function's increments and its writes are aligned in order, each increment at most a few lines from its write
 //!   (the compiler gives an increment its statement's first line, and moves some before it).
@@ -14,11 +14,14 @@
 //!   call's constant arguments make dead). The calls are made through `ORACLE_INLINED` (wrapper macros after each such
 //!   function's definition), whose line the probe reports with the write's.
 //!
-//! GC 2.6's increments are GC 2.7's, at the same offsets in the same functions.
+//! GC 2.6's increments are GC 2.7's, at the same offsets in the same functions. GC 1.3.2's are aligned on their own,
+//! with gc2's sources as 1.3.2 compiles them (the branches of its `#if VERSION ...`) and its objects' lines.
 use crate::{
     coff::Object,
     counter_probe::{self, Role},
+    disassembly,
     executable::{self, hex},
+    sequence,
     source_tree::SourceTree,
 };
 use anyhow::{Context, Result, bail, ensure};
@@ -33,9 +36,10 @@ use std::{
 
 /// The generated table, in the hooks' sources.
 pub const OUTPUT: &str = "crates/mwcc-oracle-hooks/src/counter_sites.rs";
-/// The version whose objects give the lines, and the one whose sites are its, moved.
+/// The version whose objects give the lines, the one whose sites are its, moved, and the one aligned on its own.
 const LINES: &str = "GC_2_7";
 const MOVED: &str = "GC_2_6";
+const OWN: &str = "GC_1_3_2";
 
 /// The write at LINE of UNIT, in a call that the original inlines ending at INLINED (the line `__LINE__` gives the call
 /// in a macro, its closing parenthesis's), or 0.
@@ -46,12 +50,19 @@ pub struct Write {
     pub inlined: u32,
 }
 
+/// A write's increments: in GC 2.7 and GC 2.6 (0 without one) and their bindings (counter_probe::Site's
+/// object_binding, operand_binding and origin_binding), and in GC 1.3.2 with its bindings.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Sites {
+    pub gc2_7: (u32, u32, [u8; 3]),
+    pub gc1_3_2: (u32, [u8; 3]),
+}
+
 #[derive(Debug, Default)]
 pub struct Table {
-    /// Each write the original has an increment for, with that increment's site in GC 2.7 and in GC 2.6, and
-    /// its bindings (counter_probe::Site's object_binding, operand_binding and origin_binding).
-    pub sites: BTreeMap<Write, (u32, u32, [u8; 3])>,
-    /// The writes it has none for (UNIT, LINE): not in a function of the original's that its probes cover.
+    /// Each write an original has an increment for.
+    pub sites: BTreeMap<Write, Sites>,
+    /// The writes none has one for (UNIT, LINE): not in a function of the originals' that their probes cover.
     pub none: BTreeSet<(String, u32)>,
     /// The functions the original inlines at some call (UNIT, NAME).
     pub inlined: BTreeSet<(String, String)>,
@@ -178,12 +189,160 @@ struct Unit {
     events: BTreeMap<String, Vec<Event>>,
 }
 
+/// gc2's version indices (`include/version.h`): `VERSION_GC_2_7` and the others, by name.
+fn version_indices(root: &Path) -> Result<BTreeMap<String, i64>> {
+    let path = root.join("gc2/include/version.h");
+    let text = fs::read_to_string(&path).with_context(|| format!("read {}", path.display()))?;
+    let define = Regex::new(r"^#define (VERSION_\w+) (\d+)")?;
+    Ok(text
+        .lines()
+        .filter_map(|l| define.captures(l))
+        .map(|c| (c[1].to_owned(), c[2].parse().unwrap()))
+        .collect())
+}
+
+/// The value of a `#if` condition on VERSION (`VERSION >= VERSION_GC_2_0 && VERSION < VERSION_GC_2_5`), or None
+/// for another condition.
+fn version_condition(text: &str, version: i64, indices: &BTreeMap<String, i64>) -> Option<bool> {
+    static TOKEN: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"\s*(&&|\|\||==|!=|<=|>=|<|>|!|\(|\)|\w+)").unwrap());
+    let mut tokens = vec![];
+    let mut rest = text.trim();
+    let mut versioned = false;
+    while !rest.is_empty() {
+        let c = TOKEN
+            .captures(rest)
+            .filter(|c| c.get(0).unwrap().start() == 0)?;
+        let token = c[1].to_owned();
+        rest = &rest[c.get(0).unwrap().end()..];
+        tokens.push(if token == "VERSION" {
+            versioned = true;
+            version.to_string()
+        } else if let Some(index) = indices.get(&token) {
+            index.to_string()
+        } else {
+            token
+        });
+    }
+    if !versioned {
+        return None;
+    }
+    // (|| of && of comparisons of numbers, ! and parentheses)
+    fn or(t: &[String], i: &mut usize) -> Option<i64> {
+        let mut value = and(t, i)?;
+        while t.get(*i).map(String::as_str) == Some("||") {
+            *i += 1;
+            let right = and(t, i)?;
+            value = (value != 0 || right != 0) as i64;
+        }
+        Some(value)
+    }
+    fn and(t: &[String], i: &mut usize) -> Option<i64> {
+        let mut value = compare(t, i)?;
+        while t.get(*i).map(String::as_str) == Some("&&") {
+            *i += 1;
+            let right = compare(t, i)?;
+            value = (value != 0 && right != 0) as i64;
+        }
+        Some(value)
+    }
+    fn compare(t: &[String], i: &mut usize) -> Option<i64> {
+        let left = unary(t, i)?;
+        let op = t.get(*i).map(String::as_str);
+        let f: fn(i64, i64) -> bool = match op {
+            Some("==") => |a, b| a == b,
+            Some("!=") => |a, b| a != b,
+            Some("<") => |a, b| a < b,
+            Some("<=") => |a, b| a <= b,
+            Some(">") => |a, b| a > b,
+            Some(">=") => |a, b| a >= b,
+            _ => return Some(left),
+        };
+        *i += 1;
+        let right = unary(t, i)?;
+        Some(f(left, right) as i64)
+    }
+    fn unary(t: &[String], i: &mut usize) -> Option<i64> {
+        let token = t.get(*i)?.as_str();
+        *i += 1;
+        match token {
+            "!" => Some((unary(t, i)? == 0) as i64),
+            "(" => {
+                let value = or(t, i)?;
+                (t.get(*i).map(String::as_str) == Some(")")).then(|| *i += 1)?;
+                Some(value)
+            }
+            number => number.parse().ok(),
+        }
+    }
+    let mut i = 0;
+    let value = or(&tokens, &mut i)?;
+    (i == tokens.len()).then_some(value != 0)
+}
+
+/// LINES with the lines VERSION does not compile blank: the branches of conditions on VERSION it does not take.
+/// (Other conditions are taken whole, all their branches.)
+fn preprocess(lines: &mut [String], version: i64, indices: &BTreeMap<String, i64>) {
+    // (per open #if: whether it is on VERSION, whether a branch was taken, whether this branch is)
+    let mut stack: Vec<(bool, bool, bool)> = vec![];
+    for line in lines.iter_mut() {
+        let code = line.trim_start();
+        let directive = code.strip_prefix('#').map(str::trim_start);
+        let mut blank = !stack.iter().all(|f| f.2);
+        if let Some(directive) = directive {
+            let (word, rest) = directive
+                .split_once(|c: char| c.is_whitespace() || c == '(')
+                .map_or((directive, ""), |(w, _)| (w, &directive[w.len()..]));
+            match word {
+                "if" => {
+                    stack.push(match version_condition(rest, version, indices) {
+                        Some(value) => (true, value, value),
+                        None => (false, true, true),
+                    });
+                }
+                "ifdef" | "ifndef" => stack.push((false, true, true)),
+                "elif" => {
+                    if let Some(frame) = stack.last_mut()
+                        && frame.0
+                    {
+                        let value =
+                            !frame.1 && version_condition(rest, version, indices).unwrap_or(true);
+                        frame.1 |= value;
+                        frame.2 = value;
+                    }
+                }
+                "else" => {
+                    if let Some(frame) = stack.last_mut()
+                        && frame.0
+                    {
+                        frame.2 = !frame.1;
+                        frame.1 = true;
+                    }
+                }
+                "endif" => {
+                    stack.pop();
+                }
+                _ => {}
+            }
+            // (the conditions themselves; other directives, like the wrappers' #define, stay)
+            blank |= ["if", "ifdef", "ifndef", "elif", "else", "endif"].contains(&word);
+        }
+        if blank {
+            line.clear();
+        }
+    }
+}
+
 impl Unit {
-    fn read(root: &Path, name: &str) -> Result<Self> {
+    /// NAME as VERSION (a `version.h` index) compiles it, or with all its branches (None).
+    fn read(root: &Path, name: &str, version: Option<i64>) -> Result<Self> {
         let path = root.join("gc2").join(name);
         let text = fs::read(&path).with_context(|| format!("read {}", path.display()))?;
         let text = strip_comments(&String::from_utf8_lossy(&text).replace('\r', ""));
-        let lines: Vec<String> = text.split('\n').map(str::to_owned).collect();
+        let mut lines: Vec<String> = text.split('\n').map(str::to_owned).collect();
+        if let Some(version) = version {
+            preprocess(&mut lines, version, &version_indices(root)?);
+        }
         let mut functions = BTreeMap::new();
         let (mut depth, mut current): (i32, Option<(String, u32)>) = (0, None);
         for (index, code) in lines.iter().enumerate() {
@@ -379,6 +538,8 @@ fn containing(functions: &[(u32, u32, String)], address: u32) -> Option<&(u32, u
 /// its (offset, line) entries.
 struct Lines {
     functions: BTreeMap<String, (u32, Vec<(u32, u32)>)>,
+    /// Each function's code.
+    code: BTreeMap<String, Vec<u8>>,
 }
 
 impl Lines {
@@ -389,7 +550,7 @@ impl Lines {
         let u16_at = |at: usize| u16::from_le_bytes([data[at], data[at + 1]]);
         let u32_at = |at: usize| u32::from_le_bytes(data[at..at + 4].try_into().unwrap());
         let headers = 20 + u16_at(16) as usize;
-        let mut functions = BTreeMap::new();
+        let (mut functions, mut code) = (BTreeMap::new(), BTreeMap::new());
         let symbols: Vec<_> = object.symbols.values().collect();
         for (index, symbol) in symbols.iter().enumerate() {
             if symbol.section <= 0 || symbol.kind & 0x20 == 0 {
@@ -412,12 +573,45 @@ impl Lines {
                 .filter(|&(_, line)| line != 0)
                 .map(|(offset, line)| (offset.wrapping_sub(symbol.value), line))
                 .collect();
-            functions.insert(
-                symbol.name.trim_start_matches('_').to_owned(),
-                (first, entries),
-            );
+            let name = symbol.name.trim_start_matches('_').to_owned();
+            if let Some(section) = object.sections.get(symbol.section as usize - 1) {
+                code.insert(name.clone(), section.data.to_vec());
+            }
+            functions.insert(name, (first, entries));
         }
-        Ok(Self { functions })
+        Ok(Self { functions, code })
+    }
+
+    /// The offset in FUNCTION of the instruction at OFFSET in ORIGINAL, the original's code of it. The same when
+    /// both are as long; otherwise by the two's instruction sequences (their mnemonics: a function that differs
+    /// from the original's in its frame or registers), at the nearest instruction both have before it.
+    fn offset(&self, function: &str, original: &[u8], offset: u32) -> Result<u32> {
+        let Some(ours) = self.code.get(function) else {
+            return Ok(offset);
+        };
+        if ours.len() == original.len() {
+            return Ok(offset);
+        }
+        let decoder = disassembly::decoder()?;
+        let decode = |code: &[u8]| -> Result<Vec<(u32, String)>> {
+            Ok(decoder
+                .disasm_all(code, 0)?
+                .iter()
+                .map(|i| (i.address() as u32, i.mnemonic().unwrap_or("").to_owned()))
+                .collect())
+        };
+        let (a, b) = (decode(original)?, decode(ours)?);
+        let keys = |list: &[(u32, String)]| list.iter().map(|i| i.1.clone()).collect::<Vec<_>>();
+        let mut mapped = 0;
+        for (ai, bj, n) in sequence::matching_blocks_with_autojunk(&keys(&a), &keys(&b), false) {
+            for k in 0..n {
+                if a[ai + k].0 > offset {
+                    return Ok(mapped);
+                }
+                mapped = b[bj + k].0;
+            }
+        }
+        Ok(mapped)
     }
 
     /// The line of OFFSET in FUNCTION, or None without line numbers.
@@ -431,8 +625,22 @@ impl Lines {
     }
 }
 
-pub fn generate(root: &Path) -> Result<Table> {
-    let tree = SourceTree::gc2(LINES);
+/// One version's increments, each matched with its write: (site, bindings), and where each site is (its function
+/// and offset).
+#[derive(Default)]
+struct VersionSites {
+    sites: BTreeMap<Write, (u32, [u8; 3])>,
+    places: BTreeMap<u32, (String, u32)>,
+    inlined: BTreeSet<(String, String)>,
+}
+
+/// VERSION's increments, aligned with the writes of gc2's sources as VERSION compiles them, by the line numbers of
+/// the objects the original's compiler builds from them (`build/<VERSION>/gc2/compiled`).
+fn version_sites(root: &Path, version: &str) -> Result<VersionSites> {
+    let tree = SourceTree::gc2(version);
+    let index = *version_indices(root)?
+        .get(&format!("VERSION_{version}"))
+        .with_context(|| format!("gc2's version.h has no VERSION_{version}"))?;
     let gc2 = functions(root, &tree)?;
     let retail: BTreeSet<String> = gc2.iter().map(|f| f.2.clone()).collect();
     let splits = executable::read_splits(&fs::read_to_string(
@@ -446,27 +654,24 @@ pub fn generate(root: &Path) -> Result<Table> {
                 .then(|| u.name.clone())
         })
     };
-    // (GC 2.6's sites: at GC 2.7's offsets in the same functions)
-    let moved_functions = functions(root, &SourceTree::gc2(MOVED))?;
-    let moved: BTreeMap<(String, u32), (u32, Vec<u8>)> = counter_probe::plan(root, MOVED)?
-        .into_iter()
-        .filter(|s| s.role == Role::Increment)
-        .map(|s| {
-            let f = containing(&moved_functions, s.address).with_context(|| {
-                format!("{MOVED} increment {:#x} outside gc2's functions", s.address)
-            })?;
-            Ok(((f.2.clone(), s.address - f.0), (s.address, s.bytes)))
-        })
-        .collect::<Result<_>>()?;
+    let original = executable::Original::read(root, version)?;
+    let pe = original.pe()?;
+    let mut out = VersionSites::default();
     let mut by_function: BTreeMap<(String, String), Vec<Increment>> = BTreeMap::new();
     let mut lines: BTreeMap<String, Lines> = BTreeMap::new();
-    let mut moved_site = BTreeMap::new();
-    let plan = counter_probe::plan(root, LINES)?;
-    for site in plan.iter().filter(|s| s.role == Role::Increment) {
-        let f = containing(&gc2, site.address)
-            .with_context(|| format!("increment {:#x} outside gc2's functions", site.address))?;
-        let unit = unit_of(site.address)
-            .with_context(|| format!("increment {:#x} outside the splits", site.address))?;
+    for site in counter_probe::plan(root, version)?
+        .iter()
+        .filter(|s| s.role == Role::Increment)
+    {
+        let f = containing(&gc2, site.address).with_context(|| {
+            format!(
+                "{version} increment {:#x} outside gc2's functions",
+                site.address
+            )
+        })?;
+        let unit = unit_of(site.address).with_context(|| {
+            format!("{version} increment {:#x} outside the splits", site.address)
+        })?;
         if !lines.contains_key(&unit) {
             let path = root
                 .join(&tree.build_dir)
@@ -475,21 +680,15 @@ pub fn generate(root: &Path) -> Result<Table> {
             lines.insert(unit.clone(), Lines::read(&path)?);
         }
         let offset = site.address - f.0;
-        let (address, bytes) = moved
-            .get(&(f.2.clone(), offset))
-            .with_context(|| format!("{MOVED} has no increment at {}+{offset:#x}", f.2))?;
-        ensure!(
-            *bytes == site.bytes,
-            "{MOVED}'s increment at {}+{offset:#x} differs",
-            f.2
-        );
-        moved_site.insert(site.address, *address);
+        out.places.insert(site.address, (f.2.clone(), offset));
+        let code = pe.read(f.0, (f.1 - f.0) as usize)?;
+        let ours = lines[&unit].offset(&f.2, code, offset)?;
         by_function
             .entry((unit.clone(), f.2.clone()))
             .or_default()
             .push(Increment {
                 site: site.address,
-                line: lines[&unit].line(&f.2, offset),
+                line: lines[&unit].line(&f.2, ours),
                 class: u8::try_from(site.selector).ok(),
                 bindings: [
                     site.object_binding as u8,
@@ -498,24 +697,20 @@ pub fn generate(root: &Path) -> Result<Table> {
                 ],
             });
     }
-    ensure!(
-        moved_site.len() == moved.len(),
-        "{MOVED} has {} increments, {LINES} {}",
-        moved.len(),
-        moved_site.len()
-    );
-    let mut table = Table::default();
     let mut units: BTreeMap<String, Unit> = BTreeMap::new();
     for ((unit_name, function), mut increments) in by_function {
         if !units.contains_key(&unit_name) {
-            units.insert(unit_name.clone(), Unit::read(root, &unit_name)?);
+            units.insert(
+                unit_name.clone(),
+                Unit::read(root, &unit_name, Some(index))?,
+            );
         }
         let unit = &units[&unit_name];
         increments.sort_by_key(|i| i.site);
         let events = unit
             .events
             .get(&function)
-            .with_context(|| format!("{unit_name} has no function {function}"))?;
+            .with_context(|| format!("{unit_name} has no function {function} in {version}"))?;
         let mut slots = vec![];
         for event in events {
             match event {
@@ -557,15 +752,20 @@ pub fn generate(root: &Path) -> Result<Table> {
         }
         let chosen = align(&increments, &slots).with_context(|| {
             format!(
-                "{unit_name}: {function}'s {} increments (lines {:?}) do not align with its writes",
+                "{version} {unit_name}: {function}'s {} increments (lines {:?}) do not align with its writes \
+                 (line, inlined at, class: {:?})",
                 increments.len(),
-                increments.iter().map(|i| i.line).collect::<Vec<_>>()
+                increments.iter().map(|i| i.line).collect::<Vec<_>>(),
+                slots
+                    .iter()
+                    .map(|s| (s.write.line, s.write.inlined, s.class))
+                    .collect::<Vec<_>>()
             )
         })?;
         for (j, slot) in slots.iter().enumerate() {
             ensure!(
                 slot.skip != SKIP_WRITE || chosen.contains(&j),
-                "{unit_name}:{}: {function}'s write has no increment",
+                "{version} {unit_name}:{}: {function}'s write has no increment",
                 slot.line
             );
         }
@@ -585,36 +785,74 @@ pub fn generate(root: &Path) -> Result<Table> {
                         _ => None,
                     })
                     .context("inlined write without its call")?;
-                table.inlined.insert((unit_name.clone(), callee));
+                out.inlined.insert((unit_name.clone(), callee));
             }
-            let previous = table.sites.insert(
-                write.clone(),
-                (
-                    increment.site,
-                    moved_site[&increment.site],
-                    increment.bindings,
-                ),
+            let previous = out
+                .sites
+                .insert(write.clone(), (increment.site, increment.bindings));
+            ensure!(
+                previous.is_none(),
+                "{version}: two increments for {write:?}"
             );
-            ensure!(previous.is_none(), "two increments for {write:?}");
         }
     }
-    // (the other writes: in functions the original's probes do not cover)
+    Ok(out)
+}
+
+pub fn generate(root: &Path) -> Result<Table> {
+    let lines = version_sites(root, LINES)?;
+    // (GC 2.6's sites: at GC 2.7's offsets in the same functions)
+    let moved_functions = functions(root, &SourceTree::gc2(MOVED))?;
+    let moved: BTreeMap<(String, u32), (u32, Vec<u8>)> = counter_probe::plan(root, MOVED)?
+        .into_iter()
+        .filter(|s| s.role == Role::Increment)
+        .map(|s| {
+            let f = containing(&moved_functions, s.address).with_context(|| {
+                format!("{MOVED} increment {:#x} outside gc2's functions", s.address)
+            })?;
+            Ok(((f.2.clone(), s.address - f.0), (s.address, s.bytes)))
+        })
+        .collect::<Result<_>>()?;
+    let lines_bytes: BTreeMap<u32, Vec<u8>> = counter_probe::plan(root, LINES)?
+        .into_iter()
+        .filter(|s| s.role == Role::Increment)
+        .map(|s| (s.address, s.bytes))
+        .collect();
+    ensure!(
+        moved.len() == lines.places.len(),
+        "{MOVED} has {} increments, {LINES} {}",
+        moved.len(),
+        lines.places.len()
+    );
+    let own = version_sites(root, OWN)?;
+    let mut table = Table::default();
+    for (write, &(site, bindings)) in &lines.sites {
+        let (function, offset) = &lines.places[&site];
+        let (address, bytes) = moved
+            .get(&(function.clone(), *offset))
+            .with_context(|| format!("{MOVED} has no increment at {function}+{offset:#x}"))?;
+        ensure!(
+            *bytes == lines_bytes[&site],
+            "{MOVED}'s increment at {function}+{offset:#x} differs"
+        );
+        table.sites.entry(write.clone()).or_default().gc2_7 = (site, *address, bindings);
+    }
+    for (write, &(site, bindings)) in &own.sites {
+        table.sites.entry(write.clone()).or_default().gc1_3_2 = (site, bindings);
+    }
+    table.inlined = lines.inlined.union(&own.inlined).cloned().collect();
+    // (the other writes: in functions no version's probes cover, or in code none compiles)
+    let mut units: BTreeMap<String, Unit> = BTreeMap::new();
     for path in glob(&root.join("gc2/src"))? {
         let name = path
             .strip_prefix(root.join("gc2"))?
             .to_string_lossy()
             .replace('\\', "/");
-        let unit = match units.get(&name) {
-            Some(unit) => unit,
-            None => {
-                let text = fs::read_to_string(&path).unwrap_or_default();
-                if !WRITE.is_match(&strip_comments(&text)) {
-                    continue;
-                }
-                units.insert(name.clone(), Unit::read(root, &name)?);
-                &units[&name]
-            }
-        };
+        let text = fs::read_to_string(&path).unwrap_or_default();
+        if !WRITE.is_match(&strip_comments(&text)) {
+            continue;
+        }
+        let unit = Unit::read(root, &name, None)?;
         for (index, code) in unit.lines.iter().enumerate() {
             let line = index as u32 + 1;
             if WRITE.is_match(code) && !table.sites.keys().any(|w| w.unit == name && w.line == line)
@@ -622,6 +860,7 @@ pub fn generate(root: &Path) -> Result<Table> {
                 table.none.insert((name.clone(), line));
             }
         }
+        units.insert(name, unit);
     }
     check_wrappers(&units, &table)?;
     Ok(table)
@@ -711,30 +950,34 @@ pub fn render(table: &Table) -> String {
     out.push_str("];\n");
     let _ = writeln!(
         out,
-        "/// The writes the original has an increment for: (unit, line, the line of the call the original inlines it\n\
-         /// at or 0, its site in GC 2.7, in GC 2.6, its object, operand and origin bindings), in order."
+        "/// An entry of SITES.\npub type Site = (u8, u16, u16, u32, u32, [u8; 3], u32, [u8; 3]);"
     );
     let _ = writeln!(
         out,
-        "pub const SITES: [(u8, u16, u16, u32, u32, [u8; 3]); {}] = [",
-        table.sites.len()
+        "/// The writes an original has an increment for: (unit, line, the line of the call the original inlines it\n\
+         /// at or 0, its site in GC 2.7, in GC 2.6, their object, operand and origin bindings, its site in GC 1.3.2 and its\n\
+         /// bindings; a site is 0 where that version has no increment for it), in order."
     );
+    // (one entry a line: wider than rustfmt keeps a tuple on one)
+    let _ = writeln!(out, "#[rustfmt::skip]");
+    let _ = writeln!(out, "pub static SITES: [Site; {}] = [", table.sites.len());
     let mut sites: Vec<_> = table
         .sites
         .iter()
-        .map(|(w, s)| (index(&w.unit), w.line, w.inlined, s.0, s.1, s.2))
+        .map(|(w, s)| (index(&w.unit), w.line, w.inlined, *s))
         .collect();
-    sites.sort();
-    for (unit, line, inlined, a, b, [object, operand, origin]) in sites {
+    sites.sort_by_key(|s| (s.0, s.1, s.2));
+    for (unit, line, inlined, s) in sites {
+        let ((a, b, [object, operand, origin]), (c, [o2, p2, r2])) = (s.gc2_7, s.gc1_3_2);
         let _ = writeln!(
             out,
-            "    ({unit}, {line}, {inlined}, {a:#x}, {b:#x}, [{object}, {operand}, {origin}]),"
+            "    ({unit}, {line}, {inlined}, {a:#x}, {b:#x}, [{object}, {operand}, {origin}], {c:#x}, [{o2}, {p2}, {r2}]),"
         );
     }
     out.push_str("];\n");
     let _ = writeln!(
         out,
-        "/// The writes it has none for: (unit, line), in order."
+        "/// The writes none has an increment for: (unit, line), in order."
     );
     let mut none: Vec<_> = table.none.iter().map(|(u, l)| (index(u), *l)).collect();
     none.sort();

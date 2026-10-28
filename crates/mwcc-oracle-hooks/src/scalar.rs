@@ -142,9 +142,11 @@ unsafe extern "C" fn create_temp_object(_ty: *const u8) -> *const u8 {
 }
 /// The scalarizer's call that gc2's probe announced (`include/compiler/OracleProbes.h`): its part.
 static mut SOURCE_PART: *const u8 = ptr::null();
-/// The original's return site of that call, in 2.6 and 2.7 (IRO_ScalarizeClassDataMembers's).
+/// The original's return site of that call (IRO_ScalarizeClassDataMembers's): in 2.6 and 2.7, and in 1.3.2.
 #[cfg(target_arch = "wasm32")]
 const SOURCE_SITE: u32 = 0x461748;
+#[cfg(target_arch = "wasm32")]
+const SOURCE_SITE_1_3_2: u32 = 0x460b28;
 
 /// gc2's probe: IRO_ScalarizeClassDataMembers is about to make PART's temporary.
 #[unsafe(no_mangle)]
@@ -160,7 +162,11 @@ unsafe extern "C" fn create_temp_object(ty: *const u8) -> *const u8 {
     unsafe {
         let part = ptr::addr_of!(SOURCE_PART).read();
         ptr::addr_of_mut!(SOURCE_PART).write(ptr::null());
-        let caller = if part.is_null() { 0 } else { SOURCE_SITE };
+        let caller = match (part.is_null(), crate::source_arenas::version()) {
+            (true, _) => 0,
+            (false, 2) => SOURCE_SITE_1_3_2,
+            (false, _) => SOURCE_SITE,
+        };
         create_temp(ty, caller, part)
     }
 }

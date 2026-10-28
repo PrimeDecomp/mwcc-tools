@@ -940,21 +940,21 @@ unsafe fn counter_globals() -> Option<CounterGlobals> {
 unsafe fn counter_globals() -> Option<CounterGlobals> {
     None
 }
-/// The original's site for ROLE (2 to 9) in VERSION (3 GC 2.7, 4 GC 2.6).
+/// The original's site for ROLE (2 to 9) in VERSION (3 GC 2.7, 4 GC 2.6, 2 GC 1.3.2): counter_probe::plan's.
 pub fn counter_site(version: u32, role: u32) -> Option<u32> {
-    let sites: [u32; 4] = match version {
-        3 => [0x4fe24c, 0x4fe2d8, 0x4fe59a, 0x508657],
-        4 => [0x4fe32c, 0x4fe3b8, 0x4fe67a, 0x508737],
+    let sites: [u32; 8] = match version {
+        3 => [
+            0x4fe24c, 0x4fe2d8, 0x4fe59a, 0x508657, 0x43348d, 0x4341a4, 0x4d00a1, 0x4d00f2,
+        ],
+        4 => [
+            0x4fe32c, 0x4fe3b8, 0x4fe67a, 0x508737, 0x43348d, 0x4341a4, 0x4d00a1, 0x4d00f2,
+        ],
+        2 => [
+            0x4fd4cc, 0x4fd558, 0x4fd81a, 0x5078d7, 0x4333ad, 0x4340c4, 0x4cf3a1, 0x4cf3f2,
+        ],
         _ => return None,
     };
-    Some(match role {
-        2..=5 => sites[role as usize - 2],
-        6 => 0x43348d,
-        7 => 0x4341a4,
-        8 => 0x4d00a1,
-        9 => 0x4d00f2,
-        _ => return None,
-    })
+    sites.get((role as usize).checked_sub(2)?).copied()
 }
 
 /// gc2's probe (`include/compiler/OracleProbes.h`): the counter site ROLE for RCLASS, in FUNCTION.
@@ -1000,7 +1000,12 @@ impl CounterGlobals {
             last: self.last,
             object_binding: 0,
             operand_binding: 0,
-            data_link_offset: 54,
+            // (an object's data link: counter_probe's data_link_offset, 56 in GC 1.3.2)
+            data_link_offset: if unsafe { crate::source_arenas::version() } == 2 {
+                56
+            } else {
+                54
+            },
             origin_binding: 0,
         }
     }
@@ -1045,19 +1050,41 @@ unsafe fn unit_of(file: *const core::ffi::c_char) -> u8 {
     }
 }
 
+/// SITE's site in VERSION (0 without one) and its bindings.
+fn version_site(site: &crate::counter_sites::Site, version: u32) -> (u32, [u8; 3]) {
+    match version {
+        4 => (site.4, site.5),
+        2 => (site.6, site.7),
+        _ => (site.3, site.5),
+    }
+}
+
+/// Whether only other versions than VERSION have an increment for the write at LINE of UNIT.
+fn another_versions(unit: u8, line: u16, version: u32) -> bool {
+    let mut entries = crate::counter_sites::SITES
+        .iter()
+        .filter(|s| s.0 == unit && s.1 == line)
+        .peekable();
+    entries.peek().is_some() && entries.all(|s| version_site(s, version).0 == 0)
+}
+
 /// The original's site of the write at LINE of UNIT, in the inlined calls being made (at the outermost call of the
-/// same file the original inlines it at, or at none), and its bindings.
+/// same file the original inlines it at, or at none), and its bindings, in VERSION (3 GC 2.7, 4 GC 2.6, 2 GC 1.3.2).
 unsafe fn increment_site(
     file: *const core::ffi::c_char,
     unit: u8,
     line: u16,
+    version: u32,
 ) -> Option<(u32, [u8; 3])> {
     unsafe {
+        // (an entry without a site in VERSION is another version's: its inlined call, or its code)
         let find = |inlined: u16| {
             crate::counter_sites::SITES
                 .binary_search_by(|s| (s.0, s.1, s.2).cmp(&(unit, line, inlined)))
                 .ok()
-                .and_then(|i| crate::counter_sites::SITES.get(i).copied())
+                .and_then(|i| crate::counter_sites::SITES.get(i))
+                .map(|s| version_site(s, version))
+                .filter(|s| s.0 != 0)
         };
         let depth = ptr::addr_of!(INLINED_DEPTH).read().min(8);
         let calls = &*ptr::addr_of!(INLINED);
@@ -1067,12 +1094,7 @@ unsafe fn increment_site(
             .filter(|(f, _)| *f == file as usize)
             .find_map(|&(_, call)| find(call as u16))
             .or_else(|| find(0))?;
-        let address = if crate::source_arenas::version() == 4 {
-            site.4
-        } else {
-            site.3
-        };
-        Some((address, site.5))
+        Some(site)
     }
 }
 
@@ -1129,16 +1151,16 @@ pub unsafe extern "C" fn OracleProbe_CounterIncrement(
     old: i32,
 ) -> i32 {
     unsafe {
-        // (the sites are GC 2.7's and 2.6's, crate::counter_sites: a version without them, GC 1.3.2, reports no
-        // increments)
-        if !enabled() || !matches!(crate::source_arenas::version(), 3 | 4) {
+        // (crate::counter_sites has GC 2.7's, 2.6's and 1.3.2's sites)
+        let version = crate::source_arenas::version();
+        if !enabled() || !matches!(version, 2..=4) {
             return old;
         }
         let unit = unit_of(file);
         let Some(globals) = counter_globals() else {
             return old;
         };
-        match increment_site(file, unit, line as u16) {
+        match increment_site(file, unit, line as u16, version) {
             Some((site, [object, operand, origin])) => {
                 let mut descriptor = globals.descriptor(1, rclass);
                 descriptor.object_binding = object.into();
@@ -1148,8 +1170,9 @@ pub unsafe extern "C" fn OracleProbe_CounterIncrement(
                 observe(&Registers::accumulator(0), site, &descriptor);
                 ptr::addr_of_mut!(BINDING_ACTIVE).write(false);
             }
-            // (a write the original's probes do not cover)
-            None if crate::counter_sites::NONE.contains(&(unit, line as u16)) => {}
+            // (a write the original's probes do not cover, or that only another version has an increment for)
+            None if crate::counter_sites::NONE.contains(&(unit, line as u16))
+                || another_versions(unit, line as u16, version) => {}
             None => {
                 OracleTrace_Printf(
                     c"pv.gap reason=counter_write unit=%lu line=%ld\n".as_ptr(),

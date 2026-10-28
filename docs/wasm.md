@@ -66,9 +66,9 @@ locally.
 * Their traces against the x86 oracles' (`corpus --all-traces --trace-reference build/<version>/oracle/mwcceppc.exe`):
   * 2.7: identical on 2308 with `--ignore st. --ignore pv.expression.` (the module's `st.presched` snapshots have no
     x86 hook; `pv.expression.*` has no probe yet, [Probes](#probes)).
-  * 1.3.2: identical on 2308 with `--ignore st. --ignore pv.`. The register counters' provenance (`pv.function.*`,
-    `pv.counter.*`, `pv.value.*`, and the function numbers of `pv.scalar.*`) needs the original's sites, and
-    `counter_sites.rs` has 2.7's and 2.6's only: the 1.3.2 module reports no increments.
+  * 1.3.2: identical on 2308 with the same `--ignore st. --ignore pv.expression.`: the register counters'
+    provenance (`pv.function.*`, `pv.counter.*`, `pv.value.*`, `pv.scalar.*`) included, at 1.3.2's sites
+    (`counter_sites.rs`'s 1.3.2 column, and `lifecycle.rs`'s and `scalar.rs`'s 1.3.2 addresses).
   * In both, the other 5 differ in a block's weight (`ra.block`'s `weight`, its `loopWeight`), which is read before
     anything sets it: the x86 oracles show a stale pointer, the module a small number. That predates the re-vendor.
 * Floating-point folding matches the original (2.7 and 1.3.2) on 40,000 random `+ - * /` of doubles and floats and
@@ -204,9 +204,13 @@ probe reads, and the hooks give the records the original's site.
 * The counters' increments (`pv.value.birth`): each is an `ALLOC_GPR()`, `ALLOC_FPR()`, `ALLOC_VR()` or
   `ALLOC_REG(c)` (`include/compiler/Registers.h`), which reports its file and line. The hooks look the original's site
   up in `crates/mwcc-oracle-hooks/src/counter_sites.rs`, which `mwcc-tools provenance counter-sites --write`
-  generates (after `ninja all_source` for GC 2.7: see `crates/mwcc-oracle-core/src/counter_sources.rs`; a test checks
-  it is fresh). It aligns each function's increments in the original with its writes by the line numbers of gc2's
-  objects. The original inlines 23 functions at some or all of their calls, and their increments are then at the
+  generates (after `ninja all_source` for GC 2.7 and GC 1.3.2: see `crates/mwcc-oracle-core/src/counter_sources.rs`;
+  a test checks it is fresh). It aligns each function's increments in the original with its writes by the line
+  numbers of gc2's objects: GC 2.7's (GC 2.6's sites are at the same offsets) and, separately, GC 1.3.2's, with the
+  sources as 1.3.2 compiles them (the branches of its `#if VERSION ...`). Where gc2's function is not the original's
+  size (61 of 1.3.2's are not exact), an increment's offset is moved to gc2's by the two's instruction sequences.
+  The table has a column per version; an entry without a site in the running version is another version's. The
+  original inlines 23 functions at some or all of their calls, and their increments are then at the
   call: those calls go through `ORACLE_INLINED`, which reports the call's line too (a wrapper macro after the
   function's definition, `#define f(...) ORACLE_INLINED(f(__VA_ARGS__))`, and `ORACLE_INLINED(f(...))` before it).
 * The births' bindings (`pv.value.object`, `pv.value.materialization`, `pv.value.array`, `pv.value.call_result`):
