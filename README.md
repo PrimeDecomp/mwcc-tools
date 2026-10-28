@@ -77,7 +77,7 @@ The Python package (standard library only) installs from the release's tag, and 
 (or `MWCC_TOOLS`):
 
 ```sh
-pip install "git+https://github.com/PrimeDecomp/mwcc-tools@v0.4.4#subdirectory=python"
+pip install "git+https://github.com/PrimeDecomp/mwcc-tools@v0.4.5#subdirectory=python"
 ```
 
 ```python
