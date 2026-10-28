@@ -48,13 +48,14 @@ fn take(args: &mut Vec<String>, option: &str) -> Result<Option<PathBuf>> {
     Ok(Some(value))
 }
 
-/// The session of a command: the mwcc checkout (`--oracle-root`, else MWCC_ORACLE_ROOT, else this executable's),
-/// and the project of `--project` (both taken out of ARGS).
+/// The session of a command: the mwcc checkout (`--oracle-root`, else MWCC_ORACLE_ROOT, else this executable's, else
+/// the download cache, which gets each version's modules the first time a method needs them), and the project of
+/// `--project` (both taken out of ARGS).
 fn session(args: &mut Vec<String>) -> Result<Session> {
     let project = take(args, "--project")?;
     let root = match take(args, "--oracle-root")? {
         Some(root) => root,
-        None => crate::run_cli::root()?,
+        None => crate::run_cli::run_root()?,
     };
     Ok(Session::new(root, project))
 }

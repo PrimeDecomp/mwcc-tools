@@ -28,8 +28,8 @@ The WebAssembly builds are published beside them, one archive per compiler versi
 
 Each compiler's `mwcc.wasm` (with its `.version`) and each linker's `mwldeppc.wasm` (with its `.version`) run in
 process in `mwcc-tools`; GC 2.7's, 2.6's and 1.3.2's `mwcceppc.wasm`, `oracle.wasm` and `persist.wasm` are the modules mwdec
-loads. Unpack them into the checkout `MWCC_ORACLE_ROOT` names. Without one, `mwcc-tools run` downloads its release's
-archives as a build needs them, and `mwcc-tools download wasm` downloads them ahead of time (`docs/wasm.md`).
+loads. Unpack them into the checkout `MWCC_ORACLE_ROOT` names. Without one, `mwcc-tools run` and the methods download their release's
+archives as a build or trace needs them, and `mwcc-tools download wasm` downloads them ahead of time (`docs/wasm.md`).
 
 The build host sets the system-library requirements; the target name does not promise older Linux or macOS
 releases.
@@ -59,8 +59,10 @@ lists the methods, and `mwcc-tools call METHOD` or `mwcc-tools serve` runs them 
 repository).
 
 - Offline trace analysis and graph replay need only the executable.
-- Compiling needs a built mwcc checkout, selected with `MWCC_ORACLE_ROOT` or `--oracle-root`, and the original
-  compiler executables. The historical linker and runtime, Ninja, objdiff and wibo are not bundled.
+- Compiling and tracing need the original compiler executables (a project's own). Without a checkout
+  (`MWCC_ORACLE_ROOT` or `--oracle-root`), each version's WebAssembly modules are downloaded into a cache the first
+  time a compile or trace needs them (`docs/wasm.md`); `mwcc-tools download wasm` downloads them ahead of time and
+  `MWCC_WASM_DOWNLOAD=0` turns downloading off. The historical linker and runtime, Ninja, objdiff and wibo are not bundled.
 - On Linux and macOS, compiling the x86 executables needs wibo 1.2.0 (`MWCC_WIBO` selects one). macOS uses the
   pinned `wibo-macos` asset, which is Intel-only, so Apple Silicon also needs Rosetta 2. The macOS compiler setup
   is not validated.

@@ -479,6 +479,9 @@ originals, and whose module the cache lacks, gets its version's release archive 
   as `0.3.0`) and `MWCC_WASM_RELEASE_URL` (the directory of its assets) take another release's archives; a module of
   another release than the executable's may not load in it.
 * `mwcc-tools download wasm [VERSION...] [--root DIR]` downloads them ahead of time, into the cache or into DIR.
+* The methods (`mwcc-tools call`, `serve`) without a checkout use the same cache: a compile or trace of a version
+  whose module the cache lacks gets that version's archive first (`mwcc_project::compilers::set_fetch`). A
+  checkout's root gets nothing: its modules are the ones it builds or unpacks.
 
 On Metroid Prime 2: Echoes (USA and PAL, Windows, 24 jobs), every object but `Gecko_ExceptionPPC.o`
 ([Status](#status)) and every `.d` file is identical, the linked binaries pass their hash checks, and a full build

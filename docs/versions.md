@@ -26,3 +26,18 @@ The project's flags and headers are written for its own compiler. Differences se
 | GC 2.0, 2.0p1 | Reported by the Echoes session: a C++98 static assert of a template's constant (`CHECK_SIZEOF`, `extern int x[check_sizeof<T, N>::value]`) failed with "illegal constant expression" in one unit (Echoes' `main/Kyoto/DolphinCDvdFile`, which uses it, compiles). | Give the unit's source in `files` with the macro defined empty before its includes (a process compile takes no other file). |
 
 Add a row when a version rejects something the project's own compiler takes.
+
+## GC 1.3.2's oracle
+
+GC 1.3.2 (Metroid Prime) has a module like 2.7's (downloaded on first use, or unpacked in a checkout from
+`mwcc-wasm-GC_1_3_2-*.zip`, [BUILDING.md](../BUILDING.md)): a unit built with the original 1.3.2 compiler (its size and SHA-1 are checked against
+`config/GC_1_3_2/config.json`) traces in process:
+
+```sh
+mwcc-tools call oracle.trace project=../prime unit=main/Foo function=Draw views.text=true
+mwcc-tools call oracle.regdiff project=../prime unit=main/Foo function=Draw text=true full=true
+```
+
+For a bare source, pass `version=GC_1_3_2` (the default). `mwcc-tools run build/compilers/GC/1.3.2/mwldeppc.exe ...`
+(or a build's `--wrapper`) links with the 1.3.2 linker module. Differences between 1.3.2 and 2.7 are in
+[gc27-differences.md](gc27-differences.md).

@@ -1,8 +1,8 @@
 //! The released WebAssembly compilers and linkers, downloaded where no checkout has them built.
 //!
-//! Without `MWCC_ORACLE_ROOT` or a checkout around this executable, `mwcc-tools run` (and `run ninja`) use a cache
-//! laid out as a checkout: `MWCC_WASM_CACHE`, else the user's cache directory (`%LOCALAPPDATA%`, `$XDG_CACHE_HOME` or
-//! `~/.cache`, `~/Library/Caches`) under `mwcc-tools/v<version>`. Its `config/<version>/config.json` are this
+//! Without `MWCC_ORACLE_ROOT` or a checkout around this executable, `mwcc-tools run` (and `run ninja`, and the
+//! methods, through [`fetch`]) use a cache laid out as a checkout: `MWCC_WASM_CACHE`, else the user's cache directory
+//! (`%LOCALAPPDATA%`, `$XDG_CACHE_HOME` or `~/.cache`, `~/Library/Caches`) under `mwcc-tools/v<version>`. Its `config/<version>/config.json` are this
 //! executable's own copies. A compiler or linker that is a copy of a released version's original (by size and SHA-1)
 //! and whose module the cache does not have gets its version's archive (`mwcc-wasm-<version>-<release>.zip`, which
 //! the release workflow publishes) from this executable's release, checked against its `.sha256`. The archive is
@@ -233,29 +233,72 @@ pub fn ensure_for(root: &Path, executable: &Path) -> Result<()> {
         return Ok(());
     }
     if let Some(archive) = archive_of(root, executable)? {
-        let release = release();
-        let url = archive_url(archive, &release);
-        let unavailable = unavailable_path(root, archive);
-        // (a release without the archive, known from an earlier build's look: not asked again)
-        if !fs::read_to_string(&unavailable).is_ok_and(|known| known == url) {
-            match install(root, archive, &mut fetcher()?, &release) {
-                Ok(()) => {}
-                Err(e) if e.downcast_ref::<Unfetched>().is_some() => {
-                    let missing = e.downcast_ref::<Unfetched>().unwrap().missing;
-                    eprintln!(
-                        "mwcc-tools: {e:#}; {} runs as a process (MWCC_WASM_DOWNLOAD=0 does not download)",
-                        executable.display()
-                    );
-                    if missing {
-                        let _ = fs::write(&unavailable, &url);
-                    }
-                }
-                Err(e) => return Err(e),
-            }
-        }
+        let fallback = format!("{} runs as a process", executable.display());
+        fetch_archive(root, archive, &fallback)?;
     }
     looked_at.insert(key);
     Ok(())
+}
+
+/// ARCHIVE installed in ROOT from the release, unless the release is known to lack it. A fetch that fails is a
+/// warning that ends with FALLBACK (what happens instead).
+fn fetch_archive(root: &Path, archive: &Archive, fallback: &str) -> Result<()> {
+    let release = release();
+    let url = archive_url(archive, &release);
+    let unavailable = unavailable_path(root, archive);
+    // (a release without the archive, known from an earlier look: not asked again)
+    if fs::read_to_string(&unavailable).is_ok_and(|known| known == url) {
+        return Ok(());
+    }
+    match install(root, archive, &mut fetcher()?, &release) {
+        Ok(()) => Ok(()),
+        Err(e) if e.downcast_ref::<Unfetched>().is_some() => {
+            let missing = e.downcast_ref::<Unfetched>().unwrap().missing;
+            eprintln!("mwcc-tools: {e:#}; {fallback} (MWCC_WASM_DOWNLOAD=0 does not download)");
+            if missing {
+                let _ = fs::write(&unavailable, &url);
+            }
+            Ok(())
+        }
+        Err(e) => Err(e),
+    }
+}
+
+/// The versions whose archive this process has looked for already.
+static FETCHED: Mutex<Option<HashSet<&'static str>>> = Mutex::new(None);
+
+/// VERSION's module (a compiler's or a linker's: `GC_2_7`, `LD_2_7`...) downloaded into ROOT when ROOT is the
+/// download cache and lacks it: what the oracle's methods look for (`mwcc_project::compilers::set_fetch`). A checkout
+/// gets nothing: its modules are the ones it builds or unpacks.
+pub fn fetch(root: &Path, version: &str) {
+    // (ROOT may be the cache's canonical path: the oracle's runner canonicalizes it)
+    let canonical = |path: &Path| fs::canonicalize(path).ok();
+    if !enabled()
+        || cache()
+            .ok()
+            .and_then(canonical)
+            .is_none_or(|c| Some(c) != canonical(root))
+    {
+        return;
+    }
+    let Some(archive) = ARCHIVES
+        .iter()
+        .find(|a| a.members.iter().any(|m| m.version == version))
+    else {
+        return;
+    };
+    let mut fetched = FETCHED.lock().unwrap_or_else(|e| e.into_inner());
+    if !fetched
+        .get_or_insert_with(HashSet::new)
+        .insert(archive.name)
+        || complete(root, archive)
+    {
+        return;
+    }
+    let fallback = format!("{version} has no module");
+    if let Err(e) = fetch_archive(root, archive, &fallback) {
+        eprintln!("mwcc-tools: {e:#}; {fallback}");
+    }
 }
 
 /// A download that failed: the build runs the executable instead. MISSING: the server has no such file (an HTTP

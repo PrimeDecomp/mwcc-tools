@@ -271,6 +271,9 @@ fn run() -> Result<()> {
 }
 
 fn main() -> ExitCode {
+    // (the download cache gets a version's modules when a compile or method first needs them)
+    #[cfg(feature = "wasm")]
+    mwcc_project::compilers::set_fetch(wasm_download::fetch);
     // (`run`'s arguments are the wrapped command's, as they are)
     if let Some(args) = run_cli::wrapped_command() {
         match run_cli::run(&args) {

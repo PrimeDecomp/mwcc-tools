@@ -29,6 +29,25 @@ const MODULE_VERSIONS: [&str; 4] = ["GC_1_3_2", "GC_2_6", "GC_2_7", "GC_1_2_5n"]
 /// The linkers built for WebAssembly (`build/<linker>/wasm/mwldeppc.wasm`), each with its compiler version.
 pub const LINKERS: [(&str, &str); 2] = [("LD_1_3_2", "GC_1_3_2"), ("LD_2_7", "GC_2_7")];
 
+/// What gets a version's module into a root that lacks it (mwcc-tools' download cache): called with the root and the
+/// version (`GC_2_7`, `LD_2_7`...) before the module is looked for there. Set once, by the executable.
+static FETCH: std::sync::OnceLock<fn(&Path, &str)> = std::sync::OnceLock::new();
+
+/// Set what fetches a missing module ([`FETCH`]).
+pub fn set_fetch(fetch: fn(&Path, &str)) {
+    let _ = FETCH.set(fetch);
+}
+
+/// ROOT's module of VERSION at MODULE, fetched first when it is missing and a fetch is set.
+fn present(root: &Path, version: &str, module: &Path) -> bool {
+    if !module.is_file()
+        && let Some(fetch) = FETCH.get()
+    {
+        fetch(root, version);
+    }
+    module.is_file()
+}
+
 /// LINKER's module, in a checkout of mwcc.
 pub fn linker_module_output(linker: &str) -> String {
     format!("build/{linker}/wasm/mwldeppc.wasm")
@@ -45,9 +64,6 @@ pub fn linker_module_of_copy(root: &Path, executable: &Path) -> Option<(Version,
     let mut digest = None;
     for (linker, compiler) in LINKERS {
         let module = root.join(linker_module_output(linker));
-        if !module.is_file() {
-            continue;
-        }
         let Ok(config) = fs::read(root.join(format!("config/{linker}/config.json"))) else {
             continue;
         };
@@ -68,6 +84,9 @@ pub fn linker_module_of_copy(root: &Path, executable: &Path) -> Option<(Version,
             if config["sha1"].as_str() != Some(digest.as_str()) {
                 continue;
             }
+        }
+        if !present(root, linker, &module) {
+            continue;
         }
         return Some((Version::parse(compiler).ok()?, module));
     }
@@ -123,7 +142,7 @@ pub fn module(root: &Path, executable: &Path) -> Option<(Version, PathBuf)> {
             continue;
         }
         let module = root.join(module_output(name));
-        return module.is_file().then_some((version, module));
+        return present(root, name, &module).then_some((version, module));
     }
     None
 }
@@ -152,8 +171,7 @@ fn module_of_copy_if(enabled: bool, root: &Path, executable: &Path) -> Option<(V
         .flatten()
         .find_map(|name| {
             let module = root.join(module_output(name));
-            module
-                .is_file()
+            present(root, name, &module)
                 .then(|| Some((Version::parse(name).ok()?, module)))
                 .flatten()
         })
