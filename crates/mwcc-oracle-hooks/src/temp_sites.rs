@@ -80,11 +80,12 @@ pub static SITES: [Site; 52] = [
 
 /// The return address of the original's call at SITE in COPY, in the version source_arenas::version() numbers
 /// VERSION (3 GC 2.7, 4 GC 2.6, 2 GC 1.3.2); NONE for none (an unknown site, or another version), or INLINED.
+/// A site outside the copies is its own with any COPY (one a longjmp out of ORACLE_TEMP_INLINED left).
 pub fn site(site: u8, copy: u8, version: u32) -> u32 {
     let mut index = 0;
     while index < SITES.len() {
         let (s, c, _, gc2_7, gc2_6, gc1_3_2) = SITES[index];
-        if s == site && c == copy {
+        if s == site && (c == copy || c == 0) {
             return match version {
                 3 => gc2_7,
                 4 => gc2_6,

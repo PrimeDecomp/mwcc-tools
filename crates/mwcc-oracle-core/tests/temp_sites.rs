@@ -199,3 +199,13 @@ fn the_cse_view_names_each_sites_creator() {
         temp_creator(Version::Gc27, 0x461748).split(' ').next()
     );
 }
+
+#[test]
+fn a_site_is_looked_up_in_its_copy() {
+    assert_eq!(temp_sites::site(5, 2, 3), 0x5208d9);
+    assert_eq!(temp_sites::site(16, 11, 2), 0x55e523);
+    assert_eq!(temp_sites::site(16, 0, 3), NONE);
+    // (a site outside the copies, with a copy left behind)
+    assert_eq!(temp_sites::site(42, 7, 2), 0x460b28);
+    assert_eq!(temp_sites::site(42, 0, 5), NONE);
+}
