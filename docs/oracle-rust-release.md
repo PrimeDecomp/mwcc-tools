@@ -36,7 +36,8 @@ releases.
 
 ## Contents
 
-- `bin/mwcc-tools` (`.exe` on Windows);
+- `bin/mwcc-tools` (`.exe` on Windows), and `bin/mw-ninja`, which runs it as `mwcc-tools run ninja`;
+- `python/`: the Python package `mwcc_tools` (`python/mwcc_tools`), which runs the `bin/mwcc-tools` beside it;
 - `README.md` (this file), `docs/oracle-native.md` (the kit workflow) and `docs/producer.md` (building the
   observation hooks);
 - `LICENSE`, the Capstone notices and the target's locked dependency and Rust library notices (standard licence
@@ -54,7 +55,11 @@ executable was built from a clean commit.
 
 ## Use
 
-Add `bin` to `PATH`, or run the executable directly. `mwcc-tools --help` lists the commands; `mwcc-tools methods`
+The installers (`install.sh`, `install.ps1`, published with each release) unpack this archive into
+`%LOCALAPPDATA%\mwcc-tools` (Windows) or `~/.local/share/mwcc-tools` (linking its programs into `~/.local/bin`), put
+them on the `PATH` and make the Python package importable. By hand: add `bin` to `PATH`, or run the
+executable directly, and put `python` on Python's path (or `pip install -e python`). `mwcc-tools self update`
+replaces the unpacked files with the latest release's. `mwcc-tools --help` lists the commands; `mwcc-tools methods`
 lists the methods, and `mwcc-tools call METHOD` or `mwcc-tools serve` runs them (see `docs/api.md` in the source
 repository).
 
@@ -87,7 +92,8 @@ only the publish job has `contents: write`.
    git push origin v0.4.5
    ```
 
-The tag run creates the release with the seven archives and their checksums. A version with a prerelease suffix is
+The tag run creates the release with the seven archives and their checksums, and the installers `install.sh` and
+`install.ps1` (from the tagged commit; `releases/latest/download/` serves the latest release's). A version with a prerelease suffix is
 marked as a prerelease. Never move a published tag; make a new version.
 
 ### Build a local package
@@ -99,7 +105,8 @@ python tools/migration/capture_notices.py --target TARGET --output build/notices
 mwcc-tools package-release build/releases/mwcc-tools-0.4.5-TARGET.zip --binary PATH_TO_BUILT_EXECUTABLE --target TARGET
 ```
 
-Run from the repository or pass `--root`; `--notices DIR` overrides `build/notices/TARGET`, and
+Run from the repository or pass `--root`; `--ninja FILE` is the `mw-ninja` to package (by default the one built
+beside `--binary`, where there is one), `--notices DIR` overrides `build/notices/TARGET`, and
 `--source-revision COMMIT` records a pin. The packager rejects a stale lockfile hash, changed, missing or extra
 notice files, symlink inputs and a binary for the wrong architecture. Entries are sorted with fixed timestamps, so
 the same inputs give the same archive bytes (the Rust build itself is not claimed reproducible).

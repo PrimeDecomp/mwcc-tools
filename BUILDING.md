@@ -30,8 +30,13 @@ There is one archive per version (`mwcc-wasm-GC_2_7-*.zip`, `mwcc-wasm-GC_1_3_2-
 `cargo build`: set `MWCC_ORACLE_ROOT` to the checkout to use one. Builds of `main` between releases are the Build
 workflow's artifacts.
 
-On Windows, the executable is `target/release/mwcc-tools.exe`. Set `MWCC_ORACLE_ROOT` to the checkout (or pass
-`--oracle-root`) when running the tools from elsewhere.
+On Windows, the executable is `target/release/mwcc-tools.exe`, beside `mw-ninja.exe`. Set `MWCC_ORACLE_ROOT` to
+the checkout (or pass `--oracle-root`) when running the tools from elsewhere.
+
+To put a build of the source on the `PATH` without a checkout, `cargo install --locked --git
+https://github.com/PrimeDecomp/mwcc-tools mwcc-tools` installs `mwcc-tools` and `mw-ninja` into `~/.cargo/bin`.
+That build downloads the compilers' modules as a release does, but it has no `self update` (repeat the command to
+update) and no Python package (install that from the tag, [README](README.md#using-the-oracle)).
 
 Test the tools with `cargo test --locked --workspace` (the WebAssembly tests are skipped without the modules).
 

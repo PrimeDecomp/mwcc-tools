@@ -48,12 +48,15 @@ jobs:
           - os: windows-2022
             target: x86_64-pc-windows-msvc
             executable: mwcc-tools.exe
+            ninja: mw-ninja.exe
           - os: ubuntu-24.04
             target: x86_64-unknown-linux-gnu
             executable: mwcc-tools
+            ninja: mw-ninja
           - os: macos-15
             target: aarch64-apple-darwin
             executable: mwcc-tools
+            ninja: mw-ninja
     runs-on: ${{ matrix.os }}
     defaults:
       run:
@@ -77,6 +80,7 @@ jobs:
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
+      # (mwcc-tools and mw-ninja, its launcher of `mwcc-tools run ninja`)
       - name: Build
         run: cargo build --locked --release -p mwcc-tools
 
@@ -90,7 +94,8 @@ jobs:
         run: |
           version=$(python -c "import tomllib; print(tomllib.load(open('Cargo.toml', 'rb'))['workspace']['package']['version'])")
           target/release/${{ matrix.executable }} package-release "build/releases/mwcc-tools-$version-${{ matrix.target }}.zip" \
-            --binary target/release/${{ matrix.executable }} --target ${{ matrix.target }} \
+            --binary target/release/${{ matrix.executable }} --ninja target/release/${{ matrix.ninja }} \
+            --target ${{ matrix.target }} \
             --source-revision "$GITHUB_SHA"
             
       - uses: actions/upload-artifact@v7
@@ -212,6 +217,8 @@ jobs:
           test "$TAG" = "v$version" || { echo "the tag must be v$version"; exit 1; }
           files=(release-input/*/*.zip release-input/*/*.zip.sha256)
           test "${#files[@]}" -eq 14 || { echo "expected 7 archives and their checksums: ${files[*]}"; exit 1; }
+          # (the installers, as releases/latest/download/install.sh and install.ps1)
+          files+=(install.sh install.ps1)
           options=(--verify-tag --generate-notes --title "mwcc-tools $version")
           if [[ "${version%%+*}" == *-* ]]; then
             options+=(--prerelease --latest=false)

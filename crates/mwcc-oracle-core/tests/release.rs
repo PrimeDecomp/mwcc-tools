@@ -30,6 +30,11 @@ fn fixture() -> tempfile::TempDir {
         "integrations/decomp-kits/overlay/.agents/docs/oracle-native.md",
         "docs/oracle-rust-release.md",
         "crates/mwcc-oracle-hooks/README.md",
+        "python/pyproject.toml",
+        "python/README.md",
+        "python/mwcc_tools/__init__.py",
+        "python/mwcc_tools/engine.py",
+        "python/mwcc_tools/__pycache__/engine.cpython-313.pyc",
     ] {
         put(root.path(), path, b"fixture\n");
     }
@@ -202,13 +207,22 @@ fn generated_notice_root_preserves_validation_and_previous_outputs() {
     let canonical = release::assemble(root.path(), &binary, target, None).unwrap();
     assert_eq!(
         canonical,
-        release::assemble_with_notices(root.path(), &binary, target, None, &notice_dir).unwrap()
+        release::assemble_with_notices(root.path(), &binary, None, target, None, &notice_dir)
+            .unwrap()
     );
     let output = root.path().join("release.zip");
     let executable = root.path().join("mwcc-tools");
     fs::write(&executable, &binary).unwrap();
-    release::write_with_notices(root.path(), &executable, target, None, &output, &notice_dir)
-        .unwrap();
+    release::write_with_notices(
+        root.path(),
+        &executable,
+        None,
+        target,
+        None,
+        &output,
+        &notice_dir,
+    )
+    .unwrap();
     assert_eq!(fs::read(&output).unwrap(), canonical);
     let checksum = fs::read(output.with_extension("zip.sha256")).unwrap();
     let inventory_path = notice_dir.join("inventory.json");
@@ -226,6 +240,7 @@ fn generated_notice_root_preserves_validation_and_previous_outputs() {
             release::write_with_notices(
                 root.path(),
                 &executable,
+                None,
                 target,
                 None,
                 &output,
@@ -242,14 +257,22 @@ fn generated_notice_root_preserves_validation_and_previous_outputs() {
     fs::write(&inventory_path, &inventory).unwrap();
     put(&notice_dir, "unlisted.txt", b"extra");
     assert!(
-        release::assemble_with_notices(root.path(), &binary, target, None, &notice_dir).is_err()
+        release::assemble_with_notices(root.path(), &binary, None, target, None, &notice_dir)
+            .is_err()
     );
     fs::remove_file(notice_dir.join("unlisted.txt")).unwrap();
     put(&notice_dir, "notice.txt", b"actual license bytes\n");
     fs::remove_file(&inventory_path).unwrap();
-    let error =
-        release::write_with_notices(root.path(), &executable, target, None, &output, &notice_dir)
-            .unwrap_err();
+    let error = release::write_with_notices(
+        root.path(),
+        &executable,
+        None,
+        target,
+        None,
+        &output,
+        &notice_dir,
+    )
+    .unwrap_err();
     assert!(error.to_string().contains("inventory.json is missing"));
     assert_eq!(fs::read(&output).unwrap(), canonical);
     assert_eq!(
@@ -259,7 +282,7 @@ fn generated_notice_root_preserves_validation_and_previous_outputs() {
     let empty = generated.path().join("empty");
     fs::create_dir(&empty).unwrap();
     assert!(
-        release::assemble_with_notices(root.path(), &binary, target, None, &empty)
+        release::assemble_with_notices(root.path(), &binary, None, target, None, &empty)
             .unwrap_err()
             .to_string()
             .contains("inventory.json is missing")
@@ -267,7 +290,7 @@ fn generated_notice_root_preserves_validation_and_previous_outputs() {
     fs::write(&inventory_path, &inventory).unwrap();
     put(&notice_dir, "notice.txt", b"changed contents");
     assert!(
-        release::assemble_with_notices(root.path(), &binary, target, None, &notice_dir)
+        release::assemble_with_notices(root.path(), &binary, None, target, None, &notice_dir)
             .unwrap_err()
             .to_string()
             .contains("notice hash mismatch")
@@ -291,6 +314,7 @@ fn generated_notice_symlinks_are_rejected() {
             release::assemble_with_notices(
                 root.path(),
                 &macho(target),
+                None,
                 target,
                 None,
                 &generated.path().join(alias)
@@ -314,6 +338,7 @@ fn generated_notice_symlinks_are_rejected() {
         release::assemble_with_notices(
             root.path(),
             &macho(target),
+            None,
             target,
             None,
             &generated.path().join("notices")
@@ -390,4 +415,58 @@ fn invalid_inputs_do_not_replace_a_previous_archive() {
     );
     put(root.path(), "Cargo.lock", b"changed lock\n");
     assert!(release::assemble(root.path(), &elf(), "x86_64-unknown-linux-gnu", None).is_err());
+}
+
+#[test]
+fn the_launcher_and_the_python_package_are_packaged() {
+    let root = fixture();
+    let target = "x86_64-unknown-linux-gnu";
+    let mut launcher = elf();
+    launcher.push(1);
+    let bytes = release::assemble_with_notices(
+        root.path(),
+        &elf(),
+        Some(&launcher),
+        target,
+        None,
+        &root.path().join(format!("licenses/dependencies/{target}")),
+    )
+    .unwrap();
+    let mut archive = zip::ZipArchive::new(Cursor::new(bytes)).unwrap();
+    let meta: serde_json::Value =
+        serde_json::from_reader(archive.by_name("release.json").unwrap()).unwrap();
+    assert_eq!(meta["programs"], json!(["bin/mwcc-tools", "bin/mw-ninja"]));
+    let mut packaged = vec![];
+    let mut entry = archive.by_name("bin/mw-ninja").unwrap();
+    assert_eq!(entry.unix_mode().unwrap() & 0o777, 0o755);
+    entry.read_to_end(&mut packaged).unwrap();
+    assert_eq!(packaged, launcher);
+    drop(entry);
+    let names: Vec<_> = archive
+        .file_names()
+        .filter(|n| n.starts_with("python/"))
+        .collect();
+    let mut names: Vec<_> = names.into_iter().map(str::to_owned).collect();
+    names.sort();
+    assert_eq!(
+        names,
+        [
+            "python/README.md",
+            "python/mwcc_tools/__init__.py",
+            "python/mwcc_tools/engine.py",
+            "python/pyproject.toml"
+        ]
+    );
+    // (a launcher of another architecture is refused)
+    assert!(
+        release::assemble_with_notices(
+            root.path(),
+            &elf(),
+            Some(&macho("aarch64-apple-darwin")),
+            target,
+            None,
+            &root.path().join(format!("licenses/dependencies/{target}")),
+        )
+        .is_err()
+    );
 }

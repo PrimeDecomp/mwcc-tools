@@ -17,21 +17,22 @@ class EngineError(RuntimeError):
 
 
 def find_binary():
-    """MWCC_TOOLS, else the release build of the checkout this package is in (so the two match), else `mwcc-tools`
-    on the path."""
+    """MWCC_TOOLS, else the executable of the installed release this package is in, or the release build of the
+    checkout it is in (so the two match), else `mwcc-tools` on the path."""
     override = os.environ.get('MWCC_TOOLS')
     if override:
         return override
-    checkout = Path(__file__).resolve().parents[2]
-    for name in ('mwcc-tools.exe', 'mwcc-tools'):
-        built = checkout / 'target' / 'release' / name
-        if built.is_file():
-            return str(built)
+    root = Path(__file__).resolve().parents[2]
+    for directory in (root / 'bin', root / 'target' / 'release'):
+        for name in ('mwcc-tools.exe', 'mwcc-tools'):
+            built = directory / name
+            if built.is_file():
+                return str(built)
     found = shutil.which('mwcc-tools')
     if found:
         return found
-    raise EngineError('mwcc-tools not found: build it in the mwcc checkout (cargo build --release -p mwcc-tools), '
-                      'or set MWCC_TOOLS to it')
+    raise EngineError('mwcc-tools not found: install it (README.md, Installation), build it in the mwcc checkout '
+                      '(cargo build --release -p mwcc-tools), or set MWCC_TOOLS to it')
 
 
 _END = object()

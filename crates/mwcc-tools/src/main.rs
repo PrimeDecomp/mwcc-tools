@@ -12,6 +12,7 @@ mod ninja_cli;
 mod provenance_cli;
 mod release_cli;
 mod run_cli;
+mod self_update;
 mod serve_cli;
 #[cfg(feature = "wasm")]
 mod transform_dep;
@@ -158,6 +159,7 @@ fn help() {
   run ninja [-C DIR] [-j N] [-k N] [-n] [--json FILE] [TARGETS...] | -t commands|inputs|targets all ...
       a project's build.ninja (configured without --wrapper) built in place of ninja: the compilers and linkers
       with built modules run in process, any other command as a process (docs/wasm.md)
+      (mw-ninja ARGS, installed beside this executable, is `mwcc-tools run ninja ARGS`)
   corpus --canaries DIR | --project DIR [--oracle-root ROOT] [--version V] [--jobs N] [--all-traces]
          [--source-arenas | --source-nodes] [--exe ORACLE] [--trace-reference OTHER_ORACLE [--ignore PREFIX]...] [--wasm MODULE]
       --wasm runs MODULE (build/VERSION/wasm/*.wasm) in process in the oracle's place
@@ -191,10 +193,11 @@ fn help() {
       the in-process module of a checkout with changed gc2 sources (configure, then build/V/wasm/mwcc.wasm);
       COMMAND --help gives a build command's options
   build-hooks OUTPUT [--trace-shim | --frontend-version V] [--wasm] [--root DIR] [--rustc FILE] [--timeout SECS]
-  package-release OUTPUT.zip --binary FILE --target TARGET [--root DIR] [--source-revision COMMIT] [--notices DIR]
+  package-release OUTPUT.zip --binary FILE --target TARGET [--ninja FILE] [--root DIR] [--source-revision COMMIT] [--notices DIR]
   transform-dep DEP OUT [--root DIR]
   download TOOL OUTPUT [OTHER_OUTPUT...] [--root DIR] [--timeout SECS]
   download wasm [VERSION...] [--root DIR]   the released WebAssembly compilers and linkers, into the cache `run` uses
+  self update [--version V] [--check]   this installed release replaced by the latest (or V) (self update --help)
   verify|gates [--root DIR] [--ninja FILE] [--jobs N] [--timeout SECS]
 
 The oracle, colouring, inlining, TU, provenance and source-guided tools are methods: `methods` lists them,
@@ -228,6 +231,7 @@ fn run() -> Result<()> {
         Some("provenance") => provenance_cli::run(&args[1..])?,
         Some("--version") => println!("mwcc-tools {}", env!("CARGO_PKG_VERSION")),
         Some("package-release") => release_cli::run(&args[1..])?,
+        Some("self") => self_update::command(&args[1..])?,
         #[cfg(feature = "wasm")]
         Some("download") if args.get(1).is_some_and(|a| a == "wasm") => {
             wasm_download::command(&args[2..])?

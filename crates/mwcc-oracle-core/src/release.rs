@@ -115,6 +115,7 @@ pub fn assemble(
     assemble_with_notices(
         root,
         binary,
+        None,
         target,
         revision,
         &root.join(format!("licenses/dependencies/{target}")),
@@ -123,9 +124,11 @@ pub fn assemble(
 
 /// Assemble with a generated target notice directory while retaining canonical
 /// archive paths and the same target, lockfile, file-set and content validation.
+/// NINJA is `mw-ninja`, the launcher of `mwcc-tools run ninja`, packaged beside the executable when given.
 pub fn assemble_with_notices(
     root: &Path,
     binary: &[u8],
+    ninja: Option<&[u8]>,
     target: &str,
     revision: Option<&str>,
     notice_dir: &Path,
@@ -141,6 +144,9 @@ pub fn assemble_with_notices(
         );
     }
     validate_binary(binary, target)?;
+    if let Some(ninja) = ninja {
+        validate_binary(ninja, target)?;
+    }
     let mut source = BTreeMap::new();
     for path in [
         "Cargo.toml",
@@ -240,19 +246,48 @@ pub fn assemble_with_notices(
     ] {
         files.insert(to.into(), fs::read(root.join(from))?);
     }
-    let executable = if target.contains("windows") {
-        "bin/mwcc-tools.exe"
+    // (the Python package, which finds the executable beside it: `pip install -e python`, or python/ on sys.path)
+    for path in ["python/pyproject.toml", "python/README.md"] {
+        collect(root, path, &mut files)?;
+    }
+    let package = root.join("python/mwcc_tools");
+    let mut modules = vec![];
+    for entry in fs::read_dir(&package).with_context(|| package.display().to_string())? {
+        let name = entry?
+            .file_name()
+            .into_string()
+            .map_err(|_| anyhow::anyhow!("non-UTF-8 release input"))?;
+        if name.ends_with(".py") {
+            modules.push(name);
+        }
+    }
+    ensure!(
+        modules.iter().any(|m| m == "__init__.py"),
+        "python/mwcc_tools/__init__.py is missing"
+    );
+    for name in modules {
+        collect(root, &format!("python/mwcc_tools/{name}"), &mut files)?;
+    }
+    let exe = if target.contains("windows") {
+        ".exe"
     } else {
-        "bin/mwcc-tools"
+        ""
     };
-    files.insert(executable.into(), binary.to_vec());
+    let executable = format!("bin/mwcc-tools{exe}");
+    files.insert(executable.clone(), binary.to_vec());
+    let mut programs = vec![executable.clone()];
+    if let Some(ninja) = ninja {
+        let launcher = format!("bin/mw-ninja{exe}");
+        files.insert(launcher.clone(), ninja.to_vec());
+        programs.push(launcher);
+    }
     let manifest: BTreeMap<_, _> = files
         .iter()
         .map(|(path, bytes)| (path, json!({"bytes": bytes.len(), "sha256": sha256(bytes)})))
         .collect();
     let metadata = json!({
         "format_version": 1, "package": "mwcc-tools", "version": env!("CARGO_PKG_VERSION"), "target": target,
-        "executable": executable, "executable_sha256": sha256(binary),
+        "executable": executable, "executable_sha256": sha256(binary), "programs": programs,
         "source_revision": revision, "source_catalogue_sha256": source_digest, "source_files": hashes,
         "source_identity_scope": "Supplied checkout input bytes; executable identity is recorded separately. A revision alone does not attest a clean checkout or a reproducible compilation.",
         "cargo_lock_sha256": inventory["cargo_lock_sha256"], "notice_inventory_rustc": inventory["rustc"],
@@ -267,7 +302,11 @@ pub fn assemble_with_notices(
         let options = SimpleFileOptions::default()
             .compression_method(CompressionMethod::Deflated)
             .last_modified_time(zip::DateTime::default())
-            .unix_permissions(if name == executable { 0o755 } else { 0o644 });
+            .unix_permissions(if programs.contains(&name) {
+                0o755
+            } else {
+                0o644
+            });
         archive.start_file(name, options)?;
         archive.write_all(&bytes)?;
     }
@@ -306,6 +345,7 @@ pub fn write(
     write_with_notices(
         root,
         binary,
+        None,
         target,
         revision,
         output,
@@ -317,12 +357,21 @@ pub fn write(
 pub fn write_with_notices(
     root: &Path,
     binary: &Path,
+    ninja: Option<&Path>,
     target: &str,
     revision: Option<&str>,
     output: &Path,
     notice_dir: &Path,
 ) -> Result<String> {
-    let bytes = assemble_with_notices(root, &fs::read(binary)?, target, revision, notice_dir)?;
+    let ninja = ninja.map(fs::read).transpose()?;
+    let bytes = assemble_with_notices(
+        root,
+        &fs::read(binary)?,
+        ninja.as_deref(),
+        target,
+        revision,
+        notice_dir,
+    )?;
     let digest = sha256(&bytes);
     let name = output
         .file_name()

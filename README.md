@@ -13,15 +13,59 @@ layout from a trace of the compiler (the oracle), and search, reduce and compare
 Installation
 ============
 
-1. Download the package for your system from the [latest release](https://github.com/PrimeDecomp/mwcc-tools/releases/latest):
+On Windows (PowerShell):
 
-   | System | Package |
-   |---|---|
-   | Windows x64 | `mwcc-tools-VERSION-x86_64-pc-windows-msvc.zip` |
-   | Linux x64 | `mwcc-tools-VERSION-x86_64-unknown-linux-gnu.zip` |
-   | macOS Apple Silicon | `mwcc-tools-VERSION-aarch64-apple-darwin.zip` |
+```powershell
+powershell -ExecutionPolicy ByPass -c "irm https://github.com/PrimeDecomp/mwcc-tools/releases/latest/download/install.ps1 | iex"
+```
 
-2. Unzip it and put its `bin/` directory on your `PATH`.
+On Linux x64 and macOS Apple Silicon:
+
+```sh
+curl -LsSf https://github.com/PrimeDecomp/mwcc-tools/releases/latest/download/install.sh | sh
+```
+
+This installs the latest release into `%LOCALAPPDATA%\mwcc-tools` (Windows) or `~/.local/share/mwcc-tools`
+(Linux, macOS) and gives you:
+
+- `mwcc-tools` and `mw-ninja` on your `PATH` (`mw-ninja ARGS` is `mwcc-tools run ninja ARGS`): on Windows, the
+  installation's `bin` is added to your user `PATH`; elsewhere, they are linked into `~/.local/bin`, which is added
+  to your shell profiles if your `PATH` lacks it. Open a new terminal to use them;
+- the Python package `mwcc_tools`, importable in your Python 3.11 or later (through a `mwcc-tools.pth` in its user
+  site-packages). It runs the `mwcc-tools` installed beside it, so the two always match.
+
+To update:
+
+```sh
+mwcc-tools self update
+```
+
+`mwcc-tools self update --check` only says whether there is a newer release, and `--version VERSION` installs a
+given one. Running the installer again also updates.
+
+The installers read these environment variables: `MWCC_TOOLS_HOME` (the installation directory),
+`XDG_DATA_HOME` and `XDG_BIN_HOME` (`install.sh`: the parent of the installation directory and the directory of the
+links), `MWCC_TOOLS_VERSION` (a release instead of the latest), `MWCC_TOOLS_NO_MODIFY_PATH=1` (leave the `PATH` and
+shell profiles alone) and `MWCC_TOOLS_NO_PYTHON=1` (skip the `.pth`). To uninstall, delete the installation
+directory and the `mwcc-tools.pth` files, then on Windows remove `%LOCALAPPDATA%\mwcc-tools\bin` from your user
+`PATH`; elsewhere delete the `mwcc-tools` and `mw-ninja` links in `~/.local/bin` (and the
+`. "~/.local/share/mwcc-tools/env"` line from your shell profiles, where the installer added one).
+
+<details>
+<summary>Manual installation</summary>
+
+Download the package for your system from the [latest release](https://github.com/PrimeDecomp/mwcc-tools/releases/latest),
+unzip it, and put its `bin/` directory on your `PATH`:
+
+| System | Package |
+|---|---|
+| Windows x64 | `mwcc-tools-VERSION-x86_64-pc-windows-msvc.zip` |
+| Linux x64 | `mwcc-tools-VERSION-x86_64-unknown-linux-gnu.zip` |
+| macOS Apple Silicon | `mwcc-tools-VERSION-aarch64-apple-darwin.zip` |
+
+Its `python/` directory is the Python package. `mwcc-tools self update` works in an unzipped package too.
+
+</details>
 
 To build from source instead, see [BUILDING.md](BUILDING.md).
 
@@ -48,7 +92,7 @@ checkout's modules alone: a version it has not built or unpacked fails ("GC_1_3_
 Building a project
 ==================
 
-`mwcc-tools run ninja` builds a [dtk-template](https://github.com/encounter/dtk-template) project in place of
+`mwcc-tools run ninja` (or `mw-ninja`) builds a [dtk-template](https://github.com/encounter/dtk-template) project in place of
 ninja, running the compilers and linkers in process. Configure the project as usual, then:
 
 ```sh
@@ -73,8 +117,18 @@ mwcc-tools call oracle.regdiff project=../project unit=main/Foo function=Draw te
 
 `mwcc-tools methods` lists every method, and the [oracle guide](docs/oracle.md) says which to use when.
 
-The Python package (standard library only) installs from the release's tag, and finds `mwcc-tools` on the `PATH`
-(or `MWCC_TOOLS`):
+The Python package (standard library only) comes with the installation (above). Inside a virtual environment,
+which does not see the user site-packages, install the installation's copy editable, so it follows
+`mwcc-tools self update`:
+
+```sh
+pip install -e ~/.local/share/mwcc-tools/python
+```
+
+(`$env:LOCALAPPDATA\mwcc-tools\python` on Windows.)
+
+It can also be installed from a release's tag. It then runs `mwcc-tools` from the `PATH` (or `MWCC_TOOLS`), which
+should be the same version:
 
 ```sh
 pip install "git+https://github.com/PrimeDecomp/mwcc-tools@v0.4.5#subdirectory=python"

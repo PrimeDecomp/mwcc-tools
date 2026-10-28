@@ -4,6 +4,8 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
+# (mw-ninja, src/bin/mw-ninja.rs, is `mwcc-tools run ninja`)
+default-run = "mwcc-tools"
 
 [dependencies]
 tempfile.workspace = true

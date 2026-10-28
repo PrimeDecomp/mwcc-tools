@@ -6,10 +6,12 @@ import sys
 import tempfile
 import threading
 import unittest
+import unittest.mock
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from mwcc_tools import Engine, EngineError, Trace, Unit  # noqa: E402
+from mwcc_tools import engine as engine_module  # noqa: E402
 
 FAKE = [sys.executable, str(Path(__file__).with_name('fake_server.py'))]
 
@@ -76,6 +78,22 @@ class FakeServer(unittest.TestCase):
             rows = list(unit.experiment('out', {'list': [{'name': 'a'}, {'name': 'b'}]}, budget={'compiles': 2}))
             self.assertEqual([r['name'] for r in rows], ['a', 'b'])
             self.assertEqual(unit.last_summary, {'candidates': 2, 'output': 'out'})
+
+
+class FindBinary(unittest.TestCase):
+    def test_an_installed_release_runs_its_own_executable(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            package = root / 'python' / 'mwcc_tools'
+            package.mkdir(parents=True)
+            (package / 'engine.py').write_text('')
+            name = 'mwcc-tools.exe' if os.name == 'nt' else 'mwcc-tools'
+            (root / 'bin').mkdir()
+            (root / 'bin' / name).write_text('')
+            environment = {k: v for k, v in os.environ.items() if k != 'MWCC_TOOLS'}
+            with unittest.mock.patch.object(engine_module, '__file__', str(package / 'engine.py')), \
+                    unittest.mock.patch.dict(os.environ, environment, clear=True):
+                self.assertEqual(Path(engine_module.find_binary()), root / 'bin' / name)
 
 
 @unittest.skipUnless(os.environ.get('MWCC_TEST_ECHOES'), 'MWCC_TEST_ECHOES is not set')
