@@ -38,6 +38,18 @@ mwcc-tools call oracle.trace project=../prime unit=main/Foo function=Draw views.
 mwcc-tools call oracle.regdiff project=../prime unit=main/Foo function=Draw text=true full=true
 ```
 
-For a bare source, pass `version=GC_1_3_2` (the default). `mwcc-tools run build/compilers/GC/1.3.2/mwldeppc.exe ...`
+For a bare source, pass `version=GC_1_3_2` (the default).
+
+The register counters' provenance (`pv.*`: value births, their objects, scalarization, call arguments, graphs) is
+in a trace taken with the backend stream; `provenance.inspect` reports it:
+
+```sh
+mwcc-tools call oracle.trace project=../prime unit=main/Foo function=Draw 'streams={"backend":true}' trace_path=draw.trace
+mwcc-tools call provenance.inspect trace_path=draw.trace text=true
+```
+
+A birth's `site` is where the allocator numbered the register, not where the value's temporary was made. Which
+function made a temporary (`ce.object caller=`, the cse view's "made by") is recorded only for the scalarizer's in
+the WebAssembly oracle (1.3.2's and 2.7's alike): it has no return address, and gc2 probes only that call. `mwcc-tools run build/compilers/GC/1.3.2/mwldeppc.exe ...`
 (or a build's `--wrapper`) links with the 1.3.2 linker module. Differences between 1.3.2 and 2.7 are in
 [gc27-differences.md](gc27-differences.md).

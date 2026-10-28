@@ -40,6 +40,11 @@ mwcc-tools download wasm
 To never download, set `MWCC_WASM_DOWNLOAD=0`: builds then run the original compilers as ninja would, and tracing
 needs a checkout with the modules ([BUILDING.md](BUILDING.md)).
 
+Only the download cache is downloaded into. With `MWCC_ORACLE_ROOT` set to a source checkout, the methods use that
+checkout's modules alone: a version it has not built or unpacked fails ("GC_1_3_2's oracle is not built"). Unset
+`MWCC_ORACLE_ROOT` to use the downloads, or unpack that version's archive into the checkout
+([BUILDING.md](BUILDING.md#the-tools)).
+
 Building a project
 ==================
 
@@ -67,6 +72,23 @@ mwcc-tools call oracle.regdiff project=../project unit=main/Foo function=Draw te
 ```
 
 `mwcc-tools methods` lists every method, and the [oracle guide](docs/oracle.md) says which to use when.
+
+The Python package (standard library only) installs from the release's tag, and finds `mwcc-tools` on the `PATH`
+(or `MWCC_TOOLS`):
+
+```sh
+pip install "git+https://github.com/PrimeDecomp/mwcc-tools@v0.4.3#subdirectory=python"
+```
+
+```python
+from mwcc_tools import Engine
+with Engine(project='../project') as engine:
+    trace = engine.call_one('oracle.trace', unit='main/Foo', function='Draw', views={'text': True})
+    print('
+'.join(trace['text']))
+```
+
+[python/README.md](python/README.md) describes it.
 
 Documentation
 =============

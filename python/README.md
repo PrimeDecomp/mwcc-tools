@@ -4,7 +4,8 @@ The mwcc engine from Python: a client of `mwcc-tools serve`, with the standard l
 server and its session: the projects, units, targets, compiled objects and traces it loads stay loaded while it
 runs, so later calls are fast. The methods, their parameters and their results are in [docs/api.md](../docs/api.md).
 
-Put this directory on `sys.path` (or `PYTHONPATH`). The engine runs `MWCC_TOOLS` if it is set, else the release
+Install it with `pip install "git+https://github.com/PrimeDecomp/mwcc-tools@vVERSION#subdirectory=python"` (the
+release of your `mwcc-tools`), or put this directory on `sys.path` (or `PYTHONPATH`). The engine runs `MWCC_TOOLS` if it is set, else the release
 build of the checkout this package is in (`target/release/mwcc-tools`, which matches it), else `mwcc-tools` on the
 path. The server finds the mwcc checkout from `MWCC_ORACLE_ROOT`, else from where the binary was built.
 

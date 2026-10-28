@@ -77,7 +77,8 @@ packages and the four WebAssembly archives, on every push and pull request (the 
 publishes them; `VERSION` must equal `workspace.package.version` in `Cargo.toml`. Any failed job stops publication;
 only the publish job has `contents: write`.
 
-1. Update the workspace version and `Cargo.lock` together, and commit.
+1. Update the workspace version and `Cargo.lock` together (and the version of `pyproject.toml`, `uv.lock` and
+   `python/pyproject.toml`), and commit.
 2. Wait for the workflow to pass on that commit.
 3. Tag that commit and push the tag:
 
