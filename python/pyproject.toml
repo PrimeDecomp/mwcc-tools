@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mwcc-tools"
-version = "0.4.5"
+version = "0.5.0"
 description = "The mwcc engine from Python: a client of `mwcc-tools serve`"
 readme = "README.md"
 requires-python = ">=3.11"

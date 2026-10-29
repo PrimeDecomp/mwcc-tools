@@ -4,7 +4,7 @@ This archive holds one `mwcc-tools` executable for one host. Packages are publis
 `mwcc-tools-VERSION-TARGET.zip` with a `.zip.sha256` sidecar:
 
 ```text
-gh release download v0.4.5 --pattern 'mwcc-tools-0.4.5-x86_64-pc-windows-msvc.zip*' --dir downloads
+gh release download v0.5.0 --pattern 'mwcc-tools-0.5.0-x86_64-pc-windows-msvc.zip*' --dir downloads
 ```
 
 Outside a checkout, add `--repo OWNER/REPOSITORY`. Pull requests and branch pushes also produce packages as Actions
@@ -88,8 +88,8 @@ only the publish job has `contents: write`.
 3. Tag that commit and push the tag:
 
    ```text
-   git tag -a v0.4.5 -m "mwcc-tools 0.4.5"
-   git push origin v0.4.5
+   git tag -a v0.5.0 -m "mwcc-tools 0.5.0"
+   git push origin v0.5.0
    ```
 
 The tag run creates the release with the seven archives and their checksums, and the installers `install.sh` and
@@ -102,7 +102,7 @@ marked as a prerelease. Never move a published tag; make a new version.
 cargo build --locked --release -p mwcc-tools
 cargo fetch --locked --target TARGET
 python tools/migration/capture_notices.py --target TARGET --output build/notices/TARGET
-mwcc-tools package-release build/releases/mwcc-tools-0.4.5-TARGET.zip --binary PATH_TO_BUILT_EXECUTABLE --target TARGET
+mwcc-tools package-release build/releases/mwcc-tools-0.5.0-TARGET.zip --binary PATH_TO_BUILT_EXECUTABLE --target TARGET
 ```
 
 Run from the repository or pass `--root`; `--ninja FILE` is the `mw-ninja` to package (by default the one built

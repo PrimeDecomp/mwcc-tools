@@ -131,7 +131,7 @@ It can also be installed from a release's tag. It then runs `mwcc-tools` from th
 should be the same version:
 
 ```sh
-pip install "git+https://github.com/PrimeDecomp/mwcc-tools@v0.4.5#subdirectory=python"
+pip install "git+https://github.com/PrimeDecomp/mwcc-tools@v0.5.0#subdirectory=python"
 ```
 
 ```python
