@@ -1,7 +1,7 @@
 //! How much of a short compile is instantiation: `cargo run --release -p mwcc-wasm --example instantiate_bench --
 //! <mwcc.wasm> [runs] [-- compiler arguments]`. Without arguments, compiles a one-line C file. Prints the mean
 //! instantiation and run times.
-use mwcc_wasm::Request;
+use mwcc_wasm::Run;
 use std::time::Duration;
 
 fn main() {
@@ -41,7 +41,7 @@ fn main() {
     for i in 0..runs + 10 {
         let outcome = loaded
             .run(
-                &Request {
+                &Run {
                     args: &compiler_args,
                     directory: &directory,
                     environment: &environment,

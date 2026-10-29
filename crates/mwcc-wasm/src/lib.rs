@@ -69,8 +69,61 @@ pub struct Compiler {
 /// How often a run checks its timeout and cancellation.
 const TICK: Duration = Duration::from_millis(10);
 
-/// One compiler run.
+/// One compiler run: what a process needs. [`Run`] adds the host's options; a `Request` runs with
+/// their defaults (no trace, no overlay, no Shift JIS transcoding, no read record, the command line
+/// made of `program` and `args`, files of its own).
+#[derive(Clone)]
 pub struct Request<'a> {
+    /// The compiler's arguments (without the program).
+    pub args: &'a [String],
+    /// The directory it runs in: relative paths are from there.
+    pub directory: &'a Path,
+    /// Its environment (MWCIncludes, ...).
+    pub environment: &'a [(String, String)],
+    /// The path it runs as (argv[0]): a file of the run, with `version_info`.
+    pub program: &'a str,
+    /// Its VS_VERSIONINFO resource, as GetFileVersionInfoA gives it.
+    pub version_info: &'a [u8],
+    /// How long it may run.
+    pub timeout: Option<Duration>,
+    /// Set to stop it.
+    pub cancel: Option<Arc<AtomicBool>>,
+}
+
+/// A run's request: a [`Request`] or a [`Run`] ([`Compiler::run`] and [`Compiler::persistent`] take either).
+pub trait AsRun {
+    fn as_run(&self) -> Run<'_>;
+}
+
+impl AsRun for Request<'_> {
+    fn as_run(&self) -> Run<'_> {
+        Run {
+            args: self.args,
+            directory: self.directory,
+            environment: self.environment,
+            program: self.program,
+            version_info: self.version_info,
+            timeout: self.timeout,
+            cancel: self.cancel.clone(),
+            trace: false,
+            overlay: None,
+            transcode_sjis: false,
+            record_reads: false,
+            command_line: None,
+            shared_files: None,
+        }
+    }
+}
+
+impl AsRun for Run<'_> {
+    fn as_run(&self) -> Run<'_> {
+        self.clone()
+    }
+}
+
+/// One compiler run, with the host's options.
+#[derive(Clone)]
+pub struct Run<'a> {
     /// The compiler's arguments (without the program).
     pub args: &'a [String],
     /// The directory it runs in: relative paths are from there.
@@ -124,7 +177,7 @@ pub struct Outcome {
     /// The run's time: instantiating the module, and running it.
     pub instantiate: Duration,
     pub run: Duration,
-    /// With [`Request::record_reads`], what the compiler consulted (each once, in order); the files it wrote are not
+    /// With [`Run::record_reads`], what the compiler consulted (each once, in order); the files it wrote are not
     /// among them.
     pub consulted: Vec<Consulted>,
 }
@@ -277,7 +330,7 @@ fn scope_wanted(block: &[u8], functions: &[String]) -> bool {
 const FIRST_HANDLE: u32 = 0x100;
 
 impl State {
-    fn new(request: &Request) -> Self {
+    fn new(request: &Run) -> Self {
         State {
             directory: plain(request.directory),
             guest_directory: guest_path(&plain(request.directory).to_string_lossy()),
@@ -545,7 +598,8 @@ impl Compiler {
         instance.get_typed_func::<(), ()>(&mut *store, "_start")
     }
 
-    pub fn run(&self, request: &Request) -> Result<Outcome> {
+    pub fn run(&self, request: &impl AsRun) -> Result<Outcome> {
+        let request = &request.as_run();
         let mut store = limited_store(&self.engine, State::new(request));
         let started = Instant::now();
         let timeout = request.timeout;
@@ -2247,7 +2301,7 @@ mod tests {
     }
 
     fn state(directory: &Path) -> State {
-        State::new(&Request {
+        State::new(&Run {
             args: &[],
             directory,
             environment: &[],

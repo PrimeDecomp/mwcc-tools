@@ -1,7 +1,7 @@
 //! The compilers run in this process: for the versions gc2's sources build (crate::wasm_build), a run of the stock
 //! compiler (`build/compilers/GC/<dir>/mwcceppc.exe`) or of the oracle (`build/<version>/oracle/mwcceppc.exe`) runs
 //! the compiler module (`build/<version>/wasm/mwcc.wasm`) instead, when it is built: no process, no Windows
-//! executable. A run of the oracle traces (mwcc-wasm's `Request::trace`); a run of the stock compiler does not, and
+//! executable. A run of the oracle traces (mwcc-wasm's `Run::trace`); a run of the stock compiler does not, and
 //! its hooks only pass through. `runner` dispatches here; `MWCC_IN_PROCESS=0` turns it off.
 //!
 //! A module is loaded once per process (and again when its file changes, mwcc-wasm's `load`), from the compiled
@@ -91,10 +91,10 @@ pub struct Run<'a> {
     /// Whether it traces: its trace goes where the oracle's process would write it ([`deliver_trace`]).
     pub trace: bool,
     /// The files it reads in place of the disk's, and whether it reads sources as sjiswrap gives them
-    /// ([`mwcc_wasm::Request`]).
+    /// ([`mwcc_wasm::Run`]).
     pub overlay: Option<&'a mwcc_wasm::Overlay>,
     pub transcode_sjis: bool,
-    /// The command line as the process gets it, verbatim ([`mwcc_wasm::Request::command_line`]).
+    /// The command line as the process gets it, verbatim ([`mwcc_wasm::Run::command_line`]).
     pub command_line: Option<&'a str>,
     /// The files it shares with the build's other runs ([`mwcc_wasm::SharedFiles`]).
     pub files: Option<&'a std::sync::Arc<mwcc_wasm::SharedFiles>>,
@@ -160,7 +160,7 @@ fn run_kept(run: &Run<'_>, cancel: &dyn Fn() -> bool) -> Result<mwcc_wasm::Outco
     let program = program.display().to_string();
     loaded
         .run(
-            &mwcc_wasm::Request {
+            &mwcc_wasm::Run {
                 args: run.args,
                 directory: run.directory,
                 environment: run.environment,

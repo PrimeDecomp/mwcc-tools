@@ -1,7 +1,7 @@
 //! Line numbers in a persistent compile: a candidate's lines are numbered as in a normal compile of the context followed
 //! by the candidate, so `-sym on` and `-g` objects and the messages are the same. Uses this checkout's GC 2.7 and 2.6 modules (each
 //! skipped when it is not built).
-use mwcc_wasm::{Overlay, Request};
+use mwcc_wasm::{Overlay, Run};
 use std::{fs, path::PathBuf, time::Duration};
 
 fn module(version: &str) -> Option<PathBuf> {
@@ -79,7 +79,7 @@ fn lines_match(version: &str, context: &str, extra: &[&str]) {
     .collect();
     let program = work.path().join("mwcceppc.exe").display().to_string();
     let loaded = mwcc_wasm::load(&module).unwrap();
-    let request = |overlay: Option<&'static Overlay>| Request {
+    let request = |overlay: Option<&'static Overlay>| Run {
         args: &args,
         directory: work.path(),
         environment: &[],

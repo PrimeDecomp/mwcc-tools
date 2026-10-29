@@ -14,7 +14,7 @@
 //! exiting) never runs for a candidate.
 //!
 //! The run lives on a thread of its own, which owns the store; the imports block on channels between candidates.
-use super::{Compiler, Handle, Heap, Request, State, Stopped, memory, read_bytes};
+use super::{AsRun, Compiler, Handle, Heap, Run, State, Stopped, memory, read_bytes};
 use std::{
     path::{Path, PathBuf},
     sync::mpsc::{Receiver, Sender, channel},
@@ -88,7 +88,7 @@ pub struct Candidate {
     pub zeroed: usize,
     /// From its slot written to its object handed back.
     pub compile: Duration,
-    /// The oracle's trace records written while it compiled (the run traces: [`Request::trace`]).
+    /// The oracle's trace records written while it compiled (the run traces: [`Run::trace`]).
     pub trace: Vec<u8>,
 }
 
@@ -114,9 +114,9 @@ pub struct Persistent {
     thread: Option<JoinHandle<()>>,
     capacity: usize,
     dead: bool,
-    /// Whether candidates trace unless asked otherwise (the run's [`Request::trace`]).
+    /// Whether candidates trace unless asked otherwise (the run's [`Run::trace`]).
     trace: bool,
-    /// Whether candidates are read as sjiswrap gives them (the run's [`Request::transcode_sjis`]).
+    /// Whether candidates are read as sjiswrap gives them (the run's [`Run::transcode_sjis`]).
     transcode_sjis: bool,
     /// The memory copied by the snapshot.
     pub snapshot_bytes: usize,
@@ -155,7 +155,7 @@ struct Snapshot {
     ticks: Duration,
 }
 
-/// The owned parts of a Request, for the run's thread.
+/// The owned parts of a Run, for the run's thread.
 struct Owned {
     args: Vec<String>,
     directory: PathBuf,
@@ -170,7 +170,8 @@ struct Owned {
 impl Compiler {
     /// Start a persistent compile of REQUEST (a compile of a source made by [`persistent_source`] with CAPACITY), and
     /// return once the context is parsed and snapshotted. TIMEOUT bounds the start.
-    pub fn persistent(&self, request: &Request, capacity: usize) -> Result<Persistent> {
+    pub fn persistent(&self, request: &impl AsRun, capacity: usize) -> Result<Persistent> {
+        let request = &request.as_run();
         let started = Instant::now();
         let owned = Owned {
             args: request.args.to_vec(),
@@ -190,7 +191,7 @@ impl Compiler {
             .stack_size(64 << 20)
             .name("mwcc-persist".into())
             .spawn(move || {
-                let request = Request {
+                let request = Run {
                     args: &owned.args,
                     directory: &owned.directory,
                     environment: &owned.environment,

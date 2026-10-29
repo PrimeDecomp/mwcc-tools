@@ -476,7 +476,7 @@ pub fn compile_unit(
         let normal = || -> Result<pool::Compiled> {
             let outcome = loaded
                 .run(
-                    &mwcc_wasm::Request {
+                    &mwcc_wasm::Run {
                         args: &args,
                         directory: &unit.directory,
                         environment: &environment,

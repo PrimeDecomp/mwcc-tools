@@ -6,7 +6,7 @@
 //! and its body, cut into top-level chunks. The candidates: the whole body, the body without each chunk, each chunk
 //! alone, and a few edge cases. Each is compiled persistently and normally (the persistent source with the
 //! candidate in its slot, same file name and flags); exit codes and objects must be identical.
-use mwcc_wasm::{Compiler, Request, persistent_source, slot_text};
+use mwcc_wasm::{Compiler, Run, persistent_source, slot_text};
 use std::{
     path::{Path, PathBuf},
     time::{Duration, Instant},
@@ -283,7 +283,7 @@ fn main() {
         let a = args(&src, &obj);
         let t = Instant::now();
         let o = stock
-            .run(&Request {
+            .run(&Run {
                 args: &a,
                 directory: &root,
                 environment: &environment,
@@ -316,7 +316,7 @@ fn main() {
     let t = Instant::now();
     let mut p = persist
         .persistent(
-            &Request {
+            &Run {
                 args: &pa,
                 directory: &root,
                 environment: &environment,
@@ -358,7 +358,7 @@ fn main() {
         eprintln!("dropped in {:?}", t.elapsed());
         p = persist
             .persistent(
-                &Request {
+                &Run {
                     args: &pa,
                     directory: &root,
                     environment: &environment,

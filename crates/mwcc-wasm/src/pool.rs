@@ -16,7 +16,7 @@
 //!   compile accepts what the persistent one rejected, that persistent compiler is dropped and counted
 //!   ([`PoolStats::mismatches`]).
 //! - `MWCC_PERSIST_LOG` in the environment: why a start or a persistent compile failed, on stderr.
-use super::{Loaded, Overlay, Persistent, Request, persistent_source};
+use super::{Loaded, Overlay, Persistent, Run, persistent_source};
 use std::{
     collections::{HashMap, HashSet},
     hash::{Hash, Hasher},
@@ -490,7 +490,7 @@ impl PersistPool {
                 let mut overlay = context.overlay.clone();
                 overlay.insert(&context.source, persistent_source(&context.text, capacity));
                 let persistent = context.module.compiler.persistent(
-                    &Request {
+                    &Run {
                         args: &context.args,
                         directory: &context.directory,
                         environment: &context.environment,

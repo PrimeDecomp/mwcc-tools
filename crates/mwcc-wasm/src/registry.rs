@@ -2,7 +2,7 @@
 //! artifact beside it (`<module>.cache/`, which the build writes, [`precompile`]), and the version information of the
 //! executable it stands for (`<module>.version`, the driver's VS_VERSIONINFO, which the build writes beside it).
 //! A run executes on a thread of its own, with room for the compiler's recursion.
-use super::{Compiler, Outcome, Request};
+use super::{AsRun, Compiler, Outcome, Run};
 use std::{
     collections::HashMap,
     fs,
@@ -74,7 +74,8 @@ pub fn precompile(module: &Path) -> Result<()> {
 impl Loaded {
     /// REQUEST run on a thread of its own, while this one polls CANCEL (its own `cancel` is replaced). REQUEST's
     /// `version_info` is ignored: the module's is given.
-    pub fn run(&self, request: &Request, cancel: &dyn Fn() -> bool) -> Result<Outcome> {
+    pub fn run(&self, request: &impl AsRun, cancel: &dyn Fn() -> bool) -> Result<Outcome> {
+        let request = &request.as_run();
         let stop = Arc::new(AtomicBool::new(false));
         let caller = std::thread::current();
         std::thread::scope(|scope| -> Result<Outcome> {
@@ -82,7 +83,7 @@ impl Loaded {
                 .stack_size(64 << 20)
                 .name("mwcc".into())
                 .spawn_scoped(scope, || {
-                    let outcome = self.compiler.run(&Request {
+                    let outcome = self.compiler.run(&Run {
                         version_info: &self.version_info,
                         cancel: Some(stop.clone()),
                         ..*request

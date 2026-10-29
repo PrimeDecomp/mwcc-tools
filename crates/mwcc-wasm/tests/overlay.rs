@@ -1,6 +1,6 @@
 //! The file overlay and sjiswrap's transcoding, compiling with this checkout's GC 2.7 module (skipped when it is not
 //! built). MWCC_TEST_ECHOES (an Echoes checkout, on Windows) adds the compare with sjiswrap and the executable.
-use mwcc_wasm::{Outcome, Overlay, Request};
+use mwcc_wasm::{Outcome, Overlay, Run};
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -42,7 +42,7 @@ fn compile(
     let _ = fs::remove_file(directory.join("a.o"));
     let args: Vec<String> = FLAGS.iter().chain(extra).map(|a| a.to_string()).collect();
     let program = directory.join("mwcceppc.exe").display().to_string();
-    let request = Request {
+    let request = Run {
         args: &args,
         directory,
         environment: &[],
@@ -225,7 +225,7 @@ fn a_persistent_compile_reads_the_overlay() {
     let mut persistent = loaded
         .compiler
         .persistent(
-            &Request {
+            &Run {
                 args: &args,
                 directory: work.path(),
                 environment: &[],
@@ -285,7 +285,7 @@ fn a_persistent_candidate_is_read_as_shift_jis() {
     let mut persistent = loaded
         .compiler
         .persistent(
-            &Request {
+            &Run {
                 args: &args,
                 directory: work.path(),
                 environment: &[],

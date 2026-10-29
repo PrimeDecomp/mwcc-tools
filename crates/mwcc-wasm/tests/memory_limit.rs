@@ -1,6 +1,6 @@
 //! `MWCC_WASM_MEMORY_MB`: a run that needs more memory than it allows stops with an error, and one within it compiles.
 //! Uses this checkout's GC 2.7 module (skipped when it is not built).
-use mwcc_wasm::Request;
+use mwcc_wasm::Run;
 use std::{fs, path::PathBuf, time::Duration};
 
 #[test]
@@ -43,7 +43,7 @@ fn a_run_past_the_limit_is_an_error() {
         .map(|a| a.to_string())
         .collect();
         loaded.run(
-            &Request {
+            &Run {
                 args: &args,
                 directory: work.path(),
                 environment: &[],

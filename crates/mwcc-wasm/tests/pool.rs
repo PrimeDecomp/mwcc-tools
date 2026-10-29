@@ -2,7 +2,7 @@
 //! equal normal compiles', failures with a diagnostic are trusted, a disagreeing normal compile retires the persistent
 //! compiler, and the context's files are part of its identity.
 use mwcc_wasm::{
-    Overlay, PersistPool, PoolOptions, Request,
+    Overlay, PersistPool, PoolOptions, Run,
     pool::{Compiled, Context},
 };
 use std::{
@@ -81,7 +81,7 @@ fn normal(project: &Project, candidate: &str) -> Compiled {
     let outcome = context
         .module
         .run(
-            &Request {
+            &Run {
                 args: &context.args,
                 directory: &context.directory,
                 environment: &context.environment,
