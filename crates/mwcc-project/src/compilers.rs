@@ -27,7 +27,11 @@ pub const ROOT_VERSIONS: [&str; 1] = ["GC_1_2_5n"];
 const MODULE_VERSIONS: [&str; 4] = ["GC_1_3_2", "GC_2_6", "GC_2_7", "GC_1_2_5n"];
 
 /// The linkers built for WebAssembly (`build/<linker>/wasm/mwldeppc.wasm`), each with its compiler version.
-pub const LINKERS: [(&str, &str); 2] = [("LD_1_3_2", "GC_1_3_2"), ("LD_2_7", "GC_2_7")];
+pub const LINKERS: [(&str, &str); 3] = [
+    ("LD_1_3_2", "GC_1_3_2"),
+    ("LD_2_6", "GC_2_6"),
+    ("LD_2_7", "GC_2_7"),
+];
 
 /// What gets a version's module into a root that lacks it (mwcc-tools' download cache): called with the root and the
 /// version (`GC_2_7`, `LD_2_7`...) before the module is looked for there. Set once, by the executable.

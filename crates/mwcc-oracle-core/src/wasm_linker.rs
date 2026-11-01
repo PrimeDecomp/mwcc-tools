@@ -1,10 +1,10 @@
-//! The linkers of GC 1.3.2 and 2.7 (`mwldeppc.exe`) built from this repository's own sources for WebAssembly, to
+//! The linkers of GC 1.3.2, 2.6 and 2.7 (`mwldeppc.exe`) built from this repository's own sources for WebAssembly, to
 //! run in process as the compiler module does (crate::wasm_build): `build/<linker>/wasm/mwldeppc.wasm`.
 //!
 //! A linker is the driver and C library of the 2.7 compiler with the linker plugin (`src/linker`) in place of the
 //! compiler's (docs/linker in decomp/mwcc). Its units are `config/LD_2_6/splits.txt`'s (config.json `units_from`),
 //! with the sources config.json's `replace` gives in place of some, compiled as the 2.7 compiler's are (its compilers'
-//! flags, `-DVERSION` of GC_2_7) and with `-DLINKER=13` or `-DLINKER=27`. As in the compiler module, `wasm/libc`
+//! flags, `-DVERSION` of GC_2_7) and with `-DLINKER=13`, `-DLINKER=26` or `-DLINKER=27`. As in the compiler module, `wasm/libc`
 //! replaces MSL and its runtime (`src/msl`, `src/runtime`), and `wasm/src` the startup.
 //!
 //! The sources say `#pragma options align=mac68k` (and `packed`, `native`, `reset`), which clang reads only for
@@ -26,7 +26,11 @@ use std::{
 };
 
 /// The linkers built for WebAssembly, each with the compiler version it goes with.
-pub const LINKERS: [(&str, &str); 2] = [("LD_1_3_2", "GC_1_3_2"), ("LD_2_7", "GC_2_7")];
+pub const LINKERS: [(&str, &str); 3] = [
+    ("LD_1_3_2", "GC_1_3_2"),
+    ("LD_2_6", "GC_2_6"),
+    ("LD_2_7", "GC_2_7"),
+];
 
 /// The compilers built for WebAssembly from this repository's own sources (gc2 has none of them): the stock
 /// compiler only, without the oracle's hooks (`build/<version>/wasm/mwcc.wasm`). Each is built as a linker is, from
@@ -134,7 +138,7 @@ pub fn units(root: &Path, program: &str) -> Result<Vec<wasm_build::Unit>> {
         .iter()
         .position(|v| *v == flags_of)
         .with_context(|| format!("{flags_of} is not a build version"))?;
-    // (a linker's `-DLINKER`: 13 or 27)
+    // (a linker's `-DLINKER`: 13, 26 or 27)
     let linker_define = (!is_compiler(program)).then(|| {
         let number = program[3..].replace('_', "");
         number[..2].to_owned()
@@ -464,8 +468,18 @@ fn common_inputs(root: &Path, program: &str) -> Result<Vec<String>> {
 
 fn common_source(root: &Path, linker: &str) -> Result<String> {
     let config = read_json(&root.join(format!("config/{linker}/config.json")))?;
-    config["assembly"]["common"]
+    let assembly = &config["assembly"];
+    // (`common`, or, in a matching build's config (LD_2_6), the source of its `common.obj`)
+    assembly["common"]
         .as_str()
+        .or_else(|| {
+            assembly.as_object()?.iter().find_map(|(object, source)| {
+                object
+                    .ends_with("/common.obj")
+                    .then(|| source.as_str())
+                    .flatten()
+            })
+        })
         .map(String::from)
         .with_context(|| format!("config/{linker}/config.json has no assembly.common"))
 }
@@ -706,7 +720,8 @@ _b:
     fn each_linker_has_its_compiler() {
         assert_eq!(for_compiler("GC_2_7"), Some("LD_2_7"));
         assert_eq!(for_compiler("GC_1_3_2"), Some("LD_1_3_2"));
-        assert_eq!(for_compiler("GC_2_6"), None);
+        assert_eq!(for_compiler("GC_2_6"), Some("LD_2_6"));
+        assert_eq!(for_compiler("GC_1_2_5n"), None);
         assert_eq!(compiler_of("LD_1_3_2"), Some("GC_1_3_2"));
     }
 }

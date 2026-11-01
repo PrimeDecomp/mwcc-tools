@@ -263,14 +263,18 @@ To observe something no stream records, change gc2's sources in a checkout of yo
 
 ## The linkers
 
-`crates/mwcc-oracle-core/src/wasm_linker.rs` builds GC 1.3.2's and 2.7's linkers, `build/LD_1_3_2/wasm/mwldeppc.wasm`
-and `build/LD_2_7/wasm/mwldeppc.wasm`, each with its `.version` (the VS_VERSIONINFO of `src/linker/mwldeppc13.rc` and
-`mwldeppc27.rc`). `configure --version GC_1_3_2` (or `GC_2_7`) adds the version's linker to the default targets.
+`crates/mwcc-oracle-core/src/wasm_linker.rs` builds GC 1.3.2's, 2.6's and 2.7's linkers,
+`build/LD_1_3_2/wasm/mwldeppc.wasm`, `build/LD_2_6/wasm/mwldeppc.wasm` and `build/LD_2_7/wasm/mwldeppc.wasm`, each
+with its `.version` (the VS_VERSIONINFO of `src/linker/mwldeppc13.rc`, `mwldeppc.rc` and `mwldeppc27.rc`).
+`configure --version GC_1_3_2` (or `GC_2_6`, `GC_2_7`) adds the version's linker to the default targets. GC 1.2.5n
+has no linker module: its linker (also 1.2.5's) is not decompiled. 2.6's is `config/LD_2_6`'s units, the matching
+build's, with `-DLINKER=26`; on Metroid Prime's 1271 objects its partial link (`-r`) gives the original's ELF, map
+and console to the byte, and the full link the original's map and errors.
 
 Their sources are this repository's own (`src/`, decomp/mwcc's linker decompilation, 7391bd7): a linker is the 2.7
 compiler's driver and C library with the linker plugin (`src/linker`) in place of the compiler. Its units are
 `config/LD_2_6/splits.txt`'s with the sources `config/LD_2_7/config.json`'s `replace` gives, compiled with the 2.7
-compiler's flags, `-DVERSION` of GC_2_7 and `-DLINKER=13` or `-DLINKER=27`. As in the compiler, `wasm/libc` and
+compiler's flags, `-DVERSION` of GC_2_7 and `-DLINKER=13`, `-DLINKER=26` or `-DLINKER=27`. As in the compiler, `wasm/libc` and
 `wasm/src` replace MSL, the runtime and the license imports (compiled as the GC 2.7 compiler module's are).
 
 * The sources say `#pragma options align=mac68k` (and `packed`, `native`, `reset`), which clang reads only for
@@ -451,7 +455,7 @@ python configure.py --wrapper <mwcc>\target\release\mwcc-run.exe
 Copy it again after each `cargo build`: a hard link made before a rebuild keeps running the old executable, because
 cargo replaces `mwcc-tools.exe` with a new file.
 
-* An EXE that is the original 1.2.5n, 1.3.2, 2.6 or 2.7 compiler, or the 1.3.2 or 2.7 linker, wherever it is, runs in
+* An EXE that is the original 1.2.5n, 1.3.2, 2.6 or 2.7 compiler, or the 1.3.2, 2.6 or 2.7 linker, wherever it is, runs in
   process when its module is built. It is recognised by the size and SHA-1 in `config/<version>/config.json`, so the checkout needs no copy of the
   compilers; an executable of another size is never read. It gets the wrapper's arguments, directory and environment,
   and writes the object and the `-MMD` `.d` file itself. The wrapper prints its stdout and stderr and exits with its
@@ -476,15 +480,16 @@ released versions' `config/<version>/config.json` there. A compiler or linker th
 originals, and whose module the cache lacks, gets its version's release archive first
 (`crates/mwcc-tools/src/wasm_download.rs`):
 
-* `mwcc-wasm-GC_2_7`, `-GC_1_3_2` (each with its linker), `-GC_2_6` or `-GC_1_2_5n`, from the GitHub release of the
+* `mwcc-wasm-GC_2_7`, `-GC_2_6`, `-GC_1_3_2` (each with its linker) or `-GC_1_2_5n` (the compiler only), from the GitHub release of the
   executable's own version, checked against its `.sha256`. Only the archive's modules' directories and `LICENSE` are
   unpacked.
 * Each module is compiled for the host before it is moved into the cache, under a lock (`.<archive>.lock`): a build's
   parallel compiles wait for one download and then load the compiled module. A first compile through a debug build
   takes about 40 s (the compile of the module); every later one takes what it takes from a checkout.
 * A download that fails runs the executable as a process, with a warning. A release without the version's archive
-  (v0.3.0 has none of GC 2.6) is noted in the cache (`.<archive>.unavailable`), so later runs do not ask again;
-  `download wasm` asks regardless.
+  (v0.3.0 has none of GC 2.6), or an archive without one of its modules (0.5.0's GC 2.6 has no linker: its compiler
+  is installed), is noted in the cache (`.<archive>.unavailable`), so later runs do not ask again; `download wasm`
+  asks regardless. With `MWCC_IN_PROCESS_LINKER=0` a linker gets nothing.
 * `MWCC_WASM_DOWNLOAD=0` does not download (the executable runs as a process). `MWCC_WASM_RELEASE` (a version, such
   as `0.3.0`) and `MWCC_WASM_RELEASE_URL` (the directory of its assets) take another release's archives; a module of
   another release than the executable's may not load in it.

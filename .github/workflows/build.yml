@@ -124,6 +124,7 @@ jobs:
             files: >-
               build/GC_2_6/wasm/mwcc.wasm build/GC_2_6/wasm/mwcc.version build/GC_2_6/wasm/mwcceppc.wasm
               build/GC_2_6/wasm/oracle.wasm build/GC_2_6/wasm/persist.wasm
+              build/LD_2_6/wasm/mwldeppc.wasm build/LD_2_6/wasm/mwldeppc.version
           - version: GC_1_3_2
             files: >-
               build/GC_1_3_2/wasm/mwcc.wasm build/GC_1_3_2/wasm/mwcc.version build/GC_1_3_2/wasm/mwcceppc.wasm

@@ -62,7 +62,7 @@ target/release/mwcc-tools configure --version GC_2_7
 ninja build/GC_2_7/wasm/mwcc.wasm build/LD_2_7/wasm/mwldeppc.wasm
 ```
 
-Use `--version GC_1_3_2` for 1.3.2 (and `build/LD_1_3_2/wasm/mwldeppc.wasm`), `--version GC_2_6` for 2.6, and
+Use `--version GC_1_3_2` for 1.3.2 (and `build/LD_1_3_2/wasm/mwldeppc.wasm`), `--version GC_2_6` for 2.6 (and `build/LD_2_6/wasm/mwldeppc.wasm`), and
 `--version GC_1_2_5n` for 1.2.5n (`build/GC_1_2_5n/wasm/mwcc.wasm`, no oracle and no linker). [wasm.md](docs/wasm.md)
 has the details.
 

@@ -1,6 +1,7 @@
 {
   "original": "build/compilers/GC/2.6/mwldeppc.exe",
   "sha1": "d419965d331b36f0350975846c8453aa1f5dfad3",
+  "size": 633856,
   "output": "mwldeppc.exe",
   "compiler_version": "GC_2_7",
   "matching": [

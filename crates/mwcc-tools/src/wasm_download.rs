@@ -56,11 +56,18 @@ const ARCHIVES: [Archive; 4] = [
     },
     Archive {
         name: "GC_2_6",
-        members: &[Member {
-            version: "GC_2_6",
-            module: "build/GC_2_6/wasm/mwcc.wasm",
-            config: include_str!("../../../config/GC_2_6/config.json"),
-        }],
+        members: &[
+            Member {
+                version: "GC_2_6",
+                module: "build/GC_2_6/wasm/mwcc.wasm",
+                config: include_str!("../../../config/GC_2_6/config.json"),
+            },
+            Member {
+                version: "LD_2_6",
+                module: "build/LD_2_6/wasm/mwldeppc.wasm",
+                config: include_str!("../../../config/LD_2_6/config.json"),
+            },
+        ],
     },
     Archive {
         name: "GC_1_3_2",
@@ -352,6 +359,10 @@ fn archive_of(root: &Path, executable: &Path) -> Result<Option<&'static Archive>
     let mut digest = None;
     for archive in &ARCHIVES {
         for member in archive.members {
+            // (a linker that runs as itself: MWCC_IN_PROCESS_LINKER=0)
+            if is_linker(member) && !mwcc_project::compilers::linker_enabled() {
+                continue;
+            }
             let Some((size, sha1)) = identity(member.config) else {
                 continue;
             };
@@ -369,6 +380,10 @@ fn archive_of(root: &Path, executable: &Path) -> Result<Option<&'static Archive>
         }
     }
     Ok(None)
+}
+
+fn is_linker(member: &Member) -> bool {
+    member.version.starts_with("LD_")
 }
 
 fn complete(root: &Path, archive: &Archive) -> bool {
@@ -447,13 +462,20 @@ fn install(root: &Path, archive: &Archive, fetch: &mut dyn Fetch, release: &str)
             .read_to_end(&mut data)?;
         fs::write(&target, data)?;
     }
-    for member in archive.members {
+    // (an archive of another release can lack a module, such as a linker added since: the others are installed,
+    // and that one's program runs as a process)
+    let (members, lacking): (Vec<&Member>, Vec<&Member>) =
+        archive.members.iter().partition(|member| {
+            let module = staging.path().join(member.module);
+            module.is_file() && mwcc_wasm::version_info_path(&module).is_file()
+        });
+    ensure!(
+        !members.is_empty(),
+        "{file} lacks {} or its .version",
+        archive.members[0].module
+    );
+    for member in &members {
         let module = staging.path().join(member.module);
-        ensure!(
-            module.is_file() && mwcc_wasm::version_info_path(&module).is_file(),
-            "{file} lacks {} or its .version",
-            member.module
-        );
         // (compiled for this host now, so the build's processes load it instead of each compiling it)
         mwcc_wasm::precompile(&module)
             .map_err(|e| anyhow::anyhow!("{e:?}"))
@@ -466,7 +488,7 @@ fn install(root: &Path, archive: &Archive, fetch: &mut dyn Fetch, release: &str)
             )
         })?;
     }
-    for member in archive.members {
+    for member in &members {
         let directory = Path::new(member.module).parent().unwrap();
         let target = root.join(directory);
         if target.exists() {
@@ -479,7 +501,18 @@ fn install(root: &Path, archive: &Archive, fetch: &mut dyn Fetch, release: &str)
     if staging.path().join("LICENSE").is_file() {
         fs::copy(staging.path().join("LICENSE"), root.join("LICENSE"))?;
     }
-    let _ = fs::remove_file(unavailable_path(root, archive));
+    if lacking.is_empty() {
+        let _ = fs::remove_file(unavailable_path(root, archive));
+    } else {
+        // (not asked again: as for a release without the archive)
+        let _ = fs::write(unavailable_path(root, archive), &url);
+        for member in &lacking {
+            eprintln!(
+                "mwcc-tools: {file} has no {}: {} runs as a process",
+                member.module, member.version
+            );
+        }
+    }
     eprintln!(
         "mwcc-tools: {} installed in {}",
         archive.name,
@@ -528,7 +561,7 @@ pub fn command(args: &[String]) -> Result<()> {
                     .iter()
                     .find(|a| a.members.iter().any(|m| m.version == name))
                     .with_context(|| {
-                        format!("{name} has no released module (GC_2_7, LD_2_7, GC_2_6, GC_1_3_2, LD_1_3_2, GC_1_2_5n)")
+                        format!("{name} has no released module (GC_2_7, LD_2_7, GC_2_6, LD_2_6, GC_1_3_2, LD_1_3_2, GC_1_2_5n)")
                     })
             })
             .collect::<Result<_>>()?
@@ -607,6 +640,25 @@ mod tests {
         // (installed: nothing fetched again)
         install(root.path(), gc_1_2_5n(), &mut served, "0.0.0").unwrap();
         assert_eq!(served.fetches, 2);
+    }
+
+    #[test]
+    fn an_archive_without_its_linker_installs_the_compiler() {
+        let root = tempfile::tempdir().unwrap();
+        let gc_2_6 = ARCHIVES.iter().find(|a| a.name == "GC_2_6").unwrap();
+        // (0.5.0's: GC 2.6's compiler only)
+        let mut served = archive(&[
+            ("build/GC_2_6/wasm/mwcc.wasm", EMPTY_MODULE),
+            ("build/GC_2_6/wasm/mwcc.version", b"version"),
+        ]);
+        install(root.path(), gc_2_6, &mut served, "0.5.0").unwrap();
+        assert!(root.path().join("build/GC_2_6/wasm/mwcc.wasm").is_file());
+        assert!(!root.path().join("build/LD_2_6").exists());
+        // (the release is not asked again for the linker)
+        assert_eq!(
+            fs::read_to_string(unavailable_path(root.path(), gc_2_6)).unwrap(),
+            archive_url(gc_2_6, "0.5.0")
+        );
     }
 
     #[test]

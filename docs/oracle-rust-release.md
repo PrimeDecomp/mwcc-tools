@@ -22,7 +22,7 @@ The WebAssembly builds are published beside them, one archive per compiler versi
 | Archive | Contents |
 |---|---|
 | `mwcc-wasm-GC_2_7-VERSION.zip` | GC 2.7's compiler and linker: `build/GC_2_7/wasm/` and `build/LD_2_7/wasm/` |
-| `mwcc-wasm-GC_2_6-VERSION.zip` | GC 2.6's compiler: `build/GC_2_6/wasm/` |
+| `mwcc-wasm-GC_2_6-VERSION.zip` | GC 2.6's compiler and linker: `build/GC_2_6/wasm/` and `build/LD_2_6/wasm/` |
 | `mwcc-wasm-GC_1_3_2-VERSION.zip` | GC 1.3.2's compiler and linker: `build/GC_1_3_2/wasm/` and `build/LD_1_3_2/wasm/` |
 | `mwcc-wasm-GC_1_2_5n-VERSION.zip` | GC 1.2.5n's compiler: `build/GC_1_2_5n/wasm/` |
 
