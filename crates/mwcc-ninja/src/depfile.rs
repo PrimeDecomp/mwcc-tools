@@ -42,6 +42,11 @@ fn read_path<'a>(scanner: &mut Scanner<'a>) -> ParseResult<Option<&'a str>> {
                     scanner.back();
                     break;
                 }
+                // (mwcc-ninja: `\ ` is a space in the path, as make and ninja read it; the slice keeps the
+                // backslash, see [`unescape`])
+                if scanner.peek() == ' ' {
+                    scanner.next();
+                }
             }
             _ => {}
         }
@@ -51,6 +56,11 @@ fn read_path<'a>(scanner: &mut Scanner<'a>) -> ParseResult<Option<&'a str>> {
         return Ok(None);
     }
     Ok(Some(scanner.slice(start, end)))
+}
+
+/// A path of [`parse`] as the file it names: its `\ ` are spaces.
+pub fn unescape(path: &str) -> String {
+    path.replace("\\ ", " ")
 }
 
 /// Parse a `.d` file into `Deps`.
@@ -128,6 +138,17 @@ mod tests {
                 );
             },
         );
+    }
+
+    #[test]
+    fn test_parse_escaped_space() {
+        let mut file = b"out.json: \\\n  a/Rev2\\ Production/x.sel \\\n  b.txt\n".to_vec();
+        let deps = must_parse(&mut file);
+        assert_eq!(
+            deps,
+            SmallMap::from([("out.json", vec!["a/Rev2\\ Production/x.sel", "b.txt"])])
+        );
+        assert_eq!(unescape("a/Rev2\\ Production/x.sel"), "a/Rev2 Production/x.sel");
     }
 
     #[test]

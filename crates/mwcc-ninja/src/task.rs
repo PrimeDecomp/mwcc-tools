@@ -70,7 +70,7 @@ fn read_depfile(path: &Path) -> anyhow::Result<Vec<String>> {
     let deps: Vec<String> = parsed_deps
         .values()
         .flat_map(|x| x.iter())
-        .map(|&dep| dep.to_owned())
+        .map(|&dep| depfile::unescape(dep))
         .collect();
     Ok(deps)
 }
