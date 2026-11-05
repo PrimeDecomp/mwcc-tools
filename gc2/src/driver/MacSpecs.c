@@ -392,12 +392,49 @@ int __stdcall OS_VolDir_To_OSPathSpec(SInt16 vRefNum, SInt32 dirID, OSPathSpec* 
     return 0;
 }
 
+
+#ifdef NONMATCHING
+/* Cuyler36's GC 2.6f1 (mweppc 3f63464): OS_CanonNameCase's answers, until OS_IOCacheReset. */
+typedef struct IOCanonicalEntry {
+    UInt32 epoch;
+    OSSpec input;
+    OSSpec output;
+} IOCanonicalEntry;
+static IOCanonicalEntry ioCanonicalCache[2048];
+
+static IOCanonicalEntry* IOCanonicalSlot(const OSSpec* spec) {
+    const unsigned char* p;
+    UInt32 hash = 2166136261u;
+
+    for (p = (const unsigned char*)spec->path.s; *p; p++) {
+        hash = (hash ^ *p) * 16777619u;
+    }
+    for (p = (const unsigned char*)spec->name.s; *p; p++) {
+        hash = (hash ^ *p) * 16777619u;
+    }
+    return &ioCanonicalCache[hash & 2047];
+}
+#endif
+
 static int OS_CanonNameCase(OSSpec* spec) {
     char path[260];
     WIN32_FIND_DATAA data;
     char* name;
     HANDLE handle;
     int len;
+#ifdef NONMATCHING
+    UInt32 epoch = OS_IOCacheGeneration();
+    IOCanonicalEntry* cached = IOCanonicalSlot(spec);
+    OSSpec input;
+    int err;
+
+    if (cached->epoch == epoch && !strcmp(cached->input.path.s, spec->path.s) &&
+        !strcmp(cached->input.name.s, spec->name.s)) {
+        *spec = cached->output;
+        return 0;
+    }
+    input = *spec;
+#endif
 
     strcpy(path, OS_SpecToString(spec, STSbuf, 260));
     name = OS_GetFileNamePtr(path);
@@ -410,7 +447,17 @@ static int OS_CanonNameCase(OSSpec* spec) {
         }
         FindClose(handle);
     }
+#ifdef NONMATCHING
+    err = OS_MakeSpec(path, spec, NULL);
+    if (!err && handle != INVALID_HANDLE_VALUE) {
+        cached->input = input;
+        cached->output = *spec;
+        cached->epoch = epoch;
+    }
+    return err;
+#else
     return OS_MakeSpec(path, spec, NULL);
+#endif
 }
 
 int __stdcall OS_FSSpec_To_OSSpec(const FSSpec* fss, OSSpec* spec) {
@@ -447,6 +494,9 @@ int __stdcall OS_GetRsrcOSSpec(const OSSpec* spec, OSSpec* rspec, Boolean create
             if (err) {
                 return err;
             }
+#ifdef NONMATCHING
+            OS_IOCacheReset();
+#endif
             SetFileAttributesA(OS_SpecToString(rspec, STSbuf, 260), FILE_ATTRIBUTE_HIDDEN);
         } else {
             return err;

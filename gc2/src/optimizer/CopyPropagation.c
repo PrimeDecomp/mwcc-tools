@@ -11,6 +11,9 @@
 #include "compiler/Registers.h"
 #include "compiler/UseDefChains.h"
 #include <stdio.h>
+#ifdef NONMATCHING
+#include <string.h>
+#endif
 
 int propagatedcopies;
 int propagated_instructions;
@@ -144,6 +147,92 @@ static void allocatepropinfo(void) {
     }
 }
 
+#ifdef NONMATCHING
+/* Cuyler36's GC 2.6f1 (mweppc 3f63464): the candidates indexed by the registers they name, so that a write
+   looks up the candidates it kills instead of scanning them all. The same bits are set and cleared. The tables
+   are static, so the heap is allocated as the original allocates it; a function with more registers named
+   than they hold takes the original's scan. */
+typedef struct FastPropEntry {
+    int candidate;
+    int reg;
+    int rclass;
+    int next;
+} FastPropEntry;
+enum { FAST_PROP_BUCKETS = 1024, FAST_PROP_ENTRIES = 131072 };
+static FastPropEntry fastPropEntries[FAST_PROP_ENTRIES];
+static int fastPropHeads[FAST_PROP_BUCKETS];
+static int fastPropTails[FAST_PROP_BUCKETS];
+
+static unsigned int FastPropBucket(int rclass, int reg) {
+    return ((UInt32)reg * 33u ^ (UInt32)rclass * 2654435761u) & (FAST_PROP_BUCKETS - 1);
+}
+
+/* The original's test, by candidate: localflag, any GPR operand; else, the operands of the first operand's
+   register class, when the first operand is a register. */
+static Boolean FastPropBuild(Boolean localflag) {
+    int cndi, j, rclass, count = 0;
+    unsigned int bucket;
+    PCode* pcode;
+    PCodeArg* arg;
+    FastPropEntry* entry;
+
+    memset(fastPropHeads, 0xff, sizeof(fastPropHeads));
+    memset(fastPropTails, 0xff, sizeof(fastPropTails));
+    for (cndi = 0; cndi < number_of_candidates; cndi++) {
+        pcode = Candidates[cndi].pcode;
+        if (!pcode->argCount) {
+            continue;
+        }
+        if (localflag) {
+            rclass = RegClass_GPR;
+        } else {
+            if (pcode->args[0].kind != PCOp_REGISTER) {
+                continue;
+            }
+            rclass = pcode->args[0].arg;
+        }
+        for (j = 0, arg = pcode->args; j < pcode->argCount; j++, arg++) {
+            if (arg->kind != PCOp_REGISTER || arg->arg != rclass) {
+                continue;
+            }
+            if (count == FAST_PROP_ENTRIES) {
+                return FALSE;
+            }
+            bucket = FastPropBucket(rclass, arg->data.reg.reg);
+            entry = &fastPropEntries[count];
+            entry->candidate = cndi;
+            entry->reg = arg->data.reg.reg;
+            entry->rclass = rclass;
+            entry->next = -1;
+            if (fastPropTails[bucket] >= 0) {
+                fastPropEntries[fastPropTails[bucket]].next = count;
+            } else {
+                fastPropHeads[bucket] = count;
+            }
+            fastPropTails[bucket] = count++;
+        }
+    }
+    return TRUE;
+}
+
+static void FastPropKill(PCodeBlock* block, PCodeArg* op, UInt32* gen, UInt32* kill) {
+    int id = fastPropHeads[FastPropBucket(op->arg, op->data.reg.reg)];
+    FastPropEntry* entry;
+
+    while (id >= 0) {
+        entry = &fastPropEntries[id];
+        if (entry->rclass == op->arg && entry->reg == op->data.reg.reg) {
+            if (Candidates[entry->candidate].pcode->block == block) {
+                bitvectorclearbit(entry->candidate, gen);
+            } else {
+                bitvectorsetbit(entry->candidate, kill);
+            }
+        }
+        id = entry->next;
+    }
+}
+#endif
+
 static void computelocalpropinfo(Boolean localflag) {
     PropInfo* info;
     PCode* pcode;
@@ -157,6 +246,9 @@ static void computelocalpropinfo(Boolean localflag) {
     int j;
     int cndi;
     Candidate* candidate;
+#ifdef NONMATCHING
+    Boolean fast = FastPropBuild(localflag);
+#endif
 
     for (block = pcbasicblocks; block; block = block->nextBlock) {
         info = &propinfo[block->blockIndex];
@@ -175,6 +267,11 @@ static void computelocalpropinfo(Boolean localflag) {
                         if (op->kind == PCOp_REGISTER &&
                             op->arg == RegClass_GPR &&
                             (op->data.reg.effect & EffectWrite)) {
+#ifdef NONMATCHING
+                            if (fast) {
+                                FastPropKill(block, op, gen, kill);
+                            } else
+#endif
                             for (cndi = 0, candidate = Candidates; number_of_candidates > cndi;
                                  cndi++, candidate++) {
                                 for (j = 0; j < candidate->pcode->argCount; j++) {
@@ -209,6 +306,11 @@ static void computelocalpropinfo(Boolean localflag) {
                     i = pcode->argCount;
                     while (i--) {
                         if (op->kind == PCOp_REGISTER && (op->data.reg.effect & EffectWrite)) {
+#ifdef NONMATCHING
+                            if (fast) {
+                                FastPropKill(block, op, gen, kill);
+                            } else
+#endif
                             for (cndi = 0, candidate = Candidates; number_of_candidates > cndi;
                                  cndi++, candidate++) {
                                 for (j = 0; j < candidate->pcode->argCount; j++) {

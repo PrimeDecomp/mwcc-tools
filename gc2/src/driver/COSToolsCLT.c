@@ -7,6 +7,7 @@
 #include "driver/MsDos.h"
 #include "driver/oslib.h"
 #include "driver/TextUtils.h"
+#include <string.h>
 
 static void COS_pstrcpy(StringPtr dst, ConstStringPtr src) {
     short cnt;
@@ -156,6 +157,76 @@ static void COS_MakePath(SInt16 vRefNum, SInt32 dirID, StringPtr path) {
 }
 #endif
 
+#ifdef NONMATCHING
+/* Cuyler36's GC 2.6f1 (mweppc 3f63464): COS_FileGetPathName's answers by FSSpec, until OS_IOCacheReset, and the
+   modification time without the rest of the file's information (PBHGetFInfoSync opens and reads the file). */
+typedef struct IOPathCacheEntry {
+    UInt32 epoch;
+    FSSpec key;
+    SInt32 moddate;
+    Boolean hasTime;
+    char path[260];
+} IOPathCacheEntry;
+static IOPathCacheEntry ioPathCache[4096];
+static UInt32 ioPathEpoch = 1;
+
+void OS_IOCacheReset(void) {
+    if (++ioPathEpoch == 0) {
+        memset(ioPathCache, 0, sizeof(ioPathCache));
+        ioPathEpoch = 1;
+    }
+}
+
+UInt32 OS_IOCacheGeneration(void) {
+    return ioPathEpoch;
+}
+
+static IOPathCacheEntry* IOPathSlot(const FSSpec* key) {
+    UInt32 hash = (UInt32)key->vRefNum * 16777619u ^ (UInt32)key->parID;
+    unsigned int i;
+
+    for (i = 0; i <= key->name[0] && i < sizeof(key->name); i++) {
+        hash = (hash ^ key->name[i]) * 16777619u;
+    }
+    return &ioPathCache[hash & 4095];
+}
+
+void COS_FileGetPathName(char* buffer, const FSSpec* spec, SInt32* mdDat) {
+    IOPathCacheEntry* cached = IOPathSlot(spec);
+    OSSpec oss;
+    OSTime changed;
+    UInt32 seconds;
+
+    if (spec->name[0] < sizeof(spec->name) && cached->epoch == ioPathEpoch &&
+        cached->key.vRefNum == spec->vRefNum && cached->key.parID == spec->parID &&
+        !memcmp(cached->key.name, spec->name, spec->name[0] + 1) && (!mdDat || cached->hasTime)) {
+        strcpy(buffer, cached->path);
+        if (mdDat) {
+            *mdDat = cached->moddate;
+        }
+        return;
+    }
+
+    if (mdDat) {
+        *mdDat = 0;
+        if (!OS_FSSpec_To_OSSpec(spec, &oss) && !OS_GetFileTime(&oss, NULL, &changed)) {
+            OS_TimeToMac(changed, &seconds);
+            *mdDat = seconds;
+        }
+    }
+
+    COS_pstrcpy((StringPtr)buffer, spec->name);
+    COS_MakePath(spec->vRefNum, spec->parID, (StringPtr)buffer);
+    p2cstr((StringPtr)buffer);
+    if (spec->name[0] < sizeof(spec->name)) {
+        cached->key = *spec;
+        strcpy(cached->path, buffer);
+        cached->hasTime = mdDat != NULL;
+        cached->moddate = mdDat ? *mdDat : 0;
+        cached->epoch = ioPathEpoch;
+    }
+}
+#else
 void COS_FileGetPathName(char* buffer, const FSSpec* spec, SInt32* mdDat) {
     HParamBlockRec rec;
 
@@ -175,3 +246,4 @@ void COS_FileGetPathName(char* buffer, const FSSpec* spec, SInt32* mdDat) {
     COS_MakePath(spec->vRefNum, spec->parID, (StringPtr)buffer);
     p2cstr((StringPtr)buffer);
 }
+#endif

@@ -113,6 +113,13 @@ typedef struct OSOpenedDir {
     OSPathSpec spec;
 } OSOpenedDir;
 
+#ifdef NONMATCHING
+/* The file-system answers MsDos.c, MacSpecs.c and COSToolsCLT.c keep (Cuyler36's GC 2.6f1): Reset forgets them
+   (a file or directory written or made, a process run, the next unit), Generation tells them apart. */
+void OS_IOCacheReset(void);
+UInt32 OS_IOCacheGeneration(void);
+#endif
+
 #ifdef __cplusplus
 }
 #endif

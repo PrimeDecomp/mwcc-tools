@@ -25,6 +25,66 @@ static char errtext[256];
 static char* cygdrive_prefix;
 static char intbuf[260];
 
+#ifdef NONMATCHING
+/* Cuyler36's GC 2.6f1 (mweppc 3f63464): GetFileAttributesA's answers for absolute paths, kept until a file
+   is written or made, a process runs or the next unit starts (OS_IOCacheReset). A failure is kept only when
+   the file or path is not found, with its error, which IO_ATTRIBUTES_ERROR gives in GetLastError's place. */
+typedef struct IOMetadataEntry {
+    UInt32 epoch;
+    DWORD attributes;
+    DWORD error;
+    char path[260];
+} IOMetadataEntry;
+static IOMetadataEntry ioMetadata[4096];
+static UInt32 ioMetadataLastEpoch;
+static DWORD ioMetadataError;
+
+static DWORD IO_MetadataAttributes(const char* path) {
+    UInt32 hash = 2166136261u;
+    UInt32 epoch;
+    const unsigned char* p;
+    unsigned int length = 0;
+    IOMetadataEntry* cached;
+    DWORD attributes;
+
+    for (p = (const unsigned char*)path; *p; p++, length++) {
+        hash = (hash ^ *p) * 16777619u;
+    }
+    /* A relative path depends on the current directory. */
+    if (length >= 260 ||
+        !((length >= 3 && path[1] == ':' && path[2] == '\\') || (length >= 2 && path[0] == '\\' && path[1] == '\\'))) {
+        attributes = GetFileAttributesA(path);
+        ioMetadataError = attributes == 0xffffffff ? GetLastError() : 0;
+        return attributes;
+    }
+    epoch = OS_IOCacheGeneration();
+    if (epoch < ioMetadataLastEpoch) {
+        memset(ioMetadata, 0, sizeof(ioMetadata));
+    }
+    ioMetadataLastEpoch = epoch;
+    cached = &ioMetadata[hash & 4095];
+    if (cached->epoch == epoch && !strcmp(cached->path, path)) {
+        ioMetadataError = cached->error;
+        return cached->attributes;
+    }
+    attributes = GetFileAttributesA(path);
+    ioMetadataError = attributes == 0xffffffff ? GetLastError() : 0;
+    if (attributes != 0xffffffff || ioMetadataError == ERROR_FILE_NOT_FOUND || ioMetadataError == ERROR_PATH_NOT_FOUND) {
+        strcpy(cached->path, path);
+        cached->attributes = attributes;
+        cached->error = ioMetadataError;
+        cached->epoch = epoch;
+    }
+    return attributes;
+}
+
+#define IO_ATTRIBUTES(path) IO_MetadataAttributes(path)
+#define IO_ATTRIBUTES_ERROR() ioMetadataError
+#else
+#define IO_ATTRIBUTES(path) GetFileAttributesA(path)
+#define IO_ATTRIBUTES_ERROR() GetLastError()
+#endif
+
 const char* __stdcall OS_GetErrText(int err) {
     char* eol;
 
@@ -49,6 +109,9 @@ uOSTypePair OS_TEXTTYPE;
 
 int __stdcall OS_Create(const OSSpec* spec, const uOSTypePair* type) {
     HANDLE h;
+#ifdef NONMATCHING
+    OS_IOCacheReset();
+#endif
 
     if (OS_SpecToString(spec, intbuf, sizeof(intbuf)) == NULL) {
         return ERROR_BUFFER_OVERFLOW;
@@ -75,9 +138,9 @@ int __stdcall OS_Status(const OSSpec* spec) {
     if (OS_SpecToString(spec, intbuf, sizeof(intbuf)) == NULL) {
         return ERROR_BUFFER_OVERFLOW;
     }
-    attr = GetFileAttributesA(intbuf);
+    attr = IO_ATTRIBUTES(intbuf);
     if (attr == 0xffffffff) {
-        return GetLastError();
+        return IO_ATTRIBUTES_ERROR();
     }
     return 0;
 }
@@ -120,6 +183,9 @@ int __stdcall OS_SetFileTime(const OSSpec* spec, const OSTime* crtm, const OSTim
     int ref;
     FILETIME mtime;
     FILETIME ctime;
+#ifdef NONMATCHING
+    OS_IOCacheReset();
+#endif
 
     if (crtm != NULL) {
         ctime.dwLowDateTime = crtm->dwLowDateTime;
@@ -153,6 +219,11 @@ int __stdcall OS_Open(const OSSpec* spec, OSOpenMode mode, int* ref) {
         GENERIC_WRITE
     };
     // clang-format on
+#ifdef NONMATCHING
+    if (mode != OSReadOnly) {
+        OS_IOCacheReset();
+    }
+#endif
     if (OS_SpecToString(spec, intbuf, sizeof(intbuf)) == NULL) {
         return ERROR_BUFFER_OVERFLOW;
     }
@@ -177,6 +248,9 @@ int __stdcall OS_Write(int ref, const void* buffer, UInt32* length) {
     SInt32 pos;
     SInt32 chunk;
     DWORD written;
+#ifdef NONMATCHING
+    OS_IOCacheReset();
+#endif
 
     h = (HANDLE)ref;
     pos = SetFilePointer(h, 0, NULL, FILE_CURRENT);
@@ -251,6 +325,9 @@ int __stdcall OS_GetSize(int ref, UInt32* length) {
 
 int __stdcall OS_SetSize(int ref, UInt32 size) {
     DWORD pos;
+#ifdef NONMATCHING
+    OS_IOCacheReset();
+#endif
 
     pos = SetFilePointer((HANDLE)ref, 0, NULL, FILE_CURRENT);
     if (pos == 0xffffffff ||
@@ -263,6 +340,9 @@ int __stdcall OS_SetSize(int ref, UInt32 size) {
 }
 
 int __stdcall OS_Delete(const OSSpec* spec) {
+#ifdef NONMATCHING
+    OS_IOCacheReset();
+#endif
     if (OS_SpecToString(spec, intbuf, sizeof(intbuf)) == NULL) {
         return ERROR_BUFFER_OVERFLOW;
     }
@@ -273,6 +353,9 @@ int __stdcall OS_Delete(const OSSpec* spec) {
 }
 
 int __stdcall OS_Mkdir(const OSSpec* spec) {
+#ifdef NONMATCHING
+    OS_IOCacheReset();
+#endif
     if (OS_SpecToString(spec, intbuf, sizeof(intbuf)) == NULL) {
         return ERROR_BUFFER_OVERFLOW;
     }
@@ -283,6 +366,9 @@ int __stdcall OS_Mkdir(const OSSpec* spec) {
 }
 
 int __stdcall OS_Rmdir(const OSPathSpec* spec) {
+#ifdef NONMATCHING
+    OS_IOCacheReset();
+#endif
     if (OS_PathSpecToString(spec, intbuf, sizeof(intbuf)) == NULL) {
         return ERROR_BUFFER_OVERFLOW;
     }
@@ -347,6 +433,9 @@ int __stdcall OS_Execute(
     char** arg;
     UInt32 pos;
     BOOL ok;
+#ifdef NONMATCHING
+    OS_IOCacheReset();
+#endif
 
     size = 0;
     for (arg = argv; *arg != NULL; arg++) {
@@ -595,7 +684,7 @@ int __stdcall OS_MakeSpec(const char* path, OSSpec* spec, Boolean* isfile) {
         end[1] = 0;
     }
 
-    attr = GetFileAttributesA(full);
+    attr = IO_ATTRIBUTES(full);
     if (attr != -1) {
         if (attr & FILE_ATTRIBUTE_DIRECTORY) {
             if (isfile) {
@@ -822,7 +911,7 @@ int __stdcall OS_IsDir(const OSSpec* spec) {
     if (intbuf[len - 1] == '\\') {
         intbuf[len - 1] = 0;
     }
-    attr = GetFileAttributesA(intbuf);
+    attr = IO_ATTRIBUTES(intbuf);
     if (attr == 0xffffffff) {
         return FALSE;
     }
@@ -839,7 +928,7 @@ int __stdcall OS_IsFile(const OSSpec* spec) {
     if (intbuf[len - 1] == '\\') {
         intbuf[len - 1] = 0;
     }
-    attr = GetFileAttributesA(intbuf);
+    attr = IO_ATTRIBUTES(intbuf);
     if (attr == 0xffffffff) {
         return FALSE;
     }

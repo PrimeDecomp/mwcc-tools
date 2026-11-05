@@ -10,6 +10,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifdef NONMATCHING
+extern int(__stdcall* __OS_ExtendedGetMacFileTypeHook)(const OSSpec*, OSType*);
+#endif
+
 short FixTextHandle(Handle txt) {
     char* tptr;
     UInt32 tlen;
@@ -50,7 +54,11 @@ int LoadAndCacheFile(OSSpec* spec, Handle* texthandle, Boolean* precomp) {
         return 0;
     }
 
+#ifdef NONMATCHING
+    *precomp = FALSE;
+#else
     *precomp = OS_GetMacFileType(spec, &mactype) == 0 && mactype != 'TEXT';
+#endif
     *texthandle = NULL;
 
     err = OS_Open(spec, OSReadOnly, &refnum);
@@ -77,6 +85,20 @@ int LoadAndCacheFile(OSSpec* spec, Handle* texthandle, Boolean* precomp) {
     }
 
     OS_Close(refnum);
+#ifdef NONMATCHING
+    /* Cuyler36's GC 2.6f1 (mweppc 3f63464): the type from the first 32 bytes loaded, which OS_GetMacFileType
+       would open the file again to read; it still runs for an empty file, or when a hook can answer. */
+    mactype = 'TEXT';
+    if (!ltxtlen || !OS_GetMacFileTypeMagic(*h, ltxtlen < 32 ? ltxtlen : 32, &mactype)) {
+        mactype = 'TEXT';
+        if (__OS_ExtendedGetMacFileTypeHook || !ltxtlen) {
+            if (OS_GetMacFileType(spec, &mactype)) {
+                mactype = 'TEXT';
+            }
+        }
+    }
+    *precomp = mactype != 'TEXT';
+#endif
     (*h)[ltxtlen] = 0;
     HUnlock(h);
 

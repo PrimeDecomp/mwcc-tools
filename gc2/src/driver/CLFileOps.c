@@ -507,6 +507,9 @@ static int CompileEntry(File* file, Boolean* compiled) {
     UInt32 endWork;
     struct BuildInfo* tinfo = &gTarg->info;
 
+#ifdef NONMATCHING
+    OS_IOCacheReset(); /* the host's caches start again for each unit (MsDos.c) */
+#endif
     *compiled = FALSE;
 
     if (optsCmdLine.dryRun) {

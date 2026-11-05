@@ -125,6 +125,22 @@ the 7 of `wasm/libc`.
   * `ORIGINAL_ADDRESS` and `TYPE_INTEGRAL_UNCHECKED` (`CParser.h`) use the clang build's emulation, and
     `Peephole.c`'s redundant-store check gets the offsets the original's stack slots hold.
   * Constant folding goes through `CMACH_FOLD` and `CMACH_RECIPROCAL` (`include/compiler/CMachine.h`).
+* gc2 has Cuyler36's speed-ups of GC 2.6 ([mweppc's `2.6f1` branch](https://github.com/Cuyler36/mweppc/tree/2.6f1),
+  3f63464), under `#ifdef NONMATCHING`, so the Metrowerks build is unchanged (2.7's still relinks the original):
+  * `CopyPropagation.c`: `computelocalpropinfo` finds the candidates a register write kills in an index by register,
+    not by scanning every candidate. The index is static, so the heap is allocated as before; a function that names
+    more registers than it holds scans as the original does.
+  * The driver keeps the file system's answers until a file or directory is written or made, a process runs or the
+    next unit starts (`OS_IOCacheReset`, `include/driver/oslib.h`): `GetFileAttributesA` for absolute paths
+    (`MsDos.c`), `OS_CanonNameCase` (`MacSpecs.c`) and `COS_FileGetPathName` (`COSToolsCLT.c`, which reads only
+    the modification time, not the whole file information). `LoadAndCacheFile` (`CLLoadAndCache.c`) takes a file's
+    type from the bytes it loaded instead of opening the file again, and the include cache
+    (`CLIncludeFileCache.c`) is indexed by spec beside its list.
+  * Not taken: the branch's `IroDump.c` change (every `IRO_DumpAfterPhase` call passes `FALSE`, and the oracle's
+    phase probe is there) and its Shift JIS default (the host converts, as sjiswrap does).
+  * TTYD's 76 GC 2.6 units through `mwcc-tools run`, one process each, on modules without `wasm-opt`: 3.82 s in the
+    module before, 3.67 s with the copy propagation alone, 3.23 s with both. Every object and `.d` file is the
+    original's; `corpus --version GC_2_6` gives 2313/2313 canaries and 129/129 TTYD units identical.
 
 The module's imports are 56 Win32 functions of kernel32 and version.dll, called by the C library and the driver.
 
