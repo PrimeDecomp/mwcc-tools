@@ -148,7 +148,10 @@ mod tests {
             deps,
             SmallMap::from([("out.json", vec!["a/Rev2\\ Production/x.sel", "b.txt"])])
         );
-        assert_eq!(unescape("a/Rev2\\ Production/x.sel"), "a/Rev2 Production/x.sel");
+        assert_eq!(
+            unescape("a/Rev2\\ Production/x.sel"),
+            "a/Rev2 Production/x.sel"
+        );
     }
 
     #[test]
