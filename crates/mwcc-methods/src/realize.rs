@@ -273,6 +273,26 @@ struct Span {
     close: usize,
 }
 
+fn source_function_name(function: &str, link: &str) -> String {
+    let destructor = link.strip_prefix("__dt__");
+    let owner = destructor
+        .or_else(|| link.strip_prefix("__ct__"))
+        .and_then(|encoded| mwcc_oracle_core::inline_calibrate::demangle_type(encoded).ok());
+    let name = owner.as_deref().unwrap_or(function);
+    let short = name
+        .rsplit("::")
+        .next()
+        .unwrap_or(name)
+        .split('<')
+        .next()
+        .unwrap_or("");
+    if destructor.is_some() && owner.is_some() {
+        format!("~{short}")
+    } else {
+        short.to_owned()
+    }
+}
+
 /// The definition of the function named SHORT (its last name) whose body has the most of LINES.
 fn function_span(code: &Code, short: &str, lines: &BTreeSet<usize>) -> Option<Span> {
     let mut best: Option<(usize, Span)> = None;
@@ -1157,16 +1177,7 @@ fn realize(call: &mut Call<'_>, params: RealizeParams) -> Result<RealizeResult> 
     let edits = edits(&params.edits)?;
     ensure!(!edits.is_empty(), "no edits to realize");
     let code = Code::new(source);
-    let short = allocation
-        .before
-        .function
-        .rsplit("::")
-        .next()
-        .unwrap_or(&allocation.before.function)
-        .split('<')
-        .next()
-        .unwrap_or("")
-        .to_owned();
+    let short = source_function_name(&allocation.before.function, &allocation.before.link);
     let all_lines: BTreeSet<usize> = allocation
         .before
         .blocks
@@ -1511,6 +1522,36 @@ mod tests {
 
     fn span(code: &Code) -> Span {
         function_span(code, "f", &BTreeSet::from([3, 9])).unwrap()
+    }
+
+    #[test]
+    fn special_members_use_the_owner_name_from_the_link_symbol() {
+        let code = Code::new(concat!(
+            "ns::Widget::Widget(int value) : value(value) {\n",
+            "    init();\n",
+            "}\n",
+            "ns::Widget::~Widget() {\n",
+            "    reset();\n",
+            "}\n",
+        ));
+        let constructor = source_function_name("__ct", "__ct__Q22ns6WidgetFi");
+        assert_eq!(constructor, "Widget");
+        let span = function_span(&code, &constructor, &BTreeSet::from([2])).unwrap();
+        assert_eq!(code.line(span.open), 1);
+
+        let destructor = source_function_name("__dt", "__dt__Q22ns6WidgetFv");
+        assert_eq!(destructor, "~Widget");
+        let span = function_span(&code, &destructor, &BTreeSet::from([5])).unwrap();
+        assert_eq!(code.line(span.open), 4);
+
+        assert_eq!(
+            source_function_name("__ct", "__ct__15CSaveGameScreenFv"),
+            "CSaveGameScreen"
+        );
+        assert_eq!(
+            source_function_name("ns::Widget::reset", "reset__Q22ns6WidgetFv"),
+            "reset"
+        );
     }
 
     #[test]
