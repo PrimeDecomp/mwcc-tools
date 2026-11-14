@@ -25,3 +25,6 @@ Regenerate with:
 ```sh
 python tools/wii_layout.py Wii_1_0RC1 build/compilers/Wii/1.0RC1/mwcceppc.exe --write
 ```
+
+`tools/wii_patch_struct_copy.py` writes a copy of RC1 that copies structs as the Prime games' Wii compiler does,
+without RC1's legacy stack layout. Its effect on Echoes is in the plan.

@@ -123,6 +123,46 @@ This phase de-risks the plan before most of the decompilation.
    whose source is trusted (matched on GC, no version code) is a third behaviour. The inliner is a candidate:
    mwcc-debugger.md has RC1 inlining traces with residuals that are still unexplained.
 
+### Results (2026-11-14)
+
+**Where the pragma acts.** `legacy_struct_alignment` is `copts+0xA1` (0x74F2F9). The pragma table's second field
+is the option's offset. RC1 reads the field in 11 places:
+- `CMach_AllocationAlignment`: the alignment of what is allocated, which sets the stack layout. Without the
+  pragma, a small aggregate's alignment is raised to its size, up to 8. With it, the declared alignment is used.
+- `CMach_GetObjectAlignment`, a function that exists only in RC1. For an object that is not a local, the
+  pragma gives the declared alignment, and no pragma gives `CMach_AllocationAlignment`. Locals always go through
+  `CMach_AllocationAlignment`.
+- The copy-width sites, three in `gen_COND`, two in `gen_ASS` and two in `Intrinsics`. Each one is
+  `legacy ? CMach_GetQualifiedTypeAlign(type, 0) : CMach_AllocationAlignment(type, 0)`.
+- `CMach_SetBackEndOptions` and `CMach_GetBackEndOptions`, which only save and restore the field.
+
+3.0a5.2 has no such field. The byte its `CMach_AllocationAlignment` tests (0x70F231, `copts+0x249`) is
+`optimizesize`. Its other readers (the inliner, loop transformations, spill costs, `StructMoves`) are the ones
+`optimizesize` has in 2.7's sources. So 3.0a5.2 allocates like RC1 without the pragma, and its byte copies come
+from a different operand-alignment rule. That rule is the part to decompile.
+
+**The patch** (`gc2/tools/wii_patch_struct_copy.py`): the seven copy-width sites and `GetObjectAlignment`'s
+non-local path take the legacy branch, and `CMach_AllocationAlignment` does not.
+
+Echoes R3ME01 at `origin/main` 8deb345f5, stock RC1 against patched RC1:
+- 12,866 → 12,892 of 18,016 functions exact: 32 gained, 6 lost; 89 improved, 22 regressed.
+- The suite: `SetTevRegisterColor`, `SetCopyClear`, `SetChanMatColor`, `SetChanAmbColor` and
+  `SetupCGraphicsStates` become exact. `SetClearColor` and `DrawUnsortedGeometry` stay exact, so the stack layout
+  is unchanged. Units: CHintManager 70.3 → 96.7%, CStateMachine 82.4 → 99.7%, CRasterFont 82.3 → 97.3%, CPakFile
+  76.9 → 88.2%.
+- The 6 lost functions are `CScriptColorModulate::SetTargetFlags`, `CScriptDoor::SetShieldAlpha`,
+  `CPortalTransition::Update`, `CCinematicCamera::Think`, `CGrenchlerTail::PreRender` and `CPlayer::PreRender`.
+  The three examined copy a 4-byte colour from a **stack temporary** (`CModelFlags`' colour, a colour in
+  `CPortalTransition`). The target copies it as one word, and the patch copies it byte by byte. This is the rule
+  Echoes described: a source the compiler knows is aligned (a stack slot) is copied by words.
+  The copy sites decide by the type alone, so the next step is to make them also use the source object's
+  alignment where it is a local, as `CMach_GetObjectAlignment` does. 3.0a5.2's copy lowering is the reference for that.
+
+**The destroy pretest.** GC 3.0a5.2, 3.0a5 and 3.0a3 keep the `if (begin != end)` check in the calling case, like
+RC1. So no edge version drops it. Either the original compiler changed this itself, or the source has no check
+where the body calls. Echoes' rstl already has an unguarded range-destruction policy
+(`RSTL_DECLARE_UNGUARDED_RANGE_DESTRUCTION`), and that possibility should be ruled out first.
+
 ## Phase 3: decompile both edge versions
 
 The long-term goal, done like the 2.x versions in gc2:
