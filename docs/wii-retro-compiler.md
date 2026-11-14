@@ -152,11 +152,33 @@ Echoes R3ME01 at `origin/main` 8deb345f5, stock RC1 against patched RC1:
   76.9 → 88.2%.
 - The 6 lost functions are `CScriptColorModulate::SetTargetFlags`, `CScriptDoor::SetShieldAlpha`,
   `CPortalTransition::Update`, `CCinematicCamera::Think`, `CGrenchlerTail::PreRender` and `CPlayer::PreRender`.
-  The three examined copy a 4-byte colour from a **stack temporary** (`CModelFlags`' colour, a colour in
-  `CPortalTransition`). The target copies it as one word, and the patch copies it byte by byte. This is the rule
-  Echoes described: a source the compiler knows is aligned (a stack slot) is copied by words.
-  The copy sites decide by the type alone, so the next step is to make them also use the source object's
-  alignment where it is a local, as `CMach_GetObjectAlignment` does. 3.0a5.2's copy lowering is the reference for that.
+  All six copy `CModelFlags`. The target copies its first 4 bytes as one word, and the patch copies them byte by
+  byte. These 4 bytes are a field Echoes has not identified, declared `uchar x0_[4]`.
+
+**The patch is 3.0a5.2's rule, and the 6 losses come from the source.**
+- 3.0a5.2's `gen_ASS` has RC1's shape: each operand's alignment, then the smaller of the two. An operand with no
+  object gets `CMach_GetTypeAlign(type, 0)` (the declared alignment). An object gets a function that is, instruction
+  for instruction, RC1's `CMach_GetObjectAlignment` under the pragma. So the patch reproduces 3.0a5.2's operand
+  alignment.
+- Compiled by 3.0a5.2 itself, `CPortalTransition` and `CScriptColorModulate` byte-copy where the patch does, and
+  `CDamageVulnerability::Initialize` copies like the target.
+- Two variants that give up the declared alignment for one operand do worse:
+  - the destination: 12,889 exact, 1 lost;
+  - the source: 12,879 exact, 6 lost.
+
+  Pointer-path functions that the first patch matches stop matching (`CDamageVulnerability::Initialize`,
+  `CSortedListManager`, CPakFile's sorts).
+- With `x0_` declared word-aligned as `union { uchar x0_[4]; uint x0w_; };`, the patch matches all six functions,
+  and no function is lost: **12,866 → 12,898 exact, 32 gained, 0 lost**. With the stock compiler the header change
+  alone changes nothing (12,866 either way, the same functions).
+  - A plain `uint` or `int` breaks `CPortalTransition::Update`'s stack layout, under stock RC1 too.
+  - A `float` breaks three of the four.
+  - `uchar x0_[4] __attribute__((aligned(4)))` breaks three of the four.
+  - A 4-aligned struct of 4 bytes works like the union.
+
+So the copy rule of the Prime games' Wii compiler is GC 3.x's: RC1 under `legacy_struct_alignment` for operand
+alignment, and RC1 without it for allocation. This is the first behaviour of `Wii_Retro`. The rstl header change
+belongs in Echoes' rstl, with the patched compiler.
 
 **The destroy pretest.** GC 3.0a5.2, 3.0a5 and 3.0a3 keep the `if (begin != end)` check in the calling case, like
 RC1. So no edge version drops it. Either the original compiler changed this itself, or the source has no check
