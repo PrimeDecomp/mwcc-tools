@@ -14,6 +14,9 @@ What the engine work and the source-guided tools leave open. The tools themselve
 
 Kit releases (MCP doc edits, bundles) happen outside this repository.
 
+The compiler of the Prime games' Wii builds, between GC 3.0a5.2 and Wii 1.0RC1, is planned in
+[wii-retro-compiler.md](wii-retro-compiler.md).
+
 ### What mwdec uses
 
 demwcc-echoes (mwdec) depends on four crates by path (`../mwcc/crates/...`). Changing these APIs breaks it:
