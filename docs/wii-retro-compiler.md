@@ -179,6 +179,7 @@ Echoes R3ME01 at `origin/main` 8deb345f5, stock RC1 against patched RC1:
 So the copy rule of the Prime games' Wii compiler is GC 3.x's: RC1 under `legacy_struct_alignment` for operand
 alignment, and RC1 without it for allocation. This is the first behaviour of `Wii_Retro`. The rstl header change
 belongs in Echoes' rstl, with the patched compiler.
+Moving Echoes to the patched compiler: [wii-retro-echoes.md](wii-retro-echoes.md).
 
 **The destroy pretest.** GC 3.0a5.2, 3.0a5 and 3.0a3 keep the `if (begin != end)` check in the calling case, like
 RC1. So no edge version drops it. Either the original compiler changed this itself, or the source has no check
