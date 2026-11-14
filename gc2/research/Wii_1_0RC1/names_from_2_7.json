@@ -1,0 +1,198 @@
+{
+ "0x004036b0": {
+  "name": "_strnicmp",
+  "how": "propagated"
+ },
+ "0x004073b0": {
+  "name": "__pformatter",
+  "how": "propagated"
+ },
+ "0x00408400": {
+  "name": "RegisterStaticCmdLinePlugin",
+  "how": "propagated"
+ },
+ "0x00408410": {
+  "name": "RegisterCmdLineResources",
+  "how": "exact"
+ },
+ "0x00408520": {
+  "name": "special_stdout_base",
+  "how": "via 3.0a5.2: rc1 exact, chain exact"
+ },
+ "0x00408540": {
+  "name": "special_license_file",
+  "how": "via 3.0a5.2: rc1 exact, chain exact"
+ },
+ "0x00408e40": {
+  "name": "Main_ParseCommandLine",
+  "how": "propagated"
+ },
+ "0x0040a0e0": {
+  "name": "SetupCmdLinePrefPanels",
+  "how": "propagated"
+ },
+ "0x0040a180": {
+  "name": "Main_SetupContext",
+  "how": "propagated"
+ },
+ "0x00412520": {
+  "name": "NewResourceMap",
+  "how": "via 3.0a5.2: rc1 exact, chain exact"
+ },
+ "0x00412570": {
+  "name": "NewTypeListEntry",
+  "how": "via 3.0a5.2: rc1 exact, chain exact"
+ },
+ "0x004125c0": {
+  "name": "NewRefListEntry",
+  "how": "via 3.0a5.2: rc1 exact, chain exact"
+ },
+ "0x00412690": {
+  "name": "FindResourceMap",
+  "how": "via 3.0a5.2: rc1 exact, chain exact"
+ },
+ "0x004126c0": {
+  "name": "FindResourceMap2",
+  "how": "via 3.0a5.2: rc1 exact, chain exact"
+ },
+ "0x00412700": {
+  "name": "DeleteResources",
+  "how": "via 3.0a5.2: rc1 exact, chain exact"
+ },
+ "0x004127b0": {
+  "name": "ReadResourceFork",
+  "how": "propagated"
+ },
+ "0x00413330": {
+  "name": "GetResourceTypesCount",
+  "how": "via 3.0a5.2: rc1 exact, chain exact"
+ },
+ "0x00413350": {
+  "name": "GetResourceEntriesCount",
+  "how": "via 3.0a5.2: rc1 exact, chain exact"
+ },
+ "0x00414950": {
+  "name": "CLGetErrorString",
+  "how": "propagated"
+ },
+ "0x00414980": {
+  "name": "CLMessageReporter",
+  "how": "propagated"
+ },
+ "0x00414d00": {
+  "name": "GetToolVersionInfo",
+  "how": "propagated"
+ },
+ "0x004157d0": {
+  "name": "CL_MatchesExtMapping",
+  "how": "via 3.0a5.2: rc1 exact, chain exact"
+ },
+ "0x00415da0": {
+  "name": "VerifyPanels",
+  "how": "propagated"
+ },
+ "0x00418130": {
+  "name": "SetupConsoleInfo",
+  "how": "propagated"
+ },
+ "0x00418830": {
+  "name": "StartLine",
+  "how": "exact"
+ },
+ "0x00418860": {
+  "name": "appendText",
+  "how": "propagated"
+ },
+ "0x00418900": {
+  "name": "WrapText",
+  "how": "via 3.0a5.2: rc1 exact, chain exact"
+ },
+ "0x00418a20": {
+  "name": "newLine",
+  "how": "exact"
+ },
+ "0x00418a50": {
+  "name": "appendChar",
+  "how": "propagated"
+ },
+ "0x00418ac0": {
+  "name": "IO_VFormatText",
+  "how": "via 3.0a5.2: rc1 exact, chain exact"
+ },
+ "0x00418f80": {
+  "name": "CLIO_GetFileInfo",
+  "how": "via 3.0a5.2: rc1 exact, chain exact"
+ },
+ "0x004190b0": {
+  "name": "Arrows",
+  "how": "via 3.0a5.2: rc1 exact, chain exact"
+ },
+ "0x00419130": {
+  "name": "IsLikelyAnImporter",
+  "how": "via 3.0a5.2: rc1 exact, chain exact"
+ },
+ "0x004191a0": {
+  "name": "GuessTool",
+  "how": "via 3.0a5.2: rc1 exact, chain exact"
+ },
+ "0x00419250": {
+  "name": "GuessDoing",
+  "how": "via 3.0a5.2: rc1 exact, chain exact"
+ },
+ "0x004192a0": {
+  "name": "styledMessage_MPW",
+  "how": "propagated"
+ },
+ "0x004196c0": {
+  "name": "styledMessage_Terse",
+  "how": "propagated"
+ },
+ "0x00419930": {
+  "name": "styledMessage_Default",
+  "how": "propagated"
+ },
+ "0x00419a30": {
+  "name": "styledMessage_IDE",
+  "how": "via 3.0a5.2: rc1 exact, chain exact"
+ },
+ "0x00419b30": {
+  "name": "styledMessage_Parseable",
+  "how": "via 3.0a5.2: rc1 exact, chain exact"
+ },
+ "0x00419e70": {
+  "name": "FixupMessageRef",
+  "how": "via 3.0a5.2: rc1 exact, chain exact"
+ },
+ "0x0041a3c8": {
+  "name": "SetupOptions",
+  "how": "exact"
+ },
+ "0x00425700": {
+  "name": "CallPlugin",
+  "how": "propagated"
+ },
+ "0x00425720": {
+  "name": "SetupPluginContext",
+  "how": "propagated"
+ },
+ "0x00430a9b": {
+  "name": "Option_PushList",
+  "how": "exact"
+ },
+ "0x00431004": {
+  "name": "Options_AddOption",
+  "how": "propagated"
+ },
+ "0x0043fcd4": {
+  "name": "Param_PushParam",
+  "how": "exact"
+ },
+ "0x0046f200": {
+  "name": "MoreHeapSpace",
+  "how": "via 3.0a5.2: rc1 propagated, chain exact"
+ },
+ "0x0049d660": {
+  "name": "time_g_clear_tm",
+  "how": "exact"
+ }
+}

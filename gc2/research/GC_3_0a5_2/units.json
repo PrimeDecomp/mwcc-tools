@@ -1,0 +1,3062 @@
+{
+ "modules": [
+  {
+   "module": "maincrt",
+   "unit": "src/runtime/maincrt.c"
+  },
+  {
+   "module": "excrtl",
+   "unit": "wii/excrtl"
+  },
+  {
+   "module": "exchand",
+   "unit": "src/runtime/exchand.cpp"
+  },
+  {
+   "module": "ExceptionX86",
+   "unit": "src/runtime/ExceptionX86.cpp"
+  },
+  {
+   "module": "startup.win32",
+   "unit": "wii/startup.win32"
+  },
+  {
+   "module": "abort_exit_win32",
+   "unit": "wii/abort_exit_win32"
+  },
+  {
+   "module": "setupargs",
+   "unit": "src/runtime/setupargs.c"
+  },
+  {
+   "module": "sysenv.win32",
+   "unit": "wii/sysenv.win32"
+  },
+  {
+   "module": "runinit",
+   "unit": "src/runtime/runinit.c"
+  },
+  {
+   "module": "CLStaticMain",
+   "unit": "src/driver/CLStaticMain.c"
+  },
+  {
+   "module": "NMWException",
+   "unit": "src/runtime/NMWException.cpp"
+  },
+  {
+   "module": "ThreadLocalData",
+   "unit": "src/msl/ThreadLocalData.c"
+  },
+  {
+   "module": "string",
+   "unit": "src/msl/string.c"
+  },
+  {
+   "module": "KERNEL32",
+   "unit": "wii/KERNEL32"
+  },
+  {
+   "module": "mem",
+   "unit": "src/msl/mem.c"
+  },
+  {
+   "module": "onetimeinit",
+   "unit": "wii/onetimeinit"
+  },
+  {
+   "module": "setjmp.x86",
+   "unit": "wii/setjmp.x86"
+  },
+  {
+   "module": "delop",
+   "unit": "src/runtime/delop.cpp"
+  },
+  {
+   "module": "destroy",
+   "unit": "wii/destroy"
+  },
+  {
+   "module": "alloc",
+   "unit": "wii/alloc"
+  },
+  {
+   "module": "ansi_files",
+   "unit": "src/msl/ansi_files.c"
+  },
+  {
+   "module": "globdest",
+   "unit": "src/runtime/globdest.c"
+  },
+  {
+   "module": "signal",
+   "unit": "src/msl/signal.c"
+  },
+  {
+   "module": "ClientGlue",
+   "unit": "src/driver/ClientGlue.c"
+  },
+  {
+   "module": "StaticParserGlue",
+   "unit": "src/driver/StaticParserGlue.c"
+  },
+  {
+   "module": "cc-eppc-mw",
+   "unit": "wii/cc-eppc-mw"
+  },
+  {
+   "module": "printf",
+   "unit": "wii/printf"
+  },
+  {
+   "module": "ParserGlue-eppc-cc",
+   "unit": "wii/ParserGlue-eppc-cc"
+  },
+  {
+   "module": "CLMain",
+   "unit": "src/driver/CLMain.c"
+  },
+  {
+   "module": "BuildAgentClientDispatch",
+   "unit": "wii/BuildAgentClientDispatch"
+  },
+  {
+   "module": "locale",
+   "unit": "src/msl/locale.c"
+  },
+  {
+   "module": "delarrop",
+   "unit": "src/runtime/delarrop.cpp"
+  },
+  {
+   "module": "pool_alloc.win32",
+   "unit": "wii/pool_alloc.win32"
+  },
+  {
+   "module": "file_io.win32",
+   "unit": "wii/file_io.win32"
+  },
+  {
+   "module": "buffer_io",
+   "unit": "wii/buffer_io"
+  },
+  {
+   "module": "file_io",
+   "unit": "src/msl/file_io.c"
+  },
+  {
+   "module": "ResourceStrings",
+   "unit": "src/driver/ResourceStrings.c"
+  },
+  {
+   "module": "MsDos",
+   "unit": "src/driver/MsDos.c"
+  },
+  {
+   "module": "Resources",
+   "unit": "src/driver/Resources.c"
+  },
+  {
+   "module": "CLErrors",
+   "unit": "src/driver/CLErrors.c"
+  },
+  {
+   "module": "CLPlugins",
+   "unit": "src/driver/CLPlugins.c"
+  },
+  {
+   "module": "Generic",
+   "unit": "src/driver/Generic.c"
+  },
+  {
+   "module": "CLIO",
+   "unit": "src/driver/CLIO.c"
+  },
+  {
+   "module": "ParserFace",
+   "unit": "src/driver/ParserFace.c"
+  },
+  {
+   "module": "cc-eppc",
+   "unit": "wii/cc-eppc"
+  },
+  {
+   "module": "imp-elf",
+   "unit": "wii/imp-elf"
+  },
+  {
+   "module": "LongLongx86",
+   "unit": "src/runtime/LongLongx86.c"
+  },
+  {
+   "module": "ansifp_x86",
+   "unit": "src/msl/ansifp_x86.c"
+  },
+  {
+   "module": "mbstring",
+   "unit": "src/msl/mbstring.c"
+  },
+  {
+   "module": "direct_io",
+   "unit": "wii/direct_io"
+  },
+  {
+   "module": "wchar_io",
+   "unit": "src/msl/wchar_io.c"
+  },
+  {
+   "module": "ParserHelpers",
+   "unit": "src/driver/ParserHelpers.c"
+  },
+  {
+   "module": "ToolHelpers",
+   "unit": "src/driver/ToolHelpers.c"
+  },
+  {
+   "module": "ParserHelpers-cc",
+   "unit": "src/driver/ParserHelpers-cc.c"
+  },
+  {
+   "module": "ToolHelpers-cc",
+   "unit": "src/driver/ToolHelpers-cc.c"
+  },
+  {
+   "module": "OptimizerHelpers",
+   "unit": "src/driver/OptimizerHelpers.c"
+  },
+  {
+   "module": "WarningHelpers",
+   "unit": "src/driver/WarningHelpers.c"
+  },
+  {
+   "module": "StdTargetWarningHelpers-cc",
+   "unit": "src/driver/StdTargetWarningHelpers-cc.c"
+  },
+  {
+   "module": "IO",
+   "unit": "src/driver/IO.c"
+  },
+  {
+   "module": "Projects",
+   "unit": "src/driver/Projects.c"
+  },
+  {
+   "module": "ParserErrors",
+   "unit": "src/driver/ParserErrors.c"
+  },
+  {
+   "module": "Arguments",
+   "unit": "src/driver/Arguments.c"
+  },
+  {
+   "module": "Targets",
+   "unit": "src/driver/Targets.c"
+  },
+  {
+   "module": "CWPluginsPrivate",
+   "unit": "src/driver/CWPluginsPrivate.cpp"
+  },
+  {
+   "module": "BuildAgentCommon",
+   "unit": "wii/BuildAgentCommon"
+  },
+  {
+   "module": "CLLicenses",
+   "unit": "src/driver/CLLicenses.c"
+  },
+  {
+   "module": "scanf",
+   "unit": "src/msl/scanf.c"
+  },
+  {
+   "module": "BuildAgentClient",
+   "unit": "wii/BuildAgentClient"
+  },
+  {
+   "module": "CLToolExec",
+   "unit": "src/driver/CLToolExec.c"
+  },
+  {
+   "module": "MacSpecs",
+   "unit": "src/driver/MacSpecs.c"
+  },
+  {
+   "module": "StringExtras",
+   "unit": "src/driver/StringExtras.c"
+  },
+  {
+   "module": "CLPluginRequests",
+   "unit": "src/driver/CLPluginRequests.cpp"
+  },
+  {
+   "module": "CLPrefs",
+   "unit": "src/driver/CLPrefs.c"
+  },
+  {
+   "module": "CLProj",
+   "unit": "src/driver/CLProj.c"
+  },
+  {
+   "module": "MemUtils",
+   "unit": "src/driver/MemUtils.c"
+  },
+  {
+   "module": "CLAccessPaths",
+   "unit": "src/driver/CLAccessPaths.c"
+  },
+  {
+   "module": "CLTarg",
+   "unit": "src/driver/CLTarg.c"
+  },
+  {
+   "module": "CLParserCallbacks_v1",
+   "unit": "src/driver/CLParserCallbacks_v1.cpp"
+  },
+  {
+   "module": "CLFileOps",
+   "unit": "src/driver/CLFileOps.c"
+  },
+  {
+   "module": "BuildAgentProtocol",
+   "unit": "wii/BuildAgentProtocol"
+  },
+  {
+   "module": "BuildAgentSocketAPI",
+   "unit": "wii/BuildAgentSocketAPI"
+  },
+  {
+   "module": "ctype",
+   "unit": "src/msl/ctype.c"
+  },
+  {
+   "module": "char_io",
+   "unit": "src/msl/char_io.c"
+  },
+  {
+   "module": "strtoul",
+   "unit": "src/msl/strtoul.c"
+  },
+  {
+   "module": "misc_io",
+   "unit": "src/msl/misc_io.c"
+  },
+  {
+   "module": "file_pos",
+   "unit": "wii/file_pos"
+  },
+  {
+   "module": "Win32Shortcut",
+   "unit": "wii/Win32Shortcut"
+  },
+  {
+   "module": "assert.win32",
+   "unit": "wii/assert.win32"
+  },
+  {
+   "module": "StringUtils",
+   "unit": "src/driver/StringUtils.c"
+  },
+  {
+   "module": "Memory",
+   "unit": "src/driver/Memory.c"
+  },
+  {
+   "module": "Files",
+   "unit": "src/driver/Files.c"
+  },
+  {
+   "module": "TextUtils",
+   "unit": "src/driver/TextUtils.c"
+  },
+  {
+   "module": "stackall",
+   "unit": "src/runtime/stackall.c"
+  },
+  {
+   "module": "VERSION",
+   "unit": "wii/VERSION"
+  },
+  {
+   "module": "MacFileTypes",
+   "unit": "src/driver/MacFileTypes.c"
+  },
+  {
+   "module": "signal.win32",
+   "unit": "wii/signal.win32"
+  },
+  {
+   "module": "FileHandles",
+   "unit": "src/driver/FileHandles.c"
+  },
+  {
+   "module": "CWSecretPluginCallbacks",
+   "unit": "src/driver/CWSecretPluginCallbacks.cpp"
+  },
+  {
+   "module": "CWParserPluginsPrivate",
+   "unit": "src/driver/CWParserPluginsPrivate.cpp"
+  },
+  {
+   "module": "Option",
+   "unit": "src/driver/Option.c"
+  },
+  {
+   "module": "CompIDECallbacks",
+   "unit": "wii/CompIDECallbacks"
+  },
+  {
+   "module": "CCompiler",
+   "unit": "src/driver/CCompiler.c"
+  },
+  {
+   "module": "ELF_Lib_Import",
+   "unit": "src/driver/ELF_Lib_Import.c"
+  },
+  {
+   "module": "CLPluginAPI",
+   "unit": "wii/CLPluginAPI"
+  },
+  {
+   "module": "Utils",
+   "unit": "src/driver/Utils.c"
+  },
+  {
+   "module": "TargetOptimizerHelpers-eppc",
+   "unit": "wii/TargetOptimizerHelpers-eppc"
+  },
+  {
+   "module": "LMGR8C",
+   "unit": "wii/LMGR8C"
+  },
+  {
+   "module": "strtold",
+   "unit": "src/msl/strtold.c"
+  },
+  {
+   "module": "CLFiles",
+   "unit": "src/driver/CLFiles.c"
+  },
+  {
+   "module": "CLOverlays",
+   "unit": "src/driver/CLOverlays.c"
+  },
+  {
+   "module": "CLDropinCallbacks_V10",
+   "unit": "src/driver/CLDropinCallbacks_V10.cpp"
+  },
+  {
+   "module": "CLCompilerLinkerDropin_V10",
+   "unit": "src/driver/CLCompilerLinkerDropin_V10.cpp"
+  },
+  {
+   "module": "CLSegs",
+   "unit": "src/driver/CLSegs.c"
+  },
+  {
+   "module": "CLDependencies",
+   "unit": "src/driver/CLDependencies.c"
+  },
+  {
+   "module": "CLWriteObjectFile",
+   "unit": "src/driver/CLWriteObjectFile.c"
+  },
+  {
+   "module": "CLBrowser",
+   "unit": "src/driver/CLBrowser.c"
+  },
+  {
+   "module": "CLIncludeFileCache",
+   "unit": "src/driver/CLIncludeFileCache.c"
+  },
+  {
+   "module": "WS2_32",
+   "unit": "wii/WS2_32"
+  },
+  {
+   "module": "Parameter",
+   "unit": "src/driver/Parameter.c"
+  },
+  {
+   "module": "Help",
+   "unit": "src/driver/Help.c"
+  },
+  {
+   "module": "CPrep",
+   "unit": "src/frontend/CPrep.c"
+  },
+  {
+   "module": "CodeGenOptPPC",
+   "unit": "src/driver/CodeGenOptPPC.c"
+  },
+  {
+   "module": "CPreprocessor",
+   "unit": "wii/CPreprocessor"
+  },
+  {
+   "module": "COSToolsWin32",
+   "unit": "wii/COSToolsWin32"
+  },
+  {
+   "module": "CParser",
+   "unit": "src/frontend/CParser.c"
+  },
+  {
+   "module": "CTemplateTools",
+   "unit": "src/frontend/CTemplateTools.c"
+  },
+  {
+   "module": "DropInCompilerLinkerPrivate",
+   "unit": "src/driver/DropInCompilerLinkerPrivate.cpp"
+  },
+  {
+   "module": "MsgUtils",
+   "unit": "wii/MsgUtils"
+  },
+  {
+   "module": "CError",
+   "unit": "src/frontend/CError.c"
+  },
+  {
+   "module": "CodeGen",
+   "unit": "src/backend/CodeGen.c"
+  },
+  {
+   "module": "CompilerTools",
+   "unit": "src/frontend/CompilerTools.c"
+  },
+  {
+   "module": "CPrec",
+   "unit": "src/frontend/CPrec.c"
+  },
+  {
+   "module": "CMiddleLayer",
+   "unit": "wii/CMiddleLayer"
+  },
+  {
+   "module": "CPrepScanner",
+   "unit": "wii/CPrepScanner"
+  },
+  {
+   "module": "LinkErrorsPPC_EABI",
+   "unit": "src/driver/LinkErrorsPPC_EABI.c"
+  },
+  {
+   "module": "EPPC_LinkUtilities",
+   "unit": "wii/EPPC_LinkUtilities"
+  },
+  {
+   "module": "DateTimeUtils",
+   "unit": "src/driver/DateTimeUtils.c"
+  },
+  {
+   "module": "ELF_Endian",
+   "unit": "src/backend/ELF_Endian.c"
+  },
+  {
+   "module": "CLLoadAndCache",
+   "unit": "src/driver/CLLoadAndCache.c"
+  },
+  {
+   "module": "time",
+   "unit": "wii/time"
+  },
+  {
+   "module": "CLibrary",
+   "unit": "wii/CLibrary"
+  },
+  {
+   "module": "CException",
+   "unit": "src/frontend/CException.c"
+  },
+  {
+   "module": "IroLibrary",
+   "unit": "wii/IroLibrary"
+  },
+  {
+   "module": "IroPointerAnalysis",
+   "unit": "src/optimizer/IroPointerAnalysis.c"
+  },
+  {
+   "module": "cobraPragmas",
+   "unit": "wii/cobraPragmas"
+  },
+  {
+   "module": "PCodeStats",
+   "unit": "wii/PCodeStats"
+  },
+  {
+   "module": "CIRStreamCallGraph",
+   "unit": "wii/CIRStreamCallGraph"
+  },
+  {
+   "module": "FuncLevelAsmPPC",
+   "unit": "src/backend/FuncLevelAsmPPC.c"
+  },
+  {
+   "module": "ObjGen_PPC_EABI",
+   "unit": "src/backend/ObjGen_PPC_EABI.c"
+  },
+  {
+   "module": "IroMalloc",
+   "unit": "src/optimizer/IroMalloc.c"
+  },
+  {
+   "module": "CBrowse",
+   "unit": "src/frontend/CBrowse.c"
+  },
+  {
+   "module": "CPrepLexer",
+   "unit": "wii/CPrepLexer"
+  },
+  {
+   "module": "CPreprocess",
+   "unit": "src/frontend/CPreprocess.c"
+  },
+  {
+   "module": "CInt64",
+   "unit": "src/frontend/CInt64.c"
+  },
+  {
+   "module": "CodeGen_RegisterTokens",
+   "unit": "wii/CodeGen_RegisterTokens"
+  },
+  {
+   "module": "DWARF",
+   "unit": "src/backend/DWARF.c"
+  },
+  {
+   "module": "EPPC_DWARF2",
+   "unit": "wii/EPPC_DWARF2"
+  },
+  {
+   "module": "CMachine",
+   "unit": "src/backend/CMachine.c"
+  },
+  {
+   "module": "CScope",
+   "unit": "src/frontend/CScope.c"
+  },
+  {
+   "module": "DumpUtils",
+   "unit": "wii/DumpUtils"
+  },
+  {
+   "module": "CTemplateNew",
+   "unit": "src/frontend/CTemplateNew.c"
+  },
+  {
+   "module": "ProductLicensing",
+   "unit": "wii/ProductLicensing"
+  },
+  {
+   "module": "InstrSelection",
+   "unit": "src/backend/InstrSelection.c"
+  },
+  {
+   "module": "CIRStream",
+   "unit": "wii/CIRStream"
+  },
+  {
+   "module": "CDecl",
+   "unit": "src/frontend/CDecl.c"
+  },
+  {
+   "module": "CExpr",
+   "unit": "src/frontend/CExpr.c"
+  },
+  {
+   "module": "CExprGen",
+   "unit": "wii/CExprGen"
+  },
+  {
+   "module": "CFunc",
+   "unit": "src/frontend/CFunc.c"
+  },
+  {
+   "module": "CInit",
+   "unit": "src/frontend/CInit.c"
+  },
+  {
+   "module": "CClass",
+   "unit": "src/frontend/CClass.c"
+  },
+  {
+   "module": "CMemberPointer",
+   "unit": "wii/CMemberPointer"
+  },
+  {
+   "module": "CTypeTools",
+   "unit": "wii/CTypeTools"
+  },
+  {
+   "module": "CInline",
+   "unit": "src/frontend/CInline.c"
+  },
+  {
+   "module": "CABI",
+   "unit": "src/frontend/CABI.c"
+  },
+  {
+   "module": "BE_elf",
+   "unit": "src/backend/BE_elf.c"
+  },
+  {
+   "module": "CMangler",
+   "unit": "src/frontend/CMangler.c"
+  },
+  {
+   "module": "qsort",
+   "unit": "wii/qsort"
+  },
+  {
+   "module": "CIRTransform",
+   "unit": "src/optimizer/CIRTransform.c"
+  },
+  {
+   "module": "CExprTools",
+   "unit": "wii/CExprTools"
+  },
+  {
+   "module": "InlineAsm",
+   "unit": "src/backend/InlineAsm.c"
+  },
+  {
+   "module": "Unmangle",
+   "unit": "src/frontend/Unmangle.c"
+  },
+  {
+   "module": "Intrinsics",
+   "unit": "src/backend/Intrinsics.c"
+  },
+  {
+   "module": "IroSubable",
+   "unit": "src/optimizer/IroSubable.c"
+  },
+  {
+   "module": "Exceptions",
+   "unit": "src/backend/Exceptions.c"
+  },
+  {
+   "module": "PPCError",
+   "unit": "src/backend/PPCError.c"
+  },
+  {
+   "module": "InlineAsmMnemonicsPPC",
+   "unit": "src/backend/InlineAsmMnemonicsPPC.c"
+  },
+  {
+   "module": "InlineAsmPPC",
+   "unit": "src/backend/InlineAsmPPC.c"
+  },
+  {
+   "module": "IrOptimizer",
+   "unit": "src/optimizer/IrOptimizer.c"
+  },
+  {
+   "module": "RegisterInfo",
+   "unit": "src/backend/RegisterInfo.c"
+  },
+  {
+   "module": "SFPE_PPC_EABI",
+   "unit": "src/backend/SFPE_PPC_EABI.c"
+  },
+  {
+   "module": "TOC",
+   "unit": "src/backend/TOC.c"
+  },
+  {
+   "module": "PCode",
+   "unit": "src/backend/PCode.c"
+  },
+  {
+   "module": "PCodeAssembly",
+   "unit": "src/backend/PCodeAssembly.c"
+  },
+  {
+   "module": "StackFrame",
+   "unit": "src/backend/StackFrame.c"
+  },
+  {
+   "module": "PCodeInfo",
+   "unit": "src/backend/PCodeInfo.c"
+  },
+  {
+   "module": "Switch",
+   "unit": "src/backend/Switch.c"
+  },
+  {
+   "module": "Operands",
+   "unit": "src/backend/Operands.c"
+  },
+  {
+   "module": "EnodeInfoHandler",
+   "unit": "wii/EnodeInfoHandler"
+  },
+  {
+   "module": "COptimizer",
+   "unit": "src/optimizer/COptimizer.c"
+  },
+  {
+   "module": "Registers",
+   "unit": "src/backend/Registers.c"
+  },
+  {
+   "module": "DumpIR",
+   "unit": "src/backend/DumpIR.c"
+  },
+  {
+   "module": "PCodeUtilities",
+   "unit": "src/backend/PCodeUtilities.c"
+  },
+  {
+   "module": "GlobalOptimizer",
+   "unit": "src/optimizer/GlobalOptimizer.c"
+  },
+  {
+   "module": "Peephole",
+   "unit": "src/backend/Peephole.c"
+  },
+  {
+   "module": "DeadCodeElimination",
+   "unit": "wii/DeadCodeElimination"
+  },
+  {
+   "module": "Coloring",
+   "unit": "src/backend/Coloring.c"
+  },
+  {
+   "module": "LocalCSE",
+   "unit": "wii/LocalCSE"
+  },
+  {
+   "module": "Scheduler",
+   "unit": "src/backend/Scheduler.c"
+  },
+  {
+   "module": "PeepholeForward",
+   "unit": "wii/PeepholeForward"
+  },
+  {
+   "module": "StructMoves",
+   "unit": "src/optimizer/StructMoves.c"
+  },
+  {
+   "module": "Alias",
+   "unit": "src/optimizer/Alias.c"
+  },
+  {
+   "module": "CCallGraph",
+   "unit": "wii/CCallGraph"
+  },
+  {
+   "module": "CTemplateFuncInst",
+   "unit": "wii/CTemplateFuncInst"
+  },
+  {
+   "module": "GCCInlineAsm",
+   "unit": "src/backend/GCCInlineAsm.c"
+  },
+  {
+   "module": "cpprtl",
+   "unit": "wii/cpprtl"
+  },
+  {
+   "module": "SourceText",
+   "unit": "wii/SourceText"
+  },
+  {
+   "module": "newop",
+   "unit": "src/runtime/newop.cpp"
+  },
+  {
+   "module": "arith",
+   "unit": "src/msl/arith.c"
+  },
+  {
+   "module": "time.win32",
+   "unit": "wii/time.win32"
+  },
+  {
+   "module": "bsearch",
+   "unit": "wii/bsearch"
+  },
+  {
+   "module": "CExpr2",
+   "unit": "src/frontend/CExpr2.c"
+  },
+  {
+   "module": "IroUtil",
+   "unit": "src/optimizer/IroUtil.c"
+  },
+  {
+   "module": "IroVars",
+   "unit": "src/optimizer/IroVars.c"
+  },
+  {
+   "module": "IroType",
+   "unit": "wii/IroType"
+  },
+  {
+   "module": "IroLinearForm",
+   "unit": "src/optimizer/IroLinearForm.c"
+  },
+  {
+   "module": "IroFlowgraph",
+   "unit": "src/optimizer/IroFlowgraph.c"
+  },
+  {
+   "module": "IroBitVect",
+   "unit": "src/optimizer/IroBitVect.c"
+  },
+  {
+   "module": "IroLoop",
+   "unit": "src/optimizer/IroLoop.c"
+  },
+  {
+   "module": "PCodeStatsPPC",
+   "unit": "wii/PCodeStatsPPC"
+  },
+  {
+   "module": "CIRStreamTools",
+   "unit": "wii/CIRStreamTools"
+  },
+  {
+   "module": "CIRStreamType",
+   "unit": "wii/CIRStreamType"
+  },
+  {
+   "module": "InlineAsmRegistersPPC",
+   "unit": "src/backend/InlineAsmRegistersPPC.c"
+  },
+  {
+   "module": "InlineAsmRegisters",
+   "unit": "src/backend/InlineAsmRegisters.c"
+  },
+  {
+   "module": "IroLoopReversal",
+   "unit": "wii/IroLoopReversal"
+  },
+  {
+   "module": "IroLoopVector",
+   "unit": "wii/IroLoopVector"
+  },
+  {
+   "module": "BE_symbol",
+   "unit": "src/backend/BE_symbol.c"
+  },
+  {
+   "module": "DWARF_GlobalRefs",
+   "unit": "wii/DWARF_GlobalRefs"
+  },
+  {
+   "module": "PCodeListing",
+   "unit": "src/backend/PCodeListing.c"
+  },
+  {
+   "module": "ScanFloatX86",
+   "unit": "src/backend/ScanFloatX86.c"
+  },
+  {
+   "module": "CTemplateClass",
+   "unit": "src/frontend/CTemplateClass.c"
+  },
+  {
+   "module": "CTemplateFunc",
+   "unit": "src/frontend/CTemplateFunc.c"
+  },
+  {
+   "module": "CExprConvMatch",
+   "unit": "src/frontend/CExprConvMatch.c"
+  },
+  {
+   "module": "FunctionCalls",
+   "unit": "src/optimizer/FunctionCalls.c"
+  },
+  {
+   "module": "CRTTI",
+   "unit": "src/frontend/CRTTI.c"
+  },
+  {
+   "module": "TranslatorUtils",
+   "unit": "wii/TranslatorUtils"
+  },
+  {
+   "module": "CleanUpIR",
+   "unit": "wii/CleanUpIR"
+  },
+  {
+   "module": "IRFlowgraph",
+   "unit": "wii/IRFlowgraph"
+  },
+  {
+   "module": "cobraError",
+   "unit": "wii/cobraError"
+  },
+  {
+   "module": "IroDump",
+   "unit": "src/optimizer/IroDump.c"
+  },
+  {
+   "module": "IroUnrollLoop",
+   "unit": "src/optimizer/IroUnrollLoop.c"
+  },
+  {
+   "module": "IroPropagate",
+   "unit": "src/optimizer/IroPropagate.c"
+  },
+  {
+   "module": "IroDependsKills",
+   "unit": "wii/IroDependsKills"
+  },
+  {
+   "module": "IroTransform",
+   "unit": "src/optimizer/IroTransform.c"
+  },
+  {
+   "module": "IroExprs",
+   "unit": "wii/IroExprs"
+  },
+  {
+   "module": "IROUseDef",
+   "unit": "src/optimizer/IROUseDef.c"
+  },
+  {
+   "module": "IroJump",
+   "unit": "src/optimizer/IroJump.c"
+  },
+  {
+   "module": "IroExprRegeneration",
+   "unit": "src/optimizer/IroExprRegeneration.c"
+  },
+  {
+   "module": "IroCodePositioning",
+   "unit": "wii/IroCodePositioning"
+  },
+  {
+   "module": "IroSerializeAssignments",
+   "unit": "wii/IroSerializeAssignments"
+  },
+  {
+   "module": "IroAggregateAssignment",
+   "unit": "wii/IroAggregateAssignment"
+  },
+  {
+   "module": "IroEval",
+   "unit": "src/optimizer/IroEval.c"
+  },
+  {
+   "module": "IroEmptyLoop",
+   "unit": "src/optimizer/IroEmptyLoop.c"
+  },
+  {
+   "module": "IroCSE",
+   "unit": "src/optimizer/IroCSE.c"
+  },
+  {
+   "module": "IroScalarization",
+   "unit": "wii/IroScalarization"
+  },
+  {
+   "module": "IroRangePropagation",
+   "unit": "src/optimizer/IroRangePropagation.c"
+  },
+  {
+   "module": "IroLoopInvariants",
+   "unit": "wii/IroLoopInvariants"
+  },
+  {
+   "module": "IroLifetime",
+   "unit": "wii/IroLifetime"
+  },
+  {
+   "module": "InterferenceGraph",
+   "unit": "src/backend/InterferenceGraph.c"
+  },
+  {
+   "module": "Spill",
+   "unit": "wii/Spill"
+  },
+  {
+   "module": "LiveRegisters",
+   "unit": "wii/LiveRegisters"
+  },
+  {
+   "module": "CopyPropagation",
+   "unit": "src/optimizer/CopyPropagation.c"
+  },
+  {
+   "module": "AddPropagation",
+   "unit": "src/optimizer/AddPropagation.c"
+  },
+  {
+   "module": "ConstantPropagation",
+   "unit": "src/optimizer/ConstantPropagation.c"
+  },
+  {
+   "module": "LoopDetection",
+   "unit": "src/optimizer/LoopDetection.c"
+  },
+  {
+   "module": "UseDefChains",
+   "unit": "src/optimizer/UseDefChains.c"
+  },
+  {
+   "module": "CodeMotion",
+   "unit": "src/optimizer/CodeMotion.c"
+  },
+  {
+   "module": "LoopDetectionPPC",
+   "unit": "wii/LoopDetectionPPC"
+  },
+  {
+   "module": "StrengthReduction",
+   "unit": "src/optimizer/StrengthReduction.c"
+  },
+  {
+   "module": "LoopOptimization",
+   "unit": "src/optimizer/LoopOptimization.c"
+  },
+  {
+   "module": "LoadDeletion",
+   "unit": "src/optimizer/LoadDeletion.c"
+  },
+  {
+   "module": "VectorArraysToRegs",
+   "unit": "src/optimizer/VectorArraysToRegs.c"
+  },
+  {
+   "module": "PeepholePatterns",
+   "unit": "wii/PeepholePatterns"
+  },
+  {
+   "module": "MachineSimulationAltiVec",
+   "unit": "src/backend/MachineSimulationAltiVec.c"
+  },
+  {
+   "module": "MachineSimulation7400",
+   "unit": "src/backend/MachineSimulation7400.c"
+  },
+  {
+   "module": "MachineSimulationZen",
+   "unit": "wii/MachineSimulationZen"
+  },
+  {
+   "module": "MachineSimulation821",
+   "unit": "src/backend/MachineSimulation821.c"
+  },
+  {
+   "module": "MachineSimulation750",
+   "unit": "src/backend/MachineSimulation750.c"
+  },
+  {
+   "module": "MachineSimulation603",
+   "unit": "src/backend/MachineSimulation603.c"
+  },
+  {
+   "module": "MachineSimulation603e",
+   "unit": "src/backend/MachineSimulation603e.c"
+  },
+  {
+   "module": "MachineSimulation604",
+   "unit": "src/backend/MachineSimulation604.c"
+  },
+  {
+   "module": "MachineSimulation601",
+   "unit": "src/backend/MachineSimulation601.c"
+  },
+  {
+   "module": "BitVectors",
+   "unit": "src/backend/BitVectors.c"
+  },
+  {
+   "module": "AliasPropagation",
+   "unit": "wii/AliasPropagation"
+  },
+  {
+   "module": "NewHand",
+   "unit": "src/runtime/NewHand.cpp"
+  },
+  {
+   "module": "IroLoopRotation",
+   "unit": "wii/IroLoopRotation"
+  },
+  {
+   "module": "IroCounterLoop",
+   "unit": "wii/IroCounterLoop"
+  },
+  {
+   "module": "IroNonRegLoopAccesses",
+   "unit": "wii/IroNonRegLoopAccesses"
+  },
+  {
+   "module": "IroStrengthReduction",
+   "unit": "wii/IroStrengthReduction"
+  },
+  {
+   "module": "IroDependenceAnalysis",
+   "unit": "wii/IroDependenceAnalysis"
+  },
+  {
+   "module": "Propagation",
+   "unit": "wii/Propagation"
+  },
+  {
+   "module": "CodeMotionPPC",
+   "unit": "wii/CodeMotionPPC"
+  },
+  {
+   "module": "AliasPropagationPPC",
+   "unit": "wii/AliasPropagationPPC"
+  }
+ ],
+ "scattered": [
+  {
+   "module": "maincrt",
+   "section": ".text",
+   "start": "0x00401000",
+   "end": "0x004010d4"
+  },
+  {
+   "module": "excrtl",
+   "section": ".text",
+   "start": "0x004010e0",
+   "end": "0x00401481"
+  },
+  {
+   "module": "exchand",
+   "section": ".text",
+   "start": "0x00401490",
+   "end": "0x0040150d"
+  },
+  {
+   "module": "ExceptionX86",
+   "section": ".text",
+   "start": "0x00401510",
+   "end": "0x00402991"
+  },
+  {
+   "module": "startup.win32",
+   "section": ".text",
+   "start": "0x004029a0",
+   "end": "0x00402e14"
+  },
+  {
+   "module": "abort_exit_win32",
+   "section": ".text",
+   "start": "0x00402e20",
+   "end": "0x00402eb9"
+  },
+  {
+   "module": "setupargs",
+   "section": ".text",
+   "start": "0x00402ec0",
+   "end": "0x004034a0"
+  },
+  {
+   "module": "sysenv.win32",
+   "section": ".text",
+   "start": "0x004034a0",
+   "end": "0x004038ed"
+  },
+  {
+   "module": "runinit",
+   "section": ".text",
+   "start": "0x004038f0",
+   "end": "0x0040398b"
+  },
+  {
+   "module": "CLStaticMain",
+   "section": ".text",
+   "start": "0x00403990",
+   "end": "0x00403ada"
+  },
+  {
+   "module": "NMWException",
+   "section": ".text",
+   "start": "0x00403b00",
+   "end": "0x00403cd9"
+  },
+  {
+   "module": "ThreadLocalData",
+   "section": ".text",
+   "start": "0x00403ce0",
+   "end": "0x00404041"
+  },
+  {
+   "module": "string",
+   "section": ".text",
+   "start": "0x00404050",
+   "end": "0x004047ba"
+  },
+  {
+   "module": "KERNEL32",
+   "section": ".text",
+   "start": "0x004047ba",
+   "end": "0x004047c0"
+  },
+  {
+   "module": "mem",
+   "section": ".text",
+   "start": "0x004047c0",
+   "end": "0x0040490d"
+  },
+  {
+   "module": "onetimeinit",
+   "section": ".text",
+   "start": "0x00404910",
+   "end": "0x0040491f"
+  },
+  {
+   "module": "setjmp.x86",
+   "section": ".text",
+   "start": "0x00404920",
+   "end": "0x0040495f"
+  },
+  {
+   "module": "delop",
+   "section": ".text",
+   "start": "0x00404960",
+   "end": "0x00404970"
+  },
+  {
+   "module": "destroy",
+   "section": ".text",
+   "start": "0x00404970",
+   "end": "0x004049cb"
+  },
+  {
+   "module": "alloc",
+   "section": ".text",
+   "start": "0x004049d0",
+   "end": "0x004058ad"
+  },
+  {
+   "module": "ansi_files",
+   "section": ".text",
+   "start": "0x004058b0",
+   "end": "0x00405aeb"
+  },
+  {
+   "module": "globdest",
+   "section": ".text",
+   "start": "0x00405af0",
+   "end": "0x00405b90"
+  },
+  {
+   "module": "signal",
+   "section": ".text",
+   "start": "0x00405b90",
+   "end": "0x00405c07"
+  },
+  {
+   "module": "ClientGlue",
+   "section": ".text",
+   "start": "0x00405c10",
+   "end": "0x00405e3d"
+  },
+  {
+   "module": "StaticParserGlue",
+   "section": ".text",
+   "start": "0x00405e3d",
+   "end": "0x00405e62"
+  },
+  {
+   "module": "cc-eppc-mw",
+   "section": ".text",
+   "start": "0x00405e70",
+   "end": "0x00405f00"
+  },
+  {
+   "module": "printf",
+   "section": ".text",
+   "start": "0x00405f00",
+   "end": "0x0040802d"
+  },
+  {
+   "module": "ParserGlue-eppc-cc",
+   "section": ".text",
+   "start": "0x00408030",
+   "end": "0x004082fc"
+  },
+  {
+   "module": "CLMain",
+   "section": ".text",
+   "start": "0x00408300",
+   "end": "0x0040a59b"
+  },
+  {
+   "module": "BuildAgentClientDispatch",
+   "section": ".text",
+   "start": "0x0040a5a0",
+   "end": "0x0040b610"
+  },
+  {
+   "module": "locale",
+   "section": ".text",
+   "start": "0x0040b610",
+   "end": "0x0040e678"
+  },
+  {
+   "module": "delarrop",
+   "section": ".text",
+   "start": "0x0040e680",
+   "end": "0x0040e690"
+  },
+  {
+   "module": "pool_alloc.win32",
+   "section": ".text",
+   "start": "0x0040e690",
+   "end": "0x0040e6e7"
+  },
+  {
+   "module": "file_io.win32",
+   "section": ".text",
+   "start": "0x0040e6f0",
+   "end": "0x0040eed8"
+  },
+  {
+   "module": "buffer_io",
+   "section": ".text",
+   "start": "0x0040eee0",
+   "end": "0x0040f1e3"
+  },
+  {
+   "module": "file_io",
+   "section": ".text",
+   "start": "0x0040f1f0",
+   "end": "0x0040f6d9"
+  },
+  {
+   "module": "ResourceStrings",
+   "section": ".text",
+   "start": "0x0040f6e0",
+   "end": "0x0040f877"
+  },
+  {
+   "module": "MsDos",
+   "section": ".text",
+   "start": "0x0040f880",
+   "end": "0x00412459"
+  },
+  {
+   "module": "Resources",
+   "section": ".text",
+   "start": "0x00412460",
+   "end": "0x0041494f"
+  },
+  {
+   "module": "CLErrors",
+   "section": ".text",
+   "start": "0x00414950",
+   "end": "0x00414cf7"
+  },
+  {
+   "module": "CLPlugins",
+   "section": ".text",
+   "start": "0x00414d00",
+   "end": "0x0041724c"
+  },
+  {
+   "module": "Generic",
+   "section": ".text",
+   "start": "0x00417250",
+   "end": "0x004180d2"
+  },
+  {
+   "module": "CLIO",
+   "section": ".text",
+   "start": "0x004180e0",
+   "end": "0x0041a2a9"
+  },
+  {
+   "module": "ParserFace",
+   "section": ".text",
+   "start": "0x0041a2a9",
+   "end": "0x0041a9a4"
+  },
+  {
+   "module": "cc-eppc",
+   "section": ".text",
+   "start": "0x0041a9b0",
+   "end": "0x0041ab1c"
+  },
+  {
+   "module": "imp-elf",
+   "section": ".text",
+   "start": "0x0041ab20",
+   "end": "0x0041abf6"
+  },
+  {
+   "module": "LongLongx86",
+   "section": ".text",
+   "start": "0x0041ac00",
+   "end": "0x0041aced"
+  },
+  {
+   "module": "ansifp_x86",
+   "section": ".text",
+   "start": "0x0041acf0",
+   "end": "0x0041afdb"
+  },
+  {
+   "module": "mbstring",
+   "section": ".text",
+   "start": "0x0041afe0",
+   "end": "0x0041b539"
+  },
+  {
+   "module": "direct_io",
+   "section": ".text",
+   "start": "0x0041b540",
+   "end": "0x0041bc30"
+  },
+  {
+   "module": "wchar_io",
+   "section": ".text",
+   "start": "0x0041bc30",
+   "end": "0x0041bc99"
+  },
+  {
+   "module": "ParserHelpers",
+   "section": ".text",
+   "start": "0x0041bc99",
+   "end": "0x0041c683"
+  },
+  {
+   "module": "ToolHelpers",
+   "section": ".text",
+   "start": "0x0041c921",
+   "end": "0x0041cb75"
+  },
+  {
+   "module": "ParserHelpers-cc",
+   "section": ".text",
+   "start": "0x0041cb75",
+   "end": "0x0041d015"
+  },
+  {
+   "module": "ToolHelpers-cc",
+   "section": ".text",
+   "start": "0x0041d015",
+   "end": "0x0041d0ba"
+  },
+  {
+   "module": "OptimizerHelpers",
+   "section": ".text",
+   "start": "0x0041d0c0",
+   "end": "0x0041d63d"
+  },
+  {
+   "module": "WarningHelpers",
+   "section": ".text",
+   "start": "0x0041d640",
+   "end": "0x0041d838"
+  },
+  {
+   "module": "StdTargetWarningHelpers-cc",
+   "section": ".text",
+   "start": "0x0041d840",
+   "end": "0x0041de56"
+  },
+  {
+   "module": "IO",
+   "section": ".text",
+   "start": "0x0041de56",
+   "end": "0x0041e07d"
+  },
+  {
+   "module": "Projects",
+   "section": ".text",
+   "start": "0x0041e07d",
+   "end": "0x0041e529"
+  },
+  {
+   "module": "ParserErrors",
+   "section": ".text",
+   "start": "0x0041e529",
+   "end": "0x0041e7b7"
+  },
+  {
+   "module": "Arguments",
+   "section": ".text",
+   "start": "0x0041e7b7",
+   "end": "0x0041f5c9"
+  },
+  {
+   "module": "Targets",
+   "section": ".text",
+   "start": "0x0041f5c9",
+   "end": "0x0041f745"
+  },
+  {
+   "module": "CWPluginsPrivate",
+   "section": ".text",
+   "start": "0x0041f750",
+   "end": "0x00420d55"
+  },
+  {
+   "module": "BuildAgentCommon",
+   "section": ".text",
+   "start": "0x00420d60",
+   "end": "0x00421825"
+  },
+  {
+   "module": "CLLicenses",
+   "section": ".text",
+   "start": "0x00421830",
+   "end": "0x00421e87"
+  },
+  {
+   "module": "scanf",
+   "section": ".text",
+   "start": "0x00421e90",
+   "end": "0x00422e4b"
+  },
+  {
+   "module": "BuildAgentClient",
+   "section": ".text",
+   "start": "0x00422e50",
+   "end": "0x00423647"
+  },
+  {
+   "module": "CLToolExec",
+   "section": ".text",
+   "start": "0x00423650",
+   "end": "0x0042411c"
+  },
+  {
+   "module": "MacSpecs",
+   "section": ".text",
+   "start": "0x00424120",
+   "end": "0x00424aba"
+  },
+  {
+   "module": "StringExtras",
+   "section": ".text",
+   "start": "0x00424ac0",
+   "end": "0x00424c19"
+  },
+  {
+   "module": "CLPluginRequests",
+   "section": ".text",
+   "start": "0x00424c20",
+   "end": "0x0042601a"
+  },
+  {
+   "module": "CLPrefs",
+   "section": ".text",
+   "start": "0x00426020",
+   "end": "0x004262ad"
+  },
+  {
+   "module": "CLProj",
+   "section": ".text",
+   "start": "0x004262b0",
+   "end": "0x004262fd"
+  },
+  {
+   "module": "MemUtils",
+   "section": ".text",
+   "start": "0x00426300",
+   "end": "0x004264a3"
+  },
+  {
+   "module": "CLAccessPaths",
+   "section": ".text",
+   "start": "0x004264b0",
+   "end": "0x00426f27"
+  },
+  {
+   "module": "CLTarg",
+   "section": ".text",
+   "start": "0x00426f30",
+   "end": "0x00427c8c"
+  },
+  {
+   "module": "CLParserCallbacks_v1",
+   "section": ".text",
+   "start": "0x00427c90",
+   "end": "0x00428236"
+  },
+  {
+   "module": "CLFileOps",
+   "section": ".text",
+   "start": "0x00428240",
+   "end": "0x0042b162"
+  },
+  {
+   "module": "BuildAgentProtocol",
+   "section": ".text",
+   "start": "0x0042b170",
+   "end": "0x0042c764"
+  },
+  {
+   "module": "BuildAgentSocketAPI",
+   "section": ".text",
+   "start": "0x0042c770",
+   "end": "0x0042cdc7"
+  },
+  {
+   "module": "ctype",
+   "section": ".text",
+   "start": "0x0042cdd0",
+   "end": "0x0042ce5c"
+  },
+  {
+   "module": "char_io",
+   "section": ".text",
+   "start": "0x0042ce60",
+   "end": "0x0042cf46"
+  },
+  {
+   "module": "strtoul",
+   "section": ".text",
+   "start": "0x0042cf50",
+   "end": "0x0042d971"
+  },
+  {
+   "module": "misc_io",
+   "section": ".text",
+   "start": "0x0042d980",
+   "end": "0x0042d99b"
+  },
+  {
+   "module": "file_pos",
+   "section": ".text",
+   "start": "0x0042d9a0",
+   "end": "0x0042dc17"
+  },
+  {
+   "module": "Win32Shortcut",
+   "section": ".text",
+   "start": "0x0042dc20",
+   "end": "0x0042dd72"
+  },
+  {
+   "module": "assert.win32",
+   "section": ".text",
+   "start": "0x0042dd80",
+   "end": "0x0042de35"
+  },
+  {
+   "module": "StringUtils",
+   "section": ".text",
+   "start": "0x0042de40",
+   "end": "0x0042e126"
+  },
+  {
+   "module": "Memory",
+   "section": ".text",
+   "start": "0x0042e130",
+   "end": "0x0042e4ce"
+  },
+  {
+   "module": "Files",
+   "section": ".text",
+   "start": "0x0042e4d0",
+   "end": "0x0042f40e"
+  },
+  {
+   "module": "TextUtils",
+   "section": ".text",
+   "start": "0x0042f410",
+   "end": "0x0042f627"
+  },
+  {
+   "module": "stackall",
+   "section": ".text",
+   "start": "0x0042f630",
+   "end": "0x0042f67b"
+  },
+  {
+   "module": "VERSION",
+   "section": ".text",
+   "start": "0x0042f67c",
+   "end": "0x0042f68e"
+  },
+  {
+   "module": "MacFileTypes",
+   "section": ".text",
+   "start": "0x0042f690",
+   "end": "0x0042fa10"
+  },
+  {
+   "module": "signal.win32",
+   "section": ".text",
+   "start": "0x0042fa10",
+   "end": "0x0042fb04"
+  },
+  {
+   "module": "FileHandles",
+   "section": ".text",
+   "start": "0x0042fb10",
+   "end": "0x0042fdf1"
+  },
+  {
+   "module": "CWSecretPluginCallbacks",
+   "section": ".text",
+   "start": "0x0042fe00",
+   "end": "0x0042feed"
+  },
+  {
+   "module": "CWParserPluginsPrivate",
+   "section": ".text",
+   "start": "0x0042fef0",
+   "end": "0x0043048b"
+  },
+  {
+   "module": "Option",
+   "section": ".text",
+   "start": "0x0043048b",
+   "end": "0x004322a8"
+  },
+  {
+   "module": "CompIDECallbacks",
+   "section": ".text",
+   "start": "0x004322b0",
+   "end": "0x0043234f"
+  },
+  {
+   "module": "CCompiler",
+   "section": ".text",
+   "start": "0x00432350",
+   "end": "0x004344c8"
+  },
+  {
+   "module": "ELF_Lib_Import",
+   "section": ".text",
+   "start": "0x004344d0",
+   "end": "0x00434d1a"
+  },
+  {
+   "module": "CLPluginAPI",
+   "section": ".text",
+   "start": "0x00434d20",
+   "end": "0x00434ed4"
+  },
+  {
+   "module": "Utils",
+   "section": ".text",
+   "start": "0x00434ed4",
+   "end": "0x004352ab"
+  },
+  {
+   "module": "TargetOptimizerHelpers-eppc",
+   "section": ".text",
+   "start": "0x004352b0",
+   "end": "0x004353d1"
+  },
+  {
+   "module": "LMGR8C",
+   "section": ".text",
+   "start": "0x004353d2",
+   "end": "0x004353e4"
+  },
+  {
+   "module": "strtold",
+   "section": ".text",
+   "start": "0x004353f0",
+   "end": "0x0043651b"
+  },
+  {
+   "module": "CLFiles",
+   "section": ".text",
+   "start": "0x00436520",
+   "end": "0x004369db"
+  },
+  {
+   "module": "CLOverlays",
+   "section": ".text",
+   "start": "0x004369e0",
+   "end": "0x0043713c"
+  },
+  {
+   "module": "CLDropinCallbacks_V10",
+   "section": ".text",
+   "start": "0x00437140",
+   "end": "0x0043a783"
+  },
+  {
+   "module": "CLCompilerLinkerDropin_V10",
+   "section": ".text",
+   "start": "0x0043a790",
+   "end": "0x0043c4cb"
+  },
+  {
+   "module": "CLSegs",
+   "section": ".text",
+   "start": "0x0043c4d0",
+   "end": "0x0043c79b"
+  },
+  {
+   "module": "CLDependencies",
+   "section": ".text",
+   "start": "0x0043c7a0",
+   "end": "0x0043d585"
+  },
+  {
+   "module": "CLWriteObjectFile",
+   "section": ".text",
+   "start": "0x0043d590",
+   "end": "0x0043d78d"
+  },
+  {
+   "module": "CLBrowser",
+   "section": ".text",
+   "start": "0x0043d790",
+   "end": "0x0043dcf6"
+  },
+  {
+   "module": "CLIncludeFileCache",
+   "section": ".text",
+   "start": "0x0043dd00",
+   "end": "0x0043e10c"
+  },
+  {
+   "module": "WS2_32",
+   "section": ".text",
+   "start": "0x0043e10c",
+   "end": "0x0043e116"
+  },
+  {
+   "module": "Parameter",
+   "section": ".text",
+   "start": "0x0043e116",
+   "end": "0x0043fb5c"
+  },
+  {
+   "module": "Help",
+   "section": ".text",
+   "start": "0x0043fb5c",
+   "end": "0x00440e11"
+  },
+  {
+   "module": "CPrep",
+   "section": ".text",
+   "start": "0x00440e20",
+   "end": "0x00449283"
+  },
+  {
+   "module": "CodeGenOptPPC",
+   "section": ".text",
+   "start": "0x00449290",
+   "end": "0x0044b6bc"
+  },
+  {
+   "module": "CPreprocessor",
+   "section": ".text",
+   "start": "0x0044b6c0",
+   "end": "0x0044cd55"
+  },
+  {
+   "module": "COSToolsWin32",
+   "section": ".text",
+   "start": "0x0044cd60",
+   "end": "0x0044e0b0"
+  },
+  {
+   "module": "CParser",
+   "section": ".text",
+   "start": "0x0044e0b0",
+   "end": "0x0045099d"
+  },
+  {
+   "module": "CParser",
+   "section": ".text",
+   "start": "0x004509f0",
+   "end": "0x0045838c"
+  },
+  {
+   "module": "CTemplateTools",
+   "section": ".text",
+   "start": "0x004509a0",
+   "end": "0x004509e4"
+  },
+  {
+   "module": "CTemplateTools",
+   "section": ".text",
+   "start": "0x005380e0",
+   "end": "0x0053eecb"
+  },
+  {
+   "module": "DropInCompilerLinkerPrivate",
+   "section": ".text",
+   "start": "0x00458390",
+   "end": "0x00458fc6"
+  },
+  {
+   "module": "MsgUtils",
+   "section": ".text",
+   "start": "0x00458fd0",
+   "end": "0x00459f0b"
+  },
+  {
+   "module": "CError",
+   "section": ".text",
+   "start": "0x00459f10",
+   "end": "0x00462f68"
+  },
+  {
+   "module": "CodeGen",
+   "section": ".text",
+   "start": "0x00462f70",
+   "end": "0x0046bc19"
+  },
+  {
+   "module": "CompilerTools",
+   "section": ".text",
+   "start": "0x0046bc20",
+   "end": "0x0046db67"
+  },
+  {
+   "module": "CPrec",
+   "section": ".text",
+   "start": "0x0046e160",
+   "end": "0x004795ad"
+  },
+  {
+   "module": "CMiddleLayer",
+   "section": ".text",
+   "start": "0x004795b0",
+   "end": "0x0047d1c6"
+  },
+  {
+   "module": "CPrepScanner",
+   "section": ".text",
+   "start": "0x0047d1d0",
+   "end": "0x0049905f"
+  },
+  {
+   "module": "LinkErrorsPPC_EABI",
+   "section": ".text",
+   "start": "0x00499060",
+   "end": "0x00499412"
+  },
+  {
+   "module": "EPPC_LinkUtilities",
+   "section": ".text",
+   "start": "0x00499420",
+   "end": "0x00499eca"
+  },
+  {
+   "module": "DateTimeUtils",
+   "section": ".text",
+   "start": "0x00499ed0",
+   "end": "0x00499ee7"
+  },
+  {
+   "module": "ELF_Endian",
+   "section": ".text",
+   "start": "0x00499ef0",
+   "end": "0x0049a7ab"
+  },
+  {
+   "module": "CLLoadAndCache",
+   "section": ".text",
+   "start": "0x0049a7b0",
+   "end": "0x0049a9c1"
+  },
+  {
+   "module": "time",
+   "section": ".text",
+   "start": "0x0049a9d0",
+   "end": "0x0049bcfc"
+  },
+  {
+   "module": "CLibrary",
+   "section": ".text",
+   "start": "0x0049bd00",
+   "end": "0x0049c708"
+  },
+  {
+   "module": "CException",
+   "section": ".text",
+   "start": "0x0049c710",
+   "end": "0x004a0803"
+  },
+  {
+   "module": "IroLibrary",
+   "section": ".text",
+   "start": "0x004a0810",
+   "end": "0x004a0af2"
+  },
+  {
+   "module": "IroPointerAnalysis",
+   "section": ".text",
+   "start": "0x004a0b00",
+   "end": "0x004b87cb"
+  },
+  {
+   "module": "cobraPragmas",
+   "section": ".text",
+   "start": "0x004b87d0",
+   "end": "0x004b8b1a"
+  },
+  {
+   "module": "PCodeStats",
+   "section": ".text",
+   "start": "0x004b8b20",
+   "end": "0x004bac34"
+  },
+  {
+   "module": "CIRStreamCallGraph",
+   "section": ".text",
+   "start": "0x004bac40",
+   "end": "0x004bceac"
+  },
+  {
+   "module": "FuncLevelAsmPPC",
+   "section": ".text",
+   "start": "0x004bceb0",
+   "end": "0x004bdd7f"
+  },
+  {
+   "module": "ObjGen_PPC_EABI",
+   "section": ".text",
+   "start": "0x004be110",
+   "end": "0x004c515a"
+  },
+  {
+   "module": "IroMalloc",
+   "section": ".text",
+   "start": "0x004c5160",
+   "end": "0x004c58f6"
+  },
+  {
+   "module": "CBrowse",
+   "section": ".text",
+   "start": "0x004c5900",
+   "end": "0x004c7423"
+  },
+  {
+   "module": "CPrepLexer",
+   "section": ".text",
+   "start": "0x004c7430",
+   "end": "0x004d7886"
+  },
+  {
+   "module": "CPreprocess",
+   "section": ".text",
+   "start": "0x004d7890",
+   "end": "0x004d880e"
+  },
+  {
+   "module": "CInt64",
+   "section": ".text",
+   "start": "0x004d8810",
+   "end": "0x004da431"
+  },
+  {
+   "module": "CodeGen_RegisterTokens",
+   "section": ".text",
+   "start": "0x004da440",
+   "end": "0x004da4fc"
+  },
+  {
+   "module": "DWARF",
+   "section": ".text",
+   "start": "0x004da500",
+   "end": "0x004e0ba8"
+  },
+  {
+   "module": "DWARF",
+   "section": ".text",
+   "start": "0x005d82b0",
+   "end": "0x005d84e9"
+  },
+  {
+   "module": "EPPC_DWARF2",
+   "section": ".text",
+   "start": "0x004e0bb0",
+   "end": "0x004e0de9"
+  },
+  {
+   "module": "EPPC_DWARF2",
+   "section": ".text",
+   "start": "0x005ce570",
+   "end": "0x005d82a2"
+  },
+  {
+   "module": "CMachine",
+   "section": ".text",
+   "start": "0x004e0df0",
+   "end": "0x004e5597"
+  },
+  {
+   "module": "CScope",
+   "section": ".text",
+   "start": "0x004e55a0",
+   "end": "0x004eb708"
+  },
+  {
+   "module": "DumpUtils",
+   "section": ".text",
+   "start": "0x004eb710",
+   "end": "0x004ec8de"
+  },
+  {
+   "module": "CTemplateNew",
+   "section": ".text",
+   "start": "0x004ec8e0",
+   "end": "0x004f0a39"
+  },
+  {
+   "module": "ProductLicensing",
+   "section": ".text",
+   "start": "0x004f0a40",
+   "end": "0x004f111b"
+  },
+  {
+   "module": "InstrSelection",
+   "section": ".text",
+   "start": "0x004f1f80",
+   "end": "0x0050552c"
+  },
+  {
+   "module": "CIRStream",
+   "section": ".text",
+   "start": "0x00505530",
+   "end": "0x00509f60"
+  },
+  {
+   "module": "CDecl",
+   "section": ".text",
+   "start": "0x00509f60",
+   "end": "0x00514e3b"
+  },
+  {
+   "module": "CExpr",
+   "section": ".text",
+   "start": "0x00514e40",
+   "end": "0x0051b433"
+  },
+  {
+   "module": "CExprGen",
+   "section": ".text",
+   "start": "0x0051b440",
+   "end": "0x005243d0"
+  },
+  {
+   "module": "CFunc",
+   "section": ".text",
+   "start": "0x005243d0",
+   "end": "0x0052ef22"
+  },
+  {
+   "module": "CInit",
+   "section": ".text",
+   "start": "0x0052ef30",
+   "end": "0x005380de"
+  },
+  {
+   "module": "CClass",
+   "section": ".text",
+   "start": "0x0053eed0",
+   "end": "0x00542e35"
+  },
+  {
+   "module": "CMemberPointer",
+   "section": ".text",
+   "start": "0x00542e40",
+   "end": "0x00544126"
+  },
+  {
+   "module": "CTypeTools",
+   "section": ".text",
+   "start": "0x00544130",
+   "end": "0x00545571"
+  },
+  {
+   "module": "CInline",
+   "section": ".text",
+   "start": "0x00545580",
+   "end": "0x0054ecdb"
+  },
+  {
+   "module": "CABI",
+   "section": ".text",
+   "start": "0x0054ece0",
+   "end": "0x005547e3"
+  },
+  {
+   "module": "BE_elf",
+   "section": ".text",
+   "start": "0x005547f0",
+   "end": "0x005567bf"
+  },
+  {
+   "module": "CMangler",
+   "section": ".text",
+   "start": "0x005567f0",
+   "end": "0x00558d61"
+  },
+  {
+   "module": "qsort",
+   "section": ".text",
+   "start": "0x00558d70",
+   "end": "0x00558f05"
+  },
+  {
+   "module": "CIRTransform",
+   "section": ".text",
+   "start": "0x00558f10",
+   "end": "0x00559231"
+  },
+  {
+   "module": "CExprTools",
+   "section": ".text",
+   "start": "0x00559240",
+   "end": "0x0055c39d"
+  },
+  {
+   "module": "InlineAsm",
+   "section": ".text",
+   "start": "0x0055c3a0",
+   "end": "0x0055ebfc"
+  },
+  {
+   "module": "Unmangle",
+   "section": ".text",
+   "start": "0x0055ec00",
+   "end": "0x0056062e"
+  },
+  {
+   "module": "Intrinsics",
+   "section": ".text",
+   "start": "0x00560630",
+   "end": "0x0056ac8e"
+  },
+  {
+   "module": "IroSubable",
+   "section": ".text",
+   "start": "0x0056ac90",
+   "end": "0x0056b1a9"
+  },
+  {
+   "module": "Exceptions",
+   "section": ".text",
+   "start": "0x0056b1b0",
+   "end": "0x0056ec81"
+  },
+  {
+   "module": "PPCError",
+   "section": ".text",
+   "start": "0x0056ec90",
+   "end": "0x0056ee9e"
+  },
+  {
+   "module": "InlineAsmMnemonicsPPC",
+   "section": ".text",
+   "start": "0x0056ef00",
+   "end": "0x0056f33a"
+  },
+  {
+   "module": "InlineAsmPPC",
+   "section": ".text",
+   "start": "0x0056f340",
+   "end": "0x00577325"
+  },
+  {
+   "module": "IrOptimizer",
+   "section": ".text",
+   "start": "0x00577330",
+   "end": "0x0057840e"
+  },
+  {
+   "module": "RegisterInfo",
+   "section": ".text",
+   "start": "0x00578410",
+   "end": "0x0057a9e3"
+  },
+  {
+   "module": "SFPE_PPC_EABI",
+   "section": ".text",
+   "start": "0x0057b640",
+   "end": "0x0057d0d6"
+  },
+  {
+   "module": "TOC",
+   "section": ".text",
+   "start": "0x0057d0e0",
+   "end": "0x005820d7"
+  },
+  {
+   "module": "PCode",
+   "section": ".text",
+   "start": "0x005820e0",
+   "end": "0x005830b0"
+  },
+  {
+   "module": "PCodeAssembly",
+   "section": ".text",
+   "start": "0x005830b0",
+   "end": "0x00585517"
+  },
+  {
+   "module": "StackFrame",
+   "section": ".text",
+   "start": "0x00585520",
+   "end": "0x0058ac40"
+  },
+  {
+   "module": "PCodeInfo",
+   "section": ".text",
+   "start": "0x0058acf0",
+   "end": "0x0058db55"
+  },
+  {
+   "module": "Switch",
+   "section": ".text",
+   "start": "0x0058db60",
+   "end": "0x0058f2f9"
+  },
+  {
+   "module": "Operands",
+   "section": ".text",
+   "start": "0x0058f300",
+   "end": "0x00592f87"
+  },
+  {
+   "module": "EnodeInfoHandler",
+   "section": ".text",
+   "start": "0x00592f90",
+   "end": "0x0059327b"
+  },
+  {
+   "module": "COptimizer",
+   "section": ".text",
+   "start": "0x00593280",
+   "end": "0x0059446a"
+  },
+  {
+   "module": "Registers",
+   "section": ".text",
+   "start": "0x00594470",
+   "end": "0x00594975"
+  },
+  {
+   "module": "DumpIR",
+   "section": ".text",
+   "start": "0x00594980",
+   "end": "0x00594991"
+  },
+  {
+   "module": "PCodeUtilities",
+   "section": ".text",
+   "start": "0x005949a0",
+   "end": "0x005963f2"
+  },
+  {
+   "module": "GlobalOptimizer",
+   "section": ".text",
+   "start": "0x00596400",
+   "end": "0x00596843"
+  },
+  {
+   "module": "Peephole",
+   "section": ".text",
+   "start": "0x00596850",
+   "end": "0x00596d62"
+  },
+  {
+   "module": "DeadCodeElimination",
+   "section": ".text",
+   "start": "0x00596d70",
+   "end": "0x00596de1"
+  },
+  {
+   "module": "Coloring",
+   "section": ".text",
+   "start": "0x00596e10",
+   "end": "0x00596f8f"
+  },
+  {
+   "module": "LocalCSE",
+   "section": ".text",
+   "start": "0x005976e0",
+   "end": "0x005994d1"
+  },
+  {
+   "module": "Scheduler",
+   "section": ".text",
+   "start": "0x005994e0",
+   "end": "0x0059a02e"
+  },
+  {
+   "module": "PeepholeForward",
+   "section": ".text",
+   "start": "0x0059a030",
+   "end": "0x0059ce17"
+  },
+  {
+   "module": "StructMoves",
+   "section": ".text",
+   "start": "0x0059ce20",
+   "end": "0x0059f9e1"
+  },
+  {
+   "module": "Alias",
+   "section": ".text",
+   "start": "0x0059f9f0",
+   "end": "0x005a0e5f"
+  },
+  {
+   "module": "CCallGraph",
+   "section": ".text",
+   "start": "0x005a0e60",
+   "end": "0x005a1839"
+  },
+  {
+   "module": "CTemplateFuncInst",
+   "section": ".text",
+   "start": "0x005a1840",
+   "end": "0x005a344c"
+  },
+  {
+   "module": "GCCInlineAsm",
+   "section": ".text",
+   "start": "0x005a3450",
+   "end": "0x005a420e"
+  },
+  {
+   "module": "cpprtl",
+   "section": ".text",
+   "start": "0x005a4210",
+   "end": "0x005a4236"
+  },
+  {
+   "module": "SourceText",
+   "section": ".text",
+   "start": "0x005a4240",
+   "end": "0x005a43db"
+  },
+  {
+   "module": "newop",
+   "section": ".text",
+   "start": "0x005a43e0",
+   "end": "0x005a44d6"
+  },
+  {
+   "module": "arith",
+   "section": ".text",
+   "start": "0x005a44e0",
+   "end": "0x005a46fb"
+  },
+  {
+   "module": "time.win32",
+   "section": ".text",
+   "start": "0x005a4700",
+   "end": "0x005a48ca"
+  },
+  {
+   "module": "bsearch",
+   "section": ".text",
+   "start": "0x005a48d0",
+   "end": "0x005a49aa"
+  },
+  {
+   "module": "CExpr2",
+   "section": ".text",
+   "start": "0x005a49b0",
+   "end": "0x005a9331"
+  },
+  {
+   "module": "IroUtil",
+   "section": ".text",
+   "start": "0x005a9340",
+   "end": "0x005b1fb9"
+  },
+  {
+   "module": "IroVars",
+   "section": ".text",
+   "start": "0x005b1fc0",
+   "end": "0x005b54f1"
+  },
+  {
+   "module": "IroType",
+   "section": ".text",
+   "start": "0x005b5500",
+   "end": "0x005b7e97"
+  },
+  {
+   "module": "IroLinearForm",
+   "section": ".text",
+   "start": "0x005b7ea0",
+   "end": "0x005bd68b"
+  },
+  {
+   "module": "IroFlowgraph",
+   "section": ".text",
+   "start": "0x005bd690",
+   "end": "0x005bf2bf"
+  },
+  {
+   "module": "IroBitVect",
+   "section": ".text",
+   "start": "0x005bf2c0",
+   "end": "0x005bfb19"
+  },
+  {
+   "module": "IroLoop",
+   "section": ".text",
+   "start": "0x005bfb20",
+   "end": "0x005c7549"
+  },
+  {
+   "module": "PCodeStatsPPC",
+   "section": ".text",
+   "start": "0x005c7550",
+   "end": "0x005c92d4"
+  },
+  {
+   "module": "CIRStreamTools",
+   "section": ".text",
+   "start": "0x005c92e0",
+   "end": "0x005c97b3"
+  },
+  {
+   "module": "CIRStreamType",
+   "section": ".text",
+   "start": "0x005c97c0",
+   "end": "0x005cb7ac"
+  },
+  {
+   "module": "InlineAsmRegistersPPC",
+   "section": ".text",
+   "start": "0x005cb7b0",
+   "end": "0x005cc1ee"
+  },
+  {
+   "module": "InlineAsmRegisters",
+   "section": ".text",
+   "start": "0x005cc1f0",
+   "end": "0x005cc2f5"
+  },
+  {
+   "module": "IroLoopReversal",
+   "section": ".text",
+   "start": "0x005cc300",
+   "end": "0x005cc9f4"
+  },
+  {
+   "module": "IroLoopVector",
+   "section": ".text",
+   "start": "0x005cca00",
+   "end": "0x005cce83"
+  },
+  {
+   "module": "BE_symbol",
+   "section": ".text",
+   "start": "0x005cce90",
+   "end": "0x005ce56f"
+  },
+  {
+   "module": "DWARF_GlobalRefs",
+   "section": ".text",
+   "start": "0x005d84f0",
+   "end": "0x005d8733"
+  },
+  {
+   "module": "PCodeListing",
+   "section": ".text",
+   "start": "0x005d8740",
+   "end": "0x005d8746"
+  },
+  {
+   "module": "ScanFloatX86",
+   "section": ".text",
+   "start": "0x005d8750",
+   "end": "0x005d8797"
+  },
+  {
+   "module": "CTemplateClass",
+   "section": ".text",
+   "start": "0x005d87a0",
+   "end": "0x005dc021"
+  },
+  {
+   "module": "CTemplateFunc",
+   "section": ".text",
+   "start": "0x005dc030",
+   "end": "0x005df25e"
+  },
+  {
+   "module": "CExprConvMatch",
+   "section": ".text",
+   "start": "0x005df2f0",
+   "end": "0x005e6774"
+  },
+  {
+   "module": "FunctionCalls",
+   "section": ".text",
+   "start": "0x005e6780",
+   "end": "0x005e8487"
+  },
+  {
+   "module": "CRTTI",
+   "section": ".text",
+   "start": "0x005e8490",
+   "end": "0x005e9f54"
+  },
+  {
+   "module": "TranslatorUtils",
+   "section": ".text",
+   "start": "0x005e9f60",
+   "end": "0x005ea631"
+  },
+  {
+   "module": "CleanUpIR",
+   "section": ".text",
+   "start": "0x005ea640",
+   "end": "0x005ec6a1"
+  },
+  {
+   "module": "IRFlowgraph",
+   "section": ".text",
+   "start": "0x005ec6b0",
+   "end": "0x005ed160"
+  },
+  {
+   "module": "cobraError",
+   "section": ".text",
+   "start": "0x005ed160",
+   "end": "0x005ed487"
+  },
+  {
+   "module": "IroDump",
+   "section": ".text",
+   "start": "0x005ed490",
+   "end": "0x005ed71e"
+  },
+  {
+   "module": "IroUnrollLoop",
+   "section": ".text",
+   "start": "0x005ed720",
+   "end": "0x005f1d87"
+  },
+  {
+   "module": "IroPropagate",
+   "section": ".text",
+   "start": "0x005f1d90",
+   "end": "0x005f569f"
+  },
+  {
+   "module": "IroDependsKills",
+   "section": ".text",
+   "start": "0x005f57b0",
+   "end": "0x005f79d7"
+  },
+  {
+   "module": "IroTransform",
+   "section": ".text",
+   "start": "0x005f79e0",
+   "end": "0x00601f4a"
+  },
+  {
+   "module": "IroExprs",
+   "section": ".text",
+   "start": "0x00601f50",
+   "end": "0x00602b78"
+  },
+  {
+   "module": "IROUseDef",
+   "section": ".text",
+   "start": "0x00602b80",
+   "end": "0x006063f7"
+  },
+  {
+   "module": "IroJump",
+   "section": ".text",
+   "start": "0x00606400",
+   "end": "0x00606c32"
+  },
+  {
+   "module": "IroExprRegeneration",
+   "section": ".text",
+   "start": "0x00606c40",
+   "end": "0x0060bbfb"
+  },
+  {
+   "module": "IroCodePositioning",
+   "section": ".text",
+   "start": "0x0060bce0",
+   "end": "0x0060e3ca"
+  },
+  {
+   "module": "IroSerializeAssignments",
+   "section": ".text",
+   "start": "0x0060e520",
+   "end": "0x0060e7b4"
+  },
+  {
+   "module": "IroAggregateAssignment",
+   "section": ".text",
+   "start": "0x0060e7c0",
+   "end": "0x00612936"
+  },
+  {
+   "module": "IroEval",
+   "section": ".text",
+   "start": "0x00612940",
+   "end": "0x00614f77"
+  },
+  {
+   "module": "IroEmptyLoop",
+   "section": ".text",
+   "start": "0x00614f80",
+   "end": "0x00615774"
+  },
+  {
+   "module": "IroCSE",
+   "section": ".text",
+   "start": "0x00615780",
+   "end": "0x00616539"
+  },
+  {
+   "module": "IroScalarization",
+   "section": ".text",
+   "start": "0x00616540",
+   "end": "0x00618094"
+  },
+  {
+   "module": "IroRangePropagation",
+   "section": ".text",
+   "start": "0x006180a0",
+   "end": "0x0061a262"
+  },
+  {
+   "module": "IroLoopInvariants",
+   "section": ".text",
+   "start": "0x0061a270",
+   "end": "0x0061d3db"
+  },
+  {
+   "module": "IroLifetime",
+   "section": ".text",
+   "start": "0x0061d3e0",
+   "end": "0x0061f279"
+  },
+  {
+   "module": "InterferenceGraph",
+   "section": ".text",
+   "start": "0x0061f280",
+   "end": "0x006204fc"
+  },
+  {
+   "module": "Spill",
+   "section": ".text",
+   "start": "0x00620500",
+   "end": "0x006210bd"
+  },
+  {
+   "module": "LiveRegisters",
+   "section": ".text",
+   "start": "0x006210c0",
+   "end": "0x00621cfa"
+  },
+  {
+   "module": "CopyPropagation",
+   "section": ".text",
+   "start": "0x00621d00",
+   "end": "0x00622067"
+  },
+  {
+   "module": "AddPropagation",
+   "section": ".text",
+   "start": "0x00622070",
+   "end": "0x00622a11"
+  },
+  {
+   "module": "ConstantPropagation",
+   "section": ".text",
+   "start": "0x00622a20",
+   "end": "0x00625500"
+  },
+  {
+   "module": "LoopDetection",
+   "section": ".text",
+   "start": "0x00625500",
+   "end": "0x00626f3b"
+  },
+  {
+   "module": "UseDefChains",
+   "section": ".text",
+   "start": "0x00626f40",
+   "end": "0x00628801"
+  },
+  {
+   "module": "CodeMotion",
+   "section": ".text",
+   "start": "0x00628810",
+   "end": "0x0062a45f"
+  },
+  {
+   "module": "LoopDetectionPPC",
+   "section": ".text",
+   "start": "0x0062ac00",
+   "end": "0x0062be7c"
+  },
+  {
+   "module": "StrengthReduction",
+   "section": ".text",
+   "start": "0x0062be80",
+   "end": "0x0062dcb2"
+  },
+  {
+   "module": "LoopOptimization",
+   "section": ".text",
+   "start": "0x0062dcc0",
+   "end": "0x00631630"
+  },
+  {
+   "module": "LoadDeletion",
+   "section": ".text",
+   "start": "0x00631630",
+   "end": "0x00631713"
+  },
+  {
+   "module": "VectorArraysToRegs",
+   "section": ".text",
+   "start": "0x00631720",
+   "end": "0x006325c5"
+  },
+  {
+   "module": "PeepholePatterns",
+   "section": ".text",
+   "start": "0x006325d0",
+   "end": "0x006387f1"
+  },
+  {
+   "module": "MachineSimulationAltiVec",
+   "section": ".text",
+   "start": "0x00638800",
+   "end": "0x00639484"
+  },
+  {
+   "module": "MachineSimulation7400",
+   "section": ".text",
+   "start": "0x00639480",
+   "end": "0x0063a2a4"
+  },
+  {
+   "module": "MachineSimulationZen",
+   "section": ".text",
+   "start": "0x0063a2a0",
+   "end": "0x0063a41b"
+  },
+  {
+   "module": "MachineSimulation821",
+   "section": ".text",
+   "start": "0x0063a440",
+   "end": "0x0063a8af"
+  },
+  {
+   "module": "MachineSimulation821",
+   "section": ".text",
+   "start": "0x0063ca80",
+   "end": "0x0063caf4"
+  },
+  {
+   "module": "MachineSimulation750",
+   "section": ".text",
+   "start": "0x0063a8c0",
+   "end": "0x0063a934"
+  },
+  {
+   "module": "MachineSimulation750",
+   "section": ".text",
+   "start": "0x0063c1a0",
+   "end": "0x0063ca3b"
+  },
+  {
+   "module": "MachineSimulation603",
+   "section": ".text",
+   "start": "0x0063a930",
+   "end": "0x0063b0f4"
+  },
+  {
+   "module": "MachineSimulation603e",
+   "section": ".text",
+   "start": "0x0063b890",
+   "end": "0x0063b904"
+  },
+  {
+   "module": "MachineSimulation604",
+   "section": ".text",
+   "start": "0x0063b900",
+   "end": "0x0063c1a4"
+  },
+  {
+   "module": "MachineSimulation601",
+   "section": ".text",
+   "start": "0x0063caf0",
+   "end": "0x0063cfd8"
+  },
+  {
+   "module": "BitVectors",
+   "section": ".text",
+   "start": "0x0063cfe0",
+   "end": "0x0063d451"
+  },
+  {
+   "module": "AliasPropagation",
+   "section": ".text",
+   "start": "0x0063d460",
+   "end": "0x0063d9ef"
+  },
+  {
+   "module": "NewHand",
+   "section": ".text",
+   "start": "0x0063d9f0",
+   "end": "0x0063da23"
+  },
+  {
+   "module": "IroLoopRotation",
+   "section": ".text",
+   "start": "0x0063da30",
+   "end": "0x0063dbca"
+  },
+  {
+   "module": "IroCounterLoop",
+   "section": ".text",
+   "start": "0x0063dbd0",
+   "end": "0x0063e421"
+  },
+  {
+   "module": "IroNonRegLoopAccesses",
+   "section": ".text",
+   "start": "0x0063e430",
+   "end": "0x0063ed78"
+  },
+  {
+   "module": "IroStrengthReduction",
+   "section": ".text",
+   "start": "0x0063ed80",
+   "end": "0x006406ba"
+  },
+  {
+   "module": "IroDependenceAnalysis",
+   "section": ".text",
+   "start": "0x006406c0",
+   "end": "0x00642bdc"
+  },
+  {
+   "module": "Propagation",
+   "section": ".text",
+   "start": "0x00642be0",
+   "end": "0x006436c4"
+  },
+  {
+   "module": "CodeMotionPPC",
+   "section": ".text",
+   "start": "0x006436d0",
+   "end": "0x00643c39"
+  },
+  {
+   "module": "AliasPropagationPPC",
+   "section": ".text",
+   "start": "0x00643c40",
+   "end": "0x006441df"
+  }
+ ]
+}

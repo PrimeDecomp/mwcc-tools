@@ -1,0 +1,1406 @@
+{
+ "modules": [
+  {
+   "module": "maincrt",
+   "unit": "src/runtime/maincrt.c"
+  },
+  {
+   "module": "excrtl",
+   "unit": "wii/excrtl"
+  },
+  {
+   "module": "exchand",
+   "unit": "src/runtime/exchand.cpp"
+  },
+  {
+   "module": "ExceptionX86",
+   "unit": "src/runtime/ExceptionX86.cpp"
+  },
+  {
+   "module": "startup.win32",
+   "unit": "wii/startup.win32"
+  },
+  {
+   "module": "abort_exit_win32",
+   "unit": "wii/abort_exit_win32"
+  },
+  {
+   "module": "setupargs",
+   "unit": "src/runtime/setupargs.c"
+  },
+  {
+   "module": "sysenv.win32",
+   "unit": "wii/sysenv.win32"
+  },
+  {
+   "module": "runinit",
+   "unit": "src/runtime/runinit.c"
+  },
+  {
+   "module": "CLStaticMain",
+   "unit": "src/driver/CLStaticMain.c"
+  },
+  {
+   "module": "NMWException",
+   "unit": "src/runtime/NMWException.cpp"
+  },
+  {
+   "module": "ThreadLocalData",
+   "unit": "src/msl/ThreadLocalData.c"
+  },
+  {
+   "module": "string",
+   "unit": "src/msl/string.c"
+  },
+  {
+   "module": "KERNEL32",
+   "unit": "wii/KERNEL32"
+  },
+  {
+   "module": "mem",
+   "unit": "src/msl/mem.c"
+  },
+  {
+   "module": "onetimeinit",
+   "unit": "wii/onetimeinit"
+  },
+  {
+   "module": "setjmp.x86",
+   "unit": "wii/setjmp.x86"
+  },
+  {
+   "module": "delop",
+   "unit": "src/runtime/delop.cpp"
+  },
+  {
+   "module": "destroy",
+   "unit": "wii/destroy"
+  },
+  {
+   "module": "alloc",
+   "unit": "wii/alloc"
+  },
+  {
+   "module": "ansi_files",
+   "unit": "src/msl/ansi_files.c"
+  },
+  {
+   "module": "globdest",
+   "unit": "src/runtime/globdest.c"
+  },
+  {
+   "module": "signal",
+   "unit": "src/msl/signal.c"
+  },
+  {
+   "module": "ClientGlue",
+   "unit": "src/driver/ClientGlue.c"
+  },
+  {
+   "module": "StaticParserGlue",
+   "unit": "src/driver/StaticParserGlue.c"
+  },
+  {
+   "module": "cc-eppc-mw",
+   "unit": "wii/cc-eppc-mw"
+  },
+  {
+   "module": "printf",
+   "unit": "wii/printf"
+  },
+  {
+   "module": "ParserGlue-eppc-cc",
+   "unit": "wii/ParserGlue-eppc-cc"
+  },
+  {
+   "module": "CLMain",
+   "unit": "src/driver/CLMain.c"
+  },
+  {
+   "module": "BuildAgentClientDispatch",
+   "unit": "wii/BuildAgentClientDispatch"
+  },
+  {
+   "module": "locale",
+   "unit": "src/msl/locale.c"
+  },
+  {
+   "module": "delarrop",
+   "unit": "src/runtime/delarrop.cpp"
+  },
+  {
+   "module": "pool_alloc.win32",
+   "unit": "wii/pool_alloc.win32"
+  },
+  {
+   "module": "file_io.win32",
+   "unit": "wii/file_io.win32"
+  },
+  {
+   "module": "buffer_io",
+   "unit": "wii/buffer_io"
+  },
+  {
+   "module": "file_io",
+   "unit": "src/msl/file_io.c"
+  },
+  {
+   "module": "ResourceStrings",
+   "unit": "src/driver/ResourceStrings.c"
+  },
+  {
+   "module": "MsDos",
+   "unit": "src/driver/MsDos.c"
+  },
+  {
+   "module": "Resources",
+   "unit": "src/driver/Resources.c"
+  },
+  {
+   "module": "CLErrors",
+   "unit": "src/driver/CLErrors.c"
+  },
+  {
+   "module": "CLPlugins",
+   "unit": "src/driver/CLPlugins.c"
+  },
+  {
+   "module": "Generic",
+   "unit": "src/driver/Generic.c"
+  },
+  {
+   "module": "CLIO",
+   "unit": "src/driver/CLIO.c"
+  },
+  {
+   "module": "ParserFace",
+   "unit": "src/driver/ParserFace.c"
+  },
+  {
+   "module": "cc-eppc",
+   "unit": "wii/cc-eppc"
+  },
+  {
+   "module": "imp-elf",
+   "unit": "wii/imp-elf"
+  },
+  {
+   "module": "LongLongx86",
+   "unit": "src/runtime/LongLongx86.c"
+  },
+  {
+   "module": "ansifp_x86",
+   "unit": "src/msl/ansifp_x86.c"
+  },
+  {
+   "module": "mbstring",
+   "unit": "src/msl/mbstring.c"
+  },
+  {
+   "module": "direct_io",
+   "unit": "wii/direct_io"
+  },
+  {
+   "module": "wchar_io",
+   "unit": "src/msl/wchar_io.c"
+  },
+  {
+   "module": "ParserHelpers",
+   "unit": "src/driver/ParserHelpers.c"
+  },
+  {
+   "module": "ToolHelpers",
+   "unit": "src/driver/ToolHelpers.c"
+  },
+  {
+   "module": "ParserHelpers-cc",
+   "unit": "src/driver/ParserHelpers-cc.c"
+  },
+  {
+   "module": "ToolHelpers-cc",
+   "unit": "src/driver/ToolHelpers-cc.c"
+  },
+  {
+   "module": "OptimizerHelpers",
+   "unit": "src/driver/OptimizerHelpers.c"
+  },
+  {
+   "module": "WarningHelpers",
+   "unit": "src/driver/WarningHelpers.c"
+  },
+  {
+   "module": "StdTargetWarningHelpers-cc",
+   "unit": "src/driver/StdTargetWarningHelpers-cc.c"
+  },
+  {
+   "module": "IO",
+   "unit": "src/driver/IO.c"
+  },
+  {
+   "module": "Projects",
+   "unit": "src/driver/Projects.c"
+  },
+  {
+   "module": "ParserErrors",
+   "unit": "src/driver/ParserErrors.c"
+  },
+  {
+   "module": "Arguments",
+   "unit": "src/driver/Arguments.c"
+  },
+  {
+   "module": "Targets",
+   "unit": "src/driver/Targets.c"
+  },
+  {
+   "module": "CWPluginsPrivate",
+   "unit": "src/driver/CWPluginsPrivate.cpp"
+  },
+  {
+   "module": "BuildAgentCommon",
+   "unit": "wii/BuildAgentCommon"
+  },
+  {
+   "module": "CLLicenses",
+   "unit": "src/driver/CLLicenses.c"
+  },
+  {
+   "module": "scanf",
+   "unit": "src/msl/scanf.c"
+  },
+  {
+   "module": "BuildAgentClient",
+   "unit": "wii/BuildAgentClient"
+  },
+  {
+   "module": "CLToolExec",
+   "unit": "src/driver/CLToolExec.c"
+  },
+  {
+   "module": "MacSpecs",
+   "unit": "src/driver/MacSpecs.c"
+  },
+  {
+   "module": "StringExtras",
+   "unit": "src/driver/StringExtras.c"
+  },
+  {
+   "module": "CLPluginRequests",
+   "unit": "src/driver/CLPluginRequests.cpp"
+  },
+  {
+   "module": "CLPrefs",
+   "unit": "src/driver/CLPrefs.c"
+  },
+  {
+   "module": "CLProj",
+   "unit": "src/driver/CLProj.c"
+  },
+  {
+   "module": "MemUtils",
+   "unit": "src/driver/MemUtils.c"
+  },
+  {
+   "module": "CLAccessPaths",
+   "unit": "src/driver/CLAccessPaths.c"
+  },
+  {
+   "module": "CLTarg",
+   "unit": "src/driver/CLTarg.c"
+  },
+  {
+   "module": "CLParserCallbacks_v1",
+   "unit": "src/driver/CLParserCallbacks_v1.cpp"
+  },
+  {
+   "module": "CLFileOps",
+   "unit": "src/driver/CLFileOps.c"
+  },
+  {
+   "module": "BuildAgentProtocol",
+   "unit": "wii/BuildAgentProtocol"
+  },
+  {
+   "module": "BuildAgentSocketAPI",
+   "unit": "wii/BuildAgentSocketAPI"
+  },
+  {
+   "module": "ctype",
+   "unit": "src/msl/ctype.c"
+  },
+  {
+   "module": "char_io",
+   "unit": "src/msl/char_io.c"
+  },
+  {
+   "module": "strtoul",
+   "unit": "src/msl/strtoul.c"
+  },
+  {
+   "module": "misc_io",
+   "unit": "src/msl/misc_io.c"
+  },
+  {
+   "module": "file_pos",
+   "unit": "wii/file_pos"
+  },
+  {
+   "module": "Win32Shortcut",
+   "unit": "wii/Win32Shortcut"
+  },
+  {
+   "module": "assert.win32",
+   "unit": "wii/assert.win32"
+  },
+  {
+   "module": "StringUtils",
+   "unit": "src/driver/StringUtils.c"
+  },
+  {
+   "module": "Memory",
+   "unit": "src/driver/Memory.c"
+  },
+  {
+   "module": "Files",
+   "unit": "src/driver/Files.c"
+  },
+  {
+   "module": "TextUtils",
+   "unit": "src/driver/TextUtils.c"
+  },
+  {
+   "module": "stackall",
+   "unit": "src/runtime/stackall.c"
+  },
+  {
+   "module": "VERSION",
+   "unit": "wii/VERSION"
+  },
+  {
+   "module": "MacFileTypes",
+   "unit": "src/driver/MacFileTypes.c"
+  },
+  {
+   "module": "signal.win32",
+   "unit": "wii/signal.win32"
+  },
+  {
+   "module": "FileHandles",
+   "unit": "src/driver/FileHandles.c"
+  },
+  {
+   "module": "CWSecretPluginCallbacks",
+   "unit": "src/driver/CWSecretPluginCallbacks.cpp"
+  },
+  {
+   "module": "CWParserPluginsPrivate",
+   "unit": "src/driver/CWParserPluginsPrivate.cpp"
+  },
+  {
+   "module": "Option",
+   "unit": "src/driver/Option.c"
+  },
+  {
+   "module": "CompIDECallbacks",
+   "unit": "wii/CompIDECallbacks"
+  },
+  {
+   "module": "CCompiler",
+   "unit": "src/driver/CCompiler.c"
+  },
+  {
+   "module": "ELF_Lib_Import",
+   "unit": "src/driver/ELF_Lib_Import.c"
+  },
+  {
+   "module": "CLPluginAPI",
+   "unit": "wii/CLPluginAPI"
+  },
+  {
+   "module": "Utils",
+   "unit": "src/driver/Utils.c"
+  },
+  {
+   "module": "TargetOptimizerHelpers-eppc",
+   "unit": "wii/TargetOptimizerHelpers-eppc"
+  },
+  {
+   "module": "LMGR8C",
+   "unit": "wii/LMGR8C"
+  },
+  {
+   "module": "strtold",
+   "unit": "src/msl/strtold.c"
+  },
+  {
+   "module": "CLFiles",
+   "unit": "src/driver/CLFiles.c"
+  },
+  {
+   "module": "CLOverlays",
+   "unit": "src/driver/CLOverlays.c"
+  },
+  {
+   "module": "CLDropinCallbacks_V10",
+   "unit": "src/driver/CLDropinCallbacks_V10.cpp"
+  },
+  {
+   "module": "CLCompilerLinkerDropin_V10",
+   "unit": "src/driver/CLCompilerLinkerDropin_V10.cpp"
+  },
+  {
+   "module": "CLSegs",
+   "unit": "src/driver/CLSegs.c"
+  },
+  {
+   "module": "CLDependencies",
+   "unit": "src/driver/CLDependencies.c"
+  },
+  {
+   "module": "CLWriteObjectFile",
+   "unit": "src/driver/CLWriteObjectFile.c"
+  },
+  {
+   "module": "CLBrowser",
+   "unit": "src/driver/CLBrowser.c"
+  },
+  {
+   "module": "CLIncludeFileCache",
+   "unit": "src/driver/CLIncludeFileCache.c"
+  },
+  {
+   "module": "WS2_32",
+   "unit": "wii/WS2_32"
+  },
+  {
+   "module": "Parameter",
+   "unit": "src/driver/Parameter.c"
+  },
+  {
+   "module": "Help",
+   "unit": "src/driver/Help.c"
+  },
+  {
+   "module": "CPrep",
+   "unit": "src/frontend/CPrep.c"
+  },
+  {
+   "module": "CodeGenOptPPC",
+   "unit": "src/driver/CodeGenOptPPC.c"
+  },
+  {
+   "module": "CPreprocessor",
+   "unit": "wii/CPreprocessor"
+  },
+  {
+   "module": "COSToolsWin32",
+   "unit": "wii/COSToolsWin32"
+  },
+  {
+   "module": "CParser",
+   "unit": "src/frontend/CParser.c"
+  },
+  {
+   "module": "DropInCompilerLinkerPrivate",
+   "unit": "src/driver/DropInCompilerLinkerPrivate.cpp"
+  },
+  {
+   "module": "MsgUtils",
+   "unit": "wii/MsgUtils"
+  },
+  {
+   "module": "CError",
+   "unit": "src/frontend/CError.c"
+  },
+  {
+   "module": "CodeGen",
+   "unit": "src/backend/CodeGen.c"
+  },
+  {
+   "module": "CompilerTools",
+   "unit": "src/frontend/CompilerTools.c"
+  },
+  {
+   "module": "CPrec",
+   "unit": "src/frontend/CPrec.c"
+  },
+  {
+   "module": "CMiddleLayer",
+   "unit": "wii/CMiddleLayer"
+  },
+  {
+   "module": "CPrepScanner",
+   "unit": "wii/CPrepScanner"
+  },
+  {
+   "module": "LinkErrorsPPC_EABI",
+   "unit": "src/driver/LinkErrorsPPC_EABI.c"
+  },
+  {
+   "module": "EPPC_LinkUtilities",
+   "unit": "wii/EPPC_LinkUtilities"
+  },
+  {
+   "module": "DateTimeUtils",
+   "unit": "src/driver/DateTimeUtils.c"
+  },
+  {
+   "module": "ELF_Endian",
+   "unit": "src/backend/ELF_Endian.c"
+  },
+  {
+   "module": "CLLoadAndCache",
+   "unit": "src/driver/CLLoadAndCache.c"
+  },
+  {
+   "module": "time",
+   "unit": "wii/time"
+  },
+  {
+   "module": "CLibrary",
+   "unit": "wii/CLibrary"
+  },
+  {
+   "module": "CException",
+   "unit": "src/frontend/CException.c"
+  },
+  {
+   "module": "IroLibrary",
+   "unit": "wii/IroLibrary"
+  },
+  {
+   "module": "IroPointerAnalysis",
+   "unit": "src/optimizer/IroPointerAnalysis.c"
+  },
+  {
+   "module": "cobraPragmas",
+   "unit": "wii/cobraPragmas"
+  },
+  {
+   "module": "PCodeStats",
+   "unit": "wii/PCodeStats"
+  },
+  {
+   "module": "CIRStreamCallGraph",
+   "unit": "wii/CIRStreamCallGraph"
+  },
+  {
+   "module": "FuncLevelAsmPPC",
+   "unit": "src/backend/FuncLevelAsmPPC.c"
+  },
+  {
+   "module": "ObjGen_PPC_EABI",
+   "unit": "src/backend/ObjGen_PPC_EABI.c"
+  },
+  {
+   "module": "EPPC_DWARF2",
+   "unit": "wii/EPPC_DWARF2"
+  },
+  {
+   "module": "IroMalloc",
+   "unit": "src/optimizer/IroMalloc.c"
+  },
+  {
+   "module": "CBrowse",
+   "unit": "src/frontend/CBrowse.c"
+  },
+  {
+   "module": "CPrepLexer",
+   "unit": "wii/CPrepLexer"
+  },
+  {
+   "module": "CPreprocess",
+   "unit": "src/frontend/CPreprocess.c"
+  },
+  {
+   "module": "CInt64",
+   "unit": "src/frontend/CInt64.c"
+  },
+  {
+   "module": "CodeGen_RegisterTokens",
+   "unit": "wii/CodeGen_RegisterTokens"
+  },
+  {
+   "module": "DWARF",
+   "unit": "src/backend/DWARF.c"
+  },
+  {
+   "module": "CMachine",
+   "unit": "src/backend/CMachine.c"
+  },
+  {
+   "module": "CScope",
+   "unit": "src/frontend/CScope.c"
+  },
+  {
+   "module": "DumpUtils",
+   "unit": "wii/DumpUtils"
+  },
+  {
+   "module": "CExprGen",
+   "unit": "wii/CExprGen"
+  },
+  {
+   "module": "CFunc",
+   "unit": "src/frontend/CFunc.c"
+  },
+  {
+   "module": "CTemplateNew",
+   "unit": "src/frontend/CTemplateNew.c"
+  },
+  {
+   "module": "ProductLicensing",
+   "unit": "wii/ProductLicensing"
+  },
+  {
+   "module": "PPCError",
+   "unit": "src/backend/PPCError.c"
+  },
+  {
+   "module": "InstrSelection",
+   "unit": "src/backend/InstrSelection.c"
+  },
+  {
+   "module": "CIRStream",
+   "unit": "wii/CIRStream"
+  },
+  {
+   "module": "CDecl",
+   "unit": "src/frontend/CDecl.c"
+  },
+  {
+   "module": "CExpr",
+   "unit": "src/frontend/CExpr.c"
+  },
+  {
+   "module": "CInit",
+   "unit": "src/frontend/CInit.c"
+  },
+  {
+   "module": "CTemplateTools",
+   "unit": "src/frontend/CTemplateTools.c"
+  },
+  {
+   "module": "CClass",
+   "unit": "src/frontend/CClass.c"
+  },
+  {
+   "module": "CMemberPointer",
+   "unit": "wii/CMemberPointer"
+  },
+  {
+   "module": "CTypeTools",
+   "unit": "wii/CTypeTools"
+  },
+  {
+   "module": "CInline",
+   "unit": "src/frontend/CInline.c"
+  },
+  {
+   "module": "CABI",
+   "unit": "src/frontend/CABI.c"
+  },
+  {
+   "module": "BE_elf",
+   "unit": "src/backend/BE_elf.c"
+  },
+  {
+   "module": "CMangler",
+   "unit": "src/frontend/CMangler.c"
+  },
+  {
+   "module": "qsort",
+   "unit": "wii/qsort"
+  },
+  {
+   "module": "CIRTransform",
+   "unit": "src/optimizer/CIRTransform.c"
+  },
+  {
+   "module": "CExprTools",
+   "unit": "wii/CExprTools"
+  },
+  {
+   "module": "InlineAsm",
+   "unit": "src/backend/InlineAsm.c"
+  },
+  {
+   "module": "Unmangle",
+   "unit": "src/frontend/Unmangle.c"
+  },
+  {
+   "module": "Intrinsics",
+   "unit": "src/backend/Intrinsics.c"
+  },
+  {
+   "module": "IroSubable",
+   "unit": "src/optimizer/IroSubable.c"
+  },
+  {
+   "module": "Exceptions",
+   "unit": "src/backend/Exceptions.c"
+  },
+  {
+   "module": "InlineAsmMnemonicsPPC",
+   "unit": "src/backend/InlineAsmMnemonicsPPC.c"
+  },
+  {
+   "module": "InlineAsmPPC",
+   "unit": "src/backend/InlineAsmPPC.c"
+  },
+  {
+   "module": "IrOptimizer",
+   "unit": "src/optimizer/IrOptimizer.c"
+  },
+  {
+   "module": "RegisterInfo",
+   "unit": "src/backend/RegisterInfo.c"
+  },
+  {
+   "module": "SWCH_Main",
+   "unit": "wii/SWCH_Main"
+  },
+  {
+   "module": "SFPE_PPC_EABI",
+   "unit": "src/backend/SFPE_PPC_EABI.c"
+  },
+  {
+   "module": "TOC",
+   "unit": "src/backend/TOC.c"
+  },
+  {
+   "module": "PCode",
+   "unit": "src/backend/PCode.c"
+  },
+  {
+   "module": "VLE_CodeGen",
+   "unit": "wii/VLE_CodeGen"
+  },
+  {
+   "module": "PCodeAssembly",
+   "unit": "src/backend/PCodeAssembly.c"
+  },
+  {
+   "module": "EnodeInfoHandler",
+   "unit": "wii/EnodeInfoHandler"
+  },
+  {
+   "module": "StackFrame",
+   "unit": "src/backend/StackFrame.c"
+  },
+  {
+   "module": "PCodeInfo",
+   "unit": "src/backend/PCodeInfo.c"
+  },
+  {
+   "module": "Switch",
+   "unit": "src/backend/Switch.c"
+  },
+  {
+   "module": "Operands",
+   "unit": "src/backend/Operands.c"
+  },
+  {
+   "module": "COptimizer",
+   "unit": "src/optimizer/COptimizer.c"
+  },
+  {
+   "module": "Registers",
+   "unit": "src/backend/Registers.c"
+  },
+  {
+   "module": "DumpIR",
+   "unit": "src/backend/DumpIR.c"
+  },
+  {
+   "module": "PCodeUtilities",
+   "unit": "src/backend/PCodeUtilities.c"
+  },
+  {
+   "module": "GlobalOptimizer",
+   "unit": "src/optimizer/GlobalOptimizer.c"
+  },
+  {
+   "module": "Peephole",
+   "unit": "src/backend/Peephole.c"
+  },
+  {
+   "module": "DeadCodeElimination",
+   "unit": "wii/DeadCodeElimination"
+  },
+  {
+   "module": "Coloring",
+   "unit": "src/backend/Coloring.c"
+  },
+  {
+   "module": "LocalCSE",
+   "unit": "wii/LocalCSE"
+  },
+  {
+   "module": "Scheduler",
+   "unit": "src/backend/Scheduler.c"
+  },
+  {
+   "module": "PeepholeForward",
+   "unit": "wii/PeepholeForward"
+  },
+  {
+   "module": "VLE_BeforeColoring",
+   "unit": "wii/VLE_BeforeColoring"
+  },
+  {
+   "module": "StructMoves",
+   "unit": "src/optimizer/StructMoves.c"
+  },
+  {
+   "module": "Alias",
+   "unit": "src/optimizer/Alias.c"
+  },
+  {
+   "module": "CCallGraph",
+   "unit": "wii/CCallGraph"
+  },
+  {
+   "module": "CTemplateFuncInst",
+   "unit": "wii/CTemplateFuncInst"
+  },
+  {
+   "module": "GCCInlineAsm",
+   "unit": "src/backend/GCCInlineAsm.c"
+  },
+  {
+   "module": "cpprtl",
+   "unit": "wii/cpprtl"
+  },
+  {
+   "module": "SourceText",
+   "unit": "wii/SourceText"
+  },
+  {
+   "module": "newop",
+   "unit": "src/runtime/newop.cpp"
+  },
+  {
+   "module": "arith",
+   "unit": "src/msl/arith.c"
+  },
+  {
+   "module": "time.win32",
+   "unit": "wii/time.win32"
+  },
+  {
+   "module": "bsearch",
+   "unit": "wii/bsearch"
+  },
+  {
+   "module": "CExpr2",
+   "unit": "src/frontend/CExpr2.c"
+  },
+  {
+   "module": "IroUtil",
+   "unit": "src/optimizer/IroUtil.c"
+  },
+  {
+   "module": "IroVars",
+   "unit": "src/optimizer/IroVars.c"
+  },
+  {
+   "module": "IroType",
+   "unit": "wii/IroType"
+  },
+  {
+   "module": "IroLinearForm",
+   "unit": "src/optimizer/IroLinearForm.c"
+  },
+  {
+   "module": "IroFlowgraph",
+   "unit": "src/optimizer/IroFlowgraph.c"
+  },
+  {
+   "module": "IroBitVect",
+   "unit": "src/optimizer/IroBitVect.c"
+  },
+  {
+   "module": "IroLoop",
+   "unit": "src/optimizer/IroLoop.c"
+  },
+  {
+   "module": "PCodeStatsPPC",
+   "unit": "wii/PCodeStatsPPC"
+  },
+  {
+   "module": "CIRStreamTools",
+   "unit": "wii/CIRStreamTools"
+  },
+  {
+   "module": "CIRStreamType",
+   "unit": "wii/CIRStreamType"
+  },
+  {
+   "module": "InlineAsmRegistersPPC",
+   "unit": "src/backend/InlineAsmRegistersPPC.c"
+  },
+  {
+   "module": "InlineAsmRegisters",
+   "unit": "src/backend/InlineAsmRegisters.c"
+  },
+  {
+   "module": "IroLoopReversal",
+   "unit": "wii/IroLoopReversal"
+  },
+  {
+   "module": "IroLoopVector",
+   "unit": "wii/IroLoopVector"
+  },
+  {
+   "module": "BE_symbol",
+   "unit": "src/backend/BE_symbol.c"
+  },
+  {
+   "module": "DWARF_GlobalRefs",
+   "unit": "wii/DWARF_GlobalRefs"
+  },
+  {
+   "module": "PCodeListing",
+   "unit": "src/backend/PCodeListing.c"
+  },
+  {
+   "module": "ScanFloatX86",
+   "unit": "src/backend/ScanFloatX86.c"
+  },
+  {
+   "module": "CTemplateClass",
+   "unit": "src/frontend/CTemplateClass.c"
+  },
+  {
+   "module": "CTemplateFunc",
+   "unit": "src/frontend/CTemplateFunc.c"
+  },
+  {
+   "module": "CExprConvMatch",
+   "unit": "src/frontend/CExprConvMatch.c"
+  },
+  {
+   "module": "FunctionCalls",
+   "unit": "src/optimizer/FunctionCalls.c"
+  },
+  {
+   "module": "CRTTI",
+   "unit": "src/frontend/CRTTI.c"
+  },
+  {
+   "module": "TranslatorUtils",
+   "unit": "wii/TranslatorUtils"
+  },
+  {
+   "module": "CleanUpIR",
+   "unit": "wii/CleanUpIR"
+  },
+  {
+   "module": "IRFlowgraph",
+   "unit": "wii/IRFlowgraph"
+  },
+  {
+   "module": "cobraError",
+   "unit": "wii/cobraError"
+  },
+  {
+   "module": "IroDump",
+   "unit": "src/optimizer/IroDump.c"
+  },
+  {
+   "module": "IroUnrollLoop",
+   "unit": "src/optimizer/IroUnrollLoop.c"
+  },
+  {
+   "module": "IroPropagate",
+   "unit": "src/optimizer/IroPropagate.c"
+  },
+  {
+   "module": "IroDependsKills",
+   "unit": "wii/IroDependsKills"
+  },
+  {
+   "module": "IroTransform",
+   "unit": "src/optimizer/IroTransform.c"
+  },
+  {
+   "module": "IroExprs",
+   "unit": "wii/IroExprs"
+  },
+  {
+   "module": "IROUseDef",
+   "unit": "src/optimizer/IROUseDef.c"
+  },
+  {
+   "module": "IroJump",
+   "unit": "src/optimizer/IroJump.c"
+  },
+  {
+   "module": "IroExprRegeneration",
+   "unit": "src/optimizer/IroExprRegeneration.c"
+  },
+  {
+   "module": "IroCodePositioning",
+   "unit": "wii/IroCodePositioning"
+  },
+  {
+   "module": "IroSerializeAssignments",
+   "unit": "wii/IroSerializeAssignments"
+  },
+  {
+   "module": "IroAggregateAssignment",
+   "unit": "wii/IroAggregateAssignment"
+  },
+  {
+   "module": "IroEval",
+   "unit": "src/optimizer/IroEval.c"
+  },
+  {
+   "module": "IroEmptyLoop",
+   "unit": "src/optimizer/IroEmptyLoop.c"
+  },
+  {
+   "module": "IroCSE",
+   "unit": "src/optimizer/IroCSE.c"
+  },
+  {
+   "module": "IroScalarization",
+   "unit": "wii/IroScalarization"
+  },
+  {
+   "module": "IroRangePropagation",
+   "unit": "src/optimizer/IroRangePropagation.c"
+  },
+  {
+   "module": "IroLoopInvariants",
+   "unit": "wii/IroLoopInvariants"
+  },
+  {
+   "module": "IroLifetime",
+   "unit": "wii/IroLifetime"
+  },
+  {
+   "module": "InterferenceGraph",
+   "unit": "src/backend/InterferenceGraph.c"
+  },
+  {
+   "module": "Spill",
+   "unit": "wii/Spill"
+  },
+  {
+   "module": "LiveRegisters",
+   "unit": "wii/LiveRegisters"
+  },
+  {
+   "module": "SWCH_Interface",
+   "unit": "wii/SWCH_Interface"
+  },
+  {
+   "module": "SWCH_Rules",
+   "unit": "wii/SWCH_Rules"
+  },
+  {
+   "module": "SWCH_DecisionTree",
+   "unit": "wii/SWCH_DecisionTree"
+  },
+  {
+   "module": "SWCH_ValueSet",
+   "unit": "wii/SWCH_ValueSet"
+  },
+  {
+   "module": "VLE_AfterColoring",
+   "unit": "wii/VLE_AfterColoring"
+  },
+  {
+   "module": "LoopDetection",
+   "unit": "src/optimizer/LoopDetection.c"
+  },
+  {
+   "module": "CopyPropagation",
+   "unit": "src/optimizer/CopyPropagation.c"
+  },
+  {
+   "module": "AddPropagation",
+   "unit": "src/optimizer/AddPropagation.c"
+  },
+  {
+   "module": "ConstantPropagation",
+   "unit": "src/optimizer/ConstantPropagation.c"
+  },
+  {
+   "module": "UseDefChains",
+   "unit": "src/optimizer/UseDefChains.c"
+  },
+  {
+   "module": "CodeMotion",
+   "unit": "src/optimizer/CodeMotion.c"
+  },
+  {
+   "module": "LoopDetectionPPC",
+   "unit": "wii/LoopDetectionPPC"
+  },
+  {
+   "module": "StrengthReduction",
+   "unit": "src/optimizer/StrengthReduction.c"
+  },
+  {
+   "module": "LoopOptimization",
+   "unit": "src/optimizer/LoopOptimization.c"
+  },
+  {
+   "module": "LoadDeletion",
+   "unit": "src/optimizer/LoadDeletion.c"
+  },
+  {
+   "module": "VectorArraysToRegs",
+   "unit": "src/optimizer/VectorArraysToRegs.c"
+  },
+  {
+   "module": "PeepholePatterns",
+   "unit": "wii/PeepholePatterns"
+  },
+  {
+   "module": "MachineSimulationAltiVec",
+   "unit": "src/backend/MachineSimulationAltiVec.c"
+  },
+  {
+   "module": "MachineSimulation7400",
+   "unit": "src/backend/MachineSimulation7400.c"
+  },
+  {
+   "module": "MachineSimulationZen",
+   "unit": "wii/MachineSimulationZen"
+  },
+  {
+   "module": "MachineSimulation603",
+   "unit": "src/backend/MachineSimulation603.c"
+  },
+  {
+   "module": "MachineSimulation603e",
+   "unit": "src/backend/MachineSimulation603e.c"
+  },
+  {
+   "module": "MachineSimulation604",
+   "unit": "src/backend/MachineSimulation604.c"
+  },
+  {
+   "module": "MachineSimulation750",
+   "unit": "src/backend/MachineSimulation750.c"
+  },
+  {
+   "module": "MachineSimulation601",
+   "unit": "src/backend/MachineSimulation601.c"
+  },
+  {
+   "module": "MachineSimulation821",
+   "unit": "src/backend/MachineSimulation821.c"
+  },
+  {
+   "module": "MachineSimulationELF",
+   "unit": "wii/MachineSimulationELF"
+  },
+  {
+   "module": "Propagation",
+   "unit": "wii/Propagation"
+  },
+  {
+   "module": "BitVectors",
+   "unit": "src/backend/BitVectors.c"
+  },
+  {
+   "module": "AliasPropagation",
+   "unit": "wii/AliasPropagation"
+  },
+  {
+   "module": "NewHand",
+   "unit": "src/runtime/NewHand.cpp"
+  },
+  {
+   "module": "IroLoopRotation",
+   "unit": "wii/IroLoopRotation"
+  },
+  {
+   "module": "IroCounterLoop",
+   "unit": "wii/IroCounterLoop"
+  },
+  {
+   "module": "IroNonRegLoopAccesses",
+   "unit": "wii/IroNonRegLoopAccesses"
+  },
+  {
+   "module": "IroStrengthReduction",
+   "unit": "wii/IroStrengthReduction"
+  },
+  {
+   "module": "IroDependenceAnalysis",
+   "unit": "wii/IroDependenceAnalysis"
+  },
+  {
+   "module": "SWCH_Set",
+   "unit": "wii/SWCH_Set"
+  },
+  {
+   "module": "SWCH_Cell",
+   "unit": "wii/SWCH_Cell"
+  },
+  {
+   "module": "VLE_Utils",
+   "unit": "wii/VLE_Utils"
+  },
+  {
+   "module": "CodeMotionPPC",
+   "unit": "wii/CodeMotionPPC"
+  },
+  {
+   "module": "AliasPropagationPPC",
+   "unit": "wii/AliasPropagationPPC"
+  }
+ ],
+ "scattered": [
+  {
+   "module": "maincrt",
+   "section": ".data",
+   "start": "0x006f4364",
+   "end": "0x006f4370"
+  },
+  {
+   "module": "KERNEL32",
+   "section": ".idata",
+   "start": "0x00709014",
+   "end": "0x00709028"
+  },
+  {
+   "module": "KERNEL32",
+   "section": ".idata",
+   "start": "0x007090b0",
+   "end": "0x007091d8"
+  },
+  {
+   "module": "KERNEL32",
+   "section": ".idata",
+   "start": "0x0070926c",
+   "end": "0x00709394"
+  },
+  {
+   "module": "VERSION",
+   "section": ".idata",
+   "start": "0x00709050",
+   "end": "0x00709064"
+  },
+  {
+   "module": "VERSION",
+   "section": ".idata",
+   "start": "0x0070908c",
+   "end": "0x007090a0"
+  },
+  {
+   "module": "VERSION",
+   "section": ".idata",
+   "start": "0x007091f4",
+   "end": "0x00709204"
+  },
+  {
+   "module": "VERSION",
+   "section": ".idata",
+   "start": "0x007093b0",
+   "end": "0x007093c0"
+  },
+  {
+   "module": "LMGR8C",
+   "section": ".idata",
+   "start": "0x007091d8",
+   "end": "0x007091e8"
+  },
+  {
+   "module": "LMGR8C",
+   "section": ".idata",
+   "start": "0x00709394",
+   "end": "0x007093a4"
+  },
+  {
+   "module": "LMGR8C",
+   "section": ".idata",
+   "start": "0x007099d6",
+   "end": "0x007099e2"
+  },
+  {
+   "module": "WS2_32",
+   "section": ".idata",
+   "start": "0x00709064",
+   "end": "0x00709078"
+  },
+  {
+   "module": "WS2_32",
+   "section": ".idata",
+   "start": "0x007093c0",
+   "end": "0x00709400"
+  },
+  {
+   "module": "WS2_32",
+   "section": ".idata",
+   "start": "0x00709a60",
+   "end": "0x00709a6c"
+  },
+  {
+   "module": "ccinit",
+   "section": ".CRT",
+   "start": "0x00708010",
+   "end": "0x00708014"
+  },
+  {
+   "module": "ADVAPI32",
+   "section": ".idata",
+   "start": "0x00709000",
+   "end": "0x00709014"
+  },
+  {
+   "module": "ADVAPI32",
+   "section": ".idata",
+   "start": "0x007090a0",
+   "end": "0x007090b0"
+  },
+  {
+   "module": "ADVAPI32",
+   "section": ".idata",
+   "start": "0x0070925c",
+   "end": "0x0070926c"
+  },
+  {
+   "module": "USER32",
+   "section": ".idata",
+   "start": "0x0070903c",
+   "end": "0x00709050"
+  },
+  {
+   "module": "USER32",
+   "section": ".idata",
+   "start": "0x007091e8",
+   "end": "0x007091f4"
+  },
+  {
+   "module": "USER32",
+   "section": ".idata",
+   "start": "0x007093a4",
+   "end": "0x007093b0"
+  },
+  {
+   "module": "ole32",
+   "section": ".idata",
+   "start": "0x00709078",
+   "end": "0x0070908c"
+  },
+  {
+   "module": "ole32",
+   "section": ".idata",
+   "start": "0x00709244",
+   "end": "0x0070925c"
+  },
+  {
+   "module": "ole32",
+   "section": ".idata",
+   "start": "0x00709400",
+   "end": "0x00709418"
+  }
+ ]
+}

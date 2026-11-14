@@ -1,0 +1,908 @@
+Sections:
+	.text
+
+src/runtime/maincrt.c:
+	.text       start:0x00401000 end:0x004010D4
+
+wii/excrtl:
+	.text       start:0x004010E0 end:0x00401481
+
+src/runtime/exchand.cpp:
+	.text       start:0x00401490 end:0x0040150D
+
+src/runtime/ExceptionX86.cpp:
+	.text       start:0x00401510 end:0x00402991
+
+wii/startup.win32:
+	.text       start:0x004029A0 end:0x00402E14
+
+wii/abort_exit_win32:
+	.text       start:0x00402E20 end:0x00402EB9
+
+src/runtime/setupargs.c:
+	.text       start:0x00402EC0 end:0x004034A0
+
+wii/sysenv.win32:
+	.text       start:0x004034A0 end:0x004038ED
+
+src/runtime/runinit.c:
+	.text       start:0x004038F0 end:0x0040398B
+
+src/driver/CLStaticMain.c:
+	.text       start:0x00403990 end:0x00403ADA
+
+src/runtime/NMWException.cpp:
+	.text       start:0x00403B00 end:0x00403CD9
+
+src/msl/ThreadLocalData.c:
+	.text       start:0x00403CE0 end:0x00404041
+
+src/msl/string.c:
+	.text       start:0x00404050 end:0x004047BA
+
+wii/KERNEL32:
+	.text       start:0x004047BA end:0x004047C0
+
+src/msl/mem.c:
+	.text       start:0x004047C0 end:0x0040490D
+
+wii/onetimeinit:
+	.text       start:0x00404910 end:0x0040491F
+
+wii/setjmp.x86:
+	.text       start:0x00404920 end:0x0040495F
+
+src/runtime/delop.cpp:
+	.text       start:0x00404960 end:0x00404970
+
+wii/destroy:
+	.text       start:0x00404970 end:0x004049CB
+
+wii/alloc:
+	.text       start:0x004049D0 end:0x004058AD
+
+src/msl/ansi_files.c:
+	.text       start:0x004058B0 end:0x00405AEB
+
+src/runtime/globdest.c:
+	.text       start:0x00405AF0 end:0x00405B90
+
+src/msl/signal.c:
+	.text       start:0x00405B90 end:0x00405C07
+
+src/driver/ClientGlue.c:
+	.text       start:0x00405C10 end:0x00405E3D
+
+src/driver/StaticParserGlue.c:
+	.text       start:0x00405E3D end:0x00405E62
+
+wii/cc-eppc-mw:
+	.text       start:0x00405E70 end:0x00405F00
+
+wii/printf:
+	.text       start:0x00405F00 end:0x0040802D
+
+wii/ParserGlue-eppc-cc:
+	.text       start:0x00408030 end:0x004082FC
+
+src/driver/CLMain.c:
+	.text       start:0x00408300 end:0x0040A59B
+
+wii/BuildAgentClientDispatch:
+	.text       start:0x0040A5A0 end:0x0040B610
+
+src/msl/locale.c:
+	.text       start:0x0040B610 end:0x0040E678
+
+src/runtime/delarrop.cpp:
+	.text       start:0x0040E680 end:0x0040E690
+
+wii/pool_alloc.win32:
+	.text       start:0x0040E690 end:0x0040E6E7
+
+wii/file_io.win32:
+	.text       start:0x0040E6F0 end:0x0040EED8
+
+wii/buffer_io:
+	.text       start:0x0040EEE0 end:0x0040F1E3
+
+src/msl/file_io.c:
+	.text       start:0x0040F1F0 end:0x0040F6D9
+
+src/driver/ResourceStrings.c:
+	.text       start:0x0040F6E0 end:0x0040F877
+
+src/driver/MsDos.c:
+	.text       start:0x0040F880 end:0x00412459
+
+src/driver/Resources.c:
+	.text       start:0x00412460 end:0x0041494F
+
+src/driver/CLErrors.c:
+	.text       start:0x00414950 end:0x00414CF7
+
+src/driver/CLPlugins.c:
+	.text       start:0x00414D00 end:0x0041724C
+
+src/driver/Generic.c:
+	.text       start:0x00417250 end:0x004180D2
+
+src/driver/CLIO.c:
+	.text       start:0x004180E0 end:0x0041A2A9
+
+src/driver/ParserFace.c:
+	.text       start:0x0041A2A9 end:0x0041A9A4
+
+wii/cc-eppc:
+	.text       start:0x0041A9B0 end:0x0041AB1C
+
+wii/imp-elf:
+	.text       start:0x0041AB20 end:0x0041ABF6
+
+src/runtime/LongLongx86.c:
+	.text       start:0x0041AC00 end:0x0041ACED
+
+src/msl/ansifp_x86.c:
+	.text       start:0x0041ACF0 end:0x0041AFDB
+
+src/msl/mbstring.c:
+	.text       start:0x0041AFE0 end:0x0041B539
+
+wii/direct_io:
+	.text       start:0x0041B540 end:0x0041BC30
+
+src/msl/wchar_io.c:
+	.text       start:0x0041BC30 end:0x0041BC99
+
+src/driver/ParserHelpers.c:
+	.text       start:0x0041BC99 end:0x0041C683
+
+src/driver/ToolHelpers.c:
+	.text       start:0x0041C921 end:0x0041CB75
+
+src/driver/ParserHelpers-cc.c:
+	.text       start:0x0041CB75 end:0x0041D015
+
+src/driver/ToolHelpers-cc.c:
+	.text       start:0x0041D015 end:0x0041D0BA
+
+src/driver/OptimizerHelpers.c:
+	.text       start:0x0041D0C0 end:0x0041D63D
+
+src/driver/WarningHelpers.c:
+	.text       start:0x0041D640 end:0x0041D838
+
+src/driver/StdTargetWarningHelpers-cc.c:
+	.text       start:0x0041D840 end:0x0041DE56
+
+src/driver/IO.c:
+	.text       start:0x0041DE56 end:0x0041E07D
+
+src/driver/Projects.c:
+	.text       start:0x0041E07D end:0x0041E529
+
+src/driver/ParserErrors.c:
+	.text       start:0x0041E529 end:0x0041E7B7
+
+src/driver/Arguments.c:
+	.text       start:0x0041E7B7 end:0x0041F5C9
+
+src/driver/Targets.c:
+	.text       start:0x0041F5C9 end:0x0041F745
+
+src/driver/CWPluginsPrivate.cpp:
+	.text       start:0x0041F750 end:0x00420D55
+
+wii/BuildAgentCommon:
+	.text       start:0x00420D60 end:0x00421825
+
+src/driver/CLLicenses.c:
+	.text       start:0x00421830 end:0x00421E87
+
+src/msl/scanf.c:
+	.text       start:0x00421E90 end:0x00422E4B
+
+wii/BuildAgentClient:
+	.text       start:0x00422E50 end:0x00423647
+
+src/driver/CLToolExec.c:
+	.text       start:0x00423650 end:0x0042411C
+
+src/driver/MacSpecs.c:
+	.text       start:0x00424120 end:0x00424ABA
+
+src/driver/StringExtras.c:
+	.text       start:0x00424AC0 end:0x00424C19
+
+src/driver/CLPluginRequests.cpp:
+	.text       start:0x00424C20 end:0x0042601A
+
+src/driver/CLPrefs.c:
+	.text       start:0x00426020 end:0x004262AD
+
+src/driver/CLProj.c:
+	.text       start:0x004262B0 end:0x004262FD
+
+src/driver/MemUtils.c:
+	.text       start:0x00426300 end:0x004264A3
+
+src/driver/CLAccessPaths.c:
+	.text       start:0x004264B0 end:0x00426F27
+
+src/driver/CLTarg.c:
+	.text       start:0x00426F30 end:0x00427C8C
+
+src/driver/CLParserCallbacks_v1.cpp:
+	.text       start:0x00427C90 end:0x00428236
+
+src/driver/CLFileOps.c:
+	.text       start:0x00428240 end:0x0042B162
+
+wii/BuildAgentProtocol:
+	.text       start:0x0042B170 end:0x0042C764
+
+wii/BuildAgentSocketAPI:
+	.text       start:0x0042C770 end:0x0042CDC7
+
+src/msl/ctype.c:
+	.text       start:0x0042CDD0 end:0x0042CE5C
+
+src/msl/char_io.c:
+	.text       start:0x0042CE60 end:0x0042CF46
+
+src/msl/strtoul.c:
+	.text       start:0x0042CF50 end:0x0042D971
+
+src/msl/misc_io.c:
+	.text       start:0x0042D980 end:0x0042D99B
+
+wii/file_pos:
+	.text       start:0x0042D9A0 end:0x0042DC17
+
+wii/Win32Shortcut:
+	.text       start:0x0042DC20 end:0x0042DD72
+
+wii/assert.win32:
+	.text       start:0x0042DD80 end:0x0042DE35
+
+src/driver/StringUtils.c:
+	.text       start:0x0042DE40 end:0x0042E126
+
+src/driver/Memory.c:
+	.text       start:0x0042E130 end:0x0042E4CE
+
+src/driver/Files.c:
+	.text       start:0x0042E4D0 end:0x0042F40E
+
+src/driver/TextUtils.c:
+	.text       start:0x0042F410 end:0x0042F627
+
+src/runtime/stackall.c:
+	.text       start:0x0042F630 end:0x0042F67B
+
+wii/VERSION:
+	.text       start:0x0042F67C end:0x0042F68E
+
+src/driver/MacFileTypes.c:
+	.text       start:0x0042F690 end:0x0042FA10
+
+wii/signal.win32:
+	.text       start:0x0042FA10 end:0x0042FB04
+
+src/driver/FileHandles.c:
+	.text       start:0x0042FB10 end:0x0042FDF1
+
+src/driver/CWSecretPluginCallbacks.cpp:
+	.text       start:0x0042FE00 end:0x0042FEED
+
+src/driver/CWParserPluginsPrivate.cpp:
+	.text       start:0x0042FEF0 end:0x0043048B
+
+src/driver/Option.c:
+	.text       start:0x0043048B end:0x004322A8
+
+wii/CompIDECallbacks:
+	.text       start:0x004322B0 end:0x0043234F
+
+src/driver/CCompiler.c:
+	.text       start:0x00432350 end:0x004344C8
+
+src/driver/ELF_Lib_Import.c:
+	.text       start:0x004344D0 end:0x00434D1A
+
+wii/CLPluginAPI:
+	.text       start:0x00434D20 end:0x00434ED4
+
+src/driver/Utils.c:
+	.text       start:0x00434ED4 end:0x004352AB
+
+wii/TargetOptimizerHelpers-eppc:
+	.text       start:0x004352B0 end:0x004353D1
+
+wii/LMGR8C:
+	.text       start:0x004353D2 end:0x004353E4
+
+src/msl/strtold.c:
+	.text       start:0x004353F0 end:0x0043651B
+
+src/driver/CLFiles.c:
+	.text       start:0x00436520 end:0x004369DB
+
+src/driver/CLOverlays.c:
+	.text       start:0x004369E0 end:0x0043713C
+
+src/driver/CLDropinCallbacks_V10.cpp:
+	.text       start:0x00437140 end:0x0043A783
+
+src/driver/CLCompilerLinkerDropin_V10.cpp:
+	.text       start:0x0043A790 end:0x0043C4CB
+
+src/driver/CLSegs.c:
+	.text       start:0x0043C4D0 end:0x0043C79B
+
+src/driver/CLDependencies.c:
+	.text       start:0x0043C7A0 end:0x0043D585
+
+src/driver/CLWriteObjectFile.c:
+	.text       start:0x0043D590 end:0x0043D78D
+
+src/driver/CLBrowser.c:
+	.text       start:0x0043D790 end:0x0043DCF6
+
+src/driver/CLIncludeFileCache.c:
+	.text       start:0x0043DD00 end:0x0043E10C
+
+wii/WS2_32:
+	.text       start:0x0043E10C end:0x0043E116
+
+src/driver/Parameter.c:
+	.text       start:0x0043E116 end:0x0043FB5C
+
+src/driver/Help.c:
+	.text       start:0x0043FB5C end:0x00440E11
+
+src/frontend/CPrep.c:
+	.text       start:0x00440E20 end:0x00449283
+
+src/driver/CodeGenOptPPC.c:
+	.text       start:0x00449290 end:0x0044B6BC
+
+wii/CPreprocessor:
+	.text       start:0x0044B6C0 end:0x0044CD55
+
+wii/COSToolsWin32:
+	.text       start:0x0044CD60 end:0x0044E0B0
+
+src/frontend/CParser.c:
+	.text       start:0x004509F0 end:0x0045838C
+
+src/frontend/CTemplateTools.c:
+	.text       start:0x005380E0 end:0x0053EECB
+
+src/driver/DropInCompilerLinkerPrivate.cpp:
+	.text       start:0x00458390 end:0x00458FC6
+
+wii/MsgUtils:
+	.text       start:0x00458FD0 end:0x00459F0B
+
+src/frontend/CError.c:
+	.text       start:0x00459F10 end:0x00462F68
+
+src/backend/CodeGen.c:
+	.text       start:0x00462F70 end:0x0046BC19
+
+src/frontend/CompilerTools.c:
+	.text       start:0x0046BC20 end:0x0046DB67
+
+src/frontend/CPrec.c:
+	.text       start:0x0046E160 end:0x004795AD
+
+wii/CMiddleLayer:
+	.text       start:0x004795B0 end:0x0047D1C6
+
+wii/CPrepScanner:
+	.text       start:0x0047D1D0 end:0x0049905F
+
+src/driver/LinkErrorsPPC_EABI.c:
+	.text       start:0x00499060 end:0x00499412
+
+wii/EPPC_LinkUtilities:
+	.text       start:0x00499420 end:0x00499ECA
+
+src/driver/DateTimeUtils.c:
+	.text       start:0x00499ED0 end:0x00499EE7
+
+src/backend/ELF_Endian.c:
+	.text       start:0x00499EF0 end:0x0049A7AB
+
+src/driver/CLLoadAndCache.c:
+	.text       start:0x0049A7B0 end:0x0049A9C1
+
+wii/time:
+	.text       start:0x0049A9D0 end:0x0049BCFC
+
+wii/CLibrary:
+	.text       start:0x0049BD00 end:0x0049C708
+
+src/frontend/CException.c:
+	.text       start:0x0049C710 end:0x004A0803
+
+wii/IroLibrary:
+	.text       start:0x004A0810 end:0x004A0AF2
+
+src/optimizer/IroPointerAnalysis.c:
+	.text       start:0x004A0B00 end:0x004B87CB
+
+wii/cobraPragmas:
+	.text       start:0x004B87D0 end:0x004B8B1A
+
+wii/PCodeStats:
+	.text       start:0x004B8B20 end:0x004BAC34
+
+wii/CIRStreamCallGraph:
+	.text       start:0x004BAC40 end:0x004BCEAC
+
+src/backend/FuncLevelAsmPPC.c:
+	.text       start:0x004BCEB0 end:0x004BDD7F
+
+src/backend/ObjGen_PPC_EABI.c:
+	.text       start:0x004BE110 end:0x004C515A
+
+src/optimizer/IroMalloc.c:
+	.text       start:0x004C5160 end:0x004C58F6
+
+src/frontend/CBrowse.c:
+	.text       start:0x004C5900 end:0x004C7423
+
+wii/CPrepLexer:
+	.text       start:0x004C7430 end:0x004D7886
+
+src/frontend/CPreprocess.c:
+	.text       start:0x004D7890 end:0x004D880E
+
+src/frontend/CInt64.c:
+	.text       start:0x004D8810 end:0x004DA431
+
+wii/CodeGen_RegisterTokens:
+	.text       start:0x004DA440 end:0x004DA4FC
+
+src/backend/DWARF.c:
+	.text       start:0x004DA500 end:0x004E0BA8
+
+wii/EPPC_DWARF2:
+	.text       start:0x005CE570 end:0x005D82A2
+
+src/backend/CMachine.c:
+	.text       start:0x004E0DF0 end:0x004E5597
+
+src/frontend/CScope.c:
+	.text       start:0x004E55A0 end:0x004EB708
+
+wii/DumpUtils:
+	.text       start:0x004EB710 end:0x004EC8DE
+
+src/frontend/CTemplateNew.c:
+	.text       start:0x004EC8E0 end:0x004F0A39
+
+wii/ProductLicensing:
+	.text       start:0x004F0A40 end:0x004F111B
+
+src/backend/InstrSelection.c:
+	.text       start:0x004F1F80 end:0x0050552C
+
+wii/CIRStream:
+	.text       start:0x00505530 end:0x00509F60
+
+src/frontend/CDecl.c:
+	.text       start:0x00509F60 end:0x00514E3B
+
+src/frontend/CExpr.c:
+	.text       start:0x00514E40 end:0x0051B433
+
+wii/CExprGen:
+	.text       start:0x0051B440 end:0x005243D0
+
+src/frontend/CFunc.c:
+	.text       start:0x005243D0 end:0x0052EF22
+
+src/frontend/CInit.c:
+	.text       start:0x0052EF30 end:0x005380DE
+
+src/frontend/CClass.c:
+	.text       start:0x0053EED0 end:0x00542E35
+
+wii/CMemberPointer:
+	.text       start:0x00542E40 end:0x00544126
+
+wii/CTypeTools:
+	.text       start:0x00544130 end:0x00545571
+
+src/frontend/CInline.c:
+	.text       start:0x00545580 end:0x0054ECDB
+
+src/frontend/CABI.c:
+	.text       start:0x0054ECE0 end:0x005547E3
+
+src/backend/BE_elf.c:
+	.text       start:0x005547F0 end:0x005567BF
+
+src/frontend/CMangler.c:
+	.text       start:0x005567F0 end:0x00558D61
+
+wii/qsort:
+	.text       start:0x00558D70 end:0x00558F05
+
+src/optimizer/CIRTransform.c:
+	.text       start:0x00558F10 end:0x00559231
+
+wii/CExprTools:
+	.text       start:0x00559240 end:0x0055C39D
+
+src/backend/InlineAsm.c:
+	.text       start:0x0055C3A0 end:0x0055EBFC
+
+src/frontend/Unmangle.c:
+	.text       start:0x0055EC00 end:0x0056062E
+
+src/backend/Intrinsics.c:
+	.text       start:0x00560630 end:0x0056AC8E
+
+src/optimizer/IroSubable.c:
+	.text       start:0x0056AC90 end:0x0056B1A9
+
+src/backend/Exceptions.c:
+	.text       start:0x0056B1B0 end:0x0056EC81
+
+src/backend/PPCError.c:
+	.text       start:0x0056EC90 end:0x0056EE9E
+
+src/backend/InlineAsmMnemonicsPPC.c:
+	.text       start:0x0056EF00 end:0x0056F33A
+
+src/backend/InlineAsmPPC.c:
+	.text       start:0x0056F340 end:0x00577325
+
+src/optimizer/IrOptimizer.c:
+	.text       start:0x00577330 end:0x0057840E
+
+src/backend/RegisterInfo.c:
+	.text       start:0x00578410 end:0x0057A9E3
+
+src/backend/SFPE_PPC_EABI.c:
+	.text       start:0x0057B640 end:0x0057D0D6
+
+src/backend/TOC.c:
+	.text       start:0x0057D0E0 end:0x005820D7
+
+src/backend/PCode.c:
+	.text       start:0x005820E0 end:0x005830B0
+
+src/backend/PCodeAssembly.c:
+	.text       start:0x005830B0 end:0x00585517
+
+src/backend/StackFrame.c:
+	.text       start:0x00585520 end:0x0058AC40
+
+src/backend/PCodeInfo.c:
+	.text       start:0x0058ACF0 end:0x0058DB55
+
+src/backend/Switch.c:
+	.text       start:0x0058DB60 end:0x0058F2F9
+
+src/backend/Operands.c:
+	.text       start:0x0058F300 end:0x00592F87
+
+wii/EnodeInfoHandler:
+	.text       start:0x00592F90 end:0x0059327B
+
+src/optimizer/COptimizer.c:
+	.text       start:0x00593280 end:0x0059446A
+
+src/backend/Registers.c:
+	.text       start:0x00594470 end:0x00594975
+
+src/backend/DumpIR.c:
+	.text       start:0x00594980 end:0x00594991
+
+src/backend/PCodeUtilities.c:
+	.text       start:0x005949A0 end:0x005963F2
+
+src/optimizer/GlobalOptimizer.c:
+	.text       start:0x00596400 end:0x00596843
+
+src/backend/Peephole.c:
+	.text       start:0x00596850 end:0x00596D62
+
+wii/DeadCodeElimination:
+	.text       start:0x00596D70 end:0x00596DE1
+
+src/backend/Coloring.c:
+	.text       start:0x00596E10 end:0x00596F8F
+
+wii/LocalCSE:
+	.text       start:0x005976E0 end:0x005994D1
+
+src/backend/Scheduler.c:
+	.text       start:0x005994E0 end:0x0059A02E
+
+wii/PeepholeForward:
+	.text       start:0x0059A030 end:0x0059CE17
+
+src/optimizer/StructMoves.c:
+	.text       start:0x0059CE20 end:0x0059F9E1
+
+src/optimizer/Alias.c:
+	.text       start:0x0059F9F0 end:0x005A0E5F
+
+wii/CCallGraph:
+	.text       start:0x005A0E60 end:0x005A1839
+
+wii/CTemplateFuncInst:
+	.text       start:0x005A1840 end:0x005A344C
+
+src/backend/GCCInlineAsm.c:
+	.text       start:0x005A3450 end:0x005A420E
+
+wii/cpprtl:
+	.text       start:0x005A4210 end:0x005A4236
+
+wii/SourceText:
+	.text       start:0x005A4240 end:0x005A43DB
+
+src/runtime/newop.cpp:
+	.text       start:0x005A43E0 end:0x005A44D6
+
+src/msl/arith.c:
+	.text       start:0x005A44E0 end:0x005A46FB
+
+wii/time.win32:
+	.text       start:0x005A4700 end:0x005A48CA
+
+wii/bsearch:
+	.text       start:0x005A48D0 end:0x005A49AA
+
+src/frontend/CExpr2.c:
+	.text       start:0x005A49B0 end:0x005A9331
+
+src/optimizer/IroUtil.c:
+	.text       start:0x005A9340 end:0x005B1FB9
+
+src/optimizer/IroVars.c:
+	.text       start:0x005B1FC0 end:0x005B54F1
+
+wii/IroType:
+	.text       start:0x005B5500 end:0x005B7E97
+
+src/optimizer/IroLinearForm.c:
+	.text       start:0x005B7EA0 end:0x005BD68B
+
+src/optimizer/IroFlowgraph.c:
+	.text       start:0x005BD690 end:0x005BF2BF
+
+src/optimizer/IroBitVect.c:
+	.text       start:0x005BF2C0 end:0x005BFB19
+
+src/optimizer/IroLoop.c:
+	.text       start:0x005BFB20 end:0x005C7549
+
+wii/PCodeStatsPPC:
+	.text       start:0x005C7550 end:0x005C92D4
+
+wii/CIRStreamTools:
+	.text       start:0x005C92E0 end:0x005C97B3
+
+wii/CIRStreamType:
+	.text       start:0x005C97C0 end:0x005CB7AC
+
+src/backend/InlineAsmRegistersPPC.c:
+	.text       start:0x005CB7B0 end:0x005CC1EE
+
+src/backend/InlineAsmRegisters.c:
+	.text       start:0x005CC1F0 end:0x005CC2F5
+
+wii/IroLoopReversal:
+	.text       start:0x005CC300 end:0x005CC9F4
+
+wii/IroLoopVector:
+	.text       start:0x005CCA00 end:0x005CCE83
+
+src/backend/BE_symbol.c:
+	.text       start:0x005CCE90 end:0x005CE56F
+
+wii/DWARF_GlobalRefs:
+	.text       start:0x005D84F0 end:0x005D8733
+
+src/backend/PCodeListing.c:
+	.text       start:0x005D8740 end:0x005D8746
+
+src/backend/ScanFloatX86.c:
+	.text       start:0x005D8750 end:0x005D8797
+
+src/frontend/CTemplateClass.c:
+	.text       start:0x005D87A0 end:0x005DC021
+
+src/frontend/CTemplateFunc.c:
+	.text       start:0x005DC030 end:0x005DF25E
+
+src/frontend/CExprConvMatch.c:
+	.text       start:0x005DF2F0 end:0x005E6774
+
+src/optimizer/FunctionCalls.c:
+	.text       start:0x005E6780 end:0x005E8487
+
+src/frontend/CRTTI.c:
+	.text       start:0x005E8490 end:0x005E9F54
+
+wii/TranslatorUtils:
+	.text       start:0x005E9F60 end:0x005EA631
+
+wii/CleanUpIR:
+	.text       start:0x005EA640 end:0x005EC6A1
+
+wii/IRFlowgraph:
+	.text       start:0x005EC6B0 end:0x005ED160
+
+wii/cobraError:
+	.text       start:0x005ED160 end:0x005ED487
+
+src/optimizer/IroDump.c:
+	.text       start:0x005ED490 end:0x005ED71E
+
+src/optimizer/IroUnrollLoop.c:
+	.text       start:0x005ED720 end:0x005F1D87
+
+src/optimizer/IroPropagate.c:
+	.text       start:0x005F1D90 end:0x005F569F
+
+wii/IroDependsKills:
+	.text       start:0x005F57B0 end:0x005F79D7
+
+src/optimizer/IroTransform.c:
+	.text       start:0x005F79E0 end:0x00601F4A
+
+wii/IroExprs:
+	.text       start:0x00601F50 end:0x00602B78
+
+src/optimizer/IROUseDef.c:
+	.text       start:0x00602B80 end:0x006063F7
+
+src/optimizer/IroJump.c:
+	.text       start:0x00606400 end:0x00606C32
+
+src/optimizer/IroExprRegeneration.c:
+	.text       start:0x00606C40 end:0x0060BBFB
+
+wii/IroCodePositioning:
+	.text       start:0x0060BCE0 end:0x0060E3CA
+
+wii/IroSerializeAssignments:
+	.text       start:0x0060E520 end:0x0060E7B4
+
+wii/IroAggregateAssignment:
+	.text       start:0x0060E7C0 end:0x00612936
+
+src/optimizer/IroEval.c:
+	.text       start:0x00612940 end:0x00614F77
+
+src/optimizer/IroEmptyLoop.c:
+	.text       start:0x00614F80 end:0x00615774
+
+src/optimizer/IroCSE.c:
+	.text       start:0x00615780 end:0x00616539
+
+wii/IroScalarization:
+	.text       start:0x00616540 end:0x00618094
+
+src/optimizer/IroRangePropagation.c:
+	.text       start:0x006180A0 end:0x0061A262
+
+wii/IroLoopInvariants:
+	.text       start:0x0061A270 end:0x0061D3DB
+
+wii/IroLifetime:
+	.text       start:0x0061D3E0 end:0x0061F279
+
+src/backend/InterferenceGraph.c:
+	.text       start:0x0061F280 end:0x006204FC
+
+wii/Spill:
+	.text       start:0x00620500 end:0x006210BD
+
+wii/LiveRegisters:
+	.text       start:0x006210C0 end:0x00621CFA
+
+src/optimizer/CopyPropagation.c:
+	.text       start:0x00621D00 end:0x00622067
+
+src/optimizer/AddPropagation.c:
+	.text       start:0x00622070 end:0x00622A11
+
+src/optimizer/ConstantPropagation.c:
+	.text       start:0x00622A20 end:0x00625500
+
+src/optimizer/LoopDetection.c:
+	.text       start:0x00625500 end:0x00626F3B
+
+src/optimizer/UseDefChains.c:
+	.text       start:0x00626F40 end:0x00628801
+
+src/optimizer/CodeMotion.c:
+	.text       start:0x00628810 end:0x0062A45F
+
+wii/LoopDetectionPPC:
+	.text       start:0x0062AC00 end:0x0062BE7C
+
+src/optimizer/StrengthReduction.c:
+	.text       start:0x0062BE80 end:0x0062DCB2
+
+src/optimizer/LoopOptimization.c:
+	.text       start:0x0062DCC0 end:0x00631630
+
+src/optimizer/LoadDeletion.c:
+	.text       start:0x00631630 end:0x00631713
+
+src/optimizer/VectorArraysToRegs.c:
+	.text       start:0x00631720 end:0x006325C5
+
+wii/PeepholePatterns:
+	.text       start:0x006325D0 end:0x006387F1
+
+src/backend/MachineSimulationAltiVec.c:
+	.text       start:0x00638800 end:0x00639484
+
+src/backend/MachineSimulation7400.c:
+	.text       start:0x00639480 end:0x0063A2A4
+
+wii/MachineSimulationZen:
+	.text       start:0x0063A2A0 end:0x0063A41B
+
+src/backend/MachineSimulation821.c:
+	.text       start:0x0063A440 end:0x0063A8AF
+
+src/backend/MachineSimulation750.c:
+	.text       start:0x0063C1A0 end:0x0063CA3B
+
+src/backend/MachineSimulation603.c:
+	.text       start:0x0063A930 end:0x0063B0F4
+
+src/backend/MachineSimulation603e.c:
+	.text       start:0x0063B890 end:0x0063B904
+
+src/backend/MachineSimulation604.c:
+	.text       start:0x0063B900 end:0x0063C1A4
+
+src/backend/MachineSimulation601.c:
+	.text       start:0x0063CAF0 end:0x0063CFD8
+
+src/backend/BitVectors.c:
+	.text       start:0x0063CFE0 end:0x0063D451
+
+wii/AliasPropagation:
+	.text       start:0x0063D460 end:0x0063D9EF
+
+src/runtime/NewHand.cpp:
+	.text       start:0x0063D9F0 end:0x0063DA23
+
+wii/IroLoopRotation:
+	.text       start:0x0063DA30 end:0x0063DBCA
+
+wii/IroCounterLoop:
+	.text       start:0x0063DBD0 end:0x0063E421
+
+wii/IroNonRegLoopAccesses:
+	.text       start:0x0063E430 end:0x0063ED78
+
+wii/IroStrengthReduction:
+	.text       start:0x0063ED80 end:0x006406BA
+
+wii/IroDependenceAnalysis:
+	.text       start:0x006406C0 end:0x00642BDC
+
+wii/Propagation:
+	.text       start:0x00642BE0 end:0x006436C4
+
+wii/CodeMotionPPC:
+	.text       start:0x006436D0 end:0x00643C39
+
+wii/AliasPropagationPPC:
+	.text       start:0x00643C40 end:0x006441DF
