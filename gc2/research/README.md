@@ -27,5 +27,6 @@ python tools/wii_layout.py Wii_1_0RC1 build/compilers/Wii/1.0RC1/mwcceppc.exe --
 ```
 
 `tools/wii_patch_struct_copy.py` writes a copy of RC1 that copies structs as the Prime games' Wii compiler does,
-without RC1's legacy stack layout. `tools/wii_drop_pretest.py` deletes, from compiled objects, the loop pretests that
-compiler leaves out. Their effects on Echoes are in the plan.
+without RC1's legacy stack layout. `tools/wii_patch_pretest.py` adds to a copy of RC1 a pass that leaves out the loop
+pretests that compiler leaves out (source in `tools/wii_retro/`). `tools/wii_drop_pretest.py` does the same to compiled
+objects, for testing. Their effects on Echoes are in the plan.

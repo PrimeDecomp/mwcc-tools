@@ -218,6 +218,22 @@ the Echoes CBallCamera page says.
 Which pass does this is not known. It acts after the registers are known, or on values it knows are equal, and only
 on loops whose body calls. Neither edge version has it, so `Wii_Retro` adds it. The search for where is Phase 3's.
 
+**In the compiler.** `gc2/tools/wii_patch_pretest.py` adds the rule to RC1 as a pass in a new section (`.retro`,
+source `gc2/tools/wii_retro/drop_pretest.c`, built with clang for i686). `assemblefunction` calls it before
+`optimizefinalbranches`. It deletes the `cmpl` and `bt` from the PCode blocks, then recomputes the offsets.
+- The section also holds RC1's base relocations with the pass's added. `sjiswrap` loads the compiler at another
+  base, and without them the pass crashed.
+- RC1 layouts it relies on:
+  - PCodeBlock: as in 2.7 (`pcodeCount` at 0x28).
+  - PCode: `op` at 0x28 and operands from 0x2c, 14 bytes each. A register's number is at +4, an immediate or a
+    label at +2.
+  - Operand kinds: register 0, immediate 2, label 6.
+  - Opcodes: as in 2.7 up to `blrl` (20); `cmpl` is 85.
+  - `pcbasicblocks` is at 0x751c88.
+
+Applied after `wii_patch_struct_copy.py`, on R3ME01 with the `CModelFlags` union: 12,898 → 12,952 exact, 54 gained,
+0 lost. Every function's match is the same as with the object post-pass.
+
 **A third difference, not yet looked at.** `CRevolutionMotionProcessor::Update` copies `WPADFSStatus` (0x32 bytes,
 alignment 2). The target copies it in pairs, `lhz; lhz; sth; sth`, in a 0x50-byte frame. The patched RC1 loads all
 the halfwords before storing any, runs out of registers and spills, in a 0x90-byte frame. It is on all three Wii
