@@ -234,10 +234,27 @@ source `gc2/tools/wii_retro/drop_pretest.c`, built with clang for i686). `assemb
 Applied after `wii_patch_struct_copy.py`, on R3ME01 with the `CModelFlags` union: 12,898 → 12,952 exact, 54 gained,
 0 lost. Every function's match is the same as with the object post-pass.
 
-**A third difference, not yet looked at.** `CRevolutionMotionProcessor::Update` copies `WPADFSStatus` (0x32 bytes,
-alignment 2). The target copies it in pairs, `lhz; lhz; sth; sth`, in a 0x50-byte frame. The patched RC1 loads all
-the halfwords before storing any, runs out of registers and spills, in a 0x90-byte frame. It is on all three Wii
-versions: 78.3% under stock RC1, 71.0% under the patch.
+**A third difference: copying a struct member by member.** `CRevolutionMotionProcessor::Update` (source in rstl,
+`src/Kyoto/Input/CRevolutionMotionProcessor.cpp`) does `mStatus = status`. `WPADFSStatus` is an SDK C struct,
+0x32 bytes, 2-byte aligned, with a `DPDObject obj[4]` array.
+- The target copies it member by member, each load next to its store: `lhz`/`sth` for `button`, `lha`/`sth` for the
+  `s16` fields, `lbz`/`stb` for the bytes. The array is a block copy in pairs (`lhz r6; lhz r0; sth r0; sth r6`), the
+  shape of 2.7's `move_block_via_load_store_sequence`. The frame is 0x50.
+- GC 3.0a3, 3.0a5 and 3.0a5.2, RC1 and the patched RC1 load every member (the array as 16 halfwords) before storing
+  any. In `Update` that runs out of registers and spills, giving a 0x90 frame. 3.0a5.2 and the patched RC1 give the
+  same code for this function: 78.3% under stock RC1, 71.0% under the patch.
+- GC 2.7 copies it the way the target does, in C++: member by member from the implicit `operator=`, with the array
+  as a block move, though with words where the target uses halfwords. In C, 2.7 copies the whole struct as one block.
+  So the target keeps 2.x's copy for this case, and 3.x's operand alignment.
+- RC1's `IRO_DecomposeAssignments`, `IRO_SerializeAllAssignments` and `IRO_RecomposeAssignments` are not involved.
+  They are switched by `copts` bytes 0x74f51f, 0x74f51c and 0x74f520, and skipping them changes nothing.
+- It is narrower than "2.x's copies". In R3ME01, 70 functions where we load 8 or more times in a row from one base
+  register, such as `CDamageVulnerability::MakeImmuneToRadiusDamage`'s 23-word copy, look the same in the target.
+  Only 4 differ, and 3 of those (`MoveGroundCollider_New`, `CSlideShow::OnMessage`, `LoadDynamicLight`) differ from
+  the target in other ways too. So `Update` is the only clean case.
+- Not settled: what makes the target copy member by member here. Candidates are copy assignment against copy
+  construction (`MakeImmuneToRadiusDamage` is a copy construction), or C structs. The code to find is where RC1 and
+  3.0a5.2 expand a C++ implicit copy into pieces that are all loaded first.
 
 ## Phase 3: decompile both edge versions
 
