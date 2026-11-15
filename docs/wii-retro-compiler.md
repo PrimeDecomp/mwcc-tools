@@ -182,9 +182,46 @@ belongs in Echoes' rstl, with the patched compiler.
 Moving Echoes to the patched compiler: [wii-retro-echoes.md](wii-retro-echoes.md).
 
 **The destroy pretest.** GC 3.0a5.2, 3.0a5 and 3.0a3 keep the `if (begin != end)` check in the calling case, like
-RC1. So no edge version drops it. Either the original compiler changed this itself, or the source has no check
-where the body calls. Echoes' rstl already has an unguarded range-destruction policy
-(`RSTL_DECLARE_UNGUARDED_RANGE_DESTRUCTION`), and that possibility should be ruled out first.
+RC1. So no edge version drops it. Echoes ruled out the source: its unguarded range-destruction policy is only on
+types whose destructor calls, and removing the guard from the source gains 47 functions and loses 42. So it is a
+second behaviour of the original compiler.
+
+The guard (`cmplw rA,rB; beq exit`) comes just before the loop's `b test`, and `test` is `cmplw rA,rB; bne body`,
+with `exit` right after it. The target drops the guard when both:
+- it compares the same registers as the loop's test, and
+- the loop body makes a call.
+
+Our R3ME01 objects against the target, per function:
+- Same registers, body calls: 302 dropped, 4 kept.
+- Same registers, no call: 14 kept, 3 dropped.
+
+All the exceptions are in functions with more than one such loop, where ours don't pair one to one with the target's.
+Of the guards the target keeps with the same registers, 20 have a call-free body of one instruction, and 3 are calling
+loops with an explicit source guard (`WriteAnimData` ×2, `CScriptTrigger::AddInhabitant`).
+- Whether the registers are the same follows from whether `begin` is used after the loop. In a vector destructor,
+  `begin` is the vector's data pointer, which is freed after the loop. When the body makes no call, `begin` stays in
+  `r3` for that free, and the loop counts in its own register (`r4`). When the body calls, the pointer is loaded
+  again for the free. `begin` and `cur` then share one register, so the guard's compare is the loop test's.
+- So the register condition alone does not decide it: the call does.
+
+Measured by deleting the guard from our compiled objects after the patched compiler
+(`gc2/tools/wii_drop_pretest.py`, on R3ME01 with the patched RC1 and the `CModelFlags` union):
+- Same registers and the body calls (750 guards): 12,898 → 12,952 exact, 54 gained, 0 lost; 150 improved,
+  3 regressed. Gained include `~CCameraColliderGroup`, `~CGuiFrame`, `~CModel`, `~CPakFile`, `~CMapWorld`, `~CWorld`
+  and `CToken` vectors. Regressed: `AddInhabitant` (explicit guard, kept in the target), `~CGenericFSM2State` and a
+  `reserve`, each by 1 point or less.
+- Also when the body makes no call (770 guards): 55 gained, 3 lost, 18 regressed.
+
+The deleted guard is 8 bytes, `cmplw` and `beq` (`~CCameraColliderGroup` matches exactly with it gone), not 12 as
+the Echoes CBallCamera page says.
+
+Which pass does this is not known. It acts after the registers are known, or on values it knows are equal, and only
+on loops whose body calls. Neither edge version has it, so `Wii_Retro` adds it. The search for where is Phase 3's.
+
+**A third difference, not yet looked at.** `CRevolutionMotionProcessor::Update` copies `WPADFSStatus` (0x32 bytes,
+alignment 2). The target copies it in pairs, `lhz; lhz; sth; sth`, in a 0x50-byte frame. The patched RC1 loads all
+the halfwords before storing any, runs out of registers and spills, in a 0x90-byte frame. It is on all three Wii
+versions: 78.3% under stock RC1, 71.0% under the patch.
 
 ## Phase 3: decompile both edge versions
 
@@ -221,7 +258,7 @@ The long-term goal, done like the 2.x versions in gc2:
 
 - **After Phase 2's patch:** whether RC1's legacy copy path is separable from its stack layout. If it is, the copy
   rule is a small, local change. If not, the decompilation of the struct move and frame layout is the critical path.
-- **The destroy pretest:** a GC 3.x behaviour carried forward, or one belonging to neither edge version.
+- **The destroy pretest:** settled. It belongs to neither edge version (see Phase 2's results).
 - **Host compiler found or not:** whether Phase 3 aims for matching or for equivalence.
 
 [Trilogy-compiler-struct-copies.md]: https://collab.decomp.dev/projects/echoes/docs/research/Trilogy-compiler-struct-copies.md
