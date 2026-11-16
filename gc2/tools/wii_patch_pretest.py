@@ -4,7 +4,7 @@
 The target compiler drops a loop's pretest (`cmplw rA,rB; beq exit` before the loop's `b test`) when it repeats
 the loop's own test and the loop body makes a call. RC1 keeps it. The patch adds a section, `.retro`, with a pass
 (wii_retro/drop_pretest.c, built for i686) that deletes such a pretest, and makes assemblefunction call it
-before optimizefinalbranches. See ../../docs/wii-retro-compiler.md, "The destroy pretest".
+before optimizefinalbranches. See ../../docs/wii-retro-compiler-research.md, "The destroy pretest".
 
 The section also holds a copy of RC1's base relocations with the pass's added, since wrappers such as sjiswrap
 load the compiler at another base. Apply it to RC1, or to the output of wii_patch_struct_copy.py.

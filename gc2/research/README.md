@@ -34,4 +34,4 @@ added by `tools/wii_retro_pe.py`:
 - `tools/wii_patch_template_vtables.py` emits class template instances' vtables and virtual functions after each
   declaration, not at the end of the file.
 
-Their effects on Echoes are in the plan.
+The [compiler research notes](../../docs/wii-retro-compiler-research.md) record their effects on Echoes.

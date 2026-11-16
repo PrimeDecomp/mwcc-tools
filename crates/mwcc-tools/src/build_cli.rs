@@ -10,6 +10,7 @@ fn usage(command: &str) -> &'static str {
     writes build.ninja for the version (default GC_1_2_5); for GC 2.6 and 2.7 its default targets include the
     WebAssembly modules: build/V/wasm/mwcc.wasm (the module every in-process compile and trace runs: gc2's sources
     with ORACLE_PROBES and the Rust hooks), mwcceppc.wasm (the stock compiler), oracle.wasm and persist.wasm (mwdec's)
+    --version Wii_Retro   relinks Wii 1.0RC1 with the Retro patches into build/Wii_Retro/mwcceppc.exe
     --oracle   also the native oracle, build/V/oracle/mwcceppc.exe (the original's code with the hooks linked in)"
         }
         "probe-build" => {

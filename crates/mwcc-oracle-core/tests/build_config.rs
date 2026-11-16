@@ -52,6 +52,40 @@ fn project() -> tempfile::TempDir {
     directory
 }
 #[test]
+fn wii_retro_builds_a_native_executable_and_runtime() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let request = Request {
+        version: "Wii_Retro".into(),
+        mode: None,
+        split_only: false,
+        oracle: false,
+        rust_hooks: false,
+        tools: "C:/Program Files/mwcc-tools.exe".into(),
+        platform: Platform::Windows,
+    };
+    let generated = build_config::generate(&root, &request).unwrap();
+    assert!(generated.objdiff.is_none());
+    assert!(generated.ninja.contains(
+        "build build/Wii_Retro/mwcceppc.exe | build/Wii_Retro/lmgr8c.dll: wii_retro \
+         build/compilers/Wii/1.0RC1/mwcceppc.exe build/compilers/Wii/1.0RC1/lmgr8c.dll"
+    ));
+    assert!(
+        generated
+            .ninja
+            .contains("--tools \"C:/Program Files/mwcc-tools.exe\"")
+    );
+    assert!(generated.ninja.contains("default Wii_Retro"));
+    for dependency in ["inline_locals.c", "rc1_local.h", "reference_order.c"] {
+        assert!(
+            generated
+                .ninja
+                .contains(&format!("gc2/tools/wii_retro/{dependency}")),
+            "missing Wii_Retro dependency {dependency}"
+        );
+    }
+}
+
+#[test]
 fn native_configuration_preserves_all_reference_graphs() {
     let root = project();
     let cases: Vec<Value> =

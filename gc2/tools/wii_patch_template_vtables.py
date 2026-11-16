@@ -8,7 +8,7 @@ function that first constructed the class. The patch adds a section, `.retrovt`,
 (wii_retro/template_vtables.c, built for i686) that, after each top-level declaration, emits the referenced
 vtables of class template instances and instantiates those instances' referenced members. Other classes'
 vtables, and the members of templates without a vtable (vector::reserve), still wait for the end of the file.
-See ../../docs/wii-retro-compiler.md, "Template instances' vtables".
+See ../../docs/wii-retro-compiler-research.md, "when template instances' vtables are emitted".
 
 Apply it to RC1, or to the output of wii_patch_struct_copy.py or wii_patch_pretest.py.
 
