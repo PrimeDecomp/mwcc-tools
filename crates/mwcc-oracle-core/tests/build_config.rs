@@ -75,7 +75,12 @@ fn wii_retro_builds_a_native_executable_and_runtime() {
             .contains("--tools \"C:/Program Files/mwcc-tools.exe\"")
     );
     assert!(generated.ninja.contains("default Wii_Retro"));
-    for dependency in ["inline_locals.c", "rc1_local.h", "reference_order.c"] {
+    for dependency in [
+        "inline_locals.c",
+        "rc1_local.h",
+        "reference_order.c",
+        "aggregate_schedule.c",
+    ] {
         assert!(
             generated
                 .ninja

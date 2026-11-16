@@ -9,8 +9,11 @@ enum {
     TypeInteger = 1,
     TypeFloat = 2,
     TypeEnum = 3,
+    TypeStruct = 5,
+    TypeClass = 6,
     TypeFunction = 7,
     TypePointer = 12,
+    TypeArray = 13,
     QualConst = 1,
     QualReference = 0x20,
 };

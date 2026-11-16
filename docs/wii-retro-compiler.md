@@ -32,11 +32,13 @@ project's compiler directory. To build directly into another directory, pass `--
   functions after the relevant top-level declaration.
 - **File-IPA register order.** Adjusts virtual register assignment for inlined locals and
   arguments, propagated references, and optimizer-generated iterators when `-ipa file` is active.
+- **Aggregate-copy scheduling.** Preserves memory order within mixed scalar and array member
+  copies through both scheduler passes to limit register pressure.
 
 All 30 audited register-order cases match R32J01, R3ME01, and R3MP01 under file IPA. The full R3ME01
-file-IPA sweep gained 43 exact functions with zero exact losses. All 898 R3ME01 objects built with
-the configured flags match the earlier three-patch compiler byte for byte.
-[Research and validation](wii-retro-compiler-research.md#file-ipa-and-inlined-local-register-order)
+file-IPA sweep gained 43 exact functions with zero exact losses. Aggregate-copy scheduling also
+matches the original status copy and stack frame in `CRevolutionMotionProcessor::Update` in all
+three builds. [Research and validation](wii-retro-compiler-research.md#native-relink-and-validation)
 
 ## Plan
 

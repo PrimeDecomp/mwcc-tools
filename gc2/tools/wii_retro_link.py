@@ -62,6 +62,17 @@ REFERENCE_CALLS = (
     (0x46A7AB, "_CodeGen_Generator", "fn_0046d690", "_retro_AssignLocals"),
     (0x46A78C, "_CodeGen_Generator", "fn_0046d8b0", "_retro_ReassignLocals"),
 )
+SCHEDULER_SYMBOLS = {
+    "RC1_ScheduleBlock": 0x5B6AD0,
+}
+SCHEDULER_CALLS = (
+    (0x46B3E4, "_CodeGen_Generator", "_scheduleinstructions", "_retro_scheduleinstructions"),
+    (0x46B335, "_CodeGen_Generator", "_scheduleinstructions", "_retro_scheduleinstructions"),
+    (0x5B6AB1, "_scheduleinstructions", "fn_005b6ad0", "_retro_schedule_block"),
+    (0x5B7026, "fn_005b6e50", "_may_alias", "_retro_aggregate_may_alias"),
+    (0x5B70D6, "fn_005b70a0", "_may_alias", "_retro_aggregate_may_alias"),
+    (0x5B7126, "fn_005b70a0", "_may_alias", "_retro_aggregate_may_alias"),
+)
 TEMP_CREATORS = (
     (0x62EE38, "fn_0062ed70", "_retro_CreateCommonSubexpression"),
     (0x630581, "fn_00630350", "_retro_CreateScalarizedMember"),
@@ -146,7 +157,10 @@ def link_symbols(pe, layout):
             symbols.append(formats.Symbol(f"_va_{address:08x}", pe.section_for_address(address).name, address))
             addresses.add(address)
 
-    patches = pretest.SYMBOLS | vtables.SYMBOLS | ALIGNMENT_OPTIONS | INLINE_SYMBOLS | REFERENCE_SYMBOLS
+    patches = (
+        pretest.SYMBOLS | vtables.SYMBOLS | ALIGNMENT_OPTIONS |
+        INLINE_SYMBOLS | REFERENCE_SYMBOLS | SCHEDULER_SYMBOLS
+    )
     for name, address in patches.items():
         symbols.append(formats.Symbol(f"_{name}", pe.section_for_address(address).name, address))
     return symbols
@@ -290,14 +304,17 @@ def build(stock, output, tools, clang, linker):
             "_CMid_GlobalDeclarationActions",
             "_retro_GlobalDeclarationActions",
         )
-        for call in (*INLINE_CALLS, *REFERENCE_CALLS):
+        for call in (*INLINE_CALLS, *REFERENCE_CALLS, *SCHEDULER_CALLS):
             redirect_call(objects, splits, symbols, *call)
         redirect_temp_creators(objects, splits, symbols)
         identity = identity_object(objects, splits, symbols, settings["banner"], work)
 
         sources = Path(__file__).resolve().with_name("wii_retro")
         compiled = []
-        for name in ("struct_copy", "drop_pretest", "template_vtables", "inline_locals", "reference_order"):
+        for name in (
+            "struct_copy", "drop_pretest", "template_vtables",
+            "inline_locals", "reference_order", "aggregate_schedule",
+        ):
             obj = work / f"{name}.obj"
             flags = wii_retro_pe.BUILD.split()[1:]
             subprocess.run([clang, *flags, str(sources / f"{name}.c"), "-o", str(obj)], check=True)

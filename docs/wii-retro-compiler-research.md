@@ -6,14 +6,15 @@ The current build, patches, and plan are in the [main guide](wii-retro-compiler.
 ## Native relink and validation
 
 The build validates the stock SHA-1 and splits it into relocatable COFF objects. Clang builds the replacement
-`CMach_GetObjectAlignment` and the destroy-loop, vtable-emission and register-order passes
+`CMach_GetObjectAlignment` and the destroy-loop, vtable-emission, register-order and aggregate scheduling passes
 from C sources.
 The seven instruction-selection edits retain the tested operand-width branches in the reused RC1 code.
 The build redirects the pass calls through COFF relocations. LLD links the executable from these objects,
 preserving the CRT and exception table order and rebuilding the imports and base relocations.
 
-With Clang and LLD 23.1.1 the native PE has SHA-1 `d3d17e4e5bc7102b68f9f1e4bcb92f4b16a8c0cd`.
-All 898 R3ME01 Wii RC1 objects match the three-patch compiler byte for byte with the configured flags.
+With Clang and LLD 23.1.1 the native PE has SHA-1 `ba190cfb0d63f65ecdfd1983f029f5d245f0195d`.
+With the configured flags, 897 of 898 R3ME01 Wii RC1 objects match the three-patch compiler byte for
+byte. The one change is the aggregate copy in `CRevolutionMotionProcessor::Update`.
 Forcing file IPA for every C++ entry grows the exact function count from 12,758 to 12,801 in the
 18,016-function report, with zero exact losses. All 30 register-order cases that previously favored
 ordinary inlining now match with file IPA in R32J01, R3ME01 and R3MP01. See
@@ -387,6 +388,72 @@ The pre-allocation scheduler accounts for the larger frame. Skipping it still ch
 surrounding schedule, so it is a diagnostic. Compare how the scheduler handles dependencies and register
 pressure in the copy block before changing the compiler.
 
+### Aggregate-copy scheduling (2026-11-17)
+
+Tracing RC1's PCode and dependency graph around both calls to `scheduleinstructions` leaves the
+compiled R3ME01 object byte-identical. The same baseline function scores 70.94% under the three-patch
+compiler and the current native relink. The pre-allocation scheduler receives 27 loads and 27 stores
+for `mStatus = status`. Scalar members arrive as load/store pairs. The embedded `DPDObject` array
+arrives in groups of two loads and two stores. The aggregate assignment already has the target's
+copy granularity at this point. The next aggregate copy is `mLatestSample = mHistory[mWriteIndex]`.
+It reads from an indexed history entry.
+
+RC1's `scheduleinstructions` (0x5B6920) selects the processor model, gathers aliases, and calls the
+block scheduler (0x5B6AD0). The block scheduler traverses PCode backwards to build its graph. A
+register dependency uses the def/use lists. A load is checked against later stores. A store is
+checked against later loads and stores. The three memory checks call `may_alias` at 0x5B7026,
+0x5B70D6 and 0x5B7126. A positive answer adds a dependency with the earlier instruction's latency.
+The issue selector (0x5B6CB0) checks readiness and the processor's issue rules, then compares the
+deadline, number of successors made ready, critical-path height, and opcode rank during coloring.
+The block scheduler and issue selector match their GC 3.0a5.2 counterparts after masking relocations.
+
+`make_distinct_virtual_alias` (0x5BFAB0) creates a synthetic array object for a pointer or reference
+parameter. A read-only parameter gets a const synthetic object. A writable parameter enters the
+typed alias set. A restricted parameter has an independent alias. In `Update`, the const
+`WPADFSStatus&` loads and destination stores have distinct alias objects. The scheduler gets
+negative answers between those accesses and positive answers from the stores to the following
+history loads. In the virtual schedule, each status load can make its own store ready. Each store
+still has a dependency on the history copy. The scheduler issues all 27 status loads before the
+first status store, and register allocation spills.
+
+| R3ME01 probe | Frame | Function match |
+| --- | ---: | ---: |
+| Native Wii_Retro | 0x90 | 70.94% |
+| Add store-to-load edges within the status copy before coloring | 0x50 | 86.43% |
+| Add store-to-load edges within the copy in both scheduler passes | 0x50 | 98.41% |
+| Add load-to-store and store-to-load edges within the copy in both passes | 0x50 | 98.78% |
+| Use the writable-parameter alias path in a scratch compiler | 0x50 | 98.78% |
+| Recognize the complete aggregate copy in PCode and add the same edges | 0x50 | 98.78% |
+
+The final three probes reproduce the original R3ME01 instruction bytes from function offset
+`0xE0` through the epilogue, including both aggregate copies. The remaining differences occur
+in the history-loop setup and register assignment before the copy. Applying the edges before
+coloring reduces the live ranges. Applying them again after coloring preserves the target order
+within the two-halfword groups. The writable-parameter probe reaches the same function score in
+R32J01 and R3MP01. The copy-local probe tracks instruction identities from the first scheduler
+pass into the second and leaves alias answers outside the tagged group intact.
+
+The first copy-local rule covered every complete aggregate copied from a read-only alias. In
+the 898-object R3ME01 sweeps it lost 28 exact functions under forced file IPA and 21 with the
+configured flags. Uniform-width copies and small ordinary copies account for many of the losses.
+The native rule selects copies that cover the whole source aggregate, mix transfer widths, and
+contain scalar pairs and consecutive two-load groups with the same source-location marker.
+The latter marks the array member in the status copy.
+[`aggregate_schedule.c`](../gc2/tools/wii_retro/aggregate_schedule.c)
+
+The native rule lowers peak live copy GPR values from 27 to two. All instructions and
+relocations from offset `0xE0` through the epilogue match in R32J01, R3ME01 and R3MP01.
+The function scores 98.78% in each build. The remaining history-loop mismatch is independent
+of the aggregate copy. Spelling the loop's count initialization as an explicit if/else in
+scratch source restores its instruction order and leaves a three-register permutation.
+
+Each native sweep changed only `CRevolutionMotionProcessor.o`. R3ME01 compiled 898 objects in
+each of the configured and forced-file-IPA sweeps. R32J01 and R3MP01 each compiled 319 with
+forced file IPA. All prior exact matches survive, including the 164 audited register-order
+controls in R3ME01. A synthetic aggregate with scalar fields and an embedded array also gets a
+shorter schedule. Uniform-width, small scalar-only, and volatile-copy controls retain their
+code. Compiling that fixture with scheduling disabled gives byte-identical objects.
+
 ### File IPA and inlined-local register order
 
 The Echoes TU-matching work reported that applying `-ipa file` to Retro's Wii units gained 633 exact R3ME01
@@ -609,7 +676,7 @@ order and result ABI.
 All 30 audited cases that previously favored ordinary inlining now match with file IPA
 in R3ME01, and all 134 file-IPA controls stay exact. The 30 cases also match R32J01 and
 R3MP01 using extracted objects or instruction comparisons against the original DOLs with
-relocations masked. Across the 898 R3ME01 objects, the final compiler changes 92 outputs
+relocations masked. Across the 898 R3ME01 objects, the register-order relink changes 92 outputs
 under forced file IPA. It improves 132 functions and lowers the scores of 25 previously
 inexact functions. The configured outputs remain byte-identical. In the 319-object
 regional sweeps, the work after the initial inline-local pass gains eight exact

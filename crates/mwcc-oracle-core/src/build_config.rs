@@ -322,6 +322,7 @@ fn wii_retro(root: &Path, request: &Request) -> Result<Generation> {
         "gc2/tools/wii_retro/inline_locals.c",
         "gc2/tools/wii_retro/rc1_local.h",
         "gc2/tools/wii_retro/reference_order.c",
+        "gc2/tools/wii_retro/aggregate_schedule.c",
         "gc2/tools/mw/coff.py",
         "gc2/tools/mw/formats.py",
         "gc2/tools/mw/link.py",
