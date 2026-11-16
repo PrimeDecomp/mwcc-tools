@@ -256,6 +256,47 @@ Applied after `wii_patch_struct_copy.py`, on R3ME01 with the `CModelFlags` union
   construction (`MakeImmuneToRadiusDamage` is a copy construction), or C structs. The code to find is where RC1 and
   3.0a5.2 expand a C++ implicit copy into pieces that are all loaded first.
 
+**A fourth difference: when template instances' vtables are emitted.** Echoes' resource factories return
+`rs_new X(in)` through `TToken`, which instantiates `TObjOwnerDerivedFromIObj<X>::GetNewDerivedObject`. That
+constructs the owner, so its vtable and virtual destructor are needed. Five R3ME01 units (`CSpatialPrimitive`,
+`CStaticGeometryMap`, `CDecalDataFactory`, `CCharacterFactoryBuilder`, `CAllFormatsAnimSource`) match function by
+function, but fail to link on the order of the functions in the object.
+- The target puts `~TObjOwnerDerivedFromIObj<X>` right after `GetNewDerivedObject`, before the file's later
+  functions. Every compiler we have puts it at the end of the file: GC 2.6, 2.7, 3.0a3 and 3.0a5.2, and Wii
+  0x4201_127, 1.0, RC1, 1.0a, 1.1 and 1.3. 2.7 parses the Wii source once its template friend of `auto_ptr` is
+  removed.
+- In RC1, `CParser_ParseDeclaration` ends each top-level declaration with `CMid_GlobalDeclarationActions`
+  (0x47c120), which only works through the queue of inline and deferred functions. Vtables (`CClass_Finalize`,
+  0x552c20) and class template members (`CTempl_Instantiate`, 0x5c0fe0) wait for the end of the file (`fn_0047bf90`).
+  The destructor is reached only through the vtable, so it comes last.
+- Running both after every declaration puts the destructor where the target has it, but it also moves
+  `vector::reserve` up next to the constructor that uses it, where the target leaves it at the end. It also loses
+  `CCharacterFactoryBuilder`'s `CanBuild` and `GetResourceIdByName`, whose inline definitions follow the vtable. So the
+  target emits a template instance's vtable and virtual functions straight away, and leaves other classes' vtables and
+  templates without a vtable for the end of the file.
+- `-ipa file` alone (a per-file flag in Echoes) gives the target's order for `CSpatialPrimitive`, but not the
+  other four.
+
+`gc2/tools/wii_patch_template_vtables.py` adds this as a pass in a new section (`.retrovt`, source
+`gc2/tools/wii_retro/template_vtables.c`), which replaces the call to `CMid_GlobalDeclarationActions`. After the
+declaration's actions, it repeats until neither step does anything:
+- It runs `CClass_Finalize` with its two class lists (0x756ff4 and 0x751d7c, nodes `{next, class, ...}`) cut
+  down to class template instances, then restores them.
+- For each instance that has a vtable (`TypeClass` 0x1a; template instance flag 0x800 in the flags at 0x22), it
+  instantiates the referenced members as `CTempl_Instantiate` does (0x5c1140, then 0x47c360). Class templates link at
+  0x30 with instances at 0x42; an instance links the next at 0x30, with `is_specialized` at 0x41.
+- Then it runs the declaration's actions again.
+
+Results, applied after `wii_patch_struct_copy.py` and `wii_patch_pretest.py`:
+- The five units: the destructor is placed as in the target in all five. `CDecalDataFactory` and
+  `CAllFormatsAnimSource` get the target's whole order. `CSpatialPrimitive` and `CCharacterFactoryBuilder` get it with
+  `-ipa file`.
+- Without `-ipa file`, the two `reserve` instances left for the end of the file come out in the opposite order to
+  the target's. In `CStaticGeometryMap` this also happens with `-ipa file`. That file explicitly instantiates
+  `vector<pair<uint,int>>` at its end, which may be the cause.
+- R3ME01 (`CModelFlags` union): 12,952 → 12,953 exact, 0 lost, 2 improved, 0 regressed. Complete units go from 603
+  to 607 (`CBasicSwarmData`, `CGameHint`, `CHintState`, `CIngSpotData`), and `CPatterned` goes from 27.2% to 32.5%.
+
 ## Phase 3: decompile both edge versions
 
 The long-term goal, done like the 2.x versions in gc2:
