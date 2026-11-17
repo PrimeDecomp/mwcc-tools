@@ -581,7 +581,7 @@ static void simpleload(PCode* pcode) {
 
 static void simplestore(PCode* pcode) {
     update_alias_value(pcode->alias, pcode);
-#if VERSION == VERSION_GC_2_0P2 || VERSION == VERSION_GC_2_0P3
+#if VERSION == VERSION_GC_2_0P2
     update_small_data_values(pcode);
 #endif
     killregisters(pcode);
@@ -612,7 +612,7 @@ static void pointerload(PCode* pcode) {
 
 static void pointerstore(PCode* pcode) {
     update_alias_value(pcode->alias, NULL);
-#if VERSION == VERSION_GC_2_0P2 || VERSION == VERSION_GC_2_0P3
+#if VERSION == VERSION_GC_2_0P2
     update_small_data_values(pcode);
 #endif
     killregisters(pcode);

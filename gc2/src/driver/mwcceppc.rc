@@ -4,7 +4,7 @@
 #define PATCH 2
 #define BUILD 81
 #define BUILD_STRING L"2.4.2.81\0"
-#elif VERSION <= VERSION_GC_2_0P3
+#elif VERSION <= VERSION_GC_2_0P2
 #define BUILD 92
 #define BUILD_STRING L"2.4.7.92\0"
 #elif VERSION == VERSION_GC_2_5

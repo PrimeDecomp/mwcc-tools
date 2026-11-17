@@ -81,6 +81,7 @@ def compilation(version: Version | str | None, source: str, *, _sources=None, _c
         "-c",
         *flags,
         f"-DVERSION={v.index}",
+        *(f"-D{name}" for name in v.defines),
         *(f"-I{d}" for d in settings.include_dirs),
         "-Iinclude",
         "-i-",

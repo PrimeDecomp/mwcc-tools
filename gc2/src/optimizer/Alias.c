@@ -80,7 +80,7 @@ Alias* make_distinct_virtual_alias(Object* obj, SInt32 offset, SInt32 size) {
     object->flags = obj->flags;
     object->qual = obj->qual;
 #endif
-#if VERSION == VERSION_GC_2_0P2 || VERSION == VERSION_GC_2_0P3
+#if VERSION == VERSION_GC_2_0P2
     return make_alias(object, 0x7FFFFF, 1);
 #else
     alias = make_alias_set();
@@ -385,7 +385,7 @@ static inline Boolean aliases_overlap(Alias* a, Alias* b) {
     );
 }
 
-#if VERSION == VERSION_GC_2_0P2 || VERSION == VERSION_GC_2_0P3
+#if VERSION == VERSION_GC_2_0P2
 Boolean is_direct_small_data_access(PCode* pcode) {
     Alias* alias;
 
@@ -954,7 +954,7 @@ static void gather_instruction_alias(PCode* pcode, UInt32* myvec) {
     RegUseOrDef* list;
     PCode* defpcode;
 
-#if VERSION == VERSION_GC_2_0P2 || VERSION == VERSION_GC_2_0P3
+#if VERSION == VERSION_GC_2_0P2
     if ((pcode->flags & fIsWrite) &&
         is_direct_small_data_access(pcode) &&
         !is_safe_const(pcode->alias->object)) {
@@ -990,7 +990,7 @@ static void gather_instruction_alias(PCode* pcode, UInt32* myvec) {
                     }
                     alias_array[aliases_idx] = pcode->alias;
 
-#if VERSION != VERSION_GC_2_0P3
+#ifndef PATCH_FFCC_JP
                     for (list = reg_Defs[op->arg][op->data.reg.reg]; list; list = list->next) {
                         if (bitvectorgetbit(list->id, myvec)) {
                             defpcode = Defs[list->id].pcode;
@@ -1018,7 +1018,7 @@ static void gather_instruction_alias(PCode* pcode, UInt32* myvec) {
                                 CError_ASSERT(1250, alias_array[1] == pcode->alias);
                             }
                         } else if (alias_array[1] != worst_case_ptr) {
-#if VERSION != VERSION_GC_2_0P2 && VERSION != VERSION_GC_2_0P3
+#if VERSION != VERSION_GC_2_0P2
                             alias_choice = worst_case_ptr;
 #endif
                         } else {
@@ -1315,7 +1315,7 @@ Boolean may_alias(PCode* a, PCode* b) {
 #endif
 }
 
-#if VERSION == VERSION_GC_2_0P2 || VERSION == VERSION_GC_2_0P3
+#if VERSION == VERSION_GC_2_0P2
 static inline Boolean is_pointer_like_load(PCode* pcode) {
     Alias* alias;
 
@@ -1323,7 +1323,7 @@ static inline Boolean is_pointer_like_load(PCode* pcode) {
         return FALSE;
     }
     if (is_direct_small_data_access(pcode)) {
-#if VERSION == VERSION_GC_2_0P3
+#ifdef PATCH_FFCC_JP
         return TRUE;
 #else
         return !is_safe_const(pcode->alias->object);
@@ -1331,7 +1331,7 @@ static inline Boolean is_pointer_like_load(PCode* pcode) {
     }
     alias = pcode->alias;
     return alias &&
-#if VERSION == VERSION_GC_2_0P3
+#ifdef PATCH_FFCC_JP
         alias->type != AliasType_Set &&
 #else
         alias->type == AliasType_Object &&
@@ -1364,7 +1364,7 @@ static inline Boolean is_direct_small_data_store(PCode* pcode) {
         (int)pcode->args[2].arg == RefType_Addr16;
 }
 
-#if VERSION == VERSION_GC_2_0P3
+#ifdef PATCH_FFCC_JP
 static inline Boolean is_stack_parameter_load(PCode* pcode) {
     Alias* alias;
 
@@ -1388,7 +1388,7 @@ Boolean may_alias_scheduling(PCode* a, PCode* b) {
     if ((is_small_data_load(a) && is_direct_small_data_store(b)) ||
         (is_small_data_load(b) && is_direct_small_data_store(a))) {
         result = TRUE;
-#if VERSION == VERSION_GC_2_0P3
+#ifdef PATCH_FFCC_JP
     } else if ((is_stack_parameter_load(a) && is_worst_case_store(b)) ||
                (is_stack_parameter_load(b) && is_worst_case_store(a))) {
         result = TRUE;
@@ -1406,7 +1406,7 @@ Boolean may_alias_scheduling(PCode* a, PCode* b) {
         (is_small_data_load(b) && is_direct_small_data_store(a))) {
         return TRUE;
     }
-#if VERSION == VERSION_GC_2_0P3
+#ifdef PATCH_FFCC_JP
     if ((is_stack_parameter_load(a) && is_worst_case_store(b)) ||
         (is_stack_parameter_load(b) && is_worst_case_store(a))) {
         return TRUE;
@@ -1543,7 +1543,7 @@ void update_all_alias_values(void) {
     }
 }
 
-#if VERSION == VERSION_GC_2_0P2 || VERSION == VERSION_GC_2_0P3
+#if VERSION == VERSION_GC_2_0P2
 void update_small_data_values(PCode* pcode) {
     Alias* alias;
 
