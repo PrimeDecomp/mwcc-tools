@@ -76,6 +76,10 @@ fn wii_retro_builds_a_native_executable_and_runtime() {
     );
     assert!(generated.ninja.contains("default Wii_Retro"));
     for dependency in [
+        "destroy_pretest.c",
+        "deferred_exports.c",
+        "ir_stream.c",
+        "template_instantiation.c",
         "inline_locals.c",
         "rc1_local.h",
         "reference_order.c",

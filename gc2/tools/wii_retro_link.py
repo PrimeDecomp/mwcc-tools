@@ -12,7 +12,6 @@ from collections import defaultdict
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import wii_patch_pretest as pretest
 import wii_patch_struct_copy as struct_copy
 import wii_patch_template_vtables as vtables
 import wii_retro_pe
@@ -62,6 +61,56 @@ REFERENCE_CALLS = (
     (0x46A7AB, "_CodeGen_Generator", "fn_0046d690", "_retro_AssignLocals"),
     (0x46A78C, "_CodeGen_Generator", "fn_0046d8b0", "_retro_ReassignLocals"),
 )
+DEFERRED_EXPORT_SYMBOLS = {
+    "RC1_IsCopyConstructor": 0x555740,
+    "RC1_defer_codegen": 0x74F447,
+    "RC1_deferred_actions": 0x70FF46,
+    "RC1_deferred_exports": 0x70FF42,
+    "RC1_pending_dummy_functions": 0x70FF3A,
+    "RC1_RewriteDefinitionExpression": 0x47EFC0,
+    "RC1_RewriteGenerationExpression": 0x47EAB0,
+    "RC1_ProcessGenerationStatements": 0x47EBE0,
+    "RC1_generation_needs_statement_pass": 0x70FF35,
+    "RC1_nosyminline": 0x74F4D1,
+    "RC1_filesyminfo": 0x74F52F,
+    "RC1_process_deferred_after_errors": 0x74F484,
+    "RC1_CMiddleLayer_source_file": 0x6A82E0,
+    "RC1_CCallGraph_source_file": 0x6DC1D4,
+    "RC1_call_graph_tail": 0x752F74,
+    "RC1_call_graph_next_index": 0x752F78,
+    "RC1_allow_weak_graph_roots": 0x74F481,
+    "RC1_CTemplateFuncInst_source_file": 0x6DC1F0,
+    "RC1_InstantiateStoredDefinition": 0x5C1AA0,
+}
+DEFERRED_EXPORT_CALLS = (
+    (0x4589AA, "_CParser_Setup", "_CMid_Setup", "_retro_MidSetup"),
+    (0x47BE90, "_CMid_Finish", "fn_0047bf90", "_retro_RunEndOfFileActions"),
+    (0x47BEDF, "_CMid_Finish", "fn_0047bf90", "_retro_RunEndOfFileActions"),
+    (0x47BEE4, "_CMid_Finish", "fn_0047d400", "_retro_EmitInitializers"),
+    (0x47BEE9, "_CMid_Finish", "fn_0047bf90", "_retro_RunEndOfFileActions"),
+    (0x47CE80, "fn_0047ce20", "_CExcept_CallGraphExceptionOptimizer", "_retro_OrderIPAFunctions"),
+    (0x47CEF0, "fn_0047ce20", "_CMid_GenerateCGNode", "_retro_GenerateCGNode"),
+    (0x47EAD1, "fn_0047eab0", "_CMid_ObjectAddrRef", "_retro_RecordFirstReference"),
+    (0x4BFAB1, "_Assembler", "_CMid_DefineFunction", "_retro_DefineFunction"),
+    (0x506450, "_CFunc_GenerateDummyCtorFunc", "_CMid_DefineFunction", "_retro_DefineFunction"),
+    (0x50663A, "_CFunc_GenerateSingleExprFunc", "_CMid_DefineFunction", "_retro_DefineFunction"),
+    (0x508027, "_CFunc_Gen", "_CMid_DefineFunction", "_retro_DefineFunction"),
+    (0x5C1012, "_CTempl_Instantiate", "_CTempl_GenClassInstance", "_retro_GenClassInstance"),
+    (0x5C1052, "_CTempl_Instantiate", "_CTempl_GenClassInstance", "_retro_GenClassInstance"),
+    (0x552F4C, "fn_00552e50", "_CInit_DeclareData", "_retro_DeclareVTable"),
+)
+IR_STREAM_SYMBOLS = {
+    "RC1_ir_local_count": 0x718364,
+    "RC1_ir_label_count": 0x718370,
+    "RC1_ir_local_references": 0x71836C,
+    "RC1_ir_local_objects": 0x718368,
+    "RC1_ir_unpack_code": 0x751ABC,
+    "RC1_ir_pack_flag": 0x76C036,
+    "RC1_CIRStream_source_file": 0x6C4E8C,
+    "RC1_PackFileReference": 0x52F180,
+    "RC1_PackObjectList": 0x52AF20,
+    "RC1_PackStatements": 0x52B520,
+}
 SCHEDULER_SYMBOLS = {
     "RC1_ScheduleBlock": 0x5B6AD0,
 }
@@ -158,8 +207,8 @@ def link_symbols(pe, layout):
             addresses.add(address)
 
     patches = (
-        pretest.SYMBOLS | vtables.SYMBOLS | ALIGNMENT_OPTIONS |
-        INLINE_SYMBOLS | REFERENCE_SYMBOLS | SCHEDULER_SYMBOLS
+        vtables.SYMBOLS | ALIGNMENT_OPTIONS |
+        INLINE_SYMBOLS | REFERENCE_SYMBOLS | DEFERRED_EXPORT_SYMBOLS | IR_STREAM_SYMBOLS | SCHEDULER_SYMBOLS
     )
     for name, address in patches.items():
         symbols.append(formats.Symbol(f"_{name}", pe.section_for_address(address).name, address))
@@ -204,6 +253,10 @@ def redirect_temp_creators(objects, splits, symbols):
     callee = "_create_temp_object"
     for address, caller, creator in TEMP_CREATORS:
         redirect_call(objects, splits, symbols, address, caller, callee, creator)
+    redirect_direct_calls(objects, splits, callee, "_retro_CreateTemp")
+
+
+def redirect_direct_calls(objects, splits, callee, replacement):
     for unit in splits.units:
         if not any(region.section == ".text" for region in unit.ranges):
             continue
@@ -218,7 +271,7 @@ def redirect_temp_creators(objects, splits, symbols):
                 offset = reloc.offset
                 if reloc.kind != coff.REL32 or offset < 1 or section.data[offset - 1 : offset + 4] != b"\xe8\0\0\0\0":
                     raise ValueError(f"{unit.name}: expected a direct call to {callee}")
-                reloc.symbol = obj.external("_retro_CreateTemp")
+                reloc.symbol = obj.external(replacement)
                 changed = True
         if changed:
             obj.write(path)
@@ -290,10 +343,10 @@ def build(stock, output, tools, clang, linker):
             objects,
             splits,
             symbols,
-            pretest.CALL,
-            "_assemblefunction",
-            "_optimizefinalbranches",
-            "_retro_optimizefinalbranches",
+            0x46B1A5,
+            "_CodeGen_Generator",
+            "_pcode_expand_pseudo_ops",
+            "_retro_expand_pseudo_ops",
         )
         redirect_call(
             objects,
@@ -304,19 +357,44 @@ def build(stock, output, tools, clang, linker):
             "_CMid_GlobalDeclarationActions",
             "_retro_GlobalDeclarationActions",
         )
-        for call in (*INLINE_CALLS, *REFERENCE_CALLS, *SCHEDULER_CALLS):
+        for call in (*INLINE_CALLS, *REFERENCE_CALLS, *DEFERRED_EXPORT_CALLS, *SCHEDULER_CALLS):
             redirect_call(objects, splits, symbols, *call)
+        redirect_direct_calls(objects, splits, "_CMid_ObjectAddrRef", "_retro_ObjectAddrRef")
+        redirect_direct_calls(objects, splits, "_CMid_GetFuncData", "_retro_GetFuncData")
+        redirect_direct_calls(objects, splits, "_CMid_SetFuncData", "_retro_SetFuncData")
+        redirect_direct_calls(objects, splits, "_CMid_FreeFuncData", "_retro_FreeFuncData")
+        redirect_direct_calls(objects, splits, "_CCallGraph_NewNode", "_retro_NewGraphNode")
+        redirect_direct_calls(objects, splits, "_CCallGraph_NewInitCodeNode", "_retro_NewInitCodeNode")
+        redirect_direct_calls(objects, splits, "_CCallGraph_Renumber", "_retro_RenumberGraph")
+        redirect_direct_calls(objects, splits, "_CCallGraph_RemoveNode", "_retro_RemoveGraphNode")
+        redirect_direct_calls(objects, splits, "_CCallGraph_RemoveDeadNodes", "_retro_RemoveDeadGraphNodes")
+        redirect_direct_calls(objects, splits, "_CCallGraph_Compute", "_retro_ComputeGraph")
+        redirect_direct_calls(objects, splits, "_CCallGraph_ColorUses", "_retro_ColorGraphUses")
+        redirect_direct_calls(objects, splits, "_CCallGraph_Unmark", "_retro_UnmarkGraph")
+        redirect_direct_calls(objects, splits, "_CCallGraph_UnmarkAndUnflag", "_retro_UnmarkAndUnflagGraph")
+        redirect_direct_calls(objects, splits, "_CCallGraph_IsDefined", "_retro_IsGraphNodeDefined")
+        redirect_direct_calls(objects, splits, "_CCallGraph_GetIR", "_retro_GetGraphIR")
+        redirect_direct_calls(objects, splits, "_CCallGraph_SetIR", "_retro_SetGraphIR")
+        redirect_direct_calls(objects, splits, "fn_0052ed70", "_retro_PackObjectReference")
+        redirect_direct_calls(objects, splits, "fn_0052ec90", "_retro_UnpackObjectReference")
+        redirect_direct_calls(objects, splits, "_CIRStream_PackCode", "_retro_PackCode")
+        redirect_direct_calls(objects, splits, "_CTempl_GenClassInstance", "_retro_GenerateClassMembers")
+        redirect_direct_calls(objects, splits, "_CTempl_GenMemberInstance", "_retro_GenerateMemberInstance")
+        redirect_direct_calls(objects, splits, "_CTempl_Instantiate", "_retro_InstantiateTemplateDefinitions")
+        redirect_direct_calls(objects, splits, "_CTempl_GenFuncInstance", "_retro_GenerateFunctionInstance")
         redirect_temp_creators(objects, splits, symbols)
         identity = identity_object(objects, splits, symbols, settings["banner"], work)
 
         sources = Path(__file__).resolve().with_name("wii_retro")
         compiled = []
         for name in (
-            "struct_copy", "drop_pretest", "template_vtables",
-            "inline_locals", "reference_order", "aggregate_schedule",
+            "struct_copy", "destroy_pretest", "template_vtables", "deferred_exports",
+            "ir_stream", "template_instantiation", "inline_locals", "reference_order", "aggregate_schedule",
         ):
             obj = work / f"{name}.obj"
             flags = wii_retro_pe.BUILD.split()[1:]
+            if name == "template_vtables":
+                flags.append("-DWII_RETRO_RELINK")
             subprocess.run([clang, *flags, str(sources / f"{name}.c"), "-o", str(obj)], check=True)
             compiled.append(obj)
 

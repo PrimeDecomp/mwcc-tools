@@ -26,10 +26,13 @@ project's compiler directory. To build directly into another directory, pass `--
 
 - **Struct-copy alignment.** Uses GC 3.x's operand alignment to choose copy widths while preserving
   RC1's stack layout.
-- **Destroy-loop pretest.** Removes the entry guard when the loop body calls a function and the
-  guard and loop test compare the same registers.
-- **Template vtable emission.** Emits class-template instances' vtables and referenced virtual
-  functions after the relevant top-level declaration.
+- **Destroy-loop pretest.** Folds a duplicate entry guard in fixed-stride loops that call a
+  function. The loop still tests for an empty range before entering the body.
+- **Template vtable emission.** Emits referenced virtuals alongside out-of-line template helpers.
+  Direct references can leave the vtable and its virtuals for the end of the file.
+- **Deferred function exports.** Orders weak bodies using vtable slots, definition and
+  reference order, and constructor cleanup order. Keeps class-instance members together and
+  preserves serialized reference order where needed under file IPA.
 - **File-IPA register order.** Adjusts virtual register assignment for inlined locals and
   arguments, propagated references, and optimizer-generated iterators when `-ipa file` is active.
 - **Aggregate-copy scheduling.** Preserves memory order within mixed scalar and array member
@@ -39,6 +42,10 @@ All 30 audited register-order cases match R32J01, R3ME01, and R3MP01 under file 
 file-IPA sweep gained 43 exact functions with zero exact losses. Aggregate-copy scheduling also
 matches the original status copy and stack frame in `CRevolutionMotionProcessor::Update` in all
 three builds. [Research and validation](wii-retro-compiler-research.md#native-relink-and-validation)
+
+The relink includes recovered C implementations of deferred generation, call-graph management,
+IR reference packing, and template visitation. A Windows differential check compares function-template
+generation with native RC1: [test instructions](../gc2/tools/wii_retro/tests/README.md).
 
 ## Plan
 
