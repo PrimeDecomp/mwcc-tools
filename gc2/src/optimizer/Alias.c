@@ -1068,13 +1068,13 @@ static Alias* operand_alias(PCode* pcode, int index, UInt32* myvec) {
     Alias* result;
     int count;
     PCodeArg* op;
-#if VERSION == VERSION_GC_2_5A
+#ifdef PATCH_FFCC
     Boolean skipped;
 #endif
 
     result = NULL;
     count = 0;
-#if VERSION == VERSION_GC_2_5A
+#ifdef PATCH_FFCC
     skipped = FALSE;
 #endif
     op = &pcode->args[index];
@@ -1084,7 +1084,7 @@ static Alias* operand_alias(PCode* pcode, int index, UInt32* myvec) {
                 defpcode, list->id, op->data.reg.reg, pcode, myvec, RegClass_GPR
             )) {
             alias = address_def_alias(defpcode);
-#if VERSION == VERSION_GC_2_5A
+#ifdef PATCH_FFCC
             if (!alias && (pcode->flags & fIsWrite)) {
                 skipped = TRUE;
                 continue;
@@ -1105,7 +1105,7 @@ static Alias* operand_alias(PCode* pcode, int index, UInt32* myvec) {
         }
     }
 
-#if VERSION == VERSION_GC_2_5A
+#ifdef PATCH_FFCC
     if (skipped &&
         result &&
         !((result->type == AliasType_Object || result->type == AliasType_ObjectPart) &&

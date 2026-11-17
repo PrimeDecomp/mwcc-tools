@@ -141,7 +141,7 @@ static UInt8 cmach_structalign;
 static short cmach_curbfsize;
 static short cmach_curbfbasesize;
 static int cmach_curbfoffset;
-#if VERSION == VERSION_GC_2_5 || VERSION == VERSION_GC_2_5A
+#if VERSION == VERSION_GC_2_5
 static int cmach_curbfintegral;
 #endif
 
@@ -1353,7 +1353,7 @@ void CMach_StructLayoutInitOffset(SInt32 offset) {
     if (!copts.old_style_bitfields) {
         cmach_curbfbasesize = 0;
         cmach_curbfoffset = 0;
-#if VERSION == VERSION_GC_2_5 || VERSION == VERSION_GC_2_5A
+#if VERSION == VERSION_GC_2_5
         cmach_curbfintegral = 0;
 #endif
     }
@@ -1520,7 +1520,7 @@ static SInt32 CMach_StructLayoutPackedBitfield(
     return CMach_StructLayoutNewBitfieldUnit(tbitfield, basesize);
 }
 
-#if VERSION == VERSION_GC_2_5 || VERSION == VERSION_GC_2_5A
+#if VERSION == VERSION_GC_2_5
 SInt32 CMach_StructLayoutBitfield(TypeBitfield* tbitfield, UInt32 qual) {
     SInt16 align;
     SInt16 padding_at_start;
@@ -2266,7 +2266,7 @@ void CMach_ReInitRuntimeObjects(void) {
 #undef CError_LINE_SHIFT
 #define CError_LINE_SHIFT (-68 + CError_LINE_DELTA)
 #endif
-#if VERSION == VERSION_GC_2_5 || VERSION == VERSION_GC_2_5A
+#if VERSION == VERSION_GC_2_5
 #undef CError_LINE_SHIFT
 #define CError_LINE_SHIFT (42 + CError_LINE_DELTA)
 #endif

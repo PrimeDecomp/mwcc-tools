@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import contextlib
 import hashlib
+import json
 import os
 import re
 import sys
@@ -24,6 +25,7 @@ class Version:
     name: str
     index: int
     base: str | None = None
+    defines: tuple[str, ...] = ()
 
     @property
     def config(self) -> Path:
@@ -49,10 +51,17 @@ def _read_versions() -> tuple[Version, ...]:
         versions.append(Version(directories[name.upper()], int(index), base[1] if base else None))
     if sorted(v.index for v in versions) != list(range(len(versions))):
         raise Error("include/version.h: the VERSION_* indices are not 0, 1, 2, ...")
-    extra = set(directories.values()) - {v.name for v in versions}
-    if extra:
-        raise Error(f"config/ has {', '.join(sorted(extra))}, which include/version.h does not define")
-    return tuple(sorted(versions, key=lambda v: v.index))
+    indices = {v.name: v.index for v in versions}
+    for name in sorted(set(directories.values()) - set(indices)):
+        raw = json.loads((ROOT / "config" / name / "config.json").read_text())
+        base, defines = raw.get("derived_from"), raw.get("defines")
+        if base not in indices or not defines:
+            raise Error(
+                f"config/ has {name}, which include/version.h does not define: a version without a VERSION_* index "
+                f"of its own is derived_from one that has, and names the macros that select its code in defines"
+            )
+        versions.append(Version(name, indices[base], base, tuple(defines)))
+    return tuple(sorted(versions, key=lambda v: (v.index, bool(v.defines))))
 
 
 ALL_VERSIONS = _read_versions()

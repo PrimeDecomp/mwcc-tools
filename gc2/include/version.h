@@ -5,9 +5,8 @@
 #define VERSION_GC_2_0 1
 #define VERSION_GC_2_0P2 2
 #define VERSION_GC_2_5 3
-#define VERSION_GC_2_5A 4
-#define VERSION_GC_2_6 5
-#define VERSION_GC_2_7 6
+#define VERSION_GC_2_6 4
+#define VERSION_GC_2_7 5
 
 #ifndef VERSION
 #define VERSION VERSION_GC_2_6
