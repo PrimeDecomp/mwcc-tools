@@ -73,6 +73,9 @@ in the full history: `git show cedeb0a0:gc2/docs/agents-notes.md`.
 
 - **Versions.** A version-specific body is `#if VERSION < VERSION_GC_2_5` (and so on; `include/version.h`, configure
   passes `-DVERSION`). The sources are written for 2.6 (`PRIMARY` in `tools/mw/project.py`).
+  A game's patched compiler that differs from a release by a rule or two keeps that release's `VERSION` and
+  gets a macro instead: its `config/NAME/config.json` has `derived_from` and `defines`, it has no entry in
+  `include/version.h`, and its code is `#ifdef PATCH_FFCC` (`GC_2_5ffcc`).
 - **Assert lines across versions.** An assert passes its 2.6 line plus `CError_LINE_SHIFT` (CError.h; the
   IroPointerAnalysis `IRO_ASSERT` macros too). Where another release's file had other lines above a point, a block
   redefines the shift; `tools/update_assert_lines.py VERSION` lists the points. `CError_Internal`'s file-name literal

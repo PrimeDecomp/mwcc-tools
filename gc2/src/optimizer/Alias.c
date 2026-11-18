@@ -1068,9 +1068,15 @@ static Alias* operand_alias(PCode* pcode, int index, UInt32* myvec) {
     Alias* result;
     int count;
     PCodeArg* op;
+#ifdef PATCH_FFCC
+    Boolean skipped;
+#endif
 
     result = NULL;
     count = 0;
+#ifdef PATCH_FFCC
+    skipped = FALSE;
+#endif
     op = &pcode->args[index];
     for (list = reg_Defs[op->arg][op->data.reg.reg]; list; list = list->next) {
         defpcode = Defs[list->id].pcode;
@@ -1078,6 +1084,12 @@ static Alias* operand_alias(PCode* pcode, int index, UInt32* myvec) {
                 defpcode, list->id, op->data.reg.reg, pcode, myvec, RegClass_GPR
             )) {
             alias = address_def_alias(defpcode);
+#ifdef PATCH_FFCC
+            if (!alias && (pcode->flags & fIsWrite)) {
+                skipped = TRUE;
+                continue;
+            }
+#endif
             count++;
             if (alias) {
                 if (count == 1) {
@@ -1093,6 +1105,15 @@ static Alias* operand_alias(PCode* pcode, int index, UInt32* myvec) {
         }
     }
 
+#ifdef PATCH_FFCC
+    if (skipped &&
+        result &&
+        !((result->type == AliasType_Object || result->type == AliasType_ObjectPart) &&
+          result->object->datatype != DLOCAL)) {
+        add_alias_member(worst_case_ptr, result);
+        result = worst_case_ptr;
+    }
+#endif
     return result;
 }
 
