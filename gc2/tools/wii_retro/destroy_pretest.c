@@ -82,9 +82,69 @@ enum {
 };
 
 extern Block* pcbasicblocks;
-extern void pcode_expand_pseudo_ops(uint8_t late);
 extern void deleteedge(Block* from, Block* to);
 extern void deletepcode(PCode* instruction);
+
+enum {
+    PseudoInstruction = 0x1000,
+    ExtractConditionBit = 0x38d,
+    ExtractConditionField = 0x38e,
+    InsertConditionField = 0x38f,
+    RotateMask = 0x67,
+    MoveFromConditionRegister = 0x82,
+    MoveToConditionFields = 0x7a,
+};
+
+extern PCode* makepcode(short, ...);
+extern void insertpcodebefore(PCode*, PCode*);
+extern void CError_Internal(const char*, int);
+extern const char RC1_PCodeInfo_source_file[];
+
+void pcode_expand_pseudo_ops(uint8_t late) {
+    PCode* instruction;
+    Block* block;
+    short field;
+    (void)late;
+
+    for (block = pcbasicblocks; block; block = block->next) {
+        for (instruction = block->first; instruction; instruction = instruction->next) {
+            if (instruction->flags & PseudoInstruction) {
+                switch ((short)instruction->op) {
+                case ExtractConditionBit:
+                    insertpcodebefore(instruction, makepcode(MoveFromConditionRegister,
+                        (short)instruction->args[0].value.reg.number, (short)instruction->args[1].value.reg.number));
+                    insertpcodebefore(instruction, makepcode(RotateMask,
+                        (short)instruction->args[0].value.reg.number, (short)instruction->args[0].value.reg.number,
+                        4 * (short)instruction->args[1].value.reg.number + instruction->args[2].value.immediate + 1,
+                        31, 31));
+                    deletepcode(instruction);
+                    break;
+                case ExtractConditionField:
+                    insertpcodebefore(instruction, makepcode(MoveFromConditionRegister,
+                        (short)instruction->args[0].value.reg.number, (short)instruction->args[1].value.reg.number));
+                    insertpcodebefore(instruction, makepcode(RotateMask,
+                        (short)instruction->args[0].value.reg.number, (short)instruction->args[0].value.reg.number,
+                        (4 * (short)instruction->args[1].value.reg.number + 4) & 31, 28, 31));
+                    deletepcode(instruction);
+                    break;
+                case InsertConditionField:
+                    field = (short)instruction->args[0].value.reg.number;
+                    insertpcodebefore(instruction, makepcode(RotateMask,
+                        (short)instruction->args[1].value.reg.number, (short)instruction->args[2].value.reg.number,
+                        (4 * (7 - field)) & 31, 4 * field, 4 * field + 3));
+                    insertpcodebefore(instruction, makepcode(MoveToConditionFields,
+                        1 << (7 - (short)instruction->args[0].value.reg.number),
+                        (short)instruction->args[1].value.reg.number));
+                    deletepcode(instruction);
+                    break;
+                default:
+                    CError_Internal(RC1_PCodeInfo_source_file, 3595);
+                    break;
+                }
+            }
+        }
+    }
+}
 
 static Block* next_nonempty(Block* block) {
     while (block && !block->count)

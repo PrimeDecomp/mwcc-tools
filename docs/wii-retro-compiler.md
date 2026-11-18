@@ -43,9 +43,11 @@ file-IPA sweep gained 43 exact functions with zero exact losses. Aggregate-copy 
 matches the original status copy and stack frame in `CRevolutionMotionProcessor::Update` in all
 three builds. [Research and validation](wii-retro-compiler-research.md#native-relink-and-validation)
 
-The relink includes recovered C implementations of deferred generation, call-graph management,
-IR reference packing, and template visitation. A Windows differential check compares function-template
-generation with native RC1: [test instructions](../gc2/tools/wii_retro/tests/README.md).
+The relink includes recovered C implementations of register assignment and reservation, assignment and
+conditional lowering, scheduler entry, alias analysis, deferred generation, call-graph management,
+IR reference packing, and template visitation.
+The Windows validation runners cover function-template generation, register allocation,
+precompiled headers, and Echoes object and DOL comparisons. [Test instructions](../gc2/tools/wii_retro/tests/README.md)
 
 ## Plan
 

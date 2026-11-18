@@ -48,6 +48,110 @@ int use(int n) {
     return calculate(n) + calculate((short)n) + calculate((unsigned)n) + late(n);
 }
 template<class T> int late(T n) { return calculate((long)n); }
+
+template<class T> struct Member {
+    static int value;
+    T base;
+    Member(T declared);
+    virtual int read(T declared) const;
+};
+template<class T> int Member<T>::value = external(sizeof(T));
+template<class T> Member<T>::Member(T input) : base(input) {}
+template<class T> int Member<T>::read(T input) const { return value + base + input; }
+template struct Member<short>;
+int use_member(int n) {
+    Member<int> value(n);
+    return value.read(n);
+}
+
+#pragma parse_func_templ on
+#pragma parse_mfunc_templ on
+struct PackedResult { int values[9]; };
+struct Root { int value; Root() : value(external(7)) {} };
+struct Parent : virtual Root { Parent() {} };
+struct Extra { Extra(int a, int b) { external(a + b); } };
+struct Pair { int value; Pair(int a, int b) : value(external(a - b)) {} };
+template<class Base> struct Derived : Base, Extra {
+    Pair pair;
+    int field;
+    Derived();
+    int read() const;
+};
+template<class Base> Derived<Base>::Derived()
+    : Base(), Extra(7, external(8)), pair(external(9), external(10)), field(external(11)) {}
+template<class Base> int Derived<Base>::read() const { return pair.value + field; }
+template<class T> struct Outer {
+    template<class U> struct Inner {
+        T first;
+        U second;
+        Inner(T a, U b);
+        int read() const;
+    };
+};
+template<class T> template<class U>
+Outer<T>::Inner<U>::Inner(T a, U b) : first(a), second(b) {}
+template<class T> template<class U>
+int Outer<T>::Inner<U>::read() const { return external((int)first + (int)second); }
+int use_nested(int a, short b) {
+    Outer<short>::Inner<int> narrow(b, a);
+    Outer<int>::Inner<int> wide(a, b);
+    return narrow.read() + wide.read();
+}
+template<class T> T packed_result(T value) { return value; }
+template<class T, int Code> int packed_switch(T value) {
+    switch (value) {
+    case Code + 4: return 1;
+    default: return 0;
+    }
+}
+typedef short PackedShort;
+template<class T> int packed_declaration(T value) {
+    typedef T LocalAlias;
+    LocalAlias local = value;
+    PackedShort copy = (PackedShort)local;
+    static T once = external(value);
+    return (int)local + (int)once + copy;
+}
+template<class T> int packed_array(T size) {
+    T values[size];
+    values[0] = size;
+    return (int)values[0];
+}
+struct CleanupItem {
+    int tag;
+    CleanupItem() : tag(external(7)) {}
+    CleanupItem(int n) : tag(external(n)) {}
+    ~CleanupItem() { external(tag); }
+};
+struct CleanupError { int code; };
+template<class T> int packed_catch(int value) {
+    try { return external(value); }
+    catch (const T& caught) { return caught.code; }
+    catch (...) { return -1; }
+}
+template<class T, class Size> int packed_class_vla(Size size) {
+    T values[size];
+    return values[0].tag;
+}
+template<class T> int packed_cleanup(int n) {
+    T one(n);
+    T many[3];
+    T initialized[3] = {T(n), T(n + 1), T(n + 2)};
+    int matrix[2][2] = {{n, n + 1}, {n + 2, n + 3}};
+    return one.tag + many[1].tag + initialized[2].tag + matrix[1][0];
+}
+PackedResult use_stored(PackedResult value) {
+    Derived<Parent> member;
+    external(member.read());
+    external(packed_switch<int, 3>(packed_declaration(value.values[0])));
+    external(packed_array(1 + (value.values[0] & 7)));
+    external(packed_class_vla<CleanupItem>(1 + (value.values[0] & 7)));
+    external(packed_cleanup<CleanupItem>(value.values[0]));
+    external(packed_catch<CleanupError>(value.values[0]));
+    return packed_result(value);
+}
+#pragma parse_mfunc_templ off
+#pragma parse_func_templ off
 """
 
 
@@ -94,7 +198,7 @@ def build_trace(args, native):
             link.DEFERRED_EXPORT_SYMBOLS |= {"native_function": 0x5C17D0}
             link.DEFERRED_EXPORT_CALLS += tuple(
                 (address, "_CTempl_GenFuncInstance",
-                 "fn_005c1aa0" if original == "RC1_InstantiateStoredDefinition" else "_" + original,
+                 "_" + original,
                  "_" + traced)
                 for original, (traced, address) in CALLBACKS.items()
             )
@@ -138,6 +242,12 @@ def check(compilers, work, source, mode, flags, expect_error):
         "enter", "leave", "parse", "browse", "fixture-stream", "fixture-declined",
         "fixture-fallback-chain", "fixture-packed-result",
     )), (source.name, mode, counts)
+    if not expect_error:
+        for name in ("packed_result", "packed_switch", "packed_declaration",
+                     "packed_array", "packed_class_vla", "packed_cleanup", "packed_catch"):
+            assert any(line.startswith(f"TF packed {name}<") for line in traces["source"]), (
+                source.name, mode, name,
+            )
     print(f"Matched {source.name} ({mode}): {counts['TF enter']} native calls; all fixture controls passed")
     return counts
 
@@ -170,7 +280,8 @@ int broken = broken_body(1);
     for mode, flags in (("configured", []), ("file", ["-ipa", "file"]),
                         ("program", ["-ipa", "program"]), ("debug", ["-ipa", "file", "-g"])):
         for unit in (source, error):
-            summary.update(check(compilers, args.out_dir, unit, mode, flags, unit == error))
+            summary.update(check(compilers, args.out_dir, unit, mode,
+                                 ["-Cpp_exceptions", "on", *flags], unit == error))
     print("Matched native function-template generation:", dict(summary))
 
 
