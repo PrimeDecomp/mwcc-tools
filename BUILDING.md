@@ -66,6 +66,20 @@ Use `--version GC_1_3_2` for 1.3.2 (and `build/LD_1_3_2/wasm/mwldeppc.wasm`), `-
 `--version GC_1_2_5n` for 1.2.5n (`build/GC_1_2_5n/wasm/mwcc.wasm`, no oracle and no linker). [wasm.md](docs/wasm.md)
 has the details.
 
+Wii_Retro
+---------
+
+The native Wii compiler builds from stock Wii 1.0RC1 and the Retro patch sources. It needs
+`build/compilers/Wii/1.0RC1/mwcceppc.exe` and `lmgr8c.dll` from RC1, plus uv, Clang, LLD and Ninja.
+
+```sh
+target/release/mwcc-tools configure --version Wii_Retro
+ninja Wii_Retro
+```
+
+Use `build/Wii_Retro/mwcceppc.exe` with the DLL beside it. See the [Wii_Retro guide](docs/wii-retro-compiler.md)
+for the current patches and the [research notes](docs/wii-retro-compiler-research.md) for validation.
+
 The native oracle
 -----------------
 

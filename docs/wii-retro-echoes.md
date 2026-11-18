@@ -1,7 +1,12 @@
 # Echoes with the patched Wii compiler: notes for the game-side work
 
 These notes are for the session that moves Echoes' Wii builds (R3ME01, R3MP01, R32J01) to the patched RC1 compiler.
-The findings behind the patch are in [wii-retro-compiler.md](wii-retro-compiler.md), under "Phase 2 / Results".
+The findings behind the patch are in the [compiler research notes](wii-retro-compiler-research.md#results-2026-11-14).
+
+The compiler now builds as a native relink under `build/Wii_Retro/`. Copy `mwcceppc.exe` and `lmgr8c.dll`
+together into the project's compiler directory, or build directly there with `wii_retro_link.py --out-dir`.
+See the [compiler build instructions](wii-retro-compiler.md#build-wii_retro) and
+[validation results](wii-retro-compiler-research.md#native-relink-and-validation).
 
 ## The patch
 

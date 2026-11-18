@@ -1,7 +1,8 @@
 # Layouts of compilers that are not versions here
 
-These are layouts of executables that `include/version.h` does not list, so neither build reads them. They are
-for the compiler of the Prime games' Wii builds, which sits between GC 3.0a5.2 and Wii 1.0RC1. The plan is in
+These are layouts of executables that `include/version.h` does not list. The Wii_Retro native relink reads
+the RC1 layout; GC 3.0a5.2 provides the comparison reference. They support research into the compiler of the
+Prime games' Wii builds, which sits between GC 3.0a5.2 and Wii 1.0RC1. The plan is in
 [../../docs/wii-retro-compiler.md](../../docs/wii-retro-compiler.md).
 
 - `Wii_1_0RC1/`: Wii 1.0RC1 (`build/compilers/Wii/1.0RC1/mwcceppc.exe`), from its CodeView (`tools/wii_layout.py`).
@@ -20,13 +21,21 @@ for the compiler of the Prime games' Wii builds, which sits between GC 3.0a5.2 a
   at another address.
 - `wii-rc1-differences.md`: the functions that differ between the two, per module (`tools/wii_diff_report.py`).
 
-Regenerate with:
+Regenerate the RC1 layout with:
 
 ```sh
 python tools/wii_layout.py Wii_1_0RC1 build/compilers/Wii/1.0RC1/mwcceppc.exe --write
 ```
 
+The [current build](../../docs/wii-retro-compiler.md#build-wii_retro) relinks RC1 with recovered C routines
+and compatibility patches. The following binary patchers reproduce the earlier experiments.
+
 `tools/wii_patch_struct_copy.py` writes a copy of RC1 that copies structs as the Prime games' Wii compiler does,
-without RC1's legacy stack layout. `tools/wii_patch_pretest.py` adds to a copy of RC1 a pass that leaves out the loop
-pretests that compiler leaves out (source in `tools/wii_retro/`). `tools/wii_drop_pretest.py` does the same to compiled
-objects, for testing. Their effects on Echoes are in the plan.
+without RC1's legacy stack layout. Two more patchers add passes to a copy of RC1, built from `tools/wii_retro/` and
+added by `tools/wii_retro_pe.py`:
+- `tools/wii_patch_pretest.py` leaves out the loop pretests that compiler leaves out. `tools/wii_drop_pretest.py`
+  does the same to compiled objects, for testing.
+- `tools/wii_patch_template_vtables.py` emits class template instances' vtables and virtual functions after each
+  declaration, not at the end of the file.
+
+The [compiler research notes](../../docs/wii-retro-compiler-research.md) record their effects on Echoes.

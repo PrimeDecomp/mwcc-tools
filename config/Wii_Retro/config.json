@@ -1,0 +1,6 @@
+{
+  "derived_from": "Wii_1_0RC1",
+  "description": "Wii 1.0RC1 relinked with Retro's struct-copy alignment, destroy-loop guard folding, template-vtable emission, deferred function export order, file-IPA register order and aggregate-copy scheduling.",
+  "banner": "Freescale C/C++ Compiler for Embedded PowerPC (Wii_Retro)",
+  "executable": "build/Wii_Retro/mwcceppc.exe"
+}

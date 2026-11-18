@@ -36578,18 +36578,10 @@
  {
   "name": "CTempl_GenClassInstance",
   "address": "0x005a19a0",
-  "size": 175,
+  "size": 399,
   "module": "CTemplateFuncInst",
   "unit": "wii/CTemplateFuncInst",
   "how": "propagated"
- },
- {
-  "name": "fn_005a1a50",
-  "address": "0x005a1a50",
-  "size": 223,
-  "module": "CTemplateFuncInst",
-  "unit": "wii/CTemplateFuncInst",
-  "how": "new+between"
  },
  {
   "name": "CTempl_GenMemberInstance",

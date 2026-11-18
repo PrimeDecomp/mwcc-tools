@@ -2,7 +2,7 @@
 """Lay out a Wii mwcceppc.exe from its CodeView: functions, symbols and units.
 
 The Wii compilers are not versions of this project (include/version.h): their layouts are written to
-research/<VERSION>/, which neither build reads. See ../docs/wii-retro-compiler.md.
+research/<VERSION>/, which neither build reads. See ../../docs/wii-retro-compiler-research.md.
 """
 
 import argparse

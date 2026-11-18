@@ -9,7 +9,7 @@ RC1's `#pragma legacy_struct_alignment` (copts+0xA1, at 0x74F2F9) switches two t
 - the alignment of what is allocated (CMach_AllocationAlignment): the stack layout.
 
 The patch takes the legacy branch at the copy sites only, so CMach_AllocationAlignment (and the stack layout)
-stays as without the pragma. See ../../docs/wii-retro-compiler.md.
+stays as without the pragma. See ../../docs/wii-retro-compiler-research.md.
 """
 
 import argparse

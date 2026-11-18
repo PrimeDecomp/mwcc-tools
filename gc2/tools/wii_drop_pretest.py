@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Delete the loop pretests the Prime games' Wii compiler leaves out, from compiled PowerPC objects.
 
-A stand-in for the compiler change, to measure it (see ../../docs/wii-retro-compiler.md, "The destroy pretest").
+A stand-in for the compiler change, to measure it (see ../../docs/wii-retro-compiler-research.md, "The destroy pretest").
 A guard is deleted when it repeats the loop's own test and the loop body makes a call. In one executable section:
     i:    cmplw crN, rA, rB
     i+4:  beq   crN, X

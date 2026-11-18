@@ -1,298 +1,59 @@
-# Plan: the compiler of the Prime games' Wii builds
+# Wii_Retro
 
-**Goal.** Retro's code in the Wii builds of the Prime games was built by a compiler we do not have. It sits between GC
-3.0a5.2 (2006-08-31) and Wii 1.0RC1 (2008-05-28). The plan is to decompile both edge versions, then build a new compiler
-from parts of each that behaves the way those builds show. Success is that Echoes Wii's sample functions below match
-with it, with no losses among the functions RC1 already matches.
+Wii_Retro models the compiler Retro used for the Wii releases of the Prime games. The native build
+relinks Wii 1.0RC1 with compatibility patches inferred from the shipped games. GC 3.0a5.2 provides
+an earlier reference for the decompilation.
 
-The new version is called `Wii_Retro` below. The name is a placeholder.
+## Build Wii_Retro
 
-## What Echoes' research established
+Build `mwcc-tools` from this checkout and put it on your PATH along with uv, Clang, LLD
+(`lld-link`), and Ninja. [mwcc-tools build instructions](../BUILDING.md)
 
-From the Echoes project docs: [Trilogy-compiler-struct-copies.md] and [Trilogy-compiler-destroy-pretest.md]
-(`research/` in the Echoes collab project).
+Place Wii 1.0RC1's `mwcceppc.exe` and `lmgr8c.dll` in `build/compilers/Wii/1.0RC1/` and run
+these commands from the repository root.
 
-**The target is a Wii-line compiler that keeps GC 3.x's struct-copy rule.**
+```sh
+mwcc-tools configure --version Wii_Retro
+ninja Wii_Retro
+build/Wii_Retro/mwcceppc.exe -version
+```
 
-- **From the Wii line (RC1):**
-  - the instruction scheduler;
-  - switch lowering: a `cmplwi` range check, where GC 3.x emits a `cmpwi` chain;
-  - prologue and constant shapes: an `stw` for each register, and `addis` + `cmplwi`, where GC 3.x uses `stmw` and
-    `lis/subi` + `cmpw`;
-  - folded range checks (`subi; clrlwi; cmplwi`).
+The executable reports `Wii_Retro` in its banner. Keep `lmgr8c.dll` beside it when copying it into a
+project's compiler directory. To build directly into another directory, pass `--out-dir PATH` to
+`uv run --no-sync python -I gc2/tools/wii_retro_link.py`.
 
-  On game code RC1 is identical to 1.0a and 0x4201_127. No GC 3.0a5.2 option or pragma reproduces the Wii scheduling:
-  136 runs were tried.
-- **From GC 3.x:** a 4-byte struct whose declared alignment is below its size (GXColor, CResInfo, `pair<int,
-  CHintState>`, CDamageVulnerability's records...) is copied one byte at a time (4 `lbz`/`stb`), unless the compiler
-  knows the source is word-aligned. A stack slot or a value it can forward from a register (the word just stored) is
-  copied as one word. Every GC 3.x build (3.0a3 to 3.0a5.2) does this. Every Wii build from 1.0RC1 to 1.5 copies with
-  one word.
-- **RC1 still has the old rule behind a pragma.** `#pragma legacy_struct_alignment on` brings the byte copies back.
-  It also changes the stack layout: aggregates get 4-byte instead of 8-byte alignment, and 1-byte locals are packed.
-  The target does not have that layout. The pragma also reloads a value byte by byte where the target forwards the
-  stored word. The pragma is new in the Wii line: 3.0a5.2 has no pragma RC1 lacks. So `Wii_Retro`'s copy rule is
-  most likely RC1's legacy copy path, separated from the legacy stack layout and with GC 3.x's word-forwarding check.
-- **A second difference, not yet placed:** in the `rstl::destroy(begin, end)` loop, the `if (begin != end)`
-  pretest is dropped when the loop body makes a call, and kept when it does not. Every Wii compiler we have keeps it.
-  Whether 3.0a5.2 drops it has not been checked.
-- **Dates.** Corruption's `main.dol` (2007-07-27) already has the same copy behaviour, and its SDK version strings
-  are the same as Trilogy's. The compiler is therefore older than July 2007: a Wii-line build from roughly a year
-  after 3.0a5.2, about ten months before RC1. RC1 is our nearest neighbour on the Wii side.
+## Current patches
 
-So `Wii_Retro` is RC1 with a small number of changes, not an even mix of the two versions. RC1 is the base, and
-3.0a5.2 is the reference for the parts that changed.
+- **Struct-copy alignment.** Uses GC 3.x's operand alignment to choose copy widths while preserving
+  RC1's stack layout.
+- **Destroy-loop pretest.** Folds a duplicate entry guard in fixed-stride loops that call a
+  function. The loop still tests for an empty range before entering the body.
+- **Template vtable emission.** Emits referenced virtuals alongside out-of-line template helpers.
+  Direct references can leave the vtable and its virtuals for the end of the file.
+- **Deferred function exports.** Orders weak bodies using vtable slots, definition and
+  reference order, and constructor cleanup order. Keeps class-instance members together and
+  preserves serialized reference order where needed under file IPA.
+- **File-IPA register order.** Adjusts virtual register assignment for inlined locals and
+  arguments, propagated references, and optimizer-generated iterators when `-ipa file` is active.
+- **Aggregate-copy scheduling.** Preserves memory order within mixed scalar and array member
+  copies through both scheduler passes to limit register pressure.
 
-## What mwcc-tools adds
+All 30 audited register-order cases match R32J01, R3ME01, and R3MP01 under file IPA. The full R3ME01
+file-IPA sweep gained 43 exact functions with zero exact losses. Aggregate-copy scheduling also
+matches the original status copy and stack frame in `CRevolutionMotionProcessor::Update` in all
+three builds. [Research and validation](wii-retro-compiler-research.md#native-relink-and-validation)
 
-- **Both edge versions are newer than gc2's code base.** Every source file name in 3.0a5.2's asserts (146) also
-  appears in RC1's (173). Only 98 appear in 2.7's. So 3.0a5.2 already has the newer front end and IR (`CIRStream`,
-  `CPrepLexer`, `CTemplateFuncInst`, `CExprGen`, `IroType`, `CodeMotionPPC`, `Spill`...). gc2's 2.7 sources cover only
-  the code that changed little.
-- **RC1 adds** a switch-lowering group (`SWCH_Cell`, `SWCH_DecisionTree`, `SWCH_Interface`, `SWCH_Rules`,
-  `SWCH_ValueSet`), `LocalCSE`, `OptimizerHelpers`, VLE and the plugin and build-agent layers. The `SWCH_*` group is
-  the likely home of the Wii switch lowering.
-- **RC1 has CodeView** (NB11: module table and publics; `gc2/tools/mw/wii.py` reads it), so it has names and unit
-  boundaries from the start. 3.0a5.2 has none.
-- **Host compiler.** 3.0a3 onwards and every Wii build were linked by mwld x86 3.2, and RC1's CodeView names its
-  compiler "Metrowerks CodeWarrior C/C++ x86 V3.2". We do not have that compiler: `build/compilers` has Pro 4, 5, 5.3
-  and 6 only. Without it, nothing can be matched byte for byte.
-- **Precedent.** `gc2/config/GC_2_0p2` is a compiler with no original (`derived_from: GC_2_0`). It models what
-  BFBB's code shows and is built from the sources alone. `Wii_Retro` follows that pattern.
+The relink includes recovered C implementations of deferred generation, call-graph management,
+IR reference packing, and template visitation. A Windows differential check compares function-template
+generation with native RC1: [test instructions](../gc2/tools/wii_retro/tests/README.md).
 
-## The acceptance suite
+## Plan
 
-Each function is from R3ME01 and is compiled by the Echoes build with `-lang c++` and Retro's flags. The suite goes
-into `config/Wii_Retro/acceptance.json`, with the target bytes of each function and the source revision it was
-taken from.
+1. Decompile Wii 1.0RC1 using its CodeView symbols and compare it with GC 3.0a5.2. Start with copy
+   lowering, stack layout, loop handling, and scheduling. [Compiler layouts and diff map](../gc2/research/README.md)
+2. Move the compatibility patches into the shared compiler sources as the relevant units are
+   recovered. Build from those sources and add WebAssembly and oracle support.
+3. Validate Echoes on all three Wii builds with the shared RSTL sources. Check exact functions,
+   linked DOLs, and all 447 image hashes. [Echoes integration notes](wii-retro-echoes.md)
 
-| Function | Checks | RC1 today |
-|---|---|---|
-| `CTevCombiners::SetTevRegisterColor` | byte copy alone (72 bytes) | word copy |
-| `CGraphics::SetCopyClear` | byte copy from a reference | word copy |
-| `CGraphics::SetClearColor` | the stored word is forwarded, not reloaded | matches (the pragma breaks it) |
-| `CGX::SetChanMatColor` | by-value GX argument copied byte-wise after a word compare | word copy |
-| `CCubeRenderer::SetupCGraphicsStates` | `const GXColor` loaded byte-wise from `.sdata2` | word copy |
-| `CCubeRenderer::DrawUnsortedGeometry` | stack slots 4 apart, frame 0x20 | matches (the pragma breaks it) |
-| `GetAimPosition` | frame 0x90 | matches (the pragma breaks it) |
-| `~CCameraColliderGroup`, `~CBallCamera` | no destroy pretest when the body calls | pretest |
-| `~CScriptTeamAiMgr` | pretest kept when the body makes no call | matches |
-
-**No losses.** As well as the suite, keep the 195 units that match on both G2ME01 and R3ME01 with no
-version-specific code (1,212 functions; RC1 matches 1,162 of them). `Wii_Retro` must match every function RC1
-matches there, and every function RC1 matches in Echoes' R3ME01 build. The target is the whole R3ME01 build:
-the 71 functions where the original has more byte copies than our build, and the destructors listed in the
-destroy-pretest page.
-
-## Phase 1: names, units and a diff map
-
-1. **RC1.** Use `wii.py` to generate `config/Wii_1_0RC1/` from CodeView: symbols, splits from the module table,
-   `functions.json` and bindings. The units are the modules, so the boundaries are exact.
-2. **3.0a5.2.** Carry the names over by relocation-masked remapping (`mwcc-tools remap`, `port_version.py`), the way
-   1.3.2 got 1.3's.
-   - Main source: backward from RC1, since it is the same code base.
-   - Secondary: forward from 2.7 through 3.0a3, 3.0a3.x and 3.0a5. Short hops leave less unmatched.
-3. **Diff map** (`docs/wii-rc1-differences.md`, like gc132-differences.md): the functions that differ between
-   3.0a5.2 and RC1, per unit, with sizes. It guides the decompilation. It does not bound `Wii_Retro`, which is an
-   intermediate build and can have code neither edge version has.
-
-## Phase 2: find and probe the behaviours in RC1
-
-This phase de-risks the plan before most of the decompilation.
-
-1. **The struct copy.** Find where RC1 reads `legacy_struct_alignment`: the option's pragma table entry, then its
-   readers. Its readers separate into:
-   - the copy-lowering path, which picks byte or word moves (most likely in the backend's struct move);
-   - the stack-layout path, which sets aggregate alignment and packs locals.
-
-   Find 3.0a5.2's copy lowering by the diff map and compare the two. The aim is the exact rule 3.0a5.2 uses to
-   choose a word move (stack slot, forwarded register value).
-2. **Probe by patching.** Patch the RC1 executable so the copy path takes the legacy branch and the stack layout
-   does not. This needs no decompilation and no host compiler. Run the suite.
-   - If `SetTevRegisterColor`, `SetCopyClear`, `SetChanMatColor` and `DrawUnsortedGeometry` all match and nothing
-     regresses, the model is confirmed. What remains is `SetClearColor`'s forwarding, which then has to come from
-     3.0a5.2's rule.
-   - If not, the readers are entangled and the decompilation must separate them.
-3. **The destroy pretest.** Check the destroy pair with 3.0a5.2 (an Echoes R3ME01 unit compiled with
-   `compiler=GC/3.0a5.2`).
-   - 3.0a5.2 drops the pretest: it is a GC 3.x behaviour, and its home is found by comparing the two versions'
-     loop code (loop inversion or guard elimination, `IroLoop`/`IroJump`/`IrOptimizer`).
-   - 3.0a5.2 keeps it: it belongs to neither edge version, and it has to be modelled from the R3ME01 evidence,
-     the way GC_2_0p2 was from BFBB's.
-4. **Look for more.** Diff the suite's neighbours under the patched RC1. A difference that remains in a function
-   whose source is trusted (matched on GC, no version code) is a third behaviour. The inliner is a candidate:
-   mwcc-debugger.md has RC1 inlining traces with residuals that are still unexplained.
-
-### Results (2026-11-14)
-
-**Where the pragma acts.** `legacy_struct_alignment` is `copts+0xA1` (0x74F2F9). The pragma table's second field
-is the option's offset. RC1 reads the field in 11 places:
-- `CMach_AllocationAlignment`: the alignment of what is allocated, which sets the stack layout. Without the
-  pragma, a small aggregate's alignment is raised to its size, up to 8. With it, the declared alignment is used.
-- `CMach_GetObjectAlignment`, a function that exists only in RC1. For an object that is not a local, the
-  pragma gives the declared alignment, and no pragma gives `CMach_AllocationAlignment`. Locals always go through
-  `CMach_AllocationAlignment`.
-- The copy-width sites, three in `gen_COND`, two in `gen_ASS` and two in `Intrinsics`. Each one is
-  `legacy ? CMach_GetQualifiedTypeAlign(type, 0) : CMach_AllocationAlignment(type, 0)`.
-- `CMach_SetBackEndOptions` and `CMach_GetBackEndOptions`, which only save and restore the field.
-
-3.0a5.2 has no such field. The byte its `CMach_AllocationAlignment` tests (0x70F231, `copts+0x249`) is
-`optimizesize`. Its other readers (the inliner, loop transformations, spill costs, `StructMoves`) are the ones
-`optimizesize` has in 2.7's sources. So 3.0a5.2 allocates like RC1 without the pragma, and its byte copies come
-from a different operand-alignment rule. That rule is the part to decompile.
-
-**The patch** (`gc2/tools/wii_patch_struct_copy.py`): the seven copy-width sites and `GetObjectAlignment`'s
-non-local path take the legacy branch, and `CMach_AllocationAlignment` does not.
-
-Echoes R3ME01 at `origin/main` 8deb345f5, stock RC1 against patched RC1:
-- 12,866 → 12,892 of 18,016 functions exact: 32 gained, 6 lost; 89 improved, 22 regressed.
-- The suite: `SetTevRegisterColor`, `SetCopyClear`, `SetChanMatColor`, `SetChanAmbColor` and
-  `SetupCGraphicsStates` become exact. `SetClearColor` and `DrawUnsortedGeometry` stay exact, so the stack layout
-  is unchanged. Units: CHintManager 70.3 → 96.7%, CStateMachine 82.4 → 99.7%, CRasterFont 82.3 → 97.3%, CPakFile
-  76.9 → 88.2%.
-- The 6 lost functions are `CScriptColorModulate::SetTargetFlags`, `CScriptDoor::SetShieldAlpha`,
-  `CPortalTransition::Update`, `CCinematicCamera::Think`, `CGrenchlerTail::PreRender` and `CPlayer::PreRender`.
-  All six copy `CModelFlags`. The target copies its first 4 bytes as one word, and the patch copies them byte by
-  byte. These 4 bytes are a field Echoes has not identified, declared `uchar x0_[4]`.
-
-**The patch is 3.0a5.2's rule, and the 6 losses come from the source.**
-- 3.0a5.2's `gen_ASS` has RC1's shape: each operand's alignment, then the smaller of the two. An operand with no
-  object gets `CMach_GetTypeAlign(type, 0)` (the declared alignment). An object gets a function that is, instruction
-  for instruction, RC1's `CMach_GetObjectAlignment` under the pragma. So the patch reproduces 3.0a5.2's operand
-  alignment.
-- Compiled by 3.0a5.2 itself, `CPortalTransition` and `CScriptColorModulate` byte-copy where the patch does, and
-  `CDamageVulnerability::Initialize` copies like the target.
-- Two variants that give up the declared alignment for one operand do worse:
-  - the destination: 12,889 exact, 1 lost;
-  - the source: 12,879 exact, 6 lost.
-
-  Pointer-path functions that the first patch matches stop matching (`CDamageVulnerability::Initialize`,
-  `CSortedListManager`, CPakFile's sorts).
-- With `x0_` declared word-aligned as `union { uchar x0_[4]; uint x0w_; };`, the patch matches all six functions,
-  and no function is lost: **12,866 → 12,898 exact, 32 gained, 0 lost**. With the stock compiler the header change
-  alone changes nothing (12,866 either way, the same functions).
-  - A plain `uint` or `int` breaks `CPortalTransition::Update`'s stack layout, under stock RC1 too.
-  - A `float` breaks three of the four.
-  - `uchar x0_[4] __attribute__((aligned(4)))` breaks three of the four.
-  - A 4-aligned struct of 4 bytes works like the union.
-
-So the copy rule of the Prime games' Wii compiler is GC 3.x's: RC1 under `legacy_struct_alignment` for operand
-alignment, and RC1 without it for allocation. This is the first behaviour of `Wii_Retro`. The rstl header change
-belongs in Echoes' rstl, with the patched compiler.
-Moving Echoes to the patched compiler: [wii-retro-echoes.md](wii-retro-echoes.md).
-
-**The destroy pretest.** GC 3.0a5.2, 3.0a5 and 3.0a3 keep the `if (begin != end)` check in the calling case, like
-RC1. So no edge version drops it. Echoes ruled out the source: its unguarded range-destruction policy is only on
-types whose destructor calls, and removing the guard from the source gains 47 functions and loses 42. So it is a
-second behaviour of the original compiler.
-
-The guard (`cmplw rA,rB; beq exit`) comes just before the loop's `b test`, and `test` is `cmplw rA,rB; bne body`,
-with `exit` right after it. The target drops the guard when both:
-- it compares the same registers as the loop's test, and
-- the loop body makes a call.
-
-Our R3ME01 objects against the target, per function:
-- Same registers, body calls: 302 dropped, 4 kept.
-- Same registers, no call: 14 kept, 3 dropped.
-
-All the exceptions are in functions with more than one such loop, where ours don't pair one to one with the target's.
-Of the guards the target keeps with the same registers, 20 have a call-free body of one instruction, and 3 are calling
-loops with an explicit source guard (`WriteAnimData` ×2, `CScriptTrigger::AddInhabitant`).
-- Whether the registers are the same follows from whether `begin` is used after the loop. In a vector destructor,
-  `begin` is the vector's data pointer, which is freed after the loop. When the body makes no call, `begin` stays in
-  `r3` for that free, and the loop counts in its own register (`r4`). When the body calls, the pointer is loaded
-  again for the free. `begin` and `cur` then share one register, so the guard's compare is the loop test's.
-- So the register condition alone does not decide it: the call does.
-
-Measured by deleting the guard from our compiled objects after the patched compiler
-(`gc2/tools/wii_drop_pretest.py`, on R3ME01 with the patched RC1 and the `CModelFlags` union):
-- Same registers and the body calls (750 guards): 12,898 → 12,952 exact, 54 gained, 0 lost; 150 improved,
-  3 regressed. Gained include `~CCameraColliderGroup`, `~CGuiFrame`, `~CModel`, `~CPakFile`, `~CMapWorld`, `~CWorld`
-  and `CToken` vectors. Regressed: `AddInhabitant` (explicit guard, kept in the target), `~CGenericFSM2State` and a
-  `reserve`, each by 1 point or less.
-- Also when the body makes no call (770 guards): 55 gained, 3 lost, 18 regressed.
-
-The deleted guard is 8 bytes, `cmplw` and `beq` (`~CCameraColliderGroup` matches exactly with it gone), not 12 as
-the Echoes CBallCamera page says.
-
-Which pass does this is not known. It acts after the registers are known, or on values it knows are equal, and only
-on loops whose body calls. Neither edge version has it, so `Wii_Retro` adds it. The search for where is Phase 3's.
-
-**In the compiler.** `gc2/tools/wii_patch_pretest.py` adds the rule to RC1 as a pass in a new section (`.retro`,
-source `gc2/tools/wii_retro/drop_pretest.c`, built with clang for i686). `assemblefunction` calls it before
-`optimizefinalbranches`. It deletes the `cmpl` and `bt` from the PCode blocks, then recomputes the offsets.
-- The section also holds RC1's base relocations with the pass's added. `sjiswrap` loads the compiler at another
-  base, and without them the pass crashed.
-- RC1 layouts it relies on:
-  - PCodeBlock: as in 2.7 (`pcodeCount` at 0x28).
-  - PCode: `op` at 0x28 and operands from 0x2c, 14 bytes each. A register's number is at +4, an immediate or a
-    label at +2.
-  - Operand kinds: register 0, immediate 2, label 6.
-  - Opcodes: as in 2.7 up to `blrl` (20); `cmpl` is 85.
-  - `pcbasicblocks` is at 0x751c88.
-
-Applied after `wii_patch_struct_copy.py`, on R3ME01 with the `CModelFlags` union: 12,898 → 12,952 exact, 54 gained,
-0 lost. Every function's match is the same as with the object post-pass.
-
-**A third difference: copying a struct member by member.** `CRevolutionMotionProcessor::Update` (source in rstl,
-`src/Kyoto/Input/CRevolutionMotionProcessor.cpp`) does `mStatus = status`. `WPADFSStatus` is an SDK C struct,
-0x32 bytes, 2-byte aligned, with a `DPDObject obj[4]` array.
-- The target copies it member by member, each load next to its store: `lhz`/`sth` for `button`, `lha`/`sth` for the
-  `s16` fields, `lbz`/`stb` for the bytes. The array is a block copy in pairs (`lhz r6; lhz r0; sth r0; sth r6`), the
-  shape of 2.7's `move_block_via_load_store_sequence`. The frame is 0x50.
-- GC 3.0a3, 3.0a5 and 3.0a5.2, RC1 and the patched RC1 load every member (the array as 16 halfwords) before storing
-  any. In `Update` that runs out of registers and spills, giving a 0x90 frame. 3.0a5.2 and the patched RC1 give the
-  same code for this function: 78.3% under stock RC1, 71.0% under the patch.
-- GC 2.7 copies it the way the target does, in C++: member by member from the implicit `operator=`, with the array
-  as a block move, though with words where the target uses halfwords. In C, 2.7 copies the whole struct as one block.
-  So the target keeps 2.x's copy for this case, and 3.x's operand alignment.
-- RC1's `IRO_DecomposeAssignments`, `IRO_SerializeAllAssignments` and `IRO_RecomposeAssignments` are not involved.
-  They are switched by `copts` bytes 0x74f51f, 0x74f51c and 0x74f520, and skipping them changes nothing.
-- It is narrower than "2.x's copies". In R3ME01, 70 functions where we load 8 or more times in a row from one base
-  register, such as `CDamageVulnerability::MakeImmuneToRadiusDamage`'s 23-word copy, look the same in the target.
-  Only 4 differ, and 3 of those (`MoveGroundCollider_New`, `CSlideShow::OnMessage`, `LoadDynamicLight`) differ from
-  the target in other ways too. So `Update` is the only clean case.
-- Not settled: what makes the target copy member by member here. Candidates are copy assignment against copy
-  construction (`MakeImmuneToRadiusDamage` is a copy construction), or C structs. The code to find is where RC1 and
-  3.0a5.2 expand a C++ implicit copy into pieces that are all loaded first.
-
-## Phase 3: decompile both edge versions
-
-The long-term goal, done like the 2.x versions in gc2:
-
-1. **RC1 first.** It has names. Start from gc2's 2.7 text where a unit still exists ("Start from the reference's
-   verbatim text, then apply the target version's changes", matching-guide.md §1.1). New units (CIRStream, the SWCH
-   group, LocalCSE...) are decompiled from scratch.
-2. **3.0a5.2 as a version of the same sources,** with `VERSION_` macros as for `VERSION_GC_1_3_2`, guided by the diff
-   map.
-3. **Order.** The units Phase 2 names come first: the struct move, the stack-frame layout, the loop guard. Next come
-   the units every compile goes through (the backend, the scheduler, the IR optimizer), and the driver, plugin and
-   build-agent layers last.
-4. **How a unit is checked.** By bytes, if the V3.2 x86 host compiler is found (search the decomp.dev archive, the
-   Internet Archive and CodeWarrior for Windows discs; confirm it by compiling one RC1 function). Otherwise by
-   function equivalence (`prove.py`), with an executable built from the sources alone that reproduces RC1's output on
-   Echoes' Wii build.
-
-## Phase 4: `Wii_Retro`
-
-1. Add `config/Wii_Retro/config.json` (`derived_from: Wii_1_0RC1`, a description, its behaviour switches), with the
-   changes as `VERSION_` code in RC1's sources, as GC_2_0p2 does.
-2. **Before the decompilation is complete,** build `Wii_Retro` as RC1's split executable relinked. Only the units
-   Phase 2 changes are replaced, compiled from the decompiled sources, which need only be equivalent. Its data layouts
-   must agree with RC1's (options, `copts`, IR node structs). Building the whole compiler from the sources replaces
-   the relink once Phase 3 is done.
-3. **Make it usable in mwcc-tools.** It has no original, so it cannot be recognised by hash the way other compilers
-   are. Decide how a project names it, then add the WebAssembly module and the oracle hooks (wasm.md), so it builds
-   in process and traces.
-4. **Echoes:** switch `retro_mw_version` for R32J01, R3ME01 and R3MP01, then check the suite, the no-loss set, and
-   all 447 image hashes.
-
-## Decision points
-
-- **After Phase 2's patch:** whether RC1's legacy copy path is separable from its stack layout. If it is, the copy
-  rule is a small, local change. If not, the decompilation of the struct move and frame layout is the critical path.
-- **The destroy pretest:** settled. It belongs to neither edge version (see Phase 2's results).
-- **Host compiler found or not:** whether Phase 3 aims for matching or for equivalence.
-
-[Trilogy-compiler-struct-copies.md]: https://collab.decomp.dev/projects/echoes/docs/research/Trilogy-compiler-struct-copies.md
-[Trilogy-compiler-destroy-pretest.md]: https://collab.decomp.dev/projects/echoes/docs/research/Trilogy-compiler-destroy-pretest.md
+[Compiler research notes and original patch probes](wii-retro-compiler-research.md)
