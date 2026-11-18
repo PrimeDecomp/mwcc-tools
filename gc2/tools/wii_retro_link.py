@@ -12,22 +12,89 @@ from collections import defaultdict
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import wii_patch_struct_copy as struct_copy
-import wii_patch_template_vtables as vtables
-import wii_retro_pe
 from mw import coff, formats, link, project
 from mw.pe import PEFile
+from wii_retro_abi import CLANG_FLAGS, VTABLE_CALL, VTABLE_SYMBOLS
 
 ROOT = project.ROOT.parent
 VERSION = "Wii_Retro"
 ALIGNMENT_FUNCTION = "_CMach_GetObjectAlignment"
+REPLACEMENT_NAMES = {
+    "fn_0057f9d0": "_retro_ClearIntrinsic",
+    "fn_0057fad0": "_retro_CopyIntrinsic",
+    "fn_0046d690": "_RC1_AssignLocals",
+    "fn_0046d8b0": "_RC1_ReassignLocals",
+    "fn_005be950": "_RC1_MayAliasPair",
+    "fn_005bec90": "_RC1_RefreshAliasMembership",
+    "fn_005bee90": "_RC1_AddAliasAncestors",
+    "fn_006657e0": "_RC1_GatherInstructionAlias",
+    "fn_00665940": "_RC1_ReachingOperandAlias",
+    "fn_005c1aa0": "_RC1_InstantiateStoredDefinition",
+    "fn_005c1e40": "_RC1_InstantiateStoredStatement",
+    "fn_005c22d0": "_RC1_InstantiateMemberInitializers",
+    "fn_005c2380": "_RC1_InstantiateStaticDeclaration",
+    "fn_005c24c0": "_RC1_InstantiateLocalDeclaration",
+    "fn_005c2740": "_RC1_UpdateVLACleanups",
+    "fn_005c2860": "_RC1_InstantiateStoredInitializer",
+    "fn_005c28d0": "_RC1_InstantiateInitializerTree",
+    "fn_005c2a70": "_RC1_InstantiateCleanups",
+    "fn_005c2b10": "_RC1_ResolveDependentCleanup",
+}
+ASSIGNMENT_FUNCTION = "_gen_ASS"
+ASSIGNMENT_JUMP_TABLE = (0x675BB0, 0x675BBC)
+CONDITIONAL_FUNCTION = "_gen_COND"
+CONDITIONAL_JUMP_TABLES = (0x675B10, 0x675B74)
+REGISTER_FUNCTIONS = (
+    "_Registers_ClassForType", "_Registers_GetVarInfo", "_assign_register_by_type", "_obtain_nonvolatile_register",
+    "_retain_register", "_assign_register_to_variable", "_assign_GPR_pair",
+)
+REGISTER_CLASS_AND_INFO_TABLES = (0x67B878, 0x67B8BC)
+REGISTER_PAIR_TABLES = (0x67B8BC, 0x67B8DC)
+REGISTER_ASSIGNMENT_TABLES = (0x67B8DC, 0x67B8FC)
+REGISTER_SYMBOLS = {"RC1_RegisterInfo_source_file": 0x6DB82E, "RC1_Registers_source_file": 0x6DC02C}
+SCHEDULER_FUNCTIONS = (
+    "_scheduleinstructions", "_may_alias", "_may_alias_object", "_may_alias_worst_case",
+    "_instr_may_alias_alias", "_uniquely_aliases", "_instr_must_alias_alias",
+    "_gather_alias_info", "_make_distinct_virtual_alias", "_propagatealiasinfo",
+    "_is_const_alias_runtime_call", "_canidate_reaches_use", "_candidatealias",
+)
+ALIAS_JUMP_TABLE = (0x67DF2C, 0x67DF50)
+PCODE_EXPANSION_FUNCTION = "_pcode_expand_pseudo_ops"
+MEMORY_WIDTH_FUNCTION = "_nbytes_loaded_or_stored_by"
+MEMBER_INSTANTIATION_FUNCTION = "_CTempl_InstantiateMember"
+MEMBER_INSTANTIATION_JUMP_TABLE = (0x67E114, 0x67E128)
+STORED_STATEMENT_JUMP_TABLE = (0x67E128, 0x67E168)
+STORED_INITIALIZER_JUMP_TABLE = (0x67E168, 0x67E174)
+STORED_CLEANUP_JUMP_TABLE = (0x67E174, 0x67E1CC)
+PCODE_EXPANSION_JUMP_TABLE = (0x67D0A4, 0x67D0B0)
+PCODE_EXPANSION_SYMBOLS = {"RC1_PCodeInfo_source_file": 0x6DBD96}
+CONDITIONAL_SYMBOLS = {
+    "RC1_next_gpr": 0x758288,
+    "RC1_next_fpr": 0x758284,
+    "RC1_next_vr": 0x758280,
+    "RC1_FloatBinaryOperator": 0x51FB20,
+    "RC1_TryConditionalCompare": 0x523740,
+    "RC1_MatchConditionalAbsolute": 0x523AD0,
+    "RC1_ConditionalConstantKind": 0x523A00,
+    "RC1_LogicalExpressionNoBranch": 0x51ED30,
+}
+ASSIGNMENT_SYMBOLS = {
+    "RC1_processor": 0x74F270,
+    "RC1_soft_float": 0x74F28F,
+    "RC1_use_paired_moves_for_double": 0x74F2C0,
+    "RC1_gprfloatcopy": 0x74F2D6,
+    "RC1_postincrement_object": 0x718340,
+    "RC1_postincrement_end": 0x718344,
+    "RC1_postincrement_start": 0x718348,
+    "RC1_InstrSelection_source_file": 0x6C4E78,
+    "RC1_CanMoveAssignmentBeforePostincrement": 0x525E70,
+}
 ALIGNMENT_OPTIONS = {
     "RC1_structalignment": 0x74F4C0,
     "RC1_oldalignment": 0x74F444,
     "RC1_GetQUALalign": 0x4F4DC0,
     "RC1_GetQualifiedTypeAlign": 0x4F2760,
     "RC1_AllocationAlignment": 0x4F4BB0,
-    "RC1_Registers_GetVarInfo": 0x590780,
 }
 INLINE_SYMBOLS = {
     "RC1_unique_name_counter": 0x70F808,
@@ -50,16 +117,14 @@ REFERENCE_SYMBOLS = {
     "RC1_Linearize": 0x5D9830,
     "RC1_CopyAndConstantPropagation": 0x60AF30,
     "RC1_Delinearize": 0x5D8940,
-    "RC1_AssignLocals": 0x46D690,
-    "RC1_ReassignLocals": 0x46D8B0,
 }
 REFERENCE_CALLS = (
     (0x58D5B8, "_IRO_Optimizer", "_IRO_Linearize", "_retro_Linearize"),
     (0x58DEB0, "_IRO_Optimizer", "_IRO_CopyAndConstantPropagation", "_retro_CopyAndConstantPropagation"),
     (0x58E110, "_IRO_Optimizer", "_IRO_CopyAndConstantPropagation", "_retro_CopyAndConstantPropagation"),
     (0x58D98F, "_IRO_Optimizer", "_IRO_Delinearize", "_retro_Delinearize"),
-    (0x46A7AB, "_CodeGen_Generator", "fn_0046d690", "_retro_AssignLocals"),
-    (0x46A78C, "_CodeGen_Generator", "fn_0046d8b0", "_retro_ReassignLocals"),
+    (0x46A7AB, "_CodeGen_Generator", "_RC1_AssignLocals", "_retro_AssignLocals"),
+    (0x46A78C, "_CodeGen_Generator", "_RC1_ReassignLocals", "_retro_ReassignLocals"),
 )
 DEFERRED_EXPORT_SYMBOLS = {
     "RC1_IsCopyConstructor": 0x555740,
@@ -80,7 +145,12 @@ DEFERRED_EXPORT_SYMBOLS = {
     "RC1_call_graph_next_index": 0x752F78,
     "RC1_allow_weak_graph_roots": 0x74F481,
     "RC1_CTemplateFuncInst_source_file": 0x6DC1F0,
-    "RC1_InstantiateStoredDefinition": 0x5C1AA0,
+    "RC1_CTemplateTools_source_file": 0x6C519C,
+    "RC1_CTemplateClass_source_file": 0x6E3548,
+    "RC1_CDecl_source_file": 0x6C4E98,
+    "RC1_vla_registry": 0x71839A,
+    "RC1_pending_array_initializers": 0x722B18,
+    "RC1_warn_no_side_effect": 0x74F4A8,
 }
 DEFERRED_EXPORT_CALLS = (
     (0x4589AA, "_CParser_Setup", "_CMid_Setup", "_retro_MidSetup"),
@@ -113,11 +183,24 @@ IR_STREAM_SYMBOLS = {
 }
 SCHEDULER_SYMBOLS = {
     "RC1_ScheduleBlock": 0x5B6AD0,
+    "RC1_scheduling_cpu": 0x74F272,
+    "RC1_altivec_model": 0x74F27E,
+    "RC1_scheduler_model": 0x71E198,
+    "RC1_alias_count": 0x722AF4,
+    "RC1_gathered_aliases": 0x722AF0,
+    "RC1_alias_scratch": 0x722B00,
+    "RC1_alias_scratch_aux": 0x722AFC,
+    "RC1_Scheduler_source_file": 0x6DC06C,
+    "RC1_Alias_source_file": 0x6DC110,
+    "RC1_optimization_level": 0x74F4D9,
+    "RC1_alias_propagation_settings": 0x6F3D00,
+    "RC1_c99": 0x74F456,
+    "RC1_cplusplus": 0x74F434,
+    "RC1_indirect_aliasing": 0x74F457,
 }
 SCHEDULER_CALLS = (
     (0x46B3E4, "_CodeGen_Generator", "_scheduleinstructions", "_retro_scheduleinstructions"),
     (0x46B335, "_CodeGen_Generator", "_scheduleinstructions", "_retro_scheduleinstructions"),
-    (0x5B6AB1, "_scheduleinstructions", "fn_005b6ad0", "_retro_schedule_block"),
     (0x5B7026, "fn_005b6e50", "_may_alias", "_retro_aggregate_may_alias"),
     (0x5B70D6, "fn_005b70a0", "_may_alias", "_retro_aggregate_may_alias"),
     (0x5B7126, "fn_005b70a0", "_may_alias", "_retro_aggregate_may_alias"),
@@ -150,8 +233,38 @@ def split_layout(pe, layout, symbols):
             (int(item["start"], 16), int(item["end"], 16), modules.get(item["module"], item["module"]))
         )
 
-    alignment = next(symbol for symbol in symbols if symbol.name == ALIGNMENT_FUNCTION)
-    removed_start, removed_end = alignment.address, alignment.address + alignment.size
+    removed_names = {
+        ALIGNMENT_FUNCTION, ASSIGNMENT_FUNCTION, CONDITIONAL_FUNCTION, PCODE_EXPANSION_FUNCTION, MEMORY_WIDTH_FUNCTION,
+        MEMBER_INSTANTIATION_FUNCTION, "_CTemplTool_InstantiateExprList", "_CTemplTool_FixTypedefObject",
+        "_CTemplTool_InstantiateMemberVar", "_CTemplTool_GetTemplClassInst",
+        "_CTemplTool_Template2TemplClass", "_CTemplClass_GetMasterTemplate",
+        "_CTemplTool_InstClass2Template", "_CTemplTool_Class2TemplClassInst", "_CTemplTool_TemplInst2TemplClassInst",
+        "_CTemplClass_NewInstance", "_CTemplClass_GetInstance",
+        "_CError_LockErrorSourceRef", "_CError_UnlockErrorSourceRef",
+        "_CDecl_RemoveVLAInfo", "_CDecl_FindVLAInfo", "_CDecl_RegisterVLAInfo", "_CDecl_DiscardVLAInfos",
+        *REPLACEMENT_NAMES.values(), *REGISTER_FUNCTIONS, *SCHEDULER_FUNCTIONS,
+    }
+    removed = sorted((symbol.address, symbol.address + symbol.size, symbol.name)
+                     for symbol in symbols if symbol.name in removed_names)
+    if len(removed) != len(removed_names):
+        raise ValueError("missing replaced function from the CodeView symbols")
+    removed_by_section = {
+        ".text": removed,
+        # These stock jump tables point into the functions being replaced.
+        ".rdata": [
+            (*CONDITIONAL_JUMP_TABLES, "gen_COND jump tables"),
+            (*ASSIGNMENT_JUMP_TABLE, "gen_ASS jump table"),
+            (*REGISTER_CLASS_AND_INFO_TABLES, "register class and variable info jump tables"),
+            (*REGISTER_PAIR_TABLES, "assign_GPR_pair jump tables"),
+            (*REGISTER_ASSIGNMENT_TABLES, "assign_register_by_type jump tables"),
+            (*PCODE_EXPANSION_JUMP_TABLE, "pcode_expand_pseudo_ops jump table"),
+            (*ALIAS_JUMP_TABLE, "alias query jump table"),
+            (*MEMBER_INSTANTIATION_JUMP_TABLE, "member instantiation jump table"),
+            (*STORED_STATEMENT_JUMP_TABLE, "stored statement jump table"),
+            (*STORED_INITIALIZER_JUMP_TABLE, "stored initializer jump table"),
+            (*STORED_CLEANUP_JUMP_TABLE, "stored cleanup jump table"),
+        ],
+    }
     sections, units = {}, []
     for section in pe.sections:
         name = section.name
@@ -171,11 +284,15 @@ def split_layout(pe, layout, symbols):
                 raise ValueError(f"{name}: overlapping or invalid CodeView range at 0x{first:x} ({owner})")
             if start < first:
                 units.append(formats.Unit(f"{name[1:]}/{start:08x}-gap", [formats.Range(name, start, first)]))
-            pieces = [(first, last)]
-            if name == ".text" and first <= removed_start < last:
-                if removed_end > last:
-                    raise ValueError(f"{ALIGNMENT_FUNCTION} crosses a CodeView range")
-                pieces = [(first, removed_start), (removed_end, last)]
+            pieces = []
+            begin = first
+            for removed_start, removed_end, symbol in removed_by_section.get(name, ()):
+                if first <= removed_start < last:
+                    if removed_end > last:
+                        raise ValueError(f"{symbol} crosses a CodeView range")
+                    pieces.append((begin, removed_start))
+                    begin = removed_end
+            pieces.append((begin, last))
             for begin, end in pieces:
                 if begin < end:
                     label = f"{name[1:]}/{begin:08x}-{Path(owner).stem}"
@@ -190,6 +307,7 @@ def link_symbols(pe, layout):
     symbols = formats.read_symbols(layout / "symbols.txt")
     names, addresses = set(), set()
     for symbol in symbols:
+        symbol.name = REPLACEMENT_NAMES.get(symbol.name, symbol.name)
         if symbol.name in names:
             symbol.name += f"_{symbol.address:08x}"
         names.add(symbol.name)
@@ -207,7 +325,8 @@ def link_symbols(pe, layout):
             addresses.add(address)
 
     patches = (
-        vtables.SYMBOLS | ALIGNMENT_OPTIONS |
+        VTABLE_SYMBOLS | ALIGNMENT_OPTIONS | ASSIGNMENT_SYMBOLS | CONDITIONAL_SYMBOLS | REGISTER_SYMBOLS |
+        PCODE_EXPANSION_SYMBOLS |
         INLINE_SYMBOLS | REFERENCE_SYMBOLS | DEFERRED_EXPORT_SYMBOLS | IR_STREAM_SYMBOLS | SCHEDULER_SYMBOLS
     )
     for name, address in patches.items():
@@ -320,11 +439,8 @@ def build(stock, output, tools, clang, linker):
     output.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix=".wii-retro-", dir=output) as directory:
         work = Path(directory).resolve()
-        # The compiler's shared instruction-selection routines keep the existing width-selection edits.
-        code = bytearray(raw)
-        struct_copy.patch(code)
         source_image = work / "rc1.exe"
-        source_image.write_bytes(code)
+        source_image.write_bytes(raw)
         pe = PEFile(source_image)
         layout = ROOT / base["codeview_layout"]
         symbols = link_symbols(pe, layout)
@@ -332,7 +448,7 @@ def build(stock, output, tools, clang, linker):
         config = work / "config" / VERSION
         config.mkdir(parents=True)
         (config / "config.json").write_text(
-            json.dumps({"original": source_image.name, "sha1": hashlib.sha1(code).hexdigest()}), encoding="utf-8"
+            json.dumps({"original": source_image.name, "sha1": base["sha1"]}), encoding="utf-8"
         )
         (config / "symbols.txt").write_text(formats.format_symbols(symbols), encoding="utf-8")
         (config / "splits.txt").write_text(formats.format_splits(splits), encoding="utf-8")
@@ -345,20 +461,21 @@ def build(stock, output, tools, clang, linker):
             symbols,
             0x46B1A5,
             "_CodeGen_Generator",
-            "_pcode_expand_pseudo_ops",
+            PCODE_EXPANSION_FUNCTION,
             "_retro_expand_pseudo_ops",
         )
         redirect_call(
             objects,
             splits,
             symbols,
-            vtables.CALL,
+            VTABLE_CALL,
             "_CParser_ParseDeclaration",
             "_CMid_GlobalDeclarationActions",
             "_retro_GlobalDeclarationActions",
         )
         for call in (*INLINE_CALLS, *REFERENCE_CALLS, *DEFERRED_EXPORT_CALLS, *SCHEDULER_CALLS):
             redirect_call(objects, splits, symbols, *call)
+        redirect_direct_calls(objects, splits, "_CMach_ArgumentAlignment", "_retro_ArgumentAlignment")
         redirect_direct_calls(objects, splits, "_CMid_ObjectAddrRef", "_retro_ObjectAddrRef")
         redirect_direct_calls(objects, splits, "_CMid_GetFuncData", "_retro_GetFuncData")
         redirect_direct_calls(objects, splits, "_CMid_SetFuncData", "_retro_SetFuncData")
@@ -385,17 +502,12 @@ def build(stock, output, tools, clang, linker):
         redirect_temp_creators(objects, splits, symbols)
         identity = identity_object(objects, splits, symbols, settings["banner"], work)
 
-        sources = Path(__file__).resolve().with_name("wii_retro")
         compiled = []
-        for name in (
-            "struct_copy", "destroy_pretest", "template_vtables", "deferred_exports",
-            "ir_stream", "template_instantiation", "inline_locals", "reference_order", "aggregate_schedule",
-        ):
-            obj = work / f"{name}.obj"
-            flags = wii_retro_pe.BUILD.split()[1:]
-            if name == "template_vtables":
-                flags.append("-DWII_RETRO_RELINK")
-            subprocess.run([clang, *flags, str(sources / f"{name}.c"), "-o", str(obj)], check=True)
+        for relative in settings["sources"]:
+            source = ROOT / relative
+            obj = work / f"{source.stem}.obj"
+            defines = ["-DWII_RETRO_RELINK"] if source.name == "template_vtables.c" else []
+            subprocess.run([clang, *CLANG_FLAGS, *defines, str(source), "-o", str(obj)], check=True)
             compiled.append(obj)
 
         # Keep command length independent of the number of CodeView units.

@@ -312,25 +312,22 @@ fn wii_retro(root: &Path, request: &Request) -> Result<Generation> {
     let configs = format!("{config_path} {}", ninja_path(&base_config_path));
     let inputs = [
         script,
-        "gc2/tools/wii_patch_struct_copy.py",
-        "gc2/tools/wii_patch_template_vtables.py",
-        "gc2/tools/wii_retro_pe.py",
-        "gc2/tools/wii_retro/struct_copy.c",
-        "gc2/tools/wii_retro/destroy_pretest.c",
-        "gc2/tools/wii_retro/template_vtables.c",
-        "gc2/tools/wii_retro/deferred_exports.c",
-        "gc2/tools/wii_retro/ir_stream.c",
-        "gc2/tools/wii_retro/template_instantiation.c",
-        "gc2/tools/wii_retro/inline_locals.c",
-        "gc2/tools/wii_retro/rc1_local.h",
-        "gc2/tools/wii_retro/reference_order.c",
-        "gc2/tools/wii_retro/aggregate_schedule.c",
+        "gc2/tools/wii_retro_abi.py",
+        "gc2/tools/mw/__init__.py",
+        "gc2/tools/mw/build.py",
         "gc2/tools/mw/coff.py",
+        "gc2/tools/mw/config.py",
         "gc2/tools/mw/formats.py",
         "gc2/tools/mw/link.py",
         "gc2/tools/mw/pe.py",
         "gc2/tools/mw/project.py",
     ]
+    .into_iter()
+    .map(str::to_owned)
+    .chain(strings(&config["sources"])?)
+    .chain(strings(&config["headers"])?)
+    .map(|path| ninja_path(&path))
+    .collect::<Vec<_>>()
     .join(" ");
     let layout = ninja_path(layout);
     let exe = ninja_path(executable);

@@ -23210,7 +23210,15 @@
  {
   "name": "CMach_CalcIntDiadic",
   "address": "0x004e46b0",
-  "size": 2991,
+  "size": 2768,
+  "module": "CMachine",
+  "unit": "src/backend/CMachine.c",
+  "how": "propagated"
+ },
+ {
+  "name": "CMach_GetObjectAlignment",
+  "address": "0x004e5180",
+  "size": 223,
   "module": "CMachine",
   "unit": "src/backend/CMachine.c",
   "how": "propagated"
@@ -33370,18 +33378,10 @@
  {
   "name": "Registers_ClassForType",
   "address": "0x00579560",
-  "size": 111,
+  "size": 154,
   "module": "RegisterInfo",
   "unit": "src/backend/RegisterInfo.c",
   "how": "propagated"
- },
- {
-  "name": "fn_005795d0",
-  "address": "0x005795d0",
-  "size": 42,
-  "module": "RegisterInfo",
-  "unit": "src/backend/RegisterInfo.c",
-  "how": "new+between"
  },
  {
   "name": "update_asm_nonvolatile_registers",
@@ -34634,18 +34634,10 @@
  {
   "name": "nbytes_loaded_or_stored_by",
   "address": "0x0058b4c0",
-  "size": 415,
+  "size": 551,
   "module": "PCodeInfo",
   "unit": "src/backend/PCodeInfo.c",
   "how": "propagated"
- },
- {
-  "name": "fn_0058b660",
-  "address": "0x0058b660",
-  "size": 135,
-  "module": "PCodeInfo",
-  "unit": "src/backend/PCodeInfo.c",
-  "how": "new+between"
  },
  {
   "name": "makecopyforload",
@@ -47394,18 +47386,10 @@
  {
   "name": "fn_006657e0",
   "address": "0x0063d6a0",
-  "size": 175,
+  "size": 348,
   "module": "AliasPropagation",
   "unit": "wii/AliasPropagation",
   "how": "propagated"
- },
- {
-  "name": "fn_0063d750",
-  "address": "0x0063d750",
-  "size": 172,
-  "module": "AliasPropagation",
-  "unit": "wii/AliasPropagation",
-  "how": "new+between"
  },
  {
   "name": "fn_00665940",
@@ -47417,8 +47401,8 @@
  },
  {
   "name": "fn_00665a30",
-  "address": "0x0063d880",
-  "size": 123,
+  "address": "0x0063d8f0",
+  "size": 11,
   "module": "AliasPropagation",
   "unit": "wii/AliasPropagation",
   "how": "order"
@@ -47858,25 +47842,17 @@
  {
   "name": "candidatealias",
   "address": "0x00644130",
-  "size": 175,
+  "size": 293,
   "module": "AliasPropagationPPC",
   "unit": "wii/AliasPropagationPPC",
   "how": "propagated"
  },
  {
-  "name": "fn_006441e0",
-  "address": "0x006441e0",
-  "size": 239,
-  "module": "",
-  "unit": "",
-  "how": "new"
- },
- {
-  "name": "fn_006442d0",
-  "address": "0x006442d0",
-  "size": 73,
-  "module": "",
-  "unit": "",
-  "how": "new"
+  "name": "is_address_load",
+  "address": "0x00644260",
+  "size": 185,
+  "module": "AliasPropagationPPC",
+  "unit": "wii/AliasPropagationPPC",
+  "how": "propagated"
  }
 ]

@@ -2,5 +2,28 @@
   "derived_from": "Wii_1_0RC1",
   "description": "Wii 1.0RC1 relinked with Retro's struct-copy alignment, destroy-loop guard folding, template-vtable emission, deferred function export order, file-IPA register order and aggregate-copy scheduling.",
   "banner": "Freescale C/C++ Compiler for Embedded PowerPC (Wii_Retro)",
-  "executable": "build/Wii_Retro/mwcceppc.exe"
+  "executable": "build/Wii_Retro/mwcceppc.exe",
+  "sources": [
+    "gc2/tools/wii_retro/struct_copy.c",
+    "gc2/tools/wii_retro/assignment.c",
+    "gc2/tools/wii_retro/conditional.c",
+    "gc2/tools/wii_retro/destroy_pretest.c",
+    "gc2/tools/wii_retro/template_vtables.c",
+    "gc2/tools/wii_retro/deferred_exports.c",
+    "gc2/tools/wii_retro/ir_stream.c",
+    "gc2/tools/wii_retro/template_instantiation.c",
+    "gc2/tools/wii_retro/inline_locals.c",
+    "gc2/tools/wii_retro/reference_order.c",
+    "gc2/tools/wii_retro/register_info.c",
+    "gc2/tools/wii_retro/aggregate_schedule.c",
+    "gc2/tools/wii_retro/alias_setup.c",
+    "gc2/tools/wii_retro/alias_propagation.c",
+    "gc2/tools/wii_retro/pcode_width.c"
+  ],
+  "headers": [
+    "gc2/tools/wii_retro/rc1_alias.h",
+    "gc2/tools/wii_retro/rc1_codegen.h",
+    "gc2/tools/wii_retro/rc1_local.h",
+    "gc2/tools/wii_retro/rc1_pcode.h"
+  ]
 }

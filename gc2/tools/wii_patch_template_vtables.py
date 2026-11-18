@@ -23,24 +23,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 import wii_retro_pe  # noqa: E402
-
-# RC1's symbols the pass uses.
-SYMBOLS = {
-    "RC1_GlobalDeclarationActions": 0x47C120,  # CMid_GlobalDeclarationActions
-    "RC1_ConstructVTable": 0x552E50,
-    "RC1_InitObjectIterator": 0x4F6550,  # CScope_InitObjectIterator
-    "RC1_NextObjectIteratorObject": 0x4F64E0,  # CScope_NextObjectIteratorObject
-    "RC1_GenerateTypeInfoData": 0x600050,  # CRTTI_GenerateTypeInfoData
-    "RC1_ClassInternalError": 0x45B4C0,  # CError_Internal
-    "RC1_CClass_source_file": 0x6C51D4,
-    "RC1_frontend_errors": 0x76C0A0,
-    "RC1_GenClassInstance": 0x5C1140,  # CTempl_Instantiate's call for a class template instance
-    "RC1_FreeLocalHeap": 0x47C360,  # CMid_FreeLocalHeap, the call after it
-    "RC1_classlist": 0x756FF4,  # CClass_Finalize's two lists
-    "RC1_classlist2": 0x751D7C,
-    "RC1_templates": 0x751EFC,  # the class templates
-}
-CALL = 0x44F43E  # CParser_ParseDeclaration: call CMid_GlobalDeclarationActions
+from wii_retro_abi import VTABLE_CALL as CALL, VTABLE_SYMBOLS as SYMBOLS  # noqa: E402
 
 # wii_retro/template_vtables.c, entry retro_GlobalDeclarationActions at offset 0.
 CODE = bytes.fromhex(

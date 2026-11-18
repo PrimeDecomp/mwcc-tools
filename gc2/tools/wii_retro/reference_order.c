@@ -11,6 +11,7 @@ enum {
     Assign = 0x1e,
     IntConstant = 0x34,
     ObjectRef = 0x3b,
+    HasMemory = 0x80,
 };
 
 typedef struct Expr {
@@ -73,12 +74,16 @@ extern unsigned char RC1_ipa_kind;
 extern unsigned RC1_unique_name_counter;
 extern const Linear* RC1_first_linear;
 extern Local* RC1_locals;
+extern Local* arguments;
+extern Local* toclist;
+extern int optimizing;
 extern Object* create_temp_object(const Type* type);
+extern VarInfo* Registers_GetVarInfo(Object* object);
+extern void assign_register_by_type(Object* object);
+extern unsigned char IsTempName(const Identifier* name);
 extern void RC1_Linearize(void* statements);
 extern void RC1_CopyAndConstantPropagation(void);
 extern void* RC1_Delinearize(void* statements, void* options);
-extern void RC1_AssignLocals(void);
-extern void RC1_ReassignLocals(void);
 extern void retro_AssignInlineLocals(Local* locals, void (*assign)(void));
 
 static Reference* references;
@@ -375,6 +380,93 @@ static void assign_with_references(void (*assign)(void)) {
     references = NULL;
     capacity = 0;
     count = 0;
+}
+
+static inline int pointer_or_array(const Type* type) {
+    int result = 1;
+    if (type->kind != TypePointer && type->kind != TypeArray)
+        result = 0;
+    return result;
+}
+
+static inline int is_volatile(const Object* object) {
+    unsigned mask;
+    const Type* type;
+    type = object->type;
+    mask = pointer_or_array(type);
+    if (mask) {
+        mask = ((const PointerType*)type)->qualifiers & QualVolatile;
+        return mask;
+    }
+    mask = object->qualifiers & QualVolatile;
+    return mask;
+}
+
+static inline void assign_local(Object* object) {
+    const VarInfo* info = Registers_GetVarInfo(object);
+    if ((info->flags & HasMemory) && !info->reg && info->used && !info->no_register && !is_volatile(object))
+        assign_register_by_type(object);
+}
+
+static inline void reassign_local(Object* object) {
+    const VarInfo* info = Registers_GetVarInfo(object);
+    if (info->used && !info->no_register && !is_volatile(object) && !info->reg)
+        assign_register_by_type(object);
+}
+
+/* Both native passes visit arguments, named locals, temporaries, then TOC entries. */
+void RC1_AssignLocals(void) {
+    int saved = optimizing;
+    Local* local;
+    Object* object;
+    const VarInfo* info;
+    optimizing = 1;
+
+    for (local = arguments; local; local = local->next)
+        assign_local(local->object);
+    for (local = RC1_locals; local; local = local->next) {
+        object = local->object;
+        if (!IsTempName(object->name))
+            assign_local(object);
+    }
+    for (local = RC1_locals; local; local = local->next) {
+        object = local->object;
+        if (IsTempName(object->name))
+            assign_local(object);
+    }
+    for (local = toclist; local; local = local->next) {
+        object = local->object;
+        info = Registers_GetVarInfo(object);
+        /* The native TOC scan tests the loaded register twice. */
+        if (!info->reg && (info->flags & HasMemory) && !info->reg)
+            assign_register_by_type(object);
+    }
+    optimizing = saved;
+}
+
+void RC1_ReassignLocals(void) {
+    Local* local;
+    Object* object;
+    const VarInfo* info;
+
+    for (local = arguments; local; local = local->next)
+        reassign_local(local->object);
+    for (local = RC1_locals; local; local = local->next) {
+        object = local->object;
+        if (!IsTempName(object->name))
+            reassign_local(object);
+    }
+    for (local = RC1_locals; local; local = local->next) {
+        object = local->object;
+        if (IsTempName(object->name))
+            reassign_local(object);
+    }
+    for (local = toclist; local; local = local->next) {
+        object = local->object;
+        info = Registers_GetVarInfo(object);
+        if (!info->reg && info->used && info->usage > 1)
+            assign_register_by_type(object);
+    }
 }
 
 void retro_AssignLocals(void) {

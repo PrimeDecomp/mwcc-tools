@@ -23,8 +23,8 @@ typedef struct SourceLocation {
 typedef struct FunctionData {
     const void* statements;
     Object* object;
-    unsigned char old_style_parameters;
-    unsigned char call_on_module_bind;
+    signed char old_style_parameters;
+    signed char call_on_module_bind;
     const ObjectList* arguments;
     const ObjectList* locals;
     SourceLocation locations[3];
@@ -102,7 +102,7 @@ extern void memclrw(void* data, unsigned size);
 extern void* memcpy(void* destination, const void* source, unsigned size);
 extern void CError_Internal(const char* file, int line);
 extern void CIRStream_InitGlobals(void);
-extern void CIRStream_PackByte(unsigned char value);
+extern void CIRStream_PackByte(signed char value);
 extern void CIRStream_PackUInt32(unsigned value);
 extern const unsigned char* CIRStream_UnpackUInt32(const unsigned char* code, unsigned* value);
 extern void CIRStream_PackData(const void* data, unsigned size);
@@ -133,45 +133,50 @@ void retro_PackObjectReference(Object* object, unsigned char is_call, unsigned c
         case InlineFunctionObject: {
             CIRStream_PackByte(1);
             ReferencePatch* patch = cirstream_patches;
-            while (patch && (patch->reference.object != object ||
-                             patch->reference.kind != PackedObjectReference))
+            for (;;) {
+                if (!patch) {
+                    patch = lalloc(sizeof(*patch));
+                    memclrw(patch, sizeof(*patch));
+                    patch->next = cirstream_patches;
+                    patch->index = cirstream_patchid++;
+                    patch->reference.kind = PackedObjectReference;
+                    patch->reference.object = object;
+                    cirstream_patches = patch;
+                    break;
+                }
+                if (patch->reference.object == object && patch->reference.kind == PackedObjectReference)
+                    break;
                 patch = patch->next;
-            if (!patch) {
-                patch = lalloc(sizeof(*patch));
-                memclrw(patch, sizeof(*patch));
-                patch->next = cirstream_patches;
-                patch->index = cirstream_patchid++;
-                patch->reference.kind = PackedObjectReference;
-                patch->reference.object = object;
-                cirstream_patches = patch;
             }
             if (is_call && patch->reference.reference_count != 0xffff)
                 ++patch->reference.reference_count;
             if (is_address)
                 patch->reference.flags |= 1;
             CIRStream_PackUInt32(patch->index);
-            return;
+            break;
         }
         case LocalObject: {
             CIRStream_PackByte(2);
             const LocalReference* local = RC1_ir_local_references;
-            while (local && local->object != object)
+            for (;;) {
+                if (!local)
+                    CError_Internal(RC1_CIRStream_source_file, 865);
+                if (local->object == object)
+                    break;
                 local = local->next;
-            if (!local)
-                CError_Internal(RC1_CIRStream_source_file, 865);
+            }
             CIRStream_PackUInt32(local->index);
-            return;
+            break;
         }
         default:
             CError_Internal(RC1_CIRStream_source_file, 875);
-            return;
+            break;
     }
 }
 
 const unsigned char* retro_UnpackObjectReference(const unsigned char* code, Object** object) {
-    unsigned char kind = *code++;
     unsigned index;
-    switch (kind) {
+    switch (*(const signed char*)code++) {
         case 0:
             *object = 0;
             break;
@@ -199,10 +204,12 @@ const unsigned char* retro_UnpackObjectReference(const unsigned char* code, Obje
 const PackedCode* retro_PackCode(const FunctionData* data) {
     CIRStream_InitGlobals();
     RC1_ir_pack_flag = 0;
-    for (unsigned i = 0; i < 3; ++i) {
-        RC1_PackFileReference(data->locations[i].file);
-        CIRStream_PackData(data->locations[i].words, sizeof(data->locations[i].words));
-    }
+    RC1_PackFileReference(data->locations[0].file);
+    CIRStream_PackData(data->locations[0].words, sizeof(data->locations[0].words));
+    RC1_PackFileReference(data->locations[1].file);
+    CIRStream_PackData(data->locations[1].words, sizeof(data->locations[1].words));
+    RC1_PackFileReference(data->locations[2].file);
+    CIRStream_PackData(data->locations[2].words, sizeof(data->locations[2].words));
     RC1_PackObjectList(data->arguments);
     RC1_PackObjectList(data->locals);
     CIRStream_PackByte(data->old_style_parameters);

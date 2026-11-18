@@ -75,23 +75,29 @@ fn wii_retro_builds_a_native_executable_and_runtime() {
             .contains("--tools \"C:/Program Files/mwcc-tools.exe\"")
     );
     assert!(generated.ninja.contains("default Wii_Retro"));
-    for dependency in [
-        "destroy_pretest.c",
-        "deferred_exports.c",
-        "ir_stream.c",
-        "template_instantiation.c",
-        "inline_locals.c",
-        "rc1_local.h",
-        "reference_order.c",
-        "aggregate_schedule.c",
-    ] {
+    let manifest: Value =
+        serde_json::from_slice(&fs::read(root.join("config/Wii_Retro/config.json")).unwrap())
+            .unwrap();
+    let sources = manifest["sources"].as_array().unwrap();
+    let headers = manifest["headers"].as_array().unwrap();
+    assert!(!sources.is_empty() && !headers.is_empty());
+    for dependency in sources.iter().chain(headers) {
+        let dependency = dependency.as_str().unwrap();
+        assert!(root.join(dependency).is_file(), "missing file {dependency}");
         assert!(
             generated
                 .ninja
-                .contains(&format!("gc2/tools/wii_retro/{dependency}")),
+                .split_whitespace()
+                .any(|input| input == dependency),
             "missing Wii_Retro dependency {dependency}"
         );
     }
+    assert!(generated.ninja.contains("gc2/tools/wii_retro_abi.py"));
+    assert!(
+        !generated
+            .ninja
+            .contains("gc2/tools/wii_patch_template_vtables.py")
+    );
 }
 
 #[test]

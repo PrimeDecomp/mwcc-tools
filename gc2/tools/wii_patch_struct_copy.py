@@ -4,7 +4,7 @@
 RC1's `#pragma legacy_struct_alignment` (copts+0xA1, at 0x74F2F9) switches two things at once:
 - the alignment a struct copy or compare assumes for its operands (gen_ASS, gen_COND, two Intrinsics
   functions, and CMach_GetObjectAlignment's path for objects that are not locals). Legacy: the declared
-  alignment (CMach_GetQualifiedTypeAlign at 0x4F2730), so a 4-byte struct of alignment 1 is copied byte by
+  alignment (CMach_GetTypeAlign at 0x4F2730), so a 4-byte struct of alignment 1 is copied byte by
   byte. Otherwise: CMach_AllocationAlignment, which raises a small aggregate's alignment to its size.
 - the alignment of what is allocated (CMach_AllocationAlignment): the stack layout.
 
@@ -73,7 +73,8 @@ def main():
     data = bytearray((src / "mwcceppc.exe").read_bytes())
     patch(data)
     (out / "mwcceppc.exe").write_bytes(data)
-    print(f"{out / 'mwcceppc.exe'}: {len(NOP_JE) + len(JMP_JNE)} sites, SHA-1 {hashlib.sha1(data).hexdigest()}")
+    sites = len(NOP_JE) + len(JMP_JNE)
+    print(f"{out / 'mwcceppc.exe'}: {sites} sites, SHA-1 {hashlib.sha1(data).hexdigest()}")
 
 
 if __name__ == "__main__":

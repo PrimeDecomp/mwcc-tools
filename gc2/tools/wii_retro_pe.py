@@ -14,11 +14,10 @@ import struct
 import textwrap
 from pathlib import Path
 
+from wii_retro_abi import CLANG_FLAGS
+
 TEXT_VA, TEXT_RAW = 0x401000, 0x400
-BUILD = (
-    "clang --target=i686-pc-windows-msvc -O2 -ffreestanding -fno-jump-tables -mno-sse "
-    "-fno-asynchronous-unwind-tables -mstack-probe-size=65536 -c"
-)
+BUILD = " ".join(("clang", *CLANG_FLAGS))
 
 
 def read_obj(path: Path):

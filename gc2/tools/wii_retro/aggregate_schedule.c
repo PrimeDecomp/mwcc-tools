@@ -1,65 +1,26 @@
 /* Preserve memory order within mixed scalar and array member copies during RC1 scheduling. */
 #include "rc1_local.h"
+#include "rc1_alias.h"
+#include "rc1_pcode.h"
 
 enum {
-    DirectRegister = 0,
-    Immediate = 2,
-    FloatRegister = 3,
-    GeneralRegister = 4,
     Read = 1,
     Write = 2,
-    AliasObjectPart = 1,
     IsBranch = 0x1,
-    IsLoad = 0x2,
-    IsStore = 0x4,
     IsCall = 0x8,
     IsVolatile = 0x80,
     SideEffects = 0x100,
     ReadsMemory = 0x20000,
     WritesMemory = 0x40000,
+    PrologOrEpilog = 3,
+    Scheduled = 8,
 };
 
 #pragma pack(push, 2)
-typedef struct PCodeArg {
-    unsigned char kind;
-    unsigned char reg_class;
-    union {
-        struct {
-            uint16_t effect;
-            uint16_t number;
-        } reg;
-        struct {
-            uint32_t displacement;
-            const Object* symbol;
-        } immediate;
-        unsigned char storage[12];
-    } value;
-} PCodeArg;
-
-typedef struct Alias {
-    unsigned char header[0x14];
-    const Object* object;
-    unsigned char payload[0x18];
-    unsigned char kind;
-} Alias;
-
-typedef struct PCode {
-    const struct PCode* next;
-    unsigned char links[8];
-    uint32_t flags;
-    unsigned char state[0xc];
-    const Alias* alias;
-    const void* source_location;
-    unsigned char source_state[4];
-    uint16_t opcode;
-    uint16_t arg_count;
-    PCodeArg args[];
-} PCode;
-
-typedef struct PCodeBlock {
-    unsigned char header[0x14];
-    const PCode* first;
-} PCodeBlock;
+typedef struct SchedulerModel {
+    unsigned char header[0x28];
+    void (*initialize)(void);
+} SchedulerModel;
 
 typedef struct SizedType {
     Type type;
@@ -67,11 +28,8 @@ typedef struct SizedType {
 } SizedType;
 #pragma pack(pop)
 
-_Static_assert(sizeof(PCodeArg) == 14, "RC1 PCode operand stride");
-_Static_assert(offsetof(PCode, alias) == 0x1c, "RC1 PCode alias");
-_Static_assert(offsetof(PCode, args) == 0x2c, "RC1 PCode operands");
-_Static_assert(offsetof(Alias, kind) == 0x30, "RC1 alias kind");
 _Static_assert(offsetof(SizedType, size) == 2, "RC1 type size");
+_Static_assert(offsetof(SchedulerModel, initialize) == 0x28, "RC1 scheduler initialization callback");
 
 typedef struct Access {
     const PCode* instruction;
@@ -90,15 +48,112 @@ typedef struct CopyTag {
 } CopyTag;
 
 extern const Object* cscope_currentfunc;
-extern unsigned char may_alias(const PCode* earlier, const PCode* later);
-extern unsigned nbytes_loaded_or_stored_by(const PCode* instruction);
-extern void scheduleinstructions(unsigned char include_prolog_epilog);
+extern unsigned char CParser_ObjectCompare(const Object* a, const Object* b);
+extern int bitvectorintersectionisempty(const uint32_t* a, const uint32_t* b, int count);
+extern void CError_Internal(const char* source_file, int line);
+extern const char RC1_Alias_source_file[], RC1_Scheduler_source_file[];
+extern signed char RC1_scheduling_cpu;
+extern unsigned char RC1_altivec_model;
+extern SchedulerModel* RC1_scheduler_model;
+extern SchedulerModel machine7450, machine7400, machine603, machine603e, machine604;
+extern SchedulerModel machine750, machine601, machine821, machineELF, machineZen;
 extern void RC1_ScheduleBlock(PCodeBlock* block);
 
 static const Object* scheduled_function;
 static CopyTag* tags;
 static size_t tag_count;
 static int collect_groups;
+
+static int alias_set_contains(const Alias* set, const Alias* member) {
+    return (set->member_bits[member->index >> 5] >> (member->index & 31)) & 1;
+}
+
+static const Alias* whole_object_alias(const Alias* alias) {
+    if (alias->kind == AliasObject)
+        return alias;
+    if (alias->kind == AliasObjectPart) {
+        for (const AliasMember* member = alias->parents; member; member = member->next_parent) {
+            const Alias* parent = member->parent;
+            if (parent->kind == AliasObject && parent->object == alias->object)
+                return parent;
+        }
+    }
+    CError_Internal(RC1_Alias_source_file, 343);
+    return NULL;
+}
+
+static int alias_ranges_overlap(const Alias* a, const Alias* b) {
+    int32_t a_end = (int32_t)((uint32_t)a->offset + a->size);
+    int32_t b_end = (int32_t)((uint32_t)b->offset + b->size);
+    return a->offset == b->offset ||
+           (a->offset > b->offset && a->offset < b_end) ||
+           (b->offset > a->offset && b->offset < a_end);
+}
+
+unsigned char RC1_MayAliasPair(const Alias* a, const Alias* b) {
+    switch (a->kind * 3 + b->kind) {
+        case AliasObject * 3 + AliasObject:
+            if (a == b)
+                return 1;
+            break;
+        case AliasObject * 3 + AliasObjectPart:
+        case AliasObjectPart * 3 + AliasObject:
+            if (CParser_ObjectCompare(a->object, b->object))
+                return 1;
+            a = whole_object_alias(a);
+            b = whole_object_alias(b);
+            break;
+        case AliasObjectPart * 3 + AliasObjectPart:
+            if (CParser_ObjectCompare(a->object, b->object))
+                return alias_ranges_overlap(a, b);
+            a = whole_object_alias(a);
+            b = whole_object_alias(b);
+            break;
+        case AliasObject * 3 + AliasSet:
+        case AliasObjectPart * 3 + AliasSet:
+            return alias_set_contains(b, a);
+        case AliasSet * 3 + AliasObject:
+        case AliasSet * 3 + AliasObjectPart:
+            return alias_set_contains(a, b);
+        case AliasSet * 3 + AliasSet:
+            return a == b || !bitvectorintersectionisempty(a->member_bits, b->member_bits, RC1_alias_count);
+        default:
+            CError_Internal(RC1_Alias_source_file, 1791);
+    }
+    if (a->member_bits)
+        return alias_set_contains(a, b);
+    return b->member_bits && alias_set_contains(b, a);
+}
+
+unsigned char may_alias(const PCode* earlier, const PCode* later) {
+    return RC1_MayAliasPair(earlier->alias, later->alias);
+}
+
+unsigned char may_alias_object(const PCode* instruction, const Object* object) {
+    return RC1_MayAliasPair(instruction->alias, make_alias(object, 0, 0));
+}
+
+unsigned char may_alias_worst_case(const PCode* instruction) {
+    return RC1_MayAliasPair(instruction->alias, worst_case_ptr);
+}
+
+unsigned char instr_may_alias_alias(const PCode* instruction, const Alias* alias) {
+    return RC1_MayAliasPair(instruction->alias, alias);
+}
+
+unsigned char uniquely_aliases(const PCode* a, const PCode* b) {
+    if (!may_alias(a, b) || !a->alias || !b->alias || a->alias != b->alias || a->alias->kind == AliasSet)
+        return 0;
+    int size = a->alias->size;
+    return size == nbytes_loaded_or_stored_by(a) && size == nbytes_loaded_or_stored_by(b);
+}
+
+unsigned char instr_must_alias_alias(const PCode* instruction, const Alias* alias) {
+    if (!RC1_MayAliasPair(instruction->alias, alias) || !alias || instruction->alias != alias || alias->kind == AliasSet)
+        return 0;
+    int size = alias->size;
+    return size == nbytes_loaded_or_stored_by(instruction);
+}
 
 static const PCode* next_memory(const PCode* instruction) {
     for (; instruction; instruction = instruction->next) {
@@ -251,10 +306,48 @@ unsigned char retro_aggregate_may_alias(const PCode* earlier, const PCode* later
     return group && copy_group(later) == group;
 }
 
-void retro_schedule_block(PCodeBlock* block) {
+static void schedule_block(PCodeBlock* block) {
     if (collect_groups)
         record_groups(block);
     RC1_ScheduleBlock(block);
+}
+
+void scheduleinstructions(unsigned char include_prolog_epilog) {
+    int cpu = RC1_scheduling_cpu;
+    if (cpu == 10)
+        RC1_scheduler_model = &machine7450;
+    else if (RC1_altivec_model || cpu == 7)
+        RC1_scheduler_model = &machine7400;
+    else if (cpu == 2)
+        RC1_scheduler_model = &machine603;
+    else if (cpu == 5)
+        RC1_scheduler_model = &machine603e;
+    else if (cpu == 3 || cpu == 6)
+        RC1_scheduler_model = &machine604;
+    else if (cpu == 4)
+        RC1_scheduler_model = &machine750;
+    else if (cpu == 1)
+        RC1_scheduler_model = &machine601;
+    else if (cpu == 9)
+        RC1_scheduler_model = &machine821;
+    else if (cpu == 11)
+        RC1_scheduler_model = &machineELF;
+    else if (cpu == 13)
+        RC1_scheduler_model = &machineZen;
+    else
+        RC1_scheduler_model = &machine603;
+
+    if (!RC1_scheduler_model->initialize)
+        CError_Internal(RC1_Scheduler_source_file, 976);
+    RC1_scheduler_model->initialize();
+    gather_alias_info();
+
+    for (PCodeBlock* block = pcbasicblocks; block; block = block->next) {
+        if (block->instruction_count > 2 && (include_prolog_epilog || !(block->flags & PrologOrEpilog))) {
+            schedule_block(block);
+            block->flags |= Scheduled;
+        }
+    }
 }
 
 void retro_scheduleinstructions(unsigned char include_prolog_epilog) {

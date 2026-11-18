@@ -15,6 +15,7 @@ enum {
     TypePointer = 12,
     TypeArray = 13,
     QualConst = 1,
+    QualVolatile = 2,
     QualReference = 0x20,
 };
 
@@ -37,15 +38,21 @@ typedef struct PointerType {
 #pragma pack(pop)
 
 typedef struct VarInfo {
-    unsigned char header[8];
+    unsigned char header[4];
+    int usage;
     unsigned char no_register;
     unsigned char used;
-    unsigned char flags[6];
+    unsigned char reserved[4];
+    unsigned char flags;
+    unsigned char register_class;
     short reg;
 } VarInfo;
 
 typedef struct Object {
-    unsigned char header[0xc];
+    unsigned char object_kind;
+    unsigned char reserved_tag;
+    unsigned char address_kind;
+    unsigned char header[9];
     const Identifier* name;
     const Type* type;
     unsigned qualifiers;
@@ -59,7 +66,12 @@ typedef struct Local {
 } Local;
 
 _Static_assert(offsetof(PointerType, target) == 6, "RC1 pointer layout");
+_Static_assert(offsetof(PointerType, qualifiers) == 0xa, "RC1 target qualifiers");
 _Static_assert(offsetof(Object, var) == 0x40, "RC1 object layout");
+_Static_assert(offsetof(VarInfo, usage) == 4, "RC1 local use count");
+_Static_assert(offsetof(VarInfo, no_register) == 8, "RC1 local register eligibility");
+_Static_assert(offsetof(VarInfo, used) == 9, "RC1 local use flag");
+_Static_assert(offsetof(VarInfo, flags) == 0xe, "RC1 local flags");
 _Static_assert(offsetof(VarInfo, reg) == 0x10, "RC1 local register");
 
 static inline int named(const Identifier* name) {
