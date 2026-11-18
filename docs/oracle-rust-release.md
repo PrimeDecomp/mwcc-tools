@@ -31,6 +31,11 @@ process in `mwcc-tools`; GC 2.7's, 2.6's and 1.3.2's `mwcceppc.wasm`, `oracle.wa
 loads. Unpack them into the checkout `MWCC_ORACLE_ROOT` names. Without one, `mwcc-tools run` and the methods download their release's
 archives as a build or trace needs them, and `mwcc-tools download wasm` downloads them ahead of time (`docs/wasm.md`).
 
+The gc2 compilers that have no original binary (`gc2/README.md`) are published too, built with clang, one archive
+per version as `mwcc-gc2-VERSION_NAME-VERSION.zip` (with a `.zip.sha256`): `GC_2_0p2`, `GC_2_0ffcc` and `GC_2_5ffcc`.
+Each holds the Windows `mwcceppc.exe`, the `lmgr326b.dll` it loads and gc2's `LICENSE`, with no directories: unpack
+it into the directory a decompilation project keeps that compiler in.
+
 The build host sets the system-library requirements; the target name does not promise older Linux or macOS
 releases.
 
@@ -78,7 +83,7 @@ repository).
 ### Publish a version
 
 The `Build` workflow (`.github/workflows/build.yml`) runs fmt, clippy and the tests on Linux, and builds the three
-packages and the four WebAssembly archives, on every push and pull request (the builds as artifacts). A pushed `vVERSION` tag also
+packages, the four WebAssembly archives and the three gc2 compiler archives, on every push and pull request (the builds as artifacts). A pushed `vVERSION` tag also
 publishes them; `VERSION` must equal `workspace.package.version` in `Cargo.toml`. Any failed job stops publication;
 only the publish job has `contents: write`.
 
@@ -92,7 +97,7 @@ only the publish job has `contents: write`.
    git push origin v0.5.3
    ```
 
-The tag run creates the release with the seven archives and their checksums, and the installers `install.sh` and
+The tag run creates the release with the ten archives and their checksums, and the installers `install.sh` and
 `install.ps1` (from the tagged commit; `releases/latest/download/` serves the latest release's). A version with a prerelease suffix is
 marked as a prerelease. Never move a published tag; make a new version.
 
