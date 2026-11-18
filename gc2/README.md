@@ -63,6 +63,10 @@ without [wibo](https://github.com/decompals/wibo) and supports `MWCC_SJIS=1` the
 
 `configure.py --version GC_2_6` configures only the specified versions to be built using clang.
 
+The versions that are not official binaries (2.0p2, 2.0ffcc and 2.5ffcc) are also published prebuilt with each
+[mwcc-tools release](https://github.com/PrimeDecomp/mwcc-tools/releases), as `mwcc-gc2-GC_2_5ffcc-VERSION.zip` and
+alike: the clang build's `mwcceppc.exe` and its `lmgr326b.dll`.
+
 `configure.py --mwcc` sets up the original matching workflow instead, and `ninja` then builds every supported compiler
 and verifies it matches the original binary. It builds `build/VERSION/source-only/mwcceppc.exe` from just the source
 code, which may be equivalent but may be non-matching.

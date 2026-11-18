@@ -191,8 +191,52 @@ jobs:
           path: build/releases/
           if-no-files-found: error
 
+  # The gc2 compilers that have no original binary (gc2/README.md), built from gc2/ with clang: the Windows
+  # mwcceppc.exe a decompilation project runs in place of a stock compiler, and the lmgr326b.dll it loads. The archive
+  # unpacks into the project's directory for that compiler.
+  compilers:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        version: [GC_2_0p2, GC_2_0ffcc, GC_2_5ffcc]
+    defaults:
+      run:
+        working-directory: gc2
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@v6
+
+      - name: Install Python packages
+        run: uv sync --locked
+
+      - name: Install ninja and LLVM
+        run: sudo apt-get update && sudo apt-get install -y ninja-build clang lld llvm
+
+      - name: Build
+        run: |
+          .venv/bin/python configure.py --version ${{ matrix.version }}
+          ninja build/${{ matrix.version }}/clang/mwcceppc.exe
+
+      - name: Package
+        run: |
+          version=$(python3 -c "import tomllib; print(tomllib.load(open('../Cargo.toml', 'rb'))['workspace']['package']['version'])")
+          mkdir -p ../build/releases
+          archive="$PWD/../build/releases/mwcc-gc2-${{ matrix.version }}-$version.zip"
+          zip -X -j "$archive" LICENSE build/${{ matrix.version }}/clang/mwcceppc.exe build/${{ matrix.version }}/clang/lmgr326b.dll
+          (cd ../build/releases && sha256sum "$(basename "$archive")" > "$(basename "$archive").sha256")
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: mwcc-gc2-${{ matrix.version }}
+          path: build/releases/
+          if-no-files-found: error
+
   publish:
-    needs: [check, binaries, wasm]
+    needs: [check, binaries, wasm, compilers]
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-24.04
     permissions:
@@ -217,7 +261,7 @@ jobs:
           version=$(python3 -c "import tomllib; print(tomllib.load(open('Cargo.toml', 'rb'))['workspace']['package']['version'])")
           test "$TAG" = "v$version" || { echo "the tag must be v$version"; exit 1; }
           files=(release-input/*/*.zip release-input/*/*.zip.sha256)
-          test "${#files[@]}" -eq 14 || { echo "expected 7 archives and their checksums: ${files[*]}"; exit 1; }
+          test "${#files[@]}" -eq 20 || { echo "expected 10 archives and their checksums: ${files[*]}"; exit 1; }
           # (the installers, as releases/latest/download/install.sh and install.ps1)
           files+=(install.sh install.ps1)
           options=(--verify-tag --generate-notes --title "mwcc-tools $version")
