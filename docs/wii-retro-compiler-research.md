@@ -6,7 +6,8 @@ The current build, patches, and plan are in the [main guide](wii-retro-compiler.
 Start with these sections:
 
 - [Current validation](#native-relink-and-validation) and [remaining work](#remaining-work).
-- [Compiler provenance](#what-mwcc-tools-adds), including the original host-toolchain evidence.
+- [Compiler provenance](#what-mwcc-tools-adds), [Pro 6/Pro 7 trials](#rc1-host-compiler-trials-2026-11-18),
+  and [Pro 8 and Windows 9.x trials](#pro-8-and-windows-9x).
 - [Recovered native control flow](#recovered-native-control-flow).
 - [Ordering compatibility and experiments](#ordering-compatibility-and-experiments).
 - [Remaining order differences and source controls](#remaining-order-differences-and-source-controls).
@@ -19,14 +20,15 @@ hypotheses are retained as evidence; their individual scores and hashes describe
 
 ## Native relink and validation
 
-The build validates the stock SHA-1 and splits it into relocatable COFF objects. Clang builds the replacement
-`CMach_GetObjectAlignment`, the destroy-loop, vtable-emission, register-order and aggregate scheduling passes,
-and the recovered deferred-generation, call-graph, IR-reference and template workers from C sources.
-The seven instruction-selection edits retain the tested operand-width branches in the reused RC1 code.
+The build validates the stock SHA-1 and splits it into relocatable COFF objects. Clang builds the
+object and argument alignment routines, block intrinsics, register assignment and reservation,
+assignment and conditional lowering, scheduler entry and alias queries, compatibility passes, and
+recovered deferred-generation, call-graph, IR-reference and template workers from C sources. All
+eight changes from the original struct-copy binary probe now run as C code in the relink.
 The build redirects the pass calls through COFF relocations. LLD links the executable from these objects,
 preserving the CRT and exception table order and rebuilding the imports and base relocations.
 
-With Clang and LLD 23.1.1 the native PE has SHA-1 `f3dcf05e894b0763dffef1f2e8c90c39accd8937`.
+With Clang and LLD 23.1.1 the native PE has SHA-1 `f0db1ba1bc63185a4a7a882608cc4448dfa2b2cc`.
 The [aggregate-copy](#aggregate-copy-scheduling-2026-11-17) and
 [destroy-loop](#destroy-loop-guard-folding-2026-11-17) sections record the output changes in the most
 recent full sweeps.
@@ -37,19 +39,32 @@ ordinary inlining now match with file IPA in R32J01, R3ME01 and R3MP01. See
 The earlier three-patch relink matched the binary patch chain in both flag configurations and
 reproduced all three original DOL hashes with the `CStaticGeometryMap` diagnostic object.
 
-The latest function-template recovery preserves all 3,072 complete Echoes objects across
-R3ME01, R32J01 and R3MP01 under configured and forced file-IPA flags. Native and recovered
-traces agree on 1,774 function-instance calls; the checks include parser errors and synthetic
-state mutations. All four PCH producer/reader combinations and seven build-configuration
-tests pass. The standalone [native differential check](../gc2/tools/wii_retro/tests/README.md)
-can be run without the game checkouts. These checks establish equivalence to the preceding
-patched compiler; the ordering differences from the shipped games are discussed below.
+The IR, [alignment, intrinsic](#windows-9x-alignment-recovery), [assignment](#assignment-lowering),
+[conditional](#conditional-lowering), [pseudo-op expansion](#destroy-loop-guard-folding-2026-11-17),
+[register allocation](#file-ipa-and-inlined-local-register-order), and
+[scheduler and alias](#aggregate-copy-scheduling-2026-11-17)
+recoveries each preserve all 3,072 complete Echoes objects across R3ME01, R32J01 and R3MP01 under
+configured and forced file-IPA flags. All four PCH producer/reader combinations also agree. The IR
+recovery also matched native traces. The earlier function-template recovery
+matched native traces on 1,774 instance calls, including parser errors and synthetic state
+mutations. The [checked-in validation runners](../gc2/tools/wii_retro/tests/README.md) include
+the standalone template, register, and PCH controls, the regional object comparison using a
+configured Echoes Ninja graph, and the spatial-object relink against the original DOL hash.
+The ordering differences from the shipped games are discussed below.
 
 ## Remaining work
 
-- Recover the native member-body worker `CTempl_InstantiateMember` at `0x5C13E0` and the
-  stored-definition helper at `0x5C1AA0`. Function-template generation now calls the latter
-  through an explicit RC1 ABI declaration.
+- Use the Windows 9.x tools to verify the native routines behind each patch. Compare whole
+  x86 functions with their resolved calls and data, then validate the compatibility changes
+  against Echoes. The [first matches](#ir-reference-order-and-packing) cover the packed
+  body and its reference reader and writer. The IR statement and expression visitors are
+  still native. The [alignment recovery](#windows-9x-alignment-recovery) covers argument
+  alignment, the object operand path, two block intrinsics, and assignment and conditional
+  lowering. `gen_ASS`, `gen_COND`, and the register assignment routines still have x86
+  code-generation differences. Continue with deferred generation and templates, destroy-loop
+  guards, inlined locals, and aggregate scheduling.
+- Continue x86 byte matching for member instantiation, local declarations, and
+  [class-instance allocation](#recovered-class-instance-allocation-and-lookup).
 - Resolve the remaining exact-body order differences with native compiler controls and common
   source implementations. The [source controls](#remaining-order-differences-and-source-controls)
   show several positions depend on reconstructed declaration and template-registration order.
@@ -137,6 +152,98 @@ So `Wii_Retro` is RC1 with a small number of changes, not an even mix of the two
 - **Precedent.** `gc2/config/GC_2_0p2` is a compiler with no original (`derived_from: GC_2_0`). It models what
   BFBB's code shows and is built from the sources alone. `Wii_Retro` follows that pattern.
 
+## RC1 host compiler trials (2026-11-18)
+
+Both Windows/x86 command-line compilers were tested on the recovered RC1 routines.
+
+| Distribution | Executable banner | Compiler identifier in generated CodeView |
+| --- | --- | --- |
+| CodeWarrior Pro 6 | 2.4, build 0131; September 8, 2000 | `Metrowerks CodeWarrior C/C++ x86 V2.4` |
+| CodeWarrior Pro 7 | 2.4.5, build 199; August 24, 2001 | `Metrowerks CodeWarrior C/C++ x86 V2.4` |
+
+Pro 6 was already installed by the repository's downloader. Pro 7 was extracted from the
+[original Windows Tools disc](https://archive.org/details/CodeWarrior_Pro7), inside
+`LAYOUT/PRO_7_TO.ZIP;1`, member `Other Metrowerks Tools/Command Line Tools/mwcc.exe`.
+Both trials used the repository's `lmgr326b.dll` stub beside the compiler.
+The executable SHA-256 values are:
+
+- Pro 6: `41ce15fd2c716f8d0ee5c8e8bf14aa3ad8d3eb715eace8c61cfdec70d3ff418c`.
+- Pro 7: `962fa567ca629a28f9952e9c5674e8f25f97352f4e5bec1b4aff2df2ee123e05`.
+
+The byte-comparison probe covers 22 native counterparts in `template_instantiation.c`,
+`ir_stream.c` and `deferred_exports.c`. Each compiler was tried with 36 flag combinations:
+`-O2`, `-O3`, `-O4,p` or `-O4,s`; `-inline off`, `auto` or `auto,deferred`; and
+`-proc x86`, `586` or `686`. Debug symbols were enabled and C++ exceptions disabled.
+Two source adapters control for the older front ends: C++ with C linkage and explicit pointer
+conversions, and C90 with block declarations hoisted while initialization stays at its
+original execution point. Neither adapter changes the production sources.
+
+Both compilers reproduce `CCallGraph_Unmark` (27 bytes) and `CCallGraph_UnmarkAndUnflag`
+(31 bytes) exactly under `-O4,p`. No other routine in the probe becomes exact across either
+adapter or flag sweep. The comparison resolves named relocations and checks referenced data;
+matching code size alone does not count. Reconstructed source shape can affect these results,
+so the remaining misses do not independently rule out a compiler family. The generated
+CodeView identifiers provide separate provenance evidence: both tested tools write `V2.4`,
+whereas RC1's records name `V3.2`.
+
+For an execution check, each compiler built all three recovered units in C90 mode with
+`-O4,p -inline auto,deferred -proc x86 -sym off -Cpp_exceptions off`, and LLD relinked them
+with the remaining stock units and Clang-built patches. Both trials pass the native
+function-template differential controls, including diagnostics, under ordinary compilation,
+file IPA, program IPA and debug information. Both also preserve native traces and complete
+PowerPC objects for `CAnimData`, `CPlayer`, `CSequenceHelper` and `CCharacterFactory` under
+configured, file-IPA and program-IPA flags: 12 real-unit compilations per host.
+
+The trial executable SHA-1 values are `82fa31b44b5e4a54d5f5474fa28b1f60166c3b74` (Pro 6)
+and `1dc0be0d13b0730ff96aeba912733e218d522a0e` (Pro 7). They establish compatibility for
+these recovered units, without identifying the toolchain for a matching RC1 rebuild.
+The installed Wii_Retro compiler remains the validated Clang/LLD build. The earlier experiment
+kept its adapters, 3,168 comparison records, and logs in the local `build/rc1-host-compiler/`
+scratch directory. The [local-register host check](../gc2/tools/wii_retro/tests/README.md#local-register-assignment)
+provides a checked-in x86 comparison for the Windows 9.x hosts.
+
+### Pro 8 and Windows 9.x
+
+The supplied Windows 9.4 ZIP and 7z have identical `CW_Windows_9.2.exe` and
+`CW_Windows_9.4_Update.exe` payloads, verified by SHA-256. The Pro 8 cabinets and both Windows
+9.x payloads provided separate command-line compilers and linkers.
+
+The Pro 8 tools import ordinals 189–191 from `LMGR326B.dll`. The repository's
+[`lmgr_stub`](../gc2/tools/lmgr_stub/lmgr_stub.def) provides those exports. A compile and link probe
+passed with the existing stub beside the Pro 8 executables. Windows 9.2 and 9.4 import the
+same ordinals from `LMGR8C.dll`. The probes use the DLL in the extracted Windows 9.2
+`Tools/Bin` directory and set `LM_LICENSE_FILE` to the `license.dat` supplied with the
+Windows 9.4 ZIP. That setup works for both 9.x versions.
+
+| Distribution | x86 compiler | CodeView identifier | PE linker field | RC1 functions matched |
+| --- | --- | --- | --- | ---: |
+| Pro 8.0 | 3.0 build 314 | V3.0 | 3.0 | 5/22 |
+| Windows 9.2 | 3.2.2 build 396 | V3.2 | 3.2 | 6/22 |
+| Windows 9.4 update | 3.2.5 build 428 | V3.2 | 3.2 | 6/22 |
+
+The CodeView and PE fields come from a compile and link test using `mwcc.exe` and `mwld.exe`
+from each distribution. All three emit NB11. Only the Windows 9.x pair reproduces both of
+RC1's V3.2 identifiers. The fields identify the 3.2 family and cannot distinguish its builds.
+
+Each compiler ran the same 36 configurations with both source adapters and the same 22
+functions. Both Windows 9.x builds emit identical code and code relocations across all 216
+paired object files. The six distinct matches are `CTempl_Instantiate`,
+`CCallGraph_NewInitCodeNode`, `CCallGraph_Unmark`, `CCallGraph_UnmarkAndUnflag`,
+`CCallGraph_IsDefined` and `CCallGraph_SetIR`. Pro 8 matches the first five. These totals
+combine matches across flag settings. A single Windows 9.x C90 configuration matches up
+to five functions. The 349-byte `CTempl_Instantiate` matches with `-proc x86` and either
+`-O3` or `-O4,p`, across all three inlining settings. Source reconstruction and original
+compiler flags remain variables in the unmatched functions.
+
+All three LLD relink trials passed the function-template traces and diagnostics and reproduced
+the complete PowerPC objects for the same 12 real-unit compilations per host. The 9.2 and 9.4
+production trials also produced identical Wii_Retro executables (SHA-1
+`1aa3287f197cdfd8ee9b635fbaa7cf1cc1ae536c`).
+
+The local probe, extracted tools, trial relinks, logs and 4,752 comparison records are in
+`build/rc1-host-compiler/attached/`. The Windows 9.x pair is the leading candidate for
+byte matching more RC1 source.
+
 ## The acceptance suite
 
 Each function is from R3ME01 and is compiled by the Echoes build with `-lang c++` and Retro's flags. The suite goes
@@ -209,17 +316,18 @@ This phase de-risks the plan before most of the decompilation.
 is the option's offset. RC1 reads the field in 11 places:
 - `CMach_AllocationAlignment`: the alignment of what is allocated, which sets the stack layout. Without the
   pragma, a small aggregate's alignment is raised to its size, up to 8. With it, the declared alignment is used.
-- `CMach_GetObjectAlignment`, a function that exists only in RC1. For an object that is not a local, the
-  pragma gives the declared alignment, and no pragma gives `CMach_AllocationAlignment`. Locals always go through
-  `CMach_AllocationAlignment`.
+- `CMach_GetObjectAlignment` uses declared alignment for nonlocals when the pragma is enabled and
+  `CMach_AllocationAlignment` when it is disabled. For locals, it uses `CMach_ArgumentAlignment`
+  for entries flagged as belonging to the parameter area and `CMach_AllocationAlignment` for the rest.
 - The copy-width sites, three in `gen_COND`, two in `gen_ASS` and two in `Intrinsics`. Each one is
-  `legacy ? CMach_GetQualifiedTypeAlign(type, 0) : CMach_AllocationAlignment(type, 0)`.
+  `legacy ? CMach_GetTypeAlign(type, 0) : CMach_AllocationAlignment(type, 0)`.
 - `CMach_SetBackEndOptions` and `CMach_GetBackEndOptions`, which only save and restore the field.
 
 3.0a5.2 has no such field. The byte its `CMach_AllocationAlignment` tests (0x70F231, `copts+0x249`) is
 `optimizesize`. Its other readers (the inliner, loop transformations, spill costs, `StructMoves`) are the ones
-`optimizesize` has in 2.7's sources. So 3.0a5.2 allocates like RC1 without the pragma, and its byte copies come
-from a different operand-alignment rule. That rule is the part to decompile.
+`optimizesize` has in 2.7's sources. With `optimizesize` disabled, 3.0a5.2 uses the same allocation
+policy as RC1 with the pragma disabled. Its object-alignment helper at `0x4E5180` always uses
+declared alignment for nonlocals.
 
 **The patch** (`gc2/tools/wii_patch_struct_copy.py`): the seven copy-width sites and `GetObjectAlignment`'s
 non-local path take the legacy branch, and `CMach_AllocationAlignment` does not.
@@ -236,10 +344,9 @@ Echoes R3ME01 at `origin/main` 8deb345f5, stock RC1 against patched RC1:
   byte. These 4 bytes are a field Echoes has not identified, declared `uchar x0_[4]`.
 
 **The patch is 3.0a5.2's rule, and the 6 losses come from the source.**
-- 3.0a5.2's `gen_ASS` has RC1's shape: each operand's alignment, then the smaller of the two. An operand with no
-  object gets `CMach_GetTypeAlign(type, 0)` (the declared alignment). An object gets a function that is, instruction
-  for instruction, RC1's `CMach_GetObjectAlignment` under the pragma. So the patch reproduces 3.0a5.2's operand
-  alignment.
+- 3.0a5.2's `gen_ASS` computes each operand's alignment and takes the smaller value, as RC1 does.
+  An operand with no object gets `CMach_GetTypeAlign(type, 0)`. An object gets
+  `CMach_GetObjectAlignment`, which follows RC1's alignment rule with the pragma enabled.
 - Compiled by 3.0a5.2 itself, `CPortalTransition` and `CScriptColorModulate` byte-copy where the patch does, and
   `CDamageVulnerability::Initialize` copies like the target.
 - Two variants that give up the declared alignment for one operand do worse:
@@ -312,6 +419,82 @@ source `gc2/tools/wii_retro/drop_pretest.c`, built with clang for i686). `assemb
 Applied after `wii_patch_struct_copy.py`, on R3ME01 with the `CModelFlags` union: 12,898 → 12,952 exact, 54 gained,
 0 lost. Every function's match is the same as with the object post-pass.
 
+### Windows 9.x alignment recovery
+
+CodeWarrior Windows 9.2 and 9.4 reproduce all 111 bytes of `CMach_ArgumentAlignment` in
+stock RC1 (`0x4F4D50`) and GC 3.0a5.2 (`0x4E5400`), including resolved calls and data
+references. The compile used `-O4,p -inline auto,deferred -proc x86`, with CodeWarrior's
+`__inline` spelling and a function-pointer reference to force emission of the standalone body.
+The helper takes stored alignment from struct and class types. For other types it temporarily
+selects PowerPC alignment and clears the old-alignment option, then restores both options.
+
+The same builds emit the full `CMach_GetObjectAlignment` body sizes of 261 bytes for RC1
+and 223 bytes for GC. `WII_RETRO_STOCK_ALIGNMENT` selects the RC1 pragma branch for this
+comparison. In each executable, only three bytes differ, all encoding the register used
+for the parameter-area test. The native code uses `ebp` and the reconstruction uses `ecx`.
+The GC symbol map now identifies the helper at `0x4E5180` and ends the preceding
+`CMach_CalcIntDiadic` at that boundary.
+
+The relink uses the recovered argument helper at its five direct call sites and applies
+the GC operand rule in the object helper. A control relink retained the native object
+and argument helpers and applied the same operand-width patch. The reconstructed build
+matched the control's objects and diagnostics for four Echoes units and two aggregate
+fixtures under configured, file IPA, program IPA and debug flags.
+
+Both Windows 9.x compilers reproduce the full RC1 `__memclr` and `__memcpy` helper bodies
+at `0x57F9D0` (247 bytes) and `0x57FAD0` (295 bytes). They also reproduce the 269-byte GC
+copy helper at `0x56A510`, which always uses declared alignment for typed operands without
+an object. Wii_Retro uses that rule in the recovered C routines, replacing two byte edits.
+Constant-size copy and clear fixtures match the previous byte-patched helpers with the
+pragma enabled and disabled under four flag configurations. The fixtures emit the expected
+byte and word stores and retain the runtime call for variable-size `__memcpy`.
+
+The allocator remains native. Trial source matches its 52-byte switch table and 406 of 414
+instruction bytes in RC1. The eight differences encode two different registers in the
+size-based alignment loop. The GC trial has three additional differences from the register
+and sign extension used for its struct subtype test.
+
+#### Assignment lowering
+
+The GC 2.7 `InstrSelection.c` builds with both Windows 9.x compilers and supplies a source
+baseline for these two functions. It emits 3,376 bytes for `gen_ASS` and 6,616 bytes for
+`gen_COND`, compared with RC1's 3,973 and 7,802. RC1's `gen_ASS` adds register-class setup
+and calls `CMach_PassResultInHiddenArg` before selecting small-register stores or a block
+move. Its two aggregate operands each choose object alignment or the pragma-controlled
+type alignment, then the copy uses the smaller result. The earlier source still selects
+argument or allocation alignment inside those two operand paths.
+
+The recovered C routine preserves the scalar, bitfield, register, floating-point and
+aggregate branches. It also uses the PCode range recorded by `gen_POSTINCDEC` to move an
+assignment ahead of the postincrement when the native operand check allows it. The relink
+removes RC1's `gen_ASS` body and its three-entry jump table, then resolves the original
+calls and dispatch-table reference to the recovered function. The two assignment width
+edits are applied in C. The original binary probe still applies all eight edits.
+
+With the original alignment branch enabled for comparison, Windows 9.2 and 9.4 emit
+3,975 bytes with the same 78 resolved direct calls. The stock body is 3,973 bytes and
+differs in register assignment and branch layout. The Clang relink matched the preceding
+byte-patched compiler in all 3,072 regional object comparisons and all four PCH combinations.
+It also matched 20 targeted compilations covering conditional lvalues, bitfields, aggregate
+returns, postincrement, member pointers, 64-bit integers, paired singles and Altivec. The
+processor checks covered Gekko, e500, e500v2 and 7400.
+
+#### Conditional lowering
+
+The aggregate branch of `gen_COND` creates one temporary and limits each arm's copy width
+to the temporary's type alignment. RC1 computes that limit after lowering the first arm and
+reuses it for the second. GC 3.0a5.2 has the same sequence with declared alignment. The relink
+now uses recovered C for the whole conditional function, including the scalar and vector cases,
+hardware `fsel` and `isel`, and integer constant and absolute-value optimizations. This replaces
+the last three operand-width edits in the native build.
+
+With the stock alignment branch enabled, Windows 9.2 and 9.4 emit the full 7,802-byte body,
+with calls to the same functions at 138 direct call sites and the same case groupings in all
+25 switch entries. The x86 instruction bytes still differ. The relink matched the preceding
+compiler in all 3,072 regional object comparisons, all four PCH combinations, and 20 focused
+compilations covering control flow and scalar, vector and aggregate results. The fixtures
+include emitted `fsel` and `isel` instructions on Gekko and e500.
+
 ### Destroy-loop guard folding (2026-11-17)
 
 Stock Wii 1.0RC1, Wii 1.0, Wii 1.0a, and GC 3.0a5.2 emit one test for a plain pointer loop in a
@@ -355,6 +538,14 @@ the baseline under `-O0` and with scheduling disabled.
 
 The historical in-place and object patches reproduce the first experiment. The native relink
 uses the control-flow pass.
+
+Both Windows 9.x hosts reproduce all 409 instruction bytes and the three-entry jump table of
+`pcode_expand_pseudo_ops`. The GC 3.0a5.2 build matches with its pseudo-op numbers and diagnostic
+location. The C relink expands condition-register bit and field reads to `mfcr` and `rlwinm`,
+and field writes to `rlwinm` and `mtcrf`, before running the guard-folding pass. The inferred
+guard rule still runs after this native-matched step. The rebuilt compiler preserves the three
+`~CBallCamera` loops, the collider loop, and the `AddInhabitant` linked-list guard in all three
+regional DOL comparisons.
 
 **A third difference: copying a struct member by member.** `CRevolutionMotionProcessor::Update` (source in rstl,
 `src/Kyoto/Input/CRevolutionMotionProcessor.cpp`) does `mStatus = status`. `WPADFSStatus` is an SDK C struct,
@@ -779,6 +970,20 @@ The relink redirects native calls to these C workers; graph IR updates
 also use the recovered packer. The native type, expression, statement,
 and assembly visitors are still reused.
 
+**Source matches with Windows 9.x.** The source now writes the three locations explicitly,
+passes signed flag bytes, and dispatches the reader directly on the signed byte at the
+postincremented cursor. The writer allocates on exhaustion inside the global lookup loop,
+checks the local lookup invariant before testing the object, and shares a return across
+the switch arms. Windows 9.2 build 396 and 9.4 build 428 both reproduce the three RC1
+functions with `-O4,p -inline off -proc x86` from a C90 adaptation of the current source.
+The 768 code bytes match after resolving named operands, and all nine entries in the
+two switch tables resolve to their original targets. Recompiling with the built-in type
+base set to `0x38` also matches GC 3.0a5.2 for all three functions.
+The comparison is available locally through
+`build/rc1-host-compiler/attached/match_native.py verify`.
+A relink using 9.4 for the recovered IR, template, and deferred export units also passes
+the function-template traces and reproduces all 12 control objects from Echoes.
+
 Native and C traces match across 286,400 object-reference writes,
 392,640 reads, 29,538 packed bodies, and 510,021 reference-table records,
 including synthetic controls. The controls cover all supported object
@@ -950,6 +1155,22 @@ uses the same member iteration design; RC1's member helper additionally
 checks the template qualifier and propagates inline qualification at this
 site.
 
+Windows CodeWarrior 9.2 and 9.4 reproduce both complete native routines with
+`-O4,p -inline auto,deferred`. The function type stores flags at `0x16` in GC
+and `0x1A` in RC1. RC1 also adds a template-qualifier check, declaration
+assertion, and inline propagation. Both class generators inline the member
+generator in their function and data paths.
+
+| Function | Wii 1.0RC1 exact bytes | GC 3.0a5.2 exact bytes |
+| --- | ---: | ---: |
+| `CTempl_GenClassInstance` | 511 | 399 |
+| `CTempl_GenMemberInstance` | 145 | 95 |
+
+The revised C reproduces the preceding Clang/LLD executable byte for byte.
+The refreshed trace agrees with stock RC1 across 215,113 class-generation
+calls and 1,696,804 member visits, including the explicit-instantiation and
+parser-error controls.
+
 ##### Recovered template-instantiation loop
 
 The relink implements
@@ -992,8 +1213,7 @@ A native GC 3.0a5.2 comparison covers the complete `0x15D`-byte loop at
 eight corresponding calls, it differs only at offsets `0xE0` and
 `0x11A`: the function-type flag field is at `+0x16` in GC and `+0x1A`
 in RC1. The class/partial/function traversal order is unchanged.
-The function-instance generator is recovered below. Class-member body parsing
-still uses native `CTempl_InstantiateMember`.
+The function-instance generator and class-member body worker are recovered below.
 
 ##### Recovered function-instance generation
 
@@ -1008,7 +1228,7 @@ sets the graph-root flag. Those flags are set before missing-definition
 diagnostics or stored-definition dispatch.
 
 A packed definition receives a zeroed `0x26`-byte context containing the
-instance. The native helper's byte result is forwarded unchanged. A token
+instance. The stored-definition helper's byte result is forwarded unchanged. A token
 stream marks the instance instantiated, establishes source and debug state,
 then parses the body in a template-argument namespace. The generator saves
 debug state after obtaining declaration source information. It restores the
@@ -1036,6 +1256,385 @@ Its declaration state is `0x98` bytes rather than RC1's `0xA4`, accounting
 for the frame and trailing source-field offsets. The other differences are
 the try token (`0x15D` versus `0x15E`) and internal source line (998 versus
 1002). The weak-flag, fallback, parsing and cleanup sequence is unchanged.
+
+##### Recovered member-body instantiation
+
+The relink builds `CTempl_InstantiateMember` at `0x5C13E0` from C. It applies the
+implicit and explicit instantiation rules before selecting a stored function
+definition, a stored initializer, or a token stream. Stored functions and initializers
+use a zeroed 0x26-byte context whose first pointer addresses the class-instance record
+at offset 0x34. The initializer path balances the error source and class scope
+while instantiating the copy and submits even an empty copy to global initialization.
+
+The token-stream path looks up the master template's parameters when the member has
+none. It installs the member's source references before inserting the stream. It merges
+function parameter names from the declaration, then parses the body or initializes a
+data member. It restores the stream, scope, instantiation point, and debug options in
+the native order.
+
+RC1 and GC 3.0a5.2 both have a 1,007-byte worker with 63 corresponding call or absolute
+reference operands and the same five jump-table entries after rebasing. The remaining
+native byte differences come from the 12-byte declaration-state size difference and
+internal source line 1186 in RC1 versus 1182 in GC.
+
+The relink uses distinct packed contexts and scope saves, with one shared
+instantiation-point save. Each path reads the old point only when installing a
+new one. Explicit branches to the two packed paths reproduce the native call
+offsets. Inlining the debug suppression check preserves the native
+source-pointer test and aligns the five switch destinations.
+
+Windows 9.2 and 9.4 compile this C body with `-O4,p -inline auto,deferred` to
+match 1,003 of 1,007 byte positions and all five switch destinations in both
+stock versions. The four differences encode two stack slots. Stock uses
+`esp+0x24` for the stored initializer's saved scope and `esp+0x20` for the
+token stream's saved source-location flag. The recovered body uses `esp+0x20`
+and `esp+0x30` respectively.
+
+The stock RC1 differential matched 8,192 synthetic calls, including the callback
+sequence, source and scope state, flags, and argument values. The standalone
+function-template test now also compiles class-template constructors, virtual members,
+and a static initializer. All 3,072 regional objects matched the preceding relink
+under configured and forced file-IPA flags. All four PCH combinations passed, and
+the three regional link controls reproduced the original DOL hashes.
+[Member-body source](../gc2/tools/wii_retro/template_instantiation.c)
+
+##### Recovered stored-definition instantiation
+
+The relink builds the shared worker at `0x5C1AA0` from C. The worker marks the
+instance instantiated, unpacks the body, and creates the hidden constructor
+argument when a class instance acquires virtual bases through template
+substitution. It fixes argument typedefs, instantiates dependent types, and
+inserts an indirect result argument when the unpacked body lacks one. It
+processes statements in list order and skips final code generation after a
+fatal diagnostic. It then restores the current namespace, instantiation point,
+and warning options.
+
+Windows CodeWarrior 9.2 and 9.4 reproduce all 925 bytes of the RC1 worker and
+all 884 bytes of the GC 3.0a5.2 worker at `0x5A2250` after resolving address
+operands. Both use `-O4,p -inline auto,deferred`. The GC probe omits the
+per-argument typedef fixup and uses the earlier function type layout, four
+earlier diagnostic line numbers, and one warning option. RC1 models the
+warning and its as-error option as adjacent byte fields so CodeWarrior saves
+both before clearing either. Both workers read the current class flags only
+after checking the constructor and current-class state.
+
+The stock RC1 differential matched 65,536 cases, including hidden-argument
+placement, argument replacement during callbacks, diagnostics, and scope
+cleanup. A real fixture compiled with `parse_func_templ` and `parse_mfunc_templ`
+exercised the stored worker and produced identical objects before and after the
+recovery, with and without PCH. The standalone template check now requires a
+real packed function instantiation. All 3,072 regional objects matched the
+preceding relink, all four PCH controls passed, and the three DOL link controls
+reproduced the original hashes.
+
+##### Recovered stored-statement instantiation
+
+The relink builds the worker at `0x5C1E40` from C. It handles ordinary expressions,
+dependent declarations, constructor initializers, conditions, switch labels, and
+returns. For a void-valued return expression it emits the expression as its own
+statement, instantiates that statement's cleanups, and inserts a bare return.
+Source wrappers change the diagnostic location during substitution. A switch can
+change the location several times and restores the original one when it finishes.
+Both stock versions instantiate the low endpoint of a case range twice before
+checking the high endpoint.
+
+Windows 9.2 and 9.4 compile the recovered C body with `-O3` or `-O4,p` and
+`-inline auto,deferred`. Both match all 1,154 bytes and 16 switch destinations
+in RC1 and GC 3.0a5.2 (`0x5A25D0`) after resolving 45 call and data operands.
+The expression arm keeps separate locals for the original and unwrapped expression.
+The return arm keeps the instantiated value available while checking whether the
+original expression needs conversion. In the switch loop, the integer check encloses the
+range and single-label paths. Each later source lock has its own save slot.
+The local `build/rc1-host-compiler/attached/recover_stored_statement.py` probe
+extracts the relink's C body for the x86 comparison.
+
+The relink builds `CError_LockErrorSourceRef` and `CError_UnlockErrorSourceRef`
+from C. Lock saves the current diagnostic location before examining the
+incoming reference, which can alias the save destination. It installs a new
+location if both the reference and its file are present. Unlock restores all
+three words. Windows 9.2 and 9.4 reproduce the 73-byte lock and 28-byte
+unlock in both stock compilers after resolving `cerror_lockref` operands.
+The direct check matched 8,192 stock RC1 cases, including null sources,
+nested locks, and aliased save destinations.
+
+The stock RC1 differential matched 65,536 cases covering callback order,
+diagnostic locations, switch endpoints, and statement mutations. A real
+dependent-switch fixture matched the preceding relink under configured, file
+IPA, program IPA and debug flags. The separate case-range fixture reproduced
+the stock illegal-constant-expression diagnostic. Repeated program-IPA runs
+of the preceding relink produced identical PowerPC objects and different raw
+`.irobj` bytes. All 3,072 Echoes objects matched the preceding relink, all four
+PCH combinations passed, and three regional DOL controls reproduced the
+original hashes.
+
+##### Recovered packed declarations
+
+The relink builds the packed static and local declaration workers at `0x5C2380`
+and `0x5C24C0` from C. The static worker creates an object in the root namespace,
+resolves its type, records the substitution, and emits the initializer. The local
+worker matches the unpacked object by index. It records the substitution before
+resolving the type and initializer. It captures a dependent array bound during
+type substitution and uses the VLA setup and cleanup path when needed. In the
+ordinary initializer path, a data object is copied into global storage and
+removed from the locals list.
+
+Windows 9.2 and 9.4 reproduce the full 305-byte static worker in RC1 and GC
+3.0a5.2 after resolving 14 operands. The relink's static worker unwraps the
+source expression in its own body and shares the declaration check with the
+local worker. Windows 9.2 and 9.4 also reproduce all 620 bytes of GC's local worker.
+That probe keeps the original object pointer for the remap and a local-record
+view for the index, then removes the emitted object through a pointer to the
+matching list link. The stock workers share 207 instructions and the same
+branch targets after accounting for relocations, padding, and RC1's six
+instructions for typedef fixup. The closest RC1 C90 trial matches 632 of 636
+bytes at their native positions, including all 28 branch encodings, on both
+Windows compilers at `-O3` and `-O4,p`. Scoped volatile accesses in that trial
+preserve the load order in the remap setup. In the pending-array path, stock
+loads the type into `eax` and the previous list head into `esi`. The trial
+uses `esi` and `edx` respectively. Changing local declaration order, temporary
+lifetimes, inlining, and x86 processor targets left those four bytes unmatched.
+
+The relink also builds `CTemplTool_FixTypedefObject` at `0x54FB80` from C.
+It discards a typedef when any ancestor scope is a template scope or when
+the type is dependent. A null typedef or a template scope skips the
+type-dependence check. Windows 9.2 and 9.4 reproduce all 68 bytes and the
+single call operand with `-O4,p -inline auto,deferred`. Pro 8 emits 60 bytes.
+The stock RC1 differential matched 4,096 combinations of typedef presence,
+scope depth, scope flags, and type dependence, including predicate calls.
+A packed-template fixture reaches the retained-typedef path in all four
+compiler modes and produces the same objects as the preceding relink.
+
+The stock RC1 differential matched 8,192 cases, including object substitution
+during allocation, diagnostics, array initializer tracking, and VLA cleanup.
+Real packed local and static declarations matched the preceding relink under
+configured, file IPA, program IPA and debug flags. All 3,072 Echoes objects
+matched the preceding relink, all four PCH combinations passed, and the three
+regional link controls reproduced the original DOL hashes.
+
+##### Recovered packed initializers and cleanups
+
+The relink builds five more packed-instantiation helpers from C. The stored
+initializer dispatcher substitutes a single expression, walks an expression
+list, or visits a nested aggregate. The aggregate visitor substitutes each
+node's expression before descending into its children. The cleanup walker
+substitutes dependent catch types and resolves or unlinks dependent cleanup
+records. A fully initialized class array uses one destruction record. While
+an initializer is pending, the compiler emits per-element destruction records
+in reverse order. A VLA with a class destructor runs the destructor loop before
+releasing the allocation.
+
+The native bodies agree across Wii 1.0RC1 and GC 3.0a5.2 after resolving
+their address operands and switch targets. Windows CodeWarrior 9.2 and 9.4
+reproduce all 102 bytes and three switch entries of the dispatcher,
+all 280 bytes of the VLA cleanup updater, all 147 bytes and 22 switch
+entries of the cleanup walker, and all 444 bytes of the dependent cleanup
+resolver with `-O4,p -inline auto,deferred`. They reproduce the 412-byte
+aggregate visitor with `-O4,p -inline auto,deferred,level=5` and the
+following pragmas before the isolated function.
+
+```c
+#pragma opt_common_subs off
+#pragma inline_max_size(512)
+```
+
+The visitor reads the child pointer into a local after substituting the
+node's expression. The disabled common-subexpression pass produces the
+out-of-line expression calls, and the inlining settings give five child
+expansions before the recursive call. Pro 8 emits 373 bytes for this visitor
+and 466 bytes for the resolver with the corresponding settings.
+
+The updater initializes the destructor slot before walking the array
+element types. In the walker an explicit null
+comparison on the catch type allows CodeWarrior to test the field in memory
+and pass it directly to the dependent-type check. The resolver shares the
+failure exit for a non-class element or missing destructor. When the
+pending-initializer search reaches the end of the list, the resolver writes
+the whole-array cleanup and returns from inside the search loop.
+
+| Helper | Wii 1.0RC1 | GC 3.0a5.2 | Native bytes | Windows 9.x byte match |
+| --- | --- | --- | ---: | --- |
+| VLA cleanup update | `0x5C2740` | `0x5A2EC0` | 280 | Exact |
+| Stored initializer dispatcher | `0x5C2860` | `0x5A2FE0` | 102 | Exact |
+| Aggregate initializer visitor | `0x5C28D0` | `0x5A3050` | 412 | Exact |
+| Packed cleanup walker | `0x5C2A70` | `0x5A31F0` | 147 | Exact |
+| Dependent cleanup resolution | `0x5C2B10` | `0x5A3290` | 444 | Exact |
+
+The stock RC1 differential matched 65,536 cases, including callback order,
+diagnostics, dependent catch types, and both class-array destruction paths.
+The [compiler fixture](../gc2/tools/wii_retro/tests/README.md) exercises nested
+aggregate initializers and dependent class cleanup with C++ exceptions enabled.
+The fixture matches 116 native generator calls, including parser-error
+controls. Separate traces reach the VLA destructor, dependent catch, and
+catch-all paths in all four compiler modes. All 3,072 Echoes objects match
+the preceding relink. All four class-array PCH producer and reader pairs pass,
+and the three regional link controls reproduce the original DOL hashes.
+
+The relink also builds the four named `CDecl` VLA registry functions from C.
+Registration prepends a record. Lookup finds the first record by type
+pointer and reports an internal error if it is missing. Removal unlinks the
+first matching record from a supplied list and returns the resulting head.
+Discard clears the active head. Windows 9.2 and 9.4 reproduce all 149 bytes
+in both native compilers with `-O4,p -inline auto,deferred` after resolving
+operands and using diagnostic line 90 for RC1 and 89 for GC.
+
+The stock RC1 differential matched 24,576 registry lifecycles covering empty
+lists, duplicate type pointers, missing records, and head and interior
+removal. Separate missing-lookup controls verified the diagnostic. The
+class-array fixture reached registration, lookup, and discard in configured,
+file IPA, program IPA, and debug modes and reproduced the preceding objects.
+
+##### Recovered constructor initializers
+
+`RC1_InstantiateMemberInitializers` copies the packed constructor initializer
+nodes in list order and processes them on the way back from recursion. It
+substitutes the arguments, resolves a member variable or base type according
+to the target flag, and passes each copied node to `CFunc_TransMemInit`. The
+called `CTemplTool_InstantiateExprList` helper copies argument nodes and
+substitutes their expressions in list order.
+
+Windows CodeWarrior 9.2 and 9.4 reproduced both native functions with
+`-O4,p -inline auto,deferred` after resolving the direct calls. Pro 8 emitted
+178 and 85 bytes with the same flags.
+
+| Function | Wii 1.0RC1 | GC 3.0a5.2 | Exact bytes | Resolved operands |
+| --- | --- | --- | ---: | ---: |
+| Constructor initializer worker | `0x5C22D0` | `0x5A2A60` | 171 | 7 |
+| Expression-list substitution | `0x54EC70` | `0x53C140` | 82 | 3 |
+
+The direct stock RC1 comparison matched 65,536 cases per function, including
+empty lists, argument and target dispatch, callback order, and mutations during
+allocation or substitution. The [constructor fixture](../gc2/tools/wii_retro/tests/README.md)
+reached both base and member substitution and produced identical complete
+PowerPC objects under configured, file IPA, program IPA and debug flags. All
+3,072 Echoes objects matched the preceding relink, all four PCH producer/reader
+pairs matched, and three regional link controls reproduced the original DOL
+hashes.
+
+##### Recovered member-variable substitution
+
+`CTemplTool_InstantiateMemberVar` keeps a path-qualified member as-is. For
+other members it searches the enclosing template records for a class template
+and checks the original member by pointer in the master template. It then
+finds the instantiated class through `CTemplTool_GetTemplClassInst` and
+looks up the matching member by name. A context with no enclosing class
+template keeps the original member.
+
+| Function | Wii 1.0RC1 | GC 3.0a5.2 | Exact bytes | Resolved operands |
+| --- | --- | --- | ---: | ---: |
+| Member-variable substitution | `0x54EAA0` | `0x53BF70` | 252 | 11 |
+| Class instance lookup | `0x551BA0` | `0x53EEA0` | 43 | 2 |
+
+Windows CodeWarrior 9.2 and 9.4 reproduced both routines using
+`-O4,p -inline auto,deferred`. The native member-variable bodies share
+the same instructions and differ in four source line numbers for internal
+diagnostics. The comparison uses the diagnostic constants from each version.
+Pro 8 emitted 250 and 41 bytes with the same flags.
+
+The direct stock RC1 comparison matched 65,536 cases per routine. It checked
+path-qualified members, nested context chains, all five diagnostics and an
+instance change during master-template lookup. The constructor and packed
+member fixture matches the preceding relink under configured, file IPA,
+program IPA and debug flags.
+All 3,072 Echoes objects matched the preceding relink, all four PCH
+producer/reader pairs matched, and the three regional link controls reproduced
+the original DOL hashes.
+
+##### Recovered master-template selection
+
+`CTemplClass_GetMasterTemplate` follows the stored template record when the
+class has an enclosing instance and the nested-template flag is set. Otherwise
+it returns the original template. `CTemplTool_Template2TemplClass` converts
+the embedded record at offset `0x34` to the owning class template and checks
+the record kind. It returns null for a null record.
+
+| Function | Wii 1.0RC1 | GC 3.0a5.2 | Exact bytes | Resolved operands |
+| --- | --- | --- | ---: | ---: |
+| Master-template selection | `0x5F1A30` | `0x5DC000` | 33 | 1 |
+| Template class-record conversion | `0x551B70` | `0x53EE70` | 40 | 2 |
+
+Windows CodeWarrior 9.2 and 9.4 reproduced both routines with
+`-O4,p -inline auto,deferred`. Pro 8 also reproduced master-template selection
+and emitted 41 bytes for class-record conversion.
+
+The direct stock RC1 comparison matched 65,536 cases for each routine. A
+nested class template followed the enclosing-record path 16 times in each
+flag mode and produced the same PowerPC object as the preceding relink.
+The nested class also matched across all four PCH producer/reader combinations.
+All 3,072 Echoes objects matched the preceding relink.
+The three regional link controls reproduced the original DOL hashes.
+
+##### Recovered class-record conversions
+
+`CTemplTool_Class2TemplClassInst` checks the class-instance flag.
+`CTemplTool_TemplInst2TemplClassInst` checks the parent template record before
+recovering the owning instance from the record at offset `0x34`.
+`CTemplTool_InstClass2Template` uses an existing class instance to recover the
+owning template. The stored-definition path uses that template's virtual-base
+flag when deciding whether to insert the hidden constructor argument.
+
+| Function | Wii 1.0RC1 | GC 3.0a5.2 | Exact bytes |
+| --- | --- | --- | ---: |
+| `CTemplTool_Class2TemplClassInst` | `0x551A70` | `0x53ED70` | 51 |
+| `CTemplTool_TemplInst2TemplClassInst` | `0x551B40` | `0x53EE40` | 48 |
+| `CTemplTool_InstClass2Template` | `0x5519C0` | `0x53ECC0` | 84 |
+
+Windows CodeWarrior 9.2 and 9.4 reproduced all three routines in both versions
+after resolving their calls and data operands. The 84-byte routine inlines the
+class and template conversions. The direct stock RC1 comparisons matched
+65,536 cases per routine, including diagnostic order and returned pointers.
+The constructor and nested-template fixture reached all three routines in
+configured, file IPA, program IPA, and debug builds. Its PowerPC objects
+matched the preceding relink in each mode, as did all four nested-class PCH
+producer/reader combinations and the three regional DOL hash controls.
+All 3,072 Echoes objects matched the preceding relink.
+
+##### Recovered class-instance allocation and lookup
+
+`CTemplClass_NewInstance` links the new record into the master template's
+instance list before name mangling or namespace creation. The original template
+supplies the enclosing-instance record. Namespace creation uses that instance's
+scope when the master has a parent template. Otherwise it walks past template
+scopes. The allocator applies the file-unique name for a local class and
+registers a public type tag under the master's name.
+
+`CTemplClass_GetInstance` checks the cached arguments and the enclosing-instance
+record. It prefers the cached original arguments when present and reloads the
+enclosing record after comparing arguments. A cache miss calls the allocator
+with the original template.
+
+| Function | Wii 1.0RC1 | GC 3.0a5.2 | Native bytes |
+| --- | --- | --- | ---: |
+| Class-instance allocation | `0x5F1450` | `0x5DBA20` | 388 |
+| Class-instance lookup | `0x5F13B0` | `0x5DB980` | 149 |
+
+Windows CodeWarrior 9.2 and 9.4 reproduce all 149 lookup bytes and five address
+operands in both versions with `-O3` or `-O4,p` and `-inline auto,deferred`.
+An explicit branch keeps the ordinary-template fallback after the cache-miss
+return, at the native offset. The revised lookup reproduces the preceding
+Clang/LLD executable byte for byte.
+
+In the allocator, RC1 calls `CClass_IsLocal` where GC tests the same `0x400`
+class flag inline. The namespace template flag is at offset `0x23` in RC1
+and `0x1F` in GC. The initial C90 translation emitted 355 bytes in each
+version. The current trial places the master-template, name, argument,
+parent-scope and file-local-name fallbacks after the main return. With
+`-O4,p -opt nospeed,nocse -inline auto,deferred`, both Windows 9.x compilers
+emit 377 bytes for RC1 and 375 for GC. They match 293 and 283 native byte
+positions respectively. All calls on the main path are at their native
+offsets. The file-local rename call is eight bytes early in RC1 and ten
+early in GC. Register choices and alignment of the fallback blocks still
+differ. The same configuration led the subsequent optimizer-pragma sweep.
+The local comparison source is
+`build/rc1-host-compiler/attached/match-native/class-alloc-nospeed-235.c`.
+
+The production C and the allocator trial passed the 65,536-case stock RC1
+comparison, including callback
+order, diagnostics, namespace selection, and mutations during argument
+comparison. A nested class fixture with the same inner argument in two
+enclosing instances recorded four cache hits and one enclosing-instance
+mismatch in each flag mode. Its PowerPC object matched the preceding relink.
+All 3,072 Echoes objects, the four nested-class PCH producer/reader pairs,
+and the three regional DOL hash controls also matched.
 
 #### Ordering compatibility and experiments
 
@@ -2490,6 +3089,86 @@ The issue selector (0x5B6CB0) checks readiness and the processor's issue rules, 
 deadline, number of successors made ready, critical-path height, and opcode rank during coloring.
 The block scheduler and issue selector match their GC 3.0a5.2 counterparts after masking relocations.
 
+Both Windows 9.x hosts reproduced the scheduler entry routine and six alias-query wrappers
+byte for byte after relocation. The scheduler entry is 417 bytes in RC1 and 369 bytes at
+`0x5995C0` in GC 3.0a5.2. RC1 adds ELF and Zen model choices to the earlier selection rules.
+The matching wrappers are `may_alias`, `may_alias_object`, `may_alias_worst_case`,
+`instr_may_alias_alias`, `instr_must_alias_alias`, and `uniquely_aliases`.
+
+RC1's alias-pair query at `0x5BE950` checks range overlap for parts of the same object. For parts
+of distinct objects it resolves each part's whole-object alias through its parent list and
+consults membership. The first whole object's membership takes precedence when present.
+The recovered C query still differs in x86 encoding. Its decisions matched stock RC1 across
+18,432 alias configurations, including signed range boundaries and asymmetric membership.
+Scheduler model selection, callbacks, and block flags matched across 2,048 configurations.
+The relink now builds those routines from C. All 3,072 Echoes objects and all four PCH combinations
+agreed with the preceding relink.
+
+The memory-width query `nbytes_loaded_or_stored_by` also builds from C. Both Windows 9.x
+hosts reproduced all 838 bytes at `0x5A7620` in RC1 and all 551 bytes at `0x58B4C0` in
+GC 3.0a5.2 after relocation. RC1 adds SPE and VLE memory opcodes, checks that paired-single
+transfers use Gekko, and keeps the width calculation for register lists and string operands.
+The opcode descriptor's load/store flags gate the dispatch in both versions.
+
+The native differential covered all 912 RC1 opcode descriptors under four processor choices,
+with varied operands and descriptor flags. The 700,416 cases matched both transfer widths and
+diagnostic sequences. The Echoes object sweep and all four PCH combinations again matched
+the preceding relink. [Memory-width source](../gc2/tools/wii_retro/pcode_width.c)
+
+The relink builds the alias setup routines from C. Both Windows 9.x hosts matched the
+11-byte `gather_alias_info` entry in both versions and the 219-byte GC 3.0a5.2 membership
+worker at `0x5A0370` with `-O4,p`. GC rebuilds membership when the alias count changes.
+RC1 refreshes the `set_aliases` list on each call, records ancestor bits, and unions child
+membership until no bits change. Its ancestor walk handles three levels before recursing and
+skips any parent whose bit is already set.
+
+The RC1 membership, ancestor-walk, and synthetic-parameter routines still differ in x86 encoding.
+Direct comparisons passed 16,384 synthetic parameter cases and 512 graphs, including cycles,
+reused vectors, and vector growth. The checks compared allocation sizes, callback order,
+synthetic records, and membership bits. The 3,072 Echoes objects, four PCH combinations, and
+three regional DOL controls passed. The DOL controls reproduced the original hashes.
+[Alias setup source](../gc2/tools/wii_retro/alias_setup.c)
+
+The relink now builds RC1's `propagatealiasinfo` at `0x6655A0` and its two workers from C.
+The pass copies each block's incoming definition bits, clears earlier definitions when a GPR
+is overwritten, and merges aliases from the definitions that reach each memory operand.
+RC1 runs that pass when coloring is active and the optimization level is positive. Its fallback
+uses both the read and write flags and the operand memory flags. GC 3.0a5.2 checks coloring alone,
+uses the read and write flags in its fallback, and adds the worst-case pointer set to the
+worst-case function set before walking the blocks.
+
+Both Windows 9.x hosts reproduce the 225-byte reaching-operand worker and the 348-byte
+per-instruction worker in RC1 (`0x665940`, `0x6657E0`) and GC 3.0a5.2
+(`0x63D800`, `0x63D6A0`) after relocation. The per-instruction matching probe forces
+separate loads of the two instruction flag words. The 574-byte main pass still has
+x86 code generation differences. The GC map now records the full per-instruction
+body and locates the 11-byte routine at `0x63D8F0`.
+
+A stock RC1 differential matched 2,048 cases covering callback order, reaching bits,
+alias choices, and instruction flags. The configured and forced file-IPA builds matched
+all 3,072 objects from the previous relink. All four PCH producer and reader combinations
+passed, and the three regional link controls reproduced the original DOL hashes.
+[Alias propagation source](../gc2/tools/wii_retro/alias_propagation.c)
+
+The same C unit now provides `is_const_alias_runtime_call`, `canidate_reaches_use`,
+and `candidatealias`. Windows 9.2 and 9.4 reproduce the 59-byte call classifier and
+the 263-byte reachability test in both RC1 and GC 3.0a5.2. The reachability test scans
+intervening register writes from the definition for a forward use in the same block.
+For other uses it checks the incoming definition bit and scans from the start of the block.
+
+Both versions' candidate classifier derives aliases for symbolic immediates and
+updates the address and access aliases separately for pointer-updating instructions.
+RC1 can look up a type-based alias for a four-byte access with a GPR operand when
+indirect aliasing is enabled in C99 or C++ mode. The GC map now ends
+`candidatealias` at `0x644255` and places
+`is_address_load` at `0x644260`. The candidate classifier still differs in x86 code
+generation in both versions.
+
+The stock RC1 differential matched 262,144 candidate cases, 32,768 reachability cases,
+and 128 const-call cases. The candidate comparison checked the return value, alias
+mutation, and callback order. All 3,072 Echoes objects, four PCH combinations, and
+three regional DOL controls again agreed with the preceding relink.
+
 `make_distinct_virtual_alias` (0x5BFAB0) creates a synthetic array object for a pointer or reference
 parameter. A read-only parameter gets a const synthetic object. A writable parameter enters the
 typed alias set. A restricted parameter has an independent alias. In `Update`, the const
@@ -2538,6 +3217,91 @@ shorter schedule. Uniform-width, small scalar-only, and volatile-copy controls r
 code. Compiling that fixture with scheduling disabled gives byte-identical objects.
 
 ### File IPA and inlined-local register order
+
+RC1's initial assignment routine (`0x46D690`) and reassignment routine (`0x46D8B0`) both visit
+arguments, named locals, temporary locals, and TOC entries in that order. The two local scans use
+`IsTempName`. Initial assignment temporarily enables `optimizing` and requires the memory flag
+for the first three scans. Reassignment checks usage counts for TOC entries. Both passes check
+target volatility for pointers and arrays. The ordinary allocation checks also appear in GC
+2.x's `allocate_local_vregs` in [CodeGen.c](../gc2/src/backend/CodeGen.c).
+
+The GC 3.0a5.2 routines at `0x46B280` and `0x46B4A0` use the same field offsets as RC1. A C90
+adaptation of the relink source compiles with Windows 9.2 and 9.4 using
+`-O3 -inline auto,deferred`. After relocation, it matches all 536 bytes of `AssignLocals` in
+both versions and 466 of 475 bytes of `ReassignLocals`. The remaining reassignment bytes encode
+register choices in the named and temporary local scans. Initial assignment matches when the
+volatility helper reuses an unsigned temporary for the pointer-or-array test and the selected
+qualifier mask, and the TOC scan retains the second test of the register number.
+
+Both relink passes save each list entry's object before calling the name or variable-info
+lookup, matching stock. A direct comparison against RC1 and GC covered 16,384 cases across both
+passes. It checked callback order and object identity, register fields, and restoration of the
+optimization flag, including cases where a test callback replaced the object in the list entry.
+
+The file-IPA ordering wrappers call these C routines. All 3,072 Echoes objects were identical to
+the preceding relink, and all four guarded-initialization PCH producer/reader pairs agreed. The
+two `CSimplePool` functions matched their original DOL code in every region. Relinking with the
+reconstructed `CSpatialPrimitive` object reproduced all three DOL hashes. A separate fixture
+with volatile locals and small-data accesses produced identical objects in five compiler
+configurations during the initial source replacement.
+
+**Register class and allocation dispatch.** `Registers_GetVarInfo` uses a cached 20-byte record for
+data and absolute objects and reports missing local records. RC1 also returns null for function
+objects. Both Windows 9.x hosts reproduce its 156 instruction bytes and its four-entry switch
+table in RC1 (`0x590780`). The three-entry GC 3.0a5.2 version (`0x579790`) also matches with the
+older data-record offset and diagnostic line.
+
+`Registers_ClassForType` at `0x590530` and `assign_register_by_type` at `0x590A60` now run from C
+in the relink. RC1 classifies eight-byte vector structures as GPR values and can assign a pair
+for such a vector passed through the parameter area in a varargs function on processors `0x17`,
+`0x1C`, and `0x26`.
+
+Windows CodeWarrior 9.2 and 9.4 reproduce all 185 classifier bytes in RC1 and all 154 at
+`0x579560` in GC 3.0a5.2, including 13 switch entries per version. The standalone C probe
+matches with `-O3` or `-O4,p` and `-inline auto,deferred`. The stock float arm falls through
+to the vector-structure check after its scalar and Gekko paired-single exits. That check reads
+offset `0x10`, beyond the eight-byte `TypeIntegral` record. The byte at that position in the
+stock paired-single data is zero in both executables. The relink's float arm exits after the
+scalar and paired-single checks. It agrees with stock on the paired-single records on all
+three tested processors, with and without soft float. A further 30,720 padded test records
+per stock version confirmed that the fallthrough can change classification when the byte at
+`0x10` is in the vector subtype range.
+
+Both Windows 9.x compilers reproduce the relink C's full 788-byte RC1 dispatcher and all
+eight switch destinations with `-O3 -inline auto,deferred`. It reads the register class
+before and after the pair-selection checks and routes the pair cases through one assignment.
+Reusing the integer comparison temporary for the parameter-area check reproduces the native
+register choices. The GC probe matches 561 of 563 byte positions and all six switch destinations.
+The two remaining GC bytes encode the registers in the final single-allocation call setup.
+The rebuilt RC1 dispatcher passed all 798,720 end-to-end stock dispatch cases.
+
+A direct comparison with stock RC1 covered 512 variable-info cases, 12,779,520 register-class
+cases, and 798,720 assignment-dispatch cases. The dispatcher comparison checked the selected
+allocation call and the resulting register fields, with allocation calls intercepted. All 3,072
+Echoes objects remained byte-identical to the preceding relink. The PCH checks, three regional
+DOL controls, and 20 conditional fixtures also passed.
+
+**Register assignment and reservation.** Both Windows 9.x hosts reproduced the full x86 bodies
+below in RC1 and GC 3.0a5.2, including both switch tables in `assign_GPR_pair`. The relink now
+builds all four from C.
+
+| Routine | RC1 | GC 3.0a5.2 | Instruction bytes |
+| --- | --- | --- | ---: |
+| `obtain_nonvolatile_register` | `0x5B1380` | `0x594590` | 92 |
+| `retain_register` | `0x5B15B0` | `0x594740` | 154 |
+| `assign_register_to_variable` | `0x5B1650` | `0x5947E0` | 180 |
+| `assign_GPR_pair` | `0x590820` | `0x579830` | 568 |
+
+The pair allocator consumes two virtual registers in sequence when optimizing. In the physical
+path it selects both nonvolatile registers before retaining either one. Reserving a free
+register advances the nonvolatile cursor if the register is the next candidate, and reduces
+the assignable count only while that count is positive.
+
+The direct check ran the allocation workers end to end in all 798,720 dispatch cases. It also
+compared 38,400 direct scans, reservations, and single assignments and 2,560 pair assignments.
+It checked the register fields, diagnostics, counters, and reservation tables. All 3,072 Echoes
+objects, the four PCH combinations, the three regional DOL controls, and the 20 conditional
+fixtures agreed with their baselines.
 
 The Echoes TU-matching work reported that applying `-ipa file` to Retro's Wii units gained 633 exact R3ME01
 functions and lost 60. With three experimental Trilogy RSTL features disabled it gained 717 and lost 52. Of
