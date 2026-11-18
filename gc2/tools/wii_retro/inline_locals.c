@@ -207,28 +207,61 @@ static void order_pointer_groups(Member* members, size_t count, size_t* position
     }
 }
 
-static int partition_group(const Member* member) {
-    if (!eligible(member))
+/* A pair of source iterators from one copy keeps its existing register order. */
+static int has_cloned_pointer_peer(const Member* member, const Type* target,
+                                   const Member* members, size_t count) {
+    if (!(member->origin.flags & SourceNamed))
         return 0;
-    const Type* type = member->object->type;
-    if (type->kind == TypePointer && member->origin.last_clone) {
-        const Type* target = ((const PointerType*)type)->target;
-        if (!(member->origin.flags & FromFormal) || (target && target->kind == TypeVoid))
-            return 2;
-    } else if (type->kind != TypePointer && !member->origin.last_clone &&
-               (member->origin.flags & SourceNamed)) {
-        return 1;
+    for (size_t i = 0; i < count; ++i) {
+        const Member* other = &members[i];
+        if (other != member && (other->origin.flags & SourceNamed) &&
+            other->origin.first_clone == member->origin.first_clone &&
+            other->origin.last_clone == member->origin.last_clone &&
+            eligible(other) && other->object->type->kind == TypePointer &&
+            ((const PointerType*)other->object->type)->target == target)
+            return 1;
     }
     return 0;
 }
 
-/* Place the callee's named scalars ahead of pointers materialized in nested calls. */
+static int partition_group(const Member* member, const Member* members, size_t count,
+                           int reorder_cloned_pointers) {
+    if (!eligible(member))
+        return 0;
+    const Type* type = member->object->type;
+    const Origin* origin = &member->origin;
+    if (type->kind != TypePointer)
+        return !origin->last_clone && (origin->flags & SourceNamed) ? 1 : 0;
+    if (!origin->last_clone)
+        return 0;
+    const Type* target = ((const PointerType*)type)->target;
+    if (origin->flags & FromFormal)
+        return target && target->kind == TypeVoid ? 2 : 0;
+    return reorder_cloned_pointers && !has_cloned_pointer_peer(member, target, members, count) ? 2 : 0;
+}
+
+/* Place the callee's named scalars ahead of eligible pointer temporaries from nested calls. */
 static void partition_locals(Member* members, size_t count, size_t* positions, Member* scratch) {
+    size_t named_pointers = 0, named_scalars = 0;
+    for (size_t i = 0; i < count; ++i) {
+        const Member* member = &members[i];
+        if (member->origin.last_clone || !(member->origin.flags & SourceNamed) || !eligible(member))
+            continue;
+        if (member->object->type->kind == TypePointer)
+            ++named_pointers;
+        else
+            ++named_scalars;
+    }
+    if (!named_scalars)
+        return;
+    /* A counted copy can have two iterators. Preserve groups with competing scalars and pointers. */
+    int reorder_cloned_pointers = named_pointers <= 1 || named_scalars == 1;
+
     size_t used = 0;
     size_t scalars = 0;
     size_t end = count;
     for (size_t i = 0; i < count; ++i) {
-        int group = partition_group(&members[i]);
+        int group = partition_group(&members[i], members, count, reorder_cloned_pointers);
         if (!group)
             continue;
         positions[used++] = i;

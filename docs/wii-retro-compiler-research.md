@@ -16,11 +16,14 @@ Addresses and scores refer to the stock version or experiment named in each sect
 The build verifies stock RC1's SHA-1, splits it into relocatable COFF objects, and compiles the
 recovered routines and patches with Clang. LLD preserves CRT and exception-table order and
 rebuilds imports and base relocations. Clang and LLD 23.1.1 produce
-`f0db1ba1bc63185a4a7a882608cc4448dfa2b2cc`.
+`83925c142975baee50e2599d8aaf7180fe40bc23`.
 
 - In R3ME01, the compatibility work raises the forced-file-IPA score from 12,758 to 12,801 exact
   functions out of 18,016, with zero exact losses. All 30 audited register-order cases match
   under file IPA in R32J01, R3ME01, and R3MP01. [Register-order results](#file-ipa-and-inlined-local-register-order)
+- On the Echoes PR #1992 source and flags, the refined inline-local rule restores the lost
+  matches and preserves every existing exact match across all three Wii builds.
+  [Echoes integration follow-up](#echoes-integration-follow-up)
 - The source-recovery regressions preserve 3,072 Echoes objects across the three regions under
   configured and forced file-IPA flags. Four PCH producer/reader combinations agree. The
   diagnostic `CSpatialPrimitive.o` relinks reproduce all three original DOL hashes.
@@ -3230,10 +3233,10 @@ of result, so selecting a single mode for each file would leave some matches unr
 **Native register-order pass.** [`inline_locals.c`](../gc2/tools/wii_retro/inline_locals.c)
 records local origins during the call-graph walk. Before each inline setup it applies two rules:
 
-1. Place the callee's own named scalars ahead of pointers cloned from nested calls. Preserve the
-   relative order within both sets. Include materialized formals only if they are pointers to
-   `void`, as in the vector placement-construction path. Moving typed formals breaks the exact
-   `CGameHintInfo`, `CMapWorldInfo` and `CPlayerEnergyDrain` controls.
+1. The initial partition placed the callee's own named scalars ahead of pointers cloned from nested
+   calls, preserving each group's relative order. It included materialized formals only if they
+   were pointers to `void`, as in the vector placement-construction path. Moving typed formals
+   breaks the exact `CGameHintInfo`, `CMapWorldInfo` and `CPlayerEnergyDrain` controls.
 2. Within a previously cloned group, reverse the named same-pointee pointer declarations when
    the group contains a const pointer and at least two mutable pointers. Apply this on the next
    copy of the group. This fixes the inlined tree searches and preserves the different loop in
@@ -3357,6 +3360,38 @@ DOL SHA-1. All tests used the same shared RSTL sources.
 | R32J01 | `0x80355B14` | `0x803556E0` | `442947ba57dce414917feab0e75a8227690b3e4b` |
 | R3ME01 | `0x803571EC` | `0x80356DB8` | `2375606f4e9429a699cfa02728b0bb1176421226` |
 | R3MP01 | `0x80359A90` | `0x8035965C` | `077712e46eb7cf2488942f337d215636edbc972d` |
+
+### Echoes integration follow-up
+
+Disabling only the partition restored six register-only matches in the Echoes compiler patch
+integration. All 72 disputed instructions agree with stock RC1 in each of the three shipped Wii
+DOLs. The full R3ME01 sweep also found a lost exact match in the sort called by `CHintManager`.
+[Echoes PR #1992](https://github.com/PrimeDecomp/echoes/pull/1992)
+
+The assignment paths inlined a same-pointee pair of named iterators from one clone into a function
+with a separate destruction counter. The earlier matching `CActor` and similar assignments had
+one eligible cloned iterator. Range insertion had three source pointer locals of its own and
+several scalars, while the older exact counted copies had two source iterators and one counter.
+The partition now excludes same-pointee named pointers with the same first and last clone.
+It also excludes non-formal nested pointers when the callee has multiple eligible named pointer
+and scalar locals. The pointer-to-`void` formal path remains eligible, including placement
+construction in `CSpatialPrimitive`.
+
+The full comparison rebuilt every Wii RC1 unit from the PR's Ninja graph with the original
+delta, with the partition disabled, and with the refined rule. The refined rule retained
+every exact match from both controls under `functionRelocDiffs=none` and `data_value`.
+
+| Wii build | Translation units | Compared functions | Exact before | Exact after |
+| --- | ---: | ---: | ---: | ---: |
+| R3ME01 | 997 | 22,273 | 12,056 | 12,064 |
+| R32J01 | 321 | 8,628 | 6,195 | 6,200 |
+| R3MP01 | 321 | 8,642 | 6,194 | 6,200 |
+
+The earlier 898-unit R3ME01 sweep retained all 12,801 exact functions under file IPA. All 30
+register-order controls also matched each shipped version in the original fixture. Several
+already-inexact functions scored slightly lower in the PR sweep. All three rebuilt DOLs and
+symbol files matched their expected hashes, and the remaining Wii outputs had unchanged
+linker inputs and matching hashes.
 
 ## Phase 3: decompile both edge versions
 

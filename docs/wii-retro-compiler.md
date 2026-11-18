@@ -38,10 +38,9 @@ project's compiler directory. To build directly into another directory, pass `--
 - **Aggregate-copy scheduling.** Preserves memory order within mixed scalar and array member
   copies through both scheduler passes to limit register pressure.
 
-All 30 audited register-order cases match R32J01, R3ME01, and R3MP01 under file IPA. The full R3ME01
-file-IPA sweep gained 43 exact functions with zero exact losses. Aggregate-copy scheduling also
-matches the original status copy and stack frame in `CRevolutionMotionProcessor::Update` in all
-three builds. [Research and validation](wii-retro-compiler-research.md#native-relink-and-validation)
+The register-order and aggregate-copy controls match all three Wii builds. The Echoes integration
+sweep preserves every previous exact match, and the three rebuilt DOLs match their shipped hashes.
+[Research and validation](wii-retro-compiler-research.md#native-relink-and-validation)
 
 The relink includes recovered C implementations of register assignment and reservation, assignment and
 conditional lowering, scheduler entry, alias analysis, deferred generation, call-graph management,
