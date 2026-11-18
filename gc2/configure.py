@@ -102,7 +102,7 @@ def version_edges(version, objects, objdiff, report=True):
 
 
 def derived_edges(version, objects):
-    v, base = version.name, project.version(version.base)
+    v, base = version.name, project.original_version(version)
     inputs = (
         " ".join(f"config/{base}/{name}" for name in ("config.json", "functions.json", "bindings.json", "splits.txt"))
         + f" config/{v}/config.json config/sources.json tools/source_only.py {LIBRARY} "

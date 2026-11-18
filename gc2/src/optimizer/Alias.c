@@ -990,6 +990,7 @@ static void gather_instruction_alias(PCode* pcode, UInt32* myvec) {
                     }
                     alias_array[aliases_idx] = pcode->alias;
 
+#ifndef PATCH_FFCC_JP
                     for (list = reg_Defs[op->arg][op->data.reg.reg]; list; list = list->next) {
                         if (bitvectorgetbit(list->id, myvec)) {
                             defpcode = Defs[list->id].pcode;
@@ -1001,6 +1002,7 @@ static void gather_instruction_alias(PCode* pcode, UInt32* myvec) {
                             }
                         }
                     }
+#endif
 
                     aliases_idx++;
                 }
@@ -1342,11 +1344,19 @@ static inline Boolean is_pointer_like_load(PCode* pcode) {
         return FALSE;
     }
     if (is_direct_small_data_access(pcode)) {
+#ifdef PATCH_FFCC_JP
+        return TRUE;
+#else
         return !is_safe_const(pcode->alias->object);
+#endif
     }
     alias = pcode->alias;
     return alias &&
+#ifdef PATCH_FFCC_JP
+        alias->type != AliasType_Set &&
+#else
         alias->type == AliasType_Object &&
+#endif
         alias->object->datatype != DLOCAL &&
         alias->object->name->name[0] == '@' &&
         !IS_TYPE_FLOAT(alias->object->type) &&
@@ -1375,12 +1385,35 @@ static inline Boolean is_direct_small_data_store(PCode* pcode) {
         (int)pcode->args[2].arg == RefType_Addr16;
 }
 
+#ifdef PATCH_FFCC_JP
+static inline Boolean is_stack_parameter_load(PCode* pcode) {
+    Alias* alias;
+
+    alias = pcode->alias;
+    return !(pcode->flags & fIsWrite) &&
+        alias &&
+        alias->type != AliasType_Set &&
+        alias->object->datatype == DLOCAL &&
+        alias->object->u.var.info &&
+        (alias->object->u.var.info->flags & VarInfoFlag_ParamArea);
+}
+
+static inline Boolean is_worst_case_store(PCode* pcode) {
+    return (pcode->flags & fIsWrite) && pcode->alias == worst_case_ptr;
+}
+#endif
+
 Boolean may_alias_scheduling(PCode* a, PCode* b) {
 #ifdef ORACLE_PROBES
     Boolean result;
     if ((is_small_data_load(a) && is_direct_small_data_store(b)) ||
         (is_small_data_load(b) && is_direct_small_data_store(a))) {
         result = TRUE;
+#ifdef PATCH_FFCC_JP
+    } else if ((is_stack_parameter_load(a) && is_worst_case_store(b)) ||
+               (is_stack_parameter_load(b) && is_worst_case_store(a))) {
+        result = TRUE;
+#endif
     } else {
         result = may_alias_alias(
             is_pointer_like_load(a) ? worst_case_ptr : a->alias,
@@ -1394,6 +1427,12 @@ Boolean may_alias_scheduling(PCode* a, PCode* b) {
         (is_small_data_load(b) && is_direct_small_data_store(a))) {
         return TRUE;
     }
+#ifdef PATCH_FFCC_JP
+    if ((is_stack_parameter_load(a) && is_worst_case_store(b)) ||
+        (is_stack_parameter_load(b) && is_worst_case_store(a))) {
+        return TRUE;
+    }
+#endif
     return may_alias_alias(
         is_pointer_like_load(a) ? worst_case_ptr : a->alias,
         is_pointer_like_load(b) ? worst_case_ptr : b->alias

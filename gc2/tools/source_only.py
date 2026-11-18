@@ -37,7 +37,7 @@ class Errors(project.Error):
 class SourceOnly:
     def __init__(self, version):
         self.version = v = project.version(version)
-        data = project.version(v.base) if v.base else v
+        data = project.original_version(v)
         self.rows = sorted(config.functions(data), key=lambda r: r.address)
         self.bindings = config.bindings(data)
         self.objects = {c.source: Object.read(build.object_path(v, c.source)) for c in build.compilations(v)}
@@ -229,7 +229,7 @@ def where(version, addresses):
         if m := re.fullmatch(r"([0-9a-fA-F]{8}) (\S+\.obj)\s+(\S+)", line.strip()):
             entries.append((int(m[1], 16), m[2], m[3]))
     entries.sort()
-    rows = {r.name: r for r in config.functions(project.version(v.base) if v.base else v)}
+    rows = {r.name: r for r in config.functions(project.original_version(v))}
     for text in addresses:
         try:
             address = int(text, 16)

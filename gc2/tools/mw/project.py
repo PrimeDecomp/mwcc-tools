@@ -81,6 +81,13 @@ def version(name: str | Version | None = None, *, original: bool = False) -> Ver
     return found
 
 
+def original_version(name: str | Version | None = None) -> Version:
+    found = version(name)
+    while found.base:
+        found = version(found.base)
+    return found
+
+
 def relative(path: Path | str) -> str:
     path = Path(path)
     if path.is_absolute():
