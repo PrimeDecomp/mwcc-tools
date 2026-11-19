@@ -22,15 +22,10 @@ The executable reports `Wii_Retro` in its banner. Keep `lmgr8c.dll` beside it wh
 project's compiler directory. To build directly into another directory, pass `--out-dir PATH` to
 `uv run --no-sync python -I gc2/tools/wii_retro_link.py`.
 
-For standalone Corruption (`RM3E01`), build the variant that retains the GQR0 scheduling dependency
-on paired-single loads and stores.
-
-```sh
-uv run --no-sync python -I gc2/tools/wii_retro_link.py --keep-gqr0-side-effects --out-dir build/Wii_Retro_Corruption
-```
-
-Use the default build for Echoes and Corruption in Trilogy.
-[Corruption compiler evidence](wii-retro-compiler-research.md#corruption-lua-lzo-and-compiler-scheduling)
+The same Wii_Retro build serves Echoes Wii and retail Corruption. Corruption's Lua build
+uses CodeWarrior's existing 7400 scheduling setting and keeps the 750 schedule for
+`LuaPlus.cpp`.
+[Corruption compiler research](wii-retro-compiler-research.md#corruption-lua-lzo-and-compiler-scheduling)
 
 ## Current patches
 
@@ -47,14 +42,16 @@ Use the default build for Echoes and Corruption in Trilogy.
   arguments, propagated references, and optimizer-generated iterators when `-ipa file` is active.
 - **Aggregate-copy scheduling.** Preserves memory order within mixed scalar and array member
   copies through both scheduler passes to limit register pressure.
+- **7400 paired-single timing.** Models paired-single loads and stores with floating-point
+  memory timing and preserves their scheduling barrier.
 
 The register-order and aggregate-copy controls match all three Wii builds. The Echoes integration
 sweep preserves every previous exact match, and the three rebuilt DOLs match their shipped hashes.
 [Research and validation](wii-retro-compiler-research.md#native-relink-and-validation)
 
 The relink includes recovered C implementations of register assignment and reservation, assignment and
-conditional lowering, scheduler entry, PCode operand formatting and side effects, alias analysis, deferred generation,
-call-graph management, IR reference packing, and template visitation.
+conditional lowering, scheduler entry and dependency construction, PCode formatting and side effects,
+alias analysis, deferred generation, call-graph management, IR reference packing, and template visitation.
 The Windows validation runners cover function-template generation, register allocation,
 precompiled headers, and Echoes object and DOL comparisons. [Test instructions](../gc2/tools/wii_retro/tests/README.md)
 

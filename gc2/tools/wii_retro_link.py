@@ -39,6 +39,14 @@ REPLACEMENT_NAMES = {
     "fn_005c28d0": "_RC1_InstantiateInitializerTree",
     "fn_005c2a70": "_RC1_InstantiateCleanups",
     "fn_005c2b10": "_RC1_ResolveDependentCleanup",
+    "fn_005b6ad0": "_RC1_ScheduleBlock",
+    "fn_005b6cb0": "_RC1_SelectInstruction",
+    "fn_005b6e50": "_RC1_FindSuccessors",
+    "fn_005b70a0": "_RC1_SerializeStore",
+    "fn_005b7490": "_RC1_SerializeRegister",
+    "fn_005b7580": "_RC1_AddSuccessor",
+    "fn_005b7670": "_RC1_InitDependencies",
+    "fn_0065fb30": "_RC1_Initialize7400Timing",
 }
 ASSIGNMENT_FUNCTION = "_gen_ASS"
 ASSIGNMENT_JUMP_TABLE = (0x675BB0, 0x675BBC)
@@ -59,6 +67,7 @@ SCHEDULER_FUNCTIONS = (
     "_is_const_alias_runtime_call", "_canidate_reaches_use", "_candidatealias",
 )
 ALIAS_JUMP_TABLE = (0x67DF2C, 0x67DF50)
+SCHEDULER_OPERAND_JUMP_TABLE = (0x67D94C, 0x67D960)
 PCODE_EXPANSION_FUNCTION = "_pcode_expand_pseudo_ops"
 MEMORY_WIDTH_FUNCTION = "_nbytes_loaded_or_stored_by"
 MEMBER_INSTANTIATION_FUNCTION = "_CTempl_InstantiateMember"
@@ -183,10 +192,23 @@ IR_STREAM_SYMBOLS = {
     "RC1_PackStatements": 0x52B520,
 }
 SCHEDULER_SYMBOLS = {
-    "RC1_ScheduleBlock": 0x5B6AD0,
     "RC1_scheduling_cpu": 0x74F272,
     "RC1_altivec_model": 0x74F27E,
     "RC1_scheduler_model": 0x71E198,
+    "RC1_critical_path": 0x71E19C,
+    "RC1_default_successor": 0x71E19E,
+    "RC1_volatile_refs": 0x71E1A2,
+    "RC1_side_effects": 0x71E1A6,
+    "RC1_memory_defs": 0x71E1AA,
+    "RC1_memory_uses": 0x71E1AE,
+    "RC1_register_defs": 0x71E1B2,
+    "RC1_register_uses": 0x71E1C6,
+    "RC1_check_disjoint_memory": 0x74F2F8,
+    "RC1_optimize_size": 0x74F4DA,
+    "RC1_DisjointMemory": 0x5B7190,
+    "RC1_7400_timing_records": 0x6EDEDE,
+    "RC1_7400_timing_initialized": 0x736110,
+    "RC1_7400_instruction_timing": 0x736111,
     "RC1_alias_count": 0x722AF4,
     "RC1_gathered_aliases": 0x722AF0,
     "RC1_alias_scratch": 0x722B00,
@@ -202,9 +224,6 @@ SCHEDULER_SYMBOLS = {
 SCHEDULER_CALLS = (
     (0x46B3E4, "_CodeGen_Generator", "_scheduleinstructions", "_retro_scheduleinstructions"),
     (0x46B335, "_CodeGen_Generator", "_scheduleinstructions", "_retro_scheduleinstructions"),
-    (0x5B7026, "fn_005b6e50", "_may_alias", "_retro_aggregate_may_alias"),
-    (0x5B70D6, "fn_005b70a0", "_may_alias", "_retro_aggregate_may_alias"),
-    (0x5B7126, "fn_005b70a0", "_may_alias", "_retro_aggregate_may_alias"),
 )
 TEMP_CREATORS = (
     (0x62EE38, "fn_0062ed70", "_retro_CreateCommonSubexpression"),
@@ -261,6 +280,7 @@ def split_layout(pe, layout, symbols):
             (*REGISTER_ASSIGNMENT_TABLES, "assign_register_by_type jump tables"),
             (*PCODE_EXPANSION_JUMP_TABLE, "pcode_expand_pseudo_ops jump table"),
             (*PCODE_FORMAT_JUMP_TABLE, "vformatpcode jump table"),
+            (*SCHEDULER_OPERAND_JUMP_TABLE, "scheduler operand jump table"),
             (*ALIAS_JUMP_TABLE, "alias query jump table"),
             (*MEMBER_INSTANTIATION_JUMP_TABLE, "member instantiation jump table"),
             (*STORED_STATEMENT_JUMP_TABLE, "stored statement jump table"),
@@ -430,7 +450,7 @@ def identity_object(objects, splits, symbols, banner, work):
     return path
 
 
-def build(stock, output, tools, clang, linker, *, keep_gqr0_side_effects=False):
+def build(stock, output, tools, clang, linker):
     settings = read_config(VERSION)
     base = read_config(settings["derived_from"])
     raw = stock.read_bytes()
@@ -510,8 +530,6 @@ def build(stock, output, tools, clang, linker, *, keep_gqr0_side_effects=False):
             source = ROOT / relative
             obj = work / f"{source.stem}.obj"
             defines = ["-DWII_RETRO_RELINK"] if source.name == "template_vtables.c" else []
-            if keep_gqr0_side_effects and source.name == "pcode_format.c":
-                defines.append("-DWII_RETRO_KEEP_GQR0_SIDE_EFFECTS=1")
             subprocess.run([clang, *CLANG_FLAGS, *defines, str(source), "-o", str(obj)], check=True)
             compiled.append(obj)
 
@@ -553,12 +571,9 @@ def main():
     parser.add_argument("--tools", default=os.environ.get("MWCC_TOOLS", "mwcc-tools"))
     parser.add_argument("--clang", default=os.environ.get("CLANG", "clang"))
     parser.add_argument("--linker", default=os.environ.get("LLD_LINK", "lld-link"))
-    parser.add_argument("--keep-gqr0-side-effects", action="store_true",
-                        help="retain GQR0 scheduling dependencies for standalone Corruption")
     args = parser.parse_args()
     try:
-        build(args.stock, args.out_dir, args.tools, args.clang, args.linker,
-              keep_gqr0_side_effects=args.keep_gqr0_side_effects)
+        build(args.stock, args.out_dir, args.tools, args.clang, args.linker)
     except (ValueError, OSError, project.Error, subprocess.CalledProcessError) as error:
         parser.exit(1, f"{VERSION}: {error}\n")
 

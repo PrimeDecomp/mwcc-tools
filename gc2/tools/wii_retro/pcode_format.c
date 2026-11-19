@@ -3,10 +3,6 @@
 
 #include <stdarg.h>
 
-#ifndef WII_RETRO_KEEP_GQR0_SIDE_EFFECTS
-#define WII_RETRO_KEEP_GQR0_SIDE_EFFECTS 0
-#endif
-
 enum {
     SystemRegister = 1,
     LabelOperand = 6,
@@ -52,8 +48,6 @@ enum {
     GekkoProcessor = 0x16,
     AddImmediate = 0x3f,
     MoveToConditionFields = 0x7a,
-    FirstPairedSingleMemoryOpcode = 0x192,
-    LastPairedSingleMemoryOpcode = 0x199,
     GQR0 = 0x390,
     DataObjectKind = 5,
     LocalAddress = 1,
@@ -124,7 +118,7 @@ static void system_register(PCode* instruction, PCodeArg* arg, int spr, int effe
             return;
         }
     }
-    if (from_format || WII_RETRO_KEEP_GQR0_SIDE_EFFECTS || RC1_processor != GekkoProcessor ||
+    if (from_format || RC1_processor != GekkoProcessor ||
         instruction->opcode < FirstPairedSingleMemoryOpcode || instruction->opcode > LastPairedSingleMemoryOpcode ||
         spr != GQR0)
         pcsetsideeffects(instruction);

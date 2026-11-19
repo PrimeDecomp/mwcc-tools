@@ -59,9 +59,9 @@ and include every function in the 30 retail Lua splits available at the time.
 
 | Compiler under the same Lua flags | Exact instruction bodies |
 | --- | ---: |
-| Default Wii_Retro | 621 / 714 |
+| Wii_Retro | 621 / 714 |
 | Installed Wii `0x4201_127` | 632 / 714 |
-| Wii_Retro with `--keep-gqr0-side-effects` | 632 / 714 |
+| Wii_Retro with an experimental GQR0 side-effect change | 632 / 714 |
 | Installed Wii `0x4201_127` with the RC1 shortcut restored | 621 / 714 |
 
 The eleven changes affect the scheduling of paired-single register saves and restores
@@ -80,10 +80,10 @@ Both Corruption Trilogy DOLs match stock RC1 and default Wii_Retro on all eleven
 For example, `luaV_execute` starts at `0x80466830` in NTSC-U Trilogy and `0x80465f4c` in PAL
 Trilogy. The three identical masked math bodies were identified by their calls to `atan2`,
 `fmod`, and `pow`. A second control searched the original DOLs for shared functions that
-match Echoes with default Wii_Retro and whose instruction order changes under the option.
+match Echoes with Wii_Retro and whose instruction order changes with the GQR0 experiment.
 The comparison masks only relocation fields.
 
-| Echoes and Corruption Trilogy region | Shared bodies with the default schedule in both games | Also match standalone Corruption with the option |
+| Echoes and Corruption Trilogy region | Shared bodies with the Wii_Retro schedule in both games | Also match standalone Corruption in the experiment |
 | --- | ---: | ---: |
 | NTSC-U `R3ME01` | 61 | 60 |
 | PAL `R3MP01` | 17 | 16 |
@@ -91,35 +91,40 @@ The comparison masks only relocation fields.
 The last column covers 60 distinct functions across the two regions. For example,
 `CVectorBiquadFilter::Update` matches the default schedule at `0x80348488` in NTSC-U Echoes
 Trilogy and `0x803bd5b4` in NTSC-U Corruption Trilogy. At `0x803bf0c8` in standalone
-Corruption `RM3E01`, its body matches the GQR0 option. With the same Echoes sources and
+Corruption `RM3E01`, its body matches the GQR0 experiment. With the same Echoes sources and
 flags, the 7400 scheduler reproduced 24 of the 60 NTSC-U standalone bodies and six of the 16
 PAL controls. This identifies a scheduling behavior shared by both Trilogy games and leaves
 the original compiler binary and version open.
 
-Keep the option opt-in. The Echoes sweep lost 577 exact matches on R3ME01, 295 on R32J01,
-and 298 on R3MP01 under `functionRelocDiffs=none`. The relink replaces all of `vformatpcode`
-and `pcsetsideeffects` with C at their original symbol names. The native split omits the
-formatter body at `0x5a8680` and its dispatch table at `0x67d1cc`. The stock opcode table,
-allocator, alias queries, and immediate validator supply the same inputs to the replacement.
-The direct differential fixture compares allocation, all PCode bytes, alias calls, and diagnostics
-in 1,116 formatting cases. Both builds produce byte-identical Lua objects against their
-corresponding bridge builds.
-The recovered default also reproduces all 1,639 Echoes objects in each of configured
-and forced file-IPA mode. Substituting its configured objects into each Echoes main link
-produces the original DOL hashes for R3ME01, R32J01, and R3MP01. Clang and LLD 23.1.1
-produce SHA-1 `22fb5d8e787d7bb1839ceb86497b05440a891eda` for the standalone option.
-The guarded template fixture matches across all four PCH producer and reader pairs.
+The GQR0 experiment lost 577 exact Echoes matches on R3ME01, 295 on R32J01, and 298 on R3MP01
+under `functionRelocDiffs=none`. Wii_Retro retains the RC1 formatter behavior. The relink
+replaces `vformatpcode` and `pcsetsideeffects` with C, and the formatter fixture matches
+stock RC1 in 1,116 cases. The scheduler's block pass, dependency construction, instruction
+selection, and 7400 timing initialization relink from C. The 750/Gekko serialization callback
+reads the same timing-table field in RC1 and `0x4201_127`.
 
-The full retail Lua link uses the GQR0 option for the 32 Lua and LuaPlus translation units.
-The remaining instruction differences came from the locale-backed wide-character tables,
-the declarations used at the `wcstod` and `swprintf` call sites, the `abs` intrinsic, and
-the signed decimal-escape comparison. Restoring those details gives an exact instruction
-body for all 714 functions. Relocations through the locale tables, function registration
-tables, and runtime thunks identify the data and code boundaries. The Ninja link response
-uses all 32 compiled Lua objects and reproduces the RM3E01 DOL SHA-1
-`3e81f9b09dfb1e7c02e22b9c6c48a4a1390224b2`. The complete build passes all 76 image checks.
-With the shared source corrections and the default compiler, the 699 functions in the
-30 configured Trilogy Lua units also match in each region after masking relocation fields.
+The recovered scheduler produced byte-identical Echoes objects in all 1,639 configured
+compilations and all 1,639 file-IPA control compilations. Linking the configured objects
+reproduced the shipped DOL hashes for R3ME01, R32J01, and R3MP01.
+
+Retail Corruption's unchanged Lua sources match 703 of 714 instruction bodies with the
+recovered MSL headers and stock 750 scheduling. The headers use locale-backed wide-character
+tables, the implicit C declarations evidenced by the native call sites, and an `int`-typed
+`UCHAR_MAX`. The Wii Corruption Kyoto declarations also reproduce the native relocations
+from `LuaMemory.cpp` to `CMemory::Free(void*)`, the unsigned `CCallStack` constructor,
+and `gkUnknownType`. Corruption retail and Trilogy share these declarations. Echoes Wii
+exports `CMemory::Free(const void*)`.
+
+The stock 7400 and 7450 RC1 timing tables omit the Gekko paired-single opcodes. Their
+fallback serializes them and assigns them to an integer pipeline. The stock 750 model
+gives paired-single and double-precision transfers the same memory timing. Applying that
+correspondence in the 7400 model, while retaining its fallback serialization, corrects
+the order of the integer argument setup and register save in `luaB_foreachi`. Lua uses
+the existing 7400 schedule with this model. `LuaPlus.cpp` keeps the 750 schedule.
+
+One compiler built all 32 unchanged Lua units and three LZO units in the normal RM3E01
+Ninja build. Its DOL matches the shipped SHA-1 `3e81f9b09dfb1e7c02e22b9c6c48a4a1390224b2`.
+All 76 image checks passed.
 
 ## Remaining work
 

@@ -17,6 +17,12 @@ enum {
     IsStore = 0x4,
 };
 
+enum {
+    FirstPairedSingleMemoryOpcode = 0x192,
+    FirstPairedSingleStoreOpcode = 0x196,
+    LastPairedSingleMemoryOpcode = 0x199,
+};
+
 #pragma pack(push, 2)
 typedef struct OpcodeInfo {
     const char* name;
