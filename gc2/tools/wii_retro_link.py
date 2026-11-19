@@ -67,7 +67,8 @@ STORED_STATEMENT_JUMP_TABLE = (0x67E128, 0x67E168)
 STORED_INITIALIZER_JUMP_TABLE = (0x67E168, 0x67E174)
 STORED_CLEANUP_JUMP_TABLE = (0x67E174, 0x67E1CC)
 PCODE_EXPANSION_JUMP_TABLE = (0x67D0A4, 0x67D0B0)
-PCODE_EXPANSION_SYMBOLS = {"RC1_PCodeInfo_source_file": 0x6DBD96}
+PCODE_FORMAT_JUMP_TABLE = (0x67D1CC, 0x67D324)
+PCODE_SYMBOLS = {"RC1_PCodeInfo_source_file": 0x6DBD96, "RC1_spe_register_pairs": 0x74F269}
 CONDITIONAL_SYMBOLS = {
     "RC1_next_gpr": 0x758288,
     "RC1_next_fpr": 0x758284,
@@ -235,6 +236,7 @@ def split_layout(pe, layout, symbols):
 
     removed_names = {
         ALIGNMENT_FUNCTION, ASSIGNMENT_FUNCTION, CONDITIONAL_FUNCTION, PCODE_EXPANSION_FUNCTION, MEMORY_WIDTH_FUNCTION,
+        "_pcsetsideeffects", "_vformatpcode",
         MEMBER_INSTANTIATION_FUNCTION, "_CTemplTool_InstantiateExprList", "_CTemplTool_FixTypedefObject",
         "_CTemplTool_InstantiateMemberVar", "_CTemplTool_GetTemplClassInst",
         "_CTemplTool_Template2TemplClass", "_CTemplClass_GetMasterTemplate",
@@ -258,6 +260,7 @@ def split_layout(pe, layout, symbols):
             (*REGISTER_PAIR_TABLES, "assign_GPR_pair jump tables"),
             (*REGISTER_ASSIGNMENT_TABLES, "assign_register_by_type jump tables"),
             (*PCODE_EXPANSION_JUMP_TABLE, "pcode_expand_pseudo_ops jump table"),
+            (*PCODE_FORMAT_JUMP_TABLE, "vformatpcode jump table"),
             (*ALIAS_JUMP_TABLE, "alias query jump table"),
             (*MEMBER_INSTANTIATION_JUMP_TABLE, "member instantiation jump table"),
             (*STORED_STATEMENT_JUMP_TABLE, "stored statement jump table"),
@@ -326,7 +329,7 @@ def link_symbols(pe, layout):
 
     patches = (
         VTABLE_SYMBOLS | ALIGNMENT_OPTIONS | ASSIGNMENT_SYMBOLS | CONDITIONAL_SYMBOLS | REGISTER_SYMBOLS |
-        PCODE_EXPANSION_SYMBOLS |
+        PCODE_SYMBOLS |
         INLINE_SYMBOLS | REFERENCE_SYMBOLS | DEFERRED_EXPORT_SYMBOLS | IR_STREAM_SYMBOLS | SCHEDULER_SYMBOLS
     )
     for name, address in patches.items():
@@ -427,7 +430,7 @@ def identity_object(objects, splits, symbols, banner, work):
     return path
 
 
-def build(stock, output, tools, clang, linker):
+def build(stock, output, tools, clang, linker, *, keep_gqr0_side_effects=False):
     settings = read_config(VERSION)
     base = read_config(settings["derived_from"])
     raw = stock.read_bytes()
@@ -507,6 +510,8 @@ def build(stock, output, tools, clang, linker):
             source = ROOT / relative
             obj = work / f"{source.stem}.obj"
             defines = ["-DWII_RETRO_RELINK"] if source.name == "template_vtables.c" else []
+            if keep_gqr0_side_effects and source.name == "pcode_format.c":
+                defines.append("-DWII_RETRO_KEEP_GQR0_SIDE_EFFECTS=1")
             subprocess.run([clang, *CLANG_FLAGS, *defines, str(source), "-o", str(obj)], check=True)
             compiled.append(obj)
 
@@ -548,9 +553,12 @@ def main():
     parser.add_argument("--tools", default=os.environ.get("MWCC_TOOLS", "mwcc-tools"))
     parser.add_argument("--clang", default=os.environ.get("CLANG", "clang"))
     parser.add_argument("--linker", default=os.environ.get("LLD_LINK", "lld-link"))
+    parser.add_argument("--keep-gqr0-side-effects", action="store_true",
+                        help="retain GQR0 scheduling dependencies for standalone Corruption")
     args = parser.parse_args()
     try:
-        build(args.stock, args.out_dir, args.tools, args.clang, args.linker)
+        build(args.stock, args.out_dir, args.tools, args.clang, args.linker,
+              keep_gqr0_side_effects=args.keep_gqr0_side_effects)
     except (ValueError, OSError, project.Error, subprocess.CalledProcessError) as error:
         parser.exit(1, f"{VERSION}: {error}\n")
 

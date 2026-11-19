@@ -18,7 +18,8 @@
     "gc2/tools/wii_retro/aggregate_schedule.c",
     "gc2/tools/wii_retro/alias_setup.c",
     "gc2/tools/wii_retro/alias_propagation.c",
-    "gc2/tools/wii_retro/pcode_width.c"
+    "gc2/tools/wii_retro/pcode_width.c",
+    "gc2/tools/wii_retro/pcode_format.c"
   ],
   "headers": [
     "gc2/tools/wii_retro/rc1_alias.h",

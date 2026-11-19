@@ -6,6 +6,7 @@ Addresses and scores refer to the stock version or experiment named in each sect
 - [Current validation](#native-relink-and-validation) and [remaining work](#remaining-work).
 - [RC1 toolchain evidence](#what-mwcc-tools-adds) and [CodeWarrior host trials](#rc1-host-compiler-trials-2026-11-18).
 - [Recovered native control flow](#recovered-native-control-flow).
+- [Corruption Lua, LZO, and compiler scheduling](#corruption-lua-lzo-and-compiler-scheduling).
 - [Ordering experiments](#ordering-compatibility-and-experiments) and [remaining differences](#remaining-order-differences-and-source-controls).
 - [Destroy-loop guard folding](#destroy-loop-guard-folding-2026-11-17),
   [aggregate-copy scheduling](#aggregate-copy-scheduling-2026-11-17), and
@@ -16,7 +17,7 @@ Addresses and scores refer to the stock version or experiment named in each sect
 The build verifies stock RC1's SHA-1, splits it into relocatable COFF objects, and compiles the
 recovered routines and patches with Clang. LLD preserves CRT and exception-table order and
 rebuilds imports and base relocations. Clang and LLD 23.1.1 produce
-`83925c142975baee50e2599d8aaf7180fe40bc23`.
+`f471ded8be5dc6d05e61c29b0bb7261f4c89c684`.
 
 - In R3ME01, the compatibility work raises the forced-file-IPA score from 12,758 to 12,801 exact
   functions out of 18,016, with zero exact losses. All 30 audited register-order cases match
@@ -30,6 +31,95 @@ rebuilds imports and base relocations. Clang and LLD 23.1.1 produce
   [Validation commands](../gc2/tools/wii_retro/tests/README.md)
 - The earlier three-patch relink matches the binary patch chain under both flag configurations
   and reproduces the three DOL hashes with the `CStaticGeometryMap` control.
+
+## Corruption Lua, LZO, and compiler scheduling
+
+The hash-verified G2MEAB prototype and RM3E01 retail DOLs both contain the Lua 5.0.1 version
+string. The 32 Lua and LuaPlus source files and 41 headers also agree between the checkouts.
+Both games pass LZO's `0x1080` version constant to `__lzo_init2`. The prototype enables
+`LZO_TEST_DECOMPRESS_OVERRUN`, while the Echoes source imported into retail Corruption leaves
+it off. The decoder is 0x400 bytes in the prototype and 0x2b4 bytes in standalone retail.
+GC 2.7 with the configured prototype flags reproduces all 544 Lua and four LZO instruction
+bodies after masking relocation fields.
+[Lua release archive](https://www.lua.org/ftp/) · [LZO 1.08 release page](https://distro.ibiblio.org/amigolinux/download/Libs/lzo-1.08/oberhumer.comopensourcelzo.html)
+
+All ten retail LZO function bodies match after masking relocation fields with the merged source
+and the RC1 relink at `-O4,p -inline off -func_align 4`. Keeping the prototype's overrun macro
+produces the much larger checked decoder. The retail initialization split contains only text.
+The compiled object also emits data and the legacy `__lzo_init` helper, so a source-linked
+hash requires an additional object and data ownership check.
+
+The Lua sweep used 17 compiler versions from GC 2.6 through Wii 1.7. Options covered
+inlining, IPA, optimization level and size, scheduling, peephole optimization, alignment,
+small data, floating-point contraction and load/store multiple. The best RC1 profile
+kept file IPA and used `-inline noauto -func_align 4 -sdata 4 -sdata2 4`. Function pairing
+used known native names and unique instruction correspondences. The instruction-body
+counts below are from the initial source and split inventory. They mask relocation fields
+and include every function in the 30 retail Lua splits available at the time.
+
+| Compiler under the same Lua flags | Exact instruction bodies |
+| --- | ---: |
+| Default Wii_Retro | 621 / 714 |
+| Installed Wii `0x4201_127` | 632 / 714 |
+| Wii_Retro with `--keep-gqr0-side-effects` | 632 / 714 |
+| Installed Wii `0x4201_127` with the RC1 shortcut restored | 621 / 714 |
+
+The eleven changes affect the scheduling of paired-single register saves and restores
+in functions including `math_atan2`, `luaB_ipairs` and `luaV_execute`. Both compilers use
+the same 750/Gekko timing entries for those instructions. In RC1, `vformatpcode` at
+`0x5a8ed0` skips `pcsetsideeffects` for an implicit GQR0 operand. The installed
+`0x4201_127` executable has an unconditional jump around the shortcut. Its provenance
+is unknown. Reciprocal patches gain and lose the same eleven bodies, and the trace
+shows the side-effect bit is already present before final scheduling. On stock RC1,
+keeping `-proc gekko` and adding `-pragma "scheduling 7400"` reproduced ten of the eleven
+bodies. It missed `luaB_foreachi` and lost one previously exact Lua body, for 630 of 714
+overall. The pragma changes the scheduler's CPU model without changing the code-generation
+target.
+
+Both Corruption Trilogy DOLs match stock RC1 and default Wii_Retro on all eleven Lua cases.
+For example, `luaV_execute` starts at `0x80466830` in NTSC-U Trilogy and `0x80465f4c` in PAL
+Trilogy. The three identical masked math bodies were identified by their calls to `atan2`,
+`fmod`, and `pow`. A second control searched the original DOLs for shared functions that
+match Echoes with default Wii_Retro and whose instruction order changes under the option.
+The comparison masks only relocation fields.
+
+| Echoes and Corruption Trilogy region | Shared bodies with the default schedule in both games | Also match standalone Corruption with the option |
+| --- | ---: | ---: |
+| NTSC-U `R3ME01` | 61 | 60 |
+| PAL `R3MP01` | 17 | 16 |
+
+The last column covers 60 distinct functions across the two regions. For example,
+`CVectorBiquadFilter::Update` matches the default schedule at `0x80348488` in NTSC-U Echoes
+Trilogy and `0x803bd5b4` in NTSC-U Corruption Trilogy. At `0x803bf0c8` in standalone
+Corruption `RM3E01`, its body matches the GQR0 option. With the same Echoes sources and
+flags, the 7400 scheduler reproduced 24 of the 60 NTSC-U standalone bodies and six of the 16
+PAL controls. This identifies a scheduling behavior shared by both Trilogy games and leaves
+the original compiler binary and version open.
+
+Keep the option opt-in. The Echoes sweep lost 577 exact matches on R3ME01, 295 on R32J01,
+and 298 on R3MP01 under `functionRelocDiffs=none`. The relink replaces all of `vformatpcode`
+and `pcsetsideeffects` with C at their original symbol names. The native split omits the
+formatter body at `0x5a8680` and its dispatch table at `0x67d1cc`. The stock opcode table,
+allocator, alias queries, and immediate validator supply the same inputs to the replacement.
+The direct differential fixture compares allocation, all PCode bytes, alias calls, and diagnostics
+in 1,116 formatting cases. Both builds produce byte-identical Lua objects against their
+corresponding bridge builds.
+The recovered default also reproduces all 1,639 Echoes objects in each of configured
+and forced file-IPA mode. Substituting its configured objects into each Echoes main link
+produces the original DOL hashes for R3ME01, R32J01, and R3MP01. Clang and LLD 23.1.1
+produce SHA-1 `22fb5d8e787d7bb1839ceb86497b05440a891eda` for the standalone option.
+The guarded template fixture matches across all four PCH producer and reader pairs.
+
+The full retail Lua link uses the GQR0 option for the 32 Lua and LuaPlus translation units.
+The remaining instruction differences came from the locale-backed wide-character tables,
+the declarations used at the `wcstod` and `swprintf` call sites, the `abs` intrinsic, and
+the signed decimal-escape comparison. Restoring those details gives an exact instruction
+body for all 714 functions. Relocations through the locale tables, function registration
+tables, and runtime thunks identify the data and code boundaries. The Ninja link response
+uses all 32 compiled Lua objects and reproduces the RM3E01 DOL SHA-1
+`3e81f9b09dfb1e7c02e22b9c6c48a4a1390224b2`. The complete build passes all 76 image checks.
+With the shared source corrections and the default compiler, the 699 functions in the
+30 configured Trilogy Lua units also match in each region after masking relocation fields.
 
 ## Remaining work
 

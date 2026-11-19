@@ -1,6 +1,6 @@
 # Wii_Retro
 
-Wii_Retro models the compiler Retro used for the Wii releases of the Prime games. The native build
+Wii_Retro reproduces code generation observed in the Wii releases of the Prime games. The native build
 relinks Wii 1.0RC1 with compatibility patches inferred from the shipped games. GC 3.0a5.2 provides
 an earlier reference for the decompilation.
 
@@ -21,6 +21,16 @@ build/Wii_Retro/mwcceppc.exe -version
 The executable reports `Wii_Retro` in its banner. Keep `lmgr8c.dll` beside it when copying it into a
 project's compiler directory. To build directly into another directory, pass `--out-dir PATH` to
 `uv run --no-sync python -I gc2/tools/wii_retro_link.py`.
+
+For standalone Corruption (`RM3E01`), build the variant that retains the GQR0 scheduling dependency
+on paired-single loads and stores.
+
+```sh
+uv run --no-sync python -I gc2/tools/wii_retro_link.py --keep-gqr0-side-effects --out-dir build/Wii_Retro_Corruption
+```
+
+Use the default build for Echoes and Corruption in Trilogy.
+[Corruption compiler evidence](wii-retro-compiler-research.md#corruption-lua-lzo-and-compiler-scheduling)
 
 ## Current patches
 
@@ -43,8 +53,8 @@ sweep preserves every previous exact match, and the three rebuilt DOLs match the
 [Research and validation](wii-retro-compiler-research.md#native-relink-and-validation)
 
 The relink includes recovered C implementations of register assignment and reservation, assignment and
-conditional lowering, scheduler entry, alias analysis, deferred generation, call-graph management,
-IR reference packing, and template visitation.
+conditional lowering, scheduler entry, PCode operand formatting and side effects, alias analysis, deferred generation,
+call-graph management, IR reference packing, and template visitation.
 The Windows validation runners cover function-template generation, register allocation,
 precompiled headers, and Echoes object and DOL comparisons. [Test instructions](../gc2/tools/wii_retro/tests/README.md)
 

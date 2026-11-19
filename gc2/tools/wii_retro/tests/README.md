@@ -68,6 +68,16 @@ scans and reservation state. It uses the same LLVM tools as the local-register f
 uv run --no-sync python -I gc2/tools/wii_retro/tests/register_info.py
 ```
 
+## PCode operand formatting
+
+The fixture compares the C formatter and stock RC1 across general registers, paired-single
+operands, immediates, symbols, and memory operands. It checks the allocated instruction bytes,
+alias calls, processor state, and diagnostics.
+
+```sh
+uv run --no-sync python -I gc2/tools/wii_retro/tests/pcode_format.py
+```
+
 ## Precompiled headers
 
 This builds the guarded template initialization fixture with both PCH producers and both

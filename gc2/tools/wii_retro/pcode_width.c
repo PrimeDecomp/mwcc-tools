@@ -1,18 +1,6 @@
 /* Wii 1.0RC1 memory transfer widths. */
 #include "rc1_pcode.h"
 
-#pragma pack(push, 2)
-typedef struct OpcodeInfo {
-    unsigned char header[10];
-    uint32_t flags;
-    unsigned char operands[8];
-} OpcodeInfo;
-#pragma pack(pop)
-
-_Static_assert(sizeof(OpcodeInfo) == 22, "RC1 opcode table stride");
-_Static_assert(offsetof(OpcodeInfo, flags) == 10, "RC1 opcode table flags");
-
-extern OpcodeInfo opcodeinfo[];
 extern short RC1_processor;
 extern const char RC1_PCodeInfo_source_file[];
 extern void CError_Internal(const char* source_file, int line);

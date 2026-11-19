@@ -18,6 +18,16 @@ enum {
 };
 
 #pragma pack(push, 2)
+typedef struct OpcodeInfo {
+    const char* name;
+    const char* format;
+    unsigned char operand_count;
+    unsigned char rank;
+    uint32_t flags;
+    uint32_t extended_flags;
+    unsigned char encoding[4];
+} OpcodeInfo;
+
 typedef struct PCodeArg {
     unsigned char kind;
     unsigned char reg_class;
@@ -34,6 +44,7 @@ typedef struct PCodeArg {
             int32_t offset;
             const struct Object* object;
         } memory;
+        struct PCodeLabel* label;
         unsigned char storage[12];
     } value;
 } PCodeArg;
@@ -66,6 +77,8 @@ typedef struct PCodeBlock {
 } PCodeBlock;
 #pragma pack(pop)
 
+_Static_assert(sizeof(OpcodeInfo) == 22, "RC1 opcode table stride");
+_Static_assert(offsetof(OpcodeInfo, flags) == 10, "RC1 opcode table flags");
 _Static_assert(sizeof(PCodeArg) == 14, "RC1 PCode operand stride");
 _Static_assert(offsetof(PCodeArg, value.reg.number) == 4, "RC1 register operand number");
 _Static_assert(offsetof(PCodeArg, value.immediate.displacement) == 2, "RC1 immediate operand value");
@@ -82,6 +95,7 @@ _Static_assert(offsetof(PCodeBlock, instruction_count) == 0x28, "RC1 block instr
 _Static_assert(offsetof(PCodeBlock, flags) == 0x2a, "RC1 scheduler block flags");
 
 extern PCodeBlock* pcbasicblocks;
+extern const OpcodeInfo opcodeinfo[];
 int nbytes_loaded_or_stored_by(const PCode* instruction);
 
 #endif
