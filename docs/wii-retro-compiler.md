@@ -61,7 +61,7 @@ precompiled headers, and Echoes object and DOL comparisons. [Test instructions](
    lowering, stack layout, loop handling, and scheduling. [Compiler layouts and diff map](../gc2/research/README.md)
 2. Move the compatibility patches into the shared compiler sources as the relevant units are
    recovered. Build from those sources and add WebAssembly and oracle support.
-3. Validate Echoes on all three Wii builds with the shared RSTL sources. Check exact functions,
-   linked DOLs, and all 447 image hashes. [Echoes integration notes](wii-retro-echoes.md)
+3. Validate Echoes on all three Wii builds with the shared RSTL sources. Check function bodies,
+   linked DOLs, and the image manifests. [Echoes integration notes](wii-retro-echoes.md)
 
 [Compiler research notes and original patch probes](wii-retro-compiler-research.md)

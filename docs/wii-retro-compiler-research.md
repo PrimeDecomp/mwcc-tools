@@ -106,6 +106,7 @@ reads the same timing-table field in RC1 and `0x4201_127`.
 The recovered scheduler produced byte-identical Echoes objects in all 1,639 configured
 compilations and all 1,639 file-IPA control compilations. Linking the configured objects
 reproduced the shipped DOL hashes for R3ME01, R32J01, and R3MP01.
+Normal Ninja builds using the shared delta also passed all 261 image checks across those builds.
 
 Retail Corruption's unchanged Lua sources match 703 of 714 instruction bodies with the
 recovered MSL headers and stock 750 scheduling. The headers use locale-backed wide-character
