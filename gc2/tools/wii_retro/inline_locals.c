@@ -45,6 +45,8 @@ typedef struct RegisterLocal {
     const Origin* origin;
 } RegisterLocal;
 
+typedef struct InlineArgument InlineArgument;
+
 extern unsigned RC1_unique_name_counter;
 extern const Object* RC1_expanding_function;
 extern const Object* cscope_currentfunc;
@@ -53,7 +55,8 @@ extern unsigned char CMach_GetFunctionResultClass(const Type* type);
 extern void RC1_GraphInlining(void);
 extern void RC1_AppendLocal(Object* object);
 extern void* RC1_InlineSetup(const Object* callee, void* statements, const Local* formals,
-                             Local* locals, void* arguments, void* cost, void* data, void* result);
+                             Local* locals, const InlineArgument* arguments, void* cost, void* data, void* result);
+extern const InlineArgument* retro_inline_arguments;
 extern void* memset(void* memory, int value, size_t size);
 
 static Walk* walk;
@@ -426,8 +429,18 @@ void retro_AssignInlineLocals(Local* locals, void (*assign)(void)) {
     free(registers);
 }
 
+static void* setup_inline_arguments(const Object* callee, void* statements, const Local* formals,
+                                    Local* locals, const InlineArgument* arguments, void* cost, void* data,
+                                    void* result) {
+    const InlineArgument* saved = retro_inline_arguments;
+    retro_inline_arguments = arguments;
+    void* setup = RC1_InlineSetup(callee, statements, formals, locals, arguments, cost, data, result);
+    retro_inline_arguments = saved;
+    return setup;
+}
+
 void* retro_InlineSetup(const Object* callee, void* statements, const Local* formals,
-                        Local* locals, void* arguments, void* cost, void* data, void* result) {
+                        Local* locals, const InlineArgument* arguments, void* cost, void* data, void* result) {
     if (!walk)
         return RC1_InlineSetup(callee, statements, formals, locals, arguments, cost, data, result);
 
@@ -438,7 +451,7 @@ void* retro_InlineSetup(const Object* callee, void* statements, const Local* for
     Member* members = count && count <= SIZE_MAX / bytes_per_local ?
                       malloc(count * bytes_per_local) : NULL;
     if (count && !members)
-        return RC1_InlineSetup(callee, statements, formals, locals, arguments, cost, data, result);
+        return setup_inline_arguments(callee, statements, formals, locals, arguments, cost, data, result);
     if (count) {
         size_t index = 0;
         for (const Local* item = locals; item; item = item->next)
@@ -471,7 +484,7 @@ void* retro_InlineSetup(const Object* callee, void* statements, const Local* for
     Clone clone = {++walk->clone_count, count, members, names ? formal_count : 0, names};
     Clone* saved = walk->active_clone;
     walk->active_clone = &clone;
-    void* setup = RC1_InlineSetup(callee, statements, formals, locals, arguments, cost, data, result);
+    void* setup = setup_inline_arguments(callee, statements, formals, locals, arguments, cost, data, result);
     walk->active_clone = saved;
     free(members);
     free(names);

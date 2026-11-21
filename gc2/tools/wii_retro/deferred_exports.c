@@ -106,7 +106,9 @@ typedef struct ReferenceType {
 
 typedef struct FunctionType {
     unsigned char kind;
-    unsigned char unused[0xd];
+    unsigned char unused_before_size;
+    int size;
+    unsigned char unused_before_result[8];
     const ReferenceType* result;
     unsigned char unused_after_result[8];
     unsigned flags;
@@ -148,6 +150,12 @@ struct Object {
     unsigned short flags;
     CallGraphNode* graph_node;
 };
+
+typedef struct InlineReferencedData {
+    Object object;
+    unsigned char unused[0x3e];
+    unsigned char inline_reference;
+} InlineReferencedData;
 
 typedef struct ObjectList {
     struct ObjectList* next;
@@ -430,6 +438,8 @@ _Static_assert(offsetof(PackedReference, reference_count) == 0x6, "RC1 packed re
 _Static_assert(offsetof(DeferredFunctionInstance, is_specialized) == 0xd, "RC1 specialized function template flag");
 _Static_assert(offsetof(FunctionType, result) == 0xe, "RC1 function result type");
 _Static_assert(offsetof(FunctionType, is_static) == 0x2e, "RC1 static method flag");
+_Static_assert(offsetof(FunctionType, size) == 2, "RC1 type size");
+_Static_assert(offsetof(InlineReferencedData, inline_reference) == 0x5e, "RC1 inline data reference flag");
 
 enum {
     DestroyLocalAction = 1,
@@ -440,10 +450,12 @@ enum {
     VirtualFunction = 4,
     InlineFunctionObject = 5,
     AliasObject = 6,
+    EnumTypeKind = 4,
     FunctionTypeKind = 7,
     PointerTypeKind = 12,
     PackedObjectReference = 1,
     FunctionDefined = 0x2,
+    AssemblyFunction = 0x4,
     Inline = 0x10,
     ReferenceQualifier = 0x20,
     Method = 0x10,
@@ -490,6 +502,8 @@ enum {
     GotoExpressionStatement = 15,
     AsmStatement = 16,
     ObjectReferenceExpression = 0x3b,
+    CallExpression = 0x40,
+    LastCallExpression = 0x42,
 };
 
 enum {
@@ -512,6 +526,7 @@ typedef struct OrderRecord {
     struct OrderRecord* next;
     const void* key;
     const Object* first_referrer;
+    const Object* reference_temporary_owner;
     const DeferredExport* member_cleanup_entry;
     const Object* member_cleanup_object;
     const DeferredExport* temporary_cleanup_entry;
@@ -554,6 +569,8 @@ extern const char RC1_CCallGraph_source_file[];
 extern DeferredAction* RC1_deferred_actions;
 extern PendingDummyFunction* RC1_pending_dummy_functions;
 extern const Object* cscope_currentfunc;
+extern int RC1_small_data_threshold;
+extern unsigned char RC1_pool_data;
 extern NameSpace* cscope_current;
 extern NameSpace* cscope_root;
 extern FunctionType rt_func;
@@ -590,8 +607,12 @@ extern void RC1_RewriteGenerationExpression(ENode* expression);
 extern void RC1_ProcessGenerationStatements(Statement* statements);
 extern void InlineAsm_NewPackAsmStatement(const Statement* statement, PackedAsmStatement* packed);
 extern unsigned char CParser_IsDataObject(const Object* object);
-extern unsigned char CInline_CheckInlineability(Object* object, Statement* statements,
-                                                unsigned char* prevented);
+extern unsigned char RC1_CanInlineFunctionBody(const Object* object, const Statement* statements);
+extern unsigned char RC1_auto_inline;
+extern unsigned char RC1_auto_inline_for_size;
+extern unsigned char RC1_disable_inlining;
+extern unsigned char RC1_optimize_size;
+extern int RC1_auto_inline_statement_limit;
 extern void COpt_SimpleOptimizer(Object* object, Statement* statements);
 extern void CInline_SeqStringRewrite(Statement* statements);
 extern void CInline_PackIFunctionData(FunctionData* data, InlineBody* body);
@@ -687,6 +708,7 @@ static OrderRecord* find_order(const void* key, int create) {
     OrderRecord* record = galloc(sizeof(*record));
     record->key = key;
     record->first_referrer = 0;
+    record->reference_temporary_owner = 0;
     record->member_cleanup_entry = 0;
     record->member_cleanup_object = 0;
     record->temporary_cleanup_entry = 0;
@@ -730,6 +752,17 @@ void retro_MidSetup(void) {
     defining_template_action = 0;
     retro_ResetTemplateVTableActions();
     CMid_Setup();
+}
+
+/* Called only for static temporaries created by get_address_of_temp_copy. */
+void retro_DeclareReferenceTemporary(Object* object, const void* bytes, const VTableRef* references,
+                                    unsigned size) {
+    CInit_DeclareData(object, bytes, references, size);
+    const Object* owner = cscope_currentfunc;
+    if (RC1_ipa_kind == FileIPA && RC1_pool_data && (int)size > RC1_small_data_threshold &&
+        object->type->kind == EnumTypeKind && owner && (owner->qualifiers & Inline) &&
+        owner->storage_class == StaticStorageClass)
+        find_order(object, 1)->reference_temporary_owner = owner;
 }
 
 void retro_BeginTemplateDeclaration(void) {
@@ -1356,6 +1389,48 @@ static const OrderRecord* sibling_template_action(const DeferredExport* entry,
                ? queued : 0;
 }
 
+static unsigned char small_inline_body(const Statement* statements) {
+    int count = 0;
+    for (const Statement* stmt = statements; stmt; stmt = stmt->next) {
+        if (stmt->kind != NopStatement && stmt->kind != LabelStatement &&
+            (stmt->kind != ExpressionStatement || stmt->expression->kind < CallExpression ||
+             stmt->expression->kind > LastCallExpression)) {
+            ++count;
+        }
+        if (count > RC1_auto_inline_statement_limit)
+            return 0;
+    }
+
+    unsigned local_size = 0;
+    for (const ObjectList* local = RC1_locals; local; local = local->next)
+        local_size += (unsigned)local->object->type->size;
+    return (int)local_size <= 1024;
+}
+
+static void clear_inline_data_reference(ENode* expression) {
+    if (expression->kind == ObjectReferenceExpression && expression->object->datatype == DataObject)
+        ((InlineReferencedData*)expression->object)->inline_reference = 0;
+}
+
+unsigned char retro_CheckInlineability(Object* object, Statement* statements, unsigned char* prevented) {
+    *prevented = 0;
+    if (object->qualifiers & AssemblyFunction)
+        return 0;
+
+    if (!(object->qualifiers & Inline)) {
+        unsigned char auto_for_size = RC1_auto_inline_for_size && RC1_optimize_size;
+        if ((!RC1_auto_inline && !auto_for_size) || RC1_disable_inlining ||
+            !RC1_CanInlineFunctionBody(object, statements->next) ||
+            (!auto_for_size && !small_inline_body(statements->next)) || *prevented) {
+            return 0;
+        }
+        object->type->flags |= AutoInline;
+    }
+
+    CExpr_IRTreeWalk(statements, clear_inline_data_reference);
+    return 1;
+}
+
 static void pack_definition(FunctionData* data) {
     InlineBody body;
     COpt_SimpleOptimizer(data->object, data->statements);
@@ -1376,8 +1451,7 @@ static void define_function(FunctionData* data) {
     data->locals = RC1_locals;
 
     unsigned char inline_prevented;
-    unsigned char can_inline = CInline_CheckInlineability(data->object, data->statements,
-                                                         &inline_prevented);
+    unsigned char can_inline = retro_CheckInlineability(data->object, data->statements, &inline_prevented);
     if (can_inline)
         pack_definition(data);
     retro_RecordDefinitionReferences(data->statements, 0);
@@ -2196,6 +2270,25 @@ static void order_ipa_reference_copies(void) {
     }
 }
 
+/* Emit pooled enum temporaries from eliminated inline bodies after the
+ * ordinary graph. Their callers use direct references in the shipped RSOs. */
+static void order_ipa_reference_temporaries(void) {
+    CallGraphNode* last = RC1_call_graph_tail;
+    int moved = 0;
+    for (CallGraphNode* node = ccallgraph; node;) {
+        CallGraphNode* next = node == last ? 0 : node->next;
+        const OrderRecord* record = node->kind == DataGraphNode ? find_order(node->object, 0) : 0;
+        if (record && record->reference_temporary_owner &&
+            !record->reference_temporary_owner->graph_node && node != RC1_call_graph_tail) {
+            move_graph_node_after(node, RC1_call_graph_tail);
+            moved = 1;
+        }
+        node = next;
+    }
+    if (moved)
+        retro_RenumberGraph();
+}
+
 /* Preserve the native graph order during optimization. */
 void retro_OrderIPAFunctions(void) {
     CExcept_CallGraphExceptionOptimizer();
@@ -2228,6 +2321,7 @@ void retro_OrderIPAFunctions(void) {
         node = next;
     }
     order_serialized_ipa_functions();
+    order_ipa_reference_temporaries();
 }
 
 static unsigned definition_order(const DeferredExport* entry) {

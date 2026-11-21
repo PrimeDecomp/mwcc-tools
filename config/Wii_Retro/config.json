@@ -7,23 +7,30 @@
     "gc2/tools/wii_retro/struct_copy.c",
     "gc2/tools/wii_retro/assignment.c",
     "gc2/tools/wii_retro/conditional.c",
+    "gc2/tools/wii_retro/float_addition.c",
+    "gc2/tools/wii_retro/stack_frame.c",
     "gc2/tools/wii_retro/destroy_pretest.c",
     "gc2/tools/wii_retro/template_vtables.c",
     "gc2/tools/wii_retro/deferred_exports.c",
     "gc2/tools/wii_retro/ir_stream.c",
     "gc2/tools/wii_retro/template_instantiation.c",
     "gc2/tools/wii_retro/inline_locals.c",
+    "gc2/tools/wii_retro/inline_formals.c",
     "gc2/tools/wii_retro/reference_order.c",
+    "gc2/tools/wii_retro/loop_invariants.c",
     "gc2/tools/wii_retro/register_info.c",
     "gc2/tools/wii_retro/aggregate_schedule.c",
     "gc2/tools/wii_retro/alias_setup.c",
     "gc2/tools/wii_retro/alias_propagation.c",
     "gc2/tools/wii_retro/pcode_width.c",
-    "gc2/tools/wii_retro/pcode_format.c"
+    "gc2/tools/wii_retro/pcode_format.c",
+    "gc2/tools/wii_retro/graph_coloring.c",
+    "gc2/tools/wii_retro/aggregate_temporary.c"
   ],
   "headers": [
     "gc2/tools/wii_retro/rc1_alias.h",
     "gc2/tools/wii_retro/rc1_codegen.h",
+    "gc2/tools/wii_retro/rc1_iro.h",
     "gc2/tools/wii_retro/rc1_local.h",
     "gc2/tools/wii_retro/rc1_pcode.h"
   ]

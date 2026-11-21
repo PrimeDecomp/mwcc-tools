@@ -16,8 +16,9 @@ Addresses and scores refer to the stock version or experiment named in each sect
 
 The build verifies stock RC1's SHA-1, splits it into relocatable COFF objects, and compiles the
 recovered routines and patches with Clang. LLD preserves CRT and exception-table order and
-rebuilds imports and base relocations. Clang and LLD 23.1.1 produce
-`f471ded8be5dc6d05e61c29b0bb7261f4c89c684`.
+rebuilds imports and base relocations. The register-order comparison below used the relink
+produced by Clang and LLD 23.1.1 with SHA-1
+`3c55fe15f509e58e2e4488f169fcc023c704f301`.
 
 - In R3ME01, the compatibility work raises the forced-file-IPA score from 12,758 to 12,801 exact
   functions out of 18,016, with zero exact losses. All 30 audited register-order cases match
@@ -44,39 +45,46 @@ bodies after masking relocation fields.
 [Lua release archive](https://www.lua.org/ftp/) · [LZO 1.08 release page](https://distro.ibiblio.org/amigolinux/download/Libs/lzo-1.08/oberhumer.comopensourcelzo.html)
 
 All ten retail LZO function bodies match after masking relocation fields with the merged source
-and the RC1 relink at `-O4,p -inline off -func_align 4`. Keeping the prototype's overrun macro
-produces the much larger checked decoder. The retail initialization split contains only text.
-The compiled object also emits data and the legacy `__lzo_init` helper, so a source-linked
-hash requires an additional object and data ownership check.
+and the RC1 relink at `-O4,p -inline off -func_align 4`. The normal RM3E01 build links all three
+LZO objects from source and passes all 76 image checks.
 
-The Lua sweep used 17 compiler versions from GC 2.6 through Wii 1.7. Options covered
-inlining, IPA, optimization level and size, scheduling, peephole optimization, alignment,
-small data, floating-point contraction and load/store multiple. The best RC1 profile
-kept file IPA and used `-inline noauto -func_align 4 -sdata 4 -sdata2 4`. Function pairing
-used known native names and unique instruction correspondences. The instruction-body
-counts below are from the initial source and split inventory. They mask relocation fields
-and include every function in the 30 retail Lua splits available at the time.
+The Lua compiler comparison uses the unchanged Lua sources with the recovered MSL headers,
+file IPA, `-inline noauto -func_align 4 -sdata 4 -sdata2 4`, and the default Gekko scheduler.
+Counts compare against the retail NTSC-U DOL and mask relocation fields.
 
-| Compiler under the same Lua flags | Exact instruction bodies |
+| Compiler | Exact instruction bodies |
 | --- | ---: |
-| Wii_Retro | 621 / 714 |
-| Installed Wii `0x4201_127` | 632 / 714 |
-| Wii_Retro with an experimental GQR0 side-effect change | 632 / 714 |
-| Installed Wii `0x4201_127` with the RC1 shortcut restored | 621 / 714 |
+| Wii 1.0RC1, 1.0a, 1.0 | 703 / 714 |
+| Wii 1.1, 1.3, 1.5, 1.6, 1.7 | 702 / 714 |
+| Installed `0x4201_127` | 714 / 714 |
+| GC 3.0a3.4, 3.0a5, 3.0a5.2 | 492 / 714 |
 
 The eleven changes affect the scheduling of paired-single register saves and restores
 in functions including `math_atan2`, `luaB_ipairs` and `luaV_execute`. Both compilers use
 the same 750/Gekko timing entries for those instructions. In RC1, `vformatpcode` at
-`0x5a8ed0` skips `pcsetsideeffects` for an implicit GQR0 operand. The installed
-`0x4201_127` executable has an unconditional jump around the shortcut. Its provenance
-is unknown. Reciprocal patches gain and lose the same eleven bodies, and the trace
-shows the side-effect bit is already present before final scheduling. On stock RC1,
-keeping `-proc gekko` and adding `-pragma "scheduling 7400"` reproduced ten of the eleven
-bodies. It missed `luaB_foreachi` and lost one previously exact Lua body, for 630 of 714
-overall. The pragma changes the scheduler's CPU model without changing the code-generation
-target.
+`0x5a8ed0` skips `pcsetsideeffects` for the implicit GQR0 operand of a paired-single
+load or store on Gekko. The installed
+`0x4201_127` executable differs from Wii 1.0a in exactly five bytes at file offset
+`0x1a8540` (VA `0x5a9140`). They replace the start of the Gekko comparison
+(`66 83 3d 40 f3`) with an unconditional jump (`e9 8b 0d 00 00`). Restoring the bytes
+reproduces the 1.0a SHA-1 `fb0820a3f519b4e7c03a2b7a3e810007ff3c5c81`. Reciprocal
+edits gain and lose the same eleven bodies. The trace shows that the side-effect bit
+changes before final scheduling. The origin of the edited executable and the compiler
+configuration used for the shipped game remain unknown.
 
-Both Corruption Trilogy DOLs match stock RC1 and default Wii_Retro on all eleven Lua cases.
+GC 3.0a5.2 already calls `pcsetsideeffects` for an unrecognized implicit system
+register at `0x58c467`. The GQR0 exception appears by Wii 1.0RC1. All three GC builds
+match four of the eleven retail witnesses with the same Lua inputs. The local RC1 and
+1.0a PE headers are dated May and August 2008, respectively. The three standalone DOL
+build strings date from July through November 2007.
+
+All five DOLs contain SDK library build strings with `0x4199_60831` and `0x4200_60308`.
+Preprocessing `__CWCC__` and `__CWBUILD__` with the bundled compilers identifies those
+versions as GC 3.0a5.2 and GC 3.0a3.4, respectively. The strings identify prebuilt SDK
+libraries. The compiler for the game's Lua objects remains unidentified.
+
+The eleven cases match the edited 1.0a behavior in NTSC-U, PAL, and Japanese standalone
+Corruption. Both Corruption Trilogy DOLs match the unmodified 1.0a behavior.
 For example, `luaV_execute` starts at `0x80466830` in NTSC-U Trilogy and `0x80465f4c` in PAL
 Trilogy. The three identical masked math bodies were identified by their calls to `atan2`,
 `fmod`, and `pow`. A second control searched the original DOLs for shared functions that
@@ -116,16 +124,10 @@ from `LuaMemory.cpp` to `CMemory::Free(void*)`, the unsigned `CCallStack` constr
 and `gkUnknownType`. Corruption retail and Trilogy share these declarations. Echoes Wii
 exports `CMemory::Free(const void*)`.
 
-The stock 7400 and 7450 RC1 timing tables omit the Gekko paired-single opcodes. Their
-fallback serializes them and assigns them to an integer pipeline. The stock 750 model
-gives paired-single and double-precision transfers the same memory timing. Applying that
-correspondence in the 7400 model, while retaining its fallback serialization, corrects
-the order of the integer argument setup and register save in `luaB_foreachi`. Lua uses
-the existing 7400 schedule with this model. `LuaPlus.cpp` keeps the 750 schedule.
-
-One compiler built all 32 unchanged Lua units and three LZO units in the normal RM3E01
-Ninja build. Its DOL matches the shipped SHA-1 `3e81f9b09dfb1e7c02e22b9c6c48a4a1390224b2`.
-All 76 image checks passed.
+An experimental 7400 timing change and scheduler overrides reproduced the retail DOL
+hash. This experiment has been withdrawn. Wii_Retro uses the recovered RC1 timing and
+the normal Gekko scheduler. The retail build uses the extracted Lua objects while the original
+scheduling mechanism is investigated.
 
 ## Remaining work
 
@@ -3488,6 +3490,327 @@ register-order controls also matched each shipped version in the original fixtur
 already-inexact functions scored slightly lower in the PR sweep. All three rebuilt DOLs and
 symbol files matched their expected hashes, and the remaining Wii outputs had unchanged
 linker inputs and matching hashes.
+
+### Echoes Dark Samus RSO data pooling
+
+Echoes passed `-pool off` to the shared REL and RSO build rules. In RC1 the test at
+`0x596BFD` selects individual float objects when data pooling is enabled. With pooling
+disabled and the additional option at `copts+0x64` set, the alternative at `0x596C1C`
+calls the packed literal helper at `0x599C90`. That helper returns the shared float or
+double object and a byte offset. A nonzero offset accounts for the extra address
+instruction in `GetReflectColor` and `GetMeleeRange`. Stock RC1 and Wii_Retro use the
+same path.
+
+Using RC1's default data pooling for Wii RSOs in a scratch Echoes checkout restores
+`GetReflectColor`. On R3ME01 the configured Dark Samus report goes from 226 to 319
+exact functions out of 428. The complete 26,795-function comparison has 2,129 score
+increases, 28 partial-score decreases, and no lost exact matches. The original
+`GetMeleeRange` and `CSplinter::GetHeckleRange` both load the field into `f1` and
+the float literal into `f0`; the compiler uses the opposite registers with the
+same operation and schedule. Changing source operand order does not alter the
+generated Dark Samus body. `ApplySweepBeamDamage` still differs in how it initializes
+and addresses the static material filter, and its score decreases with pooling enabled.
+
+All five Echoes profiles tested (G2ME01, G2MP01, R3ME01, R3MP01, R32J01) pass their
+87 image hashes. The two GameCube reports have identical scores for all 28,465
+compared functions. The same pinned Wii_Retro executable is used by Corruption.
+Its standalone US and both Trilogy image manifests pass all 76 hashes each.
+
+Tracing RC1 at `colorinstructions` preserves the stock object and shows the same
+allocation in both affected functions. Scheduling puts the field load into virtual
+FPR 33 ahead of the literal load into virtual FPR 32. Coloring maps 33 to `f0`
+and 32 to `f1`. Both functions in USA, PAL and Japanese Wii use the opposite
+assignment from their counterparts in all three GameCube RELs. A scan of both
+Corruption Trilogy discs and all three standalone regions found no instance of
+this five-instruction pattern. Ordering tied temporary nodes by reverse scheduled
+definition order matches both Echoes functions, but loses 80 strict matches
+across the 184 audited RSO slices. This allocator experiment stays in scratch. The 96 combinations of stock
+compiler and ordinary optimization or scheduler settings tested on the reduced
+reproducer also emit different instructions from the original Wii bodies.
+
+RC1's scalar addition path calls its floating-point operator at `0x527A05`. Before
+coloring, the operator materializes the left operand in virtual FPR 32. Moving the
+literal load after the nonliteral operand gives the normal allocator the original
+game register order while preserving the arithmetic inputs. Register `f1` also
+receives call arguments. Restricting the change to the root expression of a return
+statement preserves the original argument paths in `GetAreaCollisionCacheForPartition`
+and `BuildPitPositions`. The relink keeps double-precision addition on the stock path.
+
+With that source change, `GetMeleeRange` and `GetHeckleRange` improve from 96% to exact
+under both relocation comparison modes. They are the only changes across 1,642
+configured Echoes Wii objects. Another 295 configured Corruption objects across
+standalone US and both Trilogy releases are byte-identical between the two compilers.
+[Dark Samus R3ME01 research](https://collab.decomp.dev/projects/echoes/docs/research/CDarkSamus-R3ME01.md)
+
+### Paired-single stack saves
+
+GameCube's `StackFrame.c` uses D-form paired-single nonvolatile saves when the FPR
+save area ends below `0x1000`. RC1's save at `0x5A4630` instead tests against
+`0x7FF`. Its restore at `0x5A44B0` emits indexed loads for the peephole to shorten.
+The shipped Echoes and Corruption builds retain the older cutoff. A scan of all
+available DOLs and modules in both games found no exceptions at the cutoff for
+the top FPR save among the large frames identified.
+
+`ApplySweepBeamDamage` uses a `0x8F0` frame and stores `f31` at `0x8E0`. Its
+paired-single instruction encodes `0x8E8` in the signed 12-bit displacement
+field, which decodes as `-0x718`. Wii_Retro reproduces those field bits for large
+Gekko paired saves and restores. RC1's original routines still handle the other
+frame layouts and save helpers. [Gekko user manual](https://datasheets.chipdb.org/IBM/PowerPC/Gekko/gekko_user_manual.pdf)
+
+Across 1,642 Echoes Wii objects the change adds 26 exact instruction matches,
+of which 14 also match when comparing relocated data values. Counts are per
+release. `CAimingCursor::Update` scores lower in all three versions.
+Its current source generates a different frame with two saved FPRs, while the
+shipped function saves neither. Across 295 Corruption objects, only the standalone
+US `CRevolutionController` object changes, improving `Update`. No exact functions
+are lost, and the configured links use byte-identical inputs.
+
+### File-IPA enum temporaries
+
+The original Wii Dark Samus, boost attack, and Phazon attack objects put the
+shared solid material enum last in `.data`. RC1 instead schedules that object
+when `get_address_of_temp_copy` declares it at `0x5C7967`. In
+`ApplySweepBeamDamage` it becomes the third distinct `.data` reference and
+triggers a pool anchor, costing a saved GPR. Moving the helper after the caller
+removes that anchor, but changes linked GameCube data and still emits the enum
+ahead of the Wii virtual tables.
+
+Wii_Retro records the declaring function for pooled enum reference temporaries
+under file IPA. After inlining, a temporary whose static inline function was
+removed moves to the end of the order of emission. A surviving out-of-line
+body keeps its original data order. The native Wii DOL `.sdata` in
+`CMorphBall` and `CDarkSamusBoostBall` keeps the helper enum first, so small
+data retains its declaration order. A reduced fixture confirms both cases,
+as well as the behavior with pooling disabled.
+The compiler comparison changes only three unlinked Echoes R3ME01 objects and
+improves five function scores. All 295 audited Corruption objects are
+byte-identical.
+
+With the helper in its existing source location, moving the sweep weapon and
+freeze-beam static definitions before the actor methods gives
+`ApplySweepBeamDamage` and `TraceSweepBeam` exact function matches and reproduces
+the boost attack object's `.data` bytes. This source order preserves the linked
+GameCube NTSC-U `DarkSamus` allocatable sections. Both GameCube source objects
+retain the same allocatable sections, and the two functions match in all
+three Wii regional probes.
+
+### Phazon beam frame and loop
+
+The enum order change improves `UpdatePhazonBeam` to 94.34% with relocated
+data values compared. The original frame is `0x360` bytes. The current source
+builds a temporary `CLine` and then copies it to the cylinder, adding a
+`0x10`-byte allocation after frame alignment. A scratch constructor taking the
+origin and normalized direction directly reproduces the original frame and
+cylinder stores. It preserves the GameCube object sections in both tested
+regions and improves the Wii function to 95.40%.
+
+The native particle loop tests the updated timer before loading its invariant
+values and reuses the random generator's address. Expressing these operations
+explicitly in source reaches 98.38% on Wii, but alters both GameCube builds.
+The existing GameCube source matches, so the loop probes remain in scratch.
+
+RC1's expression propagation at `0x58DEC3` substitutes the address of the
+random generator into the call before `IRO_PullOutInvariantAssignments`. The
+assignment is gone when the latter pass looks for a loop invariant. Preserving
+the temporary lets the existing pass hoist it and copy the timer test into the
+preheader through `IRO_CopyLoopTestToLoopPreheaderAndBranchToSuccNode`.
+`CLightBeam::Fire`, `CScriptPickupGenerator::AcceptScriptMsg`, and
+`CScriptRandomRelay::SendLocalScriptMsgs` show the same native address reuse.
+The wider rule lost the exact `CFlyingPirate::AddToRenderer` match by hoisting
+a const receiver whose address is recomputed in the original. The compiler
+change preserves only mutable member receivers from parameter addresses in
+natural loops. A reduced fixture reproduces the extra timer test while the
+const, non-loop, and non-IPA controls retain their previous instructions.
+Across the three Echoes Wii profiles it improves 13 function scores, including
+an exact `CBarrierChunkGrid::ApplyDamage` in R3ME01. No scores decrease or
+configured link inputs change. The 295 audited Corruption objects are
+byte-identical.
+
+With the cylinder probe, the generated beam function is now the original
+size and scores 98.68%. In the recovered compiler, the time-step argument
+is virtual FPR 32 before coloring, and the allocator maps it to `f31`.
+The Wii original uses `f30`. Another difference is a stack-address instruction
+above the angle check. Spelling out the beam-length calculation moves it below
+the check and reaches 99.08%, but changes the exact GameCube body. A reduced
+conditional call with a reference parameter keeps the address below the check
+with or without the inline helper, so the reference parameter alone does
+not account for this difference.
+
+All nine tested stock Wii compilers put the time step in `f31` with the
+direct-cylinder probe. RC1 puts virtual FPR 32 first on the coloring stack.
+Using the existing length directly in the clamp makes the length enter first
+and moves the time step to `f30`, but removes a field reload present in the
+shipped function. The native code holds the angle in `f31` and the length in
+`f27`. In RC1 the angle and the later loop timer share `f28`, so the register
+differences change over the function's lifetime.
+
+The recovered RC1 graph simplifier at `0x5B42E0` scans virtual registers in
+ascending order and pushes each node whose degree drops below the available
+register count. If no such node remains, it chooses the lowest spill-cost to
+degree ratio, with special penalties for marked nodes. The target-specific
+sort at `0x58E390` applies only to the SPE GPR class. GC 3.0a5.2 already scans
+virtual registers in ascending order at `0x597300` and picks the first set bit
+in the FPR availability mask at `0x597240`. The source relink emits
+byte-identical objects for all 1,642 audited Echoes Wii objects and 295
+Corruption objects. The remaining question is why the floating-point
+values reach the simplifier with different interference or lifetimes.
+
+The RC1 traces simplify the beam and `CPauseScreen::UpdatePulse` without
+selecting spill candidates. `UpdatePulse` matches on GameCube and has the same
+four FPR differences in all three Wii regions. In its loop the shipped code puts
+the pulse in `f31` and the integer conversion bias in `f30`. RC1 assigns `f28`
+and `f31`, respectively. Replaying the two graphs with changed traversal and
+degree cutoffs can reproduce individual assignments, but no tested variant
+reproduces both. `CAnimData::GetAverageVelocity` has an independent ambiguity.
+Reversing the two accumulator declarations matches R3ME01 and lowers the
+GameCube score, so its register swap alone does not identify an allocator rule.
+
+An emission trace joins virtual operands after coalescing to the final
+instructions by PCode identity, then verifies the encoded word in the object.
+The 1,888-byte beam probe has two kinds of mismatches after instruction
+alignment. Its FPR assignments differ, and 15 loads use different pool
+displacements that resolve to the same 32-bit constants. None of the traced
+Wii color pairs in the beam or `UpdatePulse` violate an RC1 interference edge.
+In `UpdatePulse`, the pulse and conversion bias keep the same RC1 colors with
+scheduling disabled, with one scheduling pass, or with file IPA disabled.
+
+The recovered coalescer at `0x638A50` keeps the lower virtual register when
+two move operands do not interfere and the target permits the merge. It
+preserves recorded call-argument registers, transfers the removed register's
+edges, and rewrites surviving operands through the representative table.
+RC1 rebuilds liveness and interferences after each pass that merges a pair.
+The C port produces byte-identical output on all 1,642 audited Echoes Wii
+objects and 295 Corruption objects.
+
+The address difference precedes instruction scheduling. It survives with
+scheduling disabled and disappears in the no-IPA control. Under file IPA,
+`GetBeamLength` enters the inliner with `FastFSel` already expanded to assembly.
+RC1's formal scan at `0x560760` stops on statement kind 16 and forces a
+temporary for every formal. In the first linear IR, the clone stores
+`&toPlayer` before the branch and `Magnitude` uses that temporary. Copy and
+expression propagation retain it through delinearization. Without file IPA,
+argument setup substitutes `toPlayer` directly, so `Magnitude` materializes
+the address in the taken branch, as in the GameCube and Wii originals.
+
+The inliner rechecks a class reference bound directly to a local object of the
+same class when the inline assembly consists of floating-point selects on
+named scalar operands. Scalar formals, computed addresses, and forwarded
+references keep the native analysis. Allowing scalar reference substitution
+exposed an unlisted `max` local while packing `FastClamp`. Allowing forwarded
+class references exposed the same failure with `mgr` when automatic inlining
+expanded `ShouldReactToMissile` into `AcceptScriptMsg`. The caller's argument
+was a load through its reference parameter. The packer found a reference to
+the distinct callee parameter after expansion. Binding directly to the beam's
+local `toPlayer` remains eligible, and `CDarkSamus.cpp` compiles with file IPA
+and automatic inlining after narrowing the rule. A reduced fixture with the
+direct class binding moves the address into the taken branch. Controls with
+ordinary C++ or an additional inline `fmr` retain their previous bodies.
+The narrower rule preserves all 1,937 configured Echoes Wii and Corruption
+objects from the preceding relink.
+With the existing game source, `UpdatePhazonBeam` rises from 97.62% to 98.04%
+in probes for all three Wii regions. The direct-cylinder probe reaches 99.10%
+and retains the native function size and frame.
+Of 1,642 audited Echoes Wii objects, only the unlinked R3ME01 Phazon attack
+object changes, and its only score change is the beam improvement. All 295
+Corruption objects are byte-identical. The configured links use the same
+inputs. The reduced fixture is also byte-identical with IPA disabled and with
+program IPA.
+
+### Temporary copies into local aggregates
+
+RC1's linear IR contains a temporary `CLine` and six field copies from it into
+the cylinder. The read and write operands still reach instruction selection.
+Global PCode optimization at `0x5B33F0` forwards all six loads but retains their
+stores. Frame compression sees the stores and reserves a slot for the dead
+temporary. The same six extra stores appear in both cylinder cases of
+`LoadSurfaceCamera`. The matching GameCube builds and original Wii code omit
+that intermediate storage.
+
+An early probe also removed the individual vector temporaries, which the
+original keeps. Requiring a composite of complete member copies preserved
+those vectors but reduced matches in animation readers returning
+`SAdvancementResults` in both games. The compiler pass requires a complete
+copy into a larger local object within one block and rechecks that the
+temporary has no remaining load or address use after value numbering.
+A reduced fixture loses exactly six stores in its local copy. Its direct
+construction, escaped temporary, and aggregate-return controls are unchanged.
+
+With the existing beam source, the pass restores the native `0x360` frame
+and scores 98.14%. Explicitly constructing the normalized direction as a
+`CUnitVector3f` before it binds to `CLine` retains the two GameCube object
+sections and reaches 99.10% in all Wii probes. The native 1,888-byte body and
+cylinder stores then agree, with floating-point register assignment still
+different. `LoadSurfaceCamera` improves from 96.29% to 98.07% with the
+existing source. Its other mismatches still affect the frame layout.
+Only these two unlinked objects change across 1,642 audited Echoes Wii
+objects. Both functions improve and no score decreases. The 295 Corruption
+objects and all configured link inputs remain byte-identical.
+
+### Pose-builder calls in `ApplyLookRotation`
+
+The shipped GameCube REL calls `GetSegRotation` and `Insert` and emits both
+bodies. The Wii RSO inlines both calls. Marking the existing definitions
+`inline` in a scratch translation unit preserves the native 344-byte Wii
+body shape and raises the function from 56.88% to 99.77%. The two exact
+GameCube controls fall to 64.71%. Three Wii instructions differ because RC1
+colors the yaw load `f0` and the radians scale load `f1`. The shipped body
+uses `f1` and `f0`, respectively. Both multiply the scale by the yaw.
+The two virtual operands interfere only with each other. RC1 colors the
+second node first, which gives it `f0`. Reversing the multiplication operands
+in the scratch source yields the same object and the same graph.
+
+A scratch instruction-selection change assigns the yaw's virtual register before
+the scale's and matches all 86 Wii instructions once both calls inline. The rule
+reduces existing matches, including Corruption's `CFont::CharWidth`, and was
+discarded. The existing `CRelAngle::FromDegrees` helper produces the native
+register order with the ordinary compiler. Using it in the isolated Echoes
+source preserves the complete objects for both GameCube builds and changes
+only `ApplyLookRotation`'s score in the current Wii actor object. With both
+method bodies explicitly inlined in the scratch source, `ApplyLookRotation`
+matches all 86 Wii instructions.
+
+Stock RC1 can make both inline choices with automatic inlining and file IPA.
+Enabling it across the translation unit loses 76 exact function matches.
+Enabling it only at the two definitions isolates the call-site effect, while
+still emitting the standalone functions. Moving both inline definitions after
+their caller also matches the Wii body. Both GameCube bodies still differ in
+this arrangement. `CDarkSamus::GetStageInfo` supplies a separate control. The
+GameCube REL calls the accessor in the Battle Stage module, and Wii loads the
+field address directly. The original common-source inlining decisions remain
+open for both call sites.
+
+The C recovery of `CInline_CheckInlineability` at `0x55D210` preserves the
+distinction between explicit `inline`, ordinary automatic inlining, and
+automatic inlining under size optimization. The ordinary automatic path
+requires an eligible body, respects the statement limit, and caps local storage
+at 1,024 bytes. The size-optimization path bypasses those two limits when its
+option is enabled. Approved bodies clear the data-reference markers before
+packing. GC 3.0a5.2 already has the two automatic eligibility paths. The
+recovery gives a source location for comparing those paths with actual call
+sites and leaves RC1's policy intact.
+The recovered version emits byte-identical objects across all 1,642 audited
+Echoes Wii and 295 Corruption inputs when compared with the preceding relink.
+The native function-template controls pass under the configured, file-IPA,
+program-IPA, and debug profiles.
+
+### Melee explosion stack frame and literals
+
+The current RC1 relink already loads the five material indices through one
+`.data` base. The remaining frame difference comes from the representation of
+the saved skeleton-root position. Copying it as a `CVector3f` before the ray
+query and applying the hit height to that vector restores the native `0x920`
+frame. R3ME01 reaches 99.85% and retains the native count of 207 instructions.
+Every flagged residual is accounted for by 11 loads from different offsets
+with identical 32-bit payloads, and the relocated string base with identical
+strings at offsets zero and `0x8D`. Both GameCube actor objects retain all
+function scores. Both regenerated GameCube RELs match their pre-change
+rebuilds byte-for-byte. The NTSC-U result also matches the shipped REL hash.
+
+Use the melee explosion and Phazon beam as controls when investigating which
+pool definition and emission orders produce the original offsets. The two
+functions give examples for both writable enum data and read-only floating-point
+data. `CPauseScreen::UpdatePulse` remains an independent control for the Phazon
+beam register assignments.
 
 ## Phase 3: decompile both edge versions
 

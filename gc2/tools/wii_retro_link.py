@@ -60,6 +60,20 @@ REGISTER_CLASS_AND_INFO_TABLES = (0x67B878, 0x67B8BC)
 REGISTER_PAIR_TABLES = (0x67B8BC, 0x67B8DC)
 REGISTER_ASSIGNMENT_TABLES = (0x67B8DC, 0x67B8FC)
 REGISTER_SYMBOLS = {"RC1_RegisterInfo_source_file": 0x6DB82E, "RC1_Registers_source_file": 0x6DC02C}
+COLORING_SYMBOLS = {
+    "RC1_coalesced_registers": 0x724540,
+    "RC1_call_argument_count": 0x724548,
+    "RC1_call_arguments": 0x72454C,
+    "RC1_call_argument_index": 0x724550,
+    "RC1_InterferenceGraph_source_file": 0x6ECBF4,
+}
+COLORING_CALLS = (
+    (0x5B3F3C, "_colorinstructions", "fn_005b42e0", "_retro_SimplifyGraph"),
+    (0x6385B1, "_buildinterferencegraph", "fn_00638a50", "_retro_CoalesceRegisters"),
+)
+PCODE_OPTIMIZATION_CALLS = (
+    (0x46B110, "_CodeGen_Generator", "_globallyoptimizepcode", "_retro_OptimizePCode"),
+)
 SCHEDULER_FUNCTIONS = (
     "_scheduleinstructions", "_may_alias", "_may_alias_object", "_may_alias_worst_case",
     "_instr_may_alias_alias", "_uniquely_aliases", "_instr_must_alias_alias",
@@ -109,19 +123,47 @@ ALIGNMENT_OPTIONS = {
 INLINE_SYMBOLS = {
     "RC1_unique_name_counter": 0x70F808,
     "RC1_expanding_function": 0x719050,
+    "RC1_inlining_cost_mode": 0x719067,
+    "RC1_inline_formal_count": 0x71919A,
+    "RC1_inline_formals": 0x71919E,
     "RC1_GraphInlining": 0x558900,
     "RC1_InlineSetup": 0x55A740,
     "RC1_AppendLocal": 0x510BB0,
+    "RC1_InitializeInlineFormals": 0x5606B0,
+    "RC1_CanInlineFunctionBody": 0x55FE10,
+    "RC1_auto_inline": 0x74F446,
+    "RC1_auto_inline_for_size": 0x74F523,
+    "RC1_disable_inlining": 0x74F4C8,
+    "RC1_auto_inline_statement_limit": 0x74F422,
 }
 INLINE_CALLS = (
     (0x47CE46, "fn_0047ce20", "_CInline_CallGraphInlining", "_retro_CallGraphInlining"),
     (0x5593EA, "fn_005592e0", "fn_0055a740", "_retro_InlineSetup"),
     (0x55A24E, "fn_00559f50", "fn_0055a740", "_retro_InlineSetup"),
+    (0x55A76C, "fn_0055a740", "fn_005606b0", "_retro_InitializeInlineFormals"),
     (0x55A9AE, "fn_0055a740", "_CFunc_AppendLocal", "_retro_AppendInlineLocal"),
     (0x55AB4F, "fn_0055a740", "_CFunc_AppendLocal", "_retro_AppendInlineFormal"),
 )
+FLOAT_ADDITION_CALLS = (
+    (0x527A05, "_gen_ADD", "fn_0051fb20", "_retro_FloatAddition"),
+)
+STACK_FRAME_SYMBOLS = {
+    "RC1_fpr_save_count": 0x758058,
+    "RC1_fpr_save_offset": 0x71C1C2,
+    "RC1_fpr_slot_size": 0x71C1AE,
+    "RC1_UseSaveHelper": 0x5A2000,
+    "RC1_SaveNonvolatileFprs": 0x5A4630,
+    "RC1_RestoreNonvolatileFprs": 0x5A44B0,
+    "RC1_SetPCodeFlags": 0x59B2C0,
+}
+STACK_FRAME_CALLS = (
+    (0x5A568D, "_generate_prologue", "fn_005a4630", "_retro_SaveNonvolatileFprs"),
+    (0x5A4D7A, "_generate_epilogue", "fn_005a44b0", "_retro_RestoreNonvolatileFprs"),
+)
 REFERENCE_SYMBOLS = {
     "RC1_ipa_kind": 0x76C0B4,
+    "RC1_loop_invariants_option": 0x74F4DE,
+    "RC1_IsPropagatableExpression": 0x60B9F0,
     "RC1_first_linear": 0x7503DC,
     "RC1_locals": 0x758120,
     "RC1_Linearize": 0x5D9830,
@@ -131,12 +173,16 @@ REFERENCE_SYMBOLS = {
 REFERENCE_CALLS = (
     (0x58D5B8, "_IRO_Optimizer", "_IRO_Linearize", "_retro_Linearize"),
     (0x58DEB0, "_IRO_Optimizer", "_IRO_CopyAndConstantPropagation", "_retro_CopyAndConstantPropagation"),
+    (0x58DEC3, "_IRO_Optimizer", "_IRO_ExpressionPropagation", "_retro_PropagateExpressions"),
+    (0x60A7B9, "_IRO_ExpressionPropagation", "fn_0060b9f0", "_retro_IsPropagatableExpression"),
     (0x58E110, "_IRO_Optimizer", "_IRO_CopyAndConstantPropagation", "_retro_CopyAndConstantPropagation"),
     (0x58D98F, "_IRO_Optimizer", "_IRO_Delinearize", "_retro_Delinearize"),
     (0x46A7AB, "_CodeGen_Generator", "_RC1_AssignLocals", "_retro_AssignLocals"),
     (0x46A78C, "_CodeGen_Generator", "_RC1_ReassignLocals", "_retro_ReassignLocals"),
 )
 DEFERRED_EXPORT_SYMBOLS = {
+    "RC1_small_data_threshold": 0x74F284,
+    "RC1_pool_data": 0x74F28C,
     "RC1_IsCopyConstructor": 0x555740,
     "RC1_defer_codegen": 0x74F447,
     "RC1_deferred_actions": 0x70FF46,
@@ -169,6 +215,7 @@ DEFERRED_EXPORT_CALLS = (
     (0x47BEE4, "_CMid_Finish", "fn_0047d400", "_retro_EmitInitializers"),
     (0x47BEE9, "_CMid_Finish", "fn_0047bf90", "_retro_RunEndOfFileActions"),
     (0x47CE80, "fn_0047ce20", "_CExcept_CallGraphExceptionOptimizer", "_retro_OrderIPAFunctions"),
+    (0x5C7967, "_get_address_of_temp_copy", "_CInit_DeclareData", "_retro_DeclareReferenceTemporary"),
     (0x47CEF0, "fn_0047ce20", "_CMid_GenerateCGNode", "_retro_GenerateCGNode"),
     (0x47EAD1, "fn_0047eab0", "_CMid_ObjectAddrRef", "_retro_RecordFirstReference"),
     (0x4BFAB1, "_Assembler", "_CMid_DefineFunction", "_retro_DefineFunction"),
@@ -348,8 +395,8 @@ def link_symbols(pe, layout):
             addresses.add(address)
 
     patches = (
-        VTABLE_SYMBOLS | ALIGNMENT_OPTIONS | ASSIGNMENT_SYMBOLS | CONDITIONAL_SYMBOLS | REGISTER_SYMBOLS |
-        PCODE_SYMBOLS |
+        VTABLE_SYMBOLS | ALIGNMENT_OPTIONS | ASSIGNMENT_SYMBOLS | CONDITIONAL_SYMBOLS | REGISTER_SYMBOLS | COLORING_SYMBOLS |
+        PCODE_SYMBOLS | STACK_FRAME_SYMBOLS |
         INLINE_SYMBOLS | REFERENCE_SYMBOLS | DEFERRED_EXPORT_SYMBOLS | IR_STREAM_SYMBOLS | SCHEDULER_SYMBOLS
     )
     for name, address in patches.items():
@@ -496,13 +543,17 @@ def build(stock, output, tools, clang, linker):
             "_CMid_GlobalDeclarationActions",
             "_retro_GlobalDeclarationActions",
         )
-        for call in (*INLINE_CALLS, *REFERENCE_CALLS, *DEFERRED_EXPORT_CALLS, *SCHEDULER_CALLS):
+        for call in (
+            *INLINE_CALLS, *FLOAT_ADDITION_CALLS, *STACK_FRAME_CALLS, *REFERENCE_CALLS, *DEFERRED_EXPORT_CALLS,
+            *COLORING_CALLS, *PCODE_OPTIMIZATION_CALLS, *SCHEDULER_CALLS
+        ):
             redirect_call(objects, splits, symbols, *call)
         redirect_direct_calls(objects, splits, "_CMach_ArgumentAlignment", "_retro_ArgumentAlignment")
         redirect_direct_calls(objects, splits, "_CMid_ObjectAddrRef", "_retro_ObjectAddrRef")
         redirect_direct_calls(objects, splits, "_CMid_GetFuncData", "_retro_GetFuncData")
         redirect_direct_calls(objects, splits, "_CMid_SetFuncData", "_retro_SetFuncData")
         redirect_direct_calls(objects, splits, "_CMid_FreeFuncData", "_retro_FreeFuncData")
+        redirect_direct_calls(objects, splits, "_CInline_CheckInlineability", "_retro_CheckInlineability")
         redirect_direct_calls(objects, splits, "_CCallGraph_NewNode", "_retro_NewGraphNode")
         redirect_direct_calls(objects, splits, "_CCallGraph_NewInitCodeNode", "_retro_NewInitCodeNode")
         redirect_direct_calls(objects, splits, "_CCallGraph_Renumber", "_retro_RenumberGraph")

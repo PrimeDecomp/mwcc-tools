@@ -8,8 +8,6 @@ enum {
     Read = 1,
     Write = 2,
     RegisterClassCount = GeneralRegister + 1,
-    LoadFloatDouble = 0x92,
-    StoreFloatDouble = 0x9a,
     WiiOpcodeCount = 0x390,
     TimingRecordCount7400 = 0x191,
     IsBranch = 0x1,
@@ -151,15 +149,6 @@ void RC1_Initialize7400Timing(void) {
     for (int i = 1; i < TimingRecordCount7400; ++i) {
         const SchedulerTimingRecord* record = &RC1_7400_timing_records[i];
         RC1_7400_instruction_timing[record->opcode] = record->timing;
-    }
-
-    // Paired-single transfers use the floating-point load/store unit.
-    // Keep the ordering barrier for instructions outside the 7400 ISA.
-    for (int opcode = FirstPairedSingleMemoryOpcode; opcode <= LastPairedSingleMemoryOpcode; ++opcode) {
-        int memory = opcode < FirstPairedSingleStoreOpcode ? LoadFloatDouble : StoreFloatDouble;
-        SchedulerTiming timing = RC1_7400_instruction_timing[memory];
-        timing.serializes = RC1_7400_instruction_timing[opcode].serializes;
-        RC1_7400_instruction_timing[opcode] = timing;
     }
 }
 

@@ -19,7 +19,6 @@ enum {
 
 enum {
     FirstPairedSingleMemoryOpcode = 0x192,
-    FirstPairedSingleStoreOpcode = 0x196,
     LastPairedSingleMemoryOpcode = 0x199,
 };
 

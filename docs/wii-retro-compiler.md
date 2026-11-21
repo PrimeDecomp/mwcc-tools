@@ -22,9 +22,8 @@ The executable reports `Wii_Retro` in its banner. Keep `lmgr8c.dll` beside it wh
 project's compiler directory. To build directly into another directory, pass `--out-dir PATH` to
 `uv run --no-sync python -I gc2/tools/wii_retro_link.py`.
 
-The same Wii_Retro build serves Echoes Wii and retail Corruption. Corruption's Lua build
-uses CodeWarrior's existing 7400 scheduling setting and keeps the 750 schedule for
-`LuaPlus.cpp`.
+Echoes Wii and retail Corruption use the same Wii_Retro build. The original scheduling
+behavior for retail Corruption’s Lua code is under investigation.
 [Corruption compiler research](wii-retro-compiler-research.md#corruption-lua-lzo-and-compiler-scheduling)
 
 ## Current patches
@@ -38,20 +37,31 @@ uses CodeWarrior's existing 7400 scheduling setting and keeps the 750 schedule f
 - **Deferred function exports.** Orders weak bodies using vtable slots, definition and
   reference order, and constructor cleanup order. Keeps class-instance members together and
   preserves serialized reference order where needed under file IPA.
+- **File-IPA enum temporaries.** Emits pooled reference temporaries after the ordinary graph
+  when their static inline function has no emitted body. Preserves small-data order.
 - **File-IPA register order.** Adjusts virtual register assignment for inlined locals and
   arguments, propagated references, and optimizer-generated iterators when `-ipa file` is active.
+- **Inlined class references.** Keeps references bound directly to caller-local class objects
+  eligible for substitution through inlined floating-point selects on named scalar registers.
+- **Loop-invariant member addresses.** Preserves mutable call receivers through expression
+  propagation so file IPA can hoist their addresses and emit the loop entry test.
 - **Aggregate-copy scheduling.** Preserves memory order within mixed scalar and array member
   copies through both scheduler passes to limit register pressure.
-- **7400 paired-single timing.** Models paired-single loads and stores with floating-point
-  memory timing and preserves their scheduling barrier.
+- **Aggregate temporaries.** Removes writes to a temporary assembled from complete members once
+  the optimizer has forwarded its loads into a larger local object.
+- **Scalar float returns.** Loads the nonliteral operand first for a directly returned single-precision
+  addition with a literal, preserving the arithmetic operand order.
+- **Paired-single stack saves.** Uses the GameCube backend's D-form cutoff for Gekko FPR saves
+  and restores, matching the encoding in Echoes Wii and Corruption.
 
 The register-order and aggregate-copy controls match all three Wii builds. The Echoes integration
 sweep preserves every previous exact match, and the three rebuilt DOLs match their shipped hashes.
 [Research and validation](wii-retro-compiler-research.md#native-relink-and-validation)
 
-The relink includes recovered C implementations of register assignment and reservation, assignment and
-conditional lowering, scheduler entry and dependency construction, PCode formatting and side effects,
-alias analysis, deferred generation, call-graph management, IR reference packing, and template visitation.
+The relink includes recovered C implementations of register assignment and reservation, move
+coalescing, graph simplification, assignment and conditional lowering, scheduler entry and dependency
+construction, PCode formatting and side effects, alias analysis, inline eligibility, deferred
+generation, call-graph management, IR reference packing, and template visitation.
 The Windows validation runners cover function-template generation, register allocation,
 precompiled headers, and Echoes object and DOL comparisons. [Test instructions](../gc2/tools/wii_retro/tests/README.md)
 

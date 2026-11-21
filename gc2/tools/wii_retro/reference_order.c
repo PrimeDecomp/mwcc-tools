@@ -1,42 +1,10 @@
 /* Preserve local register order across RC1's file-IPA optimizations. */
-#include "rc1_local.h"
+#include "rc1_iro.h"
 
 enum {
     FileIpa = 1,
-    Operand = 1,
-    Unary = 2,
-    Binary = 3,
-    Indirect = 4,
-    Add = 0xf,
-    Assign = 0x1e,
-    IntConstant = 0x34,
-    ObjectRef = 0x3b,
     HasMemory = 0x80,
 };
-
-typedef struct Expr {
-    unsigned char opcode;
-    unsigned char header[0xf];
-    Object* object;
-} Expr;
-
-#pragma pack(push, 2)
-typedef struct Linear {
-    unsigned char kind;
-    unsigned char opcode;
-    unsigned char header[0x28];
-    union {
-        const Expr* expr;
-        const struct Linear* left;
-    } input;
-    const struct Linear* right;
-    unsigned char attributes[0xc];
-    const struct Linear* next;
-} Linear;
-#pragma pack(pop)
-
-_Static_assert(offsetof(Linear, input) == 0x2a, "RC1 linear IR operands");
-_Static_assert(offsetof(Linear, next) == 0x3e, "RC1 linear IR traversal");
 
 typedef struct Reference {
     const Object* object;
@@ -93,16 +61,6 @@ static size_t capacity;
 static Temp* temps;
 static size_t temp_count;
 static size_t temp_capacity;
-
-static Object* operand(const Linear* node) {
-    if (!node || node->kind != Operand || !node->input.expr || node->input.expr->opcode != ObjectRef)
-        return NULL;
-    return node->input.expr->object;
-}
-
-static Object* indirect_operand(const Linear* node) {
-    return node && node->kind == Unary && node->opcode == Indirect ? operand(node->input.left) : NULL;
-}
 
 static Object* create_temp(const Type* type, TempOrigin origin) {
     Object* object = create_temp_object(type);
