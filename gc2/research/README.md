@@ -466,6 +466,17 @@ The [compiler research notes](../../docs/wii-retro-compiler-research.md) record 
   loop depth. This keeps the two tests of the masked integer in `s_cos.c`,
   `s_sin.c`, and `s_tan.c` on one definition and preserves stock numbering
   of the floating-point constant symbols. All three objects match stock.
+- RC1 balances arithmetic trees at `0x5954d0` during TOC expansion above
+  optimization level two. It uses the operation weights at `0x5982d0`
+  to reassociate multiplication, addition, AND, XOR and OR, and factors
+  two addends with the same constant multiplier. Both
+  `ppc_dont_balance_ir` and `ppc_dont_balance_exp` disable this pass.
+  The stock program IPA options store `ppc_dont_balance_ir` at byte `0xb1`.
+  Corruption's optimized `e_log.c` now matches stock.
+- In `combine` at `0x5aef2a`, an indexed GPR pair plus a signed 16-bit
+  constant becomes a base-plus-displacement operand. The base is the
+  sum of the pair. For a full-width offset with both high and low parts,
+  the high addition uses a separate virtual register.
 - In `combine` at `0x5aec58`, RC1 adds the two registers of the indexed
   operand first, unless expression balancing is enabled and the preceding
   instruction's first operand is one of those registers. In that case it
@@ -476,6 +487,12 @@ The [compiler research notes](../../docs/wii-retro-compiler-research.md) record 
   also runs before register coloring, where it retargets the earlier of
   the two pointer copies. The optimized `__va_arg.c` object now matches
   stock with the project's flags.
+- RC1's `canmergeblocks` at `0x59af00` rejects a predecessor whose last
+  instruction is volatile. In `e_acos.c`, that is the paired-single
+  register save at the end of the prologue. The final scheduler leaves
+  the prologue separate from the floating-point argument spill and the
+  first comparison. The optimized `e_acos.c` and `e_log10.c` objects
+  now match stock.
 - The non-coloring allocator classifies types at `0x590530`. Native
   GPR, FPR, and vector allocation at `0x46d200`, `0x46cf60`, and
   `0x46ccd0` set the local usage cutoff to one tenth of the total use

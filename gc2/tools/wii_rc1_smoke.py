@@ -2684,6 +2684,67 @@ double unbraced(volatile int* p) {
             run(objcopy, f"--dump-section={section}={output}", obj, cwd=work)
             results[f"{source.name} {opt} {section}"] = output.read_bytes()
 
+    source = work / "volatile_prologue.c"
+    source.write_text(
+        """
+extern double next(double);
+double saved_register(double x, double y) {
+    union { double value; int words[2]; } bits;
+    bits.value = x;
+    if ((bits.words[0] & 0x7fffffff) >= 0x3ff00000) return x;
+    return next(x) * y;
+}
+double leaf(double x, double y) {
+    union { double value; int words[2]; } bits;
+    bits.value = x;
+    if ((bits.words[0] & 0x7fffffff) >= 0x3ff00000) return x;
+    return (x + y) * x + y;
+}
+""",
+        encoding="ascii",
+    )
+    obj = source.with_suffix(".o")
+    section = source.with_suffix(".text")
+    for options in (
+        ("-O4,p",), ("-O4,s",), ("-O4,p", "-pragma", "scheduling off"),
+    ):
+        run(
+            compiler, *FLAGS, *options, "-fp_contract", "off", "-func_align", "4",
+            "-c", source, "-o", obj, cwd=work,
+        )
+        run(objcopy, f"--dump-section=.text={section}", obj, cwd=work)
+        results[f"{source.name} {' '.join(options)}"] = section.read_bytes()
+
+    source = work / "expression_balance.c"
+    source.write_text(
+        """
+int shifted_sum(int a, int b) { return a + ((b >> 20) - 1023); }
+int reversed_sum(int a, int b) { return ((b >> 20) - 1023) + a; }
+int plain_sum(int a, int b) { return a + (b - 1023); }
+int sum_then_offset(int a, int b) { return (a + b) - 1023; }
+int compound_sum(int a, int b) { a += b - 1023; return a; }
+int shared_scale(int a, int b) { return (a * 499) + (b * 499); }
+int different_scale(int a, int b) { return (a * 499) + (b * 601); }
+int large_offset(int a, int b) { return (a + b) + 0x12345678; }
+int high_offset(int a, int b) { return (a + b) + 0x12340000; }
+extern int next(void);
+int with_call(int a) { return a + (next() - 1023); }
+int with_load(int a, volatile const int* p) { return a + (*p - 1023); }
+unsigned masks(unsigned a, unsigned b) { return a ^ ((b << 4) ^ 0x12); }
+""",
+        encoding="ascii",
+    )
+    obj = source.with_suffix(".o")
+    section = source.with_suffix(".text")
+    for options in (
+        ("-O0",), ("-O1",), ("-O2",), ("-O3",), ("-O4,p",), ("-O4,s",),
+        ("-O4,p", "-pragma", "ppc_dont_balance_ir on"),
+        ("-O4,p", "-pragma", "ppc_dont_balance_exp on"),
+    ):
+        run(compiler, *FLAGS, *options, "-func_align", "4", "-c", source, "-o", obj, cwd=work)
+        run(objcopy, f"--dump-section=.text={section}", obj, cwd=work)
+        results[f"{source.name} {' '.join(options)}"] = section.read_bytes()
+
     source = work / "integer_factoring.c"
     source.write_text(
         """

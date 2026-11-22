@@ -3685,6 +3685,15 @@ void peepholeoptimizeprecolor(Object* func) {
 }
 #endif
 
+#if VERSION == VERSION_WII_1_0RC1
+static Boolean canmergeblocks(PCodeBlock* block, PCodeBlock* next) {
+    return next && block->successors && block->successors->block == next &&
+           !block->successors->nextLink && next->predecessors &&
+           next->predecessors->block == block && !next->predecessors->nextLink &&
+           (!block->lastPCode || !(block->lastPCode->flags & (fIsVolatile | fSideEffects | fIsCall)));
+}
+#endif
+
 void peepholemergeblocks(Object* func, Boolean mergePrologEpilog) {
     PCodeBlock* block;
     PCodeBlock* next;
@@ -3716,6 +3725,11 @@ void peepholemergeblocks(Object* func, Boolean mergePrologEpilog) {
                 continue;
             }
 
+#if VERSION == VERSION_WII_1_0RC1
+            if (block->lastPCode && (block->lastPCode->flags & fIsVolatile)) {
+                continue;
+            }
+#endif
             if (block->lastPCode && block->lastPCode->op == PC_B) {
                 if (block->lastPCode->args[0].kind == PCOp_LABEL &&
                     block->lastPCode->args[0].data.label.label->block == next) {
@@ -3730,10 +3744,14 @@ void peepholemergeblocks(Object* func, Boolean mergePrologEpilog) {
                 continue;
             }
 
+#if VERSION == VERSION_WII_1_0RC1
+            while (canmergeblocks(block, next) &&
+#else
             while (block->successors->block == next &&
                    block->successors->nextLink == NULL &&
                    next->predecessors->block == block &&
                    next->predecessors->nextLink == NULL &&
+#endif
                    !nextIsEpilogue &&
                    !(next->flags & fEntryPoint) &&
                    (block->pcodeCount + next->pcodeCount) <= 100) {

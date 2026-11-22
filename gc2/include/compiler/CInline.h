@@ -25,6 +25,7 @@ struct CInlineBackendOptions {
 #if VERSION == VERSION_WII_1_0RC1
     UInt8 removeemptyloops;
     UInt8 opt_optimizecontrolflow;
+    Boolean ppc_dont_balance_ir;
 #endif
     SInt16 unroll_instr_limit;
     SInt16 unroll_factor_limit;

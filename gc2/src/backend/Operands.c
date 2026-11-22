@@ -472,6 +472,18 @@ void combine(Operand* opA, Operand* opB, short output_reg, Operand* opOut) {
             opA = opB;
             opB = swapOp;
         case COMBO_OP(OpndType_Absolute, OpndType_GPR_Indexed):
+#if VERSION == VERSION_WII_1_0RC1
+            if (FITS_IN_SHORT(opA->immediate)) {
+                opOut->optype = OpndType_GPR_ImmOffset;
+                opOut->reg = (output_reg && (output_reg != opB->reg))
+                    ? output_reg
+                    : ALLOC_GPR();
+                opOut->immOffset = opA->immediate;
+                opOut->object = NULL;
+                emitpcode(PC_ADD, opOut->reg, opB->reg, opB->regOffset);
+                break;
+            }
+#endif
             opOut->optype = OpndType_GPR_Indexed;
             opOut->reg = opB->reg;
             opOut->regOffset = (output_reg && (output_reg != opB->reg))
@@ -480,12 +492,17 @@ void combine(Operand* opA, Operand* opB, short output_reg, Operand* opOut) {
             if (!HIGH_PART(opA->immediate)) {
                 emitpcode(PC_ADDI, opOut->regOffset, opB->regOffset, 0, LOW_PART(opA->immediate));
             } else {
+#if VERSION == VERSION_WII_1_0RC1
+                short high_reg = LOW_PART(opA->immediate) ? ALLOC_GPR() : opOut->regOffset;
+#else
+                short high_reg = opOut->regOffset;
+#endif
                 emitpcode(
-                    PC_ADDIS, opOut->regOffset, opB->regOffset, 0, (short)HIGH_PART(opA->immediate)
+                    PC_ADDIS, high_reg, opB->regOffset, 0, (short)HIGH_PART(opA->immediate)
                 );
                 if (LOW_PART(opA->immediate)) {
                     emitpcode(
-                        PC_ADDI, opOut->regOffset, opOut->regOffset, 0, LOW_PART(opA->immediate)
+                        PC_ADDI, opOut->regOffset, high_reg, 0, LOW_PART(opA->immediate)
                     );
                 }
             }

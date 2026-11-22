@@ -1180,7 +1180,13 @@ Boolean canoptimizevectorconst(MWVector128* vecp, Type* type, COVCResult* result
     return FALSE;
 }
 
+#if VERSION == VERSION_WII_1_0RC1
+#define COND_SIDE_EFFECT(expr, allow_loads) DetectCondSideAffect((expr), (allow_loads))
+static Boolean DetectCondSideAffect(ENode* expr, Boolean allow_loads) {
+#else
+#define COND_SIDE_EFFECT(expr, allow_loads) DetectCondSideAffect(expr)
 static Boolean DetectCondSideAffect(ENode* expr) {
+#endif
     switch (expr->type) {
         case EMUL:
         case EMULV:
@@ -1202,11 +1208,16 @@ static Boolean DetectCondSideAffect(ENode* expr) {
         case EBCLR:
         case EBTST:
         case EBSET:
-            if (DetectCondSideAffect(expr->data.diadic.left)) {
+            if (COND_SIDE_EFFECT(expr->data.diadic.left, allow_loads)) {
                 return TRUE;
             }
-            return DetectCondSideAffect(expr->data.diadic.right);
+            return COND_SIDE_EFFECT(expr->data.diadic.right, allow_loads);
         case EINDIRECT: {
+#if VERSION == VERSION_WII_1_0RC1
+            if (allow_loads) {
+                return DetectCondSideAffect(expr->data.monadic, TRUE);
+            }
+#endif
             if (expr->data.monadic->type == EINDIRECT) {
                 return TRUE;
             }
@@ -1231,7 +1242,7 @@ static Boolean DetectCondSideAffect(ENode* expr) {
         case EFORCELOAD:
         case ETYPCON:
         case EBITFIELD:
-            return DetectCondSideAffect(expr->data.monadic);
+            return COND_SIDE_EFFECT(expr->data.monadic, allow_loads);
         case EINTCONST:
         case EFLOATCONST:
         case ESTRINGCONST:
@@ -1356,6 +1367,10 @@ static UInt8 WeightandSumOps(ENode* expr) {
                     return 0;
                 }
             }
+#if VERSION == VERSION_WII_1_0RC1
+            score = 1 + WeightandSumOps(expr->data.monadic);
+            break;
+#endif
         case EFORCELOAD:
         case ETYPCON:
         case EBITFIELD:
@@ -1368,7 +1383,11 @@ static UInt8 WeightandSumOps(ENode* expr) {
         case EFLOATCONST:
         case ESTRINGCONST:
         case EVECTOR128CONST:
+#if VERSION == VERSION_WII_1_0RC1
+            score = 1;
+#else
             score = 0;
+#endif
             break;
         case EFUNCCALL:
         case EFUNCCALLP:
@@ -1383,6 +1402,106 @@ static UInt8 WeightandSumOps(ENode* expr) {
     }
     return (UInt8)score;
 }
+
+#if VERSION == VERSION_WII_1_0RC1
+static void factor_scaled_addends(ENode* expr) {
+    ENode* left;
+    ENode* right;
+    ENode* scale;
+    ENode* other_scale;
+
+    if (expr->type != EADD) {
+        return;
+    }
+    left = expr->data.diadic.left;
+    right = expr->data.diadic.right;
+    if (left->type != EMUL || right->type != EMUL ||
+        left->rtype != expr->rtype || right->rtype != expr->rtype) {
+        return;
+    }
+    scale = right->data.diadic.right;
+    other_scale = left->data.diadic.right;
+    if (scale->type != EINTCONST || other_scale->type != EINTCONST ||
+        !CInt64_Equal(scale->data.intval, other_scale->data.intval)) {
+        return;
+    }
+
+    expr->type = EMUL;
+    expr->data.diadic.right = scale;
+    left->type = EADD;
+    left->data.diadic.right = right->data.diadic.left;
+}
+
+static void balance_expression(ENode* expr) {
+    Type* type = expr->rtype;
+    ENode* left;
+    ENode* right;
+    ENode* a;
+    ENode* b;
+    ENode* c;
+    unsigned a_weight;
+    unsigned b_weight;
+    unsigned c_weight;
+    Boolean keep_outer;
+
+    if (copts.ppc_dont_balance_exp ||
+        !(IS_TYPE_INT_OR_ENUM(type) ||
+          (IS_TYPE_POINTER_ONLY(type) && !IS_TYPE_FUNC(TPTR_TARGET(type)))) ||
+        (IS_TYPE_INT(type) && TYPE_INTEGRAL(type)->integral >= IT_23) ||
+        DetectCondSideAffect(expr, TRUE)) {
+        return;
+    }
+
+    switch (expr->type) {
+        case EADD:
+            factor_scaled_addends(expr);
+            break;
+        case EMUL:
+        case EAND:
+        case EXOR:
+        case EOR:
+            break;
+        default:
+            return;
+    }
+
+    left = expr->data.diadic.left;
+    right = expr->data.diadic.right;
+    if (left->type == expr->type && left->rtype == type && right->type != expr->type) {
+        a = left->data.diadic.left;
+        b = left->data.diadic.right;
+        c = right;
+        a_weight = WeightandSumOps(a);
+        b_weight = WeightandSumOps(b);
+        c_weight = WeightandSumOps(c);
+        keep_outer = a_weight >= b_weight + c_weight;
+        if (keep_outer || b_weight >= a_weight + c_weight) {
+            expr->data.diadic.left = keep_outer ? a : b;
+            expr->data.diadic.right = left;
+            left->data.diadic.left = keep_outer ? b : a;
+            left->data.diadic.right = c;
+        }
+    } else if (right->type == expr->type && right->rtype == type && left->type != expr->type) {
+        a = left;
+        b = right->data.diadic.left;
+        c = right->data.diadic.right;
+        a_weight = WeightandSumOps(a);
+        b_weight = WeightandSumOps(b);
+        c_weight = WeightandSumOps(c);
+        keep_outer = c_weight >= a_weight + b_weight;
+        if (keep_outer || b_weight >= a_weight + c_weight) {
+            expr->data.diadic.left = right;
+            expr->data.diadic.right = keep_outer ? c : b;
+            right->data.diadic.left = a;
+            right->data.diadic.right = keep_outer ? b : c;
+        }
+    }
+
+    factor_scaled_addends(expr->data.diadic.left);
+    factor_scaled_addends(expr->data.diadic.right);
+    factor_scaled_addends(expr);
+}
+#endif
 
 Boolean TOC_use_fsel(ENode* expr) {
     ENode* left;
@@ -1441,10 +1560,10 @@ Boolean TOC_use_fsel(ENode* expr) {
         }
     }
 
-    if (DetectCondSideAffect(left)) {
+    if (COND_SIDE_EFFECT(left, FALSE)) {
         return FALSE;
     }
-    if (DetectCondSideAffect(right)) {
+    if (COND_SIDE_EFFECT(right, FALSE)) {
         return FALSE;
     }
 
@@ -1542,10 +1661,10 @@ Boolean TOC_use_isel(ENode* expr, Boolean force) {
         }
     }
 
-    if (DetectCondSideAffect(left)) {
+    if (COND_SIDE_EFFECT(left, FALSE)) {
         return FALSE;
     }
-    if (DetectCondSideAffect(right)) {
+    if (COND_SIDE_EFFECT(right, FALSE)) {
         return FALSE;
     }
 
@@ -2121,6 +2240,11 @@ opassign_common:
                 expr->hascall = TRUE;
                 note_function_call();
             }
+#if VERSION == VERSION_WII_1_0RC1
+            if (copts.optimizationlevel > 2 && !copts.ppc_dont_balance_ir) {
+                balance_expression(expr);
+            }
+#endif
             break;
 
         case ETYPCON:
