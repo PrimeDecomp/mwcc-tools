@@ -390,6 +390,13 @@ The [compiler research notes](../../docs/wii-retro-compiler-research.md) record 
   link supplies its source block's live-out and later links supply the
   destination block's live-out. In `fwide` this removes a false interference
   edge, so the result coalesces into r4 and is moved to r3 at the shared return.
+- The graph builder at `0x638510` rebuilds class-specific liveness and
+  interference until the coalescer at `0x638a50` stops merging registers. It
+  retains the register equivalences across passes. The coalescer can merge
+  virtual registers outside the frontend temporary range. It keeps the lower
+  register number and skips the merge if any call pins the higher register.
+  In the size build of `FILE_POS.c`, the buffer pointer and loop pointer in
+  the out-of-line `_ftell` have no interference edge and merge into one GPR.
 - RC1 allocates a virtual condition field in each scalar comparison selector.
   In `e_sqrt.c`, value numbering at `0x5b4c01` copies the field from the
   first signed comparison with zero, so two branches can read it across an
@@ -583,9 +590,9 @@ The [compiler research notes](../../docs/wii-retro-compiler-research.md) record 
   six. This leaves a weak `_ftell` called from both `ftell` and `_fseek`.
   The source applies this fast estimate to calls without numeric literal
   arguments.
-  It still emits an extra move in the out-of-line `_ftell`. The estimator
-  that expands a copy of smaller callees and applies argument-dependent
-  savings remains to be recovered.
+  `FILE_POS.c` now matches at `-O4,s`. The estimator that expands a copy
+  of smaller callees and applies argument-dependent savings remains to
+  be recovered.
 - `CMach_GetObjectAlignment`, `CMach_AllocationAlignment`, and `move_block` start at
   `0x4F4AA0`, `0x4F4BB0`, and `0x5BD1F0`. The source smoke test compares an 8-byte
   aggregate copy with the default options, legacy struct alignment, and floating-point moves enabled.

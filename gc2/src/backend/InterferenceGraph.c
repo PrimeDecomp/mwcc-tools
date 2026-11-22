@@ -15,6 +15,9 @@
 IGNode** interferencegraph;
 static UInt32* interferencematrix;
 static SInt16* coalesced;
+#if VERSION == VERSION_WII_1_0RC1
+static UInt32* pinned_call_registers;
+#endif
 
 static void makeinterfere(UInt32 a, UInt32 b) {
     if (a < b) {
@@ -34,19 +37,20 @@ int interferes(UInt32 a, UInt32 b) {
     }
 }
 
-static void buildinterferencematrix(void) {
+static void buildinterferencematrix(UInt32* vec) {
     PCodeBlock* block;
     PCode* instr;
     PCodeArg* op;
-    UInt32* vec;
     UInt32 i;
     UInt32 j;
     short reg;
 
     UInt32 regs = used_virtual_registers[coloring_class];
     UInt32 realRegs = n_real_registers[coloring_class];
-    interferencematrix = oalloc(4 * ((((regs * regs) / 2) + 31) >> 5));
     bitvectorinitialize(interferencematrix, (regs * regs) / 2, 0);
+#if VERSION == VERSION_WII_1_0RC1
+    bitvectorinitialize(pinned_call_registers, regs, 0);
+#endif
 
     for (i = 0; i < realRegs; i++) {
         for (j = 0; j < realRegs; j++) {
@@ -56,11 +60,16 @@ static void buildinterferencematrix(void) {
         }
     }
 
-    vec = oalloc(4 * ((regs + 31) >> 5));
     for (block = pcbasicblocks; block; block = block->nextBlock) {
         bitvectorcopy(vec, liveinfo[block->blockIndex].out, regs);
         for (instr = block->lastPCode; instr; instr = instr->prevPCode) {
             for (op = instr->args, i = instr->argCount; i--; op++) {
+#if VERSION == VERSION_WII_1_0RC1
+                if ((instr->flags & fIsCall) && PC_OP_IS_ANY_REGISTER(op, coloring_class) &&
+                    (op->data.reg.effect & EffectPinned)) {
+                    bitvectorsetbit(op->data.reg.reg, pinned_call_registers);
+                }
+#endif
                 if (PC_OP_IS_WRITE_ANY_REGISTER(op, coloring_class)) {
 #ifdef __MWERKS__
                     bitvectorclearbit(reg = op->data.reg.reg, vec);
@@ -160,7 +169,7 @@ static short coalesced_path(short id) {
     return id;
 }
 
-static void coalescenodes(void) {
+static Boolean coalescenodes(void) {
     PCodeArg* op;
     UInt32 regs;
     PCodeBlock* block;
@@ -170,13 +179,9 @@ static void coalescenodes(void) {
     short path2;
     short node1;
     short node2;
+    Boolean changed = FALSE;
 
     regs = used_virtual_registers[coloring_class];
-    coalesced = oalloc(sizeof(SInt16) * regs);
-
-    for (i = 0; i < regs; i++) {
-        coalesced[i] = i;
-    }
 
     for (block = pcbasicblocks; block; block = block->nextBlock) {
         for (instr = block->firstPCode; instr; instr = instr->nextPCode) {
@@ -202,6 +207,7 @@ static void coalescenodes(void) {
                     }
 
                     if (!interferes(path1, path2)) {
+#if VERSION != VERSION_WII_1_0RC1
                         if (path1 >= n_real_registers[coloring_class] &&
                             path2 >= n_real_registers[coloring_class] &&
                             !(path1 >= first_fe_temporary_register[coloring_class] &&
@@ -210,15 +216,23 @@ static void coalescenodes(void) {
                               path2 <= last_temporary_register[coloring_class])) {
                             continue;
                         }
+#endif
 
                         node1 = (path2 < path1) ? path2 : path1;
                         node2 = (path2 > path1) ? path2 : path1;
 
+#if VERSION == VERSION_WII_1_0RC1
+                        /* A pinned call operand must keep its register number. */
+                        if (bitvectorgetbit(node2, pinned_call_registers)) {
+                            continue;
+                        }
+#endif
                         if (coloring_class == RegClass_GPR && node2 == _CALLER_SP_) {
                             continue;
                         }
 
                         coalesced[node2] = node1;
+                        changed = TRUE;
                         for (i = 0; i < regs; i++) {
                             if (interferes(node2, i)) {
                                 makeinterfere(node1, i);
@@ -245,6 +259,7 @@ static void coalescenodes(void) {
             }
         }
     }
+    return changed;
 }
 
 static void buildadjacencyvectors(void) {
@@ -387,18 +402,38 @@ static void findrematerializations(void) {
 }
 
 void buildinterferencegraph(Object* proc) {
-    int regs = used_virtual_registers[coloring_class];
+    UInt32 regs = used_virtual_registers[coloring_class];
+    UInt32* live = oalloc(4 * ((regs + 31) >> 5));
+    UInt32 i;
 
     computelivevariables(proc);
     eliminatedeadcode();
-#if VERSION == VERSION_WII_1_0RC1
-    filter_undefined_live_registers();
-#endif
-    buildinterferencematrix();
-    if (copts.debuglisting) {
-        pclistinterferences(register_class_format[coloring_class], regs);
+    coalesced = oalloc(sizeof(*coalesced) * regs);
+    for (i = 0; i < regs; i++) {
+        coalesced[i] = i;
     }
-    coalescenodes();
+    interferencematrix = oalloc(4 * ((((regs * regs) / 2) + 31) >> 5));
+#if VERSION == VERSION_WII_1_0RC1
+    pinned_call_registers = oalloc(4 * ((regs + 31) >> 5));
+#endif
+    for (;;) {
+#if VERSION == VERSION_WII_1_0RC1
+        filter_undefined_live_registers();
+#endif
+        buildinterferencematrix(live);
+        if (copts.debuglisting) {
+            pclistinterferences(register_class_format[coloring_class], regs);
+        }
+        if (!coalescenodes()) {
+            break;
+        }
+#if VERSION == VERSION_WII_1_0RC1
+        /* The rewritten operands can remove interference for another move. */
+        computelivevariables(proc);
+#else
+        break;
+#endif
+    }
     buildadjacencyvectors();
     findrematerializations();
 }
