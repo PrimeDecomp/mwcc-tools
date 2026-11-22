@@ -2321,6 +2321,37 @@ int mask_byte(unsigned char x) { return x & 0x7b; }
         )
         results[f"{source.name} {opt}"] = obj.read_bytes()
 
+    source = work / "integer_equality.c"
+    source.write_text(
+        """\
+int byte_eq(unsigned char x) { return x == 1; }
+int short_eq(signed short x) { return x == -1; }
+int halfword_max(unsigned short x) { return x == 65535; }
+int word_eq(unsigned int x) { return x == 65535U; }
+int register_eq(int x, int y) { return x == y; }
+int byte_ne(unsigned char x) { return x != 1; }
+int halfword_ne(unsigned short x) { return x != 65535; }
+""",
+        encoding="ascii",
+    )
+    obj = source.with_suffix(".o")
+    for opt in ("-O0", "-O2", "-O4,p", "-O4,s"):
+        run(compiler, *FLAGS, opt, "-func_align", "4", "-c", source, "-o", obj, cwd=work)
+        results[f"{source.name} {opt}"] = obj.read_bytes()
+
+    source = work / "wide_comparison_mask.c"
+    source.write_text(
+        """\
+int equal_mask(unsigned long long x, unsigned long long y) { return -(x == y); }
+int unequal_mask(unsigned long long x) { return -(x != 0x100000000ULL); }
+""",
+        encoding="ascii",
+    )
+    obj = source.with_suffix(".o")
+    for opt in ("-O0", "-O1", "-O2"):
+        run(compiler, *FLAGS, opt, "-func_align", "4", "-c", source, "-o", obj, cwd=work)
+        results[f"{source.name} {opt}"] = obj.read_bytes()
+
     source = work / "local_declaration_weight.c"
     source.write_text(
         "void declaration_weight(int x) {\n"

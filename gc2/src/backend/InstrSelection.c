@@ -412,6 +412,10 @@ void gen_MONMIN(ENode* expr, short outputReg, short outputRegHi, Operand* output
             case EEQU:
             case ENOTEQU:
                 if (TYPE_FITS_IN_REGISTER(scan->data.diadic.left->rtype) &&
+#if VERSION == VERSION_WII_1_0RC1
+                    !TYPE_IS_8BYTES(scan->data.diadic.left->rtype) &&
+                    !TYPE_IS_8BYTES(scan->data.diadic.right->rtype) &&
+#endif
                     TYPE_FITS_IN_REGISTER(scan->data.diadic.right->rtype)) {
                     gen_negated_condition_gpr(scan, output, outputReg);
                     return;
@@ -4461,7 +4465,20 @@ void gen_condition_gpr(ENode* cond, Operand* output, short outputReg) {
                     return;
                 } else {
                     tmpReg = ALLOC_GPR();
-                    emitpcode(PC_SUBF, tmpReg, op1.reg, op2.reg);
+#if VERSION == VERSION_WII_1_0RC1
+                    if (IS_INT_CONST(right)) {
+                        if (left->rtype->size == 2 && right->rtype->size == 2 &&
+                            is_unsigned(left->rtype) && is_unsigned(right->rtype) &&
+                            right->data.intval.lo == 0xffff) {
+                            emitpcode(PC_XORI, tmpReg, op1.reg, 0xffff);
+                        } else {
+                            emitpcode(PC_SUBF, tmpReg, op2.reg, op1.reg);
+                        }
+                    } else
+#endif
+                    {
+                        emitpcode(PC_SUBF, tmpReg, op1.reg, op2.reg);
+                    }
                     tmpReg2 = ALLOC_GPR();
                     emitpcode(PC_CNTLZW, tmpReg2, tmpReg);
                     finalReg = outputReg ? outputReg : ALLOC_GPR();
@@ -4532,7 +4549,14 @@ void gen_condition_gpr(ENode* cond, Operand* output, short outputReg) {
 
                 if (copts.optimizesize) {
                     tmpReg = ALLOC_GPR();
-                    emitpcode(PC_SUBF, tmpReg, op1.reg, op2.reg);
+#if VERSION == VERSION_WII_1_0RC1
+                    if (IS_INT_CONST(right)) {
+                        emitpcode(PC_SUBF, tmpReg, op2.reg, op1.reg);
+                    } else
+#endif
+                    {
+                        emitpcode(PC_SUBF, tmpReg, op1.reg, op2.reg);
+                    }
                     tmpReg2 = ALLOC_GPR();
                     emitpcode(PC_ADDIC, tmpReg2, tmpReg, -1);
                     finalReg = outputReg ? outputReg : ALLOC_GPR();

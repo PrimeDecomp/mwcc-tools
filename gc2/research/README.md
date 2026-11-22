@@ -299,11 +299,21 @@ The [compiler research notes](../../docs/wii-retro-compiler-research.md) record 
   mask directly at `0x5b805a` if preceding definitions prove it redundant.
   The optimized Corruption `wstring.c` object and the unsigned-short
   bounds test with `opt_optimizecontrolflow off` now match stock.
-- When stock `gen_condition_gpr` lowers integer equality to `SUBF`, it
-  uses an integer constant of at most four bytes as the subtrahend at
+- When `gen_condition_gpr` lowers integer equality to `SUBF`, a right
+  integer constant of at most four bytes becomes the subtrahend at
   `0x51e127`. Other operands take the reverse-order emission at
-  `0x51e193`. For an unsigned byte compared with one, stock folds the
-  subtraction to `subi` and the source selects `subfic`.
+  `0x51e193`. Size-optimized inequality uses the same ordering at
+  `0x51e326` and `0x51e39f`. An unsigned halfword equal to `0xffff`
+  uses `XORI` at `0x51d566`.
+- At `0x529a6d` and `0x529aaa`, `gen_MONMIN` checks both comparison
+  operands for 64-bit integer types before choosing the single-register
+  negated-compare path. A wide comparison uses `I8_gen_condition` and
+  negates the resulting boolean, so the high words participate.
+  Optimized comparisons against a 64-bit constant still have excess
+  instructions in the source. Stock folds XOR inputs from `LI` and
+  `LIS` in the constant propagation pass at `0x646890`. Stock traces
+  of comparison with zero, one, and `0x7abc000000000000` reach the
+  move, `XORI`, and `XORIS` rewrites respectively.
 - RC1's class-specific liveness pass calls `0x63a9e0` at `0x63a491` before
   building the interference graph. It restricts entry live-ins to physical
   registers and walks blocks forward, masking live-outs by live-ins and local
