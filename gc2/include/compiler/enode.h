@@ -159,7 +159,11 @@ typedef enum ENodeType {
     MAXEXPR
 } ENodeType;
 #if VERSION == VERSION_WII_1_0RC1
-enum { EScope_LocalDeclaration = 5 };
+enum {
+    EScope_BlockStart = 3,
+    EScope_BlockEnd = 4,
+    EScope_LocalDeclaration = 5
+};
 #endif
 enum {
     ENODE_FLAG_CONST = Q_CONST,

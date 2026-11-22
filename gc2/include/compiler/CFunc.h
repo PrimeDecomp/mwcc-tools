@@ -42,6 +42,12 @@ typedef struct DeclBlock {
     struct ExceptionAction* dobjstack;
     NameSpace* parent_nspace;
     UInt16 index;
+#if VERSION == VERSION_WII_1_0RC1
+    Statement* before_scope;
+    SInt32 sourceoffset;
+    HashNameNode* sourcefilepath;
+    Boolean has_local_declarations;
+#endif
 } DeclBlock;
 typedef struct LoopInfo {
     int unused0;

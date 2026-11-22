@@ -584,7 +584,8 @@ Statement* COpt_Optimizer(Object* obj, Statement* stmt) {
         Statement** next = &stmt->next;
         while (*next) {
             Statement* scan = *next;
-            if (scan->type == ST_EXPRESSION && scan->expr && scan->expr->type == ESCOPE) {
+            if (scan->type == ST_EXPRESSION && scan->expr && scan->expr->type == ESCOPE &&
+                scan->expr->data.scope.kind == EScope_LocalDeclaration) {
                 *next = scan->next;
             } else {
                 next = &scan->next;

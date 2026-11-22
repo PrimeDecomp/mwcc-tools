@@ -1809,6 +1809,9 @@ static void expandTOCexpression(ENode* expr, Type* type, int ignored) {
 
     expr->ignored = ignored;
     switch (expr->type) {
+#if VERSION == VERSION_WII_1_0RC1
+        case ESCOPE:
+#endif
         case EINTCONST:
             expr->hascall = FALSE;
             break;

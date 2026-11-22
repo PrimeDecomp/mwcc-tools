@@ -409,9 +409,17 @@ The [compiler research notes](../../docs/wii-retro-compiler-research.md) record 
   reduce the induction product and hoist an invariant offset product.
   `0x667120` restores the old tree when neither product is marked. In
   Corruption's `qsort.c`, this turns `member_size * (l - 1)` into a
-  loop-carried product and a fixed offset. The default and `-O3` objects now
-  match stock. The `-O0` code and the build with the global optimizer disabled
-  still differ.
+  loop-carried product and a fixed offset. The default and `-O3` objects
+  match stock.
+- Local declarations at `0x50dc7c` and `0x50d976` mark the enclosing
+  declaration block for automatic and static variables, respectively.
+  Restoring a nested marked block at `0x510c40` inserts an `ESCOPE` start
+  marker before its statements and an end marker after them. Both carry
+  the keep flag. The optimized IR omits the markers. When the markers
+  reach `expandTOCreferences` at `0x595c00`, their flags select a dynamic
+  frame with r31 as the frame pointer. The instruction selector for
+  `ESCOPE` at `0x52a770` emits no instructions. The unoptimized build of
+  `qsort.c` and its build with the global optimizer disabled match stock.
 - RC1 allocates a virtual condition field in each scalar comparison selector.
   In `e_sqrt.c`, value numbering at `0x5b4c01` copies the field from the
   first signed comparison with zero, so two branches can read it across an

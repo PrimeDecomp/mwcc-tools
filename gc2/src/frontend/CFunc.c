@@ -138,12 +138,21 @@ DeclBlock* CFunc_NewDeclBlock(void) {
     NameSpace* nspace;
 
     block = lalloc(sizeof(DeclBlock));
+#if VERSION == VERSION_WII_1_0RC1
+    block->next = currentblock;
+    currentblock = block;
+    block->before_scope = curstmt;
+    block->sourceoffset = sourceoffset;
+    block->sourcefilepath = sourcefilepath;
+    block->has_local_declarations = FALSE;
+#else
     if (firstblock) {
         currentblock->next = block;
         currentblock = block;
     } else {
         currentblock = firstblock = block;
     }
+#endif
 
     block->index = blockcount++;
     block->parent_nspace = cscope_current;
@@ -156,12 +165,42 @@ DeclBlock* CFunc_NewDeclBlock(void) {
     return block;
 }
 
+#if VERSION == VERSION_WII_1_0RC1
+static void CFunc_SetBlockMarker(Statement* statement, UInt8 kind) {
+    ENode* marker = CExpr_NewENode(ESCOPE);
+    marker->rtype = &stvoid;
+    marker->data.scope.kind = kind;
+    statement->expr = marker;
+    statement->flags |= StmtFlag_KeepLabel;
+}
+
+static void CFunc_AppendLocalDeclarationInfo(Object* object) {
+    ENode* scope = CExpr_NewENode(ESCOPE);
+    currentblock->has_local_declarations = TRUE;
+    scope->rtype = &stvoid;
+    scope->data.scope.object = CExpr_MakeObjRefNode(object, FALSE);
+    scope->data.scope.object->rtype = &stvoid;
+    scope->data.scope.kind = EScope_LocalDeclaration;
+    CFunc_AppendStatement(ST_EXPRESSION)->expr = scope;
+}
+#endif
+
 void CFunc_RestoreBlock(DeclBlock* block) {
     if (curstmt && curstmt->dobjstack != cexcept_dobjstack) {
         Statement* stmt = CFunc_AppendStatement(ST_EXPRESSION);
         stmt->expr = nullnode();
     }
 
+#if VERSION == VERSION_WII_1_0RC1
+    if (block->has_local_declarations && block->before_scope) {
+        Statement* start = CFunc_InsertStatement(ST_EXPRESSION, block->before_scope);
+        start->sourceoffset = block->sourceoffset;
+        start->sourcefilepath = block->sourcefilepath;
+        CFunc_SetBlockMarker(start, EScope_BlockStart);
+        CFunc_SetBlockMarker(CFunc_AppendStatement(ST_EXPRESSION), EScope_BlockEnd);
+    }
+    currentblock = block->next;
+#endif
     cscope_current = block->parent_nspace;
     cexcept_dobjstack = block->dobjstack;
 }
@@ -1261,6 +1300,9 @@ static void CFunc_LocalDataDeclarator(
                 object->nspace = cscope_root;
                 object->datatype = DDATA;
                 CFunc_NameLocalStaticDataObject(object, object->name->name);
+#if VERSION == VERSION_WII_1_0RC1
+                CFunc_AppendLocalDeclarationInfo(object);
+#endif
 
                 if (copts.cplusplus) {
                     sinit_first_object = NULL;
@@ -1304,12 +1346,7 @@ static void CFunc_LocalDataDeclarator(
 
                 if (!isParameterList) {
 #if VERSION == VERSION_WII_1_0RC1
-                    ENode* scope = CExpr_NewENode(ESCOPE);
-                    scope->rtype = &stvoid;
-                    scope->data.scope.object = CExpr_MakeObjRefNode(object, FALSE);
-                    scope->data.scope.object->rtype = &stvoid;
-                    scope->data.scope.kind = EScope_LocalDeclaration;
-                    CFunc_AppendStatement(ST_EXPRESSION)->expr = scope;
+                    CFunc_AppendLocalDeclarationInfo(object);
 #endif
                     if (IS_TYPE_SOM_CLASS(di->thetype)) {
                         CSOM_InitAutoClass(object);

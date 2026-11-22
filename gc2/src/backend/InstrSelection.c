@@ -73,6 +73,10 @@ static ENodeType invert_relop(ENodeType nt);
                     : ((((mb) > 31) ? 0 : (0xFFFFFFFF >> (mb))) | \
                        ~((((me) + 1) > 31) ? 0 : (0xFFFFFFFF >> ((me) + 1)))))
 
+#if VERSION == VERSION_WII_1_0RC1
+static void gen_INFO(ENode* expr, short outputReg, short outputRegHi, Operand* output) {}
+#endif
+
 void init_cgdispatch(void) {
     ENodeType t;
 
@@ -116,6 +120,9 @@ void init_cgdispatch(void) {
     cgdispatch[EFUNCCALL] = gen_FUNCCALL;
     cgdispatch[EFUNCCALLP] = gen_FUNCCALL;
     cgdispatch[EOBJREF] = gen_OBJREF;
+#if VERSION == VERSION_WII_1_0RC1
+    cgdispatch[ESCOPE] = gen_INFO;
+#endif
     cgdispatch[ENULLCHECK] = gen_NULLCHECK;
     cgdispatch[EPRECOMP] = gen_PRECOMP;
     cgdispatch[EDEFINE] = gen_DEFINE;

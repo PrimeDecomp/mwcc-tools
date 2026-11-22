@@ -1487,6 +1487,12 @@ void IRO_Linearize(Statement* stmt) {
                 linear->u.label.label = stmt->label;
                 break;
             case ST_EXPRESSION:
+#if VERSION == VERSION_WII_1_0RC1
+                if (copts.optimizationlevel > 0 && stmt->expr->type == ESCOPE &&
+                    stmt->expr->data.scope.kind != EScope_LocalDeclaration) {
+                    break;
+                }
+#endif
                 LinearizeExpr(stmt->expr);
                 break;
             case ST_SWITCH:

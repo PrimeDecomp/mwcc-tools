@@ -1695,6 +1695,24 @@ def check(compiler, objcopy, nm, objdump, work):
         run(compiler, *FLAGS, opt, "-func_align", "4", "-c", source, "-o", obj, cwd=work)
         results[f"{source.name} {opt}"] = obj.read_bytes()
 
+    source = work / "block_scopes.c"
+    source.write_text(
+        "int outer_local(int x) { int value = x + 1; return value; }\n"
+        "int nested_local(int x) {\n"
+        "    if (x) { int value = x + 1; x = value; }\n"
+        "    return x;\n"
+        "}\n"
+        "int nested_static(int x) {\n"
+        "    if (x) { static int value = 4; x += value; }\n"
+        "    return x;\n"
+        "}\n",
+        encoding="ascii",
+    )
+    obj = source.with_suffix(".o")
+    for opts in (("-O0",), ("-O1",), ("-O4,p", "-pragma", "global_optimizer off")):
+        run(compiler, *FLAGS, *opts, "-func_align", "4", "-c", source, "-o", obj, cwd=work)
+        results[f"{source.name} {' '.join(opts)}"] = obj.read_bytes()
+
     source = work / "count_split_loop.c"
     source.write_text(
         "int count_split_loop(volatile int* p) {\n"
