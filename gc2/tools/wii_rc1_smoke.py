@@ -1947,6 +1947,47 @@ unsigned read_only(const struct Words *src, unsigned *dst) {
         run(compiler, *FLAGS, "-Cpp_exceptions", "off", opt, "-c", source, "-o", obj, cwd=work)
         results[f"{source.name} {opt}"] = obj.read_bytes()
 
+    source = work / "cse_materialization.c"
+    source.write_text(
+        """\
+struct Buffer {
+    unsigned length;
+    char *start;
+    char *cursor;
+};
+
+extern void send(char *p, unsigned n);
+extern void reset(struct Buffer *p);
+
+unsigned transmit(struct Buffer *p, unsigned n) {
+    unsigned available;
+    reset(p);
+    available = p->length - (p->cursor - p->start);
+    if (n <= available)
+        send(p->cursor, n);
+    else
+        send(p->cursor, available);
+    return available;
+}
+
+int guarded(unsigned cond, const int *p) {
+    return cond && *p == (*p + 1) * (*p - 1);
+}
+
+unsigned ordered(volatile struct Buffer *p) {
+    unsigned available;
+    available = p->length - (p->cursor - p->start);
+    send(p->cursor, available);
+    return available;
+}
+""",
+        encoding="ascii",
+    )
+    obj = source.with_suffix(".o")
+    for opt in ("-O0", "-O2", "-O4,p", "-O4,s"):
+        run(compiler, *FLAGS, "-Cpp_exceptions", "off", opt, "-c", source, "-o", obj, cwd=work)
+        results[f"{source.name} {opt}"] = obj.read_bytes()
+
     source = work / "store_forwarding.c"
     source.write_text(
         """\

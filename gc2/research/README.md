@@ -304,12 +304,19 @@ The [compiler research notes](../../docs/wii-retro-compiler-research.md) record 
   or converted to a condition-field copy. In `__mbtowc_noconv`, the call
   at `0x65e4e1` sets the record bit on the sign extension after the byte
   load at offset `0x48`. The source `mbstring.c` object now matches stock.
-- In Corruption's `CircleBuffer.c`, the two swapped pointer loads already
-  differ at the entry to `globallyoptimizepcode` (`0x5b33f0`). Stock loads
-  the write or read pointer (offset 4 or 0) before the start pointer
-  (offset 8) in the blocks after `MWEnterCriticalSection`. The source
-  initially emits the start-pointer load first. The scheduler keeps the
-  respective orders in both builds.
+- RC1's `IRO_CommonSubs` at `0x62eba0` groups expressions with
+  `IRO_ExprsSameSemantically` at `0x62f5e0`. `0x62f380` computes availability
+  per group using `IRO_GetUExprKills`. The local scan at `0x62f0c0` links
+  repetitions inside a block. `0x62ee50` and `0x62ef50` find definitions
+  through predecessors. The rewrite at `0x62ec00` can materialize
+  a shared expression before the defining statement. After
+  `MWEnterCriticalSection` in `CircleBuffer.c`, this puts the read or
+  write pointer load ahead of the start-pointer load before either
+  scheduling pass. The source now reproduces that placement for eligible
+  cross-block reuse and `CircleBuffer.c` matches stock. The local use
+  selection still needs the RC1 data-flow and kill rules. Moving the
+  source's existing local candidates changes the stock constant order in
+  `e_pow.c` because it selects additional expressions there.
 - `CMach_StructLayoutPackedBitfield` at `0x4f2117` closes the previous
   allocation unit at the first unused byte when it encounters a zero-width
   field, then aligns the offset for that field. This affects both the next

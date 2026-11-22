@@ -896,6 +896,54 @@ static void CheckCommonSub(IROLinear* linear) {
     }
 }
 
+#if VERSION == VERSION_WII_1_0RC1
+static Boolean place_cross_block_common_sub(IROExpr* expr, IROExpr* use) {
+    IROLinear* root = expr->linear;
+    IROLinear* parent;
+    IROLinear* start;
+    IROLinear* expr_start;
+    IROLinear* scan;
+
+    if (use->node == expr->node) {
+        return FALSE;
+    }
+    while ((parent = IRO_LocateFather(root))) {
+        if ((IS_LINEAR_DIADIC_2(parent, ELAND, ELOR) && root == parent->u.diadic.right) ||
+            (parent->type == IROLinearOp3Arg && parent->nodetype == ECOND &&
+             root != parent->u.args3.a)) {
+            return FALSE;
+        }
+        if (parent->type == IROLinearIf || parent->type == IROLinearIfNot ||
+            parent->type == IROLinearReturn || parent->type == IROLinearSwitch) {
+            break;
+        }
+        root = parent;
+    }
+
+    if ((root == expr->linear && !parent) || IRO_HasSideEffect(expr->linear) ||
+        IRO_ExprHasFloatingPointEffects(expr->linear)) {
+        return FALSE;
+    }
+    start = IRO_FindStart(root);
+    expr_start = IRO_FindStart(expr->linear);
+    for (scan = start; scan != expr_start; scan = scan->next) {
+        if (!scan || (scan->type != IROLinearNop &&
+                      (IRO_HasSideEffect(scan) || IRO_ExprHasFloatingPointEffects(scan)))) {
+            return FALSE;
+        }
+    }
+
+    /* RC1 materializes a shared value before evaluating the defining statement. */
+    IRO_GetTemp(expr);
+    IRO_Dump("Moving common sub from node %d before statement starting at %d\n",
+             expr->linear->index, start->index);
+    IRO_ReplaceReference(expr->linear, expr->temp, expr->linear);
+    IRO_MoveExpression(expr, start);
+    IRO_AssignToTemp(expr)->stmt = root == expr->linear ? parent->stmt : root->stmt;
+    return TRUE;
+}
+#endif
+
 static void MoveCommonSub(IROExpr* expr) {
     IROExpr* scanexpr;
     SInt32 sz1;
@@ -974,7 +1022,13 @@ static void MoveCommonSub(IROExpr* expr) {
 static void ReplaceCommonSub(IROLinear* linear) {
     IROExpr* expr = linear->expr->use;
     if (!expr->temp) {
+#if VERSION == VERSION_WII_1_0RC1
+        if (!place_cross_block_common_sub(expr, linear->expr)) {
+            MoveCommonSub(expr);
+        }
+#else
         MoveCommonSub(expr);
+#endif
         if (!expr->temp) {
             return;
         }
