@@ -2220,6 +2220,27 @@ unsigned absolute(unsigned x) {
         run(compiler, *FLAGS, "-Cpp_exceptions", "off", opt, "-c", source, "-o", obj, cwd=work)
         results[f"{source.name} {opt}"] = obj.read_bytes()
 
+    source = work / "equality_ranges.c"
+    source.write_text(
+        """\
+extern int hit(void);
+extern int miss(void);
+
+#define TEST(name, type, expression) \\
+    int name(type x) { if (expression) return hit(); return miss(); }
+TEST(adjacent, unsigned, x == 1 || x == 2)
+TEST(reordered, unsigned, x == 3 || x == 1 || x == 2)
+TEST(gap, unsigned, x == 1 || x == 2 || x == 4)
+TEST(repeated, unsigned, x == 1 || x == 2 || x == 1)
+TEST(narrow, unsigned char, x == 1 || x == 2 || x == 3)
+TEST(signed_range, int, x == -2 || x == -1)
+""",
+        encoding="ascii",
+    )
+    obj = source.with_suffix(".o")
+    run(compiler, *FLAGS, "-O4,p", "-func_align", "4", "-c", source, "-o", obj, cwd=work)
+    results[f"{source.name} -O4,p"] = obj.read_bytes()
+
     source = work / "local_declaration_weight.c"
     source.write_text(
         "void declaration_weight(int x) {\n"

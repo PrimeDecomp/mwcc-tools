@@ -1,6 +1,7 @@
 #include "compiler/IroUtil.h"
 #include "compiler/IroCSE.h"
 #include "compiler/IroDump.h"
+#include "compiler/IroEval.h"
 #include "compiler/IroFlowgraph.h"
 #include "compiler/IroLinearForm.h"
 #include "compiler/IroVars.h"
@@ -43,6 +44,37 @@ Object* IRO_IsVariable(IROLinear* linear) {
 
     return NULL;
 }
+
+#if VERSION == VERSION_WII_1_0RC1
+Boolean IRO_IsValuePreservingTypcon(IROLinear* linear) {
+    Type* source = linear->u.monadic->rtype;
+    Type* target = linear->rtype;
+    if (!IS_TYPE_INT(source) || !IS_TYPE_INT(target)) {
+        return FALSE;
+    }
+    if (is_unsigned(source) == is_unsigned(target)) {
+        return source->size <= target->size;
+    }
+    return is_unsigned(source) && source->size < target->size;
+}
+
+Object* IRO_IsVariableEquIntConst(IROLinear* linear) {
+    IROLinear* left;
+    IROLinear* right;
+    if (!linear || !IS_LINEAR_DIADIC(linear, EEQU)) {
+        return NULL;
+    }
+    right = linear->u.diadic.right;
+    if (!IRO_IsIntConstant(right) || !IS_TYPE_INT(right->rtype)) {
+        return NULL;
+    }
+    left = linear->u.diadic.left;
+    if (IS_LINEAR_MONADIC(left, ETYPCON) && IRO_IsValuePreservingTypcon(left)) {
+        left = left->u.monadic;
+    }
+    return IRO_IsVariable(left);
+}
+#endif
 
 Boolean IRO_IsConstant(IROLinear* linear) {
     if (linear->type == IROLinearOperand &&
@@ -1385,11 +1417,18 @@ IROLinear* IRO_NewIntConst(CInt64 val, Type* type) {
     ENode* node;
     IROLinear* linear;
 
+#if VERSION == VERSION_WII_1_0RC1
+    IRO_TruncateValueToType(&val, type);
+#endif
     node = IRO_NewENode(EINTCONST);
     node->data.intval = val;
     node->rtype = type;
 
     linear = IRO_NewLinear(IROLinearOperand);
+#if VERSION == VERSION_WII_1_0RC1
+    linear->nodetype = EINTCONST;
+    linear->flags = IROLF_LoopInvariant;
+#endif
     linear->index = ++IRO_NumLinear;
     linear->rtype = type;
     linear->u.node = node;

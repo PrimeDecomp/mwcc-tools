@@ -262,6 +262,21 @@ The [compiler research notes](../../docs/wii-retro-compiler-research.md) record 
   effects once. Stock runs `IRO_SimplifyBoundedIntervalConditionals` at
   `0x62b860` after switch lowering and can combine the two comparisons for an
   interior range.
+- RC1's equality-chain pass at `0x62c0e0` follows fallthrough blocks and
+  checks each successor against the original branch destination. It can
+  end the chain at an inverted branch whose fallthrough is that
+  destination. The comparison matcher at `0x5ce460` also accepts a variable
+  read through a value-preserving integer conversion. The range test at
+  `0x62c330` requires every value between the extrema to appear and
+  rejects an upper bound whose increment wraps. The rewrite at
+  `0x62c150` retains the last branch and compares the offset from the
+  lower bound after conversion to unsigned. `IRO_NewIntConst` at
+  `0x5cb480` truncates the offset to the original operand width. This
+  matches the range tests in optimized `FILE_POS.c`. Register selection
+  and zero-valued bit-field inserts still differ in that object. In a
+  three-bit field clear, stock emits `RLWIMI` at `0x5ac953` and changes
+  it to `RLWINM` at `0x6588c0` after seeing that the insert operand
+  comes from `LI 0`.
 - RC1's class-specific liveness pass calls `0x63a9e0` at `0x63a491` before
   building the interference graph. It restricts entry live-ins to physical
   registers and walks blocks forward, masking live-outs by live-ins and local
