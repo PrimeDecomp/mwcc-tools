@@ -1713,6 +1713,42 @@ def check(compiler, objcopy, nm, objdump, work):
     run(objcopy, f"--dump-section=.text={section}", obj, cwd=work)
     results[source.name] = section.read_bytes()
 
+    source = work / "record_zero.c"
+    source.write_text(
+        """\
+int decode(unsigned short *dst, const signed char *src, unsigned n) {
+    if (!src)
+        return 0;
+    if (!n)
+        return -1;
+    if (dst)
+        *dst = (unsigned char)*src;
+    if (!*src)
+        return 0;
+    return 1;
+}
+
+extern int yes(void), no(void);
+
+int added_zero(unsigned x) {
+    if ((x + 40) != 0)
+        return yes();
+    return no();
+}
+
+int compare_nonzero(const signed char *p) {
+    if (*p == 11)
+        return yes();
+    return no();
+}
+""",
+        encoding="ascii",
+    )
+    obj = source.with_suffix(".o")
+    for opt in ("-O0", "-O2", "-O4,p", "-O4,s"):
+        run(compiler, *FLAGS, "-Cpp_exceptions", "off", opt, "-c", source, "-o", obj, cwd=work)
+        results[f"{source.name} {opt}"] = obj.read_bytes()
+
     source = work / "spr_aliases.c"
     source.write_text(
         "asm void transfer(void) {\n"

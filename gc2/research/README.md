@@ -297,10 +297,19 @@ The [compiler research notes](../../docs/wii-retro-compiler-research.md) record 
   `strcpy` it folds two moves into one, which lets copy propagation and
   register allocation eliminate the remaining move. The source `string.c`
   object now matches stock.
-- The Corruption corpus has 29 of 76 identical results across the native,
-  source oracle, and WebAssembly builds. In `mbstring.c` the only object
-  difference is the zero test in `__mbtowc_noconv`. Stock emits `extsb.`
-  after the byte load at offset `0x48`; the source emits `cmpwi`.
+- The branch peephole at `0x65e100` follows a zero comparison through the
+  condition field to the integer instruction that produced its operand.
+  Before register coloring (caller `0x46b40a`), it can switch the branch
+  to CR0 and set the record bit on the producer. The comparison is removed
+  or converted to a condition-field copy. In `__mbtowc_noconv`, the call
+  at `0x65e4e1` sets the record bit on the sign extension after the byte
+  load at offset `0x48`. The source `mbstring.c` object now matches stock.
+- In Corruption's `CircleBuffer.c`, the two swapped pointer loads already
+  differ at the entry to `globallyoptimizepcode` (`0x5b33f0`). Stock loads
+  the write or read pointer (offset 4 or 0) before the start pointer
+  (offset 8) in the blocks after `MWEnterCriticalSection`. The source
+  initially emits the start-pointer load first. The scheduler keeps the
+  respective orders in both builds.
 - `CMach_StructLayoutPackedBitfield` at `0x4f2117` closes the previous
   allocation unit at the first unused byte when it encounters a zero-width
   field, then aligns the offset for that field. This affects both the next

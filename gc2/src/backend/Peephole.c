@@ -2479,12 +2479,12 @@ static int canuseinsert(PCode* instr1, PCode* instr2, short reg) {
 }
 #endif
 
-static PCode* find_def_backwords(PCode* instr, short reg) {
+static PCode* find_def_backward(PCode* instr, RegClass rclass, short reg) {
     int i;
 
     while (instr) {
         for (i = 0; i < instr->argCount; i++) {
-            if (PC_OP_IS_WRITE_REGISTER(&instr->args[i], RegClass_GPR, reg)) {
+            if (PC_OP_IS_WRITE_REGISTER(&instr->args[i], rclass, reg)) {
                 return instr;
             }
         }
@@ -2526,7 +2526,7 @@ static Boolean combine_disjoint_fields(PCode* masked, PCode* combined, PCodeArg*
         return FALSE;
     }
 
-    definition = find_def_backwords(combined->prevPCode, base->data.reg.reg);
+    definition = find_def_backward(combined->prevPCode, RegClass_GPR, base->data.reg.reg);
     if (definition && definition->op == PC_RLWINM &&
         definition->args[1].data.reg.reg == masked->args[1].data.reg.reg &&
         definition->args[2].data.imm.value == masked->args[2].data.imm.value &&
@@ -2815,7 +2815,7 @@ static void adjustforward(PCodeBlock* block) {
                     if (a[1].data.reg.reg == destReg &&
                         canuseinsert(instr, scan, a[2].data.reg.reg)) {
                         op = &scan->args[2];
-                        tmp = find_def_backwords(scan->prevPCode, op->data.reg.reg);
+                        tmp = find_def_backward(scan->prevPCode, RegClass_GPR, op->data.reg.reg);
                         if (tmp->op == PC_RLWINM && tmp->args[2].data.imm.value == 0) {
                             if (instr->args[3].data.imm.value <= instr->args[4].data.imm.value) {
                                 valA = ((instr->args[3].data.imm.value > 31)
@@ -2881,7 +2881,7 @@ static void adjustforward(PCodeBlock* block) {
                     if (a[2].data.reg.reg == destReg &&
                         canuseinsert(instr, scan, a[1].data.reg.reg)) {
                         op = &scan->args[1];
-                        tmp = find_def_backwords(scan->prevPCode, op->data.reg.reg);
+                        tmp = find_def_backward(scan->prevPCode, RegClass_GPR, op->data.reg.reg);
                         if (tmp->op == PC_RLWINM && tmp->args[2].data.imm.value == 0) {
                             if (instr->args[3].data.imm.value <= instr->args[4].data.imm.value) {
                                 valA = ((instr->args[3].data.imm.value > 31)
@@ -3350,7 +3350,7 @@ static void backward_peephole(Object* func, Boolean fixed_point, Boolean fold_mo
                 } else {
                     if (fold_moves && instr->op == PC_MR) {
                         short src = instr->args[1].data.reg.reg;
-                        PCode* def = find_def_backwords(instr->prevPCode, src);
+                        PCode* def = find_def_backward(instr->prevPCode, RegClass_GPR, src);
                         if (move_into_definition(
                                 instr, def, bitvectorgetbit(src, live[RegClass_GPR]) != 0)) {
                             continue;
@@ -3385,7 +3385,7 @@ static Boolean LIS_ADDI(PCode* instr, UInt32* live) {
     if (new_reg == old_reg || bitvectorgetbit(old_reg, live)) {
         return FALSE;
     }
-    def = find_def_backwords(instr->prevPCode, old_reg);
+    def = find_def_backward(instr->prevPCode, RegClass_GPR, old_reg);
     if (!def || (def->op != PC_LIS && def->op != PC_ADDIS) ||
         def->args[1].kind != PCOp_MEMORY ||
         def->args[1].data.mem.obj != instr->args[2].data.mem.obj ||
@@ -3399,10 +3399,66 @@ static Boolean LIS_ADDI(PCode* instr, UInt32* live) {
     return TRUE;
 }
 
+static Boolean fold_branch_zero_compare(PCode* branch, UInt32* live) {
+    PCodeArg cr0 = branch->args[0];
+    short reg = cr0.data.reg.reg;
+    PCode* compare;
+    PCode* producer;
+    PCode* cr0_user;
+    UInt32 flags;
+
+    if (!PC_OP_IS_READ_ANY_REGISTER(&cr0, RegClass_CRFIELD) ||
+        branch->args[1].kind != PCOp_IMMEDIATE || branch->args[1].data.imm.value != 2 ||
+        (reg != 0 && (bitvectorgetbit(reg, live) || bitvectorgetbit(0, live)))) {
+        return FALSE;
+    }
+    compare = find_def_backward(branch->prevPCode, RegClass_CRFIELD, reg);
+    if (!compare || (compare->op != PC_CMPI && compare->op != PC_CMPLI) ||
+        !PC_OP_IS_READ_ANY_REGISTER(&compare->args[1], RegClass_GPR) ||
+        compare->args[2].kind != PCOp_IMMEDIATE || compare->args[2].data.imm.value != 0 ||
+        (compare->flags & (fIsVolatile | fSideEffects))) {
+        return FALSE;
+    }
+    producer = find_def_backward(compare->prevPCode, RegClass_GPR, compare->args[1].data.reg.reg);
+    if (!producer ||
+        !PC_OP_IS_WRITE_REGISTER(&producer->args[0], RegClass_GPR, compare->args[1].data.reg.reg)) {
+        return FALSE;
+    }
+    flags = PCODE_FLAG_SET_F(producer);
+    if ((flags & (fOpTypeMask | fCanSetRecordBit | fSideEffects | fIsMove)) !=
+        (fOpTypeGPR | fCanSetRecordBit) ||
+        (producer->op == PC_ADDI && isSPRlive(producer, 0))) {
+        return FALSE;
+    }
+
+    cr0.data.reg.reg = 0;
+    cr0_user = reg == 0 ? compare : branch;
+    if (usedbetween(cr0_user, producer, &cr0) || definedbetween(cr0_user, producer, &cr0)) {
+        return FALSE;
+    }
+
+    if (!(flags & fRecordBit)) {
+        pcsetrecordbit(producer);
+    }
+    if (reg == 0) {
+        deletepcode(compare);
+    } else {
+        change_opcode(compare, PC_MCRF);
+        change_num_operands(compare, 2);
+        compare->args[1] = cr0;
+        branch->args[0] = cr0;
+    }
+    return TRUE;
+}
+
 void peepholeoptimizeprecolor(Object* func) {
     RegClass saved_class = coloring_class;
-    SInt32 reg_count = used_virtual_registers[RegClass_GPR];
-    UInt32* live;
+    LiveInfo* saved_info = liveinfo;
+    SInt32 gprs = used_virtual_registers[RegClass_GPR];
+    SInt32 crs = used_virtual_registers[RegClass_CRFIELD];
+    LiveInfo* gpr_info;
+    UInt32* gpr_live;
+    UInt32* cr_live;
     PCodeBlock* block;
     PCode* instr;
     PCodeArg* arg;
@@ -3411,27 +3467,38 @@ void peepholeoptimizeprecolor(Object* func) {
 
     coloring_class = RegClass_GPR;
     computelivevariables(func);
-    live = oalloc(sizeof(UInt32) * ((reg_count + 31) >> 5));
+    gpr_info = liveinfo;
+    gpr_live = oalloc(sizeof(UInt32) * ((gprs + 31) >> 5));
+    coloring_class = RegClass_CRFIELD;
+    computelivevariables(func);
+    cr_live = oalloc(sizeof(UInt32) * ((crs + 31) >> 5));
 
     for (block = pcbasicblocks; block; block = block->nextBlock) {
         do {
             changed = FALSE;
-            bitvectorcopy(live, liveinfo[block->blockIndex].out, reg_count);
+            bitvectorcopy(gpr_live, gpr_info[block->blockIndex].out, gprs);
+            bitvectorcopy(cr_live, liveinfo[block->blockIndex].out, crs);
             for (instr = block->lastPCode; instr; instr = instr->prevPCode) {
-                if (instr->op == PC_ADDI && instr->args[2].kind == PCOp_MEMORY &&
-                    PC_OP_IS_WRITE_ANY_REGISTER(&instr->args[0], RegClass_GPR) &&
-                    PC_OP_IS_READ_ANY_REGISTER(&instr->args[1], RegClass_GPR) &&
-                    bitvectorgetbit(instr->args[0].data.reg.reg, live)) {
-                    changed |= LIS_ADDI(instr, live);
+                if (instr->op == PC_BT || instr->op == PC_BF) {
+                    changed |= fold_branch_zero_compare(instr, cr_live);
+                } else if (instr->op == PC_ADDI && instr->args[2].kind == PCOp_MEMORY &&
+                           PC_OP_IS_WRITE_ANY_REGISTER(&instr->args[0], RegClass_GPR) &&
+                           PC_OP_IS_READ_ANY_REGISTER(&instr->args[1], RegClass_GPR) &&
+                           bitvectorgetbit(instr->args[0].data.reg.reg, gpr_live)) {
+                    changed |= LIS_ADDI(instr, gpr_live);
                 }
                 for (i = 0, arg = instr->args; i < instr->argCount; i++, arg++) {
                     if (PC_OP_IS_WRITE_ANY_REGISTER(arg, RegClass_GPR)) {
-                        bitvectorclearbit(arg->data.reg.reg, live);
+                        bitvectorclearbit(arg->data.reg.reg, gpr_live);
+                    } else if (PC_OP_IS_WRITE_ANY_REGISTER(arg, RegClass_CRFIELD)) {
+                        bitvectorclearbit(arg->data.reg.reg, cr_live);
                     }
                 }
                 for (i = 0, arg = instr->args; i < instr->argCount; i++, arg++) {
                     if (PC_OP_IS_READ_ANY_REGISTER(arg, RegClass_GPR)) {
-                        bitvectorsetbit(arg->data.reg.reg, live);
+                        bitvectorsetbit(arg->data.reg.reg, gpr_live);
+                    } else if (PC_OP_IS_READ_ANY_REGISTER(arg, RegClass_CRFIELD)) {
+                        bitvectorsetbit(arg->data.reg.reg, cr_live);
                     }
                 }
             }
@@ -3439,6 +3506,7 @@ void peepholeoptimizeprecolor(Object* func) {
     }
 
     freeoheap();
+    liveinfo = saved_info;
     coloring_class = saved_class;
 }
 #endif
